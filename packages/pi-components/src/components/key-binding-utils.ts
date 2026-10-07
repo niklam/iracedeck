@@ -5,9 +5,9 @@
  * These are extracted from the web component to allow for unit testing
  * in a Node.js environment (without DOM dependencies).
  */
-import { parseDefaultKeyBinding } from "@iracedeck/app-constants";
+import { type Modifier, MODIFIERS, parseDefaultKeyBinding } from "@iracedeck/app-constants";
 
-import { KEY_DISPLAY_NAMES, type Modifier, MODIFIERS } from "./key-maps.js";
+import { KEY_DISPLAY_NAMES } from "./key-maps.js";
 
 /** UI text constants */
 export const UI_TEXT = {

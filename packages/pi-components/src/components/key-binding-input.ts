@@ -29,6 +29,8 @@
  * - Keyboard: { "key": "f1", "modifiers": ["ctrl", "shift"] }
  * - SimHub:   { "type": "simhub", "role": "My Role Name" }
  */
+import { keyForCode, type Modifier } from "@iracedeck/app-constants";
+
 import {
   formatKeyBinding,
   type KeyBindingValue,
@@ -37,7 +39,7 @@ import {
   SDPI_THEME,
   UI_TEXT,
 } from "./key-binding-utils.js";
-import { keyForCode, type Modifier, resolveEventCode } from "./key-maps.js";
+import { resolveEventCode } from "./key-maps.js";
 import { skipUnchanged } from "./settings-change-filter.js";
 import { probeSimHub } from "./simhub-probe.js";
 
