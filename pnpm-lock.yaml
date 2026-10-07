@@ -514,9 +514,6 @@ importers:
       '@iracedeck/icon-composer':
         specifier: workspace:*
         version: link:../icon-composer
-      '@iracedeck/iracing-sdk':
-        specifier: workspace:*
-        version: link:../iracing-sdk
       '@iracedeck/logger':
         specifier: workspace:*
         version: link:../logger

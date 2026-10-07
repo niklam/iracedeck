@@ -26,7 +26,6 @@
     "@iracedeck/callout-script": "workspace:*",
     "@iracedeck/callout-settings": "workspace:*",
     "@iracedeck/icon-composer": "workspace:*",
-    "@iracedeck/iracing-sdk": "workspace:*",
     "@iracedeck/logger": "workspace:*",
     "fflate": "0.8.3",
     "semver": "7.8.5",
