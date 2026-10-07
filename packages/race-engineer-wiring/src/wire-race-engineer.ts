@@ -17,7 +17,7 @@ export interface RaceEngineerVoiceState {
 
 /**
  * What the wiring takes beyond what it imports. Settings, the setup-warning
- * rule and the driver-name resolution come from `deck-core` directly.
+ * rule and the driver-name resolution come from `@iracedeck/settings` directly.
  * The plugins pass no `overrides`; the harness (slice 2) passes its snapshot stubs.
  */
 export interface RaceEngineerWiringDeps {
