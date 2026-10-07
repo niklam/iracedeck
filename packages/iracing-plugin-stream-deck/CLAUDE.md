@@ -2,7 +2,7 @@
 
 Core Stream Deck plugin for iRaceDeck. Registers actions from `@iracedeck/iracing-actions` with the Elgato Stream Deck via `@iracedeck/deck-adapter-elgato`. Its `src/plugin.ts` is a shell (#1349): it builds the `ElgatoPlatformAdapter` and the host extension (`src/elgato-extension.ts`: Switch Profile, the profile switcher, the connected-deck list, the device type for the changelog URL) and calls `@iracedeck/plugin-runtime`'s `startPlugin`, which runs the startup phases (`.claude/rules/plugin-structure.md`).
 
-Action implementations live in `packages/iracing-actions/src/actions/<action-name>/`, with one folder per action. Shared utilities (base actions, keyboard service, global settings, icon templates, etc.) live in `packages/deck-core/src/`. Actions import from `@iracedeck/deck-core`. The `src/shared/index.ts` in this package re-exports from `@iracedeck/deck-core` and `@iracedeck/deck-adapter-elgato` for backward compatibility.
+Action implementations live in `packages/iracing-actions/src/actions/<action-name>/`, with one folder per action. Shared utilities (base actions, keyboard service, icon templates, etc.) live in `packages/deck-core/src/`, and the global settings in `packages/settings/src/`. Actions import from `@iracedeck/deck-core`, and the global-settings names from `@iracedeck/settings`. The `src/shared/index.ts` in this package re-exports from `@iracedeck/deck-core`, `@iracedeck/settings` and `@iracedeck/deck-adapter-elgato` for backward compatibility.
 
 Each action folder is self-contained: `<name>.ts`, `<name>.test.ts`, `<name>.ejs` (PI template), and `icon.svg` / `key.svg` (static icons) all live side-by-side. Shared template data (`icon-defaults.json`, `key-bindings.json`, `docs-urls.json`, the generated `action-comms.json` and `profiles.json`) lives in `packages/iracing-actions/src/actions/data/`. The plugin-global Property Inspector template lives in `packages/iracing-actions/src/actions/settings/`.
 
@@ -28,7 +28,6 @@ import {
   CommonSettings,
   ConnectionStateAwareAction,
   getGlobalBorderSettings,
-  getGlobalColors,
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
   type IDeckDidReceiveSettingsEvent,
@@ -39,6 +38,7 @@ import {
   resolveIconColors,
   resolveTitleSettings,
 } from "@iracedeck/deck-core";
+import { getGlobalColors } from "@iracedeck/settings";
 import defaultIconSvg from "@iracedeck/icons/{action-name}/default.svg";
 import z from "zod";
 
@@ -94,7 +94,7 @@ Full requirements (base class, UUID export, event types, Zod usage, super calls,
 
 #### 2. Unit tests — `packages/iracing-actions/src/actions/{action-name}/{action-name}.test.ts`
 
-Must mock `@iracedeck/deck-core` before importing — the canonical mock block (including the binding-dispatch stubs `setActiveBinding` / `tapBinding` / `holdBinding` / `releaseBinding`) is in `.claude/rules/testing.md`. Actions that pass `bindingMissing` into icon generation must additionally stub `isBindingMissing` on the mock `ConnectionStateAwareAction`. See `packages/iracing-actions/src/actions/splits-delta-cycle/splits-delta-cycle.test.ts` for the full pattern.
+Must mock `@iracedeck/deck-core`, and `@iracedeck/settings` for the global-settings names such as `getGlobalSettings` and `getGlobalColors`, before importing — the canonical mock block (including the binding-dispatch stubs `setActiveBinding` / `tapBinding` / `holdBinding` / `releaseBinding`) is in `.claude/rules/testing.md`. Actions that pass `bindingMissing` into icon generation must additionally stub `isBindingMissing` on the mock `ConnectionStateAwareAction`. See `packages/iracing-actions/src/actions/splits-delta-cycle/splits-delta-cycle.test.ts` for the full pattern.
 
 #### 3. Icon SVGs — `packages/icons/{action-name}/*.svg`
 

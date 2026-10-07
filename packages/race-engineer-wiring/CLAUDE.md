@@ -4,11 +4,11 @@ The Race Engineer's wiring, in one place (#1349): the plugin-side bus caches the
 
 ## Boundaries
 
-- It imports `audio-scenarios`, `deck-core`, `event-bus`, `sim-events-iracing` and `logger`. `deck-core` never imports it (the cycles run one way only). Settings, `isCalloutEnabled`, `evaluateSetupWarning` and `resolveActiveDriverName` come from `deck-core` directly; nothing `deck-core` provides is injected.
+- It imports `audio-scenarios`, `settings`, `event-bus`, `sim-events-iracing` and `logger`. Neither `settings` nor `deck-core` imports it (the cycles run one way only). Settings, `isCalloutEnabled`, `evaluateSetupWarning` and `resolveActiveDriverName` come from `@iracedeck/settings` directly (#1365); nothing it provides is injected.
 - It takes one `logger` and makes every logger it needs with `logger.createScope(...)`; the bootstrap passes `adapter.createLogger("RaceEngineer")`, so its lines print as `[RaceEngineer:LapCompleted]` and the like on Mirabox and Ulanzi, and as `RaceEngineer->LapCompleted` on Stream Deck, whose SDK joins scopes with `->`.
 - `voice` is the voice-pack phase's driver-name state, read on every call (the harness passes its seeded list).
 - `SimRuntime` (`sim-runtime.ts`) is the translator's query side as one object. It is iRacing-shaped; making it sim-neutral is #1351.
-- Every callout opt-in is one dependency, `isCalloutEnabled`, passed straight from `deck-core` (#1350): each family in `registerPitCrew` resolves its own callout id to a key through `@iracedeck/callout-settings`, so a new callout needs no change here.
+- Every callout opt-in is one dependency, `isCalloutEnabled`, passed straight from `@iracedeck/settings` (#1350): each family in `registerPitCrew` resolves its own callout id to a key through `@iracedeck/callout-settings`, so a new callout needs no change here.
 
 ## Rules
 
