@@ -1021,9 +1021,6 @@ importers:
       '@iracedeck/callout-settings':
         specifier: workspace:*
         version: link:../callout-settings
-      '@iracedeck/deck-core':
-        specifier: workspace:*
-        version: link:../deck-core
       '@iracedeck/fetch-utils':
         specifier: workspace:*
         version: link:../fetch-utils
