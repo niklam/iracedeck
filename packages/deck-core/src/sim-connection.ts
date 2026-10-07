@@ -77,8 +77,26 @@ export function initializeSimConnection(connection: SimConnection): void {
   const queued = [...pendingSubscriptions];
   pendingSubscriptions.clear();
 
+  // A connection may notify a subscriber as it registers it (iRacing's does),
+  // so a throwing callback surfaces here. Replay every queued subscription
+  // regardless, keep the one that threw (it is registered; only its first
+  // notification failed), and rethrow the first failure afterwards so it is
+  // not swallowed.
+  const failures: unknown[] = [];
+
   for (const [id, onTick] of queued) {
-    connection.subscribe(id, onTick);
+    try {
+      connection.subscribe(id, onTick);
+    } catch (err) {
+      failures.push(err);
+    }
+  }
+
+  if (failures.length > 0) {
+    throw new Error(
+      `${failures.length} of ${queued.length} queued sim subscription(s) threw while being replayed; every one was still subscribed`,
+      { cause: failures[0] },
+    );
   }
 }
 

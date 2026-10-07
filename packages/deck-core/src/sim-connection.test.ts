@@ -6,6 +6,7 @@ import {
   getSimConnection,
   initializeSimConnection,
   isSimConnectionInitialized,
+  type SimConnection,
 } from "./sim-connection.js";
 
 describe("sim-connection singleton", () => {
@@ -57,6 +58,38 @@ describe("sim-connection singleton", () => {
     initializeSimConnection(fake.connection);
 
     expect([...fake.subscribers.keys()]).toEqual(["first", "second"]);
+  });
+
+  it("replays every queued subscription when one throws as it registers, then rethrows", () => {
+    // A connection that notifies a subscriber as it registers it, as iRacing's SDKController does.
+    const registered: string[] = [];
+    const notifying: SimConnection = {
+      ...createFakeSimConnection().connection,
+      subscribe: (id, onTick) => {
+        registered.push(id);
+        onTick(true);
+      },
+    };
+    const boom = new Error("boom");
+
+    getSimConnection().subscribe("first", vi.fn());
+    getSimConnection().subscribe("throws", () => {
+      throw boom;
+    });
+    getSimConnection().subscribe("last", vi.fn());
+
+    let thrown: unknown;
+
+    try {
+      initializeSimConnection(notifying);
+    } catch (err) {
+      thrown = err;
+    }
+
+    expect(registered).toEqual(["first", "throws", "last"]);
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as Error).cause).toBe(boom);
+    expect(getSimConnection()).toBe(notifying);
   });
 
   it("does not replay a subscription withdrawn before initialisation", () => {
