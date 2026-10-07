@@ -44,7 +44,7 @@ The package has no `build` script, but as a declared dependency its `#build` tas
 
 ## Dependencies
 
-It declares what the factory imports: the six `@rollup/plugin-*` packages, `tslib` and `typescript` (the peers of `@rollup/plugin-typescript`), and the `@iracedeck/pi-components` and `@iracedeck/audio-assets` build imports. The plugins no longer declare the Rollup plugins or `tslib`; they keep `rollup` (the CLI their `build` script runs) and `typescript`. `rollup` is a devDependency here, for the types. The lockfile must resolve `@rollup/plugin-typescript` to the same instance the plugins' Rollup runs with — `rollup`, `tslib` and `typescript` at the plugins' versions — so bump `rollup` and `typescript` here and in the three plugins together.
+It declares what the factory imports: the six `@rollup/plugin-*` packages, `tslib` and `typescript` (the peers of `@rollup/plugin-typescript`), the `@iracedeck/pi-components` and `@iracedeck/audio-assets` build imports, and `@iracedeck/app-constants` for `SETTINGS_WINDOW_HTML`, the page the settings-window bridge is injected into. The plugins no longer declare the Rollup plugins or `tslib`; they keep `rollup` (the CLI their `build` script runs) and `typescript`. `rollup` is a devDependency here, for the types. The lockfile must resolve `@rollup/plugin-typescript` to the same instance the plugins' Rollup runs with — `rollup`, `tslib` and `typescript` at the plugins' versions — so bump `rollup` and `typescript` here and in the three plugins together.
 
 ## The guards that read it
 

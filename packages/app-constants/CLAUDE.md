@@ -7,7 +7,9 @@ The constants every layer shares, and the Property Inspector's browser bundle wi
 - Setting-key names: `PI_WARNINGS_KEY`, `PROFILE_CAPTURE_STATUS_KEY`, the voice-pack keys (`VOICE_PACKS_KEY`, `VOICE_LABELS_KEY`, `VOICE_PACK_STATUS_KEY`), `ENSURED_VOICE_PACK_ID`, and the catalog's dev-base-url key with the published catalog location (`voice-pack-catalog-location.ts`).
 - Value sets: the voice-pack status payload and its phases and verdicts (`voice-pack-status.ts`), the changelog notification policies and their default (`changelog-policy.ts`), the Focus iRacing Window modes (`focus-iracing-mode.ts`), the Mouse to Sim pointer anchors and defaults (`sim-pointer-target.ts`).
 - Settings-window names: `SETTINGS_WINDOW_HTML` and the two warning ids (`settings-window-ids.ts`).
-- The key map and the default-binding parser the PI and the plugin share (`key-binding-defaults.ts`, #1277).
+- The key map and the default-binding parser the PI and the plugin share (`key-binding-defaults.ts`, #1277). Every lookup goes through a `Map`, so `Object.prototype` names (`constructor`, `__proto__`, `toString`) are never keys, codes or modifier aliases.
+
+Three pins over these values live outside the package, because it may depend on no other package and its tests have no Node typings to read another package's files with: deck-core's `mouse-pointer-service.test.ts` holds the default pointer anchors and offsets to the pre-#1029 placement (`DEFAULT_POINTER_X_FRACTION` / `_Y_FRACTION`), deck-core's `sim-pointer-target.partial.test.ts` holds the settings-window control's `default=` attributes to the same constants, and pi-components' `key-binding-input.default-save.test.ts` holds a seeded default byte-identical to the one the binding field saves.
 
 Every name has one import path: `@iracedeck/app-constants`. deck-core re-exports none of them, so an importer never has to guess which package a mock must cover. Key names and values are persisted or run-scoped contracts; `persisted-values.test.ts` pins them, and a value never changes here.
 
@@ -22,4 +24,4 @@ Something that touches timers, `AbortController` or I/O belongs in `@iracedeck/f
 
 ## Who imports it
 
-deck-core and the packages above it import it directly. Browser code does too: `pi-components` bundles it into the Property Inspector, and its Rollup guard admits `@iracedeck/app-constants` as the one workspace package a browser bundle may import.
+deck-core, plugin-runtime and iracing-actions import it directly, and `plugin-build` reads `SETTINGS_WINDOW_HTML` from it at build time to pick out the page that gets the settings-window bridge. Browser code does too: `pi-components` bundles it into the Property Inspector, and its Rollup guard admits exactly two workspace packages, each by its bare name — this one and `@iracedeck/fetch-utils` — and refuses deck-core and any subpath of either.

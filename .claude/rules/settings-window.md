@@ -5,6 +5,8 @@ paths:
   - "packages/deck-core/src/chromium-browser*"
   - "packages/deck-core/src/voice-pack-*"
   - "packages/deck-core/src/update-check*"
+  - "packages/app-constants/src/settings-window-*"
+  - "packages/app-constants/src/voice-pack-*"
   - "packages/pi-components/**"
   - "packages/iracing-actions/src/actions/settings-window/**"
   - "packages/iracing-actions/src/actions/data/**"
@@ -36,7 +38,7 @@ The server starts from the plugin's **store-ready startup block** (`ensureStarte
 | Page | `iracing-actions/src/actions/settings-window/settings-window.ejs` → `ui/settings-window.html` | Compiled by `piTemplatePlugin` (not an action). |
 | Getting Started | `pi-components/partials/settings-window-getting-started.ejs` + `iracing-actions/src/actions/data/getting-started.json` | #1061; source `docs/getting-started/first-steps.md`, `pnpm generate:getting-started-data`. |
 | What's New | `pi-components/partials/settings-window-changelog.ejs` + `iracing-actions/src/actions/data/changelog.json` | #1011; `pnpm generate:changelog-data`. |
-| Update check | `deck-core/src/{changelog-html-sanitize,published-changelog,changelog-feed-client,update-check,update-check-service}.ts` + `pi-components/src/components/update-notice.ts` | #1016. Both feed clients (this and `voice-pack-catalog-client.ts`) read the body through `read-capped-json.ts`, never `response.json()`: a byte cap enforced while reading, plus a length cap on `releases` / `packs` (#1101). |
+| Update check | `deck-core/src/{changelog-html-sanitize,published-changelog,changelog-feed-client,update-check,update-check-service}.ts` + `pi-components/src/components/update-notice.ts` | #1016. Both feed clients (this and `voice-pack-catalog-client.ts`) read the body through `readCappedJson` (`@iracedeck/fetch-utils`), never `response.json()`: a byte cap enforced while reading, plus a length cap on `releases` / `packs` (#1101). |
 | PI bridge | `pi-components/src/pi-settings-bridge/` → `browser/pi-settings-bridge.js` | Elgato/Mirabox action PIs, never `settings-window.html`. |
 | Router | `pi-components/src/settings-channel/router.ts` + `loopback.ts` | Both PI bridges' state machine (`idle → bootstrapping → connecting → loopback`, `fallback`; `BOOTSTRAP_TIMEOUT_MS` 3 s); `loopback.ts` alone builds `ws://127.0.0.1:<port>/ws?t=<token>`. |
 | Ulanzi bridge | `pi-components/src/ulanzi-bridge/` → `browser/ulanzi-pi-bridge.js` | `translate.ts` + the same router in `UlanziBridgeSocket`; one bundle, not two stacked scripts. |
