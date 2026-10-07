@@ -16,12 +16,13 @@ paths:
 
 The plugin system uses a platform abstraction architecture with these key packages:
 
+- `@iracedeck/settings` — the plugin's global settings: schema and cache, migrations, the plugin-owned settings store, run-scoped keys, PI warnings, first run and the startup gates; below the deck layer, reaching the host only through `SettingsHost`, which `IDeckPlatformAdapter` extends (#1365)
 - `@iracedeck/deck-core` — Platform-agnostic base classes, types (`IDeckWillAppearEvent`, etc.), and shared utilities; sim-neutral, seeing the simulator only through `SimConnection` (#1351)
 - `@iracedeck/deck-iracing` — iRacing's side of that seam: `SimIRacingConnection`, the `SimIRacingAction` base, the SDK singleton (`initializeSDK`, `getController`, `getCommands`), the app monitor and the other iRacing helpers
 - `@iracedeck/deck-adapter-elgato` — Elgato Stream Deck adapter implementing `IDeckPlatformAdapter`
 - `@iracedeck/deck-adapter-mirabox` — Mirabox adapter implementing `IDeckPlatformAdapter` via WebSocket
 - `@iracedeck/deck-adapter-ulanzi` — Ulanzi Deck adapter implementing `IDeckPlatformAdapter` via WebSocket (normalizes UlanziStudio `cmd` frames into Elgato-style events)
-- `@iracedeck/iracing-actions` — All action implementations (import from `@iracedeck/deck-core` and `@iracedeck/deck-iracing`, not platform-specific SDKs)
+- `@iracedeck/iracing-actions` — All action implementations (import from `@iracedeck/deck-core`, `@iracedeck/deck-iracing` and `@iracedeck/settings`, not platform-specific SDKs)
 - `@iracedeck/plugin-runtime` — the shared composition root: `startPlugin(host)` and the shared action list; each plugin's `plugin.ts` is a shell over it (#1349)
 
 Actions do NOT import from `@elgato/streamdeck` or any platform SDK. They import from `@iracedeck/deck-core` and are registered via the platform adapter by `plugin-runtime`'s `registerActions`, once for all three plugins.
@@ -223,7 +224,7 @@ startPlugin({ adapter, binDir });
 ```
 
 **CRITICAL** — what the phases rely on, each now held in one place for all three plugins:
-- Both `initGlobalSettings()` and `initAppMonitor()` (`@iracedeck/deck-iracing`) take an `IDeckPlatformAdapter` (not `typeof StreamDeck`)
+- `initGlobalSettings()` (`@iracedeck/settings`) takes a `SettingsHost`, which every `IDeckPlatformAdapter` is (#1365), and `initAppMonitor()` (`@iracedeck/deck-iracing`) takes an `IDeckPlatformAdapter`; neither takes `typeof StreamDeck`
 - `initGlobalSettings()` also takes a required `SettingsStore` (#993). It returns the schema-default cache immediately and loads the file in the background, so nothing may assume settings are present right after the call — gate on `isSettingsStoreReady()` or react in `onGlobalSettingsChange`. The store is created in `initSettings` before the settings-window controller, whose command-handler deps read `settingsStore.path` eagerly, and after `initPluginConfig()` (in `initCore`) — `getPluginPlatform()` throws without it
 - `initSettings` registers `process.on("exit", () => settingsStore.flushSync())` right after creating the store (and the same for the replay store) — without it the last ≤250 ms of settings writes are lost when the host stops the plugin
 - The settings channel is published through `createSettingsChannelPublisher` (deck-core), never by hand-rolled `updateGlobalSettings({ _settingsChannel })` + `adapter.setGlobalSettings(...)`: it must fire from the controller's `onStarted` hook as well as the store-ready block, and it owns the mirror-skip logging

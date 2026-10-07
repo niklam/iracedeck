@@ -3,6 +3,7 @@ paths:
   - "packages/iracing-actions/**"
   - "packages/pi-components/**"
   - "packages/deck-core/src/**"
+  - "packages/settings/src/**"
   - "packages/iracing-plugin-*/**"
 ---
 
@@ -40,7 +41,7 @@ The `bin/` folder contains build output and must not be committed to git.
 ## Action Locations
 
 - Action implementations live in `packages/iracing-actions/src/actions/`.
-- Actions import from `@iracedeck/deck-core` (NOT from `@elgato/streamdeck` or `../shared/index.js`), and the iRacing side — `SimIRacingAction`, `getCommands()`, the fuel, unit and hotkey helpers — from `@iracedeck/deck-iracing` (#1351).
+- Actions import from `@iracedeck/deck-core` (NOT from `@elgato/streamdeck` or `../shared/index.js`), and the iRacing side — `SimIRacingAction`, `getCommands()`, the fuel, unit and hotkey helpers — from `@iracedeck/deck-iracing` (#1351), and the global-settings names — `getGlobalSettings`, `getGlobalColors`, `onGlobalSettingsChange`, `isCalloutEnabled`, `setWarning` / `clearWarning` and the rest of what `packages/settings/src/index.ts` exports — from `@iracedeck/settings` (#1365). deck-core re-exports none of them.
 
 Requirements
 
@@ -84,7 +85,6 @@ Actions use `assembleIcon()` instead of `renderIconTemplate()` + `svgToDataUri()
 import {
   assembleIcon,
   getGlobalBorderSettings,
-  getGlobalColors,
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
   resolveBorderSettings,
@@ -92,6 +92,7 @@ import {
   resolveIconColors,
   resolveTitleSettings,
 } from "@iracedeck/deck-core";
+import { getGlobalColors } from "@iracedeck/settings";
 import myIconSvg from "@iracedeck/icons/my-action/variant.svg";
 
 function generateIcon(settings: MySettings): string {
@@ -254,7 +255,7 @@ Persistence is by stable device id, not by enumeration index, so unplugging or r
 
 **`ird-deck-device-select`** - Settings-window-only picker for which Stream Deck a profile switch targets (#992). Populated from the `_deckDevices` global (the Elgato plugin publishes it like `_audioDeviceList`); page-local, not persisted; auto-selects with one deck. `ird-profile-switch device-from="<select id>"` reads it. `ird-audio-test` accepts a `preview="radar|voice|background"` attribute and, inside the settings window, sends `audioPreview` instead of bumping a per-action field.
 
-**`ird-warnings`** - Global warning banner. Auto-injected at the top of every Property Inspector by `head-common.ejs` (no per-template markup). Subscribes to the `_warnings` global setting and renders one banner per `{ id, level, message }` record. Plugins post/clear warnings with `setWarning`/`clearWarning` from `@iracedeck/deck-core`. See `@.claude/rules/global-settings.md` for the data shape. Do not add `<ird-warnings>` to individual templates — it is injected globally. The one page that does is the settings window (#1014): it places its own `<ird-warnings data-auto except="settings-window-server,settings-window-open">` as the body's first child, which SUPPRESSES the injection (the guard looks for `ird-warnings[data-auto]`) rather than adding a second strip — that page is served by the settings server, so neither settings-window banner can be true on it. Two attributes narrow what an instance shows, for a warning that belongs beside one control rather than in the page-top strip: `only="id,…"` renders just those ids and `except="id,…"` renders everything else. Use them **as a pair** — the dedicated instance claims the id, the top strip excludes it — so the banner still appears exactly once per page. The settings-window **open**-failure banner is the one case today (`open-settings.ejs`, #1005) — its page-wide server-failure sibling is named in no filter and shows in the strip like any other warning. It is placed in a shared partial rather than per template, so the rule above still stands for action templates.
+**`ird-warnings`** - Global warning banner. Auto-injected at the top of every Property Inspector by `head-common.ejs` (no per-template markup). Subscribes to the `_warnings` global setting and renders one banner per `{ id, level, message }` record. Plugins post/clear warnings with `setWarning`/`clearWarning` from `@iracedeck/settings`. See `@.claude/rules/global-settings.md` for the data shape. Do not add `<ird-warnings>` to individual templates — it is injected globally. The one page that does is the settings window (#1014): it places its own `<ird-warnings data-auto except="settings-window-server,settings-window-open">` as the body's first child, which SUPPRESSES the injection (the guard looks for `ird-warnings[data-auto]`) rather than adding a second strip — that page is served by the settings server, so neither settings-window banner can be true on it. Two attributes narrow what an instance shows, for a warning that belongs beside one control rather than in the page-top strip: `only="id,…"` renders just those ids and `except="id,…"` renders everything else. Use them **as a pair** — the dedicated instance claims the id, the top strip excludes it — so the banner still appears exactly once per page. The settings-window **open**-failure banner is the one case today (`open-settings.ejs`, #1005) — its page-wide server-failure sibling is named in no filter and shows in the strip like any other warning. It is placed in a shared partial rather than per template, so the rule above still stands for action templates.
 
 **Never** use raw `<button>`, `<select>`, `<input>`, or `<textarea>` in a PI `.ejs`. Use an `sdpi-*` component or introduce a new `ird-*` component in `packages/pi-components/src/components/` if no suitable one exists. The one deliberate exception is the settings window's own page chrome (`settings-window.ejs`, #992: the sidebar tab buttons and the key-binding search/category filter) — page-local UI that binds to no setting, on a page that is not a Property Inspector; every control there that stores a setting is still `sdpi-*`/`ird-*`.
 
@@ -359,14 +360,13 @@ Global settings are plugin-level settings shared across all action instances. Us
 ```typescript
 // plugin-runtime: the store in initSettings (src/phases/settings.ts),
 // initGlobalSettings in src/phases/start-services.ts — `adapter` is core.adapter
+import { getPluginPlatform, getPluginVersion } from "@iracedeck/deck-core";
 import {
   createFileSettingsStore,
   createSettingsFileRejectionReporter,
-  getPluginPlatform,
-  getPluginVersion,
   initGlobalSettings,
   resolveSettingsStorePath,
-} from "@iracedeck/deck-core";
+} from "@iracedeck/settings";
 
 // The settings file is the single source of truth (#993)
 const settingsStore = createFileSettingsStore({
@@ -407,7 +407,8 @@ await this.releaseBinding(ev.action.id);
 For cases where the binding dispatcher is not suitable:
 
 ```typescript
-import { getGlobalSettings, isSimHubBinding, parseBinding } from "@iracedeck/deck-core";
+import { parseBinding } from "@iracedeck/deck-core";
+import { getGlobalSettings, isSimHubBinding } from "@iracedeck/settings";
 
 const globalSettings = getGlobalSettings() as Record<string, unknown>;
 const binding = parseBinding(globalSettings["blackBoxLapTiming"]);
