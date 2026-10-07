@@ -26,7 +26,7 @@ function createMockAdapter(): SettingsHost {
     onDidReceiveGlobalSettings: (_cb: (settings: unknown) => void) => {},
     setGlobalSettings: vi.fn<(settings: Record<string, unknown>) => void>(),
     getGlobalSettings: vi.fn<() => void>(),
-  } as unknown as SettingsHost;
+  };
 }
 
 /** Let the async load inside initGlobalSettings settle. */

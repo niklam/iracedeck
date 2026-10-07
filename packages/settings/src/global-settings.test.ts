@@ -61,13 +61,13 @@ function createMockAdapter(): MockAdapter {
   const setGlobalSettings = vi.fn<(settings: Record<string, unknown>) => void>();
   const getGlobalSettings = vi.fn<() => void>();
 
-  const adapter = {
+  const adapter: SettingsHost = {
     onDidReceiveGlobalSettings: (cb: EchoCallback) => {
       echoHolder.echo = cb;
     },
     setGlobalSettings,
     getGlobalSettings,
-  } as unknown as SettingsHost;
+  };
 
   return {
     adapter,
@@ -1835,13 +1835,13 @@ describe("single-writer store (issue #993)", () => {
 
     try {
       const holder: { echo: EchoCallback | null } = { echo: null };
-      const adapter = {
+      const adapter: SettingsHost = {
         onDidReceiveGlobalSettings: (cb: EchoCallback) => {
           holder.echo = cb;
         },
         setGlobalSettings: vi.fn<(settings: Record<string, unknown>) => void>(),
         getGlobalSettings: vi.fn<() => void>(() => holder.echo?.({ driverName: "harness-nick" })),
-      } as unknown as SettingsHost;
+      };
 
       initGlobalSettings(adapter, createMockLogger(), createMemorySettingsStore());
       await vi.advanceTimersByTimeAsync(0);
@@ -2152,7 +2152,7 @@ describe("migration deadline vs. host connect (#1056)", () => {
     const readyCallbacks: Array<() => void> = [];
     const getGlobalSettings = vi.fn<() => void>();
 
-    const adapter = {
+    const adapter: SettingsHost = {
       onDidReceiveGlobalSettings: (cb: EchoCallback) => {
         echoHolder.echo = cb;
       },
@@ -2161,7 +2161,7 @@ describe("migration deadline vs. host connect (#1056)", () => {
       onHostReady: (cb: () => void) => {
         readyCallbacks.push(cb);
       },
-    } as unknown as SettingsHost;
+    };
 
     return {
       adapter,

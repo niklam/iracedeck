@@ -39,7 +39,7 @@ function createMockAdapter(): SettingsHost {
     onDidReceiveGlobalSettings: (_cb: EchoCallback) => {},
     setGlobalSettings: vi.fn<(settings: Record<string, unknown>) => void>(),
     getGlobalSettings: vi.fn<() => void>(),
-  } as unknown as SettingsHost;
+  };
 }
 
 type MemoryStore = ReturnType<typeof createMemorySettingsStore>;
@@ -340,13 +340,13 @@ describe("seedBindingDefaultsIfAbsent (#1277)", () => {
   function createEchoAdapter(): { adapter: SettingsHost; echo: (settings: unknown) => void } {
     let echo: EchoCallback = () => {};
 
-    const adapter = {
+    const adapter: SettingsHost = {
       onDidReceiveGlobalSettings: (cb: EchoCallback) => {
         echo = cb;
       },
       setGlobalSettings: vi.fn<(settings: Record<string, unknown>) => void>(),
       getGlobalSettings: vi.fn<() => void>(),
-    } as unknown as SettingsHost;
+    };
 
     return { adapter, echo: (settings) => echo(settings) };
   }
