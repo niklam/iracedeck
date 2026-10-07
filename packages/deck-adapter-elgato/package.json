@@ -21,11 +21,11 @@
   "dependencies": {
     "@elgato/streamdeck": "3.0.1",
     "@iracedeck/deck-core": "workspace:*",
-    "@iracedeck/logger": "workspace:*",
-    "@iracedeck/settings": "workspace:*"
+    "@iracedeck/logger": "workspace:*"
   },
   "devDependencies": {
     "@elgato/utils": "0.6.0",
+    "@iracedeck/settings": "workspace:*",
     "@tsconfig/node22": "22.0.6",
     "@types/node": "26.6.4",
     "rimraf": "6.1.3",

@@ -439,13 +439,13 @@ importers:
       '@iracedeck/logger':
         specifier: workspace:*
         version: link:../logger
-      '@iracedeck/settings':
-        specifier: workspace:*
-        version: link:../settings
     devDependencies:
       '@elgato/utils':
         specifier: 0.6.0
         version: 0.6.0
+      '@iracedeck/settings':
+        specifier: workspace:*
+        version: link:../settings
       '@tsconfig/node22':
         specifier: 22.0.6
         version: 22.0.6
@@ -1185,9 +1185,6 @@ importers:
       '@iracedeck/audio-scenarios':
         specifier: workspace:*
         version: link:../audio-scenarios
-      '@iracedeck/deck-core':
-        specifier: workspace:*
-        version: link:../deck-core
       '@iracedeck/event-bus':
         specifier: workspace:*
         version: link:../event-bus
