@@ -49,14 +49,16 @@ import { probeSimHub } from "./simhub-probe.js";
  * `@iracedeck/settings`' global-settings.ts. The PI runs in a browser context
  * and cannot import that package (Node.js) — only the two dependency-free
  * leaves, `@iracedeck/app-constants` (where the key map and default parser
- * live, #1277) and `@iracedeck/fetch-utils` (spec #1351). They are not exact
- * copies: this `BindingValue` is deliberately wider, because the local
- * `KeyBindingValue` accepts a legacy stored binding with no `type` field, which
- * the settings schema's requires (#1365 measured a type-only import failing on
- * exactly that). When modifying binding types, update BOTH locations.
+ * live, #1277) and `@iracedeck/fetch-utils` (spec #1351). They are
+ * counterparts, not copies: the local `KeyBindingValue` makes `type` optional
+ * (a legacy stored binding has none) and types `modifiers` as `Modifier[]`
+ * rather than `string[]`, so neither is assignable to the other (#1365
+ * measured a type-only import failing). When modifying binding types, update
+ * BOTH locations.
  *
- * Key invariant: both KeyBindingValue and SimHubBindingValue have a `type`
- * discriminant field ("keyboard" and "simhub" respectively).
+ * Key invariant: a SimHubBindingValue always carries `type: "simhub"`; a
+ * KeyBindingValue carries `type: "keyboard"` or, when legacy, no `type` — so
+ * `type === "simhub"` is the discriminant isSimHubBinding() tests.
  */
 export interface SimHubBindingValue {
   type: "simhub";
