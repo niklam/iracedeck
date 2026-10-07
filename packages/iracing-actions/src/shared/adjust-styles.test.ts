@@ -23,11 +23,15 @@ vi.mock("@iracedeck/deck-core", async (importOriginal) => {
 
   return {
     ...actual,
-    getGlobalColors: () => ({}),
     getGlobalTitleSettings: () => ({}),
     getGlobalBorderSettings: () => ({}),
   };
 });
+
+vi.mock("@iracedeck/settings", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@iracedeck/settings")>()),
+  getGlobalColors: () => ({}),
+}));
 
 const Schema = z.object(adjustStyleSettingsFields);
 

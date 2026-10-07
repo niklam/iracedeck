@@ -2,7 +2,6 @@ import {
   assembleIcon,
   CommonSettings,
   getGlobalBorderSettings,
-  getGlobalColors,
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
   type IDeckDialDownEvent,
@@ -13,7 +12,6 @@ import {
   type IDeckTouchTapEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
-  onGlobalSettingsChange,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
@@ -32,6 +30,7 @@ import triggerWipersSvg from "@iracedeck/icons/cockpit-misc/trigger-wipers.svg";
 // it shares that mode's bindings and now its icons too.
 import ffbMaxForceDecreaseSvg from "@iracedeck/icons/force-feedback/ffb-force-decrease.svg";
 import ffbMaxForceIncreaseSvg from "@iracedeck/icons/force-feedback/ffb-force-increase.svg";
+import { getGlobalColors, onGlobalSettingsChange } from "@iracedeck/settings";
 import z from "zod";
 
 import { CockpitMiscDialSurface, DialSettings, seedDialFromLegacySetting } from "./cockpit-misc-dial-surface.js";

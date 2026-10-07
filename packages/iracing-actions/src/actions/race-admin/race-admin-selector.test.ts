@@ -46,7 +46,6 @@ vi.mock("@iracedeck/deck-core", () => ({
   generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
   generateTitleText: vi.fn(() => "<title/>"),
   getGlobalBorderSettings: vi.fn(() => ({})),
-  getGlobalColors: vi.fn(() => ({})),
   getGlobalTitleSettings: vi.fn(() => ({})),
   renderIconTemplate: vi.fn(
     (_tpl: string, data: Record<string, string>) => `<svg>${data.numberContent ?? ""}${data.titleContent ?? ""}</svg>`,
@@ -62,6 +61,10 @@ vi.mock("@iracedeck/deck-core", () => ({
     customPosition: 0,
   })),
   svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
+}));
+
+vi.mock("@iracedeck/settings", () => ({
+  getGlobalColors: vi.fn(() => ({})),
 }));
 
 describe("race-admin-selector", () => {

@@ -2,7 +2,6 @@ import {
   assembleIcon,
   CommonSettings,
   getGlobalBorderSettings,
-  getGlobalColors,
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
   type IDeckDialDownEvent,
@@ -27,6 +26,7 @@ import prevLapIcon from "@iracedeck/icons/replay-navigation/prev-lap.svg";
 import prevSessionIcon from "@iracedeck/icons/replay-navigation/prev-session.svg";
 import searchSessionTimeIcon from "@iracedeck/icons/replay-navigation/search-session-time.svg";
 import setPlayPositionIcon from "@iracedeck/icons/replay-navigation/set-play-position.svg";
+import { getGlobalColors } from "@iracedeck/settings";
 import z from "zod";
 
 import { noteReplayGoToEnd } from "../../shared/replay-cursor.js";

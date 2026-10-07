@@ -4,7 +4,6 @@ import {
   CommonSettings,
   ConnectionStateAwareAction,
   getGlobalBorderSettings,
-  getGlobalColors,
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
   type IDeckDidReceiveSettingsEvent,
@@ -27,6 +26,7 @@ import defaultIconSvg from "@iracedeck/icons/switch-profile/default.svg";
 import previousIconSvg from "@iracedeck/icons/switch-profile/previous.svg";
 import raceAdminPerCarIconSvg from "@iracedeck/icons/switch-profile/race-admin-per-car.svg";
 import replayIconSvg from "@iracedeck/icons/switch-profile/replay.svg";
+import { getGlobalColors } from "@iracedeck/settings";
 import z from "zod";
 
 import { clearSelectIntent } from "../../shared/car-select-intent.js";

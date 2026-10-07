@@ -5,7 +5,6 @@ import {
   getDualPressDirections,
   getDualPressThresholdMs,
   getGlobalBorderSettings,
-  getGlobalColors,
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
   IconUpdateThrottle,
@@ -18,7 +17,6 @@ import {
   type IDeckTouchTapEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
-  onGlobalSettingsChange,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
@@ -34,6 +32,7 @@ import launchRpmIncreaseIconSvg from "@iracedeck/icons/setup-engine/launch-rpm-i
 import throttleShapingDecreaseIconSvg from "@iracedeck/icons/setup-engine/throttle-shaping-decrease.svg";
 import throttleShapingIncreaseIconSvg from "@iracedeck/icons/setup-engine/throttle-shaping-increase.svg";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
+import { getGlobalColors, onGlobalSettingsChange } from "@iracedeck/settings";
 import z from "zod";
 
 import {

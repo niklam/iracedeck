@@ -97,15 +97,12 @@ vi.mock("@iracedeck/deck-core", () => ({
   }),
   generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
   getGlobalBorderSettings: vi.fn(() => ({})),
-  getGlobalColors: vi.fn(() => ({})),
   getGlobalGraphicSettings: vi.fn(() => ({})),
-  getGlobalSettings: vi.fn(() => ({})),
   getGlobalTitleSettings: vi.fn(() => ({})),
   getKeyboard: vi.fn(() => ({
     sendKeyCombination: vi.fn().mockResolvedValue(true),
   })),
   // Dial surface (imported transitively) needs these at construct / render time.
-  onGlobalSettingsChange: vi.fn(() => vi.fn()),
   applyBindingWarning: vi.fn((content: string) => `${content}<binding-warning/>`),
   escapeXml: vi.fn((s: string) => s),
   svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
@@ -131,6 +128,13 @@ vi.mock("@iracedeck/deck-core", () => ({
     position: "bottom" as const,
     customPosition: 0,
   })),
+}));
+
+vi.mock("@iracedeck/settings", () => ({
+  getGlobalColors: vi.fn(() => ({})),
+  getGlobalSettings: vi.fn(() => ({})),
+  // Dial surface (imported transitively) subscribes at construct time.
+  onGlobalSettingsChange: vi.fn(() => vi.fn()),
 }));
 
 const ALL_BLACK_BOXES = [

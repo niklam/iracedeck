@@ -111,7 +111,6 @@ vi.mock("@iracedeck/deck-core", async () => {
     },
     getDualPressThresholdMs: vi.fn(() => 500),
     getDualPressDirections: vi.fn(() => "tap-increases"),
-    onGlobalSettingsChange: vi.fn(() => vi.fn()),
     escapeXml: (str: string) => str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"),
     // Shared dial-gesture release classifier (used by the dial surface).
     classifyDialRelease: (args: {
@@ -142,18 +141,13 @@ vi.mock("@iracedeck/deck-core", async () => {
     }),
     svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
     getGlobalBorderSettings: vi.fn(() => ({})),
-    getGlobalColors: vi.fn(() => ({})),
     getGlobalGraphicSettings: vi.fn(() => ({})),
-    getGlobalSettings: vi.fn(() => ({})),
     getKeyboard: vi.fn(() => ({
       sendKeyCombination: vi.fn().mockResolvedValue(true),
     })),
     LogLevel: { Info: 2 },
     parseBinding: vi.fn(),
     parseKeyBinding: vi.fn(),
-    isSimHubBinding: vi.fn(
-      (v: unknown) => v !== null && typeof v === "object" && (v as Record<string, unknown>).type === "simhub",
-    ),
     isSimHubInitialized: vi.fn(() => false),
     getSimHub: vi.fn(() => ({
       startRole: vi.fn().mockResolvedValue(true),
@@ -198,6 +192,15 @@ vi.mock("@iracedeck/deck-core", async () => {
     ),
   };
 });
+
+vi.mock("@iracedeck/settings", () => ({
+  onGlobalSettingsChange: vi.fn(() => vi.fn()),
+  getGlobalColors: vi.fn(() => ({})),
+  getGlobalSettings: vi.fn(() => ({})),
+  isSimHubBinding: vi.fn(
+    (v: unknown) => v !== null && typeof v === "object" && (v as Record<string, unknown>).type === "simhub",
+  ),
+}));
 
 /** Full parsed settings for the icon-generation helpers (real-zod defaults applied). */
 function svgSettings(raw: Record<string, unknown>) {

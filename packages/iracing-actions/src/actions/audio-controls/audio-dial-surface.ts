@@ -18,10 +18,10 @@ import {
   type DeckTriggerDescription,
   type DialCanvasProfile,
   type IDeckActionContext,
-  onGlobalSettingsChange,
   svgToDataUri,
 } from "@iracedeck/deck-core";
 import type { ILogger } from "@iracedeck/logger";
+import { onGlobalSettingsChange } from "@iracedeck/settings";
 
 import { KNOB_BOX_HEIGHT, KNOB_BOX_WIDTH } from "../../shared/dial-knob-box.js";
 import { INTERNAL_AUDIO_BUSES } from "./audio-buses.js";

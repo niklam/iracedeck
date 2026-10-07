@@ -33,8 +33,6 @@ vi.mock("@iracedeck/icons/force-feedback/bass-shaker-lfe-decrease.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">bass-shaker-decrease</svg>',
 }));
 vi.mock("@iracedeck/deck-core", () => ({
-  deleteGlobalSettings: vi.fn(),
-  updateGlobalSettings: vi.fn(),
   CommonSettings: {
     extend: (_fields: unknown) => {
       const schema = {
@@ -72,19 +70,13 @@ vi.mock("@iracedeck/deck-core", () => ({
   }),
   generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
   getGlobalBorderSettings: vi.fn(() => ({})),
-  getGlobalColors: vi.fn(() => ({})),
   getGlobalGraphicSettings: vi.fn(() => ({})),
-  getGlobalSettings: vi.fn(() => ({})),
   getKeyboard: vi.fn(() => ({
     sendKeyCombination: vi.fn().mockResolvedValue(true),
   })),
   LogLevel: { Info: 2 },
-  onGlobalSettingsChange: vi.fn(() => vi.fn()),
   parseBinding: vi.fn(),
   parseKeyBinding: vi.fn(),
-  isSimHubBinding: vi.fn(
-    (v: unknown) => v !== null && typeof v === "object" && (v as Record<string, unknown>).type === "simhub",
-  ),
   isSimHubInitialized: vi.fn(() => false),
   getSimHub: vi.fn(() => ({
     startRole: vi.fn().mockResolvedValue(true),
@@ -115,6 +107,17 @@ vi.mock("@iracedeck/deck-core", () => ({
 
       return `data:image/svg+xml,${encoded}`;
     },
+  ),
+}));
+
+vi.mock("@iracedeck/settings", () => ({
+  deleteGlobalSettings: vi.fn(),
+  updateGlobalSettings: vi.fn(),
+  getGlobalColors: vi.fn(() => ({})),
+  getGlobalSettings: vi.fn(() => ({})),
+  onGlobalSettingsChange: vi.fn(() => vi.fn()),
+  isSimHubBinding: vi.fn(
+    (v: unknown) => v !== null && typeof v === "object" && (v as Record<string, unknown>).type === "simhub",
   ),
 }));
 

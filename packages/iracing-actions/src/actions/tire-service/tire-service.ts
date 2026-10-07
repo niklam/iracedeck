@@ -8,7 +8,6 @@ import {
   generateIconText,
   generateTitleText,
   getGlobalBorderSettings,
-  getGlobalColors,
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
   ICON_BASE_TEMPLATE,
@@ -36,6 +35,7 @@ import {
   TelemetryData,
   type TireChangeGranularity,
 } from "@iracedeck/iracing-sdk";
+import { getGlobalColors } from "@iracedeck/settings";
 import { lt } from "semver";
 import z from "zod";
 

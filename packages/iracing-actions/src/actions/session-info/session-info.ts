@@ -2,7 +2,6 @@ import {
   generateBorderParts,
   generateTitleText,
   getGlobalBorderSettings,
-  getGlobalColors,
   getGlobalTitleSettings,
   IconUpdateThrottle,
   type IDeckDidReceiveSettingsEvent,
@@ -47,6 +46,7 @@ import {
   type TelemetryData,
   TrackWetness,
 } from "@iracedeck/iracing-sdk";
+import { getGlobalColors } from "@iracedeck/settings";
 import {
   type GapNeighbor,
   getFuelStats,

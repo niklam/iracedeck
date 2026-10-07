@@ -5,9 +5,7 @@ import {
   extractGraphicContent,
   generateTitleText,
   getGlobalBorderSettings,
-  getGlobalColors,
   getGlobalGraphicSettings,
-  getGlobalSettings,
   getGlobalTitleSettings,
   type IDeckDialDownEvent,
   type IDeckDialRotateEvent,
@@ -17,7 +15,6 @@ import {
   type IDeckTouchTapEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
-  onGlobalSettingsChange,
   parseSvgViewBox,
   renderIconTemplate,
   requestProfileSwitch,
@@ -80,6 +77,7 @@ import {
   getCameraGroupsFromSessionInfo,
   getCarNumberRawFromSessionInfo,
 } from "@iracedeck/iracing-sdk";
+import { getGlobalColors, getGlobalSettings, onGlobalSettingsChange } from "@iracedeck/settings";
 import { getLiveRacePositions } from "@iracedeck/sim-events-iracing";
 import z from "zod";
 

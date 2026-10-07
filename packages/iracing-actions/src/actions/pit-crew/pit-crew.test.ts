@@ -198,12 +198,8 @@ vi.mock("@iracedeck/deck-core", async () => {
       opts.text ? `<text fill="${opts.fill}">${opts.text}</text>` : "",
     ),
     getGlobalBorderSettings: vi.fn(() => ({})),
-    getGlobalColors: vi.fn(() => ({})),
     getGlobalGraphicSettings: vi.fn(() => ({})),
-    getGlobalSettings: hoisted.getGlobalSettings,
-    isCalloutEnabled: hoisted.isCalloutEnabled,
     getGlobalTitleSettings: vi.fn(() => ({})),
-    onGlobalSettingsChange: hoisted.onGlobalSettingsChange,
     renderIconTemplate: vi.fn((template: string, data: Record<string, string>) => {
       let result = template;
 
@@ -226,8 +222,6 @@ vi.mock("@iracedeck/deck-core", async () => {
       textColor: "#ffffff",
       graphic1Color: "#ffffff",
     })),
-    resolveActiveDriverName: voiceResolvers.resolveActiveDriverName,
-    resolveActiveRaceEngineerVoice: voiceResolvers.resolveActiveRaceEngineerVoice,
     resolveTitleSettings: vi.fn((_t: string, _g: unknown, _o: unknown, defaultText: string) => ({
       showTitle: true,
       showGraphics: true,
@@ -238,10 +232,19 @@ vi.mock("@iracedeck/deck-core", async () => {
       customPosition: 0,
     })),
     svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
-    updateGlobalSettings: hoisted.updateGlobalSettings,
-    setCalloutEnabled: hoisted.setCalloutEnabled,
   };
 });
+
+vi.mock("@iracedeck/settings", () => ({
+  getGlobalColors: vi.fn(() => ({})),
+  getGlobalSettings: hoisted.getGlobalSettings,
+  isCalloutEnabled: hoisted.isCalloutEnabled,
+  onGlobalSettingsChange: hoisted.onGlobalSettingsChange,
+  resolveActiveDriverName: voiceResolvers.resolveActiveDriverName,
+  resolveActiveRaceEngineerVoice: voiceResolvers.resolveActiveRaceEngineerVoice,
+  updateGlobalSettings: hoisted.updateGlobalSettings,
+  setCalloutEnabled: hoisted.setCalloutEnabled,
+}));
 
 // ─── Fixtures ───────────────────────────────────────────────────────────────
 

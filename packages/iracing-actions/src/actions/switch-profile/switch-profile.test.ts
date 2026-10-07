@@ -101,7 +101,6 @@ vi.mock("@iracedeck/deck-core", () => {
     assembleIcon: vi.fn(({ graphicSvg }: { graphicSvg: string }) => `assembled:${graphicSvg}`),
     deviceProfileName,
     getGlobalBorderSettings: vi.fn(() => ({})),
-    getGlobalColors: vi.fn(() => ({})),
     getGlobalGraphicSettings: vi.fn(() => ({})),
     getGlobalTitleSettings: vi.fn(() => ({})),
     notifyProfileVisible: vi.fn(),
@@ -115,6 +114,10 @@ vi.mock("@iracedeck/deck-core", () => {
     resolveTitleSettings: vi.fn((_svg: string, _g: unknown, _o: unknown, def: string) => def),
   };
 });
+
+vi.mock("@iracedeck/settings", () => ({
+  getGlobalColors: vi.fn(() => ({})),
+}));
 
 /** Build a settings object; the mocked schema keeps it loose. */
 function settings(profile: string): Parameters<typeof generateSwitchProfileSvg>[0] {

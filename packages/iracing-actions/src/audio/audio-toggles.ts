@@ -12,13 +12,13 @@
  * and test back-compat.
  */
 import { AudioBus, AudioChannel, getAudio } from "@iracedeck/audio-service";
+import type { ILogger } from "@iracedeck/logger";
 import {
   getGlobalSettings,
   isCalloutEnabled,
   resolveActiveRaceEngineerVoice,
   setCalloutEnabled,
-} from "@iracedeck/deck-core";
-import type { ILogger } from "@iracedeck/logger";
+} from "@iracedeck/settings";
 
 import {
   applyRaceEngineerAudio,

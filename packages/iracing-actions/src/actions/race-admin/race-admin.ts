@@ -11,9 +11,7 @@ import {
   CommonSettings,
   getClipboard,
   getGlobalBorderSettings,
-  getGlobalColors,
   getGlobalGraphicSettings,
-  getGlobalSettings,
   getGlobalTitleSettings,
   getKeyboard,
   IconUpdateThrottle,
@@ -29,7 +27,6 @@ import {
   resolveIconColors,
   resolveProfileNameForDevice,
   resolveTitleSettings,
-  updateGlobalSettings,
 } from "@iracedeck/deck-core";
 import { getCommands, SimIRacingAction } from "@iracedeck/deck-iracing";
 import advanceSessionIconSvg from "@iracedeck/icons/race-admin/advance-session.svg";
@@ -66,6 +63,7 @@ import {
   getPlayerCarNumberFromSessionInfo,
   type TelemetryData,
 } from "@iracedeck/iracing-sdk";
+import { getGlobalColors, getGlobalSettings, updateGlobalSettings } from "@iracedeck/settings";
 import z from "zod";
 
 import { getSelectIntent } from "../../shared/car-select-intent.js";

@@ -196,18 +196,13 @@ vi.mock("@iracedeck/deck-core", async () => ({
     async onWillDisappear(_ev: unknown): Promise<void> {}
     async onDidReceiveSettings(_ev: unknown): Promise<void> {}
   },
-  // #803 dial surface: the host wires a global-settings listener in its
-  // constructor; return a no-op unsubscribe so `new CameraControls()` succeeds.
-  onGlobalSettingsChange: vi.fn(() => vi.fn()),
   // focus-select-car (#790)
   CAR_SELECTOR_PROFILE: "iRaceDeck Car Selector",
   requestProfileSwitch: vi.fn(),
   resolveProfileNameForDevice: vi.fn((name: string) => `${name} XL`),
   generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
   getGlobalBorderSettings: vi.fn(() => ({})),
-  getGlobalColors: vi.fn(() => ({})),
   getGlobalGraphicSettings: vi.fn(() => ({})),
-  getGlobalSettings: mockGetGlobalSettings,
   LogLevel: { Info: 2 },
   getGlobalTitleSettings: vi.fn(() => ({})),
   resolveBorderSettings: vi.fn((_svg: unknown, _global: unknown, _overrides?: unknown, _stateColor?: string) => ({
@@ -288,6 +283,14 @@ vi.mock("@iracedeck/deck-core", async () => ({
       : args.nowMs - args.pressStartMs >= (args.thresholdMs ?? 500)
         ? "long"
         : "short",
+}));
+
+vi.mock("@iracedeck/settings", () => ({
+  // #803 dial surface: the host wires a global-settings listener in its
+  // constructor; return a no-op unsubscribe so `new CameraControls()` succeeds.
+  onGlobalSettingsChange: vi.fn(() => vi.fn()),
+  getGlobalColors: vi.fn(() => ({})),
+  getGlobalSettings: mockGetGlobalSettings,
 }));
 
 describe("CameraControls", () => {

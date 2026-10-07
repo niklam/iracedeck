@@ -90,18 +90,10 @@ vi.mock("@iracedeck/deck-core", async () => {
       async onDidReceiveSettings() {}
       async onWillDisappear() {}
     },
-    onGlobalSettingsChange: vi.fn((cb: () => void) => {
-      capturedGlobalListener.value = cb;
-
-      return () => {
-        capturedGlobalListener.value = null;
-      };
-    }),
     svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${svg}`),
     applyBindingWarning: vi.fn((content: string) => `<g opacity="0.35">${content}</g><binding-warning/>`),
     assembleIcon: vi.fn(() => "data:image/svg+xml,icon"),
     getGlobalBorderSettings: vi.fn(() => ({})),
-    getGlobalColors: vi.fn(() => ({})),
     getGlobalGraphicSettings: vi.fn(() => ({})),
     getGlobalTitleSettings: vi.fn(() => ({})),
     resolveBorderSettings: vi.fn(() => ({})),
@@ -110,6 +102,17 @@ vi.mock("@iracedeck/deck-core", async () => {
     resolveTitleSettings: vi.fn(() => ({})),
   };
 });
+
+vi.mock("@iracedeck/settings", () => ({
+  onGlobalSettingsChange: vi.fn((cb: () => void) => {
+    capturedGlobalListener.value = cb;
+
+    return () => {
+      capturedGlobalListener.value = null;
+    };
+  }),
+  getGlobalColors: vi.fn(() => ({})),
+}));
 
 /** Fake dial-surface action context. */
 const STRIP = { id: "sd-plus-strip", width: 200, height: 100 } as const;

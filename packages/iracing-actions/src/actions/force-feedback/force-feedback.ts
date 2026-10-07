@@ -2,7 +2,6 @@ import {
   assembleIcon,
   CommonSettings,
   getGlobalBorderSettings,
-  getGlobalColors,
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
   type IDeckDialDownEvent,
@@ -13,7 +12,6 @@ import {
   type IDeckTouchTapEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
-  onGlobalSettingsChange,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
@@ -27,6 +25,7 @@ import ffbForceDecreaseSvg from "@iracedeck/icons/force-feedback/ffb-force-decre
 import ffbForceIncreaseSvg from "@iracedeck/icons/force-feedback/ffb-force-increase.svg";
 import wheelLfeDecreaseSvg from "@iracedeck/icons/force-feedback/wheel-lfe-decrease.svg";
 import wheelLfeIncreaseSvg from "@iracedeck/icons/force-feedback/wheel-lfe-increase.svg";
+import { getGlobalColors, onGlobalSettingsChange } from "@iracedeck/settings";
 import z from "zod";
 
 import { DialSettings, ForceFeedbackDialSurface, seedDialFromLegacySetting } from "./force-feedback-dial-surface.js";

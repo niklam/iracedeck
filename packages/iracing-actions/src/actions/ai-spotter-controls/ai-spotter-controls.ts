@@ -3,7 +3,6 @@ import {
   CommonSettings,
   ConnectionStateAwareAction,
   getGlobalBorderSettings,
-  getGlobalColors,
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
   type IDeckDidReceiveSettingsEvent,
@@ -21,6 +20,7 @@ import quieterIconSvg from "@iracedeck/icons/ai-spotter-controls/quieter.svg";
 import silenceIconSvg from "@iracedeck/icons/ai-spotter-controls/silence.svg";
 import toggleReportLapsIconSvg from "@iracedeck/icons/ai-spotter-controls/toggle-report-laps.svg";
 import weatherReportIconSvg from "@iracedeck/icons/ai-spotter-controls/weather-report.svg";
+import { getGlobalColors } from "@iracedeck/settings";
 import z from "zod";
 
 import { SPOTTER_CONTROLS, SPOTTER_GLOBAL_KEYS, type SpotterControl } from "../../shared/spotter-bindings.js";

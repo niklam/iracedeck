@@ -4,7 +4,6 @@ import {
   getDualPressDirections,
   getDualPressThresholdMs,
   getGlobalBorderSettings,
-  getGlobalColors,
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
   IconUpdateThrottle,
@@ -17,7 +16,6 @@ import {
   type IDeckTouchTapEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
-  onGlobalSettingsChange,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
@@ -38,6 +36,7 @@ import engineBrakingIncreaseIconSvg from "@iracedeck/icons/setup-brakes/engine-b
 import peakBrakeBiasDecreaseIconSvg from "@iracedeck/icons/setup-brakes/peak-brake-bias-decrease.svg";
 import peakBrakeBiasIncreaseIconSvg from "@iracedeck/icons/setup-brakes/peak-brake-bias-increase.svg";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
+import { getGlobalColors, onGlobalSettingsChange } from "@iracedeck/settings";
 
 import absToggleTemplate from "../../../icons/setup-brakes-abs-toggle.svg";
 import {

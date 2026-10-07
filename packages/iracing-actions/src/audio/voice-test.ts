@@ -18,7 +18,7 @@
  * Returns false only when no voice is available — callers log a warning.
  */
 import { driverNameClipPath } from "@iracedeck/audio-scenarios/pit-crew";
-import { resolveActiveDriverName, resolveActiveRaceEngineerVoice } from "@iracedeck/deck-core";
+import { resolveActiveDriverName, resolveActiveRaceEngineerVoice } from "@iracedeck/settings";
 
 import { playVoiceSequence, readJsonStringArray } from "./audio-toggles.js";
 

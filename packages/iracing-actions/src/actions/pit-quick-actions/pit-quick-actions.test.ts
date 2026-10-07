@@ -100,7 +100,6 @@ vi.mock("@iracedeck/deck-core", () => ({
   },
   generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
   getGlobalBorderSettings: vi.fn(() => ({})),
-  getGlobalColors: vi.fn(() => ({})),
   getGlobalGraphicSettings: vi.fn(() => ({})),
   LogLevel: { Info: 2 },
   getGlobalTitleSettings: vi.fn(() => ({})),
@@ -142,6 +141,10 @@ vi.mock("@iracedeck/deck-core", () => ({
     return result;
   }),
   svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
+}));
+
+vi.mock("@iracedeck/settings", () => ({
+  getGlobalColors: vi.fn(() => ({})),
 }));
 
 /** Create a minimal fake event with the given action ID and settings. */

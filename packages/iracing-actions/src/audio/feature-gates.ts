@@ -26,8 +26,8 @@
  * way, so there is no cycle.
  */
 import { setRadarEnabled, stopRaceEngineerScenarios } from "@iracedeck/audio-scenarios/pit-crew";
-import { updateGlobalSettings } from "@iracedeck/deck-core";
 import type { ILogger } from "@iracedeck/logger";
+import { updateGlobalSettings } from "@iracedeck/settings";
 
 import { isToggleAckEnabled, playToggleAck } from "./audio-toggles.js";
 import { applyRaceEngineerAudio, isRaceEngineerEnabled, isRadarEnabled } from "./audio-volume.js";

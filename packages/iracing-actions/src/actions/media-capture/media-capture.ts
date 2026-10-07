@@ -3,7 +3,6 @@ import {
   CommonSettings,
   ConnectionStateAwareAction,
   getGlobalBorderSettings,
-  getGlobalColors,
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
   type IDeckDialDownEvent,
@@ -24,6 +23,7 @@ import takeGiantScreenshotIconSvg from "@iracedeck/icons/media-capture/take-gian
 import takeScreenshotIconSvg from "@iracedeck/icons/media-capture/take-screenshot.svg";
 import toggleVideoCaptureIconSvg from "@iracedeck/icons/media-capture/toggle-video-capture.svg";
 import videoTimerIconSvg from "@iracedeck/icons/media-capture/video-timer.svg";
+import { getGlobalColors } from "@iracedeck/settings";
 import z from "zod";
 
 const ACTION_VALUES = [

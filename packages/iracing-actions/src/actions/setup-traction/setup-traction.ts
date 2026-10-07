@@ -5,7 +5,6 @@ import {
   getDualPressDirections,
   getDualPressThresholdMs,
   getGlobalBorderSettings,
-  getGlobalColors,
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
   IconUpdateThrottle,
@@ -18,7 +17,6 @@ import {
   type IDeckTouchTapEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
-  onGlobalSettingsChange,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
@@ -35,6 +33,7 @@ import tcSlot4DecreaseIconSvg from "@iracedeck/icons/setup-traction/tc-slot-4-de
 import tcSlot4IncreaseIconSvg from "@iracedeck/icons/setup-traction/tc-slot-4-increase.svg";
 import tcToggleIconSvg from "@iracedeck/icons/setup-traction/tc-toggle.svg";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
+import { getGlobalColors, onGlobalSettingsChange } from "@iracedeck/settings";
 import z from "zod";
 
 import tcToggleTemplate from "../../../icons/setup-traction-tc-toggle.svg";

@@ -1,7 +1,7 @@
 import type { FrameOptions } from "@iracedeck/audio-scenarios";
 import { isBackgroundTestInFlight, stopRaceEngineerScenarios } from "@iracedeck/audio-scenarios/pit-crew";
 import { AudioBus, AudioChannel, getAudio } from "@iracedeck/audio-service";
-import { frameOptionsFromSettings, getGlobalSettings, updateGlobalSettings } from "@iracedeck/deck-core";
+import { frameOptionsFromSettings, getGlobalSettings, updateGlobalSettings } from "@iracedeck/settings";
 
 /**
  * Shared volume + audio-bus helpers for iRaceDeck's own audio (Race Engineer

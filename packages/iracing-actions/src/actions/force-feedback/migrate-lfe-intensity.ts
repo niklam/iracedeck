@@ -1,4 +1,5 @@
-import { deleteGlobalSettings, getGlobalSettings, parseBinding, updateGlobalSettings } from "@iracedeck/deck-core";
+import { parseBinding } from "@iracedeck/deck-core";
+import { deleteGlobalSettings, getGlobalSettings, updateGlobalSettings } from "@iracedeck/settings";
 
 /**
  * One-shot migrations for the retired LFE "intensity" modes (issue #848).

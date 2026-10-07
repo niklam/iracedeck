@@ -108,7 +108,6 @@ vi.mock("@iracedeck/deck-core", async () => {
       async onWillDisappear() {}
     },
     getGlobalBorderSettings: vi.fn(() => ({})),
-    getGlobalColors: vi.fn(() => ({})),
     getGlobalTitleSettings: vi.fn(() => ({})),
     generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
     resolveBorderSettings: vi.fn(() => ({
@@ -205,10 +204,14 @@ vi.mock("@iracedeck/deck-core", async () => {
     assembleIcon: vi.fn(() => "data:image/svg+xml,assembled"),
     resolveGraphicSettings: vi.fn(() => ({ scaleMode: "inherit" as const, scale: 100 })),
     getGlobalGraphicSettings: vi.fn(() => ({})),
-    getGlobalSettings: vi.fn(() => ({})),
     generateTitleText: vi.fn(() => ""),
   };
 });
+
+vi.mock("@iracedeck/settings", () => ({
+  getGlobalColors: vi.fn(() => ({})),
+  getGlobalSettings: vi.fn(() => ({})),
+}));
 
 // fuel-service.ts pulls the keypad icon SVGs; vitest has no .svg loader, so mock them.
 vi.mock("../../../icons/fuel-service.svg", () => ({

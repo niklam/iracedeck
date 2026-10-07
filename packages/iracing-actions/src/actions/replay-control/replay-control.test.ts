@@ -191,8 +191,6 @@ vi.mock("@iracedeck/deck-core", () => ({
   computeGraphicArea: vi.fn(() => ({ x: 8, y: 8, width: 128, height: 128 })),
   generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
   getGlobalBorderSettings: vi.fn(() => ({})),
-  getGlobalColors: vi.fn(() => ({})),
-  getGlobalSettings: vi.fn(() => ({ fastestLapSearchDelayMs: 400 })),
   getGlobalGraphicSettings: vi.fn(() => ({})),
   getReplaySessionStore: vi.fn(),
   isReplaySessionStoreInitialized: vi.fn(() => false),
@@ -243,6 +241,11 @@ vi.mock("@iracedeck/deck-core", () => ({
     return result;
   }),
   svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
+}));
+
+vi.mock("@iracedeck/settings", () => ({
+  getGlobalColors: vi.fn(() => ({})),
+  getGlobalSettings: vi.fn(() => ({ fastestLapSearchDelayMs: 400 })),
 }));
 
 describe("ReplayControl", () => {
@@ -2723,7 +2726,7 @@ describe("ReplayControl", () => {
             vi.useFakeTimers();
 
             try {
-              const { getGlobalSettings } = await import("@iracedeck/deck-core");
+              const { getGlobalSettings } = await import("@iracedeck/settings");
 
               // 50 ms × 4 would give up after 200 ms.
               vi.mocked(getGlobalSettings).mockReturnValue({ fastestLapSearchDelayMs: 50 } as any);
@@ -3188,7 +3191,7 @@ describe("ReplayControl", () => {
           vi.useFakeTimers();
 
           try {
-            const { getGlobalSettings } = await import("@iracedeck/deck-core");
+            const { getGlobalSettings } = await import("@iracedeck/settings");
 
             vi.mocked(getGlobalSettings).mockReturnValue({ fastestLapSearchDelayMs: 600 } as any);
             singleSessionBuffer(4, 4);
@@ -3221,7 +3224,7 @@ describe("ReplayControl", () => {
               expect(stamps[i + 1].at - stamps[i].at).toBeGreaterThanOrEqual(600);
             }
           } finally {
-            const { getGlobalSettings } = await import("@iracedeck/deck-core");
+            const { getGlobalSettings } = await import("@iracedeck/settings");
 
             vi.mocked(getGlobalSettings).mockReturnValue({ fastestLapSearchDelayMs: 400 } as any);
             vi.useRealTimers();

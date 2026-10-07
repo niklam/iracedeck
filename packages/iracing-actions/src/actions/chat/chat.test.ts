@@ -136,9 +136,7 @@ vi.mock("@iracedeck/deck-core", async () => ({
   focusIRacingBeforeInput: mockFocusBeforeInput,
   generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
   getGlobalBorderSettings: vi.fn(() => ({})),
-  getGlobalColors: vi.fn(() => ({})),
   getGlobalGraphicSettings: vi.fn(() => ({})),
-  getGlobalSettings: mockGetGlobalSettings,
   getKeyboard: vi.fn(() => ({
     sendKeyCombination: mockSendKeyCombination,
     pressKeyCombination: vi.fn().mockResolvedValue(true),
@@ -147,9 +145,6 @@ vi.mock("@iracedeck/deck-core", async () => ({
   LogLevel: { Info: 2 },
   parseBinding: mockParseKeyBinding,
   parseKeyBinding: mockParseKeyBinding,
-  isSimHubBinding: vi.fn(
-    (v: unknown) => v !== null && typeof v === "object" && (v as Record<string, unknown>).type === "simhub",
-  ),
   isSimHubInitialized: vi.fn(() => false),
   getSimHub: vi.fn(() => ({
     startRole: vi.fn().mockResolvedValue(true),
@@ -194,6 +189,14 @@ vi.mock("@iracedeck/deck-core", async () => ({
     return `<svg>${data.iconContent || ""}${data.color || ""}${data.textElement || ""}${data.mainLabel || data.labelLine1 || ""}${data.subLabel || data.labelLine2 || ""}</svg>`;
   }),
   svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
+}));
+
+vi.mock("@iracedeck/settings", () => ({
+  getGlobalColors: vi.fn(() => ({})),
+  getGlobalSettings: mockGetGlobalSettings,
+  isSimHubBinding: vi.fn(
+    (v: unknown) => v !== null && typeof v === "object" && (v as Record<string, unknown>).type === "simhub",
+  ),
 }));
 
 /** Create a minimal fake event with the given action ID and settings. */

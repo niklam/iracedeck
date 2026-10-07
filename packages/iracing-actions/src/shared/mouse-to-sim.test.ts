@@ -8,13 +8,16 @@ const getGlobalSettings = vi.fn();
 // prove is that a configured target reaches the pointer mover intact, so the real
 // resolution has to run (a stub would only assert the stub). It comes from
 // `@iracedeck/app-constants`, a pure leaf with no imports, so the real module is
-// imported unmocked; only deck-core's services are stubbed.
+// imported unmocked; only the deck-core and settings services are stubbed.
 vi.mock("@iracedeck/deck-core", () => ({
   focusIRacingNow: focus,
   movePointerToSim,
-  getGlobalSettings,
   FocusResult: { AlreadyFocused: 0, Focused: 1, WindowNotFound: 2, FocusTimedOut: 3 },
   PointerMoveResult: { Moved: 0, WindowNotFound: 1, Failed: 2 },
+}));
+
+vi.mock("@iracedeck/settings", () => ({
+  getGlobalSettings,
 }));
 
 /** The schema defaults, which resolve to the placement #926 shipped. */

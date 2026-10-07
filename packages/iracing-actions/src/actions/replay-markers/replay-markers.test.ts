@@ -84,7 +84,6 @@ vi.mock("@iracedeck/deck-core", async () => {
     MARKER_DELETE_WINDOW_FRAMES: 600,
     MARKER_PREVIOUS_MIN_BEHIND_FRAMES: 120,
     getGlobalBorderSettings: vi.fn(() => ({})),
-    getGlobalColors: vi.fn(() => ({})),
     getGlobalGraphicSettings: vi.fn(() => ({})),
     getGlobalTitleSettings: vi.fn(() => ({})),
     resolveIconColors: vi.fn((_svg: string, _global: unknown, overrides: unknown) => ({ overrides })),
@@ -117,6 +116,10 @@ vi.mock("@iracedeck/deck-core", async () => {
     ),
   };
 });
+
+vi.mock("@iracedeck/settings", () => ({
+  getGlobalColors: vi.fn(() => ({})),
+}));
 
 type Sdk = {
   subscribe: ReturnType<typeof vi.fn>;

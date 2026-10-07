@@ -4,9 +4,7 @@ import {
   generateBorderParts,
   generateTitleText,
   getGlobalBorderSettings,
-  getGlobalColors,
   getGlobalGraphicSettings,
-  getGlobalSettings,
   getGlobalTitleSettings,
   type IDeckDialDownEvent,
   type IDeckDialRotateEvent,
@@ -41,6 +39,7 @@ import reduceFuelIcon from "@iracedeck/icons/fuel-service/reduce-fuel.svg";
 import setFuelAmountIcon from "@iracedeck/icons/fuel-service/set-fuel-amount.svg";
 import toggleAutofuelIcon from "@iracedeck/icons/fuel-service/toggle-autofuel.svg";
 import { DisplayUnits, type SessionInfo, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { getGlobalColors, getGlobalSettings } from "@iracedeck/settings";
 
 import fuelServiceTemplate from "../../../icons/fuel-service.svg";
 import { borderColorForState, statusBarNA, statusBarOff, statusBarOn } from "../../icons/status-bar.js";

@@ -5,7 +5,6 @@ import {
   getDualPressDirections,
   getDualPressThresholdMs,
   getGlobalBorderSettings,
-  getGlobalColors,
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
   IconUpdateThrottle,
@@ -18,7 +17,6 @@ import {
   type IDeckTouchTapEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
-  onGlobalSettingsChange,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
@@ -33,6 +31,7 @@ import rearWingDecreaseIconSvg from "@iracedeck/icons/setup-aero/rear-wing-decre
 import rearWingIncreaseIconSvg from "@iracedeck/icons/setup-aero/rear-wing-increase.svg";
 import rfBrakeAttachedIconSvg from "@iracedeck/icons/setup-aero/rf-brake-attached.svg";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
+import { getGlobalColors, onGlobalSettingsChange } from "@iracedeck/settings";
 import z from "zod";
 
 import {

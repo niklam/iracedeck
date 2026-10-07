@@ -2,7 +2,6 @@ import {
   assembleIcon,
   CommonSettings,
   getGlobalBorderSettings,
-  getGlobalColors,
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
   type IDeckDialDownEvent,
@@ -13,7 +12,6 @@ import {
   type IDeckTouchTapEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
-  onGlobalSettingsChange,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
@@ -30,6 +28,7 @@ import mouseToSimIconSvg from "@iracedeck/icons/view-adjustment/mouse-to-sim.svg
 import recenterVrIconSvg from "@iracedeck/icons/view-adjustment/recenter-vr.svg";
 import uiSizeDecreaseIconSvg from "@iracedeck/icons/view-adjustment/ui-size-decrease.svg";
 import uiSizeIncreaseIconSvg from "@iracedeck/icons/view-adjustment/ui-size-increase.svg";
+import { getGlobalColors, onGlobalSettingsChange } from "@iracedeck/settings";
 import z from "zod";
 
 import { bringPointerToSim } from "../../shared/mouse-to-sim.js";

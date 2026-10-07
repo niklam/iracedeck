@@ -55,11 +55,6 @@ vi.mock("@iracedeck/deck-core", async () => {
       async onWillDisappear() {}
     },
     getDualPressThresholdMs: () => mockDualPressThreshold.value,
-    onGlobalSettingsChange: vi.fn((listener: () => void) => {
-      globalListeners.push(listener);
-
-      return vi.fn();
-    }),
     classifyDialRelease: (args: {
       pressStartMs: number;
       nowMs: number;
@@ -75,6 +70,14 @@ vi.mock("@iracedeck/deck-core", async () => {
     svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
   };
 });
+
+vi.mock("@iracedeck/settings", () => ({
+  onGlobalSettingsChange: vi.fn((listener: () => void) => {
+    globalListeners.push(listener);
+
+    return vi.fn();
+  }),
+}));
 
 const STRIP = { id: "sd-plus-strip", width: 200, height: 100 } as const;
 const KNOB = { id: "stream-dock-knob", width: 176, height: 112 } as const;
