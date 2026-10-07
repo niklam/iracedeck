@@ -2,7 +2,6 @@ import {
   assembleIcon,
   CommonSettings,
   ConnectionStateAwareAction,
-  getCommands,
   getGlobalBorderSettings,
   getGlobalColors,
   getGlobalGraphicSettings,
@@ -17,6 +16,7 @@ import {
   resolveIconColors,
   resolveTitleSettings,
 } from "@iracedeck/deck-core";
+import { getCommands } from "@iracedeck/deck-iracing";
 import decreaseIconSvg from "@iracedeck/icons/replay-speed/decrease.svg";
 import increaseIconSvg from "@iracedeck/icons/replay-speed/increase.svg";
 import z from "zod";

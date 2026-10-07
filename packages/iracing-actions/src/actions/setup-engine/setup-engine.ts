@@ -1,7 +1,6 @@
 import {
   assembleIcon,
   CommonSettings,
-  ConnectionStateAwareAction,
   DualPressTracker,
   getDualPressDirections,
   getDualPressThresholdMs,
@@ -25,6 +24,7 @@ import {
   resolveIconColors,
   resolveTitleSettings,
 } from "@iracedeck/deck-core";
+import { IRacingAction } from "@iracedeck/deck-iracing";
 import boostLevelDecreaseIconSvg from "@iracedeck/icons/setup-engine/boost-level-decrease.svg";
 import boostLevelIncreaseIconSvg from "@iracedeck/icons/setup-engine/boost-level-increase.svg";
 import enginePowerDecreaseIconSvg from "@iracedeck/icons/setup-engine/engine-power-decrease.svg";
@@ -195,7 +195,7 @@ export function generateSetupEngineSvg(settings: SetupEngineSettings, bindingMis
  */
 export const SETUP_ENGINE_UUID = "com.iracedeck.sd.core.setup-engine" as const;
 
-export class SetupEngine extends ConnectionStateAwareAction<SetupEngineSettings> {
+export class SetupEngine extends IRacingAction<SetupEngineSettings> {
   /** Current settings per action context, used by the telemetry-tick callback for View sub-modes. */
   private readonly activeContexts = new Map<string, SetupEngineSettings>();
 

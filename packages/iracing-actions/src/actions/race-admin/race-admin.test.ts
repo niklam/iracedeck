@@ -166,6 +166,15 @@ const mockBeginChat = vi.fn(() => true);
 const mockSetClipboardText = vi.fn(() => true);
 const mockSendKeyCombination = vi.fn<(combination: KeyCombination) => Promise<boolean>>(async () => true);
 const mockCameraSwitchNum = vi.fn(() => true);
+
+vi.mock("@iracedeck/deck-iracing", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@iracedeck/deck-iracing")>()),
+  getCommands: vi.fn(() => ({
+    chat: { sendMessage: mockSendMessage, beginChat: mockBeginChat },
+    camera: { switchNum: mockCameraSwitchNum },
+  })),
+}));
+
 // Small default open→paste delay so the real-timer tests below resolve quickly.
 // vi.hoisted so the object-returning factory is initialized before the hoisted
 // vi.mock("@iracedeck/deck-core") factory references it.
@@ -229,10 +238,6 @@ vi.mock("@iracedeck/deck-core", () => ({
     async onWillDisappear(_ev: unknown): Promise<void> {}
     async onDidReceiveSettings(_ev: unknown): Promise<void> {}
   },
-  getCommands: vi.fn(() => ({
-    chat: { sendMessage: mockSendMessage, beginChat: mockBeginChat },
-    camera: { switchNum: mockCameraSwitchNum },
-  })),
   getClipboard: vi.fn(() => ({ setClipboardText: mockSetClipboardText })),
   getDeviceSpec: vi.fn(() => ({ grid: [8, 4] as const })),
   requestProfileSwitch: vi.fn(async () => {}),

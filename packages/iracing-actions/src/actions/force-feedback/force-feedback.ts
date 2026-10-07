@@ -1,7 +1,6 @@
 import {
   assembleIcon,
   CommonSettings,
-  ConnectionStateAwareAction,
   getGlobalBorderSettings,
   getGlobalColors,
   getGlobalGraphicSettings,
@@ -20,6 +19,7 @@ import {
   resolveIconColors,
   resolveTitleSettings,
 } from "@iracedeck/deck-core";
+import { IRacingAction } from "@iracedeck/deck-iracing";
 import autoComputeFfbForceSvg from "@iracedeck/icons/force-feedback/auto-compute-ffb-force.svg";
 import bassShakerLfeDecreaseSvg from "@iracedeck/icons/force-feedback/bass-shaker-lfe-decrease.svg";
 import bassShakerLfeIncreaseSvg from "@iracedeck/icons/force-feedback/bass-shaker-lfe-increase.svg";
@@ -144,7 +144,7 @@ export function generateForceFeedbackSvg(settings: ForceFeedbackSettings, bindin
  */
 export const FORCE_FEEDBACK_UUID = "com.iracedeck.sd.core.force-feedback" as const;
 
-export class ForceFeedback extends ConnectionStateAwareAction<ForceFeedbackSettings> {
+export class ForceFeedback extends IRacingAction<ForceFeedbackSettings> {
   /**
    * The dial half of the action; all IDeck dial events route here (#802). No
    * `setActiveBinding` is delegated — it would bleed onto the keypad buttons.

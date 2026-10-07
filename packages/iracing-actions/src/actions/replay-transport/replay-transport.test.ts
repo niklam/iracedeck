@@ -27,6 +27,21 @@ vi.mock("@iracedeck/icons/replay-transport/frame-backward.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
 }));
 
+vi.mock("@iracedeck/deck-iracing", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@iracedeck/deck-iracing")>()),
+  getCommands: vi.fn(() => ({
+    replay: {
+      play: vi.fn(() => true),
+      pause: vi.fn(() => true),
+      fastForward: vi.fn(() => true),
+      rewind: vi.fn(() => true),
+      slowMotion: vi.fn(() => true),
+      nextFrame: vi.fn(() => true),
+      prevFrame: vi.fn(() => true),
+    },
+  })),
+}));
+
 vi.mock("@iracedeck/deck-core", () => ({
   CommonSettings: {
     extend: (_fields: unknown) => {
@@ -48,17 +63,6 @@ vi.mock("@iracedeck/deck-core", () => ({
     setKeyImage = vi.fn();
     setRegenerateCallback = vi.fn();
   },
-  getCommands: vi.fn(() => ({
-    replay: {
-      play: vi.fn(() => true),
-      pause: vi.fn(() => true),
-      fastForward: vi.fn(() => true),
-      rewind: vi.fn(() => true),
-      slowMotion: vi.fn(() => true),
-      nextFrame: vi.fn(() => true),
-      prevFrame: vi.fn(() => true),
-    },
-  })),
   generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
   getGlobalBorderSettings: vi.fn(() => ({})),
   getGlobalColors: vi.fn(() => ({})),

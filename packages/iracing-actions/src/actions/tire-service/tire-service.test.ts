@@ -72,6 +72,12 @@ vi.mock("@iracedeck/iracing-sdk", () => ({
   },
 }));
 
+vi.mock("@iracedeck/deck-iracing", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@iracedeck/deck-iracing")>()),
+  getCommands: mockGetCommands,
+  getSDK: vi.fn(() => ({ sdk: { getSessionInfo: mockGetSessionInfo } })),
+}));
+
 vi.mock("@iracedeck/deck-core", () => ({
   CommonSettings: {
     extend: () => {
@@ -102,7 +108,6 @@ vi.mock("@iracedeck/deck-core", () => ({
     async onDidReceiveSettings() {}
     async onWillDisappear() {}
   },
-  getCommands: mockGetCommands,
   migrateLegacyActionToMode: (raw: unknown) => {
     if (!raw || typeof raw !== "object") return { migrated: {}, changed: false };
 
@@ -131,7 +136,6 @@ vi.mock("@iracedeck/deck-core", () => ({
   getGlobalBorderSettings: vi.fn(() => ({})),
   getGlobalColors: vi.fn(() => ({})),
   getGlobalGraphicSettings: vi.fn(() => ({})),
-  getSDK: vi.fn(() => ({ sdk: { getSessionInfo: mockGetSessionInfo } })),
   ICON_BASE_TEMPLATE: "<svg>{{backgroundColor}}|{{borderContent}}|{{graphicContent}}|{{titleContent}}</svg>",
   LogLevel: { Info: 2 },
   // tire-service no longer reads SVG viewBox; toggle-tires.svg keeps 144x144 with hardcoded combined bounds.

@@ -1,5 +1,6 @@
-import { getCommands, requestProfileSwitch, resolveProfileNameForDevice } from "@iracedeck/deck-core";
+import { requestProfileSwitch, resolveProfileNameForDevice } from "@iracedeck/deck-core";
 import * as deckCore from "@iracedeck/deck-core";
+import { getCommands } from "@iracedeck/deck-iracing";
 import {
   getAllCarNumbers,
   getCameraGroupsFromSessionInfo,
@@ -160,6 +161,11 @@ const { mockGetGlobalSettings, mockCamera } = vi.hoisted(() => ({
   },
 }));
 
+vi.mock("@iracedeck/deck-iracing", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@iracedeck/deck-iracing")>()),
+  getCommands: vi.fn(() => ({ camera: mockCamera })),
+}));
+
 vi.mock("@iracedeck/deck-core", async () => ({
   // The dial surface arms the REAL hold-preview helper (#1120) on every dial
   // context; a dial press below would otherwise throw at `ensureContext`.
@@ -190,7 +196,6 @@ vi.mock("@iracedeck/deck-core", async () => ({
     async onWillDisappear(_ev: unknown): Promise<void> {}
     async onDidReceiveSettings(_ev: unknown): Promise<void> {}
   },
-  getCommands: vi.fn(() => ({ camera: mockCamera })),
   // #803 dial surface: the host wires a global-settings listener in its
   // constructor; return a no-op unsubscribe so `new CameraControls()` succeeds.
   onGlobalSettingsChange: vi.fn(() => vi.fn()),

@@ -8,10 +8,10 @@
  * 1. Ensure the platform supports app monitoring (e.g., ApplicationsToMonitor in manifest)
  * 2. Call initAppMonitor(adapter, logger) at plugin startup, before adapter.connect()
  */
+import type { IDeckPlatformAdapter } from "@iracedeck/deck-core";
 import type { ILogger } from "@iracedeck/logger";
 
 import { getController } from "./sdk-singleton.js";
-import type { IDeckPlatformAdapter } from "./types.js";
 
 /** The iRacing executable name on Windows */
 const IRACING_EXE = "iRacingSim64DX11.exe";

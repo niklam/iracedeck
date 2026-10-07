@@ -79,6 +79,26 @@ vi.mock("@iracedeck/icons/fuel-service/lap-margin-decrease.svg", () => ({
   default: "<svg>lap-margin-decrease-icon</svg>",
 }));
 
+vi.mock("@iracedeck/deck-iracing", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@iracedeck/deck-iracing")>()),
+  getCommands: mockGetCommands,
+  fuelToDisplayUnits: vi.fn((liters: number, displayUnits: number | undefined) => {
+    // 0 = English (gallons), 1 = Metric (liters)
+    if (displayUnits === 1) return liters;
+
+    return liters * 0.264172;
+  }),
+  fuelFromDisplayUnits: vi.fn((amount: number, displayUnits: number | undefined) =>
+    displayUnits === 1 ? amount : amount * 3.78541,
+  ),
+  getFuelUnitSuffix: vi.fn((displayUnits: number | undefined) => (displayUnits === 1 ? "L" : "gal")),
+  // Shared fuel telemetry readers (deck-iracing); behave like the real impls.
+  isFuelFillOn: (t: any) => !!t && t.PitSvFlags !== undefined && (t.PitSvFlags & 0x0010) === 0x0010,
+  isAutofuelActive: (t: any) => !!t && t.dpFuelAutoFillActive !== undefined && t.dpFuelAutoFillActive !== 0,
+  isAutofuelEnabled: (t: any) => (!t || t.dpFuelAutoFillEnabled === undefined ? true : t.dpFuelAutoFillEnabled !== 0),
+  gallonsToLiters: vi.fn((gallons: number) => gallons * 3.78541),
+}));
+
 vi.mock("@iracedeck/deck-core", async () => {
   // REAL zod drives the settings schema so parse/defaults/migration behave
   // exactly like production (fuel-service-settings.ts builds on CommonSettings.extend).
@@ -119,16 +139,11 @@ vi.mock("@iracedeck/deck-core", async () => {
 
       return b.key;
     }),
-    getCommands: mockGetCommands,
     generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
     getGlobalBorderSettings: vi.fn(() => ({})),
     getGlobalColors: vi.fn(() => ({})),
     getGlobalGraphicSettings: vi.fn(() => ({})),
     getGlobalSettings: mockGetGlobalSettings,
-    // Shared fuel telemetry readers (extracted to deck-core); behave like the real impls.
-    isFuelFillOn: (t: any) => !!t && t.PitSvFlags !== undefined && (t.PitSvFlags & 0x0010) === 0x0010,
-    isAutofuelActive: (t: any) => !!t && t.dpFuelAutoFillActive !== undefined && t.dpFuelAutoFillActive !== 0,
-    isAutofuelEnabled: (t: any) => (!t || t.dpFuelAutoFillEnabled === undefined ? true : t.dpFuelAutoFillEnabled !== 0),
     getKeyboard: vi.fn(() => ({
       sendKeyCombination: vi.fn().mockResolvedValue(true),
       pressKeyCombination: vi.fn().mockResolvedValue(true),
@@ -146,17 +161,6 @@ vi.mock("@iracedeck/deck-core", async () => {
       startRole: vi.fn().mockResolvedValue(true),
       stopRole: vi.fn().mockResolvedValue(true),
     })),
-    fuelToDisplayUnits: vi.fn((liters: number, displayUnits: number | undefined) => {
-      // 0 = English (gallons), 1 = Metric (liters)
-      if (displayUnits === 1) return liters;
-
-      return liters * 0.264172;
-    }),
-    fuelFromDisplayUnits: vi.fn((amount: number, displayUnits: number | undefined) =>
-      displayUnits === 1 ? amount : amount * 3.78541,
-    ),
-    getFuelUnitSuffix: vi.fn((displayUnits: number | undefined) => (displayUnits === 1 ? "L" : "gal")),
-    gallonsToLiters: vi.fn((gallons: number) => gallons * 3.78541),
     // "Long-press threshold" global setting reader (drives the dial release classifier).
     getDualPressThresholdMs: () => 500,
     DIAL_LONG_PRESS_THRESHOLD_MS: 500,

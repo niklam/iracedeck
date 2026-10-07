@@ -6,7 +6,7 @@
  * last pit command a deliberate clear?" — is action-wide, not per-surface or
  * per-context. One pipeline instance per FuelService action instance.
  */
-import { getCommands } from "@iracedeck/deck-core";
+import { getCommands } from "@iracedeck/deck-iracing";
 import type { ILogger } from "@iracedeck/logger";
 
 export class FuelPipeline {

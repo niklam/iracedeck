@@ -37,6 +37,25 @@ vi.mock("@iracedeck/icons/replay-navigation/erase-tape.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
 }));
 
+vi.mock("@iracedeck/deck-iracing", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@iracedeck/deck-iracing")>()),
+  getCommands: vi.fn(() => ({
+    replay: {
+      nextSession: vi.fn(() => true),
+      prevSession: vi.fn(() => true),
+      nextLap: vi.fn(() => true),
+      prevLap: vi.fn(() => true),
+      nextIncident: vi.fn(() => true),
+      prevIncident: vi.fn(() => true),
+      goToStart: vi.fn(() => true),
+      goToEnd: vi.fn(() => true),
+      setPlayPosition: vi.fn(() => true),
+      searchSessionTime: vi.fn(() => true),
+      eraseTape: vi.fn(() => true),
+    },
+  })),
+}));
+
 vi.mock("@iracedeck/deck-core", () => ({
   CommonSettings: {
     extend: (_fields: unknown) => {
@@ -58,21 +77,6 @@ vi.mock("@iracedeck/deck-core", () => ({
     setKeyImage = vi.fn();
     setRegenerateCallback = vi.fn();
   },
-  getCommands: vi.fn(() => ({
-    replay: {
-      nextSession: vi.fn(() => true),
-      prevSession: vi.fn(() => true),
-      nextLap: vi.fn(() => true),
-      prevLap: vi.fn(() => true),
-      nextIncident: vi.fn(() => true),
-      prevIncident: vi.fn(() => true),
-      goToStart: vi.fn(() => true),
-      goToEnd: vi.fn(() => true),
-      setPlayPosition: vi.fn(() => true),
-      searchSessionTime: vi.fn(() => true),
-      eraseTape: vi.fn(() => true),
-    },
-  })),
   generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
   getGlobalBorderSettings: vi.fn(() => ({})),
   getGlobalColors: vi.fn(() => ({})),
@@ -243,7 +247,7 @@ describe("ReplayNavigation", () => {
     beforeEach(async () => {
       _resetReplayCursor();
       mockReplay.goToEnd.mockReturnValue(true);
-      const { getCommands } = await import("@iracedeck/deck-core");
+      const { getCommands } = await import("@iracedeck/deck-iracing");
       vi.mocked(getCommands).mockReturnValue({ replay: mockReplay } as any);
       action = new ReplayNavigation();
       recordReplaySighting(4_000, 10_000);

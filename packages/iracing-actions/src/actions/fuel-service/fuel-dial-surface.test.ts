@@ -60,6 +60,24 @@ vi.mock("@iracedeck/iracing-sdk", () => ({
   hasFlag: (value: number | undefined, flag: number) => ((value ?? 0) & flag) === flag,
 }));
 
+vi.mock("@iracedeck/deck-iracing", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@iracedeck/deck-iracing")>()),
+  getCommands: mockGetCommands,
+  fuelToDisplayUnits: vi.fn((liters: number, displayUnits: number | undefined) =>
+    displayUnits === 1 ? liters : liters * 0.264172,
+  ),
+  fuelFromDisplayUnits: vi.fn((amount: number, displayUnits: number | undefined) =>
+    displayUnits === 1 ? amount : amount * 3.78541,
+  ),
+  getFuelUnitSuffix: vi.fn((displayUnits: number | undefined) => (displayUnits === 1 ? "L" : "gal")),
+  // Shared fuel telemetry readers (deck-iracing); behave like the real impls.
+  isFuelFillOn: (t: any) => !!t && t.PitSvFlags !== undefined && (t.PitSvFlags & 0x10) === 0x10,
+  isAutofuelActive: (t: any) => !!t && t.dpFuelAutoFillActive !== undefined && t.dpFuelAutoFillActive !== 0,
+  isAutofuelEnabled: (t: any) => (!t || t.dpFuelAutoFillEnabled === undefined ? true : t.dpFuelAutoFillEnabled !== 0),
+  isPitstopActive: (t: any) => !!t && t.PitstopActive === true,
+  gallonsToLiters: (gallons: number) => gallons * 3.78541,
+}));
+
 vi.mock("@iracedeck/deck-core", async () => {
   const { z } = await import("zod");
 
@@ -89,7 +107,6 @@ vi.mock("@iracedeck/deck-core", async () => {
       async onDidReceiveSettings() {}
       async onWillDisappear() {}
     },
-    getCommands: mockGetCommands,
     getGlobalBorderSettings: vi.fn(() => ({})),
     getGlobalColors: vi.fn(() => ({})),
     getGlobalTitleSettings: vi.fn(() => ({})),
@@ -119,13 +136,6 @@ vi.mock("@iracedeck/deck-core", async () => {
     svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
     // #612 binding-missing overlay — appends a recognizable marker for assertions.
     applyBindingWarning: (content: string) => `${content}<binding-warning/>`,
-    fuelToDisplayUnits: vi.fn((liters: number, displayUnits: number | undefined) =>
-      displayUnits === 1 ? liters : liters * 0.264172,
-    ),
-    fuelFromDisplayUnits: vi.fn((amount: number, displayUnits: number | undefined) =>
-      displayUnits === 1 ? amount : amount * 3.78541,
-    ),
-    getFuelUnitSuffix: vi.fn((displayUnits: number | undefined) => (displayUnits === 1 ? "L" : "gal")),
     // "Long-press threshold" global setting reader (drives the dial release classifier).
     getDualPressThresholdMs: () => mockDualPressThreshold.value,
     // Shared dial-gesture convention (release-time classifier + paired-action resolver).
@@ -191,18 +201,12 @@ vi.mock("@iracedeck/deck-core", async () => {
         },
       };
     },
-    // Shared fuel telemetry readers (extracted to deck-core); behave like the real impls.
-    isFuelFillOn: (t: any) => !!t && t.PitSvFlags !== undefined && (t.PitSvFlags & 0x10) === 0x10,
-    isAutofuelActive: (t: any) => !!t && t.dpFuelAutoFillActive !== undefined && t.dpFuelAutoFillActive !== 0,
-    isAutofuelEnabled: (t: any) => (!t || t.dpFuelAutoFillEnabled === undefined ? true : t.dpFuelAutoFillEnabled !== 0),
-    isPitstopActive: (t: any) => !!t && t.PitstopActive === true,
     // Keypad-icon exports used by fuel-service.ts (not exercised by the dial suite).
     assembleIcon: vi.fn(() => "data:image/svg+xml,assembled"),
     resolveGraphicSettings: vi.fn(() => ({ scaleMode: "inherit" as const, scale: 100 })),
     getGlobalGraphicSettings: vi.fn(() => ({})),
     getGlobalSettings: vi.fn(() => ({})),
     generateTitleText: vi.fn(() => ""),
-    gallonsToLiters: (gallons: number) => gallons * 3.78541,
   };
 });
 

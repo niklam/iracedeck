@@ -24,14 +24,12 @@ import {
   GETTING_STARTED_PANE,
   initializeCpuProfileCapture,
   initializeReplaySessionStore,
-  isIRacingActive,
   isSettingsStoreReady,
   isSimHubReachable,
   migrateRaceEngineerVoiceId,
   migrateStartupPolicies,
   MIGRATION_PENDING_KEY,
   onGlobalSettingsChange,
-  onIRacingTerminated,
   openFolderInExplorer,
   parseSettingsWindowBounds,
   resolveReplayStoreDirectory,
@@ -49,6 +47,7 @@ import {
   VOICE_PACK_CATALOG_URL,
   VOICE_PACK_DEV_BASE_URL_KEY,
 } from "@iracedeck/deck-core";
+import { isIRacingActive, onIRacingTerminated } from "@iracedeck/deck-iracing";
 import { join } from "node:path";
 
 import { isAudioPreviewKind, migrateLfeIntensityBindingKeys, runAudioPreview } from "../actions.js";

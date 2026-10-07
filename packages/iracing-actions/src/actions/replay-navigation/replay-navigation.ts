@@ -1,8 +1,6 @@
 import {
   assembleIcon,
   CommonSettings,
-  ConnectionStateAwareAction,
-  getCommands,
   getGlobalBorderSettings,
   getGlobalColors,
   getGlobalGraphicSettings,
@@ -17,6 +15,7 @@ import {
   resolveIconColors,
   resolveTitleSettings,
 } from "@iracedeck/deck-core";
+import { getCommands, IRacingAction } from "@iracedeck/deck-iracing";
 import eraseTapeIcon from "@iracedeck/icons/replay-navigation/erase-tape.svg";
 import jumpToEndIcon from "@iracedeck/icons/replay-navigation/jump-to-end.svg";
 import jumpToStartIcon from "@iracedeck/icons/replay-navigation/jump-to-start.svg";
@@ -150,7 +149,7 @@ export function generateReplayNavigationSvg(
  */
 export const REPLAY_NAVIGATION_UUID = "com.iracedeck.sd.core.replay-navigation" as const;
 
-export class ReplayNavigation extends ConnectionStateAwareAction<ReplayNavigationSettings> {
+export class ReplayNavigation extends IRacingAction<ReplayNavigationSettings> {
   override async onWillAppear(ev: IDeckWillAppearEvent<ReplayNavigationSettings>): Promise<void> {
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);

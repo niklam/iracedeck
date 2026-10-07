@@ -1,4 +1,4 @@
-import type { IRacingHotkeyPreset } from "./keyboard-types.js";
+import type { IRacingHotkeyPreset } from "@iracedeck/deck-core";
 
 /**
  * iRacing default keyboard shortcuts

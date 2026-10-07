@@ -1,7 +1,6 @@
 import {
   assembleIcon,
   CommonSettings,
-  ConnectionStateAwareAction,
   getGlobalBorderSettings,
   getGlobalColors,
   getGlobalGraphicSettings,
@@ -20,6 +19,7 @@ import {
   resolveIconColors,
   resolveTitleSettings,
 } from "@iracedeck/deck-core";
+import { IRacingAction } from "@iracedeck/deck-iracing";
 import dashPage1DecreaseSvg from "@iracedeck/icons/cockpit-misc/dash-page-1-decrease.svg";
 import dashPage1IncreaseSvg from "@iracedeck/icons/cockpit-misc/dash-page-1-increase.svg";
 import dashPage2DecreaseSvg from "@iracedeck/icons/cockpit-misc/dash-page-2-decrease.svg";
@@ -169,7 +169,7 @@ export function generateCockpitMiscSvg(settings: CockpitMiscSettings, bindingMis
  */
 export const COCKPIT_MISC_UUID = "com.iracedeck.sd.core.cockpit-misc" as const;
 
-export class CockpitMisc extends ConnectionStateAwareAction<CockpitMiscSettings> {
+export class CockpitMisc extends IRacingAction<CockpitMiscSettings> {
   /**
    * The dial half of the action; all IDeck dial events route here (#805). No
    * `setActiveBinding` is delegated — it would bleed onto the keypad buttons.

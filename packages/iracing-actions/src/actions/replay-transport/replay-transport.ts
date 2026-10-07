@@ -2,7 +2,6 @@ import {
   assembleIcon,
   CommonSettings,
   ConnectionStateAwareAction,
-  getCommands,
   getGlobalBorderSettings,
   getGlobalColors,
   getGlobalGraphicSettings,
@@ -17,6 +16,7 @@ import {
   resolveIconColors,
   resolveTitleSettings,
 } from "@iracedeck/deck-core";
+import { getCommands } from "@iracedeck/deck-iracing";
 import fastForwardIconSvg from "@iracedeck/icons/replay-transport/fast-forward.svg";
 import frameBackwardIconSvg from "@iracedeck/icons/replay-transport/frame-backward.svg";
 import frameForwardIconSvg from "@iracedeck/icons/replay-transport/frame-forward.svg";

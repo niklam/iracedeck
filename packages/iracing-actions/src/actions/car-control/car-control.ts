@@ -2,7 +2,6 @@ import {
   applyBindingWarning,
   assembleIcon,
   CommonSettings,
-  ConnectionStateAwareAction,
   generateBorderParts,
   generateTitleText,
   getGlobalBorderSettings,
@@ -10,7 +9,6 @@ import {
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
   getKeyboard,
-  getSDK,
   IconUpdateThrottle,
   type IDeckDialDownEvent,
   type IDeckDialUpEvent,
@@ -26,6 +24,7 @@ import {
   resolveTitleSettings,
   svgToDataUri,
 } from "@iracedeck/deck-core";
+import { getSDK, IRacingAction } from "@iracedeck/deck-iracing";
 import enterCarIcon from "@iracedeck/icons/car-control/enter-car.svg";
 import escapeIcon from "@iracedeck/icons/car-control/escape.svg";
 import exitCarIcon from "@iracedeck/icons/car-control/exit-car.svg";
@@ -880,7 +879,7 @@ export function generateCarControlSvg(
  */
 export const CAR_CONTROL_UUID = "com.iracedeck.sd.core.car-control" as const;
 
-export class CarControl extends ConnectionStateAwareAction<CarControlSettings> {
+export class CarControl extends IRacingAction<CarControlSettings> {
   /** Settings per action context for telemetry-driven updates */
   private activeContexts = new Map<string, CarControlSettings>();
 

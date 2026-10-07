@@ -126,6 +126,35 @@ vi.mock("@iracedeck/iracing-sdk", async (importOriginal) => {
   };
 });
 
+vi.mock("@iracedeck/deck-iracing", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@iracedeck/deck-iracing")>()),
+  getCommands: vi.fn(() => ({
+    replay: {
+      play: vi.fn(() => true),
+      pause: vi.fn(() => true),
+      setPlaySpeed: vi.fn(() => true),
+      fastForward: vi.fn(() => true),
+      rewind: vi.fn(() => true),
+      slowMotion: vi.fn(() => true),
+      nextFrame: vi.fn(() => true),
+      prevFrame: vi.fn(() => true),
+      nextSession: vi.fn(() => true),
+      prevSession: vi.fn(() => true),
+      nextLap: vi.fn(() => true),
+      prevLap: vi.fn(() => true),
+      nextIncident: vi.fn(() => true),
+      prevIncident: vi.fn(() => true),
+      goToStart: vi.fn(() => true),
+      goToEnd: vi.fn(() => true),
+      setPlayPosition: vi.fn(() => true),
+      searchSessionTime: vi.fn(() => true),
+    },
+    camera: {
+      switchNum: vi.fn(() => true),
+    },
+  })),
+}));
+
 vi.mock("@iracedeck/deck-core", () => ({
   CommonSettings: {
     extend: (_fields: unknown) => {
@@ -158,31 +187,6 @@ vi.mock("@iracedeck/deck-core", () => ({
     async onDidReceiveSettings() {}
     async onWillDisappear() {}
   },
-  getCommands: vi.fn(() => ({
-    replay: {
-      play: vi.fn(() => true),
-      pause: vi.fn(() => true),
-      setPlaySpeed: vi.fn(() => true),
-      fastForward: vi.fn(() => true),
-      rewind: vi.fn(() => true),
-      slowMotion: vi.fn(() => true),
-      nextFrame: vi.fn(() => true),
-      prevFrame: vi.fn(() => true),
-      nextSession: vi.fn(() => true),
-      prevSession: vi.fn(() => true),
-      nextLap: vi.fn(() => true),
-      prevLap: vi.fn(() => true),
-      nextIncident: vi.fn(() => true),
-      prevIncident: vi.fn(() => true),
-      goToStart: vi.fn(() => true),
-      goToEnd: vi.fn(() => true),
-      setPlayPosition: vi.fn(() => true),
-      searchSessionTime: vi.fn(() => true),
-    },
-    camera: {
-      switchNum: vi.fn(() => true),
-    },
-  })),
   applyGraphicTransform: vi.fn((_content: string) => _content),
   computeGraphicArea: vi.fn(() => ({ x: 8, y: 8, width: 128, height: 128 })),
   generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
@@ -1099,7 +1103,7 @@ describe("ReplayControl", () => {
 
     beforeEach(async () => {
       vi.clearAllMocks();
-      const { getCommands } = await import("@iracedeck/deck-core");
+      const { getCommands } = await import("@iracedeck/deck-iracing");
       vi.mocked(getCommands).mockReturnValue({ replay: mockReplay, camera: { switchNum: vi.fn() } } as any);
       action = new ReplayControl();
     });
@@ -1549,7 +1553,7 @@ describe("ReplayControl", () => {
       await action.onKeyDown(fakeEvent("ctx-1", { mode: "next-car" }) as any);
 
       // No camera.switchNum call — keystroke is the only dispatch.
-      const { getCommands } = await import("@iracedeck/deck-core");
+      const { getCommands } = await import("@iracedeck/deck-iracing");
       const cameraMock = vi.mocked(getCommands)().camera as unknown as { switchNum: ReturnType<typeof vi.fn> };
       expect(cameraMock.switchNum).not.toHaveBeenCalled();
     });
@@ -1615,7 +1619,7 @@ describe("ReplayControl", () => {
       vi.clearAllMocks();
       mockCamera = { switchNum: vi.fn(() => true) };
 
-      const { getCommands } = await import("@iracedeck/deck-core");
+      const { getCommands } = await import("@iracedeck/deck-iracing");
 
       vi.mocked(getCommands).mockReturnValue({
         replay: { play: vi.fn(() => true) },
@@ -1642,7 +1646,7 @@ describe("ReplayControl", () => {
       // but NOT return values, so this block's pinned command surface and
       // three-car field would otherwise leak into every later describe. Reset
       // both back to their module-factory implementations.
-      const { getCommands } = await import("@iracedeck/deck-core");
+      const { getCommands } = await import("@iracedeck/deck-iracing");
 
       vi.mocked(getCommands).mockReset();
       vi.mocked(getAllCarNumbers).mockReset();
@@ -1847,8 +1851,8 @@ describe("ReplayControl", () => {
       // so each test starts clean.
       _resetFastestLapSessionCache();
       _resetReplayCursor();
-      const { getCommands, getReplaySessionStore, isReplaySessionStoreInitialized } =
-        await import("@iracedeck/deck-core");
+      const { getReplaySessionStore, isReplaySessionStoreInitialized } = await import("@iracedeck/deck-core");
+      const { getCommands } = await import("@iracedeck/deck-iracing");
       // getCarNumberRawFromSessionInfo is mocked in the shared @iracedeck/iracing-sdk block;
       // default it to returning the carIdx as the raw number so individual tests don't have
       // to wire fake session info.
@@ -4216,7 +4220,7 @@ describe("ReplayControl", () => {
 
     beforeEach(async () => {
       vi.clearAllMocks();
-      const { getCommands } = await import("@iracedeck/deck-core");
+      const { getCommands } = await import("@iracedeck/deck-iracing");
       vi.mocked(getCommands).mockReturnValue({ replay: mockReplay, camera: { switchNum: vi.fn() } } as any);
       action = new ReplayControl();
       await action.onWillAppear(fakeEvent("action-1", { mode: "fast-forward" }) as any);
@@ -4381,7 +4385,7 @@ describe("ReplayControl", () => {
       vi.clearAllMocks();
       _resetReplayCursor();
       mockReplay.goToEnd.mockReturnValue(true);
-      const { getCommands } = await import("@iracedeck/deck-core");
+      const { getCommands } = await import("@iracedeck/deck-iracing");
       vi.mocked(getCommands).mockReturnValue({ replay: mockReplay, camera: { switchNum: vi.fn() } } as any);
       action = new ReplayControl();
       recordReplaySighting(4_000, 10_000);

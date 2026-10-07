@@ -69,6 +69,11 @@ vi.mock("@iracedeck/iracing-sdk", async (importOriginal) => {
   return { ...actual, buildTemplateContext: vi.fn(actual.buildTemplateContext) };
 });
 
+vi.mock("@iracedeck/deck-iracing", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@iracedeck/deck-iracing")>()),
+  getCommands: mockGetCommands,
+}));
+
 vi.mock("@iracedeck/deck-core", async () => ({
   // The real throttle from deck-core's source: the refresh tests drive its
   // leading/trailing window with fake timers.
@@ -77,9 +82,6 @@ vi.mock("@iracedeck/deck-core", async () => ({
       "../../../../deck-core/src/icon-update-throttle.js",
     )
   ).IconUpdateThrottle,
-  EMPTY_TEMPLATE_CONTEXT: (
-    await vi.importActual<typeof import("@iracedeck/iracing-sdk")>("@iracedeck/iracing-sdk")
-  ).templateContextFromMaps({}),
   CommonSettings: {
     extend: () => {
       const defaults = {
@@ -131,7 +133,6 @@ vi.mock("@iracedeck/deck-core", async () => ({
   generateIconText: vi.fn(
     ({ text, fontSize }: { text: string; fontSize: number }) => `<text font-size="${fontSize}">${text}</text>`,
   ),
-  getCommands: mockGetCommands,
   focusIRacingBeforeInput: mockFocusBeforeInput,
   generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
   getGlobalBorderSettings: vi.fn(() => ({})),

@@ -80,7 +80,7 @@ export {
 } from "./title-settings.js";
 
 // User-entered title template resolution (issue #899)
-export { EMPTY_TEMPLATE_CONTEXT, resolveTitleTemplate, titleHasTemplate } from "./title-template.js";
+export { resolveTitleTemplate, titleHasTemplate } from "./title-template.js";
 
 // Per-context icon-update throttle (issue #493; moved from iracing-actions in #899)
 export { IconUpdateThrottle } from "./icon-update-throttle.js";
@@ -133,9 +133,6 @@ export {
 
 // Re-export LogLevel for convenience
 export { LogLevel } from "@iracedeck/logger";
-
-// SDK singleton for lazy initialization
-export { initializeSDK, getSDK, getController, getCommands, isSDKInitialized, _resetSDK } from "./sdk-singleton.js";
 
 // The sim-neutral connection the base classes read (#1351)
 export {
@@ -288,11 +285,6 @@ export {
   type ReplaySessionStoreOptions,
   type SubSessionScoped,
 } from "./replay-session-store.js";
-export {
-  createReplaySessionSubscriber,
-  replaySessionHeaderFromSessionInfo,
-  type ReplaySessionSubscriberOptions,
-} from "./replay-session-subscriber.js";
 
 // The Volume Mixer name and icon every plugin gives its audio session (issue #1253)
 export {
@@ -482,27 +474,6 @@ export {
   type CommsCatalog,
 } from "./comm-descriptor.js";
 
-// Unit conversion utilities
-export {
-  LITERS_TO_GALLONS,
-  GALLONS_TO_LITERS,
-  FUEL_UNIT_METRIC,
-  FUEL_UNIT_IMPERIAL,
-  litersToGallons,
-  gallonsToLiters,
-  getFuelUnitSuffix,
-  isMetricUnits,
-  fuelToDisplayUnits,
-  fuelFromDisplayUnits,
-  formatFuelAmount,
-  formatFuelAmountWithPrefix,
-  formatFuelSettingWithUnit,
-  celsiusToFahrenheit,
-} from "./unit-conversion.js";
-
-// Shared pit fuel-fill / autofuel telemetry readers (Fuel Service keypad + dial surfaces)
-export { isFuelFillOn, isAutofuelActive, isAutofuelEnabled, isPitstopActive } from "./fuel-telemetry.js";
-
 // Shared dial-gesture convention (Push + Turn pair, release-time classifier,
 // display-only hold preview)
 export {
@@ -523,9 +494,6 @@ export {
   type KeyCombination,
   type IRacingHotkeyPreset,
 } from "./keyboard-types.js";
-
-// iRacing hotkey presets
-export { IRACING_HOTKEY_PRESETS, getHotkeyPreset, getHotkeysByCategory } from "./iracing-hotkeys.js";
 
 // Keyboard service singleton
 export {
@@ -550,6 +518,7 @@ export {
 // Window focus service singleton
 export {
   _resetWindowFocus,
+  type ElevationMismatchCheck,
   FOCUS_TIMEOUT_COOLDOWN_MS,
   FocusResult,
   focusIRacingBeforeInput,
@@ -598,18 +567,6 @@ export {
   type SimPointerTarget,
   type SimPointerTargetConfig,
 } from "./sim-pointer-target.js";
-
-// App monitor for iRacing process detection
-export {
-  _resetAppMonitor,
-  initAppMonitor,
-  IRACING_EXIT_SDK_CONFIRM_MS,
-  isAppMonitorInitialized,
-  isIRacingActive,
-  isIRacingRunning,
-  onIRacingStarted,
-  onIRacingTerminated,
-} from "./app-monitor.js";
 
 // Scan code mapping
 export { getScanCode, getModifierScanCode } from "./scan-code-map.js";
@@ -679,8 +636,6 @@ export {
   type SetupWarningKind,
   type SetupWarningSettings,
 } from "./setup-warning.js";
-export { evaluateElevationWarning, ELEVATION_WARNING_ID, ELEVATION_WARNING_MESSAGE } from "./elevation-warning.js";
-export { createElevationCheckSubscriber, type ElevationCheckOptions } from "./elevation-check.js";
 // Missing-callout-script banner: the active Race Engineer voice has no script,
 // so every callout that comes from the script is skipped in it — surfaced in
 // the PI rather than only in the log (issue #1064)

@@ -1,8 +1,6 @@
 import {
   assembleIcon,
   CommonSettings,
-  ConnectionStateAwareAction,
-  getCommands,
   getCpuProfileCapture,
   getGlobalBorderSettings,
   getGlobalColors,
@@ -21,6 +19,7 @@ import {
   resolveIconColors,
   resolveTitleSettings,
 } from "@iracedeck/deck-core";
+import { getCommands, IRacingAction } from "@iracedeck/deck-iracing";
 import captureProfileIconSvg from "@iracedeck/icons/telemetry-control/capture-profile.svg";
 import markEventIconSvg from "@iracedeck/icons/telemetry-control/mark-event.svg";
 import restartRecordingIconSvg from "@iracedeck/icons/telemetry-control/restart-recording.svg";
@@ -215,7 +214,7 @@ export function generateTelemetryControlSvg(
  */
 export const TELEMETRY_CONTROL_UUID = "com.iracedeck.sd.core.telemetry-control" as const;
 
-export class TelemetryControl extends ConnectionStateAwareAction<TelemetryControlSettings> {
+export class TelemetryControl extends IRacingAction<TelemetryControlSettings> {
   /** Visible Capture Profile keys and their settings (#1338). */
   private readonly captureContexts = new Map<string, TelemetryControlSettings>();
   private captureDisplay: CaptureProfileDisplay = { kind: "idle" };

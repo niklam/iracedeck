@@ -1,8 +1,7 @@
 import { type SDKController, templateContextFromMaps } from "@iracedeck/iracing-sdk";
 import { describe, expect, it, vi } from "vitest";
 
-import { IRacingSimConnection } from "./iracing-sim-connection.js";
-import { EMPTY_TEMPLATE_CONTEXT } from "./title-template.js";
+import { EMPTY_TEMPLATE_CONTEXT, IRacingSimConnection } from "./iracing-sim-connection.js";
 
 // SessionFlags bits (irsdk_Flags): green 0x4, yellow 0x8.
 const GREEN = 0x4;

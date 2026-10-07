@@ -1,7 +1,6 @@
 import {
   assembleIcon,
   CommonSettings,
-  ConnectionStateAwareAction,
   getGlobalBorderSettings,
   getGlobalColors,
   getGlobalGraphicSettings,
@@ -20,6 +19,7 @@ import {
   resolveIconColors,
   resolveTitleSettings,
 } from "@iracedeck/deck-core";
+import { IRacingAction } from "@iracedeck/deck-iracing";
 import altitudeDecreaseIconSvg from "@iracedeck/icons/camera-editor-adjustments/altitude-decrease.svg";
 import altitudeIncreaseIconSvg from "@iracedeck/icons/camera-editor-adjustments/altitude-increase.svg";
 import autoSetMicGainDecreaseIconSvg from "@iracedeck/icons/camera-editor-adjustments/auto-set-mic-gain-decrease.svg";
@@ -220,7 +220,7 @@ export function generateCameraEditorAdjustmentsSvg(
  */
 export const CAMERA_EDITOR_ADJUSTMENTS_UUID = "com.iracedeck.sd.core.camera-editor-adjustments" as const;
 
-export class CameraEditorAdjustments extends ConnectionStateAwareAction<CameraEditorAdjustmentsSettings> {
+export class CameraEditorAdjustments extends IRacingAction<CameraEditorAdjustmentsSettings> {
   /**
    * The dial half of the action; all IDeck dial events route here (#804). No
    * `setActiveBinding` is delegated — it would bleed onto the keypad buttons.

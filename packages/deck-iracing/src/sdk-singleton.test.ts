@@ -1,16 +1,8 @@
-import {
-  _resetSDK,
-  getCommands,
-  getController,
-  getSDK,
-  getSimConnection,
-  initializeSDK,
-  isSDKInitialized,
-  isSimConnectionInitialized,
-} from "@iracedeck/deck-core";
+import { getSimConnection, isSimConnectionInitialized } from "@iracedeck/deck-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { IRacingSimConnection } from "../../../deck-core/src/iracing-sim-connection.js";
+import { IRacingSimConnection } from "./iracing-sim-connection.js";
+import { _resetSDK, getCommands, getController, getSDK, initializeSDK, isSDKInitialized } from "./sdk-singleton.js";
 
 // Mock the iracing-sdk createSDK function
 vi.mock("@iracedeck/iracing-sdk", () => ({

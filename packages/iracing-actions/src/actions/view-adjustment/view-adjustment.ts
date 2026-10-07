@@ -1,7 +1,6 @@
 import {
   assembleIcon,
   CommonSettings,
-  ConnectionStateAwareAction,
   getGlobalBorderSettings,
   getGlobalColors,
   getGlobalGraphicSettings,
@@ -20,6 +19,7 @@ import {
   resolveIconColors,
   resolveTitleSettings,
 } from "@iracedeck/deck-core";
+import { IRacingAction } from "@iracedeck/deck-iracing";
 import driverHeightDecreaseIconSvg from "@iracedeck/icons/view-adjustment/driver-height-decrease.svg";
 import driverHeightIncreaseIconSvg from "@iracedeck/icons/view-adjustment/driver-height-increase.svg";
 import fovDecreaseIconSvg from "@iracedeck/icons/view-adjustment/fov-decrease.svg";
@@ -167,7 +167,7 @@ export function generateViewAdjustmentSvg(settings: ViewAdjustmentSettings, bind
  */
 export const VIEW_ADJUSTMENT_UUID = "com.iracedeck.sd.core.view-adjustment" as const;
 
-export class ViewAdjustment extends ConnectionStateAwareAction<ViewAdjustmentSettings> {
+export class ViewAdjustment extends IRacingAction<ViewAdjustmentSettings> {
   /**
    * The dial half of the action; all IDeck dial events route here (#806). No
    * `setActiveBinding` is delegated — it would bleed onto the keypad buttons.

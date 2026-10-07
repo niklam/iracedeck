@@ -9,24 +9,7 @@
  * package stays zero-dependency: title text is resolved before it flows into
  * resolveTitleSettings/assembleIcon.
  */
-import type { TemplateContext } from "@iracedeck/iracing-sdk";
-
 import { getSimConnection } from "./sim-connection.js";
-
-/**
- * Empty context used when the sim is disconnected: {{variable}} placeholders
- * render empty and {{= expression }} parse errors stay visible — the same rules
- * Telemetry Display values follow. Exported so other display paths that read
- * a template context (Chat's key text, #1337) fall back the same way instead
- * of defining their own. Moves to `@iracedeck/deck-iracing` with
- * `IRacingSimConnection` in the next commit.
- */
-export const EMPTY_TEMPLATE_CONTEXT: TemplateContext = Object.freeze({
-  // Inline rather than templateContextFromMaps({}): a module-scope call into
-  // iracing-sdk would break every test that mocks that package without it.
-  display: () => undefined,
-  raw: () => ({ found: false }),
-});
 
 /**
  * True when user-entered title text contains a template placeholder.

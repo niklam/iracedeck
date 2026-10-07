@@ -9,11 +9,9 @@
  * sim semantics beyond the session identity: what happens INSIDE a session
  * (crossings, lap times) is the translator's to detect.
  */
+import type { ReplaySessionHeader, ReplaySessionStore } from "@iracedeck/deck-core";
 import type { SessionInfo, TelemetryCallback } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
-
-import type { ReplaySessionHeader } from "./replay-session-file.js";
-import type { ReplaySessionStore } from "./replay-session-store.js";
 
 export interface ReplaySessionSubscriberOptions {
   store: Pick<ReplaySessionStore, "setActiveSession" | "clearActiveSession">;

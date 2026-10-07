@@ -11,22 +11,21 @@
  *
  * @example
  * // At startup (the shared bootstrap: plugin-runtime's phases/core.ts)
- * import { initializeSDK } from "@iracedeck/deck-core";
+ * import { initializeSDK } from "@iracedeck/deck-iracing";
  *
  * initializeSDK(adapter.createLogger("iRacingSDK"));
  *
  * // In action files
- * import { getController, getCommands } from "./shared/index.js";
+ * import { getController, getCommands } from "@iracedeck/deck-iracing";
  *
  * const controller = getController();
  * const { pit, camera } = getCommands();
  */
+import { _resetSimConnection, focusIRacingBeforeInput, initializeSimConnection } from "@iracedeck/deck-core";
 import { type Commands, createSDK, type SDKBundle, SDKController } from "@iracedeck/iracing-sdk";
 import { type ILogger, silentLogger } from "@iracedeck/logger";
 
 import { IRacingSimConnection } from "./iracing-sim-connection.js";
-import { _resetSimConnection, initializeSimConnection } from "./sim-connection.js";
-import { focusIRacingBeforeInput } from "./window-focus-service.js";
 
 let sdkBundle: SDKBundle | null = null;
 

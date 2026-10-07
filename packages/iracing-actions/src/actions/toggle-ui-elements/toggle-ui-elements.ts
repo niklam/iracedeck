@@ -1,8 +1,6 @@
 import {
   assembleIcon,
   CommonSettings,
-  ConnectionStateAwareAction,
-  getCommands,
   getGlobalBorderSettings,
   getGlobalColors,
   getGlobalGraphicSettings,
@@ -16,6 +14,7 @@ import {
   resolveIconColors,
   resolveTitleSettings,
 } from "@iracedeck/deck-core";
+import { getCommands, IRacingAction } from "@iracedeck/deck-iracing";
 import dashBoxIconSvg from "@iracedeck/icons/toggle-ui-elements/dash-box.svg";
 import displayRefCarIconSvg from "@iracedeck/icons/toggle-ui-elements/display-ref-car.svg";
 import drivingLineIconSvg from "@iracedeck/icons/toggle-ui-elements/driving-line.svg";
@@ -137,7 +136,7 @@ export function generateToggleUiElementsSvg(settings: ToggleUiElementsSettings, 
  */
 export const TOGGLE_UI_ELEMENTS_UUID = "com.iracedeck.sd.core.toggle-ui-elements" as const;
 
-export class ToggleUiElements extends ConnectionStateAwareAction<ToggleUiElementsSettings> {
+export class ToggleUiElements extends IRacingAction<ToggleUiElementsSettings> {
   override async onWillAppear(ev: IDeckWillAppearEvent<ToggleUiElementsSettings>): Promise<void> {
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);

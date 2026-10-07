@@ -19,13 +19,9 @@
  *   to SimHub) trigger automatic readiness re-evaluation.
  * - Actions never need to call updateConnectionState() manually.
  */
-import type { SDKController } from "@iracedeck/iracing-sdk";
-
 import { BaseAction } from "./base-action.js";
 import { getBindingDispatcher } from "./binding-dispatcher.js";
 import { onGlobalSettingsChange } from "./global-settings.js";
-// Only the `sdkController` getter still reads the SDK singleton; both leave deck-core with the iRacing side (#1363).
-import { getController } from "./sdk-singleton.js";
 import { getSimConnection, isSimConnectionInitialized } from "./sim-connection.js";
 import { onSimHubReachabilityChange } from "./simhub-service.js";
 import type { IDeckWillAppearEvent, IDeckWillDisappearEvent } from "./types.js";
@@ -40,14 +36,6 @@ const READINESS_SUB_PREFIX = "_readiness:";
  * @template T - The settings type for this action
  */
 export abstract class ConnectionStateAwareAction<T = Record<string, unknown>> extends BaseAction<T> {
-  /**
-   * SDKController instance for iRacing communication.
-   * Lazily initialized from the SDK singleton.
-   */
-  protected get sdkController(): SDKController {
-    return getController();
-  }
-
   /**
    * Last known connection/readiness status for change detection
    */

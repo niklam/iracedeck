@@ -1,7 +1,6 @@
 import {
   assembleIcon,
   CommonSettings,
-  ConnectionStateAwareAction,
   DualPressTracker,
   getDualPressDirections,
   getDualPressThresholdMs,
@@ -25,6 +24,7 @@ import {
   resolveIconColors,
   resolveTitleSettings,
 } from "@iracedeck/deck-core";
+import { IRacingAction } from "@iracedeck/deck-iracing";
 import disableFuelCutIconSvg from "@iracedeck/icons/setup-fuel/disable-fuel-cut.svg";
 import fcyModeToggleIconSvg from "@iracedeck/icons/setup-fuel/fcy-mode-toggle.svg";
 import fuelCutPositionDecreaseIconSvg from "@iracedeck/icons/setup-fuel/fuel-cut-position-decrease.svg";
@@ -195,7 +195,7 @@ export function generateSetupFuelSvg(settings: SetupFuelSettings, bindingMissing
  */
 export const SETUP_FUEL_UUID = "com.iracedeck.sd.core.setup-fuel" as const;
 
-export class SetupFuel extends ConnectionStateAwareAction<SetupFuelSettings> {
+export class SetupFuel extends IRacingAction<SetupFuelSettings> {
   /** Current settings per action context, used by the telemetry-tick callback for View sub-modes. */
   private readonly activeContexts = new Map<string, SetupFuelSettings>();
 

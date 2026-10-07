@@ -36,6 +36,11 @@ vi.mock("@iracedeck/icons/replay-markers/previous.svg", () => ({ default: "<svg>
 vi.mock("@iracedeck/icons/replay-markers/confirm-added.svg", () => ({ default: "<svg>confirm-added</svg>" }));
 vi.mock("@iracedeck/icons/replay-markers/confirm-deleted.svg", () => ({ default: "<svg>confirm-deleted</svg>" }));
 
+vi.mock("@iracedeck/deck-iracing", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@iracedeck/deck-iracing")>()),
+  getCommands: vi.fn(() => ({ replay: { setPlayPosition: mocks.setPlayPosition } })),
+}));
+
 vi.mock("@iracedeck/deck-core", async () => {
   const { z } = await import("zod");
   // The real dial-gesture module, by path (zero imports): the dial instances
@@ -73,7 +78,6 @@ vi.mock("@iracedeck/deck-core", async () => {
       async onDidReceiveSettings() {}
       async onWillDisappear() {}
     },
-    getCommands: vi.fn(() => ({ replay: { setPlayPosition: mocks.setPlayPosition } })),
     getReplaySessionStore: vi.fn(() => ({ markers: mocks.markers })),
     isReplaySessionStoreInitialized: mocks.isStoreInitialized,
     MARKER_DEDUPE_FRAMES: 60,

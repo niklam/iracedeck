@@ -1,7 +1,6 @@
 import {
   assembleIcon,
   CommonSettings,
-  ConnectionStateAwareAction,
   DualPressTracker,
   getDualPressDirections,
   getDualPressThresholdMs,
@@ -26,6 +25,7 @@ import {
   resolveIconColors,
   resolveTitleSettings,
 } from "@iracedeck/deck-core";
+import { IRacingAction } from "@iracedeck/deck-iracing";
 import differentialEntryDecreaseIconSvg from "@iracedeck/icons/setup-chassis/differential-entry-decrease.svg";
 import differentialEntryIncreaseIconSvg from "@iracedeck/icons/setup-chassis/differential-entry-increase.svg";
 import differentialExitDecreaseIconSvg from "@iracedeck/icons/setup-chassis/differential-exit-decrease.svg";
@@ -390,7 +390,7 @@ export function generateSetupChassisSvg(settings: SetupChassisSettings, bindingM
  */
 export const SETUP_CHASSIS_UUID = "com.iracedeck.sd.core.setup-chassis" as const;
 
-export class SetupChassis extends ConnectionStateAwareAction<SetupChassisSettings> {
+export class SetupChassis extends IRacingAction<SetupChassisSettings> {
   /** Current settings per action context, used by the telemetry-tick callback for View sub-modes. */
   private readonly activeContexts = new Map<string, SetupChassisSettings>();
 

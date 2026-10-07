@@ -556,6 +556,34 @@ importers:
         specifier: 2.4.0
         version: 2.4.0
 
+  packages/deck-iracing:
+    dependencies:
+      '@iracedeck/deck-core':
+        specifier: workspace:*
+        version: link:../deck-core
+      '@iracedeck/iracing-sdk':
+        specifier: workspace:*
+        version: link:../iracing-sdk
+      '@iracedeck/logger':
+        specifier: workspace:*
+        version: link:../logger
+    devDependencies:
+      '@tsconfig/node22':
+        specifier: 22.0.6
+        version: 22.0.6
+      '@types/node':
+        specifier: 26.6.4
+        version: 26.6.4
+      rimraf:
+        specifier: 6.1.3
+        version: 6.1.3
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: 5.0.3
+        version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(jsdom@30.1.1)(vite@8.3.0(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.46.0)(tsx@4.23.15)(yaml@2.9.1))
+
   packages/event-bus:
     dependencies:
       '@iracedeck/logger':
@@ -616,6 +644,9 @@ importers:
       '@iracedeck/deck-core':
         specifier: workspace:*
         version: link:../deck-core
+      '@iracedeck/deck-iracing':
+        specifier: workspace:*
+        version: link:../deck-iracing
       '@iracedeck/event-bus':
         specifier: workspace:*
         version: link:../event-bus
@@ -1042,6 +1073,9 @@ importers:
       '@iracedeck/deck-core':
         specifier: workspace:*
         version: link:../deck-core
+      '@iracedeck/deck-iracing':
+        specifier: workspace:*
+        version: link:../deck-iracing
       '@iracedeck/event-bus':
         specifier: workspace:*
         version: link:../event-bus

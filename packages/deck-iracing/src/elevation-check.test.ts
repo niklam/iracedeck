@@ -1,11 +1,12 @@
+import { clearWarning, setWarning } from "@iracedeck/deck-core";
 import type { ILogger } from "@iracedeck/logger";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { _resetElevationCheck, createElevationCheckSubscriber, hasElevationMismatch } from "./elevation-check.js";
 import { ELEVATION_WARNING_ID, ELEVATION_WARNING_MESSAGE } from "./elevation-warning.js";
-import { clearWarning, setWarning } from "./pi-warnings.js";
 
-vi.mock("./pi-warnings.js", () => ({
+vi.mock("@iracedeck/deck-core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@iracedeck/deck-core")>()),
   setWarning: vi.fn(),
   clearWarning: vi.fn(),
 }));
