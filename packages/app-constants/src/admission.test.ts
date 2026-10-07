@@ -82,6 +82,9 @@ describe("app-constants admission (spec #1351)", () => {
       expect(specifier).toMatch(/^\.\/[\w-]+\.js$/);
     }
 
+    // Re-exports only: an import statement, even of the package's own module,
+    // is not a re-export, so it is refused here as in every other module.
+    expect(code(index)).not.toMatch(/^\s*import\b/m);
     expect(hasDynamicLoad(index)).toBe(false);
   });
 
