@@ -1,0 +1,27 @@
+{
+  "name": "@iracedeck/fetch-utils",
+  "version": "3.6.0-dev.0",
+  "description": "Request helpers for the plugin's Node process and a Property Inspector's browser bundle: a one-shot request deadline and a byte-capped JSON read. Zero dependencies.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "clean": "rimraf dist",
+    "test": "node ../../scripts/test-package.mjs",
+    "test:watch": "node ../../scripts/test-package.mjs --watch"
+  },
+  "devDependencies": {
+    "@tsconfig/node22": "22.0.6",
+    "rimraf": "6.1.3",
+    "typescript": "5.9.3",
+    "vitest": "5.0.3"
+  }
+}

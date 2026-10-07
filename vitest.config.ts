@@ -58,6 +58,7 @@ export default defineConfig({
       "@iracedeck/deck-core": packageSrc("deck-core"),
       "@iracedeck/deck-iracing": packageSrc("deck-iracing"),
       "@iracedeck/event-bus": packageSrc("event-bus"),
+      "@iracedeck/fetch-utils": packageSrc("fetch-utils"),
       "@iracedeck/icon-composer": packageSrc("icon-composer"),
       "@iracedeck/iracing-sdk": packageSrc("iracing-sdk"),
       "@iracedeck/iracing-native": packageSrc("iracing-native"),

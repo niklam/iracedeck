@@ -27,8 +27,8 @@
  * of them identically: the Installed Voices card renders exactly the packs it
  * already knew about, same as if this feature did not exist.
  */
-import { abortAfter } from "./abort-after.js";
-import { readCappedJson } from "./read-capped-json.js";
+import { abortAfter, readCappedJson } from "@iracedeck/fetch-utils";
+
 import {
   parseVoicePackCatalog,
   VOICE_PACK_CATALOG_MAX_BYTES,

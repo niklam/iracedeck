@@ -47,8 +47,8 @@ const SRC_DIR = join(process.cwd(), "packages/deck-core/src");
 const SHARED_MODULES: readonly string[] = [
   join(process.cwd(), "packages/callout-script/src/voice-pack.ts"),
   // On the catalog fetch path, which runs unasked at every start (#1101).
-  join(process.cwd(), "packages/deck-core/src/abort-after.ts"),
-  join(process.cwd(), "packages/deck-core/src/read-capped-json.ts"),
+  join(process.cwd(), "packages/fetch-utils/src/abort-after.ts"),
+  join(process.cwd(), "packages/fetch-utils/src/read-capped-json.ts"),
 ];
 
 /** Names that put something on the user's screen, and the module each lives in. */

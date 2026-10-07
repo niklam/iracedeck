@@ -25,6 +25,7 @@
   "dependencies": {
     "@iracedeck/callout-script": "workspace:*",
     "@iracedeck/callout-settings": "workspace:*",
+    "@iracedeck/fetch-utils": "workspace:*",
     "@iracedeck/icon-composer": "workspace:*",
     "@iracedeck/logger": "workspace:*",
     "fflate": "0.8.3",

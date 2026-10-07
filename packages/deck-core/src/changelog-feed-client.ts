@@ -13,9 +13,9 @@
  * "we do not know" — because the caller treats every one of them identically:
  * the tab is exactly what it is offline.
  */
-import { abortAfter } from "./abort-after.js";
+import { abortAfter, readCappedJson } from "@iracedeck/fetch-utils";
+
 import { parsePublishedChangelog, type PublishedRelease } from "./published-changelog.js";
-import { readCappedJson } from "./read-capped-json.js";
 
 /** The artifact the website build publishes (see packages/website/scripts). */
 export const PUBLISHED_CHANGELOG_URL = "https://iracedeck.com/changelog.json";
