@@ -171,7 +171,7 @@ Every PR passes the full set by hand before review: `install` → `build` → `t
 - **The seam has unit tests against a fake `SimConnection`.** They cover the pending connection and its replay of queued subscriptions, readiness tracking in `ConnectionStateAwareAction`, the overlay starting and stopping on `activeFlags()` changes, and the title watcher re-resolving on tick. `SimIRacingConnection` is tested over a fake controller (`MockSDKController` lives in `scenario-harness`): flag mapping, no telemetry read inside a tick, the disconnected empty flags, and the disconnected title fallback.
 - **Nothing is lost in a move.** No behaviour changes in PRs 2–5, so the existing suites carry them. Each PR's test-file and test counts are compared with `master`'s, so a test silently dropped by a move shows up. The existing guards (`package-test-scripts`, `typecheck-script-coverage`, `tsconfig-base-inheritance`, `lint-format-coverage`) must stay green with the new packages enrolled, not exempted.
 - **Manual test on a linked Stream Deck per PR, scoped to what moved:**
-  1. Keys grey out and return with the sim connection, the flag overlay flashes on a flag, and a templated title updates live.
+  1. The flag overlay flashes on a flag, a templated title updates live, and actions that read telemetry or send commands behave as before.
   2. The settings window renders with the warning banners and the voice-pack card phases.
   3. Settings persist across a restart, and the settings window opens and saves.
   4. The voice pack is ensured at start, and installing and removing one from the catalog works.
