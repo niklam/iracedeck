@@ -55,7 +55,7 @@ describe("parseNavPanes", () => {
 
 describe("the first-run deep link's target", () => {
   it("still exists in the tab list", () => {
-    // deck-core's GETTING_STARTED_PANE is this literal, and the page's own
+    // `@iracedeck/settings`' GETTING_STARTED_PANE is this literal, and the page's own
     // handler is a fail-soft (`if (document.getElementById("pane-" + wanted))`),
     // so a rename would silently land the first-run window on General instead.
     // This list is already pinned against the built page, so failing here or

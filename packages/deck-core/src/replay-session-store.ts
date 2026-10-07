@@ -11,7 +11,7 @@
  * `version` above this build's) and any `markers` entry this build cannot
  * read: both ride through every write verbatim.
  *
- * Write discipline follows the settings store (`settings-store.ts`): atomic
+ * Write discipline follows `@iracedeck/settings`' `settings-store.ts`: atomic
  * replace (temp file + rename), a trailing debounce so a crossing wave of a
  * 60-car field lands as one file — capped by a max wait, so a field that never
  * goes quiet still lands every ten seconds — failed writes retried on a

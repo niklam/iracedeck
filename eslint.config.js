@@ -55,7 +55,7 @@ export default [
   {
     // The Elgato adapter delivers a global-settings read's answer from the SDK
     // promise (#1208). SDK 3.0's legacy flag would ALSO fire the event for it,
-    // handing deck-core's one-time host migration the answer twice.
+    // handing `@iracedeck/settings`' one-time host migration the answer twice.
     files: ['**/*.ts'],
     rules: {
       'no-restricted-syntax': [

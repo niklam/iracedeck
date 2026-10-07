@@ -101,7 +101,7 @@ async function main(): Promise<void> {
 
   // The radio frame's two opt-outs (#1064), read live at frame expansion from
   // the same global-settings cache the plugins read, through the same
-  // deck-core rule the plugins and the Background preview use — the harness
+  // `@iracedeck/settings` rule the plugins and the Background preview use — the harness
   // seeds both on, and `/api/settings` writes through `updateGlobalSettings`,
   // so a patch flipping either key is heard on the next callout.
   const getFrameOptions = (): FrameOptions => frameOptionsFromSettings(getGlobalSettings());

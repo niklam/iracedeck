@@ -17,7 +17,7 @@ import { getGlobalSettings } from "@iracedeck/settings";
 
 /**
  * Fallback threshold used when the global setting is missing or out of range.
- * Mirrors the schema default in `global-settings.ts`.
+ * Mirrors the schema default in `@iracedeck/settings`' `global-settings.ts`.
  */
 export const DUAL_PRESS_THRESHOLD_FALLBACK_MS = 500;
 

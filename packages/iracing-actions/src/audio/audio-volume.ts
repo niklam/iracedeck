@@ -74,7 +74,7 @@ export function isRadarEnabled(): boolean {
 
 /**
  * The radio frame's two opt-outs (issue #1064), read live: Radio beeps and
- * Pit ambience. Deck-core's `frameOptionsFromSettings` is the ONE rule —
+ * Pit ambience. `@iracedeck/settings`' `frameOptionsFromSettings` is the ONE rule —
  * the same one the plugins' `getFrameOptions` hand the engine — so the
  * Background preview drops exactly what a real callout's frame drops.
  */

@@ -16,8 +16,10 @@ export function startServices(core: Core, input: Input, settings: Settings, voic
   // Initialize global settings listener BEFORE connect - handlers must be registered first.
   // The settings store comes from the settings phase, which built it above the
   // settings-window controller. The running version lets an abandoned migration
-  // be re-asked once after an upgrade (#1047). Injected rather than read inside
-  // deck-core, which must not depend on initPluginConfig() having run.
+  // be re-asked once after an upgrade (#1047). Injected because
+  // `@iracedeck/settings` sits below deck-core and cannot import
+  // `getPluginVersion`; injecting it also keeps the settings layer from
+  // depending on initPluginConfig() having run.
   initGlobalSettings(core.adapter, core.adapter.createLogger("GlobalSettings"), settings.store, {
     pluginVersion: getPluginVersion(),
   });

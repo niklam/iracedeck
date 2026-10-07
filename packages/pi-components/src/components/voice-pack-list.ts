@@ -13,7 +13,7 @@
  * clips under it is installed and still reports a problem.
  *
  * It still writes nothing back to the setting it renders — `_voicePacks` is an
- * observation about the run, not a setting, and stays run-scoped in `deck-core`
+ * observation about the run, not a setting, and stays run-scoped in `@iracedeck/settings`
  * (`RUN_SCOPED_SETTING_KEYS`) so it is never persisted. Only a RESCAN (fired by
  * the sibling `ird-voice-pack-refresh` button) changes what this list shows;
  * this component only ever reflects the next `_voicePacks` push. The one

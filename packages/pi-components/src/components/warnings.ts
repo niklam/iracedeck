@@ -3,7 +3,7 @@
  * Global Property Inspector warning banner (issue #610).
  *
  * Subscribes to the `_warnings` global setting — a JSON array of
- * `{ id, level, message }` records maintained by the plugin via deck-core's
+ * `{ id, level, message }` records maintained by the plugin via `@iracedeck/settings`'
  * `setWarning`/`clearWarning` — and renders one banner per record at the top
  * of the Property Inspector. State-driven and not dismissible: a warning
  * stays until its underlying condition clears.

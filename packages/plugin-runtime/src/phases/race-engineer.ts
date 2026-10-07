@@ -21,10 +21,10 @@ import type { Audio, Core, VoicePacks } from "../types.js";
 export function initRaceEngineer(core: Core, sim: SimRuntime, audio: Audio, voicePacks: VoicePacks): void {
   // The radio frame's two opt-outs (#1064), read live at frame expansion so the
   // Radio beeps / Pit ambience checkboxes take effect on the next callout rather
-  // than the next restart. Deck-core's `frameOptionsFromSettings` is the one
-  // rule — the Background preview and the scenario harness read through it too
-  // — and reads a missing key as on, since before the store has loaded the
-  // cache holds the schema default.
+  // than the next restart. `@iracedeck/settings`' `frameOptionsFromSettings` is
+  // the one rule — the Background preview and the scenario harness read through
+  // it too — and reads a missing key as on, since before the store has loaded
+  // the cache holds the schema default.
   const getFrameOptions = (): FrameOptions => frameOptionsFromSettings(getGlobalSettings());
 
   // Initialize the scenario engine AFTER audio (so it can drive playback) but
