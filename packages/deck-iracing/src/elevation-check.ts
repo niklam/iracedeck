@@ -19,8 +19,8 @@
  * `evaluateElevationWarning`) so deck-iracing needs no dependency on
  * `@iracedeck/iracing-native`.
  */
-import { clearWarning, setWarning } from "@iracedeck/deck-core";
 import type { ILogger } from "@iracedeck/logger";
+import { clearWarning, setWarning } from "@iracedeck/settings";
 
 import { ELEVATION_WARNING_ID, evaluateElevationWarning } from "./elevation-warning.js";
 
