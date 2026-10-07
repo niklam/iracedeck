@@ -59,9 +59,10 @@ function truncateValue(value: string): string {
  * Inspector WebView and may import only the two leaf packages, and the
  * resolver lives with the voice packs in deck-core. The key, the default base
  * and the filename it joins on come from `@iracedeck/app-constants`, the same
- * ones the plugin reads. Kept to the same rules — https anywhere, http only to
- * loopback, no query or fragment, and only our own filename joined on — so the
- * row cannot claim an override the plugin would refuse.
+ * ones the plugin reads. Accepts HTTPS, or HTTP to `localhost` or `127.0.0.1`,
+ * with no query or fragment. Appends the catalog filename to the origin and
+ * path after removing trailing slashes. Malformed or rejected bases return
+ * the published catalog URL with `accepted: false`; URL parse errors are caught.
  */
 function resolveDisplayUrl(base: string): DisplayState {
   const fallback: DisplayState = {
@@ -97,6 +98,10 @@ export class DevBaseUrl extends HTMLElement {
     this.hookSettings();
   }
 
+  /**
+   * Subscribe to the catalog override and render changed values.
+   * Does nothing when SDPIComponents is unavailable.
+   */
   private hookSettings(): void {
     if (!window.SDPIComponents) return;
 

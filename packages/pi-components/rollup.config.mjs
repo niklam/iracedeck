@@ -28,9 +28,14 @@ const tsBundle = (tsconfig) => typescript({ tsconfig, noEmitOnError: true });
  * followed into a Property Inspector.
  */
 const BROWSER_SAFE_PACKAGES = ["@iracedeck/app-constants", "@iracedeck/fetch-utils"];
+/** Return the import guard followed by the resolver for the allowed browser packages. */
 const resolveBrowserImports = () => [
   {
     name: "browser-import-guard",
+    /**
+     * Fail the build for deck-core-prefixed imports or subpaths of the allowed
+     * leaf packages; return null for all other imports so later resolvers handle them.
+     */
     resolveId(source) {
       const isDeckCore = source.startsWith("@iracedeck/deck-core");
       const isLeafSubpath = BROWSER_SAFE_PACKAGES.some((name) => source.startsWith(`${name}/`));
