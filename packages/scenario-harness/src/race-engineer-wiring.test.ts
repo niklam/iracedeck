@@ -15,19 +15,19 @@ import {
   registerPitCrew,
 } from "@iracedeck/audio-scenarios/pit-crew";
 import {
-  _resetGlobalSettings,
-  createMemorySettingsStore,
-  initGlobalSettings,
-  updateGlobalSettings,
-  whenSettingsStoreSettled,
-} from "@iracedeck/deck-core";
-import {
   _resetEventBus,
   initializeEventBus,
   type RaceStartSnapshot,
   type SessionStartSnapshot,
 } from "@iracedeck/event-bus";
 import { silentLogger } from "@iracedeck/logger";
+import {
+  _resetGlobalSettings,
+  createMemorySettingsStore,
+  initGlobalSettings,
+  updateGlobalSettings,
+  whenSettingsStoreSettled,
+} from "@iracedeck/settings";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getAudioAssetsManifest, seedGlobalSettings } from "./bootstrap-settings.js";
