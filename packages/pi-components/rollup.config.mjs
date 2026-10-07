@@ -23,19 +23,19 @@ const tsBundle = (tsconfig) => typescript({ tsconfig, noEmitOnError: true });
  * are dependencies of this package. node-resolve's `resolveOnly` matches
  * package NAMES, not subpaths, so it narrows resolution to those two and
  * leaves every other bare import unresolved (fatal, see `onLog`); the guard in
- * front of it refuses any subpath of either and every deck-core import by
- * name, so the deck-core barrel (Node built-ins, native addons) can never be
- * followed into a Property Inspector.
+ * front of it refuses every other `@iracedeck/` import, any subpath of the two
+ * leaves included, so no workspace package built for Node (deck-core and
+ * settings today, the packages #1351 splits out next) can be followed into a
+ * Property Inspector. It is an allowlist rather than a list of refused names
+ * so a new package needs no edit here, and it names the offending import
+ * instead of leaving it to a later, vaguer MISSING_GLOBAL_NAME.
  */
 const BROWSER_SAFE_PACKAGES = ["@iracedeck/app-constants", "@iracedeck/fetch-utils"];
 const resolveBrowserImports = () => [
   {
     name: "browser-import-guard",
     resolveId(source) {
-      const isDeckCore = source.startsWith("@iracedeck/deck-core");
-      const isLeafSubpath = BROWSER_SAFE_PACKAGES.some((name) => source.startsWith(`${name}/`));
-
-      if (isDeckCore || isLeafSubpath) {
+      if (source.startsWith("@iracedeck/") && !BROWSER_SAFE_PACKAGES.includes(source)) {
         this.error(
           `"${source}" is not browser-safe: a Property Inspector bundle may import only ${BROWSER_SAFE_PACKAGES.join(" and ")}, each by its bare name`,
         );
