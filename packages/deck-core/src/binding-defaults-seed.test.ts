@@ -1,4 +1,4 @@
-import type { ILogger } from "@iracedeck/logger";
+import { silentLogger } from "@iracedeck/logger";
 import {
   _resetGlobalSettings,
   createMemorySettingsStore,
@@ -6,7 +6,7 @@ import {
   seedBindingDefaultsIfAbsent,
   type SettingsHost,
 } from "@iracedeck/settings";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { _resetBindingDispatcher, initializeBindingDispatcher } from "./binding-dispatcher.js";
 
@@ -23,24 +23,12 @@ vi.mock("./keyboard-service.js", () => ({
   getKeyboard: () => ({ sendKeyCombination: mockSendKeyCombination }),
 }));
 
-type EchoCallback = (settings: unknown) => void;
-
-function createMockLogger(): ILogger {
-  return {
-    trace: vi.fn(),
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  } as unknown as ILogger;
-}
-
 function createMockAdapter(): SettingsHost {
   return {
-    onDidReceiveGlobalSettings: (_cb: EchoCallback) => {},
+    onDidReceiveGlobalSettings: () => {},
     setGlobalSettings: vi.fn<(settings: Record<string, unknown>) => void>(),
     getGlobalSettings: vi.fn<() => void>(),
-  } as unknown as SettingsHost;
+  };
 }
 
 /** Let the async load inside initGlobalSettings settle. */
@@ -48,7 +36,7 @@ const tick = () => new Promise((r) => setTimeout(r, 0));
 
 /** Initialize against a settings file seeded with `initial` (issue #993). */
 function initWithStore(initial: Record<string, unknown> = {}): void {
-  initGlobalSettings(createMockAdapter(), createMockLogger(), createMemorySettingsStore(initial));
+  initGlobalSettings(createMockAdapter(), silentLogger, createMemorySettingsStore(initial));
 }
 
 describe("seedBindingDefaultsIfAbsent (#1277)", () => {
@@ -62,18 +50,11 @@ describe("seedBindingDefaultsIfAbsent (#1277)", () => {
     mockSendKeyCombination.mockClear();
   });
 
-  afterEach(() => {
-    _resetGlobalSettings();
-    _resetBindingDispatcher();
-    vi.useRealTimers();
-    vi.restoreAllMocks();
-  });
-
   describe("positive control: the real binding dispatcher over the real cache", () => {
     it("reads both keys as missing before the seed, as set after it, and taps V / Shift+V", async () => {
       initWithStore({});
       await tick();
-      const dispatcher = initializeBindingDispatcher(createMockLogger());
+      const dispatcher = initializeBindingDispatcher(silentLogger);
 
       // The check can fail: with nothing stored both read as missing (#612) and a tap sends nothing.
       expect(dispatcher.isConfigured("replayControlNextCar")).toBe(false);
@@ -81,7 +62,7 @@ describe("seedBindingDefaultsIfAbsent (#1277)", () => {
       expect(await dispatcher.tap("replayControlNextCar")).toBe(false);
       expect(mockSendKeyCombination).not.toHaveBeenCalled();
 
-      seedBindingDefaultsIfAbsent(DEFAULTS, createMockLogger());
+      seedBindingDefaultsIfAbsent(DEFAULTS, silentLogger);
 
       expect(dispatcher.isConfigured("replayControlNextCar")).toBe(true);
       expect(dispatcher.isConfigured("replayControlPrevCar")).toBe(true);
@@ -96,9 +77,9 @@ describe("seedBindingDefaultsIfAbsent (#1277)", () => {
     it("leaves a cleared binding reading as missing", async () => {
       initWithStore({ replayControlNextCar: "" });
       await tick();
-      const dispatcher = initializeBindingDispatcher(createMockLogger());
+      const dispatcher = initializeBindingDispatcher(silentLogger);
 
-      seedBindingDefaultsIfAbsent(DEFAULTS, createMockLogger());
+      seedBindingDefaultsIfAbsent(DEFAULTS, silentLogger);
 
       expect(dispatcher.isConfigured("replayControlNextCar")).toBe(false);
       expect(dispatcher.isConfigured("replayControlPrevCar")).toBe(true);

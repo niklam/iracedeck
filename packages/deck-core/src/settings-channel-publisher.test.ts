@@ -9,23 +9,23 @@ import {
   MIGRATION_PENDING_KEY,
   onGlobalSettingsChange,
   SETTINGS_CHANNEL_KEY,
+  type SettingsHost,
   updateGlobalSettings,
 } from "@iracedeck/settings";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createSettingsChannelPublisher } from "./settings-channel-publisher.js";
-import type { IDeckPlatformAdapter } from "./types.js";
 
 const CHANNEL = { port: 55762, token: "cc29ab52f34a2a927663a0832b86a807b4cc329ebe68a98d" };
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
 function mockAdapter() {
   const setGlobalSettings = vi.fn();
-  const adapter = {
+  const adapter: SettingsHost = {
     onDidReceiveGlobalSettings: vi.fn(),
     getGlobalSettings: vi.fn(),
     setGlobalSettings,
-  } as unknown as IDeckPlatformAdapter;
+  };
 
   return { adapter, setGlobalSettings };
 }
