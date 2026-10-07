@@ -2,10 +2,10 @@
  * A one-shot deadline for an outbound request (issues #1016, #1100).
  *
  * Extracted from deck-core when the voice-pack catalog became the second feed
- * to need it, and moved here (#1364) so both runtimes can import it.
- * Two identical copies of a fallback that only executes on runtimes
- * we do not test is the worst kind of duplication: the branch that would prove
- * the copies had diverged is the branch that never runs here.
+ * to need it, and moved here (#1364) so both runtimes import this one copy.
+ * Two identical copies of a fallback that only executes on runtimes we do not
+ * test is the worst kind of duplication: the branch that would prove the copies
+ * had diverged is the branch that never runs here.
  *
  * This package serves both runtimes: the plugin's Node process (deck-core's feed
  * clients) and a Property Inspector's browser bundle. It therefore uses only

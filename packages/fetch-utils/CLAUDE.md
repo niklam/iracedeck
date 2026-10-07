@@ -4,7 +4,7 @@ Request helpers shared by the plugin's Node process and a Property Inspector's b
 
 ## Browser-safety rule
 
-This package may use only globals that both runtimes share (`AbortController`, `AbortSignal`, `setTimeout`, `Response`, `TextDecoder` …). Never import `node:*` and never reference `process` or `Buffer`. It is enforced, not conventional: `tsconfig.json` sets `types: []` (no Node typings) and `lib: ["es2022", "dom"]`, so a `node:` import or a `process` reference fails `pnpm typecheck`. Do not add `@types/node` to this package.
+This package may use only globals that both runtimes share (`AbortController`, `AbortSignal`, `setTimeout`, `Response`, `TextDecoder` …). Never import `node:*` and never reference `process` or `Buffer`. It is enforced, not conventional: `pnpm typecheck` compiles the sources twice. `tsconfig.json` sets `types: []` and `lib: ["es2022", "dom"]`, the browser's view, so a `node:` import or a `process` reference fails. `tsconfig.node.json` swaps in `types: ["node"]` and drops `dom`, Node's view, so a DOM-only global such as `window` or `document` fails. Only what both runtimes declare passes both. `@types/node` is a devDependency for that second pass alone; never add `node` to `tsconfig.json`'s `types`.
 
 ## Why it is not part of app-constants
 
