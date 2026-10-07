@@ -19,7 +19,7 @@ Measured on `master` at `34ba89f52` for this spec:
 
   Two files import types only: `connection-state-aware-action.ts`, whose `sdkController` getter returns `SDKController`, and `replay-session-subscriber.ts`. `ConnectionStateAwareAction` itself calls only `subscribe`, `unsubscribe` and `getConnectionStatus`.
 - **The actions use the controller far more widely.**
-  - 27 `iracing-actions` files read `this.sdkController`: `getCurrentTelemetry` in 21 files, `getSessionInfo` in 9, `getCurrentTemplateContext` in 2, plus `subscribe` / `unsubscribe`.
+  - 27 `iracing-actions` files read `sdkController` (26 action classes through `this.sdkController`, and `race-admin-commands.ts`, which receives it as a parameter): `getCurrentTelemetry` in 21 files, `getSessionInfo` in 9, `getCurrentTemplateContext` in 2, plus `subscribe` / `unsubscribe`.
   - 15 files call `getCommands()`: camera, replay, chat, pit, videoCapture, texture and telem.
   - Porting these is out of scope (below), so the iRacing-typed controller has to stay reachable from actions.
 - **The concerns are tangled through the deck layer and through constants.**
@@ -73,7 +73,7 @@ It comes with the singleton trio `initializeSimConnection` / `getSimConnection` 
 **The iRacing side is a new package, `@iracedeck/deck-iracing`,** depending on `deck-core`, `settings`, `replay-store` (for the subscriber) and `iracing-sdk`. It has the same shape `sim-events-iracing` has on the bus side: a future sim is a sibling `deck-<sim>`, chosen in `plugin-runtime` and nowhere else. It holds:
 
 - **`IRacingSimConnection`:** implements `SimConnection` over `SDKController`. It maps `SessionFlags` through `resolveAllActiveFlags` and the template context through `resolveTemplate`, and falls back to `EMPTY_TEMPLATE_CONTEXT`, which moves here too.
-- **`IRacingAction<T> extends ConnectionStateAwareAction<T>`:** adds `protected get sdkController(): SDKController`. The 27 action files that read the controller extend it; every other action stays on `ConnectionStateAwareAction`.
+- **`IRacingAction<T> extends ConnectionStateAwareAction<T>`:** adds `protected get sdkController(): SDKController`. The 26 action classes that read the controller extend it; every other action stays on `ConnectionStateAwareAction`.
 - **`sdk-singleton`** (`initializeSDK`, `getSDK`, `getController`, `getCommands`), whose `initializeSDK` also calls `initializeSimConnection`.
 - **The remaining iRacing helpers:** `app-monitor`, `fuel-telemetry`, `unit-conversion`, `iracing-hotkeys`, `elevation-check`, `elevation-warning`, and `replay-session-subscriber` (typed on `SessionInfo`).
 
@@ -122,7 +122,7 @@ The issue is delivered as five PRs, in this order. Each has its own sub-issue (#
 
 1. **The sim seam.** Contents:
    - `sim-connection` and `deck-iracing`;
-   - `IRacingAction` and the 27 base-class switches;
+   - `IRacingAction` and the 26 base-class switches;
    - the `hasElevationMismatch` injection;
    - the lint guard, and `iracing-sdk` dropped from `deck-core`'s dependencies;
    - the false claims corrected (below).
@@ -140,7 +140,7 @@ PR 1 corrects these, listing what is actually true as known leaks in the Archite
 - **`.claude/CLAUDE.md` and `sim-events-iracing/src/index.ts`:** "sim-events-iracing is the ONLY package that consumes `iracing-sdk` telemetry".
 - **`architecture.md`:** "a button … never reads telemetry itself".
 
-The truth on `master` at the time of writing: 27 action files read `sdkController`, 15 call `getCommands()`, and 19 `audio-scenarios` catalog files read iRacing telemetry directly. After PR 1 the action reads go through `deck-iracing`'s `IRacingAction`, which gives the leak a name and a single place to find it.
+The truth on `master` at the time of writing: 27 action files read `sdkController`, 15 call `getCommands()`, and 15 `audio-scenarios` catalog files import a sim package, 8 of them reading the raw snapshot through `getLatestTelemetry()` (measured during #1363; the review's 19 counted files that only name a package in comments). After PR 1 the action reads go through `deck-iracing`'s `IRacingAction`, which gives the leak a name and a single place to find it.
 
 ### What #1349's spec assigned here
 
