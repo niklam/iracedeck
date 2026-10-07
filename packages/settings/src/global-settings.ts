@@ -1865,7 +1865,7 @@ export function getGlobalColors(): {
  * The radio frame's two switches as the scenario engine takes them (issue
  * #1064): `beeps` keeps the frame's non-ambient steps, `ambience` its
  * `ambient` ones. Structurally identical to `FrameOptions` in
- * `@iracedeck/audio-scenarios`, which deck-core must not depend on; a
+ * `@iracedeck/audio-scenarios`, which this package must not depend on; a
  * caller passes the result where that type is expected.
  */
 export type RadioFrameSwitches = { beeps: boolean; ambience: boolean };

@@ -1250,8 +1250,8 @@ describe("single-writer store (issue #993)", () => {
     // This also pins the #1053 decision, and is the reason no separate test
     // for it exists: acceptance is by ARRIVAL, not by provenance. `echo` here
     // stands for the first payload to reach the listener while the window is
-    // open — a genuine reply, or a fallback-path PI's save echo, which deck-core
-    // cannot tell apart. Nothing bounds what it does on this path: `base` is
+    // open — a genuine reply, or a fallback-path PI's save echo, which the
+    // settings layer cannot tell apart. Nothing bounds what it does on this path: `base` is
     // {}, so the payload becomes the whole cache and is persisted as the whole
     // file. Accepted deliberately; see
     // docs/superpowers/specs/2026-08-30-issue-1053-migration-read-payload-correlation.md.
@@ -2138,7 +2138,7 @@ describe("migration deadline vs. host connect (#1056)", () => {
     getGlobalSettings: ReturnType<typeof vi.fn<() => void>>;
     /** Fire the host-ready subscribers, the way a client does from its `open` handler. */
     connect: () => void;
-    /** How many times deck-core subscribed — 0 proves it never entered the migration path. */
+    /** How many times the settings layer subscribed — 0 proves it never entered the migration path. */
     hostReadySubscribers: number;
   }
 

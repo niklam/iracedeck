@@ -1,7 +1,7 @@
 /**
  * Setup-name mismatch warning constants (issue #625).
  *
- * A leaf within deck-core (its one import is the `@iracedeck/callout-settings`
+ * A leaf within this package (its one import is the `@iracedeck/callout-settings`
  * registry) so `global-settings.ts` can read the default patterns without
  * importing the matcher module (which pulls in `pi-warnings.ts`, itself
  * a consumer of `global-settings.ts`) — keeping the import graph acyclic.

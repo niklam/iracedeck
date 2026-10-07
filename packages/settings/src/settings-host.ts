@@ -28,7 +28,7 @@ export interface SettingsHost {
    * into a closed socket and covered by the connect-time reissue. An adapter
    * whose transport queues the read until it can be sent — Elgato, whose SDK
    * awaits the connection inside its own `send` — declares nothing here, and
-   * deck-core then keeps the deadline it already armed.
+   * `initGlobalSettings` then keeps the deadline it already armed.
    *
    * Do NOT make this required. A stub that never calls back would satisfy the
    * type while breaking the contract; it happens to be harmless for today's
