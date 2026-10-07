@@ -27,4 +27,4 @@ The barrel `src/index.ts` is the package's only entry, and deck-core re-exports 
 
 ## Rules
 
-The architecture, the startup and migration paths, the store's write discipline, the callout opt-ins, the warning banners and run-scoped keys are in `.claude/rules/global-settings.md`. `GlobalSettingsSchema` and its keys are a published contract and the store's write path destroys settings when it is wrong, so `.claude/rules/code-review.md` puts this package's changes in its `xhigh` and `max` rows.
+The architecture, the startup and migration paths, the store's write discipline, the callout opt-ins, the warning banners and run-scoped keys are in `.claude/rules/global-settings.md`. `.claude/rules/code-review.md` reviews `GlobalSettingsSchema`, its keys and the migrations at `xhigh`, as published contracts, and the settings store's write path at `max`, because a wrong decision there destroys settings the user cannot get back.
