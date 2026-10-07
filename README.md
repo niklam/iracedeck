@@ -113,6 +113,7 @@ packages/
   deck-adapter-mirabox/    Mirabox VSD Craft adapter (WebSocket protocol to deck-core)
   deck-adapter-ulanzi/     Ulanzi Deck adapter (UlanziStudio WebSocket protocol to deck-core)
   deck-core/               Platform-agnostic base classes, types, and shared utilities
+  settings/                Global settings below the deck layer: schema, settings store, migrations, PI warnings
   deck-iracing/            iRacing's side of the deck layer (sim connection, SimIRacingAction, SDK singleton)
   app-constants/           Constants every layer and the PI bundle share: setting keys, value sets, ids (zero dependencies)
   callout-settings/        Race Engineer callout opt-in registry (zero dependencies)
@@ -135,7 +136,8 @@ packages/
 | Package                           | Role                                                                                      |
 | --------------------------------- | ----------------------------------------------------------------------------------------- |
 | `@iracedeck/iracing-actions`              | All 32 action implementations, platform-agnostic                                          |
-| `@iracedeck/deck-core`            | Base classes, types, keyboard service, icon templates, global settings, settings window; sim-neutral through `SimConnection` |
+| `@iracedeck/deck-core`            | Base classes, types, keyboard service, icon templates, settings window; sim-neutral through `SimConnection` |
+| `@iracedeck/settings`             | Global settings below the deck layer: the schema and cache, migrations, the plugin-owned settings store, run-scoped keys, PI warnings, first run and the startup gates; deck-core re-exports none of them |
 | `@iracedeck/deck-iracing`         | iRacing's side of the deck layer: `SimIRacingConnection`, the `SimIRacingAction` base, the SDK singleton (`getCommands()`) and the iRacing helpers |
 | `@iracedeck/app-constants`        | The constants every layer and the PI bundle share — setting-key names, value sets, settings-window ids — with zero imports; deck-core re-exports none of them |
 | `@iracedeck/callout-settings`     | Every Race Engineer callout opt-in, declared once: the keys, labels and defaults the settings schema, the callout gates and the settings window derive from |
