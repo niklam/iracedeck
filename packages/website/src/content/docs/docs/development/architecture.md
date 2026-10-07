@@ -60,7 +60,7 @@ The arrow from `iracing-actions` back into the bus is the one event the deck lay
 
 ## Inbound: telemetry → semantic events
 
-The only package coupled to iRacing telemetry is the **translator**, `sim-events-iracing`. It subscribes to the SDK controller's ticks, diffs each snapshot against the previous one, and publishes **semantic events** onto the bus — events named for what they *mean* in racing terms (`flag.yellow.raised`, `lap.completed`) rather than for the raw telemetry they were derived from, each fired once on the meaningful change. The bus envelope carries telemetry as a generic field — it imports no SDK — which is what makes it reusable for a future `sim-events-<sim>`.
+The **translator**, `sim-events-iracing`, is where iRacing telemetry becomes events. It subscribes to the SDK controller's ticks, diffs each snapshot against the previous one, and publishes **semantic events** onto the bus — events named for what they *mean* in racing terms (`flag.yellow.raised`, `lap.completed`) rather than for the raw telemetry they were derived from, each fired once on the meaningful change. The bus envelope carries telemetry as a generic field — it imports no SDK — which is what makes it reusable for a future `sim-events-<sim>`.
 
 ```mermaid
 flowchart TB
@@ -69,14 +69,14 @@ flowchart TB
   sdk["iracing-sdk<br/>sdkController"]:::sim
   trans["sim-events-iracing<br/>translator"]:::sim
   bus(["event-bus<br/>SEAM 1"]):::seam
-  a["iracing-actions"]:::core
+  p["plugin-runtime<br/>replay lap record"]:::core
   re["audio-scenarios"]:::audio
 
   ir --> mem
   mem -->|"polls telemetry"| sdk
   sdk -->|"tick: snapshot"| trans
   trans -->|"diff vs previous → semantic event<br/>(e.g. flag.yellow.raised)"| bus
-  bus -->|"subscribe"| a
+  bus -->|"subscribe"| p
   bus -->|"subscribe"| re
 
   classDef ext fill:#33404d,color:#fff,stroke:#1d262e;
@@ -86,14 +86,14 @@ flowchart TB
   classDef audio fill:#2e9e5b,color:#fff,stroke:#1f6e40;
 ```
 
-This is why a button "knows" a yellow is out: it never reads telemetry itself — it subscribes to an event the translator derived.
+A reaction driven by the bus never reads telemetry for its trigger: it subscribes to an event the translator derived, the way the Race Engineer hears `flag.yellow.raised`. The translator is not the only reader of iRacing telemetry, though. No action subscribes to the bus today: a key's flag overlay asks `deck-core`'s sim connection for the active flags on each tick, and many actions read telemetry and session info directly through `deck-iracing`'s `IRacingAction`. Part of the Race Engineer catalog also reads the raw snapshot through `getLatestTelemetry()`. Both direct reads are listed under *Seams & where the abstraction leaks* below.
 
 ## What the event bus provides
 
 `event-bus` is the contract every consumer codes against. It gives them three things:
 
 - **A typed, sim-agnostic event catalog** — the vocabulary of things that can happen (`flag.yellow.raised`, an overtake, a laps-of-fuel-left crossing, a pit-lane transition). It's a plain pub/sub package that imports no simulator SDK, so the vocabulary stays the same no matter which sim feeds it.
-- **Decoupled fan-out** — publishers and subscribers never reference each other. The translator publishes nearly everything; since #466 one deck action does too — pressing a Session Info key publishes `telemetryReadout.requested` with the value the key shows, for the Race Engineer to speak. The actions, the Race Engineer and — for the replay lap record — the plugin itself each subscribe independently. You can add a consumer without touching the producer, and — in principle — swap the producer without touching the consumers.
+- **Decoupled fan-out** — publishers and subscribers never reference each other. The translator publishes nearly everything; since #466 one deck action does too — pressing a Session Info key publishes `telemetryReadout.requested` with the value the key shows, for the Race Engineer to speak. The Race Engineer and — for the replay lap record — the plugin itself each subscribe independently; no action subscribes today. You can add a consumer without touching the producer, and — in principle — swap the producer without touching the consumers.
 - **A generic telemetry snapshot on the envelope** — alongside the semantic payload, each event carries the latest raw telemetry in a generic field. This is the sim-specific escape hatch: the Race Engineer's radar and spotter engines read it (via `getLatestTelemetry`) because their job needs the full per-car picture, not a single event. It is also the part of this seam that is **not** sim-agnostic yet — see the leaks below.
 
 The catalog spans around 60 events grouped into families — pit lane and stops, flags, start lights, rolling start, pit service, tires, car control, pit limiter, incidents and off-tracks, overtakes and position changes, laps, fuel, proximity radar, track wetness, damage, session lifecycle, and the replay lap record. Payloads range from empty (pure transitions like `pitLane.entered`) to rich records:
@@ -117,6 +117,7 @@ flowchart TB
   action["iracing-actions<br/>action handler"]:::core
   icon["assembleIcon()<br/>icon-composer"]:::core
   core(["deck-core<br/>IDeckPlatformAdapter — SEAM 2"]):::seam
+  dkir["deck-iracing<br/>getCommands()"]:::sim
   elg["Elgato"]:::adp
   mir["Mirabox"]:::adp
   ula["Ulanzi"]:::adp
@@ -134,17 +135,19 @@ flowchart TB
   ula --> dev
 
   press -->|"command"| action
-  action -->|"getCommands() — SDK broadcast"| ir
+  action -->|"getCommands() — SDK broadcast"| dkir
+  dkir --> ir
   action -->|"getKeyboard() — native inject"| ir
   action -->|"chat #macro"| ir
 
   classDef ext fill:#33404d,color:#fff,stroke:#1d262e;
+  classDef sim fill:#d9822b,color:#fff,stroke:#9c5e1f;
   classDef seam fill:#8e44ad,color:#fff,stroke:#5e2d73,stroke-width:3px;
   classDef core fill:#2d7dd2,color:#fff,stroke:#1f5793;
   classDef adp fill:#16a085,color:#fff,stroke:#0e6f5c;
 ```
 
-The render path is fully abstracted: `iracing-actions` hands a finished icon — an SVG data URI — to `deck-core`, and whichever adapter is loaded paints it on the real hardware. The icon crosses SEAM 2 unchanged, still as SVG; inside each adapter's context implementation (`setImage`, Elgato's `setFeedback`, and `setDialCanvas` for a dial's own screen), `deck-core`'s rasterizer service converts it to PNG in-plugin (`@iracedeck/rasterizer`, wrapping `@resvg/resvg-js`, via the render function the plugin injected at startup) and sends the device pixels rather than an SVG string, so every key and dial looks identical regardless of which host's own SVG engine it's running on. The command path has three mechanisms — the SDK broadcast (`getCommands()`) is preferred, native keyboard injection (`getKeyboard()`) covers what the SDK can't, and chat macros cover the rest.
+The render path is fully abstracted: `iracing-actions` hands a finished icon — an SVG data URI — to `deck-core`, and whichever adapter is loaded paints it on the real hardware. The icon crosses SEAM 2 unchanged, still as SVG; inside each adapter's context implementation (`setImage`, Elgato's `setFeedback`, and `setDialCanvas` for a dial's own screen), `deck-core`'s rasterizer service converts it to PNG in-plugin (`@iracedeck/rasterizer`, wrapping `@resvg/resvg-js`, via the render function the plugin injected at startup) and sends the device pixels rather than an SVG string, so every key and dial looks identical regardless of which host's own SVG engine it's running on. The command path has three mechanisms — the SDK broadcast (`getCommands()`, from `deck-iracing`, since commands are iRacing's vocabulary and not part of `deck-core`) is preferred, native keyboard injection (`getKeyboard()`) covers what the SDK can't, and chat macros cover the rest.
 
 ### The settings path (the settings window and the Property Inspectors)
 
@@ -191,7 +194,7 @@ Property Inspectors reach the same server through a bridge script the build inje
 
 ## The replay record
 
-Since #1162 and #1203 the plugin also keeps a small record of its own for each session it sees: the **replay session store** in `deck-core`, one JSON file per `SubSessionID` under `%LOCALAPPDATA%\iRaceDeck\Replay\<Stream Deck | Mirabox | Ulanzi>\`. It has two sections, the user's replay **markers** and the **lap record** — the replay frame at which every car started every lap, and each lap's time — and it is what lets a saved replay opened days later find both again, because the `.rpy` reports the same `SubSessionID` as the live session. It is fed from two directions. A subscriber the shared bootstrap wires onto the SDK controller opens the store's record whenever the session identity first appears or changes, live or in a replay, and closes it when the SDK disconnects; it knows nothing about what happens inside a session. What happens inside — a car crossing the line, a lap time being posted — is the translator's to detect like any other sim fact, so `sim-events-iracing`'s replay-laps diff publishes `replay.lapStarted` and `replay.lapTimed`, and the bootstrap's settings phase subscribes to them and hands them to the store, which drops an event for any session but the open one. The actions then read the store synchronously: Replay Markers adds, deletes and walks its markers, and Replay Control's Jump to Fastest Lap looks up the recorded frame before it falls back to searching the replay. Both read the current replay position through `iracing-sdk`'s `resolveReplayFrame`, the one place that knows how to turn telemetry into a frame. Writes are debounced and atomic like the settings store's, with the same synchronous flush on exit; an offline session, which has no `SubSessionID`, is kept in memory only, a corrupt file is moved aside before a fresh one is written, and a file that cannot be read at all is never written over. The folder is per ecosystem because each plugin process holds a whole copy of the session's record and writes it back whole, so two deck hosts running at once on one file would overwrite each other's changes; a merge-on-write was rejected because it would bring back markers the other host had deleted.
+Since #1162 and #1203 the plugin also keeps a small record of its own for each session it sees: the **replay session store** in `deck-core`, one JSON file per `SubSessionID` under `%LOCALAPPDATA%\iRaceDeck\Replay\<Stream Deck | Mirabox | Ulanzi>\`. It has two sections, the user's replay **markers** and the **lap record** — the replay frame at which every car started every lap, and each lap's time — and it is what lets a saved replay opened days later find both again, because the `.rpy` reports the same `SubSessionID` as the live session. It is fed from two directions. A subscriber from `deck-iracing` that the shared bootstrap wires onto the SDK controller opens the store's record whenever the session identity first appears or changes, live or in a replay, and closes it when the SDK disconnects; it knows nothing about what happens inside a session. What happens inside — a car crossing the line, a lap time being posted — is the translator's to detect like any other sim fact, so `sim-events-iracing`'s replay-laps diff publishes `replay.lapStarted` and `replay.lapTimed`, and the bootstrap's settings phase subscribes to them and hands them to the store, which drops an event for any session but the open one. The actions then read the store synchronously: Replay Markers adds, deletes and walks its markers, and Replay Control's Jump to Fastest Lap looks up the recorded frame before it falls back to searching the replay. Both read the current replay position through `iracing-sdk`'s `resolveReplayFrame`, the one place that knows how to turn telemetry into a frame. Writes are debounced and atomic like the settings store's, with the same synchronous flush on exit; an offline session, which has no `SubSessionID`, is kept in memory only, a corrupt file is moved aside before a fresh one is written, and a file that cannot be read at all is never written over. The folder is per ecosystem because each plugin process holds a whole copy of the session's record and writes it back whole, so two deck hosts running at once on one file would overwrite each other's changes; a merge-on-write was rejected because it would bring back markers the other host had deleted.
 
 ```mermaid
 flowchart LR
@@ -322,6 +325,7 @@ flowchart TB
   end
   subgraph brain["Core / translate / scenarios"]
     dc["deck-core"]:::core
+    dkir["deck-iracing"]:::sim
     sei["sim-events-iracing"]:::sim
     asc["audio-scenarios"]:::audio
   end
@@ -359,6 +363,7 @@ flowchart TB
   prt --> acts
   prt --> rew
   prt --> dc
+  prt --> dkir
   prt --> rast
   rew --> dc
   rew --> asc
@@ -370,6 +375,7 @@ flowchart TB
   aul --> dc
 
   acts --> dc
+  acts --> dkir
   pic -.-> dc
   acts --> eb
   acts --> icons
@@ -377,7 +383,8 @@ flowchart TB
   acts --> asc
 
   dc --> ic
-  dc --> sdk
+  dkir --> dc
+  dkir --> sdk
   sei --> eb
   sei --> sdk
   sei --> tdata
@@ -403,7 +410,7 @@ flowchart TB
   classDef plugin fill:#596775,color:#fff,stroke:#3c4651;
 ```
 
-To keep this readable, `@iracedeck/logger` (imported by nearly every package) and a few cross-cutting edges are omitted — `plugin-runtime` also pulls in the audio stack, `event-bus`, and `sim-events-iracing` directly; the Mirabox and Ulanzi shells import only their adapter and `plugin-runtime`, and at build time `plugin-build`, whose shared Rollup config (`createPluginRollupConfig`) is what imports `pi-components` for the Property Inspectors and `audio-assets` for the sounds. The Stream Deck plugin imports the same, plus what its `elgato-extension.ts` needs: `deck-core` for the profile switcher and the `_deckDevices` write — the one plugin → `deck-core` edge, drawn — and `@elgato/streamdeck` for the SDK object's type, which its shell also imports to build the adapter. The shape that matters: `deck-core` is the hub the device adapters share, and the foundation packages at the bottom depend on nothing internal. `rasterizer` is a foundation package too (it wraps `@resvg/resvg-js` and has no internal iRaceDeck dependencies), but note the arrow direction: **`plugin-runtime`** imports it and injects a render function into `deck-core`'s rasterizer service at startup (`initializeRasterizer(...)`, gated by the `pngRasterization` feature flag) — `deck-core` itself never imports `rasterizer`, so there's deliberately no `deck-core → rasterizer` edge here. `callout-script` (#1064) is the other foundation package with more than one importer above it: the voice-pack format — the script grammar and its parser, and since #1134 the `voice-pack.json` schema and the rules a pack is admitted by — with `zod` as its only dependency, imported by `audio-scenarios` (to compile a script against the contracts, and for `lint:pack` to judge a pack by the scanner's own rules), by `deck-core` (to admit a pack and its scripts while scanning), and — the dashed edge, a devDependency — by `audio-assets`, whose generator extracts the committed `voice/<id>/callouts.json` from the authored voice config and validates it with the same parser. It is a separate package precisely so those three never have to import each other: `deck-core` must not depend on the Race Engineer to validate a file. `callout-settings` (#1350) is a leaf for the same reason: it declares every Race Engineer callout opt-in once — each `calloutEnabled*` key, its checkbox label and its default, grouped by callout family — so `deck-core` builds the settings schema and the `isCalloutEnabled` lookup from it, `audio-scenarios` derives its callout ids from it, and `pi-components` renders the settings window's checkbox rows from it at build time (the dashed edge, a devDependency), without any of them importing another. `plugin-runtime` reads it too, for the opponent-flag gate it hands the translator — one of its omitted edges. The dashed `pi-components → deck-core` edge is the one import the Property Inspector's browser bundle makes from `deck-core` (#1277): the key map and default-binding parser in `key-binding-defaults.ts`, a dependency-free module published on its own subpath (`@iracedeck/deck-core/key-binding-defaults`), so the binding field and the plugin's startup binding seed share one parser without the browser bundle ever reaching the `deck-core` barrel and its Node code. The bundle's build refuses any other `deck-core` import.
+To keep this readable, `@iracedeck/logger` (imported by nearly every package) and a few cross-cutting edges are omitted — `plugin-runtime` also pulls in the audio stack, `event-bus`, and `sim-events-iracing` directly; the Mirabox and Ulanzi shells import only their adapter and `plugin-runtime`, and at build time `plugin-build`, whose shared Rollup config (`createPluginRollupConfig`) is what imports `pi-components` for the Property Inspectors and `audio-assets` for the sounds. The Stream Deck plugin imports the same, plus what its `elgato-extension.ts` needs: `deck-core` for the profile switcher and the `_deckDevices` write — the one plugin → `deck-core` edge, drawn — and `@elgato/streamdeck` for the SDK object's type, which its shell also imports to build the adapter. The shape that matters: `deck-core` is the hub the device adapters share, and the foundation packages at the bottom depend on nothing internal. Since #1351 `deck-core` imports no sim at all — there is no `deck-core → iracing-sdk` edge — and sees the simulator only through its `SimConnection` interface; `deck-iracing` sits on top of it, implements that interface over `iracing-sdk`, and is what `iracing-actions` and `plugin-runtime` import for the iRacing side of the deck layer. A second sim would add a sibling `deck-<sim>` rather than touch `deck-core`. `rasterizer` is a foundation package too (it wraps `@resvg/resvg-js` and has no internal iRaceDeck dependencies), but note the arrow direction: **`plugin-runtime`** imports it and injects a render function into `deck-core`'s rasterizer service at startup (`initializeRasterizer(...)`, gated by the `pngRasterization` feature flag) — `deck-core` itself never imports `rasterizer`, so there's deliberately no `deck-core → rasterizer` edge here. `callout-script` (#1064) is the other foundation package with more than one importer above it: the voice-pack format — the script grammar and its parser, and since #1134 the `voice-pack.json` schema and the rules a pack is admitted by — with `zod` as its only dependency, imported by `audio-scenarios` (to compile a script against the contracts, and for `lint:pack` to judge a pack by the scanner's own rules), by `deck-core` (to admit a pack and its scripts while scanning), and — the dashed edge, a devDependency — by `audio-assets`, whose generator extracts the committed `voice/<id>/callouts.json` from the authored voice config and validates it with the same parser. It is a separate package precisely so those three never have to import each other: `deck-core` must not depend on the Race Engineer to validate a file. `callout-settings` (#1350) is a leaf for the same reason: it declares every Race Engineer callout opt-in once — each `calloutEnabled*` key, its checkbox label and its default, grouped by callout family — so `deck-core` builds the settings schema and the `isCalloutEnabled` lookup from it, `audio-scenarios` derives its callout ids from it, and `pi-components` renders the settings window's checkbox rows from it at build time (the dashed edge, a devDependency), without any of them importing another. `plugin-runtime` reads it too, for the opponent-flag gate it hands the translator — one of its omitted edges. The dashed `pi-components → deck-core` edge is the one import the Property Inspector's browser bundle makes from `deck-core` (#1277): the key map and default-binding parser in `key-binding-defaults.ts`, a dependency-free module published on its own subpath (`@iracedeck/deck-core/key-binding-defaults`), so the binding field and the plugin's startup binding seed share one parser without the browser bundle ever reaching the `deck-core` barrel and its Node code. The bundle's build refuses any other `deck-core` import.
 
 ## Seams & where the abstraction leaks
 
@@ -414,8 +421,8 @@ The system has exactly two intended seams, and naming what each one buys you is 
 
 Honest architecture documents its leaks, too. These are the places where the clean story above doesn't fully hold today:
 
-- **Inbound is abstracted; outbound is not.** Telemetry is funneled through the sim-agnostic bus, but the command path is still iRacing-shaped: `getCommands()` returns iRacing SDK commands, and `deck-core` imports `iracing-sdk` directly. A second sim would need its own command vocabulary, which has no seam yet.
-- **The shared layer isn't purely sim-agnostic.** `iracing-actions` imports `iracing-sdk` and `sim-events-iracing` directly — not only `deck-core` + `event-bus`. So "everything right of SEAM 1 is sim-agnostic" is an aspiration the action layer doesn't fully meet.
+- **Inbound is abstracted; outbound is not.** Telemetry is funneled through the sim-agnostic bus, but the command path is still iRacing-shaped: `deck-iracing`'s `getCommands()` returns iRacing SDK commands. A second sim would need its own command vocabulary, which has no seam yet (#714). The deck layer itself is no longer part of this leak: since #1351 `deck-core` imports no `iracing-sdk` and sees a sim only through `SimConnection` — connected or not, a per-tick signal, the active flags and title templates — and a lint rule on its sources refuses any import of an iRacing package.
+- **The shared layer reads iRacing directly.** Measured for #1351: 27 action files read the SDK controller directly — 26 action classes extend `deck-iracing`'s `IRacingAction` for its typed `sdkController` to read telemetry and session info, and Race Admin's command helper takes the controller as a parameter — and 15 action files call `getCommands()`; the package also imports `iracing-sdk` and `sim-events-iracing` itself. On the Race Engineer side, 15 `audio-scenarios` catalog files import `iracing-sdk` or `sim-events-iracing`, and 8 of them read raw iRacing telemetry through `getLatestTelemetry()`. So "everything right of SEAM 1 is sim-agnostic" is an aspiration both consumers fall short of; `IRacingAction` at least names the action half, so it is one search away. Porting these reads is #714's read model.
 - **Device differences leak around the adapter.** Only a Stream Deck+ dial reports touch, long press and push + turn — a Mirabox knob has turn and press alone — so that extended gesture *set* is handled at *build time* via a platform [feature flag](/docs/development/feature-flags/) (`dialExtendedGestures`), not expressed through `IDeckPlatformAdapter` — a real device difference living outside the device seam. The knob *press* is normalised inside the Mirabox adapter instead: the host never reports a knob's release, so the adapter delivers every press as an immediate `dialDown` + `dialUp` pair and the actions see an ordinary press (#1013). The dial *display* is not: since #1013 it is on the seam through `IDeckActionContext.dialCanvas()` / `setDialCanvas()`, where each adapter reports a `DialCanvasProfile` for its dial screen (the 200×100 Stream Deck+ strip slot, the 176×112 screen above a Mirabox knob, or none on Ulanzi) and the actions pick a drawing by the profile, never by the platform. (A previous device difference here — divergent SVG rendering capability between hosts' own engines — was eliminated rather than papered over: since issue #642, icons still cross SEAM 2 as SVG, but each adapter's context implementation converts them to PNG in-plugin via `deck-core`'s rasterizer service before the host send, so no host-specific SVG engine is in the picture anymore.)
 - **Ulanzi reuses Elgato's plugin and action UUIDs verbatim.** A pragmatic coupling: UlanziStudio doesn't validate the UUID prefix, so reusing the canonical IDs avoided a parallel identity scheme.
 - **`onHostReady` sits ON the interface, but optional.** Only the two WebSocket adapters can report the moment their socket opens; Elgato's SDK queues a send until the connection exists, so it declares nothing at all. Optional rather than required so that absence is a statement — "there is nothing to wait for" — instead of a stub that satisfies the type while never honouring the contract. It is on the seam because `deck-core` must consume it, and optional because two of three adapters have nothing to say.

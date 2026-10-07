@@ -113,6 +113,7 @@ packages/
   deck-adapter-mirabox/    Mirabox VSD Craft adapter (WebSocket protocol to deck-core)
   deck-adapter-ulanzi/     Ulanzi Deck adapter (UlanziStudio WebSocket protocol to deck-core)
   deck-core/               Platform-agnostic base classes, types, and shared utilities
+  deck-iracing/            iRacing's side of the deck layer (sim connection, IRacingAction, SDK singleton)
   callout-settings/        Race Engineer callout opt-in registry (zero dependencies)
   icon-composer/           Standalone SVG icon assembly (zero dependencies)
   icons/                   SVG icon templates (Mustache)
@@ -132,7 +133,8 @@ packages/
 | Package                           | Role                                                                                      |
 | --------------------------------- | ----------------------------------------------------------------------------------------- |
 | `@iracedeck/iracing-actions`              | All 32 action implementations, platform-agnostic                                          |
-| `@iracedeck/deck-core`            | Base classes, types, keyboard service, icon templates, global settings, settings window   |
+| `@iracedeck/deck-core`            | Base classes, types, keyboard service, icon templates, global settings, settings window; sim-neutral through `SimConnection` |
+| `@iracedeck/deck-iracing`         | iRacing's side of the deck layer: `IRacingSimConnection`, the `IRacingAction` base, the SDK singleton (`getCommands()`) and the iRacing helpers |
 | `@iracedeck/callout-settings`     | Every Race Engineer callout opt-in, declared once: the keys, labels and defaults the settings schema, the callout gates and the settings window derive from |
 | `@iracedeck/deck-adapter-elgato`  | Bridges the Elgato SDK to deck-core's `IDeckPlatformAdapter` interface                    |
 | `@iracedeck/deck-adapter-mirabox` | Bridges the Mirabox VSD Craft WebSocket protocol to deck-core                             |
@@ -163,14 +165,15 @@ Plugin start (each plugin's plugin.ts is a shell: build the adapter, call startP
 Button press (Stream Deck, Mirabox, or Ulanzi Deck)
   -> adapter (deck-adapter-elgato / deck-adapter-mirabox / deck-adapter-ulanzi)
     -> actions (platform-agnostic action handler)
-      -> deck-core (keyboard service / SDK commands)
+      -> deck-core (keyboard service) or deck-iracing (SDK commands)
         -> iracing-sdk (broadcast command) or iracing-native (scan-code keystroke)
           -> iRacing
 
 iRacing telemetry (shared memory)
   -> iracing-native (reads memory-mapped file)
-    -> iracing-sdk (parses telemetry buffer, 4 Hz update loop)
-      -> deck-core (notifies subscribers)
+    -> iracing-sdk (parses telemetry buffer, 10 ms poll deduped on SessionTick)
+      -> deck-iracing (IRacingSimConnection: connection, flags, title templates for deck-core;
+                       IRacingAction: telemetry and session info for actions that read them)
         -> actions (updates button display via adapter)
 ```
 
@@ -242,7 +245,7 @@ Contributions are welcome! Here's how to get started:
 
 Actions live in `packages/iracing-actions/src/actions/<action-name>/`, one folder per action. Each action needs:
 
-1. `<action-name>.ts` — action class extending `ConnectionStateAwareAction` from `@iracedeck/deck-core`
+1. `<action-name>.ts` — action class extending `ConnectionStateAwareAction` from `@iracedeck/deck-core` (or `IRacingAction` from `@iracedeck/deck-iracing` when it reads iRacing telemetry directly)
 2. `<action-name>.test.ts` — unit tests
 3. `<action-name>.ejs` — Property Inspector template (compiled to `ui/<action-name>.html`)
 4. `icon.svg` + `key.svg` — static category and key icons (copied into each plugin's `imgs/actions/<name>/` at build time)

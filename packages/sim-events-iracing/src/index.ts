@@ -3,8 +3,11 @@
  *
  * iRacing telemetry translator. Subscribes to `sdkController` ticks,
  * diffs against the previous state, and publishes semantic events on
- * `@iracedeck/event-bus`. The only package that imports
- * `@iracedeck/iracing-sdk` for telemetry consumption.
+ * `@iracedeck/event-bus`. Not the only reader of iRacing telemetry (#1351):
+ * actions read the SDK controller through `@iracedeck/deck-iracing`'s
+ * `IRacingAction`, and part of the `audio-scenarios` catalog reads raw
+ * telemetry through `getLatestTelemetry()` below. The Architecture page's
+ * "Seams & where the abstraction leaks" lists them.
  */
 export {
   _resetSimEventsIracing,
