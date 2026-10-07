@@ -22,7 +22,7 @@
 import { BaseAction } from "./base-action.js";
 import { getBindingDispatcher } from "./binding-dispatcher.js";
 import { onGlobalSettingsChange } from "./global-settings.js";
-import { getSimConnection, isSimConnectionInitialized } from "./sim-connection.js";
+import { getSimConnection } from "./sim-connection.js";
 import { onSimHubReachabilityChange } from "./simhub-service.js";
 import type { IDeckWillAppearEvent, IDeckWillDisappearEvent } from "./types.js";
 
@@ -63,19 +63,11 @@ export abstract class ConnectionStateAwareAction<T = Record<string, unknown>> ex
   /**
    * Subscribe to the sim connection for automatic readiness tracking.
    * Actions that override onWillAppear MUST call super.onWillAppear(ev).
-   *
-   * The plugin initialises the sim connection before any action appears.
-   * Should that order ever break, the subscription below lands on the null
-   * connection and is lost, so say so rather than fail silently.
+   * A key that appears before the sim connection exists is queued and
+   * subscribed when the connection is initialised.
    */
   override async onWillAppear(ev: IDeckWillAppearEvent<T>): Promise<void> {
     await super.onWillAppear(ev);
-
-    if (!isSimConnectionInitialized()) {
-      this.logger.warn(
-        `No sim connection yet: readiness tracking for ${ev.action.id} will not update until the sim connection exists and the key reappears`,
-      );
-    }
 
     const subId = READINESS_SUB_PREFIX + ev.action.id;
     getSimConnection().subscribe(subId, () => {

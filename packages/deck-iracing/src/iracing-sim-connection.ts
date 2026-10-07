@@ -28,12 +28,12 @@ export const EMPTY_TEMPLATE_CONTEXT: TemplateContext = Object.freeze({
  */
 export class IRacingSimConnection implements SimConnection {
   /**
-   * The telemetry the latest tick carried (null for a disconnected tick);
-   * undefined until the first tick. `activeFlags()` reads it so the flag
-   * overlay costs no telemetry read of its own: `getCurrentTelemetry()` is a
-   * fresh full read of every variable, and the tick already did one.
+   * The telemetry the latest tick carried; null before the first tick and for
+   * a disconnected one. Connection-wide, since every subscription sees the
+   * same tick. `activeFlags()` reads it so the flag overlay costs no telemetry
+   * read of its own: the tick already did one.
    */
-  private tickTelemetry: TelemetryData | null | undefined = undefined;
+  private tickTelemetry: TelemetryData | null = null;
 
   constructor(private readonly controller: SDKController) {}
 
@@ -52,13 +52,15 @@ export class IRacingSimConnection implements SimConnection {
     this.controller.unsubscribe(id);
   }
 
+  /**
+   * The flags of the latest tick's telemetry; empty while disconnected and
+   * before any tick has been seen. Meant to be read from inside a tick, where
+   * the latest tick is the current one.
+   */
   activeFlags(): readonly OverlayFlag[] {
-    if (!this.controller.getConnectionStatus()) return [];
+    if (!this.tickTelemetry || !this.controller.getConnectionStatus()) return [];
 
-    // Before the first tick there is nothing recorded: read once directly.
-    const telemetry = this.tickTelemetry === undefined ? this.controller.getCurrentTelemetry() : this.tickTelemetry;
-
-    return resolveAllActiveFlags(telemetry?.SessionFlags);
+    return resolveAllActiveFlags(this.tickTelemetry.SessionFlags);
   }
 
   resolveTitleTemplate(text: string): string {

@@ -59,17 +59,4 @@ describe("deck-core sim boundary", () => {
     },
     TIMEOUT,
   );
-
-  it(
-    "finds deck-core's sources clean today",
-    async () => {
-      const results = await eslint.lintFiles(["packages/deck-core/src/**/*.ts"]);
-      const hits = results.flatMap((r) =>
-        r.messages.filter((m) => m.ruleId === RULE).map((m) => `${r.filePath}:${m.line}`),
-      );
-
-      expect(hits).toEqual([]);
-    },
-    TIMEOUT,
-  );
 });

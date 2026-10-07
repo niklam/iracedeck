@@ -12,12 +12,7 @@ import { getGlobalSettings, onGlobalSettingsChange } from "./global-settings.js"
 import { IconUpdateThrottle } from "./icon-update-throttle.js";
 import { applyInactiveOverlay, svgToDataUri } from "./overlay-utils.js";
 import { getPluginVersion, isPluginConfigInitialized } from "./plugin-config.js";
-import {
-  getSimConnection,
-  isSimConnectionInitialized,
-  type OverlayFlag,
-  type SimConnection,
-} from "./sim-connection.js";
+import { getSimConnection, type OverlayFlag, type SimConnection } from "./sim-connection.js";
 import { resolveTitleTemplate, titleHasTemplate } from "./title-template.js";
 import type {
   IDeckActionContext,
@@ -457,24 +452,19 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
 
   /**
    * Ensure a single sim-connection subscription exists for the flag overlay.
-   * Deferred, not dropped, while no sim connection is initialised: the next
-   * context that turns the overlay on tries again.
+   * Made before the sim connection exists, it is queued and replayed onto the
+   * connection when it is initialised.
    */
   private ensureFlagTelemetrySubscription(): void {
     if (this.flagTelemetrySubId) return;
 
-    if (!isSimConnectionInitialized()) {
-      this.logger.debug("Flag overlay: no sim connection yet, subscription deferred");
-
-      return;
-    }
-
     try {
-      const connection = getSimConnection();
       const subId = `${BaseAction.FLAG_SUBSCRIPTION_PREFIX}${++BaseAction.flagSubscriptionCounter}`;
 
-      connection.subscribe(subId, (isConnected) => {
-        this.onFlagUpdate(isConnected ? this.readActiveFlags(connection) : []);
+      getSimConnection().subscribe(subId, (isConnected) => {
+        const flags = isConnected ? this.readActiveFlags(getSimConnection()) : [];
+
+        if (flags !== null) this.onFlagUpdate(flags);
       });
 
       this.flagTelemetrySubId = subId;
@@ -484,14 +474,19 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
     }
   }
 
-  /** The connection's active flags; a connection that throws counts as no flags. */
-  private readActiveFlags(connection: SimConnection): readonly OverlayFlag[] {
+  /**
+   * The connection's active flags, or `null` when reading them throws. A throw
+   * is not a "flags cleared" transition: the caller skips the tick and keeps
+   * the previous state, so a transient failure neither flickers the overlay
+   * nor re-arms a flash whose duration already ended.
+   */
+  private readActiveFlags(connection: SimConnection): readonly OverlayFlag[] | null {
     try {
       return connection.activeFlags();
     } catch (err) {
       this.logger.debug(`Flag overlay: reading active flags failed: ${err}`);
 
-      return [];
+      return null;
     }
   }
 
@@ -708,16 +703,10 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
 
   /**
    * Ensure a single sim-connection subscription exists for title templates.
-   * Deferred while no sim connection is initialised, like the flag overlay's.
+   * Queued before the sim connection exists, like the flag overlay's.
    */
   private ensureTitleTemplateSubscription(): void {
     if (this.titleTemplateSubId) return;
-
-    if (!isSimConnectionInitialized()) {
-      this.logger.debug("Title template: no sim connection yet, subscription deferred");
-
-      return;
-    }
 
     try {
       const subId = `${BaseAction.TITLE_TEMPLATE_SUBSCRIPTION_PREFIX}${++BaseAction.titleTemplateSubscriptionCounter}`;

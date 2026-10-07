@@ -2,13 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ConnectionStateAwareAction } from "./connection-state-aware-action.js";
 import { createFakeSimConnection, type FakeSimConnection } from "./fake-sim-connection.js";
+import { _resetSimConnection, initializeSimConnection } from "./sim-connection.js";
 
-const sim = vi.hoisted(() => ({ fake: null as FakeSimConnection | null, initialized: true }));
-
-vi.mock("./sim-connection.js", () => ({
-  getSimConnection: () => sim.fake!.connection,
-  isSimConnectionInitialized: () => sim.initialized,
-}));
+// The real sim-connection singleton, initialised with a fake per test, so the
+// pre-initialisation queue and its replay are exercised as they run in the plugin.
+const sim: { fake: FakeSimConnection | null } = { fake: null };
 
 const {
   mockTap,
@@ -128,8 +126,9 @@ describe("ConnectionStateAwareAction", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    _resetSimConnection();
     sim.fake = createFakeSimConnection();
-    sim.initialized = true;
+    initializeSimConnection(sim.fake.connection);
     action = new TestAction();
   });
 
@@ -411,28 +410,26 @@ describe("ConnectionStateAwareAction", () => {
       expect(getSetActive(action)).toHaveBeenLastCalledWith(false);
     });
 
-    it("warns once when it appears before a sim connection exists", async () => {
+    it("re-evaluates readiness on a tick after init when the key appeared before the sim connection existed", async () => {
       const ev = {
         action: { id: "ctx-1", setTitle: vi.fn(), setImage: vi.fn(), isKey: vi.fn().mockReturnValue(true) },
         payload: { settings: {} },
       };
-      sim.initialized = false;
+      _resetSimConnection();
 
       await action.onWillAppear(ev as never);
+      expect(sim.fake!.subscribers.has("_readiness:ctx-1")).toBe(false);
 
-      expect(getLogger(action).warn).toHaveBeenCalledOnce();
-      expect(getLogger(action).warn).toHaveBeenCalledWith(expect.stringContaining("readiness tracking for ctx-1"));
-    });
+      initializeSimConnection(sim.fake!.connection);
+      expect(sim.fake!.subscribers.has("_readiness:ctx-1")).toBe(true);
 
-    it("does not warn when the sim connection exists", async () => {
-      const ev = {
-        action: { id: "ctx-1", setTitle: vi.fn(), setImage: vi.fn(), isKey: vi.fn().mockReturnValue(true) },
-        payload: { settings: {} },
-      };
+      sim.fake!.state.connected = true;
+      sim.fake!.tick();
+      expect(getSetActive(action)).toHaveBeenLastCalledWith(true);
 
-      await action.onWillAppear(ev as never);
-
-      expect(getLogger(action).warn).not.toHaveBeenCalled();
+      sim.fake!.state.connected = false;
+      sim.fake!.tick();
+      expect(getSetActive(action)).toHaveBeenLastCalledWith(false);
     });
   });
 

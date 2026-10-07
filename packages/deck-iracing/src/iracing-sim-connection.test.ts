@@ -18,6 +18,12 @@ function fakeController(overrides: Partial<Record<keyof SDKController, unknown>>
   } as unknown as SDKController;
 }
 
+/** Delivers one controller tick carrying `telemetry` to `connection`'s subscription. */
+function tick(controller: SDKController, telemetry: unknown, isConnected = true): void {
+  const [, callback] = vi.mocked(controller.subscribe).mock.calls[0];
+  callback(telemetry as never, isConnected);
+}
+
 describe("IRacingSimConnection", () => {
   it("reports the controller's connection status", () => {
     const controller = fakeController({ getConnectionStatus: vi.fn(() => false) });
@@ -46,8 +52,12 @@ describe("IRacingSimConnection", () => {
   });
 
   it("maps SessionFlags to overlay flags", () => {
-    const controller = fakeController({ getCurrentTelemetry: vi.fn(() => ({ SessionFlags: YELLOW })) });
-    const flags = new IRacingSimConnection(controller).activeFlags();
+    const controller = fakeController();
+    const connection = new IRacingSimConnection(controller);
+
+    connection.subscribe("id-1", vi.fn());
+    tick(controller, { SessionFlags: YELLOW });
+    const flags = connection.activeFlags();
 
     expect(flags.map((f) => f.label)).toContain("YELLOW");
     expect(flags[0]).toEqual(
@@ -55,13 +65,15 @@ describe("IRacingSimConnection", () => {
     );
   });
 
-  it("returns no flags while disconnected even with stale telemetry", () => {
-    const controller = fakeController({
-      getConnectionStatus: vi.fn(() => false),
-      getCurrentTelemetry: vi.fn(() => ({ SessionFlags: YELLOW | GREEN })),
-    });
+  it("returns no flags after a disconnected tick", () => {
+    const controller = fakeController();
+    const connection = new IRacingSimConnection(controller);
 
-    expect(new IRacingSimConnection(controller).activeFlags()).toEqual([]);
+    connection.subscribe("id-1", vi.fn());
+    tick(controller, { SessionFlags: YELLOW | GREEN });
+    tick(controller, { SessionFlags: YELLOW | GREEN }, false);
+
+    expect(connection.activeFlags()).toEqual([]);
   });
 
   it("returns no flags while disconnected even after a tick carried flags", () => {
@@ -93,17 +105,21 @@ describe("IRacingSimConnection", () => {
     expect(controller.getCurrentTelemetry).not.toHaveBeenCalled();
   });
 
-  it("reads the current telemetry when no tick has been seen yet", () => {
+  it("returns no flags before any tick, without reading telemetry", () => {
     const controller = fakeController({ getCurrentTelemetry: vi.fn(() => ({ SessionFlags: YELLOW })) });
 
-    expect(new IRacingSimConnection(controller).activeFlags().map((f) => f.label)).toContain("YELLOW");
-    expect(controller.getCurrentTelemetry).toHaveBeenCalledOnce();
+    expect(new IRacingSimConnection(controller).activeFlags()).toEqual([]);
+    expect(controller.getCurrentTelemetry).not.toHaveBeenCalled();
   });
 
-  it("returns no flags when there is no telemetry", () => {
-    const controller = fakeController({ getCurrentTelemetry: vi.fn(() => null) });
+  it("returns no flags when the tick carried no telemetry", () => {
+    const controller = fakeController();
+    const connection = new IRacingSimConnection(controller);
 
-    expect(new IRacingSimConnection(controller).activeFlags()).toEqual([]);
+    connection.subscribe("id-1", vi.fn());
+    tick(controller, null);
+
+    expect(connection.activeFlags()).toEqual([]);
   });
 
   describe("resolveTitleTemplate", () => {

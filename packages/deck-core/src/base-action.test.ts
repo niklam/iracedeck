@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BaseAction } from "./base-action.js";
 import { createFakeSimConnection, type FakeSimConnection } from "./fake-sim-connection.js";
-import type { OverlayFlag } from "./sim-connection.js";
+import { _resetSimConnection, initializeSimConnection, type OverlayFlag } from "./sim-connection.js";
 import type {
   IDeckActionContext,
   IDeckDidReceiveSettingsEvent,
@@ -16,12 +16,9 @@ import type {
   IDeckWillDisappearEvent,
 } from "./types.js";
 
-const sim = vi.hoisted(() => ({ fake: null as FakeSimConnection | null, initialized: true }));
-
-vi.mock("./sim-connection.js", () => ({
-  getSimConnection: () => sim.fake!.connection,
-  isSimConnectionInitialized: () => sim.initialized,
-}));
+// The real sim-connection singleton, initialised with a fake per test, so the
+// pre-initialisation queue and its replay are exercised as they run in the plugin.
+const sim: { fake: FakeSimConnection | null } = { fake: null };
 
 const { mockGetGlobalSettings } = vi.hoisted(() => ({
   mockGetGlobalSettings: vi.fn<() => Record<string, unknown>>(() => ({})),
@@ -41,8 +38,9 @@ const FLAG_YELLOW: OverlayFlag = { label: "YELLOW", color: "#f1c40f", textColor:
 const FLAG_BLUE: OverlayFlag = { label: "BLUE", color: "#3498db", textColor: "#ffffff", pulse: false };
 
 beforeEach(() => {
+  _resetSimConnection();
   sim.fake = createFakeSimConnection();
-  sim.initialized = true;
+  initializeSimConnection(sim.fake.connection);
 });
 
 class TestAction extends BaseAction {
@@ -240,33 +238,47 @@ describe("BaseAction flag overlay sim connection (#1351)", () => {
     vi.useRealTimers();
   });
 
-  it("defers the flag subscription until initialised", () => {
+  it("flashes every context that appeared before the sim connection existed, once it is initialised", () => {
+    _resetSimConnection();
     const action = new TestAction();
+    const contexts = ["ctx-1", "ctx-2", "ctx-3"].map((id) => ({ id, ...appearWithFlagOverlay(action, id) }));
 
-    sim.initialized = false;
-    appearWithFlagOverlay(action, "ctx-1");
     expect(sim.fake!.subscribers.size).toBe(0);
 
-    sim.initialized = true;
-    appearWithFlagOverlay(action, "ctx-2");
+    initializeSimConnection(sim.fake!.connection);
     expect(sim.fake!.subscribers.size).toBe(1);
+
+    sim.fake!.state.flags = [FLAG_YELLOW];
+    sim.fake!.tick();
+
+    for (const { id, setImageSpy } of contexts) {
+      expect(action.getOverlayActive().has(id)).toBe(true);
+      // The last image pushed is the flag overlay, not the key's own "<svg/>".
+      expect(setImageSpy.mock.lastCall?.[0]).not.toBe("<svg/>");
+    }
   });
 
-  it("treats a throwing activeFlags as no flags", () => {
+  it("skips a tick whose activeFlags throws, keeping the previous flag state", () => {
     const ctx = createTestContext();
 
     ctx.driveFlags([FLAG_YELLOW]);
-    expect(ctx.action.getOverlayActive().has("ctx-1")).toBe(true);
+    vi.advanceTimersByTime(5000); // the duration setting ends the flash
+    expect(ctx.action.getOverlayActive().has("ctx-1")).toBe(false);
 
-    const activeFlags = vi.spyOn(sim.fake!.connection, "activeFlags").mockImplementation(() => {
+    const callsBeforeThrow = ctx.setImageSpy.mock.calls.length;
+    const activeFlags = vi.spyOn(sim.fake!.connection, "activeFlags").mockImplementationOnce(() => {
       throw new Error("boom");
     });
 
     expect(() => sim.fake!.tick()).not.toThrow();
     expect(activeFlags).toHaveBeenCalled();
-    // The flash stopped and the key's own image was restored, not a flag's.
+    // The throwing tick is skipped: no image is pushed.
+    expect(ctx.setImageSpy.mock.calls.length).toBe(callsBeforeThrow);
+
+    // The next good tick with the same flag does not restart the ended flash.
+    ctx.driveFlags([FLAG_YELLOW]);
     expect(ctx.action.getOverlayActive().has("ctx-1")).toBe(false);
-    expect(ctx.setImageSpy).toHaveBeenLastCalledWith("<svg/>");
+    expect(ctx.setImageSpy.mock.calls.length).toBe(callsBeforeThrow);
   });
 
   it("clears the overlay when a tick reports the sim disconnected", () => {
@@ -522,13 +534,12 @@ describe("BaseAction title template live updates (issue #899)", () => {
     expect(regenerate).toHaveBeenCalledTimes(2);
   });
 
-  it("defers the title subscription until initialised", () => {
-    sim.initialized = false;
+  it("subscribes a title tracked before the sim connection existed once it is initialised", () => {
+    _resetSimConnection();
     createTitleContext("{{self.car_number}}");
     expect(titleSubscriber()).toBeUndefined();
 
-    sim.initialized = true;
-    createTitleContext("{{self.car_number}}");
+    initializeSimConnection(sim.fake!.connection);
     expect(titleSubscriber()).toBeDefined();
   });
 

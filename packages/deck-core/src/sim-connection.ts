@@ -21,45 +21,77 @@ export interface SimConnection {
   /** Called once per sim tick, and on connection changes, with the current connection state. */
   subscribe(id: string, onTick: (isConnected: boolean) => void): void;
   unsubscribe(id: string): void;
-  /** Active flags in priority order; empty when none are out or the sim is disconnected. */
+  /**
+   * Active flags in priority order, as of the latest tick; empty when none are
+   * out, the sim is disconnected, or no tick has been seen yet.
+   */
   activeFlags(): readonly OverlayFlag[];
-  /** Resolves a user-entered title template; disconnected, variables render empty and parse errors stay verbatim. */
+  /** Resolves a user-entered title template; a disconnected sim renders variables empty and leaves parse errors verbatim. */
   resolveTitleTemplate(text: string): string;
 }
 
-/**
- * Served before a sim is initialised: never connected, no flags, and title
- * text returned verbatim (there is no template engine without a sim).
- * Subscribing to it does nothing, so callers that must not lose a
- * subscription check {@link isSimConnectionInitialized} first.
- */
-const NULL_SIM_CONNECTION: SimConnection = Object.freeze({
-  isConnected: () => false,
-  subscribe: () => undefined,
-  unsubscribe: () => undefined,
-  activeFlags: () => [],
-  resolveTitleTemplate: (text: string) => text,
-});
-
 let current: SimConnection | null = null;
 
+/** Subscriptions made before a sim connection exists, replayed onto it at initialisation (insertion order). */
+const pendingSubscriptions = new Map<string, (isConnected: boolean) => void>();
+
+/**
+ * Served before a sim is initialised: never connected, no flags, and — with no
+ * sim connection yet, and so no template engine — title text returned as the
+ * user typed it. A subscription made on it is queued, not lost:
+ * {@link initializeSimConnection} replays every queued one onto the real
+ * connection. Once a connection is set, every method delegates to it, so a
+ * reference obtained before initialisation and kept keeps working.
+ */
+const PENDING_SIM_CONNECTION: SimConnection = Object.freeze({
+  isConnected: () => current?.isConnected() ?? false,
+  subscribe: (id: string, onTick: (isConnected: boolean) => void) => {
+    if (current) {
+      current.subscribe(id, onTick);
+    } else {
+      pendingSubscriptions.set(id, onTick);
+    }
+  },
+  unsubscribe: (id: string) => {
+    if (current) {
+      current.unsubscribe(id);
+    } else {
+      pendingSubscriptions.delete(id);
+    }
+  },
+  activeFlags: () => current?.activeFlags() ?? [],
+  resolveTitleTemplate: (text: string) => (current ? current.resolveTitleTemplate(text) : text),
+});
+
+/**
+ * Installs the sim connection, then subscribes every subscription queued
+ * before it existed onto it, in the order they were made.
+ */
 export function initializeSimConnection(connection: SimConnection): void {
   if (current) {
     throw new Error("Sim connection already initialized. initializeSimConnection() should only be called once.");
   }
 
   current = connection;
+
+  const queued = [...pendingSubscriptions];
+  pendingSubscriptions.clear();
+
+  for (const [id, onTick] of queued) {
+    connection.subscribe(id, onTick);
+  }
 }
 
 export function getSimConnection(): SimConnection {
-  return current ?? NULL_SIM_CONNECTION;
+  return current ?? PENDING_SIM_CONNECTION;
 }
 
 export function isSimConnectionInitialized(): boolean {
   return current !== null;
 }
 
-/** @internal For tests. */
+/** @internal For tests: forgets the connection and every queued subscription. */
 export function _resetSimConnection(): void {
   current = null;
+  pendingSubscriptions.clear();
 }

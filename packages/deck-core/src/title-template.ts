@@ -22,8 +22,9 @@ export function titleHasTemplate(text: string | undefined): boolean {
 /**
  * Resolves {{…}} placeholders in user-entered title text through the sim
  * connection (#899, #1351). Text without `{{` is returned without consulting
- * the connection, and a connection that throws leaves the text as the user
- * typed it.
+ * the connection. With no sim connection yet, and if the connection throws,
+ * the text is returned as the user typed it — there is no template engine
+ * without a sim.
  *
  * Never throws: `BaseAction`'s title tick runs inside the sim's subscriber
  * fan-out, where a throw would skip every later subscriber, every frame.
