@@ -24,4 +24,4 @@ Something that touches timers, `AbortController` or I/O belongs in `@iracedeck/f
 
 ## Who imports it
 
-deck-core, plugin-runtime and iracing-actions import it directly, and `plugin-build` reads `SETTINGS_WINDOW_HTML` from it at build time to pick out the page that gets the settings-window bridge. Browser code does too: `pi-components` bundles it into the Property Inspector, and its Rollup guard admits exactly two workspace packages, each by its bare name — this one and `@iracedeck/fetch-utils` — and refuses deck-core and any subpath of either.
+settings, deck-core, plugin-runtime and iracing-actions import it directly, and `plugin-build` reads `SETTINGS_WINDOW_HTML` from it at build time to pick out the page that gets the settings-window bridge. Browser code does too: `pi-components` bundles it into the Property Inspector, and its Rollup guard admits exactly two workspace packages, each by its bare name — this one and `@iracedeck/fetch-utils` — and refuses every other `@iracedeck/` import, any subpath of either included.
