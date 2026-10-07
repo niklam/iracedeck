@@ -5,7 +5,7 @@
  * These are extracted from the web component to allow for unit testing
  * in a Node.js environment (without DOM dependencies).
  */
-import { parseDefaultKeyBinding } from "@iracedeck/deck-core/key-binding-defaults";
+import { parseDefaultKeyBinding } from "@iracedeck/app-constants";
 
 import { KEY_DISPLAY_NAMES, type Modifier, MODIFIERS } from "./key-maps.js";
 

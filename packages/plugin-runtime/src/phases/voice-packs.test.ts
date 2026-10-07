@@ -1,4 +1,4 @@
-import { VOICE_LABELS_KEY, VOICE_PACK_STATUS_KEY, VOICE_PACKS_KEY } from "@iracedeck/deck-core";
+import { VOICE_LABELS_KEY, VOICE_PACK_STATUS_KEY, VOICE_PACKS_KEY } from "@iracedeck/app-constants";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { cleanupTempBinDirs, createHost } from "../test-support/fake-host.js";

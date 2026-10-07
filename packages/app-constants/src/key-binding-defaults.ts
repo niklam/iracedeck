@@ -15,14 +15,14 @@
  * value without it would type a different key on a non-US layout than one the
  * field saved.
  *
- * WHY A SUBPATH. pi-components compiles the `ird-*` components into a browser
- * bundle, which must never pull in the deck-core barrel (it reaches Node
- * built-ins and the native addons). So this module is also published on its
- * own as `@iracedeck/deck-core/key-binding-defaults` (deck-core `package.json`
- * `exports`, pointing at the built `dist/key-binding-defaults.js`), and
- * pi-components imports only that. Keep it free of imports — types included —
- * so the subpath stays a leaf: an import added here is an import added to
- * every Property Inspector.
+ * WHY IN APP-CONSTANTS. pi-components compiles the `ird-*` components into a
+ * browser bundle, which must never pull in the deck-core barrel (it reaches
+ * Node built-ins and the native addons). This module was once published as
+ * the `@iracedeck/deck-core/key-binding-defaults` subpath for that reason; it
+ * now lives in `@iracedeck/app-constants`, the dependency-free leaf the browser
+ * bundle may import (spec #1351). Keep it free of imports — types included —
+ * so the leaf stays one: an import added here is an import added to every
+ * Property Inspector, and the package's admission test refuses it.
  */
 
 /**

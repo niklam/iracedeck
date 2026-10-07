@@ -1,6 +1,6 @@
+import { ENSURED_VOICE_PACK_ID } from "@iracedeck/app-constants";
 import { splitVoiceId } from "@iracedeck/callout-script";
 
-import { ENSURED_VOICE_PACK_ID } from "./voice-pack-constants.js";
 import type { InstalledVoicePack, VoicePackProvenanceKind } from "./voice-pack-scanner.js";
 
 /** The prefix a first-party voice's label carries — {@link isFirstPartyVoicePack}. */

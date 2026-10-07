@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import { DEFAULT_POINTER_X_FRACTION, DEFAULT_POINTER_Y_FRACTION } from "./mouse-pointer-service.js";
 import {
   DEFAULT_POINTER_ANCHOR_X,
   DEFAULT_POINTER_ANCHOR_Y,
@@ -20,13 +19,6 @@ const config = (overrides: Partial<SimPointerTargetConfig> = {}): SimPointerTarg
 });
 
 describe("resolveSimPointerTarget", () => {
-  it("resolves the shipped defaults to the pre-#1029 placement", () => {
-    expect(resolveSimPointerTarget(config())).toEqual({
-      xFraction: DEFAULT_POINTER_X_FRACTION,
-      yFraction: DEFAULT_POINTER_Y_FRACTION,
-    });
-  });
-
   it.each([
     ["left", 0],
     ["center", 0.5],

@@ -1,7 +1,8 @@
+import { defaultBindingStoredValue } from "@iracedeck/app-constants";
 import { describe, expect, it } from "vitest";
 
 import { isSimHubBinding, type SimHubBindingValue } from "./global-settings.js";
-import { parseBinding } from "./key-binding-utils.js";
+import { parseBinding, parseKeyBinding } from "./key-binding-utils.js";
 
 describe("parseBinding", () => {
   describe("keyboard bindings (JSON string)", () => {
@@ -111,5 +112,14 @@ describe("isSimHubBinding", () => {
 
   it("should return false for undefined", () => {
     expect(isSimHubBinding(undefined)).toBe(false);
+  });
+});
+
+describe("a default binding the plugin seeds (#1277)", () => {
+  it("round-trips through the parser the dispatcher reads bindings with", () => {
+    const stored = defaultBindingStoredValue("Shift+V");
+
+    expect(parseBinding(stored)).toEqual({ type: "keyboard", key: "v", modifiers: ["shift"], code: "KeyV" });
+    expect(parseKeyBinding(stored)).toEqual({ type: "keyboard", key: "v", modifiers: ["shift"], code: "KeyV" });
   });
 });

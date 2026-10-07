@@ -1,4 +1,4 @@
-import { CHANGELOG_NOTIFICATION_POLICIES, DEFAULT_CHANGELOG_NOTIFICATION_POLICY } from "@iracedeck/deck-core";
+import { CHANGELOG_NOTIFICATION_POLICIES, DEFAULT_CHANGELOG_NOTIFICATION_POLICY } from "@iracedeck/app-constants";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import url from "node:url";
@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 /**
  * The What's New frequency picker's rendered `default` has to agree with the
  * schema default, and nothing but this test connects the two: one lives in
- * `version-check.ts`, the other is a hand-written attribute in an `.ejs` file
+ * `@iracedeck/app-constants`' `changelog-policy.ts`, the other is a hand-written attribute in an `.ejs` file
  * that neither prettier nor eslint covers. A disagreement is silent — the
  * select simply pre-selects a value the plugin does not actually use.
  */

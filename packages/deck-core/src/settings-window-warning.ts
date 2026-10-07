@@ -24,14 +24,10 @@
  * They also say "deck software" rather than naming one host, because deck-core
  * serves the Stream Deck, Mirabox, and Ulanzi plugins alike.
  */
+import { SETTINGS_WINDOW_OPEN_WARNING_ID, SETTINGS_WINDOW_SERVER_WARNING_ID } from "@iracedeck/app-constants";
+
 import type { PiWarning } from "./pi-warnings.js";
 import type { SettingsWindowStatus } from "./settings-window.js";
-
-/** Page-wide: the service never bound. Rendered in the PI's top strip. */
-export const SETTINGS_WINDOW_SERVER_WARNING_ID = "settings-window-server";
-
-/** Button-scoped: the service is fine, nothing would open the page. Rendered above the settings button. */
-export const SETTINGS_WINDOW_OPEN_WARNING_ID = "settings-window-open";
 
 /**
  * Server never bound. Nothing can be served, so there is no fallback UI to

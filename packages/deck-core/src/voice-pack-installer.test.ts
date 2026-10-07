@@ -1,3 +1,4 @@
+import type { VoicePackCatalogState, VoicePackStatus } from "@iracedeck/app-constants";
 import { VOICE_PACK_MANIFEST_FILE } from "@iracedeck/callout-script";
 import { zipSync } from "fflate";
 import { createHash } from "node:crypto";
@@ -24,7 +25,6 @@ import {
 } from "./voice-pack-installer.js";
 import { parseVoicePackProvenance } from "./voice-pack-provenance.js";
 import { scanVoicePacks, type VoicePackFileSystem } from "./voice-pack-scanner.js";
-import type { VoicePackCatalogState, VoicePackStatus } from "./voice-pack-status.js";
 import {
   createVoicePackStorage,
   type SweepVoicePacksResult,

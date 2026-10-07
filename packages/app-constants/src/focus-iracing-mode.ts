@@ -10,9 +10,10 @@
  *                binding, chat text, a touch gesture that taps a binding.
  * - `never`    — no focusing at all (the old "off").
  *
- * A leaf module on purpose: `global-settings.ts` needs it for the schema and
- * `window-focus-service.ts` needs it to read the cache, and the service already
- * imports the schema module, so the vocabulary can live in neither.
+ * In the `app-constants` leaf on purpose: deck-core's `global-settings.ts`
+ * needs it for the schema and `window-focus-service.ts` needs it to read the
+ * cache, and the service already imports the schema module, so the vocabulary
+ * can live in neither (spec #1351).
  */
 
 export const FOCUS_IRACING_MODES = ["always", "required", "never"] as const;

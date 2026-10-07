@@ -14,30 +14,33 @@ import typescript from "@rollup/plugin-typescript";
 const tsBundle = (tsconfig) => typescript({ tsconfig, noEmitOnError: true });
 
 /**
- * The one package import a browser bundle may make (#1277): deck-core's
- * dependency-free key map and default parser, through its own subpath —
- * deck-core's `exports` point it at the built `dist/key-binding-defaults.js`,
- * which turbo builds first because deck-core is a dependency of this package.
- * node-resolve's `resolveOnly` matches package NAMES, not subpaths, so it can
- * only narrow resolution to deck-core; the guard in front of it refuses every
- * other deck-core import by name, so the barrel (Node built-ins, native
- * addons) can never be followed into a Property Inspector.
+ * The one package import a browser bundle may make (#1277, spec #1351):
+ * `@iracedeck/app-constants`, the dependency-free leaf holding the key map,
+ * the default parser and the shared setting keys. Its `exports` point at the
+ * built `dist/index.js`, which turbo builds first because it is a dependency
+ * of this package. node-resolve's `resolveOnly` matches package NAMES, not
+ * subpaths, so it narrows resolution to that package and leaves every other
+ * bare import unresolved (fatal, see `onLog`); the guard in front of it
+ * refuses any subpath of it and every deck-core import by name, so the
+ * deck-core barrel (Node built-ins, native addons) can never be followed into
+ * a Property Inspector.
  */
-const DECK_CORE_KEY_BINDING_DEFAULTS = "@iracedeck/deck-core/key-binding-defaults";
+const APP_CONSTANTS = "@iracedeck/app-constants";
 const resolveBrowserImports = () => [
   {
-    name: "deck-core-subpath-guard",
+    name: "browser-import-guard",
     resolveId(source) {
-      if (source.startsWith("@iracedeck/deck-core") && source !== DECK_CORE_KEY_BINDING_DEFAULTS) {
-        this.error(
-          `"${source}" is not browser-safe: a Property Inspector bundle may import only ${DECK_CORE_KEY_BINDING_DEFAULTS} from deck-core`,
-        );
+      const isDeckCore = source.startsWith("@iracedeck/deck-core");
+      const isAppConstantsSubpath = source.startsWith(APP_CONSTANTS) && source !== APP_CONSTANTS;
+
+      if (isDeckCore || isAppConstantsSubpath) {
+        this.error(`"${source}" is not browser-safe: a Property Inspector bundle may import only ${APP_CONSTANTS}`);
       }
 
       return null;
     },
   },
-  nodeResolve({ browser: true, resolveOnly: ["@iracedeck/deck-core"] }),
+  nodeResolve({ browser: true, resolveOnly: [APP_CONSTANTS] }),
 ];
 
 /**

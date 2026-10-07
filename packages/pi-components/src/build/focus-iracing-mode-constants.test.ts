@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { DEFAULT_FOCUS_IRACING_MODE, FOCUS_IRACING_MODES } from "@iracedeck/deck-core";
+import { DEFAULT_FOCUS_IRACING_MODE, FOCUS_IRACING_MODES } from "@iracedeck/app-constants";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import url from "node:url";
@@ -8,9 +8,9 @@ import { describe, expect, it } from "vitest";
 import { ENABLE_FEATURE_COPY } from "../components/enable-feature.js";
 
 /**
- * The three Focus iRacing modes (#977) are declared once in deck-core
- * (`focus-iracing-mode.ts`, which the settings schema and the window-focus
- * service both import) and then written out by hand in two places that cannot
+ * The three Focus iRacing modes (#977) are declared once in
+ * `@iracedeck/app-constants` (`focus-iracing-mode.ts`, which the settings
+ * schema and the window-focus service both import) and then written out by hand in two places that cannot
  * import it: the General tab's `<sdpi-select>`, which is markup in an `.ejs`
  * file neither prettier nor eslint reads, and the Getting Started control's
  * copy table, which ships in a browser bundle that must not pull deck-core in.

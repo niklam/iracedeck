@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { defaultBindingStoredValue } from "@iracedeck/deck-core/key-binding-defaults";
+import { defaultBindingStoredValue } from "@iracedeck/app-constants";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { _simHubProbe } from "./key-binding-input.js";

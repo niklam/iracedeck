@@ -49,6 +49,12 @@ const SHARED_MODULES: readonly string[] = [
   // On the catalog fetch path, which runs unasked at every start (#1101).
   join(process.cwd(), "packages/fetch-utils/src/abort-after.ts"),
   join(process.cwd(), "packages/fetch-utils/src/read-capped-json.ts"),
+  // The feature's keys, catalog location and status payload, which moved to
+  // the constants leaf in #1364. A module there imports nothing, so it cannot
+  // reach a window today; enrolled so it stays that way.
+  join(process.cwd(), "packages/app-constants/src/voice-pack-catalog-location.ts"),
+  join(process.cwd(), "packages/app-constants/src/voice-pack-keys.ts"),
+  join(process.cwd(), "packages/app-constants/src/voice-pack-status.ts"),
 ];
 
 /** Names that put something on the user's screen, and the module each lives in. */
@@ -104,7 +110,6 @@ describe("voice-pack modules open no window (#1034)", () => {
     // a window on. If a rename drops one out of the glob, this says so.
     expect(modules).toContain("voice-pack-catalog.ts");
     expect(modules).toContain("voice-pack-provenance.ts");
-    expect(modules).toContain("voice-pack-status.ts");
     // The stage-3 module that runs unasked at every start and retries on its
     // own — the one a "download failed" window would most tempt.
     expect(modules).toContain("voice-pack-launch.ts");
@@ -117,6 +122,7 @@ describe("voice-pack modules open no window (#1034)", () => {
     const names = guardedFiles().map(({ name }) => name);
 
     expect(names).toContain("packages/callout-script/src/voice-pack.ts");
+    expect(names).toContain("packages/app-constants/src/voice-pack-status.ts");
 
     for (const file of SHARED_MODULES) expect(existsSync(file), `${file} exists`).toBe(true);
   });

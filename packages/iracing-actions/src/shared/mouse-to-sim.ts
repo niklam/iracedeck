@@ -26,13 +26,13 @@
  * `focusIRacingIfEnabled()` already does exactly this before every key press when
  * the global setting is on.
  */
+import { resolveSimPointerTarget } from "@iracedeck/app-constants";
 import {
   focusIRacingNow,
   FocusResult,
   getGlobalSettings,
   movePointerToSim,
   PointerMoveResult,
-  resolveSimPointerTarget,
 } from "@iracedeck/deck-core";
 import type { ILogger } from "@iracedeck/logger";
 

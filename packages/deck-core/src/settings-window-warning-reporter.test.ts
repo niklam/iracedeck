@@ -1,7 +1,7 @@
+import { SETTINGS_WINDOW_OPEN_WARNING_ID, SETTINGS_WINDOW_SERVER_WARNING_ID } from "@iracedeck/app-constants";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createSettingsWindowWarningReporter } from "./settings-window-warning-reporter.js";
-import { SETTINGS_WINDOW_OPEN_WARNING_ID, SETTINGS_WINDOW_SERVER_WARNING_ID } from "./settings-window-warning.js";
 
 const { store, updateSpy } = vi.hoisted(() => {
   const store = { current: {} as Record<string, unknown> };

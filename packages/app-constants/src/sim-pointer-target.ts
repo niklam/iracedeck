@@ -79,7 +79,7 @@ export interface SimPointerTargetConfig {
   offsetY: number;
 }
 
-/** A pointer target in the form {@link SimPointerMover} takes. */
+/** A pointer target in the form deck-core's `SimPointerMover` takes. */
 export interface SimPointerTarget {
   /** 0 = left edge, 1 = right edge. */
   xFraction: number;

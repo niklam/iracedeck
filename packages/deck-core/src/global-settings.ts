@@ -25,6 +25,20 @@
  * the deck host's copy, which this module now ignores; the settings window
  * (#992) already writes through the plugin.
  */
+import {
+  CHANGELOG_NOTIFICATION_POLICIES,
+  DEFAULT_CHANGELOG_NOTIFICATION_POLICY,
+  DEFAULT_FOCUS_IRACING_MODE,
+  DEFAULT_POINTER_ANCHOR_X,
+  DEFAULT_POINTER_ANCHOR_Y,
+  DEFAULT_POINTER_OFFSET_X,
+  DEFAULT_POINTER_OFFSET_Y,
+  ENSURED_VOICE_PACK_ID,
+  parseFocusIRacingMode,
+  POINTER_ANCHORS_X,
+  POINTER_ANCHORS_Y,
+  POINTER_OFFSET_LIMIT,
+} from "@iracedeck/app-constants";
 import { qualifiedVoiceId, qualifyVoiceId, stripTakeSuffix } from "@iracedeck/callout-script";
 import { CALLOUT_SETTING_KEYS, calloutDefault, type CalloutSettingKey } from "@iracedeck/callout-settings";
 import type { ILogger } from "@iracedeck/logger";
@@ -32,25 +46,13 @@ import { gt, valid } from "semver";
 import { z } from "zod";
 
 import { DEFAULT_FEATURE_STARTUP_POLICY, FEATURE_STARTUP_POLICIES } from "./feature-startup-policy.js";
-import { DEFAULT_FOCUS_IRACING_MODE, parseFocusIRacingMode } from "./focus-iracing-mode.js";
 import { hasOnlyRunScopedKeys, stripRunScopedKeys } from "./run-scoped-settings.js";
 import type { SettingsStore } from "./settings-store.js";
 import {
   DEFAULT_SETUP_WARNING_QUALIFYING_PATTERN,
   DEFAULT_SETUP_WARNING_RACE_PATTERN,
 } from "./setup-warning-constants.js";
-import {
-  DEFAULT_POINTER_ANCHOR_X,
-  DEFAULT_POINTER_ANCHOR_Y,
-  DEFAULT_POINTER_OFFSET_X,
-  DEFAULT_POINTER_OFFSET_Y,
-  POINTER_ANCHORS_X,
-  POINTER_ANCHORS_Y,
-  POINTER_OFFSET_LIMIT,
-} from "./sim-pointer-target.js";
 import type { IDeckPlatformAdapter } from "./types.js";
-import { CHANGELOG_NOTIFICATION_POLICIES, DEFAULT_CHANGELOG_NOTIFICATION_POLICY } from "./version-check.js";
-import { ENSURED_VOICE_PACK_ID } from "./voice-pack-constants.js";
 
 /**
  * Schema for key binding values stored in global settings.

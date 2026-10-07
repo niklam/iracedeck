@@ -5,6 +5,12 @@
  * calls back into it, so the old module scope's temporal-dead-zone hazard is
  * gone by construction.
  */
+import {
+  VOICE_LABELS_KEY,
+  VOICE_PACK_DEV_BASE_URL_KEY,
+  VOICE_PACK_STATUS_KEY,
+  VOICE_PACKS_KEY,
+} from "@iracedeck/app-constants";
 import defaultVoicePackCatalogEntry from "@iracedeck/audio-assets/catalog/default.json" with { type: "json" };
 // The bundled slice, not the authored manifest: this describes only what THIS
 // plugin ships. `manifest.json` names every authored voice and is for tests,
@@ -45,10 +51,6 @@ import {
   resolveVoicePacksPath,
   setWarning,
   updateGlobalSettings,
-  VOICE_LABELS_KEY,
-  VOICE_PACK_DEV_BASE_URL_KEY,
-  VOICE_PACK_STATUS_KEY,
-  VOICE_PACKS_KEY,
   voiceDisplayLabels,
   VoicePackCatalogEntrySchema,
   whenSettingsStoreSettled,

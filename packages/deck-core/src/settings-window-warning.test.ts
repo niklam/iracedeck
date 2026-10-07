@@ -1,10 +1,9 @@
+import { SETTINGS_WINDOW_OPEN_WARNING_ID, SETTINGS_WINDOW_SERVER_WARNING_ID } from "@iracedeck/app-constants";
 import { describe, expect, it } from "vitest";
 
 import {
   evaluateSettingsWindowWarnings,
-  SETTINGS_WINDOW_OPEN_WARNING_ID,
   SETTINGS_WINDOW_SERVER_FAILURE_MESSAGE,
-  SETTINGS_WINDOW_SERVER_WARNING_ID,
   settingsWindowWarningScope,
 } from "./settings-window-warning.js";
 

@@ -1,3 +1,10 @@
+import {
+  DEFAULT_POINTER_ANCHOR_X,
+  DEFAULT_POINTER_ANCHOR_Y,
+  DEFAULT_POINTER_OFFSET_X,
+  DEFAULT_POINTER_OFFSET_Y,
+  resolveSimPointerTarget,
+} from "@iracedeck/app-constants";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -112,6 +119,22 @@ describe("Mouse Pointer Service", () => {
       expect(PointerMoveResult.Moved).toBe(0);
       expect(PointerMoveResult.WindowNotFound).toBe(1);
       expect(PointerMoveResult.Failed).toBe(2);
+    });
+  });
+});
+
+describe("the configured pointer target's defaults (#1029)", () => {
+  it("resolve to the pre-#1029 placement", () => {
+    expect(
+      resolveSimPointerTarget({
+        anchorX: DEFAULT_POINTER_ANCHOR_X,
+        anchorY: DEFAULT_POINTER_ANCHOR_Y,
+        offsetX: DEFAULT_POINTER_OFFSET_X,
+        offsetY: DEFAULT_POINTER_OFFSET_Y,
+      }),
+    ).toEqual({
+      xFraction: DEFAULT_POINTER_X_FRACTION,
+      yFraction: DEFAULT_POINTER_Y_FRACTION,
     });
   });
 });

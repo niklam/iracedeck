@@ -5,7 +5,7 @@ import {
   SETTINGS_WINDOW_OPEN_WARNING_ID,
   SETTINGS_WINDOW_SERVER_WARNING_ID,
   VOICE_PACK_INSTALL_PHASES,
-} from "@iracedeck/deck-core";
+} from "@iracedeck/app-constants";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";

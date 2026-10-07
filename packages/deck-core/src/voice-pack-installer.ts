@@ -49,6 +49,7 @@
  * banner read, and nothing else. `voice-pack-no-window.test.ts` enforces this
  * structurally over every module of the feature, this one included.
  */
+import type { VoicePackCatalogState, VoicePackInstallState, VoicePackStatus } from "@iracedeck/app-constants";
 import {
   calloutScriptPath,
   packId,
@@ -79,7 +80,6 @@ import {
 } from "./voice-pack-download.js";
 import { parseVoicePackProvenance, type VoicePackProvenance } from "./voice-pack-provenance.js";
 import type { VoicePackFileRead, VoicePackFileSystem } from "./voice-pack-scanner.js";
-import type { VoicePackCatalogState, VoicePackInstallState, VoicePackStatus } from "./voice-pack-status.js";
 import {
   type CreateVoicePackStagingResult,
   type PromoteVoicePackResult,
