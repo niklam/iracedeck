@@ -55,6 +55,9 @@ describe("fetchVoicePackCatalog", () => {
     await fetchVoicePackCatalog({ fetchImpl });
 
     expect(fetchImpl).toHaveBeenCalledWith(VOICE_PACK_CATALOG_URL, expect.anything());
+    // The URL is assembled from app-constants' base and file name; pin the
+    // published address itself so a change to either part cannot pass unseen.
+    expect(VOICE_PACK_CATALOG_URL).toBe("https://iracedeck.com/voice-catalog.json");
   });
 
   it("requests a caller-supplied url when given one", async () => {

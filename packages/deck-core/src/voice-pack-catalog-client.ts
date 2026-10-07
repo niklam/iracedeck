@@ -27,6 +27,7 @@
  * of them identically: the Installed Voices card renders exactly the packs it
  * already knew about, same as if this feature did not exist.
  */
+import { VOICE_PACK_CATALOG_DEFAULT_BASE, VOICE_PACK_CATALOG_FILENAME } from "@iracedeck/app-constants";
 import { abortAfter, readCappedJson } from "@iracedeck/fetch-utils";
 
 import {
@@ -35,8 +36,8 @@ import {
   type VoicePackCatalogEntry,
 } from "./voice-pack-catalog.js";
 
-/** The artifact the website build publishes (see packages/website/scripts). */
-export const VOICE_PACK_CATALOG_URL = "https://iracedeck.com/voice-catalog.json";
+/** The artifact the website build publishes (see packages/website/scripts), built from the location in `@iracedeck/app-constants`. */
+export const VOICE_PACK_CATALOG_URL = `${VOICE_PACK_CATALOG_DEFAULT_BASE}/${VOICE_PACK_CATALOG_FILENAME}`;
 
 /**
  * Request timeout. The same figure the changelog feed uses: generous enough
