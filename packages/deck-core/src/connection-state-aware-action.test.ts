@@ -410,6 +410,30 @@ describe("ConnectionStateAwareAction", () => {
       sim.fake!.tick();
       expect(getSetActive(action)).toHaveBeenLastCalledWith(false);
     });
+
+    it("warns once when it appears before a sim connection exists", async () => {
+      const ev = {
+        action: { id: "ctx-1", setTitle: vi.fn(), setImage: vi.fn(), isKey: vi.fn().mockReturnValue(true) },
+        payload: { settings: {} },
+      };
+      sim.initialized = false;
+
+      await action.onWillAppear(ev as never);
+
+      expect(getLogger(action).warn).toHaveBeenCalledOnce();
+      expect(getLogger(action).warn).toHaveBeenCalledWith(expect.stringContaining("readiness tracking for ctx-1"));
+    });
+
+    it("does not warn when the sim connection exists", async () => {
+      const ev = {
+        action: { id: "ctx-1", setTitle: vi.fn(), setImage: vi.fn(), isKey: vi.fn().mockReturnValue(true) },
+        payload: { settings: {} },
+      };
+
+      await action.onWillAppear(ev as never);
+
+      expect(getLogger(action).warn).not.toHaveBeenCalled();
+    });
   });
 
   describe("onWillDisappear", () => {

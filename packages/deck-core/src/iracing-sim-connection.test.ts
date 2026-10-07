@@ -65,6 +65,42 @@ describe("IRacingSimConnection", () => {
     expect(new IRacingSimConnection(controller).activeFlags()).toEqual([]);
   });
 
+  it("returns no flags while disconnected even after a tick carried flags", () => {
+    const getConnectionStatus = vi.fn(() => true);
+    const controller = fakeController({ getConnectionStatus });
+    const connection = new IRacingSimConnection(controller);
+
+    connection.subscribe("id-1", vi.fn());
+    const [, callback] = vi.mocked(controller.subscribe).mock.calls[0];
+    callback({ SessionFlags: YELLOW } as never, true);
+    getConnectionStatus.mockReturnValue(false);
+
+    expect(connection.activeFlags()).toEqual([]);
+  });
+
+  it("reads the flags from the tick's own telemetry, without a fresh telemetry read", () => {
+    // The controller's current telemetry says no flags; the tick says yellow.
+    const controller = fakeController();
+    const connection = new IRacingSimConnection(controller);
+    let labelsInTick: string[] = [];
+
+    connection.subscribe("id-1", () => {
+      labelsInTick = connection.activeFlags().map((f) => f.label);
+    });
+    const [, callback] = vi.mocked(controller.subscribe).mock.calls[0];
+    callback({ SessionFlags: YELLOW } as never, true);
+
+    expect(labelsInTick).toContain("YELLOW");
+    expect(controller.getCurrentTelemetry).not.toHaveBeenCalled();
+  });
+
+  it("reads the current telemetry when no tick has been seen yet", () => {
+    const controller = fakeController({ getCurrentTelemetry: vi.fn(() => ({ SessionFlags: YELLOW })) });
+
+    expect(new IRacingSimConnection(controller).activeFlags().map((f) => f.label)).toContain("YELLOW");
+    expect(controller.getCurrentTelemetry).toHaveBeenCalledOnce();
+  });
+
   it("returns no flags when there is no telemetry", () => {
     const controller = fakeController({ getCurrentTelemetry: vi.fn(() => null) });
 

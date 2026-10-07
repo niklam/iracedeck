@@ -26,7 +26,7 @@ import { getBindingDispatcher } from "./binding-dispatcher.js";
 import { onGlobalSettingsChange } from "./global-settings.js";
 // Only the `sdkController` getter still reads the SDK singleton; both leave deck-core with the iRacing side (#1363).
 import { getController } from "./sdk-singleton.js";
-import { getSimConnection } from "./sim-connection.js";
+import { getSimConnection, isSimConnectionInitialized } from "./sim-connection.js";
 import { onSimHubReachabilityChange } from "./simhub-service.js";
 import type { IDeckWillAppearEvent, IDeckWillDisappearEvent } from "./types.js";
 
@@ -75,9 +75,19 @@ export abstract class ConnectionStateAwareAction<T = Record<string, unknown>> ex
   /**
    * Subscribe to the sim connection for automatic readiness tracking.
    * Actions that override onWillAppear MUST call super.onWillAppear(ev).
+   *
+   * The plugin initialises the sim connection before any action appears.
+   * Should that order ever break, the subscription below lands on the null
+   * connection and is lost, so say so rather than fail silently.
    */
   override async onWillAppear(ev: IDeckWillAppearEvent<T>): Promise<void> {
     await super.onWillAppear(ev);
+
+    if (!isSimConnectionInitialized()) {
+      this.logger.warn(
+        `No sim connection yet: readiness tracking for ${ev.action.id} will not update until the sim connection exists and the key reappears`,
+      );
+    }
 
     const subId = READINESS_SUB_PREFIX + ev.action.id;
     getSimConnection().subscribe(subId, () => {

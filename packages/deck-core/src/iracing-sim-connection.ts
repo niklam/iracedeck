@@ -2,6 +2,7 @@ import {
   resolveAllActiveFlags,
   resolveTemplate,
   type SDKController,
+  type TelemetryData,
   type TemplateContext,
 } from "@iracedeck/iracing-sdk";
 
@@ -14,6 +15,14 @@ import { EMPTY_TEMPLATE_CONTEXT } from "./title-template.js";
  * templates from the controller's per-tick template context.
  */
 export class IRacingSimConnection implements SimConnection {
+  /**
+   * The telemetry the latest tick carried (null for a disconnected tick);
+   * undefined until the first tick. `activeFlags()` reads it so the flag
+   * overlay costs no telemetry read of its own: `getCurrentTelemetry()` is a
+   * fresh full read of every variable, and the tick already did one.
+   */
+  private tickTelemetry: TelemetryData | null | undefined = undefined;
+
   constructor(private readonly controller: SDKController) {}
 
   isConnected(): boolean {
@@ -21,7 +30,10 @@ export class IRacingSimConnection implements SimConnection {
   }
 
   subscribe(id: string, onTick: (isConnected: boolean) => void): void {
-    this.controller.subscribe(id, (_telemetry, isConnected) => onTick(isConnected));
+    this.controller.subscribe(id, (telemetry, isConnected) => {
+      this.tickTelemetry = isConnected ? telemetry : null;
+      onTick(isConnected);
+    });
   }
 
   unsubscribe(id: string): void {
@@ -31,7 +43,10 @@ export class IRacingSimConnection implements SimConnection {
   activeFlags(): readonly OverlayFlag[] {
     if (!this.controller.getConnectionStatus()) return [];
 
-    return resolveAllActiveFlags(this.controller.getCurrentTelemetry()?.SessionFlags);
+    // Before the first tick there is nothing recorded: read once directly.
+    const telemetry = this.tickTelemetry === undefined ? this.controller.getCurrentTelemetry() : this.tickTelemetry;
+
+    return resolveAllActiveFlags(telemetry?.SessionFlags);
   }
 
   resolveTitleTemplate(text: string): string {

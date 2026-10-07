@@ -1,5 +1,16 @@
-import { _resetSDK, getCommands, getController, getSDK, initializeSDK, isSDKInitialized } from "@iracedeck/deck-core";
+import {
+  _resetSDK,
+  getCommands,
+  getController,
+  getSDK,
+  getSimConnection,
+  initializeSDK,
+  isSDKInitialized,
+  isSimConnectionInitialized,
+} from "@iracedeck/deck-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { IRacingSimConnection } from "../../../deck-core/src/iracing-sim-connection.js";
 
 // Mock the iracing-sdk createSDK function
 vi.mock("@iracedeck/iracing-sdk", () => ({
@@ -117,6 +128,24 @@ describe("SDK Singleton", () => {
       _resetSDK();
 
       expect(() => initializeSDK()).not.toThrow();
+    });
+  });
+
+  describe("sim connection (#1363)", () => {
+    it("installs the iRacing sim connection on initialization", () => {
+      expect(isSimConnectionInitialized()).toBe(false);
+
+      initializeSDK();
+
+      expect(isSimConnectionInitialized()).toBe(true);
+      expect(getSimConnection()).toBeInstanceOf(IRacingSimConnection);
+    });
+
+    it("removes the sim connection on reset", () => {
+      initializeSDK();
+      _resetSDK();
+
+      expect(isSimConnectionInitialized()).toBe(false);
     });
   });
 });
