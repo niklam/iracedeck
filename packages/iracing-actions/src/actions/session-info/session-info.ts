@@ -15,7 +15,7 @@ import {
   resolveTitleSettings,
   svgToDataUri,
 } from "@iracedeck/deck-core";
-import { IRacingAction, litersToGallons } from "@iracedeck/deck-iracing";
+import { litersToGallons, SimIRacingAction } from "@iracedeck/deck-iracing";
 import {
   getEventBus,
   isEventBusInitialized,
@@ -792,7 +792,7 @@ export function generateSessionInfoSvg(
  */
 export const SESSION_INFO_UUID = "com.iracedeck.sd.core.session-info" as const;
 
-export class SessionInfo extends IRacingAction<SessionInfoSettings> {
+export class SessionInfo extends SimIRacingAction<SessionInfoSettings> {
   /** Settings per action context for telemetry-driven updates */
   private activeContexts = new Map<string, SessionInfoSettings>();
 

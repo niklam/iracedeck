@@ -1,7 +1,7 @@
 import { type SDKController, templateContextFromMaps } from "@iracedeck/iracing-sdk";
 import { describe, expect, it, vi } from "vitest";
 
-import { EMPTY_TEMPLATE_CONTEXT, IRacingSimConnection } from "./iracing-sim-connection.js";
+import { EMPTY_TEMPLATE_CONTEXT, SimIRacingConnection } from "./sim-iracing-connection.js";
 
 // SessionFlags bits (irsdk_Flags): green 0x4, yellow 0x8.
 const GREEN = 0x4;
@@ -24,18 +24,18 @@ function tick(controller: SDKController, telemetry: unknown, isConnected = true)
   callback(telemetry as never, isConnected);
 }
 
-describe("IRacingSimConnection", () => {
+describe("SimIRacingConnection", () => {
   it("reports the controller's connection status", () => {
     const controller = fakeController({ getConnectionStatus: vi.fn(() => false) });
 
-    expect(new IRacingSimConnection(controller).isConnected()).toBe(false);
+    expect(new SimIRacingConnection(controller).isConnected()).toBe(false);
   });
 
   it("forwards ticks with only the connection flag", () => {
     const controller = fakeController();
     const onTick = vi.fn();
 
-    new IRacingSimConnection(controller).subscribe("id-1", onTick);
+    new SimIRacingConnection(controller).subscribe("id-1", onTick);
     const [id, callback] = vi.mocked(controller.subscribe).mock.calls[0];
     callback({ SessionFlags: YELLOW } as never, true);
 
@@ -46,14 +46,14 @@ describe("IRacingSimConnection", () => {
   it("unsubscribes by id", () => {
     const controller = fakeController();
 
-    new IRacingSimConnection(controller).unsubscribe("id-1");
+    new SimIRacingConnection(controller).unsubscribe("id-1");
 
     expect(controller.unsubscribe).toHaveBeenCalledWith("id-1");
   });
 
   it("maps SessionFlags to overlay flags", () => {
     const controller = fakeController();
-    const connection = new IRacingSimConnection(controller);
+    const connection = new SimIRacingConnection(controller);
 
     connection.subscribe("id-1", vi.fn());
     tick(controller, { SessionFlags: YELLOW });
@@ -67,7 +67,7 @@ describe("IRacingSimConnection", () => {
 
   it("returns no flags after a disconnected tick", () => {
     const controller = fakeController();
-    const connection = new IRacingSimConnection(controller);
+    const connection = new SimIRacingConnection(controller);
 
     connection.subscribe("id-1", vi.fn());
     tick(controller, { SessionFlags: YELLOW | GREEN });
@@ -79,7 +79,7 @@ describe("IRacingSimConnection", () => {
   it("returns no flags while disconnected even after a tick carried flags", () => {
     const getConnectionStatus = vi.fn(() => true);
     const controller = fakeController({ getConnectionStatus });
-    const connection = new IRacingSimConnection(controller);
+    const connection = new SimIRacingConnection(controller);
 
     connection.subscribe("id-1", vi.fn());
     const [, callback] = vi.mocked(controller.subscribe).mock.calls[0];
@@ -92,7 +92,7 @@ describe("IRacingSimConnection", () => {
   it("reads the flags from the tick's own telemetry, without a fresh telemetry read", () => {
     // The controller's current telemetry says no flags; the tick says yellow.
     const controller = fakeController();
-    const connection = new IRacingSimConnection(controller);
+    const connection = new SimIRacingConnection(controller);
     let labelsInTick: string[] = [];
 
     connection.subscribe("id-1", () => {
@@ -108,13 +108,13 @@ describe("IRacingSimConnection", () => {
   it("returns no flags before any tick, without reading telemetry", () => {
     const controller = fakeController({ getCurrentTelemetry: vi.fn(() => ({ SessionFlags: YELLOW })) });
 
-    expect(new IRacingSimConnection(controller).activeFlags()).toEqual([]);
+    expect(new SimIRacingConnection(controller).activeFlags()).toEqual([]);
     expect(controller.getCurrentTelemetry).not.toHaveBeenCalled();
   });
 
   it("returns no flags when the tick carried no telemetry", () => {
     const controller = fakeController();
-    const connection = new IRacingSimConnection(controller);
+    const connection = new SimIRacingConnection(controller);
 
     connection.subscribe("id-1", vi.fn());
     tick(controller, null);
@@ -128,7 +128,7 @@ describe("IRacingSimConnection", () => {
         getCurrentTemplateContext: vi.fn(() => templateContextFromMaps({ "track_ahead.car_number": "34" })),
       });
 
-      expect(new IRacingSimConnection(controller).resolveTitleTemplate("CAR {{track_ahead.car_number}}")).toBe(
+      expect(new SimIRacingConnection(controller).resolveTitleTemplate("CAR {{track_ahead.car_number}}")).toBe(
         "CAR 34",
       );
     });
@@ -138,19 +138,19 @@ describe("IRacingSimConnection", () => {
         getCurrentTemplateContext: vi.fn(() => templateContextFromMaps({}, { "self.position": 4 })),
       });
 
-      expect(new IRacingSimConnection(controller).resolveTitleTemplate("P{{= self.position + 1 }}")).toBe("P5");
+      expect(new SimIRacingConnection(controller).resolveTitleTemplate("P{{= self.position + 1 }}")).toBe("P5");
     });
 
     it("renders variables empty when there is no template context", () => {
       const controller = fakeController({ getCurrentTemplateContext: vi.fn(() => null) });
 
-      expect(new IRacingSimConnection(controller).resolveTitleTemplate("v={{telemetry.Speed}}")).toBe("v=");
+      expect(new SimIRacingConnection(controller).resolveTitleTemplate("v={{telemetry.Speed}}")).toBe("v=");
     });
 
     it("keeps expression parse errors visible when there is no template context", () => {
       const controller = fakeController({ getCurrentTemplateContext: vi.fn(() => null) });
 
-      expect(new IRacingSimConnection(controller).resolveTitleTemplate("{{= self.position + }}")).toBe(
+      expect(new SimIRacingConnection(controller).resolveTitleTemplate("{{= self.position + }}")).toBe(
         "{{= self.position + }}",
       );
     });
@@ -162,7 +162,7 @@ describe("IRacingSimConnection", () => {
         }),
       });
 
-      expect(new IRacingSimConnection(controller).resolveTitleTemplate("v={{telemetry.Speed}}")).toBe("v=");
+      expect(new SimIRacingConnection(controller).resolveTitleTemplate("v={{telemetry.Speed}}")).toBe("v=");
     });
 
     it("falls back to the empty context when a lazily built namespace throws (#1339)", () => {
@@ -178,7 +178,7 @@ describe("IRacingSimConnection", () => {
           },
         })),
       });
-      const connection = new IRacingSimConnection(controller);
+      const connection = new SimIRacingConnection(controller);
 
       expect(connection.resolveTitleTemplate("CAR {{track_ahead.car_number}}")).toBe("CAR ");
       expect(connection.resolveTitleTemplate("{{= self.position + }}")).toBe("{{= self.position + }}");

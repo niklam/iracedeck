@@ -1,6 +1,6 @@
 # @iracedeck/iracing-actions
 
-The platform-agnostic iRaceDeck action classes — one folder per action under `src/actions/`. Actions contain no platform-specific code — they import from `@iracedeck/deck-core`, and the iRacing side (`IRacingAction`, `getCommands()`, the fuel, unit and hotkey helpers) from `@iracedeck/deck-iracing` (#1351), and are registered for all three plugins (`iracing-plugin-stream-deck`, `iracing-plugin-mirabox`, and `iracing-plugin-ulanzi`) through `@iracedeck/plugin-runtime`'s shared action list (`src/actions.ts`, #1349).
+The platform-agnostic iRaceDeck action classes — one folder per action under `src/actions/`. Actions contain no platform-specific code — they import from `@iracedeck/deck-core`, and the iRacing side (`SimIRacingAction`, `getCommands()`, the fuel, unit and hotkey helpers) from `@iracedeck/deck-iracing` (#1351), and are registered for all three plugins (`iracing-plugin-stream-deck`, `iracing-plugin-mirabox`, and `iracing-plugin-ulanzi`) through `@iracedeck/plugin-runtime`'s shared action list (`src/actions.ts`, #1349).
 
 ## Package Structure
 
@@ -68,7 +68,7 @@ The top-level `icons/` directory holds one 144x144 runtime template per dynamic-
 
 ## Action Pattern
 
-See `.claude/rules/stream-deck-actions.md` for the full requirements (UUID constant, `ConnectionStateAwareAction`, `CommonSettings`, icon assembly, super calls, settings handlers). An action that reads iRacing directly through `this.sdkController` (telemetry, session info, the template context, its own telemetry subscription) extends `@iracedeck/deck-iracing`'s `IRacingAction` instead, which adds the typed controller; one that only calls `getCommands()` does not need it. `deck-core`'s `ConnectionStateAwareAction` has no `sdkController`.
+See `.claude/rules/stream-deck-actions.md` for the full requirements (UUID constant, `ConnectionStateAwareAction`, `CommonSettings`, icon assembly, super calls, settings handlers). An action that reads iRacing directly through `this.sdkController` (telemetry, session info, the template context, its own telemetry subscription) extends `@iracedeck/deck-iracing`'s `SimIRacingAction` instead, which adds the typed controller; one that only calls `getCommands()` does not need it. `deck-core`'s `ConnectionStateAwareAction` has no `sdkController`.
 
 ## Comms Catalog (#612)
 

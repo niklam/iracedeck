@@ -24,7 +24,7 @@ import {
   resolveTitleSettings,
   svgToDataUri,
 } from "@iracedeck/deck-core";
-import { IRacingAction } from "@iracedeck/deck-iracing";
+import { SimIRacingAction } from "@iracedeck/deck-iracing";
 import { z } from "zod";
 
 import pitCrewTemplate from "../../../icons/pit-crew.svg";
@@ -307,7 +307,7 @@ function pickArtwork(mode: Mode, direction: "up" | "down", color: string): strin
 
 // ─── Action ────────────────────────────────────────────────────────────────────
 
-export class PitCrew extends IRacingAction<PitCrewSettings> {
+export class PitCrew extends SimIRacingAction<PitCrewSettings> {
   /** Per-context settings cache for visible instances. */
   private readonly settingsCache = new Map<string, PitCrewSettings>();
 

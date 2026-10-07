@@ -17,7 +17,7 @@ import {
   resolveTitleTemplate,
   svgToDataUri,
 } from "@iracedeck/deck-core";
-import { IRacingAction } from "@iracedeck/deck-iracing";
+import { SimIRacingAction } from "@iracedeck/deck-iracing";
 import { resolveTemplate } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
@@ -114,7 +114,7 @@ export function generateTelemetryDisplaySvg(title: string, value: string, settin
  */
 export const TELEMETRY_DISPLAY_UUID = "com.iracedeck.sd.core.telemetry-display" as const;
 
-export class TelemetryDisplay extends IRacingAction<TelemetryDisplaySettings> {
+export class TelemetryDisplay extends SimIRacingAction<TelemetryDisplaySettings> {
   private activeContexts = new Map<string, TelemetryDisplaySettings>();
   private lastState = new Map<string, string>();
   /**

@@ -24,7 +24,7 @@ import {
   resolveIconColors,
   resolveTitleSettings,
 } from "@iracedeck/deck-core";
-import { IRacingAction } from "@iracedeck/deck-iracing";
+import { SimIRacingAction } from "@iracedeck/deck-iracing";
 import frontWingDecreaseIconSvg from "@iracedeck/icons/setup-aero/front-wing-decrease.svg";
 import frontWingIncreaseIconSvg from "@iracedeck/icons/setup-aero/front-wing-increase.svg";
 import qualifyingTapeDecreaseIconSvg from "@iracedeck/icons/setup-aero/qualifying-tape-decrease.svg";
@@ -193,7 +193,7 @@ export function generateSetupAeroSvg(settings: SetupAeroSettings, bindingMissing
  */
 export const SETUP_AERO_UUID = "com.iracedeck.sd.core.setup-aero" as const;
 
-export class SetupAero extends IRacingAction<SetupAeroSettings> {
+export class SetupAero extends SimIRacingAction<SetupAeroSettings> {
   /** Current settings per action context, used by the telemetry-tick callback for View sub-modes. */
   private readonly activeContexts = new Map<string, SetupAeroSettings>();
 

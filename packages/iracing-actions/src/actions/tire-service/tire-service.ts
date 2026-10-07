@@ -25,7 +25,7 @@ import {
   resolveTitleSettings,
   svgToDataUri,
 } from "@iracedeck/deck-core";
-import { getCommands, getSDK, IRacingAction } from "@iracedeck/deck-iracing";
+import { getCommands, getSDK, SimIRacingAction } from "@iracedeck/deck-iracing";
 import changeAllTiresIconSvg from "@iracedeck/icons/tire-service/change-all-tires.svg";
 import clearTiresIconSvg from "@iracedeck/icons/tire-service/clear-tires.svg";
 import toggleTiresCarSvg from "@iracedeck/icons/tire-service/toggle-tires.svg";
@@ -582,7 +582,7 @@ export function generateTireServiceSvg(
  */
 export const TIRE_SERVICE_UUID = "com.iracedeck.sd.core.tire-service" as const;
 
-export class TireService extends IRacingAction<TireServiceSettings> {
+export class TireService extends SimIRacingAction<TireServiceSettings> {
   private activeContexts = new Map<string, TireServiceSettings>();
   private lastState = new Map<string, string>();
 

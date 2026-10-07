@@ -31,7 +31,7 @@ import {
   resolveTitleSettings,
   svgToDataUri,
 } from "@iracedeck/deck-core";
-import { getCommands, IRacingAction } from "@iracedeck/deck-iracing";
+import { getCommands, SimIRacingAction } from "@iracedeck/deck-iracing";
 import fastForwardIconSvg from "@iracedeck/icons/replay-control/fast-forward.svg";
 import frameBackwardIconSvg from "@iracedeck/icons/replay-control/frame-backward.svg";
 import frameForwardIconSvg from "@iracedeck/icons/replay-control/frame-forward.svg";
@@ -892,7 +892,7 @@ type ReplayControlSettings = z.infer<typeof ReplayControlSettings>;
  */
 export const REPLAY_CONTROL_UUID = "com.iracedeck.sd.core.replay-control" as const;
 
-export class ReplayControl extends IRacingAction<ReplayControlSettings> {
+export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
   /** Current replay speed from telemetry, keyed by action context ID */
   private replaySpeed = new Map<string, number>();
 

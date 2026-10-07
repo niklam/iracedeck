@@ -25,7 +25,7 @@ const mocks = vi.hoisted(() => ({
 
 // The dial surface reads the replay commands through deck-iracing; this suite
 // mocks deck-core without a ConnectionStateAwareAction, so the real barrel (whose
-// IRacingAction extends it) cannot load.
+// SimIRacingAction extends it) cannot load.
 vi.mock("@iracedeck/deck-iracing", () => ({
   getCommands: () => ({ replay: { setPlayPosition: mocks.setPlayPosition } }),
 }));

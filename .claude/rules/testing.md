@@ -149,7 +149,7 @@ describe("MyAction", () => {
 });
 ```
 
-An action that extends `@iracedeck/deck-iracing`'s `IRacingAction` (#1351) keeps the same `ConnectionStateAwareAction` mock: `IRacingAction` extends the mocked class, and the mock's `sdkController` instance field shadows `IRacingAction`'s getter, so the test drives the controller as before. The iRacing names that live in `deck-iracing` rather than `deck-core` — `getCommands`, the fuel and unit helpers — are mocked on `@iracedeck/deck-iracing`, spreading `importOriginal` so the real `IRacingAction` still loads:
+An action that extends `@iracedeck/deck-iracing`'s `SimIRacingAction` (#1351) keeps the same `ConnectionStateAwareAction` mock: `SimIRacingAction` extends the mocked class, and the mock's `sdkController` instance field shadows `SimIRacingAction`'s getter, so the test drives the controller as before. The iRacing names that live in `deck-iracing` rather than `deck-core` — `getCommands`, the fuel and unit helpers — are mocked on `@iracedeck/deck-iracing`, spreading `importOriginal` so the real `SimIRacingAction` still loads:
 
 ```typescript
 const { mockGetCommands } = vi.hoisted(() => ({

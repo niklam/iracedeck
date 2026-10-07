@@ -1,8 +1,8 @@
 import { getSimConnection, initializeSimConnection, isSimConnectionInitialized } from "@iracedeck/deck-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { IRacingSimConnection } from "./iracing-sim-connection.js";
 import { _resetSDK, getCommands, getController, getSDK, initializeSDK, isSDKInitialized } from "./sdk-singleton.js";
+import { SimIRacingConnection } from "./sim-iracing-connection.js";
 
 // Mock the iracing-sdk createSDK function
 vi.mock("@iracedeck/iracing-sdk", () => ({
@@ -130,7 +130,7 @@ describe("SDK Singleton", () => {
       initializeSDK();
 
       expect(isSimConnectionInitialized()).toBe(true);
-      expect(getSimConnection()).toBeInstanceOf(IRacingSimConnection);
+      expect(getSimConnection()).toBeInstanceOf(SimIRacingConnection);
     });
 
     it("refuses when a sim connection is already initialized, leaving the SDK uninitialized", async () => {

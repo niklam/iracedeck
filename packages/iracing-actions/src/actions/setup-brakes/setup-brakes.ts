@@ -23,7 +23,7 @@ import {
   resolveIconColors,
   resolveTitleSettings,
 } from "@iracedeck/deck-core";
-import { IRacingAction } from "@iracedeck/deck-iracing";
+import { SimIRacingAction } from "@iracedeck/deck-iracing";
 import absAdjustDecreaseIconSvg from "@iracedeck/icons/setup-brakes/abs-adjust-decrease.svg";
 import absAdjustIncreaseIconSvg from "@iracedeck/icons/setup-brakes/abs-adjust-increase.svg";
 import absToggleIconSvg from "@iracedeck/icons/setup-brakes/abs-toggle.svg";
@@ -237,7 +237,7 @@ export function generateAbsToggleSvg(
  */
 export const SETUP_BRAKES_UUID = "com.iracedeck.sd.core.setup-brakes" as const;
 
-export class SetupBrakes extends IRacingAction<SetupBrakesSettings> {
+export class SetupBrakes extends SimIRacingAction<SetupBrakesSettings> {
   /** Current settings per action context, used by the telemetry-tick callback for View sub-modes. */
   private readonly activeContexts = new Map<string, SetupBrakesSettings>();
 

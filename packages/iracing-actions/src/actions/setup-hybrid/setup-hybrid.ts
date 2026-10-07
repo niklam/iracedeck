@@ -24,7 +24,7 @@ import {
   resolveIconColors,
   resolveTitleSettings,
 } from "@iracedeck/deck-core";
-import { IRacingAction } from "@iracedeck/deck-iracing";
+import { SimIRacingAction } from "@iracedeck/deck-iracing";
 import hysBoostIconSvg from "@iracedeck/icons/setup-hybrid/hys-boost.svg";
 import hysNoBoostIconSvg from "@iracedeck/icons/setup-hybrid/hys-no-boost.svg";
 import hysRegenIconSvg from "@iracedeck/icons/setup-hybrid/hys-regen.svg";
@@ -224,7 +224,7 @@ export function generateSetupHybridSvg(settings: SetupHybridSettings, bindingMis
  */
 export const SETUP_HYBRID_UUID = "com.iracedeck.sd.core.setup-hybrid" as const;
 
-export class SetupHybrid extends IRacingAction<SetupHybridSettings> {
+export class SetupHybrid extends SimIRacingAction<SetupHybridSettings> {
   /** Current settings per action context, used by the telemetry-tick callback for View sub-modes. */
   private readonly activeContexts = new Map<string, SetupHybridSettings>();
 

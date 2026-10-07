@@ -4,7 +4,7 @@
  * The sim connection is a fake, so these tests pin what title-template.ts
  * itself decides: the `{{` gate and the fallback when the connection throws.
  * How a sim renders a template (iRacing's empty context included) is tested
- * with its connection, in `@iracedeck/deck-iracing`'s iracing-sim-connection.test.ts.
+ * with its connection, in `@iracedeck/deck-iracing`'s sim-iracing-connection.test.ts.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 

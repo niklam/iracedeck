@@ -21,7 +21,7 @@ import {
   resolveIconColors,
   resolveTitleSettings,
 } from "@iracedeck/deck-core";
-import { IRacingAction } from "@iracedeck/deck-iracing";
+import { SimIRacingAction } from "@iracedeck/deck-iracing";
 import addIconSvg from "@iracedeck/icons/replay-markers/add.svg";
 import confirmAddedIconSvg from "@iracedeck/icons/replay-markers/confirm-added.svg";
 import confirmDeletedIconSvg from "@iracedeck/icons/replay-markers/confirm-deleted.svg";
@@ -176,7 +176,7 @@ function greyForeground(colors: Record<string, string>): Record<string, string> 
 
 export const REPLAY_MARKERS_UUID = "com.iracedeck.sd.core.replay-markers" as const;
 
-export class ReplayMarkers extends IRacingAction<ReplayMarkersSettings> {
+export class ReplayMarkers extends SimIRacingAction<ReplayMarkersSettings> {
   private readonly activeContexts = new Map<string, ReplayMarkersSettings>();
   private readonly flashTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly imageThrottle = new IconUpdateThrottle();

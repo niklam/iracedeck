@@ -26,7 +26,7 @@ export const EMPTY_TEMPLATE_CONTEXT: TemplateContext = Object.freeze({
  * sim-neutral interface (#1351). Flags come from `SessionFlags`, title
  * templates from the controller's per-tick template context.
  */
-export class IRacingSimConnection implements SimConnection {
+export class SimIRacingConnection implements SimConnection {
   /**
    * The telemetry the latest tick carried; null before the first tick and for
    * a disconnected one. Connection-wide, since every subscription sees the

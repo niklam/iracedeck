@@ -10,7 +10,7 @@ import { getController } from "./sdk-singleton.js";
  * this class is where an action's direct dependency on iRacing is named, so
  * the leak is one import away from being found.
  */
-export abstract class IRacingAction<T = Record<string, unknown>> extends ConnectionStateAwareAction<T> {
+export abstract class SimIRacingAction<T = Record<string, unknown>> extends ConnectionStateAwareAction<T> {
   protected get sdkController(): SDKController {
     return getController();
   }

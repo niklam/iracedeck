@@ -28,10 +28,10 @@ import {
 import {
   fuelToDisplayUnits,
   gallonsToLiters,
-  IRacingAction,
   isAutofuelActive,
   isAutofuelEnabled,
   isFuelFillOn,
+  SimIRacingAction,
 } from "@iracedeck/deck-iracing";
 import addFuelIcon from "@iracedeck/icons/fuel-service/add-fuel.svg";
 import clearFuelIcon from "@iracedeck/icons/fuel-service/clear-fuel.svg";
@@ -375,7 +375,7 @@ export function generateFuelServiceSvg(
  */
 export const FUEL_SERVICE_UUID = "com.iracedeck.sd.core.fuel-service" as const;
 
-export class FuelService extends IRacingAction<FuelServiceSettings> {
+export class FuelService extends SimIRacingAction<FuelServiceSettings> {
   private activeContexts = new Map<string, FuelServiceSettings>();
   private lastState = new Map<string, string>();
   private readonly repeat = new RepeatController(this.logger);

@@ -1,7 +1,7 @@
 {
   "name": "@iracedeck/deck-iracing",
   "version": "3.6.0-dev.0",
-  "description": "iRacing's side of the deck layer's sim-connection seam: IRacingSimConnection, the IRacingAction base, the SDK singleton and the iRacing helpers actions share.",
+  "description": "iRacing's side of the deck layer's sim-connection seam: SimIRacingConnection, the SimIRacingAction base, the SDK singleton and the iRacing helpers actions share.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

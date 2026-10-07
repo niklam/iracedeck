@@ -30,7 +30,7 @@ import {
 import { type Commands, createSDK, type SDKBundle, SDKController } from "@iracedeck/iracing-sdk";
 import { type ILogger, silentLogger } from "@iracedeck/logger";
 
-import { IRacingSimConnection } from "./iracing-sim-connection.js";
+import { SimIRacingConnection } from "./sim-iracing-connection.js";
 
 let sdkBundle: SDKBundle | null = null;
 
@@ -59,7 +59,7 @@ export function initializeSDK(logger: ILogger = silentLogger): SDKBundle {
   // the paste, under the user's focus mode (#977). This package owns the focus
   // service and the SDK package cannot import it, hence the injection.
   sdkBundle = createSDK(logger, { beforeKeystrokes: focusIRacingBeforeInput });
-  initializeSimConnection(new IRacingSimConnection(sdkBundle.controller));
+  initializeSimConnection(new SimIRacingConnection(sdkBundle.controller));
 
   return sdkBundle;
 }

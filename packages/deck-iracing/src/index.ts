@@ -1,5 +1,5 @@
-export { IRacingAction } from "./iracing-action.js";
-export { EMPTY_TEMPLATE_CONTEXT, IRacingSimConnection } from "./iracing-sim-connection.js";
+export { SimIRacingAction } from "./sim-iracing-action.js";
+export { EMPTY_TEMPLATE_CONTEXT, SimIRacingConnection } from "./sim-iracing-connection.js";
 export { _resetSDK, getCommands, getController, getSDK, initializeSDK, isSDKInitialized } from "./sdk-singleton.js";
 export {
   _resetAppMonitor,

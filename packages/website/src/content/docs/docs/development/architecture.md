@@ -3,7 +3,7 @@ title: Architecture
 description: How data and control flow through iRaceDeck — from iRacing telemetry to the Stream Deck, Mirabox, and Ulanzi plugins.
 ---
 
-iRaceDeck is shaped like an **hourglass**. Many possible sims funnel *in* through one narrow seam, pass through a single shared "brain," then fan *out* through a second narrow seam to many devices. Those two seams — the **event bus** (inbound) and the **`IDeckPlatformAdapter`** (outbound) — are the whole architecture in a sentence: add a sim by writing one new translator, add a device by writing one new adapter, and nothing else changes.
+iRaceDeck is shaped like an **hourglass**. Many possible sims funnel *in* through one narrow seam, pass through a single shared "brain," then fan *out* through a second narrow seam to many devices. Those two seams — the **event bus** (inbound) and the **`IDeckPlatformAdapter`** (outbound) — are the whole architecture in a sentence: add a sim by writing one new translator, add a device by writing one new adapter, and nothing else changes. A third, smaller seam sits beside the bus: the **sim connection**, the little the deck layer itself needs from a sim (is it connected, which flags are out, how to resolve a title template), so a second sim also brings its own small deck-layer package. How far the hourglass holds today is the subject of the last section.
 
 This page is the visual companion to the [Tech Stack](/docs/development/tech-stack/) page (which lists what each package *is*). Here we show how they *fit and flow*.
 
@@ -14,9 +14,12 @@ flowchart TB
   ir["iRacing sim"]:::ext
   future["future sims<br/>(AC, rF2, ...)"]:::ghost
   futureTrans["future translator<br/>(sim-events-...)"]:::ghost
+  futureDeck["future deck layer<br/>(deck-...)"]:::ghost
   sdk["iracing-sdk"]:::sim
   trans["sim-events-iracing<br/>(translator)"]:::sim
   bus(["event-bus<br/>SEAM 1 — semantic events"]):::seam
+  deckir["deck-iracing<br/>(iRacing side of the deck layer)"]:::sim
+  simconn(["SimConnection<br/>SEAM 3 — sim connection"]):::seam
   actions["iracing-actions<br/>(icons + buttons)"]:::core
   re["audio-scenarios<br/>(Race Engineer)"]:::audio
   adapter(["IDeckPlatformAdapter<br/>SEAM 2 — device boundary"]):::seam
@@ -29,9 +32,14 @@ flowchart TB
   ir --> sdk
   sdk --> trans
   trans --> bus
+  sdk --> deckir
+  deckir --> simconn
+  simconn -->|"connected · flags · title templates"| actions
+  deckir <-.->|"telemetry reads · commands (leak)"| actions
   future -.-> futureTrans
   futureTrans -.-> bus
-  bus --> actions
+  future -.-> futureDeck
+  futureDeck -.-> simconn
   actions -->|"key-press readout"| bus
   bus --> re
   actions --> adapter
@@ -52,9 +60,9 @@ flowchart TB
   classDef adp fill:#16a085,color:#fff,stroke:#0e6f5c;
 ```
 
-Arrows show **runtime flow**. The two purple stadium nodes are the abstraction seams; they're styled the same way in every diagram below so you can anchor on them. The dashed node is hypothetical — it shows where a second sim would plug in.
+Arrows show **runtime flow**. The purple stadium nodes are the abstraction seams; they're styled the same way in every diagram below so you can anchor on them. The dashed nodes are hypothetical — they show where a second sim would plug in: a translator onto the bus, and a deck layer behind the sim connection. The dashed arrow between `deck-iracing` and the actions is not a seam but a leak, drawn so it can't be missed (see *Seams & where the abstraction leaks*).
 
-Two things to notice. First, only `iracing-actions` flows down to the device seam — the **Race Engineer** (`audio-scenarios`) is a sibling consumer whose output goes to your speakers, never through the deck. Second, everything left of SEAM 1 is sim-specific; everything right of it is sim-agnostic — in principle (the action layer doesn't fully hold to this; see the *Seams & where the abstraction leaks* section below).
+Three things to notice. First, only `iracing-actions` flows down to the device seam — the **Race Engineer** (`audio-scenarios`) is a sibling consumer whose output goes to your speakers, never through the deck. Second, the sim reaches the two consumers by different roads: the Race Engineer hears semantic events through the bus (SEAM 1), while the keys' shared behaviour — greying out while the sim is disconnected, the flag overlay, live title templates — comes through the sim connection (SEAM 3), the only thing `deck-core` knows about a simulator (#1351). Third, no action subscribes to the bus today, and many still read iRacing telemetry and send iRacing commands directly through `deck-iracing`: everything above the two sim seams is sim-specific, and everything below them is sim-agnostic only in part (see the *Seams & where the abstraction leaks* section below).
 
 The arrow from `iracing-actions` back into the bus is the one event the deck layer publishes: a Session Info key press that asks the Race Engineer to read the value it shows out. Its payload is already in the driver's display unit, so it is as sim-agnostic as the translator's events.
 
@@ -86,7 +94,7 @@ flowchart TB
   classDef audio fill:#2e9e5b,color:#fff,stroke:#1f6e40;
 ```
 
-A reaction driven by the bus never reads telemetry for its trigger: it subscribes to an event the translator derived, the way the Race Engineer hears `flag.yellow.raised`. The translator is not the only reader of iRacing telemetry, though. No action subscribes to the bus today: a key's flag overlay asks `deck-core`'s sim connection for the active flags on each tick, and many actions read telemetry and session info directly through `deck-iracing`'s `IRacingAction`. Part of the Race Engineer catalog also reads the raw snapshot through `getLatestTelemetry()`. Both direct reads are listed under *Seams & where the abstraction leaks* below.
+A reaction driven by the bus never reads telemetry for its trigger: it subscribes to an event the translator derived, the way the Race Engineer hears `flag.yellow.raised`. The translator is not the only reader of iRacing telemetry, though. No action subscribes to the bus today: a key's flag overlay asks `deck-core`'s sim connection for the active flags on each tick, and many actions read telemetry and session info directly through `deck-iracing`'s `SimIRacingAction`. Part of the Race Engineer catalog also reads the raw snapshot through `getLatestTelemetry()`. Both direct reads are listed under *Seams & where the abstraction leaks* below.
 
 ## What the event bus provides
 
@@ -414,15 +422,16 @@ To keep this readable, `@iracedeck/logger` (imported by nearly every package) an
 
 ## Seams & where the abstraction leaks
 
-The system has exactly two intended seams, and naming what each one buys you is the fastest way to understand the codebase:
+The system has three intended seams, and naming what each one buys you is the fastest way to understand the codebase:
 
 - **SEAM 1 — `event-bus`.** Everything upstream is sim-specific; everything that subscribes is meant to be sim-agnostic. Adding a new sim is, in principle, "write a new translator that publishes the same event catalog."
 - **SEAM 2 — `IDeckPlatformAdapter`.** One shared action set is defined once and runs on every device. Adding a new device is "write a new adapter that implements the interface" — which is exactly how Mirabox and Ulanzi were added after Elgato.
+- **SEAM 3 — `SimConnection`** (#1351). The deck layer's whole view of a simulator: connected or not, a per-tick signal, the active flags for the key overlay, and title-template resolution. `deck-core` imports no sim package — a lint rule refuses one — and `deck-iracing` implements the interface over the iRacing SDK. Adding a new sim's deck side is "write a sibling `deck-<sim>` that implements it"; the commands and direct telemetry reads that actions still make are not part of it (see the leaks below).
 
 Honest architecture documents its leaks, too. These are the places where the clean story above doesn't fully hold today:
 
 - **Inbound is abstracted; outbound is not.** Telemetry is funneled through the sim-agnostic bus, but the command path is still iRacing-shaped: `deck-iracing`'s `getCommands()` returns iRacing SDK commands. A second sim would need its own command vocabulary, which has no seam yet (#714). The deck layer itself is no longer part of this leak: since #1351 `deck-core` imports no `iracing-sdk` and sees a sim only through `SimConnection` — connected or not, a per-tick signal, the active flags and title templates — and a lint rule on its sources refuses any import of an iRacing package.
-- **The shared layer reads iRacing directly.** Measured for #1351: 27 action files read the SDK controller directly — 26 action classes extend `deck-iracing`'s `IRacingAction` for its typed `sdkController` to read telemetry and session info, and Race Admin's command helper takes the controller as a parameter — and 15 action files call `getCommands()`; the package also imports `iracing-sdk` and `sim-events-iracing` itself. On the Race Engineer side, 15 `audio-scenarios` catalog files import `iracing-sdk` or `sim-events-iracing`, and 8 of them read raw iRacing telemetry through `getLatestTelemetry()`. So "everything right of SEAM 1 is sim-agnostic" is an aspiration both consumers fall short of; `IRacingAction` at least names the action half, so it is one search away. Porting these reads is #714's read model.
+- **The shared layer reads iRacing directly.** Measured for #1351: 27 action files read the SDK controller directly — 26 action classes extend `deck-iracing`'s `SimIRacingAction` for its typed `sdkController` to read telemetry and session info, and Race Admin's command helper takes the controller as a parameter — and 15 action files call `getCommands()`; the package also imports `iracing-sdk` and `sim-events-iracing` itself. On the Race Engineer side, 15 `audio-scenarios` catalog files import `iracing-sdk` or `sim-events-iracing`, and 8 of them read raw iRacing telemetry through `getLatestTelemetry()`. So "everything right of SEAM 1 is sim-agnostic" is an aspiration both consumers fall short of; `SimIRacingAction` at least names the action half, so it is one search away. Porting these reads is #714's read model.
 - **Device differences leak around the adapter.** Only a Stream Deck+ dial reports touch, long press and push + turn — a Mirabox knob has turn and press alone — so that extended gesture *set* is handled at *build time* via a platform [feature flag](/docs/development/feature-flags/) (`dialExtendedGestures`), not expressed through `IDeckPlatformAdapter` — a real device difference living outside the device seam. The knob *press* is normalised inside the Mirabox adapter instead: the host never reports a knob's release, so the adapter delivers every press as an immediate `dialDown` + `dialUp` pair and the actions see an ordinary press (#1013). The dial *display* is not: since #1013 it is on the seam through `IDeckActionContext.dialCanvas()` / `setDialCanvas()`, where each adapter reports a `DialCanvasProfile` for its dial screen (the 200×100 Stream Deck+ strip slot, the 176×112 screen above a Mirabox knob, or none on Ulanzi) and the actions pick a drawing by the profile, never by the platform. (A previous device difference here — divergent SVG rendering capability between hosts' own engines — was eliminated rather than papered over: since issue #642, icons still cross SEAM 2 as SVG, but each adapter's context implementation converts them to PNG in-plugin via `deck-core`'s rasterizer service before the host send, so no host-specific SVG engine is in the picture anymore.)
 - **Ulanzi reuses Elgato's plugin and action UUIDs verbatim.** A pragmatic coupling: UlanziStudio doesn't validate the UUID prefix, so reusing the canonical IDs avoided a parallel identity scheme.
 - **`onHostReady` sits ON the interface, but optional.** Only the two WebSocket adapters can report the moment their socket opens; Elgato's SDK queues a send until the connection exists, so it declares nothing at all. Optional rather than required so that absence is a statement — "there is nothing to wait for" — instead of a stub that satisfies the type while never honouring the contract. It is on the seam because `deck-core` must consume it, and optional because two of three adapters have nothing to say.

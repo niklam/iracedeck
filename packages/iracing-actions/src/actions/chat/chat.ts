@@ -22,7 +22,7 @@ import {
   resolveTitleSettings,
   svgToDataUri,
 } from "@iracedeck/deck-core";
-import { EMPTY_TEMPLATE_CONTEXT, getCommands, IRacingAction } from "@iracedeck/deck-iracing";
+import { EMPTY_TEMPLATE_CONTEXT, getCommands, SimIRacingAction } from "@iracedeck/deck-iracing";
 import cancelIcon from "@iracedeck/icons/chat/cancel.svg";
 import openChatIcon from "@iracedeck/icons/chat/open-chat.svg";
 import replyIcon from "@iracedeck/icons/chat/reply.svg";
@@ -283,7 +283,7 @@ export function generateMacroSvg(settings: ChatSettings): string {
  */
 export const CHAT_UUID = "com.iracedeck.sd.core.chat" as const;
 
-export class Chat extends IRacingAction<ChatSettings> {
+export class Chat extends SimIRacingAction<ChatSettings> {
   private activeContexts = new Map<string, ChatSettings>();
   private lastRenderedIcon = new Map<string, string>();
   /**
