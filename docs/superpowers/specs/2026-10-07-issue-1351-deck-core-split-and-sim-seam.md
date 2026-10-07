@@ -103,7 +103,7 @@ Three rules make the map hold:
 
 - **`app-constants` admits only constants, types and pure functions over them.** It has zero dependencies and uses no Node or DOM globals, so browser code and every layer can import it. A test refuses any import in its sources, as `key-binding-defaults`' test does today, and its `tsconfig.json` sets `lib: ["es2022"]` and `types: []`, so a Node or DOM global fails `typecheck`. `pi-components` imports it directly and its pinned copies are deleted, the unpinned ones too where the value is in the leaf. `pi-components`' Rollup subpath guard changes from "only `@iracedeck/deck-core/key-binding-defaults`" to "only `@iracedeck/app-constants` and `@iracedeck/fetch-utils`", and `deck-core`'s subpath export is removed.
 - **`fetch-utils` is its own leaf** because `abortAfter` uses `AbortController` and timers, which the constants leaf's rule excludes. Putting it in `voice-packs` and having `app-updates` import it from there would make an update check depend on the voice-pack stack. It is browser-safe too — zero dependencies, and only globals both runtimes share (`AbortController`, timers, `Response`), held by `types: []` in its `tsconfig.json` — so `pi-components` imports it and drops its own `abort-after.ts` copy.
-- **`settings` declares the host it needs.** It defines a narrow `SettingsHost` interface covering the global-settings read and write it actually calls, rather than importing `IDeckPlatformAdapter`. The adapter satisfies it structurally, so no adapter changes.
+- **`settings` declares the host it needs.** It defines a narrow `SettingsHost` interface covering the global-settings read and write it actually calls, rather than importing `IDeckPlatformAdapter`. The adapter satisfies it structurally, so no adapter changes. #1365 lists its exact members by measuring what `global-settings.ts` and `settings-channel-publisher.ts` call on the adapter, and records them here on `master` before implementing, so the interface is a decision rather than a discovery.
 
 ### One import path per name
 
@@ -130,7 +130,7 @@ The issue is delivered as five PRs, in this order. Each has its own sub-issue (#
 
    It goes first because it delivers the second-sim value and its guard then protects every later move.
 2. **The two leaves.** `app-constants` and `fetch-utils`, with `pi-components`' copies deleted. Settings cannot drop below `deck-core` until the constant cycles are gone.
-3. **`settings`.** The `SettingsHost` interface and the mock sweep, the largest churn, kept apart.
+3. **`settings`.** The `SettingsHost` interface and the mock sweep, the largest churn, kept apart. It also moves the paths things outside the code name: the hook scripts that name `packages/deck-core/src/global-settings.ts` (`scripts/claude-hooks/`), and the `paths` frontmatter of every rule that loads for the moved files. A rule whose `paths` still points at the old location silently stops loading, which #1364 found twice.
 4. **`voice-packs`.** 7,000 lines, plus the `audio-assets` test and catalog scripts that import it by path.
 5. **`replay-store`, `diagnostics`, `app-updates`, `settings-window`.** Small, and mostly consumed by `plugin-runtime` alone.
 
@@ -163,7 +163,7 @@ The #1349 spec, frozen since #1349 shipped, lists "a sim-neutral `SimRuntime` an
 
 ## Testing
 
-Every PR passes the full set by hand before review: `install` → `build` → `typecheck` → `format` → `lint` → `test`. The build output is read, not just its exit code.
+Every PR passes the full set by hand before review: `install` → `build` → `typecheck` → `format` → `lint` → `test`. The build output is read, not just its exit code. Each PR's `/code-review` level comes from the table in `.claude/rules/code-review.md` by what it moves, not by "no behaviour change": PR 3 moves the settings-store write path, which is in the `max` row, so it reviews at `max`.
 
 - **The guards are proven to fire.** Each check gets a planted violation that has to fail, run once by hand and recorded in the PR:
   - the `no-restricted-imports` rule on `deck-core`, against a planted `@iracedeck/iracing-sdk` import;
