@@ -1,6 +1,6 @@
 # Split `deck-core` by concern and put iRacing behind a sim-connection seam
 
-> **Issue:** [#1351](https://github.com/niklam/iracedeck/issues/1351) · **Supersedes:** _none_ · **Superseded by:** _none_
+> **Issue:** [#1351](https://github.com/niklam/iracedeck/issues/1351), delivered as [#1363](https://github.com/niklam/iracedeck/issues/1363) (sim seam), [#1364](https://github.com/niklam/iracedeck/issues/1364) (leaves), [#1365](https://github.com/niklam/iracedeck/issues/1365) (settings), [#1366](https://github.com/niklam/iracedeck/issues/1366) (voice packs), [#1367](https://github.com/niklam/iracedeck/issues/1367) (the rest) · **Supersedes:** _none_ · **Superseded by:** _none_
 >
 > Point-in-time design record. The code and `.claude/rules/` are the truth; this is not documentation.
 
@@ -118,7 +118,7 @@ The other relative-path reaches into `deck-core/src/` move in the change that mo
 
 ### Delivery: five pull requests
 
-The issue is delivered as five PRs. Each has its own sub-issue and `ir-<n>` worktree, and each updates the documentation it makes stale.
+The issue is delivered as five PRs, in this order. Each has its own sub-issue (#1363 – #1367, in order) and `ir-<n>` worktree, and each updates the documentation it makes stale.
 
 1. **The sim seam.** Contents:
    - `sim-connection` and `deck-iracing`;
