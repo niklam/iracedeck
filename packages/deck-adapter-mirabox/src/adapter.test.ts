@@ -85,7 +85,7 @@ describe("VSDPlatformAdapter", () => {
   });
 
   describe("onHostReady (#1056)", () => {
-    it("delegates to the client, so deck-core can restart the migration deadline from the connect", () => {
+    it("delegates to the client, so the settings package can restart the migration deadline from the connect", () => {
       const callback = vi.fn();
 
       adapter.onHostReady(callback);

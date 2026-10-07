@@ -254,7 +254,7 @@ describe("UlanziClient connection", () => {
   });
 
   it("sends the connected handshake and an ADDRESSED global-settings read on open (#1041)", async () => {
-    // This is the read that reaches the host in practice: deck-core's one-time
+    // This is the read that reaches the host in practice: the settings package's one-time
     // migration read usually fires before the socket is open. It must carry a
     // non-empty actionid or UlanziStudio never answers it, and the migration
     // silently falls back to schema defaults.
@@ -865,7 +865,7 @@ describe("UlanziClient.requestGlobalSettings before the socket is open (#1041)",
   });
 
   it("sends nothing when no socket exists yet, and does not throw", async () => {
-    // deck-core's one-time migration read fires as soon as the missing
+    // The settings package's one-time migration read fires as soon as the missing
     // settings file resolves, which is before connect() has opened the socket.
     const client = new UlanziClient(params, undefined, () => {});
 
@@ -877,9 +877,9 @@ describe("UlanziClient.requestGlobalSettings before the socket is open (#1041)",
 
   it("does not stash the read — the connect-time read asks in its place, exactly once", async () => {
     // A stash like setGlobalSettings' would put a duplicate frame on the wire:
-    // the open handler already issues this same read. (deck-core's own read is
+    // the open handler already issues this same read. (the settings package's own read is
     // a separate frame and deliberately kept — it is what completes the
-    // migration in the ordering where the socket opens first, since deck-core
+    // migration in the ordering where the socket opens first, since the settings package
     // ignores any reply that arrives before it asked.)
     const client = new UlanziClient(params, undefined, () => {});
 
@@ -918,7 +918,7 @@ describe("UlanziClient.onHostReady (#1056)", () => {
   });
 
   it("fires when the socket opens, after the connect-time read is on the wire", async () => {
-    // deck-core restarts the migration deadline from here, so a subscriber must
+    // The settings package restarts the migration deadline from here, so a subscriber must
     // not be told the host is reachable before the read has actually gone out.
     const client = new UlanziClient(params, undefined, () => {});
     await client.connect();

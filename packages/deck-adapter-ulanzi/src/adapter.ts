@@ -272,7 +272,7 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
     });
 
     // Global-settings reply routing (#868). Registered here (not in
-    // onDidReceiveGlobalSettings) so reply tracking runs even before deck-core
+    // onDidReceiveGlobalSettings) so reply tracking runs even before the settings package
     // wires its callback. Plugin-scoped replies (uuid absent or the plugin
     // UUID) are authoritative and always forwarded. Action-scoped replies
     // exist only as the boot bootstrap fallback — forwarded while nothing
@@ -324,7 +324,7 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
   }
 
   /**
-   * Read the deck host's global settings. deck-core calls this once per start,
+   * Read the deck host's global settings. The settings package calls this once per start,
    * for the one-time migration, as soon as it finds no settings file — usually
    * before the host socket is open, in which case the client's connect-time
    * read asks in its place. Either way the frame is addressed, so the host
@@ -335,11 +335,11 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
   }
 
   /**
-   * Report the host socket becoming usable, so deck-core can restart the
+   * Report the host socket becoming usable, so the settings package can restart the
    * settings-migration deadline from the point its read can actually be
    * answered (#1056). Implemented here because this host drops a frame written
    * before its socket opens; Elgato's SDK awaits the connection inside its own
-   * `send`, so that adapter declares no `onHostReady` at all and deck-core
+   * `send`, so that adapter declares no `onHostReady` at all and the settings package
    * keeps the deadline it armed when the read went out.
    */
   onHostReady(callback: () => void): void {
