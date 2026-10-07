@@ -1,7 +1,8 @@
 import type StreamDeck from "@elgato/streamdeck";
 import type { ElgatoPlatformAdapter } from "@iracedeck/deck-adapter-elgato";
-import { initProfileSwitcher, updateGlobalSettings } from "@iracedeck/deck-core";
+import { initProfileSwitcher } from "@iracedeck/deck-core";
 import { STREAM_DECK_ACTIONS } from "@iracedeck/plugin-runtime";
+import { updateGlobalSettings } from "@iracedeck/settings";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createElgatoExtension } from "./elgato-extension.js";
@@ -9,6 +10,10 @@ import { createElgatoExtension } from "./elgato-extension.js";
 vi.mock("@iracedeck/deck-core", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   initProfileSwitcher: vi.fn(),
+}));
+
+vi.mock("@iracedeck/settings", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   updateGlobalSettings: vi.fn(),
 }));
 

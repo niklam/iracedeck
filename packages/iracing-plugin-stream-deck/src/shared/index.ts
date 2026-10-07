@@ -2,7 +2,8 @@
  * @iracedeck/stream-deck-utils
  *
  * Shared utilities for Stream Deck plugins.
- * Re-exports from @iracedeck/deck-core and @iracedeck/deck-adapter-elgato
+ * Re-exports from @iracedeck/deck-core, @iracedeck/settings and
+ * @iracedeck/deck-adapter-elgato
  * for backward compatibility.
  */
 
@@ -45,17 +46,6 @@ export {
   type GenerateIconTextOptions,
   // Logger
   LogLevel,
-  // Global settings
-  GlobalSettingsSchema,
-  type GlobalSettings,
-  KeyBindingValueSchema,
-  type KeyBindingValue,
-  initGlobalSettings,
-  getGlobalSettings,
-  getGlobalColors,
-  onGlobalSettingsChange,
-  isGlobalSettingsInitialized,
-  _resetGlobalSettings,
   // Keyboard types
   KEYBOARD_KEYS,
   type KeyboardKey,
@@ -84,6 +74,21 @@ export {
   initMousePointer,
   movePointerToSim,
 } from "@iracedeck/deck-core";
+
+// Re-export the global settings from @iracedeck/settings
+export {
+  // Global settings
+  GlobalSettingsSchema,
+  type GlobalSettings,
+  KeyBindingValueSchema,
+  type KeyBindingValue,
+  initGlobalSettings,
+  getGlobalSettings,
+  getGlobalColors,
+  onGlobalSettingsChange,
+  isGlobalSettingsInitialized,
+  _resetGlobalSettings,
+} from "@iracedeck/settings";
 
 // Re-export from deck-adapter-elgato
 export { createSDLogger, type SDLoggerLike } from "@iracedeck/deck-adapter-elgato";
