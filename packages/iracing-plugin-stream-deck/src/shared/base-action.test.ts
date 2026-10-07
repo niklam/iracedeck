@@ -4,8 +4,8 @@ import {
   BaseAction,
   initPluginConfig,
   overlayConfig,
+  type OverlayFlag,
 } from "@iracedeck/deck-core";
-import type { FlagInfo } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock KeyAction
@@ -54,7 +54,7 @@ class TestAction extends BaseAction<{ testSetting?: string; flagsOverlay?: boole
     return this.flagOverlayContexts.has(contextId);
   }
 
-  generateFlagSvgPublic(flagInfo: FlagInfo): string {
+  generateFlagSvgPublic(flagInfo: OverlayFlag): string {
     return this.generateFlagOverlaySvg(flagInfo);
   }
 }

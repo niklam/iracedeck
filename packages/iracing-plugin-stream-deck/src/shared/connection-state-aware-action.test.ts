@@ -1,35 +1,16 @@
 import { ConnectionStateAwareAction, overlayConfig } from "@iracedeck/deck-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// Mock sdk-singleton before importing deck-core (same approach as app-monitor.test.ts)
-const { mockGetConnectionStatus, mockSetReconnectEnabled, mockGetController } = vi.hoisted(() => {
-  const mockGetConnectionStatus = vi.fn();
-  const mockSetReconnectEnabled = vi.fn();
-  const mockController = {
-    getConnectionStatus: mockGetConnectionStatus,
-    setReconnectEnabled: mockSetReconnectEnabled,
-    subscribe: vi.fn(),
-    unsubscribe: vi.fn(),
-  };
+import { createFakeSimConnection, type FakeSimConnection } from "../../../deck-core/src/fake-sim-connection.js";
 
-  return {
-    mockGetConnectionStatus,
-    mockSetReconnectEnabled,
-    mockGetController: vi.fn(() => mockController),
-  };
-});
+// Serve deck-core a fake sim connection
+const sim = vi.hoisted(() => ({ fake: null as FakeSimConnection | null, initialized: true }));
 
-vi.mock("../../../deck-core/src/sdk-singleton.js", () => ({
-  getController: () => ({
-    ...mockGetController(),
-    subscribe: (..._args: unknown[]) => {},
-    unsubscribe: (..._args: unknown[]) => {},
-  }),
-  getSDK: vi.fn(),
-  getCommands: vi.fn(),
-  initializeSDK: vi.fn(),
-  isSDKInitialized: vi.fn(() => true),
-  _resetSDK: vi.fn(),
+vi.mock("../../../deck-core/src/sim-connection.js", () => ({
+  getSimConnection: () => sim.fake!.connection,
+  isSimConnectionInitialized: () => sim.initialized,
+  initializeSimConnection: vi.fn(),
+  _resetSimConnection: vi.fn(),
 }));
 
 vi.mock("../../../deck-core/src/binding-dispatcher.js", () => ({
@@ -96,13 +77,9 @@ describe("ConnectionStateAwareAction", () => {
   let testAction: TestConnectionAction;
 
   beforeEach(() => {
-    mockGetConnectionStatus.mockReturnValue(false);
-    mockGetController.mockReturnValue({
-      getConnectionStatus: mockGetConnectionStatus,
-      setReconnectEnabled: mockSetReconnectEnabled,
-      subscribe: vi.fn(),
-      unsubscribe: vi.fn(),
-    });
+    sim.fake = createFakeSimConnection();
+    sim.fake.state.connected = false;
+    sim.initialized = true;
     testAction = new TestConnectionAction();
     // Enable overlay for tests (disabled by default in production)
     overlayConfig.inactiveOverlayEnabled = true;
@@ -113,27 +90,21 @@ describe("ConnectionStateAwareAction", () => {
     overlayConfig.inactiveOverlayEnabled = false;
   });
 
-  describe("sdkController getter", () => {
-    it("should get controller from SDK singleton", () => {
-      testAction.callGetConnectionStatus();
-
-      expect(mockGetController).toHaveBeenCalled();
-    });
-  });
-
   describe("getConnectionStatus", () => {
-    it("should return the controller's connection status", () => {
+    it("should return the sim connection's status", () => {
       expect(testAction.callGetConnectionStatus()).toBe(false);
 
-      mockGetConnectionStatus.mockReturnValue(true);
+      sim.fake!.state.connected = true;
 
       expect(testAction.callGetConnectionStatus()).toBe(true);
     });
 
-    it("should call the controller's getConnectionStatus method", () => {
+    it("should ask the sim connection", () => {
+      const isConnected = vi.spyOn(sim.fake!.connection, "isConnected");
+
       testAction.callGetConnectionStatus();
 
-      expect(mockGetConnectionStatus).toHaveBeenCalled();
+      expect(isConnected).toHaveBeenCalled();
     });
   });
 
@@ -161,7 +132,7 @@ describe("ConnectionStateAwareAction", () => {
 
       // Initially disconnected, then connect
       testAction.callUpdateConnectionState(); // null -> false (inactive)
-      mockGetConnectionStatus.mockReturnValue(true);
+      sim.fake!.state.connected = true;
       testAction.callUpdateConnectionState(); // false -> true (active)
 
       // Last call should set original image (active)
@@ -170,7 +141,7 @@ describe("ConnectionStateAwareAction", () => {
 
     it("should set active to false when disconnected", async () => {
       // Start connected
-      mockGetConnectionStatus.mockReturnValue(true);
+      sim.fake!.state.connected = true;
       testAction.callUpdateConnectionState(); // null -> true
 
       const ev = createMockEvent("context-1");
@@ -180,7 +151,7 @@ describe("ConnectionStateAwareAction", () => {
       ev.action.setImage.mockClear();
 
       // Disconnect
-      mockGetConnectionStatus.mockReturnValue(false);
+      sim.fake!.state.connected = false;
       testAction.callUpdateConnectionState(); // true -> false
 
       // Should apply inactive overlay
@@ -206,13 +177,13 @@ describe("ConnectionStateAwareAction", () => {
       expect(testAction.getIsActive()).toBe(false);
 
       // Connect: false -> true
-      mockGetConnectionStatus.mockReturnValue(true);
+      sim.fake!.state.connected = true;
       testAction.callUpdateConnectionState();
 
       expect(testAction.getIsActive()).toBe(true);
 
       // Disconnect: true -> false
-      mockGetConnectionStatus.mockReturnValue(false);
+      sim.fake!.state.connected = false;
       testAction.callUpdateConnectionState();
 
       expect(testAction.getIsActive()).toBe(false);
@@ -252,15 +223,16 @@ describe("ConnectionStateAwareAction", () => {
   });
 
   describe("multiple action instances", () => {
-    it("should share the same controller from singleton", () => {
+    it("should share the same sim connection from the singleton", () => {
       const action1 = new TestConnectionAction();
       const action2 = new TestConnectionAction();
+      const isConnected = vi.spyOn(sim.fake!.connection, "isConnected");
 
       action1.callGetConnectionStatus();
       action2.callGetConnectionStatus();
 
-      // Both should use the same singleton controller
-      expect(mockGetController).toHaveBeenCalledTimes(2);
+      // Both should read the same singleton connection
+      expect(isConnected).toHaveBeenCalledTimes(2);
     });
 
     it("should have independent active state tracking", () => {

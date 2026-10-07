@@ -10,11 +10,11 @@
  * compatibility but delegates to the new evaluateReadiness() internally.
  *
  * Readiness is fully automatic:
- * - The base class subscribes to the SDK controller on onWillAppear and
- *   evaluates readiness on every telemetry tick.
+ * - The base class subscribes to the sim connection on onWillAppear and
+ *   evaluates readiness on every sim tick.
  * - setActiveBinding(key) declares which binding the action depends on.
  *   When set, readiness is determined by the binding type. When not set,
- *   readiness falls back to iRacing connection status.
+ *   readiness falls back to the sim connection status.
  * - Global settings changes (e.g., user switches a binding from keyboard
  *   to SimHub) trigger automatic readiness re-evaluation.
  * - Actions never need to call updateConnectionState() manually.
@@ -24,11 +24,13 @@ import type { SDKController } from "@iracedeck/iracing-sdk";
 import { BaseAction } from "./base-action.js";
 import { getBindingDispatcher } from "./binding-dispatcher.js";
 import { onGlobalSettingsChange } from "./global-settings.js";
+// Only the `sdkController` getter still reads the SDK singleton; both leave deck-core with the iRacing side (#1363).
 import { getController } from "./sdk-singleton.js";
+import { getSimConnection } from "./sim-connection.js";
 import { onSimHubReachabilityChange } from "./simhub-service.js";
 import type { IDeckWillAppearEvent, IDeckWillDisappearEvent } from "./types.js";
 
-/** Prefix for the base class's internal SDK subscription ID */
+/** Prefix for the base class's internal sim-connection subscription ID */
 const READINESS_SUB_PREFIX = "_readiness:";
 
 /**
@@ -71,24 +73,24 @@ export abstract class ConnectionStateAwareAction<T = Record<string, unknown>> ex
   // --- Lifecycle ---
 
   /**
-   * Subscribe to SDK controller for automatic readiness tracking.
+   * Subscribe to the sim connection for automatic readiness tracking.
    * Actions that override onWillAppear MUST call super.onWillAppear(ev).
    */
   override async onWillAppear(ev: IDeckWillAppearEvent<T>): Promise<void> {
     await super.onWillAppear(ev);
 
     const subId = READINESS_SUB_PREFIX + ev.action.id;
-    this.sdkController.subscribe(subId, () => {
+    getSimConnection().subscribe(subId, () => {
       this.evaluateReadiness();
     });
   }
 
   /**
-   * Unsubscribe from SDK controller readiness tracking.
+   * Unsubscribe from sim-connection readiness tracking.
    * Actions that override onWillDisappear MUST call super.onWillDisappear(ev).
    */
   override async onWillDisappear(ev: IDeckWillDisappearEvent<T>): Promise<void> {
-    this.sdkController.unsubscribe(READINESS_SUB_PREFIX + ev.action.id);
+    getSimConnection().unsubscribe(READINESS_SUB_PREFIX + ev.action.id);
 
     // Clean up listeners to prevent memory leaks
     if (this.globalSettingsUnsubscribe) {
@@ -167,21 +169,21 @@ export abstract class ConnectionStateAwareAction<T = Record<string, unknown>> ex
   }
 
   /**
-   * Internal readiness evaluation — called automatically by the SDK subscription,
+   * Internal readiness evaluation — called automatically by the sim-connection subscription,
    * setActiveBinding, and the global settings change listener.
    * Wrapped in try-catch to prevent exceptions from breaking telemetry for all actions.
    */
   private evaluateReadiness(): void {
     try {
-      const iRacingConnected = this.sdkController.getConnectionStatus();
+      const simConnected = getSimConnection().isConnected();
 
       let isReady: boolean;
 
       if (this.activeBindingKeys.length > 0) {
         // All tracked keys must be ready (multi-key modes warn if any is missing).
-        isReady = this.activeBindingKeys.every((key) => getBindingDispatcher().isReady(key, iRacingConnected));
+        isReady = this.activeBindingKeys.every((key) => getBindingDispatcher().isReady(key, simConnected));
       } else {
-        isReady = iRacingConnected;
+        isReady = simConnected;
       }
 
       if (this.lastReadyStatus !== isReady) {
@@ -195,10 +197,10 @@ export abstract class ConnectionStateAwareAction<T = Record<string, unknown>> ex
   }
 
   /**
-   * Get current iRacing connection status
+   * Get the current sim connection status
    */
   protected getConnectionStatus(): boolean {
-    return this.sdkController.getConnectionStatus();
+    return getSimConnection().isConnected();
   }
 
   /**

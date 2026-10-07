@@ -137,6 +137,16 @@ export { LogLevel } from "@iracedeck/logger";
 // SDK singleton for lazy initialization
 export { initializeSDK, getSDK, getController, getCommands, isSDKInitialized, _resetSDK } from "./sdk-singleton.js";
 
+// The sim-neutral connection the base classes read (#1351)
+export {
+  _resetSimConnection,
+  getSimConnection,
+  initializeSimConnection,
+  isSimConnectionInitialized,
+  type OverlayFlag,
+  type SimConnection,
+} from "./sim-connection.js";
+
 // Global settings
 export {
   GlobalSettingsSchema,
