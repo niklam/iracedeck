@@ -24,18 +24,14 @@
  *
  * Decision record: `docs/superpowers/specs/2026-10-04-issue-1338-built-in-profiling.md`.
  *
- * This file imports nothing but Node built-ins, erasable types and its own
- * constants leaf, so its integration test can run it, transpiled, in a child
- * Node process.
+ * This file imports nothing but Node built-ins, erasable types and the
+ * `@iracedeck/app-constants` leaf, so its integration test can run it,
+ * transpiled, in a child Node process.
  */
+import { PROFILE_CAPTURE_STATUS_KEY } from "@iracedeck/app-constants";
 import type { ILogger } from "@iracedeck/logger";
 import { mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-
-import { PROFILE_CAPTURE_STATUS_KEY } from "./cpu-profile-capture-constants.js";
-
-/** The run-scoped global-settings key carrying the capture's state (enrolled in `RUN_SCOPED_SETTING_KEYS`). */
-export { PROFILE_CAPTURE_STATUS_KEY };
 
 /** The spec's values: 30 s at a 1 ms sampling interval (~30,000 samples), newest five pairs kept. */
 export const CPU_PROFILE_DEFAULTS = {

@@ -1,3 +1,4 @@
+import { SETTINGS_WINDOW_HTML } from "@iracedeck/app-constants";
 import { silentLogger } from "@iracedeck/logger";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -6,7 +7,7 @@ import {
   type SettingsWindowServerOptions,
   startSettingsWindowServer,
 } from "./settings-window-server.js";
-import { createSettingsWindowController, SETTINGS_WINDOW_HTML, type SettingsWindowStatus } from "./settings-window.js";
+import { createSettingsWindowController, type SettingsWindowStatus } from "./settings-window.js";
 
 const PAGE = "<!doctype html><title>t</title>";
 

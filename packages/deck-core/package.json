@@ -9,10 +9,6 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
-    },
-    "./key-binding-defaults": {
-      "import": "./dist/key-binding-defaults.js",
-      "types": "./dist/key-binding-defaults.d.ts"
     }
   },
   "scripts": {
@@ -23,8 +19,10 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
+    "@iracedeck/app-constants": "workspace:*",
     "@iracedeck/callout-script": "workspace:*",
     "@iracedeck/callout-settings": "workspace:*",
+    "@iracedeck/fetch-utils": "workspace:*",
     "@iracedeck/icon-composer": "workspace:*",
     "@iracedeck/logger": "workspace:*",
     "fflate": "0.8.3",

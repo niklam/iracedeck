@@ -71,6 +71,7 @@
  * over the file for seeded keys in the migration merge — a change to the
  * settings write path for a small group.
  */
+import { defaultBindingStoredValue, ENSURED_VOICE_PACK_ID } from "@iracedeck/app-constants";
 import { qualifyVoiceId, splitVoiceId } from "@iracedeck/callout-script";
 import type { ILogger } from "@iracedeck/logger";
 
@@ -83,8 +84,6 @@ import {
   type SettingsStoreHostDerivation,
   updateGlobalSettings,
 } from "./global-settings.js";
-import { defaultBindingStoredValue } from "./key-binding-defaults.js";
-import { ENSURED_VOICE_PACK_ID } from "./voice-pack-constants.js";
 
 /**
  * Migrate renamed global-settings keys, now or as soon as the first real

@@ -31,10 +31,10 @@
  * `isSimRunning`. The elevation check is injected the same way (#1351): the
  * probe lives in `@iracedeck/deck-iracing`, which depends on deck-core.
  */
+import type { FocusIRacingMode } from "@iracedeck/app-constants";
 import type { ILogger } from "@iracedeck/logger";
 import { silentLogger } from "@iracedeck/logger";
 
-import type { FocusIRacingMode } from "./focus-iracing-mode.js";
 import { getGlobalSettings, isSettingsStoreReady } from "./global-settings.js";
 
 /**

@@ -36,20 +36,22 @@
  * The plugin populates both in ONE write, so the dropdown can never pair one
  * scan's voices with another scan's names.
  */
+import { VOICE_LABELS_KEY } from "@iracedeck/app-constants";
+
 import { skipUnchanged } from "./settings-change-filter.js";
 
 let styleInjected = false;
 
 const DEFAULT_SETTING = "raceEngineerVoice";
 const DEFAULT_VOICES_SETTING = "_raceEngineerVoices";
-const DEFAULT_LABELS_SETTING = "_voiceLabels";
 
 /**
  * @internal Exported for testing — the separator of a composite voice id,
  * `<pack id>::<voice id>` (#1144): a copy of `VOICE_ID_SEPARATOR` in
  * `@iracedeck/callout-script`. A copy because this file ships in the PI
- * browser bundle, which resolves no workspace package — and that one would
- * pull `zod` in with it. `voice-select.test.ts` pins the copy to the shared
+ * browser bundle, which resolves only the two dependency-free leaves
+ * (`@iracedeck/app-constants`, `@iracedeck/fetch-utils`) — and callout-script
+ * would pull `zod` in with it. `voice-select.test.ts` pins the copy to the shared
  * constant, so the two cannot drift apart.
  */
 export const VOICE_SEPARATOR = "::";
@@ -228,7 +230,7 @@ export class VoiceSelect extends HTMLElement {
 
     const settingKey = this.getAttribute("setting") ?? DEFAULT_SETTING;
     const voicesKey = this.getAttribute("voices") ?? DEFAULT_VOICES_SETTING;
-    const labelsKey = this.getAttribute("labels") ?? DEFAULT_LABELS_SETTING;
+    const labelsKey = this.getAttribute("labels") ?? VOICE_LABELS_KEY;
 
     const [, save] = window.SDPIComponents.useGlobalSettings(
       settingKey,

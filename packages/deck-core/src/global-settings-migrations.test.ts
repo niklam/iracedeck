@@ -342,7 +342,7 @@ describe("seedBindingDefaultsIfAbsent (#1277)", () => {
   // CAR_CYCLE_BINDING_DEFAULTS, read from key-bindings.json).
   const DEFAULTS = { replayControlNextCar: "V", replayControlPrevCar: "Shift+V" };
   // What `ird-key-binding` saves for those defaults: JSON.stringify(parseSimpleDefault(...)).
-  // One parser for both (deck-core key-binding-defaults.ts); pi-components'
+  // One parser for both (app-constants key-binding-defaults.ts); pi-components'
   // key-binding-input.default-save.test.ts pins the field's save to it.
   const NEXT_STORED = '{"type":"keyboard","key":"v","modifiers":[],"code":"KeyV"}';
   const PREV_STORED = '{"type":"keyboard","key":"v","modifiers":["shift"],"code":"KeyV"}';

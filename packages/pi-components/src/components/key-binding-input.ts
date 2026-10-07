@@ -29,6 +29,8 @@
  * - Keyboard: { "key": "f1", "modifiers": ["ctrl", "shift"] }
  * - SimHub:   { "type": "simhub", "role": "My Role Name" }
  */
+import { keyForCode, type Modifier } from "@iracedeck/app-constants";
+
 import {
   formatKeyBinding,
   type KeyBindingValue,
@@ -37,7 +39,7 @@ import {
   SDPI_THEME,
   UI_TEXT,
 } from "./key-binding-utils.js";
-import { keyForCode, type Modifier, resolveEventCode } from "./key-maps.js";
+import { resolveEventCode } from "./key-maps.js";
 import { skipUnchanged } from "./settings-change-filter.js";
 import { probeSimHub } from "./simhub-probe.js";
 
@@ -45,10 +47,10 @@ import { probeSimHub } from "./simhub-probe.js";
  * SYNC NOTE: The types below (SimHubBindingValue, BindingValue) and the
  * isSimHubBinding() guard are browser-side duplicates of their counterparts
  * in @iracedeck/deck-core/global-settings.ts. The PI runs in a browser
- * context and cannot import the deck-core barrel (Node.js) — only a
- * dependency-free subpath such as `@iracedeck/deck-core/key-binding-defaults`,
- * where the key map and default parser live (#1277). When modifying binding
- * types, update BOTH locations.
+ * context and cannot import the deck-core barrel (Node.js) — only the two
+ * dependency-free leaves, `@iracedeck/app-constants` (where the key map and
+ * default parser live, #1277) and `@iracedeck/fetch-utils` (spec #1351). When
+ * modifying binding types, update BOTH locations.
  *
  * Key invariant: both KeyBindingValue and SimHubBindingValue have a `type`
  * discriminant field ("keyboard" and "simhub" respectively).

@@ -1,15 +1,14 @@
+import { ENSURED_VOICE_PACK_ID, type VoicePackCatalogState, type VoicePackOffer } from "@iracedeck/app-constants";
 import type { ILogger } from "@iracedeck/logger";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { VoicePackInstaller, VoicePackInstallResult } from "./voice-pack-installer.js";
 import {
   createVoicePackLaunchStep,
-  ENSURED_VOICE_PACK_ID,
   isManagedVoicePack,
   VOICE_PACK_RETRY_DELAYS_MS,
   VOICE_PACK_RETRY_STEADY_MS,
 } from "./voice-pack-launch.js";
-import type { VoicePackCatalogState, VoicePackOffer } from "./voice-pack-status.js";
 
 const logger: ILogger = {
   trace: vi.fn(),

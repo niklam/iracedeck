@@ -1,10 +1,10 @@
+import type { ChangelogNotificationPolicy } from "@iracedeck/app-constants";
 import type { ILogger } from "@iracedeck/logger";
 import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 
 import {
   buildChangelogUrl,
   CHANGELOG_BASE_URL,
-  type ChangelogNotificationPolicy,
   MONTHLY_WINDOW_MS,
   resolveChangelogDecision,
   runVersionCheck,

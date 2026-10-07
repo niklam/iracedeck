@@ -1,34 +1,19 @@
-import {
-  PI_WARNINGS_KEY,
-  PROFILE_CAPTURE_STATUS_KEY,
-  SETTINGS_WINDOW_HTML as RUNTIME_HTML,
-  SETTINGS_WINDOW_OPEN_WARNING_ID,
-  SETTINGS_WINDOW_SERVER_WARNING_ID,
-  VOICE_PACK_INSTALL_PHASES,
-} from "@iracedeck/deck-core";
+import { SETTINGS_WINDOW_OPEN_WARNING_ID, SETTINGS_WINDOW_SERVER_WARNING_ID } from "@iracedeck/app-constants";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-import { PROFILE_CAPTURE_STATUS_SETTING } from "../components/cpu-profile-capture-constants.js";
 import { SETTINGS_WINDOW_FLAG as COMPONENTS_FLAG } from "../components/settings-window-context.js";
-import { VOICE_PACK_CARD_PHASES } from "../components/voice-pack-catalog-constants.js";
-import { WARNINGS_SETTING as COMPONENT_WARNINGS_KEY } from "../components/warnings-constants.js";
 import { SETTINGS_WINDOW_FLAG as BRIDGE_FLAG } from "../settings-window-bridge/index.js";
-import { SETTINGS_WINDOW_HTML as BUILD_HTML } from "./index.mjs";
 
 /**
- * The plugin serves `ui/<SETTINGS_WINDOW_HTML>` at runtime (deck-core) and the
- * build injects the bridge into that same file (pi-components/build). They are
- * declared in two packages because build-time modules must not be imported
- * into the runtime bundle — so this test is the single thing keeping them equal.
+ * Pins between values that cannot share one declaration. A Property Inspector
+ * component imports its keys and value lists from `@iracedeck/app-constants`
+ * directly and needs no pin; what is left here is what cannot import: EJS
+ * partials (markup), and the settings-window bridge, a separate browser bundle
+ * with its own `rootDir`.
  */
-describe("settings-window file name (#992)", () => {
-  it("is the same string at build time and at runtime", () => {
-    expect(BUILD_HTML).toBe(RUNTIME_HTML);
-  });
-});
 
 /**
  * The bridge (its own browser bundle, own tsconfig rootDir) SETS the
@@ -46,7 +31,7 @@ describe("settings-window flag (#992)", () => {
  * The settings-window OPEN-failure banner is placed by two EJS partials:
  * rendered above the iRaceDeck Settings button (`only`) and withheld from the
  * page-top strip (`except`). Both name the id as a literal, because these
- * partials are browser markup and cannot import deck-core. If the plugin's id
+ * partials are browser markup and cannot import a module. If the plugin's id
  * ever changed, the banner would silently render in NEITHER place — the top
  * strip would still exclude the old string while the button's instance filtered
  * for it. That is invisible until someone hits the very failure the banner
@@ -138,41 +123,5 @@ describe("settings-window page withholds the settings-window banners (#1014)", (
     const placed = strip();
 
     for (const id of injectedIds) expect(placed).toContain(id);
-  });
-});
-
-/**
- * The `_warnings` key is declared in deck-core (the plugin writes it) and
- * duplicated in the browser component (which cannot import deck-core). A
- * rename on one side alone fails SILENTLY — the component simply never hears
- * from its key and every banner on every page stops rendering — so the pair is
- * pinned here, like the file name and the window flag above.
- */
-describe("PI warnings settings key (#610, #1014)", () => {
-  it("is the same key in deck-core and in the browser component", () => {
-    expect(COMPONENT_WARNINGS_KEY).toBe(PI_WARNINGS_KEY);
-  });
-});
-
-/**
- * The CPU profile capture's status key (#1338): written by deck-core's capture
- * service, read by `ird-cpu-profile-status`. A rename on one side alone would
- * leave the Diagnostics card silent through a whole capture.
- */
-describe("CPU profile capture status key (#1338)", () => {
-  it("is the same key in deck-core and in the browser component", () => {
-    expect(PROFILE_CAPTURE_STATUS_SETTING).toBe(PROFILE_CAPTURE_STATUS_KEY);
-  });
-});
-
-/**
- * The voice-pack card drops an install record whose phase it does not know,
- * so a phase the plugin writes and the card's copy lacks would show an
- * install in progress as nothing at all — pinned here like the key above.
- */
-describe("voice-pack install phases (#1102)", () => {
-  it("are the same list in deck-core and in the voice-pack card", () => {
-    expect([...VOICE_PACK_CARD_PHASES]).toEqual([...VOICE_PACK_INSTALL_PHASES]);
-    expect(VOICE_PACK_CARD_PHASES).not.toContain("verifying");
   });
 });

@@ -324,18 +324,8 @@ export {
 // the service's scripts to the engine — needs no dependency edge on the
 // grammar package for one type. `LogLevel` above is the precedent.
 export type { CalloutScript } from "@iracedeck/callout-script";
-export {
-  VOICE_LABELS_KEY,
-  VOICE_PACK_PROVENANCE_FILE,
-  VOICE_PACK_STATUS_KEY,
-  VOICE_PACKS_KEY,
-} from "./voice-pack-constants.js";
-export {
-  resolveVoicePackCatalogUrl,
-  VOICE_PACK_CATALOG_DEFAULT_BASE,
-  VOICE_PACK_CATALOG_FILENAME,
-  VOICE_PACK_DEV_BASE_URL_KEY,
-} from "./voice-pack-catalog-base.js";
+export { VOICE_PACK_PROVENANCE_FILE } from "./voice-pack-constants.js";
+export { resolveVoicePackCatalogUrl } from "./voice-pack-catalog-base.js";
 export {
   isVoicePackOfferable,
   parseVoicePackCatalog,
@@ -353,17 +343,6 @@ export {
   VoicePackProvenanceSchema,
   type VoicePackSource,
 } from "./voice-pack-provenance.js";
-export {
-  emptyVoicePackStatus,
-  VOICE_PACK_INSTALL_PHASES,
-  VOICE_PACK_OFFER_VERDICTS,
-  type VoicePackCatalogState,
-  type VoicePackInstallPhase,
-  type VoicePackInstallState,
-  type VoicePackOffer,
-  type VoicePackOfferVerdict,
-  type VoicePackStatus,
-} from "./voice-pack-status.js";
 export {
   FIRST_PARTY_VOICE_LABEL_PREFIX,
   isFirstPartyVoicePack,
@@ -391,7 +370,6 @@ export {
 } from "./voice-pack-installer.js";
 export {
   createVoicePackLaunchStep,
-  ENSURED_VOICE_PACK_ID,
   isManagedVoicePack,
   VOICE_PACK_RETRY_DELAYS_MS,
   VOICE_PACK_RETRY_STEADY_MS,
@@ -507,14 +485,6 @@ export {
   type ScanKeyReleaser,
 } from "./keyboard-service.js";
 
-// Focus iRacing Window mode (issue #977)
-export {
-  DEFAULT_FOCUS_IRACING_MODE,
-  FOCUS_IRACING_MODES,
-  type FocusIRacingMode,
-  parseFocusIRacingMode,
-} from "./focus-iracing-mode.js";
-
 // Window focus service singleton
 export {
   _resetWindowFocus,
@@ -549,24 +519,6 @@ export {
   PointerMoveResult,
   type SimPointerMover,
 } from "./mouse-pointer-service.js";
-
-// Mouse to Sim pointer target resolution (issue #1029)
-export {
-  DEFAULT_POINTER_ANCHOR_X,
-  DEFAULT_POINTER_ANCHOR_Y,
-  DEFAULT_POINTER_OFFSET_X,
-  DEFAULT_POINTER_OFFSET_Y,
-  POINTER_ANCHOR_X_FRACTIONS,
-  POINTER_ANCHOR_Y_FRACTIONS,
-  POINTER_ANCHORS_X,
-  POINTER_ANCHORS_Y,
-  POINTER_OFFSET_LIMIT,
-  type PointerAnchorX,
-  type PointerAnchorY,
-  resolveSimPointerTarget,
-  type SimPointerTarget,
-  type SimPointerTargetConfig,
-} from "./sim-pointer-target.js";
 
 // Scan code mapping
 export { getScanCode, getModifierScanCode } from "./scan-code-map.js";
@@ -605,17 +557,7 @@ export {
 
 // Key binding utilities
 export { formatKeyBinding, parseKeyBinding, parseBinding } from "./key-binding-utils.js";
-// The key map and default parser the PI shares; pi-components imports them
-// through the dependency-free `@iracedeck/deck-core/key-binding-defaults` subpath (#1277)
-export { defaultBindingStoredValue, parseDefaultKeyBinding } from "./key-binding-defaults.js";
-export {
-  setWarning,
-  clearWarning,
-  reconcileWarnings,
-  PI_WARNINGS_KEY,
-  type PiWarning,
-  type PiWarningLevel,
-} from "./pi-warnings.js";
+export { setWarning, clearWarning, reconcileWarnings, type PiWarning, type PiWarningLevel } from "./pi-warnings.js";
 // Settings keys that describe THIS RUN and are never persisted (#1014).
 export { RUN_SCOPED_SETTING_KEYS, stripRunScopedKeys } from "./run-scoped-settings.js";
 
@@ -678,10 +620,7 @@ export {
 export {
   buildChangelogUrl,
   CHANGELOG_BASE_URL,
-  CHANGELOG_NOTIFICATION_POLICIES,
   type ChangelogDecision,
-  type ChangelogNotificationPolicy,
-  DEFAULT_CHANGELOG_NOTIFICATION_POLICY,
   MONTHLY_WINDOW_MS,
   resolveChangelogDecision,
   runVersionCheck,
@@ -807,7 +746,6 @@ export {
 } from "./settings-window-server.js";
 export {
   createSettingsWindowController,
-  SETTINGS_WINDOW_HTML,
   type SettingsWindowController,
   type SettingsWindowOpenOptions,
   type SettingsWindowControllerOptions,
@@ -821,8 +759,6 @@ export {
   SETTINGS_WINDOW_OPEN_BLOCKED_MESSAGE,
   SETTINGS_WINDOW_OPEN_FAILURE_MESSAGE,
   SETTINGS_WINDOW_SERVER_FAILURE_MESSAGE,
-  SETTINGS_WINDOW_OPEN_WARNING_ID,
-  SETTINGS_WINDOW_SERVER_WARNING_ID,
   settingsWindowWarningScope,
   type SettingsWindowWarningContext,
 } from "./settings-window-warning.js";
@@ -852,7 +788,6 @@ export {
   getCpuProfileCapture,
   initializeCpuProfileCapture,
   isCpuProfileCaptureInitialized,
-  PROFILE_CAPTURE_STATUS_KEY,
   type ProfileCaptureStatus,
 } from "./cpu-profile-capture.js";
 // Resource monitor: the plugin's own CPU, event-loop and memory use in its log (issue #1338)

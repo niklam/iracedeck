@@ -1,8 +1,3 @@
-import { readFileSync } from "node:fs";
-import path from "node:path";
-import url from "node:url";
-import { describe, expect, it } from "vitest";
-
 import {
   DEFAULT_POINTER_ANCHOR_X,
   DEFAULT_POINTER_ANCHOR_Y,
@@ -11,15 +6,19 @@ import {
   POINTER_ANCHORS_X,
   POINTER_ANCHORS_Y,
   POINTER_OFFSET_LIMIT,
-} from "./sim-pointer-target.js";
+} from "@iracedeck/app-constants";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import url from "node:url";
+import { describe, expect, it } from "vitest";
 
 /**
  * The settings window's controls carry their own `default="…"` attributes, so a
  * default changed on one side of the pair and not the other would show the user
- * one value and apply another. `@iracedeck/pi-components` is dependency-free on
- * purpose and must not gain a dependency on deck-core for a test, so the guard
- * lives on this side — reading a sibling package's file by relative path, the
- * same way `pi-components/src/build` reads `iracing-actions`.
+ * one value and apply another. The values live in `@iracedeck/app-constants`
+ * (`sim-pointer-target.ts`), whose tests have no Node typings to read a file
+ * with, so the guard lives here — reading a sibling package's file by relative
+ * path, the same way `pi-components/src/build` reads `iracing-actions`.
  */
 const repoRoot = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../../..");
 const partial = readFileSync(

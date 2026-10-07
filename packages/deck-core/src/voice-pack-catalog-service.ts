@@ -35,12 +35,12 @@
  *   installer re-asks the catalog after every install, so the reward for
  *   installing a pack over flaky Wi-Fi was watching the list vanish.
  */
+import type { VoicePackCatalogState, VoicePackOffer, VoicePackOfferVerdict } from "@iracedeck/app-constants";
 import type { ILogger } from "@iracedeck/logger";
 
 import { resolveVoicePackCatalogUrl } from "./voice-pack-catalog-base.js";
 import { fetchVoicePackCatalog } from "./voice-pack-catalog-client.js";
 import { isVoicePackOfferable, type VoicePackCatalogEntry } from "./voice-pack-catalog.js";
-import type { VoicePackCatalogState, VoicePackOffer, VoicePackOfferVerdict } from "./voice-pack-status.js";
 
 /** How long a successful fetch is reused before asking again (conditionally). */
 export const VOICE_PACK_CATALOG_SUCCESS_TTL_MS = 60 * 60 * 1000;

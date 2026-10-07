@@ -22,7 +22,8 @@
  * <ird-update-notice list="sw-changelog"></ird-update-notice>
  * ```
  */
-import { abortAfter } from "./abort-after.js";
+import { abortAfter } from "@iracedeck/fetch-utils";
+
 import { inSettingsWindow } from "./settings-window-context.js";
 
 /** Where the plugin answers the update question. Same-origin, by design. */

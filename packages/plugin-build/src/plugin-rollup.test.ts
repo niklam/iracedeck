@@ -1,4 +1,5 @@
-import { PI_SETTINGS_BRIDGE, SETTINGS_WINDOW_BRIDGE, SETTINGS_WINDOW_HTML } from "@iracedeck/pi-components/build";
+import { SETTINGS_WINDOW_HTML } from "@iracedeck/app-constants";
+import { PI_SETTINGS_BRIDGE, SETTINGS_WINDOW_BRIDGE } from "@iracedeck/pi-components/build";
 import typescript from "@rollup/plugin-typescript";
 import {
   copyFileSync,

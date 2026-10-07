@@ -1,3 +1,4 @@
+import { CHANGELOG_NOTIFICATION_POLICIES, PI_WARNINGS_KEY } from "@iracedeck/app-constants";
 import { type ILogger, silentLogger } from "@iracedeck/logger";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -30,12 +31,11 @@ import {
   updateGlobalSettings,
   whenSettingsStoreSettled,
 } from "./global-settings.js";
-import { PI_WARNINGS_KEY, setWarning } from "./pi-warnings.js";
+import { setWarning } from "./pi-warnings.js";
 import { createSettingsFileRejectionReporter } from "./settings-file-rejection-reporter.js";
 import { SETTINGS_FILE_REJECTED_WARNING_ID } from "./settings-file-rejection-warning.js";
 import { createFileSettingsStore, createMemorySettingsStore } from "./settings-store.js";
 import type { IDeckPlatformAdapter } from "./types.js";
-import { CHANGELOG_NOTIFICATION_POLICIES } from "./version-check.js";
 
 type EchoCallback = (settings: unknown) => void;
 

@@ -3,6 +3,7 @@
  * window, the startup notices (first run, changelog), the global-settings
  * listener with its one-shot store-ready block, and the PI-appear re-pushes.
  */
+import { SETTINGS_WINDOW_HTML, VOICE_PACK_DEV_BASE_URL_KEY } from "@iracedeck/app-constants";
 import { getAudio } from "@iracedeck/audio-service";
 import {
   applyStartupFeatureGates,
@@ -38,14 +39,12 @@ import {
   runFirstRunCheck,
   runVersionCheck,
   SETTINGS_WINDOW_BOUNDS_KEY,
-  SETTINGS_WINDOW_HTML,
   type SettingsWindowOpenOptions,
   shouldOpenChangelog,
   spawnAppWindow,
   updateGlobalSettings,
   VERSION_CHECK_STARTUP_GRACE_MS,
   VOICE_PACK_CATALOG_URL,
-  VOICE_PACK_DEV_BASE_URL_KEY,
 } from "@iracedeck/deck-core";
 import { isIRacingActive, onIRacingTerminated } from "@iracedeck/deck-iracing";
 import { join } from "node:path";

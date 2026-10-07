@@ -25,8 +25,9 @@
  * on one page. A warning with no dedicated home is named in neither list and
  * still shows in the top strip, unchanged.
  */
+import { PI_WARNINGS_KEY } from "@iracedeck/app-constants";
+
 import { skipUnchanged } from "./settings-change-filter.js";
-import { WARNINGS_SETTING } from "./warnings-constants.js";
 
 let styleInjected = false;
 
@@ -88,7 +89,7 @@ export class WarningsBanner extends HTMLElement {
     if (!window.SDPIComponents) return;
 
     window.SDPIComponents.useGlobalSettings(
-      WARNINGS_SETTING,
+      PI_WARNINGS_KEY,
       skipUnchanged((value: string) => {
         this.render(this.parse(value));
       }),

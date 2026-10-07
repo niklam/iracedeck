@@ -5,9 +5,9 @@
  * These are extracted from the web component to allow for unit testing
  * in a Node.js environment (without DOM dependencies).
  */
-import { parseDefaultKeyBinding } from "@iracedeck/deck-core/key-binding-defaults";
+import { type Modifier, MODIFIERS, parseDefaultKeyBinding } from "@iracedeck/app-constants";
 
-import { KEY_DISPLAY_NAMES, type Modifier, MODIFIERS } from "./key-maps.js";
+import { KEY_DISPLAY_NAMES } from "./key-maps.js";
 
 /** UI text constants */
 export const UI_TEXT = {
@@ -120,7 +120,7 @@ export function parseKeyBinding(json: string | null): KeyBindingValue | null {
  * Parse a simple default string like "F1" or "Ctrl+Shift+A" into a KeyBindingValue.
  * Supports modifier aliases (e.g., "Control" → "ctrl").
  *
- * The parse is deck-core's `parseDefaultKeyBinding` — the one the plugin's
+ * The parse is `parseDefaultKeyBinding` from `@iracedeck/app-constants` — the one the plugin's
  * startup seed stores with (#1277) — so a default the plugin writes is
  * byte-identical to the one this field saves. Only the warning is the PI's own.
  */

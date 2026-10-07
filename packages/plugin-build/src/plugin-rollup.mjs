@@ -1,4 +1,5 @@
 // @ts-check
+import { SETTINGS_WINDOW_HTML } from "@iracedeck/app-constants";
 import { processAndCopyAudioAssetsPlugin } from "@iracedeck/audio-assets/build";
 import {
   assertBridgeInjectionPlugin,
@@ -8,7 +9,6 @@ import {
   PI_SETTINGS_BRIDGE,
   piTemplatePlugin,
   SETTINGS_WINDOW_BRIDGE,
-  SETTINGS_WINDOW_HTML,
   SETTINGS_WINDOW_ICON,
   SETTINGS_WINDOW_LOGO,
 } from "@iracedeck/pi-components/build";

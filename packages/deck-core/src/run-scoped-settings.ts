@@ -52,9 +52,12 @@
  * of underscore-prefixed keys ARE durable (`_lastSeenVersion`,
  * `_lastChangelogOpenedAt`), and getting that wrong silently loses user state.
  */
-import { PROFILE_CAPTURE_STATUS_KEY } from "./cpu-profile-capture-constants.js";
-import { PI_WARNINGS_KEY } from "./pi-warnings-constants.js";
-import { VOICE_PACK_STATUS_KEY, VOICE_PACKS_KEY } from "./voice-pack-constants.js";
+import {
+  PI_WARNINGS_KEY,
+  PROFILE_CAPTURE_STATUS_KEY,
+  VOICE_PACK_STATUS_KEY,
+  VOICE_PACKS_KEY,
+} from "@iracedeck/app-constants";
 
 /**
  * The enrolled keys. Each is an observation about THIS run rather than a user

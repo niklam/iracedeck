@@ -1,6 +1,6 @@
 # @iracedeck/iracing-actions
 
-The platform-agnostic iRaceDeck action classes — one folder per action under `src/actions/`. Actions contain no platform-specific code — they import from `@iracedeck/deck-core`, and the iRacing side (`SimIRacingAction`, `getCommands()`, the fuel, unit and hotkey helpers) from `@iracedeck/deck-iracing` (#1351), and are registered for all three plugins (`iracing-plugin-stream-deck`, `iracing-plugin-mirabox`, and `iracing-plugin-ulanzi`) through `@iracedeck/plugin-runtime`'s shared action list (`src/actions.ts`, #1349).
+The platform-agnostic iRaceDeck action classes — one folder per action under `src/actions/`. Actions contain no platform-specific code — they import from `@iracedeck/deck-core`, and the iRacing side (`SimIRacingAction`, `getCommands()`, the fuel, unit and hotkey helpers) from `@iracedeck/deck-iracing` (#1351), and shared constants and their pure helpers (today the Mouse to Sim target resolver) from `@iracedeck/app-constants` (#1364), and are registered for all three plugins (`iracing-plugin-stream-deck`, `iracing-plugin-mirabox`, and `iracing-plugin-ulanzi`) through `@iracedeck/plugin-runtime`'s shared action list (`src/actions.ts`, #1349).
 
 ## Package Structure
 
@@ -95,7 +95,7 @@ pnpm --filter @iracedeck/iracing-actions test
 pnpm test packages/iracing-actions/src/actions/splits-delta-cycle/splits-delta-cycle.test.ts
 ```
 
-Tests mock `@iracedeck/deck-core` (not `@elgato/streamdeck`) — the canonical mock is in `.claude/rules/testing.md`. The iRacing names (`getCommands`, the fuel and unit helpers) are mocked on `@iracedeck/deck-iracing` with `importOriginal`, as that file shows. Binding-aware actions additionally stub `isBindingMissing` on the mock `ConnectionStateAwareAction` (see `splits-delta-cycle/splits-delta-cycle.test.ts`).
+Tests mock `@iracedeck/deck-core` (not `@elgato/streamdeck`) — the canonical mock is in `.claude/rules/testing.md`. The iRacing names (`getCommands`, the fuel and unit helpers) are mocked on `@iracedeck/deck-iracing` with `importOriginal`, as that file shows. `@iracedeck/app-constants` is a pure leaf with no imports, so tests use the real module rather than mocking it (`shared/mouse-to-sim.test.ts`). Binding-aware actions additionally stub `isBindingMissing` on the mock `ConnectionStateAwareAction` (see `splits-delta-cycle/splits-delta-cycle.test.ts`).
 
 ## Adding a New Action
 

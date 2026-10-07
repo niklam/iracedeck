@@ -17,6 +17,7 @@
     "test:watch": "node ../../scripts/test-package.mjs --watch"
   },
   "dependencies": {
+    "@iracedeck/app-constants": "workspace:*",
     "@iracedeck/audio-assets": "workspace:*",
     "@iracedeck/audio-native": "workspace:*",
     "@iracedeck/audio-scenarios": "workspace:*",

@@ -1,3 +1,4 @@
+import { PROFILE_CAPTURE_STATUS_KEY } from "@iracedeck/app-constants";
 import { execFile } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -16,7 +17,6 @@ import {
   initializeCpuProfileCapture,
   type InspectorSessionLike,
   isCpuProfileCaptureInitialized,
-  PROFILE_CAPTURE_STATUS_KEY,
   pruneCpuProfiles,
   summarizeCpuProfile,
 } from "./cpu-profile-capture.js";
@@ -24,23 +24,39 @@ import { createSettingsWindowCommandHandler } from "./settings-window-commands.j
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
+/** The `@iracedeck/app-constants` sources, the one workspace package the capture module imports. */
+const APP_CONSTANTS_SRC = join(HERE, "..", "..", "app-constants", "src");
+
 /**
- * Transpile the capture module and its constants leaf into `dir` as plain ES
- * modules and return the module's URL. Node's own type stripping cannot load
- * the source directly: it does not map the `./cpu-profile-capture-constants.js`
- * specifier onto the `.ts` file beside it.
+ * Transpile the capture module and the `@iracedeck/app-constants` leaf into
+ * `dir` as plain ES modules and return the module's URL. Node's own type
+ * stripping cannot load the source directly: it does not map `.js` specifiers
+ * onto the `.ts` files beside them, and a child process in a temp directory
+ * cannot resolve the workspace package by name — so the leaf is transpiled
+ * into `app-constants/` beside the module and the bare specifier is pointed at
+ * its barrel.
  */
 function transpileCaptureModule(dir: string): string {
   const ts = createRequire(join(HERE, "..", "package.json"))("typescript") as typeof import("typescript");
+  const transpile = (file: string) =>
+    ts.transpileModule(readFileSync(file, "utf-8"), {
+      compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext, removeComments: true },
+    }).outputText;
 
   writeFileSync(join(dir, "package.json"), JSON.stringify({ type: "module" }));
+  mkdirSync(join(dir, "app-constants"), { recursive: true });
 
-  for (const name of ["cpu-profile-capture", "cpu-profile-capture-constants"]) {
-    const output = ts.transpileModule(readFileSync(join(HERE, `${name}.ts`), "utf-8"), {
-      compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
-    }).outputText;
-    writeFileSync(join(dir, `${name}.js`), output);
+  for (const file of readdirSync(APP_CONSTANTS_SRC).filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"))) {
+    writeFileSync(join(dir, "app-constants", file.replace(/\.ts$/, ".js")), transpile(join(APP_CONSTANTS_SRC, file)));
   }
+
+  const capture = transpile(join(HERE, "cpu-profile-capture.ts"));
+  const pointed = capture.replaceAll('"@iracedeck/app-constants"', '"./app-constants/index.js"');
+
+  // A specifier that changed quotes or path would leave the bare import in place
+  // and fail only inside the child; fail here instead, naming the cause.
+  expect(pointed).not.toContain("@iracedeck/app-constants");
+  writeFileSync(join(dir, "cpu-profile-capture.js"), pointed);
 
   return pathToFileURL(join(dir, "cpu-profile-capture.js")).href;
 }

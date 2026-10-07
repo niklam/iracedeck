@@ -46,18 +46,17 @@ export default defineConfig({
   plugins: [svgPlugin()],
   resolve: {
     alias: {
+      "@iracedeck/app-constants": packageSrc("app-constants"),
       "@iracedeck/audio-native": packageSrc("audio-native"),
       "@iracedeck/audio-scenarios/pit-crew": packageSrc("audio-scenarios", "src/catalog/pit-crew/index.ts"),
       "@iracedeck/audio-scenarios": packageSrc("audio-scenarios"),
       "@iracedeck/audio-service": packageSrc("audio-service"),
       "@iracedeck/callout-script": packageSrc("callout-script"),
       "@iracedeck/callout-settings": packageSrc("callout-settings"),
-      // A subpath before its package: the aliases match by prefix, so the bare
-      // entry below would otherwise turn this into `src/index.ts/key-binding-defaults`.
-      "@iracedeck/deck-core/key-binding-defaults": packageSrc("deck-core", "src/key-binding-defaults.ts"),
       "@iracedeck/deck-core": packageSrc("deck-core"),
       "@iracedeck/deck-iracing": packageSrc("deck-iracing"),
       "@iracedeck/event-bus": packageSrc("event-bus"),
+      "@iracedeck/fetch-utils": packageSrc("fetch-utils"),
       "@iracedeck/icon-composer": packageSrc("icon-composer"),
       "@iracedeck/iracing-sdk": packageSrc("iracing-sdk"),
       "@iracedeck/iracing-native": packageSrc("iracing-native"),

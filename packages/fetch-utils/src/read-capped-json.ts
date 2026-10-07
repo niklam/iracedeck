@@ -1,7 +1,7 @@
 /**
  * Reads a fetched JSON document under a byte cap (issue #1101).
  *
- * The two feed clients — `changelog-feed-client.ts` and
+ * The two feed clients in deck-core — `changelog-feed-client.ts` and
  * `voice-pack-catalog-client.ts` — each used to call `response.json()`, which
  * buffers the whole body into the plugin's heap before parsing begins. Their
  * only bound was the 5-second request timeout, so the real limit was whatever
