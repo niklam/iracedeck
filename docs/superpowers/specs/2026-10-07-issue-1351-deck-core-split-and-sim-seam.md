@@ -57,7 +57,7 @@ export interface SimConnection {
 }
 ```
 
-It comes with the singleton trio `initializeSimConnection` / `getSimConnection` / `isSimConnectionInitialized` plus `_resetSimConnection`. Before initialisation, `getSimConnection()` returns a disconnected null connection. That replaces the try/catch `BaseAction` wraps around a missing SDK today.
+It comes with the singleton trio `initializeSimConnection` / `getSimConnection` / `isSimConnectionInitialized` plus `_resetSimConnection`. Before initialisation, `getSimConnection()` returns a pending connection: never connected, no flags, title text as typed (there is no template engine without a sim), and every subscription made on it queued and replayed onto the real connection by `initializeSimConnection`, so a key that appears first is not left untracked. That replaces the try/catch `BaseAction` wraps around a missing SDK today. A throwing `activeFlags()` skips the tick rather than reading as "flags cleared", so a transient failure neither flickers the overlay nor re-arms a finished flash. `IRacingSimConnection` resolves flags from the telemetry the latest tick carried, so the overlay costs no telemetry read of its own.
 
 - **`BaseAction`.** The flag overlay and the title-template watcher subscribe to the connection's tick and pull `activeFlags()` and `resolveTitleTemplate()` on it. `OverlayFlag` is the shape `FlagInfo` already has, and the overlay reads nothing else, so the overlay's drawing does not change.
 - **`ConnectionStateAwareAction`.** It tracks readiness through `getSimConnection()` and loses its `sdkController` getter.
@@ -167,7 +167,7 @@ Every PR passes the full set by hand before review: `install` → `build` → `t
 - **The guards are proven to fire.** Each check gets a planted violation that has to fail, run once by hand and recorded in the PR:
   - the `no-restricted-imports` rule on `deck-core`, against a planted `@iracedeck/iracing-sdk` import;
   - `app-constants`' no-import test, against a planted import.
-- **The seam has unit tests against a fake `SimConnection`.** They cover the null connection before initialisation, readiness tracking in `ConnectionStateAwareAction`, the overlay starting and stopping on `activeFlags()` changes, and the title watcher re-resolving on tick. `IRacingSimConnection` is tested over `MockSDKController`: flag mapping, the disconnected empty flags, and the disconnected title fallback.
+- **The seam has unit tests against a fake `SimConnection`.** They cover the pending connection and its replay of queued subscriptions, readiness tracking in `ConnectionStateAwareAction`, the overlay starting and stopping on `activeFlags()` changes, and the title watcher re-resolving on tick. `IRacingSimConnection` is tested over a fake controller (`MockSDKController` lives in `scenario-harness`): flag mapping, no telemetry read inside a tick, the disconnected empty flags, and the disconnected title fallback.
 - **Nothing is lost in a move.** No behaviour changes in PRs 2–5, so the existing suites carry them. Each PR's test-file and test counts are compared with `master`'s, so a test silently dropped by a move shows up. The existing guards (`package-test-scripts`, `typecheck-script-coverage`, `tsconfig-base-inheritance`, `lint-format-coverage`) must stay green with the new packages enrolled, not exempted.
 - **Manual test on a linked Stream Deck per PR, scoped to what moved:**
   1. Keys grey out and return with the sim connection, the flag overlay flashes on a flag, and a templated title updates live.
