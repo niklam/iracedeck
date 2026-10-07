@@ -43,9 +43,8 @@
  * one — and never more.
  */
 import type { ILogger } from "@iracedeck/logger";
-
-import { deleteGlobalSettings, hostMirrorPayload, SETTINGS_CHANNEL_KEY } from "./global-settings.js";
-import type { IDeckPlatformAdapter } from "./types.js";
+import { deleteGlobalSettings, hostMirrorPayload, SETTINGS_CHANNEL_KEY } from "@iracedeck/settings";
+import type { SettingsHost } from "@iracedeck/settings";
 
 export interface SettingsChannel {
   port: number;
@@ -53,7 +52,7 @@ export interface SettingsChannel {
 }
 
 export interface SettingsChannelPublisherDeps {
-  adapter: Pick<IDeckPlatformAdapter, "setGlobalSettings">;
+  adapter: Pick<SettingsHost, "setGlobalSettings">;
   logger: ILogger;
 }
 

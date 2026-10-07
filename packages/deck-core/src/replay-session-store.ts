@@ -32,6 +32,7 @@
  * so `session_0.json` does not exist.
  */
 import type { ILogger } from "@iracedeck/logger";
+import { WRITE_RETRY_DELAYS_MS } from "@iracedeck/settings";
 import { copyFileSync, mkdirSync, readdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { mkdir, rename, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -64,7 +65,6 @@ import {
   replaySessionFileName,
   type ReplaySessionHeader,
 } from "./replay-session-file.js";
-import { WRITE_RETRY_DELAYS_MS } from "./settings-store.js";
 
 /**
  * Trailing debounce for the file write: long enough that a crossing wave lands

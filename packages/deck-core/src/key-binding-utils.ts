@@ -9,13 +9,8 @@ import {
   type BindingValue,
   type KeyBindingValue,
   KeyBindingValueSchema,
-  type SimHubBindingValue,
   SimHubBindingValueSchema,
-} from "./global-settings.js";
-
-// Re-export types for convenience
-export type { BindingValue, SimHubBindingValue };
-export { isSimHubBinding } from "./global-settings.js";
+} from "@iracedeck/settings";
 
 /**
  * Format a key binding for display in logs.

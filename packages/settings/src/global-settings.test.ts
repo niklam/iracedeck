@@ -34,8 +34,8 @@ import {
 import { setWarning } from "./pi-warnings.js";
 import { createSettingsFileRejectionReporter } from "./settings-file-rejection-reporter.js";
 import { SETTINGS_FILE_REJECTED_WARNING_ID } from "./settings-file-rejection-warning.js";
+import type { SettingsHost } from "./settings-host.js";
 import { createFileSettingsStore, createMemorySettingsStore } from "./settings-store.js";
-import type { IDeckPlatformAdapter } from "./types.js";
 
 type EchoCallback = (settings: unknown) => void;
 
@@ -50,7 +50,7 @@ function createMockLogger(): ILogger {
 }
 
 interface MockAdapter {
-  adapter: IDeckPlatformAdapter;
+  adapter: SettingsHost;
   echo: EchoCallback | null;
   setGlobalSettings: ReturnType<typeof vi.fn<(settings: Record<string, unknown>) => void>>;
   getGlobalSettings: ReturnType<typeof vi.fn<() => void>>;
@@ -67,7 +67,7 @@ function createMockAdapter(): MockAdapter {
     },
     setGlobalSettings,
     getGlobalSettings,
-  } as unknown as IDeckPlatformAdapter;
+  } as unknown as SettingsHost;
 
   return {
     adapter,
@@ -1841,7 +1841,7 @@ describe("single-writer store (issue #993)", () => {
         },
         setGlobalSettings: vi.fn<(settings: Record<string, unknown>) => void>(),
         getGlobalSettings: vi.fn<() => void>(() => holder.echo?.({ driverName: "harness-nick" })),
-      } as unknown as IDeckPlatformAdapter;
+      } as unknown as SettingsHost;
 
       initGlobalSettings(adapter, createMockLogger(), createMemorySettingsStore());
       await vi.advanceTimersByTimeAsync(0);
@@ -2133,7 +2133,7 @@ describe("migration deadline vs. host connect (#1056)", () => {
   afterEach(() => vi.useRealTimers());
 
   interface ConnectingMock {
-    adapter: IDeckPlatformAdapter;
+    adapter: SettingsHost;
     echo: EchoCallback | null;
     getGlobalSettings: ReturnType<typeof vi.fn<() => void>>;
     /** Fire the host-ready subscribers, the way a client does from its `open` handler. */
@@ -2161,7 +2161,7 @@ describe("migration deadline vs. host connect (#1056)", () => {
       onHostReady: (cb: () => void) => {
         readyCallbacks.push(cb);
       },
-    } as unknown as IDeckPlatformAdapter;
+    } as unknown as SettingsHost;
 
     return {
       adapter,

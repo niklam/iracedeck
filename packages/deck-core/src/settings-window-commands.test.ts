@@ -1,6 +1,6 @@
+import { FEATURE_STARTUP_GATES } from "@iracedeck/settings";
 import { describe, expect, it, vi } from "vitest";
 
-import { FEATURE_STARTUP_GATES } from "./feature-startup-policy.js";
 import {
   createSettingsWindowCommandHandler,
   enableFeatureWrites,

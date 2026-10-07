@@ -8,8 +8,8 @@ import {
   initGlobalSettings,
   updateGlobalSettings,
 } from "./global-settings.js";
+import type { SettingsHost } from "./settings-host.js";
 import { createMemorySettingsStore } from "./settings-store.js";
-import type { IDeckPlatformAdapter } from "./types.js";
 
 function createMockLogger(): ILogger {
   return {
@@ -21,12 +21,12 @@ function createMockLogger(): ILogger {
   } as unknown as ILogger;
 }
 
-function createMockAdapter(): IDeckPlatformAdapter {
+function createMockAdapter(): SettingsHost {
   return {
     onDidReceiveGlobalSettings: (_cb: (settings: unknown) => void) => {},
     setGlobalSettings: vi.fn<(settings: Record<string, unknown>) => void>(),
     getGlobalSettings: vi.fn<() => void>(),
-  } as unknown as IDeckPlatformAdapter;
+  } as unknown as SettingsHost;
 }
 
 /** Let the async load inside initGlobalSettings settle. */

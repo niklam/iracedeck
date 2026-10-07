@@ -144,86 +144,6 @@ export {
   type SimConnection,
 } from "./sim-connection.js";
 
-// Global settings
-export {
-  GlobalSettingsSchema,
-  type GlobalSettings,
-  KeyBindingValueSchema,
-  type KeyBindingValue,
-  SimHubBindingValueSchema,
-  type SimHubBindingValue,
-  type BindingValue,
-  isSimHubBinding,
-  initGlobalSettings,
-  type InitGlobalSettingsOptions,
-  MIGRATION_TIMEOUT_MS,
-  MIGRATION_ABANDONED_KEY,
-  MIGRATION_PENDING_KEY,
-  MIGRATION_RETRY_STARTS,
-  SETTINGS_CHANNEL_KEY,
-  LOAD_RETRY_DELAY_MS,
-  LOAD_ATTEMPTS,
-  getGlobalSettings,
-  isCalloutEnabled,
-  setCalloutEnabled,
-  getGlobalColors,
-  onGlobalSettingsChange,
-  updateGlobalSettings,
-  deleteGlobalSettings,
-  isGlobalSettingsInitialized,
-  isSettingsStoreHostDerived,
-  isSettingsStoreReady,
-  whenSettingsStoreSettled,
-  getSettingsStoreSource,
-  type SettingsStoreSource,
-  hostMirrorPayload,
-  DEFAULT_RACE_ENGINEER_VOICE,
-  frameOptionsFromSettings,
-  type RadioFrameSwitches,
-  resolveActiveDriverName,
-  resolveActiveRaceEngineerVoice,
-  sameValue,
-  _resetGlobalSettings,
-} from "./global-settings.js";
-
-// One-shot renamed-key migrations (issue #953), the idempotent voice-id
-// qualification (#1144) and the seed-if-absent binding defaults (#1277)
-export {
-  migrateGlobalSettingsKeys,
-  migrateRaceEngineerVoiceId,
-  seedBindingDefaultsIfAbsent,
-} from "./global-settings-migrations.js";
-
-// Per-feature startup policy for the Race Engineer / Radar gates (issue #1007)
-export {
-  DEFAULT_FEATURE_STARTUP_POLICY,
-  FEATURE_STARTUP_GATES,
-  FEATURE_STARTUP_POLICIES,
-  resolveStartupGate,
-  type FeatureStartupGate,
-  type FeatureStartupPolicy,
-} from "./feature-startup-policy.js";
-export { applyStartupFeatureGates, migrateStartupPolicies } from "./feature-startup-gates.js";
-
-// Plugin-owned settings store (issue #993)
-export {
-  createFileSettingsStore,
-  createMemorySettingsStore,
-  resolveSettingsStorePath,
-  settingsStoreFolderName,
-  WRITE_RETRY_DELAYS_MS,
-  type FileSettingsStoreOptions,
-  type ResolveSettingsStorePathOptions,
-  type SettingsFileRejection,
-  type SettingsStore,
-} from "./settings-store.js";
-// The banner for a settings file the store rejected (issue #1036)
-export {
-  evaluateSettingsFileRejectionWarning,
-  SETTINGS_FILE_REJECTED_WARNING_ID,
-} from "./settings-file-rejection-warning.js";
-export { createSettingsFileRejectionReporter } from "./settings-file-rejection-reporter.js";
-
 // Per-session replay store: markers (#1162) and the lap record (#1203)
 export {
   parseReplaySessionFile,
@@ -557,27 +477,6 @@ export {
 
 // Key binding utilities
 export { formatKeyBinding, parseKeyBinding, parseBinding } from "./key-binding-utils.js";
-export { setWarning, clearWarning, reconcileWarnings, type PiWarning, type PiWarningLevel } from "./pi-warnings.js";
-// Settings keys that describe THIS RUN and are never persisted (#1014).
-export { RUN_SCOPED_SETTING_KEYS, stripRunScopedKeys } from "./run-scoped-settings.js";
-
-// Setup-name mismatch warning (issue #625)
-export {
-  compileSetupWarningPattern,
-  DEFAULT_SETUP_WARNING_QUALIFYING_PATTERN,
-  DEFAULT_SETUP_WARNING_RACE_PATTERN,
-  evaluateSetupWarning,
-  resolveSetupWarningPattern,
-  SETUP_WARNING_ENABLED_KEY,
-  SETUP_WARNING_QUALIFYING_PATTERN_KEY,
-  SETUP_WARNING_QUALIFYING_PATTERN_WARNING_ID,
-  SETUP_WARNING_RACE_PATTERN_KEY,
-  SETUP_WARNING_RACE_PATTERN_WARNING_ID,
-  setupNameMatchesPattern,
-  validateSetupWarningPatterns,
-  type SetupWarningKind,
-  type SetupWarningSettings,
-} from "./setup-warning.js";
 // Missing-callout-script banner: the active Race Engineer voice has no script,
 // so every callout that comes from the script is skipped in it — surfaced in
 // the PI rather than only in the log (issue #1064)
@@ -724,13 +623,6 @@ export {
   type SettingsWindowLaunch,
   type SettingsWindowLaunchInput,
 } from "./settings-window-launcher.js";
-export {
-  FIRST_RUN_VERSION_KEY,
-  type FirstRunDecision,
-  GETTING_STARTED_PANE,
-  resolveFirstRunDecision,
-  runFirstRunCheck,
-} from "./first-run.js";
 export {
   createSettingsWindowCommandHandler,
   enableFeatureWrites,

@@ -24,8 +24,8 @@
  */
 import type { ILogger } from "@iracedeck/logger";
 import { silentLogger } from "@iracedeck/logger";
+import { type BindingValue, getGlobalSettings, isSimHubBinding, type KeyBindingValue } from "@iracedeck/settings";
 
-import { type BindingValue, getGlobalSettings, isSimHubBinding, type KeyBindingValue } from "./global-settings.js";
 import { formatKeyBinding, parseBinding } from "./key-binding-utils.js";
 import { getKeyboard } from "./keyboard-service.js";
 import type { KeyboardKey, KeyboardModifier, KeyCombination } from "./keyboard-types.js";

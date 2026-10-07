@@ -30,8 +30,7 @@
  */
 import type { ILogger } from "@iracedeck/logger";
 import { silentLogger } from "@iracedeck/logger";
-
-import { getGlobalSettings } from "./global-settings.js";
+import { getGlobalSettings } from "@iracedeck/settings";
 
 /** Fixed owner ID sent to SimHub for de-duplication and ownership tracking. */
 const OWNER_ID = "iRaceDeck";

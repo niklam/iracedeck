@@ -29,6 +29,7 @@
  * — so this module never touches the global-settings singleton, and every
  * edit made here lands in the plugin-owned store like any other write (#993).
  */
+import { sameValue, stripRunScopedKeys } from "@iracedeck/settings";
 import { randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
@@ -36,8 +37,6 @@ import { extname, normalize, resolve, sep } from "node:path";
 import type { Duplex } from "node:stream";
 import { type WebSocket, WebSocketServer } from "ws";
 
-import { sameValue } from "./global-settings.js";
-import { stripRunScopedKeys } from "./run-scoped-settings.js";
 import { authorizeSettingsRequest, type SettingsRequestDenial } from "./settings-window-guard.js";
 import type { UpdateStatus } from "./update-check-service.js";
 

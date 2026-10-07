@@ -1,8 +1,7 @@
 import { silentLogger } from "@iracedeck/logger";
-import { afterEach, describe, expect, it, vi } from "vitest";
-
 import {
   _resetGlobalSettings,
+  createMemorySettingsStore,
   getGlobalSettings,
   initGlobalSettings,
   isSettingsStoreReady,
@@ -11,9 +10,10 @@ import {
   onGlobalSettingsChange,
   SETTINGS_CHANNEL_KEY,
   updateGlobalSettings,
-} from "./global-settings.js";
+} from "@iracedeck/settings";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
 import { createSettingsChannelPublisher } from "./settings-channel-publisher.js";
-import { createMemorySettingsStore } from "./settings-store.js";
 import type { IDeckPlatformAdapter } from "./types.js";
 
 const CHANNEL = { port: 55762, token: "cc29ab52f34a2a927663a0832b86a807b4cc329ebe68a98d" };

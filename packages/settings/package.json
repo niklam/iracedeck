@@ -1,7 +1,7 @@
 {
-  "name": "@iracedeck/race-engineer-wiring",
+  "name": "@iracedeck/settings",
   "version": "3.6.0-dev.0",
-  "description": "The Race Engineer's wiring: the bus caches its conditions read, every registerPitCrew dependency, and the call — shared by the three plugins and the scenario harness.",
+  "description": "The plugin's global settings: the schema and cache, the one-shot migrations, the plugin-owned settings store, run-scoped keys, PI warnings, the first-run check and the per-feature startup gates. Sits below the deck layer and reaches the host only through SettingsHost.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -19,18 +19,18 @@
     "test:watch": "node ../../scripts/test-package.mjs --watch"
   },
   "dependencies": {
-    "@iracedeck/audio-scenarios": "workspace:*",
-    "@iracedeck/deck-core": "workspace:*",
-    "@iracedeck/event-bus": "workspace:*",
+    "@iracedeck/app-constants": "workspace:*",
+    "@iracedeck/callout-script": "workspace:*",
+    "@iracedeck/callout-settings": "workspace:*",
     "@iracedeck/logger": "workspace:*",
-    "@iracedeck/settings": "workspace:*",
-    "@iracedeck/sim-events-iracing": "workspace:*"
+    "semver": "7.8.5",
+    "zod": "4.6.5"
   },
   "devDependencies": {
     "@tsconfig/node22": "22.0.6",
     "@types/node": "26.6.4",
+    "@types/semver": "7.8.0",
     "rimraf": "6.1.3",
-    "typescript": "5.9.3",
-    "vitest": "5.0.3"
+    "typescript": "5.9.3"
   }
 }

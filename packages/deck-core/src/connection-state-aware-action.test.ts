@@ -61,7 +61,7 @@ vi.mock("./simhub-service.js", () => ({
   onSimHubReachabilityChange: mockOnSimHubReachabilityChange,
 }));
 
-vi.mock("./global-settings.js", async (importOriginal) => {
+vi.mock("@iracedeck/settings", async (importOriginal) => {
   const original = (await importOriginal()) as Record<string, unknown>;
 
   return {

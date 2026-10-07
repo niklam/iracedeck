@@ -1,6 +1,6 @@
+import { getGlobalSettings } from "@iracedeck/settings";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getGlobalSettings } from "./global-settings.js";
 import {
   _resetSimHub,
   getSimHub,
@@ -11,7 +11,7 @@ import {
 } from "./simhub-service.js";
 
 // Mock global-settings before importing
-vi.mock("./global-settings.js", () => ({
+vi.mock("@iracedeck/settings", () => ({
   getGlobalSettings: vi.fn(() => ({
     simHubHost: "127.0.0.1",
     simHubPort: 8888,
@@ -25,7 +25,7 @@ const mockGetGlobalSettings = vi.mocked(getGlobalSettings);
  * through it, so they carry every callout opt-in at its default without listing
  * one, and adding a callout needs no edit here.
  */
-const { GlobalSettingsSchema } = await vi.importActual<typeof import("./global-settings.js")>("./global-settings.js");
+const { GlobalSettingsSchema } = await vi.importActual<typeof import("@iracedeck/settings")>("@iracedeck/settings");
 
 const mockLogger = {
   trace: vi.fn(),

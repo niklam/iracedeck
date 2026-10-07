@@ -6,6 +6,7 @@
  * platform-specific SDKs, enabling code reuse across platforms.
  */
 import type { ILogger, LogLevel } from "@iracedeck/logger";
+import type { SettingsHost } from "@iracedeck/settings";
 
 import type { DialCanvasProfile } from "./dial-canvas.js";
 import type { DeckFeedbackPayload } from "./feedback-types.js";
@@ -158,35 +159,10 @@ export type LogLocation =
 /**
  * Platform adapter that bridges platform-specific SDKs to the deck-core abstraction.
  * Each platform (Elgato, VSDinside, Mirabox) implements this interface.
+ * The global-settings read/write and `onHostReady` live on `SettingsHost` in
+ * `@iracedeck/settings`.
  */
-export interface IDeckPlatformAdapter {
-  /** Subscribe to global settings changes */
-  onDidReceiveGlobalSettings(callback: (settings: unknown) => void): void;
-  /** Request current global settings (triggers onDidReceiveGlobalSettings callback) */
-  getGlobalSettings(): void;
-  /** Write/update global settings */
-  setGlobalSettings(settings: Record<string, unknown>): void;
-  /**
-   * Subscribe to the host connection becoming usable — the point from which a
-   * {@link getGlobalSettings} read can actually be answered (#1056). A given
-   * subscriber is called at most ONCE — immediately if the host is already
-   * reachable when you subscribe, otherwise when it becomes so; a later
-   * reconnect does not call it again.
-   *
-   * **Optional on purpose, and absence is a statement rather than a gap.** Only
-   * the two WebSocket adapters have anything to report: they drop a frame
-   * written before their socket opens, so the one-time migration read is issued
-   * into a closed socket and covered by the connect-time reissue. An adapter
-   * whose transport queues the read until it can be sent — Elgato, whose SDK
-   * awaits the connection inside its own `send` — declares nothing here, and
-   * deck-core then keeps the deadline it already armed.
-   *
-   * Do NOT make this required. A stub that never calls back would satisfy the
-   * type while breaking the contract; it happens to be harmless for today's
-   * single consumer (never firing means never re-arming, which is right for
-   * Elgato) and would silently do the wrong thing for the next one.
-   */
-  onHostReady?(callback: () => void): void;
+export interface IDeckPlatformAdapter extends SettingsHost {
   /** Subscribe to application launch events */
   onApplicationDidLaunch(callback: (application: string) => void): void;
   /** Subscribe to application termination events */

@@ -31,6 +31,7 @@
     "@iracedeck/logger": "workspace:*",
     "@iracedeck/race-engineer-wiring": "workspace:*",
     "@iracedeck/rasterizer": "workspace:*",
+    "@iracedeck/settings": "workspace:*",
     "@iracedeck/sim-events-iracing": "workspace:*"
   },
   "devDependencies": {

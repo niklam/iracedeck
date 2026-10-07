@@ -21,7 +21,8 @@
   "dependencies": {
     "@elgato/streamdeck": "3.0.1",
     "@iracedeck/deck-core": "workspace:*",
-    "@iracedeck/logger": "workspace:*"
+    "@iracedeck/logger": "workspace:*",
+    "@iracedeck/settings": "workspace:*"
   },
   "devDependencies": {
     "@elgato/utils": "0.6.0",

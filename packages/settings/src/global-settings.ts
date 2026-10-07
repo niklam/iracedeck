@@ -2,7 +2,7 @@
  * Global Settings Manager
  *
  * Manages plugin-level global settings that apply across all action instances.
- * Platform-agnostic: uses IDeckPlatformAdapter instead of a specific SDK.
+ * Platform-agnostic: uses a SettingsHost instead of a specific SDK.
  *
  * Usage:
  * 1. Call initGlobalSettings(adapter, logger, store) once at plugin startup
@@ -47,12 +47,12 @@ import { z } from "zod";
 
 import { DEFAULT_FEATURE_STARTUP_POLICY, FEATURE_STARTUP_POLICIES } from "./feature-startup-policy.js";
 import { hasOnlyRunScopedKeys, stripRunScopedKeys } from "./run-scoped-settings.js";
+import type { SettingsHost } from "./settings-host.js";
 import type { SettingsStore } from "./settings-store.js";
 import {
   DEFAULT_SETUP_WARNING_QUALIFYING_PATTERN,
   DEFAULT_SETUP_WARNING_RACE_PATTERN,
 } from "./setup-warning-constants.js";
-import type { IDeckPlatformAdapter } from "./types.js";
 
 /**
  * Schema for key binding values stored in global settings.
@@ -1022,7 +1022,7 @@ export interface InitGlobalSettingsOptions {
  * @returns Current global settings (schema defaults until the store has loaded)
  */
 export function initGlobalSettings(
-  adapter: IDeckPlatformAdapter,
+  adapter: SettingsHost,
   log: ILogger,
   store: SettingsStore,
   opts: InitGlobalSettingsOptions = {},
