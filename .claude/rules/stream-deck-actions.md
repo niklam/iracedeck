@@ -4,6 +4,7 @@ paths:
   - "packages/pi-components/**"
   - "packages/deck-core/src/**"
   - "packages/settings/src/**"
+  - "packages/voice-packs/src/voice-labels*"
   - "packages/iracing-plugin-*/**"
 ---
 

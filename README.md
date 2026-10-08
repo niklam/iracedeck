@@ -114,6 +114,7 @@ packages/
   deck-adapter-ulanzi/     Ulanzi Deck adapter (UlanziStudio WebSocket protocol to deck-core)
   deck-core/               Platform-agnostic base classes, types, and shared utilities
   settings/                Global settings below the deck layer: schema, settings store, migrations, PI warnings
+  voice-packs/             Race Engineer voice packs: scanner, catalog, installer, launch step, voice labels
   deck-iracing/            iRacing's side of the deck layer (sim connection, SimIRacingAction, SDK singleton)
   app-constants/           Constants every layer and the PI bundle share: setting keys, value sets, ids (zero dependencies)
   callout-settings/        Race Engineer callout opt-in registry (zero dependencies)
@@ -138,14 +139,15 @@ packages/
 | `@iracedeck/iracing-actions`              | All 32 action implementations, platform-agnostic                                          |
 | `@iracedeck/deck-core`            | Base classes, types, keyboard service, icon templates, settings window; sim-neutral through `SimConnection` |
 | `@iracedeck/settings`             | Global settings below the deck layer: the schema and cache, migrations, the plugin-owned settings store, run-scoped keys, PI warnings, first run and the startup gates; deck-core re-exports none of them |
+| `@iracedeck/voice-packs`          | The Race Engineer voice-pack stack: the scanner and voice-pack service, the catalog, download, extraction and installer, the launch step that keeps the `default` pack installed, the voice labels; deck-core re-exports none of it |
 | `@iracedeck/deck-iracing`         | iRacing's side of the deck layer: `SimIRacingConnection`, the `SimIRacingAction` base, the SDK singleton (`getCommands()`) and the iRacing helpers |
-| `@iracedeck/app-constants`        | The constants every layer and the PI bundle share — setting-key names, value sets, settings-window ids — with zero imports; deck-core re-exports none of them |
+| `@iracedeck/app-constants`        | The constants every layer and the PI bundle share — setting-key names, value sets, settings-window ids, the `_warnings` record shape — with zero imports; deck-core re-exports none of them |
 | `@iracedeck/callout-settings`     | Every Race Engineer callout opt-in, declared once: the keys, labels and defaults the settings schema, the callout gates and the settings window derive from |
 | `@iracedeck/deck-adapter-elgato`  | Bridges the Elgato SDK to deck-core's `IDeckPlatformAdapter` interface                    |
 | `@iracedeck/deck-adapter-mirabox` | Bridges the Mirabox VSD Craft WebSocket protocol to deck-core                             |
 | `@iracedeck/deck-adapter-ulanzi`  | Bridges the UlanziStudio WebSocket protocol to deck-core                                  |
 | `@iracedeck/icon-composer`        | Standalone SVG icon assembly (pure functions, zero dependencies)                          |
-| `@iracedeck/fetch-utils`          | `abortAfter` and `readCappedJson`: request helpers shared by deck-core and the PI bundle (zero dependencies) |
+| `@iracedeck/fetch-utils`          | `abortAfter` and `readCappedJson`: request helpers shared by deck-core, voice-packs and the PI bundle (zero dependencies) |
 | `@iracedeck/icons`                | SVG icon Mustache templates with colorization support                                     |
 | `@iracedeck/iracing-native`       | C++ Node.js addon for Win32 APIs (memory-mapped files, window messaging, scan-code input) |
 | `@iracedeck/iracing-sdk`          | TypeScript SDK for reading telemetry and sending iRacing broadcast commands               |

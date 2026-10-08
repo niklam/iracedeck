@@ -93,11 +93,12 @@ Pure TypeScript library, no Rollup needed. Outputs ESM with declarations.
 ## Dependencies
 
 - `@iracedeck/app-constants` — Shared setting keys, value sets and settings-window ids (zero-dependency, #1364)
-- `@iracedeck/fetch-utils` — `abortAfter` and `readCappedJson` for the two feed clients (zero-dependency, #1364)
+- `@iracedeck/fetch-utils` — `abortAfter` and `readCappedJson` for the changelog feed client (zero-dependency, #1364)
+- `@iracedeck/callout-script` — `packId`, which the settings window's commands check a voice-pack id against before an install or a remove
 - `@iracedeck/settings` — Global settings, the settings store, PI warnings and the startup gates, and the `SettingsHost` that `IDeckPlatformAdapter` extends (#1365)
 - `@iracedeck/icon-composer` — Pure icon assembly functions (zero-dependency)
 - `@iracedeck/logger` — For `ILogger` interface
-- `semver` — Version comparison for the startup version-check (`version-check.ts`), the catalog schema's version fields, and the parity pin on the leaf's `isSemverVersion` (`voice-pack-semver-parity.test.ts`, #1134)
+- `semver` — Version comparison for the startup version-check (`version-check.ts`) and the update check (`update-check.ts`)
 - `zod` — For settings schemas
 - `ws` — The settings-window server's WebSocket fake host (`settings-window-server.ts`, #992/#993). Bundled into the Elgato plugin (the Elgato SDK already ships `ws`), external + `bin/node_modules` on Mirabox/Ulanzi
 - `keysender` — `optionalDependencies` only, and imported by nothing at compile time (#1177). `keyboard-service.ts` loads it at runtime through a variable module name (Windows-only native module; its types are defined locally), from each plugin's `bin/node_modules`. The declaration exists so Dependabot can see it and `scripts/lib/runtime-deps.mjs` has a version to ship in the plugins' `bin/package.json`; it is declined in `allowBuilds` (`pnpm-workspace.yaml`), so a workspace install downloads it without compiling it (its install script is `node-gyp rebuild`). See `.claude/rules/plugin-structure.md`.
