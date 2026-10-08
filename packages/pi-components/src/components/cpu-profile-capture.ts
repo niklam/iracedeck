@@ -45,7 +45,7 @@ export const OpenProfilesFolder = defineSendToPluginButton({
   defaultSize: "compact",
 });
 
-/** The browser's reading of deck-core's `ProfileCaptureStatus`; anything unreadable is idle. */
+/** The browser's reading of diagnostics' `ProfileCaptureStatus`; anything unreadable is idle. */
 type CaptureStatus =
   | { state: "idle" }
   | { state: "capturing"; startedAt: number; durationMs: number }

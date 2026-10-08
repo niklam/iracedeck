@@ -7,7 +7,7 @@
 /**
  * The `changelogNotification` global-setting values (issue #742). Defined in
  * the `app-constants` leaf (not in `global-settings.ts`) so the Zod schema,
- * deck-core's `version-check.ts` decision logic and the settings window share
+ * app-updates' `version-check.ts` decision logic and the settings window share
  * one source of truth without a dependency cycle (spec #1351).
  */
 export const CHANGELOG_NOTIFICATION_POLICIES = ["always", "features", "monthly", "never"] as const;
