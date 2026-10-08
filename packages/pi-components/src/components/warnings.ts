@@ -25,7 +25,7 @@
  * on one page. A warning with no dedicated home is named in neither list and
  * still shows in the top strip, unchanged.
  */
-import { PI_WARNINGS_KEY, type PiWarning, type PiWarningLevel } from "@iracedeck/app-constants";
+import { PI_WARNING_LEVELS, PI_WARNINGS_KEY, type PiWarning, type PiWarningLevel } from "@iracedeck/app-constants";
 
 import { skipUnchanged } from "./settings-change-filter.js";
 
@@ -102,9 +102,7 @@ export class WarningsBanner extends HTMLElement {
           !!w &&
           typeof (w as PiWarning).id === "string" &&
           typeof (w as PiWarning).message === "string" &&
-          ((w as PiWarning).level === "info" ||
-            (w as PiWarning).level === "warning" ||
-            (w as PiWarning).level === "error"),
+          (PI_WARNING_LEVELS as readonly unknown[]).includes((w as PiWarning).level),
       );
     } catch {
       return [];

@@ -18,20 +18,15 @@
  * evaluator the `_voiceLabels` map so the banner names the voice as the
  * dropdown does rather than by its composite id.
  */
-import type { PiWarningLevel } from "@iracedeck/app-constants";
-
+import type { VoicePackInstallerWarnings } from "./voice-pack-installer.js";
 import {
   evaluateVoiceScriptWarning,
   VOICE_SCRIPT_WARNING_ID,
   type VoiceScriptWarningInput,
 } from "./voice-script-warning.js";
 
-export interface VoiceScriptWarningReporterDeps {
-  /** Posts a warning record — `setWarning` in the plugins. */
-  set: (id: string, level: PiWarningLevel, message: string) => void;
-  /** Retires a warning record by id — `clearWarning` in the plugins. */
-  clear: (id: string) => void;
-}
+/** `set` posts a record and `clear` retires one by id: `setWarning` / `clearWarning` in the plugins, the installer's writers. */
+export type VoiceScriptWarningReporterDeps = VoicePackInstallerWarnings;
 
 /**
  * Create the handler. Idempotent by construction: `setWarning` skips the

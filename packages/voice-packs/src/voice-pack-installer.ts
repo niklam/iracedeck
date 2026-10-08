@@ -49,8 +49,12 @@
  * banner read, and nothing else. `voice-pack-no-window.test.ts` enforces this
  * structurally over every module of the feature, this one included.
  */
-import type { VoicePackCatalogState, VoicePackInstallState, VoicePackStatus } from "@iracedeck/app-constants";
-import type { PiWarningLevel } from "@iracedeck/app-constants";
+import type {
+  PiWarningLevel,
+  VoicePackCatalogState,
+  VoicePackInstallState,
+  VoicePackStatus,
+} from "@iracedeck/app-constants";
 import {
   calloutScriptPath,
   packId,

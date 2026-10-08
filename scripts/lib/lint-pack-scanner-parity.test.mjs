@@ -10,8 +10,8 @@
 // this test is the claim itself, stated over packs rather than over rules, so
 // it holds whichever file a future rule lands in.
 //
-// Both are imported from SOURCE by path, the way `website-device-list.test.mjs`
-// reaches deck-core: the scanner module, not voice-packs' barrel (which would
+// Both are imported from SOURCE by path (as `website-device-list.test.mjs`
+// does for deck-core): the scanner module, not the voice-packs barrel (which would
 // pull in far more than a scan), and `lint-pack.ts`, not the audio-scenarios
 // barrel. One in-memory filesystem serves both — the two ports are the same
 // three operations.

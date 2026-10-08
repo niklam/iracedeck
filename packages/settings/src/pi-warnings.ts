@@ -15,7 +15,7 @@
  * and nothing in the UI can dismiss a state-driven banner. In exchange, every
  * producer must re-assert its state within the run; see `run-scoped-settings.ts`.
  */
-import { PI_WARNINGS_KEY, type PiWarning, type PiWarningLevel } from "@iracedeck/app-constants";
+import { PI_WARNING_LEVELS, PI_WARNINGS_KEY, type PiWarning, type PiWarningLevel } from "@iracedeck/app-constants";
 import { z } from "zod";
 
 import { getGlobalSettings, updateGlobalSettings } from "./global-settings.js";
@@ -30,7 +30,7 @@ import { getGlobalSettings, updateGlobalSettings } from "./global-settings.js";
  */
 const PiWarningSchema = z.object({
   id: z.string(),
-  level: z.enum(["info", "warning", "error"]),
+  level: z.enum(PI_WARNING_LEVELS),
   message: z.string(),
 });
 

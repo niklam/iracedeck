@@ -31,7 +31,7 @@ export {
 } from "./key-binding-defaults.js";
 
 // Property Inspector warning banner key and record shape (issues #610, #1014, #1366)
-export { PI_WARNINGS_KEY, type PiWarning, type PiWarningLevel } from "./pi-warnings-constants.js";
+export { PI_WARNING_LEVELS, PI_WARNINGS_KEY, type PiWarning, type PiWarningLevel } from "./pi-warnings-constants.js";
 
 // Settings-window page name and warning ids (issues #992, #1005)
 export {
