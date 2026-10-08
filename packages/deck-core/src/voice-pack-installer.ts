@@ -50,6 +50,7 @@
  * structurally over every module of the feature, this one included.
  */
 import type { VoicePackCatalogState, VoicePackInstallState, VoicePackStatus } from "@iracedeck/app-constants";
+import type { PiWarningLevel } from "@iracedeck/app-constants";
 import {
   calloutScriptPath,
   packId,
@@ -60,7 +61,6 @@ import {
   type VoicePackManifest,
 } from "@iracedeck/callout-script";
 import type { ILogger } from "@iracedeck/logger";
-import type { PiWarningLevel } from "@iracedeck/settings";
 import { createHash, type Hash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { readFile } from "node:fs/promises";

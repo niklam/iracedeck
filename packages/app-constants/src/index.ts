@@ -30,8 +30,8 @@ export {
   parseDefaultKeyBinding,
 } from "./key-binding-defaults.js";
 
-// Property Inspector warning banner key (issues #610, #1014)
-export { PI_WARNINGS_KEY } from "./pi-warnings-constants.js";
+// Property Inspector warning banner key and record shape (issues #610, #1014, #1366)
+export { PI_WARNINGS_KEY, type PiWarning, type PiWarningLevel } from "./pi-warnings-constants.js";
 
 // Settings-window page name and warning ids (issues #992, #1005)
 export {

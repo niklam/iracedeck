@@ -25,20 +25,13 @@
  * on one page. A warning with no dedicated home is named in neither list and
  * still shows in the top strip, unchanged.
  */
-import { PI_WARNINGS_KEY } from "@iracedeck/app-constants";
+import { PI_WARNINGS_KEY, type PiWarning, type PiWarningLevel } from "@iracedeck/app-constants";
 
 import { skipUnchanged } from "./settings-change-filter.js";
 
 let styleInjected = false;
 
-type WarningLevel = "info" | "warning" | "error";
-interface WarningRecord {
-  id: string;
-  level: WarningLevel;
-  message: string;
-}
-
-const LEVEL_ICON: Record<WarningLevel, string> = {
+const LEVEL_ICON: Record<PiWarningLevel, string> = {
   info: "ℹ️",
   warning: "⚠️",
   error: "⛔",
@@ -96,7 +89,7 @@ export class WarningsBanner extends HTMLElement {
     );
   }
 
-  private parse(value: unknown): WarningRecord[] {
+  private parse(value: unknown): PiWarning[] {
     if (typeof value !== "string" || value === "") return [];
 
     try {
@@ -105,13 +98,13 @@ export class WarningsBanner extends HTMLElement {
       if (!Array.isArray(parsed)) return [];
 
       return parsed.filter(
-        (w): w is WarningRecord =>
+        (w): w is PiWarning =>
           !!w &&
-          typeof (w as WarningRecord).id === "string" &&
-          typeof (w as WarningRecord).message === "string" &&
-          ((w as WarningRecord).level === "info" ||
-            (w as WarningRecord).level === "warning" ||
-            (w as WarningRecord).level === "error"),
+          typeof (w as PiWarning).id === "string" &&
+          typeof (w as PiWarning).message === "string" &&
+          ((w as PiWarning).level === "info" ||
+            (w as PiWarning).level === "warning" ||
+            (w as PiWarning).level === "error"),
       );
     } catch {
       return [];
@@ -126,14 +119,14 @@ export class WarningsBanner extends HTMLElement {
       .filter((id) => id !== "");
   }
 
-  private applyPlacementFilters(warnings: WarningRecord[]): WarningRecord[] {
+  private applyPlacementFilters(warnings: PiWarning[]): PiWarning[] {
     const only = this.idList("only");
     const except = this.idList("except");
 
     return warnings.filter((w) => (only.length === 0 || only.includes(w.id)) && !except.includes(w.id));
   }
 
-  private render(warnings: WarningRecord[]): void {
+  private render(warnings: PiWarning[]): void {
     if (!this.container) return;
 
     this.container.replaceChildren();

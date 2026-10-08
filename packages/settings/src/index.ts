@@ -93,7 +93,7 @@ export {
 export { createSettingsFileRejectionReporter } from "./settings-file-rejection-reporter.js";
 
 // Property Inspector warning banners
-export { setWarning, clearWarning, reconcileWarnings, type PiWarning, type PiWarningLevel } from "./pi-warnings.js";
+export { setWarning, clearWarning, reconcileWarnings } from "./pi-warnings.js";
 // Settings keys that describe THIS RUN and are never persisted (#1014).
 export { RUN_SCOPED_SETTING_KEYS, stripRunScopedKeys } from "./run-scoped-settings.js";
 

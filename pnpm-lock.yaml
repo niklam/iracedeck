@@ -579,6 +579,9 @@ importers:
 
   packages/deck-iracing:
     dependencies:
+      '@iracedeck/app-constants':
+        specifier: workspace:*
+        version: link:../app-constants
       '@iracedeck/deck-core':
         specifier: workspace:*
         version: link:../deck-core
