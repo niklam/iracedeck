@@ -10,6 +10,7 @@
  * normalizes Ulanzi `cmd` frames into Elgato-style events. This adapter is
  * therefore structurally near-identical to the Mirabox `VSDPlatformAdapter`.
  */
+import { type LogLocation } from "@iracedeck/app-constants";
 import {
   type DeckFeedbackPayload,
   type DeckTriggerDescription,
@@ -21,7 +22,6 @@ import {
   type IDeckEvent,
   type IDeckPlatformAdapter,
   type IDeckWillDisappearEvent,
-  type LogLocation,
   toDeviceImage,
 } from "@iracedeck/deck-core";
 import type { ILogger } from "@iracedeck/logger";

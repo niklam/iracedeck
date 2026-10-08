@@ -1,4 +1,4 @@
-import { watchdogDailyLogFileName } from "@iracedeck/deck-core";
+import { watchdogDailyLogFileName } from "@iracedeck/diagnostics";
 import { type ILogger, LogLevel } from "@iracedeck/logger";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

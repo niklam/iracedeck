@@ -1,7 +1,6 @@
 import {
   assembleIcon,
   CommonSettings,
-  getCpuProfileCapture,
   getGlobalBorderSettings,
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
@@ -10,15 +9,18 @@ import {
   type IDeckKeyDownEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
-  isCpuProfileCaptureInitialized,
   migrateLegacyActionToMode,
-  type ProfileCaptureStatus,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
   resolveTitleSettings,
 } from "@iracedeck/deck-core";
 import { getCommands, SimIRacingAction } from "@iracedeck/deck-iracing";
+import {
+  getCpuProfileCapture,
+  isCpuProfileCaptureInitialized,
+  type ProfileCaptureStatus,
+} from "@iracedeck/diagnostics";
 import captureProfileIconSvg from "@iracedeck/icons/telemetry-control/capture-profile.svg";
 import markEventIconSvg from "@iracedeck/icons/telemetry-control/mark-event.svg";
 import restartRecordingIconSvg from "@iracedeck/icons/telemetry-control/restart-recording.svg";

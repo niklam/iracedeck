@@ -23,6 +23,7 @@
     "@iracedeck/deck-core": "workspace:*",
     "@iracedeck/iracing-sdk": "workspace:*",
     "@iracedeck/logger": "workspace:*",
+    "@iracedeck/replay-store": "workspace:*",
     "@iracedeck/settings": "workspace:*"
   },
   "devDependencies": {

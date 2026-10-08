@@ -7,6 +7,7 @@ import { initAudio } from "./audio.js";
 import { initCore } from "./core.js";
 
 vi.mock("@iracedeck/deck-core", async (io) => (await import("../test-support/module-mocks.js")).recordedModule(io));
+vi.mock("@iracedeck/diagnostics", async (io) => (await import("../test-support/module-mocks.js")).recordedModule(io));
 vi.mock("@iracedeck/settings", async (io) => (await import("../test-support/module-mocks.js")).recordedModule(io));
 vi.mock("@iracedeck/deck-iracing", async (io) => (await import("../test-support/module-mocks.js")).recordedModule(io));
 vi.mock("@iracedeck/event-bus", async (io) => (await import("../test-support/module-mocks.js")).recordedModule(io));
@@ -37,7 +38,7 @@ describe("initAudio", () => {
 
     initAudio(core);
 
-    expect(callLog.filter((n) => n !== "getAudio" && n !== "pluginAudioSessionIdentity")).toEqual([
+    expect(callLog.filter((n) => n !== "getAudio")).toEqual([
       "new AudioNative",
       "initializeAudio",
       "getAudio().init",

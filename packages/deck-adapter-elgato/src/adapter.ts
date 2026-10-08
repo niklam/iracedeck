@@ -20,6 +20,7 @@ import {
   type WillDisappearEvent,
 } from "@elgato/streamdeck";
 import type { JsonObject } from "@elgato/utils";
+import { type LogLocation } from "@iracedeck/app-constants";
 import {
   type DeckFeedbackPayload,
   type DeckTriggerDescription,
@@ -40,7 +41,6 @@ import {
   type IDeckWillDisappearEvent,
   isDataUri,
   keyImageSizeForDevice,
-  type LogLocation,
   requestProfileSwitch,
   SD_PLUS_STRIP_CANVAS,
   toDeviceImage,

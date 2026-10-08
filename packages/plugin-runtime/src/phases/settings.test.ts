@@ -1,4 +1,4 @@
-import { VERSION_CHECK_STARTUP_GRACE_MS } from "@iracedeck/deck-core";
+import { VERSION_CHECK_STARTUP_GRACE_MS } from "@iracedeck/app-updates";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { cleanupTempBinDirs, createFakeExtension, createHost } from "../test-support/fake-host.js";
@@ -10,6 +10,12 @@ import { initSettings } from "./settings.js";
 import { initVoicePacks } from "./voice-packs.js";
 
 vi.mock("@iracedeck/deck-core", async (io) => (await import("../test-support/module-mocks.js")).recordedModule(io));
+vi.mock("@iracedeck/diagnostics", async (io) => (await import("../test-support/module-mocks.js")).recordedModule(io));
+vi.mock("@iracedeck/settings-window", async (io) =>
+  (await import("../test-support/module-mocks.js")).recordedModule(io),
+);
+vi.mock("@iracedeck/replay-store", async (io) => (await import("../test-support/module-mocks.js")).recordedModule(io));
+vi.mock("@iracedeck/app-updates", async (io) => (await import("../test-support/module-mocks.js")).recordedModule(io));
 vi.mock("@iracedeck/voice-packs", async (io) => (await import("../test-support/module-mocks.js")).recordedModule(io));
 vi.mock("@iracedeck/settings", async (io) => (await import("../test-support/module-mocks.js")).recordedModule(io));
 vi.mock("@iracedeck/deck-iracing", async (io) => (await import("../test-support/module-mocks.js")).recordedModule(io));

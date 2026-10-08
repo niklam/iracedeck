@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@elgato/streamdeck": "3.0.1",
+    "@iracedeck/app-constants": "workspace:*",
     "@iracedeck/deck-core": "workspace:*",
     "@iracedeck/logger": "workspace:*"
   },

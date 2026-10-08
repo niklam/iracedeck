@@ -3,12 +3,7 @@
  * monitors, the setup-warning check, the SDK and the event bus — everything
  * later phases read through `Core`.
  */
-import {
-  initPluginConfig,
-  type PluginConfig,
-  startMainThreadWatchdog,
-  startResourceMonitor,
-} from "@iracedeck/deck-core";
+import { initPluginConfig, type PluginConfig } from "@iracedeck/deck-core";
 import {
   getController,
   initializeSDK,
@@ -16,6 +11,7 @@ import {
   onIRacingStarted,
   onIRacingTerminated,
 } from "@iracedeck/deck-iracing";
+import { startMainThreadWatchdog, startResourceMonitor } from "@iracedeck/diagnostics";
 import { initializeEventBus } from "@iracedeck/event-bus";
 import { LogLevel } from "@iracedeck/logger";
 import { getGlobalSettings, onGlobalSettingsChange, validateSetupWarningPatterns } from "@iracedeck/settings";

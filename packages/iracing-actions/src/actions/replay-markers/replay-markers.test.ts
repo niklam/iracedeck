@@ -78,11 +78,6 @@ vi.mock("@iracedeck/deck-core", async () => {
       async onDidReceiveSettings() {}
       async onWillDisappear() {}
     },
-    getReplaySessionStore: vi.fn(() => ({ markers: mocks.markers })),
-    isReplaySessionStoreInitialized: mocks.isStoreInitialized,
-    MARKER_DEDUPE_FRAMES: 60,
-    MARKER_DELETE_WINDOW_FRAMES: 600,
-    MARKER_PREVIOUS_MIN_BEHIND_FRAMES: 120,
     getGlobalBorderSettings: vi.fn(() => ({})),
     getGlobalGraphicSettings: vi.fn(() => ({})),
     getGlobalTitleSettings: vi.fn(() => ({})),
@@ -116,6 +111,14 @@ vi.mock("@iracedeck/deck-core", async () => {
     ),
   };
 });
+
+vi.mock("@iracedeck/replay-store", () => ({
+  getReplaySessionStore: vi.fn(() => ({ markers: mocks.markers })),
+  isReplaySessionStoreInitialized: mocks.isStoreInitialized,
+  MARKER_DEDUPE_FRAMES: 60,
+  MARKER_DELETE_WINDOW_FRAMES: 600,
+  MARKER_PREVIOUS_MIN_BEHIND_FRAMES: 120,
+}));
 
 vi.mock("@iracedeck/settings", () => ({
   getGlobalColors: vi.fn(() => ({})),

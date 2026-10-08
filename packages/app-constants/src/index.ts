@@ -30,6 +30,9 @@ export {
   parseDefaultKeyBinding,
 } from "./key-binding-defaults.js";
 
+// Where a host's own plugin log lives, for the adapter contract and the watchdog (issues #1349, #1367)
+export type { LogLocation } from "./log-location.js";
+
 // Property Inspector warning banner key and record shape (issues #610, #1014, #1366)
 export { PI_WARNING_LEVELS, PI_WARNINGS_KEY, type PiWarning, type PiWarningLevel } from "./pi-warnings-constants.js";
 

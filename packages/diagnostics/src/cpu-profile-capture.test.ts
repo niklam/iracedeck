@@ -20,7 +20,6 @@ import {
   pruneCpuProfiles,
   summarizeCpuProfile,
 } from "./cpu-profile-capture.js";
-import { createSettingsWindowCommandHandler } from "./settings-window-commands.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -429,14 +428,11 @@ describe("the shared capture service (#1338)", () => {
 
   it("refuses a key's request while a capture started from the settings window runs", async () => {
     initializeCpuProfileCapture(options());
-    const handle = createSettingsWindowCommandHandler({
-      writeSettings: vi.fn(),
-      captureCpuProfile: () => {
-        void getCpuProfileCapture().capture();
-      },
-    });
 
-    handle({ event: "captureCpuProfile" });
+    // What the settings window's Capture button runs: plugin-runtime injects this
+    // as the command handler's `captureCpuProfile`, which the handler calls on the
+    // `captureCpuProfile` event (`@iracedeck/settings-window`'s own tests).
+    void getCpuProfileCapture().capture();
 
     // What the Telemetry Control key does on a press.
     const fromKey = await getCpuProfileCapture().capture();

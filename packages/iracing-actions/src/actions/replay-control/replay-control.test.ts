@@ -1,4 +1,3 @@
-import type { LapStartLookup, LapStartQuery, LapStartRecord } from "@iracedeck/deck-core";
 import {
   getAllCarNumbers,
   getCarNumberFromSessionInfo,
@@ -7,6 +6,7 @@ import {
   type TelemetryData,
   TrkLoc,
 } from "@iracedeck/iracing-sdk";
+import type { LapStartLookup, LapStartQuery, LapStartRecord } from "@iracedeck/replay-store";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
 import {
@@ -192,8 +192,6 @@ vi.mock("@iracedeck/deck-core", () => ({
   generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
   getGlobalBorderSettings: vi.fn(() => ({})),
   getGlobalGraphicSettings: vi.fn(() => ({})),
-  getReplaySessionStore: vi.fn(),
-  isReplaySessionStoreInitialized: vi.fn(() => false),
   LogLevel: { Info: 2 },
   parseSvgViewBox: vi.fn(() => undefined),
   getGlobalTitleSettings: vi.fn(() => ({})),
@@ -241,6 +239,11 @@ vi.mock("@iracedeck/deck-core", () => ({
     return result;
   }),
   svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
+}));
+
+vi.mock("@iracedeck/replay-store", () => ({
+  getReplaySessionStore: vi.fn(),
+  isReplaySessionStoreInitialized: vi.fn(() => false),
 }));
 
 vi.mock("@iracedeck/settings", () => ({
@@ -1854,7 +1857,7 @@ describe("ReplayControl", () => {
       // so each test starts clean.
       _resetFastestLapSessionCache();
       _resetReplayCursor();
-      const { getReplaySessionStore, isReplaySessionStoreInitialized } = await import("@iracedeck/deck-core");
+      const { getReplaySessionStore, isReplaySessionStoreInitialized } = await import("@iracedeck/replay-store");
       const { getCommands } = await import("@iracedeck/deck-iracing");
       // getCarNumberRawFromSessionInfo is mocked in the shared @iracedeck/iracing-sdk block;
       // default it to returning the carIdx as the raw number so individual tests don't have
@@ -2809,7 +2812,7 @@ describe("ReplayControl", () => {
           vi.useFakeTimers();
 
           try {
-            const { isReplaySessionStoreInitialized } = await import("@iracedeck/deck-core");
+            const { isReplaySessionStoreInitialized } = await import("@iracedeck/replay-store");
 
             vi.mocked(isReplaySessionStoreInitialized).mockReturnValue(false);
             singleSessionBuffer(4, 4);
@@ -3027,7 +3030,7 @@ describe("ReplayControl", () => {
           vi.useFakeTimers();
 
           try {
-            const { isReplaySessionStoreInitialized } = await import("@iracedeck/deck-core");
+            const { isReplaySessionStoreInitialized } = await import("@iracedeck/replay-store");
 
             vi.mocked(isReplaySessionStoreInitialized).mockReturnValue(false);
             singleSessionBuffer(4, 4);

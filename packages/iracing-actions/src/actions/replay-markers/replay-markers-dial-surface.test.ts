@@ -1,5 +1,5 @@
-import type { ReplayMarker, ReplaySessionStore } from "@iracedeck/deck-core";
 import { ReplayPosMode, type TelemetryData } from "@iracedeck/iracing-sdk";
+import type { ReplayMarker, ReplaySessionStore } from "@iracedeck/replay-store";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -54,16 +54,20 @@ vi.mock("@iracedeck/deck-core", async () => {
     escapeXml: (str: string) => str,
     // Identity, so a test reads the pushed SVG straight off `setDialCanvas`.
     svgToDataUri: (svg: string) => svg,
-    MARKER_DEDUPE_FRAMES: 60,
-    MARKER_DELETE_WINDOW_FRAMES: 600,
-    MARKER_PREVIOUS_MIN_BEHIND_FRAMES: 120,
   };
 });
 
-// The store's own pure marker functions, so the fake store answers next /
-// previous / add / delete exactly as the real one does.
-const markerFns = await vi.importActual<typeof import("../../../../deck-core/src/replay-markers.js")>(
-  "../../../../deck-core/src/replay-markers.js",
+vi.mock("@iracedeck/replay-store", () => ({
+  MARKER_DEDUPE_FRAMES: 60,
+  MARKER_DELETE_WINDOW_FRAMES: 600,
+  MARKER_PREVIOUS_MIN_BEHIND_FRAMES: 120,
+}));
+
+// The store's own pure marker functions, by path past the mocked barrel (the
+// module has no imports), so the fake store answers next / previous / add /
+// delete exactly as the real one does.
+const markerFns = await vi.importActual<typeof import("../../../../replay-store/src/replay-markers.js")>(
+  "../../../../replay-store/src/replay-markers.js",
 );
 
 const STRIP = { id: "sd-plus-strip", width: 200, height: 100 } as const;

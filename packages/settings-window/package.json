@@ -1,7 +1,7 @@
 {
-  "name": "@iracedeck/deck-adapter-mirabox",
+  "name": "@iracedeck/settings-window",
   "version": "3.6.0-dev.0",
-  "description": "Mirabox adapter for @iracedeck/deck-core",
+  "description": "The settings window: the loopback server and its request guard, the app-window launcher, the command handler, the warning banner, the settings-channel publisher and Explorer reveal.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -20,17 +20,18 @@
   },
   "dependencies": {
     "@iracedeck/app-constants": "workspace:*",
-    "@iracedeck/deck-core": "workspace:*",
+    "@iracedeck/app-updates": "workspace:*",
+    "@iracedeck/callout-script": "workspace:*",
     "@iracedeck/logger": "workspace:*",
-    "ws": "8.22.0"
+    "@iracedeck/settings": "workspace:*",
+    "ws": "8.22.0",
+    "zod": "4.6.5"
   },
   "devDependencies": {
-    "@iracedeck/diagnostics": "workspace:*",
     "@tsconfig/node22": "22.0.6",
     "@types/node": "26.6.4",
     "@types/ws": "8.18.2",
     "rimraf": "6.1.3",
-    "typescript": "5.9.3",
-    "vitest": "5.0.3"
+    "typescript": "5.9.3"
   }
 }

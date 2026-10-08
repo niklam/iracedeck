@@ -5,7 +5,6 @@
  */
 import { AudioNative } from "@iracedeck/audio-native";
 import { getAudio, initializeAudio } from "@iracedeck/audio-service";
-import { pluginAudioSessionIdentity } from "@iracedeck/deck-core";
 import { onGlobalSettingsChange } from "@iracedeck/settings";
 import { join } from "node:path";
 
@@ -16,6 +15,7 @@ import {
   armFeatureGateSync,
   syncFeatureGates,
 } from "../actions.js";
+import { pluginAudioSessionIdentity } from "../audio-session-identity.js";
 import type { Audio, Core } from "../types.js";
 
 export function initAudio(core: Core): Audio {

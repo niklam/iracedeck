@@ -1,7 +1,7 @@
 {
-  "name": "@iracedeck/deck-adapter-mirabox",
+  "name": "@iracedeck/app-updates",
   "version": "3.6.0-dev.0",
-  "description": "Mirabox adapter for @iracedeck/deck-core",
+  "description": "The plugin's release notes and update checks: the version-upgrade changelog opener, the published changelog feed, its sanitizer and the update-check service.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -20,17 +20,16 @@
   },
   "dependencies": {
     "@iracedeck/app-constants": "workspace:*",
-    "@iracedeck/deck-core": "workspace:*",
+    "@iracedeck/fetch-utils": "workspace:*",
     "@iracedeck/logger": "workspace:*",
-    "ws": "8.22.0"
+    "semver": "7.8.5",
+    "zod": "4.6.5"
   },
   "devDependencies": {
-    "@iracedeck/diagnostics": "workspace:*",
     "@tsconfig/node22": "22.0.6",
     "@types/node": "26.6.4",
-    "@types/ws": "8.18.2",
+    "@types/semver": "7.8.0",
     "rimraf": "6.1.3",
-    "typescript": "5.9.3",
-    "vitest": "5.0.3"
+    "typescript": "5.9.3"
   }
 }

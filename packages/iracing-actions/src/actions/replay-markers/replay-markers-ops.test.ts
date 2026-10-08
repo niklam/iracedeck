@@ -1,6 +1,6 @@
-import { type ReplayMarker, type ReplaySessionStore } from "@iracedeck/deck-core";
 import { getCommands } from "@iracedeck/deck-iracing";
 import { ReplayPosMode, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { type ReplayMarker, type ReplaySessionStore } from "@iracedeck/replay-store";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -29,7 +29,7 @@ vi.mock("@iracedeck/deck-iracing", () => ({
   getCommands: vi.fn(),
 }));
 
-vi.mock("@iracedeck/deck-core", () => ({
+vi.mock("@iracedeck/replay-store", () => ({
   MARKER_DEDUPE_FRAMES: 60,
   MARKER_DELETE_WINDOW_FRAMES: 600,
   MARKER_PREVIOUS_MIN_BEHIND_FRAMES: 120,

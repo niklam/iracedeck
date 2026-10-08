@@ -34,7 +34,7 @@
  *
  * The app-monitor hooks are injected rather than imported, the way the window
  * service receives `isIRacingActive` (#1176): `app-monitor` lives in
- * `@iracedeck/deck-iracing`, which depends on deck-core (#1351).
+ * `@iracedeck/deck-iracing`, a layer above this package (#1351, #1367).
  *
  * Decision record: `docs/superpowers/specs/2026-10-04-issue-1338-built-in-profiling.md`.
  */

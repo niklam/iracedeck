@@ -4,22 +4,21 @@
  * dependency between phases is one of these parameters, so a phase cannot run
  * before what it needs exists. Phases import from here, never from `index.ts`.
  */
+import type { LogLocation } from "@iracedeck/app-constants";
 import type { AudioAssetsManifest } from "@iracedeck/audio-scenarios";
 import type { CalloutScript } from "@iracedeck/callout-script";
-import type {
-  IDeckActionHandler,
-  IDeckPlatformAdapter,
-  LogLocation,
-  ReplaySessionStore,
-  SettingsWindowCommandDeps,
-  SettingsWindowController,
-  SettingsWindowOpenOptions,
-} from "@iracedeck/deck-core";
+import type { IDeckActionHandler, IDeckPlatformAdapter } from "@iracedeck/deck-core";
 import type { getController } from "@iracedeck/deck-iracing";
 import type { IEventBus } from "@iracedeck/event-bus";
 import type { IRacingNative } from "@iracedeck/iracing-native";
 import type { ILogger } from "@iracedeck/logger";
+import type { ReplaySessionStore } from "@iracedeck/replay-store";
 import type { SettingsStore } from "@iracedeck/settings";
+import type {
+  SettingsWindowCommandDeps,
+  SettingsWindowController,
+  SettingsWindowOpenOptions,
+} from "@iracedeck/settings-window";
 import type { VoicePackInstaller, VoicePackLaunchStep, VoicePackService } from "@iracedeck/voice-packs";
 
 /** One `adapter.registerAction` call: the UUID, the logger scope it always used, and the handler factory. */

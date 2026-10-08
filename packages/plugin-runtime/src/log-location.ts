@@ -1,4 +1,5 @@
-import type { IDeckPlatformAdapter, LogLocation } from "@iracedeck/deck-core";
+import type { LogLocation } from "@iracedeck/app-constants";
+import type { IDeckPlatformAdapter } from "@iracedeck/deck-core";
 import { dirname, join } from "node:path";
 
 /**

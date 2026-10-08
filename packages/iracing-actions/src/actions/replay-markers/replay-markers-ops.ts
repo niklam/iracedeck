@@ -6,6 +6,8 @@
  * landing on the same marker, and the dial's side marks agreeing with the
  * keypad's greyed keys. Logging stays with the callers.
  */
+import { getCommands } from "@iracedeck/deck-iracing";
+import { ReplayPosMode, resolveReplayFrame, type TelemetryData } from "@iracedeck/iracing-sdk";
 import {
   MARKER_DEDUPE_FRAMES,
   MARKER_DELETE_WINDOW_FRAMES,
@@ -13,9 +15,7 @@ import {
   type ReplayMarker,
   type ReplaySessionStore,
   type SubSessionScoped,
-} from "@iracedeck/deck-core";
-import { getCommands } from "@iracedeck/deck-iracing";
-import { ReplayPosMode, resolveReplayFrame, type TelemetryData } from "@iracedeck/iracing-sdk";
+} from "@iracedeck/replay-store";
 
 import {
   cancelReplayCursorOwner,

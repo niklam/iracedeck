@@ -7,7 +7,8 @@
  * Every test file that builds a host removes its temp bin dirs with
  * `afterAll(() => cleanupTempBinDirs())`.
  */
-import type { IDeckPlatformAdapter, LogLocation } from "@iracedeck/deck-core";
+import type { LogLocation } from "@iracedeck/app-constants";
+import type { IDeckPlatformAdapter } from "@iracedeck/deck-core";
 import { silentLogger } from "@iracedeck/logger";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

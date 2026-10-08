@@ -4,32 +4,17 @@
  * listener with its one-shot store-ready block, and the PI-appear re-pushes.
  */
 import { SETTINGS_WINDOW_HTML, VOICE_PACK_DEV_BASE_URL_KEY } from "@iracedeck/app-constants";
-import { getAudio } from "@iracedeck/audio-service";
 import {
-  createSettingsChannelPublisher,
-  createSettingsWindowCommandHandler,
-  createSettingsWindowController,
-  createSettingsWindowWarningReporter,
   createUpdateCheckService,
-  findChromiumBrowserOnThisMachine,
-  getCpuProfileCapture,
-  getPluginPlatform,
-  getPluginVersion,
-  getSimHub,
-  initializeCpuProfileCapture,
-  initializeReplaySessionStore,
-  isSimHubReachable,
-  openFolderInExplorer,
-  parseSettingsWindowBounds,
-  resolveReplayStoreDirectory,
   runVersionCheck,
-  SETTINGS_WINDOW_BOUNDS_KEY,
-  type SettingsWindowOpenOptions,
   shouldOpenChangelog,
-  spawnAppWindow,
   VERSION_CHECK_STARTUP_GRACE_MS,
-} from "@iracedeck/deck-core";
+} from "@iracedeck/app-updates";
+import { getAudio } from "@iracedeck/audio-service";
+import { getPluginPlatform, getPluginVersion, getSimHub, isSimHubReachable } from "@iracedeck/deck-core";
 import { isIRacingActive, onIRacingTerminated } from "@iracedeck/deck-iracing";
+import { getCpuProfileCapture, initializeCpuProfileCapture } from "@iracedeck/diagnostics";
+import { initializeReplaySessionStore, resolveReplayStoreDirectory } from "@iracedeck/replay-store";
 import {
   applyStartupFeatureGates,
   createFileSettingsStore,
@@ -47,6 +32,18 @@ import {
   runFirstRunCheck,
   updateGlobalSettings,
 } from "@iracedeck/settings";
+import {
+  createSettingsChannelPublisher,
+  createSettingsWindowCommandHandler,
+  createSettingsWindowController,
+  createSettingsWindowWarningReporter,
+  findChromiumBrowserOnThisMachine,
+  openFolderInExplorer,
+  parseSettingsWindowBounds,
+  SETTINGS_WINDOW_BOUNDS_KEY,
+  type SettingsWindowOpenOptions,
+  spawnAppWindow,
+} from "@iracedeck/settings-window";
 import { resolveVoicePackCatalogUrl, VOICE_PACK_CATALOG_URL } from "@iracedeck/voice-packs";
 import { join } from "node:path";
 

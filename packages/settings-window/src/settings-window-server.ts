@@ -29,6 +29,7 @@
  * — so this module never touches the global-settings singleton, and every
  * edit made here lands in the plugin-owned store like any other write (#993).
  */
+import type { UpdateStatus } from "@iracedeck/app-updates";
 import { sameValue, stripRunScopedKeys } from "@iracedeck/settings";
 import { randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
@@ -38,7 +39,6 @@ import type { Duplex } from "node:stream";
 import { type WebSocket, WebSocketServer } from "ws";
 
 import { authorizeSettingsRequest, type SettingsRequestDenial } from "./settings-window-guard.js";
-import type { UpdateStatus } from "./update-check-service.js";
 
 /** The plugin-side settings surface the fake host is bound to. */
 export interface SettingsWindowHost {

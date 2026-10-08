@@ -1,5 +1,5 @@
 /**
- * The per-session replay store (issues #1162, #1203): a deck-core singleton
+ * The per-session replay store (issues #1162, #1203): a process singleton
  * and the only owner of `%LOCALAPPDATA%\iRaceDeck\Replay\session_<SubSessionID>.json`.
  *
  * It keeps ONE active record — the session the SDK is connected to, fed by
