@@ -70,9 +70,17 @@ export default [
   },
   {
     // deck-core is the deck layer: it sees a simulator only through its
-    // SimConnection interface. iRacing lives in @iracedeck/deck-iracing (#1351);
-    // scripts/deck-core-sim-boundary.test.mjs proves this rule fires.
-    files: ['packages/deck-core/src/**/*.ts'],
+    // SimConnection interface. iRacing lives in @iracedeck/deck-iracing (#1351).
+    // The packages split out of deck-core keep the same boundary (#1367): what
+    // they need from the sim is injected by plugin-runtime or fed by deck-iracing.
+    // scripts/deck-core-sim-boundary.test.mjs proves this rule fires in each.
+    files: [
+      'packages/deck-core/src/**/*.ts',
+      'packages/replay-store/src/**/*.ts',
+      'packages/diagnostics/src/**/*.ts',
+      'packages/app-updates/src/**/*.ts',
+      'packages/settings-window/src/**/*.ts',
+    ],
     rules: {
       'no-restricted-imports': [
         'error',
@@ -85,7 +93,7 @@ export default [
           ].map((name) => ({
             name,
             message:
-              'deck-core must not depend on a simulator: use the SimConnection interface, and put iRacing code in @iracedeck/deck-iracing (#1351).',
+              'deck-core and the packages split out of it must not depend on a simulator: use the SimConnection interface or an injected delegate, and put iRacing code in @iracedeck/deck-iracing (#1351, #1367).',
           })),
         },
       ],
