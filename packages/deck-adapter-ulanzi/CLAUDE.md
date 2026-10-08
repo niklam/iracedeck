@@ -83,4 +83,6 @@ pnpm build  # tsc → dist/
 
 - `ws` — WebSocket client (UlanziStudio bundles Node.js 20)
 - `@iracedeck/deck-core` — Platform-agnostic interfaces
+- `@iracedeck/app-constants` — `LogLocation`, the type `logLocation` reports (#1367)
+- `@iracedeck/diagnostics` — devDependency only: `file-logger.test.ts` checks the file name the `FileSink` writes against the watchdog's `watchdogDailyLogFileName` (#1367)
 - `@iracedeck/logger` — `ILogger` interface and `createConsoleLogger`
