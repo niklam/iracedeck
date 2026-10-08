@@ -5,6 +5,7 @@
  * interfaces. Implements the same IDeckPlatformAdapter contract as the Elgato
  * adapter, enabling all iRaceDeck actions to run on VSDinside devices.
  */
+import { type LogLocation } from "@iracedeck/app-constants";
 import {
   type DeckFeedbackPayload,
   type DeckTriggerDescription,
@@ -17,7 +18,6 @@ import {
   type IDeckEvent,
   type IDeckPlatformAdapter,
   type IDeckWillDisappearEvent,
-  type LogLocation,
   STREAM_DOCK_KNOB_CANVAS,
   toDeviceImage,
 } from "@iracedeck/deck-core";

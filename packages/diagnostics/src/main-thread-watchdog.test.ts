@@ -584,7 +584,7 @@ describe("startMainThreadWatchdog in a blocked process", () => {
     const { minify } = terserRequire("terser") as {
       minify(code: string, options: Record<string, unknown>): Promise<{ code?: string }>;
     };
-    const ts = createRequire(join(REPO, "packages", "deck-core", "package.json"))(
+    const ts = createRequire(join(REPO, "packages", "diagnostics", "package.json"))(
       "typescript",
     ) as typeof import("typescript");
 

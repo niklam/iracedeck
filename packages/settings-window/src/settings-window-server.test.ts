@@ -1,6 +1,7 @@
 // ---------------------------------------------------------------------------
 // Static assets: the page's <script src="sdpi-components.js"> etc. must resolve.
 // ---------------------------------------------------------------------------
+import type { UpdateStatus } from "@iracedeck/app-updates";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -12,7 +13,6 @@ import { WebSocket } from "ws";
 
 import { type SettingsWindowServer, startSettingsWindowServer } from "./settings-window-server.js";
 import type { SettingsWindowHost } from "./settings-window-server.js";
-import type { UpdateStatus } from "./update-check-service.js";
 
 const PAGE = "<!doctype html><title>t</title><p>settings</p>";
 

@@ -21,7 +21,6 @@ export type {
   IDeckTouchTapEvent,
   IDeckWillAppearEvent,
   IDeckWillDisappearEvent,
-  LogLocation,
 } from "./types.js";
 
 // Encoder touch-strip feedback types (platform-agnostic)
@@ -143,75 +142,6 @@ export {
   type OverlayFlag,
   type SimConnection,
 } from "./sim-connection.js";
-
-// Per-session replay store: markers (#1162) and the lap record (#1203)
-export {
-  parseReplaySessionFile,
-  REPLAY_FILE_FRAME_LAG,
-  REPLAY_FILE_VERSION,
-  replaySessionFileName,
-  resolveReplayStoreDirectory,
-  type ReplaySessionFile,
-  type ReplaySessionHeader,
-  type ResolveReplayStoreDirectoryOptions,
-} from "./replay-session-file.js";
-export {
-  addMarker,
-  deleteNearestMarker,
-  MARKER_DEDUPE_FRAMES,
-  MARKER_DELETE_WINDOW_FRAMES,
-  MARKER_NEXT_MIN_AHEAD_FRAMES,
-  MARKER_PREVIOUS_MIN_BEHIND_FRAMES,
-  nextMarker,
-  normalizeMarkers,
-  partitionMarkers,
-  previousMarker,
-  type PartitionedMarkers,
-  type ReplayMarker,
-} from "./replay-markers.js";
-export {
-  emptyLapsSection,
-  findLapStartInSection,
-  isNewerLapsSection,
-  LAPS_SECTION_VERSION,
-  mergeLapsSectionInto,
-  normalizeLapsSection,
-  recordLapStartInSection,
-  recordLapTimeInSection,
-  type LapStartLookup,
-  type LapStartMissReason,
-  type LapStartQuery,
-  type LapStartRecord,
-  type LapTimeRecord,
-  type ReplayCarLaps,
-  type ReplayLapEntry,
-  type ReplayLapsSection,
-  type ReplayLapsSession,
-} from "./replay-laps.js";
-export {
-  _resetReplaySessionStore,
-  createReplaySessionStore,
-  getReplaySessionStore,
-  initializeReplaySessionStore,
-  isReplaySessionStoreInitialized,
-  REPLAY_LAPS_SECTION,
-  REPLAY_MARKERS_SECTION,
-  REPLAY_STORE_WRITE_DEBOUNCE_MS,
-  REPLAY_STORE_WRITE_MAX_WAIT_MS,
-  type ActiveReplaySession,
-  type ReplayLapsApi,
-  type ReplayMarkersApi,
-  type ReplaySessionStore,
-  type ReplaySessionStoreOptions,
-  type SubSessionScoped,
-} from "./replay-session-store.js";
-
-// The Volume Mixer name and icon every plugin gives its audio session (issue #1253)
-export {
-  AUDIO_SESSION_DISPLAY_NAME,
-  AUDIO_SESSION_ICON_FILE,
-  pluginAudioSessionIdentity,
-} from "./audio-session-identity.js";
 
 // Per-mode sim-communication descriptors (issue #612)
 export {
@@ -364,44 +294,6 @@ export {
   type PlatformFeatures,
 } from "./plugin-config.js";
 
-// Version-check / changelog opener (issues #680, #742, #870, #901)
-export {
-  buildChangelogUrl,
-  CHANGELOG_BASE_URL,
-  type ChangelogDecision,
-  MONTHLY_WINDOW_MS,
-  resolveChangelogDecision,
-  runVersionCheck,
-  shouldOpenChangelog,
-  VERSION_CHECK_STARTUP_GRACE_MS,
-} from "./version-check.js";
-
-// Upstream update check for the settings window's What's New tab (issue #1016)
-export { sanitizeChangelogHtml } from "./changelog-html-sanitize.js";
-export {
-  parsePublishedChangelog,
-  PUBLISHED_CHANGELOG_MAX_CATEGORIES,
-  PUBLISHED_CHANGELOG_MAX_ITEMS,
-  PUBLISHED_CHANGELOG_MAX_RELEASES,
-  type PublishedRelease,
-  type PublishedReleaseCategory,
-} from "./published-changelog.js";
-export {
-  CHANGELOG_FETCH_TIMEOUT_MS,
-  CHANGELOG_MAX_BYTES,
-  fetchPublishedChangelog,
-  PUBLISHED_CHANGELOG_URL,
-} from "./changelog-feed-client.js";
-export { selectAvailableUpdates } from "./update-check.js";
-export {
-  createUpdateCheckService,
-  UPDATE_CHECK_FAILURE_TTL_MS,
-  UPDATE_CHECK_SUCCESS_TTL_MS,
-  type UpdateCheckService,
-  type UpdateCheckServiceDeps,
-  type UpdateStatus,
-} from "./update-check-service.js";
-
 // Device + profile reference (issues #736, #753, #790)
 export {
   CAR_SELECTOR_PROFILE,
@@ -449,101 +341,3 @@ export {
   requestProfileSwitchBack,
   type ProfileSwitcher,
 } from "./profile-switcher.js";
-
-// Settings window (issue #992): loopback-served, chromeless-app-window settings UI
-export {
-  appWindowArgs,
-  findChromiumBrowser,
-  findChromiumBrowserOnThisMachine,
-  queryWindowsAppPath,
-  SETTINGS_WINDOW_SIZE,
-  spawnAppWindow,
-  type ChromiumLookupDeps,
-} from "./chromium-browser.js";
-export {
-  authorizeSettingsRequest,
-  type SettingsRequestDecision,
-  type SettingsRequestDenial,
-  type SettingsRequestInput,
-} from "./settings-window-guard.js";
-export {
-  launchSettingsWindow,
-  type SettingsWindowBounds,
-  type SettingsWindowLaunch,
-  type SettingsWindowLaunchInput,
-} from "./settings-window-launcher.js";
-export {
-  createSettingsWindowCommandHandler,
-  enableFeatureWrites,
-  parseSettingsWindowBounds,
-  SETTINGS_WINDOW_BOUNDS_KEY,
-  type SettingsWindowCommandDeps,
-} from "./settings-window-commands.js";
-export {
-  startSettingsWindowServer,
-  type SettingsWindowHost,
-  type SettingsWindowServer,
-  type SettingsWindowServerOptions,
-} from "./settings-window-server.js";
-export {
-  createSettingsWindowController,
-  type SettingsWindowController,
-  type SettingsWindowOpenOptions,
-  type SettingsWindowControllerOptions,
-  type SettingsWindowStatus,
-} from "./settings-window.js";
-// Settings-window failure banner: the controller's lifecycle outcomes surfaced
-// as a PI warning, so an unreachable settings window is diagnosable rather than
-// a dead button (issue #1005)
-export {
-  evaluateSettingsWindowWarnings,
-  SETTINGS_WINDOW_OPEN_BLOCKED_MESSAGE,
-  SETTINGS_WINDOW_OPEN_FAILURE_MESSAGE,
-  SETTINGS_WINDOW_SERVER_FAILURE_MESSAGE,
-  settingsWindowWarningScope,
-  type SettingsWindowWarningContext,
-} from "./settings-window-warning.js";
-export {
-  createSettingsWindowWarningReporter,
-  type SettingsWindowWarningReporterOptions,
-} from "./settings-window-warning-reporter.js";
-// Reveal the settings file in Explorer (issue #993)
-export { explorerSelectArgs, openDirectoryInExplorer, openFolderInExplorer } from "./open-folder.js";
-// Main-thread watchdog: a worker that reports a blocked main thread into the host's log (issue #1330)
-export {
-  type MainThreadWatchdog,
-  type MainThreadWatchdogOptions,
-  startMainThreadWatchdog,
-  WATCHDOG_DEFAULTS,
-  watchdogDailyLogFileName,
-  type WatchdogLogTarget,
-} from "./main-thread-watchdog.js";
-// Capture CPU profile: an in-process profiler session behind the settings window's Diagnostics button (issue #1338)
-export {
-  CPU_PROFILE_DEFAULTS,
-  type CpuProfileCapture,
-  type CpuProfileCaptureOptions,
-  type CpuProfileCaptureResult,
-  _resetCpuProfileCapture,
-  createCpuProfileCapture,
-  getCpuProfileCapture,
-  initializeCpuProfileCapture,
-  isCpuProfileCaptureInitialized,
-  type ProfileCaptureStatus,
-} from "./cpu-profile-capture.js";
-// Resource monitor: the plugin's own CPU, event-loop and memory use in its log (issue #1338)
-export {
-  RESOURCE_MONITOR_DEFAULTS,
-  type ResourceMonitor,
-  type ResourceMonitorConfig,
-  type ResourceMonitorOptions,
-  type ResourceSample,
-  startResourceMonitor,
-} from "./resource-monitor.js";
-// Settings-channel publisher: store write + the one host mirror per start (issue #993 phase 2)
-export {
-  createSettingsChannelPublisher,
-  type SettingsChannel,
-  type SettingsChannelPublisher,
-  type SettingsChannelPublisherDeps,
-} from "./settings-channel-publisher.js";

@@ -9,7 +9,6 @@ import {
   getGlobalBorderSettings,
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
-  getReplaySessionStore,
   ICON_BASE_TEMPLATE,
   type IDeckDialDownEvent,
   type IDeckDialRotateEvent,
@@ -18,9 +17,6 @@ import {
   type IDeckKeyUpEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
-  isReplaySessionStoreInitialized,
-  type LapStartLookup,
-  type LapStartQuery,
   parseSvgViewBox,
   renderIconTemplate,
   resolveBorderSettings,
@@ -66,6 +62,12 @@ import {
   replaySpeedFromTelemetry,
   type TelemetryData,
 } from "@iracedeck/iracing-sdk";
+import {
+  getReplaySessionStore,
+  isReplaySessionStoreInitialized,
+  type LapStartLookup,
+  type LapStartQuery,
+} from "@iracedeck/replay-store";
 import { getGlobalColors, getGlobalSettings } from "@iracedeck/settings";
 import z from "zod";
 

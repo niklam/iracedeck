@@ -24,7 +24,7 @@ import {
   scanRaceEngineerVoices,
 } from "@iracedeck/audio-scenarios";
 import { getAudio } from "@iracedeck/audio-service";
-import { getDevVoicePacksRoot, getPluginVersion, openDirectoryInExplorer } from "@iracedeck/deck-core";
+import { getDevVoicePacksRoot, getPluginVersion } from "@iracedeck/deck-core";
 import {
   clearWarning,
   getGlobalSettings,
@@ -36,6 +36,7 @@ import {
   updateGlobalSettings,
   whenSettingsStoreSettled,
 } from "@iracedeck/settings";
+import { openDirectoryInExplorer } from "@iracedeck/settings-window";
 import {
   type BundledVoicePack,
   createVoicePackArchiveFileSystem,

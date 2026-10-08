@@ -266,6 +266,40 @@ importers:
         specifier: 5.0.3
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(jsdom@30.1.1)(vite@8.3.0(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.46.0)(tsx@4.23.15)(yaml@2.9.1))
 
+  packages/app-updates:
+    dependencies:
+      '@iracedeck/app-constants':
+        specifier: workspace:*
+        version: link:../app-constants
+      '@iracedeck/fetch-utils':
+        specifier: workspace:*
+        version: link:../fetch-utils
+      '@iracedeck/logger':
+        specifier: workspace:*
+        version: link:../logger
+      semver:
+        specifier: 7.8.5
+        version: 7.8.5
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
+    devDependencies:
+      '@tsconfig/node22':
+        specifier: 22.0.6
+        version: 22.0.6
+      '@types/node':
+        specifier: 26.6.4
+        version: 26.6.4
+      '@types/semver':
+        specifier: 7.8.0
+        version: 7.8.0
+      rimraf:
+        specifier: 6.1.3
+        version: 6.1.3
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+
   packages/audio-assets:
     devDependencies:
       '@iracedeck/callout-script':
@@ -433,6 +467,9 @@ importers:
       '@elgato/streamdeck':
         specifier: 3.0.1
         version: 3.0.1
+      '@iracedeck/app-constants':
+        specifier: workspace:*
+        version: link:../app-constants
       '@iracedeck/deck-core':
         specifier: workspace:*
         version: link:../deck-core
@@ -461,6 +498,9 @@ importers:
 
   packages/deck-adapter-mirabox:
     dependencies:
+      '@iracedeck/app-constants':
+        specifier: workspace:*
+        version: link:../app-constants
       '@iracedeck/deck-core':
         specifier: workspace:*
         version: link:../deck-core
@@ -471,6 +511,9 @@ importers:
         specifier: 8.22.0
         version: 8.22.0
     devDependencies:
+      '@iracedeck/diagnostics':
+        specifier: workspace:*
+        version: link:../diagnostics
       '@tsconfig/node22':
         specifier: 22.0.6
         version: 22.0.6
@@ -492,6 +535,9 @@ importers:
 
   packages/deck-adapter-ulanzi:
     dependencies:
+      '@iracedeck/app-constants':
+        specifier: workspace:*
+        version: link:../app-constants
       '@iracedeck/deck-core':
         specifier: workspace:*
         version: link:../deck-core
@@ -502,6 +548,9 @@ importers:
         specifier: 8.22.0
         version: 8.22.0
     devDependencies:
+      '@iracedeck/diagnostics':
+        specifier: workspace:*
+        version: link:../diagnostics
       '@tsconfig/node22':
         specifier: 22.0.6
         version: 22.0.6
@@ -526,12 +575,6 @@ importers:
       '@iracedeck/app-constants':
         specifier: workspace:*
         version: link:../app-constants
-      '@iracedeck/callout-script':
-        specifier: workspace:*
-        version: link:../callout-script
-      '@iracedeck/fetch-utils':
-        specifier: workspace:*
-        version: link:../fetch-utils
       '@iracedeck/icon-composer':
         specifier: workspace:*
         version: link:../icon-composer
@@ -541,12 +584,6 @@ importers:
       '@iracedeck/settings':
         specifier: workspace:*
         version: link:../settings
-      semver:
-        specifier: 7.8.5
-        version: 7.8.5
-      ws:
-        specifier: 8.22.0
-        version: 8.22.0
       zod:
         specifier: 4.6.5
         version: 4.6.5
@@ -557,12 +594,6 @@ importers:
       '@types/node':
         specifier: 26.6.4
         version: 26.6.4
-      '@types/semver':
-        specifier: 7.8.0
-        version: 7.8.0
-      '@types/ws':
-        specifier: 8.18.2
-        version: 8.18.2
       rimraf:
         specifier: 6.1.3
         version: 6.1.3
@@ -588,6 +619,9 @@ importers:
       '@iracedeck/logger':
         specifier: workspace:*
         version: link:../logger
+      '@iracedeck/replay-store':
+        specifier: workspace:*
+        version: link:../replay-store
       '@iracedeck/settings':
         specifier: workspace:*
         version: link:../settings
@@ -607,6 +641,28 @@ importers:
       vitest:
         specifier: 5.0.3
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(jsdom@30.1.1)(vite@8.3.0(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.46.0)(tsx@4.23.15)(yaml@2.9.1))
+
+  packages/diagnostics:
+    dependencies:
+      '@iracedeck/app-constants':
+        specifier: workspace:*
+        version: link:../app-constants
+      '@iracedeck/logger':
+        specifier: workspace:*
+        version: link:../logger
+    devDependencies:
+      '@tsconfig/node22':
+        specifier: 22.0.6
+        version: 22.0.6
+      '@types/node':
+        specifier: 26.6.4
+        version: 26.6.4
+      rimraf:
+        specifier: 6.1.3
+        version: 6.1.3
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
 
   packages/event-bus:
     dependencies:
@@ -692,6 +748,9 @@ importers:
       '@iracedeck/deck-iracing':
         specifier: workspace:*
         version: link:../deck-iracing
+      '@iracedeck/diagnostics':
+        specifier: workspace:*
+        version: link:../diagnostics
       '@iracedeck/event-bus':
         specifier: workspace:*
         version: link:../event-bus
@@ -704,6 +763,9 @@ importers:
       '@iracedeck/logger':
         specifier: workspace:*
         version: link:../logger
+      '@iracedeck/replay-store':
+        specifier: workspace:*
+        version: link:../replay-store
       '@iracedeck/settings':
         specifier: workspace:*
         version: link:../settings
@@ -1118,6 +1180,9 @@ importers:
       '@iracedeck/app-constants':
         specifier: workspace:*
         version: link:../app-constants
+      '@iracedeck/app-updates':
+        specifier: workspace:*
+        version: link:../app-updates
       '@iracedeck/audio-assets':
         specifier: workspace:*
         version: link:../audio-assets
@@ -1142,6 +1207,9 @@ importers:
       '@iracedeck/deck-iracing':
         specifier: workspace:*
         version: link:../deck-iracing
+      '@iracedeck/diagnostics':
+        specifier: workspace:*
+        version: link:../diagnostics
       '@iracedeck/event-bus':
         specifier: workspace:*
         version: link:../event-bus
@@ -1160,9 +1228,15 @@ importers:
       '@iracedeck/rasterizer':
         specifier: workspace:*
         version: link:../rasterizer
+      '@iracedeck/replay-store':
+        specifier: workspace:*
+        version: link:../replay-store
       '@iracedeck/settings':
         specifier: workspace:*
         version: link:../settings
+      '@iracedeck/settings-window':
+        specifier: workspace:*
+        version: link:../settings-window
       '@iracedeck/sim-events-iracing':
         specifier: workspace:*
         version: link:../sim-events-iracing
@@ -1222,6 +1296,28 @@ importers:
       '@resvg/resvg-js':
         specifier: 2.6.2
         version: 2.6.2
+    devDependencies:
+      '@tsconfig/node22':
+        specifier: 22.0.6
+        version: 22.0.6
+      '@types/node':
+        specifier: 26.6.4
+        version: 26.6.4
+      rimraf:
+        specifier: 6.1.3
+        version: 6.1.3
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+
+  packages/replay-store:
+    dependencies:
+      '@iracedeck/logger':
+        specifier: workspace:*
+        version: link:../logger
+      '@iracedeck/settings':
+        specifier: workspace:*
+        version: link:../settings
     devDependencies:
       '@tsconfig/node22':
         specifier: 22.0.6
@@ -1336,6 +1432,46 @@ importers:
       '@types/semver':
         specifier: 7.8.0
         version: 7.8.0
+      rimraf:
+        specifier: 6.1.3
+        version: 6.1.3
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+
+  packages/settings-window:
+    dependencies:
+      '@iracedeck/app-constants':
+        specifier: workspace:*
+        version: link:../app-constants
+      '@iracedeck/app-updates':
+        specifier: workspace:*
+        version: link:../app-updates
+      '@iracedeck/callout-script':
+        specifier: workspace:*
+        version: link:../callout-script
+      '@iracedeck/logger':
+        specifier: workspace:*
+        version: link:../logger
+      '@iracedeck/settings':
+        specifier: workspace:*
+        version: link:../settings
+      ws:
+        specifier: 8.22.0
+        version: 8.22.0
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
+    devDependencies:
+      '@tsconfig/node22':
+        specifier: 22.0.6
+        version: 22.0.6
+      '@types/node':
+        specifier: 26.6.4
+        version: 26.6.4
+      '@types/ws':
+        specifier: 8.18.2
+        version: 8.18.2
       rimraf:
         specifier: 6.1.3
         version: 6.1.3

@@ -7,6 +7,10 @@
  *
  * ```typescript
  * vi.mock("@iracedeck/deck-core", async (io) => (await import("../test-support/module-mocks.js")).recordedModule(io));
+ * vi.mock("@iracedeck/diagnostics", async (io) => (await import("../test-support/module-mocks.js")).recordedModule(io));
+ * vi.mock("@iracedeck/settings-window", async (io) => (await import("../test-support/module-mocks.js")).recordedModule(io));
+ * vi.mock("@iracedeck/replay-store", async (io) => (await import("../test-support/module-mocks.js")).recordedModule(io));
+ * vi.mock("@iracedeck/app-updates", async (io) => (await import("../test-support/module-mocks.js")).recordedModule(io));
  * vi.mock("@iracedeck/voice-packs", async (io) => (await import("../test-support/module-mocks.js")).recordedModule(io));
  * vi.mock("@iracedeck/settings", async (io) => (await import("../test-support/module-mocks.js")).recordedModule(io));
  * vi.mock("@iracedeck/deck-iracing", async (io) => (await import("../test-support/module-mocks.js")).recordedModule(io));

@@ -47,6 +47,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@iracedeck/app-constants": packageSrc("app-constants"),
+      "@iracedeck/app-updates": packageSrc("app-updates"),
       "@iracedeck/audio-native": packageSrc("audio-native"),
       "@iracedeck/audio-scenarios/pit-crew": packageSrc("audio-scenarios", "src/catalog/pit-crew/index.ts"),
       "@iracedeck/audio-scenarios": packageSrc("audio-scenarios"),
@@ -55,6 +56,7 @@ export default defineConfig({
       "@iracedeck/callout-settings": packageSrc("callout-settings"),
       "@iracedeck/deck-core": packageSrc("deck-core"),
       "@iracedeck/deck-iracing": packageSrc("deck-iracing"),
+      "@iracedeck/diagnostics": packageSrc("diagnostics"),
       "@iracedeck/event-bus": packageSrc("event-bus"),
       "@iracedeck/fetch-utils": packageSrc("fetch-utils"),
       "@iracedeck/icon-composer": packageSrc("icon-composer"),
@@ -62,7 +64,9 @@ export default defineConfig({
       "@iracedeck/iracing-native": packageSrc("iracing-native"),
       "@iracedeck/logger": packageSrc("logger"),
       "@iracedeck/race-engineer-wiring": packageSrc("race-engineer-wiring"),
+      "@iracedeck/replay-store": packageSrc("replay-store"),
       "@iracedeck/settings": packageSrc("settings"),
+      "@iracedeck/settings-window": packageSrc("settings-window"),
       "@iracedeck/sim-events-iracing": packageSrc("sim-events-iracing"),
       "@iracedeck/track-data": packageSrc("track-data"),
       "@iracedeck/voice-packs": packageSrc("voice-packs"),

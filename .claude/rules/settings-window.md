@@ -1,11 +1,10 @@
 ---
 paths:
-  - "packages/deck-core/src/settings-*"
+  - "packages/settings-window/**"
+  - "packages/app-updates/**"
+  - "packages/diagnostics/src/cpu-profile-capture*"
   - "packages/settings/src/settings-*"
-  - "packages/deck-core/src/open-folder*"
-  - "packages/deck-core/src/chromium-browser*"
   - "packages/voice-packs/src/voice-pack-*"
-  - "packages/deck-core/src/update-check*"
   - "packages/app-constants/src/settings-window-*"
   - "packages/app-constants/src/voice-pack-*"
   - "packages/pi-components/**"
@@ -26,20 +25,20 @@ The server starts from the plugin's **store-ready startup block** (`ensureStarte
 
 | Piece | Where | Role |
 | --- | --- | --- |
-| Request guard | `deck-core/src/settings-window-guard.ts` | Pure: token, then `Origin`, then cookie. |
-| Server | `deck-core/src/settings-window-server.ts` | `node:http` + `ws` on `127.0.0.1`, ephemeral port. Serves `ui/` (confined; traversal → 404), the fake host at `/ws` (window AND PIs), `GET /simhub/roles`, `GET /updates/status`; exposes `token`. |
+| Request guard | `settings-window/src/settings-window-guard.ts` | Pure: token, then `Origin`, then cookie. |
+| Server | `settings-window/src/settings-window-server.ts` | `node:http` + `ws` on `127.0.0.1`, ephemeral port. Serves `ui/` (confined; traversal → 404), the fake host at `/ws` (window AND PIs), `GET /simhub/roles`, `GET /updates/status`; exposes `token`. |
 | Fake host | server (`attachFakeHost`) | Elgato PI protocol, global subset: `get/setGlobalSettings`, `didReceiveGlobalSettings`, `openUrl` (http(s) only), `logMessage`, `sendToPlugin`. |
 | Settings I/O | injected `SettingsWindowHost` | Bound in `plugin-runtime`'s `initSettings` (`src/phases/settings.ts`) to `getGlobalSettings` / `updateGlobalSettings` / `onGlobalSettingsChange`; the server never touches the singleton or `settings-store.ts`. |
-| Commands | `deck-core/src/settings-window-commands.ts` | `createSettingsWindowCommandHandler` validates and routes `sendToPlugin` payloads. |
-| Launcher | `deck-core/src/settings-window-launcher.ts` + `chromium-browser.ts` | Finds Edge/Chrome/Brave (App Paths, then well-known paths; memoized), spawns a detached app window, falls back to the host's `openUrl`. |
-| Controller | `deck-core/src/settings-window.ts` | One server per plugin, reused across opens; `ensureStarted()` → `{ port, token }`; `onStarted` / `onStatus`. |
-| Failure banner | `deck-core/src/settings-window-warning.ts` + `settings-window-warning-reporter.ts` | Pure evaluator + reporter wired as `onStatus` (#1005). |
-| Open folder | `deck-core/src/open-folder.ts` + `ird-open-folder` | `openFolderInExplorer(path)` → detached `explorer.exe /select,<path>`; not `openUrl` (http(s)-only). |
+| Commands | `settings-window/src/settings-window-commands.ts` | `createSettingsWindowCommandHandler` validates and routes `sendToPlugin` payloads. |
+| Launcher | `settings-window/src/settings-window-launcher.ts` + `chromium-browser.ts` | Finds Edge/Chrome/Brave (App Paths, then well-known paths; memoized), spawns a detached app window, falls back to the host's `openUrl`. |
+| Controller | `settings-window/src/settings-window.ts` | One server per plugin, reused across opens; `ensureStarted()` → `{ port, token }`; `onStarted` / `onStatus`. |
+| Failure banner | `settings-window/src/settings-window-warning.ts` + `settings-window-warning-reporter.ts` | Pure evaluator + reporter wired as `onStatus` (#1005). |
+| Open folder | `settings-window/src/open-folder.ts` + `ird-open-folder` | `openFolderInExplorer(path)` → detached `explorer.exe /select,<path>`; not `openUrl` (http(s)-only). |
 | Window bridge | `pi-components/src/settings-window-bridge/` → `browser/settings-window-bridge.js` | The window's bridge. |
 | Page | `iracing-actions/src/actions/settings-window/settings-window.ejs` → `ui/settings-window.html` | Compiled by `piTemplatePlugin` (not an action). |
 | Getting Started | `pi-components/partials/settings-window-getting-started.ejs` + `iracing-actions/src/actions/data/getting-started.json` | #1061; source `docs/getting-started/first-steps.md`, `pnpm generate:getting-started-data`. |
 | What's New | `pi-components/partials/settings-window-changelog.ejs` + `iracing-actions/src/actions/data/changelog.json` | #1011; `pnpm generate:changelog-data`. |
-| Update check | `deck-core/src/{changelog-html-sanitize,published-changelog,changelog-feed-client,update-check,update-check-service}.ts` + `pi-components/src/components/update-notice.ts` | #1016. Both feed clients (this and `@iracedeck/voice-packs`' `voice-pack-catalog-client.ts`) read the body through `readCappedJson` (`@iracedeck/fetch-utils`), never `response.json()`: a byte cap enforced while reading, plus a length cap on `releases` / `packs` (#1101). |
+| Update check | `app-updates/src/{changelog-html-sanitize,published-changelog,changelog-feed-client,update-check,update-check-service}.ts` + `pi-components/src/components/update-notice.ts` | #1016. Both feed clients (this and `@iracedeck/voice-packs`' `voice-pack-catalog-client.ts`) read the body through `readCappedJson` (`@iracedeck/fetch-utils`), never `response.json()`: a byte cap enforced while reading, plus a length cap on `releases` / `packs` (#1101). |
 | PI bridge | `pi-components/src/pi-settings-bridge/` → `browser/pi-settings-bridge.js` | Elgato/Mirabox action PIs, never `settings-window.html`. |
 | Router | `pi-components/src/settings-channel/router.ts` + `loopback.ts` | Both PI bridges' state machine (`idle → bootstrapping → connecting → loopback`, `fallback`; `BOOTSTRAP_TIMEOUT_MS` 3 s); `loopback.ts` alone builds `ws://127.0.0.1:<port>/ws?t=<token>`. |
 | Ulanzi bridge | `pi-components/src/ulanzi-bridge/` → `browser/ulanzi-pi-bridge.js` | `translate.ts` + the same router in `UlanziBridgeSocket`; one bundle, not two stacked scripts. |

@@ -258,7 +258,7 @@ const WORKSPACE_PACKAGES = new Map(
  * the plugins' runtime closure (`dependencies`, followed through `workspace:`
  * links) that declares zod itself. Rollup's node-resolve resolves `zod` from the
  * importing file, so these are the packages a bundled zod is resolved from —
- * deck-core, iracing-actions, callout-script and audio-assets today. The plugin
+ * deck-core, iracing-actions, callout-script, audio-assets, app-updates and settings-window today. The plugin
  * packages are not the place to ask: since #1349 Mirabox and Ulanzi declare no
  * zod, and resolving it from them would only reach whatever pnpm hoisted.
  */

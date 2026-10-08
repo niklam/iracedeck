@@ -30,7 +30,7 @@ import { connectCdp, waitForDebuggerUrl, waitForDevToolsPort } from "./lib/setti
 import { buildSeedSettings, buildSeedUpdateStatus } from "./lib/settings-window-capture/seed.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-const deckCore = join(repoRoot, "packages", "deck-core", "dist", "index.js");
+const settingsWindow = join(repoRoot, "packages", "settings-window", "dist", "index.js");
 const assetsDir = join(repoRoot, "packages", "iracing-plugin-stream-deck", "com.iracedeck.sd.core.sdPlugin", "ui");
 const outDir = join(repoRoot, "packages", "website", "src", "assets", "settings-window");
 
@@ -56,13 +56,15 @@ if (!existsSync(join(assetsDir, "settings-window.html"))) {
   process.exit(1);
 }
 
-if (!existsSync(deckCore)) {
-  console.error(`@iracedeck/deck-core has not been built — ${deckCore} is missing. Run "pnpm build" first.`);
+if (!existsSync(settingsWindow)) {
+  console.error(
+    `@iracedeck/settings-window has not been built — ${settingsWindow} is missing. Run "pnpm build" first.`,
+  );
   process.exit(1);
 }
 
 const { findChromiumBrowserOnThisMachine, SETTINGS_WINDOW_SIZE, startSettingsWindowServer } = await import(
-  pathToFileURL(deckCore).href
+  pathToFileURL(settingsWindow).href
 );
 
 const browserPath = findChromiumBrowserOnThisMachine();
@@ -122,7 +124,7 @@ try {
         // spawn() reports ENOENT/EACCES asynchronously as an 'error' event, NOT
         // a synchronous throw; with no listener that is an uncaught exception
         // that ends the run with a raw stack instead of the message below. Same
-        // shape as deck-core's own spawnAppWindow.
+        // shape as settings-window's own spawnAppWindow.
         await new Promise((resolve, reject) => {
           child.once("spawn", resolve);
           child.once("error", (error) => reject(new Error(`Could not launch ${browserPath}: ${error.message}`)));

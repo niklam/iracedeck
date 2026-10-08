@@ -19,11 +19,13 @@
     "test:watch": "node ../../scripts/test-package.mjs --watch"
   },
   "dependencies": {
+    "@iracedeck/app-constants": "workspace:*",
     "@iracedeck/deck-core": "workspace:*",
     "@iracedeck/logger": "workspace:*",
     "ws": "8.22.0"
   },
   "devDependencies": {
+    "@iracedeck/diagnostics": "workspace:*",
     "@tsconfig/node22": "22.0.6",
     "@types/node": "26.6.4",
     "@types/ws": "8.18.2",

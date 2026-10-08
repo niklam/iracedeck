@@ -14,7 +14,7 @@
  * firewall, or the preference switched off sees the tab exactly as it was.
  *
  * Bullets arrive as HTML the PLUGIN sanitized (`sanitizeChangelogHtml` in
- * `@iracedeck/deck-core`), which is why `innerHTML` appears here for them and
+ * `@iracedeck/app-updates`), which is why `innerHTML` appears here for them and
  * for nothing else — every other value is `textContent`.
  *
  * Usage:

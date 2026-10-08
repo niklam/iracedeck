@@ -7,9 +7,10 @@
  * test is the worst kind of duplication: the branch that would prove the copies
  * had diverged is the branch that never runs here.
  *
- * This package serves both runtimes: the plugin's Node process (deck-core's feed
- * clients) and a Property Inspector's browser bundle. It therefore uses only
- * globals both share, which its tsconfig enforces (see CLAUDE.md).
+ * This package serves both runtimes: the plugin's Node process (app-updates'
+ * and voice-packs' feed clients) and a Property Inspector's browser bundle. It
+ * therefore uses only globals both share, which its tsconfig enforces (see
+ * CLAUDE.md).
  *
  * NOT for the voice-pack download. That needs a deadline it can re-arm on every
  * chunk, to tell a slow connection from a dead one, and an `AbortSignal.timeout`

@@ -23,7 +23,7 @@ const { mockTapBinding, mockMkdirSync, mockWriteFileSync, mockGetCurrentTelemetr
   }),
 );
 
-/** A stand-in for deck-core's shared CPU profile capture service (#1338). */
+/** A stand-in for @iracedeck/diagnostics' shared CPU profile capture service (#1338). */
 const captureFake = vi.hoisted(() => {
   type Status = { state: string; startedAt?: number; durationMs?: number; file?: string; reason?: string };
   const listeners = new Set<(status: Status) => void>();
@@ -164,12 +164,6 @@ vi.mock("@iracedeck/deck-core", () => ({
 
     return { migrated: { ...rest, mode: action }, changed: true };
   },
-  getCpuProfileCapture: vi.fn(() => {
-    if (!captureFake.initialized) throw new Error("CPU profile capture not initialized");
-
-    return captureFake.service;
-  }),
-  isCpuProfileCaptureInitialized: vi.fn(() => captureFake.initialized),
   generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
   getGlobalBorderSettings: vi.fn(() => ({})),
   getGlobalGraphicSettings: vi.fn(() => ({})),
@@ -210,6 +204,15 @@ vi.mock("@iracedeck/deck-core", () => ({
       return `data:image/svg+xml,${encoded}`;
     },
   ),
+}));
+
+vi.mock("@iracedeck/diagnostics", () => ({
+  getCpuProfileCapture: vi.fn(() => {
+    if (!captureFake.initialized) throw new Error("CPU profile capture not initialized");
+
+    return captureFake.service;
+  }),
+  isCpuProfileCaptureInitialized: vi.fn(() => captureFake.initialized),
 }));
 
 vi.mock("@iracedeck/settings", () => ({

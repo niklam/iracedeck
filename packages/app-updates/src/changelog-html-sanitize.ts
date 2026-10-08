@@ -14,7 +14,7 @@
  * visible markup in a bullet rather than as behaviour on the page.
  *
  * Pure and dependency-free: a hand-rolled scanner rather than a DOM, because
- * deck-core runs in the plugin's Node process where there is no DOM, and the
+ * this package runs in the plugin's Node process where there is no DOM, and the
  * grammar it has to cover is four tags wide.
  */
 

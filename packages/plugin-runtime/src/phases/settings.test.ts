@@ -1,4 +1,4 @@
-import { VERSION_CHECK_STARTUP_GRACE_MS } from "@iracedeck/deck-core";
+import { VERSION_CHECK_STARTUP_GRACE_MS } from "@iracedeck/app-updates";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { cleanupTempBinDirs, createFakeExtension, createHost } from "../test-support/fake-host.js";
@@ -10,6 +10,12 @@ import { initSettings } from "./settings.js";
 import { initVoicePacks } from "./voice-packs.js";
 
 vi.mock("@iracedeck/deck-core", async (io) => (await import("../test-support/module-mocks.js")).recordedModule(io));
+vi.mock("@iracedeck/diagnostics", async (io) => (await import("../test-support/module-mocks.js")).recordedModule(io));
+vi.mock("@iracedeck/settings-window", async (io) =>
+  (await import("../test-support/module-mocks.js")).recordedModule(io),
+);
+vi.mock("@iracedeck/replay-store", async (io) => (await import("../test-support/module-mocks.js")).recordedModule(io));
+vi.mock("@iracedeck/app-updates", async (io) => (await import("../test-support/module-mocks.js")).recordedModule(io));
 vi.mock("@iracedeck/voice-packs", async (io) => (await import("../test-support/module-mocks.js")).recordedModule(io));
 vi.mock("@iracedeck/settings", async (io) => (await import("../test-support/module-mocks.js")).recordedModule(io));
 vi.mock("@iracedeck/deck-iracing", async (io) => (await import("../test-support/module-mocks.js")).recordedModule(io));
@@ -104,6 +110,18 @@ describe("initSettings", () => {
     (handlerDeps[0].switchProfile as (d: string, p: string) => void)("dev", "Default");
 
     expect(callLog).toContain("extension.switchProfile");
+  });
+
+  it("routes the window's Capture CPU profile button to the shared capture service (#1338)", () => {
+    const { handlerDeps } = boot();
+    callLog.length = 0;
+
+    (handlerDeps[0].captureCpuProfile as () => void)();
+
+    // The process-wide singleton the Telemetry Control key also reaches, so the
+    // two share one lock and one status key; never a capture of the window's own.
+    expect(callLog).toEqual(["getCpuProfileCapture", "getCpuProfileCapture().capture"]);
+    expect(String(handlerDeps[0].profilesPath)).toMatch(/[\\/]profiles$/);
   });
 
   it("gives the version check no deviceType without a host extension (Mirabox, Ulanzi)", async () => {

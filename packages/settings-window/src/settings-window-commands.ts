@@ -78,7 +78,7 @@ export interface SettingsWindowCommandDeps {
   /**
    * Play an audio preview ("radar" | "voice" | "background") — the window's
    * Test buttons. The kind is passed through as a string; the runner owns
-   * the allow-list (deck-core has no audio dependency).
+   * the allow-list (this package has no audio dependency).
    */
   previewAudio?: (kind: string) => void;
   /** Reveal `storePath` in Explorer — the window's "Open folder" button (#993). */

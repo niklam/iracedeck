@@ -3,7 +3,6 @@ import {
   getGlobalBorderSettings,
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
-  getReplaySessionStore,
   hexToGrayscale,
   IconUpdateThrottle,
   type IDeckDialDownEvent,
@@ -14,7 +13,6 @@ import {
   type IDeckTouchTapEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
-  isReplaySessionStoreInitialized,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
@@ -27,6 +25,7 @@ import confirmDeletedIconSvg from "@iracedeck/icons/replay-markers/confirm-delet
 import deleteIconSvg from "@iracedeck/icons/replay-markers/delete.svg";
 import nextIconSvg from "@iracedeck/icons/replay-markers/next.svg";
 import previousIconSvg from "@iracedeck/icons/replay-markers/previous.svg";
+import { getReplaySessionStore, isReplaySessionStoreInitialized } from "@iracedeck/replay-store";
 import { getGlobalColors } from "@iracedeck/settings";
 
 import { ReplayMarkersDialSurface } from "./replay-markers-dial-surface.js";

@@ -50,4 +50,4 @@ Three properties a manual screenshot can't give:
 | `scripts/lib/settings-window-capture/capture.mjs` | Orchestration; every collaborator injected, so it is testable without a browser |
 | `packages/website/src/assets/settings-window/` | The committed PNGs |
 
-The harness adds **no dependencies**: `startSettingsWindowServer` and `findChromiumBrowserOnThisMachine` are already exported from `@iracedeck/deck-core`, and Node 22+ ships a global `WebSocket`. It needs a Chromium-based browser on the machine — the same requirement the Settings window itself has.
+The harness adds **no dependencies**: `startSettingsWindowServer` and `findChromiumBrowserOnThisMachine` are already exported from `@iracedeck/settings-window` (the script loads its built `dist/index.js`, so build first), and Node 22+ ships a global `WebSocket`. It needs a Chromium-based browser on the machine — the same requirement the Settings window itself has.

@@ -35,5 +35,6 @@ pnpm build  # tsc → dist/
 
 - `@elgato/streamdeck` — The Elgato Stream Deck SDK
 - `@iracedeck/deck-core` — Platform-agnostic interfaces
+- `@iracedeck/app-constants` — `LogLocation`, the type `logLocation` reports (#1367)
 - `@iracedeck/settings` — imported only by `adapter.test.ts`, which runs the real settings cache over the adapter's global-settings fan-out
 - `@iracedeck/logger` — `ILogger` interface

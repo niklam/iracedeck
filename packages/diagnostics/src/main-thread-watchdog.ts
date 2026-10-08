@@ -28,11 +28,10 @@
  * globals. The tests run the assembled source in a real `Worker`, and the
  * terser-minified module through a real stall.
  */
+import type { LogLocation } from "@iracedeck/app-constants";
 import type { ILogger } from "@iracedeck/logger";
 import type { EventEmitter } from "node:events";
 import { Worker } from "node:worker_threads";
-
-import type { LogLocation } from "./types.js";
 
 /** Where the worker appends its report: the same file the host's own logger writes, so the adapter contract's {@link LogLocation}. */
 export type WatchdogLogTarget = LogLocation;

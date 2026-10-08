@@ -21,7 +21,7 @@
  *
  * The messages intentionally carry NO leading emoji — the `ird-warnings`
  * banner renders a per-level icon itself, so adding one here would double it.
- * They also say "deck software" rather than naming one host, because deck-core
+ * They also say "deck software" rather than naming one host, because this package
  * serves the Stream Deck, Mirabox, and Ulanzi plugins alike.
  */
 import { SETTINGS_WINDOW_OPEN_WARNING_ID, SETTINGS_WINDOW_SERVER_WARNING_ID } from "@iracedeck/app-constants";

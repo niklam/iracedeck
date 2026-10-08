@@ -5,7 +5,7 @@
  * On click it asks the plugin to reveal the settings file in Windows
  * Explorer by sending `sendToPlugin` with `{ event: "openSettingsFolder" }`.
  * The plugin resolves the path itself, from its own settings store — the
- * page never supplies one (see `openFolderInExplorer` in `@iracedeck/deck-core`).
+ * page never supplies one (see `openFolderInExplorer` in `@iracedeck/settings-window`).
  *
  * Built on the shared `defineSendToPluginButton` factory (also used by
  * `ird-open-settings`, #992) so the two stay trivially consistent.
