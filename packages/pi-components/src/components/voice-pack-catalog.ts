@@ -115,7 +115,7 @@ const EMPTY_STATUS: VoicePackStatus = { catalog: { state: "unknown" }, installs:
  * One pack, one row, in the section that describes it.
  *
  * Deliberately a RENDER-layer rule, not a verdict change. The reasoning in
- * deck-core's `buildOffer` — that a pack the development root provides reads
+ * voice-packs' `buildOffer` — that a pack the development root provides reads
  * as `installed` rather than taking a verdict of its own, because a renderer
  * that does not know a verdict drops the row — is about the verdict vocabulary
  * and still holds. This filters what one surface shows; it does not touch

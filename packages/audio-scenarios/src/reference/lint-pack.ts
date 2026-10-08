@@ -6,7 +6,7 @@
  * plays never — so a lint pass is the one place anyone is ever told.
  *
  * Pure over an injected filesystem port ({@link LintPackFileSystem}, the
- * same three operations deck-core's pack scanner uses; deck-core is out of
+ * same three operations voice-packs' pack scanner uses; voice-packs is out of
  * reach from here, so the port is restated). The root script
  * (`scripts/lint-pack.mjs`) binds it to `node:fs`, registers the catalog
  * and hands over `engine.contracts()` / `engine.vocabulary()` — the same two
@@ -113,7 +113,7 @@ import { descriptionNamesGroup, pluginPlayedEntry } from "./pack-reference.js";
 /** The outcome of reading one file: `missing` is a separate fact from `ok`, since the two need different words. */
 export type LintFileRead = { ok: true; text: string } | { ok: false; missing: boolean; reason: string };
 
-/** The disk operations the linter needs — deck-core's `VoicePackFileSystem`, restated. */
+/** The disk operations the linter needs — voice-packs' `VoicePackFileSystem`, restated. */
 export interface LintPackFileSystem {
   /** Immediate subdirectory names of `dir`; empty when `dir` does not exist. */
   listDirectories(dir: string): readonly string[];

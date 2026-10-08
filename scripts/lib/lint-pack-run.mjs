@@ -126,7 +126,7 @@ export const PLUGIN_PLAYED_BASES = Object.freeze(PLUGIN_PLAYED_CLIPS.map((clip) 
 
 /**
  * The linter's three disk operations over `node:fs` — the same shape as
- * deck-core's pack scanner, so a pack reads here exactly as it installs:
+ * voice-packs' pack scanner, so a pack reads here exactly as it installs:
  * `.mp3` is matched case-insensitively and the name recorded verbatim (the
  * linter then reports an upper-case extension as unplayable, as the plugin
  * would), and a symlinked directory is never descended into.

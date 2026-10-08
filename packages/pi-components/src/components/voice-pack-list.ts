@@ -36,7 +36,7 @@
  * iRaceDeck" — the `bundled-seed` provenance behind it is a record written on
  * disk, which an installation carried over from a bundling release can still
  * be holding. This is deliberately INFORMATION, not a verdict — see the `provenance` field
- * doc on `InstalledVoicePack` in deck-core's `voice-pack-scanner.ts`: "the
+ * doc on `InstalledVoicePack` in voice-packs' `voice-pack-scanner.ts`: "the
  * badge tells a user that a pack came from someone other than us; it is not a
  * trust decision the plugin acts on." A user's own sideloaded pack is a
  * perfectly ordinary thing to have, so the wording says where a pack came
@@ -100,10 +100,10 @@ import { skipUnchanged } from "./settings-change-filter.js";
 let styleInjected = false;
 
 /**
- * Mirrors `VoicePackProvenanceKind` in deck-core's `voice-pack-scanner.ts`.
+ * Mirrors `VoicePackProvenanceKind` in voice-packs' `voice-pack-scanner.ts`.
  * Kept as a local literal union rather than an import — this package's
  * components deliberately re-declare the shapes they render instead of
- * depending on deck-core's Node-oriented package at runtime (see
+ * depending on voice-packs' Node-oriented package at runtime (see
  * `key-binding-input.ts` and `binding-status.ts` for the same call).
  *
  * Four values since #1143. `development` is unlike the other three: it is never
@@ -146,7 +146,7 @@ function normalizeProvenance(value: unknown): VoicePackProvenance {
 }
 
 /**
- * The plugin's view of deck-core's `InstalledVoice`: a voice is an id AND a
+ * The plugin's view of voice-packs' `InstalledVoice`: a voice is an id AND a
  * name (#1034). The parsed callout script the full type also carries is the
  * engine's input, never published on `_voicePacks` (#1064) — so this row
  * type is deliberately the two fields the list renders and nothing more.

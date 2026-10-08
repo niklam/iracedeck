@@ -1,7 +1,7 @@
 /**
  * Where the voice-pack catalog is fetched from, and the setting key of the
  * development override that can move it (issue #1100). The resolver that
- * applies the override, `resolveVoicePackCatalogUrl`, stays in deck-core's
+ * applies the override, `resolveVoicePackCatalogUrl`, stays in voice-packs'
  * `voice-pack-catalog-base.ts`; the names are here so the Property Inspector
  * and the plugin share one source (spec #1351).
  */

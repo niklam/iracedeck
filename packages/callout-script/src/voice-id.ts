@@ -15,7 +15,7 @@
  * and the schemas refuse one that does with the separator named.
  *
  * Lives here for the reason the coverage rules do: this is the one leaf every
- * consumer can reach — `deck-core`'s scanner and settings, the audio-service's
+ * consumer can reach — `voice-packs`' scanner, the settings package, the audio-service's
  * resolver and `audio-scenarios`' reference voice — without any of them
  * depending on each other.
  */
@@ -25,7 +25,7 @@ export const VOICE_ID_SEPARATOR = "::";
 /**
  * Why an id holding {@link VOICE_ID_SEPARATOR} is refused: the one sentence
  * the manifest schema (this package's `voice-pack.ts`, through `packId`),
- * `deck-core`'s catalog schema and so `lint:pack` all report, ahead of the
+ * `voice-packs`' catalog schema and so `lint:pack` all report, ahead of the
  * kebab-case rule, so an author who qualified an id by hand is told why rather
  * than merely that the id is malformed. It follows the path of the field it is
  * about — `id: must not contain …` in the scanner's problem row,

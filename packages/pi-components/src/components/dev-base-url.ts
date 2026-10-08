@@ -53,11 +53,11 @@ function truncateValue(value: string): string {
 }
 
 /**
- * The browser's copy of deck-core's `resolveVoicePackCatalogUrl`.
+ * The browser's copy of voice-packs' `resolveVoicePackCatalogUrl`.
  *
  * Deliberately duplicated rather than imported: this bundle runs in a Property
  * Inspector WebView and may import only the two leaf packages, and the
- * resolver lives with the voice packs in deck-core. The key, the default base
+ * resolver lives with the voice packs in voice-packs. The key, the default base
  * and the filename it joins on come from `@iracedeck/app-constants`, the same
  * ones the plugin reads. Kept to the same rules — https anywhere, http only to
  * loopback, no query or fragment, and only our own filename joined on — so the

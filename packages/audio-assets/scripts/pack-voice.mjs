@@ -10,7 +10,7 @@
  *   2. stages `voice-pack.json` + `voice/<voice-id>/<group>/<name>.mp3` — and
  *      each voice's `voice/<voice-id>/callouts.json` (#1064), copied as-is once
  *      it has passed the grammar the scanner will apply — under
- *      `dist/voice-packs/<id>/` — the exact shape deck-core's scanner accepts,
+ *      `dist/voice-packs/<id>/` — the exact shape the voice-packs scanner accepts,
  *      kept there so a maintainer can inspect it or sideload it by hand;
  *   3. zips that stage, deterministically, to `dist/voice-packs/<id>-<version>.zip`
  *      — unless `--stage-only` is given (#1214), which stops at step 2;
@@ -91,7 +91,7 @@ export const CATALOG_DIR = path.join(audioAssetsPath, "catalog");
  */
 export const OUTPUT_DIR = path.join(audioAssetsPath, "dist", "voice-packs");
 
-/** The manifest's file name inside the archive — what deck-core's scanner opens. */
+/** The manifest's file name inside the archive — what the voice-packs scanner opens. */
 export const MANIFEST_FILE = "voice-pack.json";
 
 /**
@@ -223,7 +223,7 @@ function firstProblem(schema, value) {
  *   the packer writes a version into a tag, a file name and a url. Each is
  *   checked for being a string first, so a number fails naming the field.
  * - `description`'s 300-character bound — `VoicePackCatalogEntrySchema`'s
- *   (deck-core), which this plain-node script cannot import, for a field the
+ *   (voice-packs), which this plain-node script cannot import, for a field the
  *   manifest does not carry; the test parses the catalog entry with it.
  * - `voices` being a non-empty list, since everything after iterates it.
  *
