@@ -426,7 +426,7 @@ describe("the shared capture service (#1338)", () => {
     expect(() => initializeCpuProfileCapture(options())).toThrow("already initialized");
   });
 
-  it("refuses a key's request while a capture started from the settings window runs", async () => {
+  it("refuses a second caller of the singleton while the first caller's capture runs (the window and the key share one)", async () => {
     initializeCpuProfileCapture(options());
 
     // What the settings window's Capture button runs: plugin-runtime injects this

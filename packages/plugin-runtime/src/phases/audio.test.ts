@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { pluginAudioSessionIdentity } from "../audio-session-identity.js";
 import { cleanupTempBinDirs, createHost } from "../test-support/fake-host.js";
 import { callLog, implement, resetRecorder } from "../test-support/recorder.js";
 import { initAudio } from "./audio.js";
@@ -60,6 +61,17 @@ describe("initAudio", () => {
     expect(roots).toEqual([[join(host.binDir, "..", "assets", "audio")]]);
     expect(audio.rootDir).toBe(join(host.binDir, "..", "assets", "audio"));
     expect(audio.armFeatureGateSync).toBe((await import("../actions.js")).armFeatureGateSync);
+  });
+
+  it("names the plugin's Volume Mixer session from its own bin dir (#1253)", () => {
+    const identities: unknown[] = [];
+    implement("initializeAudio", (_logger, _native, _rootDirs, identity) => identities.push(identity));
+    const host = createHost();
+
+    initAudio(initCore(host));
+
+    expect(identities).toEqual([pluginAudioSessionIdentity(host.binDir)]);
+    expect(identities[0]).toMatchObject({ displayName: "iRaceDeck" });
   });
 
   it("creates its loggers under the Audio and FeatureGates scopes", () => {
