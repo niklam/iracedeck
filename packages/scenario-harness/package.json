@@ -30,6 +30,7 @@
     "@iracedeck/race-engineer-wiring": "workspace:*",
     "@iracedeck/settings": "workspace:*",
     "@iracedeck/sim-events-iracing": "workspace:*",
+    "@iracedeck/voice-packs": "workspace:*",
     "fastify": "5.12.5"
   },
   "devDependencies": {

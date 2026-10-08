@@ -181,7 +181,7 @@ export type VoiceScriptRead = { ok: true; script: CalloutScript | null } | { ok:
  * throw ends the plugin, so an error the grammar did not foresee is reported
  * as this voice's problem, never propagated.
  *
- * Exported as deck-core's port-based script reader, for anything else that
+ * Exported as this package's port-based script reader, for anything else that
  * holds a `VoicePackFileSystem` and a voice folder to read a script from.
  */
 export function readVoiceScript(fs: VoicePackFileSystem, dir: string, voiceId: string): VoiceScriptRead {

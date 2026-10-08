@@ -31,10 +31,10 @@ import { describe, expect, it } from "vitest";
  * line to add to the allow-list below.
  */
 
-const SRC_DIR = join(process.cwd(), "packages/deck-core/src");
+const SRC_DIR = join(process.cwd(), "packages/voice-packs/src");
 
 /**
- * The feature's modules that live OUTSIDE deck-core, enrolled by path.
+ * The feature's modules that live OUTSIDE this package, enrolled by path.
  *
  * Since #1134 the rules a pack is admitted by — the manifest schema and its
  * reader, the usable-clip grammar, the script size cap, the id-vs-folder rule
@@ -86,7 +86,7 @@ function voicePackModules(): string[] {
     .filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts"));
 }
 
-/** Every file the assertions read: deck-core's `voice*` modules by name, then the shared ones by path. */
+/** Every file the assertions read: this package's `voice*` modules by name, then the shared ones by path. */
 function guardedFiles(): { name: string; file: string }[] {
   return [
     ...voicePackModules().map((name) => ({ name, file: join(SRC_DIR, name) })),

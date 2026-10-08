@@ -4,7 +4,7 @@ import path from "node:path";
 import url from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { VOICE_PACK_CATALOG_MAX_PACKS } from "../packages/deck-core/src/voice-pack-catalog.ts";
+import { VOICE_PACK_CATALOG_MAX_PACKS } from "../packages/voice-packs/src/voice-pack-catalog.ts";
 import {
   buildVoiceCatalogData,
   serializeVoiceCatalogData,

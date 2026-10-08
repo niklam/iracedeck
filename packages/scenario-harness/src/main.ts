@@ -12,7 +12,6 @@ import { AudioNative } from "@iracedeck/audio-native";
 import { type FrameOptions, getScenarioEngine, initializeAudioScenarios } from "@iracedeck/audio-scenarios";
 import { setRadarEnabled } from "@iracedeck/audio-scenarios/pit-crew";
 import { AudioBus, initializeAudio } from "@iracedeck/audio-service";
-import { voiceDisplayLabels, type VoicePackService } from "@iracedeck/deck-core";
 import { initializeEventBus } from "@iracedeck/event-bus";
 import type { SDKController } from "@iracedeck/iracing-sdk";
 import { createConsoleLogger, LogLevel } from "@iracedeck/logger";
@@ -25,6 +24,7 @@ import {
   resolveActiveRaceEngineerVoice,
 } from "@iracedeck/settings";
 import { initializeSimEventsIracing } from "@iracedeck/sim-events-iracing";
+import { voiceDisplayLabels, type VoicePackService } from "@iracedeck/voice-packs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 

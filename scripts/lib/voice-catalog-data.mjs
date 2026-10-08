@@ -8,7 +8,7 @@
 //
 // Unlike the changelog, the catalog has no compiled-in copy inside the plugin —
 // the plugin fetches https://iracedeck.com/voice-catalog.json live at runtime
-// (deck-core's voice-pack-catalog-client.ts) — so there is exactly one publish
+// (voice-packs' voice-pack-catalog-client.ts) — so there is exactly one publish
 // target and no second generator script at the repository root.
 //
 // The source of truth is one committed JSON file per published pack, at
@@ -18,7 +18,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
-// Imported straight from the deck-core TS SOURCE, not a built copy — the same
+// Imported straight from the voice-packs TS SOURCE, not a built copy — the same
 // choice generate-action-comms.mjs makes for comms-catalog.ts, and for the same
 // reason: a second, restated copy of the schema could drift from the one the
 // plugin actually parses with, and drift here is exactly the failure this
@@ -32,7 +32,7 @@ import {
   VOICE_PACK_CATALOG_MAX_BYTES,
   VoicePackCatalogEntrySchema,
   VoicePackCatalogSchema,
-} from "../../packages/deck-core/src/voice-pack-catalog.ts";
+} from "../../packages/voice-packs/src/voice-pack-catalog.ts";
 
 /** Where committed catalog entries live, relative to the repository root. */
 export const VOICE_CATALOG_ENTRIES_DIR = "packages/audio-assets/catalog";

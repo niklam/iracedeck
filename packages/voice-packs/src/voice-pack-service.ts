@@ -50,7 +50,7 @@ export interface VoicePackServiceDeps {
    * composite-to-bare binding (#1144): the engine addresses this pack's voice
    * as `voice/<pack>::<voice>/…`, its files sit under `voice/<voice>/…`, and
    * the audio service resolves the former only in this root, as the latter.
-   * Structurally typed rather than imported: `deck-core` must not depend on
+   * Structurally typed rather than imported: `@iracedeck/voice-packs` must not depend on
    * `audio-service`.
    */
   applyRoots(
@@ -134,7 +134,7 @@ export interface VoicePackService {
 /**
  * Composition root for installed voice packs (issue #1034).
  *
- * `deck-core` must not import `audio-service` or `audio-scenarios`, so applying
+ * `@iracedeck/voice-packs` must not import `audio-service` or `audio-scenarios`, so applying
  * a scan is expressed as injected callbacks rather than direct calls. That also
  * makes the ordering rule below an explicit, testable property of this module
  * instead of something implicit in each plugin's startup sequence.

@@ -1,7 +1,7 @@
 {
-  "name": "@iracedeck/deck-core",
+  "name": "@iracedeck/voice-packs",
   "version": "3.6.0-dev.0",
-  "description": "Platform-agnostic core interfaces and base classes for deck device plugins",
+  "description": "The Race Engineer voice-pack stack: the scanner, the catalog and its client, the downloader, archive extraction, storage, the installer and launch step, the voice-pack service, voice labels and the missing-callout-script warning.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -14,29 +14,24 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "clean": "rimraf dist",
     "test": "node ../../scripts/test-package.mjs",
-    "test:watch": "node ../../scripts/test-package.mjs --watch",
-    "clean": "rimraf dist"
+    "test:watch": "node ../../scripts/test-package.mjs --watch"
   },
   "dependencies": {
     "@iracedeck/app-constants": "workspace:*",
     "@iracedeck/callout-script": "workspace:*",
     "@iracedeck/fetch-utils": "workspace:*",
-    "@iracedeck/icon-composer": "workspace:*",
     "@iracedeck/logger": "workspace:*",
-    "@iracedeck/settings": "workspace:*",
+    "fflate": "0.8.3",
     "semver": "7.8.5",
-    "ws": "8.22.0",
     "zod": "4.6.5"
   },
-  "optionalDependencies": {
-    "keysender": "2.4.0"
-  },
   "devDependencies": {
+    "@iracedeck/settings": "workspace:*",
     "@tsconfig/node22": "22.0.6",
     "@types/node": "26.6.4",
     "@types/semver": "7.8.0",
-    "@types/ws": "8.18.2",
     "rimraf": "6.1.3",
     "typescript": "5.9.3"
   }
