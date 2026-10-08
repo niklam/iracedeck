@@ -5,7 +5,6 @@ import {
   getDualPressDirections,
   getDualPressThresholdMs,
   getGlobalBorderSettings,
-  getGlobalColors,
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
   IconUpdateThrottle,
@@ -19,7 +18,6 @@ import {
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
   isSimHubReachable,
-  onGlobalSettingsChange,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
@@ -53,6 +51,7 @@ import rrShockIncreaseIconSvg from "@iracedeck/icons/setup-chassis/rr-shock-incr
 import rrSpringDecreaseIconSvg from "@iracedeck/icons/setup-chassis/rr-spring-decrease.svg";
 import rrSpringIncreaseIconSvg from "@iracedeck/icons/setup-chassis/rr-spring-increase.svg";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
+import { getGlobalColors, onGlobalSettingsChange } from "@iracedeck/settings";
 import z from "zod";
 
 import {

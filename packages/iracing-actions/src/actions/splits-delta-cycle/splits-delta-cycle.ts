@@ -3,7 +3,6 @@ import {
   CommonSettings,
   ConnectionStateAwareAction,
   getGlobalBorderSettings,
-  getGlobalColors,
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
   type IDeckDialDownEvent,
@@ -15,7 +14,6 @@ import {
   type IDeckTouchTapEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
-  onGlobalSettingsChange,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
@@ -28,6 +26,7 @@ import customSectorStartIconSvg from "@iracedeck/icons/splits-delta-cycle/custom
 import displayRefCarIconSvg from "@iracedeck/icons/splits-delta-cycle/display-ref-car.svg";
 import nextIconSvg from "@iracedeck/icons/splits-delta-cycle/next.svg";
 import previousIconSvg from "@iracedeck/icons/splits-delta-cycle/previous.svg";
+import { getGlobalColors, onGlobalSettingsChange } from "@iracedeck/settings";
 import z from "zod";
 
 import { DialSettings, SplitsDeltaCycleDialSurface } from "./splits-delta-cycle-dial-surface.js";

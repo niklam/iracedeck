@@ -25,7 +25,7 @@ vi.mock("../../../deck-core/src/binding-dispatcher.js", () => ({
   })),
 }));
 
-vi.mock("../../../deck-core/src/global-settings.js", async (importOriginal) => {
+vi.mock("@iracedeck/settings", async (importOriginal) => {
   const original = (await importOriginal()) as Record<string, unknown>;
 
   return {

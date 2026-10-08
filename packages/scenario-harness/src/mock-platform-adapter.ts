@@ -1,7 +1,7 @@
 /**
  * In-memory platform adapter for the scenario harness.
  *
- * The harness needs `@iracedeck/deck-core`'s global-settings pipeline so the
+ * The harness needs `@iracedeck/settings`' global-settings pipeline so the
  * audio-scenarios package reads settings through production code paths
  * (`getGlobalSettings()`, `resolveActiveRaceEngineerVoice()`, etc.). The
  * real `ElgatoPlatformAdapter` and `VSDPlatformAdapter` are tied to their

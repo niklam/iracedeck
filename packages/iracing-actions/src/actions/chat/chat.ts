@@ -4,9 +4,7 @@ import {
   focusIRacingBeforeInput,
   generateIconText,
   getGlobalBorderSettings,
-  getGlobalColors,
   getGlobalGraphicSettings,
-  getGlobalSettings,
   getGlobalTitleSettings,
   IconUpdateThrottle,
   type IDeckDialDownEvent,
@@ -29,6 +27,7 @@ import replyIcon from "@iracedeck/icons/chat/reply.svg";
 import toggleIcon from "@iracedeck/icons/chat/toggle.svg";
 import whisperIcon from "@iracedeck/icons/chat/whisper.svg";
 import { buildTemplateContext, resolveTemplate } from "@iracedeck/iracing-sdk";
+import { getGlobalColors, getGlobalSettings } from "@iracedeck/settings";
 import z from "zod";
 
 import { migrateRespondPmToReply } from "./migrate-respond-pm.js";

@@ -1,5 +1,5 @@
-import { _resetGlobalSettings, evaluateSetupWarning, updateGlobalSettings } from "@iracedeck/deck-core";
 import { silentLogger } from "@iracedeck/logger";
+import { _resetGlobalSettings, evaluateSetupWarning, updateGlobalSettings } from "@iracedeck/settings";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RaceEngineerCaches } from "./caches.js";
@@ -7,13 +7,13 @@ import { buildPitCrewDeps } from "./pit-crew-deps.js";
 import type { SimRuntime } from "./sim-runtime.js";
 import type { RaceEngineerWiringDeps } from "./wire-race-engineer.js";
 
-// The settings the gates read, swapped per test. The gates call deck-core's
+// The settings the gates read, swapped per test. The gates call settings'
 // getGlobalSettings() at call time, so a change applies to an already-built gate.
 const stored = vi.hoisted((): { current: Record<string, unknown> } => ({ current: {} }));
 
 // Only the two reads are replaced; resolveActiveDriverName stays real (it reads
-// deck-core's own cache, whose schema default names no driver).
-vi.mock("@iracedeck/deck-core", async (importOriginal) => ({
+// the settings package's own cache, whose schema default names no driver).
+vi.mock("@iracedeck/settings", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   getGlobalSettings: vi.fn(() => stored.current),
   evaluateSetupWarning: vi.fn(() => false),
@@ -42,7 +42,7 @@ const noCaches: RaceEngineerCaches = {
 describe("buildPitCrewDeps", () => {
   beforeEach(() => {
     stored.current = {};
-    // restoreAllMocks below only undoes spies; the two deck-core vi.fn mocks
+    // restoreAllMocks below only undoes spies; the two settings vi.fn mocks
     // keep their call history unless it is cleared here.
     vi.clearAllMocks();
   });
@@ -56,8 +56,8 @@ describe("buildPitCrewDeps", () => {
     for (const [key, value] of Object.entries(built)) expect(value, key).toBeDefined();
   });
 
-  it("passes deck-core's callout lookup, live: an on key, an off key and an off-default key (#1350)", () => {
-    // `isCalloutEnabled` reads deck-core's own settings cache, not the mocked
+  it("passes the settings package's callout lookup, live: an on key, an off key and an off-default key (#1350)", () => {
+    // `isCalloutEnabled` reads the settings package's own cache, not the mocked
     // `getGlobalSettings` above, so the settings are changed through the real
     // update path and reset afterwards.
     const { isCalloutEnabled } = buildPitCrewDeps(fakeDeps(), noCaches);
@@ -83,7 +83,7 @@ describe("buildPitCrewDeps", () => {
     expect(built.getRadarMasterEnabled()).toBe(true);
   });
 
-  it("asks deck-core's setup-warning rule with the live settings and setup name (#625)", () => {
+  it("asks the settings package's setup-warning rule with the live settings and setup name (#625)", () => {
     vi.mocked(evaluateSetupWarning).mockReturnValueOnce(true);
     stored.current = { setupWarningEnabled: true };
     const sim = fakeSim({ getDriverSetupName: () => "race-dry.sto" });

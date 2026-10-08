@@ -9,9 +9,8 @@
  * session's replay, one section per feature under `sections`. The envelope's
  * `version` covers the envelope only — a section versions its own contents.
  */
+import { nonBlank, resolveLocalAppData, settingsStoreFolderName } from "@iracedeck/settings";
 import { join } from "node:path";
-
-import { nonBlank, resolveLocalAppData, settingsStoreFolderName } from "./settings-store.js";
 
 /** The envelope version this build writes. */
 export const REPLAY_FILE_VERSION = 1;

@@ -6,8 +6,8 @@ import {
   resolveTitleSettings as resolveTitleSettingsPure,
   type TitleOverrides,
 } from "@iracedeck/icon-composer";
+import { getGlobalSettings } from "@iracedeck/settings";
 
-import { getGlobalSettings } from "./global-settings.js";
 import { resolveTitleTemplate, titleHasTemplate } from "./title-template.js";
 
 /**

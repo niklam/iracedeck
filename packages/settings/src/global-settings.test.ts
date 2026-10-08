@@ -34,8 +34,8 @@ import {
 import { setWarning } from "./pi-warnings.js";
 import { createSettingsFileRejectionReporter } from "./settings-file-rejection-reporter.js";
 import { SETTINGS_FILE_REJECTED_WARNING_ID } from "./settings-file-rejection-warning.js";
+import type { SettingsHost } from "./settings-host.js";
 import { createFileSettingsStore, createMemorySettingsStore } from "./settings-store.js";
-import type { IDeckPlatformAdapter } from "./types.js";
 
 type EchoCallback = (settings: unknown) => void;
 
@@ -50,7 +50,7 @@ function createMockLogger(): ILogger {
 }
 
 interface MockAdapter {
-  adapter: IDeckPlatformAdapter;
+  adapter: SettingsHost;
   echo: EchoCallback | null;
   setGlobalSettings: ReturnType<typeof vi.fn<(settings: Record<string, unknown>) => void>>;
   getGlobalSettings: ReturnType<typeof vi.fn<() => void>>;
@@ -61,13 +61,13 @@ function createMockAdapter(): MockAdapter {
   const setGlobalSettings = vi.fn<(settings: Record<string, unknown>) => void>();
   const getGlobalSettings = vi.fn<() => void>();
 
-  const adapter = {
+  const adapter: SettingsHost = {
     onDidReceiveGlobalSettings: (cb: EchoCallback) => {
       echoHolder.echo = cb;
     },
     setGlobalSettings,
     getGlobalSettings,
-  } as unknown as IDeckPlatformAdapter;
+  };
 
   return {
     adapter,
@@ -1250,8 +1250,8 @@ describe("single-writer store (issue #993)", () => {
     // This also pins the #1053 decision, and is the reason no separate test
     // for it exists: acceptance is by ARRIVAL, not by provenance. `echo` here
     // stands for the first payload to reach the listener while the window is
-    // open — a genuine reply, or a fallback-path PI's save echo, which deck-core
-    // cannot tell apart. Nothing bounds what it does on this path: `base` is
+    // open — a genuine reply, or a fallback-path PI's save echo, which the
+    // settings layer cannot tell apart. Nothing bounds what it does on this path: `base` is
     // {}, so the payload becomes the whole cache and is persisted as the whole
     // file. Accepted deliberately; see
     // docs/superpowers/specs/2026-08-30-issue-1053-migration-read-payload-correlation.md.
@@ -1835,13 +1835,13 @@ describe("single-writer store (issue #993)", () => {
 
     try {
       const holder: { echo: EchoCallback | null } = { echo: null };
-      const adapter = {
+      const adapter: SettingsHost = {
         onDidReceiveGlobalSettings: (cb: EchoCallback) => {
           holder.echo = cb;
         },
         setGlobalSettings: vi.fn<(settings: Record<string, unknown>) => void>(),
         getGlobalSettings: vi.fn<() => void>(() => holder.echo?.({ driverName: "harness-nick" })),
-      } as unknown as IDeckPlatformAdapter;
+      };
 
       initGlobalSettings(adapter, createMockLogger(), createMemorySettingsStore());
       await vi.advanceTimersByTimeAsync(0);
@@ -2133,12 +2133,12 @@ describe("migration deadline vs. host connect (#1056)", () => {
   afterEach(() => vi.useRealTimers());
 
   interface ConnectingMock {
-    adapter: IDeckPlatformAdapter;
+    adapter: SettingsHost;
     echo: EchoCallback | null;
     getGlobalSettings: ReturnType<typeof vi.fn<() => void>>;
     /** Fire the host-ready subscribers, the way a client does from its `open` handler. */
     connect: () => void;
-    /** How many times deck-core subscribed — 0 proves it never entered the migration path. */
+    /** How many times the settings layer subscribed — 0 proves it never entered the migration path. */
     hostReadySubscribers: number;
   }
 
@@ -2152,7 +2152,7 @@ describe("migration deadline vs. host connect (#1056)", () => {
     const readyCallbacks: Array<() => void> = [];
     const getGlobalSettings = vi.fn<() => void>();
 
-    const adapter = {
+    const adapter: SettingsHost = {
       onDidReceiveGlobalSettings: (cb: EchoCallback) => {
         echoHolder.echo = cb;
       },
@@ -2161,7 +2161,7 @@ describe("migration deadline vs. host connect (#1056)", () => {
       onHostReady: (cb: () => void) => {
         readyCallbacks.push(cb);
       },
-    } as unknown as IDeckPlatformAdapter;
+    };
 
     return {
       adapter,

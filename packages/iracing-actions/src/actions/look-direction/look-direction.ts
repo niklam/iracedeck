@@ -3,7 +3,6 @@ import {
   CommonSettings,
   ConnectionStateAwareAction,
   getGlobalBorderSettings,
-  getGlobalColors,
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
   type IDeckDialDownEvent,
@@ -22,6 +21,7 @@ import lookDownIconSvg from "@iracedeck/icons/look-direction/look-down.svg";
 import lookLeftIconSvg from "@iracedeck/icons/look-direction/look-left.svg";
 import lookRightIconSvg from "@iracedeck/icons/look-direction/look-right.svg";
 import lookUpIconSvg from "@iracedeck/icons/look-direction/look-up.svg";
+import { getGlobalColors } from "@iracedeck/settings";
 import z from "zod";
 
 type LookDirectionType = "look-left" | "look-right" | "look-up" | "look-down";

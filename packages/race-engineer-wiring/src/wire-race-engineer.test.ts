@@ -15,7 +15,7 @@ vi.mock("@iracedeck/audio-scenarios/pit-crew", async (importOriginal) => ({
 
 const bus = { subscribe: vi.fn((event: string) => order.push(`subscribe:${event}`)) };
 
-// deck-core is real here: getGlobalSettings() answers the schema defaults, which
+// The settings package is real here: getGlobalSettings() answers the schema defaults, which
 // is all these routing tests need. pit-crew-deps.test.ts swaps the settings.
 function deps(extra: Partial<RaceEngineerWiringDeps> = {}): RaceEngineerWiringDeps {
   return { logger: silentLogger, sim: createIracingSimRuntime(), voice: { driverNames: [] }, ...extra };

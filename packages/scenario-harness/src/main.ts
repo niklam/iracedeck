@@ -12,6 +12,10 @@ import { AudioNative } from "@iracedeck/audio-native";
 import { type FrameOptions, getScenarioEngine, initializeAudioScenarios } from "@iracedeck/audio-scenarios";
 import { setRadarEnabled } from "@iracedeck/audio-scenarios/pit-crew";
 import { AudioBus, initializeAudio } from "@iracedeck/audio-service";
+import { voiceDisplayLabels, type VoicePackService } from "@iracedeck/deck-core";
+import { initializeEventBus } from "@iracedeck/event-bus";
+import type { SDKController } from "@iracedeck/iracing-sdk";
+import { createConsoleLogger, LogLevel } from "@iracedeck/logger";
 import {
   createMemorySettingsStore,
   frameOptionsFromSettings,
@@ -19,12 +23,7 @@ import {
   initGlobalSettings,
   onGlobalSettingsChange,
   resolveActiveRaceEngineerVoice,
-  voiceDisplayLabels,
-  type VoicePackService,
-} from "@iracedeck/deck-core";
-import { initializeEventBus } from "@iracedeck/event-bus";
-import type { SDKController } from "@iracedeck/iracing-sdk";
-import { createConsoleLogger, LogLevel } from "@iracedeck/logger";
+} from "@iracedeck/settings";
 import { initializeSimEventsIracing } from "@iracedeck/sim-events-iracing";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -102,7 +101,7 @@ async function main(): Promise<void> {
 
   // The radio frame's two opt-outs (#1064), read live at frame expansion from
   // the same global-settings cache the plugins read, through the same
-  // deck-core rule the plugins and the Background preview use — the harness
+  // `@iracedeck/settings` rule the plugins and the Background preview use — the harness
   // seeds both on, and `/api/settings` writes through `updateGlobalSettings`,
   // so a patch flipping either key is heard on the next callout.
   const getFrameOptions = (): FrameOptions => frameOptionsFromSettings(getGlobalSettings());
@@ -177,7 +176,7 @@ async function main(): Promise<void> {
     });
   }
 
-  // ── deck-core global-settings pipeline ──────────────────────────────────
+  // ── @iracedeck/settings global-settings pipeline ────────────────────────
   // Done AFTER seeding so the listener delivers the seeded values to the
   // scenario engine on the very first tick.
   initGlobalSettings(adapter, logger.createScope("GlobalSettings"), createMemorySettingsStore());

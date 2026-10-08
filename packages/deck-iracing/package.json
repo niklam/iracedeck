@@ -21,7 +21,8 @@
   "dependencies": {
     "@iracedeck/deck-core": "workspace:*",
     "@iracedeck/iracing-sdk": "workspace:*",
-    "@iracedeck/logger": "workspace:*"
+    "@iracedeck/logger": "workspace:*",
+    "@iracedeck/settings": "workspace:*"
   },
   "devDependencies": {
     "@tsconfig/node22": "22.0.6",

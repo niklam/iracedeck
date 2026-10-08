@@ -443,6 +443,9 @@ importers:
       '@elgato/utils':
         specifier: 0.6.0
         version: 0.6.0
+      '@iracedeck/settings':
+        specifier: workspace:*
+        version: link:../settings
       '@tsconfig/node22':
         specifier: 22.0.6
         version: 22.0.6
@@ -526,9 +529,6 @@ importers:
       '@iracedeck/callout-script':
         specifier: workspace:*
         version: link:../callout-script
-      '@iracedeck/callout-settings':
-        specifier: workspace:*
-        version: link:../callout-settings
       '@iracedeck/fetch-utils':
         specifier: workspace:*
         version: link:../fetch-utils
@@ -538,6 +538,9 @@ importers:
       '@iracedeck/logger':
         specifier: workspace:*
         version: link:../logger
+      '@iracedeck/settings':
+        specifier: workspace:*
+        version: link:../settings
       fflate:
         specifier: 0.8.3
         version: 0.8.3
@@ -585,6 +588,9 @@ importers:
       '@iracedeck/logger':
         specifier: workspace:*
         version: link:../logger
+      '@iracedeck/settings':
+        specifier: workspace:*
+        version: link:../settings
     devDependencies:
       '@tsconfig/node22':
         specifier: 22.0.6
@@ -698,6 +704,9 @@ importers:
       '@iracedeck/logger':
         specifier: workspace:*
         version: link:../logger
+      '@iracedeck/settings':
+        specifier: workspace:*
+        version: link:../settings
       '@iracedeck/sim-events-iracing':
         specifier: workspace:*
         version: link:../sim-events-iracing
@@ -859,6 +868,9 @@ importers:
       '@iracedeck/rasterizer':
         specifier: workspace:*
         version: link:../rasterizer
+      '@iracedeck/settings':
+        specifier: workspace:*
+        version: link:../settings
       '@iracedeck/sim-events-iracing':
         specifier: workspace:*
         version: link:../sim-events-iracing
@@ -1009,12 +1021,12 @@ importers:
       '@iracedeck/callout-settings':
         specifier: workspace:*
         version: link:../callout-settings
-      '@iracedeck/deck-core':
-        specifier: workspace:*
-        version: link:../deck-core
       '@iracedeck/fetch-utils':
         specifier: workspace:*
         version: link:../fetch-utils
+      '@iracedeck/settings':
+        specifier: workspace:*
+        version: link:../settings
       '@rollup/plugin-node-resolve':
         specifier: 16.0.3
         version: 16.0.3(rollup@4.64.0)
@@ -1145,6 +1157,9 @@ importers:
       '@iracedeck/rasterizer':
         specifier: workspace:*
         version: link:../rasterizer
+      '@iracedeck/settings':
+        specifier: workspace:*
+        version: link:../settings
       '@iracedeck/sim-events-iracing':
         specifier: workspace:*
         version: link:../sim-events-iracing
@@ -1167,15 +1182,15 @@ importers:
       '@iracedeck/audio-scenarios':
         specifier: workspace:*
         version: link:../audio-scenarios
-      '@iracedeck/deck-core':
-        specifier: workspace:*
-        version: link:../deck-core
       '@iracedeck/event-bus':
         specifier: workspace:*
         version: link:../event-bus
       '@iracedeck/logger':
         specifier: workspace:*
         version: link:../logger
+      '@iracedeck/settings':
+        specifier: workspace:*
+        version: link:../settings
       '@iracedeck/sim-events-iracing':
         specifier: workspace:*
         version: link:../sim-events-iracing
@@ -1253,6 +1268,9 @@ importers:
       '@iracedeck/race-engineer-wiring':
         specifier: workspace:*
         version: link:../race-engineer-wiring
+      '@iracedeck/settings':
+        specifier: workspace:*
+        version: link:../settings
       '@iracedeck/sim-events-iracing':
         specifier: workspace:*
         version: link:../sim-events-iracing
@@ -1278,6 +1296,43 @@ importers:
       vitest:
         specifier: 5.0.3
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(jsdom@30.1.1)(vite@8.3.0(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.46.0)(tsx@4.23.15)(yaml@2.9.1))
+
+  packages/settings:
+    dependencies:
+      '@iracedeck/app-constants':
+        specifier: workspace:*
+        version: link:../app-constants
+      '@iracedeck/callout-script':
+        specifier: workspace:*
+        version: link:../callout-script
+      '@iracedeck/callout-settings':
+        specifier: workspace:*
+        version: link:../callout-settings
+      '@iracedeck/logger':
+        specifier: workspace:*
+        version: link:../logger
+      semver:
+        specifier: 7.8.5
+        version: 7.8.5
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
+    devDependencies:
+      '@tsconfig/node22':
+        specifier: 22.0.6
+        version: 22.0.6
+      '@types/node':
+        specifier: 26.6.4
+        version: 26.6.4
+      '@types/semver':
+        specifier: 7.8.0
+        version: 7.8.0
+      rimraf:
+        specifier: 6.1.3
+        version: 6.1.3
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
 
   packages/sim-events-iracing:
     dependencies:

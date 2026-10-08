@@ -33,8 +33,8 @@ export interface PiWarning {
  * round-trips through global settings (mirrored to the deck host, echoed back,
  * and written by a Property Inspector saving its whole page), so every entry is
  * validated before `setWarning`/`clearWarning` dereference `w.id`. Validating
- * settings shapes with Zod follows the deck-core convention (see
- * `global-settings.ts` / `common-settings.ts`).
+ * settings shapes with Zod follows the convention of `global-settings.ts` here
+ * and deck-core's `common-settings.ts`.
  */
 const PiWarningSchema = z.object({
   id: z.string(),

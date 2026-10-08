@@ -1,7 +1,7 @@
 import { defaultBindingStoredValue } from "@iracedeck/app-constants";
+import { isSimHubBinding, type SimHubBindingValue } from "@iracedeck/settings";
 import { describe, expect, it } from "vitest";
 
-import { isSimHubBinding, type SimHubBindingValue } from "./global-settings.js";
 import { parseBinding, parseKeyBinding } from "./key-binding-utils.js";
 
 describe("parseBinding", () => {

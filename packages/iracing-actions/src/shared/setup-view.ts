@@ -16,7 +16,6 @@ import {
   generateBorderParts,
   generateTitleText,
   getGlobalBorderSettings,
-  getGlobalColors,
   getGlobalTitleSettings,
   renderIconTemplate,
   resolveBorderSettings,
@@ -27,6 +26,7 @@ import {
   type TitleOverrides,
 } from "@iracedeck/deck-core";
 import { DisplayUnits, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { getGlobalColors } from "@iracedeck/settings";
 
 import setupViewTemplate from "../../icons/setup-view.svg";
 

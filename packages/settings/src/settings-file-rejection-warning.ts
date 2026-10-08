@@ -16,7 +16,7 @@
  * One id at level `error`: the condition speaks for the whole page, so it has
  * no placement filter and renders in the top strip. The message carries no
  * leading emoji (`ird-warnings` renders a per-level icon itself) and says
- * "deck software" rather than naming a host, because deck-core serves all
+ * "deck software" rather than naming a host, because this package serves all
  * three plugins.
  */
 import { basename } from "node:path";

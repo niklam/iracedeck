@@ -4,7 +4,6 @@ import {
   generateBorderParts,
   generateTitleText,
   getGlobalBorderSettings,
-  getGlobalColors,
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
   type IDeckDialDownEvent,
@@ -23,6 +22,7 @@ import {
 import { getCommands, SimIRacingAction } from "@iracedeck/deck-iracing";
 import clearAllCheckboxesIconSvg from "@iracedeck/icons/pit-quick-actions/clear-all-checkboxes.svg";
 import { hasFlag, PitSvFlags, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { getGlobalColors } from "@iracedeck/settings";
 import z from "zod";
 
 import fastRepairTemplate from "../../../icons/pit-quick-actions-fast-repair.svg";

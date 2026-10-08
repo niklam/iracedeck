@@ -1,9 +1,4 @@
-import {
-  getGlobalSettings,
-  type KeyCombination,
-  requestProfileSwitch,
-  updateGlobalSettings,
-} from "@iracedeck/deck-core";
+import { type KeyCombination, requestProfileSwitch } from "@iracedeck/deck-core";
 import {
   buildTemplateContext,
   classifyCarNumberTarget,
@@ -11,6 +6,7 @@ import {
   getPlayerCarNumberFromSessionInfo,
   resolveTemplate,
 } from "@iracedeck/iracing-sdk";
+import { getGlobalSettings, updateGlobalSettings } from "@iracedeck/settings";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { _resetSelectIntents, setSelectIntent } from "../../shared/car-select-intent.js";
@@ -177,7 +173,7 @@ vi.mock("@iracedeck/deck-iracing", async (importOriginal) => ({
 
 // Small default open→paste delay so the real-timer tests below resolve quickly.
 // vi.hoisted so the object-returning factory is initialized before the hoisted
-// vi.mock("@iracedeck/deck-core") factory references it.
+// vi.mock("@iracedeck/settings") factory references it.
 const { mockGetGlobalSettings } = vi.hoisted(() => ({
   mockGetGlobalSettings: vi.fn((): Record<string, unknown> => ({ chatOpenToPasteDelayMs: 10 })),
 }));
@@ -241,12 +237,9 @@ vi.mock("@iracedeck/deck-core", () => ({
   getClipboard: vi.fn(() => ({ setClipboardText: mockSetClipboardText })),
   getDeviceSpec: vi.fn(() => ({ grid: [8, 4] as const })),
   requestProfileSwitch: vi.fn(async () => {}),
-  updateGlobalSettings: vi.fn(),
-  getGlobalSettings: mockGetGlobalSettings,
   getKeyboard: vi.fn(() => ({ sendKeyCombination: mockSendKeyCombination })),
   generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
   getGlobalBorderSettings: vi.fn(() => ({})),
-  getGlobalColors: vi.fn(() => ({})),
   getGlobalGraphicSettings: vi.fn(() => ({})),
   LogLevel: { Info: 2 },
   getGlobalTitleSettings: vi.fn(() => ({})),
@@ -275,6 +268,12 @@ vi.mock("@iracedeck/deck-core", () => ({
       return `data:image/svg+xml,${encoded}`;
     },
   ),
+}));
+
+vi.mock("@iracedeck/settings", () => ({
+  updateGlobalSettings: vi.fn(),
+  getGlobalSettings: mockGetGlobalSettings,
+  getGlobalColors: vi.fn(() => ({})),
 }));
 
 describe("RaceAdmin", () => {

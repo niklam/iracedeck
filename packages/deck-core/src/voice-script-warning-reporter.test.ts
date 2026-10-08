@@ -1,35 +1,42 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { silentLogger } from "@iracedeck/logger";
+import {
+  _resetGlobalSettings,
+  clearWarning,
+  createMemorySettingsStore,
+  getGlobalSettings,
+  initGlobalSettings,
+  onGlobalSettingsChange,
+  type SettingsHost,
+  setWarning,
+} from "@iracedeck/settings";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { clearWarning, setWarning } from "./pi-warnings.js";
 import { createVoiceScriptWarningReporter } from "./voice-script-warning-reporter.js";
 import { VOICE_SCRIPT_WARNING_ID } from "./voice-script-warning.js";
 
-const { store, updateSpy } = vi.hoisted(() => {
-  const store = { current: {} as Record<string, unknown> };
-  const updateSpy = vi.fn((partial: Record<string, unknown>) => {
-    store.current = { ...store.current, ...partial };
-  });
+/** A deck host that never answers: the memory store is the only source. */
+const host: SettingsHost = {
+  onDidReceiveGlobalSettings: () => {},
+  getGlobalSettings: () => {},
+  setGlobalSettings: () => {},
+};
 
-  return { store, updateSpy };
-});
+const tick = () => new Promise((r) => setTimeout(r, 0));
 
-vi.mock("./global-settings.js", () => ({
-  getGlobalSettings: () => store.current,
-  updateGlobalSettings: updateSpy,
-}));
+/**
+ * Counts global-settings writes since the last reset from the cache's own
+ * change fan-out: every `updateGlobalSettings` notifies the listeners exactly
+ * once, run-scoped `_warnings` included, which never reach the file.
+ */
+const listener = vi.fn();
 
 function warnings(): Array<{ id: string; level: string; message: string }> {
-  const raw = store.current._warnings;
+  const raw = (getGlobalSettings() as Record<string, unknown>)._warnings;
 
   return typeof raw === "string" ? JSON.parse(raw) : [];
 }
 
 describe("createVoiceScriptWarningReporter", () => {
-  beforeEach(() => {
-    store.current = {};
-    updateSpy.mockClear();
-  });
-
   it("posts the banner through `set` when the active voice has no script", () => {
     const set = vi.fn();
     const clear = vi.fn();
@@ -78,14 +85,30 @@ describe("createVoiceScriptWarningReporter", () => {
 
   // The real store functions dedupe, so the reporter can be called on every
   // rescan and every voice change without churning global settings.
+  //
+  // They run over the REAL settings cache (#1365): the warning store lives in
+  // `@iracedeck/settings` and reads that package's own cache, which a mock of
+  // the package barrel cannot reach.
   describe("with the real warning store", () => {
+    beforeEach(async () => {
+      _resetGlobalSettings();
+      initGlobalSettings(host, silentLogger, createMemorySettingsStore({}));
+      await tick();
+      listener.mockClear();
+      onGlobalSettingsChange(listener);
+    });
+
+    afterEach(() => {
+      _resetGlobalSettings();
+    });
+
     it("is idempotent: reporting the same missing script twice writes once", () => {
       const report = createVoiceScriptWarningReporter({ set: setWarning, clear: clearWarning });
 
       report({ activeVoice: "laconic", scriptedVoices: new Set() });
       report({ activeVoice: "laconic", scriptedVoices: new Set() });
 
-      expect(updateSpy).toHaveBeenCalledTimes(1);
+      expect(listener).toHaveBeenCalledTimes(1);
       expect(warnings().map((w) => w.id)).toEqual([VOICE_SCRIPT_WARNING_ID]);
     });
 
@@ -96,12 +119,12 @@ describe("createVoiceScriptWarningReporter", () => {
       report({ activeVoice: "laconic", scriptedVoices: new Set(["laconic"]) });
 
       expect(warnings()).toHaveLength(0);
-      expect(updateSpy).toHaveBeenCalledTimes(2);
+      expect(listener).toHaveBeenCalledTimes(2);
 
-      updateSpy.mockClear();
+      listener.mockClear();
       report({ activeVoice: "laconic", scriptedVoices: new Set(["laconic"]) });
 
-      expect(updateSpy).not.toHaveBeenCalled();
+      expect(listener).not.toHaveBeenCalled();
     });
 
     it("replaces the record when the user switches to another unscripted voice", () => {
@@ -116,7 +139,7 @@ describe("createVoiceScriptWarningReporter", () => {
 
     it("leaves other producers' banners alone", () => {
       const report = createVoiceScriptWarningReporter({ set: setWarning, clear: clearWarning });
-      store.current._warnings = JSON.stringify([{ id: "elevation-mismatch", level: "warning", message: "other" }]);
+      setWarning("elevation-mismatch", "warning", "other");
 
       report({ activeVoice: "laconic", scriptedVoices: new Set() });
       report({ activeVoice: "laconic", scriptedVoices: new Set(["laconic"]) });

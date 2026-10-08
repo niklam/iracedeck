@@ -56,7 +56,7 @@ vi.mock("@iracedeck/audio-service", () => ({
   getAudio: hoisted.getAudio,
 }));
 
-vi.mock("@iracedeck/deck-core", () => ({
+vi.mock("@iracedeck/settings", () => ({
   getGlobalSettings: hoisted.getGlobalSettings,
   isCalloutEnabled: hoisted.isCalloutEnabled,
   updateGlobalSettings: hoisted.updateGlobalSettings,

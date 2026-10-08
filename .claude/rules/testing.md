@@ -67,7 +67,7 @@ Don't use `pnpm -r test`. It starts one full Vitest per package, several at once
 
 ## Testing Stream Deck Actions
 
-Stream Deck actions require mocking `@iracedeck/deck-core`. For testable pure functions (icon generation, constants), export them with `@internal` JSDoc:
+Stream Deck actions require mocking `@iracedeck/deck-core`, and `@iracedeck/settings` for the global-settings names. For testable pure functions (icon generation, constants), export them with `@internal` JSDoc:
 
 ```typescript
 /**
@@ -114,8 +114,6 @@ vi.mock("@iracedeck/deck-core", () => ({
   },
   formatKeyBinding: vi.fn((b: { key: string; modifiers: string[] }) =>
     b.modifiers?.length ? `${b.modifiers.join("+")}+${b.key}` : b.key),
-  getGlobalColors: vi.fn(() => ({})),
-  getGlobalSettings: vi.fn(() => ({})),
   getKeyboard: vi.fn(() => ({
     sendKeyCombination: vi.fn().mockResolvedValue(true),
   })),
@@ -125,6 +123,12 @@ vi.mock("@iracedeck/deck-core", () => ({
   renderIconTemplate: vi.fn((_t: string, data: Record<string, string>) =>
     `<svg>${data.mainLabel || ""}${data.subLabel || ""}</svg>`),
   svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
+}));
+
+// The global-settings names are @iracedeck/settings', so they are mocked there
+vi.mock("@iracedeck/settings", () => ({
+  getGlobalColors: vi.fn(() => ({})),
+  getGlobalSettings: vi.fn(() => ({})),
 }));
 
 import { GLOBAL_KEY_NAME, generateIconSvg } from "./my-action.js";
@@ -148,6 +152,8 @@ describe("MyAction", () => {
   });
 });
 ```
+
+The two factories follow deck-core's one-import-path-per-name rule (#1351): a name `@iracedeck/settings` exports — `getGlobalSettings`, `getGlobalColors`, `isCalloutEnabled`, `onGlobalSettingsChange`, `setWarning`, `isSimHubBinding` and the rest of `packages/settings/src/index.ts` — is mocked on `@iracedeck/settings`, with the same implementation and the same `vi.hoisted` handle it would have had on deck-core. An entry left in the deck-core factory no longer reaches the code under test, which imports the name from `@iracedeck/settings`, so the real function runs and the test can stay green while proving nothing. A mock of a package's barrel also cannot reach that package's internal imports: `@iracedeck/settings`' warning store calls its own `getGlobalSettings` by relative path, so mocking the barrel's `getGlobalSettings` does not change what `setWarning` reads. That is why deck-core's `settings-window-warning-reporter.test.ts` and `voice-script-warning-reporter.test.ts` run over the real settings cache (`initGlobalSettings` over `createMemorySettingsStore`) rather than mocking it. Where a test spread `importOriginal()` on deck-core to keep real behaviour, the same spread now goes on the settings mock (`shared/adjust-styles.test.ts`, `shared/setup-view.test.ts`).
 
 An action that extends `@iracedeck/deck-iracing`'s `SimIRacingAction` (#1351) keeps the same `ConnectionStateAwareAction` mock: `SimIRacingAction` extends the mocked class, and the mock's `sdkController` instance field shadows `SimIRacingAction`'s getter, so the test drives the controller as before. The iRacing names that live in `deck-iracing` rather than `deck-core` — `getCommands`, the fuel and unit helpers — are mocked on `@iracedeck/deck-iracing`, spreading `importOriginal` so the real `SimIRacingAction` still loads:
 

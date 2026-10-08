@@ -1,4 +1,8 @@
 import type { ILogger } from "@iracedeck/logger";
+// Namespace import so the unrecognised-value test can spy on getGlobalSettings;
+// the named bindings below keep the rest of the file unchanged.
+import * as globalSettings from "@iracedeck/settings";
+import { createMemorySettingsStore } from "@iracedeck/settings";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -8,10 +12,6 @@ import {
   getDualPressDirections,
   getDualPressThresholdMs,
 } from "./dual-press.js";
-// Namespace import so the unrecognised-value test can spy on getGlobalSettings;
-// the named bindings below keep the rest of the file unchanged.
-import * as globalSettings from "./global-settings.js";
-import { createMemorySettingsStore } from "./settings-store.js";
 import type { IDeckPlatformAdapter } from "./types.js";
 
 const { _resetGlobalSettings, initGlobalSettings, updateGlobalSettings } = globalSettings;

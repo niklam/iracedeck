@@ -11,7 +11,6 @@ import type {
   IDeckPlatformAdapter,
   LogLocation,
   ReplaySessionStore,
-  SettingsStore,
   SettingsWindowCommandDeps,
   SettingsWindowController,
   SettingsWindowOpenOptions,
@@ -23,6 +22,7 @@ import type { getController } from "@iracedeck/deck-iracing";
 import type { IEventBus } from "@iracedeck/event-bus";
 import type { IRacingNative } from "@iracedeck/iracing-native";
 import type { ILogger } from "@iracedeck/logger";
+import type { SettingsStore } from "@iracedeck/settings";
 
 /** One `adapter.registerAction` call: the UUID, the logger scope it always used, and the handler factory. */
 export interface ActionRegistration {

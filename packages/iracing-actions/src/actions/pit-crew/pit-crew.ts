@@ -6,18 +6,13 @@ import {
   generateBorderParts,
   generateTitleText,
   getGlobalBorderSettings,
-  getGlobalColors,
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
-  isCalloutEnabled,
-  onGlobalSettingsChange,
   renderIconTemplate,
-  resolveActiveDriverName,
-  resolveActiveRaceEngineerVoice,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
@@ -25,6 +20,13 @@ import {
   svgToDataUri,
 } from "@iracedeck/deck-core";
 import { SimIRacingAction } from "@iracedeck/deck-iracing";
+import {
+  getGlobalColors,
+  isCalloutEnabled,
+  onGlobalSettingsChange,
+  resolveActiveDriverName,
+  resolveActiveRaceEngineerVoice,
+} from "@iracedeck/settings";
 import { z } from "zod";
 
 import pitCrewTemplate from "../../../icons/pit-crew.svg";

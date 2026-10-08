@@ -9,8 +9,9 @@
  */
 import type StreamDeck from "@elgato/streamdeck";
 import type { ElgatoPlatformAdapter } from "@iracedeck/deck-adapter-elgato";
-import { initProfileSwitcher, updateGlobalSettings } from "@iracedeck/deck-core";
+import { initProfileSwitcher } from "@iracedeck/deck-core";
 import { type PluginExtension, STREAM_DECK_ACTIONS } from "@iracedeck/plugin-runtime";
+import { updateGlobalSettings } from "@iracedeck/settings";
 
 export function createElgatoExtension(sd: typeof StreamDeck, adapter: ElgatoPlatformAdapter): PluginExtension {
   // Publish the connected decks for the settings window's profile device picker,

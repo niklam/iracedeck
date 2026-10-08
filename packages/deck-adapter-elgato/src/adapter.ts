@@ -432,14 +432,14 @@ export class ElgatoPlatformAdapter implements IDeckPlatformAdapter {
    * only for a Property Inspector's save: the reply to a read carries a request
    * id, and the SDK hands it to the promise `getGlobalSettings()` returns and
    * drops it from the event. So the answer is delivered here, through the same
-   * fan-out the event feeds — exactly once per read, which is what deck-core's
+   * fan-out the event feeds — exactly once per read, which is what the settings package's
    * one-time host migration (#993) waits for. Leaving `useLegacySettingsBehavior`
    * off is deliberate: turning it on would deliver the reply twice, once through
    * each path (lint refuses the property for that reason).
    *
    * The SDK resolves that promise on the NEXT `didReceiveGlobalSettings` frame,
    * correlated by nothing, so a PI save landing while the read is pending — even
-   * long after deck-core stopped waiting — resolves it as well as firing the
+   * long after the settings package stopped waiting — resolves it as well as firing the
    * event. Both paths are handed the same frame's `payload.settings` object, and
    * the event runs first (its listener was registered before the read's), so a
    * promise value identical to the event's last payload is that frame again and

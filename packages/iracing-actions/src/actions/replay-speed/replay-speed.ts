@@ -3,7 +3,6 @@ import {
   CommonSettings,
   ConnectionStateAwareAction,
   getGlobalBorderSettings,
-  getGlobalColors,
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
   type IDeckDialDownEvent,
@@ -19,6 +18,7 @@ import {
 import { getCommands } from "@iracedeck/deck-iracing";
 import decreaseIconSvg from "@iracedeck/icons/replay-speed/decrease.svg";
 import increaseIconSvg from "@iracedeck/icons/replay-speed/increase.svg";
+import { getGlobalColors } from "@iracedeck/settings";
 import z from "zod";
 
 type SpeedDirection = "increase" | "decrease";

@@ -3,7 +3,6 @@ import {
   CommonSettings,
   ConnectionStateAwareAction,
   getGlobalBorderSettings,
-  getGlobalColors,
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
   type IDeckDialDownEvent,
@@ -14,7 +13,6 @@ import {
   type IDeckTouchTapEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
-  onGlobalSettingsChange,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
@@ -33,6 +31,7 @@ import standingsIconSvg from "@iracedeck/icons/black-box-selector/standings.svg"
 import tireInfoIconSvg from "@iracedeck/icons/black-box-selector/tire-info.svg";
 import tiresIconSvg from "@iracedeck/icons/black-box-selector/tires.svg";
 import weatherIconSvg from "@iracedeck/icons/black-box-selector/weather.svg";
+import { getGlobalColors, onGlobalSettingsChange } from "@iracedeck/settings";
 import z from "zod";
 
 import { BLACK_BOX_GLOBAL_KEYS } from "../../shared/black-box.js";

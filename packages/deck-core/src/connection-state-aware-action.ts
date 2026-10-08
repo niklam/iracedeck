@@ -19,9 +19,10 @@
  *   to SimHub) trigger automatic readiness re-evaluation.
  * - Actions never need to call updateConnectionState() manually.
  */
+import { onGlobalSettingsChange } from "@iracedeck/settings";
+
 import { BaseAction } from "./base-action.js";
 import { getBindingDispatcher } from "./binding-dispatcher.js";
-import { onGlobalSettingsChange } from "./global-settings.js";
 import { getSimConnection } from "./sim-connection.js";
 import { onSimHubReachabilityChange } from "./simhub-service.js";
 import type { IDeckWillAppearEvent, IDeckWillDisappearEvent } from "./types.js";

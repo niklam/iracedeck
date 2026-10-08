@@ -29,7 +29,7 @@ export interface IEventBus {
 
   /**
    * Subscribe to an event name. Returns an unsubscribe function — the
-   * same shape as `onGlobalSettingsChange` in deck-core.
+   * same shape as `onGlobalSettingsChange` in `@iracedeck/settings`.
    */
   subscribe<T extends SimEventName>(name: T, handler: EventHandler<T>): () => void;
 

@@ -1,4 +1,5 @@
 import { referenceVoice } from "@iracedeck/audio-scenarios";
+import { silentLogger } from "@iracedeck/logger";
 import {
   _resetGlobalSettings,
   createMemorySettingsStore,
@@ -8,8 +9,7 @@ import {
   resolveActiveRaceEngineerVoice,
   updateGlobalSettings,
   whenSettingsStoreSettled,
-} from "@iracedeck/deck-core";
-import { silentLogger } from "@iracedeck/logger";
+} from "@iracedeck/settings";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -82,7 +82,7 @@ describe("seedGlobalSettings", () => {
 });
 
 describe("the voice the harness plays (#1144)", () => {
-  // Booted the way `main.ts` boots it: the seed, then deck-core's settings over
+  // Booted the way `main.ts` boots it: the seed, then the settings package over
   // a memory store, then the plugins' own resolver over the voice list. The
   // source tree's voice is bare and an installed pack's is composite, so a
   // packs directory holding the managed pack lists `default` AND
@@ -129,9 +129,9 @@ describe("the voice the harness plays (#1144)", () => {
   });
 });
 
-describe("the engine's reference voice is deck-core's default voice (#1144)", () => {
+describe("the engine's reference voice is the settings package's default voice (#1144)", () => {
   // `referenceVoice` spells the managed pack's voice itself, because
-  // audio-scenarios cannot depend on deck-core. This package holds both, so it
+  // audio-scenarios does not depend on @iracedeck/settings. This package holds both, so it
   // is where the two spellings are held together: a renamed managed pack would
   // otherwise leave the engine checking `{voice}` paths against whichever
   // composite voice sorts first.

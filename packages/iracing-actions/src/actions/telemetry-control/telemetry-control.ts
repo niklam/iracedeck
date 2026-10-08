@@ -3,7 +3,6 @@ import {
   CommonSettings,
   getCpuProfileCapture,
   getGlobalBorderSettings,
-  getGlobalColors,
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
   type IDeckDialDownEvent,
@@ -28,6 +27,7 @@ import startRecordingIconSvg from "@iracedeck/icons/telemetry-control/start-reco
 import stopRecordingIconSvg from "@iracedeck/icons/telemetry-control/stop-recording.svg";
 import toggleLoggingIconSvg from "@iracedeck/icons/telemetry-control/toggle-logging.svg";
 import { buildSnapshotEnvelope, generateMarkdown, snapshotBaseName } from "@iracedeck/iracing-sdk";
+import { getGlobalColors } from "@iracedeck/settings";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";

@@ -24,7 +24,7 @@ const { mockGetGlobalSettings } = vi.hoisted(() => ({
   mockGetGlobalSettings: vi.fn<() => Record<string, unknown>>(() => ({})),
 }));
 
-vi.mock("./global-settings.js", async (importOriginal) => {
+vi.mock("@iracedeck/settings", async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>;
 
   return {

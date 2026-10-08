@@ -5,7 +5,6 @@ import {
   generateBorderParts,
   generateTitleText,
   getGlobalBorderSettings,
-  getGlobalColors,
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
   getKeyboard,
@@ -50,6 +49,7 @@ import {
   SessionState,
   type TelemetryData,
 } from "@iracedeck/iracing-sdk";
+import { getGlobalColors } from "@iracedeck/settings";
 import z from "zod";
 
 import drsTemplate from "../../../icons/car-control-drs.svg";

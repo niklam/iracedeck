@@ -2,7 +2,6 @@ import {
   assembleIcon,
   CommonSettings,
   getGlobalBorderSettings,
-  getGlobalColors,
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
   type IDeckDialDownEvent,
@@ -13,7 +12,6 @@ import {
   type IDeckTouchTapEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
-  onGlobalSettingsChange,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
@@ -50,6 +48,7 @@ import vanishYDecreaseIconSvg from "@iracedeck/icons/camera-editor-adjustments/v
 import vanishYIncreaseIconSvg from "@iracedeck/icons/camera-editor-adjustments/vanish-y-increase.svg";
 import yawDecreaseIconSvg from "@iracedeck/icons/camera-editor-adjustments/yaw-decrease.svg";
 import yawIncreaseIconSvg from "@iracedeck/icons/camera-editor-adjustments/yaw-increase.svg";
+import { getGlobalColors, onGlobalSettingsChange } from "@iracedeck/settings";
 import z from "zod";
 
 import {

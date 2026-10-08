@@ -5,7 +5,6 @@ import {
   generateBorderParts,
   generateTitleText,
   getGlobalBorderSettings,
-  getGlobalColors,
   getGlobalTitleSettings,
   renderIconTemplate,
   resolveBorderSettings,
@@ -14,6 +13,7 @@ import {
   svgToDataUri,
   type TitleOverrides,
 } from "@iracedeck/deck-core";
+import { getGlobalColors } from "@iracedeck/settings";
 
 const WHITE = "#ffffff";
 const GREEN = "#2ecc71";

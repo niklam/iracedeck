@@ -9,9 +9,6 @@ const { mockDeleteGlobalSettings, mockGetGlobalSettings, mockUpdateGlobalSetting
 }));
 
 vi.mock("@iracedeck/deck-core", () => ({
-  deleteGlobalSettings: mockDeleteGlobalSettings,
-  getGlobalSettings: mockGetGlobalSettings,
-  updateGlobalSettings: mockUpdateGlobalSettings,
   // Mirrors the real semantics: non-empty JSON string or object parses to a
   // binding, anything unset/empty/malformed is undefined.
   parseBinding: vi.fn((raw: unknown) => {
@@ -27,6 +24,12 @@ vi.mock("@iracedeck/deck-core", () => ({
 
     return undefined;
   }),
+}));
+
+vi.mock("@iracedeck/settings", () => ({
+  deleteGlobalSettings: mockDeleteGlobalSettings,
+  getGlobalSettings: mockGetGlobalSettings,
+  updateGlobalSettings: mockUpdateGlobalSettings,
 }));
 
 const KEYBOARD_BINDING = '{"type":"keyboard","key":"f24","modifiers":[]}';

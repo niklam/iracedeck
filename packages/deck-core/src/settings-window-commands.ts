@@ -9,9 +9,9 @@
  */
 import { DEFAULT_FOCUS_IRACING_MODE, parseFocusIRacingMode } from "@iracedeck/app-constants";
 import { packId } from "@iracedeck/callout-script";
+import { FEATURE_STARTUP_GATES } from "@iracedeck/settings";
 import { z } from "zod";
 
-import { FEATURE_STARTUP_GATES } from "./feature-startup-policy.js";
 import type { SettingsWindowBounds } from "./settings-window-launcher.js";
 
 /** Passthrough global-settings key holding the last window bounds. */

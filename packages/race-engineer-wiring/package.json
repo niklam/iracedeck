@@ -20,9 +20,9 @@
   },
   "dependencies": {
     "@iracedeck/audio-scenarios": "workspace:*",
-    "@iracedeck/deck-core": "workspace:*",
     "@iracedeck/event-bus": "workspace:*",
     "@iracedeck/logger": "workspace:*",
+    "@iracedeck/settings": "workspace:*",
     "@iracedeck/sim-events-iracing": "workspace:*"
   },
   "devDependencies": {

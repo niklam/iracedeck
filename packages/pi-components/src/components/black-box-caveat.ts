@@ -97,7 +97,7 @@ function bindingObject(raw: unknown): Record<string, unknown> | null {
 
 /**
  * Whether a stored global binding value (a JSON string or an already-parsed
- * object) is a usable KEYBOARD binding — the shape deck-core's
+ * object) is a usable KEYBOARD binding — the shape `@iracedeck/settings`'
  * `KeyBindingValueSchema` accepts, so the caveat and the runtime agree: `type`
  * absent or "keyboard", a non-empty `key`, and `modifiers` absent or an array of
  * strings. A SimHub role, an empty value, or a corrupt one all return false.

@@ -25,8 +25,8 @@
  * serves the Stream Deck, Mirabox, and Ulanzi plugins alike.
  */
 import { SETTINGS_WINDOW_OPEN_WARNING_ID, SETTINGS_WINDOW_SERVER_WARNING_ID } from "@iracedeck/app-constants";
+import type { PiWarning } from "@iracedeck/settings";
 
-import type { PiWarning } from "./pi-warnings.js";
 import type { SettingsWindowStatus } from "./settings-window.js";
 
 /**

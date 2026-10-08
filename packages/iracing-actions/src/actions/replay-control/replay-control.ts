@@ -7,9 +7,7 @@ import {
   generateBorderParts,
   generateTitleText,
   getGlobalBorderSettings,
-  getGlobalColors,
   getGlobalGraphicSettings,
-  getGlobalSettings,
   getGlobalTitleSettings,
   getReplaySessionStore,
   ICON_BASE_TEMPLATE,
@@ -68,6 +66,7 @@ import {
   replaySpeedFromTelemetry,
   type TelemetryData,
 } from "@iracedeck/iracing-sdk";
+import { getGlobalColors, getGlobalSettings } from "@iracedeck/settings";
 import z from "zod";
 
 import { CAR_CYCLE_BINDING_KEYS } from "../../shared/car-cycle-bindings.js";

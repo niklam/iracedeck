@@ -17,7 +17,6 @@ import {
   generateBorderParts,
   generateTitleText,
   getGlobalBorderSettings,
-  getGlobalColors,
   getGlobalTitleSettings,
   renderIconTemplate,
   resolveBorderSettings,
@@ -28,6 +27,7 @@ import {
   type TitleOverrides,
 } from "@iracedeck/deck-core";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
+import { getGlobalColors } from "@iracedeck/settings";
 import z from "zod";
 
 import adjustStyleTemplate from "../../icons/adjust-style.svg";

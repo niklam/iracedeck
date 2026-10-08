@@ -22,7 +22,6 @@ import {
   generateBorderParts,
   generateTitleText,
   getGlobalBorderSettings,
-  getGlobalColors,
   getGlobalTitleSettings,
   renderIconTemplate,
   resolveBorderSettings,
@@ -31,6 +30,7 @@ import {
   svgToDataUri,
 } from "@iracedeck/deck-core";
 import { getAllCarNumbers, splitDriverName } from "@iracedeck/iracing-sdk";
+import { getGlobalColors } from "@iracedeck/settings";
 
 import selectorTemplate from "../../../icons/race-admin-car-selector.svg";
 import profilesData from "../data/profiles.json" with { type: "json" };

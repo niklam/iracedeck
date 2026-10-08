@@ -2,7 +2,6 @@ import {
   assembleIcon,
   ConnectionStateAwareAction,
   getGlobalBorderSettings,
-  getGlobalColors,
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
   type IDeckDialDownEvent,
@@ -30,6 +29,7 @@ import voiceChatMuteDriverIconSvg from "@iracedeck/icons/audio-controls/voice-ch
 import voiceChatMuteIconSvg from "@iracedeck/icons/audio-controls/voice-chat-mute.svg";
 import voiceChatVolumeDownIconSvg from "@iracedeck/icons/audio-controls/voice-chat-volume-down.svg";
 import voiceChatVolumeUpIconSvg from "@iracedeck/icons/audio-controls/voice-chat-volume-up.svg";
+import { getGlobalColors } from "@iracedeck/settings";
 
 import { INTERNAL_AUDIO_BUSES } from "./audio-buses.js";
 import {

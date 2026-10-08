@@ -4,7 +4,6 @@ import {
   generateBorderParts,
   generateTitleText,
   getGlobalBorderSettings,
-  getGlobalColors,
   getGlobalTitleSettings,
   IconUpdateThrottle,
   type IDeckDidReceiveSettingsEvent,
@@ -19,6 +18,7 @@ import {
 } from "@iracedeck/deck-core";
 import { SimIRacingAction } from "@iracedeck/deck-iracing";
 import { resolveTemplate } from "@iracedeck/iracing-sdk";
+import { getGlobalColors } from "@iracedeck/settings";
 import z from "zod";
 
 import telemetryDisplayTemplate from "../../../icons/telemetry-display.svg";

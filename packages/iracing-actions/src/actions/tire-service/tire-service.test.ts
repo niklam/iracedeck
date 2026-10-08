@@ -134,7 +134,6 @@ vi.mock("@iracedeck/deck-core", () => ({
     opts.text ? `<text fill="${opts.fill}">${opts.text}</text>` : "",
   ),
   getGlobalBorderSettings: vi.fn(() => ({})),
-  getGlobalColors: vi.fn(() => ({})),
   getGlobalGraphicSettings: vi.fn(() => ({})),
   ICON_BASE_TEMPLATE: "<svg>{{backgroundColor}}|{{borderContent}}|{{graphicContent}}|{{titleContent}}</svg>",
   LogLevel: { Info: 2 },
@@ -186,6 +185,10 @@ vi.mock("@iracedeck/deck-core", () => ({
     return result;
   }),
   svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
+}));
+
+vi.mock("@iracedeck/settings", () => ({
+  getGlobalColors: vi.fn(() => ({})),
 }));
 
 function fakeEvent(actionId: string, settings: Record<string, unknown> = {}) {

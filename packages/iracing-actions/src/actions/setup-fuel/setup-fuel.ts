@@ -5,7 +5,6 @@ import {
   getDualPressDirections,
   getDualPressThresholdMs,
   getGlobalBorderSettings,
-  getGlobalColors,
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
   IconUpdateThrottle,
@@ -18,7 +17,6 @@ import {
   type IDeckTouchTapEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
-  onGlobalSettingsChange,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
@@ -33,6 +31,7 @@ import fuelMixtureDecreaseIconSvg from "@iracedeck/icons/setup-fuel/fuel-mixture
 import fuelMixtureIncreaseIconSvg from "@iracedeck/icons/setup-fuel/fuel-mixture-increase.svg";
 import lowFuelAcceptIconSvg from "@iracedeck/icons/setup-fuel/low-fuel-accept.svg";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
+import { getGlobalColors, onGlobalSettingsChange } from "@iracedeck/settings";
 import z from "zod";
 
 import {

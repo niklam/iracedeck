@@ -107,7 +107,7 @@ sd.logger.warn("[AppMonitor] Already initialized");
 
 ```typescript
 // GOOD: Use scoped logger
-export function initGlobalSettings(adapter: IDeckPlatformAdapter, logger: ILogger, store: SettingsStore): void {
+export function initGlobalSettings(adapter: SettingsHost, logger: ILogger, store: SettingsStore): void {
   logger.info("initGlobalSettings called");
 }
 

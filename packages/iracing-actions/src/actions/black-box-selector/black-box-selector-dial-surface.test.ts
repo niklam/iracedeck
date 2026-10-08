@@ -37,11 +37,6 @@ vi.mock("@iracedeck/deck-core", async () => {
       async onWillDisappear() {}
     },
     getDualPressThresholdMs: () => mockDualPressThreshold.value,
-    onGlobalSettingsChange: vi.fn((listener: () => void) => {
-      globalListeners.push(listener);
-
-      return vi.fn();
-    }),
     classifyDialRelease: (args: {
       pressStartMs: number;
       nowMs: number;
@@ -58,7 +53,6 @@ vi.mock("@iracedeck/deck-core", async () => {
     // Keypad render path (unused on the dial paths these tests drive).
     assembleIcon: vi.fn(() => "data:image/svg+xml,keypad"),
     getGlobalBorderSettings: vi.fn(() => ({})),
-    getGlobalColors: vi.fn(() => ({})),
     getGlobalGraphicSettings: vi.fn(() => ({})),
     getGlobalTitleSettings: vi.fn(() => ({})),
     resolveBorderSettings: vi.fn(() => ({})),
@@ -67,6 +61,15 @@ vi.mock("@iracedeck/deck-core", async () => {
     resolveTitleSettings: vi.fn(() => ({ titleText: "" })),
   };
 });
+
+vi.mock("@iracedeck/settings", () => ({
+  onGlobalSettingsChange: vi.fn((listener: () => void) => {
+    globalListeners.push(listener);
+
+    return vi.fn();
+  }),
+  getGlobalColors: vi.fn(() => ({})),
+}));
 
 const STRIP = { id: "sd-plus-strip", width: 200, height: 100 } as const;
 const KNOB = { id: "stream-dock-knob", width: 176, height: 112 } as const;

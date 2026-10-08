@@ -1,19 +1,21 @@
 import type StreamDeck from "@elgato/streamdeck";
 import {
-  _resetGlobalSettings,
   _resetProfileSwitcher,
   _resetRasterizer,
-  createMemorySettingsStore,
-  getGlobalSettings,
   type IDeckActionHandler,
-  initGlobalSettings,
   initializeRasterizer,
   initProfileSwitcher,
-  isSettingsStoreReady,
   requestProfileSwitchBack,
   svgToDataUri,
 } from "@iracedeck/deck-core";
 import type { ILogger } from "@iracedeck/logger";
+import {
+  _resetGlobalSettings,
+  createMemorySettingsStore,
+  getGlobalSettings,
+  initGlobalSettings,
+  isSettingsStoreReady,
+} from "@iracedeck/settings";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ElgatoPlatformAdapter } from "./adapter.js";

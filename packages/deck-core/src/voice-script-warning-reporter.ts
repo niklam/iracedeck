@@ -18,7 +18,8 @@
  * evaluator the `_voiceLabels` map so the banner names the voice as the
  * dropdown does rather than by its composite id.
  */
-import type { clearWarning, setWarning } from "./pi-warnings.js";
+import type { clearWarning, setWarning } from "@iracedeck/settings";
+
 import {
   evaluateVoiceScriptWarning,
   VOICE_SCRIPT_WARNING_ID,

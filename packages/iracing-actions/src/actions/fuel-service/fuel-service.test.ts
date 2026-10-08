@@ -141,9 +141,7 @@ vi.mock("@iracedeck/deck-core", async () => {
     }),
     generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
     getGlobalBorderSettings: vi.fn(() => ({})),
-    getGlobalColors: vi.fn(() => ({})),
     getGlobalGraphicSettings: vi.fn(() => ({})),
-    getGlobalSettings: mockGetGlobalSettings,
     getKeyboard: vi.fn(() => ({
       sendKeyCombination: vi.fn().mockResolvedValue(true),
       pressKeyCombination: vi.fn().mockResolvedValue(true),
@@ -152,9 +150,6 @@ vi.mock("@iracedeck/deck-core", async () => {
     LogLevel: { Info: 2 },
     parseBinding: mockParseKeyBinding,
     parseKeyBinding: mockParseKeyBinding,
-    isSimHubBinding: vi.fn(
-      (v: unknown) => v !== null && typeof v === "object" && (v as Record<string, unknown>).type === "simhub",
-    ),
     isSimHubInitialized: vi.fn(() => false),
     isSimHubReachable: mockIsSimHubReachable,
     getSimHub: vi.fn(() => ({
@@ -273,6 +268,14 @@ vi.mock("@iracedeck/deck-core", async () => {
     svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
   };
 });
+
+vi.mock("@iracedeck/settings", () => ({
+  getGlobalColors: vi.fn(() => ({})),
+  getGlobalSettings: mockGetGlobalSettings,
+  isSimHubBinding: vi.fn(
+    (v: unknown) => v !== null && typeof v === "object" && (v as Record<string, unknown>).type === "simhub",
+  ),
+}));
 
 type MockFn = ReturnType<typeof vi.fn>;
 

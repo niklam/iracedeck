@@ -45,7 +45,7 @@ export const PLUGIN_UUID = "com.iracedeck.sd.core";
  * the `willAppear` re-drive as the sole route to a reply. That never fires
  * with no deck attached, and three such starts take `_migrationPending` to its
  * ceiling; the start AFTER them used to let the once-per-start host mirror
- * overwrite the user's copy with schema defaults (#1041). deck-core blocks that
+ * overwrite the user's copy with schema defaults (#1041). The settings package blocks that
  * write via `MIGRATION_ABANDONED_KEY`, and since #1047 that marker names the
  * version which gave up, so an upgrade asks the host once more and such a store
  * is recovered rather than merely preserved.
@@ -301,7 +301,7 @@ export class UlanziClient {
   private pendingGlobalSettings: Record<string, unknown> | null = null;
 
   /**
-   * Subscribers waiting for the host socket to be usable (#1056). deck-core
+   * Subscribers waiting for the host socket to be usable (#1056). The settings package
    * uses this to restart the settings-migration deadline from the point its
    * read can actually be answered, rather than from the point it was issued
    * into a socket that was still closed.
@@ -351,7 +351,7 @@ export class UlanziClient {
         // Ulanzi handshake — no separate registration payload (the host already
         // parsed manifest.json from disk).
         this.send({ code: 0, cmd: "connected", uuid: PLUGIN_UUID });
-        // In practice this is the read that reaches the host: deck-core's
+        // In practice this is the read that reaches the host: the settings package's
         // one-time migration read usually fires before the socket is open and is
         // covered here (see requestGlobalSettings). It is addressed, so the host
         // answers it — which is what makes the migration independent of whether
@@ -370,7 +370,7 @@ export class UlanziClient {
         // connect-time read above is actually on the wire (#1056) — but in a
         // `finally`, because a throw anywhere above (a `JSON.stringify` on the
         // mirror payload, a failing log sink) would otherwise skip the notify
-        // and silently reinstate the very bug #1056 fixes: deck-core would keep
+        // and silently reinstate the very bug #1056 fixes: the settings package would keep
         // the deadline it measured from the closed-socket read.
         this.notifyHostReady();
       }
@@ -490,7 +490,7 @@ export class UlanziClient {
    * `IDeckPlatformAdapter.onHostReady` publishes: the list is cleared as it is
    * fired, so a second `open` (a reconnect, or a second `connect()` in a test
    * or the harness, where `onClose` does not end the process) cannot re-notify
-   * a subscriber that already ran. deck-core guards its own re-arm as well, but
+   * a subscriber that already ran. The settings package guards its own re-arm as well, but
    * a consumer should not have to read this file to learn that it must.
    *
    * KEEP IN SYNC with `VSDClient.onHostReady` / `notifyHostReady`, which are
@@ -499,7 +499,7 @@ export class UlanziClient {
   onHostReady(callback: () => void): void {
     if (this.ws?.readyState === WS_OPEN) {
       // Same isolation as the `open` path: a throw here would otherwise escape
-      // into deck-core's settings load and be misreported as a settings-file
+      // into the settings package's load and be misreported as a settings-file
       // failure.
       this.fireHostReady(callback);
 
@@ -617,7 +617,7 @@ export class UlanziClient {
   requestGlobalSettings(context?: string): void {
     if (this.ws?.readyState !== WS_OPEN) {
       // `send()` discards anything written while the socket isn't open, and
-      // deck-core issues its one-time migration read as soon as the missing
+      // the settings package issues its one-time migration read as soon as the missing
       // settings file resolves — usually before `connect()` has opened the
       // socket. Say so rather than dropping the frame silently, which is what
       // made #1041 so hard to see, and at info: the persisted `debugLogging`
@@ -626,9 +626,9 @@ export class UlanziClient {
       //
       // No stash: the `open` handler issues this same plugin-scoped read
       // unconditionally, so it asks the question this call could not. Note the
-      // OTHER ordering — deck-core ignores any reply arriving before it asked
+      // OTHER ordering — the settings package ignores any reply arriving before it asked
       // (`!migrationRequested`), so when the socket opens first, the
-      // connect-time reply is discarded and migration completes on deck-core's
+      // connect-time reply is discarded and migration completes on the settings package's
       // own read, sent moments later with the socket already open. Both reads
       // are load-bearing, one per ordering; do not de-duplicate them.
       this.logger.info(

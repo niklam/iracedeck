@@ -63,7 +63,6 @@ vi.mock("@iracedeck/deck-core", async () => ({
   resolveTitleTemplate: vi.fn((text: string) => text.replace("{{self.car_number}}", "34")),
   generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
   getGlobalBorderSettings: vi.fn(() => ({})),
-  getGlobalColors: vi.fn(() => ({})),
   getGlobalGraphicSettings: vi.fn(() => ({})),
   LogLevel: { Info: 2 },
   generateTitleText: vi.fn(({ text, fill }: { text: string; fill: string }) => {
@@ -103,6 +102,10 @@ vi.mock("@iracedeck/deck-core", async () => ({
     return result;
   }),
   svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
+}));
+
+vi.mock("@iracedeck/settings", () => ({
+  getGlobalColors: vi.fn(() => ({})),
 }));
 
 describe("TelemetryDisplay", () => {

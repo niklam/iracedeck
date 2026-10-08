@@ -21,7 +21,7 @@ const { state } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("./global-settings.js", () => ({
+vi.mock("@iracedeck/settings", () => ({
   getGlobalSettings: () => state.settings,
   isSettingsStoreReady: () => state.storeReady,
 }));

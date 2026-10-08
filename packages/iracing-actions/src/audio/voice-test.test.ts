@@ -12,7 +12,7 @@ const hoisted = vi.hoisted(() => ({
 
 vi.mock("@iracedeck/audio-scenarios/pit-crew", () => ({ driverNameClipPath: hoisted.driverNameClipPath }));
 
-vi.mock("@iracedeck/deck-core", () => ({
+vi.mock("@iracedeck/settings", () => ({
   resolveActiveDriverName: hoisted.resolveActiveDriverName,
   resolveActiveRaceEngineerVoice: hoisted.resolveActiveRaceEngineerVoice,
 }));

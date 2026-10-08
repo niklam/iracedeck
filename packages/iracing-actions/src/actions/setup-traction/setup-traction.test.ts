@@ -121,18 +121,13 @@ vi.mock("@iracedeck/deck-core", async () => {
     }),
     svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
     getGlobalBorderSettings: vi.fn(() => ({})),
-    getGlobalColors: vi.fn(() => ({})),
     getGlobalGraphicSettings: vi.fn(() => ({})),
-    getGlobalSettings: vi.fn(() => ({})),
     getKeyboard: vi.fn(() => ({
       sendKeyCombination: vi.fn().mockResolvedValue(true),
     })),
     LogLevel: { Info: 2 },
     parseBinding: vi.fn(),
     parseKeyBinding: vi.fn(),
-    isSimHubBinding: vi.fn(
-      (v: unknown) => v !== null && typeof v === "object" && (v as Record<string, unknown>).type === "simhub",
-    ),
     isSimHubInitialized: vi.fn(() => false),
     getSimHub: vi.fn(() => ({
       startRole: vi.fn().mockResolvedValue(true),
@@ -159,9 +154,8 @@ vi.mock("@iracedeck/deck-core", async () => {
     })),
     applyBindingWarning: vi.fn((content: string) => `${content}<warn/>`),
     // Dial-surface deck-core exports (#795) — referenced once the action hosts the
-    // dial surface. onGlobalSettingsChange runs at construction; the rest only on
-    // dial flows (the keypad tests never hit them, but they must exist).
-    onGlobalSettingsChange: vi.fn(() => vi.fn()),
+    // dial surface. Only dial flows reach them (the keypad tests never hit them,
+    // but they must exist).
     classifyDialRelease: (args: {
       pressStartMs: number;
       nowMs: number;
@@ -192,6 +186,16 @@ vi.mock("@iracedeck/deck-core", async () => {
     ),
   };
 });
+
+vi.mock("@iracedeck/settings", () => ({
+  getGlobalColors: vi.fn(() => ({})),
+  getGlobalSettings: vi.fn(() => ({})),
+  isSimHubBinding: vi.fn(
+    (v: unknown) => v !== null && typeof v === "object" && (v as Record<string, unknown>).type === "simhub",
+  ),
+  // Dial surface (#795): onGlobalSettingsChange runs at construction.
+  onGlobalSettingsChange: vi.fn(() => vi.fn()),
+}));
 
 /** Create a minimal fake event with the given action ID and settings. */
 function fakeEvent(actionId: string, settings: Record<string, unknown> = {}) {

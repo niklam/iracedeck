@@ -91,7 +91,7 @@ export class VSDClient {
   private pendingGlobalSettings: Record<string, unknown> | null = null;
 
   /**
-   * Subscribers waiting for the host socket to be usable (#1056). deck-core
+   * Subscribers waiting for the host socket to be usable (#1056). The settings package
    * uses this to restart the settings-migration deadline from the point its
    * read can actually be answered, rather than from the point it was issued
    * into a socket that was still closed.
@@ -159,7 +159,7 @@ export class VSDClient {
         // connect-time read above is actually on the wire (#1056) — but in a
         // `finally`, because a throw anywhere above (a `JSON.stringify` on the
         // mirror payload, a failing log sink) would otherwise skip the notify
-        // and silently reinstate the very bug #1056 fixes: deck-core would keep
+        // and silently reinstate the very bug #1056 fixes: the settings package would keep
         // the deadline it measured from the closed-socket read.
         this.notifyHostReady();
       }
@@ -225,7 +225,7 @@ export class VSDClient {
    * `IDeckPlatformAdapter.onHostReady` publishes: the list is cleared as it is
    * fired, so a second `open` (a reconnect, or a second `connect()` in a test
    * or the harness, where `onClose` does not end the process) cannot re-notify
-   * a subscriber that already ran. deck-core guards its own re-arm as well, but
+   * a subscriber that already ran. The settings package guards its own re-arm as well, but
    * a consumer should not have to read this file to learn that it must.
    *
    * KEEP IN SYNC with `UlanziClient.onHostReady` / `notifyHostReady`, which are
@@ -234,7 +234,7 @@ export class VSDClient {
   onHostReady(callback: () => void): void {
     if (this.ws?.readyState === WS_OPEN) {
       // Same isolation as the `open` path: a throw here would otherwise escape
-      // into deck-core's settings load and be misreported as a settings-file
+      // into the settings package's load and be misreported as a settings-file
       // failure.
       this.fireHostReady(callback);
 
@@ -292,7 +292,7 @@ export class VSDClient {
   /**
    * Read the deck host's global settings.
    *
-   * deck-core issues this once per start for the one-time settings migration,
+   * The settings package issues this once per start for the one-time settings migration,
    * as soon as it finds no settings file. `initGlobalSettings` runs before
    * `adapter.connect()` and the read fires when the store's file load resolves
    * — an `ENOENT` a tick or two later — so it usually arrives here before the
@@ -320,10 +320,10 @@ export class VSDClient {
       // No stash, unlike `setGlobalSettings` below: the `open` handler issues
       // this same read unconditionally, so it asks the question this call could
       // not, and stashing would only put a duplicate frame on the wire. Note
-      // the OTHER ordering — deck-core ignores any payload arriving before it
+      // the OTHER ordering — the settings package ignores any payload arriving before it
       // asked (`!migrationRequested`), so when the socket opens first the
       // connect-time reply is discarded and the migration completes on
-      // deck-core's own read, sent moments later with the socket already open.
+      // the settings package's own read, sent moments later with the socket already open.
       // Both reads are load-bearing, one per ordering; do not de-duplicate
       // them.
       //

@@ -57,10 +57,10 @@ vi.mock("@iracedeck/audio-service", () => ({
   getAudio: hoisted.getAudio,
 }));
 
-vi.mock("@iracedeck/deck-core", async (importOriginal) => ({
+vi.mock("@iracedeck/settings", async (importOriginal) => ({
   // The real `frameOptionsFromSettings`: it is the rule under test here, and
   // a copy of it in the mock would pass whatever the real one did.
-  frameOptionsFromSettings: (await importOriginal<typeof import("@iracedeck/deck-core")>()).frameOptionsFromSettings,
+  frameOptionsFromSettings: (await importOriginal<typeof import("@iracedeck/settings")>()).frameOptionsFromSettings,
   getGlobalSettings: hoisted.getGlobalSettings,
   updateGlobalSettings: hoisted.updateGlobalSettings,
 }));
@@ -133,7 +133,7 @@ describe("audio-volume", () => {
   });
 
   describe("readFrameOptions (issue #1064)", () => {
-    // The rule itself (`"false"` strings, garbage) is deck-core's and tested
+    // The rule itself (`"false"` strings, garbage) is `@iracedeck/settings`' and tested
     // there; these pin that the preview reads it live off the settings cache.
     it("reads both switches as on when the keys are missing — the schema default", () => {
       hoisted.setGlobalSettings({});

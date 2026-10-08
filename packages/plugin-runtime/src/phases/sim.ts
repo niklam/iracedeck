@@ -4,8 +4,8 @@
  */
 import { OPPONENT_PENALTY_FLAG_TO_CALLOUT_ID, type OpponentFlagCalloutId } from "@iracedeck/audio-scenarios/pit-crew";
 import { calloutKey, OPPONENT_FLAG_CALLOUTS } from "@iracedeck/callout-settings";
-import { getGlobalSettings, isCalloutEnabled } from "@iracedeck/deck-core";
 import { createIracingSimRuntime, type SimRuntime } from "@iracedeck/race-engineer-wiring";
+import { getGlobalSettings, isCalloutEnabled } from "@iracedeck/settings";
 import {
   getLiveRacePositions,
   initializeSimEventsIracing,

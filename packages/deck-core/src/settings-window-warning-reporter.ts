@@ -13,7 +13,8 @@
  * later. The evaluator stays the single decision point — set or clear is read
  * off its result, never re-derived from the status here.
  */
-import { reconcileWarnings } from "./pi-warnings.js";
+import { reconcileWarnings } from "@iracedeck/settings";
+
 import { evaluateSettingsWindowWarnings, settingsWindowWarningScope } from "./settings-window-warning.js";
 import type { SettingsWindowStatus } from "./settings-window.js";
 

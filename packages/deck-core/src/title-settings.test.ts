@@ -1,9 +1,9 @@
+import { getGlobalSettings } from "@iracedeck/settings";
+import type { GlobalSettings } from "@iracedeck/settings";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { TitleOverrides } from "./common-settings.js";
 import { createFakeSimConnection, type FakeSimConnection } from "./fake-sim-connection.js";
-import { getGlobalSettings } from "./global-settings.js";
-import type { GlobalSettings } from "./global-settings.js";
 import {
   assembleIcon,
   BORDER_DEFAULTS,
@@ -16,7 +16,7 @@ import {
 import type { GlobalBorderSettings, ResolvedBorderSettings } from "./title-settings.js";
 import type { GlobalTitleSettings } from "./title-settings.js";
 
-vi.mock("./global-settings.js", () => ({
+vi.mock("@iracedeck/settings", () => ({
   getGlobalSettings: vi.fn(() => ({})),
 }));
 

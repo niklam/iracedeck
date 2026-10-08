@@ -1,24 +1,40 @@
 import { SETTINGS_WINDOW_OPEN_WARNING_ID, SETTINGS_WINDOW_SERVER_WARNING_ID } from "@iracedeck/app-constants";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { silentLogger } from "@iracedeck/logger";
+import {
+  _resetGlobalSettings,
+  createMemorySettingsStore,
+  getGlobalSettings,
+  initGlobalSettings,
+  onGlobalSettingsChange,
+  type SettingsHost,
+  setWarning,
+} from "@iracedeck/settings";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createSettingsWindowWarningReporter } from "./settings-window-warning-reporter.js";
 
-const { store, updateSpy } = vi.hoisted(() => {
-  const store = { current: {} as Record<string, unknown> };
-  const updateSpy = vi.fn((partial: Record<string, unknown>) => {
-    store.current = { ...store.current, ...partial };
-  });
+// The reporter runs over the REAL settings cache (#1365): the warning store it
+// writes through lives in `@iracedeck/settings` and reads that package's own
+// cache, which a mock of the package barrel cannot reach.
 
-  return { store, updateSpy };
-});
+/** A deck host that never answers: the memory store is the only source. */
+const host: SettingsHost = {
+  onDidReceiveGlobalSettings: () => {},
+  getGlobalSettings: () => {},
+  setGlobalSettings: () => {},
+};
 
-vi.mock("./global-settings.js", () => ({
-  getGlobalSettings: () => store.current,
-  updateGlobalSettings: updateSpy,
-}));
+const tick = () => new Promise((r) => setTimeout(r, 0));
+
+/**
+ * Counts global-settings writes since the last reset from the cache's own
+ * change fan-out: every `updateGlobalSettings` notifies the listeners exactly
+ * once, run-scoped `_warnings` included, which never reach the file.
+ */
+const listener = vi.fn();
 
 function warnings(): Array<{ id: string; level: string; message: string }> {
-  const raw = store.current._warnings;
+  const raw = (getGlobalSettings() as Record<string, unknown>)._warnings;
 
   return typeof raw === "string" ? JSON.parse(raw) : [];
 }
@@ -31,9 +47,16 @@ function banners(): Array<{ id: string; level: string; message: string }> {
 }
 
 describe("createSettingsWindowWarningReporter", () => {
-  beforeEach(() => {
-    store.current = {};
-    updateSpy.mockClear();
+  beforeEach(async () => {
+    _resetGlobalSettings();
+    initGlobalSettings(host, silentLogger, createMemorySettingsStore({}));
+    await tick();
+    listener.mockClear();
+    onGlobalSettingsChange(listener);
+  });
+
+  afterEach(() => {
+    _resetGlobalSettings();
   });
 
   it("posts both banners when the settings service fails to start", () => {
@@ -95,7 +118,7 @@ describe("createSettingsWindowWarningReporter", () => {
   it("leaves other producers' banners alone", () => {
     const report = createSettingsWindowWarningReporter({ getStorePath: () => undefined });
 
-    store.current._warnings = JSON.stringify([{ id: "elevation-mismatch", level: "warning", message: "other" }]);
+    setWarning("elevation-mismatch", "warning", "other");
 
     report({ stage: "server", ok: false, error: undefined });
     report({ stage: "server", ok: true });
@@ -123,17 +146,17 @@ describe("createSettingsWindowWarningReporter", () => {
 
     report({ stage: "server", ok: false, error: new Error("EADDRINUSE") });
 
-    expect(updateSpy).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenCalledTimes(1);
   });
 
   it("writes nothing when the same failure is reported again", () => {
     const report = createSettingsWindowWarningReporter({ getStorePath: () => undefined });
 
     report({ stage: "server", ok: false, error: new Error("EADDRINUSE") });
-    updateSpy.mockClear();
+    listener.mockClear();
     report({ stage: "server", ok: false, error: new Error("EADDRINUSE") });
 
-    expect(updateSpy).not.toHaveBeenCalled();
+    expect(listener).not.toHaveBeenCalled();
   });
 
   it("writes nothing when a success arrives with no banner posted", () => {
@@ -141,6 +164,6 @@ describe("createSettingsWindowWarningReporter", () => {
 
     report({ stage: "server", ok: true });
 
-    expect(updateSpy).not.toHaveBeenCalled();
+    expect(listener).not.toHaveBeenCalled();
   });
 });

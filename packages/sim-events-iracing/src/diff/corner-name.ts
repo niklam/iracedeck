@@ -47,7 +47,7 @@ export const CORNER_LEAD_MAX_PCT = 0.2;
 /** Default announcement lead (seconds ahead of the corner at current speed). */
 export const CORNER_CALLOUT_DEFAULT_LEAD_SECONDS = 1;
 
-/** Lead-time slider bounds (seconds) — mirrors the Zod schema in deck-core. */
+/** Lead-time slider bounds (seconds) — mirrors the Zod schema in `@iracedeck/settings` `global-settings.ts`. */
 export const CORNER_CALLOUT_LEAD_MIN_SECONDS = 0;
 export const CORNER_CALLOUT_LEAD_MAX_SECONDS = 5;
 

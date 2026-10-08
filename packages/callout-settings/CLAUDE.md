@@ -2,7 +2,7 @@
 
 The Race Engineer callout opt-in registry (#1350). It is the only place a `calloutEnabled*` settings key is declared: every key, its PI label, its default and the callout id it serves live in one entry here, and everything else derives from it. Design record: `docs/superpowers/specs/2026-10-06-issue-1350-callout-settings-registry.md`.
 
-**Zero dependencies — keep it that way.** Plain TypeScript, no `zod`, no `@iracedeck/*` package. `deck-core` and `audio-scenarios` cannot depend on each other, so the registry has to be a leaf both can reach (the same reason `callout-script` and `track-data` are leaves). If this package seems to need something from another one, that something belongs here or the need belongs in the consumer.
+**Zero dependencies — keep it that way.** Plain TypeScript, no `zod`, no `@iracedeck/*` package. `@iracedeck/settings` (which builds the schema from it) and `audio-scenarios` must not depend on each other, so the registry has to be a leaf both can reach (the same reason `callout-script` and `track-data` are leaves). If this package seems to need something from another one, that something belongs here or the need belongs in the consumer.
 
 ## Modules (`src/`)
 
@@ -15,7 +15,7 @@ The Race Engineer callout opt-in registry (#1350). It is the only place a `callo
 
 `default` is optional and can only be `false`: absent means on. New Race Engineer functionality ships on, so an off default is a visible, deliberate exception rather than a value every entry repeats. Today six entries carry it, the fuel countdown counts 10, 9, 8, 7, 6 and 4. `calloutDefault(key)` turns it into the schema default.
 
-A `key` is a persisted settings key and a published contract: never rename or drop one without a migration, and never change a default casually. `deck-core`'s frozen baseline (`src/__fixtures__/callout-settings-baseline.json`) fails on either.
+A `key` is a persisted settings key and a published contract: never rename or drop one without a migration, and never change a default casually. `@iracedeck/settings`' frozen baseline (`src/__fixtures__/callout-settings-baseline.json`) fails on either.
 
 ## Families versus PI groups
 
@@ -23,7 +23,7 @@ A family is the unit of ownership: the ids are family-scoped (`ack` is an id of 
 
 ## Consumers
 
-- `deck-core` builds a `GlobalSettingsSchema` field for every `CalloutSettingKey` with `.default(calloutDefault(key))`, and exports the typed lookup `isCalloutEnabled(key)` and write `setCalloutEnabled(key, enabled)`.
+- `@iracedeck/settings` builds a `GlobalSettingsSchema` field for every `CalloutSettingKey` with `.default(calloutDefault(key))`, and exports the typed lookup `isCalloutEnabled(key)` and write `setCalloutEnabled(key, enabled)`.
 - `audio-scenarios` derives each family's callout id type with `CalloutIdOf<typeof X_CALLOUTS>` and gates through `isCalloutEnabled(calloutKey(X_CALLOUTS, id))`.
 - `pi-components` renders the Callouts rows from `CALLOUT_PI_GROUPS`, with `default="true"` exactly where `calloutDefault(key)` is true.
 

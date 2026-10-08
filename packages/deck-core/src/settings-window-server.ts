@@ -29,6 +29,7 @@
  * — so this module never touches the global-settings singleton, and every
  * edit made here lands in the plugin-owned store like any other write (#993).
  */
+import { sameValue, stripRunScopedKeys } from "@iracedeck/settings";
 import { randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
@@ -36,8 +37,6 @@ import { extname, normalize, resolve, sep } from "node:path";
 import type { Duplex } from "node:stream";
 import { type WebSocket, WebSocketServer } from "ws";
 
-import { sameValue } from "./global-settings.js";
-import { stripRunScopedKeys } from "./run-scoped-settings.js";
 import { authorizeSettingsRequest, type SettingsRequestDenial } from "./settings-window-guard.js";
 import type { UpdateStatus } from "./update-check-service.js";
 
@@ -161,7 +160,7 @@ async function serveAsset(assetsDir: string, name: string, res: ServerResponse):
   }
 }
 
-/** The subset of `incoming` whose values differ from `current` (deck-core equality). */
+/** The subset of `incoming` whose values differ from `current` (`@iracedeck/settings` equality). */
 function diffAgainst(current: Record<string, unknown>, incoming: Record<string, unknown>): Record<string, unknown> {
   const changed: Record<string, unknown> = {};
 
@@ -484,13 +483,14 @@ function attachFakeHost(
           case "setGlobalSettings":
             if (frame.payload !== null && typeof frame.payload === "object" && !Array.isArray(frame.payload)) {
               // sdpi-components saves its WHOLE snapshot on every change. Hand
-              // deck-core only the keys that actually differ from the current
-              // cache — an optimisation, not a correctness guard (the plugin
-              // is the single writer since #993): a full-snapshot write would
-              // re-parse, re-notify every subscriber and re-save the file on
-              // every keystroke-sized change. `sameValue` is deck-core's own
-              // equality, so a value the PI persisted as a string ("80") does
-              // not read as a change against the parsed cache value (80).
+              // the settings cache only the keys that actually differ from the
+              // current cache — an optimisation, not a correctness guard (the
+              // plugin is the single writer since #993): a full-snapshot write
+              // would re-parse, re-notify every subscriber and re-save the file
+              // on every keystroke-sized change. `sameValue` is
+              // `@iracedeck/settings`' own equality, so a value the PI persisted
+              // as a string ("80") does not read as a change against the parsed
+              // cache value (80).
               //
               // Run-scoped keys are dropped first (#1014): no UI is ever the
               // producer of an observation about this run, and a page's

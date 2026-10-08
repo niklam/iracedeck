@@ -176,18 +176,13 @@ vi.mock("@iracedeck/deck-core", async () => {
     }),
     svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
     getGlobalBorderSettings: vi.fn(() => ({})),
-    getGlobalColors: vi.fn(() => ({})),
     getGlobalGraphicSettings: vi.fn(() => ({})),
-    getGlobalSettings: vi.fn(() => ({})),
     getKeyboard: vi.fn(() => ({
       sendKeyCombination: vi.fn().mockResolvedValue(true),
     })),
     LogLevel: { Info: 2 },
     parseBinding: vi.fn(),
     parseKeyBinding: vi.fn(),
-    isSimHubBinding: vi.fn(
-      (v: unknown) => v !== null && typeof v === "object" && (v as Record<string, unknown>).type === "simhub",
-    ),
     isSimHubInitialized: vi.fn(() => false),
     isSimHubReachable: mockIsSimHubReachable,
     getSimHub: vi.fn(() => ({
@@ -214,9 +209,8 @@ vi.mock("@iracedeck/deck-core", async () => {
       customPosition: 0,
     })),
     applyBindingWarning: vi.fn((content: string) => `${content}<warn/>`),
-    // Dial-surface deck-core exports (#800) — onGlobalSettingsChange runs at
-    // construction; the rest only on dial flows (keypad tests never hit them).
-    onGlobalSettingsChange: vi.fn(() => vi.fn()),
+    // Dial-surface deck-core exports (#800) — only dial flows reach them
+    // (keypad tests never hit them).
     classifyDialRelease: (args: {
       pressStartMs: number;
       nowMs: number;
@@ -247,6 +241,16 @@ vi.mock("@iracedeck/deck-core", async () => {
     ),
   };
 });
+
+vi.mock("@iracedeck/settings", () => ({
+  getGlobalColors: vi.fn(() => ({})),
+  getGlobalSettings: vi.fn(() => ({})),
+  isSimHubBinding: vi.fn(
+    (v: unknown) => v !== null && typeof v === "object" && (v as Record<string, unknown>).type === "simhub",
+  ),
+  // Dial surface (#800): onGlobalSettingsChange runs at construction.
+  onGlobalSettingsChange: vi.fn(() => vi.fn()),
+}));
 
 /** Create a minimal fake event with the given action ID and settings. */
 function fakeEvent(actionId: string, settings: Record<string, unknown> = {}) {

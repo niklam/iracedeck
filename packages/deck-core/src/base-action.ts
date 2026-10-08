@@ -7,8 +7,8 @@
  * - Flag overlay support (flashes flag colors when race flags are active)
  */
 import { type ILogger, silentLogger } from "@iracedeck/logger";
+import { getGlobalSettings, onGlobalSettingsChange } from "@iracedeck/settings";
 
-import { getGlobalSettings, onGlobalSettingsChange } from "./global-settings.js";
 import { IconUpdateThrottle } from "./icon-update-throttle.js";
 import { applyInactiveOverlay, svgToDataUri } from "./overlay-utils.js";
 import { getPluginVersion, isPluginConfigInitialized } from "./plugin-config.js";

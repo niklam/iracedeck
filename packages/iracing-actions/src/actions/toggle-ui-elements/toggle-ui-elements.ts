@@ -2,7 +2,6 @@ import {
   assembleIcon,
   CommonSettings,
   getGlobalBorderSettings,
-  getGlobalColors,
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
   type IDeckDialDownEvent,
@@ -26,6 +25,7 @@ import uiEditModeIconSvg from "@iracedeck/icons/toggle-ui-elements/ui-edit-mode.
 import virtualMirrorIconSvg from "@iracedeck/icons/toggle-ui-elements/virtual-mirror.svg";
 import weatherRadarIconSvg from "@iracedeck/icons/toggle-ui-elements/weather-radar.svg";
 import { CameraState, hasFlag } from "@iracedeck/iracing-sdk";
+import { getGlobalColors } from "@iracedeck/settings";
 import z from "zod";
 
 type UiElement =

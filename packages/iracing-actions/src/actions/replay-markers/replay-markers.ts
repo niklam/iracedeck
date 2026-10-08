@@ -1,7 +1,6 @@
 import {
   assembleIcon,
   getGlobalBorderSettings,
-  getGlobalColors,
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
   getReplaySessionStore,
@@ -28,6 +27,7 @@ import confirmDeletedIconSvg from "@iracedeck/icons/replay-markers/confirm-delet
 import deleteIconSvg from "@iracedeck/icons/replay-markers/delete.svg";
 import nextIconSvg from "@iracedeck/icons/replay-markers/next.svg";
 import previousIconSvg from "@iracedeck/icons/replay-markers/previous.svg";
+import { getGlobalColors } from "@iracedeck/settings";
 
 import { ReplayMarkersDialSurface } from "./replay-markers-dial-surface.js";
 import {

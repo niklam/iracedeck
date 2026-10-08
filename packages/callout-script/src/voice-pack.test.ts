@@ -320,8 +320,8 @@ describe("parseVoicePackManifest", () => {
     // Hand-editing this file on Windows is the advertised install path, and
     // several Windows editors write a BOM. `JSON.parse` throws on one, so
     // without this a pack correct in every visible way is refused with "not
-    // valid JSON" as the only clue. deck-core's `settings-store.ts` strips one
-    // for exactly the same reason.
+    // valid JSON" as the only clue. `@iracedeck/settings`' `settings-store.ts`
+    // strips one for exactly the same reason.
     // Written as an escape, not a literal BOM: a literal one is invisible in a
     // diff and an editor could silently strip the very thing under test.
     const result = parseVoicePackManifest("﻿" + valid);

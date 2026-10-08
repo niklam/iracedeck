@@ -101,11 +101,11 @@ export const FUEL_LAPS_LEFT_SAMPLE_PCT = 0.5;
 /**
  * Default safety margin (laps) subtracted from the raw estimate. Must match
  * the `fuelCalloutMarginLaps` schema default in
- * `@iracedeck/deck-core` `global-settings.ts`.
+ * `@iracedeck/settings` `global-settings.ts`.
  */
 export const FUEL_CALLOUT_DEFAULT_MARGIN_LAPS = 0.3;
 
-/** Margin slider bounds (laps) — mirrors the Zod schema in deck-core. */
+/** Margin slider bounds (laps) — mirrors the Zod schema in `@iracedeck/settings` `global-settings.ts`. */
 export const FUEL_CALLOUT_MARGIN_MIN_LAPS = 0;
 export const FUEL_CALLOUT_MARGIN_MAX_LAPS = 3;
 

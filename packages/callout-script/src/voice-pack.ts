@@ -256,8 +256,8 @@ export type VoicePackManifestTextRead =
  * and several Windows editors write one. Hand-editing `voice-pack.json` on
  * Windows is the ADVERTISED install path for this feature, so a BOM would
  * reject a pack that is correct in every way a user can see, with "not valid
- * JSON" as the only clue. deck-core's `settings-store.ts` strips one for the
- * same reason — "a BOM must not make a user's backup corrupt" — and the pack
+ * JSON" as the only clue. `@iracedeck/settings`' `settings-store.ts` strips
+ * one for the same reason — "a BOM must not make a user's backup corrupt" — and the pack
  * format should not be stricter than the settings file about the same
  * accident.
  *

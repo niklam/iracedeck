@@ -27,14 +27,9 @@
  * the global setting is on.
  */
 import { resolveSimPointerTarget } from "@iracedeck/app-constants";
-import {
-  focusIRacingNow,
-  FocusResult,
-  getGlobalSettings,
-  movePointerToSim,
-  PointerMoveResult,
-} from "@iracedeck/deck-core";
+import { focusIRacingNow, FocusResult, movePointerToSim, PointerMoveResult } from "@iracedeck/deck-core";
 import type { ILogger } from "@iracedeck/logger";
+import { getGlobalSettings } from "@iracedeck/settings";
 
 /**
  * Focus the iRacing window and park the mouse pointer inside it.

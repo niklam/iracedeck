@@ -3,7 +3,6 @@ import {
   CommonSettings,
   ConnectionStateAwareAction,
   getGlobalBorderSettings,
-  getGlobalColors,
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
   type IDeckDialDownEvent,
@@ -25,6 +24,7 @@ import playIconSvg from "@iracedeck/icons/replay-transport/play.svg";
 import rewindIconSvg from "@iracedeck/icons/replay-transport/rewind.svg";
 import slowMotionIconSvg from "@iracedeck/icons/replay-transport/slow-motion.svg";
 import stopIconSvg from "@iracedeck/icons/replay-transport/stop.svg";
+import { getGlobalColors } from "@iracedeck/settings";
 import z from "zod";
 
 type TransportAction =

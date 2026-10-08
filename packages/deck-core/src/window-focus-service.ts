@@ -34,8 +34,7 @@
 import type { FocusIRacingMode } from "@iracedeck/app-constants";
 import type { ILogger } from "@iracedeck/logger";
 import { silentLogger } from "@iracedeck/logger";
-
-import { getGlobalSettings, isSettingsStoreReady } from "./global-settings.js";
+import { getGlobalSettings, isSettingsStoreReady } from "@iracedeck/settings";
 
 /**
  * Status codes a {@link WindowFocuser} may return.

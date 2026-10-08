@@ -39,7 +39,7 @@ export function carCycleBindingKey(direction: "next" | "previous"): string {
 
 /**
  * Each key's default binding string — iRacing's own, `V` / `Shift+V`. Every
- * plugin hands it to deck-core's `seedBindingDefaultsIfAbsent` at startup:
+ * plugin hands it to `@iracedeck/settings`' `seedBindingDefaultsIfAbsent` at startup:
  * before #1277 Cycle by Track Order needed no binding, so an existing user who
  * never opened a Replay Control Next / Previous Car panel has neither key
  * stored, and their CAR AHEAD / CAR BEHIND keys would otherwise show the #612

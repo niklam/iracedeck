@@ -44,11 +44,6 @@ vi.mock("@iracedeck/deck-core", async () => {
       async onWillDisappear() {}
     },
     getDualPressThresholdMs: () => mockDualPressThreshold.value,
-    onGlobalSettingsChange: vi.fn((listener: () => void) => {
-      globalListeners.push(listener);
-
-      return vi.fn();
-    }),
     classifyDialRelease: (args: {
       pressStartMs: number;
       nowMs: number;
@@ -66,7 +61,6 @@ vi.mock("@iracedeck/deck-core", async () => {
     // helpers at module load — provide harmless stubs so the module resolves.
     assembleIcon: vi.fn(() => "data:image/svg+xml,keypad"),
     getGlobalBorderSettings: vi.fn(() => ({})),
-    getGlobalColors: vi.fn(() => ({})),
     getGlobalGraphicSettings: vi.fn(() => ({})),
     getGlobalTitleSettings: vi.fn(() => ({})),
     resolveBorderSettings: vi.fn(() => ({})),
@@ -75,6 +69,15 @@ vi.mock("@iracedeck/deck-core", async () => {
     resolveTitleSettings: vi.fn(() => ({ titleText: "" })),
   };
 });
+
+vi.mock("@iracedeck/settings", () => ({
+  onGlobalSettingsChange: vi.fn((listener: () => void) => {
+    globalListeners.push(listener);
+
+    return vi.fn();
+  }),
+  getGlobalColors: vi.fn(() => ({})),
+}));
 
 vi.mock("@iracedeck/icons/camera-editor-adjustments/latitude-increase.svg", () => ({ default: "<svg/>" }));
 vi.mock("@iracedeck/icons/camera-editor-adjustments/latitude-decrease.svg", () => ({ default: "<svg/>" }));

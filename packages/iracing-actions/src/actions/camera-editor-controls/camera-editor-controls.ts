@@ -3,7 +3,6 @@ import {
   CommonSettings,
   ConnectionStateAwareAction,
   getGlobalBorderSettings,
-  getGlobalColors,
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
   type IDeckDialDownEvent,
@@ -45,6 +44,7 @@ import shotSelectionToggleIconSvg from "@iracedeck/icons/camera-editor-controls/
 import showCameraToggleIconSvg from "@iracedeck/icons/camera-editor-controls/show-camera-toggle.svg";
 import temporaryEditsToggleIconSvg from "@iracedeck/icons/camera-editor-controls/temporary-edits-toggle.svg";
 import zoomToggleIconSvg from "@iracedeck/icons/camera-editor-controls/zoom-toggle.svg";
+import { getGlobalColors } from "@iracedeck/settings";
 import z from "zod";
 
 const CONTROL_VALUES = [

@@ -708,7 +708,7 @@ export const SPOTTER_STILL_THERE_SECONDS_KEY = "spotterStillThereSeconds";
  * contract — so it has no `SCENARIO_ID_TO_*` map and no gate here: the opt-in
  * (`SETUP_WARNING_CALLOUTS` in `@iracedeck/callout-settings`) is read inside
  * this resolver (the plugins compose it from `evaluateSetupWarning`, whose key
- * is `SETUP_WARNING_ENABLED_KEY` in `@iracedeck/deck-core`), not via
+ * is `SETUP_WARNING_ENABLED_KEY` in `@iracedeck/settings`), not via
  * `wrapCalloutScenario`.
  */
 export type { SetupWarningResolver } from "./race-start.js";

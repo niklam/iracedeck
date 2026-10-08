@@ -60,13 +60,13 @@ import {
   type VoicePackManifest,
 } from "@iracedeck/callout-script";
 import type { ILogger } from "@iracedeck/logger";
+import type { PiWarningLevel } from "@iracedeck/settings";
 import { createHash, type Hash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { setImmediate as nextTurn } from "node:timers/promises";
 
-import type { PiWarningLevel } from "./pi-warnings.js";
 import { errorMessage, extractVoicePackArchive, type VoicePackArchiveFileSystem } from "./voice-pack-archive.js";
 import type { VoicePackCatalogGetOptions } from "./voice-pack-catalog-service.js";
 import { isVoicePackOfferable, type VoicePackCatalogEntry } from "./voice-pack-catalog.js";

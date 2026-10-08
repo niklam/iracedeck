@@ -244,14 +244,13 @@ When key bindings should be shared across all instances of an action type (e.g.,
 // plugin-runtime: the store is built in initSettings (src/phases/settings.ts) and
 // initGlobalSettings runs in startServices (src/phases/start-services.ts) —
 // MUST pass adapter + settings store, and run BEFORE startPlugin's connect()
+import { getPluginPlatform, getPluginVersion } from "@iracedeck/deck-core";
 import {
   createFileSettingsStore,
   createSettingsFileRejectionReporter,
-  getPluginPlatform,
-  getPluginVersion,
   initGlobalSettings,
   resolveSettingsStorePath,
-} from "@iracedeck/deck-core";
+} from "@iracedeck/settings";
 
 const settingsStore = createFileSettingsStore({
   path: resolveSettingsStorePath({ platform: getPluginPlatform(), env: process.env }),

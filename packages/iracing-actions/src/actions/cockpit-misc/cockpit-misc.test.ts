@@ -74,23 +74,15 @@ vi.mock("@iracedeck/deck-core", () => ({
 
     return b.key;
   }),
-  // The dial half of the action subscribes to global-settings changes at
-  // construction (#805) — return a no-op unsubscribe so `new CockpitMisc()` works.
-  onGlobalSettingsChange: vi.fn(() => vi.fn()),
   generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
   getGlobalBorderSettings: vi.fn(() => ({})),
-  getGlobalColors: vi.fn(() => ({})),
   getGlobalGraphicSettings: vi.fn(() => ({})),
-  getGlobalSettings: vi.fn(() => ({})),
   getKeyboard: vi.fn(() => ({
     sendKeyCombination: vi.fn().mockResolvedValue(true),
   })),
   LogLevel: { Info: 2 },
   parseBinding: vi.fn(),
   parseKeyBinding: vi.fn(),
-  isSimHubBinding: vi.fn(
-    (v: unknown) => v !== null && typeof v === "object" && (v as Record<string, unknown>).type === "simhub",
-  ),
   isSimHubInitialized: vi.fn(() => false),
   getSimHub: vi.fn(() => ({
     startRole: vi.fn().mockResolvedValue(true),
@@ -121,6 +113,17 @@ vi.mock("@iracedeck/deck-core", () => ({
 
       return `data:image/svg+xml,${encoded}`;
     },
+  ),
+}));
+
+vi.mock("@iracedeck/settings", () => ({
+  // The dial half of the action subscribes to global-settings changes at
+  // construction (#805) — return a no-op unsubscribe so `new CockpitMisc()` works.
+  onGlobalSettingsChange: vi.fn(() => vi.fn()),
+  getGlobalColors: vi.fn(() => ({})),
+  getGlobalSettings: vi.fn(() => ({})),
+  isSimHubBinding: vi.fn(
+    (v: unknown) => v !== null && typeof v === "object" && (v as Record<string, unknown>).type === "simhub",
   ),
 }));
 

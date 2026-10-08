@@ -12,7 +12,7 @@ vi.mock("./simhub-probe.js", () => ({
 type Deliver = (value: string) => void;
 
 /**
- * The plugin seeds a binding default at startup (#1277, deck-core
+ * The plugin seeds a binding default at startup (#1277, `@iracedeck/settings`'
  * `seedBindingDefaultsIfAbsent`) as `defaultBindingStoredValue(default)`. That
  * value must be exactly what this field saves when it mounts over a setting
  * that holds nothing, or a seeded key and one set by opening its panel would

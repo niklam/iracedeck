@@ -183,7 +183,6 @@ vi.mock("@iracedeck/deck-core", async () => ({
   },
   generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
   getGlobalBorderSettings: vi.fn(() => ({})),
-  getGlobalColors: vi.fn(() => ({})),
   getGlobalGraphicSettings: vi.fn(() => ({})),
   LogLevel: { Info: 2 },
   generateTitleText: vi.fn(({ text, fill }: { text: string; fill: string }) => {
@@ -217,6 +216,10 @@ vi.mock("@iracedeck/deck-core", async () => ({
     return `<svg>${data.backgroundColor || ""}|${data.titleContent || ""}|${data.graphicContent || ""}|<text font-size="${data.valueFontSize || ""}" y="${data.valueY || ""}" fill="${data.textColor || ""}">${data.value || ""}</text></svg>`;
   }),
   svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
+}));
+
+vi.mock("@iracedeck/settings", () => ({
+  getGlobalColors: vi.fn(() => ({})),
 }));
 
 /** Default settings factory for tests */

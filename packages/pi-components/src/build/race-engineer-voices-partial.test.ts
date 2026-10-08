@@ -1,4 +1,4 @@
-import { DEFAULT_RACE_ENGINEER_VOICE } from "@iracedeck/deck-core";
+import { DEFAULT_RACE_ENGINEER_VOICE } from "@iracedeck/settings";
 import ejs from "ejs";
 import { readFileSync } from "node:fs";
 import path from "node:path";
