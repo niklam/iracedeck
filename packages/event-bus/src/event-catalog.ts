@@ -1101,7 +1101,7 @@ export type SimEventMap = {
   // not be lost, so it goes out at the crossing, while the time arrives when
   // the sim publishes it or never. A replay frame is not an iRacing-only idea
   // — any sim with a replay has a position in it — so both fit the sim-agnostic
-  // catalog; the deck-core replay store merges them into one file write.
+  // catalog; @iracedeck/replay-store merges them into one file write.
   /**
    * A car crossed the start/finish line and started `lap` at replay `frame`
    * (issue #1203). Emitted only from live, observable telemetry: never while a

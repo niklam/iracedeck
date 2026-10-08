@@ -23,7 +23,7 @@ const { mockTapBinding, mockMkdirSync, mockWriteFileSync, mockGetCurrentTelemetr
   }),
 );
 
-/** A stand-in for deck-core's shared CPU profile capture service (#1338). */
+/** A stand-in for @iracedeck/diagnostics' shared CPU profile capture service (#1338). */
 const captureFake = vi.hoisted(() => {
   type Status = { state: string; startedAt?: number; durationMs?: number; file?: string; reason?: string };
   const listeners = new Set<(status: Status) => void>();

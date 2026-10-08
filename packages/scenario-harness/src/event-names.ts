@@ -319,7 +319,7 @@ export const EVENT_TEMPLATES = [
     data: { position: 3 },
   },
 
-  // ── Replay record (issue #1203) — no callout; the deck-core replay store consumes these ──
+  // ── Replay record (issue #1203) — no callout; @iracedeck/replay-store consumes these ──
   {
     name: "replay.lapStarted",
     description: "A car crossed the line and started a lap at a live replay frame (issue #1203) — no callout",

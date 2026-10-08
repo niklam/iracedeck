@@ -5,6 +5,9 @@ paths:
   - "packages/deck-core/src/**"
   - "packages/settings/src/**"
   - "packages/voice-packs/src/voice-labels*"
+  - "packages/diagnostics/src/cpu-profile-capture*"
+  - "packages/settings-window/src/open-folder*"
+  - "packages/settings-window/src/settings-window-commands*"
   - "packages/iracing-plugin-*/**"
 ---
 

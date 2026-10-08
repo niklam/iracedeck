@@ -1,7 +1,7 @@
 /**
  * The replay lap record (issue #1203): every car's lap-start frame and lap
  * time, detected live and published as `replay.lapStarted` / `replay.lapTimed`
- * for the deck-core replay store, so Jump to Fastest Lap is a lookup.
+ * for @iracedeck/replay-store, so Jump to Fastest Lap is a lookup.
  * Design: docs/superpowers/specs/2026-09-24-issue-1203-fastest-lap-from-session-record.md.
  *
  * A per-car previous-tick baseline over `CarIdxLapCompleted` (the

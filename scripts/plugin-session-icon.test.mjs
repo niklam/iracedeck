@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 // Mirabox and Ulanzi builds copy the Elgato plugin's whole `imgs/plugin/` into
 // their own (gitignored) tree, so a logo change reaches all three from one file.
 //
-// Where each plugin points the session is deck-core's `pluginAudioSessionIdentity`,
+// Where each plugin points the session is plugin-runtime's `pluginAudioSessionIdentity`,
 // unit-tested beside it; this file checks the artifacts that path must find.
 
 // scripts/plugin-session-icon.test.mjs lives in scripts/, so the repo root is one up.

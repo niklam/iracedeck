@@ -2,6 +2,7 @@
 paths:
   - "packages/settings-window/**"
   - "packages/app-updates/**"
+  - "packages/diagnostics/src/cpu-profile-capture*"
   - "packages/settings/src/settings-*"
   - "packages/voice-packs/src/voice-pack-*"
   - "packages/app-constants/src/settings-window-*"

@@ -31,7 +31,7 @@
  * whose opt-in has to write its gate AND its startup policy together or it
  * silently reverts on the next start for every pre-#1007 install. That
  * invariant belongs in TypeScript beside the gate table it depends on
- * (`enableFeatureWrites` in deck-core), not in two independent controls here.
+ * (`enableFeatureWrites` in @iracedeck/settings-window), not in two independent controls here.
  */
 import { parseFocusIRacingMode } from "@iracedeck/app-constants";
 

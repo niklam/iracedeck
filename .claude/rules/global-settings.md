@@ -6,6 +6,8 @@ paths:
   - "packages/deck-core/src/**"
   - "packages/settings-window/src/**"
   - "packages/app-updates/src/**"
+  - "packages/diagnostics/src/**"
+  - "packages/replay-store/src/**"
   - "packages/voice-packs/src/**"
   - "packages/pi-components/src/**"
   - "packages/pi-components/partials/**"
