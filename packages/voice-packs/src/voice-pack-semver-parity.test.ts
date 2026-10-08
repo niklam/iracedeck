@@ -6,17 +6,17 @@ import { describe, expect, it } from "vitest";
  * The pin behind `isSemverVersion` (#1134).
  *
  * The manifest's version rule used to be `semver.valid(v) !== null` here in
- * deck-core. It moved into `@iracedeck/callout-script` so `lint:pack` could
- * share it, and that leaf stays zod-only, so the rule became a hand-written
+ * the voice-pack stack. It moved into `@iracedeck/callout-script` so
+ * `lint:pack` could share it, and that leaf stays zod-only, so the rule became a hand-written
  * predicate. It must accept EXACTLY what `semver.valid` accepts — no tighter,
  * or a pack that installs today would be refused; no looser, or the linter
  * would pass a manifest the scanner never did. This file is where that
- * equality is checked, against the real `semver` at the version deck-core
+ * equality is checked, against the real `semver` at the version this package
  * pins, over every input whose verdict is not obvious from the semver.org
  * grammar alone: the trim, the `v`, the length cap, the safe-integer ceiling.
  *
  * A `semver` bump that changes a verdict fails here and nowhere else, which
- * is the point: the leaf cannot see `semver`, so deck-core watches it.
+ * is the point: the leaf cannot see `semver`, so this package watches it.
  */
 
 /** The measured `semver.valid` behaviour the predicate reproduces beyond the semver.org grammar. */

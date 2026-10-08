@@ -9,7 +9,7 @@ paths:
   - "scripts/dev-voices*"
   - "packages/audio-assets/scripts/stage-dev-voices*"
   - "packages/deck-core/src/plugin-config.ts"
-  - "packages/deck-core/src/voice-pack-*"
+  - "packages/voice-packs/src/voice-pack-*"
   - "packages/deck-core/src/rasterizer-service.ts"
   - "packages/rasterizer/**"
   - "test-setup.ts"
@@ -253,5 +253,5 @@ Every verb validates the variable before it writes anything, then rebuilds the t
 - `scripts/lib/dev-local.mjs` — `resolveDevVoicePacksRoot()`, the one resolver of the two inputs; `readDevLocal()`, the strict reader for `dev.local.json`; `readDevVoicesEnv()`, the strict reader for `IRACEDECK_DEV_VOICES`. `scripts/dev-voice-root-guard.test.mjs` is the guard that keeps the mechanism build-time only.
 - `scripts/lib/dev-voices.mjs` — `runDevVoices()`, behind `pnpm dev:voices on|off|auto`.
 - `packages/audio-assets/scripts/stage-dev-voices.mjs` — the `stage:dev-voices` turbo task every plugin `#build` depends on; `pack-voice.mjs --stage-only` is what it runs per pack.
-- `packages/deck-core/src/voice-pack-scanner.ts` / `voice-pack-service.ts` / `voice-pack-launch.ts` — the `devRoot` scan order, the `development` provenance, and the ensure skip.
+- `packages/voice-packs/src/voice-pack-scanner.ts` / `voice-pack-service.ts` / `voice-pack-launch.ts` / `voice-pack-catalog-service.ts` — the `devRoot` scan order, the `development` provenance, the ensure skip, and the catalog card's `installed` verdict.
 - `@.claude/rules/race-engineer-callouts.md` §11 — the same loop stated where a callout change is verified.

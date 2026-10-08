@@ -5,8 +5,8 @@
  * before what it needs exists. Phases import from here, never from `index.ts`.
  */
 import type { AudioAssetsManifest } from "@iracedeck/audio-scenarios";
+import type { CalloutScript } from "@iracedeck/callout-script";
 import type {
-  CalloutScript,
   IDeckActionHandler,
   IDeckPlatformAdapter,
   LogLocation,
@@ -14,15 +14,13 @@ import type {
   SettingsWindowCommandDeps,
   SettingsWindowController,
   SettingsWindowOpenOptions,
-  VoicePackInstaller,
-  VoicePackLaunchStep,
-  VoicePackService,
 } from "@iracedeck/deck-core";
 import type { getController } from "@iracedeck/deck-iracing";
 import type { IEventBus } from "@iracedeck/event-bus";
 import type { IRacingNative } from "@iracedeck/iracing-native";
 import type { ILogger } from "@iracedeck/logger";
 import type { SettingsStore } from "@iracedeck/settings";
+import type { VoicePackInstaller, VoicePackLaunchStep, VoicePackService } from "@iracedeck/voice-packs";
 
 /** One `adapter.registerAction` call: the UUID, the logger scope it always used, and the handler factory. */
 export interface ActionRegistration {

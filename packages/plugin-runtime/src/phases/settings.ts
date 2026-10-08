@@ -22,14 +22,12 @@ import {
   openFolderInExplorer,
   parseSettingsWindowBounds,
   resolveReplayStoreDirectory,
-  resolveVoicePackCatalogUrl,
   runVersionCheck,
   SETTINGS_WINDOW_BOUNDS_KEY,
   type SettingsWindowOpenOptions,
   shouldOpenChangelog,
   spawnAppWindow,
   VERSION_CHECK_STARTUP_GRACE_MS,
-  VOICE_PACK_CATALOG_URL,
 } from "@iracedeck/deck-core";
 import { isIRacingActive, onIRacingTerminated } from "@iracedeck/deck-iracing";
 import {
@@ -49,6 +47,7 @@ import {
   runFirstRunCheck,
   updateGlobalSettings,
 } from "@iracedeck/settings";
+import { resolveVoicePackCatalogUrl, VOICE_PACK_CATALOG_URL } from "@iracedeck/voice-packs";
 import { join } from "node:path";
 
 import { isAudioPreviewKind, migrateLfeIntensityBindingKeys, runAudioPreview } from "../actions.js";

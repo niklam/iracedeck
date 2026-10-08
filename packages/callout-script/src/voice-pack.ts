@@ -5,7 +5,7 @@
  * reach, how large a script may be, that the folder is named for the id, that
  * a voice is declared once.
  *
- * Here rather than in `deck-core` for the reason the grammar is: the plugin's
+ * Here rather than in `voice-packs` for the reason the grammar is: the plugin's
  * scanner admits packs by these rules, `lint:pack` (`@iracedeck/audio-scenarios`)
  * tells an author whether the scanner will, and the packer
  * (`@iracedeck/audio-assets`) refuses to build what the scanner would refuse —
@@ -24,7 +24,7 @@ export const VOICE_PACK_MANIFEST_FILE = "voice-pack.json";
 
 /**
  * The manifest format's version — the value `schema` must hold, and the one
- * every writer of a `voice-pack.json` stamps (the packer, and deck-core's
+ * every writer of a `voice-pack.json` stamps (the packer, and voice-packs'
  * installer when it seeds a bundled pack), so a writer and the schema cannot
  * name two versions. A higher number is a pack written by a newer toolchain,
  * reported as such ({@link VOICE_PACK_NEWER_SCHEMA_REASON}); anything else at
@@ -66,9 +66,9 @@ const SEMVER_FULL = new RegExp(
  *
  * `semver` compiles its pattern with bounded quantifiers against regex DoS;
  * within 256 characters those bounds cannot bite, so the plain grammar below
- * is the same language. The equality is pinned by deck-core's
+ * is the same language. The equality is pinned by voice-packs'
  * `voice-pack-semver-parity.test.ts`, which runs both over the same inputs at
- * the version deck-core pins — this package cannot see `semver`, so that is
+ * the version voice-packs pins — this package cannot see `semver`, so that is
  * where a library bump that changed a verdict would show.
  */
 export function isSemverVersion(value: string): boolean {
@@ -372,7 +372,7 @@ export function dedupeDeclaredVoices<T extends { id: string }>(
  *   `blue-01.MP3` — what plenty of Windows tools emit — would otherwise install,
  *   list its voice and play nothing.
  *
- * deck-core's `VOICE_PACK_MAX_DEPTH` already reasons from this grammar for the
+ * voice-packs' `VOICE_PACK_MAX_DEPTH` already reasons from this grammar for the
  * depth CEILING. This is the same reasoning applied to the floor and to the
  * extension, so a pack that cannot work is refused with a reason instead of
  * being silently mute — by the scanner, by the linter, and by the packer before
@@ -383,7 +383,7 @@ export const USABLE_VOICE_CLIP = /^voice\/[^/]+\/[^/]+\/[^/]+\.mp3$/;
 /**
  * The most text a `callouts.json` may hold before it is refused unread
  * (#1064). The reference voice's script is under 200 KB and the largest JSON
- * anywhere in the audio pipeline is 480 KB (the numbers deck-core's
+ * anywhere in the audio pipeline is 480 KB (the numbers voice-packs'
  * `VOICE_PACK_ARCHIVE_LIMITS` was calibrated against), so a megabyte is
  * headroom for any pack an author would write and a bound on what a
  * sideloaded file can make the grammar validate — the pack folder is

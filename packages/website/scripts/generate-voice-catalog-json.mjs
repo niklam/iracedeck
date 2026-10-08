@@ -11,7 +11,7 @@
  * gitignored, like changelog.json.
  *
  * Run with tsx, not plain node: the builder validates every entry against
- * `VoicePackCatalogEntrySchema`, imported directly from the deck-core TS
+ * `VoicePackCatalogEntrySchema`, imported directly from the voice-packs TS
  * source (see voice-catalog-data.mjs for why that import needs tsx).
  *   pnpm --filter @iracedeck/website generate:voice-catalog-json
  */

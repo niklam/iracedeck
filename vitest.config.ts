@@ -65,6 +65,7 @@ export default defineConfig({
       "@iracedeck/settings": packageSrc("settings"),
       "@iracedeck/sim-events-iracing": packageSrc("sim-events-iracing"),
       "@iracedeck/track-data": packageSrc("track-data"),
+      "@iracedeck/voice-packs": packageSrc("voice-packs"),
     },
   },
   test: {

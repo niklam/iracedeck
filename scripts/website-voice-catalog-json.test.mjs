@@ -26,7 +26,7 @@ const output = path.join(websiteDir, "public", "voice-catalog.json");
 
 /**
  * The generator imports voice-pack-catalog.ts (for the validating schema)
- * straight from deck-core's TypeScript source, so it must run under `tsx` —
+ * straight from voice-packs' TypeScript source, so it must run under `tsx` —
  * plain `node` resolves that file's own syntax fine but not the `.js`-suffixed
  * relative imports it makes to siblings with no compiled .js on disk in this
  * checkout (see voice-catalog-data.mjs). `import.meta.resolve` finds tsx's CLI

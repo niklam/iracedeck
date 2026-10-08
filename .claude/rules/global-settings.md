@@ -4,6 +4,7 @@ paths:
   - "packages/callout-settings/src/**"
   - "packages/settings/src/**"
   - "packages/deck-core/src/**"
+  - "packages/voice-packs/src/**"
   - "packages/pi-components/src/**"
   - "packages/pi-components/partials/**"
   - "packages/iracing-actions/src/actions/settings-window/**"
@@ -185,7 +186,7 @@ Global settings, bindings included, use flat key names (`blackBoxLapTiming`), ne
 
 ## PI Warning Banners — `_warnings` + `setWarning`/`clearWarning`
 
-Banners at the top of every PI (#610) live in `_warnings`, a JSON array of `{ id, level, message }` (`level`: `"info" | "warning" | "error"`), keyed by `id` so producers coexist. Passthrough, run-scoped.
+Banners at the top of every PI (#610) live in `_warnings`, a JSON array of `{ id, level, message }` (`level`: `"info" | "warning" | "error"`), keyed by `id` so producers coexist. Passthrough, run-scoped. The record type is `PiWarning` (and `PiWarningLevel`) in `@iracedeck/app-constants`, beside `PI_WARNINGS_KEY` (#1366), so the writers, every evaluator and the `ird-warnings` reader name one type; `@iracedeck/settings` owns the writes, not the shape.
 
 ```typescript
 import { setWarning, clearWarning, reconcileWarnings } from "@iracedeck/settings";
@@ -202,7 +203,7 @@ Every producer is a **pure** evaluator (`PiWarning | null`, or a list) plus a th
 - **Elevation mismatch** (#610) — `createElevationCheckSubscriber` over `evaluateElevationWarning()` + injected `getElevationStatus()`, both in `@iracedeck/deck-iracing` (#1351).
 - **Settings window** (#1005) — `createSettingsWindowWarningReporter({ getStorePath })` over `evaluateSettingsWindowWarning()`, as the controller's `onStatus` hook (the controller reports what it tried, `SettingsWindowStatus`, since only it knows which stage failed). Two ids because **placement is keyed by id**: `settings-window-server` (`error`, page-wide strip) and `settings-window-open` (`warning`, beside the button). Exclusive conditions in the same place get one self-replacing id; split only for different homes, with the reporter clearing the sibling.
 - **Settings file rejected** (#1036) — `createSettingsFileRejectionReporter()` over `evaluateSettingsFileRejectionWarning(rejection)`, wired as `createFileSettingsStore`'s `onRejected`; id `settings-file-rejected`, `error`, page-wide. It fires while the store is still loading, so the write is an early write, which `becomeReady()` applies AFTER stripping run-scoped keys from the migrated raw — so it reaches the ready cache, the loopback channel and the once-per-start mirror. Set-only: a start whose file parses has nothing to clear. The one path it misses is a host that never answers the migration read (`fresh`, no mirror), a double failure. The message is raised before the host's answer, so it names both outcomes ("the copy your deck software keeps … or defaults if it had none") rather than guessing one.
-- **Missing callout script** (#1064) — `createVoiceScriptWarningReporter({ set: setWarning, clear: clearWarning })` over `evaluateVoiceScriptWarning({ activeVoice, scriptedVoices, labels })`, id `voice-script-missing`, while the active voice (`resolveActiveRaceEngineerVoice`) has no parsed script in `voicePackService.scripts()`. Names the voice by its `_voiceLabels` label, else the title-cased voice half of the id — never the raw composite. Re-evaluated after every scan and every settings change, straight after `migrateRaceEngineerVoiceId`.
+- **Missing callout script** (#1064) — `createVoiceScriptWarningReporter({ set: setWarning, clear: clearWarning })` over `evaluateVoiceScriptWarning({ activeVoice, scriptedVoices, labels })`, both in `@iracedeck/voice-packs` (#1366), which takes the two writers injected rather than importing `settings`, id `voice-script-missing`, while the active voice (`resolveActiveRaceEngineerVoice`) has no parsed script in `voicePackService.scripts()`. Names the voice by its `_voiceLabels` label, else the title-cased voice half of the id — never the raw composite. Re-evaluated after every scan and every settings change, straight after `migrateRaceEngineerVoiceId`.
 
 ### `_warnings` is run-scoped — never persisted (#1014)
 

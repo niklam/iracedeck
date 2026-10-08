@@ -43,13 +43,13 @@ import {
   calloutScriptPath,
   parseCalloutScriptText,
 } from "@iracedeck/callout-script";
+import type { ILogger } from "@iracedeck/logger";
 import {
   createVoicePackFileSystem,
   createVoicePackService,
   readVoiceScript,
   type VoicePackService,
-} from "@iracedeck/deck-core";
-import type { ILogger } from "@iracedeck/logger";
+} from "@iracedeck/voice-packs";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 

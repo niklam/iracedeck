@@ -30,7 +30,7 @@
  * Everything platform-shaped is injected, in the shape `voice-pack-service.ts`
  * established with `applyRoots` / `applyManifest` / `onPacksChanged`: stopping
  * playback, publishing status, refreshing the scan, the catalog, the clock.
- * `deck-core` must not import the audio service, the settings singleton or a
+ * `@iracedeck/voice-packs` must not import the audio service, the settings singleton or a
  * deck adapter, and a module with no way to reach them cannot be wrong about
  * how to use them. Every injected callback is wrapped: a throwing progress
  * setter must cost one status update, never the install it was describing.
@@ -49,7 +49,12 @@
  * banner read, and nothing else. `voice-pack-no-window.test.ts` enforces this
  * structurally over every module of the feature, this one included.
  */
-import type { VoicePackCatalogState, VoicePackInstallState, VoicePackStatus } from "@iracedeck/app-constants";
+import type {
+  PiWarningLevel,
+  VoicePackCatalogState,
+  VoicePackInstallState,
+  VoicePackStatus,
+} from "@iracedeck/app-constants";
 import {
   calloutScriptPath,
   packId,
@@ -60,7 +65,6 @@ import {
   type VoicePackManifest,
 } from "@iracedeck/callout-script";
 import type { ILogger } from "@iracedeck/logger";
-import type { PiWarningLevel } from "@iracedeck/settings";
 import { createHash, type Hash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { readFile } from "node:fs/promises";

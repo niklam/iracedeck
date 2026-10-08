@@ -38,6 +38,7 @@ Pure TypeScript library, no Rollup needed. Outputs ESM with declarations.
 ## Dependencies
 
 - `@iracedeck/deck-core` — the `SimConnection` interface and its singleton, `ConnectionStateAwareAction`, the focus hook, the replay store's types
-- `@iracedeck/settings` — the PI warning banner (`setWarning`, `clearWarning`, `PiWarning`) the elevation check raises
+- `@iracedeck/settings` — the PI warning banner (`setWarning`, `clearWarning`) the elevation check raises
+- `@iracedeck/app-constants` — `PiWarning`, the banner record `evaluateElevationWarning` returns (#1366)
 - `@iracedeck/iracing-sdk` — `createSDK`, `SDKController`, the telemetry and session types, `resolveAllActiveFlags`, `resolveTemplate`, `PitSvFlags`, `DisplayUnits`
 - `@iracedeck/logger` — For the `ILogger` interface

@@ -28,11 +28,11 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 // schemas the plugin parses with and lay clips out where its scanner walks, so
 // if either format moves these tests break with it. The manifest schema is the
 // leaf's (`@iracedeck/callout-script`, above — the scanner validates through
-// the same one since #1134); the catalog schema and the scanner are deck-core's,
+// the same one since #1134); the catalog schema and the scanner are voice-packs',
 // imported from its source.
-import { VoicePackCatalogEntrySchema } from "../../deck-core/src/voice-pack-catalog.ts";
-import { createVoicePackFileSystem } from "../../deck-core/src/voice-pack-fs.ts";
-import { scanVoicePacks } from "../../deck-core/src/voice-pack-scanner.ts";
+import { VoicePackCatalogEntrySchema } from "../../voice-packs/src/voice-pack-catalog.ts";
+import { createVoicePackFileSystem } from "../../voice-packs/src/voice-pack-fs.ts";
+import { scanVoicePacks } from "../../voice-packs/src/voice-pack-scanner.ts";
 import {
   archiveUrl,
   buildVoicePackManifest,

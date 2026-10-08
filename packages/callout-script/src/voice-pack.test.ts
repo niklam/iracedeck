@@ -34,9 +34,9 @@ const manifestWith = (overrides: Record<string, unknown>) =>
 
 describe("isSemverVersion", () => {
   // Every verdict below is `semver.valid(v) !== null` under semver 7.8.5,
-  // deck-core's pinned version — the predicate exists so the leaf can refuse
+  // voice-packs' pinned version — the predicate exists so the leaf can refuse
   // exactly what the scanner refused while depending on nothing but zod. The
-  // agreement itself is pinned by deck-core's `voice-pack-semver-parity.test.ts`,
+  // agreement itself is pinned by voice-packs' `voice-pack-semver-parity.test.ts`,
   // which runs both over these same inputs; this file records what the
   // verdicts ARE, so a change here is visible as a change.
   it.each([

@@ -51,7 +51,7 @@ export const VOICE_LABELS_KEY = "_voiceLabels";
  * The pack iRaceDeck keeps current unasked (#1034 stage 3) — a PACK id, and
  * the pack half of the default voice's composite id (#1144).
  *
- * Here rather than in deck-core's `voice-pack-launch.ts`, which owns the
+ * Here rather than in voice-packs' `voice-pack-launch.ts`, which owns the
  * ensure: `global-settings.ts` needs it to anchor the default voice and to
  * qualify a stored bare id, and importing the launch step from there would
  * close a cycle the plugins' Rollup builds fail on.

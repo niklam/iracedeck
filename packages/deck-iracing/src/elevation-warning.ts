@@ -8,7 +8,7 @@
  * The message intentionally carries NO leading emoji — the `ird-warnings`
  * banner renders a level icon (⚠️) itself, so adding one here would double it.
  */
-import type { PiWarning } from "@iracedeck/settings";
+import type { PiWarning } from "@iracedeck/app-constants";
 
 export const ELEVATION_WARNING_ID = "elevation-mismatch";
 

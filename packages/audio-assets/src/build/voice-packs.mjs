@@ -35,7 +35,7 @@
  * vocabulary name (var, condition, case) the pack's scripts use. An older
  * plugin's script compiler refuses an entry naming a var or condition it does
  * not know, so a pack offered to it would silence those callouts for good —
- * deck-core compares the value with semver and keeps such a pack listed but
+ * the plugin's voice-pack catalog compares the value with semver and keeps such a pack listed but
  * not offered, and the launch step leaves an installed managed pack where it
  * is. Raise it in the same change that makes a pack's script use a name a
  * released plugin lacks; both packs are at 3.5.0 because their start briefs

@@ -24,6 +24,18 @@ import {
   scanRaceEngineerVoices,
 } from "@iracedeck/audio-scenarios";
 import { getAudio } from "@iracedeck/audio-service";
+import { getDevVoicePacksRoot, getPluginVersion, openDirectoryInExplorer } from "@iracedeck/deck-core";
+import {
+  clearWarning,
+  getGlobalSettings,
+  isGlobalSettingsInitialized,
+  migrateRaceEngineerVoiceId,
+  onGlobalSettingsChange,
+  resolveActiveRaceEngineerVoice,
+  setWarning,
+  updateGlobalSettings,
+  whenSettingsStoreSettled,
+} from "@iracedeck/settings";
 import {
   type BundledVoicePack,
   createVoicePackArchiveFileSystem,
@@ -36,27 +48,13 @@ import {
   createVoicePackStorage,
   createVoicePackStorageFileSystem,
   createVoiceScriptWarningReporter,
-  getDevVoicePacksRoot,
-  getPluginVersion,
   isManagedVoicePack,
-  openDirectoryInExplorer,
   orderRaceEngineerVoices,
   readInstalledVoicePackSha,
   resolveVoicePacksPath,
   voiceDisplayLabels,
   VoicePackCatalogEntrySchema,
-} from "@iracedeck/deck-core";
-import {
-  clearWarning,
-  getGlobalSettings,
-  isGlobalSettingsInitialized,
-  migrateRaceEngineerVoiceId,
-  onGlobalSettingsChange,
-  resolveActiveRaceEngineerVoice,
-  setWarning,
-  updateGlobalSettings,
-  whenSettingsStoreSettled,
-} from "@iracedeck/settings";
+} from "@iracedeck/voice-packs";
 
 import { stopRaceEngineerPlayback } from "../actions.js";
 import type { Audio, Core, VoicePacks, VoicePackState } from "../types.js";
@@ -146,7 +144,7 @@ export function initVoicePacks(core: Core, audio: Audio): VoicePacks {
 
   /**
    * Composite voice id -> what the dropdown should call it (#1144). The rule
-   * lives in deck-core (`voiceDisplayLabels`) so all three plugins share one
+   * lives in voice-packs (`voiceDisplayLabels`) so all three plugins share one
    * implementation and it is tested once. Only voices a pack provides appear;
    * any other voice has no manifest to name it, and the dropdown falls back to
    * its title-cased voice id.
@@ -278,7 +276,7 @@ export function initVoicePacks(core: Core, audio: Audio): VoicePacks {
 
   // Downloadable voice packs (#1100). The pipeline itself — decide, lock,
   // download while hashing, verify, extract, validate, stop playback, swap,
-  // refresh — lives in deck-core (`createVoicePackInstaller`); this is its
+  // refresh — lives in voice-packs (`createVoicePackInstaller`); this is its
   // composition root, and everything platform-shaped is injected here in the
   // shape `service` above established. Every disk port is rooted at the SAME
   // `voicePacksRoot` the scanner reads and the settings window reveals.

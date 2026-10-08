@@ -10,8 +10,8 @@
 // this test is the claim itself, stated over packs rather than over rules, so
 // it holds whichever file a future rule lands in.
 //
-// Both are imported from SOURCE by path, the way `website-device-list.test.mjs`
-// reaches deck-core: the scanner module, not deck-core's barrel (which would
+// Both are imported from SOURCE by path (as `website-device-list.test.mjs`
+// does for deck-core): the scanner module, not the voice-packs barrel (which would
 // pull in far more than a scan), and `lint-pack.ts`, not the audio-scenarios
 // barrel. One in-memory filesystem serves both — the two ports are the same
 // three operations.
@@ -38,7 +38,7 @@ import { VOICE_SCRIPT_MAX_BYTES } from "@iracedeck/callout-script";
 import { describe, expect, it } from "vitest";
 
 import { lintPack } from "../../packages/audio-scenarios/src/reference/lint-pack.ts";
-import { scanVoicePacks } from "../../packages/deck-core/src/voice-pack-scanner.ts";
+import { scanVoicePacks } from "../../packages/voice-packs/src/voice-pack-scanner.ts";
 
 const ROOT = "/packs";
 const FOLDER = "demo";

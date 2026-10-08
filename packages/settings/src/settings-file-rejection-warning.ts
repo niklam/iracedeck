@@ -19,9 +19,9 @@
  * "deck software" rather than naming a host, because this package serves all
  * three plugins.
  */
+import type { PiWarning } from "@iracedeck/app-constants";
 import { basename } from "node:path";
 
-import type { PiWarning } from "./pi-warnings.js";
 import type { SettingsFileRejection } from "./settings-store.js";
 
 /** Page-wide: the settings file was rejected this start. Rendered in the PI's top strip. */

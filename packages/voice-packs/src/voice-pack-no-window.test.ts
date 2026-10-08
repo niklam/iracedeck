@@ -31,17 +31,17 @@ import { describe, expect, it } from "vitest";
  * line to add to the allow-list below.
  */
 
-const SRC_DIR = join(process.cwd(), "packages/deck-core/src");
+const SRC_DIR = join(process.cwd(), "packages/voice-packs/src");
 
 /**
- * The feature's modules that live OUTSIDE deck-core, enrolled by path.
+ * The feature's modules that live OUTSIDE this package, enrolled by path.
  *
  * Since #1134 the rules a pack is admitted by — the manifest schema and its
  * reader, the usable-clip grammar, the script size cap, the id-vs-folder rule
  * and the voice de-duplication — live in `@iracedeck/callout-script`'s
  * `voice-pack.ts`, and the scanner runs them on every scan, install and
  * rescan. A window opened on one of their failure branches would be opened by
- * this feature, so they are held to the same rule; the `voice*` glob below
+ * this feature, so they are held to the same rule; the package glob below
  * cannot reach another package's directory, which is why they are named.
  */
 const SHARED_MODULES: readonly string[] = [
@@ -67,26 +67,20 @@ const FORBIDDEN: readonly { pattern: RegExp; what: string }[] = [
 ];
 
 /**
- * Every module of this feature, found by name.
+ * Every module of this feature: every non-test source file of this package.
  *
- * Widened from `voice-pack*` to `voice*` in stage 2. The narrower prefix was a
- * hole rather than a smaller net: a catalog client named `voice-catalog-client.ts`
- * — which is what the spec calls that document, so it is the obvious name to
- * reach for — would have sat outside the glob and been checked by nothing,
- * while every assertion here went on passing. The guard would have reported
- * success about a file it had never read.
- *
- * The rule the widening buys, and the one a new module owes: **a module of this
- * feature must be named `voice-*`.** That is the whole enrolment mechanism. A
- * file named outside it is invisible here, and no assertion below can notice.
+ * While the feature shared deck-core's directory it was enrolled by a name
+ * prefix (`voice-pack*`, widened to `voice*` in stage 2 because a
+ * `voice-catalog-client.ts` would have slipped the narrower one), so a module
+ * named outside the prefix was invisible here. Since #1366 the package IS the
+ * feature, so nothing has to be named anything: a new file is guarded the
+ * moment it exists, the barrel included.
  */
 function voicePackModules(): string[] {
-  return readdirSync(SRC_DIR)
-    .filter((name) => name.startsWith("voice"))
-    .filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts"));
+  return readdirSync(SRC_DIR).filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts"));
 }
 
-/** Every file the assertions read: deck-core's `voice*` modules by name, then the shared ones by path. */
+/** Every file the assertions read: this package's modules, then the shared ones by path. */
 function guardedFiles(): { name: string; file: string }[] {
   return [
     ...voicePackModules().map((name) => ({ name, file: join(SRC_DIR, name) })),
@@ -104,6 +98,7 @@ describe("voice-pack modules open no window (#1034)", () => {
     expect(modules).toContain("voice-pack-service.ts");
     expect(modules).toContain("voice-pack-scanner.ts");
     expect(modules).toContain("voice-packs-path.ts");
+    expect(modules).toContain("index.ts");
     // Named because they are the stage-2 modules that can FAIL — the ones with
     // a remote server, a disk full, and a hostile archive on the other side,
     // and therefore the ones a failure branch would most plausibly want to put

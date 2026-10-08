@@ -18,8 +18,8 @@
  * The message intentionally carries NO leading emoji — the `ird-warnings`
  * banner renders a level icon itself, so adding one here would double it.
  */
+import type { PiWarning } from "@iracedeck/app-constants";
 import { splitVoiceId } from "@iracedeck/callout-script";
-import type { PiWarning } from "@iracedeck/settings";
 
 export const VOICE_SCRIPT_WARNING_ID = "voice-script-missing";
 
@@ -68,7 +68,7 @@ export function evaluateVoiceScriptWarning(input: VoiceScriptWarningInput): PiWa
  * points at does not display it either. The fallback is the DROPDOWN's
  * fallback, `ird-voice-select`'s `titleCase` (first character upper-cased,
  * nothing else), copied rather than imported because the PI bundle and
- * deck-core cannot share a module — so the banner and the option it sends the
+ * voice-packs cannot share a module — so the banner and the option it sends the
  * user to read the same.
  */
 function displayName(voice: string, labels: Readonly<Record<string, string>> | undefined): string {
