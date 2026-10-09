@@ -1,3 +1,6 @@
+/** The only manifest `Version` form the Ulanzi marketplace accepts (#1298). */
+export const ULANZI_MANIFEST_VERSION = /^\d+\.\d+\.\d+$/;
+
 /**
  * The manifest `Version` the release stamps into each plugin folder, chosen by
  * the folder's suffix because the two ecosystems demand opposite formats
@@ -11,7 +14,9 @@
  *   between runs, which advances the count.
  * - `*.ulanziPlugin` (Ulanzi): the Ulanzi marketplace refuses any `Version` not
  *   matching `^\d+\.\d+\.\d+$`, so it gets the plain `x.y.z`. The UlanziStudio
- *   host loads a 4-part version too, so nothing fails before publish time. A
+ *   host loads a 4-part version too, so nothing fails before publish time.
+ *   `@elgato/cli pack` pads it back to four parts inside the archive, which
+ *   `scripts/stamp-ulanzi-package-version.mjs` undoes after packing. A
  *   pre-release and its final therefore share one Ulanzi version — harmless as
  *   long as pre-releases are not published to the Ulanzi store.
  *

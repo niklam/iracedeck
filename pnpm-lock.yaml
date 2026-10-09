@@ -165,6 +165,10 @@ settings:
 importers:
 
   .:
+    dependencies:
+      fflate:
+        specifier: 0.8.3
+        version: 0.8.3
     devDependencies:
       '@elgato/eslint-config':
         specifier: 0.3.2

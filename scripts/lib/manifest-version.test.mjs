@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { manifestVersionFor } from "./manifest-version.mjs";
+import { manifestVersionFor, ULANZI_MANIFEST_VERSION } from "./manifest-version.mjs";
 import { PLUGIN_FOLDER_SUFFIXES } from "./version-discovery.mjs";
 
 const ELGATO = "packages/iracing-plugin-stream-deck/com.iracedeck.sd.core.sdPlugin/manifest.json";
@@ -9,8 +9,6 @@ const ULANZI = "packages/iracing-plugin-ulanzi/com.ulanzi.iracedeck.ulanziPlugin
 
 // Elgato's manifest schema.
 const FOUR_PART = /^(0|[1-9]\d*)(\.(0|[1-9]\d*)){3}$/;
-// The Ulanzi marketplace's upload check.
-const THREE_PART = /^\d+\.\d+\.\d+$/;
 
 describe("manifestVersionFor", () => {
   it.each([ELGATO, MIRABOX])("stamps %s with x.y.z.<build>", (rel) => {
@@ -25,7 +23,7 @@ describe("manifestVersionFor", () => {
 
   it("stamps the Ulanzi manifest with plain x.y.z the marketplace accepts", () => {
     expect(manifestVersionFor(ULANZI, "3.6.0", "2409")).toBe("3.6.0");
-    expect(manifestVersionFor(ULANZI, "3.6.0", "2409")).toMatch(THREE_PART);
+    expect(manifestVersionFor(ULANZI, "3.6.0", "2409")).toMatch(ULANZI_MANIFEST_VERSION);
   });
 
   it("gives an Ulanzi pre-release the same version as its final", () => {
