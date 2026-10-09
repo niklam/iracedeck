@@ -27,6 +27,8 @@ import stopIconSvg from "@iracedeck/icons/replay-transport/stop.svg";
 import { getGlobalColors } from "@iracedeck/settings";
 import z from "zod";
 
+import { cancelReplayCursorOwner } from "../../shared/replay-cursor.js";
+
 type TransportAction =
   "play" | "pause" | "stop" | "fast-forward" | "rewind" | "slow-motion" | "frame-forward" | "frame-backward";
 
@@ -144,6 +146,11 @@ export class ReplayTransport extends ConnectionStateAwareAction<ReplayTransportS
 
   private executeTransport(transport: TransportAction): void {
     const replay = getCommands().replay;
+
+    // A pause or a frame step mid-walk breaks a running Jump to Fastest Lap
+    // walk's probes as surely as a seek, so every transport command takes the
+    // cursor first, as Replay Control's transport modes do (#1334).
+    cancelReplayCursorOwner(`replay-transport-${transport}`);
 
     switch (transport) {
       case "play": {

@@ -21,6 +21,8 @@ import increaseIconSvg from "@iracedeck/icons/replay-speed/increase.svg";
 import { getGlobalColors } from "@iracedeck/settings";
 import z from "zod";
 
+import { cancelReplayCursorOwner } from "../../shared/replay-cursor.js";
+
 type SpeedDirection = "increase" | "decrease";
 
 const DIRECTION_ICONS: Record<SpeedDirection, string> = {
@@ -95,6 +97,7 @@ export class ReplaySpeed extends ConnectionStateAwareAction<ReplaySpeedSettings>
   override async onDialDown(_ev: IDeckDialDownEvent<ReplaySpeedSettings>): Promise<void> {
     this.logger.info("Dial down received");
     const replay = getCommands().replay;
+    cancelReplayCursorOwner("replay-speed-reset");
     const success = replay.play();
     this.logger.info("Speed reset to normal");
     this.logger.debug(`Result: ${success}`);
@@ -114,6 +117,11 @@ export class ReplaySpeed extends ConnectionStateAwareAction<ReplaySpeedSettings>
 
   private executeSpeed(direction: SpeedDirection): void {
     const replay = getCommands().replay;
+
+    // A speed change breaks a running Jump to Fastest Lap walk's probes as
+    // surely as a seek, so it takes the cursor first, as Replay Control's
+    // speed modes do (#1334).
+    cancelReplayCursorOwner(`replay-speed-${direction}`);
 
     if (direction === "increase") {
       const success = replay.fastForward();

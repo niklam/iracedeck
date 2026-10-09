@@ -29,7 +29,7 @@ import setPlayPositionIcon from "@iracedeck/icons/replay-navigation/set-play-pos
 import { getGlobalColors } from "@iracedeck/settings";
 import z from "zod";
 
-import { noteReplayGoToEnd } from "../../shared/replay-cursor.js";
+import { cancelReplayCursorOwner, noteReplayGoToEnd } from "../../shared/replay-cursor.js";
 import { isReplayOnlySession } from "../../shared/replay-session.js";
 
 /** ReplayPosMode.Begin — position from beginning of replay */
@@ -193,6 +193,11 @@ export class ReplayNavigation extends SimIRacingAction<ReplayNavigationSettings>
 
   private executeNavigation(settings: ReplayNavigationSettings): void {
     const replay = getCommands().replay;
+
+    // Every navigation command moves the replay, so it takes the cursor first:
+    // a running Jump to Fastest Lap walk stops and the Replay Markers landing
+    // is cleared, as for Replay Control (#1334).
+    cancelReplayCursorOwner(`replay-navigation-${settings.navigation}`);
 
     switch (settings.navigation) {
       case "next-session": {

@@ -1,6 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { _resetReplayCursor, lastReplaySighting, recordReplaySighting } from "../../shared/replay-cursor.js";
+import {
+  _resetReplayCursor,
+  claimReplayCursor,
+  currentReplayCursorOwner,
+  lastReplaySighting,
+  pendingReplayLanding,
+  recordReplayLanding,
+  recordReplaySighting,
+} from "../../shared/replay-cursor.js";
 import { generateReplayNavigationSvg, ReplayNavigation } from "./replay-navigation.js";
 
 vi.mock("@iracedeck/icons/replay-navigation/next-session.svg", () => ({
@@ -281,6 +289,90 @@ describe("ReplayNavigation", () => {
 
       expect(mockReplay.goToEnd).toHaveBeenCalledOnce();
       expect(lastReplaySighting()).toEqual({ frame: 4_000, seenAt: 10_000 });
+    });
+  });
+
+  describe("every command takes the replay cursor first (#1334)", () => {
+    const sent: string[] = [];
+    const command = (name: string) =>
+      vi.fn(() => {
+        sent.push(name);
+
+        return true;
+      });
+    const mockReplay = {
+      nextSession: command("nextSession"),
+      prevSession: command("prevSession"),
+      nextLap: command("nextLap"),
+      prevLap: command("prevLap"),
+      nextIncident: command("nextIncident"),
+      prevIncident: command("prevIncident"),
+      goToStart: command("goToStart"),
+      goToEnd: command("goToEnd"),
+      setPlayPosition: command("setPlayPosition"),
+      searchSessionTime: command("searchSessionTime"),
+      eraseTape: command("eraseTape"),
+    };
+    let action: ReplayNavigation;
+    let cancelledBy: string | null;
+    let sentAtCancel: number | null;
+
+    function fakeEvent(settings: Record<string, unknown>, ticks = 0) {
+      return { action: { id: "ctx-cursor", setTitle: vi.fn(), setImage: vi.fn() }, payload: { settings, ticks } };
+    }
+
+    beforeEach(async () => {
+      _resetReplayCursor();
+      sent.length = 0;
+      cancelledBy = null;
+      sentAtCancel = null;
+      const { getCommands } = await import("@iracedeck/deck-iracing");
+      vi.mocked(getCommands).mockReturnValue({ replay: mockReplay } as any);
+      action = new ReplayNavigation();
+      // A Jump to Fastest Lap walk in flight, and a marker landing still pending.
+      claimReplayCursor("jump-to-fastest-lap", (by) => {
+        cancelledBy = by;
+        sentAtCancel = sent.length;
+      });
+      recordReplayLanding(4_000, 10_000);
+    });
+
+    function expectCursorTakenBefore(owner: string, sentCommand: string): void {
+      expect(cancelledBy).toBe(owner);
+      expect(sentAtCancel).toBe(0);
+      expect(sent).toEqual([sentCommand]);
+      expect(currentReplayCursorOwner()).toBeNull();
+      expect(pendingReplayLanding()).toBeNull();
+    }
+
+    it.each([
+      ["next-session", "nextSession"],
+      ["prev-session", "prevSession"],
+      ["next-lap", "nextLap"],
+      ["prev-lap", "prevLap"],
+      ["next-incident", "nextIncident"],
+      ["prev-incident", "prevIncident"],
+      ["jump-to-start", "goToStart"],
+      ["jump-to-end", "goToEnd"],
+      ["set-play-position", "setPlayPosition"],
+      ["search-session-time", "searchSessionTime"],
+      ["erase-tape", "eraseTape"],
+    ])("%s stops the walk and clears the landing before sending %s", async (mode, sentCommand) => {
+      await action.onKeyDown(fakeEvent({ navigation: mode }) as any);
+
+      expectCursorTakenBefore(`replay-navigation-${mode}`, sentCommand);
+    });
+
+    it("a dial press takes the cursor as its mode", async () => {
+      await action.onDialDown(fakeEvent({ navigation: "next-lap" }) as any);
+
+      expectCursorTakenBefore("replay-navigation-next-lap", "nextLap");
+    });
+
+    it("a dial turn takes the cursor as the direction it resolved to", async () => {
+      await action.onDialRotate(fakeEvent({ navigation: "next-lap" }, -1) as any);
+
+      expectCursorTakenBefore("replay-navigation-prev-lap", "prevLap");
     });
   });
 });
