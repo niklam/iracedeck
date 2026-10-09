@@ -823,6 +823,16 @@ export class SessionInfo extends SimIRacingAction<SessionInfoSettings> {
    */
   private readonly iconThrottle = new IconUpdateThrottle();
 
+  /** The newest tick's telemetry per context, which the throttled refresh reads. */
+  private latestTelemetry = new Map<string, TelemetryData | null>();
+
+  /**
+   * Contexts whose telemetry update has thrown. A failure that repeats on every
+   * tick is logged once rather than up to 60 times a second; the set is cleared
+   * when the key's settings change or it disappears.
+   */
+  private failedContexts = new Set<string>();
+
   override async onWillAppear(ev: IDeckWillAppearEvent<SessionInfoSettings>): Promise<void> {
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
@@ -830,19 +840,30 @@ export class SessionInfo extends SimIRacingAction<SessionInfoSettings> {
     await this.updateDisplay(ev, settings);
 
     const contextId = ev.action.id;
+    // One render per key, made once: a tick only records its telemetry, so it
+    // allocates no closure of its own.
+    const refresh = () => this.refreshFromTelemetry(contextId);
 
     this.sdkController.subscribe(contextId, (telemetry) => {
       const storedSettings = this.activeContexts.get(contextId);
 
       if (!storedSettings) return;
 
+      this.latestTelemetry.set(contextId, telemetry);
+
       // Edge detection stays per tick (#1345): it is a counter compare and a
-      // bit test, and a flag up for less than one throttle window would be
-      // missed at 10 Hz. Everything else — the value, the state key, the SVG —
-      // is the refresh's, which runs at most on each window's leading and
-      // trailing edge and reads the newest tick's telemetry.
-      this.detectTelemetryEdges(contextId, telemetry, storedSettings);
-      this.iconThrottle.schedule(contextId, () => this.refreshFromTelemetry(contextId, telemetry));
+      // bit test, and at 10 Hz a flag up for less than one throttle window
+      // would never start its flash. Everything else — the value, the state
+      // key, the SVG — is the refresh's.
+      try {
+        this.detectTelemetryEdges(contextId, telemetry, storedSettings);
+      } catch (err) {
+        // A throw here would escape into the SDK's subscriber loop and cost
+        // every key after this one its tick.
+        this.reportTelemetryError(contextId, "flash", err);
+      }
+
+      this.iconThrottle.schedule(contextId, refresh);
     });
   }
 
@@ -859,6 +880,8 @@ export class SessionInfo extends SimIRacingAction<SessionInfoSettings> {
     this.lastIncidentCount.delete(ev.action.id);
     this.flashStates.delete(ev.action.id);
     this.lastFlagKey.delete(ev.action.id);
+    this.latestTelemetry.delete(ev.action.id);
+    this.failedContexts.delete(ev.action.id);
   }
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<SessionInfoSettings>): Promise<void> {
@@ -870,6 +893,7 @@ export class SessionInfo extends SimIRacingAction<SessionInfoSettings> {
     this.lastIncidentCount.delete(ev.action.id);
     this.lastFlagKey.delete(ev.action.id);
     this.lastState.delete(ev.action.id);
+    this.failedContexts.delete(ev.action.id);
     await this.updateDisplay(ev, settings);
   }
 
@@ -1373,15 +1397,17 @@ export class SessionInfo extends SimIRacingAction<SessionInfoSettings> {
    * tick rate, and resolving the value on every tick — in iRating mode the live
    * order, the qualifying grid and the estimate — was a third of the plugin's
    * allocation in a 40-car race (#1345). The throttle runs this at most on each
-   * 10 Hz window's leading and trailing edge, with the newest tick's telemetry;
-   * the leading edge fires immediately, so a one-off change is never delayed.
+   * 10 Hz window's leading and trailing edge, with the newest tick's telemetry.
+   * While ticks keep arriving the throttle never leaves its window, so in
+   * practice this runs on every trailing edge and a change shows within 100 ms.
    *
    * Re-reads the key's settings, so a trailing flush uses the latest ones and a
    * key that has since disappeared renders nothing. Resolves the value once and
    * renders an SVG only when the state key changed, so no rendered image is
-   * thrown away.
+   * thrown away. The throttle swallows a render's errors, so they are logged
+   * here.
    */
-  private async refreshFromTelemetry(contextId: string, telemetry: TelemetryData | null): Promise<void> {
+  private async refreshFromTelemetry(contextId: string): Promise<void> {
     const settings = this.activeContexts.get(contextId);
 
     if (!settings) return;
@@ -1393,6 +1419,31 @@ export class SessionInfo extends SimIRacingAction<SessionInfoSettings> {
       return;
     }
 
+    try {
+      await this.renderFromTelemetry(contextId, settings, this.latestTelemetry.get(contextId) ?? null);
+    } catch (err) {
+      this.reportTelemetryError(contextId, "refresh", err);
+    }
+  }
+
+  /**
+   * Logs a telemetry update that threw, once per key until its settings change
+   * or it disappears: the same failure would otherwise repeat on every tick.
+   */
+  private reportTelemetryError(contextId: string, phase: "flash" | "refresh", err: unknown): void {
+    if (this.failedContexts.has(contextId)) return;
+
+    this.failedContexts.add(contextId);
+    this.logger.error(
+      `Telemetry ${phase} failed; further failures on this key are not logged until its settings change: ${err instanceof Error ? err.message : err}`,
+    );
+  }
+
+  private async renderFromTelemetry(
+    contextId: string,
+    settings: SessionInfoSettings,
+    telemetry: TelemetryData | null,
+  ): Promise<void> {
     const wind = this.resolveWind(settings, telemetry);
     const sessionLimit = this.resolveSessionLimit(settings, telemetry);
     const value = this.extractDisplayValue(settings, telemetry, wind, sessionLimit);

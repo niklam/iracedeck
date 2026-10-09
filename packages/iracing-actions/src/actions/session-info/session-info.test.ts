@@ -3066,14 +3066,16 @@ describe("telemetry ticks resolve inside the throttle (issue #1345)", () => {
     expect(pushes()).toHaveLength(1);
   });
 
-  it("a flag up for a single tick between two refreshes still starts its flash", async () => {
+  it("a flag up for a single tick between two refreshes still shows its flag colour", async () => {
     const tick = await appear("flags", { SessionFlags: 0 });
 
     tick({ SessionFlags: YELLOW } as TelemetryData, true);
-    tick({ SessionFlags: YELLOW } as TelemetryData, true);
+    tick({ SessionFlags: 0 } as TelemetryData, true);
 
-    expect(action["flashTimers"].has("ctx")).toBe(true);
+    // The flash started on the yellow tick and pushed its first frame there,
+    // before any refresh ran; the next tick's flag change ended it.
     expect(decodeURIComponent(pushes()[0][1] as string)).toContain("#f1c40f");
+    expect(action["flashTimers"].has("ctx")).toBe(false);
   });
 
   it("a refresh landing during a flag flash leaves the flash's frame alone", async () => {
@@ -3095,5 +3097,61 @@ describe("telemetry ticks resolve inside the throttle (issue #1345)", () => {
     await flush();
 
     expect(pushes()).toHaveLength(0);
+  });
+
+  it("with the real throttle, a burst of ticks resolves only on the window's leading and trailing edge", async () => {
+    const { IconUpdateThrottle: RealThrottle } =
+      await vi.importActual<typeof import("@iracedeck/deck-core")>("@iracedeck/deck-core");
+    Object.defineProperty(action, "iconThrottle", { value: new RealThrottle() });
+    vi.mocked(getLiveRacePositions).mockReturnValue([2, 1, 3]);
+    action["sdkController"].getSessionInfo = vi.fn().mockReturnValue(IRATING_SESSION_INFO);
+    const tick = await appear("irating");
+    vi.mocked(getLiveRacePositions).mockClear();
+
+    const telemetry = { SessionNum: 0, CarIdxClass: [100, 100, 100] } as TelemetryData;
+
+    // Six ticks 16 ms apart, all inside one 100 ms window.
+    for (let i = 0; i < 6; i++) {
+      tick(telemetry, true);
+      vi.advanceTimersByTime(16);
+    }
+
+    expect(getLiveRacePositions).toHaveBeenCalledTimes(1);
+
+    vi.advanceTimersByTime(100);
+
+    expect(getLiveRacePositions).toHaveBeenCalledTimes(2);
+  });
+
+  it("a refresh that throws is logged once, not on every refresh", async () => {
+    action["sdkController"].getSessionInfo = vi.fn().mockReturnValue(IRATING_SESSION_INFO);
+    const tick = await appear("irating");
+    vi.mocked(getLiveRacePositions).mockImplementation(() => {
+      throw new Error("order unavailable");
+    });
+
+    const telemetry = { SessionNum: 0, CarIdxClass: [100, 100, 100] } as TelemetryData;
+
+    tick(telemetry, true);
+    await flush();
+    tick(telemetry, true);
+    await flush();
+
+    expect(action["logger"].error).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(action["logger"].error).mock.calls[0][0]).toContain("order unavailable");
+    vi.mocked(getLiveRacePositions).mockReset();
+  });
+
+  it("a flash that throws stays inside the tick and is logged once", async () => {
+    const tick = await appear("incidents", { PlayerCarMyIncidentCount: 0 });
+    action["startFlash"] = vi.fn(() => {
+      throw new Error("flash failed");
+    });
+
+    expect(() => tick({ PlayerCarMyIncidentCount: 1 } as TelemetryData, true)).not.toThrow();
+    expect(() => tick({ PlayerCarMyIncidentCount: 2 } as TelemetryData, true)).not.toThrow();
+
+    expect(action["logger"].error).toHaveBeenCalledTimes(1);
+    expect(action["iconThrottle"].schedule).toHaveBeenCalledTimes(2);
   });
 });
