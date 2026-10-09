@@ -355,10 +355,10 @@ export class SDKController {
    * at once, so the grace is dropped rather than holding the old replay frame
    * for a second (#1230). In a saved replay it is only a seek and nothing
    * changes. Call it only for a command that was actually sent. Returns
-   * whether the grace was dropped.
+   * whether the grace was dropped. `nowMs` is injectable for tests.
    */
-  noteReplayLeftForLive(): boolean {
-    const next = replayLeftForLive(this.replayState);
+  noteReplayLeftForLive(nowMs: number = Date.now()): boolean {
+    const next = replayLeftForLive(this.replayState, nowMs);
     const dropped = next !== this.replayState;
 
     this.replayState = next;

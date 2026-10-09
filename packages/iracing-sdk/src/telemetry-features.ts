@@ -224,12 +224,14 @@ export interface ReplayState {
   /** The frame that tick showed — the one held through the grace. */
   readonly replaySeenFrame: number | null;
   /**
-   * Set by {@link replayLeftForLive} until the first tick that has left the
-   * replay. iRacing applies `goToEnd` a tick or two later, so the ticks in
-   * between still read as a replay; recording them would revive the grace the
-   * exit just dropped.
+   * When {@link replayLeftForLive} was applied, until the first tick that has
+   * left the replay. iRacing applies `goToEnd` a tick or two later, so the
+   * ticks in between still read as a replay; recording them would revive the
+   * grace the exit just dropped. It lapses after {@link REPLAY_EXIT_GRACE_MS}
+   * all the same, so a `goToEnd` iRacing ignored cannot leave replay ticks
+   * unrecorded, and the next seek's blip without a grace.
    */
-  readonly liveExitPending: boolean;
+  readonly liveExitAt: number | null;
 }
 
 /** The state before any tick: live, no frame, nothing sighted. */
@@ -242,7 +244,7 @@ export function initialReplayState(): ReplayState {
     tickFrame: null,
     replaySeenAt: null,
     replaySeenFrame: null,
-    liveExitPending: false,
+    liveExitAt: null,
   };
 }
 
@@ -293,9 +295,11 @@ export function nextReplayState(
   const tickFrame = finiteFrame(
     tickReplayPlaying || replayOnlySession ? telemetry.ReplayFrameNum : telemetry.ReplayFrameNumEnd,
   );
-  let { replaySeenAt, replaySeenFrame, liveExitPending } = prev;
+  let { replaySeenAt, replaySeenFrame } = prev;
+  const liveExitAt =
+    prev.liveExitAt !== null && nowMs - prev.liveExitAt < REPLAY_EXIT_GRACE_MS ? prev.liveExitAt : null;
 
-  if (tickReplayPlaying && !liveExitPending) {
+  if (tickReplayPlaying && liveExitAt === null) {
     replaySeenAt = nowMs;
     replaySeenFrame = tickFrame;
   }
@@ -307,13 +311,13 @@ export function nextReplayState(
     tickFrame,
     replaySeenAt,
     replaySeenFrame,
-    liveExitPending,
+    liveExitAt,
   };
 
   if (!tickReplayPlaying && !withinReplayGrace(stepped, nowMs) && !replayOnlySession) {
     // Left for the car: the grace has run out (or a live exit dropped it), so
     // the sighting goes, and any pending live exit has now happened.
-    return replayStateAt({ ...stepped, replaySeenAt: null, replaySeenFrame: null, liveExitPending: false }, nowMs);
+    return replayStateAt({ ...stepped, replaySeenAt: null, replaySeenFrame: null, liveExitAt: null }, nowMs);
   }
 
   return replayStateAt(stepped, nowMs);
@@ -328,9 +332,10 @@ export function nextReplayState(
  * first tick that has left the replay, replay ticks are not recorded: they
  * are the ticks before iRacing applies the command. In a saved replay the same
  * command only seeks to the end of the file and the replay stays open, so the
- * state is returned as is. Call it only for a command that was actually sent.
+ * state is returned as is. Call it only for a command that was actually sent;
+ * `nowMs` is the send time, injectable for tests.
  */
-export function replayLeftForLive(state: ReplayState): ReplayState {
+export function replayLeftForLive(state: ReplayState, nowMs: number): ReplayState {
   if (state.replayOnlySession) return state;
 
   return {
@@ -339,7 +344,7 @@ export function replayLeftForLive(state: ReplayState): ReplayState {
     frame: state.tickFrame,
     replaySeenAt: null,
     replaySeenFrame: null,
-    liveExitPending: true,
+    liveExitAt: nowMs,
   };
 }
 

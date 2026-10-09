@@ -391,7 +391,7 @@ describe("telemetry-features", () => {
 
     describe("replayLeftForLive", () => {
       it("ends the grace at once outside a saved replay: the next false tick is the car", () => {
-        const left = replayLeftForLive(run([[replayTick(500), 0]]));
+        const left = replayLeftForLive(run([[replayTick(500), 0]]), 0);
         const next = nextReplayState(left, liveTick(900), LIVE_SESSION, 50);
 
         expect(left.replaySeenAt).toBeNull();
@@ -403,23 +403,23 @@ describe("telemetry-features", () => {
           [replayTick(500), 0],
           [liveTick(900), 300],
         ]);
-        const left = replayLeftForLive(inGrace);
+        const left = replayLeftForLive(inGrace, 300);
 
         expect(inGrace).toMatchObject({ inReplay: true, frame: 500 });
         expect(left).toMatchObject({ inReplay: false, frame: 900 });
       });
 
       it("does not record the replay ticks before iRacing applies the command, so no grace follows them", () => {
-        const left = replayLeftForLive(run([[replayTick(500), 0]]));
+        const left = replayLeftForLive(run([[replayTick(500), 0]]), 0);
         const applying = nextReplayState(left, replayTick(500), LIVE_SESSION, 20);
         const live = nextReplayState(applying, liveTick(900), LIVE_SESSION, 40);
 
         expect(applying).toMatchObject({ inReplay: true, frame: 500, replaySeenAt: null });
-        expect(live).toMatchObject({ inReplay: false, frame: 900, liveExitPending: false });
+        expect(live).toMatchObject({ inReplay: false, frame: 900, liveExitAt: null });
       });
 
       it("records replay ticks again once a live tick has been seen", () => {
-        const left = replayLeftForLive(run([[replayTick(500), 0]]));
+        const left = replayLeftForLive(run([[replayTick(500), 0]]), 0);
         const live = nextReplayState(left, liveTick(900), LIVE_SESSION, 40);
         const reentered = nextReplayState(live, replayTick(600), LIVE_SESSION, 60);
         const blip = nextReplayState(reentered, liveTick(900), LIVE_SESSION, 300);
@@ -427,10 +427,19 @@ describe("telemetry-features", () => {
         expect(blip).toMatchObject({ inReplay: true, frame: 600 });
       });
 
+      it("lapses after the grace when iRacing ignored the command, so the next seek's blip keeps its grace", () => {
+        const left = replayLeftForLive(run([[replayTick(500), 0]]), 0);
+        const ignored = nextReplayState(left, replayTick(500), LIVE_SESSION, 1_000);
+        const blip = nextReplayState(ignored, liveTick(900), LIVE_SESSION, 1_300);
+
+        expect(ignored).toMatchObject({ liveExitAt: null, replaySeenAt: 1_000 });
+        expect(blip).toMatchObject({ inReplay: true, frame: 500 });
+      });
+
       it("does nothing in a saved replay, where goToEnd only seeks to the end of the file", () => {
         const state = run([[replayTick(500), 0]], SAVED_REPLAY);
 
-        expect(replayLeftForLive(state)).toBe(state);
+        expect(replayLeftForLive(state, 0)).toBe(state);
       });
     });
   });
