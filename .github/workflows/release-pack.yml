@@ -74,11 +74,16 @@ jobs:
           #     the name, emitting undefined.streamDeckPlugin which we rename to a
           #     .zip-suffixed name so the download is self-describing (#692). A
           #     committed .sdignore strips native-module build cruft (~41 MB → ~7 MB).
+          #     The cli pads the manifest Version to x.y.z.0 inside the zip, the
+          #     one form the Ulanzi marketplace refuses, so the committed x.y.z
+          #     is read BEFORE packing (pack rewrites the file on disk too) and
+          #     written back into the zip afterwards (#1298).
           $plugins = @(
             @{ Name = "stream-deck"; Path = "packages/iracing-plugin-stream-deck/com.iracedeck.sd.core.sdPlugin"; Output = "com.iracedeck.sd.core.streamDeckPlugin"; Flags = @() }
             @{ Name = "mirabox";     Path = "packages/iracing-plugin-mirabox/com.iracedeck.sd.core.sdPlugin";     Output = "com.iracedeck.sd.core.sdPlugin";          Flags = @("--force", "--ignore-validation") }
             @{ Name = "ulanzi";      Path = "packages/iracing-plugin-ulanzi/com.ulanzi.iracedeck.ulanziPlugin";   Output = "com.ulanzi.iracedeck.ulanziPlugin.zip";   Flags = @("--force", "--ignore-validation") }
           )
+          $ulanziVersion = (Get-Content -Raw "packages/iracing-plugin-ulanzi/com.ulanzi.iracedeck.ulanziPlugin/manifest.json" | ConvertFrom-Json).Version
           New-Item -ItemType Directory -Force -Path packed | Out-Null
           foreach ($p in $plugins) {
             Write-Host "::group::Pack $($p.Name) plugin"
@@ -94,6 +99,8 @@ jobs:
             Move-Item -Path $produced.FullName -Destination (Join-Path packed $p.Output) -Force
             Write-Host "::endgroup::"
           }
+          node scripts/stamp-ulanzi-package-version.mjs packed/com.ulanzi.iracedeck.ulanziPlugin.zip $ulanziVersion
+          if ($LASTEXITCODE -ne 0) { throw "Stamping the Ulanzi package version failed (exit $LASTEXITCODE)" }
 
       - name: Upload Stream Deck artifact
         uses: actions/upload-artifact@v7

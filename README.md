@@ -210,7 +210,7 @@ pnpm release:dry       # safe preview — writes nothing
 A release then runs in this order:
 
 1. The `before:bump` hook (`scripts/release-hooks.mjs`) bumps every `packages/*/package.json`. The root `package.json` is bumped separately, by release-it's own npm plugin.
-2. The same hook bumps all three plugin `manifest.json` files (Stream Deck, Mirabox, Ulanzi). It discovers them rather than using a hardcoded list, and writes a 4-part `major.minor.patch.build` version — Elgato's manifest schema rejects semver suffixes — with the build slot taken from `git rev-list --count HEAD`.
+2. The same hook bumps all three plugin `manifest.json` files (Stream Deck, Mirabox, Ulanzi). It discovers them rather than using a hardcoded list, and writes the version each ecosystem requires: a 4-part `major.minor.patch.build` for the Stream Deck and Mirabox manifests — Elgato's manifest schema rejects semver suffixes — with the build slot taken from `git rev-list --count HEAD`, and a plain `major.minor.patch` for Ulanzi, whose marketplace refuses any other form.
 3. On a **stable** version only, the hook stamps the `_Unreleased_` line of the matching `## <version>` section in `packages/website/src/content/docs/changelog.mdx` with today's date, and regenerates `packages/iracing-actions/src/actions/data/changelog.json` from the stamped text. Any version containing a dash (`3.2.0-dev.0`, `3.2.0-rc.1`) skips both, as does a section that is missing or already dated.
 4. release-it commits the result as `chore(release): vX.Y.Z`.
 5. It creates the annotated tag `vX.Y.Z`.

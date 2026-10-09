@@ -64,6 +64,9 @@
     "release:dry": "node scripts/release.mjs --dry-run",
     "prepare": "husky || exit 0"
   },
+  "dependencies": {
+    "@zip.js/zip.js": "2.8.57"
+  },
   "devDependencies": {
     "@elgato/eslint-config": "0.3.2",
     "@elgato/prettier-config": "0.3.3",

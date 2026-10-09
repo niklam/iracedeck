@@ -31,3 +31,4 @@
 *.wav binary
 *.psd binary
 *.streamDeckProfile binary
+scripts/lib/fixtures/cli-1.7.4-packed-ulanzi.zip binary
