@@ -14,6 +14,12 @@
           "items": [
             "Template expressions have a new <code>empty()</code> function for showing a fallback when a value is missing: <code>{{= empty(race_ahead.position) ? '--' : 'P' + race_ahead.position }}</code> shows <code>--</code> while nobody is ahead of you, where the expression used to go blank. It counts a missing variable and empty text as empty, but not <code>0</code>. See <a href=\"https://iracedeck.com/docs/features/template-variables/#functions\" target=\"_blank\" rel=\"noopener noreferrer\">Template Variables</a>."
           ]
+        },
+        {
+          "title": "Bug Fixes",
+          "items": [
+            "<strong>Session Info</strong> keys now use much less CPU and memory in a race, most noticeably in a large field with a key on <strong>iRating Gain/Loss</strong>. Each key worked out its value and redrew its image on every telemetry update, about 60 times a second, even though it only refreshes ten times a second; it now does that work only when it refreshes. Incident and flag flashes still start the moment they happen. See <a href=\"https://iracedeck.com/docs/actions/display-session/session-info/\" target=\"_blank\" rel=\"noopener noreferrer\">Session Info</a>."
+          ]
         }
       ]
     },

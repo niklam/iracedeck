@@ -17,6 +17,10 @@ _Unreleased_
 
 - Template expressions have a new `empty()` function for showing a fallback when a value is missing: `{{= empty(race_ahead.position) ? '--' : 'P' + race_ahead.position }}` shows `--` while nobody is ahead of you, where the expression used to go blank. It counts a missing variable and empty text as empty, but not `0`. See [Template Variables](/docs/features/template-variables/#functions).
 
+**Bug Fixes**
+
+- **Session Info** keys now use much less CPU and memory in a race, most noticeably in a large field with a key on **iRating Gain/Loss**. Each key worked out its value and redrew its image on every telemetry update, about 60 times a second, even though it only refreshes ten times a second; it now does that work only when it refreshes. Incident and flag flashes still start the moment they happen. See [Session Info](/docs/actions/display-session/session-info/).
+
 ## 3.5.0
 
 _2026-10-05_
