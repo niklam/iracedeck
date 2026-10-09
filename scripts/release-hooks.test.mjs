@@ -42,6 +42,16 @@ describe("release-hooks.mjs (dry run)", () => {
     expect(stdout).toContain("packages/iracing-plugin-ulanzi/com.ulanzi.iracedeck.ulanziPlugin/manifest.json");
   });
 
+  it("stamps each ecosystem's manifest in its own format", () => {
+    // Elgato's schema needs x.y.z.<build>; the Ulanzi marketplace refuses
+    // anything but x.y.z (#1298). A pre-release proves the suffix is stripped.
+    const stdout = runHook("9.9.9-rc.1");
+
+    expect(stdout).toMatch(/stream-deck\/com\.iracedeck\.sd\.core\.sdPlugin\/manifest\.json → 9\.9\.9\.\d+$/m);
+    expect(stdout).toMatch(/mirabox\/com\.iracedeck\.sd\.core\.sdPlugin\/manifest\.json → 9\.9\.9\.\d+$/m);
+    expect(stdout).toMatch(/ulanzi\/com\.ulanzi\.iracedeck\.ulanziPlugin\/manifest\.json → 9\.9\.9$/m);
+  });
+
   it("leaves the shipped changelog data alone when it does not stamp a date", () => {
     // 9.9.9 has no section, so nothing is stamped and the artifact is already in
     // step with the source — regenerating it would be pure churn in the commit.

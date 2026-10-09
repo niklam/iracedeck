@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import { buildChangelogData, CHANGELOG_DATA_PATH, serializeChangelogData } from "./lib/changelog-data.mjs";
 import { formatLocalDate, stampChangelog } from "./lib/changelog-stamp.mjs";
+import { manifestVersionFor } from "./lib/manifest-version.mjs";
 import { allPluginManifestRelPaths, discoverVersionedFiles, pluginManifestRelPaths } from "./lib/version-discovery.mjs";
 
 const version = process.argv[2];
@@ -41,13 +42,9 @@ const packageJsonFiles = discoverVersionedFiles(root, {
 // makes a plugin folder whose manifest is missing or malformed abort the
 // release rather than ship it stale (defect 4).
 //
-// Elgato's manifest schema requires a strict 4-part numeric format
-// `{major}.{minor}.{patch}.{build}` (^(0|[1-9]\d*)(\.(0|[1-9]\d*)){3}$), so
-// semver pre-release / build metadata suffixes must be stripped. The build slot
-// is populated from `git rev-list --count HEAD` so each release (pre or final
-// alike) gets a unique 4-part version; the final naturally outranks its
-// preceding pre-releases because release-it commits the version bump between
-// runs, which advances the commit count.
+// The `Version` each manifest gets depends on its ecosystem — 4-part for
+// `*.sdPlugin`, plain `x.y.z` for `*.ulanziPlugin` — see manifestVersionFor
+// (issue #1298).
 const manifestFiles = discoverVersionedFiles(root, {
   candidatesFor: (pkgName) => pluginManifestRelPaths(root, pkgName),
   versionField: "Version",
@@ -67,12 +64,16 @@ if (manifestFiles.length === 0 && allPluginManifestRelPaths(root).length === 0) 
   );
 }
 
-const numericVersion = version.replace(/[-+].*$/, "");
 const buildNumber = execFileSync("git", ["rev-list", "--count", "HEAD"], {
   cwd: root,
   encoding: "utf-8",
 }).trim();
-const manifestVersion = `${numericVersion}.${buildNumber}`;
+// Resolved before the preflight so a plugin folder with no decided format
+// aborts the release with a clean tree.
+const manifestBumps = manifestFiles.map((manifest) => ({
+  ...manifest,
+  version: manifestVersionFor(manifest.rel, version, buildNumber),
+}));
 
 // Stamp the changelog's in-development `_Unreleased_` date line with today's
 // release date on stable releases (issue #690). stampChangelog is a no-op (with
@@ -126,8 +127,8 @@ try {
 if (process.env.RELEASE_IT_DRY_RUN === "1") {
   console.log(`  [dry-run] Would bump ${packageJsonFiles.length} package.json files to version ${version}:`);
   for (const { rel } of packageJsonFiles) console.log(`    - ${rel}`);
-  console.log(`  [dry-run] Would bump ${manifestFiles.length} manifest.json files to version ${manifestVersion}:`);
-  for (const { rel } of manifestFiles) console.log(`    - ${rel}`);
+  console.log(`  [dry-run] Would bump ${manifestFiles.length} manifest.json files:`);
+  for (const { rel, version: manifestVersion } of manifestBumps) console.log(`    - ${rel} → ${manifestVersion}`);
   console.log(`  [dry-run] Changelog: ${changelogStamp.reason}`);
   console.log(
     changelogData !== null
@@ -144,7 +145,7 @@ for (const { rel, filePath, data } of packageJsonFiles) {
   console.log(`  Updated ${rel} → ${version}`);
 }
 
-for (const { rel, filePath, data } of manifestFiles) {
+for (const { rel, filePath, data, version: manifestVersion } of manifestBumps) {
   data.Version = manifestVersion;
   writeFileSync(filePath, JSON.stringify(data, null, 2) + "\n");
   console.log(`  Updated ${rel} → ${manifestVersion}`);
