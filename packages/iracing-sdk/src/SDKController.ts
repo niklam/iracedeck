@@ -5,6 +5,13 @@
 import { ILogger, silentLogger } from "@iracedeck/logger";
 
 import { IRacingSDK } from "./IRacingSDK.js";
+import {
+  initialReplayState,
+  nextReplayState,
+  replayLeftForLive,
+  type ReplayState,
+  replayStateAt,
+} from "./telemetry-features.js";
 import { buildTemplateContextFromData, type TemplateContext } from "./template-context.js";
 import { SessionInfo, TelemetryData } from "./types.js";
 
@@ -68,6 +75,14 @@ export class SDKController {
    * always notifies.
    */
   private lastSessionTick = -1;
+  /**
+   * The one debounced replay state (#1324): whether a replay is on screen and
+   * the frame it shows, held through the ~300 ms `IsReplayPlaying` blip after
+   * every seek. Stepped in `notifySubscribers` before any subscriber runs, so
+   * the translator and every action read the same answer for the tick; reset
+   * with `lastSessionTick` so a reconnect starts live with nothing sighted.
+   */
+  private replayState: ReplayState = initialReplayState();
 
   constructor(sdk: IRacingSDK, logger: ILogger = silentLogger) {
     this.sdk = sdk;
@@ -153,6 +168,7 @@ export class SDKController {
     this.lastTemplateContext = null;
     this.templateContextDirty = true;
     this.lastSessionTick = -1;
+    this.replayState = initialReplayState();
   }
 
   /**
@@ -171,6 +187,10 @@ export class SDKController {
         this.logger.info("[SDKController] Connected to iRacing");
       } else {
         this.logger.info("[SDKController] Disconnected from iRacing");
+        // The update loop skips `update()` while the SDK reads disconnected,
+        // so this is where a dropped connection is noticed: the replay state
+        // must not report the last tick's replay to a read made meanwhile.
+        this.replayState = initialReplayState();
       }
 
       // Notify all subscribers of connection state change
@@ -193,6 +213,7 @@ export class SDKController {
         this.lastTemplateContext = null;
         this.templateContextDirty = true;
         this.lastSessionTick = -1;
+        this.replayState = initialReplayState();
         this.notifySubscribers(null);
       }
 
@@ -240,6 +261,13 @@ export class SDKController {
   private notifySubscribers(telemetry?: TelemetryData | null): void {
     const data = telemetry !== undefined ? telemetry : this.sdk.getTelemetry();
 
+    // The replay state steps before the callbacks so a subscriber reading it
+    // sees this tick's answer (#1324). `getSessionInfo` is cached on the
+    // SDK by its update counter, so the per-tick read costs a header check.
+    if (data) {
+      this.replayState = nextReplayState(this.replayState, data, this.sdk.getSessionInfo(), Date.now());
+    }
+
     for (const callback of this.subscribers.values()) {
       callback(data, this.isConnected);
     }
@@ -274,6 +302,7 @@ export class SDKController {
       // Reset dedupe state so the first frame of the next iRacing session
       // is never suppressed by a stale tick value (issue #493 follow-up).
       this.lastSessionTick = -1;
+      this.replayState = initialReplayState();
       this.notifySubscribers(null);
     } else if (enabled && this.subscribers.size > 0 && !this.isConnected) {
       // Re-enabling and we have subscribers - try to connect immediately
@@ -307,6 +336,34 @@ export class SDKController {
    */
   getSessionInfo(): SessionInfo | null {
     return this.sdk.getSessionInfo();
+  }
+
+  /**
+   * The debounced replay state as of `nowMs` (#1324): whether a replay is on
+   * screen and the frame it shows. Every "in a replay" decision reads this,
+   * never `telemetry.IsReplayPlaying`, which drops for ~300 ms after each
+   * seek. The grace runs on wall time, so a read between ticks sees it
+   * expire; `nowMs` is injectable for tests.
+   */
+  getReplayState(nowMs: number = Date.now()): ReplayState {
+    return replayStateAt(this.replayState, nowMs);
+  }
+
+  /**
+   * Tells the replay state that the plugin's own `goToEnd` was just sent:
+   * outside a saved replay the command leaves the replay for the car
+   * at once, so the grace is dropped rather than holding the old replay frame
+   * for a second (#1230). In a saved replay it is only a seek and nothing
+   * changes. Call it only for a command that was actually sent. Returns
+   * whether the grace was dropped.
+   */
+  noteReplayLeftForLive(): boolean {
+    const next = replayLeftForLive(this.replayState);
+    const dropped = next !== this.replayState;
+
+    this.replayState = next;
+
+    return dropped;
   }
 
   /**

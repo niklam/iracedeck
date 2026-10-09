@@ -182,16 +182,23 @@ export { type FlagInfo, FLAG_DEFINITIONS, resolveActiveFlag, resolveAllActiveFla
 // Penalty flag utilities (#936)
 export { decodePenaltyFlags, PENALTY_FLAG_MASK, type CarPenaltyFlags } from "./penalty-flag-utils.js";
 
-// Telemetry feature detection (car-capability + session-phase helpers)
+// Telemetry feature detection (car-capability + session-phase helpers), and
+// the debounced replay state (#1324) `SDKController` keeps the one instance of
 export {
   getTireChangeGranularity,
   hasPitLimiter,
   hasVisor,
   hasWipers,
+  initialReplayState,
   isLiveOnTrack,
   isPenaltyFlagActive,
   isPostRace,
   isPreGreen,
+  nextReplayState,
+  REPLAY_EXIT_GRACE_MS,
+  replayLeftForLive,
+  type ReplayState,
+  replayStateAt,
   resolveReplayFrame,
   type TireChangeGranularity,
 } from "./telemetry-features.js";
@@ -219,6 +226,7 @@ export {
   getCarNumberRawFromSessionInfo,
   getPlayerCarNumberFromSessionInfo,
   getAllCarNumbers,
+  isReplayOnlySession,
 } from "./session-utils.js";
 
 // Telemetry snapshot formatting utilities
