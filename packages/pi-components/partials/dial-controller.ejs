@@ -1,0 +1,47 @@
+<%#
+  Controller resolution for a dial-capable action's Property Inspector (#759, #1329).
+  One copy for all 17 dial PIs: a host that changes how it reports the controller
+  is patched here, not in every template.
+
+  Include it ONCE per dial PI, before the template's own <script>, which calls:
+
+    window.irdResolveController()  -> "Encoder" | "Keypad" | null
+    window.irdApplyDialView()      -> hides #keypad-settings and #keypad-appearance,
+                                      shows #dial-settings
+
+  The view switch stays in the template, because the order is the template's:
+  most resolve last in their initialize(), after wiring the keypad view, so a
+  slow or failed lookup still leaves a working keypad PI. A template with more to
+  reveal on a dial (Fuel Service's key bindings, Audio Controls' dial-only
+  bindings) does it beside its own call, after irdApplyDialView().
+
+  No parameters.
+%>
+<script>
+	(function () {
+		// Which surface this instance sits on: the PI registration's
+		// actionInfo.payload.controller ("Keypad" | "Encoder"; the Mirabox host
+		// reports a knob as "Knob"). A missing controller means a keypad (a host
+		// that declares no dials sends none). A failed lookup returns null: the
+		// surface is then unknown. A caller that only asks `=== "Encoder"` keeps
+		// the keypad view on it; Audio Controls also wires neither surface (#1196).
+		window.irdResolveController = async function () {
+			try {
+				const client = window.SDPIComponents && window.SDPIComponents.streamDeckClient;
+				const info = client && (await client.getConnectionInfo());
+				const controller = info && info.actionInfo && info.actionInfo.payload && info.actionInfo.payload.controller;
+				return controller === "Encoder" || controller === "Knob" ? "Encoder" : "Keypad";
+			} catch (err) {
+				return null;
+			}
+		};
+
+		// The dial view: the keypad's own settings and its key-icon appearance go,
+		// the dial's settings come. Every dial PI uses these three ids.
+		window.irdApplyDialView = function () {
+			document.getElementById("keypad-settings")?.classList.add("hidden");
+			document.getElementById("keypad-appearance")?.classList.add("hidden");
+			document.getElementById("dial-settings")?.classList.remove("hidden");
+		};
+	})();
+</script>
