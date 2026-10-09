@@ -1,4 +1,4 @@
-import type { TelemetryCallback, TelemetryData } from "@iracedeck/iracing-sdk";
+import { REPLAY_EXIT_GRACE_MS, type TelemetryCallback, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { MockSDKController } from "./mock-sdk-controller.js";
@@ -259,10 +259,71 @@ describe("MockSDKController", () => {
         subscribe: (id: string, cb: TelemetryCallback) => void;
         unsubscribe: (id: string) => void;
         getSessionInfo: () => unknown;
+        getReplayState: () => unknown;
       };
       expect(typeof controller.subscribe).toBe("function");
       expect(typeof controller.unsubscribe).toBe("function");
       expect(typeof controller.getSessionInfo).toBe("function");
+      expect(typeof controller.getReplayState).toBe("function");
+    });
+  });
+
+  // The translator's replay guard reads this (#1324), so the mock steps the
+  // real rule on every tick it delivers — otherwise a harness sequence that
+  // closes a replay-mode bracket would read as live a second earlier than
+  // the sim, and the holds the shortcuts carry would be proving nothing.
+  describe("replay state (issue #1324)", () => {
+    function connected(): MockSDKController {
+      vi.useFakeTimers();
+      const controller = new MockSDKController();
+      controller.setConnected(true);
+
+      return controller;
+    }
+
+    it("starts live, enters a replay on the first IsReplayPlaying: true tick, and holds for the grace after the flag drops", () => {
+      const controller = connected();
+
+      expect(controller.getReplayState().inReplay).toBe(false);
+
+      controller.mutateTelemetry({ IsReplayPlaying: true, ReplayFrameNum: 1200 });
+      controller.tickOnce();
+      expect(controller.getReplayState()).toMatchObject({ inReplay: true, frame: 1200 });
+
+      // The post-seek blip: the flag reads false, the state does not follow it yet.
+      controller.mutateTelemetry({ IsReplayPlaying: false });
+      controller.tickOnce();
+      expect(controller.getReplayState()).toMatchObject({ inReplay: true, frame: 1200 });
+
+      vi.advanceTimersByTime(REPLAY_EXIT_GRACE_MS - 1);
+      expect(controller.getReplayState().inReplay).toBe(true);
+
+      vi.advanceTimersByTime(1);
+      expect(controller.getReplayState().inReplay).toBe(false);
+      controller.tickOnce();
+      expect(controller.getReplayState().inReplay).toBe(false);
+    });
+
+    it("steps on the subscribe-time delivery too, so a translator subscribing mid-replay sees the replay", () => {
+      const controller = connected();
+      controller.mutateTelemetry({ IsReplayPlaying: true });
+
+      controller.subscribe("test", vi.fn());
+
+      expect(controller.getReplayState().inReplay).toBe(true);
+    });
+
+    it("takes a saved replay as a replay whatever the flag reads, and resets on a disconnect", () => {
+      const controller = connected();
+      controller.setSessionInfo({ WeekendInfo: { SimMode: "replay" } } as never);
+      controller.mutateTelemetry({ IsReplayPlaying: false });
+      controller.tickOnce();
+
+      expect(controller.getReplayState()).toMatchObject({ inReplay: true, replayOnlySession: true });
+
+      controller.setConnected(false);
+
+      expect(controller.getReplayState()).toMatchObject({ inReplay: false, replayOnlySession: false });
     });
   });
 });

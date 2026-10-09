@@ -6,6 +6,7 @@ import {
   Flags,
   PitSvFlags,
   PitSvStatus,
+  REPLAY_EXIT_GRACE_MS,
   type SDKController,
   type SessionInfo,
   type TelemetryData,
@@ -159,6 +160,28 @@ describe("SCENARIO_SHORTCUTS", () => {
 
       expect(shortcut.precedingEvents, `shortcut "${shortcut.id}"`).toBeUndefined();
       expect((shortcut.data as { delta: number }).delta, `shortcut "${shortcut.id}"`).toBeGreaterThan(0);
+    }
+  });
+
+  it("holds every step that leaves replay mode past the translator's exit grace, so what follows it is live (issue #1324)", () => {
+    // The translator's guard holds "in a replay" for `REPLAY_EXIT_GRACE_MS`
+    // after the last `IsReplayPlaying: true` tick, and the mock controller
+    // steps the same rule, so a step patched false and held for less leaves
+    // the next step — or the publish of a bus-event button — inside the
+    // replay, where every edge is absorbed. The sequence tests above would
+    // catch the shortcuts they drive; this catches the next one written.
+    const closing = SCENARIO_SHORTCUTS.flatMap((s) =>
+      (s.telemetrySequence ?? [])
+        .filter((step) => step.patch.IsReplayPlaying === false)
+        .map((step) => ({ id: s.id, holdMs: step.holdMs ?? 0 })),
+    );
+
+    expect(closing.length).toBeGreaterThan(0);
+
+    for (const { id, holdMs } of closing) {
+      expect(holdMs, `shortcut "${id}" leaves replay mode and holds ${holdMs} ms`).toBeGreaterThan(
+        REPLAY_EXIT_GRACE_MS,
+      );
     }
   });
 });

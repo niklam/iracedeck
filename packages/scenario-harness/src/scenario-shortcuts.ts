@@ -31,6 +31,7 @@ import {
   PaceMode,
   PitSvFlags,
   PitSvStatus,
+  REPLAY_EXIT_GRACE_MS,
   TrkLoc,
 } from "@iracedeck/iracing-sdk";
 import {
@@ -102,8 +103,9 @@ export type BusEventShortcut = ScenarioShortcutBase & {
    * {@link TelemetrySequenceShortcut} runs them — the UI plays any sequence
    * first and publishes after it. Where `telemetryPatch` is one patch, this is
    * for a setup the translator must SEED rather than announce: a replay-mode
-   * bracket (`IsReplayPlaying` true with the patch, then false), which the
-   * translator suppresses every event through and re-seeds each diff from.
+   * bracket (`IsReplayPlaying` true with the patch, then false, held for
+   * {@link REPLAY_EXIT_SETTLE_MS}), which the translator suppresses every
+   * event through and re-seeds each diff from once the exit grace has run.
    * Exists for "Damage Detected": the damage line's `speakGate` asks the
    * translator whether a repair is needed (its settled damage state), so the
    * button has to set the repair bits, and setting them live would be a
@@ -849,19 +851,34 @@ const CAUTION_EXTRA_LAP_SHORTCUT: TelemetrySequenceShortcut = {
 };
 
 /**
- * Step holds for `AUTO_FUEL_TAKEOVER_SHORTCUT` (issue #474). The capture spent
- * 9 s between the driver's fuel press and the pit approach; the button
- * compresses that to the time the press confirmation needs to finish, so the
- * entry readback fires on an idle bus and is expanded on the approach tick
- * itself (it reads the fuel bit when it is expanded, not when it was fired).
+ * How long a replay-mode bracket's closing step (`IsReplayPlaying: false`) is
+ * held before the run is live, and before a shortcut's own first live step.
+ * The translator's guard reads the controller's debounced replay state
+ * (#1324), which stays "in a replay" for `REPLAY_EXIT_GRACE_MS` after the
+ * last replay tick — so a seek's ~300 ms blip of the flag is not a trip to
+ * live — and the mock controller steps the same rule. A step inside that
+ * grace is the replay's still: an edge there is absorbed, never announced.
+ * The margin on top is a few of the mock's 14 ms ticks for the re-seed.
  */
-const AUTO_FUEL_SETUP_MS = 500;
+const REPLAY_EXIT_SETTLE_MS = REPLAY_EXIT_GRACE_MS + 200;
+
+/**
+ * Step holds for `AUTO_FUEL_TAKEOVER_SHORTCUT` (issue #474). The opening
+ * bracket's close is held for the exit grace, so the press that follows is
+ * live. The capture spent 9 s between the driver's fuel press and the pit
+ * approach; the button compresses that to the time the press confirmation
+ * needs to finish, so the entry readback fires on an idle bus and is expanded
+ * on the approach tick itself (it reads the fuel bit when it is expanded, not
+ * when it was fired).
+ */
+const AUTO_FUEL_SETUP_MS = REPLAY_EXIT_SETTLE_MS;
 const AUTO_FUEL_PRESS_LISTEN_MS = 5000;
 
 /**
- * How long each replay-mode bracket step is held — long enough for a few of
- * the mock controller's 14 ms ticks, which is all the translator needs to wipe
- * its state on the way in and re-seed every diff on the way out.
+ * How long each replay-mode bracket's OPENING step is held — long enough for
+ * a few of the mock controller's 14 ms ticks, which is all the translator
+ * needs to wipe its state on the way in. The way out is
+ * {@link REPLAY_EXIT_SETTLE_MS}: the re-seed waits for the exit grace.
  */
 const AUTO_FUEL_SEED_MS = 200;
 
@@ -931,11 +948,12 @@ const AUTO_FUEL_TAKEOVER_SHORTCUT: TelemetrySequenceShortcut = {
     // cooldown that would swallow the press, plus a delayed "to confirm"
     // recap landing mid-run), and disarming autofuel is itself an autofuel
     // switch. The translator suppresses every event while `IsReplayPlaying`
-    // is true and re-seeds each diff from the current snapshot when it goes
-    // false, so the whole setup is seeded rather than spoken — from ANY
-    // preset, the stall and pit road included — and the state wipe clears a
-    // pit-action cooldown the tester's last button left running. The same
-    // bracket closes the sequence.
+    // is true and re-seeds each diff from the current snapshot once it has
+    // read false for the exit grace (#1324), so the whole setup is seeded
+    // rather than spoken — from ANY preset, the stall and pit road included
+    // — and the state wipe clears a pit-action cooldown the tester's last
+    // button left running. The same bracket closes the sequence, held for
+    // the grace so the car it hands back is live when the button releases.
     {
       patch: {
         IsReplayPlaying: true,
@@ -975,7 +993,7 @@ const AUTO_FUEL_TAKEOVER_SHORTCUT: TelemetrySequenceShortcut = {
       },
       holdMs: AUTO_FUEL_SEED_MS,
     },
-    { patch: { IsReplayPlaying: false } },
+    { patch: { IsReplayPlaying: false }, holdMs: REPLAY_EXIT_SETTLE_MS },
   ],
 };
 
@@ -1125,10 +1143,10 @@ const TIRE_WEAR_STOP_SHORTCUT: TelemetrySequenceShortcut = {
 
 /**
  * The settle after `PIT_STATUS_EMPTY_STOP_SHORTCUT`'s opening bracket (issue
- * #1180), so the run starts from a quiet bus. The bracket steps themselves
- * hold {@link AUTO_FUEL_SEED_MS}, the same bracket.
+ * #1180): the exit grace, so the run starts live and from a quiet bus. The
+ * bracket's opening step holds {@link AUTO_FUEL_SEED_MS}, the same bracket.
  */
-const EMPTY_STOP_SETTLE_MS = 500;
+const EMPTY_STOP_SETTLE_MS = REPLAY_EXIT_SETTLE_MS;
 
 /**
  * How long `PitstopActive` is up. The captures had it for two to four sim
@@ -1165,8 +1183,9 @@ const EMPTY_STOP_LISTEN_MS = 3000;
  * teardown are done inside a replay-mode bracket — the
  * {@link AUTO_FUEL_TAKEOVER_SHORTCUT} idiom: the translator suppresses every
  * event while `IsReplayPlaying` is true and re-seeds each diff from the
- * current snapshot when it goes false. It hands back a car on the circuit,
- * off pit road, with no service status, so a second press replays it whole.
+ * current snapshot once it has read false for the exit grace (#1324). It
+ * hands back a car on the circuit, off pit road, with no service status, so
+ * a second press replays it whole.
  */
 const PIT_STATUS_EMPTY_STOP_SHORTCUT: TelemetrySequenceShortcut = {
   id: "pit-status-empty-stop",
@@ -1204,20 +1223,22 @@ const PIT_STATUS_EMPTY_STOP_SHORTCUT: TelemetrySequenceShortcut = {
       },
       holdMs: AUTO_FUEL_SEED_MS,
     },
-    { patch: { IsReplayPlaying: false } },
+    { patch: { IsReplayPlaying: false }, holdMs: REPLAY_EXIT_SETTLE_MS },
   ],
 };
 
 /**
- * How long a replay-mode bracket step is held — a few of the mock
+ * How long a replay-mode bracket's opening step is held — a few of the mock
  * controller's 14 ms ticks, all the translator needs to wipe its state on the
- * way in and re-seed every diff on the way out (the same bracket as
- * {@link AUTO_FUEL_SEED_MS}).
+ * way in (the same bracket as {@link AUTO_FUEL_SEED_MS}).
  */
 const INCIDENT_SEED_MS = 200;
 
-/** A settle after the bracket closes, so the run starts from a quiet bus. */
-const INCIDENT_SETTLE_MS = 1000;
+/**
+ * A settle after the bracket closes: the exit grace, after which the
+ * translator re-seeds every diff, so the run starts live and from a quiet bus.
+ */
+const INCIDENT_SETTLE_MS = REPLAY_EXIT_SETTLE_MS;
 
 /**
  * How long the `PlayerIncidents` report byte is up before its count
@@ -1266,7 +1287,8 @@ const INCIDENT_LISTEN_MS = 10_000;
  * #1211, the {@link AUTO_FUEL_TAKEOVER_SHORTCUT} idiom): on track, off pit
  * road, no car alongside, no incidents, no damage — set while
  * `IsReplayPlaying` is true, where the translator publishes nothing, and
- * seeded when it goes false. Without it a second press would start from the
+ * seeded once it has read false for the exit grace. Without it a second press
+ * would start from the
  * first press's count and repair bits: a damage baseline already raised
  * swallows the next rising edge, and resetting the bits live is a falling
  * edge that has to settle for 3 s first.
@@ -2151,7 +2173,9 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   // translator seeds them as damage it already knows about rather than
   // seeing a rising edge and announcing it again five seconds later. With
   // the mock disconnected the translator knows no damage state, and the gate
-  // admits the line on that alone.
+  // admits the line on that alone. The bracket's close is held for the exit
+  // grace (#1324): the bits are seeded on the re-seed tick after it, and a
+  // publish before that would find the translator still in the replay.
   // The patch replaces the whole `EngineWarnings` value, so any other
   // warning bit set in the panel is cleared.
   {
@@ -2162,7 +2186,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
       "Fire `damage.repairNeeded.raised` directly (skips the diff debounce). Lights the repair indicator first, which the line checks before it speaks, and leaves it lit.",
     telemetrySequence: [
       { patch: { IsReplayPlaying: true, EngineWarnings: DAMAGE_REPAIR_MASK }, holdMs: INCIDENT_SEED_MS },
-      { patch: { IsReplayPlaying: false }, holdMs: INCIDENT_SEED_MS },
+      { patch: { IsReplayPlaying: false }, holdMs: REPLAY_EXIT_SETTLE_MS },
     ],
     event: "damage.repairNeeded.raised",
     data: {},
