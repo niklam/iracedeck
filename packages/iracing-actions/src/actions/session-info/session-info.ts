@@ -815,9 +815,11 @@ export class SessionInfo extends SimIRacingAction<SessionInfoSettings> {
   private flagPulseTimers = new Map<string, ReturnType<typeof setInterval>>();
 
   /**
-   * Coalesces telemetry-driven image pushes to 10 Hz per context. Modes whose
-   * value varies continuously (wind direction, gaps) would otherwise re-render
-   * and re-rasterize on most sim ticks.
+   * Caps each key's telemetry refresh at 10 Hz per context. It first capped
+   * image pushes, since modes whose value varies continuously (wind direction,
+   * gaps) would otherwise re-render and re-rasterize on most sim ticks. Since
+   * #1345 it gates the whole refresh, value resolution included, so a tick
+   * itself never asks for the value.
    */
   private readonly iconThrottle = new IconUpdateThrottle();
 
@@ -827,12 +829,20 @@ export class SessionInfo extends SimIRacingAction<SessionInfoSettings> {
     this.activeContexts.set(ev.action.id, settings);
     await this.updateDisplay(ev, settings);
 
-    this.sdkController.subscribe(ev.action.id, (telemetry) => {
-      const storedSettings = this.activeContexts.get(ev.action.id);
+    const contextId = ev.action.id;
 
-      if (storedSettings) {
-        this.updateDisplayFromTelemetry(ev.action.id, telemetry, storedSettings);
-      }
+    this.sdkController.subscribe(contextId, (telemetry) => {
+      const storedSettings = this.activeContexts.get(contextId);
+
+      if (!storedSettings) return;
+
+      // Edge detection stays per tick (#1345): it is a counter compare and a
+      // bit test, and a flag up for less than one throttle window would be
+      // missed at 10 Hz. Everything else — the value, the state key, the SVG —
+      // is the refresh's, which runs at most on each window's leading and
+      // trailing edge and reads the newest tick's telemetry.
+      this.detectTelemetryEdges(contextId, telemetry, storedSettings);
+      this.iconThrottle.schedule(contextId, () => this.refreshFromTelemetry(contextId, telemetry));
     });
   }
 
@@ -1310,11 +1320,16 @@ export class SessionInfo extends SimIRacingAction<SessionInfoSettings> {
     return `${settings.mode}|${value}|${isFlashing}|${bgOverride || ""}|${borderKey}`;
   }
 
-  private async updateDisplayFromTelemetry(
+  /**
+   * The per-tick half of a telemetry update: starts the incident flash on a
+   * count increase and the flag flash or pulse on a flag change. Both run their
+   * own timers and push their own frames, so neither waits for the throttle.
+   */
+  private detectTelemetryEdges(
     contextId: string,
     telemetry: TelemetryData | null,
     settings: SessionInfoSettings,
-  ): Promise<void> {
+  ): void {
     // Check for incident increase to trigger flash
     if (settings.mode === "incidents" && telemetry?.PlayerCarMyIncidentCount !== undefined) {
       const prevCount = this.lastIncidentCount.get(contextId);
@@ -1346,17 +1361,36 @@ export class SessionInfo extends SimIRacingAction<SessionInfoSettings> {
 
         if (flagInfo?.pulse) {
           this.startFlagPulse(contextId, settings, flagInfo);
-
-          return;
         } else if (lastKey !== undefined && flagInfo) {
           this.startFlagColorFlash(contextId, settings, flagInfo);
-
-          return;
         }
       }
+    }
+  }
 
-      // If pulse or flash is active, let the timer handle rendering
-      if (this.flagPulseTimers.has(contextId) || this.flashTimers.has(contextId)) return;
+  /**
+   * The throttled half of a telemetry update. Telemetry arrives at the sim's
+   * tick rate, and resolving the value on every tick — in iRating mode the live
+   * order, the qualifying grid and the estimate — was a third of the plugin's
+   * allocation in a 40-car race (#1345). The throttle runs this at most on each
+   * 10 Hz window's leading and trailing edge, with the newest tick's telemetry;
+   * the leading edge fires immediately, so a one-off change is never delayed.
+   *
+   * Re-reads the key's settings, so a trailing flush uses the latest ones and a
+   * key that has since disappeared renders nothing. Resolves the value once and
+   * renders an SVG only when the state key changed, so no rendered image is
+   * thrown away.
+   */
+  private async refreshFromTelemetry(contextId: string, telemetry: TelemetryData | null): Promise<void> {
+    const settings = this.activeContexts.get(contextId);
+
+    if (!settings) return;
+
+    // A flag flash or pulse owns the key while its timer runs. Checked here
+    // rather than at schedule time, so a flush armed before the flag changed
+    // cannot overwrite one of its frames.
+    if (settings.mode === "flags" && (this.flagPulseTimers.has(contextId) || this.flashTimers.has(contextId))) {
+      return;
     }
 
     const wind = this.resolveWind(settings, telemetry);
@@ -1365,28 +1399,20 @@ export class SessionInfo extends SimIRacingAction<SessionInfoSettings> {
     const isFlashing = this.flashStates.get(contextId) ?? false;
     const colorOverride = this.resolveFlagColorOverride(settings, telemetry);
     const stateKey = this.buildStateKey(settings, value, isFlashing, colorOverride?.background);
-    const lastStateKey = this.lastState.get(contextId);
 
-    if (lastStateKey !== stateKey) {
-      this.lastState.set(contextId, stateKey);
-      const svgDataUri = generateSessionInfoSvg(
-        settings,
-        value,
-        isFlashing,
-        colorOverride,
-        this.resolveModeState(settings, telemetry, value, wind, sessionLimit),
-      );
+    if (this.lastState.get(contextId) === stateKey) return;
 
-      // Telemetry arrives at the sim's tick rate, and a continuously-varying
-      // display (the wind arrow through a corner, a moving gap) can change on
-      // most of those ticks. Rasterizing and pushing an image that often is
-      // wasted work that also churns the shared rasterizer cache, so coalesce
-      // to the same 10 Hz ceiling the rest of the plugin renders at. Leading
-      // edge fires immediately, so a one-off change is never delayed.
-      this.iconThrottle.schedule(contextId, async () => {
-        await this.updateKeyImage(contextId, svgDataUri);
-      });
-    }
+    this.lastState.set(contextId, stateKey);
+
+    const svgDataUri = generateSessionInfoSvg(
+      settings,
+      value,
+      isFlashing,
+      colorOverride,
+      this.resolveModeState(settings, telemetry, value, wind, sessionLimit),
+    );
+
+    await this.updateKeyImage(contextId, svgDataUri);
   }
 
   /**
