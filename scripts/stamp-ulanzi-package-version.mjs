@@ -20,10 +20,10 @@ if (!ULANZI_MANIFEST_VERSION.test(version)) {
   process.exit(1);
 }
 
-const before = readPackedManifestVersion(readFileSync(archive));
-writeFileSync(archive, setPackedManifestVersion(readFileSync(archive), version));
+const before = await readPackedManifestVersion(readFileSync(archive));
+writeFileSync(archive, await setPackedManifestVersion(readFileSync(archive), version));
 
-const after = readPackedManifestVersion(readFileSync(archive));
+const after = await readPackedManifestVersion(readFileSync(archive));
 if (after !== version) {
   console.error(`${archive} reads back Version "${after}", expected "${version}"`);
   process.exit(1);

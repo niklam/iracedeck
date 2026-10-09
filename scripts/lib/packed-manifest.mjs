@@ -1,47 +1,83 @@
-import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
+import {
+  configure,
+  TextReader,
+  TextWriter,
+  Uint8ArrayReader,
+  Uint8ArrayWriter,
+  ZipReader,
+  ZipWriter,
+} from "@zip.js/zip.js";
+
+// zip.js is the library `@elgato/cli pack` writes these archives with: every
+// entry carries a zip64 extra and 0xFFFFFFFF in its 32-bit sizes, with no zip64
+// end record. fflate 0.8.3 takes those sizes at face value and allocates 4 GB
+// per entry, which failed the first CI run (#1298).
+configure({ useWebWorkers: false });
 
 // The plugin folder's own manifest, one level down: `<folder>/manifest.json`.
 // Deeper `manifest.json` files (a bundled dependency's) are not the plugin's.
 const MANIFEST_ENTRY = /^[^/]+\/manifest\.json$/;
 
 /**
- * @param {Record<string, Uint8Array>} entries
- * @returns {string}
+ * @template {{ filename: string }} T
+ * @param {T[]} entries
+ * @returns {T}
  */
-function manifestEntryName(entries) {
-  const names = Object.keys(entries).filter((name) => MANIFEST_ENTRY.test(name));
-  if (names.length !== 1) {
-    throw new Error(`Expected exactly one <folder>/manifest.json in the package, found ${names.length}`);
+function manifestEntry(entries) {
+  const found = entries.filter((entry) => MANIFEST_ENTRY.test(entry.filename));
+  if (found.length !== 1) {
+    throw new Error(`Expected exactly one <folder>/manifest.json in the package, found ${found.length}`);
   }
-  return names[0];
+  return found[0];
 }
 
 /**
  * The `Version` of the plugin manifest inside a packed plugin archive.
  *
  * @param {Uint8Array} zip
- * @returns {string}
+ * @returns {Promise<string>}
  */
-export function readPackedManifestVersion(zip) {
-  const entries = unzipSync(zip);
-  return JSON.parse(strFromU8(entries[manifestEntryName(entries)])).Version;
+export async function readPackedManifestVersion(zip) {
+  const reader = new ZipReader(new Uint8ArrayReader(zip));
+  try {
+    const manifest = await manifestEntry(await reader.getEntries()).getData(new TextWriter());
+    return JSON.parse(manifest).Version;
+  } finally {
+    await reader.close();
+  }
 }
 
 /**
  * A copy of a packed plugin archive whose manifest `Version` is `version`,
- * every other entry carried over byte for byte (issue #1298: `@elgato/cli pack`
- * pads the version to four parts on its way into the archive, whatever the
- * folder's manifest says).
+ * every other entry's content and modification date carried over (issue #1298:
+ * `@elgato/cli pack` pads the version to four parts on its way into the
+ * archive, whatever the folder's manifest says).
  *
  * @param {Uint8Array} zip
  * @param {string} version
- * @returns {Uint8Array}
+ * @returns {Promise<Uint8Array>}
  */
-export function setPackedManifestVersion(zip, version) {
-  const entries = unzipSync(zip);
-  const name = manifestEntryName(entries);
-  const manifest = JSON.parse(strFromU8(entries[name]));
-  manifest.Version = version;
-  entries[name] = strToU8(JSON.stringify(manifest, null, 2) + "\n");
-  return zipSync(entries);
+export async function setPackedManifestVersion(zip, version) {
+  const reader = new ZipReader(new Uint8ArrayReader(zip));
+  const writer = new ZipWriter(new Uint8ArrayWriter());
+  try {
+    const entries = await reader.getEntries();
+    const manifestName = manifestEntry(entries).filename;
+
+    for (const entry of entries) {
+      const options = { lastModDate: entry.lastModDate };
+      if (entry.directory) {
+        await writer.add(entry.filename, undefined, { ...options, directory: true });
+      } else if (entry.filename === manifestName) {
+        const manifest = JSON.parse(await entry.getData(new TextWriter()));
+        manifest.Version = version;
+        await writer.add(entry.filename, new TextReader(JSON.stringify(manifest, null, 2) + "\n"), options);
+      } else {
+        await writer.add(entry.filename, new Uint8ArrayReader(await entry.getData(new Uint8ArrayWriter())), options);
+      }
+    }
+    return await writer.close();
+  } finally {
+    await reader.close();
+  }
 }
