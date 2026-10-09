@@ -16,6 +16,7 @@ import {
   getDualPressThresholdMs,
   type HoldPreview,
   type IDeckActionContext,
+  NOOP_HOLD_PREVIEW,
   svgToDataUri,
 } from "@iracedeck/deck-core";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
@@ -152,19 +153,6 @@ function gestureLabel(action: GestureSlot): string | undefined {
       return undefined;
   }
 }
-
-/**
- * The hold preview compiled out on the hosts with no long press. Every
- * call site stays unconditional and `__FEATURE_DIAL_EXTENDED_GESTURES__` folds to `false`
- * there, so terser drops this object's users and `createHoldPreview` with them.
- */
-const NOOP_HOLD_PREVIEW: HoldPreview = {
-  down: () => {},
-  up: () => {},
-  rotated: () => {},
-  dispose: () => {},
-  showing: false,
-};
 
 /**
  * @internal Exported for testing

@@ -158,6 +158,7 @@ vi.mock("@iracedeck/deck-core", async () => {
 
       return null;
     },
+    NOOP_HOLD_PREVIEW: (await import("../../../../deck-core/src/dial-gesture.js")).NOOP_HOLD_PREVIEW,
     // Display-only hold preview (#1120) — mirrors deck-core's createHoldPreview:
     // one timer armed at down, drawing at the threshold, reverting on up/rotated.
     createHoldPreview: (args: { onThreshold: () => boolean; onCancel: () => void; thresholdMs?: () => number }) => {

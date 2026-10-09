@@ -4,6 +4,7 @@ import {
   classifyDialRelease,
   createHoldPreview,
   DIAL_LONG_PRESS_THRESHOLD_MS,
+  NOOP_HOLD_PREVIEW,
   resolvePairedAction,
 } from "./dial-gesture.js";
 
@@ -313,5 +314,32 @@ describe("createHoldPreview — a failed draw must not take the plugin down", ()
     vi.advanceTimersByTime(DIAL_LONG_PRESS_THRESHOLD_MS);
 
     expect(preview.showing).toBe(true);
+  });
+});
+
+describe("NOOP_HOLD_PREVIEW", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("arms no timer and never shows, through a whole press", () => {
+    NOOP_HOLD_PREVIEW.down();
+
+    expect(vi.getTimerCount()).toBe(0);
+
+    vi.advanceTimersByTime(DIAL_LONG_PRESS_THRESHOLD_MS * 2);
+    NOOP_HOLD_PREVIEW.rotated();
+    NOOP_HOLD_PREVIEW.up();
+    NOOP_HOLD_PREVIEW.dispose();
+
+    expect(NOOP_HOLD_PREVIEW.showing).toBe(false);
+  });
+
+  it("is frozen, so the one instance every dial context shares cannot be mutated", () => {
+    expect(Object.isFrozen(NOOP_HOLD_PREVIEW)).toBe(true);
   });
 });

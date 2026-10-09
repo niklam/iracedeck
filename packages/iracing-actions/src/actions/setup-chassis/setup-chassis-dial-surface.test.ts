@@ -43,6 +43,7 @@ vi.mock("@iracedeck/deck-core", async () => {
 
   return {
     createHoldPreview: dialGesture.createHoldPreview,
+    NOOP_HOLD_PREVIEW: dialGesture.NOOP_HOLD_PREVIEW,
     IconUpdateThrottle: class {
       schedule(_id: string, render: () => unknown): void {
         try {

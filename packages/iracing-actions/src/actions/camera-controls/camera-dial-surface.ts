@@ -105,6 +105,7 @@ import {
   getDualPressThresholdMs,
   type HoldPreview,
   type IDeckActionContext,
+  NOOP_HOLD_PREVIEW,
   STREAM_DOCK_KNOB_CANVAS,
   svgToDataUri,
 } from "@iracedeck/deck-core";
@@ -142,20 +143,6 @@ import { SUB_CAMERA_BINDING_KEY_LIST } from "./sub-camera-bindings.js";
  * (mirrors the Setup Brakes dial).
  */
 const CHANGE_RENDER_MIN_INTERVAL_MS = 100;
-
-/**
- * The hold preview the Mirabox / Ulanzi bundles get (issue #1120): no timer,
- * nothing drawn. Chosen at context creation behind `__FEATURE_DIAL_EXTENDED_GESTURES__`
- * so every call site stays unconditional and terser folds the real helper out
- * of the builds that have no touch strip to draw on.
- */
-const NOOP_HOLD_PREVIEW: HoldPreview = {
-  down(): void {},
-  up(): void {},
-  rotated(): void {},
-  dispose(): void {},
-  showing: false,
-};
 
 /** The cycle target the dial rotates through. */
 export const DIAL_MODES = ["camera", "sub-camera", "car-number", "race-position", "track-order", "driving"] as const;

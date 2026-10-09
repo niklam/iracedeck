@@ -173,6 +173,7 @@ export {
   resolvePairedAction,
   classifyDialRelease,
   createHoldPreview,
+  NOOP_HOLD_PREVIEW,
 } from "./dial-gesture.js";
 
 // Keyboard types

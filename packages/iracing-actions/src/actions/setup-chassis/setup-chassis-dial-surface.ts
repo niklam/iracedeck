@@ -20,6 +20,7 @@ import {
   type HoldPreview,
   type IDeckActionContext,
   isSimHubReachable,
+  NOOP_HOLD_PREVIEW,
   svgToDataUri,
 } from "@iracedeck/deck-core";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
@@ -286,19 +287,6 @@ function gestureLabel(action: GestureSlot): string | undefined {
 export function nextSpringSide(setting: SetupChassisDialSetting): SetupChassisDialSetting {
   return setting === "lr-spring" ? "rr-spring" : "lr-spring";
 }
-
-/**
- * The hold preview compiled out on the hosts with no long press. Every
- * call site stays unconditional and `__FEATURE_DIAL_EXTENDED_GESTURES__` folds to `false`
- * there, so terser drops this object's users and `createHoldPreview` with them.
- */
-const NOOP_HOLD_PREVIEW: HoldPreview = {
-  down: () => {},
-  up: () => {},
-  rotated: () => {},
-  dispose: () => {},
-  showing: false,
-};
 
 /** A pending hold preview on this surface: the mark, and the setting the box presents while it shows. */
 export interface ChassisHoldPreview {

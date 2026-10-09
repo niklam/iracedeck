@@ -47,6 +47,7 @@ vi.mock("@iracedeck/deck-core", async () => {
   return {
     CommonSettings: { extend: (shape: never) => z.object(shape).passthrough() },
     createHoldPreview: dialGesture.createHoldPreview,
+    NOOP_HOLD_PREVIEW: dialGesture.NOOP_HOLD_PREVIEW,
     classifyDialRelease: dialGesture.classifyDialRelease,
     IconUpdateThrottle: throttle.IconUpdateThrottle,
     getDualPressThresholdMs: () => mocks.thresholdMs.value,

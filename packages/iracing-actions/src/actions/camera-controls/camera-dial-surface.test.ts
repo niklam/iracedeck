@@ -55,10 +55,11 @@ vi.mock("@iracedeck/deck-core", async () => {
   // The REAL hold-preview helper (#1120), reached by its own module rather
   // than the deck-core barrel: the timer/threshold/revert behaviour under test
   // is the helper's, and a stub here would only re-test the stub.
-  const { createHoldPreview } = await import("../../../../deck-core/src/dial-gesture.js");
+  const { createHoldPreview, NOOP_HOLD_PREVIEW } = await import("../../../../deck-core/src/dial-gesture.js");
 
   return {
     createHoldPreview,
+    NOOP_HOLD_PREVIEW,
     // push-turn when rotated while held, else long/short vs the threshold.
     classifyDialRelease: (args: {
       pressStartMs: number;

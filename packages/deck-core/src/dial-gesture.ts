@@ -188,3 +188,20 @@ export function createHoldPreview(args: {
     },
   };
 }
+
+/**
+ * The hold preview for a build with the extended gestures compiled out (#1120,
+ * #1329): Mirabox and Ulanzi have no plugin touch strip to preview on, and a
+ * Mirabox knob press never reports its release, so there is no hold to preview.
+ * No timer, nothing drawn. A dial surface picks it at context creation behind
+ * `__FEATURE_DIAL_EXTENDED_GESTURES__`, so its call sites (`ctx.holdPreview.down()`)
+ * stay unconditional and terser folds {@link createHoldPreview} and its draw
+ * closures out of the builds that never construct it. Shared and stateless.
+ */
+export const NOOP_HOLD_PREVIEW: HoldPreview = Object.freeze({
+  down(): void {},
+  up(): void {},
+  rotated(): void {},
+  dispose(): void {},
+  showing: false,
+});

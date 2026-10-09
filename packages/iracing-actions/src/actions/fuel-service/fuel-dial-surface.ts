@@ -22,6 +22,7 @@ import {
   getDualPressThresholdMs,
   type HoldPreview,
   type IDeckActionContext,
+  NOOP_HOLD_PREVIEW,
   resolvePairedAction,
   svgToDataUri,
 } from "@iracedeck/deck-core";
@@ -139,21 +140,6 @@ export const PENDING_BAR_TOP_Y = READOUT_BASELINE_Y + 4;
  * Top edge of the fuel bar's `<g translate>` — the y the pending mark must stay above.
  */
 export const FUEL_BAR_TOP_Y = 66;
-
-/**
- * The hold preview for a non-Elgato build (#1120): Mirabox and Ulanzi have no
- * plugin touch strip, so there is nothing to preview on. The surface's call
- * sites stay unconditional (`ctx.holdPreview.down()`) and the real helper is
- * constructed only under `__FEATURE_DIAL_EXTENDED_GESTURES__`, so terser drops the
- * helper and its draw closures from those bundles.
- */
-const NOOP_HOLD_PREVIEW: HoldPreview = {
-  down() {},
-  up() {},
-  rotated() {},
-  dispose() {},
-  showing: false,
-};
 
 /**
  * The "Push + Turn" pair for each `dial.pushTurnAction` value. The per-tick

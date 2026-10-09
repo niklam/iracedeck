@@ -178,6 +178,7 @@ vi.mock("@iracedeck/deck-core", async () => {
 
       return null;
     },
+    NOOP_HOLD_PREVIEW: (await import("../../../../deck-core/src/dial-gesture.js")).NOOP_HOLD_PREVIEW,
     // Display-only hold preview (#1120) — mirrors deck-core's createHoldPreview.
     // This suite never holds a dial past the threshold; the surface's own suite
     // covers the preview, this stand-in only keeps the dial contexts constructible.

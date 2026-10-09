@@ -20,6 +20,7 @@ import {
   type HoldPreview,
   IconUpdateThrottle,
   type IDeckActionContext,
+  NOOP_HOLD_PREVIEW,
   svgToDataUri,
 } from "@iracedeck/deck-core";
 import type { ILogger } from "@iracedeck/logger";
@@ -58,19 +59,6 @@ const NAME_CARD_BACKGROUND = "#2a3a4a";
 const CURSOR_OWNER: Record<MarkerDirection, string> = {
   next: "dial-next",
   previous: "dial-previous",
-};
-
-/**
- * The hold preview where the extended gestures are compiled out (#1120): a
- * Mirabox knob press never reports its release, so there is no hold to
- * preview. The surface's call sites stay unconditional.
- */
-const NOOP_HOLD_PREVIEW: HoldPreview = {
-  down() {},
-  up() {},
-  rotated() {},
-  dispose() {},
-  showing: false,
 };
 
 /** Per-context runtime state. In memory only. */
