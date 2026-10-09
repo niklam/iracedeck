@@ -136,19 +136,11 @@ export function diffTireWear(
   telemetry: TelemetryData,
   emit: EmitFn,
   pending: ReadonlyArray<PendingEvent>,
-  replayOnlySession: boolean,
 ): void {
-  // A saved replay scrubbed through a pit stop can read `IsReplayPlaying ===
-  // false` while `SimMode === "replay"` (the diffPitsOpen / diffPitSpeeding
-  // precedent) — nobody drove that stop, so nothing is read or kept.
-  if (replayOnlySession) {
-    state.tireWearDroveOnCircuit = false;
-    state.tireWearStallDriveIn = false;
-    state.tireWearReport = null;
-
-    return;
-  }
-
+  // A saved replay scrubbed through a pit stop never reaches this diff: it
+  // reads `IsReplayPlaying === false` while `SimMode === "replay"`, which the
+  // translator's guard has held back since #1324 (it used to be a gate here),
+  // and the replay-entry wipe drops a stored report with the rest of the state.
   const isOnTrack = telemetry.IsOnTrack ?? false;
   const onPitRoad = telemetry.OnPitRoad ?? false;
   const inPitStall = telemetry.PlayerCarInPitStall ?? false;

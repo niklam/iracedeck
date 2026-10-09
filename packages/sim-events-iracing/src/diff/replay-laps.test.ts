@@ -42,15 +42,18 @@ function tick(o: TickOverrides = {}): TelemetryData {
 function run(
   state: TranslatorState,
   telemetry: TelemetryData,
-  opts: { sessionInfo?: Record<string, unknown> | null; replayOnly?: boolean } = {},
+  opts: { sessionInfo?: Record<string, unknown> | null; inReplay?: boolean } = {},
 ): PendingEvent[] {
   const out: PendingEvent[] = [];
 
+  // `inReplay` is the translator's read of the controller's debounced replay
+  // state (#1324), which the diff takes as given; the tick's own
+  // `IsReplayPlaying` only decides which frame `resolveReplayFrame` reads.
   diffReplayLaps(
     state,
     telemetry,
     "sessionInfo" in opts ? (opts.sessionInfo ?? null) : SESSION_INFO,
-    opts.replayOnly ?? false,
+    opts.inReplay ?? telemetry.IsReplayPlaying === true,
     (ev) => out.push(ev),
   );
 
@@ -222,10 +225,10 @@ describe("diffReplayLaps", () => {
       ]);
     });
 
-    it("unseeds in a replay-only session (SimMode replay)", () => {
+    it("unseeds on a tick the debounced state calls a replay though the flag reads false (a seek's blip, a saved replay)", () => {
       run(state, tick());
 
-      expect(run(state, tick({ completed: [5, 4, 4, -1] }), { replayOnly: true })).toEqual([]);
+      expect(run(state, tick({ completed: [5, 4, 4, -1] }), { inReplay: true })).toEqual([]);
       expect(state.replayLapsSeeded).toBe(false);
       expect(run(state, tick({ completed: [5, 4, 4, -1] }))).toEqual([]);
     });

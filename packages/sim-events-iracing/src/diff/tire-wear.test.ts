@@ -74,15 +74,10 @@ const STALL_ENTERED: PendingEvent = { event: "pitStall.entered", data: {} };
 const STALL_DEPARTED: PendingEvent = { event: "pitStall.departed", data: {} };
 
 /** Run one tick of the diff alone; returns what it emitted. */
-function step(
-  state: TranslatorState,
-  t: TelemetryData,
-  pending: PendingEvent[] = [],
-  replayOnlySession = false,
-): PendingEvent[] {
+function step(state: TranslatorState, t: TelemetryData, pending: PendingEvent[] = []): PendingEvent[] {
   const emitted: PendingEvent[] = [];
 
-  diffTireWear(state, t, (e) => emitted.push(e), pending, replayOnlySession);
+  diffTireWear(state, t, (e) => emitted.push(e), pending);
 
   return emitted;
 }
@@ -446,17 +441,6 @@ describe("diffTireWear — the stored report follows the exit readback's lifecyc
     expect(emitted).toHaveLength(1);
     expect(emitted[0]?.corners.lf.tread).toBe(80);
   });
-
-  it("reads and keeps nothing in a replay-only session", () => {
-    const state = createInitialState();
-
-    driveIntoStop(state);
-    expect(state.tireWearReport).not.toBeNull();
-
-    expect(step(state, onCircuit(), [EXIT], true)).toEqual([]);
-    expect(state.tireWearReport).toBeNull();
-    expect(state.tireWearDroveOnCircuit).toBe(false);
-  });
 });
 
 type Emitted = { t: number; event: PendingEvent };
@@ -475,7 +459,7 @@ function runChain(ticks: ReadonlyArray<readonly [number, TelemetryData]>): Emitt
 
     diffPitLane(state, tick, TrackType.RoadCourse, now, emit);
     diffPitReadback(state, tick, now, emit, pending);
-    diffTireWear(state, tick, emit, pending, false);
+    diffTireWear(state, tick, emit, pending);
 
     for (const event of pending) out.push({ t, event });
   }
@@ -603,7 +587,7 @@ function replayCapture(): Emitted[] {
 
     diffPitLane(state, telemetryTick, TrackType.RoadCourse, now, emit);
     diffPitReadback(state, telemetryTick, now, emit, pending);
-    diffTireWear(state, telemetryTick, emit, pending, false);
+    diffTireWear(state, telemetryTick, emit, pending);
 
     for (const event of pending) out.push({ t, event });
   }
