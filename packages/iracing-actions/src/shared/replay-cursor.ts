@@ -11,9 +11,12 @@
  * - A long-running driver (the walk) **claims** the cursor for the duration and
  *   checks `cancelledBy` at every await — a non-null value means "stop, send
  *   nothing more".
- * - Any one-shot jump, in ANY action, calls {@link cancelReplayCursorOwner}
- *   before sending its command. That cancels the in-flight claim (if any) and
- *   names the command that took the cursor, so the owner can log it.
+ * - Any one-shot command, in ANY action, calls {@link cancelReplayCursorOwner}
+ *   before sending it — a speed change or a pause too, not only a seek, since
+ *   either breaks a walk's probes. That cancels the in-flight claim (if any)
+ *   and names the command that took the cursor, so the owner can log it. The
+ *   hidden legacy Replay Navigation, Replay Speed and Replay Transport actions
+ *   are callers too (#1334): a key placed before Replay Control still runs them.
  *
  * The module also keeps the one **pending landing** (#1230): the frame the last
  * Replay Markers jump was sent to. `ReplayFrameNum` reaches a jump's target only
