@@ -1006,13 +1006,14 @@ describe("CameraControls", () => {
         payload: { settings },
       } as never);
       await action.onDialDown(makeDialDownEvent(settings));
+      // A dial press classifies at its release, so the release is what would
+      // fire a keypad focus-select-car switch; without it this test could not
+      // fail. The release also disarms the #1120 hold-preview timer the press armed.
+      await action.onDialUp(makeDialDownEvent(settings));
 
       expect(requestProfileSwitch).not.toHaveBeenCalled();
       expect(getSelectIntent("dev-1")).toBeUndefined();
 
-      // A dialDown arms the real #1120 hold-preview timer; without a release
-      // this test would leak it into whatever runs next. Disappear rather than
-      // release, so the press still classifies nothing.
       await action.onWillDisappear(makeDialDownEvent(settings));
     });
 
