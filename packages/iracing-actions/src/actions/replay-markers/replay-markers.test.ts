@@ -2,6 +2,7 @@ import { ReplayPosMode, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { _resetReplayCursor, claimReplayCursor, clearReplayLanding } from "../../shared/replay-cursor.js";
+import { withSteppedReplayState } from "../../shared/test-support/replay-state.js";
 import { REPLAY_EXIT_GRACE_MS } from "./replay-markers-ops.js";
 import {
   buildMarker,
@@ -160,6 +161,9 @@ function makeAction(telemetry: TelemetryData | null = LIVE, subSessionId: unknow
   sdk.getSessionInfo.mockReturnValue(
     subSessionId === NO_SUBSESSION ? {} : { WeekendInfo: { SubSessionID: subSessionId } },
   );
+  // The controller's debounced replay state (#1324), stepped with the real rule
+  // from whatever telemetry the test has set, at every read.
+  withSteppedReplayState(action["sdkController"]);
 
   return { action, sdk };
 }

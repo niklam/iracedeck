@@ -1,11 +1,12 @@
+import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { _resetReplayCursor, lastReplaySighting, recordReplaySighting } from "../../shared/replay-cursor.js";
 import {
   cursorTestEvent,
   type ReplayCursorProbe,
   stageReplayCursorProbe,
 } from "../../shared/replay-cursor.test-support.js";
+import { steppedReplayState } from "../../shared/test-support/replay-state.js";
 import { generateReplayNavigationSvg, ReplayNavigation } from "./replay-navigation.js";
 
 vi.mock("@iracedeck/icons/replay-navigation/next-session.svg", () => ({
@@ -77,7 +78,12 @@ vi.mock("@iracedeck/deck-core", () => ({
   },
   ConnectionStateAwareAction: class MockConnectionStateAwareAction {
     logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
-    sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn(), getSessionInfo: vi.fn((): unknown => null) };
+    sdkController = {
+      subscribe: vi.fn(),
+      unsubscribe: vi.fn(),
+      getSessionInfo: vi.fn((): unknown => null),
+      noteReplayLeftForLive: vi.fn(),
+    };
     updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
     setRegenerateCallback = vi.fn();
@@ -240,52 +246,75 @@ describe("ReplayNavigation", () => {
     });
   });
 
-  describe("jump-to-end and the Replay Markers replay grace (#1230)", () => {
+  describe("jump-to-end and the controller's replay grace (#1230, #1324)", () => {
     const mockReplay = { goToEnd: vi.fn(() => true) };
+    /** A replay at frame 4 000; `ReplayFrameNumEnd` is the frames left. */
+    const REPLAY = { IsReplayPlaying: true, ReplayFrameNum: 4_000, ReplayFrameNumEnd: 90_000 } as TelemetryData;
+    /** What telemetry reads in the post-seek blip, and from the car. */
+    const NOT_PLAYING = { IsReplayPlaying: false, ReplayFrameNum: 0, ReplayFrameNumEnd: 90_000 } as TelemetryData;
     let action: ReplayNavigation;
+    let telemetry: TelemetryData;
+    let sessionInfo: unknown;
+    let t0: number;
 
     function fakeEvent(settings: Record<string, unknown>) {
       return { action: { id: "ctx-end", setTitle: vi.fn(), setImage: vi.fn() }, payload: { settings } };
     }
 
     function inSession(simMode: string): void {
-      action["sdkController"].getSessionInfo = vi.fn(() => ({ WeekendInfo: { SimMode: simMode } }));
+      sessionInfo = { WeekendInfo: { SimMode: simMode } };
     }
 
     beforeEach(async () => {
-      _resetReplayCursor();
       mockReplay.goToEnd.mockReturnValue(true);
       const { getCommands } = await import("@iracedeck/deck-iracing");
       vi.mocked(getCommands).mockReturnValue({ replay: mockReplay } as any);
       action = new ReplayNavigation();
-      recordReplaySighting(4_000, 10_000);
+      sessionInfo = null;
+      // The controller's state, stepped with the real rule at every read.
+      const replay = steppedReplayState(
+        () => telemetry,
+        () => sessionInfo,
+      );
+      action["sdkController"].getReplayState = vi.fn(replay.getReplayState);
+      action["sdkController"].noteReplayLeftForLive = vi.fn(replay.noteReplayLeftForLive);
+      // The replay on screen before the press.
+      t0 = Date.now();
+      telemetry = REPLAY;
     });
 
-    it("a jump to the end in a live session leaves the replay for the car: the sighting is dropped at once", async () => {
+    /** The replay tick before the press, then the state a blip tick reads 50 ms after it. */
+    async function pressJumpToEnd(): Promise<{ inReplay: boolean; frame: number | null }> {
+      action["sdkController"].getReplayState(t0);
+      await action.onKeyDown(fakeEvent({ navigation: "jump-to-end" }) as any);
+      telemetry = NOT_PLAYING;
+
+      return action["sdkController"].getReplayState(t0 + 50);
+    }
+
+    it("a jump to the end in a live session leaves the replay for the car: no grace follows", async () => {
       inSession("full");
 
-      await action.onKeyDown(fakeEvent({ navigation: "jump-to-end" }) as any);
-
+      expect(await pressJumpToEnd()).toMatchObject({ inReplay: false, frame: 90_000 });
       expect(mockReplay.goToEnd).toHaveBeenCalledOnce();
-      expect(lastReplaySighting()).toBeNull();
+      expect(action["sdkController"].noteReplayLeftForLive).toHaveBeenCalledOnce();
     });
 
-    it("a jump to the end that was not sent leaves the sighting and its grace", async () => {
+    it("a jump to the end that was not sent tells the controller nothing: the grace stands", async () => {
       inSession("full");
       mockReplay.goToEnd.mockReturnValue(false);
 
-      await action.onKeyDown(fakeEvent({ navigation: "jump-to-end" }) as any);
-
-      expect(lastReplaySighting()).toEqual({ frame: 4_000, seenAt: 10_000 });
+      expect(await pressJumpToEnd()).toMatchObject({ inReplay: true, frame: 4_000 });
+      expect(action["sdkController"].noteReplayLeftForLive).not.toHaveBeenCalled();
     });
 
-    it("in a saved replay the jump only seeks to the end of the file: the sighting and its grace stand", async () => {
+    it("in a saved replay the jump only seeks to the end of the file: the grace stands", async () => {
       inSession("replay");
 
-      await action.onKeyDown(fakeEvent({ navigation: "jump-to-end" }) as any);
-
+      expect(await pressJumpToEnd()).toMatchObject({ inReplay: true, frame: 4_000 });
       expect(mockReplay.goToEnd).toHaveBeenCalledOnce();
-      expect(lastReplaySighting()).toEqual({ frame: 4_000, seenAt: 10_000 });
+      // The action tells the controller every sent goToEnd; the saved-replay rule is the SDK's.
+      expect(action["sdkController"].noteReplayLeftForLive).toHaveBeenCalledOnce();
     });
   });
 

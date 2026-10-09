@@ -74,14 +74,8 @@ import z from "zod";
 import { CAR_CYCLE_BINDING_KEYS } from "../../shared/car-cycle-bindings.js";
 import { computeCarNumberTarget } from "../../shared/car-cycling.js";
 import { RepeatController } from "../../shared/repeat-controller.js";
-import {
-  cancelReplayCursorOwner,
-  claimReplayCursor,
-  noteReplayGoToEnd,
-  type ReplayCursorClaim,
-} from "../../shared/replay-cursor.js";
+import { cancelReplayCursorOwner, claimReplayCursor, type ReplayCursorClaim } from "../../shared/replay-cursor.js";
 import { isPaused, seekReplayFrame, waitForReplay } from "../../shared/replay-seek.js";
-import { isReplayOnlySession } from "../../shared/replay-session.js";
 
 const REPLAY_CONTROL_MODES = [
   "play-pause",
@@ -1249,9 +1243,10 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
    * never left its pre-command value is "unmoved" — how the sim says
    * `nextSession` in the last session. The walk holds the shared replay-cursor
    * claim; any replay command from any action cancels it, and it sends
-   * nothing more. It refuses to start while `IsReplayPlaying !== true`,
-   * because iRacing ignores replay commands from the car. An aborted walk
-   * leaves the replay paused with the cache saying so, so the Play key plays.
+   * nothing more. It refuses to start while no replay is on screen (the
+   * controller's debounced replay state, #1324), because iRacing ignores
+   * replay commands from the car. An aborted walk leaves the replay paused
+   * with the cache saying so, so the Play key plays.
    */
   async walkToFastestLap(
     contextId: string,
@@ -1646,8 +1641,9 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     // Refuse from the car: iRacing honours replay commands only out of it
     // (irsdk_defines.h: "camera and replay commands only work when you are out
     // of your car"), and a map built from ignored commands would describe the
-    // live view, not the replay.
-    if (this.sdkController.getCurrentTelemetry()?.IsReplayPlaying !== true) {
+    // live view, not the replay. The debounced state, not the raw flag, so a
+    // press right after a seek is not taken for the car (#1324).
+    if (!this.sdkController.getReplayState().inReplay) {
       this.logger.info("Jump to fastest lap: replay not open; iRacing ignores replay commands from the car");
 
       return;
@@ -2220,10 +2216,13 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
       }
       case "jump-to-live": {
         const success = replay.goToEnd();
-        // In a live session this leaves the replay for the car: Replay Markers
-        // must read live at once, not hold the old replay frame through its
-        // post-seek grace (#1230). In a saved replay it is only a seek.
-        noteReplayGoToEnd(success, isReplayOnlySession(this.sdkController.getSessionInfo()));
+
+        // In a live session this leaves the replay for the car: every replay
+        // consumer must read live at once, not hold the old replay frame
+        // through the post-seek grace (#1230, #1324). In a saved replay it is
+        // only a seek, and the controller leaves its state alone.
+        if (success) this.sdkController.noteReplayLeftForLive();
+
         this.logger.info("Jump to live executed");
         this.logger.debug(`Result: ${success}`);
         break;
@@ -2315,8 +2314,9 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
         // (irsdk_defines.h: "camera and replay commands only work when you
         // are out of your car"): a jump or a walk from the car would be sent,
         // ignored, and logged as done — and a walk would cache a session map
-        // describing the live view.
-        if (telemetry?.IsReplayPlaying !== true) {
+        // describing the live view. The debounced state, not the raw flag,
+        // which reads false for ~300 ms after every seek (#1324).
+        if (!this.sdkController.getReplayState().inReplay) {
           this.logger.info("Jump to fastest lap: replay not open; iRacing ignores replay commands from the car");
           break;
         }

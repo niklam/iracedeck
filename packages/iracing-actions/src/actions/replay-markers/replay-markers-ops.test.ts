@@ -6,10 +6,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   _resetReplayCursor,
   cancelReplayCursorOwner,
-  noteReplayGoToEnd,
   pendingReplayLanding,
   recordReplayLanding,
 } from "../../shared/replay-cursor.js";
+import { steppedReplayState, type SteppedReplayState } from "../../shared/test-support/replay-state.js";
 import {
   DIAL_LANDING_HOLD_MS,
   jumpToMarkerFrame,
@@ -113,7 +113,7 @@ describe("resolveJumpTarget", () => {
   });
 });
 
-describe("the replay state survives the post-seek blip (#1230)", () => {
+describe("the replay state survives the post-seek blip (#1230, read from the controller since #1324)", () => {
   /** A replay at `frame`; `ReplayFrameNumEnd` is the frames LEFT, never a position. */
   const replayAt = (frame: number) =>
     ({ IsReplayPlaying: true, ReplayFrameNum: frame, ReplayFrameNumEnd: 90_000 }) as TelemetryData;
@@ -123,13 +123,18 @@ describe("the replay state survives the post-seek blip (#1230)", () => {
     markers: { next: vi.fn(() => markers(5_000)[0]!), previous: vi.fn(() => null) },
   } as unknown as ReplaySessionStore;
   let telemetry: TelemetryData = notPlaying;
+  let sessionInfo: unknown = null;
+  /** The controller's state, stepped with the real rule by every read. */
+  let replay: SteppedReplayState;
   const source: ReplayContextSource = {
     getConnectionStatus: () => true,
     getCurrentTelemetry: () => telemetry,
-    getSessionInfo: () => null,
+    getSessionInfo: () => sessionInfo,
+    getReplayState: (nowMs) => replay.getReplayState(nowMs),
     isStoreInitialized: () => true,
     getStore: () => store,
   };
+  const SAVED_REPLAY = { WeekendInfo: { SimMode: "replay" } };
 
   function read(t: TelemetryData, nowMs: number): ReplayContext {
     telemetry = t;
@@ -142,6 +147,11 @@ describe("the replay state survives the post-seek blip (#1230)", () => {
 
   beforeEach(() => {
     _resetReplayCursor();
+    sessionInfo = null;
+    replay = steppedReplayState(
+      () => telemetry,
+      () => sessionInfo,
+    );
   });
 
   it("a false read under the grace is still the replay, at the last replay frame seen", () => {
@@ -190,14 +200,14 @@ describe("the replay state survives the post-seek blip (#1230)", () => {
 
   it("a jump to live ends the grace: the next false read is the car at once, at the live edge", () => {
     read(replayAt(4_000), 10_000);
-    noteReplayGoToEnd(true, false);
+    replay.noteReplayLeftForLive(10_010);
 
     expect(read(notPlaying, 10_050)).toMatchObject({ inReplay: false, frame: 90_000 });
   });
 
   it("a replay read straight after a jump to live, before iRacing switches, does not revive the old frame", () => {
     read(replayAt(4_000), 10_000);
-    noteReplayGoToEnd(true, false);
+    replay.noteReplayLeftForLive(10_010);
     // The command lands a tick later: this read still shows the old replay position.
     expect(read(replayAt(4_000), 10_016)).toMatchObject({ inReplay: true, frame: 4_000 });
 
@@ -205,10 +215,27 @@ describe("the replay state survives the post-seek blip (#1230)", () => {
   });
 
   it("in a saved replay a jump to the end keeps the grace: the post-seek blip is still the replay", () => {
+    sessionInfo = SAVED_REPLAY;
     read(replayAt(4_000), 10_000);
-    noteReplayGoToEnd(true, true);
+    replay.noteReplayLeftForLive(10_010);
 
     expect(read(notPlaying, 10_050)).toMatchObject({ inReplay: true, frame: 4_000 });
+  });
+
+  it("a saved replay is never the car, whatever the flag reads past the grace", () => {
+    sessionInfo = SAVED_REPLAY;
+    read(replayAt(4_000), 10_000);
+
+    expect(read({ ...notPlaying, ReplayFrameNum: 4_000 }, 10_000 + REPLAY_EXIT_GRACE_MS)).toMatchObject({
+      inReplay: true,
+      frame: 4_000,
+    });
+  });
+
+  it("no usable frame on the controller is no context", () => {
+    telemetry = { IsReplayPlaying: true } as TelemetryData;
+
+    expect(readReplayContext(source, 10_000)).toEqual({ ok: false, reason: "No replay frame in telemetry" });
   });
 
   it("a replay left for the car stays left: the old frame is not revived later", () => {

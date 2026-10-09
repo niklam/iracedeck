@@ -7,7 +7,7 @@
  * keypad's greyed keys. Logging stays with the callers.
  */
 import { getCommands } from "@iracedeck/deck-iracing";
-import { ReplayPosMode, resolveReplayFrame, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { REPLAY_EXIT_GRACE_MS, ReplayPosMode, type ReplayState, type TelemetryData } from "@iracedeck/iracing-sdk";
 import {
   MARKER_DEDUPE_FRAMES,
   MARKER_DELETE_WINDOW_FRAMES,
@@ -20,11 +20,8 @@ import {
 import {
   cancelReplayCursorOwner,
   clearReplayLanding,
-  clearReplaySighting,
-  lastReplaySighting,
   pendingReplayLanding,
   recordReplayLanding,
-  recordReplaySighting,
   type ReplayLanding,
 } from "../../shared/replay-cursor.js";
 
@@ -51,13 +48,11 @@ export const DIAL_LANDING_HOLD_MS = 1_000;
 /**
  * @internal Exported for testing
  *
- * How long (ms) `IsReplayPlaying` must read false before the surfaces take the
- * replay as left for the car. For roughly 300 ms after every `setPlayPosition`
- * iRacing reports it false (measured 2026-10-04), so without the grace a turn
- * right after a jump is refused as "from the car", the dial flashes its
- * from-the-car caption and the keypad's Next / Previous grey for a moment.
+ * How long (ms) `IsReplayPlaying` must read false before the replay counts as
+ * left for the car: the SDK's constant (#1324), re-exported for the surfaces'
+ * tests. The rule itself is `SDKController.getReplayState()`'s.
  */
-export const REPLAY_EXIT_GRACE_MS = 1_000;
+export { REPLAY_EXIT_GRACE_MS };
 
 /** The replay counts as landed once `ReplayFrameNum` is this close (1 s) to the frame jumped to. */
 const LANDED_WITHIN_FRAMES = 60;
@@ -145,10 +140,11 @@ export interface ReplayContext {
   ok: true;
   telemetry: TelemetryData;
   /**
-   * Whether a replay is on screen, debounced: true from the first replay read,
-   * false only once `IsReplayPlaying` has read false for
-   * {@link REPLAY_EXIT_GRACE_MS}. Every "in a replay" decision reads this,
-   * never `telemetry.IsReplayPlaying`, which drops for ~300 ms after each seek.
+   * Whether a replay is on screen, debounced (the controller's replay state):
+   * true from the first replay tick, false only once `IsReplayPlaying` has read
+   * false for {@link REPLAY_EXIT_GRACE_MS}, and always true in a saved replay.
+   * Every "in a replay" decision reads this, never `telemetry.IsReplayPlaying`,
+   * which drops for ~300 ms after each seek.
    */
   inReplay: boolean;
   /**
@@ -174,14 +170,22 @@ export interface ReplayContextSource {
   getConnectionStatus(): boolean;
   getCurrentTelemetry(): TelemetryData | null;
   getSessionInfo(): unknown;
+  /**
+   * Whether a replay is on screen and the frame it shows, debounced, as of
+   * `nowMs`: `SDKController.getReplayState()` (#1324), the one instance every
+   * replay consumer reads.
+   */
+  getReplayState(nowMs: number): Pick<ReplayState, "inReplay" | "frame">;
   isStoreInitialized(): boolean;
   getStore(): ReplaySessionStore;
 }
 
 /**
- * Reads the replay context fresh: connected, a store, telemetry with a frame,
- * whether a replay is on screen (debounced, see {@link resolveReplayState}),
- * and the scope. `nowMs` is injectable for tests.
+ * Reads the replay context fresh: connected, a store, telemetry, whether a
+ * replay is on screen and the frame it shows (the controller's debounced
+ * replay state, so a press in the post-seek blip still reads the replay and
+ * its held frame), and the scope. `nowMs` is injectable for tests; the state
+ * is evaluated at it, so a press between ticks sees the grace expire.
  */
 export function readReplayContext(source: ReplayContextSource, nowMs: number = Date.now()): ReplayContextResult {
   if (!source.getConnectionStatus()) return { ok: false, reason: "Not connected to iRacing" };
@@ -189,9 +193,9 @@ export function readReplayContext(source: ReplayContextSource, nowMs: number = D
   if (!source.isStoreInitialized()) return { ok: false, reason: "Replay session store not initialized" };
 
   const telemetry = source.getCurrentTelemetry();
-  const state = telemetry ? resolveReplayState(telemetry, nowMs) : null;
+  const state = source.getReplayState(nowMs);
 
-  if (!telemetry || state === null) return { ok: false, reason: "No replay frame in telemetry" };
+  if (!telemetry || state.frame === null) return { ok: false, reason: "No replay frame in telemetry" };
 
   const subSessionId = readSubSessionId(source.getSessionInfo());
 
@@ -203,37 +207,6 @@ export function readReplayContext(source: ReplayContextSource, nowMs: number = D
     store: source.getStore(),
     scope: subSessionId === undefined ? undefined : { subSessionId },
   };
-}
-
-/**
- * Whether a replay is on screen and the frame it shows, debounced across every
- * Replay Markers surface through the one process-wide sighting
- * (`shared/replay-cursor.ts`). Entering a replay is immediate. Leaving it
- * counts only once `IsReplayPlaying` has read false for
- * {@link REPLAY_EXIT_GRACE_MS} since the last replay read; until then the last
- * replay frame seen is held. Null when the telemetry carries no usable frame.
- */
-function resolveReplayState(telemetry: TelemetryData, nowMs: number): { inReplay: boolean; frame: number } | null {
-  if (telemetry.IsReplayPlaying === true) {
-    const frame = resolveReplayFrame(telemetry);
-
-    if (frame === null) return null;
-
-    recordReplaySighting(frame, nowMs);
-
-    return { inReplay: true, frame };
-  }
-
-  const sighting = lastReplaySighting();
-
-  if (sighting !== null && nowMs - sighting.seenAt < REPLAY_EXIT_GRACE_MS) {
-    return { inReplay: true, frame: sighting.frame };
-  }
-
-  clearReplaySighting();
-  const frame = resolveReplayFrame(telemetry);
-
-  return frame === null ? null : { inReplay: false, frame };
 }
 
 /**
