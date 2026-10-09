@@ -88,6 +88,8 @@
 			keyBindings: require('./data/key-bindings.json').setupEngine
 		}) %>
 
+		<%- include('dial-controller') %>
+
 		<script>
 			// View sub-modes are read-only displays — hide Direction; show the dual-press opt-in.
 			function isViewSetting(setting) {
@@ -101,27 +103,6 @@
 				const view = isViewSetting(setting);
 				directionItem?.classList.toggle("hidden", view);
 				dualEnabledItem?.classList.toggle("hidden", !view);
-			}
-
-			// Which surface this instance sits on: the PI registration's
-			// actionInfo.payload.controller ("Keypad" | "Encoder"; the Mirabox host
-			// may report "Knob"). Anything unknown or unavailable falls back to the
-			// keypad view (#798).
-			async function resolveController() {
-				try {
-					const client = window.SDPIComponents && window.SDPIComponents.streamDeckClient;
-					const info = client && (await client.getConnectionInfo());
-					const controller = info && info.actionInfo && info.actionInfo.payload && info.actionInfo.payload.controller;
-					return controller === "Encoder" || controller === "Knob" ? "Encoder" : "Keypad";
-				} catch (err) {
-					return "Keypad";
-				}
-			}
-
-			function applyDialView() {
-				document.getElementById("keypad-settings")?.classList.add("hidden");
-				document.getElementById("keypad-appearance")?.classList.add("hidden");
-				document.getElementById("dial-settings")?.classList.remove("hidden");
 			}
 
 			async function initialize() {
@@ -147,8 +128,8 @@
 					});
 				}
 
-				if ((await resolveController()) === "Encoder") {
-					applyDialView();
+				if ((await window.irdResolveController()) === "Encoder") {
+					window.irdApplyDialView();
 				}
 			}
 

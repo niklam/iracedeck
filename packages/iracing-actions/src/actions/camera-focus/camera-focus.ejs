@@ -304,6 +304,8 @@
 			keyBindings: require('./data/key-bindings.json').cameraControls
 		}) %>
 
+		<%- include('dial-controller') %>
+
 		<script>
 			(function () {
 				// Camera group subset constants — duplicated from camera-groups.ts
@@ -511,27 +513,6 @@
 					}
 				}
 
-				// Which surface this instance sits on: the PI registration's
-				// actionInfo.payload.controller ("Keypad" | "Encoder"; the Mirabox host
-				// may report "Knob"). Anything unknown or unavailable falls back to the
-				// keypad view (#803).
-				async function resolveController() {
-					try {
-						var client = window.SDPIComponents && window.SDPIComponents.streamDeckClient;
-						var info = client && (await client.getConnectionInfo());
-						var controller = info && info.actionInfo && info.actionInfo.payload && info.actionInfo.payload.controller;
-						return controller === "Encoder" || controller === "Knob" ? "Encoder" : "Keypad";
-					} catch (err) {
-						return "Keypad";
-					}
-				}
-
-				function applyDialView() {
-					document.getElementById("keypad-settings") && document.getElementById("keypad-settings").classList.add("hidden");
-					document.getElementById("keypad-appearance") && document.getElementById("keypad-appearance").classList.add("hidden");
-					document.getElementById("dial-settings") && document.getElementById("dial-settings").classList.remove("hidden");
-				}
-
 				// Dial Mode visibility — the shared camera-groups selector shows only
 				// for the dial's Cycle Camera mode (#803).
 				function updateDialVisibility(mode) {
@@ -645,8 +626,8 @@
 
 					// Switch to the dial view last, so a slow/failed controller lookup
 					// still leaves a fully functional keypad PI (the default view).
-					if ((await resolveController()) === "Encoder") {
-						applyDialView();
+					if ((await window.irdResolveController()) === "Encoder") {
+						window.irdApplyDialView();
 					}
 				}
 

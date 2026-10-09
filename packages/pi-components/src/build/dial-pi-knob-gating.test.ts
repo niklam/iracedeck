@@ -100,7 +100,22 @@ function dialSettingsSlice(html: string): string {
   throw new Error("unbalanced <div> tags around #dial-settings");
 }
 
-const templates = actionPropertyInspectors().filter((t) => DIAL_TEMPLATES.has(path.basename(t.name, ".ejs")));
+/** The shared controller-resolution partial every dial PI includes (#1329). */
+const DIAL_CONTROLLER_INCLUDE = "<%- include('dial-controller') %>";
+
+/** A template-local copy of what the partial owns, by name — a declaration, a call or a comment pointing at one. */
+const LOCAL_CONTROLLER_SCRIPT = /\b(resolveController|applyDialView)\b/;
+
+/** Where the partial defines the resolver, in the compiled page. */
+const RESOLVER_DEFINITION = "window.irdResolveController = async function";
+
+/** Count non-overlapping occurrences of `needle` in `haystack`. */
+function occurrences(haystack: string, needle: string): number {
+  return haystack.split(needle).length - 1;
+}
+
+const allPIs = actionPropertyInspectors();
+const templates = allPIs.filter((t) => DIAL_TEMPLATES.has(path.basename(t.name, ".ejs")));
 const dialNames = templates.map((t) => path.basename(t.name, ".ejs")).sort();
 const withAppearance = templates
   .filter((t) => t.source.includes("include('dial-appearance')"))
@@ -122,6 +137,53 @@ describe("dial Property Inspectors on a knob (#1013)", () => {
 
   it("finds all seventeen dial templates", () => {
     expect(dialNames).toEqual([...DIAL_TEMPLATES].sort());
+  });
+
+  it("lists every template with a dial view, and no other", () => {
+    // A dial view is the `#dial-settings` section the controller switch reveals.
+    // Keyed on the markup rather than on the list, so a new dial-capable PI that
+    // nobody added to DIAL_TEMPLATES fails here instead of escaping every check.
+    const withDialView = allPIs
+      .filter((t) => t.source.includes('id="dial-settings"'))
+      .map((t) => path.basename(t.name, ".ejs"))
+      .sort();
+
+    expect(withDialView).toEqual([...DIAL_TEMPLATES].sort());
+  });
+
+  describe("controller resolution comes from the shared partial (#1329)", () => {
+    it.each(dialNames)("%s: includes dial-controller exactly once", (name) => {
+      const source = templates.find((t) => path.basename(t.name, ".ejs") === name)?.source ?? "";
+
+      expect(occurrences(source, DIAL_CONTROLLER_INCLUDE)).toBe(1);
+    });
+
+    it.each(dialNames)("%s: keeps no local resolveController or applyDialView", (name) => {
+      const source = templates.find((t) => path.basename(t.name, ".ejs") === name)?.source ?? "";
+
+      expect(source).not.toMatch(LOCAL_CONTROLLER_SCRIPT);
+    });
+
+    it("is included by no template without a dial view", () => {
+      const others = allPIs
+        .filter((t) => !DIAL_TEMPLATES.has(path.basename(t.name, ".ejs")))
+        .filter((t) => t.source.includes("include('dial-controller')"))
+        .map((t) => t.name);
+
+      expect(others).toEqual([]);
+    });
+
+    it.each(dialNames)("%s: compiles the resolver once, ahead of the page's own call", (name) => {
+      for (const html of [knob.get(name) ?? "", strip.get(name) ?? ""]) {
+        expect(occurrences(html, RESOLVER_DEFINITION)).toBe(1);
+        expect(occurrences(html, "window.irdApplyDialView = function")).toBe(1);
+
+        const call = html.indexOf("await window.irdResolveController()");
+
+        expect(call).toBeGreaterThan(-1);
+        expect(html.indexOf(RESOLVER_DEFINITION)).toBeLessThan(call);
+      }
+    });
   });
 
   describe("with dialExtendedGestures off (a Mirabox knob)", () => {
