@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { manifestVersionFor } from "./manifest-version.mjs";
+import { PLUGIN_FOLDER_SUFFIXES } from "./version-discovery.mjs";
 
 const ELGATO = "packages/iracing-plugin-stream-deck/com.iracedeck.sd.core.sdPlugin/manifest.json";
 const MIRABOX = "packages/iracing-plugin-mirabox/com.iracedeck.sd.core.sdPlugin/manifest.json";
@@ -29,6 +30,12 @@ describe("manifestVersionFor", () => {
 
   it("gives an Ulanzi pre-release the same version as its final", () => {
     expect(manifestVersionFor(ULANZI, "3.6.0-rc.1", "2410")).toBe("3.6.0");
+  });
+
+  it.each(PLUGIN_FOLDER_SUFFIXES)("has a decided format for every discovered plugin folder (%s)", (suffix) => {
+    // A suffix discovery bumps but this module cannot format would throw only
+    // in the middle of `pnpm release`; this fails it in CI instead.
+    expect(() => manifestVersionFor(`packages/x/com.example${suffix}/manifest.json`, "3.6.0", "1")).not.toThrow();
   });
 
   it("refuses a plugin folder whose ecosystem has no decided format", () => {

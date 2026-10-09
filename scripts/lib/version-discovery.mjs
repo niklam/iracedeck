@@ -2,15 +2,16 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 /**
- * Plugin-folder suffixes whose `manifest.json` carries the Elgato-style
- * `Version` field the release bumps. Discovery is anchored to these suffixes
- * rather than "any `packages/<pkg>/<dir>/manifest.json` that declares a string
- * `Version`", so an unrelated manifest (e.g. the audio-assets clip manifest)
- * can never be clobbered with the build number (issue #701, defect 3).
+ * Plugin-folder suffixes whose `manifest.json` carries the `Version` field the
+ * release bumps. Discovery is anchored to these suffixes rather than "any
+ * `packages/<pkg>/<dir>/manifest.json` that declares a string `Version`", so an
+ * unrelated manifest (e.g. the audio-assets clip manifest) can never be
+ * clobbered with a release version (issue #701, defect 3).
  *
  * NOTE: adding a new deck ecosystem whose plugin folder uses a different suffix
  * requires adding that suffix here — otherwise its manifest is silently never
- * bumped.
+ * bumped — and deciding its version format in `manifest-version.mjs`, which
+ * the format test fails until it is (issue #1298).
  */
 export const PLUGIN_FOLDER_SUFFIXES = [".sdPlugin", ".ulanziPlugin"];
 
