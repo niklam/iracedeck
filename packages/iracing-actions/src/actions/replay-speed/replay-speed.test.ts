@@ -1,12 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  _resetReplayCursor,
-  claimReplayCursor,
-  currentReplayCursorOwner,
-  pendingReplayLanding,
-  recordReplayLanding,
-} from "../../shared/replay-cursor.js";
+  cursorTestEvent,
+  type ReplayCursorProbe,
+  stageReplayCursorProbe,
+} from "../../shared/replay-cursor.test-support.js";
 import { generateReplaySpeedSvg, ReplaySpeed, ReplaySpeedSettings } from "./replay-speed.js";
 
 vi.mock("@iracedeck/icons/replay-speed/increase.svg", () => ({
@@ -128,69 +126,42 @@ describe("ReplaySpeed", () => {
   });
 
   describe("every command takes the replay cursor first (#1334)", () => {
-    const sent: string[] = [];
-    const command = (name: string) =>
-      vi.fn(() => {
-        sent.push(name);
-
-        return true;
-      });
-    const mockReplay = {
-      play: command("play"),
-      fastForward: command("fastForward"),
-      rewind: command("rewind"),
-    };
+    const COMMANDS = ["play", "fastForward", "rewind"] as const;
+    let probe: ReplayCursorProbe<(typeof COMMANDS)[number]>;
     let action: ReplaySpeed;
-    let cancelledBy: string | null;
-    let sentAtCancel: number | null;
-
-    function fakeEvent(settings: Record<string, unknown>, ticks = 0) {
-      return { action: { id: "ctx-cursor", setTitle: vi.fn(), setImage: vi.fn() }, payload: { settings, ticks } };
-    }
 
     beforeEach(async () => {
-      _resetReplayCursor();
-      sent.length = 0;
-      cancelledBy = null;
-      sentAtCancel = null;
+      probe = stageReplayCursorProbe(COMMANDS);
       const { getCommands } = await import("@iracedeck/deck-iracing");
-      vi.mocked(getCommands).mockReturnValue({ replay: mockReplay } as any);
+      vi.mocked(getCommands).mockReturnValue({ replay: probe.replay } as any);
       action = new ReplaySpeed();
-      // A Jump to Fastest Lap walk in flight, and a marker landing still pending.
-      claimReplayCursor("jump-to-fastest-lap", (by) => {
-        cancelledBy = by;
-        sentAtCancel = sent.length;
-      });
-      recordReplayLanding(4_000, 10_000);
     });
-
-    function expectCursorTakenBefore(owner: string, sentCommand: string): void {
-      expect(cancelledBy).toBe(owner);
-      expect(sentAtCancel).toBe(0);
-      expect(sent).toEqual([sentCommand]);
-      expect(currentReplayCursorOwner()).toBeNull();
-      expect(pendingReplayLanding()).toBeNull();
-    }
 
     it.each([
       ["increase", "fastForward"],
       ["decrease", "rewind"],
-    ])("%s stops the walk and clears the landing before sending %s", async (mode, sentCommand) => {
-      await action.onKeyDown(fakeEvent({ direction: mode }) as any);
+    ] as const)("%s stops the walk and clears the landing before sending %s", async (mode, sentCommand) => {
+      await action.onKeyDown(cursorTestEvent({ direction: mode }) as any);
 
-      expectCursorTakenBefore(`replay-speed-${mode}`, sentCommand);
+      probe.expectTakenBefore(`replay-speed-${mode}`, sentCommand);
     });
 
     it("a dial press resets the speed, taking the cursor first", async () => {
-      await action.onDialDown(fakeEvent({}) as any);
+      await action.onDialDown(cursorTestEvent({}) as any);
 
-      expectCursorTakenBefore("replay-speed-reset", "play");
+      probe.expectTakenBefore("replay-speed-reset", "play");
     });
 
     it("a dial turn takes the cursor as the direction it resolved to", async () => {
-      await action.onDialRotate(fakeEvent({}, 1) as any);
+      await action.onDialRotate(cursorTestEvent({}, 1) as any);
 
-      expectCursorTakenBefore("replay-speed-increase", "fastForward");
+      probe.expectTakenBefore("replay-speed-increase", "fastForward");
+    });
+
+    it("a zero-tick dial turn carries no direction: nothing is sent and the walk stands", async () => {
+      await action.onDialRotate(cursorTestEvent({}, 0) as any);
+
+      probe.expectUntouched();
     });
   });
 });

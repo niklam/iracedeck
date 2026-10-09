@@ -1,12 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  _resetReplayCursor,
-  claimReplayCursor,
-  currentReplayCursorOwner,
-  pendingReplayLanding,
-  recordReplayLanding,
-} from "../../shared/replay-cursor.js";
+  cursorTestEvent,
+  type ReplayCursorProbe,
+  stageReplayCursorProbe,
+} from "../../shared/replay-cursor.test-support.js";
 import { generateReplayTransportSvg, ReplayTransport, ReplayTransportSettings } from "./replay-transport.js";
 
 vi.mock("@iracedeck/icons/replay-transport/play.svg", () => ({
@@ -198,53 +196,16 @@ describe("ReplayTransport", () => {
   });
 
   describe("every command takes the replay cursor first (#1334)", () => {
-    const sent: string[] = [];
-    const command = (name: string) =>
-      vi.fn(() => {
-        sent.push(name);
-
-        return true;
-      });
-    const mockReplay = {
-      play: command("play"),
-      pause: command("pause"),
-      fastForward: command("fastForward"),
-      rewind: command("rewind"),
-      slowMotion: command("slowMotion"),
-      nextFrame: command("nextFrame"),
-      prevFrame: command("prevFrame"),
-    };
+    const COMMANDS = ["play", "pause", "fastForward", "rewind", "slowMotion", "nextFrame", "prevFrame"] as const;
+    let probe: ReplayCursorProbe<(typeof COMMANDS)[number]>;
     let action: ReplayTransport;
-    let cancelledBy: string | null;
-    let sentAtCancel: number | null;
-
-    function fakeEvent(settings: Record<string, unknown>, ticks = 0) {
-      return { action: { id: "ctx-cursor", setTitle: vi.fn(), setImage: vi.fn() }, payload: { settings, ticks } };
-    }
 
     beforeEach(async () => {
-      _resetReplayCursor();
-      sent.length = 0;
-      cancelledBy = null;
-      sentAtCancel = null;
+      probe = stageReplayCursorProbe(COMMANDS);
       const { getCommands } = await import("@iracedeck/deck-iracing");
-      vi.mocked(getCommands).mockReturnValue({ replay: mockReplay } as any);
+      vi.mocked(getCommands).mockReturnValue({ replay: probe.replay } as any);
       action = new ReplayTransport();
-      // A Jump to Fastest Lap walk in flight, and a marker landing still pending.
-      claimReplayCursor("jump-to-fastest-lap", (by) => {
-        cancelledBy = by;
-        sentAtCancel = sent.length;
-      });
-      recordReplayLanding(4_000, 10_000);
     });
-
-    function expectCursorTakenBefore(owner: string, sentCommand: string): void {
-      expect(cancelledBy).toBe(owner);
-      expect(sentAtCancel).toBe(0);
-      expect(sent).toEqual([sentCommand]);
-      expect(currentReplayCursorOwner()).toBeNull();
-      expect(pendingReplayLanding()).toBeNull();
-    }
 
     it.each([
       ["play", "play"],
@@ -255,22 +216,28 @@ describe("ReplayTransport", () => {
       ["slow-motion", "slowMotion"],
       ["frame-forward", "nextFrame"],
       ["frame-backward", "prevFrame"],
-    ])("%s stops the walk and clears the landing before sending %s", async (mode, sentCommand) => {
-      await action.onKeyDown(fakeEvent({ transport: mode }) as any);
+    ] as const)("%s stops the walk and clears the landing before sending %s", async (mode, sentCommand) => {
+      await action.onKeyDown(cursorTestEvent({ transport: mode }) as any);
 
-      expectCursorTakenBefore(`replay-transport-${mode}`, sentCommand);
+      probe.expectTakenBefore(`replay-transport-${mode}`, sentCommand);
     });
 
     it("a dial press plays, taking the cursor first", async () => {
-      await action.onDialDown(fakeEvent({}) as any);
+      await action.onDialDown(cursorTestEvent({}) as any);
 
-      expectCursorTakenBefore("replay-transport-play", "play");
+      probe.expectTakenBefore("replay-transport-play", "play");
     });
 
     it("a dial turn takes the cursor as the frame step it resolved to", async () => {
-      await action.onDialRotate(fakeEvent({}, -1) as any);
+      await action.onDialRotate(cursorTestEvent({}, -1) as any);
 
-      expectCursorTakenBefore("replay-transport-frame-backward", "prevFrame");
+      probe.expectTakenBefore("replay-transport-frame-backward", "prevFrame");
+    });
+
+    it("a zero-tick dial turn carries no direction: nothing is sent and the walk stands", async () => {
+      await action.onDialRotate(cursorTestEvent({}, 0) as any);
+
+      probe.expectUntouched();
     });
   });
 });

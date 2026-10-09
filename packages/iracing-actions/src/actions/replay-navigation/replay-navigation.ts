@@ -176,6 +176,12 @@ export class ReplayNavigation extends SimIRacingAction<ReplayNavigationSettings>
 
   override async onDialRotate(ev: IDeckDialRotateEvent<ReplayNavigationSettings>): Promise<void> {
     this.logger.info("Dial rotated");
+
+    // A zero-tick turn carries no direction; without this guard it would
+    // read as counter-clockwise, send a command nobody asked for and take the
+    // replay cursor from a running walk (the guard Replay Control applies).
+    if (ev.payload.ticks === 0) return;
+
     const settings = this.parseSettings(ev.payload.settings);
     const pair = DIRECTIONAL_PAIRS[settings.navigation];
 

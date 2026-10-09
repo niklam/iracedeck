@@ -96,15 +96,17 @@ export class ReplaySpeed extends ConnectionStateAwareAction<ReplaySpeedSettings>
 
   override async onDialDown(_ev: IDeckDialDownEvent<ReplaySpeedSettings>): Promise<void> {
     this.logger.info("Dial down received");
-    const replay = getCommands().replay;
-    cancelReplayCursorOwner("replay-speed-reset");
-    const success = replay.play();
-    this.logger.info("Speed reset to normal");
-    this.logger.debug(`Result: ${success}`);
+    this.executeSpeed("reset");
   }
 
   override async onDialRotate(ev: IDeckDialRotateEvent<ReplaySpeedSettings>): Promise<void> {
     this.logger.info("Dial rotated");
+
+    // A zero-tick turn carries no direction; without this guard it would
+    // read as counter-clockwise, send a command nobody asked for and take the
+    // replay cursor from a running walk (the guard Replay Control applies).
+    if (ev.payload.ticks === 0) return;
+
     const direction: SpeedDirection = ev.payload.ticks > 0 ? "increase" : "decrease";
     this.executeSpeed(direction);
   }
@@ -115,22 +117,34 @@ export class ReplaySpeed extends ConnectionStateAwareAction<ReplaySpeedSettings>
     return parsed.success ? parsed.data : ReplaySpeedSettings.parse({});
   }
 
-  private executeSpeed(direction: SpeedDirection): void {
+  /** Sends a speed command: a direction from a key or a turn, or the dial press's reset to normal speed. */
+  private executeSpeed(command: SpeedDirection | "reset"): void {
     const replay = getCommands().replay;
 
     // A speed change breaks a running Jump to Fastest Lap walk's probes as
     // surely as a seek, so it takes the cursor first, as Replay Control's
     // speed modes do (#1334).
-    cancelReplayCursorOwner(`replay-speed-${direction}`);
+    cancelReplayCursorOwner(`replay-speed-${command}`);
 
-    if (direction === "increase") {
-      const success = replay.fastForward();
-      this.logger.info("Speed increase executed");
-      this.logger.debug(`Result: ${success}`);
-    } else {
-      const success = replay.rewind();
-      this.logger.info("Speed decrease executed");
-      this.logger.debug(`Result: ${success}`);
+    switch (command) {
+      case "increase": {
+        const success = replay.fastForward();
+        this.logger.info("Speed increase executed");
+        this.logger.debug(`Result: ${success}`);
+        break;
+      }
+      case "decrease": {
+        const success = replay.rewind();
+        this.logger.info("Speed decrease executed");
+        this.logger.debug(`Result: ${success}`);
+        break;
+      }
+      case "reset": {
+        const success = replay.play();
+        this.logger.info("Speed reset to normal");
+        this.logger.debug(`Result: ${success}`);
+        break;
+      }
     }
   }
 
