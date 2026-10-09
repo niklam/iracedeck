@@ -520,6 +520,7 @@ describe("SetupBrakes", () => {
     it("routes rotation to dial.setting, not the keypad setting", async () => {
       // The keypad half is bound to engine-braking; the dial half to brake-bias.
       const settings = { setting: "engine-braking", dial: { setting: "brake-bias" } };
+      await action.onWillAppear(fakeDialEvent("dial-1", settings) as any);
 
       await action.onDialRotate(fakeDialRotateEvent("dial-1", settings, 1) as any);
 
@@ -527,6 +528,7 @@ describe("SetupBrakes", () => {
     });
 
     it("taps the decrease binding on a counter-clockwise turn", async () => {
+      await action.onWillAppear(fakeDialEvent("dial-1", { dial: { setting: "brake-bias" } }) as any);
       await action.onDialRotate(fakeDialRotateEvent("dial-1", { dial: { setting: "brake-bias" } }, -1) as any);
 
       expect(mockTapBinding).toHaveBeenCalledWith("setupBrakesBrakeBiasDecrease");
@@ -535,6 +537,7 @@ describe("SetupBrakes", () => {
     it("fires nothing on dial down; the press gesture fires on dial up", async () => {
       const settings = { dial: { setting: "brake-bias", pressAction: "toggle-abs" } };
       const ev = fakeDialEvent("dial-1", settings);
+      await action.onWillAppear(ev as any);
 
       await action.onDialDown(ev as any);
 

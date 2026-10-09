@@ -468,14 +468,30 @@ describe("SetupTraction", () => {
     });
 
     it("does not fire a binding when a View setting is pressed", async () => {
+      // A dial is its own context, already on the deck: an input event never
+      // creates one (#1329).
+      const dialEv = {
+        action: {
+          id: "dial-1",
+          isKey: () => false,
+          isDial: () => true,
+          dialCanvas: () => null,
+          setTitle: vi.fn(),
+          setImage: vi.fn(),
+          setSettings: vi.fn().mockResolvedValue(undefined),
+          setTriggerDescription: vi.fn().mockResolvedValue(undefined),
+        },
+        payload: { settings: { setting: "view-tc-slot-1" } },
+      };
+      await action.onWillAppear(dialEv as any);
       await action.onKeyDown(fakeEvent("action-1", { setting: "view-tc-slot-1" }) as any);
-      await action.onDialDown(fakeEvent("action-1", { setting: "view-tc-slot-1" }) as any);
+      await action.onDialDown(dialEv as any);
 
       expect(mockTapBinding).not.toHaveBeenCalled();
 
       // A dialDown arms the real #1120 hold-preview timer; disappear (rather
       // than release) clears it without classifying the press.
-      await action.onWillDisappear(fakeEvent("action-1", { setting: "view-tc-slot-1" }) as any);
+      await action.onWillDisappear(dialEv as any);
     });
   });
 

@@ -29,6 +29,7 @@ import z from "zod";
 
 import { showBlackBox } from "../../shared/black-box.js";
 import { dialAppearanceFields, renderDialBox, resolveDialBoxColors } from "../../shared/dial-box.js";
+import { type DialInputEvent, hasDialInputContext } from "../../shared/dial-context.js";
 import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
 import { persistDialPatch } from "../../shared/dial-persist.js";
 import type { DialPendingPreview } from "../../shared/dial-preview.js";
@@ -400,7 +401,9 @@ export class SetupChassisDialSurface {
   }
 
   async rotate(action: IDeckActionContext, dial: DialSettings, ticks: number, pressed: boolean): Promise<void> {
-    const ctx = this.ensureContext(action, dial);
+    const ctx = this.inputContext(action, dial, "rotate");
+
+    if (!ctx) return;
 
     if (pressed) {
       ctx.rotatedWhilePressed = true;
@@ -415,7 +418,9 @@ export class SetupChassisDialSurface {
   }
 
   down(action: IDeckActionContext, dial: DialSettings): void {
-    const ctx = this.ensureContext(action, dial);
+    const ctx = this.inputContext(action, dial, "down");
+
+    if (!ctx) return;
 
     ctx.pressStart = Date.now();
     ctx.rotatedWhilePressed = false;
@@ -463,7 +468,10 @@ export class SetupChassisDialSurface {
 
     // Read the gesture from ctx.dial, not the event payload — the same
     // stale-settings model `up()` follows (see ensureContext).
-    const ctx = this.ensureContext(action, dial);
+    const ctx = this.inputContext(action, dial, "touchTap");
+
+    if (!ctx) return;
+
     const gesture = hold ? ctx.dial.longTouchAction : ctx.dial.tapAction;
 
     if (gesture === "none") return;
@@ -500,8 +508,27 @@ export class SetupChassisDialSurface {
   }
 
   /**
-   * Look up or create the per-context state. An EXISTING context keeps its
-   * `dial` — settings changes only flow in through `willAppear` /
+   * The context an INPUT event (rotate, down, touchTap) acts on: the existing
+   * one, refreshed exactly as {@link ensureContext} refreshes it, or `undefined`
+   * — never a new one (#1329). A late event the host delivers after
+   * `willDisappear` is dropped here, before it can re-create the entry or act
+   * on a context that is gone.
+   */
+  private inputContext(
+    action: IDeckActionContext,
+    dial: DialSettings,
+    event: DialInputEvent,
+  ): SetupChassisDialContext | undefined {
+    return hasDialInputContext(this.contextsState, action.id, event, this.host.logger)
+      ? this.ensureContext(action, dial)
+      : undefined;
+  }
+
+  /**
+   * Look up or create the per-context state — for the LIFECYCLE events
+   * (`willAppear`, `didReceiveSettings`) only; input events go through
+   * {@link inputContext}, which never creates one (#1329). An EXISTING context
+   * keeps its `dial` — settings changes only flow in through `willAppear` /
    * `didReceiveSettings` (which assign `ctx.dial` explicitly). Event payloads
    * must not refresh it: hosts with per-context settings caches can deliver
    * stale settings in dial events, which would silently undo the

@@ -460,6 +460,89 @@ describe("SetupChassis dial surface", () => {
     });
   });
 
+  describe("a late input event never re-creates a disappeared context (#1329)", () => {
+    const settings = dialSettings({
+      setting: "lr-spring",
+      pressAction: "toggle-spring-side",
+      longPressAction: "toggle-spring-side",
+      tapAction: "toggle-spring-side",
+    });
+
+    function contexts(): Map<string, unknown> {
+      return action["dialSurface"]["contextsState"];
+    }
+
+    async function appearThenDisappear(id: string) {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
+      const ctx = dialContext(id);
+      await appear(ctx, settings);
+      await action.onWillDisappear(basicEvent(ctx, settings) as never);
+      vi.clearAllMocks();
+
+      return ctx;
+    }
+
+    function expectNothingSent(ctx: DialContext) {
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+      expect(ctx.setTriggerDescription).not.toHaveBeenCalled();
+      expect(ctx.setSettings).not.toHaveBeenCalled();
+      expect(mockTapBinding).not.toHaveBeenCalled();
+    }
+
+    it("drops a rotate: no entry, no tap, no frame", async () => {
+      const ctx = await appearThenDisappear("late-rotate");
+
+      await action.onDialRotate(rotateEvent(ctx, settings, 1) as never);
+
+      expect(contexts().has("late-rotate")).toBe(false);
+      expectNothingSent(ctx);
+    });
+
+    it("drops a down: no entry and no hold-preview timer armed", async () => {
+      const ctx = await appearThenDisappear("late-down");
+      const timersBefore = vi.getTimerCount();
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+
+      expect(vi.getTimerCount()).toBe(timersBefore);
+      vi.advanceTimersByTime(1000);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(contexts().has("late-down")).toBe(false);
+      expectNothingSent(ctx);
+    });
+
+    it("drops a touchTap: no entry, no persisted spring flip, no frame", async () => {
+      const ctx = await appearThenDisappear("late-tap");
+
+      await action.onTouchTap({ action: ctx, payload: { settings, tapPos: [0, 0], hold: false } } as never);
+
+      expect(contexts().has("late-tap")).toBe(false);
+      expectNothingSent(ctx);
+    });
+
+    it("still acts on a live context, reading the gesture from the context (rule 10)", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
+      const ctx = dialContext("live");
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialRotate(rotateEvent(ctx, settings, 1) as never);
+
+      expect(contexts().has("live")).toBe(true);
+      expect(mockTapBinding).toHaveBeenCalledWith("setupChassisLrSpringIncrease");
+
+      // A stale payload naming no gesture still fires the context's own tap gesture.
+      await action.onTouchTap({
+        action: ctx,
+        payload: { settings: dialSettings({ setting: "lr-spring" }), tapPos: [0, 0], hold: false },
+      } as never);
+
+      expect(ctx.setSettings).toHaveBeenCalled();
+    });
+  });
+
   describe("press gestures (none configured)", () => {
     it("does nothing on a short press", async () => {
       const ctx = dialContext("p1");

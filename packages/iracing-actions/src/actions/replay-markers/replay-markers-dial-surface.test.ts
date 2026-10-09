@@ -664,6 +664,78 @@ describe("ReplayMarkersDialSurface", () => {
     });
   });
 
+  describe("a late input event never re-creates a disappeared context (#1329)", () => {
+    const d = () => dial({ tapAction: "add", longTouchAction: "add" });
+
+    async function appearThenDisappear(id: string) {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
+      setMarkers([1_000, 3_000, 5_000]);
+      env.telemetry = replayAt(3_050);
+      const surface = makeSurface();
+      await appear(surface, dialContext(id), d());
+      surface.willDisappear(id);
+      vi.clearAllMocks();
+
+      return { surface, late: dialContext(id) };
+    }
+
+    function expectNothingSent(late: DialContext) {
+      expect(late.setDialCanvas).not.toHaveBeenCalled();
+      expect(late.setTriggerDescription).not.toHaveBeenCalled();
+      expect(mocks.setPlayPosition).not.toHaveBeenCalled();
+      expect(storeMarkers.add).not.toHaveBeenCalled();
+      expect(storeMarkers.deleteNearest).not.toHaveBeenCalled();
+    }
+
+    it("drops a rotate: no entry, no seek, no frame", async () => {
+      const { surface, late } = await appearThenDisappear("late-rotate");
+
+      surface.rotate(late as never, d(), 1, false);
+      await settle();
+
+      expect(surface["contexts"].has("late-rotate")).toBe(false);
+      expectNothingSent(late);
+    });
+
+    it("drops a down: no entry and no hold-preview timer armed", async () => {
+      const { surface, late } = await appearThenDisappear("late-down");
+      const timersBefore = vi.getTimerCount();
+
+      surface.down(late as never, d());
+
+      expect(vi.getTimerCount()).toBe(timersBefore);
+      await vi.advanceTimersByTimeAsync(1000);
+      await surface.up("late-down");
+
+      expect(surface["contexts"].has("late-down")).toBe(false);
+      expectNothingSent(late);
+    });
+
+    it("drops a touchTap: no entry, no marker added", async () => {
+      const { surface, late } = await appearThenDisappear("late-tap");
+
+      surface.touchTap(late as never, d(), false);
+      await settle();
+
+      expect(surface["contexts"].has("late-tap")).toBe(false);
+      expectNothingSent(late);
+    });
+
+    it("still acts on a live context", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
+      setMarkers([1_000, 3_000, 5_000]);
+      env.telemetry = replayAt(3_050);
+      const surface = makeSurface();
+      const ctx = dialContext("live");
+      await appear(surface, ctx, d());
+
+      surface.rotate(ctx as never, d(), 1, false);
+
+      expect(surface["contexts"].has("live")).toBe(true);
+      expect(mocks.setPlayPosition).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe("hold preview", () => {
     it("at the threshold shows the marker a release would delete", async () => {
       setMarkers([1_000, 5_000]);

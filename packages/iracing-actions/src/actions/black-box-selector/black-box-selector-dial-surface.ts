@@ -34,6 +34,7 @@ import z from "zod";
 
 import { BLACK_BOX_GLOBAL_KEYS, type BlackBoxId } from "../../shared/black-box.js";
 import { dialAppearanceFields, type DialBoxColors, resolveDialBoxColors } from "../../shared/dial-box.js";
+import { type DialInputEvent, hasDialInputContext } from "../../shared/dial-context.js";
 import { KNOB_BOX_HEIGHT, KNOB_BOX_WIDTH } from "../../shared/dial-knob-box.js";
 import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
 import { classifyDialReleaseForHost } from "../../shared/dial-release.js";
@@ -254,7 +255,9 @@ export class BlackBoxSelectorDialSurface {
   }
 
   async rotate(action: IDeckActionContext, dial: DialSettings, ticks: number, pressed: boolean): Promise<void> {
-    const ctx = this.ensureContext(action, dial);
+    const ctx = this.inputContext(action, dial, "rotate");
+
+    if (!ctx) return;
 
     if (pressed) {
       ctx.rotatedWhilePressed = true;
@@ -274,7 +277,9 @@ export class BlackBoxSelectorDialSurface {
   }
 
   down(action: IDeckActionContext, dial: DialSettings): void {
-    const ctx = this.ensureContext(action, dial);
+    const ctx = this.inputContext(action, dial, "down");
+
+    if (!ctx) return;
 
     ctx.pressStart = Date.now();
     ctx.rotatedWhilePressed = false;
@@ -316,7 +321,10 @@ export class BlackBoxSelectorDialSurface {
 
     if (gesture === "none") return;
 
-    const ctx = this.ensureContext(action, dial);
+    const ctx = this.inputContext(action, dial, "touchTap");
+
+    if (!ctx) return;
+
     this.host.logger.info(hold ? "Black box dial long touch" : "Black box dial tap");
     await this.doGesture(ctx, gesture);
   }
@@ -333,6 +341,28 @@ export class BlackBoxSelectorDialSurface {
     }
   }
 
+  /**
+   * The context an INPUT event (rotate, down, touchTap) acts on: the existing
+   * one, refreshed exactly as {@link ensureContext} refreshes it, or `undefined`
+   * — never a new one (#1329). A late event the host delivers after
+   * `willDisappear` is dropped here, before it can re-create the entry or act
+   * on a context that is gone.
+   */
+  private inputContext(
+    action: IDeckActionContext,
+    dial: DialSettings,
+    event: DialInputEvent,
+  ): BlackBoxDialContext | undefined {
+    return hasDialInputContext(this.contextsState, action.id, event, this.host.logger)
+      ? this.ensureContext(action, dial)
+      : undefined;
+  }
+
+  /**
+   * Look up or create the per-context state — for the LIFECYCLE events
+   * (`willAppear`, `didReceiveSettings`) only. Input events go through
+   * {@link inputContext}, which never creates a context (#1329).
+   */
   private ensureContext(action: IDeckActionContext, dial: DialSettings): BlackBoxDialContext {
     let ctx = this.contextsState.get(action.id);
 

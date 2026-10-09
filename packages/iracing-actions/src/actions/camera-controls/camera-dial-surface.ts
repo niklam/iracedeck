@@ -123,6 +123,7 @@ import { z } from "zod";
 import { CAR_CYCLE_BINDING_KEY_LIST } from "../../shared/car-cycle-bindings.js";
 import { computeCarNumberTarget } from "../../shared/car-cycling.js";
 import { dialAppearanceFields, type DialBoxColors, resolveDialBoxColors } from "../../shared/dial-box.js";
+import { type DialInputEvent, hasDialInputContext } from "../../shared/dial-context.js";
 import { fitValueFontSize } from "../../shared/dial-fit.js";
 import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
 import { type DialPendingPreview, PENDING_BAR_HEIGHT, renderPendingBar } from "../../shared/dial-preview.js";
@@ -1107,7 +1108,9 @@ export class CameraDialSurface {
   }
 
   rotate(action: IDeckActionContext, dial: DialSettings, ticks: number, pressed: boolean): void {
-    const ctx = this.ensureContext(action, dial);
+    const ctx = this.inputContext(action, dial, "rotate");
+
+    if (!ctx) return;
 
     if (ticks === 0) return;
 
@@ -1136,7 +1139,9 @@ export class CameraDialSurface {
   }
 
   down(action: IDeckActionContext, dial: DialSettings): void {
-    const ctx = this.ensureContext(action, dial);
+    const ctx = this.inputContext(action, dial, "down");
+
+    if (!ctx) return;
 
     // Record the press start and clear the push+turn guard. Fire nothing —
     // press vs long-press is classified once at dialUp. The one timer armed
@@ -1189,7 +1194,8 @@ export class CameraDialSurface {
 
     if (gesture === "none") return;
 
-    this.ensureContext(action, dial);
+    if (!this.inputContext(action, dial, "touchTap")) return;
+
     this.host.logger.info(hold ? "Camera dial long touch" : "Camera dial tap");
     this.doGesture(gesture);
   }
@@ -1233,6 +1239,28 @@ export class CameraDialSurface {
     }
   }
 
+  /**
+   * The context an INPUT event (rotate, down, touchTap) acts on: the existing
+   * one, refreshed exactly as {@link ensureContext} refreshes it, or `undefined`
+   * — never a new one (#1329). A late event the host delivers after
+   * `willDisappear` is dropped here, before it can re-create the entry or act
+   * on a context that is gone.
+   */
+  private inputContext(
+    action: IDeckActionContext,
+    dial: DialSettings,
+    event: DialInputEvent,
+  ): CameraDialContext | undefined {
+    return hasDialInputContext(this.contextsState, action.id, event, this.host.logger)
+      ? this.ensureContext(action, dial)
+      : undefined;
+  }
+
+  /**
+   * Look up or create the per-context state — for the LIFECYCLE events
+   * (`willAppear`, `didReceiveSettings`) only. Input events go through
+   * {@link inputContext}, which never creates a context (#1329).
+   */
   private ensureContext(action: IDeckActionContext, dial: DialSettings): CameraDialContext {
     let ctx = this.contextsState.get(action.id);
 

@@ -33,6 +33,7 @@ import {
   resolveBindingKey,
   SUB_CAMERA_BINDING_KEYS,
 } from "./camera-controls.js";
+import { DialSettings } from "./camera-dial-surface.js";
 
 // Cycle icon mocks
 vi.mock("@iracedeck/icons/camera-cycle/camera-next.svg", () => ({
@@ -986,7 +987,25 @@ describe("CameraControls", () => {
 
     it("ignores dial presses for focus-select-car", async () => {
       const action = new CameraControls();
-      await action.onDialDown(makeDialDownEvent(focusSelectSettings));
+      // A dial instance stores the keypad half beside its dial half.
+      const settings = { ...focusSelectSettings, dial: DialSettings.parse({}) };
+      // The dial is on the deck first: an input event never creates a context (#1329).
+      await action.onWillAppear({
+        action: {
+          id: "ctx-1",
+          deviceId: "dev-1",
+          deviceType: 2,
+          isKey: () => false,
+          isDial: () => true,
+          dialCanvas: () => null,
+          setSettings: vi.fn(async () => {}),
+          setTitle: vi.fn(async () => {}),
+          setImage: vi.fn(async () => {}),
+          setTriggerDescription: vi.fn(async () => {}),
+        },
+        payload: { settings },
+      } as never);
+      await action.onDialDown(makeDialDownEvent(settings));
 
       expect(requestProfileSwitch).not.toHaveBeenCalled();
       expect(getSelectIntent("dev-1")).toBeUndefined();
@@ -994,7 +1013,7 @@ describe("CameraControls", () => {
       // A dialDown arms the real #1120 hold-preview timer; without a release
       // this test would leak it into whatever runs next. Disappear rather than
       // release, so the press still classifies nothing.
-      await action.onWillDisappear(makeDialDownEvent(focusSelectSettings));
+      await action.onWillDisappear(makeDialDownEvent(settings));
     });
 
     it("uses the focus-select-car icon, not the focus-your-car fallback", () => {
@@ -1107,6 +1126,7 @@ describe("CameraControls dial surface (host integration)", () => {
     vi.mocked(getCommands).mockClear();
 
     // A cycle mode (camera) routes rotation through the keypad's executeCycle.
+    await action.onWillAppear({ action: dialContext(), payload: { settings: { dial: { mode: "camera" } } } } as never);
     await action.onDialRotate({
       action: dialContext(),
       payload: { settings: { dial: { mode: "camera" } }, ticks: 1 },
@@ -1119,6 +1139,7 @@ describe("CameraControls dial surface (host integration)", () => {
   it("does not focus for a keypad focus-select-car on a dial press (gesture default is none)", async () => {
     const action = new CameraControls();
     const ctx = dialContext();
+    await action.onWillAppear({ action: ctx, payload: { settings: { dial: {} } } } as never);
 
     await action.onDialDown({ action: ctx, payload: { settings: { dial: {} } } } as never);
     await action.onDialUp({ action: ctx, payload: { settings: { dial: {} } } } as never);
@@ -1212,6 +1233,10 @@ describe("cycle-sub-camera taps the iRacing sub-camera binding (#852)", () => {
     sdk(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 0, CamGroupNumber: 9, CamCameraNumber: 2 });
     sdk(action).getSessionInfo.mockReturnValue({});
 
+    await action.onWillAppear({
+      action: dialContext(),
+      payload: { settings: { dial: { mode: "sub-camera" } } },
+    } as never);
     await action.onDialRotate({
       action: dialContext(),
       payload: { settings: { dial: { mode: "sub-camera" } }, ticks: 1 },
@@ -1228,6 +1253,10 @@ describe("cycle-sub-camera taps the iRacing sub-camera binding (#852)", () => {
     sdk(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 0, CamGroupNumber: 9, CamCameraNumber: 2 });
     sdk(action).getSessionInfo.mockReturnValue({});
 
+    await action.onWillAppear({
+      action: dialContext(),
+      payload: { settings: { dial: { mode: "sub-camera" } } },
+    } as never);
     await action.onDialRotate({
       action: dialContext(),
       payload: { settings: { dial: { mode: "sub-camera" } }, ticks: -1 },
@@ -1257,6 +1286,10 @@ describe("cycle-sub-camera taps the iRacing sub-camera binding (#852)", () => {
     sdk(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 64, CamGroupNumber: 10, CamCameraNumber: 3 });
     sdk(action).getSessionInfo.mockReturnValue({});
 
+    await action.onWillAppear({
+      action: dialContext(),
+      payload: { settings: { dial: { mode: "sub-camera" } } },
+    } as never);
     await action.onDialRotate({
       action: dialContext(),
       payload: { settings: { dial: { mode: "sub-camera" } }, ticks: 1 },
@@ -1271,6 +1304,10 @@ describe("cycle-sub-camera taps the iRacing sub-camera binding (#852)", () => {
     sdk(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 0, CamGroupNumber: 20, CamCameraNumber: 30 });
     sdk(action).getSessionInfo.mockReturnValue(undefined);
 
+    await action.onWillAppear({
+      action: dialContext(),
+      payload: { settings: { dial: { mode: "sub-camera" } } },
+    } as never);
     await action.onDialRotate({
       action: dialContext(),
       payload: { settings: { dial: { mode: "sub-camera" } }, ticks: 1 },
@@ -1288,6 +1325,10 @@ describe("cycle-sub-camera taps the iRacing sub-camera binding (#852)", () => {
     sdk(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 0, CamGroupNumber: 5, CamCameraNumber: 7 });
     sdk(action).getSessionInfo.mockReturnValue({});
 
+    await action.onWillAppear({
+      action: dialContext(),
+      payload: { settings: { dial: { mode: "sub-camera" } } },
+    } as never);
     await action.onDialRotate({
       action: dialContext(),
       payload: { settings: { dial: { mode: "sub-camera" } }, ticks: 1 },
@@ -1427,6 +1468,7 @@ describe("cycle-driving keeps focus by car number (pace-car stall #803)", () => 
     sdk(action).getSessionInfo.mockReturnValue({});
     vi.mocked(getCarNumberRawFromSessionInfo).mockReturnValue(0); // pace car raw #0
 
+    await action.onWillAppear({ action: dialContext(), payload: { settings: { dial: { mode: "driving" } } } } as never);
     await action.onDialRotate({
       action: dialContext(),
       payload: { settings: { dial: { mode: "driving" } }, ticks: 1 },
@@ -1443,6 +1485,7 @@ describe("cycle-driving keeps focus by car number (pace-car stall #803)", () => 
     sdk(action).getSessionInfo.mockReturnValue({});
     vi.mocked(getCarNumberRawFromSessionInfo).mockReturnValue(0);
 
+    await action.onWillAppear({ action: dialContext(), payload: { settings: { dial: { mode: "driving" } } } } as never);
     await action.onDialRotate({
       action: dialContext(),
       payload: { settings: { dial: { mode: "driving" } }, ticks: -1 },
@@ -1472,6 +1515,7 @@ describe("cycle-driving keeps focus by car number (pace-car stall #803)", () => 
     sdk(action).getSessionInfo.mockReturnValue({});
     vi.mocked(getCarNumberRawFromSessionInfo).mockReturnValue(null);
 
+    await action.onWillAppear({ action: dialContext(), payload: { settings: { dial: { mode: "driving" } } } } as never);
     await action.onDialRotate({
       action: dialContext(),
       payload: { settings: { dial: { mode: "driving" } }, ticks: 1 },
@@ -1738,10 +1782,10 @@ describe("cycle-track-order taps iRacing's Next / Previous Car binding (#1277)",
   }
 
   async function turn(action: CameraControls, ticks: number, reverseRotation = false) {
-    await action.onDialRotate({
-      action: dialContext(),
-      payload: { settings: { dial: { mode: "track-order", reverseRotation } }, ticks },
-    } as never);
+    const settings = { dial: { mode: "track-order", reverseRotation } };
+    // The dial is on the deck first: input never creates a context (#1329).
+    await action.onWillAppear({ action: dialContext(), payload: { settings } } as never);
+    await action.onDialRotate({ action: dialContext(), payload: { settings, ticks } } as never);
   }
 
   function expectNoCameraBroadcast() {

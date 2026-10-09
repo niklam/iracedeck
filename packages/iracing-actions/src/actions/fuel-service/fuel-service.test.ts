@@ -877,6 +877,8 @@ describe("FuelService", () => {
     it("should not execute keypad modes from dial press events", async () => {
       const ev = fakeDialEvent("dial-1", { mode: "add-fuel", amount: 5, unit: "l" });
       internals(action).sdkController.getCurrentTelemetry.mockReturnValue(METRIC_TELEMETRY);
+      // The dial is on the deck first: an input event never creates a context (#1329).
+      await action.onWillAppear(ev as any);
 
       await action.onDialDown(ev as any);
 
@@ -1274,6 +1276,8 @@ describe("FuelService", () => {
     });
 
     it("should not start repeat interval on dial press", async () => {
+      // The dial is on the deck first: an input event never creates a context (#1329).
+      await action.onWillAppear(fakeDialEvent("action-1", { mode: "add-fuel" }) as any);
       await action.onDialDown(fakeDialEvent("action-1", { mode: "add-fuel" }) as any);
 
       expect((action as any).repeatIntervals.size).toBe(0);
