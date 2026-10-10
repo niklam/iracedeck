@@ -41,7 +41,8 @@ import {
   type SimEventsIracingOptions,
 } from "./translator.js";
 
-type InitializedSimState = Extract<SimStateSnapshot, { initialized: true }>;
+type FullSimState = Extract<SimStateSnapshot, { sessionTick: unknown }>;
+type DegradedSimState = Extract<SimStateSnapshot, { curatedError: unknown }>;
 
 function createMockLogger(): ILogger {
   const logger = {
@@ -144,12 +145,41 @@ function start(
   return { controller, logger };
 }
 
-function read(): InitializedSimState {
+function read(): FullSimState {
   const state = readSimState();
 
-  if (!state.initialized) throw new Error("expected an initialized sim state");
+  if (!state.initialized || "curatedError" in state) throw new Error("expected a full sim state");
 
   return state;
+}
+
+function readDegraded(): DegradedSimState {
+  const state = readSimState();
+
+  if (!state.initialized || !("curatedError" in state)) throw new Error("expected a degraded sim state");
+
+  return state;
+}
+
+/** `buildSimState`'s result, which is always the full variant. */
+function build(overrides: Partial<SimStateParts> = {}): FullSimState {
+  const state = buildSimState(parts(overrides));
+
+  if (!state.initialized || "curatedError" in state) throw new Error("expected a full sim state");
+
+  return state;
+}
+
+function fuelParts(overrides: Partial<SimStateParts["fuel"]> = {}): SimStateParts["fuel"] {
+  return {
+    windowLaps: FUEL_LAPS_LEFT_WINDOW_LAPS,
+    isRaceSession: true,
+    stats: { lastLap: 2, avg: 2, avgLapTime: null, samples: 2 },
+    tracker: createFuelLapTracker(),
+    getMarginLaps: () => 0.3,
+    getLeaderLapTimeS: () => null,
+    ...overrides,
+  };
 }
 
 /**
@@ -227,19 +257,13 @@ function parts(overrides: Partial<SimStateParts> = {}): SimStateParts {
   return {
     telemetry: null,
     replay: initialReplayState(),
-    fuel: {
-      windowLaps: FUEL_LAPS_LEFT_WINDOW_LAPS,
-      stats: { lastLap: null, avg: null, avgLapTime: null, samples: 0 },
-      tracker: createFuelLapTracker(),
-      getMarginLaps: () => 0.3,
-      getLeaderLapTimeS: () => null,
-    },
+    fuel: fuelParts({ stats: { lastLap: null, avg: null, avgLapTime: null, samples: 0 } }),
     order: { positions: null, player: null, startingGrid: null, raceFinish: null },
     gaps: null,
     opponentFlags: null,
     caution: { phase: "none", episode: null, lineup: null },
     session: {
-      type: "",
+      type: "Race",
       trackDirection: TrackDirection.Neutral,
       standingStart: false,
       pitActionsAllowed: true,
@@ -370,6 +394,7 @@ describe("readSimState — the laps-of-fuel-left figure", () => {
     // No limit in this telemetry, so nothing is known to be covered.
     expect(now!.remainingLaps).toBe(Number.POSITIVE_INFINITY);
     expect(now!.covered).toBe(false);
+    expect(now!.coverageSkipped).toBeNull();
     expect(announced).toEqual({ lastAnnouncedCount: event.count, lastSampledLap: 4, raceCoveredAnnounced: false });
   });
 
@@ -450,6 +475,179 @@ describe("readSimState — the laps-of-fuel-left figure", () => {
 
     controller.__tick(telemetry({ Lap: 4, LapDistPct: undefined, SessionTime: 192, FuelLevel: 50 }));
     expect(read().fuel.lapsLeft.now).toBeNull();
+  });
+
+  it("has no figure while the car is not in the world, where the lap position is a sentinel", () => {
+    const { controller } = start();
+
+    driveTwoValidLaps(controller);
+    controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.3, SessionTime: 190, FuelLevel: 10 }));
+    expect(read().fuel.lapsLeft.now).not.toBeNull();
+
+    // `Lap` and `LapDistPct` both read -1 there (`fuel-laps.test.ts`, the tow
+    // despawn tick). 1 − (−1) would count two laps still to run on this one.
+    controller.__tick(telemetry({ Lap: -1, LapDistPct: -1, SessionTime: 191, FuelLevel: 10 }));
+
+    const state = read();
+
+    expect(state.fuel.lapsLeft.now).toBeNull();
+    expect(new Map(simStateHeadline(state)).get("Laps of fuel left")).toBe("no estimate (last announced: none)");
+  });
+
+  it("keeps the estimate and compares it with no race distance outside a race session", () => {
+    const { controller } = start({
+      SessionInfo: { Sessions: [{ SessionNum: 0, SessionType: "Practice" }] },
+      DriverInfo: { DriverCarIdx: 0 },
+    });
+    const limits = { SessionLapsRemainEx: 3, SessionTimeRemain: 400 };
+
+    driveTwoValidLaps(controller, limits);
+    controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.55, SessionTime: 210, FuelLevel: 20, ...limits }));
+
+    expect(read().fuel.lapsLeft.now).toMatchObject({
+      count: 9,
+      lapsNeededAfterCurrent: null,
+      timedLapsAfterCurrent: null,
+      remainingLaps: null,
+      covered: null,
+      coverageSkipped: "not-a-race-session",
+    });
+  });
+
+  it("compares the estimate with no race distance once the chequered flag is out", () => {
+    const { controller } = start();
+    const limits = { SessionLapsRemainEx: 3, SessionTimeRemain: IRSDK_UNLIMITED_TIME };
+
+    driveTwoValidLaps(controller, limits);
+    controller.__tick(
+      telemetry({
+        Lap: 4,
+        LapDistPct: 0.55,
+        SessionTime: 210,
+        FuelLevel: 20,
+        SessionState: SessionState.Checkered,
+        ...limits,
+      }),
+    );
+
+    expect(read().fuel.lapsLeft.now).toMatchObject({
+      count: 9,
+      remainingLaps: null,
+      covered: null,
+      coverageSkipped: "race-over",
+    });
+  });
+});
+
+describe("readSimState — a curated half that cannot be built", () => {
+  /** Session info whose `DriverInfo` cannot be read — what `getLivePosition()` asks for first. */
+  function poisonedSessionInfo(): Record<string, unknown> {
+    return Object.defineProperty({ ...RACE_SESSION }, "DriverInfo", {
+      enumerable: true,
+      get: (): never => {
+        throw new TypeError("driver info is broken");
+      },
+    });
+  }
+
+  it("still carries the raw state, and says why, when an accessor throws", () => {
+    const { controller, logger } = start();
+
+    driveTwoValidLaps(controller);
+
+    const healthy = read();
+    const logged = (): number =>
+      [logger.trace, logger.debug, logger.info, logger.warn, logger.error].reduce(
+        (sum, method) => sum + vi.mocked(method).mock.calls.length,
+        0,
+      );
+    const loggedBefore = logged();
+
+    controller.__setSessionInfo(poisonedSessionInfo());
+
+    const state = readDegraded();
+
+    expect(Object.keys(state)).toEqual(["initialized", "curatedError", "raw"]);
+    expect(state.initialized).toBe(true);
+    expect(state.curatedError).toBe("driver info is broken");
+    expect(state).not.toHaveProperty("error");
+    // The live objects, as in the full shape: the same state, the same flags.
+    expect(state.raw.state).toBe(healthy.raw.state);
+    expect(state.raw.state.fuelCalloutLastSampledLap).toBe(3);
+    expect(state.raw.instance).toEqual(healthy.raw.instance);
+    expect(state.raw.replay).toEqual(healthy.raw.replay);
+    expect(functionPaths(state)).toEqual([]);
+    expect(() => JSON.stringify(toPlain(state))).not.toThrow();
+    expect(logged()).toBe(loggedBefore);
+  });
+
+  it("still carries the raw state when the margin closure throws under the estimate", () => {
+    const getFuelLapsLeftMarginLaps = vi.fn((): number => {
+      throw new Error("settings not loaded");
+    });
+    const { controller } = start(null, { getFuelLapsLeftMarginLaps });
+
+    // No session info, so the fuel callout's own diff — race-only — never
+    // reaches the closure; only the reader does, once there is an average.
+    driveTwoValidLaps(controller);
+
+    const state = readDegraded();
+
+    expect(getFuelLapsLeftMarginLaps).toHaveBeenCalledTimes(1);
+    expect(state.curatedError).toBe("settings not loaded");
+    expect(state.raw.state.fuelCalloutLastSampledLap).toBe(-1);
+    expect(state.raw.instance.firstOnTrackSeeded).toBe(true);
+  });
+
+  it("still carries the state and the flags when the controller's replay read is what throws", () => {
+    const { controller } = start();
+
+    driveTwoValidLaps(controller);
+
+    const healthy = read();
+
+    controller.getReplayState = () => {
+      throw new Error("no replay state");
+    };
+
+    const state = readDegraded();
+
+    expect(state.curatedError).toBe("no replay state");
+    expect(state.raw.state).toBe(healthy.raw.state);
+    expect(state.raw.instance).toEqual(healthy.raw.instance);
+    expect(state.raw.replay).toBeNull();
+  });
+
+  it("cannot be made to throw by what was thrown", () => {
+    const hostile = {
+      get message(): string {
+        throw new Error("message getter");
+      },
+      toString(): string {
+        throw new Error("toString");
+      },
+    };
+    const { controller } = start(null, {
+      getFuelLapsLeftMarginLaps: () => {
+        throw hostile;
+      },
+    });
+
+    driveTwoValidLaps(controller);
+
+    expect(readDegraded().curatedError).toBe("unknown error");
+  });
+
+  it("bounds the reason it records", () => {
+    const { controller } = start(null, {
+      getFuelLapsLeftMarginLaps: () => {
+        throw new Error("x".repeat(5000));
+      },
+    });
+
+    driveTwoValidLaps(controller);
+
+    expect(readDegraded().curatedError.length).toBeLessThanOrEqual(300);
   });
 });
 
@@ -601,6 +799,7 @@ describe("readSimState — a replay-wiped translator", () => {
     expect(live.raw.state.gapTraces.length).toBeGreaterThan(0);
     expect(live.order.player?.position).toBe(2);
     expect(live.fuel.history).toHaveLength(2);
+    expect(simStateHeadline(live)[0]![0]).toBe("Fuel per lap");
 
     controller.__tick(
       telemetry({
@@ -630,6 +829,10 @@ describe("readSimState — a replay-wiped translator", () => {
     expect(wiped.fuel.stats.samples).toBe(2);
     expect(wiped.fuel.tracker.resumePartial).toBe(true);
     expect(() => JSON.stringify(toPlain(wiped))).not.toThrow();
+    // The report says so before any figure: "Live position" below is the
+    // replay tick's order.
+    expect(simStateHeadline(wiped)[0]![0]).toBe("Replay");
+    expect(new Map(simStateHeadline(wiped)).get("Live position")).toBe("P2");
 
     // A live tick inside the exit grace (#1324): the tick's own bit is off, the
     // debounced state the translator's guard reads still says replay, and that
@@ -648,26 +851,20 @@ describe("buildSimState", () => {
   it("shapes the parts without calling the leader-lap resolver when the clock is unlimited", () => {
     const getLeaderLapTimeS = vi.fn(() => 60);
     const history = [validLap(1, 2, 90), validLap(2, 2, 90)];
-    const state = buildSimState(
-      parts({
-        telemetry: telemetry({
-          SessionTick: 9,
-          FuelLevel: 10,
-          LapDistPct: 0.5,
-          SessionLapsRemainEx: IRSDK_UNLIMITED_LAPS,
-          SessionTimeRemain: IRSDK_UNLIMITED_TIME,
-        }),
-        fuel: {
-          windowLaps: FUEL_LAPS_LEFT_WINDOW_LAPS,
-          stats: { lastLap: 2, avg: 2, avgLapTime: 90, samples: 2 },
-          tracker: { ...createFuelLapTracker(), history },
-          getMarginLaps: () => 0.3,
-          getLeaderLapTimeS,
-        },
+    const state = build({
+      telemetry: telemetry({
+        SessionTick: 9,
+        FuelLevel: 10,
+        LapDistPct: 0.5,
+        SessionLapsRemainEx: IRSDK_UNLIMITED_LAPS,
+        SessionTimeRemain: IRSDK_UNLIMITED_TIME,
       }),
-    );
-
-    if (!state.initialized) throw new Error("expected an initialized sim state");
+      fuel: fuelParts({
+        stats: { lastLap: 2, avg: 2, avgLapTime: 90, samples: 2 },
+        tracker: { ...createFuelLapTracker(), history },
+        getLeaderLapTimeS,
+      }),
+    });
 
     expect(state.sessionTick).toBe(9);
     expect(state.fuel.history).toBe(history);
@@ -682,9 +879,7 @@ describe("buildSimState", () => {
     translatorState.fuelCalloutLastSampledLap = 12;
     translatorState.fuelCalloutRaceCoveredAnnounced = true;
 
-    const state = buildSimState(parts({ state: translatorState }));
-
-    if (!state.initialized) throw new Error("expected an initialized sim state");
+    const state = build({ state: translatorState });
 
     expect(state.fuel.lapsLeft.announced).toEqual({
       lastAnnouncedCount: 3,
@@ -695,28 +890,153 @@ describe("buildSimState", () => {
   });
 
   it("reads a white flag off the telemetry it was handed for the coverage", () => {
-    const state = buildSimState(
-      parts({
-        telemetry: telemetry({
-          FuelLevel: 10,
-          LapDistPct: 0.5,
-          SessionFlags: Flags.White,
-          SessionLapsRemainEx: 1,
-          SessionTimeRemain: IRSDK_UNLIMITED_TIME,
-        }),
-        fuel: {
-          windowLaps: FUEL_LAPS_LEFT_WINDOW_LAPS,
-          stats: { lastLap: 2, avg: 2, avgLapTime: null, samples: 2 },
-          tracker: createFuelLapTracker(),
-          getMarginLaps: () => 0.3,
-          getLeaderLapTimeS: () => null,
-        },
+    const state = build({
+      telemetry: telemetry({
+        FuelLevel: 10,
+        LapDistPct: 0.5,
+        SessionFlags: Flags.White,
+        SessionLapsRemainEx: 1,
+        SessionTimeRemain: IRSDK_UNLIMITED_TIME,
       }),
-    );
+      fuel: fuelParts(),
+    });
 
-    if (!state.initialized) throw new Error("expected an initialized sim state");
+    expect(state.fuel.lapsLeft.now).toMatchObject({
+      lapsNeededAfterCurrent: 1,
+      remainingLaps: 1,
+      covered: true,
+      coverageSkipped: null,
+    });
+  });
 
-    expect(state.fuel.lapsLeft.now).toMatchObject({ lapsNeededAfterCurrent: 1, remainingLaps: 1, covered: true });
+  describe("the laps-left figure's preconditions", () => {
+    // 10 L at 2 L a lap with a 0.3 margin: 4 full laps from mid-lap, 3 or 4
+    // from anywhere on the lap.
+    const inputs = (overrides: Partial<TelemetryData>): TelemetryData =>
+      telemetry({ FuelLevel: 10, Lap: 7, LapDistPct: 0.5, ...overrides });
+    const now = (overrides: Partial<TelemetryData>) =>
+      build({ telemetry: inputs(overrides), fuel: fuelParts() }).fuel.lapsLeft.now;
+
+    it("answers from every position on the lap", () => {
+      expect(now({ LapDistPct: 0 })?.count).toBe(3);
+      expect(now({ LapDistPct: 0.5 })?.count).toBe(4);
+      expect(now({ LapDistPct: 0.99 })?.count).toBe(4);
+    });
+
+    it("has no answer for a lap position that is not a fraction of a lap", () => {
+      expect(now({ Lap: -1, LapDistPct: -1 })).toBeNull();
+      expect(now({ LapDistPct: -1 })).toBeNull();
+      expect(now({ LapDistPct: Number.NaN })).toBeNull();
+    });
+
+    it("has no answer for a lap counter that says the car is not in the world", () => {
+      expect(now({ Lap: -1 })).toBeNull();
+      expect(now({ Lap: undefined })).toBeNull();
+      expect(now({ Lap: Number.NaN })).toBeNull();
+    });
+
+    it("does not read the margin or the leader's pace when there is no answer", () => {
+      const getMarginLaps = vi.fn(() => 0.3);
+      const getLeaderLapTimeS = vi.fn(() => 60);
+
+      build({
+        telemetry: inputs({ Lap: -1, LapDistPct: -1, SessionTimeRemain: 400 }),
+        fuel: fuelParts({
+          stats: { lastLap: 2, avg: 2, avgLapTime: 90, samples: 2 },
+          getMarginLaps,
+          getLeaderLapTimeS,
+        }),
+      });
+
+      expect(getMarginLaps).not.toHaveBeenCalled();
+      expect(getLeaderLapTimeS).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("the race distance the figure is compared with", () => {
+    // The player's own final lap, white flag up, the leader's counter at 1:
+    // 1.5 L at 2 L a lap is 0.75 of a lap with half a lap to run, so the tank
+    // finishes the race. The coverage arithmetic assumes the player still has
+    // a white lap of their own to start and would call that one lap short.
+    const finalLap = telemetry({
+      FuelLevel: 1.5,
+      Lap: 20,
+      LapDistPct: 0.5,
+      SessionFlags: Flags.White,
+      SessionLapsRemainEx: 1,
+      SessionTimeRemain: 30,
+    });
+    const timedStats = { lastLap: 2, avg: 2, avgLapTime: 90, samples: 2 };
+
+    it("is not worked out on the player's final lap, and the leader's pace is not asked for", () => {
+      const translatorState = createInitialState();
+      const getLeaderLapTimeS = vi.fn(() => 60);
+
+      translatorState.playerFinalLapStarted = true;
+
+      const state = build({
+        telemetry: finalLap,
+        fuel: fuelParts({ stats: timedStats, getLeaderLapTimeS }),
+        state: translatorState,
+      });
+
+      expect(state.fuel.lapsLeft.now).toEqual({
+        rawLapsLeft: 0.75,
+        marginLaps: 0.3,
+        effective: 0.45,
+        lapFractionRemaining: 0.5,
+        unclampedCount: -1,
+        count: 0,
+        lapsNeededAfterCurrent: null,
+        timedLapsAfterCurrent: null,
+        remainingLaps: null,
+        covered: null,
+        coverageSkipped: "final-lap",
+      });
+      expect(getLeaderLapTimeS).not.toHaveBeenCalled();
+    });
+
+    it("is worked out on the same tick before the player has crossed under the white", () => {
+      const state = build({ telemetry: finalLap, fuel: fuelParts({ stats: timedStats }) });
+
+      expect(state.fuel.lapsLeft.now).toMatchObject({
+        count: 0,
+        lapsNeededAfterCurrent: 1,
+        remainingLaps: 1,
+        covered: false,
+        coverageSkipped: null,
+      });
+    });
+
+    it("is not worked out once the race is over", () => {
+      for (const sessionState of [SessionState.Checkered, SessionState.CoolDown]) {
+        const state = build({
+          telemetry: telemetry({ FuelLevel: 10, LapDistPct: 0.5, SessionLapsRemainEx: 0, SessionState: sessionState }),
+          fuel: fuelParts(),
+        });
+
+        expect(state.fuel.lapsLeft.now).toMatchObject({ count: 4, covered: null, coverageSkipped: "race-over" });
+      }
+    });
+
+    it("is not worked out outside a race session, whatever else holds", () => {
+      const translatorState = createInitialState();
+
+      translatorState.playerFinalLapStarted = true;
+
+      const state = build({
+        telemetry: telemetry({ FuelLevel: 10, LapDistPct: 0.5, SessionLapsRemainEx: 3 }),
+        fuel: fuelParts({ isRaceSession: false }),
+        state: translatorState,
+      });
+
+      expect(state.fuel.lapsLeft.now).toMatchObject({
+        count: 4,
+        remainingLaps: null,
+        covered: null,
+        coverageSkipped: "not-a-race-session",
+      });
+    });
   });
 });
 
@@ -726,7 +1046,7 @@ describe("simStateHeadline", () => {
   });
 
   it("names every row even when nothing is known yet", () => {
-    expect(simStateHeadline(buildSimState(parts()))).toEqual([
+    expect(simStateHeadline(build())).toEqual([
       ["Fuel per lap", "no valid laps"],
       ["Laps of fuel left", "no estimate (last announced: none)"],
       ["Live position", "unknown"],
@@ -744,13 +1064,7 @@ describe("simStateHeadline", () => {
     const state = buildSimState(
       parts({
         telemetry: telemetry({ FuelLevel: 4.9, LapDistPct: 0.55 }),
-        fuel: {
-          windowLaps: FUEL_LAPS_LEFT_WINDOW_LAPS,
-          stats: { lastLap: 2, avg: 1.95, avgLapTime: 87.5, samples: 2 },
-          tracker: createFuelLapTracker(),
-          getMarginLaps: () => 0.3,
-          getLeaderLapTimeS: () => null,
-        },
+        fuel: fuelParts({ stats: { lastLap: 2, avg: 1.95, avgLapTime: 87.5, samples: 2 } }),
         order: {
           positions: [3, 1, 2],
           player: { position: 3, classPosition: 2, isMultiClass: true },
@@ -779,13 +1093,7 @@ describe("simStateHeadline", () => {
   it("reports a single-class position alone, a one-lap sample in the singular and a gap with no reading", () => {
     const state = buildSimState(
       parts({
-        fuel: {
-          windowLaps: FUEL_LAPS_LEFT_WINDOW_LAPS,
-          stats: { lastLap: 2, avg: 2, avgLapTime: 90, samples: 1 },
-          tracker: createFuelLapTracker(),
-          getMarginLaps: () => 0.3,
-          getLeaderLapTimeS: () => null,
-        },
+        fuel: fuelParts({ stats: { lastLap: 2, avg: 2, avgLapTime: 90, samples: 1 } }),
         order: {
           positions: [1],
           player: { position: 1, classPosition: 1, isMultiClass: false },
@@ -801,5 +1109,29 @@ describe("simStateHeadline", () => {
     expect(rows.get("Live position")).toBe("P1");
     expect(rows.get("Gap ahead")).toBe("none");
     expect(rows.get("Gap behind")).toBe("no reading (car 4)");
+  });
+
+  it("opens with a replay row while a replay is on screen, and has none otherwise", () => {
+    const live = simStateHeadline(build());
+    const replay = simStateHeadline(build({ replay: { ...initialReplayState(), inReplay: true } }));
+
+    expect(live.map(([label]) => label)).not.toContain("Replay");
+    expect(replay[0]).toEqual([
+      "Replay",
+      "A replay was on screen when this snapshot was taken. The figures below are not the live race.",
+    ]);
+    expect(replay.slice(1)).toEqual(live);
+  });
+
+  it("answers one row for a state whose curated half could not be built", () => {
+    expect(
+      simStateHeadline({
+        initialized: true,
+        curatedError: "driver info is broken",
+        raw: { state: createInitialState(), instance: parts().instance, replay: null },
+      }),
+    ).toEqual([
+      ["Sim state", "figures unavailable (driver info is broken); the raw state is in the JSON file"],
+    ]);
   });
 });

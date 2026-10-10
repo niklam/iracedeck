@@ -23,9 +23,16 @@
  * - **No stability promise under `raw`.** Its field names are the code's and
  *   may change in any release; the curated keys are what a schema bump covers.
  *
+ * The two halves fail apart. The curated half calls accessors and does
+ * arithmetic, so a defect can make it throw; the raw half only reads fields.
+ * When the curated half throws, the reader answers the degraded shape —
+ * `raw` and a `curatedError` saying why — instead of throwing itself, because
+ * the raw state is the dump that explains exactly that kind of defect
+ * ({@link buildDegradedSimState}).
+ *
  * Spec: `docs/superpowers/specs/2026-10-10-issue-1387-snapshot-plugin-state.md`.
  */
-import type { ReplayState, TelemetryData } from "@iracedeck/iracing-sdk";
+import { isPostRace, type ReplayState, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 import type { CautionLineup } from "./diff/caution-lineup.js";
 import {
@@ -40,11 +47,43 @@ import type { TrackDirection } from "./track-type.js";
 import type { GapNeighbor, LiveGaps, LiveOpponentFlags, LivePosition } from "./translator.js";
 
 /**
- * What the laps-of-fuel-left callout's formula gives for one tick: every step
- * of the count, the remaining race distance it is compared with, and the
- * verdict. `covered` is the diff's own `count >= remainingLaps`.
+ * Why the laps-of-fuel-left count is compared with no race distance: the
+ * states in which `resolveFuelRaceCoverage` has no meaningful answer, each of
+ * which `diffFuelLapsLeft` returns on before it would call it.
+ *
+ * - `"not-a-race-session"` — there is no race to cover. The lap counter and
+ *   the clock mean something else outside a race, and the timed side is a
+ *   model of how a race finishes.
+ * - `"race-over"` — the chequered flag is out or the field is cooling down.
+ * - `"final-lap"` — the player has started their own final lap
+ *   (`playerFinalLapStarted`). The coverage arithmetic assumes they have not:
+ *   under the white flag it counts at least one more lap for the player to
+ *   start, which on the final lap would call a tank that finishes the race
+ *   one lap short.
  */
-export type SimFuelLapsLeftNow = FuelLapsLeftEstimate & FuelRaceCoverage & { covered: boolean };
+export type SimFuelCoverageSkip = "not-a-race-session" | "race-over" | "final-lap";
+
+/**
+ * What the laps-of-fuel-left callout's formula gives for one tick: every step
+ * of the count, then the remaining race distance it is compared with and the
+ * verdict — `covered` is the diff's own `count >= remainingLaps`.
+ *
+ * The count stands in any session. The comparison does not: where it has no
+ * meaningful answer its four keys are `null` and `coverageSkipped` says why.
+ * That is different from a race whose limits are unknown, which is compared
+ * (`coverageSkipped: null`) against `remainingLaps: Infinity`.
+ */
+export type SimFuelLapsLeftNow = FuelLapsLeftEstimate &
+  (
+    | (FuelRaceCoverage & { covered: boolean; coverageSkipped: null })
+    | {
+        lapsNeededAfterCurrent: null;
+        timedLapsAfterCurrent: null;
+        remainingLaps: null;
+        covered: null;
+        coverageSkipped: SimFuelCoverageSkip;
+      }
+  );
 
 /** The translator instance's own flags — the ones that live beside `TranslatorState`, not in it. */
 export type SimInstanceFlags = {
@@ -90,12 +129,35 @@ export type SimSessionState = {
   raceFinished: boolean;
 };
 
+/** The uncurated half: the whole `TranslatorState`, the instance's own flags and the controller's replay state. */
+export type SimRawState = { state: TranslatorState; instance: SimInstanceFlags; replay: ReplayState };
+
 /**
- * The translator's state for one Telemetry Snapshot (issue #1387).
- * `{ initialized: false }` and nothing else while there is no translator.
+ * The translator's state for one Telemetry Snapshot (issue #1387), in one of
+ * three shapes:
+ *
+ * - `{ initialized: false }` and nothing else while there is no translator.
+ * - The **degraded** shape, `{ initialized: true, curatedError, raw }`, when
+ *   building the curated half threw. Recognised by its `curatedError` key.
+ * - The **full** shape otherwise.
  */
 export type SimStateSnapshot =
   | { initialized: false }
+  | {
+      initialized: true;
+      /**
+       * Why the curated keys are missing: the message of what was thrown while
+       * building them. Deliberately not named `error` — the snapshot's
+       * collector writes `{ error }` in place of a section whose reader threw
+       * outright, and a section that still carries `raw` must not read as that.
+       */
+      curatedError: string;
+      /**
+       * As in the full shape, except that `replay` is `null` when reading the
+       * controller's replay state is itself what threw.
+       */
+      raw: Omit<SimRawState, "replay"> & { replay: ReplayState | null };
+    }
   | {
       initialized: true;
       /**
@@ -123,10 +185,12 @@ export type SimStateSnapshot =
         tracker: Omit<FuelLapTracker, "history">;
         lapsLeft: {
           /**
-           * The callout's formula at THIS tick, or `null` when it has no
-           * inputs: no telemetry, an unusable `FuelLevel` or `LapDistPct`, or
-           * no validated average. Not what was spoken — the callout samples
-           * once per lap, at mid-lap; `announced` is what it said.
+           * The callout's formula at THIS tick, or `null` when its arithmetic
+           * has no inputs: no telemetry, an unusable `FuelLevel`, a `Lap` or
+           * `LapDistPct` that is not a position on a lap (both read -1 while
+           * the car is not in the world), or no validated average. Not what
+           * was spoken — the callout samples once per lap, at mid-lap;
+           * `announced` is what it said.
            */
           now: SimFuelLapsLeftNow | null;
           /** The callout's latches. */
@@ -142,7 +206,7 @@ export type SimStateSnapshot =
       opponentFlags: LiveOpponentFlags | null;
       caution: SimCautionState;
       session: SimSessionState;
-      raw: { state: TranslatorState; instance: SimInstanceFlags; replay: ReplayState };
+      raw: SimRawState;
     };
 
 /** What `readSimState()` gathers from the translator instance for {@link buildSimState}. */
@@ -152,6 +216,8 @@ export type SimStateParts = {
   replay: ReplayState;
   fuel: {
     windowLaps: number;
+    /** `handleTick`'s own `isRaceSession`, which `diffFuelLapsLeft` returns on first. */
+    isRaceSession: boolean;
     /** The stats the laps-of-fuel-left diff reads, over `windowLaps`. */
     stats: FuelStats;
     tracker: FuelLapTracker;
@@ -170,17 +236,66 @@ export type SimStateParts = {
 };
 
 /**
- * The laps-of-fuel-left figure for `telemetry`, by the two functions the diff
- * itself calls. The input checks are the diff's own, minus its gates: this
- * answers "what would the formula say now", so the race-session, live-in-car
- * and mid-lap-sample conditions do not apply — only the ones without which
- * there is no arithmetic to do.
+ * Whether the race-coverage comparison has an answer for this tick, or why
+ * not — see {@link SimFuelCoverageSkip}. The order is the diff's own: the
+ * session first, then the two it tests together.
  */
-function resolveLapsLeftNow(telemetry: TelemetryData | null, fuel: SimStateParts["fuel"]): SimFuelLapsLeftNow | null {
+function resolveCoverageSkip(
+  telemetry: TelemetryData,
+  isRaceSession: boolean,
+  state: TranslatorState,
+): SimFuelCoverageSkip | null {
+  if (!isRaceSession) return "not-a-race-session";
+
+  if (isPostRace(telemetry)) return "race-over";
+
+  if (state.playerFinalLapStarted) return "final-lap";
+
+  return null;
+}
+
+/**
+ * The laps-of-fuel-left figure for `telemetry`, by the two functions the diff
+ * itself calls. It answers "what would the formula say now", so each of
+ * `diffFuelLapsLeft`'s early returns is sorted into one of two kinds, and the
+ * reader honours only the first:
+ *
+ * **A precondition of the arithmetic** — without it the functions return a
+ * number that means nothing.
+ *
+ * - The input checks: a finite, non-negative `FuelLevel`; a finite `Lap` that
+ *   is not negative; a finite `LapDistPct`. `Lap` is no operand, but a
+ *   negative one is the car-not-in-world sentinel, under which `LapDistPct`
+ *   reads -1 too and `1 − LapDistPct` would count two laps left of this one.
+ * - `LapDistPct >= 0`. The diff never states it, because its mid-lap sample
+ *   only runs at 0.5 and above; read at any tick, the reader has to.
+ * - A validated, positive average.
+ * - For the COVERAGE half only: a race session, not post-race, and the player
+ *   not on their final lap ({@link resolveCoverageSkip}). The count stands
+ *   without them, so the figure is kept and the comparison is marked skipped.
+ *
+ * **A gate on when the callout speaks** — the arithmetic is as good on either
+ * side of it, so the reader ignores it.
+ *
+ * - The silent seed, the rising mid-lap crossing and the once-per-lap latch:
+ *   when the diff samples.
+ * - `isLiveOnTrack`: whom it speaks to. Its two arithmetic cases are covered
+ *   elsewhere — a car not in the world by the sentinel checks above, a replay
+ *   by `inReplay`, which says of every figure in the section that it is not
+ *   the live race.
+ * - Everything after the arithmetic: the suppression at coverage, the
+ *   10-count ceiling and the descending-only rule decide what is said.
+ */
+function resolveLapsLeftNow(
+  telemetry: TelemetryData | null,
+  fuel: SimStateParts["fuel"],
+  state: TranslatorState,
+): SimFuelLapsLeftNow | null {
   if (telemetry === null) return null;
 
   const fuelLevel = telemetry.FuelLevel;
   const distPct = telemetry.LapDistPct;
+  const lap = telemetry.Lap;
   const { stats } = fuel;
 
   if (
@@ -188,7 +303,11 @@ function resolveLapsLeftNow(telemetry: TelemetryData | null, fuel: SimStateParts
     !Number.isFinite(fuelLevel) ||
     fuelLevel < 0 ||
     typeof distPct !== "number" ||
-    !Number.isFinite(distPct)
+    !Number.isFinite(distPct) ||
+    distPct < 0 ||
+    typeof lap !== "number" ||
+    !Number.isFinite(lap) ||
+    lap < 0
   ) {
     return null;
   }
@@ -196,14 +315,84 @@ function resolveLapsLeftNow(telemetry: TelemetryData | null, fuel: SimStateParts
   if (stats.avg === null || stats.avg <= 0) return null;
 
   const estimate = estimateFuelLapsLeft(fuelLevel, distPct, stats.avg, fuel.getMarginLaps());
+  const coverageSkipped = resolveCoverageSkip(telemetry, fuel.isRaceSession, state);
+
+  if (coverageSkipped !== null) {
+    return {
+      ...estimate,
+      lapsNeededAfterCurrent: null,
+      timedLapsAfterCurrent: null,
+      remainingLaps: null,
+      covered: null,
+      coverageSkipped,
+    };
+  }
+
   const coverage = resolveFuelRaceCoverage(telemetry, stats, estimate.lapFractionRemaining, fuel.getLeaderLapTimeS);
 
-  return { ...estimate, ...coverage, covered: estimate.count >= coverage.remainingLaps };
+  return { ...estimate, ...coverage, covered: estimate.count >= coverage.remainingLaps, coverageSkipped: null };
+}
+
+/** The longest reason {@link buildDegradedSimState} records; a message is a sentence, not a dump. */
+const CURATED_ERROR_MAX_LENGTH = 300;
+const UNKNOWN_REASON = "unknown error";
+
+/** The text of a primitive, `""` for anything else. Cannot throw: an object's own conversion is never called. */
+function textOf(value: unknown): string {
+  switch (typeof value) {
+    case "string":
+      return value.trim();
+    case "number":
+    case "bigint":
+    case "boolean":
+    case "symbol":
+      return String(value);
+    default:
+      return "";
+  }
+}
+
+/**
+ * Why the curated half failed, as a bounded, non-empty string: the thrown
+ * value's `message`, else its `name`, else the value itself when it is a
+ * primitive. The rule of `describeThrown` in `@iracedeck/diagnostics`, which
+ * writes the collector's own error entries — restated because this package
+ * does not import diagnostics — so a reason reads the same whichever wrote it.
+ * Total: it runs inside a `catch`, and anything can be thrown.
+ */
+function describeFailure(thrown: unknown): string {
+  try {
+    const reason =
+      typeof thrown !== "object" || thrown === null
+        ? textOf(thrown)
+        : textOf((thrown as { message?: unknown }).message) || textOf((thrown as { name?: unknown }).name);
+
+    return (reason || UNKNOWN_REASON).slice(0, CURATED_ERROR_MAX_LENGTH);
+  } catch {
+    // A getter or a Proxy trap on the thrown value.
+    return UNKNOWN_REASON;
+  }
+}
+
+/**
+ * The degraded shape: the raw half and the reason the curated half is
+ * missing. `readSimState()` answers it when anything it calls for the curated
+ * keys throws, so one broken accessor costs the keys it feeds and not the
+ * state that would explain it. Cannot throw: it reads nothing but what it is
+ * handed, and {@link describeFailure} is total.
+ */
+export function buildDegradedSimState(
+  raw: Omit<SimRawState, "replay"> & { replay: ReplayState | null },
+  thrown: unknown,
+): SimStateSnapshot {
+  return { initialized: true, curatedError: describeFailure(thrown), raw };
 }
 
 /**
  * Shape the gathered parts into the snapshot's `sim` section. Pure: it reads
  * the parts, calls the two closures at most once each, and writes nothing.
+ * Always the full shape; it throws what a closure throws, and the reader
+ * turns that into the degraded one.
  */
 export function buildSimState(parts: SimStateParts): SimStateSnapshot {
   const { telemetry, state } = parts;
@@ -221,7 +410,7 @@ export function buildSimState(parts: SimStateParts): SimStateSnapshot {
       history,
       tracker,
       lapsLeft: {
-        now: resolveLapsLeftNow(telemetry, parts.fuel),
+        now: resolveLapsLeftNow(telemetry, parts.fuel, state),
         announced: {
           lastAnnouncedCount: state.fuelCalloutLastAnnouncedCount,
           lastSampledLap: state.fuelCalloutLastSampledLap,
@@ -255,15 +444,29 @@ function formatGap(neighbor: GapNeighbor | null): string {
  * fuel per lap with its sample count, laps of fuel left with the last
  * announced count, live position, the gaps ahead and behind, and the caution
  * phase. Fuel is in litres, the tracker's own unit.
+ *
+ * While a replay is on screen a `Replay` row comes first, so it is read
+ * before the figures it qualifies: they are made from the replay's frame and
+ * from a state the replay guard has wiped, under labels such as "Live
+ * position". A state that is not initialized, or whose curated half could not
+ * be built, answers one `Sim state` row saying so.
  */
 export function simStateHeadline(state: SimStateSnapshot): Array<readonly [string, string]> {
   if (!state.initialized) return [["Sim state", "not initialized"]];
 
+  if ("curatedError" in state) {
+    return [["Sim state", `figures unavailable (${state.curatedError}); the raw state is in the JSON file`]];
+  }
+
   const { stats, lapsLeft } = state.fuel;
   const { player } = state.order;
   const announced = lapsLeft.announced.lastAnnouncedCount;
+  const replayRow: Array<readonly [string, string]> = state.inReplay
+    ? [["Replay", "A replay was on screen when this snapshot was taken. The figures below are not the live race."]]
+    : [];
 
   return [
+    ...replayRow,
     [
       "Fuel per lap",
       stats.avg === null

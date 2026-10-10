@@ -38,6 +38,7 @@ import {
   isReplayOnlySession,
   nearestCarGapMeters,
   type QualifyResultEntry,
+  type ReplayState,
   resolveLapsRemaining,
   resolveTimeRemainingS,
   type SDKController,
@@ -96,7 +97,7 @@ import { diffToggles } from "./diff/toggles.js";
 import { diffTrackWetness, resolveReportedTrackWetness } from "./diff/track-wetness.js";
 import type { PendingEvent } from "./diff/types.js";
 import { calculateCanonicalRacePositions } from "./race-order.js";
-import { buildSimState, type SimStateSnapshot } from "./sim-state.js";
+import { buildDegradedSimState, buildSimState, type SimStateSnapshot } from "./sim-state.js";
 import { resolveStandingStart } from "./start-lights.js";
 import {
   type CautionEpisode,
@@ -1518,59 +1519,84 @@ function fuelLapsLeftStats(self: TranslatorInstance): FuelStats {
  * them at the press; a caller that keeps the result holds state the next tick
  * mutates. The bus, the controller, the loggers and the settings closures
  * are never part of it.
+ *
+ * **The raw half survives a curated half that throws.** The snapshot's
+ * collector isolates per section, so a throw from here would replace the
+ * whole of `sim` with an error entry and lose `raw` — the dump that explains
+ * that kind of defect. So the state and the instance's flags are read first,
+ * as plain field reads, and everything that calls something (the accessors,
+ * the two closures, the controller's replay state) runs inside one `try`:
+ * when it throws, the answer is the degraded shape, `raw` plus a
+ * `curatedError` naming what was thrown. Nothing is logged for it; the
+ * reason is in the file.
  */
 export function readSimState(): SimStateSnapshot {
   if (!instance) return { initialized: false };
 
   const self = instance;
-  const telemetry = self.latestTelemetry;
-  const positions = getLiveRacePositions();
+  const state = self.state;
+  const flags = {
+    lastTickInReplay: self.lastTickInReplay,
+    lastObservedSessionNum: self.lastObservedSessionNum,
+    firstOnTrackSeeded: self.firstOnTrackSeeded,
+    firstOnTrackFired: self.firstOnTrackFired,
+    freshConnectFireChecked: self.freshConnectFireChecked,
+    freshConnectReplaySkipLogged: self.freshConnectReplaySkipLogged,
+    pitSpeedLimitMps: self.pitSpeedLimitMps,
+    pitSpeedLimitKey: self.pitSpeedLimitKey,
+  };
+  // A call, unlike the fields above, so it is made inside the `try`; it stays
+  // `null` in the degraded shape only when it is itself what threw.
+  let replay: ReplayState | null = null;
 
-  return buildSimState({
-    telemetry,
+  try {
     // The read `handleTick`'s replay guard makes (#1324), taken at the press.
-    replay: self.controller.getReplayState(),
-    fuel: {
-      windowLaps: FUEL_LAPS_LEFT_WINDOW_LAPS,
-      stats: fuelLapsLeftStats(self),
-      tracker: self.fuelLaps,
-      getMarginLaps: self.getFuelLapsLeftMarginLaps,
-      // The expression `handleTick` hands `diffFuelLapsLeft`, over the same
-      // canonical order (`resolveCanonicalOrder`, read here through its
-      // public accessor). `positions` is null only without telemetry, where
-      // there is no estimate to ask for.
-      getLeaderLapTimeS: () =>
-        telemetry !== null && positions !== null ? resolveLeaderLapTimeS(telemetry, positions) : null,
-    },
-    order: {
-      positions,
-      player: getLivePosition(),
-      startingGrid: getStartingGridPosition(),
-      raceFinish: getRaceFinishResult(telemetry?.SessionNum),
-    },
-    gaps: getLiveGaps(),
-    opponentFlags: getLiveOpponentFlags(),
-    caution: { phase: getCautionPhase(), episode: getCautionEpisode(), lineup: getCautionLineup() },
-    session: {
-      type: getSessionType(),
-      trackDirection: getTrackDirection(),
-      standingStart: getStandingStart(),
-      pitActionsAllowed: isPitActionsAllowed(),
-      damageRepairNeeded: isDamageRepairNeeded(),
-      raceFinished: isRaceFinished(),
-    },
-    state: self.state,
-    instance: {
-      lastTickInReplay: self.lastTickInReplay,
-      lastObservedSessionNum: self.lastObservedSessionNum,
-      firstOnTrackSeeded: self.firstOnTrackSeeded,
-      firstOnTrackFired: self.firstOnTrackFired,
-      freshConnectFireChecked: self.freshConnectFireChecked,
-      freshConnectReplaySkipLogged: self.freshConnectReplaySkipLogged,
-      pitSpeedLimitMps: self.pitSpeedLimitMps,
-      pitSpeedLimitKey: self.pitSpeedLimitKey,
-    },
-  });
+    replay = self.controller.getReplayState();
+
+    const telemetry = self.latestTelemetry;
+    const positions = getLiveRacePositions();
+    const sessionType = getSessionType();
+
+    return buildSimState({
+      telemetry,
+      replay,
+      fuel: {
+        windowLaps: FUEL_LAPS_LEFT_WINDOW_LAPS,
+        // `handleTick`'s own test, on the session type its accessor resolves.
+        isRaceSession: sessionType === "Race",
+        stats: fuelLapsLeftStats(self),
+        tracker: self.fuelLaps,
+        getMarginLaps: self.getFuelLapsLeftMarginLaps,
+        // The expression `handleTick` hands `diffFuelLapsLeft`, over the same
+        // canonical order (`resolveCanonicalOrder`, read here through its
+        // public accessor). `positions` is null only without telemetry, where
+        // there is no estimate to ask for.
+        getLeaderLapTimeS: () =>
+          telemetry !== null && positions !== null ? resolveLeaderLapTimeS(telemetry, positions) : null,
+      },
+      order: {
+        positions,
+        player: getLivePosition(),
+        startingGrid: getStartingGridPosition(),
+        raceFinish: getRaceFinishResult(telemetry?.SessionNum),
+      },
+      gaps: getLiveGaps(),
+      opponentFlags: getLiveOpponentFlags(),
+      caution: { phase: getCautionPhase(), episode: getCautionEpisode(), lineup: getCautionLineup() },
+      session: {
+        type: sessionType,
+        trackDirection: getTrackDirection(),
+        standingStart: getStandingStart(),
+        pitActionsAllowed: isPitActionsAllowed(),
+        damageRepairNeeded: isDamageRepairNeeded(),
+        raceFinished: isRaceFinished(),
+      },
+      state,
+      instance: flags,
+    });
+  } catch (error) {
+    return buildDegradedSimState({ state, instance: flags, replay }, error);
+  }
 }
 
 /**
