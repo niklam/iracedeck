@@ -297,7 +297,7 @@ The key shows the car number it switches to inside its box, such as `7`, `42` or
 
 The car number to focus, typed as it appears on the car. Digits only. Defaults to `0`.
 
-Leading zeros are part of the number: `07` and `7` are different cars, so type the zeros when the car has them. A key set to a number with a leading zero does nothing when no car in the session carries that number.
+Leading zeros are part of the number: `07` and `7` are different cars, so type the zeros when the car has them, and the key shows them as typed (`07`, `007`). A key set to a number with a leading zero does nothing when no car in the session carries that number.
 
 ---
 
