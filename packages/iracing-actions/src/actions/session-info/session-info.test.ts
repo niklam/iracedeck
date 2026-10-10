@@ -9,6 +9,7 @@ import {
 } from "@iracedeck/iracing-sdk";
 import {
   getFuelStats,
+  getLastStopTireTemps,
   getLiveGaps,
   getLivePosition,
   getLiveRacePositions,
@@ -20,6 +21,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
+import { SessionInfoSettings } from "./session-info-settings.js";
 import {
   countActiveDrivers,
   countActiveDriversInPlayerClass,
@@ -69,6 +71,7 @@ vi.mock("@iracedeck/iracing-sdk", async () => {
 vi.mock("@iracedeck/sim-events-iracing", () => ({
   FUEL_LAP_HISTORY_CAP: 20,
   getFuelStats: vi.fn(() => ({ lastLap: null, avg: null, avgLapTime: null, samples: 0 })),
+  getLastStopTireTemps: vi.fn((): unknown => null),
   getLiveGaps: vi.fn(() => null),
   getLivePosition: vi.fn(() => null),
   getLiveRacePositions: vi.fn(() => null),
@@ -108,6 +111,16 @@ vi.mock("@iracedeck/deck-core", async () => ({
         gapShowBehind: true,
         windDirectionMode: "relative",
         windSpeedUnit: "kmh",
+        tireTempCorner: "all",
+        tireTempMethod: "weighted",
+        tireTempColors: true,
+        tireTempThresholdUnit: "c",
+        tireTempColdBelow: 75,
+        tireTempHotAbove: 90,
+        tireTempCriticalAbove: 100,
+        tireTempColdBelowF: 165,
+        tireTempHotAboveF: 195,
+        tireTempCriticalAboveF: 210,
         speakOnPress: true,
       };
       const validModes = [
@@ -124,6 +137,7 @@ vi.mock("@iracedeck/deck-core", async () => ({
         "wind",
         "track-temp",
         "air-temp",
+        "tire-temps",
       ];
       const coerceBool = (v: unknown): boolean => v === true || v === "true";
       const merge = (data: Record<string, unknown>) => {
@@ -138,6 +152,8 @@ vi.mock("@iracedeck/deck-core", async () => ({
         if ("gapShowBehind" in merged) merged.gapShowBehind = coerceBool(merged.gapShowBehind);
 
         if ("speakOnPress" in merged) merged.speakOnPress = coerceBool(merged.speakOnPress);
+
+        if ("tireTempColors" in merged) merged.tireTempColors = coerceBool(merged.tireTempColors);
 
         if ("fuelLapWindow" in merged) {
           // Mirrors the real schema: round + clamp, never hard-fail.
@@ -3178,5 +3194,261 @@ describe("telemetry ticks resolve inside the throttle (issue #1345)", () => {
 
     expect(action["logger"].error).toHaveBeenCalledTimes(1);
     expect(action["iconThrottle"].schedule).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("tire temperatures (issue #254)", () => {
+  const BLUE = "#3498db";
+  const GREEN = "#2ecc71";
+  const YELLOW = "#f1c40f";
+  const RED = "#e74c3c";
+
+  /** A stop reading: one tire in each band on the default 75 / 90 / 100 °C window. */
+  function stopReading() {
+    const zones = (outside: number, middle: number, inside: number) => ({ outside, middle, inside });
+
+    return {
+      corners: {
+        lf: zones(70, 80, 96), // weighted 81.5
+        rf: zones(91, 93, 97), // weighted 93.5
+        lr: zones(60, 62, 64),
+        rr: zones(101, 104, 110), // weighted 104.75
+      },
+    };
+  }
+
+  /** The key's settings through the action's own schema. */
+  function tireSettings(overrides: Record<string, unknown> = {}) {
+    return SessionInfoSettings.parse({ mode: "tire-temps", ...overrides });
+  }
+
+  /** The decoded pushes' graphic slot: what the stand-in template puts between its first two bars. */
+  function lastPush(action: SessionInfo): string {
+    const calls = vi.mocked(action["updateKeyImage"]).mock.calls;
+
+    return decodeURIComponent(calls[calls.length - 1]![1] as string);
+  }
+
+  afterEach(() => {
+    vi.mocked(getLastStopTireTemps).mockReturnValue(null);
+  });
+
+  describe("generateSessionInfoSvg routing", () => {
+    it("titles the all-four key PIT TEMPS, so the figures are never read as live", () => {
+      const decoded = decodeURIComponent(generateSessionInfoSvg(tireSettings(), "all|--", false));
+
+      expect(decoded).toContain(">PIT TEMPS</text>");
+    });
+
+    it.each([
+      ["lf", "LF PIT TEMPS"],
+      ["rf", "RF PIT TEMPS"],
+      ["lr", "LR PIT TEMPS"],
+      ["rr", "RR PIT TEMPS"],
+    ])("names the corner in a single-corner title: %s", (tireTempCorner, title) => {
+      const decoded = decodeURIComponent(generateSessionInfoSvg(tireSettings({ tireTempCorner }), "x", false));
+
+      expect(decoded).toContain(`>${title}</text>`);
+    });
+
+    it("blanks the value slot and carries the figures in graphicContent", () => {
+      const decoded = decodeURIComponent(
+        generateSessionInfoSvg(tireSettings(), "all|82°:in|94°:above", false, undefined, {
+          tireTemps: {
+            view: "all",
+            corners: {
+              lf: { text: "82°", band: "in" },
+              rf: { text: "94°", band: "above" },
+              lr: { text: "62°", band: "below" },
+              rr: { text: "105°", band: "well-above" },
+            },
+          },
+        }),
+      );
+
+      // The state-key string must never render; the graphic carries the figures.
+      expect(decoded).not.toContain("all|82°:in");
+      expect(decoded).toMatch(/y="[\d.]+" fill="#ffffff"><\/text>/);
+
+      for (const figure of [">82°</text>", ">94°</text>", ">62°</text>", ">105°</text>"]) {
+        expect(decoded).toContain(figure);
+      }
+
+      for (const color of [GREEN, YELLOW, BLUE, RED]) expect(decoded).toContain(`fill="${color}"`);
+    });
+
+    it("shows -- in every slot when no reading is passed in, in both views", () => {
+      const all = decodeURIComponent(generateSessionInfoSvg(tireSettings(), "x", false));
+      const corner = decodeURIComponent(generateSessionInfoSvg(tireSettings({ tireTempCorner: "rf" }), "x", false));
+
+      expect(all.match(/>--<\/text>/g)).toHaveLength(4);
+      expect(corner.match(/>--<\/text>/g)).toHaveLength(3);
+      expect(all).not.toMatch(/>0°?<\/text>/);
+    });
+
+    it("honors the Font Size setting as the figures' upper bound", () => {
+      const sizeOf = (fontSize: number) => {
+        const decoded = decodeURIComponent(generateSessionInfoSvg(tireSettings({ fontSize }), "x", false));
+
+        return Number(/font-size="(\d+)" font-weight="bold">--</.exec(decoded)![1]);
+      };
+
+      expect(sizeOf(8)).toBe(16);
+      expect(sizeOf(12)).toBeGreaterThan(sizeOf(8));
+    });
+  });
+
+  describe("live display", () => {
+    let action: SessionInfo;
+
+    beforeEach(() => {
+      vi.clearAllMocks();
+      action = new SessionInfo();
+      action["sdkController"].getCurrentTelemetry = vi.fn().mockReturnValue(null);
+      action["sdkController"].getSessionInfo = vi.fn().mockReturnValue(null);
+    });
+
+    async function appear(settings: Record<string, unknown> = {}) {
+      await action.onWillAppear(fakeEvent("tires", { mode: "tire-temps", ...settings }) as never);
+
+      return vi.mocked(action["sdkController"].subscribe).mock.calls[0][1] as (telemetry: unknown) => void;
+    }
+
+    it("shows -- before the first reading", async () => {
+      await appear();
+
+      const decoded = decodeURIComponent(vi.mocked(action["setKeyImage"]).mock.calls[0]![1] as string);
+
+      expect(decoded.match(/>--<\/text>/g)).toHaveLength(4);
+      expect(decoded).toContain(">PIT TEMPS</text>");
+    });
+
+    it("shows the reading the translator holds, polled on the telemetry refresh", async () => {
+      const tick = await appear();
+
+      vi.mocked(getLastStopTireTemps).mockReturnValue(stopReading());
+      await tick({ DisplayUnits: 1 });
+
+      const decoded = lastPush(action);
+
+      for (const figure of [">82°</text>", ">94°</text>", ">62°</text>", ">105°</text>"]) {
+        expect(decoded).toContain(figure);
+      }
+
+      for (const color of [GREEN, YELLOW, BLUE, RED]) expect(decoded).toContain(`fill="${color}"`);
+    });
+
+    it("does not push again for a new reading object carrying the same values", async () => {
+      const tick = await appear();
+
+      // The translator hands out a new object on every tick of a stop.
+      vi.mocked(getLastStopTireTemps).mockImplementation(() => stopReading());
+      await tick({ DisplayUnits: 1 });
+
+      const pushes = vi.mocked(action["updateKeyImage"]).mock.calls.length;
+
+      await tick({ DisplayUnits: 1 });
+      await tick({ DisplayUnits: 1 });
+
+      expect(pushes).toBe(1);
+      expect(vi.mocked(action["updateKeyImage"]).mock.calls).toHaveLength(pushes);
+    });
+
+    it("pushes again when the reading moves while the car sits in the box", async () => {
+      const tick = await appear();
+      const cooler = stopReading();
+
+      cooler.corners.rr = { outside: 95, middle: 96, inside: 97 };
+      vi.mocked(getLastStopTireTemps).mockReturnValue(stopReading());
+      await tick({ DisplayUnits: 1 });
+      vi.mocked(getLastStopTireTemps).mockReturnValue(cooler);
+      await tick({ DisplayUnits: 1 });
+
+      expect(vi.mocked(action["updateKeyImage"]).mock.calls).toHaveLength(2);
+      expect(lastPush(action)).toContain(">96°</text>");
+      expect(lastPush(action)).not.toContain(">105°</text>");
+    });
+
+    it("follows iRacing's display units, an unset one counting as metric", async () => {
+      const tick = await appear();
+
+      vi.mocked(getLastStopTireTemps).mockReturnValue(stopReading());
+      await tick({});
+      expect(lastPush(action)).toContain(">82°</text>");
+
+      await tick({ DisplayUnits: 0 });
+      // 81.5 °C is 178.7 °F: rounded once, after the conversion.
+      expect(lastPush(action)).toContain(">179°</text>");
+      // The band is the stored Celsius window's either way.
+      expect(lastPush(action)).toContain(`fill="${GREEN}"`);
+    });
+
+    it("shows one corner's three zones with their letters", async () => {
+      const tick = await appear({ tireTempCorner: "rf" });
+
+      vi.mocked(getLastStopTireTemps).mockReturnValue(stopReading());
+      await tick({ DisplayUnits: 1 });
+
+      const decoded = lastPush(action);
+      const order = [">97°</text>", ">I</text>", ">93°</text>", ">M</text>", ">91°</text>", ">O</text>"].map((part) =>
+        decoded.indexOf(part),
+      );
+
+      expect(decoded).toContain(">RF PIT TEMPS</text>");
+      expect(order.every((index) => index >= 0)).toBe(true);
+      // Inside, middle, outside: the car's left-to-right order on a right tire.
+      expect([...order].sort((a, b) => a - b)).toEqual(order);
+    });
+
+    it("draws the figures in the theme text color with Color by temperature off", async () => {
+      const tick = await appear({ tireTempColors: "false" });
+
+      vi.mocked(getLastStopTireTemps).mockReturnValue(stopReading());
+      await tick({ DisplayUnits: 1 });
+
+      const decoded = lastPush(action);
+
+      expect(decoded).toContain(">82°</text>");
+
+      for (const color of [GREEN, YELLOW, BLUE, RED]) expect(decoded).not.toContain(color);
+    });
+
+    it("goes back to -- when the reading is cleared", async () => {
+      const tick = await appear();
+
+      vi.mocked(getLastStopTireTemps).mockReturnValue(stopReading());
+      await tick({ DisplayUnits: 1 });
+      vi.mocked(getLastStopTireTemps).mockReturnValue(null);
+      await tick({ DisplayUnits: 1 });
+
+      expect(lastPush(action).match(/>--<\/text>/g)).toHaveLength(4);
+    });
+  });
+
+  describe("a key press", () => {
+    it("publishes nothing: the item does not speak yet", async () => {
+      const action = new SessionInfo();
+
+      hoisted.isEventBusInitialized.mockReturnValue(true);
+      vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue({
+        DisplayUnits: 1,
+        TrackTempCrew: 41,
+      } as TelemetryData);
+      vi.mocked(getLastStopTireTemps).mockReturnValue(stopReading());
+
+      // The same press on a speaking item does publish, so the silence below
+      // is the item's and not the harness's.
+      hoisted.busPublish.mockClear();
+      await action.onKeyDown(fakeEvent("ctx", { mode: "track-temp", speakOnPress: true }) as never);
+      expect(hoisted.busPublish).toHaveBeenCalledTimes(1);
+
+      hoisted.busPublish.mockClear();
+
+      for (const tireTempCorner of ["all", "lf", "rf", "lr", "rr"]) {
+        await action.onKeyDown(fakeEvent("ctx", { mode: "tire-temps", tireTempCorner, speakOnPress: true }) as never);
+      }
+
+      expect(hoisted.busPublish).not.toHaveBeenCalled();
+    });
   });
 });

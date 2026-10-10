@@ -51,6 +51,7 @@ import { getGlobalColors } from "@iracedeck/settings";
 import {
   type GapNeighbor,
   getFuelStats,
+  getLastStopTireTemps,
   getLiveGaps,
   getLivePosition,
   getLiveRacePositions,
@@ -63,6 +64,14 @@ import {
 import sessionInfoTemplate from "../../../icons/session-info.svg";
 import { readoutKindFor, resolveReadoutFigure } from "./readout-request.js";
 import { SessionInfoSettings } from "./session-info-settings.js";
+import {
+  generateTireTempsGraphic,
+  resolveTireTempsDisplay,
+  TIRE_TEMPS_KEY_CANVAS,
+  type TireTempsDisplay,
+  tireTempsStateKey,
+  tireTempsTitle,
+} from "./tire-temps.js";
 
 const BACKGROUND_FLASH = "#e74c3c";
 
@@ -406,6 +415,7 @@ const GRAPHIC_ONLY_MODES: ReadonlySet<SessionInfoSettings["mode"]> = new Set<Ses
   "track-wetness",
   "gaps",
   "wind",
+  "tire-temps",
 ]);
 
 function quantizeArrowDeg(degrees: number): number {
@@ -635,6 +645,8 @@ export type SessionInfoModeState = {
   wind?: WindDisplay | null;
   /** Which limit the time-remaining key is counting down, so the title can follow the value. */
   sessionLimit?: SessionLimitDisplay;
+  /** Resolved figures of the last pit stop's tire temperatures. */
+  tireTemps?: TireTempsDisplay;
 };
 
 /**
@@ -676,6 +688,10 @@ export function generateSessionInfoSvg(
 
   if (settings.mode === "track-wetness") {
     actionDefaultTitle = trackWetnessLabel(trackWetnessState);
+  } else if (settings.mode === "tire-temps") {
+    // Says "pit" so the figures are never read as live, and names the corner
+    // when the key shows only one (#254).
+    actionDefaultTitle = tireTempsTitle(settings.tireTempCorner);
   } else if (settings.mode === "fuel" && settings.fuelSubMode === "lastLap") {
     actionDefaultTitle = "LAST LAP";
   } else if (settings.mode === "fuel" && settings.fuelSubMode === "avgN") {
@@ -738,6 +754,13 @@ export function generateSessionInfoSvg(
     );
   } else if (settings.mode === "wind") {
     graphicContent = generateWindGraphic(windDisplay ?? null, settings.fontSize, textColor);
+  } else if (settings.mode === "tire-temps") {
+    // With no display passed in there is no reading to show: `--` in every slot.
+    graphicContent = generateTireTempsGraphic(
+      modeState.tireTemps ?? resolveTireTempsDisplay(settings, null, undefined),
+      TIRE_TEMPS_KEY_CANVAS,
+      { fontSize: resolveValueFontSize(settings.fontSize), textColor },
+    );
   }
 
   // The graphic content carries the whole display for these modes, so clear
@@ -1038,6 +1061,14 @@ export class SessionInfo extends SimIRacingAction<SessionInfoSettings> {
     // keeps a car turning through a corner from busting the key every tick.
     if (settings.mode === "wind") {
       return wind ? `${wind.arrowDeg ?? "calm"}|${wind.label}` : WIND_PLACEHOLDER;
+    }
+
+    // Tire Temperatures (issue #254): the graphic carries the whole display;
+    // this string only busts the state-key cache. It is built from the figures
+    // and bands the key would show, never from the reading itself — the
+    // translator hands out a new object on every tick of a stop.
+    if (settings.mode === "tire-temps") {
+      return tireTempsStateKey(this.resolveTireTemps(settings, telemetry));
     }
 
     if (!telemetry) {
@@ -1476,7 +1507,19 @@ export class SessionInfo extends SimIRacingAction<SessionInfoSettings> {
       gaps: settings.mode === "gaps" ? getLiveGaps() : undefined,
       wind,
       sessionLimit,
+      tireTemps: settings.mode === "tire-temps" ? this.resolveTireTemps(settings, telemetry) : undefined,
     };
+  }
+
+  /**
+   * The Tire Temperatures figures (issue #254): the translator's last pit-stop
+   * reading, polled on the render pass the way the gaps are, in the driver's
+   * display units. `null` before the first reading, which shows `--`. The
+   * state key and the graphic both come from this within one synchronous
+   * pass, so they read the same reading.
+   */
+  private resolveTireTemps(settings: SessionInfoSettings, telemetry: TelemetryData | null): TireTempsDisplay {
+    return resolveTireTempsDisplay(settings, getLastStopTireTemps(), telemetry?.DisplayUnits);
   }
 
   /**

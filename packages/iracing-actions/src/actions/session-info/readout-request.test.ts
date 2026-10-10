@@ -43,6 +43,12 @@ describe("readoutKindFor (issue #466)", () => {
     expect(readoutKindFor({ mode: "laps-to-empty", fuelSubMode: "avgN" })).toBeNull();
     expect(readoutKindFor({ mode: "wind", fuelSubMode: "now" })).toBeNull();
   });
+
+  it("Tire Temperatures has no readout kind, so a press on it publishes nothing (issue #254)", () => {
+    expect(readoutKindFor({ mode: "tire-temps", fuelSubMode: "now" })).toBeNull();
+    expect(readoutKindFor({ mode: "tire-temps", fuelSubMode: "lastLap" })).toBeNull();
+    expect(readoutKindFor({ mode: "tire-temps", fuelSubMode: "avgN" })).toBeNull();
+  });
 });
 
 describe("resolveReadoutFigure — fuel (issue #466)", () => {
