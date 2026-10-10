@@ -1,8 +1,9 @@
 import ejs from "ejs";
-import { readFileSync } from "node:fs";
 import path from "node:path";
 import url from "node:url";
 import { describe, expect, it } from "vitest";
+
+import { buildComposedChangelogData } from "../../../../scripts/lib/changelog-composed.mjs";
 
 /**
  * Renders the REAL `partials/settings-window-changelog.ejs` (not a fixture).
@@ -16,7 +17,6 @@ import { describe, expect, it } from "vitest";
  */
 const partialsDir = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../../partials");
 const repoRoot = path.resolve(partialsDir, "../../..");
-const CHANGELOG_DATA = path.join(repoRoot, "packages/iracing-actions/src/actions/data/changelog.json");
 
 const FIXTURE = {
   _meta: { generatedFrom: "…", generatedBy: "…", note: "…" },
@@ -161,8 +161,10 @@ describe("settings-window-changelog.ejs", () => {
     expect(html).not.toContain("No release notes for version");
   });
 
-  it("renders the real committed artifact", () => {
-    const real = JSON.parse(readFileSync(CHANGELOG_DATA, "utf-8"));
+  it("renders the data the real changelog and fragments compose to", () => {
+    // Built in memory: the artifact is gitignored since #1386, and the suite must
+    // not depend on a prior build having generated it.
+    const real = buildComposedChangelogData(repoRoot);
     const html = render(real.releases[0].version, real);
 
     expect(html.match(/<article class="sw-cl-release/g)).toHaveLength(real.releases.length);
