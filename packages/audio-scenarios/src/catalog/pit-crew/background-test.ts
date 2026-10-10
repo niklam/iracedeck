@@ -149,3 +149,13 @@ export function _resetBackgroundTest(): void {
 
   testInFlight = false;
 }
+
+/**
+ * This file's module state, for the Telemetry Snapshot (issue #1387): whether
+ * a Background Test preview is in flight, and whether it is the built-in
+ * fallback frame whose timer is running (the voice's own frame plays through
+ * the engine and shows on its Voice bus instead). A pure read.
+ */
+export function readBackgroundTestDebugState(): { testInFlight: boolean; builtInFramePlaying: boolean } {
+  return { testInFlight, builtInFramePlaying: testTimer !== null };
+}

@@ -84,6 +84,14 @@ export function _resetOpponentPitPending(): void {
 }
 
 /**
+ * This file's module state, for the Telemetry Snapshot (issue #1387): the
+ * pitting car the nearby line last stashed to speak about. A pure read.
+ */
+export function readOpponentPitDebugState(): { pendingNearby: OpponentPitPending | null } {
+  return { pendingNearby };
+}
+
+/**
  * Register the vocabulary the opponent-pit script references (issue #1065):
  * the speak-time number var. Must run before the contracts are defined so the
  * first `setScripts` compile sees it.

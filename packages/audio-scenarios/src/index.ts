@@ -27,6 +27,7 @@ export type {
   FrameOptions,
   FramePreviewResult,
   IScenarioEngine,
+  ScenarioEngineState,
   VocabularyReport,
 } from "./interpreter.js";
 export {

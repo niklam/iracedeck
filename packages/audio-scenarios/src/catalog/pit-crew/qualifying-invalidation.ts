@@ -187,6 +187,19 @@ export function resetQualifyingInvalidationLatch(): void {
 }
 
 /**
+ * This file's module state, for the Telemetry Snapshot (issue #1387): the
+ * lap the callout last latched and the timestamp of the burst its `where:`
+ * last approved. A pure read. `pendingQualifyingSnapshots` is left out: a
+ * `WeakMap` cannot be enumerated, and its keys are event envelopes.
+ */
+export function readQualifyingInvalidationDebugState(): {
+  lastAnnounced: { sessionNum: number | undefined; lap: number } | null;
+  approvedBurstTimestamp: number | null;
+} {
+  return { lastAnnounced, approvedBurstTimestamp };
+}
+
+/**
  * Decide whether the current snapshot represents a new qualifying flying lap
  * that hasn't been announced yet. Returns false on any lap that started from
  * pit exit (`lapStartedFromPits === true`) — that includes the session

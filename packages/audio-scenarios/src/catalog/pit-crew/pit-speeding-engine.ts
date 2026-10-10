@@ -278,3 +278,23 @@ export function _resetPitSpeedingEngine(): void {
   registeredBus = null;
   episodeActive = false;
 }
+
+/**
+ * This file's module state, for the Telemetry Snapshot (issue #1387). A pure
+ * read, and safe before `registerPitSpeedingEngine`. The tick timer is
+ * reported as `ticking` and the bus as `registered`; `deps` is closures and a
+ * logger and is left out.
+ */
+export function readPitSpeedingDebugState(): {
+  registered: boolean;
+  ticking: boolean;
+  episodeActive: boolean;
+  lastSessionTick: number | null;
+} {
+  return {
+    registered: registeredBus !== null,
+    ticking: tickTimer !== null,
+    episodeActive,
+    lastSessionTick,
+  };
+}
