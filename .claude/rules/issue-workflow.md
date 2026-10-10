@@ -68,7 +68,7 @@ Target the worktree explicitly, in the form that rule prescribes — the hook no
 
 Findings are candidates: verify each against the code, apply the ones that hold, and say which you declined and why.
 
-A diff that changes a gate, a build or release path, or a state machine then gets the second read, on the code with those findings applied. `@.claude/rules/code-review.md` says which diffs and why it is not a second full review.
+Some diffs then get the second read, on the code with those findings applied. `@.claude/rules/code-review.md` says which, and why it is not a second full review.
 
 Review before **manual testing**, not after, because a finding can change what there is to test.
 

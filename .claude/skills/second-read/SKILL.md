@@ -24,21 +24,29 @@ The list is a judgement, not a path filter: a comment edit under `scripts/` does
 ## How to run it
 
 1. Note `git status --porcelain` in every worktree, so a tree the reviewer dirtied is visible afterwards.
-2. Spawn **one** agent — `general-purpose`, `model: "opus"`, no isolation — with the brief below, `WORKTREE` filled in. One agent even for a wide diff; the brief tells it what to skip.
-3. Verify every finding against the code yourself. A finding is a candidate, exactly as with `/code-review`.
-4. Dispose of each:
+2. Spawn **one** agent — `general-purpose`, `model: "opus"`, no isolation — with the brief below and its three placeholders filled in. One agent even for a wide diff; the brief tells it what to skip.
+3. When it returns, check every worktree's `git status --porcelain` against step 1, before touching anything yourself. A tree the reviewer dirtied has to be visible before your own fixes land in it.
+4. Verify every finding against the code yourself. A finding is a candidate, exactly as with `/code-review`.
+5. Dispose of each:
    - **reachable now, and it holds** — fix it on the branch before manual testing;
    - **narrow, and it holds** — fix it on the branch when the fix is small and inside the change's scope; otherwise file an issue, or decline it with the reason;
-   - **does not hold** — decline it; if the reviewer will raise the same class again, add a non-finding line to `learnings.md`.
-5. Tell the maintainer the tally and anything that needs a decision. Never forward the raw report.
-6. Put one line in the PR body: `Second read: N findings — A applied, F filed, D declined.`
-7. Check every worktree's `git status --porcelain` against step 1.
+   - **does not hold** — if the reviewer will raise the same class again, add a non-finding line to `learnings.md`.
+6. Tell the maintainer the tally and anything that needs a decision. Never forward the raw report.
+7. Put one line in the PR body: `Second read: N raised, H held — A fixed, F filed, D declined.` `H` counts every finding whose mechanism was real, whatever was then done with it; it is the number the ten-run check reads.
+
+The placeholders:
+
+- `WORKTREE` — the absolute path of the issue's worktree.
+- `BASE` — the branch the PR targets, as a remote ref: `origin/master`, or `origin/release/<x.y>` for a branch cut from a release.
+- `LEARNINGS` — the absolute path of `.claude/skills/second-read/learnings.md` in the **main checkout**, not the worktree: a tree cut before an entry landed would otherwise run without it.
+
+The second read follows the `/code-review` because it should read the code that will ship. A branch whose `/code-review` was declined still gets it on these kinds of diff; say in the tally that no general read came first.
 
 Expect about ten minutes and roughly 220k tokens.
 
 ## The brief
 
-Give the reviewer this text, with `WORKTREE` replaced by the absolute path of the issue's worktree.
+Give the reviewer this text with `WORKTREE`, `BASE` and `LEARNINGS` replaced.
 
 ```text
 You are the second reader of a change that has already had a general code review. Do not repeat that review. Your job is the class of defect a general read misses: behaviour that is only wrong for a particular order of events, a particular failure, or a particular input.
@@ -46,8 +54,8 @@ You are the second reader of a change that has already had a general code review
 READ-ONLY. Edit nothing, run no build or test, do not spawn other agents.
 
 WHAT TO READ
-The change is `origin/master...HEAD` in the worktree at WORKTREE. Start with `git -C WORKTREE diff --stat origin/master...HEAD`, then read the diff and whatever surrounding code you need, in that worktree only — never in the master checkout or another ir-* worktree.
-First read WORKTREE/.claude/skills/second-read/learnings.md: the misses are classes to look for, the non-findings are classes not to raise.
+The change is `BASE...HEAD` in the worktree at WORKTREE. Start with `git -C WORKTREE diff --stat BASE...HEAD`, then read the diff and whatever surrounding code you need, in that worktree only — never in the master checkout or another ir-* worktree.
+The one file you read outside it, and first: LEARNINGS. The misses there are classes to look for, the non-findings are classes not to raise.
 
 METHOD
 1. Read the diff. Skip generated artifacts, audio clips, capture fixtures and prose. List the changed BEHAVIOURS, not the files: each unit that holds state, makes a decision, or guards something.
@@ -77,7 +85,9 @@ STILL DO NOT REPORT
 - Rules of tools this repo does not run (markdownlint, stylelint).
 - Product behaviour that a spec or rule file NOT touched by this diff says is deliberate.
 - Style, naming, comments, missing tests.
-- Anything you have not confirmed by reading the code. If a claim rests on how the simulator or an external tool behaves, say so and mark it medium.
+- A suspicion you have not followed through the code to a mechanism.
+
+A finding may rest on how the simulator or an external tool behaves, which the code cannot confirm. Report it, say which step rests on that, and mark its confidence medium.
 
 REPORT (your final message; it is read by the coordinator, not shown to the user)
 "Reachable now" findings first, then the narrow ones. For each:
@@ -94,9 +104,9 @@ No findings is a valid result. Do not pad.
 
 ## Changing the brief
 
-The brief is the text that was measured, so a change to it is proven the way the original was: run it blind on a past commit whose defects are known and see whether it still finds them.
+The brief is the text that was measured, so a change to what it asks is proven the way the original was: run it blind on a past commit whose defects are known and see whether it still finds them. Rewording that asks nothing new needs no rerun.
 
-For a blind run, replace the `WHAT TO READ` paragraph with a base and head sha and restrict the reviewer to git objects at those two commits (`git diff <base> <head>`, `git show <head>:<path>`, `git grep <pattern> <head>`), forbidding the working tree, `git log`, `gh` and the network — the working tree holds the later fix. The standing known case is `b3b0b5857..973822ca4`: the reviewer must report that the spec gate's Testing check is satisfied by a title containing the word (#1391).
+For a blind run, replace the `WHAT TO READ` paragraph with a base and head sha and restrict the reviewer to git objects at those two commits (`git diff <base> <head>`, `git show <head>:<path>`, `git grep <pattern> <head>`), forbidding the working tree, `git log`, `gh` and the network — the working tree holds the later fix. Leave `learnings.md` out of a blind run: the control then tests the brief alone, and an entry cannot hand the reviewer the answer. The standing known case is `b3b0b5857..973822ca4`: the reviewer must report that the spec gate's Testing check is satisfied by a title containing the word (#1391), which the first backtest round found with no learnings file.
 
 A question is added when a miss shows one is absent, never to make the list feel complete.
 
@@ -111,4 +121,10 @@ A run that teaches nothing adds nothing. Keep it short enough to read in a minut
 
 ## When it stops
 
-After ten runs on real branches, count the findings that held (the PR bodies' tally lines). If none did, remove this skill and the exception for it in `.claude/rules/code-review.md`.
+After ten runs on real branches, add up `H` from the PR bodies' tally lines. If it is zero, the step is removed, in every place that names it:
+
+- this directory;
+- `.claude/rules/code-review.md` — the section *The second read* and the last sentence of rule 4 in *How reviews are staged inside an issue*;
+- `.claude/rules/issue-workflow.md` — the end of the step 7 row and the second-read paragraph under *(7)*;
+- `.claude/rules/build-and-commit.md` — the second-read clause in the code-review ask;
+- `.claude/CLAUDE.md` — the end of the *Stage reviews by the seams* line.
