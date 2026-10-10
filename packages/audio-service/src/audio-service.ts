@@ -13,11 +13,13 @@
  *
  * Usage:
  * 1. Call initializeAudio() once at plugin startup with an AudioNative instance
- * 2. Call getAudio().init() to set up the audio subsystem (the OS audio
- *    device only exists while something plays — created on demand and
- *    released after an idle window, since even an idle stream makes
- *    Windows block PC sleep, issue #849)
+ * 2. Call getAudio().init() to set up the audio subsystem (on demand, the
+ *    OS audio device only exists while something plays — created by the
+ *    first sound and released after an idle window, since even an idle
+ *    stream makes Windows block PC sleep, issue #849)
  * 3. Use getAudio() in actions to play sounds on channels
+ * 4. Call getAudio().hold(reason) to keep the device open across the gaps
+ *    between sounds, and release(reason) to go back to on demand (#1347)
  *
  * @example
  * import { AudioNative } from "@iracedeck/audio-native";
@@ -107,6 +109,10 @@ const PERCEPTUAL_EXPONENT = 2.5;
  * debounces clip chaining (voice-sequence connectors, radar tick trains,
  * the pit-box count-in's ~1 s gaps) so a burst of related clips doesn't
  * churn the device between them.
+ *
+ * The release is not armed at all while the device is held (#1347, see
+ * {@link IAudioService.hold}); releasing the last hold arms it with this
+ * same delay.
  *
  * @internal Exported for testing
  */
@@ -215,12 +221,41 @@ export type AudioSessionIdentity = { displayName: string; iconPath?: string };
 export interface IAudioService {
   /**
    * Initialize the audio engine. Call once after initializeAudio(). No
-   * OS audio device exists until the first play (#849).
+   * OS audio device exists until the first play (#849) or the first
+   * {@link hold} taken after it (#1347).
    */
   init(): boolean;
 
-  /** Destroy the audio engine. Call on shutdown. */
+  /** Destroy the audio engine. Call on shutdown. Clears every hold (#1347). */
   destroy(): void;
+
+  /**
+   * Keep the playback device open until {@link release} is called with the
+   * same reason (#1347). While one or more reasons hold it, the device is
+   * started now and the idle release (#849) is never armed, so a run of
+   * sounds minutes apart costs one device open rather than one per burst.
+   * The cost is the other side of #849: a held stream keeps Windows from
+   * sleeping, so a caller holds only while the PC is in use anyway.
+   *
+   * Holds are a set of reasons, not a count: taking a reason already held
+   * is a no-op, and one holder cannot release another's hold. The service
+   * does not know what a reason means — it is the caller's name for its own
+   * hold, and is logged at debug only.
+   *
+   * A device that cannot be started (`init()` not run or failed, or the
+   * native start refused) is logged as a warning and the hold stays
+   * recorded: the next sound opens the device on demand as usual, and the
+   * device then stays open for as long as the hold lasts.
+   */
+  hold(reason: string): void;
+
+  /**
+   * Give up the hold taken with `reason` (#1347). A reason that is not held
+   * is a no-op. When the last reason goes the service is on demand again:
+   * the device closes `IDLE_STOP_DELAY_MS` after the release, or that long
+   * after the sound that is still playing ends.
+   */
+  release(reason: string): void;
 
   /** Play an audio file on a specific channel. Returns true on success. */
   playOnChannel(channel: AudioChannel, filePath: string, loop?: boolean): boolean;
@@ -290,14 +325,19 @@ export interface IAudioService {
   /** Get list of available audio output devices. */
   getAudioDevices(): Array<{ index: number; name: string; id: string; isDefault: boolean }>;
 
-  /** Switch to a specific audio output device. -1 for system default. Returns true on success. */
+  /**
+   * Switch to a specific audio output device. -1 for system default. Returns
+   * true on success. Playback is stopped and the device closed; it reopens
+   * at the next sound, or at once while a {@link hold} is active (#1347).
+   */
   setAudioDevice(deviceIndex: number): boolean;
 
   /**
    * Switch to a device looked up by its stable `id` from
    * {@link getAudioDevices}. Use this for any persisted selection — `id`
    * survives device-list reordering, replug, and OS audio reconfiguration.
-   * Returns false if the id isn't in the current enumeration.
+   * Returns false if the id isn't in the current enumeration. Closes and
+   * reopens the device as {@link setAudioDevice} does.
    */
   setAudioDeviceById(deviceId: string): boolean;
 
@@ -399,12 +439,20 @@ class AudioService implements IAudioService {
   // Persistent observer for clip start/complete on any channel.
   private playbackObserver: PlaybackObserver | null = null;
 
-  // Playback-device run state (#849). The device only exists around
-  // actual playback; once released, the OS holds no audio stream and the
-  // PC can sleep. `deviceRunning` tracks what we asked the native layer
-  // to do; `idleStopTimer` is the pending debounced release.
+  // Playback-device run state (#849). On demand the device only exists
+  // around actual playback; once released, the OS holds no audio stream
+  // and the PC can sleep. `deviceRunning` tracks what we asked the native
+  // layer to do; `idleStopTimer` is the pending debounced release, which
+  // is never pending while `holds` is non-empty.
   private deviceRunning = false;
   private idleStopTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // The reasons the device is held open for (#1347). Non-empty means held:
+  // the device is started without waiting for a sound and the idle release
+  // is not armed. A set, so a reason taken twice is one hold and a holder
+  // can only release its own. Held does not imply `deviceRunning` — a hold
+  // whose start failed stays recorded and the next play opens the device.
+  private readonly holds = new Set<string>();
 
   // The Volume Mixer identity (#1253), handed to the native layer by init().
   private readonly identity: AudioSessionIdentity | null;
@@ -490,9 +538,60 @@ class AudioService implements IAudioService {
     this.channelActive.fill(false);
     this.cancelIdleStop();
     this.deviceRunning = false;
+    this.clearHolds();
     this.native.destroyAudioEngine();
     this.engineReady = false;
     this.logger.info("Audio engine destroyed");
+  }
+
+  // ── Device hold (#1347) ──
+
+  hold(reason: string): void {
+    if (this.holds.has(reason)) return;
+
+    const wasHeld = this.holds.size > 0;
+
+    this.holds.add(reason);
+    this.logger.debug(`Hold taken: ${reason}`);
+
+    // Cancelled here rather than left to the start below, so that no stop is
+    // ever pending while held, whatever the start does.
+    this.cancelIdleStop();
+
+    // Every new reason tries the start, not only the first: a hold whose
+    // start failed leaves the device closed, and a second holder arriving is
+    // as good a moment to retry as the next sound. On a device that is
+    // already running it changes nothing.
+    const running = this.startHeldDevice();
+
+    if (!wasHeld && running) this.logger.info("Audio device held open");
+  }
+
+  release(reason: string): void {
+    if (!this.holds.delete(reason)) return;
+
+    this.logger.debug(`Hold released: ${reason}`);
+
+    if (this.holds.size > 0) return;
+
+    this.logger.info("Audio device hold released");
+
+    // Back on demand: with every channel idle the release is armed now, and
+    // with a sound still playing this is a no-op and the sound's end arms it.
+    this.maybeScheduleIdleStop();
+  }
+
+  /**
+   * Drop every hold, for `destroy()`: the engine the holds kept open is going
+   * away, and a holder that outlives it must take its hold again on the next
+   * engine rather than find a stale one keeping that engine's device open.
+   */
+  private clearHolds(): void {
+    if (this.holds.size === 0) return;
+
+    this.logger.debug(`Holds cleared: ${[...this.holds].join(", ")}`);
+    this.holds.clear();
+    this.logger.info("Audio device hold released");
   }
 
   // ── Channel operations ──
@@ -813,8 +912,8 @@ class AudioService implements IAudioService {
     // The native switch tears the engine down itself, but the "already on
     // this device" fast path keeps the old engine as-is — release
     // explicitly so a switch never leaves a device alive while idle
-    // (#849). Nothing is playing (channels drained above), and the next
-    // play recreates the device.
+    // (#849). Nothing is playing (channels drained above), and on demand
+    // the next play recreates the device.
     this.cancelIdleStop();
     this.native.stopAudioEngine();
     this.deviceRunning = false;
@@ -826,6 +925,9 @@ class AudioService implements IAudioService {
       this.logger.error("Failed to switch audio output device");
       this.logger.debug(`Failed device index: ${deviceIndex}`);
     }
+
+    // While held the device does not wait for that play (#1347).
+    this.reopenIfHeld();
 
     return ok;
   }
@@ -850,14 +952,31 @@ class AudioService implements IAudioService {
       // The native layer returns false when the id is malformed or isn't
       // in the current enumeration (stale / unplugged / legacy value) —
       // the switch itself can't fail anymore, since it only records the
-      // selection and the engine is recreated lazily at the next play
-      // (#849). Caller decides how to recover (typically fall back to
-      // system default).
+      // selection and the engine is recreated lazily at the next start
+      // (#849): the next play, or `reopenIfHeld` below. Caller decides how
+      // to recover (typically fall back to system default).
       this.logger.warn("Audio output device id not found in current enumeration");
       this.logger.debug(`Device id: ${deviceId}`);
     }
 
+    // Also after a rejected id — see `reopenIfHeld`.
+    this.reopenIfHeld();
+
     return ok;
+  }
+
+  /**
+   * Second half of a device switch (#1347). The switch has just closed the
+   * device; while held it is opened again at once, on whatever selection the
+   * native layer now remembers, rather than staying closed until the next
+   * sound. Run whether or not the switch succeeded, because the teardown
+   * above happened either way and "held" has to keep meaning "open": after
+   * a refused switch the native layer still has its previous selection, and
+   * the device reopens on that. On demand this does nothing — the device
+   * stays closed until the next play, as it always has (#849).
+   */
+  private reopenIfHeld(): void {
+    if (this.holds.size > 0) this.startHeldDevice();
   }
 
   setPlaybackObserver(observer: PlaybackObserver | null): void {
@@ -893,26 +1012,65 @@ class AudioService implements IAudioService {
   }
 
   /**
-   * Start the playback device if it isn't running, and cancel any pending
-   * idle stop. Called from the playback-start chokepoint so every play
-   * site keeps the device state in sync. A failed start is logged and
-   * left for the next play to retry — `deviceRunning` stays false.
+   * The one place the playback device is started. Cancels any pending idle
+   * stop, and starts the device if it isn't running. Both callers — a play
+   * (`ensureDeviceRunning`) and a hold (`startHeldDevice`, #1347) — go
+   * through here, so `deviceRunning`, the `Audio device started` line and
+   * the native layer's own start handling (the engine created on the
+   * selected device, the session identity, the reroute notification) cannot
+   * differ between a device a sound opened and one a hold opened. A failed
+   * start leaves `deviceRunning` false and is the caller's to log, since
+   * what it costs differs: a sound that did not play, or a device that will
+   * open at the next sound instead of now.
    *
    * @returns true when the device is running after the call
    */
-  private ensureDeviceRunning(): boolean {
+  private startDevice(): boolean {
     this.cancelIdleStop();
 
     if (this.deviceRunning) return true;
 
-    if (this.native.startAudioEngine()) {
-      this.deviceRunning = true;
-      this.logger.info("Audio device started");
+    if (!this.native.startAudioEngine()) return false;
 
-      return true;
-    }
+    this.deviceRunning = true;
+    this.logger.info("Audio device started");
+
+    return true;
+  }
+
+  /**
+   * Start the playback device for a clip. Called from the playback-start
+   * chokepoint so every play site keeps the device state in sync. A failed
+   * start is logged and left for the next play to retry.
+   *
+   * @returns true when the device is running after the call
+   */
+  private ensureDeviceRunning(): boolean {
+    if (this.startDevice()) return true;
 
     this.logger.error("Failed to start audio playback device");
+
+    return false;
+  }
+
+  /**
+   * Start the playback device for a hold (#1347): when one is taken, and
+   * when a device switch has closed a held device. A failed start is a
+   * warning, not the error a failed play gets, because nothing was lost —
+   * the hold stays recorded, the next play opens the device on demand, and
+   * the idle release stays unarmed from then on.
+   *
+   * A hold can arrive before `init()`, or after one that failed, which a
+   * play cannot (`playOnChannel` returns first). There is no native context
+   * to start a device on then, so that counts as a failed start without
+   * asking the native layer.
+   *
+   * @returns true when the device is running after the call
+   */
+  private startHeldDevice(): boolean {
+    if (this.engineReady && this.startDevice()) return true;
+
+    this.logger.warn("Audio device could not be held open; sounds will open it on demand");
 
     return false;
   }
@@ -925,10 +1083,12 @@ class AudioService implements IAudioService {
   }
 
   /**
-   * Arm the debounced device release once every channel is idle. The
-   * timer re-checks at expiry — a clip that started meanwhile cancels it
-   * via `ensureDeviceRunning`, and the guard covers any path that missed
-   * the cancel. The native stop tears the whole engine down (an
+   * Arm the debounced device release once every channel is idle and no
+   * hold is active (#1347) — while held the device stays open through any
+   * length of silence, and `release` of the last hold calls this to arm it.
+   * The timer re-checks at expiry — a clip that started or a hold taken
+   * meanwhile cancels it via `startDevice`, and the guard covers any path
+   * that missed the cancel. The native stop tears the whole engine down (an
    * initialized-but-stopped stream still blocks PC sleep, #849), which
    * also releases any loaded sounds — safe, because the release is only
    * armed when no channel is active.
@@ -936,13 +1096,15 @@ class AudioService implements IAudioService {
   private maybeScheduleIdleStop(): void {
     if (!this.deviceRunning) return;
 
+    if (this.holds.size > 0) return;
+
     if (this.channelActive.some((active) => active)) return;
 
     this.cancelIdleStop();
     this.idleStopTimer = setTimeout(() => {
       this.idleStopTimer = null;
 
-      if (!this.deviceRunning || this.channelActive.some((active) => active)) return;
+      if (!this.deviceRunning || this.holds.size > 0 || this.channelActive.some((active) => active)) return;
 
       if (this.native.stopAudioEngine()) {
         this.deviceRunning = false;
@@ -999,8 +1161,9 @@ class AudioService implements IAudioService {
     // Every deactivation path (natural end, manual stop, stop-all) funnels
     // through here with `channelActive` already cleared — the right moment
     // to arm the debounced device stop when this was the last active
-    // channel. A follow-up clip (voice-sequence chaining, radar ticks)
-    // cancels it synchronously via `ensureDeviceRunning`.
+    // channel and the device is not held (#1347). A follow-up clip
+    // (voice-sequence chaining, radar ticks) cancels it synchronously via
+    // `ensureDeviceRunning`.
     this.maybeScheduleIdleStop();
 
     const observer = this.playbackObserver;
