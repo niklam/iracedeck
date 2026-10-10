@@ -319,6 +319,16 @@ describe("generateMarkdown", () => {
       ]);
     });
 
+    it("should escape a backslash too, so one standing before a pipe cannot cancel the pipe's escape", () => {
+      const markdown = generateMarkdown(sampleTelemetry, sampleSessionInfo, now, [
+        { title: "Plugin State", rows: [["Path", "a\\|b"]] },
+      ]);
+      const row = markdown.slice(markdown.indexOf("## Plugin State")).split("\n")[4];
+
+      // The text `a\|b` is written `a\\\|b`: an escaped backslash, then an escaped pipe.
+      expect(row).toBe("| Path | a\\\\\\|b |");
+    });
+
     it("should append a section to a report that has no telemetry tables", () => {
       const markdown = generateMarkdown({}, null, now, [{ title: "Plugin State", rows: [["Host", "elgato"]] }]);
 

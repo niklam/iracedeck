@@ -42,10 +42,16 @@ export interface MarkdownSection {
 }
 
 /**
- * A caller's text as one table cell: line breaks become spaces and pipes are
- * escaped, so a value the report does not control cannot break its table.
+ * A caller's text as one table cell: line breaks become spaces, and
+ * backslashes and pipes are escaped, so a value the report does not control
+ * cannot break its table. The backslash goes first: left alone, one standing
+ * before a pipe would escape the escape and leave the pipe live.
  */
-const markdownCell = (text: string): string => text.replace(/\r\n|\r|\n/g, " ").replace(/\|/g, "\\|");
+const markdownCell = (text: string): string =>
+  text
+    .replace(/\r\n|\r|\n/g, " ")
+    .replace(/\\/g, "\\\\")
+    .replace(/\|/g, "\\|");
 
 /**
  * Converts a TrkLoc enum value to a human-readable string.
