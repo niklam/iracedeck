@@ -25,10 +25,19 @@
  * Only ancestors count as a cycle: the same object reached twice by different
  * paths is encoded twice.
  *
- * **It can throw.** It reads the value's own enumerable properties, so a getter
- * that throws (or a Proxy trap) throws out of {@link toJsonSafe}. The encoder
- * does not guess a placeholder for state it could not read; the caller isolates
- * the failure, as `collectStateSections` does per section.
+ * **It can throw**, in two cases, and the caller isolates the failure, as
+ * `collectStateSections` does per section:
+ *
+ * - It reads the value's own enumerable properties, so a getter that throws (or
+ *   a Proxy trap) throws out of {@link toJsonSafe}. The encoder does not guess
+ *   a placeholder for state it could not read.
+ * - A value of more than {@link JSON_SAFE_MAX_VALUES} values is refused with a
+ *   `RangeError`. Depth and the ancestor check bound neither a wide value nor
+ *   a graph of objects that reference each other: every path through such a
+ *   graph is encoded, and the paths multiply by about the node count per node
+ *   added, so nine cross-linked objects already take most of a second. The
+ *   encoder runs on the plugin's main thread at a key press, so it stops
+ *   counting instead of finishing.
  *
  * Decision record: `docs/superpowers/specs/2026-10-10-issue-1387-snapshot-plugin-state.md`.
  */
@@ -38,10 +47,26 @@ export type JsonValue = null | boolean | number | string | JsonValue[] | { [key:
 /** Containers nested more than this many levels below the root are replaced by a marker. */
 export const JSON_SAFE_MAX_DEPTH = 32;
 
+/**
+ * The most values one {@link toJsonSafe} call visits before it throws: every
+ * container and every primitive counts, array holes included. The largest real
+ * section is about 150,000 (the gap traces of a 64-car field), and a field can
+ * be larger than that.
+ */
+export const JSON_SAFE_MAX_VALUES = 2_000_000;
+
 const OMIT = Symbol("omit");
 type Encoded = JsonValue | typeof OMIT;
 
 const orNull = (value: Encoded): JsonValue => (value === OMIT ? null : value);
+
+/** One call's bookkeeping. Made per call, so a call that throws leaves nothing for the next one. */
+type Run = {
+  /** The containers being encoded, outermost first. */
+  ancestors: object[];
+  /** How many values have been visited so far. */
+  visited: number;
+};
 
 /**
  * Turns any value into plain JSON data: nothing it returns can make
@@ -49,9 +74,11 @@ const orNull = (value: Encoded): JsonValue => (value === OMIT ? null : value);
  *
  * The result shares no container with the input. A value with no JSON form at
  * the top level (`undefined`, a function, a symbol) is `null`.
+ *
+ * @throws Whatever a getter of the value throws, and a `RangeError` past {@link JSON_SAFE_MAX_VALUES} values.
  */
 export function toJsonSafe(value: unknown): JsonValue {
-  return orNull(encode(value, [], 0));
+  return orNull(encode(value, { ancestors: [], visited: 0 }, 0));
 }
 
 /** The name a non-plain object is reported under. */
@@ -62,7 +89,15 @@ function constructorName(obj: object): string {
   return typeof name === "string" && name ? name : "Object";
 }
 
-function encode(value: unknown, ancestors: object[], depth: number): Encoded {
+function encode(value: unknown, run: Run, depth: number): Encoded {
+  if (++run.visited > JSON_SAFE_MAX_VALUES) {
+    throw new RangeError(
+      `State holds more than ${JSON_SAFE_MAX_VALUES} values: it is too large to snapshot, or its objects reference each other`,
+    );
+  }
+
+  const { ancestors } = run;
+
   switch (typeof value) {
     case "string":
     case "boolean":
@@ -97,7 +132,7 @@ function encode(value: unknown, ancestors: object[], depth: number): Encoded {
   ancestors.push(obj);
 
   try {
-    const member = (m: unknown): JsonValue => orNull(encode(m, ancestors, depth + 1));
+    const member = (m: unknown): JsonValue => orNull(encode(m, run, depth + 1));
 
     // Array.from visits holes as undefined, so a sparse array keeps its length and index alignment.
     if (Array.isArray(obj)) return Array.from(obj, member);
@@ -117,7 +152,7 @@ function encode(value: unknown, ancestors: object[], depth: number): Encoded {
     const out: { [key: string]: JsonValue } = {};
 
     for (const key of Object.keys(obj)) {
-      const encoded = encode((obj as Record<string, unknown>)[key], ancestors, depth + 1);
+      const encoded = encode((obj as Record<string, unknown>)[key], run, depth + 1);
 
       if (encoded === OMIT) continue;
 

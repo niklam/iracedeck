@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { JSON_SAFE_MAX_DEPTH, type JsonValue, toJsonSafe } from "./json-safe.js";
+import { JSON_SAFE_MAX_DEPTH, JSON_SAFE_MAX_VALUES, type JsonValue, toJsonSafe } from "./json-safe.js";
 
 class Foo {
   value = 1;
@@ -215,18 +215,59 @@ describe("toJsonSafe (#1387)", () => {
       expect(() => toJsonSafe(state)).toThrow("boom");
     });
 
-    it("starts clean after a throw: the next call sees no stale ancestors", () => {
-      const state: Record<string, unknown> = { fine: 1 };
+    it("leaves nothing behind after a throw: the same objects encode in full once the getter stops throwing", () => {
+      let broken = true;
+      const inner = {
+        fine: 1,
+        get flaky(): number {
+          if (broken) throw new Error("boom");
 
-      Object.defineProperty(state, "bad", {
-        enumerable: true,
-        get: () => {
-          throw new Error("boom");
+          return 2;
         },
-      });
+      };
+      const root = { inner };
 
-      expect(() => toJsonSafe({ state })).toThrow("boom");
-      expect(toJsonSafe({ state: { fine: 1 } })).toStrictEqual({ state: { fine: 1 } });
+      expect(() => toJsonSafe(root)).toThrow("boom");
+
+      broken = false;
+
+      // Ancestors left over from the failed call would turn `inner`, or `root` itself, into "[Circular]".
+      expect(toJsonSafe(root)).toStrictEqual({ inner: { fine: 1, flaky: 2 } });
+    });
+  });
+
+  // Depth and the ancestor check bound neither a wide value nor a cross-linked graph, whose paths multiply.
+  describe("value budget", () => {
+    it("allows two million values, well above the largest real section", () => {
+      expect(JSON_SAFE_MAX_VALUES).toBe(2_000_000);
+    });
+
+    it("encodes a value that is exactly at the budget", () => {
+      // The array is one value and each member another.
+      const encoded = toJsonSafe(new Array(JSON_SAFE_MAX_VALUES - 1).fill(7)) as JsonValue[];
+
+      expect(encoded).toHaveLength(JSON_SAFE_MAX_VALUES - 1);
+      expect(encoded.at(-1)).toBe(7);
+    });
+
+    it("throws a RangeError for one value more", () => {
+      const tooMany = new Array(JSON_SAFE_MAX_VALUES).fill(7);
+
+      expect(() => toJsonSafe(tooMany)).toThrow(RangeError);
+      expect(() => toJsonSafe(tooMany)).toThrow("more than 2000000 values");
+    });
+
+    it("counts array holes, so a sparse array of three million throws instead of being filled", () => {
+      expect(() => toJsonSafe(sparse(3_000_000, { 5: "only one" }))).toThrow(RangeError);
+    });
+
+    it("counts a typed array's members", () => {
+      expect(() => toJsonSafe(new Uint8Array(JSON_SAFE_MAX_VALUES))).toThrow(RangeError);
+    });
+
+    it("spends the budget per call: after a refusal the next call starts from nothing", () => {
+      expect(() => toJsonSafe(sparse(JSON_SAFE_MAX_VALUES, {}))).toThrow(RangeError);
+      expect(toJsonSafe([1, { a: 2 }])).toStrictEqual([1, { a: 2 }]);
     });
   });
 

@@ -35,7 +35,7 @@ export {
 } from "./resource-monitor.js";
 
 // Plugin state for the Telemetry Snapshot: section registry and JSON-safe encoder (issue #1387)
-export { JSON_SAFE_MAX_DEPTH, type JsonValue, toJsonSafe } from "./json-safe.js";
+export { JSON_SAFE_MAX_DEPTH, JSON_SAFE_MAX_VALUES, type JsonValue, toJsonSafe } from "./json-safe.js";
 export {
   _resetStateSections,
   type CollectedState,
