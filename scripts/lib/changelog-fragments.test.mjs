@@ -10,6 +10,8 @@ import {
   CHANGELOG_FRAGMENTS_DIR,
   ChangelogFragmentError,
   composeChangelog,
+  composeChangelogParts,
+  isFragmentDirLitter,
   loadChangelogSources,
   parseFragment,
   renderReleaseSection,
@@ -261,21 +263,61 @@ describe("parseFragment", () => {
     }
   });
 
-  describe("refuses a body that opens with a heading or a blockquote", () => {
-    for (const [body, opener] of [
-      ["# Heading.", "#"],
-      ["### Heading.", "###"],
-      ["###### Heading.", "######"],
-      ["#", "#"],
-      ["> Quoted.", ">"],
-      [">Quoted.", ">"],
+  describe("refuses a body that opens with block syntax, naming the opener", () => {
+    for (const [body, opener, what] of [
+      ["# Heading.", "#", "a heading"],
+      ["### Heading.", "###", "a heading"],
+      ["###### Heading.", "######", "a heading"],
+      ["#", "#", "a heading"],
+      ["> Quoted.", ">", "a blockquote"],
+      [">Quoted.", ">", "a blockquote"],
+      ["```", "```", "a fenced code block"],
+      ["```js", "```", "a fenced code block"],
+      ["````", "````", "a fenced code block"],
+      ["~~~", "~~~", "a fenced code block"],
+      ["~~~~ text", "~~~~", "a fenced code block"],
+      ["***", "***", "a thematic break"],
+      ["---", "---", "a thematic break"],
+      ["___", "___", "a thematic break"],
+      ["* * *", "* * *", "a thematic break"],
+      ["- - -", "- - -", "a thematic break"],
+      ["_ _ _", "_ _ _", "a thematic break"],
+      ["-  -\t-  -", "-  -\t-  -", "a thematic break"],
+      ["**********", "**********", "a thematic break"],
+      ["[label]: /docs/actions/", "[label]:", "a link reference definition"],
+      ["[Replay Control]:/docs/x", "[Replay Control]:", "a link reference definition"],
+      ["[a\\]b]: /x", "[a\\]b]:", "a link reference definition"],
     ]) {
       it(JSON.stringify(body), () => {
-        expectFragmentError(() => parseFragment("1-a.md", fragmentText({ body })), {
-          file,
-          line: 6,
-          message: new RegExp(`must not open with "${opener}": a heading or blockquote`),
-        });
+        let caught;
+        try {
+          parseFragment("1-a.md", fragmentText({ body }));
+        } catch (error) {
+          caught = error;
+        }
+        expect(caught).toBeInstanceOf(ChangelogFragmentError);
+        expect(caught.line).toBe(6);
+        expect(caught.message).toContain(`must not open with "${opener}": ${what} cannot sit in a bullet`);
+      });
+    }
+  });
+
+  describe("accepts a body that only resembles block syntax", () => {
+    for (const body of [
+      "**Session Info** keys use less CPU.",
+      "***Bold italic*** at the start.",
+      "[Replay Control](/docs/actions/replay-control/) now seeks smoothly.",
+      "[Replay Control](/docs/actions/replay-control/): now seeks smoothly.",
+      "`code` first, then text.",
+      "``two backticks`` are a code span.",
+      "--- is not alone on this line.",
+      "~~ two tildes are text.",
+      "-- two dashes are text.",
+      "__Strong__ start.",
+      "#1234 is fixed.",
+    ]) {
+      it(JSON.stringify(body), () => {
+        expect(parseFragment("1-a.md", fragmentText({ body })).body).toBe(body);
       });
     }
   });
@@ -530,6 +572,22 @@ describe("composeChangelog", () => {
     });
   });
 
+  it("refuses two fragments with the same bullet, naming both files", () => {
+    const twins = [
+      fragment("10-feat.md", "Features", 50, "A new feature."),
+      fragment("14-copy.md", "Bug Fixes", 20, "A new feature."),
+    ];
+    expectFragmentError(() => composeChangelog(mdx, twins, "1.3.0", "_Unreleased_"), {
+      file: `${CHANGELOG_FRAGMENTS_DIR}/14-copy.md`,
+      line: null,
+      message: new RegExp(`same as ${CHANGELOG_FRAGMENTS_DIR}/10-feat\\.md`),
+    });
+    // Positive control: the same two files with different bullets compose.
+    expect(() =>
+      composeChangelog(mdx, [twins[0], { ...twins[1], body: "A different fix." }], "1.3.0", "_Unreleased_"),
+    ).not.toThrow();
+  });
+
   it("does not count the preamble's text as a dated bullet", () => {
     const composed = composeChangelog(
       mdx,
@@ -538,6 +596,35 @@ describe("composeChangelog", () => {
       "_Unreleased_",
     );
     expect(parseChangelog(composed).releases[0].version).toBe("1.3.0");
+  });
+});
+
+describe("composeChangelogParts", () => {
+  const mdx = `${PREAMBLE}${DATED}`;
+  const fragments = [fragment("10-feat.md", "Features", 50, "A new feature."), fragment("11-fix.md", "Bug Fixes", 50)];
+
+  it("returns composeChangelog's content and the section renderReleaseSection writes", () => {
+    expect(composeChangelogParts(mdx, fragments, "1.3.0", "_Unreleased_")).toEqual({
+      content: composeChangelog(mdx, fragments, "1.3.0", "_Unreleased_"),
+      section: renderReleaseSection("1.3.0", "_Unreleased_", fragments),
+    });
+  });
+
+  it("keeps the section in LF when the MDX is CRLF", () => {
+    const parts = composeChangelogParts(mdx.replace(/\n/g, "\r\n"), fragments, "1.3.0", "_Unreleased_");
+    expect(parts.section).toBe(renderReleaseSection("1.3.0", "_Unreleased_", fragments));
+    expect(parts.content).toContain(parts.section.replace(/\n/g, "\r\n"));
+  });
+
+  it("returns the MDX and a null section with no fragments", () => {
+    expect(composeChangelogParts(mdx, [], "1.3.0", "_Unreleased_")).toEqual({ content: mdx, section: null });
+  });
+
+  it("runs every compose-time check", () => {
+    expect(() => composeChangelogParts(mdx, fragments, "1.2.0", "_Unreleased_")).toThrow(/already exists/);
+    expect(() =>
+      composeChangelogParts(mdx.replace("_2026-01-02_", "_Unreleased_"), [], "1.3.0", "_Unreleased_"),
+    ).toThrow(/"_Unreleased_" left/);
   });
 });
 
@@ -651,6 +738,41 @@ describe("loadChangelogSources", () => {
     write(`${CHANGELOG_FRAGMENTS_DIR}/1345.bugfix.md`, fragmentText());
     expectFragmentError(() => loadChangelogSources(root), {
       file: `${CHANGELOG_FRAGMENTS_DIR}/1345.bugfix.md`,
+      line: null,
+      message: /<number>-<slug>\.md/,
+    });
+  });
+
+  describe("skips editor and OS litter", () => {
+    for (const name of [".1345-x.md.swp", "1345-x.md~", ".DS_Store", "Thumbs.db", "desktop.ini", "Desktop.ini"]) {
+      it(name, () => {
+        write(`${CHANGELOG_FRAGMENTS_DIR}/7-fix.md`, fragmentText({ body: "C." }));
+        // Not a fragment's text, so reading it as one would fail.
+        write(`${CHANGELOG_FRAGMENTS_DIR}/${name}`, "\u0000 binary-ish litter <{");
+
+        expect(loadChangelogSources(root).fragments.map((f) => f.fileName)).toEqual(["7-fix.md"]);
+      });
+    }
+
+    it("skips a dot-directory too", () => {
+      mkdirSync(path.join(root, CHANGELOG_FRAGMENTS_DIR, ".vscode"));
+      expect(loadChangelogSources(root).fragments).toEqual([]);
+    });
+  });
+
+  it("isFragmentDirLitter recognises only the litter shapes", () => {
+    for (const name of [".x", ".DS_Store", "x~", "THUMBS.DB", "desktop.ini"])
+      expect(isFragmentDirLitter(name)).toBe(true);
+    for (const name of ["README.md", "1-a.md", "1345.bugfix.md", "notes.txt", "Thumbs.db.md", "a~b.md"]) {
+      expect(isFragmentDirLitter(name)).toBe(false);
+    }
+  });
+
+  it("still refuses a mis-named .md beside the litter", () => {
+    write(`${CHANGELOG_FRAGMENTS_DIR}/.DS_Store`, "litter");
+    write(`${CHANGELOG_FRAGMENTS_DIR}/Session-Info.md`, fragmentText());
+    expectFragmentError(() => loadChangelogSources(root), {
+      file: `${CHANGELOG_FRAGMENTS_DIR}/Session-Info.md`,
       line: null,
       message: /<number>-<slug>\.md/,
     });

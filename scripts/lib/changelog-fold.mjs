@@ -3,20 +3,15 @@
 // fragments themselves are deleted, all in the release's version-bump commit.
 //
 // `planChangelogFold` decides and validates everything without writing; the
-// caller (`scripts/release-hooks.mjs`) owns the writes, the deletions and the
-// `git add`. Planning before writing is the whole point: a malformed fragment
+// caller (`scripts/release-hooks.mjs`) owns the write, the `git rm` of the
+// fragments and the `git add`. Planning before writing is the whole point: a malformed fragment
 // must abort the release with a clean tree, as a malformed section always has.
 // It replaces `changelog-stamp.mjs` (#690), whose `_Unreleased_` line no longer
 // exists once the in-development notes are fragments.
 //
 // Decided in `docs/superpowers/specs/2026-10-10-issue-1386-changelog-fragments-merge-gate.md`.
 import { buildChangelogData } from "./changelog-data.mjs";
-import {
-  CHANGELOG_FRAGMENTS_DIR,
-  composeChangelog,
-  loadChangelogSources,
-  renderReleaseSection,
-} from "./changelog-fragments.mjs";
+import { CHANGELOG_FRAGMENTS_DIR, composeChangelogParts, loadChangelogSources } from "./changelog-fragments.mjs";
 
 /**
  * Format a Date as a zero-padded `YYYY-MM-DD` string in local time — matching
@@ -75,14 +70,14 @@ export function planChangelogFold({ mdx, fragments }, version, date) {
   }
 
   const dateLine = `_${date}_`;
-  const content = composeChangelog(mdx, fragments, version, dateLine);
+  const { content, section } = composeChangelogParts(mdx, fragments, version, dateLine);
   buildChangelogData(content);
 
   return {
     fold: true,
     reason: `Folded ${fragments.length} fragment${fragments.length === 1 ? "" : "s"} into "## ${version}" → ${dateLine}`,
     content,
-    section: renderReleaseSection(version, dateLine, fragments),
+    section,
     fragmentPaths: fragments.map(({ fileName }) => `${CHANGELOG_FRAGMENTS_DIR}/${fileName}`),
   };
 }

@@ -33,11 +33,16 @@ function runHook(version) {
   });
 }
 
+// Both cases here run a PRE-RELEASE on purpose. A stable dry run reads this
+// checkout's changelog.d/ and refuses an uncommitted fragment, which is the
+// normal state while one is being written and tested, so it would make
+// `pnpm test` depend on the developer's working tree. The stable path, the fold
+// and its dry run included, is exercised in the temporary repositories below.
 describe("release-hooks.mjs (dry run over this repository)", () => {
   it("discovers all three plugin manifests and stages nothing", () => {
     const before = git("status", "--porcelain");
 
-    const stdout = runHook("9.9.9");
+    const stdout = runHook("9.9.9-rc.1");
 
     // The dry-run preflight + branch must not touch the tree or the index.
     expect(git("status", "--porcelain")).toBe(before);
@@ -165,8 +170,8 @@ function makeRepo(fragments) {
 }
 
 /** Run the copied hook; returns its exit status and output instead of throwing. */
-function runFixtureHook(dir, version, { dryRun = false } = {}) {
-  const env = { ...process.env };
+function runFixtureHook(dir, version, { dryRun = false, extraEnv = {} } = {}) {
+  const env = { ...process.env, ...extraEnv };
   delete env.RELEASE_IT_DRY_RUN;
   if (dryRun) env.RELEASE_IT_DRY_RUN = "1";
   const result = spawnSync("node", ["scripts/release-hooks.mjs", version], { cwd: dir, encoding: "utf-8", env });
@@ -233,6 +238,64 @@ describe("release-hooks.mjs fold (in a temporary git repository)", { timeout: 60
     // Nothing is left unstaged.
     expect(fixtureGit(dir, "diff", "--name-only")).toBe("");
     expect(result.stdout).toContain('Folded 2 fragments into "## 1.0.0"');
+  });
+
+  it("removes and stages every fragment with one git rm, and stages nothing else of changelog.d/", () => {
+    const dir = makeRepo(TWO_FRAGMENTS);
+    const traceDir = mkdtempSync(join(tmpdir(), "iracedeck-release-hooks-trace-"));
+    fixtures.push(traceDir);
+
+    const result = runFixtureHook(dir, "1.0.0", { extraEnv: { GIT_TRACE: join(traceDir, "trace.txt") } });
+
+    expect(result.status, result.stderr).toBe(0);
+    const commands = read(traceDir, "trace.txt")
+      .split("\n")
+      .map((line) => /trace: built-in: (git .*)$/.exec(line)?.[1])
+      .filter(Boolean);
+    // The preflight's dry run, then the one real removal naming both fragments.
+    expect(commands.filter((command) => command.startsWith("git rm "))).toEqual([
+      "git rm -q --dry-run -- changelog.d/11-a-feature.md changelog.d/12-a-fix.md",
+      "git rm -q -- changelog.d/11-a-feature.md changelog.d/12-a-fix.md",
+    ]);
+    // No `git add` names a fragment: the deletions were staged by `git rm` alone.
+    expect(commands.filter((command) => command.startsWith("git add ") && command.includes("changelog.d/"))).toEqual(
+      [],
+    );
+    expect(staged(dir)).toContain("D\tchangelog.d/11-a-feature.md");
+    expect(staged(dir)).toContain("D\tchangelog.d/12-a-fix.md");
+  });
+
+  it("refuses a half-folded tree on a re-run rather than folding the fragments twice", () => {
+    const dir = makeRepo(TWO_FRAGMENTS);
+    // The state a `git rm` that failed part-way leaves: changelog.mdx already
+    // carries the dated section, the fragments are still there, and the version
+    // files are untouched.
+    expect(runFixtureHook(dir, "1.0.0").status).toBe(0);
+    const folded = read(dir, CHANGELOG_SOURCE_PATH);
+    fixtureGit(dir, "reset", "-q", "--hard");
+    write(dir, CHANGELOG_SOURCE_PATH, folded);
+    const before = snapshot(dir);
+
+    const result = runFixtureHook(dir, "1.0.0");
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toMatch(/"## 1\.0\.0" section already exists/);
+    expect(snapshot(dir)).toEqual(before);
+    expect(read(dir, CHANGELOG_SOURCE_PATH).match(/^## 1\.0\.0$/gm)).toHaveLength(1);
+  });
+
+  it("aborts before writing anything when git would not remove a fragment", () => {
+    const dir = makeRepo(TWO_FRAGMENTS);
+    // Committed, but edited since: the real `git rm` would refuse it part-way
+    // through the fold, so its dry run refuses it first.
+    write(dir, "changelog.d/12-a-fix.md", fragmentText("Bug Fixes", 50, "A new fix, edited."));
+    const before = snapshot(dir);
+
+    const result = runFixtureHook(dir, "1.0.0");
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("git would not remove a changelog fragment");
+    expect(snapshot(dir)).toEqual(before);
   });
 
   it("skips the fold on a pre-release", () => {

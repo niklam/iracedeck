@@ -21,7 +21,7 @@ weight: 60
 - **The body is one line**: the bullet text without its `- ` marker, written as a self-contained sentence for users.
 - **No bare `<` or `{`** outside a backtick code span, because the text ends up in MDX. Inline markdown is limited to code spans, `**bold**`, `*em*` / `_em_`, and links whose target starts with `/` (a website path) or `http(s)://`.
 
-Any other file in this folder, a mis-named fragment included, is an error.
+Files your editor or the OS leave here (dotfiles such as `.DS_Store` or a swap file, backups ending in `~`, `Thumbs.db`, `desktop.ini`) are ignored. Any other file in this folder, a mis-named fragment included, is an error.
 
 ## One change, one fragment
 

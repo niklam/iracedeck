@@ -25,9 +25,8 @@ import url from "node:url";
 
 import { CHANGELOG_SOURCE_PATH } from "../../../scripts/lib/changelog-data.mjs";
 import {
-  composeChangelog,
+  composeChangelogParts,
   loadChangelogSources,
-  renderReleaseSection,
   UNRELEASED_DATE_LINE,
 } from "../../../scripts/lib/changelog-fragments.mjs";
 
@@ -42,11 +41,9 @@ const REPO_ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)),
  */
 export function changelogFragmentSection(root) {
   const { mdx, fragments, version } = loadChangelogSources(root);
-  // Composed only for its checks: the page must refuse what the generator refuses.
-  composeChangelog(mdx, fragments, version, UNRELEASED_DATE_LINE);
-  if (fragments.length === 0) return null;
-
-  return renderReleaseSection(version, UNRELEASED_DATE_LINE, fragments);
+  // The section comes out of the same composition the generator runs, so the
+  // page refuses exactly what the generator refuses.
+  return composeChangelogParts(mdx, fragments, version, UNRELEASED_DATE_LINE).section;
 }
 
 /**

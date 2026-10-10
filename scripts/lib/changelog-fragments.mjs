@@ -33,6 +33,12 @@ export const CHANGELOG_FRAGMENTS_DIR = "changelog.d";
 /** The one file in the fragment directory that is not a fragment. */
 export const CHANGELOG_FRAGMENTS_README = "README.md";
 
+// Files editors and operating systems leave beside the ones you write: Windows'
+// thumbnail cache and folder settings (matched without case, as Windows names
+// them either way). Dotfiles (`.DS_Store`, vim's `.x.md.swp`) and backups
+// ending in `~` are recognised by shape in `isFragmentDirLitter`.
+const LITTER_NAMES = new Set(["thumbs.db", "desktop.ini"]);
+
 /** The date line of a section that has not shipped yet. */
 export const UNRELEASED_DATE_LINE = "_Unreleased_";
 
@@ -60,9 +66,23 @@ const WEIGHT = /^(?:[1-9]\d?|100)$/;
 const FRAGMENT_KEYS = Object.freeze(["category", "weight"]);
 // The markers a markdown list item can open with: `-`, `*`, `+`, or `1.` / `1)`.
 const LIST_MARKER = /^(?:[-*+]|\d+[.)])(?:[ \t]|$)/;
-// Block syntax that would turn the bullet into something else: an ATX heading
-// (`# ` to `###### `) or a blockquote (`>`).
-const BLOCK_OPENER = /^(?:#{1,6}(?:[ \t]|$)|>)/;
+// Block syntax that would turn the bullet into something else once the fold
+// writes it after a `- `, each with what the error calls it. CommonMark allows up
+// to three spaces of indent before any of them; a body may not start with
+// whitespace at all, so only the unindented forms are needed.
+const BLOCK_OPENERS = [
+  // An ATX heading, `# ` to `###### ` (seven hashes are text).
+  { pattern: /^#{1,6}(?=[ \t]|$)/, what: "a heading" },
+  { pattern: /^>/, what: "a blockquote" },
+  // A code fence: three or more backticks or tildes.
+  { pattern: /^(?:`{3,}|~{3,})/, what: "a fenced code block" },
+  // A thematic break: three or more of one of `*`, `-`, `_`, with spaces and
+  // tabs between them allowed and nothing else on the line (the body is trimmed).
+  { pattern: /^([-*_])(?:[ \t]*\1){2,}[ \t]*$/, what: "a thematic break" },
+  // A link reference definition, `[label]: …`, which renders as nothing. A link,
+  // `[label](url)`, has no colon after the bracket and is untouched.
+  { pattern: /^\[(?:[^[\]\\]|\\.)+\]:/, what: "a link reference definition" },
+];
 // The same code-span shape `renderInlineMarkdown` lifts out, so the two agree on
 // what counts as "inside backticks".
 const CODE_SPAN = /`[^`]+`/g;
@@ -180,9 +200,11 @@ export function parseFragment(fileName, text) {
     fail(bodyLine, `the body must not start with whitespace`);
   }
   body = body.trimEnd();
-  if (BLOCK_OPENER.test(body)) {
-    const opener = body.startsWith(">") ? ">" : body.split(/[ \t]/)[0];
-    fail(bodyLine, `the body must not open with "${opener}": a heading or blockquote cannot sit in a bullet`);
+  for (const { pattern, what } of BLOCK_OPENERS) {
+    const opener = pattern.exec(body);
+    if (opener) {
+      fail(bodyLine, `the body must not open with "${opener[0]}": ${what} cannot sit in a bullet`);
+    }
   }
   if (LIST_MARKER.test(body)) {
     fail(bodyLine, `the body is the bullet text without its list marker: drop the leading "${body.split(/[ \t]/)[0]}"`);
@@ -307,10 +329,15 @@ export function assertNoInDevelopmentSection(mdx) {
 }
 
 /**
- * Compose the changelog: the fragments rendered as the `version` section and
- * inserted before the first `## ` heading. With no fragments the MDX is returned
- * unchanged (after the `_Unreleased_` check), so a tree with nothing in
+ * Compose the changelog and return it together with the section it inserted:
+ * the fragments rendered as the `version` section and inserted before the first
+ * `## ` heading. With no fragments the MDX is returned unchanged (after the
+ * `_Unreleased_` check) and the section is `null`, so a tree with nothing in
  * development reads exactly as it does after a release.
+ *
+ * A reader that needs the section on its own (the website page, the fold's dry
+ * run) takes it from here, so it passes exactly the checks the composed file
+ * does and is rendered once.
  *
  * The existing-`## <version>` check runs only while fragments exist, on purpose:
  * on a stable release commit the version is the plain `X.Y.Z` whose dated section
@@ -321,13 +348,16 @@ export function assertNoInDevelopmentSection(mdx) {
  * @param {readonly ChangelogFragment[]} fragments
  * @param {string} version - The in-development `X.Y.Z`.
  * @param {string} dateLine - `_Unreleased_` for a preview, `_YYYY-MM-DD_` for the fold.
- * @returns {string}
+ * @returns {{ content: string, section: string | null }} the composed MDX, in the
+ *   MDX's own line endings, and the section as `renderReleaseSection` writes it
+ *   (LF), or `null` with no fragments.
  * @throws {ChangelogFragmentError} on a leftover `_Unreleased_` line, an existing
- *   `## <version>` section, or a fragment whose bullet repeats a dated one.
+ *   `## <version>` section, two fragments with the same bullet, or a fragment
+ *   whose bullet repeats a dated one.
  */
-export function composeChangelog(mdx, fragments, version, dateLine) {
+export function composeChangelogParts(mdx, fragments, version, dateLine) {
   assertNoInDevelopmentSection(mdx);
-  if (fragments.length === 0) return mdx;
+  if (fragments.length === 0) return { content: mdx, section: null };
 
   const source = String(mdx);
   const lines = source.split(/\r?\n/);
@@ -346,6 +376,22 @@ export function composeChangelog(mdx, fragments, version, dateLine) {
         );
       }
     }
+  }
+
+  // Two fragments with one bullet (a copied file, or a follow-up that added a
+  // fragment instead of editing the first) would list the change twice.
+  /** @type {Map<string, string>} */
+  const fragmentBodies = new Map();
+  for (const fragment of fragments) {
+    const first = fragmentBodies.get(fragment.body);
+    if (first !== undefined) {
+      throw new ChangelogFragmentError(
+        fragmentPath(fragment.fileName),
+        null,
+        `its bullet is the same as ${fragmentPath(first)} — one change is one fragment, so delete one of the two`,
+      );
+    }
+    fragmentBodies.set(fragment.body, fragment.fileName);
   }
 
   // A cherry-picked fix leaves the same bullet in a dated section and as a
@@ -367,16 +413,46 @@ export function composeChangelog(mdx, fragments, version, dateLine) {
   }
 
   const eol = source.includes("\r\n") ? "\r\n" : "\n";
-  const section = renderReleaseSection(version, dateLine, fragments).replace(/\n/g, eol);
+  const section = renderReleaseSection(version, dateLine, fragments);
+  const inserted = section.replace(/\n/g, eol);
 
   if (firstHeading === -1) {
     const separator = source === "" || source.endsWith(`${eol}${eol}`) ? "" : source.endsWith(eol) ? eol : eol + eol;
-    return `${source}${separator}${section}`;
+    return { content: `${source}${separator}${inserted}`, section };
   }
 
   // Splice by line so the text before and after the section is kept byte for byte.
   const offset = lines.slice(0, firstHeading).reduce((sum, line) => sum + line.length + eol.length, 0);
-  return `${source.slice(0, offset)}${section}${eol}${source.slice(offset)}`;
+  return { content: `${source.slice(0, offset)}${inserted}${eol}${source.slice(offset)}`, section };
+}
+
+/**
+ * Compose the changelog: `composeChangelogParts`' content alone, for a reader
+ * that needs only the composed file.
+ *
+ * @param {string} mdx - The full contents of changelog.mdx.
+ * @param {readonly ChangelogFragment[]} fragments
+ * @param {string} version - The in-development `X.Y.Z`.
+ * @param {string} dateLine - `_Unreleased_` for a preview, `_YYYY-MM-DD_` for the fold.
+ * @returns {string}
+ * @throws {ChangelogFragmentError} as `composeChangelogParts` does.
+ */
+export function composeChangelog(mdx, fragments, version, dateLine) {
+  return composeChangelogParts(mdx, fragments, version, dateLine).content;
+}
+
+/**
+ * Whether a directory entry in `changelog.d/` is something an editor or the
+ * operating system left there rather than a file anyone wrote: a dotfile
+ * (`.DS_Store`, a vim swap file such as `.1345-x.md.swp`), a backup ending in
+ * `~`, `Thumbs.db` or `desktop.ini`. Readers skip these; anything else that is
+ * not a valid fragment, a mis-named `.md` included, stays an error.
+ *
+ * @param {string} entry - A bare directory entry name.
+ * @returns {boolean}
+ */
+export function isFragmentDirLitter(entry) {
+  return entry.startsWith(".") || entry.endsWith("~") || LITTER_NAMES.has(entry.toLowerCase());
 }
 
 /**
@@ -387,7 +463,7 @@ export function composeChangelog(mdx, fragments, version, dateLine) {
  * @param {string} root - The repository root.
  * @returns {{ mdx: string, fragments: ChangelogFragment[], version: string }}
  * @throws {ChangelogFragmentError} on any file in `changelog.d/` other than a
- *   valid fragment or the README.
+ *   valid fragment, the README or editor and OS litter (`isFragmentDirLitter`).
  */
 export function loadChangelogSources(root) {
   const mdx = readFileSync(path.join(root, CHANGELOG_SOURCE_PATH), "utf8");
@@ -416,7 +492,7 @@ export function loadChangelogSources(root) {
 
   const fragments = [];
   for (const entry of entries.sort(compareCodeUnits)) {
-    if (entry === CHANGELOG_FRAGMENTS_README) continue;
+    if (entry === CHANGELOG_FRAGMENTS_README || isFragmentDirLitter(entry)) continue;
     const full = path.join(dir, entry);
     if (!statSync(full).isFile()) {
       throw new ChangelogFragmentError(

@@ -1,9 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { unlinkSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { CHANGELOG_SOURCE_PATH } from "./lib/changelog-data.mjs";
 import { formatLocalDate, loadChangelogFold } from "./lib/changelog-fold.mjs";
+import { CHANGELOG_FRAGMENTS_DIR } from "./lib/changelog-fragments.mjs";
 import { manifestVersionFor } from "./lib/manifest-version.mjs";
 import { allPluginManifestRelPaths, discoverVersionedFiles, pluginManifestRelPaths } from "./lib/version-discovery.mjs";
 
@@ -89,15 +90,16 @@ const manifestBumps = manifestFiles.map((manifest) => ({
 const changelogFold = loadChangelogFold(root, version, formatLocalDate(new Date()));
 const changelogPath = join(root, CHANGELOG_SOURCE_PATH);
 
-// The edit and every fragment deletion are staged with the version files, so
-// the preflight and the real `git add` both see them.
+// The changelog edit is staged with the version files, so the preflight and the
+// real `git add` both see it. The fragments are not in this list: one
+// `git rm` deletes and stages them all (see the fold below).
 const allPaths = [...packageJsonFiles, ...manifestFiles].map(({ rel }) => rel);
-if (changelogFold.fold) allPaths.push(CHANGELOG_SOURCE_PATH, ...changelogFold.fragmentPaths);
+if (changelogFold.fold) allPaths.push(CHANGELOG_SOURCE_PATH);
 
-// A fragment git does not track would pass the `git add --dry-run` below, be
-// folded and deleted, and then fail the final `git add` — git has nothing to
-// stage for a path it never knew — leaving a half-bumped tree. release-it's
-// clean-tree check does not see untracked files, so refuse one here.
+// A fragment git does not track would be folded and then fail the `git rm`
+// below — git cannot remove a path it never knew — leaving a half-folded tree.
+// release-it's clean-tree check does not see untracked files, so refuse one
+// here, with a message that says what is wrong rather than git's pathspec error.
 if (changelogFold.fold) {
   try {
     execFileSync("git", ["ls-files", "--error-unmatch", "--", ...changelogFold.fragmentPaths], {
@@ -123,6 +125,19 @@ try {
 } catch {
   throw new Error("Refusing to release: a file slated for a version bump is gitignored (see the git output above).");
 }
+// The same preflight for the fragments: `git rm --dry-run` refuses everything the
+// real one would (an untracked path, a fragment with staged or unstaged edits)
+// without touching the tree or the index.
+if (changelogFold.fold) {
+  try {
+    execFileSync("git", ["rm", "-q", "--dry-run", "--", ...changelogFold.fragmentPaths], {
+      cwd: root,
+      stdio: "inherit",
+    });
+  } catch {
+    throw new Error("Refusing to release: git would not remove a changelog fragment (see the git output above).");
+  }
+}
 
 // release-it runs before:bump hooks even in dry-run mode, which would otherwise
 // modify real package.json / manifest.json files and stage them with `git add`.
@@ -142,6 +157,32 @@ if (process.env.RELEASE_IT_DRY_RUN === "1") {
   process.exit(0);
 }
 
+// The fold goes first, ordered so that a failure part-way leaves the least to
+// undo, and never a tree a second run would fold twice:
+//
+// 1. `changelog.mdx` gets its dated section. Fail here and nothing else has changed.
+// 2. One `git rm` deletes and stages every fragment. On Windows an unlink can
+//    fail (EBUSY, EPERM) while an editor or a scanner holds the file; git then
+//    stops, and the tree holds the folded changelog beside fragments that still
+//    exist. A re-run refuses that tree — composing finds the new `## <version>`
+//    section while fragments remain — rather than folding them again, and the
+//    fragments are committed (checked above), so `git restore` brings it all back.
+// 3. Only then are the version files bumped.
+if (changelogFold.fold) {
+  writeFileSync(changelogPath, changelogFold.content);
+  try {
+    execFileSync("git", ["rm", "-q", "--", ...changelogFold.fragmentPaths], { cwd: root, stdio: "inherit" });
+  } catch {
+    throw new Error(
+      `The changelog fold stopped part-way: ${CHANGELOG_SOURCE_PATH} is written but git could not remove every fragment (see the git output above). ` +
+        `The version files are untouched. Restore the tree with \`git restore --staged --worktree -- ${CHANGELOG_SOURCE_PATH} ${CHANGELOG_FRAGMENTS_DIR}\`, ` +
+        `then release again.`,
+    );
+  }
+  for (const rel of changelogFold.fragmentPaths) console.log(`  Deleted ${rel}`);
+}
+console.log(`  ${changelogFold.reason}`);
+
 // Reuse the objects captured during discovery — no second read+parse (#702).
 for (const { rel, filePath, data } of packageJsonFiles) {
   data.version = version;
@@ -155,17 +196,7 @@ for (const { rel, filePath, data, version: manifestVersion } of manifestBumps) {
   console.log(`  Updated ${rel} → ${manifestVersion}`);
 }
 
-if (changelogFold.fold) {
-  writeFileSync(changelogPath, changelogFold.content);
-  for (const rel of changelogFold.fragmentPaths) {
-    unlinkSync(join(root, rel));
-    console.log(`  Deleted ${rel}`);
-  }
-}
-console.log(`  ${changelogFold.reason}`);
-
-// Stage all modified files, the fragment deletions included (`git add` of a
-// tracked path that no longer exists stages its removal). Use argv form (no
-// shell) so package directory names containing spaces or shell metacharacters
-// can't break or inject into the git invocation.
+// Stage all modified files; the fragment deletions are staged already. Use argv
+// form (no shell) so package directory names containing spaces or shell
+// metacharacters can't break or inject into the git invocation.
 execFileSync("git", ["add", "--", ...allPaths], { cwd: root, stdio: "inherit" });

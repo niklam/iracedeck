@@ -12,12 +12,7 @@
 // `changelog-fragments.mjs` imports that module for its source path: composing
 // from there would be an import cycle.
 import { buildChangelogData } from "./changelog-data.mjs";
-import {
-  assertNoInDevelopmentSection,
-  composeChangelog,
-  loadChangelogSources,
-  UNRELEASED_DATE_LINE,
-} from "./changelog-fragments.mjs";
+import { composeChangelog, loadChangelogSources, UNRELEASED_DATE_LINE } from "./changelog-fragments.mjs";
 
 /**
  * Read the tree and compose the changelog with the fragments as the
@@ -30,10 +25,8 @@ import {
  */
 export function readComposedChangelog(root) {
   const { mdx, fragments, version } = loadChangelogSources(root);
-  // `composeChangelog` runs this check too; it is stated here because it is the
-  // rule a reader must never skip — an `_Unreleased_` section written by hand
-  // would otherwise reach the pane while the fragments are the notes.
-  assertNoInDevelopmentSection(mdx);
+  // `composeChangelog` refuses a hand-written `_Unreleased_` section first, with
+  // or without fragments, so one never reaches the pane beside the fragments.
   return composeChangelog(mdx, fragments, version, UNRELEASED_DATE_LINE);
 }
 
