@@ -3651,6 +3651,66 @@ describe("ReplayControl", () => {
           },
         );
 
+        // The debounced state admits a press inside the grace, which also
+        // covers the second after the user left for the car through iRacing's
+        // own UI — indistinguishable at press time. The walk's own samples
+        // settle it: the raw flag never reads true from the car (#1324 review).
+        describe("a map built inside the grace is kept only once the raw flag has read true", () => {
+          const RAN_FROM_CAR =
+            "Jump to fastest lap: the walk ran from the car (IsReplayPlaying never read true); session map discarded";
+
+          /** A replay tick sighted, then the flag false from here on: the press lands 300 ms into the grace. */
+          async function pressInsideGrace() {
+            singleSessionBuffer(4, 4);
+            await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+            const settled = action["sdkController"].getCurrentTelemetry;
+
+            action["sdkController"].getReplayState();
+            action["sdkController"].getCurrentTelemetry = vi.fn(() => ({
+              ...(settled() as any),
+              IsReplayPlaying: false,
+            }));
+            await vi.advanceTimersByTimeAsync(300);
+            await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+
+            return settled;
+          }
+
+          it("caches nothing and sends no jump when no sample of the walk reads the flag true: the user was back in the car", async () => {
+            vi.useFakeTimers();
+
+            try {
+              await pressInsideGrace();
+              await vi.runAllTimersAsync();
+
+              expect(action["logger"].info).toHaveBeenCalledWith(RAN_FROM_CAR);
+              expect(_getFastestLapSessionCache()).toBeNull();
+              expect(mockReplay.setPlayPosition).not.toHaveBeenCalled();
+              expect(mockStore.laps.recordLapStart).not.toHaveBeenCalled();
+            } finally {
+              vi.useRealTimers();
+            }
+          });
+
+          it("caches the map and completes the walk when the flag returns true after the blip: the press really was post-seek", async () => {
+            vi.useFakeTimers();
+
+            try {
+              const settled = await pressInsideGrace();
+
+              // The blip ends: every sample from here reads the replay.
+              action["sdkController"].getCurrentTelemetry = settled;
+              await vi.runAllTimersAsync();
+
+              expect(action["logger"].info).not.toHaveBeenCalledWith(RAN_FROM_CAR);
+              expect(_getFastestLapSessionCache()?.sessions.map((s) => s.sessionUniqueId)).toEqual([3]);
+              expect(mockStore.laps.recordLapStart).toHaveBeenCalledTimes(1);
+            } finally {
+              vi.useRealTimers();
+            }
+          });
+        });
+
         it.each([-1, undefined])(
           "refuses a press while SessionNum is %s (the post-jump transient) before any command",
           async (sessionNum) => {
