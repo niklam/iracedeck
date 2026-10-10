@@ -16,7 +16,7 @@ If you are picking up an issue, read this first.
 | 4   | Implement, committing as you go                            | —                       | the topic rules for what you touched                                        |
 | 5   | `install` → `build` → `typecheck` → `format` → `lint` → `test`, by hand | all green    | `@.claude/rules/testing.md`, `@.claude/rules/code-style.md`                  |
 | 6   | Document it on the website                                 | required if user-facing | `@.claude/rules/website-action-docs.md`, `@.claude/rules/changelog.md`       |
-| 7   | **Ask** to run the code review, then run it                | the ask                 | `@.claude/rules/code-review.md`                                             |
+| 7   | **Ask** to run the code review, then run it; then the second read where it applies | the ask | `@.claude/rules/code-review.md`                                             |
 | 8   | Manual testing                                             | **blocks the PR**       | below                                                                       |
 | 9   | Push, open the PR                                          | —                       | `@.claude/rules/build-and-commit.md`                                        |
 | 10  | Babysit the review                                         | every thread answered   | below                                                                       |
@@ -67,6 +67,8 @@ Ask whether to run it, naming the level and which row of the table in `@.claude/
 Target the worktree explicitly, in the form that rule prescribes — the hook now refuses an untargeted call. The session's working directory is the `master` checkout, so a careless invocation reviews the wrong tree — and once wrote eight files of edits into `master`. Afterwards, check every worktree is still clean, not just the target.
 
 Findings are candidates: verify each against the code, apply the ones that hold, and say which you declined and why.
+
+Some diffs then get the second read, on the code with those findings applied. `@.claude/rules/code-review.md` says which, and why it is not a second full review.
 
 Review before **manual testing**, not after, because a finding can change what there is to test.
 
