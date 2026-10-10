@@ -39,7 +39,7 @@ import type { TireCorner, TireCornerWear, TireWearReport, TireZone } from "@irac
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 
 import type { TranslatorState } from "../state.js";
-import { type StallVisit, updateStallVisit } from "./stall-visit.js";
+import type { StallVisit } from "./stall-visit.js";
 import { type TireSide, zonesFromCarSides } from "./tire-zones.js";
 import type { EmitFn, PendingEvent } from "./types.js";
 
@@ -129,23 +129,22 @@ function has(pending: ReadonlyArray<PendingEvent>, event: PendingEvent["event"])
 }
 
 /**
- * `stallVisit` is the tick's answer from `updateStallVisit`. The translator
- * resolves it once per tick and hands the same one to every consumer; left
- * out, it is resolved here, for a caller that runs this diff on its own.
- * Never both on one tick — see `updateStallVisit`.
+ * `stallVisit` is the tick's answer from `updateStallVisit`, which the caller
+ * resolves once per tick and hands to every consumer. It is required so this
+ * diff can never advance the latch a second time on a tick — see
+ * `updateStallVisit`.
  */
 export function diffTireWear(
   state: TranslatorState,
   telemetry: TelemetryData,
   emit: EmitFn,
   pending: ReadonlyArray<PendingEvent>,
-  stallVisit?: StallVisit,
+  stallVisit: StallVisit,
 ): void {
   // A saved replay scrubbed through a pit stop never reaches this diff: it
   // reads `IsReplayPlaying === false` while `SimMode === "replay"`, which the
   // translator's guard has held back since #1324 (it used to be a gate here),
   // and the replay-entry wipe drops a stored report with the rest of the state.
-  const visit = stallVisit ?? updateStallVisit(state, telemetry, pending);
 
   // 1. The readback cancels its exit fire on a fresh approach, and the report
   //    goes with it — one lifecycle, so the report can neither outlive the fire
@@ -157,8 +156,8 @@ export function diffTireWear(
 
   // 2. Leaving the box: the readings are the ones taken on arrival, and the
   //    visit is a stop only if the car drove into it.
-  if (visit.departed) {
-    state.tireWearReport = visit.driveIn ? buildTireWearReport(telemetry) : null;
+  if (stallVisit.departed) {
+    state.tireWearReport = stallVisit.driveIn ? buildTireWearReport(telemetry) : null;
   }
 
   // 3. Behind the exit readback, from the same tick — never ahead of it.

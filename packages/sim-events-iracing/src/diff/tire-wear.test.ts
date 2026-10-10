@@ -22,6 +22,7 @@ import { createInitialState, type TranslatorState } from "../state.js";
 import { TrackType } from "../track-type.js";
 import { diffPitLane } from "./pit-lane.js";
 import { diffPitReadback, PIT_READBACK_EXIT_DELAY_MS } from "./pit-readback.js";
+import { updateStallVisit } from "./stall-visit.js";
 import { buildTireWearReport, diffTireWear } from "./tire-wear.js";
 import type { PendingEvent } from "./types.js";
 
@@ -77,7 +78,7 @@ const STALL_DEPARTED: PendingEvent = { event: "pitStall.departed", data: {} };
 function step(state: TranslatorState, t: TelemetryData, pending: PendingEvent[] = []): PendingEvent[] {
   const emitted: PendingEvent[] = [];
 
-  diffTireWear(state, t, (e) => emitted.push(e), pending);
+  diffTireWear(state, t, (e) => emitted.push(e), pending, updateStallVisit(state, t, pending));
 
   return emitted;
 }
@@ -459,7 +460,7 @@ function runChain(ticks: ReadonlyArray<readonly [number, TelemetryData]>): Emitt
 
     diffPitLane(state, tick, TrackType.RoadCourse, now, emit);
     diffPitReadback(state, tick, now, emit, pending);
-    diffTireWear(state, tick, emit, pending);
+    diffTireWear(state, tick, emit, pending, updateStallVisit(state, tick, pending));
 
     for (const event of pending) out.push({ t, event });
   }
@@ -587,7 +588,7 @@ function replayCapture(): Emitted[] {
 
     diffPitLane(state, telemetryTick, TrackType.RoadCourse, now, emit);
     diffPitReadback(state, telemetryTick, now, emit, pending);
-    diffTireWear(state, telemetryTick, emit, pending);
+    diffTireWear(state, telemetryTick, emit, pending, updateStallVisit(state, telemetryTick, pending));
 
     for (const event of pending) out.push({ t, event });
   }
