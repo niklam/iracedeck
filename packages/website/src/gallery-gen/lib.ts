@@ -21,7 +21,10 @@ export interface GalleryEntry {
   actions: string[];
   /** Site-absolute asset path, e.g. /icon-gallery/template/fuel-service/add-fuel.svg */
   file: string;
-  /** True when the rendering used hand-picked sample values (dynamic templates, dash box) */
+  /**
+   * True when the rendering used hand-picked sample values (dynamic templates, dash box, and a
+   * template icon that draws a value in its artwork, such as Switch by Car Number's `42`)
+   */
   sample?: boolean;
   /**
    * Human-friendly display name for `template`-class entries' family (issue: gallery
@@ -72,6 +75,69 @@ export function extractColorSlots(svg: string): string[] {
 /** The literal `viewBox` attribute value of the root SVG element. */
 export function extractRawViewBox(svg: string): string | undefined {
   return svg.match(/<svg\b[^>]*\bviewBox\s*=\s*"([^"]+)"/i)?.[1];
+}
+
+const PLACEHOLDER_RE = /\{\{([^{}]*)\}\}/g;
+
+/**
+ * The names of a standalone icon's `{{...}}` placeholders that are not one of
+ * the four color slots, each once, in source order — the values an action
+ * fills at runtime (`{{value}}`, `{{needleAngle}}`, …) and the gallery has to
+ * fill with a sample. Deliberately wider than the `[A-Za-z0-9]+` a template
+ * key is made of: a mistyped `{{value-y}}` is still something that would
+ * reach the page as text.
+ */
+export function extractValuePlaceholders(svg: string): string[] {
+  const colorSlots: readonly string[] = COLOR_SLOTS;
+  const names = [...svg.matchAll(PLACEHOLDER_RE)].map((m) => m[1]);
+
+  return [...new Set(names)].filter((name) => !colorSlots.includes(name));
+}
+
+/**
+ * The sample values a template-class icon is rendered with (#1352):
+ * `undefined` for an icon with color slots only — it is composed exactly as on
+ * a device, so it is no sample — and otherwise its entry in `samples`.
+ *
+ * Throws when that entry is missing or leaves a placeholder uncovered, naming
+ * the icon and the tokens. Unlike {@link renderDynamicTemplate}, which blanks
+ * what it has no sample for, a standalone icon's placeholder is drawn into its
+ * artwork, so blanking it would publish a key with a hole in it: the next icon
+ * to gain one fails the build until somebody decides what the gallery shows.
+ *
+ * @param iconPath - `<family>/<name>`, the key into `samples`
+ * @param samples - Sample values per icon path; an `undefined` entry counts as missing
+ */
+export function resolveTemplateSample(
+  iconPath: string,
+  svg: string,
+  samples: Readonly<Record<string, Record<string, string> | undefined>>,
+): Record<string, string> | undefined {
+  const tokens = extractValuePlaceholders(svg);
+
+  if (tokens.length === 0) return undefined;
+
+  const sample = samples[iconPath] ?? {};
+  const uncovered = tokens.filter((token) => !Object.hasOwn(sample, token));
+
+  if (uncovered.length > 0) {
+    throw new Error(
+      `Template icon ${iconPath} has no gallery sample value for ${uncovered.map((t) => `{{${t}}}`).join(", ")}. ` +
+        "Give it one in the generator's template samples: left unfilled, the placeholder is published as literal text.",
+    );
+  }
+
+  return sample;
+}
+
+/**
+ * What is left of a template in a finished gallery asset: every distinct
+ * `{{token}}` still in it, plus a bare `{{` for one that never closes or whose
+ * name no template key could have. Empty for a clean asset. The generator
+ * refuses to write an asset this finds anything in, whichever class it is.
+ */
+export function findLeftoverPlaceholders(asset: string): string[] {
+  return [...new Set(asset.match(/\{\{(?:[A-Za-z0-9_.-]*\}\})?/g) ?? [])];
 }
 
 /**

@@ -4,9 +4,12 @@ import {
   DYNAMIC_SAMPLE_DATA,
   extractColorSlots,
   extractRawViewBox,
+  extractValuePlaceholders,
+  findLeftoverPlaceholders,
   parseIconImports,
   parseTitlesMaps,
   renderDynamicTemplate,
+  resolveTemplateSample,
   sampleTitle,
 } from "./lib.js";
 
@@ -98,6 +101,92 @@ describe("extractRawViewBox", () => {
 
   it("returns undefined when absent", () => {
     expect(extractRawViewBox(`<svg></svg>`)).toBeUndefined();
+  });
+});
+
+describe("extractValuePlaceholders", () => {
+  it("returns the non-color placeholders once each, in source order", () => {
+    const svg = `<svg><text y="{{valueY}}" fill="{{graphic1Color}}" font-size="{{valueFontSize}}">{{value}}</text><text y="{{valueY}}"/></svg>`;
+    expect(extractValuePlaceholders(svg)).toEqual(["valueY", "valueFontSize", "value"]);
+  });
+
+  it("returns nothing for an icon with color slots only", () => {
+    const svg = `<svg><rect fill="{{backgroundColor}}" stroke="{{graphic2Color}}"/><text fill="{{textColor}}"/></svg>`;
+    expect(extractValuePlaceholders(svg)).toEqual([]);
+  });
+
+  it("reports a name no template key could have, so a typo is not skipped", () => {
+    expect(extractValuePlaceholders(`<svg><text y="{{value-y}}">{{ value }}</text></svg>`)).toEqual([
+      "value-y",
+      " value ",
+    ]);
+  });
+});
+
+describe("resolveTemplateSample", () => {
+  const valueSvg = `<svg><text y="{{valueY}}" fill="{{graphic1Color}}">{{value}}</text></svg>`;
+
+  it("returns the icon's sample when it covers every value placeholder", () => {
+    const sample = { value: "42", valueY: "33" };
+    expect(
+      resolveTemplateSample("camera-focus/switch-by-car-number", valueSvg, {
+        "camera-focus/switch-by-car-number": sample,
+      }),
+    ).toBe(sample);
+  });
+
+  it("returns undefined for an icon with color slots only, whatever the table holds", () => {
+    const svg = `<svg><rect fill="{{backgroundColor}}"/></svg>`;
+    expect(resolveTemplateSample("fuel-service/add-fuel", svg, {})).toBeUndefined();
+    expect(
+      resolveTemplateSample("fuel-service/add-fuel", svg, { "fuel-service/add-fuel": { value: "1" } }),
+    ).toBeUndefined();
+  });
+
+  it("throws naming the icon and every token when the icon has no sample", () => {
+    expect(() => resolveTemplateSample("replay-control/speed-display", valueSvg, {})).toThrow(
+      /Template icon replay-control\/speed-display has no gallery sample value for \{\{valueY\}\}, \{\{value\}\}\./,
+    );
+  });
+
+  it("throws naming only the uncovered tokens when the sample is partial", () => {
+    expect(() => resolveTemplateSample("a/b", valueSvg, { "a/b": { value: "42" } })).toThrow(
+      /Template icon a\/b has no gallery sample value for \{\{valueY\}\}\./,
+    );
+  });
+
+  it("treats an undefined entry as a missing sample", () => {
+    expect(() => resolveTemplateSample("a/b", valueSvg, { "a/b": undefined })).toThrow(/Template icon a\/b/);
+  });
+
+  it("does not take another icon's sample", () => {
+    expect(() => resolveTemplateSample("a/b", valueSvg, { "a/c": { value: "42", valueY: "33" } })).toThrow(
+      /Template icon a\/b/,
+    );
+  });
+
+  it("accepts an empty string as a value", () => {
+    const sample = { value: "", valueY: "33" };
+    expect(resolveTemplateSample("a/b", valueSvg, { "a/b": sample })).toBe(sample);
+  });
+});
+
+describe("findLeftoverPlaceholders", () => {
+  it("finds nothing in a finished asset", () => {
+    expect(findLeftoverPlaceholders(`<svg><style>a{fill:red}</style><text y="33">42</text></svg>`)).toEqual([]);
+  });
+
+  it("lists each leftover token once", () => {
+    const asset = `<svg><text y="{{valueY}}">{{speedText}}</text><g transform="rotate({{needleAngle}}, 38, 38)"/><text y="{{valueY}}"/></svg>`;
+    expect(findLeftoverPlaceholders(asset)).toEqual(["{{valueY}}", "{{speedText}}", "{{needleAngle}}"]);
+  });
+
+  it("reports a bare {{ for a placeholder that never closes or has an odd name", () => {
+    expect(findLeftoverPlaceholders(`<svg><text>{{ value }}</text><text>{{unclosed</text></svg>`)).toEqual(["{{"]);
+  });
+
+  it("finds a color slot nobody resolved too", () => {
+    expect(findLeftoverPlaceholders(`<svg><rect fill="{{graphic2Color}}"/></svg>`)).toEqual(["{{graphic2Color}}"]);
   });
 });
 

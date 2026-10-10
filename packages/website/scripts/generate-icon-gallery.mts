@@ -8,10 +8,20 @@
  *
  * Run with tsx so the TypeScript imports resolve (same pattern as the root
  * scripts/generate-action-comms.mjs):  pnpm --filter @iracedeck/website generate:gallery
+ *
+ * No `{{placeholder}}` reaches either output (#1352): a template icon that
+ * draws a value in its artwork needs an entry in `TEMPLATE_SAMPLES`, and
+ * `writeAsset` refuses an asset of any class with one left in it — both fail
+ * the run, and so `typecheck`, `build` and `dev`, which all start with it.
+ *
+ * `--out <dir>` writes both outputs under `<dir>` instead of this package, at
+ * the same relative paths; the root scripts/website-icon-gallery.test.mjs uses
+ * it so a test run never rewrites the gallery under a dev server or a build.
  */
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import url from "node:url";
+import { parseArgs } from "node:util";
 
 import {
   assembleIcon,
@@ -28,6 +38,7 @@ import {
 import { renderAudioStripSvg } from "../../iracing-actions/src/actions/audio-controls/audio-dial-surface.ts";
 import { renderBlackBoxStrip } from "../../iracing-actions/src/actions/black-box-selector/black-box-selector-dial-surface.ts";
 import { renderCarCarousel } from "../../iracing-actions/src/actions/camera-controls/camera-dial-surface.ts";
+import { switchTargetTemplateValues } from "../../iracing-actions/src/actions/camera-controls/switch-target-value.ts";
 import { renderStripCanvasSvg } from "../../iracing-actions/src/actions/fuel-service/fuel-dial-surface.ts";
 import { statusBarOn } from "../../iracing-actions/src/icons/status-bar.ts";
 import { type DialSideMarker, resolveDialBoxColors } from "../../iracing-actions/src/shared/dial-box.ts";
@@ -36,9 +47,11 @@ import {
   DYNAMIC_SAMPLE_DATA,
   extractColorSlots,
   extractRawViewBox,
+  findLeftoverPlaceholders,
   parseIconImports,
   parseTitlesMaps,
   renderDynamicTemplate,
+  resolveTemplateSample,
   sampleTitle,
   type GalleryEntry,
 } from "../src/gallery-gen/lib.js";
@@ -56,8 +69,10 @@ const MANIFEST_PATH = path.join(
   "com.iracedeck.sd.core.sdPlugin",
   "manifest.json",
 );
-const ASSETS_OUT = path.join(__dirname, "..", "public", "icon-gallery");
-const JSON_OUT = path.join(__dirname, "..", "src", "data", "icon-gallery.json");
+const { values: args } = parseArgs({ options: { out: { type: "string" } } });
+const OUT_ROOT = args.out ? path.resolve(args.out) : path.join(__dirname, "..");
+const ASSETS_OUT = path.join(OUT_ROOT, "public", "icon-gallery");
+const JSON_OUT = path.join(OUT_ROOT, "src", "data", "icon-gallery.json");
 
 const NON_FAMILY_DIRS = new Set(["preview", "src", "node_modules"]);
 
@@ -206,11 +221,59 @@ const DIAL_BOX_SAMPLES: DialBoxSampleSpec[] = [
   },
 ];
 
+/**
+ * Sample values for the template-class icons that draw a VALUE in their
+ * artwork, keyed by `<family>/<name>` and passed to `assembleIcon` as
+ * `templateValues` (#1352). Colors alone would leave the placeholder in the
+ * published asset as literal text, as `{{speedText}}` and `{{needleAngle}}`
+ * were. `resolveTemplateSample` throws for an icon with such a placeholder and
+ * no entry covering it, so this table cannot fall behind `packages/icons/`.
+ *
+ *   - camera-focus/switch-by-car-number, switch-by-position: the configured
+ *     target (`42`, `P3`) with its fitted font size and baseline, from the same
+ *     `switchTargetTemplateValues` the device calls (camera-controls.ts). A
+ *     target that function does not know returns `undefined`, which
+ *     `resolveTemplateSample` reports as a missing sample.
+ *
+ * Replay Control fills its two itself (replay-control.ts
+ * `generateReplayControlSvg`) with functions that live beside the action
+ * class and cannot be imported here, so these are read off the source, as
+ * `SETUP_DIAL_SAMPLES` are. Both show a replay at normal speed. Source lines
+ * as of this change:
+ *   - replay-control/speed-display: `speedText` is `formatSpeedDisplay(speed,
+ *     slowMo)` (line 642) -> "1x" for speed 1, not slow motion (line 599,
+ *     `${speed}x`). With no replay data it reads "PAUSED" (line 591).
+ *   - replay-control/set-speed: `needleAngle` is
+ *     `String(calculateNeedleAngle(settings.speed))` (line 682), and the
+ *     setting's default is "1" (line 875) -> position 14 + 1 = 15 ->
+ *     ((15 - 15) / 15) * 90 = 0, the needle upright (lines 580-582). On the
+ *     device that key's title is the speed itself, "1x" (line 683); the card
+ *     keeps the icon's default title, SET SPEED, like every other template.
+ */
+const TEMPLATE_SAMPLES: Record<string, Record<string, string> | undefined> = {
+  "camera-focus/switch-by-car-number": switchTargetTemplateValues("switch-by-car-number", { carNumber: 42 }),
+  "camera-focus/switch-by-position": switchTargetTemplateValues("switch-by-position", { position: 3 }),
+  "replay-control/speed-display": { speedText: "1x" },
+  "replay-control/set-speed": { needleAngle: "0" },
+};
+
 function repoRel(p: string): string {
   return path.relative(REPO_ROOT, p).replaceAll(path.sep, "/");
 }
 
+/**
+ * Writes one gallery asset — and refuses one that still carries a template
+ * placeholder, whichever class it is (#1352). Every asset is published as a
+ * finished picture, so a `{{token}}` in it is a value nobody filled, shown to
+ * visitors as text or silently dropping the attribute it sits in.
+ */
 function writeAsset(sitePath: string, svg: string): void {
+  const leftover = findLeftoverPlaceholders(svg);
+
+  if (leftover.length > 0) {
+    throw new Error(`Gallery asset ${sitePath} still carries ${leftover.join(", ")}: nothing filled it.`);
+  }
+
   const dest = path.join(ASSETS_OUT, sitePath);
   mkdirSync(path.dirname(dest), { recursive: true });
   writeFileSync(dest, svg, "utf-8");
@@ -318,10 +381,13 @@ rmSync(ASSETS_OUT, { recursive: true, force: true });
 const entries: GalleryEntry[] = [];
 const skippedTemplates: string[] = [];
 const excludedHidden: string[] = [];
+const usedTemplateSamples = new Set<string>();
 
 // 1. Key icon templates — full composition through the real pipeline. Orphan
 // templates (imported by no action) are skipped rather than shown as stale
 // artwork in the designer inventory (issue: gallery feedback wave, item 8).
+// An icon that draws a value in its artwork is composed with its sample from
+// TEMPLATE_SAMPLES and marked `sample`, like the dynamic class (#1352).
 for (const familyDirent of readdirSync(ICONS_ROOT, { withFileTypes: true })) {
   if (!familyDirent.isDirectory() || NON_FAMILY_DIRS.has(familyDirent.name)) continue;
   const family = familyDirent.name;
@@ -361,7 +427,10 @@ for (const familyDirent of readdirSync(ICONS_ROOT, { withFileTypes: true })) {
     const title = resolveTitleSettings(svg, {}, undefined, runtimeTitle);
     const border = resolveBorderSettings(svg, {}, undefined);
     const graphic = resolveGraphicSettings({}, undefined);
-    const composed = toRawSvg(assembleIcon({ graphicSvg: svg, colors, title, border, graphic }));
+    const templateValues = resolveTemplateSample(iconPath, svg, TEMPLATE_SAMPLES);
+    const composed = toRawSvg(assembleIcon({ graphicSvg: svg, colors, title, border, graphic, templateValues }));
+
+    if (templateValues) usedTemplateSamples.add(iconPath);
 
     const sitePath = `template/${family}/${name}.svg`;
     writeAsset(sitePath, composed);
@@ -377,8 +446,18 @@ for (const familyDirent of readdirSync(ICONS_ROOT, { withFileTypes: true })) {
       actions: consumers,
       file: `/icon-gallery/${sitePath}`,
       familyName,
+      ...(templateValues ? { sample: true } : {}),
     });
   }
+}
+
+// A sample no icon was rendered with is dead: its icon was renamed, lost its
+// placeholder, or is no longer shown (orphaned, or every consumer hidden).
+// Left in the table it would read as covering something, so it fails too.
+const unusedTemplateSamples = Object.keys(TEMPLATE_SAMPLES).filter((key) => !usedTemplateSamples.has(key));
+
+if (unusedTemplateSamples.length > 0) {
+  throw new Error(`TEMPLATE_SAMPLES has entries no gallery icon uses: ${unusedTemplateSamples.join(", ")}.`);
 }
 
 // 2. Dynamic templates — template frame with sample values; the tri-state
