@@ -38,7 +38,9 @@ export function buildChangelogData(mdxSource) {
 
   return {
     _meta: {
-      generatedFrom: CHANGELOG_SOURCE_PATH,
+      // Still one string (the published shape is unchanged), now naming both
+      // sources: the in-development notes are fragments since #1386.
+      generatedFrom: `${CHANGELOG_SOURCE_PATH} + changelog.d/`,
       generatedBy: CHANGELOG_GENERATE_COMMAND,
       note: "Generated file — edit the source above, then regenerate. Bullet items are pre-escaped HTML.",
     },
