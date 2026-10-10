@@ -8,19 +8,44 @@
 import { PI_WARNINGS_KEY } from "@iracedeck/app-constants";
 
 import { getGlobalSettings } from "./global-settings.js";
+import { parseStoredWarnings } from "./pi-warnings.js";
 
 /** What marks a settings key as internal: plugin-written, not a user choice. */
 const INTERNAL_KEY_PREFIX = "_";
 
 /**
- * Internal keys the snapshot keeps. Everything else starting with `_` is
- * dropped.
+ * Turns a kept internal key's stored value into what the snapshot records.
+ *
+ * An internal key is a passthrough key: the settings schema never validates it,
+ * so the stored value can be of any shape, whoever was meant to write it. The
+ * reader is what decides which part of it may leave the machine, and it returns
+ * data of its own making — validated, and nothing it did not check.
+ */
+type KeptInternalKeyReader = (stored: unknown) => unknown;
+
+/**
+ * The internal keys the snapshot keeps, each with the reader its value goes
+ * through. There is deliberately no generic reader and no default: a key cannot
+ * be kept without naming how it is validated, so a new one cannot arrive in the
+ * file as whatever happened to be stored.
  *
  * `_warnings` is here because the banners a user was shown are exactly what
- * support asks about. Adding a key is a decision about what leaves the user's
- * machine, so read what its producers put in it first.
+ * support asks about. It goes through the banners' own validated read, so the
+ * snapshot holds the well-formed `{ id, level, message }` records and nothing
+ * else the value carried.
+ *
+ * Adding a key is a decision about what leaves the user's machine: read what
+ * its producers put in it first, and give it a reader that admits only that.
+ *
+ * A `Map`, not an object: the lookup is by a key read from stored settings, and
+ * an object would answer `__proto__` or `constructor` with something inherited.
  */
-export const SNAPSHOT_KEPT_INTERNAL_KEYS: readonly string[] = [PI_WARNINGS_KEY];
+const KEPT_INTERNAL_KEY_READERS: ReadonlyMap<string, KeptInternalKeyReader> = new Map<string, KeptInternalKeyReader>([
+  [PI_WARNINGS_KEY, parseStoredWarnings],
+]);
+
+/** Internal keys the snapshot keeps. Everything else starting with `_` is dropped. */
+export const SNAPSHOT_KEPT_INTERNAL_KEYS: readonly string[] = [...KEPT_INTERNAL_KEY_READERS.keys()];
 
 /**
  * The settings for the snapshot's `settings` section: every top-level key that
@@ -34,17 +59,20 @@ export const SNAPSHOT_KEPT_INTERNAL_KEYS: readonly string[] = [PI_WARNINGS_KEY];
  * excluded without anyone remembering this file. A list of the keys known to be
  * secret would let the next one through — do not invert it.
  *
- * The rule reads top-level keys only. A value under a kept key or under an
- * ordinary key is returned whole, whatever its own keys are called.
+ * A kept internal key is not copied either: its value goes through that key's
+ * own reader, which validates it. `_warnings` yields the well-formed warning
+ * records, as data rather than the JSON string the settings hold; a malformed
+ * record is left out, and a value that is not a list of records yields none.
+ * The snapshot does not say that something was left out.
  *
- * A kept internal value stored as a JSON string (`_warnings` is one) is parsed,
- * so it reads as data in the file; a string that does not parse is kept as the
- * string. Ordinary keys are never parsed: a key binding is a JSON string too,
- * and the snapshot shows it as the settings hold it.
+ * The rule reads top-level keys only. A value under an ordinary key is returned
+ * whole, whatever its own keys are called, and is never parsed: a key binding
+ * is a JSON string too, and the snapshot shows it as the settings hold it.
  *
  * Synchronous and side-effect-free, as every snapshot reader is: it returns a
- * new top-level object and never mutates what it reads. The values under it are
- * the settings' own, not copies, so a caller must not write to them.
+ * new top-level object and never mutates what it reads. The values under
+ * ordinary keys are the settings' own, not copies, so a caller must not write
+ * to them.
  *
  * It never throws for settings that are not up yet. Before `initGlobalSettings`
  * has run, and until the store has loaded, the cache is the schema defaults, so
@@ -61,21 +89,13 @@ export function readSettingsForSnapshot(
   for (const [key, value] of Object.entries(settings)) {
     if (!key.startsWith(INTERNAL_KEY_PREFIX)) {
       kept[key] = value;
-    } else if (SNAPSHOT_KEPT_INTERNAL_KEYS.includes(key)) {
-      kept[key] = parsedIfJson(value);
+      continue;
     }
+
+    const read = KEPT_INTERNAL_KEY_READERS.get(key);
+
+    if (read !== undefined) kept[key] = read(value);
   }
 
   return kept;
-}
-
-/** A JSON string as the data it holds; anything else, and a string that does not parse, as it is. */
-function parsedIfJson(value: unknown): unknown {
-  if (typeof value !== "string") return value;
-
-  try {
-    return JSON.parse(value) as unknown;
-  } catch {
-    return value;
-  }
 }

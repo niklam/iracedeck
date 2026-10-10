@@ -11,7 +11,7 @@ import {
   SETTINGS_CHANNEL_KEY,
   updateGlobalSettings,
 } from "./global-settings.js";
-import { setWarning } from "./pi-warnings.js";
+import { parseStoredWarnings, setWarning } from "./pi-warnings.js";
 import type { SettingsHost } from "./settings-host.js";
 import { createMemorySettingsStore } from "./settings-store.js";
 import { readSettingsForSnapshot, SNAPSHOT_KEPT_INTERNAL_KEYS } from "./snapshot-settings.js";
@@ -127,15 +127,94 @@ describe("readSettingsForSnapshot", () => {
       ]);
     });
 
-    it("keeps a warnings value that is already data, deep-equal to what was set", () => {
-      const warnings = [{ id: "a", level: "info", message: "m" }];
+    // The key is passthrough, so the schema never validates it: whatever sits
+    // under it reaches the reader as it is. Only well-formed records may leave.
+    describe("a value no producer wrote", () => {
+      const valid = { id: "a", level: "warning", message: "A banner" };
 
-      expect(readSettingsForSnapshot({ [PI_WARNINGS_KEY]: warnings })[PI_WARNINGS_KEY]).toEqual(warnings);
-    });
+      it("yields only the well-formed records of a list that holds malformed ones too", async () => {
+        await startWith({});
+        updateGlobalSettings({
+          [PI_WARNINGS_KEY]: JSON.stringify([
+            valid,
+            { id: "no-message", level: "warning", leaked: "LEAK-no-message" },
+            { id: "bad-level", level: "LEAK-level", message: "LEAK-bad-level" },
+            { id: 7, level: "info", message: "LEAK-numeric-id" },
+            "LEAK-bare-string",
+            ["LEAK-nested-array"],
+            null,
+            42,
+          ]),
+        });
+        // Not vacuous: the cache holds what the reader must not pass on.
+        expect(cache()[PI_WARNINGS_KEY]).toContain("LEAK-bare-string");
 
-    it("keeps a warnings string that does not parse as the string it is", () => {
-      expect(readSettingsForSnapshot({ [PI_WARNINGS_KEY]: "[{not json" })[PI_WARNINGS_KEY]).toBe("[{not json");
-      expect(readSettingsForSnapshot({ [PI_WARNINGS_KEY]: "" })[PI_WARNINGS_KEY]).toBe("");
+        const result = readSettingsForSnapshot();
+
+        expect(result[PI_WARNINGS_KEY]).toEqual([valid]);
+        expect(JSON.stringify(result)).not.toContain("LEAK");
+      });
+
+      it("drops a field the record shape does not have", async () => {
+        await startWith({});
+        updateGlobalSettings({
+          [PI_WARNINGS_KEY]: JSON.stringify([{ ...valid, token: "tok-EXTRA", nested: { deep: "tok-DEEP" } }]),
+        });
+
+        const result = readSettingsForSnapshot();
+
+        expect(result[PI_WARNINGS_KEY]).toEqual([valid]);
+        expect(Object.keys((result[PI_WARNINGS_KEY] as object[])[0])).toEqual(["id", "level", "message"]);
+        expect(JSON.stringify(result)).not.toContain("tok-");
+      });
+
+      it.each([
+        ["a JSON object", JSON.stringify(valid)],
+        ["a JSON string", JSON.stringify("LEAK-text")],
+        ["a JSON number", "5"],
+        ["text that is not JSON", "[{LEAK not json"],
+        ["an empty string", ""],
+        ["a list that was never serialised", [valid]],
+        ["an object", { LEAK: "object" }],
+        ["a number", 5],
+        ["null", null],
+      ])("yields no records for %s, as the plugin's own read of the key does", async (_name, stored) => {
+        await startWith({});
+        updateGlobalSettings({ [PI_WARNINGS_KEY]: stored });
+        expect(cache()[PI_WARNINGS_KEY]).toEqual(stored);
+
+        const result = readSettingsForSnapshot();
+
+        expect(result[PI_WARNINGS_KEY]).toEqual([]);
+        expect(JSON.stringify(result)).not.toContain("LEAK");
+        // The same read the plugin's banners go through.
+        expect(result[PI_WARNINGS_KEY]).toEqual(parseStoredWarnings(stored));
+
+        // And the plugin agrees there was nothing: its next write starts from
+        // an empty list rather than from anything the value held.
+        setWarning("b", "info", "B");
+        expect(JSON.parse(cache()[PI_WARNINGS_KEY] as string)).toEqual([{ id: "b", level: "info", message: "B" }]);
+      });
+
+      it("validates the value it was handed, not the cache's", async () => {
+        await startWith({});
+        setWarning("from-the-cache", "error", "CACHE banner");
+
+        const result = readSettingsForSnapshot({
+          [PI_WARNINGS_KEY]: JSON.stringify([valid, { id: "x", level: "warning", extra: "LEAK-argument" }]),
+        });
+
+        expect(result).toEqual({ [PI_WARNINGS_KEY]: [valid] });
+      });
+
+      it("hands back records of its own, not the stored ones", () => {
+        const stored = JSON.stringify([valid]);
+        const first = readSettingsForSnapshot({ [PI_WARNINGS_KEY]: stored })[PI_WARNINGS_KEY];
+        const second = readSettingsForSnapshot({ [PI_WARNINGS_KEY]: stored })[PI_WARNINGS_KEY];
+
+        expect(first).toEqual(second);
+        expect(first).not.toBe(second);
+      });
     });
   });
 

@@ -34,13 +34,29 @@ const PiWarningSchema = z.object({
   message: z.string(),
 });
 
-function readWarnings(): PiWarning[] {
-  const raw = (getGlobalSettings() as Record<string, unknown>)[PI_WARNINGS_KEY];
-
-  if (typeof raw !== "string" || raw === "") return [];
+/**
+ * The well-formed warning records a stored `_warnings` value holds: the one
+ * validated read of the key, whoever asks.
+ *
+ * The value is a JSON array of records. Anything else — a value that is not a
+ * string, text that is not JSON, JSON that is not an array — holds no records,
+ * and a list entry that is not a `{ id, level, message }` record is left out on
+ * its own, so one bad entry does not cost the rest. A record comes back as a
+ * new object with those three fields and nothing else: a field the schema does
+ * not name is stripped.
+ *
+ * It bounds SHAPE, not size: a well-formed record is returned whatever the
+ * length of its message, and however many there are.
+ *
+ * Pure, so the Telemetry Snapshot's settings reader (`snapshot-settings.ts`,
+ * #1387) validates a value it was handed through the same step the banners'
+ * own read of the cache goes through.
+ */
+export function parseStoredWarnings(stored: unknown): PiWarning[] {
+  if (typeof stored !== "string" || stored === "") return [];
 
   try {
-    const parsed: unknown = JSON.parse(raw);
+    const parsed: unknown = JSON.parse(stored);
 
     if (!Array.isArray(parsed)) return [];
 
@@ -52,6 +68,10 @@ function readWarnings(): PiWarning[] {
   } catch {
     return [];
   }
+}
+
+function readWarnings(): PiWarning[] {
+  return parseStoredWarnings((getGlobalSettings() as Record<string, unknown>)[PI_WARNINGS_KEY]);
 }
 
 /**
