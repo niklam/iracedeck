@@ -1,6 +1,6 @@
 # Audio session name and icon in the Windows Volume Mixer
 
-> **Issue:** [#1253](https://github.com/niklam/iracedeck/issues/1253) · **Supersedes:** _none_ · **Superseded by:** _none_
+> **Issue:** [#1253](https://github.com/niklam/iracedeck/issues/1253) · **Supersedes:** _none_ · **Superseded by:** [2026-10-10-issue-1411-audio-session-rename-deadlock.md](2026-10-10-issue-1411-audio-session-rename-deadlock.md), for how the identity is applied
 >
 > Point-in-time design record. The code and `.claude/rules/` are the truth; this is not documentation.
 
