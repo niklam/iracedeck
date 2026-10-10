@@ -43,11 +43,11 @@ This is a judgement and stays prose. A path list in a hook would fire on a one-l
 
 ### 3. After the code review's findings are applied, before manual testing
 
-It reads the code that will be tested and shipped, so it runs once the `/code-review` findings that hold have been applied. Running it first would spend it on defects the full read catches anyway, and a fix round after it would leave the final code unread by it.
+It reads the code that will be tested and shipped, so it runs once the `/code-review` findings that hold have been applied. Running it first would spend it on defects the full read catches anyway, and a fix round after it would leave the final code unread by it. The order is the reason, not a precondition: a branch whose `/code-review` was declined still gets the second read on these kinds of diff, and its tally says no general read came first.
 
 ### 4. One agent, `opus`, read-only, pointed at the worktree
 
-One fresh agent per run, on `opus` (a review that weighs a claim against the code), told to edit nothing, given the worktree path and `origin/master...HEAD`. It reads the working tree normally; the git-objects-only reading in the backtest existed to hide later fixes and has no purpose on a live branch. A wide diff is still one agent: the brief tells it to skip generated files and spend its effort on what carries logic, which is how #1174's 1,221-file diff was read.
+One fresh agent per run, on `opus` (a review that weighs a claim against the code), told to edit nothing, given the worktree path and the diff against the branch the PR targets (`origin/master...HEAD`, or the release branch for a fix cut from one). It reads the working tree normally; the git-objects-only reading in the backtest existed to hide later fixes and has no purpose on a live branch. A wide diff is still one agent: the brief tells it to skip generated files and spend its effort on what carries logic, which is how #1174's 1,221-file diff was read.
 
 ### 5. The brief reports every confirmed mechanism and states its reach
 
@@ -70,15 +70,15 @@ Findings are candidates, as with `/code-review`. The coordinator checks each aga
 - **narrow, and it holds** — fixed on the branch when the fix is small and inside the change's scope; otherwise filed as an issue, or declined with the reason;
 - **does not hold** — declined, and if it is a class the reviewer will raise again, recorded (decision 8).
 
-The maintainer hears the tally and anything that needs a decision, never the raw report. The PR body carries one line: how many findings the second read raised, how many were applied, how many filed.
+The maintainer hears the tally and anything that needs a decision, never the raw report. The PR body carries one line: how many findings the second read raised, how many held, and of those how many were fixed, filed and declined. "Held" is counted on its own because a narrow finding that is real may still be declined, and decision 7 must not read that as nothing found.
 
 ### 7. It is removed if it stops finding things
 
-After ten runs on real branches, count the findings that held. If none did in those ten, the exception in decision 1 is withdrawn and the skill deleted. The count comes from the PR bodies' one-line tallies. Ten is chosen because the backtest averaged more than one held finding per PR on diffs of these kinds; ten empty runs would mean the real work does not look like the backtest.
+After ten runs on real branches, count the findings that held. If none did in those ten, the exception in decision 1 is withdrawn and the skill deleted. The count is the "held" number in the PR bodies' one-line tallies. Removing the step means removing every mention of it, which the skill lists. Ten is chosen because the backtest averaged more than one held finding per PR on diffs of these kinds; ten empty runs would mean the real work does not look like the backtest.
 
 ### 8. What it remembers is a committed file, and only what changes the next run
 
-`.claude/skills/second-read/learnings.md` is read by the reviewer at the start of every run. An entry is one line with the PR it came from, and there are two kinds:
+`.claude/skills/second-read/learnings.md` is read by the reviewer at the start of every run, from the main checkout rather than the issue's worktree, so a tree cut before an entry landed still gets it. An entry is one line with the PR it came from, and there are two kinds:
 
 - **a miss** — a defect of this class that CodeRabbit, a later bug or the maintainer found on a diff the second read had run on. If it shows a question is missing, the question is added to the brief and the entry says so. The workflow misses on #1121 are the pattern: a network call with no timeout and a write permission granted to every job are each a line in the seeded file.
 - **a non-finding** — a class of finding that was raised, checked and declined for a reason that will hold again, so it is not raised a third time.
@@ -117,3 +117,5 @@ The step is prose and a prompt, so it is proven by use rather than by a suite.
 - `.claude/skills/second-read/SKILL.md` and `learnings.md` — new.
 - `.claude/rules/code-review.md` — rule 4 of *How reviews are staged inside an issue* names the second read as its one exception and points at the skill; a short section says which diffs get one.
 - `.claude/rules/issue-workflow.md` — step 7 and its paragraph name it, between applying the review's findings and manual testing.
+- `.claude/rules/build-and-commit.md` — the code-review ask also says whether a second read will follow.
+- `.claude/CLAUDE.md` — the one-line summary of the staging rule mentions it.
