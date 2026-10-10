@@ -89,7 +89,7 @@ A broken section must never cost the telemetry.
 
 The section is named `sim`, not `iracing`, so a second simulator's translator registers under the same name.
 
-**`raceEngineer`** (reader in `@iracedeck/audio-scenarios`): the active voice; per audio bus, the fire in flight (id, weight, when it started), the focus owner and floor, every waiting fire (id, weight, supersede group, first deferral time, max wait, the leader it queues behind) and an armed pending hold; each contract's last-fired stamp; and each callout family's module-level state (the gap and position cooldowns, the furled marker, the opponent pending values, the radar, spotter and pit-speeding engines' episode state). `IScenarioEngine` gains `describeState()` for the engine half, and each family file with module state exports a reader that the catalog index aggregates.
+**`raceEngineer`** (reader in `@iracedeck/audio-scenarios`): the active voice; per audio bus, the fire in flight (id, weight, how far through its clips it is), the focus owner and floor, every waiting fire (id, weight, supersede group, first deferral time, max wait, the leader it queues behind) and an armed pending hold; each contract's last-fired stamp; and each callout family's module-level state (the gap and position cooldowns, the furled marker, the opponent pending values, the radar, spotter and pit-speeding engines' episode state). `IScenarioEngine` gains `describeState()` for the engine half, and each family file with module state exports a reader that the catalog index aggregates.
 
 `collectedAt` at the top is `Date.now()`, the clock every stamp in these sections uses, so an age is a subtraction.
 
@@ -107,7 +107,7 @@ The callout samples once per lap at mid-lap, so `now` is not "what was said"; `a
 ### 6. The file on disk
 
 - **One file.** The state goes in the existing `.json`, not beside it. One attachment is what a user will send, and state in the same object as the telemetry is provably from the same press.
-- **Compact leaves.** The writer puts an array or object whose members are all primitives on one line and indents everything else by two spaces. It is still plain JSON and parses identically. Today's files are about 200 KB with every element of every 64-car array on its own line; the raw gap traces alone are up to about 575 samples for each of 64 cars (`GAP_TRACE_SPAN_LAPS` over `GAP_TRACE_MIN_STEP`), which would be several megabytes indented and is an estimated 1.5 MB with compact leaves. The writer lives in `iracing-sdk`'s `snapshot.ts` and the snapshot CLI uses it too, so both producers write the same shape.
+- **Compact leaves.** The writer puts an array whose members are all primitives on one line, and likewise an object of at most four primitive members (a trace sample, a position pair), and indents everything else by two spaces. A wider primitive-only object, such as a session-info driver record with fifty keys, stays one key per line, where it is readable. It is still plain JSON and parses identically. Today's files are about 200 KB with every element of every 64-car array on its own line; the raw gap traces alone are up to about 575 samples for each of 64 cars (`GAP_TRACE_SPAN_LAPS` over `GAP_TRACE_MIN_STEP`), which would be several megabytes indented and is an estimated 1.5 MB with compact leaves. The writer lives in `iracing-sdk`'s `snapshot.ts` and the snapshot CLI uses it too, so both producers write the same shape.
 - **Size budget: 5 MB.** The estimate above is arithmetic from the trace constants, not a measurement. The measurement that decides it is a snapshot taken mid-race with a field of 60 or more cars; over budget, the reader thins the gap traces and nothing else changes.
 - **`schema: 1`** covers the curated sections. It is bumped when a curated key is renamed or removed, never for an addition, and never for anything under `sim.raw`.
 
@@ -117,7 +117,7 @@ The callout samples once per lap at mid-lap, so `now` is not "what was said"; `a
 
 ### 8. Wiring
 
-- `plugin-runtime` registers the four sections, each in the phase that initialises what it reads (`environment` in `initCore`, `settings` in the settings phase, `sim` in `initSim`). The `raceEngineer` reader is registered unconditionally and reports `initialized: false` when the scenario engine was never started, so a snapshot from a user with the engineer off says so instead of lacking the section.
+- `plugin-runtime` registers all four sections in one place, at the end of `initCore`. Registration only stores a function, and every reader answers for a subsystem that has not started yet (`initialized: false`) instead of throwing, so the registrations need no ordering against the later phases and one file names every section. A snapshot from a plugin whose scenario engine never started says so instead of lacking the section.
 - Telemetry Control calls `collectStateSections()` inside its existing `try`, straight after reading telemetry and session info and with no `await` between them. It already imports diagnostics for Capture Profile.
 - `buildSnapshotEnvelope` takes the collected state as an optional argument, so the CLI's call is unchanged and writes no `pluginState`.
 
@@ -140,7 +140,7 @@ The callout samples once per lap at mid-lap, so `now` is not "what was said"; `a
 - Anonymising driver names or customer ids. Session info already carries them in every snapshot since #635; the website page says what the file contains.
 - Reading a snapshot back: loading one into the scenario harness or replaying it through the translator.
 - Any stability promise for `sim.raw`.
-- A guard that every new piece of module-level callout state joins the Race Engineer reader. No test can see a new `let`; `race-engineer-callouts.md` gains the step instead.
+- A guard that every new module-level variable of a callout family joins the Race Engineer reader. The guard is per file (see Testing): a family file that declares module state must export a reader. Which variables that reader returns is the author's call, and `race-engineer-callouts.md` gains the step.
 
 ## Testing
 
@@ -151,10 +151,10 @@ Automated:
 - **Settings reader:** run over the real settings cache holding `_settingsChannel`, `_voicePacks` and `_warnings`; the output contains `_warnings` and no other `_` key, and the token string appears nowhere in the serialised section. A second test adds an unknown `_future` key and expects it gone.
 - **Fuel:** the existing `diffFuelLapsLeft` tests pass unchanged after the extraction; a new test drives the diff to an announcement and asserts the reader's `now.count` at that same tick equals the announced count.
 - **`sim` reader:** the caution fixture replayed through the translator, then read; `raw` round-trips through `JSON.parse`, and the Sets arrive as arrays.
-- **Race Engineer reader:** a fire deferred behind a held bus appears in the waiting list with its group and wait.
+- **Race Engineer reader:** a fire deferred behind a held bus appears in the waiting list with its group and wait. A source scan of `catalog/pit-crew/` fails for a file that declares module-level `let` state and exports no state reader.
 - **Writer:** output parses to the same value as `JSON.stringify` gives; a 64-element number array is one line.
 - **Telemetry Control:** `pluginState` is written when the collector succeeds; when it throws, the files are still written with an error entry.
-- **Startup order:** `start-plugin.test.ts` records the four registrations.
+- **Startup order:** `start-plugin.test.ts` records the four registrations, adjacent, at the end of `initCore`.
 
 By hand, in iRacing:
 
