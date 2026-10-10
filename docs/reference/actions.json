@@ -68,6 +68,11 @@
               "value": "air-temp",
               "label": "Air Temperature",
               "description": "Air temperature (AirTemp) as a whole number with its unit, e.g. 23°C / 73°F, in the driver's display units; -- when there is no reading; spoken on press"
+            },
+            {
+              "value": "tire-temps",
+              "label": "Tire Temperatures",
+              "description": "Tire carcass temperatures from the last time the car came in from a run — a pit-stop reading, not a live gauge (iRacing refreshes the values only when the car comes in and holds them through the next stint; after a tire change they describe the set that came off). All four tires in a 2×2 grid (one figure per tire: weighted center, average, hottest zone or middle only) or one corner's outside / middle / inside zones; optional color bands with per-key thresholds in °C or °F; -- until the first reading; keypad only, silent on press"
             }
           ]
         },
