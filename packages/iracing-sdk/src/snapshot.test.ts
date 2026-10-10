@@ -299,6 +299,26 @@ describe("generateMarkdown", () => {
       expect(generateMarkdown(sampleTelemetry, sampleSessionInfo, now, [{ title: "Empty", rows: [] }])).toBe(base);
     });
 
+    it("should keep a caller's cell on its own row: line breaks become spaces and pipes are escaped", () => {
+      const markdown = generateMarkdown(sampleTelemetry, sampleSessionInfo, now, [
+        {
+          title: "Plugin State",
+          rows: [
+            ["a|b", "first\nsecond\r\nthird\rfourth"],
+            ["Host", "elgato"],
+          ],
+        },
+      ]);
+      const table = markdown.slice(markdown.indexOf("## Plugin State")).split("\n").slice(2, 6);
+
+      expect(table).toEqual([
+        "|      |                           |",
+        "| ---- | ------------------------- |",
+        "| a\\|b | first second third fourth |",
+        "| Host | elgato                    |",
+      ]);
+    });
+
     it("should append a section to a report that has no telemetry tables", () => {
       const markdown = generateMarkdown({}, null, now, [{ title: "Plugin State", rows: [["Host", "elgato"]] }]);
 

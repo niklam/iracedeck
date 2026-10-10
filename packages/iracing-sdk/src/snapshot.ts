@@ -42,6 +42,12 @@ export interface MarkdownSection {
 }
 
 /**
+ * A caller's text as one table cell: line breaks become spaces and pipes are
+ * escaped, so a value the report does not control cannot break its table.
+ */
+const markdownCell = (text: string): string => text.replace(/\r\n|\r|\n/g, " ").replace(/\|/g, "\\|");
+
+/**
  * Converts a TrkLoc enum value to a human-readable string.
  */
 export function trkLocToString(loc: number): string {
@@ -477,7 +483,7 @@ export function generateMarkdown(
     lines.push(
       buildMarkdownTable(
         ["", ""],
-        section.rows.map(([label, value]) => [label, value]),
+        section.rows.map(([label, value]) => [markdownCell(label), markdownCell(value)]),
         [false, false],
       ),
     );
