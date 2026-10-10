@@ -2957,3 +2957,201 @@ describe("Speak value on press (issue #466)", () => {
     });
   });
 });
+
+describe("telemetry ticks resolve inside the throttle (issue #1345)", () => {
+  // Race session, 3-car single-class field: enough for an iRating estimate.
+  const IRATING_SESSION_INFO = {
+    SessionInfo: { Sessions: [{ SessionType: "Race" }] },
+    DriverInfo: {
+      DriverCarIdx: 0,
+      Drivers: [
+        { CarIdx: 0, UserName: "Player", CarNumber: "1", IRating: 3000, CarIsPaceCar: 0, IsSpectator: 0 },
+        { CarIdx: 1, UserName: "Leader", CarNumber: "2", IRating: 2500, CarIsPaceCar: 0, IsSpectator: 0 },
+        { CarIdx: 2, UserName: "Trailer", CarNumber: "3", IRating: 2000, CarIsPaceCar: 0, IsSpectator: 0 },
+      ],
+    },
+  };
+  const YELLOW = 0x00000008;
+
+  let action: SessionInfo;
+  let pendingRender: (() => Promise<void> | void) | null;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    action = new SessionInfo();
+    pendingRender = null;
+    // Hold renders instead of running them, keeping only the newest — what the
+    // real throttle does with every tick inside a window — so a test can tick
+    // several times and then run the trailing edge with `flush`.
+    vi.spyOn(action["iconThrottle"], "schedule").mockImplementation((_contextId, render) => {
+      pendingRender = render;
+    });
+  });
+
+  afterEach(async () => {
+    await action.onWillDisappear(fakeEvent("ctx") as never);
+    vi.useRealTimers();
+  });
+
+  async function appear(mode: "irating" | "laps-to-empty" | "incidents" | "flags", current: unknown = null) {
+    action["sdkController"].getCurrentTelemetry = vi.fn().mockReturnValue(current);
+    await action.onWillAppear(fakeEvent("ctx", { mode }) as never);
+
+    return vi.mocked(action["sdkController"].subscribe).mock.calls[0][1];
+  }
+
+  async function flush(): Promise<void> {
+    const render = pendingRender;
+    pendingRender = null;
+    await render?.();
+  }
+
+  const pushes = () => vi.mocked(action["updateKeyImage"]).mock.calls;
+
+  it("a burst of ticks asks for the live order and the grid only when the refresh runs", async () => {
+    vi.mocked(getLiveRacePositions).mockReturnValue([2, 1, 3]);
+    action["sdkController"].getSessionInfo = vi.fn().mockReturnValue(IRATING_SESSION_INFO);
+    const tick = await appear("irating");
+    vi.mocked(getLiveRacePositions).mockClear();
+    vi.mocked(action["sdkController"].getSessionInfo).mockClear();
+
+    const telemetry = { SessionNum: 0, CarIdxClass: [100, 100, 100] } as TelemetryData;
+
+    for (let i = 0; i < 6; i++) tick(telemetry, true);
+
+    expect(action["iconThrottle"].schedule).toHaveBeenCalledTimes(6);
+    expect(getLiveRacePositions).not.toHaveBeenCalled();
+    expect(action["sdkController"].getSessionInfo).not.toHaveBeenCalled();
+    expect(pushes()).toHaveLength(0);
+
+    await flush();
+
+    expect(getLiveRacePositions).toHaveBeenCalledTimes(1);
+    expect(pushes()).toHaveLength(1);
+    expect(decodeURIComponent(pushes()[0][1] as string)).toMatch(/>-\d+<\/text>/);
+  });
+
+  it("the refresh resolves from the newest tick's telemetry, not the one that armed it", async () => {
+    vi.mocked(getFuelStats).mockReturnValue({ lastLap: 3, avg: 3, avgLapTime: null, samples: 5 });
+    const tick = await appear("laps-to-empty");
+
+    tick({ FuelLevel: 42.3, DisplayUnits: 1 } as TelemetryData, true);
+    tick({ FuelLevel: 39.3, DisplayUnits: 1 } as TelemetryData, true);
+    await flush();
+
+    expect(pushes()).toHaveLength(1);
+    expect(decodeURIComponent(pushes()[0][1] as string)).toContain("13.10");
+  });
+
+  it("a refresh whose state is unchanged renders and pushes nothing", async () => {
+    vi.mocked(getFuelStats).mockReturnValue({ lastLap: 3, avg: 3, avgLapTime: null, samples: 5 });
+    const tick = await appear("laps-to-empty");
+
+    tick({ FuelLevel: 42.3, DisplayUnits: 1 } as TelemetryData, true);
+    await flush();
+    tick({ FuelLevel: 42.3, DisplayUnits: 1 } as TelemetryData, true);
+    await flush();
+
+    expect(pushes()).toHaveLength(1);
+  });
+
+  it("an incident starts its flash on the tick, without waiting for the refresh", async () => {
+    const tick = await appear("incidents", { PlayerCarMyIncidentCount: 0 });
+
+    tick({ PlayerCarMyIncidentCount: 2 } as TelemetryData, true);
+
+    expect(action["flashTimers"].has("ctx")).toBe(true);
+    expect(action["flashStates"].get("ctx")).toBe(true);
+    expect(pushes()).toHaveLength(1);
+  });
+
+  it("a flag up for a single tick between two refreshes still shows its flag colour", async () => {
+    const tick = await appear("flags", { SessionFlags: 0 });
+
+    tick({ SessionFlags: YELLOW } as TelemetryData, true);
+    tick({ SessionFlags: 0 } as TelemetryData, true);
+
+    // The flash started on the yellow tick and pushed its first frame there,
+    // before any refresh ran; the next tick's flag change ended it.
+    expect(decodeURIComponent(pushes()[0][1] as string)).toContain("#f1c40f");
+    expect(action["flashTimers"].has("ctx")).toBe(false);
+  });
+
+  it("a refresh landing during a flag flash leaves the flash's frame alone", async () => {
+    const tick = await appear("flags", { SessionFlags: 0 });
+
+    tick({ SessionFlags: YELLOW } as TelemetryData, true);
+    const framesBeforeFlush = pushes().length;
+    await flush();
+
+    expect(pushes()).toHaveLength(framesBeforeFlush);
+  });
+
+  it("a refresh for a key that has since disappeared renders nothing", async () => {
+    vi.mocked(getFuelStats).mockReturnValue({ lastLap: 3, avg: 3, avgLapTime: null, samples: 5 });
+    const tick = await appear("laps-to-empty");
+
+    tick({ FuelLevel: 42.3, DisplayUnits: 1 } as TelemetryData, true);
+    await action.onWillDisappear(fakeEvent("ctx") as never);
+    await flush();
+
+    expect(pushes()).toHaveLength(0);
+  });
+
+  it("with the real throttle, a burst of ticks resolves only on the window's leading and trailing edge", async () => {
+    const { IconUpdateThrottle: RealThrottle } =
+      await vi.importActual<typeof import("@iracedeck/deck-core")>("@iracedeck/deck-core");
+    Object.defineProperty(action, "iconThrottle", { value: new RealThrottle() });
+    vi.mocked(getLiveRacePositions).mockReturnValue([2, 1, 3]);
+    action["sdkController"].getSessionInfo = vi.fn().mockReturnValue(IRATING_SESSION_INFO);
+    const tick = await appear("irating");
+    vi.mocked(getLiveRacePositions).mockClear();
+
+    const telemetry = { SessionNum: 0, CarIdxClass: [100, 100, 100] } as TelemetryData;
+
+    // Six ticks 16 ms apart, all inside one 100 ms window.
+    for (let i = 0; i < 6; i++) {
+      tick(telemetry, true);
+      vi.advanceTimersByTime(16);
+    }
+
+    expect(getLiveRacePositions).toHaveBeenCalledTimes(1);
+
+    vi.advanceTimersByTime(100);
+
+    expect(getLiveRacePositions).toHaveBeenCalledTimes(2);
+  });
+
+  it("a refresh that throws is logged once, not on every refresh", async () => {
+    action["sdkController"].getSessionInfo = vi.fn().mockReturnValue(IRATING_SESSION_INFO);
+    const tick = await appear("irating");
+    vi.mocked(getLiveRacePositions).mockImplementation(() => {
+      throw new Error("order unavailable");
+    });
+
+    const telemetry = { SessionNum: 0, CarIdxClass: [100, 100, 100] } as TelemetryData;
+
+    tick(telemetry, true);
+    await flush();
+    tick(telemetry, true);
+    await flush();
+
+    expect(action["logger"].error).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(action["logger"].error).mock.calls[0][0]).toContain("order unavailable");
+    vi.mocked(getLiveRacePositions).mockReset();
+  });
+
+  it("a flash that throws stays inside the tick and is logged once", async () => {
+    const tick = await appear("incidents", { PlayerCarMyIncidentCount: 0 });
+    action["startFlash"] = vi.fn(() => {
+      throw new Error("flash failed");
+    });
+
+    expect(() => tick({ PlayerCarMyIncidentCount: 1 } as TelemetryData, true)).not.toThrow();
+    expect(() => tick({ PlayerCarMyIncidentCount: 2 } as TelemetryData, true)).not.toThrow();
+
+    expect(action["logger"].error).toHaveBeenCalledTimes(1);
+    expect(action["iconThrottle"].schedule).toHaveBeenCalledTimes(2);
+  });
+});
