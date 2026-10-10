@@ -28,16 +28,17 @@ import type {
 } from "@iracedeck/event-bus";
 import { OpponentPenaltyFlag } from "@iracedeck/event-bus";
 import {
+  bindingLapsToGo,
   CarLeftRight,
   classPositionFromOrder,
   extractQualifyResults,
   IRSDK_UNLIMITED_LAPS,
-  IRSDK_UNLIMITED_TIME,
   isPostRace,
   isPreGreen,
   nearestCarGapMeters,
   type QualifyResultEntry,
   resolveLapsRemaining,
+  resolveTimeRemainingS,
   type SDKController,
   SessionState,
   type TelemetryData,
@@ -1343,6 +1344,85 @@ export function resolveLeaderLapTimeS(telemetry: TelemetryData, positions: numbe
 }
 
 /**
+ * Laps left in the session for the gap callouts' closing-announcement
+ * horizon (issue #933), or `null` when neither limit is known — which
+ * `diffGaps` reads as "no cap", never as zero.
+ *
+ * Whichever limit ends the session sooner, by the rule
+ * `@iracedeck/iracing-sdk`'s `session-limit.ts` owns (#1311), with both sides
+ * in the lap counter's unit: the leader's remaining line crossings, the
+ * chequered one included (`SessionLapsRemainEx` reads 1 on the last lap).
+ * The lap side is `resolveLapsRemaining`. The time side counts the crossings
+ * a timed race still runs: the white at the leader's first crossing at or
+ * after expiry and the chequered one lap later (the #880 model
+ * `leader-white.ts` and the fuel callouts share) — see
+ * {@link timeSideCrossings}. `bindingLapsToGo` then picks the smaller, a tie
+ * going to the counter. Before #1311 the lap cap won whenever one existed, so
+ * a timed race that also carried a larger cap announced catches that would
+ * only complete after the chequered flag.
+ *
+ * This shares the RULE with the fuel callouts, not their operands — the fuel
+ * estimate counts the player's laps after the current one — so the two can
+ * still reach different verdicts about which limit binds.
+ *
+ * Spec: `docs/superpowers/specs/2026-10-10-issue-1311-gap-horizon-end-of-race.md`.
+ *
+ * @param telemetry - The tick's telemetry
+ * @param positions - The tick's canonical live order (`calculateFrozenRacePositions`)
+ * @param leaderCrossedSinceExpiry - `state.leaderWhitePostExpiryCrossed` after this tick's `diffLeaderWhite`
+ * @internal Exported for testing
+ */
+export function resolveGapLapsRemaining(
+  telemetry: TelemetryData,
+  positions: number[],
+  leaderCrossedSinceExpiry: boolean,
+): number | null {
+  return bindingLapsToGo(
+    resolveLapsRemaining(telemetry),
+    timeSideCrossings(telemetry, positions, leaderCrossedSinceExpiry),
+  );
+}
+
+/**
+ * The leader's remaining line crossings the session clock allows, the
+ * chequered one included, or `null` when the clock is unknown or unlimited,
+ * or still running with no leader pace to project it by.
+ *
+ * - **Clock at zero or below**: `1` once the leader has crossed since expiry
+ *   (they are on the white lap), otherwise `2`. Known without a lap time, so
+ *   the white and chequered laps keep a horizon instead of falling back to
+ *   the lap cap. A one-tick negative blip mid-race also reads `2` for that
+ *   tick, and the marker can be set by a leader change while expired; both
+ *   under-count, which only withholds an announcement.
+ * - **Clock running** (`t` seconds, leader lap `L`, leader lap fraction `f`):
+ *   the leader's k-th crossing from now is at `(k − f) · L`, the white is the
+ *   first at or after expiry, `k = ceil(t / L + f)`, and the chequered is the
+ *   one after it. An unknown fraction counts as `0`, the smaller result.
+ */
+function timeSideCrossings(
+  telemetry: TelemetryData,
+  positions: number[],
+  leaderCrossedSinceExpiry: boolean,
+): number | null {
+  const raw = telemetry.SessionTimeRemain;
+
+  if (typeof raw === "number" && Number.isFinite(raw) && raw <= 0) return leaderCrossedSinceExpiry ? 1 : 2;
+
+  const timeRemainS = resolveTimeRemainingS(telemetry);
+
+  if (timeRemainS === null) return null;
+
+  const leaderLapTimeS = resolveLeaderLapTimeS(telemetry, positions);
+
+  if (leaderLapTimeS === null) return null;
+
+  const leaderPct = telemetry.CarIdxLapDistPct?.[positions.findIndex((position) => position === 1)];
+  const fraction = typeof leaderPct === "number" && leaderPct >= 0 && leaderPct < 1 ? leaderPct : 0;
+
+  return Math.ceil(timeRemainS / leaderLapTimeS + fraction) + 1;
+}
+
+/**
  * Player's STARTING GRID position (overall + class, both 1-based) from the
  * qualifying results — the source the race-start callout already uses
  * ({@link resolveStartingGridPosition}). Exposed for the Session Info position
@@ -2230,28 +2310,14 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // frozen order as diffOvertakes; the pace car is excluded explicitly
   // because the canonical order carries no pace-car filter of its own. The
   // laps-remaining estimate caps the closing-announcement horizon (a catch
-  // that completes after the checkered is never announced): lap-limited
-  // races read the counter, time-limited races divide the clock by the
-  // leader's lap time (the #880 fuel-coverage resolver).
-  let gapLapsRemaining: number | null = null;
-
-  if (
-    typeof telemetry.SessionLapsRemainEx === "number" &&
-    telemetry.SessionLapsRemainEx > 0 &&
-    telemetry.SessionLapsRemainEx < IRSDK_UNLIMITED_LAPS
-  ) {
-    gapLapsRemaining = telemetry.SessionLapsRemainEx;
-  } else if (
-    typeof telemetry.SessionTimeRemain === "number" &&
-    telemetry.SessionTimeRemain > 0 &&
-    telemetry.SessionTimeRemain < IRSDK_UNLIMITED_TIME
-  ) {
-    const leaderLapTimeS = resolveLeaderLapTimeS(telemetry, canonicalPositions);
-
-    if (leaderLapTimeS !== null && leaderLapTimeS > 0) {
-      gapLapsRemaining = telemetry.SessionTimeRemain / leaderLapTimeS;
-    }
-  }
+  // that completes after the checkered is never announced) — see
+  // `resolveGapLapsRemaining`. `diffLeaderWhite` ran earlier this tick, so
+  // the post-expiry crossing marker is current.
+  const gapLapsRemaining = resolveGapLapsRemaining(
+    telemetry,
+    canonicalPositions,
+    self.state.leaderWhitePostExpiryCrossed,
+  );
 
   diffGaps(
     self.state,

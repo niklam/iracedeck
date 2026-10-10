@@ -20,6 +20,8 @@ import {
   EngineWarnings,
   Flags,
   IncidentFlags,
+  IRSDK_UNLIMITED_LAPS,
+  IRSDK_UNLIMITED_TIME,
   PaceMode,
   PitSvFlags,
   type SDKController,
@@ -56,6 +58,7 @@ import {
   isRaceFinished,
   isSimEventsIracingInitialized,
   isUnderFullCourseCaution,
+  resolveGapLapsRemaining,
   resolveLeaderLapTimeS,
 } from "./translator.js";
 
@@ -738,6 +741,82 @@ describe("sim-events-iracing translator", () => {
       // car1 leads: the pole sitter pre-green, the race leader after it.
       expect(resolveLeaderLapTimeS(paceTelemetry(SessionState.ParadeLaps), [2, 1, 3])).toBeNull();
       expect(resolveLeaderLapTimeS(paceTelemetry(SessionState.Racing), [2, 1, 3])).toBe(180.4);
+    });
+  });
+
+  describe("resolveGapLapsRemaining (issue #1311)", () => {
+    // car1 leads ([2, 1, 3]) at a 90 s lap, a quarter of the way round; the
+    // sentinels mark an absent limit. Both sides count the leader's remaining
+    // line crossings, the chequered one included.
+    const limits = (lapsRemain: number, timeRemainS: number, overrides: Partial<TelemetryData> = {}): TelemetryData =>
+      telemetry({
+        SessionState: SessionState.Racing,
+        SessionLapsRemainEx: lapsRemain,
+        SessionTimeRemain: timeRemainS,
+        CarIdxLastLapTime: [91, 90, 92],
+        CarIdxLapDistPct: [0.1, 0.25, 0.5],
+        ...overrides,
+      });
+    const order = [2, 1, 3];
+
+    it("takes the clock's crossings when a timed race's lap cap is larger", () => {
+      // 100-lap cap, 20 minutes left: the white is the leader's 14th crossing
+      // (ceil(1200 / 90 + 0.25)), the chequered the 15th.
+      expect(resolveGapLapsRemaining(limits(100, 1200), order, false)).toBe(15);
+    });
+
+    it("takes the lap cap when it ends a dual-limit race sooner", () => {
+      expect(resolveGapLapsRemaining(limits(5, 1200), order, false)).toBe(5);
+    });
+
+    it("counts the white and chequered laps the clock still runs, so a cap that ends the race first binds", () => {
+      // 200 s is 2.2 leader laps, but the leader still takes the white at
+      // crossing 3 and the chequered at 4, so the 3-lap cap ends it first.
+      expect(resolveGapLapsRemaining(limits(3, 200), order, false)).toBe(3);
+    });
+
+    it("reads the counter in a lap-only race", () => {
+      expect(resolveGapLapsRemaining(limits(12, IRSDK_UNLIMITED_TIME), order, false)).toBe(12);
+    });
+
+    it("counts the clock's crossings in a time-only race", () => {
+      expect(resolveGapLapsRemaining(limits(IRSDK_UNLIMITED_LAPS, 900), order, false)).toBe(12);
+    });
+
+    it("takes an unknown leader lap fraction as the line, the smaller count", () => {
+      const offWorld = limits(IRSDK_UNLIMITED_LAPS, 900, { CarIdxLapDistPct: [0.1, -1, 0.5] });
+
+      expect(resolveGapLapsRemaining(offWorld, order, false)).toBe(11);
+    });
+
+    it("leaves the horizon null when neither limit is known", () => {
+      expect(resolveGapLapsRemaining(limits(IRSDK_UNLIMITED_LAPS, IRSDK_UNLIMITED_TIME), order, false)).toBeNull();
+    });
+
+    it("leaves a running clock unknown without a leader pace", () => {
+      // Pre-green there is no racing lap to project by, so a time-only race has no horizon yet.
+      const parade = limits(IRSDK_UNLIMITED_LAPS, 900, { SessionState: SessionState.ParadeLaps });
+
+      expect(resolveGapLapsRemaining(parade, order, false)).toBeNull();
+    });
+
+    it("keeps an expired clock known: two crossings until the leader takes the white, then one", () => {
+      expect(resolveGapLapsRemaining(limits(IRSDK_UNLIMITED_LAPS, -5), order, false)).toBe(2);
+      expect(resolveGapLapsRemaining(limits(IRSDK_UNLIMITED_LAPS, -40), order, true)).toBe(1);
+      expect(resolveGapLapsRemaining(limits(IRSDK_UNLIMITED_LAPS, 0), order, false)).toBe(2);
+    });
+
+    it("does not fall back to a larger lap cap once the clock has expired", () => {
+      expect(resolveGapLapsRemaining(limits(60, -5), order, false)).toBe(2);
+      expect(resolveGapLapsRemaining(limits(60, -40), order, true)).toBe(1);
+    });
+
+    it("reads a negative mid-race blip as an expired clock for that tick, never as no limit", () => {
+      expect(resolveGapLapsRemaining(limits(30, -0.1), order, false)).toBe(2);
+    });
+
+    it("keeps a lap counter of 0 as zero laps rather than falling through to the clock", () => {
+      expect(resolveGapLapsRemaining(limits(0, 1200), order, false)).toBe(0);
     });
   });
 

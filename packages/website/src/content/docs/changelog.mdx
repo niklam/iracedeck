@@ -21,6 +21,7 @@ _Unreleased_
 
 - **Session Info** keys now use much less CPU and memory in a race, most noticeably in a large field with a key on **iRating Gain/Loss**. Each key worked out its value on every telemetry update, about 60 times a second, even though it only refreshes ten times a second (on iRating Gain/Loss that meant re-running the whole estimate each time); it now does that work only when it refreshes. Incident and flag flashes still start the moment they happen. See [Session Info](/docs/actions/display-session/session-info/).
 - Keys still set up with the older Replay Navigation, Replay Speed and Replay Transport actions, which Replay Control replaced, now stop a running **Jump to Fastest Lap** the way Replay Control's own keys do, instead of fighting it for the replay. A Replay Markers jump straight after one of them also measures from where the replay now is, not from the marker it was last headed to. See [Replay Control](/docs/actions/view-camera/replay-control/#jump-to-fastest-lap).
+- In a timed race, the Race Engineer no longer announces that you are closing on a car when, at your current rate, you would only catch it after the chequered flag. He now judges the laps left by whichever limit ends the race first, counting the white-flag and chequered laps still run after the clock reaches zero. Before, a lap limit won whenever the race had one, even when the clock would end the race long before it, and once the clock ran out, the last laps fell back to the lap limit or to no limit at all.
 
 ## 3.5.0
 

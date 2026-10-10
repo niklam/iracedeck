@@ -251,9 +251,11 @@ export function diffGaps(
   getThresholdSeconds: () => number,
   emit: EmitFn,
   /**
-   * Estimated laps left in the race (fractional; null = unknown/unlimited).
-   * Caps the closing-announcement horizon — a projected catch that completes
-   * after the checkered is never announced.
+   * The leader's remaining line crossings, the chequered one included, by
+   * whichever limit ends the race first (`resolveGapLapsRemaining` in the
+   * translator, #1311; null = unknown/unlimited). Caps the
+   * closing-announcement horizon — a projected catch that completes after the
+   * checkered is never announced.
    */
   lapsRemaining: number | null = null,
   /**
