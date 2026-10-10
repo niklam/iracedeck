@@ -287,6 +287,59 @@ describe("assembleIcon with graphic scaling", () => {
     expect(svg).toContain("</g>");
   });
 
+  describe("templateValues (#1352)", () => {
+    const VALUE_GRAPHIC = `<svg viewBox="0 0 100 80"><desc>{"colors":{"backgroundColor":"#2a3444","textColor":"#ffffff"},"title":{"text":"TEST"}}</desc><text x="50" y="{{valueY}}" font-size="{{valueFontSize}}" fill="{{graphic1Color}}">{{value}}</text></svg>`;
+    const base = { colors: COLORS, title: DEFAULT_TITLE, border: BORDER_DEFAULTS, graphic: { scale: 100 } };
+
+    it("should fill the graphic's non-colour placeholders", () => {
+      const svg = decodeDataUri(
+        assembleIcon({
+          ...base,
+          graphicSvg: VALUE_GRAPHIC,
+          templateValues: { value: "42", valueFontSize: "28", valueY: "33.08" },
+        }),
+      );
+
+      expect(svg).toContain('<text x="50" y="33.08" font-size="28" fill="#ffffff">42</text>');
+      expect(svg).not.toContain("{{");
+    });
+
+    it("should let a colour slot win over a templateValues key of the same name", () => {
+      const svg = decodeDataUri(
+        assembleIcon({
+          ...base,
+          graphicSvg: VALUE_GRAPHIC,
+          templateValues: { value: "42", valueFontSize: "28", valueY: "33.08", graphic1Color: "#ff0000" },
+        }),
+      );
+
+      expect(svg).toContain('fill="#ffffff">42</text>');
+      expect(svg).not.toContain("#ff0000");
+    });
+
+    it("should leave the output unchanged when no templateValues are passed", () => {
+      const withoutOption = assembleIcon({ ...base, graphicSvg: MOCK_GRAPHIC_TRIMMED });
+
+      expect(assembleIcon({ ...base, graphicSvg: MOCK_GRAPHIC_TRIMMED, templateValues: undefined })).toBe(
+        withoutOption,
+      );
+      expect(assembleIcon({ ...base, graphicSvg: MOCK_GRAPHIC_TRIMMED, templateValues: {} })).toBe(withoutOption);
+    });
+
+    it("should draw no value when the graphics are hidden", () => {
+      const svg = decodeDataUri(
+        assembleIcon({
+          ...base,
+          title: { ...DEFAULT_TITLE, showGraphics: false },
+          graphicSvg: VALUE_GRAPHIC,
+          templateValues: { value: "42", valueFontSize: "28", valueY: "33.08" },
+        }),
+      );
+
+      expect(svg).not.toContain(">42<");
+    });
+  });
+
   it("should not apply transform when showGraphics is false", () => {
     const result = assembleIcon({
       graphicSvg: MOCK_GRAPHIC_TRIMMED,

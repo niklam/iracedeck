@@ -550,6 +550,11 @@ function dimContent(content: string): string {
  * @param options.title - Fully resolved title settings
  * @param options.border - Fully resolved border settings
  * @param options.graphic - Fully resolved graphic settings (optional — omit for no scaling)
+ * @param options.templateValues - Values for the graphic's non-colour
+ *   placeholders (`{{value}}`, `{{valueFontSize}}`, …), for a standalone icon
+ *   that draws a setting in its artwork (#1352). `colors` wins over a key of
+ *   the same name, so a value can never recolour a slot. Not XML-escaped:
+ *   pass text through {@link escapeXml}.
  * @param options.bindingMissing - When true, draw the centered binding-missing
  *   warning triangle over dimmed artwork (issue #612). Used for keybind modes
  *   that have neither a keyboard binding nor a SimHub role configured.
@@ -565,13 +570,14 @@ export function assembleIcon(options: {
   title: ResolvedTitleSettings;
   border: ResolvedBorderSettings;
   graphic?: ResolvedGraphicSettings;
+  templateValues?: Record<string, string>;
   bindingMissing?: boolean;
   dimmed?: boolean;
 }): string {
-  const { graphicSvg, colors, title, border, graphic, bindingMissing, dimmed } = options;
+  const { graphicSvg, colors, title, border, graphic, templateValues, bindingMissing, dimmed } = options;
 
   const rawGraphic = extractGraphicContent(graphicSvg);
-  let graphicContent = title.showGraphics ? renderIconTemplate(rawGraphic, colors) : "";
+  let graphicContent = title.showGraphics ? renderIconTemplate(rawGraphic, { ...templateValues, ...colors }) : "";
 
   // Trimmed icons place artwork at origin filling the viewBox, so the viewBox
   // dimensions ARE the artwork extent for scaling. Fail fast if the caller
