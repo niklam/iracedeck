@@ -1145,6 +1145,14 @@ describe("AudioService", () => {
       const STOPPED = "Audio device stopped (idle)";
       const HOLD_FAILED = "Audio device could not be held open; sounds will open it on demand";
       const DEVICE_LOST = "Audio device was lost; the next sound reopens it";
+      const STAND_IN = "Selected audio device is unavailable; using the system default until it returns";
+
+      /** Make these the device ids the native layer enumerates; the first is the default. */
+      function enumerate(native: ReturnType<typeof createMockNative>, ...ids: string[]): void {
+        vi.mocked(native.getAudioDevices).mockReturnValue(
+          ids.map((id, index) => ({ index, name: id, id, isDefault: index === 0 })),
+        );
+      }
       const PLAY_FAILED = "Failed to start audio playback device";
 
       /** How often the service has logged exactly `line` at `level` since the mocks were last cleared. */
@@ -1561,6 +1569,7 @@ describe("AudioService", () => {
         const { native } = createServiceWithEndCallbacks();
         getAudio().hold("session");
 
+        enumerate(native, "default-id", "BBBB");
         expect(getAudio().setAudioDeviceById("BBBB")).toBe(true);
 
         expect(native.stopAudioEngine).toHaveBeenCalledTimes(1);
@@ -1597,6 +1606,168 @@ describe("AudioService", () => {
         expect(logged("info", STARTED)).toBe(2);
       });
 
+      it("a selected device that is missing is not held: the stand-in goes after each burst until the device returns", () => {
+        const { native, endCallbacks } = createServiceWithEndCallbacks();
+        enumerate(native, "default-id", "HEADSET");
+        getAudio().setAudioDeviceById("HEADSET");
+        // The headset is switched off before iRacing launches.
+        enumerate(native, "default-id");
+
+        getAudio().hold("session");
+
+        // Opened — on the system default, which is all the native layer has —
+        // and not announced as held.
+        expect(logged("info", STARTED)).toBe(1);
+        expect(logged("warn", STAND_IN)).toBe(1);
+        expect(logged("info", HELD)).toBe(0);
+
+        // Let go like an on-demand device: one stop for the switch, one now.
+        vi.advanceTimersByTime(IDLE_STOP_DELAY_MS);
+
+        expect(native.stopAudioEngine).toHaveBeenCalledTimes(2);
+
+        // A burst while the headset is still off: opened, played, let go.
+        getAudio().playOnChannel(AudioChannel.Voice, "/a.mp3");
+        endCallbacks[AudioChannel.Voice]();
+        vi.advanceTimersByTime(IDLE_STOP_DELAY_MS);
+
+        expect(logged("warn", STAND_IN)).toBe(2);
+        expect(native.stopAudioEngine).toHaveBeenCalledTimes(3);
+
+        // The headset comes back: the next burst opens it, and that one is held.
+        enumerate(native, "default-id", "HEADSET");
+        getAudio().playOnChannel(AudioChannel.Voice, "/b.mp3");
+
+        expect(logged("info", HELD)).toBe(1);
+        expect(logged("warn", STAND_IN)).toBe(2);
+
+        endCallbacks[AudioChannel.Voice]();
+        vi.advanceTimersByTime(IDLE_STOP_DELAY_MS * 100);
+
+        expect(native.stopAudioEngine).toHaveBeenCalledTimes(3);
+      });
+
+      it("a selected device lost under the hold is reopened as a stand-in, and held again once it is back", () => {
+        const { native, endCallbacks } = createServiceWithEndCallbacks();
+        enumerate(native, "default-id", "HEADSET");
+        getAudio().setAudioDeviceById("HEADSET");
+        getAudio().hold("session");
+
+        expect(logged("info", HELD)).toBe(1);
+
+        // The headset powers off: the start fails once, and it is no longer enumerated.
+        enumerate(native, "default-id");
+        vi.mocked(native.startAudioEngine).mockReturnValueOnce(false);
+        getAudio().playOnChannel(AudioChannel.Voice, "/lost.mp3");
+
+        expect(logged("warn", DEVICE_LOST)).toBe(1);
+
+        getAudio().playOnChannel(AudioChannel.Voice, "/on-default.mp3");
+        endCallbacks[AudioChannel.Voice]();
+        vi.advanceTimersByTime(IDLE_STOP_DELAY_MS);
+
+        expect(logged("warn", STAND_IN)).toBe(1);
+        expect(native.stopAudioEngine).toHaveBeenCalledTimes(2);
+
+        enumerate(native, "default-id", "HEADSET");
+        getAudio().playOnChannel(AudioChannel.Voice, "/back.mp3");
+        endCallbacks[AudioChannel.Voice]();
+        vi.advanceTimersByTime(IDLE_STOP_DELAY_MS * 100);
+
+        expect(native.stopAudioEngine).toHaveBeenCalledTimes(2);
+      });
+
+      it("a hold taken on a device a sound had opened lets it go after the burst when a device is selected, and holds the next", () => {
+        const { native, endCallbacks } = createServiceWithEndCallbacks();
+        enumerate(native, "default-id", "HEADSET");
+        getAudio().setAudioDeviceById("HEADSET");
+        // Opened on demand: nothing recorded which device the engine landed on.
+        getAudio().playOnChannel(AudioChannel.Voice, "/a.mp3");
+
+        getAudio().hold("session");
+
+        expect(logged("info", HELD)).toBe(0);
+        expect(logged("warn", STAND_IN)).toBe(0);
+
+        endCallbacks[AudioChannel.Voice]();
+        vi.advanceTimersByTime(IDLE_STOP_DELAY_MS);
+
+        expect(native.stopAudioEngine).toHaveBeenCalledTimes(2);
+
+        getAudio().playOnChannel(AudioChannel.Voice, "/b.mp3");
+
+        expect(logged("info", HELD)).toBe(1);
+
+        endCallbacks[AudioChannel.Voice]();
+        vi.advanceTimersByTime(IDLE_STOP_DELAY_MS * 100);
+
+        expect(native.stopAudioEngine).toHaveBeenCalledTimes(2);
+      });
+
+      it("a switch to a device that is not enumerated reopens a stand-in and lets it go", () => {
+        const { native } = createServiceWithEndCallbacks();
+        getAudio().hold("session");
+
+        // Accepted by the native layer, gone by the time the engine is created.
+        getAudio().setAudioDeviceById("GONE");
+
+        expect(logged("warn", STAND_IN)).toBe(1);
+
+        vi.advanceTimersByTime(IDLE_STOP_DELAY_MS);
+
+        expect(native.stopAudioEngine).toHaveBeenCalledTimes(2);
+      });
+
+      it("the system default is never judged: a hold on it enumerates nothing", () => {
+        const { native, endCallbacks } = createServiceWithEndCallbacks();
+        enumerate(native, "default-id", "HEADSET");
+        getAudio().setAudioDeviceById("HEADSET");
+        getAudio().setAudioDevice(-1);
+        vi.mocked(native.getAudioDevices).mockClear();
+        // Even an enumeration that lists nothing cannot make the default a stand-in.
+        enumerate(native);
+
+        getAudio().hold("session");
+        getAudio().playOnChannel(AudioChannel.Voice, "/a.mp3");
+        endCallbacks[AudioChannel.Voice]();
+        vi.advanceTimersByTime(IDLE_STOP_DELAY_MS * 100);
+
+        expect(native.getAudioDevices).not.toHaveBeenCalled();
+        expect(logged("info", HELD)).toBe(1);
+        // The two switches' own stops, none for idleness.
+        expect(native.stopAudioEngine).toHaveBeenCalledTimes(2);
+      });
+
+      it("on demand a selected device is never enumerated", () => {
+        const { native, endCallbacks } = createServiceWithEndCallbacks();
+        enumerate(native, "default-id", "HEADSET");
+        getAudio().setAudioDeviceById("HEADSET");
+        vi.mocked(native.getAudioDevices).mockClear();
+
+        getAudio().playOnChannel(AudioChannel.Voice, "/a.mp3");
+        endCallbacks[AudioChannel.Voice]();
+        vi.advanceTimersByTime(IDLE_STOP_DELAY_MS);
+
+        expect(native.getAudioDevices).not.toHaveBeenCalled();
+      });
+
+      it("an enumeration that throws does not stop the device being held", () => {
+        const { native } = createServiceWithEndCallbacks();
+        enumerate(native, "default-id", "HEADSET");
+        getAudio().setAudioDeviceById("HEADSET");
+        vi.mocked(native.getAudioDevices).mockImplementation(() => {
+          throw new Error("enumeration failed");
+        });
+
+        expect(() => getAudio().hold("session")).not.toThrow();
+
+        vi.advanceTimersByTime(IDLE_STOP_DELAY_MS * 100);
+
+        expect(logged("info", HELD)).toBe(1);
+        expect(logged("warn", STAND_IN)).toBe(0);
+        expect(native.stopAudioEngine).toHaveBeenCalledTimes(1);
+      });
+
       it("a rejected id with no fallback gets the device at the next sound, and the hold keeps it", () => {
         const { native, endCallbacks } = createServiceWithEndCallbacks();
         vi.mocked(native.setAudioDeviceById).mockReturnValue(false);
@@ -1627,6 +1798,7 @@ describe("AudioService", () => {
         getAudio().hold("session");
         vi.mocked(native.startAudioEngine).mockReturnValueOnce(false);
 
+        enumerate(native, "default-id", "BBBB");
         getAudio().setAudioDeviceById("BBBB");
 
         expect(logged("warn", HOLD_FAILED)).toBe(1);
@@ -1647,6 +1819,7 @@ describe("AudioService", () => {
         getAudio().playOnChannel(AudioChannel.Voice, "/msg.mp3");
 
         getAudio().setAudioDevice(1);
+        enumerate(native, "default-id", "BBBB");
         getAudio().setAudioDeviceById("BBBB");
         vi.advanceTimersByTime(IDLE_STOP_DELAY_MS * 100);
 
@@ -1661,6 +1834,7 @@ describe("AudioService", () => {
         getAudio().release("session");
 
         getAudio().setAudioDevice(1);
+        enumerate(native, "default-id", "BBBB");
         getAudio().setAudioDeviceById("BBBB");
         vi.advanceTimersByTime(IDLE_STOP_DELAY_MS * 100);
 
