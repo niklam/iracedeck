@@ -60,6 +60,9 @@ const WEIGHT = /^(?:[1-9]\d?|100)$/;
 const FRAGMENT_KEYS = Object.freeze(["category", "weight"]);
 // The markers a markdown list item can open with: `-`, `*`, `+`, or `1.` / `1)`.
 const LIST_MARKER = /^(?:[-*+]|\d+[.)])(?:[ \t]|$)/;
+// Block syntax that would turn the bullet into something else: an ATX heading
+// (`# ` to `###### `) or a blockquote (`>`).
+const BLOCK_OPENER = /^(?:#{1,6}(?:[ \t]|$)|>)/;
 // The same code-span shape `renderInlineMarkdown` lifts out, so the two agree on
 // what counts as "inside backticks".
 const CODE_SPAN = /`[^`]+`/g;
@@ -177,6 +180,10 @@ export function parseFragment(fileName, text) {
     fail(bodyLine, `the body must not start with whitespace`);
   }
   body = body.trimEnd();
+  if (BLOCK_OPENER.test(body)) {
+    const opener = body.startsWith(">") ? ">" : body.split(/[ \t]/)[0];
+    fail(bodyLine, `the body must not open with "${opener}": a heading or blockquote cannot sit in a bullet`);
+  }
   if (LIST_MARKER.test(body)) {
     fail(bodyLine, `the body is the bullet text without its list marker: drop the leading "${body.split(/[ \t]/)[0]}"`);
   }
@@ -278,10 +285,37 @@ export function renderReleaseSection(version, dateLine, fragments) {
 }
 
 /**
+ * Refuse an `_Unreleased_` line in changelog.mdx. Once the notes are fragments, a
+ * hand-written in-development section is the old habit coming back, and with no
+ * fragments to compose it would otherwise pass every reader silently. It runs
+ * whatever the fragment count; `composeChangelog` calls it first.
+ *
+ * @param {string} mdx - The full contents of changelog.mdx.
+ * @throws {ChangelogFragmentError} naming the line.
+ */
+export function assertNoInDevelopmentSection(mdx) {
+  const lines = String(mdx).split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    if (UNRELEASED_LINE.test(lines[i])) {
+      throw new ChangelogFragmentError(
+        CHANGELOG_SOURCE_PATH,
+        i + 1,
+        `"_Unreleased_" left in changelog.mdx: in-development notes are fragments in ${CHANGELOG_FRAGMENTS_DIR}/, not a section`,
+      );
+    }
+  }
+}
+
+/**
  * Compose the changelog: the fragments rendered as the `version` section and
  * inserted before the first `## ` heading. With no fragments the MDX is returned
- * unchanged, so a tree with nothing in development reads exactly as it does after
- * a release.
+ * unchanged (after the `_Unreleased_` check), so a tree with nothing in
+ * development reads exactly as it does after a release.
+ *
+ * The existing-`## <version>` check runs only while fragments exist, on purpose:
+ * on a stable release commit the version is the plain `X.Y.Z` whose dated section
+ * the fold has just written, with no fragments left, and the release build
+ * composes exactly that tree.
  *
  * @param {string} mdx - The full contents of changelog.mdx.
  * @param {readonly ChangelogFragment[]} fragments
@@ -292,6 +326,7 @@ export function renderReleaseSection(version, dateLine, fragments) {
  *   `## <version>` section, or a fragment whose bullet repeats a dated one.
  */
 export function composeChangelog(mdx, fragments, version, dateLine) {
+  assertNoInDevelopmentSection(mdx);
   if (fragments.length === 0) return mdx;
 
   const source = String(mdx);
@@ -310,13 +345,6 @@ export function composeChangelog(mdx, fragments, version, dateLine) {
           `a "## ${version}" section already exists while ${CHANGELOG_FRAGMENTS_DIR}/ holds fragments for that version — bump the version to the next -dev first`,
         );
       }
-    }
-    if (UNRELEASED_LINE.test(line)) {
-      throw new ChangelogFragmentError(
-        CHANGELOG_SOURCE_PATH,
-        i + 1,
-        `"_Unreleased_" left in changelog.mdx: in-development notes are fragments in ${CHANGELOG_FRAGMENTS_DIR}/, not a section`,
-      );
     }
   }
 

@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { CHANGELOG_SOURCE_PATH } from "./changelog-data.mjs";
 import {
+  assertNoInDevelopmentSection,
   CHANGELOG_FRAGMENTS_DIR,
   ChangelogFragmentError,
   composeChangelog,
@@ -260,6 +261,32 @@ describe("parseFragment", () => {
     }
   });
 
+  describe("refuses a body that opens with a heading or a blockquote", () => {
+    for (const [body, opener] of [
+      ["# Heading.", "#"],
+      ["### Heading.", "###"],
+      ["###### Heading.", "######"],
+      ["#", "#"],
+      ["> Quoted.", ">"],
+      [">Quoted.", ">"],
+    ]) {
+      it(JSON.stringify(body), () => {
+        expectFragmentError(() => parseFragment("1-a.md", fragmentText({ body })), {
+          file,
+          line: 6,
+          message: new RegExp(`must not open with "${opener}": a heading or blockquote`),
+        });
+      });
+    }
+  });
+
+  it("does not mistake an issue reference or seven hashes for a heading", () => {
+    expect(parseFragment("1-a.md", fragmentText({ body: "#1234 is fixed." })).body).toBe("#1234 is fixed.");
+    expect(parseFragment("1-a.md", fragmentText({ body: "####### Not a heading." })).body).toBe(
+      "####### Not a heading.",
+    );
+  });
+
   it("does not mistake bold or a decimal for a list marker", () => {
     expect(parseFragment("1-a.md", fragmentText({ body: "**Bold** start." })).body).toBe("**Bold** start.");
     expect(parseFragment("1-a.md", fragmentText({ body: "1.5x speed now works." })).body).toBe("1.5x speed now works.");
@@ -458,13 +485,30 @@ describe("composeChangelog", () => {
     expect(composed).toBe(composeChangelog(mdx, fragments, "1.3.0", "_Unreleased_").replace(/\n/g, "\r\n"));
   });
 
-  it("refuses a leftover _Unreleased_ line in changelog.mdx", () => {
+  describe("refuses a leftover _Unreleased_ line in changelog.mdx", () => {
     const withUnreleased = mdx.replace("_2026-01-02_", "_Unreleased_");
-    expectFragmentError(() => composeChangelog(withUnreleased, fragments, "1.3.0", "_Unreleased_"), {
+    const expected = {
       file: CHANGELOG_SOURCE_PATH,
       line: PREAMBLE.split("\n").length + 2,
       message: /"_Unreleased_" left in changelog\.mdx/,
+    };
+
+    it("while fragments exist", () => {
+      expectFragmentError(() => composeChangelog(withUnreleased, fragments, "1.3.0", "_Unreleased_"), expected);
     });
+
+    it("with no fragments, where a hand-written section would otherwise pass silently", () => {
+      expectFragmentError(() => composeChangelog(withUnreleased, [], "1.3.0", "_Unreleased_"), expected);
+    });
+
+    it("through its own export, for a reader with nothing to compose", () => {
+      expectFragmentError(() => assertNoInDevelopmentSection(withUnreleased), expected);
+      expect(() => assertNoInDevelopmentSection(mdx)).not.toThrow();
+    });
+  });
+
+  it("allows the version's own dated section when there are no fragments, as on a release commit", () => {
+    expect(composeChangelog(mdx, [], "1.2.0", "_Unreleased_")).toBe(mdx);
   });
 
   it("refuses an existing section for the in-development version while fragments exist", () => {
