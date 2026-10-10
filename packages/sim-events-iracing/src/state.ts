@@ -10,6 +10,7 @@ import {
   type IncidentType,
   type PitBoxMark,
   type RadarState,
+  type TireCorner,
   type TireWearReport,
   TrackWetness,
 } from "@iracedeck/event-bus";
@@ -22,6 +23,23 @@ import type { CornerMarker } from "@iracedeck/track-data";
  * lap. `"none"` when no full-course caution is out.
  */
 export type CautionPhase = "none" | "waving" | "caught" | "one-to-go";
+
+/**
+ * One tire's carcass temperatures across the tread (issue #254), in °C and
+ * unrounded. The zones are named from the car's centreline, as in the tire
+ * wear report's `TireCornerWear`: on a left-side tire the sim's L is the
+ * outside and R the inside, mirrored on the right side.
+ */
+export type TireCornerTemps = { inside: number; middle: number; outside: number };
+
+/**
+ * The tire temperatures of the last pit stop the driver drove into, as
+ * `getLastStopTireTemps()` reports them (issue #254). iRacing refreshes these
+ * values only while the car is in its pit stall and holds them through the
+ * whole next stint, so this is a reading of the stint that ended at that stop
+ * — after a tire change, of the set that came off — never a live temperature.
+ */
+export type LastStopTireTemps = { corners: Record<TireCorner, TireCornerTemps> };
 
 /**
  * One full-course caution, as `getCautionEpisode()` reports it (issue #1286):
@@ -588,7 +606,8 @@ export type TranslatorState = {
 
   // ── How the car reached its stall (issues #1108, #254) ─────────────────
   // Written by `updateStallVisit` only (`diff/stall-visit.ts`), which hands
-  // its consumers the tick's answer; no other diff reads these two.
+  // the tire wear report and the last-stop tire temperatures the tick's
+  // answer; no other diff reads these two.
   /**
    * The car was last seen driving on the circuit: set on a tick with
    * `IsOnTrack`, off pit road, out of the stall and in the world; cleared when
@@ -611,6 +630,18 @@ export type TranslatorState = {
    * still follows it.
    */
   tireWearReport: TireWearReport | null;
+
+  // ── Tire temperatures of the last stop (issue #254) ────────────────────
+  /**
+   * The twelve carcass temperatures as of the last pit stop the driver drove
+   * into: replaced on every tick of a drive-in stall visit, frozen when the
+   * car leaves its box. `null` until the first such stop. Unlike nearly
+   * everything else in this struct it OUTLIVES a replay visit and a session
+   * change — both wipes in `translator.ts` carry it over, because the garage
+   * is where a driver tuning pressures and camber reads it — and is cleared by
+   * a disconnect and by a saved replay. Read via `getLastStopTireTemps()`.
+   */
+  lastStopTireTemps: LastStopTireTemps | null;
 
   // ── Track wetness (issue #526) ──────────────────────────────────────────
   // Tracks `TelemetryData.TrackWetness` across ticks so the diff can emit one
@@ -1436,6 +1467,8 @@ export function createInitialState(): TranslatorState {
     stallVisitDriveIn: false,
 
     tireWearReport: null,
+
+    lastStopTireTemps: null,
 
     trackWetnessInitialized: false,
     lastTrackWetness: TrackWetness.Unknown,

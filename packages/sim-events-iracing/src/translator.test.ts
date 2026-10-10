@@ -46,6 +46,7 @@ import {
   getCautionPhase,
   getDriverSetupName,
   getFuelStats,
+  getLastStopTireTemps,
   getLatestTelemetry,
   getLiveCarPosition,
   getLiveOpponentFlags,
@@ -61,6 +62,7 @@ import {
   isRaceFinished,
   isSimEventsIracingInitialized,
   isUnderFullCourseCaution,
+  readSimState,
   resolveGapLapsRemaining,
   resolveLeaderLapTimeS,
 } from "./translator.js";
@@ -5785,6 +5787,277 @@ describe("sim-events-iracing translator", () => {
         expect(seen.filter(isExit)).toHaveLength(1);
         expect(seen.filter((e) => e.name === "tireWear.reported")).toHaveLength(0);
       });
+    });
+  });
+
+  describe("tire temperatures of the last stop (issue #254)", () => {
+    /** A stint's worth of heat, every zone distinct. */
+    const STINT: Partial<TelemetryData> = {
+      LFtempCL: 71,
+      LFtempCM: 78,
+      LFtempCR: 84,
+      RFtempCL: 86,
+      RFtempCM: 79,
+      RFtempCR: 72,
+      LRtempCL: 68,
+      LRtempCM: 74,
+      LRtempCR: 77,
+      RRtempCL: 79,
+      RRtempCM: 75,
+      RRtempCR: 69,
+    };
+    const STINT_READING = {
+      corners: {
+        lf: { outside: 71, middle: 78, inside: 84 },
+        rf: { inside: 86, middle: 79, outside: 72 },
+        lr: { outside: 68, middle: 74, inside: 77 },
+        rr: { inside: 79, middle: 75, outside: 69 },
+      },
+    };
+
+    /** Every zone of every tire at one temperature. */
+    function uniform(celsius: number): Partial<TelemetryData> {
+      return Object.fromEntries(Object.keys(STINT).map((field) => [field, celsius])) as Partial<TelemetryData>;
+    }
+
+    function uniformReading(celsius: number) {
+      const zones = { inside: celsius, middle: celsius, outside: celsius };
+
+      return { corners: { lf: zones, rf: zones, lr: zones, rr: zones } };
+    }
+
+    /** What iRacing places a car with. */
+    const PLACED = uniform(39.9);
+
+    const ON_PIT_ROAD: Partial<TelemetryData> = { OnPitRoad: true, PlayerTrackSurface: TrkLoc.AproachingPits };
+    const IN_STALL: Partial<TelemetryData> = {
+      OnPitRoad: true,
+      PlayerCarInPitStall: true,
+      PlayerTrackSurface: TrkLoc.InPitStall,
+    };
+    /** The tick the car leaves its box: out of the stall, still on pit road. */
+    const LEAVING_STALL: Partial<TelemetryData> = { OnPitRoad: true, PlayerTrackSurface: TrkLoc.InPitStall };
+    /** Out of the car: the garage, or the replay screen. */
+    const OUT_OF_CAR: Partial<TelemetryData> = {
+      IsReplayPlaying: true,
+      IsOnTrack: false,
+      PlayerTrackSurface: TrkLoc.NotInWorld,
+    };
+
+    function start(sessionInfo: Record<string, unknown> | null = null): MockController {
+      const controller = createMockController();
+
+      controller.__setSessionInfo(sessionInfo);
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      return controller;
+    }
+
+    /** From the circuit into the box holding `temps`, and out again; ends on the circuit. */
+    function stop(controller: MockController, temps: Partial<TelemetryData>, base: Partial<TelemetryData> = {}): void {
+      controller.__tick(telemetry({ ...base }));
+      controller.__tick(telemetry({ ...base, ...ON_PIT_ROAD }));
+      controller.__tick(telemetry({ ...base, ...IN_STALL, ...temps }));
+      controller.__tick(telemetry({ ...base, ...LEAVING_STALL, ...temps }));
+      controller.__tick(telemetry({ ...base, ...ON_PIT_ROAD, ...temps }));
+      controller.__tick(telemetry({ ...base, ...temps }));
+    }
+
+    /** A placed stall visit holding `temps` (the car is already in its box), then out onto the circuit. */
+    function sitAndLeave(controller: MockController, temps: Partial<TelemetryData>): void {
+      controller.__tick(telemetry({ ...IN_STALL, ...temps }));
+      controller.__tick(telemetry({ ...IN_STALL, ...temps }));
+      controller.__tick(telemetry({ ...LEAVING_STALL, ...temps }));
+      controller.__tick(telemetry({ ...temps }));
+    }
+
+    it("has no reading before the translator is initialized, or before the first stop", () => {
+      expect(getLastStopTireTemps()).toBeNull();
+
+      const controller = start();
+
+      expect(getLastStopTireTemps()).toBeNull();
+
+      controller.__tick(telemetry(STINT));
+      controller.__tick(telemetry({ ...ON_PIT_ROAD, ...STINT }));
+      controller.__tick(telemetry(STINT));
+
+      expect(getLastStopTireTemps()).toBeNull();
+    });
+
+    it("follows the values through a stop the driver drove into, and freezes when the car leaves its box", () => {
+      const controller = start();
+
+      controller.__tick(telemetry(PLACED));
+      controller.__tick(telemetry({ ...ON_PIT_ROAD, ...PLACED }));
+      expect(getLastStopTireTemps()).toBeNull();
+
+      controller.__tick(telemetry({ ...IN_STALL, ...uniform(80) }));
+      expect(getLastStopTireTemps()).toEqual(uniformReading(80));
+
+      controller.__tick(telemetry({ ...IN_STALL, ...STINT }));
+      expect(getLastStopTireTemps()).toEqual(STINT_READING);
+
+      controller.__tick(telemetry({ ...LEAVING_STALL, ...STINT }));
+      controller.__tick(telemetry({ ...ON_PIT_ROAD, ...uniform(95) }));
+      controller.__tick(telemetry(uniform(95)));
+      expect(getLastStopTireTemps()).toEqual(STINT_READING);
+    });
+
+    it("is replaced by the next stop, and the snapshot's raw state carries it", () => {
+      const controller = start();
+
+      stop(controller, STINT);
+      stop(controller, uniform(95));
+
+      expect(getLastStopTireTemps()).toEqual(uniformReading(95));
+
+      const snapshot = readSimState();
+
+      expect(snapshot.initialized && snapshot.raw.state.lastStopTireTemps).toEqual(uniformReading(95));
+    });
+
+    it("shows nothing after connecting with the car in its box, until the next stop the driver drives into", () => {
+      const controller = start();
+
+      sitAndLeave(controller, STINT);
+      expect(getLastStopTireTemps()).toBeNull();
+
+      stop(controller, uniform(95));
+      expect(getLastStopTireTemps()).toEqual(uniformReading(95));
+    });
+
+    it("survives a garage visit, and the Drive placement after it leaves the reading in place", () => {
+      const controller = start();
+
+      stop(controller, STINT);
+
+      // Out of the car: replay-mode ticks, with whatever the sim holds now.
+      controller.__tick(telemetry({ ...OUT_OF_CAR, ...uniform(60) }));
+      controller.__tick(telemetry({ ...OUT_OF_CAR, ...uniform(60) }));
+      expect(getLastStopTireTemps()).toEqual(STINT_READING);
+
+      // "Drive": back in the car, placed in its box.
+      elapseReplayGrace();
+      sitAndLeave(controller, PLACED);
+      expect(getLastStopTireTemps()).toEqual(STINT_READING);
+
+      // The stop after it is a drive-in again.
+      stop(controller, uniform(95));
+      expect(getLastStopTireTemps()).toEqual(uniformReading(95));
+    });
+
+    it("survives a replay glance mid-session", () => {
+      const controller = start();
+
+      stop(controller, STINT);
+      controller.__tick(telemetry({ IsReplayPlaying: true, ...uniform(60) }));
+      expect(getLastStopTireTemps()).toEqual(STINT_READING);
+
+      elapseReplayGrace();
+      controller.__tick(telemetry(uniform(60)));
+      controller.__tick(telemetry(uniform(60)));
+      expect(getLastStopTireTemps()).toEqual(STINT_READING);
+    });
+
+    it("is left in place by a tow into the box", () => {
+      const controller = start();
+
+      stop(controller, STINT);
+      // Towed: the car leaves the world, then appears in its box.
+      controller.__tick(telemetry({ PlayerTrackSurface: TrkLoc.NotInWorld, ...uniform(95) }));
+      sitAndLeave(controller, uniform(95));
+
+      expect(getLastStopTireTemps()).toEqual(STINT_READING);
+    });
+
+    it("is left in place by a reset that puts the car straight from the circuit into its box", () => {
+      const controller = start();
+
+      stop(controller, STINT);
+      sitAndLeave(controller, uniform(95));
+
+      expect(getLastStopTireTemps()).toEqual(STINT_READING);
+    });
+
+    it("survives a session change, live or through replay-mode ticks", () => {
+      const controller = start();
+
+      stop(controller, STINT);
+
+      controller.__tick(telemetry({ SessionNum: 1, ...uniform(60) }));
+      expect(getLastStopTireTemps()).toEqual(STINT_READING);
+
+      // The next session loads behind replay-mode ticks.
+      controller.__tick(telemetry({ SessionNum: 1, ...OUT_OF_CAR, ...uniform(60) }));
+      controller.__tick(telemetry({ SessionNum: 2, ...OUT_OF_CAR, ...uniform(60) }));
+      expect(getLastStopTireTemps()).toEqual(STINT_READING);
+
+      elapseReplayGrace();
+      controller.__tick(telemetry({ SessionNum: 2, ...IN_STALL, ...PLACED }));
+      controller.__tick(telemetry({ SessionNum: 2, ...LEAVING_STALL, ...PLACED }));
+      expect(getLastStopTireTemps()).toEqual(STINT_READING);
+
+      // The new session's first stop replaces it.
+      stop(controller, uniform(95), { SessionNum: 2 });
+      expect(getLastStopTireTemps()).toEqual(uniformReading(95));
+    });
+
+    it("is cleared by a disconnect, and a reconnect mid-session shows nothing until the next stop", () => {
+      const controller = start();
+
+      stop(controller, STINT);
+      expect(getLastStopTireTemps()).toEqual(STINT_READING);
+
+      controller.__tick(null, false);
+      expect(getLastStopTireTemps()).toBeNull();
+
+      // Reconnected on the circuit, the sim still holding the stop's values.
+      controller.__tick(telemetry(STINT));
+      controller.__tick(telemetry(STINT));
+      expect(getLastStopTireTemps()).toBeNull();
+
+      stop(controller, uniform(95));
+      expect(getLastStopTireTemps()).toEqual(uniformReading(95));
+    });
+
+    it("never takes a reading in a saved replay, even from a stop on live-looking ticks", () => {
+      const controller = start({ WeekendInfo: { SimMode: "replay" } });
+
+      stop(controller, STINT);
+      controller.__tick(telemetry({ IsReplayPlaying: true, ...IN_STALL, ...STINT }));
+
+      expect(getLastStopTireTemps()).toBeNull();
+    });
+
+    it("is cleared by a saved replay, and stays cleared after it", () => {
+      const controller = start({ WeekendInfo: { SimMode: "full" } });
+
+      stop(controller, STINT);
+      expect(getLastStopTireTemps()).toEqual(STINT_READING);
+
+      controller.__setSessionInfo({ WeekendInfo: { SimMode: "replay" } });
+      controller.__tick(telemetry(STINT));
+      expect(getLastStopTireTemps()).toBeNull();
+
+      controller.__setSessionInfo({ WeekendInfo: { SimMode: "full" } });
+      elapseReplayGrace();
+      controller.__tick(telemetry(STINT));
+      controller.__tick(telemetry(STINT));
+      expect(getLastStopTireTemps()).toBeNull();
+    });
+
+    it("is cleared by a saved replay loaded while the driver was already out of the car", () => {
+      const controller = start({ WeekendInfo: { SimMode: "full" } });
+
+      stop(controller, STINT);
+      controller.__tick(telemetry({ ...OUT_OF_CAR, ...STINT }));
+      expect(getLastStopTireTemps()).toEqual(STINT_READING);
+
+      // No replay entry edge here: the guard already held.
+      controller.__setSessionInfo({ WeekendInfo: { SimMode: "replay" } });
+      controller.__tick(telemetry({ ...OUT_OF_CAR, ...STINT }));
+      expect(getLastStopTireTemps()).toBeNull();
     });
   });
 });
