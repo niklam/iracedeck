@@ -130,6 +130,159 @@ export function sanitizeFuelCalloutMarginLaps(value: unknown): number {
 }
 
 /**
+ * Every step of the laps-of-fuel-left count, as {@link estimateFuelLapsLeft}
+ * derives it (issue #1387). `count` is what the callout speaks; the steps
+ * behind it are kept so the Telemetry Snapshot can show how it was reached.
+ */
+export type FuelLapsLeftEstimate = {
+  /** `FuelLevel / avg` — laps the tank holds at the validated burn rate. */
+  rawLapsLeft: number;
+  /** The safety margin (laps) that was subtracted. */
+  marginLaps: number;
+  /** `rawLapsLeft − marginLaps` — the `lapsLeft` of `fuel.lapsLeft.crossed`. */
+  effective: number;
+  /** `1 − LapDistPct` — what is left of the current lap. */
+  lapFractionRemaining: number;
+  /** May be negative: the tank will not finish the current lap. */
+  unclampedCount: number;
+  /** FULL laps completable after the current one, clamped at 0. */
+  count: number;
+};
+
+/**
+ * The count arithmetic of the module header, as one pure function (issue
+ * #1387): the diff calls it at its mid-lap sample, and the Telemetry
+ * Snapshot's state reader calls it with the telemetry of the press, so the
+ * two can never use different formulas. It validates nothing — the caller
+ * hands it a finite `fuelLevel` and `distPct` and a positive `avgFuelPerLap`.
+ *
+ * @param fuelLevel - `FuelLevel` (L)
+ * @param distPct - `LapDistPct` (0–1)
+ * @param avgFuelPerLap - the validated estimator's average (L per lap), positive
+ * @param marginLaps - the safety margin (laps), already sanitized
+ */
+export function estimateFuelLapsLeft(
+  fuelLevel: number,
+  distPct: number,
+  avgFuelPerLap: number,
+  marginLaps: number,
+): FuelLapsLeftEstimate {
+  const rawLapsLeft = fuelLevel / avgFuelPerLap;
+  const effective = rawLapsLeft - marginLaps;
+  const lapFractionRemaining = 1 - distPct;
+  // May be negative when the tank won't even finish the current lap — the
+  // clamp hides that, so the reassurance's truth guard reads this one.
+  const unclampedCount = Math.floor(effective - lapFractionRemaining);
+  const count = Math.max(0, unclampedCount);
+
+  return { rawLapsLeft, marginLaps, effective, lapFractionRemaining, unclampedCount, count };
+}
+
+/**
+ * The remaining race distance the laps-of-fuel-left count is compared with,
+ * as {@link resolveFuelRaceCoverage} determines it (issue #1387). Both sides
+ * are in the count's own unit: full laps the player still runs AFTER the
+ * current one.
+ */
+export type FuelRaceCoverage = {
+  /** By the lap counter, or `null` when it is unknown or unlimited. */
+  lapsNeededAfterCurrent: number | null;
+  /** By the session clock, or `null` when it is unknown, unlimited, or there is no validated lap time to divide it by. */
+  timedLapsAfterCurrent: number | null;
+  /** `Infinity` when neither limit is known. */
+  remainingLaps: number;
+};
+
+/**
+ * The remaining race distance for the race-coverage determination (issue
+ * #866, extended by #880), as one pure function shared by the diff and the
+ * Telemetry Snapshot's state reader (issue #1387). Two independently-known
+ * limits; whichever ends the race sooner binds (a session can carry BOTH a
+ * lap and a time limit, #866 limitation 1), and each suppresses only on a
+ * positive determination — an unknown reading keeps announcing. The sentinel
+ * decoding and the whichever-ends-sooner rule are the shared session-limit
+ * helper (`@iracedeck/iracing-sdk`, #1109) — one policy for this estimate
+ * and Session Info's Time Remaining key; the adjustments that follow are
+ * this estimate's own precision and stay here.
+ *
+ * `getLeaderLapTimeS` is called lazily: only when the timed side is actually
+ * computed (a known clock and a validated player lap time), and then once.
+ *
+ * @param telemetry - the tick's telemetry
+ * @param stats - the validated estimator's stats, for the player's lap time
+ * @param lapFractionRemaining - `1 − LapDistPct`, from {@link estimateFuelLapsLeft}
+ * @param getLeaderLapTimeS - the race leader's recent lap time (s), or `null` when unknown
+ */
+export function resolveFuelRaceCoverage(
+  telemetry: TelemetryData,
+  stats: FuelStats,
+  lapFractionRemaining: number,
+  getLeaderLapTimeS: () => number | null,
+): FuelRaceCoverage {
+  const whiteUp = typeof telemetry.SessionFlags === "number" && (telemetry.SessionFlags & Flags.White) !== 0;
+
+  // Lap counter: `count` means full laps completable AFTER the current one,
+  // while the raw counter INCLUDES the current lap — so the −1 bridges them
+  // (clamped at 0: a raw 0 in the leader-finished tick window must not go
+  // vacuously negative). In races the counter reads LEADER-relative
+  // (validated from lapped-race captures, 2026-08; qualifying is
+  // player-relative, #776), which IS the player's remaining crossings under
+  // equal pace — the race ends at the leader's final crossing, not after
+  // the player's full lap count — and overstates them for a slower
+  // multiclass player (conservative: warnings stay on longer). One boundary
+  // correction: while the WHITE flag flies and the player has not yet
+  // crossed under it (in the diff the sticky `playerFinalLapStarted` latch
+  // has returned before this is reached), the leader is on THEIR final lap
+  // (raw 1 → 0 needed) but the player still runs the current lap plus their
+  // OWN full white lap — clamp to ≥ 1.
+  const rawLapsRemain = resolveLapsRemaining(telemetry);
+  let lapsNeededAfterCurrent = rawLapsRemain !== null ? Math.max(0, rawLapsRemain - 1) : null;
+
+  if (lapsNeededAfterCurrent !== null && whiteUp) {
+    lapsNeededAfterCurrent = Math.max(lapsNeededAfterCurrent, 1);
+  }
+
+  // Timed estimate (issue #880): the clock expiring does NOT end a timed
+  // race — the leader takes the WHITE at their first crossing AFTER expiry
+  // (up to one full leader lap later) and the checkered one leader lap
+  // after that, so the leader's checkered lands at most
+  // `timeRemain + 2 × leaderLap` from now — or within ONE leader lap once
+  // the white is already up. The player then finishes the lap they are on.
+  // Upper bound on the full laps the player still starts after the current
+  // one: ceil((checkeredBound − remaining fraction × avgLap) / avgLap).
+  // Leader pace comes from the translator closure (recent → best lap,
+  // canonical live order); an unknown leader falls back to the player's own
+  // validated average. Overestimating keeps warnings on longer — the safe
+  // direction. The averages exclude caution laps (see `FuelLap.wasCaution`),
+  // so a long caution can neither deflate the burn rate nor inflate the lap
+  // time into a false "enough fuel".
+  const timeRemain = resolveTimeRemainingS(telemetry);
+  let timedLapsAfterCurrent: number | null = null;
+
+  if (timeRemain !== null && stats.avgLapTime !== null && stats.avgLapTime > 0) {
+    const leaderRaw = getLeaderLapTimeS();
+    const leaderLap =
+      typeof leaderRaw === "number" && Number.isFinite(leaderRaw) && leaderRaw > 0 ? leaderRaw : stats.avgLapTime;
+    const leaderChequeredBoundS = whiteUp ? leaderLap : timeRemain + 2 * leaderLap;
+
+    timedLapsAfterCurrent = Math.max(
+      0,
+      Math.ceil((leaderChequeredBoundS - lapFractionRemaining * stats.avgLapTime) / stats.avgLapTime),
+    );
+  }
+
+  // The binding remaining distance — the limit that actually ends the race,
+  // by the shared whichever-ends-sooner rule (a tie goes to the lap counter,
+  // which is value-identical here). Infinity when neither limit is known —
+  // the helper's "none" verdict — which keeps every comparison the diff
+  // makes against it false (announce on unknown: a `null` is ignorance,
+  // never a short race).
+  const remainingLaps = bindingLapsToGo(lapsNeededAfterCurrent, timedLapsAfterCurrent) ?? Number.POSITIVE_INFINITY;
+
+  return { lapsNeededAfterCurrent, timedLapsAfterCurrent, remainingLaps };
+}
+
+/**
  * Per-tick laps-of-fuel-left tracking. `getStats` reads the validated fuel
  * estimator (`computeFuelStats` over the instance tracker); `getMarginLaps`
  * is the live-read margin closure injected by the plugin (already
@@ -210,81 +363,14 @@ export function diffFuelLapsLeft(
 
   if (stats.avg === null || stats.avg <= 0) return;
 
-  const rawLapsLeft = fuelLevel / stats.avg;
-  const effective = rawLapsLeft - getMarginLaps();
-  const lapFractionRemaining = 1 - distPct;
-  // May be negative when the tank won't even finish the current lap — the
-  // clamp hides that, so the reassurance's truth guard reads this one.
-  const unclampedCount = Math.floor(effective - lapFractionRemaining);
-  const count = Math.max(0, unclampedCount);
+  const estimate = estimateFuelLapsLeft(fuelLevel, distPct, stats.avg, getMarginLaps());
+  const { effective, unclampedCount, count } = estimate;
 
   // Race-coverage determination, part 2 (issue #866, extended by #880): when
   // the post-margin count covers the remaining race distance there is
-  // nothing to refuel for. Two independently-known limits; whichever ends
-  // the race sooner binds (a session can carry BOTH a lap and a time limit,
-  // #866 limitation 1), and each suppresses only on a positive
-  // determination — an unknown reading keeps announcing. The sentinel
-  // decoding and the whichever-ends-sooner rule are the shared session-limit
-  // helper (`@iracedeck/iracing-sdk`, #1109) — one policy for this estimate
-  // and Session Info's Time Remaining key; the adjustments that follow are
-  // this estimate's own precision and stay here.
-  const whiteUp = typeof telemetry.SessionFlags === "number" && (telemetry.SessionFlags & Flags.White) !== 0;
-
-  // Lap counter: `count` means full laps completable AFTER the current one,
-  // while the raw counter INCLUDES the current lap — so the −1 bridges them
-  // (clamped at 0: a raw 0 in the leader-finished tick window must not go
-  // vacuously negative). In races the counter reads LEADER-relative
-  // (validated from lapped-race captures, 2026-08; qualifying is
-  // player-relative, #776), which IS the player's remaining crossings under
-  // equal pace — the race ends at the leader's final crossing, not after
-  // the player's full lap count — and overstates them for a slower
-  // multiclass player (conservative: warnings stay on longer). One boundary
-  // correction: while the WHITE flag flies and the player has not yet
-  // crossed under it (the sticky latch would have returned above), the
-  // leader is on THEIR final lap (raw 1 → 0 needed) but the player still
-  // runs the current lap plus their OWN full white lap — clamp to ≥ 1.
-  const rawLapsRemain = resolveLapsRemaining(telemetry);
-  let lapsNeededAfterCurrent = rawLapsRemain !== null ? Math.max(0, rawLapsRemain - 1) : null;
-
-  if (lapsNeededAfterCurrent !== null && whiteUp) {
-    lapsNeededAfterCurrent = Math.max(lapsNeededAfterCurrent, 1);
-  }
-
-  // Timed estimate (issue #880): the clock expiring does NOT end a timed
-  // race — the leader takes the WHITE at their first crossing AFTER expiry
-  // (up to one full leader lap later) and the checkered one leader lap
-  // after that, so the leader's checkered lands at most
-  // `timeRemain + 2 × leaderLap` from now — or within ONE leader lap once
-  // the white is already up. The player then finishes the lap they are on.
-  // Upper bound on the full laps the player still starts after the current
-  // one: ceil((checkeredBound − remaining fraction × avgLap) / avgLap).
-  // Leader pace comes from the translator closure (recent → best lap,
-  // canonical live order); an unknown leader falls back to the player's own
-  // validated average. Overestimating keeps warnings on longer — the safe
-  // direction. The averages exclude caution laps (see `FuelLap.wasCaution`),
-  // so a long caution can neither deflate the burn rate nor inflate the lap
-  // time into a false "enough fuel".
-  const timeRemain = resolveTimeRemainingS(telemetry);
-  let timedLapsAfterCurrent: number | null = null;
-
-  if (timeRemain !== null && stats.avgLapTime !== null && stats.avgLapTime > 0) {
-    const leaderRaw = getLeaderLapTimeS();
-    const leaderLap =
-      typeof leaderRaw === "number" && Number.isFinite(leaderRaw) && leaderRaw > 0 ? leaderRaw : stats.avgLapTime;
-    const leaderChequeredBoundS = whiteUp ? leaderLap : timeRemain + 2 * leaderLap;
-
-    timedLapsAfterCurrent = Math.max(
-      0,
-      Math.ceil((leaderChequeredBoundS - lapFractionRemaining * stats.avgLapTime) / stats.avgLapTime),
-    );
-  }
-
-  // The binding remaining distance — the limit that actually ends the race,
-  // by the shared whichever-ends-sooner rule (a tie goes to the lap counter,
-  // which is value-identical here). Infinity when neither limit is known —
-  // the helper's "none" verdict — which keeps every comparison below false
-  // (announce on unknown: a `null` is ignorance, never a short race).
-  const remainingLaps = bindingLapsToGo(lapsNeededAfterCurrent, timedLapsAfterCurrent) ?? Number.POSITIVE_INFINITY;
+  // nothing to refuel for. The distance is `resolveFuelRaceCoverage`'s — the
+  // two limits and which of them binds are worked out there.
+  const { remainingLaps } = resolveFuelRaceCoverage(telemetry, stats, estimate.lapFractionRemaining, getLeaderLapTimeS);
 
   if (count >= remainingLaps) {
     // Enough-fuel reassurance (issue #880): a positive coverage
