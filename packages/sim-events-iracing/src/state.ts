@@ -586,7 +586,9 @@ export type TranslatorState = {
    */
   lastTickInPreStart: boolean;
 
-  // ── Tire wear of a stop (issue #1108) ──────────────────────────────────
+  // ── How the car reached its stall (issues #1108, #254) ─────────────────
+  // Written by `updateStallVisit` only (`diff/stall-visit.ts`), which hands
+  // its consumers the tick's answer; no other diff reads these two.
   /**
    * The car was last seen driving on the circuit: set on a tick with
    * `IsOnTrack`, off pit road, out of the stall and in the world; cleared when
@@ -595,9 +597,11 @@ export type TranslatorState = {
    * survives the drive down the lane — which is what tells a stop the driver
    * drove into from a garage start or a tow.
    */
-  tireWearDroveOnCircuit: boolean;
+  stallVisitDroveOnCircuit: boolean;
   /** Whether the current stall visit is a drive-in — latched at `pitStall.entered`. */
-  tireWearStallDriveIn: boolean;
+  stallVisitDriveIn: boolean;
+
+  // ── Tire wear of a stop (issue #1108) ──────────────────────────────────
   /**
    * The report read at `pitStall.departed`, waiting for the exit readback that
    * publishes it. Dropped on `pitLane.approaching` — the one event on which
@@ -1428,8 +1432,9 @@ export function createInitialState(): TranslatorState {
     pitReadbackPreStartFireAt: 0,
     lastTickInPreStart: false,
 
-    tireWearDroveOnCircuit: false,
-    tireWearStallDriveIn: false,
+    stallVisitDroveOnCircuit: false,
+    stallVisitDriveIn: false,
+
     tireWearReport: null,
 
     trackWetnessInitialized: false,

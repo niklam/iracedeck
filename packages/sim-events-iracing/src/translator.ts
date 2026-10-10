@@ -91,6 +91,7 @@ import { updatePositionTracking } from "./diff/race-finish.js";
 import { diffRadar, resolveRadarState } from "./diff/radar.js";
 import { diffReplayLaps } from "./diff/replay-laps.js";
 import { diffRollingStart } from "./diff/rolling-start.js";
+import { updateStallVisit } from "./diff/stall-visit.js";
 import { diffStartCountdown, diffStartLights } from "./diff/start-lights.js";
 import { diffTireWear } from "./diff/tire-wear.js";
 import { diffToggles } from "./diff/toggles.js";
@@ -2278,11 +2279,15 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // `tireService.compoundChanged`) in `pending` — those signal user intent
   // and trigger an `entry-refire` readback.
   diffPitReadback(self.state, telemetry, now, emit, pending);
+  // How the car reached its stall (issues #1108, #254): a drive-in or a
+  // placement. Resolved ONCE per tick, from `diffPitLane`'s edges in `pending`,
+  // and handed to every diff that asks whether a stall visit is a pit stop.
+  const stallVisit = updateStallVisit(self.state, telemetry, pending);
   // The tire wear of a stop (issue #1108) rides the exit readback: it reads the
-  // pit-lane edges and the exit `pitService.readbackRequested` out of `pending`,
-  // so it must run immediately after `diffPitReadback` — pushed after it, the
-  // report is always flushed behind the readback of the same tick.
-  diffTireWear(self.state, telemetry, emit, pending);
+  // stall visit above and the exit `pitService.readbackRequested` out of
+  // `pending`, so it must run immediately after `diffPitReadback` — pushed
+  // after it, the report is always flushed behind the readback of the same tick.
+  diffTireWear(self.state, telemetry, emit, pending, stallVisit);
   // The discipline-resolved collision-car value (Sporting Code §3.5.1:
   // 4x pavement / 2x dirt) feeds the spoken incident value (#938).
   diffIncidents(self.state, telemetry, now, emit, resolveCollisionCarValue(sessionInfo), self.logger);
