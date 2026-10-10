@@ -386,6 +386,28 @@ function cautionContract(
   };
 }
 
+/** The car a build last named, tagged with the caution it was named in — see `lastNamed` in the build. */
+type LastNamedCar = { episodeId: number; followCarIdx: number };
+
+/**
+ * How the Telemetry Snapshot reaches the one piece of state this family
+ * keeps (issue #1387). `lastNamed` lives in a build's closure, where nothing
+ * outside the build can read it, so each build leaves a reader of its own
+ * here and the newest wins — the plugin builds once, in `registerPitCrew`.
+ * `null` until the first build. The state itself stays in the build: two
+ * builds never share a record.
+ */
+let readNewestLastNamed: (() => LastNamedCar | null) | null = null;
+
+/**
+ * This file's state, for the Telemetry Snapshot (issue #1387): the car the
+ * newest build last named and the caution it named it in — what a lineup
+ * change is judged against. A pure read; `null` before any build.
+ */
+export function readCautionDebugState(): { lastNamed: LastNamedCar | null } {
+  return { lastNamed: readNewestLastNamed?.() ?? null };
+}
+
 /**
  * The family, built against the plugin's caution readers. A builder rather
  * than a constant for two reasons. The contracts need the phase reader at two
@@ -426,7 +448,10 @@ export function buildCautionContracts({
    * and the ops take the bus next. Tagged with the caution's id so a record
    * from an earlier caution — or session — never counts.
    */
-  let lastNamed: { episodeId: number; followCarIdx: number } | null = null;
+  let lastNamed: LastNamedCar | null = null;
+
+  // The newest build is the one the snapshot reads (issue #1387).
+  readNewestLastNamed = () => lastNamed;
 
   /** Record the car ahead now as named — nothing while no caution is out or the lineup names no car. */
   const recordNamed = (): void => {

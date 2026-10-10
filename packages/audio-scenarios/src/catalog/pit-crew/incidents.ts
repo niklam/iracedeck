@@ -171,6 +171,14 @@ export function _resetLastIncidentPoints(): void {
 }
 
 /**
+ * This file's module state, for the Telemetry Snapshot (issue #1387): the
+ * points the last admitted incident stashed for its count clause. A pure read.
+ */
+export function readIncidentsDebugState(): { lastIncidentPoints: number | null } {
+  return { lastIncidentPoints };
+}
+
+/**
  * Register the vocabulary the incident scripts reference (issue #1065): the
  * count-clause var. Must run before the {@link INCIDENT_CONTRACTS} are
  * defined so the first `setScripts` compile sees it.

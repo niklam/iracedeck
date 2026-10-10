@@ -38,6 +38,7 @@ import {
   isReplayOnlySession,
   nearestCarGapMeters,
   type QualifyResultEntry,
+  type ReplayState,
   resolveLapsRemaining,
   resolveTimeRemainingS,
   type SDKController,
@@ -96,6 +97,7 @@ import { diffToggles } from "./diff/toggles.js";
 import { diffTrackWetness, resolveReportedTrackWetness } from "./diff/track-wetness.js";
 import type { PendingEvent } from "./diff/types.js";
 import { calculateCanonicalRacePositions } from "./race-order.js";
+import { buildDegradedSimState, buildSimState, type SimStateSnapshot } from "./sim-state.js";
 import { resolveStandingStart } from "./start-lights.js";
 import {
   type CautionEpisode,
@@ -1481,6 +1483,123 @@ export function getOvertakeTelemetryGate(): OvertakeTelemetryGate | null {
 }
 
 /**
+ * The fuel stats the laps-of-fuel-left callout reads: the validated history
+ * over the callout's own window. One definition for `handleTick`, which hands
+ * it to `diffFuelLapsLeft`, and {@link readSimState}, which reports the
+ * figure that diff would compute (issue #1387) — so a snapshot can never show
+ * an estimate made from a different window than the one that was spoken.
+ */
+function fuelLapsLeftStats(self: TranslatorInstance): FuelStats {
+  return computeFuelStats(self.fuelLaps.history, FUEL_LAPS_LEFT_WINDOW_LAPS);
+}
+
+/**
+ * The translator's state for a Telemetry Snapshot (issue #1387): what it had
+ * computed as of its latest tick — the fuel history and the laps-of-fuel-left
+ * figure, the live order, the gaps, the caution — then the whole
+ * `TranslatorState` and the instance's own flags under `raw`. Exactly
+ * `{ initialized: false }` while there is no translator.
+ *
+ * Read ONLY when a snapshot is taken. It is synchronous, logs nothing and
+ * writes nothing, so taking a snapshot cannot change what is being reported;
+ * the one effect is the per-tick memo `getCautionLineup()` fills, which that
+ * accessor writes for every caller. Nothing here runs per tick.
+ *
+ * The curated keys are what the public accessors answer, called as any other
+ * consumer calls them, so the snapshot shows what the actions and the Race
+ * Engineer were reading. `fuel.lapsLeft.now` is the exception — no accessor
+ * holds it, because `diffFuelLapsLeft` computes it as locals at its mid-lap
+ * sample — and is made from that diff's own inputs: the stats of
+ * {@link fuelLapsLeftStats}, the instance's margin closure, and
+ * {@link resolveLeaderLapTimeS} over the canonical order. The shaping is
+ * `buildSimState` in `sim-state.ts`.
+ *
+ * **The result holds live objects** (the lap history, the gap traces, the
+ * Sets in the state), not copies. The snapshot's JSON-safe encoder copies
+ * them at the press; a caller that keeps the result holds state the next tick
+ * mutates. The bus, the controller, the loggers and the settings closures
+ * are never part of it.
+ *
+ * **The raw half survives a curated half that throws.** The snapshot's
+ * collector isolates per section, so a throw from here would replace the
+ * whole of `sim` with an error entry and lose `raw` — the dump that explains
+ * that kind of defect. So the state and the instance's flags are read first,
+ * as plain field reads, and everything that calls something (the accessors,
+ * the two closures, the controller's replay state) runs inside one `try`:
+ * when it throws, the answer is the degraded shape, `raw` plus a
+ * `curatedError` naming what was thrown. Nothing is logged for it; the
+ * reason is in the file.
+ */
+export function readSimState(): SimStateSnapshot {
+  if (!instance) return { initialized: false };
+
+  const self = instance;
+  const state = self.state;
+  const flags = {
+    lastTickInReplay: self.lastTickInReplay,
+    lastObservedSessionNum: self.lastObservedSessionNum,
+    firstOnTrackSeeded: self.firstOnTrackSeeded,
+    firstOnTrackFired: self.firstOnTrackFired,
+    freshConnectFireChecked: self.freshConnectFireChecked,
+    freshConnectReplaySkipLogged: self.freshConnectReplaySkipLogged,
+    pitSpeedLimitMps: self.pitSpeedLimitMps,
+    pitSpeedLimitKey: self.pitSpeedLimitKey,
+  };
+  // A call, unlike the fields above, so it is made inside the `try`; it stays
+  // `null` in the degraded shape only when it is itself what threw.
+  let replay: ReplayState | null = null;
+
+  try {
+    // The read `handleTick`'s replay guard makes (#1324), taken at the press.
+    replay = self.controller.getReplayState();
+
+    const telemetry = self.latestTelemetry;
+    const positions = getLiveRacePositions();
+    const sessionType = getSessionType();
+
+    return buildSimState({
+      telemetry,
+      replay,
+      fuel: {
+        windowLaps: FUEL_LAPS_LEFT_WINDOW_LAPS,
+        // `handleTick`'s own test, on the session type its accessor resolves.
+        isRaceSession: sessionType === "Race",
+        stats: fuelLapsLeftStats(self),
+        tracker: self.fuelLaps,
+        getMarginLaps: self.getFuelLapsLeftMarginLaps,
+        // The expression `handleTick` hands `diffFuelLapsLeft`, over the same
+        // canonical order (`resolveCanonicalOrder`, read here through its
+        // public accessor). `positions` is null only without telemetry, where
+        // there is no estimate to ask for.
+        getLeaderLapTimeS: () =>
+          telemetry !== null && positions !== null ? resolveLeaderLapTimeS(telemetry, positions) : null,
+      },
+      order: {
+        positions,
+        player: getLivePosition(),
+        startingGrid: getStartingGridPosition(),
+        raceFinish: getRaceFinishResult(telemetry?.SessionNum),
+      },
+      gaps: getLiveGaps(),
+      opponentFlags: getLiveOpponentFlags(),
+      caution: { phase: getCautionPhase(), episode: getCautionEpisode(), lineup: getCautionLineup() },
+      session: {
+        type: sessionType,
+        trackDirection: getTrackDirection(),
+        standingStart: getStandingStart(),
+        pitActionsAllowed: isPitActionsAllowed(),
+        damageRepairNeeded: isDamageRepairNeeded(),
+        raceFinished: isRaceFinished(),
+      },
+      state,
+      instance: flags,
+    });
+  } catch (error) {
+    return buildDegradedSimState({ state, instance: flags, replay }, error);
+  }
+}
+
+/**
  * Reset the translator singleton.
  * @internal Exported for test isolation only.
  */
@@ -2376,7 +2495,7 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     self.state,
     telemetry,
     isRaceSession,
-    () => computeFuelStats(self.fuelLaps.history, FUEL_LAPS_LEFT_WINDOW_LAPS),
+    () => fuelLapsLeftStats(self),
     self.getFuelLapsLeftMarginLaps,
     () => resolveLeaderLapTimeS(telemetry, canonicalPositions),
     emit,

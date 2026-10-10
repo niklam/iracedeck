@@ -17,6 +17,8 @@ import {
 } from "@iracedeck/deck-core";
 import { getCommands, SimIRacingAction } from "@iracedeck/deck-iracing";
 import {
+  collectStateSections,
+  describeThrown,
   getCpuProfileCapture,
   isCpuProfileCaptureInitialized,
   type ProfileCaptureStatus,
@@ -28,8 +30,15 @@ import snapshotIconSvg from "@iracedeck/icons/telemetry-control/snapshot.svg";
 import startRecordingIconSvg from "@iracedeck/icons/telemetry-control/start-recording.svg";
 import stopRecordingIconSvg from "@iracedeck/icons/telemetry-control/stop-recording.svg";
 import toggleLoggingIconSvg from "@iracedeck/icons/telemetry-control/toggle-logging.svg";
-import { buildSnapshotEnvelope, generateMarkdown, snapshotBaseName } from "@iracedeck/iracing-sdk";
+import {
+  buildSnapshotEnvelope,
+  formatSnapshotJson,
+  generateMarkdown,
+  snapshotBaseName,
+  type TelemetryData,
+} from "@iracedeck/iracing-sdk";
 import { getGlobalColors } from "@iracedeck/settings";
+import { getLatestTelemetry } from "@iracedeck/sim-events-iracing";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
@@ -149,6 +158,57 @@ export function resolveSnapshotDir(outputDir: string | undefined): string {
   const expanded = expandPath(trimmed);
 
   return isAbsolute(expanded) ? expanded : resolve(homedir(), expanded);
+}
+
+/** The plugin's state as a snapshot carries it: the JSON file's `pluginState`, and the report's Plugin State rows. */
+type SnapshotPluginState = { state: unknown; rows: ReadonlyArray<readonly [string, string]> };
+
+/**
+ * What stands in for the plugin's state when it could not be collected or
+ * could not be written: an error entry for the JSON file, and for the report
+ * one row saying so, so the two files never disagree about whether the state
+ * is there. The row is worded like the collector's own row for a failed
+ * section, with the JSON key the error entry sits under as its label.
+ */
+function unavailablePluginState(reason: string): SnapshotPluginState {
+  return { state: { error: reason }, rows: [["pluginState", "unavailable (see the JSON file)"]] };
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * The telemetry a snapshot writes, chosen between the translator's latest tick
+ * and a fresh read of shared memory.
+ *
+ * Everything in the plugin's state was computed from the last tick the
+ * controller dispatched. iRacing writes a frame about every 16.7 ms and the
+ * controller polls every 10 ms, so a fresh read is often one frame AHEAD of
+ * that state, and then the translator's tick is the one to write: the
+ * telemetry in the file is the tick its `pluginState` was computed from.
+ *
+ * A fresh read of that SAME tick is preferred, though. The controller
+ * dispatches a tick once, on its first read, and iRacing can go on changing
+ * fields under it: in a paused replay `SessionTick` stops while the camera
+ * target moves, and after a seek the first frame of the new tick still carries
+ * the replay flag's blip. The translator's copy is then as old as the pause,
+ * while the fresh read has the same state basis and today's values.
+ *
+ * With no tick in the translator (it is not running, or none has reached it
+ * since it connected) the fresh read is used, and there is no translator
+ * state for it to disagree with. A build whose frames carry no `SessionTick`
+ * cannot be compared, so it keeps the translator's.
+ */
+export function selectSnapshotTelemetry(
+  translatorTick: TelemetryData | null,
+  freshRead: TelemetryData | null,
+): TelemetryData | null {
+  if (!translatorTick) return freshRead;
+
+  if (!freshRead) return translatorTick;
+
+  const tick = freshRead.SessionTick;
+
+  return tick !== undefined && tick === translatorTick.SessionTick ? freshRead : translatorTick;
 }
 
 /**
@@ -436,12 +496,18 @@ export class TelemetryControl extends SimIRacingAction<TelemetryControlSettings>
   }
 
   /**
-   * Reads the current telemetry + session info and writes a timestamped JSON
-   * snapshot plus a Markdown companion report. Feedback is log-only: success at
-   * info level, failures at warn/error level.
+   * Reads the telemetry + session info and the plugin's own state (#1387), and
+   * writes a timestamped JSON snapshot plus a Markdown companion report.
+   * Feedback is log-only: success at info level, failures at warn/error level.
+   *
+   * The JSON file is what a user sends in, so nothing optional can cost it: a
+   * failure collecting the plugin's state becomes an error entry inside it, and
+   * the report is generated and written only after it is on disk.
    */
   private captureSnapshot(settings: TelemetryControlSettings): void {
-    const telemetry = this.sdkController.getCurrentTelemetry();
+    // The tick the plugin's state was computed from, in its freshest copy: see
+    // `selectSnapshotTelemetry` for why neither read is right on its own.
+    const telemetry = selectSnapshotTelemetry(getLatestTelemetry(), this.sdkController.getCurrentTelemetry());
 
     if (!telemetry) {
       this.logger.warn("Telemetry snapshot skipped: no telemetry available (is iRacing running?)");
@@ -451,37 +517,132 @@ export class TelemetryControl extends SimIRacingAction<TelemetryControlSettings>
 
     const sessionInfo = this.sdkController.getSessionInfo() ?? null;
 
+    // Collected in the same synchronous run as the read above. A tick is
+    // dispatched from the controller's poll timer, so none can land while this
+    // runs; an `await` anywhere between the read and the collection would let
+    // one in, and the state would then be a tick ahead of the telemetry. This
+    // method stays synchronous.
+    let pluginState = this.collectPluginState();
+
+    const telemetryRecord = telemetry as unknown as Record<string, unknown>;
+    const sessionRecord = sessionInfo as Record<string, unknown> | null;
+    let now: Date;
+    let jsonPath: string;
+    let mdPath: string;
+
     // Everything below — including the pure envelope/markdown builders — runs
-    // inside the try so a throw on malformed telemetry can never escape onto the
+    // inside a try so a throw on malformed telemetry can never escape onto the
     // Stream Deck event loop as an unhandled rejection.
     try {
-      const now = new Date();
-      const envelope = buildSnapshotEnvelope(
-        telemetry as unknown as Record<string, unknown>,
-        sessionInfo as Record<string, unknown> | null,
-        true,
-        now,
-      );
-      const markdown = generateMarkdown(
-        telemetry as unknown as Record<string, unknown>,
-        sessionInfo as Record<string, unknown> | null,
-        now,
-      );
+      now = new Date();
 
       const dir = resolveSnapshotDir(settings.outputDir);
       // snapshotBaseName includes milliseconds, so two presses within the same
       // second don't collide and silently overwrite each other.
       const baseName = snapshotBaseName(now);
-      const jsonPath = join(dir, `${baseName}.json`);
-      const mdPath = join(dir, `${baseName}.md`);
+      jsonPath = join(dir, `${baseName}.json`);
+      mdPath = join(dir, `${baseName}.md`);
+
+      const formatted = this.formatSnapshot(telemetryRecord, sessionRecord, now, pluginState);
+
+      // From here on the plugin's state is what the JSON file holds, so the
+      // report below describes that file and not what was collected.
+      pluginState = formatted.pluginState;
 
       mkdirSync(dir, { recursive: true });
-      writeFileSync(jsonPath, JSON.stringify(envelope, null, 2), "utf-8");
-      writeFileSync(mdPath, markdown, "utf-8");
-      this.logger.info("Telemetry snapshot saved");
-      this.logger.debug(`Snapshot written to ${jsonPath} and ${mdPath}`);
+      writeFileSync(jsonPath, formatted.json, "utf-8");
     } catch (error) {
-      this.logger.error(`Failed to write telemetry snapshot: ${error instanceof Error ? error.message : error}`);
+      this.logger.error(`Failed to write telemetry snapshot: ${describeThrown(error)}`);
+
+      return;
+    }
+
+    // The report comes second and on its own: it walks the session info far
+    // more than the envelope does, and a throw there must leave the JSON file.
+    try {
+      const markdown = generateMarkdown(
+        telemetryRecord,
+        sessionRecord,
+        now,
+        pluginState.rows.length > 0 ? [{ title: "Plugin State", rows: pluginState.rows }] : [],
+      );
+
+      writeFileSync(mdPath, markdown, "utf-8");
+    } catch (error) {
+      this.logger.warn("Telemetry snapshot saved without its Markdown report");
+      this.logger.debug(`Snapshot written to ${jsonPath}; the report failed: ${describeThrown(error)}`);
+
+      return;
+    }
+
+    this.logger.info("Telemetry snapshot saved");
+    this.logger.debug(`Snapshot written to ${jsonPath} and ${mdPath}`);
+  }
+
+  /**
+   * The plugin's own state for the snapshot (#1387), and its rows for the
+   * report's Plugin State section. The collector isolates each section and puts
+   * a row in place for one that failed; this covers the collector failing as a
+   * whole, which becomes an error entry and the one row saying so. It never
+   * throws, because a failure here must not cost the telemetry.
+   */
+  private collectPluginState(): SnapshotPluginState {
+    try {
+      const collected = collectStateSections(this.logger);
+
+      return { state: collected.state, rows: collected.headline };
+    } catch (error) {
+      const reason = describeThrown(error);
+
+      this.reportPluginStateFailure("Plugin state unavailable for the telemetry snapshot", reason);
+
+      return unavailablePluginState(reason);
+    }
+  }
+
+  /**
+   * One WARN for a plugin-state failure, with the reason at debug. Guarded,
+   * because both callers run before the JSON file is written and a logger that
+   * throws is one way the collector fails: the report is lost, never the file.
+   */
+  private reportPluginStateFailure(summary: string, reason: string): void {
+    try {
+      this.logger.warn(summary);
+      this.logger.debug(`Reason: ${reason}`);
+    } catch {
+      // Nothing left to report through; the snapshot is still written.
+    }
+  }
+
+  /**
+   * The JSON file's content, and the plugin's state as that content holds it.
+   * The collector's output is JSON-safe by construction, so the fallback is for
+   * what should not happen: if the envelope cannot be written with the plugin's
+   * state in it, it is written with an error entry there instead, and the
+   * caller gets that stand-in back so the report does not list rows for state
+   * the file does not hold. A throw from the fallback (the telemetry itself is
+   * not JSON) reaches the caller, as it always did.
+   */
+  private formatSnapshot(
+    telemetry: Record<string, unknown>,
+    sessionInfo: Record<string, unknown> | null,
+    now: Date,
+    pluginState: SnapshotPluginState,
+  ): { json: string; pluginState: SnapshotPluginState } {
+    try {
+      const json = formatSnapshotJson(buildSnapshotEnvelope(telemetry, sessionInfo, true, now, pluginState.state));
+
+      return { json, pluginState };
+    } catch (error) {
+      const reason = describeThrown(error);
+      const unavailable = unavailablePluginState(reason);
+      const json = formatSnapshotJson(buildSnapshotEnvelope(telemetry, sessionInfo, true, now, unavailable.state));
+
+      // Reported only once the fallback has formatted, so the plugin's state is
+      // never blamed for telemetry that is itself not JSON.
+      this.reportPluginStateFailure("Plugin state left out of the telemetry snapshot", reason);
+
+      return { json, pluginState: unavailable };
     }
   }
 

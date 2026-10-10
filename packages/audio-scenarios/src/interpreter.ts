@@ -112,6 +112,7 @@ import { applyBase, DEFAULT_FRAME, DEFAULT_MAX_QUEUE_WAIT_MS, DEFAULT_WEIGHT, NO
 import { type AudioAssetsManifest, referenceVoice } from "./manifest.js";
 import { PendingQueue, type QueuedFire, type QueueDrop } from "./pending-queue.js";
 import { type CompileDeps, type CompiledVoiceScript, compileVoiceScript } from "./script-compiler.js";
+import { isStatePartError, readStatePart, type StatePartError } from "./state-part.js";
 import { validateScenario } from "./validation.js";
 
 // Re-export so existing consumers of `interpreter.js` keep their import paths.
@@ -191,6 +192,103 @@ export type ContractReport = {
    */
   base: string | null;
 };
+
+/**
+ * What the engine is doing right now, for the Telemetry Snapshot (issue
+ * #1387): a support case can see what was on the radio, what was waiting for
+ * it and why a callout stayed silent at the moment the key was pressed. Plain
+ * data throughout — ids, numbers, booleans — so it serialises as it stands:
+ * a timer is reported as a boolean, and a fire's event, ops and resume state
+ * are left out.
+ *
+ * `activeVoice` and `frameOptions` come from the two accessors the engine was
+ * handed — code it does not own, reading the settings. Each is read on its
+ * own (`readStatePart`), so one that throws is an `{ error }` entry in its
+ * field and costs nothing else: the buses, the queue and the contracts are
+ * the engine's own maps and are reported regardless.
+ */
+export type ScenarioEngineState = {
+  /**
+   * The voice `{voice}` resolves to; `null` when none is selected. An error
+   * entry when the accessor threw — never `null`, which already means "no
+   * voice".
+   */
+  activeVoice: string | null | StatePartError;
+  /**
+   * The user's Radio beeps / Pit ambience switches as the engine reads them,
+   * or an error entry when the accessor threw.
+   */
+  frameOptions: FrameOptions | StatePartError;
+  /**
+   * `true` when a registration landed after the last script compile, so each
+   * contract's `scripted` below is the LAST compile's answer; the next fire
+   * recompiles. `describeState` never compiles: it would log, and reset the
+   * script pools' no-repeat trackers, at a key press.
+   */
+  scriptsDirty: boolean;
+  /** One row per audio bus, in the `AudioBus` enum's order — a bus nothing has used yet reads as idle. */
+  buses: Array<{
+    /** The `AudioBus` member's name (`"Voice"`). */
+    bus: string;
+    playingId: string | null;
+    /**
+     * The fire in flight. The engine keeps no start time for it, so its
+     * position is the op in flight (`opIndex`, zero-based) out of the ops
+     * this fire plays (`opCount`) — for a fire resumed after an interrupt,
+     * the resumed tail rather than the callout's whole body.
+     */
+    active: { id: string; weight: number; opIndex: number; opCount: number } | null;
+    /** The exclusive-focus floor held on the bus (issue #652), if any. */
+    focus: { ownerId: string; floor: number } | null;
+    /** A finished fire's `pendingHoldMs` is delaying the drain of `waiting`. */
+    pendingHoldArmed: boolean;
+    /**
+     * The fires waiting for the bus, in play order. An entry past its
+     * `maxWaitMs` stays listed until the next drain drops it.
+     */
+    waiting: Array<{
+      id: string;
+      weight: number;
+      /** The supersede group; the contract id when it declares none. */
+      group: string;
+      /** `Date.now()` when the fire was first deferred. */
+      queuedAt: number;
+      maxWaitMs: number;
+      /** The waiting leader this one plays right after (`queueBehind`), or `null`. */
+      after: string | null;
+    }>;
+  }>;
+  /** Every registered contract (and legacy scenario), sorted by id in code-point order. */
+  contracts: Array<{
+    id: string;
+    enabled: boolean;
+    /**
+     * `Date.now()` when a fire of it last took the bus; `0` when none has. A
+     * fire that is only waiting has stamped nothing, and neither does a fire
+     * resumed after an interrupt.
+     */
+    lastFireAt: number;
+    /**
+     * Whether the active voice's compiled script has a body for it — see
+     * `scriptsDirty`. `null` when the active voice could not be read (its
+     * error entry is `activeVoice`): unknown, not a `false` that would read
+     * as "this voice does not say it".
+     */
+    scripted: boolean | null;
+    /** A `triggerDelay` or `settle` timer is running for it. */
+    triggerPending: boolean;
+  }>;
+};
+
+/**
+ * The `AudioBus` members, in declaration order (a numeric enum also lists its
+ * names as values). Read at the call, never at module load: a test that mocks
+ * `@iracedeck/audio-service` without the enum must still be able to import
+ * this module.
+ */
+function audioBuses(): AudioBus[] {
+  return Object.values(AudioBus).filter((v): v is AudioBus => typeof v === "number");
+}
 
 /**
  * Code-point order, not `localeCompare`: both reports feed a generated
@@ -335,6 +433,13 @@ export interface IScenarioEngine {
   acquireFocus(bus: AudioBus, ownerId: string, floorWeight: number): void;
   /** Release a focus floor previously acquired by `ownerId` (no-op if another owner holds it). */
   releaseFocus(bus: AudioBus, ownerId: string): void;
+  /**
+   * What the engine is doing right now, for the Telemetry Snapshot (issue
+   * #1387) — see `ScenarioEngineState`. A pure read: it logs nothing, compiles
+   * nothing, creates no bus state, and neither expires nor takes a waiting
+   * fire, so calling it changes nothing about what plays next.
+   */
+  describeState(): ScenarioEngineState;
 }
 
 /**
@@ -1089,6 +1194,39 @@ class ScenarioEngine implements IScenarioEngine {
         base: raw.base ?? null,
       }))
       .sort((a, b) => codePointOrder(a.id, b.id));
+  }
+
+  describeState(): ScenarioEngineState {
+    // The two accessors are the only calls here into code the engine does not
+    // own, so each is read on its own: one that throws is an error entry in
+    // its field, and the walk of the engine's own maps below still reports.
+    // That walk is not guarded piece by piece — it calls nothing foreign, so
+    // a throw there is a bug in this method, which the caller's own
+    // `readStatePart` reports as the engine's part failing.
+    const activeVoice = readStatePart(() => this.getActiveVoice());
+    const voiceUnread = isStatePartError(activeVoice);
+    // The compiled map as it stands, NOT `isScripted`: that recompiles a
+    // dirty script set, which logs and clears the script pools' no-repeat
+    // state. `scriptsDirty` says when the answer is the last compile's.
+    const scripted = voiceUnread || activeVoice === null ? undefined : this.compiled.get(activeVoice)?.scenarios;
+
+    return {
+      activeVoice,
+      // The accessor itself rather than `frameOptions()`, which logs a throw.
+      frameOptions: readStatePart(() => ({ ...this.getFrameOptions() })),
+      scriptsDirty: this.scriptsDirty,
+      // `busState.get`, not `getBusState`: a read creates no state.
+      buses: audioBuses().map((bus) => describeBus(bus, this.busState.get(bus))),
+      contracts: [...this.scenarios.values()]
+        .map((entry) => ({
+          id: entry.raw.id,
+          enabled: entry.enabled,
+          lastFireAt: entry.lastFireAt,
+          scripted: voiceUnread ? null : (scripted?.has(entry.raw.id) ?? false),
+          triggerPending: entry.pendingTriggerTimer !== null,
+        }))
+        .sort((a, b) => codePointOrder(a.id, b.id)),
+    };
   }
 
   compileScript(script: CalloutScript): CompiledVoiceScript {
@@ -2878,6 +3016,40 @@ function buildResumeState(active: ActiveFire, voice: string | null, generation: 
   if (sourceIndex >= active.sourceOps.length) return undefined;
 
   return { ops: active.sourceOps, index: sourceIndex, voice, generation };
+}
+
+/**
+ * One bus's row of `describeState` (issue #1387); `state` is `undefined` for
+ * a bus nothing has used yet, which reads as idle. `queue.ordered()` is the
+ * queue's one pure read — `next` would expire entries and hand one out.
+ */
+function describeBus(bus: AudioBus, state: BusState | undefined): ScenarioEngineState["buses"][number] {
+  const fire = state?.activeFire ?? null;
+
+  return {
+    bus: AudioBus[bus] ?? String(bus),
+    playingId: state?.playingId ?? null,
+    active:
+      fire === null
+        ? null
+        : {
+            id: fire.id,
+            weight: fire.weight,
+            // `index` points one past the op in flight (see `buildResumeState`).
+            opIndex: Math.max(0, fire.index - 1),
+            opCount: fire.ops.length,
+          },
+    focus: state?.focus ? { ownerId: state.focus.ownerId, floor: state.focus.floor } : null,
+    pendingHoldArmed: (state?.pendingHoldTimer ?? null) !== null,
+    waiting: (state?.queue.ordered() ?? []).map((e) => ({
+      id: e.id,
+      weight: e.weight,
+      group: e.group,
+      queuedAt: e.queuedAt,
+      maxWaitMs: e.maxWaitMs,
+      after: e.after,
+    })),
+  };
 }
 
 /** Escape a literal string for embedding in a RegExp source. */

@@ -246,6 +246,15 @@ export function stopRaceEngineerScenarios(): void {
 }
 
 export { isBackgroundTestInFlight, playBackgroundTest } from "./background-test.js";
+// The Race Engineer's section of the Telemetry Snapshot (issue #1387). Here
+// rather than in the package's root barrel: the root is the engine and
+// imports no sim package, and the reader aggregates this catalog's families.
+export {
+  raceEngineerStateHeadline,
+  type RaceEngineerFamiliesState,
+  type RaceEngineerState,
+  readRaceEngineerState,
+} from "./debug-state.js";
 export { driverNameClipPath } from "./driver-name-clip.js";
 export {
   getRadarVisualState,

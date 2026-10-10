@@ -623,3 +623,33 @@ export function _resetSpotterEngine(): void {
   stillTherePick.lastIndex = -1;
   deps = DEFAULT_DEPS;
 }
+
+/**
+ * This file's module state, for the Telemetry Snapshot (issue #1387). A pure
+ * read, and safe before `registerSpotterEngine`. The two timers are reported
+ * as `looping` (the still-there reminder) and `clearPolling` (the → clear
+ * confirmation), the bus as `registered`, and each no-repeat pick by its last
+ * index alone; `deps` is closures and is left out. The focus floor the
+ * spotter holds is the engine's to report (`describeState`).
+ */
+export function readSpotterDebugState(): {
+  registered: boolean;
+  state: RadarState;
+  looping: boolean;
+  clearPolling: boolean;
+  pendingClear: { baselineGap: number; elapsedMs: number } | null;
+  pendingSpotterClip: string;
+  clearPick: { lastIndex: number };
+  stillTherePick: { lastIndex: number };
+} {
+  return {
+    registered: registeredBus !== null,
+    state,
+    looping: loopTimer !== null,
+    clearPolling: clearPollTimer !== null,
+    pendingClear,
+    pendingSpotterClip,
+    clearPick: { lastIndex: clearPick.lastIndex },
+    stillTherePick: { lastIndex: stillTherePick.lastIndex },
+  };
+}

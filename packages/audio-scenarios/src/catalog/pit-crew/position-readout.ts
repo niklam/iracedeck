@@ -322,6 +322,31 @@ export function _resetPositionReadoutCooldown(): void {
 }
 
 /**
+ * This file's module state, for the Telemetry Snapshot (issue #1387): the
+ * shared position cooldown's last claim, the two trackers behind the
+ * bare/full intro decision, and the decision an expansion stashed that no
+ * gate has taken yet. A pure read. The stash is reported without its `ctx` —
+ * the fire's context carries the event envelope and its telemetry — and the
+ * reaction RNG, a function, is left out.
+ */
+export function readPositionReadoutDebugState(): {
+  lastPositionAnnouncedAt: number;
+  lastIntroAt: number;
+  lastSpokenPosition: number;
+  pendingIntro: IntroDecision | null;
+} {
+  return {
+    lastPositionAnnouncedAt,
+    lastIntroAt,
+    lastSpokenPosition,
+    pendingIntro:
+      pendingIntro === null
+        ? null
+        : { spokeIntro: pendingIntro.spokeIntro, position: pendingIntro.position, at: pendingIntro.at },
+  };
+}
+
+/**
  * Effective position number from a live snapshot: class in multi-class series,
  * overall otherwise. `null` when the chosen field is missing.
  */

@@ -119,6 +119,15 @@ export function _resetGapCalloutCooldown(): void {
   lastGapCalloutAt = null;
 }
 
+/**
+ * This file's module state, for the Telemetry Snapshot (issue #1387): when
+ * the shared gap-callout cooldown was last claimed (`Date.now()`), `null`
+ * before the first gap call. A pure read.
+ */
+export function readGapsDebugState(): { lastGapCalloutAt: number | null } {
+  return { lastGapCalloutAt };
+}
+
 /** The identity of the gap event a fire is about: which neighbor, which way, which car. */
 type GapFire = { side: GapSide; direction: "closing" | "opening"; carIdx: number };
 

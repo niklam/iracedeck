@@ -18,7 +18,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 import { createSDK } from "../factory.js";
-import { buildSnapshotEnvelope, generateMarkdown, snapshotBaseName } from "../snapshot.js";
+import { buildSnapshotEnvelope, formatSnapshotJson, generateMarkdown, snapshotBaseName } from "../snapshot.js";
 
 interface CliOptions {
   format: "json" | "keyvalue";
@@ -233,7 +233,7 @@ async function main(): Promise<void> {
   let result: string;
 
   if (options.format === "json") {
-    result = JSON.stringify(output, null, 2);
+    result = formatSnapshotJson(output);
   } else {
     result = formatKeyValue(output as unknown as Record<string, unknown>);
   }

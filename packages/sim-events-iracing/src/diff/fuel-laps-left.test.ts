@@ -19,15 +19,26 @@
  *     endgame (≤ 10 laps to go, covered with a lap in hand), clears the
  *     warning floor, re-arms on refuel and after a real warning
  *   - margin sanitization (`sanitizeFuelCalloutMarginLaps`)
+ *   - the two pure functions the diff and the Telemetry Snapshot's state
+ *     reader share (issue #1387): `estimateFuelLapsLeft` and
+ *     `resolveFuelRaceCoverage`
  */
-import { Flags, SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
-import { describe, expect, it } from "vitest";
+import {
+  Flags,
+  IRSDK_UNLIMITED_LAPS,
+  IRSDK_UNLIMITED_TIME,
+  SessionState,
+  type TelemetryData,
+} from "@iracedeck/iracing-sdk";
+import { describe, expect, it, vi } from "vitest";
 
 import { createInitialState, type TranslatorState } from "../state.js";
 import {
   diffFuelLapsLeft,
+  estimateFuelLapsLeft,
   FUEL_CALLOUT_DEFAULT_MARGIN_LAPS,
   FUEL_LAPS_LEFT_MAX_COUNT,
+  resolveFuelRaceCoverage,
   sanitizeFuelCalloutMarginLaps,
 } from "./fuel-laps-left.js";
 import type { FuelStats } from "./fuel-laps.js";
@@ -691,5 +702,126 @@ describe("sanitizeFuelCalloutMarginLaps", () => {
   it("clamps to the slider bounds", () => {
     expect(sanitizeFuelCalloutMarginLaps(-1)).toBe(0);
     expect(sanitizeFuelCalloutMarginLaps(99)).toBe(3);
+  });
+});
+
+describe("estimateFuelLapsLeft (issue #1387)", () => {
+  it("returns every step of the count: raw, margin, effective, lap fraction, floored and clamped", () => {
+    const estimate = estimateFuelLapsLeft(10, 0.5, 2, 0.3);
+
+    expect(estimate.rawLapsLeft).toBe(5);
+    expect(estimate.marginLaps).toBe(0.3);
+    expect(estimate.effective).toBeCloseTo(4.7, 10);
+    expect(estimate.lapFractionRemaining).toBe(0.5);
+    expect(estimate.unclampedCount).toBe(4);
+    expect(estimate.count).toBe(4);
+  });
+
+  it("keeps the negative unclamped count the clamp hides", () => {
+    // raw 0.25 − margin 0.3 − half a lap still to run → floor(−0.55) = −1:
+    // the tank will not finish the current lap, and `count` alone reads 0.
+    const estimate = estimateFuelLapsLeft(0.5, 0.5, 2, 0.3);
+
+    expect(estimate.unclampedCount).toBe(-1);
+    expect(estimate.count).toBe(0);
+  });
+});
+
+describe("resolveFuelRaceCoverage (issue #1387)", () => {
+  const NO_LAPS: FuelStats = { lastLap: 2, avg: 2, avgLapTime: null, samples: 5 };
+  const TIMED_STATS: FuelStats = { lastLap: 2, avg: 2, avgLapTime: 100, samples: 5 };
+  const UNLIMITED = { SessionLapsRemainEx: IRSDK_UNLIMITED_LAPS, SessionTimeRemain: IRSDK_UNLIMITED_TIME };
+
+  it("bridges the lap counter to laps needed after the current one", () => {
+    const coverage = resolveFuelRaceCoverage(
+      tick({ SessionLapsRemainEx: 5, SessionTimeRemain: IRSDK_UNLIMITED_TIME }),
+      NO_LAPS,
+      0.45,
+      () => null,
+    );
+
+    expect(coverage).toEqual({ lapsNeededAfterCurrent: 4, timedLapsAfterCurrent: null, remainingLaps: 4 });
+  });
+
+  it("clamps the lap side to one while the white flag flies over a raw counter of 1", () => {
+    const coverage = resolveFuelRaceCoverage(
+      tick({ SessionLapsRemainEx: 1, SessionTimeRemain: IRSDK_UNLIMITED_TIME, SessionFlags: Flags.White }),
+      NO_LAPS,
+      0.45,
+      () => null,
+    );
+
+    expect(coverage.lapsNeededAfterCurrent).toBe(1);
+    expect(coverage.remainingLaps).toBe(1);
+  });
+
+  it("reads a raw counter of 1 without the white flag as nothing left after the current lap", () => {
+    const coverage = resolveFuelRaceCoverage(
+      tick({ SessionLapsRemainEx: 1, SessionTimeRemain: IRSDK_UNLIMITED_TIME }),
+      NO_LAPS,
+      0.45,
+      () => null,
+    );
+
+    expect(coverage.lapsNeededAfterCurrent).toBe(0);
+  });
+
+  it("reports both sides unknown and an infinite distance when neither limit is set", () => {
+    const coverage = resolveFuelRaceCoverage(tick(UNLIMITED), TIMED_STATS, 0.45, () => 100);
+
+    expect(coverage).toEqual({
+      lapsNeededAfterCurrent: null,
+      timedLapsAfterCurrent: null,
+      remainingLaps: Number.POSITIVE_INFINITY,
+    });
+  });
+
+  it("does not ask for the leader's lap time when the clock is unlimited", () => {
+    const getLeaderLapTimeS = vi.fn(() => 100);
+
+    resolveFuelRaceCoverage(tick(UNLIMITED), TIMED_STATS, 0.45, getLeaderLapTimeS);
+    resolveFuelRaceCoverage(tick({ ...UNLIMITED, SessionLapsRemainEx: 5 }), TIMED_STATS, 0.45, getLeaderLapTimeS);
+
+    expect(getLeaderLapTimeS).not.toHaveBeenCalled();
+  });
+
+  it("does not ask for the leader's lap time without a validated player lap time", () => {
+    const getLeaderLapTimeS = vi.fn(() => 100);
+
+    const coverage = resolveFuelRaceCoverage(
+      tick({ SessionLapsRemainEx: IRSDK_UNLIMITED_LAPS, SessionTimeRemain: 400 }),
+      NO_LAPS,
+      0.45,
+      getLeaderLapTimeS,
+    );
+
+    expect(getLeaderLapTimeS).not.toHaveBeenCalled();
+    expect(coverage.timedLapsAfterCurrent).toBeNull();
+  });
+
+  it("asks once and counts the timed side from the clock plus two leader laps", () => {
+    const getLeaderLapTimeS = vi.fn(() => 100);
+
+    // The diff suite's worked numbers: ceil((400 + 2 × 100 − 0.45 × 100) / 100) = 6.
+    const coverage = resolveFuelRaceCoverage(
+      tick({ SessionLapsRemainEx: IRSDK_UNLIMITED_LAPS, SessionTimeRemain: 400 }),
+      TIMED_STATS,
+      0.45,
+      getLeaderLapTimeS,
+    );
+
+    expect(getLeaderLapTimeS).toHaveBeenCalledTimes(1);
+    expect(coverage).toEqual({ lapsNeededAfterCurrent: null, timedLapsAfterCurrent: 6, remainingLaps: 6 });
+  });
+
+  it("takes whichever limit ends the race sooner when a session carries both", () => {
+    const coverage = resolveFuelRaceCoverage(
+      tick({ SessionLapsRemainEx: 3, SessionTimeRemain: 400 }),
+      TIMED_STATS,
+      0.45,
+      () => 100,
+    );
+
+    expect(coverage).toEqual({ lapsNeededAfterCurrent: 2, timedLapsAfterCurrent: 6, remainingLaps: 2 });
   });
 });

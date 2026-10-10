@@ -1,3 +1,4 @@
+import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { homedir as osHomedir } from "node:os";
 import { sep as pathSep } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -8,6 +9,7 @@ import {
   defaultSnapshotDir,
   generateTelemetryControlSvg,
   resolveSnapshotDir,
+  selectSnapshotTelemetry,
   TELEMETRY_CONTROL_GLOBAL_KEYS,
   TelemetryControl,
   TelemetryControlSettings,
@@ -22,6 +24,26 @@ const { mockTapBinding, mockMkdirSync, mockWriteFileSync, mockGetCurrentTelemetr
     mockGetSessionInfo: vi.fn(),
   }),
 );
+
+/**
+ * A stand-in for the translator's latest dispatched tick (#1387). Null by
+ * default, as when no translator is running, so a snapshot falls back to the
+ * controller's fresh read.
+ */
+const mockGetLatestTelemetry = vi.hoisted(() => vi.fn<() => Record<string, unknown> | null>(() => null));
+
+/** A stand-in for @iracedeck/diagnostics' plugin-state collector (#1387). */
+const mockCollectStateSections = vi.hoisted(() => {
+  // Looser than the real `CollectedState`, so a test can hand back a state the
+  // real collector never would (a BigInt).
+  type Collected = {
+    state: Record<string, unknown>;
+    headline: Array<readonly [string, string]>;
+    failed: string[];
+  };
+
+  return vi.fn<(logger: { warn: (message: string) => void }) => Collected>();
+});
 
 /** A stand-in for @iracedeck/diagnostics' shared CPU profile capture service (#1338). */
 const captureFake = vi.hoisted(() => {
@@ -206,7 +228,14 @@ vi.mock("@iracedeck/deck-core", () => ({
   ),
 }));
 
-vi.mock("@iracedeck/diagnostics", () => ({
+vi.mock("@iracedeck/sim-events-iracing", () => ({
+  getLatestTelemetry: mockGetLatestTelemetry,
+}));
+
+vi.mock("@iracedeck/diagnostics", async (importOriginal) => ({
+  // The real helper: the text of an error entry is part of what these tests pin.
+  describeThrown: (await importOriginal<typeof import("@iracedeck/diagnostics")>()).describeThrown,
+  collectStateSections: mockCollectStateSections,
   getCpuProfileCapture: vi.fn(() => {
     if (!captureFake.initialized) throw new Error("CPU profile capture not initialized");
 
@@ -236,6 +265,47 @@ const ALL_ACTIONS = [
 describe("TelemetryControl", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  describe("selectSnapshotTelemetry", () => {
+    const frame = (fields: Record<string, unknown>) => fields as unknown as TelemetryData;
+
+    it("takes the fresh read when it is the translator's own tick", () => {
+      const translatorTick = frame({ SessionTick: 100, CamCarIdx: 1 });
+      const freshRead = frame({ SessionTick: 100, CamCarIdx: 7 });
+
+      expect(selectSnapshotTelemetry(translatorTick, freshRead)).toBe(freshRead);
+    });
+
+    it("takes the translator's tick when the fresh read is a frame ahead of the state", () => {
+      const translatorTick = frame({ SessionTick: 100 });
+
+      expect(selectSnapshotTelemetry(translatorTick, frame({ SessionTick: 101 }))).toBe(translatorTick);
+    });
+
+    it("takes the translator's tick when the fresh read is from another session's counter", () => {
+      const translatorTick = frame({ SessionTick: 100 });
+
+      expect(selectSnapshotTelemetry(translatorTick, frame({ SessionTick: 3 }))).toBe(translatorTick);
+    });
+
+    it("takes the translator's tick when the frames carry no SessionTick to compare", () => {
+      const untickedTranslator = frame({ Speed: 50 });
+      const tickedTranslator = frame({ SessionTick: 100 });
+
+      // Two missing ticks are not the same tick.
+      expect(selectSnapshotTelemetry(untickedTranslator, frame({ Speed: 60 }))).toBe(untickedTranslator);
+      expect(selectSnapshotTelemetry(untickedTranslator, frame({ SessionTick: 100 }))).toBe(untickedTranslator);
+      expect(selectSnapshotTelemetry(tickedTranslator, frame({ Speed: 60 }))).toBe(tickedTranslator);
+    });
+
+    it("takes whichever read exists when the other is missing, and null when both are", () => {
+      const only = frame({ SessionTick: 100 });
+
+      expect(selectSnapshotTelemetry(null, only)).toBe(only);
+      expect(selectSnapshotTelemetry(only, null)).toBe(only);
+      expect(selectSnapshotTelemetry(null, null)).toBeNull();
+    });
   });
 
   describe("TELEMETRY_CONTROL_GLOBAL_KEYS", () => {
@@ -350,6 +420,21 @@ describe("TelemetryControl", () => {
     // on both Windows and POSIX CI runners).
     const absDir = process.platform === "win32" ? "C:\\snapshots" : "/tmp/snapshots";
 
+    const sampleState = { schema: 1, collectedAt: 5, sim: { ok: true } };
+
+    beforeEach(() => {
+      // clearAllMocks keeps implementations, so each test starts from the same collector.
+      mockCollectStateSections.mockReset();
+      mockCollectStateSections.mockReturnValue({
+        state: sampleState,
+        headline: [["Plugin version", "3.6.0"]],
+        failed: [],
+      });
+      mockWriteFileSync.mockReset();
+      // Back to "the translator holds no tick", whatever the last test set.
+      mockGetLatestTelemetry.mockReset();
+    });
+
     it("defaultSnapshotDir ends with the telemetry-snapshots folder under home", () => {
       expect(defaultSnapshotDir()).toMatch(/[\\/]iRaceDeck[\\/]telemetry-snapshots$/);
       // Must NOT assume a "Documents" known folder (OneDrive / localization safe).
@@ -452,6 +537,386 @@ describe("TelemetryControl", () => {
 
       expect(mockWriteFileSync).not.toHaveBeenCalled();
       expect(mockTapBinding).toHaveBeenCalledWith("telemetryControlToggleLogging");
+    });
+
+    describe("plugin state (#1387)", () => {
+      /** Presses a Take Snapshot key over the sample telemetry and returns the action. */
+      async function takeSnapshot(sessionInfo: Record<string, unknown> = sampleSessionInfo): Promise<TelemetryControl> {
+        mockGetCurrentTelemetry.mockReturnValue(sampleTelemetry);
+        mockGetSessionInfo.mockReturnValue(sessionInfo);
+
+        const action = new TelemetryControl();
+        await action.onKeyDown(fakeEvent("a1", { mode: "snapshot", outputDir: absDir }) as never);
+
+        return action;
+      }
+
+      /** The content written to the file with this extension, or undefined when none was. */
+      function writtenFile(extension: ".json" | ".md"): string | undefined {
+        const call = mockWriteFileSync.mock.calls.find(([path]) => String(path).endsWith(extension));
+
+        return call ? String(call[1]) : undefined;
+      }
+
+      function writtenJson(): Record<string, unknown> {
+        const text = writtenFile(".json");
+
+        if (text === undefined) throw new Error("no JSON file was written");
+
+        return JSON.parse(text) as Record<string, unknown>;
+      }
+
+      /** The table rows of the written report's Plugin State section, the empty header row left out. */
+      function pluginStateRows(): string[] {
+        const markdown = writtenFile(".md") ?? "";
+        const start = markdown.indexOf("## Plugin State");
+
+        if (start < 0) return [];
+
+        return markdown
+          .slice(start)
+          .split("\n")
+          .filter((line) => line.startsWith("| ") && !line.startsWith("| -"))
+          .slice(1);
+      }
+
+      /** The one row the report shows when the JSON file holds an error entry instead of the state. */
+      const unavailableRows = ["| pluginState | unavailable (see the JSON file) |"];
+
+      it("writes the translator's tick, not a fresher read, so the telemetry matches the state beside it", async () => {
+        const translatorTick = { ...sampleTelemetry, SessionTick: 100, Speed: 50 };
+        const fresherRead = { ...sampleTelemetry, SessionTick: 101, Speed: 60 };
+        mockGetLatestTelemetry.mockReturnValue(translatorTick);
+        mockGetCurrentTelemetry.mockReturnValue(fresherRead);
+        mockGetSessionInfo.mockReturnValue(sampleSessionInfo);
+
+        const action = new TelemetryControl();
+        await action.onKeyDown(fakeEvent("a1", { mode: "snapshot", outputDir: absDir }) as never);
+
+        expect(writtenJson().telemetry).toEqual(translatorTick);
+        expect(writtenJson().telemetry).not.toEqual(fresherRead);
+        expect(writtenJson().pluginState).toEqual(sampleState);
+        // The report is built from the same tick: 50 m/s is 180.0 km/h, 60 m/s would be 216.0.
+        expect(writtenFile(".md")).toContain("180.0 km/h");
+        expect(writtenFile(".md")).not.toContain("216.0 km/h");
+      });
+
+      it("writes a fresh read of the translator's own tick: a paused replay keeps changing under a frozen tick", async () => {
+        // The tick was dispatched once, on its first read; the camera has moved since.
+        const dispatched = { ...sampleTelemetry, SessionTick: 100, CamCarIdx: 1, IsReplayPlaying: false };
+        const sameTickNow = { ...sampleTelemetry, SessionTick: 100, CamCarIdx: 7, IsReplayPlaying: true };
+        mockGetLatestTelemetry.mockReturnValue(dispatched);
+        mockGetCurrentTelemetry.mockReturnValue(sameTickNow);
+        mockGetSessionInfo.mockReturnValue(sampleSessionInfo);
+
+        const action = new TelemetryControl();
+        await action.onKeyDown(fakeEvent("a1", { mode: "snapshot", outputDir: absDir }) as never);
+
+        expect(writtenJson().telemetry).toEqual(sameTickNow);
+        expect(writtenJson().pluginState).toEqual(sampleState);
+      });
+
+      it("keeps the translator's tick when the fresh read is gone", async () => {
+        const translatorTick = { ...sampleTelemetry, SessionTick: 100 };
+        mockGetLatestTelemetry.mockReturnValue(translatorTick);
+        mockGetCurrentTelemetry.mockReturnValue(null);
+        mockGetSessionInfo.mockReturnValue(sampleSessionInfo);
+
+        const action = new TelemetryControl();
+        await action.onKeyDown(fakeEvent("a1", { mode: "snapshot", outputDir: absDir }) as never);
+
+        expect(writtenJson().telemetry).toEqual(translatorTick);
+      });
+
+      it("falls back to a fresh read when the translator holds no tick", async () => {
+        const freshRead = { ...sampleTelemetry, SessionTick: 101 };
+        mockGetLatestTelemetry.mockReturnValue(null);
+        mockGetCurrentTelemetry.mockReturnValue(freshRead);
+        mockGetSessionInfo.mockReturnValue(sampleSessionInfo);
+
+        const action = new TelemetryControl();
+        await action.onKeyDown(fakeEvent("a1", { mode: "snapshot", outputDir: absDir }) as never);
+
+        expect(mockGetLatestTelemetry).toHaveBeenCalledTimes(1);
+        expect(mockGetCurrentTelemetry).toHaveBeenCalledTimes(1);
+        expect(writtenJson().telemetry).toEqual(freshRead);
+        expect(writtenJson().pluginState).toEqual(sampleState);
+      });
+
+      it("skips and warns when neither the translator nor a fresh read has telemetry", async () => {
+        mockGetLatestTelemetry.mockReturnValue(null);
+        mockGetCurrentTelemetry.mockReturnValue(null);
+
+        const action = new TelemetryControl();
+        await action.onKeyDown(fakeEvent("a1", { mode: "snapshot", outputDir: absDir }) as never);
+
+        expect(mockGetLatestTelemetry).toHaveBeenCalledTimes(1);
+        expect(mockGetCurrentTelemetry).toHaveBeenCalledTimes(1);
+        expect(mockCollectStateSections).not.toHaveBeenCalled();
+        expect(mockWriteFileSync).not.toHaveBeenCalled();
+        expect(mockMkdirSync).not.toHaveBeenCalled();
+        expect(action["logger"].warn).toHaveBeenCalledWith(
+          "Telemetry snapshot skipped: no telemetry available (is iRacing running?)",
+        );
+      });
+
+      it("writes the collected state under pluginState, beside the telemetry and session info", async () => {
+        const action = await takeSnapshot();
+
+        expect(mockCollectStateSections).toHaveBeenCalledTimes(1);
+        expect(mockCollectStateSections).toHaveBeenCalledWith(action["logger"]);
+        expect(writtenJson()).toEqual({
+          timestamp: expect.any(String),
+          telemetry: sampleTelemetry,
+          sessionInfo: sampleSessionInfo,
+          pluginState: sampleState,
+        });
+        expect(action["logger"].info).toHaveBeenCalledWith("Telemetry snapshot saved");
+        expect(action["logger"].warn).not.toHaveBeenCalled();
+        expect(action["logger"].error).not.toHaveBeenCalled();
+      });
+
+      it("writes the JSON with compact leaves", async () => {
+        await takeSnapshot();
+
+        expect(writtenFile(".json")).toContain('"CarIdxPosition": [0, 1]');
+      });
+
+      it("lists the collector's headline rows under Plugin State, in order, failure rows included", async () => {
+        mockCollectStateSections.mockReturnValue({
+          state: { ...sampleState, sim: { error: "boom" } },
+          headline: [
+            ["Plugin version", "3.6.0"],
+            ["sim", "unavailable (see the JSON file)"],
+            ["Active voice", "default::default"],
+          ],
+          failed: ["sim"],
+        });
+
+        await takeSnapshot();
+
+        const markdown = writtenFile(".md") ?? "";
+
+        expect(markdown).toContain("## Plugin State");
+        expect(pluginStateRows()).toEqual([
+          "| Plugin version | 3.6.0                           |",
+          "| sim            | unavailable (see the JSON file) |",
+          "| Active voice   | default::default                |",
+        ]);
+        // The older sections are still there, ahead of it.
+        expect(markdown.indexOf("Test Driver")).toBeGreaterThan(-1);
+        expect(markdown.indexOf("Test Driver")).toBeLessThan(markdown.indexOf("## Plugin State"));
+      });
+
+      it("leaves the Plugin State section out when the collector has no headline rows", async () => {
+        mockCollectStateSections.mockReturnValue({ state: sampleState, headline: [], failed: [] });
+
+        await takeSnapshot();
+
+        expect(writtenFile(".md")).not.toContain("Plugin State");
+        expect(writtenJson().pluginState).toEqual(sampleState);
+      });
+
+      it("still writes both files when the collector throws, with an error entry for the state", async () => {
+        mockCollectStateSections.mockImplementation(() => {
+          throw new Error("boom");
+        });
+
+        const action = await takeSnapshot();
+
+        expect(writtenJson()).toEqual({
+          timestamp: expect.any(String),
+          telemetry: sampleTelemetry,
+          sessionInfo: sampleSessionInfo,
+          pluginState: { error: "boom" },
+        });
+        expect(writtenFile(".md")).toContain("Test Driver");
+        // The report says the state is missing, as it does for one failed section.
+        expect(pluginStateRows()).toEqual(unavailableRows);
+        expect(action["logger"].warn).toHaveBeenCalledTimes(1);
+        expect(action["logger"].warn).toHaveBeenCalledWith("Plugin state unavailable for the telemetry snapshot");
+        expect(action["logger"].debug).toHaveBeenCalledWith(expect.stringContaining("boom"));
+        expect(action["logger"].error).not.toHaveBeenCalled();
+        expect(action["logger"].info).toHaveBeenCalledWith("Telemetry snapshot saved");
+      });
+
+      it("still writes both files when the collector throws a string", async () => {
+        mockCollectStateSections.mockImplementation(() => {
+          throw "plain text";
+        });
+
+        await takeSnapshot();
+
+        expect(writtenJson().pluginState).toEqual({ error: "plain text" });
+        expect(writtenJson().telemetry).toEqual(sampleTelemetry);
+        expect(writtenFile(".md")).toContain("Test Driver");
+        expect(pluginStateRows()).toEqual(unavailableRows);
+      });
+
+      it("still writes both files when the collector throws a value that cannot be turned into a string", async () => {
+        mockCollectStateSections.mockImplementation(() => {
+          throw {
+            toString(): string {
+              throw new Error("no string for you");
+            },
+          };
+        });
+
+        await takeSnapshot();
+
+        expect(writtenJson().pluginState).toEqual({ error: "unknown error" });
+        expect(writtenJson().telemetry).toEqual(sampleTelemetry);
+        expect(writtenFile(".md")).toContain("Test Driver");
+        expect(pluginStateRows()).toEqual(unavailableRows);
+      });
+
+      it("gives the error entry a non-empty reason when the collector throws an Error with a blank message", async () => {
+        mockCollectStateSections.mockImplementation(() => {
+          throw new Error("");
+        });
+
+        await takeSnapshot();
+
+        // The error's name stands in for the message it does not have.
+        expect(writtenJson().pluginState).toEqual({ error: "Error" });
+      });
+
+      it("gives the error entry a reason that says something when the collector throws a plain object", async () => {
+        mockCollectStateSections.mockImplementation(() => {
+          throw { code: 7 };
+        });
+
+        await takeSnapshot();
+
+        // Not "[object Object]".
+        expect(writtenJson().pluginState).toEqual({ error: "unknown error" });
+      });
+
+      it("still writes both files when the collector fails because the logger throws", async () => {
+        mockGetCurrentTelemetry.mockReturnValue(sampleTelemetry);
+        mockGetSessionInfo.mockReturnValue(sampleSessionInfo);
+        mockCollectStateSections.mockImplementation((logger) => {
+          logger.warn("Snapshot state section failed");
+
+          return { state: sampleState, headline: [], failed: [] };
+        });
+
+        const action = new TelemetryControl();
+        vi.mocked(action["logger"].warn).mockImplementation(() => {
+          throw new Error("log file gone");
+        });
+        await action.onKeyDown(fakeEvent("a1", { mode: "snapshot", outputDir: absDir }) as never);
+
+        expect(writtenJson().pluginState).toEqual({ error: "log file gone" });
+        expect(writtenJson().telemetry).toEqual(sampleTelemetry);
+        expect(writtenFile(".md")).toContain("Test Driver");
+        expect(pluginStateRows()).toEqual(unavailableRows);
+      });
+
+      it("still writes the telemetry when the collected state cannot be written as JSON", async () => {
+        mockCollectStateSections.mockReturnValue({
+          state: { ...sampleState, sim: { ticks: 10n } },
+          headline: [["Plugin version", "3.6.0"]],
+          failed: [],
+        });
+
+        const action = await takeSnapshot();
+
+        expect(writtenJson()).toEqual({
+          timestamp: expect.any(String),
+          telemetry: sampleTelemetry,
+          sessionInfo: sampleSessionInfo,
+          pluginState: { error: expect.stringContaining("BigInt") },
+        });
+        expect(writtenFile(".md")).toContain("Test Driver");
+        // The two files agree: the report does not list rows for state the JSON file does not hold.
+        expect(pluginStateRows()).toEqual(unavailableRows);
+        expect(writtenFile(".md")).not.toContain("Plugin version");
+        expect(action["logger"].warn).toHaveBeenCalledTimes(1);
+        expect(action["logger"].warn).toHaveBeenCalledWith("Plugin state left out of the telemetry snapshot");
+        expect(action["logger"].debug).toHaveBeenCalledWith(expect.stringContaining("BigInt"));
+        expect(action["logger"].error).not.toHaveBeenCalled();
+      });
+
+      it("keeps the JSON file, plugin state included, when the report cannot be generated", async () => {
+        // Session info the report builder cannot walk: the driver list is not a list.
+        const malformedSessionInfo = { DriverInfo: { Drivers: 5 } };
+
+        const action = await takeSnapshot(malformedSessionInfo);
+
+        expect(mockWriteFileSync).toHaveBeenCalledTimes(1);
+        expect(writtenJson()).toEqual({
+          timestamp: expect.any(String),
+          telemetry: sampleTelemetry,
+          sessionInfo: malformedSessionInfo,
+          pluginState: sampleState,
+        });
+        expect(writtenFile(".md")).toBeUndefined();
+        expect(action["logger"].warn).toHaveBeenCalledTimes(1);
+        expect(action["logger"].warn).toHaveBeenCalledWith("Telemetry snapshot saved without its Markdown report");
+        expect(action["logger"].debug).toHaveBeenCalledWith(expect.stringContaining("not iterable"));
+        expect(action["logger"].error).not.toHaveBeenCalled();
+        expect(action["logger"].info).not.toHaveBeenCalledWith("Telemetry snapshot saved");
+      });
+
+      it("keeps the JSON file when writing the report fails", async () => {
+        mockWriteFileSync.mockImplementation((path: string) => {
+          if (path.endsWith(".md")) throw new Error("disk full");
+        });
+
+        const action = await takeSnapshot();
+
+        expect(mockWriteFileSync).toHaveBeenCalledTimes(2);
+        expect(mockWriteFileSync.mock.calls[0][0]).toMatch(/\.json$/);
+        expect(writtenJson().pluginState).toEqual(sampleState);
+        expect(action["logger"].warn).toHaveBeenCalledWith("Telemetry snapshot saved without its Markdown report");
+        expect(action["logger"].debug).toHaveBeenCalledWith(expect.stringContaining("disk full"));
+        expect(action["logger"].error).not.toHaveBeenCalled();
+      });
+
+      it("does not read the plugin state when there is no telemetry", async () => {
+        mockGetCurrentTelemetry.mockReturnValue(null);
+
+        const action = new TelemetryControl();
+        await action.onKeyDown(fakeEvent("a1", { mode: "snapshot", outputDir: absDir }) as never);
+
+        expect(mockCollectStateSections).not.toHaveBeenCalled();
+        expect(mockWriteFileSync).not.toHaveBeenCalled();
+        expect(mockMkdirSync).not.toHaveBeenCalled();
+      });
+
+      it("reads the translator's tick and the fresh read, then the plugin state, then writes", async () => {
+        mockGetLatestTelemetry.mockReturnValue(sampleTelemetry);
+        await takeSnapshot();
+
+        const [telemetryRead] = mockGetLatestTelemetry.mock.invocationCallOrder;
+        const [freshRead] = mockGetCurrentTelemetry.mock.invocationCallOrder;
+        const [sessionRead] = mockGetSessionInfo.mock.invocationCallOrder;
+        const [stateRead] = mockCollectStateSections.mock.invocationCallOrder;
+        const [directoryMade] = mockMkdirSync.mock.invocationCallOrder;
+        const [firstWrite] = mockWriteFileSync.mock.invocationCallOrder;
+
+        expect(telemetryRead).toBeLessThan(stateRead);
+        expect(freshRead).toBeLessThan(stateRead);
+        expect(sessionRead).toBeLessThan(stateRead);
+        expect(stateRead).toBeLessThan(directoryMade);
+        expect(stateRead).toBeLessThan(firstWrite);
+      });
+
+      it("reads a fallback fresh read before the plugin state too", async () => {
+        await takeSnapshot();
+
+        const [telemetryRead] = mockGetCurrentTelemetry.mock.invocationCallOrder;
+        const [sessionRead] = mockGetSessionInfo.mock.invocationCallOrder;
+        const [stateRead] = mockCollectStateSections.mock.invocationCallOrder;
+        const [directoryMade] = mockMkdirSync.mock.invocationCallOrder;
+        const [firstWrite] = mockWriteFileSync.mock.invocationCallOrder;
+
+        expect(telemetryRead).toBeLessThan(stateRead);
+        expect(sessionRead).toBeLessThan(stateRead);
+        expect(stateRead).toBeLessThan(directoryMade);
+        expect(stateRead).toBeLessThan(firstWrite);
+      });
     });
   });
 

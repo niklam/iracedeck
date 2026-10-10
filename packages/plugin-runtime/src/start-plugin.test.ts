@@ -41,6 +41,9 @@ vi.mock("./actions.js", async () => (await import("./test-support/module-mocks.j
  * and `setScripts` are `wireRaceEngineer` now.
  * `createIracingSimRuntime` is the runtime's own pure factory (#1351), not a
  * call the old plugin.ts made; it is listed where the sim phase builds it.
+ * The four `registerStateSection` calls that end `initCore` are newer than
+ * that file too (#1387): the Telemetry Snapshot's plugin-state sections, which
+ * no later call is ordered against.
  */
 function expectedOrder(withExtension: boolean): string[] {
   return [
@@ -54,6 +57,10 @@ function expectedOrder(withExtension: boolean): string[] {
     "validateSetupWarningPatterns",
     "initializeSDK",
     "initializeEventBus",
+    "registerStateSection", // environment (#1387)
+    "registerStateSection", // settings
+    "registerStateSection", // sim
+    "registerStateSection", // raceEngineer
     // 2 initSim
     "initializeSimEventsIracing",
     "getController().setLivePositionsProvider",
@@ -127,10 +134,12 @@ function expectedOrder(withExtension: boolean): string[] {
  * expected names, so a new init, start, listener, registration, subscription,
  * constructor or factory call surfaces as a difference instead of being
  * filtered out. Getters (`getController`, `getGlobalSettings`, …), path and
- * scan helpers, and `().includes` reads stay out.
+ * scan helpers, and `().includes` reads stay out. `register` joined the list
+ * with #1387: until then the only registrations were the adapter's, which
+ * `adapter.` covers, so a bare `registerStateSection` passed unseen.
  */
 const EFFECTFUL =
-  /^(init|start|on[A-Z]|new |adapter\.|extension\.|apply|validate|migrate|seed|wire|create)|\.(start|subscribe|refresh|init|set[A-Z]\w*)$/;
+  /^(init|start|on[A-Z]|new |adapter\.|extension\.|apply|validate|migrate|seed|wire|create|register)|\.(start|subscribe|refresh|init|set[A-Z]\w*)$/;
 
 /**
  * Pure factories whose product goes straight into a recorded call — that

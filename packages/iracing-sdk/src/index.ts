@@ -235,14 +235,17 @@ export {
 // Telemetry snapshot formatting utilities
 export {
   type DriverInfo,
+  type MarkdownSection,
   type SnapshotEnvelope,
   buildDriverDetailsTable,
   buildDriverList,
   buildMarkdownTable,
   buildPlayerTelemetry,
   buildSnapshotEnvelope,
+  formatSnapshotJson,
   generateMarkdown,
   getSessionIdentification,
+  SNAPSHOT_INLINE_OBJECT_MAX_KEYS,
   snapshotBaseName,
   snapshotTimestamp,
   trkLocToString,

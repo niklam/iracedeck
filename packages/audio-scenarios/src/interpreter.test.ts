@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vite
 
 import type { Scenario, ScenarioContext, ScenarioContract, SpeakGate } from "./dsl.js";
 import { DEFAULT_FRAME, DEFAULT_WEIGHT, NO_FRAME, poolRef, WEIGHT } from "./dsl.js";
-import type { AudioAssetsManifest, FrameOptions, IScenarioEngine } from "./interpreter.js";
+import type { AudioAssetsManifest, FrameOptions, IScenarioEngine, ScenarioEngineState } from "./interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios } from "./interpreter.js";
 import { scanRaceEngineerVoices } from "./manifest.js";
 
@@ -3798,6 +3798,368 @@ describe("bounded pending queue (issue #1185)", () => {
     endClip();
     expect(heard()).toEqual(["busy", "b", "a", "c"]);
   });
+
+  describe("describeState — what the Telemetry Snapshot reads (issue #1387)", () => {
+    /** The Voice bus's row. */
+    function voiceBus(): ScenarioEngineState["buses"][number] {
+      const row = engine.describeState().buses.find((b) => b.bus === "Voice");
+
+      if (row === undefined) throw new Error("describeState lists no Voice bus");
+
+      return row;
+    }
+
+    it("lists every audio bus as idle on an engine that has fired nothing", () => {
+      const state = engine.describeState();
+
+      expect(state.buses.map((b) => b.bus)).toEqual(["Voice", "Background", "Alerts"]);
+
+      for (const b of state.buses) {
+        expect(b).toEqual({
+          bus: b.bus,
+          playingId: null,
+          active: null,
+          focus: null,
+          pendingHoldArmed: false,
+          waiting: [],
+        });
+      }
+    });
+
+    it("reports the active voice and the frame switches as the engine reads them", () => {
+      expect(engine.describeState()).toMatchObject({
+        activeVoice: null,
+        frameOptions: { beeps: true, ambience: true },
+      });
+
+      _resetAudioScenarios();
+      engine = initializeAudioScenarios(
+        bus,
+        audio,
+        queueManifest,
+        mockLogger as never,
+        () => "luca",
+        () => ({ beeps: false, ambience: true }),
+      );
+
+      expect(engine.describeState()).toMatchObject({
+        activeVoice: "luca",
+        frameOptions: { beeps: false, ambience: true },
+      });
+    });
+
+    describe("the two accessors the engine was handed are read on their own", () => {
+      /** Passed for an accessor that keeps answering. */
+      const HEALTHY = Symbol("healthy");
+
+      /**
+       * An engine with a fire in flight and one waiting. Its accessors answer
+       * ("luca"; beeps on, ambience off) while that is set up — the fire path
+       * reads them too — and from then on throw what they were given.
+       */
+      function engineWith(voiceThrows: unknown, frameThrows: unknown): void {
+        let armed = false;
+        const accessor =
+          <T>(thrown: unknown, value: T) =>
+          (): T => {
+            if (armed && thrown !== HEALTHY) throw thrown;
+
+            return value;
+          };
+
+        _resetAudioScenarios();
+        engine = initializeAudioScenarios(
+          bus,
+          audio,
+          queueManifest,
+          mockLogger as never,
+          accessor<string | null>(voiceThrows, "luca"),
+          accessor<FrameOptions>(frameThrows, { beeps: true, ambience: false }),
+        );
+        holdBus();
+        define("a", WEIGHT.NORMAL);
+        engine.fire("q.a");
+        armed = true;
+
+        for (const level of [mockLogger.debug, mockLogger.info, mockLogger.warn, mockLogger.error]) level.mockClear();
+      }
+
+      /** The walk of the engine's own maps, as a healthy read reports it. */
+      const WALK = {
+        buses: [
+          {
+            bus: "Voice",
+            playingId: "q.busy",
+            active: { id: "q.busy", weight: WEIGHT.CRITICAL, opIndex: 0, opCount: 1 },
+            waiting: [{ id: "q.a" }],
+          },
+          { bus: "Background", playingId: null },
+          { bus: "Alerts", playingId: null },
+        ],
+      };
+
+      it("a throwing getFrameOptions is that field's error entry; the voice, the buses and the contracts are intact", () => {
+        engineWith(HEALTHY, new Error("the settings cache is not loaded"));
+
+        const state = engine.describeState();
+
+        expect(state.frameOptions).toStrictEqual({ error: "the settings cache is not loaded" });
+        expect(state).toMatchObject({ activeVoice: "luca", ...WALK });
+        expect(state.contracts).toEqual([
+          // A fire that only waits has not fired: no stamp.
+          { id: "q.a", enabled: true, lastFireAt: 0, scripted: false, triggerPending: false },
+          { id: "q.busy", enabled: true, lastFireAt: 1_000_000, scripted: false, triggerPending: false },
+        ]);
+        // Not `frameOptions()`, which logs the throw: a reader logs nothing.
+        expect(mockLogger.error).not.toHaveBeenCalled();
+        expect(JSON.parse(JSON.stringify(state))).toEqual(state);
+      });
+
+      it("a throwing getActiveVoice is an error entry, never null — null is 'no voice selected'", () => {
+        engineWith(new Error("the voice setting is unreadable"), HEALTHY);
+
+        const state = engine.describeState();
+
+        expect(state.activeVoice).toStrictEqual({ error: "the voice setting is unreadable" });
+        expect(state).toMatchObject({ frameOptions: { beeps: true, ambience: false }, ...WALK });
+        // Which contracts the voice scripts cannot be known without the
+        // voice: `null`, not a `false` that would read as "not scripted".
+        expect(state.contracts).toEqual([
+          { id: "q.a", enabled: true, lastFireAt: 0, scripted: null, triggerPending: false },
+          { id: "q.busy", enabled: true, lastFireAt: 1_000_000, scripted: null, triggerPending: false },
+        ]);
+        expect(mockLogger.error).not.toHaveBeenCalled();
+      });
+
+      it("both throwing still leaves the walk of the engine's own state", () => {
+        engineWith("voice", "frame");
+
+        expect(engine.describeState()).toMatchObject({
+          activeVoice: { error: "voice" },
+          frameOptions: { error: "frame" },
+          ...WALK,
+        });
+      });
+
+      it.each([
+        ["a blank string", "  ", "unknown error"],
+        ["nothing", undefined, "unknown error"],
+        [
+          "an object whose conversion throws",
+          {
+            get message(): string {
+              throw new Error("the getter threw");
+            },
+            toString(): string {
+              throw new Error("the conversion threw");
+            },
+          },
+          "unknown error",
+        ],
+        ["an Error with no message", new RangeError(""), "RangeError"],
+      ])("the reason is never empty when what is thrown is %s", (_label, thrown, reason) => {
+        engineWith(thrown, thrown);
+
+        const state = engine.describeState();
+
+        expect(state.activeVoice).toStrictEqual({ error: reason });
+        expect(state.frameOptions).toStrictEqual({ error: reason });
+      });
+    });
+
+    it("lists the fire in flight under active and a deferred queueable fire under waiting", () => {
+      holdBus();
+      define("a", WEIGHT.NORMAL, { supersedeGroup: "penalty", maxQueueWaitMs: 30_000 });
+
+      vi.advanceTimersByTime(250);
+      engine.fire("q.a");
+
+      expect(voiceBus()).toEqual({
+        bus: "Voice",
+        playingId: "q.busy",
+        // One clip, and it is the one in flight: op 0 of 1.
+        active: { id: "q.busy", weight: WEIGHT.CRITICAL, opIndex: 0, opCount: 1 },
+        focus: null,
+        pendingHoldArmed: false,
+        waiting: [
+          {
+            id: "q.a",
+            weight: WEIGHT.NORMAL,
+            group: "penalty",
+            queuedAt: 1_000_250,
+            maxWaitMs: 30_000,
+            after: null,
+          },
+        ],
+      });
+    });
+
+    it("reports how far through its clips the fire in flight is", () => {
+      engine.defineScenario({
+        id: "q.long",
+        channel: AudioChannel.Voice,
+        bus: AudioBus.Voice,
+        frame: NO_FRAME,
+        sequence: ["q/a.mp3", "q/b.mp3", "q/c.mp3"],
+      });
+
+      engine.fire("q.long");
+      expect(voiceBus().active).toEqual({ id: "q.long", weight: DEFAULT_WEIGHT, opIndex: 0, opCount: 3 });
+
+      endClip();
+      endClip();
+      expect(voiceBus().active).toEqual({ id: "q.long", weight: DEFAULT_WEIGHT, opIndex: 2, opCount: 3 });
+
+      endClip();
+      expect(voiceBus().active).toBeNull();
+      expect(voiceBus().playingId).toBeNull();
+    });
+
+    it("lists waiting fires in play order, a queueBehind follower naming its leader", () => {
+      holdBus();
+      define("a", WEIGHT.CHATTER);
+      define("b", WEIGHT.SAFETY);
+      define("c", WEIGHT.CRITICAL, { queueBehind: ["q.a"] });
+
+      engine.fire("q.a");
+      engine.fire("q.b");
+      engine.fire("q.c");
+
+      expect(voiceBus().waiting.map((w) => [w.id, w.after])).toEqual([
+        ["q.b", null],
+        ["q.a", null],
+        ["q.c", "q.a"],
+      ]);
+    });
+
+    it("reports a held focus floor with its owner", () => {
+      engine.acquireFocus(AudioBus.Voice, "spotter", WEIGHT.SAFETY);
+
+      expect(voiceBus().focus).toEqual({ ownerId: "spotter", floor: 70 });
+
+      engine.releaseFocus(AudioBus.Voice, "spotter");
+
+      expect(voiceBus().focus).toBeNull();
+    });
+
+    it("reports an armed pending hold while it delays the drain", () => {
+      define("holder", WEIGHT.NORMAL, { queueable: false, pendingHoldMs: 2000 });
+      define("a", WEIGHT.CHATTER);
+
+      engine.fire("q.holder");
+      engine.fire("q.a");
+      expect(voiceBus().pendingHoldArmed).toBe(false);
+
+      endClip(); // the holder finishes with a fire waiting: the hold arms
+      expect(voiceBus()).toMatchObject({ playingId: null, active: null, pendingHoldArmed: true });
+      expect(voiceBus().waiting.map((w) => w.id)).toEqual(["q.a"]);
+
+      vi.advanceTimersByTime(2000);
+      expect(voiceBus().pendingHoldArmed).toBe(false);
+      expect(heard()).toEqual(["holder", "a"]);
+    });
+
+    it("lists every registered contract with its enablement and last-fired stamp, sorted by id", () => {
+      define("b", WEIGHT.NORMAL);
+      define("a", WEIGHT.NORMAL);
+      engine.setEnabled("q.b", false);
+
+      expect(engine.describeState().contracts).toEqual([
+        { id: "q.a", enabled: true, lastFireAt: 0, scripted: false, triggerPending: false },
+        { id: "q.b", enabled: false, lastFireAt: 0, scripted: false, triggerPending: false },
+      ]);
+
+      vi.advanceTimersByTime(500);
+      engine.fire("q.a");
+
+      expect(engine.describeState().contracts[0]).toEqual({
+        id: "q.a",
+        enabled: true,
+        lastFireAt: 1_000_500,
+        scripted: false,
+        triggerPending: false,
+      });
+    });
+
+    it("reports a contract waiting out its triggerDelay", () => {
+      define("a", WEIGHT.NORMAL, { when: { event: "pitLane.entered" }, triggerDelay: 1000 });
+
+      bus.publishEvent("pitLane.entered", {});
+      expect(engine.describeState().contracts[0].triggerPending).toBe(true);
+
+      vi.advanceTimersByTime(1000);
+      expect(engine.describeState().contracts[0].triggerPending).toBe(false);
+      expect(heard()).toEqual(["a"]);
+    });
+
+    it("is JSON-safe: no timer, event or op object reaches the result", () => {
+      define("holder", WEIGHT.NORMAL, { queueable: false, pendingHoldMs: 2000 });
+      define("a", WEIGHT.CHATTER, { when: { event: "pitLane.entered" } });
+      define("d", WEIGHT.CHATTER, { when: { event: "pitLane.exited" }, triggerDelay: 60_000 });
+      engine.acquireFocus(AudioBus.Voice, "spotter", WEIGHT.CHATTER);
+
+      engine.fire("q.holder");
+      bus.publishEvent("pitLane.entered", {}); // waits, carrying its event envelope
+      bus.publishEvent("pitLane.exited", {}); // a trigger timer in flight
+
+      const playing = engine.describeState();
+
+      expect(playing.buses[0].waiting.map((w) => w.id)).toEqual(["q.a"]);
+      expect(playing.contracts.find((c) => c.id === "q.d")?.triggerPending).toBe(true);
+      expect(JSON.parse(JSON.stringify(playing))).toEqual(playing);
+
+      endClip(); // the hold arms
+
+      const held = engine.describeState();
+
+      expect(held.buses[0].pendingHoldArmed).toBe(true);
+      expect(JSON.parse(JSON.stringify(held))).toEqual(held);
+    });
+
+    it("changes nothing: the queue drains exactly as it would have, and nothing is logged", () => {
+      holdBus();
+      define("a", WEIGHT.NORMAL);
+      define("b", WEIGHT.NORMAL);
+      define("c", WEIGHT.NORMAL);
+
+      engine.fire("q.a");
+      vi.advanceTimersByTime(100);
+      engine.fire("q.b");
+      vi.advanceTimersByTime(100);
+      engine.fire("q.c");
+
+      const levels = [mockLogger.debug, mockLogger.info, mockLogger.warn, mockLogger.error];
+
+      for (const level of levels) level.mockClear();
+
+      const before = engine.describeState();
+
+      expect(engine.describeState()).toEqual(before);
+      expect(before.buses[0].waiting.map((w) => w.id)).toEqual(["q.a", "q.b", "q.c"]);
+
+      for (const level of levels) expect(level).not.toHaveBeenCalled();
+
+      // The neighbouring test (1)'s drain, unchanged by the reads.
+      flushVoiceAndSfx(audio);
+
+      expect(heard()).toEqual(["busy", "a", "b", "c"]);
+    });
+
+    it("leaves an entry past its max wait in the list: expiry is the drain's to log, not a read's", () => {
+      holdBus();
+      define("a", WEIGHT.NORMAL);
+
+      engine.fire("q.a");
+      vi.advanceTimersByTime(9000);
+
+      expect(voiceBus().waiting.map((w) => w.id)).toEqual(["q.a"]);
+
+      endClip();
+
+      expect(mockLogger.debug).toHaveBeenCalledWith('Scenario "q.a" dropped — waited 9000 ms (max 8000 ms)');
+      expect(voiceBus().waiting).toEqual([]);
+    });
+  });
 });
 
 // ─── Event subscription ─────────────────────────────────────────────────────
@@ -4429,6 +4791,50 @@ describe("pack-owned scripts (issue #1064)", () => {
     flushVoiceAndSfx(audio);
 
     expect(playedPaths()).toEqual(["voice/default/flags/green-01.mp3"]);
+  });
+
+  it("describeState says which contracts the active voice's script has a body for, compiling nothing (#1387)", () => {
+    engine.defineContract(contract({ frame: NO_FRAME }));
+    engine.defineContract(contract({ id: "test.unsaid", frame: NO_FRAME }));
+    engine.setScripts(new Map([["default", GREEN_SCRIPT]]));
+
+    expect(engine.describeState()).toMatchObject({
+      activeVoice: "default",
+      scriptsDirty: false,
+      contracts: [
+        { id: "test.green", scripted: true },
+        { id: "test.unsaid", scripted: false },
+      ],
+    });
+
+    // A voice with no script says nothing, whatever the contracts are.
+    activeVoice = "laconic";
+    expect(engine.describeState().contracts.map((c) => c.scripted)).toEqual([false, false]);
+    activeVoice = "default";
+
+    // A registration after the compile: the reader says the compile is stale
+    // and reports the last one, rather than compiling at a key press.
+    engine.defineContract(contract({ id: "test.late", frame: NO_FRAME }));
+
+    const levels = [mockLogger.debug, mockLogger.info, mockLogger.warn, mockLogger.error];
+
+    for (const level of levels) level.mockClear();
+
+    const stale = engine.describeState();
+
+    expect(stale.scriptsDirty).toBe(true);
+    expect(stale.contracts.map((c) => [c.id, c.scripted])).toEqual([
+      ["test.green", true],
+      ["test.late", false],
+      ["test.unsaid", false],
+    ]);
+    expect(engine.describeState().scriptsDirty).toBe(true);
+
+    for (const level of levels) expect(level).not.toHaveBeenCalled();
+
+    // The next fire compiles, as it always did.
+    engine.fire("test.green");
+    expect(engine.describeState().scriptsDirty).toBe(false);
   });
 
   it("plays a pack voice's literal voice path from its own pack — the compile qualifies it (#1144)", () => {

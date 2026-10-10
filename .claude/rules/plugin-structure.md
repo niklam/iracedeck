@@ -19,7 +19,7 @@ The plugin system uses a platform abstraction architecture with these key packag
 - `@iracedeck/settings` — the plugin's global settings: schema and cache, migrations, the plugin-owned settings store, run-scoped keys, PI warnings, first run and the startup gates; below the deck layer, reaching the host only through `SettingsHost`, which `IDeckPlatformAdapter` extends (#1365)
 - `@iracedeck/deck-core` — Platform-agnostic base classes, types (`IDeckWillAppearEvent`, etc.), and shared utilities; sim-neutral, seeing the simulator only through `SimConnection` (#1351)
 - `@iracedeck/voice-packs` — the Race Engineer voice-pack stack: scanner, service, catalog, installer, launch step, voice labels and the missing-script banner (#1366); `initVoicePacks` builds it, and it takes everything it needs from settings injected
-- `@iracedeck/replay-store`, `@iracedeck/diagnostics`, `@iracedeck/app-updates`, `@iracedeck/settings-window` — the per-session replay store, the watchdog / resource monitor / CPU profile capture, the version and update checks, and the settings window, each moved out of deck-core (#1367); `initCore` and `initSettings` build them
+- `@iracedeck/replay-store`, `@iracedeck/diagnostics`, `@iracedeck/app-updates`, `@iracedeck/settings-window` — the per-session replay store, the watchdog / resource monitor / CPU profile capture and the Telemetry Snapshot's state-section registry (#1387), the version and update checks, and the settings window, each moved out of deck-core (#1367); `initCore` and `initSettings` build them
 - `@iracedeck/deck-iracing` — iRacing's side of that seam: `SimIRacingConnection`, the `SimIRacingAction` base, the SDK singleton (`initializeSDK`, `getController`, `getCommands`), the app monitor and the other iRacing helpers
 - `@iracedeck/deck-adapter-elgato` — Elgato Stream Deck adapter implementing `IDeckPlatformAdapter`
 - `@iracedeck/deck-adapter-mirabox` — Mirabox adapter implementing `IDeckPlatformAdapter` via WebSocket
@@ -173,7 +173,7 @@ Every plugin starts through one composition root (#1349). Its `plugin.ts` is a s
 
 | # | Phase | Takes | Returns | Does |
 | --- | --- | --- | --- | --- |
-| 1 | `initCore` | `PluginHost` | `Core` | build-time config (`initPluginConfig`), the log level, the main-thread watchdog and resource monitor, the setup-warning check, the SDK, the event bus |
+| 1 | `initCore` | `PluginHost` | `Core` | build-time config (`initPluginConfig`), the log level, the main-thread watchdog and resource monitor, the setup-warning check, the SDK, the event bus, and last the registration of the Telemetry Snapshot's four plugin-state sections (#1387), which is ordered against no later phase |
 | 2 | `initSim` | `Core` | `SimRuntime` | the sim translator (`initializeSimEventsIracing`), the live race order for the template context, the query-side runtime the Race Engineer reads |
 | 3 | `initInput` | `Core` | `Input` | the keyboard and clipboard over `IRacingNative`, the PNG rasterizer behind `__FEATURE_PNG_RASTERIZATION__` |
 | 4 | `initAudio` | `Core` | `Audio` | the audio engine rooted at the plugin's assets, the bus-volume and Race Engineer / Radar gate syncers |

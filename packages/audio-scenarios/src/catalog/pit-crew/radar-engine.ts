@@ -342,3 +342,29 @@ export function _resetRadarEngine(): void {
   testSequenceGeneration = 0;
   getMasterEnabled = () => true;
 }
+
+/**
+ * This file's module state, for the Telemetry Snapshot (issue #1387). A pure
+ * read, and safe before `registerRadarEngine`. The tick timer is reported as
+ * `ticking`, the bus as `registered` and the listeners as a count; the master
+ * gate is a closure over the settings, which the snapshot carries itself.
+ */
+export function readRadarDebugState(): {
+  registered: boolean;
+  enabled: boolean;
+  visualState: RadarVisualState;
+  ticking: boolean;
+  testSequenceInFlight: boolean;
+  testSequenceGeneration: number;
+  listenerCount: number;
+} {
+  return {
+    registered: registeredBus !== null,
+    enabled,
+    visualState,
+    ticking: tickTimer !== null,
+    testSequenceInFlight,
+    testSequenceGeneration,
+    listenerCount: listeners.size,
+  };
+}

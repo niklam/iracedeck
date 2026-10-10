@@ -365,6 +365,15 @@ export function _getFurledRaisedSpoken(): boolean {
   return furledRaisedSpoken;
 }
 
+/**
+ * This file's module state, for the Telemetry Snapshot (issue #1387): whether
+ * the furled-flag line reached the speaker and its cleared line is still
+ * owed. A pure read.
+ */
+export function readFlagAlertsDebugState(): { furledRaisedSpoken: boolean } {
+  return { furledRaisedSpoken };
+}
+
 // Live `Furled`-bit read for the speak-time gates. `fallbackWhenUnknown`
 // decides the missing-telemetry answer (scenario harness, disconnect): each
 // gate passes the value that keeps it from suppressing on missing data (the
