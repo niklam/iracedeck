@@ -1,3 +1,5 @@
+// Digits-only text field - the filter behind window.irdDigitsOnly (issue #1353)
+import { installDigitsOnlyField } from "./digits-only-field.js";
 // External links - reroute external http(s) PI link clicks to the OS default browser
 import { installExternalLinkHandler } from "./external-links.js";
 // Shared page poller - single per-page interval behind window.irdPoll (issue #903)
@@ -94,6 +96,13 @@ export { createSharedPoller, installSharedPoller, POLL_INTERVAL_MS } from "./pol
 // Side effect on bundle load: reroute external PI links to the default browser (issue #243).
 installExternalLinkHandler();
 
+// Digits-only text field - keeps an sdpi-textfield's shown and stored value to digits (issue #1353)
+export { installDigitsOnlyField, restrictToDigits } from "./digits-only-field.js";
+
 // Side effect on bundle load: expose window.irdPoll — the shared per-page poller
 // that inline PI scripts register their sdpi polling fallbacks on (issue #903).
 installSharedPoller();
+
+// Side effect on bundle load: expose window.irdDigitsOnly — the digits-only
+// filter inline PI scripts put on a car-number text field (issue #1353).
+installDigitsOnlyField();
