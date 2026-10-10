@@ -109,7 +109,6 @@ export {
   splitDriverName,
   findNearestDriverOnTrack,
   findDriverByRacePosition,
-  formatTimeRemaining,
   type LivePositionsSource,
   templateContextFromMaps,
   type TemplateContext,
@@ -207,10 +206,12 @@ export {
 export { ReplayStateTracker } from "./replay-state-tracker.js";
 
 // Session limits (#1109) — sentinel decoding and the whichever-ends-sooner
-// rule shared by the fuel callouts, Session Info and the template context
+// rule shared by the fuel callouts, Session Info and the template context,
+// and the one clock formatter the last two show the time side through (#1292)
 export {
   type BindingLimit,
   bindingLapsToGo,
+  formatSessionClock,
   resolveBindingLimit,
   resolveLapsRemaining,
   resolveShownTimeRemainingS,

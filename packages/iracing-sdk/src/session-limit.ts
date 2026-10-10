@@ -11,7 +11,7 @@
  * "laps whenever a cap exists" answers "how much is left"; only comparing the
  * two does, and that comparison used to live in the fuel callouts alone.
  *
- * This module owns four things. The first three are shared by every consumer —
+ * This module owns five things. The first three are shared by every consumer —
  * the fuel laps-left callouts (`sim-events-iracing`), the gap callouts'
  * closing-announcement horizon (`resolveGapLapsRemaining` in the translator,
  * #1311), Session Info's Time Remaining key and the template context's
@@ -27,10 +27,11 @@
  * report each side as the sim gives it and leave which one binds to their
  * consumers.
  *
- * The fourth is shared by the consumers that SHOW the clock to the driver —
+ * The last two are shared by the consumers that SHOW the clock to the driver —
  * Session Info and the template context, never the fuel estimate:
  *
- *   4. a clock run past zero shows as `0`, not as unknown (#1221).
+ *   4. a clock run past zero shows as `0`, not as unknown (#1221), and
+ *   5. the text of that clock: `H:MM:SS` from an hour up, `M:SS` below (#1292).
  *
  * It deliberately does NOT own a consumer's precision adjustments — the fuel
  * estimate's white-flag clamp, its lap-fraction subtraction, its
@@ -120,6 +121,36 @@ export function resolveShownTimeRemainingS(t: TelemetryData | null | undefined):
   const raw = t?.SessionTimeRemain;
 
   return typeof raw === "number" && Number.isFinite(raw) && raw < 0 ? 0 : resolveTimeRemainingS(t);
+}
+
+/**
+ * The session clock as text: `H:MM:SS` from an hour up, `M:SS` below, whole
+ * seconds floored (#1292). The hours are not padded and never wrap into days.
+ *
+ * The one formatter for everything that shows the time side. Session Info's
+ * Time / Laps Remaining key and the template context's
+ * `session.time_remaining` each had their own, and they disagreed past an
+ * hour: two hours read `2:00:00` on the key and `120:00` in a template.
+ *
+ * Blank for anything that is not a clock reading — `null` / `undefined` (the
+ * time side does not bind), NaN, infinite, negative. What blank means is the
+ * caller's: a template leaves it blank, Session Info shows `0:00`. An expired
+ * clock is not one of those cases when the value comes from
+ * {@link resolveShownTimeRemainingS}, which has already made it the `0` that
+ * reads `0:00` here.
+ *
+ * @param seconds - The seconds left on the clock, or null/undefined when the time side does not bind
+ * @returns the clock text, or an empty string when there is no usable reading
+ */
+export function formatSessionClock(seconds: number | null | undefined): string {
+  if (seconds === null || seconds === undefined || !Number.isFinite(seconds) || seconds < 0) return "";
+
+  const totalSeconds = Math.floor(seconds);
+  const hours = Math.floor(totalSeconds / 3600);
+  const mins = Math.floor((totalSeconds % 3600) / 60);
+  const secs = String(totalSeconds % 60).padStart(2, "0");
+
+  return hours > 0 ? `${hours}:${String(mins).padStart(2, "0")}:${secs}` : `${mins}:${secs}`;
 }
 
 /**
