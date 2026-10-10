@@ -27,7 +27,6 @@ function run(
   opts: Partial<{
     player: number;
     isRace: boolean;
-    replay: boolean;
     preGreen: boolean;
     postRace: boolean;
     positions: number[];
@@ -40,7 +39,6 @@ function run(
     telemetry as unknown as TelemetryData,
     opts.player ?? PLAYER,
     opts.isRace ?? true,
-    opts.replay ?? false,
     opts.preGreen ?? false,
     opts.postRace ?? false,
     opts.positions ?? POSITIONS,
@@ -227,10 +225,11 @@ describe("diffLeaderWhite", () => {
       run(state, field([10, 20, 10, 10], { SessionTimeRemain: 5 })); // seed, clock still running
       run(state, field([10, 20, 10, 10], { SessionTimeRemain: 0 })); // expiry tick one
 
-      // The white crossing happens while the tick is gated (replay-only) —
-      // observation still absorbs (leaderWhitePostExpiryCrossed flips),
-      // but nothing can fire because the whole detection block is skipped.
-      expect(run(state, field([10, 21, 10, 10], { SessionTimeRemain: 0 }), { replay: true })).toEqual([]);
+      // The white crossing happens while the tick is gated (the player's
+      // carIdx unresolved) — observation still absorbs
+      // (leaderWhitePostExpiryCrossed flips), but nothing can fire because
+      // the whole detection block is skipped.
+      expect(run(state, field([10, 21, 10, 10], { SessionTimeRemain: 0 }), { player: -1 })).toEqual([]);
       expect(state.leaderWhitePostExpiryCrossed).toBe(true);
       expect(state.leaderWhiteFired).toBe(false);
 
@@ -246,7 +245,7 @@ describe("diffLeaderWhite", () => {
 
       // carIdx 1's white crossing happens while gated — absorbed silently,
       // never fired, but the session-wide flag is now set.
-      expect(run(state, field([10, 21, 10, 10], { SessionTimeRemain: 0 }), { replay: true })).toEqual([]);
+      expect(run(state, field([10, 21, 10, 10], { SessionTimeRemain: 0 }), { player: -1 })).toEqual([]);
       expect(state.leaderWhitePostExpiryCrossed).toBe(true);
 
       // Leadership changes to carIdx 2 — re-baselines silently (existing behavior).
@@ -285,12 +284,6 @@ describe("diffLeaderWhite", () => {
       // Gate reopens — the edge already happened under the gate; absorbed, not replayed.
       expect(run(state, field([10, 10, 10, 10], { SessionLapsRemainEx: 1 }))).toEqual([]);
       expect(state.leaderWhiteFired).toBe(false); // never actually detected — the gate ate it
-    });
-
-    it("stays silent during a replay-only session, baselines still advance", () => {
-      run(state, field([10, 10, 10, 10], { SessionLapsRemainEx: 3 }), { replay: true });
-      expect(run(state, field([10, 10, 10, 10], { SessionLapsRemainEx: 2 }), { replay: true })).toEqual([]);
-      expect(state.leaderWhiteLastLapsRemainEx).toBe(2);
     });
 
     it("stays silent pre-green, baselines still advance", () => {

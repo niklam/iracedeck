@@ -75,9 +75,10 @@
  * vacuously satisfied.
  *
  * Gating mirrors `diffOpponentPit` / `diffOpponentFlags`: race sessions
- * only, replay-only suppressed, pre-green suppressed (no leader is
- * meaningful before the green), post-race suppressed, and an unresolved
- * player carIdx suppresses everything. The three crossing/baseline fields
+ * only, pre-green suppressed (no leader is meaningful before the green),
+ * post-race suppressed, and an unresolved player carIdx suppresses
+ * everything; no replay term, since a replay tick never reaches this diff
+ * (#1324, the translator's guard). The three crossing/baseline fields
  * (`leaderWhiteLastLeaderIdx` / `leaderWhiteLastLeaderLap` /
  * `leaderWhiteLastLapsRemainEx`) advance every tick regardless of gating so
  * a gated tick's edge is absorbed into the baseline, never replayed once the
@@ -112,7 +113,6 @@ export function diffLeaderWhite(
   telemetry: TelemetryData,
   playerCarIdx: number,
   isRaceSession: boolean,
-  replayOnlySession: boolean,
   preGreen: boolean,
   postRace: boolean,
   frozenPositions: number[],
@@ -169,7 +169,7 @@ export function diffLeaderWhite(
     state.leaderWhitePostExpiryCrossed = false;
   }
 
-  const gated = !isRaceSession || replayOnlySession || preGreen || postRace || playerCarIdx < 0;
+  const gated = !isRaceSession || preGreen || postRace || playerCarIdx < 0;
 
   if (!gated && !state.leaderWhiteFired) {
     const lapEdge = lapsRemain === 1 && prevLapsRemain !== null && prevLapsRemain >= 2;

@@ -2222,24 +2222,21 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // this one must not read or write `cautionPhase`; today only `diffFlags`,
   // `diffStartLights` and this diff touch it.
   //
-  // It takes neither `isRaceSession` nor `replayOnlySession`, unlike most of its
-  // neighbours, and that is deliberate rather than an omission. The #480
+  // It takes no `isRaceSession`, unlike most of its neighbours, and that is
+  // deliberate rather than an omission. The #480
   // precedent recorded in `.claude/rules/race-engineer-callout-examples.md` puts
   // this gate on the SCENARIO instead: the event still emits — so the scenario
   // harness can fire the whole caution sequence without pretending to be in a
   // race — while the callout family's own `liveRaceCar` predicate is what keeps
-  // the engineer quiet outside one. Adding the parameters here would move a
+  // the engineer quiet outside one. Adding the parameter here would move a
   // decision the audio layer owns into the diff, and take the sequence out of
   // reach of the harness. Don't.
   //
   // Nor for the PHASE it writes, which `diffFlags` and `diffStartLights` read
   // to stand their green and go lines down (asked at the first CodeRabbit
-  // review of #1127). The two readers take no `replayOnlySession` either: in
-  // a replay-only session they read the phase off the same ticks that set it,
-  // so the phase and the edges it suppresses share one timeline, and nothing
-  // in such a session is spoken live for a replay-derived phase to silence.
-  // The in-session replay never reaches this line at all — the guard above
-  // returns first — and the phase is carried across that wipe on purpose, the
+  // review of #1127). No replay tick reaches this line at all — the guard
+  // above returns first, for the in-session replay and a saved replay alike
+  // (#1324) — and the phase is carried across that wipe on purpose, the
   // seed on the first tick back expiring one the live flags contradict while
   // both readers re-seed silently on that same tick (the "replay glance"
   // tests in `translator.test.ts`). Leaving a replay for a live session is a
@@ -2248,18 +2245,17 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   diffCaution(self.state, telemetry, sessionInfo, canonicalPositions, emit, now);
 
   // Opponent pit entries (issue #622) — consumes the same canonical frozen
-  // order as diffOvertakes on the same tick. Race-only + replay-only gating
-  // is diff-side (the diffPitsOpen precedent) plus pre-green (#647 —
-  // grid/formation positions are meaningless) and post-race (the whole field
-  // pits after the checkered) gates; the pace car drives into the pits when
-  // picking up the field and must never announce.
+  // order as diffOvertakes on the same tick. Race-only gating is diff-side
+  // (the diffPitsOpen precedent) plus pre-green (#647 — grid/formation
+  // positions are meaningless) and post-race (the whole field pits after the
+  // checkered) gates; the pace car drives into the pits when picking up the
+  // field and must never announce.
   diffOpponentPit(
     self.state,
     telemetry,
     playerCarIdx,
     resolvePaceCarIdx(sessionInfo),
     isRaceSession,
-    replayOnlySession,
     isPreGreen(telemetry),
     isPostRace(telemetry),
     resolveIsMultiClass(sessionInfo) === true,
@@ -2285,7 +2281,6 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     playerCarIdx,
     resolvePaceCarIdx(sessionInfo),
     isRaceSession,
-    replayOnlySession,
     isPreGreen(telemetry),
     isPostRace(telemetry),
     resolveIsMultiClass(sessionInfo) === true,
@@ -2306,7 +2301,6 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     telemetry,
     playerCarIdx,
     isRaceSession,
-    replayOnlySession,
     isPreGreen(telemetry),
     isPostRace(telemetry),
     canonicalPositions,

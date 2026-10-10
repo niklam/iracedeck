@@ -1474,6 +1474,62 @@ describe("sim-events-iracing translator", () => {
 
       expect(published()).toEqual([]);
     });
+
+    // The opponent diffs used to carry a `replayOnlySession` term of their own
+    // for the paused saved replay; the guard covers it now, so the coverage
+    // lives here, with a live positive control so the silence is the guard's.
+    describe("the opponent diffs behind the guard, in a saved replay", () => {
+      const THREE_CARS: Record<string, unknown> = {
+        DriverInfo: {
+          DriverCarIdx: 0,
+          Drivers: [
+            { CarIdx: 0, CarNumber: "1" },
+            { CarIdx: 1, CarNumber: "07" },
+            { CarIdx: 2, CarNumber: "22" },
+          ],
+        },
+        SessionInfo: { Sessions: [{ SessionNum: 0, SessionType: "Race" }] },
+      };
+
+      /** A green race, car1 just ahead of the player and car2 just behind, with the flag reading false. */
+      function fieldTick(k: number, o: { car1Flags?: number; car1Surface?: TrkLoc } = {}): TelemetryData {
+        const player = 0.3 + 0.01 * k;
+
+        return liveTick({
+          IsReplayPlaying: false,
+          SessionTime: 100 + k,
+          CarIdxLapCompleted: [5, 5, 5],
+          CarIdxLapDistPct: [player, player + 0.015, player - 0.005],
+          CarIdxTrackSurface: [TrkLoc.OnTrack, o.car1Surface ?? TrkLoc.OnTrack, TrkLoc.OnTrack],
+          CarIdxClass: [0, 0, 0],
+          CarIdxSessionFlags: [0, o.car1Flags ?? 0, 0],
+        });
+      }
+
+      /** Six green ticks, then car1 takes the meatball, then turns into the pits with it. */
+      function driveThenFlagAndPit(tick: (t: TelemetryData, times?: number) => void): void {
+        for (let k = 0; k < 6; k++) tick(fieldTick(k));
+
+        tick(fieldTick(6, { car1Flags: Flags.Repair }));
+        tick(fieldTick(7, { car1Flags: Flags.Repair, car1Surface: TrkLoc.AproachingPits }));
+      }
+
+      it("publishes nothing for an opponent's flag or pit entry scrubbed through in a saved replay", () => {
+        const { tick, published } = start({ ...THREE_CARS, WeekendInfo: { TrackID: 42, SimMode: "replay" } });
+
+        driveThenFlagAndPit(tick);
+
+        expect(published()).toEqual([]);
+      });
+
+      it("positive control: live, the same ticks announce the flag and the pit entry", () => {
+        const { tick, published } = start({ ...THREE_CARS, WeekendInfo: { TrackID: 42, SimMode: "full" } });
+
+        driveThenFlagAndPit(tick);
+
+        expect(published()).toEqual(expect.arrayContaining(["opponentFlag.flagged", "opponentPit.entered"]));
+      });
+    });
   });
 
   describe("pit lane", () => {
