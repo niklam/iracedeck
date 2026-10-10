@@ -272,6 +272,7 @@ Key pitfalls summarized here for quick reference:
 - **`sdpi-checkbox`**: Never use `default="false"` — it renders checked (HTML attribute is truthy string). Omit `default` for unchecked.
 - **`sdpi-select`**: Fires `input` events, not `change`. Listen to both + polling fallback for reliable detection. Register the fallback via `window.irdPoll(fn)` — never a raw `setInterval` (see below).
 - **Zod booleans**: `z.coerce.boolean()` treats `"false"` as `true`. Use `z.union([z.boolean(), z.string()]).transform(val => val === true || val === "true")`.
+- **`sdpi-textfield`**: Always a text input. The component sets its inner input's type itself, so `type="number"` and `inputmode` on the element do nothing; `pattern`, `placeholder`, `maxlength` and `required` are the attributes it forwards. A field that must hold digits only (a car number, where `07` and `7` differ) calls `window.irdDigitsOnly(field)` (exposed by `pi-components.js`, #1353) — never an inline filter that rewrites the inner input: the component has already copied the keystroke into the value it saves, so the rejected character would stay stored while the field stopped showing it. The schema still decides what a stored value means; the filter only keeps new input clean.
 
 ### Conditional Visibility in Property Inspector
 
