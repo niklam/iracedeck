@@ -14,8 +14,14 @@
  */
 export const GENERATORS = [
   {
+    // Not committed since #1386 (a turbo task builds it), so no freshness test
+    // guards it. It still runs on every edit of either source: composing is
+    // what validates a fragment, so a bad one fails at authoring time rather
+    // than at the next build, and the local copy a watcher serves stays current.
     label: "changelog data (What's New pane)",
-    match: (rel) => rel === "packages/website/src/content/docs/changelog.mdx",
+    match: (rel) =>
+      rel === "packages/website/src/content/docs/changelog.mdx" ||
+      (/^changelog\.d\/[^/]+\.md$/.test(rel) && rel !== "changelog.d/README.md"),
     cmd: "node",
     args: ["scripts/generate-changelog-data.mjs"],
   },

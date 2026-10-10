@@ -72,6 +72,11 @@ describe("post rules", () => {
     expect(generatorsFor("packages/website/src/content/docs/changelog.mdx").map((g) => g.args[0])).toEqual([
       "scripts/generate-changelog-data.mjs",
     ]);
+    expect(generatorsFor("changelog.d/1386-changelog-fragments.md").map((g) => g.args[0])).toEqual([
+      "scripts/generate-changelog-data.mjs",
+    ]);
+    expect(generatorsFor("changelog.d/README.md")).toEqual([]);
+    expect(generatorsFor("changelog.d/nested/1386-x.md")).toEqual([]);
     expect(generatorsFor("packages/icons/black-box/fuel.svg").map((g) => g.label)).toEqual([
       "icon previews",
       "icon defaults (PI colour/border defaults)",
