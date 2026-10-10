@@ -284,6 +284,12 @@ export function replayStateAt(state: ReplayState, nowMs: number): ReplayState {
  * replay tick records the sighting the grace runs from (unless a live exit
  * is pending, see {@link replayLeftForLive}); a tick that has left the replay
  * drops it. `nowMs` is the tick's wall time, injectable for tests.
+ *
+ * A null or undefined `sessionInfo` is not a session: `getSessionInfo()`
+ * reads null on an empty or unparsable YAML read, and one such tick would
+ * otherwise drop a paused saved replay out of every guard. The saved-replay
+ * answer is kept from `prev` until a session-info read says otherwise; only a
+ * reset clears it.
  */
 export function nextReplayState(
   prev: ReplayState,
@@ -291,7 +297,7 @@ export function nextReplayState(
   sessionInfo: unknown,
   nowMs: number,
 ): ReplayState {
-  const replayOnlySession = isReplayOnlySession(sessionInfo);
+  const replayOnlySession = sessionInfo == null ? prev.replayOnlySession : isReplayOnlySession(sessionInfo);
   const tickReplayPlaying = telemetry.IsReplayPlaying === true;
   const tickFrame = finiteFrame(
     tickReplayPlaying || replayOnlySession ? telemetry.ReplayFrameNum : telemetry.ReplayFrameNumEnd,

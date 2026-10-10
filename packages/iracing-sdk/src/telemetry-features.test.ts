@@ -335,6 +335,28 @@ describe("telemetry-features", () => {
         expect(inGrace.frame).toBe(500);
       });
 
+      it.each([null, undefined])(
+        "keeps the saved-replay answer through a %s session-info read (an empty or unparsable YAML read), so one such tick cannot drop a paused saved replay",
+        (missing) => {
+          const saved = run([[liveTick(900), 5_000]], SAVED_REPLAY);
+          const held = nextReplayState(saved, liveTick(900), missing, 5_010);
+          // Live stays live too: a missing read never invents a saved replay.
+          const live = nextReplayState(run([[liveTick(900), 0]]), liveTick(900), missing, 10);
+
+          expect(held).toMatchObject({ inReplay: true, replayOnlySession: true });
+          expect(live).toMatchObject({ inReplay: false, replayOnlySession: false });
+        },
+      );
+
+      it("takes a session-info read without the field as live, and a reset clears the saved-replay answer", () => {
+        const saved = run([[liveTick(900), 5_000]], SAVED_REPLAY);
+        const noField = nextReplayState(saved, liveTick(900), { WeekendInfo: {} }, 5_010);
+        const reset = nextReplayState(initialReplayState(), liveTick(900), null, 5_020);
+
+        expect(noField).toMatchObject({ inReplay: false, replayOnlySession: false });
+        expect(reset).toMatchObject({ inReplay: false, replayOnlySession: false });
+      });
+
       it("reads a missing or non-finite frame as null without changing the answer", () => {
         const replay = run([[telemetry({ IsReplayPlaying: true, ReplayFrameNum: Number.NaN }), 0]]);
         const live = run([[telemetry({ IsReplayPlaying: false }), 0]]);
