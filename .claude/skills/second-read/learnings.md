@@ -1,6 +1,6 @@
 # Second read: learnings
 
-Read at the start of every run. One line per entry, with the PR it came from. See `SKILL.md` for what belongs here.
+Read at the start of every run on a live branch; a blind run that tests the brief leaves it out. One line per entry, with the PR it came from. See `SKILL.md` for what belongs here.
 
 ## Misses — look for these
 

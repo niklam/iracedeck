@@ -112,7 +112,7 @@ A question is added when a miss shows one is absent, never to make the list feel
 
 ## What it remembers
 
-`learnings.md`, beside this file, is read by the reviewer at the start of every run. One line per entry, with the PR it came from:
+`learnings.md`, beside this file, is read by the reviewer at the start of every run on a live branch (a blind run leaves it out, above). One line per entry, with the PR it came from:
 
 - **a miss** — a defect of this class that CodeRabbit, a later bug or the maintainer found on a diff the second read had run on;
 - **a non-finding** — a class of finding that was raised, checked and declined for a reason that will hold again.
