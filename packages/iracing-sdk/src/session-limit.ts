@@ -12,9 +12,10 @@
  * two does, and that comparison used to live in the fuel callouts alone.
  *
  * This module owns four things. The first three are shared by every consumer —
- * the fuel laps-left callouts (`sim-events-iracing`), Session Info's Time
- * Remaining key and the template context's `session.laps_remaining` and
- * `session.time_remaining`:
+ * the fuel laps-left callouts (`sim-events-iracing`), the gap callouts'
+ * closing-announcement horizon (`resolveGapLapsRemaining` in the translator,
+ * #1311), Session Info's Time Remaining key and the template context's
+ * `session.laps_remaining` and `session.time_remaining`:
  *
  *   1. decoding the two sentinels,
  *   2. the rule that `null` means UNKNOWN (missing, sentinel, nonsensical) —
