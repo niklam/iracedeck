@@ -21,7 +21,7 @@ Discord asked for exactly this ("Tire temp to display on stream box", the values
 
 ## What ships
 
-A new **Session Info** item, **Tire Temperatures**. By default it shows all four tires on one key, one figure per tire, laid out as the car seen from above, under the title `PIT TEMPS`. The figures come from the last pit stop the driver drove into, and the key shows them in iRacing's display units. They hold until the next stop. Before the first stop it shows `--` in every slot.
+A new **Session Info** item, **Tire Temperatures**. By default it shows all four tires on one key, one figure per tire, laid out as the car seen from above, under the title `PIT TEMPS`. The figures come from the last time the car came in from a run: a pit stop the driver drove into, a tow to the pits, or a return to the garage (decision 2). The key shows them in iRacing's display units, and they hold until the next such reading. Before the first one it shows `--` in every slot.
 
 ## Decisions
 
@@ -47,13 +47,12 @@ export function getLastStopTireTemps(): LastStopTireTemps | null;
 ```
 
 - **When it is taken.** On every tick of a stall visit the car drove into, the reading is the current twelve values, so the key updates while the driver sits in the box. That is the one moment of the race when they can look at the deck. At `pitStall.departed` the reading freezes. Reading on every tick of the visit rather than at one edge makes the arrival-time refresh (which the wear capture timed at ~0.2 s _before_ `PlayerCarInPitStall`) safe whatever its exact tick is for temperatures.
-- **The drive-in rule is #1108's, reused, not re-derived.** Today it lives inside `diff/tire-wear.ts` as `tireWearDroveOnCircuit` / `tireWearStallDriveIn`. It is hoisted into one shared stall-visit predicate that both the wear report and this reading consume, so the two families cannot drift on what counts as a stop. A garage "Drive" placement, a tow and a reset leave the previous reading in place.
+- **The drive-in rule is #1108's, reused, not re-derived.** Today it lives inside `diff/tire-wear.ts` as `tireWearDroveOnCircuit` / `tireWearStallDriveIn`. It is hoisted into one shared stall-visit predicate that both the wear report and this reading consume, so the two families cannot drift on what counts as a stop. A garage "Drive" placement never takes a reading, because the car has not been driven.
+- **A tow and a return to the garage are readings too, when the sim refreshes the values there** (maintainer ruling, 2026-10-10). This is where the reading parts from the wear report, for which neither is a stop. Both bring in tires that were just run: a tow carries them to the stall, and escaping to the garage is how most practice runs end, which is the setup-tuning case. So when the car reaches its stall by a tow or a reset, or returns to the garage, having been driven on the circuit since the last reading, and the twelve values change from what they held on track, the new values are the reading. The condition on the values keeps the rule honest whatever iRacing does. If it does not refresh them there, they still hold the previous reading or the placement values, nothing has changed, and no reading is taken. A "Drive" placement afterwards never replaces the reading, since the car has not been driven since. The capture (see _Testing_) shows whether each refresh exists, on which tick, and whether the values describe the tires that came in. If a tow or a reset turns out to load a fresh set's values instead, that case is dropped again, because those values are not a reading of anything. A return to the garage happens out of the car, on ticks the translator's replay guard holds back from the diffs. If the capture shows the refreshed values do not last until the next live tick, the reading is taken ahead of the guard, the way the start countdown is (#829), and never in a saved replay.
 - **Zones are named by the #1108 mapping** (`inside` / `middle` / `outside` from the car's centreline), in the same shape as `TireCornerWear` minus the summary fields, so a future consumer can show wear and temperature from one model.
 - **Unavailable is `null`, never zero.** A reading with any field missing or non-finite, or all twelve at zero (a car with no temperature model), is not taken, which is `buildTireWearReport`'s rule.
-- **Lifetime.** The reading survives garage visits and session changes: a practice stop's temperatures are exactly what a driver tuning pressures and camber in the garage wants to see. A disconnect clears it, and so does a replay-only session, which never takes one. The next drive-in stop replaces it. Connecting mid-session after a stop shows `--` until the next stop, because nothing proves the held values were a drive-in reading.
+- **Lifetime.** The reading survives garage visits and session changes: a practice stop's temperatures are exactly what a driver tuning pressures and camber in the garage wants to see. A disconnect clears it, and so does a replay-only session, which never takes one. The next reading replaces it. Connecting mid-session after a stop shows `--` until the next reading, because nothing proves the held values were one.
 - **No bus event.** Nothing needs to react to the reading; the key polls it on its render pass the way it polls fuel stats. The sim-event catalog, a published contract, is untouched.
-
-**Returning to the garage after a run is open** (see _Open questions_). Nobody knows yet whether iRacing refreshes the twelve values when the driver escapes to the garage with the run's tires (it shows tire temperatures on its own garage screen). The proposal: if the capture shows that it does, that refresh is accepted as a reading too, taken on the tick it happens, provided the car was driven on the circuit since the last reading, because it describes the run just driven and it is the setup-tuning case; if the capture shows no refresh, the rule stays drive-in stops only. Either way a "Drive" placement afterwards never replaces the reading.
 
 ### 3. All four tires by default, one corner as the alternative
 
@@ -75,7 +74,7 @@ A **Calculation** sub-setting (`tireTempMethod`), shown only for All four:
 
 The issue's four methods all stay, because each is a pure function and costs a dropdown entry. Weighted center stays the default for the reason the issue gives. The method is computed in °C on unrounded values, then converted and rounded once.
 
-### 5. Colour bands stay, configurable from the start, and are framed as a stop reading (unit and defaults open)
+### 5. Colour bands stay, configurable from the start, and are framed as a stop reading (defaults open)
 
 The bands are the core of the original request, and they stay. They move in two ways.
 
@@ -90,7 +89,7 @@ The bands are the core of the original request, and they stay. They move in two 
 | `tireTempHotAbove`      | 100     | yellow above it |
 | `tireTempCriticalAbove` | 115     | red above it    |
 
-- **The thresholds are in °C**, the sim's own unit and what the stored value means whatever the driver's display units are. The PI labels say °C, and the help text gives the °F equivalents of the defaults. Storing them in the display unit was rejected: iRacing's `DisplayUnits` can change between sessions, so a stored "100" would silently change meaning.
+- **The driver picks the unit the thresholds are typed in** (maintainer ruling, 2026-10-10). A **Threshold unit** selector (`tireTempThresholdUnit`: `c`, the default, or `f`) sits above the three fields, and each unit has its own stored set. The °C fields are the three in the table above. The °F fields (`tireTempColdBelowF` / `tireTempHotAboveF` / `tireTempCriticalAboveF`) default to 160 / 210 / 240. The PI shows the set for the selected unit, and a figure is compared in that unit, unrounded. Two sets, rather than one set of numbers reinterpreted, mean that switching the selector never leaves Celsius numbers standing as Fahrenheit ones, and that nothing the driver typed is rewritten or lost when they switch back. The unit is stored with the key and does not follow iRacing's `DisplayUnits`, which can change between sessions and would silently change what a stored "100" means. That was the reason to reject storing the thresholds in the display unit, and it still holds.
 - **The bands are evaluated hottest first** (red, then yellow, then blue, else green), so a hand-typed set that is out of order still colours predictably. The user's values are never rewritten or reset to the defaults.
 - **The colours are discrete and fixed**, like Session Info's gain/loss colours: blue `#3498db`, green `#2ecc71`, yellow `#f1c40f`, red `#e74c3c`. A **Color by temperature** checkbox (`tireTempColors`, default on) turns them off, and the figures then take the theme text colour.
 - In the all-four view the band colours the summarized figure. In the single-corner view each zone is coloured on its own raw value.
@@ -125,7 +124,9 @@ All are Session Info settings, shown only when Mode is **Tire Temperatures**. Ev
 | `tireTempCorner`                                                   | Tire                                                    | `all` \| `lf` \| `rf` \| `lr` \| `rr`, `all`             |
 | `tireTempMethod`                                                   | Calculation (All four only)                             | `weighted` \| `average` \| `max` \| `middle`, `weighted` |
 | `tireTempColors`                                                   | Color by temperature                                    | boolean, `true`                                          |
-| `tireTempColdBelow` / `tireTempHotAbove` / `tireTempCriticalAbove` | Below window (°C) / Above window (°C) / Well above (°C) | number, `70` / `100` / `115`, shown when colours are on  |
+| `tireTempThresholdUnit`                                            | Threshold unit                                          | `c` \| `f`, `c`, shown when colours are on               |
+| `tireTempColdBelow` / `tireTempHotAbove` / `tireTempCriticalAbove` | Below window (°C) / Above window (°C) / Well above (°C) | number, `70` / `100` / `115`, shown for the °C unit      |
+| `tireTempColdBelowF` / `tireTempHotAboveF` / `tireTempCriticalAboveF` | Below window (°F) / Above window (°F) / Well above (°F) | number, `160` / `210` / `240`, shown for the °F unit  |
 
 Identifiers spell "tire", per the #1108 ruling. The numbers follow the `fuelLapWindow` rule: they coerce, and on a bad value they `.catch` back to the default, so one malformed field never fails the whole settings parse.
 
@@ -142,11 +143,11 @@ Identifiers spell "tire", per the #1108 ruling. The numbers follow the `fuelLapW
 
 ## Open questions
 
-The maintainer left these to be settled before implementation starts (2026-10-05). The decisions above carry a proposal for each; this section, not the proposal, is the state of the decision until it is amended.
+The maintainer left four questions to be settled before implementation (2026-10-05) and ruled on three of them on 2026-10-10. The decisions above now carry those rulings: a return to the garage counts as a reading, and so does a tow, each when the sim refreshes the values there (decision 2), and the thresholds get a unit selector (decision 5).
 
-1. **The garage escape.** Whether a refresh of the twelve values on returning to the garage after a run counts as a reading (decision 2). The capture shows whether the refresh exists; whether to use it is the open part.
-2. **The threshold unit.** Thresholds stored and typed in °C whatever the display units, with °F equivalents in the help text, or a unit selector (decision 5).
-3. **The colour defaults and tows.** Whether colouring is on by default at 70 / 100 / 115 °C, given that stop readings run below in-stint temperatures (decision 5), and whether a tow keeps the previous reading as #1108 treats tows, or counts as a reading of the tires that came in on it (decision 2).
+One remains, and this section, not the proposal, is its state until it is amended:
+
+1. **The colour defaults.** Whether colouring is on by default at 70 / 100 / 115 °C (160 / 210 / 240 °F), given that stop readings run below in-stint temperatures (decision 5). The implementation carries the proposal, colouring on at those values, until it is ruled on, and the last manual step is where the values are judged.
 
 ## Out of scope
 
@@ -160,18 +161,18 @@ The maintainer left these to be settled before implementation starts (2026-10-05
 
 ## Testing
 
-**Capture first (implementation task 1).** Run a `telemetry-watch` recording of the twelve `*tempC*` fields alongside the twelve wear fields and the pit fields the #1108 capture used. Drive it through a garage drive-out, a four-tire stop, a stop with nothing queued, a tow, and an escape to the garage after a run. It confirms three things:
+**Capture first (implementation task 1).** Run a `telemetry-watch` recording of the twelve `*tempC*` fields alongside the twelve wear fields and the pit fields the #1108 capture used. Drive it through a garage drive-out, a four-tire stop, a stop with nothing queued, a tow after a run, and an escape to the garage after a run followed by a second drive-out. It confirms three things:
 
 - the temperatures refresh on the same arrival tick as wear and hold on track;
 - after a tire change they hold the set that came off;
-- whether the garage escape refreshes them, which picks the branch in decision 2.
+- whether a tow and a garage escape refresh them, on which tick, and with which tires' values (decision 2).
 
 A trimmed copy goes into `sim-events-iracing/src/diff/__fixtures__/` with a fixture test, as #1108's did.
 
 **Suite.**
 
-- **Translator.** A drive-in visit takes the reading and keeps updating it until departure, then freezes. A garage placement, a tow and a reset leave the previous reading in place. A replay-only session never takes one. A disconnect clears it, and a session change does not. Missing, non-finite or all-zero fields give no reading. The zone mapping holds on both sides. Run the stall-visit predicate's existing #1108 tests unchanged against the hoisted version.
-- **Session Info.** Cover each method on known triples. Cover the band edges (exactly 70, 100, 115), an out-of-order threshold set, and colours off. Check °C and °F conversion with rounding after conversion. Check the single-corner column order and zone letters per side, `--` with no reading in both views, the titles, the setting defaults, and that a malformed threshold falls back without resetting the rest of the settings. A press publishes nothing on this item.
+- **Translator.** A drive-in visit takes the reading and keeps updating it until departure, then freezes. A garage placement leaves the previous reading in place. A tow, a reset and a return to the garage take a reading only when the car was driven since the last one and the values changed, and leave it in place otherwise. A replay-only session never takes one. A disconnect clears it, and a session change does not. Missing, non-finite or all-zero fields give no reading. The zone mapping holds on both sides. Run the stall-visit predicate's existing #1108 tests unchanged against the hoisted version.
+- **Session Info.** Cover each method on known triples. Cover the band edges (exactly 70, 100, 115), an out-of-order threshold set, and colours off. Cover the unit selector: each set's defaults, a figure compared in the selected unit, and that switching units changes neither set. Check °C and °F conversion with rounding after conversion. Check the single-corner column order and zone letters per side, `--` with no reading in both views, the titles, the setting defaults, and that a malformed threshold falls back without resetting the rest of the settings. A press publishes nothing on this item.
 - `pnpm test` also covers the changelog parser and the freshness test.
 
 **Manual (the PR gate).** In iRacing, check the following:
@@ -180,7 +181,8 @@ A trimmed copy goes into `sim-events-iracing/src/diff/__fixtures__/` with a fixt
 2. Drive into the box. The figures appear while the car is in the stall.
 3. Leave on a four-tire change. The figures stay as they were, showing the set that came off.
 4. Do a stop without tires. The figures update.
-5. Tow to the pits. The figures do not change.
-6. Repeat with imperial display units.
-7. Arrange four single-corner keys as the car and check the outside zone sits on the outside for every corner.
-8. Judge the default thresholds against a real stint's stop reading.
+5. Tow to the pits after a run. The figures show the run's tires, if the capture found a refresh there. Tow again without driving. They do not change.
+6. Escape to the garage after a run, then press Drive. The figures show the run just driven, if the capture found a refresh there, and the drive-out does not replace them.
+7. Repeat with imperial display units, and with the threshold unit set to °F.
+8. Arrange four single-corner keys as the car and check the outside zone sits on the outside for every corner.
+9. Judge the default thresholds against a real stint's stop reading.
