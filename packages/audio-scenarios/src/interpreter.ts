@@ -193,6 +193,81 @@ export type ContractReport = {
 };
 
 /**
+ * What the engine is doing right now, for the Telemetry Snapshot (issue
+ * #1387): a support case can see what was on the radio, what was waiting for
+ * it and why a callout stayed silent at the moment the key was pressed. Plain
+ * data throughout — ids, numbers, booleans — so it serialises as it stands:
+ * a timer is reported as a boolean, and a fire's event, ops and resume state
+ * are left out.
+ */
+export type ScenarioEngineState = {
+  /** The voice `{voice}` resolves to; `null` when none is selected. */
+  activeVoice: string | null;
+  /** The user's Radio beeps / Pit ambience switches as the engine reads them. */
+  frameOptions: FrameOptions;
+  /**
+   * `true` when a registration landed after the last script compile, so each
+   * contract's `scripted` below is the LAST compile's answer; the next fire
+   * recompiles. `describeState` never compiles: it would log, and reset the
+   * script pools' no-repeat trackers, at a key press.
+   */
+  scriptsDirty: boolean;
+  /** One row per audio bus, in the `AudioBus` enum's order — a bus nothing has used yet reads as idle. */
+  buses: Array<{
+    /** The `AudioBus` member's name (`"Voice"`). */
+    bus: string;
+    playingId: string | null;
+    /**
+     * The fire in flight. The engine keeps no start time for it, so its
+     * position is the op in flight (`opIndex`, zero-based) out of the ops
+     * this fire plays (`opCount`) — for a fire resumed after an interrupt,
+     * the resumed tail rather than the callout's whole body.
+     */
+    active: { id: string; weight: number; opIndex: number; opCount: number } | null;
+    /** The exclusive-focus floor held on the bus (issue #652), if any. */
+    focus: { ownerId: string; floor: number } | null;
+    /** A finished fire's `pendingHoldMs` is delaying the drain of `waiting`. */
+    pendingHoldArmed: boolean;
+    /**
+     * The fires waiting for the bus, in play order. An entry past its
+     * `maxWaitMs` stays listed until the next drain drops it.
+     */
+    waiting: Array<{
+      id: string;
+      weight: number;
+      /** The supersede group; the contract id when it declares none. */
+      group: string;
+      /** `Date.now()` when the fire was first deferred. */
+      queuedAt: number;
+      maxWaitMs: number;
+      /** The waiting leader this one plays right after (`queueBehind`), or `null`. */
+      after: string | null;
+    }>;
+  }>;
+  /** Every registered contract (and legacy scenario), sorted by id in code-point order. */
+  contracts: Array<{
+    id: string;
+    enabled: boolean;
+    /** `Date.now()` of the last fire that took the bus or was queued; `0` when it never fired. */
+    lastFireAt: number;
+    /** Whether the active voice's compiled script has a body for it — see `scriptsDirty`. */
+    scripted: boolean;
+    /** A `triggerDelay` or `settle` timer is running for it. */
+    triggerPending: boolean;
+  }>;
+};
+
+/**
+ * The `AudioBus` members, in declaration order (a numeric enum also lists its
+ * names as values). Read at the call, never at module load: a test that mocks
+ * `@iracedeck/audio-service` without the enum must still be able to import
+ * this module.
+ */
+function audioBuses(): AudioBus[] {
+  return Object.values(AudioBus).filter((v): v is AudioBus => typeof v === "number");
+}
+
+/**
  * Code-point order, not `localeCompare`: both reports feed a generated
  * reference (#1066) and a completeness test, and a locale-aware sort would
  * order the same names differently from one machine's ICU to another's.
@@ -335,6 +410,13 @@ export interface IScenarioEngine {
   acquireFocus(bus: AudioBus, ownerId: string, floorWeight: number): void;
   /** Release a focus floor previously acquired by `ownerId` (no-op if another owner holds it). */
   releaseFocus(bus: AudioBus, ownerId: string): void;
+  /**
+   * What the engine is doing right now, for the Telemetry Snapshot (issue
+   * #1387) — see `ScenarioEngineState`. A pure read: it logs nothing, compiles
+   * nothing, creates no bus state, and neither expires nor takes a waiting
+   * fire, so calling it changes nothing about what plays next.
+   */
+  describeState(): ScenarioEngineState;
 }
 
 /**
@@ -1089,6 +1171,32 @@ class ScenarioEngine implements IScenarioEngine {
         base: raw.base ?? null,
       }))
       .sort((a, b) => codePointOrder(a.id, b.id));
+  }
+
+  describeState(): ScenarioEngineState {
+    const activeVoice = this.getActiveVoice();
+    // The compiled map as it stands, NOT `isScripted`: that recompiles a
+    // dirty script set, which logs and clears the script pools' no-repeat
+    // state. `scriptsDirty` says when the answer is the last compile's.
+    const scripted = activeVoice === null ? undefined : this.compiled.get(activeVoice)?.scenarios;
+
+    return {
+      activeVoice,
+      // The accessor itself rather than `frameOptions()`, which logs a throw.
+      frameOptions: { ...this.getFrameOptions() },
+      scriptsDirty: this.scriptsDirty,
+      // `busState.get`, not `getBusState`: a read creates no state.
+      buses: audioBuses().map((bus) => describeBus(bus, this.busState.get(bus))),
+      contracts: [...this.scenarios.values()]
+        .map((entry) => ({
+          id: entry.raw.id,
+          enabled: entry.enabled,
+          lastFireAt: entry.lastFireAt,
+          scripted: scripted?.has(entry.raw.id) ?? false,
+          triggerPending: entry.pendingTriggerTimer !== null,
+        }))
+        .sort((a, b) => codePointOrder(a.id, b.id)),
+    };
   }
 
   compileScript(script: CalloutScript): CompiledVoiceScript {
@@ -2878,6 +2986,40 @@ function buildResumeState(active: ActiveFire, voice: string | null, generation: 
   if (sourceIndex >= active.sourceOps.length) return undefined;
 
   return { ops: active.sourceOps, index: sourceIndex, voice, generation };
+}
+
+/**
+ * One bus's row of `describeState` (issue #1387); `state` is `undefined` for
+ * a bus nothing has used yet, which reads as idle. `queue.ordered()` is the
+ * queue's one pure read — `next` would expire entries and hand one out.
+ */
+function describeBus(bus: AudioBus, state: BusState | undefined): ScenarioEngineState["buses"][number] {
+  const fire = state?.activeFire ?? null;
+
+  return {
+    bus: AudioBus[bus] ?? String(bus),
+    playingId: state?.playingId ?? null,
+    active:
+      fire === null
+        ? null
+        : {
+            id: fire.id,
+            weight: fire.weight,
+            // `index` points one past the op in flight (see `buildResumeState`).
+            opIndex: Math.max(0, fire.index - 1),
+            opCount: fire.ops.length,
+          },
+    focus: state?.focus ? { ownerId: state.focus.ownerId, floor: state.focus.floor } : null,
+    pendingHoldArmed: (state?.pendingHoldTimer ?? null) !== null,
+    waiting: (state?.queue.ordered() ?? []).map((e) => ({
+      id: e.id,
+      weight: e.weight,
+      group: e.group,
+      queuedAt: e.queuedAt,
+      maxWaitMs: e.maxWaitMs,
+      after: e.after,
+    })),
+  };
 }
 
 /** Escape a literal string for embedding in a RegExp source. */
