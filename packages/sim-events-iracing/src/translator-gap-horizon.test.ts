@@ -8,6 +8,7 @@
 import { getEventBus, initializeEventBus } from "@iracedeck/event-bus";
 import {
   CarLeftRight,
+  ReplayStateTracker,
   type SDKController,
   SessionState,
   type TelemetryCallback,
@@ -49,6 +50,9 @@ function createMockController(): MockController {
     SessionInfo: { Sessions: [{ SessionNum: 0, SessionType: "Race" }] },
     DriverInfo: { DriverCarIdx: 0 },
   };
+  // The translator's replay guard reads the controller's debounced replay
+  // state (#1324), stepped before each tick as the real controller does.
+  const replayState = new ReplayStateTracker();
 
   const controller = {
     subscribe: (_id: string, cb: TelemetryCallback) => {
@@ -59,9 +63,11 @@ function createMockController(): MockController {
       callback = null;
     },
     getSessionInfo: () => sessionInfo,
+    getReplayState: (nowMs: number = Date.now()) => replayState.read(nowMs),
   } as unknown as MockController;
 
   controller.__tick = (telemetry) => {
+    replayState.step(telemetry, sessionInfo, Date.now());
     callback?.(telemetry, true);
   };
 
