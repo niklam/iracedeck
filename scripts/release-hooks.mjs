@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { CHANGELOG_SOURCE_PATH } from "./lib/changelog-data.mjs";
@@ -162,21 +162,36 @@ if (process.env.RELEASE_IT_DRY_RUN === "1") {
 //
 // 1. `changelog.mdx` gets its dated section. Fail here and nothing else has changed.
 // 2. One `git rm` deletes and stages every fragment. On Windows an unlink can
-//    fail (EBUSY, EPERM) while an editor or a scanner holds the file; git then
-//    stops, and the tree holds the folded changelog beside fragments that still
-//    exist. A re-run refuses that tree — composing finds the new `## <version>`
-//    section while fragments remain — rather than folding them again, and the
-//    fragments are committed (checked above), so `git restore` brings it all back.
+//    fail (EBUSY, EPERM) while an editor or a scanner holds the file. git stops
+//    with an error only when the FIRST unlink fails; once it has removed one file
+//    it warns, carries on, stages every removal and exits 0, leaving the locked
+//    fragment on disk. So success is checked on disk, not by the exit code: a
+//    fragment still present stops the release the same way. A re-run refuses a
+//    tree holding the folded changelog beside fragments — composing finds the new
+//    `## <version>` section while fragments remain — rather than folding them
+//    again, and the fragments are committed (checked above), so `git restore`
+//    brings it all back. stdin is not a terminal, so Git for Windows' "Unlink of
+//    file failed. Should I try again?" prompt never waits on the release.
 // 3. Only then are the version files bumped.
 if (changelogFold.fold) {
   writeFileSync(changelogPath, changelogFold.content);
+  const restore =
+    `The version files are untouched. Restore the tree with \`git restore --staged --worktree -- ${CHANGELOG_SOURCE_PATH} ${CHANGELOG_FRAGMENTS_DIR}\`, ` +
+    `then release again.`;
   try {
-    execFileSync("git", ["rm", "-q", "--", ...changelogFold.fragmentPaths], { cwd: root, stdio: "inherit" });
+    execFileSync("git", ["rm", "-q", "--", ...changelogFold.fragmentPaths], {
+      cwd: root,
+      stdio: ["ignore", "inherit", "inherit"],
+    });
   } catch {
     throw new Error(
-      `The changelog fold stopped part-way: ${CHANGELOG_SOURCE_PATH} is written but git could not remove every fragment (see the git output above). ` +
-        `The version files are untouched. Restore the tree with \`git restore --staged --worktree -- ${CHANGELOG_SOURCE_PATH} ${CHANGELOG_FRAGMENTS_DIR}\`, ` +
-        `then release again.`,
+      `The changelog fold stopped part-way: ${CHANGELOG_SOURCE_PATH} is written but git could not remove every fragment (see the git output above). ${restore}`,
+    );
+  }
+  const left = changelogFold.fragmentPaths.filter((rel) => existsSync(join(root, rel)));
+  if (left.length > 0) {
+    throw new Error(
+      `The changelog fold stopped part-way: git staged every fragment's removal but could not delete ${left.join(", ")} from disk. ${restore}`,
     );
   }
   for (const rel of changelogFold.fragmentPaths) console.log(`  Deleted ${rel}`);

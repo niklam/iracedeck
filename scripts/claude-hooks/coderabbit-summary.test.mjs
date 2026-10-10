@@ -467,10 +467,13 @@ describe("readSummary: every recorded edit is CodeRabbit's", () => {
     expect(withHistory((h) => delete h.nodes[4].editedAt).reason).toMatch(/body or time could not be read/);
   });
 
-  it("refuses a history that is not strictly newest first", () => {
-    expect(withHistory((h) => h.nodes.splice(2, 2, h.nodes[3], h.nodes[2])).reason).toMatch(/not strictly newest/);
-    expect(withHistory((h) => (h.nodes[3].editedAt = h.nodes[2].editedAt)).reason).toMatch(/not strictly newest/);
-  });
+  it("refuses a history that is not newest first", () =>
+    expect(withHistory((h) => h.nodes.splice(2, 2, h.nodes[3], h.nodes[2])).reason).toMatch(/not newest first/));
+
+  // `editedAt` is second-precision: two bot edits in one second must not kill the
+  // summary path for the whole PR (second read).
+  it("accepts two edits recorded in the same second", () =>
+    expect(withHistory((h) => (h.nodes[3].editedAt = h.nodes[2].editedAt))).toMatchObject({ ok: true }));
 
   it("refuses a body that is not the history's newest version — the comment changed between the two reads", () =>
     expect(withHistory((h) => (h.nodes[0].diff = h.nodes[1].diff)).reason).toMatch(/changed while it was read/));

@@ -176,9 +176,12 @@ function historyProblem(history, body) {
     if (typeof edit.diff !== "string" || typeof edit.editedAt !== "string")
       return "its edit history has a revision whose body or time could not be read";
   }
+  // GitHub reports `editedAt` to the second, so two bot edits in one second tie;
+  // a tie is still newest first (the chain walk orders by position, not time).
+  // Only a later entry that is newer than an earlier one is an inversion.
   const times = history.nodes.map((e) => Date.parse(e.editedAt));
-  if (times.some((t, i) => !Number.isFinite(t) || (i > 0 && t >= times[i - 1])))
-    return "its edit history is not strictly newest first, so its versions cannot be ordered";
+  if (times.some((t, i) => !Number.isFinite(t) || (i > 0 && t > times[i - 1])))
+    return "its edit history is not newest first, so its versions cannot be ordered";
   if (history.nodes.length && history.nodes[0].diff !== body)
     return "its newest recorded version is not the body read, so the comment changed while it was read";
   return null;

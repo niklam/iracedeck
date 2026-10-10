@@ -360,6 +360,17 @@ describe("parseFragment", () => {
     }
   });
 
+  // `CODE_SPAN` ignores backslash escapes, so without this refusal the `{name}`
+  // below reads as code here while MDX reads it as a live expression (second read).
+  it("refuses an escaped backtick, which would hide a bare { from the check above", () => {
+    const body = `Press ${String.fromCharCode(92)}\`{name}\` now.`;
+    expectFragmentError(() => parseFragment("1-a.md", fragmentText({ body })), {
+      file,
+      line: 6,
+      message: /escaped backtick/,
+    });
+  });
+
   it("refuses inline markdown the pane cannot render, with renderInlineMarkdown's reason", () => {
     expectFragmentError(() => parseFragment("1-a.md", fragmentText({ body: "See [the docs](docs/page/)." })), {
       file,

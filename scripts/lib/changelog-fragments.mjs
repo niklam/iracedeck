@@ -213,6 +213,13 @@ export function parseFragment(fileName, text) {
   // The fold writes this text into MDX, where a bare `<` opens JSX and a bare `{`
   // an expression. The website preview parses plain markdown, so without this
   // check the preview would render a bullet that breaks the build at release time.
+  // An escaped backtick is refused first: `CODE_SPAN` does not know CommonMark's
+  // backslash escapes, so `\`{x}`` would read here as a code span while MDX reads a
+  // literal backtick and then a live `{x}` expression. No released bullet uses one.
+  const escapedBacktick = body.indexOf("\\`");
+  if (escapedBacktick !== -1) {
+    fail(bodyLine, "an escaped backtick (\\`) is not supported: reword so the backtick is not needed");
+  }
   const outsideCode = body.replace(CODE_SPAN, "");
   const unsafe = /[<{]/.exec(outsideCode);
   if (unsafe) {
