@@ -45,7 +45,8 @@ afterEach(() => {
 
 // #1307: the merge gate's pure-rebase check, in real repositories. Each case
 // builds M0, a reviewed branch off it, a moved base M1, and a head on M1.
-describe("replayRebase", () => {
+// 20 s per case: real git subprocesses ran past the 5 s default under full-suite load (2026-10-10).
+describe("replayRebase", { timeout: 20_000 }, () => {
   const ID = ["-c", "user.email=t@t", "-c", "user.name=t"];
   const gitIn = (dir, ...args) =>
     execFileSync("git", [...ID, ...args], { cwd: dir, stdio: "pipe" })
