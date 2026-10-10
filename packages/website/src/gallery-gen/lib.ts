@@ -100,7 +100,8 @@ export function extractValuePlaceholders(svg: string): string[] {
  * a device, so it is no sample — and otherwise its entry in `samples`.
  *
  * Throws when that entry is missing or leaves a placeholder uncovered, naming
- * the icon and the tokens. Unlike {@link renderDynamicTemplate}, which blanks
+ * the icon and the tokens, and when it holds a value no placeholder of the icon
+ * uses (a colour slot included: `assembleIcon` lets the colours win anyway). Unlike {@link renderDynamicTemplate}, which blanks
  * what it has no sample for, a standalone icon's placeholder is drawn into its
  * artwork, so blanking it would publish a key with a hole in it: the next icon
  * to gain one fails the build until somebody decides what the gallery shows.
@@ -124,6 +125,15 @@ export function resolveTemplateSample(
     throw new Error(
       `Template icon ${iconPath} has no gallery sample value for ${uncovered.map((t) => `{{${t}}}`).join(", ")}. ` +
         "Give it one in the generator's template samples: left unfilled, the placeholder is published as literal text.",
+    );
+  }
+
+  const unused = Object.keys(sample).filter((key) => !tokens.includes(key));
+
+  if (unused.length > 0) {
+    throw new Error(
+      `Template icon ${iconPath}'s gallery sample has values no placeholder of the icon uses: ${unused.join(", ")}. ` +
+        "Remove them: a key left behind by a renamed placeholder reads as covering something.",
     );
   }
 

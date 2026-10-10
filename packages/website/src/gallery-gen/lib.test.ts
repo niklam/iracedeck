@@ -165,6 +165,16 @@ describe("resolveTemplateSample", () => {
     );
   });
 
+  it("throws naming the sample values no placeholder of the icon uses", () => {
+    expect(() =>
+      resolveTemplateSample("a/b", valueSvg, { "a/b": { value: "42", valueY: "33", baselineY: "33" } }),
+    ).toThrow(/Template icon a\/b's gallery sample has values no placeholder of the icon uses: baselineY\./);
+    // A colour slot is not a value placeholder: the colours win over it anyway.
+    expect(() =>
+      resolveTemplateSample("a/b", valueSvg, { "a/b": { value: "42", valueY: "33", graphic1Color: "#f00" } }),
+    ).toThrow(/no placeholder of the icon uses: graphic1Color\./);
+  });
+
   it("accepts an empty string as a value", () => {
     const sample = { value: "", valueY: "33" };
     expect(resolveTemplateSample("a/b", valueSvg, { "a/b": sample })).toBe(sample);

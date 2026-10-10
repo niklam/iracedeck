@@ -261,11 +261,19 @@ function repoRel(p: string): string {
   return path.relative(REPO_ROOT, p).replaceAll(path.sep, "/");
 }
 
+/** Every asset of the run, by site path, held until the whole gallery is known to be good. */
+const pendingAssets = new Map<string, string>();
+
 /**
- * Writes one gallery asset — and refuses one that still carries a template
+ * Queues one gallery asset — and refuses one that still carries a template
  * placeholder, whichever class it is (#1352). Every asset is published as a
  * finished picture, so a `{{token}}` in it is a value nobody filled, shown to
  * visitors as text or silently dropping the attribute it sits in.
+ *
+ * Nothing reaches the disk here. The run can fail on any asset, and one that
+ * had already replaced part of the previous gallery would leave a dev server
+ * with a half-written directory beside an `icon-gallery.json` that still names
+ * the files that are gone. `flushAssets` writes everything once, at the end.
  */
 function writeAsset(sitePath: string, svg: string): void {
   const leftover = findLeftoverPlaceholders(svg);
@@ -274,9 +282,18 @@ function writeAsset(sitePath: string, svg: string): void {
     throw new Error(`Gallery asset ${sitePath} still carries ${leftover.join(", ")}: nothing filled it.`);
   }
 
-  const dest = path.join(ASSETS_OUT, sitePath);
-  mkdirSync(path.dirname(dest), { recursive: true });
-  writeFileSync(dest, svg, "utf-8");
+  pendingAssets.set(sitePath, svg);
+}
+
+/** Replaces the previous gallery with this run's assets. Called once, after the last check. */
+function flushAssets(): void {
+  rmSync(ASSETS_OUT, { recursive: true, force: true });
+
+  for (const [sitePath, svg] of pendingAssets) {
+    const dest = path.join(ASSETS_OUT, sitePath);
+    mkdirSync(path.dirname(dest), { recursive: true });
+    writeFileSync(dest, svg, "utf-8");
+  }
 }
 
 function toRawSvg(rendered: string): string {
@@ -377,7 +394,6 @@ function resolveFamilyName(family: string): string {
 // ---------------------------------------------------------------------------
 // Emit.
 // ---------------------------------------------------------------------------
-rmSync(ASSETS_OUT, { recursive: true, force: true });
 const entries: GalleryEntry[] = [];
 const skippedTemplates: string[] = [];
 const excludedHidden: string[] = [];
@@ -727,6 +743,7 @@ entries.push({
   sample: true,
 });
 
+flushAssets();
 mkdirSync(path.dirname(JSON_OUT), { recursive: true });
 writeFileSync(JSON_OUT, JSON.stringify(entries, null, 2) + "\n", "utf-8");
 

@@ -57,12 +57,25 @@ describe("website icon gallery", () => {
     // with its stderr in the message, which is where it names the icon.
     const tsxCli = url.fileURLToPath(import.meta.resolve("tsx/cli"));
 
-    execFileSync(process.execPath, [tsxCli, generator, "--out", scratch], {
-      cwd: repoRoot,
-      encoding: "utf-8",
-      stdio: ["ignore", "pipe", "pipe"],
-      timeout: GENERATOR_TIMEOUT_MS,
-    });
+    try {
+      execFileSync(process.execPath, [tsxCli, generator, "--out", scratch], {
+        cwd: repoRoot,
+        encoding: "utf-8",
+        stdio: ["ignore", "pipe", "pipe"],
+        timeout: GENERATOR_TIMEOUT_MS,
+      });
+    } catch (error) {
+      // The generator imports icon-composer and deck-core from their built
+      // dist/, so on a tree whose build is missing or older than its sources it
+      // fails with a module error, or with a leftover placeholder that an old
+      // assembleIcon did not fill. Say so before anyone goes looking in the samples.
+      throw new Error(
+        "The icon gallery generator failed. If the output below is a module that cannot be resolved, or a " +
+          "placeholder the samples do cover, the workspace build is missing or stale: run `pnpm build`, then " +
+          `\`pnpm test\` again. Output:\n${error.stderr ?? ""}${error.stdout ?? ""}${error.message}`,
+        { cause: error },
+      );
+    }
 
     assetsDir = path.join(scratch, "public", "icon-gallery");
     assets = listFiles(assetsDir);
