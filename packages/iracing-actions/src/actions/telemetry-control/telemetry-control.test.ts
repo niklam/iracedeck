@@ -23,6 +23,13 @@ const { mockTapBinding, mockMkdirSync, mockWriteFileSync, mockGetCurrentTelemetr
   }),
 );
 
+/**
+ * A stand-in for the translator's latest dispatched tick (#1387). Null by
+ * default, as when no translator is running, so a snapshot falls back to the
+ * controller's fresh read.
+ */
+const mockGetLatestTelemetry = vi.hoisted(() => vi.fn<() => Record<string, unknown> | null>(() => null));
+
 /** A stand-in for @iracedeck/diagnostics' plugin-state collector (#1387). */
 const mockCollectStateSections = vi.hoisted(() => {
   // Looser than the real `CollectedState`, so a test can hand back a state the
@@ -219,7 +226,13 @@ vi.mock("@iracedeck/deck-core", () => ({
   ),
 }));
 
-vi.mock("@iracedeck/diagnostics", () => ({
+vi.mock("@iracedeck/sim-events-iracing", () => ({
+  getLatestTelemetry: mockGetLatestTelemetry,
+}));
+
+vi.mock("@iracedeck/diagnostics", async (importOriginal) => ({
+  // The real helper: the text of an error entry is part of what these tests pin.
+  describeThrown: (await importOriginal<typeof import("@iracedeck/diagnostics")>()).describeThrown,
   collectStateSections: mockCollectStateSections,
   getCpuProfileCapture: vi.fn(() => {
     if (!captureFake.initialized) throw new Error("CPU profile capture not initialized");
@@ -375,6 +388,8 @@ describe("TelemetryControl", () => {
         failed: [],
       });
       mockWriteFileSync.mockReset();
+      // Back to "the translator holds no tick", whatever the last test set.
+      mockGetLatestTelemetry.mockReset();
     });
 
     it("defaultSnapshotDir ends with the telemetry-snapshots folder under home", () => {
@@ -508,6 +523,75 @@ describe("TelemetryControl", () => {
         return JSON.parse(text) as Record<string, unknown>;
       }
 
+      /** The table rows of the written report's Plugin State section, the empty header row left out. */
+      function pluginStateRows(): string[] {
+        const markdown = writtenFile(".md") ?? "";
+        const start = markdown.indexOf("## Plugin State");
+
+        if (start < 0) return [];
+
+        return markdown
+          .slice(start)
+          .split("\n")
+          .filter((line) => line.startsWith("| ") && !line.startsWith("| -"))
+          .slice(1);
+      }
+
+      /** The one row the report shows when the JSON file holds an error entry instead of the state. */
+      const unavailableRows = ["| pluginState | unavailable (see the JSON file) |"];
+
+      it("writes the translator's tick, not a fresher read, so the telemetry matches the state beside it", async () => {
+        const translatorTick = { ...sampleTelemetry, SessionTick: 100, Speed: 50 };
+        const fresherRead = { ...sampleTelemetry, SessionTick: 101, Speed: 60 };
+        mockGetLatestTelemetry.mockReturnValue(translatorTick);
+        mockGetCurrentTelemetry.mockReturnValue(fresherRead);
+        mockGetSessionInfo.mockReturnValue(sampleSessionInfo);
+
+        const action = new TelemetryControl();
+        await action.onKeyDown(fakeEvent("a1", { mode: "snapshot", outputDir: absDir }) as never);
+
+        expect(writtenJson().telemetry).toEqual(translatorTick);
+        expect(writtenJson().telemetry).not.toEqual(fresherRead);
+        expect(writtenJson().pluginState).toEqual(sampleState);
+        // The report is built from the same tick: 50 m/s is 180.0 km/h, 60 m/s would be 216.0.
+        expect(writtenFile(".md")).toContain("180.0 km/h");
+        expect(writtenFile(".md")).not.toContain("216.0 km/h");
+        // No fresh read at all: it is not needed, and it is not what the state was computed from.
+        expect(mockGetCurrentTelemetry).not.toHaveBeenCalled();
+      });
+
+      it("falls back to a fresh read when the translator holds no tick", async () => {
+        const freshRead = { ...sampleTelemetry, SessionTick: 101 };
+        mockGetLatestTelemetry.mockReturnValue(null);
+        mockGetCurrentTelemetry.mockReturnValue(freshRead);
+        mockGetSessionInfo.mockReturnValue(sampleSessionInfo);
+
+        const action = new TelemetryControl();
+        await action.onKeyDown(fakeEvent("a1", { mode: "snapshot", outputDir: absDir }) as never);
+
+        expect(mockGetLatestTelemetry).toHaveBeenCalledTimes(1);
+        expect(mockGetCurrentTelemetry).toHaveBeenCalledTimes(1);
+        expect(writtenJson().telemetry).toEqual(freshRead);
+        expect(writtenJson().pluginState).toEqual(sampleState);
+      });
+
+      it("skips and warns when neither the translator nor a fresh read has telemetry", async () => {
+        mockGetLatestTelemetry.mockReturnValue(null);
+        mockGetCurrentTelemetry.mockReturnValue(null);
+
+        const action = new TelemetryControl();
+        await action.onKeyDown(fakeEvent("a1", { mode: "snapshot", outputDir: absDir }) as never);
+
+        expect(mockGetLatestTelemetry).toHaveBeenCalledTimes(1);
+        expect(mockGetCurrentTelemetry).toHaveBeenCalledTimes(1);
+        expect(mockCollectStateSections).not.toHaveBeenCalled();
+        expect(mockWriteFileSync).not.toHaveBeenCalled();
+        expect(mockMkdirSync).not.toHaveBeenCalled();
+        expect(action["logger"].warn).toHaveBeenCalledWith(
+          "Telemetry snapshot skipped: no telemetry available (is iRacing running?)",
+        );
+      });
+
       it("writes the collected state under pluginState, beside the telemetry and session info", async () => {
         const action = await takeSnapshot();
 
@@ -544,11 +628,9 @@ describe("TelemetryControl", () => {
         await takeSnapshot();
 
         const markdown = writtenFile(".md") ?? "";
-        const section = markdown.slice(markdown.indexOf("## Plugin State"));
 
         expect(markdown).toContain("## Plugin State");
-        expect(section.split("\n").filter((line) => line.startsWith("| ") && !line.startsWith("| -"))).toEqual([
-          "|                |                                 |",
+        expect(pluginStateRows()).toEqual([
           "| Plugin version | 3.6.0                           |",
           "| sim            | unavailable (see the JSON file) |",
           "| Active voice   | default::default                |",
@@ -581,7 +663,8 @@ describe("TelemetryControl", () => {
           pluginState: { error: "boom" },
         });
         expect(writtenFile(".md")).toContain("Test Driver");
-        expect(writtenFile(".md")).not.toContain("Plugin State");
+        // The report says the state is missing, as it does for one failed section.
+        expect(pluginStateRows()).toEqual(unavailableRows);
         expect(action["logger"].warn).toHaveBeenCalledTimes(1);
         expect(action["logger"].warn).toHaveBeenCalledWith("Plugin state unavailable for the telemetry snapshot");
         expect(action["logger"].debug).toHaveBeenCalledWith(expect.stringContaining("boom"));
@@ -599,6 +682,7 @@ describe("TelemetryControl", () => {
         expect(writtenJson().pluginState).toEqual({ error: "plain text" });
         expect(writtenJson().telemetry).toEqual(sampleTelemetry);
         expect(writtenFile(".md")).toContain("Test Driver");
+        expect(pluginStateRows()).toEqual(unavailableRows);
       });
 
       it("still writes both files when the collector throws a value that cannot be turned into a string", async () => {
@@ -612,9 +696,32 @@ describe("TelemetryControl", () => {
 
         await takeSnapshot();
 
-        expect(writtenJson().pluginState).toEqual({ error: expect.any(String) });
+        expect(writtenJson().pluginState).toEqual({ error: "unknown error" });
         expect(writtenJson().telemetry).toEqual(sampleTelemetry);
         expect(writtenFile(".md")).toContain("Test Driver");
+        expect(pluginStateRows()).toEqual(unavailableRows);
+      });
+
+      it("gives the error entry a non-empty reason when the collector throws an Error with a blank message", async () => {
+        mockCollectStateSections.mockImplementation(() => {
+          throw new Error("");
+        });
+
+        await takeSnapshot();
+
+        // The error's name stands in for the message it does not have.
+        expect(writtenJson().pluginState).toEqual({ error: "Error" });
+      });
+
+      it("gives the error entry a reason that says something when the collector throws a plain object", async () => {
+        mockCollectStateSections.mockImplementation(() => {
+          throw { code: 7 };
+        });
+
+        await takeSnapshot();
+
+        // Not "[object Object]".
+        expect(writtenJson().pluginState).toEqual({ error: "unknown error" });
       });
 
       it("still writes both files when the collector fails because the logger throws", async () => {
@@ -635,6 +742,7 @@ describe("TelemetryControl", () => {
         expect(writtenJson().pluginState).toEqual({ error: "log file gone" });
         expect(writtenJson().telemetry).toEqual(sampleTelemetry);
         expect(writtenFile(".md")).toContain("Test Driver");
+        expect(pluginStateRows()).toEqual(unavailableRows);
       });
 
       it("still writes the telemetry when the collected state cannot be written as JSON", async () => {
@@ -653,6 +761,9 @@ describe("TelemetryControl", () => {
           pluginState: { error: expect.stringContaining("BigInt") },
         });
         expect(writtenFile(".md")).toContain("Test Driver");
+        // The two files agree: the report does not list rows for state the JSON file does not hold.
+        expect(pluginStateRows()).toEqual(unavailableRows);
+        expect(writtenFile(".md")).not.toContain("Plugin version");
         expect(action["logger"].warn).toHaveBeenCalledTimes(1);
         expect(action["logger"].warn).toHaveBeenCalledWith("Plugin state left out of the telemetry snapshot");
         expect(action["logger"].debug).toHaveBeenCalledWith(expect.stringContaining("BigInt"));
@@ -706,7 +817,23 @@ describe("TelemetryControl", () => {
         expect(mockMkdirSync).not.toHaveBeenCalled();
       });
 
-      it("reads the telemetry, then the plugin state, then writes", async () => {
+      it("reads the translator's tick, then the plugin state, then writes", async () => {
+        mockGetLatestTelemetry.mockReturnValue(sampleTelemetry);
+        await takeSnapshot();
+
+        const [telemetryRead] = mockGetLatestTelemetry.mock.invocationCallOrder;
+        const [sessionRead] = mockGetSessionInfo.mock.invocationCallOrder;
+        const [stateRead] = mockCollectStateSections.mock.invocationCallOrder;
+        const [directoryMade] = mockMkdirSync.mock.invocationCallOrder;
+        const [firstWrite] = mockWriteFileSync.mock.invocationCallOrder;
+
+        expect(telemetryRead).toBeLessThan(stateRead);
+        expect(sessionRead).toBeLessThan(stateRead);
+        expect(stateRead).toBeLessThan(directoryMade);
+        expect(stateRead).toBeLessThan(firstWrite);
+      });
+
+      it("reads a fallback fresh read before the plugin state too", async () => {
         await takeSnapshot();
 
         const [telemetryRead] = mockGetCurrentTelemetry.mock.invocationCallOrder;
