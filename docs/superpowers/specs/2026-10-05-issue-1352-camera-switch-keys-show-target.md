@@ -24,8 +24,8 @@ The values reach the template through a new optional `templateValues?: Record<st
 
 ### 2. What each key draws
 
-- **Switch by Car Number:** the stored `carNumber` as it is stored today — an integer, drawn as its decimal digits (`7`, `42`, `199`) — in the existing box, with the `CAR` label beneath. The schema (`z.coerce.number().int().min(0).default(0)`) and the press (`camera.switchNum(settings.carNumber, …)`) are untouched, so the key shows exactly the number the press sends. A number typed with leading zeros is stored without them, and the key shows that; fixing it is the separate bug (Out of scope).
-- **Switch by Position:** `P<n>` (`P3`, `P12`), the dial's race-position notation, with the `POS` label beneath. The `POS` label stays although `P` already says "position", so the two keys keep the same silhouette of value over label, and the change stays a value substitution rather than a redesign.
+- **Switch by Car Number:** the stored `carNumber` as it is stored today — an integer, drawn as its decimal digits (`7`, `42`, `199`) — in the existing box. The `CAR` label that sat beneath the box is dropped (amended, below). The schema (`z.coerce.number().int().min(0).default(0)`) and the press (`camera.switchNum(settings.carNumber, …)`) are untouched, so the key shows exactly the number the press sends. A number typed with leading zeros is stored without them, and the key shows that; fixing it is the separate bug (Out of scope).
+- **Switch by Position:** `P<n>` (`P3`, `P12`), the dial's race-position notation. The `POS` label that sat beneath it is dropped (amended, below): `P` already says "position".
 
 Both values are built from integers plus the literal `P`, so they cannot carry markup; they still go through `escapeXml`, since `renderIconTemplate` does not escape and the icon file does not know what it will be given.
 
@@ -35,7 +35,7 @@ The viewBox stays a fixed frame sized for three digits, not trimmed per value: a
 
 The font size comes from the existing `fitValueFontSize(text, maxWidth, cap)` in `packages/iracing-actions/src/shared/dial-fit.ts` (bold Arial digits at about 0.6 em), capped at today's sizes (28 for the car number, 40 for the position). One to three digits and `P1`–`P100` draw at the cap. The schema puts no upper bound on either setting, so a longer value shrinks to fit instead of overflowing the box. The module is a pure primitive with no dial dependency, so a keypad caller can use it as is.
 
-The baseline is computed, not left to `dominant-baseline="central"`: `.claude/rules/svg-platform-compatibility.md` records that resvg and the Qt renderers ignore that attribute and anchor text at the baseline, so `{{valueY}}` is the intended centre plus 0.36 em of the fitted size. The `CAR` / `POS` labels get the same treatment while the files are open, and the viewBoxes are re-trimmed to the artwork per `icons.md`.
+The baseline is computed, not left to `dominant-baseline="central"`: `.claude/rules/svg-platform-compatibility.md` records that resvg and the Qt renderers ignore that attribute and anchor text at the baseline, so `{{valueY}}` is the intended centre plus 0.36 em of the fitted size. The viewBoxes are re-trimmed to the artwork per `icons.md`: the box for the car number, the value at full size for the position.
 
 ### 4. Switch by Position keeps `switchPos`
 
@@ -47,7 +47,15 @@ The key draws the configured position and the press is unchanged: `camera.switch
 
 ### 6. The website gallery must not show raw placeholders
 
-`generate-icon-gallery.mts` renders every standalone (template-class) icon through `assembleIcon` with colours only, so a non-colour placeholder reaches the public gallery as literal text — `{{speedText}}` and `{{needleAngle}}` do today. The template class gets the treatment the dynamic class already has (`renderDynamicTemplate` in `src/gallery-gen/lib.ts`, which also blanks any token left without a sample): sample values per icon, passed as `templateValues` (`42` for the car number, `P3` for the position, with their fitted size and baseline; a sample for Speed Display and Set Speed too), and a test that no `{{` survives in any generated gallery asset. The previews in `packages/icons/preview/` keep non-colour placeholders as they are by design (`generate-icon-previews.mjs`), like `speed-display` does.
+`generate-icon-gallery.mts` renders every standalone (template-class) icon through `assembleIcon` with colours only, so a non-colour placeholder reaches the public gallery as literal text — `{{speedText}}` and `{{needleAngle}}` do today. The template class gets sample values as the dynamic class has, but stricter (amended, below): where `renderDynamicTemplate` in `src/gallery-gen/lib.ts` blanks any token left without a sample, a standalone icon without one fails the generator. Sample values per icon, passed as `templateValues` (`42` for the car number, `P3` for the position, with their fitted size and baseline; a sample for Speed Display and Set Speed too), and a test that no `{{` survives in any generated gallery asset. The previews in `packages/icons/preview/` keep non-colour placeholders as they are by design (`generate-icon-previews.mjs`), like `speed-display` does.
+
+## Amended during implementation (2026-10-10)
+
+Three things changed after the keys were first drawn, the first two decided by Niklas on seeing them:
+
+- **The `CAR` and `POS` labels are dropped.** With the number in the artwork, the label under it says nothing the title or the value does not. The car-number box and the position value are then the whole artwork, so each viewBox is trimmed to it and the value is drawn larger on the key. The original text kept both labels to hold the change to a value substitution.
+- **The default titles change** from `SWITCH` / `CAR #` and `SWITCH` / `POSITION` to `SWITCH` / `TO CAR` and `SWITCH` / `TO POS`, which read as a sentence with the value above them. The original text listed new default titles as out of scope. A key with its own Title Text is unaffected.
+- **A gallery icon without a sample fails the generator** rather than being blanked. A standalone icon's placeholder is drawn into its artwork, so blanking it would publish a key with a hole in it; the next icon to gain one fails the build until somebody decides what the gallery shows. The generator also refuses a sample no icon uses and writes nothing until the whole run has passed.
 
 ## Out of scope
 
@@ -56,7 +64,7 @@ The key draws the configured position and the press is unchanged: `camera.switch
 - Moving Replay Control's hand-assembled `speed-display` / `set-speed` onto `templateValues`.
 - Changing Switch by Position's dispatch to the canonical order of `race-positions.md` (decision 4).
 - A cap on the number of digits.
-- New default titles, new artwork, or the Black Box and Inverted key types (these are Default-type icons and stay so).
+- New artwork beyond dropping the two labels, or the Black Box and Inverted key types (these are Default-type icons and stay so).
 - Showing whether the configured car is in the session (a dimmed key for a car that is not there would make the icon telemetry-driven, which this change deliberately is not).
 
 ## Testing
