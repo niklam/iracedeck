@@ -26,7 +26,6 @@ import {
   formatFuelAmount,
   formatGapValue,
   formatReadoutFigure,
-  formatSessionTime,
   generateGapsGraphic,
   generateSessionInfoSvg,
   generateTrackWetnessGraphic,
@@ -283,52 +282,6 @@ function fakeEvent(actionId: string, settings: Record<string, unknown> = {}) {
 describe("SessionInfo", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-  });
-
-  describe("formatSessionTime", () => {
-    it("should format hours, minutes, and seconds", () => {
-      expect(formatSessionTime(3661)).toBe("1:01:01");
-    });
-
-    it("should format exactly one hour", () => {
-      expect(formatSessionTime(3600)).toBe("1:00:00");
-    });
-
-    it("should format minutes and seconds without hours", () => {
-      expect(formatSessionTime(754)).toBe("12:34");
-    });
-
-    it("should format seconds under a minute", () => {
-      expect(formatSessionTime(45)).toBe("0:45");
-    });
-
-    it("should format zero", () => {
-      expect(formatSessionTime(0)).toBe("0:00");
-    });
-
-    it("should handle fractional seconds by flooring", () => {
-      expect(formatSessionTime(90.7)).toBe("1:30");
-    });
-
-    it("should handle negative values", () => {
-      expect(formatSessionTime(-10)).toBe("0:00");
-    });
-
-    it("should handle Infinity", () => {
-      expect(formatSessionTime(Infinity)).toBe("0:00");
-    });
-
-    it("should handle NaN", () => {
-      expect(formatSessionTime(NaN)).toBe("0:00");
-    });
-
-    it("should pad seconds correctly", () => {
-      expect(formatSessionTime(61)).toBe("1:01");
-    });
-
-    it("should pad minutes in hour format", () => {
-      expect(formatSessionTime(3605)).toBe("1:00:05");
-    });
   });
 
   describe("formatFuelAmount", () => {
@@ -2588,6 +2541,32 @@ describe("time-remaining mode (issue #1109)", () => {
       expect(decoded).toContain(">25:00</text>");
       expect(decoded).toContain("TIME LEFT");
       expect(decoded).not.toContain("LAPS LEFT");
+    });
+
+    it("shows the clock as M:SS up to an hour and H:MM:SS from an hour up (#1292)", () => {
+      // The one formatter `{{session.time_remaining}}` reads through too, so
+      // the key and a template title can never disagree past an hour.
+      expect(render(timeLimited(3599))).toContain(">59:59</text>");
+      expect(render(timeLimited(3600))).toContain(">1:00:00</text>");
+      expect(render(timeLimited(7200.4))).toContain(">2:00:00</text>");
+    });
+
+    it("shows 0:00 for a clock that has run out", () => {
+      expect(render(timeLimited(0))).toContain(">0:00</text>");
+      expect(render(timeLimited(-0.5))).toContain(">0:00</text>");
+    });
+
+    it("keeps 0:00, never a blank, for a time-side reading that is not a clock", () => {
+      // The shared formatter is blank for an unusable reading, which is right
+      // for a template; a key bound to the clock always shows one.
+      const action = new SessionInfo();
+      const settings = defaultSettings({ mode: "time-remaining" });
+
+      for (const remainingS of [NaN, Infinity, -10]) {
+        expect(
+          action["extractDisplayValue"](settings, timeLimited(60), undefined, { binding: "time", remainingS }),
+        ).toBe("0:00");
+      }
     });
 
     it("shows UNLIM under the TIME LEFT title when neither limit exists", () => {

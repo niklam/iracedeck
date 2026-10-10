@@ -6,7 +6,6 @@ import {
   findDriverByCamCarIdx,
   findDriverByRacePosition,
   findNearestDriverOnTrack,
-  formatTimeRemaining,
   namespaceBuilders,
   splitDriverName,
   type TemplateContext,
@@ -83,28 +82,6 @@ describe("splitDriverName", () => {
 
   it("should trim whitespace", () => {
     expect(splitDriverName("  John Smith  ")).toEqual({ firstName: "John", lastName: "Smith" });
-  });
-});
-
-describe("formatTimeRemaining", () => {
-  it("should format seconds to MM:SS", () => {
-    expect(formatTimeRemaining(125)).toBe("2:05");
-  });
-
-  it("should format zero", () => {
-    expect(formatTimeRemaining(0)).toBe("0:00");
-  });
-
-  it("should format large values", () => {
-    expect(formatTimeRemaining(3661)).toBe("61:01");
-  });
-
-  it("should return empty for undefined", () => {
-    expect(formatTimeRemaining(undefined)).toBe("");
-  });
-
-  it("should return empty for negative values", () => {
-    expect(formatTimeRemaining(-1)).toBe("");
   });
 });
 
@@ -372,7 +349,7 @@ describe("buildTemplateContextFromData", () => {
     expect(ctx.display("self.incidents")).toBe("3");
     expect(ctx.display("session.type")).toBe("Race");
     expect(ctx.display("session.laps_remaining")).toBe("10");
-    expect(ctx.display("session.time_remaining")).toBe("61:01");
+    expect(ctx.display("session.time_remaining")).toBe("1:01:01");
     expect(ctx.display("track.name")).toBe("Spa-Francorchamps");
     expect(ctx.display("track.short_name")).toBe("Spa");
   });
@@ -524,20 +501,34 @@ describe("buildTemplateContextFromData", () => {
 
     const ctx = buildTemplateContextFromData(telemetry, sessionInfo);
 
-    expect(ctx.display("session.time_remaining")).toBe("10079:59");
+    expect(ctx.display("session.time_remaining")).toBe("167:59:59");
   });
 
-  it("should keep session.time_remaining as the formatted M:SS string in both maps for a real clock", () => {
+  it("should keep session.time_remaining as the formatted clock string in both maps for a real clock", () => {
     const drivers = [makeDriver({ CarIdx: 0 })];
     const sessionInfo = makeSessionInfo(drivers, 0);
 
     const ctx = buildTemplateContextFromData(makeTelemetry({ SessionTimeRemain: 3661.5 }), sessionInfo);
-    expect(ctx.raw("session.time_remaining").value).toBe("61:01");
-    expect(ctx.display("session.time_remaining")).toBe("61:01");
+    expect(ctx.raw("session.time_remaining").value).toBe("1:01:01");
+    expect(ctx.display("session.time_remaining")).toBe("1:01:01");
 
     // The clock reaching zero does not end a timed race — 0 is a real reading.
     const expired = buildTemplateContextFromData(makeTelemetry({ SessionTimeRemain: 0 }), sessionInfo);
     expect(expired.display("session.time_remaining")).toBe("0:00");
+  });
+
+  it("should switch session.time_remaining from M:SS to H:MM:SS at one hour, as Session Info does (#1292)", () => {
+    const drivers = [makeDriver({ CarIdx: 0 })];
+    const sessionInfo = makeSessionInfo(drivers, 0);
+    const shown = (remainingS: number) =>
+      buildTemplateContextFromData(makeTelemetry({ SessionTimeRemain: remainingS }), sessionInfo).display(
+        "session.time_remaining",
+      );
+
+    expect(shown(3599)).toBe("59:59");
+    expect(shown(3600)).toBe("1:00:00");
+    // Two hours read 2:00:00, where the minutes used to grow to 120:00.
+    expect(shown(7200)).toBe("2:00:00");
   });
 
   it("should populate race_ahead and race_behind from race position", () => {

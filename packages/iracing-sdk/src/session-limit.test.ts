@@ -1,12 +1,14 @@
 /**
  * Unit tests for the shared session-limit helper (issue #1109): the two
- * sentinel-aware readers, the whichever-ends-sooner verdict with its tie to
- * laps, and the value companion that applies the verdict.
+ * sentinel-aware readers, the shown clock and its one formatter (#1221,
+ * #1292), the whichever-ends-sooner verdict with its tie to laps, and the
+ * value companion that applies the verdict.
  */
 import { describe, expect, it } from "vitest";
 
 import {
   bindingLapsToGo,
+  formatSessionClock,
   resolveBindingLimit,
   resolveLapsRemaining,
   resolveShownTimeRemainingS,
@@ -87,6 +89,49 @@ describe("resolveShownTimeRemainingS (#1221)", () => {
     expect(resolveShownTimeRemainingS(telemetry({ SessionTimeRemain: NaN }))).toBeNull();
     expect(resolveShownTimeRemainingS(telemetry({ SessionTimeRemain: Number.NEGATIVE_INFINITY }))).toBeNull();
     expect(resolveShownTimeRemainingS(telemetry({ SessionTimeRemain: Number.POSITIVE_INFINITY }))).toBeNull();
+  });
+});
+
+describe("formatSessionClock (#1292)", () => {
+  it("reads M:SS below an hour, seconds padded and minutes not", () => {
+    expect(formatSessionClock(0)).toBe("0:00");
+    expect(formatSessionClock(45)).toBe("0:45");
+    expect(formatSessionClock(61)).toBe("1:01");
+    expect(formatSessionClock(754)).toBe("12:34");
+  });
+
+  it("switches to H:MM:SS at exactly one hour", () => {
+    expect(formatSessionClock(3599)).toBe("59:59");
+    expect(formatSessionClock(3600)).toBe("1:00:00");
+    expect(formatSessionClock(3605)).toBe("1:00:05");
+    expect(formatSessionClock(3661)).toBe("1:01:01");
+    expect(formatSessionClock(7200)).toBe("2:00:00");
+  });
+
+  it("lets the hours grow rather than wrapping into days", () => {
+    // One second below the unlimited sentinel — the longest clock there is.
+    expect(formatSessionClock(IRSDK_UNLIMITED_TIME - 1)).toBe("167:59:59");
+  });
+
+  it("floors a fractional reading to whole seconds", () => {
+    expect(formatSessionClock(90.7)).toBe("1:30");
+    expect(formatSessionClock(3599.9)).toBe("59:59");
+  });
+
+  it("is blank for anything that is not a clock reading, leaving what blank means to the caller", () => {
+    expect(formatSessionClock(null)).toBe("");
+    expect(formatSessionClock(undefined)).toBe("");
+    expect(formatSessionClock(-1)).toBe("");
+    expect(formatSessionClock(NaN)).toBe("");
+    expect(formatSessionClock(Number.POSITIVE_INFINITY)).toBe("");
+    expect(formatSessionClock(Number.NEGATIVE_INFINITY)).toBe("");
+  });
+
+  it("formats what resolveShownTimeRemainingS hands it: 0:00 for an expired clock, blank with no time limit", () => {
+    expect(formatSessionClock(resolveShownTimeRemainingS(telemetry({ SessionTimeRemain: -3.2 })))).toBe("0:00");
+    expect(formatSessionClock(resolveShownTimeRemainingS(telemetry({ SessionTimeRemain: IRSDK_UNLIMITED_TIME })))).toBe(
+      "",
+    );
   });
 });
 

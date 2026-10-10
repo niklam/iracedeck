@@ -17,7 +17,7 @@ import { extractQualifyResults } from "./grid-utils.js";
 import { estimateIRatingChanges, type IRatingEstimates, resolveIRatingEstimateOrder } from "./irating-utils.js";
 import { classPositionFromOrder } from "./position-utils.js";
 import type { SDKController } from "./SDKController.js";
-import { resolveLapsRemaining, resolveShownTimeRemainingS } from "./session-limit.js";
+import { formatSessionClock, resolveLapsRemaining, resolveShownTimeRemainingS } from "./session-limit.js";
 import { findNearestCarOnTrack } from "./track-utils.js";
 import type { SessionInfo, TelemetryData } from "./types.js";
 
@@ -887,9 +887,11 @@ export function buildSessionFields(sessionInfo: SessionInfo | null, telemetry: T
   const timeRemaining = resolveShownTimeRemainingS(telemetry);
 
   const type = (currentSession?.SessionType as string) ?? "";
-  // time_remaining keeps the formatted M:SS string in BOTH maps — expressions
-  // wanting math on it should use telemetry.SessionTimeRemain instead.
-  const timeRemainingFormatted = formatTimeRemaining(timeRemaining);
+  // time_remaining keeps the formatted clock string (M:SS, H:MM:SS from an
+  // hour up — the formatter Session Info's key reads through too, #1292) in
+  // BOTH maps — expressions wanting math on it should use
+  // telemetry.SessionTimeRemain instead.
+  const timeRemainingFormatted = formatSessionClock(timeRemaining);
 
   const raw: Record<string, TemplateValue> = { type, time_remaining: timeRemainingFormatted };
 
@@ -952,17 +954,4 @@ export function extractPlayerCarIdx(sessionInfo: SessionInfo | null): number {
   const driverInfo = (sessionInfo as Record<string, unknown>).DriverInfo as Record<string, unknown> | undefined;
 
   return (driverInfo?.DriverCarIdx as number) ?? -1;
-}
-
-/**
- * @internal Exported for testing
- */
-export function formatTimeRemaining(seconds: number | null | undefined): string {
-  if (seconds === null || seconds === undefined || seconds < 0) return "";
-
-  const totalSeconds = Math.floor(seconds);
-  const mins = Math.floor(totalSeconds / 60);
-  const secs = totalSeconds % 60;
-
-  return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
