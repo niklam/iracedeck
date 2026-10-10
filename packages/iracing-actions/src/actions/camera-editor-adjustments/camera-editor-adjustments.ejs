@@ -199,6 +199,8 @@
 				.concat(require('./data/key-bindings.json').cameraEditorControls)
 		}) %>
 
+		<%- include('dial-controller') %>
+
 		<script>
 			function updateVisibility(adjustment) {
 				const directionItem = document.getElementById("direction-item");
@@ -206,27 +208,6 @@
 
 				// Hide direction dropdown when Auto Set Mic Gain is selected
 				directionItem.classList.toggle("hidden", adjustment === "auto-set-mic-gain");
-			}
-
-			// Which surface this instance sits on: the PI registration's
-			// actionInfo.payload.controller ("Keypad" | "Encoder"; the Mirabox host
-			// may report "Knob"). Anything unknown or unavailable falls back to the
-			// keypad view (#804).
-			async function resolveController() {
-				try {
-					const client = window.SDPIComponents && window.SDPIComponents.streamDeckClient;
-					const info = client && (await client.getConnectionInfo());
-					const controller = info && info.actionInfo && info.actionInfo.payload && info.actionInfo.payload.controller;
-					return controller === "Encoder" || controller === "Knob" ? "Encoder" : "Keypad";
-				} catch (err) {
-					return "Keypad";
-				}
-			}
-
-			function applyDialView() {
-				document.getElementById("keypad-settings")?.classList.add("hidden");
-				document.getElementById("keypad-appearance")?.classList.add("hidden");
-				document.getElementById("dial-settings")?.classList.remove("hidden");
 			}
 
 			async function initialize() {
@@ -256,8 +237,8 @@
 					});
 				}
 
-				if ((await resolveController()) === "Encoder") {
-					applyDialView();
+				if ((await window.irdResolveController()) === "Encoder") {
+					window.irdApplyDialView();
 				}
 			}
 

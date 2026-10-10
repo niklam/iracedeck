@@ -23,6 +23,7 @@ import {
 import type { ILogger } from "@iracedeck/logger";
 import { onGlobalSettingsChange } from "@iracedeck/settings";
 
+import { type DialInputEvent, hasDialInputContext } from "../../shared/dial-context.js";
 import { KNOB_BOX_HEIGHT, KNOB_BOX_WIDTH } from "../../shared/dial-knob-box.js";
 import { INTERNAL_AUDIO_BUSES } from "./audio-buses.js";
 import {
@@ -322,7 +323,10 @@ export class AudioDialSurface {
   }
 
   async rotate(action: IDeckActionContext, settings: AudioControlsSettings, ticks: number): Promise<void> {
-    const ctx = this.ensureContext(action, settings);
+    const ctx = this.inputContext(action, settings, "rotate");
+
+    if (!ctx) return;
+
     ctx.settings = settings;
 
     if (ticks === 0) return;
@@ -358,7 +362,10 @@ export class AudioDialSurface {
   }
 
   async down(action: IDeckActionContext, settings: AudioControlsSettings): Promise<void> {
-    const ctx = this.ensureContext(action, settings);
+    const ctx = this.inputContext(action, settings, "down");
+
+    if (!ctx) return;
+
     ctx.settings = settings;
     const press = settings.dial.pressAction;
 
@@ -517,6 +524,28 @@ export class AudioDialSurface {
     await this.host.tapBinding(skipCallKey);
   }
 
+  /**
+   * The context an INPUT event (rotate, down, touchTap) acts on: the existing
+   * one, refreshed exactly as {@link ensureContext} refreshes it, or `undefined`
+   * — never a new one (#1329). A late event the host delivers after
+   * `willDisappear` is dropped here, before it can re-create the entry or act
+   * on a context that is gone.
+   */
+  private inputContext(
+    action: IDeckActionContext,
+    settings: AudioControlsSettings,
+    event: DialInputEvent,
+  ): AudioDialContext | undefined {
+    return hasDialInputContext(this.contextsState, action.id, event, this.host.logger)
+      ? this.ensureContext(action, settings)
+      : undefined;
+  }
+
+  /**
+   * Look up or create the per-context state — for the LIFECYCLE events
+   * (`willAppear`, `didReceiveSettings`) only. Input events go through
+   * {@link inputContext}, which never creates a context (#1329).
+   */
   private ensureContext(action: IDeckActionContext, settings: AudioControlsSettings): AudioDialContext {
     let ctx = this.contextsState.get(action.id);
 

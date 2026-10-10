@@ -51,6 +51,7 @@ vi.mock("@iracedeck/deck-core", async () => {
 
   return {
     createHoldPreview: dialGesture.createHoldPreview,
+    NOOP_HOLD_PREVIEW: dialGesture.NOOP_HOLD_PREVIEW,
     classifyDialRelease: dialGesture.classifyDialRelease,
     getDualPressThresholdMs: () => 500,
     applyBindingWarning: (content: string) => `${content}<binding-warning/>`,

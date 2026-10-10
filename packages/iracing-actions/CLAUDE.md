@@ -53,6 +53,7 @@ icons/                                   # Dynamic SVG templates (telemetry-driv
 - `dial-side-markers.ts` — the dash box's two side triangles (`renderSideMarkers`, `resolveSideMarks`, the `DialSideMarker` / `DialSideMarks` types): one drawing both renderers call, each side lit or dimmed on its own (#953 lit one; #1230 any combination)
 - `dial-preview.ts` — `renderPendingBar`, the one #1120 hold-preview mark every renderer draws
 - `dial-release.ts` — `classifyDialReleaseForHost`, the one release rule every dial surface calls: deck-core's `classifyDialRelease` where `__FEATURE_DIAL_EXTENDED_GESTURES__` is on; never `long` where it is off (`"push-turn"` after a pressed rotation, `"short"` otherwise) (#1013)
+- `dial-context.ts` — `hasDialInputContext`, the one gate in front of every dial surface's input events (#1329): a `rotate` / `down` / `touchTap` acts only on a context `willAppear` / `didReceiveSettings` created, and one arriving after `willDisappear` is dropped with a single debug line (`Dial <event> dropped: no context for <id> (it has disappeared)`) before any side effect. Each surface calls it from its private `inputContext`, which hands an existing context to `ensureContext` so it is refreshed exactly as before (rule 11 in `.claude/rules/encoders-and-touchscreen.md`)
 - `dial-name-icon.ts` — plain two-line action-name image for dial contexts (#775); push it with `pushDialNameIcon`, which sends it only on the `sd-plus-strip` profile — on a Stream Dock knob `setImage` IS the live screen (#1013). The `shared/dial-*` modules import deck-core and zod only; `dial-sim-agnostic.test.ts` keeps them free of `@iracedeck/iracing-sdk` / `@iracedeck/sim-events-iracing`
 - `profile-entries.ts` — shared `_deviceProfiles` PI-dropdown entry building + echo-loop change guard (#790)
 - `repeat-controller.ts` — long-press hold-to-repeat timing controller
@@ -69,6 +70,12 @@ The top-level `icons/` directory holds one 144x144 runtime template per dynamic-
 ## Action Pattern
 
 See `.claude/rules/stream-deck-actions.md` for the full requirements (UUID constant, `ConnectionStateAwareAction`, `CommonSettings`, icon assembly, super calls, settings handlers). An action that reads iRacing directly through `this.sdkController` (telemetry, session info, the template context, its own telemetry subscription) extends `@iracedeck/deck-iracing`'s `SimIRacingAction` instead, which adds the typed controller; one that only calls `getCommands()` does not need it. `deck-core`'s `ConnectionStateAwareAction` has no `sdkController`.
+
+## Dial surfaces
+
+A dial-capable action routes its dial events to a `*-dial-surface.ts` module beside it; `fuel-service/fuel-dial-surface.ts` is the reference and `.claude/rules/encoders-and-touchscreen.md` holds the rules. Two shapes every surface shares: the per-context state is created only by the lifecycle events (`willAppear`, `didReceiveSettings`, through `ensureContext`) while the input events go through `inputContext` and never create one (#1329); and where `__FEATURE_DIAL_EXTENDED_GESTURES__` is off the hold preview is deck-core's one `NOOP_HOLD_PREVIEW`, never a local copy (#1329). A test that drives dial input makes the dial appear first, since input on a context that never appeared is dropped.
+
+Dial PIs switch between keypad and dial views through `@iracedeck/pi-components`' `dial-controller` partial; never a local `resolveController` / `applyDialView` (#1329).
 
 ## Comms Catalog (#612)
 

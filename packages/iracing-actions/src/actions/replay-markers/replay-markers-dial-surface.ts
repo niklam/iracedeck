@@ -20,11 +20,13 @@ import {
   type HoldPreview,
   IconUpdateThrottle,
   type IDeckActionContext,
+  NOOP_HOLD_PREVIEW,
   svgToDataUri,
 } from "@iracedeck/deck-core";
 import type { ILogger } from "@iracedeck/logger";
 
 import { type DialBoxArgs, type DialSideMarks, renderDialBox, resolveDialBoxColors } from "../../shared/dial-box.js";
+import { type DialInputEvent, hasDialInputContext } from "../../shared/dial-context.js";
 import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
 import type { DialPendingPreview } from "../../shared/dial-preview.js";
 import { classifyDialReleaseForHost } from "../../shared/dial-release.js";
@@ -58,19 +60,6 @@ const NAME_CARD_BACKGROUND = "#2a3a4a";
 const CURSOR_OWNER: Record<MarkerDirection, string> = {
   next: "dial-next",
   previous: "dial-previous",
-};
-
-/**
- * The hold preview where the extended gestures are compiled out (#1120): a
- * Mirabox knob press never reports its release, so there is no hold to
- * preview. The surface's call sites stay unconditional.
- */
-const NOOP_HOLD_PREVIEW: HoldPreview = {
-  down() {},
-  up() {},
-  rotated() {},
-  dispose() {},
-  showing: false,
 };
 
 /** Per-context runtime state. In memory only. */
@@ -247,7 +236,9 @@ export class ReplayMarkersDialSurface {
    * marks the press so its release fires nothing.
    */
   rotate(action: IDeckActionContext, dial: ReplayMarkersDialSettings, ticks: number, pressed: boolean): void {
-    const ctx = this.ensureContext(action, dial);
+    const ctx = this.inputContext(action, dial, "rotate");
+
+    if (!ctx) return;
 
     if (pressed) {
       ctx.rotatedWhilePressed = true;
@@ -290,7 +281,9 @@ export class ReplayMarkersDialSurface {
   }
 
   down(action: IDeckActionContext, dial: ReplayMarkersDialSettings): void {
-    const ctx = this.ensureContext(action, dial);
+    const ctx = this.inputContext(action, dial, "down");
+
+    if (!ctx) return;
 
     // Record the press; fire nothing — press versus long press is classified at release.
     ctx.pressStart = Date.now();
@@ -334,7 +327,10 @@ export class ReplayMarkersDialSurface {
   touchTap(action: IDeckActionContext, dial: ReplayMarkersDialSettings, hold: boolean): void {
     if (!__FEATURE_DIAL_EXTENDED_GESTURES__) return;
 
-    const ctx = this.ensureContext(action, dial);
+    const ctx = this.inputContext(action, dial, "touchTap");
+
+    if (!ctx) return;
+
     // hold → the Long Touch slot; a plain tap → Tap Display.
     const gesture = hold ? ctx.dial.longTouchAction : ctx.dial.tapAction;
 
@@ -466,8 +462,27 @@ export class ReplayMarkersDialSurface {
   }
 
   /**
+   * The context an INPUT event (rotate, down, touchTap) acts on: the existing
+   * one, refreshed exactly as {@link ensureContext} refreshes it, or `undefined`
+   * — never a new one (#1329). A late event the host delivers after
+   * `willDisappear` is dropped here, before it can re-create the entry or act
+   * on a context that is gone.
+   */
+  private inputContext(
+    action: IDeckActionContext,
+    dial: ReplayMarkersDialSettings,
+    event: DialInputEvent,
+  ): ReplayMarkersDialContext | undefined {
+    return hasDialInputContext(this.contexts, action.id, event, this.host.logger)
+      ? this.ensureContext(action, dial)
+      : undefined;
+  }
+
+  /**
    * Gets or creates a context, refreshing its dial settings and action from the
-   * event. This surface writes no settings of its own, so the payload is
+   * event — for the LIFECYCLE events (`willAppear`, `didReceiveSettings`) only;
+   * input events go through {@link inputContext}, which never creates a context
+   * (#1329). This surface writes no settings of its own, so the payload is
    * authoritative (rule 10 applies only to surfaces that persist plugin-side).
    */
   private ensureContext(action: IDeckActionContext, dial: ReplayMarkersDialSettings): ReplayMarkersDialContext {

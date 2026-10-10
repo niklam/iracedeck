@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import url from "node:url";
@@ -100,7 +100,22 @@ function dialSettingsSlice(html: string): string {
   throw new Error("unbalanced <div> tags around #dial-settings");
 }
 
-const templates = actionPropertyInspectors().filter((t) => DIAL_TEMPLATES.has(path.basename(t.name, ".ejs")));
+/** The shared controller-resolution partial every dial PI includes (#1329). */
+const DIAL_CONTROLLER_INCLUDE = "<%- include('dial-controller') %>";
+
+/** A template-local copy of what the partial owns, by name — a declaration, a call or a comment pointing at one. */
+const LOCAL_CONTROLLER_SCRIPT = /\b(resolveController|applyDialView)\b/;
+
+/** Where the partial defines the resolver, in the compiled page. */
+const RESOLVER_DEFINITION = "window.irdResolveController = async function";
+
+/** Count non-overlapping occurrences of `needle` in `haystack`. */
+function occurrences(haystack: string, needle: string): number {
+  return haystack.split(needle).length - 1;
+}
+
+const allPIs = actionPropertyInspectors();
+const templates = allPIs.filter((t) => DIAL_TEMPLATES.has(path.basename(t.name, ".ejs")));
 const dialNames = templates.map((t) => path.basename(t.name, ".ejs")).sort();
 const withAppearance = templates
   .filter((t) => t.source.includes("include('dial-appearance')"))
@@ -122,6 +137,153 @@ describe("dial Property Inspectors on a knob (#1013)", () => {
 
   it("finds all seventeen dial templates", () => {
     expect(dialNames).toEqual([...DIAL_TEMPLATES].sort());
+  });
+
+  it("lists every template with a dial view, and no other", () => {
+    // A dial view is the `#dial-settings` section the controller switch reveals.
+    // Keyed on the markup rather than on the list, so a new dial-capable PI that
+    // nobody added to DIAL_TEMPLATES fails here instead of escaping every check.
+    const withDialView = allPIs
+      .filter((t) => t.source.includes('id="dial-settings"'))
+      .map((t) => path.basename(t.name, ".ejs"))
+      .sort();
+
+    expect(withDialView).toEqual([...DIAL_TEMPLATES].sort());
+  });
+
+  it("finds no dial view inside a partial, which the template scan above could not see", () => {
+    const withDialView = readdirSync(partialsDir)
+      .filter((file) => file.endsWith(".ejs"))
+      .filter((file) => readFileSync(path.join(partialsDir, file), "utf-8").includes('id="dial-settings"'));
+
+    expect(withDialView).toEqual([]);
+  });
+
+  describe("the shared resolver and view switch behave as each local copy did (#1329)", () => {
+    type ControllerWindow = {
+      SDPIComponents?: { streamDeckClient?: { getConnectionInfo: () => Promise<unknown> } };
+      irdResolveController?: () => Promise<"Encoder" | "Keypad" | null>;
+      irdApplyDialView?: () => void;
+    };
+
+    type StubDocument = { getElementById: (id: string) => unknown; hidden: Map<string, boolean> };
+
+    /** The three sections the view switch toggles, each with a `hidden` flag the stub classList writes. */
+    function stubDocument(): StubDocument {
+      const hidden = new Map([
+        ["keypad-settings", false],
+        ["keypad-appearance", false],
+        ["dial-settings", true],
+      ]);
+
+      return {
+        hidden,
+        getElementById: (id: string) =>
+          hidden.has(id)
+            ? {
+                classList: {
+                  add: (c: string) => c === "hidden" && hidden.set(id, true),
+                  remove: (c: string) => c === "hidden" && hidden.set(id, false),
+                },
+              }
+            : null,
+      };
+    }
+
+    /** Runs the partial's own `<script>` against a stub page, the way a PI loads it. */
+    function loadPartial(win: ControllerWindow, doc: StubDocument = stubDocument()): ControllerWindow {
+      // Without the EJS comment, whose prose names `<script>` itself.
+      const source = readFileSync(path.join(partialsDir, "dial-controller.ejs"), "utf-8").replace(/<%#[\s\S]*?%>/g, "");
+      const script = /<script>([\s\S]*?)<\/script>/.exec(source)?.[1];
+
+      expect(script).toBeDefined();
+      new Function("window", "document", script ?? "")(win, doc);
+
+      return win;
+    }
+
+    function withController(controller: unknown): ControllerWindow {
+      return {
+        SDPIComponents: {
+          streamDeckClient: { getConnectionInfo: async () => ({ actionInfo: { payload: { controller } } }) },
+        },
+      };
+    }
+
+    it.each([
+      ["Encoder", "Encoder"],
+      ["Knob", "Encoder"],
+      ["Keypad", "Keypad"],
+      ["Information", "Keypad"],
+      [undefined, "Keypad"],
+    ])("resolves a reported controller of %s to %s", async (controller, expected) => {
+      expect(await loadPartial(withController(controller)).irdResolveController?.()).toBe(expected);
+    });
+
+    it("resolves a keypad when there is no sdpi client", async () => {
+      expect(await loadPartial({}).irdResolveController?.()).toBe("Keypad");
+    });
+
+    it('resolves null when the lookup throws, which every `=== "Encoder"` caller keeps as the keypad view', async () => {
+      const win = loadPartial({
+        SDPIComponents: {
+          streamDeckClient: {
+            getConnectionInfo: async () => {
+              throw new Error("host gone");
+            },
+          },
+        },
+      });
+
+      expect(await win.irdResolveController?.()).toBeNull();
+    });
+
+    it("applies the dial view: hides both keypad sections and shows the dial's", () => {
+      const doc = stubDocument();
+
+      loadPartial({}, doc).irdApplyDialView?.();
+
+      expect(Object.fromEntries(doc.hidden)).toEqual({
+        "keypad-settings": true,
+        "keypad-appearance": true,
+        "dial-settings": false,
+      });
+    });
+  });
+
+  describe("controller resolution comes from the shared partial (#1329)", () => {
+    it.each(dialNames)("%s: includes dial-controller exactly once", (name) => {
+      const source = templates.find((t) => path.basename(t.name, ".ejs") === name)?.source ?? "";
+
+      expect(occurrences(source, DIAL_CONTROLLER_INCLUDE)).toBe(1);
+    });
+
+    it.each(dialNames)("%s: keeps no local resolveController or applyDialView", (name) => {
+      const source = templates.find((t) => path.basename(t.name, ".ejs") === name)?.source ?? "";
+
+      expect(source).not.toMatch(LOCAL_CONTROLLER_SCRIPT);
+    });
+
+    it("is included by no template without a dial view", () => {
+      const others = allPIs
+        .filter((t) => !DIAL_TEMPLATES.has(path.basename(t.name, ".ejs")))
+        .filter((t) => t.source.includes("include('dial-controller')"))
+        .map((t) => t.name);
+
+      expect(others).toEqual([]);
+    });
+
+    it.each(dialNames)("%s: compiles the resolver once, ahead of the page's own call", (name) => {
+      for (const html of [knob.get(name) ?? "", strip.get(name) ?? ""]) {
+        expect(occurrences(html, RESOLVER_DEFINITION)).toBe(1);
+        expect(occurrences(html, "window.irdApplyDialView = function")).toBe(1);
+
+        const call = html.indexOf("await window.irdResolveController()");
+
+        expect(call).toBeGreaterThan(-1);
+        expect(html.indexOf(RESOLVER_DEFINITION)).toBeLessThan(call);
+      }
+    });
   });
 
   describe("with dialExtendedGestures off (a Mirabox knob)", () => {

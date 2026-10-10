@@ -16,6 +16,7 @@ import {
   getDualPressThresholdMs,
   type HoldPreview,
   type IDeckActionContext,
+  NOOP_HOLD_PREVIEW,
   svgToDataUri,
 } from "@iracedeck/deck-core";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
@@ -23,6 +24,7 @@ import type { ILogger } from "@iracedeck/logger";
 
 import { toggleStateFromLevel } from "../../icons/status-bar.js";
 import { renderDialBox, resolveDialBoxColors } from "../../shared/dial-box.js";
+import { type DialInputEvent, hasDialInputContext } from "../../shared/dial-context.js";
 import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
 import type { DialPendingPreview } from "../../shared/dial-preview.js";
 import { classifyDialReleaseForHost } from "../../shared/dial-release.js";
@@ -154,19 +156,6 @@ function gestureLabel(action: GestureSlot): string | undefined {
 }
 
 /**
- * The hold preview compiled out on the hosts with no long press. Every
- * call site stays unconditional and `__FEATURE_DIAL_EXTENDED_GESTURES__` folds to `false`
- * there, so terser drops this object's users and `createHoldPreview` with them.
- */
-const NOOP_HOLD_PREVIEW: HoldPreview = {
-  down: () => {},
-  up: () => {},
-  rotated: () => {},
-  dispose: () => {},
-  showing: false,
-};
-
-/**
  * @internal Exported for testing
  *
  * What the strip shows once the hold passes the long-press threshold (#1120):
@@ -291,7 +280,9 @@ export class SetupBrakesDialSurface {
     ticks: number,
     pressed: boolean,
   ): Promise<void> {
-    const ctx = this.ensureContext(action, settings);
+    const ctx = this.inputContext(action, settings, "rotate");
+
+    if (!ctx) return;
 
     // A pressed rotation still adjusts the setting; the guard makes the dialUp
     // classifier skip the press gesture so holding-and-turning never also toggles
@@ -309,7 +300,9 @@ export class SetupBrakesDialSurface {
   }
 
   down(action: IDeckActionContext, settings: SetupBrakesSettings): void {
-    const ctx = this.ensureContext(action, settings);
+    const ctx = this.inputContext(action, settings, "down");
+
+    if (!ctx) return;
 
     // Record the press start and clear the push+turn guard. Fire nothing: the
     // only timer armed here DRAWS and never dispatches — press vs long-press is
@@ -363,7 +356,8 @@ export class SetupBrakesDialSurface {
 
     if (gesture === "none") return;
 
-    this.ensureContext(action, settings);
+    if (!this.inputContext(action, settings, "touchTap")) return;
+
     this.host.logger.info(hold ? "Setup brakes dial long touch" : "Setup brakes dial tap");
     await this.doGesture(gesture);
   }
@@ -407,6 +401,28 @@ export class SetupBrakesDialSurface {
     }
   }
 
+  /**
+   * The context an INPUT event (rotate, down, touchTap) acts on: the existing
+   * one, refreshed exactly as {@link ensureContext} refreshes it, or `undefined`
+   * — never a new one (#1329). A late event the host delivers after
+   * `willDisappear` is dropped here, before it can re-create the entry or act
+   * on a context that is gone.
+   */
+  private inputContext(
+    action: IDeckActionContext,
+    settings: SetupBrakesSettings,
+    event: DialInputEvent,
+  ): SetupBrakesDialContext | undefined {
+    return hasDialInputContext(this.contextsState, action.id, event, this.host.logger)
+      ? this.ensureContext(action, settings)
+      : undefined;
+  }
+
+  /**
+   * Look up or create the per-context state — for the LIFECYCLE events
+   * (`willAppear`, `didReceiveSettings`) only. Input events go through
+   * {@link inputContext}, which never creates a context (#1329).
+   */
   private ensureContext(action: IDeckActionContext, settings: SetupBrakesSettings): SetupBrakesDialContext {
     let ctx = this.contextsState.get(action.id);
 

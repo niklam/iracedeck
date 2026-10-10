@@ -55,10 +55,11 @@ vi.mock("@iracedeck/deck-core", async () => {
   // The REAL hold-preview helper (#1120), reached by its own module rather
   // than the deck-core barrel: the timer/threshold/revert behaviour under test
   // is the helper's, and a stub here would only re-test the stub.
-  const { createHoldPreview } = await import("../../../../deck-core/src/dial-gesture.js");
+  const { createHoldPreview, NOOP_HOLD_PREVIEW } = await import("../../../../deck-core/src/dial-gesture.js");
 
   return {
     createHoldPreview,
+    NOOP_HOLD_PREVIEW,
     // push-turn when rotated while held, else long/short vs the threshold.
     classifyDialRelease: (args: {
       pressStartMs: number;
@@ -802,9 +803,10 @@ describe("CameraDialSurface", () => {
   });
 
   describe("rotation → cycle modes", () => {
-    it("cycles the mapped camera / sub-camera / track-order / driving target", () => {
+    it("cycles the mapped camera / sub-camera / track-order / driving target", async () => {
       const host = makeHost();
       const surface = new CameraDialSurface(host as never);
+      await surface.willAppear(dialContext("d1") as never, dial());
       surface.rotate(dialContext("d1") as never, dial({ mode: "camera" }), 1, false);
       surface.rotate(dialContext("d1") as never, dial({ mode: "sub-camera" }), 1, false);
       surface.rotate(dialContext("d1") as never, dial({ mode: "track-order" }), 1, false);
@@ -816,17 +818,19 @@ describe("CameraDialSurface", () => {
       expect(host.cycle).toHaveBeenNthCalledWith(4, "cycle-driving", "previous");
     });
 
-    it("dispatches one cycle step per rotate event regardless of tick magnitude", () => {
+    it("dispatches one cycle step per rotate event regardless of tick magnitude", async () => {
       const host = makeHost();
       const surface = new CameraDialSurface(host as never);
+      await surface.willAppear(dialContext("d2") as never, dial());
       surface.rotate(dialContext("d2") as never, dial({ mode: "camera" }), 3, false);
 
       expect(host.cycle).toHaveBeenCalledTimes(1);
     });
 
-    it("reverses the cycle direction when reverseRotation is set (#884)", () => {
+    it("reverses the cycle direction when reverseRotation is set (#884)", async () => {
       const host = makeHost();
       const surface = new CameraDialSurface(host as never);
+      await surface.willAppear(dialContext("d4") as never, dial());
       surface.rotate(dialContext("d4") as never, dial({ mode: "camera", reverseRotation: true }), 1, false);
       surface.rotate(dialContext("d4") as never, dial({ mode: "driving", reverseRotation: true }), -1, false);
 
@@ -834,7 +838,7 @@ describe("CameraDialSurface", () => {
       expect(host.cycle).toHaveBeenNthCalledWith(2, "cycle-driving", "next");
     });
 
-    it("still dispatches sub-camera / camera cycling when the pace car (unclassified) has focus — keypad parity (#803)", () => {
+    it("still dispatches sub-camera / camera cycling when the pace car (unclassified) has focus — keypad parity (#803)", async () => {
       // The pace car is focused (CamCarIdx 0, no classified race position). Cycle
       // modes must dispatch under EXACTLY the keypad's conditions — the dial adds
       // no pace-car guard of its own — so `host.cycle` (the keypad's executeCycle)
@@ -842,6 +846,7 @@ describe("CameraDialSurface", () => {
       // the keypad; it is not a dial-side stall.
       const host = makeHost({ getTelemetry: vi.fn(() => ({ CamCarIdx: 0, CamGroupNumber: 9 }) as never) });
       const surface = new CameraDialSurface(host as never);
+      await surface.willAppear(dialContext("d3") as never, dial());
       surface.rotate(dialContext("d3") as never, dial({ mode: "sub-camera" }), 1, false);
       surface.rotate(dialContext("d3") as never, dial({ mode: "camera" }), 1, false);
 
@@ -851,9 +856,10 @@ describe("CameraDialSurface", () => {
   });
 
   describe("rotation → car-number mode", () => {
-    it("lowers the car number on a clockwise detent and raises it counter-clockwise (#973)", () => {
+    it("lowers the car number on a clockwise detent and raises it counter-clockwise (#973)", async () => {
       const host = makeHost();
       const surface = new CameraDialSurface(host as never);
+      await surface.willAppear(dialContext("c1") as never, dial());
       surface.rotate(dialContext("c1") as never, dial({ mode: "car-number" }), 1, false);
 
       expect(host.focusCarNumber).toHaveBeenCalledWith(3); // focused = #42, clockwise → #3
@@ -863,23 +869,25 @@ describe("CameraDialSurface", () => {
       expect(host.focusCarNumber).toHaveBeenLastCalledWith(99); // counter-clockwise → #99
     });
 
-    it("raises the car number on a clockwise detent when reverseRotation is set (#973)", () => {
+    it("raises the car number on a clockwise detent when reverseRotation is set (#973)", async () => {
       const host = makeHost();
       const surface = new CameraDialSurface(host as never);
+      await surface.willAppear(dialContext("c1b") as never, dial());
       surface.rotate(dialContext("c1b") as never, dial({ mode: "car-number", reverseRotation: true }), 1, false);
 
       expect(host.focusCarNumber).toHaveBeenCalledWith(99); // focused = #42, reversed clockwise → #99
     });
 
-    it("does not cycle in car-number mode", () => {
+    it("does not cycle in car-number mode", async () => {
       const host = makeHost();
       const surface = new CameraDialSurface(host as never);
+      await surface.willAppear(dialContext("c2") as never, dial());
       surface.rotate(dialContext("c2") as never, dial({ mode: "car-number" }), 1, false);
 
       expect(host.cycle).not.toHaveBeenCalled();
     });
 
-    it("focuses a car that left the world (post-race) on a counter-clockwise detent (#1281)", () => {
+    it("focuses a car that left the world (post-race) on a counter-clockwise detent (#1281)", async () => {
       // Cars by number: #3 (carIdx1), #42 (carIdx3, focused), #99 (carIdx5).
       // carIdx5 despawned (TrackSurface NotInWorld) — #885 used to skip it on
       // the false premise that iRacing ignores a switch to it. Counter-
@@ -896,12 +904,13 @@ describe("CameraDialSurface", () => {
         ),
       });
       const surface = new CameraDialSurface(host as never);
+      await surface.willAppear(dialContext("c885") as never, dial());
       surface.rotate(dialContext("c885") as never, dial({ mode: "car-number" }), -1, false);
 
       expect(host.focusCarNumber).toHaveBeenCalledWith(99);
     });
 
-    it("focuses a car that left the world (post-race) on a clockwise detent (#1281)", () => {
+    it("focuses a car that left the world (post-race) on a clockwise detent (#1281)", async () => {
       // Mirror of the case above for the default direction: carIdx1 (#3) is the
       // despawned one, and a clockwise detent — which walks DOWN the number
       // order since #973 — lands on it.
@@ -917,16 +926,18 @@ describe("CameraDialSurface", () => {
         ),
       });
       const surface = new CameraDialSurface(host as never);
+      await surface.willAppear(dialContext("c885b") as never, dial());
       surface.rotate(dialContext("c885b") as never, dial({ mode: "car-number" }), 1, false);
 
       expect(host.focusCarNumber).toHaveBeenCalledWith(3);
     });
 
-    it("walks the whole field in the post-race snapshot shape, every car not in the world (#1281)", () => {
+    it("walks the whole field in the post-race snapshot shape, every car not in the world (#1281)", async () => {
       // Focused #42 (carIdx3); every competitor reads -1 everywhere and only the
       // pace car is on track. Each detent must still land on a car.
       const host = makeHost({ getTelemetry: vi.fn(() => postRaceTelemetry(3) as never) });
       const surface = new CameraDialSurface(host as never);
+      await surface.willAppear(dialContext("c1281") as never, dial());
       surface.rotate(dialContext("c1281") as never, dial({ mode: "car-number" }), 1, false);
       surface.rotate(dialContext("c1281") as never, dial({ mode: "car-number" }), -1, false);
 
@@ -934,9 +945,10 @@ describe("CameraDialSurface", () => {
       expect(host.focusCarNumber).toHaveBeenNthCalledWith(2, 99); // counter-clockwise → up to #99
     });
 
-    it("walks the competitor list only — no pace car, no spectators (#1281)", () => {
+    it("walks the competitor list only — no pace car, no spectators (#1281)", async () => {
       const host = makeHost({ getTelemetry: vi.fn(() => postRaceTelemetry(3) as never) });
       const surface = new CameraDialSurface(host as never);
+      await surface.willAppear(dialContext("c1281b") as never, dial());
       surface.rotate(dialContext("c1281b") as never, dial({ mode: "car-number" }), 1, false);
 
       // (sessionInfo, excludePaceCar, excludeSpectators) — the pace car still on
@@ -944,7 +956,7 @@ describe("CameraDialSurface", () => {
       expect(vi.mocked(getAllCarNumbers)).toHaveBeenLastCalledWith(expect.anything(), true, true);
     });
 
-    it("still steps on the formation lap, where no car has completed a lap (#968)", () => {
+    it("still steps on the formation lap, where no car has completed a lap (#968)", async () => {
       // Snapshot 20260417-081043's shape: cars on track, every
       // CarIdxLapCompleted -1 — the lap-count term #968 removed once killed
       // cycling here for a whole lap.
@@ -960,17 +972,19 @@ describe("CameraDialSurface", () => {
         ),
       });
       const surface = new CameraDialSurface(host as never);
+      await surface.willAppear(dialContext("c968") as never, dial());
       surface.rotate(dialContext("c968") as never, dial({ mode: "car-number" }), 1, false);
 
       expect(host.focusCarNumber).toHaveBeenCalledWith(3);
     });
 
-    it("recovers to an end of the field when the pace car (not in the number list) has focus (#803)", () => {
+    it("recovers to an end of the field when the pace car (not in the number list) has focus (#803)", async () => {
       // getAllCarNumbers(…, true, true) EXCLUDES the pace car, so the focused
       // pace-car index isn't in the list — car-number mode already re-enters at
       // the first (next) / last (previous) car rather than stalling.
       const host = makeHost({ getTelemetry: vi.fn(() => ({ CamCarIdx: 0, CamGroupNumber: 9 }) as never) });
       const surface = new CameraDialSurface(host as never);
+      await surface.willAppear(dialContext("c3") as never, dial());
       surface.rotate(dialContext("c3") as never, dial({ mode: "car-number" }), 1, false);
 
       // Clockwise walks DOWN the number order since #973, so it re-enters at the end.
@@ -987,9 +1001,10 @@ describe("CameraDialSurface", () => {
     // which taps iRacing's Next Car / Previous Car binding: the sim picks the
     // car, so the surface computes no target and focuses nothing itself.
 
-    it("cycles Next Car (the car AHEAD) on a clockwise detent and Previous Car counter-clockwise", () => {
+    it("cycles Next Car (the car AHEAD) on a clockwise detent and Previous Car counter-clockwise", async () => {
       const host = makeHost({ getTelemetry: vi.fn(() => ON_TRACK as never) });
       const surface = new CameraDialSurface(host as never);
+      await surface.willAppear(dialContext("t1") as never, dial());
       surface.rotate(dialContext("t1") as never, dial({ mode: "track-order" }), 1, false);
       surface.rotate(dialContext("t1") as never, dial({ mode: "track-order" }), -1, false);
 
@@ -999,9 +1014,10 @@ describe("CameraDialSurface", () => {
       ]);
     });
 
-    it("flips the pair when reverseRotation is set", () => {
+    it("flips the pair when reverseRotation is set", async () => {
       const host = makeHost({ getTelemetry: vi.fn(() => ON_TRACK as never) });
       const surface = new CameraDialSurface(host as never);
+      await surface.willAppear(dialContext("t2") as never, dial());
       const reversed = dial({ mode: "track-order", reverseRotation: true });
       surface.rotate(dialContext("t2") as never, reversed, 1, false);
       surface.rotate(dialContext("t2") as never, reversed, -1, false);
@@ -1012,17 +1028,19 @@ describe("CameraDialSurface", () => {
       ]);
     });
 
-    it("focuses no car itself, whatever the field looks like", () => {
+    it("focuses no car itself, whatever the field looks like", async () => {
       const host = makeHost({ getTelemetry: vi.fn(() => ON_TRACK as never) });
       const surface = new CameraDialSurface(host as never);
+      await surface.willAppear(dialContext("t3") as never, dial());
       surface.rotate(dialContext("t3") as never, dial({ mode: "track-order" }), 1, false);
 
       expect(host.focusCarNumber).not.toHaveBeenCalled();
     });
 
-    it("still dispatches without telemetry — the binding needs none", () => {
+    it("still dispatches without telemetry — the binding needs none", async () => {
       const host = makeHost({ getTelemetry: vi.fn(() => null) });
       const surface = new CameraDialSurface(host as never);
+      await surface.willAppear(dialContext("t4") as never, dial());
       surface.rotate(dialContext("t4") as never, dial({ mode: "track-order" }), 1, false);
 
       expect(host.cycle).toHaveBeenCalledWith("cycle-track-order", "next");
@@ -1030,12 +1048,13 @@ describe("CameraDialSurface", () => {
   });
 
   describe("rotation → race-position mode", () => {
-    it("focuses the car AHEAD (P# decreases) on a clockwise detent — the #884 default", () => {
+    it("focuses the car AHEAD (P# decreases) on a clockwise detent — the #884 default", async () => {
       // carIdx→position: idx1=P3, idx2=P1, idx3=P2; focused CamCarIdx=3 (P2).
       // Clockwise now selects the car ahead: P2 → P1 → carIdx2.
       mockCarNumberRawByIdx.value = { 1: 3, 2: 11, 3: 42 };
       const host = makeHost({ getRacePositions: vi.fn(() => [0, 3, 1, 2]) });
       const surface = new CameraDialSurface(host as never);
+      await surface.willAppear(dialContext("r1") as never, dial());
       surface.rotate(dialContext("r1") as never, dial({ mode: "race-position" }), 1, false);
 
       // Dispatched via focusCarNumber (switchNum), NOT a position-based call —
@@ -1049,16 +1068,17 @@ describe("CameraDialSurface", () => {
       expect(host.focusCarNumber).toHaveBeenLastCalledWith(3); // carIdx1 (P3)'s raw number
     });
 
-    it("restores the pre-#884 mapping (clockwise → P# increases) when reverseRotation is set", () => {
+    it("restores the pre-#884 mapping (clockwise → P# increases) when reverseRotation is set", async () => {
       mockCarNumberRawByIdx.value = { 1: 3, 2: 11, 3: 42 };
       const host = makeHost({ getRacePositions: vi.fn(() => [0, 3, 1, 2]) });
       const surface = new CameraDialSurface(host as never);
+      await surface.willAppear(dialContext("r1b") as never, dial());
       surface.rotate(dialContext("r1b") as never, dial({ mode: "race-position", reverseRotation: true }), 1, false);
 
       expect(host.focusCarNumber).toHaveBeenCalledWith(3); // clockwise → P3 (the car behind) again
     });
 
-    it("focuses the CANONICAL car even when the official CarIdxPosition order disagrees (the preview↔execution seam)", () => {
+    it("focuses the CANONICAL car even when the official CarIdxPosition order disagrees (the preview↔execution seam)", async () => {
       // Canonical order (getRacePositions): idx1=P3, idx2=P1, idx3=P2 —
       // focused CamCarIdx=3 (P2), so the clockwise target P1 is carIdx2.
       const canonicalOrder = [0, 3, 1, 2];
@@ -1073,6 +1093,7 @@ describe("CameraDialSurface", () => {
         getTelemetry: vi.fn(() => ({ CamCarIdx: 3, CarIdxPosition: officialOrder }) as never),
       });
       const surface = new CameraDialSurface(host as never);
+      await surface.willAppear(dialContext("r-diverge") as never, dial());
       surface.rotate(dialContext("r-diverge") as never, dial({ mode: "race-position" }), 1, false);
 
       // Must land on the CANONICAL car (#11 / carIdx2) — the same car the
@@ -1081,13 +1102,14 @@ describe("CameraDialSurface", () => {
       expect(host.focusCarNumber).not.toHaveBeenCalledWith(3);
     });
 
-    it("falls back to official CarIdxPosition when there is no canonical order, resolving the car the SAME way", () => {
+    it("falls back to official CarIdxPosition when there is no canonical order, resolving the car the SAME way", async () => {
       mockCarNumberRawByIdx.value = { 2: 11, 3: 42 };
       const host = makeHost({
         getRacePositions: vi.fn(() => null),
         getTelemetry: vi.fn(() => ({ CamCarIdx: 3, CarIdxPosition: [0, 3, 1, 2] }) as never),
       });
       const surface = new CameraDialSurface(host as never);
+      await surface.willAppear(dialContext("r2") as never, dial());
       surface.rotate(dialContext("r2") as never, dial({ mode: "race-position" }), 1, false);
 
       expect(host.getRacePositions).toHaveBeenCalled();
@@ -1097,7 +1119,7 @@ describe("CameraDialSurface", () => {
       expect(host.focusCarNumber).toHaveBeenCalledWith(11);
     });
 
-    it("falls back to official CarIdxPosition when the canonical order ranks nobody (#968)", () => {
+    it("falls back to official CarIdxPosition when the canonical order ranks nobody (#968)", async () => {
       // The canonical order is a DENSE array of zeros whenever no car is scored
       // — it ranks by CarIdxLapCompleted + CarIdxLapDistPct, so a field with no
       // completed laps (or a post-race cooldown where the counts are cleared)
@@ -1113,13 +1135,14 @@ describe("CameraDialSurface", () => {
         getTelemetry: vi.fn(() => ({ CamCarIdx: 3, CarIdxPosition: [0, 3, 1, 2] }) as never),
       });
       const surface = new CameraDialSurface(host as never);
+      await surface.willAppear(dialContext("r2") as never, dial());
       surface.rotate(dialContext("r2") as never, dial({ mode: "race-position" }), 1, false);
 
       // Clockwise → the car ahead (P2 → P1 → carIdx2).
       expect(host.focusCarNumber).toHaveBeenCalledWith(11);
     });
 
-    it("keeps using the canonical order once ANY car is ranked, never the official one", () => {
+    it("keeps using the canonical order once ANY car is ranked, never the official one", async () => {
       // Guards the fallback above from widening: a partially-populated
       // canonical order (only the ranked cars) is still the authority.
       mockCarNumberRawByIdx.value = { 1: 3, 2: 11, 3: 42 };
@@ -1128,6 +1151,7 @@ describe("CameraDialSurface", () => {
         getTelemetry: vi.fn(() => ({ CamCarIdx: 3, CarIdxPosition: [0, 1, 3, 2] }) as never),
       });
       const surface = new CameraDialSurface(host as never);
+      await surface.willAppear(dialContext("r2") as never, dial());
       surface.rotate(dialContext("r2") as never, dial({ mode: "race-position" }), 1, false);
 
       // Canonical P1 is carIdx2 (#11); the official order would say carIdx1 (#3).
@@ -1135,7 +1159,7 @@ describe("CameraDialSurface", () => {
       expect(host.focusCarNumber).not.toHaveBeenCalledWith(3);
     });
 
-    it("focuses a car that left the world at its frozen rank (#1281)", () => {
+    it("focuses a car that left the world at its frozen rank (#1281)", async () => {
       // Post-race replay, still in the session. The canonical order keeps the
       // towed leader (carIdx2, P1) at its frozen rank while the car is
       // NotInWorld (lc/dp -1). A switch to it works (#1281 — #885 skipped it
@@ -1154,13 +1178,14 @@ describe("CameraDialSurface", () => {
         ),
       });
       const surface = new CameraDialSurface(host as never);
+      await surface.willAppear(dialContext("r885") as never, dial());
       surface.rotate(dialContext("r885") as never, dial({ mode: "race-position" }), 1, false);
 
       expect(host.focusCarNumber).toHaveBeenCalledWith(11); // the frozen P1 car
       expect(host.focusCarNumber).not.toHaveBeenCalledWith(3);
     });
 
-    it("walks the frozen order in the post-race snapshot shape, every car not in the world (#1281)", () => {
+    it("walks the frozen order in the post-race snapshot shape, every car not in the world (#1281)", async () => {
       // Every competitor, the focused one included, reads -1 everywhere; only the
       // pace car is on track. The canonical order still ranks them all, and
       // each detent lands on the neighbouring rank.
@@ -1170,6 +1195,7 @@ describe("CameraDialSurface", () => {
         getTelemetry: vi.fn(() => postRaceTelemetry(3) as never),
       });
       const surface = new CameraDialSurface(host as never);
+      await surface.willAppear(dialContext("r1281") as never, dial());
       surface.rotate(dialContext("r1281") as never, dial({ mode: "race-position" }), 1, false);
       surface.rotate(dialContext("r1281") as never, dial({ mode: "race-position" }), -1, false);
 
@@ -1177,27 +1203,29 @@ describe("CameraDialSurface", () => {
       expect(host.focusCarNumber).toHaveBeenNthCalledWith(2, 3); // counter-clockwise → P3
     });
 
-    it("does nothing when the focused car has no position", () => {
+    it("does nothing when the focused car has no position", async () => {
       const host = makeHost({
         getRacePositions: vi.fn(() => null),
         getTelemetry: vi.fn(() => ({ CamCarIdx: 3 }) as never), // no CarIdxPosition either
       });
       const surface = new CameraDialSurface(host as never);
+      await surface.willAppear(dialContext("r3") as never, dial());
       surface.rotate(dialContext("r3") as never, dial({ mode: "race-position" }), 1, false);
 
       expect(host.focusCarNumber).not.toHaveBeenCalled();
     });
 
-    it("does nothing when the resolved position has no raw car number in session info", () => {
+    it("does nothing when the resolved position has no raw car number in session info", async () => {
       mockCarNumberRawByIdx.value = {}; // carIdx1 unmapped
       const host = makeHost({ getRacePositions: vi.fn(() => [0, 3, 1, 2]) });
       const surface = new CameraDialSurface(host as never);
+      await surface.willAppear(dialContext("r4") as never, dial());
       surface.rotate(dialContext("r4") as never, dial({ mode: "race-position" }), 1, false);
 
       expect(host.focusCarNumber).not.toHaveBeenCalled();
     });
 
-    it("recovers to last place on a clockwise detent when the focused car has no position (pace car, #803/#884)", () => {
+    it("recovers to last place on a clockwise detent when the focused car has no position (pace car, #803/#884)", async () => {
       // order: carIdx0 = P0 (unclassified — the focused PACE car); carIdx2 = P1
       // (leader), carIdx1 = P3 (last). Clockwise walks UP the field (#884), so
       // from outside the order it re-enters at last place and each further
@@ -1208,21 +1236,106 @@ describe("CameraDialSurface", () => {
         getTelemetry: vi.fn(() => ({ CamCarIdx: 0, CamGroupNumber: 9 }) as never),
       });
       const surface = new CameraDialSurface(host as never);
+      await surface.willAppear(dialContext("r5") as never, dial());
       surface.rotate(dialContext("r5") as never, dial({ mode: "race-position" }), 1, false);
 
       expect(host.focusCarNumber).toHaveBeenCalledWith(22); // last-place (maxPosition) car's raw number
     });
 
-    it("recovers to the leader (P1) on a counter-clockwise detent when the focused car has no position (pace car, #803/#884)", () => {
+    it("recovers to the leader (P1) on a counter-clockwise detent when the focused car has no position (pace car, #803/#884)", async () => {
       mockCarNumberRawByIdx.value = { 2: 11, 1: 22 };
       const host = makeHost({
         getRacePositions: vi.fn(() => [0, 3, 1, 2]),
         getTelemetry: vi.fn(() => ({ CamCarIdx: 0, CamGroupNumber: 9 }) as never),
       });
       const surface = new CameraDialSurface(host as never);
+      await surface.willAppear(dialContext("r6") as never, dial());
       surface.rotate(dialContext("r6") as never, dial({ mode: "race-position" }), -1, false);
 
       expect(host.focusCarNumber).toHaveBeenCalledWith(11); // leader (P1) car's raw number
+    });
+  });
+
+  describe("a late input event never re-creates a disappeared context (#1329)", () => {
+    const settings = () =>
+      dial({
+        mode: "car-number",
+        pressAction: "focus-my-car",
+        longPressAction: "focus-on-incident",
+        tapAction: "focus-on-most-exciting",
+      });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    async function appearThenDisappear(id: string) {
+      vi.useFakeTimers();
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
+      const host = makeHost();
+      const surface = new CameraDialSurface(host as never);
+      await surface.willAppear(dialContext(id) as never, settings());
+      surface.willDisappear(id);
+      const late = dialContext(id);
+
+      return { host, surface, late };
+    }
+
+    function expectNothingSent(host: ReturnType<typeof makeHost>, late: ReturnType<typeof dialContext>) {
+      expect(late.setDialCanvas).not.toHaveBeenCalled();
+      expect(late.setFeedback).not.toHaveBeenCalled();
+      expect(late.setTriggerDescription).not.toHaveBeenCalled();
+      expect(host.cycle).not.toHaveBeenCalled();
+      expect(host.focusCarNumber).not.toHaveBeenCalled();
+      expect(host.focusMyCar).not.toHaveBeenCalled();
+      expect(host.focusOnIncident).not.toHaveBeenCalled();
+      expect(host.focusOnMostExciting).not.toHaveBeenCalled();
+    }
+
+    it("drops a rotate: no entry, no camera dispatch, no frame", async () => {
+      const { host, surface, late } = await appearThenDisappear("late-rotate");
+
+      surface.rotate(late as never, settings(), 1, false);
+
+      expect(surface["contextsState"].has("late-rotate")).toBe(false);
+      expectNothingSent(host, late);
+    });
+
+    it("drops a down: no entry and no hold-preview timer armed", async () => {
+      const { host, surface, late } = await appearThenDisappear("late-down");
+      const timersBefore = vi.getTimerCount();
+
+      surface.down(late as never, settings());
+
+      expect(vi.getTimerCount()).toBe(timersBefore);
+      vi.advanceTimersByTime(1000);
+      await surface.up("late-down");
+
+      expect(surface["contextsState"].has("late-down")).toBe(false);
+      expectNothingSent(host, late);
+    });
+
+    it("drops a touchTap: no entry, no gesture", async () => {
+      const { host, surface, late } = await appearThenDisappear("late-tap");
+
+      await surface.touchTap(late as never, settings(), false);
+
+      expect(surface["contextsState"].has("late-tap")).toBe(false);
+      expectNothingSent(host, late);
+    });
+
+    it("still acts on a live context", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
+      const host = makeHost();
+      const surface = new CameraDialSurface(host as never);
+      await surface.willAppear(dialContext("live") as never, settings());
+
+      surface.rotate(dialContext("live") as never, settings(), 1, false);
+      await surface.touchTap(dialContext("live") as never, settings(), false);
+
+      expect(surface["contextsState"].has("live")).toBe(true);
+      expect(host.focusCarNumber).toHaveBeenCalled();
+      expect(host.focusOnMostExciting).toHaveBeenCalled();
     });
   });
 
@@ -1230,6 +1343,7 @@ describe("CameraDialSurface", () => {
     it("fires the press gesture (focus my car) on a short press", async () => {
       const host = makeHost();
       const surface = new CameraDialSurface(host as never);
+      await surface.willAppear(dialContext("p1") as never, dial());
       surface.down(dialContext("p1") as never, dial({ pressAction: "focus-my-car" }));
       await surface.up("p1");
 
@@ -1239,6 +1353,7 @@ describe("CameraDialSurface", () => {
     it("fires the new focus-on-leader gesture on a short press", async () => {
       const host = makeHost();
       const surface = new CameraDialSurface(host as never);
+      await surface.willAppear(dialContext("p2") as never, dial());
       surface.down(dialContext("p2") as never, dial({ pressAction: "focus-on-leader" }));
       await surface.up("p2");
 
@@ -1249,6 +1364,7 @@ describe("CameraDialSurface", () => {
       vi.useFakeTimers();
       const host = makeHost();
       const surface = new CameraDialSurface(host as never);
+      await surface.willAppear(dialContext("p3") as never, dial());
       surface.down(dialContext("p3") as never, dial({ pressAction: "none", longPressAction: "focus-on-incident" }));
       vi.advanceTimersByTime(600);
       await surface.up("p3");
@@ -1260,6 +1376,7 @@ describe("CameraDialSurface", () => {
     it("fires no gesture on a push+turn", async () => {
       const host = makeHost();
       const surface = new CameraDialSurface(host as never);
+      await surface.willAppear(dialContext("p4") as never, dial());
       const settings = dial({ mode: "car-number", pressAction: "focus-my-car" });
       surface.down(dialContext("p4") as never, settings);
       surface.rotate(dialContext("p4") as never, settings, 1, true);
@@ -1274,6 +1391,7 @@ describe("CameraDialSurface", () => {
     it("fires the tap gesture (focus on most exciting) on a short touch", async () => {
       const host = makeHost();
       const surface = new CameraDialSurface(host as never);
+      await surface.willAppear(dialContext("t1") as never, dial());
       await surface.touchTap(dialContext("t1") as never, dial({ tapAction: "focus-on-most-exciting" }), false);
 
       expect(host.focusOnMostExciting).toHaveBeenCalled();
@@ -1283,6 +1401,7 @@ describe("CameraDialSurface", () => {
       vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
       const host = makeHost();
       const surface = new CameraDialSurface(host as never);
+      await surface.willAppear(dialContext("t2") as never, dial());
       await surface.touchTap(dialContext("t2") as never, dial({ tapAction: "focus-my-car" }), false);
 
       expect(host.focusMyCar).not.toHaveBeenCalled();

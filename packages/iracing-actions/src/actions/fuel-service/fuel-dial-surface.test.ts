@@ -158,6 +158,7 @@ vi.mock("@iracedeck/deck-core", async () => {
 
       return null;
     },
+    NOOP_HOLD_PREVIEW: (await import("../../../../deck-core/src/dial-gesture.js")).NOOP_HOLD_PREVIEW,
     // Display-only hold preview (#1120) — mirrors deck-core's createHoldPreview:
     // one timer armed at down, drawing at the threshold, reverting on up/rotated.
     createHoldPreview: (args: { onThreshold: () => boolean; onCancel: () => void; thresholdMs?: () => number }) => {
@@ -2706,6 +2707,78 @@ describe("FuelService dial surface", () => {
       // A knob has no long press: the release is the (disabled) press, so the
       // long-press slot's fill-to-max never fires.
       expect(mockPitFuel).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("a late input event never re-creates a disappeared context (#1329)", () => {
+    const settings = { pressAction: "toggle-fueling", longPressAction: "fill-to-max", tapAction: "toggle-fueling" };
+
+    function contexts(): Map<string, unknown> {
+      return action["dialSurface"]["contextsState"];
+    }
+
+    async function appearThenDisappear(id: string) {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
+      const ctx = dialContext(id);
+      await appear(ctx, settings);
+      await action.onWillDisappear(basicEvent(ctx, settings) as never);
+      vi.clearAllMocks();
+
+      return ctx;
+    }
+
+    function expectNothingSent(ctx: ReturnType<typeof dialContext>) {
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+      expect(ctx.setTriggerDescription).not.toHaveBeenCalled();
+      expect(ctx.setSettings).not.toHaveBeenCalled();
+      expect(mockPitFuel).not.toHaveBeenCalled();
+      expect(mockPitClearFuel).not.toHaveBeenCalled();
+    }
+
+    it("drops a rotate: no entry, no throttle timer, no pit.fuel, no frame", async () => {
+      const ctx = await appearThenDisappear("late-rotate");
+      const timersBefore = vi.getTimerCount();
+
+      await action.onDialRotate(rotateEvent(ctx, settings, 3) as never);
+
+      expect(contexts().has("late-rotate")).toBe(false);
+      expect(vi.getTimerCount()).toBe(timersBefore);
+      expectNothingSent(ctx);
+    });
+
+    it("drops a down: no entry and no hold-preview timer armed", async () => {
+      const ctx = await appearThenDisappear("late-down");
+      const timersBefore = vi.getTimerCount();
+
+      await action.onDialDown(basicEvent(ctx, settings) as never);
+      vi.advanceTimersByTime(1000);
+      await action.onDialUp(basicEvent(ctx, settings) as never);
+
+      expect(contexts().has("late-down")).toBe(false);
+      expect(vi.getTimerCount()).toBe(timersBefore);
+      expectNothingSent(ctx);
+    });
+
+    it("drops a touchTap: no entry, no dispatch, no frame", async () => {
+      const ctx = await appearThenDisappear("late-tap");
+
+      await action.onTouchTap(touchTapEvent(ctx, settings, false) as never);
+
+      expect(contexts().has("late-tap")).toBe(false);
+      expectNothingSent(ctx);
+    });
+
+    it("still acts on a live context", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
+      const ctx = dialContext("live");
+      await appear(ctx, settings);
+
+      await action.onDialRotate(rotateEvent(ctx, settings, 3) as never);
+      await action.onTouchTap(touchTapEvent(ctx, settings, false) as never);
+
+      expect(contexts().has("live")).toBe(true);
+      expect(mockPitFuel).toHaveBeenCalled();
     });
   });
 

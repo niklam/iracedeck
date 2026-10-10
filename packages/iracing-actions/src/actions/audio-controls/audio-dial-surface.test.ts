@@ -367,6 +367,20 @@ describe("AudioDialSurface (through AudioControls)", () => {
     await vi.advanceTimersByTimeAsync(200);
   }
 
+  /**
+   * A dial already on the deck. Input events never create a context (#1329),
+   * so a rotate or press is only meaningful after a willAppear; the mocks are
+   * cleared afterwards so each test asserts on its input alone.
+   */
+  async function appearedDial() {
+    const ctx = dialAction();
+    await action.onWillAppear(ev(ctx, {}));
+    await flush();
+    vi.clearAllMocks();
+
+    return ctx;
+  }
+
   describe("willAppear", () => {
     it("pushes a trigger description and one feedback render, skipping the keypad path", async () => {
       const ctx = dialAction();
@@ -411,7 +425,7 @@ describe("AudioDialSurface (through AudioControls)", () => {
 
   describe("rotate", () => {
     it("steps the internal volumes by the signed tick count", async () => {
-      const ctx = dialAction();
+      const ctx = await appearedDial();
       await action.onDialRotate(ev(ctx, { dial: { category: "race-engineer" } }, { ticks: 3 }));
       expect(mockStepRaceEngineerVolumeBy).toHaveBeenCalledWith(3);
 
@@ -423,7 +437,7 @@ describe("AudioDialSurface (through AudioControls)", () => {
     });
 
     it("taps the voice-chat volume binding once per detent", async () => {
-      const ctx = dialAction();
+      const ctx = await appearedDial();
       await action.onDialRotate(ev(ctx, { dial: { category: "voice-chat" } }, { ticks: 2 }));
       expect(mockTapBinding).toHaveBeenCalledTimes(2);
       expect(mockTapBinding).toHaveBeenCalledWith("audioVoiceChatVolumeUp");
@@ -435,7 +449,7 @@ describe("AudioDialSurface (through AudioControls)", () => {
     });
 
     it("maps master rotation to the master volume bindings", async () => {
-      const ctx = dialAction();
+      const ctx = await appearedDial();
       await action.onDialRotate(ev(ctx, { dial: { category: "master" } }, { ticks: 1 }));
       expect(mockTapBinding).toHaveBeenCalledWith("audioMasterVolumeUp");
 
@@ -444,13 +458,13 @@ describe("AudioDialSurface (through AudioControls)", () => {
     });
 
     it("caps the taps dispatched for one event", async () => {
-      const ctx = dialAction();
+      const ctx = await appearedDial();
       await action.onDialRotate(ev(ctx, { dial: { category: "master" } }, { ticks: 9 }));
       expect(mockTapBinding).toHaveBeenCalledTimes(5);
     });
 
     it("taps spotter louder / quieter once per detent for the spotter category (#809)", async () => {
-      const ctx = dialAction();
+      const ctx = await appearedDial();
       await action.onDialRotate(ev(ctx, { dial: { category: "spotter" } }, { ticks: 2 }));
       expect(mockTapBinding).toHaveBeenCalledTimes(2);
       expect(mockTapBinding).toHaveBeenCalledWith("spotterLouder");
@@ -465,14 +479,14 @@ describe("AudioDialSurface (through AudioControls)", () => {
 
     it("skips spotter taps when the spotter volume binding is unset (#809)", async () => {
       mockIsBindingMissing.mockReturnValue(true);
-      const ctx = dialAction();
+      const ctx = await appearedDial();
       await action.onDialRotate(ev(ctx, { dial: { category: "spotter" } }, { ticks: 1 }));
       expect(mockTapBinding).not.toHaveBeenCalled();
     });
 
     it("taps nothing when the volume binding is not configured", async () => {
       mockIsBindingMissing.mockReturnValue(true);
-      const ctx = dialAction();
+      const ctx = await appearedDial();
       await action.onDialRotate(ev(ctx, { dial: { category: "voice-chat" } }, { ticks: 1 }));
       expect(mockTapBinding).not.toHaveBeenCalled();
     });
@@ -480,7 +494,7 @@ describe("AudioDialSurface (through AudioControls)", () => {
 
   describe("press", () => {
     it("holds the PTT binding on dialDown and shows ON AIR", async () => {
-      const ctx = dialAction();
+      const ctx = await appearedDial();
       const settings = { dial: { category: "voice-chat", pressAction: "push-to-talk" } };
       await action.onDialDown(ev(ctx, settings));
       await flush();
@@ -490,7 +504,7 @@ describe("AudioDialSurface (through AudioControls)", () => {
     });
 
     it("releases the PTT binding on dialUp and clears ON AIR", async () => {
-      const ctx = dialAction();
+      const ctx = await appearedDial();
       const settings = { dial: { category: "voice-chat", pressAction: "push-to-talk" } };
       await action.onDialDown(ev(ctx, settings));
       await flush();
@@ -503,20 +517,20 @@ describe("AudioDialSurface (through AudioControls)", () => {
 
     it("does not hold PTT when its binding is not configured", async () => {
       mockIsBindingMissing.mockReturnValue(true);
-      const ctx = dialAction();
+      const ctx = await appearedDial();
       await action.onDialDown(ev(ctx, { dial: { category: "master", pressAction: "push-to-talk" } }));
       expect(mockHoldBinding).not.toHaveBeenCalled();
     });
 
     it("taps the voice-chat mute binding for Mute / Unmute", async () => {
-      const ctx = dialAction();
+      const ctx = await appearedDial();
       await action.onDialDown(ev(ctx, { dial: { category: "voice-chat", pressAction: "mute-unmute" } }));
       expect(mockTapBinding).toHaveBeenCalledWith("audioVoiceChatMute");
       await flush();
     });
 
     it("toggles the Race Engineer feature gate for Mute / Unmute", async () => {
-      const ctx = dialAction();
+      const ctx = await appearedDial();
       await action.onDialDown(ev(ctx, { dial: { category: "race-engineer", pressAction: "mute-unmute" } }));
       expect(mockToggleRaceEngineerFeature).toHaveBeenCalledTimes(1);
       expect(mockTapBinding).not.toHaveBeenCalled();
@@ -524,14 +538,14 @@ describe("AudioDialSurface (through AudioControls)", () => {
     });
 
     it("toggles the Radar feature gate for Mute / Unmute", async () => {
-      const ctx = dialAction();
+      const ctx = await appearedDial();
       await action.onDialDown(ev(ctx, { dial: { category: "radar", pressAction: "mute-unmute" } }));
       expect(mockToggleRadarFeature).toHaveBeenCalledTimes(1);
       await flush();
     });
 
     it("logs + no-ops a stale master Mute / Unmute value", async () => {
-      const ctx = dialAction();
+      const ctx = await appearedDial();
       await action.onDialDown(ev(ctx, { dial: { category: "master", pressAction: "mute-unmute" } }));
 
       expect(mockTapBinding).not.toHaveBeenCalled();
@@ -541,7 +555,7 @@ describe("AudioDialSurface (through AudioControls)", () => {
     });
 
     it("does nothing for none", async () => {
-      const ctx = dialAction();
+      const ctx = await appearedDial();
       const settings = { dial: { category: "voice-chat", pressAction: "none" } };
       await action.onDialDown(ev(ctx, settings));
       await action.onDialUp(ev(ctx, settings));
@@ -556,7 +570,7 @@ describe("AudioDialSurface (through AudioControls)", () => {
     const warn = () => (action as unknown as { logger: { warn: ReturnType<typeof vi.fn> } }).logger.warn;
 
     it("taps the voice-chat driver-mute binding on dialDown", async () => {
-      const ctx = dialAction();
+      const ctx = await appearedDial();
       const settings = { dial: { category: "voice-chat", pressAction: "mute-driver" } };
       await action.onDialDown(ev(ctx, settings));
       await action.onDialUp(ev(ctx, settings));
@@ -577,7 +591,7 @@ describe("AudioDialSurface (through AudioControls)", () => {
     it.each(["master", "spotter", "race-engineer", "radar"])(
       "logs + no-ops a stale %s Mute a Driver value (the PI offers it for voice chat only)",
       async (category) => {
-        const ctx = dialAction();
+        const ctx = await appearedDial();
         await action.onDialDown(ev(ctx, { dial: { category, pressAction: "mute-driver" } }));
 
         expect(mockTapBinding).not.toHaveBeenCalled();
@@ -592,7 +606,7 @@ describe("AudioDialSurface (through AudioControls)", () => {
       mockIsBindingMissing.mockImplementation((keys: unknown) =>
         Array.isArray(keys) ? keys.includes("audioVoiceChatMuteDriver") : keys === "audioVoiceChatMuteDriver",
       );
-      const ctx = dialAction();
+      const ctx = await appearedDial();
       await action.onDialDown(ev(ctx, { dial: { category: "voice-chat", pressAction: "mute-driver" } }));
 
       expect(mockIsBindingMissing).toHaveBeenCalledWith("audioVoiceChatMuteDriver");
@@ -602,7 +616,7 @@ describe("AudioDialSurface (through AudioControls)", () => {
     });
 
     it("leaves Mute / Unmute's dispatch unchanged", async () => {
-      const ctx = dialAction();
+      const ctx = await appearedDial();
       await action.onDialDown(ev(ctx, { dial: { category: "voice-chat", pressAction: "mute-unmute" } }));
 
       expect(mockTapBinding).toHaveBeenCalledTimes(1);
@@ -646,7 +660,7 @@ describe("AudioDialSurface (through AudioControls)", () => {
     const warn = () => (action as unknown as { logger: { warn: ReturnType<typeof vi.fn> } }).logger.warn;
 
     it("taps the spotter silence binding on dialDown", async () => {
-      const ctx = dialAction();
+      const ctx = await appearedDial();
       const settings = { dial: { category: "spotter", pressAction: "skip-call" } };
       await action.onDialDown(ev(ctx, settings));
       await action.onDialUp(ev(ctx, settings));
@@ -664,7 +678,7 @@ describe("AudioDialSurface (through AudioControls)", () => {
     it.each(["voice-chat", "master", "race-engineer", "radar"])(
       "logs + no-ops a stale %s Skip Spotter Call value (the PI offers it for spotter only)",
       async (category) => {
-        const ctx = dialAction();
+        const ctx = await appearedDial();
         await action.onDialDown(ev(ctx, { dial: { category, pressAction: "skip-call" } }));
 
         expect(mockTapBinding).not.toHaveBeenCalled();
@@ -677,7 +691,7 @@ describe("AudioDialSurface (through AudioControls)", () => {
 
     it("logs + no-ops when the spotter silence binding is not configured", async () => {
       mockIsBindingMissing.mockReturnValue(true);
-      const ctx = dialAction();
+      const ctx = await appearedDial();
       await action.onDialDown(ev(ctx, { dial: { category: "spotter", pressAction: "skip-call" } }));
 
       expect(mockIsBindingMissing).toHaveBeenCalledWith("spotterSilence");
@@ -783,7 +797,7 @@ describe("AudioDialSurface (through AudioControls)", () => {
     });
 
     it("dispatches a legacy value as Skip Spotter Call even before the persist lands", async () => {
-      const ctx = dialAction();
+      const ctx = await appearedDial();
       await action.onDialDown(ev(ctx, legacy()));
 
       expect(mockTapBinding).toHaveBeenCalledTimes(1);
@@ -795,13 +809,71 @@ describe("AudioDialSurface (through AudioControls)", () => {
 
   describe("willDisappear", () => {
     it("releases a held PTT binding", async () => {
-      const ctx = dialAction();
+      const ctx = await appearedDial();
       const settings = { dial: { category: "voice-chat", pressAction: "push-to-talk" } };
       await action.onDialDown(ev(ctx, settings));
       mockReleaseBinding.mockClear();
 
       await action.onWillDisappear(ev(ctx, settings));
       expect(mockReleaseBinding).toHaveBeenCalledWith(ctx.id);
+    });
+  });
+
+  describe("a late input event never re-creates a disappeared context (#1329)", () => {
+    function contexts(): Map<string, unknown> {
+      return action["dialSurface"]["contextsState"];
+    }
+
+    async function appearThenDisappear() {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
+      const ctx = await appearedDial();
+      await action.onWillDisappear(ev(ctx, {}));
+      vi.clearAllMocks();
+
+      return ctx;
+    }
+
+    function expectNothingSent(ctx: ReturnType<typeof dialAction>) {
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
+      expect(ctx.setFeedback).not.toHaveBeenCalled();
+      expect(ctx.setTriggerDescription).not.toHaveBeenCalled();
+      expect(mockTapBinding).not.toHaveBeenCalled();
+      expect(mockHoldBinding).not.toHaveBeenCalled();
+      expect(mockStepRaceEngineerVolumeBy).not.toHaveBeenCalled();
+    }
+
+    it("drops a rotate: no entry, no volume step, no render timer, no frame", async () => {
+      const ctx = await appearThenDisappear();
+      const timersBefore = vi.getTimerCount();
+
+      await action.onDialRotate(ev(ctx, { dial: { category: "race-engineer" } }, { ticks: 3 }));
+
+      expect(contexts().has(ctx.id)).toBe(false);
+      expect(vi.getTimerCount()).toBe(timersBefore);
+      await flush();
+      expectNothingSent(ctx);
+    });
+
+    it("drops a down: no entry, no PTT held, no render timer, no frame", async () => {
+      const ctx = await appearThenDisappear();
+      const timersBefore = vi.getTimerCount();
+
+      await action.onDialDown(ev(ctx, { dial: { category: "voice-chat", pressAction: "push-to-talk" } }));
+
+      expect(contexts().has(ctx.id)).toBe(false);
+      expect(vi.getTimerCount()).toBe(timersBefore);
+      await flush();
+      expectNothingSent(ctx);
+    });
+
+    it("still acts on a live context", async () => {
+      const ctx = await appearedDial();
+
+      await action.onDialRotate(ev(ctx, { dial: { category: "race-engineer" } }, { ticks: 3 }));
+
+      expect(contexts().has(ctx.id)).toBe(true);
+      expect(mockStepRaceEngineerVolumeBy).toHaveBeenCalledWith(3);
+      await flush();
     });
   });
 

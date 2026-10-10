@@ -109,7 +109,7 @@
 		// always covers exactly what the status line looks up, and take each row
 		// from the shared catalog so its label stays owned by one place. They are
 		// marked dial-only and hidden unless this instance IS a dial (see
-		// applyDialView) - a keypad Audio Controls key can't use them.
+		// showDialOnlyBindings) - a keypad Audio Controls key can't use them.
 		var __ownKeys = {};
 		__kb.audioControls.forEach(function (row) { __ownKeys[row.setting] = true; });
 		var __catalogRows = [];
@@ -136,6 +136,8 @@
 		<%- include('key-bindings-section', {
 			keyBindings: __kb.audioControls.concat(__borrowedRows)
 		}) %>
+
+		<%- include('dial-controller') %>
 
 		<script>
 			// Only Voice Chat supports mute — channel-wide Mute and Mute a Driver
@@ -246,30 +248,12 @@
 
 			// ── Dial surface (#782) ─────────────────────────────────────────────
 
-			// Which surface this instance sits on: the PI registration's
-			// actionInfo.payload.controller ("Keypad" | "Encoder"; the Mirabox host
-			// may report "Knob"). A missing controller means a keypad (a host that
-			// declares no dials sends none). A failed lookup returns null: the
-			// surface is then unknown, so the PI keeps the keypad view (#759
-			// pattern) but wires neither surface (#1196).
-			async function resolveController() {
-				try {
-					const client = window.SDPIComponents && window.SDPIComponents.streamDeckClient;
-					const info = client && (await client.getConnectionInfo());
-					const controller = info && info.actionInfo && info.actionInfo.payload && info.actionInfo.payload.controller;
-					return controller === "Encoder" || controller === "Knob" ? "Encoder" : "Keypad";
-				} catch (err) {
-					return null;
-				}
-			}
-
-			function applyDialView() {
-				document.getElementById("keypad-settings")?.classList.add("hidden");
-				document.getElementById("keypad-appearance")?.classList.add("hidden");
-				document.getElementById("dial-settings")?.classList.remove("hidden");
-				// Bindings only a DIAL mode taps (the Spotter mode's spotter keys, #809)
-				// ship hidden and appear here, so they show on exactly the surface that
-				// can use them - on every host, whether or not it has a touch strip.
+			// The dial view itself is the shared `irdApplyDialView()`
+			// (dial-controller partial, #1329); this is what Audio Controls adds.
+			// Bindings only a DIAL mode taps (the Spotter mode's spotter keys, #809)
+			// ship hidden and appear here, so they show on exactly the surface that
+			// can use them - on every host, whether or not it has a touch strip.
+			function showDialOnlyBindings() {
 				document.querySelectorAll(".dial-only-binding").forEach(function (el) {
 					el.classList.remove("hidden");
 				});
@@ -361,10 +345,13 @@
 			async function initialize() {
 				await customElements.whenDefined("sdpi-select");
 
-				const controller = await resolveController();
+				// null is a failed lookup: the surface is unknown, so the PI keeps the
+				// keypad view (#759 pattern) but wires neither surface (#1196).
+				const controller = await window.irdResolveController();
 
 				if (controller === "Encoder") {
-					applyDialView();
+					window.irdApplyDialView();
+					showDialOnlyBindings();
 					initializeDial();
 				} else if (controller === "Keypad") {
 					initializeKeypad();

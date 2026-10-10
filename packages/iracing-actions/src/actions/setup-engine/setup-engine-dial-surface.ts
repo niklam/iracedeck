@@ -25,6 +25,7 @@ import type { ILogger } from "@iracedeck/logger";
 import z from "zod";
 
 import { dialAppearanceFields, renderDialBox, resolveDialBoxColors } from "../../shared/dial-box.js";
+import { type DialInputEvent, hasDialInputContext } from "../../shared/dial-context.js";
 import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
 import { classifyDialReleaseForHost } from "../../shared/dial-release.js";
 import { formatViewValue, type ViewSettingId } from "../../shared/setup-view.js";
@@ -203,7 +204,9 @@ export class SetupEngineDialSurface {
   }
 
   async rotate(action: IDeckActionContext, dial: DialSettings, ticks: number, pressed: boolean): Promise<void> {
-    const ctx = this.ensureContext(action, dial);
+    const ctx = this.inputContext(action, dial, "rotate");
+
+    if (!ctx) return;
 
     if (pressed) {
       ctx.rotatedWhilePressed = true;
@@ -214,7 +217,9 @@ export class SetupEngineDialSurface {
   }
 
   down(action: IDeckActionContext, dial: DialSettings): void {
-    const ctx = this.ensureContext(action, dial);
+    const ctx = this.inputContext(action, dial, "down");
+
+    if (!ctx) return;
 
     ctx.pressStart = Date.now();
     ctx.rotatedWhilePressed = false;
@@ -256,7 +261,8 @@ export class SetupEngineDialSurface {
 
     if (gesture === "none") return;
 
-    this.ensureContext(action, dial);
+    if (!this.inputContext(action, dial, "touchTap")) return;
+
     this.host.logger.info(hold ? "Setup engine dial long touch" : "Setup engine dial tap");
     await this.doGesture(gesture);
   }
@@ -288,6 +294,28 @@ export class SetupEngineDialSurface {
     }
   }
 
+  /**
+   * The context an INPUT event (rotate, down, touchTap) acts on: the existing
+   * one, refreshed exactly as {@link ensureContext} refreshes it, or `undefined`
+   * — never a new one (#1329). A late event the host delivers after
+   * `willDisappear` is dropped here, before it can re-create the entry or act
+   * on a context that is gone.
+   */
+  private inputContext(
+    action: IDeckActionContext,
+    dial: DialSettings,
+    event: DialInputEvent,
+  ): SetupEngineDialContext | undefined {
+    return hasDialInputContext(this.contextsState, action.id, event, this.host.logger)
+      ? this.ensureContext(action, dial)
+      : undefined;
+  }
+
+  /**
+   * Look up or create the per-context state — for the LIFECYCLE events
+   * (`willAppear`, `didReceiveSettings`) only. Input events go through
+   * {@link inputContext}, which never creates a context (#1329).
+   */
   private ensureContext(action: IDeckActionContext, dial: DialSettings): SetupEngineDialContext {
     let ctx = this.contextsState.get(action.id);
 

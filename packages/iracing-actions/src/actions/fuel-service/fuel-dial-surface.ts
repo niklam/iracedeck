@@ -22,6 +22,7 @@ import {
   getDualPressThresholdMs,
   type HoldPreview,
   type IDeckActionContext,
+  NOOP_HOLD_PREVIEW,
   resolvePairedAction,
   svgToDataUri,
 } from "@iracedeck/deck-core";
@@ -38,6 +39,7 @@ import type { SessionInfo, TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 
 import { borderColorForState, type ToggleState } from "../../icons/status-bar.js";
+import { type DialInputEvent, hasDialInputContext } from "../../shared/dial-context.js";
 import { fitValueFontSize } from "../../shared/dial-fit.js";
 import { KNOB_BOX_HEIGHT, KNOB_BOX_WIDTH } from "../../shared/dial-knob-box.js";
 import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
@@ -139,21 +141,6 @@ export const PENDING_BAR_TOP_Y = READOUT_BASELINE_Y + 4;
  * Top edge of the fuel bar's `<g translate>` — the y the pending mark must stay above.
  */
 export const FUEL_BAR_TOP_Y = 66;
-
-/**
- * The hold preview for a non-Elgato build (#1120): Mirabox and Ulanzi have no
- * plugin touch strip, so there is nothing to preview on. The surface's call
- * sites stay unconditional (`ctx.holdPreview.down()`) and the real helper is
- * constructed only under `__FEATURE_DIAL_EXTENDED_GESTURES__`, so terser drops the
- * helper and its draw closures from those bundles.
- */
-const NOOP_HOLD_PREVIEW: HoldPreview = {
-  down() {},
-  up() {},
-  rotated() {},
-  dispose() {},
-  showing: false,
-};
 
 /**
  * The "Push + Turn" pair for each `dial.pushTurnAction` value. The per-tick
@@ -1061,7 +1048,10 @@ export class FuelDialSurface {
     ticks: number,
     pressed: boolean,
   ): Promise<void> {
-    const ctx = this.ensureContext(action, settings);
+    const ctx = this.inputContext(action, settings, "rotate");
+
+    if (!ctx) return;
+
     // Everything below reads ctx.settings, never the event payload (see ensureContext).
     const dial = ctx.settings.dial;
 
@@ -1135,7 +1125,9 @@ export class FuelDialSurface {
   }
 
   down(action: IDeckActionContext, settings: FuelServiceSettings): void {
-    const ctx = this.ensureContext(action, settings);
+    const ctx = this.inputContext(action, settings, "down");
+
+    if (!ctx) return;
 
     // Record the press start and clear the push+turn guard. Fire NOTHING and
     // start NO dispatch timer — press vs long-press is classified once at dialUp.
@@ -1199,7 +1191,10 @@ export class FuelDialSurface {
 
     // Read the gesture from ctx.settings, not the event payload — the same
     // stale-settings model `up()` follows (see ensureContext).
-    const ctx = this.ensureContext(action, settings);
+    const ctx = this.inputContext(action, settings, "touchTap");
+
+    if (!ctx) return;
+
     // hold === true → Long Touch slot; hold === false → Tap Display slot.
     const gesture = hold ? ctx.settings.dial.longTouchAction : ctx.settings.dial.tapAction;
 
@@ -1397,7 +1392,26 @@ export class FuelDialSurface {
   }
 
   /**
-   * Look up or create the per-context state. An EXISTING context keeps its
+   * The context an INPUT event (rotate, down, touchTap) acts on: the existing
+   * one, refreshed exactly as {@link ensureContext} refreshes it, or `undefined`
+   * — never a new one (#1329). A late event the host delivers after
+   * `willDisappear` is dropped here, before it can re-create the entry, arm the
+   * hold preview or draw on a context that is gone.
+   */
+  private inputContext(
+    action: IDeckActionContext,
+    settings: FuelServiceSettings,
+    event: DialInputEvent,
+  ): FuelDialContext | undefined {
+    return hasDialInputContext(this.contextsState, action.id, event, this.host.logger)
+      ? this.ensureContext(action, settings)
+      : undefined;
+  }
+
+  /**
+   * Look up or create the per-context state — for the LIFECYCLE events
+   * (`willAppear`, `didReceiveSettings`) only; input events go through
+   * {@link inputContext}, which never creates one. An EXISTING context keeps its
    * `settings` — settings changes only flow in through `willAppear` /
    * `didReceiveSettings` (which assign `ctx.settings` explicitly). Event
    * payloads must not refresh it: hosts with per-context settings caches can
