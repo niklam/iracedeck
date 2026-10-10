@@ -1,7 +1,10 @@
+import { satteri } from "@astrojs/markdown-satteri";
 import starlight from "@astrojs/starlight";
 import mermaid from "astro-mermaid";
 import { defineConfig } from "astro/config";
 import { readFileSync } from "fs";
+
+import { changelogFragmentsPlugin } from "./src/changelog-fragments-plugin.mjs";
 
 // Fallback: read version from root package.json if env var not set
 if (!process.env.PUBLIC_IRACEDECK_VERSION) {
@@ -11,6 +14,12 @@ if (!process.env.PUBLIC_IRACEDECK_VERSION) {
 
 export default defineConfig({
   site: "https://iracedeck.com",
+  markdown: {
+    // Astro's default processor, `satteri()`, with one plugin: the in-development
+    // release notes are fragments in changelog.d/, and this renders them into the
+    // changelog page as its Unreleased section (#1386). MDX inherits it.
+    processor: satteri({ mdastPlugins: [changelogFragmentsPlugin()] }),
+  },
   vite: {
     build: {
       // Raised from Vite's 500 kB for ONE chunk (#1184): `elk-*`, ~1,456 kB,
