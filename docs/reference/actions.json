@@ -325,7 +325,7 @@
             {
               "value": "snapshot",
               "label": "Take Snapshot",
-              "description": "Developer tool: saves the current telemetry + session info to disk as timestamped JSON and Markdown files"
+              "description": "Developer / support tool: saves the current telemetry + session info, and the plugin's own state (fuel history and laps left, race order, gaps, caution, the Race Engineer's queue, the global settings) under the JSON's pluginState key (#1387), to disk as timestamped JSON and Markdown files. No iRacing command"
             },
             {
               "value": "capture-profile",
