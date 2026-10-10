@@ -13,11 +13,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ScenarioContext } from "../../dsl.js";
 import { WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
+import * as interpreterModule from "../../interpreter.js";
 import { _resetAudioScenarios, getScenarioEngine, initializeAudioScenarios } from "../../interpreter.js";
+import { isStatePartError, type StatePartError } from "../../state-part.js";
 import { _resetBackgroundTest, playBackgroundTest, readBackgroundTestDebugState } from "./background-test.js";
 import { buildCautionContracts, readCautionDebugState } from "./caution.js";
 import { type RaceEngineerState, raceEngineerStateHeadline, readRaceEngineerState } from "./debug-state.js";
 import { _setFurledRaisedSpoken, readFlagAlertsDebugState } from "./flag-alerts.js";
+import * as gapsModule from "./gaps.js";
 import { _resetGapCalloutCooldown, readGapsDebugState, tryClaimGapCallout } from "./gaps.js";
 import { _resetLastIncidentPoints, INCIDENT_CONTRACTS, readIncidentsDebugState } from "./incidents.js";
 import { registerPitCrew } from "./index.js";
@@ -37,6 +40,7 @@ import {
   readQualifyingInvalidationDebugState,
   resetQualifyingInvalidationLatch,
 } from "./qualifying-invalidation.js";
+import * as radarModule from "./radar-engine.js";
 import { _resetRadarEngine, readRadarDebugState, setRadarEnabled, subscribeRadarVisualState } from "./radar-engine.js";
 import { _resetSpotterEngine, readSpotterDebugState } from "./spotter-engine.js";
 
@@ -145,9 +149,11 @@ const UNTOUCHED_FAMILIES = {
 
 let bus: TestBus;
 let activeVoice: string | null;
+/** The engine's `getActiveVoice`; a test swaps it for one that throws. */
+let voiceRead: () => string | null;
 
 function startEngine(): IScenarioEngine {
-  return initializeAudioScenarios(bus, fakeAudio as unknown as IAudioService, manifest, undefined, () => activeVoice);
+  return initializeAudioScenarios(bus, fakeAudio as unknown as IAudioService, manifest, undefined, () => voiceRead());
 }
 
 /** The initialised arm of the reader's result, or a failed test. */
@@ -157,11 +163,19 @@ function initialized(state: RaceEngineerState): Extract<RaceEngineerState, { ini
   return state;
 }
 
+/** A part that was read, or a failed test saying why it was not. */
+function read<T>(part: T | StatePartError): T {
+  if (isStatePartError(part)) throw new Error(`the part failed to read: ${part.error}`);
+
+  return part;
+}
+
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(1_000_000);
   bus = createBus();
   activeVoice = "luca";
+  voiceRead = () => activeVoice;
 });
 
 afterEach(() => {
@@ -220,8 +234,13 @@ describe("readRaceEngineerState", () => {
       radar: { ...UNTOUCHED_FAMILIES.radar, registered: true },
       spotter: { ...UNTOUCHED_FAMILIES.spotter, registered: true },
     });
-    expect(state.engine.activeVoice).toBe("luca");
-    expect(state.engine.contracts.length).toBeGreaterThan(50);
+    expect(read(state.engine).activeVoice).toBe("luca");
+    expect(read(state.engine).contracts.length).toBeGreaterThan(50);
+    // No healthy part can be taken for a failed one: none carries an `error` key.
+    expect(state.engine).not.toHaveProperty("error");
+
+    for (const part of Object.values(state.families)) expect(part).not.toHaveProperty("error");
+
     // No timer handle, no cycle, no function, no Map: the value is its own JSON.
     expect(JSON.parse(JSON.stringify(state))).toEqual(state);
   });
@@ -261,7 +280,7 @@ describe("readRaceEngineerState", () => {
     registerPitCrew(bus);
     _setFurledRaisedSpoken(true);
 
-    expect(initialized(readRaceEngineerState()).families.flagAlerts.furledRaisedSpoken).toBe(true);
+    expect(read(initialized(readRaceEngineerState()).families.flagAlerts).furledRaisedSpoken).toBe(true);
   });
 
   it("lists a fire deferred behind a held bus in the waiting list, with its group and wait", () => {
@@ -289,7 +308,7 @@ describe("readRaceEngineerState", () => {
     vi.advanceTimersByTime(400);
     engine.fire("t.line");
 
-    const voice = initialized(readRaceEngineerState()).engine.buses[0];
+    const voice = read(initialized(readRaceEngineerState()).engine).buses[0];
 
     expect(voice).toMatchObject({ bus: "Voice", playingId: "t.holder", active: { id: "t.holder" } });
     expect(voice.waiting).toEqual([
@@ -310,6 +329,187 @@ describe("readRaceEngineerState", () => {
     expect(fire).not.toHaveBeenCalled();
     expect(acquire).not.toHaveBeenCalled();
     expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+/**
+ * The snapshot's collector isolates per SECTION: a throw out of
+ * `readRaceEngineerState` replaces the whole `raceEngineer` section with an
+ * error entry, and the buses, the queue, every contract stamp and every
+ * family's state go with it. So inside the section each part is read on its
+ * own, and a part that throws becomes `{ error: "<reason>" }` in its place.
+ */
+describe("a part that cannot be read fails alone", () => {
+  /** What a family reader, or the engine, is made to throw. */
+  const THROWN: ReadonlyArray<readonly [label: string, thrown: unknown, reason: string]> = [
+    ["an Error", new Error("the reader exploded"), "the reader exploded"],
+    ["a string", "plain text", "plain text"],
+    [
+      "an object whose conversion throws",
+      {
+        get message(): string {
+          throw new Error("the getter threw");
+        },
+        toString(): string {
+          throw new Error("the conversion threw");
+        },
+      },
+      "unknown error",
+    ],
+  ];
+
+  /** Make the gaps family's reader throw `thrown` for the rest of the test. */
+  function failGaps(thrown: unknown): void {
+    vi.spyOn(gapsModule, "readGapsDebugState").mockImplementation(() => {
+      throw thrown;
+    });
+  }
+
+  /** Make the engine's `describeState` throw `thrown` for the rest of the test. */
+  function failEngine(engine: IScenarioEngine, thrown: unknown): void {
+    vi.spyOn(engine, "describeState").mockImplementation(() => {
+      throw thrown;
+    });
+  }
+
+  const HEALTHY_ROWS = [
+    ["Race Engineer voice", "luca"],
+    ["Voice bus", "idle"],
+    ["Waiting callouts", "0"],
+  ];
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("a family reader that throws leaves the engine and the other ten families intact", () => {
+    const engine = startEngine();
+    const healthyEngine = engine.describeState();
+
+    failGaps(new Error("the reader exploded"));
+
+    const state = initialized(readRaceEngineerState());
+
+    expect(state.families.gaps).toStrictEqual({ error: "the reader exploded" });
+    expect(state.engine).toEqual(healthyEngine);
+    expect(Object.keys(state.families).sort()).toEqual(FAMILY_KEYS);
+    expect(state.families).toEqual({ ...UNTOUCHED_FAMILIES, gaps: { error: "the reader exploded" } });
+    // The section itself is healthy: a top-level `error` is the collector's,
+    // for a section that failed outright.
+    expect(state).not.toHaveProperty("error");
+    expect(JSON.parse(JSON.stringify(state))).toEqual(state);
+  });
+
+  it("an engine that cannot describe itself leaves all eleven families intact", () => {
+    const engine = startEngine();
+
+    registerPitCrew(bus);
+    _setFurledRaisedSpoken(true);
+    failEngine(engine, new Error("describeState exploded"));
+
+    const state = initialized(readRaceEngineerState());
+
+    expect(state.engine).toStrictEqual({ error: "describeState exploded" });
+    expect(Object.keys(state.families).sort()).toEqual(FAMILY_KEYS);
+    expect(state.families).toEqual({
+      ...UNTOUCHED_FAMILIES,
+      flagAlerts: { furledRaisedSpoken: true },
+      pitSpeeding: { ...UNTOUCHED_FAMILIES.pitSpeeding, registered: true },
+      radar: { ...UNTOUCHED_FAMILIES.radar, registered: true },
+      spotter: { ...UNTOUCHED_FAMILIES.spotter, registered: true },
+    });
+    expect(state).not.toHaveProperty("error");
+  });
+
+  it("an engine that is gone between the check and the read is the engine part's failure, not a throw", () => {
+    startEngine();
+    vi.spyOn(interpreterModule, "getScenarioEngine").mockImplementation(() => {
+      throw new Error("Audio scenarios not initialized. Call initializeAudioScenarios() first.");
+    });
+
+    const state = initialized(readRaceEngineerState());
+
+    expect(state.engine).toStrictEqual({
+      error: "Audio scenarios not initialized. Call initializeAudioScenarios() first.",
+    });
+    expect(state.families).toEqual(UNTOUCHED_FAMILIES);
+  });
+
+  it("several parts failing at once is still a section, with an entry per failed part", () => {
+    failEngine(startEngine(), new Error("engine"));
+    failGaps(new Error("gaps"));
+    vi.spyOn(radarModule, "readRadarDebugState").mockImplementation(() => {
+      throw new Error("radar");
+    });
+
+    const state = initialized(readRaceEngineerState());
+
+    expect(state).toEqual({
+      initialized: true,
+      engine: { error: "engine" },
+      families: { ...UNTOUCHED_FAMILIES, gaps: { error: "gaps" }, radar: { error: "radar" } },
+    });
+    expect(raceEngineerStateHeadline(state)).toEqual([
+      ["Race Engineer voice", "read failed: engine"],
+      ["Voice bus", "read failed: engine"],
+      ["Waiting callouts", "read failed: engine"],
+      ["Unreadable families", "gaps, radar"],
+    ]);
+  });
+
+  describe.each(THROWN)("when what is thrown is %s", (_label, thrown, reason) => {
+    it("a family's entry holds a non-empty reason, and the headline names the family", () => {
+      startEngine();
+      failGaps(thrown);
+
+      const state = initialized(readRaceEngineerState());
+
+      expect(state.families.gaps).toStrictEqual({ error: reason });
+      expect(reason).not.toBe("");
+      expect(raceEngineerStateHeadline(state)).toEqual([...HEALTHY_ROWS, ["Unreadable families", "gaps"]]);
+    });
+
+    it("the engine's entry holds a non-empty reason, and its three rows say the read failed", () => {
+      failEngine(startEngine(), thrown);
+
+      const state = initialized(readRaceEngineerState());
+
+      expect(state.engine).toStrictEqual({ error: reason });
+      expect(raceEngineerStateHeadline(state)).toEqual([
+        ["Race Engineer voice", `read failed: ${reason}`],
+        ["Voice bus", `read failed: ${reason}`],
+        ["Waiting callouts", `read failed: ${reason}`],
+      ]);
+    });
+
+    it("a voice the engine could not read is that one row's failure: never 'none'", () => {
+      voiceRead = () => {
+        throw thrown;
+      };
+      startEngine();
+
+      const state = initialized(readRaceEngineerState());
+
+      expect(read(state.engine).activeVoice).toStrictEqual({ error: reason });
+      expect(raceEngineerStateHeadline(state)).toEqual([
+        ["Race Engineer voice", `read failed: ${reason}`],
+        ["Voice bus", "idle"],
+        ["Waiting callouts", "0"],
+      ]);
+    });
+  });
+
+  it("logs nothing for a part that failed", () => {
+    const logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const engine = initializeAudioScenarios(bus, fakeAudio as unknown as IAudioService, manifest, logger as never);
+
+    for (const level of Object.values(logger)) level.mockClear();
+
+    failGaps(new Error("gaps"));
+    failEngine(engine, new Error("engine"));
+    readRaceEngineerState();
+
+    for (const level of Object.values(logger)) expect(level).not.toHaveBeenCalled();
   });
 });
 

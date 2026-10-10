@@ -112,6 +112,7 @@ import { applyBase, DEFAULT_FRAME, DEFAULT_MAX_QUEUE_WAIT_MS, DEFAULT_WEIGHT, NO
 import { type AudioAssetsManifest, referenceVoice } from "./manifest.js";
 import { PendingQueue, type QueuedFire, type QueueDrop } from "./pending-queue.js";
 import { type CompileDeps, type CompiledVoiceScript, compileVoiceScript } from "./script-compiler.js";
+import { isStatePartError, readStatePart, type StatePartError } from "./state-part.js";
 import { validateScenario } from "./validation.js";
 
 // Re-export so existing consumers of `interpreter.js` keep their import paths.
@@ -199,12 +200,25 @@ export type ContractReport = {
  * data throughout — ids, numbers, booleans — so it serialises as it stands:
  * a timer is reported as a boolean, and a fire's event, ops and resume state
  * are left out.
+ *
+ * `activeVoice` and `frameOptions` come from the two accessors the engine was
+ * handed — code it does not own, reading the settings. Each is read on its
+ * own (`readStatePart`), so one that throws is an `{ error }` entry in its
+ * field and costs nothing else: the buses, the queue and the contracts are
+ * the engine's own maps and are reported regardless.
  */
 export type ScenarioEngineState = {
-  /** The voice `{voice}` resolves to; `null` when none is selected. */
-  activeVoice: string | null;
-  /** The user's Radio beeps / Pit ambience switches as the engine reads them. */
-  frameOptions: FrameOptions;
+  /**
+   * The voice `{voice}` resolves to; `null` when none is selected. An error
+   * entry when the accessor threw — never `null`, which already means "no
+   * voice".
+   */
+  activeVoice: string | null | StatePartError;
+  /**
+   * The user's Radio beeps / Pit ambience switches as the engine reads them,
+   * or an error entry when the accessor threw.
+   */
+  frameOptions: FrameOptions | StatePartError;
   /**
    * `true` when a registration landed after the last script compile, so each
    * contract's `scripted` below is the LAST compile's answer; the next fire
@@ -248,10 +262,19 @@ export type ScenarioEngineState = {
   contracts: Array<{
     id: string;
     enabled: boolean;
-    /** `Date.now()` of the last fire that took the bus or was queued; `0` when it never fired. */
+    /**
+     * `Date.now()` when a fire of it last took the bus; `0` when none has. A
+     * fire that is only waiting has stamped nothing, and neither does a fire
+     * resumed after an interrupt.
+     */
     lastFireAt: number;
-    /** Whether the active voice's compiled script has a body for it — see `scriptsDirty`. */
-    scripted: boolean;
+    /**
+     * Whether the active voice's compiled script has a body for it — see
+     * `scriptsDirty`. `null` when the active voice could not be read (its
+     * error entry is `activeVoice`): unknown, not a `false` that would read
+     * as "this voice does not say it".
+     */
+    scripted: boolean | null;
     /** A `triggerDelay` or `settle` timer is running for it. */
     triggerPending: boolean;
   }>;
@@ -1174,16 +1197,23 @@ class ScenarioEngine implements IScenarioEngine {
   }
 
   describeState(): ScenarioEngineState {
-    const activeVoice = this.getActiveVoice();
+    // The two accessors are the only calls here into code the engine does not
+    // own, so each is read on its own: one that throws is an error entry in
+    // its field, and the walk of the engine's own maps below still reports.
+    // That walk is not guarded piece by piece — it calls nothing foreign, so
+    // a throw there is a bug in this method, which the caller's own
+    // `readStatePart` reports as the engine's part failing.
+    const activeVoice = readStatePart(() => this.getActiveVoice());
+    const voiceUnread = isStatePartError(activeVoice);
     // The compiled map as it stands, NOT `isScripted`: that recompiles a
     // dirty script set, which logs and clears the script pools' no-repeat
     // state. `scriptsDirty` says when the answer is the last compile's.
-    const scripted = activeVoice === null ? undefined : this.compiled.get(activeVoice)?.scenarios;
+    const scripted = voiceUnread || activeVoice === null ? undefined : this.compiled.get(activeVoice)?.scenarios;
 
     return {
       activeVoice,
       // The accessor itself rather than `frameOptions()`, which logs a throw.
-      frameOptions: { ...this.getFrameOptions() },
+      frameOptions: readStatePart(() => ({ ...this.getFrameOptions() })),
       scriptsDirty: this.scriptsDirty,
       // `busState.get`, not `getBusState`: a read creates no state.
       buses: audioBuses().map((bus) => describeBus(bus, this.busState.get(bus))),
@@ -1192,7 +1222,7 @@ class ScenarioEngine implements IScenarioEngine {
           id: entry.raw.id,
           enabled: entry.enabled,
           lastFireAt: entry.lastFireAt,
-          scripted: scripted?.has(entry.raw.id) ?? false,
+          scripted: voiceUnread ? null : (scripted?.has(entry.raw.id) ?? false),
           triggerPending: entry.pendingTriggerTimer !== null,
         }))
         .sort((a, b) => codePointOrder(a.id, b.id)),

@@ -37,6 +37,9 @@ export {
   isAudioScenariosInitialized,
 } from "./interpreter.js";
 export { manifestVoices, mergeManifests, referenceVoice, scanDriverNames, scanRaceEngineerVoices } from "./manifest.js";
+// What stands in for a part of the snapshot state that could not be read
+// (issue #1387): `ScenarioEngineState` and the pit-crew reader's result name it.
+export type { StatePartError } from "./state-part.js";
 // The pack-author reference (#1066): the pure builder the root generator
 // `scripts/generate-pack-reference.mjs` calls off this package's dist.
 export type {

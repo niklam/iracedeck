@@ -3848,6 +3848,125 @@ describe("bounded pending queue (issue #1185)", () => {
       });
     });
 
+    describe("the two accessors the engine was handed are read on their own", () => {
+      /** Passed for an accessor that keeps answering. */
+      const HEALTHY = Symbol("healthy");
+
+      /**
+       * An engine with a fire in flight and one waiting. Its accessors answer
+       * ("luca"; beeps on, ambience off) while that is set up — the fire path
+       * reads them too — and from then on throw what they were given.
+       */
+      function engineWith(voiceThrows: unknown, frameThrows: unknown): void {
+        let armed = false;
+        const accessor =
+          <T>(thrown: unknown, value: T) =>
+          (): T => {
+            if (armed && thrown !== HEALTHY) throw thrown;
+
+            return value;
+          };
+
+        _resetAudioScenarios();
+        engine = initializeAudioScenarios(
+          bus,
+          audio,
+          queueManifest,
+          mockLogger as never,
+          accessor<string | null>(voiceThrows, "luca"),
+          accessor<FrameOptions>(frameThrows, { beeps: true, ambience: false }),
+        );
+        holdBus();
+        define("a", WEIGHT.NORMAL);
+        engine.fire("q.a");
+        armed = true;
+
+        for (const level of [mockLogger.debug, mockLogger.info, mockLogger.warn, mockLogger.error]) level.mockClear();
+      }
+
+      /** The walk of the engine's own maps, as a healthy read reports it. */
+      const WALK = {
+        buses: [
+          {
+            bus: "Voice",
+            playingId: "q.busy",
+            active: { id: "q.busy", weight: WEIGHT.CRITICAL, opIndex: 0, opCount: 1 },
+            waiting: [{ id: "q.a" }],
+          },
+          { bus: "Background", playingId: null },
+          { bus: "Alerts", playingId: null },
+        ],
+      };
+
+      it("a throwing getFrameOptions is that field's error entry; the voice, the buses and the contracts are intact", () => {
+        engineWith(HEALTHY, new Error("the settings cache is not loaded"));
+
+        const state = engine.describeState();
+
+        expect(state.frameOptions).toStrictEqual({ error: "the settings cache is not loaded" });
+        expect(state).toMatchObject({ activeVoice: "luca", ...WALK });
+        expect(state.contracts).toEqual([
+          // A fire that only waits has not fired: no stamp.
+          { id: "q.a", enabled: true, lastFireAt: 0, scripted: false, triggerPending: false },
+          { id: "q.busy", enabled: true, lastFireAt: 1_000_000, scripted: false, triggerPending: false },
+        ]);
+        // Not `frameOptions()`, which logs the throw: a reader logs nothing.
+        expect(mockLogger.error).not.toHaveBeenCalled();
+        expect(JSON.parse(JSON.stringify(state))).toEqual(state);
+      });
+
+      it("a throwing getActiveVoice is an error entry, never null — null is 'no voice selected'", () => {
+        engineWith(new Error("the voice setting is unreadable"), HEALTHY);
+
+        const state = engine.describeState();
+
+        expect(state.activeVoice).toStrictEqual({ error: "the voice setting is unreadable" });
+        expect(state).toMatchObject({ frameOptions: { beeps: true, ambience: false }, ...WALK });
+        // Which contracts the voice scripts cannot be known without the
+        // voice: `null`, not a `false` that would read as "not scripted".
+        expect(state.contracts).toEqual([
+          { id: "q.a", enabled: true, lastFireAt: 0, scripted: null, triggerPending: false },
+          { id: "q.busy", enabled: true, lastFireAt: 1_000_000, scripted: null, triggerPending: false },
+        ]);
+        expect(mockLogger.error).not.toHaveBeenCalled();
+      });
+
+      it("both throwing still leaves the walk of the engine's own state", () => {
+        engineWith("voice", "frame");
+
+        expect(engine.describeState()).toMatchObject({
+          activeVoice: { error: "voice" },
+          frameOptions: { error: "frame" },
+          ...WALK,
+        });
+      });
+
+      it.each([
+        ["a blank string", "  ", "unknown error"],
+        ["nothing", undefined, "unknown error"],
+        [
+          "an object whose conversion throws",
+          {
+            get message(): string {
+              throw new Error("the getter threw");
+            },
+            toString(): string {
+              throw new Error("the conversion threw");
+            },
+          },
+          "unknown error",
+        ],
+        ["an Error with no message", new RangeError(""), "RangeError"],
+      ])("the reason is never empty when what is thrown is %s", (_label, thrown, reason) => {
+        engineWith(thrown, thrown);
+
+        const state = engine.describeState();
+
+        expect(state.activeVoice).toStrictEqual({ error: reason });
+        expect(state.frameOptions).toStrictEqual({ error: reason });
+      });
+    });
+
     it("lists the fire in flight under active and a deferred queueable fire under waiting", () => {
       holdBus();
       define("a", WEIGHT.NORMAL, { supersedeGroup: "penalty", maxQueueWaitMs: 30_000 });
