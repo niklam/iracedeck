@@ -40,6 +40,7 @@ import type { TelemetryData } from "@iracedeck/iracing-sdk";
 
 import type { TranslatorState } from "../state.js";
 import { type StallVisit, updateStallVisit } from "./stall-visit.js";
+import { type TireSide, zonesFromCarSides } from "./tire-zones.js";
 import type { EmitFn, PendingEvent } from "./types.js";
 
 type WearField = keyof TelemetryData & `${"LF" | "RF" | "LR" | "RR"}wear${"L" | "M" | "R"}`;
@@ -50,8 +51,7 @@ type CornerSource = {
   left: WearField;
   middle: WearField;
   right: WearField;
-  /** Which side of the car the tire sits on — decides which shoulder is the inside. */
-  side: "left" | "right";
+  side: TireSide;
 };
 
 /** In the tie-break order of the contract: lf, rf, lr, rr. */
@@ -70,10 +70,10 @@ const ZONES: readonly TireZone[] = ["inside", "middle", "outside"];
  * nothing trustworthy to report: any reading missing or non-finite, or all
  * twelve zero (a car with no wear model).
  *
- * The zones are named from the car's centreline: on the left-side tires the
- * sim's L is the outside shoulder and R the inside; on the right-side tires it
- * is the other way round. The capture confirms it — both fronts wear lowest on
- * the inside, the negative-camber signature.
+ * The zones are named from the car's centreline (`zonesFromCarSides`): on the
+ * left-side tires the sim's L is the outside shoulder and R the inside; on the
+ * right-side tires it is the other way round. The capture confirms it — both
+ * fronts wear lowest on the inside, the negative-camber signature.
  *
  * @internal Exported for testing.
  */
@@ -100,8 +100,7 @@ export function buildTireWearReport(telemetry: TelemetryData): TireWearReport | 
     const left = (telemetry[source.left] as number) * 100;
     const middle = (telemetry[source.middle] as number) * 100;
     const right = (telemetry[source.right] as number) * 100;
-    const byZone: Record<TireZone, number> =
-      source.side === "left" ? { inside: right, middle, outside: left } : { inside: left, middle, outside: right };
+    const byZone = zonesFromCarSides(source.side, left, middle, right);
 
     // Strictly lower only, so a tie keeps the zone earlier in ZONES.
     let zone: TireZone = ZONES[0];
