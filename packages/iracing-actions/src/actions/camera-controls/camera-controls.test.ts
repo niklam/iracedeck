@@ -18,6 +18,7 @@ import {
   CameraControls,
   CameraControlsSettingsFields,
   CameraGroupField,
+  CarNumberField,
   computeGridPositions,
   CycleIconModeField,
   DEFAULT_CAMERA_GROUPS,
@@ -29,8 +30,10 @@ import {
   getEnabledGroupNames,
   getNextSelectedGroup,
   MAX_CAMERA_GROUP,
+  normalizeCarNumber,
   parseGroupSubset,
   resolveBindingKey,
+  resolveSwitchCarNumberRaw,
   SUB_CAMERA_BINDING_KEYS,
 } from "./camera-controls.js";
 import { DialSettings } from "./camera-dial-surface.js";
@@ -134,6 +137,8 @@ vi.mock("@iracedeck/iracing-sdk", async (importOriginal) => {
     TrkLoc: actual.TrkLoc,
     getCameraGroupsFromSessionInfo: vi.fn(() => []),
     getCamerasInGroup: vi.fn(() => []),
+    // The real matcher: Switch by Car Number's tests run a roster through it (#1353).
+    getCarNumberRawByCarNumber: actual.getCarNumberRawByCarNumber,
     getCarNumberRawFromSessionInfo: vi.fn(() => null),
     getCarNumberFromSessionInfo: vi.fn(() => null),
     getAllCarNumbers: vi.fn(() => []),
@@ -2364,5 +2369,189 @@ describe("generateCameraSelectSvg (#959)", () => {
 
     expect(decoded).toContain("tv4-artwork");
     expect(decoded).toContain("MY CAM");
+  });
+});
+
+// Raw numbers follow irsdk_padCarNum: a number with leading zeros is its total
+// digit count times 1000 plus the number.
+const LEADING_ZERO_ROSTER = {
+  DriverInfo: {
+    Drivers: [
+      { CarIdx: 0, CarNumber: "0", CarNumberRaw: 0, CarIsPaceCar: 1 },
+      { CarIdx: 1, CarNumber: "7", CarNumberRaw: 7 },
+      { CarIdx: 2, CarNumber: "07", CarNumberRaw: 2007 },
+      { CarIdx: 3, CarNumber: "007", CarNumberRaw: 3007 },
+      { CarIdx: 4, CarNumber: "42", CarNumberRaw: 42 },
+    ],
+  },
+};
+
+describe("Switch by Car Number's stored value (#1353)", () => {
+  it("keeps the leading zeros of a typed number", () => {
+    expect(CarNumberField.parse("007")).toBe("007");
+    expect(CarNumberField.parse("07")).toBe("07");
+    expect(CarNumberField.parse("7")).toBe("7");
+    expect(CarNumberField.parse("0")).toBe("0");
+  });
+
+  it("reads a number saved by an older build as its digits", () => {
+    expect(CarNumberField.parse(7)).toBe("7");
+    expect(CarNumberField.parse(42)).toBe("42");
+    expect(CarNumberField.parse(0)).toBe("0");
+  });
+
+  it("defaults to 0 when nothing is stored", () => {
+    expect(CarNumberField.parse(undefined)).toBe("0");
+    expect(CarNumberField.parse("")).toBe("0");
+    expect(CarNumberField.parse(null)).toBe("0");
+  });
+
+  it("drops the non-digits the PI filter removes from the field", () => {
+    expect(normalizeCarNumber("07a")).toBe("07");
+    expect(normalizeCarNumber(" 12 ")).toBe("12");
+    expect(normalizeCarNumber("#007")).toBe("007");
+    expect(normalizeCarNumber("abc")).toBe("0");
+  });
+
+  it("reads a number that was never a valid setting as 0", () => {
+    expect(normalizeCarNumber(-3)).toBe("0");
+    expect(normalizeCarNumber(7.5)).toBe("0");
+    expect(normalizeCarNumber(Number.NaN)).toBe("0");
+    expect(normalizeCarNumber(true)).toBe("0");
+    expect(normalizeCarNumber({})).toBe("0");
+  });
+
+  // Through the action's REAL fields — the test file's CommonSettings mock
+  // parses by identity, so only this proves the field is wired in.
+  const ActionFields = z.object(CameraControlsSettingsFields);
+
+  it("parses through the action's fields without resetting the key's mode", () => {
+    expect(ActionFields.parse({}).carNumber).toBe("0");
+    expect(ActionFields.parse({ target: "switch-by-car-number", carNumber: "007" })).toMatchObject({
+      target: "switch-by-car-number",
+      carNumber: "007",
+    });
+    expect(ActionFields.parse({ target: "switch-by-car-number", carNumber: 7 })).toMatchObject({
+      target: "switch-by-car-number",
+      carNumber: "7",
+    });
+    expect(ActionFields.parse({ target: "switch-by-car-number", carNumber: -1 })).toMatchObject({
+      target: "switch-by-car-number",
+      carNumber: "0",
+    });
+  });
+
+  it("is read back as the old integer by a build from before the change", () => {
+    // The schema this field replaced: a downgrade must not fail the parse.
+    const legacy = z.coerce.number().int().min(0).default(0);
+
+    expect(legacy.parse(CarNumberField.parse("007"))).toBe(7);
+    expect(legacy.parse(CarNumberField.parse("42"))).toBe(42);
+    expect(legacy.parse(CarNumberField.parse(undefined))).toBe(0);
+  });
+});
+
+describe("resolveSwitchCarNumberRaw (#1353)", () => {
+  it("sends the roster's raw number, so 7, 07 and 007 are three cars", () => {
+    expect(resolveSwitchCarNumberRaw(LEADING_ZERO_ROSTER, "7")).toBe(7);
+    expect(resolveSwitchCarNumberRaw(LEADING_ZERO_ROSTER, "07")).toBe(2007);
+    expect(resolveSwitchCarNumberRaw(LEADING_ZERO_ROSTER, "007")).toBe(3007);
+    expect(resolveSwitchCarNumberRaw(LEADING_ZERO_ROSTER, "0")).toBe(0);
+  });
+
+  it("sends a number without a leading zero as an integer when the roster does not list it", () => {
+    expect(resolveSwitchCarNumberRaw(LEADING_ZERO_ROSTER, "99")).toBe(99);
+    expect(resolveSwitchCarNumberRaw(null, "7")).toBe(7);
+    expect(resolveSwitchCarNumberRaw(undefined, "0")).toBe(0);
+    // A raw number someone set by hand keeps working as it did.
+    expect(resolveSwitchCarNumberRaw(LEADING_ZERO_ROSTER, "2007")).toBe(2007);
+  });
+
+  it("sends nothing for a leading-zero number the roster does not list", () => {
+    expect(resolveSwitchCarNumberRaw(LEADING_ZERO_ROSTER, "042")).toBeNull();
+    expect(resolveSwitchCarNumberRaw(LEADING_ZERO_ROSTER, "00")).toBeNull();
+    expect(resolveSwitchCarNumberRaw(null, "07")).toBeNull();
+    expect(resolveSwitchCarNumberRaw({}, "007")).toBeNull();
+  });
+
+  it("does not send the plain integer of a leading-zero number when only that integer is in the session", () => {
+    const onlySeven = { DriverInfo: { Drivers: [{ CarIdx: 1, CarNumber: "7", CarNumberRaw: 7 }] } };
+
+    expect(resolveSwitchCarNumberRaw(onlySeven, "07")).toBeNull();
+    expect(resolveSwitchCarNumberRaw(onlySeven, "7")).toBe(7);
+  });
+
+  it("sends nothing for an empty number", () => {
+    expect(resolveSwitchCarNumberRaw(LEADING_ZERO_ROSTER, "")).toBeNull();
+  });
+});
+
+describe("Switch by Car Number press (#1353)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function setup(sessionInfo: unknown): CameraControls {
+    const action = new CameraControls();
+    sdkOf(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 4, CamGroupNumber: 9, CamCameraNumber: 2 });
+    sdkOf(action).getSessionInfo.mockReturnValue(sessionInfo);
+
+    return action;
+  }
+
+  // The stored value goes through the real field, as it does in the plugin.
+  async function press(action: CameraControls, stored: unknown): Promise<void> {
+    await action.onKeyDown({
+      action: { id: "k1" },
+      payload: { settings: { target: "switch-by-car-number", carNumber: CarNumberField.parse(stored) } },
+    } as never);
+  }
+
+  it.each([
+    ["7", 7],
+    ["07", 2007],
+    ["007", 3007],
+    ["42", 42],
+  ])("a key set to %s switches to that car, keeping the camera", async (stored, carNumberRaw) => {
+    const action = setup(LEADING_ZERO_ROSTER);
+
+    await press(action, stored);
+
+    expect(mockCamera.switchNum).toHaveBeenCalledTimes(1);
+    expect(mockCamera.switchNum).toHaveBeenCalledWith(carNumberRaw, 9, 2);
+  });
+
+  it("a key saved as an integer before the change switches to the same car", async () => {
+    const action = setup(LEADING_ZERO_ROSTER);
+
+    await press(action, 7);
+
+    expect(mockCamera.switchNum).toHaveBeenCalledWith(7, 9, 2);
+  });
+
+  it("sends the integer when the session info has not arrived", async () => {
+    const action = setup(null);
+
+    await press(action, "42");
+
+    expect(mockCamera.switchNum).toHaveBeenCalledWith(42, 9, 2);
+  });
+
+  it("sends nothing, and says so, for a leading-zero number that is not in the session", async () => {
+    const action = setup(LEADING_ZERO_ROSTER);
+
+    await press(action, "042");
+
+    expect(mockCamera.switchNum).not.toHaveBeenCalled();
+    expect(action["logger"].info).toHaveBeenCalledWith("Switch by car number skipped: car not in this session");
+  });
+
+  it("does nothing without telemetry", async () => {
+    const action = setup(LEADING_ZERO_ROSTER);
+    sdkOf(action).getCurrentTelemetry.mockReturnValue(undefined);
+
+    await press(action, "07");
+
+    expect(mockCamera.switchNum).not.toHaveBeenCalled();
   });
 });
