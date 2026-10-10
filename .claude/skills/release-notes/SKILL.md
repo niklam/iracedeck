@@ -29,7 +29,7 @@ Two format rules carry the most weight:
   git tag --sort=-version:refname | head
   git log --oneline v<prev>..master
   ```
-- **The in-development notes are the curated list of user-facing changes** — each fragment already collapses a feature and its follow-up fixes into one bullet (see `@.claude/rules/changelog.md`). Use them as the spine, in the order the release will print them: category, then `weight` descending (higher is a headline change, 50 ordinary). Cross-check it against the commit list so nothing user-facing is missing and nothing internal sneaks in.
+- **The in-development notes are the curated list of user-facing changes** — each fragment already collapses a feature and its follow-up fixes into one bullet (see `.claude/rules/changelog.md`). Use them as the spine, in the order the release will print them: category, then `weight` descending (higher is a headline change, 50 ordinary). Cross-check it against the commit list so nothing user-facing is missing and nothing internal sneaks in.
 
 ### 2. Separate user-facing from internal
 
