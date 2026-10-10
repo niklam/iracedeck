@@ -1528,6 +1528,8 @@ export function readSimState(): SimStateSnapshot {
 
   return buildSimState({
     telemetry,
+    // The read `handleTick`'s replay guard makes (#1324), taken at the press.
+    replay: self.controller.getReplayState(),
     fuel: {
       windowLaps: FUEL_LAPS_LEFT_WINDOW_LAPS,
       stats: fuelLapsLeftStats(self),

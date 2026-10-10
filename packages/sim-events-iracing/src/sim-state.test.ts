@@ -10,8 +10,10 @@
 import { _resetEventBus, getEventBus, initializeEventBus, type SimEventOf } from "@iracedeck/event-bus";
 import {
   Flags,
+  initialReplayState,
   IRSDK_UNLIMITED_LAPS,
   IRSDK_UNLIMITED_TIME,
+  ReplayStateTracker,
   type SDKController,
   SessionState,
   type TelemetryCallback,
@@ -64,6 +66,10 @@ type MockController = SDKController & {
 function createMockController(): MockController {
   let callback: TelemetryCallback | null = null;
   let sessionInfo: Record<string, unknown> | null = null;
+  // The debounced replay state the translator reads (#1324): the SDK's own
+  // tracker, stepped on every tick before the callback and reset on a
+  // disconnect tick, as the real controller does.
+  const replayState = new ReplayStateTracker();
 
   const controller = {
     subscribe: (_id: string, cb: TelemetryCallback) => {
@@ -74,9 +80,17 @@ function createMockController(): MockController {
       callback = null;
     },
     getSessionInfo: () => sessionInfo,
+    getReplayState: (nowMs: number = Date.now()) => replayState.read(nowMs),
+    noteReplayLeftForLive: (nowMs: number = Date.now()) => replayState.noteLeftForLive(nowMs),
   } as unknown as MockController;
 
   controller.__tick = (telemetry, isConnected = true) => {
+    if (telemetry) {
+      replayState.step(telemetry, sessionInfo, Date.now());
+    } else {
+      replayState.reset();
+    }
+
     callback?.(telemetry, isConnected);
   };
   controller.__setSessionInfo = (info) => {
@@ -212,6 +226,7 @@ function validLap(lapNumber: number, fuelUsed: number, lapTime: number): FuelLap
 function parts(overrides: Partial<SimStateParts> = {}): SimStateParts {
   return {
     telemetry: null,
+    replay: initialReplayState(),
     fuel: {
       windowLaps: FUEL_LAPS_LEFT_WINDOW_LAPS,
       stats: { lastLap: null, avg: null, avgLapTime: null, samples: 0 },
@@ -615,6 +630,17 @@ describe("readSimState — a replay-wiped translator", () => {
     expect(wiped.fuel.stats.samples).toBe(2);
     expect(wiped.fuel.tracker.resumePartial).toBe(true);
     expect(() => JSON.stringify(toPlain(wiped))).not.toThrow();
+
+    // A live tick inside the exit grace (#1324): the tick's own bit is off, the
+    // debounced state the translator's guard reads still says replay, and that
+    // is the one the reader reports.
+    controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.33, SessionTime: 193, FuelLevel: 59, ...field(0.33) }));
+
+    const inGrace = read();
+
+    expect(inGrace.raw.replay.tickReplayPlaying).toBe(false);
+    expect(inGrace.inReplay).toBe(true);
+    expect(inGrace.raw.replay.inReplay).toBe(true);
   });
 });
 

@@ -25,7 +25,7 @@
  *
  * Spec: `docs/superpowers/specs/2026-10-10-issue-1387-snapshot-plugin-state.md`.
  */
-import type { TelemetryData } from "@iracedeck/iracing-sdk";
+import type { ReplayState, TelemetryData } from "@iracedeck/iracing-sdk";
 
 import type { CautionLineup } from "./diff/caution-lineup.js";
 import {
@@ -105,9 +105,12 @@ export type SimStateSnapshot =
        */
       sessionTick: number | null;
       /**
-       * The latest telemetry is a replay-mode tick (`IsReplayPlaying`), so the
-       * translator's replay guard returned before any diff ran: the state
-       * below is the wiped one, not a reading of that tick.
+       * A replay is on screen by the controller's debounced replay state
+       * (#1324), the read the translator's replay guard makes: while it holds,
+       * the guard returns before any diff runs, so the state below is the
+       * wiped one, not a reading of the latest tick. It is read at the press,
+       * and the exit grace runs on wall time, so it can have just expired
+       * since the last tick; `raw.replay` holds the whole state.
        */
       inReplay: boolean;
       fuel: {
@@ -139,12 +142,14 @@ export type SimStateSnapshot =
       opponentFlags: LiveOpponentFlags | null;
       caution: SimCautionState;
       session: SimSessionState;
-      raw: { state: TranslatorState; instance: SimInstanceFlags };
+      raw: { state: TranslatorState; instance: SimInstanceFlags; replay: ReplayState };
     };
 
 /** What `readSimState()` gathers from the translator instance for {@link buildSimState}. */
 export type SimStateParts = {
   telemetry: TelemetryData | null;
+  /** The controller's debounced replay state (#1324), read at the press. */
+  replay: ReplayState;
   fuel: {
     windowLaps: number;
     /** The stats the laps-of-fuel-left diff reads, over `windowLaps`. */
@@ -209,7 +214,7 @@ export function buildSimState(parts: SimStateParts): SimStateSnapshot {
   return {
     initialized: true,
     sessionTick: typeof sessionTick === "number" ? sessionTick : null,
-    inReplay: telemetry?.IsReplayPlaying === true,
+    inReplay: parts.replay.inReplay,
     fuel: {
       windowLaps: parts.fuel.windowLaps,
       stats: parts.fuel.stats,
@@ -229,7 +234,7 @@ export function buildSimState(parts: SimStateParts): SimStateSnapshot {
     opponentFlags: parts.opponentFlags,
     caution: parts.caution,
     session: parts.session,
-    raw: { state, instance: parts.instance },
+    raw: { state, instance: parts.instance, replay: parts.replay },
   };
 }
 
