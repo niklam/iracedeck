@@ -97,6 +97,9 @@ export { setWarning, clearWarning, reconcileWarnings } from "./pi-warnings.js";
 // Settings keys that describe THIS RUN and are never persisted (#1014).
 export { RUN_SCOPED_SETTING_KEYS, stripRunScopedKeys } from "./run-scoped-settings.js";
 
+// The settings as the Telemetry Snapshot records them (issue #1387)
+export { readSettingsForSnapshot, SNAPSHOT_KEPT_INTERNAL_KEYS } from "./snapshot-settings.js";
+
 // Setup-name mismatch warning (issue #625)
 export {
   compileSetupWarningPattern,
