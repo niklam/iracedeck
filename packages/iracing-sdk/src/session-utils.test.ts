@@ -6,6 +6,7 @@ import {
   getCameraGroupsFromSessionInfo,
   getCamerasInGroup,
   getCarNumberFromSessionInfo,
+  getCarNumberRawByCarNumber,
   getCarNumberRawFromSessionInfo,
   getPlayerCarNumberFromSessionInfo,
   isReplayOnlySession,
@@ -35,7 +36,7 @@ describe("getPlayerCarNumberFromSessionInfo", () => {
         DriverCarIdx: 2,
         Drivers: [
           { CarIdx: 1, CarNumber: "42", CarNumberRaw: 42 },
-          { CarIdx: 2, CarNumber: "07", CarNumberRaw: 3007 },
+          { CarIdx: 2, CarNumber: "07", CarNumberRaw: 2007 },
         ],
       },
     };
@@ -113,6 +114,71 @@ describe("classifyCarNumberTarget", () => {
   });
 });
 
+describe("getCarNumberRawByCarNumber (#1353)", () => {
+  // Raw values follow irsdk_padCarNum: a number with leading zeros is its
+  // total digit count times 1000 plus the number.
+  const sessionInfo = {
+    DriverInfo: {
+      Drivers: [
+        { CarIdx: 0, CarNumber: "0", CarNumberRaw: 0, CarIsPaceCar: 1 },
+        { CarIdx: 1, CarNumber: "7", CarNumberRaw: 7 },
+        { CarIdx: 2, CarNumber: "07", CarNumberRaw: 2007 },
+        { CarIdx: 3, CarNumber: "007", CarNumberRaw: 3007 },
+        { CarIdx: 4, CarNumber: "42", CarNumberRaw: 42 },
+      ],
+    },
+  };
+
+  it("returns the roster's raw number for a number without leading zeros", () => {
+    expect(getCarNumberRawByCarNumber(sessionInfo, "42")).toBe(42);
+    expect(getCarNumberRawByCarNumber(sessionInfo, "0")).toBe(0);
+  });
+
+  it("tells 7, 07 and 007 apart when all three are in the session", () => {
+    expect(getCarNumberRawByCarNumber(sessionInfo, "7")).toBe(7);
+    expect(getCarNumberRawByCarNumber(sessionInfo, "07")).toBe(2007);
+    expect(getCarNumberRawByCarNumber(sessionInfo, "007")).toBe(3007);
+  });
+
+  it("returns null for a number that is not in the session", () => {
+    expect(getCarNumberRawByCarNumber(sessionInfo, "99")).toBeNull();
+    expect(getCarNumberRawByCarNumber(sessionInfo, "042")).toBeNull();
+    expect(getCarNumberRawByCarNumber(sessionInfo, "0007")).toBeNull();
+  });
+
+  it("cleans non-digits from the number before matching", () => {
+    expect(getCarNumberRawByCarNumber(sessionInfo, "#07")).toBe(2007);
+  });
+
+  it("returns null for an empty number and for missing session info", () => {
+    expect(getCarNumberRawByCarNumber(sessionInfo, "")).toBeNull();
+    expect(getCarNumberRawByCarNumber(sessionInfo, "#")).toBeNull();
+    expect(getCarNumberRawByCarNumber(null, "7")).toBeNull();
+    expect(getCarNumberRawByCarNumber({}, "7")).toBeNull();
+    expect(getCarNumberRawByCarNumber({ DriverInfo: {} }, "7")).toBeNull();
+  });
+
+  it("matches an unquoted numeric CarNumber and skips a blank one (#869)", () => {
+    const info = {
+      DriverInfo: {
+        Drivers: [
+          { CarIdx: 0, CarNumber: null, CarNumberRaw: 0 },
+          { CarIdx: 1, CarNumber: 42, CarNumberRaw: 42 },
+        ],
+      },
+    };
+
+    expect(getCarNumberRawByCarNumber(info, "42")).toBe(42);
+    expect(getCarNumberRawByCarNumber(info, "0")).toBeNull();
+  });
+
+  it("returns null when the matching entry carries no raw number", () => {
+    const info = { DriverInfo: { Drivers: [{ CarIdx: 1, CarNumber: "42" }] } };
+
+    expect(getCarNumberRawByCarNumber(info, "42")).toBeNull();
+  });
+});
+
 describe("getCarNumberFromSessionInfo", () => {
   const sessionInfo = {
     DriverInfo: {
@@ -137,7 +203,7 @@ describe("getCarNumberFromSessionInfo", () => {
       DriverInfo: {
         Drivers: [
           { CarIdx: 0, CarNumber: "070", CarNumberRaw: 3070 },
-          { CarIdx: 1, CarNumber: "007", CarNumberRaw: 2007 },
+          { CarIdx: 1, CarNumber: "007", CarNumberRaw: 3007 },
         ],
       },
     };

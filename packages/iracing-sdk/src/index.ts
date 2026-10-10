@@ -227,6 +227,7 @@ export {
   getCameraGroupsFromSessionInfo,
   getCamerasInGroup,
   getCarNumberFromSessionInfo,
+  getCarNumberRawByCarNumber,
   getCarNumberRawFromSessionInfo,
   getPlayerCarNumberFromSessionInfo,
   getAllCarNumbers,

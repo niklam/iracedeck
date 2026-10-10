@@ -73,17 +73,39 @@ export function getPlayerCarNumberFromSessionInfo(sessionInfo: unknown): string 
  * `getCarNumberFromSessionInfo` (`"04"` and `"4"` are distinct numbers).
  */
 export function classifyCarNumberTarget(sessionInfo: unknown, carNumber: string): CarNumberTargetClass {
-  const target = carNumber.replace(/[^0-9]/g, "");
-
-  if (!target) return "unknown";
-
-  const driverInfo = (sessionInfo as Record<string, unknown>)?.DriverInfo as Record<string, unknown> | undefined;
-  const drivers = driverInfo?.Drivers as DriverEntry[] | undefined;
-  const driver = drivers?.find((d) => cleanCarNumber(d.CarNumber) === target);
+  const driver = findDriverByCarNumber(sessionInfo, carNumber);
 
   if (!driver) return "unknown";
 
   return driver.CarIsAI === 1 || driver.CarIsPaceCar === 1 ? "ai" : "user";
+}
+
+/**
+ * The `CarNumberRaw` of the car whose display number is `carNumber`, or `null`
+ * when the session has no such car. `CarNumberRaw` is what iRacing's camera
+ * broadcast takes, and it differs from the display number when that has
+ * leading zeros (`irsdk_padCarNum`: `07` is 2007, `007` is 3007), so a number
+ * typed by the user is looked up here rather than sent as an integer (#1353).
+ *
+ * Matching is `classifyCarNumberTarget`'s: digit-cleaned, leading zeros kept,
+ * so `"07"` and `"7"` are different cars.
+ */
+export function getCarNumberRawByCarNumber(sessionInfo: unknown, carNumber: string): number | null {
+  const raw = findDriverByCarNumber(sessionInfo, carNumber)?.CarNumberRaw;
+
+  return typeof raw === "number" ? raw : null;
+}
+
+/** The roster entry whose digit-cleaned `CarNumber` equals the digits of `carNumber`, leading zeros included. */
+function findDriverByCarNumber(sessionInfo: unknown, carNumber: string): DriverEntry | undefined {
+  const target = carNumber.replace(/[^0-9]/g, "");
+
+  if (!target) return undefined;
+
+  const driverInfo = (sessionInfo as Record<string, unknown>)?.DriverInfo as Record<string, unknown> | undefined;
+  const drivers = driverInfo?.Drivers as DriverEntry[] | undefined;
+
+  return drivers?.find((d) => cleanCarNumber(d.CarNumber) === target);
 }
 
 /**
