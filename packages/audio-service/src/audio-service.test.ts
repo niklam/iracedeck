@@ -1144,6 +1144,7 @@ describe("AudioService", () => {
       const STARTED = "Audio device started";
       const STOPPED = "Audio device stopped (idle)";
       const HOLD_FAILED = "Audio device could not be held open; sounds will open it on demand";
+      const DEVICE_LOST = "Audio device was lost; the next sound reopens it";
       const PLAY_FAILED = "Failed to start audio playback device";
 
       /** How often the service has logged exactly `line` at `level` since the mocks were last cleared. */
@@ -1164,13 +1165,86 @@ describe("AudioService", () => {
         expect(native.playOnChannel).not.toHaveBeenCalled();
       });
 
-      it("a sound played while held does not start the device a second time", () => {
+      it("a sound played while held does not open the device a second time", () => {
         const { native } = createServiceWithEndCallbacks();
         getAudio().hold("session");
 
         expect(getAudio().playOnChannel(AudioChannel.Voice, "/msg.mp3")).toBe(true);
 
+        // The native layer is asked again, because a held device can go away
+        // with nothing telling this layer; it reports the device running, so
+        // nothing is reopened.
+        expect(native.startAudioEngine).toHaveBeenCalledTimes(2);
+        expect(logged("info", STARTED)).toBe(1);
+        expect(native.stopAudioEngine).not.toHaveBeenCalled();
+      });
+
+      it("on demand a sound within a burst does not ask the native layer again", () => {
+        const { native } = createServiceWithEndCallbacks();
+
+        getAudio().playOnChannel(AudioChannel.Voice, "/a.mp3");
+        getAudio().playOnChannel(AudioChannel.SFX, "/b.mp3");
+
         expect(native.startAudioEngine).toHaveBeenCalledTimes(1);
+      });
+
+      it("a held device that went away is noticed at the next sound, and the sound after that reopens it", () => {
+        const { native, endCallbacks } = createServiceWithEndCallbacks();
+        getAudio().hold("session");
+
+        // The selected device disappears: the native layer cannot start it,
+        // and has torn its engine down.
+        vi.mocked(native.startAudioEngine).mockReturnValueOnce(false);
+
+        expect(getAudio().playOnChannel(AudioChannel.Voice, "/lost.mp3")).toBe(false);
+        expect(logged("warn", DEVICE_LOST)).toBe(1);
+        expect(logged("error", PLAY_FAILED)).toBe(1);
+        expect(logged("warn", HOLD_FAILED)).toBe(0);
+
+        expect(getAudio().playOnChannel(AudioChannel.Voice, "/next.mp3")).toBe(true);
+        expect(logged("info", STARTED)).toBe(2);
+        // Still the same hold: it is not announced a second time.
+        expect(logged("info", HELD)).toBe(1);
+
+        // And still held: the reopened device stays up through the silence.
+        endCallbacks[AudioChannel.Voice]();
+        vi.advanceTimersByTime(IDLE_STOP_DELAY_MS * 100);
+
+        expect(native.stopAudioEngine).not.toHaveBeenCalled();
+        expect(logged("warn", DEVICE_LOST)).toBe(1);
+      });
+
+      it("drains every channel when a held device is lost, so the idle stop can arm after the release", () => {
+        const { native, endCallbacks } = createServiceWithEndCallbacks();
+        const completed: AudioChannel[] = [];
+        getAudio().setPlaybackObserver({ onComplete: (channel) => completed.push(channel) });
+        getAudio().hold("session");
+        // A loop whose engine is about to go: it will never report an end.
+        getAudio().playOnChannel(AudioChannel.Ambient, "/bed.mp3", true);
+
+        vi.mocked(native.startAudioEngine).mockReturnValueOnce(false);
+        getAudio().playOnChannel(AudioChannel.Voice, "/lost.mp3");
+
+        expect(completed).toEqual([AudioChannel.Ambient]);
+
+        getAudio().playOnChannel(AudioChannel.Voice, "/next.mp3");
+        endCallbacks[AudioChannel.Voice]();
+        getAudio().release("session");
+        vi.advanceTimersByTime(IDLE_STOP_DELAY_MS);
+
+        expect(native.stopAudioEngine).toHaveBeenCalledTimes(1);
+      });
+
+      it("a second reason arriving on a lost device says so and warns that it could not be held", () => {
+        const { native } = createServiceWithEndCallbacks();
+        getAudio().hold("session");
+        vi.mocked(native.startAudioEngine).mockReturnValueOnce(false);
+
+        getAudio().hold("preview");
+
+        expect(logged("warn", DEVICE_LOST)).toBe(1);
+        expect(logged("warn", HOLD_FAILED)).toBe(1);
+        expect(mockLogger.error).not.toHaveBeenCalled();
       });
 
       it("hold cancels a pending idle stop", () => {
@@ -1183,8 +1257,8 @@ describe("AudioService", () => {
         vi.advanceTimersByTime(IDLE_STOP_DELAY_MS * 100);
 
         expect(native.stopAudioEngine).not.toHaveBeenCalled();
-        // The device the clip opened is the one being held — no second start.
-        expect(native.startAudioEngine).toHaveBeenCalledTimes(1);
+        // The device the clip opened is the one being held — no second open.
+        expect(logged("info", STARTED)).toBe(1);
       });
 
       it("arms no idle stop while held, however long the channels stay idle", () => {
@@ -1208,7 +1282,7 @@ describe("AudioService", () => {
         vi.advanceTimersByTime(IDLE_STOP_DELAY_MS * 100);
 
         expect(native.stopAudioEngine).not.toHaveBeenCalled();
-        expect(native.startAudioEngine).toHaveBeenCalledTimes(1);
+        expect(logged("info", STARTED)).toBe(1);
       });
 
       it("arms no idle stop when the channels are stopped by hand while held", () => {
@@ -1291,7 +1365,7 @@ describe("AudioService", () => {
         expect(native.stopAudioEngine).toHaveBeenCalledTimes(1);
         expect(logged("info", RELEASED)).toBe(1);
         // One device open served both holders.
-        expect(native.startAudioEngine).toHaveBeenCalledTimes(1);
+        expect(logged("info", STARTED)).toBe(1);
         expect(logged("info", HELD)).toBe(1);
       });
 
@@ -1480,7 +1554,7 @@ describe("AudioService", () => {
         getAudio().playOnChannel(AudioChannel.Voice, "/after-switch.mp3");
 
         expect(native.stopAudioEngine).toHaveBeenCalledTimes(1);
-        expect(native.startAudioEngine).toHaveBeenCalledTimes(2);
+        expect(logged("info", STARTED)).toBe(2);
       });
 
       it("a device switch by id while held reopens the device at once, on the new device", () => {
@@ -1503,17 +1577,38 @@ describe("AudioService", () => {
         expect(native.stopAudioEngine).toHaveBeenCalledTimes(1);
       });
 
-      it("a device switch by id while held reopens the device even when the id is not found", () => {
+      it("a rejected id while held leaves the reopen to the caller's fallback: one open, not two", () => {
         const { native } = createServiceWithEndCallbacks();
         vi.mocked(native.setAudioDeviceById).mockReturnValue(false);
         getAudio().hold("session");
 
         expect(getAudio().setAudioDeviceById("STALE-ID")).toBe(false);
 
-        // The service closed the device either way, so held has to reopen it.
+        // Closed like any switch, and not reopened on the selection the caller
+        // is moving away from.
         expect(native.stopAudioEngine).toHaveBeenCalledTimes(1);
-        expect(native.startAudioEngine).toHaveBeenCalledTimes(2);
+        expect(native.startAudioEngine).toHaveBeenCalledTimes(1);
         expect(logged("warn", HOLD_FAILED)).toBe(0);
+
+        // The fallback every caller makes opens it, once, on the default.
+        expect(getAudio().setAudioDevice(-1)).toBe(true);
+
+        expect(native.startAudioEngine).toHaveBeenCalledTimes(2);
+        expect(logged("info", STARTED)).toBe(2);
+      });
+
+      it("a rejected id with no fallback gets the device at the next sound, and the hold keeps it", () => {
+        const { native, endCallbacks } = createServiceWithEndCallbacks();
+        vi.mocked(native.setAudioDeviceById).mockReturnValue(false);
+        getAudio().hold("session");
+        getAudio().setAudioDeviceById("STALE-ID");
+
+        expect(getAudio().playOnChannel(AudioChannel.Voice, "/msg.mp3")).toBe(true);
+        endCallbacks[AudioChannel.Voice]();
+        vi.advanceTimersByTime(IDLE_STOP_DELAY_MS * 100);
+
+        expect(logged("info", STARTED)).toBe(2);
+        expect(native.stopAudioEngine).toHaveBeenCalledTimes(1);
       });
 
       it("a refused device switch while held reopens the device too", () => {

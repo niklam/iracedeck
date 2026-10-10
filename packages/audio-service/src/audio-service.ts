@@ -336,8 +336,10 @@ export interface IAudioService {
    * Switch to a device looked up by its stable `id` from
    * {@link getAudioDevices}. Use this for any persisted selection — `id`
    * survives device-list reordering, replug, and OS audio reconfiguration.
-   * Returns false if the id isn't in the current enumeration. Closes and
-   * reopens the device as {@link setAudioDevice} does.
+   * Returns false if the id isn't in the current enumeration. Closes the
+   * device as {@link setAudioDevice} does, and reopens it at once while a
+   * {@link hold} is active — but only for an id it accepted, since a caller
+   * that falls back to the system default on false reopens it there.
    */
   setAudioDeviceById(deviceId: string): boolean;
 
@@ -983,8 +985,13 @@ class AudioService implements IAudioService {
       this.logger.debug(`Device id: ${deviceId}`);
     }
 
-    // Also after a rejected id — see `reopenIfHeld`.
-    this.reopenIfHeld();
+    // Not after a rejected id: the native layer still remembers the previous
+    // selection, so reopening here would open the device the caller is
+    // moving away from, and the caller's fallback (`setAudioDevice(-1)`)
+    // would then close it and open another — two driver initialisations for
+    // one change. A caller that does not fall back gets the device at the
+    // next sound, and the hold keeps it open from there.
+    if (ok) this.reopenIfHeld();
 
     return ok;
   }
@@ -993,11 +1000,8 @@ class AudioService implements IAudioService {
    * Second half of a device switch (#1347). The switch has just closed the
    * device; while held it is opened again at once, on whatever selection the
    * native layer now remembers, rather than staying closed until the next
-   * sound. Run whether or not the switch succeeded, because the teardown
-   * above happened either way and "held" has to keep meaning "open": after
-   * a refused switch the native layer still has its previous selection, and
-   * the device reopens on that. On demand this does nothing — the device
-   * stays closed until the next play, as it always has (#849).
+   * sound. On demand this does nothing — the device stays closed until the
+   * next play, as it always has (#849).
    */
   private reopenIfHeld(): void {
     if (this.holds.size > 0) this.startHeldDevice();
@@ -1047,20 +1051,50 @@ class AudioService implements IAudioService {
    * what it costs differs: a sound that did not play, or a device that will
    * open at the next sound instead of now.
    *
+   * On demand `deviceRunning` is trusted: the device lives for one burst of
+   * sounds and the next burst creates it afresh, falling back to the system
+   * default when the selected device has gone. A held device (#1347) lives
+   * for a whole session, so the flag alone would go stale: a selected headset
+   * that powers off stops the native device with nothing telling this layer
+   * (only a default-device change is rerouted), and every later sound would
+   * be loaded onto a stopped device, never play and never end. So while held
+   * the native layer is asked at every start. Its start is idempotent — a
+   * running device reports success — and when it cannot start the device it
+   * tears the engine down, which is what lets the next start fall back.
+   *
    * @returns true when the device is running after the call
    */
   private startDevice(): boolean {
     this.cancelIdleStop();
 
-    if (this.deviceRunning) return true;
+    if (this.deviceRunning && this.holds.size === 0) return true;
 
-    if (!this.native.startAudioEngine()) return false;
+    if (!this.native.startAudioEngine()) {
+      if (this.deviceRunning) this.handleDeviceLost();
+
+      return false;
+    }
+
+    if (this.deviceRunning) return true;
 
     this.deviceRunning = true;
     this.logger.info("Audio device started");
     this.announceHeldOpen();
 
     return true;
+  }
+
+  /**
+   * A device this layer believed was running could not be started: it went
+   * away underneath a hold (#1347), and the native layer has torn the engine
+   * down with whatever sounds it held. Those sounds will never report an
+   * end, so every channel is drained here — otherwise one would stay active
+   * for good, and after the release the idle stop could never arm again.
+   */
+  private handleDeviceLost(): void {
+    this.deviceRunning = false;
+    this.logger.warn("Audio device was lost; the next sound reopens it");
+    this.stopAllChannels();
   }
 
   /**
