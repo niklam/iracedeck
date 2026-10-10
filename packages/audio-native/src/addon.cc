@@ -5,23 +5,28 @@
  * Provides a 4-channel mixer used by Pit Engineer and other audio actions.
  */
 
+#include <chrono>
+#include <condition_variable>
 #include <cstring>
 #include <mutex>
 #include <napi.h>
 #include <string>
+#include <thread>
 
 #define MINIAUDIO_IMPLEMENTATION
 #include "miniaudio.h"
 
-// The Core Audio session API, for naming our session in the Windows Volume
-// Mixer (#1253). miniaudio declares its own `ma_`-prefixed COM interfaces and
-// never includes these headers, so including them after it does not clash.
-// The same guard covers the reroute notification plumbing (g_rerouteTSFN and
-// the device-rerouted callback, #1330): off it, both are no-ops.
+// The Core Audio device and session APIs, for naming our session in the
+// Windows Volume Mixer (#1253, #1411). miniaudio declares its own
+// `ma_`-prefixed COM interfaces and never includes these headers, so including
+// them after it does not clash. The same guard covers the reroute notification
+// plumbing (g_rerouteTSFN and the device-rerouted callback, #1330): off it,
+// all of it is a no-op.
 #if defined(_WIN32) && defined(MA_SUPPORT_WASAPI)
 #define IRD_SESSION_IDENTITY_SUPPORTED 1
 #include <audioclient.h>
 #include <audiopolicy.h>
+#include <mmdeviceapi.h>
 #endif
 
 // ============================================================================
@@ -131,38 +136,94 @@ static ma_device_id g_selectedDeviceId = {};
 static bool g_useSelectedDevice = false;
 
 // ============================================================================
-// Audio session identity (#1253)
+// Audio session identity (#1253, #1411)
 // ============================================================================
 //
 // Windows' Volume Mixer labels a session with the name and icon its owner set,
-// falling back to the executable's (the deck host's node.exe — "Node"). We set
-// ours on the playback IAudioClient's session after every engine creation and
-// after every reroute: a session belongs to one endpoint, and the IAudioClient
-// miniaudio opens on the new endpoint carries an unnamed one.
+// falling back to the executable's (the deck host's node.exe — "Node"). The
+// stream miniaudio opens passes no session GUID, so it is in our process's
+// default session on its endpoint, and that session is reachable without the
+// stream's IAudioClient: an IMMDeviceEnumerator of our own, the endpoint's
+// IMMDevice, its IAudioSessionManager, GetAudioSessionControl(NULL, 0). We name
+// it after every engine creation and after every reroute — a session belongs
+// to one endpoint, so the stream miniaudio opens on a new default device is in
+// an unnamed one.
 //
-// Threading: the identity strings and applySessionIdentity are touched on the
-// JS thread only. miniaudio fires the reroute notification synchronously from
-// its IMMNotificationClient handler while it holds its reroute lock, and
-// releasing an IAudioClient there deadlocks (see ma_device_reinit__wasapi), so
-// the notification callback does no COM work and does not touch the device: it
-// only posts to the JS thread through g_rerouteTSFN, whose handler names the
-// session of whatever engine exists by then. That also means teardownEngine
-// (on the JS thread) can never free a device the handler is still reading.
+// Nothing of ours calls into a COM object miniaudio owns (#1411). Before that
+// issue the name went through the playback IAudioClient's GetService, on the
+// JS thread, and a default-device change while the stream was open froze the
+// plugin for good:
 //
-// The same handler first calls the JS callback registered by
-// SetDeviceReroutedCallback (#1330), which the audio service turns into a log
-// line. It runs BEFORE the COM call, so should applySessionIdentity ever hang
-// the JS thread, the reroute is already in the log.
+//   JS thread            holds the audio client's lock (GetService); creating
+//                        the session control registers an endpoint
+//                        notification callback, which waits for the device
+//                        enumerator's notification lock
+//   notification thread  holds that lock for the whole of
+//                        OnDefaultDeviceChanged, in which miniaudio's
+//                        ma_device_stop waits for the audio worker to stop
+//   audio worker         in GetBuffer, waits for the audio client's lock
+//
+// Creating a session control ALWAYS needs the notification lock, whichever
+// object it comes from, so it can always have to wait for a notification
+// callback to finish. What differs now is who waits and what it holds
+// meanwhile: a thread of our own (the namer), holding nothing the audio
+// worker, miniaudio or the JS thread needs. The worker keeps running,
+// ma_device_stop returns, the callback finishes and the wait ends. The cost of
+// such a wait is a session that shows the host's name a little longer.
+//
+// Threading:
+// - The JS thread writes the identity, and posts a request once it has created
+//   an engine, served at once. The request carries a copy of the selected
+//   device's id, so the namer never reads miniaudio state or the selection.
+// - miniaudio's notification callback posts a request on a reroute. It runs on
+//   Windows' notification thread, inside miniaudio's reroute, so it takes the
+//   namer's mutex for a moment and nothing else: no COM work, no device. A
+//   reroute request is served SESSION_NAMER_REROUTE_DELAY after the LAST one
+//   arrived: Windows reports one default change once per role and miniaudio
+//   reroutes on each, and there is no point naming a session the next round
+//   replaces.
+// - Requests coalesce: only the latest target is kept.
+// - The namer does the COM work, with its mutex released.
+//
+// A reroute also reaches the JS thread, through g_rerouteTSFN, for the JS
+// callback SetDeviceReroutedCallback registered (#1330), which the audio
+// service turns into a log line. That is all the JS thread does about one.
 
 #if defined(IRD_SESSION_IDENTITY_SUPPORTED)
-// The identity is "set" while the display name is non-empty.
+// How long after the last reroute request the namer serves it.
+static const std::chrono::milliseconds SESSION_NAMER_REROUTE_DELAY(500);
+
+// Guards the identity, the pending request and the stop flag below. Never held
+// across a COM call, a miniaudio call or the join of the namer thread, so
+// taking it is always brief — which is what makes it safe to take on Windows'
+// notification thread.
+static std::mutex g_namerMutex;
+static std::condition_variable g_namerWake;
+
+// The identity is "set" while the display name is non-empty. Written on the JS
+// thread; the namer serves a request from a copy.
 static std::wstring g_sessionDisplayName;
 static std::wstring g_sessionIconPath;
 
-// Marshals reroute notifications to the JS thread. Created on the JS thread by
-// SetSessionIdentity or SetDeviceReroutedCallback, whichever needs it first,
-// Unref'd so it never keeps the Node event loop alive, and released once
-// neither an identity nor a callback is left (or by DestroyAudioEngine, or
+// The pending request, if any: the endpoint whose session to name (an empty id
+// is the default render endpoint) and the earliest time to do it.
+static bool g_namerRequestPending = false;
+static std::wstring g_namerRequestDeviceId;
+static std::chrono::steady_clock::time_point g_namerRequestDue;
+
+static bool g_namerStop = false;
+
+// The namer thread, or nullptr, and the environment its cleanup hook is
+// registered with. JS thread only. Heap-held rather than a static std::thread:
+// the deck host often ends the process with no cleanup at all, and the
+// destructor of a std::thread that is still joinable calls std::terminate.
+static std::thread *g_namerThread = nullptr;
+static napi_env g_namerEnv = nullptr;
+
+// Marshals reroute notifications to the JS thread, for the device-rerouted
+// callback alone. Created on the JS thread by SetDeviceReroutedCallback when a
+// callback is registered, Unref'd so it never keeps the Node event loop alive,
+// and released when the callback is cleared (or by DestroyAudioEngine, or
 // cleared by the env cleanup hook when Node tears the environment down first).
 // The mutex serializes the notification thread's NonBlockingCall with the JS
 // thread creating or releasing the handle — the same pattern as
@@ -190,9 +251,9 @@ static void clearDeviceReroutedCallback()
 
 /**
  * Call the registered device-rerouted callback, if any. JS thread only. A
- * callback that throws is swallowed: the session identity must still be
- * reapplied after it, and an exception escaping a ThreadSafeFunction call is
- * an uncaught exception that would take the plugin down.
+ * callback that throws is swallowed: an exception escaping a
+ * ThreadSafeFunction call is an uncaught exception that would take the plugin
+ * down.
  */
 static void notifyDeviceRerouted(Napi::Env env)
 {
@@ -237,72 +298,221 @@ static bool Utf8ToWide(const std::string &utf8, std::wstring &out)
     }
     return true;
 }
-#endif
 
 /**
- * Apply the stored session identity to a device's WASAPI session. JS thread
- * only. A no-op when no identity is set, on any backend other than WASAPI,
- * and off Windows. Every failure is silent: the session keeps the Windows
- * default name, and playback is never affected.
+ * Name our process's default session on one render endpoint. Namer thread
+ * only, with COM initialised and no lock of ours held. An empty device id is
+ * the default render endpoint for the console role, which is the one miniaudio
+ * opens. Every object used here is our own — nothing of miniaudio's is read or
+ * called (#1411). Every failure is silent: the session keeps the host's name,
+ * and playback is never affected.
  */
-static void applySessionIdentity(ma_device *device)
+static void nameEndpointSession(const std::wstring &deviceId,
+                                const std::wstring &displayName,
+                                const std::wstring &iconPath)
 {
-#if defined(IRD_SESSION_IDENTITY_SUPPORTED)
-    if (g_sessionDisplayName.empty() || device == nullptr || device->pContext == nullptr ||
-        device->pContext->backend != ma_backend_wasapi)
+    IMMDeviceEnumerator *enumerator = nullptr;
+    HRESULT hr = CoCreateInstance(__uuidof(MMDeviceEnumerator),
+                                  NULL,
+                                  CLSCTX_ALL,
+                                  __uuidof(IMMDeviceEnumerator),
+                                  reinterpret_cast<void **>(&enumerator));
+    if (FAILED(hr) || enumerator == nullptr)
     {
         return;
     }
 
-    IAudioClient *client = static_cast<IAudioClient *>(device->wasapi.pAudioClientPlayback);
-    if (client == nullptr)
+    IMMDevice *endpoint = nullptr;
+    hr = deviceId.empty() ? enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &endpoint)
+                          : enumerator->GetDevice(deviceId.c_str(), &endpoint);
+    enumerator->Release();
+    if (FAILED(hr) || endpoint == nullptr)
     {
         return;
     }
 
+    IAudioSessionManager *manager = nullptr;
+    hr = endpoint->Activate(__uuidof(IAudioSessionManager), CLSCTX_ALL, NULL, reinterpret_cast<void **>(&manager));
+    endpoint->Release();
+    if (FAILED(hr) || manager == nullptr)
+    {
+        return;
+    }
+
+    // A NULL session GUID is the process's default session on this endpoint:
+    // the one the stream is in, since miniaudio initialises its client with
+    // none. This is the call that can wait for a notification callback.
     IAudioSessionControl *session = nullptr;
-    HRESULT hr = client->GetService(__uuidof(IAudioSessionControl), reinterpret_cast<void **>(&session));
+    hr = manager->GetAudioSessionControl(NULL, 0, &session);
+    manager->Release();
     if (FAILED(hr) || session == nullptr)
     {
         return;
     }
 
     // The event-context GUID is NULL: nothing of ours listens for session events.
-    hr = session->SetDisplayName(g_sessionDisplayName.c_str(), NULL);
+    hr = session->SetDisplayName(displayName.c_str(), NULL);
     (void)hr; // A failure leaves the default name; the icon is still worth trying.
 
-    if (!g_sessionIconPath.empty())
+    if (!iconPath.empty())
     {
-        hr = session->SetIconPath(g_sessionIconPath.c_str(), NULL);
+        hr = session->SetIconPath(iconPath.c_str(), NULL);
         (void)hr; // A failure leaves the default icon.
     }
 
     session->Release();
-#else
-    (void)device;
-#endif
 }
 
-#if defined(IRD_SESSION_IDENTITY_SUPPORTED)
 /**
- * JS-thread end of a reroute notification. First tell the registered
- * device-rerouted callback (#1330) — before the COM call, so a hang inside it
- * is preceded by the log line — then name the session of the engine that
- * exists now. It may be a different engine from the one that rerouted (torn
- * down and recreated in between), or none at all; naming a session twice is
- * harmless.
+ * The namer thread. Sleeps until a request is pending and due, takes it
+ * together with a copy of the identity, and names the session with the mutex
+ * released. A request posted while it waits for a due time restarts the wait
+ * from the new one, which is the reroute debounce. Leaves when the stop flag
+ * is set; a request it is serving at that moment is finished first.
+ */
+static void sessionNamerMain()
+{
+    // Multithreaded, as miniaudio's own threads are: the device and session
+    // objects are free-threaded, and this thread pumps no messages. Without
+    // COM the thread still runs, and drops every request.
+    bool comReady = SUCCEEDED(CoInitializeEx(NULL, COINIT_MULTITHREADED));
+
+    std::unique_lock<std::mutex> lock(g_namerMutex);
+    while (!g_namerStop)
+    {
+        if (!g_namerRequestPending)
+        {
+            g_namerWake.wait(lock);
+            continue;
+        }
+
+        std::chrono::steady_clock::time_point due = g_namerRequestDue;
+        if (std::chrono::steady_clock::now() < due)
+        {
+            g_namerWake.wait_until(lock, due);
+            continue;
+        }
+
+        std::wstring deviceId;
+        deviceId.swap(g_namerRequestDeviceId);
+        g_namerRequestPending = false;
+        std::wstring displayName = g_sessionDisplayName;
+        std::wstring iconPath = g_sessionIconPath;
+
+        lock.unlock();
+        if (comReady && !displayName.empty())
+        {
+            nameEndpointSession(deviceId, displayName, iconPath);
+        }
+        lock.lock();
+    }
+    lock.unlock();
+
+    if (comReady)
+    {
+        CoUninitialize();
+    }
+}
+
+/**
+ * Ask the namer to name our session on an endpoint (an empty id: the default
+ * render endpoint) once `delay` has passed. Any thread: it only takes the
+ * namer's mutex for a moment and wakes the namer, so it is safe on Windows'
+ * notification thread. Replaces a request that is still pending, target and
+ * due time both, and is dropped while no identity is set — which is also the
+ * state after the namer has been stopped.
+ */
+static void postSessionNameRequest(std::wstring deviceId, std::chrono::milliseconds delay)
+{
+    {
+        std::lock_guard<std::mutex> lock(g_namerMutex);
+        if (g_sessionDisplayName.empty())
+        {
+            return;
+        }
+
+        g_namerRequestDeviceId.swap(deviceId);
+        g_namerRequestDue = std::chrono::steady_clock::now() + delay;
+        g_namerRequestPending = true;
+    }
+    g_namerWake.notify_one();
+}
+
+/**
+ * Stop the namer thread, if one runs, and wait for it; forget the identity and
+ * any pending request, so a request posted from now on is dropped. JS thread
+ * only. The join cannot deadlock: this thread holds none of the namer's locks
+ * while it waits, the namer holds none of ours while it is inside Windows, and
+ * a namer waiting there for the notification lock is let go when the
+ * notification callback it waits for returns — which never waits for the JS
+ * thread.
+ */
+static void stopSessionNamerThread()
+{
+    {
+        std::lock_guard<std::mutex> lock(g_namerMutex);
+        g_sessionDisplayName.clear();
+        g_sessionIconPath.clear();
+        g_namerRequestPending = false;
+        g_namerRequestDeviceId.clear();
+        g_namerStop = true;
+    }
+
+    if (g_namerThread == nullptr)
+    {
+        return;
+    }
+
+    g_namerWake.notify_all();
+    g_namerThread->join();
+    delete g_namerThread;
+    g_namerThread = nullptr;
+}
+
+/**
+ * Env cleanup hook: Node is tearing the environment down without
+ * destroyAudioEngine having run. Join the namer so no thread of ours outlives
+ * the environment. An engine may still exist; a reroute it reports after this
+ * finds no identity and is dropped.
+ */
+static void SessionNamerCleanupHook(void * /*arg*/)
+{
+    g_namerEnv = nullptr;
+    stopSessionNamerThread();
+}
+
+/**
+ * Start the namer thread if none runs. JS thread only. Called when a non-empty
+ * identity is set, so a process that never names its session never has the
+ * thread, and after DestroyAudioEngine the next identity starts a new one.
+ */
+static void ensureSessionNamerThread(Napi::Env env)
+{
+    if (g_namerThread != nullptr)
+    {
+        return;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(g_namerMutex);
+        g_namerStop = false;
+    }
+
+    g_namerThread = new std::thread(sessionNamerMain);
+    napi_add_env_cleanup_hook(env, SessionNamerCleanupHook, nullptr);
+    g_namerEnv = env;
+}
+
+/**
+ * JS-thread end of a reroute notification: tell the registered device-rerouted
+ * callback (#1330). The session of the new endpoint is named by the namer
+ * thread, never from here (#1411).
  */
 static Napi::Value OnSessionRerouted(const Napi::CallbackInfo &info)
 {
     Napi::Env env = info.Env();
 
     notifyDeviceRerouted(env);
-
-    // Read after the callback: it may have torn the engine down.
-    if (g_engine)
-    {
-        applySessionIdentity(ma_engine_get_device(g_engine));
-    }
     return env.Undefined();
 }
 
@@ -350,7 +560,7 @@ static void ensureRerouteTSFN(Napi::Env env)
  * exists: the notification thread checks g_rerouteTSFNRegistered under the
  * same mutex before calling into the handle, so a notification arriving
  * afterwards is dropped. A call already queued is still delivered and finds
- * whatever identity and callback are left.
+ * whatever callback is left.
  */
 static void releaseRerouteTSFN()
 {
@@ -368,26 +578,79 @@ static void releaseRerouteTSFN()
 #endif
 }
 
-#if defined(IRD_SESSION_IDENTITY_SUPPORTED)
 /**
- * Release the reroute TSFN once nothing needs it: no session identity to
- * reapply and no device-rerouted callback to call. JS thread only.
+ * Ask the namer to name the session of the engine that was just created, at
+ * once. JS thread only. The stream is on the selected device when the first
+ * init opened it, and on the default render endpoint when there is no
+ * selection or the fallback init was used. The device id is copied here, so
+ * the namer never reads the selection. A no-op on any backend other than
+ * WASAPI, and off Windows.
  */
-static void releaseRerouteTSFNIfUnused()
+static void requestSessionNameForNewEngine(bool onSelectedDevice)
 {
-    if (g_sessionDisplayName.empty() && g_deviceReroutedCallback == nullptr)
+#if defined(IRD_SESSION_IDENTITY_SUPPORTED)
+    if (g_audioContext == nullptr || g_audioContext->backend != ma_backend_wasapi)
     {
-        releaseRerouteTSFN();
+        return;
     }
-}
+
+    std::wstring deviceId;
+    if (onSelectedDevice)
+    {
+        const size_t capacity = sizeof(g_selectedDeviceId.wasapi) / sizeof(g_selectedDeviceId.wasapi[0]);
+        deviceId.assign(g_selectedDeviceId.wasapi, wcsnlen(g_selectedDeviceId.wasapi, capacity));
+        if (deviceId.empty())
+        {
+            // No id to look the endpoint up by, and an empty one would name
+            // the default endpoint's session instead.
+            return;
+        }
+    }
+
+    postSessionNameRequest(std::move(deviceId), std::chrono::milliseconds(0));
+#else
+    (void)onSelectedDevice;
 #endif
+}
 
 /**
- * Engine device notification. Runs on the thread miniaudio reroutes from,
- * inside miniaudio's reroute lock: it reads nothing but the notification type
- * and posts to the JS thread, which reapplies the session identity after
- * miniaudio has followed a default-device change onto a new endpoint (a
- * fresh, unnamed session).
+ * Forget a pending name request. JS thread only, when the engine is torn
+ * down: the stream the request was for is gone. A request the namer has
+ * already taken still runs, and names a session with no stream in it, which
+ * is harmless.
+ */
+static void cancelSessionNameRequest()
+{
+#if defined(IRD_SESSION_IDENTITY_SUPPORTED)
+    std::lock_guard<std::mutex> lock(g_namerMutex);
+    g_namerRequestPending = false;
+    g_namerRequestDeviceId.clear();
+#endif
+}
+
+/**
+ * Stop and join the namer thread, clearing the session identity, and take its
+ * env cleanup hook back. JS thread only, while the environment is alive.
+ */
+static void stopSessionNamer()
+{
+#if defined(IRD_SESSION_IDENTITY_SUPPORTED)
+    stopSessionNamerThread();
+    if (g_namerEnv != nullptr)
+    {
+        napi_remove_env_cleanup_hook(g_namerEnv, SessionNamerCleanupHook, nullptr);
+        g_namerEnv = nullptr;
+    }
+#endif
+}
+
+/**
+ * Engine device notification. Runs on the thread miniaudio reroutes from —
+ * Windows' notification thread — inside miniaudio's reroute: it reads nothing
+ * but the notification type, posts to the JS thread for the device-rerouted
+ * callback, and asks the namer to name the new endpoint's session (a fresh,
+ * unnamed one). Both are a brief lock of our own; no COM work and no device
+ * access may ever be added here (#1411).
  */
 static void maNotificationCallback(const ma_device_notification *pNotification)
 {
@@ -397,11 +660,17 @@ static void maNotificationCallback(const ma_device_notification *pNotification)
         return;
     }
 
-    std::lock_guard<std::mutex> lock(g_rerouteTSFNMutex);
-    if (g_rerouteTSFNRegistered)
     {
-        g_rerouteTSFN.NonBlockingCall();
+        std::lock_guard<std::mutex> lock(g_rerouteTSFNMutex);
+        if (g_rerouteTSFNRegistered)
+        {
+            g_rerouteTSFN.NonBlockingCall();
+        }
     }
+
+    // miniaudio only reroutes a device it opened on the default endpoint, so
+    // the default endpoint is where the new stream is.
+    postSessionNameRequest(std::wstring(), SESSION_NAMER_REROUTE_DELAY);
 #else
     (void)pNotification;
 #endif
@@ -452,7 +721,8 @@ static void uninitChannel(int channel)
 /**
  * Tear down the engine (and with it the OS audio device/stream) while
  * keeping the context and the per-channel TSFNs alive. Any remaining
- * channel sounds are released first — they belong to the engine.
+ * channel sounds are released first — they belong to the engine. A session
+ * name request still pending for its stream goes with it.
  */
 static void teardownEngine()
 {
@@ -469,6 +739,9 @@ static void teardownEngine()
     ma_engine_uninit(g_engine);
     delete g_engine;
     g_engine = nullptr;
+
+    // After the uninit: no reroute of this engine can post another one now.
+    cancelSessionNameRequest();
 }
 
 /**
@@ -507,6 +780,7 @@ static bool ensureEngineCreated()
         config.pPlaybackDeviceID = &g_selectedDeviceId;
     }
 
+    bool onSelectedDevice = g_useSelectedDevice;
     ma_result result = ma_engine_init(&config, g_engine);
     if (result != MA_SUCCESS && g_useSelectedDevice)
     {
@@ -516,6 +790,7 @@ static bool ensureEngineCreated()
         fallbackConfig.noAutoStart = MA_TRUE;
         fallbackConfig.notificationCallback = maNotificationCallback;
         result = ma_engine_init(&fallbackConfig, g_engine);
+        onSelectedDevice = false;
     }
 
     if (result != MA_SUCCESS)
@@ -526,7 +801,8 @@ static bool ensureEngineCreated()
     }
 
     // Both init paths land here, so no engine can skip the identity (#1253).
-    applySessionIdentity(ma_engine_get_device(g_engine));
+    // The namer thread applies it: nothing here waits on Windows (#1411).
+    requestSessionNameForNewEngine(onSelectedDevice);
 
     return true;
 }
@@ -611,9 +887,9 @@ Napi::Value StopAudioEngine(const Napi::CallbackInfo &info)
 }
 
 /**
- * Destroy the miniaudio engine and all active sounds, and clear the session
+ * Destroy the miniaudio engine and all active sounds, clear the session
  * identity (#1253) and the device-rerouted callback (#1330) — set both again
- * before the next engine.
+ * before the next engine — and stop the namer thread (#1411).
  */
 Napi::Value DestroyAudioEngine(const Napi::CallbackInfo &info)
 {
@@ -636,11 +912,13 @@ Napi::Value DestroyAudioEngine(const Napi::CallbackInfo &info)
 
     teardownEngine();
 
-    // No device exists any more, so no reroute notification can arrive.
+    // No device exists any more, so no reroute notification can arrive, and
+    // no notification callback of ours can be what the namer waits for: the
+    // join inside stopSessionNamer ends once the namer has finished a request
+    // it was serving. It clears the session identity too.
     releaseRerouteTSFN();
+    stopSessionNamer();
 #if defined(IRD_SESSION_IDENTITY_SUPPORTED)
-    g_sessionDisplayName.clear();
-    g_sessionIconPath.clear();
     clearDeviceReroutedCallback();
 #endif
 
@@ -1109,13 +1387,14 @@ Napi::Value SetAudioDeviceById(const Napi::CallbackInfo &info)
 /**
  * Set the name (and optionally the icon) the Windows Volume Mixer shows for
  * our audio session (#1253). Applied to every engine created afterwards and
- * reapplied on reroute. Refused while an engine exists — the live session was
- * named when its engine was created, and a later change would leave it under
- * the old name — so call it before the first play. An empty display name
- * clears the identity (the icon with it): engines created afterwards are not
- * named, though Windows keeps a name already set on this process's session for
- * as long as that session lives. DestroyAudioEngine clears it too. A no-op off
- * Windows.
+ * reapplied on reroute, by the namer thread (#1411), which the first non-empty
+ * name starts. Refused while an engine exists — the live session was named
+ * when its engine was created, and a later change would leave it under the old
+ * name — so call it before the first play. An empty display name clears the
+ * identity (the icon with it): engines created afterwards are not named,
+ * though Windows keeps a name already set on this process's session for as
+ * long as that session lives. DestroyAudioEngine clears it too, and stops the
+ * namer. A no-op off Windows.
  *
  * @param displayName - The session's display name (UTF-8); empty for none
  * @param iconPath - Optional absolute path to an .ico (UTF-8)
@@ -1150,19 +1429,24 @@ Napi::Value SetSessionIdentity(const Napi::CallbackInfo &info)
         return Napi::Boolean::New(env, false);
     }
 
-    if (displayName.empty())
+    // No name, no identity: the icon alone would never be applied. A namer
+    // thread that already runs stays, and drops every request.
+    bool hasIdentity = !displayName.empty();
+    if (!hasIdentity)
     {
-        // No name, no identity: the icon alone would never be applied.
-        g_sessionDisplayName.clear();
-        g_sessionIconPath.clear();
-        // The TSFN stays while a device-rerouted callback still needs it.
-        releaseRerouteTSFNIfUnused();
-        return Napi::Boolean::New(env, true);
+        iconPath.clear();
     }
 
-    g_sessionDisplayName = std::move(displayName);
-    g_sessionIconPath = std::move(iconPath);
-    ensureRerouteTSFN(env);
+    {
+        std::lock_guard<std::mutex> lock(g_namerMutex);
+        g_sessionDisplayName.swap(displayName);
+        g_sessionIconPath.swap(iconPath);
+    }
+
+    if (hasIdentity)
+    {
+        ensureSessionNamerThread(env);
+    }
 #endif
 
     return Napi::Boolean::New(env, true);
@@ -1171,12 +1455,12 @@ Napi::Value SetSessionIdentity(const Napi::CallbackInfo &info)
 /**
  * Register a JS callback that fires, with no arguments, each time miniaudio
  * follows a default-device change onto a new endpoint (#1330). It runs on the
- * JS thread, from the reroute TSFN's handler, BEFORE that handler reapplies
- * the session identity — so a freeze inside the identity's COM call is
- * preceded by whatever the callback logs. Works whether or not a session
- * identity is set. A callback that throws is swallowed. Passing undefined or
- * null clears it; registering again replaces it; DestroyAudioEngine clears it
- * too. A no-op off Windows.
+ * JS thread, from the reroute TSFN's handler. That TSFN exists while a
+ * callback is registered and does nothing else: the session identity is
+ * reapplied by the namer thread (#1411), so the callback and the identity
+ * work with or without each other. A callback that throws is swallowed.
+ * Passing undefined or null clears it; registering again replaces it;
+ * DestroyAudioEngine clears it too. A no-op off Windows.
  *
  * @param callback - Function to call on reroute, or undefined/null to clear
  */
@@ -1196,8 +1480,8 @@ Napi::Value SetDeviceReroutedCallback(const Napi::CallbackInfo &info)
 
     if (clear)
     {
-        // The TSFN stays while a session identity still needs it.
-        releaseRerouteTSFNIfUnused();
+        // Nothing but the callback uses the TSFN.
+        releaseRerouteTSFN();
         return env.Undefined();
     }
 

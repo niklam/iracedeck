@@ -463,9 +463,10 @@ class AudioService implements IAudioService {
 
   /**
    * Log every reroute the native layer reports (#1330): the output following a
-   * default-device change onto a new endpoint. The native layer calls this
-   * before it reapplies the session identity, so a freeze inside that call is
-   * preceded by the line. Info, not debug: a reroute is rare and major, and
+   * default-device change onto a new endpoint. The native layer reapplies the
+   * session identity on a thread of its own (#1411), so the line is the record
+   * of a reroute and not a marker before a call that can hang this thread.
+   * Info, not debug: a reroute is rare and major, and
    * the users whose logs we need run at the default level. Registered from
    * `init()` for the same reason as the identity — `destroyAudioEngine` clears
    * it natively, so each `init()` after a `destroy()` registers it again.

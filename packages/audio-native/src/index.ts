@@ -275,9 +275,9 @@ export class AudioNative {
   /**
    * Register a callback that fires, on the JS thread, each time the output
    * follows a default-device change onto a new endpoint (issue #1330). It
-   * fires before the native layer reapplies the session identity, so a freeze
-   * inside that call is preceded by whatever the callback logs, and it fires
-   * whether or not an identity is set. A callback that throws is swallowed.
+   * fires whether or not an identity is set: the native layer reapplies the
+   * session identity on a thread of its own (issue #1411), so the JS thread
+   * does nothing on a reroute but this. A callback that throws is swallowed.
    * Pass `null` to clear it; {@link destroyAudioEngine} clears it too. A no-op
    * off Windows, and when the loaded native binary predates this method.
    *
