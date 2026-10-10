@@ -70,7 +70,15 @@ const MANIFEST_PATH = path.join(
   "manifest.json",
 );
 const { values: args } = parseArgs({ options: { out: { type: "string" } } });
-const OUT_ROOT = args.out ? path.resolve(args.out) : path.join(__dirname, "..");
+
+// An empty `--out` (an unset variable in the caller's script) must not fall
+// back to this package: the caller asked for a scratch directory precisely so
+// that the real gallery is left alone.
+if (args.out !== undefined && args.out.trim() === "") {
+  throw new Error("--out needs a directory; it was given an empty value.");
+}
+
+const OUT_ROOT = args.out !== undefined ? path.resolve(args.out) : path.join(__dirname, "..");
 const ASSETS_OUT = path.join(OUT_ROOT, "public", "icon-gallery");
 const JSON_OUT = path.join(OUT_ROOT, "src", "data", "icon-gallery.json");
 

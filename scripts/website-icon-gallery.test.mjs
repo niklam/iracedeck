@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -126,4 +126,23 @@ describe("website icon gallery", () => {
       expect(sampled).toContain(iconPath);
     }
   });
+
+  it.each([[["--out", ""]], [["--out="]], [["--out", "  "]]])(
+    "refuses an empty --out (%j) rather than writing the real gallery",
+    (outArgs) => {
+      // An unset scratch variable in a caller's script must not turn a run
+      // meant for a scratch directory into one that rewrites packages/website.
+      // The refusal comes before anything is read or written, so this is quick.
+      const tsxCli = url.fileURLToPath(import.meta.resolve("tsx/cli"));
+      const run = spawnSync(process.execPath, [tsxCli, generator, ...outArgs], {
+        cwd: repoRoot,
+        encoding: "utf-8",
+        timeout: GENERATOR_TIMEOUT_MS,
+      });
+
+      expect(run.status).not.toBe(0);
+      expect(run.stderr).toContain("--out needs a directory");
+      expect(run.stdout).not.toContain("Generated");
+    },
+  );
 });
