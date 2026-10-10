@@ -317,6 +317,21 @@ describe("assembleIcon with graphic scaling", () => {
       expect(svg).not.toContain("#ff0000");
     });
 
+    it("should draw a value that looks like a placeholder as text, not fill it", () => {
+      const svg = decodeDataUri(
+        assembleIcon({
+          ...base,
+          graphicSvg: VALUE_GRAPHIC,
+          // A colour slot filled after the values, a later value, and a slot of the base template.
+          templateValues: { value: "{{graphic1Color}} {{valueY}} {{titleContent}}", valueFontSize: "28", valueY: "33" },
+        }),
+      );
+
+      expect(svg).toContain(">&#123;&#123;graphic1Color}} &#123;&#123;valueY}} &#123;&#123;titleContent}}</text>");
+      // The title is drawn once, in its own slot.
+      expect(svg.split(">TEST<").length - 1).toBe(1);
+    });
+
     it("should leave the output unchanged when no templateValues are passed", () => {
       const withoutOption = assembleIcon({ ...base, graphicSvg: MOCK_GRAPHIC_TRIMMED });
 

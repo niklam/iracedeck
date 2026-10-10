@@ -529,6 +529,19 @@ export function applyGraphicTransform(
 /** Opacity of the artwork and title on a {@link assembleIcon} `dimmed` key. */
 export const DIMMED_OPACITY = 0.35;
 
+/**
+ * Template values whose text no later substitution can read as a placeholder.
+ * `renderIconTemplate` fills one key at a time, and the base template is
+ * filled after the graphic, so a value holding `{{graphic1Color}}` or
+ * `{{titleContent}}` would otherwise be replaced in turn. A brace written as a
+ * character reference draws the same in SVG text and attribute values.
+ */
+function inertTemplateValues(values: Record<string, string> | undefined): Record<string, string> | undefined {
+  if (!values) return undefined;
+
+  return Object.fromEntries(Object.entries(values).map(([key, value]) => [key, value.replaceAll("{", "&#123;")]));
+}
+
 function dimContent(content: string): string {
   return content ? `<g opacity="${DIMMED_OPACITY}">${content}</g>` : "";
 }
@@ -553,8 +566,9 @@ function dimContent(content: string): string {
  * @param options.templateValues - Values for the graphic's non-colour
  *   placeholders (`{{value}}`, `{{valueFontSize}}`, …), for a standalone icon
  *   that draws a setting in its artwork (#1352). `colors` wins over a key of
- *   the same name, so a value can never recolour a slot. Not XML-escaped:
- *   pass text through {@link escapeXml}.
+ *   the same name, so a value can never recolour a slot, and a value's own
+ *   text is never read as a placeholder. Not XML-escaped: pass text through
+ *   {@link escapeXml}.
  * @param options.bindingMissing - When true, draw the centered binding-missing
  *   warning triangle over dimmed artwork (issue #612). Used for keybind modes
  *   that have neither a keyboard binding nor a SimHub role configured.
@@ -577,7 +591,9 @@ export function assembleIcon(options: {
   const { graphicSvg, colors, title, border, graphic, templateValues, bindingMissing, dimmed } = options;
 
   const rawGraphic = extractGraphicContent(graphicSvg);
-  let graphicContent = title.showGraphics ? renderIconTemplate(rawGraphic, { ...templateValues, ...colors }) : "";
+  let graphicContent = title.showGraphics
+    ? renderIconTemplate(rawGraphic, { ...inertTemplateValues(templateValues), ...colors })
+    : "";
 
   // Trimmed icons place artwork at origin filling the viewBox, so the viewBox
   // dimensions ARE the artwork extent for scaling. Fail fast if the caller
