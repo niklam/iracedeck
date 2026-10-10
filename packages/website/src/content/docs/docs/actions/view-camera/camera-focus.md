@@ -284,7 +284,7 @@ The race position to focus. Integer from `1` up. Defaults to `1` (race leader).
 
 Switch camera focus to a car by its car number.
 
-The key shows the car number it switches to inside its box, such as `7`, `42` or `199`, above a `CAR` label, so a row of these keys can be told apart at a glance. The number comes from the **Car Number** setting rather than from the session: it is there while iRacing isn't running, and it changes as soon as you change the setting. A number longer than three digits is drawn smaller so it stays inside the box. It is part of the key's artwork, so it stays when you set your own Title Text, and it goes away with the artwork if you turn **Show Graphics** off.
+The key shows the car number it switches to inside its box, such as `7`, `42` or `199`, so a row of these keys can be told apart at a glance. The number comes from the **Car Number** setting rather than from the session: it is there while iRacing isn't running, and it changes as soon as you change the setting. A number longer than three digits is drawn smaller so it stays inside the box. It is part of the key's artwork, so it stays when you set your own Title Text, and it goes away with the artwork if you turn **Show Graphics** off.
 
 #### Details
 

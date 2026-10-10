@@ -35,7 +35,7 @@ function valuesFor(target: string, settings: Parameters<typeof switchTargetTempl
 /** Arial / Arimo capitals and digits stand 0.72 em above the baseline. */
 const CAP_HEIGHT_EM = 0.72;
 
-/** The `CAR` / `POS` label under the value: its baseline and the top of its capitals. */
+/** The `POS` label under the position: its baseline and the top of its capitals. */
 function labelOf(svg: string, text: string): { baseline: number; top: number } {
   const label = svg.match(new RegExp(`<text\\b[^>]*\\by="([\\d.]+)"[^>]*\\bfont-size="([\\d.]+)"[^>]*>${text}</text>`));
 
@@ -204,7 +204,7 @@ describe("switch-target-value (#1352)", () => {
       }
     });
 
-    it("keeps the car-number box inside the viewBox's margin and clear of its label", () => {
+    it("trims the car-number viewBox to the box, which is the whole artwork", () => {
       const rect = switchByCarNumberSvg.match(
         /<rect\b[^>]*\bx="([\d.]+)"[^>]*\by="([\d.]+)"[^>]*\bwidth="([\d.]+)"[^>]*\bheight="([\d.]+)"[^>]*\bstroke-width="([\d.]+)"/,
       );
@@ -213,13 +213,15 @@ describe("switch-target-value (#1352)", () => {
 
       const [x, y, width, height, strokeWidth] = rect.slice(1).map(Number);
       const viewBox = viewBoxOf(switchByCarNumberSvg);
-      const label = labelOf(switchByCarNumberSvg, "CAR");
 
-      expect(x - strokeWidth / 2).toBeGreaterThanOrEqual(1);
-      expect(y - strokeWidth / 2).toBeGreaterThanOrEqual(1);
-      expect(x + width + strokeWidth / 2).toBeLessThanOrEqual(viewBox.width - 1);
-      expect(y + height + strokeWidth / 2).toBeLessThan(label.top);
-      expect(label.baseline + 1).toBeLessThanOrEqual(viewBox.height);
+      // The stroke's outer edge sits exactly the 1-unit margin inside each side:
+      // a larger frame would shrink the number on the key.
+      expect(x - strokeWidth / 2).toBe(1);
+      expect(y - strokeWidth / 2).toBe(1);
+      expect(x + width + strokeWidth / 2).toBe(viewBox.width - 1);
+      expect(y + height + strokeWidth / 2).toBe(viewBox.height - 1);
+      // No label under the box: the title, or the number itself, says what it is.
+      expect(switchByCarNumberSvg.match(/<text\b/g)).toHaveLength(1);
     });
 
     it("keeps the position inside the viewBox's margin and clear of its label", () => {

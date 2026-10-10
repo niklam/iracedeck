@@ -1,11 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 70 63" stroke-width="0.5" stroke="#fff" fill="#fff">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 70 46" stroke-width="0.5" stroke="#fff" fill="#fff">
   <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"SWITCH\nCAR #"},"border":{"color":"#5a6a7a"}}</desc>
 
 
     <rect x="3" y="3" width="64" height="40" rx="6" fill="none" stroke="#ffffff" stroke-width="4"/>
     <text x="35" y="{{valueY}}" text-anchor="middle"
           fill="#ffffff" font-family="Arial, sans-serif" font-size="{{valueFontSize}}" font-weight="bold" stroke="none">{{value}}</text>
-    <text x="35" y="61.48" text-anchor="middle"
-          fill="#ffffff" font-family="Arial, sans-serif" font-size="18" stroke="none">CAR</text>
 
 </svg>
