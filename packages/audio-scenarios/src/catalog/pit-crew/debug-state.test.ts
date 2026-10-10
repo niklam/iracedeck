@@ -699,6 +699,21 @@ const READER = /^export function (read\w+DebugState)\(/m;
 
 const holdsModuleState = (source: string): boolean => MODULE_STATE.some((pattern) => pattern.test(source));
 
+/** Every reader a file exports, not only its first. */
+const exportedReaders = (source: string): string[] =>
+  [...source.matchAll(new RegExp(READER.source, "gm"))].map((match) => match[1]);
+
+/**
+ * The readers a source calls. Comments are dropped first, so a reader named
+ * in prose or left in a commented-out line is not a call; an import names the
+ * reader without the parentheses and is not one either.
+ */
+const calledReaders = (source: string): Set<string> => {
+  const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+
+  return new Set([...code.matchAll(/\b(read\w+DebugState)\(\)/g)].map((match) => match[1]));
+};
+
 describe("every pit-crew file that holds module state exports a state reader", () => {
   const DIR = new URL(".", import.meta.url);
   const sources = readdirSync(DIR)
@@ -742,12 +757,36 @@ describe("every pit-crew file that holds module state exports a state reader", (
     },
   );
 
+  it("the reader patterns see every export and only real calls", () => {
+    expect(
+      exportedReaders(
+        "export function readFooDebugState() {}\nconst x = 1;\nexport function readBarDebugState(): Bar {}\n",
+      ),
+    ).toEqual(["readFooDebugState", "readBarDebugState"]);
+
+    expect([
+      ...calledReaders("  foo: readStatePart(() => readFooDebugState()),\n  bar: readBarDebugState(),\n"),
+    ]).toEqual(["readFooDebugState", "readBarDebugState"]);
+
+    for (const notACall of [
+      'import { readFooDebugState } from "./foo.js";',
+      "// foo: readStatePart(() => readFooDebugState()),",
+      "/**\n * Each file exports a `readFooDebugState()` beside that state.\n */",
+      "/* readFooDebugState() */",
+      "/**\n * Calls readFooDebugState() for the snapshot.\n */",
+      "const LIMIT = 4; // readFooDebugState() is read elsewhere",
+    ]) {
+      expect([...calledReaders(`${notACall}\n`)], notACall).toEqual([]);
+    }
+  });
+
   it("every exported reader is one the aggregate calls", () => {
     const aggregate = sources.find(({ name }) => name === "debug-state.ts")?.source ?? "";
-    const readers = sources.flatMap(({ source }) => READER.exec(source)?.[1] ?? []);
+    const called = calledReaders(aggregate);
+    const readers = sources.flatMap(({ source }) => exportedReaders(source));
 
     expect(readers.length).toBeGreaterThanOrEqual(FAMILY_KEYS.length);
 
-    for (const reader of readers) expect(aggregate, reader).toContain(`${reader}()`);
+    for (const reader of readers) expect(called.has(reader), reader).toBe(true);
   });
 });
