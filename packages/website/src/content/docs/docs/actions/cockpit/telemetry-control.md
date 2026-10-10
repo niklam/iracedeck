@@ -7,7 +7,7 @@ sidebar:
     variant: tip
 ---
 
-Manage iRacing's telemetry logging and recording features. Toggle logging, mark events of interest for later review, start / stop / restart recording sessions, save a snapshot of the live telemetry and session info to disk for diagnostics, and capture a CPU profile of iRaceDeck itself when it is using a lot of CPU.
+Manage iRacing's telemetry logging and recording features. Toggle logging, mark events of interest for later review, start / stop / restart recording sessions, save a snapshot of the live telemetry, the session info and iRaceDeck's own state to disk for diagnostics, and capture a CPU profile of iRaceDeck itself when it is using a lot of CPU.
 
 ## Modes
 
@@ -100,13 +100,29 @@ Stop and immediately restart telemetry recording via the iRacing SDK.
 
 ### Take Snapshot
 
-Save everything iRaceDeck currently sees from iRacing — the full live telemetry and the session info — to disk. Each press writes two timestamped files to the Output Folder: a `.json` file holding every telemetry variable plus the session info (the raw data), and a companion `.md` report you can read at a glance — the session identification, the running order and the on-track order with each driver's car number, laps completed, and location, and the player's own telemetry. It is a developer / diagnostic tool: attach the files to a bug report, or use them to check what iRacing was reporting at a given moment.
+Save everything iRaceDeck currently sees from iRacing — the full live telemetry and the session info — to disk, together with what iRaceDeck itself had worked out at that moment. Each press writes two timestamped files to the Output Folder: a `.json` file holding every telemetry variable, the session info and iRaceDeck's own state (the raw data), and a companion `.md` report you can read at a glance — the session identification, the running order and the on-track order with each driver's car number, laps completed, and location, the player's own telemetry, and a short **Plugin State** table. It is a developer / diagnostic tool: use it to check what iRacing was reporting at a given moment, and attach both files when you report something iRaceDeck said, showed or did wrong. Take the snapshot at the moment it happens, because that is the moment the files describe.
+
+iRaceDeck's own state is what the plugin has built up over the session, which one frame of telemetry cannot show:
+
+- Your fuel use per lap and the laps of fuel left that iRaceDeck calculates from it
+- The race order and the gaps to the cars around you that it was tracking
+- The caution state
+- What the Race Engineer was saying, and what he had queued to say next
+- Your iRaceDeck settings, and any warning banners iRaceDeck was showing
+
+How that part of the `.json` file is laid out follows iRaceDeck's internals and may change between releases, so don't build anything that depends on it. The file is also larger than it used to be: up to a few megabytes in a full field.
+
+:::caution[Before you share a snapshot]
+The files hold personal data. As before, the session info names every driver in the session with their iRacing customer ID. The `.json` file now also holds your iRaceDeck settings, including the driver name you set for the Race Engineer, and the warning banners iRaceDeck was showing, whose text can include the path of your settings file, which normally contains your Windows user name.
+
+The access token the Settings window uses to talk to the plugin is never written to a snapshot. Nothing is uploaded or sent anywhere: the files stay in the Output Folder until you attach them yourself.
+:::
 
 The mode only reads data the plugin already has and sends nothing to iRacing, so it never affects the sim. A press while iRacing isn't running (no telemetry available) is skipped with a warning in the plugin log; a successful save is logged as well, including the file paths. There is no feedback on the key itself.
 
 #### Details
 
-- **Method:** Local file write (saves telemetry to disk) — no iRacing command
+- **Method:** Local file write (saves telemetry and iRaceDeck's state to disk) — no iRacing command
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** No
