@@ -33,7 +33,9 @@ src/
   audio/                                 # Shared audio helpers: Race Engineer/Radar master gates and
                                          # the side effects of a gate change (feature-gates, #1007),
                                          # voice-sequence player + toggle acknowledgment
-                                         # (audio-toggles), bus volume steppers (audio-volume)
+                                         # (audio-toggles), bus volume steppers (audio-volume), the
+                                         # audio session hold that keeps the device open while iRacing
+                                         # runs and a gate is on (audio-session-hold, #1347)
   icons/                                 # status-bar: tri-state (on/off/na) toggle indication shared
                                          # by status bars, state borders, and dial bar styling
   shared/                                # Cross-action utilities (see below)

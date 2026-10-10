@@ -87,9 +87,12 @@ export {
   armFeatureGateSync,
   CAR_CYCLE_BINDING_DEFAULTS,
   isAudioPreviewKind,
+  isRaceEngineerEnabled,
+  isRadarEnabled,
   migrateLfeIntensityBindingKeys,
   runAudioPreview,
   SETUP_CHASSIS_BINDING_KEY_RENAMES,
+  startAudioSessionHold,
   stopRaceEngineerPlayback,
   syncFeatureGates,
 } from "@iracedeck/iracing-actions";

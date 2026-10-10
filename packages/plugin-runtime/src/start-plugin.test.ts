@@ -1,3 +1,4 @@
+import { silentLogger } from "@iracedeck/logger";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { startPlugin } from "./start-plugin.js";
@@ -43,7 +44,8 @@ vi.mock("./actions.js", async () => (await import("./test-support/module-mocks.j
  * call the old plugin.ts made; it is listed where the sim phase builds it.
  * The four `registerStateSection` calls that end `initCore` are newer than
  * that file too (#1387): the Telemetry Snapshot's plugin-state sections, which
- * no later call is ordered against.
+ * no later call is ordered against. So is `startAudioSessionHold` (#1347),
+ * which follows the app monitor whose edges it listens to.
  */
 function expectedOrder(withExtension: boolean): string[] {
   return [
@@ -122,6 +124,7 @@ function expectedOrder(withExtension: boolean): string[] {
     "initializeSimHub",
     "initializeBindingDispatcher",
     "initAppMonitor",
+    "startAudioSessionHold", // #1347
     "getController().subscribe", // elevation check
     "getController().subscribe", // replay session
     // 10
@@ -228,6 +231,7 @@ describe("startPlugin (#1349)", () => {
       "SimHub",
       "BindingDispatcher",
       "AppMonitor",
+      "AudioSessionHold", // newer than that file (#1347)
       "Elevation",
       "ReplaySession",
     ]);
@@ -295,6 +299,54 @@ describe("startPlugin (#1349)", () => {
     callLog.length = 0;
     replayDeps[0].getSessionInfo();
     expect(callLog).toEqual(["getController().getSessionInfo"]);
+  });
+
+  it("hands the audio session hold the app monitor's edges, the gate readers, the settings listener and the audio service (#1347)", () => {
+    const holds: Record<string, unknown>[] = [];
+    implement("startAudioSessionHold", (deps) => holds.push(deps as Record<string, unknown>));
+
+    startPlugin(createHost());
+
+    expect(holds).toHaveLength(1);
+    expect(Object.keys(holds[0]).sort()).toEqual([
+      "audio",
+      "isIRacingActive",
+      "isRaceEngineerEnabled",
+      "isRadarEnabled",
+      "logger",
+      "onGlobalSettingsChange",
+      "onIRacingStarted",
+      "onIRacingTerminated",
+    ]);
+    // The fake adapter hands every scope this one logger; the scope itself is
+    // pinned by the scopes test above.
+    expect(holds[0].logger).toBe(silentLogger);
+    callLog.length = 0;
+
+    const call = (name: string): unknown => (holds[0][name] as () => unknown)();
+    const audio = holds[0].audio as { hold: (reason: string) => void; release: (reason: string) => void };
+
+    call("onIRacingStarted");
+    call("onIRacingTerminated");
+    call("isIRacingActive");
+    call("isRaceEngineerEnabled");
+    call("isRadarEnabled");
+    call("onGlobalSettingsChange");
+    audio.hold("probe");
+    audio.release("probe");
+
+    // Each name is the mocked module's own export, and the audio side is the
+    // singleton the audio phase initialised, reached through getAudio().
+    expect(callLog).toEqual([
+      "onIRacingStarted",
+      "onIRacingTerminated",
+      "isIRacingActive",
+      "isRaceEngineerEnabled",
+      "isRadarEnabled",
+      "onGlobalSettingsChange",
+      "getAudio().hold",
+      "getAudio().release",
+    ]);
   });
 
   it("opens settings without an extension, and refreshes the device list first with one", () => {

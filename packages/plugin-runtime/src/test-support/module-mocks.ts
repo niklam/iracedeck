@@ -58,8 +58,11 @@ export const ACTION_HOOKS = [
   "applyRadarVolume",
   "armFeatureGateSync",
   "isAudioPreviewKind",
+  "isRaceEngineerEnabled",
+  "isRadarEnabled",
   "migrateLfeIntensityBindingKeys",
   "runAudioPreview",
+  "startAudioSessionHold",
   "stopRaceEngineerPlayback",
   "syncFeatureGates",
 ] as const;
