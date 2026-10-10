@@ -1354,8 +1354,15 @@ export class SessionInfo extends SimIRacingAction<SessionInfoSettings> {
     telemetry: TelemetryData | null,
     settings: SessionInfoSettings,
   ): void {
-    // Check for incident increase to trigger flash
-    if (settings.mode === "incidents" && telemetry?.PlayerCarMyIncidentCount !== undefined) {
+    // Check for incident increase to trigger flash. Not in a replay, debounced
+    // (#1324): the count reads -1 there, and the ~300 ms after every replay
+    // seek reads 0, which would flash as an increase. Neither moves the
+    // baseline, so the first live tick compares against the last live count.
+    if (
+      settings.mode === "incidents" &&
+      telemetry?.PlayerCarMyIncidentCount !== undefined &&
+      !this.sdkController.getReplayState().inReplay
+    ) {
       const prevCount = this.lastIncidentCount.get(contextId);
       const currentCount = telemetry.PlayerCarMyIncidentCount;
 

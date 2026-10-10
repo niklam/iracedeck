@@ -172,6 +172,7 @@ vi.mock("@iracedeck/deck-core", async () => ({
       getConnectionStatus: vi.fn(() => true),
       getCurrentTelemetry: vi.fn(),
       getSessionInfo: vi.fn(),
+      getReplayState: vi.fn(() => ({ inReplay: false })),
     };
     updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
@@ -1209,6 +1210,41 @@ describe("SessionInfo", () => {
       expect(action["lastIncidentCount"].has("action-1")).toBe(false);
       expect(action["flashStates"].has("action-1")).toBe(false);
       expect(action["lastFlagKey"].has("action-1")).toBe(false);
+    });
+
+    describe("incident flash in a replay (issue #1324)", () => {
+      async function appearIncidents(): Promise<(telemetry: TelemetryData) => void> {
+        await action.onWillAppear(fakeEvent("action-1", { mode: "incidents" }) as any);
+
+        return vi.mocked(action["sdkController"].subscribe).mock.calls[0][1] as (telemetry: TelemetryData) => void;
+      }
+
+      function setInReplay(inReplay: boolean): void {
+        vi.mocked(action["sdkController"].getReplayState).mockReturnValue({ inReplay } as never);
+      }
+
+      it("flashes when the count rises live", async () => {
+        const tick = await appearIncidents();
+
+        tick({ PlayerCarMyIncidentCount: 2 } as TelemetryData);
+        tick({ PlayerCarMyIncidentCount: 4 } as TelemetryData);
+
+        expect(action["flashStates"].get("action-1")).toBe(true);
+      });
+
+      it("does not flash on the -1 -> 0 read of a replay seek, nor on the return to live", async () => {
+        const tick = await appearIncidents();
+
+        tick({ PlayerCarMyIncidentCount: 2 } as TelemetryData);
+        setInReplay(true);
+        tick({ PlayerCarMyIncidentCount: -1 } as TelemetryData);
+        tick({ PlayerCarMyIncidentCount: 0 } as TelemetryData);
+        setInReplay(false);
+        tick({ PlayerCarMyIncidentCount: 2 } as TelemetryData);
+
+        expect(action["flashStates"].get("action-1")).not.toBe(true);
+        expect(action["lastIncidentCount"].get("action-1")).toBe(2);
+      });
     });
 
     it("should update activeContexts on onDidReceiveSettings", async () => {
