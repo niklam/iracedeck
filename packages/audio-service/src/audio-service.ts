@@ -454,6 +454,12 @@ class AudioService implements IAudioService {
   // whose start failed stays recorded and the next play opens the device.
   private readonly holds = new Set<string>();
 
+  // Whether `Audio device held open` has been written for the current hold
+  // (#1347). Once per hold, from the first reason to the last release, and
+  // only once the device is actually up — which after a failed start is the
+  // sound that opens it, not the hold.
+  private holdAnnounced = false;
+
   // The Volume Mixer identity (#1253), handed to the native layer by init().
   private readonly identity: AudioSessionIdentity | null;
 
@@ -549,8 +555,6 @@ class AudioService implements IAudioService {
   hold(reason: string): void {
     if (this.holds.has(reason)) return;
 
-    const wasHeld = this.holds.size > 0;
-
     this.holds.add(reason);
     this.logger.debug(`Hold taken: ${reason}`);
 
@@ -562,9 +566,27 @@ class AudioService implements IAudioService {
     // start failed leaves the device closed, and a second holder arriving is
     // as good a moment to retry as the next sound. On a device that is
     // already running it changes nothing.
-    const running = this.startHeldDevice();
+    this.startHeldDevice();
 
-    if (!wasHeld && running) this.logger.info("Audio device held open");
+    // For a device a sound had already opened: `startDevice` says it for one
+    // it opens itself.
+    this.announceHeldOpen();
+  }
+
+  /**
+   * Write `Audio device held open` once per hold, when the device is held
+   * and up. Called where either half can become true last: a hold taken on a
+   * running device, and any start while held — so a hold whose own start
+   * failed is still announced by the sound that opens the device, and the
+   * `Audio device hold released` line always has its counterpart when the
+   * device was ever open under the hold. A device switch reopening a held
+   * device does not repeat it.
+   */
+  private announceHeldOpen(): void {
+    if (this.holdAnnounced || this.holds.size === 0 || !this.deviceRunning) return;
+
+    this.holdAnnounced = true;
+    this.logger.info("Audio device held open");
   }
 
   release(reason: string): void {
@@ -574,6 +596,7 @@ class AudioService implements IAudioService {
 
     if (this.holds.size > 0) return;
 
+    this.holdAnnounced = false;
     this.logger.info("Audio device hold released");
 
     // Back on demand: with every channel idle the release is armed now, and
@@ -591,6 +614,7 @@ class AudioService implements IAudioService {
 
     this.logger.debug(`Holds cleared: ${[...this.holds].join(", ")}`);
     this.holds.clear();
+    this.holdAnnounced = false;
     this.logger.info("Audio device hold released");
   }
 
@@ -1034,6 +1058,7 @@ class AudioService implements IAudioService {
 
     this.deviceRunning = true;
     this.logger.info("Audio device started");
+    this.announceHeldOpen();
 
     return true;
   }

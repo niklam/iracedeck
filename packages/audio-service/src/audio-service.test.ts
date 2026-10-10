@@ -1696,6 +1696,36 @@ describe("AudioService", () => {
           expect(vi.getTimerCount()).toBe(0);
         });
 
+        it("says it is held when a sound opens the device after the hold's own start failed, once per hold", () => {
+          const { native, endCallbacks } = createServiceWithEndCallbacks();
+          vi.mocked(native.startAudioEngine).mockReturnValueOnce(false);
+          getAudio().hold("session");
+          vi.mocked(mockLogger.info).mockClear();
+
+          getAudio().playOnChannel(AudioChannel.Voice, "/msg.mp3");
+
+          expect(vi.mocked(mockLogger.info).mock.calls).toEqual([[STARTED], [HELD]]);
+
+          // A later sound, a second reason and a device switch all find the
+          // hold already announced.
+          endCallbacks[AudioChannel.Voice]();
+          getAudio().playOnChannel(AudioChannel.Voice, "/msg.mp3");
+          getAudio().hold("preview");
+          getAudio().setAudioDevice(2);
+
+          expect(logged("info", HELD)).toBe(1);
+
+          getAudio().release("session");
+          getAudio().release("preview");
+
+          expect(logged("info", RELEASED)).toBe(1);
+
+          // The next hold is a new one and says so again.
+          getAudio().hold("session");
+
+          expect(logged("info", HELD)).toBe(2);
+        });
+
         it("says the hold is released when destroy clears it, and nothing when there was none", () => {
           createServiceWithEndCallbacks();
           getAudio().hold("session");
