@@ -17,7 +17,7 @@ weight: 60
 
 - **The frontmatter has exactly two keys**, one `key: value` per line between the `---` fences, and nothing else: no quotes, comments or blank lines.
 - **`category`** is spelled exactly as one of `Features`, `Improvements`, `Bug Fixes`, `Breaking changes`, `Maintenance`. Categories appear in that order, and one with no fragments gets no heading.
-- **`weight`** is a whole number from 1 to 100, and a higher weight is listed first within its category. It has no default. Ties go to the lower issue number, then to the file name.
+- **`weight`** is a whole number from 1 to 100, and a higher weight is listed first within its category. 50 is ordinary; go higher for headline changes, lower for minor ones. It has no default. Ties go to the lower issue number, then to the file name.
 - **The body is one line**: the bullet text without its `- ` marker, written as a self-contained sentence for users.
 - **No bare `<` or `{`** outside a backtick code span, because the text ends up in MDX. Inline markdown is limited to code spans, `**bold**`, `*em*` / `_em_`, and links whose target starts with `/` (a website path) or `http(s)://`.
 
