@@ -7,9 +7,11 @@
   page into a dark window.
 
   The notes rendered here are the ones this build ships: `changelog.json` is
-  generated from `packages/website/src/content/docs/changelog.mdx` by
-  `pnpm generate:changelog-data`, so the single source of truth is unchanged and
-  the pane works offline. Bullet `items` are HTML that the generator already
+  generated from `packages/website/src/content/docs/changelog.mdx` and the
+  in-development fragments in `changelog.d/` by `pnpm generate:changelog-data`,
+  which turbo runs before every plugin build (the file is gitignored, #1386), so
+  the single source of truth is unchanged and the pane works offline. Bullet
+  `items` are HTML that the generator already
   escaped (see scripts/lib/changelog-inline-html.mjs) — which is why they are
   emitted raw here rather than re-escaped.
 

@@ -19,6 +19,17 @@
     "typecheck": {
       "dependsOn": ["^build"]
     },
+    "//#generate:changelog-data": {
+      "inputs": [
+        "packages/website/src/content/docs/changelog.mdx",
+        "changelog.d/**",
+        "scripts/lib/changelog-*.mjs",
+        "!scripts/lib/changelog-*.test.mjs",
+        "scripts/generate-changelog-data.mjs",
+        "package.json"
+      ],
+      "outputs": ["packages/iracing-actions/src/actions/data/changelog.json"]
+    },
     "@iracedeck/audio-assets#build": {
       "dependsOn": ["@iracedeck/callout-script#build"],
       "inputs": ["voice/**", "src/build/**", "src/presets.mjs"],
@@ -50,7 +61,7 @@
       "outputs": ["dist/**", "build/**"]
     },
     "@iracedeck/iracing-plugin-mirabox#build": {
-      "dependsOn": ["^build", "@iracedeck/audio-assets#stage:dev-voices"],
+      "dependsOn": ["^build", "@iracedeck/audio-assets#stage:dev-voices", "//#generate:changelog-data"],
       "env": ["IRACEDECK_DEV_VOICES"],
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -67,7 +78,7 @@
       "outputs": ["com.iracedeck.sd.*.sdPlugin/**"]
     },
     "@iracedeck/iracing-plugin-stream-deck#build": {
-      "dependsOn": ["^build", "@iracedeck/audio-assets#stage:dev-voices"],
+      "dependsOn": ["^build", "@iracedeck/audio-assets#stage:dev-voices", "//#generate:changelog-data"],
       "env": ["IRACEDECK_DEV_VOICES"],
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -84,7 +95,7 @@
       "outputs": ["com.iracedeck.sd.*.sdPlugin/**"]
     },
     "@iracedeck/iracing-plugin-ulanzi#build": {
-      "dependsOn": ["^build", "@iracedeck/audio-assets#stage:dev-voices"],
+      "dependsOn": ["^build", "@iracedeck/audio-assets#stage:dev-voices", "//#generate:changelog-data"],
       "env": ["IRACEDECK_DEV_VOICES"],
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -130,6 +141,8 @@
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/lib/changelog-*.mjs",
+        "$TURBO_ROOT$/changelog.d/**",
+        "$TURBO_ROOT$/package.json",
         "$TURBO_ROOT$/scripts/lib/voice-catalog-data.mjs",
         "$TURBO_ROOT$/packages/voice-packs/src/**",
         "$TURBO_ROOT$/packages/audio-assets/catalog/**",
