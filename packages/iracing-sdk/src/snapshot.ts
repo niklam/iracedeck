@@ -28,6 +28,17 @@ export interface SnapshotEnvelope {
   timestamp: string;
   telemetry: Record<string, unknown>;
   sessionInfo?: Record<string, unknown>;
+  /** The plugin's own derived state at the press (#1387). Absent from a CLI snapshot. */
+  pluginState?: unknown;
+}
+
+/**
+ * A caller-supplied section of the Markdown report: a heading over a
+ * two-column label / value table.
+ */
+export interface MarkdownSection {
+  title: string;
+  rows: ReadonlyArray<readonly [string, string]>;
 }
 
 /**
@@ -373,12 +384,14 @@ export function buildPlayerTelemetry(
 
 /**
  * Generates the full human-readable Markdown snapshot report (session info,
- * race/track position orders, driver details, player telemetry).
+ * race/track position orders, driver details, player telemetry), followed by
+ * any extra sections the caller passes. A section with no rows is left out.
  */
 export function generateMarkdown(
   telemetry: Record<string, unknown>,
   sessionInfo: Record<string, unknown> | null,
   now: Date = new Date(),
+  extraSections: readonly MarkdownSection[] = [],
 ): string {
   const drivers = buildDriverList(telemetry, sessionInfo);
   const lines: string[] = [];
@@ -456,6 +469,21 @@ export function generateMarkdown(
     lines.push("");
   }
 
+  for (const section of extraSections) {
+    if (section.rows.length === 0) continue;
+
+    lines.push(`## ${section.title}`);
+    lines.push("");
+    lines.push(
+      buildMarkdownTable(
+        ["", ""],
+        section.rows.map(([label, value]) => [label, value]),
+        [false, false],
+      ),
+    );
+    lines.push("");
+  }
+
   return lines.join("\n");
 }
 
@@ -482,13 +510,15 @@ export function snapshotBaseName(now: Date = new Date()): string {
 }
 
 /**
- * Builds the JSON envelope written to disk for a snapshot.
+ * Builds the JSON envelope written to disk for a snapshot. `pluginState` is
+ * carried only when one is passed, so a caller without any writes no such key.
  */
 export function buildSnapshotEnvelope(
   telemetry: Record<string, unknown>,
   sessionInfo: Record<string, unknown> | null,
   includeSession: boolean,
   now: Date = new Date(),
+  pluginState?: unknown,
 ): SnapshotEnvelope {
   const envelope: SnapshotEnvelope = {
     timestamp: now.toISOString(),
@@ -499,5 +529,57 @@ export function buildSnapshotEnvelope(
     envelope.sessionInfo = sessionInfo;
   }
 
+  if (pluginState !== undefined) {
+    envelope.pluginState = pluginState;
+  }
+
   return envelope;
+}
+
+/** A primitive-only object of at most this many members is written on one line. */
+export const SNAPSHOT_INLINE_OBJECT_MAX_KEYS = 4;
+
+const isPrimitive = (value: unknown): boolean => value === null || typeof value !== "object";
+
+/**
+ * Writes a snapshot as JSON with compact leaves: an array of primitives, or a
+ * primitive-only object of at most `SNAPSHOT_INLINE_OBJECT_MAX_KEYS` members,
+ * goes on one line; everything else is indented by two spaces. The result
+ * parses to exactly what `JSON.stringify` gives, and it throws where
+ * `JSON.stringify` throws (a `BigInt`, a cycle).
+ */
+export function formatSnapshotJson(value: unknown): string {
+  // The library type leaves out `undefined`, which is what a bare undefined or function gives.
+  const text = JSON.stringify(value) as string | undefined;
+
+  // Normalising through JSON first is what keeps the parse result identical:
+  // undefined members, functions, `toJSON` and non-finite numbers are settled
+  // here, so the printer only ever sees plain JSON data.
+  return text === undefined ? "null" : printJson(JSON.parse(text) as unknown, "");
+}
+
+function printJson(value: unknown, indent: string): string {
+  if (isPrimitive(value)) return JSON.stringify(value);
+
+  const inner = `${indent}  `;
+
+  if (Array.isArray(value)) {
+    if (value.length === 0) return "[]";
+
+    if (value.every(isPrimitive)) return `[${value.map((member) => JSON.stringify(member)).join(", ")}]`;
+
+    return `[\n${value.map((member) => inner + printJson(member, inner)).join(",\n")}\n${indent}]`;
+  }
+
+  const entries = Object.entries(value as Record<string, unknown>);
+
+  if (entries.length === 0) return "{}";
+
+  if (entries.length <= SNAPSHOT_INLINE_OBJECT_MAX_KEYS && entries.every(([, member]) => isPrimitive(member))) {
+    return `{ ${entries.map(([key, member]) => `${JSON.stringify(key)}: ${JSON.stringify(member)}`).join(", ")} }`;
+  }
+
+  const members = entries.map(([key, member]) => `${inner}${JSON.stringify(key)}: ${printJson(member, inner)}`);
+
+  return `{\n${members.join(",\n")}\n${indent}}`;
 }
