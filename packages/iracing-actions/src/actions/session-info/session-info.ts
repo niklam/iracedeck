@@ -29,6 +29,7 @@ import {
   estimateIRatingChanges,
   extractQualifyResults,
   type FlagInfo,
+  formatSessionClock,
   formatWindSpeed,
   type SessionInfo as IRacingSessionInfo,
   type IRatingFieldDriver,
@@ -92,27 +93,6 @@ const FLASH_INTERVAL_MS = 250;
 const FLASH_STEPS = 12; // on-off x6 (6 red flashes)
 
 const PULSE_INTERVAL_MS = 500;
-
-/**
- * @internal Exported for testing
- *
- * Formats a time in seconds to a human-readable string.
- * Auto-adapts: H:MM:SS / MM:SS / 0:SS
- */
-export function formatSessionTime(seconds: number): string {
-  if (!isFinite(seconds) || seconds < 0) return "0:00";
-
-  const totalSeconds = Math.floor(seconds);
-  const h = Math.floor(totalSeconds / 3600);
-  const m = Math.floor((totalSeconds % 3600) / 60);
-  const s = totalSeconds % 60;
-
-  if (h > 0) {
-    return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-  }
-
-  return `${m}:${String(s).padStart(2, "0")}`;
-}
 
 /**
  * @internal Exported for testing
@@ -1240,14 +1220,19 @@ export class SessionInfo extends SimIRacingAction<SessionInfoSettings> {
     // above is threaded rather than re-resolved.
     //
     // The bare count also busts the state-key cache on its own: no clock
-    // rendering is ever a bare integer (`formatSessionTime` always carries a
-    // colon) and `UNLIM` is neither, so a change of binding always changes the
-    // value string too.
+    // rendering is ever a bare integer (it always carries a colon) and `UNLIM`
+    // is neither, so a change of binding always changes the value string too.
+    //
+    // The clock is formatted by the SDK's `formatSessionClock`, the same
+    // function behind `{{session.time_remaining}}`, so the key and a template
+    // agree past an hour (#1292). It is blank for a reading that is not a
+    // clock, which a template wants; a key bound to the clock shows `0:00`
+    // instead, and keeps its colon.
     if (!sessionLimit) return "--:--";
 
     if (sessionLimit.binding === "laps") return String(sessionLimit.lapsToGo);
 
-    if (sessionLimit.binding === "time") return formatSessionTime(sessionLimit.remainingS);
+    if (sessionLimit.binding === "time") return formatSessionClock(sessionLimit.remainingS) || "0:00";
 
     return "UNLIM";
   }
