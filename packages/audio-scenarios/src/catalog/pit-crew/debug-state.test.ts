@@ -1,11 +1,13 @@
 /**
  * The Race Engineer's section of the Telemetry Snapshot's `pluginState`
- * (issue #1387): the aggregate reader, its headline rows and each family's
- * own reader.
+ * (issue #1387): the aggregate reader, its headline rows, each family's own
+ * reader, and the source guard that keeps a new family from holding state the
+ * snapshot cannot see.
  */
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
+import { readdirSync, readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ScenarioContext } from "../../dsl.js";
@@ -473,5 +475,79 @@ describe("the family readers", () => {
     // The spotter buffers the clear: with no gap data it confirms at once.
     expect(readSpotterDebugState()).toMatchObject({ state: "clear", looping: false, clearPolling: false });
     expect(getScenarioEngine().describeState().buses[0].focus).toBeNull();
+  });
+});
+
+// ─── The per-file guard ──────────────────────────────────────────────────────
+
+/**
+ * Module-level mutable state, as far as a line pattern can see it: a `let` /
+ * `var` at column 0, or a `const` bound to an EMPTY collection — which is
+ * only of use if something fills it later. A collection built with contents
+ * (`new Set(["a", "b"])`) is a constant and does not match.
+ *
+ * What no line pattern sees: state closed over inside a function (an indented
+ * `let` is nearly always a plain local), and a `const` object mutated in
+ * place. A file that keeps either gives the snapshot a module-level hook and
+ * a reader by hand — `caution.ts` is the one that does.
+ */
+const MODULE_STATE = [
+  /^(?:export )?(?:let|var) \w+/m,
+  /^(?:export )?const \w+\b.*?= new (?:Map|Set|WeakMap|WeakSet)(?:<.*>)?\(\);?\s*$/m,
+];
+const READER = /^export function (read\w+DebugState)\(/m;
+
+const holdsModuleState = (source: string): boolean => MODULE_STATE.some((pattern) => pattern.test(source));
+
+describe("every pit-crew file that holds module state exports a state reader", () => {
+  const DIR = new URL(".", import.meta.url);
+  const sources = readdirSync(DIR)
+    .filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts") && !name.endsWith(".test-util.ts"))
+    .map((name) => ({ name, source: readFileSync(new URL(name, DIR), "utf-8") }));
+  const stateful = sources.filter(({ source }) => holdsModuleState(source));
+
+  it("the patterns see module state and nothing else", () => {
+    for (const line of [
+      "let lastAt = 0;",
+      "export let enabled = false;",
+      "var legacy;",
+      "const listeners = new Set<Listener>();",
+      "const byCar: Map<number, () => void> = new Map();",
+      "export const seen = new WeakSet<object>()",
+    ]) {
+      expect(holdsModuleState(`import x from "y";\n${line}\n`), line).toBe(true);
+    }
+
+    for (const line of [
+      "  let idx = 0;",
+      "const FLAGS = new Set([1, 2]);",
+      "const LIMIT = 4;",
+      "export const SOURCES: readonly string[] = [];",
+      "// let me explain",
+      "function build() {\n  const seen = new Set<number>();\n}",
+    ]) {
+      expect(holdsModuleState(`import x from "y";\n${line}\n`), line).toBe(false);
+    }
+  });
+
+  it("finds the state-holding files — a walk that found none would pass everything below", () => {
+    expect(sources.length).toBeGreaterThanOrEqual(35);
+    expect(stateful.length).toBeGreaterThanOrEqual(FAMILY_KEYS.length);
+  });
+
+  it.each(stateful.map(({ name, source }) => [name, source] as const))(
+    "%s exports a read…DebugState()",
+    (_name, source) => {
+      expect(READER.test(source)).toBe(true);
+    },
+  );
+
+  it("every exported reader is one the aggregate calls", () => {
+    const aggregate = sources.find(({ name }) => name === "debug-state.ts")?.source ?? "";
+    const readers = sources.flatMap(({ source }) => READER.exec(source)?.[1] ?? []);
+
+    expect(readers.length).toBeGreaterThanOrEqual(FAMILY_KEYS.length);
+
+    for (const reader of readers) expect(aggregate, reader).toContain(`${reader}()`);
   });
 });

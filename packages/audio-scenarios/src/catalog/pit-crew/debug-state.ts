@@ -8,7 +8,9 @@
  * the buses, what waits for them, the focus floor, each contract's last fire.
  * Each pit-crew file that keeps state of its own exports a
  * `read<Family>DebugState()` beside that state, and this module collects them
- * under one key per file.
+ * under one key per file. `debug-state.test.ts` scans the directory and fails
+ * for a file that declares module state and exports no reader, or exports a
+ * reader this module does not call.
  *
  * Every reader is synchronous and a pure read — no logging, no timers, no
  * mutation — and works before its family was registered. What they return is
