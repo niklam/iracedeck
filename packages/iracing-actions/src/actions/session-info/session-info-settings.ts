@@ -7,6 +7,20 @@ import { CommonSettings } from "@iracedeck/deck-core";
 import { FUEL_LAP_HISTORY_CAP } from "@iracedeck/sim-events-iracing";
 import z from "zod";
 
+/**
+ * One Tire Temperatures color threshold (issue #254), by the `fuelLapWindow`
+ * rule: a blank field is the default, and so is anything that does not read as
+ * a number, so one malformed field never fails the whole settings parse and
+ * resets the key. A number the driver typed is kept as typed: the three are
+ * never clamped into order, since the bands are evaluated hottest first.
+ */
+function tireTempThreshold(fallback: number) {
+  return z.preprocess(
+    (val) => (val === null || val === undefined || (typeof val === "string" && val.trim() === "") ? undefined : val),
+    z.coerce.number().catch(fallback),
+  );
+}
+
 export const SessionInfoSettings = CommonSettings.extend({
   mode: z
     .enum([
@@ -23,6 +37,7 @@ export const SessionInfoSettings = CommonSettings.extend({
       "wind",
       "track-temp",
       "air-temp",
+      "tire-temps",
     ])
     .default("incidents"),
   fontSize: z.preprocess(
@@ -69,6 +84,28 @@ export const SessionInfoSettings = CommonSettings.extend({
   // blows FROM — matching how iRacing itself labels wind.
   windDirectionMode: z.enum(["relative", "absolute"]).default("relative"),
   windSpeedUnit: z.enum(["ms", "kmh", "mph"]).default("kmh"),
+  // Tire Temperatures (issue #254): the tire temperatures of the last pit
+  // stop, never live ones. "all" shows one figure per tire, summarized from
+  // its three zones by tireTempMethod; a single corner shows that tire's three
+  // zones, where the method does not apply.
+  tireTempCorner: z.enum(["all", "lf", "rf", "lr", "rr"]).default("all"),
+  tireTempMethod: z.enum(["weighted", "average", "max", "middle"]).default("weighted"),
+  tireTempColors: z
+    .union([z.boolean(), z.string()])
+    .transform((val) => val === true || val === "true")
+    .default(true),
+  // The unit the color thresholds are typed in. Each unit keeps its own stored
+  // set, so switching the selector never leaves Celsius numbers standing as
+  // Fahrenheit ones, and nothing the driver typed is rewritten or lost on the
+  // way back. It is stored with the key and does not follow iRacing's
+  // DisplayUnits, which would silently change what a stored "100" means.
+  tireTempThresholdUnit: z.enum(["c", "f"]).default("c"),
+  tireTempColdBelow: tireTempThreshold(75),
+  tireTempHotAbove: tireTempThreshold(90),
+  tireTempCriticalAbove: tireTempThreshold(100),
+  tireTempColdBelowF: tireTempThreshold(165),
+  tireTempHotAboveF: tireTempThreshold(195),
+  tireTempCriticalAboveF: tireTempThreshold(210),
   // Speak value on press (issue #466): a press has the Race Engineer read out
   // the value the key shows. One switch for the whole action, on every item —
   // an item with no speech yet ignores the press, and one that gains speech

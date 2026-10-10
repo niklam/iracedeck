@@ -48,3 +48,93 @@ describe("Session Info settings — fuelLapWindow", () => {
     expect(parsed.data).toMatchObject({ mode: "fuel", fuelSubMode: "avgN", fuelLapWindow: 5 });
   });
 });
+
+describe("Session Info settings — Tire Temperatures (issue #254)", () => {
+  it("is a mode of its own", () => {
+    expect(SessionInfoSettings.parse({ mode: "tire-temps" }).mode).toBe("tire-temps");
+  });
+
+  it("defaults to all four tires, the weighted center and colors on, in Celsius", () => {
+    expect(SessionInfoSettings.parse({})).toMatchObject({
+      tireTempCorner: "all",
+      tireTempMethod: "weighted",
+      tireTempColors: true,
+      tireTempThresholdUnit: "c",
+    });
+  });
+
+  it("each threshold unit has its own default set", () => {
+    expect(SessionInfoSettings.parse({})).toMatchObject({
+      tireTempColdBelow: 75,
+      tireTempHotAbove: 90,
+      tireTempCriticalAbove: 100,
+      tireTempColdBelowF: 165,
+      tireTempHotAboveF: 195,
+      tireTempCriticalAboveF: 210,
+    });
+  });
+
+  it("reads the color checkbox as a boolean or the PI's string", () => {
+    expect(SessionInfoSettings.parse({ tireTempColors: false }).tireTempColors).toBe(false);
+    expect(SessionInfoSettings.parse({ tireTempColors: "false" }).tireTempColors).toBe(false);
+    expect(SessionInfoSettings.parse({ tireTempColors: "true" }).tireTempColors).toBe(true);
+  });
+
+  it("reads a threshold from the PI's string and a persisted number alike, decimals kept", () => {
+    expect(SessionInfoSettings.parse({ tireTempColdBelow: "68" }).tireTempColdBelow).toBe(68);
+    expect(SessionInfoSettings.parse({ tireTempHotAbove: 92.5 }).tireTempHotAbove).toBe(92.5);
+    expect(SessionInfoSettings.parse({ tireTempCriticalAboveF: "221.5" }).tireTempCriticalAboveF).toBe(221.5);
+  });
+
+  it("a blank threshold is its default, never zero", () => {
+    expect(SessionInfoSettings.parse({ tireTempColdBelow: "" }).tireTempColdBelow).toBe(75);
+    expect(SessionInfoSettings.parse({ tireTempHotAbove: "  " }).tireTempHotAbove).toBe(90);
+    expect(SessionInfoSettings.parse({ tireTempCriticalAbove: null }).tireTempCriticalAbove).toBe(100);
+    expect(SessionInfoSettings.parse({ tireTempColdBelowF: undefined }).tireTempColdBelowF).toBe(165);
+  });
+
+  it("keeps an out-of-order set exactly as typed", () => {
+    expect(
+      SessionInfoSettings.parse({ tireTempColdBelow: 110, tireTempHotAbove: 60, tireTempCriticalAbove: 40 }),
+    ).toMatchObject({ tireTempColdBelow: 110, tireTempHotAbove: 60, tireTempCriticalAbove: 40 });
+  });
+
+  it("switching the threshold unit changes neither stored set", () => {
+    const stored = {
+      tireTempColdBelow: 70,
+      tireTempHotAbove: 95,
+      tireTempCriticalAbove: 110,
+      tireTempColdBelowF: 160,
+      tireTempHotAboveF: 200,
+      tireTempCriticalAboveF: 230,
+    };
+
+    expect(SessionInfoSettings.parse({ ...stored, tireTempThresholdUnit: "c" })).toMatchObject(stored);
+    expect(SessionInfoSettings.parse({ ...stored, tireTempThresholdUnit: "f" })).toMatchObject(stored);
+  });
+
+  it("a malformed threshold falls back alone — the key keeps its other settings", () => {
+    const parsed = SessionInfoSettings.safeParse({
+      mode: "tire-temps",
+      tireTempCorner: "rf",
+      tireTempMethod: "max",
+      tireTempColors: "false",
+      tireTempThresholdUnit: "f",
+      tireTempColdBelow: 70,
+      tireTempHotAbove: "abc",
+      tireTempCriticalAboveF: "NaN",
+    });
+
+    expect(parsed.success).toBe(true);
+    expect(parsed.data).toMatchObject({
+      mode: "tire-temps",
+      tireTempCorner: "rf",
+      tireTempMethod: "max",
+      tireTempColors: false,
+      tireTempThresholdUnit: "f",
+      tireTempColdBelow: 70,
+      tireTempHotAbove: 90,
+      tireTempCriticalAboveF: 210,
+    });
+  });
+});
