@@ -21,7 +21,7 @@ Since #849 the audio engine is created on the first sound and torn down `IDLE_ST
 
 - **`hold`:** cancels any pending idle stop and starts the engine now, through the same start path as playback, so the identity, reroute and device-selection handling stay single. A failed start is logged as `WARN Audio device could not be held open; sounds will open it on demand`. The hold stays recorded, so the next play still opens the device on demand and the engine stays up once it has.
 - **`release`:** when the last reason goes, arms the idle stop. Releasing an unknown reason is a no-op.
-- **Logs:** `INFO Audio device held for the iRacing session` and `INFO Audio device hold released`, with the reason at debug. The existing `Audio device started` and `Audio device stopped (idle)` lines are unchanged.
+- **Logs:** `INFO Audio device held open` and `INFO Audio device hold released`, with the reason at debug. The held line names no session, because the service owns the hold and not the reason for it. It is written once per hold, when the device is held and up: at the hold, or after a failed start at the sound that opens the device. The existing `Audio device started` and `Audio device stopped (idle)` lines are unchanged.
 - **Device-setting change while held:** `setAudioDevice` / `setAudioDeviceById` already tear the engine down. When a hold is active they start it again at once on the new device, rather than leaving it closed until the next sound. System Default needs nothing, because miniaudio's reroute follows Windows.
 - **`destroy()`** clears every hold.
 
@@ -32,7 +32,7 @@ A small controller in `iracing-actions/src/audio/`, beside the feature-gate side
 - **iRacing is running.** It reads app-monitor's `onIRacingStarted` and `onIRacingTerminated` (#1338), with `isIRacingActive()` for the state at startup. A plugin started with iRacing already running takes the hold at once. The started edge fires at iRacing's **launch** event, the plugin's quietest moment, about 25–60 s before telemetry connects. Opening at connect instead would put the open into the busiest moment of the run, where both #1330 freezes happened.
 - **The Race Engineer or the Radar master gate is on.** With both off, nothing plays during a session and a held stream would only cost. The controller reacts to gate changes through `onGlobalSettingsChange`, read live, so toggling either gate mid-session takes or releases the hold.
 
-The controller has its dependencies injected (app-monitor hooks, gate readers, the audio service), so it imports nothing across the #1176 seam. Each `plugin.ts` starts it after `getAudio().init()` and `initAppMonitor`.
+The controller has its dependencies injected (app-monitor hooks, gate readers, the audio service), so it imports nothing across the #1176 seam. `plugin-runtime`'s `startServices` phase starts it right after `initAppMonitor`, which is after `getAudio().init()`; since #1349 that phase is the bootstrap the three `plugin.ts` shells share.
 
 ### 4. What the hold changes for #849 and #1330
 
@@ -66,6 +66,7 @@ The controller has its dependencies injected (app-monitor hooks, gate readers, t
 - **Manual:**
   - An AI race of 15+ minutes: the log shows one `Audio device started` after `iRacing launched` and none between callouts (baseline 2026-10-04: 16 in 18 min).
   - `Audio device stopped (idle)` follows about 5 s after iRacing exits.
+  - The same exit on Mirabox: the hold is released only by app-monitor's terminated edge, and a host that delivered the launch event but never the terminate event would keep the device held, and the PC awake, until the plugin restarts.
   - Offline with iRacing closed, the Settings **Test** buttons open the device and it closes 5 s after the sound, as today.
   - Switching the Windows default output mid-race moves the audio and logs `Audio device rerouted`.
   - Changing the Output Device setting mid-race reopens on the new device at once.
