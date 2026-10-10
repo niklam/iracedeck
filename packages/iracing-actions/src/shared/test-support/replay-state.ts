@@ -1,51 +1,41 @@
 /**
  * Test support (#1324): a stand-in for `SDKController`'s debounced replay
- * state, for tests whose controller is a mock. It runs the SDK's own rule
- * (`nextReplayState`, `replayStateAt`, `replayLeftForLive`), so a test that
- * swaps telemetry and advances the clock means what it meant against the
- * #1230 sighting: the post-seek blip, the grace running out, a jump to live.
+ * state, for tests whose controller is a mock. It holds the SDK's own
+ * `ReplayStateTracker`, so a test that swaps telemetry and advances the clock
+ * means what it meant against the #1230 sighting: the post-seek blip, the
+ * grace running out, a jump to live.
  *
- * Every `getReplayState` call first steps the state with whatever `telemetry`
- * and `sessionInfo` return at that moment, as if a tick carrying them had just
- * been notified, then reads it at `nowMs`. No telemetry steps nothing. Never
- * imported by production code.
+ * The real controller steps the tracker on every poll. A mocked controller
+ * has no poll, so here every `getReplayState` call first steps the tracker
+ * with whatever `telemetry` and `sessionInfo` return at that moment, as if a
+ * poll had just read them, then reads it at `nowMs` — stepping on read stands
+ * in for stepping per poll. No telemetry steps nothing. Never imported by
+ * production code.
  */
-import {
-  initialReplayState,
-  nextReplayState,
-  replayLeftForLive,
-  type ReplayState,
-  replayStateAt,
-  type TelemetryData,
-} from "@iracedeck/iracing-sdk";
+import { type ReplayState, ReplayStateTracker, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 /** The two controller members the replay surfaces read the state through. */
 export interface SteppedReplayState {
   getReplayState(nowMs?: number): ReplayState;
-  noteReplayLeftForLive(nowMs?: number): boolean;
+  noteReplayLeftForLive(nowMs?: number): void;
 }
 
 export function steppedReplayState(
   telemetry: () => TelemetryData | null,
   sessionInfo: () => unknown = () => null,
 ): SteppedReplayState {
-  let state = initialReplayState();
+  const tracker = new ReplayStateTracker();
 
   return {
     getReplayState(nowMs: number = Date.now()): ReplayState {
       const t = telemetry();
 
-      if (t) state = nextReplayState(state, t, sessionInfo(), nowMs);
+      if (t) tracker.step(t, sessionInfo(), nowMs);
 
-      return replayStateAt(state, nowMs);
+      return tracker.read(nowMs);
     },
-    noteReplayLeftForLive(nowMs: number = Date.now()): boolean {
-      const next = replayLeftForLive(state, nowMs);
-      const dropped = next !== state;
-
-      state = next;
-
-      return dropped;
+    noteReplayLeftForLive(nowMs: number = Date.now()): void {
+      tracker.noteLeftForLive(nowMs);
     },
   };
 }

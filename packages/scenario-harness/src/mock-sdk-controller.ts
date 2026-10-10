@@ -8,10 +8,12 @@
  * telemetry snapshot and either ticking the loop on a timer or one-shot from
  * the UI.
  *
- * The replay state the translator's guard reads (#1324) is the REAL rule,
- * `nextReplayState`, stepped from the mock's snapshot and session info on
- * every tick delivered to a subscriber, exactly as the real controller steps
- * it in `notifySubscribers`. So a `telemetrySequence` that closes a
+ * The replay state the translator's guard reads (#1324) is the REAL rule, the
+ * SDK's own `ReplayStateTracker`, stepped from the mock's snapshot and session
+ * info on every tick delivered to a subscriber — the mock's tick is its poll,
+ * and the real controller steps on every poll — and on the subscribe-time
+ * delivery, which stands in for the connect-time step the real controller's
+ * first subscriber triggers. So a `telemetrySequence` that closes a
  * replay-mode bracket (`IsReplayPlaying: false`) is still a replay to the
  * translator for `REPLAY_EXIT_GRACE_MS`, as it is in the sim, and a shortcut
  * holds that long before the step it expects live behaviour from.
@@ -22,11 +24,8 @@
  * pattern the existing translator tests use.
  */
 import {
-  initialReplayState,
-  nextReplayState,
-  replayLeftForLive,
   type ReplayState,
-  replayStateAt,
+  ReplayStateTracker,
   type SessionInfo,
   type TelemetryCallback,
   type TelemetryData,
@@ -114,7 +113,7 @@ export class MockSDKController {
   private subscribers = new Map<string, TelemetryCallback>();
   private readonly logger: ILogger;
   private stateListeners = new Set<(state: MockState) => void>();
-  private replayState: ReplayState = initialReplayState();
+  private readonly replayState = new ReplayStateTracker();
 
   constructor(options: MockSDKControllerOptions = {}) {
     this.telemetry = options.initialTelemetry ?? defaultTelemetry();
@@ -145,17 +144,12 @@ export class MockSDKController {
    * the exit grace expires between ticks too.
    */
   getReplayState(nowMs: number = Date.now()): ReplayState {
-    return replayStateAt(this.replayState, nowMs);
+    return this.replayState.read(nowMs);
   }
 
   /** The real controller's `goToEnd` hook (#1230, #1324); nothing in the harness sends one today. */
-  noteReplayLeftForLive(nowMs: number = Date.now()): boolean {
-    const next = replayLeftForLive(this.replayState, nowMs);
-    const dropped = next !== this.replayState;
-
-    this.replayState = next;
-
-    return dropped;
+  noteReplayLeftForLive(nowMs: number = Date.now()): void {
+    this.replayState.noteLeftForLive(nowMs);
   }
 
   // ── Harness-only API ───────────────────────────────────────────────────────
@@ -212,9 +206,9 @@ export class MockSDKController {
   }
 
   /**
-   * One tick to every subscriber: the replay state steps first, as
-   * `SDKController.notifySubscribers` steps it before any callback runs, and
-   * a disconnected tick resets it, as the real controller resets it wherever
+   * One tick to every subscriber: the replay state steps first, as the real
+   * controller steps it on the poll before any callback runs, and a
+   * disconnected tick resets it, as the real controller resets it wherever
    * the connection drops.
    */
   private deliverToAll(): void {
@@ -232,9 +226,11 @@ export class MockSDKController {
   }
 
   private stepReplayState(): void {
-    this.replayState = this.isConnected
-      ? nextReplayState(this.replayState, this.telemetry, this.sessionInfo, Date.now())
-      : initialReplayState();
+    if (this.isConnected) {
+      this.replayState.step(this.telemetry, this.sessionInfo, Date.now());
+    } else {
+      this.replayState.reset();
+    }
   }
 
   /**

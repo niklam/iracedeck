@@ -478,12 +478,12 @@ describe("SDKController", () => {
       expect(controller.getReplayState().inReplay).toBe(true);
     });
 
-    it("noteReplayLeftForLive drops the grace outside a saved replay and reports it", () => {
+    it("noteReplayLeftForLive drops the grace outside a saved replay", () => {
       subscribeLive();
       vi.mocked(mockSdk.getTelemetry).mockReturnValue(replayTick(2, 500));
       vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS);
 
-      expect(controller.noteReplayLeftForLive()).toBe(true);
+      controller.noteReplayLeftForLive();
 
       vi.mocked(mockSdk.getTelemetry).mockReturnValue(liveTick(3, 900));
       vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS);
@@ -497,7 +497,11 @@ describe("SDKController", () => {
       vi.mocked(mockSdk.getTelemetry).mockReturnValue(replayTick(2, 500));
       vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS);
 
-      expect(controller.noteReplayLeftForLive()).toBe(false);
+      controller.noteReplayLeftForLive();
+
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(liveTick(3, 900));
+      vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS);
+
       expect(controller.getReplayState()).toMatchObject({ inReplay: true, frame: 500 });
     });
 

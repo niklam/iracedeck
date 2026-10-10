@@ -20,15 +20,12 @@ import {
   EngineWarnings,
   Flags,
   IncidentFlags,
-  initialReplayState,
   IRSDK_UNLIMITED_LAPS,
   IRSDK_UNLIMITED_TIME,
-  nextReplayState,
   PaceMode,
   PitSvFlags,
   REPLAY_EXIT_GRACE_MS,
-  replayLeftForLive,
-  replayStateAt,
+  ReplayStateTracker,
   type SDKController,
   SessionState,
   type TelemetryCallback,
@@ -88,13 +85,14 @@ type MockController = SDKController & {
 function createMockController(): MockController {
   let callback: TelemetryCallback | null = null;
   let sessionInfo: Record<string, unknown> | null = null;
-  // The debounced replay state the translator reads (#1324), stepped through
-  // the REAL rule from the mocked telemetry and session info on every tick,
-  // as `SDKController.notifySubscribers` steps it — so a tick that leaves a
-  // replay stays "in a replay" for `REPLAY_EXIT_GRACE_MS`, as in the sim, and
-  // a test that expects live behaviour after a replay lets the grace run out
-  // first (`elapseReplayGrace`) rather than relying on a mock that forgets it.
-  let replayState = initialReplayState();
+  // The debounced replay state the translator reads (#1324), the SDK's own
+  // tracker stepped from the mocked telemetry and session info on every tick
+  // (the mock's poll), as `SDKController` steps it on every poll — so a tick
+  // that leaves a replay stays "in a replay" for `REPLAY_EXIT_GRACE_MS`, as in
+  // the sim, and a test that expects live behaviour after a replay lets the
+  // grace run out first (`elapseReplayGrace`) rather than relying on a mock
+  // that forgets it.
+  const replayState = new ReplayStateTracker();
 
   const controller = {
     // Matches the real `SDKController.subscribe` contract: after storing the
@@ -110,21 +108,19 @@ function createMockController(): MockController {
       callback = null;
     },
     getSessionInfo: () => sessionInfo,
-    getReplayState: (nowMs: number = Date.now()) => replayStateAt(replayState, nowMs),
-    noteReplayLeftForLive: (nowMs: number = Date.now()) => {
-      const next = replayLeftForLive(replayState, nowMs);
-      const dropped = next !== replayState;
-
-      replayState = next;
-
-      return dropped;
-    },
+    getReplayState: (nowMs: number = Date.now()) => replayState.read(nowMs),
+    noteReplayLeftForLive: (nowMs: number = Date.now()) => replayState.noteLeftForLive(nowMs),
   } as unknown as MockController;
 
   controller.__tick = (telemetry, isConnected = true) => {
     // Stepped before the callback, as the real controller does, and reset on
     // a disconnect tick, as the real controller resets it when the connection drops.
-    replayState = telemetry ? nextReplayState(replayState, telemetry, sessionInfo, Date.now()) : initialReplayState();
+    if (telemetry) {
+      replayState.step(telemetry, sessionInfo, Date.now());
+    } else {
+      replayState.reset();
+    }
+
     callback?.(telemetry, isConnected);
   };
   controller.__setSessionInfo = (info) => {

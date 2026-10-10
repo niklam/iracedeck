@@ -183,7 +183,9 @@ export { type FlagInfo, FLAG_DEFINITIONS, resolveActiveFlag, resolveAllActiveFla
 export { decodePenaltyFlags, PENALTY_FLAG_MASK, type CarPenaltyFlags } from "./penalty-flag-utils.js";
 
 // Telemetry feature detection (car-capability + session-phase helpers), and
-// the debounced replay state (#1324) `SDKController` keeps the one instance of
+// the debounced replay state (#1324): the pure rule here, the holder that
+// sequences it (`ReplayStateTracker`) below — `SDKController` keeps the
+// production instance, the harness mock and the action tests' stand-in one each
 export {
   getTireChangeGranularity,
   hasPitLimiter,
@@ -202,6 +204,7 @@ export {
   resolveReplayFrame,
   type TireChangeGranularity,
 } from "./telemetry-features.js";
+export { ReplayStateTracker } from "./replay-state-tracker.js";
 
 // Session limits (#1109) — sentinel decoding and the whichever-ends-sooner
 // rule shared by the fuel callouts, Session Info and the template context

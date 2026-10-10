@@ -5,13 +5,8 @@
 import { ILogger, silentLogger } from "@iracedeck/logger";
 
 import { IRacingSDK } from "./IRacingSDK.js";
-import {
-  initialReplayState,
-  nextReplayState,
-  replayLeftForLive,
-  type ReplayState,
-  replayStateAt,
-} from "./telemetry-features.js";
+import { ReplayStateTracker } from "./replay-state-tracker.js";
+import type { ReplayState } from "./telemetry-features.js";
 import { buildTemplateContextFromData, type TemplateContext } from "./template-context.js";
 import { SessionInfo, TelemetryData } from "./types.js";
 
@@ -82,7 +77,7 @@ export class SDKController {
    * the translator and every action read the same answer for the tick; reset
    * with `lastSessionTick` so a reconnect starts live with nothing sighted.
    */
-  private replayState: ReplayState = initialReplayState();
+  private readonly replayState = new ReplayStateTracker();
 
   constructor(sdk: IRacingSDK, logger: ILogger = silentLogger) {
     this.sdk = sdk;
@@ -168,7 +163,7 @@ export class SDKController {
     this.lastTemplateContext = null;
     this.templateContextDirty = true;
     this.lastSessionTick = -1;
-    this.replayState = initialReplayState();
+    this.replayState.reset();
   }
 
   /**
@@ -190,7 +185,7 @@ export class SDKController {
         // The update loop skips `update()` while the SDK reads disconnected,
         // so this is where a dropped connection is noticed: the replay state
         // must not report the last tick's replay to a read made meanwhile.
-        this.replayState = initialReplayState();
+        this.replayState.reset();
       }
 
       // Notify all subscribers of connection state change
@@ -213,7 +208,7 @@ export class SDKController {
         this.lastTemplateContext = null;
         this.templateContextDirty = true;
         this.lastSessionTick = -1;
-        this.replayState = initialReplayState();
+        this.replayState.reset();
         this.notifySubscribers(null);
       }
 
@@ -265,7 +260,7 @@ export class SDKController {
     // sees this tick's answer (#1324). `getSessionInfo` is cached on the
     // SDK by its update counter, so the per-tick read costs a header check.
     if (data) {
-      this.replayState = nextReplayState(this.replayState, data, this.sdk.getSessionInfo(), Date.now());
+      this.replayState.step(data, this.sdk.getSessionInfo(), Date.now());
     }
 
     for (const callback of this.subscribers.values()) {
@@ -302,7 +297,7 @@ export class SDKController {
       // Reset dedupe state so the first frame of the next iRacing session
       // is never suppressed by a stale tick value (issue #493 follow-up).
       this.lastSessionTick = -1;
-      this.replayState = initialReplayState();
+      this.replayState.reset();
       this.notifySubscribers(null);
     } else if (enabled && this.subscribers.size > 0 && !this.isConnected) {
       // Re-enabling and we have subscribers - try to connect immediately
@@ -346,7 +341,7 @@ export class SDKController {
    * expire; `nowMs` is injectable for tests.
    */
   getReplayState(nowMs: number = Date.now()): ReplayState {
-    return replayStateAt(this.replayState, nowMs);
+    return this.replayState.read(nowMs);
   }
 
   /**
@@ -354,16 +349,12 @@ export class SDKController {
    * outside a saved replay the command leaves the replay for the car
    * at once, so the grace is dropped rather than holding the old replay frame
    * for a second (#1230). In a saved replay it is only a seek and nothing
-   * changes. Call it only for a command that was actually sent. Returns
-   * whether the grace was dropped. `nowMs` is injectable for tests.
+   * changes. Call it only for a command that was actually sent; whether it
+   * changed anything is not reported, since no caller has a use for it.
+   * `nowMs` is injectable for tests.
    */
-  noteReplayLeftForLive(nowMs: number = Date.now()): boolean {
-    const next = replayLeftForLive(this.replayState, nowMs);
-    const dropped = next !== this.replayState;
-
-    this.replayState = next;
-
-    return dropped;
+  noteReplayLeftForLive(nowMs: number = Date.now()): void {
+    this.replayState.noteLeftForLive(nowMs);
   }
 
   /**
