@@ -1,7 +1,8 @@
 /**
  * Phase 1 (#1349): the plugin config, the log level, the two run-long
  * monitors, the setup-warning check, the SDK and the event bus — everything
- * later phases read through `Core`.
+ * later phases read through `Core` — and, last, the plugin-state sections of
+ * the Telemetry Snapshot (#1387).
  */
 import { initPluginConfig, type PluginConfig } from "@iracedeck/deck-core";
 import {
@@ -19,6 +20,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { requireLogLocation } from "../log-location.js";
+import { registerStateSections } from "../state-sections.js";
 import type { Core, PluginHost } from "../types.js";
 
 export function initCore(host: PluginHost): Core {
@@ -84,5 +86,15 @@ export function initCore(host: PluginHost): Core {
   // both sides can see the bus.
   const bus = initializeEventBus(adapter.createLogger("EventBus"));
 
-  return { host, adapter, binDir: host.binDir, logLocation, bus, controller: getController() };
+  const core: Core = { host, adapter, binDir: host.binDir, logLocation, bus, controller: getController() };
+
+  // Name the plugin-state sections Take Snapshot collects (#1387). Last in this
+  // phase and in no order against the later ones: registering only stores four
+  // functions, and each reader answers for a subsystem that has not started
+  // (`initialized: false`, or the schema defaults for the settings), so the
+  // translator, the scenario engine and the settings store may come up after
+  // it. The environment reader keeps `core` and reads it at the press.
+  registerStateSections(core);
+
+  return core;
 }

@@ -113,6 +113,46 @@ describe("initCore", () => {
     expect(targets).toEqual([{ kind: "file", path: "C:/sd/logs/x.0.log" }]);
   });
 
+  it("registers the four plugin-state sections last, in the snapshot's key order (#1387)", () => {
+    const names: unknown[] = [];
+    implement("registerStateSection", (name) => names.push(name));
+
+    initCore(createHost());
+
+    expect(names).toEqual(["environment", "settings", "sim", "raceEngineer"]);
+    expect(callLog.slice(-4)).toEqual([
+      "registerStateSection",
+      "registerStateSection",
+      "registerStateSection",
+      "registerStateSection",
+    ]);
+    // Registering reads nothing: every one of these is a call a reader makes at the press.
+    expect(callLog).not.toContain("getPluginVersion");
+    expect(callLog).not.toContain("isSettingsStoreReady");
+    expect(callLog).not.toContain("readSettingsForSnapshot");
+    expect(callLog).not.toContain("readSimState");
+  });
+
+  it("hands the environment section the controller it returns, read at the press (#1387)", () => {
+    const readers = new Map<unknown, () => unknown>();
+    implement("registerStateSection", (name, section) => readers.set(name, (section as { read: () => unknown }).read));
+
+    initCore(createHost());
+    callLog.length = 0;
+    readers.get("environment")?.();
+
+    // `getController().…`: the handle `initCore` took, not a second `getController` call.
+    expect(callLog).toEqual([
+      "getPluginVersion",
+      "getPluginPlatform",
+      "getController().getConnectionStatus",
+      "isIRacingActive",
+      "hasElevationMismatch",
+      "isSettingsStoreReady",
+      "getSettingsStoreSource",
+    ]);
+  });
+
   it("returns the bus initializeEventBus made", () => {
     const bus = { subscribe: () => undefined };
     implement("initializeEventBus", () => bus);
