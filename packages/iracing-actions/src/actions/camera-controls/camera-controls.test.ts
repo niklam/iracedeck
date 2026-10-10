@@ -106,10 +106,12 @@ vi.mock("@iracedeck/icons/camera-focus/focus-on-most-exciting.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">focus-on-most-exciting {{mainLabel}} {{subLabel}}</svg>',
 }));
 vi.mock("@iracedeck/icons/camera-focus/switch-by-position.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">switch-by-position {{mainLabel}} {{subLabel}}</svg>',
+  default:
+    '<svg xmlns="http://www.w3.org/2000/svg">switch-by-position <text y="{{valueY}}" font-size="{{valueFontSize}}">{{value}}</text></svg>',
 }));
 vi.mock("@iracedeck/icons/camera-focus/switch-by-car-number.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">switch-by-car-number {{mainLabel}} {{subLabel}}</svg>',
+  default:
+    '<svg xmlns="http://www.w3.org/2000/svg">switch-by-car-number <text y="{{valueY}}" font-size="{{valueFontSize}}">{{value}}</text></svg>',
 }));
 vi.mock("@iracedeck/icons/camera-focus/set-camera-state.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">set-camera-state {{mainLabel}} {{subLabel}}</svg>',
@@ -232,8 +234,24 @@ vi.mock("@iracedeck/deck-core", async () => ({
     }),
   ),
   assembleIcon: vi.fn(
-    ({ graphicSvg, title }: { graphicSvg: string; colors: unknown; title: { titleText: string } }) => {
-      const encoded = encodeURIComponent(`<svg>${graphicSvg}${title?.titleText ?? ""}</svg>`);
+    ({
+      graphicSvg,
+      title,
+      templateValues,
+    }: {
+      graphicSvg: string;
+      colors: unknown;
+      title: { titleText: string };
+      templateValues?: Record<string, string>;
+    }) => {
+      // Like the real one, fill the graphic's value placeholders (#1352).
+      let graphic = graphicSvg;
+
+      for (const [key, value] of Object.entries(templateValues ?? {})) {
+        graphic = graphic.split(`{{${key}}}`).join(value);
+      }
+
+      const encoded = encodeURIComponent(`<svg>${graphic}${title?.titleText ?? ""}</svg>`);
 
       return `data:image/svg+xml,${encoded}`;
     },
@@ -680,6 +698,73 @@ describe("CameraControls", () => {
         const decoded = decodeURIComponent(generateCameraControlsSvg({ target: "focus-on-most-exciting" }));
         expect(decoded).toContain("MOST");
         expect(decoded).toContain("EXCITING");
+      });
+    });
+
+    // The two switch keys draw their own setting in the artwork, so a row of
+    // them can be told apart (#1352). The value and its geometry are
+    // switch-target-value.ts's, tested there against the real icons.
+    describe("switch keys draw the car they switch to (#1352)", () => {
+      const decode = (settings: Parameters<typeof generateCameraControlsSvg>[0]): string =>
+        decodeURIComponent(generateCameraControlsSvg(settings));
+      const fontSizeOf = (svg: string): number => Number(svg.match(/font-size="([^"]+)"/)?.[1]);
+
+      it.each([
+        [7, ">7<"],
+        [42, ">42<"],
+        [199, ">199<"],
+        // A digit string, as the setting is stored once leading zeros are kept (#1353).
+        ["007", ">007<"],
+      ])("should draw car number %s on a Switch by Car Number key", (carNumber, drawn) => {
+        expect(decode({ target: "switch-by-car-number", carNumber })).toContain(drawn);
+      });
+
+      it("should draw 0 on a Switch by Car Number key that has no car number yet", () => {
+        expect(decode({ target: "switch-by-car-number" })).toContain(">0<");
+      });
+
+      it.each([
+        [1, ">P1<"],
+        [3, ">P3<"],
+        [12, ">P12<"],
+      ])("should draw position %s as P<n> on a Switch by Position key", (position, drawn) => {
+        expect(decode({ target: "switch-by-position", position })).toContain(drawn);
+      });
+
+      it("should draw P1 on a Switch by Position key that has no position yet", () => {
+        expect(decode({ target: "switch-by-position" })).toContain(">P1<");
+      });
+
+      it("should leave no value placeholder in either key", () => {
+        expect(decode({ target: "switch-by-car-number", carNumber: 42 })).not.toContain("{{");
+        expect(decode({ target: "switch-by-position", position: 3 })).not.toContain("{{");
+      });
+
+      it("should draw each key's own setting, not the other key's", () => {
+        const settings = { carNumber: 42, position: 3 };
+
+        expect(decode({ target: "switch-by-car-number", ...settings })).not.toContain("P3");
+        expect(decode({ target: "switch-by-position", ...settings })).not.toContain(">42<");
+      });
+
+      it("should draw a number longer than three digits smaller, so it stays in its box", () => {
+        const threeDigits = fontSizeOf(decode({ target: "switch-by-car-number", carNumber: 199 }));
+        const fiveDigits = fontSizeOf(decode({ target: "switch-by-car-number", carNumber: 12345 }));
+
+        expect(fiveDigits).toBeLessThan(threeDigits);
+      });
+
+      it("should redraw with the new number when the setting changes", () => {
+        expect(decode({ target: "switch-by-car-number", carNumber: 7 })).not.toBe(
+          decode({ target: "switch-by-car-number", carNumber: 8 }),
+        );
+      });
+
+      it("should pass no template values for a mode that draws no setting", () => {
+        const assembleIcon = vi.mocked(deckCore.assembleIcon);
+
+        generateCameraControlsSvg({ target: "focus-on-leader", carNumber: 42, position: 3 });
+        expect(assembleIcon).toHaveBeenLastCalledWith(expect.objectContaining({ templateValues: undefined }));
       });
     });
   });

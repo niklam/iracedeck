@@ -100,6 +100,7 @@ import {
 } from "./camera-groups.js";
 import { migrateFocusOnExitingToMostExciting } from "./migrate-focus-on-exiting.js";
 import { subCameraBindingKey } from "./sub-camera-bindings.js";
+import { type SwitchTargetSettings, switchTargetTemplateValues } from "./switch-target-value.js";
 
 // Re-exported from the shared leaf so existing importers (and tests) keep their
 // `camera-controls.js` import path (issue #803 rework).
@@ -362,6 +363,10 @@ type CameraControlsSettings = z.infer<typeof CameraControlsSettings>;
  * @internal Exported for testing
  *
  * Generates an SVG data URI icon for the camera controls action.
+ *
+ * Switch by Car Number and Switch by Position draw their configured target in
+ * the artwork (#1352), so `carNumber` / `position` are part of what the icon is
+ * drawn from.
  */
 export function generateCameraControlsSvg(
   settings: {
@@ -369,7 +374,8 @@ export function generateCameraControlsSvg(
     direction?: Direction;
     cameraGroup?: number;
     cameraGroupSubset?: string | Record<string, unknown>;
-  } & Partial<CommonSettings>,
+  } & SwitchTargetSettings &
+    Partial<CommonSettings>,
   bindingMissing = false,
 ): string {
   const { target, direction = "next" } = settings;
@@ -407,8 +413,9 @@ export function generateCameraControlsSvg(
   const border = resolveBorderSettings(iconSvg, getGlobalBorderSettings(), settings.borderOverrides);
 
   const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
+  const templateValues = switchTargetTemplateValues(target, settings);
 
-  return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic, bindingMissing });
+  return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic, templateValues, bindingMissing });
 }
 
 /**
