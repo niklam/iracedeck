@@ -371,6 +371,10 @@ All iRacing telemetry variables (excluding per-car arrays and high-frequency sam
 
 ### Tires — Temperature & Wear
 
+These are not live readings. iRacing refreshes the tire temperature and wear values only when the car comes in, as it arrives in its pit stall, and then holds them unchanged through the whole next stint. On track they still show what the last stop left, and after a tire change they describe the set that came off, not the new one. Before your first stop they hold whatever iRacing placed the car with. Left, middle and right are the car's left, middle and right, so on a left-side tire the left value is the outside shoulder and on a right-side tire it is the inside.
+
+For a key that knows which values are a real stop reading, and summarizes and colors them, use Session Info's [Tire Temperatures](/docs/actions/display-session/session-info/#tire-temperatures) item.
+
 | Variable | Description |
 |----------|-------------|
 | `{{telemetry.LFtempCL}}` | LF tire left carcass temperature (C) |

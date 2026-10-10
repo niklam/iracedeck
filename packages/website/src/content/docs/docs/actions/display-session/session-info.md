@@ -1,9 +1,9 @@
 ---
 title: Session Info
-description: Display live session information — incidents, time, laps, position, estimated iRating gain/loss, gaps to the cars ahead/behind, fuel, laps to empty, flags, track wetness, wind, and track and air temperature — and have the Race Engineer read a value out when you press the key.
+description: Display live session information — incidents, time, laps, position, estimated iRating gain/loss, gaps to the cars ahead/behind, fuel, laps to empty, flags, track wetness, wind, track and air temperature, and the tire temperatures from your last pit stop — and have the Race Engineer read a value out when you press the key.
 sidebar:
   badge:
-    text: "13 modes"
+    text: "14 modes"
     variant: tip
 ---
 
@@ -376,6 +376,85 @@ The unit the wind speed is shown in. Defaults to **km/h**.
 #### Setting: Font Size
 
 Size of the label under the arrow, in PI units (5–36, doubled for SVG render). Defaults to `14`. A long compass label shrinks automatically so it still fits the key.
+
+#### Setting: Speak value on press
+
+Whether pressing the key has the Race Engineer read the value out. Defaults to **On**. This item doesn't speak yet, so a press does nothing. See [Speak value on press](#speak-value-on-press).
+
+---
+
+### Tire Temperatures
+
+Show the tire temperatures from the last time the car came in from a run. By default the key shows all four tires at once under the title `PIT TEMPS`, one figure per tire, laid out as the car seen from above: left front top-left, right front top-right, and the rears below them. Each figure is a whole number with a degree sign, such as `85°`. Set **Tire** to a single corner and the key shows that tire's three zones side by side instead, under a title such as `LF PIT TEMPS`.
+
+:::note
+This is a **pit-stop reading, not a live gauge**. iRacing does not report tire temperatures while you drive: it refreshes them only when the car comes in, and then holds the same values through the whole next stint. So the key tells you how the tires came off the run you just finished, which is what you need for judging pressures and camber, and not how warm they are right now.
+:::
+
+A reading is taken when you drive into your pit stall. The figures appear as you arrive and can still move while you sit in the box, then freeze the moment you leave and hold until the next reading. A tow to the pits and a return to the garage after a run count as readings too, when iRacing refreshes the values there. Pressing **Drive** in the garage never replaces a reading, because the car has not been driven since.
+
+After a tire change the figures still describe the set that **came off**, not the fresh set that went on.
+
+Until the first reading the key shows `--` in every slot. It does the same if iRaceDeck connects to iRacing part-way through a session, until your next stop, because nothing shows that the values iRacing is holding came from one. A reading carries over garage visits and into the next session, so a practice stop's temperatures are still on the key while you adjust the setup. It is cleared when iRaceDeck loses its connection to iRacing, for example when you exit the sim.
+
+The figures follow your iRacing display units, Celsius or Fahrenheit, as whole degrees.
+
+**Reading one corner.** The three figures are the tire's zones in the car's left-to-right order, each with a small letter under it: `O` for the outside shoulder, `M` for the middle and `I` for the inside. The outside zone is always on the outside of the car, so it is the left figure on a left-side tire and the right figure on a right-side tire. Put four single-corner keys on your deck in the shape of the car and they read the way the car sits. The spread across the tread is what a single corner adds: an inside zone hotter than the outside suggests camber, and a middle hotter than both edges suggests pressure.
+
+For the raw values in a layout of your own, the same twelve temperatures are available as [template variables](/docs/features/template-variables/#tires--temperature--wear).
+
+#### Details
+
+- **Dial:** No rotation support
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** Yes — the figures update while the car is in its pit stall and hold until the next reading
+
+#### Setting: Tire
+
+Which tire the key shows. Defaults to **All four**.
+
+- **All four** (default) — one figure per tire in a 2×2 grid, as the car seen from above
+- **Left Front**, **Right Front**, **Left Rear**, **Right Rear** — that tire's outside, middle and inside zones
+
+#### Setting: Calculation
+
+How a tire's three zones become its one figure. Only shown for **All four**. Defaults to **Weighted center**.
+
+| Calculation | Figure shown |
+|-------------|--------------|
+| **Weighted center** (default) | The middle zone counted twice: (outside + 2 × middle + inside) / 4 |
+| **Average** | The mean of the three zones |
+| **Hottest zone** | The highest of the three zones |
+| **Middle only** | The middle zone alone |
+
+#### Setting: Color by temperature
+
+Whether the figures are colored by how they compare with the temperature window you set below. Defaults to **On**. With it off, the figures use the key's text color.
+
+| Color | Meaning | Default |
+|-------|---------|---------|
+| Blue | Below the window | Below 75 °C (165 °F) |
+| Green | In the window | 75–90 °C (165–195 °F) |
+| Yellow | Above the window | Above 90 °C (195 °F) |
+| Red | Well above the window | Above 100 °C (210 °F) |
+
+With **All four**, each tire's figure is colored by its calculated value. With a single corner, each zone is colored by its own temperature.
+
+The colors describe the tires as the car arrived in its pit stall, after an in-lap and the run down pit lane, so a reading sits below what the tires ran at during the stint. The right window also depends on the car and the tire compound: treat the defaults as a starting point and set your own.
+
+#### Setting: Threshold unit
+
+The unit the three thresholds below are typed in: **°C** (default) or **°F**. Only shown while **Color by temperature** is on. Each unit keeps its own set of thresholds, so switching the unit shows that unit's numbers and never converts or discards what you typed in the other. It is independent of your iRacing display units: the figures on the key follow the display units, and the thresholds stay in the unit you chose here.
+
+#### Setting: Below window / Above window / Well above
+
+The three temperatures that separate the colors, shown with the selected unit in brackets, such as **Below window (°C)**. Only shown while **Color by temperature** is on.
+
+- **Below window** — a figure below this is blue. Defaults to `75` °C, or `165` °F.
+- **Above window** — a figure above this is yellow. Defaults to `90` °C, or `195` °F.
+- **Well above** — a figure above this is red. Defaults to `100` °C, or `210` °F.
+
+Anything in between is green. The key checks **Well above** first, then **Above window**, then **Below window**, so a set typed out of order still colors predictably, and your numbers are never rewritten.
 
 #### Setting: Speak value on press
 
