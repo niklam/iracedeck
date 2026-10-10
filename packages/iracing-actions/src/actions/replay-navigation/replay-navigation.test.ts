@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { _resetReplayCursor, lastReplaySighting, recordReplaySighting } from "../../shared/replay-cursor.js";
+import {
+  cursorTestEvent,
+  type ReplayCursorProbe,
+  stageReplayCursorProbe,
+} from "../../shared/replay-cursor.test-support.js";
 import { generateReplayNavigationSvg, ReplayNavigation } from "./replay-navigation.js";
 
 vi.mock("@iracedeck/icons/replay-navigation/next-session.svg", () => ({
@@ -281,6 +286,73 @@ describe("ReplayNavigation", () => {
 
       expect(mockReplay.goToEnd).toHaveBeenCalledOnce();
       expect(lastReplaySighting()).toEqual({ frame: 4_000, seenAt: 10_000 });
+    });
+  });
+
+  describe("every command takes the replay cursor first (#1334)", () => {
+    const COMMANDS = [
+      "nextSession",
+      "prevSession",
+      "nextLap",
+      "prevLap",
+      "nextIncident",
+      "prevIncident",
+      "goToStart",
+      "goToEnd",
+      "setPlayPosition",
+      "searchSessionTime",
+      "eraseTape",
+    ] as const;
+    let probe: ReplayCursorProbe<(typeof COMMANDS)[number]>;
+    let action: ReplayNavigation;
+
+    beforeEach(async () => {
+      probe = stageReplayCursorProbe(COMMANDS);
+      const { getCommands } = await import("@iracedeck/deck-iracing");
+      vi.mocked(getCommands).mockReturnValue({ replay: probe.replay } as any);
+      action = new ReplayNavigation();
+    });
+
+    it.each([
+      ["next-session", "nextSession"],
+      ["prev-session", "prevSession"],
+      ["next-lap", "nextLap"],
+      ["prev-lap", "prevLap"],
+      ["next-incident", "nextIncident"],
+      ["prev-incident", "prevIncident"],
+      ["jump-to-start", "goToStart"],
+      ["jump-to-end", "goToEnd"],
+      ["set-play-position", "setPlayPosition"],
+      ["search-session-time", "searchSessionTime"],
+      ["erase-tape", "eraseTape"],
+    ] as const)("%s stops the walk and clears the landing before sending %s", async (mode, sentCommand) => {
+      await action.onKeyDown(cursorTestEvent({ navigation: mode }) as any);
+
+      probe.expectTakenBefore(`replay-navigation-${mode}`, sentCommand);
+    });
+
+    it("a dial press takes the cursor as its mode", async () => {
+      await action.onDialDown(cursorTestEvent({ navigation: "next-lap" }) as any);
+
+      probe.expectTakenBefore("replay-navigation-next-lap", "nextLap");
+    });
+
+    it("a dial turn takes the cursor as the direction it resolved to", async () => {
+      await action.onDialRotate(cursorTestEvent({ navigation: "next-lap" }, -1) as any);
+
+      probe.expectTakenBefore("replay-navigation-prev-lap", "prevLap");
+    });
+
+    it("a dial turn on a mode with no direction sends nothing and leaves the walk alone", async () => {
+      await action.onDialRotate(cursorTestEvent({ navigation: "jump-to-end" }, 1) as any);
+
+      probe.expectUntouched();
+    });
+
+    it("a zero-tick dial turn carries no direction: nothing is sent and the walk stands", async () => {
+      await action.onDialRotate(cursorTestEvent({ navigation: "next-lap" }, 0) as any);
+
+      probe.expectUntouched();
     });
   });
 });

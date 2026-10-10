@@ -29,7 +29,7 @@ import setPlayPositionIcon from "@iracedeck/icons/replay-navigation/set-play-pos
 import { getGlobalColors } from "@iracedeck/settings";
 import z from "zod";
 
-import { noteReplayGoToEnd } from "../../shared/replay-cursor.js";
+import { cancelReplayCursorOwner, noteReplayGoToEnd } from "../../shared/replay-cursor.js";
 import { isReplayOnlySession } from "../../shared/replay-session.js";
 
 /** ReplayPosMode.Begin — position from beginning of replay */
@@ -176,6 +176,12 @@ export class ReplayNavigation extends SimIRacingAction<ReplayNavigationSettings>
 
   override async onDialRotate(ev: IDeckDialRotateEvent<ReplayNavigationSettings>): Promise<void> {
     this.logger.info("Dial rotated");
+
+    // A zero-tick turn carries no direction; without this guard it would
+    // read as counter-clockwise, send a command nobody asked for and take the
+    // replay cursor from a running walk (the guard Replay Control applies).
+    if (ev.payload.ticks === 0) return;
+
     const settings = this.parseSettings(ev.payload.settings);
     const pair = DIRECTIONAL_PAIRS[settings.navigation];
 
@@ -193,6 +199,11 @@ export class ReplayNavigation extends SimIRacingAction<ReplayNavigationSettings>
 
   private executeNavigation(settings: ReplayNavigationSettings): void {
     const replay = getCommands().replay;
+
+    // Every navigation command moves the replay, so it takes the cursor first:
+    // a running Jump to Fastest Lap walk stops and the Replay Markers landing
+    // is cleared, as for Replay Control (#1334).
+    cancelReplayCursorOwner(`replay-navigation-${settings.navigation}`);
 
     switch (settings.navigation) {
       case "next-session": {

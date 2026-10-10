@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { generateReplayTransportSvg, ReplayTransportSettings } from "./replay-transport.js";
+import {
+  cursorTestEvent,
+  type ReplayCursorProbe,
+  stageReplayCursorProbe,
+} from "../../shared/replay-cursor.test-support.js";
+import { generateReplayTransportSvg, ReplayTransport, ReplayTransportSettings } from "./replay-transport.js";
 
 vi.mock("@iracedeck/icons/replay-transport/play.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
@@ -187,6 +192,52 @@ describe("ReplayTransport", () => {
       );
 
       expect(decoded).toContain("FRAME BACK");
+    });
+  });
+
+  describe("every command takes the replay cursor first (#1334)", () => {
+    const COMMANDS = ["play", "pause", "fastForward", "rewind", "slowMotion", "nextFrame", "prevFrame"] as const;
+    let probe: ReplayCursorProbe<(typeof COMMANDS)[number]>;
+    let action: ReplayTransport;
+
+    beforeEach(async () => {
+      probe = stageReplayCursorProbe(COMMANDS);
+      const { getCommands } = await import("@iracedeck/deck-iracing");
+      vi.mocked(getCommands).mockReturnValue({ replay: probe.replay } as any);
+      action = new ReplayTransport();
+    });
+
+    it.each([
+      ["play", "play"],
+      ["pause", "pause"],
+      ["stop", "pause"],
+      ["fast-forward", "fastForward"],
+      ["rewind", "rewind"],
+      ["slow-motion", "slowMotion"],
+      ["frame-forward", "nextFrame"],
+      ["frame-backward", "prevFrame"],
+    ] as const)("%s stops the walk and clears the landing before sending %s", async (mode, sentCommand) => {
+      await action.onKeyDown(cursorTestEvent({ transport: mode }) as any);
+
+      probe.expectTakenBefore(`replay-transport-${mode}`, sentCommand);
+    });
+
+    it("a dial press plays, taking the cursor first", async () => {
+      await action.onDialDown(cursorTestEvent({}) as any);
+
+      probe.expectTakenBefore("replay-transport-play", "play");
+    });
+
+    it("a dial turn takes the cursor as the frame step it resolved to", async () => {
+      await action.onDialRotate(cursorTestEvent({}, -1) as any);
+
+      probe.expectTakenBefore("replay-transport-frame-backward", "prevFrame");
+    });
+
+    it("a zero-tick dial turn carries no direction: nothing is sent and the walk stands", async () => {
+      await action.onDialRotate(cursorTestEvent({}, 0) as any);
+
+      probe.expectUntouched();
     });
   });
 });

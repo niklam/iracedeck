@@ -18,7 +18,8 @@
         {
           "title": "Bug Fixes",
           "items": [
-            "<strong>Session Info</strong> keys now use much less CPU and memory in a race, most noticeably in a large field with a key on <strong>iRating Gain/Loss</strong>. Each key worked out its value on every telemetry update, about 60 times a second, even though it only refreshes ten times a second (on iRating Gain/Loss that meant re-running the whole estimate each time); it now does that work only when it refreshes. Incident and flag flashes still start the moment they happen. See <a href=\"https://iracedeck.com/docs/actions/display-session/session-info/\" target=\"_blank\" rel=\"noopener noreferrer\">Session Info</a>."
+            "<strong>Session Info</strong> keys now use much less CPU and memory in a race, most noticeably in a large field with a key on <strong>iRating Gain/Loss</strong>. Each key worked out its value on every telemetry update, about 60 times a second, even though it only refreshes ten times a second (on iRating Gain/Loss that meant re-running the whole estimate each time); it now does that work only when it refreshes. Incident and flag flashes still start the moment they happen. See <a href=\"https://iracedeck.com/docs/actions/display-session/session-info/\" target=\"_blank\" rel=\"noopener noreferrer\">Session Info</a>.",
+            "Keys still set up with the older Replay Navigation, Replay Speed and Replay Transport actions, which Replay Control replaced, now stop a running <strong>Jump to Fastest Lap</strong> the way Replay Control's own keys do, instead of fighting it for the replay. A Replay Markers jump straight after one of them also measures from where the replay now is, not from the marker it was last headed to. See <a href=\"https://iracedeck.com/docs/actions/view-camera/replay-control/#jump-to-fastest-lap\" target=\"_blank\" rel=\"noopener noreferrer\">Replay Control</a>."
           ]
         }
       ]

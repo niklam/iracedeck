@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { generateReplaySpeedSvg, ReplaySpeedSettings } from "./replay-speed.js";
+import {
+  cursorTestEvent,
+  type ReplayCursorProbe,
+  stageReplayCursorProbe,
+} from "../../shared/replay-cursor.test-support.js";
+import { generateReplaySpeedSvg, ReplaySpeed, ReplaySpeedSettings } from "./replay-speed.js";
 
 vi.mock("@iracedeck/icons/replay-speed/increase.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">{{mainLabel}} {{subLabel}}</svg>',
@@ -117,6 +122,46 @@ describe("ReplaySpeed", () => {
         const result = generateReplaySpeedSvg(ReplaySpeedSettings.parse({ direction }));
         expect(decodeURIComponent(result)).toContain("REPLAY");
       }
+    });
+  });
+
+  describe("every command takes the replay cursor first (#1334)", () => {
+    const COMMANDS = ["play", "fastForward", "rewind"] as const;
+    let probe: ReplayCursorProbe<(typeof COMMANDS)[number]>;
+    let action: ReplaySpeed;
+
+    beforeEach(async () => {
+      probe = stageReplayCursorProbe(COMMANDS);
+      const { getCommands } = await import("@iracedeck/deck-iracing");
+      vi.mocked(getCommands).mockReturnValue({ replay: probe.replay } as any);
+      action = new ReplaySpeed();
+    });
+
+    it.each([
+      ["increase", "fastForward"],
+      ["decrease", "rewind"],
+    ] as const)("%s stops the walk and clears the landing before sending %s", async (mode, sentCommand) => {
+      await action.onKeyDown(cursorTestEvent({ direction: mode }) as any);
+
+      probe.expectTakenBefore(`replay-speed-${mode}`, sentCommand);
+    });
+
+    it("a dial press resets the speed, taking the cursor first", async () => {
+      await action.onDialDown(cursorTestEvent({}) as any);
+
+      probe.expectTakenBefore("replay-speed-reset", "play");
+    });
+
+    it("a dial turn takes the cursor as the direction it resolved to", async () => {
+      await action.onDialRotate(cursorTestEvent({}, 1) as any);
+
+      probe.expectTakenBefore("replay-speed-increase", "fastForward");
+    });
+
+    it("a zero-tick dial turn carries no direction: nothing is sent and the walk stands", async () => {
+      await action.onDialRotate(cursorTestEvent({}, 0) as any);
+
+      probe.expectUntouched();
     });
   });
 });
