@@ -20,6 +20,7 @@
 				<option value="track-wetness">Track Wetness</option>
 				<option value="track-temp">Track Temperature</option>
 				<option value="air-temp">Air Temperature</option>
+				<option value="tire-temps">Tire Temperatures</option>
 				<option value="wind">Wind</option>
 			</sdpi-select>
 		</sdpi-item>
@@ -97,6 +98,75 @@
 			</sdpi-select>
 		</sdpi-item>
 
+		<sdpi-item id="tire-temp-corner-settings" label="Tire" class="hidden">
+			<sdpi-select id="tire-temp-corner-select" setting="tireTempCorner" default="all">
+				<option value="all">All four</option>
+				<option value="lf">Left Front</option>
+				<option value="rf">Right Front</option>
+				<option value="lr">Left Rear</option>
+				<option value="rr">Right Rear</option>
+			</sdpi-select>
+		</sdpi-item>
+		<div id="tire-temp-help" class="ird-supporting-text hidden">
+			A pit-stop reading, not live: iRacing refreshes these temperatures only when the car comes in, and the key holds them until the next time it does. After a tire change they describe the set that came off. Shows -- until the first reading.
+		</div>
+		<div id="tire-temp-corner-help" class="ird-supporting-text hidden">
+			One tire shows its three zones as they sit on the car seen from above: O is the outside shoulder, M the middle, I the inside.
+		</div>
+
+		<sdpi-item id="tire-temp-method-settings" label="Calculation" class="hidden">
+			<sdpi-select setting="tireTempMethod" default="weighted">
+				<option value="weighted">Weighted center</option>
+				<option value="average">Average</option>
+				<option value="max">Hottest zone</option>
+				<option value="middle">Middle only</option>
+			</sdpi-select>
+		</sdpi-item>
+		<div id="tire-temp-method-help" class="ird-supporting-text hidden">
+			How a tire's three zones become its one figure. Weighted center counts the middle zone twice.
+		</div>
+
+		<sdpi-item id="tire-temp-colors-settings" label="Color by temperature" class="hidden">
+			<sdpi-checkbox id="tire-temp-colors-checkbox" setting="tireTempColors" default="true"></sdpi-checkbox>
+		</sdpi-item>
+		<div id="tire-temp-colors-help" class="ird-supporting-text hidden">
+			Blue is below your window, green in it, yellow above it and red well above it. The window is for the pit-stop reading, which is lower than the tires ran on track.
+		</div>
+
+		<sdpi-item id="tire-temp-threshold-unit-settings" label="Threshold unit" class="hidden">
+			<sdpi-select id="tire-temp-threshold-unit-select" setting="tireTempThresholdUnit" default="c">
+				<option value="c">°C</option>
+				<option value="f">°F</option>
+			</sdpi-select>
+		</sdpi-item>
+		<div id="tire-temp-threshold-unit-help" class="ird-supporting-text hidden">
+			The unit the three thresholds are typed in. Each unit keeps its own numbers. The key shows the figures in iRacing's display units either way.
+		</div>
+
+		<div id="tire-temp-thresholds-c" class="hidden">
+			<sdpi-item label="Below window (°C)">
+				<sdpi-textfield setting="tireTempColdBelow" placeholder="75" type="number"></sdpi-textfield>
+			</sdpi-item>
+			<sdpi-item label="Above window (°C)">
+				<sdpi-textfield setting="tireTempHotAbove" placeholder="90" type="number"></sdpi-textfield>
+			</sdpi-item>
+			<sdpi-item label="Well above (°C)">
+				<sdpi-textfield setting="tireTempCriticalAbove" placeholder="100" type="number"></sdpi-textfield>
+			</sdpi-item>
+		</div>
+
+		<div id="tire-temp-thresholds-f" class="hidden">
+			<sdpi-item label="Below window (°F)">
+				<sdpi-textfield setting="tireTempColdBelowF" placeholder="165" type="number"></sdpi-textfield>
+			</sdpi-item>
+			<sdpi-item label="Above window (°F)">
+				<sdpi-textfield setting="tireTempHotAboveF" placeholder="195" type="number"></sdpi-textfield>
+			</sdpi-item>
+			<sdpi-item label="Well above (°F)">
+				<sdpi-textfield setting="tireTempCriticalAboveF" placeholder="210" type="number"></sdpi-textfield>
+			</sdpi-item>
+		</div>
+
 		<sdpi-item label="Speak value on press">
 			<sdpi-checkbox setting="speakOnPress" default="true"></sdpi-checkbox>
 		</sdpi-item>
@@ -140,6 +210,36 @@
 						updateVisibility();
 					}
 				});
+
+				// Tire Temperatures: its sub-settings also depend on the tire, the
+				// color checkbox and the threshold unit.
+				for (const id of ["tire-temp-corner-select", "tire-temp-colors-checkbox", "tire-temp-threshold-unit-select"]) {
+					const control = document.getElementById(id);
+					control?.addEventListener("change", updateVisibility);
+					control?.addEventListener("input", updateVisibility);
+				}
+
+				let lastTireTempState = tireTempState();
+				window.irdPoll(() => {
+					const currentTireTempState = tireTempState();
+					if (currentTireTempState !== lastTireTempState) {
+						lastTireTempState = currentTireTempState;
+						updateVisibility();
+					}
+				});
+			}
+
+			function isTireTempColorsOn() {
+				const value = document.getElementById("tire-temp-colors-checkbox")?.value;
+				// An untouched checkbox reports no value and shows its default, which is on.
+				return !(value === false || value === "false");
+			}
+
+			function tireTempState() {
+				const corner = document.getElementById("tire-temp-corner-select")?.value || "all";
+				const unit = document.getElementById("tire-temp-threshold-unit-select")?.value || "c";
+
+				return `${corner}|${isTireTempColorsOn()}|${unit}`;
 			}
 
 			function updateVisibility() {
@@ -200,6 +300,36 @@
 				document
 					.getElementById("wind-absolute-help")
 					?.classList.toggle("hidden", hideWind || windDirection !== "absolute");
+
+				// Tire Temperatures: the calculation only applies to the all-four
+				// view, and the thresholds only show with colors on, one unit's
+				// set at a time.
+				const hideTireTemps = mode !== "tire-temps";
+				const tireTempCorner = document.getElementById("tire-temp-corner-select")?.value || "all";
+				const tireTempUnit = document.getElementById("tire-temp-threshold-unit-select")?.value || "c";
+				const hideTireTempMethod = hideTireTemps || tireTempCorner !== "all";
+				const hideTireTempThresholds = hideTireTemps || !isTireTempColorsOn();
+				document.getElementById("tire-temp-corner-settings")?.classList.toggle("hidden", hideTireTemps);
+				document.getElementById("tire-temp-help")?.classList.toggle("hidden", hideTireTemps);
+				document
+					.getElementById("tire-temp-corner-help")
+					?.classList.toggle("hidden", hideTireTemps || tireTempCorner === "all");
+				document.getElementById("tire-temp-method-settings")?.classList.toggle("hidden", hideTireTempMethod);
+				document.getElementById("tire-temp-method-help")?.classList.toggle("hidden", hideTireTempMethod);
+				document.getElementById("tire-temp-colors-settings")?.classList.toggle("hidden", hideTireTemps);
+				document.getElementById("tire-temp-colors-help")?.classList.toggle("hidden", hideTireTempThresholds);
+				document
+					.getElementById("tire-temp-threshold-unit-settings")
+					?.classList.toggle("hidden", hideTireTempThresholds);
+				document
+					.getElementById("tire-temp-threshold-unit-help")
+					?.classList.toggle("hidden", hideTireTempThresholds);
+				document
+					.getElementById("tire-temp-thresholds-c")
+					?.classList.toggle("hidden", hideTireTempThresholds || tireTempUnit !== "c");
+				document
+					.getElementById("tire-temp-thresholds-f")
+					?.classList.toggle("hidden", hideTireTempThresholds || tireTempUnit !== "f");
 			}
 
 			if (document.readyState === "loading") {
