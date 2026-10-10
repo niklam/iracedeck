@@ -333,56 +333,6 @@ Whether pressing the key has the Race Engineer read the value out. Defaults to *
 
 ---
 
-### Wind
-
-Show the wind as an arrow with the wind speed below it. The arrow points the way the wind is travelling, turning in fine 5° steps — 72 positions rather than a handful of fixed ones. What it is measured against depends on the **Direction** setting below; in the default **Relative to car** mode it points where the wind pushes your car.
-
-**Relative to car** (the default) shows the wind against your car's current heading, which is what matters while you drive:
-
-| Arrow | Meaning |
-|-------|---------|
-| Up | Tailwind — the wind is pushing you along |
-| Down | Headwind — you're driving into it |
-| Right | Crosswind blowing in from your left, pushing you right |
-| Left | Crosswind blowing in from your right, pushing you left |
-
-Because it's measured against your heading, the arrow turns as you go through a corner — useful for knowing which way the wind will push you on the way in. This mode needs you to be in the car and driving: in the garage, on the session screen, or while you are watching a replay, the key shows `--`. Running wide off the racing surface does not affect it — only leaving the car does.
-
-**Compass** shows the wind in the world instead of relative to you, with **north up**. The label names the direction the wind blows *from* — matching how iRacing itself reports wind, so a wind labelled `N` is a northerly, with the arrow pointing down (south) to show where it is actually travelling. This mode works anywhere, including in the garage.
-
-When the wind is calm enough to round to zero in your chosen unit, the key shows the speed with no arrow — a direction would be meaningless at that point.
-
-#### Details
-
-- **Dial:** No rotation support
-- **Default binding:** No keyboard binding
-- **Telemetry-aware icon:** Yes — the arrow and speed update live; in relative mode the arrow tracks your heading as you drive
-
-#### Setting: Direction
-
-How the arrow and label are measured. Defaults to **Relative to car**.
-
-- **Relative to car** — the arrow points where the wind pushes you, measured against your car's heading. Requires being in the car and driving; blank in the garage, on the session screen, and during replay playback.
-- **Compass** — the arrow points where the wind travels in the world with north up, and the label names the compass direction it blows from (e.g. `NE 11 km/h`).
-
-#### Setting: Wind Speed
-
-The unit the wind speed is shown in. Defaults to **km/h**.
-
-- **m/s** — iRacing's native unit, shown with one decimal (e.g. `3.1 m/s`)
-- **km/h** — whole units (e.g. `11 km/h`)
-- **mph** — whole units (e.g. `7 mph`)
-
-#### Setting: Font Size
-
-Size of the label under the arrow, in PI units (5–36, doubled for SVG render). Defaults to `14`. A long compass label shrinks automatically so it still fits the key.
-
-#### Setting: Speak value on press
-
-Whether pressing the key has the Race Engineer read the value out. Defaults to **On**. This item doesn't speak yet, so a press does nothing. See [Speak value on press](#speak-value-on-press).
-
----
-
 ### Tire Temperatures
 
 Show the tire temperatures from the last time the car came in from a run. By default the key shows all four tires at once under the title `PIT TEMPS`, one figure per tire, laid out as the car seen from above: left front top-left, right front top-right, and the rears below them. Each figure is a whole number with a degree sign, such as `85°`. Set **Tire** to a single corner and the key shows that tire's three zones side by side instead, under a title such as `LF PIT TEMPS`.
@@ -454,7 +404,61 @@ The three temperatures that separate the colors, shown with the selected unit in
 - **Above window** — a figure above this is yellow. Defaults to `90` °C, or `195` °F.
 - **Well above** — a figure above this is red. Defaults to `100` °C, or `210` °F.
 
-Anything in between is green. The key checks **Well above** first, then **Above window**, then **Below window**, so a set typed out of order still colors predictably, and your numbers are never rewritten.
+Anything in between is green. The key checks **Well above** first, then **Above window**, then **Below window**, so a set typed out of order still colors predictably, and your numbers are never rewritten. A figure is compared before it is rounded for display, so one shown as `90°` is yellow when the tire is a fraction above 90, and a tire at exactly 90 is still green.
+
+#### Setting: Font Size
+
+The largest size the figures are drawn at, in PI units (5–36, doubled for SVG render). Defaults to `14`. Figures that would not fit their slot at that size shrink until they do, and every figure on the key is drawn at the same size.
+
+#### Setting: Speak value on press
+
+Whether pressing the key has the Race Engineer read the value out. Defaults to **On**. This item doesn't speak yet, so a press does nothing. See [Speak value on press](#speak-value-on-press).
+
+---
+
+### Wind
+
+Show the wind as an arrow with the wind speed below it. The arrow points the way the wind is travelling, turning in fine 5° steps — 72 positions rather than a handful of fixed ones. What it is measured against depends on the **Direction** setting below; in the default **Relative to car** mode it points where the wind pushes your car.
+
+**Relative to car** (the default) shows the wind against your car's current heading, which is what matters while you drive:
+
+| Arrow | Meaning |
+|-------|---------|
+| Up | Tailwind — the wind is pushing you along |
+| Down | Headwind — you're driving into it |
+| Right | Crosswind blowing in from your left, pushing you right |
+| Left | Crosswind blowing in from your right, pushing you left |
+
+Because it's measured against your heading, the arrow turns as you go through a corner — useful for knowing which way the wind will push you on the way in. This mode needs you to be in the car and driving: in the garage, on the session screen, or while you are watching a replay, the key shows `--`. Running wide off the racing surface does not affect it — only leaving the car does.
+
+**Compass** shows the wind in the world instead of relative to you, with **north up**. The label names the direction the wind blows *from* — matching how iRacing itself reports wind, so a wind labelled `N` is a northerly, with the arrow pointing down (south) to show where it is actually travelling. This mode works anywhere, including in the garage.
+
+When the wind is calm enough to round to zero in your chosen unit, the key shows the speed with no arrow — a direction would be meaningless at that point.
+
+#### Details
+
+- **Dial:** No rotation support
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** Yes — the arrow and speed update live; in relative mode the arrow tracks your heading as you drive
+
+#### Setting: Direction
+
+How the arrow and label are measured. Defaults to **Relative to car**.
+
+- **Relative to car** — the arrow points where the wind pushes you, measured against your car's heading. Requires being in the car and driving; blank in the garage, on the session screen, and during replay playback.
+- **Compass** — the arrow points where the wind travels in the world with north up, and the label names the compass direction it blows from (e.g. `NE 11 km/h`).
+
+#### Setting: Wind Speed
+
+The unit the wind speed is shown in. Defaults to **km/h**.
+
+- **m/s** — iRacing's native unit, shown with one decimal (e.g. `3.1 m/s`)
+- **km/h** — whole units (e.g. `11 km/h`)
+- **mph** — whole units (e.g. `7 mph`)
+
+#### Setting: Font Size
+
+Size of the label under the arrow, in PI units (5–36, doubled for SVG render). Defaults to `14`. A long compass label shrinks automatically so it still fits the key.
 
 #### Setting: Speak value on press
 
