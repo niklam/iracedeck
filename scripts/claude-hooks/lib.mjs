@@ -18,6 +18,7 @@ import path from "node:path";
 
 import { spawnSyncShim } from "../lib/spawn-shim.mjs";
 import { changedFiles, parseChangeSignature } from "./change-signature.mjs";
+import { MAX_COMMENTS } from "./coderabbit-summary.mjs";
 
 // The deck-host link readers moved to `scripts/lib/plugin-links.mjs` in #1143,
 // where `pnpm dev:voices` also needs them. Re-exported so every hook caller and
@@ -144,9 +145,9 @@ export const hookDeadlineSpent = () => hookDeadline - Date.now() < 1_000;
 export const git = (args, cwd, opts) => run("git", args, { cwd, ...opts });
 export const gh = (args, cwd, opts) => run("gh", args, { cwd, timeoutMs: 45_000, ...opts });
 
-/** `gh … --format json` / `gh api …` parsed, or `undefined` on any failure. */
-export function ghJson(args, cwd) {
-  const r = gh(args, cwd);
+/** `gh … --format json` / `gh api …` parsed, or `undefined` on any failure. `opts` go to {@link run}. */
+export function ghJson(args, cwd, opts) {
+  const r = gh(args, cwd, opts);
   if (!r.ok) return undefined;
   try {
     return JSON.parse(r.out);
@@ -421,6 +422,26 @@ export function baseChangedSince(number, sinceIso, dir) {
   const nodes = r?.data?.repository?.pullRequest?.timelineItems?.nodes;
   if (!Array.isArray(nodes)) return undefined;
   return nodes.some((x) => typeof x?.createdAt === "string" && x.createdAt > (sinceIso ?? ""));
+}
+
+/**
+ * The PR's comments as the merge gate's summary rule reads them (#1386): the
+ * `comments` connection with its `totalCount` and `pageInfo`, and per
+ * comment its author and editor (login and type), whether it is minimized,
+ * when its body was written, and the body. One page of {@link MAX_COMMENTS};
+ * `readSummary` refuses a PR with more rather than read it partially.
+ * `undefined` when gh cannot answer, which the gate treats as no summary.
+ * The buffer is raised because a hundred bodies can pass spawnSync's 1 MiB
+ * default, and a cut-off read must fail rather than parse.
+ */
+export function prComments(number, dir) {
+  const query = `query($owner:String!,$repo:String!,$n:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$n){comments(first:${MAX_COMMENTS}){totalCount pageInfo{hasNextPage} nodes{author{login __typename} editor{login __typename} isMinimized createdAt lastEditedAt body}}}}}`;
+  const r = ghJson(
+    ["api", "graphql", "-f", `query=${query}`, "-F", "owner={owner}", "-F", "repo={repo}", "-F", `n=${number}`],
+    dir,
+    { maxBuffer: 64 * 1024 * 1024 },
+  );
+  return r?.data?.repository?.pullRequest?.comments ?? undefined;
 }
 
 /** Is `candidate` inside `parent` (both absolute)? Case-insensitive on Windows. */

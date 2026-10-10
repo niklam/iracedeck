@@ -12,6 +12,7 @@ import {
   linkTargets,
   mainRepoRoot,
   originMasterFresh,
+  prComments,
   readIndexFile,
   readInput,
   readRepoFile,
@@ -93,6 +94,8 @@ if (typeof command === "string" && command.trim()) {
     // The merge gate's pure-rebase check (#1307).
     replayRebase,
     baseChangedSince: memo(baseChangedSince),
+    // CodeRabbit's summary comment, read only for a head without a review object of its own (#1386).
+    prComments: memo(prComments),
   };
   let verdict;
   try {

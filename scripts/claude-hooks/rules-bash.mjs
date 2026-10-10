@@ -14,6 +14,7 @@
 import path from "node:path";
 
 import { DEBUG_VALUE, ELGATO_MANIFEST, manifestDebug } from "../lib/debug-plugin.mjs";
+import { readSummary } from "./coderabbit-summary.mjs";
 import { MAIN_BRANCH, SPEC_DIR } from "./lib.mjs";
 
 const TITLE_RE = /^(feat|fix|improve|perf|refactor|docs|ci|chore|test|build|style|revert)(\([^)]+\))?!?: .+ \(#\d+\)$/;
@@ -637,35 +638,60 @@ const names = (paths, mark = () => "") =>
     .join(", ") + (paths.length > 5 ? `, and ${paths.length - 5} more` : "");
 
 /**
- * The verdict for a head that has no CodeRabbit review of its own (#1307):
- * `null` when it is a pure rebase of the commit the NEWEST review saw, an ask
- * when the rebase conflicted and only a human can judge the resolution, and a
- * deny otherwise. Called only once every cheap check has passed. CodeRabbit
- * does not review a rebase, so without this every PR rebased onto a moved
- * base stalled behind an `@coderabbitai review`.
+ * The verdict for a head that has no CodeRabbit review object of its own:
+ * `null` when CodeRabbit's summary comment says the head was reviewed clean
+ * (#1386) or the head is a pure rebase of the commit CodeRabbit last saw
+ * (#1307), an ask when the rebase conflicted and only a human can judge the
+ * resolution, and a deny otherwise. Called only once every cheap check has
+ * passed. A clean incremental review files no review object at the new head,
+ * and CodeRabbit does not review a rebase at all, so without this every such
+ * PR stalled behind an `@coderabbitai review` or an `--admin`.
  *
- * The test is a replay (`replayRebase` in `lib.mjs`): the reviewed change
- * re-applied onto the head's base must give the head's exact tree. Every file
- * the replay reports as conflicted gets a line check, and a line match still
- * only earns the ask — it cannot see where a line sits. Refused before any
- * replay: a release back-merge (its commits land one by one), a merge not
- * pinned to this exact head with `--match-head-commit`, and a base retargeted
- * or force-pushed since the review. A follow-up push is refused from inside
- * the replay. Every uncertain path refuses. Spec:
- * `docs/superpowers/specs/2026-10-03-issue-1307-merge-gate-pure-rebase.md`.
+ * Refused before anything is read: a release back-merge (its commits land one
+ * by one) and a merge not pinned to this exact head with `--match-head-commit`
+ * — both verdicts are about one sha, read from state that keeps moving. Then
+ * the summary (`readSummary` in `coderabbit-summary.mjs`): when it names the
+ * head, the head is reviewed and no git work runs. When it names an older
+ * commit S and was written after the newest review object, S is what
+ * CodeRabbit last saw and the replay starts from it; otherwise the newest
+ * review object is the start, as before. The base-moved check keeps that
+ * review object's `submittedAt`, the earlier and so the stricter time.
+ *
+ * The replay (`replayRebase` in `lib.mjs`): the reviewed change re-applied
+ * onto the head's base must give the head's exact tree. Every file the
+ * replay reports as conflicted gets a line check, and a line match still only
+ * earns the ask — it cannot see where a line sits. A base retargeted or
+ * force-pushed since the review is refused before it, a follow-up push from
+ * inside it. Every uncertain path refuses. Specs:
+ * `docs/superpowers/specs/2026-10-03-issue-1307-merge-gate-pure-rebase.md` and
+ * `docs/superpowers/specs/2026-10-10-issue-1386-changelog-fragments-merge-gate.md`.
  */
-function rebaseVerdict(merge, pr, bot, ctx, isBackMerge) {
+function unreviewedHeadVerdict(merge, pr, bot, ctx, isBackMerge) {
   const head = pr.headRefOid;
   // `gh` lists reviews oldest first; `submittedAt` decides when both carry it.
   const newest = bot.reduce((a, b) => ((b.submittedAt ?? "") >= (a.submittedAt ?? "") ? b : a));
-  const reviewed = newest.commit?.oid ?? "";
-  const stale = `Not merging PR #${pr.number}: no CodeRabbit review at head ${head.slice(0, 9)} — the newest one is at a previous head ${reviewed.slice(0, 9) || "(no commit)"}`;
+  const lastObject = newest.commit?.oid ?? "";
+  const notAtHead = `Not merging PR #${pr.number}: no CodeRabbit review at head ${head.slice(0, 9)}`;
   const reviewAgain = "ask `@coderabbitai review`";
   if (isBackMerge)
-    return `${stale}, and a release back-merge lands its commits one by one, so a rewritten tip needs a fresh review — ${reviewAgain}.`;
+    return `${notAtHead} — the newest one is at a previous head ${lastObject.slice(0, 9) || "(no commit)"}, and a release back-merge lands its commits one by one, so a rewritten tip needs a fresh review — ${reviewAgain}.`;
   // GitHub takes only a full sha here, so a prefix would be a merge that can never go through.
   if (!/^[0-9a-f]{40}$/i.test(merge.pin ?? "") || merge.pin.toLowerCase() !== head.toLowerCase())
-    return `${stale}. The rebase check decides about this exact head, so pin it: add \`--match-head-commit ${head}\`.`;
+    return `${notAtHead} — the newest one is at a previous head ${lastObject.slice(0, 9) || "(no commit)"}. The summary and rebase checks decide about this exact head, so pin it: add \`--match-head-commit ${head}\`.`;
+  const summary = readSummary(ctx.prComments?.(pr.number, ctx.cwd), head);
+  if (summary.ok && summary.atHead) return null;
+  // The summary names an older commit: it is the replay's start only when the
+  // comment was written after the newest review object, so it is the newer word.
+  const editedAt = Date.parse(summary.editedAt ?? "");
+  const objectAt = Date.parse(newest.submittedAt ?? "");
+  const fromSummary = summary.ok && Number.isFinite(editedAt) && Number.isFinite(objectAt) && editedAt > objectAt;
+  const reviewed = fromSummary ? summary.reviewed : lastObject;
+  const why = !summary.ok
+    ? `; its summary comment does not count, because ${summary.reason}`
+    : fromSummary
+      ? " (read from its summary comment)"
+      : `; its summary comment's recent review ends at ${summary.reviewed.slice(0, 9)} and was written before that review`;
+  const stale = `${notAtHead} — the newest one is at a previous head ${reviewed.slice(0, 9) || "(no commit)"}${why}`;
   const moved = ctx.baseChangedSince?.(pr.number, newest.submittedAt, ctx.cwd);
   if (moved !== false)
     return moved
@@ -768,8 +794,9 @@ export const rules = [
       if (!isBackMerge && regular) problems.push("feature/fix PRs are squash-merged, not --merge/--rebase");
       const admin = flag("--admin");
       const bot = coderabbitReviews(pr.reviews);
-      // Set when the head has no review of its own but an older one exists: the
-      // pure-rebase check (#1307), run last because it is the one that costs git work.
+      // Set when the head has no review object of its own but an older one exists:
+      // the summary (#1386) and pure-rebase (#1307) checks, run last because they
+      // are the ones that cost a gh read and git work.
       let rebaseCheck = false;
       if (!admin) {
         if (pr.reviewDecision !== "APPROVED")
@@ -788,10 +815,10 @@ export const rules = [
       if (bad.length) problems.push(`checks not green: ${bad.join(", ")}`);
       if (["BLOCKED", "DIRTY"].includes(pr.mergeStateStatus))
         problems.push(`mergeStateStatus is ${pr.mergeStateStatus}`);
-      if (problems.length === 0) return rebaseCheck ? rebaseVerdict(merge, pr, bot, ctx, isBackMerge) : null;
+      if (problems.length === 0) return rebaseCheck ? unreviewedHeadVerdict(merge, pr, bot, ctx, isBackMerge) : null;
       if (rebaseCheck)
         problems.push(
-          "the head has no CodeRabbit review of its own (the pure-rebase check runs once the rest is green)",
+          "the head has no CodeRabbit review of its own (the summary and pure-rebase checks run once the rest is green)",
         );
       return `Not merging PR #${pr.number} at ${pr.headRefOid.slice(0, 9)}: ${problems.join("; ")}.`;
     },
