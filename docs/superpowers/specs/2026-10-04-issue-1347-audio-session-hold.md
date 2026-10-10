@@ -22,7 +22,9 @@ Since #849 the audio engine is created on the first sound and torn down `IDLE_ST
 - **`hold`:** cancels any pending idle stop and starts the engine now, through the same start path as playback, so the identity, reroute and device-selection handling stay single. A failed start is logged as `WARN Audio device could not be held open; sounds will open it on demand`. The hold stays recorded, so the next play still opens the device on demand and the engine stays up once it has.
 - **`release`:** when the last reason goes, arms the idle stop. Releasing an unknown reason is a no-op.
 - **Logs:** `INFO Audio device held open` and `INFO Audio device hold released`, with the reason at debug. The held line names no session, because the service owns the hold and not the reason for it. It is written once per hold, when the device is held and up: at the hold, or after a failed start at the sound that opens the device. The existing `Audio device started` and `Audio device stopped (idle)` lines are unchanged.
-- **Device-setting change while held:** `setAudioDevice` / `setAudioDeviceById` already tear the engine down. When a hold is active they start it again at once on the new device, rather than leaving it closed until the next sound. System Default needs nothing, because miniaudio's reroute follows Windows.
+- **Device-setting change while held:** `setAudioDevice` / `setAudioDeviceById` already tear the engine down. When a hold is active they start it again at once on the new device, rather than leaving it closed until the next sound. A device id the native layer rejects is the exception: every caller then falls back to the system default, and that call reopens it, so reopening on the rejection too would be two opens of one change. System Default needs nothing, because miniaudio's reroute follows Windows.
+- **A held device that goes away:** on demand the engine is recreated at every burst, so a selected device that disappears (a headset powering off) is replaced by the system default at the next one. A held engine is not recreated, and only a default-device change is rerouted, so the service would go on loading sounds onto a stopped device. While held it therefore asks the native layer at every start. That start is idempotent, and a device it cannot start is torn down: the sound is lost, `WARN Audio device was lost; the next sound reopens it` is written, the channels of the lost engine are drained, and the next sound reopens the device.
+- **A stand-in is not held:** when the selected device is missing the native layer creates the engine on the system default, without saying so, and never moves a live engine back. On demand that heals at the next burst; held, the engineer would stay on the wrong device for the whole session. So at each open under a hold the service checks the enumeration, and a default standing in for a missing selected device is released after the burst as on demand, with `WARN Selected audio device is unavailable; using the system default until it returns`. The first burst after the device returns opens it, and that one is held. A device a sound had already opened when the hold arrives is treated the same way when a specific device is selected, because nothing recorded which device it landed on.
 - **`destroy()`** clears every hold.
 
 ### 3. The plugin decides when to hold
@@ -55,7 +57,9 @@ The controller has its dependencies injected (app-monitor hooks, gate readers, t
   - Two reasons need both releases.
   - An unknown release is a no-op.
   - A failed start while holding warns once and leaves on-demand playback working.
-  - A device-setting change while held restarts the engine on the new device; while not held it stays closed as today.
+  - A device-setting change while held restarts the engine on the new device; while not held it stays closed as today. A rejected id does not reopen it.
+  - A held device the native layer can no longer start is reported lost, its channels are drained, and the next sound reopens it.
+  - A selected device missing from the enumeration is not held: the stand-in is released after each burst, and the device is held from the first open after it returns. The system default is never enumerated, and neither is anything on demand.
   - `destroy` clears holds.
 - **Controller (unit):**
   - iRacing start with a gate on gives one hold; with both gates off, none.
@@ -70,4 +74,5 @@ The controller has its dependencies injected (app-monitor hooks, gate readers, t
   - Offline with iRacing closed, the Settings **Test** buttons open the device and it closes 5 s after the sound, as today.
   - Switching the Windows default output mid-race moves the audio and logs `Audio device rerouted`.
   - Changing the Output Device setting mid-race reopens on the new device at once.
+  - With a specific Output Device selected and switched off when iRacing launches, the engineer plays on the system default, and moves to the selected device at the first burst after it is switched on.
   - Ask the Discord reporter to run LatencyMon on a build with this change.
