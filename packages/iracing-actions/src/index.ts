@@ -53,7 +53,16 @@ export {
   toggleRaceEngineerFeature,
   toggleRadarFeature,
 } from "./audio/feature-gates.js";
-export { stopRaceEngineerPlayback } from "./audio/audio-volume.js";
+// The audio session hold (#1347): keeps the audio device open while iRacing
+// runs and a master gate is on. A plugin starts it once, after the app monitor,
+// injecting the monitor's edges, the two gate readers below and the audio service.
+export {
+  IRACING_SESSION_HOLD_REASON,
+  startAudioSessionHold,
+  type AudioHoldTarget,
+  type AudioSessionHoldDeps,
+} from "./audio/audio-session-hold.js";
+export { isRaceEngineerEnabled, isRadarEnabled, stopRaceEngineerPlayback } from "./audio/audio-volume.js";
 export { CAR_CYCLE_BINDING_DEFAULTS } from "./shared/car-cycle-bindings.js";
 export { PIT_QUICK_ACTIONS_UUID, PitQuickActions } from "./actions/pit-quick-actions/pit-quick-actions.js";
 export { RACE_ADMIN_UUID, RaceAdmin } from "./actions/race-admin/race-admin.js";
