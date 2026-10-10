@@ -2,9 +2,13 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import {
+  FULL_SHA,
   markerDisagreement,
+  MAX_CHAIN,
   MAX_COMMENTS,
+  MAX_EDITS,
   parseRecentReview,
+  rangeChain,
   readSummary,
   SUMMARY_OPENER,
 } from "./coderabbit-summary.mjs";
@@ -50,19 +54,38 @@ const REVIEWED_1383 = "ab5e21c6f1e66291dcb96694fadc4ecb48236b3d";
 const OTHER = "5555555555555555555555555555555555555555";
 
 const body = (n) => readFileSync(new URL(`./__fixtures__/coderabbit-summary/pr-${n}.md`, import.meta.url), "utf8");
+/**
+ * The summary comment's real edit history (`userContentEdits(last: 100)`,
+ * newest first), as `gh api graphql` returned it on 2026-10-10 — verbatim
+ * except the same `scope` redaction as the bodies. A fresh copy per call, so
+ * a test may doctor it.
+ */
+const edits = (n) =>
+  JSON.parse(readFileSync(new URL(`./__fixtures__/coderabbit-summary/pr-${n}.edits.json`, import.meta.url), "utf8"));
 const BOT = { login: "coderabbitai", __typename: "Bot" };
 const MAINTAINER = { login: "niklam", __typename: "User" };
 
-/** A summary comment node as `prComments` returns it. */
-const summaryNode = (text, extra = {}) => ({
-  author: BOT,
-  editor: BOT,
-  isMinimized: false,
-  createdAt: "2026-10-10T10:00:00Z",
-  lastEditedAt: "2026-10-10T11:00:00Z",
-  body: text,
-  ...extra,
+/** A history of one version: `text`, written by the bot at `at`. */
+const soleVersion = (text, at = "2026-10-10T11:00:00Z") => ({
+  totalCount: 1,
+  nodes: [{ editedAt: at, editor: BOT, deletedAt: null, diff: text }],
 });
+
+/** A summary comment node as `prComments` returns it, its history one bot-written version unless given. */
+const summaryNode = (text, extra = {}) => {
+  const node = {
+    author: BOT,
+    editor: BOT,
+    isMinimized: false,
+    createdAt: "2026-10-10T10:00:00Z",
+    lastEditedAt: "2026-10-10T11:00:00Z",
+    body: text,
+    ...extra,
+  };
+  if (!("userContentEdits" in extra))
+    node.userContentEdits = soleVersion(node.body, node.lastEditedAt ?? node.createdAt ?? "2026-10-10T11:00:00Z");
+  return node;
+};
 
 /** The `comments` connection around `nodes`, complete unless overridden — with a maintainer comment and a bot reply beside the summary, as real PRs have. */
 const connection = (nodes, extra = {}) => {
@@ -88,7 +111,10 @@ const connection = (nodes, extra = {}) => {
   return { totalCount: all.length, pageInfo: { hasNextPage: false }, nodes: all, ...extra };
 };
 
-const real = (n) => connection([summaryNode(body(n), { createdAt: REAL[n].created, lastEditedAt: REAL[n].edited })]);
+const real = (n, history = edits(n)) =>
+  connection([
+    summaryNode(body(n), { createdAt: REAL[n].created, lastEditedAt: REAL[n].edited, userContentEdits: history }),
+  ]);
 
 /** `text` with `from` replaced by `to`, asserting it matched exactly `times` times — a doctoring that matches nothing tests nothing. */
 function doctor(text, from, to, times = 1) {
@@ -114,13 +140,23 @@ const refusedFor = (text, reason, extra) => {
 
 describe("readSummary over real CodeRabbit summary comments", () => {
   for (const n of [1290, 1322, 1381, 1382])
-    it(`accepts PR #${n}'s summary at its final head`, () =>
-      expect(readSummary(real(n), REAL[n].head)).toEqual({
+    it(`accepts PR #${n}'s summary at its final head, with its real edit history`, () =>
+      expect(readSummary(real(n), REAL[n].head)).toMatchObject({
         ok: true,
         reviewed: REAL[n].head,
+        from: expect.stringMatching(FULL_SHA),
         atHead: true,
         editedAt: REAL[n].edited,
       }));
+
+  it("stores each real history newest first, ending at the stored body, every edit the bot's", () => {
+    for (const n of Object.keys(REAL)) {
+      const h = edits(n);
+      expect(h.nodes).toHaveLength(h.totalCount);
+      expect(h.nodes[0].diff).toBe(body(n));
+      for (const e of h.nodes) expect(e.editor).toEqual(BOT);
+    }
+  });
 
   it("refuses PR #1383 at 0b0e4d758 — its follow-up was never reviewed, CodeRabbit was rate limited", () => {
     const v = readSummary(real(1383), REAL[1383].head);
@@ -176,6 +212,7 @@ describe("readSummary over real CodeRabbit summary comments", () => {
     for (const n of Object.keys(REAL)) {
       expect(body(n)).not.toMatch(/scope=(?!REDACTED)/);
       expect(body(n).startsWith(`${SUMMARY_OPENER}\n`)).toBe(true);
+      for (const e of edits(n).nodes) expect(e.diff).not.toMatch(/scope=(?!REDACTED)|gh[a-z]_[A-Za-z0-9]{8}/);
     }
   });
 });
@@ -200,7 +237,9 @@ describe("readSummary: one doctored variant per condition", () => {
         editor: { login: "coderabbitai", __typename: "User" },
       }));
     it("accepts a summary never edited at all, taking its creation time", () =>
-      expect(verdict(BASE_1290, { editor: null, lastEditedAt: null })).toMatchObject({
+      expect(
+        verdict(BASE_1290, { editor: null, lastEditedAt: null, userContentEdits: { totalCount: 0, nodes: [] } }),
+      ).toMatchObject({
         ok: true,
         editedAt: "2026-10-10T10:00:00Z",
       }));
@@ -377,4 +416,167 @@ describe("readSummary: one doctored variant per condition", () => {
       ok: true,
       atHead: false,
     }));
+});
+
+const APPROVED_1290 = "9fe7aa1a5a19a02cd160cef12c329ecf64e8e5bb";
+const FOLLOW_UP_1290 = "4d33e1f32178e69684739f5d31e037b72bff4987";
+const FIRST_1290 = "20e93d3272b8412f900a2ddbf8a7950dc975507b";
+const REVIEWED_1322 = "4fd934c833edee796acadd4963616d7b7831e1f1";
+
+/** #1290's real summary, its real history passed through `mutate` first. */
+const withHistory = (mutate) => {
+  const h = edits(1290);
+  mutate(h);
+  return readSummary(real(1290, h), HEAD);
+};
+
+describe("readSummary: every recorded edit is CodeRabbit's", () => {
+  it("accepts #1290's real eight-version history", () => expect(withHistory(() => {})).toMatchObject({ ok: true }));
+
+  it("refuses a foreign editor anywhere in the history, though the comment's last editor is the bot", () => {
+    for (const k of [0, 3, 7])
+      expect(withHistory((h) => (h.nodes[k].editor = MAINTAINER))).toEqual({
+        ok: false,
+        reason: expect.stringMatching(/edit history has an edit by User niklam, not by the Bot coderabbitai/),
+      });
+  });
+
+  it("refuses a User carrying the bot's login, a missing editor and a null one", () => {
+    for (const editor of [{ login: "coderabbitai", __typename: "User" }, undefined, null])
+      expect(withHistory((h) => (h.nodes[2].editor = editor)).reason).toMatch(/edit history has an edit by/);
+  });
+
+  it("refuses a truncated history: more edits than one page, or fewer read than recorded", () => {
+    expect(withHistory((h) => (h.totalCount = MAX_EDITS + 1)).reason).toMatch(
+      /101 recorded edits and 8 were read \(at most 100\)/,
+    );
+    expect(withHistory((h) => (h.totalCount = 9)).reason).toMatch(/cannot be proven CodeRabbit's alone/);
+    expect(withHistory((h) => h.nodes.pop()).reason).toMatch(/cannot be proven CodeRabbit's alone/);
+  });
+
+  it("refuses a history that could not be read", () => {
+    for (const h of [undefined, null, { nodes: [] }, { totalCount: 1 }])
+      expect(readSummary(connection([summaryNode(BASE_1290, { userContentEdits: h })]), HEAD).reason).toMatch(
+        /edit history could not be read/,
+      );
+  });
+
+  it("refuses a deleted revision, and one whose body or time is missing", () => {
+    expect(withHistory((h) => (h.nodes[4].deletedAt = "2026-09-30T20:00:00Z")).reason).toMatch(/deleted revision/);
+    expect(withHistory((h) => (h.nodes[4].diff = null)).reason).toMatch(/body or time could not be read/);
+    expect(withHistory((h) => delete h.nodes[4].editedAt).reason).toMatch(/body or time could not be read/);
+  });
+
+  it("refuses a history that is not strictly newest first", () => {
+    expect(withHistory((h) => h.nodes.splice(2, 2, h.nodes[3], h.nodes[2])).reason).toMatch(/not strictly newest/);
+    expect(withHistory((h) => (h.nodes[3].editedAt = h.nodes[2].editedAt)).reason).toMatch(/not strictly newest/);
+  });
+
+  it("refuses a body that is not the history's newest version — the comment changed between the two reads", () =>
+    expect(withHistory((h) => (h.nodes[0].diff = h.nodes[1].diff)).reason).toMatch(/changed while it was read/));
+});
+
+describe("markerDisagreement: the coverage's source is the commit it covers", () => {
+  it("refuses a coverage carried over from another commit", () =>
+    refusedFor(
+      doctor(BASE_1290, COVER_1290, COVER_1290.replace(`"sourceCommitId":"${HEAD}"`, `"sourceCommitId":"${OTHER}"`)),
+      /sourceCommitId 555555555 is not its coveredCommitId 0fba52955/,
+    ));
+  it("refuses a coverage with no sourceCommitId — a shape not seen yet", () =>
+    refusedFor(
+      doctor(BASE_1290, COVER_1290, COVER_1290.replace(`"sourceCommitId":"${HEAD}",`, "")),
+      /sourceCommitId undefined is not its coveredCommitId/,
+    ));
+});
+
+describe("rangeChain: the recent review's start traced back to the review object", () => {
+  /** The 1290 body with its recent review moved to `from..to`, both markers following `to`. */
+  const versionOf = (from, to) =>
+    doctor(
+      doctor(
+        doctor(BASE_1290, RANGE_1290, RANGE_1290.replace(FOLLOW_UP_1290, from).replace(HEAD, to)),
+        ASSESS_1290,
+        ASSESS_1290.replace(HEAD, to),
+      ),
+      COVER_1290,
+      COVER_1290.replaceAll(HEAD, to),
+    );
+  /** A bot-written history of `bodies`, newest first, a minute apart. */
+  const historyOf = (bodies) => ({
+    totalCount: bodies.length,
+    nodes: bodies.map((diff, i) => ({
+      editedAt: new Date(Date.UTC(2026, 9, 10, 12, 0) - i * 60_000).toISOString(),
+      editor: BOT,
+      deletedAt: null,
+      diff,
+    })),
+  });
+  const synthetic = (bodies) =>
+    readSummary(connection([summaryNode(bodies[0], { userContentEdits: historyOf(bodies) })]), HEAD);
+  const sha = (i) => String(i).padStart(2, "0").repeat(20);
+
+  it("walks #1290's real history from 4d33e1f32 back to the approved 9fe7aa1a5 in one step", () => {
+    const s = readSummary(real(1290), HEAD);
+    expect(s.from).toBe(FOLLOW_UP_1290);
+    // The 19:25:50 version carries an in-progress block, so the first earlier one that counts is 18:44:49's.
+    expect(s.earlier[0]).toEqual({ from: APPROVED_1290, to: FOLLOW_UP_1290 });
+    expect(rangeChain(s, APPROVED_1290)).toEqual({ reached: true, starts: [FOLLOW_UP_1290, APPROVED_1290] });
+  });
+
+  it("reaches #1322's review object directly: its recent review starts there", () => {
+    const s = readSummary(real(1322), REAL[1322].head);
+    expect(rangeChain(s, REVIEWED_1322)).toEqual({ reached: true, starts: [REVIEWED_1322] });
+  });
+
+  it("does not reach a commit nothing in the history reviewed up to, and lists every start it visited", () =>
+    expect(rangeChain(readSummary(real(1290), HEAD), OTHER)).toEqual({
+      reached: false,
+      starts: [FOLLOW_UP_1290, APPROVED_1290, FIRST_1290],
+    }));
+
+  it("does not reach #1290's approval once the versions that reviewed up to 4d33e1f32 are gone", () => {
+    const s = withHistory((h) => {
+      h.nodes.splice(1, 2);
+      h.totalCount = h.nodes.length;
+    });
+    expect(s.ok).toBe(true);
+    expect(rangeChain(s, APPROVED_1290)).toEqual({ reached: false, starts: [FOLLOW_UP_1290] });
+  });
+
+  it("does not step through an earlier version that fails the rules", () => {
+    const s = withHistory((h) => {
+      h.nodes[2].diff = doctor(
+        h.nodes[2].diff,
+        "No actionable comments were generated in the recent review.",
+        "Actionable comments posted: 1",
+      );
+    });
+    expect(s.ok).toBe(true);
+    expect(rangeChain(s, APPROVED_1290).reached).toBe(false);
+  });
+
+  it("steps only to versions strictly older than the one the step started from", () => {
+    const [R, X, Y] = [sha(1), sha(2), sha(3)];
+    // Newest first: the current review X..head, then a NEWER R..Y than the Y..X the walk steps to.
+    const s = synthetic([versionOf(X, HEAD), versionOf(R, Y), versionOf(Y, X)]);
+    expect(rangeChain(s, R)).toEqual({ reached: false, starts: [X, Y] });
+    // The same versions in a consistent order reach R.
+    expect(rangeChain(synthetic([versionOf(X, HEAD), versionOf(Y, X), versionOf(R, Y)]), R).reached).toBe(true);
+  });
+
+  it(`steps back at most ${MAX_CHAIN} versions`, () => {
+    // Version i reviewed sha(i)..sha(i + 1); the current one sha(11)..head.
+    const bodies = [versionOf(sha(11), HEAD)];
+    for (let i = 10; i >= 0; i--) bodies.push(versionOf(sha(i), sha(i + 1)));
+    const s = synthetic(bodies);
+    expect(rangeChain(s, sha(1))).toMatchObject({ reached: true });
+    expect(rangeChain(s, sha(1)).starts).toHaveLength(MAX_CHAIN + 1);
+    expect(rangeChain(s, sha(0))).toMatchObject({ reached: false });
+  });
+
+  it("never reaches an anchor that is not a full sha", () => {
+    const s = readSummary(real(1322), REAL[1322].head);
+    expect(rangeChain(s, undefined).reached).toBe(false);
+    expect(rangeChain({ ...s, from: "" }, "").reached).toBe(false);
+  });
 });

@@ -7,7 +7,7 @@
 import path from "node:path";
 
 import { git, postContext, readInput, run, toplevel } from "./lib.mjs";
-import { generatorsFor, remindersFor } from "./rules-post.mjs";
+import { generatorReport, generatorsFor, remindersFor } from "./rules-post.mjs";
 
 const input = await readInput();
 const file = input.tool_input?.file_path ?? input.tool_response?.filePath;
@@ -20,11 +20,7 @@ if (typeof file === "string" && file) {
       const before = status(root);
       const r = run(g.cmd, g.args, { cwd: root, timeoutMs: 120_000 });
       const changed = status(root).filter((l) => !before.includes(l));
-      if (r.ok)
-        notes.push(
-          `Ran ${g.label} (${[g.cmd, ...g.args].join(" ")})${changed.length ? `; it changed: ${changed.map((l) => l.slice(3)).join(", ")}` : "; output already fresh"}.`,
-        );
-      else notes.push(`${g.label} FAILED (${[g.cmd, ...g.args].join(" ")}):\n${(r.err || r.out).trim().slice(-1500)}`);
+      notes.push(generatorReport(g, r, changed));
     }
     notes.push(...remindersFor(rel));
     if (notes.length) postContext(`[hook] ${notes.join("\n[hook] ")}`);

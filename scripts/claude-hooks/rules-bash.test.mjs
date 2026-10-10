@@ -508,11 +508,36 @@ describe("gh pr merge", () => {
     const fixture = (n) =>
       readFileSync(new URL(`./__fixtures__/coderabbit-summary/pr-${n}.md`, import.meta.url), "utf8");
     const BOT = { login: "coderabbitai", __typename: "Bot" };
-    const comments = (body, at = "2026-10-03T12:00:00Z") => ({
+    /** The real edit history of a fixture's summary (see coderabbit-summary.test.mjs), newest first. */
+    const history = (n) =>
+      JSON.parse(
+        readFileSync(new URL(`./__fixtures__/coderabbit-summary/pr-${n}.edits.json`, import.meta.url), "utf8"),
+      );
+    /** The comments connection around one bot summary, its history one version unless given. */
+    const comments = (body, at = "2026-10-03T12:00:00Z", edits) => ({
       totalCount: 1,
       pageInfo: { hasNextPage: false },
-      nodes: [{ author: BOT, editor: BOT, isMinimized: false, createdAt: at, lastEditedAt: at, body }],
+      nodes: [
+        {
+          author: BOT,
+          editor: BOT,
+          isMinimized: false,
+          createdAt: at,
+          lastEditedAt: at,
+          body,
+          userContentEdits: edits ?? {
+            totalCount: 1,
+            nodes: [{ editedAt: at ?? "2026-10-03T12:00:00Z", editor: BOT, deletedAt: null, diff: body }],
+          },
+        },
+      ],
     });
+    /** PR #1290's real summary with its real eight-version history, `mutate` applied to the history first. */
+    const real1290 = (mutate = () => {}) => {
+      const h = history(1290);
+      mutate(h);
+      return comments(fixture(1290), "2026-09-30T19:27:50Z", h);
+    };
     // PR #1290 as it stood at merge: one approval at 9fe7aa1a5, then a clean
     // incremental review of 0fba52955 that left only the summary behind.
     const head1290 = "0fba52955ee91824f9586cfaf0e42fa04d06e3d4";
@@ -535,27 +560,114 @@ describe("gh pr merge", () => {
     const pinned1290 = `gh pr merge 1290 --squash --match-head-commit ${head1290}`;
     const clean = { ok: true, differing: [], conflicted: [], lineMismatch: [] };
     /** A context recording every comments read, timeline read and replay. */
-    const arrange = ({
-      pr = pr1290,
-      read = () => comments(fixture(1290), "2026-09-30T19:27:50Z"),
-      replay = clean,
-    } = {}) => {
+    const arrange = (opts = {}) => {
+      const { pr = pr1290, read = () => real1290(), replay = clean } = opts;
+      // Read by `in`, not a destructuring default: the gh-failure case passes `undefined` on purpose.
+      const moved = "moved" in opts ? opts.moved : false;
       const calls = { comments: [], timeline: [], replay: [] };
       const c = ctx({
         prView: pr,
         prComments: (...args) => (calls.comments.push(args), read()),
-        baseChangedSince: (...args) => (calls.timeline.push(args), false),
-        replayRebase: (args) => (calls.replay.push(args), replay),
+        baseChangedSince: (...args) => (calls.timeline.push(args), moved),
+        // A function answers per replay; anything else answers every replay.
+        replayRebase: (args) => (calls.replay.push(args), typeof replay === "function" ? replay(args) : replay),
       });
       return { c, calls };
     };
+    const followUp1290 = "4d33e1f32178e69684739f5d31e037b72bff4987";
 
-    it("accepts PR #1290's real summary at its head, with no timeline read or replay", () => {
+    it("accepts PR #1290's real summary at its head through its history, with one timeline read and no replay", () => {
+      // Its recent review is 4d33e1f32..0fba52955; an earlier version of the same
+      // comment reviewed 9fe7aa1a5..4d33e1f32, and 9fe7aa1a5 is the approval.
       const { c, calls } = arrange({ replay: { ...clean, differing: ["a.ts"] } });
       passes(pinned1290, c);
       expect(calls.comments).toEqual([[1290, MASTER]]);
-      expect(calls.timeline).toHaveLength(0);
+      expect(calls.timeline).toEqual([[1290, "2026-09-30T18:38:58Z", MASTER]]);
       expect(calls.replay).toHaveLength(0);
+    });
+
+    it("refuses PR #1290's summary at its head once the base moved after the review, or gh cannot tell", () => {
+      const moved = arrange({ moved: true });
+      expect(deny(pinned1290, moved.c)).toMatch(
+        /previous head 9fe7aa1a5, and the PR's base branch was retargeted or force-pushed after that review/,
+      );
+      expect(moved.calls.replay).toHaveLength(0);
+      expect(deny(pinned1290, arrange({ moved: undefined }).c)).toMatch(
+        /could not read whether the base branch moved since that review/,
+      );
+    });
+
+    it("refuses an edit history with a foreign editor, falling back to the replay from the review object", () => {
+      const { c, calls } = arrange({
+        read: () => real1290((h) => (h.nodes[2].editor = { login: "niklam", __typename: "User" })),
+        replay: { ...clean, followUp: 2 },
+      });
+      const why = deny(pinned1290, c);
+      expect(why).toMatch(/does not count, because its edit history has an edit by User niklam/);
+      expect(why).toMatch(/follow-up push/);
+      expect(calls.replay.map((r) => r.reviewed)).toEqual([approved1290]);
+    });
+
+    it("refuses a truncated edit history", () =>
+      expect(
+        deny(
+          pinned1290,
+          arrange({ read: () => real1290((h) => (h.totalCount = 101)), replay: { ...clean, followUp: 2 } }).c,
+        ),
+      ).toMatch(/101 recorded edits and 8 were read/));
+
+    describe("the recent review's start must lead back to the review object", () => {
+      // #1290's history without the two versions that reviewed 9fe7aa1a5..4d33e1f32.
+      const gapped = () =>
+        real1290((h) => {
+          h.nodes.splice(1, 2);
+          h.totalCount = h.nodes.length;
+        });
+
+      it("refuses #1290 at its head when no earlier version reviewed up to 4d33e1f32, and it is no rebase either", () => {
+        const { c, calls } = arrange({ read: gapped, replay: { ...clean, followUp: 2 } });
+        const why = deny(pinned1290, c);
+        expect(why).toMatch(
+          /its recent review of 0fba52955 starts at 4d33e1f32, which the gate cannot trace back to the reviewed 9fe7aa1a5/,
+        );
+        // The start was tried as a rebase of the approval, then the head as before.
+        expect(calls.replay).toEqual([
+          { reviewed: approved1290, head: followUp1290, base, dir: MASTER },
+          { reviewed: approved1290, head: head1290, base, dir: MASTER },
+        ]);
+      });
+
+      it("accepts #1290 at its head when 4d33e1f32 is a clean pure rebase of the approval", () => {
+        const { c, calls } = arrange({
+          read: gapped,
+          replay: (args) => (args.head === followUp1290 ? clean : { ...clean, followUp: 2 }),
+        });
+        passes(pinned1290, c);
+        expect(calls.replay.map((r) => r.head)).toEqual([followUp1290]);
+      });
+
+      it("refuses when that rebase conflicted — a resolution nobody confirmed carries nothing here", () => {
+        const conflicted = { ok: true, differing: ["a.ts"], conflicted: ["a.ts"], lineMismatch: [] };
+        const { c } = arrange({
+          read: gapped,
+          replay: (args) => (args.head === followUp1290 ? conflicted : { ...clean, followUp: 2 }),
+        });
+        expect(deny(pinned1290, c)).toMatch(/cannot trace back to the reviewed 9fe7aa1a5[\s\S]*follow-up push/);
+      });
+
+      it("refuses when the replay of the start is not a pure rebase, or cannot run", () => {
+        for (const r of [
+          { ...clean, differing: ["b.ts"] },
+          { ...clean, followUp: 1 },
+          { ok: false, reason: "x" },
+        ])
+          expect(
+            deny(
+              pinned1290,
+              arrange({ read: gapped, replay: (a) => (a.head === followUp1290 ? r : { ...clean, followUp: 2 }) }).c,
+            ),
+          ).toMatch(/cannot trace back/);
+      });
     });
 
     it("requires the pin on this path, and reads nothing without it", () => {
@@ -651,7 +763,8 @@ describe("gh pr merge", () => {
     describe("as the replay's start", () => {
       // The summary of a clean incremental review of S, then a rebase onto a moved base.
       const S = "6666666666666666666666666666666666666666";
-      const summaryOf = (commit) => fixture(1290).split(head1290).join(commit);
+      // Its range starts at the approval itself, so the start is traced without any history.
+      const summaryOf = (commit) => fixture(1290).split(head1290).join(commit).split(followUp1290).join(approved1290);
       const rebasedPr = () => ({ ...pr1290(), headRefOid: head });
       const pinned = `gh pr merge 1290 --squash --match-head-commit ${head}`;
 
@@ -704,6 +817,52 @@ describe("gh pr merge", () => {
         const { c, calls } = arrange({ pr: rebasedPr, read: () => comments(broken, "2026-09-30T19:27:50Z") });
         passes(pinned, c);
         expect(calls.replay[0].reviewed).toBe(approved1290);
+      });
+
+      it("keeps the review object as the start when the summary's range start cannot be traced to it", () => {
+        // The real range start 4d33e1f32, with no history behind it and no clean rebase of the approval.
+        const untraced = fixture(1290).split(head1290).join(S);
+        const { c, calls } = arrange({
+          pr: rebasedPr,
+          read: () => comments(untraced, "2026-09-30T19:27:50Z"),
+          replay: (a) => (a.head === followUp1290 ? { ...clean, followUp: 1 } : { ...clean, differing: ["a.ts"] }),
+        });
+        expect(deny(pinned, c)).toMatch(
+          /previous head 9fe7aa1a5; its summary comment does not count, because its recent review of 666666666 starts at 4d33e1f32, which the gate cannot trace back/,
+        );
+        expect(calls.replay.map((r) => [r.reviewed, r.head])).toEqual([
+          [approved1290, followUp1290],
+          [approved1290, head],
+        ]);
+      });
+
+      it("says the summary was written before the review only when both times are readable and it was", () => {
+        const say = (read, pr = rebasedPr) =>
+          deny(pinned, arrange({ pr, read, replay: { ...clean, differing: ["a.ts"] } }).c);
+        expect(say(() => comments(summaryOf(S), "2026-09-30T18:00:00Z"))).toMatch(
+          /recent review ends at 666666666 and was written before that review/,
+        );
+        const timed = (at) => () => {
+          const r = comments(summaryOf(S));
+          r.nodes[0].createdAt = at;
+          r.nodes[0].lastEditedAt = at;
+          return r;
+        };
+        const reviewAt = (t) => () => ({ ...rebasedPr(), reviews: [{ ...pr1290().reviews[0], submittedAt: t }] });
+        const fresh = () => comments(summaryOf(S), "2026-09-30T19:27:50Z");
+        for (const [why, read, pr] of [
+          ["the comment carries no edit time", timed(undefined)],
+          ["the comment's edit time is unreadable", timed("not a date")],
+          ["both carry the same time", () => comments(summaryOf(S), "2026-09-30T18:38:58Z")],
+          ["the review carries no time", fresh, reviewAt(undefined)],
+          ["the review's time is unreadable", fresh, reviewAt("garbage")],
+        ]) {
+          const said = say(read, pr);
+          expect(said).toContain(
+            `recent review ends at 666666666, but the gate could not establish that the summary is newer than that review (${why})`,
+          );
+          expect(said).not.toMatch(/written before/);
+        }
       });
     });
   });
