@@ -1,13 +1,21 @@
-import { PI_WARNINGS_KEY, VOICE_PACKS_KEY } from "@iracedeck/app-constants";
+import {
+  PI_WARNINGS_KEY,
+  PROFILE_CAPTURE_STATUS_KEY,
+  VOICE_PACK_STATUS_KEY,
+  VOICE_PACKS_KEY,
+} from "@iracedeck/app-constants";
 import { silentLogger } from "@iracedeck/logger";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { FIRST_RUN_VERSION_KEY, runFirstRunCheck } from "./first-run.js";
 import {
   _resetGlobalSettings,
   getGlobalSettings,
   GlobalSettingsSchema,
   initGlobalSettings,
   isSettingsStoreReady,
+  MIGRATION_ABANDONED_KEY,
+  MIGRATION_PENDING_KEY,
   SETTINGS_CHANNEL_KEY,
   updateGlobalSettings,
 } from "./global-settings.js";
@@ -31,6 +39,15 @@ const tick = () => new Promise((r) => setTimeout(r, 0));
 
 const TOKEN = "tok-SECRET-1387";
 const PORT = 49152;
+
+/**
+ * The key the version check and the first-run check write. No package exports a
+ * constant for it; "the last-seen version" below goes through the real writer.
+ */
+const LAST_SEEN_VERSION_KEY = "_lastSeenVersion";
+
+/** What a kept key reads as when it is present but not in its documented form. */
+const REJECTED = { rejected: true };
 
 /** The cache as a plain bag, for reading keys the schema does not declare. */
 const cache = (): Record<string, unknown> => getGlobalSettings() as Record<string, unknown>;
@@ -81,22 +98,64 @@ describe("readSettingsForSnapshot", () => {
   });
 
   describe("the allow-list", () => {
-    it("keeps exactly the warnings key among the internal ones", () => {
-      expect(SNAPSHOT_KEPT_INTERNAL_KEYS).toEqual([PI_WARNINGS_KEY]);
+    it("keeps exactly five internal keys", () => {
+      expect([...SNAPSHOT_KEPT_INTERNAL_KEYS].sort()).toEqual(
+        [
+          PI_WARNINGS_KEY,
+          LAST_SEEN_VERSION_KEY,
+          MIGRATION_PENDING_KEY,
+          MIGRATION_ABANDONED_KEY,
+          VOICE_PACKS_KEY,
+        ].sort(),
+      );
+      // Named here so that keeping either takes an edit to this test as well.
+      expect(SNAPSHOT_KEPT_INTERNAL_KEYS).not.toContain(SETTINGS_CHANNEL_KEY);
+      expect(SNAPSHOT_KEPT_INTERNAL_KEYS).not.toContain(VOICE_PACK_STATUS_KEY);
     });
 
     it("leaves no key starting with an underscore except the kept ones", async () => {
       await startWith({
         [SETTINGS_CHANNEL_KEY]: { port: PORT, token: TOKEN },
-        _lastSeenVersion: "3.5.0",
+        [LAST_SEEN_VERSION_KEY]: "3.5.0",
+        [MIGRATION_ABANDONED_KEY]: "3.4.0",
+        [FIRST_RUN_VERSION_KEY]: "3.4.0",
         _settingsStorePath: "C:/Users/someone/AppData/Local/iRaceDeck/Settings/x/global-settings.json",
+        _lastChangelogOpenedAt: 1791727391482,
+        _devBaseUrl: "http://127.0.0.1:4321",
+        _selectedCar: { carIdx: 3, carNumber: "12" },
+        _audioDeviceList: JSON.stringify([{ id: "{0.0.0.00000000}.{guid}", name: "Speakers" }]),
+        _voiceLabels: JSON.stringify({ "default::default": "Default" }),
       });
-      updateGlobalSettings({ [VOICE_PACKS_KEY]: JSON.stringify([{ id: "default" }]) });
+      // Run-scoped keys never load from a store: their producers write them.
+      updateGlobalSettings({
+        [VOICE_PACKS_KEY]: JSON.stringify({ packs: [], problems: [] }),
+        [VOICE_PACK_STATUS_KEY]: JSON.stringify({ catalog: { state: "LEAK-status" }, installs: {} }),
+        [PROFILE_CAPTURE_STATUS_KEY]: JSON.stringify({ state: "capturing" }),
+      });
       setWarning("a", "warning", "A banner");
+      expect(Object.keys(cache()).filter((key) => key.startsWith("_")).length).toBeGreaterThan(10);
 
-      const internal = Object.keys(readSettingsForSnapshot()).filter((key) => key.startsWith("_"));
+      const result = readSettingsForSnapshot();
+      const internal = Object.keys(result).filter((key) => key.startsWith("_"));
 
-      expect(internal).toEqual([PI_WARNINGS_KEY]);
+      expect(internal.sort()).toEqual(
+        [PI_WARNINGS_KEY, LAST_SEEN_VERSION_KEY, MIGRATION_ABANDONED_KEY, VOICE_PACKS_KEY].sort(),
+      );
+      expect(JSON.stringify(result)).not.toContain("someone");
+      expect(JSON.stringify(result)).not.toContain("LEAK");
+    });
+
+    it("leaves the voice-pack status out", async () => {
+      await startWith({});
+      updateGlobalSettings({
+        [VOICE_PACK_STATUS_KEY]: JSON.stringify({ catalog: { packs: [{ id: "LEAK-catalog" }] }, installs: {} }),
+      });
+      expect(cache()[VOICE_PACK_STATUS_KEY]).toContain("LEAK-catalog");
+
+      const result = readSettingsForSnapshot();
+
+      expect(VOICE_PACK_STATUS_KEY in result).toBe(false);
+      expect(JSON.stringify(result)).not.toContain("LEAK");
     });
 
     // What pins an allow-list over a deny-list of known secrets: a key nobody
@@ -214,6 +273,260 @@ describe("readSettingsForSnapshot", () => {
 
         expect(first).toEqual(second);
         expect(first).not.toBe(second);
+      });
+    });
+  });
+
+  describe("the last-seen version", () => {
+    it("keeps the version the first-run check itself records", async () => {
+      await startWith({});
+      expect(LAST_SEEN_VERSION_KEY in cache()).toBe(false);
+
+      // The real writer, so a renamed key cannot leave the reader keeping a
+      // name nothing writes any more.
+      await runFirstRunCheck({
+        currentVersion: "3.6.0-dev.0",
+        persist: updateGlobalSettings,
+        openGettingStarted: () => {},
+        logger: silentLogger,
+      });
+
+      const result = readSettingsForSnapshot();
+
+      expect(result[LAST_SEEN_VERSION_KEY]).toBe("3.6.0-dev.0");
+      // Its sibling from the same write is not a kept key.
+      expect(cache()[FIRST_RUN_VERSION_KEY]).toBe("3.6.0-dev.0");
+      expect(FIRST_RUN_VERSION_KEY in result).toBe(false);
+    });
+
+    // Its ABSENCE is the first-run signal, so it must read as absence.
+    it("is absent from the snapshot when the settings do not hold it", async () => {
+      await startWith({});
+
+      expect(LAST_SEEN_VERSION_KEY in readSettingsForSnapshot()).toBe(false);
+      expect(LAST_SEEN_VERSION_KEY in readSettingsForSnapshot({ [LAST_SEEN_VERSION_KEY]: undefined })).toBe(false);
+    });
+
+    it.each([
+      ["a number", 3.5],
+      ["an object", { LEAK: "object" }],
+      ["a list", ["LEAK-list"]],
+      ["null", null],
+      ["a string longer than a version can be", `LEAK-${"9".repeat(300)}`],
+    ])("writes the rejected marker, and none of the value, for %s", async (_name, stored) => {
+      await startWith({ [LAST_SEEN_VERSION_KEY]: stored });
+      expect(cache()[LAST_SEEN_VERSION_KEY]).toEqual(stored);
+
+      const result = readSettingsForSnapshot();
+
+      expect(result[LAST_SEEN_VERSION_KEY]).toEqual(REJECTED);
+      expect(JSON.stringify(result)).not.toContain("LEAK");
+    });
+  });
+
+  describe("the migration markers", () => {
+    it("keeps the countdown the store itself writes when the host never answers", async () => {
+      // No file and a silent host: the store is born fresh and counts the start.
+      initGlobalSettings(host, silentLogger, createMemorySettingsStore(), { migrationTimeoutMs: 1 });
+      await new Promise((r) => setTimeout(r, 25));
+      expect(isSettingsStoreReady()).toBe(true);
+      expect(cache()[MIGRATION_PENDING_KEY]).toBe(1);
+
+      expect(readSettingsForSnapshot()[MIGRATION_PENDING_KEY]).toBe(1);
+    });
+
+    it.each([
+      ["zero", 0],
+      ["a count", 2],
+    ])("keeps %s as the countdown", (_name, stored) => {
+      expect(readSettingsForSnapshot({ [MIGRATION_PENDING_KEY]: stored })[MIGRATION_PENDING_KEY]).toBe(stored);
+    });
+
+    it.each([
+      ["a negative number", -1],
+      ["NaN", Number.NaN],
+      ["Infinity", Number.POSITIVE_INFINITY],
+      ["a numeric string", "2"],
+      ["true", true],
+      ["an object", { LEAK: "object" }],
+      ["null", null],
+    ])("writes the rejected marker for a countdown that is %s", (_name, stored) => {
+      const result = readSettingsForSnapshot({ [MIGRATION_PENDING_KEY]: stored });
+
+      expect(result[MIGRATION_PENDING_KEY]).toEqual(REJECTED);
+      expect(JSON.stringify(result)).not.toContain("LEAK");
+    });
+
+    // Both forms come out of the store's own load: it re-stamps a give-up
+    // marker it finds with the version it is running as.
+    it("keeps the give-up marker's version, as the store stamps it", async () => {
+      initGlobalSettings(host, silentLogger, createMemorySettingsStore({ [MIGRATION_ABANDONED_KEY]: "3.4.0" }), {
+        pluginVersion: "3.4.0",
+      });
+      await tick();
+      expect(cache()[MIGRATION_ABANDONED_KEY]).toBe("3.4.0");
+
+      expect(readSettingsForSnapshot()[MIGRATION_ABANDONED_KEY]).toBe("3.4.0");
+    });
+
+    it("keeps the give-up marker's true, which a build that cannot name its version stamps", async () => {
+      await startWith({ [MIGRATION_ABANDONED_KEY]: "3.4.0" });
+      expect(cache()[MIGRATION_ABANDONED_KEY]).toBe(true);
+
+      expect(readSettingsForSnapshot()[MIGRATION_ABANDONED_KEY]).toBe(true);
+    });
+
+    it.each([
+      ["false", false],
+      ["a number", 1],
+      ["an object", { LEAK: "object" }],
+      ["null", null],
+      ["a string longer than a version can be", `LEAK-${"9".repeat(300)}`],
+    ])("writes the rejected marker for a give-up marker that is %s", (_name, stored) => {
+      const result = readSettingsForSnapshot({ [MIGRATION_ABANDONED_KEY]: stored });
+
+      expect(result[MIGRATION_ABANDONED_KEY]).toEqual(REJECTED);
+      expect(JSON.stringify(result)).not.toContain("LEAK");
+    });
+
+    it("are absent from the snapshot when the settings do not hold them", async () => {
+      await startWith({ driverName: "nick" });
+
+      const result = readSettingsForSnapshot();
+
+      expect(MIGRATION_PENDING_KEY in result).toBe(false);
+      expect(MIGRATION_ABANDONED_KEY in result).toBe(false);
+    });
+  });
+
+  describe("the voice packs", () => {
+    /** The payload as `plugin-runtime`'s voice-pack phase publishes it. */
+    const published = {
+      packs: [
+        {
+          id: "default",
+          label: "Default",
+          version: "1.4.0",
+          voices: [{ id: "default::default", label: "Default" }],
+          provenance: "catalog",
+          managed: true,
+        },
+        {
+          id: "sample-pack",
+          label: "Sample Pack",
+          version: "0.1.0",
+          voices: [
+            { id: "sample-pack::one", label: "One" },
+            { id: "sample-pack::two", label: "Two" },
+          ],
+          dir: "C:\\Users\\someone\\voices\\pack",
+          provenance: "development",
+          managed: false,
+        },
+      ],
+      problems: [{ pack: "broken-pack", reason: "no voice-pack.json" }],
+    };
+
+    /** The same payload without the development pack's directory. */
+    const expected = {
+      packs: [
+        published.packs[0],
+        {
+          id: "sample-pack",
+          label: "Sample Pack",
+          version: "0.1.0",
+          voices: [
+            { id: "sample-pack::one", label: "One" },
+            { id: "sample-pack::two", label: "Two" },
+          ],
+          provenance: "development",
+          managed: false,
+        },
+      ],
+      problems: published.problems,
+    };
+
+    it("keeps the scan result as data, without the development pack's directory", async () => {
+      await startWith({});
+      // The producer's own write: a JSON string under a run-scoped key.
+      updateGlobalSettings({ [VOICE_PACKS_KEY]: JSON.stringify(published) });
+      expect(cache()[VOICE_PACKS_KEY]).toContain("someone");
+
+      const result = readSettingsForSnapshot();
+      const json = JSON.stringify(result);
+
+      expect(json).not.toContain("someone");
+      expect(json).not.toContain('"dir"');
+      expect(json).not.toContain("voices\\\\pack");
+      // Everything else about both packs is there, the development one included.
+      expect(result[VOICE_PACKS_KEY]).toStrictEqual(expected);
+    });
+
+    it("drops a field nobody named, on a pack, a voice, a problem and the payload", async () => {
+      await startWith({});
+      updateGlobalSettings({
+        [VOICE_PACKS_KEY]: JSON.stringify({
+          packs: [
+            {
+              ...published.packs[0],
+              author: "LEAK-author",
+              clips: ["LEAK-clip.mp3"],
+              voices: [{ id: "default::default", label: "Default", script: { LEAK: "script" } }],
+            },
+          ],
+          problems: [{ pack: "broken-pack", reason: "no voice-pack.json", path: "C:\\LEAK\\broken-pack" }],
+          scannedFrom: "C:\\LEAK\\packs",
+        }),
+      });
+
+      const result = readSettingsForSnapshot();
+
+      expect(result[VOICE_PACKS_KEY]).toEqual({ packs: [published.packs[0]], problems: published.problems });
+      expect(JSON.stringify(result)).not.toContain("LEAK");
+    });
+
+    it.each([
+      ["a value that is not a string", { packs: [], problems: [] }],
+      ["text that is not JSON", "{LEAK not json"],
+      ["an empty string", ""],
+      ["JSON that is not an object", JSON.stringify(["LEAK-list"])],
+      ["a payload with no problems list", JSON.stringify({ packs: [] })],
+      ["a payload whose packs are not a list", JSON.stringify({ packs: "LEAK-packs", problems: [] })],
+      [
+        "a pack with a field of the wrong type",
+        JSON.stringify({ packs: [{ ...published.packs[0], version: { LEAK: 1 } }], problems: [] }),
+      ],
+      [
+        "a pack with a named field missing",
+        JSON.stringify({ packs: [{ id: "LEAK-pack", label: "LEAK" }], problems: [] }),
+      ],
+      [
+        "a voice that is not a record",
+        JSON.stringify({ packs: [{ ...published.packs[0], voices: ["LEAK-voice"] }], problems: [] }),
+      ],
+      ["a problem with no reason", JSON.stringify({ packs: [], problems: [{ pack: "LEAK-problem" }] })],
+      ["null", null],
+    ])("writes the rejected marker, and none of the value, for %s", async (_name, stored) => {
+      await startWith({});
+      updateGlobalSettings({ [VOICE_PACKS_KEY]: stored });
+      expect(cache()[VOICE_PACKS_KEY]).toEqual(stored);
+
+      const result = readSettingsForSnapshot();
+
+      expect(result[VOICE_PACKS_KEY]).toEqual(REJECTED);
+      expect(JSON.stringify(result)).not.toContain("LEAK");
+    });
+
+    it("validates the value it was handed, not the cache's", async () => {
+      await startWith({});
+      updateGlobalSettings({ [VOICE_PACKS_KEY]: JSON.stringify(published) });
+
+      const result = readSettingsForSnapshot({
+        [VOICE_PACKS_KEY]: JSON.stringify({ packs: [], problems: [{ pack: "from-the-argument", reason: "r" }] }),
+      });
+
+      expect(result).toEqual({
+        [VOICE_PACKS_KEY]: { packs: [], problems: [{ pack: "from-the-argument", reason: "r" }] },
       });
     });
   });
