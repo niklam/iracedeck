@@ -110,9 +110,11 @@ function textOf(value: unknown): string {
 /**
  * Why something failed, as a string that is never empty. Total: it runs inside
  * a `catch`, where a second throw would lose the whole collection, and anything
- * can be thrown and anything assigned to an Error's `message`.
+ * can be thrown and anything assigned to an Error's `message`. Exported for the
+ * snapshot's other `catch` blocks, so an error entry reads the same whoever
+ * wrote it.
  */
-function messageOf(error: unknown): string {
+export function describeThrown(error: unknown): string {
   try {
     if (typeof error !== "object" || error === null) return textOf(error) || UNKNOWN_REASON;
 
@@ -201,7 +203,7 @@ export function collectStateSections(logger: ILogger, now: () => number = Date.n
       failed.push(name);
       logger.warn(`Snapshot state section "${name}" failed`);
 
-      const reason = messageOf(error);
+      const reason = describeThrown(error);
 
       state[name] = { error: reason };
       headline.push([name, SECTION_UNAVAILABLE]);
@@ -215,7 +217,7 @@ export function collectStateSections(logger: ILogger, now: () => number = Date.n
       headline.push(...toHeadlineRows(section.headline(raw)));
     } catch (error) {
       headline.push([name, SUMMARY_UNAVAILABLE]);
-      logger.debug(`Section "${name}" headline failed: ${messageOf(error)}`);
+      logger.debug(`Section "${name}" headline failed: ${describeThrown(error)}`);
     }
   }
 

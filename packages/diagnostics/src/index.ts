@@ -40,6 +40,7 @@ export {
   _resetStateSections,
   type CollectedState,
   collectStateSections,
+  describeThrown,
   type HeadlineRow,
   PLUGIN_STATE_SCHEMA,
   registerStateSection,

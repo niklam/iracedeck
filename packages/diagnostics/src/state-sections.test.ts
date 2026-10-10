@@ -5,6 +5,7 @@ import { JSON_SAFE_MAX_VALUES } from "./json-safe.js";
 import {
   _resetStateSections,
   collectStateSections,
+  describeThrown,
   type HeadlineRow,
   PLUGIN_STATE_SCHEMA,
   registerStateSection,
@@ -555,6 +556,33 @@ describe("state sections (#1387)", () => {
 
       expect(collectStateSections(logger, AT).state).toStrictEqual({ schema: 1, collectedAt: 1234 });
       expect(() => registerStateSection("a", { read: () => 2 })).not.toThrow();
+    });
+  });
+
+  describe("describeThrown", () => {
+    it("gives an Error its message, and falls back to its name when the message is blank", () => {
+      expect(describeThrown(new Error("boom"))).toBe("boom");
+      expect(describeThrown(new RangeError("  "))).toBe("RangeError");
+    });
+
+    it("gives a thrown primitive its text", () => {
+      expect(describeThrown("plain text")).toBe("plain text");
+      expect(describeThrown(7n)).toBe("7");
+    });
+
+    it("never returns an empty string and never throws, whatever was thrown", () => {
+      const hostile = new Proxy(
+        {},
+        {
+          get: () => {
+            throw new Error("trap");
+          },
+        },
+      );
+
+      for (const thrown of [undefined, null, "", {}, Object.create(null), { message: { nested: true } }, hostile]) {
+        expect(describeThrown(thrown)).toBe("unknown error");
+      }
     });
   });
 });
