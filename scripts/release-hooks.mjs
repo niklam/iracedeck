@@ -1,9 +1,9 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { buildChangelogData, CHANGELOG_DATA_PATH, serializeChangelogData } from "./lib/changelog-data.mjs";
-import { formatLocalDate, stampChangelog } from "./lib/changelog-stamp.mjs";
+import { CHANGELOG_SOURCE_PATH } from "./lib/changelog-data.mjs";
+import { formatLocalDate, loadChangelogFold } from "./lib/changelog-fold.mjs";
 import { manifestVersionFor } from "./lib/manifest-version.mjs";
 import { allPluginManifestRelPaths, discoverVersionedFiles, pluginManifestRelPaths } from "./lib/version-discovery.mjs";
 
@@ -75,36 +75,39 @@ const manifestBumps = manifestFiles.map((manifest) => ({
   version: manifestVersionFor(manifest.rel, version, buildNumber),
 }));
 
-// Stamp the changelog's in-development `_Unreleased_` date line with today's
-// release date on stable releases (issue #690). stampChangelog is a no-op (with
-// a clear reason) for pre-releases and for a missing or already-dated section,
-// so a release never fails just because the changelog wasn't pre-staged.
-const changelogRel = "packages/website/src/content/docs/changelog.mdx";
-const changelogPath = join(root, changelogRel);
-const changelogStamp = existsSync(changelogPath)
-  ? stampChangelog(readFileSync(changelogPath, "utf-8"), version, formatLocalDate(new Date()))
-  : { content: "", stamped: false, reason: `No changelog at ${changelogRel} — skipping date stamp` };
+// Fold the changelog fragments in `changelog.d/` into the release's dated
+// section on stable releases (issue #1386, `lib/changelog-fold.mjs`). Planned
+// here, before the preflight and before any write: every fragment is parsed, the
+// section composed with today's local date, and the result run through the What's
+// New pane's own parser and renderer, so a malformed fragment aborts the release
+// with a clean tree. A pre-release, or a release with no fragments, is a logged
+// no-op.
+//
+// `changelog.json` is no longer written here: it is a gitignored build artifact
+// that the release-pack build regenerates from the tag, and staging an ignored
+// path would fail the preflight below.
+const changelogFold = loadChangelogFold(root, version, formatLocalDate(new Date()));
+const changelogPath = join(root, CHANGELOG_SOURCE_PATH);
 
-// The plugin ships its OWN copy of these notes (issue #1011), generated from the
-// very file we just stamped — so the stamp has to be regenerated into it in the
-// same commit. Skipping it would ship a release whose What's New pane calls the
-// version the user just installed "Unreleased", and leave the freshness test
-// (`scripts/generate-changelog-data.test.mjs`) red on the release commit.
-// Built here, before the preflight and before any write, so a malformed
-// changelog aborts the release with a clean tree. Deliberately NOT conditional on
-// the artifact already existing: if it has been deleted, recreating it is exactly
-// what the release needs — guarding on existsSync would ship the release without
-// the offline notes it is supposed to carry.
-const changelogDataPath = join(root, CHANGELOG_DATA_PATH);
-const changelogData = changelogStamp.stamped
-  ? serializeChangelogData(buildChangelogData(changelogStamp.content))
-  : null;
-
-// Stage the changelog alongside the version files only when it was actually
-// stamped, so the preflight and the real `git add` both see it.
+// The edit and every fragment deletion are staged with the version files, so
+// the preflight and the real `git add` both see them.
 const allPaths = [...packageJsonFiles, ...manifestFiles].map(({ rel }) => rel);
-if (changelogStamp.stamped) allPaths.push(changelogRel);
-if (changelogData !== null) allPaths.push(CHANGELOG_DATA_PATH);
+if (changelogFold.fold) allPaths.push(CHANGELOG_SOURCE_PATH, ...changelogFold.fragmentPaths);
+
+// A fragment git does not track would pass the `git add --dry-run` below, be
+// folded and deleted, and then fail the final `git add` — git has nothing to
+// stage for a path it never knew — leaving a half-bumped tree. release-it's
+// clean-tree check does not see untracked files, so refuse one here.
+if (changelogFold.fold) {
+  try {
+    execFileSync("git", ["ls-files", "--error-unmatch", "--", ...changelogFold.fragmentPaths], {
+      cwd: root,
+      stdio: ["ignore", "ignore", "inherit"],
+    });
+  } catch {
+    throw new Error("Refusing to release: a changelog fragment is not committed (see the git output above).");
+  }
+}
 
 // Preflight (issue #701, defect 5): confirm every file we're about to bump can
 // be staged BEFORE writing anything. `git add --dry-run` mirrors the real
@@ -129,12 +132,13 @@ if (process.env.RELEASE_IT_DRY_RUN === "1") {
   for (const { rel } of packageJsonFiles) console.log(`    - ${rel}`);
   console.log(`  [dry-run] Would bump ${manifestFiles.length} manifest.json files:`);
   for (const { rel, version: manifestVersion } of manifestBumps) console.log(`    - ${rel} → ${manifestVersion}`);
-  console.log(`  [dry-run] Changelog: ${changelogStamp.reason}`);
-  console.log(
-    changelogData !== null
-      ? `  [dry-run] Would regenerate ${CHANGELOG_DATA_PATH} from the stamped changelog`
-      : `  [dry-run] ${CHANGELOG_DATA_PATH} unchanged (changelog not stamped)`,
-  );
+  console.log(`  [dry-run] Changelog: ${changelogFold.reason}`);
+  if (changelogFold.fold) {
+    console.log(`  [dry-run] Would write this section into ${CHANGELOG_SOURCE_PATH}:`);
+    for (const line of changelogFold.section.trimEnd().split("\n")) console.log(`    |${line && ` ${line}`}`);
+    console.log(`  [dry-run] Would delete ${changelogFold.fragmentPaths.length} fragments:`);
+    for (const rel of changelogFold.fragmentPaths) console.log(`    - ${rel}`);
+  }
   process.exit(0);
 }
 
@@ -151,17 +155,17 @@ for (const { rel, filePath, data, version: manifestVersion } of manifestBumps) {
   console.log(`  Updated ${rel} → ${manifestVersion}`);
 }
 
-if (changelogStamp.stamped) {
-  writeFileSync(changelogPath, changelogStamp.content);
+if (changelogFold.fold) {
+  writeFileSync(changelogPath, changelogFold.content);
+  for (const rel of changelogFold.fragmentPaths) {
+    unlinkSync(join(root, rel));
+    console.log(`  Deleted ${rel}`);
+  }
 }
-console.log(`  ${changelogStamp.reason}`);
+console.log(`  ${changelogFold.reason}`);
 
-if (changelogData !== null) {
-  writeFileSync(changelogDataPath, changelogData, "utf-8");
-  console.log(`  Regenerated ${CHANGELOG_DATA_PATH} from the stamped changelog`);
-}
-
-// Stage all modified files. Use argv form (no shell) so package directory
-// names containing spaces or shell metacharacters can't break or inject into
-// the git invocation.
+// Stage all modified files, the fragment deletions included (`git add` of a
+// tracked path that no longer exists stages its removal). Use argv form (no
+// shell) so package directory names containing spaces or shell metacharacters
+// can't break or inject into the git invocation.
 execFileSync("git", ["add", "--", ...allPaths], { cwd: root, stdio: "inherit" });
