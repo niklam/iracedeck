@@ -76,6 +76,14 @@ Where the log file lives:
 - **Stream Dock (Mirabox)**: in the plugin's `log` folder under `%APPDATA%\HotSpot\StreamDock\plugins\com.iracedeck.sd.core.sdPlugin\`, named by date (e.g. `2026.5.31.log`).
 - **Ulanzi Deck (UlanziStudio)**: in the plugin's `log` folder under `%APPDATA%\Ulanzi\UlanziDeck\Plugins\com.ulanzi.iracedeck.ulanziPlugin\`, named by date (e.g. `2026.5.31.log`).
 
+When the problem is something iRaceDeck said, showed or did wrong while you were driving, a telemetry snapshot taken at that moment helps as much as the log: it records what iRacing was reporting and what iRaceDeck had made of it.
+
+1. Add a [Telemetry Control](/docs/actions/cockpit/telemetry-control/#take-snapshot) key and set its **Mode** dropdown to **Take Snapshot**.
+2. Press it the moment the problem happens. The key itself shows nothing; each press writes two files to the key's Output Folder (by default `iRaceDeck\telemetry-snapshots` in your user home folder).
+3. Attach both files (`.json` and `.md`) to your report, together with the plugin log.
+
+Before you send them, read **Before you share a snapshot** in the [Take Snapshot](/docs/actions/cockpit/telemetry-control/#take-snapshot) section, which says what the files contain.
+
 ## If iRaceDeck uses a lot of CPU
 
 iRaceDeck keeps an eye on its own CPU use. It checks once a minute, and when three checks in a row find it busy — using half of one CPU core or more, or spending half the time or more working rather than waiting for something to do — the plugin log gets a warning with the figures, such as `Plugin CPU use is high: 62.4% of one core, event loop 71.0% busy, over 3 min (rss 340 MB, heap 64/172 MB)`, and a note once it is back to normal. You don't need debug logging on for these lines, so a log you already have may show when it started.
