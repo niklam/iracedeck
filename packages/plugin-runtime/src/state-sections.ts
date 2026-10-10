@@ -102,9 +102,10 @@ export function registerStateSections(core: Core): void {
   });
 
   // The settings reader decides what of the settings may leave the machine: it
-  // drops every internal `_` key but the warnings, `_settingsChannel` and its
-  // token among them. Never swap it for `getGlobalSettings`. No headline: the
-  // report has no one-line summary of 200 settings.
+  // drops every internal `_` key it does not name (`SNAPSHOT_KEPT_INTERNAL_KEYS`
+  // in `@iracedeck/settings`), `_settingsChannel` and its token among them.
+  // Never swap it for `getGlobalSettings`. No headline: the report has no
+  // one-line summary of 200 settings.
   registerStateSection("settings", { read: () => readSettingsForSnapshot() });
 
   registerStateSection("sim", { read: readSimState, headline: simStateHeadline });
