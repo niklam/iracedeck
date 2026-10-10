@@ -1,6 +1,7 @@
 import type { ILogger } from "@iracedeck/logger";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { JSON_SAFE_MAX_VALUES } from "./json-safe.js";
 import {
   _resetStateSections,
   collectStateSections,
@@ -24,6 +25,26 @@ function fakeLogger(): ILogger {
 }
 
 const AT = () => 1234;
+
+// The texts a report reader sees, pinned here as literals so a reworded one is a visible change.
+const UNAVAILABLE = "unavailable (see the JSON file)";
+const NO_SUMMARY = "summary unavailable";
+const NO_VALUE = "n/a";
+const UNKNOWN = "unknown error";
+const NOT_SYNCHRONOUS = "the reader returned a promise; state readers must be synchronous";
+
+const boom = (): never => {
+  throw new Error("boom");
+};
+
+/** A headline that returns something its type does not allow, as a miswritten or miscast one would. */
+const returning =
+  (rows: unknown): (() => HeadlineRow[]) =>
+  () =>
+    rows as HeadlineRow[];
+
+const cyclic: Record<string, unknown> = {};
+cyclic.self = cyclic;
 
 describe("state sections (#1387)", () => {
   let logger: ILogger;
@@ -106,7 +127,7 @@ describe("state sections (#1387)", () => {
       expect(failed).toEqual(["broken"]);
     });
 
-    it("logs one WARN for the failed section, with its name and the reason at debug", () => {
+    it("logs one WARN naming the failed section, with the reason at debug", () => {
       registerStateSection("fine", { read: () => 1 });
       registerStateSection("broken", {
         read: () => {
@@ -117,7 +138,7 @@ describe("state sections (#1387)", () => {
       collectStateSections(logger, AT);
 
       expect(logger.warn).toHaveBeenCalledTimes(1);
-      expect(logger.warn).toHaveBeenCalledWith("Snapshot state section failed");
+      expect(logger.warn).toHaveBeenCalledWith('Snapshot state section "broken" failed');
       expect(logger.debug).toHaveBeenCalledTimes(1);
       expect(logger.debug).toHaveBeenCalledWith('Section "broken": translator not ready');
     });
@@ -150,7 +171,7 @@ describe("state sections (#1387)", () => {
         after: { ok: 2 },
       });
       expect(collected.failed).toEqual(["getter"]);
-      expect(collected.headline).toEqual([]);
+      expect(collected.headline).toEqual([["getter", UNAVAILABLE]]);
       // Its headline would describe state the file does not hold.
       expect(headline).not.toHaveBeenCalled();
       expect(logger.warn).toHaveBeenCalledTimes(1);
@@ -158,26 +179,151 @@ describe("state sections (#1387)", () => {
     });
 
     it("reports every failed section, each with its own WARN", () => {
-      const boom = (): never => {
-        throw new Error("boom");
-      };
-
       registerStateSection("a", { read: boom });
       registerStateSection("b", { read: () => 1 });
       registerStateSection("c", { read: boom });
 
       expect(collectStateSections(logger, AT).failed).toEqual(["a", "c"]);
       expect(logger.warn).toHaveBeenCalledTimes(2);
+      expect(logger.warn).toHaveBeenNthCalledWith(1, 'Snapshot state section "a" failed');
+      expect(logger.warn).toHaveBeenNthCalledWith(2, 'Snapshot state section "c" failed');
     });
 
-    it("uses the thrown value itself as the message when it is not an Error", () => {
-      registerStateSection("a", {
+    it("turns a section too large to encode into an error entry, with the others intact", () => {
+      registerStateSection("before", { read: () => ({ ok: 1 }) });
+      registerStateSection("huge", {
         read: () => {
-          throw "plain string";
+          // Holes count towards the encoder's budget, so this costs no memory to build.
+          const values: unknown[] = [];
+
+          values.length = JSON_SAFE_MAX_VALUES;
+
+          return values;
         },
       });
+      registerStateSection("after", { read: () => ({ ok: 2 }) });
 
-      expect(collectStateSections(logger, AT).state.a).toStrictEqual({ error: "plain string" });
+      const { state, failed } = collectStateSections(logger, AT);
+
+      expect(state.before).toStrictEqual({ ok: 1 });
+      expect(state.after).toStrictEqual({ ok: 2 });
+      expect(state.huge).toStrictEqual({ error: expect.stringContaining("more than 2000000 values") });
+      expect(failed).toEqual(["huge"]);
+    });
+  });
+
+  // Whatever a reader throws, the entry is a non-empty string the file can hold and a reader can tell from state.
+  describe("the reason of a failed section", () => {
+    const nullPrototype: unknown = Object.create(null);
+
+    const THROWN: ReadonlyArray<readonly [what: string, thrown: unknown, reason: string]> = [
+      ["an Error's message", new Error("translator not ready"), "translator not ready"],
+      ["a string that was thrown as it is", "plain string", "plain string"],
+      ["a number that was thrown", 42, "42"],
+      ["the message of an error-like object", { message: "from another realm" }, "from another realm"],
+      ["a BigInt message as its digits", Object.assign(new Error("x"), { message: 7n }), "7"],
+      ["a Symbol message as its description", Object.assign(new Error("x"), { message: Symbol("why") }), "Symbol(why)"],
+      ["the name when the message is a cyclic object", Object.assign(new Error("x"), { message: cyclic }), "Error"],
+      [
+        "the name when the message is undefined",
+        Object.assign(new TypeError("x"), { message: undefined }),
+        "TypeError",
+      ],
+      ["the name of an Error made without a message", new RangeError(), "RangeError"],
+      ["the name when the message is only white space", new Error("  \n"), "Error"],
+      ["a fixed text when neither message nor name says anything", Object.assign(new Error(""), { name: "" }), UNKNOWN],
+      ["a fixed text for a thrown null-prototype object", nullPrototype, UNKNOWN],
+      ["a fixed text for a thrown plain object", { code: 5 }, UNKNOWN],
+      ["a fixed text for a thrown undefined", undefined, UNKNOWN],
+      ["a fixed text for a thrown null", null, UNKNOWN],
+      ["a fixed text for a thrown empty string", "", UNKNOWN],
+      [
+        "a fixed text when reading the message throws",
+        Object.defineProperty(new Error("x"), "message", { get: boom }),
+        UNKNOWN,
+      ],
+    ];
+
+    it.each(THROWN)("is %s", (_what, thrown, reason) => {
+      registerStateSection("broken", {
+        read: () => {
+          throw thrown;
+        },
+      });
+      registerStateSection("after", { read: () => ({ ok: 2 }) });
+
+      const { state, failed, headline } = collectStateSections(logger, AT);
+
+      expect(state.broken).toStrictEqual({ error: reason });
+      expect(JSON.parse(JSON.stringify(state))).toStrictEqual(state);
+      // The collection went on, and said what happened.
+      expect(state.after).toStrictEqual({ ok: 2 });
+      expect(failed).toEqual(["broken"]);
+      expect(headline).toEqual([["broken", UNAVAILABLE]]);
+      expect(logger.warn).toHaveBeenCalledTimes(1);
+      expect(logger.debug).toHaveBeenCalledWith(`Section "broken": ${reason}`);
+    });
+  });
+
+  describe("a reader that is not synchronous", () => {
+    it("is a failed section, not a healthy one holding a promise", async () => {
+      const headline = vi.fn(() => [["Never", "shown"]] as const);
+
+      registerStateSection("before", { read: () => ({ ok: 1 }) });
+      registerStateSection("async", { read: async () => ({ late: true }), headline });
+      registerStateSection("after", { read: () => ({ ok: 2 }) });
+
+      const collected = collectStateSections(logger, AT);
+
+      expect(collected.state).toStrictEqual({
+        schema: 1,
+        collectedAt: 1234,
+        before: { ok: 1 },
+        async: { error: NOT_SYNCHRONOUS },
+        after: { ok: 2 },
+      });
+      expect(collected.failed).toEqual(["async"]);
+      expect(collected.headline).toEqual([["async", UNAVAILABLE]]);
+      expect(headline).not.toHaveBeenCalled();
+      expect(logger.warn).toHaveBeenCalledTimes(1);
+      expect(logger.warn).toHaveBeenCalledWith('Snapshot state section "async" failed');
+    });
+
+    it("treats any thenable the same way", () => {
+      registerStateSection("thenable", { read: () => ({ then: () => undefined }) });
+
+      const { state, failed } = collectStateSections(logger, AT);
+
+      expect(state.thenable).toStrictEqual({ error: NOT_SYNCHRONOUS });
+      expect(failed).toEqual(["thenable"]);
+    });
+
+    it("leaves state alone that merely has a key called then", () => {
+      registerStateSection("plain", { read: () => ({ then: 5, now: 1 }) });
+
+      const { state, failed } = collectStateSections(logger, AT);
+
+      expect(state.plain).toStrictEqual({ then: 5, now: 1 });
+      expect(failed).toEqual([]);
+    });
+
+    it("handles the promise's later rejection, so it is not an unhandled rejection", async () => {
+      const unhandled = vi.fn();
+
+      process.on("unhandledRejection", unhandled);
+
+      try {
+        registerStateSection("async", { read: () => Promise.reject(new Error("rejected after the collection")) });
+
+        expect(collectStateSections(logger, AT).failed).toEqual(["async"]);
+
+        // Node reports an unhandled rejection once the microtask queue has drained.
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(unhandled).not.toHaveBeenCalled();
+      } finally {
+        process.off("unhandledRejection", unhandled);
+      }
     });
   });
 
@@ -213,7 +359,25 @@ describe("state sections (#1387)", () => {
       expect(state.a).not.toBe(raw);
     });
 
-    it("drops only its own rows when it throws: the state stays and the section has not failed", () => {
+    it("puts one row in the place of a section that failed, whether or not it has a headline", () => {
+      registerStateSection("a", { read: () => 1, headline: () => [["A", "1"]] });
+      registerStateSection("b", { read: boom, headline: () => [["B", "never"]] });
+      registerStateSection("c", { read: boom });
+      registerStateSection("d", { read: () => 4 });
+      registerStateSection("e", { read: () => 5, headline: () => [["E", "5"]] });
+
+      const { headline, failed } = collectStateSections(logger, AT);
+
+      expect(headline).toEqual([
+        ["A", "1"],
+        ["b", UNAVAILABLE],
+        ["c", UNAVAILABLE],
+        ["E", "5"],
+      ]);
+      expect(failed).toEqual(["b", "c"]);
+    });
+
+    it("puts one row in the place of a headline that throws: the state stays and the section has not failed", () => {
       registerStateSection("a", { read: () => ({ v: 1 }), headline: () => [["A", "1"]] });
       registerStateSection("b", {
         read: () => ({ v: 2 }),
@@ -227,6 +391,7 @@ describe("state sections (#1387)", () => {
 
       expect(headline).toEqual([
         ["A", "1"],
+        ["b", NO_SUMMARY],
         ["C", "3"],
       ]);
       expect(state.b).toStrictEqual({ v: 2 });
@@ -245,7 +410,122 @@ describe("state sections (#1387)", () => {
         } as unknown as () => HeadlineRow[],
       });
 
-      expect(collectStateSections(logger, AT).headline).toEqual([]);
+      expect(collectStateSections(logger, AT).headline).toEqual([["a", NO_SUMMARY]]);
+    });
+
+    it("turns number, BigInt and boolean cells into their text, and a missing one into a placeholder", () => {
+      registerStateSection("a", {
+        read: () => 1,
+        headline: returning([
+          ["Count", 3],
+          ["Ratio", NaN],
+          ["Big", 5n],
+          ["Flag", false],
+          ["Missing", undefined],
+          ["Null", null],
+          ["Empty", ""],
+        ]),
+      });
+
+      const { headline } = collectStateSections(logger, AT);
+
+      expect(headline).toStrictEqual([
+        ["Count", "3"],
+        ["Ratio", "NaN"],
+        ["Big", "5"],
+        ["Flag", "false"],
+        ["Missing", NO_VALUE],
+        ["Null", NO_VALUE],
+        ["Empty", ""],
+      ]);
+    });
+
+    it("returns rows of its own, not the arrays the headline produced", () => {
+      const row: HeadlineRow = ["A", "1"];
+
+      registerStateSection("a", { read: () => 1, headline: () => [row] });
+
+      const { headline } = collectStateSections(logger, AT);
+
+      expect(headline).toStrictEqual([["A", "1"]]);
+      expect(headline[0]).not.toBe(row);
+    });
+
+    // Each of these went through untouched before, and threw later in the report's table builder.
+    it.each<readonly [what: string, produced: unknown]>([
+      ["a row of one cell", [["Fine", "1"], ["OneCell"]]],
+      [
+        "a row of three cells",
+        [
+          ["Fine", "1"],
+          ["A", "B", "C"],
+        ],
+      ],
+      ["a row that is a two-character string", [["Fine", "1"], "ab"]],
+      ["a row that is an object", [["Fine", "1"], { label: "A", value: "B" }]],
+      ["a string instead of rows", "Fuel: 2 laps"],
+      ["one row instead of a list of rows", ["Fuel", "2 laps"]],
+      ["a number", 5],
+      ["a plain object", { Fuel: "2 laps" }],
+      ["nothing", undefined],
+      ["null", null],
+      [
+        "an object as a cell",
+        [
+          ["Fine", "1"],
+          ["State", { v: 1 }],
+        ],
+      ],
+      [
+        "an array as a cell",
+        [
+          ["Fine", "1"],
+          ["Gaps", [1, 2]],
+        ],
+      ],
+      [
+        "a symbol as a cell",
+        [
+          ["Fine", "1"],
+          ["Kind", Symbol("s")],
+        ],
+      ],
+      [
+        "a function as a cell",
+        [
+          ["Fine", "1"],
+          ["Count", () => 3],
+        ],
+      ],
+    ])("treats a headline that returns %s as a failed headline", (_what, produced) => {
+      registerStateSection("before", { read: () => 1, headline: () => [["Before", "1"]] });
+      registerStateSection("odd", { read: () => ({ v: 2 }), headline: returning(produced) });
+      registerStateSection("after", { read: () => 3, headline: () => [["After", "3"]] });
+
+      const { state, headline, failed } = collectStateSections(logger, AT);
+
+      // No partial rows: "Fine" is not there.
+      expect(headline).toStrictEqual([
+        ["Before", "1"],
+        ["odd", NO_SUMMARY],
+        ["After", "3"],
+      ]);
+      expect(state.odd).toStrictEqual({ v: 2 });
+      expect(failed).toEqual([]);
+      expect(logger.warn).not.toHaveBeenCalled();
+      expect(logger.debug).toHaveBeenCalledTimes(1);
+      expect(logger.debug).toHaveBeenCalledWith(expect.stringMatching(/^Section "odd" headline failed: \S/));
+    });
+
+    it("gives every cell as a string, so a table builder never meets anything else", () => {
+      registerStateSection("a", { read: () => 1, headline: returning([["Count", 3]]) });
+      registerStateSection("b", { read: boom });
+      registerStateSection("c", { read: () => 1, headline: returning(7) });
+
+      for (const row of collectStateSections(logger, AT).headline) {
+        expect(row).toHaveLength(2);
+        expect(row.map((cell) => typeof cell)).toEqual(["string", "string"]);
+      }
     });
   });
 
