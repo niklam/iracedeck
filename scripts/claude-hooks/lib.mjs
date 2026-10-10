@@ -18,6 +18,7 @@ import path from "node:path";
 
 import { spawnSyncShim } from "../lib/spawn-shim.mjs";
 import { changedFiles, parseChangeSignature } from "./change-signature.mjs";
+import { FULL_SHA, isSummaryComment, MAX_COMMENTS, MAX_EDITS } from "./coderabbit-summary.mjs";
 
 // The deck-host link readers moved to `scripts/lib/plugin-links.mjs` in #1143,
 // where `pnpm dev:voices` also needs them. Re-exported so every hook caller and
@@ -144,9 +145,9 @@ export const hookDeadlineSpent = () => hookDeadline - Date.now() < 1_000;
 export const git = (args, cwd, opts) => run("git", args, { cwd, ...opts });
 export const gh = (args, cwd, opts) => run("gh", args, { cwd, timeoutMs: 45_000, ...opts });
 
-/** `gh … --format json` / `gh api …` parsed, or `undefined` on any failure. */
-export function ghJson(args, cwd) {
-  const r = gh(args, cwd);
+/** `gh … --format json` / `gh api …` parsed, or `undefined` on any failure. `opts` go to {@link run}. */
+export function ghJson(args, cwd, opts) {
+  const r = gh(args, cwd, opts);
   if (!r.ok) return undefined;
   try {
     return JSON.parse(r.out);
@@ -298,7 +299,7 @@ export function originMasterFresh(dir) {
  */
 export function replayRebase({ reviewed, head, base, dir }) {
   const shas = [reviewed, head, base];
-  if (!shas.every((s) => typeof s === "string" && /^[0-9a-f]{40}$/i.test(s)))
+  if (!shas.every((s) => typeof s === "string" && FULL_SHA.test(s)))
     return { ok: false, reason: "a reviewed, head or base sha is missing" };
   const fail = (reason) => ({ ok: false, reason: hookDeadlineSpent() ? "the hook ran out of time" : reason });
   const env = { GIT_NO_REPLACE_OBJECTS: "1", GIT_GRAFT_FILE: os.devNull };
@@ -414,13 +415,67 @@ export const MAX_CONFLICTED_LINE_CHECKS = 20;
 export function baseChangedSince(number, sinceIso, dir) {
   const query =
     "query($owner:String!,$repo:String!,$n:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$n){timelineItems(itemTypes:[BASE_REF_CHANGED_EVENT,BASE_REF_FORCE_PUSHED_EVENT],last:50){nodes{... on BaseRefChangedEvent{createdAt} ... on BaseRefForcePushedEvent{createdAt}}}}}}";
-  const r = ghJson(
-    ["api", "graphql", "-f", `query=${query}`, "-F", "owner={owner}", "-F", "repo={repo}", "-F", `n=${number}`],
-    dir,
-  );
-  const nodes = r?.data?.repository?.pullRequest?.timelineItems?.nodes;
+  const nodes = ghGraphql(query, { n: number }, dir)?.repository?.pullRequest?.timelineItems?.nodes;
   if (!Array.isArray(nodes)) return undefined;
   return nodes.some((x) => typeof x?.createdAt === "string" && x.createdAt > (sinceIso ?? ""));
+}
+
+/**
+ * The arguments of one `gh api graphql` call: the query, then `owner` and
+ * `repo` as gh's `{owner}` / `{repo}` placeholders for the repository of
+ * `dir`, then `variables`. A number goes as `-F`, typed; any other value as
+ * `-f`, a raw string, so a value that starts with `@` is never read as a file.
+ * A query that has no use for `owner` and `repo` must not declare them:
+ * GitHub ignores a variable passed but not declared, and refuses one declared
+ * but not used (measured 2026-10-10).
+ * @internal Exported for testing
+ */
+export function graphqlArgs(query, variables = {}) {
+  const fields = Object.entries(variables).flatMap(([k, v]) =>
+    typeof v === "number" ? ["-F", `${k}=${v}`] : ["-f", `${k}=${v}`],
+  );
+  return ["api", "graphql", "-f", `query=${query}`, "-F", "owner={owner}", "-F", "repo={repo}", ...fields];
+}
+
+/**
+ * One `gh api graphql` call ({@link graphqlArgs}), unwrapped to its `data`.
+ * `undefined` when gh fails or the answer carries `errors`, since a partial
+ * answer must not be read as a whole one. `opts` go to {@link run}.
+ */
+export function ghGraphql(query, variables, dir, opts) {
+  const r = ghJson(graphqlArgs(query, variables), dir, opts);
+  if (!r || r.errors) return undefined;
+  return r.data ?? undefined;
+}
+
+/**
+ * The PR's comments as the merge gate's summary rule reads them (#1386): the
+ * `comments` connection with its `totalCount` and `pageInfo`, and per
+ * comment its id, author and editor (login and type), whether it is
+ * minimized, when its body was written, and the body. One page of
+ * {@link MAX_COMMENTS}; `readSummary` refuses a PR with more rather than read
+ * it partially. When exactly one comment is a summary, a second read attaches
+ * its edit history as `userContentEdits` — every edit's editor, time,
+ * deletion and the whole body it left, one page of {@link MAX_EDITS} — which
+ * `readSummary` needs to prove every edit was CodeRabbit's and to walk the
+ * earlier versions. It is read for that one comment only, since a hundred
+ * comments' histories with bodies could be very large. `undefined` when gh
+ * cannot answer, which the gate treats as no summary; a failed history read
+ * leaves the history off, which `readSummary` refuses. The buffer is raised
+ * because a hundred bodies can pass spawnSync's 1 MiB default, and a cut-off
+ * read must fail rather than parse.
+ */
+export function prComments(number, dir) {
+  const big = { maxBuffer: 64 * 1024 * 1024 };
+  const query = `query($owner:String!,$repo:String!,$n:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$n){comments(first:${MAX_COMMENTS}){totalCount pageInfo{hasNextPage} nodes{id author{login __typename} editor{login __typename} isMinimized createdAt lastEditedAt body}}}}}`;
+  const comments = ghGraphql(query, { n: number }, dir, big)?.repository?.pullRequest?.comments;
+  if (!comments) return undefined;
+  const summaries = Array.isArray(comments.nodes) ? comments.nodes.filter(isSummaryComment) : [];
+  if (summaries.length !== 1 || typeof summaries[0].id !== "string") return comments;
+  const history = `query($id:ID!){node(id:$id){... on IssueComment{userContentEdits(last:${MAX_EDITS}){totalCount nodes{editedAt editor{login __typename} deletedAt diff}}}}}`;
+  const edits = ghGraphql(history, { id: summaries[0].id }, dir, big)?.node?.userContentEdits;
+  if (edits) summaries[0].userContentEdits = edits;
+  return comments;
 }
 
 /** Is `candidate` inside `parent` (both absolute)? Case-insensitive on Windows. */

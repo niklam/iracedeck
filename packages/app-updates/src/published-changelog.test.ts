@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import path from "node:path";
 import url from "node:url";
 import { describe, expect, it } from "vitest";
@@ -125,15 +124,22 @@ describe("parsePublishedChangelog", () => {
 
 // The changelog grows with every release, and a published artifact over either
 // cap reads as "we do not know" on every plugin in the field — silently, since
-// the What's New tab then just shows its built-in notes. The compiled-in copy
-// is built by the same generator from the same changelog.mdx as the published
-// one, so measuring it here fails the build while there is still half the
-// budget left to raise a cap in, rather than on the day the feed goes dark.
+// the What's New tab then just shows its built-in notes. The published copy is
+// composed by the same functions from the same changelog.mdx and fragments as
+// the compiled-in one, so measuring that composition here fails the build while
+// there is still half the budget left to raise a cap in, rather than on the day
+// the feed goes dark.
+//
+// Composed in memory rather than read from the artifact, which is gitignored
+// since #1386 and would need a prior build. The root scripts are untyped `.mjs`
+// outside this package's `rootDir`, so they are imported by computed URL, which
+// keeps them out of the `tsc` program that emits `dist/`.
+const scriptsLib = (name: string) => url.pathToFileURL(path.join(repoRoot, "scripts", "lib", name)).href;
+const { buildComposedChangelogData } = await import(scriptsLib("changelog-composed.mjs"));
+const { serializeChangelogData } = await import(scriptsLib("changelog-data.mjs"));
+
 describe("published changelog headroom (#1101)", () => {
-  const artifact = readFileSync(
-    path.join(repoRoot, "packages/iracing-actions/src/actions/data/changelog.json"),
-    "utf-8",
-  );
+  const artifact: string = serializeChangelogData(buildComposedChangelogData(repoRoot));
 
   it("is under half the byte cap", () => {
     expect(Buffer.byteLength(artifact, "utf-8")).toBeLessThan(CHANGELOG_MAX_BYTES / 2);

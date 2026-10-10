@@ -1,9 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { buildChangelogData, CHANGELOG_DATA_PATH, serializeChangelogData } from "./lib/changelog-data.mjs";
-import { formatLocalDate, stampChangelog } from "./lib/changelog-stamp.mjs";
+import { CHANGELOG_SOURCE_PATH } from "./lib/changelog-data.mjs";
+import { formatLocalDate, loadChangelogFold } from "./lib/changelog-fold.mjs";
+import { CHANGELOG_FRAGMENTS_DIR } from "./lib/changelog-fragments.mjs";
 import { manifestVersionFor } from "./lib/manifest-version.mjs";
 import { allPluginManifestRelPaths, discoverVersionedFiles, pluginManifestRelPaths } from "./lib/version-discovery.mjs";
 
@@ -75,36 +76,40 @@ const manifestBumps = manifestFiles.map((manifest) => ({
   version: manifestVersionFor(manifest.rel, version, buildNumber),
 }));
 
-// Stamp the changelog's in-development `_Unreleased_` date line with today's
-// release date on stable releases (issue #690). stampChangelog is a no-op (with
-// a clear reason) for pre-releases and for a missing or already-dated section,
-// so a release never fails just because the changelog wasn't pre-staged.
-const changelogRel = "packages/website/src/content/docs/changelog.mdx";
-const changelogPath = join(root, changelogRel);
-const changelogStamp = existsSync(changelogPath)
-  ? stampChangelog(readFileSync(changelogPath, "utf-8"), version, formatLocalDate(new Date()))
-  : { content: "", stamped: false, reason: `No changelog at ${changelogRel} — skipping date stamp` };
+// Fold the changelog fragments in `changelog.d/` into the release's dated
+// section on stable releases (issue #1386, `lib/changelog-fold.mjs`). Planned
+// here, before the preflight and before any write: every fragment is parsed, the
+// section composed with today's local date, and the result run through the What's
+// New pane's own parser and renderer, so a malformed fragment aborts the release
+// with a clean tree. A pre-release, or a release with no fragments, is a logged
+// no-op.
+//
+// `changelog.json` is no longer written here: it is a gitignored build artifact
+// that the release-pack build regenerates from the tag, and staging an ignored
+// path would fail the preflight below.
+const changelogFold = loadChangelogFold(root, version, formatLocalDate(new Date()));
+const changelogPath = join(root, CHANGELOG_SOURCE_PATH);
 
-// The plugin ships its OWN copy of these notes (issue #1011), generated from the
-// very file we just stamped — so the stamp has to be regenerated into it in the
-// same commit. Skipping it would ship a release whose What's New pane calls the
-// version the user just installed "Unreleased", and leave the freshness test
-// (`scripts/generate-changelog-data.test.mjs`) red on the release commit.
-// Built here, before the preflight and before any write, so a malformed
-// changelog aborts the release with a clean tree. Deliberately NOT conditional on
-// the artifact already existing: if it has been deleted, recreating it is exactly
-// what the release needs — guarding on existsSync would ship the release without
-// the offline notes it is supposed to carry.
-const changelogDataPath = join(root, CHANGELOG_DATA_PATH);
-const changelogData = changelogStamp.stamped
-  ? serializeChangelogData(buildChangelogData(changelogStamp.content))
-  : null;
-
-// Stage the changelog alongside the version files only when it was actually
-// stamped, so the preflight and the real `git add` both see it.
+// The changelog edit is staged with the version files, so the preflight and the
+// real `git add` both see it. The fragments are not in this list: one
+// `git rm` deletes and stages them all (see the fold below).
 const allPaths = [...packageJsonFiles, ...manifestFiles].map(({ rel }) => rel);
-if (changelogStamp.stamped) allPaths.push(changelogRel);
-if (changelogData !== null) allPaths.push(CHANGELOG_DATA_PATH);
+if (changelogFold.fold) allPaths.push(CHANGELOG_SOURCE_PATH);
+
+// A fragment git does not track would be folded and then fail the `git rm`
+// below — git cannot remove a path it never knew — leaving a half-folded tree.
+// release-it's clean-tree check does not see untracked files, so refuse one
+// here, with a message that says what is wrong rather than git's pathspec error.
+if (changelogFold.fold) {
+  try {
+    execFileSync("git", ["ls-files", "--error-unmatch", "--", ...changelogFold.fragmentPaths], {
+      cwd: root,
+      stdio: ["ignore", "ignore", "inherit"],
+    });
+  } catch {
+    throw new Error("Refusing to release: a changelog fragment is not committed (see the git output above).");
+  }
+}
 
 // Preflight (issue #701, defect 5): confirm every file we're about to bump can
 // be staged BEFORE writing anything. `git add --dry-run` mirrors the real
@@ -120,6 +125,19 @@ try {
 } catch {
   throw new Error("Refusing to release: a file slated for a version bump is gitignored (see the git output above).");
 }
+// The same preflight for the fragments: `git rm --dry-run` refuses everything the
+// real one would (an untracked path, a fragment with staged or unstaged edits)
+// without touching the tree or the index.
+if (changelogFold.fold) {
+  try {
+    execFileSync("git", ["rm", "-q", "--dry-run", "--", ...changelogFold.fragmentPaths], {
+      cwd: root,
+      stdio: "inherit",
+    });
+  } catch {
+    throw new Error("Refusing to release: git would not remove a changelog fragment (see the git output above).");
+  }
+}
 
 // release-it runs before:bump hooks even in dry-run mode, which would otherwise
 // modify real package.json / manifest.json files and stage them with `git add`.
@@ -129,14 +147,56 @@ if (process.env.RELEASE_IT_DRY_RUN === "1") {
   for (const { rel } of packageJsonFiles) console.log(`    - ${rel}`);
   console.log(`  [dry-run] Would bump ${manifestFiles.length} manifest.json files:`);
   for (const { rel, version: manifestVersion } of manifestBumps) console.log(`    - ${rel} → ${manifestVersion}`);
-  console.log(`  [dry-run] Changelog: ${changelogStamp.reason}`);
-  console.log(
-    changelogData !== null
-      ? `  [dry-run] Would regenerate ${CHANGELOG_DATA_PATH} from the stamped changelog`
-      : `  [dry-run] ${CHANGELOG_DATA_PATH} unchanged (changelog not stamped)`,
-  );
+  console.log(`  [dry-run] Changelog: ${changelogFold.reason}`);
+  if (changelogFold.fold) {
+    console.log(`  [dry-run] Would write this section into ${CHANGELOG_SOURCE_PATH}:`);
+    for (const line of changelogFold.section.trimEnd().split("\n")) console.log(`    |${line && ` ${line}`}`);
+    console.log(`  [dry-run] Would delete ${changelogFold.fragmentPaths.length} fragments:`);
+    for (const rel of changelogFold.fragmentPaths) console.log(`    - ${rel}`);
+  }
   process.exit(0);
 }
+
+// The fold goes first, ordered so that a failure part-way leaves the least to
+// undo, and never a tree a second run would fold twice:
+//
+// 1. `changelog.mdx` gets its dated section. Fail here and nothing else has changed.
+// 2. One `git rm` deletes and stages every fragment. On Windows an unlink can
+//    fail (EBUSY, EPERM) while an editor or a scanner holds the file. git stops
+//    with an error only when the FIRST unlink fails; once it has removed one file
+//    it warns, carries on, stages every removal and exits 0, leaving the locked
+//    fragment on disk. So success is checked on disk, not by the exit code: a
+//    fragment still present stops the release the same way. A re-run refuses a
+//    tree holding the folded changelog beside fragments — composing finds the new
+//    `## <version>` section while fragments remain — rather than folding them
+//    again, and the fragments are committed (checked above), so `git restore`
+//    brings it all back. stdin is not a terminal, so Git for Windows' "Unlink of
+//    file failed. Should I try again?" prompt never waits on the release.
+// 3. Only then are the version files bumped.
+if (changelogFold.fold) {
+  writeFileSync(changelogPath, changelogFold.content);
+  const restore =
+    `The version files are untouched. Restore the tree with \`git restore --staged --worktree -- ${CHANGELOG_SOURCE_PATH} ${CHANGELOG_FRAGMENTS_DIR}\`, ` +
+    `then release again.`;
+  try {
+    execFileSync("git", ["rm", "-q", "--", ...changelogFold.fragmentPaths], {
+      cwd: root,
+      stdio: ["ignore", "inherit", "inherit"],
+    });
+  } catch {
+    throw new Error(
+      `The changelog fold stopped part-way: ${CHANGELOG_SOURCE_PATH} is written but git could not remove every fragment (see the git output above). ${restore}`,
+    );
+  }
+  const left = changelogFold.fragmentPaths.filter((rel) => existsSync(join(root, rel)));
+  if (left.length > 0) {
+    throw new Error(
+      `The changelog fold stopped part-way: git staged every fragment's removal but could not delete ${left.join(", ")} from disk. ${restore}`,
+    );
+  }
+  for (const rel of changelogFold.fragmentPaths) console.log(`  Deleted ${rel}`);
+}
+console.log(`  ${changelogFold.reason}`);
 
 // Reuse the objects captured during discovery — no second read+parse (#702).
 for (const { rel, filePath, data } of packageJsonFiles) {
@@ -151,17 +211,7 @@ for (const { rel, filePath, data, version: manifestVersion } of manifestBumps) {
   console.log(`  Updated ${rel} → ${manifestVersion}`);
 }
 
-if (changelogStamp.stamped) {
-  writeFileSync(changelogPath, changelogStamp.content);
-}
-console.log(`  ${changelogStamp.reason}`);
-
-if (changelogData !== null) {
-  writeFileSync(changelogDataPath, changelogData, "utf-8");
-  console.log(`  Regenerated ${CHANGELOG_DATA_PATH} from the stamped changelog`);
-}
-
-// Stage all modified files. Use argv form (no shell) so package directory
-// names containing spaces or shell metacharacters can't break or inject into
-// the git invocation.
+// Stage all modified files; the fragment deletions are staged already. Use argv
+// form (no shell) so package directory names containing spaces or shell
+// metacharacters can't break or inject into the git invocation.
 execFileSync("git", ["add", "--", ...allPaths], { cwd: root, stdio: "inherit" });

@@ -65,7 +65,7 @@ describe("buildChangelogData", () => {
   it("records where the artifact came from, so nobody hand-edits it", () => {
     const { _meta } = buildChangelogData(SOURCE);
 
-    expect(_meta.generatedFrom).toBe("packages/website/src/content/docs/changelog.mdx");
+    expect(_meta.generatedFrom).toBe("packages/website/src/content/docs/changelog.mdx + changelog.d/");
     expect(_meta.generatedBy).toBe("pnpm generate:changelog-data");
   });
 });

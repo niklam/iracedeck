@@ -14,10 +14,19 @@
  */
 export const GENERATORS = [
   {
+    // Not committed since #1386 (a turbo task builds it), so no freshness test
+    // guards it. It still runs on every edit of either source: composing is
+    // what validates a fragment, so a bad one fails at authoring time rather
+    // than at the next build, and the local copy a watcher serves stays current.
+    // Its output is gitignored, so `git status` cannot see whether it changed:
+    // `outputIgnored` makes the report say only that it ran and passed.
     label: "changelog data (What's New pane)",
-    match: (rel) => rel === "packages/website/src/content/docs/changelog.mdx",
+    match: (rel) =>
+      rel === "packages/website/src/content/docs/changelog.mdx" ||
+      (/^changelog\.d\/[^/]+\.md$/.test(rel) && rel !== "changelog.d/README.md"),
     cmd: "node",
     args: ["scripts/generate-changelog-data.mjs"],
+    outputIgnored: true,
   },
   {
     label: "getting-started data (first-run page)",
@@ -60,6 +69,20 @@ export const GENERATORS = [
 
 export function generatorsFor(rel) {
   return GENERATORS.filter((g) => g.match(rel));
+}
+
+/**
+ * The line `post-edit.mjs` reports for one generator run: `result` is
+ * `run()`'s `{ ok, out, err }`, `changed` the `git status --porcelain` lines
+ * that appeared during it. A generator whose output is gitignored
+ * (`outputIgnored`) is reported as run and passed, never as "already fresh":
+ * `git status` cannot see its output, so an empty `changed` says nothing.
+ */
+export function generatorReport(g, result, changed) {
+  const command = [g.cmd, ...g.args].join(" ");
+  if (!result.ok) return `${g.label} FAILED (${command}):\n${(result.err || result.out).trim().slice(-1500)}`;
+  if (g.outputIgnored) return `Ran ${g.label} (${command}); it passed (its output is gitignored, so not listed).`;
+  return `Ran ${g.label} (${command})${changed.length ? `; it changed: ${changed.map((l) => l.slice(3)).join(", ")}` : "; output already fresh"}.`;
 }
 
 /** Edits that need a human step the tooling cannot take for them. */

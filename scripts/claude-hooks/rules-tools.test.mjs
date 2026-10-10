@@ -1,7 +1,7 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { generatorsFor, missingWorkflows, remindersFor } from "./rules-post.mjs";
+import { generatorReport, generatorsFor, missingWorkflows, remindersFor } from "./rules-post.mjs";
 import { checkAgent, checkAsk, checkEdit, checkSkill } from "./rules-tools.mjs";
 
 const MASTER = "C:\\repo\\iRaceDeck\\master";
@@ -72,6 +72,11 @@ describe("post rules", () => {
     expect(generatorsFor("packages/website/src/content/docs/changelog.mdx").map((g) => g.args[0])).toEqual([
       "scripts/generate-changelog-data.mjs",
     ]);
+    expect(generatorsFor("changelog.d/1386-changelog-fragments.md").map((g) => g.args[0])).toEqual([
+      "scripts/generate-changelog-data.mjs",
+    ]);
+    expect(generatorsFor("changelog.d/README.md")).toEqual([]);
+    expect(generatorsFor("changelog.d/nested/1386-x.md")).toEqual([]);
     expect(generatorsFor("packages/icons/black-box/fuel.svg").map((g) => g.label)).toEqual([
       "icon previews",
       "icon defaults (PI colour/border defaults)",
@@ -84,6 +89,28 @@ describe("post rules", () => {
       ["generate:callout-scripts"],
     ]);
     expect(generatorsFor("packages/deck-core/src/types.ts")).toEqual([]);
+  });
+  it("never calls a gitignored output fresh: the changelog data is reported as run and passed", () => {
+    const [changelog] = generatorsFor("changelog.d/1386-changelog-fragments.md");
+    const said = generatorReport(changelog, { ok: true, out: "", err: "" }, []);
+    expect(said).toBe(
+      "Ran changelog data (What's New pane) (node scripts/generate-changelog-data.mjs); it passed (its output is gitignored, so not listed).",
+    );
+    expect(said).not.toMatch(/fresh/);
+    expect(generatorReport(changelog, { ok: false, out: "", err: "bad fragment\n" }, [])).toMatch(
+      /^changelog data \(What's New pane\) FAILED \(node scripts\/generate-changelog-data\.mjs\):\nbad fragment$/,
+    );
+  });
+  it("keeps the git-status report for a generator whose output is committed", () => {
+    const [previews] = generatorsFor("packages/icons/black-box/fuel.svg");
+    expect(previews.outputIgnored).toBeUndefined();
+    expect(generatorReport(previews, { ok: true }, [])).toBe(
+      "Ran icon previews (node scripts/generate-icon-previews.mjs); output already fresh.",
+    );
+    expect(generatorReport(previews, { ok: true }, [" M packages/icons/preview/a.svg"])).toBe(
+      "Ran icon previews (node scripts/generate-icon-previews.mjs); it changed: packages/icons/preview/a.svg.",
+    );
+    expect(generatorsFor("packages/website/src/content/docs/changelog.mdx")[0].outputIgnored).toBe(true);
   });
   it("maps reminders", () => {
     expect(remindersFor("packages/settings/src/global-settings.ts")[0]).toMatch(/build:force/);

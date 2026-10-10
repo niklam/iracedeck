@@ -21,6 +21,11 @@ yarn.lock
 # Astro/Starlight generated files
 /packages/website/.astro/
 
+# The plugin's What's New data (#1386): composed from changelog.mdx and changelog.d/
+# by `pnpm generate:changelog-data`, which turbo's //#generate:changelog-data task
+# runs before every plugin build. Committing it made every changelog edit conflict.
+/packages/iracing-actions/src/actions/data/changelog.json
+
 # Stream Deck plugin packages (built artifacts)
 *.streamDeckPlugin
 

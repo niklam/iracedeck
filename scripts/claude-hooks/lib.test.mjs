@@ -5,9 +5,13 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { spawnSyncShim } from "../lib/spawn-shim.mjs";
+import { SUMMARY_OPENER } from "./coderabbit-summary.mjs";
 import {
   baseChangedSince,
+  ghGraphql,
+  graphqlArgs,
   MAX_CONFLICTED_LINE_CHECKS,
+  prComments,
   readIndexFile,
   replayRebase,
   run,
@@ -45,7 +49,8 @@ afterEach(() => {
 
 // #1307: the merge gate's pure-rebase check, in real repositories. Each case
 // builds M0, a reviewed branch off it, a moved base M1, and a head on M1.
-describe("replayRebase", () => {
+// 20 s per case: real git subprocesses ran past the 5 s default under full-suite load (2026-10-10).
+describe("replayRebase", { timeout: 20_000 }, () => {
   const ID = ["-c", "user.email=t@t", "-c", "user.name=t"];
   const gitIn = (dir, ...args) =>
     execFileSync("git", [...ID, ...args], { cwd: dir, stdio: "pipe" })
@@ -339,6 +344,81 @@ describe("baseChangedSince", () => {
     expect(baseChangedSince(7, "2026-10-03T10:00:00Z", root)).toBeUndefined();
     vi.mocked(spawnSync).mockImplementationOnce(() => ({ status: 0, stdout: "{}", stderr: "" }));
     expect(baseChangedSince(7, "2026-10-03T10:00:00Z", root)).toBeUndefined();
+  });
+});
+
+// #1386 review: one GraphQL helper for every merge-gate read.
+describe("graphqlArgs and ghGraphql", () => {
+  const answer = (out, status = 0) =>
+    vi.mocked(spawnSync).mockImplementationOnce(() => ({ status, stdout: JSON.stringify(out), stderr: "" }));
+
+  it("passes the repository as gh's placeholders, a number typed and a string raw", () =>
+    expect(graphqlArgs("query{x}", { n: 7, id: "@IC_kwDO" })).toEqual([
+      "api",
+      "graphql",
+      "-f",
+      "query=query{x}",
+      "-F",
+      "owner={owner}",
+      "-F",
+      "repo={repo}",
+      "-F",
+      "n=7",
+      "-f",
+      "id=@IC_kwDO",
+    ]));
+
+  it("unwraps `data`, and answers undefined for a failure, an error list or no data", () => {
+    answer({ data: { a: 1 } });
+    expect(ghGraphql("q", {}, root)).toEqual({ a: 1 });
+    answer({ data: { a: 1 }, errors: [{ message: "partial" }] });
+    expect(ghGraphql("q", {}, root)).toBeUndefined();
+    answer({});
+    expect(ghGraphql("q", {}, root)).toBeUndefined();
+    answer({ data: { a: 1 } }, 1);
+    expect(ghGraphql("q", {}, root)).toBeUndefined();
+  });
+});
+
+describe("prComments", () => {
+  const BOT = { login: "coderabbitai", __typename: "Bot" };
+  const summary = { id: "IC_summary", author: BOT, body: `${SUMMARY_OPENER}\nbody` };
+  const other = { id: "IC_other", author: BOT, body: "<!-- This is an auto-generated reply by CodeRabbit -->" };
+  const page = (nodes) => ({
+    data: { repository: { pullRequest: { comments: { totalCount: nodes.length, pageInfo: {}, nodes } } } },
+  });
+  const edits = { totalCount: 1, nodes: [{ editedAt: "t", editor: BOT, deletedAt: null, diff: "body" }] };
+  const answer = (out) =>
+    vi.mocked(spawnSync).mockImplementationOnce(() => ({ status: 0, stdout: JSON.stringify(out), stderr: "" }));
+
+  it("reads the comments, then the one summary's whole edit history by its id", () => {
+    vi.mocked(spawnSync).mockClear();
+    answer(page([other, { ...summary }]));
+    answer({ data: { node: { userContentEdits: edits } } });
+    const c = prComments(7, root);
+    expect(c.nodes[1].userContentEdits).toEqual(edits);
+    expect(c.nodes[0].userContentEdits).toBeUndefined();
+    const [first, second] = vi.mocked(spawnSync).mock.calls.map(([, args]) => args);
+    expect(first).toContain("n=7");
+    expect(first.find((a) => a.startsWith("query="))).toMatch(/nodes\{id author/);
+    expect(second).toContain("id=IC_summary");
+    // GitHub refuses a declared variable the query does not use, which the first live run hit.
+    expect(second.find((a) => a.startsWith("query="))).toMatch(/^query=query\(\$id:ID!\)\{node/);
+    expect(second.find((a) => a.startsWith("query="))).toMatch(
+      /userContentEdits\(last:100\)\{totalCount nodes\{editedAt editor\{login __typename\} deletedAt diff\}\}/,
+    );
+  });
+
+  it("reads no history when there is not exactly one summary, and leaves it off when that read fails", () => {
+    vi.mocked(spawnSync).mockClear();
+    answer(page([other]));
+    expect(prComments(7, root).nodes[0].userContentEdits).toBeUndefined();
+    answer(page([{ ...summary }, { ...summary, id: "IC_2" }]));
+    prComments(7, root);
+    expect(vi.mocked(spawnSync).mock.calls).toHaveLength(2);
+    answer(page([{ ...summary }]));
+    vi.mocked(spawnSync).mockImplementationOnce(() => ({ status: 1, stdout: "", stderr: "HTTP 502" }));
+    expect(prComments(7, root).nodes[0].userContentEdits).toBeUndefined();
   });
 });
 

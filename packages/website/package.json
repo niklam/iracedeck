@@ -17,6 +17,7 @@
     "deploy": "pnpm build && firebase deploy --only hosting"
   },
   "dependencies": {
+    "@astrojs/markdown-satteri": "0.4.2",
     "@astrojs/starlight": "0.42.5",
     "astro": "7.3.5",
     "astro-mermaid": "2.1.0",
@@ -30,6 +31,7 @@
     "@iracedeck/deck-core": "workspace:*",
     "@iracedeck/icon-composer": "workspace:*",
     "firebase-tools": "15.32.1",
+    "satteri": "0.10.5",
     "tsx": "4.23.15"
   }
 }
