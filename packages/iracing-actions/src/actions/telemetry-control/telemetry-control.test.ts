@@ -1,3 +1,4 @@
+import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { homedir as osHomedir } from "node:os";
 import { sep as pathSep } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -8,6 +9,7 @@ import {
   defaultSnapshotDir,
   generateTelemetryControlSvg,
   resolveSnapshotDir,
+  selectSnapshotTelemetry,
   TELEMETRY_CONTROL_GLOBAL_KEYS,
   TelemetryControl,
   TelemetryControlSettings,
@@ -263,6 +265,47 @@ const ALL_ACTIONS = [
 describe("TelemetryControl", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  describe("selectSnapshotTelemetry", () => {
+    const frame = (fields: Record<string, unknown>) => fields as unknown as TelemetryData;
+
+    it("takes the fresh read when it is the translator's own tick", () => {
+      const translatorTick = frame({ SessionTick: 100, CamCarIdx: 1 });
+      const freshRead = frame({ SessionTick: 100, CamCarIdx: 7 });
+
+      expect(selectSnapshotTelemetry(translatorTick, freshRead)).toBe(freshRead);
+    });
+
+    it("takes the translator's tick when the fresh read is a frame ahead of the state", () => {
+      const translatorTick = frame({ SessionTick: 100 });
+
+      expect(selectSnapshotTelemetry(translatorTick, frame({ SessionTick: 101 }))).toBe(translatorTick);
+    });
+
+    it("takes the translator's tick when the fresh read is from another session's counter", () => {
+      const translatorTick = frame({ SessionTick: 100 });
+
+      expect(selectSnapshotTelemetry(translatorTick, frame({ SessionTick: 3 }))).toBe(translatorTick);
+    });
+
+    it("takes the translator's tick when the frames carry no SessionTick to compare", () => {
+      const untickedTranslator = frame({ Speed: 50 });
+      const tickedTranslator = frame({ SessionTick: 100 });
+
+      // Two missing ticks are not the same tick.
+      expect(selectSnapshotTelemetry(untickedTranslator, frame({ Speed: 60 }))).toBe(untickedTranslator);
+      expect(selectSnapshotTelemetry(untickedTranslator, frame({ SessionTick: 100 }))).toBe(untickedTranslator);
+      expect(selectSnapshotTelemetry(tickedTranslator, frame({ Speed: 60 }))).toBe(tickedTranslator);
+    });
+
+    it("takes whichever read exists when the other is missing, and null when both are", () => {
+      const only = frame({ SessionTick: 100 });
+
+      expect(selectSnapshotTelemetry(null, only)).toBe(only);
+      expect(selectSnapshotTelemetry(only, null)).toBe(only);
+      expect(selectSnapshotTelemetry(null, null)).toBeNull();
+    });
   });
 
   describe("TELEMETRY_CONTROL_GLOBAL_KEYS", () => {
@@ -556,8 +599,33 @@ describe("TelemetryControl", () => {
         // The report is built from the same tick: 50 m/s is 180.0 km/h, 60 m/s would be 216.0.
         expect(writtenFile(".md")).toContain("180.0 km/h");
         expect(writtenFile(".md")).not.toContain("216.0 km/h");
-        // No fresh read at all: it is not needed, and it is not what the state was computed from.
-        expect(mockGetCurrentTelemetry).not.toHaveBeenCalled();
+      });
+
+      it("writes a fresh read of the translator's own tick: a paused replay keeps changing under a frozen tick", async () => {
+        // The tick was dispatched once, on its first read; the camera has moved since.
+        const dispatched = { ...sampleTelemetry, SessionTick: 100, CamCarIdx: 1, IsReplayPlaying: false };
+        const sameTickNow = { ...sampleTelemetry, SessionTick: 100, CamCarIdx: 7, IsReplayPlaying: true };
+        mockGetLatestTelemetry.mockReturnValue(dispatched);
+        mockGetCurrentTelemetry.mockReturnValue(sameTickNow);
+        mockGetSessionInfo.mockReturnValue(sampleSessionInfo);
+
+        const action = new TelemetryControl();
+        await action.onKeyDown(fakeEvent("a1", { mode: "snapshot", outputDir: absDir }) as never);
+
+        expect(writtenJson().telemetry).toEqual(sameTickNow);
+        expect(writtenJson().pluginState).toEqual(sampleState);
+      });
+
+      it("keeps the translator's tick when the fresh read is gone", async () => {
+        const translatorTick = { ...sampleTelemetry, SessionTick: 100 };
+        mockGetLatestTelemetry.mockReturnValue(translatorTick);
+        mockGetCurrentTelemetry.mockReturnValue(null);
+        mockGetSessionInfo.mockReturnValue(sampleSessionInfo);
+
+        const action = new TelemetryControl();
+        await action.onKeyDown(fakeEvent("a1", { mode: "snapshot", outputDir: absDir }) as never);
+
+        expect(writtenJson().telemetry).toEqual(translatorTick);
       });
 
       it("falls back to a fresh read when the translator holds no tick", async () => {
@@ -817,17 +885,19 @@ describe("TelemetryControl", () => {
         expect(mockMkdirSync).not.toHaveBeenCalled();
       });
 
-      it("reads the translator's tick, then the plugin state, then writes", async () => {
+      it("reads the translator's tick and the fresh read, then the plugin state, then writes", async () => {
         mockGetLatestTelemetry.mockReturnValue(sampleTelemetry);
         await takeSnapshot();
 
         const [telemetryRead] = mockGetLatestTelemetry.mock.invocationCallOrder;
+        const [freshRead] = mockGetCurrentTelemetry.mock.invocationCallOrder;
         const [sessionRead] = mockGetSessionInfo.mock.invocationCallOrder;
         const [stateRead] = mockCollectStateSections.mock.invocationCallOrder;
         const [directoryMade] = mockMkdirSync.mock.invocationCallOrder;
         const [firstWrite] = mockWriteFileSync.mock.invocationCallOrder;
 
         expect(telemetryRead).toBeLessThan(stateRead);
+        expect(freshRead).toBeLessThan(stateRead);
         expect(sessionRead).toBeLessThan(stateRead);
         expect(stateRead).toBeLessThan(directoryMade);
         expect(stateRead).toBeLessThan(firstWrite);

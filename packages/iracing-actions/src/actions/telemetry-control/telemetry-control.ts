@@ -30,7 +30,13 @@ import snapshotIconSvg from "@iracedeck/icons/telemetry-control/snapshot.svg";
 import startRecordingIconSvg from "@iracedeck/icons/telemetry-control/start-recording.svg";
 import stopRecordingIconSvg from "@iracedeck/icons/telemetry-control/stop-recording.svg";
 import toggleLoggingIconSvg from "@iracedeck/icons/telemetry-control/toggle-logging.svg";
-import { buildSnapshotEnvelope, formatSnapshotJson, generateMarkdown, snapshotBaseName } from "@iracedeck/iracing-sdk";
+import {
+  buildSnapshotEnvelope,
+  formatSnapshotJson,
+  generateMarkdown,
+  snapshotBaseName,
+  type TelemetryData,
+} from "@iracedeck/iracing-sdk";
 import { getGlobalColors } from "@iracedeck/settings";
 import { getLatestTelemetry } from "@iracedeck/sim-events-iracing";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -166,6 +172,43 @@ type SnapshotPluginState = { state: unknown; rows: ReadonlyArray<readonly [strin
  */
 function unavailablePluginState(reason: string): SnapshotPluginState {
   return { state: { error: reason }, rows: [["pluginState", "unavailable (see the JSON file)"]] };
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * The telemetry a snapshot writes, chosen between the translator's latest tick
+ * and a fresh read of shared memory.
+ *
+ * Everything in the plugin's state was computed from the last tick the
+ * controller dispatched. iRacing writes a frame about every 16.7 ms and the
+ * controller polls every 10 ms, so a fresh read is often one frame AHEAD of
+ * that state, and then the translator's tick is the one to write: the
+ * telemetry in the file is the tick its `pluginState` was computed from.
+ *
+ * A fresh read of that SAME tick is preferred, though. The controller
+ * dispatches a tick once, on its first read, and iRacing can go on changing
+ * fields under it: in a paused replay `SessionTick` stops while the camera
+ * target moves, and after a seek the first frame of the new tick still carries
+ * the replay flag's blip. The translator's copy is then as old as the pause,
+ * while the fresh read has the same state basis and today's values.
+ *
+ * With no tick in the translator (it is not running, or none has reached it
+ * since it connected) the fresh read is used, and there is no translator
+ * state for it to disagree with. A build whose frames carry no `SessionTick`
+ * cannot be compared, so it keeps the translator's.
+ */
+export function selectSnapshotTelemetry(
+  translatorTick: TelemetryData | null,
+  freshRead: TelemetryData | null,
+): TelemetryData | null {
+  if (!translatorTick) return freshRead;
+
+  if (!freshRead) return translatorTick;
+
+  const tick = freshRead.SessionTick;
+
+  return tick !== undefined && tick === translatorTick.SessionTick ? freshRead : translatorTick;
 }
 
 /**
@@ -462,17 +505,9 @@ export class TelemetryControl extends SimIRacingAction<TelemetryControlSettings>
    * the report is generated and written only after it is on disk.
    */
   private captureSnapshot(settings: TelemetryControlSettings): void {
-    // The translator's latest tick, not the newest frame. Everything in the
-    // plugin's state was computed from the last tick the controller dispatched,
-    // while `getCurrentTelemetry()` reads shared memory afresh: iRacing writes a
-    // frame about every 16.7 ms and the controller polls every 10 ms, so a fresh
-    // read is often one frame ahead of the state it would be filed beside. What
-    // the snapshot guarantees is that its telemetry is the tick its `pluginState`
-    // was computed from, which is why this may be a few milliseconds old. Only
-    // when the translator holds no tick (it is not running, or none has reached
-    // it since it connected) is the fresh read used, and then there is no
-    // translator state to disagree with.
-    const telemetry = getLatestTelemetry() ?? this.sdkController.getCurrentTelemetry();
+    // The tick the plugin's state was computed from, in its freshest copy: see
+    // `selectSnapshotTelemetry` for why neither read is right on its own.
+    const telemetry = selectSnapshotTelemetry(getLatestTelemetry(), this.sdkController.getCurrentTelemetry());
 
     if (!telemetry) {
       this.logger.warn("Telemetry snapshot skipped: no telemetry available (is iRacing running?)");
