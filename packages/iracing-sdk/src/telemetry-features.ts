@@ -189,7 +189,8 @@ export const REPLAY_EXIT_GRACE_MS = 1_000;
 /**
  * Whether a replay is on screen and the frame it shows, debounced (#1324). The
  * one instance lives on `SDKController`, stepped by {@link nextReplayState}
- * on every notified tick and read through {@link replayStateAt}, so the
+ * on every poll that reads telemetry (before the `SessionTick` dedupe, so a
+ * repeated tick counts too) and read through {@link replayStateAt}, so the
  * translator, the keys and the dials cannot disagree about it.
  *
  * `inReplay` and `frame` are the answer as of the time the state was last

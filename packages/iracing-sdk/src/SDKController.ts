@@ -73,9 +73,15 @@ export class SDKController {
   /**
    * The one debounced replay state (#1324): whether a replay is on screen and
    * the frame it shows, held through the ~300 ms `IsReplayPlaying` blip after
-   * every seek. Stepped in `notifySubscribers` before any subscriber runs, so
-   * the translator and every action read the same answer for the tick; reset
-   * with `lastSessionTick` so a reconnect starts live with nothing sighted.
+   * every seek. Stepped on every poll that reads telemetry — in `update()`
+   * before the `SessionTick` dedupe, and at the connect-time delivery — so a
+   * subscriber reads this tick's answer and a repeated tick still counts: in
+   * a paused replay the flag's return after a seek's blip can arrive on a
+   * deduped tick, and skipping it would let the grace run out on a replay
+   * that is still open. Never stepped on the re-delivery of
+   * `lastValidTelemetry`, which would re-stamp a stale sighting with a fresh
+   * time and stretch the grace. Reset with `lastSessionTick` so a reconnect
+   * starts live with nothing sighted.
    */
   private readonly replayState = new ReplayStateTracker();
 
@@ -95,7 +101,9 @@ export class SDKController {
       this.start();
     }
 
-    // Immediately notify the new subscriber of current state
+    // Immediately notify the new subscriber of current state. The replay
+    // state needs no step here: the connect-time delivery or the last poll
+    // has stepped it with a read as fresh as this one.
     const telemetry = this.sdk.getTelemetry();
     callback(telemetry, this.isConnected);
   }
@@ -188,9 +196,23 @@ export class SDKController {
         this.replayState.reset();
       }
 
-      // Notify all subscribers of connection state change
-      this.notifySubscribers();
+      // Notify all subscribers of connection state change. The read this
+      // delivers is a fresh one, stepped like a poll's (#1324).
+      const telemetry = this.sdk.getTelemetry();
+
+      if (connected && telemetry) this.stepReplayState(telemetry);
+
+      this.notifySubscribers(telemetry);
     }
+  }
+
+  /**
+   * Steps the replay state with one fresh telemetry read (#1324).
+   * `getSessionInfo` is cached on the SDK by its update counter, so the
+   * per-poll read costs a header check.
+   */
+  private stepReplayState(telemetry: TelemetryData): void {
+    this.replayState.step(telemetry, this.sdk.getSessionInfo(), Date.now());
   }
 
   /**
@@ -220,13 +242,18 @@ export class SDKController {
 
     // Check if telemetry is null (could happen during buffer update)
     if (!telemetry) {
-      // Use last valid telemetry if available to avoid blinking
+      // Use last valid telemetry if available to avoid blinking. The replay
+      // state is NOT stepped with it: that read was stepped when it was fresh.
       if (this.lastValidTelemetry) {
         this.notifySubscribers(this.lastValidTelemetry);
       }
 
       return;
     }
+
+    // Every fresh read steps the replay state, before the dedupe below: a
+    // repeated tick carries the flag too (#1324).
+    this.stepReplayState(telemetry);
 
     // Dedupe by iRacing's `SessionTick`. We poll faster than iRacing's
     // 60 Hz write rate (see TELEMETRY_INTERVAL_MS) so the same tick will
@@ -255,13 +282,6 @@ export class SDKController {
    */
   private notifySubscribers(telemetry?: TelemetryData | null): void {
     const data = telemetry !== undefined ? telemetry : this.sdk.getTelemetry();
-
-    // The replay state steps before the callbacks so a subscriber reading it
-    // sees this tick's answer (#1324). `getSessionInfo` is cached on the
-    // SDK by its update counter, so the per-tick read costs a header check.
-    if (data) {
-      this.replayState.step(data, this.sdk.getSessionInfo(), Date.now());
-    }
 
     for (const callback of this.subscribers.values()) {
       callback(data, this.isConnected);

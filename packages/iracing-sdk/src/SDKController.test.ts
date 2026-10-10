@@ -457,6 +457,41 @@ describe("SDKController", () => {
       expect(seen).toEqual([{ inReplay: true, frame: 500 }]);
     });
 
+    it("steps on a poll the SessionTick dedupe drops, so the flag's return on a repeated tick keeps a paused replay open", () => {
+      const callback = vi.fn();
+      subscribeLive(callback);
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(replayTick(2, 500));
+      vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS);
+
+      // The blip after a seek, then the flag back on the SAME SessionTick: a
+      // paused replay does not advance the tick, so the dedupe drops the poll.
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(liveTick(3, 900));
+      vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS);
+      callback.mockClear();
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(replayTick(3, 500));
+      vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS * 110);
+
+      // Dropped by the dedupe: no subscriber heard it — yet the state read it.
+      expect(callback).not.toHaveBeenCalled();
+      expect(controller.getReplayState()).toMatchObject({ inReplay: true, frame: 500 });
+    });
+
+    it("does not step on the re-delivery of the last valid telemetry, so a null read cannot stretch the grace", () => {
+      subscribeLive();
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(replayTick(2, 500));
+      vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS);
+
+      // The SDK reads null for longer than the grace; each poll re-delivers
+      // the replay tick above. Stepping those would re-stamp its sighting.
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(null);
+      vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS * 150);
+
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(liveTick(3, 900));
+      vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS);
+
+      expect(controller.getReplayState()).toMatchObject({ inReplay: false, frame: 900 });
+    });
+
     it("holds the replay through the blip after a seek and lets a read between ticks see the grace expire", () => {
       subscribeLive();
       vi.mocked(mockSdk.getTelemetry).mockReturnValue(replayTick(2, 500));
