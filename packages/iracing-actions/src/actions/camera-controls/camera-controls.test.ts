@@ -1011,7 +1011,7 @@ describe("CameraControls", () => {
       target: "focus-select-car" as const,
       direction: "next" as const,
       position: 1,
-      carNumber: 0,
+      carNumber: "0",
       cameraState: 0,
       cameraGroup: 9,
       focusSelectorProfile: "iRaceDeck Car Selector",
@@ -2394,7 +2394,7 @@ describe("Switch by Car Number's stored value (#1353)", () => {
     expect(CarNumberField.parse("0")).toBe("0");
   });
 
-  it("reads a number saved by an older build as its digits", () => {
+  it("reads a stored number as its digits", () => {
     expect(CarNumberField.parse(7)).toBe("7");
     expect(CarNumberField.parse(42)).toBe("42");
     expect(CarNumberField.parse(0)).toBe("0");
@@ -2403,20 +2403,44 @@ describe("Switch by Car Number's stored value (#1353)", () => {
   it("defaults to 0 when nothing is stored", () => {
     expect(CarNumberField.parse(undefined)).toBe("0");
     expect(CarNumberField.parse("")).toBe("0");
+    expect(CarNumberField.parse("   ")).toBe("0");
     expect(CarNumberField.parse(null)).toBe("0");
   });
 
-  it("drops the non-digits the PI filter removes from the field", () => {
-    expect(normalizeCarNumber("07a")).toBe("07");
+  it("ignores the whitespace around a typed number", () => {
     expect(normalizeCarNumber(" 12 ")).toBe("12");
-    expect(normalizeCarNumber("#007")).toBe("007");
-    expect(normalizeCarNumber("abc")).toBe("0");
+    expect(normalizeCarNumber(" 07 ")).toBe("07");
+  });
+
+  // The schema this field replaced. The old field stored its text too, so a
+  // key saved before #1353 can hold anything a text field accepts.
+  const legacy = z.coerce.number().int().min(0).default(0);
+
+  it.each(["7.0", "1e2", "0x10", "+7", "7."])(
+    "reads the stored text %s as the number the old schema read",
+    (stored) => {
+      expect(normalizeCarNumber(stored)).toBe(String(legacy.parse(stored)));
+    },
+  );
+
+  it("does not spell a car number from the digits of stored text that is not one", () => {
+    // Stripping the non-digits would turn these into cars 70, 12, 75 and 3.
+    expect(normalizeCarNumber("7.0")).toBe("7");
+    expect(normalizeCarNumber("1e2")).toBe("100");
+    expect(normalizeCarNumber("7.5")).toBe("0");
+    expect(normalizeCarNumber("-3")).toBe("0");
+  });
+
+  it.each(["07a", "#007", "abc", "7.5", "-3", "1e999"])("reads %s, which the old schema refused, as 0", (stored) => {
+    expect(legacy.safeParse(stored).success).toBe(false);
+    expect(normalizeCarNumber(stored)).toBe("0");
   });
 
   it("reads a number that was never a valid setting as 0", () => {
     expect(normalizeCarNumber(-3)).toBe("0");
     expect(normalizeCarNumber(7.5)).toBe("0");
     expect(normalizeCarNumber(Number.NaN)).toBe("0");
+    expect(normalizeCarNumber(Number.POSITIVE_INFINITY)).toBe("0");
     expect(normalizeCarNumber(true)).toBe("0");
     expect(normalizeCarNumber({})).toBe("0");
   });
@@ -2441,13 +2465,15 @@ describe("Switch by Car Number's stored value (#1353)", () => {
     });
   });
 
-  it("is read back as the old integer by a build from before the change", () => {
-    // The schema this field replaced: a downgrade must not fail the parse.
-    const legacy = z.coerce.number().int().min(0).default(0);
-
-    expect(legacy.parse(CarNumberField.parse("007"))).toBe(7);
-    expect(legacy.parse(CarNumberField.parse("42"))).toBe(42);
-    expect(legacy.parse(CarNumberField.parse(undefined))).toBe(0);
+  it.each([
+    ["007", 7],
+    ["07", 7],
+    ["42", 42],
+    ["0", 0],
+    ["", 0],
+  ])("a build from before the change reads the stored %s as %i", (stored, carNumber) => {
+    // What the digits-only field stores must not fail the old parse on a downgrade.
+    expect(legacy.parse(stored)).toBe(carNumber);
   });
 });
 
@@ -2465,6 +2491,14 @@ describe("resolveSwitchCarNumberRaw (#1353)", () => {
     expect(resolveSwitchCarNumberRaw(undefined, "0")).toBe(0);
     // A raw number someone set by hand keeps working as it did.
     expect(resolveSwitchCarNumberRaw(LEADING_ZERO_ROSTER, "2007")).toBe(2007);
+    expect(resolveSwitchCarNumberRaw(LEADING_ZERO_ROSTER, "9999")).toBe(9999);
+  });
+
+  it("sends nothing for a number longer than a raw number gets", () => {
+    // The broadcast carries the number in 16 bits: 99999 would arrive as 34463.
+    expect(resolveSwitchCarNumberRaw(LEADING_ZERO_ROSTER, "10000")).toBeNull();
+    expect(resolveSwitchCarNumberRaw(LEADING_ZERO_ROSTER, "99999")).toBeNull();
+    expect(resolveSwitchCarNumberRaw(null, "9".repeat(400))).toBeNull();
   });
 
   it("sends nothing for a leading-zero number the roster does not list", () => {
@@ -2543,7 +2577,18 @@ describe("Switch by Car Number press (#1353)", () => {
     await press(action, "042");
 
     expect(mockCamera.switchNum).not.toHaveBeenCalled();
-    expect(action["logger"].info).toHaveBeenCalledWith("Switch by car number skipped: car not in this session");
+    expect(action["logger"].info).toHaveBeenCalledWith(
+      "Switch by car number skipped: car number not found in session info",
+    );
+  });
+
+  it("a key stored as 07 before the change now means car 07, not car 7", async () => {
+    const action = setup(LEADING_ZERO_ROSTER);
+
+    await press(action, "07");
+
+    expect(mockCamera.switchNum).toHaveBeenCalledWith(2007, 9, 2);
+    expect(mockCamera.switchNum).not.toHaveBeenCalledWith(7, 9, 2);
   });
 
   it("does nothing without telemetry", async () => {

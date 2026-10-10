@@ -131,19 +131,22 @@ describe("camera-focus PI camera-group lists", () => {
 describe("camera-focus PI Car Number field (#1353)", () => {
   const field = template.match(/<sdpi-textfield[^>]*setting="carNumber"[^>]*>/)?.[0];
 
-  it("is a text field, so a number keeps its leading zeros", () => {
-    expect(field).toBeDefined();
-    // A number input drops them: it would store 007 as 7.
-    expect(field).not.toContain("type=");
-    expect(field).toContain('inputmode="numeric"');
-    expect(field).toContain('pattern="[0-9]*"');
-  });
-
-  it("filters the field it declares down to digits", () => {
+  it("hands the field it declares to the shared digits-only filter", () => {
     const id = field?.match(/id="([^"]+)"/)?.[1];
 
     expect(id).toBeDefined();
-    expect(template).toContain(`document.getElementById("${id}")`);
-    expect(template).toContain('input.value = input.value.replace(/[^0-9]/g, "")');
+
+    const lookup = template.match(new RegExp(`var (\\w+) = document\\.getElementById\\("${id}"\\);`));
+
+    expect(lookup).not.toBeNull();
+    expect(template).toContain(`window.irdDigitsOnly(${lookup?.[1]})`);
+  });
+
+  it("limits the field to the four characters a raw number can have", () => {
+    expect(field).toContain('maxlength="4"');
+  });
+
+  it("filters nothing inline: the inner input is the shared filter's to rewrite", () => {
+    expect(template).not.toContain(".replace(/[^0-9]/g");
   });
 });
