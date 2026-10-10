@@ -67,7 +67,6 @@ function gapsByCar(gaps: Record<number, number | null>): GapResolver {
 type RunOptions = Partial<{
   player: number;
   isRace: boolean;
-  replay: boolean;
   preGreen: boolean;
   postRace: boolean;
   multi: boolean;
@@ -91,7 +90,6 @@ function run(state: TranslatorState, telemetry: MutableField, now: number, opts:
     opts.player ?? PLAYER,
     opts.pace ?? null,
     opts.isRace ?? true,
-    opts.replay ?? false,
     opts.preGreen ?? false,
     opts.postRace ?? false,
     opts.multi ?? false,
@@ -577,7 +575,6 @@ describe("diffOpponentFlags", () => {
     it("suppresses the whole announce pass under every gate, replaying as entered-range once the gate opens", () => {
       const gateOptions: RunOptions[] = [
         { isRace: false },
-        { replay: true },
         { preGreen: true },
         { postRace: true },
         { player: -1 },

@@ -8,7 +8,25 @@ import {
   getCarNumberFromSessionInfo,
   getCarNumberRawFromSessionInfo,
   getPlayerCarNumberFromSessionInfo,
+  isReplayOnlySession,
 } from "./session-utils.js";
+
+describe("isReplayOnlySession (#604, #1324)", () => {
+  it("is true for a saved replay, where WeekendInfo.SimMode reads replay", () => {
+    expect(isReplayOnlySession({ WeekendInfo: { SimMode: "replay" } })).toBe(true);
+  });
+
+  it("is false for live driving and the in-session replay of a live race, where SimMode stays full", () => {
+    expect(isReplayOnlySession({ WeekendInfo: { SimMode: "full" } })).toBe(false);
+  });
+
+  it("is false when the session info or the field is missing — the live reading", () => {
+    expect(isReplayOnlySession(null)).toBe(false);
+    expect(isReplayOnlySession(undefined)).toBe(false);
+    expect(isReplayOnlySession({})).toBe(false);
+    expect(isReplayOnlySession({ WeekendInfo: {} })).toBe(false);
+  });
+});
 
 describe("getPlayerCarNumberFromSessionInfo", () => {
   it("resolves the player's own car number via DriverCarIdx", () => {

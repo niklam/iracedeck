@@ -8,6 +8,7 @@ import {
   claimReplayCursor,
   currentReplayCursorOwner,
 } from "../../shared/replay-cursor.js";
+import { steppedReplayState } from "../../shared/test-support/replay-state.js";
 import { buildTriggerDescription, ReplayMarkersDialSurface } from "./replay-markers-dial-surface.js";
 import {
   CONFIRMATION_FLASH_MS,
@@ -117,6 +118,8 @@ const LIVE = {
 const logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 
 function makeSurface(): ReplayMarkersDialSurface {
+  const replay = steppedReplayState(() => env.telemetry);
+
   return new ReplayMarkersDialSurface({
     logger: logger as never,
     readReplayContext: () =>
@@ -124,6 +127,7 @@ function makeSurface(): ReplayMarkersDialSurface {
         getConnectionStatus: () => env.connected,
         getCurrentTelemetry: () => env.telemetry,
         getSessionInfo: () => ({ WeekendInfo: { SubSessionID: 42 } }),
+        getReplayState: replay.getReplayState,
         isStoreInitialized: () => env.storeReady,
         getStore: () => store,
       }),
@@ -223,6 +227,7 @@ describe("ReplayMarkersDialSurface", () => {
         getConnectionStatus: () => true,
         getCurrentTelemetry: () => env.telemetry,
         getSessionInfo: () => null,
+        getReplayState: steppedReplayState(() => env.telemetry).getReplayState,
         isStoreInitialized: () => true,
         getStore: () => store,
       });
@@ -939,6 +944,7 @@ describe("ReplayMarkersDialSurface", () => {
           getConnectionStatus: () => true,
           getCurrentTelemetry: () => replayAt(frame),
           getSessionInfo: () => null,
+          getReplayState: steppedReplayState(() => replayAt(frame)).getReplayState,
           isStoreInitialized: () => true,
           getStore: () => store,
         });

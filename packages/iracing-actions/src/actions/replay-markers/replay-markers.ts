@@ -187,6 +187,7 @@ export class ReplayMarkers extends SimIRacingAction<ReplayMarkersSettings> {
     getConnectionStatus: () => this.sdkController.getConnectionStatus(),
     getCurrentTelemetry: () => this.sdkController.getCurrentTelemetry(),
     getSessionInfo: () => this.sdkController.getSessionInfo(),
+    getReplayState: (nowMs) => this.sdkController.getReplayState(nowMs),
     isStoreInitialized: () => isReplaySessionStoreInitialized(),
     getStore: () => getReplaySessionStore(),
   };

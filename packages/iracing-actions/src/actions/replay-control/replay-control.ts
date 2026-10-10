@@ -74,14 +74,8 @@ import z from "zod";
 import { CAR_CYCLE_BINDING_KEYS } from "../../shared/car-cycle-bindings.js";
 import { computeCarNumberTarget } from "../../shared/car-cycling.js";
 import { RepeatController } from "../../shared/repeat-controller.js";
-import {
-  cancelReplayCursorOwner,
-  claimReplayCursor,
-  noteReplayGoToEnd,
-  type ReplayCursorClaim,
-} from "../../shared/replay-cursor.js";
+import { cancelReplayCursorOwner, claimReplayCursor, type ReplayCursorClaim } from "../../shared/replay-cursor.js";
 import { isPaused, seekReplayFrame, waitForReplay } from "../../shared/replay-seek.js";
-import { isReplayOnlySession } from "../../shared/replay-session.js";
 
 const REPLAY_CONTROL_MODES = [
   "play-pause",
@@ -1249,9 +1243,10 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
    * never left its pre-command value is "unmoved" — how the sim says
    * `nextSession` in the last session. The walk holds the shared replay-cursor
    * claim; any replay command from any action cancels it, and it sends
-   * nothing more. It refuses to start while `IsReplayPlaying !== true`,
-   * because iRacing ignores replay commands from the car. An aborted walk
-   * leaves the replay paused with the cache saying so, so the Play key plays.
+   * nothing more. It refuses to start while no replay is on screen (the
+   * controller's debounced replay state, #1324), because iRacing ignores
+   * replay commands from the car. An aborted walk leaves the replay paused
+   * with the cache saying so, so the Play key plays.
    */
   async walkToFastestLap(
     contextId: string,
@@ -1426,6 +1421,26 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     const readFrame = (tel: TelemetryData | null): number | null =>
       typeof tel?.ReplayFrameNum === "number" ? tel.ReplayFrameNum : null;
 
+    /**
+     * Whether any sample this walk read had the raw `IsReplayPlaying` true.
+     * The debounced state that admitted the press cannot tell a press just
+     * after a seek from one within a second of the user returning to the car
+     * through iRacing's own UI (Esc, Drive) — but the walk's own samples can:
+     * from the car the flag never reads true, and a replay command sent from
+     * the car is ignored, so a map built on such samples describes the live
+     * view and must not be kept (#1324).
+     */
+    let sawReplayFlag = false;
+
+    /** Every telemetry sample the walk takes goes through here, so the flag check above sees them all. */
+    const readTelemetry = (): TelemetryData | null => {
+      const tel = this.sdkController.getCurrentTelemetry();
+
+      if (tel?.IsReplayPlaying === true) sawReplayFlag = true;
+
+      return tel;
+    };
+
     /** Out of the `SessionNum = -1` transient — a sample whose per-car arrays can be read. */
     const isSettledSample = (tel: TelemetryData | null): tel is TelemetryData =>
       tel != null && typeof tel.SessionNum === "number" && tel.SessionNum >= 0;
@@ -1445,7 +1460,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
       const deadline = Date.now() + settleTimeoutMs();
 
       for (;;) {
-        const tel = this.sdkController.getCurrentTelemetry();
+        const tel = readTelemetry();
 
         if (isSettledSample(tel)) return tel;
 
@@ -1467,7 +1482,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
         frame,
         claim,
         send: (f) => replay.setPlayPosition(ReplayPosMode.Begin, f),
-        readTelemetry: () => this.sdkController.getCurrentTelemetry(),
+        readTelemetry,
         timeoutMs,
         pollMs: STABILIZATION_POLL_INTERVAL_MS,
       });
@@ -1505,7 +1520,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     const search = async (command: () => boolean, label: string): Promise<SearchOutcome> => {
       checkpoint();
 
-      const before = readFrame(this.sdkController.getCurrentTelemetry());
+      const before = readFrame(readTelemetry());
       const sentAt = Date.now();
 
       command();
@@ -1517,7 +1532,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
 
       while (Date.now() < deadline) {
         await wait(STABILIZATION_POLL_INTERVAL_MS);
-        const tel = this.sdkController.getCurrentTelemetry();
+        const tel = readTelemetry();
         const frame = readFrame(tel);
 
         if (frame === null) {
@@ -1540,7 +1555,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
         held = frame;
       }
 
-      const telemetry = this.sdkController.getCurrentTelemetry();
+      const telemetry = readTelemetry();
 
       if (!sawMovement) {
         this.logger.debug(`Jump to fastest lap: ${label} did not move the cursor from frame ${before ?? "n/a"}`);
@@ -1646,8 +1661,9 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     // Refuse from the car: iRacing honours replay commands only out of it
     // (irsdk_defines.h: "camera and replay commands only work when you are out
     // of your car"), and a map built from ignored commands would describe the
-    // live view, not the replay.
-    if (this.sdkController.getCurrentTelemetry()?.IsReplayPlaying !== true) {
+    // live view, not the replay. The debounced state, not the raw flag, so a
+    // press right after a seek is not taken for the car (#1324).
+    if (!this.sdkController.getReplayState().inReplay) {
       this.logger.info("Jump to fastest lap: replay not open; iRacing ignores replay commands from the car");
 
       return;
@@ -1698,6 +1714,18 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
       const built = await buildSessionMap(subSessionId);
 
       if (built == null) return;
+
+      // Commit the map only if the walk was seen to run in a replay. From the
+      // car every command was ignored and the "map" is the live view (one
+      // session at frame 0): keeping it would send every later press to
+      // bounds that describe nothing.
+      if (!sawReplayFlag) {
+        this.logger.info(
+          "Jump to fastest lap: the walk ran from the car (IsReplayPlaying never read true); session map discarded",
+        );
+
+        return;
+      }
 
       sessionMap = built;
       cachedFastestLapSessionMap = built;
@@ -2220,10 +2248,13 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
       }
       case "jump-to-live": {
         const success = replay.goToEnd();
-        // In a live session this leaves the replay for the car: Replay Markers
-        // must read live at once, not hold the old replay frame through its
-        // post-seek grace (#1230). In a saved replay it is only a seek.
-        noteReplayGoToEnd(success, isReplayOnlySession(this.sdkController.getSessionInfo()));
+
+        // In a live session this leaves the replay for the car: every replay
+        // consumer must read live at once, not hold the old replay frame
+        // through the post-seek grace (#1230, #1324). In a saved replay it is
+        // only a seek, and the controller leaves its state alone.
+        if (success) this.sdkController.noteReplayLeftForLive();
+
         this.logger.info("Jump to live executed");
         this.logger.debug(`Result: ${success}`);
         break;
@@ -2315,8 +2346,9 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
         // (irsdk_defines.h: "camera and replay commands only work when you
         // are out of your car"): a jump or a walk from the car would be sent,
         // ignored, and logged as done — and a walk would cache a session map
-        // describing the live view.
-        if (telemetry?.IsReplayPlaying !== true) {
+        // describing the live view. The debounced state, not the raw flag,
+        // which reads false for ~300 ms after every seek (#1324).
+        if (!this.sdkController.getReplayState().inReplay) {
           this.logger.info("Jump to fastest lap: replay not open; iRacing ignores replay commands from the car");
           break;
         }

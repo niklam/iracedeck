@@ -29,8 +29,7 @@ import setPlayPositionIcon from "@iracedeck/icons/replay-navigation/set-play-pos
 import { getGlobalColors } from "@iracedeck/settings";
 import z from "zod";
 
-import { cancelReplayCursorOwner, noteReplayGoToEnd } from "../../shared/replay-cursor.js";
-import { isReplayOnlySession } from "../../shared/replay-session.js";
+import { cancelReplayCursorOwner } from "../../shared/replay-cursor.js";
 
 /** ReplayPosMode.Begin — position from beginning of replay */
 const REPLAY_POS_BEGIN = 0;
@@ -250,10 +249,13 @@ export class ReplayNavigation extends SimIRacingAction<ReplayNavigationSettings>
       }
       case "jump-to-end": {
         const success = replay.goToEnd();
-        // In a live session this leaves the replay for the car: Replay Markers
-        // must read live at once, not hold the old replay frame through its
-        // post-seek grace (#1230). In a saved replay it is only a seek.
-        noteReplayGoToEnd(success, isReplayOnlySession(this.sdkController.getSessionInfo()));
+
+        // In a live session this leaves the replay for the car: every replay
+        // consumer must read live at once, not hold the old replay frame
+        // through the post-seek grace (#1230, #1324). In a saved replay it is
+        // only a seek, and the controller leaves its state alone.
+        if (success) this.sdkController.noteReplayLeftForLive();
+
         this.logger.info("Jump to end executed");
         this.logger.debug(`Result: ${success}`);
         break;

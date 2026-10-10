@@ -5,6 +5,8 @@
 import { ILogger, silentLogger } from "@iracedeck/logger";
 
 import { IRacingSDK } from "./IRacingSDK.js";
+import { ReplayStateTracker } from "./replay-state-tracker.js";
+import type { ReplayState } from "./telemetry-features.js";
 import { buildTemplateContextFromData, type TemplateContext } from "./template-context.js";
 import { SessionInfo, TelemetryData } from "./types.js";
 
@@ -68,6 +70,20 @@ export class SDKController {
    * always notifies.
    */
   private lastSessionTick = -1;
+  /**
+   * The one debounced replay state (#1324): whether a replay is on screen and
+   * the frame it shows, held through the ~300 ms `IsReplayPlaying` blip after
+   * every seek. Stepped on every poll that reads telemetry — in `update()`
+   * before the `SessionTick` dedupe, and at the connect-time delivery — so a
+   * subscriber reads this tick's answer and a repeated tick still counts: in
+   * a paused replay the flag's return after a seek's blip can arrive on a
+   * deduped tick, and skipping it would let the grace run out on a replay
+   * that is still open. Never stepped on the re-delivery of
+   * `lastValidTelemetry`, which would re-stamp a stale sighting with a fresh
+   * time and stretch the grace. Reset with `lastSessionTick` so a reconnect
+   * starts live with nothing sighted.
+   */
+  private readonly replayState = new ReplayStateTracker();
 
   constructor(sdk: IRacingSDK, logger: ILogger = silentLogger) {
     this.sdk = sdk;
@@ -85,7 +101,9 @@ export class SDKController {
       this.start();
     }
 
-    // Immediately notify the new subscriber of current state
+    // Immediately notify the new subscriber of current state. The replay
+    // state needs no step here: the connect-time delivery or the last poll
+    // has stepped it with a read as fresh as this one.
     const telemetry = this.sdk.getTelemetry();
     callback(telemetry, this.isConnected);
   }
@@ -153,6 +171,7 @@ export class SDKController {
     this.lastTemplateContext = null;
     this.templateContextDirty = true;
     this.lastSessionTick = -1;
+    this.replayState.reset();
   }
 
   /**
@@ -171,11 +190,29 @@ export class SDKController {
         this.logger.info("[SDKController] Connected to iRacing");
       } else {
         this.logger.info("[SDKController] Disconnected from iRacing");
+        // The update loop skips `update()` while the SDK reads disconnected,
+        // so this is where a dropped connection is noticed: the replay state
+        // must not report the last tick's replay to a read made meanwhile.
+        this.replayState.reset();
       }
 
-      // Notify all subscribers of connection state change
-      this.notifySubscribers();
+      // Notify all subscribers of connection state change. The read this
+      // delivers is a fresh one, stepped like a poll's (#1324).
+      const telemetry = this.sdk.getTelemetry();
+
+      if (connected && telemetry) this.stepReplayState(telemetry);
+
+      this.notifySubscribers(telemetry);
     }
+  }
+
+  /**
+   * Steps the replay state with one fresh telemetry read (#1324).
+   * `getSessionInfo` is cached on the SDK by its update counter, so the
+   * per-poll read costs a header check.
+   */
+  private stepReplayState(telemetry: TelemetryData): void {
+    this.replayState.step(telemetry, this.sdk.getSessionInfo(), Date.now());
   }
 
   /**
@@ -193,6 +230,7 @@ export class SDKController {
         this.lastTemplateContext = null;
         this.templateContextDirty = true;
         this.lastSessionTick = -1;
+        this.replayState.reset();
         this.notifySubscribers(null);
       }
 
@@ -204,13 +242,18 @@ export class SDKController {
 
     // Check if telemetry is null (could happen during buffer update)
     if (!telemetry) {
-      // Use last valid telemetry if available to avoid blinking
+      // Use last valid telemetry if available to avoid blinking. The replay
+      // state is NOT stepped with it: that read was stepped when it was fresh.
       if (this.lastValidTelemetry) {
         this.notifySubscribers(this.lastValidTelemetry);
       }
 
       return;
     }
+
+    // Every fresh read steps the replay state, before the dedupe below: a
+    // repeated tick carries the flag too (#1324).
+    this.stepReplayState(telemetry);
 
     // Dedupe by iRacing's `SessionTick`. We poll faster than iRacing's
     // 60 Hz write rate (see TELEMETRY_INTERVAL_MS) so the same tick will
@@ -274,6 +317,7 @@ export class SDKController {
       // Reset dedupe state so the first frame of the next iRacing session
       // is never suppressed by a stale tick value (issue #493 follow-up).
       this.lastSessionTick = -1;
+      this.replayState.reset();
       this.notifySubscribers(null);
     } else if (enabled && this.subscribers.size > 0 && !this.isConnected) {
       // Re-enabling and we have subscribers - try to connect immediately
@@ -307,6 +351,30 @@ export class SDKController {
    */
   getSessionInfo(): SessionInfo | null {
     return this.sdk.getSessionInfo();
+  }
+
+  /**
+   * The debounced replay state as of `nowMs` (#1324): whether a replay is on
+   * screen and the frame it shows. Every "in a replay" decision reads this,
+   * never `telemetry.IsReplayPlaying`, which drops for ~300 ms after each
+   * seek. The grace runs on wall time, so a read between ticks sees it
+   * expire; `nowMs` is injectable for tests.
+   */
+  getReplayState(nowMs: number = Date.now()): ReplayState {
+    return this.replayState.read(nowMs);
+  }
+
+  /**
+   * Tells the replay state that the plugin's own `goToEnd` was just sent:
+   * outside a saved replay the command leaves the replay for the car
+   * at once, so the grace is dropped rather than holding the old replay frame
+   * for a second (#1230). In a saved replay it is only a seek and nothing
+   * changes. Call it only for a command that was actually sent; whether it
+   * changed anything is not reported, since no caller has a use for it.
+   * `nowMs` is injectable for tests.
+   */
+  noteReplayLeftForLive(nowMs: number = Date.now()): void {
+    this.replayState.noteLeftForLive(nowMs);
   }
 
   /**

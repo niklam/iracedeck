@@ -143,13 +143,15 @@
  * flag, which is what it is to the driver.
  *
  * **Gating** (the `diffOpponentPit` precedent): race sessions only,
- * replay-only sessions suppressed, pre-green suppressed (grid/formation
- * positions are meaningless), post-race suppressed (the whole field can
+ * pre-green suppressed (grid/formation positions are meaningless), post-race
+ * suppressed (the whole field can
  * carry stale flags after the checkered), and an unresolved player carIdx
  * suppresses everything (qualification is relative to the player). The
  * whole announce pass is skipped while gated; the store (bits, hold timers,
  * effective mask) still advances every tick regardless, so nothing gated
- * ever replays once the gate reopens. The very first tick is handled the
+ * ever replays once the gate reopens. No replay term: a replay tick, a saved
+ * replay included, never reaches this diff since #1324 (the translator's guard
+ * reads the controller's debounced replay state). The very first tick is handled the
  * same way as a gated tick (seed the store silently, no announce pass) so a
  * flag that's already active before the plugin ever attached doesn't
  * spuriously read as "just activated".
@@ -564,7 +566,6 @@ export function diffOpponentFlags(
   playerCarIdx: number,
   paceCarIdx: number | null,
   isRaceSession: boolean,
-  replayOnlySession: boolean,
   preGreen: boolean,
   postRace: boolean,
   isMultiClass: boolean,
@@ -650,7 +651,7 @@ export function diffOpponentFlags(
 
   for (const key of HELD_FLAG_KEYS) heldSinceAt[key].length = raw.length;
 
-  const gated = !isRaceSession || replayOnlySession || preGreen || postRace || playerCarIdx < 0;
+  const gated = !isRaceSession || preGreen || postRace || playerCarIdx < 0;
 
   if (isFirstTick || gated) return;
 

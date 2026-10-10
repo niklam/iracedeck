@@ -425,4 +425,191 @@ describe("SDKController", () => {
       expect(callback).toHaveBeenCalledWith(expect.anything(), false);
     });
   });
+
+  describe("replay state (#1324)", () => {
+    const replayTick = (tick: number, frame: number): TelemetryData =>
+      ({ SessionTick: tick, IsReplayPlaying: true, ReplayFrameNum: frame, ReplayFrameNumEnd: 100 }) as TelemetryData;
+    const liveTick = (tick: number, end: number): TelemetryData =>
+      ({ SessionTick: tick, IsReplayPlaying: false, ReplayFrameNum: 0, ReplayFrameNumEnd: end }) as TelemetryData;
+
+    /** Subscribes on a live tick and runs the first poll, so each test starts live with the bookkeeping notifications behind it. */
+    function subscribeLive(callback?: TelemetryCallback): void {
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(liveTick(1, 900));
+      controller.subscribe("test", callback ?? vi.fn());
+      vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS);
+    }
+
+    it("starts live before any tick", () => {
+      expect(controller.getReplayState()).toMatchObject({ inReplay: false, frame: null });
+    });
+
+    it("is updated before subscribers are notified, so a callback reads its own tick", () => {
+      const seen: { inReplay: boolean; frame: number | null }[] = [];
+      subscribeLive(() => {
+        const { inReplay, frame } = controller.getReplayState();
+        seen.push({ inReplay, frame });
+      });
+      seen.length = 0;
+
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(replayTick(2, 500));
+      vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS);
+
+      expect(seen).toEqual([{ inReplay: true, frame: 500 }]);
+    });
+
+    it("steps on a poll the SessionTick dedupe drops, so the flag's return on a repeated tick keeps a paused replay open", () => {
+      const callback = vi.fn();
+      subscribeLive(callback);
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(replayTick(2, 500));
+      vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS);
+
+      // The blip after a seek, then the flag back on the SAME SessionTick: a
+      // paused replay does not advance the tick, so the dedupe drops the poll.
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(liveTick(3, 900));
+      vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS);
+      callback.mockClear();
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(replayTick(3, 500));
+      vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS * 110);
+
+      // Dropped by the dedupe: no subscriber heard it — yet the state read it.
+      expect(callback).not.toHaveBeenCalled();
+      expect(controller.getReplayState()).toMatchObject({ inReplay: true, frame: 500 });
+    });
+
+    it("does not step on the re-delivery of the last valid telemetry, so a null read cannot stretch the grace", () => {
+      subscribeLive();
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(replayTick(2, 500));
+      vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS);
+
+      // The SDK reads null for longer than the grace; each poll re-delivers
+      // the replay tick above. Stepping those would re-stamp its sighting.
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(null);
+      vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS * 150);
+
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(liveTick(3, 900));
+      vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS);
+
+      expect(controller.getReplayState()).toMatchObject({ inReplay: false, frame: 900 });
+    });
+
+    it("holds the replay through the blip after a seek and lets a read between ticks see the grace expire", () => {
+      subscribeLive();
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(replayTick(2, 500));
+      vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS);
+      const seenAt = Date.now();
+
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(liveTick(3, 900));
+      vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS);
+
+      expect(controller.getReplayState()).toMatchObject({ inReplay: true, frame: 500 });
+      expect(controller.getReplayState(seenAt + 999)).toMatchObject({ inReplay: true, frame: 500 });
+      expect(controller.getReplayState(seenAt + 1_000)).toMatchObject({ inReplay: false, frame: 900 });
+    });
+
+    it("reads the saved-replay discriminator from the SDK's session info", () => {
+      vi.mocked(mockSdk.getSessionInfo).mockReturnValue({ WeekendInfo: { SimMode: "replay" } });
+      subscribeLive();
+
+      expect(controller.getReplayState().inReplay).toBe(true);
+    });
+
+    it("noteReplayLeftForLive drops the grace outside a saved replay", () => {
+      subscribeLive();
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(replayTick(2, 500));
+      vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS);
+
+      controller.noteReplayLeftForLive();
+
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(liveTick(3, 900));
+      vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS);
+
+      expect(controller.getReplayState()).toMatchObject({ inReplay: false, frame: 900 });
+    });
+
+    it("noteReplayLeftForLive does nothing in a saved replay", () => {
+      vi.mocked(mockSdk.getSessionInfo).mockReturnValue({ WeekendInfo: { SimMode: "replay" } });
+      subscribeLive();
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(replayTick(2, 500));
+      vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS);
+
+      controller.noteReplayLeftForLive();
+
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(liveTick(3, 900));
+      vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS);
+
+      expect(controller.getReplayState()).toMatchObject({ inReplay: true, frame: 500 });
+    });
+
+    it("resets on a disconnect noticed by the reconnect poll, so no grace outlives the connection", () => {
+      subscribeLive();
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(replayTick(2, 500));
+      vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS);
+      expect(controller.getReplayState().inReplay).toBe(true);
+
+      // The update loop skips update() while the SDK reads disconnected; the
+      // 2 s reconnect poll's tryConnect is what flips the controller.
+      vi.mocked(mockSdk.isConnected).mockReturnValue(false);
+      vi.mocked(mockSdk.connect).mockReturnValue(false);
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(null);
+      vi.advanceTimersByTime(2000);
+
+      // Without the reset the last tick, a replay one, would still answer.
+      expect(controller.getConnectionStatus()).toBe(false);
+      expect(controller.getReplayState()).toMatchObject({ inReplay: false, frame: null });
+    });
+
+    it("resets on a disconnect seen inside update()", () => {
+      subscribeLive();
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(replayTick(2, 500));
+      vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS);
+
+      // The loop's guard reads connected once more; update()'s own check then reads the drop.
+      vi.mocked(mockSdk.isConnected).mockReturnValueOnce(true).mockReturnValue(false);
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(null);
+      vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS);
+
+      // Read at once: without the reset the sighting 10 ms ago would hold it.
+      expect(controller.getConnectionStatus()).toBe(false);
+      expect(controller.getReplayState()).toMatchObject({ inReplay: false, frame: null });
+    });
+
+    it("resets when reconnection is disabled (iRacing terminated)", () => {
+      subscribeLive();
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(replayTick(2, 500));
+      vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS);
+
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(null);
+      controller.setReconnectEnabled(false);
+
+      expect(controller.getReplayState()).toMatchObject({ inReplay: false, frame: null });
+    });
+
+    it("resets when the last subscriber leaves and the loops stop", () => {
+      subscribeLive();
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(replayTick(2, 500));
+      vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS);
+
+      controller.unsubscribe("test");
+
+      expect(controller.getReplayState()).toMatchObject({ inReplay: false, frame: null });
+    });
+
+    it("starts live again after a reconnect", () => {
+      subscribeLive();
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(replayTick(2, 500));
+      vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS);
+
+      vi.mocked(mockSdk.isConnected).mockReturnValueOnce(true).mockReturnValue(false);
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(null);
+      vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS);
+      expect(controller.getConnectionStatus()).toBe(false);
+
+      vi.mocked(mockSdk.isConnected).mockReturnValue(true);
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(liveTick(3, 950));
+      vi.advanceTimersByTime(2000);
+
+      expect(controller.getConnectionStatus()).toBe(true);
+      expect(controller.getReplayState()).toMatchObject({ inReplay: false, frame: 950 });
+    });
+  });
 });

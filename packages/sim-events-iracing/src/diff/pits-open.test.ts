@@ -2,9 +2,10 @@
  * Unit tests for the pit-window "pits are open / closed" diff (issue #655).
  *
  * The cue fires on a genuine `PitsOpen` boolean transition in a race session,
- * stays silent on the first (seeding) tick, outside race sessions, and while
- * watching a replay (`replayOnlySession`). The baseline advances every tick so
- * a transition that happens while a gate is closed is absorbed, not replayed.
+ * stays silent on the first (seeding) tick and outside race sessions. The
+ * baseline advances every tick so a transition that happens while the gate is
+ * closed is absorbed, not replayed. A replay tick never reaches it: the
+ * translator's guard holds every one back (#1324).
  */
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { describe, expect, it } from "vitest";
@@ -13,14 +14,10 @@ import { createInitialState, type TranslatorState } from "../state.js";
 import { diffPitsOpen } from "./pits-open.js";
 import type { PendingEvent } from "./types.js";
 
-function feed(
-  state: TranslatorState,
-  pitsOpen: boolean,
-  { race = true, replay = false }: { race?: boolean; replay?: boolean } = {},
-): PendingEvent[] {
+function feed(state: TranslatorState, pitsOpen: boolean, { race = true }: { race?: boolean } = {}): PendingEvent[] {
   const events: PendingEvent[] = [];
   const telemetry = { PitsOpen: pitsOpen } as TelemetryData;
-  diffPitsOpen(state, telemetry, race, replay, (e) => events.push(e));
+  diffPitsOpen(state, telemetry, race, (e) => events.push(e));
 
   return events;
 }
@@ -70,14 +67,6 @@ describe("diffPitsOpen", () => {
     expect(events).toEqual([]);
   });
 
-  it("suppresses transitions while watching a replay", () => {
-    const state = createInitialState();
-    feed(state, false, { replay: true }); // seed
-    const events = feed(state, true, { replay: true });
-
-    expect(events).toEqual([]);
-  });
-
   it("absorbs a non-race transition so it does not replay when racing resumes", () => {
     const state = createInitialState();
     feed(state, false); // seed closed (race)
@@ -91,7 +80,7 @@ describe("diffPitsOpen", () => {
   it("treats a missing PitsOpen as closed", () => {
     const state = createInitialState();
     const events: PendingEvent[] = [];
-    diffPitsOpen(state, {} as TelemetryData, true, false, (e) => events.push(e));
+    diffPitsOpen(state, {} as TelemetryData, true, (e) => events.push(e));
     expect(events).toEqual([]); // seed
     expect(state.lastPitsOpen).toBe(false);
   });

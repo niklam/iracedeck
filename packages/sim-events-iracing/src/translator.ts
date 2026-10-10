@@ -35,6 +35,7 @@ import {
   IRSDK_UNLIMITED_LAPS,
   isPostRace,
   isPreGreen,
+  isReplayOnlySession,
   nearestCarGapMeters,
   type QualifyResultEntry,
   resolveLapsRemaining,
@@ -1747,10 +1748,12 @@ function resetPerSessionState(self: TranslatorInstance, telemetry: TelemetryData
  * `driver.firstOnTrack` detection — issue #542.
  *
  * Runs on EVERY tick, including replay-mode ticks, BEFORE the replay guard
- * in `handleTick`. "Live on track" is `IsOnTrack && !IsReplayPlaying` — true
+ * in `handleTick`. "Live on track" is `IsOnTrack` outside a replay — true
  * only when the driver is genuinely in the car, not watching a replay or
  * sitting in the session menu (where iRacing reports `IsReplayPlaying: true`
- * and `IsOnTrack: false`).
+ * and `IsOnTrack: false`). `inReplay` is the controller's debounced replay
+ * state (#1324), the same read as the guard's, so a seek's `IsReplayPlaying`
+ * blip is not a drive-out and a real one fires once the grace has run.
  *
  * The first tick after connect seeds `firstOnTrackFired` to the current
  * live-on-track value: a plugin that connects mid-drive seeds `true` and
@@ -1759,8 +1762,8 @@ function resetPerSessionState(self: TranslatorInstance, telemetry: TelemetryData
  * Tracking lives on the instance (not `TranslatorState`) so the replay
  * guard's per-tick resets can't re-run the seed and swallow the event.
  */
-function diffFirstOnTrack(self: TranslatorInstance, telemetry: TelemetryData): void {
-  const liveOnTrack = (telemetry.IsOnTrack ?? false) && telemetry.IsReplayPlaying !== true;
+function diffFirstOnTrack(self: TranslatorInstance, telemetry: TelemetryData, inReplay: boolean): void {
+  const liveOnTrack = (telemetry.IsOnTrack ?? false) && !inReplay;
 
   if (!self.firstOnTrackSeeded) {
     self.firstOnTrackSeeded = true;
@@ -1800,6 +1803,16 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // #568 path is preserved while replay-only scrubbing / standalone replay
   // viewing stays silent.
   const currentSessionNum = telemetry.SessionNum ?? null;
+  // The ONE "in a replay" answer for this tick (issue #1324): the controller's
+  // debounced replay state, stepped before this callback ran. It holds for
+  // `REPLAY_EXIT_GRACE_MS` after the last `IsReplayPlaying: true` tick, so
+  // the ~300 ms false blip after every replay seek is not a trip to live, and
+  // it is true throughout a saved replay (`SimMode === "replay"`), whatever
+  // the flag reads. The guard below, `diffFirstOnTrack` and `diffReplayLaps`
+  // read it; the `session.changed` paths and `diffStartCountdown` deliberately
+  // do not gate on the replay view at all (#568, #829) and read only the
+  // `SimMode` discriminator, as before.
+  const inReplay = self.controller.getReplayState().inReplay;
 
   // Issue #908: a non-replay-only tick ends the replay episode for the skip
   // log in the fresh-connect gate below, so a later replay episode logs
@@ -1966,35 +1979,43 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
 
   // The replay lap record (issue #1203) runs on every tick BEFORE the replay
   // guard for the opposite reason from the countdown: it must SEE the ticks it
-  // cannot record. Its gate marks the recorder unseeded on every replay-view /
-  // replay-only / no-session tick and re-seeds silently on the first eligible
-  // tick after, so a driver coming back from the garage or the replay view to
-  // a field that crossed the line meanwhile produces no fabricated crossing.
-  // Behind the guard the early return would hide exactly those ticks. Its
-  // state is deliberately in `wipeStateForReplay`'s wiped set — a re-seed is
-  // what the return from a replay needs. Published directly, like the
-  // countdown: the post-guard `pending` list does not exist yet on these ticks.
+  // cannot record. Its gate marks the recorder unseeded on every replay /
+  // no-session tick — `inReplay` is the guard's own read (#1324), so a seek's
+  // blip tick neither seeds nor records — and re-seeds silently on the first
+  // eligible tick after, so a driver coming back from the garage or the
+  // replay view to a field that crossed the line meanwhile produces no
+  // fabricated crossing. Behind the guard the early return would hide exactly
+  // those ticks. Its state is deliberately in `wipeStateForReplay`'s wiped
+  // set — a re-seed is what the return from a replay needs. Published
+  // directly, like the countdown: the post-guard `pending` list does not
+  // exist yet on these ticks.
   diffReplayLaps(
     self.state,
     telemetry,
     self.controller.getSessionInfo() as Record<string, unknown> | null,
-    replayOnlySession,
+    inReplay,
     (ev) => publish(self, ev, telemetry, Date.now()),
   );
 
   // `driver.firstOnTrack` is detected on every tick — including replay ticks
   // — so the genuine garage/replay → live-on-track transition is never
   // missed. Must run before the replay guard's early return below.
-  diffFirstOnTrack(self, telemetry);
+  diffFirstOnTrack(self, telemetry, inReplay);
 
-  // Suppress every semantic event while iRacing is in replay mode. The
+  // Suppress every semantic event while a replay is on screen. The
   // engineer voice should be quiet whenever the user isn't actively in
   // the car — replay scrubbing fires phantom flag transitions and pit
   // toggles as the timeline jumps, which would queue audio that has no
   // relationship to the live session. Mirrors the existing
   // disconnect-resets-state pattern so when replay ends the diff
-  // modules' first-tick / off-track seed branches reseed cleanly.
-  if (telemetry.IsReplayPlaying === true) {
+  // modules' first-tick / off-track seed branches reseed cleanly. The
+  // debounced state (#1324) makes the two edges below a real entry and a
+  // real exit: they used to fire twice per seek, on the blip's first false
+  // tick and again on the first true one after it, running every diff
+  // against the replay telemetry in between. Past this point a tick is
+  // live: not a replay tick, not inside the grace, and not a saved replay —
+  // so no diff below needs a `SimMode` gate of its own.
+  if (inReplay) {
     if (!self.lastTickInReplay) {
       // Release every active-state subsystem before resetting state, so a
       // latched mode or a running tick loop gets its closing edge instead of
@@ -2118,12 +2139,11 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // which fires later after a start/finish crossing completes the first pace lap.
   diffRollingStart(self.state, telemetry, sessionInfo, emit);
   // Pit window open/closed (issue #655) — emits `pitsOpen.changed` on a real
-  // `PitsOpen` boolean transition. Race-only + replay-only gated here: the diff
-  // runs after the main replay guard, but a paused / frame-scrubbed replay can
-  // read `IsReplayPlaying === false` while `SimMode === "replay"`, so the
-  // explicit `replayOnlySession` gate (computed above for the session.changed
-  // paths) still matters. `isRaceSession` keeps it out of practice / qualifying.
-  diffPitsOpen(self.state, telemetry, isRaceSession, replayOnlySession, emit);
+  // `PitsOpen` boolean transition. `isRaceSession` keeps it out of practice /
+  // qualifying; a paused or frame-scrubbed saved replay, which reads
+  // `IsReplayPlaying === false` while `SimMode === "replay"`, never gets past
+  // the guard above since #1324, so the diff's own replay-only gate went.
+  diffPitsOpen(self.state, telemetry, isRaceSession, emit);
   diffToggles(self.state, telemetry, now, emit);
   // diffPitStatus emits `pitService.statusChanged` for in-progress / complete
   // / positioning / can't-fix-that transitions (issue #479), and
@@ -2143,7 +2163,7 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // pit-lane edges and the exit `pitService.readbackRequested` out of `pending`,
   // so it must run immediately after `diffPitReadback` — pushed after it, the
   // report is always flushed behind the readback of the same tick.
-  diffTireWear(self.state, telemetry, emit, pending, replayOnlySession);
+  diffTireWear(self.state, telemetry, emit, pending);
   // The discipline-resolved collision-car value (Sporting Code §3.5.1:
   // 4x pavement / 2x dirt) feeds the spoken incident value (#938).
   diffIncidents(self.state, telemetry, now, emit, resolveCollisionCarValue(sessionInfo), self.logger);
@@ -2202,24 +2222,21 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // this one must not read or write `cautionPhase`; today only `diffFlags`,
   // `diffStartLights` and this diff touch it.
   //
-  // It takes neither `isRaceSession` nor `replayOnlySession`, unlike most of its
-  // neighbours, and that is deliberate rather than an omission. The #480
+  // It takes no `isRaceSession`, unlike most of its neighbours, and that is
+  // deliberate rather than an omission. The #480
   // precedent recorded in `.claude/rules/race-engineer-callout-examples.md` puts
   // this gate on the SCENARIO instead: the event still emits — so the scenario
   // harness can fire the whole caution sequence without pretending to be in a
   // race — while the callout family's own `liveRaceCar` predicate is what keeps
-  // the engineer quiet outside one. Adding the parameters here would move a
+  // the engineer quiet outside one. Adding the parameter here would move a
   // decision the audio layer owns into the diff, and take the sequence out of
   // reach of the harness. Don't.
   //
   // Nor for the PHASE it writes, which `diffFlags` and `diffStartLights` read
   // to stand their green and go lines down (asked at the first CodeRabbit
-  // review of #1127). The two readers take no `replayOnlySession` either: in
-  // a replay-only session they read the phase off the same ticks that set it,
-  // so the phase and the edges it suppresses share one timeline, and nothing
-  // in such a session is spoken live for a replay-derived phase to silence.
-  // The in-session replay never reaches this line at all — the guard above
-  // returns first — and the phase is carried across that wipe on purpose, the
+  // review of #1127). No replay tick reaches this line at all — the guard
+  // above returns first, for the in-session replay and a saved replay alike
+  // (#1324) — and the phase is carried across that wipe on purpose, the
   // seed on the first tick back expiring one the live flags contradict while
   // both readers re-seed silently on that same tick (the "replay glance"
   // tests in `translator.test.ts`). Leaving a replay for a live session is a
@@ -2228,18 +2245,17 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   diffCaution(self.state, telemetry, sessionInfo, canonicalPositions, emit, now);
 
   // Opponent pit entries (issue #622) — consumes the same canonical frozen
-  // order as diffOvertakes on the same tick. Race-only + replay-only gating
-  // is diff-side (the diffPitsOpen precedent) plus pre-green (#647 —
-  // grid/formation positions are meaningless) and post-race (the whole field
-  // pits after the checkered) gates; the pace car drives into the pits when
-  // picking up the field and must never announce.
+  // order as diffOvertakes on the same tick. Race-only gating is diff-side
+  // (the diffPitsOpen precedent) plus pre-green (#647 — grid/formation
+  // positions are meaningless) and post-race (the whole field pits after the
+  // checkered) gates; the pace car drives into the pits when picking up the
+  // field and must never announce.
   diffOpponentPit(
     self.state,
     telemetry,
     playerCarIdx,
     resolvePaceCarIdx(sessionInfo),
     isRaceSession,
-    replayOnlySession,
     isPreGreen(telemetry),
     isPostRace(telemetry),
     resolveIsMultiClass(sessionInfo) === true,
@@ -2265,7 +2281,6 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     playerCarIdx,
     resolvePaceCarIdx(sessionInfo),
     isRaceSession,
-    replayOnlySession,
     isPreGreen(telemetry),
     isPostRace(telemetry),
     resolveIsMultiClass(sessionInfo) === true,
@@ -2286,7 +2301,6 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     telemetry,
     playerCarIdx,
     isRaceSession,
-    replayOnlySession,
     isPreGreen(telemetry),
     isPostRace(telemetry),
     canonicalPositions,
@@ -2370,18 +2384,14 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
 
   // Validated per-lap fuel history (issue #465) — tracker-only, no events.
   // Deliberately NOT race-gated: consumption stats are just as useful on a
-  // practice long run. Read via `getFuelStats()`. The `replayOnlySession`
-  // gate matters even after the main replay guard (the diffPitsOpen
-  // precedent, #655): a paused / frame-scrubbed replay reads
-  // `IsReplayPlaying === false` while `SimMode === "replay"`, and feeding
-  // that replay-timeline telemetry into the tracker would record bogus laps
-  // or trip the session-restart fence on a backward scrub. Treat those ticks
-  // as a gap instead, like any other replay visit.
-  if (replayOnlySession) {
-    self.fuelLaps.resumePartial = true;
-  } else {
-    diffFuelLaps(self.fuelLaps, telemetry);
-  }
+  // practice long run. Read via `getFuelStats()`. A paused / frame-scrubbed
+  // saved replay (`IsReplayPlaying === false` while `SimMode === "replay"`)
+  // used to need its own gate here, since feeding that replay-timeline
+  // telemetry into the tracker would record bogus laps or trip the
+  // session-restart fence on a backward scrub; since #1324 the guard above
+  // treats every tick of a saved replay as a replay visit, with the same
+  // `resumePartial` gap the entry edge sets.
+  diffFuelLaps(self.fuelLaps, telemetry);
 
   diffRadar(self.state, telemetry, emit);
   // Sequenced deliberately AFTER `diffRadar` (issue #912). Both publish onto
@@ -2392,13 +2402,14 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // tick. Entering pit road alongside another car is the ordinary case, not a
   // corner one, and the opening tick is the whole point of the feature.
   //
-  // `replayOnlySession` is passed in rather than guarding the call, so a
-  // replay-only session ends an episode in flight rather than stranding it —
-  // see the diff's own note. Feeding replay-timeline telemetry to a REPEATING
-  // cue is worse than to `diffPitsOpen` or `diffFuelLaps`: parking a replay on
-  // a frame where the car is over the pit limit would beep over the replay UI
-  // until it was scrubbed away.
-  diffPitSpeeding(self.state, telemetry, pitSpeedLimitMps, replayOnlySession, now, emit);
+  // A REPEATING cue fed replay-timeline telemetry would be worse than
+  // `diffPitsOpen` or `diffFuelLaps` fed it: parking a replay on a frame where
+  // the car is over the pit limit would beep over the replay UI until it was
+  // scrubbed away. The diff carried its own replay-only term for the paused
+  // saved replay until #1324; now the guard above keeps every replay tick out,
+  // and `publishActiveStateTeardown` on the entry edge ends an episode in
+  // flight rather than stranding it.
+  diffPitSpeeding(self.state, telemetry, pitSpeedLimitMps, now, emit);
   diffTrackWetness(self.state, telemetry, emit);
 
   for (const p of pending) {
@@ -2483,27 +2494,6 @@ function resolveDriverSetupName(sessionInfo: Record<string, unknown> | null): st
   const name = driverInfo?.DriverSetupName;
 
   return typeof name === "string" && name !== "" ? name : undefined;
-}
-
-/**
- * Is the user passively watching a replay rather than in a live session
- * (issue #604)? Reads `WeekendInfo.SimMode` — iRacing's self-reported sim
- * mode. Known values: `"full"` for live driving, `"replay"` for the replay
- * UI. Critically, this does NOT flip during the brief replay-mode tick
- * window in a live qualifying → race transition (that's a transient
- * `IsReplayPlaying` flicker; `SimMode` stays `"full"`), so gating on it
- * preserves the #568 pre-guard `session.changed` emit for live transitions
- * while suppressing it when the user is only watching a replay.
- *
- * Defaults to `false` (not replay-only) when session info or the field is
- * missing — same behavior as before this gate existed.
- */
-function isReplayOnlySession(sessionInfo: Record<string, unknown> | null): boolean {
-  if (!sessionInfo) return false;
-
-  const weekendInfo = sessionInfo.WeekendInfo as Record<string, unknown> | undefined;
-
-  return weekendInfo?.SimMode === "replay";
 }
 
 /**

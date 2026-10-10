@@ -25,14 +25,13 @@
  * resolved once per tick by the translator and passed in (same shape as
  * `diffFuelLapsLeft` / `diffOvertakes`).
  *
- * **Replay-only gate (#604).** The diff runs after the translator's main
- * `IsReplayPlaying` guard, but a paused or frame-scrubbed replay can read
- * `IsReplayPlaying === false` while `WeekendInfo.SimMode === "replay"`, which
- * would let `PitsOpen` transitions leak as the timeline jumps. The translator
- * passes `replayOnlySession` (its `isReplayOnlySession(sessionInfo)` read) so
- * scrubbing a saved replay across the transition stays silent — without gating
- * on the transient `IsReplayPlaying` itself (the #568 live-transition path
- * deliberately bypasses that).
+ * **No replay gate of its own.** Until #1324 the diff took a `replayOnlySession`
+ * term, because the translator's guard read the raw `IsReplayPlaying` and a
+ * paused or frame-scrubbed saved replay reads it false while
+ * `WeekendInfo.SimMode === "replay"`, which let `PitsOpen` transitions leak as
+ * the timeline jumped. The guard now reads the controller's debounced replay
+ * state, which is true throughout a saved replay, so no such tick reaches
+ * this diff.
  */
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 
@@ -43,7 +42,6 @@ export function diffPitsOpen(
   state: TranslatorState,
   telemetry: TelemetryData,
   isRaceSession: boolean,
-  replayOnlySession: boolean,
   emit: EmitFn,
 ): void {
   const pitsOpen = telemetry.PitsOpen === true;
@@ -60,10 +58,10 @@ export function diffPitsOpen(
   const changed = pitsOpen !== previous;
 
   // Advance the baseline every tick, even when the emit is gated out, so a
-  // transition during a non-race / replay window never replays once it opens.
+  // transition during a non-race window never replays once it opens.
   state.lastPitsOpen = pitsOpen;
 
-  if (changed && isRaceSession && !replayOnlySession) {
+  if (changed && isRaceSession) {
     emit({ event: "pitsOpen.changed", data: { from: previous, to: pitsOpen } });
   }
 }

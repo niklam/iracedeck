@@ -3,16 +3,33 @@
  *
  * Implements the structural surface of `@iracedeck/iracing-sdk`'s
  * `SDKController` that `initializeSimEventsIracing` actually uses
- * (`subscribe`, `unsubscribe`, `getSessionInfo`). The translator runs
- * unmodified; the harness drives it by mutating the in-memory telemetry
- * snapshot and either ticking the loop on a timer or one-shot from the UI.
+ * (`subscribe`, `unsubscribe`, `getSessionInfo`, `getReplayState`). The
+ * translator runs unmodified; the harness drives it by mutating the in-memory
+ * telemetry snapshot and either ticking the loop on a timer or one-shot from
+ * the UI.
+ *
+ * The replay state the translator's guard reads (#1324) is the REAL rule, the
+ * SDK's own `ReplayStateTracker`, stepped from the mock's snapshot and session
+ * info on every tick delivered to a subscriber — the mock's tick is its poll,
+ * and the real controller steps on every poll — and on the subscribe-time
+ * delivery, which stands in for the connect-time step the real controller's
+ * first subscriber triggers. So a `telemetrySequence` that closes a
+ * replay-mode bracket (`IsReplayPlaying: false`) is still a replay to the
+ * translator for `REPLAY_EXIT_GRACE_MS`, as it is in the sim, and a shortcut
+ * holds that long before the step it expects live behaviour from.
  *
  * The `private` fields on the real `SDKController` make TypeScript's
  * structural compatibility check fail, so callers cast through `unknown`
  * to `SDKController` when handing the mock to the translator — the same
  * pattern the existing translator tests use.
  */
-import type { SessionInfo, TelemetryCallback, TelemetryData } from "@iracedeck/iracing-sdk";
+import {
+  type ReplayState,
+  ReplayStateTracker,
+  type SessionInfo,
+  type TelemetryCallback,
+  type TelemetryData,
+} from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 import { silentLogger } from "@iracedeck/logger";
 
@@ -96,6 +113,7 @@ export class MockSDKController {
   private subscribers = new Map<string, TelemetryCallback>();
   private readonly logger: ILogger;
   private stateListeners = new Set<(state: MockState) => void>();
+  private readonly replayState = new ReplayStateTracker();
 
   constructor(options: MockSDKControllerOptions = {}) {
     this.telemetry = options.initialTelemetry ?? defaultTelemetry();
@@ -109,7 +127,7 @@ export class MockSDKController {
     this.subscribers.set(id, callback);
     // Mirror the real controller: deliver current state immediately so the
     // translator's diff state seeds correctly.
-    callback(this.isConnected ? this.telemetry : null, this.isConnected);
+    this.deliver(callback);
   }
 
   unsubscribe(id: string): void {
@@ -118,6 +136,20 @@ export class MockSDKController {
 
   getSessionInfo(): SessionInfo | null {
     return this.sessionInfo;
+  }
+
+  /**
+   * The debounced replay state as of `nowMs` (#1324), as the real controller
+   * answers it: stepped on every delivered tick, re-evaluated at read time so
+   * the exit grace expires between ticks too.
+   */
+  getReplayState(nowMs: number = Date.now()): ReplayState {
+    return this.replayState.read(nowMs);
+  }
+
+  /** The real controller's `goToEnd` hook (#1230, #1324); nothing in the harness sends one today. */
+  noteReplayLeftForLive(nowMs: number = Date.now()): void {
+    this.replayState.noteLeftForLive(nowMs);
   }
 
   // ── Harness-only API ───────────────────────────────────────────────────────
@@ -131,9 +163,7 @@ export class MockSDKController {
 
     // Notify subscribers so the translator sees the state change immediately,
     // not on the next tick — matches `tryConnect` in the real controller.
-    for (const cb of this.subscribers.values()) {
-      cb(connected ? this.telemetry : null, connected);
-    }
+    this.deliverToAll();
 
     this.broadcastState();
   }
@@ -172,8 +202,34 @@ export class MockSDKController {
 
   /** Fire one synchronous tick to all subscribers using the current state. */
   tickOnce(): void {
+    this.deliverToAll();
+  }
+
+  /**
+   * One tick to every subscriber: the replay state steps first, as the real
+   * controller steps it on the poll before any callback runs, and a
+   * disconnected tick resets it, as the real controller resets it wherever
+   * the connection drops.
+   */
+  private deliverToAll(): void {
+    this.stepReplayState();
+
     for (const cb of this.subscribers.values()) {
       cb(this.isConnected ? this.telemetry : null, this.isConnected);
+    }
+  }
+
+  /** One tick to a single subscriber (the subscribe-time delivery), stepped the same way. */
+  private deliver(callback: TelemetryCallback): void {
+    this.stepReplayState();
+    callback(this.isConnected ? this.telemetry : null, this.isConnected);
+  }
+
+  private stepReplayState(): void {
+    if (this.isConnected) {
+      this.replayState.step(this.telemetry, this.sessionInfo, Date.now());
+    } else {
+      this.replayState.reset();
     }
   }
 

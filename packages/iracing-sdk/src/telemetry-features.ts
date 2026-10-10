@@ -8,6 +8,7 @@
  */
 import { Flags, SessionState, type TelemetryData } from "@iracedeck/iracing-native";
 
+import { isReplayOnlySession } from "./session-utils.js";
 import { hasFlag } from "./utils.js";
 
 /**
@@ -172,6 +173,186 @@ export function resolveReplayFrame(t: TelemetryData | null | undefined): number 
   const frame = t.IsReplayPlaying === true ? t.ReplayFrameNum : t.ReplayFrameNumEnd;
 
   return typeof frame === "number" && Number.isFinite(frame) ? frame : null;
+}
+
+/**
+ * How long (ms) `IsReplayPlaying` must read false before the replay counts as
+ * left for the car. For roughly 300 ms after every `setPlayPosition` iRacing
+ * reports it false (measured 2026-10-04, #1324), so a consumer reading the raw
+ * flag per tick took every seek for a trip to live: the translator ran its
+ * live diffs over replay telemetry, Session Info flashed an incident and the
+ * replay surfaces refused a press as "from the car". The 1 s is #1230's
+ * measured margin over the blip, moved here from Replay Markers.
+ */
+export const REPLAY_EXIT_GRACE_MS = 1_000;
+
+/**
+ * Whether a replay is on screen and the frame it shows, debounced (#1324). The
+ * one instance lives on `SDKController`, stepped by {@link nextReplayState}
+ * on every poll that reads telemetry (before the `SessionTick` dedupe, so a
+ * repeated tick counts too) and read through {@link replayStateAt}, so the
+ * translator, the keys and the dials cannot disagree about it.
+ *
+ * `inReplay` and `frame` are the answer as of the time the state was last
+ * evaluated at; the other fields are what a later evaluation needs, since the
+ * grace expires between ticks too (a press lands at any time).
+ */
+export interface ReplayState {
+  /**
+   * Whether a replay is on screen: the tick read `IsReplayPlaying === true`,
+   * the last tick that did is less than {@link REPLAY_EXIT_GRACE_MS} ago, or
+   * the session is a saved replay. Entering a replay counts at once.
+   */
+  readonly inReplay: boolean;
+  /**
+   * The frame on screen: `ReplayFrameNum` on a replay tick, the last frame a
+   * replay tick showed through the grace, and `ReplayFrameNumEnd` live, as in
+   * {@link resolveReplayFrame}. Null when the field is missing or not finite.
+   */
+  readonly frame: number | null;
+  /** Whether the loaded session is a saved replay (`WeekendInfo.SimMode === "replay"`), never live. */
+  readonly replayOnlySession: boolean;
+  /** The last tick's raw `IsReplayPlaying` read. */
+  readonly tickReplayPlaying: boolean;
+  /**
+   * The last tick's own frame: `ReplayFrameNum` while the flag is true or the
+   * session is a saved replay, `ReplayFrameNumEnd` otherwise. What `frame`
+   * falls back to once the grace has run out.
+   */
+  readonly tickFrame: number | null;
+  /** When the last tick that read `IsReplayPlaying === true` was, or null since the replay was left (or never seen). */
+  readonly replaySeenAt: number | null;
+  /** The frame that tick showed — the one held through the grace. */
+  readonly replaySeenFrame: number | null;
+  /**
+   * When {@link replayLeftForLive} was applied, until the first tick that has
+   * left the replay. iRacing applies `goToEnd` a tick or two later, so the
+   * ticks in between still read as a replay; recording them would revive the
+   * grace the exit just dropped. It lapses after {@link REPLAY_EXIT_GRACE_MS}
+   * all the same, so a `goToEnd` iRacing ignored cannot leave replay ticks
+   * unrecorded, and the next seek's blip without a grace.
+   */
+  readonly liveExitAt: number | null;
+}
+
+/** The state before any tick: live, no frame, nothing sighted. */
+export function initialReplayState(): ReplayState {
+  return {
+    inReplay: false,
+    frame: null,
+    replayOnlySession: false,
+    tickReplayPlaying: false,
+    tickFrame: null,
+    replaySeenAt: null,
+    replaySeenFrame: null,
+    liveExitAt: null,
+  };
+}
+
+/** `value` as a finite frame number, else null. */
+function finiteFrame(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+/** Whether the last replay sighting is still inside the grace at `nowMs`. */
+function withinReplayGrace(state: ReplayState, nowMs: number): boolean {
+  return state.replaySeenAt !== null && nowMs - state.replaySeenAt < REPLAY_EXIT_GRACE_MS;
+}
+
+/**
+ * The state's `inReplay` and `frame` re-evaluated at `nowMs`: the grace runs
+ * on wall time, so a read between ticks (a key press, a dial turn) sees it
+ * expire without waiting for the next tick. Pure; the sighting fields are
+ * untouched, and the same object comes back when nothing changed.
+ *
+ * In a saved replay past the grace the frame is the tick's `ReplayFrameNum`
+ * (the `tickFrame` {@link nextReplayState} stored for it); whether iRacing
+ * keeps that field meaningful while the flag reads false there is
+ * unverified against the sim.
+ */
+export function replayStateAt(state: ReplayState, nowMs: number): ReplayState {
+  const inReplay = state.tickReplayPlaying || withinReplayGrace(state, nowMs) || state.replayOnlySession;
+  const frame = !state.tickReplayPlaying && withinReplayGrace(state, nowMs) ? state.replaySeenFrame : state.tickFrame;
+
+  return inReplay === state.inReplay && frame === state.frame ? state : { ...state, inReplay, frame };
+}
+
+/**
+ * The rule (#1324): the state after a tick. A tick is in a replay when it
+ * reads `IsReplayPlaying === true`, when the last tick that did is less than
+ * {@link REPLAY_EXIT_GRACE_MS} ago, or when the session is a saved replay. A
+ * replay tick records the sighting the grace runs from (unless a live exit
+ * is pending, see {@link replayLeftForLive}); a tick that has left the replay
+ * drops it. `nowMs` is the tick's wall time, injectable for tests.
+ *
+ * A null or undefined `sessionInfo` is not a session: `getSessionInfo()`
+ * reads null on an empty or unparsable YAML read, and one such tick would
+ * otherwise drop a paused saved replay out of every guard. The saved-replay
+ * answer is kept from `prev` until a session-info read says otherwise; only a
+ * reset clears it.
+ */
+export function nextReplayState(
+  prev: ReplayState,
+  telemetry: TelemetryData,
+  sessionInfo: unknown,
+  nowMs: number,
+): ReplayState {
+  const replayOnlySession = sessionInfo == null ? prev.replayOnlySession : isReplayOnlySession(sessionInfo);
+  const tickReplayPlaying = telemetry.IsReplayPlaying === true;
+  const tickFrame = finiteFrame(
+    tickReplayPlaying || replayOnlySession ? telemetry.ReplayFrameNum : telemetry.ReplayFrameNumEnd,
+  );
+  let { replaySeenAt, replaySeenFrame } = prev;
+  const liveExitAt =
+    prev.liveExitAt !== null && nowMs - prev.liveExitAt < REPLAY_EXIT_GRACE_MS ? prev.liveExitAt : null;
+
+  if (tickReplayPlaying && liveExitAt === null) {
+    replaySeenAt = nowMs;
+    replaySeenFrame = tickFrame;
+  }
+
+  const stepped: ReplayState = {
+    ...prev,
+    replayOnlySession,
+    tickReplayPlaying,
+    tickFrame,
+    replaySeenAt,
+    replaySeenFrame,
+    liveExitAt,
+  };
+
+  if (!tickReplayPlaying && !withinReplayGrace(stepped, nowMs) && !replayOnlySession) {
+    // Left for the car: the grace has run out (or a live exit dropped it), so
+    // the sighting goes, and any pending live exit has now happened.
+    return replayStateAt({ ...stepped, replaySeenAt: null, replaySeenFrame: null, liveExitAt: null }, nowMs);
+  }
+
+  return replayStateAt(stepped, nowMs);
+}
+
+/**
+ * The state after the plugin's own `goToEnd` was sent (#1230, #1324). In a
+ * session that can go live the command leaves the replay for the car at once,
+ * so the sighting is dropped and no grace follows: a false read straight
+ * after it is the car, not the post-seek blip, and holding the old replay
+ * frame would file a marker at that frame instead of the live edge. Until the
+ * first tick that has left the replay, replay ticks are not recorded: they
+ * are the ticks before iRacing applies the command. In a saved replay the same
+ * command only seeks to the end of the file and the replay stays open, so the
+ * state is returned as is. Call it only for a command that was actually sent;
+ * `nowMs` is the send time, injectable for tests.
+ */
+export function replayLeftForLive(state: ReplayState, nowMs: number): ReplayState {
+  if (state.replayOnlySession) return state;
+
+  return {
+    ...state,
+    inReplay: state.tickReplayPlaying,
+    frame: state.tickFrame,
+    replaySeenAt: null,
+    replaySeenFrame: null,
+    liveExitAt: nowMs,
+  };
 }
 
 /**

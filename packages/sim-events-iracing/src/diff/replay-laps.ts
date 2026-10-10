@@ -31,9 +31,12 @@
  *   improbability `diff/laps.ts` accepts. A first crossing (−1 → 0) opens no
  *   wait: no lap was completed.
  * - **Gate: record only what is live and observable.** A tick is eligible
- *   when `IsReplayPlaying !== true`, the session is not replay-only
- *   (#604's `SimMode` — a `.rpy` has nothing live in it), `SessionNum >= 0`,
- *   and a frame is readable. Every ineligible tick marks the recorder
+ *   when it is not in a replay — the translator's `inReplay`, the controller's
+ *   debounced replay state (#1324): false only once `IsReplayPlaying` has read
+ *   false for the exit grace, and never in a saved replay (#604's `SimMode` —
+ *   a `.rpy` has nothing live in it), so a seek's blip tick neither seeds nor
+ *   records — `SessionNum >= 0`, and a frame is readable. Every ineligible
+ *   tick marks the recorder
  *   unseeded; the first eligible tick after it re-seeds every baseline
  *   without emitting, so a driver returning from the garage or the replay
  *   view to a field that crossed the line meanwhile produces no fabricated
@@ -47,7 +50,7 @@
  *   replay (2026-09-29, #1281) show `CarIdxLapCompleted`, `CarIdxLapDistPct`
  *   and `CarIdxTrackSurface` reading the LIVE field — departed cars at −1 at
  *   a replay moment where they are racing. This change leaves the gate as
- *   it was: `IsReplayPlaying !== true` still excludes every replay tick.
+ *   it was: `inReplay` still excludes every replay tick.
  *   Whether a live crossing seen on a replay tick could instead be recorded
  *   is a separate question, out of scope here: doing so would need the LIVE
  *   frame rather than the cursor's (`resolveReplayFrame` returns
@@ -115,19 +118,14 @@ export function diffReplayLaps(
   state: TranslatorState,
   telemetry: TelemetryData,
   sessionInfo: Record<string, unknown> | null,
-  replayOnlySession: boolean,
+  inReplay: boolean,
   emit: EmitFn,
 ): void {
   const completed = telemetry.CarIdxLapCompleted;
   const sessionNum = telemetry.SessionNum;
   const frame = resolveReplayFrame(telemetry);
   const eligible =
-    telemetry.IsReplayPlaying !== true &&
-    !replayOnlySession &&
-    typeof sessionNum === "number" &&
-    sessionNum >= 0 &&
-    frame !== null &&
-    Array.isArray(completed);
+    !inReplay && typeof sessionNum === "number" && sessionNum >= 0 && frame !== null && Array.isArray(completed);
 
   if (!eligible) {
     state.replayLapsSeeded = false;

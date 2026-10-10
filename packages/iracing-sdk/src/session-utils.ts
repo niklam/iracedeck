@@ -21,6 +21,23 @@ function cleanCarNumber(carNumber: DriverEntry["CarNumber"]): string {
 }
 
 /**
+ * Whether the loaded session is a saved replay (a `.rpy` opened from the
+ * replay browser) rather than a live session: `WeekendInfo.SimMode` reads
+ * `"replay"` there and `"full"` for live driving (#604). The in-session replay
+ * of a live race keeps `"full"`, and so does the brief `IsReplayPlaying`
+ * flicker of a qualifying → race transition, which is what makes this the
+ * discriminator for "never live, whatever the flag says" (#1324).
+ *
+ * False when the session info or the field is missing — the live reading.
+ */
+export function isReplayOnlySession(sessionInfo: unknown): boolean {
+  const weekend = (sessionInfo as Record<string, unknown> | null | undefined)?.WeekendInfo as
+    Record<string, unknown> | undefined;
+
+  return weekend?.SimMode === "replay";
+}
+
+/**
  * What a car-number target refers to in the current session:
  * - `"user"` — a car with a human driver (a connected iRacing user)
  * - `"ai"` — an AI car or the pace car (no user behind it)

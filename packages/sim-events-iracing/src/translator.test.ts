@@ -24,6 +24,8 @@ import {
   IRSDK_UNLIMITED_TIME,
   PaceMode,
   PitSvFlags,
+  REPLAY_EXIT_GRACE_MS,
+  ReplayStateTracker,
   type SDKController,
   SessionState,
   type TelemetryCallback,
@@ -36,6 +38,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DAMAGE_DEBOUNCE_MS } from "./diff/damage.js";
 import { YELLOW_CLEARED_HOLD_MS } from "./diff/flags.js";
+import { INCIDENT_BURST_QUIET_MS } from "./diff/incidents.js";
 import {
   _resetSimEventsIracing,
   getCautionEpisode,
@@ -82,6 +85,14 @@ type MockController = SDKController & {
 function createMockController(): MockController {
   let callback: TelemetryCallback | null = null;
   let sessionInfo: Record<string, unknown> | null = null;
+  // The debounced replay state the translator reads (#1324), the SDK's own
+  // tracker stepped from the mocked telemetry and session info on every tick
+  // (the mock's poll), as `SDKController` steps it on every poll — so a tick
+  // that leaves a replay stays "in a replay" for `REPLAY_EXIT_GRACE_MS`, as in
+  // the sim, and a test that expects live behaviour after a replay lets the
+  // grace run out first (`elapseReplayGrace`) rather than relying on a mock
+  // that forgets it.
+  const replayState = new ReplayStateTracker();
 
   const controller = {
     // Matches the real `SDKController.subscribe` contract: after storing the
@@ -97,9 +108,19 @@ function createMockController(): MockController {
       callback = null;
     },
     getSessionInfo: () => sessionInfo,
+    getReplayState: (nowMs: number = Date.now()) => replayState.read(nowMs),
+    noteReplayLeftForLive: (nowMs: number = Date.now()) => replayState.noteLeftForLive(nowMs),
   } as unknown as MockController;
 
   controller.__tick = (telemetry, isConnected = true) => {
+    // Stepped before the callback, as the real controller does, and reset on
+    // a disconnect tick, as the real controller resets it when the connection drops.
+    if (telemetry) {
+      replayState.step(telemetry, sessionInfo, Date.now());
+    } else {
+      replayState.reset();
+    }
+
     callback?.(telemetry, isConnected);
   };
   controller.__setSessionInfo = (info) => {
@@ -107,6 +128,17 @@ function createMockController(): MockController {
   };
 
   return controller;
+}
+
+/**
+ * Lets the replay grace (#1324) run out, so the next tick is the first one
+ * the translator takes as live. Switches to fake timers when the test has
+ * not already; `afterEach` restores them.
+ */
+function elapseReplayGrace(): void {
+  if (!vi.isFakeTimers()) vi.useFakeTimers();
+
+  vi.advanceTimersByTime(REPLAY_EXIT_GRACE_MS);
 }
 
 function telemetry(overrides: Partial<TelemetryData> = {}): TelemetryData {
@@ -456,8 +488,9 @@ describe("sim-events-iracing translator", () => {
         tickAt(bit, true);
         tickAt(bit, true);
 
-        // Back live: the re-seed tick, then the hold and a little more.
-        for (let n = 0; n <= holdMs / 250 + 2; n++) tickAt(bit);
+        // Back live: the ticks inside the exit grace (#1324) are still the
+        // replay's, then the re-seed tick, then the hold and a little more.
+        for (let n = 0; n <= (REPLAY_EXIT_GRACE_MS + holdMs) / 250 + 2; n++) tickAt(bit);
 
         expect(handler).toHaveBeenCalledTimes(1);
         expect(handler.mock.calls[0]![0].data).toMatchObject({ carIdx: 1, flag, trigger: "entered-range" });
@@ -1080,6 +1113,7 @@ describe("sim-events-iracing translator", () => {
       // Out of the car / watching the replay: replay-mode ticks wipe the state.
       controller.__tick(telemetry({ IsReplayPlaying: true, IsOnTrack: false, SessionState: SessionState.CoolDown }));
       // …and back to a live tick in the same session.
+      elapseReplayGrace();
       controller.__tick(telemetry({ LapCompleted: 5, SessionState: SessionState.CoolDown }));
 
       expect(isRaceFinished()).toBe(true);
@@ -1206,6 +1240,7 @@ describe("sim-events-iracing translator", () => {
       expect(getFuelStats(5).samples).toBe(1);
 
       // Back in the car in the same session — the history is still there.
+      elapseReplayGrace();
       controller.__tick(telemetry({ Lap: 2, LapDistPct: 0.5, SessionTime: 400, FuelLevel: 46 }));
 
       expect(getFuelStats(5).samples).toBe(1);
@@ -1278,12 +1313,218 @@ describe("sim-events-iracing translator", () => {
       // A replay glance wipes translator state — the pending fire must
       // survive the wipe (issue #771 review follow-up).
       controller.__tick(telemetry({ IsReplayPlaying: true, IsOnTrack: false, SessionFlags: Flags.Checkered }));
+      elapseReplayGrace();
       controller.__tick(telemetry({ LapCompleted: 5, LapDistPct: 0.8, SessionFlags: Flags.Checkered }));
       expect(handler).not.toHaveBeenCalled();
 
       // Takes the flag at the line.
       controller.__tick(telemetry({ LapCompleted: 6, LapDistPct: 0.01, SessionFlags: Flags.Checkered }));
       expect(handler).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // Issue #1324: for about 300 ms after every replay seek iRacing reports
+  // `IsReplayPlaying` false. The guard used to take those ticks for a trip to
+  // live — it wiped the diffs, ran them against the replay telemetry and wiped
+  // again on the way back — and it now reads the controller's debounced
+  // replay state, which holds "in a replay" for `REPLAY_EXIT_GRACE_MS` after
+  // the last replay tick and never lets a saved replay read as live.
+  describe("the replay guard reads the debounced replay state (issue #1324)", () => {
+    const TICK_MS = 16;
+    const LIVE_RACE: Record<string, unknown> = {
+      WeekendInfo: { TrackID: 42, SimMode: "full" },
+      SessionInfo: { Sessions: [{ SessionNum: 0, SessionType: "Race" }] },
+      DriverInfo: { DriverCarIdx: 0, Drivers: [{ CarIdx: 0 }] },
+    };
+    const SAVED_REPLAY: Record<string, unknown> = {
+      ...LIVE_RACE,
+      WeekendInfo: { TrackID: 42, SimMode: "replay" },
+    };
+
+    /** A green-flag race tick with the car on the circuit and nothing scored. */
+    function liveTick(overrides: Partial<TelemetryData> = {}): TelemetryData {
+      return telemetry({
+        SessionNum: 0,
+        SessionState: SessionState.Racing,
+        SessionFlags: Flags.Green,
+        IsOnTrack: true,
+        OnPitRoad: false,
+        PlayerTrackSurface: TrkLoc.OnTrack,
+        PlayerCarMyIncidentCount: 0,
+        Lap: 3,
+        LapDistPct: 0.5,
+        ReplayFrameNum: 0,
+        ReplayFrameNumEnd: 30_000,
+        ...overrides,
+      });
+    }
+
+    /** The same moment seen from the in-session replay, parked a lap back. */
+    function replayTick(overrides: Partial<TelemetryData> = {}): TelemetryData {
+      return liveTick({ IsReplayPlaying: true, IsOnTrack: false, ReplayFrameNum: 12_000, ...overrides });
+    }
+
+    /**
+     * Boots the translator at a live race, records every publish from here on
+     * (every event in the catalog, not a chosen few, so nothing can slip by
+     * unwatched), and returns a ticker that advances the fake clock `TICK_MS`
+     * per tick.
+     */
+    function start(sessionInfo: Record<string, unknown>) {
+      vi.useFakeTimers();
+      vi.setSystemTime(Date.UTC(2026, 9, 4, 11, 25, 57));
+      const controller = createMockController();
+      controller.__setSessionInfo(sessionInfo);
+      const bus = getEventBus();
+      const publish = vi.spyOn(bus, "publish");
+      initializeSimEventsIracing(bus, controller, createMockLogger());
+
+      const tick = (t: TelemetryData, times = 1): void => {
+        for (let n = 0; n < times; n++) {
+          vi.advanceTimersByTime(TICK_MS);
+          controller.__tick(t);
+        }
+      };
+      const published = (): string[] => publish.mock.calls.map((c) => c[0].event);
+
+      return { controller, tick, publish, published };
+    }
+
+    it("publishes nothing through a seek's ~300 ms IsReplayPlaying blip, though the blip's telemetry moves", () => {
+      const { tick, publish, published } = start(LIVE_RACE);
+
+      // Live for a few seconds, then the driver opens the in-session replay.
+      tick(liveTick(), 20);
+      tick(replayTick(), 20);
+      // The replay entry's own teardown is the entry's, not the seek's.
+      publish.mockClear();
+
+      // The seek: iRacing reports the flag false for 19 ticks (304 ms) while
+      // the snapshot follows the replay cursor — and moves during the blip: a
+      // flag bit, pit road and the incident count all differ from the first
+      // blip tick, so a guard that took the blip for live would have the diffs
+      // seed on the first tick and see edges on the seventh.
+      tick(liveTick({ IsReplayPlaying: false, PlayerCarMyIncidentCount: -1, ReplayFrameNum: 12_100 }), 6);
+      tick(
+        liveTick({
+          IsReplayPlaying: false,
+          SessionFlags: Flags.Green | Flags.Yellow,
+          OnPitRoad: true,
+          PlayerTrackSurface: TrkLoc.AproachingPits,
+          PlayerCarMyIncidentCount: 1,
+          ReplayFrameNum: 12_100,
+        }),
+        13,
+      );
+      // The replay plays on from the new position.
+      tick(replayTick({ ReplayFrameNum: 12_120 }), 20);
+
+      expect(published()).toEqual([]);
+    });
+
+    it("re-seeds the diffs once the grace has run out after a real exit, and publishes the edges after it", () => {
+      const { tick, publish, published } = start(LIVE_RACE);
+      const incidents = vi.fn();
+      getEventBus().subscribe("incident.occurred", incidents);
+
+      tick(liveTick(), 20);
+      tick(replayTick(), 20);
+      publish.mockClear();
+
+      // Drive: the flag reads false for good. Inside the grace the ticks are
+      // still the replay's, so an edge there is absorbed...
+      tick(liveTick({ PlayerCarMyIncidentCount: 1 }), 10);
+      expect(published()).toEqual([]);
+
+      // ...and past it the first tick re-seeds (no edge is spoken for what
+      // happened meanwhile), after which a real increase is scored.
+      vi.advanceTimersByTime(REPLAY_EXIT_GRACE_MS);
+      tick(liveTick({ PlayerCarMyIncidentCount: 1 }), 5);
+      expect(incidents).not.toHaveBeenCalled();
+
+      tick(liveTick({ PlayerIncidents: IncidentFlags.RepOffTrack, PlayerCarMyIncidentCount: 1 }), 5);
+      tick(liveTick({ PlayerCarMyIncidentCount: 2 }), 5);
+      // Published once the burst has been quiet for its window.
+      vi.advanceTimersByTime(INCIDENT_BURST_QUIET_MS);
+      tick(liveTick({ PlayerCarMyIncidentCount: 2 }), 2);
+      expect(incidents).toHaveBeenCalledTimes(1);
+    });
+
+    it("takes a saved replay as a replay whatever IsReplayPlaying reads, so a scrub publishes nothing", () => {
+      const { tick, published } = start(SAVED_REPLAY);
+
+      // A paused or frame-scrubbed .rpy reads the flag false the whole way;
+      // the timeline jumps through a flag change, pit road and an incident.
+      tick(liveTick({ IsReplayPlaying: false }), 20);
+      tick(
+        liveTick({
+          IsReplayPlaying: false,
+          SessionFlags: Flags.Green | Flags.Yellow,
+          OnPitRoad: true,
+          PlayerTrackSurface: TrkLoc.AproachingPits,
+          PlayerCarMyIncidentCount: 2,
+        }),
+        20,
+      );
+      tick(liveTick({ IsReplayPlaying: false, SessionFlags: Flags.Green }), 20);
+
+      expect(published()).toEqual([]);
+    });
+
+    // The opponent diffs used to carry a `replayOnlySession` term of their own
+    // for the paused saved replay; the guard covers it now, so the coverage
+    // lives here, with a live positive control so the silence is the guard's.
+    describe("the opponent diffs behind the guard, in a saved replay", () => {
+      const THREE_CARS: Record<string, unknown> = {
+        DriverInfo: {
+          DriverCarIdx: 0,
+          Drivers: [
+            { CarIdx: 0, CarNumber: "1" },
+            { CarIdx: 1, CarNumber: "07" },
+            { CarIdx: 2, CarNumber: "22" },
+          ],
+        },
+        SessionInfo: { Sessions: [{ SessionNum: 0, SessionType: "Race" }] },
+      };
+
+      /** A green race, car1 just ahead of the player and car2 just behind, with the flag reading false. */
+      function fieldTick(k: number, o: { car1Flags?: number; car1Surface?: TrkLoc } = {}): TelemetryData {
+        const player = 0.3 + 0.01 * k;
+
+        return liveTick({
+          IsReplayPlaying: false,
+          SessionTime: 100 + k,
+          CarIdxLapCompleted: [5, 5, 5],
+          CarIdxLapDistPct: [player, player + 0.015, player - 0.005],
+          CarIdxTrackSurface: [TrkLoc.OnTrack, o.car1Surface ?? TrkLoc.OnTrack, TrkLoc.OnTrack],
+          CarIdxClass: [0, 0, 0],
+          CarIdxSessionFlags: [0, o.car1Flags ?? 0, 0],
+        });
+      }
+
+      /** Six green ticks, then car1 takes the meatball, then turns into the pits with it. */
+      function driveThenFlagAndPit(tick: (t: TelemetryData, times?: number) => void): void {
+        for (let k = 0; k < 6; k++) tick(fieldTick(k));
+
+        tick(fieldTick(6, { car1Flags: Flags.Repair }));
+        tick(fieldTick(7, { car1Flags: Flags.Repair, car1Surface: TrkLoc.AproachingPits }));
+      }
+
+      it("publishes nothing for an opponent's flag or pit entry scrubbed through in a saved replay", () => {
+        const { tick, published } = start({ ...THREE_CARS, WeekendInfo: { TrackID: 42, SimMode: "replay" } });
+
+        driveThenFlagAndPit(tick);
+
+        expect(published()).toEqual([]);
+      });
+
+      it("positive control: live, the same ticks announce the flag and the pit entry", () => {
+        const { tick, published } = start({ ...THREE_CARS, WeekendInfo: { TrackID: 42, SimMode: "full" } });
+
+        driveThenFlagAndPit(tick);
+
+        expect(published()).toEqual(expect.arrayContaining(["opponentFlag.flagged", "opponentPit.entered"]));
+      });
     });
   });
 
@@ -3540,7 +3781,13 @@ describe("sim-events-iracing translator", () => {
       // In the session menu / garage: iRacing is in replay, not on track.
       controller.__tick(telemetry({ IsReplayPlaying: true, IsOnTrack: false }));
       controller.__tick(telemetry({ IsReplayPlaying: true, IsOnTrack: false }));
-      // Driver clicks "Drive" — replay ends and the car is on track.
+      // Driver clicks "Drive" — replay ends and the car is on track. Inside
+      // the exit grace (#1324) the tick is still the replay's: a seek's
+      // IsReplayPlaying blip must not read as a drive-out.
+      controller.__tick(telemetry({ IsReplayPlaying: false, IsOnTrack: true }));
+      expect(handler).not.toHaveBeenCalled();
+
+      elapseReplayGrace();
       controller.__tick(telemetry({ IsReplayPlaying: false, IsOnTrack: true }));
 
       expect(handler).toHaveBeenCalledTimes(1);
@@ -3568,8 +3815,10 @@ describe("sim-events-iracing translator", () => {
       initializeSimEventsIracing(bus, controller, createMockLogger());
 
       controller.__tick(telemetry({ SessionNum: 0, IsReplayPlaying: true, IsOnTrack: false }));
+      elapseReplayGrace();
       controller.__tick(telemetry({ SessionNum: 0, IsReplayPlaying: false, IsOnTrack: true })); // drive out — fires
       controller.__tick(telemetry({ SessionNum: 0, IsReplayPlaying: true, IsOnTrack: false })); // back to garage
+      elapseReplayGrace();
       controller.__tick(telemetry({ SessionNum: 0, IsReplayPlaying: false, IsOnTrack: true })); // drive out again
 
       // Same session throughout — no re-fire across garage cycles.
@@ -3610,6 +3859,7 @@ describe("sim-events-iracing translator", () => {
 
       // Practice: drive out, callout fires.
       controller.__tick(telemetry({ SessionNum: 0, IsReplayPlaying: true, IsOnTrack: false }));
+      elapseReplayGrace();
       controller.__tick(telemetry({ SessionNum: 0, IsReplayPlaying: false, IsOnTrack: true }));
       expect(handler).toHaveBeenCalledTimes(1);
 
@@ -3621,6 +3871,7 @@ describe("sim-events-iracing translator", () => {
       expect(handler).toHaveBeenCalledTimes(1); // still in replay — no fire yet
 
       // Driver clicks Drive in qualifying — fires on the live-on-track edge.
+      elapseReplayGrace();
       controller.__tick(telemetry({ SessionNum: 1, IsReplayPlaying: false, IsOnTrack: true }));
       expect(handler).toHaveBeenCalledTimes(2);
     });
@@ -4675,11 +4926,13 @@ describe("sim-events-iracing translator", () => {
       // Into the in-session replay; the per-car arrays now follow the cursor.
       controller.__tick(lapTick({ completed: [4, 5, 4, -1], replay: true }));
       controller.__tick(lapTick({ completed: [2, 2, 2, -1], replay: true }));
-      // Back live: the field crossed meanwhile. The first tick re-seeds without
-      // emitting, and — the pre-guard-and-wiped signature this test pins — the
-      // replay-exit wipe that follows it re-seeds once more, so a crossing on
-      // the second live tick is absorbed too. Moving the diff behind the guard,
-      // or preserving its state in `wipeStateForReplay`, would emit that one.
+      // Back live, once the exit grace has run (#1324): the field crossed
+      // meanwhile. The first tick re-seeds without emitting, and — the
+      // pre-guard-and-wiped signature this test pins — the replay-exit wipe
+      // that follows it re-seeds once more, so a crossing on the second live
+      // tick is absorbed too. Moving the diff behind the guard, or preserving
+      // its state in `wipeStateForReplay`, would emit that one.
+      elapseReplayGrace();
       controller.__tick(lapTick({ completed: [5, 5, 5, -1] }));
       controller.__tick(lapTick({ completed: [5, 6, 5, -1] }));
       expect(seen).toEqual([]);
@@ -5311,12 +5564,13 @@ describe("sim-events-iracing translator", () => {
     // diff. What that seed does with the preserved phase decides both tests
     // below, and they want opposite things of it — hence the pair.
     describe("a replay glance", () => {
-      /** Park the translator mid-caution, then glance at the replay. */
+      /** Park the translator mid-caution, glance at the replay, and let the exit grace (#1324) run. */
       function glanceAtReplay(controller: MockController): void {
         controller.__tick(cautionTick({ flags: RACING }));
         controller.__tick(cautionTick({ flags: WAVING }));
         controller.__tick(cautionTick({ flags: STATIC }));
         controller.__tick(cautionTick({ flags: STATIC, replay: true }));
+        elapseReplayGrace();
       }
 
       it("does not swallow a start-go edge when the caution ended during the glance", () => {
@@ -5383,6 +5637,7 @@ describe("sim-events-iracing translator", () => {
         expect(getCautionEpisode()).toEqual(before);
 
         // The first tick back re-seeds the caution diff; the episode survives it.
+        elapseReplayGrace();
         controller.__tick(cautionTick({ flags: STATIC }));
         expect(getCautionEpisode()).toEqual(before);
 
@@ -5472,8 +5727,8 @@ describe("sim-events-iracing translator", () => {
       };
 
       /**
-       * Drive into a stop and out again; `interrupt` runs at 6 s, after the car
-       * left its box and while it is still on pit road.
+       * Drive into a stop and out again; `interrupt` runs between 5 and 7 s,
+       * after the car left its box and while it is still on pit road.
        */
       function stopAndLeave(interrupt: (tickAt: (s: number, o: Partial<TelemetryData>) => void) => void) {
         vi.useFakeTimers();
@@ -5520,8 +5775,10 @@ describe("sim-events-iracing translator", () => {
       });
 
       it("drops it on a replay glance between the box and pit exit, though the exit readback still fires", () => {
+        // The glance is over once the exit grace has run (#1324), so the car
+        // is back live on pit road before the exit edge at 7 s.
         const seen = stopAndLeave((tickAt) => {
-          tickAt(6, { IsReplayPlaying: true, OnPitRoad: true, PlayerTrackSurface: TrkLoc.AproachingPits });
+          tickAt(5.2, { IsReplayPlaying: true, OnPitRoad: true, PlayerTrackSurface: TrkLoc.AproachingPits });
           tickAt(6.5, { OnPitRoad: true, PlayerTrackSurface: TrkLoc.AproachingPits });
         });
 

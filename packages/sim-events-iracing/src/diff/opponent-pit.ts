@@ -36,13 +36,16 @@
  * within a tick the leader's emission is ordered first.
  *
  * **Gating in the diff** (the `diffPitsOpen` precedent): race sessions only,
- * replay-only sessions suppressed (#604), pre-green suppressed (#647 — grid
- * shuffles produce meaningless positions), post-race suppressed (the whole
+ * pre-green suppressed (#647 — grid shuffles produce meaningless positions),
+ * post-race suppressed (the whole
  * field pits after the checkered — announcing that is noise), and an
  * unresolved player carIdx suppresses everything (classification is relative
  * to the player; with `-1` the player's own car could classify as an
  * opponent). Baselines advance every tick so a gated transition is absorbed,
- * never replayed when the gate opens.
+ * never replayed when the gate opens. No replay term: a replay tick, a saved
+ * replay included, never reaches this diff since #1324 (the translator's guard
+ * reads the controller's debounced replay state), so the `replayOnlySession`
+ * gate it carried from #604 went.
  */
 import { classPositionFromOrder, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
 
@@ -138,7 +141,6 @@ export function diffOpponentPit(
   playerCarIdx: number,
   paceCarIdx: number | null,
   isRaceSession: boolean,
-  replayOnlySession: boolean,
   preGreen: boolean,
   postRace: boolean,
   isMultiClass: boolean,
@@ -170,7 +172,7 @@ export function diffOpponentPit(
   }
 
   const prev = state.opponentPitLastSurface;
-  const gated = !isRaceSession || replayOnlySession || preGreen || postRace || playerCarIdx < 0;
+  const gated = !isRaceSession || preGreen || postRace || playerCarIdx < 0;
 
   if (!gated) {
     const lc = telemetry.CarIdxLapCompleted;
@@ -227,7 +229,7 @@ export function diffOpponentPit(
   }
 
   // Advance the baseline in place every tick — even when gated, so a
-  // transition during a non-race / replay / pre-green / post-race window
+  // transition during a non-race / pre-green / post-race window
   // never replays once the gate opens. Element-wise copy, no per-tick
   // allocation (the other diffs' baseline convention). A `NotInWorld` tick
   // leaves the car's last in-world surface in place (#1212).

@@ -9,12 +9,8 @@ import {
 import type { LapStartLookup, LapStartQuery, LapStartRecord } from "@iracedeck/replay-store";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
-import {
-  _resetReplayCursor,
-  cancelReplayCursorOwner,
-  lastReplaySighting,
-  recordReplaySighting,
-} from "../../shared/replay-cursor.js";
+import { _resetReplayCursor, cancelReplayCursorOwner } from "../../shared/replay-cursor.js";
+import { withSteppedReplayState } from "../../shared/test-support/replay-state.js";
 import {
   _getFastestLapSessionCache,
   _resetFastestLapSessionCache,
@@ -170,12 +166,14 @@ vi.mock("@iracedeck/deck-core", () => ({
   },
   ConnectionStateAwareAction: class MockConnectionStateAwareAction {
     logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
-    sdkController = {
+    // The controller's debounced replay state (#1324) runs the SDK's real rule,
+    // stepped from whatever telemetry the test has set, at every read.
+    sdkController = withSteppedReplayState({
       subscribe: vi.fn(),
       unsubscribe: vi.fn(),
       getCurrentTelemetry: vi.fn(() => null),
       getSessionInfo: vi.fn(() => null),
-    };
+    });
     updateConnectionState = vi.fn();
     setKeyImage = vi.fn();
     setRegenerateCallback = vi.fn();
@@ -3611,6 +3609,108 @@ describe("ReplayControl", () => {
           expect(_getFastestLapSessionCache()).toBeNull();
         });
 
+        it.each<[string, LapStartLookup]>([
+          ["a record hit jumps", { hit: true, frame: 5000, timeMs: null, matchedBy: "pair" }],
+          ["a record miss walks", { hit: false, reason: "lap not recorded" }],
+        ])(
+          "accepts a press inside the post-seek grace, where IsReplayPlaying reads false (#1324): %s",
+          async (_name, lookup) => {
+            vi.useFakeTimers();
+
+            try {
+              singleSessionBuffer(4, 4);
+              mockStore.laps.findLapStart.mockImplementation(() => lookup);
+              await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+              const settled = action["sdkController"].getCurrentTelemetry;
+
+              // A replay tick, then ~300 ms of the blip every seek leaves behind.
+              action["sdkController"].getReplayState();
+              action["sdkController"].getCurrentTelemetry = vi.fn(() => ({
+                ...(settled() as any),
+                IsReplayPlaying: false,
+              }));
+              await vi.advanceTimersByTimeAsync(300);
+
+              await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+              action["sdkController"].getCurrentTelemetry = settled;
+              await vi.runAllTimersAsync();
+
+              expect(action["logger"].info).not.toHaveBeenCalledWith(
+                "Jump to fastest lap: replay not open; iRacing ignores replay commands from the car",
+              );
+              expect(mockStore.laps.findLapStart).toHaveBeenCalledTimes(1);
+
+              if (lookup.hit) {
+                expect(mockReplay.setPlayPosition).toHaveBeenCalledExactlyOnceWith(expect.anything(), 4940);
+              } else {
+                expect(mockReplay.goToStart).toHaveBeenCalled();
+              }
+            } finally {
+              vi.useRealTimers();
+            }
+          },
+        );
+
+        // The debounced state admits a press inside the grace, which also
+        // covers the second after the user left for the car through iRacing's
+        // own UI — indistinguishable at press time. The walk's own samples
+        // settle it: the raw flag never reads true from the car (#1324 review).
+        describe("a map built inside the grace is kept only once the raw flag has read true", () => {
+          const RAN_FROM_CAR =
+            "Jump to fastest lap: the walk ran from the car (IsReplayPlaying never read true); session map discarded";
+
+          /** A replay tick sighted, then the flag false from here on: the press lands 300 ms into the grace. */
+          async function pressInsideGrace() {
+            singleSessionBuffer(4, 4);
+            await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+            const settled = action["sdkController"].getCurrentTelemetry;
+
+            action["sdkController"].getReplayState();
+            action["sdkController"].getCurrentTelemetry = vi.fn(() => ({
+              ...(settled() as any),
+              IsReplayPlaying: false,
+            }));
+            await vi.advanceTimersByTimeAsync(300);
+            await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+
+            return settled;
+          }
+
+          it("caches nothing and sends no jump when no sample of the walk reads the flag true: the user was back in the car", async () => {
+            vi.useFakeTimers();
+
+            try {
+              await pressInsideGrace();
+              await vi.runAllTimersAsync();
+
+              expect(action["logger"].info).toHaveBeenCalledWith(RAN_FROM_CAR);
+              expect(_getFastestLapSessionCache()).toBeNull();
+              expect(mockReplay.setPlayPosition).not.toHaveBeenCalled();
+              expect(mockStore.laps.recordLapStart).not.toHaveBeenCalled();
+            } finally {
+              vi.useRealTimers();
+            }
+          });
+
+          it("caches the map and completes the walk when the flag returns true after the blip: the press really was post-seek", async () => {
+            vi.useFakeTimers();
+
+            try {
+              const settled = await pressInsideGrace();
+
+              // The blip ends: every sample from here reads the replay.
+              action["sdkController"].getCurrentTelemetry = settled;
+              await vi.runAllTimersAsync();
+
+              expect(action["logger"].info).not.toHaveBeenCalledWith(RAN_FROM_CAR);
+              expect(_getFastestLapSessionCache()?.sessions.map((s) => s.sessionUniqueId)).toEqual([3]);
+              expect(mockStore.laps.recordLapStart).toHaveBeenCalledTimes(1);
+            } finally {
+              vi.useRealTimers();
+            }
+          });
+        });
+
         it.each([-1, undefined])(
           "refuses a press while SessionNum is %s (the post-jump transient) before any command",
           async (sessionNum) => {
@@ -4375,9 +4475,14 @@ describe("ReplayControl", () => {
     });
   });
 
-  describe("jump-to-live and the Replay Markers replay grace (#1230)", () => {
+  describe("jump-to-live and the controller's replay grace (#1230, #1324)", () => {
     const mockReplay = { goToEnd: vi.fn(() => true) };
+    /** A replay at frame 4 000; `ReplayFrameNumEnd` is the frames left. */
+    const REPLAY = { IsReplayPlaying: true, ReplayFrameNum: 4_000, ReplayFrameNumEnd: 90_000 } as TelemetryData;
+    /** What telemetry reads in the post-seek blip, and from the car. */
+    const NOT_PLAYING = { IsReplayPlaying: false, ReplayFrameNum: 0, ReplayFrameNumEnd: 90_000 } as TelemetryData;
     let action: ReplayControl;
+    let t0: number;
 
     function fakeEvent(settings: Record<string, unknown>) {
       return { action: { id: "ctx-live", setTitle: vi.fn(), setImage: vi.fn() }, payload: { settings } };
@@ -4387,6 +4492,18 @@ describe("ReplayControl", () => {
       action["sdkController"].getSessionInfo = vi.fn(() => ({ WeekendInfo: { SimMode: simMode } }) as any);
     }
 
+    /** The replay tick before the press, then the state a blip tick reads 50 ms after it. */
+    async function pressJumpToLive(): Promise<{ inReplay: boolean; frame: number | null }> {
+      const sdk = action["sdkController"];
+
+      sdk.getCurrentTelemetry = vi.fn(() => REPLAY);
+      sdk.getReplayState(t0);
+      await action.onKeyDown(fakeEvent({ mode: "jump-to-live" }) as any);
+      sdk.getCurrentTelemetry = vi.fn(() => NOT_PLAYING);
+
+      return sdk.getReplayState(t0 + 50);
+    }
+
     beforeEach(async () => {
       vi.clearAllMocks();
       _resetReplayCursor();
@@ -4394,34 +4511,33 @@ describe("ReplayControl", () => {
       const { getCommands } = await import("@iracedeck/deck-iracing");
       vi.mocked(getCommands).mockReturnValue({ replay: mockReplay, camera: { switchNum: vi.fn() } } as any);
       action = new ReplayControl();
-      recordReplaySighting(4_000, 10_000);
+      vi.spyOn(action["sdkController"], "noteReplayLeftForLive");
+      t0 = Date.now();
     });
 
-    it("a jump to live in a live session leaves the replay for the car: the sighting is dropped at once", async () => {
+    it("a jump to live in a live session leaves the replay for the car: no grace follows", async () => {
       inSession("full");
 
-      await action.onKeyDown(fakeEvent({ mode: "jump-to-live" }) as any);
-
+      expect(await pressJumpToLive()).toMatchObject({ inReplay: false, frame: 90_000 });
       expect(mockReplay.goToEnd).toHaveBeenCalledOnce();
-      expect(lastReplaySighting()).toBeNull();
+      expect(action["sdkController"].noteReplayLeftForLive).toHaveBeenCalledOnce();
     });
 
-    it("a jump to live that was not sent leaves the sighting and its grace", async () => {
+    it("a jump to live that was not sent tells the controller nothing: the grace stands", async () => {
       inSession("full");
       mockReplay.goToEnd.mockReturnValue(false);
 
-      await action.onKeyDown(fakeEvent({ mode: "jump-to-live" }) as any);
-
-      expect(lastReplaySighting()).toEqual({ frame: 4_000, seenAt: 10_000 });
+      expect(await pressJumpToLive()).toMatchObject({ inReplay: true, frame: 4_000 });
+      expect(action["sdkController"].noteReplayLeftForLive).not.toHaveBeenCalled();
     });
 
-    it("in a saved replay the jump only seeks to the end of the file: the sighting and its grace stand", async () => {
+    it("in a saved replay the jump only seeks to the end of the file: the grace stands", async () => {
       inSession("replay");
 
-      await action.onKeyDown(fakeEvent({ mode: "jump-to-live" }) as any);
-
+      expect(await pressJumpToLive()).toMatchObject({ inReplay: true, frame: 4_000 });
       expect(mockReplay.goToEnd).toHaveBeenCalledOnce();
-      expect(lastReplaySighting()).toEqual({ frame: 4_000, seenAt: 10_000 });
+      // The action tells the controller every sent goToEnd; the saved-replay rule is the SDK's.
+      expect(action["sdkController"].noteReplayLeftForLive).toHaveBeenCalledOnce();
     });
   });
 });

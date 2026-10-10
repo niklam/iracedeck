@@ -36,7 +36,6 @@ function run(
   opts: Partial<{
     player: number;
     isRace: boolean;
-    replay: boolean;
     preGreen: boolean;
     postRace: boolean;
     multi: boolean;
@@ -52,7 +51,6 @@ function run(
     opts.player ?? PLAYER,
     opts.pace ?? null,
     opts.isRace ?? true,
-    opts.replay ?? false,
     opts.preGreen ?? false,
     opts.postRace ?? false,
     opts.multi ?? false,
@@ -440,11 +438,7 @@ describe("diffOpponentPit", () => {
 
     const s2 = createInitialState();
     run(s2, makeField(), 1000);
-    expect(run(s2, t, 2000, { replay: true })).toEqual([]);
-
-    const s3 = createInitialState();
-    run(s3, makeField(), 1000);
-    expect(run(s3, t, 2000, { preGreen: true })).toEqual([]);
+    expect(run(s2, t, 2000, { preGreen: true })).toEqual([]);
   });
 
   it("stays silent after the checkered (post-race gate)", () => {
