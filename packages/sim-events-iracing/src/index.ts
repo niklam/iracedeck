@@ -40,6 +40,7 @@ export {
   isRaceFinished,
   isSimEventsIracingInitialized,
   isUnderFullCourseCaution,
+  readSimState,
   resolveLeaderLapTimeS,
   type GapNeighbor,
   type LivePosition,
@@ -101,6 +102,11 @@ export {
   sanitizeFuelCalloutMarginLaps,
 } from "./diff/fuel-laps-left.js";
 export { FUEL_LAP_HISTORY_CAP, type FuelLap, type FuelStats } from "./diff/fuel-laps.js";
+// The translator's section of the Telemetry Snapshot (issue #1387):
+// `readSimState()` above gathers it, and these are its shape and the rows it
+// contributes to the Markdown report. `plugin-runtime` registers the pair with
+// `@iracedeck/diagnostics`; this package imports nothing from there.
+export { simStateHeadline, type SimStateSnapshot } from "./sim-state.js";
 // The opponent-flag range setting's bounds and sanitizer (issue #1274) — the
 // plugins wire `getOpponentFlagRangeSeconds` through it, the
 // `sanitizeGapAlertThresholdSeconds` precedent.
