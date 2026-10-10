@@ -23,13 +23,13 @@ Two format rules carry the most weight:
 
 ### 1. Establish the range and the source of truth
 
-- The version is the top `##` heading in `packages/website/src/content/docs/changelog.mdx` (the in-development section, dated `_Unreleased_`). It equals the root `package.json` `version` with any `-dev`/`-rc` suffix stripped.
+- The version is the one in development: the root `package.json` `version` with any `-dev`/`-rc` suffix stripped. Until its stable release is cut, its notes are the fragments in `changelog.d/` at the repo root, one file per bullet (#1386) — `changelog.mdx` holds only released versions, and the website's `/changelog/` page shows the fragments as an `_Unreleased_` section on top. Once the release's version bump has run, the fold has written them into `packages/website/src/content/docs/changelog.mdx` as the dated top `##` section and deleted the files.
 - The previous release is the latest stable `vX.Y.Z` tag. List what changed:
   ```bash
   git tag --sort=-version:refname | head
   git log --oneline v<prev>..master
   ```
-- **The changelog's in-development section is the curated list of user-facing changes** — it already collapses a feature and its follow-up fixes into one line (see `@.claude/rules/changelog.md`). Use it as the spine. Cross-check it against the commit list so nothing user-facing is missing and nothing internal sneaks in.
+- **The in-development notes are the curated list of user-facing changes** — each fragment already collapses a feature and its follow-up fixes into one bullet (see `@.claude/rules/changelog.md`). Use them as the spine, in the order the release will print them: category, then `weight` descending (higher is a headline change, 50 ordinary). Cross-check it against the commit list so nothing user-facing is missing and nothing internal sneaks in.
 
 ### 2. Separate user-facing from internal
 

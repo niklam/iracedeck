@@ -35,8 +35,8 @@
   var __changelog = require('./data/changelog.json');
   var __releases = __changelog.releases || [];
   // Match on the numeric version: a build reports `2.5.0-dev.0` while the
-  // changelog section is `## 2.5.0`. Same normalisation the release tooling uses
-  // to find the section to date-stamp (scripts/lib/changelog-stamp.mjs).
+  // changelog section is `## 2.5.0`. The fragment loader strips the suffix the
+  // same way to name the in-development section (scripts/lib/changelog-fragments.mjs).
   var __version = typeof version === 'undefined' ? '' : String(version);
   var __installed = __version.replace(/[-+].*$/, '');
   var __hasInstalled = __releases.some(function (r) { return r.version === __installed; });

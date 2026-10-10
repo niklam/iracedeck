@@ -85,7 +85,7 @@ You can import or reference specific rule files from other markdown using `@.cla
 **Always loaded** (no `paths` frontmatter):
 
 - `build-and-commit.md` — worktree workflow, pre-commit checks, build commands, dependency build-script decisions and pinned pnpm versions, conventional commits, issue labels and the Roadmap board, merging, post-merge cleanup, releasing and the voice-pack publishing rules.
-- `changelog.md` — when and how to update `changelog.mdx`: one line per change, the in-development section, the machine-read format and `pnpm generate:changelog-data`.
+- `changelog.md` — when and how to add a changelog fragment in `changelog.d/`: the format, weight and order, one change per fragment, the fold into `changelog.mdx` at a stable release, the machine-read format and the gitignored `changelog.json`.
 - `code-review.md` — the effort-level table, targeting the worktree, report-only, and how reviews are staged inside an issue.
 - `code-style.md` — formatting, linting, types, Zod, exact versions, tsconfig inheritance, fenced-code languages.
 - `hooks.md` — the Claude Code hooks that enforce the mechanical rules; read it before adding a "never do X" anywhere else.

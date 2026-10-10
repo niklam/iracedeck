@@ -2,8 +2,9 @@
  * The changelog artifact the website publishes, and how the plugin reads it
  * (issue #1016).
  *
- * `https://iracedeck.com/changelog.json` is generated from the same
- * `changelog.mdx` — by the same parser — as the copy compiled into the build,
+ * `https://iracedeck.com/changelog.json` is composed from the same
+ * `changelog.mdx` and `changelog.d/` fragments — by the same functions
+ * (`scripts/lib/changelog-composed.mjs`) — as the copy compiled into the build,
  * so the shape here matches `scripts/lib/changelog-data.mjs` exactly. Only the
  * fields the update check needs are modelled; anything the artifact grows
  * later is ignored rather than rejected, so publishing a new field cannot
@@ -23,7 +24,7 @@ import { sanitizeChangelogHtml } from "./changelog-html-sanitize.js";
  * bullets are sanitized one by one. Each is far above anything the changelog
  * holds — 41 releases, five category headers at most, 14 bullets in the
  * longest category in October 2026 — and `published-changelog.test.ts` fails
- * while the committed artifact still has half of every one left.
+ * while the composed artifact still has half of every one left.
  */
 export const PUBLISHED_CHANGELOG_MAX_RELEASES = 1000;
 export const PUBLISHED_CHANGELOG_MAX_CATEGORIES = 20;
@@ -36,9 +37,10 @@ const CategorySchema = z.object({
 
 const ReleaseSchema = z.object({
   version: z.string(),
-  // `null` for a section still in development; the release tooling stamps the
-  // date when a stable version is cut, which is what makes a release count as
-  // published (see `selectAvailableUpdates`).
+  // `null` for the release still in development, which is composed from the
+  // fragments in `changelog.d/`; the release fold writes it into
+  // `changelog.mdx` with its date when a stable version is cut, which is what
+  // makes a release count as published (see `selectAvailableUpdates`).
   date: z.string().nullable(),
   categories: z.array(CategorySchema).max(PUBLISHED_CHANGELOG_MAX_CATEGORIES),
 });

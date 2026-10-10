@@ -3,9 +3,10 @@
  *
  * Pure, and the whole product decision in one function:
  *
- * - **Dated means published.** The top section of `changelog.mdx` is the
- *   version still in development and carries `_Unreleased_` until the release
- *   tooling stamps it (`scripts/lib/changelog-stamp.mjs`). Announcing that
+ * - **Dated means published.** The version still in development is composed
+ *   from the fragments in `changelog.d/` as an `_Unreleased_` release, and only
+ *   the release tooling's fold gives it a date, when it writes the section into
+ *   `changelog.mdx` (`scripts/lib/changelog-fold.mjs`). Announcing that
  *   would be exactly the complaint #1011 fixed — a version the user cannot
  *   have — so an undated release is never an available update. "Dated" means a
  *   real calendar date, not merely a non-null string: the artifact arrives over
@@ -22,8 +23,8 @@ import { z } from "zod";
 import type { PublishedRelease } from "./published-changelog.js";
 
 /**
- * A real calendar date in `YYYY-MM-DD`, the form the release tooling stamps
- * (`scripts/lib/changelog-stamp.mjs`). Zod does the calendar work, so
+ * A real calendar date in `YYYY-MM-DD`, the form the release fold writes
+ * (`formatLocalDate` in `scripts/lib/changelog-fold.mjs`). Zod does the calendar work, so
  * `2026-02-30` and `2026-13-01` are rejected while `2024-02-29` is not.
  *
  * Checked HERE rather than in the artifact's schema on purpose. The date is
