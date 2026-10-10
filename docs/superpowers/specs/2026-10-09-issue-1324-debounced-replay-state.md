@@ -26,7 +26,7 @@ A tick is **in a replay** when any of these holds:
 
 1. `IsReplayPlaying === true`. Entering a replay counts at once, as it does today, so the translator's teardown still happens on the first replay tick.
 2. The last tick that read `IsReplayPlaying === true` was less than `REPLAY_EXIT_GRACE_MS` ago. The grace is **1 s**, #1230's measured margin over the ~300 ms blip, and it moves from `replay-markers-ops.ts` to the SDK.
-3. The loaded session is a saved replay (`WeekendInfo.SimMode === "replay"`, the #604 discriminator). A saved replay is never live, whatever the flag says (maintainer's choice). This folds the four per-module `SimMode` guards into the one gate, and those modules drop their own copies where the gate now covers them.
+3. The loaded session is a saved replay (`WeekendInfo.SimMode === "replay"`, the #604 discriminator). A saved replay is never live, whatever the flag says (maintainer's choice). This folds every post-guard `SimMode` check into the one gate, and those modules drop their own copies. The issue named four (`pits-open`, `pit-speeding`, `tire-wear`, `replay-laps`). Implementation found four more behind the guard: the translator's fuel-lap branch, plus `opponent-pit`, `opponent-flags` and `leader-white`, which took `replayOnlySession` as a parameter. The pre-guard paths keep theirs (#568, #829).
 
 The state also carries **the frame on screen**, so Replay Markers keeps its held frame:
 
@@ -49,6 +49,14 @@ The state also carries **the frame on screen**, so Replay Markers keeps its held
 ### Does a callout fire on a seek today?
 
 The issue leaves this open. The work answers it with a translator test that reproduces a seek: replay ticks, then about 300 ms of `IsReplayPlaying: false` ticks whose telemetry differs from the seed tick (a flag bit, pit road, an incident count), then replay ticks again. The test asserts that nothing is published. Run against the pre-fix guard, it shows whether the old path published anything. Record that result in the PR body either way, because it decides whether the changelog line names the Race Engineer.
+
+**Result (2026-10-10).** Run against the pre-fix guard:
+- A seek whose blip telemetry changes within the ~300 ms published `flag.yellow.raised` and `pitLane.entered`, both Race Engineer callout triggers.
+- A scrub of a paused saved replay (flag false, `SimMode` `"replay"`) published `flag.yellow.raised`, `pitLane.entered` and `pitLane.exited`. The flag and pit-lane diffs had no `SimMode` guard of their own.
+- No `incident.occurred`: the incident diff's -1 seed branch re-seeds instead.
+- A blip whose snapshot does not move publishes nothing, because its first tick only seeds.
+
+The leak is real, so the changelog line names the Race Engineer.
 
 ## Out of scope
 
