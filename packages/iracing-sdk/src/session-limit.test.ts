@@ -1,7 +1,8 @@
 /**
  * Unit tests for the shared session-limit helper (issue #1109): the two
- * sentinel-aware readers, the whichever-ends-sooner verdict with its tie to
- * laps, and the value companion that applies the verdict.
+ * sentinel-aware readers, the shown clock and its one formatter (#1221,
+ * #1292), the whichever-ends-sooner verdict with its tie to laps, and the
+ * value companion that applies the verdict.
  */
 import { describe, expect, it } from "vitest";
 

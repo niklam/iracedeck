@@ -888,8 +888,9 @@ export function buildSessionFields(sessionInfo: SessionInfo | null, telemetry: T
 
   const type = (currentSession?.SessionType as string) ?? "";
   // time_remaining keeps the formatted clock string (M:SS, H:MM:SS from an
-  // hour up — Session Info's own formatter, #1292) in BOTH maps — expressions
-  // wanting math on it should use telemetry.SessionTimeRemain instead.
+  // hour up — the formatter Session Info's key reads through too, #1292) in
+  // BOTH maps — expressions wanting math on it should use
+  // telemetry.SessionTimeRemain instead.
   const timeRemainingFormatted = formatSessionClock(timeRemaining);
 
   const raw: Record<string, TemplateValue> = { type, time_remaining: timeRemainingFormatted };
