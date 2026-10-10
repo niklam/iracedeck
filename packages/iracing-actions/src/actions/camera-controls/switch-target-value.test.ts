@@ -15,7 +15,7 @@ const ICONS = {
 const TITLE = {
   showTitle: true,
   showGraphics: true,
-  titleText: "SWITCH\nCAR #",
+  titleText: "SWITCH\nTO CAR",
   bold: true,
   fontSize: 18,
   position: "bottom" as const,
@@ -34,17 +34,6 @@ function valuesFor(target: string, settings: Parameters<typeof switchTargetTempl
 
 /** Arial / Arimo capitals and digits stand 0.72 em above the baseline. */
 const CAP_HEIGHT_EM = 0.72;
-
-/** The `POS` label under the position: its baseline and the top of its capitals. */
-function labelOf(svg: string, text: string): { baseline: number; top: number } {
-  const label = svg.match(new RegExp(`<text\\b[^>]*\\by="([\\d.]+)"[^>]*\\bfont-size="([\\d.]+)"[^>]*>${text}</text>`));
-
-  if (!label) throw new Error(`no ${text} label with a literal y and font-size`);
-
-  const baseline = Number(label[1]);
-
-  return { baseline, top: baseline - CAP_HEIGHT_EM * Number(label[2]) };
-}
 
 function viewBoxOf(svg: string): { width: number; height: number } {
   const viewBox = parseSvgViewBox(svg);
@@ -114,11 +103,11 @@ describe("switch-target-value (#1352)", () => {
         valueFontSize: "28",
         valueY: "33.08",
       });
-      // Position: centred on y 15.4 at 40 → 15.4 + 0.36 × 40.
+      // Position: centred on y 15.5 at 40 → 15.5 + 0.36 × 40.
       expect(valuesFor("switch-by-position", { position: 3 })).toEqual({
         value: "P3",
         valueFontSize: "40",
-        valueY: "29.8",
+        valueY: "29.9",
       });
     });
 
@@ -224,15 +213,31 @@ describe("switch-target-value (#1352)", () => {
       expect(switchByCarNumberSvg.match(/<text\b/g)).toHaveLength(1);
     });
 
-    it("keeps the position inside the viewBox's margin and clear of its label", () => {
+    it("trims the position viewBox to the value at full size, which is the whole artwork", () => {
       const viewBox = viewBoxOf(switchByPositionSvg);
-      const label = labelOf(switchByPositionSvg, "POS");
       // At full size, the tallest the value is drawn.
       const { valueFontSize, valueY } = valuesFor("switch-by-position", { position: 12 });
+      const top = Number(valueY) - CAP_HEIGHT_EM * Number(valueFontSize);
+      const bottomMargin = viewBox.height - Number(valueY);
 
-      expect(Number(valueY) - CAP_HEIGHT_EM * Number(valueFontSize)).toBeGreaterThanOrEqual(1);
-      expect(Number(valueY)).toBeLessThan(label.top);
-      expect(label.baseline + 1).toBeLessThanOrEqual(viewBox.height);
+      // The 1-unit margin above the capitals and below the baseline, and no more
+      // than a fraction over it: a taller frame would shrink the value on the key.
+      expect(top).toBeGreaterThanOrEqual(1);
+      expect(top).toBeLessThan(1.5);
+      expect(bottomMargin).toBeGreaterThanOrEqual(1);
+      expect(bottomMargin).toBeLessThan(1.5);
+      // No label under the value: the P, or the title, says what it is.
+      expect(switchByPositionSvg.match(/<text\b/g)).toHaveLength(1);
+    });
+
+    it("centres the position in its viewBox, whatever size it is drawn at", () => {
+      const viewBox = viewBoxOf(switchByPositionSvg);
+
+      for (const position of [1, 100, 1234567]) {
+        const { valueFontSize, valueY } = valuesFor("switch-by-position", { position });
+
+        expect(Number(valueY) - 0.36 * Number(valueFontSize)).toBeCloseTo(viewBox.height / 2, 1);
+      }
     });
 
     it("centres the value in the car-number box", () => {

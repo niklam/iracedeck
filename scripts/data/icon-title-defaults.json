@@ -107,8 +107,8 @@
   "camera-focus/focus-on-leader": "FOCUS\nLEADER",
   "camera-focus/focus-your-car": "FOCUS\nYOUR CAR",
   "camera-focus/set-camera-state": "SET\nCAM STATE",
-  "camera-focus/switch-by-car-number": "SWITCH\nCAR #",
-  "camera-focus/switch-by-position": "SWITCH\nPOSITION",
+  "camera-focus/switch-by-car-number": "SWITCH\nTO CAR",
+  "camera-focus/switch-by-position": "SWITCH\nTO POS",
 
   "camera-select/blimp": "CAMERA\nBLIMP",
   "camera-select/chase": "CAMERA\nCHASE",

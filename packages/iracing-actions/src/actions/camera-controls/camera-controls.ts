@@ -282,8 +282,8 @@ const FOCUS_TITLES: Record<string, string> = {
   "focus-on-incident": "FOCUS\nINCIDENT",
   "focus-on-most-exciting": "MOST\nEXCITING",
   "focus-select-car": "FOCUS\nPICK CAR",
-  "switch-by-position": "SWITCH\nPOSITION",
-  "switch-by-car-number": "SWITCH\nCAR #",
+  "switch-by-position": "SWITCH\nTO POS",
+  "switch-by-car-number": "SWITCH\nTO CAR",
   "set-camera-state": "SET\nCAM STATE",
 };
 

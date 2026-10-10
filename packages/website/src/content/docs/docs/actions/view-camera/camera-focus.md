@@ -265,7 +265,7 @@ Which bundled profile to open when the key is pressed. Defaults to **iRaceDeck C
 
 Switch camera focus to the car currently running in a specific race position.
 
-The key shows the position it switches to, as `P1` or `P12`, above a `POS` label, so a row of these keys can be told apart at a glance. The number comes from the **Position** setting rather than from the race: it is there while iRacing isn't running, and it changes as soon as you change the setting. It is part of the key's artwork, so it stays when you set your own Title Text, and it goes away with the artwork if you turn **Show Graphics** off.
+The key shows the position it switches to, as `P1` or `P12`, so a row of these keys can be told apart at a glance. The number comes from the **Position** setting rather than from the race: it is there while iRacing isn't running, and it changes as soon as you change the setting. It is part of the key's artwork, so it stays when you set your own Title Text, and it goes away with the artwork if you turn **Show Graphics** off.
 
 #### Details
 

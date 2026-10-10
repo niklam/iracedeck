@@ -1,10 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 124 51" stroke-width="0.5" stroke="#fff" fill="#fff">
-  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"SWITCH\nPOSITION"},"border":{"color":"#5a6a7a"}}</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 124 31" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"SWITCH\nTO POS"},"border":{"color":"#5a6a7a"}}</desc>
 
 
     <text x="62" y="{{valueY}}" text-anchor="middle"
           fill="{{graphic1Color}}" font-family="Arial, sans-serif" font-size="{{valueFontSize}}" font-weight="bold" stroke="none">{{value}}</text>
-    <text x="62" y="49.78" text-anchor="middle"
-          fill="{{graphic1Color}}" font-family="Arial, sans-serif" font-size="18" stroke="none">POS</text>
 
 </svg>

@@ -21,7 +21,7 @@ import { fitValueFontSize } from "../../shared/dial-fit.js";
  */
 const SWITCH_VALUE_FRAMES = {
   "switch-by-car-number": { maxWidth: 52, cap: 28, centerY: 23 },
-  "switch-by-position": { maxWidth: 120, cap: 40, centerY: 15.4 },
+  "switch-by-position": { maxWidth: 120, cap: 40, centerY: 15.5 },
 } as const;
 
 /** The two Camera Controls modes whose key draws its configured target. */
