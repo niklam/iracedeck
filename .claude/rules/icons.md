@@ -63,6 +63,18 @@ The `viewBox` width and height are the artwork's own dimensions plus the 1-unit 
 
 The `title.text` field in `<desc>` provides the default title. Prefer short, single-line titles (e.g., `"1x"`, `"DRS"`) — only use two lines (`"CATEGORY\nACTION"`) when a single line cannot convey the action clearly. Title position, font, and visibility are controlled via `resolveTitleSettings()` at render time.
 
+### Value placeholders (#1352)
+
+A standalone icon may draw a value its action supplies — a setting, not telemetry — through placeholders other than the four colour slots. `camera-focus/switch-by-car-number.svg` and `switch-by-position.svg` carry `{{value}}`, `{{valueFontSize}}` and `{{valueY}}`, named after the Data Display template's, and the action passes them to `assembleIcon()` as `templateValues`. Never put them in `colors`: that is the resolved colour-slot map, and it wins over a value of the same name. An icon whose content follows telemetry stays a dynamic template (below).
+
+- **The viewBox is a fixed frame, not trimmed to one value.** Size it for the longest value drawn at full size plus the fixed artwork, with the usual 1-unit margin. A viewBox that followed the text would make `assembleIcon` scale `7` larger than `199`, and a row of keys would jump in size from one to the next.
+- **Fit the font size to the frame** with `fitValueFontSize(text, maxWidth, cap)` (`packages/iracing-actions/src/shared/dial-fit.ts`), so a value longer than the frame was sized for shrinks instead of overflowing. Keep the frame's numbers beside the code that fills them, with a test that holds them against the real SVG — `camera-controls/switch-target-value.ts` and its test are the pattern.
+- **Compute the baseline**: `y` is the intended centre plus 0.36 em of the fitted size. No `dominant-baseline` (`svg-platform-compatibility.md`).
+- **Escape the value** with `escapeXml()`. `renderIconTemplate` does not escape, and the icon file does not know what it will be given.
+- **Give the website gallery a sample value** in `TEMPLATE_SAMPLES` (`packages/website/scripts/generate-icon-gallery.mts`), through the action's own function where it is importable so the card cannot drift from the device. See *Preview Files* below for what each generated copy does with the placeholder.
+
+Replay Control's `speed-display.svg` (`{{speedText}}`) and `set-speed.svg` (`{{needleAngle}}`) predate the option and still assemble by hand in `generateReplayControlSvg`; a new icon uses `templateValues`.
+
 ### Base template
 
 At render time, `assembleIcon()` assembles the final icon using `ICON_BASE_TEMPLATE`:
@@ -177,6 +189,7 @@ packages/icons/preview/   # Mirrors source structure with colors resolved
 - A Vitest freshness test verifies previews match templates
 - **Editing an icon SVG in a Claude Code session regenerates both artifacts** — the post-edit hook runs `node scripts/generate-icon-previews.mjs` and `node scripts/generate-icon-defaults.mjs` (the PI defaults, which also cover the dynamic templates in `packages/iracing-actions/icons/`). Run them by hand outside a Claude session, or when the hook reports a failure; the freshness tests are the guard either way.
 - New icons should be authored with their `viewBox` already trimmed to the artwork extent — no separate bounds-generation step.
+- **A value placeholder is treated differently by the two generated copies (#1352).** The previews fill colours only and keep `{{value}}` and its like as they are, by design. The website's icon gallery publishes finished pictures, so there the generator fails on a standalone icon that has a non-colour placeholder without a sample covering every token, on a sample no icon uses, and on any asset of any class that still holds `{{`. `pnpm --filter @iracedeck/website typecheck`, `build` and `dev` all start with the generator, and `scripts/website-icon-gallery.test.mjs` runs it into a scratch directory and scans what it wrote.
 
 ## Dynamic Templates (for telemetry-driven content)
 
