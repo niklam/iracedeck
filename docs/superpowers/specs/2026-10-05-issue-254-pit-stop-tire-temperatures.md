@@ -74,22 +74,22 @@ A **Calculation** sub-setting (`tireTempMethod`), shown only for All four:
 
 The issue's four methods all stay, because each is a pure function and costs a dropdown entry. Weighted center stays the default for the reason the issue gives. The method is computed in °C on unrounded values, then converted and rounded once.
 
-### 5. Colour bands stay, configurable from the start, and are framed as a stop reading (defaults open)
+### 5. Colour bands stay, configurable from the start, and are framed as a stop reading
 
 The bands are the core of the original request, and they stay. They move in two ways.
 
 **What they mean.** Each band describes the carcass as the car arrived in the box, after an in-lap and a run down pit lane. It no longer means live grip. The labels change to match: the PI and website say **below / in / above / well above the window**, not "cold, no grip" and "critical". The reading still separates a stint run cold from one that overheated, which is the question a stop answers.
 
-**Configurable now, not "in a future iteration".** One fixed set of thresholds is wrong for most cars and compounds, and the issue already said so. A stop value also reads below in-stint temperatures by an amount that depends on the car and the in-lap. The local snapshots' post-run stop readings range from 57 to 83 °C, with one 115 °C outlier, so a fixed 70 °C floor would paint a good share of ordinary stops blue. Three per-key thresholds therefore ship with defaults from the issue:
+**Configurable now, not "in a future iteration".** One fixed set of thresholds is wrong for most cars and compounds, and the issue already said so. A stop value also reads below in-stint temperatures by an amount that depends on the car and the in-lap. The local snapshots' post-run stop readings range from 57 to 83 °C, with one 115 °C outlier, so a fixed 70 °C floor would paint a good share of ordinary stops blue. Three per-key thresholds therefore ship. Their defaults are the maintainer's (2026-10-10), a narrower window than the issue's 70 / 100 / 115:
 
 | Setting                 | Default | Band            |
 | ----------------------- | ------- | --------------- |
-| `tireTempColdBelow`     | 70      | blue below it   |
+| `tireTempColdBelow`     | 75      | blue below it   |
 | _(between)_             | —       | green           |
-| `tireTempHotAbove`      | 100     | yellow above it |
-| `tireTempCriticalAbove` | 115     | red above it    |
+| `tireTempHotAbove`      | 90      | yellow above it |
+| `tireTempCriticalAbove` | 100     | red above it    |
 
-- **The driver picks the unit the thresholds are typed in** (maintainer ruling, 2026-10-10). A **Threshold unit** selector (`tireTempThresholdUnit`: `c`, the default, or `f`) sits above the three fields, and each unit has its own stored set. The °C fields are the three in the table above. The °F fields (`tireTempColdBelowF` / `tireTempHotAboveF` / `tireTempCriticalAboveF`) default to 160 / 210 / 240. The PI shows the set for the selected unit, and a figure is compared in that unit, unrounded. Two sets, rather than one set of numbers reinterpreted, mean that switching the selector never leaves Celsius numbers standing as Fahrenheit ones, and that nothing the driver typed is rewritten or lost when they switch back. The unit is stored with the key and does not follow iRacing's `DisplayUnits`, which can change between sessions and would silently change what a stored "100" means. That was the reason to reject storing the thresholds in the display unit, and it still holds.
+- **The driver picks the unit the thresholds are typed in** (maintainer ruling, 2026-10-10). A **Threshold unit** selector (`tireTempThresholdUnit`: `c`, the default, or `f`) sits above the three fields, and each unit has its own stored set. The °C fields are the three in the table above. The °F fields (`tireTempColdBelowF` / `tireTempHotAboveF` / `tireTempCriticalAboveF`) default to 165 / 195 / 210, the same window in round Fahrenheit numbers. The PI shows the set for the selected unit, and a figure is compared in that unit, unrounded. Two sets, rather than one set of numbers reinterpreted, mean that switching the selector never leaves Celsius numbers standing as Fahrenheit ones, and that nothing the driver typed is rewritten or lost when they switch back. The unit is stored with the key and does not follow iRacing's `DisplayUnits`, which can change between sessions and would silently change what a stored "100" means. That was the reason to reject storing the thresholds in the display unit, and it still holds.
 - **The bands are evaluated hottest first** (red, then yellow, then blue, else green), so a hand-typed set that is out of order still colours predictably. The user's values are never rewritten or reset to the defaults.
 - **The colours are discrete and fixed**, like Session Info's gain/loss colours: blue `#3498db`, green `#2ecc71`, yellow `#f1c40f`, red `#e74c3c`. A **Color by temperature** checkbox (`tireTempColors`, default on) turns them off, and the figures then take the theme text colour.
 - In the all-four view the band colours the summarized figure. In the single-corner view each zone is coloured on its own raw value.
@@ -125,8 +125,8 @@ All are Session Info settings, shown only when Mode is **Tire Temperatures**. Ev
 | `tireTempMethod`                                                   | Calculation (All four only)                             | `weighted` \| `average` \| `max` \| `middle`, `weighted` |
 | `tireTempColors`                                                   | Color by temperature                                    | boolean, `true`                                          |
 | `tireTempThresholdUnit`                                            | Threshold unit                                          | `c` \| `f`, `c`, shown when colours are on               |
-| `tireTempColdBelow` / `tireTempHotAbove` / `tireTempCriticalAbove` | Below window (°C) / Above window (°C) / Well above (°C) | number, `70` / `100` / `115`, shown for the °C unit      |
-| `tireTempColdBelowF` / `tireTempHotAboveF` / `tireTempCriticalAboveF` | Below window (°F) / Above window (°F) / Well above (°F) | number, `160` / `210` / `240`, shown for the °F unit  |
+| `tireTempColdBelow` / `tireTempHotAbove` / `tireTempCriticalAbove` | Below window (°C) / Above window (°C) / Well above (°C) | number, `75` / `90` / `100`, shown for the °C unit       |
+| `tireTempColdBelowF` / `tireTempHotAboveF` / `tireTempCriticalAboveF` | Below window (°F) / Above window (°F) / Well above (°F) | number, `165` / `195` / `210`, shown for the °F unit  |
 
 Identifiers spell "tire", per the #1108 ruling. The numbers follow the `fuelLapWindow` rule: they coerce, and on a bad value they `.catch` back to the default, so one malformed field never fails the whole settings parse.
 
@@ -143,11 +143,11 @@ Identifiers spell "tire", per the #1108 ruling. The numbers follow the `fuelLapW
 
 ## Open questions
 
-The maintainer left four questions to be settled before implementation (2026-10-05) and ruled on three of them on 2026-10-10. The decisions above now carry those rulings: a return to the garage counts as a reading, and so does a tow, each when the sim refreshes the values there (decision 2), and the thresholds get a unit selector (decision 5).
+None remain. The maintainer left four questions to be settled before implementation (2026-10-05) and ruled on all of them on 2026-10-10, and the decisions above now carry the rulings:
 
-One remains, and this section, not the proposal, is its state until it is amended:
-
-1. **The colour defaults.** Whether colouring is on by default at 70 / 100 / 115 °C (160 / 210 / 240 °F), given that stop readings run below in-stint temperatures (decision 5). The implementation carries the proposal, colouring on at those values, until it is ruled on, and the last manual step is where the values are judged.
+- a return to the garage counts as a reading, and so does a tow, each when the sim refreshes the values there (decision 2);
+- the thresholds get a unit selector (decision 5);
+- colouring is on by default, at 75 / 90 / 100 °C (decision 5). The last manual step judges those values against a real stint.
 
 ## Out of scope
 
@@ -172,7 +172,7 @@ A trimmed copy goes into `sim-events-iracing/src/diff/__fixtures__/` with a fixt
 **Suite.**
 
 - **Translator.** A drive-in visit takes the reading and keeps updating it until departure, then freezes. A garage placement leaves the previous reading in place. A tow, a reset and a return to the garage take a reading only when the car was driven since the last one and the values changed, and leave it in place otherwise. A replay-only session never takes one. A disconnect clears it, and a session change does not. Missing, non-finite or all-zero fields give no reading. The zone mapping holds on both sides. Run the stall-visit predicate's existing #1108 tests unchanged against the hoisted version.
-- **Session Info.** Cover each method on known triples. Cover the band edges (exactly 70, 100, 115), an out-of-order threshold set, and colours off. Cover the unit selector: each set's defaults, a figure compared in the selected unit, and that switching units changes neither set. Check °C and °F conversion with rounding after conversion. Check the single-corner column order and zone letters per side, `--` with no reading in both views, the titles, the setting defaults, and that a malformed threshold falls back without resetting the rest of the settings. A press publishes nothing on this item.
+- **Session Info.** Cover each method on known triples. Cover the band edges (exactly 75, 90, 100), an out-of-order threshold set, and colours off. Cover the unit selector: each set's defaults, a figure compared in the selected unit, and that switching units changes neither set. Check °C and °F conversion with rounding after conversion. Check the single-corner column order and zone letters per side, `--` with no reading in both views, the titles, the setting defaults, and that a malformed threshold falls back without resetting the rest of the settings. A press publishes nothing on this item.
 - `pnpm test` also covers the changelog parser and the freshness test.
 
 **Manual (the PR gate).** In iRacing, check the following:
