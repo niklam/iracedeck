@@ -6,8 +6,8 @@ import {
   createSeedSettingsHost,
   PAGE_LOAD_TIMEOUT_MS,
   PAGE_SETTLE_MS,
-  PANE_IMAGES_LOADED_EXPRESSION,
   PANE_IMAGES_POLL_MS,
+  PANE_IMAGES_STATE_EXPRESSION,
   PANE_IMAGES_TIMEOUT_MS,
   TAB_SETTLE_MS,
 } from "./capture.mjs";
@@ -17,11 +17,18 @@ const SIZE = { width: 1172, height: 788 };
 /**
  * A CDP double that records commands and answers the ones we depend on.
  *
- * `imagesLoadAfter` is how many times a tab's "have this pane's images
- * loaded?" check answers no before it answers yes: 0 for a pane whose images
+ * `imagesLoadAfter` is how many times a tab's "where do this pane's images
+ * stand?" check answers "loading" before it settles: 0 for a pane whose images
  * are local (every tab but one), Infinity for an image that never arrives.
+ * `imagesBroken` makes it settle on "broken" — an image whose fetch failed.
  */
-function createFakeCdp({ missingPane, emitLoadEvent = false, noEvents = false, imagesLoadAfter = 0 } = {}) {
+function createFakeCdp({
+  missingPane,
+  emitLoadEvent = false,
+  noEvents = false,
+  imagesLoadAfter = 0,
+  imagesBroken = false,
+} = {}) {
   const sent = [];
   const listeners = [];
   let listenersAtLoadEvent = 0;
@@ -65,10 +72,12 @@ function createFakeCdp({ missingPane, emitLoadEvent = false, noEvents = false, i
         }
       }
 
-      if (method === "Runtime.evaluate" && params.expression === PANE_IMAGES_LOADED_EXPRESSION) {
+      if (method === "Runtime.evaluate" && params.expression === PANE_IMAGES_STATE_EXPRESSION) {
         imageChecksThisTab += 1;
 
-        return { result: { value: imageChecksThisTab > imagesLoadAfter } };
+        if (imageChecksThisTab <= imagesLoadAfter) return { result: { value: "loading" } };
+
+        return { result: { value: imagesBroken ? "broken" : "loaded" } };
       }
 
       if (method === "Runtime.evaluate") {
@@ -203,7 +212,7 @@ describe("captureSettingsWindow", () => {
     await captureSettingsWindow(OPTIONS, deps);
 
     const clicks = cdp.sent
-      .filter((c) => c.method === "Runtime.evaluate" && c.params.expression !== PANE_IMAGES_LOADED_EXPRESSION)
+      .filter((c) => c.method === "Runtime.evaluate" && c.params.expression !== PANE_IMAGES_STATE_EXPRESSION)
       .map((c) => c.params.expression);
     expect(clicks).toHaveLength(2);
     expect(clicks[0]).toContain('.sw-nav-item[data-pane="general"]');
@@ -286,7 +295,7 @@ describe("captureSettingsWindow: waiting for a tab's images", () => {
       .map((c) =>
         c.method === "Page.captureScreenshot"
           ? "screenshot"
-          : c.params.expression === PANE_IMAGES_LOADED_EXPRESSION
+          : c.params.expression === PANE_IMAGES_STATE_EXPRESSION
             ? "images?"
             : "click",
       );
@@ -298,8 +307,10 @@ describe("captureSettingsWindow: waiting for a tab's images", () => {
   });
 
   it("asks about the visible pane's images, whichever tab that is", () => {
-    expect(PANE_IMAGES_LOADED_EXPRESSION).toContain(".sw-pane:not([hidden]) img");
-    expect(PANE_IMAGES_LOADED_EXPRESSION).toContain("img.complete");
+    expect(PANE_IMAGES_STATE_EXPRESSION).toContain(".sw-pane:not([hidden]) img");
+    expect(PANE_IMAGES_STATE_EXPRESSION).toContain("img.complete");
+    // `complete` alone is true for an image whose fetch failed.
+    expect(PANE_IMAGES_STATE_EXPRESSION).toContain("img.naturalWidth === 0");
   });
 
   it("costs one check and no wait when the images are already loaded", async () => {
@@ -340,5 +351,21 @@ describe("captureSettingsWindow: waiting for a tab's images", () => {
     expect(steps(cdp).filter((step) => step === "screenshot")).toHaveLength(2);
     expect(written).toHaveLength(2);
     expect(writeFile).toHaveBeenCalledTimes(2);
+  });
+
+  it("names a tab whose image failed outright, without waiting, and captures anyway", async () => {
+    // Offline, the Support tab's button finishes at once with no picture. That
+    // is not "still loading", so no pause is owed, but the shot is not one to
+    // commit and the run has to say so.
+    const { deps, cdp, polls, warnings, writeFile } = createTimedDeps({ imagesBroken: true });
+
+    await captureSettingsWindow({ ...OPTIONS, tabs: [TABS[0]] }, deps);
+
+    expect(steps(cdp)).toEqual(["click", "images?", "screenshot"]);
+    expect(polls()).toBe(0);
+    expect(warnings()).toHaveLength(1);
+    expect(warnings()[0]).toMatch(/an image on the General tab failed to load/);
+    expect(warnings()[0]).toContain("general.png");
+    expect(writeFile).toHaveBeenCalledTimes(1);
   });
 });

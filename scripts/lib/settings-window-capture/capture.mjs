@@ -37,15 +37,22 @@ export const PANE_IMAGES_TIMEOUT_MS = 10_000;
 export const PANE_IMAGES_POLL_MS = 100;
 
 /**
- * True when every `<img>` in the visible pane has finished loading. The
- * VISIBLE pane, whatever its id, so the check follows the page's own tab
- * switch; a pane with no images is trivially done. `complete` is false for a
- * lazy image whose fetch has not started, which is the state right after the
- * click.
+ * Where the `<img>`s of the visible pane stand: `"loading"` while any has not
+ * finished, then `"broken"` when one finished without a picture, else
+ * `"loaded"`. The VISIBLE pane, whatever its id, so the check follows the
+ * page's own tab switch; a pane with no images is trivially loaded. `complete`
+ * is false for a lazy image whose fetch has not started, which is the state
+ * right after the click, and TRUE for one whose fetch failed — only its zero
+ * `naturalWidth` tells that one from a loaded image, and an offline capture
+ * would otherwise pass as a good one.
  *
  * @internal Exported for testing
  */
-export const PANE_IMAGES_LOADED_EXPRESSION = `Array.from(document.querySelectorAll('.sw-pane:not([hidden]) img')).every((img) => img.complete)`;
+export const PANE_IMAGES_STATE_EXPRESSION = `(() => {
+  const images = Array.from(document.querySelectorAll('.sw-pane:not([hidden]) img'));
+  if (!images.every((img) => img.complete)) return "loading";
+  return images.some((img) => img.naturalWidth === 0) ? "broken" : "loaded";
+})()`;
 
 /** Pause after the page's load event, before the first capture. */
 export const PAGE_SETTLE_MS = 1500;
@@ -140,19 +147,21 @@ function watchForPageLoad(cdp, sessionId) {
  * @param {any} cdp
  * @param {string} sessionId
  * @param {(ms: number) => Promise<void>} delay
- * @returns {Promise<boolean>} False when the bound was reached with an image still loading.
+ * @returns {Promise<"loaded" | "broken" | "timeout">} `"broken"` when an image
+ *   finished without a picture, `"timeout"` when the bound was reached with
+ *   one still loading.
  */
 async function waitForPaneImages(cdp, sessionId, delay) {
   for (let waited = 0; ; waited += PANE_IMAGES_POLL_MS) {
     const { result } = await cdp.send(
       "Runtime.evaluate",
-      { expression: PANE_IMAGES_LOADED_EXPRESSION, returnByValue: true },
+      { expression: PANE_IMAGES_STATE_EXPRESSION, returnByValue: true },
       sessionId,
     );
 
-    if (result?.value === true) return true;
+    if (result?.value === "loaded" || result?.value === "broken") return result.value;
 
-    if (waited >= PANE_IMAGES_TIMEOUT_MS) return false;
+    if (waited >= PANE_IMAGES_TIMEOUT_MS) return "timeout";
 
     await delay(PANE_IMAGES_POLL_MS);
   }
@@ -294,13 +303,18 @@ export async function captureSettingsWindow(options, deps) {
 
       await delay(TAB_SETTLE_MS);
 
-      if (!(await waitForPaneImages(cdp, sessionId, delay))) {
-        // Captured anyway: whoever runs the capture decides whether a shot
-        // with a missing image is worth keeping, and needs to be told to look.
+      const images = await waitForPaneImages(cdp, sessionId, delay);
+
+      // Captured anyway in both cases: whoever runs the capture decides
+      // whether a shot with a missing image is worth keeping, and needs to be
+      // told to look.
+      if (images === "timeout") {
         log(
           `Warning: an image on the ${tab.label} tab had not loaded after ${PANE_IMAGES_TIMEOUT_MS} ms; ` +
             `captured ${tab.file} without it.`,
         );
+      } else if (images === "broken") {
+        log(`Warning: an image on the ${tab.label} tab failed to load; captured ${tab.file} without it.`);
       }
 
       const shot = await cdp.send("Page.captureScreenshot", { format: "png" }, sessionId);
