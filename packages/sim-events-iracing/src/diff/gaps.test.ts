@@ -1633,7 +1633,7 @@ describe("diffGaps — full-course caution (issue #1171)", () => {
     expect(trendEvents(events)).toHaveLength(before);
 
     // That lap IS recorded, so the next one has its same-spot history: trend
-    // calls resume on the second full green lap after the restart.
+    // calls resume on the lap after it, the third under green.
     expect(state.gapLapHistoryAhead.length).toBeGreaterThan(0);
     expect(state.gapLapHistoryAhead[0]!.progress).toBeGreaterThanOrEqual(6);
 

@@ -1038,8 +1038,8 @@ export type SimEventMap = {
    * lap-scale gap rate: the gap against the gap at the same spot one lap
    * earlier (issue #1285), so no trend fires until the pair has a lap of
    * history. Lap 1, a full-course caution and the lap of running after one
-   * are never recorded, so the earliest call is on lap 3, and on the second
-   * full green lap after a restart (issue #1171). "closing" fires when the
+   * are never recorded, so the earliest call is on lap 3, and on the third
+   * lap under green after a restart (issue #1171). "closing" fires when the
    * projected contact (`gapSeconds ÷ rate`) drops inside the announcement
    * horizon (capped by the laps actually remaining — a catch that completes
    * after the race is never announced), and re-fires as the projection

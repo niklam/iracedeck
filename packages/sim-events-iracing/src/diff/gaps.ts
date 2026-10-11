@@ -439,8 +439,8 @@ export function diffGaps(
   // itself out inflate and deflate the gaps, so a lap-2 comparison against
   // it would call a catch or a breakaway that is only the start unwinding —
   // trend calls therefore begin on lap 3. Not the restart lap either, for
-  // the same reason (issue #1171): trend calls resume on the second full
-  // green lap after a restart. And nothing under a full-course caution,
+  // the same reason (issue #1171): trend calls resume on the third lap
+  // under green after a restart. And nothing under a full-course caution,
   // whose every tick is below the mark it has just set: the pack-up is not
   // racing.
   const lapHistoryOpen = !openingLap;
@@ -867,8 +867,8 @@ function resetCalloutBookkeeping(state: TranslatorState, side: Side): void {
  * lap of same-spot history before any trend call: lap 1 is never recorded,
  * so none before lap 3, and none for a lap after a neighbor change, a pit
  * visit or any other break. A full-course caution costs two: the restart lap
- * is not recorded either (issue #1171), so trend calls resume on the second
- * full green lap after it. The threshold call does not need the rate and
+ * is not recorded either (issue #1171), so trend calls resume on the third
+ * lap under green. The threshold call does not need the rate and
  * works from the first stable reading.
  *
  * All of it is evaluated continuously (no lap-boundary sampling) and stays

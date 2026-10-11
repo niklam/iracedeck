@@ -200,8 +200,9 @@ export const POSITION_READOUT_SUPERSEDE_GROUP = "position";
  * The shared position cooldown as a speak-time gate (issue #1137): the claim
  * every position readout commits after its script expanded and before the ops
  * take the bus. Shared by the two overtake readouts and the race-status
- * readout; `position.ts` carries its own, because its contract also fires in
- * qualifying, where the cooldown is not consulted at all.
+ * readout, which reaches it through a gate of its own that asks the caution
+ * first (issue #1171); `position.ts` carries its own, because its contract
+ * also fires in qualifying, where the cooldown is not consulted at all.
  */
 export const positionReadoutSpeakGate: SpeakGate = {
   description: POSITION_READOUT_SPEAK_GATE_DESCRIPTION,
