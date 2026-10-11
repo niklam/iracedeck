@@ -12,6 +12,7 @@
 #include <napi.h>
 #include <string>
 #include <thread>
+#include <vector>
 
 #define MINIAUDIO_IMPLEMENTATION
 #include "miniaudio.h"
@@ -27,6 +28,16 @@
 #include <audioclient.h>
 #include <audiopolicy.h>
 #include <mmdeviceapi.h>
+
+// The addon releases the IAudioClient miniaudio abandons at a reroute (#1414).
+// That is right only while miniaudio leaks it: ma_device_reinit__wasapi sets
+// pAudioClientPlayback to NULL without a Release, under its own "known memory
+// leak" comment. A miniaudio that releases the client itself would make ours a
+// second release of freed memory, so an upgrade has to re-read that function
+// and then keep, change or delete noteAudioClient and what it queues.
+#if MA_VERSION_MAJOR != 0 || MA_VERSION_MINOR != 11 || MA_VERSION_REVISION != 25
+#error "miniaudio is no longer 0.11.25: re-read ma_device_reinit__wasapi before keeping the abandoned-client release (#1414)"
+#endif
 #endif
 
 // ============================================================================
@@ -213,6 +224,14 @@ static std::chrono::steady_clock::time_point g_namerRequestDue;
 
 static bool g_namerStop = false;
 
+// The playback IAudioClient the device held when it was last looked at, and
+// the ones miniaudio has abandoned since, waiting for the namer thread to
+// release them once the due time has passed (#1414). Guarded by g_namerMutex.
+// The tracked one is only ever compared, never called: it is miniaudio's.
+static IUnknown *g_trackedAudioClient = nullptr;
+static std::vector<IUnknown *> g_abandonedAudioClients;
+static std::chrono::steady_clock::time_point g_abandonedAudioClientsDue;
+
 // The namer thread, or nullptr, and the environment its cleanup hook is
 // registered with. JS thread only. Heap-held rather than a static std::thread:
 // the deck host often ends the process with no cleanup at all, and the
@@ -364,11 +383,33 @@ static void nameEndpointSession(const std::wstring &deviceId,
 }
 
 /**
- * The namer thread. Sleeps until a request is pending and due, takes it
- * together with a copy of the identity, and names the session with the mutex
- * released. A request posted while it waits for a due time restarts the wait
- * from the new one, which is the reroute debounce. Leaves when the stop flag
- * is set; a request it is serving at that moment is finished first.
+ * Release audio clients miniaudio abandoned (#1414). Namer thread only, with
+ * no lock of ours held. The last reference goes with each call, and Windows
+ * may make this thread wait for a notification in flight before it lets the
+ * client go; it waits holding nothing another thread needs. Without COM on
+ * this thread they stay abandoned, as they all were before #1414.
+ */
+static void releaseAbandonedAudioClients(std::vector<IUnknown *> &clients, bool comReady)
+{
+    if (comReady)
+    {
+        for (IUnknown *client : clients)
+        {
+            client->Release();
+        }
+    }
+    clients.clear();
+}
+
+/**
+ * The namer thread, which since #1414 has two jobs: naming the session, and
+ * releasing the audio clients miniaudio abandons at a reroute. It sleeps
+ * until one of them is due, takes the work with the mutex held and does it
+ * with the mutex released. A rename request posted while it waits for a due
+ * time restarts the wait from the new one, which is the reroute debounce, and
+ * an abandoned client pushes its own due time back the same way. Leaves when
+ * the stop flag is set: work it is doing at that moment is finished first,
+ * and clients still queued are released on the way out.
  */
 static void sessionNamerMain()
 {
@@ -380,33 +421,58 @@ static void sessionNamerMain()
     std::unique_lock<std::mutex> lock(g_namerMutex);
     while (!g_namerStop)
     {
-        if (!g_namerRequestPending)
+        bool hasRequest = g_namerRequestPending;
+        bool hasAbandoned = !g_abandonedAudioClients.empty();
+        if (!hasRequest && !hasAbandoned)
         {
             g_namerWake.wait(lock);
             continue;
         }
 
-        std::chrono::steady_clock::time_point due = g_namerRequestDue;
-        if (std::chrono::steady_clock::now() < due)
+        std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+        bool requestDue = hasRequest && now >= g_namerRequestDue;
+        bool abandonedDue = hasAbandoned && now >= g_abandonedAudioClientsDue;
+        if (!requestDue && !abandonedDue)
         {
+            std::chrono::steady_clock::time_point due = hasRequest ? g_namerRequestDue : g_abandonedAudioClientsDue;
+            if (hasRequest && hasAbandoned && g_abandonedAudioClientsDue < due)
+            {
+                due = g_abandonedAudioClientsDue;
+            }
             g_namerWake.wait_until(lock, due);
             continue;
         }
 
         std::wstring deviceId;
-        deviceId.swap(g_namerRequestDeviceId);
-        g_namerRequestPending = false;
-        std::wstring displayName = g_sessionDisplayName;
-        std::wstring iconPath = g_sessionIconPath;
+        std::wstring displayName;
+        std::wstring iconPath;
+        if (requestDue)
+        {
+            deviceId.swap(g_namerRequestDeviceId);
+            g_namerRequestPending = false;
+            displayName = g_sessionDisplayName;
+            iconPath = g_sessionIconPath;
+        }
+
+        std::vector<IUnknown *> abandoned;
+        if (abandonedDue)
+        {
+            abandoned.swap(g_abandonedAudioClients);
+        }
 
         lock.unlock();
-        if (comReady && !displayName.empty())
+        if (comReady && requestDue && !displayName.empty())
         {
             nameEndpointSession(deviceId, displayName, iconPath);
         }
+        releaseAbandonedAudioClients(abandoned, comReady);
         lock.lock();
     }
+
+    std::vector<IUnknown *> abandoned;
+    abandoned.swap(g_abandonedAudioClients);
     lock.unlock();
+    releaseAbandonedAudioClients(abandoned, comReady);
 
     if (comReady)
     {
@@ -482,9 +548,10 @@ static void SessionNamerCleanupHook(void * /*arg*/)
 }
 
 /**
- * Start the namer thread if none runs. JS thread only. Called when a non-empty
- * identity is set, so a process that never names its session never has the
- * thread, and after DestroyAudioEngine the next identity starts a new one.
+ * Start the namer thread if none runs. JS thread only. Called when the audio
+ * context is created on WASAPI, because every engine may leave abandoned
+ * audio clients to release (#1414), and when a non-empty identity is set.
+ * After DestroyAudioEngine the next of either starts a new one.
  */
 static void ensureSessionNamerThread(Napi::Env env)
 {
@@ -614,6 +681,71 @@ static void requestSessionNameForNewEngine(bool onSelectedDevice)
 }
 
 /**
+ * Look at the playback audio client the device holds, and queue the one it
+ * held before for release when that is a different one: miniaudio replaces
+ * its client only at a reroute, and abandons the old one there (#1414). Called
+ * on the JS thread when an engine has been created and right before one is
+ * uninitialised, and on Windows' notification thread from miniaudio's reroute
+ * notification, which fires once the device holds the new client.
+ *
+ * It makes no COM call, and takes the namer's mutex for a moment. The device
+ * is read under that mutex, so the two threads cannot store what they read in
+ * the opposite order. What is queued was read from the device earlier and is
+ * not what the device holds now, so miniaudio has let go of it; the client the
+ * device holds now is never queued. A reroute this misses, between miniaudio
+ * creating the device and the first look, leaves that one client abandoned.
+ *
+ * Nothing is queued while no namer thread runs to release it.
+ */
+static void noteAudioClient(ma_device *device)
+{
+#if defined(IRD_SESSION_IDENTITY_SUPPORTED)
+    if (device == nullptr || device->pContext == nullptr || device->pContext->backend != ma_backend_wasapi ||
+        device->type != ma_device_type_playback)
+    {
+        return;
+    }
+
+    bool queued = false;
+    {
+        std::lock_guard<std::mutex> lock(g_namerMutex);
+        IUnknown *current = reinterpret_cast<IUnknown *>(device->wasapi.pAudioClientPlayback);
+        IUnknown *previous = g_trackedAudioClient;
+        g_trackedAudioClient = current;
+
+        if (previous != nullptr && previous != current && !g_namerStop)
+        {
+            g_abandonedAudioClients.push_back(previous);
+            g_abandonedAudioClientsDue = std::chrono::steady_clock::now() + SESSION_NAMER_REROUTE_DELAY;
+            queued = true;
+        }
+    }
+
+    if (queued)
+    {
+        g_namerWake.notify_one();
+    }
+#else
+    (void)device;
+#endif
+}
+
+/**
+ * Forget the tracked audio client. JS thread only, once the engine has been
+ * uninitialised: miniaudio released the client the device held itself.
+ * Clients already queued stay queued; they are not the engine's any more.
+ */
+static void forgetAudioClient()
+{
+#if defined(IRD_SESSION_IDENTITY_SUPPORTED)
+    std::lock_guard<std::mutex> lock(g_namerMutex);
+    g_trackedAudioClient = nullptr;
+#else
+    // Nothing is tracked off Windows.
+#endif
+}
+
+/**
  * Forget a pending name request. JS thread only, when the engine is torn
  * down: the stream the request was for is gone. A request the namer has
  * already taken still runs, and names a session with no stream in it, which
@@ -646,11 +778,12 @@ static void stopSessionNamer()
 
 /**
  * Engine device notification. Runs on the thread miniaudio reroutes from —
- * Windows' notification thread — inside miniaudio's reroute: it reads nothing
- * but the notification type, posts to the JS thread for the device-rerouted
- * callback, and asks the namer to name the new endpoint's session (a fresh,
- * unnamed one). Both are a brief lock of our own; no COM work and no device
- * access may ever be added here (#1411).
+ * Windows' notification thread — inside miniaudio's reroute: it posts to the
+ * JS thread for the device-rerouted callback, hands the audio client miniaudio
+ * has just abandoned to the namer (#1414), and asks the namer to name the new
+ * endpoint's session (a fresh, unnamed one). Each is a brief lock of our own.
+ * The one thing read from the device is the pointer to its audio client. No
+ * COM call and no other device access may ever be added here (#1411).
  */
 static void maNotificationCallback(const ma_device_notification *pNotification)
 {
@@ -667,6 +800,9 @@ static void maNotificationCallback(const ma_device_notification *pNotification)
             g_rerouteTSFN.NonBlockingCall();
         }
     }
+
+    // The device holds its new client by now, and has abandoned the old one.
+    noteAudioClient(pNotification->pDevice);
 
     // miniaudio only reroutes a device it opened on the default endpoint, so
     // the default endpoint is where the new stream is.
@@ -779,9 +915,13 @@ static void teardownEngine()
 
     // Before the uninit, never inside it: see detachDeviceNotifications.
     detachDeviceNotifications(g_engine);
+    // No reroute can run any more. One last look catches a client abandoned
+    // by a reroute that failed half-way and so never reported itself.
+    noteAudioClient(ma_engine_get_device(g_engine));
     ma_engine_uninit(g_engine);
     delete g_engine;
     g_engine = nullptr;
+    forgetAudioClient();
 
     // After the uninit: no reroute of this engine can post another one now.
     cancelSessionNameRequest();
@@ -846,6 +986,8 @@ static bool ensureEngineCreated()
     // Both init paths land here, so no engine can skip the identity (#1253).
     // The namer thread applies it: nothing here waits on Windows (#1411).
     requestSessionNameForNewEngine(onSelectedDevice);
+    // From here on a client the device lets go of is one to release (#1414).
+    noteAudioClient(ma_engine_get_device(g_engine));
 
     return true;
 }
@@ -872,6 +1014,15 @@ Napi::Value InitAudioEngine(const Napi::CallbackInfo &info)
             return Napi::Boolean::New(env, false);
         }
     }
+
+#if defined(IRD_SESSION_IDENTITY_SUPPORTED)
+    // The namer thread also releases what a reroute abandons (#1414), so it
+    // runs whenever an engine can exist, identity or not.
+    if (g_audioContext->backend == ma_backend_wasapi)
+    {
+        ensureSessionNamerThread(env);
+    }
+#endif
 
     // Deliberately no device-selection reset here: init is idempotent and
     // must not desynchronize a remembered selection from a live engine.
