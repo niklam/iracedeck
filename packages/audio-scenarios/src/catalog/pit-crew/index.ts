@@ -126,8 +126,8 @@ import { getScenarioEngine, isAudioScenariosInitialized } from "../../interprete
 import {
   buildCautionContracts,
   type CautionEpisodeResolver,
-  type CautionLineupResolver,
   type CautionPhaseResolver,
+  type PaceLineupResolver,
   registerCautionVocabulary,
   SCENARIO_ID_TO_CAUTION_ID,
   type UnderCautionResolver,
@@ -306,7 +306,7 @@ export {
   type CautionCalloutId,
   type CautionContractDeps,
   type CautionEpisodeResolver,
-  type CautionLineupResolver,
+  type PaceLineupResolver,
   type CautionPhaseResolver,
   registerCautionVocabulary,
   SCENARIO_ID_TO_CAUTION_ID,
@@ -879,14 +879,14 @@ export type PitCrewDeps = {
   // a deferred line. Default `() => null` falls back to the emit-time
   // payload position — a safe stub for tests and the harness.
   getOpponentFlagLivePosition?: OpponentFlagLivePositionResolver;
-  // Caution lineup resolver (issue #1127). Plugins wire `getCautionLineup()`
+  // Caution lineup resolver (issue #1127). Plugins wire `getPaceLineup()`
   // from `@iracedeck/sim-events-iracing`. Read at SPEAK time inside every
   // `caution.*` var, condition and case, so a call that waited behind a busier
   // bus names the car that is ahead now rather than the one that was ahead
   // when it fired — the lineup keeps moving while the field re-forms. Default
   // `() => null` leaves every caution line numberless and laneless, which is a
   // safe stub for tests.
-  getCautionLineup?: CautionLineupResolver;
+  getPaceLineup?: PaceLineupResolver;
   // Whether a full-course caution is out (issue #1127). Plugins wire
   // `isUnderFullCourseCaution()` from `@iracedeck/sim-events-iracing` — the
   // translator's own caution phase not being "none", never a re-derivation of
@@ -958,7 +958,7 @@ const DEFAULT_DEPS = {
   getGapCooldownMs: () => GAP_CALLOUT_DEFAULT_COOLDOWN_MS,
   getLiveGaps: () => null,
   getOpponentFlagLivePosition: () => null,
-  getCautionLineup: () => null,
+  getPaceLineup: () => null,
   getUnderFullCourseCaution: () => false,
   getCautionPhase: () => "none",
   getCautionEpisode: () => null,
@@ -990,7 +990,7 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
     getGapCooldownMs = DEFAULT_DEPS.getGapCooldownMs,
     getLiveGaps = DEFAULT_DEPS.getLiveGaps,
     getOpponentFlagLivePosition = DEFAULT_DEPS.getOpponentFlagLivePosition,
-    getCautionLineup = DEFAULT_DEPS.getCautionLineup,
+    getPaceLineup = DEFAULT_DEPS.getPaceLineup,
     getUnderFullCourseCaution = DEFAULT_DEPS.getUnderFullCourseCaution,
     getCautionPhase = DEFAULT_DEPS.getCautionPhase,
     getCautionEpisode = DEFAULT_DEPS.getCautionEpisode,
@@ -1192,11 +1192,11 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   // never frozen into an event payload — and the SAME `getLivePosition` the
   // position and race-status vocabularies take, because the position call on
   // the last caution lap speaks the race position, not the lineup's.
-  registerCautionVocabulary(engine, getCautionLineup, getLivePosition, logger);
+  registerCautionVocabulary(engine, getPaceLineup, getLivePosition, logger);
 
   for (const c of buildCautionContracts({
     getCautionPhase,
-    getCautionLineup,
+    getPaceLineup,
     getCautionEpisode,
     isCautionCalloutEnabled: getCautionCalloutEnabled,
   })) {

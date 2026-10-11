@@ -6,7 +6,7 @@
  * entry point — {@link diffPaceCar} reads the pace car's track surface,
  * {@link diffCautionEpisode} reads the flags and the leader's crossings, and
  * each seeds its own baselines on the diff's first tick. The lineup is a third
- * reading, of the pace arrays, and lives in `caution-lineup.ts` as a pure
+ * reading, of the pace arrays, and lives in `pace-lineup.ts` as a pure
  * function: this module only holds the car it last reported and says when a
  * change is worth reporting ({@link diffLineup}).
  *
@@ -156,15 +156,15 @@
  * row 0 on line 1 is a racing car rather than the pace car. The front of the
  * lineup is therefore line 0, row 1. (That the lineup, not the official
  * positions, is the authority for the RESTART order is a separate documented
- * exception, and belongs to `caution-lineup.ts`, which also carries the
+ * exception, and belongs to `pace-lineup.ts`, which also carries the
  * interleave the two lines restart in and why the pace car anchors it.)
  */
 import { Flags, hasFlag, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
 
 import type { TranslatorState } from "../state.js";
 import { isOvalTrack } from "../track-type.js";
-import { resolveCautionLineup } from "./caution-lineup.js";
 import { resolvePaceCarIdx } from "./pace-laps.js";
+import { resolvePaceLineup } from "./pace-lineup.js";
 import type { EmitFn } from "./types.js";
 
 /**
@@ -563,7 +563,7 @@ function diffLineup(
     return;
   }
 
-  const lineup = resolveCautionLineup(telemetry, sessionInfo, isOvalTrack(sessionInfo));
+  const lineup = resolvePaceLineup(telemetry, sessionInfo, isOvalTrack(sessionInfo));
 
   if (lineup === null || lineup.followCarIdx === null) return;
 

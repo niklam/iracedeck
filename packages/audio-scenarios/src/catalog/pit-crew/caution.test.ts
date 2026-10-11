@@ -33,10 +33,10 @@ import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { calculateRacePositions, Flags, hasFlag, SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
 import {
   type CautionEpisode,
-  type CautionLineup,
   type CautionPhase,
   type LivePosition,
-  resolveCautionLineup,
+  type PaceLineup,
+  resolvePaceLineup,
 } from "@iracedeck/sim-events-iracing";
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -141,7 +141,7 @@ const PHASE_OF: Record<CautionCalloutId, CautionPhase> = {
 };
 
 let cautionPhase: CautionPhase;
-let lineupNow: CautionLineup | null;
+let lineupNow: PaceLineup | null;
 /** The caution the translator reports — a fresh one opened on {@link LINEUP}'s car unless a case says otherwise. */
 let episodeNow: CautionEpisode | null;
 /** The follow call's opt-in, which decides whether a change before anything is named has a reference at all (#1286). */
@@ -155,7 +155,7 @@ let followEnabled: boolean;
 function contracts(): readonly ScenarioContract[] {
   return buildCautionContracts({
     getCautionPhase: () => cautionPhase,
-    getCautionLineup: () => lineupNow,
+    getPaceLineup: () => lineupNow,
     getCautionEpisode: () => episodeNow,
     isCautionCalloutEnabled: (id) => id !== "follow" || followEnabled,
   });
@@ -190,18 +190,18 @@ function fires(id: CautionCalloutId, telemetry: unknown = IN_CAR, phase: Caution
   return contract(id).when?.where?.(event(id, telemetry)) !== false;
 }
 
-const LINEUP: CautionLineup = {
+const LINEUP: PaceLineup = {
   followCarIdx: 7,
   followCarNumber: "09",
   line: "inside",
   isLeader: false,
   followsPaceCar: false,
   doubleFile: true,
-  restartPosition: 14,
+  lineupPosition: 14,
 };
 
 /** {@link LINEUP} with another car ahead. */
-function behind(followCarIdx: number): CautionLineup {
+function behind(followCarIdx: number): PaceLineup {
   return { ...LINEUP, followCarIdx };
 }
 
@@ -1575,7 +1575,7 @@ describe("the lineup-change call beside the calls that name the car (#1286)", ()
  * genuine swap, car 8 lining up ahead of player 19 and pitting 2.70 s later.
  *
  * Each player's lineup is resolved per tick with the real
- * `resolveCautionLineup`, and a change is published by the translator's own
+ * `resolvePaceLineup`, and a change is published by the translator's own
  * rule — every change of the held follow car after the caution's first
  * readable one, which is the baseline and is named here through the follow
  * call's gate. The fixture's helpers are copied from the translator's test
@@ -1703,7 +1703,7 @@ describe("the road capture's second caution, through the lineup-change contract 
       if (lastT !== null) elapse(Math.round((tick.t - lastT) * 1000));
 
       lastT = tick.t;
-      lineupNow = resolveCautionLineup(replayTick(tick), info, false);
+      lineupNow = resolvePaceLineup(replayTick(tick), info, false);
 
       const now = lineupNow?.followCarIdx ?? null;
 
@@ -1790,7 +1790,7 @@ describe("registerCautionVocabulary", () => {
     // of its own instead of an empty callout (the one-to-go call, above all).
     // It must agree with the var in every case, or a script that branches on
     // it would name a number the var then refuses.
-    const cases: Array<[label: string, lineup: CautionLineup | null, named: boolean]> = [
+    const cases: Array<[label: string, lineup: PaceLineup | null, named: boolean]> = [
       ["a car ahead with a number", LINEUP, true],
       ["the pace car ahead", { ...LINEUP, followsPaceCar: true, followCarNumber: "0" }, false],
       ["a car ahead the session cannot spell", { ...LINEUP, followCarNumber: null }, false],
@@ -1819,7 +1819,7 @@ describe("registerCautionVocabulary", () => {
 
     registerCautionVocabulary(
       engine,
-      () => ({ ...LINEUP, restartPosition: position.value }),
+      () => ({ ...LINEUP, lineupPosition: position.value }),
       NO_LIVE_POSITION,
       logger as never,
     );
@@ -1874,7 +1874,7 @@ describe("registerCautionVocabulary", () => {
 
     registerCautionVocabulary(
       engine,
-      () => ({ ...LINEUP, followCarNumber: null, restartPosition: null }),
+      () => ({ ...LINEUP, followCarNumber: null, lineupPosition: null }),
       NO_LIVE_POSITION,
     );
 
@@ -1966,7 +1966,7 @@ describe("the one-lap-to-green call in the bundled voice, when the car ahead can
   const ONE_TO_GO = `voice/${VOICE}/caution/one-to-go-01.mp3`;
 
   /** Everything the Voice channel plays for one `caution.oneLapToGreen`, with the lineup given. */
-  function spoken(lineup: CautionLineup | null): string[] {
+  function spoken(lineup: PaceLineup | null): string[] {
     const bus = createMockBus();
     const audio = createFakeAudio();
     const engine = initializeAudioScenarios(bus, audio, BUNDLED_MANIFEST, mockLogger as never, () => VOICE);
@@ -2032,7 +2032,7 @@ describe("the follow and lineup-change calls in the bundled voice, when the car 
   const CAR_09 = `voice/${VOICE}/car-number/09.mp3`;
 
   /** Everything the Voice channel plays for one fire of the contract, with the lineup given. */
-  function spoken(id: "follow" | "lineup-changed", lineup: CautionLineup | null): string[] {
+  function spoken(id: "follow" | "lineup-changed", lineup: PaceLineup | null): string[] {
     const bus = createMockBus();
     const audio = createFakeAudio();
     const engine = initializeAudioScenarios(bus, audio, BUNDLED_MANIFEST, mockLogger as never, () => VOICE);
@@ -2100,12 +2100,12 @@ describe("the follow and lineup-change calls in the bundled voice, when the car 
       const bus = createMockBus();
       const audio = createFakeAudio();
       const engine = initializeAudioScenarios(bus, audio, BUNDLED_MANIFEST, mockLogger as never, () => VOICE);
-      let current: CautionLineup | null = { ...LINEUP, followsPaceCar: false, followCarNumber: null };
+      let current: PaceLineup | null = { ...LINEUP, followsPaceCar: false, followCarNumber: null };
       // The change is news on every other count — follow off, a caution
       // opened behind another car — so only the missing row can silence it.
       const built = buildCautionContracts({
         getCautionPhase: () => "caught",
-        getCautionLineup: () => current,
+        getPaceLineup: () => current,
         getCautionEpisode: () => ({ id: 1, firstFollowCarIdx: 99 }),
         isCautionCalloutEnabled: (calloutId) => calloutId !== "follow",
       });
@@ -2196,7 +2196,7 @@ describe("the position call in the bundled voice, against the 2026-09-19 snapsho
 
   /**
    * The snapshot's lineup DERIVED from the fixture through the real resolver
-   * (R12), the fixture widened as `caution-lineup.test.ts` widens it — slot
+   * (R12), the fixture widened as `pace-lineup.test.ts` widens it — slot
    * 20 is the pace car, index 64 in the raw telemetry. Typed in, the number
    * "the bug was between" was a typed-in 20 and the test never derived it; a
    * resolver drifting to 21 (the old formula) or 19 (the race position) now
@@ -2219,12 +2219,12 @@ describe("the position call in the bundled voice, against the 2026-09-19 snapsho
   const SNAPSHOT_SESSION = {
     DriverInfo: { DriverCarIdx: 0, PaceCarIdx: PACE, Drivers: [{ CarIdx: 7, CarNumber: "7" }] },
   };
-  const SNAPSHOT_LINEUP = resolveCautionLineup(SNAPSHOT_TELEMETRY, SNAPSHOT_SESSION, true);
+  const SNAPSHOT_LINEUP = resolvePaceLineup(SNAPSHOT_TELEMETRY, SNAPSHOT_SESSION, true);
 
   if (SNAPSHOT_LINEUP === null) throw new Error("the snapshot fixture resolved no lineup");
 
   /** Everything the Voice channel plays for one `caution.lastLapCheckpoint`. */
-  function spoken(lineup: CautionLineup | null, live: LivePosition | null): string[] {
+  function spoken(lineup: PaceLineup | null, live: LivePosition | null): string[] {
     const bus = createMockBus();
     const audio = createFakeAudio();
     const engine = initializeAudioScenarios(bus, audio, BUNDLED_MANIFEST, mockLogger as never, () => VOICE);
@@ -2265,7 +2265,7 @@ describe("the position call in the bundled voice, against the 2026-09-19 snapsho
     expect(SNAPSHOT_LIVE.position).toBe(19);
     expect(snapshot.PlayerCarPosition).toBe(19);
     expect(SNAPSHOT_LINEUP).toMatchObject({
-      restartPosition: 20,
+      lineupPosition: 20,
       followCarIdx: 7,
       followCarNumber: "7",
       line: "inside",
@@ -2273,7 +2273,7 @@ describe("the position call in the bundled voice, against the 2026-09-19 snapsho
       isLeader: false,
       followsPaceCar: false,
     });
-    expect(SNAPSHOT_LINEUP.restartPosition).not.toBe(SNAPSHOT_LIVE.position);
+    expect(SNAPSHOT_LINEUP.lineupPosition).not.toBe(SNAPSHOT_LIVE.position);
   });
 
   it("speaks \"We're currently 19\" — the race position, never the lineup's 20", () => {

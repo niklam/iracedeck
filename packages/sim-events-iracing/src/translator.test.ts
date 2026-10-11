@@ -42,7 +42,6 @@ import { INCIDENT_BURST_QUIET_MS } from "./diff/incidents.js";
 import {
   _resetSimEventsIracing,
   getCautionEpisode,
-  getCautionLineup,
   getCautionPhase,
   getDriverSetupName,
   getFuelStats,
@@ -52,6 +51,7 @@ import {
   getLiveOpponentFlags,
   getLivePosition,
   getLiveRacePositions,
+  getPaceLineup,
   getQualifyingInvalidationSnapshot,
   getRaceFinishResult,
   getRaceStartConditions,
@@ -5307,7 +5307,7 @@ describe("sim-events-iracing translator", () => {
       it("report nothing before the translator is initialized", () => {
         expect(isUnderFullCourseCaution()).toBe(false);
         expect(getCautionPhase()).toBe("none");
-        expect(getCautionLineup()).toBeNull();
+        expect(getPaceLineup()).toBeNull();
         expect(getCautionEpisode()).toBeNull();
       });
 
@@ -5366,13 +5366,13 @@ describe("sim-events-iracing translator", () => {
         initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
 
         controller.__tick(cautionTick({ flags: STATIC }));
-        const first = getCautionLineup();
+        const first = getPaceLineup();
 
         expect(first).not.toBeNull();
-        expect(getCautionLineup()).toBe(first);
+        expect(getPaceLineup()).toBe(first);
 
         controller.__tick(cautionTick({ flags: STATIC }));
-        const second = getCautionLineup();
+        const second = getPaceLineup();
 
         expect(second).not.toBe(first);
         expect(second).toEqual(first);
@@ -5384,7 +5384,7 @@ describe("sim-events-iracing translator", () => {
         initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
 
         expect(isUnderFullCourseCaution()).toBe(false);
-        expect(getCautionLineup()).toBeNull();
+        expect(getPaceLineup()).toBeNull();
       });
 
       it("track the episode from thrown to restarted", () => {
@@ -5414,14 +5414,14 @@ describe("sim-events-iracing translator", () => {
 
         // Player at line 0 row 1 behind the pace car, rival alongside at line 1
         // row 0 — the double-file front row.
-        expect(getCautionLineup()).toEqual({
+        expect(getPaceLineup()).toEqual({
           followCarIdx: PACE,
           followCarNumber: "0",
           line: "inside",
           isLeader: true,
           followsPaceCar: true,
           doubleFile: true,
-          restartPosition: 1,
+          lineupPosition: 1,
         });
       });
 
@@ -5434,8 +5434,8 @@ describe("sim-events-iracing translator", () => {
 
         controller.__tick(cautionTick({ flags: STATIC }));
 
-        expect(getCautionLineup()?.line).toBeNull();
-        expect(getCautionLineup()?.doubleFile).toBe(true);
+        expect(getPaceLineup()?.line).toBeNull();
+        expect(getPaceLineup()?.doubleFile).toBe(true);
       });
 
       it("report no lineup at all for a player the re-form has not placed", () => {
@@ -5461,7 +5461,7 @@ describe("sim-events-iracing translator", () => {
           }),
         );
 
-        expect(getCautionLineup()).toBeNull();
+        expect(getPaceLineup()).toBeNull();
         // …while the episode itself carries on regardless.
         expect(isUnderFullCourseCaution()).toBe(true);
       });

@@ -65,7 +65,7 @@ describe("checkShortcutPreconditions", () => {
   it("refuses a caution shortcut when no session info is applied", () => {
     // The failure this exists to replace: the sequence runs, the flag lines
     // play, and every lineup line is silently dropped because
-    // `resolveCautionLineup` cannot read `DriverInfo.DriverCarIdx`.
+    // `resolvePaceLineup` cannot read `DriverInfo.DriverCarIdx`.
     for (const id of CAUTION_SHORTCUT_IDS) {
       const refusal = checkShortcutPreconditions(requiresOf(id), connectedWith(null));
 
@@ -88,7 +88,7 @@ describe("checkShortcutPreconditions", () => {
 
   it("asks the lineup resolver itself whether the session names the player — never a restated rule", () => {
     // The read this precondition gets ahead of is `resolvePlayerCarIdx` in the
-    // translator's `diff/caution-lineup.ts`. A copy of its rule here would drift
+    // translator's `diff/pace-lineup.ts`. A copy of its rule here would drift
     // the moment that one tightened and admit the half-silent run anyway, so
     // the check has to BE that function: called with the session, and obeyed.
     const sessionInfo = { DriverInfo: { DriverCarIdx: 7 } };

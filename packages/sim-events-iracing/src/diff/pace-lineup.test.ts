@@ -2,7 +2,7 @@ import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { MIN_LINE_POPULATION, resolveCautionLineup } from "./caution-lineup.js";
+import { MIN_LINE_POPULATION, resolvePaceLineup } from "./pace-lineup.js";
 
 const ticks = JSON.parse(
   readFileSync(new URL("./__fixtures__/caution-restart-20260917.json", import.meta.url), "utf-8"),
@@ -67,7 +67,7 @@ const DOUBLE_FILE: Array<[number, number, number]> = [
   [6, 1, 2], // P6
 ];
 
-describe("resolveCautionLineup — a car that has left the world (2026-09-18 road capture, 548.33 s)", () => {
+describe("resolvePaceLineup — a car that has left the world (2026-09-18 road capture, 548.33 s)", () => {
   // Car 8 read NotInWorld and still held line 0 row 6 for one tick before its
   // row went to −1 and the rows closed up. In that capture it sat BEHIND the
   // player; here it sits directly ahead, which is where the rule bites.
@@ -84,58 +84,58 @@ describe("resolveCautionLineup — a car that has left the world (2026-09-18 roa
   }
 
   it("names the nearest car still in the world as the one to follow, and does not count the ghost row — single file", () => {
-    expect(resolveCautionLineup(withWorld(paceArrays(SINGLE_FILE), [2]), session(3), false)).toMatchObject({
+    expect(resolvePaceLineup(withWorld(paceArrays(SINGLE_FILE), [2]), session(3), false)).toMatchObject({
       followCarIdx: 1,
       followsPaceCar: false,
-      restartPosition: 2,
+      lineupPosition: 2,
     });
   });
 
   it("and double file, in the player's own line", () => {
     // Player 5 at line 0 row 3; car 3 (line 0 row 2) gone — so car 1 (line 0
     // row 1) is the one ahead, and the combined order counts cars 1, 2 and 4.
-    expect(resolveCautionLineup(withWorld(paceArrays(DOUBLE_FILE), [3]), session(5), true)).toMatchObject({
+    expect(resolvePaceLineup(withWorld(paceArrays(DOUBLE_FILE), [3]), session(5), true)).toMatchObject({
       followCarIdx: 1,
       followsPaceCar: false,
-      restartPosition: 4,
+      lineupPosition: 4,
       line: "inside",
     });
   });
 
   it("follows the pace car when every car ahead in the line has gone", () => {
-    expect(resolveCautionLineup(withWorld(paceArrays(SINGLE_FILE), [1, 2]), session(3), false)).toMatchObject({
+    expect(resolvePaceLineup(withWorld(paceArrays(SINGLE_FILE), [1, 2]), session(3), false)).toMatchObject({
       followCarIdx: PACE,
       followsPaceCar: true,
-      restartPosition: 1,
+      lineupPosition: 1,
       isLeader: true,
     });
   });
 
   it("counts every car as present when the telemetry carries no lap progress — fixtures cut without it are unchanged", () => {
-    expect(resolveCautionLineup(paceArrays(SINGLE_FILE), session(3), false)).toMatchObject({
+    expect(resolvePaceLineup(paceArrays(SINGLE_FILE), session(3), false)).toMatchObject({
       followCarIdx: 2,
-      restartPosition: 3,
+      lineupPosition: 3,
     });
   });
 });
 
-describe("resolveCautionLineup — who to follow", () => {
+describe("resolvePaceLineup — who to follow", () => {
   it("follows the car one row lower in single file", () => {
-    const lineup = resolveCautionLineup(paceArrays(SINGLE_FILE), session(3), false);
+    const lineup = resolvePaceLineup(paceArrays(SINGLE_FILE), session(3), false);
 
     expect(lineup).toMatchObject({ followCarIdx: 2, followsPaceCar: false, isLeader: false, doubleFile: false });
   });
 
   it("makes the front car follow the pace car", () => {
-    const lineup = resolveCautionLineup(paceArrays(SINGLE_FILE), session(1), false);
+    const lineup = resolvePaceLineup(paceArrays(SINGLE_FILE), session(1), false);
 
-    expect(lineup).toMatchObject({ followCarIdx: PACE, followsPaceCar: true, isLeader: true, restartPosition: 1 });
+    expect(lineup).toMatchObject({ followCarIdx: PACE, followsPaceCar: true, isLeader: true, lineupPosition: 1 });
   });
 
   it("follows the car one row lower in the SAME line when double file", () => {
     // Car 4 is line 1 row 1 (P4). The car one row lower in its own line is car
     // 2 (line 1 row 0) — NOT car 3, which holds row 1 on the other line.
-    const lineup = resolveCautionLineup(paceArrays(DOUBLE_FILE), session(4), false);
+    const lineup = resolvePaceLineup(paceArrays(DOUBLE_FILE), session(4), false);
 
     expect(lineup).toMatchObject({ followCarIdx: 2, followsPaceCar: false, isLeader: false, doubleFile: true });
   });
@@ -143,7 +143,7 @@ describe("resolveCautionLineup — who to follow", () => {
   it("makes the outside front car follow the pace car", () => {
     // Car 2 is line 1 row 0: there is no row -1 in its line, so the only car in
     // front of it is the pace car.
-    const lineup = resolveCautionLineup(paceArrays(DOUBLE_FILE), session(2), false);
+    const lineup = resolvePaceLineup(paceArrays(DOUBLE_FILE), session(2), false);
 
     // Following the pace car, and NOT leading: car 2 restarts second. The two
     // questions are the same single file and different double file, and each
@@ -152,14 +152,14 @@ describe("resolveCautionLineup — who to follow", () => {
       followCarIdx: PACE,
       followsPaceCar: true,
       isLeader: false,
-      restartPosition: 2,
+      lineupPosition: 2,
     });
   });
 
   it("calls the inside front car the leader, and only that car", () => {
-    const leader = resolveCautionLineup(paceArrays(DOUBLE_FILE), session(1), false);
+    const leader = resolvePaceLineup(paceArrays(DOUBLE_FILE), session(1), false);
 
-    expect(leader).toMatchObject({ followsPaceCar: true, isLeader: true, restartPosition: 1 });
+    expect(leader).toMatchObject({ followsPaceCar: true, isLeader: true, lineupPosition: 1 });
   });
 
   it("does not read a single stray car on a second line as a double-file field", () => {
@@ -169,15 +169,15 @@ describe("resolveCautionLineup — who to follow", () => {
     // (2 × 3 − 1) and move `isLeader` off car 1. A column is a population.
     const stray: Array<[number, number, number]> = [...SINGLE_FILE, [7, 1, 6]];
 
-    expect(resolveCautionLineup(paceArrays(stray), session(3), true)).toMatchObject({
+    expect(resolvePaceLineup(paceArrays(stray), session(3), true)).toMatchObject({
       doubleFile: false,
-      restartPosition: 3,
+      lineupPosition: 3,
       line: null,
       isLeader: false,
     });
-    expect(resolveCautionLineup(paceArrays(stray), session(1), true)).toMatchObject({
+    expect(resolvePaceLineup(paceArrays(stray), session(1), true)).toMatchObject({
       isLeader: true,
-      restartPosition: 1,
+      lineupPosition: 1,
     });
   });
 
@@ -193,25 +193,25 @@ describe("resolveCautionLineup — who to follow", () => {
     // the tick as no news.
     const stray: Array<[number, number, number]> = [...SINGLE_FILE, [7, 1, 6]];
 
-    expect(resolveCautionLineup(paceArrays(stray), session(7), true)).toEqual({
+    expect(resolvePaceLineup(paceArrays(stray), session(7), true)).toEqual({
       followCarIdx: null,
       followCarNumber: null,
       line: null,
       isLeader: false,
       followsPaceCar: false,
       doubleFile: false,
-      restartPosition: null,
+      lineupPosition: null,
     });
   });
 
   it("reads the same car normally once its line is the field's — the positive control for the stray-player rule", () => {
     const onField: Array<[number, number, number]> = [...SINGLE_FILE, [7, 0, 4]];
 
-    expect(resolveCautionLineup(paceArrays(onField), session(7), true)).toMatchObject({
+    expect(resolvePaceLineup(paceArrays(onField), session(7), true)).toMatchObject({
       followCarIdx: 3,
       followsPaceCar: false,
       isLeader: false,
-      restartPosition: 4,
+      lineupPosition: 4,
     });
   });
 
@@ -224,7 +224,7 @@ describe("resolveCautionLineup — who to follow", () => {
       [1, 1, 0],
     ];
 
-    expect(resolveCautionLineup(paceArrays(two), session(1), false)).toMatchObject({
+    expect(resolvePaceLineup(paceArrays(two), session(1), false)).toMatchObject({
       followCarIdx: PACE,
       followsPaceCar: true,
     });
@@ -236,9 +236,9 @@ describe("resolveCautionLineup — who to follow", () => {
     const column: Array<[number, number, number]> = [...SINGLE_FILE, [7, 1, 0], [8, 1, 1]];
 
     expect(MIN_LINE_POPULATION).toBe(2);
-    expect(resolveCautionLineup(paceArrays(column), session(3), true)).toMatchObject({
+    expect(resolvePaceLineup(paceArrays(column), session(3), true)).toMatchObject({
       doubleFile: true,
-      restartPosition: 5,
+      lineupPosition: 5,
       line: "inside",
     });
   });
@@ -246,9 +246,9 @@ describe("resolveCautionLineup — who to follow", () => {
   it("claims no lead when the restart position cannot be read at all", () => {
     // No pace car to anchor the rows, so there is no position — and a lead is
     // not something to claim on a guess.
-    const lineup = resolveCautionLineup(paceArrays(SINGLE_FILE), session(1, { paceCarIdx: null }), false);
+    const lineup = resolvePaceLineup(paceArrays(SINGLE_FILE), session(1, { paceCarIdx: null }), false);
 
-    expect(lineup).toMatchObject({ followsPaceCar: false, isLeader: false, restartPosition: null });
+    expect(lineup).toMatchObject({ followsPaceCar: false, isLeader: false, lineupPosition: null });
   });
 
   it("never mistakes a car out of the lineup for the car in front of a front-row car", () => {
@@ -256,14 +256,14 @@ describe("resolveCautionLineup — who to follow", () => {
     // out would take if the sim ever wrote one array without the other. A
     // front-row car's "one row lower" is -1, which is exactly what car 9 holds.
     const withStrayCar: Array<[number, number, number]> = [...DOUBLE_FILE, [9, 1, -1]];
-    const lineup = resolveCautionLineup(paceArrays(withStrayCar), session(2), false);
+    const lineup = resolvePaceLineup(paceArrays(withStrayCar), session(2), false);
 
     expect(lineup).toMatchObject({ followCarIdx: PACE, followsPaceCar: true });
   });
 
   it("reads the follow car's number from DriverInfo.Drivers as a string, so a leading zero survives", () => {
     const drivers = [{ CarIdx: 2, CarNumber: "09" }];
-    const lineup = resolveCautionLineup(paceArrays(SINGLE_FILE), session(3, { drivers }), false);
+    const lineup = resolvePaceLineup(paceArrays(SINGLE_FILE), session(3, { drivers }), false);
 
     expect(lineup?.followCarNumber).toBe("09");
   });
@@ -273,44 +273,44 @@ describe("resolveCautionLineup — who to follow", () => {
     // strings only would drop every car number in such a session, and every
     // caution line would quietly fall back to its numberless wording.
     const drivers = [{ CarIdx: 2, CarNumber: 42 }];
-    const lineup = resolveCautionLineup(paceArrays(SINGLE_FILE), session(3, { drivers }), false);
+    const lineup = resolvePaceLineup(paceArrays(SINGLE_FILE), session(3, { drivers }), false);
 
     expect(lineup?.followCarNumber).toBe("42");
   });
 
   it("withholds a car number for a follow car the driver list does not carry", () => {
-    const lineup = resolveCautionLineup(paceArrays(SINGLE_FILE), session(3), false);
+    const lineup = resolvePaceLineup(paceArrays(SINGLE_FILE), session(3), false);
 
     expect(lineup?.followCarNumber).toBeNull();
   });
 });
 
-describe("resolveCautionLineup — the line you are in", () => {
+describe("resolvePaceLineup — the line you are in", () => {
   it("calls pace line 0 the inside on an oval running double file", () => {
-    expect(resolveCautionLineup(paceArrays(DOUBLE_FILE), session(3), true)?.line).toBe("inside");
+    expect(resolvePaceLineup(paceArrays(DOUBLE_FILE), session(3), true)?.line).toBe("inside");
   });
 
   it("calls pace line 1 the outside on an oval running double file", () => {
-    expect(resolveCautionLineup(paceArrays(DOUBLE_FILE), session(4), true)?.line).toBe("outside");
+    expect(resolvePaceLineup(paceArrays(DOUBLE_FILE), session(4), true)?.line).toBe("outside");
   });
 
   it("names no line off an oval, whatever the file", () => {
-    expect(resolveCautionLineup(paceArrays(DOUBLE_FILE), session(3), false)?.line).toBeNull();
+    expect(resolvePaceLineup(paceArrays(DOUBLE_FILE), session(3), false)?.line).toBeNull();
   });
 
   it("names no line in single file, even on an oval", () => {
-    expect(resolveCautionLineup(paceArrays(SINGLE_FILE), session(3), true)?.line).toBeNull();
+    expect(resolvePaceLineup(paceArrays(SINGLE_FILE), session(3), true)?.line).toBeNull();
   });
 });
 
-describe("resolveCautionLineup — the restart position", () => {
+describe("resolvePaceLineup — the restart position", () => {
   it("is the pace row in single file", () => {
-    expect(resolveCautionLineup(paceArrays(SINGLE_FILE), session(3), false)?.restartPosition).toBe(3);
+    expect(resolvePaceLineup(paceArrays(SINGLE_FILE), session(3), false)?.lineupPosition).toBe(3);
   });
 
   it("interleaves the two lines when double file", () => {
     const at = (player: number): number | null | undefined =>
-      resolveCautionLineup(paceArrays(DOUBLE_FILE), session(player), false)?.restartPosition;
+      resolvePaceLineup(paceArrays(DOUBLE_FILE), session(player), false)?.lineupPosition;
 
     expect([at(1), at(2), at(3), at(4), at(5), at(6)]).toEqual([1, 2, 3, 4, 5, 6]);
   });
@@ -325,48 +325,48 @@ describe("resolveCautionLineup — the restart position", () => {
       [4, 1, 1],
     ];
 
-    expect(resolveCautionLineup(paceArrays(unwound), session(3), false)?.restartPosition).toBeNull();
+    expect(resolvePaceLineup(paceArrays(unwound), session(3), false)?.lineupPosition).toBeNull();
   });
 
   it("is withheld when session info names no pace car to anchor the rows on", () => {
-    const lineup = resolveCautionLineup(paceArrays(SINGLE_FILE), session(3, { paceCarIdx: null }), false);
+    const lineup = resolvePaceLineup(paceArrays(SINGLE_FILE), session(3, { paceCarIdx: null }), false);
 
-    expect(lineup?.restartPosition).toBeNull();
+    expect(lineup?.lineupPosition).toBeNull();
   });
 
   it("is withheld for the pace car's own slot rather than reported as position zero", () => {
-    const lineup = resolveCautionLineup(paceArrays(SINGLE_FILE), session(PACE), false);
+    const lineup = resolvePaceLineup(paceArrays(SINGLE_FILE), session(PACE), false);
 
-    expect(lineup?.restartPosition).toBeNull();
+    expect(lineup?.lineupPosition).toBeNull();
   });
 
   it("is withheld, with no line named, for a third pace line the capture has never shown", () => {
     const threeLines: Array<[number, number, number]> = [...DOUBLE_FILE, [7, 2, 0]];
-    const lineup = resolveCautionLineup(paceArrays(threeLines), session(7), true);
+    const lineup = resolvePaceLineup(paceArrays(threeLines), session(7), true);
 
-    expect(lineup).toMatchObject({ restartPosition: null, line: null, doubleFile: true });
+    expect(lineup).toMatchObject({ lineupPosition: null, line: null, doubleFile: true });
   });
 });
 
-describe("resolveCautionLineup — no lineup to read", () => {
+describe("resolvePaceLineup — no lineup to read", () => {
   it("returns null when no car has a pace row", () => {
-    expect(resolveCautionLineup(paceArrays([]), session(3), false)).toBeNull();
+    expect(resolvePaceLineup(paceArrays([]), session(3), false)).toBeNull();
   });
 
   it("returns null when the player is not in the lineup the rest of the field is in", () => {
-    expect(resolveCautionLineup(paceArrays(SINGLE_FILE), session(9), false)).toBeNull();
+    expect(resolvePaceLineup(paceArrays(SINGLE_FILE), session(9), false)).toBeNull();
   });
 
   it("returns null without session info to name the player", () => {
-    expect(resolveCautionLineup(paceArrays(SINGLE_FILE), null, false)).toBeNull();
+    expect(resolvePaceLineup(paceArrays(SINGLE_FILE), null, false)).toBeNull();
   });
 
   it("returns null when telemetry carries no pace arrays", () => {
-    expect(resolveCautionLineup({} as unknown as TelemetryData, session(3), false)).toBeNull();
+    expect(resolvePaceLineup({} as unknown as TelemetryData, session(3), false)).toBeNull();
   });
 });
 
-describe("resolveCautionLineup — against the committed capture", () => {
+describe("resolvePaceLineup — against the committed capture", () => {
   /** A fixture tick widened back to real telemetry: fixture slot 20 is the pace car. */
   function replayTick(tick: (typeof ticks)[number]): TelemetryData {
     const lines = new Array(72).fill(-1);
@@ -397,7 +397,7 @@ describe("resolveCautionLineup — against the committed capture", () => {
     const order = new Map<number, number>();
 
     for (let carIdx = 0; carIdx < 20; carIdx++) {
-      const position = resolveCautionLineup(telemetry, session(carIdx), true)?.restartPosition;
+      const position = resolvePaceLineup(telemetry, session(carIdx), true)?.lineupPosition;
 
       if (typeof position === "number") order.set(position, carIdx);
     }
@@ -465,7 +465,7 @@ describe("resolveCautionLineup — against the committed capture", () => {
   });
 });
 
-describe("resolveCautionLineup — uneven lanes (the 2026-09-19 snapshot)", () => {
+describe("resolvePaceLineup — uneven lanes (the 2026-09-19 snapshot)", () => {
   // The maintainer heard "P21" in a 20-car field. Line 0 held 11 cars (rows
   // 1..11) and line 1 held 9 (rows 0..8): a lapped car and the waved-around
   // player had gone to the tail of one lane, and `line 0, row R → 2R − 1` gave
@@ -492,15 +492,15 @@ describe("resolveCautionLineup — uneven lanes (the 2026-09-19 snapshot)", () =
   const LAPPED = 7; // car #7, line 0 row 10 — two laps down, ahead of the player in the lineup
 
   it("gives the player position 20, not 21", () => {
-    const lineup = resolveCautionLineup(snapshotTelemetry(), session(PLAYER), true);
+    const lineup = resolvePaceLineup(snapshotTelemetry(), session(PLAYER), true);
 
-    expect(lineup).toMatchObject({ restartPosition: 20, doubleFile: true, line: "inside", isLeader: false });
+    expect(lineup).toMatchObject({ lineupPosition: 20, doubleFile: true, line: "inside", isLeader: false });
     expect(lineup?.followCarIdx).toBe(LAPPED);
   });
 
   it("still resolves the leader as position 1, and only the leader", () => {
-    expect(resolveCautionLineup(snapshotTelemetry(), session(LEADER), true)).toMatchObject({
-      restartPosition: 1,
+    expect(resolvePaceLineup(snapshotTelemetry(), session(LEADER), true)).toMatchObject({
+      lineupPosition: 1,
       isLeader: true,
       followsPaceCar: true,
     });
@@ -508,7 +508,7 @@ describe("resolveCautionLineup — uneven lanes (the 2026-09-19 snapshot)", () =
     for (let carIdx = 0; carIdx < 20; carIdx++) {
       if (carIdx === LEADER) continue;
 
-      expect(resolveCautionLineup(snapshotTelemetry(), session(carIdx), true)?.isLeader, `car ${carIdx}`).toBe(false);
+      expect(resolvePaceLineup(snapshotTelemetry(), session(carIdx), true)?.isLeader, `car ${carIdx}`).toBe(false);
     }
   });
 
@@ -516,7 +516,7 @@ describe("resolveCautionLineup — uneven lanes (the 2026-09-19 snapshot)", () =
     const positions = new Map<number, number>();
 
     for (let carIdx = 0; carIdx < 20; carIdx++) {
-      const position = resolveCautionLineup(snapshotTelemetry(), session(carIdx), true)?.restartPosition;
+      const position = resolvePaceLineup(snapshotTelemetry(), session(carIdx), true)?.lineupPosition;
 
       if (typeof position === "number") positions.set(position, carIdx);
     }
@@ -544,7 +544,7 @@ describe("resolveCautionLineup — uneven lanes (the 2026-09-19 snapshot)", () =
       [6, 0, 4],
     ];
     const at = (player: number): number | null | undefined =>
-      resolveCautionLineup(paceArrays(uneven), session(player), false)?.restartPosition;
+      resolvePaceLineup(paceArrays(uneven), session(player), false)?.lineupPosition;
 
     expect([at(1), at(2), at(3), at(4), at(5), at(6)]).toEqual([1, 2, 3, 4, 5, 6]);
   });

@@ -49,7 +49,6 @@ import {
 import { type ILogger, silentLogger } from "@iracedeck/logger";
 import { type CornerMarker, resolveCornerMarkers } from "@iracedeck/track-data";
 
-import { type CautionLineup, resolveCautionLineup } from "./diff/caution-lineup.js";
 import { diffCaution } from "./diff/caution.js";
 import { CORNER_CALLOUT_DEFAULT_LEAD_SECONDS, diffCornerName } from "./diff/corner-name.js";
 import { diffDamage } from "./diff/damage.js";
@@ -81,6 +80,7 @@ import {
 import { diffOpponentPit } from "./diff/opponent-pit.js";
 import { diffOvertakes } from "./diff/overtakes.js";
 import { diffPaceLaps, resolvePaceCarIdx } from "./diff/pace-laps.js";
+import { type PaceLineup, resolvePaceLineup } from "./diff/pace-lineup.js";
 import { diffPitBoxCountdown } from "./diff/pit-box-countdown.js";
 import { diffPitLane } from "./diff/pit-lane.js";
 import { buildSnapshot as buildReadbackSnapshot, diffPitReadback } from "./diff/pit-readback.js";
@@ -121,7 +121,7 @@ type TranslatorInstance = {
   state: TranslatorState;
   latestTelemetry: TelemetryData | null;
   /**
-   * The lineup `getCautionLineup()` last resolved, keyed on the IDENTITY of
+   * The lineup `getPaceLineup()` last resolved, keyed on the IDENTITY of
    * the telemetry snapshot and session-info object it was resolved from
    * (issue #1127 review). One expansion of a caution callout reads the lineup
    * through up to five vocabulary entries, and every one of them resolved it
@@ -131,10 +131,10 @@ type TranslatorInstance = {
    * changes, so an unchanged pair means unchanged inputs. `null` until first
    * asked.
    */
-  cautionLineupMemo: {
+  paceLineupMemo: {
     telemetry: TelemetryData;
     sessionInfo: Record<string, unknown> | null;
-    lineup: CautionLineup | null;
+    lineup: PaceLineup | null;
   } | null;
   /** Cached pit speed limit (m/s) parsed from session YAML. 0 = not parsed. */
   pitSpeedLimitMps: number;
@@ -316,7 +316,7 @@ export function initializeSimEventsIracing(
     logger,
     state: createInitialState(),
     latestTelemetry: null,
-    cautionLineupMemo: null,
+    paceLineupMemo: null,
     pitSpeedLimitMps: 0,
     pitSpeedLimitKey: "",
     lastTickInReplay: false,
@@ -1207,20 +1207,20 @@ export function getCautionEpisode(): CautionEpisode | null {
  * lineup, but only under caution" composes the two rather than having the
  * narrower answer forced on it.
  */
-export function getCautionLineup(): CautionLineup | null {
+export function getPaceLineup(): PaceLineup | null {
   if (!instance || !instance.latestTelemetry) return null;
 
   const telemetry = instance.latestTelemetry;
   const sessionInfo = instance.controller.getSessionInfo() as Record<string, unknown> | null;
-  const memo = instance.cautionLineupMemo;
+  const memo = instance.paceLineupMemo;
 
-  // Memoised per tick on the identity of both inputs — see `cautionLineupMemo`
+  // Memoised per tick on the identity of both inputs — see `paceLineupMemo`
   // for why identity is a sound key here. One expansion asks up to five times.
   if (memo !== null && memo.telemetry === telemetry && memo.sessionInfo === sessionInfo) return memo.lineup;
 
-  const lineup = resolveCautionLineup(telemetry, sessionInfo, isOvalTrack(sessionInfo));
+  const lineup = resolvePaceLineup(telemetry, sessionInfo, isOvalTrack(sessionInfo));
 
-  instance.cautionLineupMemo = { telemetry, sessionInfo, lineup };
+  instance.paceLineupMemo = { telemetry, sessionInfo, lineup };
 
   return lineup;
 }
@@ -1529,7 +1529,7 @@ function fuelLapsLeftStats(self: TranslatorInstance): FuelStats {
  *
  * Read ONLY when a snapshot is taken. It is synchronous, logs nothing and
  * writes nothing, so taking a snapshot cannot change what is being reported;
- * the one effect is the per-tick memo `getCautionLineup()` fills, which that
+ * the one effect is the per-tick memo `getPaceLineup()` fills, which that
  * accessor writes for every caller. Nothing here runs per tick.
  *
  * The curated keys are what the public accessors answer, called as any other
@@ -1609,7 +1609,7 @@ export function readSimState(): SimStateSnapshot {
       },
       gaps: getLiveGaps(),
       opponentFlags: getLiveOpponentFlags(),
-      caution: { phase: getCautionPhase(), episode: getCautionEpisode(), lineup: getCautionLineup() },
+      caution: { phase: getCautionPhase(), episode: getCautionEpisode(), lineup: getPaceLineup() },
       session: {
         type: sessionType,
         trackDirection: getTrackDirection(),

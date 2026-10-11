@@ -59,8 +59,8 @@
  * position can be read.** Once it pulls off at the green the whole of line 0
  * shifts down a row while line 1 does not, and the lineup then renumbers from 0
  * among whoever is left as cars accelerate away — so a row is a place in a
- * shrinking queue rather than a restart position. {@link resolveCautionLineup}
- * therefore withholds `restartPosition` (only that field — who is ahead of you
+ * shrinking queue rather than a restart position. {@link resolvePaceLineup}
+ * therefore withholds `lineupPosition` (only that field — who is ahead of you
  * in your own line is still true) unless session info names a pace car AND that
  * car holds line 0 row 0. The 60 fixture ticks that fail the anchor are all
  * under green with no caution bit set, so nothing is withheld during a caution.
@@ -90,7 +90,7 @@
  * it at 548.33 s: car 8 reads `NotInWorld` and still holds line 0 row 6, and
  * only at 548.37 s does it drop to −1/−1 and the rows close up. A "one row
  * lower" rule names that car as the one to follow for that tick, and the same
- * ghost row would count towards `restartPosition`. Narrow in that capture
+ * ghost row would count towards `lineupPosition`. Narrow in that capture
  * (car 8 was BEHIND the player), real when the departing car is directly
  * ahead, and cheap to close: the search walks down the rows past any car that
  * is not in the world, and the restart count skips them too. With no
@@ -102,7 +102,7 @@ import { carInWorld, getCarNumberFromSessionInfo, type TelemetryData } from "@ir
 
 import { resolvePaceCarIdx } from "./pace-laps.js";
 
-export type CautionLineup = {
+export type PaceLineup = {
   /** The car to follow — the car in your line one row lower, or the pace car. */
   followCarIdx: number | null;
   /** Its car number exactly as the sim spells it ("09" stays "09"). `null` when unknown. */
@@ -110,7 +110,7 @@ export type CautionLineup = {
   /** Which lane you line up in. `null` when single file or the track is not an oval. */
   line: CautionLine | null;
   /**
-   * You are restarting FIRST — `restartPosition === 1`, and nothing looser.
+   * You are restarting FIRST — `lineupPosition === 1`, and nothing looser.
    *
    * It is not "nobody is ahead of you in your line", which running double file
    * is true of BOTH front cars: the leader at line 0 row 1 and the outside
@@ -119,7 +119,7 @@ export type CautionLineup = {
    * this value becomes a SCRIPT CONDITION and the script grammar's only
    * operator is `!` — a pack author can write `isLeader` or `!isLeader` and has
    * no way to narrow it further, so the narrowing has to be here. Use
-   * {@link CautionLineup.followsPaceCar} for the looser question.
+   * {@link PaceLineup.followsPaceCar} for the looser question.
    *
    * False when the position cannot be read at all: claiming the lead is not
    * something to do on a guess.
@@ -130,7 +130,7 @@ export type CautionLineup = {
    * you is the pace car. True for the leader AND for the outside front car on a
    * double-file restart — it is what a line naming the pace car instead of a
    * car number should be conditioned on, which is why it survives beside
-   * {@link CautionLineup.isLeader} rather than being folded into it.
+   * {@link PaceLineup.isLeader} rather than being folded into it.
    */
   followsPaceCar: boolean;
   /** The field is in two columns. */
@@ -140,7 +140,7 @@ export type CautionLineup = {
    * position — the pace car does not head the lineup, or session info does not
    * say which car it is (see the module comment's anchor paragraph).
    */
-  restartPosition: number | null;
+  lineupPosition: number | null;
 };
 
 /**
@@ -217,14 +217,14 @@ function isDoubleFile(population: Map<number, number>): boolean {
  * With the field on line 0 and the player alone on line 1, every "in my
  * line" question below is asked of a line holding nobody else: no car ahead,
  * so the follow call would say it is just him and the pace car; nobody with
- * a lower row, so `restartPosition` would be 1 and `isLeader` TRUE — the
+ * a lower row, so `lineupPosition` would be 1 and `isLeader` TRUE — the
  * lineup telling a mid-pack driver he restarts first, on a reading the field
  * itself says is wrong. Single file, the field's line is the line the field
  * is on, and a player off it is the stray value, not the field. What his row
  * MEANS on that line cannot be known either (a row in the old numbering, or
  * the first row of a re-form the rest of the field has not joined yet), so
  * counting him onto the field's line would be a guess wearing a number.
- * {@link resolveCautionLineup} therefore withholds every answer that rests
+ * {@link resolvePaceLineup} therefore withholds every answer that rests
  * on the player's line — the car to follow, the position, the lead — and
  * `caution.lineup.changed` treats the tick as no news (`diff/caution.ts`
  * ignores a follow car it cannot name), so the next real reading is judged
@@ -245,14 +245,14 @@ function isOffTheField(population: Map<number, number>, myLine: number): boolean
 }
 
 /** Every answer withheld: the shape of "this cannot be read", never a guess. */
-const WITHHELD: CautionLineup = {
+const WITHHELD: PaceLineup = {
   followCarIdx: null,
   followCarNumber: null,
   line: null,
   isLeader: false,
   followsPaceCar: false,
   doubleFile: false,
-  restartPosition: null,
+  lineupPosition: null,
 };
 
 /**
@@ -285,14 +285,14 @@ function resolveFollowCarNumber(sessionInfo: Record<string, unknown> | null, car
  * The player's place in the caution lineup for THIS tick, or `null` when there
  * is none to read — no pace arrays, no player index, or a player the field has
  * lined up without (a car in the pits during the re-form holds no row).
- * Returning `null` is what makes a `restartPosition: null` in a payload mean
+ * Returning `null` is what makes a `lineupPosition: null` in a payload mean
  * "the field is not lined up" rather than "we forgot".
  */
-export function resolveCautionLineup(
+export function resolvePaceLineup(
   telemetry: TelemetryData,
   sessionInfo: Record<string, unknown> | null,
   isOval: boolean,
-): CautionLineup | null {
+): PaceLineup | null {
   const lines = telemetry.CarIdxPaceLine;
   const rows = telemetry.CarIdxPaceRow;
 
@@ -343,16 +343,16 @@ export function resolveCautionLineup(
 
   const followsPaceCar = aheadCarIdx === null || aheadCarIdx === paceCarIdx;
   const followCarIdx = aheadCarIdx ?? paceCarIdx;
-  const restartPosition = resolveRestartPosition(lines, rows, paceCarIdx, myLine, myRow, doubleFile, inWorld);
+  const lineupPosition = resolveLineupPosition(lines, rows, paceCarIdx, myLine, myRow, doubleFile, inWorld);
 
   return {
     followCarIdx,
     followCarNumber: resolveFollowCarNumber(sessionInfo, followCarIdx),
     line: resolveLine(myLine, doubleFile, isOval),
-    isLeader: restartPosition === 1,
+    isLeader: lineupPosition === 1,
     followsPaceCar,
     doubleFile,
-    restartPosition,
+    lineupPosition,
   };
 }
 
@@ -387,7 +387,7 @@ function combinedOrderKey(line: number, row: number): number | null {
  * order of every lined-up car — counted, not computed from the row, so two
  * lanes of uneven length still yield 1..N. See the module comment.
  */
-function resolveRestartPosition(
+function resolveLineupPosition(
   lines: unknown[],
   rows: unknown[],
   paceCarIdx: number | null,

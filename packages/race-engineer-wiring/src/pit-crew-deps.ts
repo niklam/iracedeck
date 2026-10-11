@@ -79,7 +79,7 @@ export function buildPitCrewDeps(
     // because `paceCar.deployed` / `paceCar.off` also fire at a rolling start),
     // and the episode that scopes the lineup change's memory of the car last
     // named to one caution (issue #1286).
-    getCautionLineup: () => sim.getCautionLineup(),
+    getPaceLineup: () => sim.getPaceLineup(),
     getUnderFullCourseCaution: () => sim.isUnderFullCourseCaution(),
     getCautionPhase: () => sim.getCautionPhase(),
     getCautionEpisode: () => sim.getCautionEpisode(),

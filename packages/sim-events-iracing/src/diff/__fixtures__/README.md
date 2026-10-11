@@ -38,7 +38,7 @@ bug: the two lanes are UNEVEN — line 0 holds 11 cars (rows 1..11), line 1 hold
 the old `2R − 1` formula gave the player (line 0, row 11) position 21 where the combined order counts
 20; and car #7 (index 7) is two laps down and lined up one row ahead of the player, so the lineup
 says 20 while the race order, and the display, say 19 — which is why the position call speaks the
-race position. Read by `caution-lineup.test.ts` (the lineup), its own `caution-lineup-20260919.test.ts`
+race position. Read by `pace-lineup.test.ts` (the lineup), its own `caution-lineup-20260919.test.ts`
 (the shape and the race order) and `audio-scenarios`' `caution.test.ts` (what the bundled voice speaks
 for it). The balanced 2026-09-17 fixture cannot tell the two formulas apart; this one can.
 

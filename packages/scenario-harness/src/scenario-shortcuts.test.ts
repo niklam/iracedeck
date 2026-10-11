@@ -15,15 +15,15 @@ import {
 import { silentLogger } from "@iracedeck/logger";
 import {
   _resetSimEventsIracing,
-  type CautionLineup,
   DAMAGE_DEBOUNCE_MS,
   DAMAGE_INCIDENT_GRACE_MS,
   DAMAGE_REPAIR_MASK,
-  getCautionLineup,
   getLatestTelemetry,
   getLivePosition,
+  getPaceLineup,
   initializeSimEventsIracing,
   isDamageRepairNeeded,
+  type PaceLineup,
   PIT_APPROACH_COOLDOWN_MS,
   PIT_STATUS_EMPTY_STOP_MAX_MS,
   YELLOW_CLEARED_HOLD_MS,
@@ -403,7 +403,7 @@ describe('the "race-oval" session preset (issue #1127)', () => {
 
   /**
    * The step that lines the field up: the only one carrying `CarIdxPaceLine` /
-   * `CarIdxPaceRow` / `PaceMode`, which is everything `getCautionLineup()`
+   * `CarIdxPaceRow` / `PaceMode`, which is everything `getPaceLineup()`
    * needs. Taken from the shortcut rather than written out, so a lineup the
    * button stops driving can never keep passing here.
    */
@@ -415,7 +415,7 @@ describe('the "race-oval" session preset (issue #1127)', () => {
    * the roster and the pace arrays, which both presets share — `race-oval`
    * changes only `WeekendInfo`.
    */
-  function lineupAfterFirstStep(sessionPreset: string): CautionLineup | null {
+  function lineupAfterFirstStep(sessionPreset: string): PaceLineup | null {
     // Self-contained, so one test can read BOTH presets: the translator is a
     // singleton that throws on a second `initializeSimEventsIracing`.
     _resetSimEventsIracing();
@@ -427,11 +427,11 @@ describe('the "race-oval" session preset (issue #1127)', () => {
     expect(lineupStep, '"flag-caution-restart" has no first step to drive').toHaveLength(1);
     runSequence(controller, lineupStep);
 
-    return getCautionLineup();
+    return getPaceLineup();
   }
 
   it("names the lane the double-file restart forms up in", () => {
-    // The whole reason this preset exists: `resolveCautionLineup` answers
+    // The whole reason this preset exists: `resolvePaceLineup` answers
     // `line` only when the field is double file AND `isOvalTrack(sessionInfo)`
     // is true, which reads `WeekendInfo.Category` first — so on a road-course
     // preset the "take the inside/outside line" wording cannot be auditioned
@@ -455,7 +455,7 @@ describe('the "race-oval" session preset (issue #1127)', () => {
     // `line` is named here as well as in the test above, so this one also goes
     // red if the preset stops reading as an oval — without it, "the same except
     // the lane" is satisfied by two lineups that both name no lane at all.
-    expect(onOval).toMatchObject({ line: "inside", followCarNumber: "8", restartPosition: 7, doubleFile: true });
+    expect(onOval).toMatchObject({ line: "inside", followCarNumber: "8", lineupPosition: 7, doubleFile: true });
   });
 });
 

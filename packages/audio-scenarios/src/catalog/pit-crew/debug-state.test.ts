@@ -631,7 +631,7 @@ describe("the family readers", () => {
     const build = (followCarIdx: number): void => {
       const contracts = buildCautionContracts({
         getCautionPhase: () => "waving",
-        getCautionLineup: () => ({ followCarIdx }) as never,
+        getPaceLineup: () => ({ followCarIdx }) as never,
         getCautionEpisode: () => ({ id: 3, firstFollowCarIdx: followCarIdx }),
         isCautionCalloutEnabled: () => true,
       });

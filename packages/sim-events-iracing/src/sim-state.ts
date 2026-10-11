@@ -34,7 +34,6 @@
  */
 import { isPostRace, type ReplayState, type TelemetryData } from "@iracedeck/iracing-sdk";
 
-import type { CautionLineup } from "./diff/caution-lineup.js";
 import {
   estimateFuelLapsLeft,
   type FuelLapsLeftEstimate,
@@ -42,6 +41,7 @@ import {
   resolveFuelRaceCoverage,
 } from "./diff/fuel-laps-left.js";
 import type { FuelLap, FuelLapTracker, FuelStats } from "./diff/fuel-laps.js";
+import type { PaceLineup } from "./diff/pace-lineup.js";
 import type { CautionEpisode, CautionPhase, RaceFinishResult, TranslatorState } from "./state.js";
 import type { TrackDirection } from "./track-type.js";
 import type { GapNeighbor, LiveGaps, LiveOpponentFlags, LivePosition } from "./translator.js";
@@ -113,7 +113,7 @@ export type SimOrderState = {
 export type SimCautionState = {
   phase: CautionPhase;
   episode: CautionEpisode | null;
-  lineup: CautionLineup | null;
+  lineup: PaceLineup | null;
 };
 
 /** What the translator knows about the session the car is in. */

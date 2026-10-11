@@ -5,7 +5,7 @@
  * set up itself, and the failure mode when that state is missing is the worst
  * kind: PART of the run goes silent. Pressing a caution button with no session
  * preset applied plays every flag-driven line and drops every lineup-driven one
- * — `resolveCautionLineup` reads `DriverInfo.DriverCarIdx` to know who the
+ * — `resolvePaceLineup` reads `DriverInfo.DriverCarIdx` to know who the
  * player is and returns `null` outright without it, while the caution's own
  * speak gate is flag-only — leaving nothing in the UI and one
  * `optional clause skipped — var {{caution.followCarNumber}} resolved to

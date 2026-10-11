@@ -43,7 +43,7 @@ import type { CalloutScript } from "@iracedeck/callout-script";
 import { CAUTION_CALLOUTS } from "@iracedeck/callout-settings";
 import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { SessionState } from "@iracedeck/iracing-sdk";
-import type { CautionLineup } from "@iracedeck/sim-events-iracing";
+import type { PaceLineup } from "@iracedeck/sim-events-iracing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { WEIGHT } from "../../dsl.js";
@@ -74,14 +74,14 @@ const MANIFEST = manifestJson as AudioAssetsManifest;
 /** Live in the car, racing — what the caution contracts' shared gate needs. */
 const IN_CAR = { IsOnTrack: true, IsReplayPlaying: false, SessionState: SessionState.Racing };
 
-const LINEUP: CautionLineup = {
+const LINEUP: PaceLineup = {
   followCarIdx: 7,
   followCarNumber: "9",
   line: "inside",
   isLeader: false,
   followsPaceCar: false,
   doubleFile: true,
-  restartPosition: 14,
+  lineupPosition: 14,
 };
 
 /**
@@ -200,7 +200,7 @@ beforeEach(() => {
   registerPitCrew(bus, {
     logger: mockLogger as never,
     getCautionPhase: () => "waving",
-    getCautionLineup: () => LINEUP,
+    getPaceLineup: () => LINEUP,
     // A genuine change: the caution's first follow car was another one, and
     // nothing has named car 7 (the follow call is off).
     getCautionEpisode: () => ({ id: 1, firstFollowCarIdx: 3 }),

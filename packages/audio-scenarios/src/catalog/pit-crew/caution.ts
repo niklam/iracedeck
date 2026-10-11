@@ -219,9 +219,9 @@ import { Flags, hasFlag, type TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 import {
   type CautionEpisode,
-  type CautionLineup,
   type CautionPhase,
   getLatestTelemetry,
+  type PaceLineup,
 } from "@iracedeck/sim-events-iracing";
 
 import type { ScenarioContract, SpeakGate } from "../../dsl.js";
@@ -238,7 +238,7 @@ const greenHeld = (telemetry: TelemetryData | null): boolean =>
 export type CautionCalloutId = CalloutIdOf<typeof CAUTION_CALLOUTS>;
 
 /**
- * Reader the plugins wire to `getCautionLineup()` from
+ * Reader the plugins wire to `getPaceLineup()` from
  * `@iracedeck/sim-events-iracing`: the player's place in the caution lineup as
  * of the latest tick, or `null` when there is none to read.
  *
@@ -251,7 +251,7 @@ export type CautionCalloutId = CalloutIdOf<typeof CAUTION_CALLOUTS>;
  * can substitute its own, and the contract layer holds no reference to live
  * global state that a second consumer would have to reset.
  */
-export type CautionLineupResolver = () => CautionLineup | null;
+export type PaceLineupResolver = () => PaceLineup | null;
 
 /**
  * Reader the plugins wire to `isUnderFullCourseCaution()`: the translator's own
@@ -292,7 +292,7 @@ export type CautionEpisodeResolver = () => CautionEpisode | null;
  */
 export type CautionContractDeps = {
   getCautionPhase: CautionPhaseResolver;
-  getCautionLineup: CautionLineupResolver;
+  getPaceLineup: PaceLineupResolver;
   getCautionEpisode: CautionEpisodeResolver;
   isCautionCalloutEnabled: (id: CautionCalloutId) => boolean;
 };
@@ -420,7 +420,7 @@ export function readCautionDebugState(): { lastNamed: LastNamedCar | null } {
  */
 export function buildCautionContracts({
   getCautionPhase,
-  getCautionLineup,
+  getPaceLineup,
   getCautionEpisode,
   isCautionCalloutEnabled,
 }: CautionContractDeps): readonly ScenarioContract[] {
@@ -435,7 +435,7 @@ export function buildCautionContracts({
    */
   const stillLinedUp: SpeakGate = {
     description: "Re-checked at speak time: the full-course caution is still out and you still hold a pace row.",
-    admit: () => getCautionPhase() !== "none" && getCautionLineup() !== null,
+    admit: () => getCautionPhase() !== "none" && getPaceLineup() !== null,
   };
 
   /** The family's own gate, built once so the two naming calls below can wrap it. */
@@ -456,7 +456,7 @@ export function buildCautionContracts({
   /** Record the car ahead now as named — nothing while no caution is out or the lineup names no car. */
   const recordNamed = (): void => {
     const episode = getCautionEpisode();
-    const followCarIdx = getCautionLineup()?.followCarIdx ?? null;
+    const followCarIdx = getPaceLineup()?.followCarIdx ?? null;
 
     if (episode === null || followCarIdx === null) return;
 
@@ -586,7 +586,7 @@ export function buildCautionContracts({
           if (!stillLinedUp.admit(ctx)) return false;
 
           const episode = getCautionEpisode();
-          const now = getCautionLineup()?.followCarIdx ?? null;
+          const now = getPaceLineup()?.followCarIdx ?? null;
 
           if (episode === null || now === null) return false;
 
@@ -678,7 +678,7 @@ export function buildCautionContracts({
  */
 export const CAUTION_SCENARIO_IDS: readonly string[] = buildCautionContracts({
   getCautionPhase: () => "none",
-  getCautionLineup: () => null,
+  getPaceLineup: () => null,
   getCautionEpisode: () => null,
   isCautionCalloutEnabled: () => true,
 }).map((c) => c.id);
@@ -712,7 +712,7 @@ export const POSITION_NUMBER_MAX = 64;
  * before the contracts are defined so the first `setScripts` compile sees it;
  * a later registration only marks the compiled scripts dirty.
  *
- * Every entry reads the lineup afresh through `getCautionLineup`, so a call
+ * Every entry reads the lineup afresh through `getPaceLineup`, so a call
  * that waited behind a busier bus names the car that is ahead at the moment it
  * is spoken rather than the one that was ahead when it fired. The one entry
  * that does not read the lineup is `caution.racePosition`, which reads the
@@ -722,7 +722,7 @@ export const POSITION_NUMBER_MAX = 64;
  */
 export function registerCautionVocabulary(
   engine: Pick<IScenarioEngine, "defineVar" | "defineCond" | "defineCase">,
-  getCautionLineup: CautionLineupResolver,
+  getPaceLineup: PaceLineupResolver,
   getLivePosition: LivePositionResolver,
   logger?: ILogger,
 ): void {
@@ -734,7 +734,7 @@ export function registerCautionVocabulary(
    * condition, so the two can never answer differently about the same tick.
    */
   const followCarNumberRef = (): string | null => {
-    const lineup = getCautionLineup();
+    const lineup = getPaceLineup();
 
     // Following the pace car is not a car number. The lineup names the pace
     // car's own number there, and a script that spoke it would say "line up
@@ -758,7 +758,7 @@ export function registerCautionVocabulary(
   engine.defineVar(
     "caution.restartPosition",
     () => {
-      const position = getCautionLineup()?.restartPosition ?? null;
+      const position = getPaceLineup()?.lineupPosition ?? null;
 
       if (position === null || !Number.isInteger(position) || position < 1) return null;
 
@@ -816,25 +816,25 @@ export function registerCautionVocabulary(
 
   engine.defineCond(
     "caution.isLeader",
-    () => getCautionLineup()?.isLeader === true,
+    () => getPaceLineup()?.isLeader === true,
     "You would restart first. Not the same as having only the pace car ahead of you, which is true of both front cars on a double-file restart — that is caution.followsPaceCar.",
   );
 
   engine.defineCond(
     "caution.followsPaceCar",
-    () => getCautionLineup()?.followsPaceCar === true,
+    () => getPaceLineup()?.followsPaceCar === true,
     "There is nobody ahead of you in your own line, so the pace car is the only thing in front. True for the leader and for the outside front car on a double-file restart; the condition to ask before naming a car number.",
   );
 
   engine.defineCond(
     "caution.isDoubleFile",
-    () => getCautionLineup()?.doubleFile === true,
+    () => getPaceLineup()?.doubleFile === true,
     "The field is lined up in two columns rather than one. iRacing re-forms the field double file on the tick before the one-to-go flag when the restart is a double-file one.",
   );
 
   engine.defineCase(
     "caution.line",
-    () => getCautionLineup()?.line ?? null,
+    () => getPaceLineup()?.line ?? null,
     {
       inside: "You line up in the inside lane.",
       outside: "You line up in the outside lane.",

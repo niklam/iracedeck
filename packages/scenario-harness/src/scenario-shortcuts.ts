@@ -534,8 +534,8 @@ const RESTART_LISTEN_MS = YELLOW_CLEARED_HOLD_MS + 3000;
 
 /**
  * The double-file caution lineup the three shortcuts below drive
- * `resolveCautionLineup()` with (issue #1127): the pace car anchored at line
- * 0, row 0 — the ONE thing `resolveCautionLineup` needs to answer a restart
+ * `resolvePaceLineup()` with (issue #1127): the pace car anchored at line
+ * 0, row 0 — the ONE thing `resolvePaceLineup` needs to answer a restart
  * position at all — and the rest of an 18-car field interleaved two-wide
  * behind it. Indexed against the race session preset's own roster (pace car
  * at index 0, the player at index 7, car number "42"), so a shortcut that
@@ -548,7 +548,7 @@ const RESTART_LISTEN_MS = YELLOW_CLEARED_HOLD_MS + 3000;
  * 21-car field, and its own pace arrays live in
  * `packages/sim-events-iracing/src/diff/__fixtures__/caution-restart-20260917.json`
  * against a roster this harness does not share. The interleave itself
- * follows the documented formula in `diff/caution-lineup.ts` (line 0 row R →
+ * follows the documented formula in `diff/pace-lineup.ts` (line 0 row R →
  * position `2R − 1`, line 1 row R → position `2R + 2`), so the player
  * (index 7, line 0, row 4) restarts 7th, one row behind car number 8 (index
  * 5, line 0, row 3).
@@ -628,13 +628,13 @@ const CAUTION_RACE_ORDER_CLEAR = { CarIdxLapCompleted: null, CarIdxLapDistPct: n
  * measured, but nothing the follow-car lines can speak without: every
  * `caution.*` script variable (`caution.followCarNumber`,
  * `caution.restartPosition`, `caution.isDoubleFile`, …) reads the pace
- * arrays through `getCautionLineup()`, which returns `null` outright without
+ * arrays through `getPaceLineup()`, which returns `null` outright without
  * them — a shortcut driving only `SessionFlags` leaves those lines with
  * nothing to say. The patch persists across the later steps (each one only
  * touches `SessionFlags`), so it needs setting once.
  *
  * The lane a double-file field forms up in is named only on an OVAL
- * (`resolveCautionLineup` answers `line` behind `isOvalTrack`), which is why
+ * (`resolvePaceLineup` answers `line` behind `isOvalTrack`), which is why
  * `presets/session/race-oval.json` exists: the same roster and the same pace
  * arrays, with `WeekendInfo.Category: "Oval"`. On `race` the run is identical
  * bar that one clause, so the preset is the difference between hearing "take
