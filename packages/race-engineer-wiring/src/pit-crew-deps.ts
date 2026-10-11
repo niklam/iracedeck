@@ -83,6 +83,17 @@ export function buildPitCrewDeps(
     getUnderFullCourseCaution: () => sim.isUnderFullCourseCaution(),
     getCautionPhase: () => sim.getCautionPhase(),
     getCautionEpisode: () => sim.getCautionEpisode(),
+    // The rolling-start formation (issue #1167): its identity while one runs,
+    // `null` otherwise. The three formation callouts gate on it not being
+    // `null`, and the lineup change scopes its memory of the car last named to
+    // its id, as the caution's does to the episode.
+    getRollingStartFormation: () => sim.getRollingStartFormation(),
+    // The caution catch-up (issue #1168) has no translator reader yet: it lands
+    // with the catch-up diff, and this line becomes `sim.getCautionGap()` in
+    // the same change. Until then it is the default spelled out — no gap, so
+    // both catch-up calls stay silent — because `Required<PitCrewDeps>` wants
+    // every key built here.
+    getCautionGap: () => null,
     logger: logger.createScope("PitCrewScenarios"),
     getPitActionsAllowed: () => sim.isPitActionsAllowed(),
     getReadbackSnapshot: () => sim.getReadbackSnapshot(),

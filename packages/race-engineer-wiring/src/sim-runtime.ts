@@ -19,6 +19,7 @@ import {
   getQualifyingInvalidationSnapshot,
   getRaceStartConditions,
   getReadbackSnapshot,
+  getRollingStartFormation,
   getSessionStartConditions,
   getTrackDirection,
   isPitActionsAllowed,
@@ -39,6 +40,7 @@ export interface SimRuntime {
   readonly getQualifyingInvalidationSnapshot: typeof getQualifyingInvalidationSnapshot;
   readonly getRaceStartConditions: typeof getRaceStartConditions;
   readonly getReadbackSnapshot: typeof getReadbackSnapshot;
+  readonly getRollingStartFormation: typeof getRollingStartFormation;
   readonly getSessionStartConditions: typeof getSessionStartConditions;
   readonly getTrackDirection: typeof getTrackDirection;
   readonly isPitActionsAllowed: typeof isPitActionsAllowed;
@@ -61,6 +63,7 @@ export function createIracingSimRuntime(): SimRuntime {
     getQualifyingInvalidationSnapshot,
     getRaceStartConditions,
     getReadbackSnapshot,
+    getRollingStartFormation,
     getSessionStartConditions,
     getTrackDirection,
     isPitActionsAllowed,

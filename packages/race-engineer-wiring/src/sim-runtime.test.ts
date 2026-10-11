@@ -11,6 +11,6 @@ describe("createIracingSimRuntime", () => {
       expect(fn, name).toBe((translator as Record<string, unknown>)[name]);
     }
 
-    expect(Object.keys(sim)).toHaveLength(17);
+    expect(Object.keys(sim)).toHaveLength(18);
   });
 });
