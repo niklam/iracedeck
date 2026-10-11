@@ -6,6 +6,12 @@
  * one of these three. The one copy it allows is the plain Markdown link on the
  * developer docs page (`src/content/docs/docs/development/index.md`), which it holds to
  * {@link SUPPORT_URL}.
+ *
+ * The plugin's Settings window shows the same button and links on its Support
+ * iRaceDeck tab (#1303) and cannot import this module, so
+ * `packages/pi-components/partials/settings-window-support.ejs` holds its own
+ * copy. `scripts/support-link-parity.test.mjs` fails when the two differ: a
+ * change here is a change there.
  */
 
 /** The general page: a one-off and the membership are both one click away. */
