@@ -1,15 +1,31 @@
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
-import { captureSettingsWindow, createSeedSettingsHost } from "./capture.mjs";
+import {
+  captureSettingsWindow,
+  createSeedSettingsHost,
+  PAGE_LOAD_TIMEOUT_MS,
+  PAGE_SETTLE_MS,
+  PANE_IMAGES_LOADED_EXPRESSION,
+  PANE_IMAGES_POLL_MS,
+  PANE_IMAGES_TIMEOUT_MS,
+  TAB_SETTLE_MS,
+} from "./capture.mjs";
 
 const SIZE = { width: 1172, height: 788 };
 
-/** A CDP double that records commands and answers the two we depend on. */
-function createFakeCdp({ missingPane, emitLoadEvent = false, noEvents = false } = {}) {
+/**
+ * A CDP double that records commands and answers the ones we depend on.
+ *
+ * `imagesLoadAfter` is how many times a tab's "have this pane's images
+ * loaded?" check answers no before it answers yes: 0 for a pane whose images
+ * are local (every tab but one), Infinity for an image that never arrives.
+ */
+function createFakeCdp({ missingPane, emitLoadEvent = false, noEvents = false, imagesLoadAfter = 0 } = {}) {
   const sent = [];
   const listeners = [];
   let listenersAtLoadEvent = 0;
+  let imageChecksThisTab = 0;
 
   return {
     sent,
@@ -49,7 +65,16 @@ function createFakeCdp({ missingPane, emitLoadEvent = false, noEvents = false } 
         }
       }
 
+      if (method === "Runtime.evaluate" && params.expression === PANE_IMAGES_LOADED_EXPRESSION) {
+        imageChecksThisTab += 1;
+
+        return { result: { value: imageChecksThisTab > imagesLoadAfter } };
+      }
+
       if (method === "Runtime.evaluate") {
+        // A click on a nav button: the next image check belongs to a new tab.
+        imageChecksThisTab = 0;
+
         const found = missingPane ? !params.expression.includes(`"${missingPane}"`) : true;
 
         return { result: { value: found } };
@@ -177,7 +202,9 @@ describe("captureSettingsWindow", () => {
 
     await captureSettingsWindow(OPTIONS, deps);
 
-    const clicks = cdp.sent.filter((c) => c.method === "Runtime.evaluate").map((c) => c.params.expression);
+    const clicks = cdp.sent
+      .filter((c) => c.method === "Runtime.evaluate" && c.params.expression !== PANE_IMAGES_LOADED_EXPRESSION)
+      .map((c) => c.params.expression);
     expect(clicks).toHaveLength(2);
     expect(clicks[0]).toContain('.sw-nav-item[data-pane="general"]');
     expect(clicks[0]).toContain("button.click()");
@@ -222,5 +249,96 @@ describe("captureSettingsWindow", () => {
     expect(cdp.close).toHaveBeenCalled();
     expect(kill).toHaveBeenCalled();
     expect(close).toHaveBeenCalled();
+  });
+});
+
+// The Support iRaceDeck tab's button is an image from another site, fetched
+// lazily when the tab is shown (#1303). A fixed pause cannot know when it has
+// arrived, so the capture asks the page, and gives up after a bound.
+describe("captureSettingsWindow: waiting for a tab's images", () => {
+  /** Deps whose `delay` records what it was asked for and returns at once. */
+  function createTimedDeps(cdpOptions) {
+    const delays = [];
+    const log = vi.fn();
+    const made = createDeps({
+      cdp: createFakeCdp(cdpOptions),
+      deps: {
+        delay: async (ms) => {
+          delays.push(ms);
+        },
+        log,
+      },
+    });
+
+    return {
+      ...made,
+      log,
+      /** How many times the capture paused between two image checks. */
+      polls: () => delays.filter((ms) => ms === PANE_IMAGES_POLL_MS).length,
+      warnings: () => log.mock.calls.map(([message]) => message).filter((message) => message.startsWith("Warning")),
+    };
+  }
+
+  /** What the page session was asked to do per tab, in order. */
+  function steps(cdp) {
+    return cdp.sent
+      .filter((c) => c.method === "Runtime.evaluate" || c.method === "Page.captureScreenshot")
+      .map((c) =>
+        c.method === "Page.captureScreenshot"
+          ? "screenshot"
+          : c.params.expression === PANE_IMAGES_LOADED_EXPRESSION
+            ? "images?"
+            : "click",
+      );
+  }
+
+  it("polls at an interval no other pause uses, so the counts below count only polls", () => {
+    expect([TAB_SETTLE_MS, PAGE_SETTLE_MS, PAGE_LOAD_TIMEOUT_MS]).not.toContain(PANE_IMAGES_POLL_MS);
+    expect(PANE_IMAGES_TIMEOUT_MS % PANE_IMAGES_POLL_MS).toBe(0);
+  });
+
+  it("asks about the visible pane's images, whichever tab that is", () => {
+    expect(PANE_IMAGES_LOADED_EXPRESSION).toContain(".sw-pane:not([hidden]) img");
+    expect(PANE_IMAGES_LOADED_EXPRESSION).toContain("img.complete");
+  });
+
+  it("costs one check and no wait when the images are already loaded", async () => {
+    const { deps, cdp, polls, warnings, writeFile } = createTimedDeps();
+
+    await captureSettingsWindow(OPTIONS, deps);
+
+    expect(steps(cdp)).toEqual(["click", "images?", "screenshot", "click", "images?", "screenshot"]);
+    expect(polls()).toBe(0);
+    expect(warnings()).toEqual([]);
+    expect(writeFile).toHaveBeenCalledTimes(2);
+  });
+
+  it("waits for an image that is still loading, then captures", async () => {
+    const { deps, cdp, polls, warnings, writeFile } = createTimedDeps({ imagesLoadAfter: 3 });
+
+    await captureSettingsWindow({ ...OPTIONS, tabs: [TABS[0]] }, deps);
+
+    // Three checks that say no, each followed by a pause, and the screenshot
+    // only after the one that says yes.
+    expect(steps(cdp)).toEqual(["click", "images?", "images?", "images?", "images?", "screenshot"]);
+    expect(polls()).toBe(3);
+    expect(warnings()).toEqual([]);
+    expect(writeFile).toHaveBeenCalledTimes(1);
+  });
+
+  it("gives up at the bound, names the tab, and captures anyway", async () => {
+    const { deps, cdp, polls, warnings, writeFile } = createTimedDeps({ imagesLoadAfter: Infinity });
+
+    const written = await captureSettingsWindow(OPTIONS, deps);
+
+    // Exactly the bound's worth of pauses per tab, never an endless loop.
+    expect(polls()).toBe((PANE_IMAGES_TIMEOUT_MS / PANE_IMAGES_POLL_MS) * TABS.length);
+    expect(warnings()).toHaveLength(2);
+    expect(warnings()[0]).toMatch(/an image on the General tab had not loaded/);
+    expect(warnings()[0]).toContain("general.png");
+    expect(warnings()[1]).toMatch(/an image on the SimHub tab had not loaded/);
+    expect(steps(cdp).filter((step) => step === "screenshot")).toHaveLength(2);
+    expect(written).toHaveLength(2);
+    expect(writeFile).toHaveBeenCalledTimes(2);
   });
 });

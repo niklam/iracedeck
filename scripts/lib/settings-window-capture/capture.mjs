@@ -15,8 +15,37 @@ import { join } from "node:path";
 
 import { SETTINGS_WINDOW_TABS } from "./tabs.mjs";
 
-/** Pause after switching tabs, so layout and any lazy content settle. */
+/**
+ * Pause after switching tabs, so layout settles. Images are not covered by it:
+ * they get the wait below, which ends when they have loaded instead of when a
+ * fixed time is up.
+ */
 export const TAB_SETTLE_MS = 400;
+
+/**
+ * How long to wait for the images in the tab just opened before capturing it
+ * anyway (#1303).
+ *
+ * The Support iRaceDeck tab draws its button from another site, lazily, so the
+ * request only starts when the tab is shown and takes as long as that site
+ * takes. Every other tab's images are local and already loaded, and they pay
+ * one round trip to find that out.
+ */
+export const PANE_IMAGES_TIMEOUT_MS = 10_000;
+
+/** How often the images are checked while that wait runs. */
+export const PANE_IMAGES_POLL_MS = 100;
+
+/**
+ * True when every `<img>` in the visible pane has finished loading. The
+ * VISIBLE pane, whatever its id, so the check follows the page's own tab
+ * switch; a pane with no images is trivially done. `complete` is false for a
+ * lazy image whose fetch has not started, which is the state right after the
+ * click.
+ *
+ * @internal Exported for testing
+ */
+export const PANE_IMAGES_LOADED_EXPRESSION = `Array.from(document.querySelectorAll('.sw-pane:not([hidden]) img')).every((img) => img.complete)`;
 
 /** Pause after the page's load event, before the first capture. */
 export const PAGE_SETTLE_MS = 1500;
@@ -97,6 +126,36 @@ function watchForPageLoad(cdp, sessionId) {
   });
 
   return { fired, stop: () => unsubscribe?.() };
+}
+
+/**
+ * Wait until the visible pane's images have finished loading, or the bound is
+ * reached.
+ *
+ * Polls the page through the injected `delay`, so a test runs it without real
+ * timers, and counts the time it has asked for rather than reading a clock for
+ * the same reason. A pane whose images are already loaded costs one evaluate
+ * and no delay.
+ *
+ * @param {any} cdp
+ * @param {string} sessionId
+ * @param {(ms: number) => Promise<void>} delay
+ * @returns {Promise<boolean>} False when the bound was reached with an image still loading.
+ */
+async function waitForPaneImages(cdp, sessionId, delay) {
+  for (let waited = 0; ; waited += PANE_IMAGES_POLL_MS) {
+    const { result } = await cdp.send(
+      "Runtime.evaluate",
+      { expression: PANE_IMAGES_LOADED_EXPRESSION, returnByValue: true },
+      sessionId,
+    );
+
+    if (result?.value === true) return true;
+
+    if (waited >= PANE_IMAGES_TIMEOUT_MS) return false;
+
+    await delay(PANE_IMAGES_POLL_MS);
+  }
 }
 
 /**
@@ -234,6 +293,15 @@ export async function captureSettingsWindow(options, deps) {
       }
 
       await delay(TAB_SETTLE_MS);
+
+      if (!(await waitForPaneImages(cdp, sessionId, delay))) {
+        // Captured anyway: whoever runs the capture decides whether a shot
+        // with a missing image is worth keeping, and needs to be told to look.
+        log(
+          `Warning: an image on the ${tab.label} tab had not loaded after ${PANE_IMAGES_TIMEOUT_MS} ms; ` +
+            `captured ${tab.file} without it.`,
+        );
+      }
 
       const shot = await cdp.send("Page.captureScreenshot", { format: "png" }, sessionId);
       const file = join(outDir, tab.file);
