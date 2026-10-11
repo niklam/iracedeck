@@ -141,4 +141,7 @@ export {
 } from "./diff/pit-status.js";
 export { resolveRadarState } from "./diff/radar.js";
 export { resolveIsAiRace, resolveStandingStart } from "./start-lights.js";
-export { resolveTrackDirection, resolveTrackType, TrackDirection, TrackType } from "./track-type.js";
+// `isOvalTrack` rides with them for the scenario harness, which asks THIS reader in
+// a shortcut precondition whether the session is an oval (the lane is named
+// only on one) rather than restating its rule.
+export { isOvalTrack, resolveTrackDirection, resolveTrackType, TrackDirection, TrackType } from "./track-type.js";
