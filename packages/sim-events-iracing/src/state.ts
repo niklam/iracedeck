@@ -340,7 +340,7 @@ export type TranslatorState = {
    * driver glanced at the replay cannot survive as a latch into the tick where
    * `diffStartLights` reads it — see `diff/caution.ts`.
    *
-   * Read ahead of `diffCaution` by two diffs, both of which stand down
+   * Read ahead of `diffCaution` by three diffs. Two of them stand down
    * for the restart while it is anything but `"none"`: `diffStartLights`
    * suppresses `startLight.start-go.raised`, because a restart carries
    * `StartGo` exactly as a race start does and would otherwise borrow its
@@ -349,14 +349,17 @@ export type TranslatorState = {
    * start bit came with it. Those readers are why the translator must run
    * `diffCaution` AFTER both — the green's rising edge ends the episode on the
    * very tick they judge it, so running it first would leave nothing for
-   * either gate to see.
+   * either gate to see. The third is `diffLaps`, which latches
+   * `lap.completed.wasCaution` from it on every tick (`lapCautionSeen`), and
+   * so reads the phase the PREVIOUS tick settled — one tick late at each
+   * edge.
    *
    * `diffGaps` reads it the other way round, and through the translator
    * rather than from here (issues #1285, #1171): it is handed
    * `cautionPhase !== "none"` as an argument AFTER `diffCaution` has run, so
    * what it sees is the phase this tick settled. While that holds it emits no
-   * `gap.*` event and keeps its callout bookkeeping at rest, and it treats the
-   * lap of running after it as an opening lap (`gapRestartMark`).
+   * `gap.*` event and keeps its callout bookkeeping and lap history at rest,
+   * and it marks the lap of running after it (`gapRestartMark`).
    */
   cautionPhase: CautionPhase;
   /**
@@ -1128,10 +1131,13 @@ export type TranslatorState = {
    * The restart mark (issue #1171): the player's progress plus one lap,
    * written on every tick a full-course caution is out, so after the green
    * it stands one lap of running past the restart. While the player's
-   * progress is below it the gap diff treats the lap as the race's opening
-   * lap: the grid assumption applies and no lap history is recorded. `null`
-   * until the session's first caution; never cleared after that, only
-   * overwritten by the next caution — a mark the player has passed is inert.
+   * progress is below it the gap diff treats the lap as it does the race's
+   * opening lap in two respects: no lap history is recorded, and the
+   * threshold call is held to the movement gate. The opening lap's assumed
+   * grid spacing is NOT applied. Written only on a caution tick the diff can
+   * read the player's progress on, so `null` until the session's first such
+   * tick; never cleared after that, only overwritten by the next caution — a
+   * mark the player has passed is inert.
    *
    * PRESERVED across a replay wipe: it is a point in the live race's
    * distance, and a glance at the replay on the restart lap (or one the
@@ -1165,11 +1171,12 @@ export type TranslatorState = {
    * This kills both hover ping-pong and sector-profile fakes ("they're
    * closing" while the gap sits above everything since the last call) with
    * no track-position dependence and no warmup. Reset to the announced gap
-   * on every emission; seeded at the assumed grid spacing on lap 1 and on
-   * the lap after a full-course caution; null = no history. Only stable,
-   * unsuppressed readings fold in. Held at null, with the latches, the
-   * stability streak and the threshold arming around it, on every tick a
-   * full-course caution is out (issue #1171).
+   * on every emission; seeded at the assumed grid spacing on lap 1 only, and
+   * from the measured gap everywhere else, the lap after a full-course
+   * caution included; null = no history. Only stable, unsuppressed readings
+   * fold in. Held at null, with the latches, the stability streak and the
+   * threshold arming around it, on every tick a full-course caution is out
+   * (issue #1171).
    */
   gapMinSinceAnnounceAhead: number | null;
   gapMinSinceAnnounceBehind: number | null;

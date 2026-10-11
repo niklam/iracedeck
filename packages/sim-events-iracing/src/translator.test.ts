@@ -5387,7 +5387,7 @@ describe("sim-events-iracing translator", () => {
         expect(restartMark()).toBeCloseTo(playerAt(3, 2) + 1, 9);
       });
 
-      it("a replay glance on the restart lap keeps the restart mark, and with it the lap's opening-lap treatment", () => {
+      it("a replay glance on the restart lap keeps the restart mark, so the lap is still the restart lap", () => {
         const controller = createMockController();
         controller.__setSessionInfo(ovalRace());
         initializeSimEventsIracing(getEventBus(), controller, createMockLogger());

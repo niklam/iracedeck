@@ -2050,9 +2050,10 @@ function wipeStateForReplay(self: TranslatorInstance): void {
     lapCompletedWasCaution: self.state.lapCompletedWasCaution,
     // The gap diff's restart mark (issue #1171) is the one piece of gap state
     // kept: it is a point in the live race's distance, one lap past where the
-    // player was when the caution ended, and the lap up to it gets the opening
-    // lap's treatment. The opening lap itself survives a glance because it is
-    // read from telemetry; without this the restart lap would not, and its
+    // player was when the caution ended, and the lap up to it is kept out of
+    // the lap history and has its threshold call held to the movement gate, as
+    // the opening lap is. The opening lap itself survives a glance because it
+    // is read from telemetry; without this the restart lap would not, and its
     // strung-out gaps would be recorded and called as ordinary racing. A
     // caution still out on the way back overwrites it on the first tick.
     gapRestartMark: self.state.gapRestartMark,
@@ -2657,8 +2658,10 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // `updatePositionTracking` with it (the order is read FROM what that writes),
   // moving a state-mutating call across nine diffs to buy a proximity the
   // comments and the tests already buy. Any diff added between `diffFlags` and
-  // this one must not read or write `cautionPhase`; today only `diffFlags`,
-  // `diffStartLights` and this diff touch it.
+  // this one must not write `cautionPhase`, and one that reads it there reads
+  // the phase the PREVIOUS tick settled; today `diffFlags`, `diffLaps` (the
+  // `wasCaution` latch) and `diffStartLights` read it ahead of this diff, this
+  // diff alone writes it, and `diffGaps` is handed it after this diff has run.
   //
   // It takes no `isRaceSession`, unlike most of its neighbours, and that is
   // deliberate rather than an omission. The #480
