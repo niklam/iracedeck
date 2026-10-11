@@ -5272,6 +5272,146 @@ describe("sim-events-iracing translator", () => {
       expect(greens).toEqual(["flag.green.raised"]);
     });
 
+    // The third reader of the phase takes it the other way round (issue
+    // #1171): `diffGaps` is handed "a caution is out" as an argument and must
+    // see the phase THIS tick settled, so it runs after `diffCaution`.
+    describe("the gap diff under a caution (issue #1171)", () => {
+      /**
+       * One tick of a race in which the rival laps at a steady 0.01 of a lap
+       * per second and the player sits `gapAheadS` race-seconds behind it, a
+       * tenth of a second after tick `k - 1`. The crossing-time gap is then
+       * exactly `gapAheadS` once the rival's trace reaches back that far.
+       */
+      function gapTick(k: number, gapAheadS: number, flags: number, replay?: boolean): TelemetryData {
+        const rival = 0.3 + 0.001 * k;
+        const player = rival - 0.01 * gapAheadS;
+
+        return {
+          ...cautionTick({
+            flags,
+            progress: [
+              [10, player],
+              [10, rival],
+              [5, 0.5],
+              [10, player - 0.05],
+            ],
+            replay,
+          }),
+          SessionTime: 600 + 0.1 * k,
+        };
+      }
+
+      /** The player's progress at tick `k`, in laps. */
+      const playerAt = (k: number, gapAheadS: number): number => 10.3 + 0.001 * k - 0.01 * gapAheadS;
+
+      function recordGapEvents(): string[] {
+        const seen: string[] = [];
+
+        for (const name of ["gap.thresholdCrossed", "gap.trendChanged"] as const) {
+          getEventBus().subscribe(name, () => seen.push(name));
+        }
+
+        return seen;
+      }
+
+      /**
+       * Fifty ticks 3 s behind the rival — the trace fills, the reading
+       * settles and the 1 s threshold arms — then the player closes 0.35 s a
+       * tick, to 1.25 s. The next tick at 0.9 s is the crossing: 2.1 s of
+       * movement, so no movement gate has a say in it.
+       */
+      function closeToTheThreshold(controller: MockController): number {
+        let k = 0;
+
+        for (; k < 50; k++) controller.__tick(gapTick(k, 3, RACING));
+
+        for (const gap of [2.65, 2.3, 1.95, 1.6, 1.25]) controller.__tick(gapTick(k++, gap, RACING));
+
+        return k;
+      }
+
+      function restartMark(): number | null {
+        const snapshot = readSimState();
+
+        return snapshot.initialized ? snapshot.raw.state.gapRestartMark : null;
+      }
+
+      it("a gap call due on the tick the caution is thrown is not published — diffGaps runs AFTER diffCaution", () => {
+        const controller = createMockController();
+        controller.__setSessionInfo(ovalRace());
+        const seen = recordGapEvents();
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+        const k = closeToTheThreshold(controller);
+
+        // The yellow waves on the very tick the gap drops inside the
+        // threshold. Handed last tick's phase, the gap diff would still call it.
+        controller.__tick(gapTick(k, 0.9, WAVING));
+
+        expect(isUnderFullCourseCaution()).toBe(true);
+        expect(seen).toEqual([]);
+      });
+
+      it("but the same crossing under green is published — the positive control", () => {
+        const controller = createMockController();
+        controller.__setSessionInfo(ovalRace());
+        const seen = recordGapEvents();
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+        const k = closeToTheThreshold(controller);
+
+        controller.__tick(gapTick(k, 0.9, RACING));
+
+        expect(seen).toEqual(["gap.thresholdCrossed"]);
+      });
+
+      it("the restart mark moves on the tick the caution is thrown and stops on the green's own tick", () => {
+        const controller = createMockController();
+        controller.__setSessionInfo(ovalRace());
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+        controller.__tick(gapTick(0, 2, RACING));
+        controller.__tick(gapTick(1, 2, RACING));
+        expect(restartMark()).toBeNull();
+
+        controller.__tick(gapTick(2, 2, WAVING));
+        expect(restartMark()).toBeCloseTo(playerAt(2, 2) + 1, 9);
+
+        controller.__tick(gapTick(3, 2, STATIC));
+        expect(restartMark()).toBeCloseTo(playerAt(3, 2) + 1, 9);
+
+        // The green ends the episode in `diffCaution`, earlier on this tick,
+        // so the mark stays one lap past the last caution tick.
+        controller.__tick(gapTick(4, 2, RESTART));
+        expect(isUnderFullCourseCaution()).toBe(false);
+        expect(restartMark()).toBeCloseTo(playerAt(3, 2) + 1, 9);
+      });
+
+      it("a replay glance on the restart lap keeps the restart mark, and with it the lap's opening-lap treatment", () => {
+        const controller = createMockController();
+        controller.__setSessionInfo(ovalRace());
+        initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+        controller.__tick(gapTick(0, 2, RACING));
+        controller.__tick(gapTick(1, 2, WAVING));
+        controller.__tick(gapTick(2, 2, STATIC));
+        controller.__tick(gapTick(3, 2, RESTART));
+
+        const mark = restartMark();
+
+        expect(mark).toBeCloseTo(playerAt(2, 2) + 1, 9);
+
+        // Every other piece of gap state goes with the wipe; the mark is a
+        // point in the live race's distance and comes back with the driver.
+        controller.__tick(gapTick(4, 2, RACING, true));
+        expect(restartMark()).toBe(mark);
+
+        elapseReplayGrace();
+        controller.__tick(gapTick(5, 2, RACING));
+        expect(restartMark()).toBe(mark);
+      });
+    });
+
     it("counts the caution's laps in the CANONICAL leader, not the front of the lineup", () => {
       // The lineup's front car (the player, line 0 row 1) and the canonical
       // leader (the rival, one lap further round) are deliberately different

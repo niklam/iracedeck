@@ -1298,6 +1298,412 @@ describe("diffGaps — threshold events", () => {
   });
 });
 
+// ── Full-course caution (issue #1171) ─────────────────────────────────────
+//
+// Behind the pace car the gap model is not racing: the traces, the live gaps
+// and the display trend carry on, no `gap.*` event is emitted, and each
+// side's callout bookkeeping is held at its reset value, so nothing measured
+// under the caution can drive a call after the green. The lap of running
+// after it then gets the opening lap's treatment.
+
+/** A side's callout bookkeeping — everything a full-course caution holds at rest. */
+function calloutBookkeeping(state: TranslatorState, side: "ahead" | "behind"): Record<string, unknown> {
+  return side === "ahead"
+    ? {
+        contactAnnouncedLaps: state.gapContactAnnouncedLapsAhead,
+        breakawayAnnounced: state.gapBreakawayAnnouncedAhead,
+        minSinceAnnounce: state.gapMinSinceAnnounceAhead,
+        maxSinceAnnounce: state.gapMaxSinceAnnounceAhead,
+        thresholdArmed: state.gapThresholdArmedAhead,
+        lastEvalGap: state.gapLastEvalGapAhead,
+        stableTicks: state.gapStableTicksAhead,
+      }
+    : {
+        contactAnnouncedLaps: state.gapContactAnnouncedLapsBehind,
+        breakawayAnnounced: state.gapBreakawayAnnouncedBehind,
+        minSinceAnnounce: state.gapMinSinceAnnounceBehind,
+        maxSinceAnnounce: state.gapMaxSinceAnnounceBehind,
+        thresholdArmed: state.gapThresholdArmedBehind,
+        lastEvalGap: state.gapLastEvalGapBehind,
+        stableTicks: state.gapStableTicksBehind,
+      };
+}
+
+const BOOKKEEPING_AT_REST = {
+  contactAnnouncedLaps: null,
+  breakawayAnnounced: false,
+  minSinceAnnounce: null,
+  maxSinceAnnounce: null,
+  thresholdArmed: false,
+  lastEvalGap: null,
+  stableTicks: 0,
+};
+
+describe("diffGaps — full-course caution (issue #1171)", () => {
+  it("emits no gap event while a caution is out, and the live gaps keep updating", () => {
+    const packUp = (caution: boolean): { state: TranslatorState; events: PendingEvent[]; midway: number | null } => {
+      const state = createInitialState();
+      const { events, emit } = collect();
+
+      // Green running with both neighbors 4 s away.
+      run(state, emit, { fromLap: 1, toLap: 3, aheadGapS: 4, behindGapS: 4 });
+
+      const before = events.length;
+
+      // Two pace laps pack the field up to half a second on either side.
+      run(state, emit, { fromLap: 3, toLap: 4, aheadGapS: [4, 2.25], behindGapS: [4, 2.25], caution });
+
+      const midway = state.gapLiveAhead?.gapSeconds ?? null;
+
+      run(state, emit, { fromLap: 4, toLap: 5, aheadGapS: [2.25, 0.5], behindGapS: [2.25, 0.5], caution });
+
+      return { state, events: events.slice(before), midway };
+    };
+
+    // Not declared a caution, the pack-up crosses the 1 s threshold on both
+    // sides — the fixture bites...
+    expect(thresholdEvents(packUp(false).events)).toHaveLength(2);
+
+    // ...and under the caution nothing at all is emitted,
+    const paced = packUp(true);
+
+    expect(paced.events).toEqual([]);
+    // while the gaps the display reads follow the field in.
+    expect(paced.midway).toBeGreaterThan(2);
+    expect(paced.midway).toBeLessThan(2.6);
+    expect(paced.state.gapLiveAhead?.gapSeconds).toBeGreaterThan(0.4);
+    expect(paced.state.gapLiveAhead?.gapSeconds).toBeLessThan(0.7);
+    expect(paced.state.gapLiveBehind?.gapSeconds).toBeGreaterThan(0.4);
+    expect(paced.state.gapLiveBehind?.gapSeconds).toBeLessThan(0.7);
+  });
+
+  it("stays silent through the accordion behind the pace car — the four 'caught' calls of the issue's reproduction", () => {
+    const accordion = (caution: boolean): number => {
+      const state = createInitialState();
+      const { events, emit } = collect();
+
+      run(state, emit, { fromLap: 1, toLap: 2.5, aheadGapS: 2.6, behindGapS: 30 });
+
+      // The car ahead concertinas four times: out past the re-arm point, back
+      // inside the threshold. Each swing is 2 s, more than the movement gate,
+      // so the restart lap's grid assumption is not what keeps these quiet.
+      for (let cycle = 0; cycle < 4; cycle++) {
+        const from = 2.5 + cycle * 0.5;
+
+        run(state, emit, { fromLap: from, toLap: from + 0.25, aheadGapS: [2.6, 0.6], behindGapS: 30, caution });
+        run(state, emit, { fromLap: from + 0.25, toLap: from + 0.5, aheadGapS: [0.6, 2.6], behindGapS: 30, caution });
+      }
+
+      return thresholdEvents(events).length;
+    };
+
+    expect(accordion(false)).toBe(4);
+    expect(accordion(true)).toBe(0);
+  });
+
+  it("holds every piece of callout bookkeeping at its reset value from the first caution tick", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+
+    // A catch on the car ahead and a breakaway from the car behind, both
+    // announced, with both thresholds armed.
+    run(state, emit, { fromLap: 1, toLap: 2, aheadGapS: [12, 11], behindGapS: 1.5 });
+    run(state, emit, { fromLap: 2, toLap: 2.7, aheadGapS: [11, 10.3], behindGapS: [1.5, 3.6] });
+    run(state, emit, { fromLap: 2.7, toLap: 7, aheadGapS: [10.3, 6], behindGapS: [3.6, 12] });
+
+    expect(closingEvents(events).length).toBeGreaterThan(0);
+    expect(openingEvents(events).length).toBeGreaterThan(0);
+    expect(state.gapContactAnnouncedLapsAhead).not.toBeNull();
+    expect(state.gapBreakawayAnnouncedBehind).toBe(true);
+    expect(state.gapThresholdArmedAhead).toBe(true);
+    expect(state.gapThresholdArmedBehind).toBe(true);
+    expect(state.gapMaxSinceAnnounceAhead).not.toBeNull();
+    expect(state.gapMinSinceAnnounceBehind).not.toBeNull();
+    expect(state.gapStableTicksAhead).toBeGreaterThan(0);
+    expect(state.gapStableTicksBehind).toBeGreaterThan(0);
+
+    // One caution tick is enough...
+    run(state, emit, { fromLap: 7, toLap: 7, aheadGapS: 6, behindGapS: 12, caution: true });
+    expect(calloutBookkeeping(state, "ahead")).toEqual(BOOKKEEPING_AT_REST);
+    expect(calloutBookkeeping(state, "behind")).toEqual(BOOKKEEPING_AT_REST);
+
+    // ...and it stays there however long the caution runs.
+    run(state, emit, { fromLap: 7, toLap: 9, aheadGapS: [6, 0.6], behindGapS: [12, 0.6], caution: true });
+    expect(calloutBookkeeping(state, "ahead")).toEqual(BOOKKEEPING_AT_REST);
+    expect(calloutBookkeeping(state, "behind")).toEqual(BOOKKEEPING_AT_REST);
+  });
+
+  it("holds the bookkeeping on a caution tick it cannot otherwise process — the player out of the car", () => {
+    const state = createInitialState();
+    const { emit } = collect();
+
+    run(state, emit, { fromLap: 1, toLap: 3, aheadGapS: 2, behindGapS: 30 });
+    expect(state.gapThresholdArmedAhead).toBe(true);
+
+    // `LapCompleted` below zero is the car-not-in-world sentinel: the diff
+    // returns at its gate, before it reads a single gap.
+    run(state, emit, {
+      fromLap: 3,
+      toLap: 3.2,
+      aheadGapS: 2,
+      behindGapS: 30,
+      caution: true,
+      overrides: { LapCompleted: -1 } as Partial<TelemetryData>,
+    });
+
+    expect(state.gapLiveAhead).toBeNull();
+    expect(calloutBookkeeping(state, "ahead")).toEqual(BOOKKEEPING_AT_REST);
+    expect(calloutBookkeeping(state, "behind")).toEqual(BOOKKEEPING_AT_REST);
+  });
+
+  it("does not let a peak recorded before the caution pass the consistency gate after the green", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+
+    // Green running 10 s behind the car ahead: the side's recorded peak.
+    run(state, emit, { fromLap: 1, toLap: 3, aheadGapS: 10, behindGapS: 30 });
+    expect(state.gapMaxSinceAnnounceAhead).toBeCloseTo(10, 1);
+
+    // The caution packs the pair up to half a second...
+    run(state, emit, { fromLap: 3, toLap: 5, aheadGapS: [10, 0.5], behindGapS: 30, caution: true });
+
+    const before = events.length;
+
+    // ...the restart lap strings them out to 2 s, the lap after holds it,
+    run(state, emit, { fromLap: 5, toLap: 6, aheadGapS: [0.5, 2], behindGapS: 30 });
+    run(state, emit, { fromLap: 6, toLap: 7, aheadGapS: 2, behindGapS: 30 });
+    // and then the player reels the car ahead in at 0.4 s a lap: a contact
+    // projection inside the horizon, 8 s under the pre-caution peak — and not
+    // 1.5 s under anything seen since the green.
+    run(state, emit, { fromLap: 7, toLap: 8.5, aheadGapS: [2, 1.4], behindGapS: 30 });
+
+    // The lap rate did see the catch, so only the consistency gate held it.
+    expect(state.gapLapRateWindowAhead.length).toBeGreaterThanOrEqual(5);
+    expect(state.gapMaxSinceAnnounceAhead).toBeLessThan(2.5);
+    expect(events.slice(before)).toEqual([]);
+  });
+
+  it("does not let a threshold arming from before the caution fire after it", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+
+    // 2 s behind the car ahead: armed.
+    run(state, emit, { fromLap: 1, toLap: 3, aheadGapS: 2, behindGapS: 30 });
+    expect(state.gapThresholdArmedAhead).toBe(true);
+
+    // The caution closes the pair up inside the threshold...
+    run(state, emit, { fromLap: 3, toLap: 5, aheadGapS: [2, 0.8], behindGapS: 30, caution: true });
+    expect(state.gapThresholdArmedAhead).toBe(false);
+
+    // ...and they stay there through the restart lap and the laps after it.
+    // Nobody caught anybody: the pace car put them there.
+    run(state, emit, { fromLap: 5, toLap: 7.5, aheadGapS: 0.8, behindGapS: 30 });
+    expect(thresholdEvents(events)).toHaveLength(0);
+  });
+
+  it("does not let a breakaway latch from before the caution swallow the next breakaway", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+
+    // A lap of 2 s battle, then the car ahead breaks away: announced, latched.
+    run(state, emit, { fromLap: 1, toLap: 2, aheadGapS: 2, behindGapS: 30 });
+    run(state, emit, { fromLap: 2, toLap: 3, aheadGapS: [2, 3.6], behindGapS: 30 });
+    expect(openingEvents(events)).toHaveLength(1);
+    expect(state.gapBreakawayAnnouncedAhead).toBe(true);
+
+    // The caution packs the pair back up.
+    run(state, emit, { fromLap: 3, toLap: 5, aheadGapS: [3.6, 0.8], behindGapS: 30, caution: true });
+    expect(state.gapBreakawayAnnouncedAhead).toBe(false);
+
+    // After the restart lap the car ahead pulls away again at 1.2 s a lap.
+    // With the old latch still set this would never be announced: a latch
+    // only re-arms on a lap rate under the re-arm bar, and this one never is.
+    run(state, emit, { fromLap: 5, toLap: 6, aheadGapS: [0.8, 1], behindGapS: 30 });
+    run(state, emit, { fromLap: 6, toLap: 8, aheadGapS: [1, 3.4], behindGapS: 30 });
+
+    const calls = openingEvents(events);
+
+    expect(calls).toHaveLength(2);
+    expect(calls[1]!.data).toMatchObject({ side: "ahead", direction: "opening", carIdx: AHEAD });
+  });
+
+  it("leaves the display rate chain and the live gaps exactly as they are without the caution", () => {
+    const drive = (caution: boolean): TranslatorState => {
+      const state = createInitialState();
+      const { emit } = collect();
+
+      run(state, emit, { fromLap: 1, toLap: 2, aheadGapS: 6, behindGapS: 6 });
+      run(state, emit, { fromLap: 2, toLap: 3.5, aheadGapS: [6, 1], behindGapS: [6, 12], caution });
+
+      return state;
+    };
+    const green = drive(false);
+    const paced = drive(true);
+
+    expect(paced.gapRateSamplesAhead).toBeGreaterThan(5);
+    expect(paced.gapLiveAhead?.trend).toBe("closing");
+    expect(paced.gapLiveBehind?.trend).toBe("opening");
+
+    for (const key of [
+      "gapTraces",
+      "gapLiveAhead",
+      "gapLiveBehind",
+      "gapLastCheckpointAhead",
+      "gapLastCheckpointBehind",
+      "gapRateEmaAhead",
+      "gapRateEmaBehind",
+      "gapRateSamplesAhead",
+      "gapRateSamplesBehind",
+      "gapEtaReadingAhead",
+      "gapEtaReadingBehind",
+      "gapLastCheckpointProgress",
+    ] as const) {
+      expect(paced[key], key).toEqual(green[key]);
+    }
+  });
+
+  it("moves the restart mark with the player on every caution tick and stops it at the green", () => {
+    const state = createInitialState();
+    const { emit } = collect();
+
+    run(state, emit, { fromLap: 1, toLap: 3, aheadGapS: 4, behindGapS: 30 });
+    expect(state.gapRestartMark).toBeNull();
+
+    run(state, emit, { fromLap: 3, toLap: 4, aheadGapS: 4, behindGapS: 30, caution: true });
+    expect(state.gapRestartMark).toBeCloseTo(5, 6);
+
+    run(state, emit, { fromLap: 4, toLap: 5, aheadGapS: 4, behindGapS: 30, caution: true });
+    expect(state.gapRestartMark).toBeCloseTo(6, 6);
+
+    // Green: one lap of running from here.
+    run(state, emit, { fromLap: 5, toLap: 5.5, aheadGapS: 4, behindGapS: 30 });
+    expect(state.gapRestartMark).toBeCloseTo(6, 6);
+  });
+
+  it("applies the grid assumption on the restart lap, and not on the lap after it", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+
+    run(state, emit, { fromLap: 1, toLap: 3, aheadGapS: 30, behindGapS: 5 });
+    // The caution brings the car behind up to 0.9 s.
+    run(state, emit, { fromLap: 3, toLap: 5, aheadGapS: 30, behindGapS: [5, 0.9], caution: true });
+
+    // The restart lap seeds the side at the assumed grid spacing, as lap 1
+    // does — the caution left it with no announcement history.
+    run(state, emit, { fromLap: 5, toLap: 5.1, aheadGapS: 30, behindGapS: 0.9 });
+    expect(state.gapMinSinceAnnounceBehind).toBeCloseTo(0.7, 5);
+
+    // The car behind drops back past the threshold re-arm point and closes
+    // right back under 1 s: the field sorting itself out, not a catch.
+    run(state, emit, { fromLap: 5.1, toLap: 5.45, aheadGapS: 30, behindGapS: [0.9, 1.7] });
+    run(state, emit, { fromLap: 5.45, toLap: 5.75, aheadGapS: 30, behindGapS: [1.7, 0.8] });
+    expect(thresholdEvents(events)).toHaveLength(0);
+
+    // It is outside the threshold again when the restart lap ends...
+    run(state, emit, { fromLap: 5.75, toLap: 5.95, aheadGapS: 30, behindGapS: [0.8, 1.2] });
+    run(state, emit, { fromLap: 5.95, toLap: 6.2, aheadGapS: 30, behindGapS: 1.2 });
+    expect(thresholdEvents(events)).toHaveLength(0);
+
+    // ...and closing back in on the lap after is an ordinary catch.
+    run(state, emit, { fromLap: 6.2, toLap: 6.5, aheadGapS: 30, behindGapS: [1.2, 0.8] });
+
+    const calls = thresholdEvents(events);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.data).toMatchObject({ side: "behind", carIdx: BEHIND });
+  });
+
+  it("records no lap history on the restart lap, so the lap after it is not compared with the field stringing out", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+
+    run(state, emit, { fromLap: 1, toLap: 3, aheadGapS: 4, behindGapS: 30 });
+    run(state, emit, { fromLap: 3, toLap: 5, aheadGapS: [4, 0.8], behindGapS: 30, caution: true });
+
+    // The restart lap: the pair strings out from 0.8 s to 2.5 s.
+    run(state, emit, { fromLap: 5, toLap: 5.99, aheadGapS: [0.8, 2.5], behindGapS: 30 });
+    expect(state.gapLapHistoryAhead).toHaveLength(0);
+    expect(state.gapLapRateWindowAhead).toHaveLength(0);
+
+    const before = trendEvents(events).length;
+
+    // The lap after it holds 2.5 s. Against the restart lap every spot of it
+    // would read as the car ahead pulling away at well over a second a lap.
+    run(state, emit, { fromLap: 5.99, toLap: 7, aheadGapS: 2.5, behindGapS: 30 });
+    expect(trendEvents(events)).toHaveLength(before);
+
+    // That lap IS recorded, so the next one has its same-spot history: trend
+    // calls resume on the second full green lap after the restart.
+    expect(state.gapLapHistoryAhead.length).toBeGreaterThan(0);
+    expect(state.gapLapHistoryAhead[0]!.progress).toBeGreaterThanOrEqual(6);
+
+    run(state, emit, { fromLap: 7, toLap: 7.3, aheadGapS: 2.5, behindGapS: 30 });
+    expect(state.gapLapRateWindowAhead.length).toBeGreaterThan(0);
+  });
+
+  it("takes the restart mark with the player through a tow under the caution", () => {
+    const state = createInitialState();
+    const { emit } = collect();
+    const lapTime = 90;
+
+    run(state, emit, { fromLap: 1, toLap: 3, aheadGapS: 4, behindGapS: 30 });
+    run(state, emit, { fromLap: 3, toLap: 4.6, aheadGapS: 4, behindGapS: 30, caution: true });
+    expect(state.gapRestartMark).toBeCloseTo(5.6, 6);
+
+    // Towed to the pits, 0.4 lap back down the track, the caution still out:
+    // the restart lap is a lap of running from where the player now is.
+    diffGaps(
+      state,
+      tick(4.6 * lapTime + 30, [4.2, 4.6 + 4 / lapTime, 4.6 - 30 / lapTime]),
+      true,
+      PLAYER,
+      null,
+      [2, 1, 3],
+      () => GAP_DEFAULT_ALERT_THRESHOLD_S,
+      emit,
+      null,
+      () => GAP_DEFAULT_MIN_CHANGE_S,
+      null,
+      true,
+    );
+
+    expect(state.gapRestartMark).toBeCloseTo(5.2, 6);
+  });
+
+  it("keeps the restart mark through a tow on the restart lap — the treatment holds until the player reaches it", () => {
+    const state = createInitialState();
+    const { emit } = collect();
+    const lapTime = 90;
+
+    run(state, emit, { fromLap: 1, toLap: 3, aheadGapS: 4, behindGapS: 30 });
+    run(state, emit, { fromLap: 3, toLap: 5, aheadGapS: 4, behindGapS: 30, caution: true });
+    run(state, emit, { fromLap: 5, toLap: 5.6, aheadGapS: 4, behindGapS: 30 });
+    expect(state.gapRestartMark).toBeCloseTo(6, 6);
+
+    // A tow under green, 0.4 lap back: like the opening lap, which a tow
+    // does not end either, the restart lap runs on to its mark.
+    diffGaps(
+      state,
+      tick(5.6 * lapTime + 30, [5.2, 5.6 + 4 / lapTime, 5.6 - 30 / lapTime]),
+      true,
+      PLAYER,
+      null,
+      [2, 1, 3],
+      () => GAP_DEFAULT_ALERT_THRESHOLD_S,
+      emit,
+    );
+    expect(state.gapRestartMark).toBeCloseTo(6, 6);
+
+    run(state, emit, { fromLap: 5.25, toLap: 5.95, aheadGapS: 4, behindGapS: 30 });
+    expect(state.gapRestartMark).toBeCloseTo(6, 6);
+    expect(state.gapLapHistoryAhead).toHaveLength(0);
+
+    // Past the mark the lap history opens.
+    run(state, emit, { fromLap: 5.95, toLap: 6.3, aheadGapS: 4, behindGapS: 30 });
+    expect(state.gapLapHistoryAhead.length).toBeGreaterThan(0);
+  });
+});
+
 describe("gap setting sanitizers (issue #933 review)", () => {
   it("clamps the alert threshold to the slider range and falls back on junk", () => {
     expect(sanitizeGapAlertThresholdSeconds(2.5)).toBe(2.5);
