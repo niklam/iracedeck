@@ -607,8 +607,7 @@ export type TranslatorState = {
 
   // ── How the car reached its stall (issues #1108, #254) ─────────────────
   // Written by `updateStallVisit` only (`diff/stall-visit.ts`), which hands
-  // the tire wear report and the last-stop tire temperatures the tick's
-  // answer; no other diff reads these two.
+  // the tire wear report the tick's answer; no other diff reads these two.
   /**
    * The car was last seen driving on the circuit: set on a tick with
    * `IsOnTrack`, off pit road, out of the stall and in the world; cleared when
@@ -635,38 +634,25 @@ export type TranslatorState = {
   // ── Tire temperatures of the last stop (issue #254) ────────────────────
   /**
    * The twelve carcass temperatures as of the last time the car came in from a
-   * run: replaced on every tick of a drive-in stall visit and frozen when the
-   * car leaves its box, or taken once when a tow or reset stands the car in
-   * its box or the driver leaves the car (`diff/tire-temps.ts`). `null` until
-   * the first one. Unlike nearly everything else in this struct it OUTLIVES a
-   * replay visit and a session change — both wipes in `translator.ts` carry it
-   * over, because the garage is where a driver tuning pressures and camber
-   * reads it — and is cleared by a disconnect and by a saved replay. Read via
-   * `getLastStopTireTemps()`.
+   * run: taken once, on the tick that finds them refreshed while the car
+   * stands in its box (a stop, a tow or a reset) or the driver has left the
+   * car (`diff/tire-temps.ts`). `null` until the first one. Unlike nearly
+   * everything else in this struct it OUTLIVES a replay visit and a session
+   * change — both wipes in `translator.ts` carry it over, because the garage
+   * is where a driver tuning pressures and camber reads it — and is cleared by
+   * a disconnect and by a saved replay. Read via `getLastStopTireTemps()`.
    */
   lastStopTireTemps: LastStopTireTemps | null;
   /**
-   * Where the car stands between two readings — every reading needs a run on
-   * the circuit since the last one:
-   *
-   *   - `"none"` — no run yet: at the start, once a reading is taken, and once
-   *     the driver has left the car.
-   *   - `"driven"` — the car has been driving on the circuit, so the next time
-   *     it comes in is a reading.
-   *   - `"in-stop"` — the drive-in stall visit that ended the run, whose ticks
-   *     are the reading; back to `"none"` as the visit ends, so a second entry
-   *     into the box without a run in between is not followed.
-   *
-   * Both wipes in `translator.ts` reset it, so it never outlives the run it
-   * belongs to.
-   */
-  tireTempsRun: "none" | "driven" | "in-stop";
-  /**
-   * The twelve values (the sim's order, L / M / R per corner) as last seen
-   * while the car was driving on the circuit — what a tow, a reset or leaving
-   * the car is measured against to tell that the sim refreshed them. `null`
-   * outside a `"driven"` run, and within one while the values cannot be
-   * trusted, in which case there is nothing to measure against.
+   * The run a reading is taken from: the twelve values (the sim's order,
+   * L / M / R per corner) as last seen while the car was driving on the
+   * circuit, which a stop, a tow, a reset or leaving the car is measured
+   * against to tell that the sim refreshed them. `null` when there is no run
+   * to read: before the car has driven on the circuit, once a reading is taken
+   * and once the driver has left the car — and within a run while the values
+   * cannot be trusted, when there is nothing to measure against. It rides
+   * through a session change with the reading, so a run a session change ends
+   * is still read, and the replay wipe drops it.
    */
   tireTempsOnCircuit: readonly number[] | null;
 
@@ -1496,7 +1482,6 @@ export function createInitialState(): TranslatorState {
     tireWearReport: null,
 
     lastStopTireTemps: null,
-    tireTempsRun: "none",
     tireTempsOnCircuit: null,
 
     trackWetnessInitialized: false,

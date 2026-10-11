@@ -5828,6 +5828,8 @@ describe("sim-events-iracing translator", () => {
 
     /** What iRacing places a car with. */
     const PLACED = uniform(39.9);
+    /** What a car carries round the circuit: the values its last refresh left. */
+    const CARRIED = uniform(55);
 
     const ON_PIT_ROAD: Partial<TelemetryData> = { OnPitRoad: true, PlayerTrackSurface: TrkLoc.AproachingPits };
     const IN_STALL: Partial<TelemetryData> = {
@@ -5853,10 +5855,13 @@ describe("sim-events-iracing translator", () => {
       return controller;
     }
 
-    /** From the circuit into the box holding `temps`, and out again; ends on the circuit. */
+    /**
+     * A run on the circuit, then into the box, where the sim has refreshed the
+     * values to `temps`, and out again; ends on the circuit.
+     */
     function stop(controller: MockController, temps: Partial<TelemetryData>, base: Partial<TelemetryData> = {}): void {
-      controller.__tick(telemetry({ ...base }));
-      controller.__tick(telemetry({ ...base, ...ON_PIT_ROAD }));
+      controller.__tick(telemetry({ ...base, ...CARRIED }));
+      controller.__tick(telemetry({ ...base, ...ON_PIT_ROAD, ...CARRIED }));
       controller.__tick(telemetry({ ...base, ...IN_STALL, ...temps }));
       controller.__tick(telemetry({ ...base, ...LEAVING_STALL, ...temps }));
       controller.__tick(telemetry({ ...base, ...ON_PIT_ROAD, ...temps }));
@@ -5885,22 +5890,37 @@ describe("sim-events-iracing translator", () => {
       expect(getLastStopTireTemps()).toBeNull();
     });
 
-    it("follows the values through a stop the driver drove into, and freezes when the car leaves its box", () => {
+    it("reads a stop the driver drove into once, as the car stands in its box, and holds it", () => {
       const controller = start();
 
       controller.__tick(telemetry(PLACED));
       controller.__tick(telemetry({ ...ON_PIT_ROAD, ...PLACED }));
+      // The arrival refresh, ahead of the stall flag.
+      controller.__tick(telemetry({ ...ON_PIT_ROAD, ...STINT }));
       expect(getLastStopTireTemps()).toBeNull();
-
-      controller.__tick(telemetry({ ...IN_STALL, ...uniform(80) }));
-      expect(getLastStopTireTemps()).toEqual(uniformReading(80));
 
       controller.__tick(telemetry({ ...IN_STALL, ...STINT }));
       expect(getLastStopTireTemps()).toEqual(STINT_READING);
 
-      controller.__tick(telemetry({ ...LEAVING_STALL, ...STINT }));
+      // Nothing the box or the way out holds afterwards is followed.
+      controller.__tick(telemetry({ ...IN_STALL, ...uniform(80) }));
+      controller.__tick(telemetry({ ...LEAVING_STALL, ...uniform(80) }));
       controller.__tick(telemetry({ ...ON_PIT_ROAD, ...uniform(95) }));
       controller.__tick(telemetry(uniform(95)));
+      expect(getLastStopTireTemps()).toEqual(STINT_READING);
+    });
+
+    it("takes none from a car that clips its box with nothing refreshed, and reads the stop after it", () => {
+      const controller = start();
+
+      controller.__tick(telemetry(PLACED));
+      controller.__tick(telemetry({ ...ON_PIT_ROAD, ...PLACED }));
+      controller.__tick(telemetry({ ...IN_STALL, ...PLACED }));
+      controller.__tick(telemetry({ ...LEAVING_STALL, ...PLACED }));
+      expect(getLastStopTireTemps()).toBeNull();
+
+      // Reversed back in, and now the sim refreshes.
+      controller.__tick(telemetry({ ...IN_STALL, ...STINT }));
       expect(getLastStopTireTemps()).toEqual(STINT_READING);
     });
 
@@ -6155,6 +6175,34 @@ describe("sim-events-iracing translator", () => {
       // The new session's first stop replaces it.
       stop(controller, uniform(95), { SessionNum: 2 });
       expect(getLastStopTireTemps()).toEqual(uniformReading(95));
+    });
+
+    it("reads the run a session change ends, on the tick it takes the driver out of the car", () => {
+      const controller = start();
+
+      stop(controller, STINT);
+      controller.__tick(telemetry(STINT));
+
+      // One tick carries the new session, the first replay-mode tick and the
+      // sim's leaving-the-car refresh.
+      controller.__tick(telemetry({ SessionNum: 1, ...OUT_OF_CAR, ...uniform(60) }));
+      expect(getLastStopTireTemps()).toEqual(uniformReading(60));
+
+      // The run is over: the new session's placement takes none.
+      elapseReplayGrace();
+      controller.__tick(telemetry({ SessionNum: 1, ...IN_STALL, ...PLACED }));
+      expect(getLastStopTireTemps()).toEqual(uniformReading(60));
+    });
+
+    it("reads a stop the session changed on the way into", () => {
+      const controller = start();
+
+      controller.__tick(telemetry(CARRIED));
+      controller.__tick(telemetry({ ...ON_PIT_ROAD, ...CARRIED }));
+      controller.__tick(telemetry({ SessionNum: 1, ...ON_PIT_ROAD, ...CARRIED }));
+      controller.__tick(telemetry({ SessionNum: 1, ...IN_STALL, ...STINT }));
+
+      expect(getLastStopTireTemps()).toEqual(STINT_READING);
     });
 
     it("is cleared by a disconnect, and a reconnect mid-session shows nothing until the next stop", () => {

@@ -7,14 +7,14 @@
  * apart by where the car came from: a stall visit is a **drive-in** only when
  * the car was last seen driving on the circuit and reached its box down pit
  * road. A garage start and a tow both reach the box from a not-on-track /
- * not-in-world state, so neither is a stop (maintainer ruling on #1108). The
- * tire temperatures still read a tow, by a rule of their own that starts from
- * this module's "not a drive-in" (`diff/tire-temps.ts`).
+ * not-in-world state, so neither is a stop (maintainer ruling on #1108).
  *
- * The rule was `diffTireWear`'s own until #254, whose last-stop tire
- * temperatures need the same answer. It lives here, once, so the two families
- * cannot drift on what counts as a stop: `updateStallVisit` runs once per tick
- * and each consumer is handed the {@link StallVisit} it returns.
+ * The rule was `diffTireWear`'s own until #254 hoisted it here:
+ * `updateStallVisit` runs once per tick and a consumer is handed the
+ * {@link StallVisit} it returns. The last-stop tire temperatures
+ * (`diff/tire-temps.ts`) do not ask whether a visit is a stop — a tow is a
+ * reading for them — and share only this module's definition of driving on the
+ * circuit, `isDrivingOnCircuit`.
  *
  * One step per tick, keyed off the per-tick `pending` queue (so it runs after
  * `diffPitLane`, whose edges it reads):
@@ -52,7 +52,8 @@ function has(pending: ReadonlyArray<PendingEvent>, event: PendingEvent["event"])
 /**
  * The driver is in the car and driving on the circuit: in the world, off pit
  * road and out of the box. The one definition of "on the circuit" the stall
- * visit and the tire temperature reading (#254) share.
+ * visit and the tire temperature reading (#254) share: a drive-in comes from
+ * there, and a tire temperature run is driven there.
  */
 export function isDrivingOnCircuit(telemetry: TelemetryData): boolean {
   return (
