@@ -997,8 +997,9 @@ export type SimEventMap = {
        * the lap that ENDS a caution is completed AFTER the green — 2.2–11.6 s
        * after it across the committed captures — so a consumer that only asks
        * "is a caution out now" when this event arrives would treat the last
-       * caution lap as a green one. The lap-time and position-change callouts
-       * refuse a lap carrying it.
+       * caution lap as a green one. The lap-time, position-change and
+       * race-status callouts refuse a lap carrying it (the race status since
+       * issue #1171).
        */
       wasCaution?: boolean;
     }
@@ -1036,15 +1037,20 @@ export type SimEventMap = {
    * (issue #933). Evaluated continuously — not at lap boundaries — from the
    * lap-scale gap rate: the gap against the gap at the same spot one lap
    * earlier (issue #1285), so no trend fires until the pair has a lap of
-   * history. Lap 1 and full-course cautions are never recorded, so the
-   * earliest call is on lap 3. "closing" fires when the projected contact
-   * (`gapSeconds ÷ rate`) drops inside the announcement horizon (capped by
-   * the laps actually remaining — a catch that completes after the race is
-   * never announced), and re-fires as the projection roughly halves.
+   * history. Lap 1, a full-course caution and the lap of running after one
+   * are never recorded, so the earliest call is on lap 3, and on the second
+   * full green lap after a restart (issue #1171). "closing" fires when the
+   * projected contact (`gapSeconds ÷ rate`) drops inside the announcement
+   * horizon (capped by the laps actually remaining — a catch that completes
+   * after the race is never announced), and re-fires as the projection
+   * roughly halves.
    * "opening" fires once per episode when a small gap is being opened hard —
    * a breakaway from a battle; a big gap opening further never fires. Race
    * sessions only, never for a neighbor a lap or more apart, suppressed
-   * while either car is on pit road / off track. Spoken numbers should read
+   * while either car is on pit road / off track, and not emitted while a
+   * full-course caution is out (issue #1171): the field packing up behind
+   * the pace car is not a development, and nothing measured under the
+   * caution carries into a call after the green. Spoken numbers should read
    * the LIVE gap at speak time (#574 pattern).
    */
   "gap.trendChanged": SimEvent<
@@ -1068,7 +1074,11 @@ export type SimEventMap = {
    * The live gap to a class-standings neighbor first dropped below the
    * user's alert threshold (issue #933). Once per episode: re-arms only
    * after the gap has grown back beyond threshold + hysteresis. Same
-   * suppression rules as `gap.trendChanged`.
+   * suppression rules as `gap.trendChanged`, so it too is not emitted while
+   * a full-course caution is out (issue #1171), and an episode armed before
+   * the caution does not survive it. On the race's opening lap and on the
+   * lap of running after a caution the crossing must also be real movement
+   * from the nose-to-tail order the start or restart set.
    */
   "gap.thresholdCrossed": SimEvent<
     "gap.thresholdCrossed",
