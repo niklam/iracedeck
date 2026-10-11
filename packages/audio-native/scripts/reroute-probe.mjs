@@ -35,6 +35,10 @@
  *   --cycle <ms>       close the device and open it again this often, as the
  *                      plugin does around its sounds, so that a close lands
  *                      inside a reroute
+ *   --release-after <s>  release the device after s seconds and stay alive,
+ *                      for checking what the process still holds once its
+ *                      audio is closed (#1414): `powercfg /requests` from an
+ *                      elevated terminal, or its handle count
  *   --on-stall <cmd>   a shell command to run once the loop has stalled for
  *                      good, before the probe ends itself; {pid} in it is the
  *                      probe's process id. For a stack walker or a dump.
@@ -87,6 +91,7 @@ function parseOptions() {
         busy: { type: "string" },
         cycle: { type: "string" },
         "on-stall": { type: "string" },
+        "release-after": { type: "string" },
         "no-destroy": { type: "boolean", default: false },
       },
     }).values;
@@ -203,6 +208,12 @@ const cycleMs = options.cycle === undefined ? null : Number(options.cycle);
 
 if (cycleMs !== null && (!Number.isFinite(cycleMs) || cycleMs <= 0)) {
   fail(`--cycle must be a positive number of milliseconds, got "${options.cycle}"`);
+}
+
+const releaseAfter = options["release-after"] === undefined ? null : Number(options["release-after"]);
+
+if (releaseAfter !== null && (!Number.isFinite(releaseAfter) || releaseAfter <= 0)) {
+  fail(`--release-after must be a positive number of seconds, got "${options["release-after"]}"`);
 }
 
 if (options.icon !== undefined && !isAbsolute(options.icon)) {
@@ -358,6 +369,16 @@ if (cycleMs !== null) {
   }, cycleMs);
 }
 
+let releaseTimer = null;
+
+if (releaseAfter !== null) {
+  releaseTimer = setTimeout(() => {
+    clearInterval(cycleTimer);
+    native.stopAudioEngine();
+    log(`device released after ${reroutes} reroutes, process ${process.pid} staying alive`);
+  }, releaseAfter * 1000);
+}
+
 function finish(reason) {
   if (finished) {
     return;
@@ -376,6 +397,7 @@ function finish(reason) {
   clearTimeout(secondsTimer);
   clearImmediate(busyImmediate);
   clearInterval(cycleTimer);
+  clearTimeout(releaseTimer);
 
   const closes = cycleMs === null ? "" : `, ${cycles} closes`;
 
