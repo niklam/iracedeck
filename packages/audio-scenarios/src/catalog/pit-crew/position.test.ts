@@ -27,12 +27,14 @@ import { LAP_TIME_CALLOUTS, POSITION_CALLOUTS } from "@iracedeck/callout-setting
 import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { WEIGHT } from "../../dsl.js";
+import { NO_FRAME, WEIGHT } from "../../dsl.js";
+import type { ScenarioContext } from "../../dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios, poolMemberPattern } from "../../interpreter.js";
 import { familyGate } from "./callout-gate.test-util.js";
 import { _resetPositionReadoutCooldown, canAnnouncePosition, registerPitCrew } from "./index.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
+import { readPositionReadoutDebugState, registerPositionReadoutVocabulary } from "./position-readout.js";
 import {
   buildPositionContract,
   POSITION_CLIP_SOURCES,
@@ -169,6 +171,8 @@ const manifest: AudioAssetsManifest = {
     `voice/${VOICE}/position-intro-pole/that-puts-us-on-pole-01.mp3`,
     `voice/${VOICE}/position-invalid-lap/that-lap-didnt-count-01.mp3`,
     ...NUMBER_NAMES.map((n) => `voice/${VOICE}/position-number/${n}.mp3`),
+    // A line that holds the Voice bus at NORMAL, for the queued-replay tests.
+    "test/blocker.mp3",
   ],
   ambientLoop: "sfx/IRD-ambient-pit.mp3",
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
@@ -579,6 +583,163 @@ describe("position-change contract", () => {
     expect("sequence" in c).toBe(false);
     // The shared-cooldown claim is a speak-time gate since #1137.
     expect(c.speakGate?.description).toContain("twenty seconds");
+  });
+});
+
+// The contract is queueable, so the `where:` alone leaves one hole: a race
+// readout accepted under green and waiting behind a busier line re-expands
+// and meets its speak-time gate when the bus idles, never its `where:`. The
+// gate asks the caution again there, before it claims the shared cooldown.
+describe("position-change contract — the caution at speak time (issue #1171)", () => {
+  const BLOCKER = "test/blocker.mp3";
+  const CURRENTLY = `voice/${VOICE}/position-intro-worse/currently-01.mp3`;
+  const P3 = `voice/${VOICE}/position-number/3.mp3`;
+  const raceLap = (): LapPayload => snap({ position: 3, previousPosition: 5, sessionType: "race" });
+
+  /** Publish a lap without letting the audio run — for a test that needs the fire to wait. */
+  function publish(data: LapPayload): void {
+    lastSnapshot = data;
+    bus.publishEvent("lap.completed", data as unknown as Record<string, unknown>);
+  }
+
+  /** A NORMAL line that holds the Voice bus, so a readout has to wait in the queue. */
+  function holdBus(): void {
+    engine.defineScenario({
+      id: "test.blocker",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: WEIGHT.NORMAL,
+      frame: NO_FRAME,
+      sequence: [BLOCKER],
+    });
+    engine.fire("test.blocker");
+  }
+
+  /** The fire context the engine hands a speak-time gate; `null` data is an imperative fire. */
+  function gateCtx(data: LapPayload | null): ScenarioContext {
+    const event =
+      data === null
+        ? null
+        : ({ event: "lap.completed", timestamp: 0, telemetry: {}, data } as SimEventOf<"lap.completed">);
+
+    return { event, telemetry: event?.telemetry ?? null, data, now: Date.now(), vars: {} };
+  }
+
+  function build(): ReturnType<typeof buildPositionContract> {
+    return buildPositionContract(
+      () => false,
+      liveFromSnapshot,
+      () => underCaution,
+    );
+  }
+
+  it("the gate refuses a race readout while the caution is out WITHOUT claiming the shared cooldown — the caution is asked first", () => {
+    const { admit } = build().speakGate!;
+
+    underCaution = true;
+    expect(admit(gateCtx(raceLap()))).toBe(false);
+    expect(canAnnouncePosition()).toBe(true);
+
+    underCaution = false;
+    expect(admit(gateCtx(raceLap()))).toBe(true);
+    expect(canAnnouncePosition()).toBe(false);
+  });
+
+  it("asks the caution in the race branch only — the qualifying branch and an imperative fire claim and ask nothing, as before", () => {
+    const { admit } = build().speakGate!;
+
+    // No caution can be out in qualifying; the resolver is forced here only
+    // to show the branch does not consult it.
+    underCaution = true;
+    expect(admit(gateCtx(snap({ position: 3, previousPosition: 5, sessionType: "qualifying" })))).toBe(true);
+    expect(admit(gateCtx(null))).toBe(true);
+    expect(canAnnouncePosition()).toBe(true);
+  });
+
+  it("the gate does not ask wasCaution — the where: settled it when the lap completed", () => {
+    const { admit } = build().speakGate!;
+
+    expect(admit(gateCtx({ ...raceLap(), wasCaution: true }))).toBe(true);
+  });
+
+  it("a race readout queued before the caution and replayed while it is out is refused by the gate, the cooldown unclaimed", () => {
+    holdBus();
+    publish(raceLap());
+
+    underCaution = true;
+    flush(audio);
+
+    expect(voicePaths()).toEqual([BLOCKER]);
+    expect(canAnnouncePosition()).toBe(true);
+
+    // The readout a burned window would have silenced: the first position
+    // change after the green.
+    underCaution = false;
+    fire(raceLap());
+
+    expect(voicePaths()).toEqual([BLOCKER, CURRENTLY, P3]);
+    expect(canAnnouncePosition()).toBe(false);
+  });
+
+  it("a race readout queued before the caution that replays after the green speaks — the gate reads the caution live", () => {
+    holdBus();
+    publish(raceLap());
+
+    // The caution comes and goes while the readout waits.
+    underCaution = true;
+    underCaution = false;
+    flush(audio);
+
+    expect(voicePaths()).toEqual([BLOCKER, CURRENTLY, P3]);
+    expect(canAnnouncePosition()).toBe(false);
+  });
+
+  it("leaves no intro decision pending when the caution refuses a readout whose script names positionReadout.intro", () => {
+    // The bundled script speaks through `position.intro`, which stashes
+    // nothing; a pack may name the shared `positionReadout.intro` instead,
+    // which stashes its decision during expansion for the gate to commit.
+    // The gate takes it before anything can refuse, the caution included.
+    registerPositionReadoutVocabulary(engine, liveFromSnapshot);
+    engine.setScripts(
+      new Map([
+        [
+          VOICE,
+          {
+            ...POSITION_SCRIPT,
+            scenarios: {
+              "pit-crew.position-change": {
+                sequence: [{ optional: ["{{positionReadout.intro}}"] }, "{{positionReadout.number}}"],
+              },
+            },
+          },
+        ],
+      ]),
+    );
+    holdBus();
+    publish(raceLap());
+
+    underCaution = true;
+    flush(audio);
+
+    expect(voicePaths()).toEqual([BLOCKER]);
+    expect(readPositionReadoutDebugState().pendingIntro).toBeNull();
+    // Taken, not committed: nothing was said.
+    expect(readPositionReadoutDebugState().lastSpokenPosition).toBe(0);
+
+    // The same script after the green: the decision is stashed, taken and
+    // committed, which is what shows the refusal above had one to take.
+    underCaution = false;
+    fire(raceLap());
+
+    expect(voicePaths()).toEqual([BLOCKER, CURRENTLY, P3]);
+    expect(readPositionReadoutDebugState().pendingIntro).toBeNull();
+    expect(readPositionReadoutDebugState().lastSpokenPosition).toBe(3);
+  });
+
+  it("says in the published gate sentence that a caution refuses a race readout, and keeps the shared window's wording", () => {
+    expect(build().speakGate?.description).toBe(
+      "In a race, no full-course caution is out and no other position readout has spoken in the last twenty seconds when this one comes to speak; speaking it starts that window.",
+    );
   });
 });
 

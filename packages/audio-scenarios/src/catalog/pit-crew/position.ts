@@ -399,11 +399,24 @@ export function registerPositionVocabulary(
  * changed hands. The race position is instead read out deliberately by the
  * caution sequence's own position call, a third of the way into the last
  * caution lap (the restart call itself says only "Green, green, green!").
- * Read at EVENT time: this is a
- * `lap.completed` reaction, not a queueable fire whose replay could land after
- * the caution has cleared, so there is no speak-time re-check to add. Default
- * `() => false` preserves legacy behavior for tests / the harness that don't
- * supply a closure.
+ *
+ * The caution is asked twice (issue #1171), as the race status and the gap
+ * calls ask it. The `where:` refuses a lap that completes while a caution is
+ * out, which keeps the fire out of the bus's queue. That alone is not enough,
+ * because the contract is queueable: a readout accepted under green waits
+ * behind the lap-time readout of its own lap, and a queued fire re-expands
+ * and meets its `speakGate` when the bus idles, never its `where:`. With the
+ * caution thrown in between it would say "We're currently P14" behind the
+ * pace car, so the gate asks again — in the race branch, BEFORE the cooldown
+ * claim, since a claim followed by a refusal would burn twenty seconds of
+ * every position readout for one nobody heard. `wasCaution` stays a
+ * `where:`-only check: it is a fact about the completed lap, settled when the
+ * event was emitted. The residual `race-status.ts` states applies here too:
+ * a readout already admitted and then cut by an interrupting call replays
+ * whole without being asked again.
+ *
+ * Default `() => false` preserves legacy behavior for tests / the harness
+ * that don't supply a closure.
  */
 export function buildPositionContract(
   getRaceFinishedFired: () => boolean = () => false,
@@ -460,13 +473,19 @@ export function buildPositionContract(
     },
     speakGate: {
       // The shared sentence, qualified: this contract alone also fires in
-      // qualifying, where the window is not consulted.
-      description: `In a race, ${lowerFirst(POSITION_READOUT_SPEAK_GATE_DESCRIPTION)}`,
+      // qualifying, where neither the caution nor the window is consulted.
+      description: `In a race, no full-course caution is out and ${lowerFirst(POSITION_READOUT_SPEAK_GATE_DESCRIPTION)}`,
       // The race branch alone shares the position cooldown — the qualifying
       // path never consulted it, because the snapshot drives both the decision
       // and the readout there. Read from the fire's own event, the same field
       // (and the same type) the `where:` reads; an imperative `fire(id)`
       // carries no event and so claims nothing, exactly as it never did.
+      //
+      // The race branch also asks the caution, and asks it FIRST (issue
+      // #1171): a readout queued under green that comes to speak behind the
+      // pace car is refused before the window is claimed, so the first
+      // readout after the green still speaks. The qualifying branch and an
+      // imperative fire are untouched — neither asked anything, neither does.
       //
       // Whichever branch it takes, an admitted readout commits the intro
       // decision its expansion stashed, and a refused one leaves nothing
@@ -474,12 +493,18 @@ export function buildPositionContract(
       // `position.intro`, which decides from the frozen lap payload and
       // records nothing — but a pack may name `positionReadout.intro` here
       // instead, and its decision must then be committed by whichever branch
-      // admits, the qualifying one that consults no window included.
+      // admits, the qualifying one that consults no window included. It is
+      // taken before anything can refuse, the caution included, so a refusal
+      // on either ground leaves no decision pending.
       admit: (ctx) => {
         const intro = takeIntroDecision(ctx);
         const data = ctx.data as SimEventOf<"lap.completed">["data"] | null;
 
-        if (data?.sessionType === "race" && !tryClaimPositionAnnouncement()) return false;
+        if (data?.sessionType === "race") {
+          if (getUnderFullCourseCaution()) return false;
+
+          if (!tryClaimPositionAnnouncement()) return false;
+        }
 
         commitIntroDecision(intro);
 
