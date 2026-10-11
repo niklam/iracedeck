@@ -7,7 +7,10 @@
  *   - no reading for missing / non-finite / all-zero values
  *   - a stop the driver drove into takes the reading, keeps following the
  *     values until the car leaves its box, then freezes
- *   - a garage start, a tow and a reset leave the previous reading in place
+ *   - a garage start leaves the previous reading in place
+ *   - a tow or reset into the box, and leaving the car, are each read once,
+ *     only after a run on the circuit and only when the values changed from
+ *     the ones the car carried there
  *   - a tick with no trustworthy values neither becomes the reading nor erases
  *     the previous one
  *   - the same through the real pit-lane → stall-visit → tire-temps chain,
@@ -77,6 +80,13 @@ const inStall = (overrides: Partial<TelemetryData> = {}): TelemetryData =>
 /** The tick the car leaves its box: out of the stall, still on pit road. */
 const leavingStall = (overrides: Partial<TelemetryData> = {}): TelemetryData =>
   inStall({ PlayerCarInPitStall: false, ...overrides });
+
+/** Out of the car, in the garage. */
+const inGarage = (values: Temps12): TelemetryData =>
+  telemetry({ IsOnTrack: false, PlayerTrackSurface: TrkLoc.NotInWorld, ...temps(values) });
+/** In the car but out of the world: the tick a tow or reset takes it off the circuit. */
+const outOfWorld = (values: Temps12): TelemetryData =>
+  telemetry({ PlayerTrackSurface: TrkLoc.NotInWorld, ...temps(values) });
 
 const PIT_ENTERED: PendingEvent = { event: "pitLane.entered", data: {} };
 const PIT_EXITED: PendingEvent = { event: "pitLane.exited", data: {} };
@@ -226,18 +236,14 @@ describe("diffTireTemps — a stop the driver drove into", () => {
   });
 });
 
+/** Sit in the box through a placed visit holding `values`, then leave it. */
+function sitAndLeave(state: TranslatorState, values: Temps12): void {
+  step(state, inStall(temps(values)));
+  step(state, leavingStall(temps(values)), [STALL_DEPARTED]);
+  step(state, onCircuit(temps(values)), [PIT_EXITED]);
+}
+
 describe("diffTireTemps — a stall visit that is not a stop", () => {
-  /** Out of the car, in the garage. */
-  const inGarage = (values: Temps12): TelemetryData =>
-    telemetry({ IsOnTrack: false, PlayerTrackSurface: TrkLoc.NotInWorld, ...temps(values) });
-
-  /** Sit in the box through a placed visit holding `values`, then leave it. */
-  function sitAndLeave(state: TranslatorState, values: Temps12): void {
-    step(state, inStall(temps(values)));
-    step(state, leavingStall(temps(values)), [STALL_DEPARTED]);
-    step(state, onCircuit(temps(values)), [PIT_EXITED]);
-  }
-
   it("takes no reading after a garage start in the stall", () => {
     const state = createInitialState();
 
@@ -253,43 +259,10 @@ describe("diffTireTemps — a stall visit that is not a stop", () => {
     const state = createInitialState();
 
     driveThroughStop(state, STINT);
-    step(state, inGarage(HOTTER));
+    // Out of the car with the values the stop left: nothing was refreshed.
+    step(state, inGarage(STINT));
     step(state, inStall(temps(PLACED)), [PIT_ENTERED, STALL_ENTERED]);
     sitAndLeave(state, PLACED);
-
-    expect(state.lastStopTireTemps).toEqual(reading(STINT));
-  });
-
-  it("leaves the previous reading in place through a tow into the stall", () => {
-    const state = createInitialState();
-
-    driveThroughStop(state, STINT);
-    // Towed: the car leaves the world, then appears in its box.
-    step(state, telemetry({ PlayerTrackSurface: TrkLoc.NotInWorld, ...temps(HOTTER) }));
-    step(state, inStall(temps(HOTTER)), [PIT_ENTERED, STALL_ENTERED]);
-    sitAndLeave(state, HOTTER);
-
-    expect(state.lastStopTireTemps).toEqual(reading(STINT));
-  });
-
-  it("leaves the previous reading in place when a reset puts the car straight from the circuit into its box", () => {
-    const state = createInitialState();
-
-    driveThroughStop(state, STINT);
-    // No NotInWorld tick in between: the car arrives on pit road already in the box.
-    step(state, inStall(temps(HOTTER)), [PIT_ENTERED, STALL_ENTERED]);
-    sitAndLeave(state, HOTTER);
-
-    expect(state.lastStopTireTemps).toEqual(reading(STINT));
-  });
-
-  it("leaves the previous reading in place when that reset's PlayerCarInPitStall lags the surface by a tick", () => {
-    const state = createInitialState();
-
-    driveThroughStop(state, STINT);
-    step(state, inStall({ PlayerCarInPitStall: false, ...temps(HOTTER) }), [PIT_ENTERED]);
-    step(state, inStall(temps(HOTTER)), [STALL_ENTERED]);
-    sitAndLeave(state, HOTTER);
 
     expect(state.lastStopTireTemps).toEqual(reading(STINT));
   });
@@ -312,6 +285,200 @@ describe("diffTireTemps — a stall visit that is not a stop", () => {
     driveThroughStop(state, STINT);
 
     expect(state.lastStopTireTemps).toEqual(reading(STINT));
+  });
+});
+
+describe("diffTireTemps — a tow or reset into the box", () => {
+  it("takes the reading on the first tick in the box, from the values the sim refreshed as the car left the world", () => {
+    const state = createInitialState();
+
+    driveThroughStop(state, STINT);
+
+    // The refresh lands on the out-of-world tick; the car is not in its box yet.
+    expect(step(state, outOfWorld(HOTTER))).toEqual(reading(STINT));
+    expect(step(state, inStall(temps(HOTTER)), [PIT_ENTERED, STALL_ENTERED])).toEqual(reading(HOTTER));
+  });
+
+  it("takes it with no reading before it", () => {
+    const state = createInitialState();
+
+    step(state, onCircuit(temps(STINT)));
+    step(state, outOfWorld(HOTTER));
+
+    expect(step(state, inStall(temps(HOTTER)), [PIT_ENTERED, STALL_ENTERED])).toEqual(reading(HOTTER));
+  });
+
+  it("reads it once: the values of later ticks in the box are not followed", () => {
+    const state = createInitialState();
+
+    driveThroughStop(state, STINT);
+    step(state, outOfWorld(HOTTER));
+    step(state, inStall(temps(HOTTER)), [PIT_ENTERED, STALL_ENTERED]);
+
+    expect(step(state, inStall(temps(PLACED)))).toEqual(reading(HOTTER));
+    sitAndLeave(state, PLACED);
+    expect(state.lastStopTireTemps).toEqual(reading(HOTTER));
+  });
+
+  it("takes it when the car goes straight from the circuit into its box, with no out-of-world tick", () => {
+    const state = createInitialState();
+
+    driveThroughStop(state, STINT);
+
+    expect(step(state, inStall(temps(HOTTER)), [PIT_ENTERED, STALL_ENTERED])).toEqual(reading(HOTTER));
+  });
+
+  it("takes it when PlayerCarInPitStall lags the surface by a tick", () => {
+    const state = createInitialState();
+
+    driveThroughStop(state, STINT);
+
+    expect(step(state, inStall({ PlayerCarInPitStall: false, ...temps(HOTTER) }), [PIT_ENTERED])).toEqual(
+      reading(STINT),
+    );
+    expect(step(state, inStall(temps(HOTTER)), [STALL_ENTERED])).toEqual(reading(HOTTER));
+  });
+
+  it("takes none when the values are the ones the car carried on the circuit", () => {
+    const state = createInitialState();
+
+    driveThroughStop(state, STINT);
+    // The latest tick on the circuit is what the box is measured against.
+    step(state, onCircuit(temps(PLACED)));
+    step(state, onCircuit(temps(HOTTER)));
+    step(state, outOfWorld(HOTTER));
+    step(state, inStall(temps(HOTTER)), [PIT_ENTERED, STALL_ENTERED]);
+    sitAndLeave(state, HOTTER);
+
+    expect(state.lastStopTireTemps).toEqual(reading(STINT));
+  });
+
+  it("takes none on a second reset without a run on the circuit in between", () => {
+    const state = createInitialState();
+
+    driveThroughStop(state, STINT);
+    step(state, outOfWorld(HOTTER));
+    step(state, inStall(temps(HOTTER)), [PIT_ENTERED, STALL_ENTERED]);
+    // Out of the box and down pit road, never onto the circuit, then reset again.
+    step(state, leavingStall(temps(HOTTER)), [STALL_DEPARTED]);
+    step(state, onPitRoad(temps(HOTTER)));
+    step(state, outOfWorld(PLACED));
+    step(state, inStall(temps(PLACED)), [STALL_ENTERED]);
+
+    expect(state.lastStopTireTemps).toEqual(reading(HOTTER));
+  });
+
+  it("waits out a tick whose values cannot be trusted", () => {
+    const state = createInitialState();
+
+    driveThroughStop(state, STINT);
+    step(state, outOfWorld(ZEROS));
+
+    expect(step(state, inStall(temps(ZEROS)), [PIT_ENTERED, STALL_ENTERED])).toEqual(reading(STINT));
+    expect(step(state, inStall(temps(HOTTER)))).toEqual(reading(HOTTER));
+  });
+
+  it("is replaced by the next stop the driver drives into", () => {
+    const state = createInitialState();
+
+    step(state, onCircuit(temps(PLACED)));
+    step(state, outOfWorld(STINT));
+    step(state, inStall(temps(STINT)), [PIT_ENTERED, STALL_ENTERED]);
+    sitAndLeave(state, STINT);
+    driveThroughStop(state, HOTTER);
+
+    expect(state.lastStopTireTemps).toEqual(reading(HOTTER));
+  });
+});
+
+describe("diffTireTemps — leaving the car after a run", () => {
+  it("takes the reading on the tick the driver is out of the car, when the sim refreshed the values", () => {
+    const state = createInitialState();
+
+    step(state, onCircuit(temps(PLACED)));
+
+    expect(step(state, inGarage(STINT))).toEqual(reading(STINT));
+  });
+
+  it("replaces the last stop's reading", () => {
+    const state = createInitialState();
+
+    driveThroughStop(state, STINT);
+
+    expect(step(state, inGarage(HOTTER))).toEqual(reading(HOTTER));
+  });
+
+  it("takes none when the values are the ones the car carried on the circuit", () => {
+    const state = createInitialState();
+
+    driveThroughStop(state, STINT);
+    step(state, onCircuit(temps(HOTTER)));
+
+    expect(step(state, inGarage(HOTTER))).toEqual(reading(STINT));
+  });
+
+  it("reads it once: whatever the garage holds afterwards is not a reading", () => {
+    const state = createInitialState();
+
+    step(state, onCircuit(temps(PLACED)));
+    step(state, inGarage(STINT));
+
+    expect(step(state, inGarage(HOTTER))).toEqual(reading(STINT));
+    expect(step(state, inGarage(PLACED))).toEqual(reading(STINT));
+  });
+
+  it("is never replaced by the Drive placement that follows", () => {
+    const state = createInitialState();
+
+    step(state, onCircuit(temps(PLACED)));
+    step(state, inGarage(STINT));
+    step(state, inStall(temps(PLACED)), [PIT_ENTERED, STALL_ENTERED]);
+    sitAndLeave(state, PLACED);
+
+    expect(state.lastStopTireTemps).toEqual(reading(STINT));
+  });
+
+  it("ends the run even when nothing was refreshed, so the Drive placement that follows takes none", () => {
+    const state = createInitialState();
+
+    driveThroughStop(state, STINT);
+    step(state, inGarage(STINT));
+    // The garage fitted a fresh set: different values, but no run behind them.
+    step(state, inStall(temps(PLACED)), [PIT_ENTERED, STALL_ENTERED]);
+    step(state, inStall(temps(PLACED)));
+
+    expect(state.lastStopTireTemps).toEqual(reading(STINT));
+  });
+
+  it("takes none without a run on the circuit", () => {
+    const state = createInitialState();
+
+    step(state, inGarage(PLACED));
+    step(state, inStall(temps(PLACED)), [PIT_ENTERED, STALL_ENTERED]);
+    step(state, leavingStall(temps(PLACED)), [STALL_DEPARTED]);
+    step(state, onPitRoad(temps(PLACED)));
+
+    expect(step(state, inGarage(STINT))).toBeNull();
+  });
+
+  it("takes none in the box after a stop the driver drove into, whatever set the stop fitted", () => {
+    const state = createInitialState();
+
+    step(state, onCircuit(temps(PLACED)));
+    step(state, onPitRoad(temps(PLACED)), [PIT_ENTERED]);
+    step(state, inStall(temps(STINT)), [STALL_ENTERED]);
+
+    // The stop was the reading of that run; the fresh set is not one.
+    expect(step(state, inGarage(PLACED))).toEqual(reading(STINT));
+  });
+
+  it("takes none from a tick whose values cannot be trusted, and the run is over", () => {
+    const state = createInitialState();
+
+    step(state, onCircuit(temps(PLACED)));
+
+    expect(step(state, inGarage(ZEROS))).toBeNull();
+    expect(step(state, inGarage(STINT))).toBeNull();
   });
 });
 
@@ -443,6 +610,32 @@ describe("diffTireTemps — through the real pit-lane diff, beside the tire wear
     // One stall-visit answer served both families: the wear report still rides
     // the exit readback of the same stop.
     expect(events.filter((e) => e.event === "tireWear.reported")).toHaveLength(1);
+  });
+
+  it("reads a reset into the box off the real pit-lane edges, and reports no wear for it", () => {
+    const { readings, events } = runChain([
+      onCircuit({ ...WEAR, ...temps(PLACED) }),
+      onCircuit({ ...WEAR, ...temps(PLACED) }),
+      // Reset: out of the world for one tick, the values already refreshed.
+      outOfWorld(STINT),
+      inStall(temps(STINT)),
+      inStall(temps(STINT)),
+      leavingStall(temps(STINT)),
+      onPitRoad(temps(STINT)),
+      onCircuit(temps(STINT)),
+    ]);
+
+    expect(readings).toEqual([
+      null,
+      null,
+      null,
+      reading(STINT),
+      reading(STINT),
+      reading(STINT),
+      reading(STINT),
+      reading(STINT),
+    ]);
+    expect(events.filter((e) => e.event === "tireWear.reported")).toHaveLength(0);
   });
 
   it("a garage start takes none, and the first stop after it does", () => {

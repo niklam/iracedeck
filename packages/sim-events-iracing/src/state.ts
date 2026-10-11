@@ -633,15 +633,26 @@ export type TranslatorState = {
 
   // ── Tire temperatures of the last stop (issue #254) ────────────────────
   /**
-   * The twelve carcass temperatures as of the last pit stop the driver drove
-   * into: replaced on every tick of a drive-in stall visit, frozen when the
-   * car leaves its box. `null` until the first such stop. Unlike nearly
-   * everything else in this struct it OUTLIVES a replay visit and a session
-   * change — both wipes in `translator.ts` carry it over, because the garage
-   * is where a driver tuning pressures and camber reads it — and is cleared by
-   * a disconnect and by a saved replay. Read via `getLastStopTireTemps()`.
+   * The twelve carcass temperatures as of the last time the car came in from a
+   * run: replaced on every tick of a drive-in stall visit and frozen when the
+   * car leaves its box, or taken once when a tow or reset stands the car in
+   * its box or the driver leaves the car (`diff/tire-temps.ts`). `null` until
+   * the first one. Unlike nearly everything else in this struct it OUTLIVES a
+   * replay visit and a session change — both wipes in `translator.ts` carry it
+   * over, because the garage is where a driver tuning pressures and camber
+   * reads it — and is cleared by a disconnect and by a saved replay. Read via
+   * `getLastStopTireTemps()`.
    */
   lastStopTireTemps: LastStopTireTemps | null;
+  /**
+   * The twelve values (the sim's order, L / M / R per corner) as last seen
+   * while the car was driving on the circuit — what a tow, a reset or leaving
+   * the car is measured against to tell that the sim refreshed them. `null`
+   * until the car has driven on the circuit, and again once a reading is taken
+   * or the driver leaves the car, so it never outlives the run it belongs to;
+   * both wipes in `translator.ts` drop it.
+   */
+  tireTempsOnCircuit: readonly number[] | null;
 
   // ── Track wetness (issue #526) ──────────────────────────────────────────
   // Tracks `TelemetryData.TrackWetness` across ticks so the diff can emit one
@@ -1469,6 +1480,7 @@ export function createInitialState(): TranslatorState {
     tireWearReport: null,
 
     lastStopTireTemps: null,
+    tireTempsOnCircuit: null,
 
     trackWetnessInitialized: false,
     lastTrackWetness: TrackWetness.Unknown,

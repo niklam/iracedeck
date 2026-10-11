@@ -9,8 +9,10 @@
  *   - the departure tick releases the latch (why the rule runs once per tick)
  *   - the same answers through the real `diffPitLane` edges
  *
+ *   - what counts as driving on the circuit (`isDrivingOnCircuit`)
+ *
  * The tire-wear family's own tests (`tire-wear.test.ts`) run against this
- * module too: `diffTireWear` resolves the visit through it when handed none.
+ * module too: they hand `diffTireWear` the visit resolved here.
  */
 import { type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
 import { describe, expect, it } from "vitest";
@@ -18,7 +20,7 @@ import { describe, expect, it } from "vitest";
 import { createInitialState, type TranslatorState } from "../state.js";
 import { TrackType } from "../track-type.js";
 import { diffPitLane } from "./pit-lane.js";
-import { type StallVisit, updateStallVisit } from "./stall-visit.js";
+import { isDrivingOnCircuit, type StallVisit, updateStallVisit } from "./stall-visit.js";
 import type { PendingEvent } from "./types.js";
 
 function telemetry(overrides: Partial<TelemetryData> = {}): TelemetryData {
@@ -52,6 +54,32 @@ const PLACED_DEPARTING: StallVisit = { driveIn: false, departed: true };
 
 const step = (state: TranslatorState, t: TelemetryData, pending: PendingEvent[] = []): StallVisit =>
   updateStallVisit(state, t, pending);
+
+describe("isDrivingOnCircuit", () => {
+  it("is true in the car, in the world, off pit road and out of the box", () => {
+    expect(isDrivingOnCircuit(onCircuit())).toBe(true);
+  });
+
+  it("stays true off the racing surface and in the pit approach zone", () => {
+    expect(isDrivingOnCircuit(onCircuit({ PlayerTrackSurface: TrkLoc.OffTrack }))).toBe(true);
+    expect(isDrivingOnCircuit(onCircuit({ PlayerTrackSurface: TrkLoc.AproachingPits }))).toBe(true);
+  });
+
+  it("is false on pit road and in the box", () => {
+    expect(isDrivingOnCircuit(onPitRoad())).toBe(false);
+    expect(isDrivingOnCircuit(inStall())).toBe(false);
+    expect(isDrivingOnCircuit(leavingStall())).toBe(false);
+  });
+
+  it("is false out of the car and out of the world", () => {
+    expect(isDrivingOnCircuit(onCircuit({ IsOnTrack: false }))).toBe(false);
+    expect(isDrivingOnCircuit(onCircuit({ PlayerTrackSurface: TrkLoc.NotInWorld }))).toBe(false);
+  });
+
+  it("is false when the fields are missing", () => {
+    expect(isDrivingOnCircuit({} as TelemetryData)).toBe(false);
+  });
+});
 
 describe("updateStallVisit — a visit the car drove into", () => {
   it("answers driveIn from pitStall.entered through pitStall.departed, and on no other tick", () => {

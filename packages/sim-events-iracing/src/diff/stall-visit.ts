@@ -7,7 +7,9 @@
  * apart by where the car came from: a stall visit is a **drive-in** only when
  * the car was last seen driving on the circuit and reached its box down pit
  * road. A garage start and a tow both reach the box from a not-on-track /
- * not-in-world state, so neither is a stop (maintainer ruling on #1108).
+ * not-in-world state, so neither is a stop (maintainer ruling on #1108). The
+ * tire temperatures still read a tow, by a rule of their own that starts from
+ * this module's "not a drive-in" (`diff/tire-temps.ts`).
  *
  * The rule was `diffTireWear`'s own until #254, whose last-stop tire
  * temperatures need the same answer. It lives here, once, so the two families
@@ -48,6 +50,20 @@ function has(pending: ReadonlyArray<PendingEvent>, event: PendingEvent["event"])
 }
 
 /**
+ * The driver is in the car and driving on the circuit: in the world, off pit
+ * road and out of the box. The one definition of "on the circuit" the stall
+ * visit and the tire temperature reading (#254) share.
+ */
+export function isDrivingOnCircuit(telemetry: TelemetryData): boolean {
+  return (
+    (telemetry.IsOnTrack ?? false) &&
+    (telemetry.PlayerTrackSurface ?? TrkLoc.NotInWorld) !== TrkLoc.NotInWorld &&
+    !(telemetry.OnPitRoad ?? false) &&
+    !(telemetry.PlayerCarInPitStall ?? false)
+  );
+}
+
+/**
  * Advance the stall-visit latch by one tick and answer what this tick's visit
  * is. Call it ONCE per tick: the departure tick releases the latch, so a second
  * call on that tick would answer "not a drive-in".
@@ -58,7 +74,6 @@ export function updateStallVisit(
   pending: ReadonlyArray<PendingEvent>,
 ): StallVisit {
   const isOnTrack = telemetry.IsOnTrack ?? false;
-  const onPitRoad = telemetry.OnPitRoad ?? false;
   const inPitStall = telemetry.PlayerCarInPitStall ?? false;
   const surface = telemetry.PlayerTrackSurface ?? TrkLoc.NotInWorld;
 
@@ -66,7 +81,7 @@ export function updateStallVisit(
   //    flag rides unchanged from the circuit to the box.
   if (!isOnTrack || surface === TrkLoc.NotInWorld) {
     state.stallVisitDroveOnCircuit = false;
-  } else if (!onPitRoad && !inPitStall) {
+  } else if (isDrivingOnCircuit(telemetry)) {
     state.stallVisitDroveOnCircuit = true;
   }
 

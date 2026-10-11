@@ -5932,8 +5932,9 @@ describe("sim-events-iracing translator", () => {
 
       stop(controller, STINT);
 
-      // Out of the car: replay-mode ticks, with whatever the sim holds now.
-      controller.__tick(telemetry({ ...OUT_OF_CAR, ...uniform(60) }));
+      // Out of the car: replay-mode ticks, the sim still holding the stop's
+      // values, then whatever the garage does to them.
+      controller.__tick(telemetry({ ...OUT_OF_CAR, ...STINT }));
       controller.__tick(telemetry({ ...OUT_OF_CAR, ...uniform(60) }));
       expect(getLastStopTireTemps()).toEqual(STINT_READING);
 
@@ -5947,10 +5948,40 @@ describe("sim-events-iracing translator", () => {
       expect(getLastStopTireTemps()).toEqual(uniformReading(95));
     });
 
+    it("takes the reading the sim refreshed as the driver left the car, and the Drive placement after it leaves it in place", () => {
+      const controller = start();
+
+      stop(controller, STINT);
+
+      // The refresh lands on the first out-of-car tick; later ones are not read.
+      controller.__tick(telemetry({ ...OUT_OF_CAR, ...uniform(60) }));
+      expect(getLastStopTireTemps()).toEqual(uniformReading(60));
+
+      controller.__tick(telemetry({ ...OUT_OF_CAR, ...uniform(70) }));
+      expect(getLastStopTireTemps()).toEqual(uniformReading(60));
+
+      elapseReplayGrace();
+      sitAndLeave(controller, PLACED);
+      expect(getLastStopTireTemps()).toEqual(uniformReading(60));
+    });
+
+    it("takes none on leaving the car without a run on the circuit", () => {
+      const controller = start();
+
+      // A garage start, down pit road and no further.
+      controller.__tick(telemetry({ ...IN_STALL, ...PLACED }));
+      controller.__tick(telemetry({ ...LEAVING_STALL, ...PLACED }));
+      controller.__tick(telemetry({ ...ON_PIT_ROAD, ...PLACED }));
+      controller.__tick(telemetry({ ...OUT_OF_CAR, ...uniform(60) }));
+
+      expect(getLastStopTireTemps()).toBeNull();
+    });
+
     it("survives a replay glance mid-session", () => {
       const controller = start();
 
       stop(controller, STINT);
+      controller.__tick(telemetry({ IsReplayPlaying: true, ...STINT }));
       controller.__tick(telemetry({ IsReplayPlaying: true, ...uniform(60) }));
       expect(getLastStopTireTemps()).toEqual(STINT_READING);
 
@@ -5960,24 +5991,90 @@ describe("sim-events-iracing translator", () => {
       expect(getLastStopTireTemps()).toEqual(STINT_READING);
     });
 
-    it("is left in place by a tow into the box", () => {
+    it("is taken from a tow into the box, once", () => {
       const controller = start();
 
       stop(controller, STINT);
-      // Towed: the car leaves the world, then appears in its box.
+      // Towed: the car leaves the world, the values already refreshed, then
+      // appears in its box.
       controller.__tick(telemetry({ PlayerTrackSurface: TrkLoc.NotInWorld, ...uniform(95) }));
+      expect(getLastStopTireTemps()).toEqual(STINT_READING);
+
+      controller.__tick(telemetry({ ...IN_STALL, ...uniform(95) }));
+      expect(getLastStopTireTemps()).toEqual(uniformReading(95));
+
+      // Whatever the box holds afterwards is not followed.
+      sitAndLeave(controller, PLACED);
+      expect(getLastStopTireTemps()).toEqual(uniformReading(95));
+    });
+
+    it("is taken from a reset that puts the car straight from the circuit into its box", () => {
+      const controller = start();
+
+      stop(controller, STINT);
       sitAndLeave(controller, uniform(95));
+
+      expect(getLastStopTireTemps()).toEqual(uniformReading(95));
+    });
+
+    it("is left in place by a tow whose values are the ones the car carried on the circuit", () => {
+      const controller = start();
+
+      stop(controller, STINT);
+      controller.__tick(telemetry({ PlayerTrackSurface: TrkLoc.NotInWorld, ...STINT }));
+      sitAndLeave(controller, STINT);
 
       expect(getLastStopTireTemps()).toEqual(STINT_READING);
     });
 
-    it("is left in place by a reset that puts the car straight from the circuit into its box", () => {
+    it("reads two stops, a reset and a return to the garage through the 2026-10-11 capture", () => {
+      vi.useFakeTimers();
+
+      type TempsCaptureTick = { t: number } & Partial<TelemetryData>;
+      const capture = JSON.parse(
+        readFileSync(new URL("./diff/__fixtures__/tire-temps-stops-20261011.json", import.meta.url), "utf-8"),
+      ) as TempsCaptureTick[];
+      const BASE = 1_700_000_000_000;
       const controller = start();
+      /** The capture time at which each new reading first showed, with its LF outside zone. */
+      const taken: Array<{ t: number; lfOutside: number }> = [];
 
-      stop(controller, STINT);
-      sitAndLeave(controller, uniform(95));
+      // The capture records a tick only on a change; the sim keeps ticking in
+      // between with the same values, and past its end in the garage.
+      capture.forEach(({ t: at, ...values }, i) => {
+        const until = capture[i + 1]?.t ?? at + 2;
 
-      expect(getLastStopTireTemps()).toEqual(STINT_READING);
+        for (let t = at; t < until - 1e-9; t += 0.25) {
+          vi.setSystemTime(BASE + t * 1000);
+          controller.__tick(telemetry(values));
+
+          const lfOutside = getLastStopTireTemps()?.corners.lf.outside;
+
+          if (lfOutside !== undefined && lfOutside !== taken.at(-1)?.lfOutside) taken.push({ t: at, lfOutside });
+        }
+      });
+
+      const valuesAt = (t: number): TempsCaptureTick => capture.find((tick) => tick.t === t)!;
+
+      // Each reading shows on the first tick its rule allows, with the values
+      // the sim refreshed just before: stop 1 and stop 2 as the car enters its
+      // box (refreshed 0.05 s and 0.4 s earlier), the reset as the car stands
+      // in its box (refreshed one tick earlier), the garage on its own tick.
+      expect(taken).toEqual([
+        { t: 342.3, lfOutside: valuesAt(342.25).LFtempCL },
+        { t: 540.2, lfOutside: valuesAt(539.8).LFtempCL },
+        { t: 618.02, lfOutside: valuesAt(618).LFtempCL },
+        { t: 668.83, lfOutside: valuesAt(668.83).LFtempCL },
+      ]);
+
+      expect(getLastStopTireTemps()).toEqual({
+        corners: {
+          lf: { outside: 51.256500244140625, middle: 51.7762451171875, inside: 52.127410888671875 },
+          rf: { inside: 51.64166259765625, middle: 51.31304931640625, outside: 50.7257080078125 },
+          lr: { outside: 51.646209716796875, middle: 52.248687744140625, inside: 52.5394287109375 },
+          rr: { inside: 52.006866455078125, middle: 51.6771240234375, outside: 50.87353515625 },
+        },
+      });
     });
 
     it("survives a session change, live or through replay-mode ticks", () => {
