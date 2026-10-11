@@ -4,7 +4,14 @@ import { describe, expect, it } from "vitest";
 
 import { calculateCanonicalRacePositions } from "../race-order.js";
 import { createInitialState } from "../state.js";
-import { MIN_LINE_POPULATION, type PaceLineup, resolveCarAheadInLine, resolvePaceLineup } from "./pace-lineup.js";
+import {
+  carAheadInLine,
+  indexPaceLines,
+  MIN_LINE_POPULATION,
+  type PaceLineup,
+  resolveCarAheadInLine,
+  resolvePaceLineup,
+} from "./pace-lineup.js";
 
 const ticks = JSON.parse(
   readFileSync(new URL("./__fixtures__/caution-restart-20260917.json", import.meta.url), "utf-8"),
@@ -1735,5 +1742,131 @@ describe("resolveCarAheadInLine — the follow rule, for any car", () => {
       expect(lineup?.followCarIdx, `car ${carIdx}`).toBe(ahead ?? PACE);
       expect(lineup?.followsPaceCar, `car ${carIdx}`).toBe(ahead === null || ahead === PACE);
     }
+  });
+});
+
+describe("indexPaceLines / carAheadInLine — the follow rule read off one index of the tick", () => {
+  const everyone = (): boolean => true;
+  const indexed = (
+    cars: Array<[number, number, number]>,
+    inWorld: (carIdx: number) => boolean = everyone,
+  ): ReturnType<typeof indexPaceLines> => {
+    const telemetry = paceArrays(cars);
+
+    return indexPaceLines(telemetry.CarIdxPaceLine as number[], telemetry.CarIdxPaceRow as number[], inWorld);
+  };
+
+  it("answers for every car of the field from ONE pass, and the same as asking each from the arrays", () => {
+    const telemetry = paceArrays(DOUBLE_FILE);
+    const lines = telemetry.CarIdxPaceLine as number[];
+    const rows = telemetry.CarIdxPaceRow as number[];
+    let asked = 0;
+    const counting = (): boolean => {
+      asked++;
+
+      return true;
+    };
+    const index = indexPaceLines(lines, rows, counting);
+
+    // The in-world rule is asked once per lined-up car while indexing…
+    expect(asked).toBe(DOUBLE_FILE.length);
+
+    for (let carIdx = 0; carIdx < 72; carIdx++) {
+      expect(carAheadInLine(index, carIdx), `car ${carIdx}`).toBe(resolveCarAheadInLine(lines, rows, carIdx, everyone));
+    }
+
+    // …and not again, however many cars then ask.
+    expect(asked).toBe(DOUBLE_FILE.length);
+  });
+
+  it("counts the lined-up cars of each line, in the world or not", () => {
+    const index = indexed(DOUBLE_FILE, (carIdx) => carIdx !== 3);
+
+    expect([...index.population.entries()].sort()).toEqual([
+      [0, 4], // the pace car and cars 1, 3 and 5
+      [1, 3], // cars 2, 4 and 6
+    ]);
+  });
+
+  it("walks back past a row nobody in the world holds", () => {
+    // Line 0: rows 0 (pace car), 1, 2, 3. Car 3 at row 2 is not in the world.
+    const index = indexed(DOUBLE_FILE, (carIdx) => carIdx !== 3);
+
+    expect(carAheadInLine(index, 5)).toBe(1);
+    // The absent car is still asked about, and answers for itself.
+    expect(carAheadInLine(index, 3)).toBe(1);
+  });
+
+  it("walks back past a gap in the numbering", () => {
+    const gapped: Array<[number, number, number]> = [
+      [PACE, 0, 0],
+      [1, 0, 1],
+      [2, 0, 5],
+      [3, 0, 9],
+    ];
+    const index = indexed(gapped);
+
+    expect(carAheadInLine(index, 3)).toBe(2);
+    expect(carAheadInLine(index, 2)).toBe(1);
+    expect(carAheadInLine(index, 1)).toBe(PACE);
+  });
+
+  it("gives two cars reading one row to the lower index, and neither is the other's car ahead", () => {
+    const tied: Array<[number, number, number]> = [
+      [PACE, 0, 0],
+      [1, 0, 1],
+      [7, 0, 2],
+      [4, 0, 2],
+      [9, 0, 3],
+    ];
+    const index = indexed(tied);
+
+    expect(carAheadInLine(index, 9)).toBe(4);
+    expect(carAheadInLine(index, 7)).toBe(1);
+    expect(carAheadInLine(index, 4)).toBe(1);
+  });
+
+  it("prefers the tied car that is in the world", () => {
+    const tied: Array<[number, number, number]> = [
+      [PACE, 0, 0],
+      [7, 0, 2],
+      [4, 0, 2],
+      [9, 0, 3],
+    ];
+
+    expect(
+      carAheadInLine(
+        indexed(tied, (carIdx) => carIdx !== 4),
+        9,
+      ),
+    ).toBe(7);
+  });
+
+  it("does not take a nonsense row for a row — it is nobody's car ahead, and costs no walk", () => {
+    const nonsense: Array<[number, number, number]> = [
+      [PACE, 0, 0],
+      [1, 0, 1],
+      [2, 0, 2],
+      [8, 0, 1_000_000_000],
+      [9, 0, 2.5],
+    ];
+    const index = indexed(nonsense);
+
+    // The real cars are untouched by either.
+    expect(carAheadInLine(index, 2)).toBe(1);
+    // Each still gets the nearest real row below its own.
+    expect(carAheadInLine(index, 8)).toBe(2);
+    expect(carAheadInLine(index, 9)).toBe(2);
+    // The index holds a slot per real row, not a billion.
+    expect(index.inWorldByRow.get(0)?.length).toBe(3);
+    // They are lined up all the same: the count is of cars, not of slots.
+    expect(index.population.get(0)).toBe(5);
+  });
+
+  it("answers nobody for a car that is not lined up, or one the arrays do not carry", () => {
+    const index = indexed(DOUBLE_FILE);
+
+    expect(carAheadInLine(index, 9)).toBeNull();
+    expect(carAheadInLine(index, 500)).toBeNull();
   });
 });

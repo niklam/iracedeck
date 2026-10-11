@@ -39,8 +39,8 @@
  *
  * **The pack spacing is the median in-line gap, both lines pooled**, over
  * every pair of a car and the car it follows under the lineup's own rule
- * ({@link resolveCarAheadInLine} — the one function the lineup itself calls for
- * the player, so the two can never pair different cars). Two kinds of pair are
+ * ({@link carAheadInLine} — the one function the lineup itself calls for the
+ * player, so the two can never pair different cars). Two kinds of pair are
  * left out: each line's pair with the pace car, which the pace car keeps at
  * about twice the pack's spacing (19.3–20.9 m against 10 m across all nine
  * snapshots, both lanes); and the player's own pair, which is the thing being
@@ -52,7 +52,10 @@
  * among them — and both are in the world.
  *
  * **Fewer than {@link CATCH_UP_MIN_SPACING_SAMPLES} pairs is no reading**:
- * silence, not a guess. That costs a field of five cars or fewer.
+ * silence, not a guess. Each line loses its pair with the pace car and the
+ * player loses his own, so a reading needs the lined-up cars, less one per
+ * line, less one, to come to four: six cars single file, seven double file. A
+ * six-car field double file has three pairs and is not read.
  *
  * **A pair with the pace car is judged against
  * {@link CATCH_UP_PACE_CAR_SPACING_FACTOR} × the spacing**, for the same
@@ -78,7 +81,13 @@
 import { carInWorld, forwardGapMeters, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 import { resolvePaceCarIdx } from "./pace-laps.js";
-import { type PaceLineup, type PaceLineupFlags, resolveCarAheadInLine, resolvePlayerCarIdx } from "./pace-lineup.js";
+import {
+  carAheadInLine,
+  indexPaceLines,
+  type PaceLineup,
+  type PaceLineupFlags,
+  resolvePlayerCarIdx,
+} from "./pace-lineup.js";
 import { isRacingSurface } from "./track-surface.js";
 
 /**
@@ -132,12 +141,17 @@ export type CautionGapMeasurement = {
   paceFlags: PaceLineupFlags;
 };
 
-/** The median of a non-empty list; the mean of the middle two for an even count. */
-function median(values: number[]): number {
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = sorted.length >> 1;
+/**
+ * The median of a non-empty list, which it sorts in place; the mean of the
+ * middle two for an even count. A typed array, so the sort is the engine's
+ * numeric one with no comparator to call.
+ */
+function median(values: Float64Array): number {
+  values.sort();
 
-  return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+  const mid = values.length >> 1;
+
+  return values.length % 2 === 1 ? values[mid] : (values[mid - 1] + values[mid]) / 2;
 }
 
 /**
@@ -163,22 +177,30 @@ export function measureCautionGap(
   const onTrackSurface = (carIdx: number): boolean =>
     isRacingSurface(Array.isArray(surfaces) ? (surfaces[carIdx] as unknown) : undefined);
 
+  // The in-world predicate is built once and handed to every gap: this runs
+  // at tick rate for the whole caution, and a closure per pair adds up.
+  const inWorld = carInWorld(telemetry);
   const followCarIdx = lineup.followCarIdx;
   const gapMeters =
     playerCarIdx !== null && followCarIdx !== null && onTrackSurface(playerCarIdx) && onTrackSurface(followCarIdx)
-      ? forwardGapMeters(telemetry, playerCarIdx, followCarIdx, trackLengthMeters)
+      ? forwardGapMeters(telemetry, playerCarIdx, followCarIdx, trackLengthMeters, inWorld)
       : null;
 
-  const gaps: number[] = [];
+  let gaps: Float64Array | null = null;
+  let samples = 0;
 
   if (Array.isArray(lines) && Array.isArray(rows)) {
-    const inWorld = carInWorld(telemetry);
+    // The lines are indexed once and every pair is read off the index — the
+    // same rule the lineup asked for the player, a step per car.
+    const index = indexPaceLines(lines, rows, inWorld);
+
+    gaps = new Float64Array(rows.length);
 
     for (let carIdx = 0; carIdx < rows.length; carIdx++) {
       // The player's own pair is the one being judged; the pace car follows nobody.
       if (carIdx === playerCarIdx || carIdx === paceCarIdx) continue;
 
-      const aheadCarIdx = resolveCarAheadInLine(lines, rows, carIdx, inWorld);
+      const aheadCarIdx = carAheadInLine(index, carIdx);
 
       // Nobody ahead in the line, or the pace car: this line's pair with the
       // pace car, which is kept at twice the spacing and has its own reference.
@@ -186,13 +208,14 @@ export function measureCautionGap(
 
       if (!onTrackSurface(carIdx) || !onTrackSurface(aheadCarIdx)) continue;
 
-      const gap = forwardGapMeters(telemetry, carIdx, aheadCarIdx, trackLengthMeters);
+      const gap = forwardGapMeters(telemetry, carIdx, aheadCarIdx, trackLengthMeters, inWorld);
 
-      if (gap !== null) gaps.push(gap);
+      if (gap !== null) gaps[samples++] = gap;
     }
   }
 
-  const packSpacingMeters = gaps.length >= CATCH_UP_MIN_SPACING_SAMPLES ? median(gaps) : null;
+  const packSpacingMeters =
+    gaps !== null && samples >= CATCH_UP_MIN_SPACING_SAMPLES ? median(gaps.subarray(0, samples)) : null;
   const referenceMeters =
     packSpacingMeters === null
       ? null
@@ -202,7 +225,7 @@ export function measureCautionGap(
     followCarIdx,
     gapMeters,
     packSpacingMeters,
-    spacingSamples: gaps.length,
+    spacingSamples: samples,
     referenceMeters,
     ratio: gapMeters !== null && referenceMeters !== null && referenceMeters > 0 ? gapMeters / referenceMeters : null,
     aheadOfSlot: gapMeters !== null && trackLengthMeters !== null && gapMeters > trackLengthMeters / 2,

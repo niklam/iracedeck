@@ -322,22 +322,6 @@ function isLinedUp(line: unknown, row: unknown): line is number {
 export const MIN_LINE_POPULATION = 2;
 
 /**
- * How many lined-up cars each pace line holds, keyed by line. One pass over
- * the slots that both {@link isDoubleFile} and {@link isOffTheField} read.
- */
-function linePopulation(lines: unknown[], rows: unknown[]): Map<number, number> {
-  const population = new Map<number, number>();
-
-  for (let carIdx = 0; carIdx < rows.length; carIdx++) {
-    const line = lines[carIdx];
-
-    if (isLinedUp(line, rows[carIdx])) population.set(line, (population.get(line) ?? 0) + 1);
-  }
-
-  return population;
-}
-
-/**
  * Whether the field is in two columns: at least two pace lines each hold
  * {@link MIN_LINE_POPULATION} lined-up cars.
  *
@@ -451,6 +435,64 @@ function resolvePaceFlags(telemetry: TelemetryData, carIdx: number): PaceLineupF
 }
 
 /**
+ * No pace row is higher than this: a field is 64 cars, and a row beyond that
+ * is not a row. It bounds the index below — a slot per row — and the walk back
+ * through it, so a nonsense value in the array cannot make either one large.
+ */
+const MAX_PACE_ROW = 255;
+
+/**
+ * One tick's pace lines, read once: how many lined-up cars each line holds,
+ * and, for every row of every line, the car that is the answer when someone
+ * further back asks "who is at that row" — the lowest-index car holding the
+ * row that is in the world. Built in a single pass over the car slots by
+ * {@link indexPaceLines}; {@link carAheadInLine} answers from it.
+ */
+export type PaceLineIndex = {
+  lines: unknown[];
+  rows: unknown[];
+  /** Lined-up cars per line, in the world or not — what {@link isDoubleFile} and {@link isOffTheField} read. */
+  population: Map<number, number>;
+  /** Per line, by row: the car to be found there. A row with no in-world holder is a hole. */
+  inWorldByRow: Map<number, Array<number | undefined>>;
+};
+
+/**
+ * Index one tick's pace lines. One pass, so that asking the follow rule of
+ * every car in the field — the caution-gap measurement does — costs a pass
+ * and a step per car, not a scan of the field per car.
+ */
+export function indexPaceLines(lines: unknown[], rows: unknown[], inWorld: (carIdx: number) => boolean): PaceLineIndex {
+  const population = new Map<number, number>();
+  const inWorldByRow = new Map<number, Array<number | undefined>>();
+
+  for (let carIdx = 0; carIdx < rows.length; carIdx++) {
+    const line = lines[carIdx];
+    const row = rows[carIdx] as unknown;
+
+    if (!isLinedUp(line, row)) continue;
+
+    population.set(line, (population.get(line) ?? 0) + 1);
+
+    // `isLinedUp` checked the row is a number; a row slot wants a whole one.
+    if (!Number.isInteger(row) || (row as number) > MAX_PACE_ROW || !inWorld(carIdx)) continue;
+
+    let byRow = inWorldByRow.get(line);
+
+    if (byRow === undefined) {
+      byRow = [];
+      inWorldByRow.set(line, byRow);
+    }
+
+    // The first car met holds the slot: two cars reading one row is a
+    // contradiction, and the lower index is what a scan of the field found.
+    byRow[row as number] ??= carIdx;
+  }
+
+  return { lines, rows, population, inWorldByRow };
+}
+
+/**
  * THE follow rule, for any car: the nearest in-world car in `carIdx`'s own
  * line with a lower row, or `null` when there is none — nobody ahead in the
  * line but the pace car — or when `carIdx` is not itself lined up.
@@ -472,7 +514,37 @@ function resolvePaceFlags(telemetry: TelemetryData, carIdx: number): PaceLineupF
  * holder is there, not the row directly below — a car that has left the world
  * keeps its row for a tick, and one that has not reached the grid yet holds
  * its row until it does (module comment). In both frames: you form up behind
- * who is physically there. The car's own slot is skipped by the strict `<`.
+ * who is physically there. The car's own slot is never its own answer: the
+ * walk starts one row below it.
+ *
+ * It answers from an index of the tick ({@link indexPaceLines}), walking back
+ * from the car's row to the first row that has a holder — one step, in a field
+ * with every row held.
+ */
+export function carAheadInLine(index: PaceLineIndex, carIdx: number): number | null {
+  const line = index.lines[carIdx];
+  const row = index.rows[carIdx] as unknown;
+
+  if (!isLinedUp(line, row)) return null;
+
+  const byRow = index.inWorldByRow.get(line);
+
+  if (byRow === undefined) return null;
+
+  // `isLinedUp` checked the row is a number. Strictly lower rows only.
+  for (let at = Math.min(Math.ceil(row as number), byRow.length) - 1; at >= 0; at--) {
+    const ahead = byRow[at];
+
+    if (ahead !== undefined) return ahead;
+  }
+
+  return null;
+}
+
+/**
+ * {@link carAheadInLine} for one car, straight from the arrays: the index is
+ * built and thrown away. For a caller that asks once; anything that asks of
+ * more than one car on a tick indexes it once and asks the index.
  */
 export function resolveCarAheadInLine(
   lines: unknown[],
@@ -480,27 +552,7 @@ export function resolveCarAheadInLine(
   carIdx: number,
   inWorld: (carIdx: number) => boolean,
 ): number | null {
-  const myLine = lines[carIdx];
-  const myRow = rows[carIdx];
-
-  if (!isLinedUp(myLine, myRow)) return null;
-
-  let aheadCarIdx: number | null = null;
-  let aheadRow = -1;
-
-  for (let idx = 0; idx < rows.length; idx++) {
-    const row = rows[idx];
-
-    if (!isLinedUp(lines[idx], row) || lines[idx] !== myLine) continue;
-
-    // `isLinedUp` checked both rows are numbers.
-    if ((row as number) < (myRow as number) && (row as number) > aheadRow && inWorld(idx)) {
-      aheadCarIdx = idx;
-      aheadRow = row as number;
-    }
-  }
-
-  return aheadCarIdx;
+  return carAheadInLine(indexPaceLines(lines, rows, inWorld), carIdx);
 }
 
 /**
@@ -612,7 +664,11 @@ export function resolvePaceLineup(
   if (!isLinedUp(myLine, myRow)) return null;
 
   const paceCarIdx = resolvePaceCarIdx(sessionInfo);
-  const population = linePopulation(lines, rows);
+  // One pass over the car slots for everything the lines themselves say: how
+  // many cars each holds, and who is where in each.
+  const inWorld = carInWorld(telemetry);
+  const index = indexPaceLines(lines, rows, inWorld);
+  const population = index.population;
   const doubleFile = isDoubleFile(population);
 
   // The player's own slot carrying the stray line value (see `isOffTheField`):
@@ -622,8 +678,7 @@ export function resolvePaceLineup(
 
   if (!doubleFile && isOffTheField(population, myLine)) return withheld(paceFlags);
 
-  const inWorld = carInWorld(telemetry);
-  const aheadCarIdx = resolveCarAheadInLine(lines, rows, playerCarIdx, inWorld);
+  const aheadCarIdx = carAheadInLine(index, playerCarIdx);
   const followsPaceCar = aheadCarIdx === null || aheadCarIdx === paceCarIdx;
   const followCarIdx = aheadCarIdx ?? paceCarIdx;
   // Read here, from the same tick as the rows it frames, and handed to nothing
