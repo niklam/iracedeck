@@ -19,7 +19,7 @@
     "src/*.cc"
   ],
   "devDependencies": {
-    "@types/node": "26.6.4",
+    "@types/node": "26.6.5",
     "node-addon-api": "8.9.2",
     "node-gyp": "13.1.0",
     "rimraf": "6.1.3",
