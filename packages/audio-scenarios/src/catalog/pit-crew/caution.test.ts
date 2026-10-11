@@ -33,6 +33,8 @@ import { CAUTION_CALLOUTS } from "@iracedeck/callout-settings";
 import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { calculateRacePositions, Flags, hasFlag, SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
 import {
+  CATCH_UP_DWELL_MS,
+  CATCH_UP_REMINDER_MS,
   type CautionEpisode,
   type CautionPhase,
   type LivePosition,
@@ -54,6 +56,7 @@ import {
 import { familyGate } from "./callout-gate.test-util.js";
 import {
   buildCautionContracts,
+  CATCH_UP_REPEAT_GUARD_MS,
   CAUTION_FOLLOW_DELAY_MS,
   CAUTION_LINEUP_CHANGE_DELAY_MS,
   CAUTION_SCENARIO_IDS,
@@ -2540,6 +2543,142 @@ describe("the catch-up calls (#1168)", () => {
     });
   });
 
+  /**
+   * The first call's own memory: the car it last named and when. The gate
+   * and the script both read the car ahead NOW, while the translator's
+   * episode is about one car — so a call raised for one car can drain naming
+   * the next, seconds before the translator raises its own call for it. The
+   * gates are called directly here with the time each fire is attempted at;
+   * the sequence itself is driven through the engine in "on a busy bus".
+   */
+  describe("and the same car twice (the repeat guard)", () => {
+    /** What a gate of the given build answers at `now`, with the car `followCarIdx` ahead. */
+    function admitsAt(
+      built: readonly ScenarioContract[],
+      id: CautionCalloutId,
+      followCarIdx: number,
+      now: number,
+    ): boolean | undefined {
+      lineupNow = behind(followCarIdx);
+
+      return find(built, id).speakGate?.admit({ event: null, now } as never);
+    }
+
+    it("covers the translator's dwell plus the longest the second fire can wait for the bus, and stays under the reminder interval", () => {
+      // The stale call names the new car no earlier than the tick it appears;
+      // the translator's own call for it comes one dwell later and may then
+      // wait as long as any gated caution call.
+      expect(CATCH_UP_REPEAT_GUARD_MS).toBe(CATCH_UP_DWELL_MS + CAUTION_MAX_QUEUE_WAIT_MS);
+      expect(CATCH_UP_REPEAT_GUARD_MS).toBe(23_000);
+      expect(contract("catch-up").maxQueueWaitMs).toBe(CAUTION_MAX_QUEUE_WAIT_MS);
+      // A reminder for the same car is the design; the guard must end before one is due.
+      expect(CATCH_UP_REPEAT_GUARD_MS).toBeLessThan(CATCH_UP_REMINDER_MS);
+    });
+
+    it("says so in the first call's gate, and not in the reminder's", () => {
+      expect(contract("catch-up").speakGate?.description).toMatch(/has not named that car in the last 23 seconds/);
+      expect(contract("catch-up-reminder").speakGate?.description).not.toMatch(/named that car/);
+    });
+
+    it("refuses the car it named inside the window, and speaks it again once the window has passed", () => {
+      const built = contracts();
+
+      expect(admitsAt(built, "catch-up", 12, 1000)).toBe(true);
+
+      expect(admitsAt(built, "catch-up", 12, 1001)).toBe(false);
+      expect(admitsAt(built, "catch-up", 12, 1000 + CATCH_UP_REPEAT_GUARD_MS - 1)).toBe(false);
+      expect(admitsAt(built, "catch-up", 12, 1000 + CATCH_UP_REPEAT_GUARD_MS)).toBe(true);
+    });
+
+    it("never refuses a different car, however soon", () => {
+      const built = contracts();
+
+      expect(admitsAt(built, "catch-up", 12, 1000)).toBe(true);
+      expect(admitsAt(built, "catch-up", 23, 1001)).toBe(true);
+      // …and 23 is now the car last named: it is the one refused.
+      expect(admitsAt(built, "catch-up", 23, 1002)).toBe(false);
+    });
+
+    it("counts the window from the call the driver heard — a refusal records nothing", () => {
+      const built = contracts();
+
+      expect(admitsAt(built, "catch-up", 12, 0)).toBe(true);
+      expect(admitsAt(built, "catch-up", 12, CATCH_UP_REPEAT_GUARD_MS - 1)).toBe(false);
+      // Had the refusal restarted the window, this one would be refused too.
+      expect(admitsAt(built, "catch-up", 12, CATCH_UP_REPEAT_GUARD_MS)).toBe(true);
+    });
+
+    it("records nothing when the gap has closed — the next call for that car still speaks", () => {
+      const built = contracts();
+
+      gapNow = { warranted: false };
+      expect(admitsAt(built, "catch-up", 12, 1000)).toBe(false);
+
+      gapNow = { warranted: true };
+      expect(admitsAt(built, "catch-up", 12, 2000)).toBe(true);
+    });
+
+    it("records nothing in the memory of the car last named when it refuses — a change to that car is still news", () => {
+      const built = contracts();
+
+      // The follow call named 7; the first catch-up call named 12 long ago,
+      // and the change call has since named 7 again.
+      lineupNow = behind(7);
+      expect(find(built, "follow").speakGate?.admit({} as never)).toBe(true);
+      expect(admitsAt(built, "catch-up", 12, 1000)).toBe(true);
+      lineupNow = behind(7);
+      expect(find(built, "lineup-changed").speakGate?.admit({} as never)).toBe(true);
+
+      // Refused by the guard: 12 must not be recorded as named a second time.
+      expect(admitsAt(built, "catch-up", 12, 2000)).toBe(false);
+      expect(find(built, "lineup-changed").speakGate?.admit({} as never)).toBe(true);
+    });
+
+    it("has nothing to compare with no car to read, and records nothing", () => {
+      const built = contracts();
+
+      expect(admitsAt(built, "catch-up", 12, 1000)).toBe(true);
+
+      lineupNow = null;
+      expect(find(built, "catch-up").speakGate?.admit({ event: null, now: 1001 } as never)).toBe(true);
+      expect(find(built, "catch-up").speakGate?.admit({ event: null, now: 1002 } as never)).toBe(true);
+
+      // The record of 12 stands.
+      expect(admitsAt(built, "catch-up", 12, 1003)).toBe(false);
+    });
+
+    it("leaves the reminder alone — the same car again, at once or thirty seconds on, and as often as the translator asks", () => {
+      const built = contracts();
+
+      expect(admitsAt(built, "catch-up", 12, 1000)).toBe(true);
+
+      expect(admitsAt(built, "catch-up-reminder", 12, 1001)).toBe(true);
+      expect(admitsAt(built, "catch-up-reminder", 12, 1000 + CATCH_UP_REMINDER_MS)).toBe(true);
+      expect(admitsAt(built, "catch-up-reminder", 12, 1001 + CATCH_UP_REMINDER_MS)).toBe(true);
+    });
+
+    it("is written by the first call alone — no other call that names the car starts the window", () => {
+      const built = contracts();
+
+      // The reminder, the follow call and the one-to-go call all name car 12…
+      expect(admitsAt(built, "catch-up-reminder", 12, 1000)).toBe(true);
+      expect(admitsAt(built, "follow", 12, 1001)).toBe(true);
+      cautionPhase = "one-to-go";
+      expect(admitsAt(built, "one-to-go", 12, 1002)).toBe(true);
+
+      // …and the first catch-up call for it still speaks.
+      expect(admitsAt(built, "catch-up", 12, 1003)).toBe(true);
+    });
+
+    it("keeps its record apart from another build's", () => {
+      const first = contracts();
+      const second = contracts();
+
+      expect(admitsAt(first, "catch-up", 12, 1000)).toBe(true);
+      expect(admitsAt(second, "catch-up", 12, 1001)).toBe(true);
+    });
+  });
+
   describe("and the car last named (#1286)", () => {
     it.each(CATCH_UP_IDS)(
       "records the car the %s call names — a lineup change to that car afterwards is not news",
@@ -2859,6 +2998,111 @@ describe("the catch-up calls (#1168)", () => {
       r.flush();
 
       expect(r.played()).toEqual([HOG_CLIP]);
+    });
+
+    /**
+     * The sequence the guard exists for. The translator raises the call for
+     * car 7 while the bus is busy; a second later the lineup names car 12 and
+     * the translator's episode goes into suspense; the bus frees inside the
+     * dwell and the waiting call, admitted on the live gap, names car 12; and
+     * one dwell after the change the translator raises its own call for 12.
+     */
+    describe("a call that drained naming the next car, and the translator's own call for it", () => {
+      /** Runs the sequence up to the first spoken call; the car ahead is 12 from then on. */
+      function staleCallNamesTheNewCar(r: Run): void {
+        lineupNow = behind(7);
+        r.hogBus();
+        r.publish("catch-up");
+
+        vi.advanceTimersByTime(1000);
+        lineupNow = behind(12);
+
+        vi.advanceTimersByTime(1000);
+        r.flush();
+      }
+
+      it("speaks once — the second call for the same car, a dwell after the change, is refused", () => {
+        const r = run();
+
+        staleCallNamesTheNewCar(r);
+        expect(r.played()).toEqual([HOG_CLIP, CATCH_UP]);
+
+        // The change was 1 s after the first event; the re-key comes a dwell later.
+        vi.advanceTimersByTime(CATCH_UP_DWELL_MS - 1000);
+        r.publish("catch-up");
+        r.flush();
+
+        expect(r.played()).toEqual([HOG_CLIP, CATCH_UP]);
+      });
+
+      /** The translator's second call arrives to a busy bus and waits almost its whole max wait before it is attempted. */
+      function secondCallWaitsOutABusyBus(r: Run): void {
+        vi.advanceTimersByTime(CATCH_UP_DWELL_MS - 1000);
+        r.hogBus();
+        r.publish("catch-up");
+        vi.advanceTimersByTime(CAUTION_MAX_QUEUE_WAIT_MS - 100);
+        r.flush();
+      }
+
+      it("still speaks once when the second call waits out a busy bus first — the window covers the dwell and the wait", () => {
+        const r = run();
+
+        staleCallNamesTheNewCar(r);
+        secondCallWaitsOutABusyBus(r);
+
+        expect(r.played()).toEqual([HOG_CLIP, CATCH_UP, HOG_CLIP]);
+      });
+
+      it("and a call for a different car that waited as long is spoken — it was the guard that refused, not the wait", () => {
+        const r = run();
+
+        staleCallNamesTheNewCar(r);
+        lineupNow = behind(23);
+        secondCallWaitsOutABusyBus(r);
+
+        expect(r.played()).toEqual([HOG_CLIP, CATCH_UP, HOG_CLIP, CATCH_UP]);
+      });
+
+      it("speaks again for a different car inside the window — the positive control", () => {
+        const r = run();
+
+        staleCallNamesTheNewCar(r);
+
+        vi.advanceTimersByTime(CATCH_UP_DWELL_MS - 1000);
+        lineupNow = behind(23);
+        r.publish("catch-up");
+        r.flush();
+
+        expect(r.played()).toEqual([HOG_CLIP, CATCH_UP, CATCH_UP]);
+      });
+
+      it("speaks again for the same car once the window has passed — a gap that opened again is a new call", () => {
+        const r = run();
+
+        staleCallNamesTheNewCar(r);
+
+        vi.advanceTimersByTime(CATCH_UP_REPEAT_GUARD_MS);
+        r.publish("catch-up");
+        r.flush();
+
+        expect(r.played()).toEqual([HOG_CLIP, CATCH_UP, CATCH_UP]);
+      });
+
+      it("leaves the reminder for that car alone, inside the window and at its own interval", () => {
+        const r = run();
+
+        staleCallNamesTheNewCar(r);
+
+        vi.advanceTimersByTime(1000);
+        r.publish("catch-up-reminder");
+        r.flush();
+
+        vi.advanceTimersByTime(CATCH_UP_REMINDER_MS);
+        r.publish("catch-up-reminder");
+        r.flush();
+
+        expect(r.played()).toEqual([HOG_CLIP, CATCH_UP, REMINDER, REMINDER]);
+      });
     });
 
     it("the reminder speaks on an idle bus", () => {

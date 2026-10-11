@@ -120,7 +120,7 @@ const FAMILY_KEYS = [
 /** What every family reads as before anything has happened — and before anything was registered. */
 const UNTOUCHED_FAMILIES = {
   backgroundTest: { testInFlight: false, builtInFramePlaying: false },
-  caution: { lastNamed: null },
+  caution: { lastNamed: null, lastCatchUp: null },
   flagAlerts: { furledRaisedSpoken: false },
   gaps: { lastGapCalloutAt: null },
   incidents: { lastIncidentPoints: null },
@@ -640,7 +640,7 @@ describe("the family readers", () => {
         getCautionGap: () => null,
       });
 
-      expect(readCautionDebugState()).toEqual({ lastNamed: null });
+      expect(readCautionDebugState()).toEqual({ lastNamed: null, lastCatchUp: null });
 
       const follow = contracts.find((c) => c.id === "pit-crew.caution-follow");
 
@@ -648,11 +648,30 @@ describe("the family readers", () => {
     };
 
     build(7);
-    expect(readCautionDebugState()).toEqual({ lastNamed: { episodeId: 3, followCarIdx: 7 } });
+    expect(readCautionDebugState()).toEqual({ lastNamed: { episodeId: 3, followCarIdx: 7 }, lastCatchUp: null });
 
     // A later build starts clean and is the one the reader follows.
     build(9);
-    expect(readCautionDebugState()).toEqual({ lastNamed: { episodeId: 3, followCarIdx: 9 } });
+    expect(readCautionDebugState()).toEqual({ lastNamed: { episodeId: 3, followCarIdx: 9 }, lastCatchUp: null });
+  });
+
+  it("caution: the car the newest build's first catch-up call last named, and when", () => {
+    const contracts = buildCautionContracts({
+      getCautionPhase: () => "caught",
+      getPaceLineup: () => ({ followCarIdx: 12 }) as never,
+      getCautionEpisode: () => ({ id: 4, firstFollowCarIdx: 12 }),
+      isCautionCalloutEnabled: () => true,
+      getCautionGap: () => ({ warranted: true }),
+    });
+    const catchUp = contracts.find((c) => c.id === "pit-crew.caution-catch-up");
+
+    expect(readCautionDebugState().lastCatchUp).toBeNull();
+    expect(catchUp?.speakGate?.admit({ event: null, now: 5000 } as ScenarioContext)).toBe(true);
+
+    expect(readCautionDebugState()).toEqual({
+      lastNamed: { episodeId: 4, followCarIdx: 12 },
+      lastCatchUp: { followCarIdx: 12, at: 5000 },
+    });
   });
 
   it("rolling start: the car the newest build last named, by formation", () => {

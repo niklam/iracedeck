@@ -233,6 +233,20 @@
  * is not news. The change call does not wait behind them — it is the heavier
  * of the two and speaks first, and the catch-up then names the car the
  * change just did.
+ *
+ * **The first catch-up call never names the same car twice in a short
+ * window.** Its gate asks about the car ahead NOW, and so does its script,
+ * while the translator's episode is about one particular car: when the car
+ * ahead changes, the episode suspends and, a dwell later, re-keys to the new
+ * car and raises `caution.gapOpened` again. A first call for the old car that
+ * was still waiting for the bus drains inside that dwell, is admitted on the
+ * live gap to the NEW car and says "catch car B" — and then the translator's
+ * own call for car B says it again, seconds later. Nothing in the event says
+ * which car it was raised for, by design (no payload; the car is read live),
+ * so the call remembers the car it last named and when, and refuses that car
+ * again inside {@link CATCH_UP_REPEAT_GUARD_MS}. A different car is never
+ * refused by it, and the reminder is untouched: a reminder for the same car
+ * thirty seconds on is the design.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type CalloutIdOf, CAUTION_CALLOUTS } from "@iracedeck/callout-settings";
@@ -371,6 +385,30 @@ export const CAUTION_FOLLOW_DELAY_MS = 2500;
  */
 export const CAUTION_LINEUP_CHANGE_DELAY_MS = 2000;
 
+/**
+ * How long the first catch-up call refuses to name the car it last named
+ * (issue #1168; module header, last paragraph). It has to cover the longest
+ * the two fires for one car can be apart. The stale call names the new car no
+ * earlier than the tick that car appears ahead. The translator raises its own
+ * call for that car one dwell later — `CATCH_UP_DWELL_MS`, 3 s, counted from
+ * the same tick while the old episode is in suspense — and that fire may then
+ * wait for the bus as long as any gated caution call,
+ * `CAUTION_MAX_QUEUE_WAIT_MS`, 20 s. So: the dwell plus the wait, 23 s. (A
+ * stale call still WAITING when the second event arrives needs no guard: the
+ * newer fire of the same contract replaces it in the queue.)
+ *
+ * It also stays under the translator's reminder interval
+ * (`CATCH_UP_REMINDER_MS`, 30 s), so the guard never keeps a driver from
+ * hearing about one car for longer than the reminders themselves are spaced:
+ * a gap to the same car that closes and opens again later is a new call.
+ *
+ * Written as a number rather than derived from the translator's constant
+ * because this module is loaded by every family test that stubs the
+ * translator package whole, and reading an export at load time would fail
+ * them; `caution.test.ts` holds it to the two values it is made of.
+ */
+export const CATCH_UP_REPEAT_GUARD_MS = 23_000;
+
 /** The one spelling of a caution callout's scenario id — the contracts and {@link SCENARIO_ID_TO_CAUTION_ID} both come from it. */
 export function cautionScenarioId(id: CautionCalloutId): string {
   return `pit-crew.caution-${id}`;
@@ -429,23 +467,32 @@ function cautionContract(
   };
 }
 
+/** The car the first catch-up call last named, and when — see `lastCatchUp` in the build. */
+type LastCatchUp = { followCarIdx: number; at: number };
+
+/** What a build keeps: the car last named in a caution, and the first catch-up call's own record. */
+type CautionBuildState = { lastNamed: LastNamedCar | null; lastCatchUp: LastCatchUp | null };
+
 /**
- * How the Telemetry Snapshot reaches the one piece of state this family
- * keeps (issue #1387). The car last named lives in a build's own memory
- * (`named-car.ts`), where nothing outside the build can read it, so each
- * build leaves a reader of its own here and the newest wins — the plugin
- * builds once, in `registerPitCrew`. `null` until the first build. The state
- * itself stays in the build: two builds never share a record.
+ * How the Telemetry Snapshot reaches the state this family keeps (issue
+ * #1387). The car last named lives in a build's own memory (`named-car.ts`)
+ * and the first catch-up call's record in the build's closure, where nothing
+ * outside the build can read them, so each build leaves a reader of its own
+ * here and the newest wins — the plugin builds once, in `registerPitCrew`.
+ * `null` until the first build. The state itself stays in the build: two
+ * builds never share a record.
  */
-let readNewestLastNamed: (() => LastNamedCar | null) | null = null;
+let readNewestBuildState: (() => CautionBuildState) | null = null;
 
 /**
  * This file's state, for the Telemetry Snapshot (issue #1387): the car the
  * newest build last named and the caution it named it in — what a lineup
- * change is judged against. A pure read; `null` before any build.
+ * change is judged against — and the car its first catch-up call last named
+ * and when, which is what refuses that car again for a while (issue #1168).
+ * A pure read; both `null` before any build.
  */
-export function readCautionDebugState(): { lastNamed: LastNamedCar | null } {
-  return { lastNamed: readNewestLastNamed?.() ?? null };
+export function readCautionDebugState(): CautionBuildState {
+  return readNewestBuildState?.() ?? { lastNamed: null, lastCatchUp: null };
 }
 
 /**
@@ -493,8 +540,18 @@ export function buildCautionContracts({
    */
   const named = createNamedCarMemory({ getEpisode: getCautionEpisode, getPaceLineup });
 
+  /**
+   * The car the FIRST catch-up call last told the driver to catch, and when
+   * (issue #1168; module header, last paragraph). Its own record rather than
+   * the memory above: that one answers "which car does the driver know is
+   * ahead", has no clock, and is written by five other calls — a follow or
+   * one-to-go call naming a car must not keep a catch-up call for it silent.
+   * Written in the gate below, on admission only (#1137).
+   */
+  let lastCatchUp: LastCatchUp | null = null;
+
   // The newest build is the one the snapshot reads (issue #1387).
-  readNewestLastNamed = named.read;
+  readNewestBuildState = () => ({ lastNamed: named.read(), lastCatchUp });
 
   /**
    * What a change is judged against before anything is named in `episode`:
@@ -526,6 +583,37 @@ export function buildCautionContracts({
     description:
       "Re-checked at speak time: the full-course caution is still out and the gap to the car ahead is still open.",
     admit: () => getCautionPhase() !== "none" && getCautionGap()?.warranted === true,
+  };
+
+  /**
+   * The first call's gate: the shared one, and then not the car this call
+   * named less than {@link CATCH_UP_REPEAT_GUARD_MS} ago. The car is the
+   * lineup's follow car, read live — the car the script is about to name.
+   * Admitting records it; a refusal records nothing, so the window runs from
+   * the call the driver actually heard. With no car to read the guard has
+   * nothing to compare and nothing to record.
+   */
+  const firstCatchUp: SpeakGate = {
+    description: `Re-checked at speak time: the full-course caution is still out, the gap to the car ahead is still open, and this call has not named that car in the last ${CATCH_UP_REPEAT_GUARD_MS / 1000} seconds.`,
+    admit: (ctx) => {
+      if (!gapStillOpen.admit(ctx)) return false;
+
+      const followCarIdx = getPaceLineup()?.followCarIdx ?? null;
+
+      if (followCarIdx === null) return true;
+
+      if (
+        lastCatchUp !== null &&
+        lastCatchUp.followCarIdx === followCarIdx &&
+        ctx.now - lastCatchUp.at < CATCH_UP_REPEAT_GUARD_MS
+      ) {
+        return false;
+      }
+
+      lastCatchUp = { followCarIdx, at: ctx.now };
+
+      return true;
+    },
   };
 
   return [
@@ -635,8 +723,10 @@ export function buildCautionContracts({
       family: undefined,
       weight: WEIGHT.SAFETY - 2,
       // It names the car ahead, so it records it: a lineup change to that
-      // same car afterwards is not news (finding 2).
-      speakGate: naming(gapStillOpen),
+      // same car afterwards is not news (finding 2). Its own gate, which
+      // also keeps it from naming one car twice in a short window; the
+      // reminder below keeps the shared one.
+      speakGate: naming(firstCatchUp),
       description:
         "Under a full-course caution with the field formed up behind the pace car, the gap to the car you line up behind stays well above the pack's own spacing for a few seconds.",
       when: { event: "caution.gapOpened", where: liveRaceCar },
