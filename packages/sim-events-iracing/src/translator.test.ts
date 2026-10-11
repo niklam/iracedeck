@@ -5422,6 +5422,7 @@ describe("sim-events-iracing translator", () => {
           followsPaceCar: true,
           doubleFile: true,
           lineupPosition: 1,
+          anchor: "pace-car",
         });
       });
 

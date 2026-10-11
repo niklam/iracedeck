@@ -1,8 +1,10 @@
-import type { TelemetryData } from "@iracedeck/iracing-sdk";
+import { SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { MIN_LINE_POPULATION, resolvePaceLineup } from "./pace-lineup.js";
+import { calculateCanonicalRacePositions } from "../race-order.js";
+import { createInitialState } from "../state.js";
+import { MIN_LINE_POPULATION, type PaceLineup, resolvePaceLineup } from "./pace-lineup.js";
 
 const ticks = JSON.parse(
   readFileSync(new URL("./__fixtures__/caution-restart-20260917.json", import.meta.url), "utf-8"),
@@ -201,6 +203,7 @@ describe("resolvePaceLineup — who to follow", () => {
       followsPaceCar: false,
       doubleFile: false,
       lineupPosition: null,
+      anchor: null,
     });
   });
 
@@ -547,5 +550,696 @@ describe("resolvePaceLineup — uneven lanes (the 2026-09-19 snapshot)", () => {
       resolvePaceLineup(paceArrays(uneven), session(player), false)?.lineupPosition;
 
     expect([at(1), at(2), at(3), at(4), at(5), at(6)]).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+});
+
+/** The same pace arrays with the session in a given state — the phase half of the `grid` anchor. */
+function inState(telemetry: TelemetryData, state: SessionState): TelemetryData {
+  return { ...telemetry, SessionState: state } as TelemetryData;
+}
+
+describe("resolvePaceLineup — the anchor, read from the tick (#1167)", () => {
+  /**
+   * A rolling-start formation, double file: the pace car leads from the road
+   * and holds NO row, the pole holds line 0 row 0, and line 1 is level with
+   * line 0 — P1 = line 0 row 0, P2 = line 1 row 0, P3 = line 0 row 1.
+   */
+  const GRID_DOUBLE: Array<[number, number, number]> = [
+    [1, 0, 0], // P1, the pole
+    [2, 1, 0], // P2
+    [3, 0, 1], // P3
+    [4, 1, 1], // P4
+    [5, 0, 2], // P5
+    [6, 1, 2], // P6
+  ];
+
+  /** The same formation single file: rows 0..3 on line 0, nobody on line 1. */
+  const GRID_SINGLE: Array<[number, number, number]> = [
+    [1, 0, 0],
+    [2, 0, 1],
+    [3, 0, 2],
+    [4, 0, 3],
+  ];
+
+  const formation = (cars: Array<[number, number, number]>): TelemetryData =>
+    inState(paceArrays(cars), SessionState.ParadeLaps);
+
+  function positionsOf(telemetry: TelemetryData, cars: number[]): Array<number | null | undefined> {
+    return cars.map((carIdx) => resolvePaceLineup(telemetry, session(carIdx), false)?.lineupPosition);
+  }
+
+  describe("`pace-car` — the pace car holds line 0 row 0", () => {
+    it("is the caution's frame: line 1 one row behind line 0", () => {
+      const telemetry = inState(paceArrays(DOUBLE_FILE), SessionState.Racing);
+
+      expect(resolvePaceLineup(telemetry, session(3), true)?.anchor).toBe("pace-car");
+      expect(positionsOf(telemetry, [1, 2, 3, 4, 5, 6])).toEqual([1, 2, 3, 4, 5, 6]);
+    });
+
+    it("holds whatever the phase — a rolling start whose pace car took line 0 row 0 gets the caution's arithmetic", () => {
+      // The two anchors exclude each other by the pace car's slot, so this one
+      // is never overridden by the session being before its green.
+      for (const telemetry of [paceArrays(DOUBLE_FILE), formation(DOUBLE_FILE)]) {
+        expect(resolvePaceLineup(telemetry, session(2), true)).toMatchObject({ anchor: "pace-car", lineupPosition: 2 });
+        expect(positionsOf(telemetry, [1, 2, 3, 4, 5, 6])).toEqual([1, 2, 3, 4, 5, 6]);
+      }
+    });
+  });
+
+  describe("`grid` — before the green, the pace car without a row, a car at line 0 row 0", () => {
+    it("numbers the field (row, line): pole L0R0 = 1, L1R0 = 2, L0R1 = 3", () => {
+      const telemetry = formation(GRID_DOUBLE);
+
+      expect(positionsOf(telemetry, [1, 2, 3, 4, 5, 6])).toEqual([1, 2, 3, 4, 5, 6]);
+
+      for (const carIdx of [1, 2, 3, 4, 5, 6]) {
+        expect(resolvePaceLineup(telemetry, session(carIdx), true)?.anchor, `car ${carIdx}`).toBe("grid");
+      }
+    });
+
+    it("differs from the caution's frame for the very same rows — the offset is the only thing the anchor changes", () => {
+      // The same six slots with the pace car put on line 0 row 0 as well: the
+      // reader now reads the caution's frame, and line 1 drops a place behind
+      // the line-0 car it was alongside. Car 1 shares the pace car's slot, so
+      // it has no position at all in that frame.
+      const behindPaceCar = formation([[PACE, 0, 0], ...GRID_DOUBLE]);
+
+      expect(resolvePaceLineup(behindPaceCar, session(2), true)?.anchor).toBe("pace-car");
+      expect(positionsOf(behindPaceCar, [1, 2, 3, 4, 5, 6])).toEqual([null, 3, 2, 5, 4, 6]);
+    });
+
+    it("holds through every pre-green state", () => {
+      for (const state of [
+        SessionState.Invalid,
+        SessionState.GetInCar,
+        SessionState.Warmup,
+        SessionState.ParadeLaps,
+      ]) {
+        const lineup = resolvePaceLineup(inState(paceArrays(GRID_DOUBLE), state), session(4), true);
+
+        expect(lineup, SessionState[state]).toMatchObject({ anchor: "grid", lineupPosition: 4 });
+      }
+    });
+
+    it("makes the pole the leader, following the pace car", () => {
+      expect(resolvePaceLineup(formation(GRID_DOUBLE), session(1), true)).toMatchObject({
+        anchor: "grid",
+        lineupPosition: 1,
+        isLeader: true,
+        followsPaceCar: true,
+        followCarIdx: PACE,
+        line: "inside",
+      });
+    });
+
+    it("has the outside pole follow the pace car without leading", () => {
+      expect(resolvePaceLineup(formation(GRID_DOUBLE), session(2), true)).toMatchObject({
+        anchor: "grid",
+        lineupPosition: 2,
+        isLeader: false,
+        followsPaceCar: true,
+        followCarIdx: PACE,
+        line: "outside",
+      });
+    });
+
+    it("names the car one row lower in the same line, exactly as under a caution", () => {
+      expect(resolvePaceLineup(formation(GRID_DOUBLE), session(6), true)).toMatchObject({
+        followCarIdx: 4,
+        followsPaceCar: false,
+        line: "outside",
+        lineupPosition: 6,
+      });
+    });
+
+    it("counts uneven lanes without leaving holes", () => {
+      // Line 0: rows 0..3; line 1: rows 0..1 only.
+      const uneven: Array<[number, number, number]> = [
+        [1, 0, 0],
+        [2, 1, 0],
+        [3, 0, 1],
+        [4, 1, 1],
+        [5, 0, 2],
+        [6, 0, 3],
+      ];
+
+      expect(positionsOf(formation(uneven), [1, 2, 3, 4, 5, 6])).toEqual([1, 2, 3, 4, 5, 6]);
+    });
+
+    it("inherits the in-world walk and count — a car that left the world is neither followed nor counted", () => {
+      // Player 5 at line 0 row 2; car 3 (line 0 row 1) has left the world and
+      // still holds its row. The car ahead is car 1, and cars 1, 2 and 4 are
+      // the ones counted.
+      const dist = new Array(72).fill(0.5);
+      const surface = new Array(72).fill(3);
+
+      dist[3] = -1;
+      surface[3] = -1; // TrkLoc.NotInWorld
+
+      const telemetry = {
+        ...formation(GRID_DOUBLE),
+        CarIdxLapDistPct: dist,
+        CarIdxTrackSurface: surface,
+      } as TelemetryData;
+
+      expect(resolvePaceLineup(telemetry, session(5), true)).toMatchObject({
+        anchor: "grid",
+        followCarIdx: 1,
+        lineupPosition: 4,
+        line: "inside",
+      });
+    });
+
+    it("withholds every answer for a stray player, as under a caution", () => {
+      const stray: Array<[number, number, number]> = [...GRID_SINGLE, [7, 1, 5]];
+
+      expect(resolvePaceLineup(formation(stray), session(7), true)).toEqual({
+        followCarIdx: null,
+        followCarNumber: null,
+        line: null,
+        isLeader: false,
+        followsPaceCar: false,
+        doubleFile: false,
+        lineupPosition: null,
+        anchor: null,
+      });
+    });
+  });
+
+  describe("a single-file formation", () => {
+    it("needs no special case: the position is the row plus one, counted", () => {
+      const telemetry = formation(GRID_SINGLE);
+
+      expect(positionsOf(telemetry, [1, 2, 3, 4])).toEqual([1, 2, 3, 4]);
+      expect(resolvePaceLineup(telemetry, session(3), true)).toMatchObject({
+        anchor: "grid",
+        doubleFile: false,
+        line: null,
+        followCarIdx: 2,
+        followsPaceCar: false,
+        isLeader: false,
+        lineupPosition: 3,
+      });
+    });
+
+    it("makes the car at row 0 the leader, with only the pace car ahead", () => {
+      expect(resolvePaceLineup(formation(GRID_SINGLE), session(1), true)).toMatchObject({
+        anchor: "grid",
+        followCarIdx: PACE,
+        followsPaceCar: true,
+        isLeader: true,
+        lineupPosition: 1,
+      });
+    });
+
+    it("gives the same four cars the same four positions behind the pace car, where the position is the row", () => {
+      // One counting rule, two frames: the caution's `row` and the formation's
+      // `row + 1`. SINGLE_FILE holds three cars behind the pace car; a fourth
+      // makes it the same field as GRID_SINGLE, one row further back.
+      const behindPaceCar = inState(paceArrays([...SINGLE_FILE, [4, 0, 4]]), SessionState.Racing);
+
+      expect(resolvePaceLineup(behindPaceCar, session(4), true)?.anchor).toBe("pace-car");
+      expect(positionsOf(behindPaceCar, [1, 2, 3, 4])).toEqual(positionsOf(formation(GRID_SINGLE), [1, 2, 3, 4]));
+    });
+  });
+
+  describe("anything else — the position is withheld, the car ahead and the lane are still answered", () => {
+    /** What every withheld case below must still answer for car 3 (line 0 row 1, behind car 1). */
+    const STILL_ANSWERED = { followCarIdx: 1, followsPaceCar: false, line: "inside", doubleFile: true };
+
+    it("the grid's shape once the session is racing — the unwind is not a grid", () => {
+      // Spec finding 3: from 203.87 s the lineup unwinds with the pace car at
+      // −1/−1 and the grid's THIRD car at line 0 row 0. Shape alone would
+      // call that car the leader.
+      for (const state of [SessionState.Racing, SessionState.Checkered, SessionState.CoolDown]) {
+        const telemetry = inState(paceArrays(GRID_DOUBLE), state);
+
+        expect(resolvePaceLineup(telemetry, session(3), true), SessionState[state]).toMatchObject({
+          ...STILL_ANSWERED,
+          anchor: null,
+          lineupPosition: null,
+          isLeader: false,
+        });
+        expect(resolvePaceLineup(telemetry, session(1), true), SessionState[state]).toMatchObject({
+          anchor: null,
+          lineupPosition: null,
+          isLeader: false,
+        });
+      }
+    });
+
+    it("the grid's shape with no session state in the telemetry at all", () => {
+      expect(resolvePaceLineup(paceArrays(GRID_DOUBLE), session(3), true)).toMatchObject({
+        ...STILL_ANSWERED,
+        anchor: null,
+        lineupPosition: null,
+      });
+    });
+
+    it("a formation whose session info does not name the pace car", () => {
+      const lineup = resolvePaceLineup(formation(GRID_DOUBLE), session(3, { paceCarIdx: null }), true);
+
+      expect(lineup).toMatchObject({ ...STILL_ANSWERED, anchor: null, lineupPosition: null });
+    });
+
+    it("a pace car holding a row that is not line 0 row 0", () => {
+      for (const paceSlot of [
+        [PACE, 0, 5],
+        [PACE, 1, 0],
+        [PACE, -1, 0],
+      ] as Array<[number, number, number]>) {
+        const lineup = resolvePaceLineup(formation([...GRID_DOUBLE, paceSlot]), session(3), true);
+
+        expect(lineup, `pace car at ${paceSlot[1]}/${paceSlot[2]}`).toMatchObject({
+          ...STILL_ANSWERED,
+          anchor: null,
+          lineupPosition: null,
+        });
+      }
+    });
+
+    it("a formation in which nobody holds line 0 row 0", () => {
+      // Line 0 numbered from 1 with no pace car at its head: neither frame.
+      const headless: Array<[number, number, number]> = [
+        [1, 0, 1],
+        [2, 1, 0],
+        [3, 0, 2],
+        [4, 1, 1],
+      ];
+
+      expect(resolvePaceLineup(formation(headless), session(3), true)).toMatchObject({
+        ...STILL_ANSWERED,
+        anchor: null,
+        lineupPosition: null,
+      });
+    });
+
+    it("a pace car whose slot the arrays do not carry — unknown is not empty", () => {
+      const telemetry = formation(GRID_DOUBLE);
+      const narrow = {
+        ...telemetry,
+        CarIdxPaceLine: (telemetry.CarIdxPaceLine as number[]).slice(0, 20),
+        CarIdxPaceRow: (telemetry.CarIdxPaceRow as number[]).slice(0, 20),
+      } as TelemetryData;
+
+      expect(resolvePaceLineup(narrow, session(3), true)).toMatchObject({
+        ...STILL_ANSWERED,
+        anchor: null,
+        lineupPosition: null,
+      });
+    });
+  });
+});
+
+/** A committed fixture tick: per-car arrays trimmed to cars 0–19 plus the pace car as slot 20 (`__fixtures__/README.md`). */
+type CapturedTick = {
+  t: number;
+  SessionState: number;
+  CarIdxPaceLine: number[];
+  CarIdxPaceRow: number[];
+  CarIdxPosition?: number[];
+  CarIdxLapDistPct?: number[];
+  CarIdxTrackSurface?: number[];
+};
+
+type CapturedFormation = { sessionInfo: Record<string, unknown>; ticks: CapturedTick[] };
+
+function readFixture<T>(name: string): T {
+  return JSON.parse(readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), "utf-8")) as T;
+}
+
+/** A trimmed per-car array back at real telemetry width — fixture slot 20 is the pace car, raw index 64. */
+function widen(values: number[]): number[] {
+  const out = new Array(72).fill(-1);
+
+  values.forEach((v, i) => (out[i === 20 ? PACE : i] = v));
+
+  return out;
+}
+
+/**
+ * What the reader reads of a fixture tick. Lap progress and the surfaces are
+ * passed only by a fixture that carries lap progress — the watch recorded
+ * none, so its ticks count every car as present, as #1127's do.
+ */
+function capturedTelemetry(tick: CapturedTick): TelemetryData {
+  return {
+    SessionState: tick.SessionState,
+    CarIdxPaceLine: widen(tick.CarIdxPaceLine),
+    CarIdxPaceRow: widen(tick.CarIdxPaceRow),
+    ...(tick.CarIdxLapDistPct && tick.CarIdxTrackSurface
+      ? { CarIdxLapDistPct: widen(tick.CarIdxLapDistPct), CarIdxTrackSurface: widen(tick.CarIdxTrackSurface) }
+      : {}),
+  } as unknown as TelemetryData;
+}
+
+/** The same session with another car as the player — how one tick is read for the whole field. */
+function seenFrom(sessionInfo: Record<string, unknown>, carIdx: number): Record<string, unknown> {
+  return {
+    ...sessionInfo,
+    DriverInfo: { ...(sessionInfo.DriverInfo as Record<string, unknown>), DriverCarIdx: carIdx },
+  };
+}
+
+/** The lineup each of the 20 cars reads on one tick, indexed by car. */
+function fieldLineups(telemetry: TelemetryData, sessionInfo: Record<string, unknown>): Array<PaceLineup | null> {
+  return Array.from({ length: 20 }, (_, carIdx) => resolvePaceLineup(telemetry, seenFrom(sessionInfo, carIdx), true));
+}
+
+function fieldPositions(telemetry: TelemetryData, sessionInfo: Record<string, unknown>): Array<number | null> {
+  return fieldLineups(telemetry, sessionInfo).map((lineup) => lineup?.lineupPosition ?? null);
+}
+
+/** The canonical order's grid for the 20 cars — `QualifyResultsInfo`, through the one reader of it (#974). */
+function qualifyingGrid(telemetry: TelemetryData, sessionInfo: Record<string, unknown>): number[] {
+  return calculateCanonicalRacePositions(createInitialState(), telemetry, sessionInfo, true).slice(0, 20);
+}
+
+/**
+ * The caution's keying — line 1 one row behind line 0 — applied to a tick's
+ * rows, as position by car. Restated here on purpose: a control must not share
+ * code with the reader it controls.
+ */
+function cautionKeyedPositions(tick: CapturedTick): number[] {
+  const key = (carIdx: number): number =>
+    tick.CarIdxPaceLine[carIdx] === 0 ? 2 * tick.CarIdxPaceRow[carIdx] : 2 * (tick.CarIdxPaceRow[carIdx] + 1) + 1;
+  const order = Array.from({ length: 20 }, (_, carIdx) => carIdx)
+    .filter((carIdx) => tick.CarIdxPaceRow[carIdx] >= 0)
+    .sort((a, b) => key(a) - key(b));
+  const positions = new Array<number>(20).fill(0);
+
+  order.forEach((carIdx, at) => (positions[carIdx] = at + 1));
+
+  return positions;
+}
+
+/** The cars a set of positions puts somewhere other than the grid does. */
+function misplaced(positions: Array<number | null>, grid: number[]): number[] {
+  return grid.flatMap((slot, carIdx) => (positions[carIdx] !== null && positions[carIdx] !== slot ? [carIdx] : []));
+}
+
+/** The same tick with the pace car put on line 0 row 0 — the one datum that selects the caution's frame. */
+function withPaceCarAtHead(telemetry: TelemetryData): TelemetryData {
+  const lines = [...(telemetry.CarIdxPaceLine as number[])];
+  const rows = [...(telemetry.CarIdxPaceRow as number[])];
+
+  lines[PACE] = 0;
+  rows[PACE] = 0;
+
+  return { ...telemetry, CarIdxPaceLine: lines, CarIdxPaceRow: rows } as TelemetryData;
+}
+
+describe("resolvePaceLineup — the 2026-09-17 rolling-start formation (#1167)", () => {
+  const formation = readFixture<CapturedFormation>("rolling-start-formation-20260917.json");
+  const { sessionInfo } = formation;
+  const preGreen = formation.ticks.filter((tick) => tick.SessionState < SessionState.Racing);
+  const fromGreen = formation.ticks.filter((tick) => tick.SessionState >= SessionState.Racing);
+
+  const PLAYER = 0; // car "64", line 0 row 5
+  const AHEAD = 9; // car "07", line 0 row 4
+  const POLE = 17; // car "96", line 0 row 0
+  const OUTSIDE_POLE = 16; // car "37", line 1 row 0
+
+  /** Position by car index: the (row, line) order of the formation, verified against the capture. */
+  const GRID = [11, 8, 17, 15, 7, 16, 5, 4, 20, 9, 18, 6, 10, 19, 12, 14, 2, 1, 3, 13];
+
+  it("splits into 29 pre-green ticks and 31 from the green on", () => {
+    expect(preGreen).toHaveLength(29);
+    expect(preGreen.at(-1)?.t).toBe(196.53);
+    expect(fromGreen).toHaveLength(31);
+    expect(fromGreen[0].t).toBe(201.18);
+  });
+
+  it("holds the `grid` anchor for every car on every pre-green tick", () => {
+    for (const tick of preGreen) {
+      const anchors = fieldLineups(capturedTelemetry(tick), sessionInfo).map((lineup) => lineup?.anchor);
+
+      expect({ t: tick.t, anchors }).toEqual({ t: tick.t, anchors: new Array(20).fill("grid") });
+    }
+  });
+
+  it("places the whole field on its qualifying slot on every pre-green tick — and on the CarIdxPosition iRacing published after the green", () => {
+    const published = formation.ticks.find((tick) => tick.t === 203.22)?.CarIdxPosition?.slice(0, 20);
+
+    // The three sources agree with each other before any tick is read...
+    expect(published).toEqual(GRID);
+    expect(qualifyingGrid(capturedTelemetry(preGreen[0]), sessionInfo)).toEqual(GRID);
+
+    // ...and the lineup agrees with them on all 29 ticks, for all 20 cars.
+    for (const tick of preGreen) {
+      const telemetry = capturedTelemetry(tick);
+
+      expect({ t: tick.t, positions: fieldPositions(telemetry, sessionInfo) }).toEqual({ t: tick.t, positions: GRID });
+      expect(qualifyingGrid(telemetry, sessionInfo)).toEqual(GRID);
+    }
+  });
+
+  it("has the player follow car 07 on the inside, eleventh", () => {
+    for (const tick of preGreen) {
+      expect(resolvePaceLineup(capturedTelemetry(tick), seenFrom(sessionInfo, PLAYER), true), `t=${tick.t}`).toEqual({
+        followCarIdx: AHEAD,
+        followCarNumber: "07",
+        line: "inside",
+        isLeader: false,
+        followsPaceCar: false,
+        doubleFile: true,
+        lineupPosition: 11,
+        anchor: "grid",
+      });
+    }
+  });
+
+  it("makes car 96 the leader, and only car 96", () => {
+    for (const tick of preGreen) {
+      const lineups = fieldLineups(capturedTelemetry(tick), sessionInfo);
+
+      expect(lineups[POLE], `t=${tick.t}`).toMatchObject({
+        isLeader: true,
+        followsPaceCar: true,
+        followCarIdx: PACE,
+        line: "inside",
+        lineupPosition: 1,
+      });
+      expect(lineups.flatMap((lineup, carIdx) => (lineup?.isLeader ? [carIdx] : []))).toEqual([POLE]);
+    }
+  });
+
+  it("has car 37 follow the pace car without leading", () => {
+    for (const tick of preGreen) {
+      const lineup = resolvePaceLineup(capturedTelemetry(tick), seenFrom(sessionInfo, OUTSIDE_POLE), true);
+
+      expect(lineup, `t=${tick.t}`).toMatchObject({
+        isLeader: false,
+        followsPaceCar: true,
+        followCarIdx: PACE,
+        line: "outside",
+        lineupPosition: 2,
+      });
+    }
+  });
+
+  it("withholds every position from the green tick on — the unwind included", () => {
+    for (const tick of fromGreen) {
+      const lineups = fieldLineups(capturedTelemetry(tick), sessionInfo);
+
+      expect({ t: tick.t, anchors: lineups.map((lineup) => lineup?.anchor ?? null) }).toEqual({
+        t: tick.t,
+        anchors: new Array(20).fill(null),
+      });
+      expect({ t: tick.t, positions: lineups.map((lineup) => lineup?.lineupPosition ?? null) }).toEqual({
+        t: tick.t,
+        positions: new Array(20).fill(null),
+      });
+      expect(lineups.some((lineup) => lineup?.isLeader)).toBe(false);
+    }
+  });
+
+  it("still answers the car ahead and the lane under green while the rows are intact — only the position is withheld", () => {
+    // 201.18 → 203.85: the session is racing and the rows have not moved yet.
+    const intact = fromGreen.filter((tick) => tick.t < 203.87);
+
+    expect(intact.map((tick) => tick.t)).toEqual([201.18, 201.28, 203.22, 203.7, 203.85]);
+
+    for (const tick of intact) {
+      expect(resolvePaceLineup(capturedTelemetry(tick), seenFrom(sessionInfo, PLAYER), true), `t=${tick.t}`).toEqual({
+        followCarIdx: AHEAD,
+        followCarNumber: "07",
+        line: "inside",
+        isLeader: false,
+        followsPaceCar: false,
+        doubleFile: true,
+        lineupPosition: null,
+        anchor: null,
+      });
+    }
+  });
+
+  it("does not call the grid's third car the leader when it reaches line 0 row 0 in the unwind (203.87 s)", () => {
+    const tick = formation.ticks.find((candidate) => candidate.t === 203.87);
+
+    if (!tick) throw new Error("no fixture tick at t=203.87");
+
+    const THIRD = 18;
+
+    // The trap, as data: the formation's shape exactly, one car on.
+    expect(GRID[THIRD]).toBe(3);
+    expect([tick.CarIdxPaceLine[THIRD], tick.CarIdxPaceRow[THIRD]]).toEqual([0, 0]);
+    expect([tick.CarIdxPaceLine[20], tick.CarIdxPaceRow[20]]).toEqual([-1, -1]);
+
+    expect(resolvePaceLineup(capturedTelemetry(tick), seenFrom(sessionInfo, THIRD), true)).toMatchObject({
+      anchor: null,
+      lineupPosition: null,
+      isLeader: false,
+    });
+
+    // The positive control for the phase gate: the same tick read as if the
+    // session were still before its green DOES make that car the leader.
+    const asFormation = { ...capturedTelemetry(tick), SessionState: SessionState.ParadeLaps } as TelemetryData;
+
+    expect(resolvePaceLineup(asFormation, seenFrom(sessionInfo, THIRD), true)).toMatchObject({
+      anchor: "grid",
+      lineupPosition: 1,
+      isLeader: true,
+    });
+  });
+
+  describe("positive control — the caution's offset on the same rows", () => {
+    it("misplaces 18 of the 20 cars when keyed by hand", () => {
+      const keyed = cautionKeyedPositions(preGreen[0]);
+
+      expect(misplaced(keyed, GRID)).toHaveLength(18);
+      // Only the two ends of the order survive the offset: the pole and the last car.
+      expect(GRID.flatMap((slot, carIdx) => (keyed[carIdx] === slot ? [carIdx] : []))).toEqual([8, POLE]);
+      expect([GRID[PLAYER], keyed[PLAYER]]).toEqual([11, 10]);
+      expect([GRID[OUTSIDE_POLE], keyed[OUTSIDE_POLE]]).toEqual([2, 3]);
+    });
+
+    it("misplaces the same 18 through the reader itself once the pace car is put at the head of line 0 — on every pre-green tick", () => {
+      // No parameter selects the frame, so the control changes the datum that
+      // does: with the pace car on line 0 row 0 the reader applies the
+      // caution's arithmetic to the formation's rows, and the assertions above
+      // could not pass.
+      const keyed = cautionKeyedPositions(preGreen[0]);
+
+      for (const tick of preGreen) {
+        const lineups = fieldLineups(withPaceCarAtHead(capturedTelemetry(tick)), sessionInfo);
+        const positions = lineups.map((lineup) => lineup?.lineupPosition ?? null);
+
+        expect(lineups.map((lineup) => lineup?.anchor)).toEqual(new Array(20).fill("pace-car"));
+        expect({ t: tick.t, misplaced: misplaced(positions, GRID).length }).toEqual({ t: tick.t, misplaced: 18 });
+        // The pole now shares the pace car's slot and has no position at all;
+        // every other car reads exactly what the hand keying gives it.
+        expect(positions[POLE]).toBeNull();
+        expect(positions.filter((_, carIdx) => carIdx !== POLE)).toEqual(keyed.filter((_, carIdx) => carIdx !== POLE));
+      }
+    });
+  });
+});
+
+describe("resolvePaceLineup — three formation snapshots on two grids (#1167)", () => {
+  const first = readFixture<CapturedFormation>("rolling-start-lineup-20260917.json");
+  const second = readFixture<CapturedFormation>("rolling-start-lineup-20260918.json");
+  const snapshots = [
+    ...first.ticks.map((tick) => ({ name: "2026-09-17 19:02", tick, sessionInfo: first.sessionInfo })),
+    ...second.ticks.map((tick) => ({ name: `2026-09-18 t=${tick.t}`, tick, sessionInfo: second.sessionInfo })),
+  ];
+
+  it("covers three snapshots", () => {
+    expect(snapshots.map((snapshot) => snapshot.tick.t)).toEqual([177.37, 80.1, 110.92]);
+  });
+
+  it("reads every car's pace-row place as its qualifying slot, in the `grid` frame", () => {
+    for (const { name, tick, sessionInfo } of snapshots) {
+      const telemetry = capturedTelemetry(tick);
+      const lineups = fieldLineups(telemetry, sessionInfo);
+      const grid = qualifyingGrid(telemetry, sessionInfo);
+
+      // A full grid, so "equal" is 20 comparisons and not 20 zeros.
+      expect(
+        [...grid].sort((a, b) => a - b),
+        name,
+      ).toEqual(Array.from({ length: 20 }, (_, at) => at + 1));
+      expect(
+        lineups.map((lineup) => lineup?.anchor),
+        name,
+      ).toEqual(new Array(20).fill("grid"));
+      expect(
+        lineups.map((lineup) => lineup?.lineupPosition),
+        name,
+      ).toEqual(grid);
+    }
+  });
+
+  it("does so with the in-world filter running on real lap progress — every car present", () => {
+    // Unlike the watch, a snapshot carries `CarIdxLapDistPct`, so the count
+    // above was taken over cars the shared predicate judged to be in the world.
+    for (const { name, tick } of snapshots) {
+      expect(
+        tick.CarIdxLapDistPct?.every((pct) => pct >= 0),
+        name,
+      ).toBe(true);
+      expect(
+        tick.CarIdxTrackSurface?.every((surface) => surface === 3),
+        name,
+      ).toBe(true);
+    }
+  });
+
+  it("is two different grids", () => {
+    const grids = snapshots.map(({ tick, sessionInfo }) => qualifyingGrid(capturedTelemetry(tick), sessionInfo));
+
+    expect(grids[1]).toEqual(grids[2]);
+    expect(grids[0]).not.toEqual(grids[1]);
+  });
+
+  it("positive control: the caution's offset misplaces 18 of the 20 cars on both grids", () => {
+    for (const { name, tick, sessionInfo } of snapshots) {
+      const telemetry = capturedTelemetry(tick);
+      const grid = qualifyingGrid(telemetry, sessionInfo);
+      const throughReader = fieldPositions(withPaceCarAtHead(telemetry), sessionInfo);
+
+      expect(misplaced(cautionKeyedPositions(tick), grid), name).toHaveLength(18);
+      expect(misplaced(throughReader, grid), name).toHaveLength(18);
+    }
+  });
+});
+
+describe("resolvePaceLineup — the `grid` anchor never holds under a caution (#1127 fixtures)", () => {
+  type CautionFixture = { name: string; ticks: CapturedTick[]; sessionInfo: Record<string, unknown> };
+
+  // Neither watch carries session YAML, so the pace car is named synthetically
+  // at its real index, as the tests that replay them do.
+  const fixtures: CautionFixture[] = [
+    "caution-restart-20260917.json",
+    "caution-road-20260918.json",
+    "caution-lineup-20260919.json",
+  ].map((name) => ({ name, ticks: readFixture<CapturedTick[]>(name), sessionInfo: session(0) }));
+
+  /** The ticks on which at least one car reads the `grid` anchor. */
+  function gridAnchored(fixture: CautionFixture, state?: SessionState): number {
+    return fixture.ticks.filter((tick) => {
+      const telemetry = capturedTelemetry(tick);
+      const read = state === undefined ? telemetry : inState(telemetry, state);
+
+      return fieldLineups(read, fixture.sessionInfo).some((lineup) => lineup?.anchor === "grid");
+    }).length;
+  }
+
+  it("on none of their ticks — every one is under Racing", () => {
+    expect(fixtures.map((fixture) => fixture.ticks.length)).toEqual([284, 143, 1]);
+
+    for (const fixture of fixtures) {
+      expect(
+        fixture.ticks.every((tick) => tick.SessionState === SessionState.Racing),
+        fixture.name,
+      ).toBe(true);
+      expect(gridAnchored(fixture), fixture.name).toBe(0);
+    }
+  });
+
+  it("positive control: it is the phase that keeps it out — read as pre-green, their unwinds have the grid's shape", () => {
+    // The post-green unwind of each restart, and of the rolling start the oval
+    // capture opens with: the pace car without a row and a car at line 0 row 0.
+    expect(fixtures.map((fixture) => gridAnchored(fixture, SessionState.ParadeLaps))).toEqual([60, 39, 0]);
   });
 });

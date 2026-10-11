@@ -1187,11 +1187,13 @@ export function getCautionEpisode(): CautionEpisode | null {
 }
 
 /**
- * The player's place in the caution lineup as of the latest tick (issue #1127)
- * — who to follow, which lane, and where they would restart. `null` when the
- * translator isn't initialized, no telemetry has arrived, or the field carries
- * no readable lineup (no pace arrays, no player index, or a player the re-form
- * has not placed — a car in the pits holds no row).
+ * The player's place in the pace lineup as of the latest tick — under a
+ * caution (issue #1127) or in a rolling-start formation (issue #1167), told
+ * apart by the tick's own data and reported as `anchor` — who to follow, which
+ * lane, and their place in it. `null` when the translator isn't initialized,
+ * no telemetry has arrived, or the field carries no readable lineup (no pace
+ * arrays, no player index, or a player the re-form has not placed — a car in
+ * the pits holds no row).
  *
  * Read at fire time rather than frozen into an event payload (the
  * {@link getReadbackSnapshot} rationale): the lineup keeps moving while the
@@ -1205,7 +1207,8 @@ export function getCautionEpisode(): CautionEpisode | null {
  * Deliberately NOT gated on {@link isUnderFullCourseCaution}: the pace arrays
  * are the source of truth for what they describe, and a caller that wants "the
  * lineup, but only under caution" composes the two rather than having the
- * narrower answer forced on it.
+ * narrower answer forced on it. That is also why it answers before the green
+ * of a rolling start, where no caution is out.
  */
 export function getPaceLineup(): PaceLineup | null {
   if (!instance || !instance.latestTelemetry) return null;

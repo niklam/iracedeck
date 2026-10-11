@@ -78,7 +78,9 @@ export {
 // `resolvePaceLineup` itself — the pure reader `getPaceLineup()` wraps —
 // rides for the audio-scenarios test that derives the 2026-09-19 snapshot's
 // lineup from the committed fixture rather than typing its number in.
-export { type PaceLineup, resolvePaceLineup, resolvePlayerCarIdx } from "./diff/pace-lineup.js";
+// `PaceLineupAnchor` names the frame of reference the lineup was read in
+// (issue #1167) — a caution's or a rolling-start formation's.
+export { type PaceLineup, type PaceLineupAnchor, resolvePaceLineup, resolvePlayerCarIdx } from "./diff/pace-lineup.js";
 // The phase `getCautionPhase()` returns (issue #1127) — the callouts that
 // gate on a STAGE of the caution rather than on "is one out" name it — and
 // the episode `getCautionEpisode()` returns (issue #1286), which scopes a

@@ -1,6 +1,7 @@
 /**
- * Who to follow under a full-course caution, which lane you line up in, and
- * where you would restart (issue #1127). A pure reader over
+ * Who to follow behind the pace car, which lane you line up in, and your place
+ * in the lineup — under a full-course caution (issue #1127) and in a
+ * rolling-start formation (issue #1167). A pure reader over
  * `CarIdxPaceLine` / `CarIdxPaceRow` — no state, no emission — so the caller
  * can ask it at SPEAK time rather than freezing an answer into a payload the
  * field has already moved past.
@@ -11,11 +12,16 @@
  * shows the two disagreeing — early in the first caution the player's pace row
  * said 14 while the official position still read 11, converging a lap later. A
  * follow-car call built on the running order would name the wrong car for that
- * whole lap.
+ * whole lap. The formation before a rolling start is the same exception for
+ * the same reason: the pace rows are what iRacing forms the grid up by. There
+ * the two have agreed on every formation measured — three, on two grids, each
+ * equal to `QualifyResultsInfo` car for car — and where iRacing publishes no
+ * pace rows this reader answers nothing rather than falling back to the grid,
+ * which cannot say single or double file.
  *
  * **Pace rows are numbered PER LINE, and the two lines interleave.** This is
  * the rule everything else here rests on, and it is not what "your pace row"
- * suggests. Measured from the committed fixture at t=415.1:
+ * suggests. Measured under a caution, from the committed fixture at t=415.1:
  *
  * ```text
  * car 20 (the PACE CAR)  line 0  row 0
@@ -25,14 +31,37 @@
  * ```
  *
  * The pace car consumes line 0's row 0, so line 1's rows sit one behind line
- * 0's. Hence:
+ * 0's. Hence, while the pace car is there:
  *
  * - **single file** — position = row (the pace car is row 0, the leader row 1);
  * - **double file** — ONE combined order: every lined-up car is keyed
  *   `(R, 0)` on line 0 and `(R + 1, 1)` on line 1, the keys are sorted, and a
  *   car's position is its place in that order.
  *
- * The combined order reproduces `line 0, row R → 2R − 1` and
+ * **Line 1 is offset by one exactly when the pace car occupies line 0's row
+ * 0**, because that car is the whole reason for the offset. In a rolling-start
+ * formation it does not: the pace car leads from the road without a row, and
+ * the pole sits where the pace car would. Measured on every pre-green tick of
+ * the 2026-09-17 formation (`__fixtures__/rolling-start-formation-20260917.json`),
+ * the same field the caution above later re-formed:
+ *
+ * ```text
+ * car 20 (the PACE CAR)  line −1  row −1
+ * car 17 (P1, the pole)  line 0   row 0
+ * car 16 (P2)            line 1   row 0
+ * car 18 (P3)            line 0   row 1
+ * ```
+ *
+ * So there line 1 is keyed `(R, 1)` and the order is simply `(row, line)`. It
+ * equals the qualifying grid, and the official `CarIdxPosition` iRacing first
+ * published two seconds after that green, for all 20 cars. The caution's
+ * keying applied to the same rows misplaces 18 of the 20 — the player's P11
+ * reads P10, the outside pole's P2 reads P3 — which is what reading the rows
+ * in the wrong frame of reference costs. The order is COUNTED the same way in
+ * both frames, so single file needs no case of its own: counting gives the
+ * caution's `row` and the formation's `row + 1` from one rule.
+ *
+ * With the offset, the combined order reproduces `line 0, row R → 2R − 1` and
  * `line 1, row R → 2R + 2` exactly while the two lanes pair off evenly — which
  * is what the closed formulas were first written as, checked against every
  * tick of the 2026-09-17 fixture: on all 193 ticks where the pace car holds
@@ -55,15 +84,45 @@
  * has the player 20th in the lineup and 19th in the race, and 19 is what his
  * display showed.
  *
- * **The pace car at line 0 row 0 is the anchor, and without it no absolute
- * position can be read.** Once it pulls off at the green the whole of line 0
- * shifts down a row while line 1 does not, and the lineup then renumbers from 0
- * among whoever is left as cars accelerate away — so a row is a place in a
- * shrinking queue rather than a restart position. {@link resolvePaceLineup}
- * therefore withholds `lineupPosition` (only that field — who is ahead of you
- * in your own line is still true) unless session info names a pace car AND that
- * car holds line 0 row 0. The 60 fixture ticks that fail the anchor are all
- * under green with no caution bit set, so nothing is withheld during a caution.
+ * **The rows need an anchor, and the tick's own data names it — never the
+ * caller.** A row is a place in a queue, and only two shapes say where that
+ * queue starts ({@link PaceLineupAnchor}):
+ *
+ * - `pace-car` — session info names the pace car and it holds line 0 row 0.
+ *   Line 1 is offset by one and the leader is line 0 row 1: every caution.
+ * - `grid` — the session is before its green (`isPreGreen`), session info
+ *   names the pace car, the pace car holds no row, and a car holds line 0
+ *   row 0. No offset, and that car is the pole.
+ *
+ * The two exclude each other by the pace car's slot, and a lineup matching
+ * neither has no absolute position: {@link resolvePaceLineup} then withholds
+ * `lineupPosition` (only that field — who is ahead of you in your own line is
+ * still true). That is what a green leaves behind in either phase. Once the
+ * pace car pulls off at a restart the whole of line 0 shifts down a row while
+ * line 1 does not, and the lineup then renumbers from 0 among whoever is left
+ * as cars accelerate away — so a row is a place in a shrinking queue rather
+ * than a position. The 60 ticks of the caution fixture that fail the anchor
+ * are all under green with no caution bit set, so nothing is withheld during a
+ * caution.
+ *
+ * The `grid` anchor needs the PHASE as well as the shape, because that unwind
+ * has the formation's shape exactly. At 203.87 s in the formation fixture,
+ * 2.7 s after the green, the pace car reads −1/−1, car 18 — the grid's THIRD
+ * car — holds line 0 row 0 and car 16 holds line 1 row 0: read by shape alone,
+ * the third car would be told it leads. `isPreGreen` is the predicate
+ * `race-order.ts` serves the qualifying grid on, so the canonical order and
+ * the lineup leave the grid on the same tick. The position is withheld from
+ * the green tick itself (201.18 s), though the rows stay intact for another
+ * 2.7 s: the phase decides, not a guess at when the unwind begins.
+ *
+ * The anchor is read rather than passed because a caller choosing the offset
+ * is how the off-by-one gets written — at a phase boundary, in a harness, in a
+ * test. A second resolver for the formation and a mode parameter were both
+ * rejected for it: the pace car's slot is on the same tick as the rows, so the
+ * reader cannot disagree with the data it counts. Reading also keeps the
+ * shapes nobody has captured safe. A rolling start whose pace car DID take
+ * line 0 row 0 gets the caution's arithmetic, which is right for that shape by
+ * construction, and any other shape withholds.
  *
  * **A single stray line value is protected against twice, because it can sit
  * on either side of the question.** On another car's slot it must not flip
@@ -98,9 +157,19 @@
  * is what the fixtures cut without it rely on.
  */
 import type { CautionLine } from "@iracedeck/event-bus";
-import { carInWorld, getCarNumberFromSessionInfo, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { carInWorld, getCarNumberFromSessionInfo, isPreGreen, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 import { resolvePaceCarIdx } from "./pace-laps.js";
+
+/**
+ * Which frame of reference a tick's pace rows are numbered in — where the
+ * queue starts. `pace-car`: the pace car holds line 0 row 0 and line 1's rows
+ * sit one behind line 0's (a caution). `grid`: before the green, with the
+ * pace car holding no row and the pole at line 0 row 0 (a rolling-start
+ * formation, issue #1167). Read from the tick by {@link resolvePaceLineup},
+ * never chosen by a caller — see the module comment's anchor paragraph.
+ */
+export type PaceLineupAnchor = "pace-car" | "grid";
 
 export type PaceLineup = {
   /** The car to follow — the car in your line one row lower, or the pace car. */
@@ -110,11 +179,13 @@ export type PaceLineup = {
   /** Which lane you line up in. `null` when single file or the track is not an oval. */
   line: CautionLine | null;
   /**
-   * You are restarting FIRST — `lineupPosition === 1`, and nothing looser.
+   * You are restarting FIRST — `lineupPosition === 1`, and nothing looser. In
+   * a formation that is the pole.
    *
    * It is not "nobody is ahead of you in your line", which running double file
-   * is true of BOTH front cars: the leader at line 0 row 1 and the outside
-   * front car at line 1 row 0, who is P2. That reading shipped briefly and
+   * is true of BOTH front cars: the leader (line 0 row 1 behind the pace car,
+   * line 0 row 0 on the grid) and the outside front car at line 1 row 0, who
+   * is P2. That reading shipped briefly and
    * would have told P2 it was leading at every double-file restart, because
    * this value becomes a SCRIPT CONDITION and the script grammar's only
    * operator is `!` — a pack author can write `isLeader` or `!isLeader` and has
@@ -136,11 +207,20 @@ export type PaceLineup = {
   /** The field is in two columns. */
   doubleFile: boolean;
   /**
-   * The position you would restart in. `null` when the rows carry no absolute
-   * position — the pace car does not head the lineup, or session info does not
-   * say which car it is (see the module comment's anchor paragraph).
+   * Your place in the lineup: the position you would restart in under a
+   * caution, your grid slot in a formation. `null` when the rows carry no
+   * absolute position — {@link PaceLineup.anchor} is `null` — or your own slot
+   * has none in that frame (the pace car's, or a line no capture has shown).
    */
   lineupPosition: number | null;
+  /**
+   * The frame of reference `lineupPosition` was counted in (issue #1167).
+   * `null` when the tick matches neither — the post-green unwind, a session
+   * that does not name its pace car — and on a tick where every answer is
+   * withheld; `lineupPosition` is then `null` too, while the car ahead and
+   * the lane are answered wherever they can be.
+   */
+  anchor: PaceLineupAnchor | null;
 };
 
 /**
@@ -253,6 +333,7 @@ const WITHHELD: PaceLineup = {
   followsPaceCar: false,
   doubleFile: false,
   lineupPosition: null,
+  anchor: null,
 };
 
 /**
@@ -282,11 +363,48 @@ function resolveFollowCarNumber(sessionInfo: Record<string, unknown> | null, car
 }
 
 /**
- * The player's place in the caution lineup for THIS tick, or `null` when there
- * is none to read — no pace arrays, no player index, or a player the field has
- * lined up without (a car in the pits during the re-form holds no row).
- * Returning `null` is what makes a `lineupPosition: null` in a payload mean
- * "the field is not lined up" rather than "we forgot".
+ * Which frame of reference this tick's rows are numbered in, read off the pace
+ * car's own slot and the session phase — the table in the module comment's
+ * anchor paragraph, in code. `null` when the tick matches neither frame.
+ *
+ * "The pace car holds no row" is a row that READS below zero. A slot the
+ * arrays do not carry at all is unknown rather than empty, and an unknown pace
+ * car anchors nothing.
+ */
+function resolveAnchor(
+  telemetry: TelemetryData,
+  lines: unknown[],
+  rows: unknown[],
+  paceCarIdx: number | null,
+): PaceLineupAnchor | null {
+  // Both frames are judged against the pace car's slot, so a session that
+  // does not say which car that is has neither.
+  if (paceCarIdx === null) return null;
+
+  const paceRow = rows[paceCarIdx];
+
+  if (lines[paceCarIdx] === 0 && paceRow === 0) return "pace-car";
+
+  // The phase, not only the shape: the post-green unwind has the formation's
+  // shape exactly, with the grid's third car at line 0 row 0 (module comment).
+  if (!isPreGreen(telemetry)) return null;
+
+  if (typeof paceRow !== "number" || paceRow >= 0) return null;
+
+  for (let carIdx = 0; carIdx < rows.length; carIdx++) {
+    if (lines[carIdx] === 0 && rows[carIdx] === 0) return "grid";
+  }
+
+  return null;
+}
+
+/**
+ * The player's place in the pace lineup for THIS tick — a caution's or a
+ * rolling-start formation's, told apart by the tick's own data — or `null`
+ * when there is none to read: no pace arrays, no player index, or a player the
+ * field has lined up without (a car in the pits during the re-form holds no
+ * row). Returning `null` is what makes a `lineupPosition: null` in a payload
+ * mean "the field is not lined up" rather than "we forgot".
  */
 export function resolvePaceLineup(
   telemetry: TelemetryData,
@@ -343,7 +461,10 @@ export function resolvePaceLineup(
 
   const followsPaceCar = aheadCarIdx === null || aheadCarIdx === paceCarIdx;
   const followCarIdx = aheadCarIdx ?? paceCarIdx;
-  const lineupPosition = resolveLineupPosition(lines, rows, paceCarIdx, myLine, myRow, doubleFile, inWorld);
+  // Read here, from the same tick as the rows it frames, and handed to nothing
+  // but the count: the walk above and the lane below do not depend on it.
+  const anchor = resolveAnchor(telemetry, lines, rows, paceCarIdx);
+  const lineupPosition = resolveLineupPosition(lines, rows, paceCarIdx, anchor, myLine, myRow, doubleFile, inWorld);
 
   return {
     followCarIdx,
@@ -353,6 +474,7 @@ export function resolvePaceLineup(
     followsPaceCar,
     doubleFile,
     lineupPosition,
+    anchor,
   };
 }
 
@@ -370,46 +492,56 @@ function resolveLine(myLine: number, doubleFile: boolean, isOval: boolean): Caut
 /**
  * The sort key of a lined-up car in the combined double-file order, or `null`
  * for a line the capture has never shown. Line 1's rows sit one behind line
- * 0's because the pace car consumes line 0's row 0; the line breaks the tie so
- * the inside car of a row sorts first. See the module comment.
+ * 0's exactly when the pace car consumes line 0's row 0 — the `pace-car`
+ * anchor — and level with them on the grid; the line breaks the tie so the
+ * inside car of a row sorts first. See the module comment.
  */
-function combinedOrderKey(line: number, row: number): number | null {
+function combinedOrderKey(line: number, row: number, anchor: PaceLineupAnchor): number | null {
   if (line === 0) return 2 * row;
 
-  if (line === 1) return 2 * (row + 1) + 1;
+  if (line === 1) return 2 * (anchor === "pace-car" ? row + 1 : row) + 1;
 
   return null;
 }
 
 /**
- * The restart position, anchored on the pace car holding line 0 row 0. Single
- * file it is the row; double file it is the player's place in the combined
- * order of every lined-up car — counted, not computed from the row, so two
- * lanes of uneven length still yield 1..N. See the module comment.
+ * The player's place in the lineup, in the frame the anchor names. Single file
+ * it is the count of cars ahead in the line; double file it is the player's
+ * place in the combined order of every lined-up car — counted, not computed
+ * from the row, so two lanes of uneven length still yield 1..N. The anchor
+ * changes one thing only, whether line 1's rows are shifted by one. See the
+ * module comment.
  */
 function resolveLineupPosition(
   lines: unknown[],
   rows: unknown[],
   paceCarIdx: number | null,
+  anchor: PaceLineupAnchor | null,
   myLine: number,
   myRow: number,
   doubleFile: boolean,
   inWorld: (carIdx: number) => boolean,
 ): number | null {
-  if (paceCarIdx === null || lines[paceCarIdx] !== 0 || rows[paceCarIdx] !== 0) return null;
+  if (anchor === null) return null;
 
-  const myKey = doubleFile ? combinedOrderKey(myLine, myRow) : myRow;
+  const myKey = doubleFile ? combinedOrderKey(myLine, myRow, anchor) : myRow;
 
-  // A line the capture has never shown, or the pace car's own slot (line 0
-  // row 0 — the anchor, so only the pace car ever holds it): not a position.
-  // Single file that slot is row 0 itself.
-  if (myKey === null || myKey === 0) return null;
+  // A line the capture has never shown: not a position.
+  if (myKey === null) return null;
+
+  // Behind the pace car, line 0 row 0 is the pace car's own slot — the anchor,
+  // so only the pace car ever holds it — and not a position either. Single
+  // file that slot is row 0 itself. On the grid the same slot is the pole.
+  if (anchor === "pace-car" && myKey === 0) return null;
 
   // Counted rather than read off the row, single file as well as double: a
   // car that has left the world keeps its row for a tick (module comment),
   // and counting who is actually there is what keeps it from inflating the
   // position by one on that tick. Single file the count of in-world cars
   // ahead is the row when every row is held, which is every measured tick.
+  // That is the same count in both frames: the pace car is skipped below, so
+  // behind it the leader at row 1 has nobody ahead, and on the grid the pole
+  // at row 0 has nobody ahead — the caution's `row`, the formation's `row + 1`.
   let ahead = 0;
 
   for (let carIdx = 0; carIdx < rows.length; carIdx++) {
@@ -427,7 +559,7 @@ function resolveLineupPosition(
       continue;
     }
 
-    const key = combinedOrderKey(line, row as number);
+    const key = combinedOrderKey(line, row as number, anchor);
 
     if (key !== null && key < myKey) ahead++;
   }
