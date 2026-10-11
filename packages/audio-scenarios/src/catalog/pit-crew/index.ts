@@ -126,6 +126,7 @@ import { getScenarioEngine, isAudioScenariosInitialized } from "../../interprete
 import {
   buildCautionContracts,
   type CautionEpisodeResolver,
+  type CautionGapResolver,
   type CautionPhaseResolver,
   type PaceLineupResolver,
   registerCautionVocabulary,
@@ -306,6 +307,7 @@ export {
   type CautionCalloutId,
   type CautionContractDeps,
   type CautionEpisodeResolver,
+  type CautionGapResolver,
   type PaceLineupResolver,
   type CautionPhaseResolver,
   registerCautionVocabulary,
@@ -931,6 +933,14 @@ export type PitCrewDeps = {
   // leaves the change call silent, never wrong: with no episode there is
   // nothing to judge a change against.
   getCautionEpisode?: CautionEpisodeResolver;
+  // The gap to the car you line up behind under caution (issue #1168).
+  // Plugins wire `getCautionGap()` from `@iracedeck/sim-events-iracing`. The
+  // two catch-up calls ask it at speak time whether catching up is still
+  // warranted, so a first call that waited for the bus is dropped once the
+  // driver has closed up. Default `() => null` refuses both, which is the
+  // truthful answer for a caller that wires no reader: silent, never an
+  // ungated nag.
+  getCautionGap?: CautionGapResolver;
   // WHICH rolling-start formation is running (issue #1167). Plugins wire
   // `getRollingStartFormation()` from `@iracedeck/sim-events-iracing`: `null`
   // while none runs, else an id that never repeats and the follow car read as
@@ -991,6 +1001,7 @@ const DEFAULT_DEPS = {
   getUnderFullCourseCaution: () => false,
   getCautionPhase: () => "none",
   getCautionEpisode: () => null,
+  getCautionGap: () => null,
   getRollingStartFormation: () => null,
   getRaceEngineerMasterEnabled: () => true,
   getRadarMasterEnabled: () => true,
@@ -1024,6 +1035,7 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
     getUnderFullCourseCaution = DEFAULT_DEPS.getUnderFullCourseCaution,
     getCautionPhase = DEFAULT_DEPS.getCautionPhase,
     getCautionEpisode = DEFAULT_DEPS.getCautionEpisode,
+    getCautionGap = DEFAULT_DEPS.getCautionGap,
     getRollingStartFormation = DEFAULT_DEPS.getRollingStartFormation,
     getRaceEngineerMasterEnabled = DEFAULT_DEPS.getRaceEngineerMasterEnabled,
     getRadarMasterEnabled = DEFAULT_DEPS.getRadarMasterEnabled,
@@ -1204,13 +1216,14 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
     );
   }
 
-  // Full-course caution family (issue #1127) — the narrated sequence around a
-  // caution: who to follow, the pace car out and off, the pickup (two to
-  // green), each extra lap, one lap to green, a change to the car ahead, your
-  // race position on the last lap, and the green. Registered right after the
-  // flags because it is part of the same conversation: six of the nine share
-  // `family: "flag"` so a newer caution call supersedes a stale one; the
-  // follow, position and lineup-change calls deliberately do not, because each
+  // Full-course caution family (issues #1127, #1168) — the narrated sequence
+  // around a caution: who to follow, the pace car out and off, the pickup (two
+  // to green), each extra lap, one lap to green, a change to the car ahead, a
+  // gap opened to the car ahead and its reminders, your race position on the
+  // last lap, and the green. Registered right after the flags because it is
+  // part of the same conversation: six of the eleven share `family: "flag"` so
+  // a newer caution call supersedes a stale one; the follow, position,
+  // lineup-change and two catch-up calls deliberately do not, because each
   // shares its moment with a call it must queue behind rather than cut (the
   // follow call rides the very event that fires `pit-crew.flag-caution-waving`;
   // see `caution.ts`). The contracts take the episode reader and the live
@@ -1230,6 +1243,7 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
     getPaceLineup,
     getCautionEpisode,
     isCautionCalloutEnabled: getCautionCalloutEnabled,
+    getCautionGap,
   })) {
     engine.defineContract(
       wrapWithMaster(

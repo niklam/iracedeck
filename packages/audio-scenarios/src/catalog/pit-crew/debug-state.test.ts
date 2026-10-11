@@ -637,6 +637,7 @@ describe("the family readers", () => {
         getPaceLineup: () => ({ followCarIdx }) as never,
         getCautionEpisode: () => ({ id: 3, firstFollowCarIdx: followCarIdx }),
         isCautionCalloutEnabled: () => true,
+        getCautionGap: () => null,
       });
 
       expect(readCautionDebugState()).toEqual({ lastNamed: null });
