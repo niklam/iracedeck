@@ -20,7 +20,10 @@ const SIZE = { width: 1172, height: 788 };
  * `imagesLoadAfter` is how many times a tab's "where do this pane's images
  * stand?" check answers "loading" before it settles: 0 for a pane whose images
  * are local (every tab but one), Infinity for an image that never arrives.
- * `imagesBroken` makes it settle on "broken" — an image whose fetch failed.
+ * `imagesBroken` makes it settle on "broken" — an image whose fetch failed —
+ * on every tab, or on the one pane it names.
+ * `imagesReply` replaces the whole reply to that check, for a page that cannot
+ * answer it at all.
  */
 function createFakeCdp({
   missingPane,
@@ -28,11 +31,13 @@ function createFakeCdp({
   noEvents = false,
   imagesLoadAfter = 0,
   imagesBroken = false,
+  imagesReply,
 } = {}) {
   const sent = [];
   const listeners = [];
   let listenersAtLoadEvent = 0;
   let imageChecksThisTab = 0;
+  let lastClick = "";
 
   return {
     sent,
@@ -75,14 +80,19 @@ function createFakeCdp({
       if (method === "Runtime.evaluate" && params.expression === PANE_IMAGES_STATE_EXPRESSION) {
         imageChecksThisTab += 1;
 
+        if (imagesReply) return imagesReply;
+
         if (imageChecksThisTab <= imagesLoadAfter) return { result: { value: "loading" } };
 
-        return { result: { value: imagesBroken ? "broken" : "loaded" } };
+        const broken = imagesBroken === true || (imagesBroken && lastClick.includes(`"${imagesBroken}"`));
+
+        return { result: { value: broken ? "broken" : "loaded" } };
       }
 
       if (method === "Runtime.evaluate") {
         // A click on a nav button: the next image check belongs to a new tab.
         imageChecksThisTab = 0;
+        lastClick = params.expression;
 
         const found = missingPane ? !params.expression.includes(`"${missingPane}"`) : true;
 
@@ -167,9 +177,10 @@ describe("captureSettingsWindow", () => {
   it("writes one screenshot per tab, in order", async () => {
     const { deps, writeFile } = createDeps();
 
-    const written = await captureSettingsWindow(OPTIONS, deps);
+    const { written, skipped } = await captureSettingsWindow(OPTIONS, deps);
 
     expect(written).toEqual([join("/out", "general.png"), join("/out", "simhub.png")]);
+    expect(skipped).toEqual([]);
     expect(writeFile).toHaveBeenCalledTimes(2);
     expect(writeFile.mock.calls[0][1].toString()).toBe("png");
   });
@@ -284,6 +295,8 @@ describe("captureSettingsWindow: waiting for a tab's images", () => {
       log,
       /** How many times the capture paused between two image checks. */
       polls: () => delays.filter((ms) => ms === PANE_IMAGES_POLL_MS).length,
+      /** How many times it paused for layout or paint to settle on a tab. */
+      settles: () => delays.filter((ms) => ms === TAB_SETTLE_MS).length,
       warnings: () => log.mock.calls.map(([message]) => message).filter((message) => message.startsWith("Warning")),
     };
   }
@@ -314,12 +327,14 @@ describe("captureSettingsWindow: waiting for a tab's images", () => {
   });
 
   it("costs one check and no wait when the images are already loaded", async () => {
-    const { deps, cdp, polls, warnings, writeFile } = createTimedDeps();
+    const { deps, cdp, polls, settles, warnings, writeFile } = createTimedDeps();
 
     await captureSettingsWindow(OPTIONS, deps);
 
     expect(steps(cdp)).toEqual(["click", "images?", "screenshot", "click", "images?", "screenshot"]);
     expect(polls()).toBe(0);
+    // The one after each click, and no second one: nothing arrived late.
+    expect(settles()).toBe(TABS.length);
     expect(warnings()).toEqual([]);
     expect(writeFile).toHaveBeenCalledTimes(2);
   });
@@ -337,35 +352,132 @@ describe("captureSettingsWindow: waiting for a tab's images", () => {
     expect(writeFile).toHaveBeenCalledTimes(1);
   });
 
-  it("gives up at the bound, names the tab, and captures anyway", async () => {
+  it("settles once more after an image it had to wait for, so the shot is not taken on the tick it finished", async () => {
+    const delays = [];
+    const { deps, cdp } = createDeps({ cdp: createFakeCdp({ imagesLoadAfter: 1 }) });
+    deps.delay = async (ms) => {
+      // Recorded among the commands, to see the pause land before the screenshot.
+      cdp.sent.push({ method: "delay", params: { ms } });
+      delays.push(ms);
+    };
+
+    await captureSettingsWindow({ ...OPTIONS, tabs: [TABS[0]] }, deps);
+
+    const afterClick = cdp.sent
+      .slice(cdp.sent.findIndex((c) => c.method === "Runtime.evaluate"))
+      .map((c) =>
+        c.method === "delay"
+          ? `delay ${c.params.ms}`
+          : c.method === "Page.captureScreenshot"
+            ? "screenshot"
+            : "evaluate",
+      );
+
+    expect(afterClick).toEqual([
+      "evaluate",
+      `delay ${TAB_SETTLE_MS}`,
+      "evaluate",
+      `delay ${PANE_IMAGES_POLL_MS}`,
+      "evaluate",
+      `delay ${TAB_SETTLE_MS}`,
+      "screenshot",
+    ]);
+    expect(delays.filter((ms) => ms === TAB_SETTLE_MS)).toHaveLength(2);
+  });
+
+  it("gives up at the bound, names the tab, and leaves its screenshot alone", async () => {
     const { deps, cdp, polls, warnings, writeFile } = createTimedDeps({ imagesLoadAfter: Infinity });
 
-    const written = await captureSettingsWindow(OPTIONS, deps);
+    const { written, skipped } = await captureSettingsWindow(OPTIONS, deps);
 
     // Exactly the bound's worth of pauses per tab, never an endless loop.
     expect(polls()).toBe((PANE_IMAGES_TIMEOUT_MS / PANE_IMAGES_POLL_MS) * TABS.length);
     expect(warnings()).toHaveLength(2);
-    expect(warnings()[0]).toMatch(/an image on the General tab had not loaded/);
-    expect(warnings()[0]).toContain("general.png");
-    expect(warnings()[1]).toMatch(/an image on the SimHub tab had not loaded/);
-    expect(steps(cdp).filter((step) => step === "screenshot")).toHaveLength(2);
-    expect(written).toHaveLength(2);
-    expect(writeFile).toHaveBeenCalledTimes(2);
+    expect(warnings()[0]).toMatch(/an image had not loaded after \d+ ms on the General tab/);
+    expect(warnings()[0]).toMatch(/general\.png was not captured and is left untouched/);
+    expect(warnings()[1]).toMatch(/on the SimHub tab/);
+    // Neither taken nor written: the committed file is whatever it was.
+    expect(steps(cdp)).not.toContain("screenshot");
+    expect(writeFile).not.toHaveBeenCalled();
+    expect(written).toEqual([]);
+    expect(skipped).toEqual([
+      {
+        file: join("/out", "general.png"),
+        label: "General",
+        reason: `an image had not loaded after ${PANE_IMAGES_TIMEOUT_MS} ms`,
+      },
+      {
+        file: join("/out", "simhub.png"),
+        label: "SimHub",
+        reason: `an image had not loaded after ${PANE_IMAGES_TIMEOUT_MS} ms`,
+      },
+    ]);
   });
 
-  it("names a tab whose image failed outright, without waiting, and captures anyway", async () => {
+  it("skips a tab whose image failed outright, without waiting, and names it", async () => {
     // Offline, the Support tab's button finishes at once with no picture. That
     // is not "still loading", so no pause is owed, but the shot is not one to
-    // commit and the run has to say so.
+    // commit: it must not replace the one that is.
     const { deps, cdp, polls, warnings, writeFile } = createTimedDeps({ imagesBroken: true });
 
-    await captureSettingsWindow({ ...OPTIONS, tabs: [TABS[0]] }, deps);
+    const { written, skipped } = await captureSettingsWindow({ ...OPTIONS, tabs: [TABS[0]] }, deps);
 
-    expect(steps(cdp)).toEqual(["click", "images?", "screenshot"]);
+    expect(steps(cdp)).toEqual(["click", "images?"]);
     expect(polls()).toBe(0);
-    expect(warnings()).toHaveLength(1);
-    expect(warnings()[0]).toMatch(/an image on the General tab failed to load/);
-    expect(warnings()[0]).toContain("general.png");
+    expect(warnings()).toEqual([
+      "Warning: an image failed to load on the General tab; general.png was not captured and is left untouched.",
+    ]);
+    expect(writeFile).not.toHaveBeenCalled();
+    expect(written).toEqual([]);
+    expect(skipped).toEqual([
+      { file: join("/out", "general.png"), label: "General", reason: "an image failed to load" },
+    ]);
+  });
+
+  it("still captures the tabs after one that was skipped", async () => {
+    // One site being unreachable costs that tab's shot, not the run.
+    const { deps, writeFile } = createDeps({ cdp: createFakeCdp({ imagesBroken: "general" }) });
+
+    const { written, skipped } = await captureSettingsWindow(OPTIONS, deps);
+
+    expect(skipped.map(({ label }) => label)).toEqual(["General"]);
+    expect(written).toEqual([join("/out", "simhub.png")]);
     expect(writeFile).toHaveBeenCalledTimes(1);
+    expect(writeFile.mock.calls[0][0]).toBe(join("/out", "simhub.png"));
+  });
+
+  describe("a check the page cannot answer", () => {
+    it.each([
+      [
+        "an exception",
+        {
+          result: { type: "object", subtype: "error" },
+          exceptionDetails: {
+            text: "Uncaught",
+            exception: { description: "Error: Execution context was destroyed." },
+          },
+        },
+        /could not say whether the images on the General tab have loaded: it threw Error: Execution context was destroyed\./,
+      ],
+      [
+        "an exception with only its text",
+        { result: {}, exceptionDetails: { text: "Uncaught SyntaxError" } },
+        /on the General tab have loaded: it threw Uncaught SyntaxError/,
+      ],
+      ["no value", { result: { type: "undefined" } }, /on the General tab have loaded: it answered undefined/],
+      ["no result at all", {}, /on the General tab have loaded: it answered undefined/],
+      ["a state it does not have", { result: { value: "ready" } }, /it answered "ready"/],
+    ])("is an error naming the tab, not an image still loading: %s", async (_what, imagesReply, message) => {
+      const { deps, cdp, polls, writeFile, kill, close } = createTimedDeps({ imagesReply });
+
+      await expect(captureSettingsWindow(OPTIONS, deps)).rejects.toThrow(message);
+
+      // One check, no polling out the bound, nothing written, and cleaned up.
+      expect(steps(cdp)).toEqual(["click", "images?"]);
+      expect(polls()).toBe(0);
+      expect(writeFile).not.toHaveBeenCalled();
+      expect(kill).toHaveBeenCalled();
+      expect(close).toHaveBeenCalled();
+    });
   });
 });

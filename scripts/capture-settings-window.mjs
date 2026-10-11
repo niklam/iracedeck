@@ -14,6 +14,10 @@
  * Captures run against the Stream Deck plugin build specifically: the Profiles
  * tab only exists where the `profiles` platform flag is on.
  *
+ * The Support iRaceDeck tab draws an image from another site. When that image
+ * does not load (offline, or the site is slow), the tab is skipped, its PNG is
+ * left as it was, and the run says so and exits 1.
+ *
  * This file is the composition root — it resolves the real server, browser and
  * filesystem and hands them to `captureSettingsWindow`, which contains the
  * logic and no I/O of its own.
@@ -83,9 +87,10 @@ await mkdir(outDir, { recursive: true });
 const profileDir = join(tmpdir(), `iracedeck-capture-${process.pid}`);
 
 let written;
+let skipped;
 
 try {
-  written = await captureSettingsWindow(
+  ({ written, skipped } = await captureSettingsWindow(
     {
       assetsDir,
       pageFile: "settings-window.html",
@@ -141,7 +146,7 @@ try {
       writeFile: (file, data) => writeFile(file, data),
       log: (message) => console.log(message),
     },
-  );
+  ));
 } finally {
   // In a finally so a failed run does not leave ~100 MB of browser profile in
   // %TEMP%, and with retries because Windows often still holds Chromium's
@@ -150,3 +155,14 @@ try {
 }
 
 console.log(`\nWrote ${written.length} screenshots to ${outDir}`);
+
+// A tab whose image did not load was not captured, so its committed screenshot
+// is still the last good one. Said last and with a failing exit code, because
+// the warning mid-run scrolls past and a run that ends "Wrote N screenshots"
+// reads as a refresh of all of them. The code is set, not exited with, so the
+// lines above are flushed first.
+for (const { file, label, reason } of skipped) {
+  console.error(`Skipped ${file} (the ${label} tab): ${reason}. The existing file was left unchanged.`);
+}
+
+if (skipped.length > 0) process.exitCode = 1;
