@@ -3323,6 +3323,16 @@ describe("tire temperatures (issue #254)", () => {
       expect(decoded).toContain(">PIT TEMPS</text>");
     });
 
+    it("reads the translator's reading once per pass, so the state key and the graphic cannot disagree", async () => {
+      const tick = await appear();
+
+      vi.mocked(getLastStopTireTemps).mockClear();
+      vi.mocked(getLastStopTireTemps).mockReturnValue(stopReading());
+      await tick({ DisplayUnits: 1 });
+
+      expect(getLastStopTireTemps).toHaveBeenCalledTimes(1);
+    });
+
     it("shows the reading the translator holds, polled on the telemetry refresh", async () => {
       const tick = await appear();
 
