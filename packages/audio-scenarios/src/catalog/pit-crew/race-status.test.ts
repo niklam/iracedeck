@@ -31,6 +31,7 @@ import { _resetAudioScenarios, getScenarioEngine, initializeAudioScenarios } fro
 import { familyGate } from "./callout-gate.test-util.js";
 import { _resetPositionReadoutCooldown, canAnnouncePosition, registerPitCrew } from "./index.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
+import { readPositionReadoutDebugState } from "./position-readout.js";
 import {
   buildRaceStatusContract,
   RACE_STATUS_CLIP_SOURCES,
@@ -452,6 +453,55 @@ describe("race-status under a full-course caution (issue #1171)", () => {
 
     expect(voicePaths()).toEqual([BLOCKER, STILL_LEADING]);
     expect(canAnnouncePosition()).toBe(false);
+  });
+
+  it("leaves no intro decision pending when the caution refuses an update whose script names positionReadout.intro", () => {
+    // The bundled status script stashes nothing, but a pack may speak the
+    // update through the shared readout vars. `positionReadout.intro` stashes
+    // its decision while the script expands, for the gate to commit — and the
+    // gate refuses on the caution before the shared gate, which takes it,
+    // ever runs. Left there it would sit in the Telemetry Snapshot, holding
+    // the refused fire's context, until the next position readout came to
+    // speak.
+    getScenarioEngine().setScripts(
+      new Map([
+        [
+          VOICE,
+          {
+            ...RACE_STATUS_SCRIPT,
+            scenarios: {
+              "pit-crew.race-status": {
+                sequence: [{ optional: ["{{positionReadout.intro}}"] }, "{{positionReadout.number}}"],
+              },
+            },
+          },
+        ],
+      ]),
+    );
+    currentLive = { position: 5, classPosition: 5, isMultiClass: false };
+    holdBus();
+    publishStatus();
+
+    underCaution = true;
+    flush(audio);
+
+    expect(voicePaths()).toEqual([BLOCKER]);
+    expect(readPositionReadoutDebugState().pendingIntro).toBeNull();
+    // Taken, not committed: nothing was said.
+    expect(readPositionReadoutDebugState().lastSpokenPosition).toBe(0);
+
+    // The same script after the green: the decision is stashed, taken and
+    // committed, which is what shows the refusal above had one to take.
+    underCaution = false;
+    fireStatus();
+
+    expect(voicePaths()).toEqual([
+      BLOCKER,
+      `voice/${VOICE}/position-intro-worse/currently-01.mp3`,
+      `voice/${VOICE}/position-number/5.mp3`,
+    ]);
+    expect(readPositionReadoutDebugState().pendingIntro).toBeNull();
+    expect(readPositionReadoutDebugState().lastSpokenPosition).toBe(5);
   });
 
   it("is silent for the cadence lap that ENDS a caution — completed after the green, with the resolver already false", () => {

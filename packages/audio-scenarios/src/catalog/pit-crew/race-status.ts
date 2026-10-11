@@ -103,6 +103,7 @@ import {
   POSITION_READOUT_SUPERSEDE_GROUP,
   positionReadoutSpeakGate,
   selectLivePosition,
+  takeIntroDecision,
 } from "./position-readout.js";
 
 /** Shared snapshot resolver type (same shape as lap-time / position). */
@@ -189,18 +190,30 @@ export function registerRaceStatusVocabulary(
  * shared gate itself is untouched — the two overtake readouts use it too,
  * and they are not silenced here.
  *
- * The caution is asked first, so a refusal claims nothing. It also leaves
- * the shared gate's intro decision untaken, for a pack whose status script
- * names `positionReadout.intro`. That is harmless: the stash is keyed to
- * this fire's `ScenarioContext`, and the next gate — another fire, another
- * context — clears it without inheriting it.
+ * The caution is asked first, so a refusal claims nothing. It still TAKES
+ * the fire's intro decision before it refuses, which is the shared gate's
+ * own rule (issue #1138): a refused fire leaves nothing behind. The bundled
+ * status script stashes none, but a pack may name `positionReadout.intro`
+ * here, and returning before the shared gate ran would leave that decision
+ * pending, with this fire's context, until the next position gate cleared
+ * it. Under a caution that can be minutes away, and the Telemetry Snapshot
+ * would show a decision that will never be committed.
  */
 function raceStatusSpeakGate(getUnderFullCourseCaution: UnderCautionResolver): SpeakGate {
   return {
     // The shared sentence, qualified — as `position.ts` qualifies it for the
     // race branch — so the two readouts cannot describe one window two ways.
     description: `No full-course caution is out and ${lowerFirst(POSITION_READOUT_SPEAK_GATE_DESCRIPTION)}`,
-    admit: (ctx) => !getUnderFullCourseCaution() && positionReadoutSpeakGate.admit(ctx),
+    admit: (ctx) => {
+      if (getUnderFullCourseCaution()) {
+        // Taken and dropped: nothing was said, so nothing is committed.
+        takeIntroDecision(ctx);
+
+        return false;
+      }
+
+      return positionReadoutSpeakGate.admit(ctx);
+    },
   };
 }
 
