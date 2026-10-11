@@ -341,7 +341,7 @@ Show the tire temperatures from the last time the car came in from a run. By def
 This is a **pit-stop reading, not a live gauge**. iRacing does not report tire temperatures while you drive: it refreshes them only when the car comes in, and then holds the same values through the whole next stint. So the key tells you how the tires came off the run you just finished, which is what you need for judging pressures and camber, and not how warm they are right now.
 :::
 
-A reading is taken when you drive into your pit stall. The figures appear as you arrive and can still move while you sit in the box, then freeze the moment you leave and hold until the next reading. A tow or reset to the pits, and leaving the car for the garage, are readings too when they end a run on the track: the figures change once, to the tires as they came in, and then hold. Pressing **Drive** in the garage never replaces a reading, because the car has not been driven since.
+A reading is taken when you come in from a run on the track: when you drive into your pit stall, when a tow or reset puts the car there, and when you leave the car for the garage. The figures change once, as you arrive, to the tires as they came in, and then hold until the next reading. Pressing **Drive** in the garage never replaces a reading, because the car has not been driven since.
 
 After a tire change the figures still describe the set that **came off**, not the fresh set that went on. The same goes for a tow or reset that puts fresh tires on the car.
 
