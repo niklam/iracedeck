@@ -1698,12 +1698,13 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   // reads the event payload; the spoken line and the live gap number are the
   // voice script's `gap.*` vars, read LIVE at speak time. Both contracts
   // share one cooldown: the `where:` runs its pure check, the contract's
-  // `speakGate` claims it (#1137).
+  // `speakGate` claims it (#1137). Both ask the caution resolver in each of
+  // the two, and stay silent while a full-course caution is out (#1171).
   registerGapVocabulary(engine, getLiveGaps);
 
   for (const c of [
-    buildGapTrendContract(getRaceFinishedFired, getOvertakeGate, getGapCooldownMs),
-    buildGapThresholdContract(getRaceFinishedFired, getOvertakeGate, getGapCooldownMs),
+    buildGapTrendContract(getRaceFinishedFired, getOvertakeGate, getGapCooldownMs, getUnderFullCourseCaution),
+    buildGapThresholdContract(getRaceFinishedFired, getOvertakeGate, getGapCooldownMs, getUnderFullCourseCaution),
   ]) {
     engine.defineContract(
       wrapWithMaster(wrapCalloutScenario(c, SCENARIO_ID_TO_GAP_ID, getGapCalloutEnabled, "gap callout", logger)),

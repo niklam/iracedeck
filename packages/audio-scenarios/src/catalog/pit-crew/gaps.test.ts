@@ -9,6 +9,9 @@
  *     all-or-nothing (never a partial "Gap is" without a number)
  *   - where: gating — race-finished latch, overtake gate, cooldown as the
  *     LAST gate
+ *   - The full-course caution (issue #1171): refused in `where:` so a
+ *     caution-time fire never enters the queue, and again in the speak-time
+ *     gate — BEFORE the cooldown claim — for a fire queued under green
  *   - The bundled script through the real engine: the line, then the
  *     `gap-readout` fragment both entries share, inlined at compile time
  */
@@ -38,7 +41,11 @@ import {
   SCENARIO_ID_TO_GAP_ID,
   tryClaimGapCallout,
 } from "./gaps.js";
+import { registerPitCrew } from "./index.js";
 import { PERMISSIVE_OVERTAKE_GATE } from "./overtake-gate.js";
+import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
+import { _resetRadarEngine } from "./radar-engine.js";
+import { _resetSpotterEngine } from "./spotter-engine.js";
 
 const mockLogger = {
   trace: vi.fn(),
@@ -487,12 +494,87 @@ describe("gap contract gating", () => {
   });
 });
 
+/**
+ * The two gap contracts, each with one event it fires on and the line that
+ * event speaks — the caution cases below are run against both (issue #1171).
+ */
+const GAP_CONTRACT_CASES = [
+  {
+    id: "pit-crew.gap-trend",
+    build: buildGapTrendContract,
+    event: () => trendEvent("ahead", "closing"),
+    line: `voice/${VOICE}/gap/ahead-closing-01.mp3`,
+  },
+  {
+    id: "pit-crew.gap-threshold",
+    build: buildGapThresholdContract,
+    event: () => thresholdEvent("ahead"),
+    line: `voice/${VOICE}/gap/threshold-ahead-01.mp3`,
+  },
+] as const;
+
+describe.each(GAP_CONTRACT_CASES)("$id under a full-course caution (issue #1171)", ({ build, event }) => {
+  let underCaution: boolean;
+  let contract: ScenarioContract;
+
+  beforeEach(() => {
+    underCaution = false;
+    contract = build(
+      () => false,
+      () => PERMISSIVE_OVERTAKE_GATE,
+      () => 30_000,
+      () => underCaution,
+    );
+  });
+
+  it("where: refuses the event while the caution is out, and takes it again after the green", () => {
+    underCaution = true;
+    expect(whereOf(contract)(event() as never)).toBe(false);
+
+    underCaution = false;
+    expect(whereOf(contract)(event() as never)).toBe(true);
+  });
+
+  it("the speak-time gate refuses while the caution is out WITHOUT claiming the shared cooldown — the caution is asked first", () => {
+    // The fire the `where:` cannot reach: accepted under green, waiting in
+    // the bus's queue, and coming to speak behind the pace car. Asking the
+    // caution after the claim would burn the window for a call nobody heard.
+    underCaution = true;
+    expect(admitOf(contract)(gateCtx(event()))).toBe(false);
+    expect(canClaimGapCallout(Date.now(), 30_000)).toBe(true);
+
+    // So the first call after the green speaks, and it is the one that
+    // starts the window.
+    underCaution = false;
+    expect(whereOf(contract)(event() as never)).toBe(true);
+    expect(admitOf(contract)(gateCtx(event()))).toBe(true);
+    expect(canClaimGapCallout(Date.now(), 30_000)).toBe(false);
+  });
+
+  it("takes no caution resolver for a caution that is never out — the builder's default", () => {
+    const plain = build(
+      () => false,
+      () => PERMISSIVE_OVERTAKE_GATE,
+      () => 30_000,
+    );
+
+    expect(whereOf(plain)(event() as never)).toBe(true);
+    expect(admitOf(plain)(gateCtx(event()))).toBe(true);
+  });
+
+  it("says in both published sentences that a caution silences it", () => {
+    expect(contract.description).toContain("caution");
+    expect(contract.speakGate?.description).toContain("caution");
+  });
+});
+
 describe("the gap lines through the real script", () => {
   let bus: ReturnType<typeof createMockBus>;
   let audio: FakeAudio;
   let engine: IScenarioEngine;
   let currentGaps: LiveGaps | null;
   let cooldownMs: number;
+  let underCaution: boolean;
 
   function voicePaths(): string[] {
     return audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
@@ -501,6 +583,7 @@ describe("the gap lines through the real script", () => {
   beforeEach(() => {
     currentGaps = null;
     cooldownMs = 30_000;
+    underCaution = false;
     bus = createMockBus();
     audio = createFakeAudio();
     engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
@@ -511,6 +594,7 @@ describe("the gap lines through the real script", () => {
         () => false,
         () => PERMISSIVE_OVERTAKE_GATE,
         () => cooldownMs,
+        () => underCaution,
       ),
     );
     engine.defineContract(
@@ -518,6 +602,7 @@ describe("the gap lines through the real script", () => {
         () => false,
         () => PERMISSIVE_OVERTAKE_GATE,
         () => cooldownMs,
+        () => underCaution,
       ),
     );
     engine.setScripts(new Map([[VOICE, GAP_SCRIPT]]));
@@ -663,6 +748,105 @@ describe("the gap lines through the real script", () => {
     expect(canClaimGapCallout(Date.now(), cooldownMs)).toBe(false);
   });
 
+  // Both checks, each proven by the fire only it can stop (issue #1171).
+  describe.each(GAP_CONTRACT_CASES)("$id under a full-course caution (issue #1171)", ({ event, line }) => {
+    /** Publish the contract's event, as the translator would. */
+    function publish(): void {
+      const ev = event();
+
+      if (ev.event === "gap.trendChanged") bus.publishEvent("gap.trendChanged", ev.data);
+      else bus.publishEvent("gap.thresholdCrossed", ev.data);
+    }
+
+    /** A NORMAL line that holds the Voice bus, so a gap fire has to wait in the queue. */
+    function holdBus(): void {
+      engine.defineScenario({
+        id: "test.blocker",
+        channel: AudioChannel.Voice,
+        bus: AudioBus.Voice,
+        weight: WEIGHT.NORMAL,
+        frame: NO_FRAME,
+        sequence: ["test/blocker.mp3"],
+      });
+      engine.fire("test.blocker");
+    }
+
+    it("speaks when no caution is out", () => {
+      publish();
+      flush(audio);
+
+      expect(voicePaths()).toEqual([line]);
+    });
+
+    it("is silent while the caution is out and claims nothing — the first call after the green speaks", () => {
+      underCaution = true;
+      publish();
+      flush(audio);
+
+      expect(voicePaths()).toEqual([]);
+      expect(canClaimGapCallout(Date.now(), cooldownMs)).toBe(true);
+
+      underCaution = false;
+      publish();
+      flush(audio);
+
+      expect(voicePaths()).toEqual([line]);
+    });
+
+    it("a fire arriving under the caution never enters the queue — it does not replay once the green is out", () => {
+      // What the `where:` is for, and the gate cannot do: the fire is
+      // refused at arrival, so it takes no place in the bus's queue. Had it
+      // been queued, it would meet an open gate here and speak a gap that
+      // was measured behind the pace car.
+      holdBus();
+      underCaution = true;
+      publish();
+
+      underCaution = false;
+      flush(audio);
+
+      expect(voicePaths()).toEqual(["test/blocker.mp3"]);
+      expect(canClaimGapCallout(Date.now(), cooldownMs)).toBe(true);
+    });
+
+    it("a fire queued before the caution and replayed while it is out is refused by the gate, the cooldown unclaimed", () => {
+      // What the gate is for, and the `where:` cannot do: the fire passed
+      // its `where:` under green and waits behind a busy bus; the caution is
+      // thrown before the bus idles, and a queued fire re-expands and meets
+      // its gate, never its `where:`.
+      holdBus();
+      publish();
+
+      underCaution = true;
+      flush(audio);
+
+      expect(voicePaths()).toEqual(["test/blocker.mp3"]);
+      expect(canClaimGapCallout(Date.now(), cooldownMs)).toBe(true);
+
+      // The call a burned window would have silenced: the first one after
+      // the green.
+      underCaution = false;
+      publish();
+      flush(audio);
+
+      expect(voicePaths()).toEqual(["test/blocker.mp3", line]);
+      expect(canClaimGapCallout(Date.now(), cooldownMs)).toBe(false);
+    });
+
+    it("a fire queued before the caution that replays after the green speaks — the gate reads the caution live", () => {
+      holdBus();
+      publish();
+
+      // The caution comes and goes while the fire waits.
+      underCaution = true;
+      underCaution = false;
+      flush(audio);
+
+      expect(voicePaths()).toEqual(["test/blocker.mp3", line]);
+      expect(canClaimGapCallout(Date.now(), cooldownMs)).toBe(false);
+    });
+  });
+
   it("plays inside the radio frame", () => {
     bus.publishEvent("gap.trendChanged", trendEvent("ahead", "opening").data);
     flush(audio);
@@ -697,6 +881,64 @@ describe("the gap lines through the real script", () => {
   it("compiles for the test voice with nothing skipped — the fragment resolves within the script", () => {
     expect(mockLogger.warn).not.toHaveBeenCalled();
     expect(mockLogger.error).not.toHaveBeenCalled();
+  });
+});
+
+// The caution resolver reaches the two builders through `registerPitCrew`,
+// not through the family — so this one case registers the whole catalog, as
+// the plugins do, and drives it with the dep the plugins wire.
+describe("the gap contracts through the catalog's registration (issue #1171)", () => {
+  let bus: ReturnType<typeof createMockBus>;
+  let audio: FakeAudio;
+  let underCaution: boolean;
+
+  function voicePaths(): string[] {
+    return audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
+  }
+
+  beforeEach(() => {
+    underCaution = false;
+    bus = createMockBus();
+    audio = createFakeAudio();
+
+    const engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
+
+    registerPitCrew(bus, {
+      logger: mockLogger as never,
+      // Zeroed so the two contracts can be heard back to back.
+      getGapCooldownMs: () => 0,
+      getUnderFullCourseCaution: () => underCaution,
+    });
+    engine.setScripts(new Map([[VOICE, GAP_SCRIPT]]));
+  });
+
+  afterEach(() => {
+    _resetAudioScenarios();
+    _resetRadarEngine();
+    _resetSpotterEngine();
+    _resetPitSpeedingEngine();
+    vi.clearAllMocks();
+  });
+
+  it("both are silent while the plugin's caution resolver says one is out, and speak once it does not", () => {
+    underCaution = true;
+    bus.publishEvent("gap.trendChanged", trendEvent("ahead", "closing").data);
+    flush(audio);
+    bus.publishEvent("gap.thresholdCrossed", thresholdEvent("ahead").data);
+    flush(audio);
+
+    expect(voicePaths()).toEqual([]);
+
+    underCaution = false;
+    bus.publishEvent("gap.trendChanged", trendEvent("ahead", "closing").data);
+    flush(audio);
+    bus.publishEvent("gap.thresholdCrossed", thresholdEvent("ahead").data);
+    flush(audio);
+
+    expect(voicePaths()).toEqual([
+      `voice/${VOICE}/gap/ahead-closing-01.mp3`,
+      `voice/${VOICE}/gap/threshold-ahead-01.mp3`,
+    ]);
   });
 });
 

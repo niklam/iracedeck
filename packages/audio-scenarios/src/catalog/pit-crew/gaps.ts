@@ -48,6 +48,35 @@
  * the overtake gate (cars alongside / off-track / crawling / pit road /
  * recent incident); the translator already gated the neighbor's side at
  * emission.
+ *
+ * **Both contracts are silent while a full-course caution is out, and each
+ * asks twice** (issue #1171). A gap behind the pace car is the pickup's, not
+ * the racing's: the field closes up nose to tail by construction, so "We've
+ * caught the car ahead." there is noise. The translator holds its gap model
+ * at rest for the caution and emits neither event, so the two checks here
+ * cover what the callout layer alone can see:
+ *   - `where:` refuses a fire that ARRIVES under a caution, which keeps it
+ *     out of the bus's queue. A fire waiting there is not re-judged by its
+ *     `where:`, and the queue holds four: one that will never be said would
+ *     still take a place, and can push a lighter waiting call out of it.
+ *   - `speakGate` refuses a fire queued BEFORE the caution was thrown that
+ *     comes to speak during it — a queued fire re-expands and meets its
+ *     gate, never its `where:`. The gate asks the caution BEFORE it claims
+ *     the cooldown, never after: a claim followed by a refusal would burn
+ *     the shared window for a call nobody heard.
+ * Either alone leaves one of those two open. The reader is the translator's
+ * own caution phase (`UnderCautionResolver`), the question the lap-time and
+ * position-change contracts already ask.
+ *
+ * One residual neither check reaches: a gap call that passed its gate, is
+ * still PLAYING when the caution comes out, and is then cut by an
+ * interrupting call (a spotter proximity call, the meatball, fuel critical,
+ * a pit-box mark) is stashed with `admitted: true` and replays whole without
+ * being asked again. Only `queueable: false` would stop that, and giving up
+ * queueing for the whole family would lose ordinary gap calls behind the
+ * spotter to cover a rare one — accepted, as `caution.ts` accepts its own.
+ * The caution announcement itself does not interrupt, so a gap call playing
+ * as the flag comes out simply finishes: it began under green.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type CalloutIdOf, GAP_CALLOUTS } from "@iracedeck/callout-settings";
@@ -57,6 +86,7 @@ import type { LiveGaps } from "@iracedeck/sim-events-iracing";
 import { poolRef, WEIGHT } from "../../dsl.js";
 import type { ScenarioContext, ScenarioContract, SpeakGate } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
+import type { UnderCautionResolver } from "./caution.js";
 import { overtakeContextAllows, type OvertakeGateResolver } from "./overtake-gate.js";
 
 const GAP_GROUP = "gap";
@@ -251,8 +281,14 @@ function gapWhereGates(
   getRaceFinishedFired: () => boolean,
   getGate: OvertakeGateResolver,
   getGapCooldownMs: () => number,
+  getUnderFullCourseCaution: UnderCautionResolver,
 ): boolean {
   if (getRaceFinishedFired()) return false;
+
+  // Full-course caution — a gap behind the pace car is not a racing gap
+  // (issue #1171). Refused here so the fire never enters the bus's queue;
+  // the `speakGate` covers the fire that was already waiting there.
+  if (getUnderFullCourseCaution()) return false;
 
   if (!overtakeContextAllows(getGate())) return false;
 
@@ -266,32 +302,45 @@ function gapWhereGates(
  * The shared gap cooldown as a speak-time gate (issue #1137), built per
  * contract because the cooldown resolver is a builder dep. One sentence, one
  * claim: whichever gap callout reaches the speaker first starts the window.
+ *
+ * It asks the caution first (issue #1171), for the fire that was queued
+ * under green and comes to speak behind the pace car. The order is the
+ * point: the claim is the last thing that can refuse, so a fire the caution
+ * turns away leaves the window free for the first call after the green.
  */
-function gapSpeakGate(getGapCooldownMs: () => number): SpeakGate {
+function gapSpeakGate(getGapCooldownMs: () => number, getUnderFullCourseCaution: UnderCautionResolver): SpeakGate {
   return {
     description:
-      "No other gap callout has spoken inside the gap cooldown when this one comes to speak; speaking it starts that window.",
-    admit: (ctx) => tryClaimGapCallout(ctx.now, getGapCooldownMs()),
+      "No full-course caution is out and no other gap callout has spoken inside the gap cooldown when this one comes to speak; speaking it starts that window.",
+    admit: (ctx) => !getUnderFullCourseCaution() && tryClaimGapCallout(ctx.now, getGapCooldownMs()),
   };
 }
 
-/** Build the trend-flip contract ("we're gaining / they're pulling away"). */
+/**
+ * Build the trend-flip contract ("we're gaining / they're pulling away").
+ * `getUnderFullCourseCaution` silences it while a full-course caution is out
+ * (issue #1171), in the `where:` and again in the `speakGate` — see the
+ * header. Default `() => false` for the tests that supply no closure.
+ */
 export function buildGapTrendContract(
   getRaceFinishedFired: () => boolean = () => false,
   getGate: OvertakeGateResolver = () => null,
   getGapCooldownMs: () => number = () => GAP_CALLOUT_DEFAULT_COOLDOWN_MS,
+  getUnderFullCourseCaution: UnderCautionResolver = () => false,
 ): ScenarioContract {
   return {
     id: "pit-crew.gap-trend",
     description:
-      "The gap to the car ahead or behind you in your class turns — closing fast enough to reach it within eight laps, or opening into a breakaway — in a race, with no car alongside and no recent incident.",
+      "The gap to the car ahead or behind you in your class turns — closing fast enough to reach it within eight laps, or opening into a breakaway — in a race, in a clean moment with no caution out.",
     when: {
       event: "gap.trendChanged",
       // Nothing is stashed here: the vars read the fire's own payload (see
       // the header), so a fire this gate accepts carries what it will say.
-      where: (ev) => ev.event === "gap.trendChanged" && gapWhereGates(getRaceFinishedFired, getGate, getGapCooldownMs),
+      where: (ev) =>
+        ev.event === "gap.trendChanged" &&
+        gapWhereGates(getRaceFinishedFired, getGate, getGapCooldownMs, getUnderFullCourseCaution),
     },
-    speakGate: gapSpeakGate(getGapCooldownMs),
+    speakGate: gapSpeakGate(getGapCooldownMs, getUnderFullCourseCaution),
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",
@@ -301,22 +350,28 @@ export function buildGapTrendContract(
   };
 }
 
-/** Build the threshold-crossing contract ("we've caught the car ahead"). */
+/**
+ * Build the threshold-crossing contract ("we've caught the car ahead").
+ * `getUnderFullCourseCaution` silences it while a full-course caution is out
+ * (issue #1171), exactly as it does the trend contract.
+ */
 export function buildGapThresholdContract(
   getRaceFinishedFired: () => boolean = () => false,
   getGate: OvertakeGateResolver = () => null,
   getGapCooldownMs: () => number = () => GAP_CALLOUT_DEFAULT_COOLDOWN_MS,
+  getUnderFullCourseCaution: UnderCautionResolver = () => false,
 ): ScenarioContract {
   return {
     id: "pit-crew.gap-threshold",
     description:
-      "The live gap to the car ahead or behind you in your class first drops under your alert threshold in a race, in a clean moment with no car alongside and no recent incident.",
+      "The live gap to the car ahead or behind you in your class first drops under your alert threshold in a race, in a clean moment with no car alongside, no recent incident and no caution out.",
     when: {
       event: "gap.thresholdCrossed",
       where: (ev) =>
-        ev.event === "gap.thresholdCrossed" && gapWhereGates(getRaceFinishedFired, getGate, getGapCooldownMs),
+        ev.event === "gap.thresholdCrossed" &&
+        gapWhereGates(getRaceFinishedFired, getGate, getGapCooldownMs, getUnderFullCourseCaution),
     },
-    speakGate: gapSpeakGate(getGapCooldownMs),
+    speakGate: gapSpeakGate(getGapCooldownMs, getUnderFullCourseCaution),
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",
