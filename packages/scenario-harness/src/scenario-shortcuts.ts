@@ -73,9 +73,10 @@ type ScenarioShortcutBase = {
    * UI the rule's reason rather than letting the button proceed into a
    * half-silent sequence. Optional — a shortcut that sets up everything it
    * needs declares none, which is all of them but the caution four (a
-   * session preset), the overtake and gap ones (a connected mock SDK) and the
-   * rolling-start four (both: a race session the formation grid reads in, on
-   * an oval for the whole-formation run, and a connected mock SDK).
+   * session preset, and for the catch-up one a connected mock SDK too), the
+   * overtake and gap ones (a connected mock SDK) and the rolling-start four
+   * (both: a race session the formation grid reads in, on an oval for the
+   * whole-formation run, and a connected mock SDK).
    */
   requires?: readonly ShortcutPrecondition[];
 };
@@ -2109,14 +2110,20 @@ const CATCH_UP_RESTART_MS = 3000;
  * so the player's follow car is car "11" and no lane is involved. Ends with
  * the restart, straight from the caught phase, so the harness is not left
  * under a flag, and deletes the per-car arrays it added.
+ *
+ * Refused while the mock SDK is disconnected (`sdk-connected`), for the reason
+ * the rolling-start buttons are: both its calls are decided by the translator
+ * and gated on its state at speak time, and a disconnected translator sees no
+ * ticks — so the button would be accepted, run for its whole minute, and play
+ * nothing.
  */
 const CAUTION_CATCH_UP_SHORTCUT: TelemetrySequenceShortcut = {
   id: "flag-caution-catch-up",
   category: "Flags",
   label: "Caution → catch-up",
-  requires: ["player-car-index"],
+  requires: ["player-car-index", "sdk-connected"],
   description:
-    'Drives the TRANSLATOR through a full-course caution in which you drop back from the car ahead: the caution thrown and picked up, single file, then your gap to car eleven opened to four times the pack\'s spacing, held, and closed again. About a minute end to end, because the waits are the translator\'s own — it judges no gap for ten seconds after the pickup, wants the gap open for three before it reports it, and reminds thirty seconds later. Apply the race session preset first (its roster supplies the pace car and every car number, and its track length is what turns lap distance into a gap); the run is refused without a session preset. No telemetry preset is needed: the button puts you on track in the pack itself. Expect the caution-waving line, the follow line ("...behind car eleven"), the two-to-green line, then — about thirteen seconds after the pickup — the catch-up line ("Close it up — catch car eleven", or one of its two other lead-ins), thirty seconds later the reminder ("Still a gap. Close up on car eleven"), then SILENCE as the gap closes (closing up is not announced, and no second reminder may follow), and the restart line. Single file, so no lane is named on any preset. Needs the mock SDK CONNECTED; with it disconnected the translator sees no ticks and the button is silent for the wrong reason.',
+    'Drives the TRANSLATOR through a full-course caution in which you drop back from the car ahead: the caution thrown and picked up, single file, then your gap to car eleven opened to four times the pack\'s spacing, held, and closed again. About a minute end to end, because the waits are the translator\'s own — it judges no gap for ten seconds after the pickup, wants the gap open for three before it reports it, and reminds thirty seconds later. Apply the race session preset first (its roster supplies the pace car and every car number, and its track length is what turns lap distance into a gap); the run is refused without a session preset. No telemetry preset is needed: the button puts you on track in the pack itself. Expect the caution-waving line, the follow line ("...behind car eleven"), the two-to-green line, then — about thirteen seconds after the pickup — the catch-up line ("Close it up — catch car eleven", or one of its two other lead-ins), thirty seconds later the reminder ("Still a gap. Close up on car eleven"), then SILENCE as the gap closes (closing up is not announced, and no second reminder may follow), and the restart line. Single file, so no lane is named on any preset. Refused while the mock SDK is disconnected: a disconnected translator sees no ticks, so the whole minute would play nothing.',
   telemetrySequence: [
     {
       patch: {

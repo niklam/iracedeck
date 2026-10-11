@@ -44,7 +44,9 @@ import {
  * the button looked as if it had worked. The rolling-start buttons need it for
  * the same reason one step removed (#1167): their callouts ask the translator
  * whether a formation is running, and a translator that sees no ticks never
- * opens one.
+ * opens one. So does the caution catch-up button (#1168): its two calls ask
+ * whether the gap to the car ahead is open, which a translator that sees no
+ * ticks never judges — the button would run for a minute and play nothing.
  *
  * `rolling-start-grid` — the translator would read the rolling-start buttons'
  * grid as a GRID in the session the harness holds (#1167): a race session,
@@ -133,9 +135,9 @@ const PRECONDITION_RULES: Record<ShortcutPrecondition, PreconditionRule> = {
     reason:
       'Connect the mock SDK first (the "Connected" toggle in the header). This callout checks a gate that reads what ' +
       "the translator has seen: the overtake gate reads live telemetry (on track, at racing speed, off pit road, " +
-      "nobody alongside), and a rolling-start call asks whether a formation is running. The button arranges that " +
-      "itself, but a disconnected translator receives no telemetry, so the gate stays shut and the line is silent for " +
-      "the wrong reason.",
+      "nobody alongside), a rolling-start call asks whether a formation is running, and a catch-up call asks whether " +
+      "your gap under caution is open. The button arranges that itself, but a disconnected translator receives no " +
+      "telemetry, so the gate stays shut and the line is silent for the wrong reason.",
   },
   "rolling-start-grid": {
     satisfied: (state) => readFormationGrid(state)?.anchor === "grid",

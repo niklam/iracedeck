@@ -206,7 +206,32 @@ describe('the "Caution → catch-up" shortcut (issue #1168)', () => {
     // open.
     expect(shortcut?.event).toBeUndefined();
     expect(steps.length).toBeGreaterThan(0);
-    expect(shortcut?.requires).toEqual(["player-car-index"]);
+    expect(shortcut?.requires).toEqual(["player-car-index", "sdk-connected"]);
+  });
+
+  it("control: with the mock SDK disconnected the whole run publishes nothing — why it refuses to start that way", () => {
+    // A disconnected translator sees no ticks, so the minute goes by with no
+    // caution, no gap and no call, on the right session preset and all. The
+    // three older caution buttons are in the same position and say so in
+    // their descriptions; this one is refused, since nothing it auditions can
+    // happen at all (`shortcut-preconditions.test.ts` pins the refusal).
+    const controller = new MockSDKController();
+
+    controller.setSessionInfo(readPreset("session", "race") as SessionInfo);
+    initializeSimEventsIracing(getEventBus(), controller as unknown as SDKController, silentLogger);
+    controller.tickOnce();
+
+    const rig: Rig = { controller, trace: [], events: [] };
+
+    for (const name of ALL_EVENT_NAMES) {
+      getEventBus().subscribe(name, (ev) => rig.events.push({ event: ev.event, at: Date.now() }));
+    }
+
+    drive(rig, steps);
+
+    expect(controller.getState().isConnected).toBe(false);
+    expect(rig.events).toEqual([]);
+    expect(rig.trace.every((step) => step.gap === null)).toBe(true);
   });
 
   it("warns in the raw injector that its two events are silent unless the translator judges the gap open", () => {

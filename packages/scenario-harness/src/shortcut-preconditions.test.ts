@@ -43,6 +43,9 @@ const CAUTION_SHORTCUT_IDS = [
   "flag-caution-catch-up",
 ];
 
+/** The caution button that also refuses to run while the mock SDK is disconnected (issue #1168). */
+const CATCH_UP_SHORTCUT_ID = "flag-caution-catch-up";
+
 /** The whole-formation run, which needs its grid read on an OVAL (issue #1167). */
 const FORMATION_SHORTCUT_ID = "rolling-start-formation";
 
@@ -182,6 +185,31 @@ describe("checkShortcutPreconditions", () => {
   it("permits an overtake or gap shortcut once the mock SDK is connected, with no session preset", () => {
     for (const id of GATED_SHORTCUT_IDS) {
       expect(checkShortcutPreconditions(requiresOf(id), connectedWith(null)), `"${id}"`).toBeNull();
+    }
+  });
+
+  it("refuses the catch-up shortcut while the mock SDK is disconnected, on the right session too (#1168)", () => {
+    // Both its calls are the translator's decision and are gated on the
+    // translator's state when they speak. Disconnected, the translator sees no
+    // ticks: the button would be accepted, run for a minute, and play nothing.
+    // The session is asked for first, since without one no connection helps.
+    expect(requiresOf(CATCH_UP_SHORTCUT_ID)).toEqual(["player-car-index", "sdk-connected"]);
+    expect(checkShortcutPreconditions(requiresOf(CATCH_UP_SHORTCUT_ID), AT_BOOT)).toEqual(
+      expect.stringContaining("session preset"),
+    );
+
+    for (const preset of ["race", "race-oval"]) {
+      const refusal = checkShortcutPreconditions(requiresOf(CATCH_UP_SHORTCUT_ID), {
+        sessionInfo: readSessionPreset(preset),
+        isConnected: false,
+        telemetry: BOOT_TELEMETRY,
+      });
+
+      expect(refusal, `ran disconnected on ${preset}`).toEqual(expect.stringContaining("Connect the mock SDK"));
+      expect(refusal).toContain("catch-up");
+      expect(
+        checkShortcutPreconditions(requiresOf(CATCH_UP_SHORTCUT_ID), connectedWith(readSessionPreset(preset))),
+      ).toBeNull();
     }
   });
 });
@@ -354,12 +382,25 @@ describe("POST /api/shortcut/start", () => {
     }
   });
 
-  it("permits a caution shortcut once the race session preset is applied", async () => {
+  it("permits a caution shortcut once the race session preset is applied — the catch-up one once connected too", async () => {
     controller.setSessionInfo(readSessionPreset("race") as unknown as SessionInfo);
 
-    for (const id of CAUTION_SHORTCUT_IDS) {
+    for (const id of CAUTION_SHORTCUT_IDS.filter((caution) => caution !== CATCH_UP_SHORTCUT_ID)) {
       expect((await start(id)).statusCode, `"${id}" was refused`).toBe(204);
     }
+
+    // The right session, still disconnected, as the harness boots: the three
+    // older buttons run (their own descriptions ask for the connection), and
+    // the catch-up one is refused, because a minute of nothing is what it
+    // would otherwise be (#1168).
+    const disconnected = await start(CATCH_UP_SHORTCUT_ID);
+
+    expect(disconnected.statusCode).toBe(409);
+    expect(disconnected.error).toEqual(expect.stringContaining("Connect the mock SDK"));
+
+    controller.setConnected(true);
+
+    expect((await start(CATCH_UP_SHORTCUT_ID)).statusCode).toBe(204);
   });
 
   it("refuses an overtake or gap shortcut with the reason while the mock SDK is disconnected (#1349)", async () => {
