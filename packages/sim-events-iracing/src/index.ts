@@ -82,7 +82,13 @@ export {
 // lineup from the committed fixture rather than typing its number in.
 // `PaceLineupAnchor` names the frame of reference the lineup was read in
 // (issue #1167) — a caution's or a rolling-start formation's.
-export { type PaceLineup, type PaceLineupAnchor, resolvePaceLineup, resolvePlayerCarIdx } from "./diff/pace-lineup.js";
+export {
+  type PaceLineup,
+  type PaceLineupAnchor,
+  type PaceLineupFlags,
+  resolvePaceLineup,
+  resolvePlayerCarIdx,
+} from "./diff/pace-lineup.js";
 // The phase `getCautionPhase()` returns (issue #1127) — the callouts that
 // gate on a STAGE of the caution rather than on "is one out" name it — and
 // the episode `getCautionEpisode()` returns (issue #1286), which scopes a

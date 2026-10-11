@@ -199,7 +199,13 @@
  * same way in both frames.
  */
 import type { CautionLine } from "@iracedeck/event-bus";
-import { carInWorld, getCarNumberFromSessionInfo, SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
+import {
+  carInWorld,
+  getCarNumberFromSessionInfo,
+  PaceFlags,
+  SessionState,
+  type TelemetryData,
+} from "@iracedeck/iracing-sdk";
 
 import { isQualifyingGridPhase } from "../race-order.js";
 import { resolveSessionType } from "../session-type.js";
@@ -214,6 +220,29 @@ import { resolvePaceCarIdx } from "./pace-laps.js";
  * never chosen by a caller — see the module comment's anchor paragraph.
  */
 export type PaceLineupAnchor = "pace-car" | "grid";
+
+/**
+ * The player's `CarIdxPaceFlags`, decoded (issue #1168): the three procedures
+ * in which iRacing sends a car round to the tail of the lineup rather than
+ * leaving it where it runs. Only `wavedAround` has been seen set in a capture
+ * (2026-09-19, `__fixtures__/caution-lineup-20260919.json`); the other two are
+ * decoded from iRacing's own enum.
+ *
+ * A bit says the procedure was GRANTED, not that it is still under way: it
+ * stays set after the car has taken its slot at the tail, which that same
+ * fixture shows — the player at normal spacing behind the last car, still
+ * carrying `WavedAround`. Whether a drive-round is in progress is the
+ * translator's question (`getCautionGap()`), which reads these bits and the
+ * gap together.
+ */
+export type PaceLineupFlags = {
+  /** `irsdk_PaceFlagsEndOfLine`: sent to the end of the line. */
+  endOfLine: boolean;
+  /** `irsdk_PaceFlagsFreePass`: the free pass (the "lucky dog"). */
+  freePass: boolean;
+  /** `irsdk_PaceFlagsWavedAround`: waved round the pace car to the tail. */
+  wavedAround: boolean;
+};
 
 export type PaceLineup = {
   /** The car to follow — the car in your line one row lower, or the pace car. */
@@ -268,6 +297,13 @@ export type PaceLineup = {
    * one whose every answer is withheld.
    */
   anchor: PaceLineupAnchor | null;
+  /**
+   * The player's pace flags, decoded here so that every reader decodes them
+   * one way (issue #1168). About the car, not its line: they are answered on a
+   * tick whose every other answer is withheld, and all false when the tick
+   * carries no `CarIdxPaceFlags`.
+   */
+  paceFlags: PaceLineupFlags;
 };
 
 /**
@@ -382,17 +418,90 @@ function isOffTheField(population: Map<number, number>, myLine: number): boolean
   return false;
 }
 
-/** Every answer withheld: the shape of "this cannot be read", never a guess. */
-const WITHHELD: PaceLineup = {
-  followCarIdx: null,
-  followCarNumber: null,
-  line: null,
-  isLeader: false,
-  followsPaceCar: false,
-  doubleFile: false,
-  lineupPosition: null,
-  anchor: null,
-};
+/**
+ * Every answer that rests on the player's line withheld: the shape of "this
+ * cannot be read", never a guess. The pace flags are the car's own and are
+ * still answered.
+ */
+function withheld(paceFlags: PaceLineupFlags): PaceLineup {
+  return {
+    followCarIdx: null,
+    followCarNumber: null,
+    line: null,
+    isLeader: false,
+    followsPaceCar: false,
+    doubleFile: false,
+    lineupPosition: null,
+    anchor: null,
+    paceFlags,
+  };
+}
+
+/** One car's `CarIdxPaceFlags`, decoded. A tick without the array, or without the slot, reads all false. */
+function resolvePaceFlags(telemetry: TelemetryData, carIdx: number): PaceLineupFlags {
+  const all = telemetry.CarIdxPaceFlags as unknown;
+  const raw = Array.isArray(all) ? (all[carIdx] as unknown) : undefined;
+  const bits = typeof raw === "number" ? raw : 0;
+
+  return {
+    endOfLine: (bits & PaceFlags.EndOfLine) !== 0,
+    freePass: (bits & PaceFlags.FreePass) !== 0,
+    wavedAround: (bits & PaceFlags.WavedAround) !== 0,
+  };
+}
+
+/**
+ * THE follow rule, for any car: the nearest in-world car in `carIdx`'s own
+ * line with a lower row, or `null` when there is none — nobody ahead in the
+ * line but the pace car — or when `carIdx` is not itself lined up.
+ *
+ * One function, called by {@link resolvePaceLineup} for the player and by the
+ * caution-gap measurement (`diff/caution-gap.ts`, issue #1168) for every other
+ * car, so the two can never pair different cars: the spacing the player's gap
+ * is judged against is taken between exactly the pairs this names. It does not
+ * depend on the anchor — who is physically ahead of you in your line is the
+ * same question behind the pace car and on the grid — and it may hand back the
+ * pace car itself, which behind the pace car holds line 0 row 0.
+ *
+ * Only a car that is ITSELF in the lineup can be the one ahead. The filter is
+ * load-bearing rather than tidy: a car sitting the re-form out carries −1, and
+ * the front row's `row - 1` is −1 too, so a slot that ever reported a line
+ * without a row would be handed back as the car in front of the leader.
+ *
+ * And only a car that is in the WORLD: the nearest lower row in the line whose
+ * holder is there, not the row directly below — a car that has left the world
+ * keeps its row for a tick, and one that has not reached the grid yet holds
+ * its row until it does (module comment). In both frames: you form up behind
+ * who is physically there. The car's own slot is skipped by the strict `<`.
+ */
+export function resolveCarAheadInLine(
+  lines: unknown[],
+  rows: unknown[],
+  carIdx: number,
+  inWorld: (carIdx: number) => boolean,
+): number | null {
+  const myLine = lines[carIdx];
+  const myRow = rows[carIdx];
+
+  if (!isLinedUp(myLine, myRow)) return null;
+
+  let aheadCarIdx: number | null = null;
+  let aheadRow = -1;
+
+  for (let idx = 0; idx < rows.length; idx++) {
+    const row = rows[idx];
+
+    if (!isLinedUp(lines[idx], row) || lines[idx] !== myLine) continue;
+
+    // `isLinedUp` checked both rows are numbers.
+    if ((row as number) < (myRow as number) && (row as number) > aheadRow && inWorld(idx)) {
+      aheadCarIdx = idx;
+      aheadRow = row as number;
+    }
+  }
+
+  return aheadCarIdx;
+}
 
 /**
  * The player's own car index from session YAML, or `null` when it cannot be
@@ -509,35 +618,12 @@ export function resolvePaceLineup(
   // The player's own slot carrying the stray line value (see `isOffTheField`):
   // every question below is asked of the player's line, and his is not the
   // field's. Withhold rather than answer "first".
-  if (!doubleFile && isOffTheField(population, myLine)) return { ...WITHHELD };
+  const paceFlags = resolvePaceFlags(telemetry, playerCarIdx);
+
+  if (!doubleFile && isOffTheField(population, myLine)) return withheld(paceFlags);
 
   const inWorld = carInWorld(telemetry);
-
-  // Only a car that is ITSELF in the lineup can be the one ahead. The filter is
-  // load-bearing rather than tidy: a car sitting the re-form out carries −1, and
-  // the front row's `myRow - 1` is −1 too, so a slot that ever reported a line
-  // without a row would be handed back as the car in front of the leader.
-  //
-  // And only a car that is in the WORLD: the nearest lower row in the line
-  // whose holder is there, not the row directly below — a car that has left
-  // the world keeps its row for a tick, and one that has not reached the grid
-  // yet holds its row until it does (module comment). In both frames: you form
-  // up behind who is physically there. The player's own slot is skipped by the
-  // strict `<`.
-  let aheadCarIdx: number | null = null;
-  let aheadRow = -1;
-
-  for (let carIdx = 0; carIdx < rows.length; carIdx++) {
-    const row = rows[carIdx];
-
-    if (!isLinedUp(lines[carIdx], row) || lines[carIdx] !== myLine) continue;
-
-    if (row < myRow && row > aheadRow && inWorld(carIdx)) {
-      aheadCarIdx = carIdx;
-      aheadRow = row;
-    }
-  }
-
+  const aheadCarIdx = resolveCarAheadInLine(lines, rows, playerCarIdx, inWorld);
   const followsPaceCar = aheadCarIdx === null || aheadCarIdx === paceCarIdx;
   const followCarIdx = aheadCarIdx ?? paceCarIdx;
   // Read here, from the same tick as the rows it frames, and handed to nothing
@@ -555,6 +641,7 @@ export function resolvePaceLineup(
     lineupPosition,
     // The frame the position was counted in, so nothing when none was.
     anchor: lineupPosition === null ? null : anchor,
+    paceFlags,
   };
 }
 

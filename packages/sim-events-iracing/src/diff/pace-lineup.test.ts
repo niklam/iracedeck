@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { calculateCanonicalRacePositions } from "../race-order.js";
 import { createInitialState } from "../state.js";
-import { MIN_LINE_POPULATION, type PaceLineup, resolvePaceLineup } from "./pace-lineup.js";
+import { MIN_LINE_POPULATION, type PaceLineup, resolveCarAheadInLine, resolvePaceLineup } from "./pace-lineup.js";
 
 const ticks = JSON.parse(
   readFileSync(new URL("./__fixtures__/caution-restart-20260917.json", import.meta.url), "utf-8"),
@@ -12,6 +12,9 @@ const ticks = JSON.parse(
 
 /** The pace car's index in real telemetry (slot 20 in the fixture's trimmed arrays). */
 const PACE = 64;
+
+/** A car in no drive-round procedure — what every tick without `CarIdxPaceFlags` reads. */
+const NO_PACE_FLAGS = { endOfLine: false, freePass: false, wavedAround: false };
 
 /** Per-car pace arrays at real telemetry width; every slot not named sits out of the lineup. */
 function paceArrays(cars: Array<[carIdx: number, line: number, row: number]>): TelemetryData {
@@ -204,6 +207,7 @@ describe("resolvePaceLineup — who to follow", () => {
       doubleFile: false,
       lineupPosition: null,
       anchor: null,
+      paceFlags: NO_PACE_FLAGS,
     });
   });
 
@@ -840,6 +844,7 @@ describe("resolvePaceLineup — the anchor, read from the tick (#1167)", () => {
         doubleFile: false,
         lineupPosition: null,
         anchor: null,
+        paceFlags: NO_PACE_FLAGS,
       });
     });
   });
@@ -858,6 +863,7 @@ describe("resolvePaceLineup — the anchor, read from the tick (#1167)", () => {
       doubleFile: false,
       lineupPosition: null,
       anchor: null,
+      paceFlags: NO_PACE_FLAGS,
     };
 
     it("two cars, one to a line: the pole leads, and the car alongside is not placed", () => {
@@ -883,6 +889,7 @@ describe("resolvePaceLineup — the anchor, read from the tick (#1167)", () => {
         doubleFile: false,
         lineupPosition: null,
         anchor: null,
+        paceFlags: NO_PACE_FLAGS,
       });
     });
 
@@ -1375,6 +1382,7 @@ describe("resolvePaceLineup — the 2026-09-17 rolling-start formation (#1167)",
         doubleFile: true,
         lineupPosition: 11,
         anchor: "grid",
+        paceFlags: NO_PACE_FLAGS,
       });
     }
   });
@@ -1440,6 +1448,7 @@ describe("resolvePaceLineup — the 2026-09-17 rolling-start formation (#1167)",
         doubleFile: true,
         lineupPosition: null,
         anchor: null,
+        paceFlags: NO_PACE_FLAGS,
       });
     }
   });
@@ -1604,5 +1613,127 @@ describe("resolvePaceLineup — the `grid` anchor never holds under a caution (#
     // The post-green unwind of each restart, and of the rolling start the oval
     // capture opens with: the pace car without a row and a car at line 0 row 0.
     expect(fixtures.map((fixture) => gridAnchored(fixture, SessionState.ParadeLaps))).toEqual([60, 39, 0]);
+  });
+});
+
+describe("resolvePaceLineup — the player's pace flags (#1168)", () => {
+  /** {@link SINGLE_FILE} with `CarIdxPaceFlags` set for the named cars. */
+  function withPaceFlags(flags: Record<number, number>): TelemetryData {
+    const all = new Array(72).fill(0);
+
+    for (const [carIdx, bits] of Object.entries(flags)) all[Number(carIdx)] = bits;
+
+    return { ...paceArrays(SINGLE_FILE), CarIdxPaceFlags: all } as TelemetryData;
+  }
+
+  it("decodes each of iRacing's three bits", () => {
+    const flagsOf = (bits: number): PaceLineup["paceFlags"] | undefined =>
+      resolvePaceLineup(withPaceFlags({ 3: bits }), session(3), false)?.paceFlags;
+
+    expect(flagsOf(0)).toEqual(NO_PACE_FLAGS);
+    expect(flagsOf(0x1)).toEqual({ endOfLine: true, freePass: false, wavedAround: false });
+    expect(flagsOf(0x2)).toEqual({ endOfLine: false, freePass: true, wavedAround: false });
+    expect(flagsOf(0x4)).toEqual({ endOfLine: false, freePass: false, wavedAround: true });
+    expect(flagsOf(0x7)).toEqual({ endOfLine: true, freePass: true, wavedAround: true });
+  });
+
+  it("reads the PLAYER's slot — another car's flags are not his", () => {
+    const telemetry = withPaceFlags({ 2: 0x4 });
+
+    expect(resolvePaceLineup(telemetry, session(3), false)?.paceFlags).toEqual(NO_PACE_FLAGS);
+    expect(resolvePaceLineup(telemetry, session(2), false)?.paceFlags.wavedAround).toBe(true);
+  });
+
+  it("reads all false from a tick that carries no pace flags, or none for the player's slot", () => {
+    expect(resolvePaceLineup(paceArrays(SINGLE_FILE), session(3), false)?.paceFlags).toEqual(NO_PACE_FLAGS);
+
+    const short = { ...paceArrays(SINGLE_FILE), CarIdxPaceFlags: [0, 0] } as TelemetryData;
+
+    expect(resolvePaceLineup(short, session(3), false)?.paceFlags).toEqual(NO_PACE_FLAGS);
+  });
+
+  it("still answers them on a tick whose every other answer is withheld — they are the car's, not its line's", () => {
+    // Car 7 alone on line 1 while the field is on line 0: the stray-player rule.
+    const stray = {
+      ...paceArrays([...SINGLE_FILE, [7, 1, 6]]),
+      CarIdxPaceFlags: Object.assign(new Array(72).fill(0), { 7: 0x4 }),
+    };
+    const lineup = resolvePaceLineup(stray as TelemetryData, session(7), true);
+
+    expect(lineup).toMatchObject({ followCarIdx: null, lineupPosition: null, anchor: null });
+    expect(lineup?.paceFlags).toEqual({ endOfLine: false, freePass: false, wavedAround: true });
+  });
+
+  it("carries WavedAround on the player in the 2026-09-19 snapshot, at the tail at normal spacing", () => {
+    const [snapshot] = readFixture<Array<CapturedTick & { CarIdxPaceFlags: number[] }>>("caution-lineup-20260919.json");
+    const telemetry = {
+      ...capturedTelemetry(snapshot),
+      CarIdxPaceFlags: widen(snapshot.CarIdxPaceFlags),
+    } as TelemetryData;
+
+    expect(resolvePaceLineup(telemetry, session(0), true)?.paceFlags).toEqual({
+      endOfLine: false,
+      freePass: false,
+      wavedAround: true,
+    });
+    expect(resolvePaceLineup(telemetry, session(7), true)?.paceFlags).toEqual(NO_PACE_FLAGS);
+  });
+});
+
+describe("resolveCarAheadInLine — the follow rule, for any car", () => {
+  const everyone = (): boolean => true;
+  const arrays = (cars: Array<[number, number, number]>): [number[], number[]] => {
+    const telemetry = paceArrays(cars);
+
+    return [telemetry.CarIdxPaceLine as number[], telemetry.CarIdxPaceRow as number[]];
+  };
+
+  it("names the nearest lower row in the car's OWN line", () => {
+    const [lines, rows] = arrays(DOUBLE_FILE);
+
+    expect(resolveCarAheadInLine(lines, rows, 5, everyone)).toBe(3); // line 0 row 3 → row 2
+    expect(resolveCarAheadInLine(lines, rows, 6, everyone)).toBe(4); // line 1 row 2 → row 1
+    expect(resolveCarAheadInLine(lines, rows, 4, everyone)).toBe(2); // line 1 row 1 → row 0
+  });
+
+  it("hands back the pace car itself for the leader, and nobody for the outside front-row car", () => {
+    const [lines, rows] = arrays(DOUBLE_FILE);
+
+    expect(resolveCarAheadInLine(lines, rows, 1, everyone)).toBe(PACE);
+    expect(resolveCarAheadInLine(lines, rows, 2, everyone)).toBeNull();
+    expect(resolveCarAheadInLine(lines, rows, PACE, everyone)).toBeNull();
+  });
+
+  it("walks past a car that is not in the world", () => {
+    const [lines, rows] = arrays(DOUBLE_FILE);
+
+    expect(resolveCarAheadInLine(lines, rows, 5, (carIdx) => carIdx !== 3)).toBe(1);
+    expect(resolveCarAheadInLine(lines, rows, 5, (carIdx) => carIdx !== 3 && carIdx !== 1)).toBe(PACE);
+  });
+
+  it("answers nobody for a car that is not lined up, or one the arrays do not carry", () => {
+    const [lines, rows] = arrays(DOUBLE_FILE);
+
+    expect(resolveCarAheadInLine(lines, rows, 9, everyone)).toBeNull();
+    expect(resolveCarAheadInLine(lines, rows, 500, everyone)).toBeNull();
+  });
+
+  it("is the rule the lineup uses for the player — the same car, for every car, on the uneven-lanes snapshot", () => {
+    const [snapshot] = readFixture<CapturedTick[]>("caution-lineup-20260919.json");
+    const telemetry = capturedTelemetry(snapshot);
+
+    for (let carIdx = 0; carIdx < 20; carIdx++) {
+      const ahead = resolveCarAheadInLine(
+        telemetry.CarIdxPaceLine as number[],
+        telemetry.CarIdxPaceRow as number[],
+        carIdx,
+        () => true,
+      );
+      const lineup = resolvePaceLineup(telemetry, session(carIdx), true);
+
+      // The lineup falls back to the pace car where the rule names nobody.
+      expect(lineup?.followCarIdx, `car ${carIdx}`).toBe(ahead ?? PACE);
+      expect(lineup?.followsPaceCar, `car ${carIdx}`).toBe(ahead === null || ahead === PACE);
+    }
   });
 });

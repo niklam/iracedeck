@@ -5425,6 +5425,7 @@ describe("sim-events-iracing translator", () => {
           doubleFile: true,
           lineupPosition: 1,
           anchor: "pace-car",
+          paceFlags: { endOfLine: false, freePass: false, wavedAround: false },
         });
       });
 
