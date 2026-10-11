@@ -18,8 +18,8 @@ import { SETTINGS_WINDOW_TABS } from "./tabs.mjs";
 /**
  * Pause after switching tabs, so layout settles. Images are not covered by it:
  * they get the wait below, which ends when they have loaded instead of when a
- * fixed time is up, and then takes this pause once more when an image arrived
- * during it, so the image is painted before the screenshot.
+ * fixed time is up, and then takes this pause once more on a tab that has
+ * images, so they are painted before the screenshot.
  */
 export const TAB_SETTLE_MS = 400;
 
@@ -38,10 +38,10 @@ export const PANE_IMAGES_TIMEOUT_MS = 10_000;
 export const PANE_IMAGES_POLL_MS = 100;
 
 /**
- * Where the `<img>`s of the visible pane stand: `"loading"` while any has not
- * finished, then `"broken"` when one finished without a picture, else
- * `"loaded"`. The VISIBLE pane, whatever its id, so the check follows the
- * page's own tab switch; a pane with no images is trivially loaded. `complete`
+ * Where the `<img>`s of the visible pane stand: `"none"` when it has no
+ * image, `"loading"` while any has not finished, then `"broken"` when one
+ * finished without a picture, else `"loaded"`. The VISIBLE pane, whatever its
+ * id, so the check follows the page's own tab switch. `complete`
  * is false for a lazy image whose fetch has not started, which is the state
  * right after the click, and TRUE for one whose fetch failed — only its zero
  * `naturalWidth` tells that one from a loaded image, and an offline capture
@@ -51,6 +51,7 @@ export const PANE_IMAGES_POLL_MS = 100;
  */
 export const PANE_IMAGES_STATE_EXPRESSION = `(() => {
   const images = Array.from(document.querySelectorAll('.sw-pane:not([hidden]) img'));
+  if (images.length === 0) return "none";
   if (!images.every((img) => img.complete)) return "loading";
   return images.some((img) => img.naturalWidth === 0) ? "broken" : "loaded";
 })()`;
@@ -142,10 +143,12 @@ function watchForPageLoad(cdp, sessionId) {
  *
  * Polls the page through the injected `delay`, so a test runs it without real
  * timers, and counts the time it has asked for rather than reading a clock for
- * the same reason. A pane whose images are already loaded costs one evaluate
- * and no delay. One that had to be waited for gets one more settle before the
- * answer goes back: the check sees an image finish, not the frame that paints
- * it, and the caller's next step is the screenshot.
+ * the same reason. A pane with no image costs one evaluate and no delay. One
+ * whose images have loaded gets one more settle before the answer goes back,
+ * whether they were waited for or were found loaded at the first check: the
+ * check sees an image finish, not the frame that paints it, an image can
+ * finish a moment before the first check as easily as after it, and the
+ * caller's next step is the screenshot.
  *
  * @param {any} cdp
  * @param {string} sessionId
@@ -154,7 +157,7 @@ function watchForPageLoad(cdp, sessionId) {
  * @returns {Promise<"loaded" | "broken" | "timeout">} `"broken"` when an image
  *   finished without a picture, `"timeout"` when the bound was reached with
  *   one still loading.
- * @throws When the page answers with anything but one of its three states: an
+ * @throws When the page answers with anything but one of its four states: an
  *   exception, or no value at all.
  */
 async function waitForPaneImages(cdp, sessionId, delay, tab) {
@@ -168,8 +171,10 @@ async function waitForPaneImages(cdp, sessionId, delay, tab) {
 
     if (state === "broken") return "broken";
 
+    if (state === "none") return "loaded";
+
     if (state === "loaded") {
-      if (waited > 0) await delay(TAB_SETTLE_MS);
+      await delay(TAB_SETTLE_MS);
 
       return "loaded";
     }

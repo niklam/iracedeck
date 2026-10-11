@@ -17,9 +17,10 @@ const SIZE = { width: 1172, height: 788 };
 /**
  * A CDP double that records commands and answers the ones we depend on.
  *
- * `imagesLoadAfter` is how many times a tab's "where do this pane's images
- * stand?" check answers "loading" before it settles: 0 for a pane whose images
- * are local (every tab but one), Infinity for an image that never arrives.
+ * By default a pane has no image, as every tab but one. `imagesLoadAfter` gives
+ * it one, and is how many times the "where do this pane's images stand?" check
+ * answers "loading" before it settles: 0 for an image that had loaded by the
+ * first check, Infinity for one that never arrives.
  * `imagesBroken` makes it settle on "broken" — an image whose fetch failed —
  * on every tab, or on the one pane it names.
  * `imagesReply` replaces the whole reply to that check, for a page that cannot
@@ -29,7 +30,7 @@ function createFakeCdp({
   missingPane,
   emitLoadEvent = false,
   noEvents = false,
-  imagesLoadAfter = 0,
+  imagesLoadAfter,
   imagesBroken = false,
   imagesReply,
 } = {}) {
@@ -82,11 +83,13 @@ function createFakeCdp({
 
         if (imagesReply) return imagesReply;
 
-        if (imageChecksThisTab <= imagesLoadAfter) return { result: { value: "loading" } };
-
         const broken = imagesBroken === true || (imagesBroken && lastClick.includes(`"${imagesBroken}"`));
 
-        return { result: { value: broken ? "broken" : "loaded" } };
+        if (broken) return { result: { value: imageChecksThisTab <= (imagesLoadAfter ?? 0) ? "loading" : "broken" } };
+
+        if (imagesLoadAfter === undefined) return { result: { value: "none" } };
+
+        return { result: { value: imageChecksThisTab <= imagesLoadAfter ? "loading" : "loaded" } };
       }
 
       if (method === "Runtime.evaluate") {
@@ -326,17 +329,29 @@ describe("captureSettingsWindow: waiting for a tab's images", () => {
     expect(PANE_IMAGES_STATE_EXPRESSION).toContain("img.naturalWidth === 0");
   });
 
-  it("costs one check and no wait when the images are already loaded", async () => {
+  it("costs one check and no wait on a tab that has no image", async () => {
     const { deps, cdp, polls, settles, warnings, writeFile } = createTimedDeps();
 
     await captureSettingsWindow(OPTIONS, deps);
 
     expect(steps(cdp)).toEqual(["click", "images?", "screenshot", "click", "images?", "screenshot"]);
     expect(polls()).toBe(0);
-    // The one after each click, and no second one: nothing arrived late.
+    // The one after each click, and no second one: there is nothing to paint.
     expect(settles()).toBe(TABS.length);
     expect(warnings()).toEqual([]);
     expect(writeFile).toHaveBeenCalledTimes(2);
+  });
+
+  it("settles once more for an image that had loaded by the first check, which may have finished a moment before it", async () => {
+    const { deps, cdp, polls, settles, warnings } = createTimedDeps({ imagesLoadAfter: 0 });
+
+    await captureSettingsWindow({ ...OPTIONS, tabs: [TABS[0]] }, deps);
+
+    expect(steps(cdp)).toEqual(["click", "images?", "screenshot"]);
+    expect(polls()).toBe(0);
+    // After the click, and again after the check that found the image loaded.
+    expect(settles()).toBe(2);
+    expect(warnings()).toEqual([]);
   });
 
   it("waits for an image that is still loading, then captures", async () => {
