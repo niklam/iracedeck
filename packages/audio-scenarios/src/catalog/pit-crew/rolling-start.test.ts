@@ -145,6 +145,7 @@ const LINEUP: PaceLineup = {
   doubleFile: true,
   lineupPosition: 11,
   anchor: "grid",
+  paceFlags: { endOfLine: false, freePass: false, wavedAround: false },
 };
 
 /** {@link LINEUP} with another car ahead. */
