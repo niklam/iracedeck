@@ -1,9 +1,16 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import url from "node:url";
 import { describe, expect, it } from "vitest";
 
-import { MEMBERSHIP_URL, SUPPORT_BUTTON_IMAGE_URL, SUPPORT_URL } from "../packages/website/src/data/support.ts";
+import {
+  MEMBERSHIP_URL,
+  SUPPORT_BUTTON_IMAGE_HEIGHT,
+  SUPPORT_BUTTON_IMAGE_URL,
+  SUPPORT_BUTTON_IMAGE_WIDTH,
+  SUPPORT_URL,
+} from "../packages/website/src/data/support.ts";
 
 /**
  * The website's support section (#1299).
@@ -19,21 +26,93 @@ const repoRoot = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), 
 const websiteSrc = path.join(repoRoot, "packages", "website", "src");
 const docsDir = path.join(websiteSrc, "content", "docs");
 
-const TEXT_EXTENSIONS = new Set([".astro", ".css", ".js", ".json", ".md", ".mdx", ".mjs", ".ts"]);
+const TEXT_EXTENSIONS = new Set([
+  ".astro",
+  ".css",
+  ".html",
+  ".js",
+  ".json",
+  ".jsx",
+  ".md",
+  ".mdx",
+  ".mjs",
+  ".mts",
+  ".svg",
+  ".ts",
+  ".tsx",
+  ".webmanifest",
+  ".yaml",
+  ".yml",
+]);
 
-/** Every text source under the website's `src/`, as repo-relative POSIX paths. */
+let sources;
+
+/**
+ * Every text file of the website package that git tracks or would add, with
+ * its text: the sources, `astro.config.mjs` (where the site's third-party
+ * script tags are declared), `public/` and the package's own scripts. Asking
+ * git keeps `node_modules`, `dist` and the generated gallery out without a list
+ * of them here. Read once, on first use, so a filtered run that skips these
+ * tests reads nothing.
+ */
 function websiteSources() {
-  return readdirSync(websiteSrc, { recursive: true, withFileTypes: true })
-    .filter((entry) => entry.isFile() && TEXT_EXTENSIONS.has(path.extname(entry.name)))
-    .map((entry) => path.relative(repoRoot, path.join(entry.parentPath, entry.name)).split(path.sep).join("/"));
+  sources ??= execFileSync(
+    "git",
+    ["ls-files", "--cached", "--others", "--exclude-standard", "--", "packages/website"],
+    { cwd: repoRoot, encoding: "utf8" },
+  )
+    .split("\n")
+    .filter((file) => TEXT_EXTENSIONS.has(path.extname(file)) && existsSync(path.join(repoRoot, file)))
+    .map((file) => ({ file, text: readFileSync(path.join(repoRoot, file), "utf8") }));
+
+  return sources;
 }
 
-/** Every Buy Me a Coffee URL in `text`, up to the character that ends it in prose or markup. */
-function buyMeACoffeeUrls(text) {
-  return text.match(/https?:\/\/[^\s"'<>()`]*buymeacoffee\.com[^\s"'<>()`]*/g) ?? [];
+/**
+ * Every mention of one of Buy Me a Coffee's domains in `text`, as the whole
+ * token it is part of. Not only `https://` URLs: a protocol-relative
+ * `//cdnjs…`, a link typed without its scheme and the `bmc.link` short domain
+ * are the ways a copy would slip past a stricter pattern.
+ *
+ * The domain is found first and the token grown outwards from it. One pattern
+ * for the whole token would rescan every long unbroken run in the files (a
+ * data URI, a line of JSON) from each of its characters.
+ */
+function buyMeACoffeeMentions(text) {
+  const endsToken = (character) => /[\s"'<>()`]/.test(character);
+  const mentions = [];
+  let covered = 0;
+
+  for (const match of text.matchAll(/buymeacoffee\.com|bmc\.link/gi)) {
+    // A second domain inside a token already reported is the same mention.
+    if (match.index < covered) continue;
+
+    let start = match.index;
+    let end = match.index + match[0].length;
+
+    while (start > covered && !endsToken(text[start - 1])) start--;
+    while (end < text.length && !endsToken(text[end])) end++;
+
+    mentions.push(text.slice(start, end));
+    covered = end;
+  }
+
+  return mentions;
+}
+
+let sourceMentions;
+
+/** Every mention in the website package, with the file it is in. */
+function mentionsInSources() {
+  sourceMentions ??= websiteSources().flatMap(({ file, text }) =>
+    buyMeACoffeeMentions(text).map((link) => ({ file, link })),
+  );
+
+  return sourceMentions;
 }
 
 const readDocsPage = (name) => readFileSync(path.join(docsDir, name), "utf8");
+const readComponent = () => readFileSync(path.join(websiteSrc, "components", "SupportSection.astro"), "utf8");
 
 /** Where `needle` last occurs in `source`. A landmark that is gone fails here, not as a comparison against -1. */
 function lastPosition(source, needle) {
@@ -74,12 +153,23 @@ describe("website support section", () => {
   });
 
   it("takes every link from data/support.ts", () => {
-    const component = readFileSync(path.join(websiteSrc, "components", "SupportSection.astro"), "utf8");
+    const component = readComponent();
 
     expect(component).toContain("href={SUPPORT_URL}");
     expect(component).toContain("href={MEMBERSHIP_URL}");
     expect(component).toContain("src={SUPPORT_BUTTON_IMAGE_URL}");
-    expect(buyMeACoffeeUrls(component)).toEqual([]);
+    expect(buyMeACoffeeMentions(component)).toEqual([]);
+  });
+
+  it("reserves the image's box from data/support.ts, beside the text that sets its width", () => {
+    const component = readComponent();
+
+    expect(component).toContain("width={SUPPORT_BUTTON_IMAGE_WIDTH}");
+    expect(component).toContain("height={SUPPORT_BUTTON_IMAGE_HEIGHT}");
+
+    for (const size of [SUPPORT_BUTTON_IMAGE_WIDTH, SUPPORT_BUTTON_IMAGE_HEIGHT]) {
+      expect(Number.isInteger(size) && size > 0).toBe(true);
+    }
   });
 
   describe("the links", () => {
@@ -101,27 +191,43 @@ describe("website support section", () => {
     });
   });
 
-  describe("the website's sources", () => {
-    const sources = websiteSources().map((file) => ({ file, text: readFileSync(path.join(repoRoot, file), "utf8") }));
-    const found = sources.flatMap(({ file, text }) => buyMeACoffeeUrls(text).map((link) => ({ file, link })));
-
-    it("are found by the walker, the data module's three links included", () => {
+  describe("the website package's files", () => {
+    it("are found, astro.config.mjs and the data module's three links included", () => {
       // The two checks below pass on an empty list, so prove the list is not empty.
-      expect(sources.length).toBeGreaterThan(50);
-      expect(
-        found.filter(({ file }) => file === "packages/website/src/data/support.ts").map(({ link }) => link),
-      ).toEqual([SUPPORT_URL, MEMBERSHIP_URL, SUPPORT_BUTTON_IMAGE_URL]);
+      const files = websiteSources().map(({ file }) => file);
+      const inDataModule = mentionsInSources()
+        .filter(({ file }) => file === "packages/website/src/data/support.ts")
+        .map(({ link }) => link);
+
+      expect(files.length).toBeGreaterThan(80);
+      expect(files).toContain("packages/website/astro.config.mjs");
+      expect(inDataModule).toEqual(expect.arrayContaining([SUPPORT_URL, MEMBERSHIP_URL, SUPPORT_BUTTON_IMAGE_URL]));
     });
 
-    it("name no Buy Me a Coffee URL that is not one of the three", () => {
+    it("name no Buy Me a Coffee link that is not one of the three", () => {
       const allowed = new Set([SUPPORT_URL, MEMBERSHIP_URL, SUPPORT_BUTTON_IMAGE_URL]);
 
-      expect(found.filter(({ link }) => !allowed.has(link))).toEqual([]);
+      expect(mentionsInSources().filter(({ link }) => !allowed.has(link))).toEqual([]);
     });
 
-    it("never load the Buy Me a Coffee widget script", () => {
-      expect(found.filter(({ link }) => new URL(link).hostname === "cdnjs.buymeacoffee.com")).toEqual([]);
-      expect(sources.filter(({ text }) => text.includes("bmc-button")).map(({ file }) => file)).toEqual([]);
+    it("never load a Buy Me a Coffee widget script", () => {
+      const withWidget = websiteSources()
+        .filter(({ text }) => /bmc-(?:button|widget)/i.test(text))
+        .map(({ file }) => file);
+
+      expect(mentionsInSources().filter(({ link }) => /cdnjs\.buymeacoffee\.com/i.test(link))).toEqual([]);
+      expect(withWidget).toEqual([]);
     });
+  });
+
+  it("sees a copy typed without a scheme, protocol-relative or on the short domain", () => {
+    expect(buyMeACoffeeMentions('<script src="//cdnjs.buymeacoffee.com/1.0.0/widget.prod.min.js">')).toEqual([
+      "//cdnjs.buymeacoffee.com/1.0.0/widget.prod.min.js",
+    ]);
+    expect(buyMeACoffeeMentions("see [here](BuyMeACoffee.com/niklaslampn) or bmc.link/niklaslampen")).toEqual([
+      "BuyMeACoffee.com/niklaslampn",
+      "bmc.link/niklaslampen",
+    ]);
+    expect(buyMeACoffeeMentions("Buy Me a Coffee draws the button")).toEqual([]);
   });
 });
