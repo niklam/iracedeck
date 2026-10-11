@@ -178,7 +178,7 @@ If the car ahead of you changes while the caution is still running — somebody 
 
 **If you drop back from the car ahead, he tells you to close up.** Once the pace car has the field and the pack has had about ten seconds to settle, the engineer watches the gap to the car you line up behind. He judges it against how tightly the rest of the field is running, not against a fixed distance or time. When your gap has stayed well over twice the pack's own spacing for a few seconds you hear *"Close it up — catch car …"*, *"Gap's opened. Close up on car …"* or *"You've dropped back. Catch up to car …"*. With only the pace car ahead of you in your line it is *"Close up on the pace car."* or *"You've dropped off the pace car — close it up."* — and the pace car is allowed its usual longer lead, so the front of the field is not nagged for holding station. A car the session cannot name gets *"Close the gap to the car ahead."* or *"You've dropped back — close it up."* No lane is named: your lane has not changed, and this call is about distance.
 
-If the gap is still open thirty seconds later and you are not closing it, he reminds you — *"Still a gap. Close up on car …"* or *"Keep closing — you're still off the back of car …"* — at most twice for one gap. While you are closing he leaves you alone, and once you are back with the pack the matter is closed without a word. If the car ahead of you changes while the gap is open, the count starts over and the next call names the new car. This carries on through the last caution lap, which is exactly when being in place matters, and stops when the pace car peels off.
+If the gap is still open thirty seconds later and you are not closing it, he reminds you — *"Still a gap. Close up on car …"* or *"Keep closing — you're still off the back of car …"* — at most twice for one gap. While you are closing he leaves you alone, and once you are back with the pack the matter is closed without a word. If the car ahead of you changes while the gap is open and stays changed for a few seconds, the count starts over and the next call names the new car; a car that drops out of your line for an instant and comes straight back changes nothing. This carries on through the last caution lap, which is exactly when being in place matters, and stops when the green is held.
 
 He does not ask you to close up:
 
@@ -187,7 +187,7 @@ He does not ask you to close up:
 - **On pit road, and for about ten seconds after you leave it.** After a stop under caution you get the call once, naming the car to catch, if you are still off the pack when you are up to speed — and no reminders, because you are catching the field on purpose.
 - **While you are being sent round to the tail** — a wave-around, a free pass, or the end of the line — until you have taken your place there. From then on you are an ordinary car in the queue again.
 - **When the car you line up behind is nearer behind you than ahead.** You are ahead of your slot, and "catch" is the wrong word for a car you have to let by.
-- **Once the pace car has peeled off**, when gaps open on purpose, and after the green.
+- **Once the green is held**, a few seconds before the pace car peels off, when gaps open on purpose — and after the green.
 - **In a very small field** — fewer than six cars lined up, or fewer than seven once the field runs double file — where there are too few cars to say what normal spacing is.
 - **In a rolling-start formation.** These calls belong to a caution.
 
