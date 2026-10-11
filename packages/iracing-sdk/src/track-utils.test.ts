@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { carInWorld, findNearestCarOnTrack, nearestCarGapMeters } from "./track-utils.js";
+import { carInWorld, findNearestCarOnTrack, forwardGapMeters, nearestCarGapMeters } from "./track-utils.js";
 import type { TelemetryData } from "./types.js";
 import { TrkLoc } from "./types.js";
 
@@ -350,5 +350,83 @@ describe("nearestCarGapMeters", () => {
       { idx: 1, laps: 1, dist: 0.2 },
     ]) as unknown as TelemetryData;
     expect(nearestCarGapMeters(pair, 0, 0)).toBeNull();
+  });
+});
+
+describe("forwardGapMeters", () => {
+  /** Three cars on a 1000 m lap: 0 at 100 m, 1 at 130 m, 2 at 900 m. */
+  const field = makeTelemetry(0, [
+    { idx: 0, laps: 1, dist: 0.1 },
+    { idx: 1, laps: 1, dist: 0.13 },
+    { idx: 2, laps: 1, dist: 0.9 },
+  ]) as unknown as TelemetryData;
+
+  it("measures forward from one named car to another", () => {
+    expect(forwardGapMeters(field, 0, 1, 1000)).toBeCloseTo(30);
+  });
+
+  it("is directional — the same pair the other way round is the rest of the lap", () => {
+    expect(forwardGapMeters(field, 1, 0, 1000)).toBeCloseTo(970);
+  });
+
+  it("goes forward across the start/finish line", () => {
+    // From 900 m to 100 m: 200 m ahead, not 800 m behind.
+    expect(forwardGapMeters(field, 2, 0, 1000)).toBeCloseTo(200);
+  });
+
+  it("measures to the car it is given, not to the nearest one", () => {
+    // Car 1 is 30 m ahead of car 0; the gap asked for is the one to car 2.
+    expect(forwardGapMeters(field, 0, 2, 1000)).toBeCloseTo(800);
+    expect(nearestCarGapMeters(field, 0, 1000)).toBeCloseTo(30);
+  });
+
+  it("reads zero for two cars level on the lap, and never the full lap length", () => {
+    const level = makeTelemetry(0, [
+      { idx: 0, laps: 1, dist: 0.4 },
+      { idx: 1, laps: 1, dist: 0.4 },
+    ]) as unknown as TelemetryData;
+
+    expect(forwardGapMeters(level, 0, 1, 1000)).toBe(0);
+    expect(forwardGapMeters(field, 0, 2, 1000)).toBeLessThan(1000);
+  });
+
+  it("scales with the track length", () => {
+    expect(forwardGapMeters(field, 0, 1, 2381.5)).toBeCloseTo(0.03 * 2381.5);
+  });
+
+  it("returns null when either car is not in the world", () => {
+    const gone = makeTelemetry(0, [
+      { idx: 0, laps: 1, dist: 0.1 },
+      // A stale but valid lap distance on a car that has left: the surface is what rejects it.
+      { idx: 1, laps: 1, dist: 0.13, trackSurface: TrkLoc.NotInWorld },
+      { idx: 2, laps: 1, dist: 0.9 },
+    ]) as unknown as TelemetryData;
+
+    expect(forwardGapMeters(gone, 0, 1, 1000)).toBeNull();
+    expect(forwardGapMeters(gone, 1, 2, 1000)).toBeNull();
+    // The positive control: the pair that IS in the world still measures.
+    expect(forwardGapMeters(gone, 0, 2, 1000)).toBeCloseTo(800);
+  });
+
+  it("returns null for a car with no lap distance, or one the arrays do not carry", () => {
+    const partial = makeTelemetry(0, [
+      { idx: 0, laps: 1, dist: 0.1 },
+      { idx: 3, laps: 1, dist: 0.2 },
+    ]) as unknown as TelemetryData;
+
+    expect(forwardGapMeters(partial, 0, 1, 1000)).toBeNull(); // slot 1 is empty: -1
+    expect(forwardGapMeters(partial, 0, 9, 1000)).toBeNull(); // beyond the arrays
+    expect(forwardGapMeters(partial, 0, 3, 1000)).toBeCloseTo(100);
+  });
+
+  it("returns null for the same car twice, a negative index, no telemetry or no usable track length", () => {
+    expect(forwardGapMeters(field, 0, 0, 1000)).toBeNull();
+    expect(forwardGapMeters(field, -1, 1, 1000)).toBeNull();
+    expect(forwardGapMeters(field, 0, -1, 1000)).toBeNull();
+    expect(forwardGapMeters(null, 0, 1, 1000)).toBeNull();
+    expect(forwardGapMeters({} as TelemetryData, 0, 1, 1000)).toBeNull();
+    expect(forwardGapMeters(field, 0, 1, 0)).toBeNull();
+    expect(forwardGapMeters(field, 0, 1, null)).toBeNull();
+    expect(forwardGapMeters(field, 0, 1, Number.NaN)).toBeNull();
   });
 });

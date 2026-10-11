@@ -183,3 +183,47 @@ export function nearestCarGapMeters(
 
   return best * trackLengthMeters;
 }
+
+/**
+ * The distance (meters) from one named car FORWARD round the lap to another:
+ * how far `fromIdx` must travel to reach where `toIdx` is now, from
+ * `CarIdxLapDistPct` × `trackLengthMeters`. Always in `[0, trackLength)`, so
+ * a car just behind reads as nearly a full lap ahead — the caller decides what
+ * "more than half a lap" means to it.
+ *
+ * A PAIRWISE measurement between two cars the caller has already identified
+ * some other way (issue #1168: the car the pace lineup tells the player to
+ * follow), which is what separates it from the two helpers above. It walks
+ * nothing and ranks nobody, so it is not a track-order primitive and
+ * `.claude/rules/race-positions.md`'s "never sort cars by lap distance" rule
+ * does not reach it; nor is it {@link nearestCarGapMeters}, which answers for
+ * whichever car happens to be closest in either direction. Under a caution run
+ * double file that nearest car is the one alongside in the other lane.
+ *
+ * `null` when it cannot be measured: no lap-distance array, no usable track
+ * length, the same car twice, or either car not in the world by the shared
+ * {@link carInWorld} rule — a car that has left keeps a stale lap distance for
+ * a tick, and a distance to where it was is not a gap.
+ */
+export function forwardGapMeters(
+  telemetry: TelemetryData | null,
+  fromIdx: number,
+  toIdx: number,
+  trackLengthMeters: number | null,
+): number | null {
+  if (!telemetry?.CarIdxLapDistPct || trackLengthMeters === null || !(trackLengthMeters > 0)) return null;
+
+  if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return null;
+
+  const inWorld = carInWorld(telemetry);
+
+  // `carInWorld` has already rejected an absent or negative lap distance.
+  if (!inWorld(fromIdx) || !inWorld(toIdx)) return null;
+
+  const lapDistPct = telemetry.CarIdxLapDistPct as number[];
+  const delta = lapDistPct[toIdx] - lapDistPct[fromIdx];
+
+  // Forward round the lap: a target behind on the lap fraction is ahead across
+  // the start/finish line.
+  return (delta < 0 ? delta + 1 : delta) * trackLengthMeters;
+}

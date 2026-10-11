@@ -117,7 +117,13 @@ export {
 } from "./template-context.js";
 
 // Track utilities
-export { carInWorld, findNearestCarOnTrack, type FindNearestCarOptions, nearestCarGapMeters } from "./track-utils.js";
+export {
+  carInWorld,
+  findNearestCarOnTrack,
+  type FindNearestCarOptions,
+  forwardGapMeters,
+  nearestCarGapMeters,
+} from "./track-utils.js";
 
 // Position utilities
 export { calculateRacePositions, classPositionFromOrder } from "./position-utils.js";
