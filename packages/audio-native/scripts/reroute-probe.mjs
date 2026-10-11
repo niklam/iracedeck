@@ -35,6 +35,9 @@
  *   --cycle <ms>       close the device and open it again this often, as the
  *                      plugin does around its sounds, so that a close lands
  *                      inside a reroute
+ *   --on-stall <cmd>   a shell command to run once the loop has stalled for
+ *                      good, before the probe ends itself; {pid} in it is the
+ *                      probe's process id. For a stack walker or a dump.
  *   --no-destroy       leave with process.exit(0) and no destroyAudioEngine,
  *                      the way a deck host ends a plugin
  */
@@ -83,6 +86,7 @@ function parseOptions() {
         seconds: { type: "string" },
         busy: { type: "string" },
         cycle: { type: "string" },
+        "on-stall": { type: "string" },
         "no-destroy": { type: "boolean", default: false },
       },
     }).values;
@@ -108,8 +112,9 @@ function endpointIdOf(deviceId) {
  * memory; the watchdog reports while the count stands still, and then ends
  * the process: Ctrl+C is handled on the thread that is stuck.
  */
-function startWatchdog(beats) {
+function startWatchdog(beats, onStall) {
   const source = `
+    const { execSync } = require("node:child_process");
     const { writeSync } = require("node:fs");
     const { workerData } = require("node:worker_threads");
     const beats = new Int32Array(workerData.beats);
@@ -128,6 +133,15 @@ function startWatchdog(beats) {
       const stalledFor = now - changedAt;
       if (stalledFor > workerData.giveUp) {
         writeSync(1, "STALLED for good after " + stalledFor + " ms: ending the process\\n");
+        if (workerData.onStall) {
+          const command = workerData.onStall.replaceAll("{pid}", String(process.pid));
+          writeSync(1, "running: " + command + "\\n");
+          try {
+            execSync(command, { stdio: "inherit", timeout: 120000 });
+          } catch (error) {
+            writeSync(1, "--on-stall failed: " + error.message + "\\n");
+          }
+        }
         process.kill(process.pid);
       }
       if (stalledFor > workerData.threshold && now - reportedAt >= 1000) {
@@ -138,7 +152,7 @@ function startWatchdog(beats) {
   `;
   const watchdog = new Worker(source, {
     eval: true,
-    workerData: { beats: beats.buffer, threshold: STALL_THRESHOLD_MS, giveUp: STALL_GIVE_UP_MS },
+    workerData: { beats: beats.buffer, threshold: STALL_THRESHOLD_MS, giveUp: STALL_GIVE_UP_MS, onStall },
   });
 
   watchdog.unref();
@@ -277,7 +291,7 @@ if (cycleMs !== null) {
 }
 
 const beats = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT));
-const watchdog = startWatchdog(beats);
+const watchdog = startWatchdog(beats, options["on-stall"] ?? null);
 
 let lastBeatAt = performance.now();
 let worstBlockMs = 0;
