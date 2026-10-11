@@ -204,6 +204,17 @@ describe("website support section", () => {
       expect(inDataModule).toEqual(expect.arrayContaining([SUPPORT_URL, MEMBERSHIP_URL, SUPPORT_BUTTON_IMAGE_URL]));
     });
 
+    it("hold the developer docs page's own copy of the link to SUPPORT_URL", () => {
+      // The one link typed by hand: a Markdown page cannot import the constant.
+      // The check below would also refuse a stale copy; this one proves the
+      // page is read, and that the copy is still there to be checked.
+      const inDeveloperDocs = mentionsInSources()
+        .filter(({ file }) => file === "packages/website/src/content/docs/docs/development/index.md")
+        .map(({ link }) => link);
+
+      expect(inDeveloperDocs).toEqual([SUPPORT_URL]);
+    });
+
     it("name no Buy Me a Coffee link that is not one of the three", () => {
       const allowed = new Set([SUPPORT_URL, MEMBERSHIP_URL, SUPPORT_BUTTON_IMAGE_URL]);
 

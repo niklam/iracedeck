@@ -4,7 +4,7 @@
  * render (#1299). Do not retype a Buy Me a Coffee URL anywhere else in the
  * site: `scripts/website-support-section.test.mjs` fails on one that is not
  * one of these three. The one copy it allows is the plain Markdown link on the
- * developer docs page (`docs/development/index.md`), which it holds to
+ * developer docs page (`src/content/docs/docs/development/index.md`), which it holds to
  * {@link SUPPORT_URL}.
  */
 
