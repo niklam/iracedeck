@@ -245,12 +245,13 @@
 			.sw-support-p a, .sw-support-member a, .sw-support-list a { color: var(--sw-fg-dim); }
 			.sw-support-p a:hover, .sw-support-member a:hover, .sw-support-list a:hover { color: var(--sw-fg); }
 			/* The button is Buy Me a Coffee's image at its own 253×50, as on the
-			   website: nothing here sizes, rounds, outlines or hovers it. Zero
-			   line-height so the link is exactly the image's box, and the Supporter
-			   line sits 12px under it. The colour is for the alt text, which is all
-			   there is to see when the image cannot load. */
-			.sw-support-cta { margin: 16px 0 12px; line-height: 0; }
-			.sw-support-button { display: inline-block; line-height: 0; text-decoration: none; color: var(--sw-fg-dim); }
+			   website: nothing here sizes, rounds, outlines or hovers it. The image
+			   is a block so the link is exactly its box, and the Supporter line sits
+			   12px under it. The line height and the colour are for the alt text,
+			   which is all there is to see when the image cannot load: a zero
+			   line-height would squeeze it to nothing. */
+			.sw-support-cta { margin: 16px 0 12px; }
+			.sw-support-button { display: inline-block; color: var(--sw-fg-dim); }
 			.sw-support-button img { display: block; }
 			/* A step smaller and quieter than the prose above it. */
 			.sw-support-member { margin: 0; font-size: 8pt; line-height: 1.55; color: var(--sw-fg-mute); }

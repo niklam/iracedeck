@@ -15,8 +15,9 @@
 
   The button is Buy Me a Coffee's own image, hotlinked as the website does, and
   it is the ONLY thing the window loads from another site
-  (`settings-window-no-third-party.test.ts` holds that line). It shows their
-  live supporter count. Two attributes keep the request small:
+  (`settings-window-no-third-party.test.ts` holds that line). It carries a
+  supporter count, which Buy Me a Coffee draws into the image and caches hold
+  for as long as they like. Two attributes keep the request small:
 
     - `loading="lazy"`: the pane is `hidden` until its tab is chosen, and a lazy
       image with no box is not fetched, so the request goes out when a user
@@ -25,8 +26,8 @@
       about the page that made it.
 
   Never swap the image for their widget script (`cdnjs.buymeacoffee.com`): it
-  looks the same and would run another site's code in a page that holds a write
-  connection to the user's settings.
+  would run another site's code in a page that holds a write connection to the
+  user's settings.
 
   Included by settings-window.ejs only; its styling lives with the rest of the
   window's CSS on that page.
