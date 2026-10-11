@@ -361,6 +361,11 @@ function renderShortcuts() {
         shortcutInFlight = s.id;
         setShortcutButtonsDisabled(true);
 
+        // Whether the run got as far as writing telemetry, and what stopped it
+        // if anything did. Both are read by the teardown in `finally` (#1167).
+        let wroteTelemetry = false;
+        let failure = null;
+
         try {
           // Issue #1127 — every shortcut announces itself here first, and the
           // server refuses the ones whose declared preconditions the harness
@@ -409,6 +414,7 @@ function renderShortcuts() {
           // this a "no limiter" button plays the LIMITER family's line: audible,
           // plausible, and the wrong family. `null` deletes the key.
           if (s.telemetryPatch) {
+            wroteTelemetry = true;
             await post("/api/telemetry", { patch: s.telemetryPatch });
           }
           // Issue #1127 — a shortcut that drives the TRANSLATOR rather than
@@ -423,6 +429,8 @@ function renderShortcuts() {
           // the mock's timer slowed or paused, and the tests post the very
           // object this does.
           if (s.telemetrySequence) {
+            wroteTelemetry = true;
+
             for (const step of s.telemetrySequence) {
               await post("/api/telemetry", step);
 
@@ -440,24 +448,57 @@ function renderShortcuts() {
           } else if (s.event) {
             await post("/api/bus/publish", { event: s.event, data: s.data });
           }
-          // Issue #1167 — a bus-event shortcut whose setup sequence had to put
-          // a translator STATE in front of the publish (a rolling-start
-          // formation, for "One Lap to Green") takes it away again afterwards:
-          // the same steps as a `telemetrySequence`, run after the publish.
-          // The page-wide lock holds through them, so the listening time in
-          // the first step is covered too.
-          if (s.event && s.teardownSequence) {
-            for (const step of s.teardownSequence) {
-              await post("/api/telemetry", step);
-
-              if (step.holdMs) await new Promise((resolve) => setTimeout(resolve, step.holdMs));
-            }
-          }
         } catch (e) {
-          alert(`Shortcut "${s.label}" failed: ${e.message}`);
+          failure = e;
         } finally {
-          shortcutInFlight = null;
-          setShortcutButtonsDisabled(false);
+          try {
+            // Issue #1167 — a bus-event shortcut whose setup sequence had to
+            // put a translator STATE in front of the publish (a rolling-start
+            // formation, for "One Lap to Green") takes it away again
+            // afterwards: the same steps as a `telemetrySequence`, run after
+            // the publish. The page-wide lock holds through them, so the
+            // listening time in the first step is covered too.
+            //
+            // In `finally`, and whenever the run wrote any telemetry, NOT
+            // only when the publish went through. The state it takes away is
+            // the one the setup put there, and a publish that failed — or a
+            // setup step that did — leaves that state behind just the same: a
+            // grid before its green with a formation open, which the next
+            // caution button reads as formation lineup changes, or a mock
+            // still in replay mode, where the translator publishes nothing
+            // for any button. After a failure it skips its holds: they are
+            // listening time, and nothing is playing.
+            let teardownFailure = null;
+
+            if (wroteTelemetry && s.teardownSequence) {
+              try {
+                for (const step of s.teardownSequence) {
+                  await post("/api/telemetry", step);
+
+                  if (step.holdMs && failure === null) {
+                    await new Promise((resolve) => setTimeout(resolve, step.holdMs));
+                  }
+                }
+              } catch (e) {
+                teardownFailure = e;
+              }
+            }
+
+            // After the teardown, so the harness is back in order by the time
+            // the tester reads why the run failed (an alert blocks the page).
+            if (failure !== null) alert(`Shortcut "${s.label}" failed: ${failure.message}`);
+
+            if (teardownFailure !== null) {
+              alert(
+                `Shortcut "${s.label}" could not put the harness back the way it found it: ${teardownFailure.message}\n\n` +
+                  "The mock may still be in the state the shortcut set up (before the green, or in replay mode). Press the " +
+                  "shortcut again, or apply the hot-lap telemetry preset, before pressing another button.",
+              );
+            }
+          } finally {
+            shortcutInFlight = null;
+            setShortcutButtonsDisabled(false);
+          }
         }
       });
       buttons.appendChild(btn);

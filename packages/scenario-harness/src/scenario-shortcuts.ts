@@ -188,10 +188,22 @@ export type BusEventShortcut = ScenarioShortcutBase & {
    * Exists for "One Lap to Green": its callout speaks only while the
    * translator holds a rolling-start formation, so the button's setup
    * sequence puts one in front of the translator — and a formation left
-   * running is a session left in `ParadeLaps`, before the green, where the
-   * overtake, gap and position callouts all stand down. Every button pressed
-   * afterwards would then be silent for a reason of this button's making, so
-   * it stands the formation down again once its line has had time to play.
+   * running is a session left in `ParadeLaps` with the grid still lined up
+   * and per-car lap progress still in the telemetry, which the next
+   * translator-driven button inherits. Measured against the caution buttons:
+   * each then also publishes formation lineup changes — a formation call in
+   * the middle of a caution — and "Caution → extra lap" loses the extra lap
+   * it exists to audition, since it counts on telemetry with no per-car lap
+   * progress. (The bus-event buttons are not what suffers: an overtake button
+   * publishes past the translator's own before-the-green guards and speaks
+   * either way.) So it stands the formation down again once its line has had
+   * time to play; `rolling-start-shortcuts.test.ts` pins both halves.
+   *
+   * The UI runs it whenever the run wrote any telemetry, not only after a
+   * publish that went through: a refused publish, or a setup step that failed
+   * part-way, leaves the setup's state behind just the same. After a failure
+   * it applies the patches without their holds. So a teardown has to put the
+   * harness right from ANY prefix of its setup, a bracket left open included.
    */
   teardownSequence?: readonly TelemetryStep[];
 };
@@ -1778,7 +1790,9 @@ const FORMATION_ADOPTED = formationBracket({
  * shown, nobody lined up, and the per-car arrays the run added taken away
  * again (`null` deletes a key) — so the formation it opened is closed, and
  * the next button starts from a race in progress rather than from a grid
- * before its green, where the overtake, gap and position callouts stand down.
+ * before its green with a formation still open, which the caution buttons
+ * read as formation lineup changes and "Caution → extra lap" loses its extra
+ * lap to (see `BusEventShortcut.teardownSequence`).
  * Driven live rather than inside a second bracket: leaving `ParadeLaps` with
  * no green shown is an edge no diff announces, which
  * `rolling-start-shortcuts.test.ts` pins by recording every event in the
@@ -1991,7 +2005,24 @@ const ROLLING_START_LINEUP_CHANGED_SHORTCUT: TelemetrySequenceShortcut = {
  * follow the published one). The last setup step is a bare tick, so the
  * adopted formation is in front of the publish whatever the mock's tick rate.
  * The teardown stands the formation down again once the line has played.
+ *
+ * **The teardown is also what a FAILED run leaves the harness with.** The UI
+ * runs it whenever the setup wrote any telemetry — the publish refused, or a
+ * setup step itself failing part-way, included — since the grid and the open
+ * formation it would otherwise leave are what the next caution button trips
+ * over. A setup that stopped inside its bracket has the mock in replay mode
+ * as well, where the translator publishes nothing at all and every
+ * translator-driven button after it is silent, so this stand-down turns
+ * `IsReplayPlaying` off too. After a run that went through that is no change. It is its own step
+ * rather than a key on {@link FORMATION_STAND_DOWN}: the two sequence buttons
+ * end on that one live, and a step that leaves replay mode has to be held for
+ * the exit grace before anything else is live.
  */
+const ONE_LAP_TO_GREEN_STAND_DOWN: TelemetryStep = {
+  patch: { IsReplayPlaying: false, ...FORMATION_STAND_DOWN.patch },
+  tick: true,
+};
+
 const ONE_LAP_TO_GREEN_SHORTCUT: BusEventShortcut = {
   id: "flag-one-lap-to-green",
   category: "Flags",
@@ -2001,7 +2032,7 @@ const ONE_LAP_TO_GREEN_SHORTCUT: BusEventShortcut = {
   telemetrySequence: [...FORMATION_ADOPTED, { patch: {}, tick: true }],
   event: "flag.one-pace-lap-to-go.raised",
   data: {},
-  teardownSequence: [{ patch: {}, holdMs: FORMATION_ONE_LAP_TO_GREEN_CALL_MS }, FORMATION_STAND_DOWN],
+  teardownSequence: [{ patch: {}, holdMs: FORMATION_ONE_LAP_TO_GREEN_CALL_MS }, ONE_LAP_TO_GREEN_STAND_DOWN],
 };
 
 /** The session presets' player, car "42" — row 7 of the single-file caution lineup, behind car "11". */

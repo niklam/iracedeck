@@ -752,6 +752,109 @@ describe("the formation's calls on their own", () => {
     expect(rig.events).toEqual([]);
   });
 
+  it.each(stepsOf(ONE_LAP).map((_step, index) => index + 1))(
+    '"One Lap to Green" is stood down by its teardown after a setup that stopped at step %i — a failed run leaves no formation behind',
+    (stepsRun) => {
+      // The UI runs the teardown whenever the setup wrote any telemetry: a
+      // publish the server refused, or a setup POST that failed part-way. A
+      // formation left running trips the next caution button (the control
+      // after this one), and a setup cut off inside its bracket has the mock
+      // in replay mode, where the translator publishes nothing for anyone.
+      // After a failure the UI applies the teardown's patches without their
+      // holds, as here.
+      const shortcut = shortcutOf(ONE_LAP);
+      const rig = startRig();
+
+      drive(rig, stepsOf(ONE_LAP).slice(0, stepsRun));
+      drive(
+        rig,
+        (shortcut.teardownSequence ?? []).map(({ patch, tick }) => ({ patch, tick })),
+      );
+      // Past the replay exit grace, in case the setup stopped inside the bracket.
+      drive(rig, [{ patch: {}, holdMs: REPLAY_EXIT_GRACE_MS + 500 }]);
+
+      const left = rig.controller.getState().telemetry as Record<string, unknown>;
+
+      expect(left.IsReplayPlaying).toBe(false);
+      expect(left.SessionState).toBe(SessionState.Racing);
+      expect((left.SessionFlags as number) >>> 0).toBe(RACING_NO_FLAG >>> 0);
+      expect(getRollingStartFormation()).toBeNull();
+      expect(getPaceLineup()).toBeNull();
+      // Nothing was announced on the way out either: no cue, no brief.
+      expect(rig.events).toEqual([]);
+
+      // And the next press is whole: the formation is adopted again.
+      drive(rig, stepsOf(ONE_LAP));
+
+      expect(getRollingStartFormation()).toMatchObject({ firstFollowCarIdx: FORMATION_FOLLOW_CAR_IDX });
+      expect(rig.events).toEqual([]);
+    },
+  );
+
+  it("control: without the teardown, a setup that stopped inside its bracket leaves the mock in replay mode and one that finished leaves the formation running", () => {
+    const steps = stepsOf(ONE_LAP);
+    const insideBracket = startRig();
+
+    drive(insideBracket, steps.slice(0, 2));
+    drive(insideBracket, [{ patch: {}, holdMs: REPLAY_EXIT_GRACE_MS + 500 }]);
+
+    expect((insideBracket.controller.getState().telemetry as Record<string, unknown>).IsReplayPlaying).toBe(true);
+
+    _resetSimEventsIracing();
+    _resetEventBus();
+    initializeEventBus(silentLogger);
+
+    const finished = startRig();
+
+    drive(finished, steps);
+    drive(finished, [{ patch: {}, holdMs: REPLAY_EXIT_GRACE_MS + 500 }]);
+
+    expect(getRollingStartFormation()).not.toBeNull();
+    expect((finished.controller.getState().telemetry as Record<string, unknown>).SessionState).toBe(
+      SessionState.ParadeLaps,
+    );
+  });
+
+  it("control: a formation left running is what the next caution button trips over — the teardown is why it does not", () => {
+    // What the teardown buys, measured rather than argued. Left running, the
+    // formation is a grid before its green with per-car lap progress in the
+    // telemetry: the caution thrown next is also read as formation lineup
+    // changes, and "Caution → extra lap", which counts on telemetry with no
+    // per-car lap progress, never reports the extra lap it is there for.
+    const shortcut = shortcutOf(ONE_LAP);
+    const extraLap = stepsOf("flag-caution-extra-lap");
+    const pressExtraLapAfter = (setup: readonly TelemetryStep[]): string[] => {
+      _resetSimEventsIracing();
+      _resetEventBus();
+      initializeEventBus(silentLogger);
+
+      const rig = startRig("race");
+
+      drive(rig, setup);
+      rig.events.length = 0;
+      drive(rig, extraLap);
+
+      return rig.events;
+    };
+
+    const stoodDown = pressExtraLapAfter([
+      ...(shortcut.telemetrySequence ?? []),
+      ...(shortcut.teardownSequence ?? []),
+    ]);
+    const leftRunning = pressExtraLapAfter(shortcut.telemetrySequence ?? []);
+
+    expect(stoodDown).toEqual([
+      "flag.caution-waving.raised",
+      "caution.fieldCaught",
+      "caution.extraLap",
+      "caution.oneLapToGreen",
+      "caution.lastLapCheckpoint",
+      "caution.restarted",
+    ]);
+    expect(leftRunning).not.toContain("caution.extraLap");
+    expect(leftRunning).toContain("rollingStart.lineup.changed");
+  });
+
   it.each([PACE_CAR, LINEUP_CHANGED, ONE_LAP])(
     "%s ends racing with no flag shown and nobody lined up, and plays the same again",
     (id) => {
@@ -763,8 +866,8 @@ describe("the formation's calls on their own", () => {
 
       const left = rig.controller.getState().telemetry as Record<string, unknown>;
 
-      // Not a grid before its green: the overtake, gap and position callouts
-      // all stand down there, and the next button would inherit that.
+      // Not a grid before its green with a formation open, which the next
+      // caution button would inherit (the control above).
       expect(left.SessionState).toBe(SessionState.Racing);
       expect((left.SessionFlags as number) >>> 0).toBe(RACING_NO_FLAG >>> 0);
       expect(getPaceLineup()).toBeNull();
