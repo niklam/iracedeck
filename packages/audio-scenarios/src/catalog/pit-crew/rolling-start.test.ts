@@ -614,7 +614,7 @@ describe("the formation calls in the bundled voice", () => {
       ]);
     });
 
-    it("tells the pole-sitter he is on pole, and the outside front-row car only that it is on the front row", () => {
+    it("tells the pole-sitter he is on pole, and the car with only the pace car ahead and not leading only that", () => {
       expect(spoken("pace-car", POLE)).toEqual([rollingStartClip("pace-car-moving-leader-01")]);
       expect(spoken("pace-car", OUTSIDE_POLE)).toEqual([rollingStartClip("pace-car-moving-front-row-01")]);
     });
