@@ -1781,6 +1781,24 @@ describe("diffGaps — full-course caution (issue #1171)", () => {
     run(state, emit, { fromLap: 5.95, toLap: 6.3, aheadGapS: 4, behindGapS: 30 });
     expect(state.gapLapHistoryAhead.length).toBeGreaterThan(0);
   });
+
+  it("drops a restart mark the lap counters were rewound past — a race restarted under the same session", () => {
+    const state = createInitialState();
+    const { emit } = collect();
+
+    run(state, emit, { fromLap: 1, toLap: 3, aheadGapS: 4, behindGapS: 30 });
+    run(state, emit, { fromLap: 3, toLap: 5, aheadGapS: 4, behindGapS: 30, caution: true });
+    expect(state.gapRestartMark).toBeCloseTo(6, 6);
+
+    // An admin restart rewinds every lap counter without a new session, so
+    // the state is not recreated. The player is now more than a lap behind
+    // where the mark was written, which no tow can do: the mark belongs to a
+    // race that is gone, and left standing it would keep the lap history
+    // shut until the new race reached lap 6.
+    run(state, emit, { fromLap: 1, toLap: 1.3, aheadGapS: 4, behindGapS: 30 });
+    expect(state.gapRestartMark).toBeNull();
+    expect(state.gapLapHistoryAhead.length).toBeGreaterThan(0);
+  });
 });
 
 describe("gap setting sanitizers (issue #933 review)", () => {

@@ -80,9 +80,10 @@
  * the completed lap, settled when the event was emitted.
  *
  * One residual neither check reaches, the same one `gaps.ts` accepts: an
- * update that passed its gate, is still PLAYING when the caution comes out,
- * and is then cut by an interrupting call is stashed with `admitted: true`
- * and replays whole without being asked again. Only `queueable: false`
+ * update that passed its gate under green and is cut while PLAYING by an
+ * interrupting call is stashed with `admitted: true` and replays whole
+ * without being asked again — under the caution, if one was thrown before
+ * the cut or while the stashed update waited. Only `queueable: false`
  * would stop that, and this contract is queueable so that it can wait
  * behind the lap-time readout of its own lap.
  */

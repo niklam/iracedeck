@@ -1136,8 +1136,11 @@ export type TranslatorState = {
    * threshold call is held to the movement gate. The opening lap's assumed
    * grid spacing is NOT applied. Written only on a caution tick the diff can
    * read the player's progress on, so `null` until the session's first such
-   * tick; never cleared after that, only overwritten by the next caution — a
-   * mark the player has passed is inert.
+   * tick. A mark the player has passed is inert, and the next caution
+   * overwrites it. It is dropped when the player is found more than a lap
+   * behind where it was written: a tow keeps the lap count, so that means the
+   * lap counters were rewound (an admin restart of the race under the same
+   * `SessionNum`), and the mark belongs to a race that is gone.
    *
    * PRESERVED across a replay wipe: it is a point in the live race's
    * distance, and a glance at the replay on the restart lap (or one the

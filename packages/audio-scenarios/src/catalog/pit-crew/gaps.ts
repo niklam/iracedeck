@@ -68,11 +68,12 @@
  * own caution phase (`UnderCautionResolver`), the question the lap-time and
  * position-change contracts already ask.
  *
- * One residual neither check reaches: a gap call that passed its gate, is
- * still PLAYING when the caution comes out, and is then cut by an
- * interrupting call (a spotter proximity call, the meatball, fuel critical,
- * a pit-box mark) is stashed with `admitted: true` and replays whole without
- * being asked again. Only `queueable: false` would stop that, and giving up
+ * One residual neither check reaches: a gap call that passed its gate under
+ * green and is cut while PLAYING by an interrupting call (a spotter proximity
+ * call, the meatball, fuel critical, a pit-box mark) is stashed with
+ * `admitted: true` and replays whole without being asked again. If a caution
+ * is out by then — thrown before the cut, or while the stashed call waited —
+ * it is spoken under it. Only `queueable: false` would stop that, and giving up
  * queueing for the whole family would lose ordinary gap calls behind the
  * spotter to cover a rare one — accepted, as `caution.ts` accepts its own.
  * The caution announcement itself does not interrupt, so a gap call playing

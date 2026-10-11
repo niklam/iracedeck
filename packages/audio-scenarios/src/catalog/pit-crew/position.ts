@@ -413,7 +413,7 @@ export function registerPositionVocabulary(
  * `where:`-only check: it is a fact about the completed lap, settled when the
  * event was emitted. The residual `race-status.ts` states applies here too:
  * a readout already admitted and then cut by an interrupting call replays
- * whole without being asked again.
+ * whole without being asked again, whenever the caution came out.
  *
  * Default `() => false` preserves legacy behavior for tests / the harness
  * that don't supply a closure.

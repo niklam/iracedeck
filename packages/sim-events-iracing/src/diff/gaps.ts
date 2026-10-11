@@ -440,7 +440,16 @@ export function diffGaps(
   // the restart lap leaves it where it is (and a tow under the caution is
   // followed by the next caution tick); the translator carries it across a
   // replay wipe.
+  //
+  // It is dropped when the player is found more than a lap BEHIND where it
+  // was written (the mark minus one). A tow cannot do that, since it keeps
+  // the lap count, so the lap counters themselves were rewound: an admin
+  // restart of the race under the same `SessionNum`, which recreates no
+  // state. Left standing, a mark from lap 20 of the old race would keep the
+  // lap history shut, and every trend call silent, for the first 20 laps of
+  // the new one.
   if (underFullCourseCaution) state.gapRestartMark = playerProgress + 1;
+  else if (state.gapRestartMark !== null && playerProgress < state.gapRestartMark - 2) state.gapRestartMark = null;
 
   // Two different questions, so two booleans. `raceStartLap` is the race's
   // own first lap, where the grid put standings neighbors a car length apart
