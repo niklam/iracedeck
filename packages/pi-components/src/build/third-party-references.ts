@@ -8,17 +8,20 @@
  * absolute URL. `settings-window-no-third-party.test.ts` holds the window to
  * that with this scanner, over the template sources and the built pages.
  *
- * It reads text, not a DOM, because half of what it reads is EJS: a template
- * that has not been rendered, whose scriptlets build markup in string literals.
- * So it is deliberately suspicious rather than exact. Every `<name …>` it can
- * find is treated as an element, wherever it sits, inline scripts and string
- * literals included, and a URL attribute it cannot show to be a local file is
- * reported, not waved through. A doubt costs a finding somebody has to read,
- * never a reference nobody saw.
+ * It is a tripwire for an honest mistake: somebody pasting a vendor's embed
+ * snippet, or hotlinking an asset. It is not a filter a determined author could
+ * not get past. It reads markup, CSS and the string literals of inline scripts,
+ * as text, because half of what it reads is EJS that has not been rendered. It
+ * does NOT read the JavaScript bundles the page loads (`pi-components.js`,
+ * `sdpi-components.js`, the bridge), does not follow string concatenation, and
+ * does not model a browser's comment and `srcdoc` parsing. What would hold
+ * against all of that is a `Content-Security-Policy` on the settings server,
+ * and none is in place. Within what it reads it is suspicious rather than
+ * exact: a URL it cannot show to be a local file is reported, not waved through.
  */
 
 export interface ThirdPartyReference {
-  /** Where it was found: `<script src>`, `css url()`, `css @import`. */
+  /** Where it was found: `<script src>`, `css url()`, `css @import`, `script text`. */
   where: string;
   /** The value as written. An EJS expression reads `{{ejs:<%= … %>}}`. */
   value: string;
@@ -78,6 +81,21 @@ const EJS_PLACEHOLDER = /\{\{ejs:(\d+)\}\}/;
 /** A relative reference with nothing in it that a template or a script could be filling in. */
 const STATIC_LOCAL = /^[\w./#?=&%~-]+$/;
 
+/** A `<script>` element, from its opening tag to its closing one or the end of the text. */
+const SCRIPT_ELEMENT = /<script\b(?:[^<>"']|"[^"]*"|'[^']*')*>([\s\S]*?)(?:<\/script\b|$)/gi;
+
+/**
+ * What script text is made of, as far as finding its string literals goes: an
+ * escaped character, a comment, or a literal, whose content is captured. A
+ * regular expression literal is not modelled; the escape is what keeps the
+ * `\/\/` in one from opening a comment that would hide the rest of its line.
+ */
+const SCRIPT_TOKEN =
+  /\\[\s\S]|\/\*[\s\S]*?(?:\*\/|$)|\/\/[^\n]*|"((?:\\[\s\S]|[^"\\\n])*)"?|'((?:\\[\s\S]|[^'\\\n])*)'?|`((?:\\[\s\S]|[^`\\])*)`?/g;
+
+/** The hosts that are this machine: the window's own server is one of them. */
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
+
 const NAMED_ENTITIES: Record<string, string> = {
   amp: "&",
   lt: "<",
@@ -104,18 +122,24 @@ function decodeEntities(value: string): string {
 }
 
 /**
- * Whether a URL names another origin, is a local file, or cannot be told.
- *
- * Read as a browser's URL parser would: tabs and newlines dropped, surrounding
- * spaces ignored, a backslash taken for a slash. Any
- * scheme counts as another origin except `data:`, which carries its own bytes;
- * so does a protocol-relative `//host`.
+ * A URL as a browser's parser would read it: tabs and newlines dropped,
+ * surrounding spaces ignored, a backslash taken for a slash.
  */
-function classify(raw: string): "local" | "remote" | "unresolved" {
-  const value = decodeEntities(raw)
+function asParsed(raw: string): string {
+  return decodeEntities(raw)
     .replace(/[\t\n\r]/g, "")
     .replace(/\\/g, "/")
     .trim();
+}
+
+/**
+ * Whether a URL names another origin, is a local file, or cannot be told.
+ *
+ * Any scheme counts as another origin except `data:`, which carries its own
+ * bytes; so does a protocol-relative `//host`.
+ */
+function classify(raw: string): "local" | "remote" | "unresolved" {
+  const value = asParsed(raw);
 
   if (value === "") return "local";
 
@@ -130,6 +154,21 @@ function classify(raw: string): "local" | "remote" | "unresolved" {
   return STATIC_LOCAL.test(value) ? "local" : "unresolved";
 }
 
+/**
+ * Whether a URL's host is this machine. The host is what follows any
+ * `user@`, so a loopback address written as the user name of another host does
+ * not pass for one.
+ */
+function isLoopback(raw: string): boolean {
+  const authority = /^(?:[a-z][a-z0-9+.-]*:)?\/\/+([^/?#]*)/i.exec(asParsed(raw))?.[1];
+
+  if (authority === undefined) return false;
+
+  const host = authority.slice(authority.lastIndexOf("@") + 1).replace(/:\d*$/, "");
+
+  return LOOPBACK_HOSTS.has(host.toLowerCase());
+}
+
 interface Normalised {
   text: string;
   /** The EJS output tags taken out of `text`, by placeholder index, as `=EXPR` or `-EXPR`. */
@@ -138,11 +177,15 @@ interface Normalised {
 
 /**
  * Drops what is not a reference and makes the rest safe to tokenise: comments
- * (EJS, HTML, and CSS inside a `<style>`) go, each EJS output tag becomes a
- * placeholder, and a scriptlet keeps its code but loses its delimiters, so the
- * markup its string literals build is read like any other.
+ * (EJS, HTML, and CSS inside a `<style>`) go and each EJS output tag becomes a
+ * placeholder. A scriptlet is read both ways, one per call:
+ *
+ * - `"code"` keeps its code and drops its delimiters, so the markup its string
+ *   literals build is read like any other.
+ * - `"gone"` drops it whole, so the comparison in `<img <% if (a < b) { %> src=…`
+ *   cannot end the tag before the attribute that follows it.
  */
-function normalise(source: string): Normalised {
+function normalise(source: string, scriptlets: "code" | "gone"): Normalised {
   const expressions: string[] = [];
   const text = source
     .replace(/<%#[\s\S]*?%>/g, " ")
@@ -153,7 +196,7 @@ function normalise(source: string): Normalised {
 
       return `{{ejs:${expressions.length - 1}}}`;
     })
-    .replace(/<%_?|[-_]?%>/g, " ");
+    .replace(scriptlets === "code" ? /<%_?|[-_]?%>/g : /<%[\s\S]*?%>/g, " ");
 
   return { text, expressions };
 }
@@ -167,15 +210,9 @@ function readable(value: string, expressions: string[]): string {
   });
 }
 
-/**
- * Every reference in `source` to something another site would serve, other
- * than an anchor's link and an allow-listed image. Empty when there is none.
- *
- * @param source - HTML or EJS text: a built page, a template or a partial.
- */
-export function findThirdPartyReferences(source: string, options: ThirdPartyScanOptions = {}): ThirdPartyReference[] {
+/** The references the elements and the CSS of one normalised text make. */
+function findInMarkup({ text, expressions }: Normalised, options: ThirdPartyScanOptions): ThirdPartyReference[] {
   const { allowedImages = [], allowedImageExpressions = [] } = options;
-  const { text, expressions } = normalise(source);
   const found: ThirdPartyReference[] = [];
 
   const isAllowedImage = (element: string, attribute: string, value: string): boolean => {
@@ -246,4 +283,56 @@ export function findThirdPartyReferences(source: string, options: ThirdPartyScan
   }
 
   return found;
+}
+
+/**
+ * The string literals in the `<script>` bodies of one normalised text that name
+ * another origin: what a script would hand to `fetch`, `import`, an element's
+ * `src`. A URL in a script comment is no literal, and one on this machine is the
+ * window talking to its own server. Whole literals only: an address put together
+ * from pieces is not followed.
+ */
+function findInScriptText({ text, expressions }: Normalised): ThirdPartyReference[] {
+  const found: ThirdPartyReference[] = [];
+
+  for (const [, script] of text.matchAll(SCRIPT_ELEMENT)) {
+    for (const [, double, single, template] of script.matchAll(SCRIPT_TOKEN)) {
+      const value = double ?? single ?? template;
+
+      if (value === undefined || classify(value) !== "remote" || isLoopback(value)) continue;
+
+      found.push({ where: "script text", value: readable(value, expressions), why: "remote" });
+    }
+  }
+
+  return found;
+}
+
+/**
+ * Every reference in `source` to something another site would serve, other
+ * than an anchor's link and an allow-listed image, each reported once. Empty
+ * when there is none.
+ *
+ * @param source - HTML or EJS text: a built page, a template or a partial.
+ */
+export function findThirdPartyReferences(source: string, options: ThirdPartyScanOptions = {}): ThirdPartyReference[] {
+  const withCode = normalise(source, "code");
+  const withoutScriptlets = normalise(source, "gone");
+  const seen = new Set<string>();
+
+  // Inline scripts are read without the scriptlets only: a scriptlet runs at
+  // build time, so a string in one is not something the page's script holds.
+  return [
+    ...findInMarkup(withCode, options),
+    ...findInMarkup(withoutScriptlets, options),
+    ...findInScriptText(withoutScriptlets),
+  ].filter(({ where, value, why }) => {
+    const key = `${where}\n${value}\n${why}`;
+
+    if (seen.has(key)) return false;
+
+    seen.add(key);
+
+    return true;
+  });
 }
