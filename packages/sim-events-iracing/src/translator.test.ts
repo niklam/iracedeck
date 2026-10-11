@@ -55,11 +55,13 @@ import {
   getQualifyingInvalidationSnapshot,
   getRaceFinishResult,
   getRaceStartConditions,
+  getRollingStartFormation,
   getSessionStartConditions,
   getStartingGridPosition,
   initializeSimEventsIracing,
   isDamageRepairNeeded,
   isRaceFinished,
+  isRollingStartFormation,
   isSimEventsIracingInitialized,
   isUnderFullCourseCaution,
   readSimState,
@@ -6261,6 +6263,470 @@ describe("sim-events-iracing translator", () => {
       controller.__setSessionInfo({ WeekendInfo: { SimMode: "replay" } });
       controller.__tick(telemetry({ ...OUT_OF_CAR, ...STINT }));
       expect(getLastStopTireTemps()).toBeNull();
+    });
+  });
+
+  describe("the rolling-start formation (issue #1167)", () => {
+    const PLAYER = 2;
+    const PACE = 3;
+    const FORMATION = Flags.OneLapToGreen | Flags.Servicible | Flags.StartReady;
+    const GREEN_HELD = FORMATION | Flags.GreenHeld;
+    const GO = Flags.Green | Flags.Servicible | Flags.StartGo;
+
+    function rollingRace(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+      return {
+        WeekendInfo: { Category: "Oval", TrackType: "medium oval", WeekendOptions: { StandingStart: 0 } },
+        DriverInfo: {
+          DriverCarIdx: PLAYER,
+          PaceCarIdx: PACE,
+          Drivers: [
+            { CarIdx: 0, CarNumber: "96" },
+            { CarIdx: 1, CarNumber: "37" },
+            { CarIdx: PLAYER, CarNumber: "64" },
+            { CarIdx: PACE, CarNumber: "0", CarIsPaceCar: 1 },
+          ],
+        },
+        SessionInfo: { Sessions: [{ SessionNum: 0, SessionType: "Race" }] },
+        ...overrides,
+      };
+    }
+
+    /**
+     * Per-car `[paceLine, paceRow]`: car 0 on pole, car 1 alongside, the player
+     * behind car 0, the pace car unplaced, and car 4 behind car 1 — two cars to
+     * a line, the smallest grid the reader places in full.
+     */
+    const GRID: Array<[number, number]> = [
+      [0, 0],
+      [1, 0],
+      [0, 1],
+      [-1, -1],
+      [1, 1],
+    ];
+    /** The same grid with cars 0 and 1 exchanged, so the player is behind car 1. */
+    const RESHUFFLED: Array<[number, number]> = [
+      [1, 0],
+      [0, 0],
+      [0, 1],
+      [-1, -1],
+      [1, 1],
+    ];
+
+    type FormationTick = {
+      state?: SessionState;
+      flags?: number;
+      grid?: Array<[number, number]>;
+      replay?: boolean;
+    };
+
+    function formationTick({
+      state = SessionState.ParadeLaps,
+      flags = FORMATION,
+      grid = GRID,
+      replay,
+    }: FormationTick = {}): TelemetryData {
+      return telemetry({
+        SessionState: state,
+        SessionFlags: flags,
+        SessionTime: 150,
+        CarIdxPaceLine: grid.map(([line]) => line),
+        CarIdxPaceRow: grid.map(([, row]) => row),
+        ...(replay === undefined ? {} : { IsReplayPlaying: replay }),
+      });
+    }
+
+    const WARMUP = formationTick({ state: SessionState.Warmup });
+
+    /** Records the formation's stream in publish order, as event names. */
+    function recordFormation(): string[] {
+      const seen: string[] = [];
+      const bus = getEventBus();
+
+      for (const name of [
+        "rollingStart.pace-car-moving.raised",
+        "rollingStart.lineup.changed",
+        "paceCar.deployed",
+        "paceCar.off",
+        "flag.green-held.raised",
+        "startLight.start-go.raised",
+        "caution.restarted",
+        "caution.lineup.changed",
+      ] as const) {
+        bus.subscribe(name, () => seen.push(name));
+      }
+
+      return seen;
+    }
+
+    function start(sessionInfo = rollingRace()): { controller: MockController; seen: string[] } {
+      const controller = createMockController();
+
+      controller.__setSessionInfo(sessionInfo);
+
+      const seen = recordFormation();
+
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      return { controller, seen };
+    }
+
+    it("reports no formation before the translator is initialized", () => {
+      expect(isRollingStartFormation()).toBe(false);
+      expect(getRollingStartFormation()).toBeNull();
+    });
+
+    it("opens with the pace car moving, names the car ahead as the first follow car, and ends when the green is held", () => {
+      const { controller, seen } = start();
+
+      controller.__tick(WARMUP);
+      expect(getRollingStartFormation()).toBeNull();
+
+      controller.__tick(formationTick());
+
+      const formation = getRollingStartFormation();
+
+      expect(seen).toEqual(["rollingStart.pace-car-moving.raised"]);
+      expect(formation).toEqual({ id: expect.any(Number), firstFollowCarIdx: 0 });
+      expect(isRollingStartFormation()).toBe(true);
+
+      controller.__tick(formationTick());
+      expect(getRollingStartFormation()).toEqual(formation);
+
+      controller.__tick(formationTick({ flags: GREEN_HELD }));
+      expect(getRollingStartFormation()).toBeNull();
+      expect(isRollingStartFormation()).toBe(false);
+    });
+
+    it("publishes a change of the car ahead, and keeps the first follow car where it was", () => {
+      const { controller, seen } = start();
+
+      controller.__tick(WARMUP);
+      controller.__tick(formationTick());
+
+      const formation = getRollingStartFormation();
+
+      controller.__tick(formationTick({ grid: RESHUFFLED }));
+
+      expect(seen).toEqual(["rollingStart.pace-car-moving.raised", "rollingStart.lineup.changed"]);
+      expect(getRollingStartFormation()).toEqual(formation);
+      // The lineup the callout reads when it speaks is the live one.
+      expect(getPaceLineup()).toMatchObject({ followCarIdx: 1, followCarNumber: "37", anchor: "grid" });
+    });
+
+    it("answers the readers from inside the handlers of its own events — the formation is open before either is published", () => {
+      // A contract's speak gate runs on the first attempt, at publish. Read
+      // from a subscriber, the formation that the cue opens must already be
+      // there, with the car to name; and at a change, the live lineup must
+      // already be the new one.
+      const { controller } = start();
+      const atPublish: Array<Record<string, unknown>> = [];
+
+      getEventBus().subscribe("rollingStart.pace-car-moving.raised", () =>
+        atPublish.push({
+          event: "pace-car-moving",
+          running: isRollingStartFormation(),
+          formation: getRollingStartFormation(),
+          follow: getPaceLineup()?.followCarIdx,
+        }),
+      );
+      getEventBus().subscribe("rollingStart.lineup.changed", () =>
+        atPublish.push({
+          event: "lineup.changed",
+          running: isRollingStartFormation(),
+          formation: getRollingStartFormation(),
+          follow: getPaceLineup()?.followCarIdx,
+        }),
+      );
+
+      controller.__tick(WARMUP);
+      controller.__tick(formationTick());
+      controller.__tick(formationTick({ grid: RESHUFFLED }));
+
+      const formation = { id: expect.any(Number), firstFollowCarIdx: 0 };
+
+      expect(atPublish).toEqual([
+        { event: "pace-car-moving", running: true, formation, follow: 0 },
+        { event: "lineup.changed", running: true, formation, follow: 1 },
+      ]);
+    });
+
+    it("carries nothing on the change — the callout reads the lineup live", () => {
+      const { controller } = start();
+      const payloads: unknown[] = [];
+
+      getEventBus().subscribe("rollingStart.lineup.changed", (event) => payloads.push(event.data));
+
+      controller.__tick(WARMUP);
+      controller.__tick(formationTick());
+      controller.__tick(formationTick({ grid: RESHUFFLED }));
+
+      expect(payloads).toEqual([{}]);
+    });
+
+    it("never opens on a standing start", () => {
+      const { controller, seen } = start(
+        rollingRace({ WeekendInfo: { Category: "Road", WeekendOptions: { StandingStart: 1 } } }),
+      );
+
+      controller.__tick(WARMUP);
+      controller.__tick(formationTick());
+      controller.__tick(formationTick({ grid: RESHUFFLED }));
+
+      expect(seen).toEqual([]);
+      expect(getRollingStartFormation()).toBeNull();
+    });
+
+    it("holds its last answer through a tick that carries no telemetry", () => {
+      const { controller } = start();
+
+      controller.__tick(WARMUP);
+      controller.__tick(formationTick());
+
+      const formation = getRollingStartFormation();
+
+      // Connected, and nothing to read: no diff runs, so nothing can end it.
+      controller.__tick(null, true);
+      controller.__tick(null, true);
+
+      expect(getRollingStartFormation()).toEqual(formation);
+      expect(isRollingStartFormation()).toBe(true);
+    });
+
+    it("forgets the formation when the sim goes away", () => {
+      const { controller } = start();
+
+      controller.__tick(WARMUP);
+      controller.__tick(formationTick());
+      controller.__tick(null, false);
+
+      expect(getRollingStartFormation()).toBeNull();
+    });
+
+    it("adopts a formation already running when the plugin starts mid-parade, silently — and reports a change from there", () => {
+      const { controller, seen } = start();
+
+      controller.__tick(formationTick());
+
+      expect(seen).toEqual([]);
+      expect(getRollingStartFormation()).toEqual({ id: expect.any(Number), firstFollowCarIdx: 0 });
+
+      controller.__tick(formationTick({ grid: RESHUFFLED }));
+      expect(seen).toEqual(["rollingStart.lineup.changed"]);
+    });
+
+    it("adopts nothing when the plugin starts with the green already held", () => {
+      const { controller, seen } = start();
+
+      controller.__tick(formationTick({ flags: GREEN_HELD }));
+      controller.__tick(formationTick({ flags: GREEN_HELD, grid: RESHUFFLED }));
+
+      expect(seen).toEqual([]);
+      expect(getRollingStartFormation()).toBeNull();
+    });
+
+    describe("across a replay glance", () => {
+      it("is the same formation during the glance and after it, and the cue does not fire again", () => {
+        const { controller, seen } = start();
+
+        controller.__tick(WARMUP);
+        controller.__tick(formationTick());
+
+        const formation = getRollingStartFormation();
+
+        controller.__tick(formationTick({ replay: true }));
+        expect(getRollingStartFormation()).toEqual(formation);
+
+        // The first tick back re-seeds the rolling-start diff; the formation survives it.
+        elapseReplayGrace();
+        controller.__tick(formationTick());
+        expect(getRollingStartFormation()).toEqual(formation);
+
+        controller.__tick(formationTick());
+        expect(getRollingStartFormation()).toEqual(formation);
+        expect(seen).toEqual(["rollingStart.pace-car-moving.raised"]);
+      });
+
+      it("does not announce a change that happened during the glance, and does announce the next one", () => {
+        const { controller, seen } = start();
+
+        controller.__tick(WARMUP);
+        controller.__tick(formationTick());
+        controller.__tick(formationTick({ replay: true }));
+        elapseReplayGrace();
+
+        // Back in the car behind a different car: the baseline, not a change.
+        controller.__tick(formationTick({ grid: RESHUFFLED }));
+        controller.__tick(formationTick({ grid: RESHUFFLED }));
+        expect(seen).toEqual(["rollingStart.pace-car-moving.raised"]);
+        // The formation's first follow car is still the one it opened behind.
+        expect(getRollingStartFormation()?.firstFollowCarIdx).toBe(0);
+
+        controller.__tick(formationTick());
+        expect(seen).toEqual(["rollingStart.pace-car-moving.raised", "rollingStart.lineup.changed"]);
+      });
+
+      it("is over on the first tick back when the green was held during the glance", () => {
+        const { controller } = start();
+
+        controller.__tick(WARMUP);
+        controller.__tick(formationTick());
+        controller.__tick(formationTick({ replay: true }));
+        expect(isRollingStartFormation()).toBe(true);
+
+        elapseReplayGrace();
+        controller.__tick(formationTick({ flags: GREEN_HELD }));
+
+        expect(getRollingStartFormation()).toBeNull();
+      });
+
+      it("is over on the first tick back when the race started during the glance — and the start's go is not replayed", () => {
+        const { controller, seen } = start();
+
+        controller.__tick(WARMUP);
+        controller.__tick(formationTick());
+        controller.__tick(formationTick({ replay: true }));
+        elapseReplayGrace();
+        controller.__tick(formationTick({ state: SessionState.Racing, flags: GO }));
+
+        expect(getRollingStartFormation()).toBeNull();
+        expect(seen).toEqual(["rollingStart.pace-car-moving.raised"]);
+      });
+    });
+
+    describe("the 2026-09-17 capture, replayed", () => {
+      type CapturedTick = {
+        t: number;
+        SessionFlags: number;
+        SessionState: number;
+        PaceMode: number;
+        PitsOpen: boolean;
+        OnPitRoad: boolean;
+        Lap: number;
+        LapCompleted: number;
+        CarIdxPaceLine: number[];
+        CarIdxPaceRow: number[];
+        CarIdxLapCompleted: number[];
+        CarIdxTrackSurface: number[];
+        CarIdxPosition: number[];
+      };
+      const capture = JSON.parse(
+        readFileSync(new URL("./diff/__fixtures__/rolling-start-formation-20260917.json", import.meta.url), "utf-8"),
+      ) as { sessionInfo: Record<string, unknown>; ticks: CapturedTick[] };
+
+      /** A fixture tick as the player (car 0) sees it: slot 20 is the pace car, raw index 64. */
+      function capturedTick(tick: CapturedTick): TelemetryData {
+        const widen = (values: number[], fill: number): number[] => {
+          const out = new Array(72).fill(fill);
+
+          values.forEach((v, i) => (out[i === 20 ? 64 : i] = v));
+
+          return out;
+        };
+
+        return telemetry({
+          SessionState: tick.SessionState,
+          SessionFlags: tick.SessionFlags,
+          SessionTime: tick.t,
+          PaceMode: tick.PaceMode,
+          PitsOpen: tick.PitsOpen,
+          OnPitRoad: tick.OnPitRoad,
+          Lap: tick.Lap,
+          LapCompleted: tick.LapCompleted,
+          CarIdxPaceLine: widen(tick.CarIdxPaceLine, -1),
+          CarIdxPaceRow: widen(tick.CarIdxPaceRow, -1),
+          CarIdxLapCompleted: widen(tick.CarIdxLapCompleted, -1),
+          CarIdxTrackSurface: widen(tick.CarIdxTrackSurface, TrkLoc.NotInWorld),
+          CarIdxPosition: widen(tick.CarIdxPosition, 0),
+        });
+      }
+
+      /** Replays the whole fixture, recording what was published on each tick and the formation after it. */
+      function replay(): {
+        published: Array<[t: number, event: string]>;
+        formations: Array<[t: number, formation: ReturnType<typeof getRollingStartFormation>]>;
+      } {
+        const { controller, seen } = start(capture.sessionInfo);
+        const published: Array<[number, string]> = [];
+        const formations: Array<[number, ReturnType<typeof getRollingStartFormation>]> = [];
+
+        for (const tick of capture.ticks) {
+          const before = seen.length;
+
+          controller.__tick(capturedTick(tick));
+
+          for (const event of seen.slice(before)) published.push([tick.t, event]);
+
+          // One derivation: the boolean is the identity not being null, on every tick.
+          expect(isRollingStartFormation()).toBe(getRollingStartFormation() !== null);
+          formations.push([tick.t, getRollingStartFormation()]);
+        }
+
+        return { published, formations };
+      }
+
+      it("emits the pace car moving, its deployment, green held, its exit and the start's go — and not one lineup change", () => {
+        // The formation's lineup never moved (the fixture's own test), so
+        // `rollingStart.lineup.changed` has nothing to report; and from 203.87 s
+        // the rows renumber on almost every tick, with the formation long over.
+        expect(replay().published).toEqual([
+          [126.67, "rollingStart.pace-car-moving.raised"],
+          [132.35, "paceCar.deployed"],
+          [186.28, "flag.green-held.raised"],
+          [196.53, "paceCar.off"],
+          [201.18, "startLight.start-go.raised"],
+        ]);
+      });
+
+      it("keeps the start's go clear of the caution restart path — no caution phase, no restart, the go line spoken", () => {
+        // A formation carries no caution bit, so the green that ends it finds
+        // no caution episode: `caution.restarted` is not announced and
+        // `startLight.start-go.raised` is not held down for it.
+        const { published } = replay();
+        const names = published.map(([, event]) => event);
+
+        expect(names).toContain("startLight.start-go.raised");
+        expect(names).not.toContain("caution.restarted");
+        expect(getCautionPhase()).toBe("none");
+        expect(getCautionEpisode()).toBeNull();
+      });
+
+      it("runs one formation from the ParadeLaps entry at 126.67 s until the green is held at 186.28 s, behind car 07", () => {
+        const { formations } = replay();
+        const running = formations.filter(([, formation]) => formation !== null);
+
+        expect(running[0][0]).toBe(126.67);
+        expect(running.at(-1)?.[0]).toBe(142.48); // the last tick before 186.28
+        expect(formations.find(([t]) => t === 186.28)?.[1]).toBeNull();
+        // No tick outside that stretch has one, on either side.
+        expect(formations.filter(([t, formation]) => (formation !== null) !== (t >= 126.67 && t < 186.28))).toEqual([]);
+
+        // One formation, one id, and the player's first follow car is car index 9.
+        const [, first] = running[0];
+
+        expect(first).toEqual({ id: expect.any(Number), firstFollowCarIdx: 9 });
+        expect(
+          running.every(([, formation]) => formation?.id === first?.id && formation?.firstFollowCarIdx === 9),
+        ).toBe(true);
+      });
+
+      it("shows the formation in the Telemetry Snapshot beside the caution, as its accessor reports it", () => {
+        const { controller } = start(capture.sessionInfo);
+
+        for (const tick of capture.ticks) {
+          if (tick.t > 142.48) break;
+
+          controller.__tick(capturedTick(tick));
+        }
+
+        const state = readSimState();
+
+        if (!state.initialized || !("rollingStart" in state)) throw new Error("the curated half is missing");
+
+        expect(state.rollingStart.formation).not.toBeNull();
+        expect(state.rollingStart).toEqual({ formation: getRollingStartFormation() });
+        expect(state.caution.lineup).toMatchObject({ followCarNumber: "07", line: "inside", anchor: "grid" });
+        expect(state.raw.state.rollingStartFormationId).toBe(state.rollingStart.formation?.id);
+      });
     });
   });
 });

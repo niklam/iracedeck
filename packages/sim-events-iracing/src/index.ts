@@ -30,6 +30,7 @@ export {
   getRaceFinishResult,
   getRaceStartConditions,
   getReadbackSnapshot,
+  getRollingStartFormation,
   getSessionStartConditions,
   getSessionType,
   getStandingStart,
@@ -39,6 +40,7 @@ export {
   isDamageRepairNeeded,
   isPitActionsAllowed,
   isRaceFinished,
+  isRollingStartFormation,
   isSimEventsIracingInitialized,
   isUnderFullCourseCaution,
   readSimState,
@@ -84,8 +86,9 @@ export { type PaceLineup, type PaceLineupAnchor, resolvePaceLineup, resolvePlaye
 // The phase `getCautionPhase()` returns (issue #1127) — the callouts that
 // gate on a STAGE of the caution rather than on "is one out" name it — and
 // the episode `getCautionEpisode()` returns (issue #1286), which scopes a
-// callout's memory to one caution.
-export { type CautionEpisode, type CautionPhase, type RaceFinishResult } from "./state.js";
+// callout's memory to one caution. `RollingStartFormation` is the same thing
+// for a rolling-start formation (issue #1167), from `getRollingStartFormation()`.
+export { type CautionEpisode, type CautionPhase, type RaceFinishResult, type RollingStartFormation } from "./state.js";
 // The reading `getLastStopTireTemps()` returns (issue #254): the tire
 // temperatures from the last time the car came in from a run — a pit stop, a
 // tow or reset, or leaving the car — never live ones.

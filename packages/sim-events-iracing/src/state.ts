@@ -61,6 +61,28 @@ export type CautionEpisode = {
 };
 
 /**
+ * One rolling-start formation, as `getRollingStartFormation()` reports it
+ * (issue #1167) — the formation's counterpart of {@link CautionEpisode}: what a
+ * consumer that remembers something within one formation — the car the
+ * engineer last named — scopes that memory to.
+ */
+export type RollingStartFormation = {
+  /**
+   * Never repeats within the process — a re-grid's formation, or a later
+   * session's, cannot match an earlier one's, because the counter behind it
+   * outlives every state reset.
+   */
+  id: number;
+  /**
+   * The first readable follow car of this formation — the lineup the
+   * rolling-start diff does not report as a change. Read on the tick the
+   * formation opens whenever the lineup is readable there, which the pace rows
+   * of a formation are from the first `GetInCar` record; `null` until it is.
+   */
+  firstFollowCarIdx: number | null;
+};
+
+/**
  * One car's open lap-time wait in the replay lap record (issue #1203): the
  * crossing that started `lap + 1` opened it, and it closes on the first tick
  * `CarIdxLastLapTime` moves off `baselineS` — or untimed when `ticksLeft` runs out.
@@ -473,6 +495,45 @@ export type TranslatorState = {
   rollingStartInitialized: boolean;
   /** Previous tick's `SessionState === ParadeLaps`, for ParadeLaps entry-edge detection. */
   lastInParadeLaps: boolean;
+
+  // ── Rolling-start formation (issue #1167) ───────────────────────────────
+  /**
+   * The running rolling-start formation's id, `null` while none runs — the
+   * whole of "is a formation running" (`getRollingStartFormation()`, and
+   * `isRollingStartFormation()` is that not being `null`). Opened on the
+   * `ParadeLaps` entry edge of a rolling start, or adopted silently when the
+   * rolling-start diff's first tick finds one running; closed when the session
+   * leaves `ParadeLaps` or `GreenHeld` or `Green` is set. Taken from a
+   * module-level counter in `diff/rolling-start.ts` that no state reset
+   * touches, so an id a consumer remembers from one formation can never match
+   * a later one.
+   *
+   * PRESERVED across a replay wipe, as {@link cautionEpisodeId} is: a glance at
+   * the replay is the same formation still running, and a consumer that keys
+   * the car it last named on the id must not see a new one. The first tick
+   * back closes it if the formation ended meanwhile.
+   */
+  rollingStartFormationId: number | null;
+  /**
+   * The first readable non-null follow car of the running formation — the
+   * lineup the diff seeds silently rather than reporting. Never overwritten by
+   * a change; it clears only with the formation. PRESERVED across a replay
+   * wipe with {@link rollingStartFormationId}.
+   */
+  rollingStartFirstFollowCarIdx: number | null;
+  /**
+   * The car the player was last seen forming up behind, so a change of it can
+   * be reported (`rollingStart.lineup.changed`). `null` means "not known in
+   * this formation" rather than "nobody": the first lineup a formation reads
+   * SEEDS it silently, and the formation ending clears it.
+   *
+   * Pointedly NOT preserved across a replay wipe, unlike the two fields above
+   * and for {@link cautionFollowCarIdx}'s reason: it is re-read from the very
+   * next tick's pace arrays, and a change the driver missed while looking at
+   * the replay costs one call, where a change announced between two
+   * timelines' lineups would be worse.
+   */
+  rollingStartFollowCarIdx: number | null;
 
   // ── Pit window open/closed (issue #655) ─────────────────────────────────
   /**
@@ -1443,6 +1504,10 @@ export function createInitialState(): TranslatorState {
 
     rollingStartInitialized: false,
     lastInParadeLaps: false,
+
+    rollingStartFormationId: null,
+    rollingStartFirstFollowCarIdx: null,
+    rollingStartFollowCarIdx: null,
 
     pitsOpenInitialized: false,
     lastPitsOpen: false,

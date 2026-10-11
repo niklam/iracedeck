@@ -262,6 +262,7 @@ function parts(overrides: Partial<SimStateParts> = {}): SimStateParts {
     gaps: null,
     opponentFlags: null,
     caution: { phase: "none", episode: null, lineup: null },
+    rollingStart: { formation: null },
     session: {
       type: "Race",
       trackDirection: TrackDirection.Neutral,
@@ -313,6 +314,7 @@ describe("readSimState — before the translator has anything to say", () => {
     expect(state.gaps).toBeNull();
     expect(state.opponentFlags).toBeNull();
     expect(state.caution).toEqual({ phase: "none", episode: null, lineup: null });
+    expect(state.rollingStart).toEqual({ formation: null });
     expect(Object.keys(state)).toEqual([
       "initialized",
       "sessionTick",
@@ -322,6 +324,7 @@ describe("readSimState — before the translator has anything to say", () => {
       "gaps",
       "opponentFlags",
       "caution",
+      "rollingStart",
       "session",
       "raw",
     ]);

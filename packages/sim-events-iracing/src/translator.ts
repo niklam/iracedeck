@@ -109,6 +109,7 @@ import {
   type GapNeighborState,
   type LastStopTireTemps,
   type RaceFinishResult,
+  type RollingStartFormation,
   type TranslatorState,
 } from "./state.js";
 import { isOvalTrack, resolveTrackDirection, resolveTrackType, type TrackDirection } from "./track-type.js";
@@ -1188,6 +1189,48 @@ export function getCautionEpisode(): CautionEpisode | null {
 }
 
 /**
+ * The running rolling-start formation's identity (issue #1167), or `null`
+ * while none runs — and before the translator is initialized. The formation's
+ * counterpart of {@link getCautionEpisode}: for a consumer that remembers
+ * something within ONE formation — the car the engineer last named — and must
+ * not carry it into a re-grid or a later session. It keys its memory on `id`
+ * and treats anything recorded under another id as nothing remembered.
+ *
+ * A formation runs from the `ParadeLaps` entry edge of a rolling start until
+ * the session leaves `ParadeLaps` or the green is held or out, and one already
+ * running when the translator first sees the session is adopted silently
+ * (`diff/rolling-start.ts`). `firstFollowCarIdx` is the formation's first
+ * readable follow car, the lineup `rollingStart.lineup.changed` never
+ * reports, for a consumer that needs a reference before anything has been
+ * said. Both survive a replay glance; the first tick back closes a formation
+ * that ended meanwhile.
+ *
+ * This is the translator's own state, never a re-derivation of
+ * `SessionState` and the green bits, so it holds its last value while no
+ * tick can advance it — a replay, a missing telemetry read — and a consumer
+ * never has to treat "unknown" as a third answer.
+ */
+export function getRollingStartFormation(): RollingStartFormation | null {
+  if (!instance || instance.state.rollingStartFormationId === null) return null;
+
+  return {
+    id: instance.state.rollingStartFormationId,
+    firstFollowCarIdx: instance.state.rollingStartFirstFollowCarIdx,
+  };
+}
+
+/**
+ * Whether a rolling-start formation is running (issue #1167) — exactly
+ * {@link getRollingStartFormation} not being `null`, so the two can never
+ * disagree. What the formation callouts gate on: a queued formation call must
+ * never drain into the launch, and once the green is held the green-held line
+ * owns the moment. `false` before the translator is initialized.
+ */
+export function isRollingStartFormation(): boolean {
+  return getRollingStartFormation() !== null;
+}
+
+/**
  * The player's place in the pace lineup as of the latest tick — under a
  * caution (issue #1127) or in a rolling-start formation (issue #1167), told
  * apart by the tick's own data and reported as `anchor` — who to follow, which
@@ -1614,6 +1657,7 @@ export function readSimState(): SimStateSnapshot {
       gaps: getLiveGaps(),
       opponentFlags: getLiveOpponentFlags(),
       caution: { phase: getCautionPhase(), episode: getCautionEpisode(), lineup: getPaceLineup() },
+      rollingStart: { formation: getRollingStartFormation() },
       session: {
         type: sessionType,
         trackDirection: getTrackDirection(),
@@ -1816,6 +1860,18 @@ function wipeStateForReplay(self: TranslatorInstance): void {
     // with the phase, so they ride with it.
     cautionEpisodeId: self.state.cautionEpisodeId,
     cautionFirstFollowCarIdx: self.state.cautionFirstFollowCarIdx,
+    // The rolling-start formation's identity and first follow car (issue
+    // #1167), for the episode's reason: a glance at the replay during the
+    // formation is the same formation still running, and the callouts that
+    // gate on it must not go quiet for the rest of it. The rolling-start
+    // diff's seed, which the first tick back runs, closes a formation the
+    // tick contradicts — one that ended during the glance — so it cannot
+    // survive as a latch. Its baselines (`rollingStartInitialized`,
+    // `lastInParadeLaps`, `rollingStartFollowCarIdx`) are pointedly NOT
+    // preserved: the cue must not re-fire on the way back, and a change of the
+    // car ahead is never announced across two timelines' lineups.
+    rollingStartFormationId: self.state.rollingStartFormationId,
+    rollingStartFirstFollowCarIdx: self.state.rollingStartFirstFollowCarIdx,
     // …and whether the one-to-green lap's position call is still owed, for
     // the same reason: a glance on the last caution lap must neither lose that
     // call nor repeat it. Its baseline (`cautionLastLapDistPct`) re-seeds.
