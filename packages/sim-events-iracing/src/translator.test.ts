@@ -7021,6 +7021,18 @@ describe("sim-events-iracing translator", () => {
         expect(getCautionGap()).toMatchObject({ warranted: false, blockedBy: ["green"] });
       });
 
+      it("while the green is held, for every car", () => {
+        const d = drive();
+
+        d.caught();
+        d.tick({ ...OPEN, flags: STATIC | Flags.OneLapToGreen });
+        expect(getCautionGap()).toMatchObject({ warranted: true, blockedBy: [] });
+
+        d.tick({ ...OPEN, flags: STATIC | Flags.OneLapToGreen | Flags.GreenHeld });
+        expect(getCautionPhase()).toBe("one-to-go");
+        expect(getCautionGap()).toMatchObject({ warranted: false, blockedBy: ["green-held"] });
+      });
+
       it("with no caution out at all", () => {
         const d = drive();
 

@@ -875,15 +875,14 @@ describe("the caution lineup", () => {
 
     diffCaution(state, counted(WAVING), info, canonicalLeader(1), emit);
 
-    // Two reads of the array on a live tick since #1168: the lineup's one
-    // resolution, and the catch-up measurement pairing the rest of the field
-    // on the lineup it was handed. That the lineup itself is resolved exactly
-    // once is pinned where it can be counted, in `caution.catch-up.test.ts`.
-    expect(reads).toBe(2);
+    // One read: the lineup's one resolution. The catch-up measurement (#1168)
+    // reads the array too, but not while the caution waves — nothing reads its
+    // answer there for a car that carries no pace flag.
+    expect(reads).toBe(1);
 
     diffCaution(state, counted(STATIC | 0x4), info, canonicalLeader(1), emit); // a green flying: not read
 
-    expect(reads).toBe(2);
+    expect(reads).toBe(1);
   });
 
   it("says nothing about the first lineup it reads — that is the answer, not a change", () => {

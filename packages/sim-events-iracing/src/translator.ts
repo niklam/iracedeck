@@ -1979,10 +1979,14 @@ function wipeStateForReplay(self: TranslatorInstance): void {
     // pickup's timestamp: the settle window is the phase's, and re-starting
     // it on the way back would hold an open gap for ten seconds for nothing.
     // The episode itself (`cautionCatchUp*`: the pit-road baseline, the
-    // pit-exit episode, the dwell, the last call and the reminder count) is
-    // pointedly NOT preserved — the machine is level-armed and re-derives an
-    // open gap within one dwell of the first live tick back, at the accepted
-    // cost of a fresh first call to a driver already reminded.
+    // pit-exit episode, the dwell, a suspense and its candidate, the last call
+    // and the reminder count) is pointedly NOT preserved — the machine is
+    // level-armed and re-derives an open gap within one dwell of the first
+    // live tick back, at the accepted cost of a fresh first call to a driver
+    // already reminded. Nor is what the latch has merely OBSERVED of a
+    // drive-round still in progress (`cautionProcedureAwaySeen`, the in-place
+    // clock): it is observed again from the first tick back, and until then
+    // the car stays suppressed, which is the safe side.
     cautionProcedureJoined: self.state.cautionProcedureJoined,
     cautionCaughtAt: self.state.cautionCaughtAt,
     // The rolling-start formation's identity and first follow car (issue

@@ -109,7 +109,9 @@ export {
   CATCH_UP_RAISE_MULTIPLE,
   CATCH_UP_REMINDER_MS,
   CATCH_UP_SETTLE_MS,
+  CATCH_UP_UNJUDGED_TOLERANCE_MS,
   type CatchUpBlock,
+  isHardCatchUpBlock,
 } from "./diff/caution.js";
 // The phase `getCautionPhase()` returns (issue #1127) — the callouts that
 // gate on a STAGE of the caution rather than on "is one out" name it — and

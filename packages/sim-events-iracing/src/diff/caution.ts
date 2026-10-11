@@ -261,28 +261,113 @@ export const CATCH_UP_MAX_REMINDERS = 2;
 export const CATCH_UP_PIT_EXIT_GRACE_MS = 10_000;
 
 /**
+ * How long a stretch of ticks that could not be judged may be before a clock
+ * that needs CONTINUITY — the dwell, a suspense, the drive-round's in-place
+ * time — is taken to have been interrupted and starts again. Not a threshold
+ * of the call and not capture C1's: it is "a dropped tick or two is not an
+ * interruption", sized far above the SDK's 16 ms tick and far below the
+ * shortest window it guards (the three-second dwell). Without it two readings
+ * ten seconds apart would stand in for "three seconds continuously".
+ */
+export const CATCH_UP_UNJUDGED_TOLERANCE_MS = 1_000;
+
+/**
  * One reason catch-up cannot be judged on a tick — see {@link resolveCatchUpBlocks}.
  *
+ * Each is HARD or SOFT, and the difference is what it does to an episode that
+ * is already running ({@link diffCatchUp}). A hard block ends it at once. A
+ * soft block only SUSPENDS it, and ends it once the block has held for
+ * {@link CATCH_UP_DWELL_MS}: a soft block can blink — one tick of a pace car's
+ * surface reading a pit surface — and an episode reset by a blink speaks its
+ * first call and both reminders all over again.
+ *
+ * Hard — the condition cannot blink, or cannot arise while an episode runs:
+ *
  * - `phase`: the caution is not `"caught"` or `"one-to-go"`. A waving field
- *   is not a pack.
+ *   is not a pack, and the phase is the translator's own state machine, which
+ *   moves on flag edges it has already debounced.
  * - `green`: a `Green` bit is set. A yellow-checkered tick keeps the phase
- *   alive under a flying green.
- * - `settling`: inside {@link CATCH_UP_SETTLE_MS} of the pickup.
- * - `pace-car-off`: the pace car is not on the road. Once it peels off the
- *   field is seconds from the green, and gaps open on purpose.
+ *   alive under a flying green, and under a green nothing is said.
+ * - `settling`: inside {@link CATCH_UP_SETTLE_MS} of the pickup. It precedes
+ *   every episode of a caution and cannot return.
+ * - `pit-exit-grace`: inside {@link CATCH_UP_PIT_EXIT_GRACE_MS} of leaving pit
+ *   road after a stop. A stop long enough to open the grace has already ended
+ *   any episode, by holding the `pit-road` block.
+ *
+ * Soft — the reading can flicker, or the condition can be withdrawn:
+ *
+ * - `green-held`: `GreenHeld` is set. The pace car may pull away on purpose
+ *   from here and the green-held line owns the moment, for every car and not
+ *   only the pair with the pace car. iRacing can withdraw the bit.
  * - `pit-road`: the player is on pit road. Dropping back there is the speed
- *   limit, not a lag.
- * - `pit-exit-grace`: inside {@link CATCH_UP_PIT_EXIT_GRACE_MS} of leaving it.
+ *   limit, not a lag — and a car running low can clip the pit lane for a tick.
  * - `procedure`: the player carries a pace flag and has not yet taken his
  *   slot — a drive-round in progress.
+ * - `pace-car-off`: the pace car is not on the road. Once it peels off the
+ *   field is seconds from the green, and gaps open on purpose.
  * - `ahead-of-slot`: the car to follow is nearer behind him than ahead.
  */
 export type CatchUpBlock =
-  "phase" | "green" | "settling" | "pace-car-off" | "pit-road" | "pit-exit-grace" | "procedure" | "ahead-of-slot";
+  | "phase"
+  | "green"
+  | "settling"
+  | "pit-exit-grace"
+  | "green-held"
+  | "pit-road"
+  | "procedure"
+  | "pace-car-off"
+  | "ahead-of-slot";
+
+/** The blocks that end a running episode at once — see {@link CatchUpBlock}. Every other block is soft. */
+const HARD_CATCH_UP_BLOCKS: ReadonlySet<CatchUpBlock> = new Set(["phase", "green", "settling", "pit-exit-grace"]);
+
+/** Whether a block ends a running episode at once rather than suspending it. */
+export function isHardCatchUpBlock(block: CatchUpBlock): boolean {
+  return HARD_CATCH_UP_BLOCKS.has(block);
+}
 
 /** The player is being sent round to the tail: any of the three pace flags. */
 function inDriveRound(paceFlags: PaceLineupFlags): boolean {
   return paceFlags.wavedAround || paceFlags.freePass || paceFlags.endOfLine;
+}
+
+/**
+ * The blocks that can be read WITHOUT measuring the field: the phase, the
+ * flags, the clocks, pit road, and — given the player's pace flags, which a
+ * tick with no lineup does not have — the drive-round. {@link diffCatchUp}
+ * asks these first, so a tick they already decide never pays for the
+ * measurement.
+ */
+function resolveStateBlocks(
+  state: TranslatorState,
+  telemetry: TelemetryData,
+  paceFlags: PaceLineupFlags | null,
+  now: number,
+): CatchUpBlock[] {
+  const blocks: CatchUpBlock[] = [];
+  const flags = telemetry.SessionFlags ?? 0;
+  const caught = state.cautionPhase === "caught" || state.cautionPhase === "one-to-go";
+
+  if (!caught) blocks.push("phase");
+
+  if (hasFlag(flags, Flags.Green)) blocks.push("green");
+
+  // Only a caught phase has a pickup to settle from.
+  if (caught && (state.cautionCaughtAt === null || now - state.cautionCaughtAt < CATCH_UP_SETTLE_MS)) {
+    blocks.push("settling");
+  }
+
+  const pitExitAt = state.cautionCatchUpPitExitAt;
+
+  if (pitExitAt !== null && now - pitExitAt < CATCH_UP_PIT_EXIT_GRACE_MS) blocks.push("pit-exit-grace");
+
+  if (hasFlag(flags, Flags.GreenHeld)) blocks.push("green-held");
+
+  if (telemetry.OnPitRoad === true) blocks.push("pit-road");
+
+  if (paceFlags !== null && inDriveRound(paceFlags) && !state.cautionProcedureJoined) blocks.push("procedure");
+
+  return blocks;
 }
 
 /**
@@ -307,50 +392,56 @@ export function resolveCatchUpBlocks(
   measurement: CautionGapMeasurement,
   now: number,
 ): CatchUpBlock[] {
-  const blocks: CatchUpBlock[] = [];
-  const caught = state.cautionPhase === "caught" || state.cautionPhase === "one-to-go";
-
-  if (!caught) blocks.push("phase");
-
-  if (hasFlag(telemetry.SessionFlags ?? 0, Flags.Green)) blocks.push("green");
-
-  // Only a caught phase has a pickup to settle from.
-  if (caught && (state.cautionCaughtAt === null || now - state.cautionCaughtAt < CATCH_UP_SETTLE_MS)) {
-    blocks.push("settling");
-  }
+  const blocks = resolveStateBlocks(state, telemetry, measurement.paceFlags, now);
 
   if (!measurement.paceCarOnTrack) blocks.push("pace-car-off");
-
-  if (telemetry.OnPitRoad === true) blocks.push("pit-road");
-
-  const pitExitAt = state.cautionCatchUpPitExitAt;
-
-  if (pitExitAt !== null && now - pitExitAt < CATCH_UP_PIT_EXIT_GRACE_MS) blocks.push("pit-exit-grace");
-
-  if (inDriveRound(measurement.paceFlags) && !state.cautionProcedureJoined) blocks.push("procedure");
 
   // Waived within a pit-exit episode: a car that stopped while the field
   // circulated can have the tail anywhere up the road, and "catch car N" is
   // exactly what tells him which car that is.
-  if (measurement.aheadOfSlot && pitExitAt === null) blocks.push("ahead-of-slot");
+  if (measurement.aheadOfSlot && state.cautionCatchUpPitExitAt === null) blocks.push("ahead-of-slot");
 
   return blocks;
 }
 
-/** The catch-up episode back to nothing: no dwell running, no gap open, no call made. */
+/** Whether a clock that needs continuity was interrupted: no tick has confirmed it for longer than the tolerance. */
+function interrupted(seenAt: number | null, now: number): boolean {
+  return seenAt === null || now - seenAt > CATCH_UP_UNJUDGED_TOLERANCE_MS;
+}
+
+/** Nothing is suspended and no other car is being watched. */
+function endCatchUpSuspense(state: TranslatorState): void {
+  state.cautionCatchUpSuspendedSince = null;
+  state.cautionCatchUpSuspendedSeenAt = null;
+  state.cautionCatchUpCandidateCarIdx = null;
+  state.cautionCatchUpCandidateRaisedSince = null;
+  state.cautionCatchUpCandidateSeenAt = null;
+}
+
+/** The catch-up episode back to nothing: no dwell running, no gap open, no call made, nothing suspended. */
 function endCatchUpEpisode(state: TranslatorState): void {
   state.cautionCatchUpFollowCarIdx = null;
   state.cautionCatchUpRaisedSince = null;
+  state.cautionCatchUpRaisedSeenAt = null;
   state.cautionCatchUpOpen = false;
   state.cautionCatchUpLastCallAt = null;
   state.cautionCatchUpLastCallGapMeters = null;
   state.cautionCatchUpReminders = 0;
+  endCatchUpSuspense(state);
 }
 
 /** The pit-exit episode over: the player is an ordinary car in the lineup again. */
 function endPitExitEpisode(state: TranslatorState): void {
   state.cautionCatchUpPitExitAt = null;
   state.cautionCatchUpPitExitCalled = false;
+}
+
+/** What the drive-round latch has observed so far, forgotten: the latch itself is untouched. */
+function forgetDriveRound(state: TranslatorState): void {
+  state.cautionProcedureAwaySeen = false;
+  state.cautionProcedureInPlaceCarIdx = null;
+  state.cautionProcedureInPlaceSince = null;
+  state.cautionProcedureInPlaceSeenAt = null;
 }
 
 /**
@@ -365,8 +456,152 @@ function expireCatchUpWithPhase(state: TranslatorState): void {
 
   state.cautionProcedureJoined = false;
   state.cautionCaughtAt = null;
+  forgetDriveRound(state);
   endPitExitEpisode(state);
   endCatchUpEpisode(state);
+}
+
+/**
+ * The drive-round latch: has a player who carries a pace flag TAKEN HIS SLOT.
+ *
+ * A single reading of "a flag is set and the gap is under the clear multiple"
+ * cannot say so. On the tick the flag first appears he may still sit at
+ * normal spacing in his OLD slot, a tick before his row moves to the tail —
+ * whether iRacing sets the bit before or after it moves the rows is
+ * unmeasured — and a latch set there would lift the suppression for the whole
+ * drive round, with the tail car hundreds of metres up the road and "catch
+ * car N" three seconds away. So joining needs one of two things, both with a
+ * flag set:
+ *
+ * - **The drive round was seen, and has ended.** A reading at or above the
+ *   raise multiple, or the car ahead of his slot, and after it a reading under
+ *   the clear multiple.
+ * - **He has been in place all along.** The gap under the clear multiple to
+ *   the SAME car continuously for {@link CATCH_UP_SETTLE_MS}. This is the
+ *   plugin started mid-caution with the player already at the tail and still
+ *   carrying the flag (`caution-lineup-20260919.json`), who must not be
+ *   silenced for the rest of the caution; and it is what a flag that appeared
+ *   a tick early can never satisfy, since his car changes with his row.
+ *
+ * Runs in every caution phase. A tick with no flag forgets what was observed:
+ * the next flag is a procedure of its own.
+ */
+function trackDriveRound(state: TranslatorState, measurement: CautionGapMeasurement, now: number): void {
+  const { ratio, followCarIdx } = measurement;
+
+  if (measurement.aheadOfSlot || (ratio !== null && ratio >= CATCH_UP_RAISE_MULTIPLE)) {
+    state.cautionProcedureAwaySeen = true;
+    state.cautionProcedureInPlaceSince = null;
+
+    return;
+  }
+
+  // Nothing to judge by this tick: what was observed stands.
+  if (ratio === null || followCarIdx === null) return;
+
+  if (ratio >= CATCH_UP_CLEAR_MULTIPLE) {
+    // The band: neither away nor in place.
+    state.cautionProcedureInPlaceSince = null;
+
+    return;
+  }
+
+  if (state.cautionProcedureAwaySeen) {
+    state.cautionProcedureJoined = true;
+    forgetDriveRound(state);
+
+    return;
+  }
+
+  if (
+    state.cautionProcedureInPlaceSince === null ||
+    state.cautionProcedureInPlaceCarIdx !== followCarIdx ||
+    interrupted(state.cautionProcedureInPlaceSeenAt, now)
+  ) {
+    state.cautionProcedureInPlaceCarIdx = followCarIdx;
+    state.cautionProcedureInPlaceSince = now;
+  }
+
+  state.cautionProcedureInPlaceSeenAt = now;
+
+  if (now - state.cautionProcedureInPlaceSince >= CATCH_UP_SETTLE_MS) {
+    state.cautionProcedureJoined = true;
+    forgetDriveRound(state);
+  }
+}
+
+/**
+ * A tick on which a running episode cannot be judged FOR A REASON — a soft
+ * block, or a different car ahead — rather than for want of a reading. The
+ * episode goes into suspense: nothing is emitted, and its clocks and its
+ * reminder count are kept, so that the original car and liveness returning
+ * resume it exactly as it was. Only once the disturbance has held for
+ * {@link CATCH_UP_DWELL_MS} does the episode end.
+ *
+ * `candidate` is the other car, when the disturbance is one: its own dwell is
+ * counted WHILE the suspense runs, so a real change of the car ahead does not
+ * cost two dwells. With the gap to the new car at the raise multiple from the
+ * tick it appears, the old episode ends and the new car's first call is made
+ * on the same tick, one dwell after the change — what a change cost before
+ * there was a suspense at all.
+ *
+ * Returns whether the episode was re-keyed to the candidate, in which case
+ * the caller goes on to judge the tick for it.
+ */
+function suspendCatchUp(
+  state: TranslatorState,
+  now: number,
+  candidate: { carIdx: number; ratio: number } | null,
+): boolean {
+  // Nothing running: nothing to suspend, and nothing a blink could cost.
+  if (state.cautionCatchUpFollowCarIdx === null) return false;
+
+  if (state.cautionCatchUpSuspendedSince === null || interrupted(state.cautionCatchUpSuspendedSeenAt, now)) {
+    state.cautionCatchUpSuspendedSince = now;
+  }
+
+  state.cautionCatchUpSuspendedSeenAt = now;
+
+  if (candidate === null) {
+    // Blocked: nobody's gap is being judged, so no other car's dwell runs.
+    state.cautionCatchUpCandidateCarIdx = null;
+    state.cautionCatchUpCandidateRaisedSince = null;
+    state.cautionCatchUpCandidateSeenAt = null;
+  } else {
+    if (state.cautionCatchUpCandidateCarIdx !== candidate.carIdx) {
+      state.cautionCatchUpCandidateCarIdx = candidate.carIdx;
+      state.cautionCatchUpCandidateRaisedSince = null;
+    }
+
+    if (candidate.ratio < CATCH_UP_RAISE_MULTIPLE) {
+      state.cautionCatchUpCandidateRaisedSince = null;
+    } else if (
+      state.cautionCatchUpCandidateRaisedSince === null ||
+      interrupted(state.cautionCatchUpCandidateSeenAt, now)
+    ) {
+      state.cautionCatchUpCandidateRaisedSince = now;
+    }
+
+    state.cautionCatchUpCandidateSeenAt = now;
+  }
+
+  if (now - state.cautionCatchUpSuspendedSince < CATCH_UP_DWELL_MS) return false;
+
+  // The disturbance has held: the episode is over.
+  const raisedSince = candidate === null ? null : state.cautionCatchUpCandidateRaisedSince;
+
+  endCatchUpEpisode(state);
+
+  if (candidate === null) return false;
+
+  // Re-keyed to the new car, with the dwell it has already served.
+  if (raisedSince !== null) {
+    state.cautionCatchUpFollowCarIdx = candidate.carIdx;
+    state.cautionCatchUpRaisedSince = raisedSince;
+    state.cautionCatchUpRaisedSeenAt = now;
+  }
+
+  return true;
 }
 
 /**
@@ -375,7 +610,11 @@ function expireCatchUpWithPhase(state: TranslatorState): void {
  * Runs on every tick the caution diff does not seed on, handed the lineup
  * {@link diffLineup} resolved — `null` when it resolved none (no caution
  * phase, a `Green` bit, or a player who holds no row). It measures only when
- * there is a lineup, so under green nothing is measured at all.
+ * something reads the measurement: a tick that a hard block, or a soft block
+ * readable from the flags alone, already decides is not measured at all, and
+ * neither is any tick under green. The exception is a player who carries a
+ * pace flag and has not joined, whose drive-round latch reads the gap in
+ * every caution phase.
  *
  * **Open, remind, close.** With catch-up live ({@link resolveCatchUpBlocks})
  * the episode OPENS once the ratio has stayed at or above
@@ -393,32 +632,48 @@ function expireCatchUpWithPhase(state: TranslatorState): void {
  * closing for the rest of the caution. A reminder that was due and skipped is
  * not counted against the two.
  *
- * **It ends without closing** the moment catch-up stops being live, and
- * **restarts from zero** when the car ahead changes: the dwell runs again and
- * a still-open gap gets a fresh first call naming the new car.
+ * **Every tick is one of four things to a running episode**, and only two of
+ * them can end it:
  *
- * **A tick that cannot be judged is a gap, not an end.** A lineup that could
- * not be resolved for a tick with the caution still caught, a spacing short of
- * its samples, a car out of the world for a tick: the episode is held as it
- * is, neither advanced nor reset. Ending it there would turn a one-tick
- * dropout into a second "first call" three seconds later.
+ * - **Judged**: live, the same car ahead, and a ratio. The episode advances.
+ * - **A hard block** ({@link isHardCatchUpBlock}): it ends, at once.
+ * - **A disturbance** — a soft block, or a different car ahead: it is
+ *   SUSPENDED ({@link suspendCatchUp}), and ends only when the disturbance has
+ *   held for a dwell. A car ahead that reads `NotInWorld` for a tick makes the
+ *   lineup name the next car up for that tick; the 2026-09-18 road capture has
+ *   a lineup flickering for 1.07 s. Ended by that, an episode that had already
+ *   made its call and both reminders would make all three again.
+ * - **Unknown** — a lineup that could not be resolved with the caution still
+ *   caught, a spacing short of its samples, the car ahead or the player out of
+ *   the world for a tick: nothing is known, so nothing changes. An OPEN
+ *   episode is held as it is, for as long as it takes; the first tick that can
+ *   judge again may find a reminder due, and makes it, on a real reading.
  *
- * **The drive-round latch** (`cautionProcedureJoined`) is updated here in
- * EVERY caution phase, waving included, though catch-up itself is live only
- * once the field is caught: a waved-around car can reach the tail before the
- * pickup. It sets when, with a pace flag still set, the gap to the car ahead
- * first reads below the clear multiple — he has taken his slot — and from then
- * on he is an ordinary car and a later drop-back gets the ordinary call. The
- * flag alone cannot serve: it stays set after joining, so "suppress while the
- * flag is set" would silence him for the rest of the caution.
+ * **The dwell is continuous.** A stretch that could not be judged does not
+ * count towards it: beyond {@link CATCH_UP_UNJUDGED_TOLERANCE_MS} the dwell
+ * starts again from the first reading after, so two readings ten seconds
+ * apart are not "three seconds at the raise multiple". A dropped tick or two
+ * is bridged.
+ *
+ * **A real change of the car ahead costs one dwell**, as it always did: the
+ * old car's episode ends and the new car's first call is made on the same
+ * tick, {@link CATCH_UP_DWELL_MS} after the lineup first named the new car,
+ * provided the gap to it was at the raise multiple from then on. Later, if the
+ * gap to the new car only opened later — one dwell after it did.
+ *
+ * **The drive-round latch** (`cautionProcedureJoined`, {@link trackDriveRound})
+ * is updated here in EVERY caution phase, waving included, though catch-up
+ * itself is live only once the field is caught: a waved-around car can reach
+ * the tail before the pickup.
  *
  * **Pit exit is one call.** The player's `OnPitRoad` going true → false under
- * a caution opens a pit-exit episode: nothing is judged for
+ * a caution, after a stay of at least a dwell — a tick on the pit lane's edge
+ * is not a stop — opens a pit-exit episode: nothing is judged for
  * {@link CATCH_UP_PIT_EXIT_GRACE_MS}, then the dwell runs as usual, the
  * ahead-of-slot rule is waived, and the call fires ONCE — not again if the car
  * ahead changes, and with no reminders, because he is catching the field on
  * purpose. It ends when he has caught it (the ratio below the clear multiple),
- * goes back onto pit road, or the caution ends.
+ * when a later stop replaces it, or when the caution ends.
  *
  * **The state is set before either event is emitted**, so a speak gate asked
  * at publish — `getCautionGap().warranted` — already reads true.
@@ -436,8 +691,17 @@ function diffCatchUp(
   const wasOnPitRoad = state.cautionCatchUpLastOnPitRoad;
 
   // The pit-road baseline follows the player on every tick, caution or not,
-  // so the edge is there to read whenever a caution is out.
+  // so the edge — and how long the stay was — is there to read whenever a
+  // caution is out.
   state.cautionCatchUpLastOnPitRoad = onPitRoad;
+
+  const pitRoadSince = state.cautionCatchUpPitRoadSince;
+
+  if (onPitRoad) {
+    if (wasOnPitRoad !== true) state.cautionCatchUpPitRoadSince = now;
+  } else {
+    state.cautionCatchUpPitRoadSince = null;
+  }
 
   if (state.cautionPhase === "none") {
     expireCatchUpWithPhase(state);
@@ -453,48 +717,63 @@ function diffCatchUp(
     state.cautionCaughtAt = now;
   }
 
-  if (onPitRoad) {
-    endPitExitEpisode(state);
-  } else if (wasOnPitRoad === true) {
+  // Off pit road after a stop. A stay shorter than a dwell was the pit lane's
+  // edge clipped, not a stop, and opens nothing.
+  if (!onPitRoad && wasOnPitRoad === true && pitRoadSince !== null && now - pitRoadSince >= CATCH_UP_DWELL_MS) {
     state.cautionCatchUpPitExitAt = now;
     state.cautionCatchUpPitExitCalled = false;
   }
 
-  if (lineup === null) {
-    // No lineup was resolved. Under a green or on pit road that is catch-up
-    // not being live, and the episode ends. Otherwise the player holds no row
-    // this tick, or the lineup could not be read: a gap in the reading.
-    if (onPitRoad || hasFlag(telemetry.SessionFlags ?? 0, Flags.Green)) endCatchUpEpisode(state);
+  // Measured at most once, and only when something reads it.
+  let measured: CautionGapMeasurement | null = null;
+  const measure = (resolved: PaceLineup): CautionGapMeasurement =>
+    (measured ??= measureCautionGap(telemetry, sessionInfo, resolved, trackLengthMeters));
 
-    return;
+  if (lineup !== null && !state.cautionProcedureJoined) {
+    if (inDriveRound(lineup.paceFlags)) trackDriveRound(state, measure(lineup), now);
+    else forgetDriveRound(state);
   }
 
-  const measurement = measureCautionGap(telemetry, sessionInfo, lineup, trackLengthMeters);
-  const { ratio, gapMeters, packSpacingMeters } = measurement;
+  const stateBlocks = resolveStateBlocks(state, telemetry, lineup?.paceFlags ?? null, now);
 
-  // The drive-round latch: with a flag still set, the gap first reading below
-  // the clear multiple is the player taking his slot.
-  if (
-    !state.cautionProcedureJoined &&
-    inDriveRound(measurement.paceFlags) &&
-    ratio !== null &&
-    ratio < CATCH_UP_CLEAR_MULTIPLE
-  ) {
-    state.cautionProcedureJoined = true;
-  }
-
-  if (resolveCatchUpBlocks(state, telemetry, measurement, now).length > 0) {
+  if (stateBlocks.some(isHardCatchUpBlock)) {
     endCatchUpEpisode(state);
 
     return;
   }
 
-  // Live, and nothing to judge it by this tick: hold.
-  if (ratio === null || gapMeters === null || packSpacingMeters === null) return;
+  // What is left of `stateBlocks` is soft, and decides the tick without a
+  // measurement: under a block nobody's gap is judged.
+  if (stateBlocks.length > 0) {
+    suspendCatchUp(state, now, null);
 
-  if (state.cautionCatchUpFollowCarIdx !== measurement.followCarIdx) {
-    endCatchUpEpisode(state);
-    state.cautionCatchUpFollowCarIdx = measurement.followCarIdx;
+    return;
+  }
+
+  // No lineup and nothing blocking: the player holds no row this tick, or the
+  // lineup could not be read. Unknown.
+  if (lineup === null) return;
+
+  const measurement = measure(lineup);
+
+  if (!measurement.paceCarOnTrack || (measurement.aheadOfSlot && state.cautionCatchUpPitExitAt === null)) {
+    suspendCatchUp(state, now, null);
+
+    return;
+  }
+
+  const { ratio, gapMeters, packSpacingMeters, followCarIdx } = measurement;
+
+  // Live, and nothing to judge it by this tick. Unknown.
+  if (ratio === null || gapMeters === null || packSpacingMeters === null || followCarIdx === null) return;
+
+  if (state.cautionCatchUpFollowCarIdx !== null && state.cautionCatchUpFollowCarIdx !== followCarIdx) {
+    // A different car ahead of a running episode: a disturbance, with a
+    // candidate. Carry on only if it has held and the episode is now the new
+    // car's.
+    if (!suspendCatchUp(state, now, { carIdx: followCarIdx, ratio })) return;
+  } else {
+    endCatchUpSuspense(state);
   }
 
   const inPitExit = state.cautionCatchUpPitExitAt !== null;
@@ -502,7 +781,7 @@ function diffCatchUp(
   if (!state.cautionCatchUpOpen) {
     if (ratio < CATCH_UP_CLEAR_MULTIPLE) {
       // In place. For a car out of the pits that is the field caught.
-      state.cautionCatchUpRaisedSince = null;
+      endCatchUpEpisode(state);
       endPitExitEpisode(state);
 
       return;
@@ -510,12 +789,23 @@ function diffCatchUp(
 
     if (ratio < CATCH_UP_RAISE_MULTIPLE) {
       // The band: not open, and the dwell has to be continuous.
-      state.cautionCatchUpRaisedSince = null;
+      endCatchUpEpisode(state);
 
       return;
     }
 
-    state.cautionCatchUpRaisedSince ??= now;
+    // At the raise multiple: the dwell starts, or goes on — unless the last
+    // reading at it is too old to call this continuous.
+    if (
+      state.cautionCatchUpFollowCarIdx === null ||
+      state.cautionCatchUpRaisedSince === null ||
+      interrupted(state.cautionCatchUpRaisedSeenAt, now)
+    ) {
+      state.cautionCatchUpFollowCarIdx = followCarIdx;
+      state.cautionCatchUpRaisedSince = now;
+    }
+
+    state.cautionCatchUpRaisedSeenAt = now;
 
     if (now - state.cautionCatchUpRaisedSince < CATCH_UP_DWELL_MS) return;
 

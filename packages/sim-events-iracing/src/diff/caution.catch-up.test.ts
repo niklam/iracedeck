@@ -21,7 +21,10 @@ import {
   CATCH_UP_RAISE_MULTIPLE,
   CATCH_UP_REMINDER_MS,
   CATCH_UP_SETTLE_MS,
+  CATCH_UP_UNJUDGED_TOLERANCE_MS,
+  type CatchUpBlock,
   diffCaution,
+  isHardCatchUpBlock,
   resolveCatchUpBlocks,
 } from "./caution.js";
 import { resolvePaceLineup } from "./pace-lineup.js";
@@ -42,6 +45,7 @@ const WAVING = 0x10048000; // + CautionWaving
 const STATIC = 0x10044000; // + Caution
 const ONE_TO_GO = 0x10044200; // + OneLapToGreen
 const GREEN = 0x4;
+const GREEN_HELD = 0x400;
 
 const INFO: Record<string, unknown> = { DriverInfo: { DriverCarIdx: PLAYER, PaceCarIdx: PACE, Drivers: [] } };
 
@@ -68,6 +72,8 @@ type World = {
   backFrom?: number;
   /** The tick carries no per-car lap distance: the lineup still reads, and no gap can be measured. */
   noLapDistance?: boolean;
+  /** Cars that hold their row and are not in the world this tick. */
+  gone?: number[];
 };
 
 /**
@@ -87,6 +93,7 @@ function world({
   cars = 10,
   backFrom = PLAYER,
   noLapDistance = false,
+  gone = [],
 }: World = {}): TelemetryData {
   const lines = new Array(72).fill(-1);
   const rows = new Array(72).fill(-1);
@@ -113,6 +120,11 @@ function world({
   if (unlined) {
     lines[PLAYER] = -1;
     rows[PLAYER] = -1;
+  }
+
+  for (const carIdx of gone) {
+    dist[carIdx] = -1;
+    surface[carIdx] = TrkLoc.NotInWorld;
   }
 
   pace[PLAYER] = paceFlags;
@@ -187,6 +199,16 @@ function rig(trackLengthMeters: number | null = LAP): Rig {
   };
 
   return { state, now: () => now, tick, hold, caught };
+}
+
+/** What blocks catch-up for a rig's state in a given world, right now. */
+function resolveCatchUpBlocksOf(r: Rig, w: World): CatchUpBlock[] {
+  const telemetry = world(w);
+  const lineup = resolvePaceLineup(telemetry, INFO, false);
+
+  if (lineup === null) throw new Error("the player is not lined up");
+
+  return resolveCatchUpBlocks(r.state, telemetry, measureCautionGap(telemetry, INFO, lineup, LAP), r.now());
 }
 
 /** A rig with the field caught, settled, and the player's gap open and called. */
@@ -266,6 +288,43 @@ describe("the catch-up episode — the dwell", () => {
     expect(r.tick(BAND)).toEqual([]);
     expect(r.hold(OPEN, CATCH_UP_DWELL_MS)).toEqual([]);
     expect(r.tick(OPEN)).toEqual([OPENED]);
+  });
+
+  it("does not count time it could not judge: two readings ten seconds apart are not a dwell — the reported failure", () => {
+    const r = rig();
+
+    r.caught();
+
+    expect(r.tick(OPEN)).toEqual([]);
+
+    // Ten seconds with no readable lineup, then one more reading at 4×.
+    for (let elapsed = 0; elapsed < 10_000; elapsed += 500) expect(r.tick(OPEN, 500, null)).toEqual([]);
+
+    expect(r.tick(OPEN)).toEqual([]);
+
+    // The dwell started over on that reading: a full three seconds from it.
+    expect(r.hold(OPEN, CATCH_UP_DWELL_MS - 100)).toEqual([]);
+    expect(r.tick(OPEN)).toEqual([OPENED]);
+  });
+
+  it("restarts the dwell after an unjudged stretch just over the tolerance, and not after one just under", () => {
+    const after = (gapMs: number): Array<[string, number]> => {
+      const r = rig();
+
+      r.caught();
+      r.hold(OPEN, 1_000);
+      r.tick(OPEN, gapMs, null);
+
+      // The reading that ends the stretch, then the rest of what a dwell
+      // running on would need.
+      return r.hold(OPEN, CATCH_UP_DWELL_MS);
+    };
+
+    // 0.9 s served, 0.9 s unseen, bridged: the call comes when 3 s are up.
+    expect(after(CATCH_UP_UNJUDGED_TOLERANCE_MS - 100)).toEqual([[OPENED, CATCH_UP_DWELL_MS - 900 - 900]]);
+    // 1.1 s unseen: the reading after it starts a dwell of its own.
+    expect(after(CATCH_UP_UNJUDGED_TOLERANCE_MS + 100)).toEqual([]);
+    expect(CATCH_UP_UNJUDGED_TOLERANCE_MS).toBe(1_000);
   });
 
   it("is not fooled by a one-tick spike", () => {
@@ -404,7 +463,7 @@ describe("the catch-up episode — reminders", () => {
 });
 
 describe("the catch-up episode — the car ahead changing", () => {
-  it("restarts from zero: a fresh dwell, then a fresh first call for the new car, with its own reminders", () => {
+  it("gives the new car a first call of its own exactly one dwell after the change, with its own reminders", () => {
     const r = opened();
 
     expect(r.state.cautionCatchUpFollowCarIdx).toBe(5);
@@ -412,21 +471,200 @@ describe("the catch-up episode — the car ahead changing", () => {
     // Car 3 now holds the slot ahead; the gap is as open as it was.
     const behindCar3: World = { ...OPEN, ahead: 3 };
 
+    // For a dwell the change is only a disturbance: the old car's episode is
+    // suspended, intact, and the new car's dwell is being counted meanwhile.
     expect(r.hold(behindCar3, CATCH_UP_DWELL_MS)).toEqual([]);
-    expect(r.state.cautionCatchUpFollowCarIdx).toBe(3);
-    expect(r.state.cautionCatchUpOpen).toBe(false);
+    expect(r.state.cautionCatchUpFollowCarIdx).toBe(5);
+    expect(r.state.cautionCatchUpOpen).toBe(true);
+    expect(r.state.cautionCatchUpCandidateCarIdx).toBe(3);
+
+    // One dwell after the lineup first named car 3: the old episode ends and
+    // the new car's first call is made, on the same tick — not a dwell later.
     expect(r.tick(behindCar3)).toEqual([OPENED]);
+    expect(r.state.cautionCatchUpFollowCarIdx).toBe(3);
     expect(r.hold(behindCar3, 3 * CATCH_UP_REMINDER_MS, 500).map(([event]) => event)).toEqual([STILL_OPEN, STILL_OPEN]);
   });
 
-  it("forgets the reminders already made for the old car", () => {
+  it("forgets the reminders already made for the old car — once the change has held, not before", () => {
     const r = opened();
 
     r.hold(OPEN, 2 * CATCH_UP_REMINDER_MS, 500);
     expect(r.state.cautionCatchUpReminders).toBe(2);
 
     r.tick({ ...OPEN, ahead: 3 });
+    expect(r.state.cautionCatchUpReminders).toBe(2);
+
+    r.hold({ ...OPEN, ahead: 3 }, CATCH_UP_DWELL_MS);
     expect(r.state.cautionCatchUpReminders).toBe(0);
+    expect(r.state.cautionCatchUpFollowCarIdx).toBe(3);
+  });
+
+  it("waits one dwell from when the gap to the new car opens, if that is later than the change", () => {
+    const r = opened();
+    // Car 3 takes the slot ahead with the player right behind it: no gap to it yet.
+    const closeBehindCar3: World = { ...CLOSED, ahead: 3 };
+    const farBehindCar3: World = { ...OPEN, ahead: 3 };
+
+    r.hold(closeBehindCar3, 1_000);
+    // He drops back from car 3 a second after the change: one dwell from HERE.
+    expect(r.hold(farBehindCar3, CATCH_UP_DWELL_MS)).toEqual([]);
+    expect(r.tick(farBehindCar3)).toEqual([OPENED]);
+  });
+
+  it("says nothing more about the old car when the new one is close ahead", () => {
+    const r = opened();
+
+    expect(r.hold({ ...CLOSED, ahead: 3 }, 4 * CATCH_UP_REMINDER_MS, 500)).toEqual([]);
+    expect(r.state.cautionCatchUpOpen).toBe(false);
+  });
+});
+
+describe("the catch-up episode — an ending condition has to hold before it ends anything", () => {
+  /** An episode that has made its call and both reminders: nothing more is owed for this gap to this car. */
+  function spent(): Rig {
+    const r = opened();
+
+    expect(r.hold(OPEN, 2 * CATCH_UP_REMINDER_MS, 500).map(([event]) => event)).toEqual([STILL_OPEN, STILL_OPEN]);
+
+    return r;
+  }
+
+  it("does not start over when the car ahead is out of the world for one tick — six calls for one gap to one car", () => {
+    // The reported failure. With car 5 gone for a tick the lineup names the
+    // next car up, car 4; the episode used to reset on that tick and again on
+    // the next, and three seconds later the driver got a second "first call"
+    // and two more reminders.
+    const r = spent();
+
+    expect(r.tick({ ...OPEN, gone: [5] })).toEqual([]);
+    expect(r.state.cautionCatchUpCandidateCarIdx).toBe(4);
+    expect(r.hold(OPEN, 4 * CATCH_UP_REMINDER_MS, 500)).toEqual([]);
+    expect(r.state).toMatchObject({
+      cautionCatchUpOpen: true,
+      cautionCatchUpFollowCarIdx: 5,
+      cautionCatchUpReminders: 2,
+      cautionCatchUpSuspendedSince: null,
+      cautionCatchUpCandidateCarIdx: null,
+    });
+  });
+
+  it("rides out a lineup that flickers for a second — the 1.07 s of the road capture", () => {
+    const r = spent();
+
+    for (let elapsed = 0; elapsed < 1_100; elapsed += 100) {
+      expect(r.tick(elapsed % 200 === 0 ? { ...OPEN, gone: [5] } : { ...OPEN, ahead: 3 })).toEqual([]);
+    }
+
+    expect(r.hold(OPEN, 4 * CATCH_UP_REMINDER_MS, 500)).toEqual([]);
+    expect(r.state.cautionCatchUpReminders).toBe(2);
+  });
+
+  it("keeps the reminder on the first call's clock through a flicker", () => {
+    const r = opened();
+
+    r.hold(OPEN, CATCH_UP_REMINDER_MS - 2_000, 500);
+    r.hold({ ...OPEN, gone: [5] }, 1_000, 500);
+
+    // One second of flicker inside the interval: the reminder is still due
+    // thirty seconds after the call, not thirty-three after the flicker.
+    expect(r.hold(OPEN, 1_000, 500)).toEqual([[STILL_OPEN, 1_000]]);
+  });
+
+  const SOFT: Array<[block: CatchUpBlock, world: World]> = [
+    ["green-held", { ...OPEN, flags: STATIC | GREEN_HELD }],
+    ["pit-road", { ...OPEN, onPitRoad: true }],
+    ["procedure", { ...OPEN, paceFlags: 0x4 }],
+    ["pace-car-off", { ...OPEN, paceCarSurface: TrkLoc.AproachingPits }],
+    ["ahead-of-slot", { forward: 300 }],
+  ];
+
+  it.each(SOFT)("suspends on %s for a tick and resumes exactly as it was", (block, blocked) => {
+    const r = spent();
+
+    expect(isHardCatchUpBlock(block)).toBe(false);
+    expect(r.tick(blocked)).toEqual([]);
+    expect(r.state.cautionCatchUpOpen).toBe(true);
+    expect(r.state.cautionCatchUpSuspendedSince).not.toBeNull();
+
+    expect(r.hold(OPEN, 4 * CATCH_UP_REMINDER_MS, 500)).toEqual([]);
+    expect(r.state).toMatchObject({ cautionCatchUpOpen: true, cautionCatchUpReminders: 2 });
+  });
+
+  it.each(SOFT)("ends on %s once it has held for a dwell, and not a tick sooner", (_block, blocked) => {
+    const r = spent();
+
+    expect(r.hold(blocked, CATCH_UP_DWELL_MS)).toEqual([]);
+    expect(r.state.cautionCatchUpOpen).toBe(true);
+
+    expect(r.tick(blocked)).toEqual([]);
+    expect(r.state).toMatchObject({
+      cautionCatchUpOpen: false,
+      cautionCatchUpFollowCarIdx: null,
+      cautionCatchUpReminders: 0,
+    });
+  });
+
+  it.each(SOFT)("says nothing while %s lasts, however long", (_block, blocked) => {
+    const r = opened();
+
+    expect(r.hold(blocked, 4 * CATCH_UP_REMINDER_MS, 500)).toEqual([]);
+  });
+
+  it("ends at once on a hard block — the caution over, or a green flying", () => {
+    for (const hard of [
+      { ...OPEN, flags: RACING },
+      { ...OPEN, flags: STATIC | GREEN },
+    ]) {
+      const r = spent();
+
+      r.tick(hard);
+      expect(r.state).toMatchObject({ cautionCatchUpOpen: false, cautionCatchUpFollowCarIdx: null });
+    }
+
+    expect((["phase", "green", "settling", "pit-exit-grace"] as const).every(isHardCatchUpBlock)).toBe(true);
+  });
+
+  it("does not count a suspense across a stretch it could not see: the disturbance has to be OBSERVED to hold", () => {
+    const r = spent();
+
+    const blocked: World = { ...OPEN, paceCarSurface: TrkLoc.AproachingPits };
+
+    // Blocked for a tick, then four seconds with no readable lineup, then
+    // blocked again: two sightings, not a block that held for a dwell.
+    r.tick(blocked);
+    r.tick(OPEN, 2_000, null);
+    r.tick(OPEN, 2_000, null);
+    r.tick(blocked);
+
+    expect(r.state.cautionCatchUpOpen).toBe(true);
+
+    // The positive control: seen continuously from here, it ends a dwell later.
+    r.hold(blocked, CATCH_UP_DWELL_MS);
+    expect(r.state.cautionCatchUpOpen).toBe(false);
+  });
+
+  it("does not add separate blinks up into a disturbance that held — a judged tick between them starts the count again", () => {
+    const r = spent();
+    const blink: World = { ...OPEN, paceCarSurface: TrkLoc.AproachingPits };
+
+    // A blink every half second for ten seconds, a good reading between each.
+    for (let i = 0; i < 20; i++) {
+      expect(r.tick(blink, 250)).toEqual([]);
+      expect(r.tick(OPEN, 250)).toEqual([]);
+    }
+
+    expect(r.state).toMatchObject({ cautionCatchUpOpen: true, cautionCatchUpReminders: 2 });
+  });
+
+  it("bridges a one-tick flicker in a dwell that is still running — the first call is not put back", () => {
+    const r = rig();
+
+    r.caught();
+    r.hold(OPEN, 1_500);
+    r.tick({ ...OPEN, gone: [5] });
+
+    // 1.5 s served, one tick away, 1.4 s more: the dwell completes on time.
+    expect(r.hold(OPEN, CATCH_UP_DWELL_MS - 1_500)).toEqual([[OPENED, CATCH_UP_DWELL_MS - 1_500]]);
   });
 });
 
@@ -440,12 +678,25 @@ describe("the catch-up episode — pit road", () => {
     expect(r.hold({ ...OPEN, onPitRoad: true, unlined: true }, 60_000, 500)).toEqual([]);
   });
 
-  it("ends an open episode when he pits", () => {
+  it("ends an open episode when he pits — once he has been on pit road for a dwell", () => {
     const r = opened();
 
     r.tick({ ...OPEN, onPitRoad: true });
-    expect(r.state.cautionCatchUpOpen).toBe(false);
+    expect(r.state.cautionCatchUpOpen).toBe(true);
     expect(r.hold({ ...OPEN, onPitRoad: true }, 2 * CATCH_UP_REMINDER_MS, 500)).toEqual([]);
+    expect(r.state.cautionCatchUpOpen).toBe(false);
+  });
+
+  it("takes one tick on the pit lane's edge for neither a stop nor an exit", () => {
+    const r = opened();
+
+    r.tick({ ...OPEN, onPitRoad: true });
+    r.tick(OPEN);
+
+    // No pit-exit episode — which would silence the reminders — and the
+    // ordinary one goes on where it was.
+    expect(r.state.cautionCatchUpPitExitAt).toBeNull();
+    expect(r.hold(OPEN, 2 * CATCH_UP_REMINDER_MS, 500).map(([event]) => event)).toEqual([STILL_OPEN, STILL_OPEN]);
   });
 
   describe("pit exit", () => {
@@ -606,6 +857,140 @@ describe("the catch-up episode — a drive-round procedure", () => {
     expect(r.hold({ ...OPEN, paceFlags: 0x4 }, 10_000).map(([event]) => event)).toEqual([OPENED]);
   });
 
+  it("does not join on the tick the flag appears with the car still in its OLD slot — the reported failure", () => {
+    // The flag is seen one tick before the rows move: at normal spacing
+    // behind car 5, under the clear multiple, flag set. A latch set there
+    // lifted the suppression for the whole drive round.
+    const r = rig();
+
+    r.caught();
+    r.tick({ ...CLOSED, paceFlags: 0x4 });
+    expect(r.state.cautionProcedureJoined).toBe(false);
+
+    // The next tick his row is the tail's, and car 3 — put in the slot ahead
+    // of him — is 400 m up the road: under half a lap, so not ahead of his slot.
+    const onTheWay: World = { back: 390, ahead: 3, paceFlags: 0x4 };
+
+    expect(r.hold(onTheWay, 60_000, 500)).toEqual([]);
+    expect(r.state.cautionProcedureJoined).toBe(false);
+    expect(resolveCatchUpBlocksOf(r, onTheWay)).toEqual(["procedure"]);
+
+    // He arrives: the drive round was seen, and this is its end.
+    r.tick({ ...CLOSED, ahead: 3, paceFlags: 0x4 });
+    expect(r.state.cautionProcedureJoined).toBe(true);
+    expect(r.hold({ ...OPEN, ahead: 3, paceFlags: 0x4 }, 10_000).map(([event]) => event)).toEqual([OPENED]);
+  });
+
+  it("joins a car that was at the tail all along once it has been in place behind ONE car for the settle window", () => {
+    // The plugin started mid-caution with the player already there and still
+    // carrying the flag. No drive round is ever seen; ten seconds in place is
+    // what says there is none in progress.
+    const r = rig();
+    const inPlace: World = { ...CLOSED, paceFlags: 0x4 };
+
+    r.tick({ ...inPlace, flags: STATIC }); // seed
+    r.tick(inPlace); // caught, silently: the first reading in place
+    r.hold(inPlace, CATCH_UP_SETTLE_MS - 100);
+    expect(r.state.cautionProcedureJoined).toBe(false);
+
+    r.tick(inPlace);
+    expect(r.state.cautionProcedureJoined).toBe(true);
+
+    // From here a drop-back is an ordinary one.
+    expect(r.hold({ ...OPEN, paceFlags: 0x4 }, 10_000).map(([event]) => event)).toEqual([OPENED]);
+  });
+
+  it("joins the same way when the flag appears on a tick he is already in his slot and stays there — the same-tick control", () => {
+    const r = rig();
+
+    r.caught();
+    r.hold({ ...CLOSED, paceFlags: 0x4 }, CATCH_UP_SETTLE_MS);
+    expect(r.state.cautionProcedureJoined).toBe(false);
+
+    r.tick({ ...CLOSED, paceFlags: 0x4 });
+    expect(r.state.cautionProcedureJoined).toBe(true);
+  });
+
+  it("starts the in-place clock over when the car ahead changes, the gap leaves the clear multiple, or the reading drops out", () => {
+    const inPlace: World = { ...CLOSED, paceFlags: 0x4 };
+    const almost = (): Rig => {
+      const r = rig();
+
+      r.caught();
+      r.hold(inPlace, CATCH_UP_SETTLE_MS - 1_000);
+
+      return r;
+    };
+    const stillWaiting = (r: Rig): void => {
+      // A second short of the window before the interruption, so two more
+      // seconds would have joined him had the clock run on.
+      r.hold(inPlace, 2_000);
+      expect(r.state.cautionProcedureJoined).toBe(false);
+      // …and a full window from the interruption does.
+      r.hold(inPlace, CATCH_UP_SETTLE_MS);
+      expect(r.state.cautionProcedureJoined).toBe(true);
+    };
+
+    // Another car ahead.
+    const moved = almost();
+
+    moved.tick({ ...CLOSED, ahead: 3, paceFlags: 0x4 });
+    moved.tick(inPlace);
+    stillWaiting(moved);
+
+    // The band: neither away nor in place.
+    const drifted = almost();
+
+    drifted.tick({ ...BAND, paceFlags: 0x4 });
+    drifted.tick(inPlace);
+    stillWaiting(drifted);
+
+    // No reading for longer than the tolerance.
+    const dropped = almost();
+
+    dropped.tick(inPlace, CATCH_UP_UNJUDGED_TOLERANCE_MS + 500, null);
+    dropped.tick(inPlace);
+    stillWaiting(dropped);
+  });
+
+  it("bridges one dropped reading in the in-place clock", () => {
+    const r = rig();
+    const inPlace: World = { ...CLOSED, paceFlags: 0x4 };
+
+    r.caught();
+    r.hold(inPlace, CATCH_UP_SETTLE_MS - 1_000);
+    r.tick(inPlace, 100, null);
+    r.hold(inPlace, 1_000);
+
+    expect(r.state.cautionProcedureJoined).toBe(true);
+  });
+
+  it("counts a car ahead of its slot as away, like one far behind it", () => {
+    const r = rig();
+
+    r.caught();
+    r.tick({ forward: 300, paceFlags: 0x4 });
+    expect(r.state.cautionProcedureAwaySeen).toBe(true);
+
+    r.tick({ ...CLOSED, paceFlags: 0x4 });
+    expect(r.state.cautionProcedureJoined).toBe(true);
+  });
+
+  it("forgets what it observed when the flag drops — the next flag is a procedure of its own", () => {
+    const r = rig();
+
+    r.caught();
+    r.tick({ ...OPEN, paceFlags: 0x4 });
+    expect(r.state.cautionProcedureAwaySeen).toBe(true);
+
+    r.tick(OPEN);
+    expect(r.state.cautionProcedureAwaySeen).toBe(false);
+
+    // Flagged again, in place: no drive round seen under THIS flag.
+    r.tick({ ...CLOSED, paceFlags: 0x4 });
+    expect(r.state.cautionProcedureJoined).toBe(false);
+  });
+
   it("never sets the latch for a car that carries no flag", () => {
     const r = rig();
 
@@ -637,10 +1022,13 @@ describe("the catch-up episode — ahead of your slot", () => {
     expect(r.hold({ forward: 300 }, 120_000, 500)).toEqual([]);
   });
 
-  it("ends an open episode the moment it becomes true", () => {
+  it("ends an open episode once it has been true for a dwell", () => {
     const r = opened();
 
     r.tick({ forward: 300 });
+    expect(r.state.cautionCatchUpOpen).toBe(true);
+
+    r.hold({ forward: 300 }, CATCH_UP_DWELL_MS);
     expect(r.state.cautionCatchUpOpen).toBe(false);
   });
 });
@@ -660,10 +1048,10 @@ describe("the catch-up episode — the pace car leaving", () => {
     const r = opened();
 
     r.hold(OPEN, CATCH_UP_REMINDER_MS - 1_000, 500);
-    r.tick({ ...OPEN, paceCarSurface: TrkLoc.AproachingPits });
 
-    expect(r.state.cautionCatchUpOpen).toBe(false);
+    // The reminder that was a second away is never made.
     expect(r.hold({ ...OPEN, paceCarSurface: TrkLoc.AproachingPits }, 60_000, 500)).toEqual([]);
+    expect(r.state.cautionCatchUpOpen).toBe(false);
   });
 });
 
@@ -706,6 +1094,38 @@ describe("the catch-up episode — the phases", () => {
     expect(vi.mocked(resolvePaceLineup).mock.calls.length).toBe(before);
     // …and the open episode ended there, without closing.
     expect(r.state.cautionCatchUpOpen).toBe(false);
+  });
+
+  it("is silent while the green is held — the pace car may pull away on purpose, and the green-held line owns the moment", () => {
+    const r = rig();
+
+    r.caught();
+    r.tick({ flags: ONE_TO_GO });
+
+    expect(r.hold({ ...OPEN, flags: ONE_TO_GO | GREEN_HELD }, 60_000, 500)).toEqual([]);
+    expect(resolveCatchUpBlocksOf(r, { ...OPEN, flags: ONE_TO_GO | GREEN_HELD })).toEqual(["green-held"]);
+  });
+
+  it("is silent under a held green for the front of the field too — the leader dropping off the pace car", () => {
+    const leader = { DriverInfo: { DriverCarIdx: 1, PaceCarIdx: PACE, Drivers: [] } };
+    const r = rig();
+    // The whole field 60 m further back from the pace car: the leader at 80 m, 4× his 20 m.
+    const dropped: World = { back: 60, backFrom: 1 };
+    const feed = (w: World, ms: number): string[] => {
+      const out: string[] = [];
+
+      for (let elapsed = 0; elapsed < ms; elapsed += 500) out.push(...r.tick(w, 500, leader));
+
+      return out;
+    };
+
+    feed({ flags: RACING }, 500);
+    feed({ flags: WAVING }, 500);
+    feed({}, CATCH_UP_SETTLE_MS + 500);
+
+    expect(feed({ ...dropped, flags: STATIC | GREEN_HELD }, 60_000)).toEqual([]);
+    // The positive control: the same gap with no green held is called.
+    expect(feed(dropped, 10_000)).toEqual([OPENED]);
   });
 
   it("ends with the caution: the restart leaves nothing open", () => {
@@ -898,6 +1318,29 @@ describe("the catch-up episode — a tick that cannot be judged is a gap, not an
     expect(r.hold(OPEN, CATCH_UP_REMINDER_MS, 500).map(([event]) => event)).toEqual([STILL_OPEN]);
   });
 
+  it("makes a reminder that came due during a long hold on the first tick that can judge again — on a real reading", () => {
+    const r = opened();
+
+    // Forty seconds with no readable lineup: the reminder came due ten seconds ago.
+    for (let elapsed = 0; elapsed < 40_000; elapsed += 500) expect(r.tick(OPEN, 500, null)).toEqual([]);
+
+    expect(r.state).toMatchObject({ cautionCatchUpOpen: true, cautionCatchUpReminders: 0 });
+    // The gap is read, it is still open and he is not closing: the reminder is made.
+    expect(r.tick(OPEN)).toEqual([STILL_OPEN]);
+    // And one more, an interval after THAT, not a burst.
+    expect(r.hold(OPEN, CATCH_UP_REMINDER_MS - 100)).toEqual([]);
+    expect(r.tick(OPEN)).toEqual([STILL_OPEN]);
+  });
+
+  it("makes no reminder on that tick if he closed up during the hold", () => {
+    const r = opened();
+
+    for (let elapsed = 0; elapsed < 40_000; elapsed += 500) r.tick(OPEN, 500, null);
+
+    expect(r.tick(CLOSED)).toEqual([]);
+    expect(r.state.cautionCatchUpOpen).toBe(false);
+  });
+
   it("holds a running dwell through one of those too", () => {
     const r = rig();
 
@@ -1041,6 +1484,7 @@ describe("resolveCatchUpBlocks — why catch-up cannot be judged", () => {
     expect(blocks(OPEN, (state) => (state.cautionPhase = "waving"))).toEqual(["phase"]);
     expect(blocks(OPEN, (state) => (state.cautionPhase = "none"))).toEqual(["phase"]);
     expect(blocks({ ...OPEN, flags: STATIC | GREEN })).toEqual(["green"]);
+    expect(blocks({ ...OPEN, flags: STATIC | GREEN_HELD })).toEqual(["green-held"]);
     expect(blocks(OPEN, (state, now) => (state.cautionCaughtAt = now - CATCH_UP_SETTLE_MS + 1))).toEqual(["settling"]);
     expect(blocks({ ...OPEN, paceCarSurface: TrkLoc.AproachingPits })).toEqual(["pace-car-off"]);
     expect(blocks({ ...OPEN, onPitRoad: true })).toEqual(["pit-road"]);

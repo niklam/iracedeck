@@ -459,6 +459,24 @@ export type TranslatorState = {
    */
   cautionProcedureJoined: boolean;
   /**
+   * What the drive-round latch has OBSERVED of a flagged player who has not
+   * joined yet, since one reading under the clear multiple cannot say he has
+   * (`trackDriveRound` in `diff/caution.ts`): whether he has been seen away
+   * from his slot — at the raise multiple or ahead of it — after which the
+   * first reading under the clear multiple is him arriving.
+   *
+   * Not preserved across a replay wipe, with the three fields below. Wiped
+   * mid-drive-round it is simply observed again on the first tick back; wiped
+   * after he arrived, the in-place clock joins him one settle window later.
+   */
+  cautionProcedureAwaySeen: boolean;
+  /** The car a flagged, unjoined player has been in place behind — the in-place clock is for ONE car. */
+  cautionProcedureInPlaceCarIdx: number | null;
+  /** When (`now`, ms) he was first read under the clear multiple behind that car, continuously since. */
+  cautionProcedureInPlaceSince: number | null;
+  /** When that was last confirmed, so a stretch with no reading does not count as continuous. */
+  cautionProcedureInPlaceSeenAt: number | null;
+  /**
    * When (`now`, ms) the phase first read `"caught"` in this caution — the
    * start of the settle window (`CATCH_UP_SETTLE_MS`) in which no gap is
    * judged. `null` while the caution waves and while none is out.
@@ -475,18 +493,25 @@ export type TranslatorState = {
    */
   cautionCatchUpLastOnPitRoad: boolean | null;
   /**
+   * When (`now`, ms) the player's current stay on pit road began, `null` off
+   * it. An exit opens a pit-exit episode only after a stay of at least a
+   * dwell: a tick on the pit lane's edge is not a stop.
+   */
+  cautionCatchUpPitRoadSince: number | null;
+  /**
    * When (`now`, ms) the player last left pit road under this caution, while
    * the PIT-EXIT EPISODE that opened runs: nothing is judged for
    * `CATCH_UP_PIT_EXIT_GRACE_MS` after it, the ahead-of-slot rule is waived,
    * and the episode makes one call and no reminders. `null` once he has
-   * caught the field, is back on pit road, or the caution is over.
+   * caught the field or the caution is over; a later stop replaces it.
    */
   cautionCatchUpPitExitAt: number | null;
   /** The running pit-exit episode has made its one call. */
   cautionCatchUpPitExitCalled: boolean;
   /**
-   * The car the running catch-up episode is about. A different car ahead
-   * restarts the episode from zero. `null` while no episode runs.
+   * The car the running catch-up episode is about: set when its dwell starts,
+   * `null` while no episode runs. A different car ahead only SUSPENDS the
+   * episode; it becomes that car's once the change has held for a dwell.
    */
   cautionCatchUpFollowCarIdx: number | null;
   /**
@@ -494,6 +519,28 @@ export type TranslatorState = {
    * there since — the dwell (`CATCH_UP_DWELL_MS`). `null` while it is below.
    */
   cautionCatchUpRaisedSince: number | null;
+  /**
+   * When a reading at the raise multiple last confirmed that dwell. A dwell is
+   * continuous: once this is older than `CATCH_UP_UNJUDGED_TOLERANCE_MS` the
+   * next reading starts it again.
+   */
+  cautionCatchUpRaisedSeenAt: number | null;
+  /**
+   * When (`now`, ms) the running episode was first disturbed — a soft block,
+   * or a different car ahead — and has been continuously since: the SUSPENSE.
+   * Nothing is emitted while it runs and the episode's clocks and count are
+   * kept; it ends the episode only after `CATCH_UP_DWELL_MS`, and is cleared
+   * when the original car and liveness return. `null` when undisturbed.
+   */
+  cautionCatchUpSuspendedSince: number | null;
+  /** When a disturbed tick last confirmed the suspense, for the same continuity rule as the dwell. */
+  cautionCatchUpSuspendedSeenAt: number | null;
+  /** The other car ahead during a suspense, whose own dwell is counted meanwhile. */
+  cautionCatchUpCandidateCarIdx: number | null;
+  /** That car's dwell: when the gap to it rose to the raise multiple, continuously since. */
+  cautionCatchUpCandidateRaisedSince: number | null;
+  /** When that car's reading was last taken. */
+  cautionCatchUpCandidateSeenAt: number | null;
   /** The gap is open: `caution.gapOpened` has fired and the ratio has not fallen below the clear multiple since. */
   cautionCatchUpOpen: boolean;
   /**
@@ -1564,12 +1611,23 @@ export function createInitialState(): TranslatorState {
     cautionFirstFollowCarIdx: null,
 
     cautionProcedureJoined: false,
+    cautionProcedureAwaySeen: false,
+    cautionProcedureInPlaceCarIdx: null,
+    cautionProcedureInPlaceSince: null,
+    cautionProcedureInPlaceSeenAt: null,
     cautionCaughtAt: null,
     cautionCatchUpLastOnPitRoad: null,
+    cautionCatchUpPitRoadSince: null,
     cautionCatchUpPitExitAt: null,
     cautionCatchUpPitExitCalled: false,
     cautionCatchUpFollowCarIdx: null,
     cautionCatchUpRaisedSince: null,
+    cautionCatchUpRaisedSeenAt: null,
+    cautionCatchUpSuspendedSince: null,
+    cautionCatchUpSuspendedSeenAt: null,
+    cautionCatchUpCandidateCarIdx: null,
+    cautionCatchUpCandidateRaisedSince: null,
+    cautionCatchUpCandidateSeenAt: null,
     cautionCatchUpOpen: false,
     cautionCatchUpLastCallAt: null,
     cautionCatchUpLastCallGapMeters: null,
