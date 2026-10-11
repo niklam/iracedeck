@@ -405,17 +405,28 @@ starlight-theme-select label select {
   line-height: 1.4;
 }
 
-/* ── Donate section ── */
+/* ── Support section (SupportSection.astro) ── */
 
-.donate-section {
+.support-section {
   text-align: center;
   margin: 1rem 0;
 }
 
-.donate-section p {
+.support-section p {
   color: var(--sl-color-gray-3);
   font-size: 0.9rem;
   margin-bottom: 1rem;
+}
+
+.support-button {
+  display: inline-block;
+  line-height: 0;
+}
+
+.support-section .support-membership {
+  font-size: 0.8rem;
+  margin-top: 0.75rem;
+  margin-bottom: 0;
 }
 
 /* ── Landing footer ── */

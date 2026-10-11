@@ -1,0 +1,23 @@
+---
+// The "support iRaceDeck" block on the homepage and the Download page (#1299):
+// the lead line, the Buy Me a Coffee button, and a quieter line naming the
+// iRaceDeck Supporter membership. The wording and the links live here and in
+// `data/support.ts` only, so the two pages cannot drift.
+//
+// The button is Buy Me a Coffee's own image inside a plain link, not their
+// widget script: no third-party script runs for it, and the link's target is
+// ours to set. The image is drawn by Buy Me a Coffee on each request and shows
+// the current number of supporters beside the text. `width` / `height` are its
+// own size, so the page does not shift when it loads.
+import { MEMBERSHIP_URL, SUPPORT_BUTTON_IMAGE_URL, SUPPORT_URL } from "../data/support";
+---
+
+<div class="support-section">
+  <p>iRaceDeck is free — servers and Red Bull aren't. Any support is genuinely appreciated.</p>
+  <a class="support-button" href={SUPPORT_URL} target="_blank" rel="noopener">
+    <img src={SUPPORT_BUTTON_IMAGE_URL} alt="Support iRaceDeck on Buy Me a Coffee" width="253" height="50" />
+  </a>
+  <p class="support-membership">
+    Or become an <a href={MEMBERSHIP_URL} target="_blank" rel="noopener">iRaceDeck Supporter</a> for a monthly amount and get the Supporter role on Discord.
+  </p>
+</div>

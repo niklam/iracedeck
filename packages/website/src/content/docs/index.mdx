@@ -20,6 +20,7 @@ hero:
 ---
 
 import BrandStrip from "../../components/BrandStrip.astro";
+import SupportSection from "../../components/SupportSection.astro";
 
 <hr class="section-divider" />
 
@@ -61,6 +62,10 @@ import BrandStrip from "../../components/BrandStrip.astro";
 <BrandStrip ecosystem={["elgato", "ulanzi", "mirabox"]} label="Supported hardware brands" />
 
 <p class="works-with-note">See the <a href="/docs/getting-started/installation/">installation guide</a> for the devices each ecosystem covers.</p>
+
+<hr class="section-divider" />
+
+<SupportSection />
 
 <hr class="section-divider" />
 
@@ -124,13 +129,6 @@ import BrandStrip from "../../components/BrandStrip.astro";
     <span class="community-title">GitHub</span>
     <span class="community-desc">View source, report issues, and contribute.</span>
   </a>
-</div>
-
-<hr class="section-divider" />
-
-<div class="donate-section">
-  <p>iRaceDeck is free — servers and Red Bull aren't. Any support is genuinely appreciated.</p>
-  <script type="text/javascript" src="https://cdnjs.buymeacoffee.com/1.0.0/button.prod.min.js" data-name="bmc-button" data-slug="niklaslampen" data-color="#FFDD00" data-emoji="🏎️" data-font="Cookie" data-text="Support iRaceDeck" data-outline-color="#000000" data-font-color="#000000" data-coffee-color="#ffffff"></script>
 </div>
 
 <footer class="landing-footer">

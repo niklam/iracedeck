@@ -11,6 +11,7 @@ hero:
 
 import BrandStrip from "../../components/BrandStrip.astro";
 import DownloadLink from "../../components/DownloadLink.astro";
+import SupportSection from "../../components/SupportSection.astro";
 import { ECOSYSTEMS } from "../../data/brands";
 
 export const version = import.meta.env.PUBLIC_IRACEDECK_VERSION;
@@ -41,5 +42,7 @@ export const version = import.meta.env.PUBLIC_IRACEDECK_VERSION;
     <DownloadLink class="download-button" href="/downloads/plugin/latest/ulanzi" platform="ulanzi" method="direct">Download for Ulanzi</DownloadLink>
   </div>
 </div>
+
+<SupportSection />
 
 <p class="download-help">After downloading, see the <a href="/docs/getting-started/installation/">installation guide</a> for setup instructions specific to your device.</p>
