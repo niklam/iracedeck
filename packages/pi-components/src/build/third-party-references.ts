@@ -155,6 +155,17 @@ function classify(raw: string): "local" | "remote" | "unresolved" {
 }
 
 /**
+ * Whether a script's string literal is a URL with a host in it: `scheme://host`
+ * or `//host`. Narrower than {@link classify} on purpose. An attribute such as
+ * `src` holds a URL whatever it looks like, so any scheme there is another
+ * origin; a string in script text is usually prose, and `"Error: not found"`
+ * has a `word:` prefix too.
+ */
+function namesAHost(raw: string): boolean {
+  return /^(?:[a-z][a-z0-9+.-]*:)?\/\/+[\w[]/i.test(asParsed(raw));
+}
+
+/**
  * Whether a URL's host is this machine. The host is what follows any
  * `user@`, so a loopback address written as the user name of another host does
  * not pass for one.
@@ -299,7 +310,7 @@ function findInScriptText({ text, expressions }: Normalised): ThirdPartyReferenc
     for (const [, double, single, template] of script.matchAll(SCRIPT_TOKEN)) {
       const value = double ?? single ?? template;
 
-      if (value === undefined || classify(value) !== "remote" || isLoopback(value)) continue;
+      if (value === undefined || !namesAHost(value) || isLoopback(value)) continue;
 
       found.push({ where: "script text", value: readable(value, expressions), why: "remote" });
     }

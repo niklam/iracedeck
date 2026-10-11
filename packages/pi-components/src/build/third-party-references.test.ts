@@ -186,6 +186,9 @@ describe("findThirdPartyReferences", () => {
         new WebSocket("ws://localhost:8888/ws"); fetch("http://[::1]:8888/x"); fetch('//LOCALHOST/x');
         var image = "data:image/png;base64,AAAA", local = "sdpi-components.js", empty = "";
         var text = "Served from https://example.com/ as text";
+        // A word and a colon is prose far more often than a scheme; only a
+        // literal with a host in it is an address.
+        var message = "Error: not found", mail = "mailto:someone@example.com", rule = "// not a URL";
       </script>`;
 
       expect(scan(html)).toEqual([]);
