@@ -38,8 +38,12 @@
  * the plugin's voice-pack catalog compares the value with semver and keeps such a pack listed but
  * not offered, and the launch step leaves an installed managed pack where it
  * is. Raise it in the same change that makes a pack's script use a name a
- * released plugin lacks; both packs are at 3.5.0 because their start briefs
- * branch on `sessionStart.wetnessKnown` / `raceStart.wetnessKnown` (#1284).
+ * released plugin lacks; both packs are at 3.6.0 because their rolling-start
+ * entries read the `rollingStart.*` names (#1167) — before that 3.5.0, for the
+ * start briefs' `sessionStart.wetnessKnown` / `raceStart.wetnessKnown` (#1284).
+ * A pre-release of the named version counts as that version (`3.6.0-dev.0`
+ * is offered a pack that needs `3.6.0`): `isVoicePackOfferable` strips the
+ * suffix before comparing.
  *
  * The typedef below is what THIS package's scripts and tests see (they import
  * the `.mjs` directly, so TypeScript infers from the JSDoc); `index.d.ts`
@@ -61,21 +65,21 @@ export const VOICE_PACKS = Object.freeze([
   Object.freeze({
     id: "default",
     label: "Default",
-    version: "1.1.2",
+    version: "1.2.0",
     description: "The Race Engineer voice iRaceDeck ships with.",
     author: "iRaceDeck",
     voices: Object.freeze(["default"]),
-    minPluginVersion: "3.5.0",
+    minPluginVersion: "3.6.0",
     bundled: false,
   }),
   Object.freeze({
     id: "iracedeck-terse",
     label: "Default (Short callouts)",
-    version: "1.0.1",
+    version: "1.1.0",
     description: "The Default engineer in radio shorthand: shorter race-time calls, most of them the fact itself.",
     author: "iRaceDeck",
     voices: Object.freeze(["shawn"]),
-    minPluginVersion: "3.5.0",
+    minPluginVersion: "3.6.0",
     bundled: false,
   }),
 ]);

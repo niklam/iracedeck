@@ -10,7 +10,7 @@ describe("voice-packs.mjs — the Terse pack (#999)", () => {
       author: "iRaceDeck",
       voices: ["shawn"],
       bundled: false,
-      version: "1.0.1",
+      version: "1.1.0",
     });
   });
 
