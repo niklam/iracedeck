@@ -294,7 +294,7 @@ describe("the rolling-start shortcuts (issue #1167)", () => {
     // true, where the translator publishes nothing; the ticks make the
     // translator see the bracket open and close whatever the mock's tick rate.
     for (const id of [FORMATION, PACE_CAR, LINEUP_CHANGED, ONE_LAP]) {
-      const [settle, open, close] = stepsOf(id);
+      const [settle, open, close, seed] = stepsOf(id);
 
       // A race already under way, shown first: it settles the translator's
       // fresh-connect check without the race-start brief (see the control in
@@ -324,6 +324,9 @@ describe("the rolling-start shortcuts (issue #1167)", () => {
       expect(close, id).toEqual({ patch: { IsReplayPlaying: false }, holdMs: expect.any(Number), tick: true });
       expect(close.holdMs ?? 0, id).toBeGreaterThan(REPLAY_EXIT_GRACE_MS);
       expect(stepsOf(id).filter(isBracketStep), id).toHaveLength(3);
+      // And a tick of its own to re-seed on, before the first live step (the
+      // slow-loop case in the last block is what it is for).
+      expect(seed, id).toEqual({ patch: {}, tick: true });
     }
   });
 });
@@ -696,9 +699,11 @@ describe("the formation's calls on their own", () => {
 
       drive(rig, steps);
 
-      const [, , adopted, ghost, closeUp, standDown] = rig.trace;
+      // The bracket's four steps (the last its seeding tick, on which the
+      // formation is adopted), the two of the change, and the stand-down.
+      const [, , , adopted, ghost, closeUp, standDown] = rig.trace;
 
-      expect(steps).toHaveLength(6);
+      expect(steps).toHaveLength(7);
       expect(rig.events).toEqual(["rollingStart.lineup.changed"]);
       expect(ghost.events).toEqual(["rollingStart.lineup.changed"]);
       // Adopted, not opened: the state without the pace-car cue, behind car 8.
@@ -709,7 +714,7 @@ describe("the formation's calls on their own", () => {
       expectFormationBehindCar(closeUp, "19", line);
       expect(closeUp.lineup?.followCarIdx).not.toBe(closeUp.formation?.firstFollowCarIdx);
       expect(closeUp.formation?.id).toBe(adopted.formation?.id);
-      expect(steps[4].holdMs ?? 0).toBeGreaterThanOrEqual(ROLLING_START_LINEUP_CHANGE_DELAY_MS + 3500);
+      expect(steps[5].holdMs ?? 0).toBeGreaterThanOrEqual(ROLLING_START_LINEUP_CHANGE_DELAY_MS + 3500);
       expect(standDown.formation).toBeNull();
     },
   );
@@ -925,4 +930,66 @@ describe("the formation's calls on their own", () => {
 
     expect(settled.events).toEqual(["rollingStart.pace-car-moving.raised"]);
   });
+
+  it.each([
+    { id: FORMATION, published: 7 },
+    { id: PACE_CAR, published: 1 },
+    { id: LINEUP_CHANGED, published: 1 },
+  ])(
+    "$id publishes the same with the mock's tick loop slowed to most of a second — the bracket seeds on a tick of its own",
+    ({ id, published }) => {
+      // The UI's press with the loop at 900 ms: each step's patch, a tick at
+      // once only where the step asks for one, then its hold while the loop
+      // ticks. The bracket's close is held 200 ms past the replay exit grace,
+      // which a 14 ms loop always lands a tick in and a slow one may not —
+      // and a re-seed tick that comes after the NEXT patch takes the
+      // `ParadeLaps` entry, or the changed lineup, for its baseline and
+      // announces nothing. The bracket's last step is that tick.
+      const steps = stepsOf(id);
+      const rig = startRig();
+
+      expect(steps[3]).toEqual({ patch: {}, tick: true });
+
+      rig.controller.setTickInterval(900);
+      rig.controller.start();
+
+      for (const step of steps) {
+        rig.controller.mutateTelemetry(step.patch as TelemetryPatch);
+
+        if (step.tick === true) rig.controller.tickOnce();
+
+        vi.advanceTimersByTime(step.holdMs ?? 0);
+      }
+
+      vi.advanceTimersByTime(900);
+      rig.controller.stop();
+
+      expect(rig.events).toHaveLength(published);
+
+      // The control: the same press without that tick.
+      _resetSimEventsIracing();
+      _resetEventBus();
+      initializeEventBus(silentLogger);
+
+      const unseeded = startRig();
+
+      unseeded.controller.setTickInterval(900);
+      unseeded.controller.start();
+
+      for (const step of steps.filter((_step, index) => index !== 3)) {
+        unseeded.controller.mutateTelemetry(step.patch as TelemetryPatch);
+
+        if (step.tick === true) unseeded.controller.tickOnce();
+
+        vi.advanceTimersByTime(step.holdMs ?? 0);
+      }
+
+      vi.advanceTimersByTime(900);
+      unseeded.controller.stop();
+
+      // The whole formation has a second and a half of `Warmup` before its
+      // entry edge, so it does not need the tick; the two single calls do.
+      expect(unseeded.events).toHaveLength(id === FORMATION ? published : 0);
+    },
+  );
 });

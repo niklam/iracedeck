@@ -1763,7 +1763,13 @@ const NOBODY_LINED_UP = FORMATION_PACE_ROW.map(() => -1);
  * is announced before the thing it auditions.
  *
  * Every step asks for a tick, so the translator sees the bracket open and
- * close whatever the mock's tick rate.
+ * close whatever the mock's tick rate, and the last is {@link SEEDED_TICK}:
+ * the re-seed happens on what the bracket arranged, before the button's first
+ * live step. "Pace car moving" and "Car ahead changed" drive their one edge
+ * straight after the bracket, and with the loop slowed past the bracket's
+ * margin the re-seed tick would otherwise come after it — the `ParadeLaps`
+ * entry adopted as a formation already running, the changed lineup taken for
+ * the baseline — and neither would publish anything.
  *
  * **The first step is there for one translator decision the bracket does not
  * swallow.** The translator briefs a driver who connects to a race before its
@@ -1791,6 +1797,7 @@ function formationBracket(phase: { SessionState: SessionState; SessionFlags: num
       tick: true,
     },
     { patch: { IsReplayPlaying: false }, holdMs: REPLAY_EXIT_SETTLE_MS, tick: true },
+    SEEDED_TICK,
   ];
 }
 
@@ -2018,8 +2025,8 @@ const ROLLING_START_LINEUP_CHANGED_SHORTCUT: TelemetrySequenceShortcut = {
  * the gate: the call speaks only while the translator holds a formation, so
  * the setup sequence seeds one in `ParadeLaps`, which the translator adopts
  * without a cue (and with the pace-lap diff unarmed, so no second event can
- * follow the published one). The last setup step is a bare tick, so the
- * adopted formation is in front of the publish whatever the mock's tick rate.
+ * follow the published one). The bracket ends on a bare tick, so the adopted
+ * formation is in front of the publish whatever the mock's tick rate.
  * The teardown stands the formation down again once the line has played.
  *
  * **The teardown is also what a FAILED run leaves the harness with.** The UI
@@ -2045,7 +2052,7 @@ const ONE_LAP_TO_GREEN_SHORTCUT: BusEventShortcut = {
   label: "One Lap to Green",
   requires: ["rolling-start-grid", "sdk-connected"],
   description: `Fires "flag.one-pace-lap-to-go.raised" on its own — the rolling start's "One lap to green", which the translator publishes when the pace car completes its first full pace lap of two. The call speaks only while a formation is running, so the button first puts a formation in front of the translator (the grid formed up double file in ParadeLaps, adopted without the pace-car call) and stands it down again afterwards. Expect "One lap to green. Take the inside line behind car eight." on the "race-oval" session preset, and "One lap to green. Line up behind car eight." on "race", where no lane is named. To hear the translator make the decision itself, use Rolling Start → Formation (oval, two laps). ${FORMATION_NEEDS}`,
-  telemetrySequence: [...FORMATION_ADOPTED, { patch: {}, tick: true }],
+  telemetrySequence: FORMATION_ADOPTED,
   event: "flag.one-pace-lap-to-go.raised",
   data: {},
   teardownSequence: [{ patch: {}, holdMs: FORMATION_ONE_LAP_TO_GREEN_CALL_MS }, ONE_LAP_TO_GREEN_STAND_DOWN],
