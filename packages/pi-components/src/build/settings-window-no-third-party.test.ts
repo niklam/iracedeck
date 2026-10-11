@@ -20,9 +20,9 @@ import { findThirdPartyReferences, type ThirdPartyReference } from "./third-part
  * carry an absolute URL.
  *
  * Held in two places. The SOURCES (the page and every partial, since any
- * partial can be included by it) always run. The BUILT pages run when a build
- * is present, and are what actually ships: they also cover whatever a build
- * step injects.
+ * partial can be included by it) always run. The BUILT pages are what actually
+ * ships, and also cover whatever a build step injects: they run wherever a
+ * build is present, and must be present in CI.
  *
  * A scan that finds nothing proves something only if the scanner would have
  * found it. `third-party-references.test.ts` is that positive control, and the
@@ -112,19 +112,29 @@ describe("the built Settings window pages", () => {
 
     it("loads nothing from another site but the allow-listed image", () => {
       if (!existsSync(builtPage)) {
-        // The plugin has not been built in this checkout; the source scan
-        // above still ran.
+        // CI builds before it tests (`ci-test.yml`), so a page missing there is
+        // a moved path or a broken discovery, and passing would hide it.
+        // Anywhere else the plugin has not been built in this checkout; the
+        // source scan above still ran.
+        expect(
+          process.env.CI,
+          `${builtPage} is missing, and CI builds before it tests: the page moved, or plugin discovery broke`,
+        ).toBeFalsy();
+
         return;
       }
 
       const html = readFileSync(builtPage, "utf-8");
 
       expect(lines(findThirdPartyReferences(html, { allowedImages: ALLOWED_REMOTE_IMAGES }))).toEqual([]);
-      // …and with nothing allowed the same scan reports exactly that image,
-      // which is what shows it read the page that carries it.
-      expect(lines(findThirdPartyReferences(html))).toEqual([
-        `<img src> ${ALLOWED_REMOTE_IMAGES[0].replaceAll("&", "&amp;")} (remote)`,
-      ]);
+      // …and with nothing allowed the same scan reports exactly the allowed
+      // images, which is what shows it read the page that carries them. The
+      // page writes each URL's `&` as an entity.
+      expect(
+        lines(findThirdPartyReferences(html)).sort(),
+        `the page at ${builtPage} does not carry the Support tab's button, so it was built before #1303 — ` +
+          "rebuild with `pnpm build`",
+      ).toEqual(ALLOWED_REMOTE_IMAGES.map((image) => `<img src> ${image.replaceAll("&", "&amp;")} (remote)`).sort());
     });
   });
 });
