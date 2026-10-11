@@ -1,0 +1,103 @@
+{
+  "sessionInfo": {
+    "WeekendInfo": {
+      "TrackName": "homestead oval",
+      "Category": "Oval",
+      "TrackType": "medium oval",
+      "WeekendOptions": {
+        "NumStarters": 20,
+        "StartingGrid": "single file",
+        "StandingStart": 0,
+        "ShortParadeLap": 0,
+        "Restarts": "double file lapped cars behind"
+      }
+    },
+    "SessionInfo": { "Sessions": [{ "SessionNum": 0, "SessionType": "Race" }] },
+    "QualifyResultsInfo": {
+      "Results": [
+        { "Position": 0, "CarIdx": 17 },
+        { "Position": 1, "CarIdx": 16 },
+        { "Position": 2, "CarIdx": 18 },
+        { "Position": 3, "CarIdx": 7 },
+        { "Position": 4, "CarIdx": 6 },
+        { "Position": 5, "CarIdx": 11 },
+        { "Position": 6, "CarIdx": 4 },
+        { "Position": 7, "CarIdx": 1 },
+        { "Position": 8, "CarIdx": 9 },
+        { "Position": 9, "CarIdx": 12 },
+        { "Position": 10, "CarIdx": 0 },
+        { "Position": 11, "CarIdx": 14 },
+        { "Position": 12, "CarIdx": 19 },
+        { "Position": 13, "CarIdx": 15 },
+        { "Position": 14, "CarIdx": 3 },
+        { "Position": 15, "CarIdx": 5 },
+        { "Position": 16, "CarIdx": 2 },
+        { "Position": 17, "CarIdx": 10 },
+        { "Position": 18, "CarIdx": 13 },
+        { "Position": 19, "CarIdx": 8 }
+      ]
+    },
+    "DriverInfo": {
+      "DriverCarIdx": 0,
+      "PaceCarIdx": 64,
+      "Drivers": [
+        { "CarIdx": 0, "CarNumber": "64", "CarIsPaceCar": 0, "CarIsAI": 0 },
+        { "CarIdx": 1, "CarNumber": "1", "CarIsPaceCar": 0, "CarIsAI": 1 },
+        { "CarIdx": 2, "CarNumber": "2", "CarIsPaceCar": 0, "CarIsAI": 1 },
+        { "CarIdx": 3, "CarNumber": "13", "CarIsPaceCar": 0, "CarIsAI": 1 },
+        { "CarIdx": 4, "CarNumber": "4", "CarIsPaceCar": 0, "CarIsAI": 1 },
+        { "CarIdx": 5, "CarNumber": "3", "CarIsPaceCar": 0, "CarIsAI": 1 },
+        { "CarIdx": 6, "CarNumber": "20", "CarIsPaceCar": 0, "CarIsAI": 1 },
+        { "CarIdx": 7, "CarNumber": "14", "CarIsPaceCar": 0, "CarIsAI": 1 },
+        { "CarIdx": 8, "CarNumber": "449", "CarIsPaceCar": 0, "CarIsAI": 1 },
+        { "CarIdx": 9, "CarNumber": "07", "CarIsPaceCar": 0, "CarIsAI": 1 },
+        { "CarIdx": 10, "CarNumber": "10", "CarIsPaceCar": 0, "CarIsAI": 1 },
+        { "CarIdx": 11, "CarNumber": "11", "CarIsPaceCar": 0, "CarIsAI": 1 },
+        { "CarIdx": 12, "CarNumber": "12", "CarIsPaceCar": 0, "CarIsAI": 1 },
+        { "CarIdx": 13, "CarNumber": "32", "CarIsPaceCar": 0, "CarIsAI": 1 },
+        { "CarIdx": 14, "CarNumber": "15", "CarIsPaceCar": 0, "CarIsAI": 1 },
+        { "CarIdx": 15, "CarNumber": "777", "CarIsPaceCar": 0, "CarIsAI": 1 },
+        { "CarIdx": 16, "CarNumber": "37", "CarIsPaceCar": 0, "CarIsAI": 1 },
+        { "CarIdx": 17, "CarNumber": "96", "CarIsPaceCar": 0, "CarIsAI": 1 },
+        { "CarIdx": 18, "CarNumber": "18", "CarIsPaceCar": 0, "CarIsAI": 1 },
+        { "CarIdx": 19, "CarNumber": "53", "CarIsPaceCar": 0, "CarIsAI": 1 },
+        { "CarIdx": 64, "CarNumber": "0", "CarIsPaceCar": 1, "CarIsAI": 0 }
+      ]
+    }
+  },
+  "ticks": [
+    {
+      "t": 177.37,
+      "SessionFlags": 537133568,
+      "SessionState": 3,
+      "PaceMode": 1,
+      "CarIdxPaceLine": [0, 1, 0, 0, 0, 1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 0, 0, -1],
+      "CarIdxPaceRow": [5, 3, 8, 7, 3, 7, 2, 1, 9, 4, 8, 2, 4, 9, 5, 6, 0, 0, 1, 6, -1],
+      "CarIdxLapCompleted": [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
+      "CarIdxLapDistPct": [
+        0.2557332217693329,
+        0.26510089635849,
+        0.24315772950649261,
+        0.24735035002231598,
+        0.2658466398715973,
+        0.24829019606113434,
+        0.26996302604675293,
+        0.27354055643081665,
+        0.23987992107868195,
+        0.2617168426513672,
+        0.24407462775707245,
+        0.2693372964859009,
+        0.2608930766582489,
+        0.23894336819648743,
+        0.25671541690826416,
+        0.25246232748031616,
+        0.2777128219604492,
+        0.2782871127128601,
+        0.2741413116455078,
+        0.25155073404312134,
+        0.28640589118003845
+      ],
+      "CarIdxTrackSurface": [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3]
+    }
+  ]
+}
