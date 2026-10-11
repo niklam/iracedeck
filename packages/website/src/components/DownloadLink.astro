@@ -2,9 +2,14 @@
 // Renders a download / install link and reports a GA4 `file_download` event when
 // it is clicked, so install activity can be broken down by platform, install
 // method, and the app version that was current at the time. A single bundled
-// <script> (below) wires every <DownloadLink> on the page from its data-
+// script (below) wires every DownloadLink on the page from its data-
 // attributes — Astro dedupes the script, so it is emitted and runs once no
 // matter how many links use this component.
+//
+// Never write a script tag's literal text in this frontmatter, not even in a
+// comment: Vite's dependency scan reads an .astro file as text, takes the first
+// one it finds for the start of the component's script, and fails on the prose
+// that follows — `astro dev` then starts with "Failed to run dependency scan".
 interface Props {
   /** Destination URL (a direct-download redirect or an external store page). */
   href: string;
