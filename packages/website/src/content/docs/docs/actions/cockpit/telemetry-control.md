@@ -106,7 +106,7 @@ iRaceDeck's own state is what the plugin has built up over the session, which on
 
 - Your fuel use per lap and the laps of fuel left that iRaceDeck calculates from it
 - The race order and the gaps to the cars around you that it was tracking
-- The caution state
+- The caution state, including the gap to the car you line up behind, and the rolling-start formation
 - What the Race Engineer was saying, and what he had queued to say next
 - Your iRaceDeck settings, and any warning banners iRaceDeck was showing
 
