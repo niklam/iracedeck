@@ -35,8 +35,13 @@ vi.mock("@iracedeck/sim-events-iracing", async (importOriginal) => {
 
 const PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-/** The ids that must refuse to run without a session preset (issue #1127). */
-const CAUTION_SHORTCUT_IDS = ["flag-caution-restart", "flag-caution-lineup-change", "flag-caution-extra-lap"];
+/** The ids that must refuse to run without a session preset (issue #1127; the catch-up button since #1168). */
+const CAUTION_SHORTCUT_IDS = [
+  "flag-caution-restart",
+  "flag-caution-lineup-change",
+  "flag-caution-extra-lap",
+  "flag-caution-catch-up",
+];
 
 /** The whole-formation run, which needs its grid read on an OVAL (issue #1167). */
 const FORMATION_SHORTCUT_ID = "rolling-start-formation";

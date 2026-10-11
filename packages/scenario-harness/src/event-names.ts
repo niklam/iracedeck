@@ -57,6 +57,18 @@ export const FORMATION_GATE_NOTE =
   "laps) is running, between the pace car pulling away and the green being held, or use the Rolling Start shortcuts " +
   "and Flags → One Lap to Green, which put a formation in front of the translator themselves.";
 
+/**
+ * Appended to the injector description of the two catch-up events (#1168),
+ * for the reason {@link FORMATION_GATE_NOTE} is: both callouts ask the
+ * translator at speak time whether the gap to the car ahead is still open
+ * under a caution, and a published event makes nothing true. Pinned by
+ * `caution-catch-up-shortcut.test.ts`; the silence by `caution-catch-up-heard.test.ts`.
+ */
+export const CATCH_UP_GATE_NOTE =
+  "Its callout speaks only while the translator judges your gap to the car ahead open under a full-course caution, " +
+  "and publishing the event opens none: fired on its own it reaches the bus and plays nothing. Use Flags → Caution " +
+  "→ catch-up, which drives the caution and opens the gap through the translator.";
+
 export type EventTemplate = {
   name: SimEventName;
   description: string;
@@ -166,10 +178,14 @@ export const EVENT_TEMPLATES = [
   },
   {
     name: "caution.gapOpened",
-    description: "The gap to the car ahead in your line has opened — close it up",
+    description: `The gap to the car ahead in your line has opened — close it up. ${CATCH_UP_GATE_NOTE}`,
     data: {},
   },
-  { name: "caution.gapStillOpen", description: "Reminder: the gap is still open and not closing", data: {} },
+  {
+    name: "caution.gapStillOpen",
+    description: `Reminder: the gap is still open and not closing. ${CATCH_UP_GATE_NOTE}`,
+    data: {},
+  },
   { name: "caution.restarted", description: "The green that ends the caution", data: {} },
 
   // ── Start lights ──

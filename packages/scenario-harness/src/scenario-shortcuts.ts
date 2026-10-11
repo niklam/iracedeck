@@ -37,6 +37,9 @@ import {
   TrkLoc,
 } from "@iracedeck/iracing-sdk";
 import {
+  CATCH_UP_DWELL_MS,
+  CATCH_UP_REMINDER_MS,
+  CATCH_UP_SETTLE_MS,
   DAMAGE_DEBOUNCE_MS,
   DAMAGE_INCIDENT_GRACE_MS,
   DAMAGE_REPAIR_MASK,
@@ -69,7 +72,7 @@ type ScenarioShortcutBase = {
    * Checked by `POST /api/shortcut/start`, which REFUSES the run and hands the
    * UI the rule's reason rather than letting the button proceed into a
    * half-silent sequence. Optional — a shortcut that sets up everything it
-   * needs declares none, which is all of them but the caution three (a
+   * needs declares none, which is all of them but the caution four (a
    * session preset), the overtake and gap ones (a connected mock SDK) and the
    * rolling-start four (both: a race session the formation grid reads in, on
    * an oval for the whole-formation run, and a connected mock SDK).
@@ -1709,8 +1712,8 @@ const FORMATION_UNWIND_ROW = FORMATION_CLOSED_UP_ROW.map((row, carIdx) => {
   return FORMATION_CLOSED_UP_LINE[carIdx] === 0 ? row - 1 : row;
 });
 
-/** Nobody lined up: what every pace row reads once the lineup has unwound (206.80 s). */
-const FORMATION_NO_LINEUP = FORMATION_PACE_ROW.map(() => -1);
+/** Nobody lined up: what every pace line and row reads under green, once a lineup has unwound (206.80 s in the capture). */
+const NOBODY_LINED_UP = FORMATION_PACE_ROW.map(() => -1);
 
 /**
  * The opening replay-mode bracket of every formation button (the
@@ -1784,8 +1787,8 @@ const FORMATION_STAND_DOWN: TelemetryStep = {
   patch: {
     SessionState: SessionState.Racing,
     SessionFlags: RACING_NO_FLAG,
-    CarIdxPaceLine: FORMATION_NO_LINEUP,
-    CarIdxPaceRow: FORMATION_NO_LINEUP,
+    CarIdxPaceLine: NOBODY_LINED_UP,
+    CarIdxPaceRow: NOBODY_LINED_UP,
     CarIdxLapDistPct: null,
     CarIdxTrackSurface: null,
   },
@@ -1898,8 +1901,8 @@ const ROLLING_START_FORMATION_SHORTCUT: TelemetrySequenceShortcut = {
     {
       patch: {
         SessionFlags: RACING_NO_FLAG | Flags.Green,
-        CarIdxPaceLine: FORMATION_NO_LINEUP,
-        CarIdxPaceRow: FORMATION_NO_LINEUP,
+        CarIdxPaceLine: NOBODY_LINED_UP,
+        CarIdxPaceRow: NOBODY_LINED_UP,
       },
       holdMs: FORMATION_GREEN_SHOWN_MS,
     },
@@ -1998,6 +2001,173 @@ const ONE_LAP_TO_GREEN_SHORTCUT: BusEventShortcut = {
   event: "flag.one-pace-lap-to-go.raised",
   data: {},
   teardownSequence: [{ patch: {}, holdMs: FORMATION_ONE_LAP_TO_GREEN_CALL_MS }, FORMATION_STAND_DOWN],
+};
+
+/** The session presets' player, car "42" — row 7 of the single-file caution lineup, behind car "11". */
+const CATCH_UP_PLAYER_CAR_IDX = 7;
+
+/**
+ * One pack spacing, as a fraction of a lap (issue #1168). The translator
+ * judges the player's gap as a RATIO to the pack's own spacing, so the track
+ * length cancels and the same fractions read the same on either race preset:
+ * ten metres on a two-kilometre lap, which is the spacing a formed pack held
+ * in every snapshot the measurement was built on.
+ */
+const CATCH_UP_PACK_SPACING_PCT = 0.005;
+
+/** Where the pace car sits on the lap: mid-lap, so nobody in the queue is near start/finish. */
+const CATCH_UP_PACE_CAR_PCT = 0.5;
+
+/**
+ * The player's gap once he has dropped back, in pack spacings: 4×, past the
+ * 2.5× at which the translator counts a gap as open and inside the range the
+ * snapshots measured for a car that had really dropped back (3.4× and up).
+ */
+const CATCH_UP_OPEN_GAP_SPACINGS = 4;
+
+/**
+ * Per-car lap progress for the single-file caution lineup
+ * ({@link CAUTION_SINGLE_FILE_ROW}: row = car index, the pace car at row 0),
+ * as a formed pack: the leader two spacings behind the pace car — the pace car
+ * keeps its first car at about twice the pack's spacing, 19.3–20.9 m against
+ * 10 m in all nine snapshots — and every other car one spacing behind the car
+ * ahead of it.
+ *
+ * `droppedBack` moves the player AND every car lined up behind him back
+ * together, which is what a driver lifting in a single-file queue does to the
+ * queue: the cars behind cannot pass under caution, so they hold their spacing
+ * to him. Only the player's own gap opens — to {@link CATCH_UP_OPEN_GAP_SPACINGS}
+ * spacings — and the pack's median spacing does not move.
+ */
+function catchUpLapDist(droppedBack: boolean): number[] {
+  return CAUTION_SINGLE_FILE_ROW.map((row) => {
+    if (row === 0) return CATCH_UP_PACE_CAR_PCT;
+
+    const behindPaceCar =
+      row + 1 + (droppedBack && row >= CATCH_UP_PLAYER_CAR_IDX ? CATCH_UP_OPEN_GAP_SPACINGS - 1 : 0);
+
+    return Number((CATCH_UP_PACE_CAR_PCT - behindPaceCar * CATCH_UP_PACK_SPACING_PCT).toFixed(4));
+  });
+}
+
+/** Every car on the track, the pace car included: a pace car that is not on the road is not one to close up behind. */
+const CATCH_UP_TRACK_SURFACE = CAUTION_SINGLE_FILE_ROW.map(() => TrkLoc.OnTrack);
+
+/**
+ * How long the reminder is listened through before the gap closes: "Still a
+ * gap. Close up on", the car number and the radio frame.
+ */
+const CATCH_UP_REMINDER_LISTEN_MS = 4500;
+
+/**
+ * How long the closed gap is held before the restart. What is listened for
+ * here is silence: closing up is not announced, and no reminder may follow it.
+ */
+const CATCH_UP_CLOSED_LISTEN_MS = 3000;
+
+/** How long the restart's go signal is held: the restart line and its radio frame. */
+const CATCH_UP_RESTART_MS = 3000;
+
+/**
+ * Dropping back from the car ahead under a full-course caution, driven through
+ * the TRANSLATOR (issue #1168): the caution thrown and picked up, then the
+ * player's gap to the car he lines up behind opened to four pack spacings,
+ * held there, and closed again.
+ *
+ * No bus-event button can audition this. `caution.gapOpened` is a decision the
+ * translator makes over time — the ratio of the gap to the pack's own spacing
+ * has to stay past the raise multiple for a dwell, after the pack has had time
+ * to settle behind the pace car — and both calls ask the translator at speak
+ * time whether the gap is still open (`getCautionGap().warranted`), which a
+ * published event does not make true.
+ *
+ * **The waits are the translator's own windows, imported, and they are why
+ * this is a minute long.** Nothing is judged for {@link CATCH_UP_SETTLE_MS}
+ * after the pickup, so the pickup step holds exactly that and the gap opens
+ * on a field the translator already takes for a pack. The open gap is then
+ * held for {@link CATCH_UP_DWELL_MS} (the first call) plus
+ * {@link CATCH_UP_REMINDER_MS} (the reminder: the gap is not a pack spacing
+ * shorter than it was at the first call, so the driver is not closing) plus
+ * the reminder's own listening time. The translator's clocks run on
+ * `Date.now()` per tick and the mock SDK has no clock to move, so there is no
+ * honest way to make these shorter.
+ *
+ * What it needs of the harness beyond its siblings' session preset is a
+ * TRACK LENGTH (`WeekendInfo.TrackLength`): without one a lap fraction is not
+ * a distance and the translator measures no gap at all. Both race presets
+ * carry one since #1168.
+ *
+ * Opens inside a replay-mode bracket, unlike the three older caution buttons,
+ * because what it drives is fragile to what the last button left: a baseline
+ * of `OnPitRoad: true` would make the bracket's own "off pit road" a pit exit
+ * under caution, which is a different episode — one call and no reminders —
+ * and a pace-car surface left over from a rolling start would add "Pace car's
+ * out". Seeded under green with nobody lined up, the pack already spaced out
+ * on the track, and the session racing, so it needs no telemetry preset.
+ *
+ * Single file ({@link CAUTION_SINGLE_FILE_LINE} / {@link CAUTION_SINGLE_FILE_ROW}),
+ * so the player's follow car is car "11" and no lane is involved. Ends with
+ * the restart, straight from the caught phase, so the harness is not left
+ * under a flag, and deletes the per-car arrays it added.
+ */
+const CAUTION_CATCH_UP_SHORTCUT: TelemetrySequenceShortcut = {
+  id: "flag-caution-catch-up",
+  category: "Flags",
+  label: "Caution → catch-up",
+  requires: ["player-car-index"],
+  description:
+    'Drives the TRANSLATOR through a full-course caution in which you drop back from the car ahead: the caution thrown and picked up, single file, then your gap to car eleven opened to four times the pack\'s spacing, held, and closed again. About a minute end to end, because the waits are the translator\'s own — it judges no gap for ten seconds after the pickup, wants the gap open for three before it reports it, and reminds thirty seconds later. Apply the race session preset first (its roster supplies the pace car and every car number, and its track length is what turns lap distance into a gap); the run is refused without a session preset. No telemetry preset is needed: the button puts you on track in the pack itself. Expect the caution-waving line, the follow line ("...behind car eleven"), the two-to-green line, then — about thirteen seconds after the pickup — the catch-up line ("Close it up — catch car eleven", or one of its two other lead-ins), thirty seconds later the reminder ("Still a gap. Close up on car eleven"), then SILENCE as the gap closes (closing up is not announced, and no second reminder may follow), and the restart line. Single file, so no lane is named on any preset. Needs the mock SDK CONNECTED; with it disconnected the translator sees no ticks and the button is silent for the wrong reason.',
+  telemetrySequence: [
+    {
+      patch: {
+        IsReplayPlaying: true,
+        IsOnTrack: true,
+        OnPitRoad: false,
+        PlayerCarInPitStall: false,
+        PlayerTrackSurface: TrkLoc.OnTrack,
+        SessionState: SessionState.Racing,
+        SessionFlags: RACING_NO_FLAG,
+        CarIdxPaceLine: NOBODY_LINED_UP,
+        CarIdxPaceRow: NOBODY_LINED_UP,
+        CarIdxPaceFlags: null,
+        CarIdxLapDistPct: catchUpLapDist(false),
+        CarIdxTrackSurface: CATCH_UP_TRACK_SURFACE,
+        CarIdxLapCompleted: null,
+      },
+      holdMs: FORMATION_SEED_MS,
+      tick: true,
+    },
+    { patch: { IsReplayPlaying: false }, holdMs: REPLAY_EXIT_SETTLE_MS, tick: true },
+    // The caution, and the field lined up behind the pace car.
+    {
+      patch: {
+        SessionFlags: RACING_NO_FLAG | Flags.CautionWaving,
+        CarIdxPaceLine: CAUTION_SINGLE_FILE_LINE,
+        CarIdxPaceRow: CAUTION_SINGLE_FILE_ROW,
+      },
+      holdMs: CAUTION_WAVING_MS,
+    },
+    // The pickup. Nothing is judged until the pack has settled.
+    { patch: { SessionFlags: RACING_NO_FLAG | Flags.Caution }, holdMs: CATCH_UP_SETTLE_MS },
+    // The gap opens, and stays open through the first call and one reminder.
+    {
+      patch: { CarIdxLapDistPct: catchUpLapDist(true) },
+      holdMs: CATCH_UP_DWELL_MS + CATCH_UP_REMINDER_MS + CATCH_UP_REMINDER_LISTEN_MS,
+    },
+    // Closed up again: silence.
+    { patch: { CarIdxLapDistPct: catchUpLapDist(false) }, holdMs: CATCH_UP_CLOSED_LISTEN_MS },
+    // The restart, so the harness is not left under a flag.
+    { patch: { SessionFlags: Flags.Green | Flags.Servicible | Flags.StartGo }, holdMs: CATCH_UP_RESTART_MS },
+    {
+      patch: {
+        SessionFlags: RACING_NO_FLAG,
+        CarIdxPaceLine: NOBODY_LINED_UP,
+        CarIdxPaceRow: NOBODY_LINED_UP,
+        CarIdxLapDistPct: null,
+        CarIdxTrackSurface: null,
+      },
+    },
+  ],
 };
 
 export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
@@ -2340,6 +2510,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   CAUTION_RESTART_SHORTCUT,
   CAUTION_LINEUP_CHANGE_SHORTCUT,
   CAUTION_EXTRA_LAP_SHORTCUT,
+  CAUTION_CATCH_UP_SHORTCUT,
   flag("White", "flag.white.raised"),
   flag("White — Last Lap Started", "flag.white-last-lap.raised"),
   flag("Checkered", "flag.checkered.raised"),

@@ -3,6 +3,7 @@
     "TrackName": "homestead miami speedway",
     "TrackDisplayName": "Homestead Miami Speedway — Oval",
     "TrackID": 325,
+    "TrackLength": "2.38 km",
     "TrackPitSpeedLimit": "80.47 kph",
     "Category": "Oval",
     "TrackType": "medium oval",
