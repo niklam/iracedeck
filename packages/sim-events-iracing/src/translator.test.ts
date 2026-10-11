@@ -36,12 +36,15 @@ import type { ILogger } from "@iracedeck/logger";
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { CATCH_UP_DWELL_MS, CATCH_UP_REMINDER_MS, CATCH_UP_SETTLE_MS } from "./diff/caution.js";
 import { DAMAGE_DEBOUNCE_MS } from "./diff/damage.js";
 import { YELLOW_CLEARED_HOLD_MS } from "./diff/flags.js";
 import { INCIDENT_BURST_QUIET_MS } from "./diff/incidents.js";
+import type { TranslatorState } from "./state.js";
 import {
   _resetSimEventsIracing,
   getCautionEpisode,
+  getCautionGap,
   getCautionPhase,
   getDriverSetupName,
   getFuelStats,
@@ -6728,6 +6731,464 @@ describe("sim-events-iracing translator", () => {
         expect(state.caution.lineup).toMatchObject({ followCarNumber: "07", line: "inside", anchor: "grid" });
         expect(state.raw.state.rollingStartFormationId).toBe(state.rollingStart.formation?.id);
       });
+    });
+  });
+
+  describe("caution catch-up (issue #1168)", () => {
+    const PLAYER = 6;
+    const PACE = 64;
+    const STATIC = Flags.Caution | Flags.Servicible | Flags.StartHidden;
+    const WAVING = Flags.CautionWaving | Flags.Servicible | Flags.StartHidden;
+    const RACING = Flags.Servicible | Flags.StartHidden;
+
+    /** A 1 km oval, so a lap fraction × 1000 is metres. */
+    function ovalRace(): Record<string, unknown> {
+      return {
+        WeekendInfo: { Category: "Oval", TrackType: "medium oval", TrackLength: "1.00 km" },
+        DriverInfo: {
+          DriverCarIdx: PLAYER,
+          PaceCarIdx: PACE,
+          Drivers: [
+            { CarIdx: 5, CarNumber: "95" },
+            { CarIdx: PLAYER, CarNumber: "64" },
+            { CarIdx: PACE, CarNumber: "0", CarIsPaceCar: 1 },
+          ],
+        },
+        SessionInfo: { Sessions: [{ SessionNum: 0, SessionType: "Race" }] },
+      };
+    }
+
+    type Field = {
+      flags?: number;
+      /** How far the player, and the cars behind him, have dropped back — metres. */
+      back?: number;
+      onPitRoad?: boolean;
+      paceFlags?: number;
+      replay?: boolean;
+    };
+
+    /**
+     * A single-file caution: the pace car at line 0 row 0, ten cars behind it
+     * 10 m apart, the player sixth. His ratio is `(10 + back) / 10`.
+     */
+    function field({ flags = STATIC, back = 0, onPitRoad = false, paceFlags = 0, replay }: Field = {}): TelemetryData {
+      const lines = new Array(72).fill(-1);
+      const rows = new Array(72).fill(-1);
+      const dist = new Array(72).fill(-1);
+      const surface = new Array(72).fill(TrkLoc.NotInWorld);
+      const pace = new Array(72).fill(0);
+
+      lines[PACE] = 0;
+      rows[PACE] = 0;
+      dist[PACE] = 0.5;
+      surface[PACE] = TrkLoc.OnTrack;
+
+      for (let car = 1; car <= 10; car++) {
+        lines[car] = 0;
+        rows[car] = car;
+        dist[car] = (480 - 10 * (car - 1) - (car >= PLAYER ? back : 0)) / 1000;
+        surface[car] = TrkLoc.OnTrack;
+      }
+
+      pace[PLAYER] = paceFlags;
+
+      return telemetry({
+        SessionState: SessionState.Racing,
+        SessionFlags: flags,
+        SessionTime: 600,
+        OnPitRoad: onPitRoad,
+        CarIdxPaceLine: lines,
+        CarIdxPaceRow: rows,
+        CarIdxPaceFlags: pace,
+        CarIdxLapDistPct: dist,
+        CarIdxTrackSurface: surface,
+        ...(replay === undefined ? {} : { IsReplayPlaying: replay }),
+      });
+    }
+
+    const OPEN: Field = { back: 30 }; // 4×
+    const BAND: Field = { back: 10 }; // 2×
+    const CLOSED: Field = { back: 0 }; // 1×
+
+    type Drive = {
+      controller: MockController;
+      seen: string[];
+      /** One tick, `ms` of fake time after the last. */
+      tick: (f?: Field, ms?: number) => void;
+      /** The same field on every tick for `ms`. */
+      hold: (f: Field, ms: number, step?: number) => void;
+      /** Seed, wave, pick up, and sit in place through the settle window. */
+      caught: (f?: Field) => void;
+    };
+
+    function drive(): Drive {
+      vi.useFakeTimers();
+      vi.setSystemTime(1_800_000_000_000);
+
+      const controller = createMockController();
+
+      controller.__setSessionInfo(ovalRace());
+
+      const seen: string[] = [];
+
+      for (const name of ["caution.gapOpened", "caution.gapStillOpen"] as const) {
+        getEventBus().subscribe(name, () => seen.push(name));
+      }
+
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      const tick: Drive["tick"] = (f = {}, ms = 100) => {
+        vi.advanceTimersByTime(ms);
+        controller.__tick(field(f));
+      };
+      const hold: Drive["hold"] = (f, ms, step = 500) => {
+        for (let elapsed = step; elapsed <= ms; elapsed += step) tick(f, step);
+      };
+      const caught: Drive["caught"] = (f = CLOSED) => {
+        tick({ ...f, flags: RACING });
+        tick({ ...f, flags: WAVING });
+        tick({ ...f, flags: STATIC });
+        hold(f, CATCH_UP_SETTLE_MS);
+      };
+
+      return { controller, seen, tick, hold, caught };
+    }
+
+    it("has no answer before the translator is initialized, or without a lineup", () => {
+      expect(getCautionGap()).toBeNull();
+
+      const d = drive();
+
+      // Racing with nobody lined up: no lineup, so no car to close up on.
+      d.controller.__tick(telemetry({ SessionState: SessionState.Racing, SessionFlags: RACING }));
+      expect(getCautionGap()).toBeNull();
+    });
+
+    it("emits the first call after the settle window and the dwell, and a reminder one interval later — the track length reaches the diff", () => {
+      const d = drive();
+
+      d.caught(OPEN);
+      expect(d.seen).toEqual([]);
+
+      d.hold(OPEN, CATCH_UP_DWELL_MS + 500);
+      expect(d.seen).toEqual(["caution.gapOpened"]);
+
+      d.hold(OPEN, CATCH_UP_REMINDER_MS);
+      expect(d.seen).toEqual(["caution.gapOpened", "caution.gapStillOpen"]);
+    });
+
+    it("says nothing for a field in place", () => {
+      const d = drive();
+
+      d.caught();
+      d.hold(CLOSED, 60_000);
+
+      expect(d.seen).toEqual([]);
+      expect(getCautionGap()).toMatchObject({ warranted: false, blockedBy: [] });
+    });
+
+    it("already answers warranted from inside the handlers of both events — the gate is asked at publish", () => {
+      const d = drive();
+      const atPublish: Array<Record<string, unknown>> = [];
+
+      for (const name of ["caution.gapOpened", "caution.gapStillOpen"] as const) {
+        getEventBus().subscribe(name, () =>
+          atPublish.push({
+            event: name,
+            warranted: getCautionGap()?.warranted,
+            blockedBy: getCautionGap()?.blockedBy,
+            car: getPaceLineup()?.followCarNumber,
+          }),
+        );
+      }
+
+      d.caught(OPEN);
+      d.hold(OPEN, CATCH_UP_DWELL_MS + CATCH_UP_REMINDER_MS + 1_000);
+
+      expect(atPublish).toEqual([
+        { event: "caution.gapOpened", warranted: true, blockedBy: [], car: "95" },
+        { event: "caution.gapStillOpen", warranted: true, blockedBy: [], car: "95" },
+      ]);
+    });
+
+    it("reports the measurement it judged: 40 m to car 5 against a 10 m pack of eight pairs", () => {
+      const d = drive();
+
+      d.caught();
+      d.tick(OPEN);
+
+      const gap = getCautionGap();
+
+      expect(gap?.measurement).toMatchObject({
+        followCarIdx: 5,
+        spacingSamples: 8,
+        aheadOfSlot: false,
+        paceCarOnTrack: true,
+      });
+      expect(gap?.measurement.gapMeters).toBeCloseTo(40);
+      expect(gap?.measurement.packSpacingMeters).toBeCloseTo(10);
+      expect(gap?.measurement.ratio).toBeCloseTo(4);
+    });
+
+    describe("warranted — the gate asks whether the gap is still open, not whether one would open now", () => {
+      it("is true at the raise multiple and in the band below it, and false under the clear multiple", () => {
+        const d = drive();
+        const warrantedAt = (f: Field): boolean | undefined => {
+          d.tick(f);
+
+          return getCautionGap()?.warranted;
+        };
+
+        d.caught();
+
+        expect(warrantedAt(OPEN)).toBe(true); // 4×
+        // 2×: no gap would OPEN here, and one that is open is still open.
+        expect(warrantedAt(BAND)).toBe(true);
+        expect(warrantedAt({ back: 7.6 })).toBe(true); // 1.76×
+        expect(warrantedAt({ back: 7.4 })).toBe(false); // 1.74×: he has closed up
+        expect(warrantedAt(CLOSED)).toBe(false);
+      });
+
+      it("refuses a first call that was queued while the gap was open, once he has closed up", () => {
+        // The call fires at 4×, and a queued one is spoken later: by then the
+        // driver may have closed to the band — still spoken — or right up.
+        const d = drive();
+
+        d.caught(OPEN);
+        d.hold(OPEN, CATCH_UP_DWELL_MS + 500);
+        expect(d.seen).toEqual(["caution.gapOpened"]);
+        expect(getCautionGap()?.warranted).toBe(true);
+
+        d.tick(BAND);
+        expect(getCautionGap()?.warranted).toBe(true);
+
+        d.tick(CLOSED);
+        expect(getCautionGap()?.warranted).toBe(false);
+      });
+
+      it("never fires the first call from the band, though the gate would pass there — the event needs the raise multiple and the dwell", () => {
+        const d = drive();
+
+        d.caught();
+        d.hold(BAND, 60_000);
+
+        expect(getCautionGap()?.warranted).toBe(true);
+        expect(d.seen).toEqual([]);
+      });
+    });
+
+    describe("warranted — false whenever catch-up is not live, with the reason", () => {
+      it("in the settle window after the pickup", () => {
+        const d = drive();
+
+        d.tick({ ...OPEN, flags: RACING });
+        d.tick({ ...OPEN, flags: WAVING });
+        d.tick({ ...OPEN, flags: STATIC });
+        d.hold(OPEN, CATCH_UP_SETTLE_MS - 1_000);
+
+        expect(getCautionGap()).toMatchObject({ warranted: false, blockedBy: ["settling"] });
+
+        d.hold(OPEN, 1_000);
+        expect(getCautionGap()).toMatchObject({ warranted: true, blockedBy: [] });
+      });
+
+      it("while the caution waves", () => {
+        const d = drive();
+
+        d.tick({ ...OPEN, flags: RACING });
+        d.hold({ ...OPEN, flags: WAVING }, 30_000);
+
+        expect(getCautionGap()).toMatchObject({ warranted: false, blockedBy: ["phase"] });
+      });
+
+      it("on pit road", () => {
+        const d = drive();
+
+        d.caught();
+        d.tick({ ...OPEN, onPitRoad: true });
+
+        expect(getCautionGap()).toMatchObject({ warranted: false, blockedBy: ["pit-road"] });
+      });
+
+      it("under a green that a caution bit outlived — the reader resolves a lineup there, and still refuses", () => {
+        const d = drive();
+
+        d.caught();
+        d.tick({ ...OPEN, flags: STATIC | Flags.Green });
+
+        expect(getPaceLineup()).not.toBeNull();
+        expect(getCautionPhase()).toBe("caught");
+        expect(getCautionGap()).toMatchObject({ warranted: false, blockedBy: ["green"] });
+      });
+
+      it("with no caution out at all", () => {
+        const d = drive();
+
+        d.tick({ ...OPEN, flags: RACING });
+        d.tick({ ...OPEN, flags: RACING });
+
+        expect(getCautionGap()).toMatchObject({ warranted: false, blockedBy: ["phase"] });
+      });
+    });
+
+    describe("a waved-around car", () => {
+      it("is waving around, and not told to catch anyone, until it has taken its slot", () => {
+        const d = drive();
+
+        d.caught({ ...OPEN, paceFlags: 0x4 });
+        d.hold({ ...OPEN, paceFlags: 0x4 }, 30_000);
+
+        expect(d.seen).toEqual([]);
+        expect(getCautionGap()).toMatchObject({ warranted: false, wavingAround: true, blockedBy: ["procedure"] });
+        expect(getPaceLineup()?.paceFlags).toEqual({ endOfLine: false, freePass: false, wavedAround: true });
+      });
+
+      it("is an ordinary car once it has, the flag still set", () => {
+        const d = drive();
+
+        d.caught({ ...OPEN, paceFlags: 0x4 });
+        d.tick({ ...CLOSED, paceFlags: 0x4 });
+
+        expect(getCautionGap()).toMatchObject({ warranted: false, wavingAround: false, blockedBy: [] });
+
+        d.hold({ ...OPEN, paceFlags: 0x4 }, CATCH_UP_DWELL_MS + 500);
+        expect(d.seen).toEqual(["caution.gapOpened"]);
+        expect(getCautionGap()).toMatchObject({ warranted: true, wavingAround: false });
+      });
+
+      it("is not waving around without the flag", () => {
+        const d = drive();
+
+        d.caught(OPEN);
+
+        expect(getCautionGap()?.wavingAround).toBe(false);
+      });
+    });
+
+    it("measures once per tick however often it is asked, and afresh on the next", () => {
+      const d = drive();
+
+      d.caught(OPEN);
+
+      const first = getCautionGap();
+
+      expect(getCautionGap()?.measurement).toBe(first?.measurement);
+      expect(getCautionGap()?.measurement).toBe(first?.measurement);
+
+      d.tick(OPEN);
+      expect(getCautionGap()?.measurement).not.toBe(first?.measurement);
+      expect(getCautionGap()?.measurement).toEqual(first?.measurement);
+    });
+
+    it("reads the latches fresh on a memoised measurement — the settle window ends between two reads of one tick", () => {
+      const d = drive();
+
+      d.tick({ ...OPEN, flags: RACING });
+      d.tick({ ...OPEN, flags: WAVING });
+      d.tick({ ...OPEN, flags: STATIC });
+      d.hold(OPEN, CATCH_UP_SETTLE_MS - 500);
+
+      const during = getCautionGap();
+
+      expect(during).toMatchObject({ warranted: false, blockedBy: ["settling"] });
+
+      // No new tick: the clock alone moves past the window.
+      vi.advanceTimersByTime(500);
+
+      const after = getCautionGap();
+
+      expect(after).toMatchObject({ warranted: true, blockedBy: [] });
+      expect(after?.measurement).toBe(during?.measurement);
+    });
+
+    describe("across a replay glance", () => {
+      /** The translator's own state, as the Telemetry Snapshot shows it. */
+      function rawState(): TranslatorState {
+        const state = readSimState();
+
+        if (!state.initialized) throw new Error("the translator is not initialized");
+
+        return state.raw.state;
+      }
+
+      it("keeps the drive-round latch and the pickup's time, and re-derives the episode — a fresh first call, with no second settle window", () => {
+        const d = drive();
+
+        // A waved-around car that joined, then dropped back and was called and reminded.
+        d.caught({ ...CLOSED, paceFlags: 0x4 });
+        d.hold({ ...OPEN, paceFlags: 0x4 }, CATCH_UP_DWELL_MS + CATCH_UP_REMINDER_MS + 1_000);
+        expect(d.seen).toEqual(["caution.gapOpened", "caution.gapStillOpen"]);
+
+        const before = { ...rawState() };
+
+        expect(before).toMatchObject({
+          cautionProcedureJoined: true,
+          cautionCatchUpOpen: true,
+          cautionCatchUpReminders: 1,
+        });
+        expect(before.cautionCaughtAt).not.toBeNull();
+
+        d.tick({ ...OPEN, paceFlags: 0x4, replay: true });
+
+        // During the glance: the phase's two fields are there, the episode is gone.
+        expect(rawState()).toMatchObject({
+          cautionPhase: "caught",
+          cautionProcedureJoined: true,
+          cautionCaughtAt: before.cautionCaughtAt,
+          cautionCatchUpOpen: false,
+          cautionCatchUpReminders: 0,
+          cautionCatchUpLastCallAt: null,
+          cautionCatchUpRaisedSince: null,
+          cautionCatchUpLastOnPitRoad: null,
+        });
+
+        elapseReplayGrace();
+        d.seen.length = 0;
+
+        // Back in the car, the gap as open as it was: one dwell, then a fresh
+        // first call. The latch still lets it through; no settle window again.
+        d.hold({ ...OPEN, paceFlags: 0x4 }, CATCH_UP_DWELL_MS + 1_000);
+        expect(d.seen).toEqual(["caution.gapOpened"]);
+        expect(rawState()).toMatchObject({ cautionProcedureJoined: true, cautionCaughtAt: before.cautionCaughtAt });
+      });
+
+      it("does not lift a suppression the live car is still under", () => {
+        const d = drive();
+
+        d.caught({ ...OPEN, paceFlags: 0x4 });
+        d.tick({ ...OPEN, paceFlags: 0x4, replay: true });
+        elapseReplayGrace();
+        d.hold({ ...OPEN, paceFlags: 0x4 }, 30_000);
+
+        expect(d.seen).toEqual([]);
+        expect(rawState().cautionProcedureJoined).toBe(false);
+        expect(getCautionGap()).toMatchObject({ warranted: false, wavingAround: true });
+      });
+    });
+
+    it("shows the reading in the Telemetry Snapshot's caution section, and the episode under raw", () => {
+      const d = drive();
+
+      d.caught(OPEN);
+      d.hold(OPEN, CATCH_UP_DWELL_MS + 500);
+
+      const state = readSimState();
+
+      if (!state.initialized || !("caution" in state)) throw new Error("the curated half is missing");
+
+      expect(state.caution.gap).toEqual(getCautionGap());
+      expect(state.caution.gap).toMatchObject({ warranted: true, blockedBy: [] });
+      expect(state.raw.state).toMatchObject({ cautionCatchUpOpen: true, cautionCatchUpFollowCarIdx: 5 });
+      expect(() => JSON.stringify(state.caution)).not.toThrow();
+    });
+
+    it("forgets everything when the sim goes away", () => {
+      const d = drive();
+
+      d.caught(OPEN);
+      d.controller.__tick(null, false);
+
+      expect(getCautionGap()).toBeNull();
     });
   });
 });

@@ -227,7 +227,7 @@ describe("diffStartLights — a restart is not a race start (issue #1127)", () =
     const { events, emit } = collect();
     const T = 1_000_000;
 
-    diffCaution(state, restart, null, null, emit, T);
+    diffCaution(state, restart, null, null, emit, { now: T });
     diffStartLights(state, restart, STANDING_SESSION, emit, T);
 
     expect(events.map((e) => e.event)).toEqual(["caution.restarted"]);
@@ -244,13 +244,13 @@ describe("diffStartLights — a restart is not a race start (issue #1127)", () =
     const goTrailing = tick(Green | Servicible | StartGo, SessionState.Racing, 580);
 
     diffStartLights(state, greenOnly, STANDING_SESSION, emit, T);
-    diffCaution(state, greenOnly, null, null, emit, T);
+    diffCaution(state, greenOnly, null, null, emit, { now: T });
 
     expect(events.map((e) => e.event)).toEqual(["caution.restarted"]);
     expect(state.cautionPhase).toBe("none");
 
     diffStartLights(state, goTrailing, STANDING_SESSION, emit, T + 20);
-    diffCaution(state, goTrailing, null, null, emit, T + 20);
+    diffCaution(state, goTrailing, null, null, emit, { now: T + 20 });
 
     expect(events.filter(go)).toHaveLength(0);
   });
@@ -262,14 +262,14 @@ describe("diffStartLights — a restart is not a race start (issue #1127)", () =
     const greenOnly = tick(Green | Servicible | StartHidden, SessionState.Racing, 580);
 
     diffStartLights(state, greenOnly, STANDING_SESSION, emit, T);
-    diffCaution(state, greenOnly, null, null, emit, T);
+    diffCaution(state, greenOnly, null, null, emit, { now: T });
 
     // The green is withdrawn, the window passes…
     const hidden = tick(Servicible | StartHidden, SessionState.Racing, 400);
     const later = T + RESTART_GO_GRACE_MS + 1;
 
     diffStartLights(state, hidden, STANDING_SESSION, emit, later);
-    diffCaution(state, hidden, null, null, emit, later);
+    diffCaution(state, hidden, null, null, emit, { now: later });
 
     // …and a standing start (a new session, same state) is announced.
     diffStartLights(

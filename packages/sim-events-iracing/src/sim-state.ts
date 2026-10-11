@@ -50,7 +50,7 @@ import type {
   TranslatorState,
 } from "./state.js";
 import type { TrackDirection } from "./track-type.js";
-import type { GapNeighbor, LiveGaps, LiveOpponentFlags, LivePosition } from "./translator.js";
+import type { CautionGap, GapNeighbor, LiveGaps, LiveOpponentFlags, LivePosition } from "./translator.js";
 
 /**
  * Why the laps-of-fuel-left count is compared with no race distance: the
@@ -120,6 +120,14 @@ export type SimCautionState = {
   phase: CautionPhase;
   episode: CautionEpisode | null;
   lineup: PaceLineup | null;
+  /**
+   * The catch-up reading (`getCautionGap()`, issue #1168): the gap to the car
+   * the player follows against the pack's spacing, whether a call is warranted
+   * and, when it is not, every reason why. `null` without a lineup. The
+   * episode behind it — the dwell, the last call, the reminder count — is
+   * under `raw.state`, as `cautionCatchUp*`.
+   */
+  gap: CautionGap | null;
 };
 
 /**

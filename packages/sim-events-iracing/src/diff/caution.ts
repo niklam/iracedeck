@@ -158,13 +158,33 @@
  * positions, is the authority for the RESTART order is a separate documented
  * exception, and belongs to `pace-lineup.ts`, which also carries the
  * interleave the two lines restart in and why the pace car anchors it.)
+ *
+ * **Catch-up is a fourth reading, with an episode of its own** (issue #1168):
+ * the player dropped back from the car he lines up behind. The measurement is
+ * `caution-gap.ts`'s — the gap as a multiple of the pack's own spacing — and
+ * {@link diffCatchUp} here holds what a measurement cannot: the dwell that
+ * swallows a transient, the hysteresis between raising and clearing, the
+ * reminder clock, and the two latches that say whether the gap means "you are
+ * lagging" at all. It runs on the lineup {@link diffLineup} resolved, so a
+ * tick resolves the lineup once and never under green.
+ *
+ * It is **level-armed**: every tick decides from the gap as it is now, so a
+ * re-seed — a plugin restart, an SDK reconnect, a replay glance — cannot leave
+ * an open gap with no edge left to fire on (the #951 lesson). The cost is
+ * stated where it is paid: after a glance a driver already reminded twice gets
+ * a fresh first call. Nothing speaks while the caution waves, in the settle
+ * window after the pickup, or inside a dwell, so the first call a caution can
+ * produce lands at least `CATCH_UP_SETTLE_MS + CATCH_UP_DWELL_MS` after the
+ * pickup. It does NOT stop at one to green — the last caution lap is exactly
+ * when being in place matters — and stops when the pace car leaves.
  */
 import { Flags, hasFlag, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
 
 import type { TranslatorState } from "../state.js";
 import { isOvalTrack } from "../track-type.js";
+import { type CautionGapMeasurement, measureCautionGap } from "./caution-gap.js";
 import { resolvePaceCarIdx } from "./pace-laps.js";
-import { resolvePaceLineup } from "./pace-lineup.js";
+import { type PaceLineup, type PaceLineupFlags, resolvePaceLineup } from "./pace-lineup.js";
 import type { EmitFn } from "./types.js";
 
 /**
@@ -176,6 +196,371 @@ import type { EmitFn } from "./types.js";
  * take in.
  */
 export const LAST_LAP_CHECKPOINT_PCT = 0.35;
+
+/**
+ * The ratio — the player's gap to the car he follows over the pack's spacing —
+ * at or above which the gap counts as OPEN (issue #1168). PROVISIONAL: capture
+ * C1 sets it, to the ratio at which iRacing's own "catch up" message appears,
+ * rounded down to 0.25 and clamped to [2.0, 3.4]. The snapshots bound it
+ * already: the widest gap between two cars in place is 1.55× and the smallest
+ * dropped-back reading 3.4×, and 2.5 sits between them with margin both ways.
+ */
+export const CATCH_UP_RAISE_MULTIPLE = 2.5;
+
+/**
+ * The ratio below which an open gap counts as CLOSED again. PROVISIONAL:
+ * capture C1 sets it, from the ratio at which iRacing's message disappears,
+ * bounded to [1.75, raise − 0.25]. Below the raise multiple so a gap hovering
+ * at one threshold cannot flap, and above the widest normal reading (1.55×) so
+ * a car that has genuinely closed up is never still "open".
+ */
+export const CATCH_UP_CLEAR_MULTIPLE = 1.75;
+
+/**
+ * How long the ratio must stay at or above the raise multiple, continuously,
+ * before the gap is reported. PROVISIONAL: capture C1 sets it, to the longest
+ * excursion above the raise multiple by any car other than the player at the
+ * pickup and at the double-file re-form, plus one second, never below 2 s. It
+ * is what swallows the re-form at one to go — `caution-gap-20261002.json` has
+ * the player at 7.4× on the re-form tick and 1.9× 8.6 s later, so three
+ * seconds is a floor the first real recording is expected to raise — and any
+ * one-tick transient: a crossing tick, a row reassignment.
+ */
+export const CATCH_UP_DWELL_MS = 3_000;
+
+/**
+ * How long after the phase first becomes `"caught"` before a gap is judged at
+ * all. PROVISIONAL: capture C1 sets it, to the time from the pickup until the
+ * pack spacing first comes within 20 % of its one-to-go value, rounded up to
+ * 5 s, never below 5 s. The pickup lands on the LEADER's crossing while the
+ * tail may still be compacting — two tail cars read 1.55× six seconds before
+ * the whole line was inside 12.3 m — and the pickup's own calls hold the floor
+ * then anyway.
+ */
+export const CATCH_UP_SETTLE_MS = 10_000;
+
+/**
+ * How long after one call before the next may be made while the gap stays
+ * open. Not capture C1's: confirmed by the maintainer (2026-09-19), with the
+ * count below. Measured from the moment a reminder is DUE and judged — whether
+ * or not it spoke — never from a missed due time (the #951 rule), so a
+ * held-back reminder cannot drain as a burst.
+ */
+export const CATCH_UP_REMINDER_MS = 30_000;
+
+/** How many reminders one open gap may produce. Confirmed with {@link CATCH_UP_REMINDER_MS}; capture C1 does not set it. */
+export const CATCH_UP_MAX_REMINDERS = 2;
+
+/**
+ * How long after the player leaves pit road under caution before his gap is
+ * judged: the time to get up to speed. PROVISIONAL, and unmeasured — no
+ * capture shows a stop under caution, and capture C1 as specified does not
+ * include one. A recording of a pit exit under caution is what sets it.
+ */
+export const CATCH_UP_PIT_EXIT_GRACE_MS = 10_000;
+
+/**
+ * One reason catch-up cannot be judged on a tick — see {@link resolveCatchUpBlocks}.
+ *
+ * - `phase`: the caution is not `"caught"` or `"one-to-go"`. A waving field
+ *   is not a pack.
+ * - `green`: a `Green` bit is set. A yellow-checkered tick keeps the phase
+ *   alive under a flying green.
+ * - `settling`: inside {@link CATCH_UP_SETTLE_MS} of the pickup.
+ * - `pace-car-off`: the pace car is not on the road. Once it peels off the
+ *   field is seconds from the green, and gaps open on purpose.
+ * - `pit-road`: the player is on pit road. Dropping back there is the speed
+ *   limit, not a lag.
+ * - `pit-exit-grace`: inside {@link CATCH_UP_PIT_EXIT_GRACE_MS} of leaving it.
+ * - `procedure`: the player carries a pace flag and has not yet taken his
+ *   slot — a drive-round in progress.
+ * - `ahead-of-slot`: the car to follow is nearer behind him than ahead.
+ */
+export type CatchUpBlock =
+  "phase" | "green" | "settling" | "pace-car-off" | "pit-road" | "pit-exit-grace" | "procedure" | "ahead-of-slot";
+
+/** The player is being sent round to the tail: any of the three pace flags. */
+function inDriveRound(paceFlags: PaceLineupFlags): boolean {
+  return paceFlags.wavedAround || paceFlags.freePass || paceFlags.endOfLine;
+}
+
+/**
+ * Every reason catch-up cannot be judged on this tick; empty when it is LIVE.
+ * The one statement of "live", asked by {@link diffCatchUp} to decide whether
+ * an episode may run and by the translator's `getCautionGap()` to answer
+ * `warranted`, so the diff that emits and the gate that speaks cannot disagree
+ * about the same tick.
+ *
+ * A list rather than a boolean because the reasons are independent and more
+ * than one usually holds — the waved-around car of the 2026-09-19 capture is
+ * blocked three ways at once — and the Telemetry Snapshot shows which.
+ *
+ * Reads the translator's latches and takes `now` for the two clocks; changes
+ * nothing. Two conditions of the design are not here because they are not
+ * "blocks" but the absence of a reading: a player who holds no row has no
+ * lineup to measure, and a gap or a spacing that cannot be read has no ratio.
+ */
+export function resolveCatchUpBlocks(
+  state: TranslatorState,
+  telemetry: TelemetryData,
+  measurement: CautionGapMeasurement,
+  now: number,
+): CatchUpBlock[] {
+  const blocks: CatchUpBlock[] = [];
+  const caught = state.cautionPhase === "caught" || state.cautionPhase === "one-to-go";
+
+  if (!caught) blocks.push("phase");
+
+  if (hasFlag(telemetry.SessionFlags ?? 0, Flags.Green)) blocks.push("green");
+
+  // Only a caught phase has a pickup to settle from.
+  if (caught && (state.cautionCaughtAt === null || now - state.cautionCaughtAt < CATCH_UP_SETTLE_MS)) {
+    blocks.push("settling");
+  }
+
+  if (!measurement.paceCarOnTrack) blocks.push("pace-car-off");
+
+  if (telemetry.OnPitRoad === true) blocks.push("pit-road");
+
+  const pitExitAt = state.cautionCatchUpPitExitAt;
+
+  if (pitExitAt !== null && now - pitExitAt < CATCH_UP_PIT_EXIT_GRACE_MS) blocks.push("pit-exit-grace");
+
+  if (inDriveRound(measurement.paceFlags) && !state.cautionProcedureJoined) blocks.push("procedure");
+
+  // Waived within a pit-exit episode: a car that stopped while the field
+  // circulated can have the tail anywhere up the road, and "catch car N" is
+  // exactly what tells him which car that is.
+  if (measurement.aheadOfSlot && pitExitAt === null) blocks.push("ahead-of-slot");
+
+  return blocks;
+}
+
+/** The catch-up episode back to nothing: no dwell running, no gap open, no call made. */
+function endCatchUpEpisode(state: TranslatorState): void {
+  state.cautionCatchUpFollowCarIdx = null;
+  state.cautionCatchUpRaisedSince = null;
+  state.cautionCatchUpOpen = false;
+  state.cautionCatchUpLastCallAt = null;
+  state.cautionCatchUpLastCallGapMeters = null;
+  state.cautionCatchUpReminders = 0;
+}
+
+/** The pit-exit episode over: the player is an ordinary car in the lineup again. */
+function endPitExitEpisode(state: TranslatorState): void {
+  state.cautionCatchUpPitExitAt = null;
+  state.cautionCatchUpPitExitCalled = false;
+}
+
+/**
+ * What of catch-up lives and dies with the caution phase: the drive-round
+ * latch and the pickup's timestamp. Cleared when no caution is out — here on
+ * every tick, and on the seed tick too, so a caution that ended while the
+ * driver looked at the replay cannot leave either behind (both ride through
+ * the replay wipe with the phase).
+ */
+function expireCatchUpWithPhase(state: TranslatorState): void {
+  if (state.cautionPhase !== "none") return;
+
+  state.cautionProcedureJoined = false;
+  state.cautionCaughtAt = null;
+  endPitExitEpisode(state);
+  endCatchUpEpisode(state);
+}
+
+/**
+ * The catch-up episode: one continuous stretch of an open gap to one car.
+ *
+ * Runs on every tick the caution diff does not seed on, handed the lineup
+ * {@link diffLineup} resolved — `null` when it resolved none (no caution
+ * phase, a `Green` bit, or a player who holds no row). It measures only when
+ * there is a lineup, so under green nothing is measured at all.
+ *
+ * **Open, remind, close.** With catch-up live ({@link resolveCatchUpBlocks})
+ * the episode OPENS once the ratio has stayed at or above
+ * {@link CATCH_UP_RAISE_MULTIPLE} for {@link CATCH_UP_DWELL_MS} continuously,
+ * and `caution.gapOpened` fires. It CLOSES, silently, when the ratio falls
+ * below {@link CATCH_UP_CLEAR_MULTIPLE}; in the band between the two an open
+ * gap stays open and a closed one stays closed. While open it REMINDS with
+ * `caution.gapStillOpen`: every {@link CATCH_UP_REMINDER_MS} it asks whether
+ * the driver is closing — the gap shorter by at least one pack spacing than at
+ * the previous such moment — and speaks only if he is not, at most
+ * {@link CATCH_UP_MAX_REMINDERS} times. That moment re-anchors both the clock
+ * and the gap whether or not it spoke: a driver who closed twenty metres and
+ * then stopped closing, still far off the pack, is "not closing" at the next
+ * one, where a comparison with the gap at the last SPOKEN call would call him
+ * closing for the rest of the caution. A reminder that was due and skipped is
+ * not counted against the two.
+ *
+ * **It ends without closing** the moment catch-up stops being live, and
+ * **restarts from zero** when the car ahead changes: the dwell runs again and
+ * a still-open gap gets a fresh first call naming the new car.
+ *
+ * **A tick that cannot be judged is a gap, not an end.** A lineup that could
+ * not be resolved for a tick with the caution still caught, a spacing short of
+ * its samples, a car out of the world for a tick: the episode is held as it
+ * is, neither advanced nor reset. Ending it there would turn a one-tick
+ * dropout into a second "first call" three seconds later.
+ *
+ * **The drive-round latch** (`cautionProcedureJoined`) is updated here in
+ * EVERY caution phase, waving included, though catch-up itself is live only
+ * once the field is caught: a waved-around car can reach the tail before the
+ * pickup. It sets when, with a pace flag still set, the gap to the car ahead
+ * first reads below the clear multiple — he has taken his slot — and from then
+ * on he is an ordinary car and a later drop-back gets the ordinary call. The
+ * flag alone cannot serve: it stays set after joining, so "suppress while the
+ * flag is set" would silence him for the rest of the caution.
+ *
+ * **Pit exit is one call.** The player's `OnPitRoad` going true → false under
+ * a caution opens a pit-exit episode: nothing is judged for
+ * {@link CATCH_UP_PIT_EXIT_GRACE_MS}, then the dwell runs as usual, the
+ * ahead-of-slot rule is waived, and the call fires ONCE — not again if the car
+ * ahead changes, and with no reminders, because he is catching the field on
+ * purpose. It ends when he has caught it (the ratio below the clear multiple),
+ * goes back onto pit road, or the caution ends.
+ *
+ * **The state is set before either event is emitted**, so a speak gate asked
+ * at publish — `getCautionGap().warranted` — already reads true.
+ */
+function diffCatchUp(
+  state: TranslatorState,
+  telemetry: TelemetryData,
+  sessionInfo: Record<string, unknown> | null,
+  lineup: PaceLineup | null,
+  trackLengthMeters: number | null,
+  now: number,
+  emit: EmitFn,
+): void {
+  const onPitRoad = telemetry.OnPitRoad === true;
+  const wasOnPitRoad = state.cautionCatchUpLastOnPitRoad;
+
+  // The pit-road baseline follows the player on every tick, caution or not,
+  // so the edge is there to read whenever a caution is out.
+  state.cautionCatchUpLastOnPitRoad = onPitRoad;
+
+  if (state.cautionPhase === "none") {
+    expireCatchUpWithPhase(state);
+
+    return;
+  }
+
+  // The settle clock starts when the phase first reads caught, however it got
+  // there — a watched pickup, or a caution that arrived already static.
+  if (state.cautionPhase === "waving") {
+    state.cautionCaughtAt = null;
+  } else if (state.cautionCaughtAt === null) {
+    state.cautionCaughtAt = now;
+  }
+
+  if (onPitRoad) {
+    endPitExitEpisode(state);
+  } else if (wasOnPitRoad === true) {
+    state.cautionCatchUpPitExitAt = now;
+    state.cautionCatchUpPitExitCalled = false;
+  }
+
+  if (lineup === null) {
+    // No lineup was resolved. Under a green or on pit road that is catch-up
+    // not being live, and the episode ends. Otherwise the player holds no row
+    // this tick, or the lineup could not be read: a gap in the reading.
+    if (onPitRoad || hasFlag(telemetry.SessionFlags ?? 0, Flags.Green)) endCatchUpEpisode(state);
+
+    return;
+  }
+
+  const measurement = measureCautionGap(telemetry, sessionInfo, lineup, trackLengthMeters);
+  const { ratio, gapMeters, packSpacingMeters } = measurement;
+
+  // The drive-round latch: with a flag still set, the gap first reading below
+  // the clear multiple is the player taking his slot.
+  if (
+    !state.cautionProcedureJoined &&
+    inDriveRound(measurement.paceFlags) &&
+    ratio !== null &&
+    ratio < CATCH_UP_CLEAR_MULTIPLE
+  ) {
+    state.cautionProcedureJoined = true;
+  }
+
+  if (resolveCatchUpBlocks(state, telemetry, measurement, now).length > 0) {
+    endCatchUpEpisode(state);
+
+    return;
+  }
+
+  // Live, and nothing to judge it by this tick: hold.
+  if (ratio === null || gapMeters === null || packSpacingMeters === null) return;
+
+  if (state.cautionCatchUpFollowCarIdx !== measurement.followCarIdx) {
+    endCatchUpEpisode(state);
+    state.cautionCatchUpFollowCarIdx = measurement.followCarIdx;
+  }
+
+  const inPitExit = state.cautionCatchUpPitExitAt !== null;
+
+  if (!state.cautionCatchUpOpen) {
+    if (ratio < CATCH_UP_CLEAR_MULTIPLE) {
+      // In place. For a car out of the pits that is the field caught.
+      state.cautionCatchUpRaisedSince = null;
+      endPitExitEpisode(state);
+
+      return;
+    }
+
+    if (ratio < CATCH_UP_RAISE_MULTIPLE) {
+      // The band: not open, and the dwell has to be continuous.
+      state.cautionCatchUpRaisedSince = null;
+
+      return;
+    }
+
+    state.cautionCatchUpRaisedSince ??= now;
+
+    if (now - state.cautionCatchUpRaisedSince < CATCH_UP_DWELL_MS) return;
+
+    // A pit-exit episode has already made its one call.
+    if (inPitExit && state.cautionCatchUpPitExitCalled) return;
+
+    state.cautionCatchUpOpen = true;
+    state.cautionCatchUpLastCallAt = now;
+    state.cautionCatchUpLastCallGapMeters = gapMeters;
+    state.cautionCatchUpReminders = 0;
+
+    if (inPitExit) state.cautionCatchUpPitExitCalled = true;
+
+    emit({ event: "caution.gapOpened", data: {} });
+
+    return;
+  }
+
+  if (ratio < CATCH_UP_CLEAR_MULTIPLE) {
+    // Closed. Silently: there is no "that's better" call.
+    endCatchUpEpisode(state);
+    endPitExitEpisode(state);
+
+    return;
+  }
+
+  // Out of the pits he is catching the field on purpose: no reminders.
+  if (inPitExit || state.cautionCatchUpReminders >= CATCH_UP_MAX_REMINDERS) return;
+
+  const lastCallAt = state.cautionCatchUpLastCallAt;
+  const lastCallGapMeters = state.cautionCatchUpLastCallGapMeters;
+
+  if (lastCallAt === null || lastCallGapMeters === null || now - lastCallAt < CATCH_UP_REMINDER_MS) return;
+
+  // A reminder is due. Judged against the gap at the previous such moment, and
+  // that moment moves here whether or not this one speaks (see above).
+  const closing = lastCallGapMeters - gapMeters >= packSpacingMeters;
+
+  state.cautionCatchUpLastCallAt = now;
+  state.cautionCatchUpLastCallGapMeters = gapMeters;
+
+  if (closing) return;
+
+  state.cautionCatchUpReminders++;
+  emit({ event: "caution.gapStillOpen", data: {} });
+}
 
 /**
  * The next caution's id (issue #1286). Module-level and never reset, so a
@@ -308,6 +693,7 @@ function diffCautionEpisode(
   seeding: boolean,
   emit: EmitFn,
   now: number,
+  trackLengthMeters: number | null,
 ): void {
   const flags = telemetry.SessionFlags ?? 0;
   const waving = hasFlag(flags, Flags.CautionWaving);
@@ -337,6 +723,8 @@ function diffCautionEpisode(
     }
 
     trackCautionEpisode(state);
+    // …and the same for what catch-up keeps with the phase (issue #1168).
+    expireCatchUpWithPhase(state);
 
     return;
   }
@@ -476,8 +864,13 @@ function diffCautionEpisode(
 
   diffLastLapCheckpoint(state, lapDistPct, armedThisTick, emit);
 
-  // Last, so it reads the phase this tick actually settled on.
-  diffLineup(state, telemetry, sessionInfo, emit);
+  // Last, so it reads the phase this tick actually settled on. The lineup is
+  // resolved ONCE, inside `diffLineup` and only past its early returns, and
+  // handed on: catch-up judges the gap on the same reading, and under green
+  // neither of them reads anything.
+  const lineup = diffLineup(state, telemetry, sessionInfo, emit);
+
+  diffCatchUp(state, telemetry, sessionInfo, lineup, trackLengthMeters, now, emit);
 }
 
 /**
@@ -546,26 +939,30 @@ function diffLastLapCheckpoint(
  *
  * The lineup is resolved HERE, after those two early returns, and nowhere
  * else in the diff: resolving it is session-info lookups plus three passes
- * over the car slots, and this is its only reader — so on the green-flag
- * ticks that are almost every tick of a race, nothing is resolved at all.
+ * over the car slots — so on the green-flag ticks that are almost every tick
+ * of a race, nothing is resolved at all.
+ *
+ * It hands the lineup it resolved back (issue #1168), `null` when it resolved
+ * none: {@link diffCatchUp} runs right after it on that value, so one
+ * resolution per tick serves both and neither reads a lineup under green.
  */
 function diffLineup(
   state: TranslatorState,
   telemetry: TelemetryData,
   sessionInfo: Record<string, unknown> | null,
   emit: EmitFn,
-): void {
+): PaceLineup | null {
   trackCautionEpisode(state);
 
   if (state.cautionPhase === "none" || hasFlag(telemetry.SessionFlags ?? 0, Flags.Green)) {
     state.cautionFollowCarIdx = null;
 
-    return;
+    return null;
   }
 
   const lineup = resolvePaceLineup(telemetry, sessionInfo, isOvalTrack(sessionInfo));
 
-  if (lineup === null || lineup.followCarIdx === null) return;
+  if (lineup === null || lineup.followCarIdx === null) return lineup;
 
   const was = state.cautionFollowCarIdx;
 
@@ -575,7 +972,7 @@ function diffLineup(
   // a change, so a consumer can tell a return to it from a new car.
   if (state.cautionFirstFollowCarIdx === null) state.cautionFirstFollowCarIdx = lineup.followCarIdx;
 
-  if (was === null || was === lineup.followCarIdx) return;
+  if (was === null || was === lineup.followCarIdx) return lineup;
 
   emit({
     event: "caution.lineup.changed",
@@ -586,26 +983,47 @@ function diffLineup(
       isLeader: lineup.isLeader,
     },
   });
+
+  return lineup;
 }
 
 /**
- * `now` is the tick's clock (ms), the same value `diffFlags` takes: it stamps
- * the restart so `diffStartLights` can hold the race-start line down for a
- * `StartGo` trailing the green. Defaulted for the tests that never reach a
- * restart; the translator always passes its own.
+ * What the translator hands {@link diffCaution} beside the tick. An object
+ * rather than two trailing parameters because they are two adjacent optional
+ * NUMBERS: `diffCaution(…, emit, now, trackLengthMeters)` and its transposition
+ * both compile, and the second would stamp the restart with a track length
+ * (the #1052 swap trap).
  */
+export type CautionDiffOptions = {
+  /**
+   * The tick's clock (ms), the same value `diffFlags` takes: it stamps the
+   * restart so `diffStartLights` can hold the race-start line down for a
+   * `StartGo` trailing the green, and it is the catch-up episode's clock
+   * (issue #1168). Defaulted to `Date.now()` for the tests that need neither;
+   * the translator always passes its own.
+   */
+  now?: number;
+  /**
+   * The track's length in metres, for the catch-up measurement. Without it no
+   * gap can be measured and catch-up says nothing; everything else here runs
+   * as before.
+   */
+  trackLengthMeters?: number | null;
+};
+
 export function diffCaution(
   state: TranslatorState,
   telemetry: TelemetryData,
   sessionInfo: Record<string, unknown> | null,
   canonicalPositions: number[] | null,
   emit: EmitFn,
-  now: number = Date.now(),
+  options: CautionDiffOptions = {},
 ): void {
+  const { now = Date.now(), trackLengthMeters = null } = options;
   const seeding = !state.cautionInitialized;
 
   state.cautionInitialized = true;
 
   diffPaceCar(state, telemetry, sessionInfo, seeding, emit);
-  diffCautionEpisode(state, telemetry, sessionInfo, canonicalPositions, seeding, emit, now);
+  diffCautionEpisode(state, telemetry, sessionInfo, canonicalPositions, seeding, emit, now, trackLengthMeters);
 }

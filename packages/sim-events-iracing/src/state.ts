@@ -443,6 +443,76 @@ export type TranslatorState = {
    */
   cautionFirstFollowCarIdx: number | null;
 
+  // ── Caution catch-up (issue #1168) ──────────────────────────────────────
+  /**
+   * The drive-round latch: the player, sent round to the tail under a pace
+   * flag (`WavedAround` / `FreePass` / `EndOfLine`), HAS TAKEN HIS SLOT. Set
+   * by `diffCatchUp` the first tick the gap to the car ahead of him reads
+   * below `CATCH_UP_CLEAR_MULTIPLE` with a flag still set, in any caution
+   * phase; from then on he is an ordinary car in the lineup and a later
+   * drop-back gets the ordinary call. The flag itself cannot say this — it
+   * stays set after joining. Clears with the caution phase.
+   *
+   * PRESERVED across a replay wipe, with `cautionPhase`: a glance must not
+   * lift a suppression the live car is still under, nor re-impose one it has
+   * already settled.
+   */
+  cautionProcedureJoined: boolean;
+  /**
+   * When (`now`, ms) the phase first read `"caught"` in this caution — the
+   * start of the settle window (`CATCH_UP_SETTLE_MS`) in which no gap is
+   * judged. `null` while the caution waves and while none is out.
+   *
+   * PRESERVED across a replay wipe, with `cautionPhase`, whose property it is:
+   * wiped, the first tick back would start a fresh settle window on a field
+   * that settled long ago, and an open gap would wait ten seconds for nothing.
+   */
+  cautionCaughtAt: number | null;
+  /**
+   * Previous tick's player `OnPitRoad`, for the pit-exit edge. `null` until
+   * the catch-up diff has run once, so a seed is never an exit. Followed on
+   * every tick, caution or not.
+   */
+  cautionCatchUpLastOnPitRoad: boolean | null;
+  /**
+   * When (`now`, ms) the player last left pit road under this caution, while
+   * the PIT-EXIT EPISODE that opened runs: nothing is judged for
+   * `CATCH_UP_PIT_EXIT_GRACE_MS` after it, the ahead-of-slot rule is waived,
+   * and the episode makes one call and no reminders. `null` once he has
+   * caught the field, is back on pit road, or the caution is over.
+   */
+  cautionCatchUpPitExitAt: number | null;
+  /** The running pit-exit episode has made its one call. */
+  cautionCatchUpPitExitCalled: boolean;
+  /**
+   * The car the running catch-up episode is about. A different car ahead
+   * restarts the episode from zero. `null` while no episode runs.
+   */
+  cautionCatchUpFollowCarIdx: number | null;
+  /**
+   * When (`now`, ms) the ratio last rose to the raise multiple and has stayed
+   * there since — the dwell (`CATCH_UP_DWELL_MS`). `null` while it is below.
+   */
+  cautionCatchUpRaisedSince: number | null;
+  /** The gap is open: `caution.gapOpened` has fired and the ratio has not fallen below the clear multiple since. */
+  cautionCatchUpOpen: boolean;
+  /**
+   * When (`now`, ms) the open gap was last called — or last came due for a
+   * reminder and was judged, spoken or not. The next reminder is counted from
+   * here, never from a missed due time (the #951 rule).
+   */
+  cautionCatchUpLastCallAt: number | null;
+  /** The gap, in metres, at that moment: what "is he closing" is measured from. */
+  cautionCatchUpLastCallGapMeters: number | null;
+  /** How many reminders the open gap has produced, against `CATCH_UP_MAX_REMINDERS`. */
+  cautionCatchUpReminders: number;
+  //
+  // Everything from `cautionCatchUpLastOnPitRoad` down is the EPISODE and is
+  // pointedly NOT preserved across a replay wipe: the machine is level-armed,
+  // so it re-derives an open gap within one dwell of the first live tick
+  // back. The cost is accepted — a glance can hand a driver who was already
+  // reminded twice a fresh first call.
+
   // ── Rolling-start pace laps (issue #657) ────────────────────────────────
   /**
    * Whether the pace-lap diff has seeded its baseline on the first tick. Seeds
@@ -1492,6 +1562,18 @@ export function createInitialState(): TranslatorState {
     cautionCheckpointArmed: false,
     cautionEpisodeId: null,
     cautionFirstFollowCarIdx: null,
+
+    cautionProcedureJoined: false,
+    cautionCaughtAt: null,
+    cautionCatchUpLastOnPitRoad: null,
+    cautionCatchUpPitExitAt: null,
+    cautionCatchUpPitExitCalled: false,
+    cautionCatchUpFollowCarIdx: null,
+    cautionCatchUpRaisedSince: null,
+    cautionCatchUpOpen: false,
+    cautionCatchUpLastCallAt: null,
+    cautionCatchUpLastCallGapMeters: null,
+    cautionCatchUpReminders: 0,
 
     paceLapInitialized: false,
     lastTickInParadeLaps: false,

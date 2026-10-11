@@ -261,7 +261,7 @@ function parts(overrides: Partial<SimStateParts> = {}): SimStateParts {
     order: { positions: null, player: null, startingGrid: null, raceFinish: null },
     gaps: null,
     opponentFlags: null,
-    caution: { phase: "none", episode: null, lineup: null },
+    caution: { phase: "none", episode: null, lineup: null, gap: null },
     rollingStart: { formation: null },
     session: {
       type: "Race",
@@ -313,7 +313,7 @@ describe("readSimState — before the translator has anything to say", () => {
     expect(state.order).toEqual({ positions: null, player: null, startingGrid: null, raceFinish: null });
     expect(state.gaps).toBeNull();
     expect(state.opponentFlags).toBeNull();
-    expect(state.caution).toEqual({ phase: "none", episode: null, lineup: null });
+    expect(state.caution).toEqual({ phase: "none", episode: null, lineup: null, gap: null });
     expect(state.rollingStart).toEqual({ formation: null });
     expect(Object.keys(state)).toEqual([
       "initialized",
@@ -1078,7 +1078,7 @@ describe("simStateHeadline", () => {
           ahead: { carIdx: 7, gapSeconds: 1.234, lapDelta: 0, trend: "closing" },
           behind: { carIdx: 9, gapSeconds: null, lapDelta: 1, trend: null },
         },
-        caution: { phase: "caught", episode: { id: 4, firstFollowCarIdx: 7 }, lineup: null },
+        caution: { phase: "caught", episode: { id: 4, firstFollowCarIdx: 7 }, lineup: null, gap: null },
         state: translatorState,
       }),
     );

@@ -503,14 +503,14 @@ describe("the caution episode", () => {
     const state = createInitialState();
     const { emit } = collect();
 
-    diffCaution(state, flagTick(RACING), sessionInfo, null, emit, 1_000); // seed
-    diffCaution(state, flagTick(WAVING), sessionInfo, null, emit, 1_020);
-    diffCaution(state, flagTick(STATIC), sessionInfo, null, emit, 1_040);
-    diffCaution(state, flagTick(GREEN_HELD), sessionInfo, null, emit, 1_060);
+    diffCaution(state, flagTick(RACING), sessionInfo, null, emit, { now: 1_000 }); // seed
+    diffCaution(state, flagTick(WAVING), sessionInfo, null, emit, { now: 1_020 });
+    diffCaution(state, flagTick(STATIC), sessionInfo, null, emit, { now: 1_040 });
+    diffCaution(state, flagTick(GREEN_HELD), sessionInfo, null, emit, { now: 1_060 });
 
     expect(state.cautionRestartedAt).toBeNull();
 
-    diffCaution(state, flagTick(RESTART), sessionInfo, null, emit, 1_080);
+    diffCaution(state, flagTick(RESTART), sessionInfo, null, emit, { now: 1_080 });
 
     expect(state.cautionRestartedAt).toBe(1_080);
   });
@@ -875,11 +875,15 @@ describe("the caution lineup", () => {
 
     diffCaution(state, counted(WAVING), info, canonicalLeader(1), emit);
 
-    expect(reads).toBe(1);
+    // Two reads of the array on a live tick since #1168: the lineup's one
+    // resolution, and the catch-up measurement pairing the rest of the field
+    // on the lineup it was handed. That the lineup itself is resolved exactly
+    // once is pinned where it can be counted, in `caution.catch-up.test.ts`.
+    expect(reads).toBe(2);
 
     diffCaution(state, counted(STATIC | 0x4), info, canonicalLeader(1), emit); // a green flying: not read
 
-    expect(reads).toBe(1);
+    expect(reads).toBe(2);
   });
 
   it("says nothing about the first lineup it reads — that is the answer, not a change", () => {

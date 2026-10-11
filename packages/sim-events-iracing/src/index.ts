@@ -12,6 +12,7 @@
 export {
   _resetSimEventsIracing,
   getCautionEpisode,
+  getCautionGap,
   getPaceLineup,
   getCautionPhase,
   getDriverSetupName,
@@ -45,6 +46,7 @@ export {
   isUnderFullCourseCaution,
   readSimState,
   resolveLeaderLapTimeS,
+  type CautionGap,
   type GapNeighbor,
   type LivePosition,
   type LiveGaps,
@@ -89,6 +91,26 @@ export {
   resolvePaceLineup,
   resolvePlayerCarIdx,
 } from "./diff/pace-lineup.js";
+// The catch-up call's measurement and thresholds (issue #1168), from the
+// modules that define them. `getCautionGap()` returns the measurement inside
+// its answer; the constants ride for the scenario harness, whose catch-up
+// shortcut holds each step past the translator's own windows rather than
+// restating their lengths, and for anything that explains a reading.
+export {
+  CATCH_UP_MIN_SPACING_SAMPLES,
+  CATCH_UP_PACE_CAR_SPACING_FACTOR,
+  type CautionGapMeasurement,
+} from "./diff/caution-gap.js";
+export {
+  CATCH_UP_CLEAR_MULTIPLE,
+  CATCH_UP_DWELL_MS,
+  CATCH_UP_MAX_REMINDERS,
+  CATCH_UP_PIT_EXIT_GRACE_MS,
+  CATCH_UP_RAISE_MULTIPLE,
+  CATCH_UP_REMINDER_MS,
+  CATCH_UP_SETTLE_MS,
+  type CatchUpBlock,
+} from "./diff/caution.js";
 // The phase `getCautionPhase()` returns (issue #1127) — the callouts that
 // gate on a STAGE of the caution rather than on "is one out" name it — and
 // the episode `getCautionEpisode()` returns (issue #1286), which scopes a
