@@ -21,6 +21,8 @@ A `key` is a persisted settings key and a published contract: never rename or dr
 
 A family is the unit of ownership: the ids are family-scoped (`ack` is an id of both toggle families, `speeding` of both `pit-limiter` and `no-limiter`, and `furled`, `black`, `meatball` and `disqualify` of both `flag` and `opponent-flag`), so the family is what `audio-scenarios` derives its id types from. A PI group is a heading in the window. Most groups hold one family; three span several (Pit Service, Race, Corner Names), and a group's rows are its families' entries concatenated in list order. Every family belongs to exactly one group.
 
+**A key's spelling does not say which family owns it.** `calloutEnabledFlagOnePaceLapToGo` is the `rolling-start` family's `one-pace-lap-to-go` entry, labelled "One lap to green", since #1167 moved it there from `flag`: the call became a formation call, so its checkbox renders under Rolling Start beside the other two. The key keeps the `Flag` in its name because it is a stored setting and a rename would need a migration, and the scenario it gates keeps its id (`pit-crew.flag-one-pace-lap-to-go`) because every voice pack scripts it by that name. Moving an entry between families changes where its row renders and which family's id type carries it, and nothing a user has stored. It is also the one thing that legitimately edits the frozen baseline: the row's `owner` moved from `flag/…` to `rolling-start/…`, with the key and its default untouched.
+
 ## Consumers
 
 - `@iracedeck/settings` builds a `GlobalSettingsSchema` field for every `CalloutSettingKey` with `.default(calloutDefault(key))`, and exports the typed lookup `isCalloutEnabled(key)` and write `setCalloutEnabled(key, enabled)`.
