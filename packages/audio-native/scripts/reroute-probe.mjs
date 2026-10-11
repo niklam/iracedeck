@@ -7,8 +7,14 @@
  * and keeps it open, and prints a heartbeat. While it runs, change the Windows
  * default output device (or pull the device): a healthy addon prints
  * `REROUTED` and keeps beating; a main thread that Windows has locked up
- * prints `STALLED`. `list-audio-sessions.ps1`, beside this file, shows from
+ * prints `STALLED`, and after ten seconds of it the probe ends itself, since
+ * nothing else will. `list-audio-sessions.ps1`, beside this file, shows from
  * outside whether the session got its name.
+ *
+ * Run it with `--busy`. The freeze needed the reroute to reach JavaScript a
+ * few milliseconds late, into the next of the two or three rounds Windows
+ * sends per device change, and an idle event loop is never late: without the
+ * option the addon that froze the plugin survived 21 changes in a row.
  *
  * Usage, after `pnpm --filter @iracedeck/audio-native build`:
  *
@@ -22,6 +28,9 @@
  *                      and silent
  *   --volume <0..1>    volume of the clip (default 0.05)
  *   --seconds <n>      stop after n seconds (default: run until Ctrl+C)
+ *   --busy <ms>        keep the main thread unavailable for this long at a
+ *                      time, over and over, the way a plugin's is in a race;
+ *                      15 puts a reroute's arrival anywhere in the next round
  *   --no-destroy       leave with process.exit(0) and no destroyAudioEngine,
  *                      the way a deck host ends a plugin
  */
@@ -35,6 +44,8 @@ import { Worker } from "node:worker_threads";
 const BEAT_INTERVAL_MS = 100;
 const HEARTBEAT_INTERVAL_MS = 1000;
 const STALL_THRESHOLD_MS = 1500;
+/** A loop stalled this long is not coming back, and a frozen main thread cannot end the process itself. */
+const STALL_GIVE_UP_MS = 10_000;
 
 const packageDir = join(dirname(fileURLToPath(import.meta.url)), "..");
 const startedAt = performance.now();
@@ -66,6 +77,7 @@ function parseOptions() {
         clip: { type: "string" },
         volume: { type: "string", default: "0.05" },
         seconds: { type: "string" },
+        busy: { type: "string" },
         "no-destroy": { type: "boolean", default: false },
       },
     }).values;
@@ -88,7 +100,8 @@ function endpointIdOf(deviceId) {
 /**
  * Watches the event loop from a second thread, so a loop that never comes back
  * — the #1411 freeze — still says so. The main thread counts beats into shared
- * memory; the watchdog reports while the count stands still.
+ * memory; the watchdog reports while the count stands still, and then ends
+ * the process: Ctrl+C is handled on the thread that is stuck.
  */
 function startWatchdog(beats) {
   const source = `
@@ -108,6 +121,10 @@ function startWatchdog(beats) {
         return;
       }
       const stalledFor = now - changedAt;
+      if (stalledFor > workerData.giveUp) {
+        writeSync(1, "STALLED for good after " + stalledFor + " ms: ending the process\\n");
+        process.kill(process.pid);
+      }
       if (stalledFor > workerData.threshold && now - reportedAt >= 1000) {
         reportedAt = now;
         writeSync(1, "STALLED " + stalledFor + " ms and counting: the event loop is blocked\\n");
@@ -116,7 +133,7 @@ function startWatchdog(beats) {
   `;
   const watchdog = new Worker(source, {
     eval: true,
-    workerData: { beats: beats.buffer, threshold: STALL_THRESHOLD_MS },
+    workerData: { beats: beats.buffer, threshold: STALL_THRESHOLD_MS, giveUp: STALL_GIVE_UP_MS },
   });
 
   watchdog.unref();
@@ -155,6 +172,12 @@ const seconds = options.seconds === undefined ? null : Number(options.seconds);
 
 if (seconds !== null && (!Number.isFinite(seconds) || seconds <= 0)) {
   fail(`--seconds must be a positive number, got "${options.seconds}"`);
+}
+
+const busyMs = options.busy === undefined ? null : Number(options.busy);
+
+if (busyMs !== null && (!Number.isFinite(busyMs) || busyMs <= 0)) {
+  fail(`--busy must be a positive number of milliseconds, got "${options.busy}"`);
 }
 
 if (options.icon !== undefined && !isAbsolute(options.icon)) {
@@ -229,6 +252,10 @@ if (!native.startAudioEngine()) {
 
 log(clipPath === null ? "device open, silent" : `device open, looping ${clipPath} at volume ${volume}`);
 
+if (busyMs !== null) {
+  log(`main thread busy ${busyMs} ms at a time`);
+}
+
 const beats = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT));
 const watchdog = startWatchdog(beats);
 
@@ -264,6 +291,24 @@ const heartbeatTimer = setInterval(() => {
 }, HEARTBEAT_INTERVAL_MS);
 
 let finished = false;
+let secondsTimer = null;
+let busyImmediate = null;
+
+/**
+ * Sleeps rather than spins: the thread is just as unavailable, and no core is
+ * burnt. One turn of the event loop runs between two sleeps, which is when a
+ * reroute waiting for the thread gets through.
+ */
+const busyGate = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT));
+
+function stayBusy() {
+  Atomics.wait(busyGate, 0, 0, busyMs);
+  busyImmediate = setImmediate(stayBusy);
+}
+
+if (busyMs !== null) {
+  busyImmediate = setImmediate(stayBusy);
+}
 
 function finish(reason) {
   if (finished) {
@@ -273,6 +318,8 @@ function finish(reason) {
   finished = true;
   clearInterval(beatTimer);
   clearInterval(heartbeatTimer);
+  clearTimeout(secondsTimer);
+  clearImmediate(busyImmediate);
   log(`${reason}: ${heartbeats} heartbeats, ${reroutes} reroutes, ${stalls} stalls`);
 
   if (options["no-destroy"]) {
@@ -291,5 +338,5 @@ function finish(reason) {
 process.on("SIGINT", () => finish("Ctrl+C"));
 
 if (seconds !== null) {
-  setTimeout(() => finish(`${seconds} s elapsed`), seconds * 1000);
+  secondsTimer = setTimeout(() => finish(`${seconds} s elapsed`), seconds * 1000);
 }
