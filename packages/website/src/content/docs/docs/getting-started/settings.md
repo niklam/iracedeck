@@ -161,6 +161,18 @@ Below the settings are the **release notes for every version of iRaceDeck**, new
 
 **Capture CPU profile** records 30 seconds of what iRaceDeck is doing and saves it as two files in a `profiles` folder next to the plugin log: a `.cpuprofile` that opens in Chrome's DevTools, and a `.txt` summary listing where the time went. Press it while the problem is happening — a slow deck, or high CPU use in Task Manager — and the line under the button counts down, then shows the saved file's name. **Open folder** beside it opens the `profiles` folder; attach both files to your report. The folder keeps the five newest captures and deletes older ones. See [If iRaceDeck uses a lot of CPU](/docs/getting-started/troubleshooting/#if-iracedeck-uses-a-lot-of-cpu).
 
+### Support iRaceDeck
+
+![The Support iRaceDeck tab, showing what iRaceDeck costs to keep going, the Buy Me a Coffee button and other ways to help](../../../../assets/settings-window/support.png)
+
+iRaceDeck is free, with no paid version and no locked features. This tab says what it costs to keep going and gives you a way to chip in if you want to. The **Support iRaceDeck** button opens the project's Buy Me a Coffee page in your browser, and the link under it goes to the **iRaceDeck Supporter** membership, which comes with the Supporter role on Discord. Nothing is ever expected.
+
+The tab also lists ways to help that cost nothing: joining the Discord, reporting a bug or suggesting a feature, and starring iRaceDeck on GitHub.
+
+It is the last tab in the sidebar, and nothing else in iRaceDeck points you at it: no banner, no badge, no reminder.
+
+The button is an image served by Buy Me a Coffee, which is why it carries a supporter count. It is the only thing the Settings window loads from another site, and it is loaded when you open this tab, not when the window opens. Without an internet connection the button shows as a text link and works the same.
+
 ## What Stays in the Property Inspector
 
 A key's Property Inspector is now about that key. It has its own settings at the top, then the **iRaceDeck Settings** button, then its per-key overrides — title, colours, border, graphic scale, flags overlay — and one section at the bottom:
