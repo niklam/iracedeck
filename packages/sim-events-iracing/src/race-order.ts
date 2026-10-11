@@ -28,6 +28,20 @@ import { calculateFrozenRacePositions } from "./diff/race-finish.js";
 import type { TranslatorState } from "./state.js";
 
 /**
+ * Whether this tick is in the phase the qualifying grid is the order for: a
+ * race session, before its green. The ONE statement of that phase —
+ * {@link calculateCanonicalRacePositions} serves the grid on it, and the pace
+ * lineup reader (`diff/pace-lineup.ts`, issue #1167) numbers a rolling-start
+ * formation as a grid on it — so the canonical order and the lineup leave the
+ * grid on the same tick, and can never disagree on a pre-green tick of a
+ * practice or qualifying session. The two gates it folds together are
+ * explained on {@link calculateCanonicalRacePositions}.
+ */
+export function isQualifyingGridPhase(telemetry: TelemetryData, isRaceSession: boolean): boolean {
+  return isRaceSession && isPreGreen(telemetry);
+}
+
+/**
  * The canonical per-car race order for this tick: 1-based rank indexed by
  * `carIdx`, `0` for cars the order omits.
  *
@@ -61,7 +75,7 @@ export function calculateCanonicalRacePositions(
   sessionInfo: Record<string, unknown> | null,
   isRaceSession: boolean,
 ): number[] {
-  if (isRaceSession && isPreGreen(telemetry)) {
+  if (isQualifyingGridPhase(telemetry, isRaceSession)) {
     const results = extractQualifyResults(sessionInfo);
     const gridOrder = results ? calculateGridPositions(results) : null;
 

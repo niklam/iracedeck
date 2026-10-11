@@ -21,7 +21,7 @@ import { SessionState, TrkLoc } from "@iracedeck/iracing-native";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { describe, expect, it } from "vitest";
 
-import { calculateCanonicalRacePositions } from "./race-order.js";
+import { calculateCanonicalRacePositions, isQualifyingGridPhase } from "./race-order.js";
 import { createInitialState } from "./state.js";
 
 /** Grid entries as `[carIdx, …]` in finishing order — index becomes the 0-indexed `Position`. */
@@ -158,5 +158,44 @@ describe("calculateCanonicalRacePositions", () => {
     const order = calculateCanonicalRacePositions(createInitialState(), paradeLapTelemetry(), null, true);
 
     expect(order[5]).toBe(1);
+  });
+});
+
+describe("isQualifyingGridPhase", () => {
+  // The one statement of "the qualifying grid is the order here", shared with
+  // the pace lineup reader (issue #1167) so the two leave the grid together.
+  const inState = (state: SessionState): TelemetryData => ({ SessionState: state }) as TelemetryData;
+
+  it("holds through every pre-green state of a race", () => {
+    for (const state of [SessionState.Invalid, SessionState.GetInCar, SessionState.Warmup, SessionState.ParadeLaps]) {
+      expect(isQualifyingGridPhase(inState(state), true), SessionState[state]).toBe(true);
+    }
+  });
+
+  it("ends at the green", () => {
+    for (const state of [SessionState.Racing, SessionState.Checkered, SessionState.CoolDown]) {
+      expect(isQualifyingGridPhase(inState(state), true), SessionState[state]).toBe(false);
+    }
+  });
+
+  it("never holds outside a race session, whatever the state", () => {
+    for (const state of [SessionState.GetInCar, SessionState.Warmup, SessionState.ParadeLaps, SessionState.Racing]) {
+      expect(isQualifyingGridPhase(inState(state), false), SessionState[state]).toBe(false);
+    }
+  });
+
+  it("does not hold for telemetry that carries no session state", () => {
+    expect(isQualifyingGridPhase({} as TelemetryData, true)).toBe(false);
+  });
+
+  it("is the gate the canonical order switches source on", () => {
+    // Same telemetry, same grid: the order is the grid exactly where the
+    // predicate holds, and the lap-progress order where it does not.
+    const telemetry = paradeLapTelemetry();
+
+    expect(isQualifyingGridPhase(telemetry, true)).toBe(true);
+    expect(calculateCanonicalRacePositions(createInitialState(), telemetry, PARADE_GRID, true)[6]).toBe(1);
+    expect(isQualifyingGridPhase(telemetry, false)).toBe(false);
+    expect(calculateCanonicalRacePositions(createInitialState(), telemetry, PARADE_GRID, false)[5]).toBe(1);
   });
 });

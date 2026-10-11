@@ -99,6 +99,7 @@ import { diffToggles } from "./diff/toggles.js";
 import { diffTrackWetness, resolveReportedTrackWetness } from "./diff/track-wetness.js";
 import type { PendingEvent } from "./diff/types.js";
 import { calculateCanonicalRacePositions } from "./race-order.js";
+import { resolveSessionType } from "./session-type.js";
 import { buildDegradedSimState, buildSimState, type SimStateSnapshot } from "./sim-state.js";
 import { resolveStandingStart } from "./start-lights.js";
 import {
@@ -2634,17 +2635,6 @@ function publish(self: TranslatorInstance, pending: PendingEvent, telemetry: Tel
     data: pending.data,
   } as SimEventMap[SimEventName];
   self.bus.publish(envelope);
-}
-
-function resolveSessionType(sessionInfo: Record<string, unknown> | null, telemetry: TelemetryData): string {
-  if (!sessionInfo) return "";
-
-  const sessions = (sessionInfo.SessionInfo as Record<string, unknown> | undefined)?.Sessions as
-    Array<Record<string, unknown>> | undefined;
-  const sessionNum = telemetry.SessionNum ?? 0;
-  const current = sessions?.[sessionNum as number];
-
-  return (current?.SessionType as string) ?? "";
 }
 
 /**
