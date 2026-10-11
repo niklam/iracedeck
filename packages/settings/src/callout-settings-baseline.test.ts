@@ -18,6 +18,12 @@ import { GlobalSettingsSchema } from "./global-settings.js";
  * added once, before #1350 merged: for the 95 keys that had an id map on
  * master, from master's `*_CALLOUT_SETTING_KEYS` maps; for the 5 that had none,
  * from the registry's five small families. It is frozen like the rest.
+ *
+ * One row's owner has moved since, deliberately: #1167 took
+ * `calloutEnabledFlagOnePaceLapToGo` from `flag/one-pace-lap-to-go` to
+ * `rolling-start/one-pace-lap-to-go` when the call became a formation call
+ * and its checkbox moved under Rolling Start, with the key and its default
+ * untouched, so no stored value moved and no migration was owed.
  */
 interface BaselineRow {
   readonly owner: string;
