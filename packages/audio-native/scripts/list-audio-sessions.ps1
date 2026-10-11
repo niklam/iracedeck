@@ -20,8 +20,8 @@ using System.Runtime.InteropServices;
 
 // Every method is [PreserveSig]: the int it returns is the HRESULT. Without the
 // attribute the runtime turns a failure into an exception and the return value
-// into a hidden out parameter, so a device going away mid-listing — which is
-// when this script gets run — would abort it.
+// into a hidden out parameter, so a device going away mid-listing would abort
+// it, and that is when this script gets run.
 namespace Ird {
   [ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")] class MMDeviceEnumeratorComObject {}
 
