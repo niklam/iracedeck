@@ -95,8 +95,10 @@ describe("findThirdPartyReferences", () => {
 
   it("flags markup a scriptlet or an inline script builds in a string", () => {
     expect(scan(`<% var html = '<img src="https://img.example/other.svg">'; %><%- html %>`)).toHaveLength(1);
+    // Seen twice, as the element it builds and as an address behind a quote.
     expect(scan(`<script>if (a<b) { el.innerHTML = "<iframe src=\\"https://example.com/\\">"; }</script>`)).toEqual([
       "<iframe src> https://example.com/\\ (remote)",
+      "script text https://example.com/\\ (remote)",
     ]);
   });
 
@@ -178,10 +180,45 @@ describe("findThirdPartyReferences", () => {
       expect(scan(html)).toEqual(flagged);
     });
 
-    it("leaves the window's own server, a URL in a comment and a string that is no URL alone", () => {
+    it("is not blinded by a regular expression that holds a quote, a backtick or a comment opener", () => {
+      // Each of these would desynchronise a tokeniser: the quote flips what it
+      // takes for a string, the backtick opens a template literal and the
+      // slash-star a comment, and the address after it is never seen.
+      for (const before of [
+        'var e = s.replace(/"/g, "&quot;");',
+        'var e = s.replace(/`/g, "\'");\n',
+        "var parts = p.split(/[/*]/);\n",
+      ]) {
+        expect(scan(`<script>${before} fetch("${WIDGET}");</script>`), before).toEqual(flagged);
+      }
+    });
+
+    it("reads a body wrapped in an HTML comment, which a browser runs all the same", () => {
+      // The old "hide it from old browsers" form of a pasted embed snippet.
+      const wrapped = `<script type="text/javascript"><!--
+        var s = document.createElement('script'); s.src = '${WIDGET}'; document.head.appendChild(s);
+      //--></script>`;
+
+      expect(scan(wrapped)).toEqual(flagged);
+      expect(scan("<style><!-- @import url(https://fonts.example/a.css); --></style>")).toEqual([
+        "css url() https://fonts.example/a.css (remote)",
+      ]);
+      // Two strings that only look like a comment around the script between them.
+      expect(
+        scan(`<script>var a = "<!--";</script><script src="${WIDGET}"></script><script>var b = "-->";</script>`),
+      ).toEqual([`<script src> ${WIDGET} (remote)`]);
+    });
+
+    it("reports a quoted address in a comment too, which is the price of not tokenising", () => {
+      expect(scan(`<script>// was: fetch("${WIDGET}")\nvar a = 1;</script>`)).toEqual(flagged);
+      expect(scan(`<script>/* import "${WIDGET}" */</script>`)).toEqual(flagged);
+    });
+
+    it("leaves the window's own server, an unquoted URL in a comment and a string that is no URL alone", () => {
       const html = `<script>
-        // See https://example.com/docs, or fetch("https://example.com/").
-        /* import "https://example.com/w.js" */
+        // See https://example.com/docs for the protocol.
+        var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.setAttributeNS("http://www.w3.org/1999/xlink", "href", "#mark");
         fetch("http://127.0.0.1:8888/x");
         new WebSocket("ws://localhost:8888/ws"); fetch("http://[::1]:8888/x"); fetch('//LOCALHOST/x');
         var image = "data:image/png;base64,AAAA", local = "sdpi-components.js", empty = "";

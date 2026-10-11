@@ -10,11 +10,14 @@
  *
  * It is a tripwire for an honest mistake: somebody pasting a vendor's embed
  * snippet, or hotlinking an asset. It is not a filter a determined author could
- * not get past. It reads markup, CSS and the string literals of inline scripts,
- * as text, because half of what it reads is EJS that has not been rendered. It
- * does NOT read the JavaScript bundles the page loads (`pi-components.js`,
- * `sdpi-components.js`, the bridge), does not follow string concatenation, and
- * does not model a browser's comment and `srcdoc` parsing. What would hold
+ * not get past. It reads markup, CSS `url()` and `@import`, and the addresses
+ * that open a string in an inline script, as text, because half of what it
+ * reads is EJS that has not been rendered. It does NOT read the JavaScript
+ * bundles the page loads (`pi-components.js`, `sdpi-components.js`, the
+ * bridge), does not follow string concatenation, does not know CSS functions
+ * that take a bare string (`image-set("…")`), and does not model a browser's
+ * comment and `srcdoc` parsing beyond an HTML comment wrapped around a
+ * script's or a style's body. What would hold
  * against all of that is a `Content-Security-Policy` on the settings server,
  * and none is in place. Within what it reads it is suspicious rather than
  * exact: a URL it cannot show to be a local file is reported, not waved through.
@@ -85,13 +88,21 @@ const STATIC_LOCAL = /^[\w./#?=&%~-]+$/;
 const SCRIPT_ELEMENT = /<script\b(?:[^<>"']|"[^"]*"|'[^']*')*>([\s\S]*?)(?:<\/script\b|$)/gi;
 
 /**
- * What script text is made of, as far as finding its string literals goes: an
- * escaped character, a comment, or a literal, whose content is captured. A
- * regular expression literal is not modelled; the escape is what keeps the
- * `\/\/` in one from opening a comment that would hide the rest of its line.
+ * An address at the start of a string in script text: a quote, then
+ * `scheme://host` or `//host`. Found by its shape wherever it stands, and on
+ * purpose not by tokenising the script. A tokeniser has to know where every
+ * string, comment and regular expression ends, and the one it misreads (the `"`
+ * in `/"/g`, the `/*` in `/[/*]/`) hides everything after it. The price is that
+ * a quoted address in a comment is reported too: a line somebody has to read,
+ * where the other mistake is a load nobody saw.
  */
-const SCRIPT_TOKEN =
-  /\\[\s\S]|\/\*[\s\S]*?(?:\*\/|$)|\/\/[^\n]*|"((?:\\[\s\S]|[^"\\\n])*)"?|'((?:\\[\s\S]|[^'\\\n])*)'?|`((?:\\[\s\S]|[^`\\])*)`?/g;
+const SCRIPT_ADDRESS = /["'`]\s*((?:[a-z][a-z0-9+.-]*:)?\/\/+[\w[][^"'`\s]*)/gi;
+
+/**
+ * XML namespace names. `createElementNS("http://www.w3.org/2000/svg", …)` names
+ * a vocabulary and fetches nothing.
+ */
+const XML_NAMESPACE = /^http:\/\/www\.w3\.org\/(?:1998|1999|2000)\//;
 
 /** The hosts that are this machine: the window's own server is one of them. */
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
@@ -189,7 +200,10 @@ interface Normalised {
 /**
  * Drops what is not a reference and makes the rest safe to tokenise: comments
  * (EJS, HTML, and CSS inside a `<style>`) go and each EJS output tag becomes a
- * placeholder. A scriptlet is read both ways, one per call:
+ * placeholder. Inside a `<script>` or a `<style>` an HTML comment's markers go
+ * but what they enclose stays: there `<!--` opens no comment, and the old
+ * "hide it from old browsers" wrapper around an embed snippet would otherwise
+ * take the whole snippet with it. A scriptlet is read both ways, one per call:
  *
  * - `"code"` keeps its code and drops its delimiters, so the markup its string
  *   literals build is read like any other.
@@ -200,6 +214,7 @@ function normalise(source: string, scriptlets: "code" | "gone"): Normalised {
   const expressions: string[] = [];
   const text = source
     .replace(/<%#[\s\S]*?%>/g, " ")
+    .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1\b/gi, (block) => block.replace(/<!--|-->/g, " "))
     .replace(/<!--[\s\S]*?-->/g, " ")
     .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, (block) => block.replace(/\/\*[\s\S]*?\*\//g, " "))
     .replace(/<%([=-])([\s\S]*?)[-_]?%>/g, (_match, kind: string, expression: string) => {
@@ -297,20 +312,18 @@ function findInMarkup({ text, expressions }: Normalised, options: ThirdPartyScan
 }
 
 /**
- * The string literals in the `<script>` bodies of one normalised text that name
- * another origin: what a script would hand to `fetch`, `import`, an element's
- * `src`. A URL in a script comment is no literal, and one on this machine is the
- * window talking to its own server. Whole literals only: an address put together
- * from pieces is not followed.
+ * The strings in the `<script>` bodies of one normalised text that open with
+ * another origin's address: what a script would hand to `fetch`, `import`, an
+ * element's `src`. One on this machine is the window talking to its own server.
+ * Whole addresses only: one put together from pieces is not followed.
  */
 function findInScriptText({ text, expressions }: Normalised): ThirdPartyReference[] {
   const found: ThirdPartyReference[] = [];
 
   for (const [, script] of text.matchAll(SCRIPT_ELEMENT)) {
-    for (const [, double, single, template] of script.matchAll(SCRIPT_TOKEN)) {
-      const value = double ?? single ?? template;
-
-      if (value === undefined || !namesAHost(value) || isLoopback(value)) continue;
+    // `"https:\/\/host"` is the same string as `"https://host"`.
+    for (const [, value] of script.replace(/\\\//g, "/").matchAll(SCRIPT_ADDRESS)) {
+      if (!namesAHost(value) || isLoopback(value) || XML_NAMESPACE.test(value)) continue;
 
       found.push({ where: "script text", value: readable(value, expressions), why: "remote" });
     }
