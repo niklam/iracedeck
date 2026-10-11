@@ -719,6 +719,47 @@ static void uninitChannel(int channel)
 }
 
 /**
+ * Take miniaudio's device-notification client off Windows' list, waiting out a
+ * notification that is in flight. JS thread only, right before the engine is
+ * uninitialised (#1411).
+ *
+ * miniaudio follows a default-device change on Windows' notification thread:
+ * it stops the device there, reroutes it and starts it again, and waits each
+ * time for the audio worker to answer. ma_device_uninit ends that worker
+ * first and unregisters the client last, so an uninit landing inside one of
+ * those waits leaves the notification thread waiting for a worker that is
+ * gone, holding the lock the unregister then waits for on this thread — for
+ * good. Unregistering first closes that: the call returns only once no
+ * notification is running, with the device and its worker still whole, and
+ * none can start afterwards. miniaudio's own unregister then finds nothing
+ * registered, which it ignores.
+ *
+ * What this thread waits for is a reroute finishing, and a reroute never
+ * waits for this thread and needs no lock a caller of teardownEngine holds.
+ */
+static void detachDeviceNotifications(ma_engine *engine)
+{
+#if defined(IRD_SESSION_IDENTITY_SUPPORTED) && defined(MA_WIN32_DESKTOP)
+    ma_device *device = ma_engine_get_device(engine);
+    if (device == nullptr || device->pContext == nullptr || device->pContext->backend != ma_backend_wasapi)
+    {
+        return;
+    }
+
+    // Set only when miniaudio's registration succeeded.
+    ma_IMMDeviceEnumerator *enumerator = static_cast<ma_IMMDeviceEnumerator *>(device->wasapi.pDeviceEnumerator);
+    if (enumerator == nullptr)
+    {
+        return;
+    }
+
+    ma_IMMDeviceEnumerator_UnregisterEndpointNotificationCallback(enumerator, &device->wasapi.notificationClient);
+#else
+    (void)engine;
+#endif
+}
+
+/**
  * Tear down the engine (and with it the OS audio device/stream) while
  * keeping the context and the per-channel TSFNs alive. Any remaining
  * channel sounds are released first — they belong to the engine. A session
@@ -736,6 +777,8 @@ static void teardownEngine()
         uninitChannel(i);
     }
 
+    // Before the uninit, never inside it: see detachDeviceNotifications.
+    detachDeviceNotifications(g_engine);
     ma_engine_uninit(g_engine);
     delete g_engine;
     g_engine = nullptr;
