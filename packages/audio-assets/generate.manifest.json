@@ -49754,12 +49754,12 @@
       "requestId": "LlUzEjUB4XEb4QqDnfLU"
     },
     "voice/default/rolling-start/pace-car-moving-leader-01.mp3": {
-      "hash": "9eac31cf05f352ff",
+      "hash": "0b70cd425e9aa62e",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "Pace car's rolling. <break time=\"0.3s\" /> You're on pole — just you and the pac…",
-      "generatedAt": "2026-10-11T09:52:17.660Z",
-      "requestId": "rxQq1LlJygiFKSox1iZz"
+      "generatedAt": "2026-10-11T15:18:41.511Z",
+      "requestId": "yYmuvuZL5Nm39JdcuYmJ"
     },
     "voice/default/rolling-start/pace-car-moving-front-row-01.mp3": {
       "hash": "a5cbad7a99319adc",
@@ -49770,28 +49770,28 @@
       "requestId": "euETr6H4oz3MH9MqRX2C"
     },
     "voice/default/caution/catch-up-01.mp3": {
-      "hash": "ee7a61ecd4971020",
+      "hash": "73ce3066cae48e26",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "Close it up — catch",
-      "generatedAt": "2026-10-11T09:52:18.110Z",
-      "requestId": "euLbAaOycvWg7Fkt5Pof"
+      "textPreview": "Close it up. Catch",
+      "generatedAt": "2026-10-11T15:14:41.950Z",
+      "requestId": "CcK3sIDjBF2TGHam7siN"
     },
     "voice/default/caution/catch-up-02.mp3": {
-      "hash": "ade1e279f7e5d027",
+      "hash": "f5dfbc7d11261aea",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "Gap's opened. <break time=\"0.3s\" /> Close up on",
-      "generatedAt": "2026-10-11T09:52:18.365Z",
-      "requestId": "SXlUyEnkeNUyxfa0zEOs"
+      "generatedAt": "2026-10-11T15:15:15.838Z",
+      "requestId": "Uuokj5VUIjE7m5MzNH5l"
     },
     "voice/default/caution/catch-up-03.mp3": {
-      "hash": "dafdb9b4f16b7956",
+      "hash": "481a50368b7a50cd",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "You've dropped back. <break time=\"0.3s\" /> Catch up to",
-      "generatedAt": "2026-10-11T09:52:18.615Z",
-      "requestId": "MdygxK5fG7rqnwSuWbwx"
+      "textPreview": "You've dropped back. Catch up to",
+      "generatedAt": "2026-10-11T15:15:16.071Z",
+      "requestId": "UzjYy7dNmzr4OPRRuD1X"
     },
     "voice/default/caution/catch-up-again-01.mp3": {
       "hash": "9dd2720be2e7243b",
@@ -49802,12 +49802,12 @@
       "requestId": "0lKobX42LFTV3gFd6uvN"
     },
     "voice/default/caution/catch-up-again-02.mp3": {
-      "hash": "47a95b34d1ef4bb8",
+      "hash": "53bdf5912faa5e49",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "Keep closing — you're still off the back of",
-      "generatedAt": "2026-10-11T09:52:19.053Z",
-      "requestId": "i4INHEkVj2tDnNWH5suq"
+      "textPreview": "Keep closing. <break time=\"0.3s\" /> You're still off the back of",
+      "generatedAt": "2026-10-11T15:16:42.357Z",
+      "requestId": "yBHRZugIKNJvIrKzwe3P"
     },
     "voice/default/caution/catch-up-pace-car-01.mp3": {
       "hash": "f221e12a140c1a85",
@@ -49818,12 +49818,12 @@
       "requestId": "YXfcNPLJI4L1dHANtH6Y"
     },
     "voice/default/caution/catch-up-pace-car-02.mp3": {
-      "hash": "a5aa2f89bae6e76c",
+      "hash": "ed82a4bfca7592e6",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "You've dropped off the pace car — close it up.",
-      "generatedAt": "2026-10-11T09:52:19.496Z",
-      "requestId": "z8axO1vz1rd1T72bVJtk"
+      "textPreview": "You've dropped off the pace car. Close it up.",
+      "generatedAt": "2026-10-11T15:16:24.215Z",
+      "requestId": "LPpIew0fPYErjFMA96dC"
     },
     "voice/default/caution/catch-up-noname-01.mp3": {
       "hash": "79782d89a947bb43",
@@ -49834,36 +49834,36 @@
       "requestId": "YZaW5xS9BsCDLk6aO3SX"
     },
     "voice/default/caution/catch-up-noname-02.mp3": {
-      "hash": "f4223e2309e91b7c",
+      "hash": "55371903b8c122f2",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "You've dropped back — close it up.",
-      "generatedAt": "2026-10-11T09:52:19.990Z",
-      "requestId": "ROjl9leS8OXM1XefBbCY"
+      "textPreview": "You've dropped back. Close it up.",
+      "generatedAt": "2026-10-11T15:17:06.929Z",
+      "requestId": "tWUod5XSeK9hW02Z8QKk"
     },
     "voice/shawn/caution/catch-up-01.mp3": {
-      "hash": "ee7a61ecd4971020",
+      "hash": "73ce3066cae48e26",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "Close it up — catch",
-      "generatedAt": "2026-10-11T09:52:18.110Z",
-      "requestId": "euLbAaOycvWg7Fkt5Pof"
+      "textPreview": "Close it up. Catch",
+      "generatedAt": "2026-10-11T15:22:03.544Z",
+      "requestId": "yrTHTsPY5qO9MbRjyoS2"
     },
     "voice/shawn/caution/catch-up-02.mp3": {
-      "hash": "ade1e279f7e5d027",
+      "hash": "f5dfbc7d11261aea",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
       "textPreview": "Gap's opened. <break time=\"0.3s\" /> Close up on",
-      "generatedAt": "2026-10-11T09:52:18.365Z",
-      "requestId": "SXlUyEnkeNUyxfa0zEOs"
+      "generatedAt": "2026-10-11T15:22:03.792Z",
+      "requestId": "kSSyzaChdhvyRKP3TeL5"
     },
     "voice/shawn/caution/catch-up-03.mp3": {
-      "hash": "dafdb9b4f16b7956",
+      "hash": "481a50368b7a50cd",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "You've dropped back. <break time=\"0.3s\" /> Catch up to",
-      "generatedAt": "2026-10-11T09:52:18.615Z",
-      "requestId": "MdygxK5fG7rqnwSuWbwx"
+      "textPreview": "You've dropped back. Catch up to",
+      "generatedAt": "2026-10-11T15:22:04.016Z",
+      "requestId": "enznMOlK5a1PEY1vwR0i"
     },
     "voice/shawn/caution/catch-up-again-01.mp3": {
       "hash": "9dd2720be2e7243b",
@@ -49874,12 +49874,12 @@
       "requestId": "0lKobX42LFTV3gFd6uvN"
     },
     "voice/shawn/caution/catch-up-again-02.mp3": {
-      "hash": "47a95b34d1ef4bb8",
+      "hash": "53bdf5912faa5e49",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "Keep closing — you're still off the back of",
-      "generatedAt": "2026-10-11T09:52:19.053Z",
-      "requestId": "i4INHEkVj2tDnNWH5suq"
+      "textPreview": "Keep closing. <break time=\"0.3s\" /> You're still off the back of",
+      "generatedAt": "2026-10-11T15:22:04.285Z",
+      "requestId": "pcwE28oPEwFExBbbW39s"
     },
     "voice/shawn/caution/catch-up-pace-car-01.mp3": {
       "hash": "f221e12a140c1a85",
@@ -49890,12 +49890,12 @@
       "requestId": "YXfcNPLJI4L1dHANtH6Y"
     },
     "voice/shawn/caution/catch-up-pace-car-02.mp3": {
-      "hash": "a5aa2f89bae6e76c",
+      "hash": "ed82a4bfca7592e6",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "You've dropped off the pace car — close it up.",
-      "generatedAt": "2026-10-11T09:52:19.496Z",
-      "requestId": "z8axO1vz1rd1T72bVJtk"
+      "textPreview": "You've dropped off the pace car. Close it up.",
+      "generatedAt": "2026-10-11T15:22:04.513Z",
+      "requestId": "6qnxyMGt5PvRT0sJRegI"
     },
     "voice/shawn/caution/catch-up-noname-01.mp3": {
       "hash": "79782d89a947bb43",
@@ -49906,12 +49906,12 @@
       "requestId": "YZaW5xS9BsCDLk6aO3SX"
     },
     "voice/shawn/caution/catch-up-noname-02.mp3": {
-      "hash": "f4223e2309e91b7c",
+      "hash": "55371903b8c122f2",
       "voiceId": "ljX1ZrXuDIIRVcmiVSyR",
       "model": "eleven_flash_v2_5",
-      "textPreview": "You've dropped back — close it up.",
-      "generatedAt": "2026-10-11T09:52:19.990Z",
-      "requestId": "ROjl9leS8OXM1XefBbCY"
+      "textPreview": "You've dropped back. Close it up.",
+      "generatedAt": "2026-10-11T15:22:04.747Z",
+      "requestId": "zfXIXM1ue4n4HOP5jO4Y"
     },
     "voice/shawn/rolling-start/pace-car-moving-inside-01.mp3": {
       "hash": "4d773f841c0bcf6c",

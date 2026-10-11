@@ -418,7 +418,7 @@
       {
         "name": "pace-car-moving-leader-01",
         "text": "Pace car's rolling. <break time=\"0.3s\" /> You're on pole — just you and the pace car.",
-        "seed": 1
+        "seed": 2
       },
       {
         "name": "pace-car-moving-front-row-01",
@@ -9653,20 +9653,20 @@
       },
       {
         "name": "catch-up-01",
-        "text": "Close it up — catch",
-        "seed": 1,
+        "text": "Close it up. Catch",
+        "seed": 2,
         "next_text": "car ninety five"
       },
       {
         "name": "catch-up-02",
         "text": "Gap's opened. <break time=\"0.3s\" /> Close up on",
-        "seed": 1,
+        "seed": 3,
         "next_text": "car ninety five"
       },
       {
         "name": "catch-up-03",
-        "text": "You've dropped back. <break time=\"0.3s\" /> Catch up to",
-        "seed": 1,
+        "text": "You've dropped back. Catch up to",
+        "seed": 3,
         "next_text": "car ninety five"
       },
       {
@@ -9677,8 +9677,8 @@
       },
       {
         "name": "catch-up-again-02",
-        "text": "Keep closing — you're still off the back of",
-        "seed": 1,
+        "text": "Keep closing. <break time=\"0.3s\" /> You're still off the back of",
+        "seed": 2,
         "next_text": "car ninety five"
       },
       {
@@ -9688,7 +9688,7 @@
       },
       {
         "name": "catch-up-pace-car-02",
-        "text": "You've dropped off the pace car — close it up.",
+        "text": "You've dropped off the pace car. Close it up.",
         "seed": 1
       },
       {
@@ -9698,7 +9698,7 @@
       },
       {
         "name": "catch-up-noname-02",
-        "text": "You've dropped back — close it up.",
+        "text": "You've dropped back. Close it up.",
         "seed": 1
       },
       {
