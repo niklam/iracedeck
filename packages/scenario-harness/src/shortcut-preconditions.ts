@@ -22,7 +22,13 @@
  * caution buttons cannot drift from each other's wording.
  */
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
-import { isOvalTrack, type PaceLineup, resolvePaceLineup, resolvePlayerCarIdx } from "@iracedeck/sim-events-iracing";
+import {
+  isOvalTrack,
+  type PaceLineup,
+  parseTrackLengthMeters,
+  resolvePaceLineup,
+  resolvePlayerCarIdx,
+} from "@iracedeck/sim-events-iracing";
 
 import {
   FORMATION_LAP_DIST_PCT,
@@ -57,9 +63,14 @@ import {
  * the track is an oval. What "Formation (oval, two laps)" auditions is the
  * lane wording, so unlike the caution buttons, which treat the lane as an
  * enrichment and run on a road course too, that button is refused without it.
+ *
+ * `track-length` — session info carries a track length the translator can
+ * read (#1168). The catch-up button's gap is a lap fraction times it; without
+ * one the translator measures no gap on any tick, so the caution plays and
+ * neither catch-up call ever does.
  */
 export type ShortcutPrecondition =
-  "player-car-index" | "sdk-connected" | "rolling-start-grid" | "rolling-start-oval-grid";
+  "player-car-index" | "sdk-connected" | "rolling-start-grid" | "rolling-start-oval-grid" | "track-length";
 
 /** The live harness state a precondition is checked against, read by the route on every start. */
 export type HarnessPreconditionState = {
@@ -161,6 +172,17 @@ const PRECONDITION_RULES: Record<ShortcutPrecondition, PreconditionRule> = {
       "calls would speak without the lane or not at all, and the run would not be the one its description promises. " +
       'The "race" preset is the same field on a road course: Rolling Start → Pace car moving and → Car ahead ' +
       "changed run there, with no lane named.",
+  },
+  "track-length": {
+    // The translator's own parse, the pure half of its cached track-length
+    // read: asked, not restated, so "a usable track length" means here exactly
+    // what it means to the diff that divides by it.
+    satisfied: (state) => parseTrackLengthMeters(state.sessionInfo) !== null,
+    reason:
+      'Apply the "race" or "race-oval" session preset first, or give the session a WeekendInfo.TrackLength the sim ' +
+      'would write (for example "2.38 km"). This run opens your gap to the car ahead by moving lap distances, and the ' +
+      "translator turns a lap fraction into a gap by multiplying it by the track length: without one it measures no " +
+      "gap at all, so the caution would play for a minute with neither catch-up call in it.",
   },
 };
 

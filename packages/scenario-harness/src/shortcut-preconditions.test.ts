@@ -2,7 +2,13 @@ import type { IAudioService } from "@iracedeck/audio-service";
 import { _resetEventBus, getEventBus, initializeEventBus } from "@iracedeck/event-bus";
 import type { SessionInfo, TelemetryData } from "@iracedeck/iracing-sdk";
 import { silentLogger } from "@iracedeck/logger";
-import { isOvalTrack, type PaceLineup, resolvePaceLineup, resolvePlayerCarIdx } from "@iracedeck/sim-events-iracing";
+import {
+  isOvalTrack,
+  type PaceLineup,
+  parseTrackLengthMeters,
+  resolvePaceLineup,
+  resolvePlayerCarIdx,
+} from "@iracedeck/sim-events-iracing";
 import type { FastifyInstance } from "fastify";
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -30,6 +36,7 @@ vi.mock("@iracedeck/sim-events-iracing", async (importOriginal) => {
     resolvePlayerCarIdx: vi.fn(actual.resolvePlayerCarIdx),
     resolvePaceLineup: vi.fn(actual.resolvePaceLineup),
     isOvalTrack: vi.fn(actual.isOvalTrack),
+    parseTrackLengthMeters: vi.fn(actual.parseTrackLengthMeters),
   };
 });
 
@@ -193,7 +200,7 @@ describe("checkShortcutPreconditions", () => {
     // translator's state when they speak. Disconnected, the translator sees no
     // ticks: the button would be accepted, run for a minute, and play nothing.
     // The session is asked for first, since without one no connection helps.
-    expect(requiresOf(CATCH_UP_SHORTCUT_ID)).toEqual(["player-car-index", "sdk-connected"]);
+    expect(requiresOf(CATCH_UP_SHORTCUT_ID)).toEqual(["player-car-index", "track-length", "sdk-connected"]);
     expect(checkShortcutPreconditions(requiresOf(CATCH_UP_SHORTCUT_ID), AT_BOOT)).toEqual(
       expect.stringContaining("session preset"),
     );
@@ -211,6 +218,86 @@ describe("checkShortcutPreconditions", () => {
         checkShortcutPreconditions(requiresOf(CATCH_UP_SHORTCUT_ID), connectedWith(readSessionPreset(preset))),
       ).toBeNull();
     }
+  });
+});
+
+describe("the track-length precondition (issue #1168)", () => {
+  /** Whether a preset's session info carries the field at all — read off the file, so the table below is not typed in. */
+  const carriesTrackLength = (preset: string): boolean =>
+    typeof (readSessionPreset(preset).WeekendInfo as Record<string, unknown> | undefined)?.TrackLength === "string";
+
+  it.each(SESSION_PRESETS)("permits a session exactly when it carries a track length (%s)", (preset) => {
+    // The catch-up button's gap is a lap fraction times the track length.
+    // Without one the translator measures no gap on any tick: the caution
+    // plays for a minute and neither catch-up call is in it.
+    const refusal = checkShortcutPreconditions(["track-length"], connectedWith(readSessionPreset(preset)));
+
+    expect(refusal === null, `on ${preset}: ${refusal}`).toBe(carriesTrackLength(preset));
+  });
+
+  it("holds on both race presets and on none of the others, so neither answer is a constant", () => {
+    expect(SESSION_PRESETS.filter(carriesTrackLength).sort()).toEqual(["race", "race-oval"]);
+    expect(SESSION_PRESETS.length).toBeGreaterThan(2);
+  });
+
+  it.each(SESSION_PRESETS)("lets the catch-up shortcut run on exactly the two race presets (%s)", (preset) => {
+    // All three of its preconditions together, connected: a preset that names
+    // a player car and no track length (`practice`) passed before this rule
+    // and ran the minute for nothing.
+    const refusal = checkShortcutPreconditions(
+      requiresOf(CATCH_UP_SHORTCUT_ID),
+      connectedWith(readSessionPreset(preset)),
+    );
+
+    expect(refusal === null, `on ${preset}: ${refusal}`).toBe(preset === "race" || preset === "race-oval");
+  });
+
+  it("refuses a race session whose track length is missing or unreadable, and says what to load", () => {
+    const race = readSessionPreset("race");
+    const { TrackLength: _dropped, ...weekendWithoutLength } = race.WeekendInfo as Record<string, unknown>;
+    const withLength = (TrackLength: unknown): Record<string, unknown> => ({
+      ...race,
+      WeekendInfo: { ...weekendWithoutLength, TrackLength },
+    });
+    const without = { ...race, WeekendInfo: weekendWithoutLength };
+
+    // Everything else the button asks for is there: only the length decides.
+    expect(checkShortcutPreconditions(["player-car-index", "sdk-connected"], connectedWith(without))).toBeNull();
+
+    const refusal = checkShortcutPreconditions(requiresOf(CATCH_UP_SHORTCUT_ID), connectedWith(without)) ?? "";
+
+    expect(refusal).toContain("WeekendInfo.TrackLength");
+    expect(refusal).toContain('"race" or "race-oval" session preset');
+    expect(refusal).toContain("catch-up");
+
+    for (const unusable of ["", "long", "0 km", 2.38, null]) {
+      expect(
+        checkShortcutPreconditions(["track-length"], connectedWith(withLength(unusable))),
+        JSON.stringify(unusable),
+      ).not.toBeNull();
+    }
+
+    // The two units the sim writes.
+    for (const usable of ["2.38 km", "1.50 miles", "0.875 mi"]) {
+      expect(checkShortcutPreconditions(["track-length"], connectedWith(withLength(usable))), usable).toBeNull();
+    }
+  });
+
+  it("asks the translator's own track-length parse — never a restated one", () => {
+    // What counts as a usable length is whatever the diff that divides by it
+    // can read. A copy of that parse here would drift the day a unit was added.
+    const sessionInfo = readSessionPreset("race");
+
+    vi.mocked(parseTrackLengthMeters).mockClear();
+    expect(checkShortcutPreconditions(["track-length"], connectedWith(sessionInfo))).toBeNull();
+    expect(vi.mocked(parseTrackLengthMeters)).toHaveBeenCalledWith(sessionInfo);
+
+    // Its verdict is the rule, whatever the session holds.
+    vi.mocked(parseTrackLengthMeters).mockReturnValueOnce(null);
+    expect(checkShortcutPreconditions(["track-length"], connectedWith(sessionInfo))).not.toBeNull();
+
+    vi.mocked(parseTrackLengthMeters).mockReturnValueOnce(2000);
+    expect(checkShortcutPreconditions(["track-length"], connectedWith({}))).toBeNull();
   });
 });
 
@@ -401,6 +488,24 @@ describe("POST /api/shortcut/start", () => {
     controller.setConnected(true);
 
     expect((await start(CATCH_UP_SHORTCUT_ID)).statusCode).toBe(204);
+  });
+
+  it("refuses the catch-up shortcut on a race session with no track length, naming the field (#1168)", async () => {
+    const race = readSessionPreset("race");
+    const { TrackLength: _dropped, ...weekendWithoutLength } = race.WeekendInfo as Record<string, unknown>;
+
+    controller.setSessionInfo({ ...race, WeekendInfo: weekendWithoutLength } as unknown as SessionInfo);
+    controller.setConnected(true);
+
+    const res = await start(CATCH_UP_SHORTCUT_ID);
+
+    expect(res.statusCode).toBe(409);
+    expect(res.error).toContain("WeekendInfo.TrackLength");
+
+    // Its three older siblings measure no distance and run there as before.
+    for (const id of CAUTION_SHORTCUT_IDS.filter((caution) => caution !== CATCH_UP_SHORTCUT_ID)) {
+      expect((await start(id)).statusCode, `"${id}" was refused`).toBe(204);
+    }
   });
 
   it("refuses an overtake or gap shortcut with the reason while the mock SDK is disconnected (#1349)", async () => {

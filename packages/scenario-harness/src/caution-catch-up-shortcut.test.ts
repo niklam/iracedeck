@@ -32,6 +32,7 @@ import {
   CATCH_UP_RAISE_MULTIPLE,
   CATCH_UP_REMINDER_MS,
   CATCH_UP_SETTLE_MS,
+  CATCH_UP_UNJUDGED_TOLERANCE_MS,
   type CautionGap,
   getCautionGap,
   getPaceLineup,
@@ -45,6 +46,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ALL_EVENT_NAMES, CATCH_UP_GATE_NOTE, EVENT_TEMPLATES } from "./event-names.js";
 import { MockSDKController, type TelemetryPatch } from "./mock-sdk-controller.js";
 import { SCENARIO_SHORTCUTS, type TelemetryStep } from "./scenario-shortcuts.js";
+import { checkShortcutPreconditions, type HarnessPreconditionState } from "./shortcut-preconditions.js";
 
 const PRESETS_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "presets");
 
@@ -145,6 +147,29 @@ function drive(rig: Rig, sequence: readonly TelemetryStep[]): void {
   }
 }
 
+/**
+ * The whole button as the UI and `/api/telemetry` carry it out with the mock's
+ * own tick loop running at `tickIntervalMs`: each step's patch, a tick at once
+ * only where the step asks for one, then its hold while the loop ticks. Unlike
+ * {@link drive}, nothing here ticks more often than the loop does.
+ */
+function pressAtTickInterval(rig: Rig, tickIntervalMs: number): void {
+  rig.controller.setTickInterval(tickIntervalMs);
+  rig.controller.start();
+
+  for (const step of steps) {
+    rig.controller.mutateTelemetry(step.patch as TelemetryPatch);
+
+    if (step.tick === true) rig.controller.tickOnce();
+
+    vi.advanceTimersByTime(step.holdMs ?? 0);
+  }
+
+  // One more tick of the loop, so the last patch has been seen.
+  vi.advanceTimersByTime(tickIntervalMs);
+  rig.controller.stop();
+}
+
 const names = (events: readonly { event: string }[]): string[] => events.map((e) => e.event);
 
 /** The index of the one step whose patch `matches` — failing loudly when there is none, or more than one. */
@@ -206,7 +231,7 @@ describe('the "Caution → catch-up" shortcut (issue #1168)', () => {
     // open.
     expect(shortcut?.event).toBeUndefined();
     expect(steps.length).toBeGreaterThan(0);
-    expect(shortcut?.requires).toEqual(["player-car-index", "sdk-connected"]);
+    expect(shortcut?.requires).toEqual(["player-car-index", "track-length", "sdk-connected"]);
   });
 
   it("control: with the mock SDK disconnected the whole run publishes nothing — why it refuses to start that way", () => {
@@ -265,12 +290,15 @@ describe('the "Caution → catch-up" shortcut (issue #1168)', () => {
     expect(close).toEqual({ patch: { IsReplayPlaying: false }, holdMs: expect.any(Number), tick: true });
     expect(close.holdMs ?? 0).toBeGreaterThan(REPLAY_EXIT_GRACE_MS);
     expect(steps.filter(isBracketStep)).toHaveLength(2);
+    // Then a tick of its own, so the translator re-seeds on what the bracket
+    // arranged before the flag is thrown, however slowly the loop is ticking.
+    expect(steps[2]).toEqual({ patch: {}, tick: true });
   });
 
   it("opens the gap after the pickup, holds it, closes it, then restarts — in that order", () => {
     expect(fieldMoves).toHaveLength(2);
-    expect([waving, pickup, opens, closes, restart]).toEqual([2, 3, 4, 5, 6]);
-    expect(steps).toHaveLength(8);
+    expect([waving, pickup, opens, closes, restart]).toEqual([3, 4, 5, 6, 7]);
+    expect(steps).toHaveLength(9);
   });
 
   it("takes its waits from the translator's own windows", () => {
@@ -317,6 +345,7 @@ describe('the "Caution → catch-up" shortcut (issue #1168)', () => {
       drive(rig, steps);
 
       expect(rig.trace.map((step) => names(step.events))).toEqual([
+        [],
         [],
         [],
         ["flag.caution-waving.raised"],
@@ -427,6 +456,43 @@ describe('the "Caution → catch-up" shortcut (issue #1168)', () => {
 
     expect(names(rig.events)).toEqual(RUN.filter((event) => !event.startsWith("caution.gap")));
     expect(rig.trace[opens].gap?.measurement.gapMeters).toBeNull();
+
+    // Which is the run the `track-length` precondition refuses before it
+    // starts: the dry check and this wet one agree about the same session.
+    const state = (sessionInfo: unknown): HarnessPreconditionState => ({
+      sessionInfo: sessionInfo as Record<string, unknown>,
+      isConnected: true,
+      telemetry: controller.getState().telemetry,
+    });
+
+    expect(
+      checkShortcutPreconditions(shortcut?.requires, state({ ...session, WeekendInfo: weekendWithoutLength })),
+    ).toEqual(expect.stringContaining("WeekendInfo.TrackLength"));
+    expect(checkShortcutPreconditions(shortcut?.requires, state(session))).toBeNull();
+  });
+
+  it("control: with the tick loop slower than the translator's tolerance the gap is never reported — its dwell has to be continuous", () => {
+    // Readings further apart than `CATCH_UP_UNJUDGED_TOLERANCE_MS` do not add
+    // up to "at the raise multiple for a dwell": each starts the dwell again.
+    // The tester can slow the mock's loop to five seconds from the header, and
+    // the button then plays its caution with no catch-up call, for a reason
+    // that is the translator's, not the button's.
+    const slow = startRig();
+
+    pressAtTickInterval(slow, CATCH_UP_UNJUDGED_TOLERANCE_MS + 200);
+
+    expect(names(slow.events)).toEqual(RUN.filter((event) => !event.startsWith("caution.gap")));
+
+    _resetSimEventsIracing();
+    _resetEventBus();
+    initializeEventBus(silentLogger);
+
+    // Just inside the tolerance the same loop is a continuous reading.
+    const bridged = startRig();
+
+    pressAtTickInterval(bridged, CATCH_UP_UNJUDGED_TOLERANCE_MS - 100);
+
+    expect(names(bridged.events)).toEqual(RUN);
   });
 
   it("control: held open instead of closed, the gap is reminded of a second time — so the silence after closing is the closing's", () => {

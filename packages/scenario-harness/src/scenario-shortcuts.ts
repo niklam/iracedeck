@@ -73,7 +73,8 @@ type ScenarioShortcutBase = {
    * UI the rule's reason rather than letting the button proceed into a
    * half-silent sequence. Optional — a shortcut that sets up everything it
    * needs declares none, which is all of them but the caution four (a
-   * session preset, and for the catch-up one a connected mock SDK too), the
+   * session preset, and for the catch-up one a track length in it and a
+   * connected mock SDK too), the
    * overtake and gap ones (a connected mock SDK) and the rolling-start four
    * (both: a race session the formation grid reads in, on an oval for the
    * whole-formation run, and a connected mock SDK).
@@ -903,6 +904,21 @@ const CAUTION_EXTRA_LAP_SHORTCUT: TelemetrySequenceShortcut = {
  * The margin on top is a few of the mock's 14 ms ticks for the re-seed.
  */
 const REPLAY_EXIT_SETTLE_MS = REPLAY_EXIT_GRACE_MS + 200;
+
+/**
+ * The step that makes the translator RE-SEED after a replay-mode bracket,
+ * whatever the mock's tick loop is doing (issues #1167, #1168): an empty patch
+ * that asks for a tick, placed right after the bracket's close has been held.
+ *
+ * The margin in {@link REPLAY_EXIT_SETTLE_MS} is enough for a loop ticking
+ * every 14 ms. A loop the tester has slowed past that margin may not tick
+ * again until AFTER the next step's patch has landed, and then the re-seed
+ * tick takes that patch for its baseline: the edge the button exists to drive
+ * — the flag thrown, the `ParadeLaps` entry — is seeded instead of announced,
+ * and the button plays less than it promises for no reason the tester can
+ * see. One tick here pins the baseline to what the bracket arranged.
+ */
+const SEEDED_TICK: TelemetryStep = { patch: {}, tick: true };
 
 /**
  * Step holds for `AUTO_FUEL_TAKEOVER_SHORTCUT` (issue #474). The opening
@@ -2127,7 +2143,14 @@ const CATCH_UP_RESTART_MS = 3000;
  * What it needs of the harness beyond its siblings' session preset is a
  * TRACK LENGTH (`WeekendInfo.TrackLength`): without one a lap fraction is not
  * a distance and the translator measures no gap at all. Both race presets
- * carry one since #1168.
+ * carry one since #1168, and a session without one is refused
+ * (`track-length`, which asks the translator's own parse).
+ *
+ * And a tick loop at its usual pace. The translator's dwell has to be
+ * CONTINUOUS: two readings more than `CATCH_UP_UNJUDGED_TOLERANCE_MS` (a
+ * second) apart do not add up to one. With the mock's tick interval slowed
+ * past a second, or paused, the gap is never reported however long it is
+ * held, and that is the translator being right about what it was shown.
  *
  * Opens inside a replay-mode bracket, unlike the three older caution buttons,
  * because what it drives is fragile to what the last button left: a baseline
@@ -2152,9 +2175,9 @@ const CAUTION_CATCH_UP_SHORTCUT: TelemetrySequenceShortcut = {
   id: "flag-caution-catch-up",
   category: "Flags",
   label: "Caution → catch-up",
-  requires: ["player-car-index", "sdk-connected"],
+  requires: ["player-car-index", "track-length", "sdk-connected"],
   description:
-    'Drives the TRANSLATOR through a full-course caution in which you drop back from the car ahead: the caution thrown and picked up, single file, then your gap to car eleven opened to four times the pack\'s spacing, held, and closed again. About a minute end to end, because the waits are the translator\'s own — it judges no gap for ten seconds after the pickup, wants the gap open for three before it reports it, and reminds thirty seconds later. Apply the race session preset first (its roster supplies the pace car and every car number, and its track length is what turns lap distance into a gap); the run is refused without a session preset. No telemetry preset is needed: the button puts you on track in the pack itself. Expect the caution-waving line, the follow line ("...behind car eleven"), the two-to-green line, then — about thirteen seconds after the pickup — the catch-up line ("Close it up — catch car eleven", or one of its two other lead-ins), thirty seconds later the reminder ("Still a gap. Close up on car eleven"), then SILENCE as the gap closes (closing up is not announced, and no second reminder may follow), and the restart line. Single file, so no lane is named on any preset. Refused while the mock SDK is disconnected: a disconnected translator sees no ticks, so the whole minute would play nothing.',
+    'Drives the TRANSLATOR through a full-course caution in which you drop back from the car ahead: the caution thrown and picked up, single file, then your gap to car eleven opened to four times the pack\'s spacing, held, and closed again. About a minute end to end, because the waits are the translator\'s own — it judges no gap for ten seconds after the pickup, wants the gap open for three before it reports it, and reminds thirty seconds later. Apply the race session preset first (its roster supplies the pace car and every car number, and its track length is what turns lap distance into a gap); the run is refused without a session preset, and on a session that carries no track length. No telemetry preset is needed: the button puts you on track in the pack itself. Leave the tick interval at its default — the translator wants the gap open for three seconds CONTINUOUSLY, and ticks more than a second apart never add up to that. Expect the caution-waving line, the follow line ("...behind car eleven"), the two-to-green line, then — about thirteen seconds after the pickup — the catch-up line ("Close it up — catch car eleven", or one of its two other lead-ins), thirty seconds later the reminder ("Still a gap. Close up on car eleven"), then SILENCE as the gap closes (closing up is not announced, and no second reminder may follow), and the restart line. Single file, so no lane is named on any preset. Refused while the mock SDK is disconnected: a disconnected translator sees no ticks, so the whole minute would play nothing.',
   telemetrySequence: [
     {
       patch: {
@@ -2176,6 +2199,7 @@ const CAUTION_CATCH_UP_SHORTCUT: TelemetrySequenceShortcut = {
       tick: true,
     },
     { patch: { IsReplayPlaying: false }, holdMs: REPLAY_EXIT_SETTLE_MS, tick: true },
+    SEEDED_TICK,
     // The caution, and the field lined up behind the pace car.
     {
       patch: {
