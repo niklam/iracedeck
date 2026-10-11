@@ -364,6 +364,13 @@ function finish(reason) {
   }
 
   finished = true;
+
+  // A stall that ended just now has not reached the beat that would count it:
+  // this function can run ahead of that beat, and it stops the beats.
+  if (performance.now() - lastBeatAt - BEAT_INTERVAL_MS > STALL_THRESHOLD_MS) {
+    stalls++;
+  }
+
   clearInterval(beatTimer);
   clearInterval(heartbeatTimer);
   clearTimeout(secondsTimer);
@@ -373,18 +380,29 @@ function finish(reason) {
   const closes = cycleMs === null ? "" : `, ${cycles} closes`;
 
   log(`${reason}: ${heartbeats} heartbeats, ${reroutes} reroutes${closes}, ${stalls} stalls`);
-  // A stall the loop came back from is still a failed check.
-  process.exitCode = stalls > 0 ? 1 : 0;
 
   if (options["no-destroy"]) {
     log("leaving with process.exit, no destroyAudioEngine");
-    process.exit(process.exitCode);
+    // A stall the loop came back from is still a failed check.
+    process.exit(stalls > 0 ? 1 : 0);
   }
 
   const destroyStartedAt = performance.now();
 
   native.destroyAudioEngine();
-  log(`destroyAudioEngine returned after ${Math.round(performance.now() - destroyStartedAt)} ms`);
+
+  const destroyMs = Math.round(performance.now() - destroyStartedAt);
+
+  log(`destroyAudioEngine returned after ${destroyMs} ms`);
+
+  // The destroy is the last teardown and the join of the namer thread, and no
+  // beat runs across it.
+  if (destroyMs > STALL_THRESHOLD_MS) {
+    stalls++;
+    log(`STALLED ${destroyMs} ms inside destroyAudioEngine`);
+  }
+
+  process.exitCode = stalls > 0 ? 1 : 0;
   // The event loop is empty once the watchdog is gone, and the process ends by itself.
   void watchdog.terminate();
 }
