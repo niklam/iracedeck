@@ -8,8 +8,9 @@
  * default output device (or pull the device): a healthy addon prints
  * `REROUTED` and keeps beating; a main thread that Windows has locked up
  * prints `STALLED`, and after ten seconds of it the probe ends itself, since
- * nothing else will. `list-audio-sessions.ps1`, beside this file, shows from
- * outside whether the session got its name.
+ * nothing else will. A run that stalled exits 1, also when the loop came back.
+ * `list-audio-sessions.ps1`, beside this file, shows from outside whether the
+ * session got its name.
  *
  * Run it with `--busy`. The freeze needed the reroute to reach JavaScript a
  * few milliseconds late, into the next of the two or three rounds Windows
@@ -31,6 +32,9 @@
  *   --busy <ms>        keep the main thread unavailable for this long at a
  *                      time, over and over, the way a plugin's is in a race;
  *                      15 puts a reroute's arrival anywhere in the next round
+ *   --cycle <ms>       close the device and open it again this often, as the
+ *                      plugin does around its sounds, so that a close lands
+ *                      inside a reroute
  *   --no-destroy       leave with process.exit(0) and no destroyAudioEngine,
  *                      the way a deck host ends a plugin
  */
@@ -78,6 +82,7 @@ function parseOptions() {
         volume: { type: "string", default: "0.05" },
         seconds: { type: "string" },
         busy: { type: "string" },
+        cycle: { type: "string" },
         "no-destroy": { type: "boolean", default: false },
       },
     }).values;
@@ -180,6 +185,12 @@ if (busyMs !== null && (!Number.isFinite(busyMs) || busyMs <= 0)) {
   fail(`--busy must be a positive number of milliseconds, got "${options.busy}"`);
 }
 
+const cycleMs = options.cycle === undefined ? null : Number(options.cycle);
+
+if (cycleMs !== null && (!Number.isFinite(cycleMs) || cycleMs <= 0)) {
+  fail(`--cycle must be a positive number of milliseconds, got "${options.cycle}"`);
+}
+
 if (options.icon !== undefined && !isAbsolute(options.icon)) {
   fail("--icon must be an absolute path: Windows resolves it, not this process.");
 }
@@ -242,18 +253,27 @@ native.setDeviceReroutedCallback(() => {
   log(`REROUTED #${reroutes}`);
 });
 
-if (clipPath !== null && !native.playOnChannel(AudioChannel.Ambient, clipPath, true, volume)) {
-  fail(`playOnChannel failed for ${clipPath}`);
+/** Open the device, with the clip looping on it when there is one. */
+function openDevice() {
+  if (clipPath !== null && !native.playOnChannel(AudioChannel.Ambient, clipPath, true, volume)) {
+    return false;
+  }
+
+  return native.startAudioEngine();
 }
 
-if (!native.startAudioEngine()) {
-  fail("startAudioEngine failed.");
+if (!openDevice()) {
+  fail(clipPath === null ? "startAudioEngine failed." : `could not open the device and play ${clipPath}`);
 }
 
 log(clipPath === null ? "device open, silent" : `device open, looping ${clipPath} at volume ${volume}`);
 
 if (busyMs !== null) {
   log(`main thread busy ${busyMs} ms at a time`);
+}
+
+if (cycleMs !== null) {
+  log(`device closed and reopened every ${cycleMs} ms`);
 }
 
 const beats = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT));
@@ -310,6 +330,20 @@ if (busyMs !== null) {
   busyImmediate = setImmediate(stayBusy);
 }
 
+let cycles = 0;
+let cycleTimer = null;
+
+if (cycleMs !== null) {
+  cycleTimer = setInterval(() => {
+    native.stopAudioEngine();
+    cycles++;
+
+    if (!openDevice()) {
+      log(`the device did not reopen after close #${cycles}`);
+    }
+  }, cycleMs);
+}
+
 function finish(reason) {
   if (finished) {
     return;
@@ -320,11 +354,17 @@ function finish(reason) {
   clearInterval(heartbeatTimer);
   clearTimeout(secondsTimer);
   clearImmediate(busyImmediate);
-  log(`${reason}: ${heartbeats} heartbeats, ${reroutes} reroutes, ${stalls} stalls`);
+  clearInterval(cycleTimer);
+
+  const closes = cycleMs === null ? "" : `, ${cycles} closes`;
+
+  log(`${reason}: ${heartbeats} heartbeats, ${reroutes} reroutes${closes}, ${stalls} stalls`);
+  // A stall the loop came back from is still a failed check.
+  process.exitCode = stalls > 0 ? 1 : 0;
 
   if (options["no-destroy"]) {
-    log("leaving with process.exit(0), no destroyAudioEngine");
-    process.exit(0);
+    log("leaving with process.exit, no destroyAudioEngine");
+    process.exit(process.exitCode);
   }
 
   const destroyStartedAt = performance.now();

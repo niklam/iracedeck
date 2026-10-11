@@ -18,59 +18,63 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
+// Every method is [PreserveSig]: the int it returns is the HRESULT. Without the
+// attribute the runtime turns a failure into an exception and the return value
+// into a hidden out parameter, so a device going away mid-listing — which is
+// when this script gets run — would abort it.
 namespace Ird {
   [ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")] class MMDeviceEnumeratorComObject {}
 
   [Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
   interface IMMDeviceEnumerator {
-    int EnumAudioEndpoints(int dataFlow, int stateMask, out IMMDeviceCollection devices);
-    int GetDefaultAudioEndpoint(int dataFlow, int role, out IMMDevice device);
+    [PreserveSig] int EnumAudioEndpoints(int dataFlow, int stateMask, out IMMDeviceCollection devices);
+    [PreserveSig] int GetDefaultAudioEndpoint(int dataFlow, int role, out IMMDevice device);
   }
 
   [Guid("0BD7A1BE-7A1A-44DB-8397-CC5392387B5E"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
   interface IMMDeviceCollection {
-    int GetCount(out int count);
-    int Item(int index, out IMMDevice device);
+    [PreserveSig] int GetCount(out int count);
+    [PreserveSig] int Item(int index, out IMMDevice device);
   }
 
   [Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
   interface IMMDevice {
-    int Activate(ref Guid iid, int clsCtx, IntPtr activationParams, [MarshalAs(UnmanagedType.IUnknown)] out object iface);
-    int OpenPropertyStore(int access, out IntPtr store);
-    int GetId([MarshalAs(UnmanagedType.LPWStr)] out string id);
+    [PreserveSig] int Activate(ref Guid iid, int clsCtx, IntPtr activationParams, [MarshalAs(UnmanagedType.IUnknown)] out object iface);
+    [PreserveSig] int OpenPropertyStore(int access, out IntPtr store);
+    [PreserveSig] int GetId([MarshalAs(UnmanagedType.LPWStr)] out string id);
   }
 
   // Only GetSessionEnumerator is called; the two before it hold its vtable slot.
   [Guid("77AA99A0-1BD6-484F-8BC7-2C654C9A9B6F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
   interface IAudioSessionManager2 {
-    int GetAudioSessionControl(IntPtr a, int b, out IntPtr c);
-    int GetSimpleAudioVolume(IntPtr a, int b, out IntPtr c);
-    int GetSessionEnumerator(out IAudioSessionEnumerator sessions);
+    [PreserveSig] int GetAudioSessionControl(IntPtr a, int b, out IntPtr c);
+    [PreserveSig] int GetSimpleAudioVolume(IntPtr a, int b, out IntPtr c);
+    [PreserveSig] int GetSessionEnumerator(out IAudioSessionEnumerator sessions);
   }
 
   [Guid("E2F5BB11-0570-40CA-ACDD-3AA01277DEE8"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
   interface IAudioSessionEnumerator {
-    int GetCount(out int count);
-    int GetSession(int index, out IAudioSessionControl2 session);
+    [PreserveSig] int GetCount(out int count);
+    [PreserveSig] int GetSession(int index, out IAudioSessionControl2 session);
   }
 
   // Only the getters are called; the setters are declared for their vtable slots.
   [Guid("BFB7FF88-7239-4FC9-8FA2-07C950BE9C6D"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
   interface IAudioSessionControl2 {
-    int GetState(out int state);
-    int GetDisplayName([MarshalAs(UnmanagedType.LPWStr)] out string name);
-    int SetDisplayName([MarshalAs(UnmanagedType.LPWStr)] string name, ref Guid context);
-    int GetIconPath([MarshalAs(UnmanagedType.LPWStr)] out string path);
-    int SetIconPath([MarshalAs(UnmanagedType.LPWStr)] string path, ref Guid context);
-    int GetGroupingParam(out Guid grouping);
-    int SetGroupingParam(ref Guid grouping, ref Guid context);
-    int RegisterAudioSessionNotification(IntPtr n);
-    int UnregisterAudioSessionNotification(IntPtr n);
-    int GetSessionIdentifier([MarshalAs(UnmanagedType.LPWStr)] out string id);
-    int GetSessionInstanceIdentifier([MarshalAs(UnmanagedType.LPWStr)] out string id);
-    int GetProcessId(out uint pid);
-    int IsSystemSoundsSession();
-    int SetDuckingPreference(bool optOut);
+    [PreserveSig] int GetState(out int state);
+    [PreserveSig] int GetDisplayName([MarshalAs(UnmanagedType.LPWStr)] out string name);
+    [PreserveSig] int SetDisplayName([MarshalAs(UnmanagedType.LPWStr)] string name, ref Guid context);
+    [PreserveSig] int GetIconPath([MarshalAs(UnmanagedType.LPWStr)] out string path);
+    [PreserveSig] int SetIconPath([MarshalAs(UnmanagedType.LPWStr)] string path, ref Guid context);
+    [PreserveSig] int GetGroupingParam(out Guid grouping);
+    [PreserveSig] int SetGroupingParam(ref Guid grouping, ref Guid context);
+    [PreserveSig] int RegisterAudioSessionNotification(IntPtr n);
+    [PreserveSig] int UnregisterAudioSessionNotification(IntPtr n);
+    [PreserveSig] int GetSessionIdentifier([MarshalAs(UnmanagedType.LPWStr)] out string id);
+    [PreserveSig] int GetSessionInstanceIdentifier([MarshalAs(UnmanagedType.LPWStr)] out string id);
+    [PreserveSig] int GetProcessId(out uint pid);
+    [PreserveSig] int IsSystemSoundsSession();
+    [PreserveSig] int SetDuckingPreference(bool optOut);
   }
 
   public class Session {
@@ -100,30 +104,33 @@ namespace Ird {
       }
 
       IMMDeviceCollection devices;
-      enumerator.EnumAudioEndpoints(0, 1, out devices); // eRender, DEVICE_STATE_ACTIVE
       int deviceCount;
-      devices.GetCount(out deviceCount);
+      if (enumerator.EnumAudioEndpoints(0, 1, out devices) != 0 || devices == null // eRender, DEVICE_STATE_ACTIVE
+          || devices.GetCount(out deviceCount) != 0) {
+        return endpoints;
+      }
       var iid = new Guid("77AA99A0-1BD6-484F-8BC7-2C654C9A9B6F");
 
+      // A device or a session that fails to answer is skipped, not fatal: both
+      // come and go while the default is being switched.
       for (int d = 0; d < deviceCount; d++) {
         IMMDevice device;
-        devices.Item(d, out device);
+        if (devices.Item(d, out device) != 0 || device == null) { continue; }
         var endpoint = new Endpoint { Device = d };
         device.GetId(out endpoint.Id);
         endpoint.IsDefault = endpoint.Id != null && endpoint.Id == defaultId;
         endpoints.Add(endpoint);
 
         object managerObject;
-        device.Activate(ref iid, 23, IntPtr.Zero, out managerObject); // CLSCTX_ALL
+        if (device.Activate(ref iid, 23, IntPtr.Zero, out managerObject) != 0 || managerObject == null) { continue; } // CLSCTX_ALL
         var manager = (IAudioSessionManager2)managerObject;
         IAudioSessionEnumerator sessions;
-        manager.GetSessionEnumerator(out sessions);
         int count;
-        sessions.GetCount(out count);
+        if (manager.GetSessionEnumerator(out sessions) != 0 || sessions == null || sessions.GetCount(out count) != 0) { continue; }
 
         for (int s = 0; s < count; s++) {
           IAudioSessionControl2 control;
-          sessions.GetSession(s, out control);
+          if (sessions.GetSession(s, out control) != 0 || control == null) { continue; }
           var session = new Session { Device = d };
           control.GetState(out session.State);
           control.GetDisplayName(out session.Name);
