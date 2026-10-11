@@ -216,6 +216,10 @@ if (releaseAfter !== null && (!Number.isFinite(releaseAfter) || releaseAfter <= 
   fail(`--release-after must be a positive number of seconds, got "${options["release-after"]}"`);
 }
 
+if (releaseAfter !== null && seconds !== null && releaseAfter >= seconds) {
+  fail("--release-after must be less than --seconds: the run would end before the release.");
+}
+
 if (options.icon !== undefined && !isAbsolute(options.icon)) {
   fail("--icon must be an absolute path: Windows resolves it, not this process.");
 }

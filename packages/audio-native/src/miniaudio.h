@@ -24148,6 +24148,14 @@ static ma_result ma_device_reinit__wasapi(ma_device* pDevice, ma_device_type dev
 
         if (pDevice->wasapi.pAudioClientPlayback) {
             /*ma_device_release_IAudioClient_service__wasapi(pDevice, ma_device_type_playback);*/
+            /*
+            iRaceDeck (#1414), not upstream: the client is abandoned here, as the comment above says. Hand it to
+            the application first, which releases it later, on a thread of its own outside this callback.
+            */
+            #define MA_IRD_ABANDONED_AUDIO_CLIENT_HOOK_PRESENT
+            #if defined(MA_IRD_ON_ABANDONED_AUDIO_CLIENT)
+            MA_IRD_ON_ABANDONED_AUDIO_CLIENT(pDevice->wasapi.pAudioClientPlayback);
+            #endif
             pDevice->wasapi.pAudioClientPlayback = NULL;
         }
     }
