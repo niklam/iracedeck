@@ -508,7 +508,7 @@ static void ensureSessionNamerThread(Napi::Env env)
  * callback (#1330). The session of the new endpoint is named by the namer
  * thread, never from here (#1411).
  */
-static Napi::Value OnSessionRerouted(const Napi::CallbackInfo &info)
+static Napi::Value OnDeviceRerouted(const Napi::CallbackInfo &info)
 {
     Napi::Env env = info.Env();
 
@@ -544,7 +544,7 @@ static void ensureRerouteTSFN(Napi::Env env)
     }
 
     g_rerouteTSFN = Napi::ThreadSafeFunction::New(env,
-                                                  Napi::Function::New(env, OnSessionRerouted),
+                                                  Napi::Function::New(env, OnDeviceRerouted),
                                                   "maRerouted",
                                                   0,  // unlimited queue
                                                   1); // one thread (miniaudio's notification thread)
