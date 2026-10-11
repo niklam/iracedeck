@@ -1687,10 +1687,15 @@ function fuelLapsLeftStats(self: TranslatorInstance): FuelStats {
  * `TranslatorState` and the instance's own flags under `raw`. Exactly
  * `{ initialized: false }` while there is no translator.
  *
- * Read ONLY when a snapshot is taken. It is synchronous, logs nothing and
- * writes nothing, so taking a snapshot cannot change what is being reported;
- * the one effect is the per-tick memo `getPaceLineup()` fills, which that
- * accessor writes for every caller. Nothing here runs per tick.
+ * Read ONLY when a snapshot is taken. It is synchronous and logs nothing, and
+ * it changes nothing that is being reported. What it does write is what its
+ * accessors write for every caller: the two per-tick memos, the lineup's
+ * (`getPaceLineup()`) and the caution gap's measurement (`getCautionGap()`),
+ * and the track-length cache that `getCautionGap()` reads through, which
+ * re-parses `WeekendInfo.TrackLength` when the track or the session has
+ * changed since it was last read. Each holds a pure function of the tick, so
+ * the next reader gets the answer it would have computed. Nothing here runs
+ * per tick.
  *
  * The curated keys are what the public accessors answer, called as any other
  * consumer calls them, so the snapshot shows what the actions and the Race
