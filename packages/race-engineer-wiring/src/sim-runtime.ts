@@ -8,6 +8,7 @@
  */
 import {
   getCautionEpisode,
+  getCautionGap,
   getCautionPhase,
   getDriverSetupName,
   getLiveCarPosition,
@@ -29,6 +30,7 @@ import {
 
 export interface SimRuntime {
   readonly getCautionEpisode: typeof getCautionEpisode;
+  readonly getCautionGap: typeof getCautionGap;
   readonly getPaceLineup: typeof getPaceLineup;
   readonly getCautionPhase: typeof getCautionPhase;
   readonly getDriverSetupName: typeof getDriverSetupName;
@@ -52,6 +54,7 @@ export interface SimRuntime {
 export function createIracingSimRuntime(): SimRuntime {
   return {
     getCautionEpisode,
+    getCautionGap,
     getPaceLineup,
     getCautionPhase,
     getDriverSetupName,

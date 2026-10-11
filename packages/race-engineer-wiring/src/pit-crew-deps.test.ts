@@ -66,8 +66,17 @@ describe("buildPitCrewDeps", () => {
     expect(built.getRollingStartFormation()).toEqual({ id: 7, firstFollowCarIdx: 9 });
   });
 
-  it("reports no caution gap until the translator has a reader for one (#1168)", () => {
-    expect(buildPitCrewDeps(fakeDeps(), noCaches).getCautionGap()).toBeNull();
+  it("hands the callouts the translator's caution gap, read live (#1168)", () => {
+    let gap: { warranted: boolean } | null = null;
+    const built = buildPitCrewDeps(fakeDeps({ sim: fakeSim({ getCautionGap: () => gap }) }), noCaches);
+
+    expect(built.getCautionGap()).toBeNull();
+
+    gap = { warranted: true };
+    expect(built.getCautionGap()).toEqual({ warranted: true });
+
+    gap = { warranted: false };
+    expect(built.getCautionGap()?.warranted).toBe(false);
   });
 
   it("passes the settings package's callout lookup, live: an on key, an off key and an off-default key (#1350)", () => {
