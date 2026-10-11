@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import { parseNavPanes } from "../../../../scripts/lib/settings-window-capture/tabs.mjs";
 import { resolveExternalUrl } from "../components/external-links.js";
+import { readSupportPartialConstants } from "./support-partial-constants.js";
 
 /**
  * Renders the REAL `partials/settings-window-support.ejs` (not a fixture).
@@ -41,20 +42,14 @@ function renderDocument(): Document {
 }
 
 /**
- * A URL constant as the partial declares it, read the way
- * `scripts/support-link-parity.test.mjs` will read it: one `var NAME = "…";`
- * on a line of its own. Empty when that shape is gone, which fails every
- * assertion built on it.
+ * The URL constants as the partial declares them, read the way
+ * `scripts/support-link-parity.test.mjs` will read them. The reader throws,
+ * naming the constant, when one is missing, declared twice or no longer a
+ * one-line `var NAME = "…";`, which fails this file before any assertion runs.
  */
-function declared(name: string): string[] {
-  return [...partialSource.matchAll(new RegExp(`^[ \\t]*var ${name} = "([^"\\n]*)";[ \\t]*$`, "gm"))].map(
-    (match) => match[1],
-  );
-}
-
-const SUPPORT_URL = declared("SUPPORT_URL")[0] ?? "";
-const MEMBERSHIP_URL = declared("MEMBERSHIP_URL")[0] ?? "";
-const SUPPORT_BUTTON_IMAGE_URL = declared("SUPPORT_BUTTON_IMAGE_URL")[0] ?? "";
+const URL_CONSTANTS = ["SUPPORT_URL", "MEMBERSHIP_URL", "SUPPORT_BUTTON_IMAGE_URL"];
+const declared = readSupportPartialConstants(partialSource, URL_CONSTANTS);
+const { SUPPORT_URL, MEMBERSHIP_URL, SUPPORT_BUTTON_IMAGE_URL } = declared;
 
 const text = (element: Element): string => (element.textContent ?? "").replace(/\s+/g, " ").trim();
 
@@ -112,10 +107,12 @@ describe("settings-window-support.ejs (#1303)", () => {
 
   describe("the three URLs", () => {
     it("are each declared once, on one line, under the website's names", () => {
-      for (const name of ["SUPPORT_URL", "MEMBERSHIP_URL", "SUPPORT_BUTTON_IMAGE_URL"]) {
-        expect(declared(name), name).toHaveLength(1);
-        expect(partialSource.match(new RegExp(`\\bvar ${name}\\b`, "g")), name).toHaveLength(1);
-        expect(declared(name)[0], name).toMatch(/^https:\/\//);
+      // Once and on one line is the reader's own condition for returning a
+      // constant at all; it has its own tests.
+      expect(Object.keys(declared)).toEqual(expect.arrayContaining(URL_CONSTANTS));
+
+      for (const name of URL_CONSTANTS) {
+        expect(declared[name], name).toMatch(/^https:\/\//);
       }
     });
 
