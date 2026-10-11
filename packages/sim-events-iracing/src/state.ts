@@ -487,15 +487,26 @@ export type TranslatorState = {
    */
   cautionCaughtAt: number | null;
   /**
-   * Previous tick's player `OnPitRoad`, for the pit-exit edge. `null` until
-   * the catch-up diff has run once, so a seed is never an exit. Followed on
-   * every tick, caution or not.
+   * The player's `OnPitRoad` at the catch-up diff's previous reading, for the
+   * pit-exit edge. `null` until the diff has read it once, so a seed is never
+   * an exit. Followed on every tick, caution or not.
+   *
+   * PRESERVED across a replay wipe, with the three fields below: the pit stop
+   * is the live car's, and a glance at the replay from the stall — or one
+   * after the pit-exit call — must not turn the stop into an ordinary
+   * drop-back (no grace, the ahead-of-slot rule back in force, reminders) nor
+   * hand out a second pit-exit call. A session change clears all four with
+   * the rest of the state, and the end of the caution clears the pit-exit
+   * episode with the phase.
    */
   cautionCatchUpLastOnPitRoad: boolean | null;
   /**
    * When (`now`, ms) the player's current stay on pit road began, `null` off
    * it. An exit opens a pit-exit episode only after a stay of at least a
-   * dwell: a tick on the pit lane's edge is not a stop.
+   * dwell: a tick on the pit lane's edge is not a stop. A stay the diff first
+   * met already under way — no earlier reading at all — is backdated by a
+   * dwell, so it counts whenever the exit comes. PRESERVED across a replay
+   * wipe.
    */
   cautionCatchUpPitRoadSince: number | null;
   /**
@@ -504,9 +515,10 @@ export type TranslatorState = {
    * `CATCH_UP_PIT_EXIT_GRACE_MS` after it, the ahead-of-slot rule is waived,
    * and the episode makes one call and no reminders. `null` once he has
    * caught the field or the caution is over; a later stop replaces it.
+   * PRESERVED across a replay wipe.
    */
   cautionCatchUpPitExitAt: number | null;
-  /** The running pit-exit episode has made its one call. */
+  /** The running pit-exit episode has made its one call. PRESERVED across a replay wipe, or a glance would buy a second. */
   cautionCatchUpPitExitCalled: boolean;
   /**
    * The car the running catch-up episode is about: set when its dwell starts,
@@ -554,11 +566,14 @@ export type TranslatorState = {
   /** How many reminders the open gap has produced, against `CATCH_UP_MAX_REMINDERS`. */
   cautionCatchUpReminders: number;
   //
-  // Everything from `cautionCatchUpLastOnPitRoad` down is the EPISODE and is
-  // pointedly NOT preserved across a replay wipe: the machine is level-armed,
-  // so it re-derives an open gap within one dwell of the first live tick
-  // back. The cost is accepted — a glance can hand a driver who was already
-  // reminded twice a fresh first call.
+  // Everything from `cautionCatchUpFollowCarIdx` down is the ORDINARY episode
+  // and is pointedly NOT preserved across a replay wipe: the machine is
+  // level-armed, so it re-derives an open gap within one dwell of the first
+  // live tick back. The cost is accepted, and it is exactly this: a driver
+  // who had already heard the first call, and up to both reminders, for a gap
+  // hears a fresh first call for it after a glance, and may be reminded
+  // again. What a glance does NOT cost is anything of a pit stop — the four
+  // fields above it ride through — or the drive-round latch.
 
   // ── Rolling-start pace laps (issue #657) ────────────────────────────────
   /**

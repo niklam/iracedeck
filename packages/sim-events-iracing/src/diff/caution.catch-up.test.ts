@@ -788,6 +788,111 @@ describe("the catch-up episode — pit road", () => {
       expect(r.tick(REJOINED)).toEqual([OPENED]);
     });
 
+    it("takes a car FIRST seen on pit road for one that stopped — a plugin restarted in the stall, out a tick later", () => {
+      // No reading before this one, so no blink to rule out: the "at least a
+      // dwell" rule does not apply, and the exit opens the pit-exit episode
+      // however soon it comes.
+      const r = rig();
+      const stopped: World = { back: 300, onPitRoad: true, unlined: true };
+
+      r.tick(stopped); // the caution diff's seed
+      r.tick(stopped); // the first reading of pit road there has been
+      expect(r.state.cautionCatchUpLastOnPitRoad).toBe(true);
+
+      r.tick(REJOINED);
+      expect(r.state.cautionCatchUpPitExitAt).toBe(r.now());
+
+      // The pit-exit rules, not the ordinary ones: one call, and no reminder.
+      expect(r.hold(REJOINED, 4 * CATCH_UP_REMINDER_MS, 500).map(([event]) => event)).toEqual([OPENED]);
+    });
+
+    it.each([
+      [CATCH_UP_DWELL_MS - 100, false],
+      [CATCH_UP_DWELL_MS, true],
+    ])("in a car it has been reading, a stay of %i ms opens a pit-exit episode: %s", (stay, opens) => {
+      // The first-sight rule is for the first sight only: a car that was being
+      // read still has to stay a dwell.
+      const r = rig();
+
+      r.caught();
+      r.hold({ ...OPEN, onPitRoad: true }, stay);
+      r.tick(OPEN);
+
+      expect(r.state.cautionCatchUpPitExitAt).toBe(opens ? r.now() : null);
+    });
+
+    describe("carried through a replay wipe", () => {
+      /**
+       * What `wipeStateForReplay` hands the first tick back: a fresh state with
+       * the phase, the pickup's time and the pit stop carried over.
+       */
+      function afterGlance(carried: (now: number) => Partial<TranslatorState>): Rig {
+        const r = rig();
+
+        r.state.cautionPhase = "caught";
+        r.state.cautionCaughtAt = r.now() - 120_000;
+        Object.assign(r.state, carried(r.now()));
+
+        return r;
+      }
+
+      it("opens the pit-exit episode for a driver who looked at the replay from his stall and drove out a second later", () => {
+        const r = afterGlance((now) => ({
+          cautionCatchUpLastOnPitRoad: true,
+          cautionCatchUpPitRoadSince: now - 20_000,
+        }));
+        const stopped: World = { back: 300, onPitRoad: true, unlined: true };
+
+        r.tick(stopped); // the caution diff's seed
+        r.hold(stopped, 1_000);
+        r.tick(REJOINED);
+
+        expect(r.state.cautionCatchUpPitExitAt).toBe(r.now());
+        expect(r.hold(REJOINED, CATCH_UP_PIT_EXIT_GRACE_MS - 100)).toEqual([]);
+        expect(r.hold(REJOINED, 4 * CATCH_UP_REMINDER_MS, 500).map(([event]) => event)).toEqual([OPENED]);
+      });
+
+      it("makes no second call for a pit-exit episode that had already made its one", () => {
+        const r = afterGlance((now) => ({
+          cautionCatchUpLastOnPitRoad: false,
+          cautionCatchUpPitExitAt: now - 30_000,
+          cautionCatchUpPitExitCalled: true,
+        }));
+
+        r.tick(REJOINED); // the seed
+        expect(r.hold(REJOINED, 4 * CATCH_UP_REMINDER_MS, 500)).toEqual([]);
+        // …and it is still over once he has caught the field.
+        r.tick(CLOSED);
+        expect(r.state.cautionCatchUpPitExitAt).toBeNull();
+      });
+
+      it("makes the one call for a pit-exit episode that had not made it yet, and no reminder", () => {
+        const r = afterGlance((now) => ({
+          cautionCatchUpLastOnPitRoad: false,
+          cautionCatchUpPitExitAt: now - 30_000,
+        }));
+
+        r.tick(REJOINED); // the seed
+        expect(r.hold(REJOINED, 4 * CATCH_UP_REMINDER_MS, 500).map(([event]) => event)).toEqual([OPENED]);
+      });
+
+      it("drops a carried pit-exit episode on the seed when the caution ended during the glance", () => {
+        const r = afterGlance((now) => ({
+          cautionCatchUpLastOnPitRoad: false,
+          cautionCatchUpPitExitAt: now - 5_000,
+          cautionCatchUpPitExitCalled: true,
+        }));
+
+        r.tick({ flags: RACING }); // the seed: no caution bit, so the phase expires
+
+        expect(r.state).toMatchObject({
+          cautionPhase: "none",
+          cautionCatchUpPitExitAt: null,
+          cautionCatchUpPitExitCalled: false,
+        });
+      });
+    });
+
     it("is not opened by the diff's first sight of a car already off pit road", () => {
       // A seed is never an exit: the pit-road baseline starts unknown.
       const r = rig();

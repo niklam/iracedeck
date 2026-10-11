@@ -1983,23 +1983,47 @@ function wipeStateForReplay(self: TranslatorInstance): void {
     // with the phase, so they ride with it.
     cautionEpisodeId: self.state.cautionEpisodeId,
     cautionFirstFollowCarIdx: self.state.cautionFirstFollowCarIdx,
-    // What catch-up keeps with the phase (issue #1168), and nothing else of
-    // it. The drive-round latch: a car waved round to the tail that has taken
-    // its slot must not be silenced again by a glance, and one still on its
-    // way round must not be told to "catch" a car a lap up the road. The
-    // pickup's timestamp: the settle window is the phase's, and re-starting
-    // it on the way back would hold an open gap for ten seconds for nothing.
-    // The episode itself (`cautionCatchUp*`: the pit-road baseline, the
-    // pit-exit episode, the dwell, a suspense and its candidate, the last call
-    // and the reminder count) is pointedly NOT preserved — the machine is
-    // level-armed and re-derives an open gap within one dwell of the first
-    // live tick back, at the accepted cost of a fresh first call to a driver
-    // already reminded. Nor is what the latch has merely OBSERVED of a
+    // What catch-up keeps (issue #1168): six fields, and nothing else of it.
+    //
+    // With the phase, the drive-round latch: a car waved round to the tail
+    // that has taken its slot must not be silenced again by a glance, and one
+    // still on its way round must not be told to "catch" a car a lap up the
+    // road. And the pickup's timestamp: the settle window is the phase's, and
+    // re-starting it on the way back would hold an open gap for ten seconds
+    // for nothing.
+    //
+    // The pit stop: whether the player was on pit road at the last reading
+    // and since when, and the pit-exit episode an exit opened — when, and
+    // whether its one call has been made. These are facts about the live car,
+    // and the rules that hang on them cannot be re-derived from the first
+    // tick back: a driver who opens the replay from his stall and drives out
+    // a second after closing it would otherwise be met as an ordinary
+    // dropped-back car — no grace to get up to speed, the ahead-of-slot rule
+    // back in force, reminders — and one who glances after the pit-exit call
+    // would get it a second time. The baseline also has to ride through for
+    // the diff's own first-sight rule: with none, the first reading back that
+    // found him on pit road would count as a stop, and a blink there as an
+    // exit. A session change clears all six with everything else
+    // (`resetPerSessionState`), and a caution that ended during the glance
+    // takes the latch, the timestamp and the pit-exit episode with it on the
+    // first tick back; the baseline is not the caution's and stays.
+    //
+    // The ORDINARY episode (`cautionCatchUpFollowCarIdx` and below: the
+    // dwell, a suspense and its candidate, the last call and the reminder
+    // count) is pointedly NOT preserved — the machine is level-armed and
+    // re-derives an open gap within one dwell of the first live tick back.
+    // The accepted cost is exactly that a driver who had heard the first call
+    // and up to both reminders for a gap hears a fresh first call for it, and
+    // may be reminded again. Nor is what the latch has merely OBSERVED of a
     // drive-round still in progress (`cautionProcedureAwaySeen`, the in-place
     // clock): it is observed again from the first tick back, and until then
     // the car stays suppressed, which is the safe side.
     cautionProcedureJoined: self.state.cautionProcedureJoined,
     cautionCaughtAt: self.state.cautionCaughtAt,
+    cautionCatchUpLastOnPitRoad: self.state.cautionCatchUpLastOnPitRoad,
+    cautionCatchUpPitRoadSince: self.state.cautionCatchUpPitRoadSince,
+    cautionCatchUpPitExitAt: self.state.cautionCatchUpPitExitAt,
+    cautionCatchUpPitExitCalled: self.state.cautionCatchUpPitExitCalled,
     // The rolling-start formation's identity and first follow car (issue
     // #1167), for the episode's reason: a glance at the replay during the
     // formation is the same formation still running, and the callouts that

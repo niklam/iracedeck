@@ -446,10 +446,11 @@ function forgetDriveRound(state: TranslatorState): void {
 
 /**
  * What of catch-up lives and dies with the caution phase: the drive-round
- * latch and the pickup's timestamp. Cleared when no caution is out — here on
- * every tick, and on the seed tick too, so a caution that ended while the
- * driver looked at the replay cannot leave either behind (both ride through
- * the replay wipe with the phase).
+ * latch, the pickup's timestamp and the pit-exit episode. Cleared when no
+ * caution is out — here on every tick, and on the seed tick too, so a caution
+ * that ended while the driver looked at the replay cannot leave any of them
+ * behind (all three ride through the replay wipe). The pit-road baseline is
+ * not the phase's: it follows the player whether a caution is out or not.
  */
 function expireCatchUpWithPhase(state: TranslatorState): void {
   if (state.cautionPhase !== "none") return;
@@ -668,12 +669,16 @@ function suspendCatchUp(
  *
  * **Pit exit is one call.** The player's `OnPitRoad` going true → false under
  * a caution, after a stay of at least a dwell — a tick on the pit lane's edge
- * is not a stop — opens a pit-exit episode: nothing is judged for
+ * is not a stop, though a car FIRST seen on pit road is taken to have stopped
+ * — opens a pit-exit episode: nothing is judged for
  * {@link CATCH_UP_PIT_EXIT_GRACE_MS}, then the dwell runs as usual, the
  * ahead-of-slot rule is waived, and the call fires ONCE — not again if the car
  * ahead changes, and with no reminders, because he is catching the field on
  * purpose. It ends when he has caught it (the ratio below the clear multiple),
- * when a later stop replaces it, or when the caution ends.
+ * when a later stop replaces it, or when the caution ends. Both the stay and
+ * the pit-exit episode ride through the replay wipe: a glance at the replay
+ * from the stall must not make the stop an ordinary drop-back, and one after
+ * the call must not buy a second.
  *
  * **The state is set before either event is emitted**, so a speak gate asked
  * at publish — `getCautionGap().warranted` — already reads true.
@@ -697,10 +702,17 @@ function diffCatchUp(
 
   const pitRoadSince = state.cautionCatchUpPitRoadSince;
 
-  if (onPitRoad) {
-    if (wasOnPitRoad !== true) state.cautionCatchUpPitRoadSince = now;
-  } else {
+  if (!onPitRoad) {
     state.cautionCatchUpPitRoadSince = null;
+  } else if (wasOnPitRoad === false) {
+    state.cautionCatchUpPitRoadSince = now;
+  } else if (wasOnPitRoad === null) {
+    // The FIRST reading there has ever been, and it finds him on pit road: a
+    // fresh state, a plugin restart, an SDK reconnect. The "at least a dwell"
+    // rule is there to ignore a one-tick blink in a car that was being
+    // judged, and a car first seen in the pits was not blinking — so the stay
+    // counts as held already, whenever it began.
+    state.cautionCatchUpPitRoadSince = now - CATCH_UP_DWELL_MS;
   }
 
   if (state.cautionPhase === "none") {

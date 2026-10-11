@@ -36,7 +36,12 @@ import type { ILogger } from "@iracedeck/logger";
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { CATCH_UP_DWELL_MS, CATCH_UP_REMINDER_MS, CATCH_UP_SETTLE_MS } from "./diff/caution.js";
+import {
+  CATCH_UP_DWELL_MS,
+  CATCH_UP_PIT_EXIT_GRACE_MS,
+  CATCH_UP_REMINDER_MS,
+  CATCH_UP_SETTLE_MS,
+} from "./diff/caution.js";
 import { DAMAGE_DEBOUNCE_MS } from "./diff/damage.js";
 import { YELLOW_CLEARED_HOLD_MS } from "./diff/flags.js";
 import { INCIDENT_BURST_QUIET_MS } from "./diff/incidents.js";
@@ -6765,13 +6770,21 @@ describe("sim-events-iracing translator", () => {
       onPitRoad?: boolean;
       paceFlags?: number;
       replay?: boolean;
+      sessionNum?: number;
     };
 
     /**
      * A single-file caution: the pace car at line 0 row 0, ten cars behind it
      * 10 m apart, the player sixth. His ratio is `(10 + back) / 10`.
      */
-    function field({ flags = STATIC, back = 0, onPitRoad = false, paceFlags = 0, replay }: Field = {}): TelemetryData {
+    function field({
+      flags = STATIC,
+      back = 0,
+      onPitRoad = false,
+      paceFlags = 0,
+      replay,
+      sessionNum,
+    }: Field = {}): TelemetryData {
       const lines = new Array(72).fill(-1);
       const rows = new Array(72).fill(-1);
       const dist = new Array(72).fill(-1);
@@ -6803,6 +6816,7 @@ describe("sim-events-iracing translator", () => {
         CarIdxLapDistPct: dist,
         CarIdxTrackSurface: surface,
         ...(replay === undefined ? {} : { IsReplayPlaying: replay }),
+        ...(sessionNum === undefined ? {} : { SessionNum: sessionNum }),
       });
     }
 
@@ -7142,7 +7156,8 @@ describe("sim-events-iracing translator", () => {
 
         d.tick({ ...OPEN, paceFlags: 0x4, replay: true });
 
-        // During the glance: the phase's two fields are there, the episode is gone.
+        // During the glance: the phase's two fields and the pit-road baseline
+        // are there, the ordinary episode is gone.
         expect(rawState()).toMatchObject({
           cautionPhase: "caught",
           cautionProcedureJoined: true,
@@ -7151,7 +7166,11 @@ describe("sim-events-iracing translator", () => {
           cautionCatchUpReminders: 0,
           cautionCatchUpLastCallAt: null,
           cautionCatchUpRaisedSince: null,
-          cautionCatchUpLastOnPitRoad: null,
+          cautionCatchUpFollowCarIdx: null,
+          cautionCatchUpLastOnPitRoad: false,
+          cautionCatchUpPitRoadSince: null,
+          cautionCatchUpPitExitAt: null,
+          cautionCatchUpPitExitCalled: false,
         });
 
         elapseReplayGrace();
@@ -7162,6 +7181,131 @@ describe("sim-events-iracing translator", () => {
         d.hold({ ...OPEN, paceFlags: 0x4 }, CATCH_UP_DWELL_MS + 1_000);
         expect(d.seen).toEqual(["caution.gapOpened"]);
         expect(rawState()).toMatchObject({ cautionProcedureJoined: true, cautionCaughtAt: before.cautionCaughtAt });
+      });
+
+      describe("a pit stop", () => {
+        /** A long way behind the tail: 310 m against a 10 m pack. */
+        const REJOINED: Field = { back: 300 };
+        const STOPPED: Field = { back: 300, onPitRoad: true };
+
+        it("is still a pit stop after a glance from the stall — out a second later, he gets the grace, one call and no reminder", () => {
+          // The wipe used to drop the pit-road baseline: the first reading back
+          // then began a "new" stay, the exit came before it was a dwell old,
+          // and the driver was met as an ordinary dropped-back car — called
+          // three seconds out of the pits, and reminded.
+          const d = drive();
+
+          d.caught();
+          d.hold(STOPPED, 20_000);
+          d.tick({ ...STOPPED, replay: true });
+          elapseReplayGrace();
+          d.hold(STOPPED, 1_000);
+          d.tick(REJOINED);
+
+          // Nothing inside the grace, where the ordinary dwell would have spoken…
+          d.hold(REJOINED, CATCH_UP_PIT_EXIT_GRACE_MS - 500);
+          expect(d.seen).toEqual([]);
+          // …then the one call, and no reminder however long he takes.
+          d.hold(REJOINED, 4 * CATCH_UP_REMINDER_MS);
+          expect(d.seen).toEqual(["caution.gapOpened"]);
+        });
+
+        it("gets no second pit-exit call from a glance after the first — and still no reminder", () => {
+          const d = drive();
+
+          d.caught();
+          d.hold(STOPPED, 20_000);
+          d.hold(REJOINED, CATCH_UP_PIT_EXIT_GRACE_MS + CATCH_UP_DWELL_MS + 1_000);
+          expect(d.seen).toEqual(["caution.gapOpened"]);
+
+          d.tick({ ...REJOINED, replay: true });
+          elapseReplayGrace();
+          d.hold(REJOINED, 4 * CATCH_UP_REMINDER_MS);
+          expect(d.seen).toEqual(["caution.gapOpened"]);
+        });
+
+        it("carries exactly the pit stop through the wipe: the baseline, the stay's start, the pit-exit episode and its call", () => {
+          const d = drive();
+
+          d.caught();
+          d.hold(STOPPED, 20_000);
+          d.hold(REJOINED, CATCH_UP_PIT_EXIT_GRACE_MS + CATCH_UP_DWELL_MS + 1_000);
+          // Back onto pit road, so all four fields hold something to lose.
+          d.hold(STOPPED, 1_000);
+
+          const before = { ...rawState() };
+
+          expect(before).toMatchObject({ cautionCatchUpLastOnPitRoad: true, cautionCatchUpPitExitCalled: true });
+          expect(before.cautionCatchUpPitRoadSince).not.toBeNull();
+          expect(before.cautionCatchUpPitExitAt).not.toBeNull();
+          expect(before.cautionCatchUpFollowCarIdx).not.toBeNull();
+
+          d.tick({ ...STOPPED, replay: true });
+
+          expect(rawState()).toMatchObject({
+            cautionCatchUpLastOnPitRoad: true,
+            cautionCatchUpPitRoadSince: before.cautionCatchUpPitRoadSince,
+            cautionCatchUpPitExitAt: before.cautionCatchUpPitExitAt,
+            cautionCatchUpPitExitCalled: true,
+            // …and nothing of the ordinary episode.
+            cautionCatchUpFollowCarIdx: null,
+            cautionCatchUpOpen: false,
+            cautionCatchUpLastCallAt: null,
+          });
+        });
+
+        it("does not take a blink on the way back for a stop — the baseline from before the glance is still there", () => {
+          // Without the baseline the first reading back would be a first sight,
+          // and a first sight on pit road counts as a stop.
+          const d = drive();
+
+          d.caught(OPEN);
+          d.tick({ ...OPEN, replay: true });
+          expect(rawState().cautionCatchUpLastOnPitRoad).toBe(false);
+
+          elapseReplayGrace();
+          d.tick(OPEN); // the caution diff's seed
+          d.tick({ ...OPEN, onPitRoad: true }); // the first reading back, on the pit lane's edge
+          d.tick(OPEN);
+
+          expect(rawState().cautionCatchUpPitExitAt).toBeNull();
+        });
+
+        it("is forgotten by a session change during the replay, with everything else the wipe carries", () => {
+          const d = drive();
+
+          d.caught();
+          d.hold(STOPPED, 20_000);
+          d.hold(REJOINED, CATCH_UP_PIT_EXIT_GRACE_MS + CATCH_UP_DWELL_MS + 1_000);
+          // Back onto pit road, so all four fields hold something to lose.
+          d.hold(STOPPED, 1_000);
+
+          d.tick({ ...STOPPED, replay: true });
+
+          const carried = rawState();
+
+          expect(carried).toMatchObject({
+            cautionPhase: "caught",
+            cautionCatchUpLastOnPitRoad: true,
+            cautionCatchUpPitExitCalled: true,
+          });
+          expect(carried.cautionCaughtAt).not.toBeNull();
+          expect(carried.cautionCatchUpPitRoadSince).not.toBeNull();
+          expect(carried.cautionCatchUpPitExitAt).not.toBeNull();
+
+          // The session moves on while he is still in the replay.
+          d.tick({ ...STOPPED, replay: true, sessionNum: 1 });
+
+          expect(rawState()).toMatchObject({
+            cautionPhase: "none",
+            cautionProcedureJoined: false,
+            cautionCaughtAt: null,
+            cautionCatchUpLastOnPitRoad: null,
+            cautionCatchUpPitRoadSince: null,
+            cautionCatchUpPitExitAt: null,
+            cautionCatchUpPitExitCalled: false,
+          });
+        });
       });
 
       it("does not lift a suppression the live car is still under", () => {
