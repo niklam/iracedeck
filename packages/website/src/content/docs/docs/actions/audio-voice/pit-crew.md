@@ -188,7 +188,7 @@ He does not ask you to close up:
 - **While you are being sent round to the tail** — a wave-around, a free pass, or the end of the line — until you have taken your place there. From then on you are an ordinary car in the queue again.
 - **When the car you line up behind is nearer behind you than ahead.** You are ahead of your slot, and "catch" is the wrong word for a car you have to let by.
 - **Once the pace car has peeled off**, when gaps open on purpose, and after the green.
-- **In a very small field** — five cars or fewer — where there are too few cars to say what normal spacing is.
+- **In a very small field** — fewer than six cars lined up, or fewer than seven once the field runs double file — where there are too few cars to say what normal spacing is.
 - **In a rolling-start formation.** These calls belong to a caution.
 
 A first call that has to wait for the radio is dropped if you have closed up by the time it could be spoken. A reminder never waits: if the radio is busy it is skipped, and the next one takes its place.

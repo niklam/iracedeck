@@ -454,7 +454,7 @@ export function readCautionDebugState(): { lastNamed: LastNamedCar | null } {
  * moments: at event time, to say whether THIS occurrence of an event is news
  * (the pace car's, which fires at a rolling start too; the follow call's,
  * whose flag re-raises; the pickup's and the pace-car-off's, which read the
- * stage), and again at speak time in eight of the nine. And one build holds
+ * stage), and again at speak time in ten of the eleven. And one build holds
  * the car last named, shared by the six calls that record it and the change
  * call that reads it (issue #1286) — see the module header for all three.
  */
@@ -484,7 +484,7 @@ export function buildCautionContracts({
 
   /**
    * The car the engineer last told the driver about in THIS caution (issue
-   * #1286), recorded by the four calls that name it when their gate admits —
+   * #1286), recorded by the six calls that name it when their gate admits —
    * the one place a claim may be committed (#1137): the script has expanded
    * and the ops take the bus next. Tagged with the caution's id so a record
    * from an earlier caution — or session — never counts. The mechanism is
