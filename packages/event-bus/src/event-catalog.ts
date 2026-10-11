@@ -1077,8 +1077,9 @@ export type SimEventMap = {
    * suppression rules as `gap.trendChanged`, so it too is not emitted while
    * a full-course caution is out (issue #1171), and an episode armed before
    * the caution does not survive it. On the race's opening lap and on the
-   * lap of running after a caution the crossing must also be real movement
-   * from the nose-to-tail order the start or restart set.
+   * lap of running after a caution the crossing must also be real movement:
+   * the gap down by the user's minimum change from its peak since the start
+   * or the green, so the field sorting itself out is not called a catch.
    */
   "gap.thresholdCrossed": SimEvent<
     "gap.thresholdCrossed",
