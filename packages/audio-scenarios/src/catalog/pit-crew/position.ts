@@ -101,6 +101,7 @@ import {
   commitIntroDecision,
   liveCurrentlyAnnounceable,
   type LivePositionResolver,
+  lowerFirst,
   POSITION_READOUT_SPEAK_GATE_DESCRIPTION,
   POSITION_READOUT_SUPERSEDE_GROUP,
   selectLivePosition,
@@ -234,11 +235,6 @@ function isPoleAchievement(snapshot: SimEventOf<"lap.completed">["data"]): boole
  */
 function isAnnounceableSessionType(snapshot: SimEventOf<"lap.completed">["data"]): boolean {
   return snapshot.sessionType === "qualifying" || snapshot.sessionType === "race";
-}
-
-/** "No other…" → "no other…", for composing the shared gate sentence onto a qualifier. */
-function lowerFirst(sentence: string): string {
-  return sentence.charAt(0).toLowerCase() + sentence.slice(1);
 }
 
 /**

@@ -27,8 +27,10 @@ import {
   commitIntroDecision,
   INTRO_COOLDOWN_MS,
   type LivePosition,
+  lowerFirst,
   OVERTAKE_POSITION_SCENARIO_IDS,
   POSITION_READOUT_COOLDOWN_MS,
+  POSITION_READOUT_SPEAK_GATE_DESCRIPTION,
   REACTION_CHANCE,
   registerPositionReadoutVocabulary,
   shouldReactToOvertake,
@@ -60,6 +62,21 @@ describe("shouldReactToOvertake — random gate, podium-exempt (#603)", () => {
 
     _setReactionRandom(() => 0.99);
     expect(shouldReactToOvertake(20)).toBe(false);
+  });
+});
+
+describe("lowerFirst — composing the shared gate sentence onto a qualifier", () => {
+  it("lowers the first letter and nothing else", () => {
+    expect(lowerFirst("No other readout. Speaking it Starts the window.")).toBe(
+      "no other readout. Speaking it Starts the window.",
+    );
+    expect(lowerFirst("")).toBe("");
+  });
+
+  it("turns the shared gate sentence into a clause a qualified gate can end on", () => {
+    expect(`In a race, ${lowerFirst(POSITION_READOUT_SPEAK_GATE_DESCRIPTION)}`).toBe(
+      "In a race, no other position readout has spoken in the last twenty seconds when this one comes to speak; speaking it starts that window.",
+    );
   });
 });
 

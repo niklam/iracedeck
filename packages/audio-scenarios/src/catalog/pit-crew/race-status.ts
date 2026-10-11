@@ -98,6 +98,7 @@ import {
   canAnnouncePosition,
   liveCurrentlyAnnounceable,
   type LivePositionResolver,
+  lowerFirst,
   POSITION_READOUT_SPEAK_GATE_DESCRIPTION,
   POSITION_READOUT_SUPERSEDE_GROUP,
   positionReadoutSpeakGate,
@@ -195,13 +196,10 @@ export function registerRaceStatusVocabulary(
  * context — clears it without inheriting it.
  */
 function raceStatusSpeakGate(getUnderFullCourseCaution: UnderCautionResolver): SpeakGate {
-  // The shared sentence, qualified — as `position.ts` qualifies it for the
-  // race branch — so the two readouts cannot describe one window two ways.
-  const sharedWindow =
-    POSITION_READOUT_SPEAK_GATE_DESCRIPTION.charAt(0).toLowerCase() + POSITION_READOUT_SPEAK_GATE_DESCRIPTION.slice(1);
-
   return {
-    description: `No full-course caution is out and ${sharedWindow}`,
+    // The shared sentence, qualified — as `position.ts` qualifies it for the
+    // race branch — so the two readouts cannot describe one window two ways.
+    description: `No full-course caution is out and ${lowerFirst(POSITION_READOUT_SPEAK_GATE_DESCRIPTION)}`,
     admit: (ctx) => !getUnderFullCourseCaution() && positionReadoutSpeakGate.admit(ctx),
   };
 }
