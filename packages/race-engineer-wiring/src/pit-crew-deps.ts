@@ -73,8 +73,8 @@ export function buildPitCrewDeps(
     isCalloutEnabled,
     // The full-course caution sequence (issue #1127): the lineup the `caution.*`
     // vocabulary reads at speak time, and the translator's own caution
-    // phase — the boolean for the lap-time and
-    // position-change silencings, the phase itself for the caution family,
+    // phase — the boolean for the lap-time, position-change, race-status and
+    // two gap-callout silencings, the phase itself for the caution family,
     // which gates on WHICH stage the caution is in (the two pace-car callouts
     // because `paceCar.deployed` / `paceCar.off` also fire at a rolling start),
     // and the episode that scopes the lineup change's memory of the car last

@@ -17,8 +17,11 @@
  * traces, the live gaps and the display trend keep updating, but no `gap.*`
  * event is emitted and each side's callout bookkeeping is held at its reset
  * value, so nothing measured behind the pace car can drive a call once the
- * green is out. The lap of running after it — the restart lap — is then
- * treated as the race's opening lap is. See {@link diffGaps}.
+ * green is out. The lap of running after it — the restart lap — then shares
+ * two things with the race's opening lap: it is kept out of the lap history,
+ * and its threshold call is held to the movement gate. It does not share the
+ * third, the assumed grid spacing: that seed is for the race start alone.
+ * See {@link diffGaps}.
  *
  * All math primitives are pure and live in `@iracedeck/iracing-sdk`
  * `gap-utils.ts`; this module only sequences them against state.
@@ -97,8 +100,10 @@ export const GAP_DEFAULT_MIN_CHANGE_S = 1.5;
  * Assumed grid spacing (seconds) between standings neighbors at the race
  * start (issue #933 follow-up). On lap 1, a side with no announcement
  * history seeds its extremes here — being ~this close off the start is
- * expected, not news. The lap after a full-course caution uses it too
- * (issue #1171): a restart lines the field up the same way.
+ * expected, not news. The race's own first lap only: the lap after a
+ * full-course caution does not use it (issue #1171), because standings
+ * neighbors need not line up next to each other at a restart — lapped and
+ * other-class cars can sit between them.
  */
 export const GAP_ASSUMED_START_SPACING_S = 0.7;
 /** A threshold episode re-arms once the gap exceeds threshold + this margin. */
@@ -284,8 +289,9 @@ export function diffGaps(
    * the restart strings it out again, so neither is racing: while it holds,
    * no `gap.*` event is emitted, the callout bookkeeping is held at its reset
    * value and the lap history stays empty, and the lap of running after it
-   * gets the opening lap's treatment. The traces, the live gaps and the
-   * display trend are not affected.
+   * is kept out of the lap history and has its threshold call held to the
+   * movement gate, as the race's opening lap is. The traces, the live gaps
+   * and the display trend are not affected.
    */
   underFullCourseCaution: boolean = false,
 ): void {
@@ -296,15 +302,18 @@ export function diffGaps(
   // has closed it to half a second, and any closing after the green would
   // then pass the consistency gate for free. So the bookkeeping is HELD at
   // its reset value on every caution tick rather than reset once at the
-  // green. Holding needs no edge, so it is empty at the green however the
-  // caution ended (the green, both caution bits clearing, a withdrawn
-  // one-to-go). It sits ahead of the gate below so that a caution tick the
-  // diff cannot otherwise process (the player out of the car) holds it too.
-  // The display rate chain is deliberately not held: it forgets on its own
-  // within a fraction of a lap, and the gap display keeps its trend.
+  // green, and the lap history with it: the pace laps are not laps a later
+  // one can be compared with. Holding needs no edge, so both are empty at the
+  // green however the caution ended (the green, both caution bits clearing,
+  // a withdrawn one-to-go). It all sits ahead of the gate below, so a caution
+  // tick that fails that gate is at rest in the same way as one that passes
+  // it. The display rate chain is deliberately not held: it forgets on its
+  // own within a fraction of a lap, and the gap display keeps its trend.
   if (underFullCourseCaution) {
     resetCalloutBookkeeping(state, "ahead");
     resetCalloutBookkeeping(state, "behind");
+    resetLapHistory(state, "ahead");
+    resetLapHistory(state, "behind");
   }
 
   const lc = telemetry.CarIdxLapCompleted as number[] | undefined;
@@ -424,15 +433,28 @@ export function diffGaps(
   // The restart mark (issue #1171): on every caution tick, the player's
   // progress plus one lap. After the green it stops moving, so "below the
   // mark" is the caution itself and then one lap of running from the restart.
-  // A double-file restart puts the field nose to tail exactly as a grid does,
-  // so that lap gets the opening lap's whole treatment, through the one
-  // predicate below. The mark is a point in race distance, like the
-  // `LapCompleted < 1` it stands beside, so a tow on the restart lap leaves
-  // it where it is (and a tow under the caution is followed by the next
-  // caution tick); the translator carries it across a replay wipe.
+  // It needs the player's progress, so it is written here rather than with
+  // the hold at the top: a caution with no tick that reaches this line leaves
+  // no mark, and the lap after it is an ordinary one. The mark is a point in
+  // race distance, like the `LapCompleted < 1` it stands beside, so a tow on
+  // the restart lap leaves it where it is (and a tow under the caution is
+  // followed by the next caution tick); the translator carries it across a
+  // replay wipe.
   if (underFullCourseCaution) state.gapRestartMark = playerProgress + 1;
 
-  const openingLap = isFirstLap(telemetry) || (state.gapRestartMark !== null && playerProgress < state.gapRestartMark);
+  // Two different questions, so two booleans. `raceStartLap` is the race's
+  // own first lap, where the grid put standings neighbors a car length apart
+  // BY CONSTRUCTION: only there may a side with no history be seeded at the
+  // assumed grid spacing. `startOrRestartLap` adds the lap of running after a
+  // caution, which the field spends sorting itself out as it does off a
+  // start: it keeps the lap out of the lap history and holds the threshold
+  // call to the movement gate. A restart need NOT put standings neighbors
+  // nose to tail — lapped and other-class cars can sit between them — so the
+  // restart lap gets no assumed spacing: a pair 4 s apart through the caution
+  // would be handed a 0.7 s trough, and its first drift would pass the
+  // pulling-away gate for free.
+  const raceStartLap = isFirstLap(telemetry);
+  const startOrRestartLap = raceStartLap || (state.gapRestartMark !== null && playerProgress < state.gapRestartMark);
 
   // The lap history records only laps a later lap can fairly be compared
   // with (issue #1285). Not lap 1: the start queue and the field sorting
@@ -443,7 +465,7 @@ export function diffGaps(
   // under green after a restart. And nothing under a full-course caution,
   // whose every tick is below the mark it has just set: the pack-up is not
   // racing.
-  const lapHistoryOpen = !openingLap;
+  const lapHistoryOpen = !startOrRestartLap;
 
   if (!lapHistoryOpen) {
     resetLapHistory(state, "ahead");
@@ -486,7 +508,8 @@ export function diffGaps(
     state,
     telemetry,
     playerPaused,
-    openingLap,
+    raceStartLap,
+    startOrRestartLap,
     lapsRemaining,
     getThresholdSeconds,
     getMinChangeSeconds,
@@ -756,14 +779,22 @@ function lapRate(state: TranslatorState, side: Side): number | null {
   return sum / window.length;
 }
 
-/** Clear one side's lap history and lap-rate window — the next lap is silent. */
+/**
+ * Clear one side's lap history and lap-rate window — the next lap is silent.
+ * An array that is already empty is left as it is: this runs on every tick of
+ * a caution, of the opening lap and of the restart lap, where there is
+ * nothing to clear after the first. A full one is replaced with a new array,
+ * as it always was, never truncated in place.
+ */
 function resetLapHistory(state: TranslatorState, side: Side): void {
   if (side === "ahead") {
-    state.gapLapHistoryAhead = [];
-    state.gapLapRateWindowAhead = [];
+    if (state.gapLapHistoryAhead.length > 0) state.gapLapHistoryAhead = [];
+
+    if (state.gapLapRateWindowAhead.length > 0) state.gapLapRateWindowAhead = [];
   } else {
-    state.gapLapHistoryBehind = [];
-    state.gapLapRateWindowBehind = [];
+    if (state.gapLapHistoryBehind.length > 0) state.gapLapHistoryBehind = [];
+
+    if (state.gapLapRateWindowBehind.length > 0) state.gapLapRateWindowBehind = [];
   }
 }
 
@@ -774,9 +805,8 @@ function setEtaReading(state: TranslatorState, side: Side, eta: boolean): void {
 }
 
 /**
- * Whether the player is on the race's opening lap (`LapCompleted` below 1).
- * One half of {@link diffGaps}' `openingLap`; the lap after a full-course
- * caution is the other.
+ * Whether the player is on the race's opening lap (`LapCompleted` below 1):
+ * {@link diffGaps}' `raceStartLap`, and one half of its `startOrRestartLap`.
  */
 function isFirstLap(telemetry: TelemetryData): boolean {
   return typeof telemetry.LapCompleted === "number" && telemetry.LapCompleted < 1;
@@ -881,14 +911,15 @@ function resetCalloutBookkeeping(state: TranslatorState, side: Side): void {
  * Never called under a full-course caution (issue #1171): {@link diffGaps}
  * returns first, having reset the bookkeeping this function maintains, so
  * neither event is emitted while one is out and every episode starts from
- * rest at the green. `openingLap` is the race's first lap or the lap of
- * running after a caution.
+ * rest at the green. `raceStartLap` is the race's first lap alone;
+ * `startOrRestartLap` is that or the lap of running after a caution.
  */
 function maybeEmitCalloutEvents(
   state: TranslatorState,
   telemetry: TelemetryData,
   playerPaused: boolean,
-  openingLap: boolean,
+  raceStartLap: boolean,
+  startOrRestartLap: boolean,
   lapsRemaining: number | null,
   getThresholdSeconds: () => number,
   getMinChangeSeconds: () => number,
@@ -904,9 +935,14 @@ function maybeEmitCalloutEvents(
   // history, which never records lap 1 (issue #1285), but the extremes the
   // grid seeds still gate the first one on lap 3.
   //
-  // The restart lap is the same situation (issue #1171): a restart lines the
-  // field up nose to tail, and the caution left every side with no
-  // announcement history, so `openingLap` covers both.
+  // The restart lap shares the second half only (issue #1171). Its threshold
+  // call is held to the movement gate, because the field sorts itself out
+  // after a restart as it does after a start. But a side the caution left
+  // with no history is seeded from its MEASURED gap, not the grid spacing: a
+  // restart need not put standings neighbors a car length apart, and a false
+  // 0.7 s trough would hand the first pulling-away call its movement for
+  // free. Hence the two booleans: the seed takes `raceStartLap`, the
+  // threshold gate `startOrRestartLap`.
   for (const side of ["ahead", "behind"] as const) {
     // Stability guard: skip a side entirely while its gap hasn't evolved
     // plausibly for a short streak — a glitched frame must not arm, fire,
@@ -919,14 +955,14 @@ function maybeEmitCalloutEvents(
     // relevance path (which needs a warm lap rate) would leave them stale —
     // or never seeded at all — whenever the lap history is cold, silently
     // suppressing calls the user un-gated by setting the movement to 0.
-    const extremes = foldSideExtremes(state, telemetry, side, playerPaused, openingLap);
+    const extremes = foldSideExtremes(state, telemetry, side, playerPaused, raceStartLap);
 
     processThresholdEpisode(
       state,
       telemetry,
       side,
       playerPaused,
-      openingLap,
+      startOrRestartLap,
       extremes,
       getThresholdSeconds,
       getMinChangeSeconds,
@@ -950,14 +986,17 @@ type GapExtremes = { min: number; max: number };
  * estimate against a stopped or crawling leader, and folded as the "trough"
  * it would let the crossing-time reading that follows pass the
  * pulling-away gate for free. The extremes are handed on as they stand, so
- * the threshold episode's opening-lap test still has them.
+ * the threshold episode's start-or-restart-lap test still has them.
+ *
+ * `seedAtGridSpacing` is the race's own first lap and nothing else: see
+ * {@link foldExtremes}.
  */
 function foldSideExtremes(
   state: TranslatorState,
   telemetry: TelemetryData,
   side: Side,
   playerPaused: boolean,
-  openingLap: boolean,
+  seedAtGridSpacing: boolean,
 ): GapExtremes | null {
   const live = side === "ahead" ? state.gapLiveAhead : state.gapLiveBehind;
   const idx = side === "ahead" ? state.gapAheadIdx : state.gapBehindIdx;
@@ -969,7 +1008,7 @@ function foldSideExtremes(
 
   if (etaReading) return currentExtremes(state, side);
 
-  return foldExtremes(state, side, live.gapSeconds, openingLap);
+  return foldExtremes(state, side, live.gapSeconds, seedAtGridSpacing);
 }
 
 /** A side's since-last-announcement extremes as they stand, or null when unseeded. */
@@ -1042,7 +1081,8 @@ function processRelevance(
   // UP the same amount from its TROUGH. The extremes are folded once per
   // tick by the caller, from stable unsuppressed readings only, and lap 1
   // seeds them at the assumed grid spacing — the start put the neighbors
-  // there. So does the lap after a full-course caution (issue #1171).
+  // there. The lap after a full-course caution seeds them from the measured
+  // gap (issue #1171): a restart need not put them anywhere in particular.
   const minChange = getMinChangeSeconds();
   const closingConsistent = gap <= extremes.max - minChange;
   const openingConsistent = gap >= extremes.min + minChange;
@@ -1106,11 +1146,18 @@ function processRelevance(
   }
 }
 
-/** Fold the current gap into a side's since-last-announcement extremes. */
-function foldExtremes(state: TranslatorState, side: Side, gap: number, openingLap: boolean): GapExtremes {
+/**
+ * Fold the current gap into a side's since-last-announcement extremes. A
+ * side with no history is seeded from the gap itself — except on the race's
+ * own first lap (`seedAtGridSpacing`), where it is seeded at the assumed
+ * grid spacing. Not on the lap after a full-course caution (issue #1171):
+ * there the neighbors are wherever the caution left them, and an assumed
+ * 0.7 s would be a trough the pair never ran at.
+ */
+function foldExtremes(state: TranslatorState, side: Side, gap: number, seedAtGridSpacing: boolean): GapExtremes {
   const prevMin = side === "ahead" ? state.gapMinSinceAnnounceAhead : state.gapMinSinceAnnounceBehind;
   const prevMax = side === "ahead" ? state.gapMaxSinceAnnounceAhead : state.gapMaxSinceAnnounceBehind;
-  const seed = prevMin === null || prevMax === null ? (openingLap ? GAP_ASSUMED_START_SPACING_S : gap) : null;
+  const seed = prevMin === null || prevMax === null ? (seedAtGridSpacing ? GAP_ASSUMED_START_SPACING_S : gap) : null;
   const min = Math.min(seed ?? prevMin!, gap);
   const max = Math.max(seed ?? prevMax!, gap);
 
@@ -1153,7 +1200,7 @@ function processThresholdEpisode(
   telemetry: TelemetryData,
   side: Side,
   playerPaused: boolean,
-  openingLap: boolean,
+  startOrRestartLap: boolean,
   extremes: GapExtremes | null,
   getThresholdSeconds: () => number,
   getMinChangeSeconds: () => number,
@@ -1192,8 +1239,12 @@ function processThresholdEpisode(
     // since the start (or the last call). A neighbor who was ~0.7 s away,
     // briefly opened past the re-arm point, and closed back is the field
     // sorting itself out, not a catch. The lap after a full-course caution
-    // is held the same way (issue #1171).
-    if (openingLap) {
+    // is held the same way (issue #1171), against the peak MEASURED since the
+    // green: an armed side has been seen beyond threshold + hysteresis, so
+    // its peak is above any assumed spacing and the gate needs no seed. The
+    // fallback is for a side armed on ETA readings alone, which are never
+    // folded; with no peak to measure against, the call is held.
+    if (startOrRestartLap) {
       const maxSince = extremes?.max ?? GAP_ASSUMED_START_SPACING_S;
 
       if (live.gapSeconds > maxSince - getMinChangeSeconds()) return;

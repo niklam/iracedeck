@@ -909,8 +909,9 @@ export type PitCrewDeps = {
   // Whether a full-course caution is out (issue #1127). Plugins wire
   // `isUnderFullCourseCaution()` from `@iracedeck/sim-events-iracing` — the
   // translator's own caution phase not being "none", never a re-derivation of
-  // the caution bits. Read by the lap-time and position-change contracts,
-  // which fall silent under a caution. Default `() => false` is the truthful
+  // the caution bits. Read by the lap-time, position-change, race-status and
+  // two gap contracts, which fall silent under a caution (the last three since
+  // #1171). Default `() => false` is the truthful
   // answer for a caller that wires no reader.
   getUnderFullCourseCaution?: UnderCautionResolver;
   // WHICH stage the caution is in (issue #1127, second review). Plugins wire
