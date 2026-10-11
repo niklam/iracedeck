@@ -146,3 +146,34 @@ export function resolveTrackDirection(sessionInfo: Record<string, unknown> | nul
       return TrackDirection.Neutral;
   }
 }
+
+/**
+ * The track's length in metres, parsed from `WeekendInfo.TrackLength` —
+ * iRacing writes it as text with its unit, `"2.38 km"` or `"1.50 miles"`.
+ * `null` when session info is missing, the field is absent or not text, or
+ * the value does not parse to a positive number.
+ *
+ * The pure half of the translator's cached track-length read (issue #574): a
+ * function of the session info alone, with no state behind it. Every diff
+ * that turns a lap fraction into metres — the overtake gap gate, the pit-box
+ * countdown, the corner-name lead, the caution catch-up gap — gets its number
+ * from this parse, so "does this session carry a usable track length" has one
+ * answer.
+ */
+export function parseTrackLengthMeters(sessionInfo: Record<string, unknown> | null): number | null {
+  const weekend = sessionInfo?.WeekendInfo as Record<string, unknown> | undefined;
+  const raw = weekend?.TrackLength;
+
+  if (typeof raw !== "string") return null;
+
+  const match = /([\d.]+)\s*(km|mi(?:les?)?)/i.exec(raw);
+
+  if (!match) return null;
+
+  const value = parseFloat(match[1]!);
+  const unit = match[2]!.toLowerCase();
+
+  if (!Number.isFinite(value) || value <= 0) return null;
+
+  return unit.startsWith("mi") ? value * 1609.344 : value * 1000;
+}

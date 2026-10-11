@@ -174,4 +174,14 @@ export { resolveIsAiRace, resolveStandingStart } from "./start-lights.js";
 // `isOvalTrack` rides with them for the scenario harness, which asks THIS reader in
 // a shortcut precondition whether the session is an oval (the lane is named
 // only on one) rather than restating its rule.
-export { isOvalTrack, resolveTrackDirection, resolveTrackType, TrackDirection, TrackType } from "./track-type.js";
+// `parseTrackLengthMeters` rides too, for the same harness: its catch-up
+// shortcut asks THIS parser whether the session carries a usable track length
+// rather than restating what "usable" means.
+export {
+  isOvalTrack,
+  parseTrackLengthMeters,
+  resolveTrackDirection,
+  resolveTrackType,
+  TrackDirection,
+  TrackType,
+} from "./track-type.js";

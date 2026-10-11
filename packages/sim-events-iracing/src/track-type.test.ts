@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   isDirtTrack,
   isOvalTrack,
+  parseTrackLengthMeters,
   resolveTrackDirection,
   resolveTrackType,
   TrackDirection,
@@ -146,5 +147,38 @@ describe("resolveTrackDirection", () => {
 
   it("returns Neutral when TrackDirection is not a string", () => {
     expect(resolveTrackDirection({ WeekendInfo: { TrackDirection: 1 } })).toBe(TrackDirection.Neutral);
+  });
+});
+
+describe("parseTrackLengthMeters", () => {
+  const length = (TrackLength: unknown): number | null => parseTrackLengthMeters({ WeekendInfo: { TrackLength } });
+
+  it("reads kilometres", () => {
+    expect(length("2.38 km")).toBeCloseTo(2380);
+    expect(length("1.5707 km")).toBeCloseTo(1570.7);
+    expect(length("4 km")).toBe(4000);
+  });
+
+  it("reads miles, however the unit is written", () => {
+    expect(length("1.50 miles")).toBeCloseTo(2414.016);
+    expect(length("1 mile")).toBeCloseTo(1609.344);
+    expect(length("2.5 mi")).toBeCloseTo(4023.36);
+  });
+
+  it("ignores case and the space before the unit", () => {
+    expect(length("2.38 KM")).toBeCloseTo(2380);
+    expect(length("2.38km")).toBeCloseTo(2380);
+  });
+
+  it("answers null when there is nothing usable to read", () => {
+    expect(parseTrackLengthMeters(null)).toBeNull();
+    expect(parseTrackLengthMeters({})).toBeNull();
+    expect(parseTrackLengthMeters({ WeekendInfo: {} })).toBeNull();
+    expect(length(2.38)).toBeNull(); // a bare number carries no unit
+    expect(length("")).toBeNull();
+    expect(length("long")).toBeNull();
+    expect(length("2.38 furlongs")).toBeNull();
+    expect(length("0 km")).toBeNull();
+    expect(length("0.00 miles")).toBeNull();
   });
 });

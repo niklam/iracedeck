@@ -113,7 +113,13 @@ import {
   type RollingStartFormation,
   type TranslatorState,
 } from "./state.js";
-import { isOvalTrack, resolveTrackDirection, resolveTrackType, type TrackDirection } from "./track-type.js";
+import {
+  isOvalTrack,
+  parseTrackLengthMeters,
+  resolveTrackDirection,
+  resolveTrackType,
+  type TrackDirection,
+} from "./track-type.js";
 
 const SUBSCRIPTION_ID = "__sim-events-iracing__";
 
@@ -2998,7 +3004,7 @@ function resolveIsMultiClass(sessionInfo: Record<string, unknown> | null): boole
 }
 
 /**
- * Parse `SessionInfo.WeekendInfo.TrackLength` ("X.XXX km" or "X.XXX miles") into
+ * Read `SessionInfo.WeekendInfo.TrackLength` ("X.XXX km" or "X.XXX miles") in
  * meters and cache the result on `TranslatorState` keyed by `(TrackID, SessionNum)`
  * (issue #574). Returns `null` when the YAML hasn't been seen yet, the field is
  * absent, or the format doesn't parse — the overtake diff treats null as "no
@@ -3022,20 +3028,9 @@ function resolveTrackLengthMeters(
     return state.trackLengthMeters;
   }
 
-  const raw = weekend?.TrackLength;
-
-  if (typeof raw === "string") {
-    const match = /([\d.]+)\s*(km|mi(?:les?)?)/i.exec(raw);
-
-    if (match) {
-      const value = parseFloat(match[1]!);
-      const unit = match[2]!.toLowerCase();
-
-      if (Number.isFinite(value) && value > 0) {
-        state.trackLengthMeters = unit.startsWith("mi") ? value * 1609.344 : value * 1000;
-      }
-    }
-  }
+  // The parse itself is `parseTrackLengthMeters` (`track-type.ts`), a pure
+  // function of the session info; only the cache lives here.
+  state.trackLengthMeters = parseTrackLengthMeters(sessionInfo);
 
   return state.trackLengthMeters;
 }
