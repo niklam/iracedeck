@@ -43,7 +43,7 @@ describe('what "Caution → catch-up" is heard to say (issue #1168)', () => {
     "caution/two-to-green",
     "caution/restart-behind",
     "car-number/11",
-    // "Close it up — catch" + "car eleven", thirteen seconds after the pickup.
+    // "Close it up. Catch" + "car eleven", thirteen seconds after the pickup.
     "caution/catch-up",
     "car-number/11",
     // "Still a gap. Close up on" + "car eleven", thirty seconds later.
