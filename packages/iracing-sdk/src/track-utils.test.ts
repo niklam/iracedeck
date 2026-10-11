@@ -419,6 +419,26 @@ describe("forwardGapMeters", () => {
     expect(forwardGapMeters(partial, 0, 3, 1000)).toBeCloseTo(100);
   });
 
+  it("takes the tick's in-world predicate from a caller that has already built it, and answers the same", () => {
+    const inWorld = carInWorld(field);
+
+    expect(forwardGapMeters(field, 0, 1, 1000, inWorld)).toBe(forwardGapMeters(field, 0, 1, 1000));
+    expect(forwardGapMeters(field, 2, 0, 1000, inWorld)).toBe(forwardGapMeters(field, 2, 0, 1000));
+  });
+
+  it("asks the predicate it was handed, of both cars, and builds none of its own", () => {
+    const asked: number[] = [];
+    const present = (carIdx: number): boolean => {
+      asked.push(carIdx);
+
+      return carIdx !== 1;
+    };
+
+    expect(forwardGapMeters(field, 0, 2, 1000, present)).toBeCloseTo(800);
+    expect(forwardGapMeters(field, 0, 1, 1000, present)).toBeNull();
+    expect(asked).toEqual([0, 2, 0, 1]);
+  });
+
   it("returns null for the same car twice, a negative index, no telemetry or no usable track length", () => {
     expect(forwardGapMeters(field, 0, 0, 1000)).toBeNull();
     expect(forwardGapMeters(field, -1, 1, 1000)).toBeNull();

@@ -204,21 +204,28 @@ export function nearestCarGapMeters(
  * length, the same car twice, or either car not in the world by the shared
  * {@link carInWorld} rule — a car that has left keeps a stale lap distance for
  * a tick, and a distance to where it was is not a gap.
+ *
+ * `inWorld` is that rule's predicate for THIS telemetry, for a caller that
+ * measures many pairs on one tick and has already built it (`carInWorld`
+ * returns a closure over the tick's arrays, and one per pair adds up at tick
+ * rate). Leave it out and it is built here; pass anything but
+ * `carInWorld(telemetry)` and the answer is no longer this function's.
  */
 export function forwardGapMeters(
   telemetry: TelemetryData | null,
   fromIdx: number,
   toIdx: number,
   trackLengthMeters: number | null,
+  inWorld?: (carIdx: number) => boolean,
 ): number | null {
   if (!telemetry?.CarIdxLapDistPct || trackLengthMeters === null || !(trackLengthMeters > 0)) return null;
 
   if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return null;
 
-  const inWorld = carInWorld(telemetry);
+  const present = inWorld ?? carInWorld(telemetry);
 
   // `carInWorld` has already rejected an absent or negative lap distance.
-  if (!inWorld(fromIdx) || !inWorld(toIdx)) return null;
+  if (!present(fromIdx) || !present(toIdx)) return null;
 
   const lapDistPct = telemetry.CarIdxLapDistPct as number[];
   const delta = lapDistPct[toIdx] - lapDistPct[fromIdx];
