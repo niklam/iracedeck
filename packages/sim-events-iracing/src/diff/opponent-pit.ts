@@ -50,6 +50,7 @@
 import { classPositionFromOrder, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
 
 import type { TranslatorState } from "../state.js";
+import { isRacingSurface } from "./track-surface.js";
 import type { EmitFn } from "./types.js";
 
 /** Rolling window for counting near-simultaneous eligible pit entries. */
@@ -65,11 +66,6 @@ export const OPPONENT_PIT_AGGREGATE_THRESHOLD = 3;
  * start from the racing surface, however long the stop.
  */
 export const OPPONENT_PIT_CAR_COOLDOWN_MS = 30_000;
-
-/** Off pit road and in the world — the only surface a pit entry starts from (#1212). */
-function isRacingSurface(surface: number | undefined): boolean {
-  return surface === TrkLoc.OnTrack || surface === TrkLoc.OffTrack;
-}
 
 type Classification = {
   relation: "leader" | "ahead" | "behind" | "nearby";
@@ -182,6 +178,7 @@ export function diffOpponentPit(
     for (let i = 0; i < ts.length; i++) {
       if (i === playerCarIdx || i === paceCarIdx) continue;
 
+      // Off pit road and in the world — the only surface a pit entry starts from (#1212).
       if (ts[i] !== TrkLoc.AproachingPits || !isRacingSurface(prev[i])) continue;
 
       // In-world test (the race-finish.ts shape) — blipped/vanished cars skip.

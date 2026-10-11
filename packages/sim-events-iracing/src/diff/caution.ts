@@ -178,13 +178,14 @@
  * pickup. It does NOT stop at one to green — the last caution lap is exactly
  * when being in place matters — and stops when the pace car leaves.
  */
-import { Flags, hasFlag, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
+import { Flags, hasFlag, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 import type { TranslatorState } from "../state.js";
 import { isOvalTrack } from "../track-type.js";
 import { type CautionGapMeasurement, measureCautionGap } from "./caution-gap.js";
 import { resolvePaceCarIdx } from "./pace-laps.js";
 import { type PaceLineup, type PaceLineupFlags, resolvePaceLineup } from "./pace-lineup.js";
+import { isRacingSurface } from "./track-surface.js";
 import type { EmitFn } from "./types.js";
 
 /**
@@ -584,11 +585,6 @@ function trackCautionEpisode(state: TranslatorState): void {
   }
 }
 
-/** The pace car is on the road when its surface is a track surface rather than a pit one. */
-function onTrack(surface: number | undefined): boolean {
-  return surface === TrkLoc.OnTrack || surface === TrkLoc.OffTrack;
-}
-
 /**
  * The car leading the race, whose start/finish crossings the caution's laps are
  * counted in: the canonical order first, then the front of the pace lineup —
@@ -664,8 +660,10 @@ function diffPaceCar(
 
   if (was === null) return;
 
-  if (!onTrack(was) && onTrack(surface)) emit({ event: "paceCar.deployed", data: {} });
-  else if (onTrack(was) && !onTrack(surface)) emit({ event: "paceCar.off", data: {} });
+  // The pace car is on the road when its surface is a track surface rather
+  // than a pit one — the test the catch-up measurement stands down on too.
+  if (!isRacingSurface(was) && isRacingSurface(surface)) emit({ event: "paceCar.deployed", data: {} });
+  else if (isRacingSurface(was) && !isRacingSurface(surface)) emit({ event: "paceCar.off", data: {} });
 }
 
 /**

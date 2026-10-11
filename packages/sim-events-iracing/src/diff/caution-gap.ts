@@ -75,10 +75,11 @@
  * It never resolves the lineup: it is handed the one the caller already has,
  * so a tick that judges the gap resolves the lineup exactly once.
  */
-import { carInWorld, forwardGapMeters, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
+import { carInWorld, forwardGapMeters, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 import { resolvePaceCarIdx } from "./pace-laps.js";
 import { type PaceLineup, type PaceLineupFlags, resolveCarAheadInLine, resolvePlayerCarIdx } from "./pace-lineup.js";
+import { isRacingSurface } from "./track-surface.js";
 
 /**
  * What a pair with the pace car is judged against, as a multiple of the pack
@@ -159,11 +160,8 @@ export function measureCautionGap(
 
   // Per-car pit state from the track surface, never `CarIdxOnPitRoad` (module
   // comment). A surface that cannot be read is not a track surface.
-  const onTrackSurface = (carIdx: number): boolean => {
-    const surface = Array.isArray(surfaces) ? (surfaces[carIdx] as unknown) : undefined;
-
-    return surface === TrkLoc.OnTrack || surface === TrkLoc.OffTrack;
-  };
+  const onTrackSurface = (carIdx: number): boolean =>
+    isRacingSurface(Array.isArray(surfaces) ? (surfaces[carIdx] as unknown) : undefined);
 
   const followCarIdx = lineup.followCarIdx;
   const gapMeters =
