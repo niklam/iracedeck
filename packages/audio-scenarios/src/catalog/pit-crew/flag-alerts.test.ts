@@ -179,11 +179,6 @@ const FLAG_CLIP_NAMES = [
   "furled-cleared-01",
   "dq-scoring-invalid-01",
   "crossed-01",
-  "one-pace-lap-to-go-01",
-  "one-pace-lap-to-go-02",
-  "one-pace-lap-to-go-03",
-  "one-pace-lap-to-go-04",
-  "one-pace-lap-to-go-05",
   "green-held-01",
   "green-held-02",
   "green-held-03",
@@ -288,8 +283,8 @@ function findContract(id: string): ScenarioContract {
 }
 
 describe("FLAG_CONTRACTS structure", () => {
-  it("defines 24 contracts", () => {
-    expect(FLAG_CONTRACTS).toHaveLength(24);
+  it("defines 23 contracts", () => {
+    expect(FLAG_CONTRACTS).toHaveLength(23);
   });
 
   it("carries no sequence — what a flag says is the voice script's, never the code's (issue #1064)", () => {
@@ -324,7 +319,6 @@ describe("FLAG_CONTRACTS structure", () => {
       "pit-crew.flag-furled-cleared",
       "pit-crew.flag-dq-scoring-invalid",
       "pit-crew.flag-crossed",
-      "pit-crew.flag-one-pace-lap-to-go",
       "pit-crew.flag-green-held",
       "pit-crew.flag-ten-to-go",
       "pit-crew.flag-five-to-go",
@@ -589,14 +583,14 @@ describe("FLAG_CONTRACTS triggers", () => {
     expect(played[0]).toMatch(/voice\/luca\/flags\/debris-0[123]\.mp3$/);
   });
 
-  it("one-pace-lap-to-go draws from the flag-one-pace-lap-to-go pool (one of the five variants)", () => {
+  it("leaves the rolling start's one-pace-lap-to-go call to the rolling-start family, which builds it (issue #1167)", () => {
+    expect(FLAG_SCENARIO_IDS).not.toContain("pit-crew.flag-one-pace-lap-to-go");
+
     mockSessionType.mockReturnValue("Race");
     bus.publishEvent("flag.one-pace-lap-to-go.raised", {});
     flush(audio);
 
-    const played = voiceClipsPlayed();
-    expect(played).toHaveLength(1);
-    expect(played[0]).toMatch(/voice\/luca\/flags\/one-pace-lap-to-go-0[1-5]\.mp3$/);
+    expect(voiceClipsPlayed()).toEqual([]);
   });
 
   it("green-held draws from the flag-green-held pool (one of the five variants)", () => {
@@ -1041,7 +1035,6 @@ describe("FLAG_CLIP_SOURCES", () => {
       "furled-cleared",
       "dq-scoring-invalid",
       "crossed",
-      "one-pace-lap-to-go",
       "green-held",
       "ten-to-go",
       "five-to-go",
@@ -1293,13 +1286,12 @@ describe("registerFlagVocabulary (issue #1064)", () => {
 // qualifying checkered. They must gate on the race session.
 describe("FLAG_CONTRACTS race-only gating", () => {
   // Clip identity per event is asserted elsewhere (the deterministic `expected`
-  // table for the single-clip flags; the membership tests for the random
-  // one-pace-lap-to-go / green-held pools). Here we only care that the event
+  // table for the single-clip flags; the membership test for the random
+  // green-held pool). Here we only care that the event
   // fires in a race and is suppressed otherwise, so the positive case just
   // checks a single clip played.
   const RACE_ONLY = [
     { event: "flag.crossed.raised" },
-    { event: "flag.one-pace-lap-to-go.raised" },
     { event: "flag.green-held.raised" },
     { event: "flag.ten-to-go.raised" },
     { event: "flag.five-to-go.raised" },

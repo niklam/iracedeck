@@ -33,19 +33,19 @@ export const FLAG_CALLOUTS = defineCalloutFamily({
     "yellow-waving": { key: "calloutEnabledFlagYellowWaving", label: "Yellow waving" },
     "caution-waving": { key: "calloutEnabledFlagCautionWaving", label: "Caution waving" },
     crossed: { key: "calloutEnabledFlagCrossed", label: "Crossed flags" },
-    "one-pace-lap-to-go": { key: "calloutEnabledFlagOnePaceLapToGo", label: "One pace lap to go" },
     "green-held": { key: "calloutEnabledFlagGreenHeld", label: "Green held" },
     "ten-to-go": { key: "calloutEnabledFlagTenToGo", label: "Ten to go" },
     "five-to-go": { key: "calloutEnabledFlagFiveToGo", label: "Five to go" },
     /**
      * Missing-session-flag callout opt-ins (issue #480). Driver-black
      * (disqualify/furled/dq-scoring-invalid), race-progression
-     * (crossed/one-pace-lap-to-go/green-held/ten-to-go/five-to-go), and
-     * caution-waving (yellow-waving/caution-waving) variants. Same
-     * forward-compat semantics as the flag callouts above — default `true`
-     * so existing users receive them automatically. Canonical id↔key
-     * mapping in this family; the start-light opt-ins from the same issue
-     * are `START_LIGHT_CALLOUTS`.
+     * (crossed/green-held/ten-to-go/five-to-go), and caution-waving
+     * (yellow-waving/caution-waving) variants. Same forward-compat semantics
+     * as the flag callouts above — default `true` so existing users receive
+     * them automatically. Canonical id↔key mapping in this family; the
+     * start-light opt-ins from the same issue are `START_LIGHT_CALLOUTS`, and
+     * its rolling-start "one pace lap to go" opt-in moved to
+     * `ROLLING_START_CALLOUTS` (issue #1167).
      */
     disqualify: { key: "calloutEnabledFlagDisqualify", label: "Disqualified" },
     furled: { key: "calloutEnabledFlagFurled", label: "Black flag furled" },

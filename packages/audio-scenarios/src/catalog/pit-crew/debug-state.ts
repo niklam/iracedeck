@@ -39,6 +39,7 @@ import { readPitSpeedingDebugState } from "./pit-speeding-engine.js";
 import { readPositionReadoutDebugState } from "./position-readout.js";
 import { readQualifyingInvalidationDebugState } from "./qualifying-invalidation.js";
 import { readRadarDebugState } from "./radar-engine.js";
+import { readRollingStartDebugState } from "./rolling-start.js";
 import { readSpotterDebugState } from "./spotter-engine.js";
 
 /**
@@ -58,6 +59,7 @@ function readFamilies() {
     positionReadout: readStatePart(() => readPositionReadoutDebugState()),
     qualifyingInvalidation: readStatePart(() => readQualifyingInvalidationDebugState()),
     radar: readStatePart(() => readRadarDebugState()),
+    rollingStart: readStatePart(() => readRollingStartDebugState()),
     spotter: readStatePart(() => readSpotterDebugState()),
   };
 }

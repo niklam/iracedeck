@@ -42,6 +42,7 @@ import {
 } from "./qualifying-invalidation.js";
 import * as radarModule from "./radar-engine.js";
 import { _resetRadarEngine, readRadarDebugState, setRadarEnabled, subscribeRadarVisualState } from "./radar-engine.js";
+import { buildRollingStartContracts, readRollingStartDebugState } from "./rolling-start.js";
 import { _resetSpotterEngine, readSpotterDebugState } from "./spotter-engine.js";
 
 const fakeAudio = vi.hoisted(() => ({
@@ -112,6 +113,7 @@ const FAMILY_KEYS = [
   "positionReadout",
   "qualifyingInvalidation",
   "radar",
+  "rollingStart",
   "spotter",
 ];
 
@@ -135,6 +137,7 @@ const UNTOUCHED_FAMILIES = {
     testSequenceGeneration: 0,
     listenerCount: 0,
   },
+  rollingStart: { lastNamed: null },
   spotter: {
     registered: false,
     state: "clear",
@@ -382,7 +385,7 @@ describe("a part that cannot be read fails alone", () => {
     vi.restoreAllMocks();
   });
 
-  it("a family reader that throws leaves the engine and the other ten families intact", () => {
+  it("a family reader that throws leaves the engine and the other eleven families intact", () => {
     const engine = startEngine();
     const healthyEngine = engine.describeState();
 
@@ -400,7 +403,7 @@ describe("a part that cannot be read fails alone", () => {
     expect(JSON.parse(JSON.stringify(state))).toEqual(state);
   });
 
-  it("an engine that cannot describe itself leaves all eleven families intact", () => {
+  it("an engine that cannot describe itself leaves all twelve families intact", () => {
     const engine = startEngine();
 
     registerPitCrew(bus);
@@ -649,6 +652,28 @@ describe("the family readers", () => {
     // A later build starts clean and is the one the reader follows.
     build(9);
     expect(readCautionDebugState()).toEqual({ lastNamed: { episodeId: 3, followCarIdx: 9 } });
+  });
+
+  it("rolling start: the car the newest build last named, by formation", () => {
+    const build = (followCarIdx: number): void => {
+      const contracts = buildRollingStartContracts({
+        getRollingStartFormation: () => ({ id: 5, firstFollowCarIdx: followCarIdx }),
+        getPaceLineup: () => ({ followCarIdx }) as never,
+      });
+
+      expect(readRollingStartDebugState()).toEqual({ lastNamed: null });
+
+      const paceCar = contracts.find((c) => c.id === "pit-crew.rolling-start-pace-car");
+
+      expect(paceCar?.speakGate?.admit({ event: null, now: 0 } as ScenarioContext)).toBe(true);
+    };
+
+    build(9);
+    expect(readRollingStartDebugState()).toEqual({ lastNamed: { episodeId: 5, followCarIdx: 9 } });
+
+    // A later build starts clean and is the one the reader follows.
+    build(12);
+    expect(readRollingStartDebugState()).toEqual({ lastNamed: { episodeId: 5, followCarIdx: 12 } });
   });
 
   it("background test: in flight, and whether the built-in frame's timer is running", () => {

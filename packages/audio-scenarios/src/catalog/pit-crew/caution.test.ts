@@ -198,6 +198,7 @@ const LINEUP: PaceLineup = {
   followsPaceCar: false,
   doubleFile: true,
   lineupPosition: 14,
+  anchor: "pace-car",
 };
 
 /** {@link LINEUP} with another car ahead. */
@@ -1771,14 +1772,20 @@ describe("registerCautionVocabulary", () => {
 
     registerCautionVocabulary(engine, () => LINEUP, NO_LIVE_POSITION);
 
-    expect([...vars.keys()]).toEqual(["caution.followCarNumber", "caution.restartPosition", "caution.racePosition"]);
-    expect([...conds.keys()]).toEqual([
+    const ofCaution = (names: Iterable<string>): string[] => [...names].filter((name) => name.startsWith("caution."));
+
+    expect(ofCaution(vars.keys())).toEqual([
+      "caution.followCarNumber",
+      "caution.restartPosition",
+      "caution.racePosition",
+    ]);
+    expect(ofCaution(conds.keys())).toEqual([
       "caution.hasFollowCarNumber",
       "caution.isLeader",
       "caution.followsPaceCar",
       "caution.isDoubleFile",
     ]);
-    expect([...cases.keys()]).toEqual(["caution.line"]);
+    expect(ofCaution(cases.keys())).toEqual(["caution.line"]);
 
     for (const name of [...vars.keys(), ...conds.keys(), ...cases.keys()]) {
       expect((descriptions.get(name) ?? "").length).toBeGreaterThan(20);
@@ -1874,7 +1881,7 @@ describe("registerCautionVocabulary", () => {
 
     registerCautionVocabulary(
       engine,
-      () => ({ ...LINEUP, followCarNumber: null, lineupPosition: null }),
+      () => ({ ...LINEUP, followCarNumber: null, lineupPosition: null, anchor: null }),
       NO_LIVE_POSITION,
     );
 
@@ -1952,6 +1959,119 @@ describe("registerCautionVocabulary", () => {
     vars.get("caution.followCarNumber")?.();
 
     expect(reads).toHaveBeenCalledTimes(2);
+  });
+
+  describe("the rolling-start formation's names (#1167)", () => {
+    /** A formation lineup: the same shape, read in the grid's frame of reference. */
+    const FORMATION: PaceLineup = { ...LINEUP, followCarNumber: "07", lineupPosition: 11, anchor: "grid" };
+
+    it("registers one var, four conditions and the lane case under the start's own prefix, each with a description", () => {
+      const { engine, vars, conds, cases, descriptions } = makeVocabEngine();
+
+      registerCautionVocabulary(engine, () => FORMATION, NO_LIVE_POSITION);
+
+      const ofStart = (names: Iterable<string>): string[] =>
+        [...names].filter((name) => name.startsWith("rollingStart."));
+
+      expect(ofStart(vars.keys())).toEqual(["rollingStart.followCarNumber"]);
+      expect(ofStart(conds.keys()).sort()).toEqual([
+        "rollingStart.followsPaceCar",
+        "rollingStart.hasFollowCarNumber",
+        "rollingStart.isDoubleFile",
+        "rollingStart.isLeader",
+      ]);
+      expect(ofStart(cases.keys())).toEqual(["rollingStart.line"]);
+
+      for (const name of [...ofStart(vars.keys()), ...ofStart(conds.keys()), ...ofStart(cases.keys())]) {
+        expect((descriptions.get(name) ?? "").length, name).toBeGreaterThan(20);
+      }
+    });
+
+    it("registers nothing else — every name is the caution's or the start's", () => {
+      const { engine, vars, conds, cases } = makeVocabEngine();
+
+      registerCautionVocabulary(engine, () => FORMATION, NO_LIVE_POSITION);
+
+      for (const name of [...vars.keys(), ...conds.keys(), ...cases.keys()]) {
+        expect(name).toMatch(/^(caution|rollingStart)\./);
+      }
+    });
+
+    it("publishes no start position — the pace-row place must never be offered to a pack as a number to speak", () => {
+      const { engine, vars } = makeVocabEngine();
+
+      registerCautionVocabulary(engine, () => FORMATION, NO_LIVE_POSITION);
+
+      expect([...vars.keys()].filter((name) => name.startsWith("rollingStart."))).toEqual([
+        "rollingStart.followCarNumber",
+      ]);
+      expect([...vars.keys()].some((name) => /^rollingStart\..*position/i.test(name))).toBe(false);
+    });
+
+    it("answers with the very functions the caution names answer with — the two families cannot disagree about one tick", () => {
+      const { engine, vars, conds, cases } = makeVocabEngine();
+
+      registerCautionVocabulary(engine, () => FORMATION, NO_LIVE_POSITION);
+
+      expect(vars.get("rollingStart.followCarNumber")).toBe(vars.get("caution.followCarNumber"));
+      expect(cases.get("rollingStart.line")).toBe(cases.get("caution.line"));
+
+      for (const name of ["hasFollowCarNumber", "isLeader", "followsPaceCar", "isDoubleFile"]) {
+        expect(conds.get(`rollingStart.${name}`), name).toBe(conds.get(`caution.${name}`));
+        expect(conds.get(`rollingStart.${name}`), name).toBeDefined();
+      }
+    });
+
+    it("draws the car to form up behind from the car-number group, exactly as the sim spells it, and says so", () => {
+      const { engine, vars, conds, descriptions } = makeVocabEngine();
+
+      registerCautionVocabulary(engine, () => FORMATION, NO_LIVE_POSITION);
+
+      expect(vars.get("rollingStart.followCarNumber")?.()).toBe(poolRef("car-number", "07"));
+      expect(conds.get("rollingStart.hasFollowCarNumber")?.()).toBe(true);
+      // The recording script attributes a group's lines to a var by its description naming the group.
+      expect(descriptions.get("rollingStart.followCarNumber")).toMatch(/car-number group/);
+    });
+
+    it("declares the two lane keys the line case can return", () => {
+      const { engine, cases, keys } = makeVocabEngine();
+
+      registerCautionVocabulary(engine, () => FORMATION, NO_LIVE_POSITION);
+
+      expect(Object.keys(keys.get("rollingStart.line") ?? {}).sort()).toEqual(["inside", "outside"]);
+      expect(cases.get("rollingStart.line")?.()).toBe("inside");
+    });
+
+    it("tells the pole-sitter from the outside front-row car, and both from a car mid-pack", () => {
+      const answers = (lineup: PaceLineup): [isLeader: unknown, followsPaceCar: unknown, named: unknown] => {
+        const { engine, conds } = makeVocabEngine();
+
+        registerCautionVocabulary(engine, () => lineup, NO_LIVE_POSITION);
+
+        return [
+          conds.get("rollingStart.isLeader")?.(),
+          conds.get("rollingStart.followsPaceCar")?.(),
+          conds.get("rollingStart.hasFollowCarNumber")?.(),
+        ];
+      };
+
+      expect(answers({ ...FORMATION, isLeader: true, followsPaceCar: true })).toEqual([true, true, false]);
+      expect(answers({ ...FORMATION, isLeader: false, followsPaceCar: true })).toEqual([false, true, false]);
+      expect(answers(FORMATION)).toEqual([false, false, true]);
+    });
+
+    it("names nothing at all with no lineup to read — a rolling start that publishes no pace rows", () => {
+      const { engine, vars, conds, cases } = makeVocabEngine();
+
+      registerCautionVocabulary(engine, () => null, NO_LIVE_POSITION);
+
+      expect(vars.get("rollingStart.followCarNumber")?.()).toBeNull();
+      expect(conds.get("rollingStart.hasFollowCarNumber")?.()).toBe(false);
+      expect(conds.get("rollingStart.isLeader")?.()).toBe(false);
+      expect(conds.get("rollingStart.followsPaceCar")?.()).toBe(false);
+      expect(conds.get("rollingStart.isDoubleFile")?.()).toBe(false);
+      expect(cases.get("rollingStart.line")?.()).toBeNull();
+    });
   });
 });
 

@@ -218,7 +218,7 @@ import {
 import { buildRaceStatusContract, registerRaceStatusVocabulary, SCENARIO_ID_TO_RACE_STATUS_ID } from "./race-status.js";
 import { registerRadarEngine } from "./radar-engine.js";
 import { PIT_READBACK_CONTRACTS, registerReadbackVocabulary, SCENARIO_ID_TO_PIT_READBACK_ID } from "./readback.js";
-import { ROLLING_START_CONTRACTS } from "./rolling-start.js";
+import { buildRollingStartContracts, type RollingStartFormationResolver } from "./rolling-start.js";
 import {
   buildSessionStartContract,
   registerSessionStartVocabulary,
@@ -312,6 +312,15 @@ export {
   SCENARIO_ID_TO_CAUTION_ID,
   type UnderCautionResolver,
 } from "./caution.js";
+export {
+  buildRollingStartContracts,
+  ROLLING_START_CLIP_SOURCES,
+  ROLLING_START_LINEUP_CHANGE_DELAY_MS,
+  ROLLING_START_MAX_QUEUE_WAIT_MS,
+  ROLLING_START_SCENARIO_IDS,
+  type RollingStartContractDeps,
+  type RollingStartFormationResolver,
+} from "./rolling-start.js";
 export {
   OPPONENT_FLAG_CLIP_SOURCES,
   OPPONENT_FLAG_CONTRACTS,
@@ -439,7 +448,9 @@ export {
 /**
  * Stable identifier for each user-toggleable flag callout (issue #467).
  * One id per contract in `FLAG_CONTRACTS`; the trailing segment of the
- * scenario id minus the `pit-crew.flag-` prefix.
+ * scenario id minus the `pit-crew.flag-` prefix. The one flag-prefixed
+ * scenario not here is `pit-crew.flag-one-pace-lap-to-go`, a rolling-start
+ * formation call since #1167 — see {@link SCENARIO_ID_TO_ROLLING_START_ID}.
  */
 export type FlagCalloutId = CalloutIdOf<typeof FLAG_CALLOUTS>;
 
@@ -465,7 +476,6 @@ export const SCENARIO_ID_TO_FLAG_ID: Readonly<Record<string, FlagCalloutId>> = {
   "pit-crew.flag-furled-cleared": "furled-cleared",
   "pit-crew.flag-dq-scoring-invalid": "dq-scoring-invalid",
   "pit-crew.flag-crossed": "crossed",
-  "pit-crew.flag-one-pace-lap-to-go": "one-pace-lap-to-go",
   "pit-crew.flag-green-held": "green-held",
   "pit-crew.flag-ten-to-go": "ten-to-go",
   "pit-crew.flag-five-to-go": "five-to-go",
@@ -493,16 +503,23 @@ export const SCENARIO_ID_TO_START_LIGHT_ID: Readonly<Record<string, StartLightCa
 };
 
 /**
- * Stable identifier for the rolling-start callout family (issue #660). Single
- * subject (`pace-car`) — one toggle covers the "pace car is moving" line spoken
- * once at the start of a rolling-start formation lap. Future rolling-start
- * sub-callouts can append cleanly under the same family namespace.
+ * Stable identifier for each rolling-start formation callout (issues #660,
+ * #1167): the pace car pulling away, the last of two pace laps, and a change
+ * to the car you form up behind.
  */
 export type RollingStartCalloutId = CalloutIdOf<typeof ROLLING_START_CALLOUTS>;
 
-/** @internal Exported for the coverage test (`callout-settings-coverage.test.ts`). */
+/**
+ * @internal Exported for the coverage test (`callout-settings-coverage.test.ts`).
+ *
+ * The middle entry keeps the flag family's scenario id — published, and
+ * scripted by every voice pack under that name — while its opt-in has been
+ * the rolling-start family's since #1167, under the key it always had.
+ */
 export const SCENARIO_ID_TO_ROLLING_START_ID: Readonly<Record<string, RollingStartCalloutId>> = {
   "pit-crew.rolling-start-pace-car": "pace-car",
+  "pit-crew.flag-one-pace-lap-to-go": "one-pace-lap-to-go",
+  "pit-crew.rolling-start-lineup-changed": "lineup-changed",
 };
 
 /**
@@ -914,6 +931,18 @@ export type PitCrewDeps = {
   // leaves the change call silent, never wrong: with no episode there is
   // nothing to judge a change against.
   getCautionEpisode?: CautionEpisodeResolver;
+  // WHICH rolling-start formation is running (issue #1167). Plugins wire
+  // `getRollingStartFormation()` from `@iracedeck/sim-events-iracing`: `null`
+  // while none runs, else an id that never repeats and the follow car read as
+  // the formation began. The three formation calls ask it at speak time —
+  // "Pace car's rolling", "One lap to green" and the change to the car ahead
+  // must never drain into the launch — and the id scopes the change call's
+  // memory of the car last named to one formation. Default `() => null` is
+  // the truthful answer for a caller that wires no reader, and note what it
+  // costs, as with `getCautionPhase`: all three then never speak, so the
+  // scenario harness must wire it or its rolling-start buttons are silent
+  // for the wrong reason.
+  getRollingStartFormation?: RollingStartFormationResolver;
   // Master gate for the Race Engineer voice subsystem (issue #515).
   // Plugins wire this to `pitCrewRaceEngineerEnabled === true`. Read live
   // on every event arrival and applied as the OUTERMOST wrapper around
@@ -962,6 +991,7 @@ const DEFAULT_DEPS = {
   getUnderFullCourseCaution: () => false,
   getCautionPhase: () => "none",
   getCautionEpisode: () => null,
+  getRollingStartFormation: () => null,
   getRaceEngineerMasterEnabled: () => true,
   getRadarMasterEnabled: () => true,
 } satisfies Omit<Required<PitCrewDeps>, "logger">;
@@ -994,6 +1024,7 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
     getUnderFullCourseCaution = DEFAULT_DEPS.getUnderFullCourseCaution,
     getCautionPhase = DEFAULT_DEPS.getCautionPhase,
     getCautionEpisode = DEFAULT_DEPS.getCautionEpisode,
+    getRollingStartFormation = DEFAULT_DEPS.getRollingStartFormation,
     getRaceEngineerMasterEnabled = DEFAULT_DEPS.getRaceEngineerMasterEnabled,
     getRadarMasterEnabled = DEFAULT_DEPS.getRadarMasterEnabled,
   } = deps;
@@ -1331,12 +1362,17 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
     );
   }
 
-  // Rolling-start contract (issue #660; scripted since #1065): the pace-car
-  // line is the active voice's business
-  // (`scenarios["pit-crew.rolling-start-pace-car"]`, addressed as
-  // `pool:rolling-start/pace-car-moving`). Single subject (`pace-car`) gates
-  // the contract via `SCENARIO_ID_TO_ROLLING_START_ID`.
-  for (const c of ROLLING_START_CONTRACTS) {
+  // Rolling-start formation (issues #660, #1167; scripted since #1065): the
+  // pace car pulling away, the last of two pace laps and a change to the car
+  // ahead, each naming who to form up behind through the `rollingStart.*`
+  // vocabulary `registerCautionVocabulary` registered above off the same
+  // lineup resolver. Built against the formation reader — every one re-checks
+  // at speak time that the formation is still running — and the lineup, for
+  // the change call's pace-row check and the memory of the car last named.
+  // Three subjects gate the three contracts via
+  // `SCENARIO_ID_TO_ROLLING_START_ID`; the middle one keeps its flag-family
+  // scenario id.
+  for (const c of buildRollingStartContracts({ getRollingStartFormation, getPaceLineup })) {
     engine.defineContract(
       wrapWithMaster(
         wrapCalloutScenario(

@@ -82,6 +82,7 @@ const LINEUP: PaceLineup = {
   followsPaceCar: false,
   doubleFile: true,
   lineupPosition: 14,
+  anchor: "pace-car",
 };
 
 /**

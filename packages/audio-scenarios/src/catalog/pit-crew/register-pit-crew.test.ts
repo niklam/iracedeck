@@ -231,11 +231,6 @@ const FLAG_CLIP_NAMES = [
   "furled-cleared-01",
   "dq-scoring-invalid-01",
   "crossed-01",
-  "one-pace-lap-to-go-01",
-  "one-pace-lap-to-go-02",
-  "one-pace-lap-to-go-03",
-  "one-pace-lap-to-go-04",
-  "one-pace-lap-to-go-05",
   "green-held-01",
   "green-held-02",
   "green-held-03",
@@ -525,7 +520,6 @@ const ALL_FLAG_IDS: readonly FlagCalloutId[] = [
   "furled-cleared",
   "dq-scoring-invalid",
   "crossed",
-  "one-pace-lap-to-go",
   "green-held",
   "ten-to-go",
   "five-to-go",
@@ -636,6 +630,10 @@ beforeEach(() => {
     getReadbackSnapshot: () => null,
     isCalloutEnabled: (key) => gates.every((gate) => gate(key)),
     getOpponentPitLivePosition: () => opponentPitLivePosition,
+    // A formation is running (issue #1167): the rolling-start family speaks
+    // only inside one. No lineup is wired, so its calls take their numberless
+    // wording.
+    getRollingStartFormation: () => ({ id: 1, firstFollowCarIdx: null }),
     getRaceEngineerMasterEnabled,
   });
   // After the registration, as the plugins do (issue #1064): the engine
@@ -774,12 +772,6 @@ const FLAG_FIRES: ReadonlyArray<{
     event: "flag.crossed.raised",
     data: {} as SimEventMap["flag.crossed.raised"]["data"],
     expectedClipFragment: "crossed-",
-  },
-  {
-    id: "one-pace-lap-to-go",
-    event: "flag.one-pace-lap-to-go.raised",
-    data: {} as SimEventMap["flag.one-pace-lap-to-go.raised"]["data"],
-    expectedClipFragment: "one-pace-lap-to-go-",
   },
   {
     id: "green-held",

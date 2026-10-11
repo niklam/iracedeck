@@ -680,6 +680,18 @@ export const POSITION_NUMBER_MAX = 64;
  * canonical live position through `getLivePosition` — the SAME dependency the
  * position-change and race-status vocabularies take, threaded in rather than
  * added beside them, so two readings of "position" cannot drift apart.
+ *
+ * **It registers the rolling-start formation's names as well** (issue #1167):
+ * `rollingStart.followCarNumber`, the four `rollingStart.*` conditions and
+ * `rollingStart.line` are the SAME resolver functions under the start's own
+ * prefix, registered here rather than by the rolling-start family so the two
+ * can never answer differently about one tick. They have names of their own
+ * because the `caution.*` ones are described as answering under a caution,
+ * and a pack author writing a start callout should not have to learn that
+ * they also answer somewhere their names deny. There is deliberately NO
+ * `rollingStart` position var: the lineup place feeds `rollingStart.isLeader`
+ * only, a spoken start position belongs to the race-start brief and the
+ * canonical order, and a pack offered the pace-row place would speak it.
  */
 export function registerCautionVocabulary(
   engine: Pick<IScenarioEngine, "defineVar" | "defineCond" | "defineCase">,
@@ -769,37 +781,87 @@ export function registerCautionVocabulary(
     `Your race position at the moment the call is spoken, from the canonical live running order — the number your display shows, in your class in a multi-class race — spoken from the position-number group, which stops at ${POSITION_NUMBER_MAX}; a position past that is null, since there is no clip to say it with. This is what the position call on the last caution lap speaks. It is not your place in the restart lineup (caution.restartPosition): a lapped car lined up ahead of you is behind you in the race, and the two differ by exactly those cars. Null while the order cannot be read. Keep it in an optional clause with the words that introduce it: a null var in a required step aborts the whole callout, silently and at debug level. In the position call that clause IS the whole callout, and there that is right — a position call with no position has nothing true to say.`,
   );
 
+  // One function per answer, handed to both families' registrations below.
+  const hasFollowCarNumber = (): boolean => followCarNumberRef() !== null;
+  const isLeader = (): boolean => getPaceLineup()?.isLeader === true;
+  const followsPaceCar = (): boolean => getPaceLineup()?.followsPaceCar === true;
+  const isDoubleFile = (): boolean => getPaceLineup()?.doubleFile === true;
+  const line = (): "inside" | "outside" | null => getPaceLineup()?.line ?? null;
+
   engine.defineCond(
     "caution.hasFollowCarNumber",
-    () => followCarNumberRef() !== null,
+    hasFollowCarNumber,
     'The car ahead of you in your line can be named — caution.followCarNumber would resolve. False while the pace car is the only thing ahead (ask caution.followsPaceCar for that), while the field carries no readable lineup, and when the session cannot spell the car\'s number. The condition to branch on when a callout must still speak without the number: the one-lap-to-green call says a plain "One lap to green." in the other branch rather than nothing, because an optional clause alone expands to an empty callout and the driver hears no warning at all.',
   );
 
   engine.defineCond(
     "caution.isLeader",
-    () => getPaceLineup()?.isLeader === true,
+    isLeader,
     "You would restart first. Not the same as having only the pace car ahead of you, which is true of both front cars on a double-file restart — that is caution.followsPaceCar.",
   );
 
   engine.defineCond(
     "caution.followsPaceCar",
-    () => getPaceLineup()?.followsPaceCar === true,
+    followsPaceCar,
     "There is nobody ahead of you in your own line, so the pace car is the only thing in front. True for the leader and for the outside front car on a double-file restart; the condition to ask before naming a car number.",
   );
 
   engine.defineCond(
     "caution.isDoubleFile",
-    () => getPaceLineup()?.doubleFile === true,
+    isDoubleFile,
     "The field is lined up in two columns rather than one. iRacing re-forms the field double file on the tick before the one-to-go flag when the restart is a double-file one.",
   );
 
   engine.defineCase(
     "caution.line",
-    () => getPaceLineup()?.line ?? null,
+    line,
     {
       inside: "You line up in the inside lane.",
       outside: "You line up in the outside lane.",
     },
     "Which lane you line up in. Only ever answered on an oval running double file — on any other discipline, and single file, there is no lane to name and the default branch runs.",
+  );
+
+  // The rolling-start formation's names (issue #1167): the same functions,
+  // under the prefix of the moment they are used in. No position var — see
+  // the function comment.
+  engine.defineVar(
+    "rollingStart.followCarNumber",
+    followCarNumberRef,
+    'The car number you form up behind in a rolling-start formation, spoken from the car-number group exactly as the sim spells it — "07" and "7" are different clips. Null while the pace car is the only thing ahead of you, and while the field carries no readable lineup — a rolling start may publish no pace rows at all — so branch on rollingStart.followsPaceCar before naming it, and keep the number in an optional clause with the words that introduce it: a null var in a required step aborts the whole callout, silently and at debug level. Where the callout must still say something without the number, branch on rollingStart.hasFollowCarNumber and give the other branch a numberless wording. The same reading as caution.followCarNumber, under the name of the moment it is used in.',
+  );
+
+  engine.defineCond(
+    "rollingStart.hasFollowCarNumber",
+    hasFollowCarNumber,
+    "The car ahead of you in your line of the formation can be named — rollingStart.followCarNumber would resolve. False while the pace car is the only thing ahead (ask rollingStart.followsPaceCar for that), while the field carries no readable lineup, and when the session cannot spell the car's number. The condition to branch on when a callout must still speak without the number: the pace-car call keeps its numberless line in the other branch rather than nothing, because an optional clause alone expands to an empty callout.",
+  );
+
+  engine.defineCond(
+    "rollingStart.isLeader",
+    isLeader,
+    "You start first — on pole. Not the same as having only the pace car ahead of you, which is true of both front-row cars of a double-file formation — that is rollingStart.followsPaceCar. False when the lineup cannot place you: claiming the pole is not something to do on a guess.",
+  );
+
+  engine.defineCond(
+    "rollingStart.followsPaceCar",
+    followsPaceCar,
+    "There is nobody ahead of you in your own line of the formation, so the pace car is the only thing in front. True for the pole-sitter and for the outside front-row car of a double-file formation; the condition to ask before naming a car number.",
+  );
+
+  engine.defineCond(
+    "rollingStart.isDoubleFile",
+    isDoubleFile,
+    "The formation is lined up in two columns rather than one. Read from the pace rows themselves: no start setting says which shape a formation runs in.",
+  );
+
+  engine.defineCase(
+    "rollingStart.line",
+    line,
+    {
+      inside: "You form up in the inside lane.",
+      outside: "You form up in the outside lane.",
+    },
+    "Which lane you form up in for a rolling start. Only ever answered on an oval running double file — on any other discipline, and single file, there is no lane to name and the default branch runs.",
   );
 }

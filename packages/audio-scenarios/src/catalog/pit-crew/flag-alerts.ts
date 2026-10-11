@@ -17,7 +17,7 @@
  * script's `pools` key is an alias facility, worth using only where the
  * name decides something the path does not (an alias onto another group,
  * or a second line that must not share a no-repeat tracker with the first),
- * and every flag name would merely have restated its path. The thirty
+ * and every flag name would merely have restated its path. The twenty-nine
  * sources are pinned here in {@link FLAG_CLIP_SOURCES} for the completeness
  * tests; the clips themselves are authored in
  * `packages/audio-assets/configs/default.voice.json`.
@@ -82,8 +82,8 @@ import { WEIGHT } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 import { classifySessionType, isRaceSession, type SessionKind } from "./race-start.js";
 
-// Race-progression / formation flags (one-pace-lap-to-go, green-held, ten-to-go,
-// five-to-go, crossed) are race-only concepts. iRacing raises the grid bits
+// Race-progression / formation flags (green-held, ten-to-go, five-to-go,
+// crossed) are race-only concepts. iRacing raises the grid bits
 // while forming the race grid at the END of a qualifying session, so without
 // this gate they fired at the qualifying checkered (issue #480 follow-up).
 // Live-read at fire time, mirroring the session branching the
@@ -96,14 +96,14 @@ const raceOnly = () => isRaceSession(getSessionType());
 // Checkered / CoolDown): iRacing re-asserts the grid bits during cool-down /
 // next-session grid formation, which would otherwise re-fire the bit-driven
 // progression callouts (crossed / green-held / ten- / five-to-go) after the
-// checkered — the #657 post-race misfire. (`one-pace-lap-to-go` is additionally
-// ParadeLaps-gated in its own diff, so it can't reach post-race regardless.)
+// checkered — the #657 post-race misfire.
 // Read from the event's telemetry at fire time.
-// Exported since #1127: the caution family's eight contracts carry the same
-// gate, and it is the same question there — a caution sequence is race-only,
-// means nothing out of the car, and must not re-fire on the grid bits iRacing
-// re-asserts after the checkered. One definition, so the two families cannot
-// drift apart on what "live in a race" means.
+// Exported since #1127: the caution family's contracts carry the same gate,
+// and it is the same question there — a caution sequence is race-only, means
+// nothing out of the car, and must not re-fire on the grid bits iRacing
+// re-asserts after the checkered. The rolling-start formation's three calls
+// take it too (issue #1167). One definition, so the families cannot drift
+// apart on what "live in a race" means.
 export const liveRaceCar = (e: SimEventOf<SimEventName>): boolean =>
   raceOnly() && isLiveOnTrack(e.telemetry as TelemetryData | null) && !isPostRace(e.telemetry as TelemetryData | null);
 
@@ -112,7 +112,8 @@ export const liveRaceCar = (e: SimEventOf<SimEventName>): boolean =>
 // standing-start pre-green phase (the start-light family owns that lead-in).
 // Restarts (Racing state) and rolling starts still fire (issue #480 follow-up).
 // (The sibling "one pace lap to go" cue is gated rolling-only in its diff
-// instead — `diff/pace-laps.ts`, issue #657 — so it uses `liveRaceCar` here.)
+// instead — `diff/pace-laps.ts`, issue #657 — and is built by the
+// rolling-start family since #1167.)
 const rollingFormationOnly = (e: SimEventOf<SimEventName>): boolean =>
   liveRaceCar(e) && !(getStandingStart() && isPreGreen(e.telemetry as TelemetryData | null));
 
@@ -138,7 +139,13 @@ const PENALTY_MAX_QUEUE_WAIT_MS = 30_000;
  */
 const FURLED_GROUP = "furled";
 
-function flagContract(id: string): ScenarioContract {
+/**
+ * The fields every flag contract shares. Exported for the one flag contract
+ * built elsewhere: `pit-crew.flag-one-pace-lap-to-go` is a formation call,
+ * built with the rolling-start family's readers (`rolling-start.ts`, issue
+ * #1167), and keeps this family's id, weight and preemption family.
+ */
+export function flagContract(id: string): ScenarioContract {
   return {
     id: `pit-crew.flag-${id}`,
     channel: AudioChannel.Voice,
@@ -532,8 +539,8 @@ const DQ_SCORING_INVALID: ScenarioContract = {
   when: { event: "flag.dq-scoring-invalid.raised" },
 };
 
-// Race-progression flags (issue #480) — crossed, one-pace-lap-to-go, green-held,
-// ten-to-go, five-to-go.
+// Race-progression flags (issue #480) — crossed, green-held, ten-to-go,
+// five-to-go.
 const CROSSED: ScenarioContract = {
   ...flagContract("crossed"),
   description:
@@ -541,16 +548,11 @@ const CROSSED: ScenarioContract = {
   when: { event: "flag.crossed.raised", where: liveRaceCar },
 };
 
-// "One pace lap to go" on a rolling start (issue #657). The translator's
-// `diff/pace-laps.ts` already owns the rolling-only / ParadeLaps / final-lap
-// gating, so the contract only needs the shared live-race-car gate (race
-// session + in the car + not post-race).
-const ONE_PACE_LAP_TO_GO: ScenarioContract = {
-  ...flagContract("one-pace-lap-to-go"),
-  description:
-    "The pace car crosses the start/finish line to complete the first pace lap of a two-lap rolling start while the green is still held, with you live in the car.",
-  when: { event: "flag.one-pace-lap-to-go.raised", where: liveRaceCar },
-};
+// "One pace lap to go" on a rolling start (issue #657) is not in this list
+// since #1167: `pit-crew.flag-one-pace-lap-to-go` keeps its id and this
+// family's preemption, but it is a formation call — gated on the formation
+// still running and naming the car to form up behind — so the rolling-start
+// family builds it (`buildRollingStartContracts` in `rolling-start.ts`).
 
 const GREEN_HELD: ScenarioContract = {
   ...flagContract("green-held"),
@@ -645,7 +647,6 @@ export const FLAG_CONTRACTS: readonly ScenarioContract[] = [
   FURLED_CLEARED,
   DQ_SCORING_INVALID,
   CROSSED,
-  ONE_PACE_LAP_TO_GO,
   GREEN_HELD,
   TEN_TO_GO,
   FIVE_TO_GO,
@@ -689,7 +690,6 @@ export const FLAG_CLIP_SOURCES: readonly { group: "flags"; base: string }[] = [
   { group: "flags", base: "furled-cleared" },
   { group: "flags", base: "dq-scoring-invalid" },
   { group: "flags", base: "crossed" },
-  { group: "flags", base: "one-pace-lap-to-go" },
   { group: "flags", base: "green-held" },
   { group: "flags", base: "ten-to-go" },
   { group: "flags", base: "five-to-go" },

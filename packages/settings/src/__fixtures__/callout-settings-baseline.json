@@ -250,7 +250,7 @@
     "numberRejected": true
   },
   "calloutEnabledFlagOnePaceLapToGo": {
-    "owner": "flag/one-pace-lap-to-go",
+    "owner": "rolling-start/one-pace-lap-to-go",
     "default": true,
     "true": true,
     "\"true\"": true,
