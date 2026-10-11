@@ -40,27 +40,8 @@ import type { TelemetryData } from "@iracedeck/iracing-sdk";
 
 import type { TranslatorState } from "../state.js";
 import type { StallVisit } from "./stall-visit.js";
-import { type TireSide, zonesFromCarSides } from "./tire-zones.js";
+import { readTireZoneValues, TIRE_CORNERS, zonesFromCarSides } from "./tire-zones.js";
 import type { EmitFn, PendingEvent } from "./types.js";
-
-type WearField = keyof TelemetryData & `${"LF" | "RF" | "LR" | "RR"}wear${"L" | "M" | "R"}`;
-
-type CornerSource = {
-  corner: TireCorner;
-  /** iRacing's L / M / R are the car's left / middle / right. */
-  left: WearField;
-  middle: WearField;
-  right: WearField;
-  side: TireSide;
-};
-
-/** In the tie-break order of the contract: lf, rf, lr, rr. */
-const CORNERS: readonly CornerSource[] = [
-  { corner: "lf", left: "LFwearL", middle: "LFwearM", right: "LFwearR", side: "left" },
-  { corner: "rf", left: "RFwearL", middle: "RFwearM", right: "RFwearR", side: "right" },
-  { corner: "lr", left: "LRwearL", middle: "LRwearM", right: "LRwearR", side: "left" },
-  { corner: "rr", left: "RRwearL", middle: "RRwearM", right: "RRwearR", side: "right" },
-];
 
 /** In the tie-break order of the contract: inside, middle, outside. */
 const ZONES: readonly TireZone[] = ["inside", "middle", "outside"];
@@ -78,28 +59,18 @@ const ZONES: readonly TireZone[] = ["inside", "middle", "outside"];
  * @internal Exported for testing.
  */
 export function buildTireWearReport(telemetry: TelemetryData): TireWearReport | null {
-  const readings: number[] = [];
+  const readings = readTireZoneValues(telemetry, "wear");
 
-  for (const source of CORNERS) {
-    for (const field of [source.left, source.middle, source.right]) {
-      const value = telemetry[field];
-
-      if (typeof value !== "number" || !Number.isFinite(value)) return null;
-
-      readings.push(value);
-    }
-  }
-
-  if (readings.every((value) => value === 0)) return null;
+  if (readings === null) return null;
 
   const corners = {} as Record<TireCorner, TireCornerWear>;
   let heaviest: { corner: TireCorner; zone: TireZone } | null = null;
   let heaviestTread = Infinity;
 
-  for (const source of CORNERS) {
-    const left = (telemetry[source.left] as number) * 100;
-    const middle = (telemetry[source.middle] as number) * 100;
-    const right = (telemetry[source.right] as number) * 100;
+  TIRE_CORNERS.forEach((source, i) => {
+    const left = readings[i * 3]! * 100;
+    const middle = readings[i * 3 + 1]! * 100;
+    const right = readings[i * 3 + 2]! * 100;
     const byZone = zonesFromCarSides(source.side, left, middle, right);
 
     // Strictly lower only, so a tie keeps the zone earlier in ZONES.
@@ -111,12 +82,12 @@ export function buildTireWearReport(telemetry: TelemetryData): TireWearReport | 
 
     corners[source.corner] = { ...byZone, tread: byZone[zone], zone };
 
-    // Strictly lower only, so a tie keeps the corner earlier in CORNERS.
+    // Strictly lower only, so a tie keeps the corner earlier in TIRE_CORNERS.
     if (byZone[zone] < heaviestTread) {
       heaviestTread = byZone[zone];
       heaviest = { corner: source.corner, zone };
     }
-  }
+  });
 
   // Unreachable with four finite corners; keeps the type honest.
   if (heaviest === null) return null;
