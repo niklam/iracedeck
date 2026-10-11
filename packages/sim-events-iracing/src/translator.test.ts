@@ -5904,6 +5904,25 @@ describe("sim-events-iracing translator", () => {
       expect(getLastStopTireTemps()).toEqual(STINT_READING);
     });
 
+    it("does not follow a second entry into the box before the car has been back on the circuit", () => {
+      const controller = start();
+
+      controller.__tick(telemetry(PLACED));
+      controller.__tick(telemetry({ ...ON_PIT_ROAD, ...PLACED }));
+      controller.__tick(telemetry({ ...IN_STALL, ...STINT }));
+      // Pulled out onto pit road and backed in again, on the set the stop fitted.
+      controller.__tick(telemetry({ ...LEAVING_STALL, ...STINT }));
+      controller.__tick(telemetry({ ...ON_PIT_ROAD, ...PLACED }));
+      controller.__tick(telemetry({ ...IN_STALL, ...PLACED }));
+      controller.__tick(telemetry({ ...IN_STALL, ...uniform(45) }));
+      expect(getLastStopTireTemps()).toEqual(STINT_READING);
+
+      // Back on the circuit, the next stop is a reading again.
+      controller.__tick(telemetry({ ...LEAVING_STALL, ...uniform(45) }));
+      stop(controller, uniform(95));
+      expect(getLastStopTireTemps()).toEqual(uniformReading(95));
+    });
+
     it("is replaced by the next stop, and the snapshot's raw state carries it", () => {
       const controller = start();
 
@@ -6027,20 +6046,27 @@ describe("sim-events-iracing translator", () => {
       expect(getLastStopTireTemps()).toEqual(STINT_READING);
     });
 
-    it("reads two stops, a reset and a return to the garage through the 2026-10-11 capture", () => {
+    type TempsCaptureTick = { t: number } & Partial<TelemetryData>;
+
+    /**
+     * Replay one of the 2026-10-11 captures through the translator. They record
+     * a tick only on a change; the sim keeps ticking in between with the same
+     * values, and past the capture's end. Returns the capture and, for each new
+     * reading, the capture time at which it first showed with its LF outside zone.
+     */
+    function replayCapture(fixture: string): {
+      capture: TempsCaptureTick[];
+      taken: Array<{ t: number; lfOutside: number }>;
+    } {
       vi.useFakeTimers();
 
-      type TempsCaptureTick = { t: number } & Partial<TelemetryData>;
       const capture = JSON.parse(
-        readFileSync(new URL("./diff/__fixtures__/tire-temps-stops-20261011.json", import.meta.url), "utf-8"),
+        readFileSync(new URL(`./diff/__fixtures__/${fixture}`, import.meta.url), "utf-8"),
       ) as TempsCaptureTick[];
       const BASE = 1_700_000_000_000;
       const controller = start();
-      /** The capture time at which each new reading first showed, with its LF outside zone. */
       const taken: Array<{ t: number; lfOutside: number }> = [];
 
-      // The capture records a tick only on a change; the sim keeps ticking in
-      // between with the same values, and past its end in the garage.
       capture.forEach(({ t: at, ...values }, i) => {
         const until = capture[i + 1]?.t ?? at + 2;
 
@@ -6054,6 +6080,11 @@ describe("sim-events-iracing translator", () => {
         }
       });
 
+      return { capture, taken };
+    }
+
+    it("reads two stops, a reset and a return to the garage through the 2026-10-11 capture", () => {
+      const { capture, taken } = replayCapture("tire-temps-stops-20261011.json");
       const valuesAt = (t: number): TempsCaptureTick => capture.find((tick) => tick.t === t)!;
 
       // Each reading shows on the first tick its rule allows, with the values
@@ -6075,6 +6106,32 @@ describe("sim-events-iracing translator", () => {
           rr: { inside: 52.006866455078125, middle: 51.6771240234375, outside: 50.87353515625 },
         },
       });
+    });
+
+    it("reads a stop and a timed tow through the 2026-10-11 tow capture", () => {
+      const { capture, taken } = replayCapture("tire-temps-tow-20261011.json");
+      const valuesAt = (t: number): TempsCaptureTick => capture.find((tick) => tick.t === t)!;
+
+      // The stop as the car enters its box, and the tow on the first tick the
+      // car stands in its box — 73 s before the tow has been served. Nothing
+      // else in the 73 s, nor the pit service that follows, takes another.
+      expect(taken).toEqual([
+        { t: 209.85, lfOutside: valuesAt(209.48).LFtempCL },
+        { t: 295.03, lfOutside: valuesAt(295.02).LFtempCL },
+      ]);
+
+      // The tow's own values, each zone named from the car's centreline.
+      const tow = valuesAt(295.02);
+
+      expect(getLastStopTireTemps()).toEqual({
+        corners: {
+          lf: { outside: tow.LFtempCL, middle: tow.LFtempCM, inside: tow.LFtempCR },
+          rf: { inside: tow.RFtempCL, middle: tow.RFtempCM, outside: tow.RFtempCR },
+          lr: { outside: tow.LRtempCL, middle: tow.LRtempCM, inside: tow.LRtempCR },
+          rr: { inside: tow.RRtempCL, middle: tow.RRtempCM, outside: tow.RRtempCR },
+        },
+      });
+      expect(tow.LFtempCR).toBeGreaterThan(70);
     });
 
     it("survives a session change, live or through replay-mode ticks", () => {

@@ -7,6 +7,7 @@
  *   - no reading for missing / non-finite / all-zero values
  *   - a stop the driver drove into takes the reading, keeps following the
  *     values until the car leaves its box, then freezes
+ *   - a second entry into the box without a run in between is not followed
  *   - a garage start leaves the previous reading in place
  *   - a tow or reset into the box, and leaving the car, are each read once,
  *     only after a run on the circuit and only when the values changed from
@@ -223,6 +224,42 @@ describe("diffTireTemps — a stop the driver drove into", () => {
     expect(step(state, onCircuit(temps(STINT)), [PIT_EXITED])).toBeNull();
   });
 
+  it("does not follow a second entry into the box before the car has been back on the circuit", () => {
+    const state = createInitialState();
+
+    step(state, onCircuit());
+    step(state, onPitRoad(), [PIT_ENTERED]);
+    step(state, inStall(temps(STINT)), [STALL_ENTERED]);
+    // Out of the box onto pit road, then backed in again: the stall-visit rule
+    // still calls it a drive-in, and the sim now holds the set the stop fitted.
+    step(state, leavingStall(temps(STINT)), [STALL_DEPARTED]);
+    step(state, onPitRoad(temps(PLACED)));
+
+    expect(step(state, inStall(temps(PLACED)), [STALL_ENTERED])).toEqual(reading(STINT));
+    expect(step(state, inStall(temps(HOTTER)))).toEqual(reading(STINT));
+    expect(step(state, leavingStall(temps(HOTTER)), [STALL_DEPARTED])).toEqual(reading(STINT));
+  });
+
+  it("keeps the reading when the stall flag flickers off and on mid-visit", () => {
+    const state = createInitialState();
+
+    step(state, onCircuit());
+    step(state, onPitRoad(), [PIT_ENTERED]);
+    step(state, inStall(temps(STINT)), [STALL_ENTERED]);
+    step(state, leavingStall(temps(STINT)), [STALL_DEPARTED]);
+
+    expect(step(state, inStall(temps(STINT)), [STALL_ENTERED])).toEqual(reading(STINT));
+  });
+
+  it("follows a stop whose run carried no trustworthy values on the circuit", () => {
+    const state = createInitialState();
+
+    step(state, onCircuit(temps(ZEROS)));
+    step(state, onPitRoad(temps(ZEROS)), [PIT_ENTERED]);
+
+    expect(step(state, inStall(temps(STINT)), [STALL_ENTERED])).toEqual(reading(STINT));
+  });
+
   it("stops following the values when the visit ends with no departure edge", () => {
     const state = createInitialState();
 
@@ -366,6 +403,17 @@ describe("diffTireTemps — a tow or reset into the box", () => {
     step(state, inStall(temps(PLACED)), [STALL_ENTERED]);
 
     expect(state.lastStopTireTemps).toEqual(reading(HOTTER));
+  });
+
+  it("takes none when the values on the circuit could not be trusted: nothing proves a refresh", () => {
+    const state = createInitialState();
+
+    driveThroughStop(state, STINT);
+    step(state, onCircuit(temps(ZEROS)));
+    step(state, outOfWorld(HOTTER));
+    step(state, inStall(temps(HOTTER)), [PIT_ENTERED, STALL_ENTERED]);
+
+    expect(state.lastStopTireTemps).toEqual(reading(STINT));
   });
 
   it("waits out a tick whose values cannot be trusted", () => {

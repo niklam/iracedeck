@@ -1837,9 +1837,9 @@ function wipeStateForReplay(self: TranslatorInstance): void {
     // replay-mode ticks, and the garage is exactly where the reading is wanted
     // — a driver tuning pressures and camber against the run just driven. What
     // decides when one is taken — the stall-visit latch (`stallVisit*`) and
-    // the values held on the circuit (`tireTempsOnCircuit`) — is pointedly NOT
-    // preserved: the latch re-seeds as "not driven in" and the held values as
-    // "no run yet", which is what makes the "Drive" placement after the garage
+    // the run behind a reading (`tireTempsRun`, `tireTempsOnCircuit`) — is
+    // pointedly NOT preserved: the latch re-seeds as "not driven in" and the
+    // run as "none", which is what makes the "Drive" placement after the garage
     // leave this reading alone. A saved replay is the one replay that must not
     // keep it; the guard in `handleTick` clears it there.
     lastStopTireTemps: self.state.lastStopTireTemps,
@@ -1883,7 +1883,7 @@ function wipeStateForReplay(self: TranslatorInstance): void {
  * carried over as well — the one reading here that is not per-session: a
  * practice stop's temperatures are what a driver sets the car up from before
  * qualifying. The next reading replaces them, and a disconnect clears them.
- * The stall-visit latch and the values held on the circuit are wiped with
+ * The stall-visit latch and the run behind a reading are wiped with
  * everything else, so a session change mid-stop freezes the reading where it
  * was and the new session's first placement takes none.
  *

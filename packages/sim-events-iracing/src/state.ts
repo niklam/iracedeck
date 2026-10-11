@@ -33,11 +33,12 @@ export type CautionPhase = "none" | "waving" | "caught" | "one-to-go";
 export type TireCornerTemps = { inside: number; middle: number; outside: number };
 
 /**
- * The tire temperatures of the last pit stop the driver drove into, as
+ * The tire temperatures from the last time the car came in from a run, as
  * `getLastStopTireTemps()` reports them (issue #254). iRacing refreshes these
- * values only while the car is in its pit stall and holds them through the
- * whole next stint, so this is a reading of the stint that ended at that stop
- * — after a tire change, of the set that came off — never a live temperature.
+ * values only as the car comes in — at a pit stop, at a tow or reset to the
+ * pits, and when the driver leaves the car — and holds them through the whole
+ * next stint, so this is a reading of the run that ended there — after a tire
+ * change, of the set that came off — never a live temperature.
  */
 export type LastStopTireTemps = { corners: Record<TireCorner, TireCornerTemps> };
 
@@ -645,12 +646,27 @@ export type TranslatorState = {
    */
   lastStopTireTemps: LastStopTireTemps | null;
   /**
+   * Where the car stands between two readings — every reading needs a run on
+   * the circuit since the last one:
+   *
+   *   - `"none"` — no run yet: at the start, once a reading is taken, and once
+   *     the driver has left the car.
+   *   - `"driven"` — the car has been driving on the circuit, so the next time
+   *     it comes in is a reading.
+   *   - `"in-stop"` — the drive-in stall visit that ended the run, whose ticks
+   *     are the reading; back to `"none"` as the visit ends, so a second entry
+   *     into the box without a run in between is not followed.
+   *
+   * Both wipes in `translator.ts` reset it, so it never outlives the run it
+   * belongs to.
+   */
+  tireTempsRun: "none" | "driven" | "in-stop";
+  /**
    * The twelve values (the sim's order, L / M / R per corner) as last seen
    * while the car was driving on the circuit — what a tow, a reset or leaving
    * the car is measured against to tell that the sim refreshed them. `null`
-   * until the car has driven on the circuit, and again once a reading is taken
-   * or the driver leaves the car, so it never outlives the run it belongs to;
-   * both wipes in `translator.ts` drop it.
+   * outside a `"driven"` run, and within one while the values cannot be
+   * trusted, in which case there is nothing to measure against.
    */
   tireTempsOnCircuit: readonly number[] | null;
 
@@ -1480,6 +1496,7 @@ export function createInitialState(): TranslatorState {
     tireWearReport: null,
 
     lastStopTireTemps: null,
+    tireTempsRun: "none",
     tireTempsOnCircuit: null,
 
     trackWetnessInitialized: false,
