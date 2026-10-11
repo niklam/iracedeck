@@ -228,6 +228,7 @@ import type { ScenarioContract, SpeakGate } from "../../dsl.js";
 import { poolRef, WEIGHT } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 import { CAUTION_MAX_QUEUE_WAIT_MS, liveRaceCar, WAVING_FLAG_COOLDOWN_MS } from "./flag-alerts.js";
+import { createNamedCarMemory, type LastNamedCar } from "./named-car.js";
 import { type LivePositionResolver, selectLivePosition } from "./position-readout.js";
 
 /** iRacing's GreenHeld bit in the event's own telemetry — false when there is none to read. */
@@ -386,16 +387,13 @@ function cautionContract(
   };
 }
 
-/** The car a build last named, tagged with the caution it was named in — see `lastNamed` in the build. */
-type LastNamedCar = { episodeId: number; followCarIdx: number };
-
 /**
  * How the Telemetry Snapshot reaches the one piece of state this family
- * keeps (issue #1387). `lastNamed` lives in a build's closure, where nothing
- * outside the build can read it, so each build leaves a reader of its own
- * here and the newest wins — the plugin builds once, in `registerPitCrew`.
- * `null` until the first build. The state itself stays in the build: two
- * builds never share a record.
+ * keeps (issue #1387). The car last named lives in a build's own memory
+ * (`named-car.ts`), where nothing outside the build can read it, so each
+ * build leaves a reader of its own here and the newest wins — the plugin
+ * builds once, in `registerPitCrew`. `null` until the first build. The state
+ * itself stays in the build: two builds never share a record.
  */
 let readNewestLastNamed: (() => LastNamedCar | null) | null = null;
 
@@ -446,54 +444,33 @@ export function buildCautionContracts({
    * #1286), recorded by the four calls that name it when their gate admits —
    * the one place a claim may be committed (#1137): the script has expanded
    * and the ops take the bus next. Tagged with the caution's id so a record
-   * from an earlier caution — or session — never counts.
+   * from an earlier caution — or session — never counts. The mechanism is
+   * `named-car.ts`'s, shared with the rolling-start formation (issue #1167);
+   * the memory is this build's own.
    */
-  let lastNamed: LastNamedCar | null = null;
+  const named = createNamedCarMemory({ getEpisode: getCautionEpisode, getPaceLineup });
 
   // The newest build is the one the snapshot reads (issue #1387).
-  readNewestLastNamed = () => lastNamed;
-
-  /** Record the car ahead now as named — nothing while no caution is out or the lineup names no car. */
-  const recordNamed = (): void => {
-    const episode = getCautionEpisode();
-    const followCarIdx = getPaceLineup()?.followCarIdx ?? null;
-
-    if (episode === null || followCarIdx === null) return;
-
-    lastNamed = { episodeId: episode.id, followCarIdx };
-  };
+  readNewestLastNamed = named.read;
 
   /**
-   * What a change in `episode` is judged against: the car last named this
-   * caution. Before anything is named, nothing while the follow call can still
-   * name the car itself — switched on, and the field still waving, the only
-   * phase it speaks in — else the caution's first readable lineup. Past the
-   * waving phase a follow call that never played (the plugin started
-   * mid-caution, the driver was not in the car at the flag, the call was
-   * dropped from the bus's queue, or the pack has no follow line) has nothing
-   * more to say, so
-   * waiting for it would leave every genuine change silent until two to green
-   * or one to go.
+   * What a change is judged against before anything is named in `episode`:
+   * nothing while the follow call can still name the car itself — switched
+   * on, and the field still waving, the only phase it speaks in — else the
+   * caution's first readable lineup. Past the waving phase a follow call that
+   * never played (the plugin started mid-caution, the driver was not in the
+   * car at the flag, the call was dropped from the bus's queue, or the pack
+   * has no follow line) has nothing more to say, so waiting for it would
+   * leave every genuine change silent until two to green or one to go.
    */
-  const referenceCarIdx = (episode: CautionEpisode): number | null => {
-    if (lastNamed !== null && lastNamed.episodeId === episode.id) return lastNamed.followCarIdx;
-
+  const unnamedReferenceCarIdx = (episode: CautionEpisode): number | null => {
     if (isCautionCalloutEnabled("follow") && getCautionPhase() === "waving") return null;
 
     return episode.firstFollowCarIdx;
   };
 
   /** A speak-time gate that also records the car the call names — on admission only. */
-  const naming = (gate: SpeakGate): SpeakGate => ({
-    description: gate.description,
-    admit: (ctx) => {
-      if (!gate.admit(ctx)) return false;
-
-      recordNamed();
-
-      return true;
-    },
-  });
+  const naming = named.naming;
 
   return [
     {
@@ -582,24 +559,8 @@ export function buildCautionContracts({
       speakGate: {
         description:
           "Re-checked at speak time: the caution is still out, you still hold a pace row, and the car ahead is not the one last named in this caution.",
-        admit: (ctx) => {
-          if (!stillLinedUp.admit(ctx)) return false;
-
-          const episode = getCautionEpisode();
-          const now = getPaceLineup()?.followCarIdx ?? null;
-
-          if (episode === null || now === null) return false;
-
-          const reference = referenceCarIdx(episode);
-
-          if (reference === null || now === reference) return false;
-
-          // The car this call names — the one just compared, under the
-          // caution just read.
-          lastNamed = { episodeId: episode.id, followCarIdx: now };
-
-          return true;
-        },
+        // The judgement last: it records the car this call names.
+        admit: (ctx) => stillLinedUp.admit(ctx) && named.admitChange(unnamedReferenceCarIdx),
       },
       description:
         "The car you line up behind under caution changes — a car pitted, or the field re-formed — and two seconds later it is still not the car the engineer last named in this caution.",
