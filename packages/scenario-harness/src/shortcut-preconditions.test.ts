@@ -1,10 +1,10 @@
 import type { IAudioService } from "@iracedeck/audio-service";
 import { _resetEventBus, getEventBus, initializeEventBus } from "@iracedeck/event-bus";
-import type { SessionInfo } from "@iracedeck/iracing-sdk";
+import type { SessionInfo, TelemetryData } from "@iracedeck/iracing-sdk";
 import { silentLogger } from "@iracedeck/logger";
-import { resolvePlayerCarIdx } from "@iracedeck/sim-events-iracing";
+import { isOvalTrack, type PaceLineup, resolvePaceLineup, resolvePlayerCarIdx } from "@iracedeck/sim-events-iracing";
 import type { FastifyInstance } from "fastify";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -19,19 +19,42 @@ import {
   type ShortcutPrecondition,
 } from "./shortcut-preconditions.js";
 
-// A pass-through spy on the translator's own reader (issue #1127 review): the
-// precondition must ASK it rather than restate its rule, and only a spy can
-// tell the two apart — a restatement answers every table below identically.
+// Pass-through spies on the translator's own readers (issue #1127 review): a
+// precondition must ASK them rather than restate their rules, and only a spy
+// can tell the two apart — a restatement answers every table below identically.
 vi.mock("@iracedeck/sim-events-iracing", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@iracedeck/sim-events-iracing")>();
 
-  return { ...actual, resolvePlayerCarIdx: vi.fn(actual.resolvePlayerCarIdx) };
+  return {
+    ...actual,
+    resolvePlayerCarIdx: vi.fn(actual.resolvePlayerCarIdx),
+    resolvePaceLineup: vi.fn(actual.resolvePaceLineup),
+    isOvalTrack: vi.fn(actual.isOvalTrack),
+  };
 });
 
 const PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 /** The ids that must refuse to run without a session preset (issue #1127). */
 const CAUTION_SHORTCUT_IDS = ["flag-caution-restart", "flag-caution-lineup-change", "flag-caution-extra-lap"];
+
+/** The whole-formation run, which needs its grid read on an OVAL (issue #1167). */
+const FORMATION_SHORTCUT_ID = "rolling-start-formation";
+
+/** The formation's three calls on their own, which need the grid read as a grid and no more. */
+const FORMATION_CALL_SHORTCUT_IDS = [
+  "rolling-start-pace-car-moving",
+  "rolling-start-lineup-changed",
+  "flag-one-lap-to-green",
+];
+
+/** Every session preset the harness ships, by name — read from the folder, so a new one is judged too. */
+const SESSION_PRESETS = readdirSync(join(PACKAGE_ROOT, "presets", "session"))
+  .filter((file) => file.endsWith(".json"))
+  .map((file) => file.slice(0, -".json".length));
+
+/** The mock SDK's boot telemetry: session 0, and nothing a precondition reads beyond that. */
+const BOOT_TELEMETRY = new MockSDKController().getState().telemetry;
 
 /**
  * The ids that must refuse to run while the mock SDK is disconnected (#1349):
@@ -44,11 +67,11 @@ const GATED_SHORTCUT_IDS = SCENARIO_SHORTCUTS.filter((s) => s.telemetrySequence?
 
 /** A connected harness holding `sessionInfo` — isolates the session-preset rule from the connection one. */
 function connectedWith(sessionInfo: Record<string, unknown> | null): HarnessPreconditionState {
-  return { sessionInfo, isConnected: true };
+  return { sessionInfo, isConnected: true, telemetry: BOOT_TELEMETRY };
 }
 
 /** The harness as it boots: no session preset, mock SDK disconnected. */
-const AT_BOOT: HarnessPreconditionState = { sessionInfo: null, isConnected: false };
+const AT_BOOT: HarnessPreconditionState = { sessionInfo: null, isConnected: false, telemetry: BOOT_TELEMETRY };
 
 function readSessionPreset(name: string): Record<string, unknown> {
   return JSON.parse(readFileSync(join(PACKAGE_ROOT, "presets", "session", `${name}.json`), "utf8")) as Record<
@@ -143,6 +166,7 @@ describe("checkShortcutPreconditions", () => {
       const refusal = checkShortcutPreconditions(requiresOf(id), {
         sessionInfo: readSessionPreset("race"),
         isConnected: false,
+        telemetry: BOOT_TELEMETRY,
       });
 
       expect(refusal, `"${id}" ran disconnected`).toEqual(expect.stringContaining("Connect the mock SDK"));
@@ -154,6 +178,129 @@ describe("checkShortcutPreconditions", () => {
     for (const id of GATED_SHORTCUT_IDS) {
       expect(checkShortcutPreconditions(requiresOf(id), connectedWith(null)), `"${id}"`).toBeNull();
     }
+  });
+});
+
+describe("the rolling-start preconditions (issue #1167)", () => {
+  it("refuses every rolling-start shortcut with no session preset, naming the two that work", () => {
+    // The formation calls are race-only, and read the driver list for the car
+    // to form up behind: with no session they are silent to the last one.
+    for (const id of [FORMATION_SHORTCUT_ID, ...FORMATION_CALL_SHORTCUT_IDS]) {
+      const refusal = checkShortcutPreconditions(requiresOf(id), connectedWith(null));
+
+      expect(refusal, `"${id}" ran with no session info`).toEqual(expect.stringContaining("session preset"));
+      expect(refusal).toContain("race-oval");
+    }
+  });
+
+  it.each(SESSION_PRESETS)("permits the formation's three calls on exactly the race presets (%s)", (preset) => {
+    // `practice` names a player car and passes the caution buttons' check;
+    // here it is refused, because no formation call speaks outside a race.
+    const isRace = preset === "race" || preset === "race-oval";
+
+    for (const id of FORMATION_CALL_SHORTCUT_IDS) {
+      const refusal = checkShortcutPreconditions(requiresOf(id), connectedWith(readSessionPreset(preset)));
+
+      expect(refusal === null, `"${id}" on ${preset}: ${refusal}`).toBe(isRace);
+    }
+  });
+
+  it.each(SESSION_PRESETS)("permits the whole formation on the oval race preset alone (%s)", (preset) => {
+    // Unlike the caution buttons, which run on a road course and merely lose
+    // the lane: the lane wording is what this button is for.
+    const refusal = checkShortcutPreconditions(
+      requiresOf(FORMATION_SHORTCUT_ID),
+      connectedWith(readSessionPreset(preset)),
+    );
+
+    expect(refusal === null, `on ${preset}: ${refusal}`).toBe(preset === "race-oval");
+
+    if (preset !== "race-oval") expect(refusal).toContain('"race-oval" session preset');
+  });
+
+  it("refuses every rolling-start shortcut while the mock SDK is disconnected, even on the right preset", () => {
+    // Their callouts ask the translator whether a formation is running, and a
+    // translator that sees no ticks never opens one.
+    for (const id of [FORMATION_SHORTCUT_ID, ...FORMATION_CALL_SHORTCUT_IDS]) {
+      const refusal = checkShortcutPreconditions(requiresOf(id), {
+        sessionInfo: readSessionPreset("race-oval"),
+        isConnected: false,
+        telemetry: BOOT_TELEMETRY,
+      });
+
+      expect(refusal, `"${id}" ran disconnected`).toEqual(expect.stringContaining("Connect the mock SDK"));
+      expect(refusal).toContain("formation");
+    }
+  });
+
+  it("asks the translator's lineup reader and its oval reader — never restated rules", () => {
+    // The grid frame is five rules at once, and "is this an oval" a sixth; a
+    // copy of any here would drift the day the reader tightened. So the check
+    // has to BE those functions: called with the session, and obeyed.
+    const sessionInfo = readSessionPreset("race-oval");
+
+    vi.mocked(resolvePaceLineup).mockClear();
+    vi.mocked(isOvalTrack).mockClear();
+    expect(checkShortcutPreconditions(["rolling-start-oval-grid"], connectedWith(sessionInfo))).toBeNull();
+    expect(vi.mocked(isOvalTrack)).toHaveBeenCalledWith(sessionInfo);
+    expect(vi.mocked(resolvePaceLineup)).toHaveBeenCalledWith(expect.anything(), sessionInfo, true);
+
+    // The lineup the reader was asked about is the buttons' own grid, in the
+    // session the mock is in: the pace car without a row, the player at
+    // line 0 row 3.
+    const asked = vi.mocked(resolvePaceLineup).mock.calls[0][0] as Record<string, unknown>;
+
+    expect(asked.SessionNum).toBe(BOOT_TELEMETRY.SessionNum);
+    expect((asked.CarIdxPaceRow as number[])[0]).toBe(-1);
+    expect([(asked.CarIdxPaceLine as number[])[7], (asked.CarIdxPaceRow as number[])[7]]).toEqual([0, 3]);
+
+    // Whatever the session holds, the readers' verdict is the rule. No lineup:
+    // refused. A grid with no lane: the calls run, the whole formation does not.
+    vi.mocked(resolvePaceLineup).mockReturnValueOnce(null);
+    expect(checkShortcutPreconditions(["rolling-start-grid"], connectedWith(sessionInfo))).not.toBeNull();
+
+    const noLane = { anchor: "grid", line: null } as PaceLineup;
+
+    vi.mocked(resolvePaceLineup).mockReturnValueOnce(noLane).mockReturnValueOnce(noLane);
+    expect(checkShortcutPreconditions(["rolling-start-grid"], connectedWith(sessionInfo))).toBeNull();
+    expect(checkShortcutPreconditions(["rolling-start-oval-grid"], connectedWith(sessionInfo))).not.toBeNull();
+
+    // A lineup read in the caution's frame, or in none, is not a grid.
+    for (const anchor of ["pace-car", null] as const) {
+      vi.mocked(resolvePaceLineup).mockReturnValueOnce({ anchor, line: "inside" } as PaceLineup);
+      expect(
+        checkShortcutPreconditions(["rolling-start-grid"], connectedWith(sessionInfo)),
+        `${anchor}`,
+      ).not.toBeNull();
+    }
+  });
+
+  it("judges the session the mock is IN, not the first one the session info lists", () => {
+    // Whether a session is a race is a question about one entry of the session
+    // list. A weekend with practice ahead of the race is refused while the
+    // mock sits in the practice and permitted once it is in the race.
+    const weekend = readSessionPreset("race-oval");
+    const sessions = (weekend.SessionInfo as { Sessions: Record<string, unknown>[] }).Sessions;
+
+    expect(sessions).toHaveLength(1);
+
+    const sessionInfo = {
+      ...weekend,
+      SessionInfo: {
+        Sessions: [
+          { ...sessions[0], SessionNum: 0, SessionType: "Practice" },
+          { ...sessions[0], SessionNum: 1 },
+        ],
+      },
+    };
+    const inSession = (SessionNum: number): HarnessPreconditionState => ({
+      sessionInfo,
+      isConnected: true,
+      telemetry: { ...BOOT_TELEMETRY, SessionNum } as TelemetryData,
+    });
+
+    expect(checkShortcutPreconditions(["rolling-start-oval-grid"], inSession(0))).not.toBeNull();
+    expect(checkShortcutPreconditions(["rolling-start-oval-grid"], inSession(1))).toBeNull();
   });
 });
 
@@ -226,6 +373,68 @@ describe("POST /api/shortcut/start", () => {
     for (const id of GATED_SHORTCUT_IDS) {
       expect((await start(id)).statusCode, `"${id}" was refused`).toBe(204);
     }
+  });
+
+  it("refuses the rolling-start shortcuts as the harness boots, then on the wrong session, then lets them run (#1167)", async () => {
+    const all = [FORMATION_SHORTCUT_ID, ...FORMATION_CALL_SHORTCUT_IDS];
+
+    // No session preset, disconnected: the session is asked for first.
+    for (const id of all) {
+      const res = await start(id);
+
+      expect(res.statusCode, `"${id}" was not refused`).toBe(409);
+      expect(res.error).toEqual(expect.stringContaining("session preset"));
+    }
+
+    // The right session, still disconnected.
+    controller.setSessionInfo(readSessionPreset("race-oval") as unknown as SessionInfo);
+
+    for (const id of all) {
+      const res = await start(id);
+
+      expect(res.statusCode, `"${id}" was not refused`).toBe(409);
+      expect(res.error).toEqual(expect.stringContaining("Connect the mock SDK"));
+    }
+
+    controller.setConnected(true);
+
+    for (const id of all) expect((await start(id)).statusCode, `"${id}" was refused`).toBe(204);
+
+    // A road course: the calls run, the whole formation is refused by name.
+    controller.setSessionInfo(readSessionPreset("race") as unknown as SessionInfo);
+
+    for (const id of FORMATION_CALL_SHORTCUT_IDS) {
+      expect((await start(id)).statusCode, `"${id}" was refused`).toBe(204);
+    }
+
+    const onRoad = await start(FORMATION_SHORTCUT_ID);
+
+    expect(onRoad.statusCode).toBe(409);
+    expect(onRoad.error).toContain("race-oval");
+  });
+
+  it("hands the rolling-start check the session the mock is in (#1167)", async () => {
+    // The route passes the mock's live telemetry, so a session number patched
+    // through `/api/telemetry` decides which entry of the session list is read.
+    const weekend = readSessionPreset("race-oval");
+    const sessions = (weekend.SessionInfo as { Sessions: Record<string, unknown>[] }).Sessions;
+
+    controller.setSessionInfo({
+      ...weekend,
+      SessionInfo: {
+        Sessions: [
+          { ...sessions[0], SessionNum: 0, SessionType: "Practice" },
+          { ...sessions[0], SessionNum: 1 },
+        ],
+      },
+    } as unknown as SessionInfo);
+    controller.setConnected(true);
+
+    expect((await start(FORMATION_SHORTCUT_ID)).statusCode).toBe(409);
+
+    controller.mutateTelemetry({ SessionNum: 1 });
+
+    expect((await start(FORMATION_SHORTCUT_ID)).statusCode).toBe(204);
   });
 
   it("permits an ordinary shortcut with nothing set up at all", async () => {

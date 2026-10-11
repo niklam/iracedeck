@@ -440,6 +440,19 @@ function renderShortcuts() {
           } else if (s.event) {
             await post("/api/bus/publish", { event: s.event, data: s.data });
           }
+          // Issue #1167 — a bus-event shortcut whose setup sequence had to put
+          // a translator STATE in front of the publish (a rolling-start
+          // formation, for "One Lap to Green") takes it away again afterwards:
+          // the same steps as a `telemetrySequence`, run after the publish.
+          // The page-wide lock holds through them, so the listening time in
+          // the first step is covered too.
+          if (s.event && s.teardownSequence) {
+            for (const step of s.teardownSequence) {
+              await post("/api/telemetry", step);
+
+              if (step.holdMs) await new Promise((resolve) => setTimeout(resolve, step.holdMs));
+            }
+          }
         } catch (e) {
           alert(`Shortcut "${s.label}" failed: ${e.message}`);
         } finally {

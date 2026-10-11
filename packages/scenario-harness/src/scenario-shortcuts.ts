@@ -14,6 +14,7 @@
 import {
   CAUTION_LINEUP_CHANGE_DELAY_MS,
   type QualifyingInvalidationSnapshot,
+  ROLLING_START_LINEUP_CHANGE_DELAY_MS,
 } from "@iracedeck/audio-scenarios/pit-crew";
 import {
   OpponentPenaltyFlag,
@@ -32,6 +33,7 @@ import {
   PitSvFlags,
   PitSvStatus,
   REPLAY_EXIT_GRACE_MS,
+  SessionState,
   TrkLoc,
 } from "@iracedeck/iracing-sdk";
 import {
@@ -43,6 +45,17 @@ import {
 } from "@iracedeck/sim-events-iracing";
 
 import { TIRE_WEAR_REPORT_EXAMPLE } from "./event-names.js";
+import {
+  FORMATION_FOLLOW_CAR_IDX,
+  FORMATION_GRID_PATCH,
+  FORMATION_LAP_DIST_PCT,
+  FORMATION_PACE_CAR_IDX,
+  FORMATION_PACE_LINE,
+  FORMATION_PACE_ROW,
+  FORMATION_POLE_CAR_IDX,
+  FORMATION_SESSION_STATE,
+  FORMATION_TRACK_SURFACE,
+} from "./rolling-start-grid.js";
 import type { ShortcutPrecondition } from "./shortcut-preconditions.js";
 
 /** Fields every shortcut carries, whatever it drives. */
@@ -57,7 +70,9 @@ type ScenarioShortcutBase = {
    * UI the rule's reason rather than letting the button proceed into a
    * half-silent sequence. Optional — a shortcut that sets up everything it
    * needs declares none, which is all of them but the caution three (a
-   * session preset) and the overtake and gap ones (a connected mock SDK).
+   * session preset), the overtake and gap ones (a connected mock SDK) and the
+   * rolling-start four (both: a race session the formation grid reads in, on
+   * an oval for the whole-formation run, and a connected mock SDK).
    */
   requires?: readonly ShortcutPrecondition[];
 };
@@ -161,6 +176,20 @@ export type BusEventShortcut = ScenarioShortcutBase & {
    * absent over JSON.
    */
   telemetryPatch?: Record<string, unknown>;
+  /**
+   * Optional telemetry steps applied AFTER publishing `event` (issue #1167),
+   * in order and holding between them as `telemetrySequence` does. The first
+   * is usually an empty patch whose hold is the listening time.
+   *
+   * Exists for "One Lap to Green": its callout speaks only while the
+   * translator holds a rolling-start formation, so the button's setup
+   * sequence puts one in front of the translator — and a formation left
+   * running is a session left in `ParadeLaps`, before the green, where the
+   * overtake, gap and position callouts all stand down. Every button pressed
+   * afterwards would then be silent for a reason of this button's making, so
+   * it stands the formation down again once its line has had time to play.
+   */
+  teardownSequence?: readonly TelemetryStep[];
 };
 
 /**
@@ -188,6 +217,7 @@ export type TelemetrySequenceShortcut = ScenarioShortcutBase & {
   data?: never;
   precedingEvents?: never;
   telemetryPatch?: never;
+  teardownSequence?: never;
   /**
    * Optional qualifying lap-invalidation snapshot, posted BEFORE the first
    * step (issue #1211) — the push the bus-event shortcuts make, which the UI
@@ -246,10 +276,6 @@ function startCountdown(seconds: StartCountdownSeconds): BusEventShortcut {
     event: "startLight.countdown.raised",
     data: { seconds },
   };
-}
-
-function rollingStart(id: string, label: string, event: SimEventName, description?: string): BusEventShortcut {
-  return { id: `rolling-start-${id}`, category: "Rolling Start", label, description, event, data: {} };
 }
 
 function radar(label: string, from: string, to: string): BusEventShortcut {
@@ -1526,6 +1552,454 @@ const CRASH_INTO_FULL_COURSE_CAUTION_SHORTCUT: TelemetrySequenceShortcut = {
   ],
 };
 
+/**
+ * `SessionFlags` through the rolling start captured at an oval (issue #1167,
+ * `local/telemetry-watch-20260917-191825-092.jsonl`, committed as
+ * `sim-events-iracing`'s `rolling-start-formation-20260917.json`), in the
+ * order the capture held them:
+ *
+ *   - `0x10040200` on the grid in `GetInCar` — `OneLapToGreen` is up from the
+ *     first record and stays up until after the green, which is why it cannot
+ *     be the "one lap to green" trigger at a start;
+ *   - `0x20040200` from `Warmup` (116.08 s) through the whole of `ParadeLaps`
+ *     (from 126.67 s) — `StartReady` in place of `StartHidden`;
+ *   - `0x20040600` once the green is held (186.28 s, 14.9 s before the green);
+ *   - `0x80040604` on the green tick (201.18 s): `Green | StartGo`, with
+ *     `OneLapToGreen` and `GreenHeld` still set for that one tick;
+ *   - `0x80040004` a tick later, then `0x10040004` once the gantry hides
+ *     (206.18 s).
+ */
+const FORMATION_GRID_FLAGS = Flags.StartHidden | Flags.Servicible | Flags.OneLapToGreen;
+const FORMATION_FLAGS = Flags.StartReady | Flags.Servicible | Flags.OneLapToGreen;
+const FORMATION_GREEN_HELD_FLAGS = FORMATION_FLAGS | Flags.GreenHeld;
+const FORMATION_GO_FLAGS = Flags.StartGo | Flags.Servicible | Flags.OneLapToGreen | Flags.GreenHeld | Flags.Green;
+const FORMATION_GREEN_FLAGS = Flags.StartGo | Flags.Servicible | Flags.Green;
+
+/**
+ * How fast the field rolls behind the pace car, in m/s (about 72 km/h). No
+ * formation callout reads it; the run pins `Speed` so that what it plays does
+ * not depend on the speed the previous button left the car at.
+ */
+const FORMATION_PACE_SPEED = 20;
+
+/**
+ * How long a formation button's opening replay-mode step is held — a few of
+ * the mock controller's 14 ms ticks, all the translator needs to wipe its
+ * state on the way in (the {@link AUTO_FUEL_SEED_MS} idiom).
+ */
+const FORMATION_SEED_MS = 200;
+
+/** How long the field sits in `Warmup` before the pace car moves: 10.6 s in the capture, compressed. */
+const FORMATION_WARMUP_MS = 1500;
+
+/**
+ * How long the `ParadeLaps` entry is held before the next thing happens: the
+ * pace-car call with the lane and a car number, and its radio frame. In the
+ * capture the pace car reached the road 5.7 s after the entry, so the
+ * whole-formation run keeps close to the measured gap here.
+ */
+const FORMATION_PACE_CAR_CALL_MS = 6000;
+
+/** A beat between the pace car reaching the road and its release crossing of start/finish. */
+const FORMATION_PACE_CAR_OUT_MS = 500;
+
+/** How long each leg of the pace car's first lap is held — an 82 s lap in the snapshots, compressed. */
+const FORMATION_PACE_LAP_LEG_MS = 1000;
+
+/** Listening time for "One lap to green", the lane, the car number and the radio frame. */
+const FORMATION_ONE_LAP_TO_GREEN_CALL_MS = 6000;
+
+/**
+ * How long a car that has left the world keeps its pace row before the rows
+ * behind it close up: one sim tick in the 2026-09-18 road capture (548.33 →
+ * 548.37 s), the only place it has been measured.
+ */
+const FORMATION_GHOST_ROW_MS = 40;
+
+/**
+ * How long a lineup change is listened through: the engine's own
+ * {@link ROLLING_START_LINEUP_CHANGE_DELAY_MS} hold before it decides, then
+ * the changed-car line, the car number and the radio frame (3.2 s in the
+ * reference voice). It has to finish inside this: the next thing the whole
+ * formation does is hold the green, which ends the formation, and a change
+ * call still waiting then is refused at its speak gate.
+ */
+const FORMATION_CHANGE_LISTEN_MS = ROLLING_START_LINEUP_CHANGE_DELAY_MS + 4000;
+
+/**
+ * From the green being held to the pace car leaving: 10.3 s in the capture,
+ * compressed to the longest green-held line of the reference voice (4.7 s)
+ * and its radio frame, so "Pace car's off" lands on a quiet radio.
+ */
+const FORMATION_GREEN_HELD_MS = 6000;
+
+/** From the pace car leaving to the green: 4.65 s in the capture, compressed to the "Pace car's off" line. */
+const FORMATION_PACE_CAR_OFF_MS = 3500;
+
+/** The green tick's own flags held for one sim tick, as captured (201.18 → 201.28 s). */
+const FORMATION_GO_TICK_MS = 100;
+
+/** From the green to the lineup starting to unwind: 2.7 s in the capture, less the tick above. */
+const FORMATION_UNWIND_AFTER_MS = 2600;
+
+/** How long the unwinding lineup is held: 2.3 s in the capture, from the first row to go to the gantry hiding. */
+const FORMATION_UNWIND_MS = 2300;
+
+/** How long the green stays shown once the lineup has gone, before the run ends with no flag. */
+const FORMATION_GREEN_SHOWN_MS = 2000;
+
+/** The player live in the car, on the track, off pit road — what the formation callouts' shared gate reads. */
+const FORMATION_IN_CAR = {
+  IsOnTrack: true,
+  OnPitRoad: false,
+  PlayerCarInPitStall: false,
+  PlayerTrackSurface: TrkLoc.OnTrack,
+};
+
+/** `array` with one slot replaced — a patch replaces a whole per-car array, never one slot of it. */
+function withSlot(array: readonly number[], carIdx: number, value: number): number[] {
+  return array.map((current, idx) => (idx === carIdx ? value : current));
+}
+
+/**
+ * The gridded field's lap progress with the pace car at `pacePct`, and with
+ * the car ahead of the player out of the world (−1) once it has left.
+ */
+function formationLapDist(pacePct: number, followCarGone = false): number[] {
+  const withPaceCar = withSlot(FORMATION_LAP_DIST_PCT, FORMATION_PACE_CAR_IDX, pacePct);
+
+  return followCarGone ? withSlot(withPaceCar, FORMATION_FOLLOW_CAR_IDX, -1) : withPaceCar;
+}
+
+/** The field's track surfaces with the pace car on `paceSurface`, and the car ahead of the player gone once it has left. */
+function formationSurfaces(paceSurface: TrkLoc, followCarGone = false): number[] {
+  const withPaceCar = withSlot(FORMATION_TRACK_SURFACE, FORMATION_PACE_CAR_IDX, paceSurface);
+
+  return followCarGone ? withSlot(withPaceCar, FORMATION_FOLLOW_CAR_IDX, TrkLoc.NotInWorld) : withPaceCar;
+}
+
+/**
+ * The lineup once the car ahead of the player has gone and line 0 has closed
+ * up behind it: that car holds no row, and every car that was behind it on
+ * line 0 sits one row further up. The player is now at line 0 row 2, behind
+ * car "19" at row 1. Line 1 is untouched, as it was when the rows closed up
+ * behind car 8 in the 2026-09-18 road capture.
+ */
+const FORMATION_CLOSED_UP_LINE = withSlot(FORMATION_PACE_LINE, FORMATION_FOLLOW_CAR_IDX, -1);
+const FORMATION_CLOSED_UP_ROW = FORMATION_PACE_ROW.map((row, carIdx) => {
+  if (carIdx === FORMATION_FOLLOW_CAR_IDX) return -1;
+
+  const behindItOnLineZero = FORMATION_PACE_LINE[carIdx] === 0 && row > FORMATION_PACE_ROW[FORMATION_FOLLOW_CAR_IDX];
+
+  return behindItOnLineZero ? row - 1 : row;
+});
+
+/**
+ * The lineup as it starts to unwind under green: the pole has gone and line 0
+ * has moved up a row, so the grid's THIRD car heads line 0 beside the outside
+ * front car — the measured shape at 203.87 s, and the reason the lineup
+ * reader's grid frame needs the session phase as well as the shape. Read by
+ * shape alone that third car would be told it leads. Nothing may be said
+ * about it here: the formation ended when the green was held.
+ */
+const FORMATION_UNWIND_LINE = withSlot(FORMATION_CLOSED_UP_LINE, FORMATION_POLE_CAR_IDX, -1);
+const FORMATION_UNWIND_ROW = FORMATION_CLOSED_UP_ROW.map((row, carIdx) => {
+  if (carIdx === FORMATION_POLE_CAR_IDX) return -1;
+
+  return FORMATION_CLOSED_UP_LINE[carIdx] === 0 ? row - 1 : row;
+});
+
+/** Nobody lined up: what every pace row reads once the lineup has unwound (206.80 s). */
+const FORMATION_NO_LINEUP = FORMATION_PACE_ROW.map(() => -1);
+
+/**
+ * The opening replay-mode bracket of every formation button (the
+ * {@link AUTO_FUEL_TAKEOVER_SHORTCUT} idiom): the player live in the car, the
+ * grid formed up, and the session in `phase` — all set while
+ * `IsReplayPlaying` is true, where the translator publishes nothing, and
+ * seeded once it has read false for the exit grace. So the button plays the
+ * same from every preset and after every other button, and nothing it has to
+ * ARRANGE is announced: leaving pit road, the pace car's surface, a session
+ * state the previous button left.
+ *
+ * What the translator makes of the seed depends on the phase, and each button
+ * picks it for that. Seeded BEFORE `ParadeLaps`, no formation is running and
+ * the button drives the entry edge itself. Seeded IN `ParadeLaps`, the
+ * rolling-start diff adopts the formation silently — the state without the
+ * cue, with the grid's follow car as the formation's first — and the
+ * pace-lap diff seeds without arming, so nothing of the button's own making
+ * is announced before the thing it auditions.
+ *
+ * Every step asks for a tick, so the translator sees the bracket open and
+ * close whatever the mock's tick rate.
+ *
+ * **The first step is there for one translator decision the bracket does not
+ * swallow.** The translator briefs a driver who connects to a race before its
+ * green: once per connection, on the first tick that shows a known session
+ * state, it publishes a synthetic `session.changed { from: -1 }` — the
+ * race-start brief's trigger — and it does so ahead of the replay guard, since
+ * a driver in the garage is exactly who the brief is for. The mock's boot
+ * telemetry and four of its six telemetry presets carry no `SessionState`, so
+ * on those that check is still open, and a grid before its green would be the
+ * first known state it sees: the first press of a formation button would
+ * publish the brief's trigger, replaying whatever race-start snapshot the
+ * tester last posted, and no later press would. A race that is already under
+ * way is the state that settles the check silently (too late to brief), so
+ * the bracket shows it one first — a tick of `Racing` — and only then the
+ * grid. `rolling-start-shortcuts.test.ts` pins that every button publishes
+ * the same from every telemetry preset, and that without this step it does
+ * not.
+ */
+function formationBracket(phase: { SessionState: SessionState; SessionFlags: number; Speed: number }): TelemetryStep[] {
+  return [
+    { patch: { IsReplayPlaying: true, SessionState: SessionState.Racing }, tick: true },
+    {
+      patch: { IsReplayPlaying: true, ...FORMATION_IN_CAR, ...FORMATION_GRID_PATCH, ...phase },
+      holdMs: FORMATION_SEED_MS,
+      tick: true,
+    },
+    { patch: { IsReplayPlaying: false }, holdMs: REPLAY_EXIT_SETTLE_MS, tick: true },
+  ];
+}
+
+/** The bracket seeded in `ParadeLaps`: a formation the translator adopts without announcing it. */
+const FORMATION_ADOPTED = formationBracket({
+  SessionState: FORMATION_SESSION_STATE,
+  SessionFlags: FORMATION_FLAGS,
+  Speed: FORMATION_PACE_SPEED,
+});
+
+/**
+ * How a single-call formation button ends: the session racing with no flag
+ * shown, nobody lined up, and the per-car arrays the run added taken away
+ * again (`null` deletes a key) — so the formation it opened is closed, and
+ * the next button starts from a race in progress rather than from a grid
+ * before its green, where the overtake, gap and position callouts stand down.
+ * Driven live rather than inside a second bracket: leaving `ParadeLaps` with
+ * no green shown is an edge no diff announces, which
+ * `rolling-start-shortcuts.test.ts` pins by recording every event in the
+ * catalog.
+ */
+const FORMATION_STAND_DOWN: TelemetryStep = {
+  patch: {
+    SessionState: SessionState.Racing,
+    SessionFlags: RACING_NO_FLAG,
+    CarIdxPaceLine: FORMATION_NO_LINEUP,
+    CarIdxPaceRow: FORMATION_NO_LINEUP,
+    CarIdxLapDistPct: null,
+    CarIdxTrackSurface: null,
+  },
+  tick: true,
+};
+
+/** What every formation button's description ends with. */
+const FORMATION_NEEDS =
+  "The button puts you live in the car on the grid itself, so no telemetry preset is needed. It is refused without a race session preset whose roster the grid can be read in, and while the mock SDK is disconnected: a disconnected translator sees no ticks, holds no formation, and every formation call is then silent for the wrong reason.";
+
+/**
+ * A whole rolling-start formation on an oval, driven through the TRANSLATOR
+ * (issue #1167) and modelled on the one captured at Homestead
+ * (`local/telemetry-watch-20260917-191825-092.jsonl`, formation 107.38 →
+ * 201.18 s): the lineup already formed up in `GetInCar`, `Warmup`, the
+ * `ParadeLaps` entry, the pace car reaching the road, green held, the pace
+ * car leaving, the green, the lineup unwinding under it. The `SessionFlags`
+ * are the captured ones ({@link FORMATION_GRID_FLAGS} and its siblings) and
+ * so is the order; the holds are compressed, and the grid is the capture's
+ * shape over this harness's roster (`rolling-start-grid.ts`).
+ *
+ * Two things in it were NOT in the capture, because that formation was one
+ * pace lap long with a lineup that never moved — they are what the issue's
+ * two other calls need, and nothing else can audition them:
+ *
+ *   - **A second pace lap.** The pace car is driven round a full lap: staged
+ *     just short of the line, across it on the release (≈0.04 of a lap
+ *     accrued, which `diff/pace-laps.ts` must NOT take for the end of a lap),
+ *     round to 0.35 and 0.7, and across the line again with 0.71 accrued.
+ *     That second crossing is the real #773 decision —
+ *     `flag.one-pace-lap-to-go.raised`, published by the translator, not by
+ *     this button — and the engineer's "One lap to green".
+ *   - **The car ahead dropping out.** Car "8" leaves the world while still
+ *     holding its row for a tick (the shape measured at 548.33 s in the
+ *     2026-09-18 road capture), then the rows behind it close up. The lineup
+ *     walk steps over a car that is not in the world, so the player's follow
+ *     car becomes car "19" on the first of those ticks and the close-up is no
+ *     second change: ONE `rollingStart.lineup.changed`.
+ *
+ * The order of the calls is what makes the change audible: the pace-car call
+ * and the one-lap-to-green call have both named car "8" by the time it goes,
+ * and a change is spoken only when the car ahead is not the one last named.
+ *
+ * Once the green is held the formation is over for the engineer — the
+ * translator closes it there, 15 s before the green in the capture — so the
+ * green-held line, "Pace car's off" and the go are the start's own, and a
+ * formation call still waiting would be refused at its speak gate.
+ *
+ * Ends racing with no flag shown, nobody lined up and the per-car arrays it
+ * added deleted, so it can be pressed again and leaves the caution buttons
+ * the telemetry they expect.
+ */
+const ROLLING_START_FORMATION_SHORTCUT: TelemetrySequenceShortcut = {
+  id: "rolling-start-formation",
+  category: "Rolling Start",
+  label: "Formation (oval, two laps)",
+  requires: ["rolling-start-oval-grid", "sdk-connected"],
+  description: `Drives the TRANSLATOR through a whole rolling-start formation on an oval, modelled on one captured at Homestead and about 40 s end to end: the grid formed up double file (car "42" seventh, on the inside, behind car number 8), Warmup, the pace car pulling away, a full pace lap, the car ahead dropping out, green held, the pace car leaving, the green, and the lineup unwinding under it. Apply the "race-oval" session preset first — the lane is named only on an oval, and the run is refused on anything else. Expect, in order: "Pace car's rolling. Inside line, behind car eight." as the session enters ParadeLaps; "One lap to green. Take the inside line behind car eight." when the pace car crosses the line at the end of its first full lap (the translator's own decision — its first crossing, leaving the grid, says nothing); "Change — you're on the inside behind car nineteen." a second and a half after car eight drops out; the green-held line; "Pace car's off"; then "Go, go, go!". Nothing is said as the lineup unwinds after the green. ${FORMATION_NEEDS}`,
+  telemetrySequence: [
+    // The lineup is there from the first `GetInCar` record, as captured.
+    ...formationBracket({ SessionState: SessionState.GetInCar, SessionFlags: FORMATION_GRID_FLAGS, Speed: 0 }),
+    { patch: { SessionState: SessionState.Warmup, SessionFlags: FORMATION_FLAGS }, holdMs: FORMATION_WARMUP_MS },
+    // The entry edge: the formation opens and the pace-car cue fires.
+    {
+      patch: { SessionState: SessionState.ParadeLaps, Speed: FORMATION_PACE_SPEED },
+      holdMs: FORMATION_PACE_CAR_CALL_MS,
+    },
+    // The pace car reaches the road (`paceCar.deployed`, silent outside a caution).
+    { patch: { CarIdxTrackSurface: formationSurfaces(TrkLoc.OnTrack) }, holdMs: FORMATION_PACE_CAR_OUT_MS },
+    // Its release crossing of start/finish, with next to nothing accrued: no call.
+    { patch: { CarIdxLapDistPct: formationLapDist(0.03) }, holdMs: FORMATION_PACE_LAP_LEG_MS },
+    { patch: { CarIdxLapDistPct: formationLapDist(0.35) }, holdMs: FORMATION_PACE_LAP_LEG_MS },
+    { patch: { CarIdxLapDistPct: formationLapDist(0.7) }, holdMs: FORMATION_PACE_LAP_LEG_MS },
+    // The crossing that completes its first lap: one pace lap to go.
+    { patch: { CarIdxLapDistPct: formationLapDist(0.02) }, holdMs: FORMATION_ONE_LAP_TO_GREEN_CALL_MS },
+    // The car ahead leaves the world, still holding its row for a tick...
+    {
+      patch: {
+        CarIdxLapDistPct: formationLapDist(0.02, true),
+        CarIdxTrackSurface: formationSurfaces(TrkLoc.OnTrack, true),
+      },
+      holdMs: FORMATION_GHOST_ROW_MS,
+    },
+    // ...and the rows behind it close up.
+    {
+      patch: { CarIdxPaceLine: FORMATION_CLOSED_UP_LINE, CarIdxPaceRow: FORMATION_CLOSED_UP_ROW },
+      holdMs: FORMATION_CHANGE_LISTEN_MS,
+    },
+    // Green held: the formation is over for the engineer.
+    {
+      patch: { SessionFlags: FORMATION_GREEN_HELD_FLAGS, CarIdxLapDistPct: formationLapDist(0.45, true) },
+      holdMs: FORMATION_GREEN_HELD_MS,
+    },
+    // The pace car heads for pit road (`paceCar.off`).
+    {
+      patch: {
+        CarIdxLapDistPct: formationLapDist(0.9, true),
+        CarIdxTrackSurface: formationSurfaces(TrkLoc.AproachingPits, true),
+      },
+      holdMs: FORMATION_PACE_CAR_OFF_MS,
+    },
+    // The green: the session goes racing on the tick the go signal rises.
+    { patch: { SessionState: SessionState.Racing, SessionFlags: FORMATION_GO_FLAGS }, holdMs: FORMATION_GO_TICK_MS },
+    { patch: { SessionFlags: FORMATION_GREEN_FLAGS }, holdMs: FORMATION_UNWIND_AFTER_MS },
+    // The unwind, with the formation's own shape under green.
+    {
+      patch: { CarIdxPaceLine: FORMATION_UNWIND_LINE, CarIdxPaceRow: FORMATION_UNWIND_ROW },
+      holdMs: FORMATION_UNWIND_MS,
+    },
+    {
+      patch: {
+        SessionFlags: RACING_NO_FLAG | Flags.Green,
+        CarIdxPaceLine: FORMATION_NO_LINEUP,
+        CarIdxPaceRow: FORMATION_NO_LINEUP,
+      },
+      holdMs: FORMATION_GREEN_SHOWN_MS,
+    },
+    { patch: { SessionFlags: RACING_NO_FLAG, CarIdxLapDistPct: null, CarIdxTrackSurface: null } },
+  ],
+};
+
+/**
+ * The pace car pulling away, on its own (issues #660 and #1167): the grid
+ * seeded in `Warmup`, then the REAL `ParadeLaps` entry, so the translator
+ * opens the formation and publishes `rollingStart.pace-car-moving.raised`
+ * itself — that event and no other.
+ *
+ * It used to publish the event by hand. Since #1167 the pace-car call speaks
+ * only while the translator holds a formation, and a hand-published event
+ * opens none: the button was silent, and nothing in the harness said so. The
+ * gate reads the translator's state, so the honest way to open it is the one
+ * the sim uses.
+ */
+const ROLLING_START_PACE_CAR_SHORTCUT: TelemetrySequenceShortcut = {
+  id: "rolling-start-pace-car-moving",
+  category: "Rolling Start",
+  label: "Pace car moving",
+  requires: ["rolling-start-grid", "sdk-connected"],
+  description: `The pace car pulls away, on its own: the grid formed up double file in Warmup (car "42" on the inside, behind car number 8), then the session enters ParadeLaps, so the TRANSLATOR opens the formation and fires "rollingStart.pace-car-moving.raised" itself — the call speaks only while a formation is running, which a hand-published event does not start. Expect "Pace car's rolling. Inside line, behind car eight." on the "race-oval" session preset, and "Pace car's rolling. Form up behind car eight." on "race", where no lane is named. Ends racing with no flag shown. ${FORMATION_NEEDS}`,
+  telemetrySequence: [
+    ...formationBracket({ SessionState: SessionState.Warmup, SessionFlags: FORMATION_FLAGS, Speed: 0 }),
+    {
+      patch: { SessionState: SessionState.ParadeLaps, Speed: FORMATION_PACE_SPEED },
+      holdMs: FORMATION_PACE_CAR_CALL_MS,
+    },
+    FORMATION_STAND_DOWN,
+  ],
+};
+
+/**
+ * The car ahead changing during a formation, on its own (issue #1167): a
+ * formation the translator adopts without announcing it, then car "8" leaving
+ * the world and the rows closing up behind it, so the translator publishes
+ * `rollingStart.lineup.changed` itself — that event and no other.
+ *
+ * Three things have to hold for the call to SPEAK, and the sequence arranges
+ * each: the translator holds a formation (adopted in the bracket); the player
+ * holds a pace row (the grid); and the car ahead is not the one the engineer
+ * last named in this formation. Nothing has been named in an adopted
+ * formation, so the change is judged against the formation's FIRST follow car
+ * — car "8", read on the tick the formation was adopted — and car "19" is not
+ * it.
+ */
+const ROLLING_START_LINEUP_CHANGED_SHORTCUT: TelemetrySequenceShortcut = {
+  id: "rolling-start-lineup-changed",
+  category: "Rolling Start",
+  label: "Car ahead changed",
+  requires: ["rolling-start-grid", "sdk-connected"],
+  description: `The car ahead changes during a formation, on its own: a formation already running, formed up double file (car "42" on the inside, behind car number 8), then car eight drops out and the rows behind it close up, so the TRANSLATOR fires "rollingStart.lineup.changed" itself. The call speaks only while a formation is running, you hold a pace row, and the car ahead is not the one last named — here nothing has been named, so it is judged against the car the formation started behind. Expect, a second and a half after the car goes, "Change — you're on the inside behind car nineteen." on the "race-oval" session preset, and "Change — you're behind car nineteen." on "race", where no lane is named. Ends racing with no flag shown. ${FORMATION_NEEDS}`,
+  telemetrySequence: [
+    ...FORMATION_ADOPTED,
+    {
+      patch: {
+        CarIdxLapDistPct: formationLapDist(FORMATION_LAP_DIST_PCT[FORMATION_PACE_CAR_IDX], true),
+        CarIdxTrackSurface: formationSurfaces(TrkLoc.AproachingPits, true),
+      },
+      holdMs: FORMATION_GHOST_ROW_MS,
+    },
+    {
+      patch: { CarIdxPaceLine: FORMATION_CLOSED_UP_LINE, CarIdxPaceRow: FORMATION_CLOSED_UP_ROW },
+      holdMs: FORMATION_CHANGE_LISTEN_MS,
+    },
+    FORMATION_STAND_DOWN,
+  ],
+};
+
+/**
+ * "One lap to green" at a rolling start, on its own (issues #657, #773 and
+ * #1167) — the one formation button that still PUBLISHES its event.
+ *
+ * The translator's own decision cannot be had alone: it is the pace car's
+ * start/finish crossing a full lap after the `ParadeLaps` entry, and that
+ * entry is the pace-car cue. So this button steps over the decision, as a
+ * bus-event shortcut does, and "Rolling Start → Formation (oval, two laps)"
+ * is where the decision itself is auditioned. What it does NOT step over is
+ * the gate: the call speaks only while the translator holds a formation, so
+ * the setup sequence seeds one in `ParadeLaps`, which the translator adopts
+ * without a cue (and with the pace-lap diff unarmed, so no second event can
+ * follow the published one). The last setup step is a bare tick, so the
+ * adopted formation is in front of the publish whatever the mock's tick rate.
+ * The teardown stands the formation down again once the line has played.
+ */
+const ONE_LAP_TO_GREEN_SHORTCUT: BusEventShortcut = {
+  id: "flag-one-lap-to-green",
+  category: "Flags",
+  label: "One Lap to Green",
+  requires: ["rolling-start-grid", "sdk-connected"],
+  description: `Fires "flag.one-pace-lap-to-go.raised" on its own — the rolling start's "One lap to green", which the translator publishes when the pace car completes its first full pace lap of two. The call speaks only while a formation is running, so the button first puts a formation in front of the translator (the grid formed up double file in ParadeLaps, adopted without the pace-car call) and stands it down again afterwards. Expect "One lap to green. Take the inside line behind car eight." on the "race-oval" session preset, and "One lap to green. Line up behind car eight." on "race", where no lane is named. To hear the translator make the decision itself, use Rolling Start → Formation (oval, two laps). ${FORMATION_NEEDS}`,
+  telemetrySequence: [...FORMATION_ADOPTED, { patch: {}, tick: true }],
+  event: "flag.one-pace-lap-to-go.raised",
+  data: {},
+  teardownSequence: [{ patch: {}, holdMs: FORMATION_ONE_LAP_TO_GREEN_CALL_MS }, FORMATION_STAND_DOWN],
+};
+
 export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   // ── Pit Service ──
   {
@@ -1875,7 +2349,10 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   flag("Debris", "flag.debris.raised"),
   flag("Meatball", "flag.meatball.raised"),
   flag("Crossed", "flag.crossed.raised"),
-  flag("One Pace Lap to Go", "flag.one-pace-lap-to-go.raised"),
+  // "One lap to green" at a rolling start (issue #1167), relabelled to match
+  // its settings switch. A bus event with a setup and a teardown: the call
+  // speaks only while the translator holds a formation.
+  ONE_LAP_TO_GREEN_SHORTCUT,
   flag("Green Held", "flag.green-held.raised"),
   flag("Ten to Go", "flag.ten-to-go.raised"),
   flag("Five to Go", "flag.five-to-go.raised"),
@@ -1916,14 +2393,15 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   startCountdown(30),
   startCountdown(10),
 
-  // ── Rolling Start (issue #660) ──
-  // Payload-less: the pace car begins moving the field onto the formation lap.
-  rollingStart(
-    "pace-car-moving",
-    "Pace car moving",
-    "rollingStart.pace-car-moving.raised",
-    "Rolling start: pace car begins moving the field into the formation lap",
-  ),
+  // ── Rolling Start (issues #660, #1167) ──
+  // The whole formation first, then its two calls on their own. All three
+  // drive the TRANSLATOR: every formation call speaks only while it holds a
+  // formation, which no hand-published event opens. The third call, "One lap
+  // to green", keeps its place under Flags (its scenario id is the flag
+  // family's) as `ONE_LAP_TO_GREEN_SHORTCUT`.
+  ROLLING_START_FORMATION_SHORTCUT,
+  ROLLING_START_PACE_CAR_SHORTCUT,
+  ROLLING_START_LINEUP_CHANGED_SHORTCUT,
 
   // ── Pit Window (issue #655) ──
   // `pitsOpen.changed` directly — bypasses the race-only / replay-only diff

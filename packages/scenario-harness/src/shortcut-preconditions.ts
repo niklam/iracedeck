@@ -21,7 +21,16 @@
  * The reason text lives on the rule rather than on each shortcut, so the three
  * caution buttons cannot drift from each other's wording.
  */
-import { resolvePlayerCarIdx } from "@iracedeck/sim-events-iracing";
+import type { TelemetryData } from "@iracedeck/iracing-sdk";
+import { isOvalTrack, type PaceLineup, resolvePaceLineup, resolvePlayerCarIdx } from "@iracedeck/sim-events-iracing";
+
+import {
+  FORMATION_LAP_DIST_PCT,
+  FORMATION_PACE_LINE,
+  FORMATION_PACE_ROW,
+  FORMATION_SESSION_STATE,
+  FORMATION_TRACK_SURFACE,
+} from "./rolling-start-grid.js";
 
 /**
  * What a shortcut can require of the harness before it will run.
@@ -32,14 +41,34 @@ import { resolvePlayerCarIdx } from "@iracedeck/sim-events-iracing";
  * `sdk-connected` — the mock SDK is connected (#1349). The overtake gate reads
  * the translator's latest telemetry, which a disconnected translator never
  * receives, so an overtake or gap line would be refused by its own gate while
- * the button looked as if it had worked.
+ * the button looked as if it had worked. The rolling-start buttons need it for
+ * the same reason one step removed (#1167): their callouts ask the translator
+ * whether a formation is running, and a translator that sees no ticks never
+ * opens one.
+ *
+ * `rolling-start-grid` — the translator would read the rolling-start buttons'
+ * grid as a GRID in the session the harness holds (#1167): a race session,
+ * naming the player's car and the pace car. Without it the formation calls
+ * are refused by their own race-only gate, or lose the car to form up behind.
+ *
+ * `rolling-start-oval-grid` — that, and the translator would name the LANE:
+ * the track is an oval. What "Formation (oval, two laps)" auditions is the
+ * lane wording, so unlike the caution buttons, which treat the lane as an
+ * enrichment and run on a road course too, that button is refused without it.
  */
-export type ShortcutPrecondition = "player-car-index" | "sdk-connected";
+export type ShortcutPrecondition =
+  "player-car-index" | "sdk-connected" | "rolling-start-grid" | "rolling-start-oval-grid";
 
 /** The live harness state a precondition is checked against, read by the route on every start. */
 export type HarnessPreconditionState = {
   sessionInfo: Record<string, unknown> | null;
   isConnected: boolean;
+  /**
+   * The mock's current telemetry. Read for the session it is in
+   * (`SessionNum`): whether a session is a race is a question about one entry
+   * of the session list, and the translator answers it against this.
+   */
+  telemetry: TelemetryData;
 };
 
 type PreconditionRule = {
@@ -61,6 +90,34 @@ function namesPlayerCar(sessionInfo: Record<string, unknown> | null): boolean {
   return resolvePlayerCarIdx(sessionInfo) !== null;
 }
 
+/**
+ * What the translator's lineup reader makes of the rolling-start buttons' grid
+ * in the session the harness holds (issue #1167) — the read their callouts
+ * will make at speak time, made here before the run.
+ *
+ * Asked of `resolvePaceLineup` and `isOvalTrack` themselves, for the reason
+ * {@link namesPlayerCar} asks `resolvePlayerCarIdx`: the grid frame is several
+ * rules at once — a race session, in a known pre-green state, naming the
+ * player's car and the pace car, the pace car holding no row and one car on
+ * pole — and a copy of any of them here would drift the day the reader
+ * tightened, admitting the very run this check exists to refuse. The
+ * telemetry is the grid the buttons patch in (`rolling-start-grid.ts`) over
+ * the session number the mock is in, so the answer is about THIS grid in THIS
+ * session and nothing has to be assumed about either.
+ */
+function readFormationGrid(state: HarnessPreconditionState): PaceLineup | null {
+  const telemetry = {
+    SessionNum: state.telemetry.SessionNum,
+    SessionState: FORMATION_SESSION_STATE,
+    CarIdxPaceLine: FORMATION_PACE_LINE,
+    CarIdxPaceRow: FORMATION_PACE_ROW,
+    CarIdxLapDistPct: FORMATION_LAP_DIST_PCT,
+    CarIdxTrackSurface: FORMATION_TRACK_SURFACE,
+  } as TelemetryData;
+
+  return resolvePaceLineup(telemetry, state.sessionInfo, isOvalTrack(state.sessionInfo));
+}
+
 const PRECONDITION_RULES: Record<ShortcutPrecondition, PreconditionRule> = {
   "player-car-index": {
     satisfied: (state) => namesPlayerCar(state.sessionInfo),
@@ -74,10 +131,34 @@ const PRECONDITION_RULES: Record<ShortcutPrecondition, PreconditionRule> = {
   "sdk-connected": {
     satisfied: (state) => state.isConnected,
     reason:
-      'Connect the mock SDK first (the "Connected" toggle in the header). This callout checks the overtake gate, which ' +
-      "reads live telemetry: on track, at racing speed, off pit road, nobody alongside. The button puts the car there " +
+      'Connect the mock SDK first (the "Connected" toggle in the header). This callout checks a gate that reads what ' +
+      "the translator has seen: the overtake gate reads live telemetry (on track, at racing speed, off pit road, " +
+      "nobody alongside), and a rolling-start call asks whether a formation is running. The button arranges that " +
       "itself, but a disconnected translator receives no telemetry, so the gate stays shut and the line is silent for " +
       "the wrong reason.",
+  },
+  "rolling-start-grid": {
+    satisfied: (state) => readFormationGrid(state)?.anchor === "grid",
+    reason:
+      'Apply the "race" or "race-oval" session preset first. The rolling-start buttons form the field up on a grid ' +
+      "indexed for that roster (the pace car at index 0, your car at index 7), and the translator reads it as a grid " +
+      "only in a race session whose driver list names both (DriverInfo.DriverCarIdx, DriverInfo.PaceCarIdx). Without " +
+      "one the formation calls are refused by their own race-only gate, or lose the car you form up behind, and the " +
+      "button reads as broken callouts rather than as a session that was never set up.",
+  },
+  "rolling-start-oval-grid": {
+    satisfied: (state) => {
+      const grid = readFormationGrid(state);
+
+      return grid?.anchor === "grid" && grid.line !== null;
+    },
+    reason:
+      'Apply the "race-oval" session preset first. This run auditions the lane wording ("Inside line, behind car…"), ' +
+      "which the translator names only on an oval running double file, in a race session whose driver list names your " +
+      "car and the pace car (DriverInfo.DriverCarIdx, DriverInfo.PaceCarIdx). On any other session the formation " +
+      "calls would speak without the lane or not at all, and the run would not be the one its description promises. " +
+      'The "race" preset is the same field on a road course: Rolling Start → Pace car moving and → Car ahead ' +
+      "changed run there, with no lane named.",
   },
 };
 

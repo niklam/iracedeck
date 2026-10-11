@@ -243,21 +243,26 @@ describe("the car an overtake or gap shortcut leaves on track changes no other s
     vi.useRealTimers();
   });
 
-  /**
-   * A press, as the UI and server carry it out with the mock's tick loop
-   * running: the setup patch, then each step (ticked at once when it asks,
-   * then held while the loop ticks), then the publish, then a listen.
-   */
-  function press(controller: MockSDKController, shortcut: ScenarioShortcut): void {
-    if (shortcut.telemetryPatch) controller.mutateTelemetry(shortcut.telemetryPatch as TelemetryPatch);
-
-    for (const step of shortcut.telemetrySequence ?? []) {
+  /** Steps as the UI posts them: each ticked at once when it asks, then held while the loop ticks. */
+  function runSteps(controller: MockSDKController, steps: readonly TelemetryStep[] | undefined): void {
+    for (const step of steps ?? []) {
       controller.mutateTelemetry(step.patch as TelemetryPatch);
 
       if (step.tick === true) controller.tickOnce();
 
       vi.advanceTimersByTime(step.holdMs ?? 0);
     }
+  }
+
+  /**
+   * A press, as the UI and server carry it out with the mock's tick loop
+   * running: the setup patch, then the setup steps, then the publish, then
+   * the teardown steps a bus-event shortcut may carry (#1167), then a listen.
+   */
+  function press(controller: MockSDKController, shortcut: ScenarioShortcut): void {
+    if (shortcut.telemetryPatch) controller.mutateTelemetry(shortcut.telemetryPatch as TelemetryPatch);
+
+    runSteps(controller, shortcut.telemetrySequence);
 
     if (shortcut.event !== undefined) {
       const telemetry = controller.getState().telemetry;
@@ -270,6 +275,7 @@ describe("the car an overtake or gap shortcut leaves on track changes no other s
       }
     }
 
+    runSteps(controller, shortcut.teardownSequence);
     vi.advanceTimersByTime(LISTEN_MS);
   }
 

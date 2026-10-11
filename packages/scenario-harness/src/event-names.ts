@@ -41,6 +41,22 @@ export const OVERTAKE_GATE_NOTE =
   "the hot-lap telemetry preset (on track, at racing speed, off pit road, nobody alongside) before firing, or the " +
   "line is silent for the wrong reason. The Overtakes and Gaps shortcuts arrange this themselves.";
 
+/**
+ * Appended to the injector description of the three events the rolling-start
+ * formation calls ride (#1167). Each of those calls asks the translator at
+ * speak time whether a formation is running, and a published event opens
+ * none — so injected on its own the event reaches the bus, shows in the log,
+ * and plays nothing. The injector publishes exactly what it is given, so it
+ * says so; the shortcuts for these events put a formation in front of the
+ * translator themselves. `rolling-start-shortcuts.test.ts` pins which
+ * templates carry it, and `rolling-start-heard.test.ts` the silence itself.
+ */
+export const FORMATION_GATE_NOTE =
+  "Its callout speaks only while the translator holds a rolling-start formation, and publishing the event opens " +
+  "none: fired on its own it reaches the bus and plays nothing. Fire it while Rolling Start → Formation (oval, two " +
+  "laps) is running, between the pace car pulling away and the green being held, or use the Rolling Start shortcuts " +
+  "and Flags → One Lap to Green, which put a formation in front of the translator themselves.";
+
 export type EventTemplate = {
   name: SimEventName;
   description: string;
@@ -116,7 +132,11 @@ export const EVENT_TEMPLATES = [
   { name: "flag.debris.raised", description: "Debris on track", data: {} },
   { name: "flag.meatball.raised", description: "Meatball flag (orange-and-black, come to pits)", data: {} },
   { name: "flag.crossed.raised", description: "Crossed flags (halfway / leaders lapping)", data: {} },
-  { name: "flag.one-pace-lap-to-go.raised", description: "One pace lap to go", data: {} },
+  {
+    name: "flag.one-pace-lap-to-go.raised",
+    description: `One lap to green at a rolling start: the pace car completed the first of two pace laps. ${FORMATION_GATE_NOTE}`,
+    data: {},
+  },
   { name: "flag.green-held.raised", description: "Green held (green imminent; pace car may still be out)", data: {} },
   { name: "flag.ten-to-go.raised", description: "Ten laps to go", data: {} },
   { name: "flag.five-to-go.raised", description: "Five laps to go", data: {} },
@@ -164,12 +184,12 @@ export const EVENT_TEMPLATES = [
   // ── Rolling start ──
   {
     name: "rollingStart.pace-car-moving.raised",
-    description: "Rolling start: pace car begins moving the field into the formation lap",
+    description: `Rolling start: pace car begins moving the field into the formation lap. ${FORMATION_GATE_NOTE}`,
     data: {},
   },
   {
     name: "rollingStart.lineup.changed",
-    description: "Rolling start: the car to form up behind changed during the formation",
+    description: `Rolling start: the car to form up behind changed during the formation. ${FORMATION_GATE_NOTE} This one also needs the car ahead to differ from the one the engineer last named, so even mid-formation it stays silent until the lineup has really moved: Rolling Start → Car ahead changed is the way to hear it.`,
     data: {},
   },
 

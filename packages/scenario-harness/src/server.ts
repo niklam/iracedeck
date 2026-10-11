@@ -554,10 +554,11 @@ export async function createServer(ctx: HarnessContext): Promise<FastifyInstance
 
     if (!shortcut) return reply.code(400).send({ error: `unknown shortcut id "${body.id}"` });
 
-    const { sessionInfo, isConnected } = ctx.controller.getState();
+    const { sessionInfo, isConnected, telemetry } = ctx.controller.getState();
     const refusal = checkShortcutPreconditions(shortcut.requires, {
       sessionInfo: sessionInfo as Record<string, unknown> | null,
       isConnected,
+      telemetry,
     });
 
     if (refusal !== null) return reply.code(409).send({ error: refusal });
