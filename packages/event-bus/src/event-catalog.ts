@@ -597,7 +597,7 @@ export type SimEventMap = {
   "caution.fieldCaught": SimEvent<"caution.fieldCaught", EmptySimEventPayload>;
   /** A leader start/finish crossing after the pickup that did not bring `OneLapToGreen` — the caution ran longer than the default two laps. */
   "caution.extraLap": SimEvent<"caution.extraLap", EmptySimEventPayload>;
-  /** `OneLapToGreen` rose while racing under caution. Single or double file is not carried: the callout reads the lineup live (`getCautionLineup().doubleFile`). */
+  /** `OneLapToGreen` rose while racing under caution. Single or double file is not carried: the callout reads the lineup live (`getPaceLineup().doubleFile`). */
   "caution.oneLapToGreen": SimEvent<"caution.oneLapToGreen", EmptySimEventPayload>;
   /** The player's `LapDistPct` rose through 35% for the first time after `caution.oneLapToGreen`, with the caution still out — the moment the position call is made. At most once per one-to-green lap; nothing if the green comes first. Carries nothing: the callout reads the race position live (`getLivePosition()`), and a payload nothing reads is a contract maintained for no one. */
   "caution.lastLapCheckpoint": SimEvent<"caution.lastLapCheckpoint", EmptySimEventPayload>;
@@ -606,6 +606,10 @@ export type SimEventMap = {
     "caution.lineup.changed",
     { followCarIdx: number | null; followCarNumber: string | null; line: CautionLine | null; isLeader: boolean }
   >;
+  /** The gap to the car you line up behind has stayed open, against the pack's own spacing, for the dwell (issue #1168) — the first "close it up" of a catch-up episode. Carries nothing: the callout reads the lineup live. */
+  "caution.gapOpened": SimEvent<"caution.gapOpened", EmptySimEventPayload>;
+  /** A reminder that the gap `caution.gapOpened` reported is still open and the driver is not closing it (issue #1168). A repeat, not a transition — at most twice an episode. */
+  "caution.gapStillOpen": SimEvent<"caution.gapStillOpen", EmptySimEventPayload>;
   /**
    * The green that ends a full-course caution: `Green` rising with neither
    * caution bit set on that tick (both captures drop every caution bit on the
@@ -635,6 +639,8 @@ export type SimEventMap = {
 
   // Rolling-start: pace car begins moving the field into the formation/parade lap (issue #660).
   "rollingStart.pace-car-moving.raised": SimEvent<"rollingStart.pace-car-moving.raised", EmptySimEventPayload>;
+  /** The car to form up behind changed during a rolling-start formation (issue #1167), from `CarIdxPaceRow` / `CarIdxPaceLine`. Carries nothing: the callout reads the lineup live (`getPaceLineup()`). */
+  "rollingStart.lineup.changed": SimEvent<"rollingStart.lineup.changed", EmptySimEventPayload>;
 
   "tireService.changed": SimEvent<"tireService.changed", { added: string[]; removed: string[]; current: string[] }>;
   /**

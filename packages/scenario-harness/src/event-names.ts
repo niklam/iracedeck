@@ -144,6 +144,12 @@ export const EVENT_TEMPLATES = [
     description: "The car to follow changed",
     data: { followCarIdx: 5, followCarNumber: "09", line: "inside", isLeader: false },
   },
+  {
+    name: "caution.gapOpened",
+    description: "The gap to the car ahead in your line has opened — close it up",
+    data: {},
+  },
+  { name: "caution.gapStillOpen", description: "Reminder: the gap is still open and not closing", data: {} },
   { name: "caution.restarted", description: "The green that ends the caution", data: {} },
 
   // ── Start lights ──
@@ -159,6 +165,11 @@ export const EVENT_TEMPLATES = [
   {
     name: "rollingStart.pace-car-moving.raised",
     description: "Rolling start: pace car begins moving the field into the formation lap",
+    data: {},
+  },
+  {
+    name: "rollingStart.lineup.changed",
+    description: "Rolling start: the car to form up behind changed during the formation",
     data: {},
   },
 
