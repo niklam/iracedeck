@@ -43,6 +43,17 @@
  *     latch before publishing `lap.completed`, so the where: sees it).
  *     Without this check we'd stack a "We're currently P3" status on top of
  *     "<Name>, we made it to the podium. We're third." on the final lap.
+ *   - **No full-course caution** (issue #1171) — neither out as the lap
+ *     completes (`getUnderFullCourseCaution()`) nor live on any tick of the
+ *     lap just completed (`wasCaution`). Behind the pace car the order is
+ *     frozen, the every-three cadence is counting pace laps, and the caution
+ *     sequence's own position call reads the race position out on the last
+ *     caution lap. The two checks cover different laps: "out now" silences
+ *     each lap that completes while the caution is live, `wasCaution` the
+ *     one that completes seconds AFTER the green — the lap the caution ended
+ *     on, run behind the pace car all the same. The cadence itself is
+ *     untouched: a caution lap still counts toward the every-three, and a
+ *     hit that lands on one is simply not spoken.
  *   - **Cadence hit** — `lapsSincePositionChange > 0 && % 3 === 0`. The diff
  *     omits `lapsSincePositionChange` entirely when no baseline anchors exist
  *     (e.g. position not yet resolvable); the predicate then returns false.
@@ -54,18 +65,40 @@
  * first. A `queueable` contract defers and replays once the bus goes idle — see
  * `position.ts` header for the full rationale on the deferred-low mechanism.
  * Different family from lap-time so neither preempts the other.
+ *
+ * Being queueable is why the caution is asked a second time, at SPEAK time
+ * (issue #1171). An update accepted under green and waiting in the bus's
+ * queue re-expands and meets its `speakGate` when it drains, never its
+ * `where:` — so the gate is what keeps it from being spoken behind the pace
+ * car. The gate asks the caution BEFORE the shared position cooldown is
+ * claimed: a claim followed by a refusal would burn twenty seconds of every
+ * position readout for an update nobody heard. Neither check does the
+ * other's work. The `where:` keeps a caution-lap fire out of the queue,
+ * where it would take one of four places and, through the `position`
+ * supersede group, remove a readout already waiting — only to be refused at
+ * its own gate. `wasCaution` is not asked at speak time: it is a fact about
+ * the completed lap, settled when the event was emitted.
+ *
+ * One residual neither check reaches, the same one `gaps.ts` accepts: an
+ * update that passed its gate, is still PLAYING when the caution comes out,
+ * and is then cut by an interrupting call is stashed with `admitted: true`
+ * and replays whole without being asked again. Only `queueable: false`
+ * would stop that, and this contract is queueable so that it can wait
+ * behind the lap-time readout of its own lap.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type CalloutIdOf, RACE_STATUS_CALLOUTS } from "@iracedeck/callout-settings";
 import type { SimEventOf } from "@iracedeck/event-bus";
 
 import { poolRef, WEIGHT } from "../../dsl.js";
-import type { ScenarioContract } from "../../dsl.js";
+import type { ScenarioContract, SpeakGate } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
+import type { UnderCautionResolver } from "./caution.js";
 import {
   canAnnouncePosition,
   liveCurrentlyAnnounceable,
   type LivePositionResolver,
+  POSITION_READOUT_SPEAK_GATE_DESCRIPTION,
   POSITION_READOUT_SUPERSEDE_GROUP,
   positionReadoutSpeakGate,
   selectLivePosition,
@@ -150,6 +183,30 @@ export function registerRaceStatusVocabulary(
 }
 
 /**
+ * The race status's own speak-time gate (issue #1171): the shared position
+ * cooldown claim, reached only once no full-course caution is out. The
+ * shared gate itself is untouched — the two overtake readouts use it too,
+ * and they are not silenced here.
+ *
+ * The caution is asked first, so a refusal claims nothing. It also leaves
+ * the shared gate's intro decision untaken, for a pack whose status script
+ * names `positionReadout.intro`. That is harmless: the stash is keyed to
+ * this fire's `ScenarioContext`, and the next gate — another fire, another
+ * context — clears it without inheriting it.
+ */
+function raceStatusSpeakGate(getUnderFullCourseCaution: UnderCautionResolver): SpeakGate {
+  // The shared sentence, qualified — as `position.ts` qualifies it for the
+  // race branch — so the two readouts cannot describe one window two ways.
+  const sharedWindow =
+    POSITION_READOUT_SPEAK_GATE_DESCRIPTION.charAt(0).toLowerCase() + POSITION_READOUT_SPEAK_GATE_DESCRIPTION.slice(1);
+
+  return {
+    description: `No full-course caution is out and ${sharedWindow}`,
+    admit: (ctx) => !getUnderFullCourseCaution() && positionReadoutSpeakGate.admit(ctx),
+  };
+}
+
+/**
  * Build the race-status contract. Stays a builder because its `where:` reads
  * two runtime gates: `getRaceFinishedFired` short-circuits on the final lap
  * (race-end takes priority — see header), and `getLivePosition` decides
@@ -157,10 +214,16 @@ export function registerRaceStatusVocabulary(
  * is read. The window itself is claimed by the contract's `speakGate` (issue
  * #1137), after the script expanded. The spoken branch is the vocabulary's
  * ({@link registerRaceStatusVocabulary}).
+ *
+ * `getUnderFullCourseCaution` silences the update while a full-course
+ * caution is out (issue #1171), in the `where:` and again in the
+ * `speakGate` — see the header for why both. Default `() => false` preserves
+ * the behavior of a test that supplies no closure.
  */
 export function buildRaceStatusContract(
   getRaceFinishedFired: () => boolean,
   getLivePosition: LivePositionResolver = () => null,
+  getUnderFullCourseCaution: UnderCautionResolver = () => false,
 ): ScenarioContract {
   return {
     id: "pit-crew.race-status",
@@ -178,6 +241,16 @@ export function buildRaceStatusContract(
         // pending queue) and the latch reads true by the time we get here.
         if (getRaceFinishedFired()) return false;
 
+        // Full-course caution — the order is frozen behind the pace car and
+        // the caution sequence reads the race position out itself (issue
+        // #1171). Refused here so the fire never enters the bus's queue.
+        if (getUnderFullCourseCaution()) return false;
+
+        // …and so is the lap that ENDS one, which completes seconds after
+        // the green with the gate above already open: it was run behind the
+        // pace car all the same.
+        if (data.wasCaution === true) return false;
+
         // Cadence DECISION uses the frozen snapshot (laps-since-position-change).
         if (!raceStatusCadenceHits(data)) return false;
 
@@ -191,7 +264,7 @@ export function buildRaceStatusContract(
         return canAnnouncePosition();
       },
     },
-    speakGate: positionReadoutSpeakGate,
+    speakGate: raceStatusSpeakGate(getUnderFullCourseCaution),
     channel: AudioChannel.Voice,
     bus: AudioBus.Voice,
     base: "voice/{voice}",
@@ -204,7 +277,7 @@ export function buildRaceStatusContract(
     family: "race-status",
     supersedeGroup: POSITION_READOUT_SUPERSEDE_GROUP,
     description:
-      "Three laps pass in a race without your position changing, and every three laps after that — never on the final lap, and not within twenty seconds of another position readout.",
+      "You hold position for three race laps, and every three laps after that — never on the final lap, under a caution or on the lap that ends one, or within twenty seconds of another position readout.",
   };
 }
 

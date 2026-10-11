@@ -1684,7 +1684,10 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   engine.defineContract(
     wrapWithMaster(
       wrapCalloutScenario(
-        buildRaceStatusContract(getRaceFinishedFired, getLivePosition),
+        // The caution resolver silences the update while a full-course
+        // caution is out (issue #1171), at event time and again at speak
+        // time: the order is frozen behind the pace car.
+        buildRaceStatusContract(getRaceFinishedFired, getLivePosition, getUnderFullCourseCaution),
         SCENARIO_ID_TO_RACE_STATUS_ID,
         getRaceStatusCalloutEnabled,
         "race-status callout",

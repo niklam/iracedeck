@@ -9,6 +9,11 @@
  * leader branch all run the production compile + expansion path. The spoken
  * line reads LIVE position via the `getLivePosition` resolver (issue #574), so
  * the class-vs-race wording is driven by `currentLive.isMultiClass`.
+ *
+ * Also pins the full-course caution (issue #1171): refused in `where:` so a
+ * caution lap never enters the queue, refused again in the speak-time gate —
+ * BEFORE the shared cooldown claim — for an update queued under green, and
+ * refused for the `wasCaution` lap that completes after the green.
  */
 import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
@@ -19,7 +24,8 @@ import { RACE_STATUS_CALLOUTS } from "@iracedeck/callout-settings";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { WEIGHT } from "../../dsl.js";
+import { NO_FRAME, WEIGHT } from "../../dsl.js";
+import type { ScenarioContext } from "../../dsl.js";
 import type { AudioAssetsManifest } from "../../interpreter.js";
 import { _resetAudioScenarios, getScenarioEngine, initializeAudioScenarios } from "../../interpreter.js";
 import { familyGate } from "./callout-gate.test-util.js";
@@ -150,7 +156,14 @@ const RACE_STATUS_CLIPS = [
 ];
 
 const manifest: AudioAssetsManifest = {
-  clips: ["sfx/IRD-tick-open.mp3", "sfx/IRD-tick-close.mp3", "sfx/IRD-ambient-pit.mp3", ...RACE_STATUS_CLIPS],
+  clips: [
+    "sfx/IRD-tick-open.mp3",
+    "sfx/IRD-tick-close.mp3",
+    "sfx/IRD-ambient-pit.mp3",
+    ...RACE_STATUS_CLIPS,
+    // A line that holds the Voice bus at NORMAL, for the queued-replay tests.
+    "test/blocker.mp3",
+  ],
   ambientLoop: "sfx/IRD-ambient-pit.mp3",
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
 };
@@ -183,13 +196,17 @@ let currentSnapshot: LapSnap | null;
 let currentLive: Live | null;
 let raceFinished: boolean;
 let raceStatusEnabled: boolean;
+let underCaution: boolean;
 
 function voicePaths(): string[] {
   return audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
 }
 
-/** Fire an every-3-laps cadence hit in a race session (position held). */
-function fireStatus(): void {
+/**
+ * Publish an every-3-laps cadence hit in a race session (position held),
+ * without letting the audio run — for a test that needs the fire to wait.
+ */
+function publishStatus(overrides: Partial<LapSnap> = {}): void {
   const data: Partial<LapSnap> = {
     lap: 6,
     lapTime: 90.5,
@@ -200,9 +217,15 @@ function fireStatus(): void {
     // the race-status callout speaks.
     position: 1,
     previousPosition: 1,
+    ...overrides,
   };
   currentSnapshot = data as LapSnap;
   bus.publishEvent("lap.completed", data as LapSnap);
+}
+
+/** Fire a cadence hit and let whatever it says play out. */
+function fireStatus(overrides: Partial<LapSnap> = {}): void {
+  publishStatus(overrides);
   flush(audio);
 }
 
@@ -211,6 +234,7 @@ beforeEach(() => {
   currentLive = { position: 1, classPosition: 1, isMultiClass: false };
   raceFinished = false;
   raceStatusEnabled = true;
+  underCaution = false;
   _resetPositionReadoutCooldown();
   bus = createMockBus();
   audio = createFakeAudio();
@@ -221,6 +245,7 @@ beforeEach(() => {
     isCalloutEnabled: familyGate(RACE_STATUS_CALLOUTS, () => raceStatusEnabled),
     getRaceFinishedFired: () => raceFinished,
     getLivePosition: () => currentLive,
+    getUnderFullCourseCaution: () => underCaution,
   });
   // After the registration, as the plugins do: the update's body is looked
   // up in the active voice's compiled script at fire time (issue #1065).
@@ -334,6 +359,199 @@ describe("race-status gating", () => {
     fireStatus();
 
     expect(audio._played).toEqual([]);
+  });
+});
+
+describe("race-status under a full-course caution (issue #1171)", () => {
+  const STILL_LEADING = `voice/${VOICE}/race-status/still-leading-01.mp3`;
+  const BLOCKER = "test/blocker.mp3";
+
+  /** A NORMAL line that holds the Voice bus, so a status update has to wait in the queue. */
+  function holdBus(): void {
+    const engine = getScenarioEngine();
+
+    engine.defineScenario({
+      id: "test.blocker",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      weight: WEIGHT.NORMAL,
+      frame: NO_FRAME,
+      sequence: [BLOCKER],
+    });
+    engine.fire("test.blocker");
+  }
+
+  it("speaks on a cadence lap when no caution is out", () => {
+    fireStatus();
+
+    expect(voicePaths()).toEqual([STILL_LEADING]);
+  });
+
+  it("is silent on a cadence lap while the caution is out and claims nothing — the next cadence lap after the green speaks", () => {
+    underCaution = true;
+    fireStatus();
+
+    expect(voicePaths()).toEqual([]);
+    expect(canAnnouncePosition()).toBe(true);
+
+    underCaution = false;
+    fireStatus();
+
+    expect(voicePaths()).toEqual([STILL_LEADING]);
+  });
+
+  it("a cadence lap completed under the caution never enters the queue — it does not replay once the green is out", () => {
+    // What the `where:` is for, and the gate cannot do: the fire is refused
+    // at arrival, so it takes no place in the bus's queue. Had it been
+    // queued, it would meet an open gate here and read the position out
+    // for a lap run behind the pace car.
+    holdBus();
+    underCaution = true;
+    publishStatus();
+
+    underCaution = false;
+    flush(audio);
+
+    expect(voicePaths()).toEqual([BLOCKER]);
+    expect(canAnnouncePosition()).toBe(true);
+  });
+
+  it("an update queued before the caution and replayed while it is out is refused by the gate, the cooldown unclaimed", () => {
+    // What the gate is for, and the `where:` cannot do: the update passed
+    // its `where:` under green and waits behind a busy bus; the caution is
+    // thrown before the bus idles, and a queued fire re-expands and meets
+    // its gate, never its `where:`.
+    holdBus();
+    publishStatus();
+
+    underCaution = true;
+    flush(audio);
+
+    expect(voicePaths()).toEqual([BLOCKER]);
+    // The caution is asked BEFORE the claim: a refused update leaves the
+    // shared position window free.
+    expect(canAnnouncePosition()).toBe(true);
+
+    // The readout a burned window would have silenced: the first cadence
+    // lap after the green.
+    underCaution = false;
+    fireStatus();
+
+    expect(voicePaths()).toEqual([BLOCKER, STILL_LEADING]);
+    expect(canAnnouncePosition()).toBe(false);
+  });
+
+  it("an update queued before the caution that replays after the green speaks — the gate reads the caution live", () => {
+    holdBus();
+    publishStatus();
+
+    // The caution comes and goes while the update waits.
+    underCaution = true;
+    underCaution = false;
+    flush(audio);
+
+    expect(voicePaths()).toEqual([BLOCKER, STILL_LEADING]);
+    expect(canAnnouncePosition()).toBe(false);
+  });
+
+  it("is silent for the cadence lap that ENDS a caution — completed after the green, with the resolver already false", () => {
+    // The lap counter lags the green by seconds, so the one-to-go lap's
+    // `lap.completed` arrives with the caution already over and carries
+    // `wasCaution: true` (the translator's fixture replay, "the lap that
+    // ends a caution"). "Is a caution out now" alone lets exactly this lap
+    // through, once per caution.
+    underCaution = false;
+    fireStatus({ wasCaution: true });
+
+    expect(voicePaths()).toEqual([]);
+    expect(canAnnouncePosition()).toBe(true);
+  });
+
+  it("speaks on the next cadence lap, run wholly under green, which carries no flag", () => {
+    underCaution = false;
+    fireStatus({ wasCaution: true });
+    fireStatus();
+
+    expect(voicePaths()).toEqual([STILL_LEADING]);
+  });
+
+  describe("the contract's own two checks", () => {
+    const live: Live = { position: 5, classPosition: 5, isMultiClass: false };
+    const cadenceLap = { sessionType: "race", lapsSincePositionChange: 3 } as LapSnap;
+
+    function lapEvent(data: LapSnap): SimEventOf<"lap.completed"> {
+      return { event: "lap.completed", timestamp: 0, telemetry: {}, data } as SimEventOf<"lap.completed">;
+    }
+
+    /** The fire context the engine hands a speak-time gate. */
+    function gateCtx(data: LapSnap): ScenarioContext {
+      const event = lapEvent(data);
+
+      return { event, telemetry: event.telemetry, data: event.data, now: Date.now(), vars: {} };
+    }
+
+    function build() {
+      return buildRaceStatusContract(
+        () => false,
+        () => live,
+        () => underCaution,
+      );
+    }
+
+    it("where: refuses a cadence lap while the caution is out, and takes one again after the green", () => {
+      const where = build().when!.where! as (ev: SimEventOf<"lap.completed">) => boolean;
+
+      underCaution = true;
+      expect(where(lapEvent(cadenceLap))).toBe(false);
+
+      underCaution = false;
+      expect(where(lapEvent(cadenceLap))).toBe(true);
+    });
+
+    it("where: refuses the lap that carries wasCaution even with no caution out", () => {
+      const where = build().when!.where! as (ev: SimEventOf<"lap.completed">) => boolean;
+
+      expect(where(lapEvent({ ...cadenceLap, wasCaution: true }))).toBe(false);
+      expect(where(lapEvent(cadenceLap))).toBe(true);
+    });
+
+    it("the speak-time gate refuses while the caution is out WITHOUT claiming the shared cooldown — the caution is asked first", () => {
+      const { admit } = build().speakGate!;
+
+      underCaution = true;
+      expect(admit(gateCtx(cadenceLap))).toBe(false);
+      expect(canAnnouncePosition()).toBe(true);
+
+      underCaution = false;
+      expect(admit(gateCtx(cadenceLap))).toBe(true);
+      expect(canAnnouncePosition()).toBe(false);
+    });
+
+    it("the speak-time gate does not ask wasCaution — the where: settled it when the lap completed", () => {
+      const { admit } = build().speakGate!;
+
+      expect(admit(gateCtx({ ...cadenceLap, wasCaution: true }))).toBe(true);
+    });
+
+    it("takes no caution resolver for a caution that is never out — the builder's default", () => {
+      const plain = buildRaceStatusContract(
+        () => false,
+        () => live,
+      );
+      const where = plain.when!.where! as (ev: SimEventOf<"lap.completed">) => boolean;
+
+      expect(where(lapEvent(cadenceLap))).toBe(true);
+      expect(plain.speakGate!.admit(gateCtx(cadenceLap))).toBe(true);
+    });
+
+    it("says in both published sentences that a caution silences it, and keeps the shared window's wording", () => {
+      const c = build();
+
+      expect(c.description).toContain("caution");
+      expect(c.speakGate?.description).toBe(
+        "No full-course caution is out and no other position readout has spoken in the last twenty seconds when this one comes to speak; speaking it starts that window.",
+      );
+    });
   });
 });
 
