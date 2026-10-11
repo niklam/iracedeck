@@ -189,11 +189,15 @@ export function registerLapTimeVocabulary(
  * new "best" lap time by virtue of being timed at all, and "That was your
  * best lap yet" over a 44-second pace lap is nonsense — the caution sequence
  * (`caution.ts`) owns everything the engineer says while the yellow is out.
- * Read at EVENT time, same as the race-finished gate, because `lap.completed`
- * itself never replays: unlike the caution family's queueable calls, there is
- * no pending fire whose speak-time state could have moved on. Default
- * `() => false` preserves legacy behavior for tests and the harness that
- * don't supply a closure.
+ * Read at EVENT time, same as the race-finished gate, and not again at speak
+ * time. The fire can still wait: a heavier fire queues behind a lighter line
+ * in flight, queueable or not, so a best lap set under green can be read out
+ * a few seconds into a caution thrown just after it (found in issue #1171).
+ * That is left as it is, because the readout is the frozen time of a lap run
+ * under green — late, but true. The position readout reads the LIVE order
+ * when it speaks, which is why its gate asks the caution again and this one
+ * has no gate. Default `() => false` preserves legacy behavior for tests and
+ * the harness that don't supply a closure.
  *
  * Holds the fixed `id`, the full `when` block, and the channel/bus/base/family
  * defaults (weight is left at the default `WEIGHT.NORMAL`); the readout's

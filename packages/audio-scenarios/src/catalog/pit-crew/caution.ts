@@ -293,8 +293,8 @@ export type PaceLineupResolver = () => PaceLineup | null;
 /**
  * Reader the plugins wire to `isUnderFullCourseCaution()`: the translator's own
  * caution phase not being `"none"`, NOT a re-derivation of the caution bits.
- * Taken by the lap-time and position-change contracts, which fall silent
- * under a caution and need nothing finer than "is one out".
+ * Taken by the lap-time, position-change, race-status and gap contracts,
+ * which fall silent under a caution and need nothing finer than "is one out".
  */
 export type UnderCautionResolver = () => boolean;
 
