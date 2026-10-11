@@ -234,6 +234,26 @@
 			}
 			.ird-enable-feature-button:hover { filter: brightness(1.1); }
 			.ird-enable-feature-done { color: var(--sw-fg-mute); margin: 0; }
+
+			/* Support iRaceDeck (#1303) — prose again, left-aligned like Getting Started. */
+			.sw-support { max-width: 70ch; }
+			.sw-support-p { margin: 0 0 10px; line-height: 1.55; }
+			.sw-support-title { font-size: 15px; margin: 22px 0 8px; }
+			.sw-support-list { margin: 0 0 10px; padding-left: 20px; line-height: 1.55; }
+			.sw-support-list li { margin: 0 0 4px; }
+			/* Prose links: dim white, never the brand red (see .sw-gs-p a). */
+			.sw-support-p a, .sw-support-member a, .sw-support-list a { color: var(--sw-fg-dim); }
+			.sw-support-p a:hover, .sw-support-member a:hover, .sw-support-list a:hover { color: var(--sw-fg); }
+			/* The button is Buy Me a Coffee's image at its own 253×50, as on the
+			   website: nothing here sizes, rounds, outlines or hovers it. Zero
+			   line-height so the link is exactly the image's box, and the Supporter
+			   line sits 12px under it. The colour is for the alt text, which is all
+			   there is to see when the image cannot load. */
+			.sw-support-cta { margin: 16px 0 12px; line-height: 0; }
+			.sw-support-button { display: inline-block; line-height: 0; text-decoration: none; color: var(--sw-fg-dim); }
+			.sw-support-button img { display: block; }
+			/* A step smaller and quieter than the prose above it. */
+			.sw-support-member { margin: 0; font-size: 8pt; line-height: 1.55; color: var(--sw-fg-mute); }
 		</style>
 	</head>
 	<body>
@@ -327,6 +347,7 @@
 				<button class="sw-nav-item" data-pane="simhub" type="button">SimHub</button>
 				<button class="sw-nav-item" data-pane="updates" type="button" id="sw-nav-updates">What's New<span class="sw-badge"></span></button>
 				<button class="sw-nav-item" data-pane="diagnostics" type="button">Diagnostics</button>
+				<button class="sw-nav-item" data-pane="support" type="button">Support iRaceDeck</button>
 			</nav>
 
 			<%# ---- Getting Started: the same page the website carries (#1061) ---- %>
@@ -469,6 +490,11 @@
 					%>
 					<%- include('accordion', { title: 'Logging', content: include('global-common-diagnostics', { settingsWindow: true }), settingsWindow: true }) %>
 				</div>
+			</section>
+
+			<%# ---- Support iRaceDeck: the last tab, heading and copy all in the partial (#1303) ---- %>
+			<section class="sw-pane" id="pane-support" hidden>
+				<%- include('settings-window-support') %>
 			</section>
 		</main>
 

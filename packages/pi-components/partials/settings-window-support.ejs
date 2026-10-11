@@ -1,0 +1,55 @@
+<%#
+  The Settings window's Support iRaceDeck page (issue #1303).
+
+  Says that iRaceDeck is free, what it costs to run, and where somebody who
+  wants to chip in can do so — plus the ways to help that cost nothing. It is
+  the last tab, binds no setting and has no script, and nothing else in the
+  window points at it: whoever goes looking finds it, nobody else is shown it.
+
+  The three URLs below are the plugin's own copy of the website's
+  packages/website/src/data/support.ts (#1299), under the same names. Neither
+  side can import the other, so `scripts/support-link-parity.test.mjs` holds the
+  two equal. Each stays a one-line `var NAME = "…";`, because that test reads
+  them from this file as text, and each is emitted escaped, so the image URL's
+  `&` reaches its attribute as `&amp;`.
+
+  The button is Buy Me a Coffee's own image, hotlinked as the website does, and
+  it is the ONLY thing the window loads from another site
+  (`settings-window-no-third-party.test.ts` holds that line). It shows their
+  live supporter count. Two attributes keep the request small:
+
+    - `loading="lazy"`: the pane is `hidden` until its tab is chosen, and a lazy
+      image with no box is not fetched, so the request goes out when a user
+      opens this tab and not every time the window opens.
+    - `referrerpolicy="no-referrer"`: the request tells Buy Me a Coffee nothing
+      about the page that made it.
+
+  Never swap the image for their widget script (`cdnjs.buymeacoffee.com`): it
+  looks the same and would run another site's code in a page that holds a write
+  connection to the user's settings.
+
+  Included by settings-window.ejs only; its styling lives with the rest of the
+  window's CSS on that page.
+%>
+<%
+  var SUPPORT_URL = "https://buymeacoffee.com/niklaslampen";
+  var MEMBERSHIP_URL = "https://buymeacoffee.com/niklaslampen/membership";
+  var SUPPORT_BUTTON_IMAGE_URL = "https://img.buymeacoffee.com/button-api/?text=Support%20iRaceDeck&emoji=%F0%9F%8F%8E%EF%B8%8F&slug=niklaslampen&button_colour=FFDD00&font_colour=000000&font_family=Cookie&outline_colour=000000&coffee_colour=ffffff";
+-%>
+<h2>Support iRaceDeck</h2>
+<p class="sw-sub">iRaceDeck is free — servers and Red Bull aren't. Any support is genuinely appreciated.</p>
+<div class="sw-support">
+	<p class="sw-support-p">There is no paid version and nothing is locked: every action, every Race Engineer callout and every voice is yours whether or not you ever give anything.</p>
+	<p class="sw-support-p">iRaceDeck is built and maintained in spare time. Beyond that time, the main costs are AI subscriptions and the servers behind the website. If iRaceDeck has earned a place on your rig and you would like to chip in, this is where. Nothing is ever expected.</p>
+	<p class="sw-support-cta">
+		<a class="sw-support-button" href="<%= SUPPORT_URL %>" target="_blank" rel="noopener noreferrer"><img src="<%= SUPPORT_BUTTON_IMAGE_URL %>" alt="Support iRaceDeck on Buy Me a Coffee" width="253" height="50" loading="lazy" referrerpolicy="no-referrer" /></a>
+	</p>
+	<p class="sw-support-member">Or become an <a href="<%= MEMBERSHIP_URL %>" target="_blank" rel="noopener noreferrer">iRaceDeck Supporter</a> for a monthly amount and get the Supporter role on Discord.</p>
+	<h3 class="sw-support-title">Other ways to help</h3>
+	<p class="sw-support-p">None of these cost anything, and they help just as much.</p>
+	<ul class="sw-support-list">
+		<li><a href="https://discord.gg/c6nRYywpah" target="_blank" rel="noopener noreferrer">Join the Discord</a></li>
+		<li><a href="https://github.com/niklam/iracedeck/issues" target="_blank" rel="noopener noreferrer">Report a bug or suggest a feature</a></li>
+		<li><a href="https://github.com/niklam/iracedeck" target="_blank" rel="noopener noreferrer">Star iRaceDeck on GitHub</a></li>
+	</ul>
+</div>

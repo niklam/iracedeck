@@ -34,6 +34,7 @@ export const SETTINGS_WINDOW_TABS = [
   { pane: "simhub", label: "SimHub", file: "simhub.png", elgatoOnly: false },
   { pane: "updates", label: "What's New", file: "whats-new.png", elgatoOnly: false },
   { pane: "diagnostics", label: "Diagnostics", file: "diagnostics.png", elgatoOnly: false },
+  { pane: "support", label: "Support iRaceDeck", file: "support.png", elgatoOnly: false },
 ];
 
 /**
