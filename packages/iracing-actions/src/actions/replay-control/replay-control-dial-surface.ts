@@ -47,6 +47,7 @@ import type {
 import { frameJogMode } from "./replay-control-frame-jog.js";
 import { speedMode } from "./replay-control-speed-mode.js";
 import {
+  clearReplayTarget,
   keepReplayTarget,
   recordReplayTarget,
   REPLAY_TARGET_GIVE_UP_MS,
@@ -386,7 +387,14 @@ export class ReplayControlDialSurface {
       setSpeed: (owner, target) => {
         const sent = send(owner, (replay) => replay.setPlaySpeed(target.speed, target.slowMotion));
 
-        if (sent) this.noteSpeedSent(target);
+        if (sent) {
+          this.noteSpeedSent(target);
+
+          // A replay set playing is no longer headed for a frame: a target
+          // kept through it would send the next jog turn back there. A pause
+          // keeps it, since the move it belongs to may still be under way.
+          if (target.speed !== 0) clearReplayTarget();
+        }
 
         return sent;
       },
