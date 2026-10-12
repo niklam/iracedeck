@@ -212,9 +212,9 @@ export function initSettings(core: Core, audio: Audio, voicePacks: VoicePacks): 
   // anything, so a <=250 ms window remains there by construction.
   process.on("exit", () => settingsStore.flushSync());
 
-  // The per-session replay store (#1162, #1203): one file per SubSessionID under
-  // %LOCALAPPDATA%\iRaceDeck\Replay\<ecosystem>, holding the replay markers and the lap
-  // record. Fed the active session by the subscriber wired beside the elevation
+  // The per-session replay store (#1162, #1203, #1354): one file per SubSessionID under
+  // %LOCALAPPDATA%\iRaceDeck\Replay\<ecosystem>, holding the replay markers, the lap
+  // record and the greens. Fed the active session by the subscriber wired beside the elevation
   // check below; the actions read it synchronously through getReplaySessionStore().
   // Its writes are debounced like the settings store's, so it gets the same
   // synchronous flush on the way out.
@@ -233,6 +233,11 @@ export function initSettings(core: Core, audio: Audio, voicePacks: VoicePacks): 
   });
   core.bus.subscribe("replay.lapTimed", (ev) => {
     replaySessionStore.laps.recordLapTime(ev.data);
+  });
+  // The translator's green recorder (#1354) publishes the race start and every
+  // caution restart; the store keeps them beside the laps for Jump to Green Flag.
+  core.bus.subscribe("replay.greenFlag", (ev) => {
+    replaySessionStore.greens.record(ev.data);
   });
 
   // Settings window (#992): the plugin serves ui/settings-window.html (compiled

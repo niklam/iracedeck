@@ -255,6 +255,25 @@ describe("initSettings", () => {
     expect(callLog).toEqual(["createFileSettingsStore().flushSync", "initializeReplaySessionStore().flushSync"]);
   });
 
+  it("hands each replay record event to its section of the store (#1203, #1354)", () => {
+    const handlers = new Map<string, (ev: { data: unknown }) => void>();
+    implement("initializeEventBus().subscribe", (name, handler) =>
+      handlers.set(name as string, handler as (ev: { data: unknown }) => void),
+    );
+    boot();
+
+    for (const [event, call] of [
+      ["replay.lapStarted", "initializeReplaySessionStore().laps.recordLapStart"],
+      ["replay.lapTimed", "initializeReplaySessionStore().laps.recordLapTime"],
+      ["replay.greenFlag", "initializeReplaySessionStore().greens.record"],
+    ]) {
+      callLog.length = 0;
+      handlers.get(event)?.({ data: {} });
+
+      expect(callLog, event).toEqual([call]);
+    }
+  });
+
   it("builds its loggers under today's scopes", () => {
     const { host } = boot();
 
