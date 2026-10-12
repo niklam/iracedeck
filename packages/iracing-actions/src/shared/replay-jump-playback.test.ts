@@ -498,8 +498,32 @@ describe("replay-jump-playback (#1276)", () => {
         jump.end();
       });
 
+      it("does not take a replay that is playing for a seek still running", async () => {
+        // Playback was started outside the jump (iRacing's own replay bar)
+        // while it waited: the frame changes at every read, but that is not
+        // the seek getting nearer, so the wait is the plain timeout.
+        let frame = 90_000;
+        const replay = { setPlaySpeed: vi.fn(() => true), setPlayPosition: vi.fn(() => true) };
+        let speed = 0;
+        const readTelemetry = (): TelemetryData =>
+          ({ ReplayFrameNum: speed === 0 ? frame : frame++, ReplayPlaySpeed: speed }) as TelemetryData;
+        const jump = beginReplayJump("next", readTelemetry());
+        let outcome: ReplayJumpOutcome | null = null;
+
+        void runReplayJump(jump, { frame: 10, replay, readTelemetry }).then((result) => (outcome = result));
+
+        speed = 1;
+        await vi.advanceTimersByTimeAsync(2_900);
+        expect(outcome).toBeNull();
+
+        await vi.advanceTimersByTimeAsync(300);
+        expect(outcome).toMatchObject({ kind: "stopped", reason: "seek-timeout" });
+        expect(replay.setPlaySpeed).not.toHaveBeenCalled();
+        jump.end();
+      });
+
       it("does not wait for ever on a cursor that never stops moving", async () => {
-        // A replay that is playing after all: the frame changes at every read and never reads the target.
+        // A paused replay whose frame changes at every read and never reads the target.
         let frame = 90_000;
         const replay = { setPlaySpeed: vi.fn(() => true), setPlayPosition: vi.fn(() => true) };
         const readTelemetry = (): TelemetryData => ({ ReplayFrameNum: frame++, ReplayPlaySpeed: 0 }) as TelemetryData;

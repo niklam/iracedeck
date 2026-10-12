@@ -301,14 +301,16 @@ export async function runReplayJump(jump: ReplayJump, options: ReplayJumpOptions
   }
 
   // The landing sample is read for nothing but the frame and the speed, so
-  // the `SessionNum = -1` transient after it need not be waited out. The
-  // replay is paused, so a frame that changes is the seek still running.
+  // the `SessionNum = -1` transient after it need not be waited out. Only a
+  // paused replay's frame counts as the seek still running: while the replay
+  // plays — started from iRacing's own replay bar, or by a key pressed a tick
+  // before this jump — every read shows a new frame, and that is playback.
   const landing = await seekReplayFrame({
     ...waitOptions,
     frame,
     send: (target) => replay.setPlayPosition(ReplayPosMode.Begin, target),
     requireSession: false,
-    progress: (sample) => sample?.ReplayFrameNum,
+    progress: (sample) => (isPaused(sample) ? sample?.ReplayFrameNum : null),
     maxWaitMs: REPLAY_JUMP_MAX_WAIT_MS,
   });
 
