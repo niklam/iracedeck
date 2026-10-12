@@ -7,8 +7,8 @@ import {
   clearReplayJumpSpeed,
   clearReplayLanding,
   currentReplayCursorOwner,
-  pendingReplayJumpSpeed,
   onReplayCursorTaken,
+  pendingReplayJumpSpeed,
   pendingReplayLanding,
   recordReplayJumpSpeed,
   recordReplayLanding,
@@ -144,54 +144,6 @@ describe("replay-cursor", () => {
     });
   });
 
-  describe("the pending jump speed (#1276)", () => {
-    const rewinding = { speed: -8, slowMotion: false, appliedAt: null };
-
-    it("is null until a jump records one, and one value process-wide", () => {
-      expect(pendingReplayJumpSpeed()).toBeNull();
-
-      recordReplayJumpSpeed(rewinding);
-      expect(pendingReplayJumpSpeed()).toBe(rewinding);
-
-      const applied = { speed: 1, slowMotion: false, appliedAt: 10_000 };
-
-      recordReplayJumpSpeed(applied);
-      expect(pendingReplayJumpSpeed()).toBe(applied);
-    });
-
-    it("anything else taking the cursor clears it — a one-shot command or a new claim", () => {
-      recordReplayJumpSpeed(rewinding);
-      cancelReplayCursorOwner("play-pause");
-      expect(pendingReplayJumpSpeed()).toBeNull();
-
-      recordReplayJumpSpeed(rewinding);
-      claimReplayCursor("jump-to-fastest-lap");
-      expect(pendingReplayJumpSpeed()).toBeNull();
-    });
-
-    it("clears even with no claim in flight, and on an explicit clear and a reset", () => {
-      recordReplayJumpSpeed(rewinding);
-      expect(cancelReplayCursorOwner("slow-motion")).toBeNull();
-      expect(pendingReplayJumpSpeed()).toBeNull();
-
-      recordReplayJumpSpeed(rewinding);
-      clearReplayJumpSpeed();
-      expect(pendingReplayJumpSpeed()).toBeNull();
-
-      recordReplayJumpSpeed(rewinding);
-      _resetReplayCursor();
-      expect(pendingReplayJumpSpeed()).toBeNull();
-    });
-
-    it("is separate from the pending landing", () => {
-      recordReplayLanding(4_000, 10_000);
-      recordReplayJumpSpeed(rewinding);
-      clearReplayLanding();
-
-      expect(pendingReplayJumpSpeed()).toBe(rewinding);
-    });
-  });
-
   describe("onReplayCursorTaken (#1316)", () => {
     it("tells a listener on every one-shot command, claim in flight or not", () => {
       const taken = vi.fn();
@@ -256,6 +208,54 @@ describe("replay-cursor", () => {
       cancelReplayCursorOwner("play-pause");
       expect(taken).toHaveBeenCalledTimes(1);
       stop();
+    });
+  });
+
+  describe("the pending jump speed (#1276)", () => {
+    const rewinding = { speed: -8, slowMotion: false, appliedAt: null };
+
+    it("is null until a jump records one, and one value process-wide", () => {
+      expect(pendingReplayJumpSpeed()).toBeNull();
+
+      recordReplayJumpSpeed(rewinding);
+      expect(pendingReplayJumpSpeed()).toBe(rewinding);
+
+      const applied = { speed: 1, slowMotion: false, appliedAt: 10_000 };
+
+      recordReplayJumpSpeed(applied);
+      expect(pendingReplayJumpSpeed()).toBe(applied);
+    });
+
+    it("anything else taking the cursor clears it — a one-shot command or a new claim", () => {
+      recordReplayJumpSpeed(rewinding);
+      cancelReplayCursorOwner("play-pause");
+      expect(pendingReplayJumpSpeed()).toBeNull();
+
+      recordReplayJumpSpeed(rewinding);
+      claimReplayCursor("jump-to-fastest-lap");
+      expect(pendingReplayJumpSpeed()).toBeNull();
+    });
+
+    it("clears even with no claim in flight, and on an explicit clear and a reset", () => {
+      recordReplayJumpSpeed(rewinding);
+      expect(cancelReplayCursorOwner("slow-motion")).toBeNull();
+      expect(pendingReplayJumpSpeed()).toBeNull();
+
+      recordReplayJumpSpeed(rewinding);
+      clearReplayJumpSpeed();
+      expect(pendingReplayJumpSpeed()).toBeNull();
+
+      recordReplayJumpSpeed(rewinding);
+      _resetReplayCursor();
+      expect(pendingReplayJumpSpeed()).toBeNull();
+    });
+
+    it("is separate from the pending landing", () => {
+      recordReplayLanding(4_000, 10_000);
+      recordReplayJumpSpeed(rewinding);
+      clearReplayLanding();
+
+      expect(pendingReplayJumpSpeed()).toBe(rewinding);
     });
   });
 });
