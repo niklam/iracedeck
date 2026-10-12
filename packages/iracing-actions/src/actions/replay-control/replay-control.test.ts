@@ -12,8 +12,10 @@ import type { LapStartLookup, LapStartQuery, LapStartRecord } from "@iracedeck/r
 import { getGlobalSettings } from "@iracedeck/settings";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
-import { _resetReplayCursor, cancelReplayCursorOwner } from "../../shared/replay-cursor.js";
+import { _resetReplayCursor, cancelReplayCursorOwner, claimReplayCursor } from "../../shared/replay-cursor.js";
 import { withSteppedReplayState } from "../../shared/test-support/replay-state.js";
+import { ReplayControlDialSettings } from "./replay-control-dial-settings.js";
+import type { ReplayControlDialHost } from "./replay-control-dial-surface.js";
 import {
   _getFastestLapSessionCache,
   _resetFastestLapSessionCache,
@@ -27,6 +29,7 @@ import {
   parseSpeedSetting,
   ReplayControl,
 } from "./replay-control.js";
+import { _resetReplaySpeedState, rememberedSpeed } from "./replay-speed-state.js";
 
 // Mock all replay-control icon SVGs
 vi.mock("@iracedeck/icons/replay-control/play-pause.svg", () => ({
@@ -124,6 +127,38 @@ vi.mock("@iracedeck/iracing-sdk", async (importOriginal) => {
     getAllCarNumbers: vi.fn(() => []),
   };
 });
+
+// The dial surface has its own suite (`replay-control-dial-surface.test.ts`);
+// here it is a recorder, so these tests see what the action routes to it and
+// can call the host the action hands it.
+const dialSurface = vi.hoisted(() => ({
+  host: null as ReplayControlDialHost | null,
+  willAppear: vi.fn(async (_action: unknown, _dial: unknown) => {}),
+  willDisappear: vi.fn((_actionId: string) => {}),
+  didReceiveSettings: vi.fn(async (_action: unknown, _dial: unknown) => {}),
+  rotate: vi.fn((_action: unknown, _dial: unknown, _ticks: number, _pressed: boolean) => {}),
+  down: vi.fn((_action: unknown, _dial: unknown) => {}),
+  up: vi.fn(async (_actionId: string) => {}),
+  touchTap: vi.fn((_action: unknown, _dial: unknown, _hold: boolean) => {}),
+  onTick: vi.fn((_actionId: string) => {}),
+}));
+
+vi.mock("./replay-control-dial-surface.js", () => ({
+  ReplayControlDialSurface: class MockReplayControlDialSurface {
+    willAppear = dialSurface.willAppear;
+    willDisappear = dialSurface.willDisappear;
+    didReceiveSettings = dialSurface.didReceiveSettings;
+    rotate = dialSurface.rotate;
+    down = dialSurface.down;
+    up = dialSurface.up;
+    touchTap = dialSurface.touchTap;
+    onTick = dialSurface.onTick;
+
+    constructor(host: ReplayControlDialHost) {
+      dialSurface.host = host;
+    }
+  },
+}));
 
 vi.mock("@iracedeck/deck-iracing", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@iracedeck/deck-iracing")>()),
@@ -1095,7 +1130,7 @@ describe("ReplayControl", () => {
   describe("play/pause behavior", () => {
     function fakeEvent(actionId: string, settings: Record<string, unknown> = {}) {
       return {
-        action: { id: actionId, setTitle: vi.fn(), setImage: vi.fn() },
+        action: { id: actionId, isDial: () => false, setTitle: vi.fn(), setImage: vi.fn() },
         payload: { settings },
       };
     }
@@ -1521,7 +1556,7 @@ describe("ReplayControl", () => {
   describe("car cycling (keystroke dispatch)", () => {
     function fakeEvent(actionId: string, settings: Record<string, unknown> = {}) {
       return {
-        action: { id: actionId, setTitle: vi.fn(), setImage: vi.fn() },
+        action: { id: actionId, isDial: () => false, setTitle: vi.fn(), setImage: vi.fn() },
         payload: { settings },
       };
     }
@@ -1565,28 +1600,6 @@ describe("ReplayControl", () => {
       expect(cameraMock.switchNum).not.toHaveBeenCalled();
     });
 
-    it("dial rotation on next-car routes through the keystroke path", async () => {
-      await action.onWillAppear(fakeEvent("ctx-1", { mode: "next-car" }) as any);
-
-      await action.onDialRotate({
-        action: { id: "ctx-1", setTitle: vi.fn(), setImage: vi.fn() },
-        payload: { settings: { mode: "next-car" }, ticks: 1 },
-      } as any);
-
-      expect(action["tapBinding"]).toHaveBeenCalledWith("replayControlNextCar");
-    });
-
-    it("dial counter-rotation on next-car taps the prev-car binding", async () => {
-      await action.onWillAppear(fakeEvent("ctx-1", { mode: "next-car" }) as any);
-
-      await action.onDialRotate({
-        action: { id: "ctx-1", setTitle: vi.fn(), setImage: vi.fn() },
-        payload: { settings: { mode: "next-car" }, ticks: -1 },
-      } as any);
-
-      expect(action["tapBinding"]).toHaveBeenCalledWith("replayControlPrevCar");
-    });
-
     it("declares the active binding so readiness tracking matches the configured key", async () => {
       await action.onWillAppear(fakeEvent("ctx-1", { mode: "next-car" }) as any);
 
@@ -1603,14 +1616,7 @@ describe("ReplayControl", () => {
     });
   });
 
-  describe("car number cycling (dial rotation)", () => {
-    function rotate(mode: string, ticks: number) {
-      return action.onDialRotate({
-        action: { id: "ctx-1", setTitle: vi.fn(), setImage: vi.fn() },
-        payload: { settings: { mode }, ticks },
-      } as never);
-    }
-
+  describe("car number cycling", () => {
     // Cars by number: #4 (carIdx 0), #7 (carIdx 1, focused), #42 (carIdx 2).
     const TELEMETRY = {
       CamCarIdx: 1,
@@ -1643,7 +1649,7 @@ describe("ReplayControl", () => {
       action["sdkController"].getCurrentTelemetry = vi.fn(() => TELEMETRY);
       action["sdkController"].getSessionInfo = vi.fn(() => ({}));
       await action.onWillAppear({
-        action: { id: "ctx-1", setTitle: vi.fn(), setImage: vi.fn() },
+        action: { id: "ctx-1", isDial: () => false, setTitle: vi.fn(), setImage: vi.fn() },
         payload: { settings: { mode: "next-car-number" } },
       } as never);
     });
@@ -1659,50 +1665,10 @@ describe("ReplayControl", () => {
       vi.mocked(getAllCarNumbers).mockReset();
     });
 
-    it("lowers the car number on a clockwise detent (#973)", async () => {
-      await rotate("next-car-number", 1);
-
-      expect(mockCamera.switchNum).toHaveBeenCalledWith(4, 0, 0); // focused #7 → #4
-    });
-
-    it("raises the car number on a counter-clockwise detent (#973)", async () => {
-      await rotate("next-car-number", -1);
-
-      expect(mockCamera.switchNum).toHaveBeenCalledWith(42, 0, 0); // focused #7 → #42
-    });
-
-    it("focuses cars that left the world in the post-race snapshot shape (#1281)", async () => {
+    it("focuses cars that left the world in the post-race snapshot shape on a key press, both directions (#1281)", async () => {
       // The 2026-09-29 capture's shape: every competitor reads -1 in lap
       // distance, surface and laps — at the live end and mid-replay alike —
-      // and only the pace car is on track. Both directions still land.
-      const notInWorld = new Array<number>(72).fill(-1);
-      const lapDistPct = [...notInWorld];
-      const trackSurface = [...notInWorld];
-      lapDistPct[64] = 0.0595;
-      trackSurface[64] = 2;
-      action["sdkController"].getCurrentTelemetry = vi.fn(
-        () =>
-          ({
-            CamCarIdx: 1,
-            IsReplayPlaying: true,
-            CarIdxLapCompleted: [...notInWorld],
-            CarIdxLapDistPct: lapDistPct,
-            CarIdxTrackSurface: trackSurface,
-          }) as unknown as TelemetryData,
-      );
-
-      await rotate("next-car-number", 1);
-      await rotate("next-car-number", -1);
-
-      expect(mockCamera.switchNum).toHaveBeenNthCalledWith(1, 4, 0, 0); // #7 → #4
-      expect(mockCamera.switchNum).toHaveBeenNthCalledWith(2, 42, 0, 0); // #7 → #42
-    });
-
-    it("focuses cars that left the world in the post-race snapshot shape on a key press, both directions (#1281)", async () => {
-      // Same 2026-09-29 capture shape as the rotate version above (pace car
-      // on track at carIdx 64, every competitor at -1), driven through
-      // onKeyDown — the live path, since Replay Control's manifest declares
-      // Keypad only and onDialRotate never fires (#640).
+      // and only the pace car (carIdx 64) is on track. Both directions still land.
       const notInWorld = new Array<number>(72).fill(-1);
       const lapDistPct = [...notInWorld];
       const trackSurface = [...notInWorld];
@@ -1730,30 +1696,11 @@ describe("ReplayControl", () => {
       expect(mockCamera.switchNum).toHaveBeenNthCalledWith(2, 4, 0, 0); // previous: #7 → #4
     });
 
-    it("steps through the field on the formation lap, where no car has completed a lap (#968)", async () => {
+    it("reaches the neighbour on the formation lap on a key press, where no car has completed a lap (#968)", async () => {
       // The regressed path: Next / Previous Car (Number Order) once went dead
       // for the whole pace lap because a presence predicate demanded a
       // completed lap. Snapshot 20260417-081043's shape: cars on track, every
       // CarIdxLapCompleted -1.
-      action["sdkController"].getCurrentTelemetry = vi.fn(
-        () =>
-          ({
-            CamCarIdx: 1,
-            CarIdxLapCompleted: [-1, -1, -1],
-            CarIdxLapDistPct: [0.8174, 0.801, 0.8064],
-            CarIdxTrackSurface: [TrkLoc.OnTrack, TrkLoc.OnTrack, TrkLoc.OnTrack],
-          }) as unknown as TelemetryData,
-      );
-
-      await rotate("next-car-number", 1);
-
-      expect(mockCamera.switchNum).toHaveBeenCalledWith(4, 0, 0);
-    });
-
-    it("reaches the neighbour on the formation lap on a key press, where no car has completed a lap (#968)", async () => {
-      // Same snapshot 20260417-081043 shape as the rotate version above,
-      // driven through onKeyDown instead of onDialRotate — the dial path is
-      // dormant (Replay Control's manifest declares Keypad only, #640).
       action["sdkController"].getCurrentTelemetry = vi.fn(
         () =>
           ({
@@ -1769,29 +1716,343 @@ describe("ReplayControl", () => {
         payload: { settings: { mode: "next-car-number" } },
       } as never);
 
-      // A key dispatches `settings.mode` directly, unlike a dial rotation,
-      // which the DIRECTIONAL_PAIRS inversion (#973) sends the other way —
-      // so "next" from focused #7 lands on #42, not #4.
+      // A key dispatches `settings.mode` directly: "next" from focused #7 lands on #42.
       expect(mockCamera.switchNum).toHaveBeenCalledWith(42, 0, 0);
     });
+  });
 
-    it("maps both detents the same way whichever car-number mode the key sits on (#973)", async () => {
-      // The pair is one bidirectional control: rotation direction decides the
-      // target, so a `prev-car-number` key on a dial must behave identically.
-      await rotate("prev-car-number", 1);
+  describe("dial surface routing (#1316)", () => {
+    // This suite's `CommonSettings.extend` is an identity parse, so the event
+    // carries the parsed `dial` itself; `replay-control-settings.test.ts`
+    // covers what the real schema makes of a stored object.
+    const DIAL = ReplayControlDialSettings.parse({ pressAction: "reverse" });
+    const mockReplay = { goToEnd: vi.fn(() => true) };
+    /** A replay playing at 4x. */
+    const REPLAY_4X = {
+      IsReplayPlaying: true,
+      ReplayPlaySpeed: 4,
+      ReplayPlaySlowMotion: false,
+      ReplayFrameNum: 4_000,
+    } as TelemetryData;
+    /** What telemetry reads in the post-seek blip, and from the car. */
+    const NOT_PLAYING = { IsReplayPlaying: false, ReplayPlaySpeed: 8, ReplayFrameNum: 0 } as TelemetryData;
 
-      expect(mockCamera.switchNum).toHaveBeenCalledWith(4, 0, 0);
+    let action: ReplayControl;
 
-      await rotate("prev-car-number", -1);
+    function dialEvent(payload: Record<string, unknown> = {}, dial = DIAL) {
+      return {
+        action: { id: "dial-1", isDial: () => true, setTitle: vi.fn(), setImage: vi.fn() },
+        payload: { settings: { mode: "play-pause", dial }, ...payload },
+      };
+    }
 
-      expect(mockCamera.switchNum).toHaveBeenLastCalledWith(42, 0, 0);
+    function keyEvent(actionId: string, settings: Record<string, unknown>) {
+      return {
+        action: { id: actionId, isDial: () => false, setTitle: vi.fn(), setImage: vi.fn() },
+        payload: { settings },
+      };
+    }
+
+    function nowReading(telemetry: TelemetryData | null): void {
+      action["sdkController"].getCurrentTelemetry = vi.fn(() => telemetry);
+    }
+
+    /** The telemetry callback the action subscribed for a context. */
+    function tickOf(contextId: string): (telemetry: TelemetryData | null) => void {
+      const call = vi.mocked(action["sdkController"].subscribe).mock.calls.find(([id]) => id === contextId);
+
+      if (!call) throw new Error(`no telemetry subscription for ${contextId}`);
+
+      return (telemetry) => call[1](telemetry, telemetry !== null);
+    }
+
+    /** The host the action handed its dial surface. */
+    function host(): ReplayControlDialHost {
+      if (!dialSurface.host) throw new Error("the action constructed no dial surface");
+
+      return dialSurface.host;
+    }
+
+    beforeEach(async () => {
+      vi.clearAllMocks();
+      _resetReplayCursor();
+      _resetReplaySpeedState();
+      const { getCommands } = await import("@iracedeck/deck-iracing");
+
+      vi.mocked(getCommands).mockReturnValue({ replay: mockReplay, camera: { switchNum: vi.fn() } } as never);
+      action = new ReplayControl();
+    });
+
+    afterEach(async () => {
+      // The pinned command surface would otherwise leak into every later describe.
+      const { getCommands } = await import("@iracedeck/deck-iracing");
+
+      vi.mocked(getCommands).mockReset();
+    });
+
+    describe("lifecycle", () => {
+      it("a dial appearing goes to the surface with its dial settings, never onto the key path", async () => {
+        const ev = dialEvent();
+
+        await action.onWillAppear(ev as never);
+
+        expect(dialSurface.willAppear).toHaveBeenCalledTimes(1);
+        expect(dialSurface.willAppear).toHaveBeenCalledWith(ev.action, DIAL);
+        expect(action["activeContexts"].has("dial-1")).toBe(false);
+        expect(action["setActiveBinding"]).not.toHaveBeenCalled();
+        expect(action["setKeyImage"]).not.toHaveBeenCalled();
+        expect(ev.action.setTitle).not.toHaveBeenCalled();
+      });
+
+      it("a dial joins the telemetry subscription after the surface knows it", async () => {
+        await action.onWillAppear(dialEvent() as never);
+
+        const subscribe = vi.mocked(action["sdkController"].subscribe);
+
+        expect(subscribe).toHaveBeenCalledWith("dial-1", expect.any(Function));
+        expect(dialSurface.willAppear.mock.invocationCallOrder[0]).toBeLessThan(subscribe.mock.invocationCallOrder[0]);
+      });
+
+      it("a dial seeds the speed cache from the tick it appears on", async () => {
+        nowReading(REPLAY_4X);
+
+        await action.onWillAppear(dialEvent() as never);
+
+        expect(action["replaySpeed"].get("dial-1")).toBe(4);
+      });
+
+      it("a key appearing never reaches the surface", async () => {
+        await action.onWillAppear(keyEvent("key-1", { mode: "play-pause" }) as never);
+
+        expect(dialSurface.willAppear).not.toHaveBeenCalled();
+        expect(action["activeContexts"].has("key-1")).toBe(true);
+        expect(action["setKeyImage"]).toHaveBeenCalledTimes(1);
+      });
+
+      it("a dial's new settings go to the surface, never onto the key path", async () => {
+        await action.onWillAppear(dialEvent() as never);
+        const changed = ReplayControlDialSettings.parse({ pressAction: "jump-to-live" });
+        const ev = dialEvent({}, changed);
+
+        await action.onDidReceiveSettings(ev as never);
+
+        expect(dialSurface.didReceiveSettings).toHaveBeenCalledWith(ev.action, changed);
+        expect(action["activeContexts"].has("dial-1")).toBe(false);
+        expect(action["setActiveBinding"]).not.toHaveBeenCalled();
+        expect(action["setKeyImage"]).not.toHaveBeenCalled();
+      });
+
+      it("a key's new settings never reach the surface", async () => {
+        await action.onWillAppear(keyEvent("key-1", { mode: "play-pause" }) as never);
+        await action.onDidReceiveSettings(keyEvent("key-1", { mode: "stop" }) as never);
+
+        expect(dialSurface.didReceiveSettings).not.toHaveBeenCalled();
+      });
+
+      it("a disappearing dial leaves the surface, the subscription and the speed cache", async () => {
+        nowReading(REPLAY_4X);
+        await action.onWillAppear(dialEvent() as never);
+
+        await action.onWillDisappear(dialEvent() as never);
+
+        expect(dialSurface.willDisappear).toHaveBeenCalledWith("dial-1");
+        expect(action["sdkController"].unsubscribe).toHaveBeenCalledWith("dial-1");
+        expect(action["replaySpeed"].has("dial-1")).toBe(false);
+        expect(action["replaySlowMotion"].has("dial-1")).toBe(false);
+      });
+    });
+
+    describe("input", () => {
+      it("a turn goes to the surface with its ticks and whether the dial was held", async () => {
+        const held = dialEvent({ ticks: -3, pressed: true });
+        const plain = dialEvent({ ticks: 2 });
+
+        await action.onDialRotate(held as never);
+        await action.onDialRotate(plain as never);
+
+        expect(dialSurface.rotate).toHaveBeenNthCalledWith(1, held.action, DIAL, -3, true);
+        expect(dialSurface.rotate).toHaveBeenNthCalledWith(2, plain.action, DIAL, 2, false);
+      });
+
+      it("a press and its release go to the surface", async () => {
+        const ev = dialEvent();
+
+        await action.onDialDown(ev as never);
+        await action.onDialUp(ev as never);
+
+        expect(dialSurface.down).toHaveBeenCalledWith(ev.action, DIAL);
+        expect(dialSurface.up).toHaveBeenCalledWith("dial-1");
+      });
+
+      it("a touch goes to the surface with whether it was held", async () => {
+        const tap = dialEvent({ hold: false });
+        const longTouch = dialEvent({ hold: true });
+
+        await action.onTouchTap(tap as never);
+        await action.onTouchTap(longTouch as never);
+
+        expect(dialSurface.touchTap).toHaveBeenNthCalledWith(1, tap.action, DIAL, false);
+        expect(dialSurface.touchTap).toHaveBeenNthCalledWith(2, longTouch.action, DIAL, true);
+      });
+
+      it("no dial input sends a command of the action's own", async () => {
+        await action.onWillAppear(dialEvent() as never);
+
+        await action.onDialRotate(dialEvent({ ticks: 1 }) as never);
+        await action.onDialDown(dialEvent() as never);
+        await action.onDialUp(dialEvent() as never);
+        await action.onTouchTap(dialEvent({ hold: false }) as never);
+
+        expect(mockReplay.goToEnd).not.toHaveBeenCalled();
+        expect(action["tapBinding"]).not.toHaveBeenCalled();
+      });
+    });
+
+    describe("a dial's telemetry tick", () => {
+      it("updates the speed cache, then lets the surface compare its screen", async () => {
+        await action.onWillAppear(dialEvent() as never);
+
+        tickOf("dial-1")(REPLAY_4X);
+
+        expect(action["replaySpeed"].get("dial-1")).toBe(4);
+        expect(dialSurface.onTick).toHaveBeenCalledWith("dial-1");
+      });
+
+      it("feeds the remembered speed while a replay is on screen", async () => {
+        await action.onWillAppear(dialEvent() as never);
+        nowReading(REPLAY_4X);
+
+        tickOf("dial-1")(REPLAY_4X);
+
+        expect(rememberedSpeed()).toEqual({ speed: 4, slowMotion: false });
+      });
+
+      it("feeds it in the units the user sees: a slow-motion divisor, decoded (#1202)", async () => {
+        const quarterReverse = { ...REPLAY_4X, ReplayPlaySpeed: -3, ReplayPlaySlowMotion: true } as TelemetryData;
+        await action.onWillAppear(dialEvent() as never);
+        nowReading(quarterReverse);
+
+        tickOf("dial-1")(quarterReverse);
+
+        expect(rememberedSpeed()).toEqual({ speed: -4, slowMotion: true });
+      });
+
+      it("never feeds it from the car, where ReplayPlaySpeed says nothing about a replay", async () => {
+        await action.onWillAppear(dialEvent() as never);
+        nowReading(NOT_PLAYING);
+
+        tickOf("dial-1")(NOT_PLAYING);
+
+        expect(rememberedSpeed()).toEqual({ speed: 1, slowMotion: false });
+      });
+
+      it("keeps the remembered speed through a paused replay", async () => {
+        const paused = { ...REPLAY_4X, ReplayPlaySpeed: 0 } as TelemetryData;
+        await action.onWillAppear(dialEvent() as never);
+        nowReading(REPLAY_4X);
+        tickOf("dial-1")(REPLAY_4X);
+
+        nowReading(paused);
+        tickOf("dial-1")(paused);
+
+        expect(rememberedSpeed()).toEqual({ speed: 4, slowMotion: false });
+        expect(action["replaySpeed"].get("dial-1")).toBe(0);
+      });
+
+      it("a disconnect clears the cache and still reaches the surface, so its box can dim", async () => {
+        await action.onWillAppear(dialEvent() as never);
+        nowReading(REPLAY_4X);
+        tickOf("dial-1")(REPLAY_4X);
+        dialSurface.onTick.mockClear();
+
+        nowReading(null);
+        tickOf("dial-1")(null);
+
+        expect(action["replaySpeed"].get("dial-1")).toBe(0);
+        expect(dialSurface.onTick).toHaveBeenCalledWith("dial-1");
+        expect(rememberedSpeed()).toEqual({ speed: 4, slowMotion: false });
+      });
+    });
+
+    describe("the host the surface reads the action through", () => {
+      it("says a replay is on screen through the post-seek blip, by the controller's debounced state", () => {
+        nowReading(REPLAY_4X);
+        expect(host().inReplay()).toBe(true);
+
+        // Raw IsReplayPlaying reads false for ~300 ms after every seek.
+        nowReading(NOT_PLAYING);
+        expect(host().inReplay()).toBe(true);
+      });
+
+      it("says no replay is on screen from the car", () => {
+        nowReading(NOT_PLAYING);
+
+        expect(host().inReplay()).toBe(false);
+      });
+
+      it("hands over the latest tick and the speed it carries, decoded", () => {
+        expect(host().telemetry()).toBeNull();
+        expect(host().telemetrySpeed()).toBeNull();
+
+        const quarterReverse = { ...REPLAY_4X, ReplayPlaySpeed: -3, ReplayPlaySlowMotion: true } as TelemetryData;
+        nowReading(quarterReverse);
+        expect(host().telemetry()).toBe(quarterReverse);
+        expect(host().telemetrySpeed()).toEqual({ speed: -4, slowMotion: true });
+
+        nowReading({ IsReplayPlaying: true } as TelemetryData);
+        expect(host().telemetrySpeed()).toBeNull();
+      });
+
+      it("setLocalSpeed writes the speed cache of every context, keys and dials alike", async () => {
+        await action.onWillAppear(keyEvent("key-1", { mode: "speed-display" }) as never);
+        await action.onWillAppear(dialEvent() as never);
+        tickOf("key-1")(REPLAY_4X);
+        tickOf("dial-1")(REPLAY_4X);
+
+        host().setLocalSpeed(-8, true);
+
+        for (const contextId of ["key-1", "dial-1"]) {
+          expect(action["replaySpeed"].get(contextId)).toBe(-8);
+          expect(action["replaySlowMotion"].get(contextId)).toBe(true);
+        }
+      });
+
+      it("refreshKeys redraws the keys whose icon follows the speed, and no dial", async () => {
+        await action.onWillAppear(keyEvent("key-1", { mode: "speed-display" }) as never);
+        await action.onWillAppear(keyEvent("key-2", { mode: "next-lap" }) as never);
+        await action.onWillAppear(dialEvent() as never);
+
+        // The speed cache holds a context once a tick has reached it.
+        for (const contextId of ["key-1", "key-2", "dial-1"]) tickOf(contextId)({ ...REPLAY_4X, ReplayPlaySpeed: 0 });
+
+        vi.mocked(action["updateKeyImage"]).mockClear();
+
+        host().setLocalSpeed(4, false);
+        host().refreshKeys();
+
+        expect(action["updateKeyImage"]).toHaveBeenCalledTimes(1);
+        expect(action["updateKeyImage"]).toHaveBeenCalledWith("key-1", expect.stringContaining("4x"));
+      });
+
+      it("jumpToLive is the keypad's own jump: cursor take, goToEnd and the replay-state note", () => {
+        const cancelledBy = vi.fn();
+        claimReplayCursor("fastest-lap", cancelledBy);
+        vi.spyOn(action["sdkController"], "noteReplayLeftForLive");
+
+        host().jumpToLive();
+
+        expect(cancelledBy).toHaveBeenCalledWith("jump-to-live");
+        expect(mockReplay.goToEnd).toHaveBeenCalledTimes(1);
+        expect(action["sdkController"].noteReplayLeftForLive).toHaveBeenCalledTimes(1);
+        expect(action["logger"].info).toHaveBeenCalledWith("Jump to live executed");
+      });
     });
   });
 
   describe("jump-to-fastest-lap", () => {
     function fakeEvent(actionId: string, settings: Record<string, unknown> = {}) {
       return {
-        action: { id: actionId, setTitle: vi.fn(), setImage: vi.fn() },
+        action: { id: actionId, isDial: () => false, setTitle: vi.fn(), setImage: vi.fn() },
         payload: { settings },
       };
     }
@@ -3319,34 +3580,6 @@ describe("ReplayControl", () => {
           }
         });
 
-        it("a dial rotation on a transport key cancels a walk too", async () => {
-          vi.useFakeTimers();
-
-          try {
-            singleSessionBuffer(4, 4);
-
-            await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
-            await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
-            await vi.advanceTimersByTimeAsync(1200);
-
-            const commandsBefore = countReplayCommands();
-
-            await action.onDialRotate({
-              action: { id: "ctx-2", setTitle: vi.fn(), setImage: vi.fn() },
-              payload: { settings: { mode: "play-pause" }, ticks: 1 },
-            } as any);
-
-            expect(action["logger"].info).toHaveBeenCalledWith("Jump to fastest lap: walk cancelled by play-pause");
-
-            await vi.runAllTimersAsync();
-
-            expect(countReplayCommands()).toBe(commandsBefore);
-            expect(mockReplay.play).not.toHaveBeenCalled();
-          } finally {
-            vi.useRealTimers();
-          }
-        });
-
         it("runs one walk per action instance: a second fastest-lap press from another key is ignored", async () => {
           vi.useFakeTimers();
 
@@ -4723,49 +4956,13 @@ describe("ReplayControl", () => {
         });
       });
     });
-
-    describe("encoder is a no-op for this mode", () => {
-      it("onDialDown does nothing", async () => {
-        action["sdkController"].getCurrentTelemetry = vi.fn(() => telemetryWithBest(2, 10, 5) as any);
-
-        await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
-        await action.onDialDown({
-          action: { id: "ctx-1", setTitle: vi.fn(), setImage: vi.fn() },
-          payload: { settings: { mode: "jump-to-fastest-lap", fastestLapTarget: "viewed-car" } },
-        } as any);
-
-        expect(mockReplay.nextLap).not.toHaveBeenCalled();
-        expect(mockReplay.prevLap).not.toHaveBeenCalled();
-        expect(mockReplay.play).not.toHaveBeenCalled();
-        expect(mockCamera.switchNum).not.toHaveBeenCalled();
-      });
-
-      it("onDialRotate does nothing in either direction", async () => {
-        action["sdkController"].getCurrentTelemetry = vi.fn(() => telemetryWithBest(2, 10, 5) as any);
-
-        await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
-        await action.onDialRotate({
-          action: { id: "ctx-1", setTitle: vi.fn(), setImage: vi.fn() },
-          payload: { settings: { mode: "jump-to-fastest-lap", fastestLapTarget: "viewed-car" }, ticks: 1 },
-        } as any);
-        await action.onDialRotate({
-          action: { id: "ctx-1", setTitle: vi.fn(), setImage: vi.fn() },
-          payload: { settings: { mode: "jump-to-fastest-lap", fastestLapTarget: "viewed-car" }, ticks: -1 },
-        } as any);
-
-        expect(mockReplay.nextLap).not.toHaveBeenCalled();
-        expect(mockReplay.prevLap).not.toHaveBeenCalled();
-        expect(mockReplay.play).not.toHaveBeenCalled();
-        expect(mockCamera.switchNum).not.toHaveBeenCalled();
-      });
-    });
   });
 
   describe("long-press repeat", () => {
     /** Create a minimal fake event with the given action ID and settings. */
     function fakeEvent(actionId: string, settings: Record<string, unknown> = {}) {
       return {
-        action: { id: actionId, setTitle: vi.fn(), setImage: vi.fn() },
+        action: { id: actionId, isDial: () => false, setTitle: vi.fn(), setImage: vi.fn() },
         payload: { settings },
       };
     }
