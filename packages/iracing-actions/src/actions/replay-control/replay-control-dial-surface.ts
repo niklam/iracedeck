@@ -4,7 +4,8 @@
  *
  * Rotating runs the dial's rotation mode (`dial.mode`, one module per mode
  * behind `replay-control-dial-mode.ts`): Speed Control walks the replay speed
- * along a ladder the user shapes. The press gestures are shared by every
+ * along a ladder the user shapes, and Frame Jog (#1317) steps the replay one
+ * frame per detent. The press gestures are shared by every
  * mode — Play/Pause, Set 1x and play, Reverse direction, Jump to Live — so
  * changing the Mode never changes what a press does. The dial's screen is the
  * shared dash box, drawn from what the mode says it shows.
@@ -43,7 +44,8 @@ import type {
   ReplayControlDialMode,
   ReplayControlDialSettings,
 } from "./replay-control-dial-settings.js";
-import { SPEED_MODE_LABEL, speedMode } from "./replay-control-speed-mode.js";
+import { frameJogMode } from "./replay-control-frame-jog.js";
+import { speedMode } from "./replay-control-speed-mode.js";
 import { formatPlayCaption, formatSpeedDisplay } from "./replay-speed-format.js";
 import { noteDialSpeedSent, rememberedSpeed, resolveLiveSpeed, reverseRememberedSpeed } from "./replay-speed-state.js";
 
@@ -58,24 +60,12 @@ const PAUSED: ReplaySpeed = { speed: 0, slowMotion: false };
 /**
  * @internal Exported for testing
  *
- * The rotation modes, by `dial.mode`. Rotation and the box's view dispatch
- * through this; a new mode is its module plus one row here and one in
- * {@link DIAL_MODE_LABELS}.
+ * The rotation modes, by `dial.mode`. Rotation, the box's label and its view
+ * dispatch through this; a new mode is its module plus one row here.
  */
 export const DIAL_MODES: Record<ReplayControlDialMode, ReplayDialMode> = {
   speed: speedMode,
-};
-
-/**
- * @internal Exported for testing
- *
- * Each mode's box label, for the one frame a mode is not asked for: outside a
- * replay the box is the label alone, and a mode is called only while a replay
- * is on screen. Must equal the label the mode's own view returns (a test
- * compares them).
- */
-export const DIAL_MODE_LABELS: Record<ReplayControlDialMode, string> = {
-  speed: SPEED_MODE_LABEL,
+  "frame-jog": frameJogMode,
 };
 
 /** What the dial surface needs from the owning action. */
@@ -572,30 +562,33 @@ export class ReplayControlDialSurface {
   }
 
   /**
-   * The dash-box arguments for the current state; `pending` rides every
-   * render. In a replay the selected mode says what the box reads. Outside one
-   * (or with no telemetry) the box is the mode's label alone, dimmed.
+   * The dash-box arguments for the current state. In a replay the selected
+   * mode says what the box reads, and `pending` rides every render. Outside
+   * one (or with no telemetry) the box is the mode's label alone, dimmed.
    */
   private boxArgs(ctx: ReplayControlDialContext): DialBoxArgs {
     const colors = resolveDialBoxColors(ctx.dial.colors, DIAL_ACCENT);
+    const mode = DIAL_MODES[ctx.dial.mode];
 
     if (!this.isReplayOnScreen()) {
       // A dimmed box with an empty value slot enlarges its label into that
-      // space, where the side marks would overlap it: draw none there.
+      // space, where the side marks would overlap it: draw none there. And no
+      // pending preview: a replay that ended mid-hold leaves a release that
+      // will do nothing, so the box must not keep claiming an outcome.
       return {
-        abbr: DIAL_MODE_LABELS[ctx.dial.mode],
+        abbr: mode.label,
         value: "",
         colors,
         caption: "",
         dimmed: true,
-        pending: ctx.preview,
+        pending: null,
       };
     }
 
-    const view = DIAL_MODES[ctx.dial.mode].view(ctx.dial, this.io);
+    const view = mode.view(ctx.dial, this.io);
 
     return {
-      abbr: view.label,
+      abbr: mode.label,
       value: view.value,
       colors,
       sideMarker: view.sides,

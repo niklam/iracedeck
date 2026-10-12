@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { parseSpeedStops, ReplayControlDialSettings, SPEED_STOP_TOKENS } from "./replay-control-dial-settings.js";
+import {
+  parseSpeedStops,
+  REPLAY_DIAL_MODES,
+  ReplayControlDialSettings,
+  SPEED_STOP_TOKENS,
+} from "./replay-control-dial-settings.js";
 
 /** The tokens a parsed map has ticked, in grid order. */
 function ticked(stops: Record<string, boolean>): string[] {
@@ -72,6 +77,26 @@ describe("ReplayControlDialSettings", () => {
     expect(dial.pressAction).toBe("play-pause");
     expect(dial.longPressAction).toBe("reverse");
     expect(dial.tapAction).toBe("jump-to-live");
+    expect(dial.speedStops["16"]).toBe(true);
+  });
+
+  it("should offer Speed Control and Frame Jog, in that order", () => {
+    expect(REPLAY_DIAL_MODES).toEqual(["speed", "frame-jog"]);
+  });
+
+  it.each(REPLAY_DIAL_MODES)("should keep a stored %s mode", (mode) => {
+    expect(ReplayControlDialSettings.parse({ mode }).mode).toBe(mode);
+  });
+
+  it("should keep the gesture slots and the speed ladder when the mode is Frame Jog", () => {
+    const dial = ReplayControlDialSettings.parse({
+      mode: "frame-jog",
+      pressAction: "reverse",
+      speedStops: { "16": true },
+    });
+
+    expect(dial.mode).toBe("frame-jog");
+    expect(dial.pressAction).toBe("reverse");
     expect(dial.speedStops["16"]).toBe(true);
   });
 });

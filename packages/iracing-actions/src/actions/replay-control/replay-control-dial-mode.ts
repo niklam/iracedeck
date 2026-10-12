@@ -43,10 +43,8 @@ export interface ReplayDialModeIo {
   pause(owner: string): boolean;
 }
 
-/** What the dash box reads in a mode. All of it goes into the displayed signature. */
+/** What the dash box reads in a mode, under the mode's label. All of it goes into the displayed signature. */
 export interface ReplayDialModeView {
-  /** The box's label, e.g. `SPEED`. */
-  label: string;
   /** The value slot. */
   value: string;
   /** The small line along the bottom; empty for none. */
@@ -55,8 +53,14 @@ export interface ReplayDialModeView {
   sides: DialSideMarks;
 }
 
-/** One rotation mode of the Replay Control dial. Stateless: everything it reads comes from `dial` and `io`. */
+/**
+ * One rotation mode of the Replay Control dial. It holds no state of its own:
+ * what it reads comes from `dial`, `io` and the replay speed state every dial
+ * shares (`replay-speed-state.ts`).
+ */
 export interface ReplayDialMode {
+  /** The box's label, e.g. `SPEED`: shown in a replay and, dimmed, outside one. */
+  readonly label: string;
   /** What a turn does, for the Stream Deck app's dial hint (the Rotate trigger description). */
   readonly rotateDescription: string;
   /**

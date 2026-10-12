@@ -13,9 +13,6 @@ import { rememberedSpeed } from "./replay-speed-state.js";
 /** The replay-cursor owner every Speed Control turn is sent under. */
 const CURSOR_OWNER = "dial-speed";
 
-/** The dash box's label in this mode. */
-export const SPEED_MODE_LABEL = "SPEED";
-
 /**
  * The Speed Control mode. Clockwise is one stop up the signed ladder (toward
  * the fastest forward speed), counter-clockwise one stop down, `|ticks|` stops
@@ -24,6 +21,7 @@ export const SPEED_MODE_LABEL = "SPEED";
  * adjacent stop, never the remembered speed — and stops at the ladder's ends.
  */
 export const speedMode: ReplayDialMode = {
+  label: "SPEED",
   rotateDescription: "Replay speed",
 
   rotate(ticks, dial, io) {
@@ -51,7 +49,6 @@ export const speedMode: ReplayDialMode = {
     const resume = rememberedSpeed();
 
     return {
-      label: SPEED_MODE_LABEL,
       value: formatSpeedDisplay(live.speed, live.slowMotion),
       caption: live.speed === 0 ? formatPlayCaption(resume.speed, resume.slowMotion) : "",
       // The same walk the rotation runs, so a mark cannot promise a turn the dial will not make.

@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ReplayDialModeIo, ReplaySpeed } from "./replay-control-dial-mode.js";
 import { ReplayControlDialSettings, SPEED_STOP_TOKENS } from "./replay-control-dial-settings.js";
-import { SPEED_MODE_LABEL, speedMode } from "./replay-control-speed-mode.js";
+import { speedMode } from "./replay-control-speed-mode.js";
 import { _resetReplaySpeedState, noteTelemetrySpeed, reverseRememberedSpeed } from "./replay-speed-state.js";
 
 function speed(value: number, slowMotion = false): ReplaySpeed {
@@ -103,12 +103,13 @@ describe("speedMode", () => {
   });
 
   describe("view", () => {
-    it("should show the live speed under the SPEED label", () => {
-      const view = speedMode.view(dial(), fakeIo(speed(4)).io);
+    it("should show the live speed as the value", () => {
+      expect(speedMode.view(dial(), fakeIo(speed(4)).io).value).toBe("4x");
+    });
 
-      expect(view.label).toBe(SPEED_MODE_LABEL);
-      expect(view.label).toBe("SPEED");
-      expect(view.value).toBe("4x");
+    it("should leave the label to the mode itself, so it reads the same outside a replay", () => {
+      expect(speedMode.label).toBe("SPEED");
+      expect(speedMode.view(dial(), fakeIo(speed(4)).io)).not.toHaveProperty("label");
     });
 
     it.each<[ReplaySpeed, string]>([

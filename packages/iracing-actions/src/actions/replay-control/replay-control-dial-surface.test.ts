@@ -4,12 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { _resetReplayCursor, claimReplayCursor, currentReplayCursorOwner } from "../../shared/replay-cursor.js";
 import type { ReplayDialModeIo, ReplaySpeed } from "./replay-control-dial-mode.js";
 import { REPLAY_DIAL_MODES, ReplayControlDialSettings } from "./replay-control-dial-settings.js";
-import {
-  buildTriggerDescription,
-  DIAL_MODE_LABELS,
-  DIAL_MODES,
-  ReplayControlDialSurface,
-} from "./replay-control-dial-surface.js";
+import { buildTriggerDescription, DIAL_MODES, ReplayControlDialSurface } from "./replay-control-dial-surface.js";
+import { frameJogMode } from "./replay-control-frame-jog.js";
+import { speedMode } from "./replay-control-speed-mode.js";
 import {
   _resetReplaySpeedState,
   DIAL_SPEED_HOLD_MS,
@@ -21,6 +18,8 @@ const mocks = vi.hoisted(() => ({
   setPlaySpeed: vi.fn((_speed: number, _slowMotion?: boolean) => true),
   pause: vi.fn(() => true),
   nextFrame: vi.fn(() => true),
+  prevFrame: vi.fn(() => true),
+  setPlayPosition: vi.fn((_mode: number, _frame: number) => true),
   thresholdMs: { value: 500 },
 }));
 
@@ -29,7 +28,13 @@ const mocks = vi.hoisted(() => ({
 // SimIRacingAction extends it) cannot load.
 vi.mock("@iracedeck/deck-iracing", () => ({
   getCommands: () => ({
-    replay: { setPlaySpeed: mocks.setPlaySpeed, pause: mocks.pause, nextFrame: mocks.nextFrame },
+    replay: {
+      setPlaySpeed: mocks.setPlaySpeed,
+      pause: mocks.pause,
+      nextFrame: mocks.nextFrame,
+      prevFrame: mocks.prevFrame,
+      setPlayPosition: mocks.setPlayPosition,
+    },
   }),
 }));
 
@@ -134,7 +139,7 @@ function lastBox(ctx: DialContext): string {
 function shownValue(svg: string): string {
   const texts = [...svg.matchAll(/<text(?! data-caption)[^>]*>([^<]*)<\/text>/g)].map((m) => m[1]);
 
-  return texts.filter((t) => t !== "SPEED").at(-1) ?? "";
+  return texts.filter((t) => t !== "SPEED" && t !== "FRAME").at(-1) ?? "";
 }
 
 function shownCaption(svg: string): string {
@@ -795,10 +800,152 @@ describe("ReplayControlDialSurface", () => {
       expect(shownValue(lastBox(ctx))).toBe("2x");
     });
 
-    it.each(REPLAY_DIAL_MODES)("labels the dimmed %s box with the label the mode itself shows", async (mode) => {
-      const { surface } = await onScreen(speed(1), dial({ mode }));
+    it.each(REPLAY_DIAL_MODES)("the dimmed %s box shows the mode's own label, as in a replay", async (mode) => {
+      const { surface, ctx } = await onScreen(speed(1), dial({ mode }));
+      const label = `>${DIAL_MODES[mode].label}</text>`;
+      expect(lastBox(ctx)).toContain(label);
+      expect(lastBox(ctx)).not.toContain("data-dimmed");
 
-      expect(DIAL_MODE_LABELS[mode]).toBe(DIAL_MODES[mode].view(dial({ mode }), surface["io"]).label);
+      env.inReplay = false;
+      surface.onTick(ctx.id);
+      await settle();
+
+      expect(lastBox(ctx)).toContain('data-dimmed="true"');
+      expect(lastBox(ctx)).toContain(label);
+      expect(shownValue(lastBox(ctx))).toBe("");
+    });
+
+    it("a dimmed box never asks the mode what it shows", async () => {
+      env.inReplay = false;
+      const view = vi.spyOn(DIAL_MODES.speed, "view");
+      const surface = makeSurface();
+      const ctx = dialContext();
+      await appear(surface, ctx);
+      surface.onTick(ctx.id);
+      await settle();
+
+      expect(view).not.toHaveBeenCalled();
+      view.mockRestore();
+    });
+  });
+
+  describe("the rotation modes", () => {
+    /** A replay tick at `seconds` into the session, playing at `s`. */
+    function replayTimeAt(seconds: number, s: ReplaySpeed): void {
+      env.telemetry = { ...replayAt(s), ReplaySessionTime: seconds } as TelemetryData;
+    }
+
+    it("registers one mode per dial.mode value: Speed Control and Frame Jog", () => {
+      expect(Object.keys(DIAL_MODES)).toEqual([...REPLAY_DIAL_MODES]);
+      expect(DIAL_MODES.speed).toBe(speedMode);
+      expect(DIAL_MODES["frame-jog"]).toBe(frameJogMode);
+    });
+
+    it("labels are distinct, so the box says which mode the dial is in", () => {
+      const labels = REPLAY_DIAL_MODES.map((mode) => DIAL_MODES[mode].label);
+
+      expect(labels).toEqual(["SPEED", "FRAME"]);
+    });
+
+    it("a Frame Jog dial's turn goes to Frame Jog, never to the speed ladder", async () => {
+      const d = dial({ mode: "frame-jog" });
+      const { surface, ctx } = await onScreen(PAUSED, d);
+      const jog = vi.spyOn(frameJogMode, "rotate");
+      const ladder = vi.spyOn(speedMode, "rotate");
+
+      surface.rotate(ctx as never, d, 1, false);
+      surface.rotate(ctx as never, d, -1, false);
+
+      expect(jog).toHaveBeenNthCalledWith(1, 1, d, surface["io"]);
+      expect(jog).toHaveBeenNthCalledWith(2, -1, d, surface["io"]);
+      expect(ladder).not.toHaveBeenCalled();
+      expect(mocks.nextFrame).toHaveBeenCalledTimes(1);
+      expect(mocks.prevFrame).toHaveBeenCalledTimes(1);
+      expect(mocks.setPlaySpeed).not.toHaveBeenCalled();
+      jog.mockRestore();
+      ladder.mockRestore();
+    });
+
+    it("a Speed Control dial's turn never reaches Frame Jog", async () => {
+      const { surface, ctx, d } = await onScreen(speed(1));
+      const jog = vi.spyOn(frameJogMode, "rotate");
+
+      surface.rotate(ctx as never, d, 1, false);
+
+      expect(jog).not.toHaveBeenCalled();
+      expect(mocks.nextFrame).not.toHaveBeenCalled();
+      jog.mockRestore();
+    });
+
+    it("Frame Jog on a playing replay pauses through the surface's tracked pause, once", async () => {
+      noteTelemetrySpeed(speed(4), Date.now());
+      const d = dial({ mode: "frame-jog" });
+      const { surface, ctx } = await onScreen(speed(4), d);
+
+      surface.rotate(ctx as never, d, 1, false);
+      await vi.advanceTimersByTimeAsync(30);
+      // The tick still carries 4x: the second detent must not pause again.
+      surface.rotate(ctx as never, d, 1, false);
+
+      expect(mocks.pause).toHaveBeenCalledTimes(1);
+      expect(mocks.nextFrame).toHaveBeenCalledTimes(2);
+      // Press then resumes the speed that was playing.
+      await press(surface, ctx, d);
+      expect(mocks.setPlaySpeed).toHaveBeenCalledWith(4, false);
+    });
+
+    it("a Frame Jog dial draws Frame Jog's view under its label", async () => {
+      replayTimeAt(83.5, PAUSED);
+      const surface = makeSurface();
+      const ctx = dialContext();
+      await appear(surface, ctx, dial({ mode: "frame-jog" }));
+
+      expect(lastBox(ctx)).toContain(">FRAME</text>");
+      expect(lastBox(ctx)).not.toContain(">SPEED</text>");
+      expect(shownValue(lastBox(ctx))).toBe("1:23.50");
+      expect(shownCaption(lastBox(ctx))).toBe("PAUSED");
+      expect(sides(lastBox(ctx))).toEqual({ left: true, right: true });
+    });
+
+    it("the gesture slots are the same in either mode", async () => {
+      const d = dial({ mode: "frame-jog", pressAction: "reverse" });
+      const { surface, ctx } = await onScreen(speed(4), d);
+
+      await press(surface, ctx, d);
+      await press(surface, ctx, d, 600);
+
+      expect(mocks.setPlaySpeed.mock.calls).toEqual([
+        [-4, false],
+        [1, false],
+      ]);
+    });
+
+    it("changing the Mode redraws the box in the new mode at once", async () => {
+      replayTimeAt(60, speed(2));
+      const surface = makeSurface();
+      const ctx = dialContext();
+      await appear(surface, ctx);
+      expect(lastBox(ctx)).toContain(">SPEED</text>");
+
+      await surface.didReceiveSettings(ctx as never, dial({ mode: "frame-jog" }));
+      await settle();
+
+      expect(lastBox(ctx)).toContain(">FRAME</text>");
+      expect(shownValue(lastBox(ctx))).toBe("1:00.00");
+    });
+
+    it("from the car a Frame Jog dial sends nothing either", async () => {
+      const d = dial({ mode: "frame-jog" });
+      const { surface, ctx } = await onScreen(speed(1), d);
+      env.inReplay = false;
+
+      surface.rotate(ctx as never, d, 1, false);
+      surface.rotate(ctx as never, d, -5, false);
+
+      expectNothingSent();
+      expect(mocks.nextFrame).not.toHaveBeenCalled();
+      expect(mocks.prevFrame).not.toHaveBeenCalled();
+      expect(mocks.setPlayPosition).not.toHaveBeenCalled();
     });
   });
 
@@ -983,6 +1130,29 @@ describe("ReplayControlDialSurface", () => {
 
       expect(lastBox(ctx)).toContain("data-pending-bar");
       expect(shownValue(lastBox(ctx))).toBe("► 1x");
+    });
+
+    it("a replay that ends mid-hold takes the preview with it: the dimmed box claims no outcome", async () => {
+      const { surface, ctx, d } = await onScreen(speed(4));
+
+      surface.down(ctx as never, d);
+      await vi.advanceTimersByTimeAsync(500);
+      expect(lastBox(ctx)).toContain("data-pending-bar");
+      expect(shownValue(lastBox(ctx))).toBe("► 1x");
+
+      // Still held: the release would now do nothing.
+      env.inReplay = false;
+      surface.onTick(ctx.id);
+      await settle();
+
+      expect(lastBox(ctx)).toContain('data-dimmed="true"');
+      expect(lastBox(ctx)).not.toContain("data-pending-bar");
+      expect(shownValue(lastBox(ctx))).toBe("");
+
+      await surface.up(ctx.id);
+      await settle();
+      expectNothingSent();
+      expect(surface["contexts"].get(ctx.id)?.preview).toBeNull();
     });
 
     it("a disappearing dial draws no revert frame and leaves no timer", async () => {
@@ -1252,6 +1422,13 @@ describe("ReplayControlDialSurface", () => {
       for (const mode of REPLAY_DIAL_MODES) {
         expect(buildTriggerDescription(dial({ mode })).rotate).toBe(DIAL_MODES[mode].rotateDescription);
       }
+    });
+
+    it("name Frame Jog's rotation on a Frame Jog dial, with the same gesture hints", () => {
+      expect(buildTriggerDescription(dial({ mode: "frame-jog" }))).toEqual({
+        rotate: "Next / previous frame",
+        push: "Play/Pause (hold: Set 1x and play)",
+      });
     });
 
     it("are pushed on Elgato only, and again when the settings change", async () => {
