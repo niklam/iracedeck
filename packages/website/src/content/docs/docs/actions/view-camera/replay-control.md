@@ -550,9 +550,14 @@ The setting is per dial, so two dials can carry different ladders: one with only
 
 Each detent moves the replay one frame: clockwise to the next frame, counter-clockwise to the previous one. It is the mode for finding the exact frame of a contact.
 
-- **A fast spin moves as many frames as the dial reports detents**, with no limit.
+- **Turn slowly for exact steps.** One detent at a time is one frame, every time.
+- **A fast spin gets you close.** iRaceDeck adds up the detents and sends the replay to that frame. While you keep spinning, the picture catches up a few times a second and the dial shows the time you are heading for; the replay lands a moment after you stop.
 - **The jog always lands on a still frame.** If the replay is playing when you turn, the first detent pauses it and then steps.
 - **A Play / Pause press carries on from there.** It resumes at the speed the replay was playing before the jog paused it, and Play / Pause is what **Press Action** is set to by default.
+
+:::caution[Frame Jog depends on how fast iRacing can move its replay]
+Every step is a request to iRacing, which takes a moment to move the replay, and longer on a slower PC. iRaceDeck keeps track of the frame you are heading for and waits until iRacing reports it, so a turn made while the replay is still moving is added to where you are heading. Even so, a fast spin can land a few frames from where you expected. If the picture or the time is not where it should be, stop turning, give it a second to settle, and step again. Slow turns are the exact ones.
+:::
 
 Frame Jog has no settings of its own: the **Speeds** grid belongs to Speed Control and is hidden in this mode.
 
@@ -563,7 +568,7 @@ The touch strip (and the screen above a Mirabox knob) shows a "dash box" for the
 | Mode | Label | Value | Caption | Arrows |
 |---|---|---|---|---|
 | Speed Control | `SPEED` | The live replay speed — `4x`, `-1/4x`, or `PAUSED` | While paused, the speed a **Play / Pause** press will resume — `► 4x` forward, `◄ 2x` in reverse | Each side lights up while a turn that way would change the speed, and stays dimmed at that end of the ladder |
-| Frame Jog | `FRAME` | The session time of the frame on screen, as minutes, seconds and hundredths — `12:34.56`. A frame is 1/60 of a second, so every step changes the hundredths | `PAUSED`, or the speed the replay is playing at — `4x`, `-1/4x` | Both sides are lit: a turn either way steps a frame |
+| Frame Jog | `FRAME` | The session time of the frame on screen, as minutes, seconds and hundredths — `12:34.56` — or, while a turn is still landing, of the frame it is heading for. A frame is 1/60 of a second, so every step changes the hundredths | `PAUSED`, or the speed the replay is playing at — `4x`, `-1/4x` | Both sides are lit: a turn either way steps a frame |
 
 From the car, or while iRacing is not running, the box is dimmed and shows only its label. You can override the border, label, value, and background colors in the **Dash Box Appearance** section of the dial settings.
 
