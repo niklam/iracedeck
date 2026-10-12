@@ -556,7 +556,7 @@ Each detent moves the replay one frame: clockwise to the next frame, counter-clo
 - **A Play / Pause press carries on from there.** It resumes at the speed the replay was playing before the jog paused it, and Play / Pause is what **Press Action** is set to by default.
 
 :::caution[Frame Jog depends on how fast iRacing can move its replay]
-Every step is a request to iRacing, which takes a moment to move the replay, and longer on a slower PC. iRaceDeck keeps track of the frame you are heading for and waits until iRacing reports it, so a turn made while the replay is still moving is added to where you are heading. Even so, a fast spin can land a few frames from where you expected. If the picture or the time is not where it should be, stop turning, give it a second to settle, and step again. Slow turns are the exact ones.
+Every step is a request to iRacing, which takes a moment to move the replay, and longer on a slower PC. iRaceDeck keeps track of the frame you are heading for and waits until iRacing reports it, so a turn made while the replay is still moving is added to where you are heading. Even so, a fast spin can land a few frames from where you expected. If the picture or the time is not where it should be, stop turning, give it a second to settle, and step again. A turn made while another replay jump is still landing, such as a marker jump, is ignored; turn again once the picture has arrived. Slow turns are the exact ones.
 :::
 
 Frame Jog has no settings of its own: the **Speeds** grid belongs to Speed Control and is hidden in this mode.
