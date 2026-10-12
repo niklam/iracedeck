@@ -34,12 +34,11 @@ import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
 import type { DialPendingPreview } from "../../shared/dial-preview.js";
 import { classifyDialReleaseForHost } from "../../shared/dial-release.js";
 import { clearReplayLanding } from "../../shared/replay-cursor.js";
-import type { ReplayJumpOutcome } from "../../shared/replay-jump-playback.js";
 import {
   addMarkerAt,
   CONFIRMATION_FLASH_MS,
   deleteMarkerAt,
-  describeMarkerJump,
+  followMarkerJump,
   jumpToMarkerFrame,
   type MarkerDirection,
   markerIndexAt,
@@ -240,9 +239,11 @@ export class ReplayMarkersDialSurface {
    * A turn: one marker per detent from where the store's own Next / Previous
    * would land, no per-event cap, stopping at the end of the list; one jump
    * per event, to the last marker reached. The jump is started here and
-   * finishes on its own ({@link followJump}); a further detent before it has
-   * landed takes the cursor from it and steps on from its marker. Push + turn
-   * is a plain turn — it only marks the press so its release fires nothing.
+   * finishes on its own ({@link followMarkerJump}), drawing nothing when it
+   * does: the screen follows the replay through {@link onTick}. A further
+   * detent before it has landed takes the cursor from it and steps on from its
+   * marker. Push + turn is a plain turn — it only marks the press so its
+   * release fires nothing.
    */
   rotate(action: IDeckActionContext, dial: ReplayMarkersDialSettings, ticks: number, pressed: boolean): void {
     const ctx = this.inputContext(action, dial, "rotate");
@@ -288,27 +289,8 @@ export class ReplayMarkersDialSurface {
     const jump = jumpToMarkerFrame(CURSOR_OWNER[direction], target.frame, () => this.host.readTelemetry());
     this.host.logger.info(`Dial jumped to ${direction} marker`);
     this.host.logger.debug(`ticks=${ticks}, anchor=${anchor}, target=${target.frame}`);
-    this.followJump(`Dial ${direction} marker`, target.frame, jump);
+    followMarkerJump(this.host.logger, `Dial ${direction} marker`, target.frame, jump);
     this.scheduleRender(ctx);
-  }
-
-  /**
-   * Logs how a jump ended once it has: a warning when it stopped short of its
-   * marker, and the details at debug either way. Nothing waits on it, so a
-   * rejection is caught here. It draws nothing: the screen follows the replay
-   * through {@link onTick}.
-   */
-  private followJump(what: string, frame: number, jump: Promise<ReplayJumpOutcome>): void {
-    void jump.then(
-      (outcome) => {
-        const report = describeMarkerJump(outcome, frame);
-
-        if (report.warn !== null) this.host.logger.warn(`${what}: ${report.warn}`);
-
-        this.host.logger.debug(`${what}: ${report.detail}`);
-      },
-      (err: unknown) => this.host.logger.error(`${what}: jump failed: ${String(err)}`),
-    );
   }
 
   down(action: IDeckActionContext, dial: ReplayMarkersDialSettings): void {

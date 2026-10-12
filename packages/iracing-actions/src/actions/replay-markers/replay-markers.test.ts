@@ -835,7 +835,8 @@ describe("ReplayMarkers", () => {
       await vi.advanceTimersByTimeAsync(1_000);
 
       expect(mocks.markers.next).toHaveBeenLastCalledWith(15_000, { subSessionId: 86697546 });
-      expect(sim.calls).toEqual(["speed 0", "seek 15000", "seek 16000", "speed -8"]);
+      // The second pauses again before its seek: the replay it took over was rewinding.
+      expect(sim.calls).toEqual(["speed 0", "seek 15000", "speed 0", "seek 16000", "speed -8"]);
       expect(sim.telemetry).toMatchObject({ ReplayFrameNum: 16_000, ...REWIND_8 });
       expect(action["logger"].debug).toHaveBeenCalledWith("next marker: jump to frame 15000 cancelled by next");
     });
@@ -1275,20 +1276,20 @@ describe("ReplayMarkers on a dial (#1230)", () => {
       ]);
     });
 
-    it("a jump the keypad could not send leaves the dial's landing standing", async () => {
+    it("a jump the keypad could not send leaves no landing: the dial measures from the live frame again", async () => {
       const { action } = makeAction(replayAt(500));
       await action.onWillAppear(dialEvent({}) as never);
 
       await turn(action, 1);
       mocks.setPlayPosition.mockReturnValueOnce(false);
       await action.onKeyDown(keyDown({ mode: "next" }, "key-1"));
-      // The refused jump takes its landing back once it has ended, a step after the press.
+      // The refused jump clears its landing once it has ended, a step after the press.
       await vi.advanceTimersByTimeAsync(0);
       await turn(action, 1);
 
-      // The keypad's 2 000 never went out; the replay is still headed for the
-      // dial's 1 000, so the dial steps on from there.
-      expect(sent()).toEqual([1_000, 2_000, 2_000]);
+      // The keypad's 2 000 never went out, and nothing says where the replay is
+      // headed, so the dial measures from where it is: the live 500.
+      expect(sent()).toEqual([1_000, 2_000, 1_000]);
     });
   });
 

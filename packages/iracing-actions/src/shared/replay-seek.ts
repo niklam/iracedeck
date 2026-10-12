@@ -26,15 +26,28 @@ export interface ReplaySeekSample {
 export type ReplayWaitOutcome<T extends ReplaySeekSample> =
   { kind: "reached"; telemetry: T } | { kind: "timeout"; telemetry: T | null } | { kind: "cancelled"; by: string };
 
+/** A seek's outcome: a wait's, or `refused` when the jump command itself was not sent. */
+export type ReplaySeekOutcome<T extends ReplaySeekSample> = ReplayWaitOutcome<T> | { kind: "refused" };
+
 export interface ReplayWaitOptions<T extends ReplaySeekSample> {
   /** The cursor claim the caller holds for the duration. */
   claim: ReplayCursorClaim;
   /** Reads the latest telemetry. */
   readTelemetry: () => T | null;
-  /** How long to wait before giving up. */
+  /** How long to wait before giving up — with `progress`, how long without any. */
   timeoutMs: number;
   /** How often to read the telemetry while waiting. */
   pollMs: number;
+  /**
+   * What counts as the replay still getting there. When given, the timeout
+   * starts over each time this value changes between two reads, so a wait
+   * gives up on a replay that has stopped moving rather than on one that is
+   * slow: iRacing covers a jump across hours of recording a few thousand
+   * frames per update, and that takes longer than any fixed wait worth having.
+   */
+  progress?: (sample: T | null) => unknown;
+  /** With `progress`: the longest the wait runs however long the value keeps changing. */
+  maxWaitMs?: number;
 }
 
 export interface ReplaySeekOptions<T extends ReplaySeekSample> extends ReplayWaitOptions<T> {
@@ -69,19 +82,25 @@ export function isPaused(sample: ReplaySeekSample | null): boolean {
   return sample?.ReplayPlaySpeed === 0;
 }
 
-/** Poll until `reached` holds, the claim is cancelled, or the timeout passes. Sends nothing. */
+/**
+ * Poll until `reached` holds, the claim is cancelled, or the timeout passes —
+ * with `progress`, until that long has passed with no progress. Sends nothing.
+ */
 export async function waitForReplay<T extends ReplaySeekSample>(
   options: ReplayWaitOptions<T>,
   reached: (sample: T | null) => sample is T,
 ): Promise<ReplayWaitOutcome<T>> {
-  const { claim, readTelemetry, timeoutMs, pollMs } = options;
+  const { claim, readTelemetry, timeoutMs, pollMs, progress, maxWaitMs } = options;
 
   if (claim.cancelledBy !== null) return { kind: "cancelled", by: claim.cancelledBy };
 
-  const deadline = Date.now() + timeoutMs;
+  const startedAt = Date.now();
+  const latest = progress === undefined || maxWaitMs === undefined ? Infinity : startedAt + maxWaitMs;
+  let deadline = startedAt + timeoutMs;
+  let seen = progress?.(readTelemetry());
   let last: T | null = null;
 
-  while (Date.now() < deadline) {
+  while (Date.now() < Math.min(deadline, latest)) {
     await sleep(pollMs);
 
     if (claim.cancelledBy !== null) return { kind: "cancelled", by: claim.cancelledBy };
@@ -89,6 +108,15 @@ export async function waitForReplay<T extends ReplaySeekSample>(
     last = readTelemetry();
 
     if (reached(last)) return { kind: "reached", telemetry: last };
+
+    if (progress !== undefined) {
+      const now = progress(last);
+
+      if (now !== seen) {
+        seen = now;
+        deadline = Date.now() + timeoutMs;
+      }
+    }
   }
 
   return { kind: "timeout", telemetry: last };
@@ -96,16 +124,17 @@ export async function waitForReplay<T extends ReplaySeekSample>(
 
 /**
  * Send an absolute jump and wait until the cursor reads the frame that was
- * sent. Sends nothing when the claim is already cancelled.
+ * sent. Sends nothing when the claim is already cancelled, and does not wait
+ * for a jump the send refused: nothing is on its way.
  */
 export async function seekReplayFrame<T extends ReplaySeekSample>(
   options: ReplaySeekOptions<T>,
-): Promise<ReplayWaitOutcome<T>> {
+): Promise<ReplaySeekOutcome<T>> {
   const { frame, claim, send, requireSession = true } = options;
 
   if (claim.cancelledBy !== null) return { kind: "cancelled", by: claim.cancelledBy };
 
-  send(frame);
+  if (!send(frame)) return { kind: "refused" };
 
   return waitForReplay(options, (sample): sample is T => isLandedOn(sample, frame, requireSession));
 }

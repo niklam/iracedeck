@@ -12,11 +12,13 @@
  * outlives the press that started it, and {@link jumpToMarkerFrame} returns a
  * promise of how it ended.
  *
- * Logging stays with the callers: {@link describeMarkerJump} words an outcome,
- * and the surface that was pressed writes it.
+ * Logging stays with the callers: nothing here keeps a logger. The surface
+ * that was pressed hands its own to {@link followMarkerJump}, which writes how
+ * the jump ended in the wording every replay jump shares.
  */
 import { getCommands } from "@iracedeck/deck-iracing";
 import { REPLAY_EXIT_GRACE_MS, type ReplayState, type TelemetryData } from "@iracedeck/iracing-sdk";
+import type { ILogger } from "@iracedeck/logger";
 import {
   MARKER_DEDUPE_FRAMES,
   MARKER_DELETE_WINDOW_FRAMES,
@@ -34,8 +36,8 @@ import {
 } from "../../shared/replay-cursor.js";
 import {
   beginReplayJump,
+  describeReplayJump,
   type ReplayJumpOutcome,
-  type ReplayJumpStopReason,
   runReplayJump,
 } from "../../shared/replay-jump-playback.js";
 
@@ -379,21 +381,6 @@ export function deleteMarkerAt(context: ReplayContext): ReplayMarker | null {
 }
 
 /**
- * Landings recorded at a press whose seek has not gone out yet. Such a landing
- * anchors the next jump, since the press is on its way there, but the replay
- * is not headed to it until the seek is sent — so it is never the landing a
- * later jump falls back to.
- */
-const awaitingSeek = new WeakSet<ReplayLanding>();
-
-/** The ways a jump stops before its seek has gone out. */
-const STOPPED_BEFORE_SEEK: ReadonlySet<ReplayJumpStopReason> = new Set([
-  "pause-failed",
-  "pause-timeout",
-  "seek-failed",
-]);
-
-/**
  * Jumps the replay to `frame` with the shared jump sequence and resolves with
  * how it ended. The replay finishes the way the Replay jump playback setting
  * says: `readTelemetry` is read at the press for the speed to restore, then
@@ -410,15 +397,14 @@ const STOPPED_BEFORE_SEEK: ReadonlySet<ReplayJumpStopReason> = new Set([
  *    Markers surface, measures from (#1230). At the press, not at the seek: a
  *    moving replay is paused first, so its seek goes out a poll or more later,
  *    and a dial detent arriving in between must already step on from here.
- * 3. A replay that reads paused gets its seek at once.
+ * 3. A replay that is paused, and was before the press, gets its seek at once.
  *
- * A jump that stopped short takes its landing back, unless something has
- * replaced or cleared it since. Where the seek never went out the jump moved
- * nothing, so the landing before it stands again, provided that one's own seek
- * did go out. Where the seek went out and never landed, or the sequence threw,
- * the cursor is somewhere unknown and no landing stands. A cancelled jump
- * touches nothing: whoever took the cursor has already cleared or replaced the
- * landing.
+ * A jump that stopped short, or threw, clears the landing it recorded if that
+ * landing is still its own, whatever the reason: the replay is not known to be
+ * headed there, so the next jump measures from the live frame. A jump that
+ * landed or was cancelled touches nothing — the anchor rule settles a landing
+ * the replay reached, and whoever took the cursor has already cleared or
+ * replaced the other.
  */
 export async function jumpToMarkerFrame(
   owner: string,
@@ -427,52 +413,22 @@ export async function jumpToMarkerFrame(
   nowMs: number = Date.now(),
 ): Promise<ReplayJumpOutcome> {
   // Before the claim: a throw here leaves the cursor and the landing as they were.
-  const commands = getCommands().replay;
-  const standing = pendingReplayLanding();
-  const before = standing !== null && !awaitingSeek.has(standing) ? standing : null;
+  const replay = getCommands().replay;
   const jump = beginReplayJump(owner, readTelemetry(), undefined, nowMs);
-
-  recordReplayLanding(frame, nowMs);
-
-  // The cursor hands back the record it holds, so identity tells this jump's
-  // landing from a later one's, even one to the same frame.
-  const own = pendingReplayLanding();
-  const isStillOwn = (): boolean => own !== null && pendingReplayLanding() === own;
-
-  if (own !== null) awaitingSeek.add(own);
+  // The record itself: identity tells this jump's landing from a later one's, even one to the same frame.
+  const own = recordReplayLanding(frame, nowMs);
+  const dropOwnLanding = (): void => {
+    if (pendingReplayLanding() === own) clearReplayLanding();
+  };
 
   try {
-    const outcome = await runReplayJump(jump, {
-      frame,
-      readTelemetry,
-      replay: {
-        setPlaySpeed: (speed, slowMotion) => commands.setPlaySpeed(speed, slowMotion),
-        setPlayPosition: (mode, target) => {
-          const sent = commands.setPlayPosition(mode, target);
+    const outcome = await runReplayJump(jump, { frame, replay, readTelemetry });
 
-          if (sent && own !== null) awaitingSeek.delete(own);
-
-          return sent;
-        },
-      },
-    });
-
-    if (outcome.kind === "stopped" && isStillOwn()) {
-      if (outcome.reason === "seek-timeout") {
-        clearReplayLanding();
-      } else if (STOPPED_BEFORE_SEEK.has(outcome.reason)) {
-        if (before !== null) {
-          recordReplayLanding(before.frame, before.sentAt);
-        } else {
-          clearReplayLanding();
-        }
-      }
-    }
+    if (outcome.kind === "stopped") dropOwnLanding();
 
     return outcome;
   } catch (err) {
-    // Wherever the sequence broke, the replay is not known to be headed for the frame.
-    if (isStillOwn()) clearReplayLanding();
+    dropOwnLanding();
 
     throw err;
   } finally {
@@ -480,43 +436,26 @@ export async function jumpToMarkerFrame(
   }
 }
 
-/** What went wrong, for each way a jump stops short. */
-const STOPPED_SHORT: Record<ReplayJumpStopReason, string> = {
-  "pause-failed": "pause failed; jump not sent",
-  "pause-timeout": "replay did not pause; jump not sent",
-  "seek-failed": "seek failed; jump not sent",
-  "seek-timeout": "jump did not land; replay left where the seek stopped",
-  "after-landing-failed": "jump stopped after the landing; replay left paused there",
-};
-
-/** What a surface logs once a marker jump has ended. */
-export interface MarkerJumpReport {
-  /** What went wrong when the jump stopped short; null when it landed or was cancelled. */
-  warn: string | null;
-  /** The details, for the debug line. */
-  detail: string;
-}
-
 /**
- * How a jump to `frame` ended, worded for the log: a warning only when it
- * stopped short, and always the details — for a jump that stopped, the frame
- * it was for and the frame and speed telemetry last showed.
+ * Logs how a marker jump ended once it has, through the surface's own logger:
+ * a warning when something went wrong, and the details at debug either way,
+ * each led by `what` (the surface's name for the jump). Nothing waits on a
+ * jump, so a rejection is caught here and logged as an error.
  */
-export function describeMarkerJump(outcome: ReplayJumpOutcome, frame: number): MarkerJumpReport {
-  switch (outcome.kind) {
-    case "landed":
-      return {
-        warn: null,
-        detail: `landed on frame ${frame}; speed=${outcome.speed.speed} slowMotion=${outcome.speed.slowMotion} command=${outcome.command}`,
-      };
-    case "cancelled":
-      return { warn: null, detail: `jump to frame ${frame} cancelled by ${outcome.by}` };
-    case "stopped":
-      return {
-        warn: STOPPED_SHORT[outcome.reason],
-        detail:
-          `reason=${outcome.reason} target=${frame} lastFrame=${outcome.telemetry?.ReplayFrameNum ?? "n/a"} ` +
-          `lastSpeed=${outcome.telemetry?.ReplayPlaySpeed ?? "n/a"}`,
-      };
-  }
+export function followMarkerJump(
+  logger: Pick<ILogger, "debug" | "warn" | "error">,
+  what: string,
+  frame: number,
+  jump: Promise<ReplayJumpOutcome>,
+): void {
+  void jump.then(
+    (outcome) => {
+      const report = describeReplayJump(outcome, frame);
+
+      if (report.warn !== null) logger.warn(`${what}: ${report.warn}`);
+
+      logger.debug(`${what}: ${report.detail}`);
+    },
+    (err: unknown) => logger.error(`${what}: jump failed: ${String(err)}`),
+  );
 }

@@ -78,6 +78,7 @@ import { cancelReplayCursorOwner, type ReplayCursorClaim } from "../../shared/re
 import {
   applyReplayJumpPlayback,
   beginReplayJump,
+  describeReplayJump,
   type ReplayJump,
   type ReplayJumpApplied,
   type ReplayJumpOutcome,
@@ -86,7 +87,6 @@ import {
 import { seekReplayFrame } from "../../shared/replay-seek.js";
 import {
   readFastestLapSearchDelayMs,
-  readReplayJumpTimeoutMs,
   STABILIZATION_POLL_INTERVAL_MS,
   STABILIZATION_TIMEOUT_MULTIPLIER,
 } from "../../shared/replay-timing.js";
@@ -1359,35 +1359,18 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     this.updateAllTelemetryDisplays();
   }
 
-  /** One warning per way a jump stops short, the details at debug. A failed `afterLanding` step is logged by that step. */
+  /** One warning for a jump that stopped short, the details at debug. A failed `afterLanding` step is logged by that step. */
   private logReplayJumpStopped(
     label: string,
     frame: number,
     outcome: Extract<ReplayJumpOutcome, { kind: "stopped" }>,
   ): void {
-    switch (outcome.reason) {
-      case "pause-failed":
-        this.logger.warn(`${label}: pause failed; jump not sent`);
-        break;
-      case "pause-timeout":
-        this.logger.warn(`${label}: replay did not pause; jump not sent`);
-        this.logger.debug(
-          `ReplayPlaySpeed still ${outcome.telemetry?.ReplayPlaySpeed ?? "n/a"} after ${readReplayJumpTimeoutMs()} ms`,
-        );
-        break;
-      case "seek-failed":
-        this.logger.warn(`${label}: jump not sent`);
-        this.logger.debug(`setPlayPosition to frame ${frame} failed`);
-        break;
-      case "seek-timeout":
-        this.logger.warn(`${label}: jump did not land; replay left where the seek stopped`);
-        this.logger.debug(
-          `Sent frame ${frame}, saw frame ${outcome.telemetry?.ReplayFrameNum ?? "n/a"} after ${readReplayJumpTimeoutMs()} ms`,
-        );
-        break;
-      case "after-landing-failed":
-        break;
-    }
+    if (outcome.reason === "after-landing-failed") return;
+
+    const report = describeReplayJump(outcome, frame);
+
+    this.logger.warn(`${label}: ${report.warn}`);
+    this.logger.debug(`${label}: ${report.detail}`);
   }
 
   /**
@@ -1534,6 +1517,13 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
       if (outcome.kind === "cancelled") throw new FastestLapPressCancelled(outcome.by);
 
       if (outcome.kind === "reached") return outcome.telemetry;
+
+      if (outcome.kind === "refused") {
+        this.logger.warn("Jump to fastest lap: jump not sent; aborting walk");
+        this.logger.debug(`setPlayPosition to frame ${frame} failed`);
+
+        return null;
+      }
 
       const last = outcome.telemetry;
 

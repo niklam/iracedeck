@@ -7,13 +7,28 @@
 import { getGlobalSettings } from "@iracedeck/settings";
 
 /**
- * The shortest a jump waits for the pause and for the landing (#1275).
- * The walk's `fastestLapSearchDelayMs × 4` alone would give a 200 ms wait at
- * the setting's 50 ms minimum, while a jump across a long replay runs at most
- * `maxFramesToSearchPerUpdate` frames per sim update; a longer wait costs
+ * The shortest a jump waits for the pause, and for a landing that is not
+ * getting any nearer (#1275). The walk's `fastestLapSearchDelayMs × 4` alone
+ * would give a 200 ms wait at the setting's 50 ms minimum; a longer wait costs
  * nothing on success and only delays the warning on a failure.
  */
 export const RECORD_JUMP_MIN_TIMEOUT_MS = 3000;
+
+/**
+ * How often a jump reads the telemetry while it waits for its pause and for
+ * its landing. Shorter than the walk's settle poll because a jump on a playing
+ * replay holds the picture still for both waits: the sim answers within a
+ * tick or two, and the SDK reads it every 10 ms.
+ */
+export const REPLAY_JUMP_POLL_MS = 20;
+
+/**
+ * The longest a jump waits for its landing while the cursor is still moving
+ * towards it. iRacing covers a jump at most `maxFramesToSearchPerUpdate`
+ * frames per update (2048 by default), so one across a 24-hour recording runs
+ * for well under a minute; past two, something else is moving the cursor.
+ */
+export const REPLAY_JUMP_MAX_WAIT_MS = 120_000;
 
 /**
  * Multiplier applied to the configured `fastestLapSearchDelayMs` to cap how
@@ -71,8 +86,9 @@ export function readFastestLapSearchDelayMs(): number {
 }
 
 /**
- * How long one jump waits for its pause to show and for its landing: the
- * walk's `delay × 4`, and never less than {@link RECORD_JUMP_MIN_TIMEOUT_MS}.
+ * How long one jump waits for its pause to show, and for its landing once the
+ * cursor has stopped moving: the walk's `delay × 4`, and never less than
+ * {@link RECORD_JUMP_MIN_TIMEOUT_MS}.
  */
 export function readReplayJumpTimeoutMs(): number {
   return Math.max(RECORD_JUMP_MIN_TIMEOUT_MS, readFastestLapSearchDelayMs() * STABILIZATION_TIMEOUT_MULTIPLIER);

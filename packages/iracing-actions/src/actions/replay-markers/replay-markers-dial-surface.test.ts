@@ -477,7 +477,7 @@ describe("ReplayMarkersDialSurface", () => {
 
       mocks.setPlayPosition.mockReturnValueOnce(false);
       surface.rotate(ctx as never, dial(), 1, false);
-      // The refused jump takes its landing back once it has ended, a step after the turn.
+      // The refused jump clears its landing once it has ended, a step after the turn.
       await settle(0);
       surface.rotate(ctx as never, dial(), 1, false);
 
@@ -667,8 +667,9 @@ describe("ReplayMarkersDialSurface", () => {
         expect(logger.debug).toHaveBeenCalledWith("ticks=1, anchor=500, target=1000");
         expect(logger.debug).toHaveBeenCalledWith("ticks=1, anchor=1000, target=2000");
         expect(logger.debug).toHaveBeenCalledWith("Dial next marker: jump to frame 1000 cancelled by dial-next");
-        // One pause, both seeks, and the speed back once — after the second landing.
-        expect(sim.calls).toEqual(["speed 0", "seek 1000", "seek 2000", "speed 1"]);
+        // Each jump pauses before its seek — the second because the replay it took
+        // over was playing — and the speed comes back once, after the second landing.
+        expect(sim.calls).toEqual(["speed 0", "seek 1000", "speed 0", "seek 2000", "speed 1"]);
         expect(env.telemetry).toMatchObject({ ReplayFrameNum: 2_000, ...AT_1X });
         expect(logger.warn).not.toHaveBeenCalled();
       });
@@ -677,15 +678,15 @@ describe("ReplayMarkersDialSurface", () => {
         const { surface, ctx, sim } = await dialAt(AT_1X);
 
         surface.rotate(ctx as never, dial(), 1, false);
-        // The pause shows; the first jump has not read it yet.
-        await settle(30);
+        // The first jump is still waiting for its pause to show.
+        await settle(10);
         expect(sim.calls).toEqual(["speed 0"]);
 
         surface.rotate(ctx as never, dial(), 1, false);
         await settle(1_000);
 
         expect(logger.debug).toHaveBeenCalledWith("Dial next marker: jump to frame 1000 cancelled by dial-next");
-        expect(sim.calls).toEqual(["speed 0", "seek 2000", "speed 1"]);
+        expect(sim.calls).toEqual(["speed 0", "speed 0", "seek 2000", "speed 1"]);
         expect(env.telemetry).toMatchObject({ ReplayFrameNum: 2_000, ...AT_1X });
       });
 
@@ -699,7 +700,18 @@ describe("ReplayMarkersDialSurface", () => {
 
         await settle(1_000);
 
-        expect(sim.calls).toEqual(["speed 0", "seek 2000", "seek 3000", "seek 4000", "speed 8"]);
+        // Every detent pauses and seeks; only the last one lands and puts the speed back.
+        expect(sim.calls).toEqual([
+          "speed 0",
+          "seek 1000",
+          "speed 0",
+          "seek 2000",
+          "speed 0",
+          "seek 3000",
+          "speed 0",
+          "seek 4000",
+          "speed 8",
+        ]);
         expect(env.telemetry).toMatchObject({ ReplayFrameNum: 4_000, ...FORWARD_8 });
       });
     });

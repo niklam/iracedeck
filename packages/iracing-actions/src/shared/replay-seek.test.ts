@@ -151,4 +151,92 @@ describe("replay-seek", () => {
       expect(send).not.toHaveBeenCalled();
     });
   });
+
+  describe("waiting on progress (#1276)", () => {
+    it("starts the timeout over each time the progress value changes", async () => {
+      const sample: ReplaySeekSample = { ReplayFrameNum: 0 };
+      const claim = claimReplayCursor("test jump");
+      let outcome: string | null = null;
+
+      void waitForReplay(
+        {
+          claim,
+          readTelemetry: () => ({ ...sample }),
+          timeoutMs: 1000,
+          pollMs: 50,
+          progress: (s) => s?.ReplayFrameNum,
+        },
+        (s): s is ReplaySeekSample => isLandedOn(s, 5_000, false),
+      ).then((result) => (outcome = result.kind));
+
+      // Still moving after three timeouts' worth of waiting.
+      for (let i = 1; i <= 6; i++) {
+        sample.ReplayFrameNum = i * 500;
+        await vi.advanceTimersByTimeAsync(500);
+      }
+
+      expect(outcome).toBeNull();
+
+      // Then it stops short. The last change was read 450 ms ago, so one
+      // timeout after that read the wait gives up.
+      await vi.advanceTimersByTimeAsync(400);
+      expect(outcome).toBeNull();
+      await vi.advanceTimersByTimeAsync(300);
+      expect(outcome).toBe("timeout");
+    });
+
+    it("without progress, gives up at the timeout however the sample changes", async () => {
+      const sample: ReplaySeekSample = { ReplayFrameNum: 0 };
+      const claim = claimReplayCursor("test jump");
+      let outcome: string | null = null;
+
+      void waitForReplay(
+        {
+          claim,
+          readTelemetry: (): ReplaySeekSample => ({ ReplayFrameNum: (sample.ReplayFrameNum as number)++ }),
+          timeoutMs: 1000,
+          pollMs: 50,
+        },
+        (s): s is ReplaySeekSample => isLandedOn(s, -1, false),
+      ).then((result) => (outcome = result.kind));
+
+      await vi.advanceTimersByTimeAsync(1100);
+      expect(outcome).toBe("timeout");
+    });
+
+    it("stops at maxWaitMs even while progress continues", async () => {
+      let frame = 0;
+      const claim = claimReplayCursor("test jump");
+      let outcome: string | null = null;
+
+      void waitForReplay(
+        {
+          claim,
+          readTelemetry: (): ReplaySeekSample => ({ ReplayFrameNum: frame++ }),
+          timeoutMs: 1000,
+          pollMs: 50,
+          progress: (s) => s?.ReplayFrameNum,
+          maxWaitMs: 5000,
+        },
+        (s): s is ReplaySeekSample => isLandedOn(s, -1, false),
+      ).then((result) => (outcome = result.kind));
+
+      await vi.advanceTimersByTimeAsync(4900);
+      expect(outcome).toBeNull();
+      await vi.advanceTimersByTimeAsync(200);
+      expect(outcome).toBe("timeout");
+    });
+  });
+
+  describe("a refused jump (#1276)", () => {
+    it("resolves refused at once, without waiting for a landing that is not coming", async () => {
+      const claim = claimReplayCursor("test jump");
+      const readTelemetry = vi.fn(() => ({ ReplayFrameNum: 90_000, SessionNum: 0 }));
+
+      await expect(
+        seekReplayFrame({ frame: 64_401, claim, send: () => false, readTelemetry, timeoutMs: 1600, pollMs: 50 }),
+      ).resolves.toEqual({ kind: "refused" });
+      expect(readTelemetry).not.toHaveBeenCalled();
+    });
+  });
 });

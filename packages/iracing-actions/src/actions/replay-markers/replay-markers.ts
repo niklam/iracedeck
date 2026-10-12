@@ -28,13 +28,12 @@ import previousIconSvg from "@iracedeck/icons/replay-markers/previous.svg";
 import { getReplaySessionStore, isReplaySessionStoreInitialized } from "@iracedeck/replay-store";
 import { getGlobalColors } from "@iracedeck/settings";
 
-import type { ReplayJumpOutcome } from "../../shared/replay-jump-playback.js";
 import { ReplayMarkersDialSurface } from "./replay-markers-dial-surface.js";
 import {
   addMarkerAt,
   CONFIRMATION_FLASH_MS,
   deleteMarkerAt,
-  describeMarkerJump,
+  followMarkerJump,
   jumpToMarkerFrame,
   type MarkerDirection,
   readReplayContext,
@@ -289,7 +288,7 @@ export class ReplayMarkers extends SimIRacingAction<ReplayMarkersSettings> {
    * Run the mode. Returns the confirmation to flash for an Add or Delete that
    * changed the store, and undefined for everything else — a press that does
    * nothing shows nothing. A Next / Previous jump is started here and finishes
-   * on its own ({@link followJump}): the press does not wait for the landing.
+   * on its own ({@link followMarkerJump}): the press does not wait for the landing.
    */
   private execute(settings: ReplayMarkersSettings): ReplayMarkerConfirmation | undefined {
     const context = this.readReplayContext();
@@ -343,29 +342,11 @@ export class ReplayMarkers extends SimIRacingAction<ReplayMarkersSettings> {
         const jump = jumpToMarkerFrame(settings.mode, target.frame, () => this.sdkController.getCurrentTelemetry());
         this.logger.info(`Jumped to ${settings.mode} marker`);
         this.logger.debug(`current=${context.frame}, anchor=${anchor}, target=${target.frame}`);
-        this.followJump(`${settings.mode} marker`, target.frame, jump);
+        followMarkerJump(this.logger, `${settings.mode} marker`, target.frame, jump);
 
         return undefined;
       }
     }
-  }
-
-  /**
-   * Logs how a jump ended once it has: a warning when it stopped short of its
-   * marker, and the details at debug either way. Nothing waits on it, so a
-   * rejection is caught here.
-   */
-  private followJump(what: string, frame: number, jump: Promise<ReplayJumpOutcome>): void {
-    void jump.then(
-      (outcome) => {
-        const report = describeMarkerJump(outcome, frame);
-
-        if (report.warn !== null) this.logger.warn(`${what}: ${report.warn}`);
-
-        this.logger.debug(`${what}: ${report.detail}`);
-      },
-      (err: unknown) => this.logger.error(`${what}: jump failed: ${String(err)}`),
-    );
   }
 
   /**

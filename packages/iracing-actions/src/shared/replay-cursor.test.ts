@@ -106,6 +106,18 @@ describe("replay-cursor", () => {
       expect(pendingReplayLanding()).toEqual({ frame: 6_000, sentAt: 10_050 });
     });
 
+    it("hands back the record it stored, so a jump can tell its own landing from a later one to the same frame", () => {
+      const first = recordReplayLanding(4_000, 10_000);
+
+      expect(pendingReplayLanding()).toBe(first);
+
+      const second = recordReplayLanding(4_000, 10_000);
+
+      expect(second).toEqual(first);
+      expect(second).not.toBe(first);
+      expect(pendingReplayLanding()).toBe(second);
+    });
+
     it("anything else taking the cursor clears it — a one-shot command or a new claim", () => {
       recordReplayLanding(4_000, 10_000);
       cancelReplayCursorOwner("play-pause");

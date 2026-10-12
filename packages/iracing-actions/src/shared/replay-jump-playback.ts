@@ -9,12 +9,14 @@
  *
  * 1. **Capture** the speed at the press, before any command goes out
  *    ({@link beginReplayJump}).
- * 2. **Pause** unless the replay reads paused, and wait for the pause to show:
- *    a moving cursor runs past the target before the landing can be read.
+ * 2. **Pause** a replay that is moving — one whose captured speed is not
+ *    zero, or that does not read paused — and wait for the pause to show: a
+ *    moving cursor runs past the target before the landing can be read.
  * 3. **Seek**, and
  * 4. **wait** until `ReplayFrameNum` reads the frame sent. iRacing covers a
  *    long jump in steps, and any replay command arriving meanwhile cuts it
- *    short (#1275), so nothing follows the seek until it lands.
+ *    short (#1275), so nothing follows the seek until it lands. The wait
+ *    gives up on a cursor that has stopped moving, not on one that is slow.
  * 5. **The caller's own step**, if any — Jump to Fastest Lap's camera switch.
  * 6. **Apply the setting**: one `setPlaySpeed`, and only when the speed wanted
  *    differs from the one the landing reads ({@link applyReplayJumpPlayback}).
@@ -50,8 +52,8 @@ import {
   type ReplayCursorClaim,
   type ReplayJumpSpeed,
 } from "./replay-cursor.js";
-import { isLandedOn, isPaused, waitForReplay } from "./replay-seek.js";
-import { readReplayJumpTimeoutMs, STABILIZATION_POLL_INTERVAL_MS } from "./replay-timing.js";
+import { isPaused, seekReplayFrame, waitForReplay } from "./replay-seek.js";
+import { readReplayJumpTimeoutMs, REPLAY_JUMP_MAX_WAIT_MS, REPLAY_JUMP_POLL_MS } from "./replay-timing.js";
 
 /** A replay speed in the units `setPlaySpeed` takes: in slow motion `speed` is the divisor (5 = 1/5x). 0 is paused. */
 export interface ReplaySpeed {
@@ -67,9 +69,11 @@ const NORMAL_SPEED: ReplaySpeed = { speed: 1, slowMotion: false };
  *
  * How long (ms) the speed a jump applied stands in for telemetry that does not
  * show it yet. The sim reports a new speed within a few ticks; the hold only
- * has to outlast that.
+ * has to outlast that, and is kept this short because for its length a speed
+ * changed outside the plugin (iRacing's own replay bar) reads as "not shown
+ * yet" too.
  */
-export const JUMP_SPEED_HOLD_MS = 500;
+export const JUMP_SPEED_HOLD_MS = 200;
 
 /** The replay commands a jump sends; `getCommands().replay` is one. */
 export interface ReplayJumpCommands {
@@ -103,7 +107,7 @@ export type ReplayJumpStopReason =
   | "pause-timeout"
   /** The seek command was refused. */
   | "seek-failed"
-  /** `ReplayFrameNum` never read the frame sent. */
+  /** `ReplayFrameNum` stopped moving without reading the frame sent. */
   | "seek-timeout"
   /** The caller's own step after the landing returned false. */
   | "after-landing-failed";
@@ -120,9 +124,9 @@ export interface ReplayJumpOptions {
   replay: ReplayJumpCommands;
   /** Reads the latest telemetry. */
   readTelemetry: () => TelemetryData | null;
-  /** How long to wait for the pause and for the landing. Default {@link readReplayJumpTimeoutMs}. */
+  /** How long to wait for the pause, and for a landing the cursor is no longer moving towards. Default {@link readReplayJumpTimeoutMs}. */
   timeoutMs?: number;
-  /** How often to read the telemetry while waiting. Default {@link STABILIZATION_POLL_INTERVAL_MS}. */
+  /** How often to read the telemetry while waiting. Default {@link REPLAY_JUMP_POLL_MS}. */
   pollMs?: number;
   /** Runs right after the sequence's own pause was sent — Replay Control mirrors it into its speed cache. */
   onPaused?: () => void;
@@ -275,13 +279,16 @@ export async function runReplayJump(jump: ReplayJump, options: ReplayJumpOptions
     claim,
     readTelemetry,
     timeoutMs: options.timeoutMs ?? readReplayJumpTimeoutMs(),
-    pollMs: options.pollMs ?? STABILIZATION_POLL_INTERVAL_MS,
+    pollMs: options.pollMs ?? REPLAY_JUMP_POLL_MS,
   };
 
   if (claim.cancelledBy !== null) return { kind: "cancelled", by: claim.cancelledBy };
 
-  // An unknown speed counts as moving: a pause sent to a paused replay costs nothing.
-  if (!isPaused(readTelemetry())) {
+  // The captured speed as well as the reading: right after another jump
+  // applied a speed, telemetry still reads paused while the replay is already
+  // starting to move, and a seek sent into that would be run past. An unknown
+  // speed counts as moving too: a pause sent to a paused replay costs nothing.
+  if (jump.captured.speed !== 0 || !isPaused(readTelemetry())) {
     if (!replay.setPlaySpeed(0)) return { kind: "stopped", reason: "pause-failed", telemetry: null };
 
     onPaused?.();
@@ -293,15 +300,19 @@ export async function runReplayJump(jump: ReplayJump, options: ReplayJumpOptions
     if (paused.kind === "timeout") return { kind: "stopped", reason: "pause-timeout", telemetry: paused.telemetry };
   }
 
-  if (!replay.setPlayPosition(ReplayPosMode.Begin, frame)) {
-    return { kind: "stopped", reason: "seek-failed", telemetry: null };
-  }
-
   // The landing sample is read for nothing but the frame and the speed, so
-  // the `SessionNum = -1` transient after it need not be waited out.
-  const landing = await waitForReplay(waitOptions, (sample): sample is TelemetryData =>
-    isLandedOn(sample, frame, false),
-  );
+  // the `SessionNum = -1` transient after it need not be waited out. The
+  // replay is paused, so a frame that changes is the seek still running.
+  const landing = await seekReplayFrame({
+    ...waitOptions,
+    frame,
+    send: (target) => replay.setPlayPosition(ReplayPosMode.Begin, target),
+    requireSession: false,
+    progress: (sample) => sample?.ReplayFrameNum,
+    maxWaitMs: REPLAY_JUMP_MAX_WAIT_MS,
+  });
+
+  if (landing.kind === "refused") return { kind: "stopped", reason: "seek-failed", telemetry: null };
 
   if (landing.kind === "cancelled") return landing;
 
@@ -318,4 +329,46 @@ export async function runReplayJump(jump: ReplayJump, options: ReplayJumpOptions
   if (applied === null) return { kind: "cancelled", by: claim.cancelledBy ?? "unknown" };
 
   return { kind: "landed", ...applied };
+}
+
+/** What went wrong, for each way a jump stops short. */
+const STOPPED_SHORT: Record<ReplayJumpStopReason, string> = {
+  "pause-failed": "pause failed; jump not sent",
+  "pause-timeout": "replay did not pause; jump not sent",
+  "seek-failed": "jump not sent",
+  "seek-timeout": "jump did not land; replay left where the seek stopped",
+  "after-landing-failed": "jump stopped after the landing; replay left paused there",
+};
+
+/** What a caller logs once a jump has ended. */
+export interface ReplayJumpReport {
+  /** What went wrong when the jump stopped short or its speed command was refused; null otherwise. */
+  warn: string | null;
+  /** The details, for the debug line. */
+  detail: string;
+}
+
+/**
+ * How a jump to `frame` ended, worded for the log, so every action that jumps
+ * reports it the same way: a warning only when something went wrong, and
+ * always the details — for a jump that stopped, the frame it was for and the
+ * frame and speed telemetry last showed.
+ */
+export function describeReplayJump(outcome: ReplayJumpOutcome, frame: number): ReplayJumpReport {
+  switch (outcome.kind) {
+    case "landed":
+      return {
+        warn: outcome.command === "failed" ? "speed command failed; replay left as it landed" : null,
+        detail: `landed on frame ${frame}; speed=${outcome.speed.speed} slowMotion=${outcome.speed.slowMotion} command=${outcome.command}`,
+      };
+    case "cancelled":
+      return { warn: null, detail: `jump to frame ${frame} cancelled by ${outcome.by}` };
+    case "stopped":
+      return {
+        warn: STOPPED_SHORT[outcome.reason],
+        detail:
+          `reason=${outcome.reason} target=${frame} lastFrame=${outcome.telemetry?.ReplayFrameNum ?? "n/a"} ` +
+          `lastSpeed=${outcome.telemetry?.ReplayPlaySpeed ?? "n/a"}`,
+      };
+  }
 }

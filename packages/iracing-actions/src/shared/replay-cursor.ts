@@ -22,7 +22,7 @@
  *   are callers too (#1334): a key placed before Replay Control still runs them.
  *
  * The module also keeps the one **pending landing** (#1230): the frame the last
- * Replay Markers jump was sent to. `ReplayFrameNum` reaches a jump's target only
+ * Replay Markers jump is headed for. `ReplayFrameNum` reaches a jump's target only
  * on a later tick, so a second jump arriving first would measure from the old
  * frame and send the same marker again. iRacing has one replay position, so
  * the landing is one value too — every marker jump records it, every Replay
@@ -82,10 +82,10 @@ class Claim implements ReplayCursorClaim {
 
 let current: Claim | null = null;
 
-/** Where the last marker jump was sent, and when. */
+/** Where the last marker jump is headed, and when it was pressed. */
 export interface ReplayLanding {
   readonly frame: number;
-  /** `Date.now()` at the send. */
+  /** `Date.now()` at the press that started the jump. */
   readonly sentAt: number;
 }
 
@@ -146,9 +146,15 @@ export function currentReplayCursorOwner(): string | null {
   return current === null || current.cancelledBy !== null ? null : current.owner;
 }
 
-/** Records the frame a marker jump is headed for. Call it after the jump has claimed the cursor, since the claim clears it. */
-export function recordReplayLanding(frame: number, sentAt: number): void {
+/**
+ * Records the frame a marker jump is headed for, and returns the record: a
+ * jump tells its own landing from a later one's by identity. Call it after the
+ * jump has claimed the cursor, since the claim clears it.
+ */
+export function recordReplayLanding(frame: number, sentAt: number): ReplayLanding {
   landing = { frame, sentAt };
+
+  return landing;
 }
 
 /** The last marker jump's landing, or `null` once something else took the cursor. Whether it still anchors is the caller's rule. */

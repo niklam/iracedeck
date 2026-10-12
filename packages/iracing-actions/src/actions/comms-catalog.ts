@@ -802,18 +802,22 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     ]),
   ),
 
-  // Replay Markers (#1162): Next / Previous jump with one setPlayPosition
-  // broadcast. Add and Delete are intentionally omitted — they only write the
-  // plugin's own replay store and send nothing to iRacing, so the status line
-  // renders nothing for them (like Fuel Service's "switch-mode").
+  // Replay Markers (#1162): Next / Previous jump through the shared replay jump
+  // sequence (`shared/replay-jump-playback.ts`, #1276) — a pause when the replay
+  // is moving, one setPlayPosition and, once it has landed, the speed the Replay
+  // jump playback setting asks for — every one a broadcast, so both are `api`.
+  // Add and Delete are intentionally omitted — they only write the plugin's own
+  // replay store and send nothing to iRacing, so the status line renders nothing
+  // for them (like Fuel Service's "switch-mode").
   "replay-markers": entry("mode", allApi(["next", "previous"])),
 
   // The dial surface of Replay Markers (#1230). Rotation steps through the
-  // markers with one `setPlayPosition` broadcast, so `step` is `api`; the Add and
-  // Delete gesture values are absent, as the keypad's are, because the markers
-  // live in iRaceDeck's own store and send nothing to iRacing. `modeSetting`
-  // names the (control-less) rotation slot, so the PI's status line falls back to
-  // its `default-mode="step"`.
+  // markers with the same jump sequence as the keypad's Next / Previous, one
+  // jump per rotation event, so `step` is `api`; the Add and Delete gesture
+  // values are absent, as the keypad's are, because the markers live in
+  // iRaceDeck's own store and send nothing to iRacing. `modeSetting` names the
+  // (control-less) rotation slot, so the PI's status line falls back to its
+  // `default-mode="step"`.
   "replay-markers-dial": entry("dial.rotation", { step: api }),
 
   "replay-speed": entry("direction", allApi(["increase", "decrease"])),

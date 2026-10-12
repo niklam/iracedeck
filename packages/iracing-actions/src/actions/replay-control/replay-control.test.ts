@@ -2570,7 +2570,7 @@ describe("ReplayControl", () => {
                 "Jump to fastest lap: jump did not land; replay left where the seek stopped",
               );
               expect(action["logger"].debug).toHaveBeenCalledWith(
-                expect.stringContaining("Sent frame 4940, saw frame 9000"),
+                expect.stringContaining("target=4940 lastFrame=9000"),
               );
               expect(mockCamera.switchNum).not.toHaveBeenCalled();
               expect(mockReplay.setPlaySpeed).not.toHaveBeenCalled();
@@ -2737,7 +2737,7 @@ describe("ReplayControl", () => {
               expect(action["logger"].warn).toHaveBeenCalledWith(
                 "Jump to fastest lap: replay did not pause; jump not sent",
               );
-              expect(action["logger"].debug).toHaveBeenCalledWith(expect.stringContaining("ReplayPlaySpeed still 1"));
+              expect(action["logger"].debug).toHaveBeenCalledWith(expect.stringContaining("lastSpeed=1"));
               expect(mockReplay.setPlayPosition).not.toHaveBeenCalled();
               expect(mockReplay.setPlaySpeed).toHaveBeenCalledExactlyOnceWith(0);
             } finally {
@@ -4283,7 +4283,7 @@ describe("ReplayControl", () => {
               );
               // The last frame seen is named with the frame sent.
               expect(action["logger"].debug).toHaveBeenCalledWith(
-                expect.stringContaining("Sent frame 4940, saw frame 9000"),
+                expect.stringContaining("target=4940 lastFrame=9000"),
               );
               expect(replay.commands).toEqual(["speed 0", "seek 4940"]);
               expect(replay.speed()).toEqual(PAUSED);
