@@ -118,7 +118,7 @@ describe("planFrameMove", () => {
     expect(planFrameMove(37, at(5000))).toEqual({ kind: "jump", frame: 5037 });
   });
 
-  it("never steps while a move is under way: a single detent jumps from the pending landing", () => {
+  it("never steps while a move is under way: a single detent jumps from the pending target", () => {
     const heading = at(5010, { seeking: true });
 
     expect(planFrameMove(1, heading)).toEqual({ kind: "jump", frame: 5011 });
@@ -165,7 +165,7 @@ describe("planFrameMove", () => {
     expect(planFrameMove(1, at(9999, { endFrame: undefined }))).toEqual({ kind: "step", direction: 1 });
   });
 
-  it("asks again for a pending landing, which is what puts a landing that never read back right", () => {
+  it("asks again for a pending target, which is what puts a move that never read back right", () => {
     expect(planFrameMove(-3, at(0, { seeking: true }))).toEqual({ kind: "jump", frame: 0 });
     expect(planFrameMove(3, at(9992, { seeking: true }))).toEqual({ kind: "jump", frame: 9992 });
     expect(planFrameMove(30, at(9980, { seeking: true }))).toEqual({ kind: "jump", frame: 9992 });
@@ -220,7 +220,7 @@ describe("frameJogMode", () => {
       expect(back.calls).toEqual(["jumpTo:dial-frame-jog:4963"]);
     });
 
-    it("jumps from the pending landing while the last move has not read back, even for one detent", () => {
+    it("jumps from the pending target while the last move has not read back, even for one detent", () => {
       const { io, calls } = fakeIo({ position: at(5010, { seeking: true }) });
 
       frameJogMode.rotate(1, dial, io);

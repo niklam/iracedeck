@@ -33,7 +33,7 @@ const CURSOR_OWNER = "dial-frame-jog";
  * last four frames, or past the end, lands five frames short of it, so its
  * target never reads back; frame steps go on to the last frame but one. Five
  * is that measurement and the rest is slack. It is not relied on: aimed too
- * far on another recording, a jump is one more landing that does not read
+ * far on another recording, a jump is one more target that does not read
  * back and is given up, and the frames past the margin are still reached one
  * step at a time.
  */
@@ -72,8 +72,8 @@ export type FrameMove =
  * where the replay stands or is headed. Nothing when that is not known, and
  * nothing when the replay is at rest on the end of the recording the turn
  * points at. A frame step only for a single detent with nothing under way;
- * otherwise an absolute jump, measured from the pending landing while one
- * stands — also when that is the frame it already asks for, since a landing
+ * otherwise an absolute jump, measured from the pending target while one
+ * stands — also when that is the frame it already asks for, since a target
  * that has not read back is put right by asking again.
  *
  * The last frames of the recording are the exception, because a jump cannot
@@ -141,7 +141,7 @@ function describeMove(move: FrameMove, position: ReplayPosition | null): string 
  * sends the pause first, so the jog lands on a still frame whatever iRacing
  * does to playback on a frame step, and the pause is the surface's tracked
  * one, so Press resumes the speed that was playing. Every move goes through
- * the surface's position calls, which keep the landing a later turn is
+ * the surface's position calls, which keep the target a later turn is
  * measured from and refuse a step into a jump.
  */
 export const frameJogMode: ReplayDialMode = {
