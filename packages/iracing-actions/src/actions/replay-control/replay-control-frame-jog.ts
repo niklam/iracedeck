@@ -28,13 +28,16 @@ import { formatSpeedDisplay } from "./replay-speed-format.js";
 const CURSOR_OWNER = "dial-frame-jog";
 
 /**
- * How many frames short of the recording's last one a turn stops. A frame
- * iRacing cannot show never reads back, so a move sent there would stand as
- * pending until it is given up; in the replay of a running session the last
- * frames are also still being written. A cursor already inside the margin is
- * left where it is rather than pulled back.
+ * How many frames short of the recording's end a position jump is aimed at
+ * most. Measured on 2026-10-12 against a saved replay: a jump to any of the
+ * last four frames, or past the end, lands five frames short of it, so its
+ * target never reads back; frame steps go on to the last frame but one. Five
+ * is that measurement and the rest is slack. It is not relied on: aimed too
+ * far on another recording, a jump is one more landing that does not read
+ * back and is given up, and the frames past the margin are still reached one
+ * step at a time.
  */
-const END_MARGIN_FRAMES = 3;
+const JUMP_END_MARGIN_FRAMES = 8;
 
 /**
  * @internal Exported for testing
@@ -72,21 +75,39 @@ export type FrameMove =
  * otherwise an absolute jump, measured from the pending landing while one
  * stands — also when that is the frame it already asks for, since a landing
  * that has not read back is put right by asking again.
+ *
+ * The last frames of the recording are the exception, because a jump cannot
+ * land there ({@link JUMP_END_MARGIN_FRAMES}) and a step can: a jump is aimed
+ * no further than the margin, a turn of several detents past it is one frame
+ * step, and while a move into that stretch has not read back nothing is sent,
+ * since a step has to wait and a jump would pull the replay back.
  */
 export function planFrameMove(ticks: number, position: ReplayPosition | null): FrameMove {
   if (position === null) return { kind: "none", reason: "the replay's position is not known" };
 
   const { frame, endFrame, seeking } = position;
-  const last = endFrame === undefined ? Infinity : Math.max(frame, endFrame - END_MARGIN_FRAMES);
-  const target = ticks > 0 ? Math.min(frame + ticks, last) : Math.max(frame + ticks, 0);
+  const direction = ticks > 0 ? 1 : -1;
+  // A step reaches the last frame but one; a jump stops short of the margin.
+  const lastStep = endFrame === undefined ? Infinity : endFrame - 1;
+  const lastJump = endFrame === undefined ? Infinity : endFrame - JUMP_END_MARGIN_FRAMES;
+  const target = ticks > 0 ? Math.min(frame + ticks, Math.max(frame, lastStep)) : Math.max(frame + ticks, 0);
 
-  if (!seeking) {
-    if (target === frame) return { kind: "none", reason: `at the ${ticks > 0 ? "end" : "start"} of the recording` };
+  if (seeking) {
+    if (target <= lastJump || frame <= lastJump) return { kind: "jump", frame: Math.min(target, lastJump) };
 
-    if (Math.abs(ticks) === 1) return { kind: "step", direction: ticks > 0 ? 1 : -1 };
+    return { kind: "none", reason: "a move into the last frames of the recording has not read back" };
   }
 
-  return { kind: "jump", frame: target };
+  if (target === frame) return { kind: "none", reason: `at the ${ticks > 0 ? "end" : "start"} of the recording` };
+
+  if (Math.abs(ticks) === 1) return { kind: "step", direction };
+
+  if (target <= lastJump) return { kind: "jump", frame: target };
+
+  // Several detents towards frames only a step reaches: as far as a jump goes, then one frame per turn.
+  if (ticks > 0 && frame < lastJump) return { kind: "jump", frame: lastJump };
+
+  return { kind: "step", direction };
 }
 
 /**

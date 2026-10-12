@@ -138,27 +138,44 @@ describe("planFrameMove", () => {
     expect(planFrameMove(1, at(0))).toEqual({ kind: "step", direction: 1 });
   });
 
-  it("stops a few frames short of the end of the recording", () => {
-    expect(planFrameMove(10, at(9990))).toEqual({ kind: "jump", frame: 9997 });
-    expect(planFrameMove(1, at(9997)).kind).toBe("none");
-    expect(planFrameMove(6, at(9997)).kind).toBe("none");
-    expect(planFrameMove(-1, at(9997))).toEqual({ kind: "step", direction: -1 });
+  it("aims a jump no closer to the end of the recording than it can land", () => {
+    expect(planFrameMove(2, at(9980))).toEqual({ kind: "jump", frame: 9982 });
+    expect(planFrameMove(10, at(9982))).toEqual({ kind: "jump", frame: 9992 });
+    expect(planFrameMove(40, at(9990))).toEqual({ kind: "jump", frame: 9992 });
+    expect(planFrameMove(-10, at(9999))).toEqual({ kind: "jump", frame: 9989 });
   });
 
-  it("leaves a replay already past that margin where it is, and still lets it step back", () => {
+  it("goes on through the last frames one step at a time, up to the last frame but one", () => {
+    expect(planFrameMove(1, at(9992))).toEqual({ kind: "step", direction: 1 });
+    expect(planFrameMove(1, at(9998))).toEqual({ kind: "step", direction: 1 });
     expect(planFrameMove(1, at(9999)).kind).toBe("none");
-    expect(planFrameMove(4, at(10_000)).kind).toBe("none");
+    expect(planFrameMove(1, at(10_000)).kind).toBe("none");
     expect(planFrameMove(-1, at(10_000))).toEqual({ kind: "step", direction: -1 });
-    expect(planFrameMove(-2, at(9999))).toEqual({ kind: "jump", frame: 9997 });
+  });
+
+  it("turns several detents in the last frames into one step, either way", () => {
+    expect(planFrameMove(6, at(9992))).toEqual({ kind: "step", direction: 1 });
+    expect(planFrameMove(4, at(9997))).toEqual({ kind: "step", direction: 1 });
+    expect(planFrameMove(4, at(9999)).kind).toBe("none");
+    expect(planFrameMove(-2, at(9999))).toEqual({ kind: "step", direction: -1 });
   });
 
   it("is bounded only by the start when the recording's end is not known", () => {
     expect(planFrameMove(500, at(9999, { endFrame: undefined }))).toEqual({ kind: "jump", frame: 10_499 });
+    expect(planFrameMove(1, at(9999, { endFrame: undefined }))).toEqual({ kind: "step", direction: 1 });
   });
 
-  it("asks again for a pending landing at an end, which is what puts a landing that never read back right", () => {
-    expect(planFrameMove(3, at(9997, { seeking: true }))).toEqual({ kind: "jump", frame: 9997 });
+  it("asks again for a pending landing, which is what puts a landing that never read back right", () => {
     expect(planFrameMove(-3, at(0, { seeking: true }))).toEqual({ kind: "jump", frame: 0 });
+    expect(planFrameMove(3, at(9992, { seeking: true }))).toEqual({ kind: "jump", frame: 9992 });
+    expect(planFrameMove(30, at(9980, { seeking: true }))).toEqual({ kind: "jump", frame: 9992 });
+  });
+
+  it("sends nothing while a move into the last frames has not read back, and still jumps back out", () => {
+    expect(planFrameMove(1, at(9995, { seeking: true })).kind).toBe("none");
+    expect(planFrameMove(3, at(9993, { seeking: true })).kind).toBe("none");
+    expect(planFrameMove(-1, at(9995, { seeking: true })).kind).toBe("none");
+    expect(planFrameMove(-5, at(9995, { seeking: true }))).toEqual({ kind: "jump", frame: 9990 });
   });
 
   it("measures every jump from the position it was given, as an absolute frame", () => {
@@ -232,7 +249,7 @@ describe("frameJogMode", () => {
     });
 
     it("sends nothing at the end of the recording the turn points at", () => {
-      const { io, calls } = fakeIo({ position: at(9997) });
+      const { io, calls } = fakeIo({ position: at(9999) });
 
       frameJogMode.rotate(1, dial, io);
       frameJogMode.rotate(5, dial, io);
