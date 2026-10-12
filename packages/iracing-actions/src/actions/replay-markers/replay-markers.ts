@@ -3,7 +3,6 @@ import {
   getGlobalBorderSettings,
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
-  hexToGrayscale,
   IconUpdateThrottle,
   type IDeckDialDownEvent,
   type IDeckDialRotateEvent,
@@ -28,6 +27,7 @@ import previousIconSvg from "@iracedeck/icons/replay-markers/previous.svg";
 import { getReplaySessionStore, isReplaySessionStoreInitialized } from "@iracedeck/replay-store";
 import { getGlobalColors } from "@iracedeck/settings";
 
+import { unavailableLook } from "../../shared/unavailable-look.js";
 import { ReplayMarkersDialSurface } from "./replay-markers-dial-surface.js";
 import {
   addMarkerAt,
@@ -117,9 +117,9 @@ export type ReplayMarkersKeyState = ReplayMarkerConfirmation | "unavailable";
  * flash or the greyed "unavailable" look. The flash keeps the key's title
  * styling but not its colour or title text overrides: it is a fixed green /
  * red signal, so it reads the same on every key. The unavailable look is the
- * key's own icon, overrides and all, with every colour but the background
- * (border included) turned grey and the artwork and title faded (`assembleIcon`'s `dimmed`), so
- * a customised key still reads as itself, only switched off.
+ * key's own icon, overrides and all, greyed and faded (`unavailableLook`,
+ * shared with Replay Control's Jump to Green Flag), so a customised key still
+ * reads as itself, only switched off.
  */
 export function generateReplayMarkersSvg(settings: ReplayMarkersSettings, state?: ReplayMarkersKeyState): string {
   if (state === "added" || state === "deleted") {
@@ -141,38 +141,22 @@ export function generateReplayMarkersSvg(settings: ReplayMarkersSettings, state?
 
   const unavailable = state === "unavailable";
   const iconSvg = REPLAY_MARKERS_ICONS[settings.mode] ?? REPLAY_MARKERS_ICONS.add;
-  const resolved = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
-  const colors = unavailable ? greyForeground(resolved) : resolved;
+  const colors = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
   const title = resolveTitleSettings(
     iconSvg,
     getGlobalTitleSettings(),
     settings.titleOverrides,
     REPLAY_MARKERS_TITLES[settings.mode] ?? REPLAY_MARKERS_TITLES.add,
   );
-  const resolvedBorder = resolveBorderSettings(iconSvg, getGlobalBorderSettings(), settings.borderOverrides);
-  const border = unavailable
-    ? { ...resolvedBorder, borderColor: hexToGrayscale(resolvedBorder.borderColor) }
-    : resolvedBorder;
+  const border = resolveBorderSettings(iconSvg, getGlobalBorderSettings(), settings.borderOverrides);
   const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
 
   return assembleIcon({
     graphicSvg: iconSvg,
-    colors,
     title,
-    border,
     graphic,
-    ...(unavailable && { dimmed: true }),
+    ...(unavailable ? unavailableLook(colors, border) : { colors, border }),
   });
-}
-
-/**
- * Every colour slot but the background in grey, so a coloured override turns
- * grey rather than only fading.
- */
-function greyForeground(colors: Record<string, string>): Record<string, string> {
-  return Object.fromEntries(
-    Object.entries(colors).map(([slot, value]) => [slot, slot === "backgroundColor" ? value : hexToGrayscale(value)]),
-  );
 }
 
 export const REPLAY_MARKERS_UUID = "com.iracedeck.sd.core.replay-markers" as const;
