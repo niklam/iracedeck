@@ -550,7 +550,7 @@ The setting is per dial, so two dials can carry different ladders: one with only
 
 Each detent moves the replay one frame: clockwise to the next frame, counter-clockwise to the previous one. It is the mode for finding the exact frame of a contact.
 
-- **A fast spin moves as many frames as the dial reports detents**, with no limit, and the replay gets them as a single jump.
+- **A fast spin moves as many frames as the dial reports detents**, with no limit.
 - **The jog always lands on a still frame.** If the replay is playing when you turn, the first detent pauses it and then steps.
 - **A Play / Pause press carries on from there.** It resumes at the speed the replay was playing before the jog paused it, and Play / Pause is what **Press Action** is set to by default.
 
