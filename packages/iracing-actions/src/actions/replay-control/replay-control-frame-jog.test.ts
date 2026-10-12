@@ -177,15 +177,23 @@ describe("frameJogMode", () => {
       expect(back.calls).toEqual(["send:dial-frame-jog", "prevFrame"]);
     });
 
-    it("sends a fast spin as one relative jump of that many frames, uncapped", () => {
+    it("sends a fast spin as that many frame steps in one send, uncapped", () => {
       const forward = fakeIo();
       const back = fakeIo();
 
       frameJogMode.rotate(37, dial, forward.io);
       frameJogMode.rotate(-37, dial, back.io);
 
-      expect(forward.calls).toEqual(["send:dial-frame-jog", "setPlayPosition(Current, 37)"]);
-      expect(back.calls).toEqual(["send:dial-frame-jog", "setPlayPosition(Current, -37)"]);
+      expect(forward.calls).toEqual(["send:dial-frame-jog", ...Array<string>(37).fill("nextFrame")]);
+      expect(back.calls).toEqual(["send:dial-frame-jog", ...Array<string>(37).fill("prevFrame")]);
+    });
+
+    it("never sends a position, however many detents an event carries", () => {
+      const { io, replay } = fakeIo();
+
+      for (const ticks of [1, -1, 2, -2, 3, -4, 12]) frameJogMode.rotate(ticks, dial, io);
+
+      expect(replay.setPlayPosition).not.toHaveBeenCalled();
     });
 
     it.each<[string, ReplaySpeed]>([
@@ -202,7 +210,11 @@ describe("frameJogMode", () => {
       frameJogMode.rotate(5, dial, spin.io);
 
       expect(single.calls).toEqual(["pause:dial-frame-jog", "send:dial-frame-jog", "prevFrame"]);
-      expect(spin.calls).toEqual(["pause:dial-frame-jog", "send:dial-frame-jog", "setPlayPosition(Current, 5)"]);
+      expect(spin.calls).toEqual([
+        "pause:dial-frame-jog",
+        "send:dial-frame-jog",
+        ...Array<string>(5).fill("nextFrame"),
+      ]);
     });
 
     it("does not pause a replay that is already paused", () => {

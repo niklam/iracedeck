@@ -14,16 +14,20 @@ import { formatSpeedDisplay } from "./replay-speed-format.js";
 const CURSOR_OWNER = "dial-frame-jog";
 
 /**
- * How a turn of several detents in one event is sent. `true` is the spec's
- * model: one `setPlayPosition(Current, ±n)`, on the reading that `Current` is
- * an offset from the frame on screen and that a negative one steps back.
- * Nothing else in the plugin sends that mode, and a negative offset goes out
- * as two's complement across the broadcast's two 16-bit halves, so #1317's
- * manual test is what confirms it: a fast spin each way, `ReplayFrameNum`
- * before and after against the logged ticks. `false` is the spec's fallback,
- * that many single frame steps.
+ * How a turn of several detents in one event is sent. `false` is the spec's
+ * fallback, that many single frame steps. `true` is its first model, one
+ * `setPlayPosition(Current, ±n)`, on the reading that `Current` is an offset
+ * from the frame on screen. Seen with `true` on 2026-10-12: a jump of +2, +3
+ * or −2 moved `ReplayFrameNum` by exactly that by the maintainer's check, but
+ * in a fast turn, where events come 50 to 200 ms apart, the replay or its time
+ * readout went to 0:00.00 and on to unrelated places, on both hosts. Which of
+ * the two moved, and whether the jump caused it, is not established; the debug
+ * line of every turn carries the frame so the next capture can say. Not
+ * measured either: whether iRacing applies frame steps sent back to back as
+ * one frame each. If it drops some, a fast turn moves fewer frames than
+ * detents, and the same lines show it.
  */
-const MULTI_DETENT_AS_ONE_JUMP = true;
+const MULTI_DETENT_AS_ONE_JUMP = false;
 
 /**
  * @internal Exported for testing
@@ -86,11 +90,12 @@ export function describeReplayPosition(telemetry: TelemetryData | null): string 
 
 /**
  * The Frame Jog mode. Clockwise is the next frame, counter-clockwise the
- * previous one, uncapped: iRacing bounds a jump at the ends of the recording.
- * A turn while the replay plays sends two commands, the pause and then the
- * move, so the jog lands on a still frame whatever iRacing does to playback
- * on a frame step; the pause is the surface's tracked one, so Press resumes
- * the speed that was playing.
+ * previous one, uncapped. A turn sends more than one command in two cases:
+ * several detents in one event go out as that many frame steps
+ * ({@link MULTI_DETENT_AS_ONE_JUMP}), and a turn while the replay plays sends
+ * the pause first, so the jog lands on a still frame whatever iRacing does to
+ * playback on a frame step; the pause is the surface's tracked one, so Press
+ * resumes the speed that was playing.
  */
 export const frameJogMode: ReplayDialMode = {
   label: "FRAME",
