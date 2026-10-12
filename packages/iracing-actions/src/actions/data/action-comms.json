@@ -3299,6 +3299,9 @@
     "jump-to-fastest-lap": {
       "method": "api"
     },
+    "jump-to-green-flag": {
+      "method": "api"
+    },
     "next-car-number": {
       "method": "api"
     },

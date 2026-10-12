@@ -778,6 +778,7 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
       "jump-to-live",
       "jump-to-my-car",
       "jump-to-fastest-lap",
+      "jump-to-green-flag",
       "next-car-number",
       "prev-car-number",
     ]),
