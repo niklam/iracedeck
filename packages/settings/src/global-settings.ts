@@ -33,11 +33,13 @@ import {
   DEFAULT_POINTER_ANCHOR_Y,
   DEFAULT_POINTER_OFFSET_X,
   DEFAULT_POINTER_OFFSET_Y,
+  DEFAULT_REPLAY_JUMP_PLAYBACK,
   ENSURED_VOICE_PACK_ID,
   parseFocusIRacingMode,
   POINTER_ANCHORS_X,
   POINTER_ANCHORS_Y,
   POINTER_OFFSET_LIMIT,
+  REPLAY_JUMP_PLAYBACK_MODES,
 } from "@iracedeck/app-constants";
 import { qualifiedVoiceId, qualifyVoiceId, stripTakeSuffix } from "@iracedeck/callout-script";
 import { CALLOUT_SETTING_KEYS, calloutDefault, type CalloutSettingKey } from "@iracedeck/callout-settings";
@@ -507,6 +509,20 @@ export const GlobalSettingsSchema = z
      * tracks may need higher values. Range 50–1000 ms, step 50.
      */
     fastestLapSearchDelayMs: z.coerce.number().min(50).max(1000).default(400).catch(400),
+    /**
+     * What the replay does once a jump has landed (issue #1276): Replay
+     * Control's Jump to Fastest Lap and Replay Markers' Previous / Next Marker.
+     * `remember` carries on at the speed the replay had before the press
+     * (paused stays paused), `play` plays at 1x, `stopped` pauses on the new
+     * spot. The values live in `@iracedeck/app-constants`
+     * (`replay-jump-playback.ts`). The `.catch` is what lets a value a later
+     * version adds read as the default here instead of failing the whole
+     * settings parse (#896).
+     */
+    replayJumpPlayback: z
+      .enum(REPLAY_JUMP_PLAYBACK_MODES)
+      .default(DEFAULT_REPLAY_JUMP_PLAYBACK)
+      .catch(DEFAULT_REPLAY_JUMP_PLAYBACK),
     /**
      * Delay in milliseconds the Chat > Send Message pipeline waits after
      * opening the chat window (BeginChat) before pasting the message

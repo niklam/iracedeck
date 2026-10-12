@@ -36,6 +36,14 @@ export type { LogLocation } from "./log-location.js";
 // Property Inspector warning banner key and record shape (issues #610, #1014, #1366)
 export { PI_WARNING_LEVELS, PI_WARNINGS_KEY, type PiWarning, type PiWarningLevel } from "./pi-warnings-constants.js";
 
+// Replay jump playback modes (issue #1276)
+export {
+  DEFAULT_REPLAY_JUMP_PLAYBACK,
+  parseReplayJumpPlayback,
+  REPLAY_JUMP_PLAYBACK_MODES,
+  type ReplayJumpPlayback,
+} from "./replay-jump-playback.js";
+
 // Settings-window page name and warning ids (issues #992, #1005)
 export {
   SETTINGS_WINDOW_HTML,

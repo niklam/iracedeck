@@ -8,6 +8,7 @@ import {
   DEFAULT_POINTER_ANCHOR_Y,
   DEFAULT_POINTER_OFFSET_X,
   DEFAULT_POINTER_OFFSET_Y,
+  DEFAULT_REPLAY_JUMP_PLAYBACK,
   ENSURED_VOICE_PACK_ID,
   FOCUS_IRACING_MODES,
   PI_WARNINGS_KEY,
@@ -15,6 +16,7 @@ import {
   POINTER_ANCHORS_Y,
   POINTER_OFFSET_LIMIT,
   PROFILE_CAPTURE_STATUS_KEY,
+  REPLAY_JUMP_PLAYBACK_MODES,
   SETTINGS_WINDOW_HTML,
   SETTINGS_WINDOW_OPEN_WARNING_ID,
   SETTINGS_WINDOW_SERVER_WARNING_ID,
@@ -69,6 +71,11 @@ describe("app-constants persisted and run-scoped values (spec #1351)", () => {
   it("keeps the Focus iRacing Window modes and their default", () => {
     expect(FOCUS_IRACING_MODES).toEqual(["always", "required", "never"]);
     expect(DEFAULT_FOCUS_IRACING_MODE).toBe("always");
+  });
+
+  it("keeps the replay jump playback modes and their default", () => {
+    expect(REPLAY_JUMP_PLAYBACK_MODES).toEqual(["remember", "play", "stopped"]);
+    expect(DEFAULT_REPLAY_JUMP_PLAYBACK).toBe("remember");
   });
 
   it("keeps the Mouse to Sim anchors, defaults and offset limit", () => {

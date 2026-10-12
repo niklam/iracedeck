@@ -947,6 +947,29 @@ describe("fastestLapSearchDelayMs (issue #577)", () => {
   });
 });
 
+describe("replayJumpPlayback (issue #1276)", () => {
+  it("defaults to remember when not specified", () => {
+    const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
+    expect(parsed.replayJumpPlayback).toBe("remember");
+  });
+
+  it.each(["remember", "play", "stopped"])("accepts %s", (mode) => {
+    const parsed = GlobalSettingsSchema.parse({ replayJumpPlayback: mode }) as Record<string, unknown>;
+    expect(parsed.replayJumpPlayback).toBe(mode);
+  });
+
+  it("reads an unknown stored value as the default instead of aborting the parse (issue #896)", () => {
+    for (const value of ["resume", "PLAY", "", 1, true, null]) {
+      const parsed = GlobalSettingsSchema.parse({ replayJumpPlayback: value, driverName: "nick" }) as Record<
+        string,
+        unknown
+      >;
+      expect(parsed.replayJumpPlayback).toBe("remember");
+      expect(parsed.driverName).toBe("nick");
+    }
+  });
+});
+
 describe("chatEnterToCloseDelayMs (issue #589)", () => {
   it("defaults to 200 when not specified", () => {
     const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
