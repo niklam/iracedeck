@@ -3,7 +3,7 @@ title: Setup Chassis
 description: Adjust chassis setup options — differential, anti-roll bars, springs, shocks, and power steering — during a session.
 sidebar:
   badge:
-    text: "22 modes"
+    text: "24 modes"
     variant: tip
 ---
 

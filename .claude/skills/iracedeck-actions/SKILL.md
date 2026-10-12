@@ -9,7 +9,7 @@ description: Use when looking up Stream Deck actions, sub-actions, modes, catego
 
 Complete action definitions: `docs/reference/actions.json`
 
-This skill file documents **33 actions with 311 modes** using a detailed per-mode count (the totals in the category table below). The user-facing website (`packages/website/src/content/docs/`) uses a coarser counting convention and shows a lower total (**281 modes**) — treat the website as the source of truth for user-facing copy and this skill file as the detailed inventory. `docs/reference/actions.json` has not yet been re-synced to the per-mode counting convention; treat it as a detailed inventory of individual mode values that is occasionally out of date.
+This skill file documents **33 actions with 314 modes** using a detailed per-mode count (the totals in the category table below). The user-facing website (`packages/website/src/content/docs/`) uses a coarser counting convention and shows a lower total (**282 modes**) — treat the website as the source of truth for user-facing copy and this skill file as the detailed inventory. `docs/reference/actions.json` has not yet been re-synced to the per-mode counting convention; treat it as a detailed inventory of individual mode values that is occasionally out of date.
 
 Each action entry:
 ```json
@@ -53,16 +53,16 @@ When asked about actions or controls:
 
 | Category | Actions | Modes | Description |
 |----------|---------|-------|-------------|
-| Display & Session | 2 | 14 | Live session data: incidents, laps, position, estimated iRating gain/loss, gaps, fuel, laps to empty, flags, track wetness, wind, track & air temperature, pit-stop tire temperatures; Session Info keys can speak their value on press |
+| Display & Session | 2 | 15 | Live session data: incidents, laps, position, estimated iRating gain/loss, gaps, fuel, laps to empty, flags, track wetness, wind, track & air temperature, pit-stop tire temperatures; Session Info keys can speak their value on press |
 | Driving Controls | 6 | 36 | AI spotter, audio (incl. Race Engineer & Radar volume), black boxes, look direction, car control, pit crew (Race Engineer toggle + radar + corner names) |
 | Cockpit & Interface | 5 | 33 | Wipers, force feedback, splits & reference, telemetry, UI toggles |
 | View & Camera | 6 | 97 | FOV, replay, replay markers, camera controls, broadcast tools |
 | Media | 1 | 7 | Video recording, screenshots, texture management |
 | Pit Service | 3 | 15 | Fuel (keypad modes + a Stream Deck+ dial surface, #759), tires, compounds, tearoff, fast repair |
-| Car Setup | 7 | 73 | Brakes (button and dial surface, #730/#775), chassis, aero, engine, fuel mix, hybrid/ERS, traction control — adjustment modes plus live-display "View …" sub-modes; each View sub-mode also supports dual-press (tap = configured direction, long-press = opposite) so one key both shows the value and adjusts it (#540); adjustment/View modes with a live telemetry value can also render as paired +/− key styles (2-key and 3-key layouts, several selectable styles, hold-to-repeat) — Phase 1 covers these seven setup actions (#810) |
+| Car Setup | 7 | 75 | Brakes (button and dial surface, #730/#775), chassis, aero, engine, fuel mix, hybrid/ERS, traction control — adjustment modes plus live-display "View …" sub-modes; each View sub-mode also supports dual-press (tap = configured direction, long-press = opposite) so one key both shows the value and adjusts it (#540); adjustment/View modes with a live telemetry value can also render as paired +/− key styles (2-key and 3-key layouts, several selectable styles, hold-to-repeat) — Phase 1 covers these seven setup actions (#810) |
 | Communication | 2 | 35 | Chat, macros (15), whisper, toggle, reply, race admin commands, car selector |
 | Stream Deck | 1 | 1 | Switch Profile — switch to a bundled iRaceDeck profile or back to the previous one (Elgato-only, no iRacing command) |
-| **Total** | **33** | **311** | |
+| **Total** | **33** | **314** | |
 
 Mode counts reflect the PI Mode dropdown choices documented in each action page. Directional variants (Increase/Decrease) are treated as a single mode with a Direction sub-setting, matching the per-mode website format. Legacy replay actions (Replay Transport, Replay Speed, Replay Navigation) and Camera Cycle (Legacy) still exist in the plugin manifest for backward compatibility but are not counted as documented actions.
 

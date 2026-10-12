@@ -46,16 +46,29 @@ All docs pages live under `src/content/docs/docs/` and are served at `/docs/...`
 ```text
 src/content/docs/
 ├── index.mdx                        # Landing page at / (splash template)
+├── downloads.mdx                    # Download page at /downloads/
+├── changelog.mdx                    # Released versions at /changelog/ (see Key Files)
 └── docs/
     ├── index.md                     # Docs landing page at /docs/
     ├── getting-started/
     │   ├── installation.mdx
+    │   ├── first-steps.md           # Also generates the Settings window's Getting Started tab (#1061)
+    │   ├── settings.md
     │   └── troubleshooting.md
     ├── features/
+    │   ├── communication-methods.md
     │   ├── key-bindings.md
+    │   ├── stream-deck-profiles.md
+    │   ├── dials.md
+    │   ├── race-engineer-voices.md
     │   ├── flags-overlay.md
     │   ├── focus-iracing-window.md
-    │   └── template-variables.md    # Source of truth for telemetry template vars
+    │   ├── icon-colors.md
+    │   ├── title-customization.md
+    │   ├── graphic-scaling.md
+    │   ├── border-indicator.md
+    │   ├── template-variables.md    # Source of truth for telemetry template vars
+    │   └── whats-new-page.md
     ├── voice-packs/                 # For pack authors (#1066): concept, tutorial, format
     │   ├── index.md
     │   ├── first-pack.md
@@ -66,17 +79,28 @@ src/content/docs/
     │       └── recording-script.mdx #   and freshness-tested — never hand-edit it
     ├── actions/
     │   ├── overview.md
+    │   ├── audio-voice/             # 3 actions
     │   ├── display-session/         # 2 actions
-    │   ├── driving/                 # 5 actions
+    │   ├── driving/                 # 3 actions
     │   ├── cockpit/                 # 5 actions
     │   ├── view-camera/             # 6 actions
     │   ├── media/                   # 1 action
     │   ├── pit-service/             # 3 actions
     │   ├── car-setup/               # 7 actions
-    │   └── communication/           # 2 actions
-    └── reference/
-        ├── action-types.md
-        └── keyboard-shortcuts.md
+    │   ├── communication/           # 2 actions
+    │   └── stream-deck/             # 1 action
+    ├── reference/
+    │   ├── action-types.md
+    │   └── keyboard-shortcuts.md
+    └── development/
+        ├── index.md
+        ├── tech-stack.md
+        ├── architecture.md
+        ├── contributing.md
+        ├── setup.md
+        ├── feature-flags.md
+        ├── icon-gallery.mdx
+        └── designing-icons.md
 ```
 
 ## Sidebar
@@ -114,18 +138,19 @@ Select the mode from the **{Dropdown Label}** dropdown in the Property Inspector
 
 {Mode description}
 
-##### Details
+#### Details
 
+- **Method:** {`iRacing API`, `Key binding`, or `Chat command`}
 - **Dial:** {rotation behavior, or `No rotation support`}
 - **Default binding:** {`Key`, `No default key binding`, or `No keyboard binding`}
 - **Telemetry-aware icon:** {`Yes` (with note on what updates) or `No`}
 
-##### Settings
+#### Settings
 
 - No additional settings
 ```
 
-For modes with settings, replace the `##### Settings` block with one or more `##### Setting: {Name}` subheaders documenting defaults and options inline.
+Modes are separated by a `---` rule, with none after the last. For modes with settings, replace the `#### Settings` block with one or more `#### Setting: {Name}` subheaders documenting defaults and options inline.
 
 ## Deployment
 
