@@ -698,22 +698,52 @@ describe("ReplayControlDialSurface", () => {
       expect(rememberedSpeed()).toEqual(speed(4, true));
     });
 
-    it("is cleared when the last dial disappears, and kept while one remains", async () => {
+    it("a dial that comes back inside the hold is redrawn when it lapses (a page flip and back)", async () => {
       const { surface, ctx, d } = await onScreen(PAUSED);
-      const other = dialContext("dial-2");
-      await appear(surface, other);
+
+      surface.rotate(ctx as never, d, 1, false);
+      await settle();
+      expect(shownValue(lastBox(ctx))).toBe("1/4x");
+
+      // The page is flipped away and back, well inside the hold.
+      surface.willDisappear(ctx.id);
+      await vi.advanceTimersByTimeAsync(50);
+      const back = dialContext(ctx.id);
+      await appear(surface, back, d);
+      // The pending speed outlived the dial, so the dial draws it.
+      expect(shownValue(lastBox(back))).toBe("1/4x");
+
+      await vi.advanceTimersByTimeAsync(PAST_THE_LAPSE);
+
+      expect(shownValue(lastBox(back))).toBe("PAUSED");
+    });
+
+    it("with no dial on screen at the lapse it draws nothing, and still resyncs the action's speed cache", async () => {
+      const { surface, ctx, d } = await onScreen(PAUSED);
+      surface.rotate(ctx as never, d, 1, false);
+      await settle();
+      surface.willDisappear(ctx.id);
+      vi.clearAllMocks();
+
+      await vi.advanceTimersByTimeAsync(PAST_THE_LAPSE);
+
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
+      expect(host.setLocalSpeed.mock.calls).toEqual([[0, false]]);
+      expect(host.refreshKeys).toHaveBeenCalledTimes(1);
+      expectNothingSent();
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("the last dial disappearing leaves the timer running: the pending speed it answers for is still there", async () => {
+      const { surface, ctx, d } = await onScreen(PAUSED);
       await vi.advanceTimersByTimeAsync(1_000);
       expect(vi.getTimerCount()).toBe(0);
 
       surface.rotate(ctx as never, d, 1, false);
       await settle();
-      expect(vi.getTimerCount()).toBe(1);
-
       surface.willDisappear(ctx.id);
-      expect(vi.getTimerCount()).toBe(1);
 
-      surface.willDisappear(other.id);
-      expect(vi.getTimerCount()).toBe(0);
+      expect(vi.getTimerCount()).toBe(1);
     });
 
     it("a raw command that sends no speed arms nothing", async () => {

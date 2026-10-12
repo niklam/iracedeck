@@ -368,9 +368,10 @@ export class ReplayControlDialSurface {
     ctx.holdPreview.dispose();
     this.renderThrottle.clear(actionId);
     this.contexts.delete(actionId);
-
-    // No dial left to redraw.
-    if (this.contexts.size === 0) this.clearHoldLapseTimer();
+    // The lapse timer is left running: the pending speed it answers for
+    // outlives the dial, and a dial that comes back inside the hold (a page
+    // flip and back) draws that speed and needs the redraw. With no dial on
+    // screen it draws nothing and still resyncs the action's speed cache.
   }
 
   async didReceiveSettings(action: IDeckActionContext, dial: ReplayControlDialSettings): Promise<void> {
