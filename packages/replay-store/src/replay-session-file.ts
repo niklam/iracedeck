@@ -1,8 +1,9 @@
 /**
  * The per-session replay file (issue #1162): its envelope, its location and
  * the constants the sim facts settled. Persistence lives in
- * `replay-session-store.ts`; the sections' logic in `replay-markers.ts` and
- * `replay-laps.ts`. Design: docs/superpowers/specs/2026-09-13-issue-1162-replay-markers.md.
+ * `replay-session-store.ts`; each section's logic in a module of its own
+ * (`replay-markers.ts`, `replay-laps.ts`, `replay-greens.ts`).
+ * Design: docs/superpowers/specs/2026-09-13-issue-1162-replay-markers.md.
  *
  * `%LOCALAPPDATA%\iRaceDeck\Replay\session_<SubSessionID>.json` is not a
  * markers file: it is where iRaceDeck keeps anything it learns about one

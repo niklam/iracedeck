@@ -1,15 +1,15 @@
 /**
- * The per-session replay store (issues #1162, #1203): a process singleton
+ * The per-session replay store (issues #1162, #1203, #1354): a process singleton
  * and the only owner of `%LOCALAPPDATA%\iRaceDeck\Replay\session_<SubSessionID>.json`.
  *
  * It keeps ONE active record — the session the SDK is connected to, fed by
  * `createReplaySessionSubscriber` — and serves it synchronously to the actions
- * through two section APIs, `markers` (#1162) and `laps` (#1203). Everything
- * else in the file is carried through untouched: a build that could delete
- * another feature's section by saving its own would make the second section a
- * data-loss bug. That includes a `laps` section a NEWER build wrote (its
- * `version` above this build's) and any `markers` entry this build cannot
- * read: both ride through every write verbatim.
+ * through one API per section: `markers` (#1162), `laps` (#1203), `greens`
+ * (#1354). Everything else in the file is carried through untouched: a build
+ * that could delete another feature's section by saving its own would make
+ * every further section a data-loss bug. That includes a versioned section a
+ * NEWER build wrote (its `version` above this build's) and any `markers` entry
+ * this build cannot read: each rides through every write verbatim.
  *
  * Write discipline follows `@iracedeck/settings`' `settings-store.ts`: atomic
  * replace (temp file + rename), a trailing debounce so a crossing wave of a
@@ -37,6 +37,17 @@ import { copyFileSync, mkdirSync, readdirSync, readFileSync, renameSync, unlinkS
 import { mkdir, rename, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import {
+  findGreenInSection,
+  type GreenLookup,
+  type GreenQuery,
+  type GreenRecord,
+  isNewerGreensSection,
+  mergeGreensSectionInto,
+  normalizeGreensSection,
+  recordGreenInSection,
+  type ReplayGreensSection,
+} from "./replay-greens.js";
 import {
   findLapStartInSection,
   isNewerLapsSection,
@@ -84,6 +95,7 @@ export const REPLAY_STORE_WRITE_MAX_WAIT_MS = 10_000;
 /** The section keys this build reads. Every other key is preserved verbatim. */
 export const REPLAY_MARKERS_SECTION = "markers";
 export const REPLAY_LAPS_SECTION = "laps";
+export const REPLAY_GREENS_SECTION = "greens";
 
 /** The session identity an event may carry; a mismatch with the active record is ignored. */
 export interface SubSessionScoped {
@@ -133,6 +145,20 @@ export interface ReplayLapsApi {
   findLapStart(query: LapStartQuery & SubSessionScoped): LapStartLookup;
 }
 
+export interface ReplayGreensApi {
+  /**
+   * A race session went green at `frame` (`replay.greenFlag`): the start, or
+   * a caution restart. Returns true when the record holds that green — stored
+   * now, or already there (a restart inside the dedupe window of another, a
+   * start recorded twice), which changes nothing and writes nothing. Returns
+   * false when there is no active session, the `subSessionId` differs, or the
+   * file's `greens` section is a newer build's (carried through, not written).
+   */
+  record(record: GreenRecord & SubSessionScoped): boolean;
+  /** The frame a race session went green at, or why the record has none. */
+  findGreen(query: GreenQuery & SubSessionScoped): GreenLookup;
+}
+
 /**
  * What the store holds right now. `path` is null for a record that is not
  * written: the offline (SubSessionID 0) one, a session whose file could not be
@@ -151,6 +177,7 @@ export interface ReplaySessionStore {
   readonly directory: string;
   readonly markers: ReplayMarkersApi;
   readonly laps: ReplayLapsApi;
+  readonly greens: ReplayGreensApi;
   /**
    * The session the SDK is connected to appeared (or changed). Flushes the
    * previous session's pending write, then loads `session_<id>.json` — or opens
@@ -200,6 +227,10 @@ interface ActiveRecord {
   laps: ReplayLapsSection | undefined;
   /** The file's `laps` section is a newer build's: carried through, neither read nor written into. */
   lapsNewerFormat: boolean;
+  /** Materialized on first use, so a file with no `greens` section stays without one until a green is recorded. */
+  greens: ReplayGreensSection | undefined;
+  /** The file's `greens` section is a newer build's: carried through, neither read nor written into. */
+  greensNewerFormat: boolean;
   /** Present while the file could not be READ: the load is retried on `loadRetryDelaysMs`, then on demand. */
   reload?: { attempt: number; timer?: ReturnType<typeof setTimeout> };
 }
@@ -282,6 +313,8 @@ export function createReplaySessionStore(opts: ReplaySessionStoreOptions): Repla
   let pendingLapTimes = new Map<string, number>();
   /** The one-time warning that a newer build's `laps` section is not written into. */
   let warnedNewerLaps = false;
+  /** The same one-time warning for a newer build's `greens` section. */
+  let warnedNewerGreens = false;
 
   /**
    * The active record has changes the disk does not — including a write that
@@ -491,6 +524,10 @@ export function createReplaySessionStore(opts: ReplaySessionStoreOptions): Repla
 
     if (record.laps !== undefined && !record.lapsNewerFormat) record.file.sections[REPLAY_LAPS_SECTION] = record.laps;
 
+    if (record.greens !== undefined && !record.greensNewerFormat) {
+      record.file.sections[REPLAY_GREENS_SECTION] = record.greens;
+    }
+
     return JSON.stringify(record.file) + "\n";
   }
 
@@ -594,6 +631,8 @@ export function createReplaySessionStore(opts: ReplaySessionStoreOptions): Repla
     const { markers, unreadable } = partitionMarkers(file.sections[REPLAY_MARKERS_SECTION]);
     const rawLaps = file.sections[REPLAY_LAPS_SECTION];
     const lapsNewerFormat = isNewerLapsSection(rawLaps);
+    const rawGreens = file.sections[REPLAY_GREENS_SECTION];
+    const greensNewerFormat = isNewerGreensSection(rawGreens);
 
     return {
       file,
@@ -603,6 +642,8 @@ export function createReplaySessionStore(opts: ReplaySessionStoreOptions): Repla
       unreadableMarkers: unreadable,
       laps: rawLaps === undefined || lapsNewerFormat ? undefined : normalizeLapsSection(rawLaps),
       lapsNewerFormat,
+      greens: rawGreens === undefined || greensNewerFormat ? undefined : normalizeGreensSection(rawGreens),
+      greensNewerFormat,
     };
   }
 
@@ -681,9 +722,10 @@ export function createReplaySessionStore(opts: ReplaySessionStoreOptions): Repla
    * Re-read the active record's file after a failed read. Still unreadable:
    * false, nothing changes. Readable: the in-memory record is merged INTO what
    * the disk holds — markers as a union under the dedupe rule, laps as a union
-   * keeping the disk's entry where both have one — and the result is written
-   * normally. Gone or corrupt-and-preserved: the in-memory record is the file
-   * now. Corrupt and not preservable: memory-only for good.
+   * keeping the disk's entry where both have one, greens keeping the disk's
+   * start and taking the restarts as a union under their dedupe rule — and the
+   * result is written normally. Gone or corrupt-and-preserved: the in-memory
+   * record is the file now. Corrupt and not preservable: memory-only for good.
    */
   function tryReload(record: ActiveRecord): boolean {
     if (record.reload === undefined || active !== record) return false;
@@ -698,7 +740,9 @@ export function createReplaySessionStore(opts: ReplaySessionStoreOptions): Repla
 
     if (loaded === "unwritable") return false;
 
-    const hadContent = record.markers.length > 0 || record.laps !== undefined;
+    // Greens count: a session whose only recorded content is a green would
+    // otherwise never be written after the merge.
+    const hadContent = record.markers.length > 0 || record.laps !== undefined || record.greens !== undefined;
 
     if (loaded === "none") {
       record.path = filePath;
@@ -722,6 +766,16 @@ export function createReplaySessionStore(opts: ReplaySessionStoreOptions): Repla
           );
         } else {
           mergeLapsSectionInto(lapsOf(merged), record.laps);
+        }
+      }
+
+      if (record.greens !== undefined) {
+        if (merged.greensNewerFormat) {
+          logger.warn(
+            "Replay session file carries a newer greens section; the greens recorded while it was unreadable are dropped",
+          );
+        } else {
+          mergeGreensSectionInto(greensOf(merged), record.greens);
         }
       }
 
@@ -772,6 +826,28 @@ export function createReplaySessionStore(opts: ReplaySessionStoreOptions): Repla
     record.laps ??= normalizeLapsSection(undefined);
 
     return record.laps;
+  }
+
+  /** The record's writable greens section, or null (with a one-time warning) when the file's is a newer build's. */
+  function writableGreensOf(record: ActiveRecord): ReplayGreensSection | null {
+    if (record.greensNewerFormat) {
+      if (!warnedNewerGreens) {
+        warnedNewerGreens = true;
+        logger.warn(
+          "Replay session file carries a greens section from a newer iRaceDeck; greens are not recorded into it by this version",
+        );
+      }
+
+      return null;
+    }
+
+    return greensOf(record);
+  }
+
+  function greensOf(record: ActiveRecord): ReplayGreensSection {
+    record.greens ??= normalizeGreensSection(undefined);
+
+    return record.greens;
   }
 
   const pendingKey = (r: { sessionNum: number; sessionUniqueId: number; carIdx: number; lap: number }): string =>
@@ -904,10 +980,56 @@ export function createReplaySessionStore(opts: ReplaySessionStoreOptions): Repla
     },
   };
 
+  const greens: ReplayGreensApi = {
+    record(record) {
+      const target = activeFor(record);
+
+      if (target === null) return false;
+
+      const section = writableGreensOf(target);
+
+      if (section === null) return false;
+
+      const where = `frame ${record.frame} (session ${record.sessionNum}, unique id ${record.sessionUniqueId}, ${record.sessionTimeMs} ms)`;
+
+      // A call that changes nothing (a restart inside another's dedupe
+      // window, a start recorded twice) is not a reason to rewrite the file.
+      if (recordGreenInSection(section, record)) {
+        logger.debug(`Green recorded: ${record.kind} at ${where}`);
+        scheduleSave();
+      } else {
+        logger.debug(`Green not recorded: the record already holds this ${record.kind} at ${where}`);
+      }
+
+      return true;
+    },
+
+    findGreen(query) {
+      const target = activeFor(query);
+
+      if (target === null) return { hit: false, reason: "no file" };
+
+      if (target.greensNewerFormat) return { hit: false, reason: "newer format" };
+
+      // Nothing came from disk and neither a green nor a lap has been
+      // recorded: the plugin was not running for this session, as for
+      // `findLapStart`. A record that holds laps and no greens is not that —
+      // it is a session whose green the recorder did not see ("no green"),
+      // and so is a file loaded from disk with no `greens` section, which is
+      // every replay recorded before this build.
+      if (!target.loadedFromDisk && target.greens === undefined && target.laps === undefined) {
+        return { hit: false, reason: "no file" };
+      }
+
+      return findGreenInSection(target.greens, query);
+    },
+  };
+
   return {
     directory,
     markers,
     laps,
+    greens,
 
     setActiveSession(header) {
       if (active !== null && active.file.subSessionId === header.subSessionId) {
@@ -936,7 +1058,7 @@ export function createReplaySessionStore(opts: ReplaySessionStoreOptions): Repla
       } else {
         logger.info("Replay session opened");
         logger.debug(
-          `Replay session ${header.subSessionId}: ${active.path} (${active.markers.length} markers, laps section ${active.lapsNewerFormat ? "newer format" : active.laps === undefined ? "absent" : "present"})`,
+          `Replay session ${header.subSessionId}: ${active.path} (${active.markers.length} markers, laps section ${active.lapsNewerFormat ? "newer format" : active.laps === undefined ? "absent" : "present"}, greens section ${active.greensNewerFormat ? "newer format" : active.greens === undefined ? "absent" : "present"})`,
         );
       }
     },

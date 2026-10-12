@@ -1,6 +1,6 @@
-// @iracedeck/replay-store: the per-session replay store, markers (issue #1162) and
-// the lap record (issue #1203), moved out of deck-core (issue #1367). The iRacing
-// subscriber that feeds it lives in @iracedeck/deck-iracing.
+// @iracedeck/replay-store: the per-session replay store, markers (issue #1162), the
+// lap record (issue #1203) and the green flags (issue #1354), moved out of deck-core
+// (issue #1367). The iRacing subscriber that feeds it lives in @iracedeck/deck-iracing.
 export {
   parseReplaySessionFile,
   REPLAY_FILE_FRAME_LAG,
@@ -45,16 +45,35 @@ export {
   type ReplayLapsSession,
 } from "./replay-laps.js";
 export {
+  emptyGreensSection,
+  findGreenInSection,
+  GREENS_SECTION_VERSION,
+  isNewerGreensSection,
+  mergeGreensSectionInto,
+  normalizeGreensSection,
+  recordGreenInSection,
+  type GreenKind,
+  type GreenLookup,
+  type GreenMissReason,
+  type GreenQuery,
+  type GreenRecord,
+  type ReplayGreenEntry,
+  type ReplayGreensSection,
+  type ReplayGreensSession,
+} from "./replay-greens.js";
+export {
   _resetReplaySessionStore,
   createReplaySessionStore,
   getReplaySessionStore,
   initializeReplaySessionStore,
   isReplaySessionStoreInitialized,
+  REPLAY_GREENS_SECTION,
   REPLAY_LAPS_SECTION,
   REPLAY_MARKERS_SECTION,
   REPLAY_STORE_WRITE_DEBOUNCE_MS,
   REPLAY_STORE_WRITE_MAX_WAIT_MS,
   type ActiveReplaySession,
+  type ReplayGreensApi,
   type ReplayLapsApi,
   type ReplayMarkersApi,
   type ReplaySessionStore,

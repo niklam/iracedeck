@@ -4,6 +4,7 @@ import { homedir, tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { GreenRecord } from "./replay-greens.js";
 import { REPLAY_FILE_VERSION, replaySessionFileName, resolveReplayStoreDirectory } from "./replay-session-file.js";
 import {
   _resetReplaySessionStore,
@@ -15,6 +16,7 @@ import {
   REPLAY_STORE_WRITE_MAX_WAIT_MS,
   type ReplaySessionStore,
   type ReplaySessionStoreOptions,
+  type SubSessionScoped,
 } from "./replay-session-store.js";
 
 // The atomic write's rename, counted and made to fail on demand: an ESM
@@ -140,6 +142,22 @@ const lapStart = (overrides: Record<string, unknown> = {}) => ({
   frame: 30821,
   ...overrides,
 });
+
+/** A `replay.greenFlag` as the store takes it; the race start of session (2, 3) unless overridden. */
+const greenFlag = (overrides: Partial<GreenRecord & SubSessionScoped> = {}): GreenRecord & SubSessionScoped => ({
+  sessionNum: 2,
+  sessionUniqueId: 3,
+  kind: "start",
+  frame: 30215,
+  sessionTimeMs: 512433,
+  ...overrides,
+});
+
+const restartFlag = (frame: number, overrides: Partial<GreenRecord & SubSessionScoped> = {}) =>
+  greenFlag({ kind: "restart", frame, sessionTimeMs: frame * 16, ...overrides });
+
+/** The start of session (2, 3), as Jump to Green Flag asks for it from inside that session. */
+const startQuery = { sessionNum: 2, sessionUniqueId: 3, kind: "start" } as const;
 
 describe("resolveReplayStoreDirectory", () => {
   it("defaults to %LOCALAPPDATA%\\iRaceDeck\\Replay\\<ecosystem> — per ecosystem, like the settings file", () => {
@@ -611,6 +629,32 @@ describe("createReplaySessionStore", () => {
       expect(existsSync(dir)).toBe(false);
     });
 
+    it("takes greens too, serves them, and never reaches the disk", async () => {
+      store.setActiveSession(header(0));
+
+      expect(store.greens.record(greenFlag({ subSessionId: 0 }))).toBe(true);
+      expect(store.greens.record(restartFlag(71904, { subSessionId: 0 }))).toBe(true);
+      expect(store.greens.findGreen({ ...startQuery, subSessionId: 0 })).toEqual({
+        hit: true,
+        frame: 30215,
+        sessionTimeMs: 512433,
+        matchedBy: "pair",
+        sessionUniqueId: 3,
+      });
+
+      await store.flush();
+      store.flushSync();
+      store.clearActiveSession();
+      await store.flush();
+      expect(existsSync(dir)).toBe(false);
+      expect(fsState.renames).toBe(0);
+      expect(syncFs.renames).toBe(0);
+
+      // Dropped with the record: the next offline session starts with no greens.
+      store.setActiveSession(header(0));
+      expect(store.greens.findGreen({ ...startQuery, subSessionId: 0 })).toEqual({ hit: false, reason: "no file" });
+    });
+
     it("is dropped on disconnect", () => {
       store.setActiveSession(header(0));
       store.markers.add({ frame: 100, sessionNum: 0, sessionTimeMs: 0 });
@@ -643,6 +687,11 @@ describe("createReplaySessionStore", () => {
       expect(store.laps.recordLapStart(lapStart())).toBe(false);
       expect(store.laps.recordLapTime({ sessionNum: 2, sessionUniqueId: 3, carIdx: 7, lap: 1, timeMs: 1 })).toBe(false);
       expect(store.laps.findLapStart(lapStart())).toEqual({ hit: false, reason: "no file" });
+    });
+
+    it("the green record refuses and the lookup misses with 'no file'", () => {
+      expect(store.greens.record(greenFlag())).toBe(false);
+      expect(store.greens.findGreen(startQuery)).toEqual({ hit: false, reason: "no file" });
     });
   });
 
@@ -731,6 +780,131 @@ describe("createReplaySessionStore", () => {
         { lap: 1, frame: 30821, timeMs: 91433 },
         { lap: 2, frame: 36305, timeMs: null },
       ]);
+    });
+
+    it("greens recorded while the file was locked merge into the file's: its start stays, the restarts are a union", async () => {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        filePath,
+        JSON.stringify({
+          version: 1,
+          sections: {
+            markers: [],
+            greens: {
+              version: 1,
+              sessions: [
+                {
+                  sessionNum: 2,
+                  sessionUniqueId: 3,
+                  greens: [
+                    { kind: "start", frame: 30215, sessionTimeMs: 512433 },
+                    { kind: "restart", frame: 71904, sessionTimeMs: 1199870 },
+                    { kind: "checkered", frame: 150000, sessionTimeMs: 2500000 },
+                  ],
+                },
+              ],
+            },
+          },
+        }),
+      );
+      useFakeStoreTimers();
+      const retrying = storeWith({ loadRetryDelaysMs: [20] });
+
+      syncFs.failRead = 1;
+      retrying.setActiveSession(header());
+      expect(retrying.getActiveSession()).toMatchObject({ path: null });
+      expect(retrying.greens.findGreen(startQuery)).toEqual({ hit: false, reason: "no file" });
+
+      // Recorded while the file was locked.
+      expect(retrying.greens.record(greenFlag({ frame: 99999, sessionTimeMs: 1 }))).toBe(true); // the file has a start
+      expect(retrying.greens.record(restartFlag(71950))).toBe(true); // within 60 of the file's 71904
+      expect(retrying.greens.record(restartFlag(110000))).toBe(true);
+      expect(retrying.greens.record(greenFlag({ sessionUniqueId: 8, frame: 200000, sessionTimeMs: 4 }))).toBe(true);
+      expect(retrying.greens.findGreen(startQuery)).toMatchObject({ hit: true, frame: 99999 });
+
+      await vi.advanceTimersByTimeAsync(20); // the re-read: readable now, merged, and a save debounced
+      expect(retrying.getActiveSession()).toMatchObject({ path: filePath });
+      await vi.advanceTimersByTimeAsync(10);
+      await waitUntil(() => fsState.landed >= 1);
+      await retrying.flush();
+      expect(fsState.renames).toBe(1);
+
+      expect(retrying.greens.findGreen(startQuery)).toEqual({
+        hit: true,
+        frame: 30215,
+        sessionTimeMs: 512433,
+        matchedBy: "pair",
+        sessionUniqueId: 3,
+      });
+      expect(JSON.parse(readFileSync(filePath, "utf-8")).sections.greens).toEqual({
+        version: 1,
+        sessions: [
+          {
+            sessionNum: 2,
+            sessionUniqueId: 3,
+            greens: [
+              { kind: "start", frame: 30215, sessionTimeMs: 512433 },
+              { kind: "restart", frame: 71904, sessionTimeMs: 1199870 },
+              { kind: "restart", frame: 110000, sessionTimeMs: 110000 * 16 },
+              { kind: "checkered", frame: 150000, sessionTimeMs: 2500000 },
+            ],
+          },
+          // Only the in-memory record had this session.
+          { sessionNum: 2, sessionUniqueId: 8, greens: [{ kind: "start", frame: 200000, sessionTimeMs: 4 }] },
+        ],
+      });
+    });
+
+    it("a green that is the only thing recorded while the file was locked is still written after the merge", async () => {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(filePath, lockedFile()); // markers and laps, no greens section
+      useFakeStoreTimers();
+      const retrying = storeWith({ loadRetryDelaysMs: [20] });
+
+      syncFs.failRead = 1;
+      retrying.setActiveSession(header());
+      expect(retrying.greens.record(greenFlag())).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(20); // the re-read and the merge
+      await vi.advanceTimersByTimeAsync(10); // the save the merge scheduled
+      await waitUntil(() => fsState.landed >= 1);
+      await retrying.flush();
+
+      const { sections } = JSON.parse(readFileSync(filePath, "utf-8"));
+
+      expect(sections.greens.sessions[0].greens).toEqual([{ kind: "start", frame: 30215, sessionTimeMs: 512433 }]);
+      expect(sections.markers).toHaveLength(1);
+      expect(sections.laps.sessions[0].cars["7"].laps).toHaveLength(1);
+    });
+
+    it("a locked file whose greens section is a newer build's keeps it verbatim; the greens recorded meanwhile are dropped", async () => {
+      const newer = {
+        version: 2,
+        sessions: [{ sessionNum: 2, sessionUniqueId: 3, flags: [{ at: 30215, colour: "green" }] }],
+      };
+
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(filePath, JSON.stringify({ version: 1, sections: { greens: newer } }));
+      useFakeStoreTimers();
+      const retrying = storeWith({ loadRetryDelaysMs: [20] });
+
+      syncFs.failRead = 1;
+      retrying.setActiveSession(header());
+      expect(retrying.greens.record(greenFlag())).toBe(true); // nothing is known of the file yet
+      expect(retrying.markers.add({ frame: 100, sessionNum: 0, sessionTimeMs: 0 })).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(20);
+      await vi.advanceTimersByTimeAsync(10);
+      await waitUntil(() => fsState.landed >= 1);
+      await retrying.flush();
+
+      expect(retrying.greens.findGreen(startQuery)).toEqual({ hit: false, reason: "newer format" });
+      expect(retrying.greens.record(greenFlag())).toBe(false);
+
+      const { sections } = JSON.parse(readFileSync(filePath, "utf-8"));
+
+      expect(sections.greens).toEqual(newer);
+      expect(sections.markers).toHaveLength(1);
     });
 
     it("past the retry schedule the record stays in memory, and a later setActiveSession for the same id tries the read again", async () => {
@@ -931,6 +1105,92 @@ describe("createReplaySessionStore", () => {
       expect(JSON.parse(readFileSync(filePath, "utf-8")).sections.laps).toEqual(newer);
     });
 
+    it("carries unknown fields on a green, a greens session and the greens section, and a green of an unknown kind, through a greens write", async () => {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        filePath,
+        JSON.stringify({
+          version: 1,
+          sections: {
+            greens: {
+              version: 1,
+              source: "live",
+              sessions: [
+                {
+                  sessionNum: 2,
+                  sessionUniqueId: 3,
+                  type: "Race",
+                  greens: [
+                    { kind: "start", frame: 30215, sessionTimeMs: 512433, flags: 1024 },
+                    { kind: "checkered", frame: 71900, sessionTimeMs: 1199800, lap: 40 },
+                    { kind: "red", frame: 90000, sessionTimeMs: null },
+                  ],
+                },
+              ],
+            },
+          },
+        }),
+      );
+
+      store.setActiveSession(header());
+      expect(store.greens.record(restartFlag(71904))).toBe(true); // within 60 of the unknown kind's entry
+      await store.flush();
+
+      // A lookup reads past the kinds it does not know.
+      expect(store.greens.findGreen(startQuery)).toMatchObject({ hit: true, frame: 30215 });
+      expect(JSON.parse(readFileSync(filePath, "utf-8")).sections.greens).toEqual({
+        version: 1,
+        source: "live",
+        sessions: [
+          {
+            sessionNum: 2,
+            sessionUniqueId: 3,
+            type: "Race",
+            greens: [
+              { kind: "start", frame: 30215, sessionTimeMs: 512433, flags: 1024 },
+              { kind: "checkered", frame: 71900, sessionTimeMs: 1199800, lap: 40 },
+              { kind: "restart", frame: 71904, sessionTimeMs: 71904 * 16 },
+              { kind: "red", frame: 90000, sessionTimeMs: null },
+            ],
+          },
+        ],
+      });
+    });
+
+    it("carries a greens section from a newer build through verbatim, and neither reads nor writes it", async () => {
+      // Key order and nesting this build would not produce, so a rewrite of the section cannot pass for it.
+      const newer = {
+        sessions: [{ flags: [{ colour: "green", at: 30215 }], sessionUniqueId: 3, sessionNum: 2 }],
+        version: 2,
+      };
+      const warn = vi.fn();
+      const warned = createReplaySessionStore({ directory: dir, logger: { ...silentLogger, warn }, debounceMs: 10 });
+
+      tuned = warned;
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(filePath, JSON.stringify({ version: 1, sections: { greens: newer } }));
+
+      warned.setActiveSession(header());
+
+      expect(warned.greens.record(greenFlag())).toBe(false);
+      expect(warned.greens.record(restartFlag(71904))).toBe(false);
+      expect(warned.greens.findGreen(startQuery)).toEqual({ hit: false, reason: "newer format" });
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("greens section from a newer iRaceDeck"));
+
+      // Another section's write carries it through byte for byte.
+      warned.markers.add({ frame: 1, sessionNum: 0, sessionTimeMs: 0 });
+      await warned.flush();
+      warned.laps.recordLapStart(lapStart());
+      await warned.flush();
+
+      const text = readFileSync(filePath, "utf-8");
+
+      expect(text).toContain(`"greens":${JSON.stringify(newer)}`);
+      expect(JSON.parse(text).sections.markers).toHaveLength(1);
+      expect(JSON.parse(text).sections.laps.sessions).toHaveLength(1);
+    });
+
     it("carries a markers entry it cannot read through every write, after the markers it can", async () => {
       const span = { kind: "span", frames: [100, 900] };
 
@@ -1118,6 +1378,265 @@ describe("createReplaySessionStore", () => {
 
       expect(sections.markers).toHaveLength(2);
       expect(sections.laps.sessions[0].cars["7"].laps).toHaveLength(1);
+    });
+  });
+
+  describe("greens through the store", () => {
+    it("records the start and a restart, finds the start by its pair, and writes the spec's section", async () => {
+      store.setActiveSession(header());
+
+      expect(store.greens.record(greenFlag({ subSessionId: SUB }))).toBe(true);
+      expect(store.greens.record(restartFlag(71904, { sessionTimeMs: 1199870 }))).toBe(true);
+      expect(store.greens.findGreen({ ...startQuery, subSessionId: SUB })).toEqual({
+        hit: true,
+        frame: 30215,
+        sessionTimeMs: 512433,
+        matchedBy: "pair",
+        sessionUniqueId: 3,
+      });
+
+      await store.flush();
+
+      expect(JSON.parse(readFileSync(filePath, "utf-8")).sections).toEqual({
+        markers: [],
+        greens: {
+          version: 1,
+          sessions: [
+            {
+              sessionNum: 2,
+              sessionUniqueId: 3,
+              greens: [
+                { kind: "start", frame: 30215, sessionTimeMs: 512433 },
+                { kind: "restart", frame: 71904, sessionTimeMs: 1199870 },
+              ],
+            },
+          ],
+        },
+      });
+    });
+
+    it("reads a written record back on the next open", async () => {
+      store.setActiveSession(header());
+      store.greens.record(greenFlag());
+      store.clearActiveSession();
+      await store.flush();
+
+      const reopened = storeWith({});
+
+      reopened.setActiveSession(header());
+      expect(reopened.greens.findGreen(startQuery)).toMatchObject({ hit: true, frame: 30215, matchedBy: "pair" });
+    });
+
+    it("the sessionNum fallback picks the unique session with a start, and of several the latest", () => {
+      store.setActiveSession(header());
+      store.greens.record(greenFlag());
+      store.greens.record(restartFlag(150000, { sessionUniqueId: 5 })); // the same sessionNum, no start
+
+      // The press from practice: the last race session, no unique id known.
+      expect(store.greens.findGreen({ sessionNum: 2, kind: "start" })).toEqual({
+        hit: true,
+        frame: 30215,
+        sessionTimeMs: 512433,
+        matchedBy: "sessionNum",
+        sessionUniqueId: 3,
+      });
+      // A unique id no session carries, and one whose session has no start.
+      expect(store.greens.findGreen({ sessionNum: 2, sessionUniqueId: 0, kind: "start" })).toMatchObject({
+        frame: 30215,
+        matchedBy: "sessionNum",
+        sessionUniqueId: 3,
+      });
+      expect(store.greens.findGreen({ sessionNum: 2, sessionUniqueId: 5, kind: "start" })).toMatchObject({
+        frame: 30215,
+        matchedBy: "sessionNum",
+        sessionUniqueId: 3,
+      });
+
+      // A second instance of the session goes green later in the recording.
+      store.greens.record(greenFlag({ sessionUniqueId: 5, frame: 160000, sessionTimeMs: 9 }));
+
+      expect(store.greens.findGreen({ sessionNum: 2, kind: "start" })).toEqual({
+        hit: true,
+        frame: 160000,
+        sessionTimeMs: 9,
+        matchedBy: "sessionNum",
+        sessionUniqueId: 5,
+      });
+      expect(store.greens.findGreen(startQuery)).toMatchObject({ frame: 30215, matchedBy: "pair" });
+    });
+
+    it("the latest start replaces an earlier one for the same session instance", async () => {
+      store.setActiveSession(header());
+      store.greens.record(greenFlag());
+      store.greens.record(restartFlag(71904));
+      store.greens.record(greenFlag({ frame: 41000, sessionTimeMs: 690000 })); // the re-grid's green
+
+      expect(store.greens.findGreen(startQuery)).toMatchObject({ hit: true, frame: 41000, sessionTimeMs: 690000 });
+
+      await store.flush();
+      expect(JSON.parse(readFileSync(filePath, "utf-8")).sections.greens.sessions).toEqual([
+        {
+          sessionNum: 2,
+          sessionUniqueId: 3,
+          greens: [
+            { kind: "start", frame: 41000, sessionTimeMs: 690000 },
+            { kind: "restart", frame: 71904, sessionTimeMs: 71904 * 16 },
+          ],
+        },
+      ]);
+    });
+
+    it("restarts are de-duplicated within the marker window and kept in frame order", async () => {
+      store.setActiveSession(header());
+      store.greens.record(restartFlag(110000));
+      store.greens.record(restartFlag(71904));
+      store.greens.record(restartFlag(71905)); // the double emit
+      store.greens.record(restartFlag(71964)); // 60 frames on: still the same restart
+      store.greens.record(restartFlag(71965)); // 61: another one
+      store.greens.record(greenFlag());
+
+      await store.flush();
+      expect(
+        JSON.parse(readFileSync(filePath, "utf-8")).sections.greens.sessions[0].greens.map(
+          (e: { kind: string; frame: number }) => [e.kind, e.frame],
+        ),
+      ).toEqual([
+        ["start", 30215],
+        ["restart", 71904],
+        ["restart", 71965],
+        ["restart", 110000],
+      ]);
+    });
+
+    it("a record call that changes nothing is taken and writes nothing", async () => {
+      store.setActiveSession(header());
+      store.greens.record(greenFlag());
+      store.greens.record(restartFlag(71904));
+      await store.flush();
+      expect(fsState.renames).toBe(1);
+
+      expect(store.greens.record(greenFlag())).toBe(true); // the same start again
+      expect(store.greens.record(restartFlag(71930))).toBe(true); // inside the first restart's window
+      await store.flush();
+      store.flushSync();
+
+      expect(fsState.renames).toBe(1);
+      expect(syncFs.renames).toBe(0);
+    });
+
+    it("ignores an event whose subSessionId is not the active session's", () => {
+      store.setActiveSession(header());
+
+      expect(store.greens.record(greenFlag({ subSessionId: SUB + 1 }))).toBe(false);
+      expect(store.greens.findGreen(startQuery)).toEqual({ hit: false, reason: "no file" });
+
+      store.greens.record(greenFlag());
+      expect(store.greens.findGreen({ ...startQuery, subSessionId: SUB + 1 })).toEqual({
+        hit: false,
+        reason: "no file",
+      });
+    });
+
+    it("a file with no greens section misses with 'no green' and keeps none until a green is recorded", async () => {
+      // A replay recorded by a build before this one: markers and laps, no greens.
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        filePath,
+        JSON.stringify({ version: 1, sections: { markers: [{ frame: 5, sessionNum: 0, sessionTimeMs: 1 }] } }),
+      );
+
+      store.setActiveSession(header());
+      expect(store.greens.findGreen(startQuery)).toEqual({ hit: false, reason: "no green" });
+
+      store.markers.add({ frame: 500, sessionNum: 0, sessionTimeMs: 0 });
+      store.laps.recordLapStart(lapStart());
+      await store.flush();
+      expect(Object.keys(JSON.parse(readFileSync(filePath, "utf-8")).sections).sort()).toEqual(["laps", "markers"]);
+      expect(store.greens.findGreen(startQuery)).toEqual({ hit: false, reason: "no green" });
+
+      store.greens.record(greenFlag());
+      await store.flush();
+      expect(Object.keys(JSON.parse(readFileSync(filePath, "utf-8")).sections).sort()).toEqual([
+        "greens",
+        "laps",
+        "markers",
+      ]);
+    });
+
+    it("words each miss as the action logs it", () => {
+      // Someone else's .rpy: nothing loaded, nothing recorded — a marker set in review does not change that.
+      store.setActiveSession(header(SUB + 5));
+      expect(store.greens.findGreen(startQuery)).toEqual({ hit: false, reason: "no file" });
+      store.markers.add({ frame: 1, sessionNum: 0, sessionTimeMs: 0 });
+      expect(store.greens.findGreen(startQuery)).toEqual({ hit: false, reason: "no file" });
+
+      // The plugin was running — it holds laps — but the recorder did not see the green.
+      store.laps.recordLapStart(lapStart());
+      expect(store.greens.findGreen(startQuery)).toEqual({ hit: false, reason: "no green" });
+
+      // Greens are recorded, none for a session with that number.
+      store.greens.record(greenFlag({ sessionNum: 9 }));
+      expect(store.greens.findGreen(startQuery)).toEqual({ hit: false, reason: "no session" });
+
+      // The session is there with a restart and no start.
+      store.greens.record(restartFlag(71904));
+      expect(store.greens.findGreen(startQuery)).toEqual({ hit: false, reason: "no green" });
+
+      // A loaded file whose greens section holds other sessions only.
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        filePath,
+        JSON.stringify({
+          version: 1,
+          sections: {
+            greens: {
+              version: 1,
+              sessions: [
+                { sessionNum: 0, sessionUniqueId: 1, greens: [{ kind: "start", frame: 9, sessionTimeMs: 1 }] },
+              ],
+            },
+          },
+        }),
+      );
+      store.setActiveSession(header());
+      expect(store.greens.findGreen(startQuery)).toEqual({ hit: false, reason: "no session" });
+    });
+
+    it("markers, laps and an unknown section survive a greens write, and greens survive a markers and a laps write", async () => {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        filePath,
+        JSON.stringify({ version: 1, sections: { future: { anything: [1, 2, 3] }, markers: [] } }),
+      );
+
+      store.setActiveSession(header());
+      store.markers.add({ frame: 1, sessionNum: 0, sessionTimeMs: 0 });
+      store.laps.recordLapStart(lapStart());
+      await store.flush();
+
+      store.greens.record(greenFlag());
+      await store.flush();
+
+      const afterGreens = JSON.parse(readFileSync(filePath, "utf-8")).sections;
+
+      expect(afterGreens.future).toEqual({ anything: [1, 2, 3] });
+      expect(afterGreens.markers).toEqual([{ frame: 1, sessionNum: 0, sessionTimeMs: 0 }]);
+      expect(afterGreens.laps.sessions[0].cars["7"].laps).toEqual([{ lap: 1, frame: 30821, timeMs: null }]);
+      expect(afterGreens.greens.sessions[0].greens).toEqual([{ kind: "start", frame: 30215, sessionTimeMs: 512433 }]);
+
+      store.markers.add({ frame: 500, sessionNum: 0, sessionTimeMs: 0 });
+      await store.flush();
+      expect(JSON.parse(readFileSync(filePath, "utf-8")).sections.greens).toEqual(afterGreens.greens);
+
+      store.laps.recordLapStart(lapStart({ lap: 2, frame: 36305 }));
+      await store.flush();
+
+      const afterAll = JSON.parse(readFileSync(filePath, "utf-8")).sections;
+
+      expect(afterAll.greens).toEqual(afterGreens.greens);
+      expect(afterAll.future).toEqual({ anything: [1, 2, 3] });
+      expect(afterAll.markers).toHaveLength(2);
+      expect(afterAll.laps.sessions[0].cars["7"].laps).toHaveLength(2);
     });
   });
 });
