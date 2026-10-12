@@ -304,6 +304,9 @@ export class ReplayControlDialSurface {
    */
   private holdLapseTimer: ReturnType<typeof setTimeout> | null = null;
 
+  /** The replay frame the last tick carried and whether it read as paused, for {@link tracePausedFrame}; null before one and out of a replay. */
+  private lastTick: { readonly frame: number; readonly paused: boolean } | null = null;
+
   /** Whether a synchronous entry ({@link withReading}) is running. */
   private inEntry = false;
 
@@ -488,7 +491,49 @@ export class ReplayControlDialSurface {
   onTick(actionId: string, tick: ReplayDialReading): void {
     const ctx = this.contexts.get(actionId);
 
-    if (ctx) this.withReading(() => this.scheduleIfChanged(ctx), tick);
+    if (!ctx) return;
+
+    this.tracePausedFrame(tick);
+    this.withReading(() => this.scheduleIfChanged(ctx), tick);
+  }
+
+  /**
+   * Logs, at debug, every move of the replay frame between two ticks of which
+   * at least one read as paused. A paused replay moves only when something
+   * moves it — a frame step, a jump, the replay bar — so together with the
+   * command lines the log reads as what was sent and where the replay went,
+   * which is the only way to tell a command iRacing took as asked from one it
+   * did not (#1317: a fast Frame Jog turn sent the replay to its start). A
+   * tick that reads as playing next to a paused one is logged too, with its
+   * raw speed and `IsReplayPlaying`: for about 300 ms after a seek the
+   * snapshot is not the replay's, and that is exactly the stretch in question.
+   * One frame for every dial, since there is one replay; a tick every dial is
+   * handed logs once. A replay playing from tick to tick is only followed.
+   */
+  private tracePausedFrame(tick: ReplayDialReading): void {
+    const telemetry = tick.telemetry;
+    const frame = telemetry?.ReplayFrameNum;
+
+    if (!telemetry || frame === undefined || !this.host.inReplay()) {
+      this.lastTick = null;
+
+      return;
+    }
+
+    const previous = this.lastTick;
+    const paused = tick.speed?.speed === 0;
+
+    this.lastTick = { frame, paused };
+
+    if (previous === null || previous.frame === frame || !(paused || previous.paused)) return;
+
+    const moved = frame - previous.frame;
+
+    this.host.logger.debug(
+      `Paused replay moved: frame ${previous.frame} -> ${frame} (${moved > 0 ? "+" : ""}${moved}), ` +
+        `time=${telemetry.ReplaySessionTime?.toFixed(3) ?? "n/a"}, speed=${telemetry.ReplayPlaySpeed ?? "n/a"}, ` +
+        `replaying=${telemetry.IsReplayPlaying ?? "n/a"}`,
+    );
   }
 
   /**

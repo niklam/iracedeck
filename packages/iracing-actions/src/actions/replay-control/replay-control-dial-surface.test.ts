@@ -1864,6 +1864,104 @@ describe("ReplayControlDialSurface", () => {
     });
   });
 
+  describe("the paused replay's frame in the log", () => {
+    /** A replay tick at `frame`, paused unless `s` says otherwise. */
+    function at(frame: number, s: ReplaySpeed = PAUSED, extra: Partial<TelemetryData> = {}): ReplayDialReading {
+      return tickOf({
+        ...replayAt(s),
+        ReplayFrameNum: frame,
+        ReplaySessionTime: frame / 60,
+        ...extra,
+      } as TelemetryData);
+    }
+
+    function moves(): string[] {
+      return logger.debug.mock.calls.map((call) => String(call[0])).filter((line) => line.startsWith("Paused replay"));
+    }
+
+    it("logs each move between two paused ticks, with the frames, the distance and the time", async () => {
+      const { surface, ctx } = await onScreen(PAUSED);
+
+      surface.onTick(ctx.id, at(600));
+      surface.onTick(ctx.id, at(601));
+      surface.onTick(ctx.id, at(2));
+
+      expect(moves()).toEqual([
+        "Paused replay moved: frame 600 -> 601 (+1), time=10.017, speed=0, replaying=true",
+        "Paused replay moved: frame 601 -> 2 (-599), time=0.033, speed=0, replaying=true",
+      ]);
+    });
+
+    it("logs nothing while the frame stands still", async () => {
+      const { surface, ctx } = await onScreen(PAUSED);
+
+      for (let i = 0; i < 5; i++) surface.onTick(ctx.id, at(600));
+
+      expect(moves()).toEqual([]);
+    });
+
+    it("only follows a replay that plays from tick to tick", async () => {
+      const { surface, ctx } = await onScreen(speed(1));
+
+      for (let frame = 600; frame < 660; frame++) surface.onTick(ctx.id, at(frame, speed(1)));
+
+      expect(moves()).toEqual([]);
+    });
+
+    it("logs a tick that does not read as paused next to one that does, with what it carried", async () => {
+      const { surface, ctx } = await onScreen(PAUSED);
+
+      surface.onTick(ctx.id, at(600));
+      // The stretch after a seek: the snapshot is not the replay's.
+      surface.onTick(ctx.id, at(0, speed(1), { IsReplayPlaying: false, ReplaySessionTime: 0 }));
+      surface.onTick(ctx.id, at(602));
+
+      expect(moves()).toEqual([
+        "Paused replay moved: frame 600 -> 0 (-600), time=0.000, speed=1, replaying=false",
+        "Paused replay moved: frame 0 -> 602 (+602), time=10.033, speed=0, replaying=true",
+      ]);
+    });
+
+    it("logs a tick once however many dials are handed it", async () => {
+      const { surface, ctx } = await onScreen(PAUSED);
+      const second = dialContext("dial-2");
+
+      await appear(surface, second, dial({ mode: "frame-jog" }));
+      logger.debug.mockClear();
+
+      for (const frame of [600, 601]) {
+        surface.onTick(ctx.id, at(frame));
+        surface.onTick(second.id, at(frame));
+      }
+
+      expect(moves()).toHaveLength(1);
+    });
+
+    it("does not span a stretch out of the replay, or one without a frame", async () => {
+      const { surface, ctx } = await onScreen(PAUSED);
+
+      surface.onTick(ctx.id, at(600));
+      env.inReplay = false;
+      surface.onTick(ctx.id, at(9_000));
+      env.inReplay = true;
+      surface.onTick(ctx.id, at(700));
+      surface.onTick(ctx.id, tickOf(null));
+      surface.onTick(ctx.id, at(800));
+
+      expect(moves()).toEqual([]);
+    });
+
+    it("ignores a tick for a dial that is not on screen", async () => {
+      const { surface, ctx } = await onScreen(PAUSED);
+
+      surface.onTick(ctx.id, at(600));
+      surface.onTick("gone", at(900));
+      surface.onTick(ctx.id, at(601));
+
+      expect(moves()).toEqual(["Paused replay moved: frame 600 -> 601 (+1), time=10.017, speed=0, replaying=true"]);
+    });
+  });
+
   describe("trigger descriptions", () => {
     it("describe the mode's rotation and the gestures, the long press as a hold hint", () => {
       expect(buildTriggerDescription(dial())).toEqual({
