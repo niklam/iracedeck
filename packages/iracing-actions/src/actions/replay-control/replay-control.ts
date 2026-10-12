@@ -68,7 +68,7 @@ import {
   type LapStartLookup,
   type LapStartQuery,
 } from "@iracedeck/replay-store";
-import { getGlobalColors, getGlobalSettings } from "@iracedeck/settings";
+import { getGlobalColors } from "@iracedeck/settings";
 import z from "zod";
 
 import { CAR_CYCLE_BINDING_KEYS } from "../../shared/car-cycle-bindings.js";
@@ -76,6 +76,12 @@ import { computeCarNumberTarget } from "../../shared/car-cycling.js";
 import { RepeatController } from "../../shared/repeat-controller.js";
 import { cancelReplayCursorOwner, claimReplayCursor, type ReplayCursorClaim } from "../../shared/replay-cursor.js";
 import { isPaused, seekReplayFrame, waitForReplay } from "../../shared/replay-seek.js";
+import {
+  readFastestLapSearchDelayMs,
+  RECORD_JUMP_MIN_TIMEOUT_MS,
+  STABILIZATION_POLL_INTERVAL_MS,
+  STABILIZATION_TIMEOUT_MULTIPLIER,
+} from "../../shared/replay-timing.js";
 
 const REPLAY_CONTROL_MODES = [
   "play-pause",
@@ -431,15 +437,6 @@ const FASTEST_LAP_WALK_OWNER = "jump-to-fastest-lap walk";
 /** The owner name a record jump claims the replay cursor under while it waits for the landing (#1275). */
 const FASTEST_LAP_RECORD_JUMP_OWNER = "jump-to-fastest-lap record jump";
 
-/**
- * The shortest a record jump waits for the pause and for the landing (#1275).
- * The walk's `fastestLapSearchDelayMs × 4` alone would give a 200 ms wait at
- * the setting's 50 ms minimum, while a jump across a long replay runs at most
- * `maxFramesToSearchPerUpdate` frames per sim update; a longer wait costs
- * nothing on success and only delays the warning on a failure.
- */
-const RECORD_JUMP_MIN_TIMEOUT_MS = 3000;
-
 /** What a converged walk writes into the lap record beside the frame it found. */
 type FastestLapRecordIdentity = {
   carNumberRaw: number;
@@ -493,61 +490,6 @@ function readUserId(sessionInfo: unknown, carIdx: number): number {
  * km/h on a 5 km track ≈ 960 laps, so 10_000 has a 10× margin.
  */
 const SESSION_STRIDE = 10_000;
-
-/**
- * Multiplier applied to the configured `fastestLapSearchDelayMs` to cap how
- * long the walk waits for a command to settle: an absolute jump until
- * `ReplayFrameNum` reads the frame that was sent (with `SessionNum` out of the
- * `-1` transient iRacing publishes while the cursor lands, issue #607), a
- * search until the frame has moved and held. The cap is `delay × 4` (default
- * 1.6 s). A jump that has not settled by then aborts the walk — the old
- * clock-only wait accepted the previous frame's telemetry and bisected the
- * wrong bracket (#1203). A search that has not moved by then is a legitimate
- * no-op at the buffer's edge (`nextSession` in the last session). Observed
- * first-jump transient is ~514 ms after a paused-replay `setPlayPosition`.
- */
-const STABILIZATION_TIMEOUT_MULTIPLIER = 4;
-
-/**
- * Interval the walk polls `getCurrentTelemetry()` at while waiting for a
- * command to settle, and the hold a moved search frame must keep across two
- * reads. 50 ms is ~3 sim ticks at 60 Hz — short enough to catch the
- * transition promptly without spinning.
- */
-const STABILIZATION_POLL_INTERVAL_MS = 50;
-
-/**
- * Default minimum gap after a replay lap-search broadcast before the next
- * command, when the `fastestLapSearchDelayMs` global setting isn't set. Even
- * when the replay is paused, the manual Next Lap / Previous Lap actions
- * exhibit the same drift when pressed in rapid succession: iRacing appears to
- * be resolving the exact lap-boundary position asynchronously after each
- * `ReplaySearch` and a follow-up broadcast that arrives before that work
- * finishes leaves the cursor parked mid-lap. 400 ms is the empirical default
- * that works reliably; slower machines and longer tracks can raise it via
- * Common Settings → Replay → Fastest Lap Search Delay. Since #1203 it is also
- * the timeout base for absolute jumps (`× STABILIZATION_TIMEOUT_MULTIPLIER`)
- * rather than their wait.
- */
-const REPLAY_LAP_SEARCH_GAP_DEFAULT_MS = 400;
-
-const REPLAY_LAP_SEARCH_GAP_MIN_MS = 50;
-const REPLAY_LAP_SEARCH_GAP_MAX_MS = 1000;
-
-/**
- * Reads the live `fastestLapSearchDelayMs` global setting, clamped to the
- * accepted range. Falls back to {@link REPLAY_LAP_SEARCH_GAP_DEFAULT_MS} on
- * any non-numeric value so a corrupted persisted value can't break the
- * walker.
- */
-function readFastestLapSearchDelayMs(): number {
-  const raw = (getGlobalSettings() as Record<string, unknown>).fastestLapSearchDelayMs;
-  const value = typeof raw === "number" ? raw : Number(raw);
-
-  if (!Number.isFinite(value)) return REPLAY_LAP_SEARCH_GAP_DEFAULT_MS;
-
-  return Math.min(Math.max(value, REPLAY_LAP_SEARCH_GAP_MIN_MS), REPLAY_LAP_SEARCH_GAP_MAX_MS);
-}
 
 /**
  * @internal Exported for testing

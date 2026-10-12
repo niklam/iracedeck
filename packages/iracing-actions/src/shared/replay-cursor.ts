@@ -28,6 +28,15 @@
  * replay is no longer headed there. The rule for when a landing still anchors
  * is the marker surfaces' own (`replay-markers-ops.ts`).
  *
+ * And the one **pending jump speed** (#1276): the speed the replay had before
+ * a jump that is still under way, or the speed a finished jump left it at until
+ * telemetry shows it. A jump pauses a moving replay before it seeks, so a
+ * second jump pressed meanwhile would read "paused" and remember that instead
+ * of the speed the driver chose. Like the landing it is one value, cleared by
+ * anything else that takes the cursor: a speed or pause command from any key
+ * is the driver's new choice. The rule for when it still stands is the jump
+ * sequence's own (`replay-jump-playback.ts`).
+ *
  * Whether a replay is on screen is not kept here: the debounced replay state
  * (#1324), which holds "in a replay" through the ~300 ms post-seek blip and
  * drops at once on the plugin's own `goToEnd` to live, lives on
@@ -79,6 +88,16 @@ export interface ReplayLanding {
 
 let landing: ReplayLanding | null = null;
 
+/** The speed a jump found, or left, in the units `setPlaySpeed` takes. */
+export interface ReplayJumpSpeed {
+  readonly speed: number;
+  readonly slowMotion: boolean;
+  /** `null` while the jump that captured the speed is still under way; `Date.now()` at the moment a jump applied it. */
+  readonly appliedAt: number | null;
+}
+
+let jumpSpeed: ReplayJumpSpeed | null = null;
+
 /**
  * Claim the cursor for a long-running driver. An earlier claim still standing
  * is cancelled first, naming the new owner. `onCancelled` runs synchronously,
@@ -87,6 +106,7 @@ let landing: ReplayLanding | null = null;
  */
 export function claimReplayCursor(owner: string, onCancelled?: (by: string) => void): ReplayCursorClaim {
   landing = null;
+  jumpSpeed = null;
   current?.cancel(owner);
   const claim = new Claim(owner, onCancelled);
 
@@ -100,10 +120,13 @@ export function claimReplayCursor(owner: string, onCancelled?: (by: string) => v
  * Returns the cancelled owner's name, or `null` when nothing was in flight.
  * Idempotent: a claim already cancelled is not renamed. Clears the pending
  * landing too, claim or no claim: the command about to be sent moves the replay
- * somewhere else. A marker jump records its own landing after its send.
+ * somewhere else. A marker jump records its own landing after its send. The
+ * pending jump speed goes with it: the command is the driver's own choice of
+ * what the replay does next.
  */
 export function cancelReplayCursorOwner(by: string): string | null {
   landing = null;
+  jumpSpeed = null;
   const claim = current;
 
   if (claim === null) return null;
@@ -136,8 +159,24 @@ export function clearReplayLanding(): void {
   landing = null;
 }
 
+/** Records the speed a jump captured (`appliedAt` null) or applied (`appliedAt` the moment it did). */
+export function recordReplayJumpSpeed(speed: ReplayJumpSpeed): void {
+  jumpSpeed = speed;
+}
+
+/** The pending jump speed, or `null` once something else took the cursor. Whether it still stands is the caller's rule. */
+export function pendingReplayJumpSpeed(): ReplayJumpSpeed | null {
+  return jumpSpeed;
+}
+
+/** Drops the pending jump speed: telemetry shows it, the hold ran out, or the jump that captured it gave up. */
+export function clearReplayJumpSpeed(): void {
+  jumpSpeed = null;
+}
+
 /** @internal Reset for tests. */
 export function _resetReplayCursor(): void {
   current = null;
   landing = null;
+  jumpSpeed = null;
 }
