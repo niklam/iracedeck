@@ -571,7 +571,7 @@ From the car, or while iRacing is not running, the box is dimmed and shows only 
 
 What a short or long press of the dial button does, in either Mode, chosen from:
 
-- **Play / Pause** (default for **Press Action**) — pauses a playing replay, and resumes a paused one at the last speed it actually played at, in the same direction — whoever set that speed: the dial, a Replay Control key, or iRacing's own replay bar. Until the replay has played at some speed, it resumes at 1x. In Speed Control the display's caption shows that speed while the replay is paused.
+- **Play / Pause** (default for **Press Action**) — pauses a playing replay, and resumes a paused one at the last speed it actually played at, in the same direction — whoever set that speed: the dial, a Replay Control key, or iRacing's own replay bar. The speed is picked up while a Replay Control dial or key is on the page you have open, so one set while neither was showing is not remembered. Until the replay has played at some speed, it resumes at 1x. In Speed Control the display's caption shows that speed while the replay is paused.
 - **Set 1x and Play** (default for **Long Press**) — plays forward at normal speed, whatever the replay was doing: the quick way out of a rewind, slow motion or pause.
 - **Reverse Direction** — flips the direction and keeps the speed: 4x becomes −4x, and 1/2x becomes −1/2x. While paused it flips the speed that **Play / Pause** will resume instead, and the replay stays paused — in Speed Control the caption changes direction at once.
 - **Jump to Live** — jumps to the live point in the session, exactly like the [Jump to Live](#jump-to-live) key.

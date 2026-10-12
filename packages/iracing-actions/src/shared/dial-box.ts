@@ -1,11 +1,11 @@
 /**
- * The shared dial "dash box" — the full-canvas pixmap thirteen dial surfaces
+ * The shared dial "dash box" — the full-canvas pixmap fourteen dial surfaces
  * draw on the dial's own screen: the seven Setup dials (Brakes, Traction, Fuel,
  * Engine, Aero, Chassis, Hybrid), Camera Editor Adjustments, Cockpit Misc,
- * Force Feedback, Replay Markers, Splits & Reference and View Adjustment. The
- * Setup actions were each carrying their own copy of this renderer (issue
- * #817); this module is the single source (issue #811), and adds
- * user-adjustable colors.
+ * Force Feedback, Replay Control, Replay Markers, Splits & Reference and View
+ * Adjustment. The Setup actions were each carrying their own copy of this
+ * renderer (issue #817); this module is the single source (issue #811), and
+ * adds user-adjustable colors.
  *
  * The box is a rounded panel floating on the black device screen: the
  * background color fills the area INSIDE the border frame (the outer margin
