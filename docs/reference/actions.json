@@ -392,7 +392,7 @@
           "id": "com.iracedeck.sd.core.replay-control",
           "name": "Replay Control",
           "file": "replay-control.ts",
-          "encoder": false,
+          "encoder": true,
           "settingsKey": "mode",
           "modes": [
             { "value": "play-pause", "label": "Play / Pause" },
