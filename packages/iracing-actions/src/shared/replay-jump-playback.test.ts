@@ -656,6 +656,8 @@ describe("replay-jump-playback (#1276)", () => {
 
         const second = beginReplayJump("replay-markers-dial-next", sim.readTelemetry());
 
+        expect(first.tookOver).toBe(false);
+        expect(second.tookOver).toBe(true);
         expect(second.captured).toEqual(REWIND_8);
 
         const secondOutcome = runReplayJump(second, {
@@ -670,12 +672,88 @@ describe("replay-jump-playback (#1276)", () => {
         await expect(settle(secondOutcome)).resolves.toEqual({ kind: "landed", speed: REWIND_8, command: "sent" });
         second.end();
 
-        // The second jump pauses too: the speed it inherited says the replay
-        // was moving, and a pause sent to a paused replay costs nothing.
-        expect(sim.calls).toEqual(["speed 0", "seek 64401", "speed 0", "seek 70000", "speed -8"]);
+        // The second jump does not pause again: the first paused the replay,
+        // and a pause sent into its seek would end that seek where it stands.
+        expect(sim.calls).toEqual(["speed 0", "seek 64401", "seek 70000", "speed -8"]);
         await vi.advanceTimersByTimeAsync(100);
         expect(sim.speed()).toEqual(REWIND_8);
         expect(sim.readTelemetry().ReplayFrameNum).toBe(70_000);
+      });
+
+      it("a takeover sends its seek at once, so nothing can stop it between a pause and the seek", async () => {
+        const sim = fakeSim(NORMAL, { seekLagMs: 400 });
+        const first = beginReplayJump("next", sim.readTelemetry());
+        const firstOutcome = runReplayJump(first, {
+          frame: 64_401,
+          replay: sim.replay,
+          readTelemetry: sim.readTelemetry,
+        });
+
+        await vi.advanceTimersByTimeAsync(110);
+        expect(sim.calls).toEqual(["speed 0", "seek 64401"]);
+
+        const second = beginReplayJump("next", sim.readTelemetry());
+        const secondOutcome = runReplayJump(second, {
+          frame: 70_000,
+          replay: sim.replay,
+          readTelemetry: sim.readTelemetry,
+        });
+
+        // Within the call: no wait stands between the takeover and its seek.
+        expect(sim.calls).toEqual(["speed 0", "seek 64401", "seek 70000"]);
+
+        // Another key takes the cursor straight away: an absolute jump was the
+        // last thing sent into the seek, and nothing follows it.
+        cancelReplayCursorOwner("play-pause");
+        await expect(settle(firstOutcome)).resolves.toMatchObject({ kind: "cancelled" });
+        await expect(settle(secondOutcome)).resolves.toEqual({ kind: "cancelled", by: "play-pause" });
+        first.end();
+        second.end();
+        expect(sim.calls).toEqual(["speed 0", "seek 64401", "seek 70000"]);
+      });
+
+      it("a takeover still pauses a replay that does not read paused yet", async () => {
+        // The second press arrives before the first jump's pause shows: no seek
+        // has been sent, so a second pause goes into nothing.
+        const sim = fakeSim(NORMAL, { lagMs: 40 });
+        const first = beginReplayJump("next", sim.readTelemetry());
+        const firstOutcome = runReplayJump(first, {
+          frame: 64_401,
+          replay: sim.replay,
+          readTelemetry: sim.readTelemetry,
+        });
+
+        await vi.advanceTimersByTimeAsync(10);
+        expect(sim.calls).toEqual(["speed 0"]);
+
+        const second = beginReplayJump("next", sim.readTelemetry());
+
+        expect(second.tookOver).toBe(true);
+
+        const secondOutcome = runReplayJump(second, {
+          frame: 70_000,
+          replay: sim.replay,
+          readTelemetry: sim.readTelemetry,
+        });
+
+        await expect(settle(firstOutcome)).resolves.toMatchObject({ kind: "cancelled" });
+        first.end();
+        await expect(settle(secondOutcome)).resolves.toEqual({ kind: "landed", speed: NORMAL, command: "sent" });
+        second.end();
+        expect(sim.calls).toEqual(["speed 0", "speed 0", "seek 70000", "speed 1"]);
+      });
+
+      it("a jump that follows a finished one is not a takeover", async () => {
+        const sim = fakeSim(NORMAL);
+        const first = beginReplayJump("next", sim.readTelemetry());
+
+        await settle(
+          runReplayJump(first, { frame: 64_401, replay: sim.replay, readTelemetry: sim.readTelemetry }),
+          200,
+        );
+        first.end();
+
+        expect(beginReplayJump("next", sim.readTelemetry()).tookOver).toBe(false);
       });
 
       it("the first jump unwinding after the takeover does not drop the second one's speed", async () => {

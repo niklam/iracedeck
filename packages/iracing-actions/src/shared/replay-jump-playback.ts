@@ -11,7 +11,10 @@
  *    ({@link beginReplayJump}).
  * 2. **Pause** a replay that is moving — one whose captured speed is not
  *    zero, or that does not read paused — and wait for the pause to show: a
- *    moving cursor runs past the target before the landing can be read.
+ *    moving cursor runs past the target before the landing can be read. A
+ *    jump that took over from one still under way, on a replay that reads
+ *    paused, skips this: that jump paused it, and a pause sent into its seek
+ *    would end the seek where it stands.
  * 3. **Seek**, and
  * 4. **wait** until `ReplayFrameNum` reads the frame sent, in a replay.
  *    iRacing covers a long jump in steps, and any replay command arriving
@@ -38,6 +41,15 @@
  * just after another applied its speed reads that speed until telemetry shows
  * it. Any other replay command clears the value: a speed the driver sets
  * during a jump is theirs, and is not merged back.
+ *
+ * **What a takeover sends.** Only an absolute jump may arrive while a seek is
+ * under way: it retargets the seek, where any other replay command — a pause
+ * included, even on a paused replay — ends it where it stands (measured
+ * 2026-10-12). So a jump that takes the cursor from one still under way sends
+ * its seek and nothing before it when the replay already reads paused. Were
+ * it to pause first, anything that stopped it before its own seek went out —
+ * the pause wait giving up, another key taking the cursor — would leave the
+ * replay thrown off both targets.
  *
  * No logger here: the outcome says what happened, and the caller logs it.
  */
@@ -88,6 +100,8 @@ export interface ReplayJump {
   readonly claim: ReplayCursorClaim;
   /** The speed the replay had before the press — or, when this jump took over from another, the speed that one captured. */
   readonly captured: ReplaySpeed;
+  /** Whether this jump took the cursor from a jump still under way, which has paused the replay or sent the pause. */
+  readonly tookOver: boolean;
   /** Hand the cursor back. Call it once, in a `finally`, however the jump ended. */
   end(): void;
 }
@@ -215,7 +229,10 @@ export function beginReplayJump(
   nowMs: number = Date.now(),
 ): ReplayJump {
   // Read before the claim: claiming clears the pending speed with the cursor.
-  const captured = captureReplaySpeed(pendingReplayJumpSpeed(), telemetry, nowMs);
+  const standing = pendingReplayJumpSpeed();
+  const captured = captureReplaySpeed(standing, telemetry, nowMs);
+  // A pending speed nobody has applied yet belongs to a jump still under way.
+  const tookOver = standing !== null && standing.appliedAt === null;
   const claim = claimReplayCursor(owner, onCancelled);
   const pending: ReplayJumpSpeed = { ...captured, appliedAt: null };
 
@@ -224,6 +241,7 @@ export function beginReplayJump(
   return {
     claim,
     captured,
+    tookOver,
     end(): void {
       claim.release();
 
@@ -288,21 +306,23 @@ export async function runReplayJump(jump: ReplayJump, options: ReplayJumpOptions
   // The captured speed as well as the reading: right after another jump
   // applied a speed, telemetry still reads paused while the replay is already
   // starting to move, and a seek sent into that would be run past. An unknown
-  // speed counts as moving too: a pause sent to a paused replay costs nothing.
-  // A jump that took the cursor from one still seeking sends this pause into
-  // that seek, which ends it where it stands, as any command but an absolute
-  // jump does. The seek below then starts afresh, so the landing is still this
-  // jump's (measured 2026-10-12: jump, pause, jump lands on the second target).
-  if (jump.captured.speed !== 0 || !isPaused(readTelemetry())) {
+  // speed counts as moving too: a pause sent to a quiet paused replay costs
+  // nothing. Not so for a jump that took over from one still under way: its
+  // captured speed is that jump's, which has paused the replay and may be
+  // seeking, and a pause sent into a seek ends it where it stands. When the
+  // replay reads paused such a jump goes straight to its seek.
+  const paused = isPaused(readTelemetry());
+
+  if (!paused || (jump.captured.speed !== 0 && !jump.tookOver)) {
     if (!replay.setPlaySpeed(0)) return { kind: "stopped", reason: "pause-failed", telemetry: null };
 
     onPaused?.();
 
-    const paused = await waitForReplay(waitOptions, (sample): sample is TelemetryData => isPaused(sample));
+    const pausing = await waitForReplay(waitOptions, (sample): sample is TelemetryData => isPaused(sample));
 
-    if (paused.kind === "cancelled") return paused;
+    if (pausing.kind === "cancelled") return pausing;
 
-    if (paused.kind === "timeout") return { kind: "stopped", reason: "pause-timeout", telemetry: paused.telemetry };
+    if (pausing.kind === "timeout") return { kind: "stopped", reason: "pause-timeout", telemetry: pausing.telemetry };
   }
 
   // The landing sample is read for nothing but the frame and the speed, so

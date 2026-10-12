@@ -835,8 +835,8 @@ describe("ReplayMarkers", () => {
       await vi.advanceTimersByTimeAsync(1_000);
 
       expect(mocks.markers.next).toHaveBeenLastCalledWith(15_000, { subSessionId: 86697546 });
-      // The second pauses again before its seek: the replay it took over was rewinding.
-      expect(sim.calls).toEqual(["speed 0", "seek 15000", "speed 0", "seek 16000", "speed -8"]);
+      // The second sends its seek alone: the first paused the replay, and a pause into its seek would end it short.
+      expect(sim.calls).toEqual(["speed 0", "seek 15000", "seek 16000", "speed -8"]);
       expect(sim.telemetry).toMatchObject({ ReplayFrameNum: 16_000, ...REWIND_8 });
       expect(action["logger"].debug).toHaveBeenCalledWith("next marker: jump to frame 15000 cancelled by next");
     });

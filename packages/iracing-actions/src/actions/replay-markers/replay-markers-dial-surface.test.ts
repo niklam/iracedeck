@@ -679,9 +679,9 @@ describe("ReplayMarkersDialSurface", () => {
         expect(logger.debug).toHaveBeenCalledWith("ticks=1, anchor=500, target=1000");
         expect(logger.debug).toHaveBeenCalledWith("ticks=1, anchor=1000, target=2000");
         expect(logger.debug).toHaveBeenCalledWith("Dial next marker: jump to frame 1000 cancelled by dial-next");
-        // Each jump pauses before its seek — the second because the replay it took
-        // over was playing — and the speed comes back once, after the second landing.
-        expect(sim.calls).toEqual(["speed 0", "seek 1000", "speed 0", "seek 2000", "speed 1"]);
+        // The second jump sends its seek alone — a pause would end the first one's
+        // seek where it stands — and the speed comes back once, after the second landing.
+        expect(sim.calls).toEqual(["speed 0", "seek 1000", "seek 2000", "speed 1"]);
         expect(env.telemetry).toMatchObject({ ReplayFrameNum: 2_000, ...AT_1X });
         expect(logger.warn).not.toHaveBeenCalled();
       });
@@ -712,15 +712,16 @@ describe("ReplayMarkersDialSurface", () => {
 
         await settle(1_000);
 
-        // Every detent pauses and seeks; only the last one lands and puts the speed back.
+        // The second and fourth detents take over a jump still under way and send
+        // their seek alone. The second lands before the third arrives, so that one
+        // follows a finished jump and pauses the replay it had set going again.
         expect(sim.calls).toEqual([
           "speed 0",
           "seek 1000",
-          "speed 0",
           "seek 2000",
+          "speed 8",
           "speed 0",
           "seek 3000",
-          "speed 0",
           "seek 4000",
           "speed 8",
         ]);
