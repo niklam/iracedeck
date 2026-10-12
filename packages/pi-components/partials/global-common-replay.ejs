@@ -1,6 +1,21 @@
 <%#
   Common settings — Replay (issue #992 split). Emits items only.
 %>
+<sdpi-item label="Replay jump playback">
+  <sdpi-select setting="replayJumpPlayback" global default="remember">
+    <option value="remember">Remember state</option>
+    <option value="play">Play</option>
+    <option value="stopped">Stopped</option>
+  </sdpi-select>
+</sdpi-item>
+<div class="ird-supporting-text">
+  What the replay does after Replay Control's "Jump to Fastest Lap" or a Replay
+  Markers "Previous / Next Marker" jump has landed. <strong>Remember state</strong>
+  carries on exactly as before the press: paused stays paused, and normal speed,
+  slow motion, fast-forward and rewind continue at the same speed from the new
+  spot. <strong>Play</strong> always plays at normal speed. <strong>Stopped</strong>
+  always pauses on the new spot.
+</div>
 <sdpi-item label="Fastest Lap Search Delay (ms)">
   <ird-range-input setting="fastestLapSearchDelayMs" min="50" max="1000" step="50" default="400" global showlabels></ird-range-input>
 </sdpi-item>
