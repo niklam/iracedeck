@@ -48,6 +48,7 @@ import { frameJogMode } from "./replay-control-frame-jog.js";
 import { speedMode } from "./replay-control-speed-mode.js";
 import { formatPlayCaption, formatSpeedDisplay } from "./replay-speed-format.js";
 import {
+  DIAL_SPEED_HOLD_MS,
   keepDialPendingSpeed,
   noteDialSpeedSent,
   rememberedSpeed,
@@ -62,6 +63,9 @@ const DIAL_ACCENT = "#3498db";
 const NAME_CARD_BACKGROUND = "#2a3a4a";
 
 const PAUSED: ReplaySpeed = { speed: 0, slowMotion: false };
+
+/** How long past the pending-speed hold the lapse redraw waits, so the hold has run out when it looks. */
+const HOLD_LAPSE_MARGIN_MS = 20;
 
 /**
  * @internal Exported for testing
@@ -278,6 +282,15 @@ export class ReplayControlDialSurface {
    */
   private readonly io: ReplayDialModeIo;
 
+  /**
+   * The one timer that redraws when a sent speed's hold runs out, or null.
+   * When iRacing does not act on a send (paused at the end of a saved
+   * recording) no tick follows it, so nothing else would take the sent speed
+   * off the dials. Like the hold preview's timer it only draws: what the live
+   * speed is then is the speed state's answer, and the timer sends nothing.
+   */
+  private holdLapseTimer: ReturnType<typeof setTimeout> | null = null;
+
   constructor(private readonly host: ReplayControlDialHost) {
     const send: ReplayDialModeIo["send"] = (owner, run) => {
       // Takes the cursor from an in-flight Jump to Fastest Lap walk (#1203): a
@@ -336,6 +349,9 @@ export class ReplayControlDialSurface {
     ctx.holdPreview.dispose();
     this.renderThrottle.clear(actionId);
     this.contexts.delete(actionId);
+
+    // No dial left to redraw.
+    if (this.contexts.size === 0) this.clearHoldLapseTimer();
   }
 
   async didReceiveSettings(action: IDeckActionContext, dial: ReplayControlDialSettings): Promise<void> {
@@ -478,6 +494,28 @@ export class ReplayControlDialSurface {
     noteDialSpeedSent(speed, Date.now());
     this.host.setLocalSpeed(speed.speed, speed.slowMotion);
     this.host.refreshKeys();
+    this.armHoldLapseTimer();
+  }
+
+  /**
+   * (Re)arms the lapse redraw for the send just made: one timer for the
+   * surface, since the pending speed is one value, moved by every send. When
+   * it fires the hold has run out, and a dial still showing a speed telemetry
+   * never reported redraws from what telemetry says; a dial whose frame did
+   * not change is left alone.
+   */
+  private armHoldLapseTimer(): void {
+    this.clearHoldLapseTimer();
+    this.holdLapseTimer = setTimeout(() => {
+      this.holdLapseTimer = null;
+      this.renderAll();
+    }, DIAL_SPEED_HOLD_MS + HOLD_LAPSE_MARGIN_MS);
+  }
+
+  private clearHoldLapseTimer(): void {
+    if (this.holdLapseTimer !== null) clearTimeout(this.holdLapseTimer);
+
+    this.holdLapseTimer = null;
   }
 
   /**

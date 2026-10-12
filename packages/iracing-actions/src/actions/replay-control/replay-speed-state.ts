@@ -22,6 +22,13 @@
  *   send records it at once. A 0 never overwrites it, and it is 1x before any
  *   sample.
  *
+ * A broadcast reports no status, so a send iRacing ignores (a speed sent
+ * while paused at the end of a saved recording) looks exactly like one it
+ * took. The hold running out without telemetry ever reporting the sent speed
+ * is the only sign of it, and that lapse is what covers the case: the live
+ * speed is telemetry's again, and a remembered speed the ignored send recorded
+ * goes back to what it was.
+ *
  * Time is passed in, never read here. In memory only: a plugin restart starts
  * again at 1x, and nothing here belongs in persisted settings.
  */
@@ -33,8 +40,11 @@ import { isSameSpeed } from "./replay-speed-ladder.js";
  * @internal Exported for testing
  *
  * How long (ms) a speed a dial sent stands in for the live speed while
- * telemetry has not reported it. Long enough for the sim to answer a
- * broadcast, short enough that a speed iRacing refused is not shown for long.
+ * telemetry has not reported it: long enough for the sim to answer a
+ * broadcast. When it runs out unreported the send is taken as one iRacing did
+ * not act on — the live speed is telemetry's again and the remembered speed
+ * goes back to what it was before the send — so it is also how long a speed
+ * iRacing ignored stays on a dial; the surface redraws when it lapses.
  */
 export const DIAL_SPEED_HOLD_MS = 500;
 
@@ -43,6 +53,13 @@ interface PendingSpeed {
   readonly speed: ReplaySpeed;
   /** The send's timestamp (ms). */
   readonly sentAt: number;
+  /**
+   * The remembered speed this hold replaced: what it was before the first
+   * send of the hold, carried unchanged through every further send made while
+   * the hold stands, so two ignored sends in a row still go back to the speed
+   * the replay really played at.
+   */
+  readonly replaced: ReplaySpeed;
 }
 
 /** What the replay resumes at before it has been seen playing. */
@@ -54,16 +71,31 @@ let remembered: ReplaySpeed = { ...NORMAL_SPEED };
 /**
  * The pending speed that still stands for the live one, or null. Telemetry
  * reporting it, or the hold running out, drops it here for good, so a replay
- * that later passes through the same speed does not revive it.
+ * that later passes through the same speed does not revive it. Reported, the
+ * send took and what it recorded stays; run out unreported, it lapses.
  */
 function settlePending(telemetrySpeed: ReplaySpeed | null, nowMs: number): PendingSpeed | null {
   if (pending === null) return null;
 
-  const reported = telemetrySpeed !== null && isSameSpeed(telemetrySpeed, pending.speed);
-
-  if (reported || nowMs - pending.sentAt >= DIAL_SPEED_HOLD_MS) pending = null;
+  if (telemetrySpeed !== null && isSameSpeed(telemetrySpeed, pending.speed)) {
+    pending = null;
+  } else if (nowMs - pending.sentAt >= DIAL_SPEED_HOLD_MS) {
+    lapsePending(pending);
+  }
 
   return pending;
+}
+
+/**
+ * The hold ran out and telemetry never reported the sent speed: iRacing did
+ * not act on it. The remembered speed goes back to what the hold replaced,
+ * but only while it is still the speed that send recorded — a Reverse made
+ * while paused has since replaced it with the user's own choice.
+ */
+function lapsePending(lapsed: PendingSpeed): void {
+  if (lapsed.speed.speed !== 0 && isSameSpeed(remembered, lapsed.speed)) remembered = { ...lapsed.replaced };
+
+  pending = null;
 }
 
 /**
@@ -83,10 +115,15 @@ export function resolveLiveSpeed(telemetrySpeed: ReplaySpeed | null, nowMs: numb
  * Records a speed a dial just sent, a pause (0x) included. Call it only when
  * the command actually went out. The target becomes the live speed for the
  * hold, and a non-zero one is remembered as the resume speed at once, so Play,
- * a turn to 4x and Pause inside one telemetry frame still resume 4x.
+ * a turn to 4x and Pause inside one telemetry frame still resume 4x. The
+ * remembered speed it replaces is kept with the hold, for the lapse.
  */
 export function noteDialSpeedSent(target: ReplaySpeed, nowMs: number): void {
-  pending = { speed: { ...target }, sentAt: nowMs };
+  // A hold that ran out with nothing reading it since lapses first, so the new
+  // hold starts from the remembered speed that lapse restores.
+  const standing = settlePending(null, nowMs);
+
+  pending = { speed: { ...target }, sentAt: nowMs, replaced: standing?.replaced ?? { ...remembered } };
 
   if (target.speed !== 0) remembered = { ...target };
 }
@@ -138,7 +175,11 @@ export function noteTelemetrySpeed(sample: ReplaySpeed, nowMs: number): void {
   if (sample.speed !== 0) remembered = { ...sample };
 }
 
-/** The speed Play/Pause resumes at: the last non-zero speed the replay played at, 1x before any. */
+/**
+ * The speed Play/Pause resumes at: the last non-zero speed the replay played
+ * at, 1x before any. A lapsed hold is noticed where the live speed is read
+ * ({@link resolveLiveSpeed}), so a caller that needs both reads that first.
+ */
 export function rememberedSpeed(): ReplaySpeed {
   return { ...remembered };
 }

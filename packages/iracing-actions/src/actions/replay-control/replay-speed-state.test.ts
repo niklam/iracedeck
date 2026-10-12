@@ -189,6 +189,122 @@ describe("replay-speed-state", () => {
     });
   });
 
+  describe("a send iRacing did not act on", () => {
+    /** Past the hold of a send made at `sentAt`. */
+    const lapsedAfter = (sentAt: number) => sentAt + DIAL_SPEED_HOLD_MS;
+
+    beforeEach(() => {
+      // The replay really played at 2x.
+      noteTelemetrySpeed(speed(2), T0 - 100);
+    });
+
+    it("should give the remembered speed back when the hold runs out unreported", () => {
+      noteDialSpeedSent(speed(4), T0);
+      expect(rememberedSpeed()).toEqual(speed(4));
+
+      // No tick ever carried 4x: the replay sits paused at the end of the recording.
+      expect(resolveLiveSpeed(PAUSED, lapsedAfter(T0))).toEqual(PAUSED);
+
+      expect(rememberedSpeed()).toEqual(speed(2));
+    });
+
+    it("should go back to the original speed after two ignored sends in a row", () => {
+      noteDialSpeedSent(speed(4), T0);
+      noteDialSpeedSent(speed(8), T0 + 100);
+      expect(rememberedSpeed()).toEqual(speed(8));
+
+      resolveLiveSpeed(PAUSED, lapsedAfter(T0 + 100));
+
+      expect(rememberedSpeed()).toEqual(speed(2));
+    });
+
+    it("should go back to the original speed after an ignored send, a pause and another send", () => {
+      noteDialSpeedSent(speed(4), T0);
+      noteDialSpeedSent(PAUSED, T0 + 50);
+      noteDialSpeedSent(speed(8), T0 + 100);
+
+      resolveLiveSpeed(PAUSED, lapsedAfter(T0 + 100));
+
+      expect(rememberedSpeed()).toEqual(speed(2));
+    });
+
+    it("should carry the original speed through a dial's own cursor take", () => {
+      noteDialSpeedSent(speed(4), T0);
+      keepDialPendingSpeed(() => cancelReplayCursorOwner("dial-speed"));
+      noteDialSpeedSent(speed(8), T0 + 100);
+
+      resolveLiveSpeed(PAUSED, lapsedAfter(T0 + 100));
+
+      expect(rememberedSpeed()).toEqual(speed(2));
+    });
+
+    it("should notice a lapse nothing read, at the next send", () => {
+      noteDialSpeedSent(speed(4), T0);
+      // Nothing reads the live speed until the next send, well past the hold.
+      noteDialSpeedSent(speed(8), lapsedAfter(T0) + 10);
+      expect(rememberedSpeed()).toEqual(speed(8));
+
+      resolveLiveSpeed(PAUSED, lapsedAfter(lapsedAfter(T0) + 10));
+
+      // Back to 2x, the speed the first lapse restored, never to the ignored 4x.
+      expect(rememberedSpeed()).toEqual(speed(2));
+    });
+
+    it("should notice a lapse on the next telemetry sample too", () => {
+      noteDialSpeedSent(speed(4), T0);
+
+      noteTelemetrySpeed(PAUSED, lapsedAfter(T0));
+
+      expect(rememberedSpeed()).toEqual(speed(2));
+    });
+
+    it("should keep the new speed when telemetry reported the send", () => {
+      noteDialSpeedSent(speed(4), T0);
+      expect(resolveLiveSpeed(speed(4), T0 + 50)).toEqual(speed(4));
+
+      resolveLiveSpeed(speed(4), lapsedAfter(T0));
+      resolveLiveSpeed(PAUSED, lapsedAfter(T0) + 1_000);
+
+      expect(rememberedSpeed()).toEqual(speed(4));
+    });
+
+    it("should keep a reported speed when a later send is the ignored one", () => {
+      noteDialSpeedSent(speed(4), T0);
+      noteTelemetrySpeed(speed(4), T0 + 50);
+      noteDialSpeedSent(speed(8), T0 + 100);
+
+      resolveLiveSpeed(speed(4), lapsedAfter(T0 + 100));
+
+      expect(rememberedSpeed()).toEqual(speed(4));
+    });
+
+    it("should leave the remembered speed alone when the ignored send was a pause", () => {
+      noteDialSpeedSent(PAUSED, T0);
+
+      resolveLiveSpeed(speed(2), lapsedAfter(T0));
+
+      expect(rememberedSpeed()).toEqual(speed(2));
+    });
+
+    it("should not undo a Reverse made while the hold stood", () => {
+      noteDialSpeedSent(speed(4), T0);
+      reverseRememberedSpeed();
+
+      resolveLiveSpeed(PAUSED, lapsedAfter(T0));
+
+      expect(rememberedSpeed()).toEqual(speed(-4));
+    });
+
+    it("should restore nothing when another action took the cursor: its command decides from there", () => {
+      noteDialSpeedSent(speed(4), T0);
+      cancelReplayCursorOwner("replay-transport-play");
+
+      resolveLiveSpeed(PAUSED, lapsedAfter(T0));
+
+      expect(rememberedSpeed()).toEqual(speed(4));
+    });
+  });
+
   describe("clearDialPendingSpeed", () => {
     it("should let the live speed follow telemetry at once", () => {
       noteDialSpeedSent(PAUSED, T0);

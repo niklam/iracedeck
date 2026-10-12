@@ -346,6 +346,124 @@ describe("ReplayControlDialSurface", () => {
     });
   });
 
+  describe("a send iRacing does not act on", () => {
+    /** The hold, the lapse timer's margin and a throttle window. */
+    const PAST_THE_LAPSE = DIAL_SPEED_HOLD_MS + 150;
+
+    it("comes off the dial when the hold runs out, with no tick to say so", async () => {
+      noteTelemetrySpeed(speed(2), Date.now());
+      // Paused at the end of a saved recording: iRacing will not play on.
+      const { surface, ctx, d } = await onScreen(PAUSED);
+      expect(shownCaption(lastBox(ctx))).toBe("► 2x");
+
+      surface.rotate(ctx as never, d, 1, false);
+      await settle();
+      expect(shownValue(lastBox(ctx))).toBe("1/4x");
+
+      // No tick follows: nothing changed in the sim.
+      await vi.advanceTimersByTimeAsync(PAST_THE_LAPSE);
+
+      expect(shownValue(lastBox(ctx))).toBe("PAUSED");
+      // The speed that never played is not what Play/Pause would resume.
+      expect(shownCaption(lastBox(ctx))).toBe("► 2x");
+      expect(rememberedSpeed()).toEqual(speed(2));
+    });
+
+    it("redraws every dial that showed it", async () => {
+      const { surface, ctx, d } = await onScreen(PAUSED);
+      const other = dialContext("dial-2");
+      await appear(surface, other);
+
+      surface.rotate(ctx as never, d, 1, false);
+      await settle();
+      expect(shownValue(lastBox(other))).toBe("1/4x");
+
+      await vi.advanceTimersByTimeAsync(PAST_THE_LAPSE);
+
+      expect(shownValue(lastBox(ctx))).toBe("PAUSED");
+      expect(shownValue(lastBox(other))).toBe("PAUSED");
+    });
+
+    it("is one timer, moved by the next send", async () => {
+      const { surface, ctx, d } = await onScreen(PAUSED);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(vi.getTimerCount()).toBe(0);
+
+      surface.rotate(ctx as never, d, 1, false);
+      await vi.advanceTimersByTimeAsync(300);
+      surface.rotate(ctx as never, d, 1, false);
+      await vi.advanceTimersByTimeAsync(150);
+
+      expect(vi.getTimerCount()).toBe(1);
+      // The first send's hold would have run out by now; the second one's stands.
+      await vi.advanceTimersByTimeAsync(150);
+      expect(shownValue(lastBox(ctx))).toBe("1/2x");
+
+      await vi.advanceTimersByTimeAsync(PAST_THE_LAPSE);
+      expect(shownValue(lastBox(ctx))).toBe("PAUSED");
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("only draws: the lapse sends nothing and tells the action nothing", async () => {
+      const { surface, ctx, d } = await onScreen(PAUSED);
+      surface.rotate(ctx as never, d, 1, false);
+      await settle();
+      vi.clearAllMocks();
+
+      await vi.advanceTimersByTimeAsync(PAST_THE_LAPSE);
+
+      expectNothingSent();
+      expect(host.setLocalSpeed).not.toHaveBeenCalled();
+      expect(host.refreshKeys).not.toHaveBeenCalled();
+      expect(ctx.setDialCanvas).toHaveBeenCalledTimes(1);
+    });
+
+    it("draws nothing when telemetry reported the send in time", async () => {
+      const { surface, ctx, d } = await onScreen(PAUSED);
+      surface.rotate(ctx as never, d, 1, false);
+      nowPlaying(speed(4, true));
+      surface.onTick(ctx.id);
+      await settle();
+      ctx.setDialCanvas.mockClear();
+      const stampedAt = surface["renderThrottle"].lastImageSentAt.get(ctx.id);
+
+      await vi.advanceTimersByTimeAsync(PAST_THE_LAPSE);
+
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
+      expect(surface["renderThrottle"].lastImageSentAt.get(ctx.id)).toBe(stampedAt);
+      expect(rememberedSpeed()).toEqual(speed(4, true));
+    });
+
+    it("is cleared when the last dial disappears, and kept while one remains", async () => {
+      const { surface, ctx, d } = await onScreen(PAUSED);
+      const other = dialContext("dial-2");
+      await appear(surface, other);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(vi.getTimerCount()).toBe(0);
+
+      surface.rotate(ctx as never, d, 1, false);
+      await settle();
+      expect(vi.getTimerCount()).toBe(1);
+
+      surface.willDisappear(ctx.id);
+      expect(vi.getTimerCount()).toBe(1);
+
+      surface.willDisappear(other.id);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("a raw command that sends no speed arms nothing", async () => {
+      const d = dial({ mode: "frame-jog" });
+      const { surface, ctx } = await onScreen(PAUSED, d);
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      surface.rotate(ctx as never, d, 1, false);
+
+      expect(mocks.nextFrame).toHaveBeenCalledTimes(1);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+  });
+
   describe("the seam a rotation mode sends through", () => {
     function ioOf(surface: ReplayControlDialSurface): ReplayDialModeIo {
       return surface["io"];
