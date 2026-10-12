@@ -74,11 +74,19 @@ import z from "zod";
 import { CAR_CYCLE_BINDING_KEYS } from "../../shared/car-cycle-bindings.js";
 import { computeCarNumberTarget } from "../../shared/car-cycling.js";
 import { RepeatController } from "../../shared/repeat-controller.js";
-import { cancelReplayCursorOwner, claimReplayCursor, type ReplayCursorClaim } from "../../shared/replay-cursor.js";
-import { isPaused, seekReplayFrame, waitForReplay } from "../../shared/replay-seek.js";
+import { cancelReplayCursorOwner, type ReplayCursorClaim } from "../../shared/replay-cursor.js";
+import {
+  applyReplayJumpPlayback,
+  beginReplayJump,
+  type ReplayJump,
+  type ReplayJumpApplied,
+  type ReplayJumpOutcome,
+  runReplayJump,
+} from "../../shared/replay-jump-playback.js";
+import { seekReplayFrame } from "../../shared/replay-seek.js";
 import {
   readFastestLapSearchDelayMs,
-  RECORD_JUMP_MIN_TIMEOUT_MS,
+  readReplayJumpTimeoutMs,
   STABILIZATION_POLL_INTERVAL_MS,
   STABILIZATION_TIMEOUT_MULTIPLIER,
 } from "../../shared/replay-timing.js";
@@ -271,9 +279,13 @@ const MAX_BISECTION_STEPS = 30;
 // docs/superpowers/specs/2026-09-24-issue-1203-fastest-lap-from-session-record.md).
 //
 // The lookup reads the per-session replay record (`getReplaySessionStore().laps`,
-// written live by the translator's lap-crossing events): a hit is one camera
-// switch, one `setPlayPosition` to `LAP_START_APPROACH_FRAMES` before the
-// recorded lap start, and `play()`.
+// written live by the translator's lap-crossing events): a hit is one
+// `setPlayPosition` to `LAP_START_APPROACH_FRAMES` before the recorded lap
+// start and, once the cursor has landed there, one camera switch.
+//
+// Either way the press ends as the Replay jump playback global setting says
+// (#1276, `shared/replay-jump-playback.ts`): at the speed the replay had when
+// the key was pressed, at 1×, or paused.
 //
 // The walk is the fallback for a lap the record does not have (the plugin was
 // not running, someone else's `.rpy`, an offline session's replay opened
@@ -296,9 +308,9 @@ const MAX_BISECTION_STEPS = 30;
 // #1203 changed how the walk waits and ends: an absolute jump settles when
 // `ReplayFrameNum` reads the frame that was sent, a search when the frame has
 // moved and held; every speed sent is mirrored into the action's speed cache;
-// the walk ends with `play()` at 1×; one walk runs per action instance and any
-// other Replay Control command cancels it; and a converged walk writes its
-// landed frame into the record, so the next press is a lookup.
+// one walk runs per action instance and any other Replay Control command
+// cancels it; and a converged walk writes its landed frame into the record,
+// so the next press is a lookup.
 
 /**
  * After bisection, the lap-step phase takes over. `CLOSE_ENOUGH_LAPS = 2`
@@ -437,12 +449,30 @@ const FASTEST_LAP_WALK_OWNER = "jump-to-fastest-lap walk";
 /** The owner name a record jump claims the replay cursor under while it waits for the landing (#1275). */
 const FASTEST_LAP_RECORD_JUMP_OWNER = "jump-to-fastest-lap record jump";
 
+/** What opens the log lines of a Jump to Fastest Lap press, where a shared step writes them. */
+const FASTEST_LAP_LOG_LABEL = "Jump to fastest lap";
+
 /** What a converged walk writes into the lap record beside the frame it found. */
 type FastestLapRecordIdentity = {
   carNumberRaw: number;
   userId: number;
   /** `WeekendInfo.SubSessionID`, when readable; the store ignores a record for a session it is not holding. */
   subSessionId: number | undefined;
+};
+
+/**
+ * Where a walk left the cursor. The replay is paused there; what it does next
+ * is the caller's step (the **Replay jump playback** setting, #1276).
+ */
+type FastestLapWalkLanding = {
+  /** The sample read on the landed frame, which the playback step compares the speed wanted against. */
+  telemetry: TelemetryData;
+  /** The frame the cursor is on: the back-step short of where the walk got to. */
+  landedFrame: number;
+  /** The frame the walk takes for the lap's start: `landedFrame` plus the back-step. Verified only when `converged`. */
+  lapStartFrame: number;
+  /** Whether the walk verified the landing as the lap start. Only then did it go into the record. */
+  converged: boolean;
 };
 
 /** A record lookup's outcome, widened with the case where no store was initialized (tests, a plugin without one). */
@@ -1166,16 +1196,21 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
    *      `CarIdxLap[carIdx]` is the lap before the target, a distance nudge
    *      to that lap's end, and a {@link FASTEST_LAP_FINAL_BACKSTEP_TICKS}
    *      back-step, so the car is visibly approaching the line.
-   *   4. **Play, and record what was verified.** `play()` at 1× (mirrored
-   *      into the speed cache, like the opening `pause()`). The landed frame
-   *      goes into the record as the car's start of `targetLap` ONLY when the
-   *      walk converged: the sample before the back-step showed the car on
-   *      `targetLap − 1` at `dist ≥` {@link FASTEST_LAP_DIST_THRESHOLD} in the
-   *      target session instance, and the sample at the back-stepped frame
-   *      agreed on lap and session. Anything less — lap steps exhausted, a
-   *      nudge that did not move, a landing in another lap or session — plays
-   *      from where it got to, warns `walk did not converge`, and records
-   *      nothing: a later press would trust that frame forever.
+   *   4. **Record what was verified.** The landed frame goes into the record
+   *      as the car's start of `targetLap` ONLY when the walk converged: the
+   *      sample before the back-step showed the car on `targetLap − 1` at
+   *      `dist ≥` {@link FASTEST_LAP_DIST_THRESHOLD} in the target session
+   *      instance, and the sample at the back-stepped frame agreed on lap and
+   *      session. Anything less — lap steps exhausted, a nudge that did not
+   *      move, a landing in another lap or session — stays where it got to,
+   *      warns `walk did not converge`, and records nothing: a later press
+   *      would trust that frame forever.
+   *   5. **Leave the replay as the Replay jump playback setting says**
+   *      (#1276), converged or not: at the speed it had at the press, at 1×,
+   *      or paused (`applyReplayJumpPlayback`, mirrored into the speed cache
+   *      like the opening `pause()`). The speed to restore is captured before
+   *      that pause, when the press takes the cursor. This step belongs to
+   *      the press, not to the walk: `runFastestLapWalk` only lands.
    *
    * An absolute jump settles when `ReplayFrameNum` reads the sent frame; a
    * search when the frame has moved from its pre-command value and, once the
@@ -1206,31 +1241,49 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
       return;
     }
 
-    await this.holdFastestLapSlot(contextId, FASTEST_LAP_WALK_OWNER, "walk", (claim) =>
-      this.runFastestLapWalk(claim, carIdx, targetLap, targetSessionNum, identity),
-    );
+    await this.holdFastestLapSlot(contextId, FASTEST_LAP_WALK_OWNER, "walk", async (jump) => {
+      const landing = await this.runFastestLapWalk(jump, carIdx, targetLap, targetSessionNum, identity);
+
+      // A walk that gave up sends nothing more, whatever the setting says: the
+      // replay stays paused where the walk stopped, because playing from a
+      // spot nobody asked for is worse than stopping there.
+      if (landing === null) return;
+
+      const applied = applyReplayJumpPlayback(jump, getCommands().replay, landing.telemetry);
+
+      if (applied === null) throw new FastestLapPressCancelled(jump.claim.cancelledBy ?? "unknown");
+
+      this.mirrorReplayJumpSpeed(FASTEST_LAP_LOG_LABEL, applied);
+      this.logger.debug(
+        `Jump to fastest lap: walk ${landing.converged ? "converged" : "did not converge"} on frame ${landing.landedFrame}; replay left at ${formatSpeedDisplay(applied.speed.speed, applied.speed.slowMotion)} (speed command ${applied.command})`,
+      );
+    });
   }
 
   /**
    * Run one Jump to Fastest Lap press — the walk or a record jump — holding
-   * the replay-cursor claim and this action's in-flight slot for its whole
-   * duration, so any replay command cancels it and a second press is ignored.
+   * the replay cursor and this action's in-flight slot for its whole duration,
+   * so any replay command cancels it and a second press is ignored. The press
+   * starts as a replay jump (`beginReplayJump`, #1276): the speed the replay
+   * has now is captured before `run` sends anything, which is what the
+   * **Replay jump playback** setting's `remember` restores at the end.
    * The press signals a cancellation by throwing {@link FastestLapPressCancelled}.
    */
   private async holdFastestLapSlot(
     contextId: string,
     owner: string,
     noun: "walk" | "jump",
-    run: (claim: ReplayCursorClaim) => Promise<void>,
+    run: (jump: ReplayJump) => Promise<void>,
   ): Promise<void> {
-    const claim = claimReplayCursor(owner, (by) => {
+    const jump = beginReplayJump(owner, this.sdkController.getCurrentTelemetry(), (by) => {
       this.logger.info(`Jump to fastest lap: ${noun} cancelled by ${by}`);
     });
+    const { claim } = jump;
 
     this.activeFastestLapPress = { contextId, claim };
 
     try {
-      await run(claim);
+      await run(jump);
     } catch (error) {
       if (error instanceof FastestLapPressCancelled) {
         this.logger.debug(`Jump to fastest lap: ${error.message}; cursor left where that command put it`);
@@ -1240,7 +1293,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
         );
       }
     } finally {
-      claim.release();
+      jump.end();
 
       // A cancelled press may unwind after a newer one took the slot.
       if (this.activeFastestLapPress?.claim === claim) this.activeFastestLapPress = null;
@@ -1248,15 +1301,102 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
   }
 
   /**
-   * Jump to a lap start the record holds (#1203), waiting for the cursor to
-   * land before anything else is sent (#1275): iRacing searches a long jump
-   * in steps, and a command arriving mid-search cuts it short. The sequence
-   * is: pause unless the replay reads paused, and wait for the pause to show
-   * (a moving cursor runs past the target before the landing can be read);
-   * jump to one second before the line and wait for `ReplayFrameNum` to read
-   * it; then switch the camera onto the car and play. On any failure it sends
-   * nothing more, leaving the replay where it stopped rather than playing from
-   * a spot nobody asked for.
+   * Jump to an absolute frame through the shared sequence
+   * (`shared/replay-jump-playback.ts`, #1276) and keep this action's speed
+   * cache and icons in step with what it sends: pause a moving replay and wait
+   * for the pause to show, seek and wait for `ReplayFrameNum` to read `frame`
+   * — iRacing searches a long jump in steps and any command arriving
+   * mid-search cuts it short (#1275) — then `afterLanding`, then the speed the
+   * **Replay jump playback** setting asks for.
+   *
+   * `jump` comes from `beginReplayJump`, called at the press before any
+   * command; the caller ends it. `label` opens every log line, so each mode
+   * that jumps reads as itself in the log. `afterLanding` is the mode's own
+   * command once the cursor has landed (a camera switch); returning false
+   * stops the jump paused on the frame, and that step logs why.
+   *
+   * Never throws for a jump that stopped short or was cancelled: the outcome
+   * says which. A stopped jump has sent nothing more and is logged here, so
+   * the replay is paused where it stopped whatever the setting says. A
+   * cancelled one is the caller's to report.
+   */
+  private async runJumpToFrame(
+    jump: ReplayJump,
+    options: { frame: number; label: string; afterLanding?: (landing: TelemetryData) => boolean },
+  ): Promise<ReplayJumpOutcome> {
+    const { frame, label, afterLanding } = options;
+    const outcome = await runReplayJump(jump, {
+      frame,
+      replay: getCommands().replay,
+      readTelemetry: () => this.sdkController.getCurrentTelemetry(),
+      onPaused: () => {
+        this.setLocalSpeed(0, false);
+        this.updateAllTelemetryDisplays();
+      },
+      afterLanding,
+    });
+
+    if (outcome.kind === "landed") {
+      this.mirrorReplayJumpSpeed(label, outcome);
+    } else if (outcome.kind === "stopped") {
+      this.logReplayJumpStopped(label, frame, outcome);
+    }
+
+    return outcome;
+  }
+
+  /**
+   * Put the speed a jump left the replay at into the speed cache, so the icons
+   * and the Play key follow it without waiting for telemetry.
+   */
+  private mirrorReplayJumpSpeed(label: string, applied: ReplayJumpApplied): void {
+    if (applied.command === "failed") {
+      this.logger.warn(`${label}: speed command failed; replay left paused on the frame`);
+      this.logger.debug(`Replay still at ${formatSpeedDisplay(applied.speed.speed, applied.speed.slowMotion)}`);
+    }
+
+    this.setLocalSpeed(applied.speed.speed, applied.speed.slowMotion);
+    this.updateAllTelemetryDisplays();
+  }
+
+  /** One warning per way a jump stops short, the details at debug. A failed `afterLanding` step is logged by that step. */
+  private logReplayJumpStopped(
+    label: string,
+    frame: number,
+    outcome: Extract<ReplayJumpOutcome, { kind: "stopped" }>,
+  ): void {
+    switch (outcome.reason) {
+      case "pause-failed":
+        this.logger.warn(`${label}: pause failed; jump not sent`);
+        break;
+      case "pause-timeout":
+        this.logger.warn(`${label}: replay did not pause; jump not sent`);
+        this.logger.debug(
+          `ReplayPlaySpeed still ${outcome.telemetry?.ReplayPlaySpeed ?? "n/a"} after ${readReplayJumpTimeoutMs()} ms`,
+        );
+        break;
+      case "seek-failed":
+        this.logger.warn(`${label}: jump not sent`);
+        this.logger.debug(`setPlayPosition to frame ${frame} failed`);
+        break;
+      case "seek-timeout":
+        this.logger.warn(`${label}: jump did not land; replay left where the seek stopped`);
+        this.logger.debug(
+          `Sent frame ${frame}, saw frame ${outcome.telemetry?.ReplayFrameNum ?? "n/a"} after ${readReplayJumpTimeoutMs()} ms`,
+        );
+        break;
+      case "after-landing-failed":
+        break;
+    }
+  }
+
+  /**
+   * Jump to a lap start the record holds (#1203): the shared sequence to one
+   * second before the line, with the camera switched onto the car once the
+   * cursor has landed — sent any earlier it would cut the seek short (#1275).
+   * The replay then does what the **Replay jump playback** setting says
+   * (#1276). On any failure nothing more is sent, leaving the replay paused
+   * where it stopped rather than playing from a spot nobody asked for.
    */
   private async jumpToRecordedLapStart(
     contextId: string,
@@ -1268,85 +1408,47 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
       timeMs: number | null;
     },
   ): Promise<void> {
-    await this.holdFastestLapSlot(contextId, FASTEST_LAP_RECORD_JUMP_OWNER, "jump", async (claim) => {
-      const replay = getCommands().replay;
-      const readTelemetry = () => this.sdkController.getCurrentTelemetry();
+    await this.holdFastestLapSlot(contextId, FASTEST_LAP_RECORD_JUMP_OWNER, "jump", async (jump) => {
       const approachFrame = Math.max(0, target.frame - LAP_START_APPROACH_FRAMES);
-      const timeoutMs = Math.max(
-        RECORD_JUMP_MIN_TIMEOUT_MS,
-        readFastestLapSearchDelayMs() * STABILIZATION_TIMEOUT_MULTIPLIER,
-      );
-      const waitOptions = { claim, readTelemetry, timeoutMs, pollMs: STABILIZATION_POLL_INTERVAL_MS };
-
-      // An unknown speed counts as moving: a pause sent to a paused replay costs nothing.
-      if (!isPaused(readTelemetry())) {
-        if (!replay.pause()) {
-          this.logger.warn("Jump to fastest lap: pause failed; jump not sent");
-
-          return;
-        }
-
-        this.setLocalSpeed(0, false);
-        this.updateAllTelemetryDisplays();
-
-        const paused = await waitForReplay(waitOptions, (sample): sample is TelemetryData => isPaused(sample));
-
-        if (paused.kind === "cancelled") throw new FastestLapPressCancelled(paused.by, "jump");
-
-        if (paused.kind === "timeout") {
-          this.logger.warn("Jump to fastest lap: replay did not pause; jump not sent");
-          this.logger.debug(
-            `ReplayPlaySpeed still ${paused.telemetry?.ReplayPlaySpeed ?? "n/a"} after ${timeoutMs} ms`,
-          );
-
-          return;
-        }
-      }
-
-      // The landing sample is read for nothing but the frame, so the
-      // `SessionNum = -1` transient after it need not be waited out.
-      const landing = await seekReplayFrame({
-        ...waitOptions,
+      const outcome = await this.runJumpToFrame(jump, {
         frame: approachFrame,
-        send: (frame) => replay.setPlayPosition(ReplayPosMode.Begin, frame),
-        requireSession: false,
+        label: FASTEST_LAP_LOG_LABEL,
+        afterLanding: () => {
+          if (getCommands().camera.switchNum(target.carNum, 0, 0)) return true;
+
+          this.logger.warn("Jump to fastest lap: camera switch failed; replay left at the lap start");
+          this.logger.debug(`Failed switchNum: carNum=${target.carNum}, carIdx=${target.carIdx}`);
+
+          return false;
+        },
       });
 
-      if (landing.kind === "cancelled") throw new FastestLapPressCancelled(landing.by, "jump");
+      if (outcome.kind === "cancelled") throw new FastestLapPressCancelled(outcome.by, "jump");
 
-      if (landing.kind === "timeout") {
-        this.logger.warn("Jump to fastest lap: jump did not land; replay left where the seek stopped");
+      if (outcome.kind === "landed") {
         this.logger.debug(
-          `Sent frame ${approachFrame}, saw frame ${landing.telemetry?.ReplayFrameNum ?? "n/a"} after ${timeoutMs} ms`,
+          `Lap ${target.lap} of carIdx ${target.carIdx} starts at frame ${target.frame} (time ${target.timeMs ?? "untimed"} ms); landed on ${approachFrame}; replay left at ${formatSpeedDisplay(outcome.speed.speed, outcome.speed.slowMotion)} (speed command ${outcome.command})`,
         );
-
-        return;
       }
-
-      // Landed: the camera and the play are safe to send now.
-      if (!getCommands().camera.switchNum(target.carNum, 0, 0)) {
-        this.logger.warn("Jump to fastest lap: camera switch failed; replay left at the lap start");
-        this.logger.debug(`Failed switchNum: carNum=${target.carNum}, carIdx=${target.carIdx}`);
-
-        return;
-      }
-
-      replay.play();
-      this.setLocalSpeed(1, false);
-      this.updateAllTelemetryDisplays();
-      this.logger.debug(
-        `Lap ${target.lap} of carIdx ${target.carIdx} starts at frame ${target.frame} (time ${target.timeMs ?? "untimed"} ms); landed on ${approachFrame}`,
-      );
     });
   }
 
+  /**
+   * The walk itself: drive the cursor to the lap start and record the frame
+   * when it was verified. It lands and does nothing about playback — the
+   * replay is paused on the frame it returns, and the press applies the
+   * **Replay jump playback** setting from there. Null for every abort, which
+   * leaves the replay paused where the walk stopped. Throws
+   * {@link FastestLapPressCancelled} when another replay command took the cursor.
+   */
   private async runFastestLapWalk(
-    claim: ReplayCursorClaim,
+    jump: ReplayJump,
     carIdx: number,
     targetLap: number,
     targetSessionNum: number,
     identity: FastestLapRecordIdentity,
-  ): Promise<void> {
+  ): Promise<FastestLapWalkLanding | null> {
+    const { claim } = jump;
     const replay = getCommands().replay;
     const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -1608,7 +1710,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     if (!this.sdkController.getReplayState().inReplay) {
       this.logger.info("Jump to fastest lap: replay not open; iRacing ignores replay commands from the car");
 
-      return;
+      return null;
     }
 
     // Pause first so the cursor doesn't drift between commands and the
@@ -1626,7 +1728,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     if (initialTel === null) {
       this.logger.warn("Jump to fastest lap: telemetry did not settle after pause; aborting");
 
-      return;
+      return null;
     }
 
     const sessionUniqueId = initialTel.SessionUniqueID;
@@ -1634,7 +1736,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     if (typeof sessionUniqueId !== "number") {
       this.logger.warn("Jump to fastest lap: SessionUniqueID unavailable; aborting");
 
-      return;
+      return null;
     }
 
     const subSessionId = identity.subSessionId;
@@ -1655,7 +1757,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     if (sessionMap == null || !cacheHit) {
       const built = await buildSessionMap(subSessionId);
 
-      if (built == null) return;
+      if (built == null) return null;
 
       // Commit the map only if the walk was seen to run in a replay. From the
       // car every command was ignored and the "map" is the live view (one
@@ -1666,7 +1768,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
           "Jump to fastest lap: the walk ran from the car (IsReplayPlaying never read true); session map discarded",
         );
 
-        return;
+        return null;
       }
 
       sessionMap = built;
@@ -1691,7 +1793,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
         `Jump to fastest lap: target session ${targetSessionNum}/${sessionUniqueId} not in session map; aborting`,
       );
 
-      return;
+      return null;
     }
 
     const endFrame = resolveEndFrame(bounds, initialTel);
@@ -1701,7 +1803,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
         "Jump to fastest lap: recording length unavailable (ReplayFrameNum + ReplayFrameNumEnd); aborting",
       );
 
-      return;
+      return null;
     }
 
     let loFrame = bounds.startFrame;
@@ -1712,12 +1814,12 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
         `Jump to fastest lap: empty session bounds for session ${targetSessionNum}/${sessionUniqueId} (lo=${loFrame}, hi=${hiFrame}); aborting`,
       );
 
-      return;
+      return null;
     }
 
     // Target the lap BEFORE the fastest one — we want to land at the end
     // of that lap (just before the S/F crossing into the fastest lap), so
-    // the play that ends the walk shows the line-crossing into the fast lap.
+    // playing from there shows the line-crossing into the fast lap.
     const targetLapMinus1 = Math.max(0, targetLap - 1);
 
     // Phase 3: bisect within the target session until we're within
@@ -1733,7 +1835,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
       tel = await jumpTo(mid);
       bisectionSteps = step + 1;
 
-      if (tel == null) return;
+      if (tel == null) return null;
 
       const lap = carLap(tel);
 
@@ -1771,7 +1873,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
       if (typeof lap !== "number" || lap < 0) {
         this.logger.warn(`Jump to fastest lap: CarIdxLap unavailable during lap-step ${step} (lap=${lap}); aborting`);
 
-        return;
+        return null;
       }
 
       if (lap === targetLapMinus1) {
@@ -1791,10 +1893,10 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
       if (stepped.kind === "unmoved") {
         this.logger.warn(`Jump to fastest lap: lap-step ${step} did not move the cursor; aborting`);
 
-        return;
+        return null;
       }
 
-      if (stepped.kind === "unsettled") return;
+      if (stepped.kind === "unsettled") return null;
 
       tel = stepped.telemetry;
     }
@@ -1869,13 +1971,13 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     if (preBackstepFrame === null) {
       this.logger.warn("Jump to fastest lap: ReplayFrameNum unavailable before the back-step; aborting");
 
-      return;
+      return null;
     }
 
     const landedFrame = Math.max(0, preBackstepFrame - FASTEST_LAP_FINAL_BACKSTEP_TICKS);
     const finalTel = await jumpTo(landedFrame);
 
-    if (finalTel == null) return;
+    if (finalTel == null) return null;
 
     // Two ticks back must still be the same lap of the same session instance
     // (the distance is allowed to dip under the threshold by those ticks).
@@ -1883,24 +1985,20 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
       notConverged = `back-step landed elsewhere (${describeSample(finalTel)})`;
     }
 
-    // Phase 7: play at 1× — the same end state as a record hit — and tell the
-    // speed cache what was sent.
+    // Phase 7: the cursor is where the walk leaves it, paused. A cancellation
+    // that arrived during the back-step ends the press here, before anything
+    // is recorded.
     checkpoint();
-    replay.play();
-    this.setLocalSpeed(1, false);
-    this.updateAllTelemetryDisplays();
 
     const lapStartFrame = landedFrame + FASTEST_LAP_FINAL_BACKSTEP_TICKS;
 
     if (notConverged !== null) {
-      this.logger.warn(
-        `Jump to fastest lap: walk did not converge (${notConverged}); replay playing, nothing recorded`,
-      );
+      this.logger.warn(`Jump to fastest lap: walk did not converge (${notConverged}); nothing recorded`);
       this.logger.debug(
         `Jump to fastest lap: gave up after ${bisectionSteps} bisection + ${lapSteps} lap-step + ${nudges} nudge iterations (landed frame=${landedFrame}, target=${targetLap}, session=${targetSessionNum}/${sessionUniqueId})`,
       );
 
-      return;
+      return { telemetry: finalTel, landedFrame, lapStartFrame, converged: false };
     }
 
     // The verified frame, back-adjusted by the back-step, is where this car
@@ -1922,12 +2020,12 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
       });
     }
 
-    this.logger.info(
-      `Jump to fastest lap: walk converged; replay playing (lap start ${recorded ? "recorded" : "not recorded"})`,
-    );
+    this.logger.info(`Jump to fastest lap: walk converged (lap start ${recorded ? "recorded" : "not recorded"})`);
     this.logger.debug(
       `Jump to fastest lap: converged after ${bisectionSteps} bisection + ${lapSteps} lap-step + ${nudges} nudge iterations + ${FASTEST_LAP_FINAL_BACKSTEP_TICKS}-tick back-step (landed frame=${landedFrame}, lap start frame=${lapStartFrame}, ${describeSample(finalTel)}, target=${targetLap}, session=${targetSessionNum}/${sessionUniqueId})`,
     );
+
+    return { telemetry: finalTel, landedFrame, lapStartFrame, converged: true };
   }
 
   private executeMode(contextId: string, settings: ReplayControlSettings): void {
@@ -2352,8 +2450,9 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
         }
 
         // The walk (issue #607, repaired in #1203). Fire-and-forget — the
-        // press handler returns immediately; the walk ends with the replay
-        // playing and writes what it found into the record.
+        // press handler returns immediately; the walk writes what it found
+        // into the record and leaves the replay as the Replay jump playback
+        // setting says (#1276).
         void this.walkToFastestLap(contextId, targetCarIdx, targetLap, targetSessionNum, {
           carNumberRaw: carNum,
           userId: readUserId(sessionInfo, targetCarIdx),
