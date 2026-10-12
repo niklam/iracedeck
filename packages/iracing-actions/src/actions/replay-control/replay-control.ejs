@@ -2,10 +2,46 @@
 <html lang="en">
 	<head>
 		<%- include('head-common') %>
+		<style>
+			/* The dial's Speeds grid (#1316): four columns of sdpi-checkboxes under a
+			   heading per group. No sdpi-item around it — clicking an sdpi-item's label
+			   clicks its first checkbox. */
+			.speed-stops-grid {
+				display: grid;
+				grid-template-columns: repeat(4, 1fr);
+				gap: 2px 8px;
+				padding: 4px 14px;
+			}
+
+			.speed-stops-grid sdpi-checkbox {
+				font-family: "Segoe UI", Arial, sans-serif;
+				font-size: 9pt;
+				color: #d0d0d0;
+			}
+
+			.speed-stops-grid .group-heading {
+				grid-column: 1 / -1;
+				font-family: "Segoe UI", Arial, sans-serif;
+				font-size: 8pt;
+				color: #888;
+				text-transform: uppercase;
+				letter-spacing: 0.5px;
+				padding: 6px 0 2px 0;
+				border-bottom: 1px solid #444;
+				margin-bottom: 2px;
+			}
+
+			.speed-stops-grid .group-heading:first-child {
+				padding-top: 0;
+			}
+		</style>
 	</head>
 	<body>
 		<%- include('section-header', { title: 'Action Settings' }) %>
 
+		<!-- Keypad settings — hidden when this instance is a dial (#1316). The block
+		     is left at its old indent so the keypad's lines stay untouched. -->
+		<div id="keypad-settings">
 		<sdpi-item label="Mode">
 			<sdpi-select id="mode-select" setting="mode" default="play-pause">
 				<optgroup label="Transport">
@@ -101,17 +137,135 @@
 				</optgroup>
 			</sdpi-select>
 		</sdpi-item>
+		</div>
+		<%# end #keypad-settings %>
+
+		<% var __dialComms = require('./data/action-comms.json')['replay-control-dial']; %>
+
+		<!-- Dial settings — shown only when this instance is a dial (#1316). -->
+		<div id="dial-settings" class="hidden">
+			<sdpi-item label="Mode">
+				<sdpi-select id="dial-mode-select" setting="dial.mode" default="speed">
+					<option value="speed">Speed Control</option>
+				</sdpi-select>
+			</sdpi-item>
+
+			<ird-binding-status mode-setting="<%= __dialComms._meta.modeSetting %>" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+
+			<%# Speed Control only. One checkbox per magnitude, each bound to its own
+			    key of the dial.speedStops map: the tokens, their order and the six
+			    ticked by default are those of replay-control-dial-settings.ts, and
+			    replay-control-pi.test.ts holds this copy to them. A box stores a
+			    boolean only once it is clicked, so the map holds what the user
+			    changed and every other speed reads its default. An unticked default
+			    OMITS the attribute: default="false" renders ticked. %>
+			<div id="dial-speed-stops-section" class="hidden">
+				<div class="ird-supporting-text">
+					Turn the dial to step through the speeds ticked below: clockwise is
+					faster forward, counter-clockwise slower and on into reverse. Paused
+					is always a stop, between the slowest speed of each direction.
+				</div>
+				<div class="ird-section-heading">Speeds</div>
+				<div id="dial-speed-stops-grid" class="speed-stops-grid">
+					<div class="group-heading">Slow Motion</div>
+					<sdpi-checkbox setting="dial.speedStops.s16" label="1/16x"></sdpi-checkbox>
+					<sdpi-checkbox setting="dial.speedStops.s15" label="1/15x"></sdpi-checkbox>
+					<sdpi-checkbox setting="dial.speedStops.s14" label="1/14x"></sdpi-checkbox>
+					<sdpi-checkbox setting="dial.speedStops.s13" label="1/13x"></sdpi-checkbox>
+					<sdpi-checkbox setting="dial.speedStops.s12" label="1/12x"></sdpi-checkbox>
+					<sdpi-checkbox setting="dial.speedStops.s11" label="1/11x"></sdpi-checkbox>
+					<sdpi-checkbox setting="dial.speedStops.s10" label="1/10x"></sdpi-checkbox>
+					<sdpi-checkbox setting="dial.speedStops.s9" label="1/9x"></sdpi-checkbox>
+					<sdpi-checkbox setting="dial.speedStops.s8" label="1/8x"></sdpi-checkbox>
+					<sdpi-checkbox setting="dial.speedStops.s7" label="1/7x"></sdpi-checkbox>
+					<sdpi-checkbox setting="dial.speedStops.s6" label="1/6x"></sdpi-checkbox>
+					<sdpi-checkbox setting="dial.speedStops.s5" label="1/5x"></sdpi-checkbox>
+					<sdpi-checkbox setting="dial.speedStops.s4" label="1/4x" default="true"></sdpi-checkbox>
+					<sdpi-checkbox setting="dial.speedStops.s3" label="1/3x"></sdpi-checkbox>
+					<sdpi-checkbox setting="dial.speedStops.s2" label="1/2x" default="true"></sdpi-checkbox>
+					<div class="group-heading">Normal and Fast</div>
+					<sdpi-checkbox setting="dial.speedStops.1" label="1x" default="true"></sdpi-checkbox>
+					<sdpi-checkbox setting="dial.speedStops.2" label="2x" default="true"></sdpi-checkbox>
+					<sdpi-checkbox setting="dial.speedStops.3" label="3x"></sdpi-checkbox>
+					<sdpi-checkbox setting="dial.speedStops.4" label="4x" default="true"></sdpi-checkbox>
+					<sdpi-checkbox setting="dial.speedStops.5" label="5x"></sdpi-checkbox>
+					<sdpi-checkbox setting="dial.speedStops.6" label="6x"></sdpi-checkbox>
+					<sdpi-checkbox setting="dial.speedStops.7" label="7x"></sdpi-checkbox>
+					<sdpi-checkbox setting="dial.speedStops.8" label="8x" default="true"></sdpi-checkbox>
+					<sdpi-checkbox setting="dial.speedStops.9" label="9x"></sdpi-checkbox>
+					<sdpi-checkbox setting="dial.speedStops.10" label="10x"></sdpi-checkbox>
+					<sdpi-checkbox setting="dial.speedStops.11" label="11x"></sdpi-checkbox>
+					<sdpi-checkbox setting="dial.speedStops.12" label="12x"></sdpi-checkbox>
+					<sdpi-checkbox setting="dial.speedStops.13" label="13x"></sdpi-checkbox>
+					<sdpi-checkbox setting="dial.speedStops.14" label="14x"></sdpi-checkbox>
+					<sdpi-checkbox setting="dial.speedStops.15" label="15x"></sdpi-checkbox>
+					<sdpi-checkbox setting="dial.speedStops.16" label="16x"></sdpi-checkbox>
+				</div>
+				<div class="ird-supporting-text">
+					Every ticked speed is a stop in both directions. At least one stays
+					ticked.
+				</div>
+			</div>
+
+			<sdpi-item label="Press Action">
+				<sdpi-select setting="dial.pressAction" default="play-pause">
+					<option value="play-pause">Play / Pause</option>
+					<option value="set-1x-play">Set 1x and Play</option>
+					<option value="reverse">Reverse Direction</option>
+					<option value="jump-to-live">Jump to Live</option>
+					<option value="none">None</option>
+				</sdpi-select>
+			</sdpi-item>
+			<% if (locals.platform?.features?.dialExtendedGestures !== false) { %>
+			<sdpi-item label="Long Press">
+				<sdpi-select setting="dial.longPressAction" default="set-1x-play">
+					<option value="play-pause">Play / Pause</option>
+					<option value="set-1x-play">Set 1x and Play</option>
+					<option value="reverse">Reverse Direction</option>
+					<option value="jump-to-live">Jump to Live</option>
+					<option value="none">None</option>
+				</sdpi-select>
+			</sdpi-item>
+
+			<sdpi-item label="Tap Display">
+				<sdpi-select setting="dial.tapAction" default="none">
+					<option value="none">None</option>
+					<option value="play-pause">Play / Pause</option>
+					<option value="set-1x-play">Set 1x and Play</option>
+					<option value="reverse">Reverse Direction</option>
+					<option value="jump-to-live">Jump to Live</option>
+				</sdpi-select>
+			</sdpi-item>
+
+			<sdpi-item label="Long Touch">
+				<sdpi-select setting="dial.longTouchAction" default="none">
+					<option value="none">None</option>
+					<option value="play-pause">Play / Pause</option>
+					<option value="set-1x-play">Set 1x and Play</option>
+					<option value="reverse">Reverse Direction</option>
+					<option value="jump-to-live">Jump to Live</option>
+				</sdpi-select>
+			</sdpi-item>
+			<% } %>
+
+			<%- include('dial-appearance') %>
+		</div>
 
 		<%- include('action-settings-footer') %>
 
+		<!-- Key-icon appearance — keypad only (a dial has no key icon). -->
+		<div id="keypad-appearance">
 		<%- include('title-overrides') %>
 
 		<%- include('color-overrides', { slots: ['backgroundColor', 'textColor', 'graphic1Color'], defaults: require('./data/icon-defaults.json')['replay-control'] }) %>
 		<%- include('border-overrides', { defaults: require('./data/icon-defaults.json')['replay-control'] }) %>
 		<%- include('graphic-overrides') %>
 		<%- include('common-settings') %>
+		</div>
 
 		<%- include('key-bindings-section', { keyBindings: require('./data/key-bindings.json').replayControl }) %>
+
+		<%- include('dial-controller') %>
 
 		<script>
 			async function initialize() {
@@ -137,6 +291,44 @@
 						}
 					});
 				}
+
+				// Dial Mode visibility (#1316)
+				const dialModeSelect = document.getElementById("dial-mode-select");
+				if (dialModeSelect) {
+					updateDialVisibility(dialModeSelect.value || "speed");
+
+					dialModeSelect.addEventListener("change", (ev) => {
+						updateDialVisibility(ev.target.value || "speed");
+					});
+					dialModeSelect.addEventListener("input", (ev) => {
+						updateDialVisibility(ev.target.value || "speed");
+					});
+
+					let lastDialMode = dialModeSelect.value || "speed";
+					window.irdPoll(() => {
+						const currentDialMode = dialModeSelect.value;
+						if (currentDialMode && currentDialMode !== lastDialMode) {
+							lastDialMode = currentDialMode;
+							updateDialVisibility(currentDialMode);
+						}
+					});
+				}
+
+				// A ladder with no speed on it would be a dial that does nothing, so
+				// the last ticked box of the Speeds grid refuses to clear.
+				const speedStopsGrid = document.getElementById("dial-speed-stops-grid");
+				if (speedStopsGrid) window.irdKeepOneChecked(speedStopsGrid);
+
+				// Switch to the dial view last, so a slow or failed controller lookup
+				// still leaves a fully functional keypad PI (the default view).
+				if ((await window.irdResolveController()) === "Encoder") {
+					window.irdApplyDialView();
+				}
+			}
+
+			// The Speeds grid belongs to the dial's Speed Control mode only.
+			function updateDialVisibility(mode) {
+				document.getElementById("dial-speed-stops-section")?.classList.toggle("hidden", mode !== "speed");
 			}
 
 			function updateVisibility(mode) {

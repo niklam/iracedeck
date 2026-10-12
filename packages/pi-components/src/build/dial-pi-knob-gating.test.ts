@@ -36,6 +36,7 @@ const DIAL_TEMPLATES = new Set([
   "setup-fuel",
   "setup-hybrid",
   "setup-traction",
+  "replay-control",
   "replay-markers",
   "splits-delta-cycle",
   "view-adjustment",
@@ -135,7 +136,7 @@ describe("dial Property Inspectors on a knob (#1013)", () => {
     rmSync(tmp, { recursive: true, force: true });
   });
 
-  it("finds all seventeen dial templates", () => {
+  it("finds all eighteen dial templates", () => {
     expect(dialNames).toEqual([...DIAL_TEMPLATES].sort());
   });
 
