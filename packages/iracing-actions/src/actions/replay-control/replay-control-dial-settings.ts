@@ -18,7 +18,14 @@ export const REPLAY_DIAL_MODES = ["speed", "frame-jog"] as const;
 export type ReplayControlDialMode = (typeof REPLAY_DIAL_MODES)[number];
 
 /** What a dial gesture slot can run. Shared by every dial mode, so changing the Mode never changes the presses. */
-export const REPLAY_DIAL_GESTURES = ["play-pause", "set-1x-play", "reverse", "jump-to-live", "none"] as const;
+export const REPLAY_DIAL_GESTURES = [
+  "play-pause",
+  "set-1x-play",
+  "reverse",
+  "jump-to-live",
+  "jump-to-green-flag",
+  "none",
+] as const;
 
 export type ReplayControlDialGesture = (typeof REPLAY_DIAL_GESTURES)[number];
 

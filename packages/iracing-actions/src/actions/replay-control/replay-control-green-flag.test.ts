@@ -27,6 +27,29 @@ vi.mock("@iracedeck/iracing-sdk", async (importOriginal) => ({
   getAllCarNumbers: vi.fn(() => []),
 }));
 
+// The dial surface has its own suite (`replay-control-dial-surface.test.ts`), the dial's Jump to Green Flag
+// gesture included; here the action only needs one to construct.
+const dialHost = vi.hoisted(() => ({
+  current: null as { jumpToGreenFlag(): void; canJumpToGreenFlag(): boolean } | null,
+}));
+
+vi.mock("./replay-control-dial-surface.js", () => ({
+  ReplayControlDialSurface: class MockReplayControlDialSurface {
+    constructor(host: { jumpToGreenFlag(): void; canJumpToGreenFlag(): boolean }) {
+      dialHost.current = host;
+    }
+
+    willAppear = vi.fn(async () => {});
+    willDisappear = vi.fn();
+    didReceiveSettings = vi.fn(async () => {});
+    rotate = vi.fn();
+    down = vi.fn();
+    up = vi.fn(async () => {});
+    touchTap = vi.fn();
+    onTick = vi.fn();
+  },
+}));
+
 vi.mock("@iracedeck/deck-iracing", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@iracedeck/deck-iracing")>()),
   getCommands: vi.fn(),
@@ -99,7 +122,10 @@ type AppearEvent = Parameters<ReplayControl["onWillAppear"]>[0];
 const GREEN = { mode: "jump-to-green-flag" };
 
 function fakeEvent(actionId: string, settings: Record<string, unknown> = GREEN) {
-  return { action: { id: actionId, setTitle: vi.fn(), setImage: vi.fn() }, payload: { settings } };
+  return {
+    action: { id: actionId, isDial: () => false, setTitle: vi.fn(), setImage: vi.fn() },
+    payload: { settings },
+  };
 }
 
 const mockReplay = {
@@ -701,24 +727,6 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
       expect(action["logger"].info).toHaveBeenCalledWith("Jump to green: jump cancelled by next-lap");
       expect(action["activeFastestLapPress"]).toBeNull();
     });
-
-    it("does nothing on a dial: a single moment has no direction to turn in", async () => {
-      fakeReplay(action, { sessionTypes: WEEKEND_TYPES, layout: WEEKEND, cursor: IN_RACE });
-      greenAt(30_215);
-
-      await action.onDialRotate({
-        action: { id: "ctx-dial" },
-        payload: { settings: GREEN, ticks: 1 },
-      } as unknown as Parameters<ReplayControl["onDialRotate"]>[0]);
-      await action.onDialDown({
-        action: { id: "ctx-dial" },
-        payload: { settings: GREEN },
-      } as unknown as Parameters<ReplayControl["onDialDown"]>[0]);
-      await vi.runAllTimersAsync();
-
-      expect(countReplayCommands()).toBe(0);
-      expect(mockStore.greens.findGreen).not.toHaveBeenCalled();
-    });
   });
 
   describe("no recorded green: the pole car's lap 1 from the lap record", () => {
@@ -1194,6 +1202,47 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
         "Jump to green: could not switch the camera back; it is left on the pole car",
       );
       expect(mockReplay.setPlaySpeed).toHaveBeenLastCalledWith(1, false);
+    });
+  });
+
+  describe("the dial's gesture slot", () => {
+    const host = () => dialHost.current as NonNullable<typeof dialHost.current>;
+
+    it("runs the keypad's own press: the same lookup, the same single jump", async () => {
+      fakeReplay(action, { sessionTypes: WEEKEND_TYPES, layout: WEEKEND, cursor: IN_RACE });
+      greenAt(30_215);
+
+      host().jumpToGreenFlag();
+      await vi.runAllTimersAsync();
+
+      expect(mockStore.greens.findGreen.mock.calls[0][0]).toMatchObject({ sessionNum: 2, sessionUniqueId: 3 });
+      expect(mockReplay.setPlayPosition).toHaveBeenCalledExactlyOnceWith(expect.anything(), 29_915);
+      expect(mockReplay.setPlaySpeed).toHaveBeenCalledExactlyOnceWith(1, false);
+      expect(mockCamera.switchNum).not.toHaveBeenCalled();
+    });
+
+    it("shares the keypad's guards and its in-flight slot", async () => {
+      fakeReplay(action, { sessionTypes: WEEKEND_TYPES, layout: WEEKEND, cursor: IN_RACE });
+      mockReplay.setPlayPosition.mockImplementation(() => true);
+      greenAt(30_215);
+
+      await press("ctx-key");
+      await vi.advanceTimersByTimeAsync(200);
+      host().jumpToGreenFlag();
+
+      expect(mockReplay.setPlayPosition).toHaveBeenCalledTimes(1);
+      expect(action["logger"].info).toHaveBeenCalledWith("Jump to green: previous jump still in flight; press ignored");
+      expect(action["activeFastestLapPress"]?.contextId).toBe("ctx-key");
+    });
+
+    it("says whether a press has a race to aim at, which is what the hold preview shows", () => {
+      expect(host().canJumpToGreenFlag()).toBe(false);
+
+      fakeReplay(action, { sessionTypes: ["Practice"], layout: [WEEKEND[0]], cursor: 5_000 });
+      expect(host().canJumpToGreenFlag()).toBe(false);
+
+      fakeReplay(action, { sessionTypes: WEEKEND_TYPES, layout: WEEKEND, cursor: 5_000 });
+      expect(host().canJumpToGreenFlag()).toBe(true);
     });
   });
 

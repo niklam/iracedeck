@@ -112,6 +112,13 @@ export interface ReplayControlDialHost {
   setLocalSpeed(speed: number, slowMotion: boolean): void;
   /** The keypad's Jump to Live, which takes the replay cursor itself, under its own mode name (`jump-to-live`). */
   jumpToLive(): void;
+  /**
+   * The keypad's Jump to Green Flag press (#1354): its guards, its record
+   * lookup and its fallback, and the replay cursor taken by the jump it starts.
+   */
+  jumpToGreenFlag(): void;
+  /** Whether that press has a race session to aim at; false is the one case a Jump to Green Flag key greys for. */
+  canJumpToGreenFlag(): boolean;
   /** Redraws the keypad keys whose icon follows the replay speed. */
   refreshKeys(): void;
 }
@@ -136,11 +143,12 @@ interface DialGesture {
   /** Runs it. Called only while a replay is on screen. */
   run(env: GestureEnv): void;
   /**
-   * What a release would do right now, for the hold preview (#1120). Every
-   * outcome here is computable from the live and the remembered speed, so
-   * every gesture previews; called only while a replay is on screen.
+   * What a release would do right now, for the hold preview (#1120), or null
+   * when it would do nothing, which previews nothing rather than a promise.
+   * The speed gestures are computable from the live and the remembered speed
+   * and always preview; called only while a replay is on screen.
    */
-  preview(env: GestureEnv): string;
+  preview(env: GestureEnv): string | null;
 }
 
 type ActiveGesture = Exclude<ReplayControlDialGesture, "none">;
@@ -162,8 +170,9 @@ function playCaption(speed: ReplaySpeed): string {
  * and what its hold preview reads. A new gesture is one row here, one value in
  * `REPLAY_DIAL_GESTURES` and one option in the PI. Every send the surface
  * makes itself takes the replay cursor under a `dial-` owner name; Jump to
- * Live runs the keypad's own path instead, which takes it under that mode's
- * name, `jump-to-live`.
+ * Live and Jump to Green Flag run the keypad's own paths instead, which take
+ * it themselves: under the mode's name, `jump-to-live`, and as the replay jump
+ * the green press starts once its guards have passed.
  */
 const GESTURES: Record<ActiveGesture, DialGesture> = {
   // A playing replay pauses; a paused one resumes the remembered speed.
@@ -229,6 +238,17 @@ const GESTURES: Record<ActiveGesture, DialGesture> = {
       io.logger.info("Dial jumped to live");
     },
     preview: () => "LIVE",
+  },
+  // The counterpart of Jump to Live at the other end of a race review (#1354).
+  // The keypad's own press: with no race session in the replay it sends
+  // nothing, so the hold previews nothing either.
+  "jump-to-green-flag": {
+    label: "Jump to Green Flag",
+    run({ io, host }) {
+      host.jumpToGreenFlag();
+      io.logger.info("Dial pressed Jump to Green Flag");
+    },
+    preview: ({ host }) => (host.canJumpToGreenFlag() ? "GREEN" : null),
   },
 };
 
@@ -850,10 +870,11 @@ export class ReplayControlDialSurface {
 
     if (gesture === "none" || !this.isReplayOnScreen()) return null;
 
-    return {
-      text: GESTURES[gesture].preview({ io: this.io, host: this.host }),
-      color: resolveDialBoxColors(ctx.dial.colors, DIAL_ACCENT).value,
-    };
+    const text = GESTURES[gesture].preview({ io: this.io, host: this.host });
+
+    if (text === null) return null;
+
+    return { text, color: resolveDialBoxColors(ctx.dial.colors, DIAL_ACCENT).value };
   }
 
   /** The hold-preview threshold callback: draws the outcome and says whether it did. Fires nothing. */

@@ -3344,6 +3344,9 @@
     },
     "jump-to-live": {
       "method": "api"
+    },
+    "jump-to-green-flag": {
+      "method": "api"
     }
   },
   "replay-navigation": {

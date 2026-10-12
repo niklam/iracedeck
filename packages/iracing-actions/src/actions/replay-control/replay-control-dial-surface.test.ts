@@ -120,6 +120,8 @@ const host = {
   telemetry: vi.fn(() => env.telemetry),
   setLocalSpeed: vi.fn((_speed: number, _slowMotion: boolean) => undefined),
   jumpToLive: vi.fn(() => undefined),
+  jumpToGreenFlag: vi.fn(() => undefined),
+  canJumpToGreenFlag: vi.fn(() => true),
   refreshKeys: vi.fn(() => undefined),
 };
 
@@ -130,6 +132,8 @@ function makeSurface(): ReplayControlDialSurface {
     telemetry: host.telemetry,
     setLocalSpeed: host.setLocalSpeed,
     jumpToLive: host.jumpToLive,
+    jumpToGreenFlag: host.jumpToGreenFlag,
+    canJumpToGreenFlag: host.canJumpToGreenFlag,
     refreshKeys: host.refreshKeys,
   });
 }
@@ -1615,6 +1619,26 @@ describe("ReplayControlDialSurface", () => {
       });
     });
 
+    it("Jump to Green Flag runs the action's own press and sends nothing itself (#1354)", async () => {
+      const { surface, ctx } = await onScreen(speed(1));
+
+      await press(surface, ctx, dial({ pressAction: "jump-to-green-flag" }));
+
+      expect(host.jumpToGreenFlag).toHaveBeenCalledTimes(1);
+      expect(host.jumpToLive).not.toHaveBeenCalled();
+      expect(mocks.setPlaySpeed).not.toHaveBeenCalled();
+      expect(mocks.pause).not.toHaveBeenCalled();
+    });
+
+    it("Jump to Green Flag sends nothing from the car, like every other gesture (#1354)", async () => {
+      const { surface, ctx } = await onScreen(speed(1));
+
+      env.inReplay = false;
+      await press(surface, ctx, dial({ pressAction: "jump-to-green-flag" }));
+
+      expect(host.jumpToGreenFlag).not.toHaveBeenCalled();
+    });
+
     it("Jump to Live runs the action's own jump and sends nothing itself", async () => {
       const { surface, ctx } = await onScreen(speed(1));
 
@@ -2108,6 +2132,7 @@ describe("ReplayControlDialSurface", () => {
       ["Reverse while playing backward", "reverse", speed(-4, true), null, "► 1/4x"],
       ["Reverse while paused", "reverse", PAUSED, speed(2), "◄ 2x"],
       ["Jump to Live", "jump-to-live", speed(1), null, "LIVE"],
+      ["Jump to Green Flag", "jump-to-green-flag", speed(1), null, "GREEN"],
     ])("previews %s", async (_name, longPressAction, live, remembered, expected) => {
       if (remembered) noteTelemetrySpeed(remembered, Date.now());
 
@@ -2124,6 +2149,11 @@ describe("ReplayControlDialSurface", () => {
     it.each<[string, () => void, Record<string, unknown>]>([
       ["a long press set to None", () => undefined, { longPressAction: "none" }],
       ["a dial out of a replay", () => (env.inReplay = false), {}],
+      [
+        "Jump to Green Flag in a replay with no race session",
+        () => host.canJumpToGreenFlag.mockReturnValue(false),
+        { longPressAction: "jump-to-green-flag" },
+      ],
       ["absent telemetry", () => (env.telemetry = null), {}],
     ])("leaves the screen still for %s", async (_name, arrange, overrides) => {
       const d = dial(overrides);

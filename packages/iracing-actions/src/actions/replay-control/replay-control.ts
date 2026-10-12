@@ -920,6 +920,10 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     setLocalSpeed: (speed, slowMotion) => this.setLocalSpeed(speed, slowMotion),
     // The keypad's own Jump to Live, cursor take and replay-state note included.
     jumpToLive: () => this.executeMode("__dial__", this.parseSettings({ mode: "jump-to-live" })),
+    // The keypad's own Jump to Green Flag press (#1354), guards and fallback included.
+    jumpToGreenFlag: () => this.executeMode("__dial__", this.parseSettings({ mode: "jump-to-green-flag" })),
+    canJumpToGreenFlag: () =>
+      resolveGreenFlagTarget(this.sdkController.getSessionInfo(), this.sdkController.getCurrentTelemetry()) !== null,
     refreshKeys: () => this.updateAllTelemetryDisplays(),
   });
 

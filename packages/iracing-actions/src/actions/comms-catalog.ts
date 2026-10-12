@@ -793,7 +793,8 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
   // .tapAction / .longTouchAction) share the map, as on the other dials: each is
   // a replay broadcast, and no key binding is involved anywhere on this dial.
   // "none" is omitted (it issues no command). Separate from the keypad map above
-  // because `play-pause` and `jump-to-live` are values of both surfaces.
+  // because `play-pause`, `jump-to-live` and `jump-to-green-flag` are values of
+  // both surfaces.
   "replay-control-dial": entry("dial.mode", {
     speed: api,
     "frame-jog": api,
@@ -801,6 +802,7 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     "set-1x-play": api,
     reverse: api,
     "jump-to-live": api,
+    "jump-to-green-flag": api,
   }),
 
   "replay-navigation": entry(
