@@ -93,7 +93,7 @@ export interface ReplayControlDialHost {
   telemetrySpeed(): ReplaySpeed | null;
   /** The action's own optimistic speed cache, so the keypad's speed icons follow a dial send at once. */
   setLocalSpeed(speed: number, slowMotion: boolean): void;
-  /** The keypad's Jump to Live, which takes the replay cursor itself. */
+  /** The keypad's Jump to Live, which takes the replay cursor itself, under its own mode name (`jump-to-live`). */
   jumpToLive(): void;
   /** Redraws the keypad keys whose icon follows the replay speed. */
   refreshKeys(): void;
@@ -136,8 +136,10 @@ function playCaption(speed: ReplaySpeed): string {
 /**
  * The one table behind every gesture slot: its dial-hint label, what it runs
  * and what its hold preview reads. A new gesture is one row here, one value in
- * `REPLAY_DIAL_GESTURES` and one option in the PI. The replay-cursor owner
- * names all start `dial-`.
+ * `REPLAY_DIAL_GESTURES` and one option in the PI. Every send the surface
+ * makes itself takes the replay cursor under a `dial-` owner name; Jump to
+ * Live runs the keypad's own path instead, which takes it under that mode's
+ * name, `jump-to-live`.
  */
 const GESTURES: Record<ActiveGesture, DialGesture> = {
   // A playing replay pauses; a paused one resumes the remembered speed.
