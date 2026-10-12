@@ -57,7 +57,6 @@ import speedDisplayIconSvg from "@iracedeck/icons/replay-control/speed-display.s
 import speedIncreaseIconSvg from "@iracedeck/icons/replay-control/speed-increase.svg";
 import stopIconSvg from "@iracedeck/icons/replay-control/stop.svg";
 import {
-  findNearestCarOnTrack,
   getAllCarNumbers,
   getCarNumberRawFromSessionInfo,
   ReplayPosMode,
@@ -653,18 +652,6 @@ export function generateReplayControlSvg(
   const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
 
   return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic, bindingMissing });
-}
-
-/**
- * @internal Exported for testing
- *
- * Find the physically closest car ahead or behind the currently viewed car (CamCarIdx).
- * Delegates to the shared findNearestCarOnTrack from @iracedeck/iracing-sdk.
- */
-export function findAdjacentCarOnTrack(telemetry: TelemetryData | null, direction: "ahead" | "behind"): number | null {
-  const camCarIdx = (telemetry?.CamCarIdx as number) ?? -1;
-
-  return findNearestCarOnTrack(telemetry, camCarIdx, direction);
 }
 
 /**
