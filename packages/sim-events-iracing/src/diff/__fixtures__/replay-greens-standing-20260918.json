@@ -1,0 +1,56 @@
+[
+  {
+    "t": 39.25,
+    "sessionTick": 2540,
+    "SessionFlags": 268435968,
+    "SessionState": 1
+  },
+  {
+    "t": 45.95,
+    "sessionTick": 2943,
+    "SessionFlags": 268698112,
+    "SessionState": 1
+  },
+  {
+    "t": 47.88,
+    "sessionTick": 3059,
+    "SessionFlags": 537133568,
+    "SessionState": 2
+  },
+  {
+    "t": 53.9,
+    "sessionTick": 3418,
+    "SessionFlags": 1074004480,
+    "SessionState": 2
+  },
+  {
+    "t": 56.98,
+    "sessionTick": 3603,
+    "SessionFlags": -2147220988,
+    "SessionState": 4
+  },
+  {
+    "t": 57.1,
+    "sessionTick": 3610,
+    "SessionFlags": -2147221500,
+    "SessionState": 4
+  },
+  {
+    "t": 61.88,
+    "sessionTick": 3897,
+    "SessionFlags": -2147221468,
+    "SessionState": 4
+  },
+  {
+    "t": 62,
+    "sessionTick": 3904,
+    "SessionFlags": 268697636,
+    "SessionState": 4
+  },
+  {
+    "t": 65.03,
+    "sessionTick": 4086,
+    "SessionFlags": 268697604,
+    "SessionState": 4
+  }
+]

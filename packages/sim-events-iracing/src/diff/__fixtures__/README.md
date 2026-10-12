@@ -62,6 +62,8 @@ All three were cut with a one-off node script over the captures: `t` = `sessionT
 
 Both were cut with a one-off node script over the snapshots: `t` = `SessionTime` rounded to 0.01 s, everything else as recorded.
 
+`replay-greens-standing-20260918.json` — 9 ticks cut from `local/telemetry-watch-20260918-185032-545.jsonl` (issue #1354), the **standing start** of the road race `caution-road-20260918.json` begins 3 s after: from the first record (39.25 s, `GetInCar`) through the lights (`StartReady` at 47.88 s, `StartSet` at 53.90 s) to the green flag coming down (65.03 s). Only `SessionFlags` and `SessionState` are kept, deduplicated on the two, plus `t` and the watch's `sessionTick`, which no code reads and which is what the fixture is evidence of: `SessionState` goes from `Warmup` straight to `Racing` — a standing start has no `ParadeLaps` — on session tick 3603 (56.98 s), and `StartGo` and `Green` rise in that same record. `rolling-start-formation-20260917.json` shows the same for a rolling start (`ParadeLaps` to `Racing` with `Green | StartGo` on one record, 201.18 s). Together they are the capture the #1354 spec asks for before trusting the state flip as the green. Neither capture has a replay frame, so `replay-greens.captures.test.ts`, which replays these two and both caution fixtures through the green recorder, makes one from the session time.
+
 The captures themselves live in the gitignored `local/`, so these files are the committed evidence.
 Regenerate one with the script in the #1127 plan only if the capture is available (the road cut uses
 the same script with the road capture as its source and `sessionTime >= 60` as its window); otherwise
