@@ -39,3 +39,22 @@ export function formatSpeedDisplay(speed: number, slowMotion: boolean): string {
 
   return `${speed}x`;
 }
+
+/**
+ * The play-direction marks of {@link formatPlayCaption}: U+25BA and U+25C4,
+ * the two pointers the bundled Arimo carries. The look-alike U+25B6 / U+25C0
+ * are not in it and draw as empty boxes wherever the dial's screen is
+ * rasterized with the bundled fonts (a Stream Dock knob).
+ */
+const PLAY_FORWARD_MARK = "►";
+const PLAY_REVERSE_MARK = "◄";
+
+/**
+ * Formats a playing speed as a direction mark and its magnitude — `► 4x`,
+ * `◄ 1/4x` — for the dial's resume caption and hold preview (#1316), where
+ * the arrow says which way the replay will run. A speed of 0 has no direction;
+ * callers pass a non-zero one.
+ */
+export function formatPlayCaption(speed: number, slowMotion: boolean): string {
+  return `${speed < 0 ? PLAY_REVERSE_MARK : PLAY_FORWARD_MARK} ${formatSpeedDisplay(Math.abs(speed), slowMotion)}`;
+}
