@@ -95,7 +95,7 @@ import {
 import { replayControlDialField } from "./replay-control-dial-settings.js";
 import { ReplayControlDialSurface } from "./replay-control-dial-surface.js";
 import { formatSpeedDisplay, parseSpeedSetting } from "./replay-speed-format.js";
-import { clearDialPendingSpeed, noteTelemetrySpeed } from "./replay-speed-state.js";
+import { noteTelemetrySpeed } from "./replay-speed-state.js";
 
 // The speed text helpers moved to their own module so the dial surface shares
 // them (#1316); re-exported so this module's API is unchanged.
@@ -845,8 +845,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
 
       return telemetry ? replaySpeedFromTelemetry(telemetry) : null;
     },
-    // The cache write alone: a dial's send must not clear its own pending speed.
-    setLocalSpeed: (speed, slowMotion) => this.writeLocalSpeed(speed, slowMotion),
+    setLocalSpeed: (speed, slowMotion) => this.setLocalSpeed(speed, slowMotion),
     // The keypad's own Jump to Live, cursor take and replay-state note included.
     jumpToLive: () => this.executeMode("__dial__", this.parseSettings({ mode: "jump-to-live" })),
     refreshKeys: () => this.updateAllTelemetryDisplays(),
@@ -1093,16 +1092,8 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
   /**
    * Optimistically update the local speed cache after sending a command.
    * Prevents duplicate speeds on rapid presses before telemetry catches up.
-   * A speed sent from here also supersedes one a dial sent that telemetry has
-   * not reported yet (#1316), so the dial reads this one at once.
    */
   private setLocalSpeed(speed: number, slowMotion: boolean): void {
-    clearDialPendingSpeed();
-    this.writeLocalSpeed(speed, slowMotion);
-  }
-
-  /** Writes a speed into every context's cache, and nothing else: what a dial's own send calls. */
-  private writeLocalSpeed(speed: number, slowMotion: boolean): void {
     for (const [contextId] of this.replaySpeed) {
       this.replaySpeed.set(contextId, speed);
       this.replaySlowMotion.set(contextId, slowMotion);

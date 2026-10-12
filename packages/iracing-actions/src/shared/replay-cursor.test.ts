@@ -8,6 +8,7 @@ import {
   clearReplayLanding,
   currentReplayCursorOwner,
   pendingReplayJumpSpeed,
+  onReplayCursorTaken,
   pendingReplayLanding,
   recordReplayJumpSpeed,
   recordReplayLanding,
@@ -188,6 +189,73 @@ describe("replay-cursor", () => {
       clearReplayLanding();
 
       expect(pendingReplayJumpSpeed()).toBe(rewinding);
+    });
+  });
+
+  describe("onReplayCursorTaken (#1316)", () => {
+    it("tells a listener on every one-shot command, claim in flight or not", () => {
+      const taken = vi.fn();
+      const stop = onReplayCursorTaken(taken);
+
+      cancelReplayCursorOwner("play-pause");
+      expect(taken).toHaveBeenCalledTimes(1);
+
+      claimReplayCursor("fastest-lap walk");
+      taken.mockClear();
+      cancelReplayCursorOwner("next marker");
+      expect(taken).toHaveBeenCalledTimes(1);
+      stop();
+    });
+
+    it("tells a listener on a claim", () => {
+      const taken = vi.fn();
+      const stop = onReplayCursorTaken(taken);
+
+      claimReplayCursor("fastest-lap walk");
+
+      expect(taken).toHaveBeenCalledTimes(1);
+      stop();
+    });
+
+    it("says nothing for what does not take the cursor: a release, a landing, a read", () => {
+      const taken = vi.fn();
+      const claim = claimReplayCursor("fastest-lap walk");
+      const stop = onReplayCursorTaken(taken);
+
+      recordReplayLanding(4_000, 10_000);
+      pendingReplayLanding();
+      clearReplayLanding();
+      currentReplayCursorOwner();
+      claim.release();
+
+      expect(taken).not.toHaveBeenCalled();
+      stop();
+    });
+
+    it("stops telling a listener that unsubscribed, and only that one", () => {
+      const first = vi.fn();
+      const second = vi.fn();
+      const stopFirst = onReplayCursorTaken(first);
+      const stopSecond = onReplayCursorTaken(second);
+
+      stopFirst();
+      cancelReplayCursorOwner("play-pause");
+
+      expect(first).not.toHaveBeenCalled();
+      expect(second).toHaveBeenCalledTimes(1);
+      stopSecond();
+    });
+
+    it("keeps its listeners through a reset: they are wiring, not state", () => {
+      const taken = vi.fn();
+      const stop = onReplayCursorTaken(taken);
+
+      _resetReplayCursor();
+      expect(taken).not.toHaveBeenCalled();
+
+      cancelReplayCursorOwner("play-pause");
+      expect(taken).toHaveBeenCalledTimes(1);
+      stop();
     });
   });
 });

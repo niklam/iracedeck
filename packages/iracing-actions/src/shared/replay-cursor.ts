@@ -102,6 +102,32 @@ export interface ReplayJumpSpeed {
 let jumpSpeed: ReplayJumpSpeed | null = null;
 
 /**
+ * Who is told when the cursor is taken. Module wiring, registered once at
+ * load, not state: {@link _resetReplayCursor} leaves it alone.
+ */
+const takenListeners = new Set<() => void>();
+
+/**
+ * Runs `listener` whenever something takes the cursor — a claim, or any
+ * one-shot command's {@link cancelReplayCursorOwner} — at the point the pending
+ * landing is cleared. For a module that keeps its own "what this plugin last
+ * sent the replay" value (the Replay Control dial's pending speed, #1316):
+ * every replay command of every action takes the cursor first, so this is the
+ * one place such a value is superseded. Returns the unsubscribe.
+ */
+export function onReplayCursorTaken(listener: () => void): () => void {
+  takenListeners.add(listener);
+
+  return () => {
+    takenListeners.delete(listener);
+  };
+}
+
+function notifyCursorTaken(): void {
+  for (const listener of takenListeners) listener();
+}
+
+/**
  * Claim the cursor for a long-running driver. An earlier claim still standing
  * is cancelled first, naming the new owner. `onCancelled` runs synchronously,
  * once, when something takes the cursor — the place to log
@@ -110,6 +136,7 @@ let jumpSpeed: ReplayJumpSpeed | null = null;
 export function claimReplayCursor(owner: string, onCancelled?: (by: string) => void): ReplayCursorClaim {
   landing = null;
   jumpSpeed = null;
+  notifyCursorTaken();
   current?.cancel(owner);
   const claim = new Claim(owner, onCancelled);
 
@@ -129,6 +156,7 @@ export function claimReplayCursor(owner: string, onCancelled?: (by: string) => v
 export function cancelReplayCursorOwner(by: string): string | null {
   landing = null;
   jumpSpeed = null;
+  notifyCursorTaken();
   const claim = current;
 
   if (claim === null) return null;

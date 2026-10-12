@@ -10,11 +10,12 @@
  *   walk from the old speed and send the same stop again. After a dial send
  *   the live speed therefore reads as the sent target until telemetry reports
  *   it or {@link DIAL_SPEED_HOLD_MS} passes — the Replay Markers landing hold
- *   (#1230), applied to speed. A pause is a sent speed too (0x). A speed this
- *   action's keys send supersedes it at once ({@link clearDialPendingSpeed}).
- *   A change made from iRacing's own replay bar inside the hold cannot be told
- *   from a stale tick, so it is masked until the hold runs out, which is when
- *   the hold heals itself.
+ *   (#1230), applied to speed. A pause is a sent speed too (0x). Whatever
+ *   takes the replay cursor next supersedes it at once — any replay command
+ *   of any action, since each takes the cursor before it sends
+ *   (`shared/replay-cursor.ts`). A change made from iRacing's own replay bar
+ *   inside the hold cannot be told from a stale tick, so it is masked until
+ *   the hold runs out, which is when the hold heals itself.
  * - The **remembered speed**: the last non-zero speed the replay played at,
  *   which Play/Pause resumes. It follows telemetry, so it is right whoever set
  *   the speed — a dial, a key or iRacing's own replay bar — and a non-zero dial
@@ -24,6 +25,7 @@
  * Time is passed in, never read here. In memory only: a plugin restart starts
  * again at 1x, and nothing here belongs in persisted settings.
  */
+import { onReplayCursorTaken } from "../../shared/replay-cursor.js";
 import type { ReplaySpeed } from "./replay-control-dial-mode.js";
 import { isSameSpeed } from "./replay-speed-ladder.js";
 
@@ -90,16 +92,37 @@ export function noteDialSpeedSent(target: ReplaySpeed, nowMs: number): void {
 }
 
 /**
- * Drops the pending speed: something other than a dial just sent a replay
- * speed (a key's Play, Set Speed, a pause), so the dial's own send no longer
- * says what the replay is doing and the live speed follows telemetry again at
- * once. Without it a key press inside the hold would be masked: the box would
- * still read the dial's speed, and Frame Jog would step a replay it believes
- * paused. The remembered speed is left alone.
+ * Drops the pending speed: something else just took the replay cursor to send
+ * a command of its own, so the dial's send no longer says what the replay is
+ * doing and the live speed follows telemetry again at once. Without it a key's
+ * Play inside the hold would be masked: the box would still read the dial's
+ * speed, and Frame Jog would step a replay it believes paused. The remembered
+ * speed is left alone. Runs on every cursor take (registered below); a dial's
+ * own take goes through {@link keepDialPendingSpeed}.
  */
 export function clearDialPendingSpeed(): void {
   pending = null;
 }
+
+/**
+ * Runs `take` — a dial taking the replay cursor for its own command — and
+ * puts back the pending speed that stood before it. A dial's command does not
+ * supersede the dial's last send the way another action's does: Frame Jog
+ * pauses and then steps, and the step must still read the replay as paused.
+ * A speed the dial sends next replaces it through {@link noteDialSpeedSent}.
+ */
+export function keepDialPendingSpeed<T>(take: () => T): T {
+  const held = pending;
+
+  try {
+    return take();
+  } finally {
+    pending = held;
+  }
+}
+
+// Every replay command of every action takes the cursor before it sends.
+onReplayCursorTaken(clearDialPendingSpeed);
 
 /**
  * Feeds one telemetry sample to the remembered speed. Call it on every tick

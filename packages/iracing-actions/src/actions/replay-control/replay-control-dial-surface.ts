@@ -47,7 +47,13 @@ import type {
 import { frameJogMode } from "./replay-control-frame-jog.js";
 import { speedMode } from "./replay-control-speed-mode.js";
 import { formatPlayCaption, formatSpeedDisplay } from "./replay-speed-format.js";
-import { noteDialSpeedSent, rememberedSpeed, resolveLiveSpeed, reverseRememberedSpeed } from "./replay-speed-state.js";
+import {
+  keepDialPendingSpeed,
+  noteDialSpeedSent,
+  rememberedSpeed,
+  resolveLiveSpeed,
+  reverseRememberedSpeed,
+} from "./replay-speed-state.js";
 
 /** The dash box's default accent — border, label and value, each overridable. */
 const DIAL_ACCENT = "#3498db";
@@ -268,8 +274,10 @@ export class ReplayControlDialSurface {
   constructor(private readonly host: ReplayControlDialHost) {
     const send: ReplayDialModeIo["send"] = (owner, run) => {
       // Takes the cursor from an in-flight Jump to Fastest Lap walk (#1203): a
-      // speed change mid-walk would make the walk misread its own probes.
-      cancelReplayCursorOwner(owner);
+      // speed change mid-walk would make the walk misread its own probes. A
+      // cursor take drops the dial's pending speed, since another action's
+      // command supersedes it; the dial's own take keeps it.
+      keepDialPendingSpeed(() => cancelReplayCursorOwner(owner));
 
       return run(getCommands().replay);
     };

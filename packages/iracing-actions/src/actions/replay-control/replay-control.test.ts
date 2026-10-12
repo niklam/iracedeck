@@ -2098,12 +2098,16 @@ describe("ReplayControl", () => {
       });
     });
 
-    describe("a speed a key sends supersedes the dial's pending one", () => {
+    describe("a command a key sends supersedes the dial's pending speed", () => {
+      // Every keypad mode takes the replay cursor before it sends
+      // (`cancelFastestLapWalk`), and a cursor take drops the pending speed.
       const keyReplay = {
         play: vi.fn(() => true),
         pause: vi.fn(() => true),
         setPlaySpeed: vi.fn(() => true),
         fastForward: vi.fn(() => true),
+        nextLap: vi.fn(() => true),
+        goToEnd: vi.fn(() => true),
       };
       const PAUSED = { speed: 0, slowMotion: false };
       /** What the tick still carries inside the hold: the replay at 4x. */
@@ -2122,6 +2126,8 @@ describe("ReplayControl", () => {
         ["Stop", { mode: "stop" }],
         ["Fast Forward", { mode: "fast-forward", stepRate: 1 }],
         ["Set Speed", { mode: "set-speed", speed: "2" }],
+        ["Next Lap", { mode: "next-lap" }],
+        ["Jump to Live", { mode: "jump-to-live" }],
       ])("a %s key inside the hold lets the live speed follow telemetry at once", async (_name, settings) => {
         await action.onWillAppear(keyEvent("key-1", settings) as never);
         // A Frame Jog detent paused the playing replay: the dial reads 0x for the hold.
@@ -2156,12 +2162,22 @@ describe("ReplayControl", () => {
         expect(rememberedSpeed()).toEqual(STALE_4X);
       });
 
-      it("the dial's own send does not clear its pending speed: the host writes the cache alone", async () => {
+      it("a Speed Display key, which sends nothing, leaves the pending speed standing", async () => {
+        await action.onWillAppear(keyEvent("key-1", { mode: "speed-display" }) as never);
+        noteDialSpeedSent(PAUSED, t0);
+
+        await action.onKeyDown(keyEvent("key-1", { mode: "speed-display" }) as never);
+
+        expect(resolveLiveSpeed(STALE_4X, t0 + 10)).toEqual(PAUSED);
+      });
+
+      it("the cache write a dial's own send asks the host for leaves the pending speed standing", async () => {
         await action.onWillAppear(dialEvent() as never);
         tickOf("dial-1")(REPLAY_4X);
         noteDialSpeedSent(PAUSED, t0);
 
         host().setLocalSpeed(0, false);
+        host().refreshKeys();
 
         expect(action["replaySpeed"].get("dial-1")).toBe(0);
         expect(resolveLiveSpeed(STALE_4X, t0 + 10)).toEqual(PAUSED);

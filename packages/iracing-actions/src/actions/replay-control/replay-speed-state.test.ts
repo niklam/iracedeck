@@ -1,10 +1,12 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { _resetReplayCursor, cancelReplayCursorOwner, claimReplayCursor } from "../../shared/replay-cursor.js";
 import type { ReplaySpeed } from "./replay-control-dial-mode.js";
 import {
   _resetReplaySpeedState,
   clearDialPendingSpeed,
   DIAL_SPEED_HOLD_MS,
+  keepDialPendingSpeed,
   noteDialSpeedSent,
   noteTelemetrySpeed,
   rememberedSpeed,
@@ -241,6 +243,82 @@ describe("replay-speed-state", () => {
       noteDialSpeedSent(speed(4), T0 + 10);
 
       expect(resolveLiveSpeed(speed(1), T0 + 20)).toEqual(speed(4));
+    });
+  });
+
+  describe("taking the replay cursor", () => {
+    beforeEach(() => {
+      _resetReplayCursor();
+    });
+
+    it("should drop the pending speed on any one-shot command, whichever action sends it", () => {
+      noteDialSpeedSent(PAUSED, T0);
+      expect(resolveLiveSpeed(speed(4), T0 + 10)).toEqual(PAUSED);
+
+      // Replay Transport's Play, a key's Set Speed, a marker jump: each cancels first.
+      cancelReplayCursorOwner("replay-transport-play");
+
+      expect(resolveLiveSpeed(speed(4), T0 + 20)).toEqual(speed(4));
+    });
+
+    it("should drop the pending speed when a walk claims the cursor", () => {
+      noteDialSpeedSent(speed(8), T0);
+
+      claimReplayCursor("jump-to-fastest-lap");
+
+      expect(resolveLiveSpeed(speed(1), T0 + 10)).toEqual(speed(1));
+    });
+
+    it("should leave the remembered speed alone", () => {
+      noteDialSpeedSent(speed(4), T0);
+
+      cancelReplayCursorOwner("play-pause");
+
+      expect(rememberedSpeed()).toEqual(speed(4));
+    });
+
+    it("should stay wired through a cursor reset", () => {
+      _resetReplayCursor();
+      noteDialSpeedSent(PAUSED, T0);
+
+      cancelReplayCursorOwner("play-pause");
+
+      expect(resolveLiveSpeed(speed(4), T0 + 10)).toEqual(speed(4));
+    });
+
+    it("should keep the pending speed across a dial's own take", () => {
+      noteDialSpeedSent(PAUSED, T0);
+      const onCancelled = vi.fn();
+      claimReplayCursor("jump-to-fastest-lap", onCancelled);
+      // The claim dropped it; the dial pauses again and then takes the cursor for its step.
+      noteDialSpeedSent(PAUSED, T0 + 5);
+
+      const cancelled = keepDialPendingSpeed(() => cancelReplayCursorOwner("dial-frame-jog"));
+
+      // The take itself still happened.
+      expect(cancelled).toBe("jump-to-fastest-lap");
+      expect(onCancelled).toHaveBeenCalledWith("dial-frame-jog");
+      expect(resolveLiveSpeed(speed(4), T0 + 10)).toEqual(PAUSED);
+    });
+
+    it("should put the pending speed back even when the take throws", () => {
+      noteDialSpeedSent(speed(2), T0);
+
+      expect(() =>
+        keepDialPendingSpeed(() => {
+          cancelReplayCursorOwner("dial-speed");
+
+          throw new Error("no connection");
+        }),
+      ).toThrow("no connection");
+
+      expect(resolveLiveSpeed(speed(1), T0 + 10)).toEqual(speed(2));
+    });
+
+    it("should keep nothing when nothing was pending", () => {
+      keepDialPendingSpeed(() => cancelReplayCursorOwner("dial-speed"));
+
+      expect(resolveLiveSpeed(speed(1), T0)).toEqual(speed(1));
     });
   });
 });
