@@ -44,7 +44,13 @@ export interface ReplayDialModeIo {
   telemetry(): TelemetryData | null;
   /** Cancels the replay-cursor owner under `owner`, then runs `run` against the replay commands. Returns `run`'s result. */
   send(owner: string, run: (replay: ReplayCommand) => boolean): boolean;
-  /** Sends one `setPlaySpeed` through {@link send} and records it as the live speed; a non-zero target is also remembered as the resume speed. */
+  /**
+   * Sends one `setPlaySpeed` through {@link send} and records it as the live
+   * speed; a non-zero target is also remembered as the resume speed. A
+   * non-zero speed asked for while a frame move has not read back is held and
+   * sent when it has (true is returned at once): sent into a jump under way,
+   * it would end the jump somewhere else and play from there.
+   */
   setSpeed(owner: string, target: ReplaySpeed): boolean;
   /** Pauses through {@link send}. The speed that was playing stays the remembered resume speed, so Press resumes it. */
   pause(owner: string): boolean;

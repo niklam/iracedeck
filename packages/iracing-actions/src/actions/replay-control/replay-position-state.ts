@@ -44,9 +44,9 @@
  * every send. The two meet only at the cursor: a replay command of any other
  * action takes the cursor and drops the target, since the replay is no longer
  * headed there, while the dial's own commands keep it
- * ({@link keepReplayTarget}) — all but a speed that sets the replay playing,
- * which the surface ends it for ({@link clearReplayTarget}): a playing replay
- * is headed for no frame.
+ * ({@link keepReplayTarget}). The surface sends no speed that sets the replay
+ * playing while a target stands: sent into a jump under way it ends the jump
+ * somewhere else, so it is held until the target has read back.
  *
  * Time is passed in, never read here. In memory only, and one value for every
  * dial: iRacing has one replay position.
@@ -259,8 +259,7 @@ export function recordReplayTarget(frame: number, telemetry: TelemetryData | nul
  * Drops the pending target: the replay is no longer headed there, and the
  * position is telemetry's again. Runs on every cursor take (registered
  * below), which is another action sending a replay command of its own; a
- * dial's own take goes through {@link keepReplayTarget}, and the surface
- * calls this itself when the dial sets the replay playing.
+ * dial's own take goes through {@link keepReplayTarget}.
  */
 export function clearReplayTarget(): void {
   clear();
@@ -272,8 +271,7 @@ export function clearReplayTarget(): void {
  * of the dial's own does not end the move the dial has under way: a pause
  * sent during a jump leaves the jump's fate open, and a target that still
  * stands is what keeps the next turn from stepping into it. A move the dial
- * sends next replaces it through {@link recordReplayTarget}, and a speed that
- * sets the replay playing ends it through {@link clearReplayTarget}.
+ * sends next replaces it through {@link recordReplayTarget}.
  */
 export function keepReplayTarget<T>(take: () => T): T {
   const held = pending;

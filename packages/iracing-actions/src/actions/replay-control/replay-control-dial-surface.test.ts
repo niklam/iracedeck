@@ -1117,7 +1117,7 @@ describe("ReplayControlDialSurface", () => {
       expect(io.liveSpeed()).toEqual(PAUSED);
     });
 
-    it("a pause the dial itself sends leaves the move under way", async () => {
+    it("a command the dial itself sends leaves the move under way", async () => {
       const { surface } = await onScreen(PAUSED);
       const io = ioOf(surface);
 
@@ -1125,6 +1125,7 @@ describe("ReplayControlDialSurface", () => {
       io.jumpTo("dial-frame-jog", 640);
       io.pause("dial-play-pause");
       io.setSpeed("dial-speed", PAUSED);
+      io.send("dial-test", () => true);
       env.telemetry = pausedOn(612);
 
       // The jump's fate is open: still measured from its target, and no step into it.
@@ -1132,15 +1133,142 @@ describe("ReplayControlDialSurface", () => {
       expect(io.step("dial-frame-jog", 1)).toBe(false);
     });
 
-    it("a speed that sets the replay playing ends the move: it is no longer headed for a frame", async () => {
+    describe("a speed asked for while a move has not read back", () => {
+      const jog = () => dial({ mode: "frame-jog" });
+
+      /** A fast turn's jump to 5003 under way, as iRacing reports it. */
+      async function jumpUnderWay() {
+        const d = jog();
+        const { surface, ctx } = await onScreen(PAUSED, d);
+
+        surface.rotate(ctx as never, d, 3, false);
+        env.telemetry = SEEKING;
+
+        return { surface, ctx, d };
+      }
+
+      function lands(frame: number): void {
+        env.telemetry = { ...replayAt(PAUSED), ReplayFrameNum: frame } as TelemetryData;
+      }
+
+      it("holds a Play until the jump reads back, then sends it once", async () => {
+        const { surface, ctx, d } = await jumpUnderWay();
+
+        await press(surface, ctx, d);
+        await vi.advanceTimersByTimeAsync(200);
+
+        expect(mocks.setPlaySpeed).not.toHaveBeenCalled();
+
+        lands(5_003);
+        await vi.advanceTimersByTimeAsync(60);
+
+        expect(mocks.setPlaySpeed.mock.calls).toEqual([[1, false]]);
+
+        await vi.advanceTimersByTimeAsync(2_000);
+        expect(mocks.setPlaySpeed).toHaveBeenCalledTimes(1);
+      });
+
+      it("reports the held speed as taken, and shows the replay paused until it goes out", async () => {
+        const { surface } = await jumpUnderWay();
+        const io = ioOf(surface);
+
+        expect(io.setSpeed("dial-speed", speed(2))).toBe(true);
+        expect(io.liveSpeed()).toEqual(PAUSED);
+        expect(mocks.setPlaySpeed).not.toHaveBeenCalled();
+
+        lands(5_003);
+        await vi.advanceTimersByTimeAsync(60);
+
+        expect(mocks.setPlaySpeed.mock.calls).toEqual([[2, false]]);
+        expect(io.liveSpeed()).toEqual(speed(2));
+      });
+
+      it("sends a pause at once: it does a jump under way no harm", async () => {
+        const { surface } = await jumpUnderWay();
+
+        expect(ioOf(surface).pause("dial-play-pause")).toBe(true);
+        expect(mocks.pause).toHaveBeenCalledTimes(1);
+      });
+
+      it("drops the held speed when the move never lands", async () => {
+        const { surface, ctx, d } = await jumpUnderWay();
+
+        await press(surface, ctx, d);
+        // The jump ended somewhere else, and is given up.
+        lands(13_772);
+        await vi.advanceTimersByTimeAsync(REPLAY_TARGET_GIVE_UP_MS + 200);
+
+        expect(mocks.setPlaySpeed).not.toHaveBeenCalled();
+      });
+
+      it("drops the held speed when another action's command takes the replay", async () => {
+        const { surface, ctx, d } = await jumpUnderWay();
+
+        await press(surface, ctx, d);
+        cancelReplayCursorOwner("next-lap");
+        lands(21_400);
+        await vi.advanceTimersByTimeAsync(500);
+
+        expect(mocks.setPlaySpeed).not.toHaveBeenCalled();
+      });
+
+      it("drops the held speed when the dial is turned again", async () => {
+        const { surface, ctx, d } = await jumpUnderWay();
+
+        await press(surface, ctx, d);
+        surface.rotate(ctx as never, d, 2, false);
+        lands(5_005);
+        await vi.advanceTimersByTimeAsync(500);
+
+        expect(mocks.setPlaySpeed).not.toHaveBeenCalled();
+      });
+
+      it("drops the held speed when a pause follows it", async () => {
+        const { surface, ctx, d } = await jumpUnderWay();
+
+        await press(surface, ctx, d);
+        ioOf(surface).pause("dial-frame-jog");
+        lands(5_003);
+        await vi.advanceTimersByTimeAsync(500);
+
+        expect(mocks.setPlaySpeed).not.toHaveBeenCalled();
+      });
+
+      it("keeps only the newest speed asked for", async () => {
+        const { surface } = await jumpUnderWay();
+        const io = ioOf(surface);
+
+        io.setSpeed("dial-speed", speed(2));
+        io.setSpeed("dial-speed", speed(4));
+        lands(5_003);
+        await vi.advanceTimersByTimeAsync(60);
+
+        expect(mocks.setPlaySpeed.mock.calls).toEqual([[4, false]]);
+      });
+
+      it("sends a speed at once when nothing is under way", async () => {
+        const { surface } = await onScreen(PAUSED);
+
+        ioOf(surface).setSpeed("dial-speed", speed(2));
+
+        expect(mocks.setPlaySpeed.mock.calls).toEqual([[2, false]]);
+      });
+    });
+
+    it("a jog turn after a Play that followed a fast turn steps from where playback got to", async () => {
       const d = dial({ mode: "frame-jog" });
       const { surface, ctx } = await onScreen(PAUSED, d);
       const io = ioOf(surface);
 
-      // A fast turn, then Play before its jump has read back.
+      // A fast turn, then Play before its jump has read back: held, then sent on the landing.
       surface.rotate(ctx as never, d, 3, false);
       io.setSpeed("dial-play-pause", speed(4));
-      // Two seconds of playback later the replay is far past the target.
+      env.telemetry = { ...replayAt(PAUSED), ReplayFrameNum: 5_003 } as TelemetryData;
+      await vi.advanceTimersByTimeAsync(60);
+
+      expect(mocks.setPlaySpeed.mock.calls).toEqual([[4, false]]);
+
+      // Two seconds of playback later the replay is far past the turn's target.
       await vi.advanceTimersByTimeAsync(2_000);
       env.telemetry = { ...replayAt(speed(4)), ReplayFrameNum: 5_480 } as TelemetryData;
 
@@ -1149,7 +1277,7 @@ describe("ReplayControlDialSurface", () => {
       mocks.setPlayPosition.mockClear();
       surface.rotate(ctx as never, d, 1, false);
 
-      // The jog pauses and steps from where playback got to; it does not go back to 5003.
+      // The jog pauses and steps from there; it does not go back to 5003.
       expect(mocks.pause).toHaveBeenCalledTimes(1);
       expect(mocks.nextFrame).toHaveBeenCalledTimes(1);
       expect(mocks.setPlayPosition).not.toHaveBeenCalled();
@@ -1230,20 +1358,25 @@ describe("ReplayControlDialSurface", () => {
     });
 
     it("still takes a turn while a move of its own has not read back", async () => {
-      const { surface, ctx } = await onScreen(PAUSED);
+      const d = dial({ mode: "frame-jog" });
+      const { surface, ctx } = await onScreen(PAUSED, d);
 
       env.telemetry = { ...replayAt(PAUSED), ReplayFrameNum: 600 } as TelemetryData;
       ioOf(surface).jumpTo("dial-frame-jog", 640);
       env.telemetry = SEEKING;
       flagDown();
 
-      surface.rotate(ctx as never, dial(), 1, false);
+      surface.rotate(ctx as never, d, 1, false);
 
-      expect(mocks.setPlaySpeed).toHaveBeenCalledTimes(1);
+      expect(mocks.setPlayPosition.mock.calls).toEqual([
+        [ReplayPosMode.Begin, 640],
+        [ReplayPosMode.Begin, 641],
+      ]);
     });
 
     it("refuses again once that move is given up without reading back", async () => {
-      const { surface, ctx } = await onScreen(PAUSED);
+      const d = dial({ mode: "frame-jog" });
+      const { surface, ctx } = await onScreen(PAUSED, d);
 
       env.telemetry = { ...replayAt(PAUSED), ReplayFrameNum: 600 } as TelemetryData;
       ioOf(surface).jumpTo("dial-frame-jog", 640);
@@ -1251,9 +1384,10 @@ describe("ReplayControlDialSurface", () => {
       flagDown();
       await vi.advanceTimersByTimeAsync(REPLAY_TARGET_GIVE_UP_MS + 100);
 
-      surface.rotate(ctx as never, dial(), 1, false);
+      surface.rotate(ctx as never, d, 1, false);
 
-      expect(mocks.setPlaySpeed).not.toHaveBeenCalled();
+      expect(mocks.setPlayPosition).toHaveBeenCalledTimes(1);
+      expect(mocks.nextFrame).not.toHaveBeenCalled();
     });
 
     it("still takes a turn while something holds a claim on the replay cursor, and takes the cursor from it", async () => {

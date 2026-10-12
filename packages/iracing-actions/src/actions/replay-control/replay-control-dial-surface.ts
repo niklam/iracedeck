@@ -47,7 +47,6 @@ import type {
 import { frameJogMode } from "./replay-control-frame-jog.js";
 import { speedMode } from "./replay-control-speed-mode.js";
 import {
-  clearReplayTarget,
   keepReplayTarget,
   recordReplayTarget,
   REPLAY_TARGET_GIVE_UP_MS,
@@ -319,6 +318,13 @@ export class ReplayControlDialSurface {
    */
   private holdLapseTimer: ReturnType<typeof setTimeout> | null = null;
 
+  /**
+   * A speed asked for while a frame move had not read back, with the frame
+   * that move was headed for; null when none waits. One for the surface: the
+   * newest input replaces or drops it.
+   */
+  private heldSpeed: { readonly owner: string; readonly target: ReplaySpeed; readonly frame: number } | null = null;
+
   /** When the host's debounced state last said a replay is on screen (ms), or null before it ever did. */
   private replaySeenAt: number | null = null;
 
@@ -385,20 +391,34 @@ export class ReplayControlDialSurface {
         return sent;
       },
       setSpeed: (owner, target) => {
+        // A speed that sets the replay playing, sent into a jump still under
+        // way, ends the jump thousands of frames on and plays from there
+        // (measured: Play 40 ms into a fast turn's jump, about 9000 frames
+        // off). It is held until the move has read back, and the follow timer
+        // sends it then. A pause is harmless there and goes out at once.
+        const at = target.speed !== 0 ? position() : null;
+
+        if (at?.seeking === true) {
+          this.heldSpeed = { owner, target: { ...target }, frame: at.frame };
+          host.logger.debug(`Replay speed held: the move to frame ${at.frame} has not read back`);
+          this.armPositionFollow();
+
+          return true;
+        }
+
+        // A speed sent now is the newest word: one still waiting is dropped.
+        this.heldSpeed = null;
+
         const sent = send(owner, (replay) => replay.setPlaySpeed(target.speed, target.slowMotion));
 
-        if (sent) {
-          this.noteSpeedSent(target);
-
-          // A replay set playing is no longer headed for a frame: a target
-          // kept through it would send the next jog turn back there. A pause
-          // keeps it, since the move it belongs to may still be under way.
-          if (target.speed !== 0) clearReplayTarget();
-        }
+        if (sent) this.noteSpeedSent(target);
 
         return sent;
       },
       pause: (owner) => {
+        // A pause takes back a speed still waiting for a move to land.
+        this.heldSpeed = null;
+
         const sent = send(owner, (replay) => replay.pause());
 
         // 0x through the same pending hold a speed uses, so the live speed
@@ -475,6 +495,8 @@ export class ReplayControlDialSurface {
         return;
       }
 
+      // A new turn is the newest word: a speed still waiting for the last move is dropped.
+      this.heldSpeed = null;
       DIAL_MODES[ctx.dial.mode].rotate(ticks, ctx.dial, this.io);
       this.renderAll();
     });
@@ -680,6 +702,8 @@ export class ReplayControlDialSurface {
       return;
     }
 
+    // A new gesture is the newest word: a speed still waiting for a move is dropped.
+    this.heldSpeed = null;
     GESTURES[gesture].run({ io: this.io, host: this.host });
     this.renderAll();
   }
@@ -719,13 +743,39 @@ export class ReplayControlDialSurface {
     this.positionFollowTimer = setTimeout(() => {
       this.positionFollowTimer = null;
       this.withReading(() => {
-        const underWay = this.io.position()?.seeking === true;
+        const at = this.io.position();
+        const underWay = at?.seeking === true;
+
+        if (!underWay) this.releaseHeldSpeed(at?.frame ?? null);
 
         this.renderAll();
 
         if (underWay) this.armPositionFollow();
       });
     }, POSITION_FOLLOW_MS);
+  }
+
+  /**
+   * Sends the speed that was held for a move under way, now that nothing is.
+   * Only when the replay stands on the frame that move was headed for: a move
+   * given up, or dropped because another action sent a command of its own,
+   * leaves the replay somewhere the speed was not asked for, and the speed is
+   * dropped with it.
+   */
+  private releaseHeldSpeed(frame: number | null): void {
+    const held = this.heldSpeed;
+
+    if (held === null) return;
+
+    this.heldSpeed = null;
+
+    if (frame !== held.frame) {
+      this.host.logger.debug(`Held replay speed dropped: the move to frame ${held.frame} did not land`);
+
+      return;
+    }
+
+    this.io.setSpeed(held.owner, held.target);
   }
 
   /**
