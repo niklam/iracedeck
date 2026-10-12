@@ -421,7 +421,7 @@
               "value": "jump-to-fastest-lap",
               "label": "Jump to Fastest Lap",
               "additionalSettings": ["fastestLapTarget"],
-              "description": "Jump the replay to the fastest lap of either the viewed car or always your own car: looked up in the lap record iRaceDeck keeps live (lands about 1 s before the line and plays), falling back to a replay search when the lap was not recorded (session-scoped; no dial support)"
+              "description": "Jump the replay to the fastest lap of either the viewed car or always your own car: looked up in the lap record iRaceDeck keeps live (lands about 1 s before the line, then keeps, starts or stops playback as the Replay jump playback global setting says), falling back to a replay search when the lap was not recorded (session-scoped; no dial support)"
             },
             { "value": "next-car", "label": "Next Car" },
             { "value": "prev-car", "label": "Previous Car" },

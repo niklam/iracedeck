@@ -9,7 +9,7 @@ sidebar:
 
 Replay Markers lets you bookmark moments of a session and come back to them in the replay. Press **Add Marker** from the car the moment something happens — a close call, a pass, a mistake you want to review — and later, in the replay, press **Previous Marker** or **Next Marker** to jump straight there. Adding and deleting work the same while driving and while watching a replay, including the replay of the session you are in right now; the jumps work in the replay only, because iRacing accepts replay commands only when you are out of the car.
 
-A marker is a position in iRacing's replay recording. Jumping to one is a single iRacing replay command, so it is instant and needs no key binding.
+A marker is a position in iRacing's replay recording. Jumping to one uses iRacing's own replay commands, so it needs no key binding.
 
 On a Stream Deck+ dial or a Mirabox knob, Replay Markers becomes a marker dial: turn it to step through the markers and press it to add one — see [On a dial](#on-a-dial).
 
@@ -81,6 +81,8 @@ When a marker is deleted, the key briefly shows **MARKER DELETED**; a press with
 
 Jumps the replay to the next marker after the current moment. A marker less than one second ahead is skipped, so pressing again moves on to the one after instead of landing on the marker you just reached. With no marker ahead, nothing happens. It works in the replay: from the car, open the replay first.
 
+What the replay does once it has arrived is set by **Replay jump playback** in the [Settings window](/docs/getting-started/settings/#delays), on the **Delays** tab. With the default, **Remember state**, it carries on exactly as it was before the press: a paused replay stays paused on the marker, and a replay that was playing, in slow motion, fast-forwarding or rewinding continues at the same speed from there. **Play** always plays from the marker at normal speed, and **Stopped** always pauses on it. A replay that is moving is paused for the jump, and the setting is applied only once it has arrived; if it has not arrived after three seconds (or four times **Fastest Lap Search Delay**, if that is longer), it is left paused where it stopped, whatever the setting says. Pressing a Replay Control key during the jump cancels it, and that key's command stands. A second marker jump takes over instead, and remembers the state from before the first.
+
 The key turns grey whenever a press would do nothing — no marker ahead, not in a replay, or iRacing not running — and comes back as the replay plays or a marker is added. The grey look keeps your colour and title overrides, only faded.
 
 #### Details
@@ -100,6 +102,8 @@ The key turns grey whenever a press would do nothing — no marker ahead, not in
 
 Jumps the replay to the previous marker before the current moment. Pressed within two seconds of reaching a marker, while its moment is still playing, it goes to the marker before that one, the way a media player's previous-track button does, so markers set close together are each reached in turn. With no marker behind, nothing happens. It works in the replay: from the car, open the replay first — iRacing accepts replay commands only when you are out of the car, so a press from the car sends nothing.
 
+After the jump the replay carries on as **Replay jump playback** says, exactly as described for [Next Marker](#next-marker): by default as it was before the press, so a paused replay stays paused on the marker.
+
 Like **Next Marker**, the key turns grey whenever a press would do nothing: no marker behind, not in a replay, or iRacing not running.
 
 #### Details
@@ -117,7 +121,7 @@ Like **Next Marker**, the key turns grey whenever a press would do nothing: no m
 
 Placed on a Stream Deck+ dial or a Mirabox knob, Replay Markers becomes a marker dial. Turning the dial steps through the session's markers in the replay — clockwise to the next marker, counter-clockwise to the previous one — and a press adds a marker, from the car or in the replay. It needs no key binding. Rotation always steps through the markers, so there is no dial **Mode** dropdown; the Property Inspector automatically shows the dial settings below (instead of the keypad Mode and Seconds Back) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
 
-Each detent is one marker. A turn lands on the same marker the **Next Marker** and **Previous Marker** keys would from the same moment: a marker less than one second ahead is skipped, and turning back within two seconds of reaching a marker goes to the one before it. A fast spin walks as many markers as the dial reports detents, with no limit, and stops at the first or last marker rather than wrapping around to the other end of the list. However fast you spin, the replay gets a single jump, to the last marker reached, and a quick second turn carries on from the marker you just jumped to even before the replay has caught up there. Turning the dial also stops a running [Jump to Fastest Lap](/docs/actions/view-camera/replay-control/#jump-to-fastest-lap) search, so your jump stands.
+Each detent is one marker. A turn lands on the same marker the **Next Marker** and **Previous Marker** keys would from the same moment: a marker less than one second ahead is skipped, and turning back within two seconds of reaching a marker goes to the one before it. A fast spin walks as many markers as the dial reports detents, with no limit, and stops at the first or last marker rather than wrapping around to the other end of the list. However fast you spin, the replay gets a single jump, to the last marker reached, and a quick second turn carries on from the marker you just jumped to even before the replay has caught up there. After a turn the replay carries on as **Replay jump playback** says, the same as after a key press — see [Next Marker](#next-marker). Turns in quick succession remember the state from before the first one, so turning quickly through several markers while the replay plays ends with it playing at the last marker. Turning the dial also stops a running [Jump to Fastest Lap](/docs/actions/view-camera/replay-control/#jump-to-fastest-lap) search, so your jump stands.
 
 Turning only works in the replay. iRacing accepts replay commands only when you are out of the car, so from the car a turn sends nothing — open the replay first. With no marker in the direction you turn, nothing happens either.
 
