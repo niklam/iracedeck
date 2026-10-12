@@ -324,6 +324,9 @@
 				// still leaves a fully functional keypad PI (the default view).
 				if ((await window.irdResolveController()) === "Encoder") {
 					window.irdApplyDialView();
+					// No dial mode or gesture uses a key binding: the rows below belong to
+					// the keypad's Next / Previous Car modes.
+					document.getElementById("key-bindings-section")?.classList.add("hidden");
 				}
 			}
 

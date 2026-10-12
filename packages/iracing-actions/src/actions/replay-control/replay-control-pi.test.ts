@@ -141,3 +141,15 @@ describe("replay-control PI dial gesture slots", () => {
     for (const slot of SLOTS) for (const value of select(`dial.${slot}`).values) expect(press, value).toContain(value);
   });
 });
+
+describe("replay-control PI dial view", () => {
+  it("hides the keypad's key-binding rows, since no dial mode or gesture uses a binding", () => {
+    // irdApplyDialView() hides #keypad-settings and #keypad-appearance only;
+    // the key-bindings section sits outside both.
+    const dialBranch = template.match(/=== "Encoder"\) \{([\s\S]*?)\n\t\t\t\t\}/);
+
+    expect(dialBranch?.[1]).toContain("window.irdApplyDialView()");
+    expect(dialBranch?.[1]).toContain('document.getElementById("key-bindings-section")?.classList.add("hidden")');
+    expect(dialView).not.toContain("key-bindings-section");
+  });
+});
