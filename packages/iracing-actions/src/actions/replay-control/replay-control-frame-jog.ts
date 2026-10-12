@@ -5,7 +5,7 @@
  * gestures and every push to the screen. Design:
  * `docs/superpowers/specs/2026-10-04-issue-1316-replay-control-dial.md`.
  */
-import { ReplayPosMode } from "@iracedeck/iracing-sdk";
+import { ReplayPosMode, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 import type { ReplayDialMode, ReplayDialModeIo } from "./replay-control-dial-mode.js";
 import { formatSpeedDisplay } from "./replay-speed-format.js";
@@ -68,6 +68,23 @@ export function sendFrameSteps(io: ReplayDialModeIo, ticks: number, asOneJump: b
 }
 
 /**
+ * @internal Exported for testing
+ *
+ * Where the replay stands in the reading a turn is decided on, for the debug
+ * line: the frame, the replay time in seconds and iRacing's raw
+ * `IsReplayPlaying`, which reads false for about 300 ms after a seek while the
+ * rest of the snapshot is not the replay's either. A turn's line is the
+ * previous turn's "after", so consecutive lines give the frames each one moved.
+ */
+export function describeReplayPosition(telemetry: TelemetryData | null): string {
+  const frame = telemetry?.ReplayFrameNum ?? "n/a";
+  const time = telemetry?.ReplaySessionTime?.toFixed(3) ?? "n/a";
+  const replaying = telemetry?.IsReplayPlaying ?? "n/a";
+
+  return `frame=${frame}, time=${time}, replaying=${replaying}`;
+}
+
+/**
  * The Frame Jog mode. Clockwise is the next frame, counter-clockwise the
  * previous one, uncapped: iRacing bounds a jump at the ends of the recording.
  * A turn while the replay plays sends two commands, the pause and then the
@@ -82,7 +99,7 @@ export const frameJogMode: ReplayDialMode = {
   rotate(ticks, _dial, io) {
     const playing = io.liveSpeed().speed !== 0;
 
-    io.logger.debug(`Frame jog: ticks=${ticks}, playing=${playing}`);
+    io.logger.debug(`Frame jog: ticks=${ticks}, playing=${playing}, ${describeReplayPosition(io.telemetry())}`);
 
     if (playing && !io.pause(CURSOR_OWNER)) {
       io.logger.warn("Frame jog skipped: the replay could not be paused");

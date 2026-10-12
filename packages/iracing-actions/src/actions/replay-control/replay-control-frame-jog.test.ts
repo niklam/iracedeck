@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { ReplayDialModeIo, ReplaySpeed } from "./replay-control-dial-mode.js";
 import { ReplayControlDialSettings } from "./replay-control-dial-settings.js";
-import { formatReplayTime, frameJogMode, sendFrameSteps } from "./replay-control-frame-jog.js";
+import { describeReplayPosition, formatReplayTime, frameJogMode, sendFrameSteps } from "./replay-control-frame-jog.js";
 
 const PAUSED: ReplaySpeed = { speed: 0, slowMotion: false };
 const dial = ReplayControlDialSettings.parse({});
@@ -88,6 +88,22 @@ describe("formatReplayTime", () => {
     expect(formatReplayTime(Number.NaN)).toBe("");
     expect(formatReplayTime(Number.POSITIVE_INFINITY)).toBe("");
     expect(formatReplayTime(-1)).toBe("");
+  });
+});
+
+describe("describeReplayPosition", () => {
+  it("gives the frame, the time in seconds and the raw replay flag", () => {
+    const telemetry = { ReplayFrameNum: 45273, ReplaySessionTime: 754.5566, IsReplayPlaying: true } as TelemetryData;
+
+    expect(describeReplayPosition(telemetry)).toBe("frame=45273, time=754.557, replaying=true");
+  });
+
+  it("keeps a zero reading apart from a missing one", () => {
+    const zero = { ReplayFrameNum: 0, ReplaySessionTime: 0, IsReplayPlaying: false } as TelemetryData;
+
+    expect(describeReplayPosition(zero)).toBe("frame=0, time=0.000, replaying=false");
+    expect(describeReplayPosition({} as TelemetryData)).toBe("frame=n/a, time=n/a, replaying=n/a");
+    expect(describeReplayPosition(null)).toBe("frame=n/a, time=n/a, replaying=n/a");
   });
 });
 
@@ -216,12 +232,29 @@ describe("frameJogMode", () => {
       expect(io.setSpeed).not.toHaveBeenCalled();
     });
 
-    it("logs the ticks at debug, for the capture that confirms the jump", () => {
-      const { io, logger } = fakeIo();
+    it("logs the ticks and where the replay stood at debug, for single steps too", () => {
+      const telemetry = { ReplayFrameNum: 45273, ReplaySessionTime: 754.55, IsReplayPlaying: true } as TelemetryData;
+      const spin = fakeIo({ telemetry });
+      const single = fakeIo({ telemetry });
 
-      frameJogMode.rotate(-4, dial, io);
+      frameJogMode.rotate(-4, dial, spin.io);
+      frameJogMode.rotate(1, dial, single.io);
 
-      expect(logger.debug).toHaveBeenCalledWith("Frame jog: ticks=-4, playing=false");
+      expect(spin.logger.debug).toHaveBeenCalledWith(
+        "Frame jog: ticks=-4, playing=false, frame=45273, time=754.550, replaying=true",
+      );
+      expect(single.logger.debug).toHaveBeenCalledWith(
+        "Frame jog: ticks=1, playing=false, frame=45273, time=754.550, replaying=true",
+      );
+    });
+
+    it("logs the position before the pause and the move go out", () => {
+      const { io, calls, logger } = fakeIo({ liveSpeed: { speed: 1, slowMotion: false } });
+
+      logger.debug.mockImplementation(() => void calls.push("debug"));
+      frameJogMode.rotate(1, dial, io);
+
+      expect(calls).toEqual(["debug", "pause:dial-frame-jog", "send:dial-frame-jog", "nextFrame"]);
     });
   });
 
