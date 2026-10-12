@@ -458,12 +458,12 @@
             {
               "value": "next",
               "label": "Next Marker",
-              "description": "Jump the replay to the next marker more than 1 s ahead; replay only, sends nothing from the car"
+              "description": "Jump the replay to the next marker more than 1 s ahead, pausing a moving replay for the jump and then keeping, starting or stopping playback as the Replay jump playback global setting says; replay only, sends nothing from the car"
             },
             {
               "value": "previous",
               "label": "Previous Marker",
-              "description": "Jump the replay to the previous marker, or to the one before it while a marker's first 2 s are playing; replay only, sends nothing from the car"
+              "description": "Jump the replay to the previous marker, or to the one before it while a marker's first 2 s are playing, with the same pause and Replay jump playback ending as Next Marker; replay only, sends nothing from the car"
             }
           ]
         },
