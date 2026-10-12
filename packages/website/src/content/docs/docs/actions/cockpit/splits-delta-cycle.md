@@ -35,7 +35,7 @@ Which splits delta hotkey the button press sends. Both directions are globally c
 
 ### Toggle Reference Car
 
-Toggle the reference car overlay on or off. Replaces the old "Display Reference Car" option from the Toggle UI Elements action.
+Toggle the reference car overlay on or off.
 
 #### Details
 

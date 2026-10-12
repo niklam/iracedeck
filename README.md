@@ -33,7 +33,7 @@
 | **Audio & Voice**       | 3       | 15    | AI spotter, audio (incl. Race Engineer & Radar volume), pit crew      |
 | **Display & Session**   | 2       | 15    | Incidents, laps, position, iRating, gaps ahead/behind, fuel, flags    |
 | **Driving Controls**    | 3       | 21    | Black box cycling, look direction, car control                        |
-| **Cockpit & Interface** | 5       | 35    | Wipers, FFB, splits & reference, telemetry, UI toggles                |
+| **Cockpit & Interface** | 5       | 32    | Wipers, FFB, splits & reference, telemetry, UI toggles                |
 | **View & Camera**       | 6       | 97    | FOV, replay, replay markers, camera controls, broadcast tools         |
 | **Media**               | 1       | 7     | Video recording, screenshots                                          |
 | **Pit Service**         | 3       | 15    | Fuel (button and dial), tires, compounds, tearoff, fast repair        |

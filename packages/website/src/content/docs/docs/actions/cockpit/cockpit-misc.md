@@ -9,10 +9,6 @@ sidebar:
 
 Cockpit Misc groups together various cockpit controls that don't fit neatly into other categories. Manage wipers, latency reporting, dashboard pages, and in-lap mode. Placed on a **Stream Deck+ dial**, the same action becomes a dash-page dial with the live page number on the touch strip — see [On a dial](#on-a-dial) below.
 
-:::note
-FFB Max Force now lives in the [Force Feedback](/docs/actions/cockpit/force-feedback/) action as the FFB Force mode. Existing Cockpit Misc buttons configured with the old mode keep working, but new buttons should use Force Feedback.
-:::
-
 ## Modes
 
 Select the mode from the **Mode** dropdown in the Property Inspector. Directional modes (Dash Page 1, Dash Page 2) also expose a **Direction** setting for Increase / Decrease. Modes apply to keypad instances; a dial instance uses the dial behavior described in [On a dial](#on-a-dial).
@@ -144,7 +140,7 @@ The dashboard display the dial controls (the **Mode** dropdown). Each setting re
 | Dash Page 1 | DASH 1 | blue | `dcDashPage` | e.g. `2` |
 | Dash Page 2 | DASH 2 | amber | `dcDashPage2` | e.g. `4` |
 
-When telemetry isn't available — or the car has no dashboard pages — the box shows `---`. FFB Max Force is not offered as a rotation setting here; its dial rotation lives in the [Force Feedback](/docs/actions/cockpit/force-feedback/) action.
+When telemetry isn't available — or the car has no dashboard pages — the box shows `---`.
 
 #### Setting: Press Action / Long Press
 

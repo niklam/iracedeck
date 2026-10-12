@@ -10,7 +10,7 @@ sidebar:
 Control force feedback and haptic settings from iRacing's Audio & Force Feedback page: auto-compute FFB, overall FFB force, wheel LFE loudness, and bass shaker LFE loudness. Placed on a **Stream Deck+ dial**, the same action becomes a force-feedback dial with the live max force in Nm on the touch strip — see [On a dial](#on-a-dial) below.
 
 :::note
-iRacing's Options pages label the same two LFE controls "More Intense / Less Intense" under **Wheel LFE Controls** and **Haptic LFE Controls** — those are the identical iRacing bindings as Wheel LFE and Bass Shaker LFE below, just named differently. Earlier iRaceDeck versions exposed them as separate Wheel/Haptic LFE Intensity modes; buttons and dials saved with those modes are migrated automatically.
+iRacing's Options pages label the same two LFE controls "More Intense / Less Intense" under **Wheel LFE Controls** and **Haptic LFE Controls** — those are the identical iRacing bindings as Wheel LFE and Bass Shaker LFE below, just named differently.
 :::
 
 ## Modes
@@ -36,7 +36,7 @@ Toggle iRacing's auto-compute FFB force calibration.
 
 ### FFB Force
 
-Adjust the force feedback maximum force (iRacing's "max force" setting, in Nm). This is the canonical home of the former Cockpit Misc FFB Max Force mode — old Cockpit Misc buttons keep working and share the same global key binding, so configuring one updates the other.
+Adjust the force feedback maximum force (iRacing's "max force" setting, in Nm).
 
 #### Details
 

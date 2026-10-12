@@ -3,7 +3,7 @@ title: Toggle UI Elements
 description: Show or hide iRacing's on-screen UI elements.
 sidebar:
   badge:
-    text: "10 modes"
+    text: "9 modes"
     variant: tip
 ---
 
@@ -145,27 +145,6 @@ The driving line must first be enabled in iRacing's options (Settings → Drivin
 - **Method:** Key binding
 - **Dial:** No rotation support
 - **Default binding:** `Ctrl+Alt+L`
-- **Telemetry-aware icon:** No
-
-#### Settings
-
-- No additional settings
-
----
-
-### Display Reference Car
-
-Toggle the reference car display.
-
-:::caution
-**Deprecated** — use the [Splits & Reference](/docs/actions/cockpit/splits-delta-cycle/) action's **Toggle Reference Car** mode instead. Both modes share the same global key binding, so switching actions will not change your hotkey.
-:::
-
-#### Details
-
-- **Method:** Key binding
-- **Dial:** No rotation support
-- **Default binding:** `Ctrl+C`
 - **Telemetry-aware icon:** No
 
 #### Settings
