@@ -49,7 +49,8 @@ export interface ReplayDialModeIo {
    * speed; a non-zero target is also remembered as the resume speed. A
    * non-zero speed asked for while a frame move has not read back is held and
    * sent when it has (true is returned at once): sent into a jump under way,
-   * it would end the jump somewhere else and play from there.
+   * it would end the jump somewhere else and play from there. While it is
+   * held it is what {@link liveSpeed} reads.
    */
   setSpeed(owner: string, target: ReplaySpeed): boolean;
   /** Pauses through {@link send}. The speed that was playing stays the remembered resume speed, so Press resumes it. */

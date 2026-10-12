@@ -320,8 +320,10 @@ export class ReplayControlDialSurface {
 
   /**
    * A speed asked for while a frame move had not read back, with the frame
-   * that move was headed for; null when none waits. One for the surface: the
-   * newest input replaces or drops it.
+   * that move was headed for; null when none waits. One for the surface, and
+   * the live speed while it waits: the next speed asked for replaces it, and a
+   * pause, which is what a second Play/Pause or a jog turn then sends, drops
+   * it.
    */
   private heldSpeed: { readonly owner: string; readonly target: ReplaySpeed; readonly frame: number } | null = null;
 
@@ -357,7 +359,12 @@ export class ReplayControlDialSurface {
 
     this.io = {
       logger: host.logger,
-      liveSpeed: () => resolveLiveSpeed(this.reading().speed, Date.now()),
+      // A speed held for a move under way is what the dial has asked the
+      // replay to do, like one sent that telemetry has not shown yet: read as
+      // live, it makes a second Play/Pause take the first back, a jog turn
+      // pause before it moves, and a speed step walk on from it.
+      liveSpeed: () =>
+        this.heldSpeed !== null ? { ...this.heldSpeed.target } : resolveLiveSpeed(this.reading().speed, Date.now()),
       telemetry: () => this.reading().telemetry,
       send,
       position,
@@ -495,8 +502,6 @@ export class ReplayControlDialSurface {
         return;
       }
 
-      // A new turn is the newest word: a speed still waiting for the last move is dropped.
-      this.heldSpeed = null;
       DIAL_MODES[ctx.dial.mode].rotate(ticks, ctx.dial, this.io);
       this.renderAll();
     });
@@ -702,8 +707,6 @@ export class ReplayControlDialSurface {
       return;
     }
 
-    // A new gesture is the newest word: a speed still waiting for a move is dropped.
-    this.heldSpeed = null;
     GESTURES[gesture].run({ io: this.io, host: this.host });
     this.renderAll();
   }

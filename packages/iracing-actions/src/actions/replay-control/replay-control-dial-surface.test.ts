@@ -1168,12 +1168,12 @@ describe("ReplayControlDialSurface", () => {
         expect(mocks.setPlaySpeed).toHaveBeenCalledTimes(1);
       });
 
-      it("reports the held speed as taken, and shows the replay paused until it goes out", async () => {
+      it("reports the held speed as taken, and reads it as the live speed until it goes out", async () => {
         const { surface } = await jumpUnderWay();
         const io = ioOf(surface);
 
         expect(io.setSpeed("dial-speed", speed(2))).toBe(true);
-        expect(io.liveSpeed()).toEqual(PAUSED);
+        expect(io.liveSpeed()).toEqual(speed(2));
         expect(mocks.setPlaySpeed).not.toHaveBeenCalled();
 
         lands(5_003);
@@ -1212,7 +1212,20 @@ describe("ReplayControlDialSurface", () => {
         expect(mocks.setPlaySpeed).not.toHaveBeenCalled();
       });
 
-      it("drops the held speed when the dial is turned again", async () => {
+      it("a second Play/Pause press takes the held Play back", async () => {
+        const { surface, ctx, d } = await jumpUnderWay();
+
+        await press(surface, ctx, d);
+        await press(surface, ctx, d);
+        lands(5_003);
+        await vi.advanceTimersByTimeAsync(500);
+
+        // The second press read the replay as about to play, and paused it.
+        expect(mocks.pause).toHaveBeenCalledTimes(1);
+        expect(mocks.setPlaySpeed).not.toHaveBeenCalled();
+      });
+
+      it("a jog turn while a Play is held pauses first, and the Play is not sent", async () => {
         const { surface, ctx, d } = await jumpUnderWay();
 
         await press(surface, ctx, d);
@@ -1220,7 +1233,22 @@ describe("ReplayControlDialSurface", () => {
         lands(5_005);
         await vi.advanceTimersByTimeAsync(500);
 
+        expect(mocks.pause).toHaveBeenCalledTimes(1);
+        expect(mocks.setPlayPosition).toHaveBeenLastCalledWith(ReplayPosMode.Begin, 5_005);
         expect(mocks.setPlaySpeed).not.toHaveBeenCalled();
+      });
+
+      it("a Speed Control turn while a speed is held walks on from it", async () => {
+        const { surface, ctx } = await jumpUnderWay();
+        const io = ioOf(surface);
+
+        io.setSpeed("dial-speed", speed(2));
+        // The default ladder's next stop above 2x.
+        surface.rotate(ctx as never, dial(), 1, false);
+        lands(5_003);
+        await vi.advanceTimersByTimeAsync(60);
+
+        expect(mocks.setPlaySpeed.mock.calls).toEqual([[4, false]]);
       });
 
       it("drops the held speed when a pause follows it", async () => {
