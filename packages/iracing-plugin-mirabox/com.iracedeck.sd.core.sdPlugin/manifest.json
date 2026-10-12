@@ -304,10 +304,11 @@
       "Name": "Replay Control",
       "UUID": "com.iracedeck.sd.core.replay-control",
       "Icon": "imgs/actions/replay-control/icon",
-      "Tooltip": "Unified replay controls: transport, speed, and navigation",
+      "Tooltip": "Unified replay controls: transport, speed, and navigation; on a dial: turn to change the replay speed",
       "PropertyInspectorPath": "ui/replay-control.html",
       "Controllers": [
-        "Keypad"
+        "Keypad",
+        "Knob"
       ],
       "States": [
         {

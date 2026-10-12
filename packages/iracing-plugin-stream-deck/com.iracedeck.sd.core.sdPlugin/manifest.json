@@ -367,11 +367,21 @@
       "Name": "Replay Control",
       "UUID": "com.iracedeck.sd.core.replay-control",
       "Icon": "imgs/actions/replay-control/icon",
-      "Tooltip": "Unified replay controls: transport, speed, and navigation",
+      "Tooltip": "Unified replay controls: transport, speed, and navigation; on a dial: turn to change the replay speed",
       "PropertyInspectorPath": "ui/replay-control.html",
       "Controllers": [
-        "Keypad"
+        "Keypad",
+        "Encoder"
       ],
+      "Encoder": {
+        "Icon": "imgs/actions/replay-control/dial",
+        "layout": "layouts/replay-control.json",
+        "TriggerDescription": {
+          "Rotate": "Slower / faster replay speed",
+          "Push": "Configured action",
+          "Touch": "Configured action"
+        }
+      },
       "States": [
         {
           "Image": "imgs/actions/replay-control/key",
