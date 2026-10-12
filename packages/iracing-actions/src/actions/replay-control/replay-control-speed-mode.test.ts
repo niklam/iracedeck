@@ -6,6 +6,18 @@ import { ReplayControlDialSettings, SPEED_STOP_TOKENS } from "./replay-control-d
 import { speedMode } from "./replay-control-speed-mode.js";
 import { _resetReplaySpeedState, noteTelemetrySpeed, reverseRememberedSpeed } from "./replay-speed-state.js";
 
+const ladderSpy = vi.hoisted(() => ({ buildLadder: vi.fn() }));
+
+// The real ladder module, with `buildLadder` counted: the mode memoizes the
+// ladder it builds, and only a call count can show that.
+vi.mock("./replay-speed-ladder.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./replay-speed-ladder.js")>();
+
+  ladderSpy.buildLadder.mockImplementation(actual.buildLadder);
+
+  return { ...actual, buildLadder: ladderSpy.buildLadder };
+});
+
 function speed(value: number, slowMotion = false): ReplaySpeed {
   return { speed: value, slowMotion };
 }
@@ -163,6 +175,47 @@ describe("speedMode", () => {
       expect(setSpeed).not.toHaveBeenCalled();
       expect(pause).not.toHaveBeenCalled();
       expect(send).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("the ladder it walks", () => {
+    beforeEach(() => {
+      ladderSpy.buildLadder.mockClear();
+    });
+
+    it("should be built once for the same settings object, however often the box is drawn", () => {
+      const d = dial();
+      const { io } = fakeIo(speed(1));
+
+      for (let tick = 0; tick < 60; tick++) speedMode.view(d, io);
+
+      speedMode.rotate(1, d, io);
+      speedMode.rotate(-2, d, io);
+
+      expect(ladderSpy.buildLadder).toHaveBeenCalledTimes(1);
+      expect(ladderSpy.buildLadder).toHaveBeenCalledWith(d.speedStops);
+    });
+
+    it("should be rebuilt for a new settings object, even one that ticks the same speeds", () => {
+      const { io } = fakeIo(speed(1));
+
+      speedMode.view(dial(), io);
+      speedMode.view(dial(), io);
+
+      expect(ladderSpy.buildLadder).toHaveBeenCalledTimes(2);
+    });
+
+    it("should follow a settings change: the new object's ladder is the one walked", () => {
+      const { io, setSpeed } = fakeIo(speed(1));
+      const before = dialWith("1", "2");
+      const after = dialWith("1", "16");
+
+      speedMode.rotate(1, before, io);
+      speedMode.rotate(1, after, io);
+      speedMode.rotate(1, before, io);
+
+      expect(setSpeed.mock.calls.map(([, target]) => target)).toEqual([speed(2), speed(16), speed(2)]);
+      expect(ladderSpy.buildLadder).toHaveBeenCalledTimes(2);
     });
   });
 

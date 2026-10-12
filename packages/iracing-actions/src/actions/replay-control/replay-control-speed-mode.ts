@@ -5,13 +5,33 @@
  * in-replay guard, the press gestures and every push to the screen. Design:
  * `docs/superpowers/specs/2026-10-04-issue-1316-replay-control-dial.md`.
  */
-import type { ReplayDialMode } from "./replay-control-dial-mode.js";
+import type { ReplayDialMode, ReplaySpeed } from "./replay-control-dial-mode.js";
+import type { SpeedStops } from "./replay-control-dial-settings.js";
 import { formatPlayCaption, formatSpeedDisplay } from "./replay-speed-format.js";
 import { buildLadder, canStep, walkLadder } from "./replay-speed-ladder.js";
 import { rememberedSpeed } from "./replay-speed-state.js";
 
 /** The replay-cursor owner every Speed Control turn is sent under. */
 const CURSOR_OWNER = "dial-speed";
+
+/**
+ * Built ladders, by the parsed `dial.speedStops` object each was built from.
+ * `view` runs on every tick with the same settings object, and a settings
+ * change arrives as a new one, so a dial builds its ladder once per settings
+ * delivery instead of once per tick.
+ */
+const ladders = new WeakMap<SpeedStops, readonly ReplaySpeed[]>();
+
+function ladderFor(stops: SpeedStops): readonly ReplaySpeed[] {
+  let ladder = ladders.get(stops);
+
+  if (!ladder) {
+    ladder = buildLadder(stops);
+    ladders.set(stops, ladder);
+  }
+
+  return ladder;
+}
 
 /**
  * The Speed Control mode. Clockwise is one stop up the signed ladder (toward
@@ -26,7 +46,7 @@ export const speedMode: ReplayDialMode = {
 
   rotate(ticks, dial, io) {
     const live = io.liveSpeed();
-    const target = walkLadder(buildLadder(dial.speedStops), live, ticks);
+    const target = walkLadder(ladderFor(dial.speedStops), live, ticks);
     const from = formatSpeedDisplay(live.speed, live.slowMotion);
 
     if (target === null) {
@@ -44,7 +64,7 @@ export const speedMode: ReplayDialMode = {
 
   view(dial, io) {
     const live = io.liveSpeed();
-    const ladder = buildLadder(dial.speedStops);
+    const ladder = ladderFor(dial.speedStops);
     // What Play/Pause would resume: one value for every dial, shown while paused.
     const resume = rememberedSpeed();
 
