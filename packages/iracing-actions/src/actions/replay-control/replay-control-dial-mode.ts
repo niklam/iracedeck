@@ -59,6 +59,8 @@ export interface ReplayDialModeIo {
    * where it lands. Refused, with nothing sent, unless the position is known
    * and nothing is under way ({@link ReplayPosition.seeking}): iRacing applies
    * one step per update, and a step sent into a jump ends it somewhere else.
+   * A step sent while the reading still shows the replay playing records no
+   * landing: where it lands depends on where the pause catches the replay.
    */
   step(owner: string, direction: 1 | -1): boolean;
   /**

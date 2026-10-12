@@ -753,7 +753,7 @@ describe("ReplayControlDialSurface", () => {
       expect(vi.getTimerCount()).toBe(1);
     });
 
-    it("a raw command that sends no speed arms nothing", async () => {
+    it("a frame step arms no speed hold: only the timer that follows the step, gone once it reads back", async () => {
       const d = dial({ mode: "frame-jog" });
       const { surface, ctx } = await onScreen(PAUSED, d);
       await vi.advanceTimersByTimeAsync(1_000);
@@ -761,6 +761,11 @@ describe("ReplayControlDialSurface", () => {
       surface.rotate(ctx as never, d, 1, false);
 
       expect(mocks.nextFrame).toHaveBeenCalledTimes(1);
+      expect(vi.getTimerCount()).toBe(1);
+
+      env.telemetry = { ...replayAt(PAUSED), ReplayFrameNum: 5_001 } as TelemetryData;
+      await vi.advanceTimersByTimeAsync(200);
+
       expect(vi.getTimerCount()).toBe(0);
     });
   });
@@ -1016,6 +1021,21 @@ describe("ReplayControlDialSurface", () => {
       expect(io.jumpTo("dial-frame-jog", 650)).toBe(false);
       expect(pendingReplayLanding()).toEqual(standing);
       expect(io.position()).toMatchObject({ frame: 640, seeking: true });
+    });
+
+    it("a step into a replay that still reads as playing records no landing", async () => {
+      const { surface } = await onScreen(speed(4));
+      const io = ioOf(surface);
+
+      env.telemetry = { ...replayAt(speed(4)), ReplayFrameNum: 600 } as TelemetryData;
+      io.pause("dial-frame-jog");
+
+      expect(io.step("dial-frame-jog", 1)).toBe(true);
+      // The pause catches the replay a few frames on: that is where it stands, not on 601.
+      expect(pendingReplayLanding()).toBeNull();
+
+      env.telemetry = pausedOn(607);
+      expect(io.position()).toMatchObject({ frame: 607, seeking: false });
     });
 
     it("a step that was not sent records nothing", async () => {
@@ -1558,6 +1578,8 @@ describe("ReplayControlDialSurface", () => {
       const ladder = vi.spyOn(speedMode, "rotate");
 
       surface.rotate(ctx as never, d, 1, false);
+      // The step reads back before the next turn, so that one is a step too.
+      env.telemetry = { ...replayAt(PAUSED), ReplayFrameNum: 5_001 } as TelemetryData;
       surface.rotate(ctx as never, d, -1, false);
 
       expect(jog).toHaveBeenNthCalledWith(1, 1, d, surface["io"]);
@@ -1592,10 +1614,52 @@ describe("ReplayControlDialSurface", () => {
       surface.rotate(ctx as never, d, 1, false);
 
       expect(mocks.pause).toHaveBeenCalledTimes(1);
+      // Both are steps: the first went into a replay still reading as playing,
+      // so it left no landing for the second to be measured from.
       expect(mocks.nextFrame).toHaveBeenCalledTimes(2);
+      expect(mocks.setPlayPosition).not.toHaveBeenCalled();
       // Press then resumes the speed that was playing.
       await press(surface, ctx, d);
       expect(mocks.setPlaySpeed).toHaveBeenCalledWith(4, false);
+    });
+
+    it("a fast Frame Jog turn is one absolute jump per event, each measured from the last one's target", async () => {
+      const d = dial({ mode: "frame-jog" });
+      const { surface, ctx } = await onScreen(PAUSED, d);
+
+      surface.rotate(ctx as never, d, 2, false);
+      // What iRacing reports while the second jump waits its turn.
+      env.telemetry = { ...replayAt(PAUSED), IsReplayPlaying: false, ReplayFrameNum: 0 } as TelemetryData;
+      surface.rotate(ctx as never, d, 3, false);
+      surface.rotate(ctx as never, d, 1, false);
+      surface.rotate(ctx as never, d, -2, false);
+
+      expect(mocks.setPlayPosition.mock.calls).toEqual([
+        [ReplayPosMode.Begin, 5_002],
+        [ReplayPosMode.Begin, 5_005],
+        [ReplayPosMode.Begin, 5_006],
+        [ReplayPosMode.Begin, 5_004],
+      ]);
+      // Never a step into the jump under way, and never anything relative.
+      expect(mocks.nextFrame).not.toHaveBeenCalled();
+      expect(mocks.prevFrame).not.toHaveBeenCalled();
+    });
+
+    it("a Frame Jog turn after a landing that ended somewhere else goes back to where the jog was headed", async () => {
+      const d = dial({ mode: "frame-jog" });
+      const { surface, ctx } = await onScreen(PAUSED, d);
+
+      surface.rotate(ctx as never, d, 4, false);
+      // The jump ended thousands of frames away and stays there.
+      env.telemetry = { ...replayAt(PAUSED), ReplayFrameNum: 13_772 } as TelemetryData;
+      await vi.advanceTimersByTimeAsync(1_000);
+      surface.rotate(ctx as never, d, 1, false);
+
+      expect(mocks.setPlayPosition.mock.calls).toEqual([
+        [ReplayPosMode.Begin, 5_004],
+        [ReplayPosMode.Begin, 5_005],
+      ]);
+      expect(mocks.nextFrame).not.toHaveBeenCalled();
     });
 
     it("a Frame Jog dial draws Frame Jog's view under its label", async () => {
@@ -2004,31 +2068,60 @@ describe("ReplayControlDialSurface", () => {
     });
 
     it("a detent that changes nothing leaves the throttle's window alone, so the next change is pushed at once", async () => {
+      // At the fast end of the ladder: a clockwise detent sends nothing and shows nothing new.
+      const { surface, ctx, d } = await onScreen(speed(8));
+      await vi.advanceTimersByTimeAsync(1_000);
+      const throttle = surface["renderThrottle"];
+      const stampedAt = throttle.lastImageSentAt.get(ctx.id);
+      ctx.setDialCanvas.mockClear();
+
+      surface.rotate(ctx as never, d, 1, false);
+
+      expectNothingSent();
+      expect(stampedAt).toBeDefined();
+      expect(throttle.lastImageSentAt.get(ctx.id)).toBe(stampedAt);
+      expect(throttle.pendingFlush.has(ctx.id)).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(16);
+      nowPlaying(speed(4));
+      surface.onTick(ctx.id, tickOf());
+
+      // No timer has run since the tick: the push was immediate, not a deferred flush.
+      expect(ctx.setDialCanvas).toHaveBeenCalledTimes(1);
+      expect(shownValue(lastBox(ctx))).toBe("4x");
+    });
+
+    it("a Frame Jog step shows the time it is headed for at once, before any tick carries it", async () => {
       const d = dial({ mode: "frame-jog" });
       env.telemetry = { ...replayAt(PAUSED), ReplaySessionTime: 60 } as TelemetryData;
       const surface = makeSurface();
       const ctx = dialContext();
       await appear(surface, ctx, d);
       await vi.advanceTimersByTimeAsync(1_000);
-      const throttle = surface["renderThrottle"];
-      const stampedAt = throttle.lastImageSentAt.get(ctx.id);
       ctx.setDialCanvas.mockClear();
 
-      // The step is sent, but the tick carrying the new replay time has not arrived.
       surface.rotate(ctx as never, d, 1, false);
+      await vi.advanceTimersByTimeAsync(0);
 
       expect(mocks.nextFrame).toHaveBeenCalledTimes(1);
-      expect(stampedAt).toBeDefined();
-      expect(throttle.lastImageSentAt.get(ctx.id)).toBe(stampedAt);
-      expect(throttle.pendingFlush.has(ctx.id)).toBe(false);
-
-      await vi.advanceTimersByTimeAsync(16);
-      env.telemetry = { ...replayAt(PAUSED), ReplaySessionTime: 60 + 1 / 60 } as TelemetryData;
-      surface.onTick(ctx.id, tickOf());
-
-      // No timer has run since the tick: the push was immediate, not a deferred flush.
       expect(ctx.setDialCanvas).toHaveBeenCalledTimes(1);
       expect(shownValue(lastBox(ctx))).toBe("1:00.02");
+    });
+
+    it("a Frame Jog dial shows no time rather than 0:00.00 while a jump is under way from an unknown place", async () => {
+      const d = dial({ mode: "frame-jog" });
+      // What iRacing reports during a jump the plugin did not send: nothing says where the replay is.
+      env.telemetry = {
+        ...replayAt(PAUSED),
+        IsReplayPlaying: false,
+        ReplayFrameNum: 0,
+        ReplaySessionTime: 0,
+      } as TelemetryData;
+      const surface = makeSurface();
+      const ctx = dialContext();
+      await appear(surface, ctx, d);
+
+      expect(lastBox(ctx)).not.toContain("0:00.00");
     });
 
     it("a gesture that changes nothing on screen leaves the throttle's window alone too", async () => {

@@ -15,7 +15,10 @@
  *   `IsReplayPlaying` false, `ReplayFrameNum` 0. A jump that arrives meanwhile
  *   replaces it, and the replay lands on the newest target — a fast turn that
  *   keeps retargeting lands on whichever target was newest every 400 ms or so,
- *   and exactly on the last one.
+ *   and exactly on the last one. The one limit seen: of two jumps inside one
+ *   sim update (8 ms apart, faster than either deck host delivers turns) the
+ *   earlier one was applied. That landing never reads back, so it is handled
+ *   like any other that ends off its target.
  * - A frame step sent while such a jump is under way does not step: it ends
  *   the jump with the replay thousands of frames away. A jump relative to the
  *   current frame sent meanwhile is resolved from the start of the recording.

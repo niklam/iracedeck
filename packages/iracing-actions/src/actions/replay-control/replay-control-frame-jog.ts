@@ -4,30 +4,37 @@
  * (`replay-control-dial-mode.ts`), which owns the in-replay guard, the press
  * gestures and every push to the screen. Design:
  * `docs/superpowers/specs/2026-10-04-issue-1316-replay-control-dial.md`.
+ *
+ * What a turn sends follows from how iRacing treats the two commands that can
+ * move a replay by frames, measured on 2026-10-12 and recorded in
+ * `replay-position-state.ts`: a frame step is immediate but only one counts
+ * per sim update, and it wrecks a position jump still under way; an absolute
+ * jump may follow another at any pace and the newest wins, but from the second
+ * one on the replay takes some 400 ms to show it. So a single detent on a
+ * replay at rest is a frame step, and everything else — several detents in one
+ * event, or any turn while the last move has not read back — is one absolute
+ * jump to the frame the turn is heading for. A jump relative to the current
+ * frame is never sent: iRacing resolves one from the start of the recording
+ * while an earlier jump is settling, which is what threw the replay to
+ * 0:00.00 on a fast turn.
  */
-import { ReplayPosMode, type TelemetryData } from "@iracedeck/iracing-sdk";
+import type { TelemetryData } from "@iracedeck/iracing-sdk";
 
-import type { ReplayDialMode, ReplayDialModeIo } from "./replay-control-dial-mode.js";
+import type { ReplayDialMode } from "./replay-control-dial-mode.js";
+import type { ReplayPosition } from "./replay-position-state.js";
 import { formatSpeedDisplay } from "./replay-speed-format.js";
 
 /** The replay-cursor owner every Frame Jog command is sent under. */
 const CURSOR_OWNER = "dial-frame-jog";
 
 /**
- * How a turn of several detents in one event is sent. `false` is the spec's
- * fallback, that many single frame steps. `true` is its first model, one
- * `setPlayPosition(Current, ±n)`, on the reading that `Current` is an offset
- * from the frame on screen. Seen with `true` on 2026-10-12: a jump of +2, +3
- * or −2 moved `ReplayFrameNum` by exactly that by the maintainer's check, but
- * in a fast turn, where events come 50 to 200 ms apart, the replay or its time
- * readout went to 0:00.00 and on to unrelated places, on both hosts. Which of
- * the two moved, and whether the jump caused it, is not established; the debug
- * line of every turn carries the frame so the next capture can say. Not
- * measured either: whether iRacing applies frame steps sent back to back as
- * one frame each. If it drops some, a fast turn moves fewer frames than
- * detents, and the same lines show it.
+ * How many frames short of the recording's last one a turn stops. A frame
+ * iRacing cannot show never reads back, so a move sent there would stand as
+ * pending until it is given up; in the replay of a running session the last
+ * frames are also still being written. A cursor already inside the margin is
+ * left where it is rather than pulled back.
  */
-const MULTI_DETENT_AS_ONE_JUMP = false;
+const END_MARGIN_FRAMES = 3;
 
 /**
  * @internal Exported for testing
@@ -50,35 +57,44 @@ export function formatReplayTime(seconds: number | undefined): string {
 /**
  * @internal Exported for testing
  *
- * Moves the replay `ticks` frames (positive is forward) in one `io.send`: a
- * single detent as a frame step, several as one relative jump when
- * `asOneJump`, otherwise as that many steps, stopping at the first one that
- * does not go out. Returns whether everything was sent.
+ * What one turn sends: one frame step, one absolute jump, or nothing.
  */
-export function sendFrameSteps(io: ReplayDialModeIo, ticks: number, asOneJump: boolean): boolean {
-  const count = Math.abs(ticks);
+export type FrameMove =
+  { kind: "step"; direction: 1 | -1 } | { kind: "jump"; frame: number } | { kind: "none"; reason: string };
 
-  if (count > 1 && asOneJump) {
-    return io.send(CURSOR_OWNER, (replay) => replay.setPlayPosition(ReplayPosMode.Current, ticks));
+/**
+ * @internal Exported for testing
+ *
+ * Decides what a turn of `ticks` detents (positive is forward) sends from
+ * where the replay stands or is headed. Nothing when that is not known, and
+ * nothing when the replay is at rest on the end of the recording the turn
+ * points at. A frame step only for a single detent with nothing under way;
+ * otherwise an absolute jump, measured from the pending landing while one
+ * stands — also when that is the frame it already asks for, since a landing
+ * that has not read back is put right by asking again.
+ */
+export function planFrameMove(ticks: number, position: ReplayPosition | null): FrameMove {
+  if (position === null) return { kind: "none", reason: "the replay's position is not known" };
+
+  const { frame, endFrame, seeking } = position;
+  const last = endFrame === undefined ? Infinity : Math.max(frame, endFrame - END_MARGIN_FRAMES);
+  const target = ticks > 0 ? Math.min(frame + ticks, last) : Math.max(frame + ticks, 0);
+
+  if (!seeking) {
+    if (target === frame) return { kind: "none", reason: `at the ${ticks > 0 ? "end" : "start"} of the recording` };
+
+    if (Math.abs(ticks) === 1) return { kind: "step", direction: ticks > 0 ? 1 : -1 };
   }
 
-  return io.send(CURSOR_OWNER, (replay) => {
-    for (let step = 0; step < count; step++) {
-      if (!(ticks > 0 ? replay.nextFrame() : replay.prevFrame())) return false;
-    }
-
-    return true;
-  });
+  return { kind: "jump", frame: target };
 }
 
 /**
  * @internal Exported for testing
  *
- * Where the replay stands in the reading a turn is decided on, for the debug
- * line: the frame, the replay time in seconds and iRacing's raw
- * `IsReplayPlaying`, which reads false for about 300 ms after a seek while the
- * rest of the snapshot is not the replay's either. A turn's line is the
- * previous turn's "after", so consecutive lines give the frames each one moved.
+ * The raw reading a turn was decided on, for the debug line: the frame, the
+ * replay time in seconds and iRacing's `IsReplayPlaying`, which reads false
+ * with frame 0 while a position jump is under way.
  */
 export function describeReplayPosition(telemetry: TelemetryData | null): string {
   const frame = telemetry?.ReplayFrameNum ?? "n/a";
@@ -88,14 +104,24 @@ export function describeReplayPosition(telemetry: TelemetryData | null): string 
   return `frame=${frame}, time=${time}, replaying=${replaying}`;
 }
 
+/** A turn's decision for the debug line: what it sends and the position it was measured from. */
+function describeMove(move: FrameMove, position: ReplayPosition | null): string {
+  const sends =
+    move.kind === "step" ? `step ${move.direction}` : move.kind === "jump" ? `jump to ${move.frame}` : "none";
+  const from = position === null ? "n/a" : `${position.frame}${position.seeking ? " (pending)" : ""}`;
+
+  return `move=${sends}, from=${from}`;
+}
+
 /**
  * The Frame Jog mode. Clockwise is the next frame, counter-clockwise the
- * previous one, uncapped. A turn sends more than one command in two cases:
- * several detents in one event go out as that many frame steps
- * ({@link MULTI_DETENT_AS_ONE_JUMP}), and a turn while the replay plays sends
- * the pause first, so the jog lands on a still frame whatever iRacing does to
- * playback on a frame step; the pause is the surface's tracked one, so Press
- * resumes the speed that was playing.
+ * previous one, as many frames as the turn has detents, stopping at the ends
+ * of the recording. One command per event; a turn while the replay plays
+ * sends the pause first, so the jog lands on a still frame whatever iRacing
+ * does to playback on a frame step, and the pause is the surface's tracked
+ * one, so Press resumes the speed that was playing. Every move goes through
+ * the surface's position calls, which keep the landing a later turn is
+ * measured from and refuse a step into a jump.
  */
 export const frameJogMode: ReplayDialMode = {
   label: "FRAME",
@@ -103,8 +129,12 @@ export const frameJogMode: ReplayDialMode = {
 
   rotate(ticks, _dial, io) {
     const playing = io.liveSpeed().speed !== 0;
+    const position = io.position();
+    const move = planFrameMove(ticks, position);
 
-    io.logger.debug(`Frame jog: ticks=${ticks}, playing=${playing}, ${describeReplayPosition(io.telemetry())}`);
+    io.logger.debug(
+      `Frame jog: ticks=${ticks}, playing=${playing}, ${describeMove(move, position)}, ${describeReplayPosition(io.telemetry())}`,
+    );
 
     if (playing && !io.pause(CURSOR_OWNER)) {
       io.logger.warn("Frame jog skipped: the replay could not be paused");
@@ -112,14 +142,24 @@ export const frameJogMode: ReplayDialMode = {
       return;
     }
 
-    sendFrameSteps(io, ticks, MULTI_DETENT_AS_ONE_JUMP);
+    if (move.kind === "none") {
+      io.logger.debug(`Frame jog: nothing sent, ${move.reason}`);
+
+      return;
+    }
+
+    const sent = move.kind === "step" ? io.step(CURSOR_OWNER, move.direction) : io.jumpTo(CURSOR_OWNER, move.frame);
+
+    if (!sent) io.logger.warn("Frame jog: the move was not sent");
   },
 
   view(_dial, io) {
     const live = io.liveSpeed();
 
     return {
-      value: formatReplayTime(io.telemetry()?.ReplaySessionTime),
+      // The position's time, not the raw one: it is the frame a turn is heading for while
+      // the move is under way, where telemetry reads 0.
+      value: formatReplayTime(io.position()?.time),
       caption: formatSpeedDisplay(live.speed, live.slowMotion),
       sides: { left: true, right: true },
     };

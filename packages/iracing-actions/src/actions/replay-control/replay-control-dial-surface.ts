@@ -359,7 +359,11 @@ export class ReplayControlDialSurface {
 
         const sent = send(owner, (replay) => (direction > 0 ? replay.nextFrame() : replay.prevFrame()));
 
-        if (sent) this.noteMoveSent(from.frame + direction, from.frame);
+        // A step into a replay that still reads as playing (a jog pauses
+        // first, and the pause has not shown yet) lands one frame from
+        // wherever the pause catches it, not from this reading: no landing to
+        // wait for, and the next move is measured from telemetry.
+        if (sent && this.reading().speed?.speed === 0) this.noteMoveSent(from.frame + direction, from.frame);
 
         return sent;
       },

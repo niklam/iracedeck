@@ -46,6 +46,10 @@ function fakeIo(live: ReplaySpeed) {
     send,
     setSpeed,
     pause,
+    // Speed Control never moves the replay by frames.
+    position: () => null,
+    step: () => false,
+    jumpTo: () => false,
   };
 
   return { io, logger, setSpeed, pause, send };
