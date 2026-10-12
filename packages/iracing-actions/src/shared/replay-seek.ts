@@ -18,10 +18,11 @@
  * about 20 ms after the send until the cursor lands, and the first sample that
  * shows the frame sent is back in the replay. That took half a second for
  * 60,000 frames on a fast machine and grows with the distance. An absolute
- * jump sent meanwhile retargets the search; a frame step or a relative jump
- * breaks it. So a wait is told what a seek still under way looks like
- * ({@link ReplayWaitOptions.seeking}), and a landing can be required to come
- * from a replay ({@link ReplaySeekOptions.requireReplay}).
+ * jump sent meanwhile retargets the search, and a pause sent to the paused
+ * replay leaves it alone; a frame step or a relative jump breaks it, as the
+ * play command above did. So a wait is told what a seek still under way
+ * looks like ({@link ReplayWaitOptions.seeking}), and a landing can be
+ * required to come from a replay ({@link ReplaySeekOptions.requireReplay}).
  *
  * The caller holds the replay cursor ({@link ReplayCursorClaim}) for the whole
  * wait: a replay command from any other key cancels the claim, and the wait

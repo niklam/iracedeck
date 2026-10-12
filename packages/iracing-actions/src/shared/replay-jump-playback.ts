@@ -288,7 +288,9 @@ export async function runReplayJump(jump: ReplayJump, options: ReplayJumpOptions
   // The captured speed as well as the reading: right after another jump
   // applied a speed, telemetry still reads paused while the replay is already
   // starting to move, and a seek sent into that would be run past. An unknown
-  // speed counts as moving too: a pause sent to a paused replay costs nothing.
+  // speed counts as moving too: a pause sent to a paused replay costs nothing,
+  // even into the seek of a jump this one took over from (measured 2026-10-12:
+  // the seek carries on, and the jump sent next retargets it).
   if (jump.captured.speed !== 0 || !isPaused(readTelemetry())) {
     if (!replay.setPlaySpeed(0)) return { kind: "stopped", reason: "pause-failed", telemetry: null };
 
