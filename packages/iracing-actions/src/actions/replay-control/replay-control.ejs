@@ -208,6 +208,17 @@
 				</div>
 			</div>
 
+			<%# Frame Jog only: the mode has no settings, and its one hint says what
+			    to expect of a fast spin (#1317). %>
+			<div id="dial-frame-jog-section" class="hidden">
+				<div class="ird-supporting-text">
+					Turn the dial to step the replay one frame at a time: clockwise is the
+					next frame. Slow turns are exact. A fast spin is less exact, and how
+					well it keeps up depends on your PC. If it lands off, stop, let it
+					settle and step again.
+				</div>
+			</div>
+
 			<sdpi-item label="Press Action">
 				<sdpi-select setting="dial.pressAction" default="play-pause">
 					<option value="play-pause">Play / Pause</option>
@@ -330,9 +341,11 @@
 				}
 			}
 
-			// The Speeds grid belongs to the dial's Speed Control mode only.
+			// The Speeds grid belongs to the dial's Speed Control mode only, and the
+			// frame-step hint to Frame Jog.
 			function updateDialVisibility(mode) {
 				document.getElementById("dial-speed-stops-section")?.classList.toggle("hidden", mode !== "speed");
+				document.getElementById("dial-frame-jog-section")?.classList.toggle("hidden", mode !== "frame-jog");
 			}
 
 			function updateVisibility(mode) {

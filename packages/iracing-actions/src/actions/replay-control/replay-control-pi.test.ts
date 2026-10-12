@@ -122,6 +122,26 @@ describe("replay-control PI Speeds grid", () => {
   });
 });
 
+describe("replay-control PI Frame Jog hint", () => {
+  it("sits in a section the script shows for Frame Jog only", () => {
+    expect(dialView).toContain('<div id="dial-frame-jog-section" class="hidden">');
+    expect(template).toMatch(
+      /getElementById\("dial-frame-jog-section"\)\?\.classList\.toggle\("hidden", mode !== "frame-jog"\)/,
+    );
+  });
+
+  it("says a fast spin is the less exact one and what to do when it lands off", () => {
+    const hint = section("dial-frame-jog-section").replace(/\s+/g, " ");
+
+    expect(hint).toContain("Slow turns are exact.");
+    expect(hint).toContain("If it lands off, stop, let it settle and step again.");
+  });
+
+  it("binds no setting: Frame Jog has none of its own", () => {
+    expect(section("dial-frame-jog-section")).not.toContain("setting=");
+  });
+});
+
 describe("replay-control PI dial gesture slots", () => {
   const SLOTS = ["pressAction", "longPressAction", "tapAction", "longTouchAction"] as const;
 
