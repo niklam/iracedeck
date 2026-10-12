@@ -452,6 +452,39 @@ describe("diffReplayGreens", () => {
       run(state, tick({ flags: RACING, uniqueId: 5 }));
       expect(run(state, tick({ flags: RESTART, uniqueId: 5 }))).toEqual([]);
     });
+
+    it("records one start per race instance when an AI session is restarted and runs practice → qualifying → race again", () => {
+      // An offline AI event can be restarted: the session numbers start over
+      // while the replay's frames keep growing, each instance under a
+      // `SessionUniqueID` of its own. A real (hosted, official) event never loops.
+      const starts: unknown[] = [];
+      const drive = (o: Parameters<typeof tick>[0]): void => {
+        starts.push(...run(state, tick(o)).map((e) => e.data));
+      };
+      const weekend = (firstUniqueId: number, firstFrame: number): void => {
+        // Practice and qualifying sit in Racing too, and are not race sessions.
+        drive({ sessionNum: 0, uniqueId: firstUniqueId, state: SessionState.GetInCar, frame: firstFrame });
+        drive({ sessionNum: 0, uniqueId: firstUniqueId, frame: firstFrame + 100 });
+        drive({ sessionNum: 1, uniqueId: firstUniqueId + 1, state: SessionState.GetInCar, frame: firstFrame + 5_000 });
+        drive({ sessionNum: 1, uniqueId: firstUniqueId + 1, frame: firstFrame + 5_100 });
+        drive({ sessionNum: 2, uniqueId: firstUniqueId + 2, state: SessionState.GetInCar, frame: firstFrame + 9_000 });
+        drive({ sessionNum: 2, uniqueId: firstUniqueId + 2, state: SessionState.Warmup, frame: firstFrame + 9_500 });
+        drive({ sessionNum: 2, uniqueId: firstUniqueId + 2, frame: firstFrame + 10_000, time: 60 });
+      };
+
+      weekend(1, 0);
+      // Restarted from inside the race: back to practice, on the same tape.
+      weekend(4, 20_000);
+      // Restarted again, this time straight into a new race instance.
+      drive({ sessionNum: 2, uniqueId: 7, state: SessionState.GetInCar, frame: 40_000 });
+      drive({ sessionNum: 2, uniqueId: 7, frame: 40_500, time: 30 });
+
+      expect(starts).toEqual([
+        { ...IDENTITY, sessionUniqueId: 3, kind: "start", frame: 10_000, sessionTimeMs: 60_000 },
+        { ...IDENTITY, sessionUniqueId: 6, kind: "start", frame: 30_000, sessionTimeMs: 60_000 },
+        { ...IDENTITY, sessionUniqueId: 7, kind: "start", frame: 40_500, sessionTimeMs: 30_000 },
+      ]);
+    });
   });
 
   describe("the debug line", () => {
