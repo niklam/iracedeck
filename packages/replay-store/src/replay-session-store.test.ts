@@ -1440,16 +1440,16 @@ describe("createReplaySessionStore", () => {
         matchedBy: "sessionNum",
         sessionUniqueId: 3,
       });
-      // A unique id no session carries, and one whose session has no start.
+      // A unique id no session carries takes the one start there is...
       expect(store.greens.findGreen({ sessionNum: 2, sessionUniqueId: 0, kind: "start" })).toMatchObject({
         frame: 30215,
         matchedBy: "sessionNum",
         sessionUniqueId: 3,
       });
-      expect(store.greens.findGreen({ sessionNum: 2, sessionUniqueId: 5, kind: "start" })).toMatchObject({
-        frame: 30215,
-        matchedBy: "sessionNum",
-        sessionUniqueId: 3,
+      // ...but an instance the record holds without a start is never answered from another pass.
+      expect(store.greens.findGreen({ sessionNum: 2, sessionUniqueId: 5, kind: "start" })).toEqual({
+        hit: false,
+        reason: "no green",
       });
 
       // A second instance of the session goes green later in the recording.

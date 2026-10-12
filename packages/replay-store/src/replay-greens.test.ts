@@ -511,18 +511,36 @@ describe("replay greens section (#1354)", () => {
       });
     });
 
-    it("falls back by sessionNum when the pair-matched session has no start", () => {
+    it("never answers a named instance with another pass's start: a recorded instance without one misses", () => {
       const section = sectionWithGreens();
 
+      // A second pass of the race, whose green was not seen but whose restart was.
       recordGreenInSection(section, restart(150000, { sessionUniqueId: 5 }));
 
       expect(findGreenInSection(section, { sessionNum: 2, sessionUniqueId: 5, kind: "start" })).toEqual({
+        hit: false,
+        reason: "no green",
+      });
+      // From outside the race no instance is named, and the one start there is stands.
+      expect(findGreenInSection(section, { sessionNum: 2, kind: "start" })).toMatchObject({
         hit: true,
         frame: 30215,
-        sessionTimeMs: 512433,
         matchedBy: "sessionNum",
-        sessionUniqueId: 4,
       });
+    });
+
+    it("misses with 'no session' when the named instance is not recorded and several others have a start", () => {
+      const section = sectionWithGreens();
+
+      recordGreenInSection(section, green({ frame: 160000, sessionUniqueId: 5 }));
+
+      // A pass the record never saw: neither of the two it holds is that race.
+      expect(findGreenInSection(section, { sessionNum: 2, sessionUniqueId: 6, kind: "start" })).toEqual({
+        hit: false,
+        reason: "no session",
+      });
+      // Unnamed, the latest of the two.
+      expect(findGreenInSection(section, { sessionNum: 2, kind: "start" })).toMatchObject({ hit: true, frame: 160000 });
     });
 
     it("a start lookup never answers with a restart or an entry of a kind it does not know", () => {

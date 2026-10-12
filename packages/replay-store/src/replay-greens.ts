@@ -83,8 +83,10 @@ export interface GreenQuery {
  * "newer format" is the store's too: the file's `greens` section was written
  * by a build with a higher {@link GREENS_SECTION_VERSION}, so this build
  * carries it through untouched and neither reads nor writes it. "no session":
- * the section holds no session with that `sessionNum`. "no green": everything
- * else — a file with no `greens` section, or a session without the entry.
+ * the section holds no session with that `sessionNum`, or the query named an
+ * instance it does not hold while several others have the entry. "no green":
+ * everything else — a file with no `greens` section, or a session without the
+ * entry.
  */
 export type GreenMissReason = "no file" | "no session" | "no green" | "newer format";
 
@@ -95,7 +97,7 @@ export type GreenLookup =
       sessionTimeMs: number;
       /** Whether the session matched by its `(sessionNum, sessionUniqueId)` pair or by the `sessionNum` fallback. */
       matchedBy: "pair" | "sessionNum";
-      /** The matched session's unique id, so the caller can read the lap record of that same session. */
+      /** The matched session's unique id: which instance of the `sessionNum` the answer came from, for the caller's log. */
       sessionUniqueId: number;
     }
   | { hit: false; reason: GreenMissReason };
@@ -319,13 +321,24 @@ function greenOfKind(session: ReplayGreensSession, kind: GreenKind): ReplayGreen
  * `greens` section, which is a miss with `no green`: a replay recorded by a
  * build before this one has a lap record to fall back on, and no greens.
  *
- * The session is the `(sessionNum, sessionUniqueId)` pair when one is recorded
- * with the entry. Otherwise — no `sessionUniqueId` in the query, no session
- * under the pair, or a pair-matched session without the entry — the lookup
- * reads the sessions with that `sessionNum` that DO have the entry: the only
- * one, and of several the one whose entry has the highest frame, which is the
- * latest instance in the recording. Restarts and entries of a kind this build
- * does not know are never the answer to a `start` lookup.
+ * A query that names an instance — a press made inside a race, which knows
+ * its `sessionUniqueId` — is answered from that instance and no other. The
+ * session recorded under the pair either has the entry or the lookup misses
+ * with `no green`: a start recorded for another pass of the same race (an AI
+ * event restarted) is a different green, and landing there would put the
+ * cursor in a race the user is not watching. When the record holds no session
+ * under the pair at all, the lap record's rule applies: the ONE other session
+ * with that `sessionNum` that has the entry is taken, for a file whose unique
+ * ids did not survive the save, and with several the lookup misses with
+ * `no session`.
+ *
+ * A query that names none — a press from practice or qualifying — reads the
+ * sessions with that `sessionNum` that have the entry: the only one, and of
+ * several the one whose entry has the highest frame, which is the latest
+ * instance in the recording.
+ *
+ * Restarts and entries of a kind this build does not know are never the answer
+ * to a `start` lookup.
  */
 export function findGreenInSection(section: ReplayGreensSection | undefined, query: GreenQuery): GreenLookup {
   if (section === undefined) return { hit: false, reason: "no green" };
@@ -334,13 +347,14 @@ export function findGreenInSection(section: ReplayGreensSection | undefined, que
 
   if (sameNum.length === 0) return { hit: false, reason: "no session" };
 
-  const byPair =
-    query.sessionUniqueId !== null && query.sessionUniqueId !== undefined
-      ? sameNum.find((s) => s.sessionUniqueId === query.sessionUniqueId)
-      : undefined;
-  const direct = byPair === undefined ? undefined : greenOfKind(byPair, query.kind);
+  const namesInstance = query.sessionUniqueId !== null && query.sessionUniqueId !== undefined;
+  const byPair = namesInstance ? sameNum.find((s) => s.sessionUniqueId === query.sessionUniqueId) : undefined;
 
-  if (byPair !== undefined && direct !== undefined) {
+  if (byPair !== undefined) {
+    const direct = greenOfKind(byPair, query.kind);
+
+    if (direct === undefined) return { hit: false, reason: "no green" };
+
     return {
       hit: true,
       frame: direct.frame,
@@ -351,14 +365,21 @@ export function findGreenInSection(section: ReplayGreensSection | undefined, que
   }
 
   let latest: { session: ReplayGreensSession; entry: ReplayGreenEntry } | undefined;
+  let withEntry = 0;
 
   for (const session of sameNum) {
     const entry = greenOfKind(session, query.kind);
 
-    if (entry !== undefined && (latest === undefined || entry.frame > latest.entry.frame)) latest = { session, entry };
+    if (entry === undefined) continue;
+
+    withEntry++;
+
+    if (latest === undefined || entry.frame > latest.entry.frame) latest = { session, entry };
   }
 
   if (latest === undefined) return { hit: false, reason: "no green" };
+
+  if (namesInstance && withEntry > 1) return { hit: false, reason: "no session" };
 
   return {
     hit: true,
