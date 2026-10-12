@@ -964,6 +964,11 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
    * costs no telemetry read and redraws only on a change.
    */
   private onDialTelemetry(contextId: string, telemetry: TelemetryData | null): void {
+    // As for a key: a disconnect is the one signal that the replay the
+    // fastest-lap map described is gone, and a page of dials alone must not
+    // miss it.
+    if (telemetry === null) cachedFastestLapSessionMap = null;
+
     const speed = telemetry ? replaySpeedFromTelemetry(telemetry) : null;
 
     // The keypad's `updateTelemetryState`, from the speed already decoded: no
