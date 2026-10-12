@@ -29,7 +29,7 @@ import {
   parseSpeedSetting,
   ReplayControl,
 } from "./replay-control.js";
-import { _resetReplaySpeedState, rememberedSpeed } from "./replay-speed-state.js";
+import { _resetReplaySpeedState, noteDialSpeedSent, rememberedSpeed, resolveLiveSpeed } from "./replay-speed-state.js";
 
 // Mock all replay-control icon SVGs
 vi.mock("@iracedeck/icons/replay-control/play-pause.svg", () => ({
@@ -2095,6 +2095,76 @@ describe("ReplayControl", () => {
         expect(mockReplay.goToEnd).toHaveBeenCalledTimes(1);
         expect(action["sdkController"].noteReplayLeftForLive).toHaveBeenCalledTimes(1);
         expect(action["logger"].info).toHaveBeenCalledWith("Jump to live executed");
+      });
+    });
+
+    describe("a speed a key sends supersedes the dial's pending one", () => {
+      const keyReplay = {
+        play: vi.fn(() => true),
+        pause: vi.fn(() => true),
+        setPlaySpeed: vi.fn(() => true),
+        fastForward: vi.fn(() => true),
+      };
+      const PAUSED = { speed: 0, slowMotion: false };
+      /** What the tick still carries inside the hold: the replay at 4x. */
+      const STALE_4X = { speed: 4, slowMotion: false };
+      let t0: number;
+
+      beforeEach(async () => {
+        const { getCommands } = await import("@iracedeck/deck-iracing");
+
+        vi.mocked(getCommands).mockReturnValue({ replay: keyReplay, camera: { switchNum: vi.fn() } } as never);
+        t0 = Date.now();
+      });
+
+      it.each<[string, Record<string, unknown>]>([
+        ["Play/Pause", { mode: "play-pause" }],
+        ["Stop", { mode: "stop" }],
+        ["Fast Forward", { mode: "fast-forward", stepRate: 1 }],
+        ["Set Speed", { mode: "set-speed", speed: "2" }],
+      ])("a %s key inside the hold lets the live speed follow telemetry at once", async (_name, settings) => {
+        await action.onWillAppear(keyEvent("key-1", settings) as never);
+        // A Frame Jog detent paused the playing replay: the dial reads 0x for the hold.
+        noteDialSpeedSent(PAUSED, t0);
+        expect(resolveLiveSpeed(STALE_4X, t0 + 10)).toEqual(PAUSED);
+
+        await action.onKeyDown(keyEvent("key-1", settings) as never);
+
+        expect(resolveLiveSpeed(STALE_4X, t0 + 20)).toEqual(STALE_4X);
+      });
+
+      it("the key's speed is then remembered from telemetry again", async () => {
+        await action.onWillAppear(keyEvent("key-1", { mode: "set-speed", speed: "8" }) as never);
+        nowReading(REPLAY_4X);
+        tickOf("key-1")(REPLAY_4X);
+        noteDialSpeedSent(PAUSED, Date.now());
+
+        await action.onKeyDown(keyEvent("key-1", { mode: "set-speed", speed: "8" }) as never);
+        const eightTimes = { ...REPLAY_4X, ReplayPlaySpeed: 8 } as TelemetryData;
+        nowReading(eightTimes);
+        tickOf("key-1")(eightTimes);
+
+        expect(rememberedSpeed()).toEqual({ speed: 8, slowMotion: false });
+      });
+
+      it("a key press leaves the remembered speed alone", async () => {
+        await action.onWillAppear(keyEvent("key-1", { mode: "stop" }) as never);
+        noteDialSpeedSent(STALE_4X, t0);
+
+        await action.onKeyDown(keyEvent("key-1", { mode: "stop" }) as never);
+
+        expect(rememberedSpeed()).toEqual(STALE_4X);
+      });
+
+      it("the dial's own send does not clear its pending speed: the host writes the cache alone", async () => {
+        await action.onWillAppear(dialEvent() as never);
+        tickOf("dial-1")(REPLAY_4X);
+        noteDialSpeedSent(PAUSED, t0);
+
+        host().setLocalSpeed(0, false);
+
+        expect(action["replaySpeed"].get("dial-1")).toBe(0);
+        expect(resolveLiveSpeed(STALE_4X, t0 + 10)).toEqual(PAUSED);
       });
     });
   });

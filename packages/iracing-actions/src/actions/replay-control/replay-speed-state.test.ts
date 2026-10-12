@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { ReplaySpeed } from "./replay-control-dial-mode.js";
 import {
   _resetReplaySpeedState,
+  clearDialPendingSpeed,
   DIAL_SPEED_HOLD_MS,
   noteDialSpeedSent,
   noteTelemetrySpeed,
@@ -183,6 +184,63 @@ describe("replay-speed-state", () => {
       noteTelemetrySpeed(speed(2), T0 + 16);
 
       expect(rememberedSpeed()).toEqual(speed(-2));
+    });
+  });
+
+  describe("clearDialPendingSpeed", () => {
+    it("should let the live speed follow telemetry at once", () => {
+      noteDialSpeedSent(PAUSED, T0);
+      expect(resolveLiveSpeed(speed(4), T0 + 10)).toEqual(PAUSED);
+
+      clearDialPendingSpeed();
+
+      // A key's Play landed: the tick's speed is the live one, inside what was the hold.
+      expect(resolveLiveSpeed(speed(1), T0 + 20)).toEqual(speed(1));
+      expect(resolveLiveSpeed(speed(4), T0 + 30)).toEqual(speed(4));
+    });
+
+    it("should read as paused with no telemetry speed once the pending one is gone", () => {
+      noteDialSpeedSent(speed(4), T0);
+
+      clearDialPendingSpeed();
+
+      expect(resolveLiveSpeed(null, T0 + 10)).toEqual(PAUSED);
+    });
+
+    it("should let telemetry feed the remembered speed again", () => {
+      noteDialSpeedSent(PAUSED, T0);
+      noteTelemetrySpeed(speed(8), T0 + 10);
+      expect(rememberedSpeed()).toEqual(speed(1));
+
+      clearDialPendingSpeed();
+      noteTelemetrySpeed(speed(8), T0 + 20);
+
+      expect(rememberedSpeed()).toEqual(speed(8));
+    });
+
+    it("should leave the remembered speed alone", () => {
+      noteDialSpeedSent(speed(4), T0);
+
+      clearDialPendingSpeed();
+
+      expect(rememberedSpeed()).toEqual(speed(4));
+    });
+
+    it("should do nothing when no speed is pending", () => {
+      noteTelemetrySpeed(speed(2), T0);
+
+      clearDialPendingSpeed();
+
+      expect(resolveLiveSpeed(speed(2), T0 + 10)).toEqual(speed(2));
+      expect(rememberedSpeed()).toEqual(speed(2));
+    });
+
+    it("should not stop a later dial send from holding again", () => {
+      noteDialSpeedSent(speed(2), T0);
+      clearDialPendingSpeed();
+      noteDialSpeedSent(speed(4), T0 + 10);
+
+      expect(resolveLiveSpeed(speed(1), T0 + 20)).toEqual(speed(4));
     });
   });
 });

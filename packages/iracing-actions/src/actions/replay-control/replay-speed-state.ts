@@ -10,7 +10,11 @@
  *   walk from the old speed and send the same stop again. After a dial send
  *   the live speed therefore reads as the sent target until telemetry reports
  *   it or {@link DIAL_SPEED_HOLD_MS} passes — the Replay Markers landing hold
- *   (#1230), applied to speed. A pause is a sent speed too (0x).
+ *   (#1230), applied to speed. A pause is a sent speed too (0x). A speed this
+ *   action's keys send supersedes it at once ({@link clearDialPendingSpeed}).
+ *   A change made from iRacing's own replay bar inside the hold cannot be told
+ *   from a stale tick, so it is masked until the hold runs out, which is when
+ *   the hold heals itself.
  * - The **remembered speed**: the last non-zero speed the replay played at,
  *   which Play/Pause resumes. It follows telemetry, so it is right whoever set
  *   the speed — a dial, a key or iRacing's own replay bar — and a non-zero dial
@@ -83,6 +87,18 @@ export function noteDialSpeedSent(target: ReplaySpeed, nowMs: number): void {
   pending = { speed: { ...target }, sentAt: nowMs };
 
   if (target.speed !== 0) remembered = { ...target };
+}
+
+/**
+ * Drops the pending speed: something other than a dial just sent a replay
+ * speed (a key's Play, Set Speed, a pause), so the dial's own send no longer
+ * says what the replay is doing and the live speed follows telemetry again at
+ * once. Without it a key press inside the hold would be masked: the box would
+ * still read the dial's speed, and Frame Jog would step a replay it believes
+ * paused. The remembered speed is left alone.
+ */
+export function clearDialPendingSpeed(): void {
+  pending = null;
 }
 
 /**
