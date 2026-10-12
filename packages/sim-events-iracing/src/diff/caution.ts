@@ -866,6 +866,32 @@ function diffCatchUp(
 }
 
 /**
+ * The flag half of a restart: `Green` rising on this tick with neither
+ * `Caution` nor `CautionWaving` set on it — the test in the module comment's
+ * **Restarted** paragraph, which is what keeps a yellow-checkered tick (`Green`
+ * rising with `Caution` still set) from being called one.
+ *
+ * It is only half: a green that rises with no caution behind it is a race
+ * start or a plain green, so each caller adds its own "a caution was out".
+ * {@link diffCautionEpisode} reads the caution phase; the replay green record
+ * (`replay-greens.ts`, issue #1354) keeps a latch of its own, because that
+ * phase is wiped on every replay tick and the record runs ahead of the guard
+ * that wipes it. Shared rather than copied so the event the engineer speaks
+ * and the frame the replay jumps to are decided by one reading of the flags.
+ *
+ * @param prevFlags - `SessionFlags` on the previous tick the caller diffed
+ * @param flags - `SessionFlags` on this tick
+ */
+export function isRestartGreenEdge(prevFlags: number, flags: number): boolean {
+  return (
+    hasFlag(flags, Flags.Green) &&
+    !hasFlag(prevFlags, Flags.Green) &&
+    !hasFlag(flags, Flags.Caution) &&
+    !hasFlag(flags, Flags.CautionWaving)
+  );
+}
+
+/**
  * The next caution's id (issue #1286). Module-level and never reset, so a
  * caution in a later session — `resetPerSessionState` builds a fresh state —
  * can never reuse an id a consumer still remembers.
@@ -1045,12 +1071,13 @@ function diffCautionEpisode(
   // did not is caught silently — never under a flying green — with neither
   // bit set the phase expires, and a one-to-go flag withdrawn while the caution
   // stays out returns the episode to caught.
-  if (green && !hasFlag(wasFlags, Flags.Green) && state.cautionPhase !== "none" && !caution && !waving) {
+  if (isRestartGreenEdge(wasFlags, flags) && state.cautionPhase !== "none") {
     // The restart: the green rising AND the caution bits gone on the same
-    // tick, which is what both captures show. A green rising with `Caution`
-    // still set (a yellow-checkered tick) is deliberately not this branch —
-    // see the module comment — and falls through to leave the phase where it
-    // is, so no "Go, go, go!" reaches a driver who must not go.
+    // tick (`isRestartGreenEdge` above), which is what both captures show. A
+    // green rising with `Caution` still set (a yellow-checkered tick) is
+    // deliberately not this branch — see the module comment — and falls
+    // through to leave the phase where it is, so no "Go, go, go!" reaches a
+    // driver who must not go.
     emit({ event: "caution.restarted", data: {} });
     state.cautionPhase = "none";
     state.cautionRestartedAt = now;

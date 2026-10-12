@@ -43,7 +43,10 @@
  *   crossings — those laps are absent from the record and fall through to the
  *   walk. This is why the diff runs BEFORE the translator's replay guard: the
  *   guard's early return would stop it on exactly the ticks it has to notice
- *   it cannot see.
+ *   it cannot see. The check itself is `resolveReplayRecordTick`
+ *   (`replay-record-gate.ts`), shared by every replay recorder so no two
+ *   records can disagree about which ticks are live; this diff adds only
+ *   that it needs `CarIdxLapCompleted` to be an array.
  *
  *   The per-car arrays read the LIVE field during an in-session replay, not
  *   the replay cursor's view of it: two snapshots of a post-race in-session
@@ -65,10 +68,11 @@
  *   session YAML cannot name: the record is verified by `carNumberRaw` at
  *   lookup, so an entry without one could never answer.
  */
-import { getCarNumberRawFromSessionInfo, resolveReplayFrame, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { getCarNumberRawFromSessionInfo, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 import type { ReplayLapTimeWait, TranslatorState } from "../state.js";
 import { resolvePaceCarIdx } from "./pace-laps.js";
+import { resolveReplayRecordTick, resolveSubSessionId } from "./replay-record-gate.js";
 import type { EmitFn } from "./types.js";
 
 /**
@@ -89,14 +93,6 @@ function resolveDriverUserId(sessionInfo: Record<string, unknown> | null, carIdx
   const userId = driver?.UserID;
 
   return typeof userId === "number" && Number.isFinite(userId) ? userId : null;
-}
-
-/** `WeekendInfo.SubSessionID`; 0 when absent — an offline session reads 0 too. */
-function resolveSubSessionId(sessionInfo: Record<string, unknown> | null): number {
-  const weekend = sessionInfo?.WeekendInfo as Record<string, unknown> | undefined;
-  const id = weekend?.SubSessionID;
-
-  return typeof id === "number" && Number.isFinite(id) ? id : 0;
 }
 
 function seed(
@@ -122,20 +118,15 @@ export function diffReplayLaps(
   emit: EmitFn,
 ): void {
   const completed = telemetry.CarIdxLapCompleted;
-  const sessionNum = telemetry.SessionNum;
-  const frame = resolveReplayFrame(telemetry);
-  const eligible =
-    !inReplay && typeof sessionNum === "number" && sessionNum >= 0 && frame !== null && Array.isArray(completed);
+  const live = resolveReplayRecordTick(telemetry, inReplay);
 
-  if (!eligible) {
+  if (live === null || !Array.isArray(completed)) {
     state.replayLapsSeeded = false;
 
     return;
   }
 
-  // `SessionUniqueID` is on every live tick; a build without it reads 0 on
-  // every tick, so the pair still keys one record per `SessionNum`.
-  const sessionUniqueId = typeof telemetry.SessionUniqueID === "number" ? telemetry.SessionUniqueID : 0;
+  const { sessionNum, sessionUniqueId, frame } = live;
   const lastLapTime = telemetry.CarIdxLastLapTime;
 
   if (
