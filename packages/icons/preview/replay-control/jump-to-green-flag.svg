@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 59 68" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a3a4a","textColor":"#ffffff","graphic1Color":"#ffffff"},"locked":["graphic1Color"],"title":{"text":"GREEN\nFLAG"},"border":{"color":"#5a6a7a"}}</desc>
+
+
+    <path d="M8,6 C20,0 32,12 58,6 L58,40 C32,46 20,34 8,40 Z" fill="#2ecc71" stroke="none"/>
+    <line x1="4" y1="4" x2="4" y2="64" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
+
+</svg>
