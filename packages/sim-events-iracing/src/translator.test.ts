@@ -5055,6 +5055,206 @@ describe("sim-events-iracing translator", () => {
     });
   });
 
+  // Issue #1354: the replay green record is the lap record's sibling — same
+  // gate, same side of the replay guard, same wiped state — so its wiring is
+  // pinned the same way: through the real tick loop, by the signature only a
+  // pre-guard, wiped diff leaves.
+  describe("replay green record (issue #1354)", () => {
+    const SUB_SESSION = 86697546;
+
+    // `SessionFlags` values lifted from the 2026-09-17 capture (see `diff/caution.test.ts`).
+    const RACING = 0x10040000; // Servicible | StartHidden — green-flag running
+    const WAVING = 0x10048000; // + CautionWaving
+    const STATIC = 0x10044000; // + Caution
+    const RESTART = 0x80040004 | 0; // Green | Servicible | StartGo — StartGo is the sign bit
+
+    function raceSession(simMode = "full"): Record<string, unknown> {
+      return {
+        SessionInfo: { Sessions: [{ SessionType: "Race" }] },
+        WeekendInfo: { TrackID: 42, SimMode: simMode, SubSessionID: SUB_SESSION },
+        DriverInfo: { DriverCarIdx: 0, Drivers: [{ CarIdx: 0, CarNumberRaw: 7, UserID: 100 }] },
+      };
+    }
+
+    function greenTick(o: {
+      state?: SessionState;
+      flags?: number;
+      frame?: number;
+      time?: number;
+      replay?: boolean;
+    }): TelemetryData {
+      return telemetry({
+        SessionNum: 0,
+        SessionUniqueID: 1,
+        SessionState: o.state ?? SessionState.Racing,
+        SessionFlags: o.flags ?? RACING,
+        SessionTime: o.time ?? 600,
+        IsReplayPlaying: o.replay ?? false,
+        IsOnTrack: !(o.replay ?? false),
+        ReplayFrameNumEnd: o.frame ?? 30_000,
+      });
+    }
+
+    type RecordedGreen = { kind: string; frame: number };
+
+    function recordGreens(): RecordedGreen[] {
+      const seen: RecordedGreen[] = [];
+
+      getEventBus().subscribe("replay.greenFlag", (ev) => {
+        seen.push({ kind: ev.data.kind, frame: ev.data.frame });
+      });
+
+      return seen;
+    }
+
+    it("publishes the race start through the real tick loop, with the session identity, frame and session time", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(raceSession());
+      const handler = vi.fn();
+      getEventBus().subscribe("replay.greenFlag", handler);
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(greenTick({ state: SessionState.ParadeLaps })); // seed
+      controller.__tick(greenTick({ state: SessionState.ParadeLaps }));
+      const edge = greenTick({ flags: RESTART, frame: 41_007, time: 690.1 });
+      controller.__tick(edge);
+      controller.__tick(greenTick({ flags: RESTART, frame: 41_008, time: 690.117 }));
+
+      expect(handler).toHaveBeenCalledTimes(1);
+      const published = handler.mock.calls[0]![0] as SimEventOf<"replay.greenFlag">;
+      expect(published.data).toEqual({
+        subSessionId: SUB_SESSION,
+        sessionNum: 0,
+        sessionUniqueId: 1,
+        kind: "start",
+        frame: 41_007,
+        sessionTimeMs: 690_100,
+      });
+      // Published directly on the edge tick, with that tick's telemetry.
+      expect(published.telemetry).toBe(edge);
+    });
+
+    it("logs the edge at debug, with the raw flags and state the manual capture reads", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(raceSession());
+      const logger = createMockLogger();
+      initializeSimEventsIracing(getEventBus(), controller, logger);
+
+      controller.__tick(greenTick({ state: SessionState.Warmup }));
+      controller.__tick(greenTick({ flags: RESTART, frame: 30_215, time: 512.433 }));
+
+      const lines = vi.mocked(logger.debug).mock.calls.map((c) => c[0]);
+
+      expect(lines).toContain(
+        "Replay green: kind=start frame=30215 sessionTime=512.433 SessionState=2→4 " +
+          "SessionFlags=0x10040000→0x80040004 SessionNum=0 SessionUniqueID=1",
+      );
+    });
+
+    it("runs before the replay guard: a green that flew behind the replay view is never fabricated on the way back", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(raceSession());
+      const seen = recordGreens();
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(greenTick({ state: SessionState.ParadeLaps })); // seed
+      controller.__tick(greenTick({ state: SessionState.ParadeLaps }));
+      // Into the garage / the in-session replay on the formation lap.
+      controller.__tick(greenTick({ state: SessionState.ParadeLaps, replay: true }));
+      controller.__tick(greenTick({ state: SessionState.ParadeLaps, replay: true }));
+      // Back live, once the exit grace has run (#1324). The first tick
+      // re-seeds without emitting, and — the pre-guard-and-wiped signature
+      // this test pins — the replay-exit wipe that follows it re-seeds once
+      // more, so the state entering Racing on the SECOND live tick is absorbed
+      // too. Moving the diff behind the guard, or preserving its state in
+      // `wipeStateForReplay`, would emit that one as the start.
+      elapseReplayGrace();
+      controller.__tick(greenTick({ state: SessionState.ParadeLaps, frame: 50_000 }));
+      controller.__tick(greenTick({ frame: 50_001 }));
+      controller.__tick(greenTick({ frame: 50_002 }));
+      expect(seen).toEqual([]);
+      // From there the record is live again: a re-grid's green is recorded.
+      controller.__tick(greenTick({ state: SessionState.ParadeLaps, frame: 60_000 }));
+      controller.__tick(greenTick({ frame: 60_001 }));
+
+      expect(seen).toEqual([{ kind: "start", frame: 60_001 }]);
+    });
+
+    it("drops its caution latch behind the replay view: a restart taken there is absent, the next one is recorded", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(raceSession());
+      const seen = recordGreens();
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(greenTick({})); // seed
+      controller.__tick(greenTick({ flags: WAVING }));
+      controller.__tick(greenTick({ flags: STATIC }));
+      // A glance at the replay under the yellow; the field restarts meanwhile.
+      controller.__tick(greenTick({ flags: STATIC, replay: true }));
+      elapseReplayGrace();
+      controller.__tick(greenTick({ flags: RESTART, frame: 70_000 }));
+      controller.__tick(greenTick({ flags: RESTART, frame: 70_001 }));
+      controller.__tick(greenTick({ frame: 70_002 }));
+      expect(seen).toEqual([]);
+      // The next caution is watched from the car, start to finish.
+      controller.__tick(greenTick({ flags: WAVING, frame: 80_000 }));
+      controller.__tick(greenTick({ flags: STATIC, frame: 80_001 }));
+      controller.__tick(greenTick({ flags: RESTART, frame: 80_002 }));
+
+      expect(seen).toEqual([{ kind: "restart", frame: 80_002 }]);
+    });
+
+    it("stays silent in a replay-only session (SimMode=replay), even on live-looking ticks", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(raceSession("replay"));
+      const seen = recordGreens();
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(greenTick({ state: SessionState.ParadeLaps }));
+      controller.__tick(greenTick({ state: SessionState.ParadeLaps }));
+      controller.__tick(greenTick({ flags: RESTART }));
+      controller.__tick(greenTick({ flags: STATIC }));
+      controller.__tick(greenTick({ flags: RESTART }));
+
+      expect(seen).toEqual([]);
+    });
+
+    it("records a restart on the tick caution.restarted fires, and publishes it first — ahead of the post-guard flush", () => {
+      // The two are decided by one predicate (`isRestartGreenEdge`) over two
+      // latches: the caution diff's phase and the recorder's own. The order
+      // is the wiring's: the recorder publishes directly from in front of the
+      // guard, the caution diff through the `pending` list flushed at the end
+      // of the tick.
+      const controller = createMockController();
+      controller.__setSessionInfo(raceSession());
+      const stream: string[] = [];
+      getEventBus().subscribe("replay.greenFlag", (ev) => stream.push(`${ev.event}:${ev.data.kind}@${ev.data.frame}`));
+      getEventBus().subscribe("caution.restarted", (ev) => stream.push(ev.event));
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(greenTick({})); // seed
+      controller.__tick(greenTick({ flags: WAVING, frame: 71_000 }));
+      controller.__tick(greenTick({ flags: STATIC, frame: 71_500 }));
+      expect(stream).toEqual([]);
+      controller.__tick(greenTick({ flags: RESTART, frame: 71_904 }));
+
+      expect(stream).toEqual(["replay.greenFlag:restart@71904", "caution.restarted"]);
+    });
+
+    it("records nothing for a practice session going Racing", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo({ ...raceSession(), SessionInfo: { Sessions: [{ SessionType: "Practice" }] } });
+      const seen = recordGreens();
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(greenTick({ state: SessionState.GetInCar }));
+      controller.__tick(greenTick({ state: SessionState.GetInCar }));
+      controller.__tick(greenTick({ flags: RESTART }));
+
+      expect(seen).toEqual([]);
+    });
+  });
+
   describe("full-course caution wiring (issue #1127)", () => {
     /** car0 is the player, car1 the rival, car2 the pace car, car3 the car behind the rival on the outside line. */
     const PLAYER = 0;

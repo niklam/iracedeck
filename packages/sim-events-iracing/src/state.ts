@@ -1315,6 +1315,40 @@ export type TranslatorState = {
    */
   replayLapsTimeWait: Array<ReplayLapTimeWait | null>;
 
+  // ── Replay green record (issue #1354) ─────────────────────────────────
+  // Runs PRE-guard (`diff/replay-greens.ts`) beside the lap record above and,
+  // like it, is deliberately NOT preserved by `wipeStateForReplay`: the
+  // baselines are a previous tick's readings, which a replay glance makes
+  // meaningless, and the diff's own gate re-seeds on the first eligible tick.
+  /**
+   * Whether the baselines below hold an eligible tick's values. Every
+   * ineligible tick (a replay, no session, no frame) clears it, so the first
+   * eligible tick after it re-seeds silently — even across a `Racing` flip.
+   */
+  replayGreensSeeded: boolean;
+  /** The `SessionNum` the baselines were seeded in; a change re-seeds. */
+  replayGreensSessionNum: number | null;
+  /** The `SessionUniqueID` the baselines were seeded in; a change re-seeds. */
+  replayGreensSessionUniqueId: number | null;
+  /**
+   * `SessionState` on the previous eligible tick, the race start's baseline:
+   * the start is `Racing` read after `GetInCar`, `Warmup` or `ParadeLaps`. A
+   * tick that carries no `SessionState` is held as `Invalid`, which is not a
+   * pre-green state for that edge.
+   */
+  replayGreensLastSessionState: number;
+  /** `SessionFlags` on the previous eligible tick, the baseline a `Green` rising edge is read against. */
+  replayGreensLastFlags: number;
+  /**
+   * The recorder's own "a caution is out" latch: a caution bit (`Caution` or
+   * `CautionWaving`) was set on the previous eligible tick of this session.
+   * It stands in for `cautionPhase`, which is wiped on every replay tick, and
+   * like that phase it falls the moment neither bit is set — so a restart is
+   * the green rising on the tick the caution bits drop. Cleared with the seed
+   * flag by an ineligible tick, and re-read from the flags by every seed.
+   */
+  replayGreensCautionOut: boolean;
+
   // ── Opponent penalty flags (issue #936) ───────────────────────────────
   /** First tick seeds the per-car penalty-bit store silently. */
   opponentFlagsInitialized: boolean;
@@ -1846,6 +1880,13 @@ export function createInitialState(): TranslatorState {
     replayLapsLastCompleted: [],
     replayLapsLastLapTime: [],
     replayLapsTimeWait: [],
+
+    replayGreensSeeded: false,
+    replayGreensSessionNum: null,
+    replayGreensSessionUniqueId: null,
+    replayGreensLastSessionState: 0,
+    replayGreensLastFlags: 0,
+    replayGreensCautionOut: false,
 
     opponentFlagsInitialized: false,
     opponentFlagSeededAt: 0,

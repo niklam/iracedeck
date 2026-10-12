@@ -1,6 +1,9 @@
-import type { TelemetryData } from "@iracedeck/iracing-sdk";
-import { describe, expect, it } from "vitest";
+import { SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { beforeEach, describe, expect, it } from "vitest";
 
+import { createInitialState, type TranslatorState } from "../state.js";
+import { diffReplayGreens } from "./replay-greens.js";
+import { diffReplayLaps } from "./replay-laps.js";
 import { resolveReplayRecordTick, resolveSubSessionId } from "./replay-record-gate.js";
 
 type TickOverrides = Partial<{
@@ -18,6 +21,11 @@ function tick(o: TickOverrides = {}): TelemetryData {
     SessionNum: "sessionNum" in o ? o.sessionNum : 2,
     SessionUniqueID: "uniqueId" in o ? o.uniqueId : 4,
     IsReplayPlaying: o.replay ?? false,
+    // What the two recorders read on top of the gate.
+    SessionState: SessionState.Racing,
+    SessionFlags: 0,
+    CarIdxLapCompleted: [4, 4],
+    CarIdxLastLapTime: [91.5, 92.5],
   } as TelemetryData;
 }
 
@@ -79,5 +87,41 @@ describe("resolveSubSessionId", () => {
     expect(resolveSubSessionId({ WeekendInfo: {} })).toBe(0);
     expect(resolveSubSessionId({ WeekendInfo: { SubSessionID: "86697546" } })).toBe(0);
     expect(resolveSubSessionId({ WeekendInfo: { SubSessionID: Number.NaN } })).toBe(0);
+  });
+});
+
+// The point of one gate: the recorders that call it can never disagree about
+// which ticks are live. Each ineligible tick below must unseed BOTH.
+describe("the gate, as the two recorders apply it", () => {
+  let state: TranslatorState;
+
+  function run(telemetry: TelemetryData, inReplay: boolean): void {
+    diffReplayLaps(state, telemetry, null, inReplay, () => {});
+    diffReplayGreens(state, telemetry, null, inReplay, () => {});
+  }
+
+  beforeEach(() => {
+    state = createInitialState();
+    run(tick(), false);
+  });
+
+  it("seeds both on an eligible tick", () => {
+    expect(resolveReplayRecordTick(tick(), false)).not.toBeNull();
+    expect([state.replayLapsSeeded, state.replayGreensSeeded]).toEqual([true, true]);
+  });
+
+  it.each<[string, TelemetryData, boolean]>([
+    ["the replay view", tick({ replay: true }), true],
+    ["a seek's blip or a saved replay", tick(), true],
+    ["SessionNum −1", tick({ sessionNum: -1 }), false],
+    ["no readable frame", tick({ frame: undefined }), false],
+  ])("unseeds both on %s, and re-seeds both on the next eligible tick", (_name, telemetry, inReplay) => {
+    expect(resolveReplayRecordTick(telemetry, inReplay)).toBeNull();
+
+    run(telemetry, inReplay);
+    expect([state.replayLapsSeeded, state.replayGreensSeeded]).toEqual([false, false]);
+
+    run(tick(), false);
+    expect([state.replayLapsSeeded, state.replayGreensSeeded]).toEqual([true, true]);
   });
 });
