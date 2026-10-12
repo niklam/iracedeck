@@ -11,6 +11,7 @@ import type { ILogger } from "@iracedeck/logger";
 
 import type { DialSideMarks } from "../../shared/dial-box.js";
 import type { ReplayControlDialSettings } from "./replay-control-dial-settings.js";
+import type { ReplayPosition } from "./replay-position-state.js";
 
 /**
  * A replay speed in the shape `setPlaySpeed(speed, slowMotion)` takes and
@@ -25,9 +26,15 @@ export interface ReplaySpeed {
 
 /**
  * What the surface hands a mode. Every command goes out through {@link send}
- * (or the two helpers built on it), which first takes the replay cursor from
- * an in-flight Jump to Fastest Lap walk — a mode never calls `getCommands()`
+ * (or the helpers built on it), which first takes the replay cursor from an
+ * in-flight Jump to Fastest Lap walk — a mode never calls `getCommands()`
  * itself. The surface calls a mode only while a replay is on screen.
+ *
+ * A mode that moves the replay by frames uses {@link position}, {@link step}
+ * and {@link jumpTo}, never {@link send}: the three share the one pending
+ * landing (`replay-position-state.ts`), which is what keeps a move from being
+ * measured from a frame the replay has already left, and a frame step from
+ * being sent into a jump still under way.
  */
 export interface ReplayDialModeIo {
   readonly logger: ILogger;
@@ -41,6 +48,25 @@ export interface ReplayDialModeIo {
   setSpeed(owner: string, target: ReplaySpeed): boolean;
   /** Pauses through {@link send}. The speed that was playing stays the remembered resume speed, so Press resumes it. */
   pause(owner: string): boolean;
+  /**
+   * Where the replay stands or is headed: the frame to measure a move from.
+   * Null when nothing says — no landing pending and a reading that is not the
+   * replay's — and the move is then skipped, never guessed.
+   */
+  position(): ReplayPosition | null;
+  /**
+   * Sends one frame step (`1` the next frame, `-1` the previous) and records
+   * where it lands. Refused, with nothing sent, unless the position is known
+   * and nothing is under way ({@link ReplayPosition.seeking}): iRacing applies
+   * one step per update, and a step sent into a jump ends it somewhere else.
+   */
+  step(owner: string, direction: 1 | -1): boolean;
+  /**
+   * Sends the replay to an absolute frame and records it as the landing. Safe
+   * while a step or an earlier jump is under way: iRacing lands on the newest
+   * target.
+   */
+  jumpTo(owner: string, frame: number): boolean;
 }
 
 /** What the dash box reads in a mode, under the mode's label. All of it goes into the displayed signature. */

@@ -29,7 +29,7 @@ import {
   svgToDataUri,
 } from "@iracedeck/deck-core";
 import { getCommands } from "@iracedeck/deck-iracing";
-import { replaySpeedFromTelemetry, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { ReplayPosMode, replaySpeedFromTelemetry, type TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 
 import { type DialBoxArgs, renderDialBox, resolveDialBoxColors } from "../../shared/dial-box.js";
@@ -37,7 +37,12 @@ import { type DialInputEvent, hasDialInputContext } from "../../shared/dial-cont
 import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
 import type { DialPendingPreview } from "../../shared/dial-preview.js";
 import { classifyDialReleaseForHost } from "../../shared/dial-release.js";
-import { cancelReplayCursorOwner } from "../../shared/replay-cursor.js";
+import {
+  cancelReplayCursorOwner,
+  currentReplayCursorOwner,
+  pendingReplayLanding,
+  recordReplayLanding,
+} from "../../shared/replay-cursor.js";
 import type { ReplayDialMode, ReplayDialModeIo, ReplaySpeed } from "./replay-control-dial-mode.js";
 import type {
   ReplayControlDialGesture,
@@ -46,6 +51,7 @@ import type {
 } from "./replay-control-dial-settings.js";
 import { frameJogMode } from "./replay-control-frame-jog.js";
 import { speedMode } from "./replay-control-speed-mode.js";
+import { recordReplayTarget, resolveReplayPosition } from "./replay-position-state.js";
 import { formatPlayCaption, formatSpeedDisplay } from "./replay-speed-format.js";
 import {
   DIAL_SPEED_HOLD_MS,
@@ -66,6 +72,14 @@ const PAUSED: ReplaySpeed = { speed: 0, slowMotion: false };
 
 /** How long past the pending-speed hold the lapse redraw waits, so the hold has run out when it looks. */
 const HOLD_LAPSE_MARGIN_MS = 20;
+
+/**
+ * How often (ms) the dials are redrawn while a step or a jump has not read
+ * back. Display only: a paused replay may deliver no tick when it lands, and
+ * the box would keep showing where the move was headed. Nothing is decided or
+ * sent on it, so its length changes how soon the screen follows and no more.
+ */
+const POSITION_FOLLOW_MS = 50;
 
 /**
  * @internal Exported for testing
@@ -304,6 +318,9 @@ export class ReplayControlDialSurface {
    */
   private holdLapseTimer: ReturnType<typeof setTimeout> | null = null;
 
+  /** The timer that keeps the dials following a move that has not read back ({@link armPositionFollow}), or null. */
+  private positionFollowTimer: ReturnType<typeof setTimeout> | null = null;
+
   /** The replay frame the last tick carried and whether it read as paused, for {@link tracePausedFrame}; null before one and out of a replay. */
   private lastTick: { readonly frame: number; readonly paused: boolean } | null = null;
 
@@ -324,11 +341,43 @@ export class ReplayControlDialSurface {
       return run(getCommands().replay);
     };
 
+    const position: ReplayDialModeIo["position"] = () =>
+      resolveReplayPosition(this.reading().telemetry, Date.now(), host.logger);
+
     this.io = {
       logger: host.logger,
       liveSpeed: () => resolveLiveSpeed(this.reading().speed, Date.now()),
       telemetry: () => this.reading().telemetry,
       send,
+      position,
+      step: (owner, direction) => {
+        const from = position();
+
+        // The gate is here as well as in the mode: a step into a jump under
+        // way ends it thousands of frames off, so no mode can send one.
+        if (from === null || from.seeking) return false;
+
+        const sent = send(owner, (replay) => (direction > 0 ? replay.nextFrame() : replay.prevFrame()));
+
+        if (sent) this.noteMoveSent(from.frame + direction, from.frame);
+
+        return sent;
+      },
+      jumpTo: (owner, frame) => {
+        const from = position();
+        // Read after the position, which drops a landing that has read back.
+        const before = pendingReplayLanding();
+        const sent = send(owner, (replay) => replay.setPlayPosition(ReplayPosMode.Begin, frame));
+
+        if (sent) {
+          this.noteMoveSent(frame, from !== null && !from.seeking ? from.frame : null);
+        } else if (before !== null) {
+          // The take cleared it and nothing went out: the replay is still headed there.
+          recordReplayLanding(before.frame, before.sentAt);
+        }
+
+        return sent;
+      },
       setSpeed: (owner, target) => {
         const sent = send(owner, (replay) => replay.setPlaySpeed(target.speed, target.slowMotion));
 
@@ -579,12 +628,27 @@ export class ReplayControlDialSurface {
   }
 
   /**
-   * Whether a command would do anything: a replay on screen (the debounced
-   * state, so the ~300 ms after a seek still count) and telemetry to read the
-   * speed from. Without both, every input is a no-op and the box dims.
+   * Whether a command would do anything: a replay on screen and telemetry to
+   * read the speed from. Without both, every input is a no-op and the box
+   * dims. A replay is on screen by the debounced state (so the ~300 ms after a
+   * seek still count), and also for as long as a move of the plugin's own is
+   * under way: a turn that keeps retargeting a jump holds iRacing's raw flag
+   * false for longer than the debounce's grace, and would otherwise be
+   * refused mid-turn as coming from the car.
    */
   private isReplayOnScreen(): boolean {
-    return this.host.inReplay() && this.reading().telemetry !== null;
+    return (this.host.inReplay() || this.isMoveUnderWay()) && this.reading().telemetry !== null;
+  }
+
+  /**
+   * Whether the plugin is moving the replay right now: a landing that has not
+   * read back, which gives itself up (`replay-position-state.ts`), or a
+   * claim on the replay cursor, which its owner bounds. Both exist only for a
+   * command sent in a replay, so neither keeps a dial live in the car for
+   * longer than that.
+   */
+  private isMoveUnderWay(): boolean {
+    return currentReplayCursorOwner() !== null || this.io.position()?.seeking === true;
   }
 
   /** Runs a gesture slot's assignment; outside a replay it sends nothing. */
@@ -609,6 +673,37 @@ export class ReplayControlDialSurface {
     this.host.setLocalSpeed(speed.speed, speed.slowMotion);
     this.host.refreshKeys();
     this.armHoldLapseTimer();
+  }
+
+  /**
+   * A step or a jump this surface just sent: where it lands is the frame the
+   * next move is measured from until it reads back, and the dials are kept up
+   * to date meanwhile.
+   */
+  private noteMoveSent(frame: number, from: number | null): void {
+    recordReplayTarget(frame, from, Date.now());
+    this.armPositionFollow();
+  }
+
+  /**
+   * Redraws the dials every {@link POSITION_FOLLOW_MS} until the move under
+   * way has read back or been given up. Like the lapse timer it decides
+   * nothing and sends nothing; one timer for the surface, since there is one
+   * replay position.
+   */
+  private armPositionFollow(): void {
+    if (this.positionFollowTimer !== null) return;
+
+    this.positionFollowTimer = setTimeout(() => {
+      this.positionFollowTimer = null;
+      this.withReading(() => {
+        const underWay = this.io.position()?.seeking === true;
+
+        this.renderAll();
+
+        if (underWay) this.armPositionFollow();
+      });
+    }, POSITION_FOLLOW_MS);
   }
 
   /**

@@ -1,7 +1,12 @@
-import { replaySpeedFromTelemetry, replaySpeedToSdk, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { ReplayPosMode, replaySpeedFromTelemetry, replaySpeedToSdk, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { _resetReplayCursor, claimReplayCursor, currentReplayCursorOwner } from "../../shared/replay-cursor.js";
+import {
+  _resetReplayCursor,
+  claimReplayCursor,
+  currentReplayCursorOwner,
+  pendingReplayLanding,
+} from "../../shared/replay-cursor.js";
 import type { ReplayDialModeIo, ReplaySpeed } from "./replay-control-dial-mode.js";
 import { REPLAY_DIAL_MODES, ReplayControlDialSettings } from "./replay-control-dial-settings.js";
 import {
@@ -12,6 +17,7 @@ import {
 } from "./replay-control-dial-surface.js";
 import { frameJogMode } from "./replay-control-frame-jog.js";
 import { speedMode } from "./replay-control-speed-mode.js";
+import { _resetReplayPositionState, REPLAY_LANDING_GIVE_UP_MS } from "./replay-position-state.js";
 import {
   _resetReplaySpeedState,
   DIAL_SPEED_HOLD_MS,
@@ -207,6 +213,7 @@ describe("ReplayControlDialSurface", () => {
     vi.clearAllMocks();
     _resetReplayCursor();
     _resetReplaySpeedState();
+    _resetReplayPositionState();
     env.inReplay = true;
     env.telemetry = replayAt(speed(1));
     mocks.thresholdMs.value = 500;
@@ -877,13 +884,298 @@ describe("ReplayControlDialSurface", () => {
       await press(surface, ctx, dial({ pressAction: "none" }));
       nowPlaying(PAUSED);
       await press(surface, ctx, dial({ pressAction: "reverse" }));
-      // From the car.
+
+      expectNothingSent();
+      expect(currentReplayCursorOwner()).toBe("fastest-lap");
+    });
+  });
+
+  describe("moving the replay by frames (the seam)", () => {
+    function ioOf(surface: ReplayControlDialSurface): ReplayDialModeIo {
+      return surface["io"];
+    }
+
+    /** A paused replay standing on `frame`. */
+    function pausedOn(frame: number): TelemetryData {
+      return { ...replayAt(PAUSED), ReplayFrameNum: frame, ReplayFrameNumEnd: 100_000 - frame } as TelemetryData;
+    }
+
+    /** What iRacing reports while a jump is under way. */
+    const SEEKING = { ...replayAt(PAUSED), IsReplayPlaying: false, ReplayFrameNum: 0 } as TelemetryData;
+
+    it("says where the replay stands from a fresh reading", async () => {
+      const { surface } = await onScreen(PAUSED);
+
+      env.telemetry = pausedOn(600);
+
+      expect(ioOf(surface).position()).toMatchObject({ frame: 600, endFrame: 100_000, seeking: false });
+    });
+
+    it.each<[1 | -1, "nextFrame" | "prevFrame", number]>([
+      [1, "nextFrame", 601],
+      [-1, "prevFrame", 599],
+    ])(
+      "step %i sends one frame step and is headed for the frame beside the one on screen",
+      async (direction, command, lands) => {
+        const { surface } = await onScreen(PAUSED);
+        const io = ioOf(surface);
+
+        env.telemetry = pausedOn(600);
+
+        expect(io.step("dial-frame-jog", direction)).toBe(true);
+        expect(mocks[command]).toHaveBeenCalledTimes(1);
+        expect(mocks.setPlayPosition).not.toHaveBeenCalled();
+        expect(io.position()).toMatchObject({ frame: lands, seeking: true });
+      },
+    );
+
+    it("refuses a step while the last move has not read back, and sends nothing", async () => {
+      const { surface } = await onScreen(PAUSED);
+      const io = ioOf(surface);
+
+      env.telemetry = pausedOn(600);
+      io.step("dial-frame-jog", 1);
+
+      expect(io.step("dial-frame-jog", 1)).toBe(false);
+      expect(mocks.nextFrame).toHaveBeenCalledTimes(1);
+
+      env.telemetry = pausedOn(601);
+
+      expect(io.step("dial-frame-jog", 1)).toBe(true);
+      expect(mocks.nextFrame).toHaveBeenCalledTimes(2);
+    });
+
+    it("refuses a step into a jump under way", async () => {
+      const { surface } = await onScreen(PAUSED);
+      const io = ioOf(surface);
+
+      env.telemetry = pausedOn(600);
+      io.jumpTo("dial-frame-jog", 640);
+      env.telemetry = SEEKING;
+
+      expect(io.step("dial-frame-jog", 1)).toBe(false);
+      expect(io.step("dial-frame-jog", -1)).toBe(false);
+      expect(mocks.nextFrame).not.toHaveBeenCalled();
+      expect(mocks.prevFrame).not.toHaveBeenCalled();
+    });
+
+    it("refuses a step when nothing says where the replay stands", async () => {
+      const { surface } = await onScreen(PAUSED);
+
+      env.telemetry = SEEKING;
+
+      expect(ioOf(surface).step("dial-frame-jog", 1)).toBe(false);
+      expect(mocks.nextFrame).not.toHaveBeenCalled();
+    });
+
+    it("jumpTo sends one absolute jump and is headed for its frame", async () => {
+      const { surface } = await onScreen(PAUSED);
+      const io = ioOf(surface);
+
+      env.telemetry = pausedOn(600);
+
+      expect(io.jumpTo("dial-frame-jog", 603)).toBe(true);
+      expect(mocks.setPlayPosition.mock.calls).toEqual([[ReplayPosMode.Begin, 603]]);
+      expect(io.position()).toMatchObject({ frame: 603, seeking: true });
+    });
+
+    it("jumpTo may follow a move that has not read back, and the newest target stands", async () => {
+      const { surface } = await onScreen(PAUSED);
+      const io = ioOf(surface);
+
+      env.telemetry = pausedOn(600);
+      io.step("dial-frame-jog", 1);
+      io.jumpTo("dial-frame-jog", 604);
+      env.telemetry = SEEKING;
+      io.jumpTo("dial-frame-jog", 607);
+
+      expect(mocks.setPlayPosition.mock.calls).toEqual([
+        [ReplayPosMode.Begin, 604],
+        [ReplayPosMode.Begin, 607],
+      ]);
+      expect(io.position()).toMatchObject({ frame: 607, seeking: true });
+
+      // A fast turn stops on an earlier target on the way: still under way.
+      env.telemetry = pausedOn(604);
+      expect(io.position()).toMatchObject({ frame: 607, seeking: true });
+
+      env.telemetry = pausedOn(607);
+      expect(io.position()).toMatchObject({ frame: 607, seeking: false });
+    });
+
+    it("a jump that was not sent leaves the landing before it standing", async () => {
+      const { surface } = await onScreen(PAUSED);
+      const io = ioOf(surface);
+
+      env.telemetry = pausedOn(600);
+      io.jumpTo("dial-frame-jog", 640);
+      const standing = pendingReplayLanding();
+
+      mocks.setPlayPosition.mockReturnValueOnce(false);
+
+      expect(io.jumpTo("dial-frame-jog", 650)).toBe(false);
+      expect(pendingReplayLanding()).toEqual(standing);
+      expect(io.position()).toMatchObject({ frame: 640, seeking: true });
+    });
+
+    it("a step that was not sent records nothing", async () => {
+      mocks.nextFrame.mockReturnValueOnce(false);
+      const { surface } = await onScreen(PAUSED);
+      const io = ioOf(surface);
+
+      env.telemetry = pausedOn(600);
+
+      expect(io.step("dial-frame-jog", 1)).toBe(false);
+      expect(io.position()).toMatchObject({ frame: 600, seeking: false });
+    });
+
+    it("takes the replay cursor under the mode's name before each move", async () => {
+      const { surface } = await onScreen(PAUSED);
+      const io = ioOf(surface);
+      const cancelledBy: string[] = [];
+
+      env.telemetry = pausedOn(600);
+      claimReplayCursor("fastest-lap", (by) => cancelledBy.push(by));
+      io.step("dial-frame-jog", 1);
+      claimReplayCursor("fastest-lap", (by) => cancelledBy.push(by));
+      io.jumpTo("dial-frame-jog", 610);
+
+      expect(cancelledBy).toEqual(["dial-frame-jog", "dial-frame-jog"]);
+    });
+
+    it("keeps the dial's pending pause through a move, so a jog that paused still reads paused", async () => {
+      const { surface } = await onScreen(speed(1));
+      const io = ioOf(surface);
+
+      env.telemetry = { ...replayAt(speed(1)), ReplayFrameNum: 600 } as TelemetryData;
+      io.pause("dial-frame-jog");
+      io.step("dial-frame-jog", 1);
+      io.jumpTo("dial-frame-jog", 605);
+
+      expect(io.liveSpeed()).toEqual(PAUSED);
+    });
+
+    it("any other replay command ends the move under way", async () => {
+      const { surface } = await onScreen(PAUSED);
+      const io = ioOf(surface);
+
+      env.telemetry = pausedOn(600);
+      io.jumpTo("dial-frame-jog", 640);
+      io.setSpeed("dial-speed", speed(2));
+      env.telemetry = { ...replayAt(speed(2)), ReplayFrameNum: 612 } as TelemetryData;
+
+      expect(io.position()).toMatchObject({ frame: 612, seeking: false });
+    });
+
+    it("redraws the dials until the move reads back, with no tick, and then stops reading", async () => {
+      const { surface } = await onScreen(PAUSED);
+      const io = ioOf(surface);
+
+      env.telemetry = pausedOn(600);
+      io.jumpTo("dial-frame-jog", 640);
+      env.telemetry = SEEKING;
+      host.telemetry.mockClear();
+
+      await vi.advanceTimersByTimeAsync(200);
+      const whileUnderWay = host.telemetry.mock.calls.length;
+
+      expect(whileUnderWay).toBeGreaterThanOrEqual(3);
+
+      env.telemetry = pausedOn(640);
+      await vi.advanceTimersByTimeAsync(100);
+      const atLanding = host.telemetry.mock.calls.length;
+
+      expect(atLanding).toBeGreaterThan(whileUnderWay);
+
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(host.telemetry.mock.calls.length).toBe(atLanding);
+    });
+
+    it("stops redrawing once a move that never reads back is given up", async () => {
+      const { surface } = await onScreen(PAUSED);
+
+      env.telemetry = pausedOn(600);
+      ioOf(surface).jumpTo("dial-frame-jog", 640);
+      env.telemetry = SEEKING;
+
+      await vi.advanceTimersByTimeAsync(REPLAY_LANDING_GIVE_UP_MS + 200);
+      host.telemetry.mockClear();
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      expect(host.telemetry).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("a replay on screen while the plugin moves it", () => {
+    function ioOf(surface: ReplayControlDialSurface): ReplayDialModeIo {
+      return surface["io"];
+    }
+
+    /** What iRacing reports while a jump is under way. */
+    const SEEKING = { ...replayAt(PAUSED), IsReplayPlaying: false, ReplayFrameNum: 0 } as TelemetryData;
+
+    /** iRacing's raw flag has been down for longer than the debounce's grace. */
+    function flagDown(): void {
       env.inReplay = false;
+    }
+
+    it("refuses a turn and a press from the car", async () => {
+      const { surface, ctx } = await onScreen(speed(8));
+
+      flagDown();
       surface.rotate(ctx as never, dial(), -1, false);
       await press(surface, ctx, dial());
 
       expectNothingSent();
-      expect(currentReplayCursorOwner()).toBe("fastest-lap");
+    });
+
+    it("still takes a turn while a move of its own has not read back", async () => {
+      const { surface, ctx } = await onScreen(PAUSED);
+
+      env.telemetry = { ...replayAt(PAUSED), ReplayFrameNum: 600 } as TelemetryData;
+      ioOf(surface).jumpTo("dial-frame-jog", 640);
+      env.telemetry = SEEKING;
+      flagDown();
+
+      surface.rotate(ctx as never, dial(), 1, false);
+
+      expect(mocks.setPlaySpeed).toHaveBeenCalledTimes(1);
+    });
+
+    it("refuses again once that move is given up without reading back", async () => {
+      const { surface, ctx } = await onScreen(PAUSED);
+
+      env.telemetry = { ...replayAt(PAUSED), ReplayFrameNum: 600 } as TelemetryData;
+      ioOf(surface).jumpTo("dial-frame-jog", 640);
+      env.telemetry = SEEKING;
+      flagDown();
+      await vi.advanceTimersByTimeAsync(REPLAY_LANDING_GIVE_UP_MS + 100);
+
+      surface.rotate(ctx as never, dial(), 1, false);
+
+      expect(mocks.setPlaySpeed).not.toHaveBeenCalled();
+    });
+
+    it("still takes a turn while something holds a claim on the replay cursor, and takes the cursor from it", async () => {
+      const { surface, ctx } = await onScreen(speed(1));
+
+      claimReplayCursor("fastest-lap");
+      flagDown();
+      surface.rotate(ctx as never, dial(), 1, false);
+
+      expect(mocks.setPlaySpeed).toHaveBeenCalledTimes(1);
+      expect(currentReplayCursorOwner()).toBeNull();
+    });
+
+    it("shows the box, not the dimmed label, while a move has not read back", async () => {
+      const { surface, ctx } = await onScreen(PAUSED);
+
+      env.telemetry = { ...replayAt(PAUSED), ReplayFrameNum: 600 } as TelemetryData;
+      ioOf(surface).jumpTo("dial-frame-jog", 640);
+      flagDown();
+      await settle(150);
+
+      expect(shownValue(lastBox(ctx))).toBe("PAUSED");
     });
   });
 
