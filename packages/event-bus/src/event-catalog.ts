@@ -1113,7 +1113,7 @@ export type SimEventMap = {
     }
   >;
 
-  // ── Replay record (issue #1203) — the session's lap starts and lap times ──
+  // ── Replay record (issues #1203, #1354) — the session's lap starts, lap times and greens ──
   // Two events rather than one delayed one: the frame is the value that must
   // not be lost, so it goes out at the crossing, while the time arrives when
   // the sim publishes it or never. A replay frame is not an iRacing-only idea
@@ -1162,6 +1162,33 @@ export type SimEventMap = {
       lap: number;
       /** Whole milliseconds. */
       timeMs: number;
+    }
+  >;
+  /**
+   * A race went green at replay `frame` (issue #1354): the race start, or the
+   * green that ends a full-course caution. Emitted under the lap record's
+   * gate — live, observable telemetry only — and for race sessions only. One
+   * event with a `kind` rather than two: the store keeps both the same way,
+   * and a consumer that wants only starts filters on one field. A green flag
+   * is a racing idea, not an iRacing one, so it fits the sim-agnostic catalog
+   * as the lap events do. Not the Race Engineer's green: `flag.green.raised`,
+   * `startLight.start-go.raised` and `caution.restarted` are shaped for audio
+   * (suppressed, in-car-only, post-guard) and carry no frame.
+   */
+  "replay.greenFlag": SimEvent<
+    "replay.greenFlag",
+    {
+      /** `WeekendInfo.SubSessionID`; 0 for an offline session. */
+      subSessionId: number;
+      sessionNum: number;
+      /** `SessionUniqueID` — a restart within one sim run is the same `sessionNum` under a new one. */
+      sessionUniqueId: number;
+      /** The race start, or the green that ends a full-course caution. */
+      kind: "start" | "restart";
+      /** The live replay frame on the green tick, recorded raw. */
+      frame: number;
+      /** `SessionTime` on the same tick, whole milliseconds. */
+      sessionTimeMs: number;
     }
   >;
 

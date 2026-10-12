@@ -366,7 +366,7 @@ export const EVENT_TEMPLATES = [
     data: { position: 3 },
   },
 
-  // ── Replay record (issue #1203) — no callout; @iracedeck/replay-store consumes these ──
+  // ── Replay record (issues #1203, #1354) — no callout; @iracedeck/replay-store consumes these ──
   {
     name: "replay.lapStarted",
     description: "A car crossed the line and started a lap at a live replay frame (issue #1203) — no callout",
@@ -385,6 +385,19 @@ export const EVENT_TEMPLATES = [
     name: "replay.lapTimed",
     description: "The sim published the time of a lap a car completed (issue #1203) — no callout",
     data: { subSessionId: 86697546, sessionNum: 2, sessionUniqueId: 4, carIdx: 7, lap: 1, timeMs: 91433 },
+  },
+  {
+    name: "replay.greenFlag",
+    description:
+      "A race went green at a live replay frame — the start, or a caution restart (issue #1354) — no callout",
+    data: {
+      subSessionId: 86697546,
+      sessionNum: 2,
+      sessionUniqueId: 4,
+      kind: "start",
+      frame: 30215,
+      sessionTimeMs: 512433,
+    },
   },
 
   // ── Value-change ──
