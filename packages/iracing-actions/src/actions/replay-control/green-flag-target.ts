@@ -115,6 +115,50 @@ export function resolvePoleCarIdx(sessionInfo: unknown): number | null {
   return carIdx >= 0 ? carIdx : null;
 }
 
+/** Whether `session` lists results and `carIdx` is not among them: a car that did not take part. */
+function isAbsentFromResults(session: Record<string, unknown> | null | undefined, carIdx: number): boolean {
+  const results = session?.ResultsPositions;
+
+  if (!Array.isArray(results) || results.length === 0) return false;
+
+  return !results.some((entry) => (entry as Record<string, unknown> | null)?.CarIdx === carIdx);
+}
+
+/** The car whose lap 1 stands in for an unrecorded green, and why that car. */
+export interface GreenFallbackCar {
+  carIdx: number;
+  from: "pole" | "viewed";
+}
+
+/**
+ * The car whose lap 1 stands in for an unrecorded green in the target
+ * session: the pole sitter, unless the target session's results show that car
+ * took no part in it (a heat the qualifying pole sitter is not in, a car that
+ * never started) — a search for a lap it never drove would run to the end of
+ * the session and stop there. Then, as with no qualifying grid at all, the car
+ * the camera is on. Null when neither is a car: `CarIdx` 255 is iRacing's
+ * "no driver" placeholder, the camera in transition or on the pace car.
+ *
+ * A session that lists no results yet cannot say who took part, and the pole
+ * sitter is kept.
+ */
+export function resolveGreenFallbackCar(
+  sessionInfo: unknown,
+  targetSessionNum: number,
+  viewedCarIdx: number,
+): GreenFallbackCar | null {
+  const poleCarIdx = resolvePoleCarIdx(sessionInfo);
+  const targetSession = readSessions(sessionInfo).find((s) => s?.SessionNum === targetSessionNum);
+
+  if (poleCarIdx !== null && !isAbsentFromResults(targetSession, poleCarIdx)) {
+    return { carIdx: poleCarIdx, from: "pole" };
+  }
+
+  if (viewedCarIdx >= 0 && viewedCarIdx !== 255) return { carIdx: viewedCarIdx, from: "viewed" };
+
+  return null;
+}
+
 /**
  * Whether the key shows the unavailable look: the session YAML lists sessions
  * and none of them is a race, so a press has nothing to aim at. With no

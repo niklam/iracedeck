@@ -100,6 +100,7 @@ import {
   greenApproachFrame,
   type GreenFlagTarget,
   isGreenFlagUnavailable,
+  resolveGreenFallbackCar,
   resolveGreenFlagTarget,
   resolvePoleCarIdx,
 } from "./green-flag-target.js";
@@ -485,9 +486,9 @@ type FastestLapWalkLanding = {
   /** Whether the walk verified the landing as the lap start. Only then did it go into the record. */
   converged: boolean;
   /**
-   * The car's `CarIdxLapDistPct` on the landed frame, when that sample shows
-   * it in the target session instance on the lap before the target; null when
-   * it shows anything else. What a caller with a looser need than the record's
+   * The car's `CarIdxLapDistPct` on the landed frame, when one of iRacing's
+   * lap searches put the cursor there and that sample shows the car in the
+   * target session instance on the lap before the target; null otherwise. What a caller with a looser need than the record's
    * judges an unverified landing by (#1354, #1432).
    */
   priorLapDist: number | null;
@@ -1603,6 +1604,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
 
     if (lookup.hit) {
       this.logger.info(`Jump to green: record HIT (matchedBy ${lookup.matchedBy})`);
+      this.logger.debug(`Green of session ${target.sessionNum}/${lookup.sessionUniqueId} at frame ${lookup.frame}`);
 
       // Fire-and-forget: the jump waits for the cursor to land before it sends
       // anything else (#1275), and the press handler returns immediately.
@@ -1642,7 +1644,8 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
   /**
    * The fallback of a Jump to Green Flag press with no recorded green: the
    * pole car's lap 1, which starts a second or two after the green at most
-   * (`resolvePoleCarIdx`; with no qualifying grid, the car the camera is on).
+   * (`resolveGreenFallbackCar`: with no qualifying grid, or a pole sitter who
+   * did not take part in the target session, the car the camera is on).
    * From the lap record when it holds that lap — one waited jump and no camera
    * switch, which is what every replay recorded before the green record
    * existed gets — else from a search of the replay ({@link searchGreenFromPoleCar}).
@@ -1654,16 +1657,16 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
   ): void {
     const { telemetry, sessionInfo, subSessionId } = press;
     const viewedCarIdx = typeof telemetry?.CamCarIdx === "number" ? telemetry.CamCarIdx : -1;
-    const poleCarIdx = resolvePoleCarIdx(sessionInfo);
-    const carIdx = poleCarIdx ?? viewedCarIdx;
+    const car = resolveGreenFallbackCar(sessionInfo, target.sessionNum, viewedCarIdx);
 
-    // CarIdx 255 is iRacing's "no driver" placeholder: the camera in transition, or on the pace car.
-    if (carIdx < 0 || carIdx === 255) {
+    if (car === null) {
       this.logger.warn("Jump to green: no pole car and no viewed car to take lap 1 from; press ignored");
-      this.logger.debug(`Pole carIdx: ${poleCarIdx ?? "n/a"}, CamCarIdx: ${viewedCarIdx}`);
+      this.logger.debug(`Pole carIdx: ${resolvePoleCarIdx(sessionInfo) ?? "n/a"}, CamCarIdx: ${viewedCarIdx}`);
 
       return;
     }
+
+    const { carIdx } = car;
 
     const carNum = this.getCarNumberRawByIdx(carIdx);
 
@@ -1675,7 +1678,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     }
 
     this.logger.debug(
-      `Jump to green: lap 1 of carIdx ${carIdx}, carNum ${carNum} (${poleCarIdx === null ? "the viewed car; no qualifying grid" : "pole"})`,
+      `Jump to green: lap 1 of carIdx ${carIdx}, carNum ${carNum} (${car.from === "pole" ? "pole" : "the viewed car; no pole car in the target session"})`,
     );
 
     const lookup = this.lookupRecordedLapStart({
@@ -1711,9 +1714,9 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
    * iRacing's lap search follows the camera, so the camera goes onto the pole
    * car for the search and back onto the car that was on screen at the press
    * once the cursor has landed — the green belongs to the whole field, and the
-   * user had chosen what to watch. It goes back too when the search gives up,
-   * but not when another replay command cancelled the press: that command's
-   * own effect stands.
+   * user had chosen what to watch. It goes back too when the search gives up
+   * or the last jump stops short, but not when another replay command
+   * cancelled the press: that command's own effect stands.
    *
    * A search that could not verify its landing still anchors the jump when
    * the landing is near the end of the lap before lap 1
@@ -1801,6 +1804,10 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
       });
 
       if (outcome.kind === "cancelled") throw new FastestLapPressCancelled(outcome.by, "jump");
+
+      // A jump that stopped short never reached `afterLanding`, and has sent
+      // its last replay command: the camera goes back here.
+      if (outcome.kind === "stopped") restoreCamera();
 
       if (outcome.kind === "landed") {
         this.logger.debug(
@@ -2125,10 +2132,17 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
 
     const subSessionId = identity.subSessionId;
     let sessionMap = cachedFastestLapSessionMap;
+    // A cached map is trusted for the cursor's own session: it holds that
+    // session's unique id or it is rebuilt. It says nothing about a session
+    // the cursor is not in — the race may have started, or been restarted,
+    // since the build — so a walk to the latest instance of a `SessionNum`
+    // builds the map afresh every time.
     const cacheHit =
+      target.instance === "cursor" &&
       sessionMap != null &&
       sessionMap.subSessionId === subSessionId &&
       sessionMap.sessionUniqueIds.has(cursorSessionUniqueId);
+    let builtMap = false;
 
     this.logger.info(
       `${logLabel}: cache ${cacheHit ? "HIT" : "MISS"} (subSession=${subSessionId ?? "n/a"}, currentUniqueId=${cursorSessionUniqueId}, cached=${
@@ -2157,6 +2171,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
 
       sessionMap = built;
       cachedFastestLapSessionMap = built;
+      builtMap = true;
       this.logger.info(
         `${logLabel}: session map built — subSession=${subSessionId ?? "n/a"}, ${sessionMap.sessions
           .map((s) => `S${s.sessionNum}/${s.sessionUniqueId}[${s.startFrame}-${s.endFrame ?? "end"}]`)
@@ -2181,6 +2196,16 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
       this.logger.warn(
         `${logLabel}: target session ${targetSessionNum}/${target.instance === "cursor" ? cursorSessionUniqueId : "latest"} not in session map; aborting`,
       );
+
+      // Building the map walked the cursor through the recording. A target
+      // that turned out not to be in it — a race the event lists but has not
+      // reached — must not cost the user their place: put the cursor back.
+      const pressFrame = readFrame(initialTel);
+
+      if (builtMap && pressFrame !== null) {
+        this.logger.debug(`${logLabel}: putting the cursor back on frame ${pressFrame}`);
+        await jumpTo(pressFrame);
+      }
 
       return null;
     }
@@ -2255,6 +2280,12 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     // Phase 4: lap-step until we're on the lap-before-fastest. `tel` is the
     // settled sample of the last command, so each step reads before it sends.
     let lapSteps = 0;
+    /**
+     * Whether the sample in `tel` is where one of iRacing's own lap searches
+     * left the cursor, as opposed to a bisection probe. Only a lap search
+     * knows where a line is crossed.
+     */
+    let landedByLapSearch = false;
 
     for (let step = 0; step < MAX_LAP_STEPS; step++) {
       const lap = carLap(tel);
@@ -2288,6 +2319,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
       if (stepped.kind === "unsettled") return null;
 
       tel = stepped.telemetry;
+      landedByLapSearch = true;
     }
 
     // The loop's last step is never read by the loop itself: the budget may
@@ -2304,10 +2336,15 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
 
     if (notConverged === null) {
       const refineDist = carDist(tel);
+      // On lap 0 a car can stand still within a few metres of the line — on
+      // its grid slot, in its pit stall — for minutes, so there a distance
+      // near 1 proves nothing about the frame: a probe that landed on lap 0
+      // without a lap search is nudged whatever it reads (#1354).
+      const unplaced = targetLapMinus1 === 0 && !landedByLapSearch;
 
-      if (typeof refineDist === "number" && refineDist < FASTEST_LAP_DIST_THRESHOLD) {
+      if (unplaced || (typeof refineDist === "number" && refineDist < FASTEST_LAP_DIST_THRESHOLD)) {
         this.logger.debug(
-          `${logLabel}: nudging via nextLap (currently lap=${targetLapMinus1}, dist=${refineDist.toFixed(4)})`,
+          `${logLabel}: nudging via nextLap (currently lap=${targetLapMinus1}, dist=${typeof refineDist === "number" ? refineDist.toFixed(4) : "n/a"})`,
         );
         const forward = await search(() => replay.nextLap(), "nextLap (nudge)");
 
@@ -2317,6 +2354,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
           notConverged = `nudge (nextLap) ${forward.kind}`;
         } else {
           tel = forward.telemetry;
+          landedByLapSearch = true;
           const afterLap = carLap(tel);
 
           if (typeof afterLap === "number" && afterLap > targetLapMinus1) {
@@ -2381,8 +2419,13 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
 
     const lapStartFrame = landedFrame + FASTEST_LAP_FINAL_BACKSTEP_TICKS;
     const landedDist = carDist(finalTel);
+    // Only for a landing a lap search produced: a bisection probe's distance
+    // says where the car was on some frame, not that the frame is near a line.
     const priorLapDist =
-      inTargetSession(finalTel) && carLap(finalTel) === targetLapMinus1 && typeof landedDist === "number"
+      landedByLapSearch &&
+      inTargetSession(finalTel) &&
+      carLap(finalTel) === targetLapMinus1 &&
+      typeof landedDist === "number"
         ? landedDist
         : null;
 

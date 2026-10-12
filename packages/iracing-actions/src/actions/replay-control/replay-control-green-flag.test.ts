@@ -149,6 +149,9 @@ type SessionLayout = {
 /** Every lap is this long, so a frame short of the line is a known fraction of a lap. */
 const FRAMES_PER_LAP = 5000;
 
+/** Where a car on its grid slot reads: a few metres behind the line, inside what the search takes for the end of a lap. */
+const GRID_SLOT_DIST = 0.9995;
+
 /**
  * A synthetic replay the action's commands move a cursor through. A session
  * instance occupies `[startFrame, endFrame]`; within it lap N spans
@@ -157,6 +160,11 @@ const FRAMES_PER_LAP = 5000;
  * before the next / previous line, which is how iRacing's lap search behaves:
  * one frame short by default, so the search can verify its landing.
  * `switchNum` moves the camera (car numbers equal car indexes here).
+ *
+ * With `gridWaitFrames` a session opens with the cars standing on the grid for
+ * that long, reading lap 0 at `GRID_SLOT_DIST`, and takes the line into lap 1
+ * the moment the wait ends. `layout` is read at every use, so a test can add a
+ * session to a recording that is still growing.
  */
 function fakeReplay(
   action: ReplayControl,
@@ -171,17 +179,23 @@ function fakeReplay(
     viewedCarIdx?: number;
     lapSearchShort?: number;
     subSessionId?: number;
+    gridWaitFrames?: number;
+    /** `ResultsPositions` of every race session: the cars that took part. Omitted, the sessions list none. */
+    raceResultsCarIdxs?: number[];
   },
 ) {
   const { layout } = options;
   const short = options.lapSearchShort ?? 1;
+  const gridWait = options.gridWaitFrames ?? 0;
   const state = {
     frame: options.cursor,
     camCarIdx: options.viewedCarIdx ?? VIEWED_CAR,
     /** False once the test takes the sim out of the replay. */
     inReplay: true,
   };
-  const bufferEnd = layout[layout.length - 1].endFrame;
+  const bufferEnd = (): number => layout[layout.length - 1].endFrame;
+  /** The frame of a session's first line crossing: into lap 1 after a grid wait, else into lap 1 after a full lap 0. */
+  const firstLine = (session: SessionLayout): number => session.startFrame + (gridWait > 0 ? gridWait : FRAMES_PER_LAP);
   const findSession = (frame: number): SessionLayout | null =>
     layout.find((s) => frame >= s.startFrame && frame <= s.endFrame) ?? null;
 
@@ -189,7 +203,7 @@ function fakeReplay(
   const landings = (session: SessionLayout): number[] => {
     const frames: number[] = [];
 
-    for (let line = session.startFrame + FRAMES_PER_LAP; line <= session.endFrame; line += FRAMES_PER_LAP) {
+    for (let line = firstLine(session); line <= session.endFrame; line += FRAMES_PER_LAP) {
       frames.push(line - short);
     }
 
@@ -210,7 +224,7 @@ function fakeReplay(
     return true;
   });
   mockReplay.setPlayPosition.mockImplementation((_mode, frame) => {
-    state.frame = Math.max(0, Math.min(bufferEnd, frame));
+    state.frame = Math.max(0, Math.min(bufferEnd(), frame));
 
     return true;
   });
@@ -246,11 +260,19 @@ function fakeReplay(
     const dists: number[] = [];
 
     if (session) {
-      const rel = state.frame - session.startFrame;
+      const sinceLine = state.frame - firstLine(session);
+      // Before the first line: standing on the grid, or running lap 0.
+      const lap = sinceLine < 0 ? 0 : 1 + Math.floor(sinceLine / FRAMES_PER_LAP);
+      const dist =
+        sinceLine >= 0
+          ? (sinceLine % FRAMES_PER_LAP) / FRAMES_PER_LAP
+          : gridWait > 0
+            ? GRID_SLOT_DIST
+            : (state.frame - session.startFrame) / FRAMES_PER_LAP;
 
       for (const carIdx of [VIEWED_CAR, POLE_CAR]) {
-        laps[carIdx] = Math.floor(rel / FRAMES_PER_LAP);
-        dists[carIdx] = (rel % FRAMES_PER_LAP) / FRAMES_PER_LAP;
+        laps[carIdx] = lap;
+        dists[carIdx] = dist;
       }
     }
 
@@ -259,7 +281,7 @@ function fakeReplay(
       IsReplayPlaying: state.inReplay,
       ReplayPlaySpeed: 0,
       ReplayFrameNum: state.frame,
-      ReplayFrameNumEnd: bufferEnd - state.frame,
+      ReplayFrameNumEnd: bufferEnd() - state.frame,
       SessionNum: session?.sessionNum ?? -1,
       SessionUniqueID: session?.sessionUniqueId ?? 0,
       CarIdxLap: laps,
@@ -277,7 +299,13 @@ function fakeReplay(
       ],
     },
     SessionInfo: {
-      Sessions: options.sessionTypes.map((SessionType, SessionNum) => ({ SessionNum, SessionType })),
+      Sessions: options.sessionTypes.map((SessionType, SessionNum) => ({
+        SessionNum,
+        SessionType,
+        ...(SessionType === "Race" && options.raceResultsCarIdxs
+          ? { ResultsPositions: options.raceResultsCarIdxs.map((CarIdx) => ({ CarIdx })) }
+          : {}),
+      })),
     },
     ...(options.grid === false
       ? {}
@@ -743,6 +771,38 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
       expect(mockReplay.setPlayPosition).toHaveBeenCalledExactlyOnceWith(expect.anything(), 25_100);
     });
 
+    it("takes the viewed car's lap 1 when the pole sitter took no part in the target race", async () => {
+      // A heat whose results list the viewed car and not the qualifying pole sitter.
+      fakeReplay(action, {
+        sessionTypes: WEEKEND_TYPES,
+        layout: WEEKEND,
+        cursor: IN_RACE,
+        raceResultsCarIdxs: [VIEWED_CAR, 12],
+      });
+      lapOneAt(25_400);
+
+      await press();
+      await vi.runAllTimersAsync();
+
+      expect(mockStore.laps.findLapStart.mock.calls[0][0]).toMatchObject({ carIdx: VIEWED_CAR, lap: 1 });
+      expect(mockCamera.switchNum).not.toHaveBeenCalled();
+    });
+
+    it("keeps the pole sitter when the target race's results list it", async () => {
+      fakeReplay(action, {
+        sessionTypes: WEEKEND_TYPES,
+        layout: WEEKEND,
+        cursor: IN_RACE,
+        raceResultsCarIdxs: [VIEWED_CAR, POLE_CAR],
+      });
+      lapOneAt(25_090);
+
+      await press();
+      await vi.runAllTimersAsync();
+
+      expect(mockStore.laps.findLapStart.mock.calls[0][0]).toMatchObject({ carIdx: POLE_CAR, lap: 1 });
+    });
+
     it("ignores the press with no grid and no car on screen", async () => {
       fakeReplay(action, {
         sessionTypes: WEEKEND_TYPES,
@@ -917,6 +977,112 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
       expect(replay.state.frame).toBe(RACE_LAP_1_LINE - 100 - 2);
       expect(mockReplay.setPlaySpeed).not.toHaveBeenCalled();
       // The camera goes back all the same.
+      expect(replay.state.camCarIdx).toBe(VIEWED_CAR);
+    });
+
+    it("does not take a car standing on the grid for one at the line: only a lap search places the cursor", async () => {
+      // A standing start: twelve thousand frames on the grid, then the line. The race is short enough that the
+      // search's first probe lands in the grid wait, where the pole car reads lap 0 a few metres from the line.
+      const gridWaitFrames = 12_000;
+      const race: SessionLayout = { sessionNum: 0, sessionUniqueId: 1, startFrame: 0, endFrame: 21_999 };
+      const replay = fakeReplay(action, { sessionTypes: ["Race"], layout: [race], cursor: 20_000, gridWaitFrames });
+      const line = gridWaitFrames;
+
+      await press();
+      await vi.runAllTimersAsync();
+
+      // The probe that found lap 0 sat a thousand frames into the wait...
+      expect(seekFrames()[0]).toBe(10_999);
+      // ...and was not taken for the lap start: iRacing's own Next Lap found the line.
+      expect(mockReplay.nextLap).toHaveBeenCalled();
+      expect(mockStore.laps.recordLapStart).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ lap: 1, frame: line - 1 }),
+      );
+      expect(replay.state.frame).toBe(line - 1 - 300);
+    });
+
+    it("refuses a landing on the grid that no lap search produced", async () => {
+      const gridWaitFrames = 12_000;
+      const race: SessionLayout = { sessionNum: 0, sessionUniqueId: 1, startFrame: 0, endFrame: 21_999 };
+      const replay = fakeReplay(action, { sessionTypes: ["Race"], layout: [race], cursor: 20_000, gridWaitFrames });
+
+      // iRacing's lap search does nothing: the probe in the grid wait is all the search has.
+      mockReplay.nextLap.mockImplementation(() => true);
+
+      await press();
+      await vi.runAllTimersAsync();
+
+      // The pole car reads lap 0 at 0.9995 there, inside both bounds, and it is still not the line.
+      expect(action["logger"].warn).toHaveBeenCalledWith(
+        "Jump to green: the search did not reach the start of the pole car's lap 1; replay left where it stopped",
+      );
+      expect(mockStore.laps.recordLapStart).not.toHaveBeenCalled();
+      expect(replay.state.frame).toBe(10_999 - 2);
+      expect(mockReplay.setPlaySpeed).not.toHaveBeenCalled();
+    });
+
+    it("puts the cursor back when the race is not in the recording yet", async () => {
+      // A live event still in qualifying: the session list names the race, the tape does not hold it.
+      const layout = WEEKEND.slice(0, 2);
+      const replay = fakeReplay(action, { sessionTypes: WEEKEND_TYPES, layout, cursor: 5_432 });
+
+      await press();
+      await vi.runAllTimersAsync();
+
+      expect(action["logger"].warn).toHaveBeenCalledWith(
+        "Jump to green: target session 2/latest not in session map; aborting",
+      );
+      // The map build walked through the recording; the user's place is restored, paused.
+      expect(mockReplay.nextSession).toHaveBeenCalled();
+      expect(replay.state.frame).toBe(5_432);
+      expect(replay.state.camCarIdx).toBe(VIEWED_CAR);
+      expect(mockReplay.setPlaySpeed).not.toHaveBeenCalled();
+      expect(mockStore.laps.recordLapStart).not.toHaveBeenCalled();
+      expect(action["activeFastestLapPress"]).toBeNull();
+    });
+
+    it("finds a race that started after an earlier press mapped the recording without it", async () => {
+      const layout = WEEKEND.slice(0, 2);
+      const replay = fakeReplay(action, { sessionTypes: WEEKEND_TYPES, layout, cursor: 5_432 });
+
+      await press();
+      await vi.runAllTimersAsync();
+
+      expect(replay.state.frame).toBe(5_432);
+
+      // The race is run. The cursor is still in practice, whose unique id the cached map holds.
+      layout.push(WEEKEND[2]);
+      await press();
+      await vi.runAllTimersAsync();
+
+      expect(mockStore.laps.recordLapStart).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ sessionNum: 2, sessionUniqueId: 3, lap: 1, frame: RACE_LAP_1_LINE - 1 }),
+      );
+      expect(replay.state.frame).toBe(RACE_LAP_1_LINE - 1 - 300);
+    });
+
+    it("hands the camera back when the jump back to the run-up stops short", async () => {
+      const replay = fakeReplay(action, { sessionTypes: WEEKEND_TYPES, layout: WEEKEND, cursor: IN_RACE });
+      const moveCursor = mockReplay.setPlayPosition.getMockImplementation() as (
+        mode: ReplayPosMode,
+        frame: number,
+      ) => boolean;
+      const runUp = RACE_LAP_1_LINE - 1 - 300;
+
+      // The search's own jumps go through; iRacing refuses the last one.
+      mockReplay.setPlayPosition.mockImplementation((mode, frame) =>
+        frame === runUp ? false : moveCursor(mode, frame),
+      );
+
+      await press();
+      await vi.runAllTimersAsync();
+
+      expect(action["logger"].warn).toHaveBeenCalledWith("Jump to green: jump not sent");
+      expect(mockReplay.setPlaySpeed).not.toHaveBeenCalled();
+      expect(mockCamera.switchNum.mock.calls).toEqual([
+        [POLE_CAR, 0, 0],
+        [VIEWED_CAR, 0, 0],
+      ]);
       expect(replay.state.camCarIdx).toBe(VIEWED_CAR);
     });
 

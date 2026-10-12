@@ -7,6 +7,7 @@ import {
   GREEN_FALLBACK_MIN_LAP_DIST,
   greenApproachFrame,
   isGreenFlagUnavailable,
+  resolveGreenFallbackCar,
   resolveGreenFlagTarget,
   resolvePoleCarIdx,
 } from "./green-flag-target.js";
@@ -164,6 +165,62 @@ describe("resolvePoleCarIdx", () => {
     ["no session info", null],
   ])("is null with %s", (_name, sessionInfo) => {
     expect(resolvePoleCarIdx(sessionInfo)).toBeNull();
+  });
+});
+
+describe("resolveGreenFallbackCar", () => {
+  const grid = {
+    QualifyResultsInfo: {
+      Results: [
+        { CarIdx: 7, Position: 0 },
+        { CarIdx: 4, Position: 1 },
+      ],
+    },
+  };
+  const withResults = (carIdxs: number[] | null): Record<string, unknown> => ({
+    ...grid,
+    SessionInfo: {
+      Sessions: [
+        { SessionNum: 0, SessionType: "Practice" },
+        {
+          SessionNum: 1,
+          SessionType: "Race",
+          ...(carIdxs === null ? {} : { ResultsPositions: carIdxs.map((CarIdx) => ({ CarIdx })) }),
+        },
+      ],
+    },
+  });
+
+  it("takes the pole sitter when the target session's results list it", () => {
+    expect(resolveGreenFallbackCar(withResults([4, 7, 12]), 1, 4)).toEqual({ carIdx: 7, from: "pole" });
+  });
+
+  it("takes the pole sitter when the target session lists no results yet: nothing says it took no part", () => {
+    expect(resolveGreenFallbackCar(withResults(null), 1, 4)).toEqual({ carIdx: 7, from: "pole" });
+    expect(resolveGreenFallbackCar(withResults([]), 1, 4)).toEqual({ carIdx: 7, from: "pole" });
+  });
+
+  it("takes the viewed car when the pole sitter is not in the target session's results", () => {
+    expect(resolveGreenFallbackCar(withResults([4, 12]), 1, 4)).toEqual({ carIdx: 4, from: "viewed" });
+  });
+
+  it("reads the results of the target session, matched by SessionNum, not of another", () => {
+    const sessionInfo = withResults([4, 12]);
+
+    // Session 0 lists no results: asked about it, the pole sitter stands.
+    expect(resolveGreenFallbackCar(sessionInfo, 0, 4)).toEqual({ carIdx: 7, from: "pole" });
+  });
+
+  it("takes the viewed car when there is no qualifying grid", () => {
+    expect(resolveGreenFallbackCar({ SessionInfo: { Sessions: [] } }, 0, 4)).toEqual({ carIdx: 4, from: "viewed" });
+  });
+
+  it.each([
+    ["no car on screen", -1],
+    ["iRacing's no-driver placeholder", 255],
+  ])("has no car with no pole sitter and %s", (_name, viewedCarIdx) => {
+    expect(resolveGreenFallbackCar(null, 0, viewedCarIdx)).toBeNull();
+    expect(resolveGreenFallbackCar(withResults([4, 12]), 1, viewedCarIdx)).toBeNull();
   });
 });
 
