@@ -621,7 +621,7 @@ describe("ReplayControlDialSurface", () => {
       expect(vi.getTimerCount()).toBe(0);
     });
 
-    it("only draws: the lapse sends nothing and tells the action nothing", async () => {
+    it("sends nothing at the lapse: it redraws, and resyncs the action's speed cache", async () => {
       const { surface, ctx, d } = await onScreen(PAUSED);
       surface.rotate(ctx as never, d, 1, false);
       await settle();
@@ -630,9 +630,56 @@ describe("ReplayControlDialSurface", () => {
       await vi.advanceTimersByTimeAsync(PAST_THE_LAPSE);
 
       expectNothingSent();
-      expect(host.setLocalSpeed).not.toHaveBeenCalled();
-      expect(host.refreshKeys).not.toHaveBeenCalled();
       expect(ctx.setDialCanvas).toHaveBeenCalledTimes(1);
+      expect(host.setLocalSpeed).toHaveBeenCalledTimes(1);
+      expect(host.refreshKeys).toHaveBeenCalledTimes(1);
+    });
+
+    it("takes the ignored speed back out of the action's cache, so a Play/Pause key reads the replay as paused", async () => {
+      const { surface, ctx, d } = await onScreen(PAUSED);
+
+      surface.rotate(ctx as never, d, 1, false);
+      // The send put its speed in the cache at once, for the keys.
+      expect(host.setLocalSpeed.mock.calls).toEqual([[4, true]]);
+      expect(host.refreshKeys).toHaveBeenCalledTimes(1);
+
+      // No tick follows: the replay never left 0x.
+      await vi.advanceTimersByTimeAsync(PAST_THE_LAPSE);
+
+      expect(host.setLocalSpeed.mock.calls).toEqual([
+        [4, true],
+        [0, false],
+      ]);
+      expect(host.refreshKeys).toHaveBeenCalledTimes(2);
+      // The cache was written before the keys were asked to redraw from it.
+      expect(host.setLocalSpeed.mock.invocationCallOrder[1]).toBeLessThan(host.refreshKeys.mock.invocationCallOrder[1]);
+    });
+
+    it("writes the same speed back when the send took, so nothing changes for the keys", async () => {
+      const { surface, ctx, d } = await onScreen(PAUSED);
+      surface.rotate(ctx as never, d, 1, false);
+      nowPlaying(speed(4, true));
+
+      await vi.advanceTimersByTimeAsync(PAST_THE_LAPSE);
+
+      expect(host.setLocalSpeed.mock.calls).toEqual([
+        [4, true],
+        [4, true],
+      ]);
+    });
+
+    it("resyncs from what a fresh read says at the lapse, whatever the last tick said", async () => {
+      const { surface, ctx, d } = await onScreen(speed(1));
+      surface.onTick(ctx.id, tickOf());
+      await press(surface, ctx, d);
+      expect(host.setLocalSpeed).toHaveBeenLastCalledWith(0, false);
+
+      // iRacing's own bar resumes at 2x inside the hold, on a frame that delivers no tick.
+      nowPlaying(speed(2));
+      await vi.advanceTimersByTimeAsync(PAST_THE_LAPSE);
+
+      expect(host.setLocalSpeed).toHaveBeenLastCalledWith(2, false);
+      expect(shownValue(lastBox(ctx))).toBe("2x");
     });
 
     it("draws nothing when telemetry reported the send in time", async () => {

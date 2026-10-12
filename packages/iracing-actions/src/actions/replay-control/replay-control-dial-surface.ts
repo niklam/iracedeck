@@ -295,11 +295,12 @@ export class ReplayControlDialSurface {
   private readonly io: ReplayDialModeIo;
 
   /**
-   * The one timer that redraws when a sent speed's hold runs out, or null.
-   * When iRacing does not act on a send (paused at the end of a saved
-   * recording) no tick follows it, so nothing else would take the sent speed
-   * off the dials. Like the hold preview's timer it only draws: what the live
-   * speed is then is the speed state's answer, and the timer sends nothing.
+   * The one timer that fires when a sent speed's hold runs out, or null. When
+   * iRacing does not act on a send (paused at the end of a saved recording) no
+   * tick follows it, so nothing else would take the sent speed off the dials,
+   * or out of the action's speed cache, where the send put it for the keys.
+   * Like the hold preview's timer it decides nothing and sends nothing: it
+   * redraws from a fresh reading and hands the action that reading's speed.
    */
   private holdLapseTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -565,18 +566,31 @@ export class ReplayControlDialSurface {
   }
 
   /**
-   * (Re)arms the lapse redraw for the send just made: one timer for the
-   * surface, since the pending speed is one value, moved by every send. When
-   * it fires the hold has run out, and a dial still showing a speed telemetry
-   * never reported redraws from what telemetry says; a dial whose frame did
-   * not change is left alone.
+   * (Re)arms the lapse timer for the send just made: one timer for the
+   * surface, since the pending speed is one value, moved by every send.
    */
   private armHoldLapseTimer(): void {
     this.clearHoldLapseTimer();
     this.holdLapseTimer = setTimeout(() => {
       this.holdLapseTimer = null;
-      this.withReading(() => this.renderAll());
+      this.withReading(() => this.settleLapsedHold());
     }, DIAL_SPEED_HOLD_MS + HOLD_LAPSE_MARGIN_MS);
+  }
+
+  /**
+   * The hold of the last send has run out. The live speed is telemetry's
+   * again, read fresh, and everything that took the sent speed is put right
+   * from it: the action's speed cache, so a Play/Pause key does not keep
+   * showing (and deciding from) a speed that never played, and every dial
+   * still showing it — a dial whose frame did not change is left alone. A
+   * send that took reads back as the same speed, and nothing changes.
+   */
+  private settleLapsedHold(): void {
+    const live = this.io.liveSpeed();
+
+    this.host.setLocalSpeed(live.speed, live.slowMotion);
+    this.host.refreshKeys();
+    this.renderAll();
   }
 
   private clearHoldLapseTimer(): void {
