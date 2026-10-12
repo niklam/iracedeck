@@ -77,7 +77,7 @@ flowchart TB
   sdk["iracing-sdk<br/>sdkController"]:::sim
   trans["sim-events-iracing<br/>translator"]:::sim
   bus(["event-bus<br/>SEAM 1"]):::seam
-  p["plugin-runtime<br/>replay lap record"]:::core
+  p["plugin-runtime<br/>replay record"]:::core
   re["audio-scenarios"]:::audio
 
   ir --> mem
@@ -104,7 +104,7 @@ A reaction driven by the bus never reads telemetry for its trigger: it subscribe
 - **Decoupled fan-out** — publishers and subscribers never reference each other. The translator publishes nearly everything; since #466 one deck action does too — pressing a Session Info key publishes `telemetryReadout.requested` with the value the key shows, for the Race Engineer to speak. The Race Engineer and — for the replay lap record — the plugin itself each subscribe independently; no action subscribes today. You can add a consumer without touching the producer, and — in principle — swap the producer without touching the consumers.
 - **A generic telemetry snapshot on the envelope** — alongside the semantic payload, each event carries the latest raw telemetry in a generic field. This is the sim-specific escape hatch: the Race Engineer's radar and spotter engines read it (via `getLatestTelemetry`) because their job needs the full per-car picture, not a single event. It is also the part of this seam that is **not** sim-agnostic yet — see the leaks below.
 
-The catalog spans around 60 events grouped into families — pit lane and stops, flags, start lights, rolling start, pit service, tires, car control, pit limiter, incidents and off-tracks, overtakes and position changes, laps, fuel, proximity radar, track wetness, damage, session lifecycle, and the replay lap record. Payloads range from empty (pure transitions like `pitLane.entered`) to rich records:
+The catalog spans around 60 events grouped into families — pit lane and stops, flags, start lights, rolling start, pit service, tires, car control, pit limiter, incidents and off-tracks, overtakes and position changes, laps, fuel, proximity radar, track wetness, damage, session lifecycle, and the replay record (lap starts, lap times and greens). Payloads range from empty (pure transitions like `pitLane.entered`) to rich records:
 
 ```text
 flag.yellow.raised          → { scope: "local" | "full" }
@@ -204,23 +204,23 @@ Property Inspectors reach the same server through a bridge script the build inje
 
 ## The replay record
 
-Since #1162 and #1203 the plugin also keeps a small record of its own for each session it sees: the **replay session store**, the `replay-store` package (in `deck-core` until #1367), one JSON file per `SubSessionID` under `%LOCALAPPDATA%\iRaceDeck\Replay\<Stream Deck | Mirabox | Ulanzi>\`. It has two sections, the user's replay **markers** and the **lap record** — the replay frame at which every car started every lap, and each lap's time — and it is what lets a saved replay opened days later find both again, because the `.rpy` reports the same `SubSessionID` as the live session. It is fed from two directions. A subscriber from `deck-iracing` that the shared bootstrap wires onto the SDK controller opens the store's record whenever the session identity first appears or changes, live or in a replay, and closes it when the SDK disconnects; it knows nothing about what happens inside a session. What happens inside — a car crossing the line, a lap time being posted — is the translator's to detect like any other sim fact, so `sim-events-iracing`'s replay-laps diff publishes `replay.lapStarted` and `replay.lapTimed`, and the bootstrap's settings phase subscribes to them and hands them to the store, which drops an event for any session but the open one. The actions then read the store synchronously: Replay Markers adds, deletes and walks its markers, and Replay Control's Jump to Fastest Lap looks up the recorded frame before it falls back to searching the replay. Both read the current replay position through `iracing-sdk`'s `resolveReplayFrame`, the one place that knows how to turn telemetry into a frame. Writes are debounced and atomic like the settings store's, with the same synchronous flush on exit; an offline session, which has no `SubSessionID`, is kept in memory only, a corrupt file is moved aside before a fresh one is written, and a file that cannot be read at all is never written over. The folder is per ecosystem because each plugin process holds a whole copy of the session's record and writes it back whole, so two deck hosts running at once on one file would overwrite each other's changes; a merge-on-write was rejected because it would bring back markers the other host had deleted.
+Since #1162 and #1203 the plugin also keeps a small record of its own for each session it sees: the **replay session store**, the `replay-store` package (in `deck-core` until #1367), one JSON file per `SubSessionID` under `%LOCALAPPDATA%\iRaceDeck\Replay\<Stream Deck | Mirabox | Ulanzi>\`. The file is a set of sections, one per feature and each with its own version: the user's replay **markers**, the **lap record** — the replay frame at which every car started every lap, and each lap's time — and, since #1354, the **greens** — the frame at which each race went green and the frame of every caution restart. It is what lets a saved replay opened days later find them again, because the `.rpy` reports the same `SubSessionID` as the live session, and a build that does not know a section carries it through every write untouched. It is fed from two directions. A subscriber from `deck-iracing` that the shared bootstrap wires onto the SDK controller opens the store's record whenever the session identity first appears or changes, live or in a replay, and closes it when the SDK disconnects; it knows nothing about what happens inside a session. What happens inside — a car crossing the line, a lap time being posted, the race going green — is the translator's to detect like any other sim fact, so `sim-events-iracing` has one recorder diff per section: replay-laps publishes `replay.lapStarted` and `replay.lapTimed`, and replay-greens publishes `replay.greenFlag`. The recorders run ahead of the translator's replay guard and share one gate that says which ticks are live enough to record from, so no two sections can disagree about it. The bootstrap's settings phase subscribes to each event and hands it to its section of the store, which drops an event for any session but the open one. The actions then read the store synchronously: Replay Markers adds, deletes and walks its markers, and Replay Control's Jump to Fastest Lap looks up the recorded frame before it falls back to searching the replay. Both read the current replay position through `iracing-sdk`'s `resolveReplayFrame`, the one place that knows how to turn telemetry into a frame. Writes are debounced and atomic like the settings store's, with the same synchronous flush on exit; an offline session, which has no `SubSessionID`, is kept in memory only, a corrupt file is moved aside before a fresh one is written, and a file that cannot be read at all is never written over. The folder is per ecosystem because each plugin process holds a whole copy of the session's record and writes it back whole, so two deck hosts running at once on one file would overwrite each other's changes; a merge-on-write was rejected because it would bring back markers the other host had deleted.
 
 ```mermaid
 flowchart LR
   sdk["iracing-sdk<br/>sdkController"]:::sim
-  trans["sim-events-iracing<br/>replay-laps diff"]:::sim
+  trans["sim-events-iracing<br/>replay recorder diffs<br/>laps · greens"]:::sim
   bus(["event-bus<br/>SEAM 1"]):::seam
-  plugin["plugin-runtime<br/>session subscriber + lap subscriptions"]:::core
-  store["replay-store<br/>replay session store<br/>markers · laps"]:::core
+  plugin["plugin-runtime<br/>session subscriber + record subscriptions"]:::core
+  store["replay-store<br/>replay session store<br/>markers · laps · greens"]:::core
   file["session_&lt;SubSessionID&gt;.json<br/>(per ecosystem, under LOCALAPPDATA)"]:::ext
   actions["iracing-actions<br/>Replay Markers · Replay Control"]:::core
 
   sdk -->|"tick: session identity"| plugin
   sdk -->|"tick: snapshot"| trans
-  trans -->|"replay.lapStarted · replay.lapTimed"| bus
+  trans -->|"replay.lapStarted · replay.lapTimed · replay.greenFlag"| bus
   bus -->|"subscribe"| plugin
-  plugin -->|"open / close session · record laps"| store
+  plugin -->|"open / close session · record laps and greens"| store
   store -->|"save (debounced, atomic)"| file
   file -->|"load on session open"| store
   actions -->|"markers · fastest-lap frame"| store
