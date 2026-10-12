@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { DIAL_CATEGORIES, DIAL_PRESS_ACTIONS } from "./audio-controls/audio-controls-settings.js";
 import { type ActionCommMeta, COMMS_CATALOG } from "./comms-catalog.js";
+import { REPLAY_DIAL_GESTURES, REPLAY_DIAL_MODES } from "./replay-control/replay-control-dial-settings.js";
 
 const JSON_PATH = new URL("./data/action-comms.json", import.meta.url);
 const KEY_BINDINGS_PATH = new URL("./data/key-bindings.json", import.meta.url);
@@ -129,5 +130,21 @@ describe("action-comms catalog", () => {
 
     expect(keyByMap("skip-call")).toEqual({ setting: "dial.category", map: { spotter: "spotterSilence" } });
     expect(keyByMap("mute-unmute")).toEqual({ setting: "dial.category", map: { "voice-chat": "audioVoiceChatMute" } });
+  });
+
+  it("describes every Replay Control dial mode and every gesture but none, all as API (#1316)", () => {
+    // A mode added to REPLAY_DIAL_MODES (and to the PI) without an entry here
+    // renders no status line for it. The dial sends broadcasts only, so a
+    // keybind descriptor here would warn about a binding the dial never taps.
+    const dial = COMMS_CATALOG["replay-control-dial"];
+
+    expect(dial._meta.modeSetting).toBe("dial.mode");
+
+    for (const mode of REPLAY_DIAL_MODES) expect(dial[mode], mode).toEqual({ method: "api" });
+
+    for (const gesture of REPLAY_DIAL_GESTURES) {
+      if (gesture === "none") expect(dial[gesture]).toBeUndefined();
+      else expect(dial[gesture], gesture).toEqual({ method: "api" });
+    }
   });
 });

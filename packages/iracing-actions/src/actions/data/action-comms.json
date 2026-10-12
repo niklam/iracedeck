@@ -3320,6 +3320,26 @@
       }
     }
   },
+  "replay-control-dial": {
+    "_meta": {
+      "modeSetting": "dial.mode"
+    },
+    "speed": {
+      "method": "api"
+    },
+    "play-pause": {
+      "method": "api"
+    },
+    "set-1x-play": {
+      "method": "api"
+    },
+    "reverse": {
+      "method": "api"
+    },
+    "jump-to-live": {
+      "method": "api"
+    }
+  },
   "replay-navigation": {
     "_meta": {
       "modeSetting": "navigation"
