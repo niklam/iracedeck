@@ -501,7 +501,8 @@ export const GlobalSettingsSchema = z
     /**
      * Delay in milliseconds between consecutive replay lap-search broadcasts
      * the Replay Control "Jump to Fastest Lap" mode emits while walking the
-     * cursor to the target lap (issue #577). Even when the replay is paused,
+     * cursor to the target lap (issue #577), and "Jump to Green Flag" when it
+     * has to search for the race start (#1354). Even when the replay is paused,
      * iRacing resolves the exact lap-boundary position asynchronously after
      * each `ReplaySearch`, and a follow-up broadcast that arrives before
      * that work finishes leaves the cursor parked mid-lap. 400 ms is the
@@ -511,7 +512,8 @@ export const GlobalSettingsSchema = z
     fastestLapSearchDelayMs: z.coerce.number().min(50).max(1000).default(400).catch(400),
     /**
      * What the replay does once a jump has landed (issue #1276): Replay
-     * Control's Jump to Fastest Lap and Replay Markers' Previous / Next Marker.
+     * Control's Jump to Fastest Lap and Jump to Green Flag (#1354) and Replay
+     * Markers' Previous / Next Marker.
      * `remember` carries on at the speed the replay had before the press
      * (paused stays paused), `play` plays at 1x, `stopped` pauses on the new
      * spot. The values live in `@iracedeck/app-constants`

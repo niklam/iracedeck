@@ -1,11 +1,12 @@
 /**
  * The replay jump sequence and what the replay does after it (#1276).
  *
- * A jump to an absolute frame — Replay Control's Jump to Fastest Lap, Replay
- * Markers' Previous / Next Marker — ends the way the **Replay jump playback**
- * global setting says: at the speed the replay had before the press
- * (`remember`), playing at 1x (`play`) or paused (`stopped`). Both actions run
- * the one sequence here, so they remember the same thing and wait the same way:
+ * A jump to an absolute frame — Replay Control's Jump to Fastest Lap and Jump
+ * to Green Flag, Replay Markers' Previous / Next Marker — ends the way the
+ * **Replay jump playback** global setting says: at the speed the replay had
+ * before the press (`remember`), playing at 1x (`play`) or paused (`stopped`).
+ * Both actions run the one sequence here, so they remember the same thing and
+ * wait the same way:
  *
  * 1. **Capture** the speed at the press, before any command goes out
  *    ({@link beginReplayJump}).

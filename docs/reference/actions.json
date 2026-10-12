@@ -426,7 +426,7 @@
             {
               "value": "jump-to-green-flag",
               "label": "Jump to Green Flag",
-              "description": "Jump a race replay to five seconds before the race start's green flag and play from there, without changing the camera: looked up in the green record iRaceDeck keeps live (a single jump), falling back to five seconds before the pole car starts lap 1 when the green was not recorded (from the lap record, else a replay search). Targets the race session the replay cursor is in, otherwise the last race in the replay; the key greys out when the replay holds no race session (no dial support)"
+              "description": "Jump a race replay to five seconds before the race start's green flag without changing the camera, then keep, start or stop playback as the Replay jump playback global setting says: looked up in the green record iRaceDeck keeps live (a single jump), falling back to five seconds before the pole car starts lap 1 when the green was not recorded (from the lap record, else a replay search). Targets the race session the replay cursor is in, otherwise the last race in the replay; the key greys out when the replay holds no race session (no dial support)"
             },
             { "value": "next-car", "label": "Next Car" },
             { "value": "prev-car", "label": "Previous Car" },
