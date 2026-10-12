@@ -1299,6 +1299,70 @@ describe("ReplayControlDialSurface", () => {
       view.mockRestore();
     });
 
+    it("a detent that changes nothing leaves the throttle's window alone, so the next change is pushed at once", async () => {
+      const d = dial({ mode: "frame-jog" });
+      env.telemetry = { ...replayAt(PAUSED), ReplaySessionTime: 60 } as TelemetryData;
+      const surface = makeSurface();
+      const ctx = dialContext();
+      await appear(surface, ctx, d);
+      await vi.advanceTimersByTimeAsync(1_000);
+      const throttle = surface["renderThrottle"];
+      const stampedAt = throttle.lastImageSentAt.get(ctx.id);
+      ctx.setDialCanvas.mockClear();
+
+      // The step is sent, but the tick carrying the new replay time has not arrived.
+      surface.rotate(ctx as never, d, 1, false);
+
+      expect(mocks.nextFrame).toHaveBeenCalledTimes(1);
+      expect(stampedAt).toBeDefined();
+      expect(throttle.lastImageSentAt.get(ctx.id)).toBe(stampedAt);
+      expect(throttle.pendingFlush.has(ctx.id)).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(16);
+      env.telemetry = { ...replayAt(PAUSED), ReplaySessionTime: 60 + 1 / 60 } as TelemetryData;
+      surface.onTick(ctx.id);
+
+      // No timer has run since the tick: the push was immediate, not a deferred flush.
+      expect(ctx.setDialCanvas).toHaveBeenCalledTimes(1);
+      expect(shownValue(lastBox(ctx))).toBe("1:00.02");
+    });
+
+    it("a gesture that changes nothing on screen leaves the throttle's window alone too", async () => {
+      const { surface, ctx } = await onScreen(speed(1), dial({ pressAction: "set-1x-play" }));
+      await vi.advanceTimersByTimeAsync(1_000);
+      const throttle = surface["renderThrottle"];
+      const stampedAt = throttle.lastImageSentAt.get(ctx.id);
+
+      await press(surface, ctx, dial({ pressAction: "set-1x-play" }));
+
+      expect(mocks.setPlaySpeed).toHaveBeenCalledWith(1, false);
+      expect(throttle.lastImageSentAt.get(ctx.id)).toBe(stampedAt);
+    });
+
+    it("a state that goes back while a frame waits in the throttle is not drawn stale", async () => {
+      // The replay has been seen playing at 1/4x, so the paused caption reads the same both times.
+      noteTelemetrySpeed(speed(4, true), Date.now());
+      const { surface, ctx, d } = await onScreen(speed(4, true));
+      await vi.advanceTimersByTimeAsync(1_000);
+      ctx.setDialCanvas.mockClear();
+
+      // Into pause (pushed at once), out of it (waits for the window), and back in.
+      surface.rotate(ctx as never, d, -1, false);
+      await vi.advanceTimersByTimeAsync(20);
+      surface.rotate(ctx as never, d, 1, false);
+      await vi.advanceTimersByTimeAsync(20);
+      surface.rotate(ctx as never, d, -1, false);
+      await settle(200);
+
+      expect(mocks.setPlaySpeed.mock.calls).toEqual([
+        [0, false],
+        [4, true],
+        [0, false],
+      ]);
+      expect(shownValue(lastBox(ctx))).toBe("PAUSED");
+      expect(ctx.setDialCanvas).toHaveBeenCalledTimes(1);
+    });
+
     it("throttles pushes to at most 10 per second", async () => {
       const everyStop = dial({
         speedStops: Object.fromEntries(Array.from({ length: 16 }, (_, i) => [String(i + 1), true])),

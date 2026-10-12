@@ -219,6 +219,13 @@ interface ReplayControlDialContext {
   holdPreview: HoldPreview;
   /** Signature of the last frame pushed; a render whose signature matches pushes nothing. */
   lastRenderSig: string | null;
+  /**
+   * Signature of a built frame waiting in the throttle, or null. While one
+   * waits, "would the screen change" is asked against it rather than the frame
+   * on screen, so a state that goes back before the flush replaces the frame
+   * that is waiting instead of leaving it to be drawn.
+   */
+  queuedSig: string | null;
 }
 
 /** A dash-box frame and the signature it is compared by. */
@@ -438,11 +445,7 @@ export class ReplayControlDialSurface {
   onTick(actionId: string): void {
     const ctx = this.contexts.get(actionId);
 
-    if (!ctx || !ctx.action.dialCanvas()) return;
-
-    const frame = this.buildFrame(ctx);
-
-    if (frame.sig !== ctx.lastRenderSig) this.scheduleRender(ctx, false, frame);
+    if (ctx) this.scheduleIfChanged(ctx);
   }
 
   /**
@@ -554,6 +557,7 @@ export class ReplayControlDialSurface {
       preview: null,
       holdPreview: NOOP_HOLD_PREVIEW,
       lastRenderSig: null,
+      queuedSig: null,
     };
     // The real helper only where the extended gestures exist (#1120).
     created.holdPreview = __FEATURE_DIAL_EXTENDED_GESTURES__
@@ -617,9 +621,26 @@ export class ReplayControlDialSurface {
     return { args, sig: JSON.stringify(args) };
   }
 
-  /** Queues a redraw of every dial: the replay speed they show is one value. */
+  /** Redraws every dial whose frame changed: the replay speed they show is one value. */
   private renderAll(): void {
-    for (const ctx of this.contexts.values()) this.scheduleRender(ctx);
+    for (const ctx of this.contexts.values()) this.scheduleIfChanged(ctx);
+  }
+
+  /**
+   * Queues a push when what the dial would show differs from what it shows
+   * (or from a built frame already waiting in the throttle). The frame is
+   * built first, and handed to the flush so it is built once, because a
+   * schedule stamps the throttle's window even when its flush then pushes
+   * nothing: an unconditional one after a detent that changed nothing would
+   * hold the next real change back by up to 100 ms.
+   */
+  private scheduleIfChanged(ctx: ReplayControlDialContext): void {
+    // The dial's own screen decides the drawing; none, nothing to compare (#1013).
+    if (!ctx.action.dialCanvas()) return;
+
+    const frame = this.buildFrame(ctx);
+
+    if (frame.sig !== (ctx.queuedSig ?? ctx.lastRenderSig)) this.scheduleRender(ctx, false, frame);
   }
 
   /**
@@ -634,10 +655,15 @@ export class ReplayControlDialSurface {
   private scheduleRender(ctx: ReplayControlDialContext, force = false, built?: BuiltFrame): void {
     if (force) ctx.lastRenderSig = null;
 
+    // Set before the schedule: outside its window the throttle flushes at once.
+    ctx.queuedSig = built?.sig ?? null;
     this.renderThrottle.schedule(ctx.action.id, () => this.renderIfChanged(ctx, built));
   }
 
   private async renderIfChanged(ctx: ReplayControlDialContext, built?: BuiltFrame): Promise<void> {
+    // The throttle runs only the latest schedule, so nothing is waiting any more.
+    ctx.queuedSig = null;
+
     // A context that went away (or was replaced) since the schedule draws nothing.
     if (this.contexts.get(ctx.action.id) !== ctx) return;
 
