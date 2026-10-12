@@ -15,7 +15,7 @@ Replay Control replaces the legacy Replay Transport, Replay Speed, and Replay Na
 
 Fast Forward, Rewind, Slow Motion, Slow Motion Rewind, Frame Forward, Frame Backward, Increase Speed, and Decrease Speed support long-press: hold the button to repeat the command automatically after an initial 500 ms delay, then every 250 ms.
 
-On a Stream Deck+ dial or a Mirabox knob, Replay Control becomes a replay dial: turn it to change the replay speed and press it to play or pause — see [On a dial](#on-a-dial).
+On a Stream Deck+ dial or a Mirabox knob, Replay Control becomes a replay dial: turn it to change the replay speed or to step through the replay frame by frame, and press it to play or pause — see [On a dial](#on-a-dial).
 
 ## Modes
 
@@ -497,27 +497,28 @@ Switch the replay camera to the previous car by car number order. Every car in t
 
 ## On a dial
 
-Placed on a Stream Deck+ dial or a Mirabox knob, Replay Control becomes a replay dial. The dial's own **Mode** setting picks what turning does — **Speed Control** steps the replay speed along a ladder of speeds you choose, from fast rewind through pause to fast forward — and the press and touch gestures are the same whatever the Mode: Play/Pause, Set 1x and play, Reverse direction or Jump to Live. Every input is an iRacing replay command, so the dial needs no key binding. The Property Inspector automatically shows the dial settings below (instead of the keypad Mode and its settings) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
+Placed on a Stream Deck+ dial or a Mirabox knob, Replay Control becomes a replay dial. The dial's own **Mode** setting picks what turning does — **Speed Control** steps the replay speed along a ladder of speeds you choose, from fast rewind through pause to fast forward, and **Frame Jog** steps the replay one frame at a time — and the press and touch gestures are the same whatever the Mode: Play / Pause, Set 1x and Play, Reverse Direction or Jump to Live. Every input is an iRacing replay command, so the dial needs no key binding. The Property Inspector automatically shows the dial settings below (instead of the keypad Mode and its settings) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
 
-The dial works in the replay only. iRacing accepts replay commands only when you are out of the car, so from the car a turn or a press sends nothing and the display is dimmed — open the replay first. Any command the dial sends also stops a running [Jump to Fastest Lap](#jump-to-fastest-lap) search, so your command stands.
+The dial works in the replay only. iRacing accepts replay commands only when you are out of the car, so from the car a turn or a press sends nothing and the display is dimmed — open the replay first. Every command the dial sends — a new speed, a pause, a frame step, a jump to live — also stops a running [Jump to Fastest Lap](#jump-to-fastest-lap) search, so your command stands. A turn or press that sends nothing leaves the search running: a turn past an end of the speed ladder, and Reverse Direction while the replay is paused.
 
 #### Details
 
-- **Method:** iRacing API for the rotation and for every press and touch action
-- **Dial:** Rotating steps the replay speed along the chosen ladder, one stop per detent — clockwise toward fast forward, counter-clockwise toward fast rewind — with no cap on a fast spin, stopping at the ends of the ladder; works in the replay only
+- **Method:** iRacing API for the rotation in both modes and for every press and touch action
+- **Dial:** In Speed Control, rotating steps the replay speed along the chosen ladder, one stop per detent — clockwise toward fast forward, counter-clockwise toward fast rewind — with no cap on a fast spin, stopping at the ends of the ladder. In Frame Jog, rotating steps the replay one frame per detent — clockwise to the next frame, counter-clockwise to the previous one. Both work in the replay only
 - **Default binding:** No keyboard binding
-- **Telemetry-aware icon:** Yes — the display shows the live replay speed, the speed a press will resume while paused, and which way a turn can still change the speed
+- **Telemetry-aware icon:** Yes — in Speed Control the display shows the live replay speed, the speed a press will resume while paused, and which way a turn can still change the speed; in Frame Jog it shows the session time of the frame on screen and whether the replay is paused
 
 #### Controls
 
-- **Elgato Stream Deck+** — dial rotation, a press (short or long), and a touchscreen that shows the replay speed. Pushing and turning at the same time changes the speed like a plain turn, and the release then fires nothing. A touchscreen tap or long tap runs its own configured Tap Display / Long Touch action.
-- **Mirabox knob** — turn and push, with the same display drawn on the screen above the knob; the Push slot only, and every action can be put on it, so to reverse the replay from a knob set **Press Action** to **Reverse direction** (see [Dials](/docs/features/dials/#mirabox-knobs)).
+- **Elgato Stream Deck+** — dial rotation, a press (short or long), and a touchscreen that shows the replay speed or the replay time, depending on the Mode. Pushing and turning at the same time acts like a plain turn, and the release then fires nothing. A touchscreen tap or long tap runs its own configured Tap Display / Long Touch action.
+- **Mirabox knob** — turn and push, with the same display drawn on the screen above the knob; the Push slot only, and every action can be put on it, so to reverse the replay from a knob set **Press Action** to **Reverse Direction** (see [Dials](/docs/features/dials/#mirabox-knobs)).
 
 #### Setting: Mode
 
 What turning the dial does. Defaults to **Speed Control**. The press and touch settings further down belong to the dial rather than to a mode, so changing the Mode never changes what a press does.
 
 - **Speed Control** (default) — steps the replay speed along your speed ladder — see [Speed Control](#speed-control)
+- **Frame Jog** — steps the replay one frame per detent — see [Frame Jog](#frame-jog)
 
 #### Speed Control
 
@@ -530,14 +531,14 @@ Each detent moves the replay one stop along a speed ladder that runs from the fa
 - **Clockwise always moves toward fast forward**, and counter-clockwise toward fast rewind. From −8x a clockwise detent goes to −4x: slower in reverse, and one stop closer to forward.
 - **A fast spin walks as many stops as the dial reports detents**, with no limit. However fast you spin, the replay gets a single speed change, to the last stop reached.
 - **The ladder stops at its ends.** It never wraps around from the fastest forward speed to the fastest rewind, so a turn past either end does nothing.
-- **Pause is a stop like any other.** Turning out of pause starts the replay at the stop next to it — 1/4x or −1/4x on the default ladder — and not at the speed it was playing before. A **Play/Pause** press is the way back to that speed.
+- **Pause is a stop like any other.** Turning out of pause starts the replay at the stop next to it — 1/4x or −1/4x on the default ladder — and not at the speed it was playing before. A **Play / Pause** press is the way back to that speed.
 - **A speed that is not on your ladder** — one set from a key, or from iRacing's own replay bar — is picked up where it is: the first detent goes to the nearest stop beyond it in the direction you turn (from 3x, clockwise is 4x and counter-clockwise is 2x), and further detents carry on from there.
 
 The dial always starts from the speed the replay is actually playing at, so it stays in step with the Replay Control keys and with iRacing's replay bar.
 
 #### Setting: Speeds (Speed Control)
 
-Which speeds are stops on the ladder, shown while the Mode is **Speed Control**. It is a checkbox grid of every speed iRacing supports — the slow-motion speeds 1/16x … 1/2x and the speeds 1x … 16x, 31 in all. Ticked by default: **1/4x**, **1/2x**, **1x**, **2x**, **4x** and **8x**.
+Which speeds are stops on the ladder, shown only while the Mode is **Speed Control**. It is a checkbox grid of every speed iRacing supports, 31 in all, in two groups: **Slow Motion**, 1/16x … 1/2x, and **Normal and Fast**, 1x … 16x. Ticked by default: **1/4x**, **1/2x**, **1x**, **2x**, **4x** and **8x**.
 
 A speed is ticked once and counts in both directions: ticking 16x adds 16x and −16x, so the forward and rewind halves of the ladder always match. Pause is always on the ladder and has no checkbox, and the last ticked box cannot be cleared.
 
@@ -545,30 +546,41 @@ A speed is ticked once and counts in both directions: ticking 16x adds 16x and �
 The setting is per dial, so two dials can carry different ladders: one with only slow-motion speeds for going through an incident, and one with a few fast speeds for skimming a race.
 :::
 
+#### Frame Jog
+
+Each detent moves the replay one frame: clockwise to the next frame, counter-clockwise to the previous one. It is the mode for finding the exact frame of a contact.
+
+- **A fast spin moves as many frames as the dial reports detents**, with no limit, and the replay gets them as a single jump.
+- **The jog always lands on a still frame.** If the replay is playing when you turn, the first detent pauses it and then steps.
+- **A Play / Pause press carries on from there.** It resumes at the speed the replay was playing before the jog paused it, and Play / Pause is what **Press Action** is set to by default.
+
+Frame Jog has no settings of its own: the **Speeds** grid belongs to Speed Control and is hidden in this mode.
+
 #### Touch strip
 
 The touch strip (and the screen above a Mirabox knob) shows a "dash box" for the selected Mode:
 
 | Mode | Label | Value | Caption | Arrows |
 |---|---|---|---|---|
-| Speed Control | `SPEED` | The live replay speed — `4x`, `-1/4x`, or `PAUSED` | While paused, the speed a **Play/Pause** press will resume — `▶ 4x` forward, `◀ 2x` in reverse | Each side lights up while a turn that way would change the speed, and stays dimmed at that end of the ladder |
+| Speed Control | `SPEED` | The live replay speed — `4x`, `-1/4x`, or `PAUSED` | While paused, the speed a **Play / Pause** press will resume — `► 4x` forward, `◄ 2x` in reverse | Each side lights up while a turn that way would change the speed, and stays dimmed at that end of the ladder |
+| Frame Jog | `FRAME` | The session time of the frame on screen, as minutes, seconds and hundredths — `12:34.56`. A frame is 1/60 of a second, so every step changes the hundredths | `PAUSED`, or the speed the replay is playing at — `4x`, `-1/4x` | Both sides are lit: a turn either way steps a frame |
 
 From the car, or while iRacing is not running, the box is dimmed and shows only its label. You can override the border, label, value, and background colors in the **Dash Box Appearance** section of the dial settings.
 
 #### Setting: Press Action / Long Press
 
-What a short or long press of the dial button does, chosen from:
+What a short or long press of the dial button does, in either Mode, chosen from:
 
-- **Play/Pause** (default for **Press Action**) — pauses a playing replay, and resumes a paused one at the last speed it actually played at, in the same direction — whoever set that speed: the dial, a Replay Control key, or iRacing's own replay bar. Until the replay has played at some speed, it resumes at 1x. While paused, the display's caption shows the speed a press will resume.
-- **Set 1x and play** (default for **Long Press**) — plays forward at normal speed, whatever the replay was doing: the quick way out of a rewind, slow motion or pause.
-- **Reverse direction** — flips the direction and keeps the speed: 4x becomes −4x, and 1/2x becomes −1/2x. While paused it flips the speed that **Play/Pause** will resume instead, and the replay stays paused — the caption changes direction at once.
+- **Play / Pause** (default for **Press Action**) — pauses a playing replay, and resumes a paused one at the last speed it actually played at, in the same direction — whoever set that speed: the dial, a Replay Control key, or iRacing's own replay bar. Until the replay has played at some speed, it resumes at 1x. In Speed Control the display's caption shows that speed while the replay is paused.
+- **Set 1x and Play** (default for **Long Press**) — plays forward at normal speed, whatever the replay was doing: the quick way out of a rewind, slow motion or pause.
+- **Reverse Direction** — flips the direction and keeps the speed: 4x becomes −4x, and 1/2x becomes −1/2x. While paused it flips the speed that **Play / Pause** will resume instead, and the replay stays paused — in Speed Control the caption changes direction at once.
 - **Jump to Live** — jumps to the live point in the session, exactly like the [Jump to Live](#jump-to-live) key.
 - **None** — does nothing.
 
-A press is classified when you release the dial — a hold past the [Long-press threshold](/docs/features/dials/#the-long-press-threshold) fires the Long Press action. Hold past the threshold and the strip previews what letting go will do: `▶ 1x` for Set 1x and play; `PAUSE`, or the speed it will resume (such as `▶ 4x`), for Play/Pause; the reversed speed (such as `◀ 4x`) for Reverse direction; and `LIVE` for Jump to Live. From the car, where the release would do nothing, the strip stays as it is. See [Seeing the outcome before you let go](/docs/features/dials/#seeing-the-outcome-before-you-let-go). Long Press is Stream Deck+ only.
+A press is classified when you release the dial — a hold past the [Long-press threshold](/docs/features/dials/#the-long-press-threshold) fires the Long Press action. Hold past the threshold and the strip previews what letting go will do: `► 1x` for Set 1x and Play; `PAUSE`, or the speed it will resume (such as `► 4x`), for Play / Pause; the reversed speed (such as `◄ 4x`) for Reverse Direction; and `LIVE` for Jump to Live. From the car, where the release would do nothing, the strip stays as it is. See [Seeing the outcome before you let go](/docs/features/dials/#seeing-the-outcome-before-you-let-go). Long Press is Stream Deck+ only.
 
 The remembered speed belongs to the dial: the Replay Control keys behave as before.
 
 #### Setting: Tap Display / Long Touch
 
-Optional touch-strip gestures (Stream Deck+ only), each over the same set { Play/Pause, Set 1x and play, Reverse direction, Jump to Live, None }. Both default to **None** for VR safety.
+Optional touch-strip gestures (Stream Deck+ only), each over the same set { Play / Pause, Set 1x and Play, Reverse Direction, Jump to Live, None }. Both default to **None** for VR safety.
