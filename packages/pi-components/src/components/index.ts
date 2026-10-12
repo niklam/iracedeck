@@ -2,6 +2,8 @@
 import { installDigitsOnlyField } from "./digits-only-field.js";
 // External links - reroute external http(s) PI link clicks to the OS default browser
 import { installExternalLinkHandler } from "./external-links.js";
+// Keep one checked - the guard behind window.irdKeepOneChecked (issue #1316)
+import { installKeepOneChecked } from "./keep-one-checked.js";
 // Shared page poller - single per-page interval behind window.irdPoll (issue #903)
 import { installSharedPoller } from "./poller.js";
 
@@ -106,3 +108,11 @@ installSharedPoller();
 // Side effect on bundle load: expose window.irdDigitsOnly — the digits-only
 // filter inline PI scripts put on a car-number text field (issue #1353).
 installDigitsOnlyField();
+
+// Keep one checked - a group of sdpi-checkboxes that never loses its last tick (issue #1316)
+export { installKeepOneChecked, isTicked, keepOneChecked } from "./keep-one-checked.js";
+
+// Side effect on bundle load: expose window.irdKeepOneChecked — the guard
+// inline PI scripts put on a checkbox grid that must keep one box ticked
+// (Replay Control's dial Speeds, issue #1316).
+installKeepOneChecked();
