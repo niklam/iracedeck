@@ -21,14 +21,12 @@ export interface FindNearestCarOptions {
  * reads show the LIVE field during an in-session replay, so those walks now
  * cover every car the session has had instead.
  *
- * One camera path still reaches this predicate, through `findNearestCarOnTrack`
- * below: Replay Control's dial rotation on the `jump-to-my-car` mode
- * (`findAdjacentCarOnTrack` → `camera.switchNum`) — physical track order, not
- * the number order the walks above use. It is dormant, not removed: every
- * plugin's manifest declares Replay Control `Keypad` only, no `Encoder`,
- * since the #640 dial de-claim, so `onDialRotate` never fires. Re-adding a
- * dial surface for it would skip a departed car in a replay, because this
- * predicate reads the live field there too.
+ * No camera path reaches this predicate any more. The last was Replay
+ * Control's dormant dial rotation on the `jump-to-my-car` mode, through
+ * `findNearestCarOnTrack` below — physical track order, not the number order
+ * the walks above use — and #1316 deleted it when the action's dial was
+ * rebuilt. A camera walk built on it again would skip a departed car in a
+ * replay, because this predicate reads the live field there too.
  *
  * A car counts as present when it has a valid lap distance AND a track surface
  * other than `NotInWorld`. Both halves earn their place: iRacing normally
