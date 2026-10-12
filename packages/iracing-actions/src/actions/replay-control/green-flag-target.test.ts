@@ -2,8 +2,11 @@ import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
+  acceptsGreenFallbackLanding,
   GREEN_APPROACH_FRAMES,
+  GREEN_FALLBACK_MIN_LAP_DIST,
   greenApproachFrame,
+  isGreenFlagUnavailable,
   resolveGreenFlagTarget,
   resolvePoleCarIdx,
 } from "./green-flag-target.js";
@@ -161,5 +164,55 @@ describe("resolvePoleCarIdx", () => {
     ["no session info", null],
   ])("is null with %s", (_name, sessionInfo) => {
     expect(resolvePoleCarIdx(sessionInfo)).toBeNull();
+  });
+});
+
+describe("isGreenFlagUnavailable", () => {
+  it("is unavailable when the session list holds no race", () => {
+    expect(isGreenFlagUnavailable(sessionInfoWith(["Practice"]))).toBe(true);
+    expect(isGreenFlagUnavailable(sessionInfoWith(["Practice", "Lone Qualify", "Warmup"]))).toBe(true);
+    expect(isGreenFlagUnavailable(sessionInfoWith(["Offline Testing"]))).toBe(true);
+  });
+
+  it("is available as soon as one session is a race, wherever the cursor is", () => {
+    expect(isGreenFlagUnavailable(sessionInfoWith(["Practice", "Lone Qualify", "Race"]))).toBe(false);
+    expect(isGreenFlagUnavailable(sessionInfoWith(["Race"]))).toBe(false);
+    expect(isGreenFlagUnavailable(sessionInfoWith(["Practice", "Race", "Race"]))).toBe(false);
+  });
+
+  it.each([
+    ["no session info", null],
+    ["no SessionInfo block", {}],
+    ["an empty session list", { SessionInfo: { Sessions: [] } }],
+    ["a session list that is not a list", { SessionInfo: { Sessions: "none" } }],
+  ])("keeps the plain look with %s: there is nothing to judge yet", (_name, sessionInfo) => {
+    expect(isGreenFlagUnavailable(sessionInfo)).toBe(false);
+  });
+
+  it("agrees with the target rule: unavailable exactly when a listed weekend has no target", () => {
+    for (const types of [["Practice"], ["Practice", "Race"], ["Warmup"], ["Race", "Race"]]) {
+      const sessionInfo = sessionInfoWith(types);
+
+      expect(isGreenFlagUnavailable(sessionInfo)).toBe(resolveGreenFlagTarget(sessionInfo, cursorIn(0, 1)) === null);
+    }
+  });
+});
+
+describe("acceptsGreenFallbackLanding", () => {
+  it("accepts a landing the search verified, whatever else it carries", () => {
+    expect(acceptsGreenFallbackLanding({ converged: true, priorLapDist: null })).toBe(true);
+    expect(acceptsGreenFallbackLanding({ converged: true, priorLapDist: 0.5 })).toBe(true);
+  });
+
+  it("accepts an unverified landing near the end of the lap before lap 1 (#1432 measured 0.9974 to 0.9983)", () => {
+    expect(GREEN_FALLBACK_MIN_LAP_DIST).toBe(0.99);
+    expect(acceptsGreenFallbackLanding({ converged: false, priorLapDist: 0.9974 })).toBe(true);
+    expect(acceptsGreenFallbackLanding({ converged: false, priorLapDist: 0.99 })).toBe(true);
+  });
+
+  it("refuses an unverified landing further from the line, or one not on that lap at all", () => {
+    expect(acceptsGreenFallbackLanding({ converged: false, priorLapDist: 0.9899 })).toBe(false);
+    expect(acceptsGreenFallbackLanding({ converged: false, priorLapDist: 0.5 })).toBe(false);
+    expect(acceptsGreenFallbackLanding({ converged: false, priorLapDist: null })).toBe(false);
   });
 });

@@ -114,3 +114,41 @@ export function resolvePoleCarIdx(sessionInfo: unknown): number | null {
 
   return carIdx >= 0 ? carIdx : null;
 }
+
+/**
+ * Whether the key shows the unavailable look: the session YAML lists sessions
+ * and none of them is a race, so a press has nothing to aim at. With no
+ * session list at all (not connected, the YAML not parsed yet) the key keeps
+ * its plain look — the press does nothing then either, but so does every
+ * other key, and a key that is grey whenever the sim is closed would read as
+ * broken.
+ */
+export function isGreenFlagUnavailable(sessionInfo: unknown): boolean {
+  const sessions = readSessions(sessionInfo);
+
+  return sessions.length > 0 && !sessions.some(isRace);
+}
+
+/**
+ * How near the end of the lap before lap 1 a replay search must have left the
+ * pole car for its landing to stand in for that car's lap-1 start, when the
+ * search itself could not verify the landing. Much looser than the search's
+ * own bound for what it writes into the lap record: here the frame is only
+ * the anchor of a five-second run-up, and iRacing's Next Lap can land a few
+ * frames further before the line than that bound allows (measured at 0.9978
+ * on an 85-second lap, #1432). One percent of a lap is under a second on a
+ * short lap and a few seconds on the longest, all on the early side.
+ */
+export const GREEN_FALLBACK_MIN_LAP_DIST = 0.99;
+
+/**
+ * Whether a replay search's landing can anchor the fallback jump. A landing
+ * the search verified always can. One it did not can when the landed sample
+ * still shows the car on the lap before lap 1, in the target session, near
+ * its end (`priorLapDist`, null when the sample shows anything else).
+ */
+export function acceptsGreenFallbackLanding(landing: { converged: boolean; priorLapDist: number | null }): boolean {
+  if (landing.converged) return true;
+
+  return landing.priorLapDist !== null && landing.priorLapDist >= GREEN_FALLBACK_MIN_LAP_DIST;
+}
