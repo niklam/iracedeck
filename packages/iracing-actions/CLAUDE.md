@@ -24,7 +24,10 @@ src/
     replay-control/                      # Same layout plus the dial split (#1316): the dial's
                                          # schema (replay-control-dial-settings.ts), the seam
                                          # between the surface and its rotation modes
-                                         # (replay-control-dial-mode.ts), the dial surface
+                                         # (replay-control-dial-mode.ts), the two modes — Speed
+                                         # Control (replay-control-speed-mode.ts) over its ladder
+                                         # (replay-speed-ladder.ts), and Frame Jog
+                                         # (replay-control-frame-jog.ts, #1317) — the dial surface
                                          # (replay-control-dial-surface.ts), the pending and
                                          # remembered replay speed (replay-speed-state.ts) and
                                          # the speed text both surfaces share
@@ -85,7 +88,7 @@ See `.claude/rules/stream-deck-actions.md` for the full requirements (UUID const
 
 ## Dial surfaces
 
-A dial-capable action routes its dial events to a `*-dial-surface.ts` module beside it; `fuel-service/fuel-dial-surface.ts` is the reference and `.claude/rules/encoders-and-touchscreen.md` holds the rules. Two shapes every surface shares: the per-context state is created only by the lifecycle events (`willAppear`, `didReceiveSettings`, through `ensureContext`) while the input events go through `inputContext` and never create one (#1329); and where `__FEATURE_DIAL_EXTENDED_GESTURES__` is off the hold preview is deck-core's one `NOOP_HOLD_PREVIEW`, never a local copy (#1329). A test that drives dial input makes the dial appear first, since input on a context that never appeared is dropped. One surface keeps its rotation in a registry of modes: Replay Control's `ReplayControlDialSurface` hands a turn, and what the box reads, to the `ReplayDialMode` that `dial.mode` picks (`replay-control/replay-control-dial-mode.ts`, #1316), and keeps the per-context state, the in-replay guard, the gestures and the hold preview itself, so a new rotation mode there is one module plus one registry row.
+A dial-capable action routes its dial events to a `*-dial-surface.ts` module beside it; `fuel-service/fuel-dial-surface.ts` is the reference and `.claude/rules/encoders-and-touchscreen.md` holds the rules. Two shapes every surface shares: the per-context state is created only by the lifecycle events (`willAppear`, `didReceiveSettings`, through `ensureContext`) while the input events go through `inputContext` and never create one (#1329); and where `__FEATURE_DIAL_EXTENDED_GESTURES__` is off the hold preview is deck-core's one `NOOP_HOLD_PREVIEW`, never a local copy (#1329). A test that drives dial input makes the dial appear first, since input on a context that never appeared is dropped. One surface keeps its rotation in a registry of modes: Replay Control's `ReplayControlDialSurface` hands a turn, the box's label and what the box reads to the `ReplayDialMode` that `dial.mode` picks from `DIAL_MODES` (`replay-control/replay-control-dial-mode.ts`, #1316) — Speed Control (`replay-control-speed-mode.ts`) or Frame Jog (`replay-control-frame-jog.ts`, #1317) — and keeps the per-context state, the in-replay guard, the gestures (one `GESTURES` table: dial-hint label, run, hold-preview text) and the hold preview itself, so a new rotation mode there is one module plus one registry row, plus its `dial.mode` value, PI option and comms entry.
 
 Dial PIs switch between keypad and dial views through `@iracedeck/pi-components`' `dial-controller` partial; never a local `resolveController` / `applyDialView` (#1329).
 
