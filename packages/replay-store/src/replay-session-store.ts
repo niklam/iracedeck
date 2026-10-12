@@ -626,6 +626,20 @@ export function createReplaySessionStore(opts: ReplaySessionStoreOptions): Repla
     return { version: REPLAY_FILE_VERSION, subSessionId, track: "", series: "", sessionStart: "", sections: {} };
   }
 
+  /**
+   * Whether a record's `sessionUniqueId`s are the ones a lookup's query
+   * carries. The offline record (`SubSessionID` 0) is never written and is
+   * dropped on disconnect, so everything in it was recorded in the sim run the
+   * query comes from, and a session instance it does not hold is never the
+   * same session under another id. That is also the one kind of session that
+   * can hold several instances of a `SessionNum`: an AI event restarted. A
+   * record with a file behind it may be read in a later sim run, which numbers
+   * the replay's sessions afresh, so there a lookup may fall back.
+   */
+  function hasExactInstanceIds(record: ActiveRecord): boolean {
+    return record.file.subSessionId === 0;
+  }
+
   /** The live view of a file's sections this build reads; the rest stays in `file.sections` untouched. */
   function recordOf(file: ReplaySessionFile, path: string | null, loadedFromDisk: boolean): ActiveRecord {
     const { markers, unreadable } = partitionMarkers(file.sections[REPLAY_MARKERS_SECTION]);
@@ -976,7 +990,7 @@ export function createReplaySessionStore(opts: ReplaySessionStoreOptions): Repla
       // matching session.
       if (!target.loadedFromDisk && target.laps === undefined) return { hit: false, reason: "no file" };
 
-      return findLapStartInSection(target.laps, query);
+      return findLapStartInSection(target.laps, query, { exactInstance: hasExactInstanceIds(target) });
     },
   };
 
@@ -1021,7 +1035,7 @@ export function createReplaySessionStore(opts: ReplaySessionStoreOptions): Repla
         return { hit: false, reason: "no file" };
       }
 
-      return findGreenInSection(target.greens, query);
+      return findGreenInSection(target.greens, query, { exactInstance: hasExactInstanceIds(target) });
     },
   };
 

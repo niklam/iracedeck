@@ -655,6 +655,45 @@ describe("createReplaySessionStore", () => {
       expect(store.greens.findGreen({ ...startQuery, subSessionId: 0 })).toEqual({ hit: false, reason: "no file" });
     });
 
+    it("answers a named race instance exactly: another pass of a restarted AI race is never the answer", () => {
+      store.setActiveSession(header(0));
+      store.greens.record(greenFlag({ subSessionId: 0 }));
+      store.laps.recordLapStart(lapStart({ subSessionId: 0 }));
+
+      // Pass (2, 6): its green and its laps were not seen (the driver sat in the garage through the start).
+      expect(store.greens.findGreen({ ...startQuery, sessionUniqueId: 6, subSessionId: 0 })).toEqual({
+        hit: false,
+        reason: "no session",
+      });
+      expect(store.laps.findLapStart({ ...lapStart(), sessionUniqueId: 6, subSessionId: 0 })).toEqual({
+        hit: false,
+        reason: "no session",
+      });
+      // From outside the race no instance is named, and the one recorded pass answers.
+      expect(store.greens.findGreen({ sessionNum: 2, kind: "start", subSessionId: 0 })).toMatchObject({
+        hit: true,
+        frame: 30215,
+        matchedBy: "sessionNum",
+      });
+    });
+
+    it("still lets a session with a file behind it fall back: its unique ids may be another sim run's", () => {
+      store.setActiveSession(header());
+      store.greens.record(greenFlag());
+      store.laps.recordLapStart(lapStart());
+
+      expect(store.greens.findGreen({ ...startQuery, sessionUniqueId: 6 })).toMatchObject({
+        hit: true,
+        frame: 30215,
+        matchedBy: "sessionNum",
+      });
+      expect(store.laps.findLapStart({ ...lapStart(), sessionUniqueId: 6 })).toMatchObject({
+        hit: true,
+        frame: 30821,
+        matchedBy: "sessionNum",
+      });
+    });
+
     it("is dropped on disconnect", () => {
       store.setActiveSession(header(0));
       store.markers.add({ frame: 100, sessionNum: 0, sessionTimeMs: 0 });

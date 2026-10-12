@@ -57,6 +57,35 @@ describe("replay laps section (#1203)", () => {
   });
 
   describe("recordLapStartInSection", () => {
+    it("with exact ids, answers a named instance from that instance only (#1354)", () => {
+      const section = emptyLapsSection();
+
+      // Two passes of one race: pass 1 has the car's lap 1, pass 2 only its lap 2.
+      recordLapStartInSection(section, start({ sessionUniqueId: 4, lap: 1, frame: 30821 }));
+      recordLapStartInSection(section, start({ sessionUniqueId: 5, lap: 2, frame: 190000 }));
+
+      const lapOneInPassTwo = { ...start(), sessionUniqueId: 5, lap: 1 };
+
+      // A file's ids may be another sim run's, so the one other session with the lap answers...
+      expect(findLapStartInSection(section, lapOneInPassTwo)).toMatchObject({
+        hit: true,
+        frame: 30821,
+        matchedBy: "sessionNum",
+      });
+      // ...but exact ids make it another pass's lap, and a pass that is not recorded at all is not another one.
+      expect(findLapStartInSection(section, lapOneInPassTwo, { exactInstance: true })).toEqual({
+        hit: false,
+        reason: "lap not recorded",
+      });
+      expect(
+        findLapStartInSection(section, { ...start(), sessionUniqueId: 6, lap: 1 }, { exactInstance: true }),
+      ).toEqual({ hit: false, reason: "no session" });
+      // The pair itself, and a query that names no instance, read as before.
+      expect(
+        findLapStartInSection(section, { ...start(), sessionUniqueId: 4, lap: 1 }, { exactInstance: true }),
+      ).toMatchObject({ hit: true, frame: 30821, matchedBy: "pair" });
+    });
+
     it("keeps entries per (sessionNum, sessionUniqueId): a restart is session 0 again under a new unique id", () => {
       const section = emptyLapsSection();
 

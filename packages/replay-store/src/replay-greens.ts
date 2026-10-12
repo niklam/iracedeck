@@ -77,6 +77,17 @@ export interface GreenQuery {
   kind: "start";
 }
 
+/** How a lookup that names a session instance treats the other instances of its `sessionNum`. */
+export interface SessionMatchOptions {
+  /**
+   * The record's `sessionUniqueId`s are the very ones a query carries, so a
+   * named instance is answered from that instance or not at all. False or
+   * absent for a record that may have come from a file, whose ids can differ
+   * from the ones a later sim run gives the same sessions.
+   */
+  exactInstance?: boolean;
+}
+
 /**
  * Why a lookup missed, worded as the action logs it: `record MISS (<reason>)`.
  * "no file" is the store's: nothing is recorded for that SubSessionID at all.
@@ -332,6 +343,13 @@ function greenOfKind(session: ReplayGreensSession, kind: GreenKind): ReplayGreen
  * ids did not survive the save, and with several the lookup misses with
  * `no session`.
  *
+ * With `options.exactInstance` that last fallback is off as well: in a record
+ * whose unique ids are known to be the ones the query carries (the store's
+ * offline record, which lives and dies within one sim run) an instance that is
+ * not recorded is simply a race whose green was not seen — the driver sat in
+ * the garage through it — and the one other instance is another pass of an AI
+ * event that was restarted, never the same race under a lost id.
+ *
  * A query that names none — a press from practice or qualifying — reads the
  * sessions with that `sessionNum` that have the entry: the only one, and of
  * several the one whose entry has the highest frame, which is the latest
@@ -340,7 +358,11 @@ function greenOfKind(session: ReplayGreensSession, kind: GreenKind): ReplayGreen
  * Restarts and entries of a kind this build does not know are never the answer
  * to a `start` lookup.
  */
-export function findGreenInSection(section: ReplayGreensSection | undefined, query: GreenQuery): GreenLookup {
+export function findGreenInSection(
+  section: ReplayGreensSection | undefined,
+  query: GreenQuery,
+  options: SessionMatchOptions = {},
+): GreenLookup {
   if (section === undefined) return { hit: false, reason: "no green" };
 
   const sameNum = section.sessions.filter((s) => s.sessionNum === query.sessionNum);
@@ -363,6 +385,10 @@ export function findGreenInSection(section: ReplayGreensSection | undefined, que
       sessionUniqueId: byPair.sessionUniqueId,
     };
   }
+
+  // Exact ids: the instance the query names is not recorded, and no other
+  // instance is that race.
+  if (namesInstance && options.exactInstance === true) return { hit: false, reason: "no session" };
 
   let latest: { session: ReplayGreensSession; entry: ReplayGreenEntry } | undefined;
   let withEntry = 0;

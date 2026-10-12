@@ -529,6 +529,30 @@ describe("replay greens section (#1354)", () => {
       });
     });
 
+    it("with exact ids, never answers a named instance from another: an unrecorded pass misses", () => {
+      const section = sectionWithGreens();
+
+      // The one start there is belongs to pass 4; the query names pass 5, whose green was not seen.
+      expect(
+        findGreenInSection(section, { sessionNum: 2, sessionUniqueId: 5, kind: "start" }, { exactInstance: true }),
+      ).toEqual({ hit: false, reason: "no session" });
+      // Without exact ids the same query takes the one start: a file whose ids did not survive the save.
+      expect(findGreenInSection(section, { sessionNum: 2, sessionUniqueId: 5, kind: "start" })).toMatchObject({
+        hit: true,
+        frame: 30215,
+        matchedBy: "sessionNum",
+      });
+      // Exact ids change nothing for the pair itself, or for a query that names no instance.
+      expect(
+        findGreenInSection(section, { sessionNum: 2, sessionUniqueId: 4, kind: "start" }, { exactInstance: true }),
+      ).toMatchObject({ hit: true, frame: 30215, matchedBy: "pair" });
+      expect(findGreenInSection(section, { sessionNum: 2, kind: "start" }, { exactInstance: true })).toMatchObject({
+        hit: true,
+        frame: 30215,
+        matchedBy: "sessionNum",
+      });
+    });
+
     it("misses with 'no session' when the named instance is not recorded and several others have a start", () => {
       const section = sectionWithGreens();
 

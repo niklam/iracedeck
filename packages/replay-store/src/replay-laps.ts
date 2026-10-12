@@ -414,8 +414,18 @@ function lookupInSession(session: ReplayLapsSession, query: LapStartQuery): Look
  * telemetry offers no `SessionUniqueID`, or none is recorded — a `sessionNum`
  * held by exactly one recorded session is used, so a file whose unique ids did
  * not survive the save is still useful.
+ *
+ * With `options.exactInstance` neither fallback applies to a query that names
+ * an instance: the record's unique ids are the very ones the query carries
+ * (the store's offline record, which lives within one sim run), so another
+ * session with that `sessionNum` is another pass of a restarted AI event, and
+ * its lap is a different lap (#1354).
  */
-export function findLapStartInSection(section: ReplayLapsSection | undefined, query: LapStartQuery): LapStartLookup {
+export function findLapStartInSection(
+  section: ReplayLapsSection | undefined,
+  query: LapStartQuery,
+  options: { exactInstance?: boolean } = {},
+): LapStartLookup {
   if (section === undefined) return { hit: false, reason: "no session" };
 
   const byPair =
@@ -429,7 +439,7 @@ export function findLapStartInSection(section: ReplayLapsSection | undefined, qu
 
     if (direct.hit) return { ...direct, matchedBy: "pair" };
 
-    if (direct.reason === "car mismatch") return direct;
+    if (direct.reason === "car mismatch" || options.exactInstance === true) return direct;
 
     const elsewhere = sameNum
       .filter((s) => s !== byPair)
@@ -438,6 +448,11 @@ export function findLapStartInSection(section: ReplayLapsSection | undefined, qu
     const only = elsewhere[0];
 
     return elsewhere.length === 1 && only !== undefined && only.hit ? { ...only, matchedBy: "sessionNum" } : direct;
+  }
+
+  // Exact ids: a named instance that is not recorded is not another one.
+  if (options.exactInstance === true && query.sessionUniqueId !== null && query.sessionUniqueId !== undefined) {
+    return { hit: false, reason: "no session" };
   }
 
   const only = sameNum[0];
