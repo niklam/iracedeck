@@ -3,15 +3,17 @@
  * `docs/superpowers/specs/2026-09-25-issue-1230-replay-markers-dial.md`.
  *
  * Rotating jumps between the session's markers — clockwise forward in the
- * recording, one marker per detent, one `setPlayPosition` per event — and the
- * press gestures run Add Marker or Delete Marker, the keypad's own operations
- * (`replay-markers-ops.ts`). The dial's screen is the shared dash box: the
- * marker count (or `k / N` while a marker's moment plays), side marks lit
- * where a turn would jump, and from the car a caption naming the press.
+ * recording, one marker per detent, one jump per event — and the press
+ * gestures run Add Marker or Delete Marker, the keypad's own operations
+ * (`replay-markers-ops.ts`). A jump is the shared replay jump sequence, so a
+ * turn leaves the replay the way the Replay jump playback setting says
+ * (#1276). The dial's screen is the shared dash box: the marker count (or
+ * `k / N` while a marker's moment plays), side marks lit where a turn would
+ * jump, and from the car a caption naming the press.
  *
  * The surface holds the per-dial-context state; the owning ReplayMarkers
- * action routes `IDeck*` dial events here and reads the replay context
- * through {@link ReplayMarkersDialHost}.
+ * action routes `IDeck*` dial events here, and the surface reads the replay
+ * context and the live telemetry through {@link ReplayMarkersDialHost}.
  */
 import {
   createHoldPreview,
@@ -23,6 +25,7 @@ import {
   NOOP_HOLD_PREVIEW,
   svgToDataUri,
 } from "@iracedeck/deck-core";
+import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 
 import { type DialBoxArgs, type DialSideMarks, renderDialBox, resolveDialBoxColors } from "../../shared/dial-box.js";
@@ -31,10 +34,12 @@ import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
 import type { DialPendingPreview } from "../../shared/dial-preview.js";
 import { classifyDialReleaseForHost } from "../../shared/dial-release.js";
 import { clearReplayLanding } from "../../shared/replay-cursor.js";
+import type { ReplayJumpOutcome } from "../../shared/replay-jump-playback.js";
 import {
   addMarkerAt,
   CONFIRMATION_FLASH_MS,
   deleteMarkerAt,
+  describeMarkerJump,
   jumpToMarkerFrame,
   type MarkerDirection,
   markerIndexAt,
@@ -56,7 +61,7 @@ const DIAL_ACCENT = "#3498db";
 /** Background of the deck app's dial-slot name card (the keypad icons' panel colour). */
 const NAME_CARD_BACKGROUND = "#2a3a4a";
 
-/** The replay-cursor owner names the dial's jumps cancel a running walk under (#1203). */
+/** The names the dial's jumps claim the replay cursor under (#1203). */
 const CURSOR_OWNER: Record<MarkerDirection, string> = {
   next: "dial-next",
   previous: "dial-previous",
@@ -95,6 +100,8 @@ export interface ReplayMarkersDialHost {
   readonly logger: ILogger;
   /** The replay context, read fresh: connection, store, telemetry and frame, and the SubSessionID scope. */
   readReplayContext(): ReplayContextResult;
+  /** The latest telemetry, read live: a jump polls it while it waits for the pause and for the landing. */
+  readTelemetry(): TelemetryData | null;
 }
 
 /** What Add from the car is captioned with, and what its hold preview reads; 0 s back carries no sign. */
@@ -232,8 +239,10 @@ export class ReplayMarkersDialSurface {
   /**
    * A turn: one marker per detent from where the store's own Next / Previous
    * would land, no per-event cap, stopping at the end of the list; one jump
-   * per event, to the last marker reached. Push + turn is a plain turn — it only
-   * marks the press so its release fires nothing.
+   * per event, to the last marker reached. The jump is started here and
+   * finishes on its own ({@link followJump}); a further detent before it has
+   * landed takes the cursor from it and steps on from its marker. Push + turn
+   * is a plain turn — it only marks the press so its release fires nothing.
    */
   rotate(action: IDeckActionContext, dial: ReplayMarkersDialSettings, ticks: number, pressed: boolean): void {
     const ctx = this.inputContext(action, dial, "rotate");
@@ -273,11 +282,33 @@ export class ReplayMarkersDialSurface {
     }
 
     const target = walkMarkers(context.store.markers.list(context.scope), first, direction, Math.abs(ticks));
-    // Records the shared landing only when the jump was actually sent.
-    const success = jumpToMarkerFrame(CURSOR_OWNER[direction], target.frame);
+    // Takes the replay cursor and records the shared landing before it
+    // returns, so the render below and the next detent both read it; a paused
+    // replay has its seek by then too.
+    const jump = jumpToMarkerFrame(CURSOR_OWNER[direction], target.frame, () => this.host.readTelemetry());
     this.host.logger.info(`Dial jumped to ${direction} marker`);
-    this.host.logger.debug(`Result: ${success}, ticks=${ticks}, anchor=${anchor}, target=${target.frame}`);
+    this.host.logger.debug(`ticks=${ticks}, anchor=${anchor}, target=${target.frame}`);
+    this.followJump(`Dial ${direction} marker`, target.frame, jump);
     this.scheduleRender(ctx);
+  }
+
+  /**
+   * Logs how a jump ended once it has: a warning when it stopped short of its
+   * marker, and the details at debug either way. Nothing waits on it, so a
+   * rejection is caught here. It draws nothing: the screen follows the replay
+   * through {@link onTick}.
+   */
+  private followJump(what: string, frame: number, jump: Promise<ReplayJumpOutcome>): void {
+    void jump.then(
+      (outcome) => {
+        const report = describeMarkerJump(outcome, frame);
+
+        if (report.warn !== null) this.host.logger.warn(`${what}: ${report.warn}`);
+
+        this.host.logger.debug(`${what}: ${report.detail}`);
+      },
+      (err: unknown) => this.host.logger.error(`${what}: jump failed: ${String(err)}`),
+    );
   }
 
   down(action: IDeckActionContext, dial: ReplayMarkersDialSettings): void {

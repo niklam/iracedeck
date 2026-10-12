@@ -1,16 +1,21 @@
 import { getCommands } from "@iracedeck/deck-iracing";
-import { ReplayPosMode, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { ReplayPosMode, replaySpeedToSdk, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { type ReplayMarker, type ReplaySessionStore } from "@iracedeck/replay-store";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   _resetReplayCursor,
   cancelReplayCursorOwner,
+  claimReplayCursor,
+  currentReplayCursorOwner,
+  pendingReplayJumpSpeed,
   pendingReplayLanding,
   recordReplayLanding,
 } from "../../shared/replay-cursor.js";
+import type { ReplayJumpOutcome } from "../../shared/replay-jump-playback.js";
 import { steppedReplayState, type SteppedReplayState } from "../../shared/test-support/replay-state.js";
 import {
+  describeMarkerJump,
   DIAL_LANDING_HOLD_MS,
   jumpToMarkerFrame,
   markerIndexAt,
@@ -25,8 +30,16 @@ import {
   walkMarkers,
 } from "./replay-markers-ops.js";
 
+const { mockGetGlobalSettings } = vi.hoisted(() => ({
+  mockGetGlobalSettings: vi.fn((): Record<string, unknown> => ({})),
+}));
+
 vi.mock("@iracedeck/deck-iracing", () => ({
   getCommands: vi.fn(),
+}));
+
+vi.mock("@iracedeck/settings", () => ({
+  getGlobalSettings: mockGetGlobalSettings,
 }));
 
 vi.mock("@iracedeck/replay-store", () => ({
@@ -257,68 +270,417 @@ describe("resolveAnchorFrame", () => {
   });
 });
 
-describe("the shared landing (#1230)", () => {
-  const setPlayPosition = vi.fn((_mode: number, _frame: number) => true);
+/** A replay speed as telemetry reports it. */
+interface SimSpeed {
+  ReplayPlaySpeed: number;
+  ReplayPlaySlowMotion: boolean;
+}
 
+const PAUSED: SimSpeed = { ReplayPlaySpeed: 0, ReplayPlaySlowMotion: false };
+const AT_1X: SimSpeed = { ReplayPlaySpeed: 1, ReplayPlaySlowMotion: false };
+
+/** The clock the jump suites start at, so a landing's `sentAt` is a known number. */
+const PRESS_AT = 10_000;
+
+/**
+ * A sim that acts on a replay command only at a later update, `lagMs` on — the
+ * shape that makes waiting for the pause and for the landing matter. `calls`
+ * is every command in the order it was sent. A refused command returns false;
+ * an ignored one is accepted and never shows. Installs itself as
+ * `getCommands().replay`.
+ */
+function fakeSim(speed: SimSpeed, options: { lagMs?: number; seekLagMs?: number } = {}) {
+  const lagMs = options.lagMs ?? 20;
+  const seekLagMs = options.seekLagMs ?? lagMs;
+  let telemetry = { IsReplayPlaying: true, ReplayFrameNum: 500, ...speed } as TelemetryData;
+  const calls: string[] = [];
+  const refuse = { speed: false, seek: false };
+  const ignore = { speed: false, seek: false };
+
+  const replay = {
+    setPlaySpeed: vi.fn((value: number, slowMotion: boolean = false): boolean => {
+      calls.push(`speed ${value}${slowMotion ? " slow" : ""}`);
+
+      if (refuse.speed) return false;
+
+      if (!ignore.speed) {
+        setTimeout(() => {
+          telemetry = {
+            ...telemetry,
+            ReplayPlaySpeed: replaySpeedToSdk(value, slowMotion),
+            ReplayPlaySlowMotion: slowMotion,
+          };
+        }, lagMs);
+      }
+
+      return true;
+    }),
+    setPlayPosition: vi.fn((_mode: ReplayPosMode, frame: number): boolean => {
+      calls.push(`seek ${frame}`);
+
+      if (refuse.seek) return false;
+
+      if (!ignore.seek) {
+        setTimeout(() => {
+          telemetry = { ...telemetry, ReplayFrameNum: frame };
+        }, seekLagMs);
+      }
+
+      return true;
+    }),
+  };
+
+  vi.mocked(getCommands).mockReturnValue({ replay } as never);
+
+  return { replay, calls, refuse, ignore, read: (): TelemetryData => telemetry };
+}
+
+/** Runs the clock until a jump has ended, and returns how. */
+async function settled(jump: Promise<ReplayJumpOutcome>, ms = 5_000): Promise<ReplayJumpOutcome> {
+  await vi.advanceTimersByTimeAsync(ms);
+
+  return jump;
+}
+
+describe("the shared landing (#1230)", () => {
   beforeEach(() => {
     _resetReplayCursor();
-    setPlayPosition.mockReset().mockReturnValue(true);
-    vi.mocked(getCommands).mockReturnValue({ replay: { setPlayPosition } } as never);
+    vi.useFakeTimers({ now: PRESS_AT });
+    mockGetGlobalSettings.mockReset().mockReturnValue({});
+    vi.mocked(getCommands).mockReset();
   });
 
-  it("a jump that was sent records its target", () => {
-    expect(jumpToMarkerFrame("next", 4_000, 10_000)).toBe(true);
-
-    expect(setPlayPosition).toHaveBeenCalledWith(ReplayPosMode.Begin, 4_000);
-    expect(pendingReplayLanding()).toEqual({ frame: 4_000, sentAt: 10_000 });
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
-  it("a jump that was not sent leaves the landing before it standing", () => {
-    jumpToMarkerFrame("dial-next", 2_000, 10_000);
-    setPlayPosition.mockReturnValue(false);
+  it("a jump records its target at the press", () => {
+    const sim = fakeSim(PAUSED);
 
-    expect(jumpToMarkerFrame("next", 4_000, 10_100)).toBe(false);
+    void jumpToMarkerFrame("next", 4_000, sim.read);
 
-    expect(pendingReplayLanding()).toEqual({ frame: 2_000, sentAt: 10_000 });
+    expect(sim.replay.setPlayPosition).toHaveBeenCalledExactlyOnceWith(ReplayPosMode.Begin, 4_000);
+    expect(pendingReplayLanding()).toEqual({ frame: 4_000, sentAt: PRESS_AT });
   });
 
-  it("a jump that was not sent records nothing", () => {
-    setPlayPosition.mockReturnValue(false);
+  it("a jump that was not sent leaves the landing before it standing", async () => {
+    // The first jump's seek is out and has not landed when the second is pressed.
+    const sim = fakeSim(PAUSED, { seekLagMs: 400 });
+    const first = jumpToMarkerFrame("dial-next", 2_000, sim.read);
 
-    expect(jumpToMarkerFrame("next", 4_000, 10_000)).toBe(false);
+    await vi.advanceTimersByTimeAsync(100);
+    sim.refuse.seek = true;
+
+    await expect(jumpToMarkerFrame("next", 4_000, sim.read)).resolves.toMatchObject({
+      kind: "stopped",
+      reason: "seek-failed",
+    });
+
+    expect(pendingReplayLanding()).toEqual({ frame: 2_000, sentAt: PRESS_AT });
+    await expect(settled(first)).resolves.toEqual({ kind: "cancelled", by: "next" });
+  });
+
+  it("a jump that was not sent records nothing", async () => {
+    const sim = fakeSim(PAUSED);
+
+    sim.refuse.seek = true;
+
+    await expect(jumpToMarkerFrame("next", 4_000, sim.read)).resolves.toMatchObject({ reason: "seek-failed" });
 
     expect(pendingReplayLanding()).toBeNull();
   });
 
   it("the anchor is the landing while it is pending, from any surface", () => {
-    jumpToMarkerFrame("dial-next", 4_000, 10_000);
+    void jumpToMarkerFrame("dial-next", 4_000, fakeSim(PAUSED).read);
 
-    expect(resolveMarkerJumpAnchor(500, 10_200)).toBe(4_000);
+    expect(resolveMarkerJumpAnchor(500, PRESS_AT + 200)).toBe(4_000);
     expect(pendingReplayLanding()).not.toBeNull();
   });
 
   it("a settled landing anchors no more and is dropped, so a later drift cannot revive it", () => {
-    jumpToMarkerFrame("next", 4_000, 10_000);
+    void jumpToMarkerFrame("next", 4_000, fakeSim(PAUSED).read);
 
-    expect(resolveMarkerJumpAnchor(3_990, 10_100)).toBe(3_990);
+    expect(resolveMarkerJumpAnchor(3_990, PRESS_AT + 100)).toBe(3_990);
     expect(pendingReplayLanding()).toBeNull();
-    expect(resolveMarkerJumpAnchor(500, 10_200)).toBe(500);
+    expect(resolveMarkerJumpAnchor(500, PRESS_AT + 200)).toBe(500);
   });
 
   it("an expired landing is dropped", () => {
-    recordReplayLanding(4_000, 10_000);
+    recordReplayLanding(4_000, PRESS_AT);
 
-    expect(resolveMarkerJumpAnchor(500, 10_000 + DIAL_LANDING_HOLD_MS)).toBe(500);
+    expect(resolveMarkerJumpAnchor(500, PRESS_AT + DIAL_LANDING_HOLD_MS)).toBe(500);
     expect(pendingReplayLanding()).toBeNull();
   });
 
   it("another owner taking the cursor clears it", () => {
-    jumpToMarkerFrame("next", 4_000, 10_000);
+    void jumpToMarkerFrame("next", 4_000, fakeSim(PAUSED).read);
 
     cancelReplayCursorOwner("play-pause");
 
-    expect(resolveMarkerJumpAnchor(500, 10_100)).toBe(500);
+    expect(resolveMarkerJumpAnchor(500, PRESS_AT + 100)).toBe(500);
   });
+});
+
+describe("jumpToMarkerFrame runs the shared jump sequence (#1276)", () => {
+  /** A landing some earlier jump left, whose seek went out. */
+  const EARLIER = { frame: 2_000, sentAt: PRESS_AT - 100 };
+
+  beforeEach(() => {
+    _resetReplayCursor();
+    vi.useFakeTimers({ now: PRESS_AT });
+    mockGetGlobalSettings.mockReset().mockReturnValue({});
+    vi.mocked(getCommands).mockReset();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("a paused replay gets its seek within the call, and nothing else under Remember state", async () => {
+    const sim = fakeSim(PAUSED);
+    const jump = jumpToMarkerFrame("next", 4_000, sim.read);
+
+    expect(sim.calls).toEqual(["seek 4000"]);
+    expect(currentReplayCursorOwner()).toBe("next");
+
+    await expect(settled(jump)).resolves.toEqual({
+      kind: "landed",
+      speed: { speed: 0, slowMotion: false },
+      command: "none",
+    });
+    expect(sim.calls).toEqual(["seek 4000"]);
+  });
+
+  it("a moving replay has its landing recorded at the press, before its seek goes out", async () => {
+    const sim = fakeSim(AT_1X);
+    const jump = jumpToMarkerFrame("dial-next", 4_000, sim.read);
+
+    // Only the pause is out; the next detent already measures from the marker.
+    expect(sim.calls).toEqual(["speed 0"]);
+    expect(pendingReplayLanding()).toEqual({ frame: 4_000, sentAt: PRESS_AT });
+    expect(resolveMarkerJumpAnchor(500)).toBe(4_000);
+
+    await expect(settled(jump)).resolves.toEqual({
+      kind: "landed",
+      speed: { speed: 1, slowMotion: false },
+      command: "sent",
+    });
+    expect(sim.calls).toEqual(["speed 0", "seek 4000", "speed 1"]);
+  });
+
+  it("takes the cursor from whatever held it before anything is sent", () => {
+    const sim = fakeSim(AT_1X);
+    const sentAtCancel: number[] = [];
+
+    claimReplayCursor("jump-to-fastest-lap", () => sentAtCancel.push(sim.calls.length));
+    void jumpToMarkerFrame("next", 4_000, sim.read);
+
+    expect(sentAtCancel).toEqual([0]);
+    expect(currentReplayCursorOwner()).toBe("next");
+  });
+
+  it("a landed jump leaves its landing for the anchor rule to settle", async () => {
+    const sim = fakeSim(PAUSED);
+
+    await settled(jumpToMarkerFrame("next", 4_000, sim.read), 200);
+
+    expect(pendingReplayLanding()).toEqual({ frame: 4_000, sentAt: PRESS_AT });
+    expect(resolveMarkerJumpAnchor(4_000)).toBe(4_000);
+    expect(pendingReplayLanding()).toBeNull();
+  });
+
+  describe("a jump that stopped short takes its landing back", () => {
+    type Sim = ReturnType<typeof fakeSim>;
+
+    const stops: Array<[string, SimSpeed, (sim: Sim) => void, typeof EARLIER | null]> = [
+      ["pause-failed", AT_1X, (sim) => (sim.refuse.speed = true), EARLIER],
+      ["pause-timeout", AT_1X, (sim) => (sim.ignore.speed = true), EARLIER],
+      ["seek-failed", PAUSED, (sim) => (sim.refuse.seek = true), EARLIER],
+      // The seek went out and never landed: the cursor is somewhere unknown.
+      ["seek-timeout", PAUSED, (sim) => (sim.ignore.seek = true), null],
+    ];
+
+    it.each(stops)("%s: with a landing before it", async (reason, speed, breakIt, standsAfter) => {
+      const sim = fakeSim(speed);
+
+      breakIt(sim);
+      recordReplayLanding(EARLIER.frame, EARLIER.sentAt);
+
+      const jump = jumpToMarkerFrame("next", 4_000, sim.read);
+
+      // While the jump is under way its own landing anchors.
+      expect(pendingReplayLanding()).toEqual({ frame: 4_000, sentAt: PRESS_AT });
+      await expect(settled(jump)).resolves.toMatchObject({ kind: "stopped", reason });
+      expect(pendingReplayLanding()).toEqual(standsAfter);
+    });
+
+    it.each(stops)("%s: with none before it", async (reason, speed, breakIt) => {
+      const sim = fakeSim(speed);
+
+      breakIt(sim);
+
+      await expect(settled(jumpToMarkerFrame("next", 4_000, sim.read))).resolves.toMatchObject({ reason });
+      expect(pendingReplayLanding()).toBeNull();
+    });
+
+    it("never falls back to a landing whose own seek did not go out", async () => {
+      const sim = fakeSim(AT_1X);
+      // Still waiting for its pause to show when the second jump takes over.
+      const first = jumpToMarkerFrame("dial-next", 2_000, sim.read);
+
+      await vi.advanceTimersByTimeAsync(10);
+      sim.refuse.speed = true;
+
+      const second = jumpToMarkerFrame("dial-next", 4_000, sim.read);
+
+      await expect(settled(second)).resolves.toMatchObject({ kind: "stopped", reason: "pause-failed" });
+      await expect(first).resolves.toEqual({ kind: "cancelled", by: "dial-next" });
+      // Neither seek went out, so the replay is headed nowhere.
+      expect(sim.calls).toEqual(["speed 0", "speed 0"]);
+      expect(pendingReplayLanding()).toBeNull();
+    });
+
+    it("leaves a later jump's landing alone", async () => {
+      const sim = fakeSim(PAUSED);
+
+      // Both pressed before the first has had the chance to take its landing back.
+      sim.refuse.seek = true;
+      const first = jumpToMarkerFrame("next", 2_000, sim.read);
+
+      sim.refuse.seek = false;
+      const second = jumpToMarkerFrame("dial-next", 4_000, sim.read);
+
+      await expect(first).resolves.toMatchObject({ kind: "stopped", reason: "seek-failed" });
+      expect(pendingReplayLanding()).toEqual({ frame: 4_000, sentAt: PRESS_AT });
+
+      await expect(settled(second)).resolves.toMatchObject({ kind: "landed" });
+      expect(pendingReplayLanding()).toEqual({ frame: 4_000, sentAt: PRESS_AT });
+    });
+
+    it("leaves alone a landing recorded after the anchor rule dropped its own", async () => {
+      const sim = fakeSim(PAUSED);
+
+      sim.ignore.seek = true;
+
+      const jump = jumpToMarkerFrame("next", 4_000, sim.read);
+
+      // The hold runs out, the anchor rule drops the landing, and something else records one.
+      await vi.advanceTimersByTimeAsync(DIAL_LANDING_HOLD_MS);
+      expect(resolveMarkerJumpAnchor(500)).toBe(500);
+      recordReplayLanding(7_000, PRESS_AT + DIAL_LANDING_HOLD_MS);
+
+      await expect(settled(jump)).resolves.toMatchObject({ kind: "stopped", reason: "seek-timeout" });
+      expect(pendingReplayLanding()).toEqual({ frame: 7_000, sentAt: PRESS_AT + DIAL_LANDING_HOLD_MS });
+    });
+  });
+
+  it("a cancelled jump sends nothing more and touches no landing", async () => {
+    const sim = fakeSim(AT_1X, { seekLagMs: 400 });
+    const jump = jumpToMarkerFrame("next", 4_000, sim.read);
+
+    await vi.advanceTimersByTimeAsync(200);
+    expect(sim.calls).toEqual(["speed 0", "seek 4000"]);
+
+    // The driver's own command takes the cursor, and with it the landing.
+    expect(cancelReplayCursorOwner("play-pause")).toBe("next");
+    expect(pendingReplayLanding()).toBeNull();
+    recordReplayLanding(7_000, PRESS_AT + 200);
+
+    await expect(settled(jump)).resolves.toEqual({ kind: "cancelled", by: "play-pause" });
+    expect(sim.calls).toEqual(["speed 0", "seek 4000"]);
+    expect(pendingReplayLanding()).toEqual({ frame: 7_000, sentAt: PRESS_AT + 200 });
+  });
+
+  describe("hands the cursor back, and drops the speed it captured, however it ended", () => {
+    it("landed: the speed it applied stands for the next jump", async () => {
+      const sim = fakeSim(AT_1X);
+
+      await expect(settled(jumpToMarkerFrame("next", 4_000, sim.read), 150)).resolves.toMatchObject({ kind: "landed" });
+
+      expect(currentReplayCursorOwner()).toBeNull();
+      expect(pendingReplayJumpSpeed()).toMatchObject({ speed: 1, slowMotion: false, appliedAt: expect.any(Number) });
+    });
+
+    it("stopped short: the speed it captured does not outlive it", async () => {
+      const sim = fakeSim(AT_1X);
+
+      sim.ignore.seek = true;
+
+      await expect(settled(jumpToMarkerFrame("next", 4_000, sim.read))).resolves.toMatchObject({ kind: "stopped" });
+
+      expect(currentReplayCursorOwner()).toBeNull();
+      expect(pendingReplayJumpSpeed()).toBeNull();
+    });
+
+    it("a command that throws: the landing goes too, since the replay is headed nowhere known", async () => {
+      const sim = fakeSim(PAUSED);
+
+      sim.replay.setPlayPosition.mockImplementation(() => {
+        throw new Error("broadcast failed");
+      });
+      recordReplayLanding(EARLIER.frame, EARLIER.sentAt);
+
+      await expect(jumpToMarkerFrame("next", 4_000, sim.read)).rejects.toThrow("broadcast failed");
+      expect(currentReplayCursorOwner()).toBeNull();
+      expect(pendingReplayJumpSpeed()).toBeNull();
+      expect(pendingReplayLanding()).toBeNull();
+    });
+  });
+
+  it("with no replay commands to send through, takes neither the cursor nor the landing", async () => {
+    vi.mocked(getCommands).mockImplementation(() => {
+      throw new Error("SDK not initialized");
+    });
+    claimReplayCursor("jump-to-fastest-lap");
+    recordReplayLanding(EARLIER.frame, EARLIER.sentAt);
+
+    await expect(jumpToMarkerFrame("next", 4_000, () => null)).rejects.toThrow("SDK not initialized");
+
+    expect(currentReplayCursorOwner()).toBe("jump-to-fastest-lap");
+    expect(pendingReplayLanding()).toEqual(EARLIER);
+  });
+});
+
+describe("describeMarkerJump", () => {
+  const last = { ReplayFrameNum: 500, ReplayPlaySpeed: 0 } as TelemetryData;
+
+  it("a landed jump is debug only, with the speed left and whether a command went out", () => {
+    expect(
+      describeMarkerJump({ kind: "landed", speed: { speed: 4, slowMotion: true }, command: "sent" }, 4_000),
+    ).toEqual({ warn: null, detail: "landed on frame 4000; speed=4 slowMotion=true command=sent" });
+  });
+
+  it("a cancelled jump is debug only, naming what took the cursor", () => {
+    expect(describeMarkerJump({ kind: "cancelled", by: "play-pause" }, 4_000)).toEqual({
+      warn: null,
+      detail: "jump to frame 4000 cancelled by play-pause",
+    });
+  });
+
+  it.each([
+    ["pause-failed", null, "pause failed; jump not sent", "lastFrame=n/a lastSpeed=n/a"],
+    [
+      "pause-timeout",
+      { ...last, ReplayPlaySpeed: 1 },
+      "replay did not pause; jump not sent",
+      "lastFrame=500 lastSpeed=1",
+    ],
+    ["seek-failed", null, "seek failed; jump not sent", "lastFrame=n/a lastSpeed=n/a"],
+    [
+      "seek-timeout",
+      last,
+      "jump did not land; replay left where the seek stopped",
+      "lastFrame=500 lastSpeed=0",
+    ],
+  ] as const)(
+    "a jump stopped by %s warns without parameters and details the last read",
+    (reason, telemetry, warn, tail) => {
+      expect(describeMarkerJump({ kind: "stopped", reason, telemetry }, 4_000)).toEqual({
+        warn,
+        detail: `reason=${reason} target=4000 ${tail}`,
+      });
+    },
+  );
 });
 
 describe("previewAddMarker", () => {

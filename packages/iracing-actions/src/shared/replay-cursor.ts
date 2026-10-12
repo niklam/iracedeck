@@ -8,9 +8,12 @@
  * its next probe — and can take the user's landing as its own search result,
  * then record it as a lap start. So the cursor has a single owner, module-wide:
  *
- * - A long-running driver (the walk) **claims** the cursor for the duration and
- *   checks `cancelledBy` at every await — a non-null value means "stop, send
- *   nothing more".
+ * - A long-running driver **claims** the cursor for the duration and checks
+ *   `cancelledBy` at every await — a non-null value means "stop, send nothing
+ *   more". The walk is one; so is every jump that waits for its landing
+ *   (`replay-jump-playback.ts`, #1276): Jump to Fastest Lap's record jump and
+ *   Replay Markers' Next / Previous. A new claim cancels the one standing, so a
+ *   second jump takes over from the first.
  * - Any one-shot command, in ANY action, calls {@link cancelReplayCursorOwner}
  *   before sending it — a speed change or a pause too, not only a seek, since
  *   either breaks a walk's probes. That cancels the in-flight claim (if any)
@@ -120,8 +123,7 @@ export function claimReplayCursor(owner: string, onCancelled?: (by: string) => v
  * Returns the cancelled owner's name, or `null` when nothing was in flight.
  * Idempotent: a claim already cancelled is not renamed. Clears the pending
  * landing too, claim or no claim: the command about to be sent moves the replay
- * somewhere else. A marker jump records its own landing after its send. The
- * pending jump speed goes with it: the command is the driver's own choice of
+ * somewhere else. The pending jump speed goes with it: the command is the driver's own choice of
  * what the replay does next.
  */
 export function cancelReplayCursorOwner(by: string): string | null {
@@ -144,7 +146,7 @@ export function currentReplayCursorOwner(): string | null {
   return current === null || current.cancelledBy !== null ? null : current.owner;
 }
 
-/** Records the frame a marker jump was just sent to. Call it only when the jump was actually sent. */
+/** Records the frame a marker jump is headed for. Call it after the jump has claimed the cursor, since the claim clears it. */
 export function recordReplayLanding(frame: number, sentAt: number): void {
   landing = { frame, sentAt };
 }

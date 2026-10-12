@@ -1,4 +1,4 @@
-import { ReplayPosMode, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { ReplayPosMode, replaySpeedToSdk, type TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ReplayMarker, ReplaySessionStore } from "@iracedeck/replay-store";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -7,6 +7,7 @@ import {
   cancelReplayCursorOwner,
   claimReplayCursor,
   currentReplayCursorOwner,
+  pendingReplayLanding,
 } from "../../shared/replay-cursor.js";
 import { steppedReplayState } from "../../shared/test-support/replay-state.js";
 import { buildTriggerDescription, ReplayMarkersDialSurface } from "./replay-markers-dial-surface.js";
@@ -21,6 +22,8 @@ import { ReplayMarkersDialSettings } from "./replay-markers-settings.js";
 
 const mocks = vi.hoisted(() => ({
   setPlayPosition: vi.fn((_mode: number, _frame: number) => true),
+  setPlaySpeed: vi.fn((_speed: number, _slowMotion?: boolean) => true),
+  getGlobalSettings: vi.fn((): Record<string, unknown> => ({})),
   thresholdMs: { value: 500 },
 }));
 
@@ -28,7 +31,12 @@ const mocks = vi.hoisted(() => ({
 // mocks deck-core without a ConnectionStateAwareAction, so the real barrel (whose
 // SimIRacingAction extends it) cannot load.
 vi.mock("@iracedeck/deck-iracing", () => ({
-  getCommands: () => ({ replay: { setPlayPosition: mocks.setPlayPosition } }),
+  getCommands: () => ({ replay: { setPlayPosition: mocks.setPlayPosition, setPlaySpeed: mocks.setPlaySpeed } }),
+}));
+
+// The jump sequence reads the Replay jump playback setting and its timeout from here.
+vi.mock("@iracedeck/settings", () => ({
+  getGlobalSettings: mocks.getGlobalSettings,
 }));
 
 vi.mock("@iracedeck/deck-core", async () => {
@@ -97,11 +105,14 @@ function setMarkers(frames: number[]): void {
   env.markers = frames.map((frame) => ({ frame, pressFrame: frame, sessionNum: 0, sessionTimeMs: 0 }));
 }
 
+/** A replay paused on `frame`: a jump from here sends its seek within the turn. */
 function replayAt(frame: number): TelemetryData {
   return {
     IsReplayPlaying: true,
     ReplayFrameNum: frame,
     ReplayFrameNumEnd: 100_000,
+    ReplayPlaySpeed: 0,
+    ReplayPlaySlowMotion: false,
     ReplaySessionNum: 1,
     ReplaySessionTime: 300,
   } as TelemetryData;
@@ -117,11 +128,92 @@ const LIVE = {
 
 const logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 
+/** A replay speed as telemetry reports it. */
+interface SimSpeed {
+  ReplayPlaySpeed: number;
+  ReplayPlaySlowMotion: boolean;
+}
+
+const PAUSED: SimSpeed = { ReplayPlaySpeed: 0, ReplayPlaySlowMotion: false };
+const AT_1X: SimSpeed = { ReplayPlaySpeed: 1, ReplayPlaySlowMotion: false };
+/** iRacing reports 1/4x as raw 3 with the slow-motion flag (#1202); `setPlaySpeed(4, true)` sets it. */
+const QUARTER: SimSpeed = { ReplayPlaySpeed: 3, ReplayPlaySlowMotion: true };
+const FORWARD_8: SimSpeed = { ReplayPlaySpeed: 8, ReplayPlaySlowMotion: false };
+const REWIND_8: SimSpeed = { ReplayPlaySpeed: -8, ReplayPlaySlowMotion: false };
+
+/** Setting, the replay before the turn, its speed, what is sent before the seek, what after the landing, the speed left. */
+const JUMP_PLAYBACK_CASES: ReadonlyArray<readonly [string, string, SimSpeed, string[], string[], SimSpeed]> = [
+  ["remember", "paused", PAUSED, [], [], PAUSED],
+  ["remember", "playing at 1x", AT_1X, ["speed 0"], ["speed 1"], AT_1X],
+  ["remember", "in slow motion at 1/4x", QUARTER, ["speed 0"], ["speed 4 slow"], QUARTER],
+  ["remember", "fast-forwarding at 8x", FORWARD_8, ["speed 0"], ["speed 8"], FORWARD_8],
+  ["remember", "rewinding at -8x", REWIND_8, ["speed 0"], ["speed -8"], REWIND_8],
+  ["play", "paused", PAUSED, [], ["speed 1"], AT_1X],
+  ["play", "playing at 1x", AT_1X, ["speed 0"], ["speed 1"], AT_1X],
+  ["play", "in slow motion at 1/4x", QUARTER, ["speed 0"], ["speed 1"], AT_1X],
+  ["play", "fast-forwarding at 8x", FORWARD_8, ["speed 0"], ["speed 1"], AT_1X],
+  ["play", "rewinding at -8x", REWIND_8, ["speed 0"], ["speed 1"], AT_1X],
+  ["stopped", "paused", PAUSED, [], [], PAUSED],
+  ["stopped", "playing at 1x", AT_1X, ["speed 0"], [], PAUSED],
+  ["stopped", "in slow motion at 1/4x", QUARTER, ["speed 0"], [], PAUSED],
+  ["stopped", "fast-forwarding at 8x", FORWARD_8, ["speed 0"], [], PAUSED],
+  ["stopped", "rewinding at -8x", REWIND_8, ["speed 0"], [], PAUSED],
+];
+
+/**
+ * A sim behind the mocked replay commands that acts on one only at a later
+ * update, `lagMs` on — the shape that makes waiting for the pause and for the
+ * landing matter. It starts `env.telemetry` as a replay at `speed` and writes
+ * what a command did back to it. `calls` is every command in the order it was
+ * sent. A refused command returns false; an ignored one is accepted and never
+ * shows.
+ */
+function fakeSim(speed: SimSpeed, options: { frame?: number; lagMs?: number; seekLagMs?: number } = {}) {
+  const lagMs = options.lagMs ?? 20;
+  const seekLagMs = options.seekLagMs ?? lagMs;
+  const sim = {
+    calls: [] as string[],
+    refuse: { speed: false, seek: false },
+    ignore: { speed: false, seek: false },
+  };
+  const show = (change: Partial<TelemetryData>): void => {
+    env.telemetry = { ...env.telemetry, ...change } as TelemetryData;
+  };
+
+  env.telemetry = { ...replayAt(options.frame ?? 500), ...speed };
+  mocks.setPlaySpeed.mockImplementation((value: number, slowMotion: boolean = false) => {
+    sim.calls.push(`speed ${value}${slowMotion ? " slow" : ""}`);
+
+    if (sim.refuse.speed) return false;
+
+    if (!sim.ignore.speed) {
+      setTimeout(
+        () => show({ ReplayPlaySpeed: replaySpeedToSdk(value, slowMotion), ReplayPlaySlowMotion: slowMotion }),
+        lagMs,
+      );
+    }
+
+    return true;
+  });
+  mocks.setPlayPosition.mockImplementation((_mode: number, frame: number) => {
+    sim.calls.push(`seek ${frame}`);
+
+    if (sim.refuse.seek) return false;
+
+    if (!sim.ignore.seek) setTimeout(() => show({ ReplayFrameNum: frame }), seekLagMs);
+
+    return true;
+  });
+
+  return sim;
+}
+
 function makeSurface(): ReplayMarkersDialSurface {
   const replay = steppedReplayState(() => env.telemetry);
 
   return new ReplayMarkersDialSurface({
     logger: logger as never,
+    readTelemetry: () => env.telemetry,
     readReplayContext: () =>
       readReplayContext({
         getConnectionStatus: () => env.connected,
@@ -203,6 +295,8 @@ describe("ReplayMarkersDialSurface", () => {
     setMarkers([]);
     mocks.thresholdMs.value = 500;
     mocks.setPlayPosition.mockReturnValue(true);
+    mocks.setPlaySpeed.mockReturnValue(true);
+    mocks.getGlobalSettings.mockReturnValue({});
   });
 
   afterEach(() => {
@@ -383,6 +477,8 @@ describe("ReplayMarkersDialSurface", () => {
 
       mocks.setPlayPosition.mockReturnValueOnce(false);
       surface.rotate(ctx as never, dial(), 1, false);
+      // The refused jump takes its landing back once it has ended, a step after the turn.
+      await settle(0);
       surface.rotate(ctx as never, dial(), 1, false);
 
       expect(mocks.setPlayPosition.mock.calls.map((c) => c[1])).toEqual([1_000, 1_000]);
@@ -417,6 +513,219 @@ describe("ReplayMarkersDialSurface", () => {
 
       // Measured from the live 500 again, not from the 1 000 the dial sent.
       expect(mocks.setPlayPosition.mock.calls.map((c) => c[1])).toEqual([1_000, 1_000]);
+    });
+  });
+
+  describe("the Replay jump playback setting (#1276)", () => {
+    /** A dial on a replay at `speed`, behind the fake sim, with markers every 1 000 frames. */
+    async function dialAt(speed: SimSpeed, options?: { frame?: number; lagMs?: number; seekLagMs?: number }) {
+      setMarkers([1_000, 2_000, 3_000, 4_000, 5_000]);
+      const sim = fakeSim(speed, options);
+      const surface = makeSurface();
+      const ctx = dialContext();
+      await appear(surface, ctx);
+
+      return { surface, ctx, sim };
+    }
+
+    it.each(JUMP_PLAYBACK_CASES)("%s, from a replay %s", async (setting, _state, before, pause, after, left) => {
+      mocks.getGlobalSettings.mockReturnValue({ replayJumpPlayback: setting });
+      const { surface, ctx, sim } = await dialAt(before);
+
+      surface.rotate(ctx as never, dial(), 1, false);
+      await settle(1_000);
+
+      expect(sim.calls).toEqual([...pause, "seek 1000", ...after]);
+      expect(env.telemetry).toMatchObject({ ReplayFrameNum: 1_000, ...left });
+      expect(logger.warn).not.toHaveBeenCalled();
+      expect(currentReplayCursorOwner()).toBeNull();
+    });
+
+    it("with no setting stored, remembers the speed — counter-clockwise too", async () => {
+      mocks.getGlobalSettings.mockReturnValue({});
+      const { surface, ctx, sim } = await dialAt(REWIND_8, { frame: 2_500 });
+
+      surface.rotate(ctx as never, dial(), -1, false);
+      expect(currentReplayCursorOwner()).toBe("dial-previous");
+      await settle(1_000);
+
+      expect(sim.calls).toEqual(["speed 0", "seek 2000", "speed -8"]);
+    });
+
+    it("a turn returns with the jump under way", async () => {
+      const { surface, ctx, sim } = await dialAt(AT_1X);
+
+      surface.rotate(ctx as never, dial(), 1, false);
+
+      // Paused, not yet sought; the landing already anchors the next detent.
+      expect(sim.calls).toEqual(["speed 0"]);
+      expect(currentReplayCursorOwner()).toBe("dial-next");
+      expect(pendingReplayLanding()).toMatchObject({ frame: 1_000 });
+      expect(logger.info).toHaveBeenCalledWith("Dial jumped to next marker");
+    });
+
+    it("a paused replay still gets its seek within the turn", async () => {
+      const { surface, ctx, sim } = await dialAt(PAUSED);
+
+      surface.rotate(ctx as never, dial(), 1, false);
+
+      expect(sim.calls).toEqual(["seek 1000"]);
+    });
+
+    it("sends nothing between the seek and the landing", async () => {
+      mocks.getGlobalSettings.mockReturnValue({ replayJumpPlayback: "play" });
+      const { surface, ctx, sim } = await dialAt(PAUSED, { seekLagMs: 400 });
+
+      surface.rotate(ctx as never, dial(), 1, false);
+      await settle(350);
+      expect(sim.calls).toEqual(["seek 1000"]);
+
+      await settle(650);
+      expect(sim.calls).toEqual(["seek 1000", "speed 1"]);
+    });
+
+    it("says at debug how the jump landed", async () => {
+      const { surface, ctx } = await dialAt(QUARTER);
+
+      surface.rotate(ctx as never, dial(), 1, false);
+      await settle(1_000);
+
+      expect(logger.debug).toHaveBeenCalledWith(
+        "Dial next marker: landed on frame 1000; speed=4 slowMotion=true command=sent",
+      );
+    });
+
+    it.each(["remember", "play", "stopped"])(
+      "%s: a landing that times out warns, sends nothing after the seek and leaves the replay paused",
+      async (setting) => {
+        mocks.getGlobalSettings.mockReturnValue({ replayJumpPlayback: setting });
+        const { surface, ctx, sim } = await dialAt(AT_1X);
+
+        sim.ignore.seek = true;
+        surface.rotate(ctx as never, dial(), 1, false);
+        await settle(5_000);
+
+        expect(sim.calls).toEqual(["speed 0", "seek 1000"]);
+        expect(env.telemetry).toMatchObject(PAUSED);
+        expect(logger.warn).toHaveBeenCalledExactlyOnceWith(
+          "Dial next marker: jump did not land; replay left where the seek stopped",
+        );
+        // The last frame seen is in the detail.
+        expect(logger.debug).toHaveBeenCalledWith(
+          "Dial next marker: reason=seek-timeout target=1000 lastFrame=500 lastSpeed=0",
+        );
+        expect(currentReplayCursorOwner()).toBeNull();
+
+        // The landing it recorded anchors no more: the next detent targets the same marker again.
+        expect(pendingReplayLanding()).toBeNull();
+        surface.rotate(ctx as never, dial(), 1, false);
+        expect(sim.calls).toEqual(["speed 0", "seek 1000", "seek 1000"]);
+      },
+    );
+
+    it("a replay that never pauses gets no seek", async () => {
+      const { surface, ctx, sim } = await dialAt(AT_1X);
+
+      sim.ignore.speed = true;
+      surface.rotate(ctx as never, dial(), 1, false);
+      await settle(5_000);
+
+      expect(sim.calls).toEqual(["speed 0"]);
+      expect(logger.warn).toHaveBeenCalledExactlyOnceWith("Dial next marker: replay did not pause; jump not sent");
+      expect(pendingReplayLanding()).toBeNull();
+    });
+
+    it("another replay command during the wait ends the jump with nothing more sent", async () => {
+      const { surface, ctx, sim } = await dialAt(AT_1X, { seekLagMs: 400 });
+
+      surface.rotate(ctx as never, dial(), 1, false);
+      await settle(200);
+      expect(sim.calls).toEqual(["speed 0", "seek 1000"]);
+
+      // The driver's own command: the jump must not put its speed over it.
+      expect(cancelReplayCursorOwner("play-pause")).toBe("dial-next");
+      await settle(5_000);
+
+      expect(sim.calls).toEqual(["speed 0", "seek 1000"]);
+      expect(logger.warn).not.toHaveBeenCalled();
+      expect(logger.debug).toHaveBeenCalledWith("Dial next marker: jump to frame 1000 cancelled by play-pause");
+    });
+
+    describe("a fast spin", () => {
+      it("two detents while playing: the second steps on from the first's marker, and the replay ends playing there", async () => {
+        const { surface, ctx, sim } = await dialAt(AT_1X, { seekLagMs: 400 });
+
+        surface.rotate(ctx as never, dial(), 1, false);
+        // The first jump has paused the replay and sent its seek, which has not landed.
+        await settle(80);
+        expect(sim.calls).toEqual(["speed 0", "seek 1000"]);
+        expect(env.telemetry).toMatchObject({ ReplayFrameNum: 500, ...PAUSED });
+
+        surface.rotate(ctx as never, dial(), 1, false);
+        await settle(1_000);
+
+        expect(logger.debug).toHaveBeenCalledWith("ticks=1, anchor=500, target=1000");
+        expect(logger.debug).toHaveBeenCalledWith("ticks=1, anchor=1000, target=2000");
+        expect(logger.debug).toHaveBeenCalledWith("Dial next marker: jump to frame 1000 cancelled by dial-next");
+        // One pause, both seeks, and the speed back once — after the second landing.
+        expect(sim.calls).toEqual(["speed 0", "seek 1000", "seek 2000", "speed 1"]);
+        expect(env.telemetry).toMatchObject({ ReplayFrameNum: 2_000, ...AT_1X });
+        expect(logger.warn).not.toHaveBeenCalled();
+      });
+
+      it("a second detent before the first one's seek has gone out still steps on, and only its seek is sent", async () => {
+        const { surface, ctx, sim } = await dialAt(AT_1X);
+
+        surface.rotate(ctx as never, dial(), 1, false);
+        // The pause shows; the first jump has not read it yet.
+        await settle(30);
+        expect(sim.calls).toEqual(["speed 0"]);
+
+        surface.rotate(ctx as never, dial(), 1, false);
+        await settle(1_000);
+
+        expect(logger.debug).toHaveBeenCalledWith("Dial next marker: jump to frame 1000 cancelled by dial-next");
+        expect(sim.calls).toEqual(["speed 0", "seek 2000", "speed 1"]);
+        expect(env.telemetry).toMatchObject({ ReplayFrameNum: 2_000, ...AT_1X });
+      });
+
+      it("a spin while fast-forwarding ends fast-forwarding on the last marker", async () => {
+        const { surface, ctx, sim } = await dialAt(FORWARD_8);
+
+        for (let detent = 0; detent < 4; detent++) {
+          surface.rotate(ctx as never, dial(), 1, false);
+          await settle(30);
+        }
+
+        await settle(1_000);
+
+        expect(sim.calls).toEqual(["speed 0", "seek 2000", "seek 3000", "seek 4000", "speed 8"]);
+        expect(env.telemetry).toMatchObject({ ReplayFrameNum: 4_000, ...FORWARD_8 });
+      });
+    });
+
+    it("a dial that disappears mid-jump still has its jump finished", async () => {
+      const { surface, ctx, sim } = await dialAt(AT_1X);
+
+      surface.rotate(ctx as never, dial(), 1, false);
+      surface.willDisappear(ctx.id);
+      await settle(1_000);
+
+      expect(sim.calls).toEqual(["speed 0", "seek 1000", "speed 1"]);
+      expect(currentReplayCursorOwner()).toBeNull();
+    });
+
+    it("a jump that fails outright is logged, not left unhandled, and hands the cursor back", async () => {
+      const { surface, ctx } = await dialAt(PAUSED);
+
+      mocks.setPlayPosition.mockImplementation(() => {
+        throw new Error("broadcast failed");
+      });
+      surface.rotate(ctx as never, dial(), 1, false);
+      await settle(0);
+
+      expect(logger.error).toHaveBeenCalledExactlyOnceWith("Dial next marker: jump failed: Error: broadcast failed");
+      expect(currentReplayCursorOwner()).toBeNull();
     });
   });
 
@@ -688,6 +997,7 @@ describe("ReplayMarkersDialSurface", () => {
       expect(late.setDialCanvas).not.toHaveBeenCalled();
       expect(late.setTriggerDescription).not.toHaveBeenCalled();
       expect(mocks.setPlayPosition).not.toHaveBeenCalled();
+      expect(mocks.setPlaySpeed).not.toHaveBeenCalled();
       expect(storeMarkers.add).not.toHaveBeenCalled();
       expect(storeMarkers.deleteNearest).not.toHaveBeenCalled();
     }
@@ -1079,7 +1389,11 @@ describe("ReplayMarkersDialSurface", () => {
       setMarkers([1_000]);
       const inner = makeSurface()["host"];
       const readReplayContext = vi.fn(() => inner.readReplayContext());
-      const surface = new ReplayMarkersDialSurface({ logger: logger as never, readReplayContext });
+      const surface = new ReplayMarkersDialSurface({
+        logger: logger as never,
+        readReplayContext,
+        readTelemetry: () => inner.readTelemetry(),
+      });
       const ctx = dialContext();
       await appear(surface, ctx);
       ctx.setDialCanvas.mockClear();

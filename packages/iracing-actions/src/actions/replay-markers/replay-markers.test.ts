@@ -1,7 +1,14 @@
-import { ReplayPosMode, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { ReplayPosMode, replaySpeedToSdk, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { _resetReplayCursor, claimReplayCursor, clearReplayLanding } from "../../shared/replay-cursor.js";
+import {
+  _resetReplayCursor,
+  cancelReplayCursorOwner,
+  claimReplayCursor,
+  clearReplayLanding,
+  currentReplayCursorOwner,
+  pendingReplayLanding,
+} from "../../shared/replay-cursor.js";
 import { withSteppedReplayState } from "../../shared/test-support/replay-state.js";
 import { REPLAY_EXIT_GRACE_MS } from "./replay-markers-ops.js";
 import {
@@ -28,6 +35,8 @@ const mocks = vi.hoisted(() => ({
     list: vi.fn((): Marker[] => []),
   },
   setPlayPosition: vi.fn((_mode: number, _frame: number) => true),
+  setPlaySpeed: vi.fn((_speed: number, _slowMotion?: boolean) => true),
+  getGlobalSettings: vi.fn((): Record<string, unknown> => ({})),
 }));
 
 vi.mock("@iracedeck/icons/replay-markers/add.svg", () => ({ default: "<svg>add</svg>" }));
@@ -39,7 +48,9 @@ vi.mock("@iracedeck/icons/replay-markers/confirm-deleted.svg", () => ({ default:
 
 vi.mock("@iracedeck/deck-iracing", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@iracedeck/deck-iracing")>()),
-  getCommands: vi.fn(() => ({ replay: { setPlayPosition: mocks.setPlayPosition } })),
+  getCommands: vi.fn(() => ({
+    replay: { setPlayPosition: mocks.setPlayPosition, setPlaySpeed: mocks.setPlaySpeed },
+  })),
 }));
 
 vi.mock("@iracedeck/deck-core", async () => {
@@ -124,6 +135,7 @@ vi.mock("@iracedeck/replay-store", () => ({
 
 vi.mock("@iracedeck/settings", () => ({
   getGlobalColors: vi.fn(() => ({})),
+  getGlobalSettings: mocks.getGlobalSettings,
 }));
 
 type Sdk = {
@@ -142,10 +154,13 @@ const LIVE: TelemetryData = {
   SessionTime: 500,
 } as TelemetryData;
 
+/** A replay paused on frame 12 000: a jump from here sends its seek within the press. */
 const REPLAY: TelemetryData = {
   IsReplayPlaying: true,
   ReplayFrameNum: 12_000,
   ReplayFrameNumEnd: 18_000,
+  ReplayPlaySpeed: 0,
+  ReplayPlaySlowMotion: false,
   ReplaySessionNum: 1,
   ReplaySessionTime: 200,
   SessionNum: 2,
@@ -153,6 +168,89 @@ const REPLAY: TelemetryData = {
 } as TelemetryData;
 
 const NO_SUBSESSION = Symbol("no SubSessionID");
+
+/** A replay speed as telemetry reports it. */
+interface SimSpeed {
+  ReplayPlaySpeed: number;
+  ReplayPlaySlowMotion: boolean;
+}
+
+const PAUSED: SimSpeed = { ReplayPlaySpeed: 0, ReplayPlaySlowMotion: false };
+const AT_1X: SimSpeed = { ReplayPlaySpeed: 1, ReplayPlaySlowMotion: false };
+/** iRacing reports 1/4x as raw 3 with the slow-motion flag (#1202); `setPlaySpeed(4, true)` sets it. */
+const QUARTER: SimSpeed = { ReplayPlaySpeed: 3, ReplayPlaySlowMotion: true };
+const FORWARD_8: SimSpeed = { ReplayPlaySpeed: 8, ReplayPlaySlowMotion: false };
+const REWIND_8: SimSpeed = { ReplayPlaySpeed: -8, ReplayPlaySlowMotion: false };
+
+/** Setting, the replay before the press, its speed, what is sent before the seek, what after the landing, the speed left. */
+const JUMP_PLAYBACK_CASES: ReadonlyArray<readonly [string, string, SimSpeed, string[], string[], SimSpeed]> = [
+  ["remember", "paused", PAUSED, [], [], PAUSED],
+  ["remember", "playing at 1x", AT_1X, ["speed 0"], ["speed 1"], AT_1X],
+  ["remember", "in slow motion at 1/4x", QUARTER, ["speed 0"], ["speed 4 slow"], QUARTER],
+  ["remember", "fast-forwarding at 8x", FORWARD_8, ["speed 0"], ["speed 8"], FORWARD_8],
+  ["remember", "rewinding at -8x", REWIND_8, ["speed 0"], ["speed -8"], REWIND_8],
+  ["play", "paused", PAUSED, [], ["speed 1"], AT_1X],
+  ["play", "playing at 1x", AT_1X, ["speed 0"], ["speed 1"], AT_1X],
+  ["play", "in slow motion at 1/4x", QUARTER, ["speed 0"], ["speed 1"], AT_1X],
+  ["play", "fast-forwarding at 8x", FORWARD_8, ["speed 0"], ["speed 1"], AT_1X],
+  ["play", "rewinding at -8x", REWIND_8, ["speed 0"], ["speed 1"], AT_1X],
+  ["stopped", "paused", PAUSED, [], [], PAUSED],
+  ["stopped", "playing at 1x", AT_1X, ["speed 0"], [], PAUSED],
+  ["stopped", "in slow motion at 1/4x", QUARTER, ["speed 0"], [], PAUSED],
+  ["stopped", "fast-forwarding at 8x", FORWARD_8, ["speed 0"], [], PAUSED],
+  ["stopped", "rewinding at -8x", REWIND_8, ["speed 0"], [], PAUSED],
+];
+
+/**
+ * A sim behind the mocked replay commands that acts on one only at a later
+ * update, `lagMs` on — the shape that makes waiting for the pause and for the
+ * landing matter. `calls` is every command in the order it was sent;
+ * `telemetry` is what the sim shows now. A refused command returns false; an
+ * ignored one is accepted and never shows.
+ */
+function fakeSim(start: TelemetryData, options: { lagMs?: number; seekLagMs?: number } = {}) {
+  const lagMs = options.lagMs ?? 20;
+  const seekLagMs = options.seekLagMs ?? lagMs;
+  const sim = {
+    telemetry: start,
+    calls: [] as string[],
+    refuse: { speed: false, seek: false },
+    ignore: { speed: false, seek: false },
+  };
+
+  mocks.setPlaySpeed.mockImplementation((speed: number, slowMotion: boolean = false) => {
+    sim.calls.push(`speed ${speed}${slowMotion ? " slow" : ""}`);
+
+    if (sim.refuse.speed) return false;
+
+    if (!sim.ignore.speed) {
+      setTimeout(() => {
+        sim.telemetry = {
+          ...sim.telemetry,
+          ReplayPlaySpeed: replaySpeedToSdk(speed, slowMotion),
+          ReplayPlaySlowMotion: slowMotion,
+        };
+      }, lagMs);
+    }
+
+    return true;
+  });
+  mocks.setPlayPosition.mockImplementation((_mode: number, frame: number) => {
+    sim.calls.push(`seek ${frame}`);
+
+    if (sim.refuse.seek) return false;
+
+    if (!sim.ignore.seek) {
+      setTimeout(() => {
+        sim.telemetry = { ...sim.telemetry, ReplayFrameNum: frame };
+      }, seekLagMs);
+    }
+
+    return true;
+  });
+
+  return sim;
+}
 
 function makeAction(telemetry: TelemetryData | null = LIVE, subSessionId: unknown = 86697546) {
   const action = new ReplayMarkers();
@@ -189,6 +287,8 @@ describe("ReplayMarkers", () => {
     mocks.markers.previous.mockReturnValue(null);
     mocks.markers.list.mockReturnValue([]);
     mocks.setPlayPosition.mockReturnValue(true);
+    mocks.setPlaySpeed.mockReturnValue(true);
+    mocks.getGlobalSettings.mockReturnValue({});
     _resetReplayCursor();
     vi.useFakeTimers();
   });
@@ -590,6 +690,172 @@ describe("ReplayMarkers", () => {
     });
   });
 
+  describe("Next / Previous and the Replay jump playback setting (#1276)", () => {
+    /** A replay on REPLAY's frame at `speed`, behind the fake sim, with a marker ahead for Next. */
+    function replayAtSpeed(speed: SimSpeed, options?: { lagMs?: number; seekLagMs?: number }) {
+      mocks.markers.next.mockReturnValue({ frame: 15_000, sessionNum: 1, sessionTimeMs: 0 });
+      const { action, sdk } = makeAction(REPLAY);
+      const sim = fakeSim({ ...REPLAY, ...speed } as TelemetryData, options);
+      sdk.getCurrentTelemetry.mockImplementation(() => sim.telemetry);
+
+      return { action, sim };
+    }
+
+    it.each(JUMP_PLAYBACK_CASES)("%s, from a replay %s", async (setting, _state, before, pause, after, left) => {
+      mocks.getGlobalSettings.mockReturnValue({ replayJumpPlayback: setting });
+      const { action, sim } = replayAtSpeed(before);
+
+      await action.onKeyDown(keyDown({ mode: "next" }));
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      expect(sim.calls).toEqual([...pause, "seek 15000", ...after]);
+      expect(sim.telemetry).toMatchObject({ ReplayFrameNum: 15_000, ...left });
+      expect(action["logger"].warn).not.toHaveBeenCalled();
+      expect(currentReplayCursorOwner()).toBeNull();
+    });
+
+    it("with no setting stored, remembers the speed", async () => {
+      mocks.getGlobalSettings.mockReturnValue({});
+      const { action, sim } = replayAtSpeed(FORWARD_8);
+
+      await action.onKeyDown(keyDown({ mode: "next" }));
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      expect(sim.calls).toEqual(["speed 0", "seek 15000", "speed 8"]);
+    });
+
+    it("the press does not wait for the landing", async () => {
+      const { action, sim } = replayAtSpeed(AT_1X);
+
+      await action.onKeyDown(keyDown({ mode: "next" }));
+
+      // Back from the press with the jump under way: paused, not yet sought.
+      expect(sim.calls).toEqual(["speed 0"]);
+      expect(currentReplayCursorOwner()).toBe("next");
+      expect(action["logger"].info).toHaveBeenCalledWith("Jumped to next marker");
+    });
+
+    it("a paused replay still gets its seek within the press", () => {
+      const { action, sim } = replayAtSpeed(PAUSED);
+
+      void action.onKeyDown(keyDown({ mode: "next" }));
+
+      expect(sim.calls).toEqual(["seek 15000"]);
+    });
+
+    it("sends nothing between the seek and the landing", async () => {
+      mocks.getGlobalSettings.mockReturnValue({ replayJumpPlayback: "play" });
+      const { action, sim } = replayAtSpeed(PAUSED, { seekLagMs: 400 });
+
+      await action.onKeyDown(keyDown({ mode: "next" }));
+      await vi.advanceTimersByTimeAsync(350);
+      expect(sim.calls).toEqual(["seek 15000"]);
+
+      await vi.advanceTimersByTimeAsync(650);
+      expect(sim.calls).toEqual(["seek 15000", "speed 1"]);
+    });
+
+    it("says at debug how the jump landed", async () => {
+      const { action } = replayAtSpeed(AT_1X);
+
+      await action.onKeyDown(keyDown({ mode: "next" }));
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      expect(action["logger"].debug).toHaveBeenCalledWith(
+        "next marker: landed on frame 15000; speed=1 slowMotion=false command=sent",
+      );
+    });
+
+    it.each(["remember", "play", "stopped"])(
+      "%s: a landing that times out warns, sends nothing after the seek and leaves the replay paused",
+      async (setting) => {
+        mocks.getGlobalSettings.mockReturnValue({ replayJumpPlayback: setting });
+        const { action, sim } = replayAtSpeed(AT_1X);
+
+        sim.ignore.seek = true;
+        await action.onKeyDown(keyDown({ mode: "next" }));
+        expect(pendingReplayLanding()).toMatchObject({ frame: 15_000 });
+        await vi.advanceTimersByTimeAsync(5_000);
+
+        expect(sim.calls).toEqual(["speed 0", "seek 15000"]);
+        expect(sim.telemetry).toMatchObject(PAUSED);
+        expect(action["logger"].warn).toHaveBeenCalledExactlyOnceWith(
+          "next marker: jump did not land; replay left where the seek stopped",
+        );
+        // The last frame seen is in the detail.
+        expect(action["logger"].debug).toHaveBeenCalledWith(
+          "next marker: reason=seek-timeout target=15000 lastFrame=12000 lastSpeed=0",
+        );
+        expect(currentReplayCursorOwner()).toBeNull();
+
+        // The landing it recorded anchors no more: the next press measures from the live frame.
+        expect(pendingReplayLanding()).toBeNull();
+        mocks.markers.next.mockClear();
+        await action.onKeyDown(keyDown({ mode: "next" }));
+        expect(mocks.markers.next).toHaveBeenCalledWith(12_000, { subSessionId: 86697546 });
+      },
+    );
+
+    it("a replay that never pauses gets no seek", async () => {
+      const { action, sim } = replayAtSpeed(AT_1X);
+
+      sim.ignore.speed = true;
+      await action.onKeyDown(keyDown({ mode: "next" }));
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      expect(sim.calls).toEqual(["speed 0"]);
+      expect(action["logger"].warn).toHaveBeenCalledExactlyOnceWith("next marker: replay did not pause; jump not sent");
+      expect(pendingReplayLanding()).toBeNull();
+    });
+
+    it("another replay command during the wait ends the jump with nothing more sent", async () => {
+      const { action, sim } = replayAtSpeed(AT_1X, { seekLagMs: 400 });
+
+      await action.onKeyDown(keyDown({ mode: "next" }));
+      await vi.advanceTimersByTimeAsync(200);
+      expect(sim.calls).toEqual(["speed 0", "seek 15000"]);
+
+      // The driver's own command: the jump must not put its speed over it.
+      expect(cancelReplayCursorOwner("play-pause")).toBe("next");
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      expect(sim.calls).toEqual(["speed 0", "seek 15000"]);
+      expect(action["logger"].warn).not.toHaveBeenCalled();
+      expect(action["logger"].debug).toHaveBeenCalledWith("next marker: jump to frame 15000 cancelled by play-pause");
+    });
+
+    it("a second press before the first has landed takes over and still restores the speed", async () => {
+      const { action, sim } = replayAtSpeed(REWIND_8, { seekLagMs: 400 });
+
+      await action.onKeyDown(keyDown({ mode: "next" }));
+      await vi.advanceTimersByTimeAsync(100);
+      // The first jump has paused the replay and sent its seek; the next marker is further on.
+      mocks.markers.next.mockReturnValue({ frame: 16_000, sessionNum: 1, sessionTimeMs: 0 });
+      await action.onKeyDown(keyDown({ mode: "next" }));
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      expect(mocks.markers.next).toHaveBeenLastCalledWith(15_000, { subSessionId: 86697546 });
+      expect(sim.calls).toEqual(["speed 0", "seek 15000", "seek 16000", "speed -8"]);
+      expect(sim.telemetry).toMatchObject({ ReplayFrameNum: 16_000, ...REWIND_8 });
+      expect(action["logger"].debug).toHaveBeenCalledWith("next marker: jump to frame 15000 cancelled by next");
+    });
+
+    it("a jump that fails outright is logged, not left unhandled, and hands the cursor back", async () => {
+      const { action } = replayAtSpeed(PAUSED);
+
+      mocks.setPlayPosition.mockImplementation(() => {
+        throw new Error("broadcast failed");
+      });
+      await action.onKeyDown(keyDown({ mode: "next" }));
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(action["logger"].error).toHaveBeenCalledExactlyOnceWith(
+        "next marker: jump failed: Error: broadcast failed",
+      );
+      expect(currentReplayCursorOwner()).toBeNull();
+    });
+  });
+
   describe("does nothing", () => {
     it.each(["add", "delete", "next", "previous"])("%s while not connected", async (mode) => {
       const { action, sdk } = makeAction(LIVE);
@@ -889,6 +1155,8 @@ describe("ReplayMarkers on a dial (#1230)", () => {
     mocks.markers.previous.mockReturnValue(null);
     mocks.markers.list.mockReturnValue([]);
     mocks.setPlayPosition.mockReturnValue(true);
+    mocks.setPlaySpeed.mockReturnValue(true);
+    mocks.getGlobalSettings.mockReturnValue({});
     _resetReplayCursor();
     vi.useFakeTimers();
   });
@@ -1014,6 +1282,8 @@ describe("ReplayMarkers on a dial (#1230)", () => {
       await turn(action, 1);
       mocks.setPlayPosition.mockReturnValueOnce(false);
       await action.onKeyDown(keyDown({ mode: "next" }, "key-1"));
+      // The refused jump takes its landing back once it has ended, a step after the press.
+      await vi.advanceTimersByTimeAsync(0);
       await turn(action, 1);
 
       // The keypad's 2 000 never went out; the replay is still headed for the
@@ -1040,5 +1310,6 @@ function expectUntouched(action: ReplayMarkers): void {
   expect(mocks.markers.next).not.toHaveBeenCalled();
   expect(mocks.markers.previous).not.toHaveBeenCalled();
   expect(mocks.setPlayPosition).not.toHaveBeenCalled();
+  expect(mocks.setPlaySpeed).not.toHaveBeenCalled();
   expect(action["updateKeyImage"]).not.toHaveBeenCalled();
 }

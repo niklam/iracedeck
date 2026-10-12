@@ -28,11 +28,13 @@ import previousIconSvg from "@iracedeck/icons/replay-markers/previous.svg";
 import { getReplaySessionStore, isReplaySessionStoreInitialized } from "@iracedeck/replay-store";
 import { getGlobalColors } from "@iracedeck/settings";
 
+import type { ReplayJumpOutcome } from "../../shared/replay-jump-playback.js";
 import { ReplayMarkersDialSurface } from "./replay-markers-dial-surface.js";
 import {
   addMarkerAt,
   CONFIRMATION_FLASH_MS,
   deleteMarkerAt,
+  describeMarkerJump,
   jumpToMarkerFrame,
   type MarkerDirection,
   readReplayContext,
@@ -60,7 +62,8 @@ export {
 /**
  * Replay Markers (issue #1162): mark a moment and jump back to it. A marker is
  * an absolute replay frame kept in the per-session replay store; Next and
- * Previous jump with one `setPlayPosition` broadcast. Design:
+ * Previous jump to one with the shared replay jump sequence, which leaves the
+ * replay the way the Replay jump playback setting says (#1276). Design:
  * `docs/superpowers/specs/2026-09-13-issue-1162-replay-markers.md`. Since
  * #1230 the action is dual-surface: a dial instance routes every event to
  * {@link ReplayMarkersDialSurface}.
@@ -196,6 +199,7 @@ export class ReplayMarkers extends SimIRacingAction<ReplayMarkersSettings> {
   private readonly dialSurface = new ReplayMarkersDialSurface({
     logger: this.logger,
     readReplayContext: () => this.readReplayContext(),
+    readTelemetry: () => this.sdkController.getCurrentTelemetry(),
   });
 
   override async onWillAppear(ev: IDeckWillAppearEvent<ReplayMarkersSettings>): Promise<void> {
@@ -284,7 +288,8 @@ export class ReplayMarkers extends SimIRacingAction<ReplayMarkersSettings> {
   /**
    * Run the mode. Returns the confirmation to flash for an Add or Delete that
    * changed the store, and undefined for everything else — a press that does
-   * nothing shows nothing.
+   * nothing shows nothing. A Next / Previous jump is started here and finishes
+   * on its own ({@link followJump}): the press does not wait for the landing.
    */
   private execute(settings: ReplayMarkersSettings): ReplayMarkerConfirmation | undefined {
     const context = this.readReplayContext();
@@ -332,15 +337,35 @@ export class ReplayMarkers extends SimIRacingAction<ReplayMarkersSettings> {
           return undefined;
         }
 
-        // Takes the replay cursor from an in-flight Jump to Fastest Lap walk
-        // (#1203), and records the shared landing when the jump was sent.
-        const success = jumpToMarkerFrame(settings.mode, target.frame);
+        // Takes the replay cursor (#1203) and records the shared landing before
+        // it returns; a paused replay has its seek by then too. The rest — the
+        // landing, and the speed the setting asks for — follows the press.
+        const jump = jumpToMarkerFrame(settings.mode, target.frame, () => this.sdkController.getCurrentTelemetry());
         this.logger.info(`Jumped to ${settings.mode} marker`);
-        this.logger.debug(`Result: ${success}, current=${context.frame}, anchor=${anchor}, target=${target.frame}`);
+        this.logger.debug(`current=${context.frame}, anchor=${anchor}, target=${target.frame}`);
+        this.followJump(`${settings.mode} marker`, target.frame, jump);
 
         return undefined;
       }
     }
+  }
+
+  /**
+   * Logs how a jump ended once it has: a warning when it stopped short of its
+   * marker, and the details at debug either way. Nothing waits on it, so a
+   * rejection is caught here.
+   */
+  private followJump(what: string, frame: number, jump: Promise<ReplayJumpOutcome>): void {
+    void jump.then(
+      (outcome) => {
+        const report = describeMarkerJump(outcome, frame);
+
+        if (report.warn !== null) this.logger.warn(`${what}: ${report.warn}`);
+
+        this.logger.debug(`${what}: ${report.detail}`);
+      },
+      (err: unknown) => this.logger.error(`${what}: jump failed: ${String(err)}`),
+    );
   }
 
   /**
