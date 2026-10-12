@@ -439,7 +439,7 @@ describe("ReplayMarkersDialSurface", () => {
       expect(mocks.setPlayPosition.mock.calls.map((c) => c[1])).toEqual([1_000, 2_000, 1_000]);
     });
 
-    it("after DIAL_LANDING_HOLD_MS the live frame anchors again", async () => {
+    it("a jump still on its way anchors past DIAL_LANDING_HOLD_MS", async () => {
       setMarkers([1_000, 2_000, 3_000]);
       const surface = makeSurface();
       const ctx = dialContext();
@@ -447,6 +447,20 @@ describe("ReplayMarkersDialSurface", () => {
 
       surface.rotate(ctx as never, dial(), 1, false);
       await vi.advanceTimersByTimeAsync(DIAL_LANDING_HOLD_MS);
+      surface.rotate(ctx as never, dial(), 1, false);
+
+      // The first jump has not landed and has not given up: the turn steps on from its marker.
+      expect(mocks.setPlayPosition.mock.calls.map((c) => c[1])).toEqual([1_000, 2_000]);
+    });
+
+    it("after a jump that never landed has given up, the live frame anchors again", async () => {
+      setMarkers([1_000, 2_000, 3_000]);
+      const surface = makeSurface();
+      const ctx = dialContext();
+      await appear(surface, ctx);
+
+      surface.rotate(ctx as never, dial(), 1, false);
+      await vi.advanceTimersByTimeAsync(3_100);
       surface.rotate(ctx as never, dial(), 1, false);
 
       // The replay never moved off 500, so the store's Next from there is 1 000 again.
@@ -607,9 +621,7 @@ describe("ReplayMarkersDialSurface", () => {
 
         expect(sim.calls).toEqual(["speed 0", "seek 1000"]);
         expect(env.telemetry).toMatchObject(PAUSED);
-        expect(logger.warn).toHaveBeenCalledExactlyOnceWith(
-          "Dial next marker: jump did not land; replay left where the seek stopped",
-        );
+        expect(logger.warn).toHaveBeenCalledExactlyOnceWith("Dial next marker: jump did not land; nothing more sent");
         // The last frame seen is in the detail.
         expect(logger.debug).toHaveBeenCalledWith(
           "Dial next marker: reason=seek-timeout target=1000 lastFrame=500 lastSpeed=0",

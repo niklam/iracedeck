@@ -404,6 +404,27 @@ describe("the shared landing (#1230)", () => {
     expect(pendingReplayLanding()).toBeNull();
   });
 
+  it("a jump still running anchors on its marker however long ago it was pressed", async () => {
+    // The seek is out and iRacing is taking its time: the live frame reads 0 meanwhile.
+    const sim = fakeSim(PAUSED);
+
+    sim.ignore.seek = true;
+    void jumpToMarkerFrame("dial-next", 4_000, sim.read);
+    await vi.advanceTimersByTimeAsync(DIAL_LANDING_HOLD_MS + 500);
+
+    expect(resolveMarkerJumpAnchor(0)).toBe(4_000);
+    expect(pendingReplayLanding()).not.toBeNull();
+  });
+
+  it("once the jump has ended, the hold decides", async () => {
+    await settled(jumpToMarkerFrame("next", 4_000, fakeSim(PAUSED).read), 200);
+
+    // The replay has moved on from the marker by other means.
+    expect(resolveMarkerJumpAnchor(4_500, PRESS_AT + DIAL_LANDING_HOLD_MS - 1)).toBe(4_000);
+    expect(resolveMarkerJumpAnchor(4_500, PRESS_AT + DIAL_LANDING_HOLD_MS)).toBe(4_500);
+    expect(pendingReplayLanding()).toBeNull();
+  });
+
   it("another owner taking the cursor clears it", () => {
     void jumpToMarkerFrame("next", 4_000, fakeSim(PAUSED).read);
 
@@ -540,9 +561,10 @@ describe("jumpToMarkerFrame runs the shared jump sequence (#1276)", () => {
 
       const jump = jumpToMarkerFrame("next", 4_000, sim.read);
 
-      // The hold runs out, the anchor rule drops the landing, and something else records one.
+      // The replay reads within a second of the marker without reading it: the
+      // anchor rule drops the landing, and something else records one.
       await vi.advanceTimersByTimeAsync(DIAL_LANDING_HOLD_MS);
-      expect(resolveMarkerJumpAnchor(500)).toBe(500);
+      expect(resolveMarkerJumpAnchor(4_010)).toBe(4_010);
       recordReplayLanding(7_000, PRESS_AT + DIAL_LANDING_HOLD_MS);
 
       await expect(settled(jump)).resolves.toMatchObject({ kind: "stopped", reason: "seek-timeout" });

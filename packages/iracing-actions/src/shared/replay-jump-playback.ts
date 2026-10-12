@@ -13,10 +13,11 @@
  *    zero, or that does not read paused — and wait for the pause to show: a
  *    moving cursor runs past the target before the landing can be read.
  * 3. **Seek**, and
- * 4. **wait** until `ReplayFrameNum` reads the frame sent. iRacing covers a
- *    long jump in steps, and any replay command arriving meanwhile cuts it
- *    short (#1275), so nothing follows the seek until it lands. The wait
- *    gives up on a cursor that has stopped moving, not on one that is slow.
+ * 4. **wait** until `ReplayFrameNum` reads the frame sent, in a replay.
+ *    iRacing covers a long jump in steps, and any replay command arriving
+ *    meanwhile cuts it short (#1275), so nothing follows the seek until it
+ *    lands. The wait gives up on a cursor that has stopped short, not on one
+ *    that is slow: its clock runs only while iRacing shows no seek under way.
  * 5. **The caller's own step**, if any — Jump to Fastest Lap's camera switch.
  * 6. **Apply the setting**: one `setPlaySpeed`, and only when the speed wanted
  *    differs from the one the landing reads ({@link applyReplayJumpPlayback}).
@@ -52,7 +53,7 @@ import {
   type ReplayCursorClaim,
   type ReplayJumpSpeed,
 } from "./replay-cursor.js";
-import { isPaused, seekReplayFrame, waitForReplay } from "./replay-seek.js";
+import { isPaused, isSeeking, seekReplayFrame, waitForReplay } from "./replay-seek.js";
 import { readReplayJumpTimeoutMs, REPLAY_JUMP_MAX_WAIT_MS, REPLAY_JUMP_POLL_MS } from "./replay-timing.js";
 
 /** A replay speed in the units `setPlaySpeed` takes: in slow motion `speed` is the divisor (5 = 1/5x). 0 is paused. */
@@ -107,7 +108,7 @@ export type ReplayJumpStopReason =
   | "pause-timeout"
   /** The seek command was refused. */
   | "seek-failed"
-  /** `ReplayFrameNum` stopped moving without reading the frame sent. */
+  /** The replay stopped short of the frame sent, or was still seeking at the longest a jump waits. */
   | "seek-timeout"
   /** The caller's own step after the landing returned false. */
   | "after-landing-failed";
@@ -124,7 +125,7 @@ export interface ReplayJumpOptions {
   replay: ReplayJumpCommands;
   /** Reads the latest telemetry. */
   readTelemetry: () => TelemetryData | null;
-  /** How long to wait for the pause, and for a landing the cursor is no longer moving towards. Default {@link readReplayJumpTimeoutMs}. */
+  /** How long to wait for the pause, and for a landing iRacing is no longer seeking towards. Default {@link readReplayJumpTimeoutMs}. */
   timeoutMs?: number;
   /** How often to read the telemetry while waiting. Default {@link REPLAY_JUMP_POLL_MS}. */
   pollMs?: number;
@@ -301,16 +302,18 @@ export async function runReplayJump(jump: ReplayJump, options: ReplayJumpOptions
   }
 
   // The landing sample is read for nothing but the frame and the speed, so
-  // the `SessionNum = -1` transient after it need not be waited out. Only a
-  // paused replay's frame counts as the seek still running: while the replay
-  // plays — started from iRacing's own replay bar, or by a key pressed a tick
-  // before this jump — every read shows a new frame, and that is playback.
+  // the `SessionNum = -1` transient after it need not be waited out — but it
+  // must come from a replay: a seek under way reads frame 0, which is where a
+  // marker set in a recording's first seconds sits. The wait goes on for as
+  // long as iRacing shows the seek, and gives up one timeout after it no
+  // longer does without the frame having been read.
   const landing = await seekReplayFrame({
     ...waitOptions,
     frame,
     send: (target) => replay.setPlayPosition(ReplayPosMode.Begin, target),
     requireSession: false,
-    progress: (sample) => (isPaused(sample) ? sample?.ReplayFrameNum : null),
+    requireReplay: true,
+    seeking: isSeeking,
     maxWaitMs: REPLAY_JUMP_MAX_WAIT_MS,
   });
 
@@ -338,7 +341,7 @@ const STOPPED_SHORT: Record<ReplayJumpStopReason, string> = {
   "pause-failed": "pause failed; jump not sent",
   "pause-timeout": "replay did not pause; jump not sent",
   "seek-failed": "jump not sent",
-  "seek-timeout": "jump did not land; replay left where the seek stopped",
+  "seek-timeout": "jump did not land; nothing more sent",
   "after-landing-failed": "jump stopped after the landing; replay left paused there",
 };
 

@@ -780,7 +780,7 @@ describe("ReplayMarkers", () => {
         expect(sim.calls).toEqual(["speed 0", "seek 15000"]);
         expect(sim.telemetry).toMatchObject(PAUSED);
         expect(action["logger"].warn).toHaveBeenCalledExactlyOnceWith(
-          "next marker: jump did not land; replay left where the seek stopped",
+          "next marker: jump did not land; nothing more sent",
         );
         // The last frame seen is in the detail.
         expect(action["logger"].debug).toHaveBeenCalledWith(

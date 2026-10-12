@@ -10,6 +10,19 @@
  * frames further forward. So nothing may follow a jump until `ReplayFrameNum`
  * reads the frame that was sent.
  *
+ * The search never shows as a moving frame. Measured on 2026-10-12 on a paused
+ * replay: a short jump, or one backwards, into a quiet replay lands within an
+ * update or two. A long jump forwards, and any jump sent less than about half
+ * a second after another, reads as if the replay had been left for the car —
+ * `IsReplayPlaying` false, `ReplayFrameNum` a flat 0, `SessionNum` -1 — from
+ * about 20 ms after the send until the cursor lands, and the first sample that
+ * shows the frame sent is back in the replay. That took half a second for
+ * 60,000 frames on a fast machine and grows with the distance. An absolute
+ * jump sent meanwhile retargets the search; a frame step or a relative jump
+ * breaks it. So a wait is told what a seek still under way looks like
+ * ({@link ReplayWaitOptions.seeking}), and a landing can be required to come
+ * from a replay ({@link ReplaySeekOptions.requireReplay}).
+ *
  * The caller holds the replay cursor ({@link ReplayCursorClaim}) for the whole
  * wait: a replay command from any other key cancels the claim, and the wait
  * then reports `cancelled` at its next poll instead of running to its timeout.
@@ -18,6 +31,8 @@ import type { ReplayCursorClaim } from "./replay-cursor.js";
 
 /** The telemetry fields the waits read. */
 export interface ReplaySeekSample {
+  IsOnTrack?: unknown;
+  IsReplayPlaying?: unknown;
   ReplayFrameNum?: unknown;
   ReplayPlaySpeed?: unknown;
   SessionNum?: unknown;
@@ -34,19 +49,19 @@ export interface ReplayWaitOptions<T extends ReplaySeekSample> {
   claim: ReplayCursorClaim;
   /** Reads the latest telemetry. */
   readTelemetry: () => T | null;
-  /** How long to wait before giving up — with `progress`, how long without any. */
+  /** How long to wait before giving up — with `seeking`, how long once no seek shows. */
   timeoutMs: number;
   /** How often to read the telemetry while waiting. */
   pollMs: number;
   /**
-   * What counts as the replay still getting there. When given, the timeout
-   * starts over each time this value changes between two reads, so a wait
-   * gives up on a replay that has stopped moving rather than on one that is
-   * slow: iRacing covers a jump across hours of recording a few thousand
-   * frames per update, and that takes longer than any fixed wait worth having.
+   * What a seek still under way reads ({@link isSeeking}). When given, the
+   * timeout does not run while a read shows it, so a wait gives up on a
+   * replay that has stopped short rather than on one that is slow: iRacing
+   * covers a jump across hours of recording a few thousand frames per update,
+   * and that takes longer than any fixed wait worth having.
    */
-  progress?: (sample: T | null) => unknown;
-  /** With `progress`: the longest the wait runs however long the value keeps changing. */
+  seeking?: (sample: T | null) => boolean;
+  /** The longest the wait runs, however long `seeking` keeps it going. */
   maxWaitMs?: number;
 }
 
@@ -62,6 +77,13 @@ export interface ReplaySeekOptions<T extends ReplaySeekSample> extends ReplayWai
    * from the landing does not (the record jump). Default `true`.
    */
   requireSession?: boolean;
+  /**
+   * Take a landing only from a sample that is in a replay. Outside one
+   * `ReplayFrameNum` reads a constant 0, and iRacing reports the same while
+   * a seek is under way, so without this a jump to frame 0 reads as landed
+   * before it has. Default `false`.
+   */
+  requireReplay?: boolean;
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
@@ -77,6 +99,17 @@ export function isLandedOn<T extends ReplaySeekSample>(
   return !requireSession || (typeof sample.SessionNum === "number" && sample.SessionNum >= 0);
 }
 
+/**
+ * Whether a sample shows a seek still under way: no replay on screen, and
+ * nobody driving. iRacing reports a seek like a replay that has been left, so
+ * the raw sample cannot tell the two apart; a driver on track is the one case
+ * it can, and a wait that is told this must be bounded by `maxWaitMs` for the
+ * rest — a replay left for the garage reads the same until then.
+ */
+export function isSeeking(sample: ReplaySeekSample | null): boolean {
+  return sample?.IsReplayPlaying === false && sample.IsOnTrack !== true;
+}
+
 /** Whether a sample shows the replay paused. */
 export function isPaused(sample: ReplaySeekSample | null): boolean {
   return sample?.ReplayPlaySpeed === 0;
@@ -84,20 +117,20 @@ export function isPaused(sample: ReplaySeekSample | null): boolean {
 
 /**
  * Poll until `reached` holds, the claim is cancelled, or the timeout passes —
- * with `progress`, until that long has passed with no progress. Sends nothing.
+ * with `seeking`, until that long has passed with no seek showing. Sends
+ * nothing.
  */
 export async function waitForReplay<T extends ReplaySeekSample>(
   options: ReplayWaitOptions<T>,
   reached: (sample: T | null) => sample is T,
 ): Promise<ReplayWaitOutcome<T>> {
-  const { claim, readTelemetry, timeoutMs, pollMs, progress, maxWaitMs } = options;
+  const { claim, readTelemetry, timeoutMs, pollMs, seeking, maxWaitMs } = options;
 
   if (claim.cancelledBy !== null) return { kind: "cancelled", by: claim.cancelledBy };
 
   const startedAt = Date.now();
-  const latest = progress === undefined || maxWaitMs === undefined ? Infinity : startedAt + maxWaitMs;
+  const latest = maxWaitMs === undefined ? Infinity : startedAt + maxWaitMs;
   let deadline = startedAt + timeoutMs;
-  let seen = progress?.(readTelemetry());
   let last: T | null = null;
 
   while (Date.now() < Math.min(deadline, latest)) {
@@ -109,14 +142,7 @@ export async function waitForReplay<T extends ReplaySeekSample>(
 
     if (reached(last)) return { kind: "reached", telemetry: last };
 
-    if (progress !== undefined) {
-      const now = progress(last);
-
-      if (now !== seen) {
-        seen = now;
-        deadline = Date.now() + timeoutMs;
-      }
-    }
+    if (seeking?.(last)) deadline = Date.now() + timeoutMs;
   }
 
   return { kind: "timeout", telemetry: last };
@@ -130,11 +156,15 @@ export async function waitForReplay<T extends ReplaySeekSample>(
 export async function seekReplayFrame<T extends ReplaySeekSample>(
   options: ReplaySeekOptions<T>,
 ): Promise<ReplaySeekOutcome<T>> {
-  const { frame, claim, send, requireSession = true } = options;
+  const { frame, claim, send, requireSession = true, requireReplay = false } = options;
 
   if (claim.cancelledBy !== null) return { kind: "cancelled", by: claim.cancelledBy };
 
   if (!send(frame)) return { kind: "refused" };
 
-  return waitForReplay(options, (sample): sample is T => isLandedOn(sample, frame, requireSession));
+  return waitForReplay(
+    options,
+    (sample): sample is T =>
+      isLandedOn(sample, frame, requireSession) && !(requireReplay && sample.IsReplayPlaying === false),
+  );
 }

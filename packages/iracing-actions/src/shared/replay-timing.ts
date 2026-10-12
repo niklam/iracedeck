@@ -7,8 +7,8 @@
 import { getGlobalSettings } from "@iracedeck/settings";
 
 /**
- * The shortest a jump waits for the pause, and for a landing that is not
- * getting any nearer (#1275). The walk's `fastestLapSearchDelayMs × 4` alone
+ * The shortest a jump waits for the pause, and for a landing iRacing is not
+ * seeking towards (#1275). The walk's `fastestLapSearchDelayMs × 4` alone
  * would give a 200 ms wait at the setting's 50 ms minimum; a longer wait costs
  * nothing on success and only delays the warning on a failure.
  */
@@ -23,10 +23,12 @@ export const RECORD_JUMP_MIN_TIMEOUT_MS = 3000;
 export const REPLAY_JUMP_POLL_MS = 20;
 
 /**
- * The longest a jump waits for its landing while the cursor is still moving
- * towards it. iRacing covers a jump at most `maxFramesToSearchPerUpdate`
- * frames per update (2048 by default), so one across a 24-hour recording runs
- * for well under a minute; past two, something else is moving the cursor.
+ * The longest a jump waits for its landing while iRacing is still seeking.
+ * iRacing covers a jump at most `maxFramesToSearchPerUpdate` frames per
+ * update (2048 by default), so one across a 24-hour recording runs for well
+ * under a minute on a fast machine; two leaves room for a slow one. It is
+ * also what ends the wait of a jump whose replay was left for the garage
+ * meanwhile, which reads like a seek that never lands.
  */
 export const REPLAY_JUMP_MAX_WAIT_MS = 120_000;
 
@@ -86,8 +88,8 @@ export function readFastestLapSearchDelayMs(): number {
 }
 
 /**
- * How long one jump waits for its pause to show, and for its landing once the
- * cursor has stopped moving: the walk's `delay × 4`, and never less than
+ * How long one jump waits for its pause to show, and for its landing once
+ * iRacing no longer shows a seek: the walk's `delay × 4`, and never less than
  * {@link RECORD_JUMP_MIN_TIMEOUT_MS}.
  */
 export function readReplayJumpTimeoutMs(): number {

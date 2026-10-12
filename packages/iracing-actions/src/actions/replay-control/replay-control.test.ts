@@ -2567,7 +2567,7 @@ describe("ReplayControl", () => {
               await vi.runAllTimersAsync();
 
               expect(action["logger"].warn).toHaveBeenCalledWith(
-                "Jump to fastest lap: jump did not land; replay left where the seek stopped",
+                "Jump to fastest lap: jump did not land; nothing more sent",
               );
               expect(action["logger"].debug).toHaveBeenCalledWith(
                 expect.stringContaining("target=4940 lastFrame=9000"),
@@ -4279,7 +4279,7 @@ describe("ReplayControl", () => {
               await vi.runAllTimersAsync();
 
               expect(action["logger"].warn).toHaveBeenCalledWith(
-                "Jump to fastest lap: jump did not land; replay left where the seek stopped",
+                "Jump to fastest lap: jump did not land; nothing more sent",
               );
               // The last frame seen is named with the frame sent.
               expect(action["logger"].debug).toHaveBeenCalledWith(

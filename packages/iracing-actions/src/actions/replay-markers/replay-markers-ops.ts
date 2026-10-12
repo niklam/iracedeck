@@ -30,6 +30,7 @@ import {
 
 import {
   clearReplayLanding,
+  currentReplayCursorOwner,
   pendingReplayLanding,
   recordReplayLanding,
   type ReplayLanding,
@@ -55,11 +56,13 @@ export const CONFIRMATION_FLASH_MS = 1_000;
  * @internal Exported for testing
  *
  * How long (ms) after a marker jump was pressed the next one is measured from
- * the marker jumped to rather than from the live frame. `ReplayFrameNum`
- * reaches the target only later — a tick after the seek, and the seek itself
- * waits for a moving replay to pause — so a second jump arriving first would
- * compute from the old frame and send the same marker again: a fast spin
- * would stick.
+ * the marker jumped to rather than from the live frame, once that jump is no
+ * longer running. `ReplayFrameNum` reaches the target only later — the seek
+ * waits for a moving replay to pause, and takes iRacing however long it takes —
+ * so a second jump arriving first would compute from the old frame and send
+ * the same marker again: a fast spin would stick. While the jump is still
+ * running its marker anchors whatever the clock says; the hold covers the
+ * read or two after it has ended.
  */
 export const DIAL_LANDING_HOLD_MS = 1_000;
 
@@ -302,8 +305,9 @@ export function markerIndexAt(markers: readonly ReplayMarker[], frame: number): 
  * @internal Exported for testing
  *
  * The frame the next jump is measured from: the marker last jumped to while the
- * jump is pending — pressed less than {@link DIAL_LANDING_HOLD_MS} ago and the
- * live frame not yet within a second of it — else the live frame.
+ * jump is pending — still running, or pressed less than
+ * {@link DIAL_LANDING_HOLD_MS} ago, and the live frame not yet within a second
+ * of it — else the live frame.
  */
 export function resolveAnchorFrame(landing: ReplayLanding | null, liveFrame: number, nowMs: number): number {
   if (landing === null || isLandingSettled(landing, liveFrame, nowMs)) return liveFrame;
@@ -312,7 +316,15 @@ export function resolveAnchorFrame(landing: ReplayLanding | null, liveFrame: num
 }
 
 function isLandingSettled(landing: ReplayLanding, liveFrame: number, nowMs: number): boolean {
-  return nowMs - landing.sentAt >= DIAL_LANDING_HOLD_MS || Math.abs(liveFrame - landing.frame) <= LANDED_WITHIN_FRAMES;
+  if (Math.abs(liveFrame - landing.frame) <= LANDED_WITHIN_FRAMES) return true;
+
+  // A claim standing beside a landing is the jump that recorded it: anything
+  // else that takes the cursor clears the landing. Until that jump ends the
+  // replay is headed for its marker, and the live frame is not a position —
+  // iRacing reads 0 while it seeks — however long the seek takes.
+  if (currentReplayCursorOwner() !== null) return false;
+
+  return nowMs - landing.sentAt >= DIAL_LANDING_HOLD_MS;
 }
 
 /**

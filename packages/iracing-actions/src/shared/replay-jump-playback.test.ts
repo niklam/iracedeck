@@ -48,15 +48,9 @@ const REWIND_8: ReplaySpeed = { speed: -8, slowMotion: false };
  * shape that makes "read the landing before sending anything else" matter.
  * `calls` is every command in the order it was sent.
  */
-function fakeSim(
-  initial: ReplaySpeed,
-  options: { frame?: number; lagMs?: number; seekLagMs?: number; seekFramesPerUpdate?: number } = {},
-) {
+function fakeSim(initial: ReplaySpeed, options: { frame?: number; lagMs?: number; seekLagMs?: number } = {}) {
   const lagMs = options.lagMs ?? 20;
   const seekLagMs = options.seekLagMs ?? lagMs;
-  /** With a value, a seek covers this many frames per 16 ms update, as iRacing does; without, it lands in one step. */
-  const seekFramesPerUpdate = options.seekFramesPerUpdate;
-  let seeking: ReturnType<typeof setInterval> | null = null;
   let sample = telemetryAt(initial, options.frame ?? 90_000);
   const calls: string[] = [];
   const refuse = { setPlaySpeed: false, setPlayPosition: false };
@@ -81,29 +75,11 @@ function fakeSim(
 
       if (refuse.setPlayPosition) return false;
 
-      if (ignore.setPlayPosition) return true;
-
-      if (seekFramesPerUpdate === undefined) {
+      if (!ignore.setPlayPosition) {
         setTimeout(() => {
           sample = { ...sample, ReplayFrameNum: frame };
         }, seekLagMs);
-
-        return true;
       }
-
-      if (seeking !== null) clearInterval(seeking);
-
-      seeking = setInterval(() => {
-        const at = sample.ReplayFrameNum as number;
-        const step = Math.min(seekFramesPerUpdate, Math.abs(frame - at));
-
-        sample = { ...sample, ReplayFrameNum: at + Math.sign(frame - at) * step };
-
-        if (sample.ReplayFrameNum === frame && seeking !== null) {
-          clearInterval(seeking);
-          seeking = null;
-        }
-      }, 16);
 
       return true;
     }),
@@ -116,12 +92,6 @@ function fakeSim(
     ignore,
     readTelemetry: (): TelemetryData => ({ ...sample }),
     speed: (): ReplaySpeed => captureReplaySpeed(null, sample, 0),
-    /** Stops a seek where it has got to, as a replay command arriving mid-search does. */
-    stallSeek: (): void => {
-      if (seeking !== null) clearInterval(seeking);
-
-      seeking = null;
-    },
   };
 }
 
@@ -452,92 +422,120 @@ describe("replay-jump-playback (#1276)", () => {
       expect(paused.calls).toEqual(["seek 64401"]);
     });
 
-    describe("a long seek", () => {
-      it("is waited for as long as the cursor keeps moving towards the frame", async () => {
-        setMode("play");
-        // 2048 frames per update over 800,000 frames: about 6 s, twice the timeout.
-        const sim = fakeSim(PAUSED, { frame: 900_000, seekFramesPerUpdate: 2048 });
+    describe("a long seek, which iRacing reports like a replay that was left", () => {
+      /**
+       * A seek as measured on 2026-10-12: from an update after the jump
+       * until the cursor lands, telemetry reads `IsReplayPlaying` false and
+       * frame 0. `seekMs` null is a seek that never ends; `landsOn` a seek
+       * that ends on another frame than the one sent.
+       */
+      function slowSeekSim(seekMs: number | null, options: { landsOn?: number; during?: Partial<TelemetryData> } = {}) {
+        let sample = { ...telemetryAt(PAUSED, 90_000), IsReplayPlaying: true } as TelemetryData;
+        const calls: string[] = [];
+        const replay = {
+          setPlaySpeed: vi.fn((speed: number): boolean => {
+            calls.push(`speed ${speed}`);
+            sample = { ...sample, ReplayPlaySpeed: speed };
+
+            return true;
+          }),
+          setPlayPosition: vi.fn((_mode: ReplayPosMode, frame: number): boolean => {
+            calls.push(`seek ${frame}`);
+            setTimeout(() => {
+              sample = { ...sample, ReplayFrameNum: 0, IsReplayPlaying: false, ...options.during };
+            }, 15);
+
+            if (seekMs !== null) {
+              setTimeout(() => {
+                sample = { ...sample, ReplayFrameNum: options.landsOn ?? frame, IsReplayPlaying: true };
+              }, seekMs);
+            }
+
+            return true;
+          }),
+        };
+
+        return { replay, calls, readTelemetry: (): TelemetryData => ({ ...sample }) };
+      }
+
+      function run(sim: ReturnType<typeof slowSeekSim>, frame: number) {
         const jump = beginReplayJump("next", sim.readTelemetry());
-        let outcome: ReplayJumpOutcome | null = null;
+        const state: { outcome: ReplayJumpOutcome | null } = { outcome: null };
 
-        void runReplayJump(jump, { frame: 100_000, replay: sim.replay, readTelemetry: sim.readTelemetry }).then(
-          (result) => (outcome = result),
-        );
+        void runReplayJump(jump, { frame, replay: sim.replay, readTelemetry: sim.readTelemetry }).then((result) => {
+          state.outcome = result;
+          jump.end();
+        });
 
-        await vi.advanceTimersByTimeAsync(5_000);
-        expect(outcome).toBeNull();
+        return state;
+      }
+
+      it("is waited out however long the frame reads flat", async () => {
+        setMode("play");
+        // Eight seconds: the frame is 0 throughout, so nothing moves to restart the timeout.
+        const sim = slowSeekSim(8_000);
+        const state = run(sim, 100_000);
+
+        await vi.advanceTimersByTimeAsync(7_900);
+        expect(state.outcome).toBeNull();
         expect(sim.calls).toEqual(["seek 100000"]);
 
-        await vi.advanceTimersByTimeAsync(2_000);
-        expect(outcome).toEqual({ kind: "landed", speed: NORMAL, command: "sent" });
-        expect(sim.calls).toEqual(["seek 100000", "speed 1"]);
-        jump.end();
-      });
-
-      it("gives up once the cursor has stopped short of the frame for the timeout", async () => {
-        const sim = fakeSim(NORMAL, { frame: 900_000, seekFramesPerUpdate: 2048 });
-        const jump = beginReplayJump("next", sim.readTelemetry());
-        let outcome: ReplayJumpOutcome | null = null;
-
-        void runReplayJump(jump, { frame: 100_000, replay: sim.replay, readTelemetry: sim.readTelemetry }).then(
-          (result) => (outcome = result),
-        );
-
-        await vi.advanceTimersByTimeAsync(2_000);
-        sim.stallSeek();
-
-        const stalledAt = sim.readTelemetry().ReplayFrameNum;
-
-        await vi.advanceTimersByTimeAsync(2_900);
-        expect(outcome).toBeNull();
-
         await vi.advanceTimersByTimeAsync(200);
-        expect(outcome).toMatchObject({ kind: "stopped", reason: "seek-timeout" });
-        expect((outcome as unknown as { telemetry: TelemetryData }).telemetry.ReplayFrameNum).toBe(stalledAt);
-        expect(sim.calls).toEqual(["speed 0", "seek 100000"]);
-        jump.end();
+        expect(state.outcome).toEqual({ kind: "landed", speed: NORMAL, command: "sent" });
+        expect(sim.calls).toEqual(["seek 100000", "speed 1"]);
       });
 
-      it("does not take a replay that is playing for a seek still running", async () => {
-        // Playback was started outside the jump (iRacing's own replay bar)
-        // while it waited: the frame changes at every read, but that is not
-        // the seek getting nearer, so the wait is the plain timeout.
-        let frame = 90_000;
-        const replay = { setPlaySpeed: vi.fn(() => true), setPlayPosition: vi.fn(() => true) };
-        let speed = 0;
-        const readTelemetry = (): TelemetryData =>
-          ({ ReplayFrameNum: speed === 0 ? frame : frame++, ReplayPlaySpeed: speed }) as TelemetryData;
-        const jump = beginReplayJump("next", readTelemetry());
-        let outcome: ReplayJumpOutcome | null = null;
-
-        void runReplayJump(jump, { frame: 10, replay, readTelemetry }).then((result) => (outcome = result));
-
-        speed = 1;
-        await vi.advanceTimersByTimeAsync(2_900);
-        expect(outcome).toBeNull();
+      it("does not take the 0 a seek reads for a landing on frame 0", async () => {
+        setMode("play");
+        const sim = slowSeekSim(400);
+        const state = run(sim, 0);
 
         await vi.advanceTimersByTimeAsync(300);
-        expect(outcome).toMatchObject({ kind: "stopped", reason: "seek-timeout" });
-        expect(replay.setPlaySpeed).not.toHaveBeenCalled();
-        jump.end();
+        expect(state.outcome).toBeNull();
+        expect(sim.calls).toEqual(["seek 0"]);
+
+        await vi.advanceTimersByTimeAsync(200);
+        expect(state.outcome).toEqual({ kind: "landed", speed: NORMAL, command: "sent" });
+        expect(sim.calls).toEqual(["seek 0", "speed 1"]);
       });
 
-      it("does not wait for ever on a cursor that never stops moving", async () => {
-        // A paused replay whose frame changes at every read and never reads the target.
-        let frame = 90_000;
-        const replay = { setPlaySpeed: vi.fn(() => true), setPlayPosition: vi.fn(() => true) };
-        const readTelemetry = (): TelemetryData => ({ ReplayFrameNum: frame++, ReplayPlaySpeed: 0 }) as TelemetryData;
-        const jump = beginReplayJump("next", readTelemetry());
-        let outcome: ReplayJumpOutcome | null = null;
+      it("gives up one timeout after the seek ended short of the frame", async () => {
+        setMode("play");
+        const sim = slowSeekSim(5_000, { landsOn: 60_000 });
+        const state = run(sim, 100_000);
 
-        void runReplayJump(jump, { frame: 10, replay, readTelemetry }).then((result) => (outcome = result));
+        await vi.advanceTimersByTimeAsync(7_900);
+        expect(state.outcome).toBeNull();
+
+        await vi.advanceTimersByTimeAsync(200);
+        expect(state.outcome).toMatchObject({ kind: "stopped", reason: "seek-timeout" });
+        expect(sim.calls).toEqual(["seek 100000"]);
+      });
+
+      it("gives up at the longest a jump waits on a replay that was left for the garage", async () => {
+        setMode("play");
+        const sim = slowSeekSim(null);
+        const state = run(sim, 100_000);
 
         await vi.advanceTimersByTimeAsync(119_000);
-        expect(outcome).toBeNull();
+        expect(state.outcome).toBeNull();
 
         await vi.advanceTimersByTimeAsync(2_000);
-        expect(outcome).toMatchObject({ kind: "stopped", reason: "seek-timeout" });
-        jump.end();
+        expect(state.outcome).toMatchObject({ kind: "stopped", reason: "seek-timeout" });
+        expect(sim.calls).toEqual(["seek 100000"]);
+      });
+
+      it("gives up after the timeout once the driver is on track", async () => {
+        setMode("play");
+        const sim = slowSeekSim(null, { during: { IsOnTrack: true } });
+        const state = run(sim, 100_000);
+
+        await vi.advanceTimersByTimeAsync(2_900);
+        expect(state.outcome).toBeNull();
+
+        await vi.advanceTimersByTimeAsync(300);
+        expect(state.outcome).toMatchObject({ kind: "stopped", reason: "seek-timeout" });
+        expect(sim.calls).toEqual(["seek 100000"]);
       });
     });
 
@@ -827,7 +825,7 @@ describe("replay-jump-playback (#1276)", () => {
       ["pause-failed", "pause failed; jump not sent"],
       ["pause-timeout", "replay did not pause; jump not sent"],
       ["seek-failed", "jump not sent"],
-      ["seek-timeout", "jump did not land; replay left where the seek stopped"],
+      ["seek-timeout", "jump did not land; nothing more sent"],
       ["after-landing-failed", "jump stopped after the landing; replay left paused there"],
     ] as const)("names what went wrong for %s", (reason, warn) => {
       expect(describeReplayJump({ kind: "stopped", reason, telemetry: null }, 64_401).warn).toBe(warn);
