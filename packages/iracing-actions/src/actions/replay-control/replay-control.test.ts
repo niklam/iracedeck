@@ -1974,6 +1974,56 @@ describe("ReplayControl", () => {
       });
     });
 
+    describe("a key's telemetry tick feeds the remembered speed too", () => {
+      const paused = { ...REPLAY_4X, ReplayPlaySpeed: 0 } as TelemetryData;
+
+      it("remembers the speed a replay plays at while only keys are on the page", async () => {
+        await action.onWillAppear(keyEvent("key-1", { mode: "next-lap" }) as never);
+        nowReading(REPLAY_4X);
+
+        tickOf("key-1")(REPLAY_4X);
+
+        expect(rememberedSpeed()).toEqual({ speed: 4, slowMotion: false });
+        expect(dialSurface.onTick).not.toHaveBeenCalled();
+      });
+
+      it("a speed set and paused with no dial on the page is there when the dial's page comes back", async () => {
+        const eighthReverse = { ...REPLAY_4X, ReplayPlaySpeed: -7, ReplayPlaySlowMotion: true } as TelemetryData;
+        await action.onWillAppear(keyEvent("key-1", { mode: "play-pause" }) as never);
+        nowReading(eighthReverse);
+        tickOf("key-1")(eighthReverse);
+        nowReading(paused);
+        tickOf("key-1")(paused);
+
+        // The page changes: the key goes, the dial appears on a paused replay.
+        await action.onWillDisappear(keyEvent("key-1", { mode: "play-pause" }) as never);
+        await action.onWillAppear(dialEvent() as never);
+        tickOf("dial-1")(paused);
+
+        expect(rememberedSpeed()).toEqual({ speed: -8, slowMotion: true });
+      });
+
+      it("never feeds it from the car", async () => {
+        await action.onWillAppear(keyEvent("key-1", { mode: "play-pause" }) as never);
+        nowReading(NOT_PLAYING);
+
+        tickOf("key-1")(NOT_PLAYING);
+
+        expect(rememberedSpeed()).toEqual({ speed: 1, slowMotion: false });
+      });
+
+      it("leaves it alone on a disconnect", async () => {
+        await action.onWillAppear(keyEvent("key-1", { mode: "play-pause" }) as never);
+        nowReading(REPLAY_4X);
+        tickOf("key-1")(REPLAY_4X);
+
+        nowReading(null);
+        tickOf("key-1")(null);
+
+        expect(rememberedSpeed()).toEqual({ speed: 4, slowMotion: false });
+      });
+    });
+
     describe("the host the surface reads the action through", () => {
       it("says a replay is on screen through the post-seek blip, by the controller's debounced state", () => {
         nowReading(REPLAY_4X);

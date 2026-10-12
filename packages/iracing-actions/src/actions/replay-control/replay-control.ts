@@ -885,6 +885,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
 
       const prevStateKey = this.buildTelemetryStateKey(ev.action.id);
       this.updateTelemetryState(ev.action.id, telemetry);
+      this.rememberReplaySpeed(telemetry);
       const newStateKey = this.buildTelemetryStateKey(ev.action.id);
 
       const storedSettings = this.activeContexts.get(ev.action.id);
@@ -973,18 +974,27 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
 
   /**
    * One telemetry tick for a dial context: the shared speed cache first, then
-   * the speed Play/Pause resumes — which follows telemetry only while a replay
-   * is on screen, since out of one `ReplayPlaySpeed` says nothing about it —
-   * and last the dial's own screen, which redraws only on a change.
+   * the speed Play/Pause resumes, and last the dial's own screen, which
+   * redraws only on a change.
    */
   private onDialTelemetry(contextId: string, telemetry: TelemetryData | null): void {
     this.updateTelemetryState(contextId, telemetry);
+    this.rememberReplaySpeed(telemetry);
+    this.dialSurface.onTick(contextId);
+  }
 
+  /**
+   * Feeds one tick to the speed the dial's Play/Pause resumes
+   * (`replay-speed-state.ts`). Every context of this action calls it, keys
+   * included, so a speed set and paused while only keys are on the page is
+   * remembered when a dial's page comes back. Only while a replay is on
+   * screen: out of one, `ReplayPlaySpeed` says nothing about a replay. A speed
+   * set while no Replay Control context is visible at all is still not seen.
+   */
+  private rememberReplaySpeed(telemetry: TelemetryData | null): void {
     const current = telemetry ? replaySpeedFromTelemetry(telemetry) : null;
 
     if (current && this.sdkController.getReplayState().inReplay) noteTelemetrySpeed(current, Date.now());
-
-    this.dialSurface.onTick(contextId);
   }
 
   /**
