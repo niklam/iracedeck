@@ -4,7 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { _resetReplayCursor, claimReplayCursor, currentReplayCursorOwner } from "../../shared/replay-cursor.js";
 import type { ReplayDialModeIo, ReplaySpeed } from "./replay-control-dial-mode.js";
 import { REPLAY_DIAL_MODES, ReplayControlDialSettings } from "./replay-control-dial-settings.js";
-import { buildTriggerDescription, DIAL_MODES, ReplayControlDialSurface } from "./replay-control-dial-surface.js";
+import {
+  buildTriggerDescription,
+  DIAL_MODES,
+  ReplayControlDialSurface,
+  type ReplayDialReading,
+} from "./replay-control-dial-surface.js";
 import { frameJogMode } from "./replay-control-frame-jog.js";
 import { speedMode } from "./replay-control-speed-mode.js";
 import {
@@ -86,8 +91,14 @@ function replayAt(s: ReplaySpeed): TelemetryData {
 const env = {
   /** The host's debounced "a replay is on screen". */
   inReplay: true,
+  /** What a fresh telemetry read returns. */
   telemetry: null as TelemetryData | null,
 };
+
+/** A tick as the owning action hands it over, carrying `telemetry` (what a fresh read returns, unless given). */
+function tickOf(telemetry: TelemetryData | null = env.telemetry): ReplayDialReading {
+  return { telemetry, speed: telemetry ? replaySpeedFromTelemetry(telemetry) : null };
+}
 
 /** Telemetry catches up with a command: the replay now plays at `s`. */
 function nowPlaying(s: ReplaySpeed): void {
@@ -96,6 +107,8 @@ function nowPlaying(s: ReplaySpeed): void {
 
 const logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 const host = {
+  /** The fresh read; a mock so a test can count the native reads an entry takes. */
+  telemetry: vi.fn(() => env.telemetry),
   setLocalSpeed: vi.fn((_speed: number, _slowMotion: boolean) => undefined),
   jumpToLive: vi.fn(() => undefined),
   refreshKeys: vi.fn(() => undefined),
@@ -105,8 +118,7 @@ function makeSurface(): ReplayControlDialSurface {
   return new ReplayControlDialSurface({
     logger: logger as never,
     inReplay: () => env.inReplay,
-    telemetry: () => env.telemetry,
-    telemetrySpeed: () => (env.telemetry ? replaySpeedFromTelemetry(env.telemetry) : null),
+    telemetry: host.telemetry,
     setLocalSpeed: host.setLocalSpeed,
     jumpToLive: host.jumpToLive,
     refreshKeys: host.refreshKeys,
@@ -302,7 +314,7 @@ describe("ReplayControlDialSurface", () => {
       const { surface, ctx, d } = await onScreen(speed(1));
 
       surface.rotate(ctx as never, d, 1, false);
-      surface.onTick(ctx.id);
+      surface.onTick(ctx.id, tickOf());
       await settle();
 
       expect(shownValue(lastBox(ctx))).toBe("2x");
@@ -323,7 +335,7 @@ describe("ReplayControlDialSurface", () => {
 
       surface.rotate(ctx as never, d, 1, false);
       nowPlaying(speed(2));
-      surface.onTick(ctx.id);
+      surface.onTick(ctx.id, tickOf());
       // A key, or iRacing's own replay bar, sets 1/2x inside what was the hold.
       nowPlaying(speed(2, true));
       surface.rotate(ctx as never, d, 1, false);
@@ -343,6 +355,211 @@ describe("ReplayControlDialSurface", () => {
       expect(mocks.setPlaySpeed).toHaveBeenLastCalledWith(4, false);
       expect(shownValue(lastBox(ctx))).toBe("4x");
       expect(shownValue(lastBox(other))).toBe("4x");
+    });
+  });
+
+  describe("one reading of the replay per entry", () => {
+    /** Long enough for every throttle window and timer of the setup to be over. */
+    async function quiet(): Promise<void> {
+      await vi.advanceTimersByTimeAsync(2_000);
+      host.telemetry.mockClear();
+    }
+
+    it("a tick is evaluated against the tick it was handed, with no telemetry read of its own", async () => {
+      const { surface, ctx } = await onScreen(speed(1));
+      await quiet();
+
+      // The delivered tick says 2x; a fresh read would still say 1x.
+      surface.onTick(ctx.id, tickOf(replayAt(speed(2))));
+      await settle();
+
+      expect(shownValue(lastBox(ctx))).toBe("2x");
+      expect(host.telemetry).not.toHaveBeenCalled();
+    });
+
+    it("a tick that changes nothing reads nothing either", async () => {
+      const { surface, ctx } = await onScreen(speed(1));
+      await quiet();
+
+      for (let i = 0; i < 60; i++) surface.onTick(ctx.id, tickOf());
+
+      expect(host.telemetry).not.toHaveBeenCalled();
+    });
+
+    it("a turn takes one fresh read for everything it does, every dial's redraw included", async () => {
+      const { surface, ctx, d } = await onScreen(speed(1));
+      await appear(surface, dialContext("dial-2"));
+      await quiet();
+
+      surface.rotate(ctx as never, d, 1, false);
+
+      expect(mocks.setPlaySpeed).toHaveBeenCalledWith(2, false);
+      expect(host.telemetry).toHaveBeenCalledTimes(1);
+    });
+
+    it("a turn that sends nothing still takes no more than one", async () => {
+      const { surface, ctx, d } = await onScreen(speed(8));
+      await quiet();
+
+      surface.rotate(ctx as never, d, 1, false);
+
+      expect(host.telemetry).toHaveBeenCalledTimes(1);
+    });
+
+    it("a press takes none going down and one at its release", async () => {
+      const { surface, ctx, d } = await onScreen(speed(4));
+      await quiet();
+
+      surface.down(ctx as never, d);
+      expect(host.telemetry).not.toHaveBeenCalled();
+
+      await surface.up(ctx.id);
+      expect(mocks.pause).toHaveBeenCalledTimes(1);
+      expect(host.telemetry).toHaveBeenCalledTimes(1);
+    });
+
+    it("the hold preview's threshold takes one, and the release after it one more", async () => {
+      const { surface, ctx, d } = await onScreen(speed(4));
+      await quiet();
+
+      surface.down(ctx as never, d);
+      await vi.advanceTimersByTimeAsync(500);
+      expect(lastBox(ctx)).toContain("data-pending-bar");
+      expect(host.telemetry).toHaveBeenCalledTimes(1);
+
+      await surface.up(ctx.id);
+      expect(host.telemetry).toHaveBeenCalledTimes(2);
+    });
+
+    it("a touch takes one", async () => {
+      const d = dial({ tapAction: "play-pause" });
+      const { surface, ctx } = await onScreen(speed(4), d);
+      await quiet();
+
+      surface.touchTap(ctx as never, d, false);
+
+      expect(mocks.pause).toHaveBeenCalledTimes(1);
+      expect(host.telemetry).toHaveBeenCalledTimes(1);
+    });
+
+    it("a flush that builds its own frame takes one: a dial appearing", async () => {
+      nowPlaying(speed(1));
+      const surface = makeSurface();
+      const ctx = dialContext();
+      host.telemetry.mockClear();
+
+      await surface.willAppear(ctx as never, dial());
+      await settle();
+
+      expect(shownValue(lastBox(ctx))).toBe("1x");
+      expect(host.telemetry).toHaveBeenCalledTimes(1);
+    });
+
+    it("the lapse timer takes one", async () => {
+      const { surface, ctx, d } = await onScreen(PAUSED);
+      surface.rotate(ctx as never, d, 1, false);
+      await settle();
+      host.telemetry.mockClear();
+
+      await vi.advanceTimersByTimeAsync(DIAL_SPEED_HOLD_MS + 150);
+
+      expect(shownValue(lastBox(ctx))).toBe("PAUSED");
+      expect(host.telemetry).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps no reading between entries", async () => {
+      const { surface, ctx, d } = await onScreen(speed(1));
+
+      surface.rotate(ctx as never, d, 1, false);
+      expect(surface["entryReading"]).toBeNull();
+      expect(surface["inEntry"]).toBe(false);
+
+      surface.onTick(ctx.id, tickOf());
+      expect(surface["entryReading"]).toBeNull();
+
+      await press(surface, ctx, d);
+      expect(surface["entryReading"]).toBeNull();
+      expect(surface["inEntry"]).toBe(false);
+    });
+
+    it("never decides from an earlier entry's reading: what changed with no tick is seen by the next input", async () => {
+      noteTelemetrySpeed(speed(4), Date.now());
+      const { surface, ctx, d } = await onScreen(speed(4));
+      surface.onTick(ctx.id, tickOf());
+      await quiet();
+
+      // The replay is paused from iRacing's own bar, on a frame that delivers no tick.
+      nowPlaying(PAUSED);
+      await press(surface, ctx, d);
+
+      // Play/Pause read it fresh: it resumes, where the last tick's 4x would have paused.
+      expect(mocks.pause).not.toHaveBeenCalled();
+      expect(mocks.setPlaySpeed).toHaveBeenCalledWith(4, false);
+    });
+
+    it("a tick's reading does not outlive the tick", async () => {
+      const { surface, ctx, d } = await onScreen(speed(1));
+      await quiet();
+
+      // A stale tick is delivered last, then the dial is turned: the turn reads for itself.
+      nowPlaying(speed(4));
+      surface.onTick(ctx.id, tickOf(replayAt(speed(1))));
+      surface.rotate(ctx as never, d, 1, false);
+
+      expect(mocks.setPlaySpeed).toHaveBeenCalledWith(8, false);
+    });
+
+    it("drops the reading when an entry throws, so the next one reads for itself", async () => {
+      const { surface, ctx, d } = await onScreen(speed(1));
+      const rotate = vi.spyOn(speedMode, "rotate").mockImplementationOnce(() => {
+        throw new Error("mode failed");
+      });
+
+      expect(() => surface.rotate(ctx as never, d, 1, false)).toThrow("mode failed");
+      expect(surface["inEntry"]).toBe(false);
+      expect(surface["entryReading"]).toBeNull();
+
+      nowPlaying(speed(4));
+      surface.rotate(ctx as never, d, 1, false);
+
+      expect(mocks.setPlaySpeed).toHaveBeenCalledWith(8, false);
+      rotate.mockRestore();
+    });
+
+    it("a mode reading outside any entry gets a fresh reading each time, kept nowhere", async () => {
+      const { surface } = await onScreen(speed(1));
+      const io = surface["io"];
+
+      expect(io.liveSpeed()).toEqual(speed(1));
+
+      nowPlaying(speed(2));
+      expect(io.liveSpeed()).toEqual(speed(2));
+      expect(io.telemetry()).toBe(env.telemetry);
+      expect(surface["entryReading"]).toBeNull();
+    });
+  });
+
+  describe("a pause whose effect delivers no tick", () => {
+    it("is still shown by the lapse redraw, and the next Play/Pause resumes", async () => {
+      noteTelemetrySpeed(speed(1), Date.now());
+      const { surface, ctx, d } = await onScreen(speed(1));
+      surface.onTick(ctx.id, tickOf());
+
+      await press(surface, ctx, d);
+      expect(mocks.pause).toHaveBeenCalledTimes(1);
+
+      // The pause lands on a frame that does not advance SessionTick: a fresh
+      // read reports 0, and no subscriber is told.
+      nowPlaying(PAUSED);
+      await vi.advanceTimersByTimeAsync(DIAL_SPEED_HOLD_MS + 150);
+
+      expect(shownValue(lastBox(ctx))).toBe("PAUSED");
+      expect(shownCaption(lastBox(ctx))).toBe("► 1x");
+
+      await press(surface, ctx, d);
+
+      expect(mocks.pause).toHaveBeenCalledTimes(1);
+      expect(mocks.setPlaySpeed).toHaveBeenCalledWith(1, false);
     });
   });
 
@@ -422,7 +639,7 @@ describe("ReplayControlDialSurface", () => {
       const { surface, ctx, d } = await onScreen(PAUSED);
       surface.rotate(ctx as never, d, 1, false);
       nowPlaying(speed(4, true));
-      surface.onTick(ctx.id);
+      surface.onTick(ctx.id, tickOf());
       await settle();
       ctx.setDialCanvas.mockClear();
       const stampedAt = surface["renderThrottle"].lastImageSentAt.get(ctx.id);
@@ -478,7 +695,7 @@ describe("ReplayControlDialSurface", () => {
       expect(mocks.pause).toHaveBeenCalledTimes(1);
       expect(io.liveSpeed()).toEqual(PAUSED);
       // The tick still says 4x: the pause holds, like a sent speed does.
-      surface.onTick(ctx.id);
+      surface.onTick(ctx.id, tickOf());
       await vi.advanceTimersByTimeAsync(DIAL_SPEED_HOLD_MS - 1);
       expect(io.liveSpeed()).toEqual(PAUSED);
       expect(host.setLocalSpeed).toHaveBeenCalledWith(0, false);
@@ -911,7 +1128,7 @@ describe("ReplayControlDialSurface", () => {
 
       env.inReplay = true;
       nowPlaying(speed(2));
-      surface.onTick(ctx.id);
+      surface.onTick(ctx.id, tickOf());
       await settle();
 
       expect(lastBox(ctx)).not.toContain("data-dimmed");
@@ -925,7 +1142,7 @@ describe("ReplayControlDialSurface", () => {
       expect(lastBox(ctx)).not.toContain("data-dimmed");
 
       env.inReplay = false;
-      surface.onTick(ctx.id);
+      surface.onTick(ctx.id, tickOf());
       await settle();
 
       expect(lastBox(ctx)).toContain('data-dimmed="true"');
@@ -939,7 +1156,7 @@ describe("ReplayControlDialSurface", () => {
       const surface = makeSurface();
       const ctx = dialContext();
       await appear(surface, ctx);
-      surface.onTick(ctx.id);
+      surface.onTick(ctx.id, tickOf());
       await settle();
 
       expect(view).not.toHaveBeenCalled();
@@ -1126,7 +1343,7 @@ describe("ReplayControlDialSurface", () => {
     it("drops a tick: no frame for a context that is gone", async () => {
       const { surface, late } = await appearThenDisappear("late-tick");
 
-      surface.onTick("late-tick");
+      surface.onTick("late-tick", tickOf());
       await settle();
 
       expectNothingHappened(late);
@@ -1186,7 +1403,7 @@ describe("ReplayControlDialSurface", () => {
       const d = dial(overrides);
       const { surface, ctx } = await onScreen(speed(4), d);
       arrange();
-      surface.onTick(ctx.id);
+      surface.onTick(ctx.id, tickOf());
       await settle();
       ctx.setDialCanvas.mockClear();
 
@@ -1243,7 +1460,7 @@ describe("ReplayControlDialSurface", () => {
       surface.down(ctx as never, d);
       await vi.advanceTimersByTimeAsync(500);
       nowPlaying(speed(2));
-      surface.onTick(ctx.id);
+      surface.onTick(ctx.id, tickOf());
       await settle();
 
       expect(lastBox(ctx)).toContain("data-pending-bar");
@@ -1260,7 +1477,7 @@ describe("ReplayControlDialSurface", () => {
 
       // Still held: the release would now do nothing.
       env.inReplay = false;
-      surface.onTick(ctx.id);
+      surface.onTick(ctx.id, tickOf());
       await settle();
 
       expect(lastBox(ctx)).toContain('data-dimmed="true"');
@@ -1322,7 +1539,7 @@ describe("ReplayControlDialSurface", () => {
       expect(shownCaption(lastBox(ctx))).toBe("► 4x");
 
       nowPlaying(speed(4));
-      surface.onTick(ctx.id);
+      surface.onTick(ctx.id, tickOf());
       await settle();
       expect(shownCaption(lastBox(ctx))).toBe("");
     });
@@ -1369,7 +1586,7 @@ describe("ReplayControlDialSurface", () => {
       await surface.willAppear(ctx as never, dial());
 
       for (let frame = 0; frame < 600; frame += 1) {
-        surface.onTick(ctx.id);
+        surface.onTick(ctx.id, tickOf());
         await vi.advanceTimersByTimeAsync(16);
       }
 
@@ -1386,7 +1603,7 @@ describe("ReplayControlDialSurface", () => {
           ReplayFrameNum: frame,
           ReplaySessionTime: frame / 60,
         } as TelemetryData;
-        surface.onTick(ctx.id);
+        surface.onTick(ctx.id, tickOf());
         await vi.advanceTimersByTimeAsync(16);
       }
 
@@ -1397,7 +1614,7 @@ describe("ReplayControlDialSurface", () => {
       const { surface, ctx } = await onScreen(speed(1));
 
       nowPlaying(speed(-8));
-      surface.onTick(ctx.id);
+      surface.onTick(ctx.id, tickOf());
       await settle();
 
       expect(shownValue(lastBox(ctx))).toBe("-8x");
@@ -1409,7 +1626,7 @@ describe("ReplayControlDialSurface", () => {
       ctx.setDialCanvas.mockClear();
 
       nowPlaying(speed(2));
-      surface.onTick(ctx.id);
+      surface.onTick(ctx.id, tickOf());
       await settle();
 
       expect(ctx.setDialCanvas).toHaveBeenCalledTimes(1);
@@ -1438,7 +1655,7 @@ describe("ReplayControlDialSurface", () => {
 
       await vi.advanceTimersByTimeAsync(16);
       env.telemetry = { ...replayAt(PAUSED), ReplaySessionTime: 60 + 1 / 60 } as TelemetryData;
-      surface.onTick(ctx.id);
+      surface.onTick(ctx.id, tickOf());
 
       // No timer has run since the tick: the push was immediate, not a deferred flush.
       expect(ctx.setDialCanvas).toHaveBeenCalledTimes(1);
@@ -1505,7 +1722,7 @@ describe("ReplayControlDialSurface", () => {
 
       surface.rotate(ctx as never, d, 1, false);
       await press(surface, ctx, d);
-      surface.onTick(ctx.id);
+      surface.onTick(ctx.id, tickOf());
       await settle();
 
       expect(ctx.setDialCanvas).not.toHaveBeenCalled();
@@ -1550,9 +1767,9 @@ describe("ReplayControlDialSurface", () => {
       ctx.setDialCanvas.mockRejectedValueOnce(new Error("socket closed"));
 
       nowPlaying(speed(2));
-      surface.onTick(ctx.id);
+      surface.onTick(ctx.id, tickOf());
       await settle();
-      surface.onTick(ctx.id);
+      surface.onTick(ctx.id, tickOf());
       await settle();
 
       expect(shownValue(lastBox(ctx))).toBe("2x");

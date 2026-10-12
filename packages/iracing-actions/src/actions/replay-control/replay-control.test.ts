@@ -139,7 +139,7 @@ const dialSurface = vi.hoisted(() => ({
   down: vi.fn((_action: unknown, _dial: unknown) => {}),
   up: vi.fn(async (_actionId: string) => {}),
   touchTap: vi.fn((_action: unknown, _dial: unknown, _hold: boolean) => {}),
-  onTick: vi.fn((_actionId: string) => {}),
+  onTick: vi.fn((_actionId: string, _tick: unknown) => {}),
 }));
 
 vi.mock("./replay-control-dial-surface.js", () => ({
@@ -1667,7 +1667,33 @@ describe("ReplayControl", () => {
         tickOf("dial-1")(REPLAY_4X);
 
         expect(action["replaySpeed"].get("dial-1")).toBe(4);
-        expect(dialSurface.onTick).toHaveBeenCalledWith("dial-1");
+        expect(dialSurface.onTick).toHaveBeenCalledWith("dial-1", expect.anything());
+      });
+
+      it("hands the surface the tick itself with its speed decoded, so the surface reads nothing for it", async () => {
+        const quarterReverse = { ...REPLAY_4X, ReplayPlaySpeed: -3, ReplayPlaySlowMotion: true } as TelemetryData;
+        const noSpeed = { IsReplayPlaying: true } as TelemetryData;
+        await action.onWillAppear(dialEvent() as never);
+
+        tickOf("dial-1")(quarterReverse);
+        tickOf("dial-1")(noSpeed);
+        tickOf("dial-1")(null);
+
+        expect(dialSurface.onTick.mock.calls).toEqual([
+          ["dial-1", { telemetry: quarterReverse, speed: { speed: -4, slowMotion: true } }],
+          ["dial-1", { telemetry: noSpeed, speed: null }],
+          ["dial-1", { telemetry: null, speed: null }],
+        ]);
+        expect(dialSurface.onTick.mock.calls[0][1]).toHaveProperty("telemetry", quarterReverse);
+      });
+
+      it("leaves the speed cache alone on a tick that carries no speed", async () => {
+        await action.onWillAppear(dialEvent() as never);
+        tickOf("dial-1")(REPLAY_4X);
+
+        tickOf("dial-1")({ IsReplayPlaying: true } as TelemetryData);
+
+        expect(action["replaySpeed"].get("dial-1")).toBe(4);
       });
 
       it("feeds the remembered speed while a replay is on screen", async () => {
@@ -1721,7 +1747,7 @@ describe("ReplayControl", () => {
         tickOf("dial-1")(null);
 
         expect(action["replaySpeed"].get("dial-1")).toBe(0);
-        expect(dialSurface.onTick).toHaveBeenCalledWith("dial-1");
+        expect(dialSurface.onTick).toHaveBeenCalledWith("dial-1", { telemetry: null, speed: null });
         expect(rememberedSpeed()).toEqual({ speed: 4, slowMotion: false });
       });
     });
@@ -1792,89 +1818,30 @@ describe("ReplayControl", () => {
         expect(host().inReplay()).toBe(false);
       });
 
-      it("hands over the tick the dials were last handed, and the speed it carries, decoded", async () => {
+      it("hands over a fresh telemetry read every time, never the last tick a dial was delivered", async () => {
         expect(host().telemetry()).toBeNull();
-        expect(host().telemetrySpeed()).toBeNull();
 
-        const quarterReverse = { ...REPLAY_4X, ReplayPlaySpeed: -3, ReplayPlaySlowMotion: true } as TelemetryData;
-        await action.onWillAppear(dialEvent() as never);
-        tickOf("dial-1")(quarterReverse);
-        expect(host().telemetry()).toBe(quarterReverse);
-        expect(host().telemetrySpeed()).toEqual({ speed: -4, slowMotion: true });
-
-        const noSpeed = { IsReplayPlaying: true } as TelemetryData;
-        tickOf("dial-1")(noSpeed);
-        expect(host().telemetry()).toBe(noSpeed);
-        expect(host().telemetrySpeed()).toBeNull();
-
-        tickOf("dial-1")(null);
-        expect(host().telemetry()).toBeNull();
-        expect(host().telemetrySpeed()).toBeNull();
-      });
-
-      it("reads no telemetry of its own: what the surface asks for costs no further native read", async () => {
+        const paused = { ...REPLAY_4X, ReplayPlaySpeed: 0 } as TelemetryData;
         await action.onWillAppear(dialEvent() as never);
         nowReading(REPLAY_4X);
         tickOf("dial-1")(REPLAY_4X);
-        // Cleared after the tick: this suite's stepped replay state reads the
-        // telemetry itself, standing in for the controller's own poll.
+        expect(host().telemetry()).toBe(REPLAY_4X);
+
+        // The replay pauses on a frame that does not advance SessionTick: no tick is delivered.
+        nowReading(paused);
+
+        expect(host().telemetry()).toBe(paused);
+      });
+
+      it("reads the controller once per ask", async () => {
+        nowReading(REPLAY_4X);
         const read = vi.mocked(action["sdkController"].getCurrentTelemetry);
         read.mockClear();
 
-        for (let i = 0; i < 5; i++) {
-          host().telemetry();
-          host().telemetrySpeed();
-        }
+        host().telemetry();
+        host().telemetry();
 
-        expect(read).not.toHaveBeenCalled();
-      });
-
-      it("is seeded from the tick a dial appears on, before the surface draws its first frame", async () => {
-        nowReading(REPLAY_4X);
-        let seenAtAppear: TelemetryData | null = null;
-        dialSurface.willAppear.mockImplementationOnce(async () => {
-          seenAtAppear = host().telemetry();
-        });
-
-        await action.onWillAppear(dialEvent() as never);
-
-        expect(seenAtAppear).toBe(REPLAY_4X);
-        expect(host().telemetrySpeed()).toEqual({ speed: 4, slowMotion: false });
-      });
-
-      it("is not fed by a key's tick: the dials read the ticks the dials were handed", async () => {
-        await action.onWillAppear(keyEvent("key-1", { mode: "play-pause" }) as never);
-
-        tickOf("key-1")(REPLAY_4X);
-
-        expect(host().telemetry()).toBeNull();
-      });
-
-      it("forgets the tick when the last dial disappears, and keeps it while one remains", async () => {
-        const second = {
-          action: { id: "dial-2", isDial: () => true, setTitle: vi.fn(), setImage: vi.fn() },
-          payload: { settings: { mode: "play-pause", dial: DIAL } },
-        };
-        await action.onWillAppear(dialEvent() as never);
-        await action.onWillAppear(second as never);
-        tickOf("dial-1")(REPLAY_4X);
-
-        await action.onWillDisappear(dialEvent() as never);
-        expect(host().telemetry()).toBe(REPLAY_4X);
-
-        await action.onWillDisappear(second as never);
-        expect(host().telemetry()).toBeNull();
-        expect(host().telemetrySpeed()).toBeNull();
-      });
-
-      it("a key disappearing leaves the dials' tick alone", async () => {
-        await action.onWillAppear(keyEvent("key-1", { mode: "play-pause" }) as never);
-        await action.onWillAppear(dialEvent() as never);
-        tickOf("dial-1")(REPLAY_4X);
-
-        await action.onWillDisappear(keyEvent("key-1", { mode: "play-pause" }) as never);
-
-        expect(host().telemetry()).toBe(REPLAY_4X);
+        expect(read).toHaveBeenCalledTimes(2);
       });
 
       it("setLocalSpeed writes the speed cache of every context, keys and dials alike", async () => {

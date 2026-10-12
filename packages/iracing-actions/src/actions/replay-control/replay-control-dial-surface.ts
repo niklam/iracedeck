@@ -29,7 +29,7 @@ import {
   svgToDataUri,
 } from "@iracedeck/deck-core";
 import { getCommands } from "@iracedeck/deck-iracing";
-import type { TelemetryData } from "@iracedeck/iracing-sdk";
+import { replaySpeedFromTelemetry, type TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 
 import { type DialBoxArgs, renderDialBox, resolveDialBoxColors } from "../../shared/dial-box.js";
@@ -87,16 +87,26 @@ export interface ReplayControlDialHost {
    * every seek.
    */
   inReplay(): boolean;
-  /** The latest telemetry tick, or null without one. */
+  /**
+   * A fresh reading of the telemetry (`getCurrentTelemetry()`, a native
+   * read), or null without one. Never the last tick a subscriber was handed:
+   * ticks are delivered only when `SessionTick` advances, and on a paused or
+   * scrubbed replay the content changes without it.
+   */
   telemetry(): TelemetryData | null;
-  /** The replay speed the latest tick carries (`replaySpeedFromTelemetry`), or null. */
-  telemetrySpeed(): ReplaySpeed | null;
   /** The action's own optimistic speed cache, so the keypad's speed icons follow a dial send at once. */
   setLocalSpeed(speed: number, slowMotion: boolean): void;
   /** The keypad's Jump to Live, which takes the replay cursor itself, under its own mode name (`jump-to-live`). */
   jumpToLive(): void;
   /** Redraws the keypad keys whose icon follows the replay speed. */
   refreshKeys(): void;
+}
+
+/** One reading of the replay: the telemetry and the replay speed it carries, decoded once. */
+export interface ReplayDialReading {
+  readonly telemetry: TelemetryData | null;
+  /** `replaySpeedFromTelemetry` of {@link telemetry}; null without telemetry or without a speed in it. */
+  readonly speed: ReplaySpeed | null;
 }
 
 /** What a gesture runs against. */
@@ -293,6 +303,12 @@ export class ReplayControlDialSurface {
    */
   private holdLapseTimer: ReturnType<typeof setTimeout> | null = null;
 
+  /** Whether a synchronous entry ({@link withReading}) is running. */
+  private inEntry = false;
+
+  /** The reading the running entry works from, once it has asked for one; null between entries. */
+  private entryReading: ReplayDialReading | null = null;
+
   constructor(private readonly host: ReplayControlDialHost) {
     const send: ReplayDialModeIo["send"] = (owner, run) => {
       // Takes the cursor from an in-flight Jump to Fastest Lap walk (#1203): a
@@ -306,8 +322,8 @@ export class ReplayControlDialSurface {
 
     this.io = {
       logger: host.logger,
-      liveSpeed: () => resolveLiveSpeed(this.host.telemetrySpeed(), Date.now()),
-      telemetry: () => this.host.telemetry(),
+      liveSpeed: () => resolveLiveSpeed(this.reading().speed, Date.now()),
+      telemetry: () => this.reading().telemetry,
       send,
       setSpeed: (owner, target) => {
         const sent = send(owner, (replay) => replay.setPlaySpeed(target.speed, target.slowMotion));
@@ -377,22 +393,24 @@ export class ReplayControlDialSurface {
 
     if (!ctx) return;
 
-    if (pressed) {
-      ctx.rotatedWhilePressed = true;
-      // The release will fire nothing, so a showing preview goes at once (#1120).
-      ctx.holdPreview.rotated();
-    }
+    this.withReading(() => {
+      if (pressed) {
+        ctx.rotatedWhilePressed = true;
+        // The release will fire nothing, so a showing preview goes at once (#1120).
+        ctx.holdPreview.rotated();
+      }
 
-    if (ticks === 0) return;
+      if (ticks === 0) return;
 
-    if (!this.isReplayOnScreen()) {
-      this.host.logger.debug("Dial rotate: no replay on screen, and iRacing ignores replay commands from the car");
+      if (!this.isReplayOnScreen()) {
+        this.host.logger.debug("Dial rotate: no replay on screen, and iRacing ignores replay commands from the car");
 
-      return;
-    }
+        return;
+      }
 
-    DIAL_MODES[ctx.dial.mode].rotate(ticks, ctx.dial, this.io);
-    this.renderAll();
+      DIAL_MODES[ctx.dial.mode].rotate(ticks, ctx.dial, this.io);
+      this.renderAll();
+    });
   }
 
   down(action: IDeckActionContext, dial: ReplayControlDialSettings): void {
@@ -410,8 +428,11 @@ export class ReplayControlDialSurface {
   async up(actionId: string): Promise<void> {
     const ctx = this.contexts.get(actionId);
 
-    if (!ctx) return;
+    if (ctx) this.withReading(() => this.release(ctx));
+  }
 
+  /** A release: the preview goes, the press is classified, and its gesture slot runs. */
+  private release(ctx: ReplayControlDialContext): void {
     // Disarm and revert FIRST — every early return below still needs the
     // screen put back (#1120, trap 4).
     ctx.holdPreview.up();
@@ -452,27 +473,71 @@ export class ReplayControlDialSurface {
     if (gesture === "none") return;
 
     this.host.logger.info(hold ? "Replay control dial long touch" : "Replay control dial tap");
-    this.runGesture(gesture);
+    this.withReading(() => this.runGesture(gesture));
   }
 
   /**
    * Per SDK tick: redraw only when what the screen shows would change — a
    * paused replay, or one playing at a steady speed, pushes nothing. A changed
-   * tick hands the frame it built to the flush, so it is built once.
+   * tick hands the frame it built to the flush, so it is built once. The frame
+   * is evaluated against `tick`, the reading the owning action was just
+   * handed, so this path takes no telemetry read of its own.
    */
-  onTick(actionId: string): void {
+  onTick(actionId: string, tick: ReplayDialReading): void {
     const ctx = this.contexts.get(actionId);
 
-    if (ctx) this.scheduleIfChanged(ctx);
+    if (ctx) this.withReading(() => this.scheduleIfChanged(ctx), tick);
+  }
+
+  /**
+   * Runs one synchronous entry — a turn, a release, a touch, a tick, the hold
+   * preview's threshold, the lapse timer, a flush that builds its own frame —
+   * against ONE reading of the replay: `tick` where the entry was handed one,
+   * otherwise a fresh read taken the first time the entry asks. Everything the
+   * entry does synchronously sees that reading, and it is dropped when the
+   * entry returns or throws, so no entry ever works from an earlier one's. An
+   * entry started inside another (a flush the throttle runs at once) shares
+   * the outer one's reading.
+   */
+  private withReading<T>(run: () => T, tick?: ReplayDialReading): T {
+    if (this.inEntry) return run();
+
+    this.inEntry = true;
+    this.entryReading = tick ?? null;
+
+    try {
+      return run();
+    } finally {
+      this.inEntry = false;
+      this.entryReading = null;
+    }
+  }
+
+  /**
+   * The reading to decide from now: the running entry's, taken on first use,
+   * or — for a caller outside any entry — a fresh one that is not kept.
+   */
+  private reading(): ReplayDialReading {
+    if (!this.inEntry) return this.readFresh();
+
+    this.entryReading ??= this.readFresh();
+
+    return this.entryReading;
+  }
+
+  private readFresh(): ReplayDialReading {
+    const telemetry = this.host.telemetry();
+
+    return { telemetry, speed: telemetry ? replaySpeedFromTelemetry(telemetry) : null };
   }
 
   /**
    * Whether a command would do anything: a replay on screen (the debounced
-   * state, so the ~300 ms after a seek still count) and a telemetry tick to
-   * read the speed from. Without both, every input is a no-op and the box dims.
+   * state, so the ~300 ms after a seek still count) and telemetry to read the
+   * speed from. Without both, every input is a no-op and the box dims.
    */
   private isReplayOnScreen(): boolean {
-    return this.host.inReplay() && this.host.telemetry() !== null;
+    return this.host.inReplay() && this.reading().telemetry !== null;
   }
 
   /** Runs a gesture slot's assignment; outside a replay it sends nothing. */
@@ -510,7 +575,7 @@ export class ReplayControlDialSurface {
     this.clearHoldLapseTimer();
     this.holdLapseTimer = setTimeout(() => {
       this.holdLapseTimer = null;
-      this.renderAll();
+      this.withReading(() => this.renderAll());
     }, DIAL_SPEED_HOLD_MS + HOLD_LAPSE_MARGIN_MS);
   }
 
@@ -538,15 +603,17 @@ export class ReplayControlDialSurface {
 
   /** The hold-preview threshold callback: draws the outcome and says whether it did. Fires nothing. */
   private showHoldPreview(ctx: ReplayControlDialContext): boolean {
-    const preview = this.resolvePreview(ctx);
+    return this.withReading(() => {
+      const preview = this.resolvePreview(ctx);
 
-    if (!preview) return false;
+      if (!preview) return false;
 
-    ctx.preview = preview;
-    this.host.logger.debug(`Replay control dial hold preview: ${preview.text}`);
-    this.scheduleRender(ctx);
+      ctx.preview = preview;
+      this.host.logger.debug(`Replay control dial hold preview: ${preview.text}`);
+      this.scheduleRender(ctx);
 
-    return true;
+      return true;
+    });
   }
 
   /** The hold-preview cancel callback: back to the normal screen. */
@@ -712,7 +779,8 @@ export class ReplayControlDialSurface {
 
     if (!canvas) return;
 
-    const { args, sig } = built ?? this.buildFrame(ctx);
+    // A flush that was not handed a frame builds its own, from one fresh reading.
+    const { args, sig } = built ?? this.withReading(() => this.buildFrame(ctx));
 
     if (sig === ctx.lastRenderSig) return;
 

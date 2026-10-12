@@ -91,7 +91,6 @@ import {
   STABILIZATION_POLL_INTERVAL_MS,
   STABILIZATION_TIMEOUT_MULTIPLIER,
 } from "../../shared/replay-timing.js";
-import type { ReplaySpeed } from "./replay-control-dial-mode.js";
 import { replayControlDialField } from "./replay-control-dial-settings.js";
 import { ReplayControlDialSurface } from "./replay-control-dial-surface.js";
 import { formatSpeedDisplay, parseSpeedSetting } from "./replay-speed-format.js";
@@ -775,15 +774,6 @@ const ReplayControlSettings = CommonSettings.extend({
 
 type ReplayControlSettings = z.infer<typeof ReplayControlSettings>;
 
-/** A telemetry tick as the dial surface reads it: the tick and its replay speed, decoded once. */
-interface DialTick {
-  readonly telemetry: TelemetryData | null;
-  readonly speed: ReplaySpeed | null;
-}
-
-/** What the dial surface reads with no dial on screen. */
-const NO_DIAL_TICK: DialTick = { telemetry: null, speed: null };
-
 /**
  * Replay Control
  * Unified replay action combining transport, speed, and navigation controls.
@@ -836,27 +826,15 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     // The controller's debounced state (#1324): raw `IsReplayPlaying` reads
     // false for ~300 ms after every seek, which would drop detents after one.
     inReplay: () => this.sdkController.getReplayState().inReplay,
-    // The tick the dials were last handed, never a read of its own: the
-    // surface asks several times per dial per tick, and
-    // `getCurrentTelemetry()` is a native read.
-    telemetry: () => this.dialTick.telemetry,
-    telemetrySpeed: () => this.dialTick.speed,
+    // A fresh read every time, never the last tick delivered: a subscriber is
+    // told only when `SessionTick` advances, and a paused or scrubbed replay
+    // changes without it. The surface takes one per entry; a tick brings its own.
+    telemetry: () => this.sdkController.getCurrentTelemetry(),
     setLocalSpeed: (speed, slowMotion) => this.setLocalSpeed(speed, slowMotion),
     // The keypad's own Jump to Live, cursor take and replay-state note included.
     jumpToLive: () => this.executeMode("__dial__", this.parseSettings({ mode: "jump-to-live" })),
     refreshKeys: () => this.updateAllTelemetryDisplays(),
   });
-
-  /** The dial contexts on screen; the last one leaving drops {@link dialTick}. */
-  private readonly dialContexts = new Set<string>();
-
-  /**
-   * The latest tick a dial context was handed, with the replay speed it
-   * carries decoded once: what the dial surface reads the replay through.
-   * Seeded when a dial appears, replaced by every dial tick, and empty with no
-   * dial on screen.
-   */
-  private dialTick: DialTick = NO_DIAL_TICK;
 
   override async onWillAppear(ev: IDeckWillAppearEvent<ReplayControlSettings>): Promise<void> {
     await super.onWillAppear(ev);
@@ -864,15 +842,11 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
 
     if (ev.action.isDial()) {
       const contextId = ev.action.id;
-      // The tick the surface draws its first frame from: no dial tick has run yet.
-      const telemetry = this.sdkController.getCurrentTelemetry();
 
-      this.dialContexts.add(contextId);
-      this.dialTick = { telemetry, speed: telemetry ? replaySpeedFromTelemetry(telemetry) : null };
       await this.dialSurface.willAppear(ev.action, settings.dial);
       // A dial joins the speed cache and the telemetry subscription, but never
       // the key contexts: it has no key icon and no binding.
-      this.seedTelemetryState(contextId, telemetry);
+      this.seedTelemetryState(contextId, this.sdkController.getCurrentTelemetry());
       this.sdkController.subscribe(contextId, (telemetry: TelemetryData | null) =>
         this.onDialTelemetry(contextId, telemetry),
       );
@@ -916,9 +890,6 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
   override async onWillDisappear(ev: IDeckWillDisappearEvent<ReplayControlSettings>): Promise<void> {
     this.repeat.clear(ev.action.id);
     this.dialSurface.willDisappear(ev.action.id);
-
-    if (this.dialContexts.delete(ev.action.id) && this.dialContexts.size === 0) this.dialTick = NO_DIAL_TICK;
-
     await super.onWillDisappear(ev);
     this.sdkController.unsubscribe(ev.action.id);
     this.replaySpeed.delete(ev.action.id);
@@ -987,15 +958,13 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
   }
 
   /**
-   * One telemetry tick for a dial context. The tick is kept for the surface to
-   * read, and its replay speed is decoded once for all three uses: the shared
-   * speed cache, the speed Play/Pause resumes, and the dial's own screen,
-   * which redraws only on a change.
+   * One telemetry tick for a dial context. Its replay speed is decoded once
+   * for all three uses: the shared speed cache, the speed Play/Pause resumes,
+   * and the dial's own screen, which is handed the tick so comparing its frame
+   * costs no telemetry read and redraws only on a change.
    */
   private onDialTelemetry(contextId: string, telemetry: TelemetryData | null): void {
     const speed = telemetry ? replaySpeedFromTelemetry(telemetry) : null;
-
-    this.dialTick = { telemetry, speed };
 
     // The keypad's `updateTelemetryState`, from the speed already decoded: no
     // telemetry reads as paused, and a tick with no speed leaves the cache.
@@ -1005,7 +974,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     }
 
     this.rememberReplaySpeed(telemetry, speed);
-    this.dialSurface.onTick(contextId);
+    this.dialSurface.onTick(contextId, { telemetry, speed });
   }
 
   /**
