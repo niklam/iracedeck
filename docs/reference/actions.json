@@ -423,6 +423,11 @@
               "additionalSettings": ["fastestLapTarget"],
               "description": "Jump the replay to the fastest lap of either the viewed car or always your own car: looked up in the lap record iRaceDeck keeps live (lands about 1 s before the line, then keeps, starts or stops playback as the Replay jump playback global setting says), falling back to a replay search when the lap was not recorded (session-scoped; no dial support)"
             },
+            {
+              "value": "jump-to-green-flag",
+              "label": "Jump to Green Flag",
+              "description": "Jump a race replay to five seconds before the race start's green flag and play from there, without changing the camera: looked up in the green record iRaceDeck keeps live (a single jump), falling back to five seconds before the pole car starts lap 1 when the green was not recorded (from the lap record, else a replay search). Targets the race session the replay cursor is in, otherwise the last race in the replay; the key greys out when the replay holds no race session (no dial support)"
+            },
             { "value": "next-car", "label": "Next Car" },
             { "value": "prev-car", "label": "Previous Car" },
             {

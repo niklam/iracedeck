@@ -3,7 +3,7 @@ title: Replay Control
 description: Full replay transport, speed, and navigation in a single configurable action.
 sidebar:
   badge:
-    text: "27 modes"
+    text: "28 modes"
     variant: tip
 ---
 
@@ -422,6 +422,33 @@ Which driver's fastest lap the button jumps to. Defaults to **Viewed Car**.
 
 - **Viewed Car** — the car the replay camera is currently focused on
 - **Always my car** — your own car, regardless of where the camera is pointed (the camera also moves onto your car so the lap you jump to is what you actually see)
+
+---
+
+### Jump to Green Flag
+
+Jump a race replay to five seconds before the green flag of the race start, and play from there. On a standing start that shows the grid under the lights; on a rolling start, the field coming to the line. The camera is not changed, so you keep watching the car you chose.
+
+While a session runs live, iRaceDeck records the frame at which the race goes green, in the same per-session replay record that [Jump to Fastest Lap](#jump-to-fastest-lap) uses. With that record the press is a single jump, in the in-session replay and in a saved replay opened later alike. A saved replay lands about a second earlier, so roughly six seconds before the green. An offline session (an AI race or a test drive) keeps its record in memory only, for as long as the sim session lasts. Like the lap record, it is kept per deck app, so another deck app has no record of that session and uses the fallback below.
+
+Without a record — iRaceDeck was not running at the green, the replay file is someone else's, or the replay was recorded before iRaceDeck 3.6 — the press falls back to an approximation: five seconds before the pole car starts lap 1. When the lap record has that lap, which replays recorded by iRaceDeck 3.4 and 3.5 do, it is still a single jump. Otherwise the button searches the replay for it. That is the same search Jump to Fastest Lap falls back to, paced by the **Fastest Lap Search Delay** on the **Delays** tab of the [Settings window](/docs/getting-started/settings/#delays). The search briefly switches the camera to the pole car, and puts it back on the car you were watching before it plays. When the replay has no qualifying grid, the car the camera is on stands in for the pole car.
+
+The fallback lands close because the pole car takes the line first: its lap 1 starts a second or two after the green at most, and the five-second lead-in absorbs that. Two cases are known to miss. A pole sitter who started from the pit lane crosses the line late, so the replay lands after the green. On a track whose standing-start grid sits well behind the timing line, it lands correspondingly early.
+
+In a replay with several sessions the button goes to the race. When the replay cursor is in a race session it uses that one, so inside a heat it goes to that heat's green. From practice, qualifying or a warmup it goes to the last race in the replay.
+
+The key turns grey only when the replay holds no race session at all, such as a practice-only or test-drive replay: grey colours and faded artwork, the same look [Replay Markers](/docs/actions/view-camera/replay-markers/#next-marker) keys have when a press would do nothing. A missing record does not grey the key, because the fallback can still land. From the car, with no replay open, a press does nothing, like every other Replay Control jump, and the key does not turn grey. A press while a jump or a search is still running is ignored.
+
+#### Details
+
+- **Method:** iRacing API
+- **Dial:** No rotation support
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** Yes — greyed out while the replay holds no race session
+
+#### Settings
+
+- No additional settings
 
 ---
 
