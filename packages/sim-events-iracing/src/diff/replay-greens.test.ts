@@ -260,8 +260,7 @@ describe("diffReplayGreens", () => {
       expect(run(state, tick({ flags: GREEN_UNDER_CAUTION }))).toEqual([]);
       // The caution bit outlives the green and drops under it: no rising edge.
       expect(run(state, tick({ flags: PLAIN_GREEN }))).toEqual([]);
-      expect(state.replayGreensCautionOut).toBe(false);
-      // …and the latch did not outlive the caution: the next plain green of
+      // …and the caution did not outlive its bits: the next plain green of
       // the race is not a restart.
       run(state, tick({ flags: RACING }));
       expect(run(state, tick({ flags: PLAIN_GREEN }))).toEqual([]);
@@ -287,7 +286,6 @@ describe("diffReplayGreens", () => {
       // an absent entry, never a wrong one.
       throwCaution();
       expect(run(state, tick({ flags: RACING }))).toEqual([]);
-      expect(state.replayGreensCautionOut).toBe(false);
 
       expect(run(state, tick({ flags: RESTART }))).toEqual([]);
     });
@@ -377,16 +375,6 @@ describe("diffReplayGreens", () => {
       ]);
     });
 
-    it("drops the caution latch on an ineligible tick", () => {
-      run(state, tick({ flags: RACING }));
-      run(state, tick({ flags: STATIC }));
-      expect(state.replayGreensCautionOut).toBe(true);
-
-      run(state, tick({ flags: STATIC, replay: true }));
-
-      expect(state.replayGreensCautionOut).toBe(false);
-    });
-
     it("misses a restart taken behind a replay glance: the first tick back only re-seeds", () => {
       run(state, tick({ flags: RACING }));
       run(state, tick({ flags: STATIC }));
@@ -406,7 +394,6 @@ describe("diffReplayGreens", () => {
       // Back with the caution still out: the seed tick is an eligible tick
       // with a caution bit set.
       expect(run(state, tick({ flags: STATIC }))).toEqual([]);
-      expect(state.replayGreensCautionOut).toBe(true);
       expect(run(state, tick({ flags: RESTART, frame: 72_000 })).map((e) => e.data)).toEqual([
         { ...IDENTITY, kind: "restart", frame: 72_000, sessionTimeMs: 500_000 },
       ]);
@@ -448,7 +435,6 @@ describe("diffReplayGreens", () => {
 
       // The new instance opens on the green's own tick: a seed, not a restart.
       expect(run(state, tick({ flags: RESTART, uniqueId: 5 }))).toEqual([]);
-      expect(state.replayGreensCautionOut).toBe(false);
       run(state, tick({ flags: RACING, uniqueId: 5 }));
       expect(run(state, tick({ flags: RESTART, uniqueId: 5 }))).toEqual([]);
     });

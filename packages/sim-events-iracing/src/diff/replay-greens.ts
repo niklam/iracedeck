@@ -26,11 +26,12 @@
  *   (`isRestartGreenEdge`, the predicate `caution.restarted` is decided by —
  *   shared with `caution.ts`, not copied), while a caution is out. A green
  *   rising with `Caution` still set — a yellow-checkered tick — is not one.
- *   "A caution is out" is this diff's own latch, because the caution phase it
- *   would otherwise read is wiped on every replay tick: a caution bit was set
- *   on the previous eligible tick of this session. Like that phase it falls
- *   the moment neither bit is set, so the restart is the green rising on the
- *   tick the bits drop, which is what both #1127 captures show (oval
+ *   "A caution is out" is this diff's own reading, because the caution phase
+ *   it would otherwise read is wiped on every replay tick: a caution bit was
+ *   set on the previous eligible tick of this session, which the flags
+ *   baseline already holds. Like that phase it falls the moment neither bit is
+ *   set, so the restart is the green rising on the tick the bits drop, which
+ *   is what both #1127 captures show (oval
  *   `0x10044600` → `0x80040004`). The unmeasured orderings — the bits dropping
  *   a tick before or after the green rises — record nothing, as they announce
  *   nothing: an absent entry, never a wrong one. A latch left standing past
@@ -46,16 +47,17 @@
  *   nothing rather than guessing. Resolved only on a tick that has an edge.
  * - **Gate: the replay recorders' own** (`resolveReplayRecordTick`,
  *   `replay-record-gate.ts`). Every ineligible tick — a replay, the seek blip,
- *   a saved replay, `SessionNum` −1, no frame — marks the recorder unseeded
- *   and drops the caution latch; the first eligible tick after it re-seeds
- *   without emitting, even across a `Racing` flip. So a driver who sat in the
+ *   a saved replay, `SessionNum` −1, no frame — marks the recorder unseeded;
+ *   the first eligible tick after it re-seeds every baseline, the flags the
+ *   caution is read from included, without emitting, even across a `Racing`
+ *   flip. So a driver who sat in the
  *   garage through the green (where iRacing reports `IsReplayPlaying: true`)
  *   gets no start entry and the press falls back, and a restart taken behind a
  *   replay glance is simply absent. This is why the diff runs BEFORE the
  *   translator's replay guard: the guard's early return would stop it on
  *   exactly the ticks it has to notice it cannot see.
- * - **Session change** (`SessionNum` or `SessionUniqueID` moves) re-seeds, and
- *   the latch is re-read from the new session's flags.
+ * - **Session change** (`SessionNum` or `SessionUniqueID` moves) re-seeds, so
+ *   a caution of the old session is never read into the new one.
  * - **The payload is the edge tick's own**: `frame` is the gate's frame —
  *   `ReplayFrameNumEnd`, recorded raw like a lap start (#1162: no lag
  *   correction) — and `sessionTimeMs` is `SessionTime` in whole milliseconds,
@@ -85,6 +87,11 @@ const PRE_GREEN_STATES: ReadonlySet<number> = new Set([
   SessionState.ParadeLaps,
 ]);
 
+/** Whether a full-course caution is out on a tick: either caution bit. */
+function isCautionOut(flags: number): boolean {
+  return hasFlag(flags, Flags.Caution) || hasFlag(flags, Flags.CautionWaving);
+}
+
 /** `SessionFlags` as unsigned hex — `StartGo` is the sign bit, and a signed print would hide it. */
 function hex(flags: number): string {
   return `0x${(flags >>> 0).toString(16).padStart(8, "0")}`;
@@ -106,7 +113,6 @@ export function diffReplayGreens(
 
   if (live === null) {
     state.replayGreensSeeded = false;
-    state.replayGreensCautionOut = false;
 
     return;
   }
@@ -114,7 +120,6 @@ export function diffReplayGreens(
   const { sessionNum, sessionUniqueId, frame } = live;
   const sessionState = typeof telemetry.SessionState === "number" ? telemetry.SessionState : SessionState.Invalid;
   const flags = telemetry.SessionFlags ?? 0;
-  const cautionOut = hasFlag(flags, Flags.Caution) || hasFlag(flags, Flags.CautionWaving);
 
   const seeding =
     !state.replayGreensSeeded ||
@@ -122,16 +127,13 @@ export function diffReplayGreens(
     sessionUniqueId !== state.replayGreensSessionUniqueId;
   const wasSessionState = state.replayGreensLastSessionState;
   const wasFlags = state.replayGreensLastFlags;
-  const wasCautionOut = state.replayGreensCautionOut;
 
-  // The baselines advance on every eligible tick, the seed included, and the
-  // latch with them: it says what THIS tick's flags say, for the next tick.
+  // The baselines advance on every eligible tick, the seed included.
   state.replayGreensSeeded = true;
   state.replayGreensSessionNum = sessionNum;
   state.replayGreensSessionUniqueId = sessionUniqueId;
   state.replayGreensLastSessionState = sessionState;
   state.replayGreensLastFlags = flags;
-  state.replayGreensCautionOut = cautionOut;
 
   if (seeding || sessionState !== SessionState.Racing) return;
 
@@ -139,7 +141,7 @@ export function diffReplayGreens(
   let kind: "start" | "restart" | null = null;
 
   if (PRE_GREEN_STATES.has(wasSessionState)) kind = "start";
-  else if (wasCautionOut && isRestartGreenEdge(wasFlags, flags)) kind = "restart";
+  else if (isCautionOut(wasFlags) && isRestartGreenEdge(wasFlags, flags)) kind = "restart";
 
   // Resolved on an edge, not per tick: a session-YAML lookup for a moment
   // that comes a handful of times a race is wasted on every other tick.

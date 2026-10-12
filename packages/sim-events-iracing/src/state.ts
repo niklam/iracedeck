@@ -1337,17 +1337,16 @@ export type TranslatorState = {
    * pre-green state for that edge.
    */
   replayGreensLastSessionState: number;
-  /** `SessionFlags` on the previous eligible tick, the baseline a `Green` rising edge is read against. */
-  replayGreensLastFlags: number;
   /**
-   * The recorder's own "a caution is out" latch: a caution bit (`Caution` or
-   * `CautionWaving`) was set on the previous eligible tick of this session.
-   * It stands in for `cautionPhase`, which is wiped on every replay tick, and
-   * like that phase it falls the moment neither bit is set — so a restart is
-   * the green rising on the tick the caution bits drop. Cleared with the seed
-   * flag by an ineligible tick, and re-read from the flags by every seed.
+   * `SessionFlags` on the previous eligible tick: the baseline a `Green`
+   * rising edge is read against, and the recorder's own "a caution is out" —
+   * a caution bit (`Caution` or `CautionWaving`) set on that tick. It stands
+   * in for `cautionPhase`, which is wiped on every replay tick, and like that
+   * phase it falls the moment neither bit is set, so a restart is the green
+   * rising on the tick the caution bits drop. Re-seeded, with the rest, by the
+   * first eligible tick after an ineligible one.
    */
-  replayGreensCautionOut: boolean;
+  replayGreensLastFlags: number;
 
   // ── Opponent penalty flags (issue #936) ───────────────────────────────
   /** First tick seeds the per-car penalty-bit store silently. */
@@ -1886,7 +1885,6 @@ export function createInitialState(): TranslatorState {
     replayGreensSessionUniqueId: null,
     replayGreensLastSessionState: 0,
     replayGreensLastFlags: 0,
-    replayGreensCautionOut: false,
 
     opponentFlagsInitialized: false,
     opponentFlagSeededAt: 0,

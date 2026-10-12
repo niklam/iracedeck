@@ -2078,8 +2078,9 @@ function wipeStateForReplay(self: TranslatorInstance): void {
     // pointedly NOT preserved: they are previous-tick counters a replay view
     // makes meaningless, and the pre-guard diff re-seeds them from the first
     // live tick back — which is exactly what a return from a replay needs.
-    // The replay green record's baselines and its caution latch (issue #1354,
-    // `replayGreens*`) are NOT preserved either, for the same reason: the
+    // The replay green record's baselines (issue #1354, `replayGreens*`), the
+    // flags its caution is read from among them, are NOT preserved either, for
+    // the same reason: the
     // session state and flags of the tick before a replay say nothing about
     // the tick after it, and an edge read across the two would put a frame in
     // the file for a green nobody watched. Its pre-guard diff re-seeds too.
