@@ -3327,6 +3327,9 @@
     "speed": {
       "method": "api"
     },
+    "frame-jog": {
+      "method": "api"
+    },
     "play-pause": {
       "method": "api"
     },
