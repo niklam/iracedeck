@@ -611,12 +611,13 @@ What a short or long press of the dial button does, in either Mode, chosen from:
 - **Set 1x and Play** (default for **Long Press**) — plays forward at normal speed, whatever the replay was doing: the quick way out of a rewind, slow motion or pause.
 - **Reverse Direction** — flips the direction and keeps the speed: 4x becomes −4x, and 1/2x becomes −1/2x. While paused it flips the speed that **Play / Pause** will resume instead, and the replay stays paused — in Speed Control the caption changes direction at once.
 - **Jump to Live** — jumps to the live point in the session, exactly like the [Jump to Live](#jump-to-live) key.
+- **Jump to Green Flag** — jumps to five seconds before the race start, exactly like the [Jump to Green Flag](#jump-to-green-flag) key, record, fallback and all. On a Mirabox knob, set **Press Action** to it to have the jump a race review starts from on the knob itself.
 - **None** — does nothing.
 
-A press is classified when you release the dial — a hold past the [Long-press threshold](/docs/features/dials/#the-long-press-threshold) fires the Long Press action. Hold past the threshold and the strip previews what letting go will do: `► 1x` for Set 1x and Play; `PAUSE`, or the speed it will resume (such as `► 4x`), for Play / Pause; the reversed speed (such as `◄ 4x`) for Reverse Direction; and `LIVE` for Jump to Live. From the car, where the release would do nothing, the strip stays as it is. See [Seeing the outcome before you let go](/docs/features/dials/#seeing-the-outcome-before-you-let-go). Long Press is Stream Deck+ only.
+A press is classified when you release the dial — a hold past the [Long-press threshold](/docs/features/dials/#the-long-press-threshold) fires the Long Press action. Hold past the threshold and the strip previews what letting go will do: `► 1x` for Set 1x and Play; `PAUSE`, or the speed it will resume (such as `► 4x`), for Play / Pause; the reversed speed (such as `◄ 4x`) for Reverse Direction; `LIVE` for Jump to Live; and `GREEN` for Jump to Green Flag. From the car, where the release would do nothing, the strip stays as it is, and so it does for Jump to Green Flag in a replay with no race session. See [Seeing the outcome before you let go](/docs/features/dials/#seeing-the-outcome-before-you-let-go). Long Press is Stream Deck+ only.
 
 The remembered speed belongs to the dial: the Replay Control keys behave as before.
 
 #### Setting: Tap Display / Long Touch
 
-Optional touch-strip gestures (Stream Deck+ only), each over the same set { Play / Pause, Set 1x and Play, Reverse Direction, Jump to Live, None }. Both default to **None** for VR safety.
+Optional touch-strip gestures (Stream Deck+ only), each over the same set { Play / Pause, Set 1x and Play, Reverse Direction, Jump to Live, Jump to Green Flag, None }. Both default to **None** for VR safety.
