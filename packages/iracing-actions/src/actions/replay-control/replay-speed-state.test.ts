@@ -119,12 +119,36 @@ describe("replay-speed-state", () => {
       expect(rememberedSpeed()).toEqual(speed(8));
     });
 
-    it("should resume 4x after Play, a turn to 4x and Pause inside one telemetry frame", () => {
+    it("should resume 4x after Play, a turn to 4x that telemetry reports, and Pause", () => {
+      noteDialSpeedSent(speed(1), T0);
+      noteTelemetrySpeed(speed(1), T0 + 30);
+      noteDialSpeedSent(speed(4), T0 + 100);
+      noteTelemetrySpeed(speed(4), T0 + 130);
+      noteDialSpeedSent(PAUSED, T0 + 200);
+      noteTelemetrySpeed(PAUSED, T0 + 230);
+
+      // Long after every hold: the 4x was seen playing, so it stays.
+      resolveLiveSpeed(PAUSED, T0 + 5_000);
+
+      expect(rememberedSpeed()).toEqual(speed(4));
+    });
+
+    it("should resume 4x at once after Play, a turn to 4x and Pause inside one telemetry frame", () => {
       noteDialSpeedSent(speed(1), T0);
       noteDialSpeedSent(speed(4), T0 + 3);
       noteDialSpeedSent(PAUSED, T0 + 6);
 
+      // Nothing has reported 4x yet: it is the resume speed provisionally.
       expect(rememberedSpeed()).toEqual(speed(4));
+    });
+
+    it("should let a non-zero sample behind a pending pause through: that speed did play", () => {
+      noteDialSpeedSent(PAUSED, T0);
+
+      // A key set 8x just before the dial paused; the tick carrying it arrives late.
+      noteTelemetrySpeed(speed(8), T0 + 10);
+
+      expect(rememberedSpeed()).toEqual(speed(8));
     });
 
     it("should ignore a tick that still carries the speed from before a pending send", () => {
@@ -179,11 +203,13 @@ describe("replay-speed-state", () => {
       expect(rememberedSpeed()).toEqual(speed(-2));
     });
 
-    it("should survive a stale tick from before a pause the dial just sent", () => {
+    it("should survive the hold of a pause the dial sent, once telemetry reads paused", () => {
       noteTelemetrySpeed(speed(2), T0);
       noteDialSpeedSent(PAUSED, T0 + 10);
+      noteTelemetrySpeed(PAUSED, T0 + 16);
       reverseRememberedSpeed();
-      noteTelemetrySpeed(speed(2), T0 + 16);
+      noteTelemetrySpeed(PAUSED, T0 + 32);
+      resolveLiveSpeed(PAUSED, T0 + 10 + DIAL_SPEED_HOLD_MS);
 
       expect(rememberedSpeed()).toEqual(speed(-2));
     });
@@ -295,13 +321,113 @@ describe("replay-speed-state", () => {
       expect(rememberedSpeed()).toEqual(speed(-4));
     });
 
-    it("should restore nothing when another action took the cursor: its command decides from there", () => {
+    it("should go back to the original speed when a 0x send follows the ignored one inside the hold", () => {
       noteDialSpeedSent(speed(4), T0);
-      cancelReplayCursorOwner("replay-transport-play");
+      // A pause, or a turn back to 0x: the paused replay reports it at once.
+      noteDialSpeedSent(PAUSED, T0 + 100);
+      expect(resolveLiveSpeed(PAUSED, T0 + 110)).toEqual(PAUSED);
+      expect(rememberedSpeed()).toEqual(speed(4));
 
       resolveLiveSpeed(PAUSED, lapsedAfter(T0));
 
+      expect(rememberedSpeed()).toEqual(speed(2));
+    });
+
+    it("should go back to the original speed when the 0x send's own hold is the one that runs out", () => {
+      noteDialSpeedSent(speed(4), T0);
+      noteDialSpeedSent(PAUSED, T0 + 100);
+
+      // Nothing is read until both holds are long over, and no sample ever came.
+      resolveLiveSpeed(null, T0 + 5_000);
+
+      expect(rememberedSpeed()).toEqual(speed(2));
+    });
+
+    it("should go back to the original speed when another action takes the cursor inside the hold", () => {
+      noteDialSpeedSent(speed(4), T0);
+      cancelReplayCursorOwner("replay-transport-play");
+      // The overlay is gone at once; whether 4x ever played is still open.
+      expect(resolveLiveSpeed(PAUSED, T0 + 10)).toEqual(PAUSED);
       expect(rememberedSpeed()).toEqual(speed(4));
+
+      resolveLiveSpeed(PAUSED, lapsedAfter(T0));
+
+      expect(rememberedSpeed()).toEqual(speed(2));
+    });
+
+    it("should go back to the original speed when a walk claims the cursor inside the hold", () => {
+      noteDialSpeedSent(speed(4), T0);
+      claimReplayCursor("jump-to-fastest-lap");
+
+      noteTelemetrySpeed(PAUSED, lapsedAfter(T0));
+
+      expect(rememberedSpeed()).toEqual(speed(2));
+    });
+
+    it("should keep a send that took when a 0x send follows it", () => {
+      noteDialSpeedSent(speed(4), T0);
+      noteTelemetrySpeed(speed(4), T0 + 50);
+      noteDialSpeedSent(PAUSED, T0 + 100);
+
+      resolveLiveSpeed(PAUSED, T0 + 5_000);
+
+      expect(rememberedSpeed()).toEqual(speed(4));
+    });
+
+    it("should keep a send that took when the 0x send comes before telemetry reports it", () => {
+      noteDialSpeedSent(speed(4), T0);
+      noteDialSpeedSent(PAUSED, T0 + 20);
+      // The 4x frame is reported after the pause was sent, then the pause lands.
+      noteTelemetrySpeed(speed(4), T0 + 40);
+      noteTelemetrySpeed(PAUSED, T0 + 60);
+
+      resolveLiveSpeed(PAUSED, T0 + 5_000);
+
+      expect(rememberedSpeed()).toEqual(speed(4));
+    });
+
+    it("should keep a send that took when another action takes the cursor after it", () => {
+      noteDialSpeedSent(speed(4), T0);
+      cancelReplayCursorOwner("next-lap");
+      noteTelemetrySpeed(speed(4), T0 + 50);
+
+      resolveLiveSpeed(speed(4), T0 + 5_000);
+
+      expect(rememberedSpeed()).toEqual(speed(4));
+    });
+
+    it("should keep a send that took when the cursor take comes after telemetry reported it", () => {
+      noteDialSpeedSent(speed(4), T0);
+      noteTelemetrySpeed(speed(4), T0 + 50);
+      cancelReplayCursorOwner("next-lap");
+
+      resolveLiveSpeed(speed(4), T0 + 5_000);
+
+      expect(rememberedSpeed()).toEqual(speed(4));
+    });
+
+    it("should not undo a Reverse made while paused between an ignored send and the lapse, cursor take or not", () => {
+      noteDialSpeedSent(speed(4), T0);
+      noteDialSpeedSent(PAUSED, T0 + 50);
+      cancelReplayCursorOwner("next-lap");
+      reverseRememberedSpeed();
+
+      resolveLiveSpeed(PAUSED, lapsedAfter(T0));
+
+      expect(rememberedSpeed()).toEqual(speed(-4));
+    });
+
+    it("should hold samples from before an unconfirmed send back until it is settled, overlay or not", () => {
+      noteDialSpeedSent(speed(4), T0);
+      cancelReplayCursorOwner("next-lap");
+
+      // Ticks still carrying the 2x from before the send must not win over it.
+      noteTelemetrySpeed(speed(2), T0 + 16);
+      expect(rememberedSpeed()).toEqual(speed(4));
+
+      noteTelemetrySpeed(speed(4), T0 + 48);
+      noteTelemetrySpeed(speed(8), T0 + 64);
+      expect(rememberedSpeed()).toEqual(speed(8));
     });
   });
 
@@ -325,15 +451,14 @@ describe("replay-speed-state", () => {
       expect(resolveLiveSpeed(null, T0 + 10)).toEqual(PAUSED);
     });
 
-    it("should let telemetry feed the remembered speed again", () => {
-      noteDialSpeedSent(PAUSED, T0);
-      noteTelemetrySpeed(speed(8), T0 + 10);
-      expect(rememberedSpeed()).toEqual(speed(1));
+    it("should leave an unconfirmed speed provisional: samples from before the send still wait", () => {
+      noteTelemetrySpeed(speed(2), T0 - 100);
+      noteDialSpeedSent(speed(4), T0);
 
       clearDialPendingSpeed();
-      noteTelemetrySpeed(speed(8), T0 + 20);
+      noteTelemetrySpeed(speed(2), T0 + 20);
 
-      expect(rememberedSpeed()).toEqual(speed(8));
+      expect(rememberedSpeed()).toEqual(speed(4));
     });
 
     it("should leave the remembered speed alone", () => {
