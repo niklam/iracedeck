@@ -31,10 +31,10 @@ export interface ReplaySpeed {
  * itself. The surface calls a mode only while a replay is on screen.
  *
  * A mode that moves the replay by frames uses {@link position}, {@link step}
- * and {@link jumpTo}, never {@link send}: the three share the one pending
- * landing (`replay-position-state.ts`), which is what keeps a move from being
- * measured from a frame the replay has already left, and a frame step from
- * being sent into a jump still under way.
+ * and {@link jumpTo}, never {@link send}: the three share the dial's one
+ * pending target (`replay-position-state.ts`), which is what keeps a move from
+ * being measured from a frame the replay has already left, and a frame step
+ * from being sent into a jump still under way.
  */
 export interface ReplayDialModeIo {
   readonly logger: ILogger;
@@ -50,7 +50,7 @@ export interface ReplayDialModeIo {
   pause(owner: string): boolean;
   /**
    * Where the replay stands or is headed: the frame to measure a move from.
-   * Null when nothing says — no landing pending and a reading that is not the
+   * Null when nothing says — no target pending and a reading that is not the
    * replay's — and the move is then skipped, never guessed.
    */
   position(): ReplayPosition | null;
@@ -60,13 +60,13 @@ export interface ReplayDialModeIo {
    * and nothing is under way ({@link ReplayPosition.seeking}): iRacing applies
    * one step per update, and a step sent into a jump ends it somewhere else.
    * A step sent while the reading still shows the replay playing records no
-   * landing: where it lands depends on where the pause catches the replay.
+   * target: where it lands depends on where the pause catches the replay.
    */
   step(owner: string, direction: 1 | -1): boolean;
   /**
-   * Sends the replay to an absolute frame and records it as the landing. Safe
-   * while a step or an earlier jump is under way: iRacing lands on the newest
-   * target.
+   * Sends the replay to an absolute frame and records it as the pending
+   * target. Safe while a step or an earlier jump is under way: iRacing lands
+   * on the newest target.
    */
   jumpTo(owner: string, frame: number): boolean;
 }

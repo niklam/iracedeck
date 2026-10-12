@@ -23,19 +23,28 @@
  *   the jump with the replay thousands of frames away. A jump relative to the
  *   current frame sent meanwhile is resolved from the start of the recording.
  *
- * So a move is measured from the **pending landing** while one stands — the
- * frame the last step or jump was sent to, the one `shared/replay-cursor.ts`
- * keeps for Replay Markers too, cleared by any other replay command — and from
- * telemetry only when the reading is the replay's. A landing stands until its
- * exact frame reads back from a replay. Nothing here waits a measured time: a
- * slower machine makes the landing stand longer, and the one clock,
- * {@link REPLAY_LANDING_GIVE_UP_MS}, only gives up on a landing that never
- * reads back.
+ * So a move is measured from the **pending target** while one stands — the
+ * frame the dial's last step or jump was sent to — and from telemetry only
+ * when the reading is the replay's. A target stands until its frame reads
+ * back from a replay in a way that can only mean the move is done (see
+ * {@link resolveReplayPosition}). Nothing here waits a measured time: a slower
+ * machine makes the target stand longer, and the one clock,
+ * {@link REPLAY_TARGET_GIVE_UP_MS}, only gives up on a target that never reads
+ * back.
  *
- * While a landing stands, the next move has to be an absolute jump from it,
+ * While a target stands, the next move has to be an absolute jump from it,
  * never a step ({@link ReplayPosition.seeking}). That is also what puts a bad
  * landing right: a jump that ended somewhere else never reads back, so the
  * next turn is sent to where the last one was headed.
+ *
+ * The target is this module's own, not the replay cursor's pending landing
+ * that Replay Markers keeps (`shared/replay-cursor.ts`): a marker surface ends
+ * that landing by its own rule — the replay within a second of it — which a
+ * frame move always is, so a visible marker key would end it one tick after
+ * every send. The two meet only at the cursor: a replay command of any other
+ * action takes the cursor and drops the target, since the replay is no longer
+ * headed there, while the dial's own commands keep it
+ * ({@link keepReplayTarget}).
  *
  * Time is passed in, never read here. In memory only, and one value for every
  * dial: iRacing has one replay position.
@@ -43,28 +52,21 @@
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 
-import {
-  clearReplayLanding,
-  currentReplayCursorOwner,
-  pendingReplayLanding,
-  recordReplayLanding,
-} from "../../shared/replay-cursor.js";
+import { onReplayCursorTaken } from "../../shared/replay-cursor.js";
 
 /**
  * @internal Exported for testing
  *
- * How long (ms) a landing may go without reading back before it is given up.
+ * How long (ms) a target may go without reading back before it is given up.
  * It stands in for "iRacing will never report this frame": a target it could
  * not reach, a jump something outside the plugin replaced, a replay that was
  * left. The longest landing measured took about half a second, so this is
  * several times that; a slower machine that needs longer only loses the
- * landing early, after which a turn is measured from telemetry when the
+ * target early, after which a turn is measured from telemetry when the
  * reading is the replay's and skipped when it is not. Nothing is sent when it
- * lapses. A landing is never given up while a claim on the replay cursor
- * stands: that is a jump still running under its own, longer bound (a marker
- * jump waiting for its landing), and its landing is its owner's to end.
+ * lapses.
  */
-export const REPLAY_LANDING_GIVE_UP_MS = 3_000;
+export const REPLAY_TARGET_GIVE_UP_MS = 3_000;
 
 /** iRacing's replay frame rate. */
 const FRAMES_PER_SECOND = 60;
@@ -74,18 +76,18 @@ const MAX_TARGETS_REMEMBERED = 512;
 
 /** Where the replay stands or is headed. */
 export interface ReplayPosition {
-  /** The frame to measure the next move from: the pending landing while one stands, else the frame on screen. */
+  /** The frame to measure the next move from: the pending target while one stands, else the frame on screen. */
   readonly frame: number;
   /**
    * `ReplaySessionTime` (seconds) at {@link frame}: read with it, or, for a
-   * pending landing, worked out from the last reading at 60 frames a second.
-   * Undefined when no reading carried a time.
+   * pending target, worked out at 60 frames a second from the reading the run
+   * of moves started from. Undefined when no reading carried a time.
    */
   readonly time: number | undefined;
-  /** The last frame of the recording, from the last reading; undefined when telemetry did not say. */
+  /** The last frame of the recording, by the same reading; undefined when telemetry did not say. */
   readonly endFrame: number | undefined;
   /**
-   * A landing stands: something was sent that has not read back. The next
+   * A target stands: something was sent that has not read back. The next
    * move must be an absolute jump from {@link frame}; a frame step would end
    * the jump under way somewhere else.
    */
@@ -99,19 +101,36 @@ interface Standing {
   readonly endFrame: number | undefined;
 }
 
-/** The moves sent since the replay last stood where telemetry said, for the bad-landing report. */
+/** The frame the last step or jump was sent to. */
+interface PendingTarget {
+  readonly frame: number;
+  /** The send's timestamp (ms). */
+  readonly sentAt: number;
+  /** The last replay reading known when the run of moves began: what the target's time and the recording's end are worked out from. */
+  readonly anchor: Standing | null;
+  /**
+   * Whether this frame reading back from a replay means the move is done.
+   * Not while the replay may still show it for another reason: it is the
+   * frame the run started on or an earlier target of the run, where a move
+   * not yet acted on, or a fast turn's stop on the way, shows the same frame.
+   * A reading that is not the replay's since the send settles it: iRacing
+   * shows one for the whole of a jump under way, and lands on the newest
+   * target after it.
+   */
+  conclusive: boolean;
+}
+
+/** The moves sent since the replay last stood where telemetry said. */
 interface Run {
-  /** The frame on screen when the first move of the run went out, or the last one seen before it; null when no reading ever said. */
+  /** The frame on screen when the first move of the run went out; null when the reading was not the replay's. */
   readonly origin: number | null;
   /** Every frame a move of the run was sent to. A fast turn lands on some of them on the way. */
   readonly targets: Set<number>;
-  /** The newest landing recorded, to tell this module's landing from another surface's. */
-  latest: { readonly frame: number; readonly sentAt: number };
   /** The frame a bad landing was last reported at, so it is logged once. */
   reportedAt: number | null;
 }
 
-let standing: Standing | null = null;
+let pending: PendingTarget | null = null;
 let run: Run | null = null;
 
 function finite(value: unknown): number | undefined {
@@ -141,37 +160,45 @@ function readStanding(telemetry: TelemetryData | null): Standing | null {
   };
 }
 
-/** The replay time at `frame`, worked out from the last reading. */
-function timeAt(frame: number): number | undefined {
-  if (standing === null || standing.time === undefined) return undefined;
+/** The replay time at `frame`, worked out from `anchor`. */
+function timeAt(frame: number, anchor: Standing | null): number | undefined {
+  if (anchor === null || anchor.time === undefined) return undefined;
 
-  return standing.time + (frame - standing.frame) / FRAMES_PER_SECOND;
+  return anchor.time + (frame - anchor.frame) / FRAMES_PER_SECOND;
 }
 
 /**
  * Logs, once per frame it shows at, a replay that stands somewhere no move of
- * the run was sent to while a landing is still pending. A reading at the
- * run's origin is a move that has not started, and one at an earlier target
- * of the run is a fast turn's stop on the way; anything else is a jump or step
+ * the run was sent to while a target is still pending. A reading at the run's
+ * origin is a move that has not started, and one at an earlier target of the
+ * run is a fast turn's stop on the way; anything else is a jump or step
  * iRacing ended elsewhere.
  */
-function reportBadLanding(landingFrame: number, reading: Standing, logger: ILogger): void {
+function reportBadLanding(target: number, reading: Standing, logger: ILogger): void {
   if (run === null || reading.frame === run.origin || run.targets.has(reading.frame)) return;
 
   if (run.reportedAt === reading.frame) return;
 
   run.reportedAt = reading.frame;
   logger.debug(
-    `Replay stands off its target: sent to frame ${landingFrame}, reads ${reading.frame}; ` +
+    `Replay stands off its target: sent to frame ${target}, reads ${reading.frame}; ` +
       "the next turn is measured from the target",
   );
 }
 
+function clear(): void {
+  pending = null;
+  run = null;
+}
+
 /**
  * Where the replay stands or is headed, from one telemetry reading and the
- * clock; null when neither a pending landing nor the reading says. Settles the
- * landing as it reads: the exact frame reading back from a replay ends it, and
- * so does {@link REPLAY_LANDING_GIVE_UP_MS} passing without that.
+ * clock; null when neither a pending target nor the reading says. Settles the
+ * target as it reads. The target's frame reading back from a replay ends it
+ * when that can only mean the move is done: the frame is one the replay could
+ * not have been showing anyway, or a reading that was not the replay's has
+ * been seen since the send. {@link REPLAY_TARGET_GIVE_UP_MS} passing without
+ * that ends it too, and the position is then the reading's or unknown.
  */
 export function resolveReplayPosition(
   telemetry: TelemetryData | null,
@@ -180,33 +207,27 @@ export function resolveReplayPosition(
 ): ReplayPosition | null {
   const reading = readStanding(telemetry);
 
-  if (reading !== null) standing = reading;
+  if (pending !== null) {
+    // The whole of a jump under way reads as not the replay's.
+    if (reading === null) pending.conclusive = true;
 
-  const landing = pendingReplayLanding();
-
-  // A landing this module did not record (a marker jump), or none: its run is over.
-  if (
-    run !== null &&
-    (landing === null || landing.frame !== run.latest.frame || landing.sentAt !== run.latest.sentAt)
-  ) {
-    run = null;
-  }
-
-  if (landing !== null) {
-    if (reading !== null && reading.frame === landing.frame) {
-      clearReplayLanding();
-      run = null;
-    } else if (nowMs - landing.sentAt >= REPLAY_LANDING_GIVE_UP_MS && currentReplayCursorOwner() === null) {
+    if (reading !== null && reading.frame === pending.frame && pending.conclusive) {
+      clear();
+    } else if (nowMs - pending.sentAt >= REPLAY_TARGET_GIVE_UP_MS) {
       logger.debug(
-        `Replay landing given up: frame ${landing.frame} did not read back within ${REPLAY_LANDING_GIVE_UP_MS} ms` +
+        `Replay target given up: frame ${pending.frame} did not read back within ${REPLAY_TARGET_GIVE_UP_MS} ms` +
           (reading === null ? "" : `; the replay reads ${reading.frame}`),
       );
-      clearReplayLanding();
-      run = null;
+      clear();
     } else {
-      if (reading !== null) reportBadLanding(landing.frame, reading, logger);
+      if (reading !== null && reading.frame !== pending.frame) reportBadLanding(pending.frame, reading, logger);
 
-      return { frame: landing.frame, time: timeAt(landing.frame), endFrame: standing?.endFrame, seeking: true };
+      return {
+        frame: pending.frame,
+        time: timeAt(pending.frame, pending.anchor),
+        endFrame: pending.anchor?.endFrame,
+        seeking: true,
+      };
     }
   }
 
@@ -214,34 +235,58 @@ export function resolveReplayPosition(
 }
 
 /**
- * Records the frame a step or a jump was just sent to as the pending landing.
- * Call it only when the command went out, after the cursor was taken for it
- * (the take clears the landing), and after {@link resolveReplayPosition} in
- * the same entry: a landing still standing there makes this move part of the
- * same run. `from` is the frame the reading showed, null when it was not the
- * replay's.
+ * Records the frame a step or a jump was just sent to as the pending target.
+ * Call it only when the command went out. `telemetry` is the reading the move
+ * was decided on, which says what the replay was showing when it was sent. A
+ * target still standing makes this move part of the same run.
  */
-export function recordReplayTarget(frame: number, from: number | null, nowMs: number): void {
-  recordReplayLanding(frame, nowMs);
+export function recordReplayTarget(frame: number, telemetry: TelemetryData | null, nowMs: number): void {
+  const shown = readStanding(telemetry);
 
-  if (run === null) {
-    // Without a reading now, the last frame the replay was seen on: a move
-    // that has not started still shows it.
-    run = {
-      origin: from ?? standing?.frame ?? null,
-      targets: new Set(),
-      latest: { frame, sentAt: nowMs },
-      reportedAt: null,
-    };
-  } else {
-    run.latest = { frame, sentAt: nowMs };
-  }
+  run ??= { origin: shown?.frame ?? null, targets: new Set(), reportedAt: null };
+
+  // Fresh: a frame the replay cannot be showing unless this move has landed.
+  const fresh = frame !== run.origin && frame !== shown?.frame && !run.targets.has(frame);
 
   if (run.targets.size < MAX_TARGETS_REMEMBERED) run.targets.add(frame);
+
+  pending = { frame, sentAt: nowMs, anchor: pending?.anchor ?? shown, conclusive: fresh };
 }
+
+/**
+ * Drops the pending target: something else just took the replay cursor to
+ * send a command of its own, so the replay is no longer headed there and the
+ * position is telemetry's again. Runs on every cursor take (registered
+ * below); a dial's own take goes through {@link keepReplayTarget}.
+ */
+export function clearReplayTarget(): void {
+  clear();
+}
+
+/**
+ * Runs `take` — a dial taking the replay cursor for its own command — and
+ * puts back the target that stood before it. A dial's own command does not
+ * end the move the dial has under way: a speed or a pause sent during a jump
+ * leaves the jump's fate open, and a target that still stands is what keeps
+ * the next turn from stepping into it. A move the dial sends next replaces it
+ * through {@link recordReplayTarget}.
+ */
+export function keepReplayTarget<T>(take: () => T): T {
+  const held = pending;
+  const heldRun = run;
+
+  try {
+    return take();
+  } finally {
+    pending = held;
+    run = heldRun;
+  }
+}
+
+// Every replay command of every action takes the cursor before it sends.
+onReplayCursorTaken(clearReplayTarget);
 
 /** @internal Reset for tests. */
 export function _resetReplayPositionState(): void {
-  standing = null;
-  run = null;
+  clear();
 }
