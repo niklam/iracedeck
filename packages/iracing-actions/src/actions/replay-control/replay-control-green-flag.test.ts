@@ -1029,16 +1029,65 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
       await press();
       await vi.runAllTimersAsync();
 
-      expect(action["logger"].warn).toHaveBeenCalledWith(
-        "Jump to green: target session 2/latest not in session map; aborting",
+      // An expected state of a live event, not a fault: info, and no warning.
+      expect(action["logger"].info).toHaveBeenCalledWith(
+        "Jump to green: the target session is not in this recording yet; replay put back",
       );
-      // The map build walked through the recording; the user's place is restored, paused.
+      expect(action["logger"].warn).not.toHaveBeenCalled();
+      // The map build walked through the recording; the user's place is restored.
       expect(mockReplay.nextSession).toHaveBeenCalled();
       expect(replay.state.frame).toBe(5_432);
       expect(replay.state.camCarIdx).toBe(VIEWED_CAR);
+      // The replay was paused at the press, and stays so: Play is the setting, and nothing was jumped to.
       expect(mockReplay.setPlaySpeed).not.toHaveBeenCalled();
       expect(mockStore.laps.recordLapStart).not.toHaveBeenCalled();
       expect(action["activeFastestLapPress"]).toBeNull();
+    });
+
+    it("gives a playing replay its speed back when the race is not in the recording, whatever the setting", async () => {
+      const layout = WEEKEND.slice(0, 2);
+      const replay = fakeReplay(action, { sessionTypes: WEEKEND_TYPES, layout, cursor: 5_432 });
+      const readPaused = action["sdkController"].getCurrentTelemetry;
+
+      // Playing at 2x until the search's opening pause, and again once a speed is sent.
+      action["sdkController"].getCurrentTelemetry = vi.fn(() => {
+        const paused = mockReplay.pause.mock.calls.length > 0 && mockReplay.setPlaySpeed.mock.calls.length === 0;
+
+        return { ...readPaused(), ReplayPlaySpeed: paused ? 0 : 2 } as TelemetryData;
+      });
+      setJumpPlayback("stopped");
+
+      await press();
+      await vi.runAllTimersAsync();
+
+      expect(replay.state.frame).toBe(5_432);
+      // Not "stopped": the press found nothing to jump to and leaves the replay as it was.
+      expect(mockReplay.setPlaySpeed).toHaveBeenCalledExactlyOnceWith(2, false);
+      expect(mockReplay.setPlayPosition.mock.invocationCallOrder.at(-1) as number).toBeLessThan(
+        mockReplay.setPlaySpeed.mock.invocationCallOrder[0],
+      );
+    });
+
+    it("refuses to pick the latest race from a recording with more sessions than the search maps", async () => {
+      // An AI event restarted three times in full: twelve session instances, where the map holds eleven.
+      const layout: SessionLayout[] = Array.from({ length: 12 }, (_unused, index) => ({
+        sessionNum: index % 3,
+        sessionUniqueId: index + 1,
+        startFrame: index * 12_000,
+        endFrame: index * 12_000 + 11_999,
+      }));
+      const replay = fakeReplay(action, { sessionTypes: WEEKEND_TYPES, layout, cursor: 5_432 });
+
+      await press();
+      await vi.runAllTimersAsync();
+
+      expect(action["logger"].warn).toHaveBeenCalledWith(
+        "Jump to green: the recording holds more sessions than the 11 the search maps; the latest session 2 cannot be told, aborting",
+      );
+      // Not the third race, which is the last one the map reached: the fourth is the latest.
+      expect(mockStore.laps.recordLapStart).not.toHaveBeenCalled();
+      expect(replay.state.frame).toBe(5_432);
+      expect(replay.state.camCarIdx).toBe(VIEWED_CAR);
     });
 
     it("finds a race that started after an earlier press mapped the recording without it", async () => {

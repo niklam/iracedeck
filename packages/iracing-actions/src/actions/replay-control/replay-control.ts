@@ -387,6 +387,12 @@ type FastestLapSessionMap = {
    */
   sessionUniqueIds: Set<number>;
   sessions: SessionMapEntry[];
+  /**
+   * The build stopped at {@link MAX_SESSIONS} steps with the recording
+   * possibly going on: the last entry is then not known to be the last
+   * session, so nothing may be read off the map as "the latest".
+   */
+  truncated: boolean;
 };
 
 /**
@@ -2067,6 +2073,9 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
 
       sessions.push(firstEntry);
 
+      // Whether the loop saw the end of the recording, or ran out of steps first.
+      let sawEnd = false;
+
       for (let i = 0; i < MAX_SESSIONS; i++) {
         const label = `nextSession #${i + 1}`;
         const step = await search(() => replay.nextSession(), label);
@@ -2074,7 +2083,10 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
         // Not moving is how the sim says "already in the last session"; a move
         // that never settled leaves the cursor unverified, and a map built on
         // it would be trusted by every later press.
-        if (step.kind === "unmoved") break;
+        if (step.kind === "unmoved") {
+          sawEnd = true;
+          break;
+        }
 
         if (step.kind === "unsettled") return null;
 
@@ -2084,13 +2096,16 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
 
         const last = sessions[sessions.length - 1];
 
-        if (entry.sessionNum === last.sessionNum && entry.sessionUniqueId === last.sessionUniqueId) break;
+        if (entry.sessionNum === last.sessionNum && entry.sessionUniqueId === last.sessionUniqueId) {
+          sawEnd = true;
+          break;
+        }
 
         last.endFrame = entry.startFrame - 1;
         sessions.push(entry);
       }
 
-      return { subSessionId, sessionUniqueIds, sessions };
+      return { subSessionId, sessionUniqueIds, sessions, truncated: !sawEnd };
     };
 
     // Refuse from the car: iRacing honours replay commands only out of it
@@ -2192,20 +2207,58 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
         ? instances.find((s) => s.sessionUniqueId === cursorSessionUniqueId)
         : instances[instances.length - 1];
 
-    if (bounds == null) {
-      this.logger.warn(
-        `${logLabel}: target session ${targetSessionNum}/${target.instance === "cursor" ? cursorSessionUniqueId : "latest"} not in session map; aborting`,
-      );
-
-      // Building the map walked the cursor through the recording. A target
-      // that turned out not to be in it — a race the event lists but has not
-      // reached — must not cost the user their place: put the cursor back.
+    /**
+     * Undo what this walk did to the replay, for a walk that found it has
+     * nothing to walk to: the map build took the cursor through the recording
+     * and the opening pause stopped a replay that may have been playing. The
+     * cursor goes back to the frame the press found it on, and then the speed
+     * it had there. Not the Replay jump playback setting: nothing was jumped
+     * to, so the press must leave the replay as if it had not been made.
+     */
+    const undoTour = async (): Promise<void> => {
       const pressFrame = readFrame(initialTel);
 
-      if (builtMap && pressFrame !== null) {
-        this.logger.debug(`${logLabel}: putting the cursor back on frame ${pressFrame}`);
-        await jumpTo(pressFrame);
+      if (!builtMap || pressFrame === null) return;
+
+      this.logger.debug(`${logLabel}: putting the cursor back on frame ${pressFrame}`);
+
+      if ((await jumpTo(pressFrame)) === null) return;
+
+      const { speed, slowMotion } = jump.captured;
+
+      if (speed !== 0 && replay.setPlaySpeed(speed, slowMotion)) {
+        this.setLocalSpeed(speed, slowMotion);
+        this.updateAllTelemetryDisplays();
       }
+    };
+
+    // A map that ran out of steps does not know its last entry is the last
+    // session, and the wrong pass of a race is worse than no jump.
+    if (target.instance === "latest" && sessionMap.truncated) {
+      this.logger.warn(
+        `${logLabel}: the recording holds more sessions than the ${MAX_SESSIONS + 1} the search maps; the latest session ${targetSessionNum} cannot be told, aborting`,
+      );
+      await undoTour();
+
+      return null;
+    }
+
+    if (bounds == null) {
+      if (target.instance === "cursor") {
+        this.logger.warn(
+          `${logLabel}: target session ${targetSessionNum}/${cursorSessionUniqueId} not in session map; aborting`,
+        );
+      } else {
+        // Not a fault: the event lists a session the recording has not reached
+        // (a live event still in qualifying), and nothing the plugin reads
+        // before the search says so.
+        this.logger.info(`${logLabel}: the target session is not in this recording yet; replay put back`);
+        this.logger.debug(
+          `Session ${targetSessionNum} is in none of the ${sessionMap.sessions.length} mapped session instances`,
+        );
+      }
+
+      await undoTour();
 
       return null;
     }
