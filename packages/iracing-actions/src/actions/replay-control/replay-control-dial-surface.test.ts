@@ -1126,6 +1126,9 @@ describe("ReplayControlDialSurface", () => {
       io.pause("dial-play-pause");
       io.setSpeed("dial-speed", PAUSED);
       io.send("dial-test", () => true);
+      // Neither pause went out: nothing but another jump may, with a move under way.
+      expect(mocks.pause).not.toHaveBeenCalled();
+      expect(mocks.setPlaySpeed).not.toHaveBeenCalled();
       env.telemetry = pausedOn(612);
 
       // The jump's fate is open: still measured from its target, and no step into it.
@@ -1183,10 +1186,25 @@ describe("ReplayControlDialSurface", () => {
         expect(io.liveSpeed()).toEqual(speed(2));
       });
 
-      it("sends a pause at once: it does a jump under way no harm", async () => {
+      it("sends no pause while a move is under way: the replay is paused already, and a pause alone would end the jump elsewhere", async () => {
         const { surface } = await jumpUnderWay();
+        const io = ioOf(surface);
 
-        expect(ioOf(surface).pause("dial-play-pause")).toBe(true);
+        expect(io.pause("dial-play-pause")).toBe(true);
+        expect(io.setSpeed("dial-speed", PAUSED)).toBe(true);
+        expect(mocks.pause).not.toHaveBeenCalled();
+        expect(mocks.setPlaySpeed).not.toHaveBeenCalled();
+        // The move is untouched.
+        expect(io.position()).toMatchObject({ frame: 5_003, seeking: true });
+      });
+
+      it("sends a pause as before once the move has read back", async () => {
+        const { surface } = await jumpUnderWay();
+        const io = ioOf(surface);
+
+        lands(5_003);
+
+        expect(io.pause("dial-play-pause")).toBe(true);
         expect(mocks.pause).toHaveBeenCalledTimes(1);
       });
 
@@ -1220,12 +1238,13 @@ describe("ReplayControlDialSurface", () => {
         lands(5_003);
         await vi.advanceTimersByTimeAsync(500);
 
-        // The second press read the replay as about to play, and paused it.
-        expect(mocks.pause).toHaveBeenCalledTimes(1);
+        // The second press read the replay as about to play and took that back, sending nothing.
+        expect(mocks.pause).not.toHaveBeenCalled();
         expect(mocks.setPlaySpeed).not.toHaveBeenCalled();
+        expect(mocks.setPlayPosition).toHaveBeenCalledTimes(1);
       });
 
-      it("a jog turn while a Play is held pauses first, and the Play is not sent", async () => {
+      it("a jog turn while a Play is held drops it and jumps on, with no pause into the jump under way", async () => {
         const { surface, ctx, d } = await jumpUnderWay();
 
         await press(surface, ctx, d);
@@ -1233,7 +1252,7 @@ describe("ReplayControlDialSurface", () => {
         lands(5_005);
         await vi.advanceTimersByTimeAsync(500);
 
-        expect(mocks.pause).toHaveBeenCalledTimes(1);
+        expect(mocks.pause).not.toHaveBeenCalled();
         expect(mocks.setPlayPosition).toHaveBeenLastCalledWith(ReplayPosMode.Begin, 5_005);
         expect(mocks.setPlaySpeed).not.toHaveBeenCalled();
       });
@@ -1260,6 +1279,7 @@ describe("ReplayControlDialSurface", () => {
         await vi.advanceTimersByTimeAsync(500);
 
         expect(mocks.setPlaySpeed).not.toHaveBeenCalled();
+        expect(mocks.pause).not.toHaveBeenCalled();
       });
 
       it("keeps only the newest speed asked for", async () => {

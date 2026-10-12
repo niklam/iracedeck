@@ -398,14 +398,14 @@ export class ReplayControlDialSurface {
         return sent;
       },
       setSpeed: (owner, target) => {
-        // A speed that sets the replay playing, sent into a jump still under
-        // way, ends the jump thousands of frames on and plays from there
-        // (measured: Play 40 ms into a fast turn's jump, about 9000 frames
-        // off). It is held until the move has read back, and the follow timer
-        // sends it then. A pause is harmless there and goes out at once.
-        const at = target.speed !== 0 ? position() : null;
+        // A speed sent into a jump still under way ends the jump thousands of
+        // frames on (measured: Play 40 ms into a fast turn's jump, and a pause
+        // 170 ms into one, each about 9000 frames off). One that sets the
+        // replay playing is held until the move has read back, and the follow
+        // timer sends it then. A 0 has nothing to do there, and is not sent.
+        const at = position();
 
-        if (at?.seeking === true) {
+        if (at?.seeking === true && target.speed !== 0) {
           this.heldSpeed = { owner, target: { ...target }, frame: at.frame };
           host.logger.debug(`Replay speed held: the move to frame ${at.frame} has not read back`);
           this.armPositionFollow();
@@ -413,8 +413,10 @@ export class ReplayControlDialSurface {
           return true;
         }
 
-        // A speed sent now is the newest word: one still waiting is dropped.
+        // A speed asked for now is the newest word: one still waiting is dropped.
         this.heldSpeed = null;
+
+        if (this.isPausedForMove()) return true;
 
         const sent = send(owner, (replay) => replay.setPlaySpeed(target.speed, target.slowMotion));
 
@@ -425,6 +427,11 @@ export class ReplayControlDialSurface {
       pause: (owner) => {
         // A pause takes back a speed still waiting for a move to land.
         this.heldSpeed = null;
+
+        // Sent alone into a jump under way, a pause ends the jump thousands of
+        // frames on, like any command but another jump. And there is nothing
+        // to pause: see `isPausedForMove`.
+        if (this.isPausedForMove()) return true;
 
         const sent = send(owner, (replay) => replay.pause());
 
@@ -756,6 +763,24 @@ export class ReplayControlDialSurface {
         if (underWay) this.armPositionFollow();
       });
     }, POSITION_FOLLOW_MS);
+  }
+
+  /**
+   * Whether a frame move is under way, which means the replay is paused
+   * already and a pause must not be sent. Paused, because a mode pauses a
+   * playing replay before it moves it and no playing speed goes out until the
+   * move has read back. Not sent, because the only command that does not end
+   * a jump under way is another jump: a pause sent alone 170 ms into one left
+   * the replay about 9000 frames past its target. The pause a jog turn sends
+   * first is the one that does go out, with nothing under way yet and its
+   * jump right behind it.
+   */
+  private isPausedForMove(): boolean {
+    if (this.io.position()?.seeking !== true) return false;
+
+    this.host.logger.debug("Pause not sent: a frame move is under way, and the replay is paused for it already");
+
+    return true;
   }
 
   /**

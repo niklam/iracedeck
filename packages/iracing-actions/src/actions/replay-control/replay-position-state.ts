@@ -19,9 +19,13 @@
  *   sim update (8 ms apart, faster than either deck host delivers turns) the
  *   earlier one was applied. That landing never reads back, so it is handled
  *   like any other that ends off its target.
- * - A frame step sent while such a jump is under way does not step: it ends
- *   the jump with the replay thousands of frames away. A jump relative to the
- *   current frame sent meanwhile is resolved from the start of the recording.
+ * - Any other replay command sent while such a jump is under way ends the
+ *   jump where it stands, thousands of frames from its target: a frame step
+ *   (which does not step), a search, a speed that sets the replay playing,
+ *   and a pause alike. Only another position jump is safe, because it
+ *   replaces the target; a pause followed at once by a jump lands on the
+ *   jump. A jump relative to the current frame sent meanwhile is resolved
+ *   from the start of the recording.
  *
  * So a move is measured from the **pending target** while one stands — the
  * frame the dial's last step or jump was sent to — and from telemetry only
@@ -44,9 +48,10 @@
  * every send. The two meet only at the cursor: a replay command of any other
  * action takes the cursor and drops the target, since the replay is no longer
  * headed there, while the dial's own commands keep it
- * ({@link keepReplayTarget}). The surface sends no speed that sets the replay
- * playing while a target stands: sent into a jump under way it ends the jump
- * somewhere else, so it is held until the target has read back.
+ * ({@link keepReplayTarget}). The surface sends nothing but another jump
+ * while a target stands: a speed that sets the replay playing is held until
+ * the target has read back, and a pause is not sent at all, the replay being
+ * paused for the move already.
  *
  * Time is passed in, never read here. In memory only, and one value for every
  * dial: iRacing has one replay position.
@@ -268,10 +273,10 @@ export function clearReplayTarget(): void {
 /**
  * Runs `take` — a dial taking the replay cursor for its own command — and
  * puts back the target that stood before it. Taking the cursor for a command
- * of the dial's own does not end the move the dial has under way: a pause
- * sent during a jump leaves the jump's fate open, and a target that still
- * stands is what keeps the next turn from stepping into it. A move the dial
- * sends next replaces it through {@link recordReplayTarget}.
+ * of the dial's own does not end the move the dial has under way, and the
+ * target that still stands is what keeps the next turn from stepping into
+ * it. A move the dial sends next replaces it through
+ * {@link recordReplayTarget}.
  */
 export function keepReplayTarget<T>(take: () => T): T {
   const held = pending;
