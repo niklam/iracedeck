@@ -76,6 +76,7 @@ export function sendFrameSteps(io: ReplayDialModeIo, ticks: number, asOneJump: b
  * the speed that was playing.
  */
 export const frameJogMode: ReplayDialMode = {
+  label: "FRAME",
   rotateDescription: "Next / previous frame",
 
   rotate(ticks, _dial, io) {
@@ -96,7 +97,6 @@ export const frameJogMode: ReplayDialMode = {
     const live = io.liveSpeed();
 
     return {
-      label: "FRAME",
       value: formatReplayTime(io.telemetry()?.ReplaySessionTime),
       caption: formatSpeedDisplay(live.speed, live.slowMotion),
       sides: { left: true, right: true },

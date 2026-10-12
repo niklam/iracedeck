@@ -144,7 +144,8 @@ describe("sendFrameSteps", () => {
 });
 
 describe("frameJogMode", () => {
-  it("describes its rotation for the dial hint", () => {
+  it("names its box and describes its rotation for the dial hint", () => {
+    expect(frameJogMode.label).toBe("FRAME");
     expect(frameJogMode.rotateDescription).toBe("Next / previous frame");
   });
 
@@ -229,7 +230,6 @@ describe("frameJogMode", () => {
       const { io } = fakeIo({ telemetry: { ReplaySessionTime: 83.45 } as TelemetryData });
 
       expect(frameJogMode.view(dial, io)).toEqual({
-        label: "FRAME",
         value: "1:23.45",
         caption: "PAUSED",
         sides: { left: true, right: true },
