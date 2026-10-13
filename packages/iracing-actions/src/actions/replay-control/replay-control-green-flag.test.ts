@@ -218,6 +218,12 @@ function fakeReplay(
     seekStalls?: (frame: number) => boolean;
     /** How long an absolute jump of that many frames is under way before it lands. Omitted, it lands at once. */
     seekTakesMs?: (distanceFrames: number) => number;
+    /**
+     * How long a Next Session search across that many frames runs before it
+     * lands. Until then the telemetry reads the frame it left from, as on a
+     * paused replay: nothing shows that a search is under way.
+     */
+    sessionSearchTakesMs?: (distanceFrames: number) => number;
   },
 ) {
   const { layout } = options;
@@ -253,11 +259,27 @@ function fakeReplay(
 
     return true;
   });
+  /** Bumped by every command that moves the cursor, so a search a later command replaced lands nowhere. */
+  let searchSerial = 0;
+
   mockReplay.nextSession.mockImplementation(() => {
     const current = findSession(state.frame);
     const next = current ? layout[layout.indexOf(current) + 1] : undefined;
+    const serial = ++searchSerial;
 
-    if (next) state.frame = next.startFrame;
+    if (!next) return true;
+
+    const takesMs = options.sessionSearchTakesMs?.(next.startFrame - state.frame) ?? 0;
+
+    if (takesMs === 0) {
+      state.frame = next.startFrame;
+
+      return true;
+    }
+
+    setTimeout(() => {
+      if (serial === searchSerial) state.frame = next.startFrame;
+    }, takesMs);
 
     return true;
   });
@@ -266,6 +288,9 @@ function fakeReplay(
 
   mockReplay.setPlayPosition.mockImplementation((_mode, frame) => {
     const serial = ++seekSerial;
+
+    searchSerial++;
+
     const target = Math.max(0, Math.min(bufferEnd(), frame));
     const takesMs = options.seekTakesMs?.(Math.abs(target - state.frame)) ?? 0;
 
@@ -1122,9 +1147,10 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
         await press();
         await vi.runAllTimersAsync();
 
-        // The midpoint and both quarter points found the car gone and moved no
-        // bound; the first eighth showed it on lap 1.
-        expect(seekFrames().slice(0, 4)).toEqual([44_999, 32_499, 57_499, 26_249]);
+        // The midpoint and the first quarter found the car gone and moved no
+        // bound; the search went on toward the start, and the first eighth
+        // showed the car on lap 1.
+        expect(seekFrames().slice(0, 3)).toEqual([44_999, 32_499, 26_249]);
         expect(action["logger"].warn).not.toHaveBeenCalled();
         expect(mockStore.laps.recordLapStart).toHaveBeenCalledExactlyOnceWith(
           expect.objectContaining({ carIdx: POLE_CAR, lap: 1, frame: RACE_LAP_1_LINE - 1 }),
@@ -1148,8 +1174,8 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
         await press();
         await vi.runAllTimersAsync();
 
-        // Gone at the midpoint and the first quarter; on lap 2 at the third.
-        expect(seekFrames().slice(0, 3)).toEqual([44_999, 32_499, 57_499]);
+        // Gone at the midpoint and all the way toward the start; on lap 2 at the third quarter.
+        expect(seekFrames().slice(0, 6)).toEqual([44_999, 32_499, 26_249, 23_124, 21_562, 57_499]);
         expect(action["logger"].warn).not.toHaveBeenCalled();
         expect(mockStore.laps.recordLapStart).toHaveBeenCalledExactlyOnceWith(
           expect.objectContaining({ lap: 1, frame: line - 1 }),
@@ -1175,10 +1201,12 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
         });
         await vi.runAllTimersAsync();
 
-        // 44 999 shows lap 4, so the lap is later. 57 499 and 51 249 find the car
-        // gone, later than a frame that showed it, and still the lap is not
-        // earlier: 63 749 shows lap 8.
-        expect(seekFrames().slice(0, 4)).toEqual([44_999, 57_499, 51_249, 63_749]);
+        // 44 999 shows lap 4, so the lap is later. 57 499, 51 249 and 48 124 find
+        // the car gone, each later than a frame that showed it, and still the lap
+        // is not earlier: the search goes on until a frame past the garage shows
+        // lap 8.
+        expect(seekFrames().slice(0, 4)).toEqual([44_999, 57_499, 51_249, 48_124]);
+        expect(Math.max(...seekFrames())).toBeGreaterThan(60_000);
         expect(action["logger"].warn).not.toHaveBeenCalled();
         expect(mockStore.laps.recordLapStart).toHaveBeenCalledExactlyOnceWith(
           expect.objectContaining({ carIdx: POLE_CAR, lap: 9, frame: lapNine - 1 }),
@@ -1298,13 +1326,119 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
       expect(action["replaySpeed"].get("ctx-green")).toBe(0);
     });
 
+    describe("the session map of a long recording", () => {
+      /** iRacing's measured rate for a session search: 8 ms for every 1000 frames, the same as a jump. */
+      const sessionSearchTakesMs = (distanceFrames: number): number => distanceFrames * 0.008;
+      /** Six hours at 60 frames a second: the long session the search is built for. */
+      const SIX_HOURS = 1_296_000;
+      /** Six hours of practice, then the race. */
+      const LONG_PRACTICE: SessionLayout[] = [
+        { sessionNum: 0, sessionUniqueId: 1, startFrame: 0, endFrame: SIX_HOURS - 1 },
+        { sessionNum: 1, sessionUniqueId: 2, startFrame: SIX_HOURS, endFrame: SIX_HOURS + 49_999 },
+      ];
+
+      it("waits out a Next Session search across a six-hour session that another follows", async () => {
+        const raceStart = SIX_HOURS;
+        const replay = fakeReplay(action, {
+          sessionTypes: ["Practice", "Race"],
+          layout: LONG_PRACTICE,
+          cursor: raceStart + 3 * FRAMES_PER_LAP,
+          subSessionId: 123,
+          sessionSearchTakesMs,
+        });
+
+        await press();
+        await vi.runAllTimersAsync();
+
+        // The search landed after 10.4 s, six times the settle timeout, and was
+        // not taken for "already in the last session": the race is in the map.
+        expect(action["logger"].info).toHaveBeenCalledWith(
+          "Jump to green: session map built — subSession=123, S0/1[0-1295999], S1/2[1296000-end]",
+        );
+        expect(action["logger"].warn).not.toHaveBeenCalled();
+        expect(mockStore.laps.recordLapStart).toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({ sessionNum: 1, lap: 1, frame: raceStart + FRAMES_PER_LAP - 1 }),
+        );
+        expect(replay.state.frame).toBe(raceStart + FRAMES_PER_LAP - 1 - 300);
+      });
+
+      it("sends no search from the last session a real event lists", async () => {
+        fakeReplay(action, { sessionTypes: WEEKEND_TYPES, layout: WEEKEND, cursor: IN_RACE, subSessionId: 123 });
+
+        await press();
+        await vi.runAllTimersAsync();
+
+        // Practice to qualifying, qualifying to the race, and nothing from the race.
+        expect(mockReplay.nextSession).toHaveBeenCalledTimes(2);
+        expect(action["logger"].debug).toHaveBeenCalledWith(
+          "Jump to green: session 2 is the last this event lists; nextSession #3 not sent",
+        );
+        expect(mockStore.laps.recordLapStart).toHaveBeenCalledTimes(1);
+      });
+
+      it("still searches from the last listed session of an offline event, which may have been restarted", async () => {
+        // Two passes of one race in an offline event, the first six hours long:
+        // the session list names the race once.
+        const passes: SessionLayout[] = [
+          { sessionNum: 0, sessionUniqueId: 1, startFrame: 0, endFrame: SIX_HOURS - 1 },
+          { sessionNum: 0, sessionUniqueId: 2, startFrame: SIX_HOURS, endFrame: SIX_HOURS + 49_999 },
+        ];
+        const replay = fakeReplay(action, {
+          sessionTypes: ["Race"],
+          layout: passes,
+          cursor: SIX_HOURS + 3 * FRAMES_PER_LAP,
+          sessionSearchTakesMs,
+        });
+
+        await press();
+        await vi.runAllTimersAsync();
+
+        // The search from the first pass ran for 10.4 s and found the second; the one from the second moved nothing,
+        // and was given only the time a search to the end of the tape from there could take.
+        expect(mockReplay.nextSession).toHaveBeenCalledTimes(2);
+        expect(action["logger"].debug).toHaveBeenCalledWith(
+          "Jump to green: nextSession #2 did not move the cursor from frame 1296000 in 1600 ms",
+        );
+        expect(mockStore.laps.recordLapStart).toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({ sessionUniqueId: 2, lap: 1, frame: SIX_HOURS + FRAMES_PER_LAP - 1 }),
+        );
+        expect(replay.state.frame).toBe(SIX_HOURS + FRAMES_PER_LAP - 1 - 300);
+      });
+
+      it("finds the green of a 24-hour race that follows a six-hour practice, pressed near its end", async () => {
+        // Not what the search is tuned for; it has to work all the same.
+        const day = 24 * 216_000;
+        const layout: SessionLayout[] = [
+          { sessionNum: 0, sessionUniqueId: 1, startFrame: 0, endFrame: SIX_HOURS - 1 },
+          { sessionNum: 1, sessionUniqueId: 2, startFrame: SIX_HOURS, endFrame: SIX_HOURS + day },
+        ];
+        const replay = fakeReplay(action, {
+          sessionTypes: ["Practice", "Race"],
+          layout,
+          cursor: SIX_HOURS + day - 10_000,
+          subSessionId: 123,
+          sessionSearchTakesMs,
+          seekTakesMs: sessionSearchTakesMs,
+        });
+
+        await press();
+        await vi.runAllTimersAsync();
+
+        expect(action["logger"].warn).not.toHaveBeenCalled();
+        expect(mockStore.laps.recordLapStart).toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({ sessionNum: 1, lap: 1, frame: SIX_HOURS + FRAMES_PER_LAP - 1 }),
+        );
+        expect(replay.state.frame).toBe(SIX_HOURS + FRAMES_PER_LAP - 1 - 300);
+      });
+    });
+
     describe("a jump across a long recording", () => {
       /** iRacing's measured rate: 8 ms for every 1000 frames of a jump. */
       const seekTakesMs = (distanceFrames: number): number => distanceFrames * 0.008;
-      /** Three and three quarter hours of race; the first probe is 400 000 frames from the cursor. */
-      const LONG_RACE: SessionLayout = { sessionNum: 0, sessionUniqueId: 1, startFrame: 0, endFrame: 804_000 };
+      /** A six-hour race; the first probe is 646 000 frames from the cursor. */
+      const LONG_RACE: SessionLayout = { sessionNum: 0, sessionUniqueId: 1, startFrame: 0, endFrame: 1_296_000 };
 
-      it("waits out a 400,000-frame probe that lands after 3.2 seconds", async () => {
+      it("waits out a probe half a six-hour race away, which lands after 5.2 seconds", async () => {
         const replay = fakeReplay(action, {
           sessionTypes: ["Race"],
           layout: [LONG_RACE],
@@ -1315,8 +1449,8 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
         await press();
         await vi.runAllTimersAsync();
 
-        // Twice the settle timeout of 1.6 s had passed before that probe landed.
-        expect(seekFrames()[0]).toBe(402_000);
+        // Three times the settle timeout of 1.6 s had passed before that probe landed.
+        expect(seekFrames()[0]).toBe(648_000);
         expect(action["logger"].warn).not.toHaveBeenCalled();
         expect(mockStore.laps.recordLapStart).toHaveBeenCalledExactlyOnceWith(
           expect.objectContaining({ lap: 1, frame: FRAMES_PER_LAP - 1 }),
@@ -1330,7 +1464,7 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
           layout: [LONG_RACE],
           cursor: 2_000,
           seekTakesMs,
-          seekStalls: (frame) => frame === 402_000,
+          seekStalls: (frame) => frame === 648_000,
         });
 
         await press();
@@ -1339,7 +1473,7 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
         expect(action["logger"].warn).toHaveBeenCalledExactlyOnceWith(
           "Jump to green: jump did not settle; aborting walk",
         );
-        expect(seekFrames()).toEqual([402_000, 2_000]);
+        expect(seekFrames()).toEqual([648_000, 2_000]);
         expect(replay.state.frame).toBe(2_000);
         expect(action["logger"].info).toHaveBeenCalledWith("Jump to green: replay put back where the press found it");
       });

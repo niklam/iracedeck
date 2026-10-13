@@ -100,6 +100,7 @@ import {
   greenApproachFrame,
   type GreenFlagTarget,
   isGreenFlagUnavailable,
+  lastListedSessionNum,
   resolveGreenFallbackCar,
   resolveGreenFlagTarget,
   resolvePoleCarIdx,
@@ -1322,7 +1323,13 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
    *      `(SessionNum, SessionUniqueID)`; the last entry's end is open and
    *      every walk reads it live as `ReplayFrameNum + ReplayFrameNumEnd`, so
    *      the walk never leaves the replay (no `goToEnd`) and a live session
-   *      that grew since the build is bisected to its current edge.
+   *      that grew since the build is bisected to its current edge. A Next
+   *      Session search covers its session at the rate of a position jump
+   *      and shows nothing on a paused replay until it lands, so it is waited
+   *      for as long as a search to the end of the recording would take, and
+   *      from the last session a real event lists none is sent (#1354). A
+   *      bisection probe that reads another session than its bounds promise
+   *      drops the map.
    *   2. **Bisect within the target session instance.** Look up the entry
    *      whose pair matches the target and bisect with
    *      `setPlayPosition(Begin, mid)` until the car is within
@@ -2141,8 +2148,19 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
      * pre-command frame (a search at the buffer's edge is a no-op the sim
      * never reports). `unsettled`: the frame moved but never held, or the
      * telemetry went away — the cursor is somewhere unverified.
+     *
+     * `waitMs` is how long the frame may stay on its pre-command value before
+     * the search counts as `unmoved`: four times the settle gap unless the
+     * caller knows the search may run longer. A session search does: it
+     * covers its distance at the rate of a position jump, and on a paused
+     * replay nothing in the telemetry moves until it lands, so one still under
+     * way reads exactly like one that did nothing (measured 2026-10-13).
      */
-    const search = async (command: () => boolean, label: string): Promise<SearchOutcome> => {
+    const search = async (
+      command: () => boolean,
+      label: string,
+      waitMs: number = settleTimeoutMs(),
+    ): Promise<SearchOutcome> => {
       checkpoint();
 
       const before = readFrame(readTelemetry());
@@ -2151,7 +2169,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
       command();
 
       const gapMs = readFastestLapSearchDelayMs();
-      const deadline = sentAt + gapMs * STABILIZATION_TIMEOUT_MULTIPLIER;
+      const deadline = sentAt + waitMs;
       let held: number | null = null;
       let sawMovement = false;
 
@@ -2183,14 +2201,16 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
       const telemetry = readTelemetry();
 
       if (!sawMovement) {
-        this.logger.debug(`${logLabel}: ${label} did not move the cursor from frame ${before ?? "n/a"}`);
+        this.logger.debug(
+          `${logLabel}: ${label} did not move the cursor from frame ${before ?? "n/a"} in ${waitMs} ms`,
+        );
 
         return { kind: "unmoved", telemetry };
       }
 
       this.logger.warn(`${logLabel}: ${label} moved the cursor but it never settled; aborting`);
       this.logger.debug(
-        `${label}: before=${before ?? "n/a"}, last seen frame=${readFrame(telemetry) ?? "n/a"} (SessionNum ${telemetry?.SessionNum ?? "n/a"}) after ${gapMs * STABILIZATION_TIMEOUT_MULTIPLIER} ms`,
+        `${label}: before=${before ?? "n/a"}, last seen frame=${readFrame(telemetry) ?? "n/a"} (SessionNum ${telemetry?.SessionNum ?? "n/a"}) after ${waitMs} ms`,
       );
 
       return { kind: "unsettled", telemetry };
@@ -2259,10 +2279,32 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
 
       // Whether the loop saw the end of the recording, or ran out of steps first.
       let sawEnd = false;
+      // In an event that is not offline, the last session the YAML lists is the
+      // last there can be: nothing is searched for from inside it.
+      const finalSessionNum =
+        typeof subSessionId === "number" && subSessionId > 0
+          ? lastListedSessionNum(this.sdkController.getSessionInfo())
+          : null;
+      /** The sample of the session start the next search leaves from. */
+      let at: TelemetryData = first.telemetry;
 
       for (let i = 0; i < MAX_SESSIONS; i++) {
         const label = `nextSession #${i + 1}`;
-        const step = await search(() => replay.nextSession(), label);
+
+        if (finalSessionNum !== null && sessions[sessions.length - 1].sessionNum === finalSessionNum) {
+          this.logger.debug(`${logLabel}: session ${finalSessionNum} is the last this event lists; ${label} not sent`);
+          sawEnd = true;
+          break;
+        }
+
+        // A Next Session search runs to the next session's start at the rate of
+        // a position jump and shows nothing meanwhile, so it is given the time
+        // a search to the end of the recording would take before it counts as
+        // "already in the last session". Four times the settle gap, the wait
+        // every search had, read a session longer than about 55 minutes that
+        // way, and the map ended there.
+        const framesToEnd = typeof at.ReplayFrameNumEnd === "number" ? at.ReplayFrameNumEnd : 0;
+        const step = await search(() => replay.nextSession(), label, replaySeekWaitMs(framesToEnd, settleTimeoutMs()));
 
         // Not moving is how the sim says "already in the last session"; a move
         // that never settled leaves the cursor unverified, and a map built on
@@ -2287,6 +2329,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
 
         last.endFrame = entry.startFrame - 1;
         sessions.push(entry);
+        at = step.telemetry;
       }
 
       return { subSessionId, sessionUniqueIds, sessions, truncated: !sawEnd };
@@ -2479,6 +2522,22 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
         tel = await jumpTo(mid);
 
         if (tel == null) return null;
+
+        // The bounds are the map's, and a frame inside them that reads another
+        // session says the map does not describe this recording: a session
+        // search that had not landed when the build stopped waiting for it, or
+        // a recording that changed under a cached map. Bisecting on would
+        // compare laps across a session boundary, so the walk stops and the map
+        // is dropped, for the next press to build afresh.
+        if (tel.SessionNum !== targetSessionNum || tel.SessionUniqueID !== sessionUniqueId) {
+          this.logger.warn(
+            `${logLabel}: a probe inside session ${targetSessionNum}/${sessionUniqueId} read session ${tel.SessionNum ?? "n/a"}/${tel.SessionUniqueID ?? "n/a"}; the session map does not match the recording, aborting`,
+          );
+          this.logger.debug(`Probe frame ${mid}, bounds ${bounds.startFrame}-${endFrame}; cached session map dropped`);
+          cachedFastestLapSessionMap = null;
+
+          return null;
+        }
 
         const lap = carLap(tel);
 

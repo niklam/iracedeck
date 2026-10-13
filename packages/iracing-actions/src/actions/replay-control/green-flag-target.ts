@@ -47,6 +47,24 @@ function readSessions(sessionInfo: unknown): Array<Record<string, unknown> | nul
 }
 
 /**
+ * The highest `SessionNum` the session YAML lists, or null when it lists none.
+ * In an event that is not an offline one no session follows that one: a real
+ * event runs each of its sessions once (only an offline event restarted from
+ * the sim's own menu repeats a `SessionNum`).
+ */
+export function lastListedSessionNum(sessionInfo: unknown): number | null {
+  let last: number | null = null;
+
+  for (const session of readSessions(sessionInfo)) {
+    const sessionNum = session?.SessionNum;
+
+    if (typeof sessionNum === "number" && sessionNum >= 0 && (last === null || sessionNum > last)) last = sessionNum;
+  }
+
+  return last;
+}
+
+/**
  * A session is a race when its `SessionType` is exactly `Race` — the reading
  * the translator's green recorder takes, so a session a press targets is one
  * the record can hold. Deliberately not the Race Engineer's "anything that is

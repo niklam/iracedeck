@@ -7,6 +7,7 @@ import {
   GREEN_FALLBACK_MIN_LAP_DIST,
   greenApproachFrame,
   isGreenFlagUnavailable,
+  lastListedSessionNum,
   resolveGreenFallbackCar,
   resolveGreenFlagTarget,
   resolvePoleCarIdx,
@@ -252,6 +253,23 @@ describe("isGreenFlagUnavailable", () => {
 
       expect(isGreenFlagUnavailable(sessionInfo)).toBe(resolveGreenFlagTarget(sessionInfo, cursorIn(0, 1)) === null);
     }
+  });
+});
+
+describe("lastListedSessionNum", () => {
+  it("is the highest SessionNum the session list holds", () => {
+    const sessionInfo = { SessionInfo: { Sessions: [{ SessionNum: 0 }, { SessionNum: 2 }, { SessionNum: 1 }] } };
+
+    expect(lastListedSessionNum(sessionInfo)).toBe(2);
+  });
+
+  it("is null without a session list, or with one that names no session", () => {
+    expect(lastListedSessionNum(null)).toBeNull();
+    expect(lastListedSessionNum({})).toBeNull();
+    expect(lastListedSessionNum({ SessionInfo: { Sessions: [] } })).toBeNull();
+    expect(
+      lastListedSessionNum({ SessionInfo: { Sessions: [null, { SessionNum: "2" }, { SessionNum: -1 }] } }),
+    ).toBeNull();
   });
 });
 

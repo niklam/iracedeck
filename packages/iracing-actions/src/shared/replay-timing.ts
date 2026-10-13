@@ -43,6 +43,12 @@ export const REPLAY_JUMP_MAX_WAIT_MS = 120_000;
  * wrong bracket (#1203). A search that has not moved by then is a legitimate
  * no-op at the buffer's edge (`nextSession` in the last session). Observed
  * first-jump transient is ~514 ms after a paused-replay `setPlayPosition`.
+ *
+ * Since #1354 this is the floor, not the cap, for the two commands whose time
+ * grows with the distance they cover: the walk's own position jumps and its
+ * Next Session searches wait for the larger of this and `replaySeekWaitMs`
+ * of that distance. A lap search covers a lap and To Start does not scan at
+ * all (31 to 46 ms from the end of a 57-minute tape), so those keep it as is.
  */
 export const STABILIZATION_TIMEOUT_MULTIPLIER = 4;
 

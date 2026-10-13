@@ -3616,14 +3616,15 @@ describe("ReplayControl", () => {
 
           try {
             singleSessionBuffer(4, 4);
-            // The session restarts mid-walk: from the first probe on, every
+            // The session restarts mid-walk: from the first lap search on, every
             // sample carries a new SessionUniqueID under the same SessionNum.
             const settled = action["sdkController"].getCurrentTelemetry;
 
             action["sdkController"].getCurrentTelemetry = vi.fn(() => {
               const tel = settled() as any;
+              const lapSearches = mockReplay.nextLap.mock.calls.length + mockReplay.prevLap.mock.calls.length;
 
-              return mockReplay.setPlayPosition.mock.calls.length > 0 ? { ...tel, SessionUniqueID: 4 } : tel;
+              return lapSearches > 0 ? { ...tel, SessionUniqueID: 4 } : tel;
             });
 
             await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
@@ -3635,6 +3636,43 @@ describe("ReplayControl", () => {
             );
             expect(mockStore.laps.recordLapStart).not.toHaveBeenCalled();
             expect(mockReplay.setPlaySpeed).toHaveBeenCalledExactlyOnceWith(1, false);
+          } finally {
+            vi.useRealTimers();
+          }
+        });
+
+        it("a probe that reads another session drops the session map and puts the replay back (#1354)", async () => {
+          vi.useFakeTimers();
+
+          try {
+            singleSessionBuffer(4, 4);
+            // From the first probe on, every sample carries another SessionUniqueID:
+            // the bounds the map gave do not describe this recording.
+            const settled = action["sdkController"].getCurrentTelemetry;
+
+            action["sdkController"].getCurrentTelemetry = vi.fn(() => {
+              const tel = settled() as any;
+              const probing = mockReplay.setPlayPosition.mock.calls.length === 1;
+
+              return probing ? { ...tel, SessionUniqueID: 4 } : tel;
+            });
+
+            await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+            await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+            await vi.runAllTimersAsync();
+
+            expect(action["logger"].warn).toHaveBeenCalledExactlyOnceWith(
+              expect.stringContaining("read session 2/4; the session map does not match the recording, aborting"),
+            );
+            expect(_getFastestLapSessionCache()).toBeNull();
+            // One probe, then the way back to the frame of the press; no lap search, nothing recorded.
+            expect(mockReplay.setPlayPosition.mock.calls.map((call) => call[1])).toEqual([expect.any(Number), 5000]);
+            expect(mockReplay.nextLap).not.toHaveBeenCalled();
+            expect(mockReplay.prevLap).not.toHaveBeenCalled();
+            expect(mockStore.laps.recordLapStart).not.toHaveBeenCalled();
+            expect(action["logger"].info).toHaveBeenCalledWith(
+              "Jump to fastest lap: replay put back where the press found it",
+            );
           } finally {
             vi.useRealTimers();
           }
