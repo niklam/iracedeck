@@ -6,6 +6,7 @@ import {
   isPaused,
   isSeeking,
   type ReplaySeekSample,
+  replaySeekWaitMs,
   seekReplayFrame,
   waitForReplay,
 } from "./replay-seek.js";
@@ -33,6 +34,28 @@ describe("replay-seek", () => {
       expect(isLandedOn({ ReplayFrameNum: 100, SessionNum: -1 }, 100, false)).toBe(true);
       expect(isLandedOn({ ReplayFrameNum: 100 }, 100, false)).toBe(true);
       expect(isLandedOn({ ReplayFrameNum: 99, SessionNum: 2 }, 100, false)).toBe(false);
+    });
+  });
+
+  describe("replaySeekWaitMs (#1354)", () => {
+    it("is the floor for a jump the sim finishes well inside it", () => {
+      expect(replaySeekWaitMs(30_000, 1600)).toBe(1600);
+      expect(replaySeekWaitMs(0, 1600)).toBe(1600);
+    });
+
+    it("grows with the distance: twice the time at 2048 frames a sim update", () => {
+      // 400,000 frames is 196 updates, 3.27 s; measured landings sit on that slope.
+      expect(replaySeekWaitMs(400_000, 1600)).toBe(6534);
+      expect(replaySeekWaitMs(195_000, 1600)).toBeGreaterThan(2 * 1495);
+    });
+
+    it("keeps a floor the user raised", () => {
+      expect(replaySeekWaitMs(400_000, 8000)).toBe(8000);
+    });
+
+    it("is the floor for a distance that is no number", () => {
+      expect(replaySeekWaitMs(Number.NaN, 1600)).toBe(1600);
+      expect(replaySeekWaitMs(-5, 1600)).toBe(1600);
     });
   });
 

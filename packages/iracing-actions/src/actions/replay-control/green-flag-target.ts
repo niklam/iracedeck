@@ -178,12 +178,20 @@ export function isGreenFlagUnavailable(sessionInfo: unknown): boolean {
  * pole car for its landing to stand in for that car's lap-1 start, when the
  * search itself could not verify the landing. Much looser than the search's
  * own bound for what it writes into the lap record: here the frame is only
- * the anchor of a five-second run-up, and iRacing's Next Lap can land a few
- * frames further before the line than that bound allows (measured at 0.9978
- * on an 85-second lap, #1432). One percent of a lap is under a second on a
- * short lap and a few seconds on the longest, all on the early side.
+ * the anchor of a five-second run-up, and iRacing's lap search does not put
+ * the start of a lap on the line. Next Lap can land a few frames before it
+ * (measured at 0.9978 on an 85-second lap, #1432), and for lap 1 of a rolling
+ * start the search lands over a second before it: measured once, on
+ * 2026-10-13 (Motegi, official race, saved replay), at 0.9799, 68 frames
+ * before the green and about 100 before the pole car took the line, which
+ * makes the run-up 6.1 seconds. The last tenth of the lap takes that in; the
+ * first bound, one percent, gave up on it. That lead-in looks like a time,
+ * while this bound is a fraction of a lap, so on a lap short enough for the
+ * lead-in to be more than a tenth of it the search would still give up and
+ * put the replay back; that is not measured. An unverified landing is never
+ * recorded, so every such press searches again.
  */
-export const GREEN_FALLBACK_MIN_LAP_DIST = 0.99;
+export const GREEN_FALLBACK_MIN_LAP_DIST = 0.9;
 
 /**
  * Whether a replay search's landing can anchor the fallback jump. A landing

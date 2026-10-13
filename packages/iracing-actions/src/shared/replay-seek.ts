@@ -112,6 +112,32 @@ export function isSeeking(sample: ReplaySeekSample | null): boolean {
   return sample?.IsReplayPlaying === false && sample.IsOnTrack !== true;
 }
 
+/** How many frames of a position jump iRacing searches in one sim update (`maxFramesToSearchPerUpdate`, default). */
+const SEEK_FRAMES_PER_SIM_UPDATE = 2048;
+
+/** One sim update, in milliseconds: the replay runs at 60 Hz. */
+const SIM_UPDATE_MS = 1000 / 60;
+
+/**
+ * How long to wait for an absolute jump of `distanceFrames` to land: twice the
+ * time iRacing needs at its search rate, and never less than `floorMs`.
+ *
+ * A jump's time grows with its length all the way. Measured on 2026-10-13 on a
+ * paused replay, each twice within 5 ms: 30,000 frames 165 ms, 60,000 frames
+ * 400 ms, 120,000 frames 896 ms, 195,000 frames 1495 ms — 8.1 ms per 1000
+ * frames from 60,000 up, which is 2048 frames a sim update. A fixed wait
+ * therefore gives up on a jump that is still on its way once the recording is
+ * long enough: the 1.6 s the lap search used to allow is passed at about
+ * 208,000 frames, under an hour of tape.
+ */
+export function replaySeekWaitMs(distanceFrames: number, floorMs: number): number {
+  if (!Number.isFinite(distanceFrames) || distanceFrames <= 0) return floorMs;
+
+  const searchMs = Math.ceil(distanceFrames / SEEK_FRAMES_PER_SIM_UPDATE) * SIM_UPDATE_MS;
+
+  return Math.max(floorMs, Math.ceil(2 * searchMs));
+}
+
 /** Whether a sample shows the replay paused. */
 export function isPaused(sample: ReplaySeekSample | null): boolean {
   return sample?.ReplayPlaySpeed === 0;

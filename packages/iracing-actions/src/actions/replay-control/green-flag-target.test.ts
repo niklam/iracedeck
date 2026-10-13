@@ -261,14 +261,17 @@ describe("acceptsGreenFallbackLanding", () => {
     expect(acceptsGreenFallbackLanding({ converged: true, priorLapDist: 0.5 })).toBe(true);
   });
 
-  it("accepts an unverified landing near the end of the lap before lap 1 (#1432 measured 0.9974 to 0.9983)", () => {
-    expect(GREEN_FALLBACK_MIN_LAP_DIST).toBe(0.99);
+  it("accepts an unverified landing in the last tenth of the lap before lap 1", () => {
+    expect(GREEN_FALLBACK_MIN_LAP_DIST).toBe(0.9);
+    // #1432 measured 0.9974 to 0.9983 for Next Lap...
     expect(acceptsGreenFallbackLanding({ converged: false, priorLapDist: 0.9974 })).toBe(true);
-    expect(acceptsGreenFallbackLanding({ converged: false, priorLapDist: 0.99 })).toBe(true);
+    // ...and a rolling start put iRacing's lap search for lap 1 at 0.9799 (2026-10-13).
+    expect(acceptsGreenFallbackLanding({ converged: false, priorLapDist: 0.9799 })).toBe(true);
+    expect(acceptsGreenFallbackLanding({ converged: false, priorLapDist: 0.9 })).toBe(true);
   });
 
   it("refuses an unverified landing further from the line, or one not on that lap at all", () => {
-    expect(acceptsGreenFallbackLanding({ converged: false, priorLapDist: 0.9899 })).toBe(false);
+    expect(acceptsGreenFallbackLanding({ converged: false, priorLapDist: 0.8999 })).toBe(false);
     expect(acceptsGreenFallbackLanding({ converged: false, priorLapDist: 0.5 })).toBe(false);
     expect(acceptsGreenFallbackLanding({ converged: false, priorLapDist: null })).toBe(false);
   });
