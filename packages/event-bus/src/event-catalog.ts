@@ -1113,7 +1113,7 @@ export type SimEventMap = {
     }
   >;
 
-  // ── Replay record (issues #1203, #1354) — the session's lap starts, lap times and greens ──
+  // ── Replay record (issues #1203, #1354, #1426) — the session's lap starts, lap times, greens, session starts and incidents ──
   // Two events rather than one delayed one: the frame is the value that must
   // not be lost, so it goes out at the crossing, while the time arrives when
   // the sim publishes it or never. A replay frame is not an iRacing-only idea
@@ -1189,6 +1189,56 @@ export type SimEventMap = {
       frame: number;
       /** `SessionTime` on the same tick, whole milliseconds. */
       sessionTimeMs: number;
+    }
+  >;
+  /**
+   * A session began at replay `frame` (issue #1426), published once per
+   * `(sessionNum, sessionUniqueId)` the first time the session is seen live:
+   * in the car, or out of it at the live edge of the in-session replay, never
+   * from a replay scrubbed back or a replay-only session. The frame is derived
+   * as the live frame less `SessionTime` in frames, so a session first seen
+   * minutes in is stamped where it began, and two consecutive live ticks must
+   * agree on it before it goes out. A restarted offline event repeats a
+   * `sessionNum` under a new `sessionUniqueId`: a second start, further along
+   * the tape. A session is a span of any sim's replay, so it fits the
+   * sim-agnostic catalog as the lap events do.
+   */
+  "replay.sessionStarted": SimEvent<
+    "replay.sessionStarted",
+    {
+      /** `WeekendInfo.SubSessionID`; 0 for an offline session. */
+      subSessionId: number;
+      sessionNum: number;
+      sessionUniqueId: number;
+      /** The live replay frame the session began at; 0 when it began before the recording. */
+      frame: number;
+    }
+  >;
+  /**
+   * A car's incident count rose at replay `frame` (issue #1426). Emitted under
+   * the lap record's gate (live, in-car telemetry only), for the driver's own
+   * car from its telemetry counter and for other cars from the session info
+   * where the sim shows them: an official session hides them until it is
+   * over. One event per rise and no burst logic here; the replay store folds a
+   * rise close behind the same car's last one into that entry. Not the Race
+   * Engineer's `incident.scored` / `incident.occurred`, which are the
+   * driver's own, shaped for audio and carry no frame.
+   */
+  "replay.incident": SimEvent<
+    "replay.incident",
+    {
+      subSessionId: number;
+      sessionNum: number;
+      sessionUniqueId: number;
+      carIdx: number;
+      carNumberRaw: number;
+      /** The live replay frame on the tick the count rose, recorded raw. */
+      frame: number;
+      sessionTimeMs: number;
+      /** How far the count rose on that tick. */
+      delta: number;
+      /** The driver's own counter, or another car's count in the session YAML. */
+      source: "telemetry" | "sessionInfo";
     }
   >;
 
