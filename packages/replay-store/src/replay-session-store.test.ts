@@ -5,6 +5,7 @@ import { isAbsolute, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { GreenRecord } from "./replay-greens.js";
+import type { IncidentRecord } from "./replay-incidents.js";
 import { REPLAY_FILE_VERSION, replaySessionFileName, resolveReplayStoreDirectory } from "./replay-session-file.js";
 import {
   _resetReplaySessionStore,
@@ -18,6 +19,7 @@ import {
   type ReplaySessionStoreOptions,
   type SubSessionScoped,
 } from "./replay-session-store.js";
+import type { SessionStartRecord } from "./replay-sessions.js";
 
 // The atomic write's rename, counted and made to fail on demand: an ESM
 // namespace cannot be spied on, and the settings-store test's directory-as-lock
@@ -158,6 +160,26 @@ const restartFlag = (frame: number, overrides: Partial<GreenRecord & SubSessionS
 
 /** The start of session (2, 3), as Jump to Race Start asks for it from inside that session. */
 const startQuery = { sessionNum: 2, sessionUniqueId: 3, kind: "start" } as const;
+
+/** A `replay.sessionStarted` as the store takes it; session (0, 1) from the tape's first frame unless overridden. */
+const sessionStarted = (
+  overrides: Partial<SessionStartRecord & SubSessionScoped> = {},
+): SessionStartRecord & SubSessionScoped => ({ sessionNum: 0, sessionUniqueId: 1, frame: 0, ...overrides });
+
+/** A `replay.incident` as the store takes it; the driver's own 2x in session (2, 3) unless overridden. */
+const incidentRise = (
+  overrides: Partial<IncidentRecord & SubSessionScoped> = {},
+): IncidentRecord & SubSessionScoped => ({
+  sessionNum: 2,
+  sessionUniqueId: 3,
+  carIdx: 7,
+  carNumberRaw: 2,
+  frame: 40000,
+  sessionTimeMs: 666000,
+  delta: 2,
+  source: "telemetry",
+  ...overrides,
+});
 
 describe("resolveReplayStoreDirectory", () => {
   it("defaults to %LOCALAPPDATA%\\iRaceDeck\\Replay\\<ecosystem> — per ecosystem, like the settings file", () => {
@@ -1676,6 +1698,573 @@ describe("createReplaySessionStore", () => {
       expect(afterAll.future).toEqual({ anything: [1, 2, 3] });
       expect(afterAll.markers).toHaveLength(2);
       expect(afterAll.laps.sessions[0].cars["7"].laps).toHaveLength(2);
+    });
+  });
+
+  describe("session starts through the store (#1426)", () => {
+    it("records each session's start, lists them in frame order, and writes the section", async () => {
+      store.setActiveSession(header());
+
+      expect(store.sessions.record(sessionStarted({ subSessionId: SUB }))).toBe(true);
+      expect(store.sessions.record(sessionStarted({ sessionNum: 2, sessionUniqueId: 3, frame: 72480 }))).toBe(true);
+      expect(store.sessions.record(sessionStarted({ sessionNum: 1, sessionUniqueId: 2, frame: 36120 }))).toBe(true);
+      expect(store.sessions.list({ subSessionId: SUB })).toEqual({
+        hit: true,
+        starts: [
+          { sessionNum: 0, sessionUniqueId: 1, frame: 0 },
+          { sessionNum: 1, sessionUniqueId: 2, frame: 36120 },
+          { sessionNum: 2, sessionUniqueId: 3, frame: 72480 },
+        ],
+      });
+
+      await store.flush();
+
+      expect(JSON.parse(readFileSync(filePath, "utf-8")).sections).toEqual({
+        markers: [],
+        sessions: {
+          version: 1,
+          sessions: [
+            { sessionNum: 0, sessionUniqueId: 1, frame: 0 },
+            { sessionNum: 1, sessionUniqueId: 2, frame: 36120 },
+            { sessionNum: 2, sessionUniqueId: 3, frame: 72480 },
+          ],
+        },
+      });
+    });
+
+    it("keeps a session's first start: a second one is taken, changes nothing and writes nothing", async () => {
+      store.setActiveSession(header());
+      store.sessions.record(sessionStarted({ sessionNum: 1, sessionUniqueId: 2, frame: 36120 }));
+      await store.flush();
+      fsState.handedOff = 0;
+
+      expect(store.sessions.record(sessionStarted({ sessionNum: 1, sessionUniqueId: 2, frame: 36122 }))).toBe(true);
+      await store.flush();
+
+      expect(fsState.handedOff).toBe(0);
+      expect(store.sessions.list()).toEqual({
+        hit: true,
+        starts: [{ sessionNum: 1, sessionUniqueId: 2, frame: 36120 }],
+      });
+    });
+
+    it("records a restarted event's second instance of a session number as a second entry", () => {
+      store.setActiveSession(header(0));
+      store.sessions.record(sessionStarted({ subSessionId: 0 }));
+      store.sessions.record(sessionStarted({ subSessionId: 0, sessionNum: 1, sessionUniqueId: 2, frame: 9000 }));
+      store.sessions.record(sessionStarted({ subSessionId: 0, sessionNum: 0, sessionUniqueId: 3, frame: 21000 }));
+
+      const listing = store.sessions.list({ subSessionId: 0 });
+
+      expect(listing.hit && listing.starts.map((s) => [s.sessionNum, s.sessionUniqueId, s.frame])).toEqual([
+        [0, 1, 0],
+        [1, 2, 9000],
+        [0, 3, 21000],
+      ]);
+    });
+
+    it("ignores a call whose subSessionId is not the active session's", () => {
+      store.setActiveSession(header());
+
+      expect(store.sessions.record(sessionStarted({ subSessionId: SUB + 1 }))).toBe(false);
+      expect(store.sessions.list({ subSessionId: SUB + 1 })).toEqual({ hit: false, reason: "no file" });
+      expect(store.sessions.list()).toEqual({ hit: false, reason: "no file" });
+    });
+
+    it("reads a written record back on the next open", async () => {
+      store.setActiveSession(header());
+      store.sessions.record(sessionStarted({ frame: 120 }));
+      store.clearActiveSession();
+      await store.flush();
+
+      store.setActiveSession(header());
+      expect(store.sessions.list()).toEqual({
+        hit: true,
+        starts: [{ sessionNum: 0, sessionUniqueId: 1, frame: 120 }],
+      });
+    });
+
+    it("lists 'no file' for a record nothing was recorded into, and an empty list once the plugin is seen running", () => {
+      expect(store.sessions.list()).toEqual({ hit: false, reason: "no file" }); // no active session
+
+      store.setActiveSession(header(SUB + 5));
+      expect(store.sessions.list()).toEqual({ hit: false, reason: "no file" });
+      store.markers.add({ frame: 1, sessionNum: 0, sessionTimeMs: 0 }); // a marker set in review is not a recording
+      expect(store.sessions.list()).toEqual({ hit: false, reason: "no file" });
+      store.laps.recordLapStart(lapStart());
+      expect(store.sessions.list()).toEqual({ hit: true, starts: [] });
+
+      // A file recorded by a build before this one: loaded, no sessions section.
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(filePath, JSON.stringify({ version: 1, sections: { markers: [] } }));
+      store.setActiveSession(header());
+      expect(store.sessions.list()).toEqual({ hit: true, starts: [] });
+    });
+  });
+
+  describe("incidents through the store (#1426)", () => {
+    it("records incidents, folds a rise within 600 frames, lists them in frame order, and writes the section", async () => {
+      store.setActiveSession(header());
+
+      expect(store.incidents.record(incidentRise({ subSessionId: SUB, delta: 1 }))).toBe(true);
+      expect(store.incidents.record(incidentRise({ frame: 40240, delta: 2 }))).toBe(true); // the same crash
+      expect(
+        store.incidents.record(incidentRise({ carIdx: 12, carNumberRaw: 44, frame: 38000, source: "sessionInfo" })),
+      ).toBe(true);
+      expect(store.incidents.record(incidentRise({ frame: 40601 }))).toBe(true); // 601 after: a new incident
+
+      expect(store.incidents.list({ subSessionId: SUB })).toEqual({
+        hit: true,
+        incidents: [
+          {
+            sessionNum: 2,
+            sessionUniqueId: 3,
+            carIdx: 12,
+            carNumberRaw: 44,
+            frame: 38000,
+            sessionTimeMs: 666000,
+            delta: 2,
+            source: "sessionInfo",
+          },
+          {
+            sessionNum: 2,
+            sessionUniqueId: 3,
+            carIdx: 7,
+            carNumberRaw: 2,
+            frame: 40000,
+            sessionTimeMs: 666000,
+            delta: 3,
+            source: "telemetry",
+          },
+          {
+            sessionNum: 2,
+            sessionUniqueId: 3,
+            carIdx: 7,
+            carNumberRaw: 2,
+            frame: 40601,
+            sessionTimeMs: 666000,
+            delta: 2,
+            source: "telemetry",
+          },
+        ],
+      });
+
+      await store.flush();
+
+      expect(JSON.parse(readFileSync(filePath, "utf-8")).sections).toEqual({
+        markers: [],
+        incidents: {
+          version: 1,
+          sessions: [
+            {
+              sessionNum: 2,
+              sessionUniqueId: 3,
+              incidents: [
+                { carIdx: 12, carNumberRaw: 44, frame: 38000, sessionTimeMs: 666000, delta: 2, source: "sessionInfo" },
+                { carIdx: 7, carNumberRaw: 2, frame: 40000, sessionTimeMs: 666000, delta: 3, source: "telemetry" },
+                { carIdx: 7, carNumberRaw: 2, frame: 40601, sessionTimeMs: 666000, delta: 2, source: "telemetry" },
+              ],
+            },
+          ],
+        },
+      });
+    });
+
+    it("ignores a call whose subSessionId is not the active session's", () => {
+      store.setActiveSession(header());
+
+      expect(store.incidents.record(incidentRise({ subSessionId: SUB + 1 }))).toBe(false);
+      expect(store.incidents.list()).toEqual({ hit: false, reason: "no file" });
+    });
+
+    it("lists 'no file' for a record nothing was recorded into, and an empty list for a loaded file without incidents", () => {
+      expect(store.incidents.list()).toEqual({ hit: false, reason: "no file" });
+
+      store.setActiveSession(header(SUB + 5));
+      expect(store.incidents.list()).toEqual({ hit: false, reason: "no file" });
+      store.sessions.record(sessionStarted());
+      expect(store.incidents.list()).toEqual({ hit: true, incidents: [] });
+
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(filePath, JSON.stringify({ version: 1, sections: { markers: [] } }));
+      store.setActiveSession(header());
+      expect(store.incidents.list()).toEqual({ hit: true, incidents: [] });
+    });
+  });
+
+  describe("the #1426 sections beside the others", () => {
+    it("the offline record takes session starts and incidents, serves them, and never reaches the disk", async () => {
+      store.setActiveSession(header(0));
+
+      expect(store.sessions.record(sessionStarted({ subSessionId: 0 }))).toBe(true);
+      expect(store.incidents.record(incidentRise({ subSessionId: 0 }))).toBe(true);
+      expect(store.sessions.list({ subSessionId: 0 })).toMatchObject({ hit: true, starts: [{ frame: 0 }] });
+      expect(store.incidents.list({ subSessionId: 0 })).toMatchObject({ hit: true, incidents: [{ frame: 40000 }] });
+
+      await store.flush();
+      store.flushSync();
+      store.clearActiveSession();
+      await store.flush();
+      expect(existsSync(dir)).toBe(false);
+      expect(fsState.renames).toBe(0);
+      expect(syncFs.renames).toBe(0);
+
+      // Dropped with the record.
+      store.setActiveSession(header(0));
+      expect(store.sessions.list({ subSessionId: 0 })).toEqual({ hit: false, reason: "no file" });
+      expect(store.incidents.list({ subSessionId: 0 })).toEqual({ hit: false, reason: "no file" });
+    });
+
+    it("findLapStart, listLapStarts and findGreen still answer 'no file' for a record holding only a session start or only incidents", () => {
+      const lapQuery = { carIdx: 7, carNumberRaw: 2 };
+
+      store.setActiveSession(header(SUB + 5));
+      store.sessions.record(sessionStarted());
+      expect(store.laps.findLapStart(lapStart())).toEqual({ hit: false, reason: "no file" });
+      expect(store.laps.listLapStarts(lapQuery)).toEqual({ hit: false, reason: "no file" });
+      expect(store.greens.findGreen(startQuery)).toEqual({ hit: false, reason: "no file" });
+
+      store.setActiveSession(header(SUB + 6));
+      store.incidents.record(incidentRise());
+      expect(store.laps.findLapStart(lapStart())).toEqual({ hit: false, reason: "no file" });
+      expect(store.laps.listLapStarts(lapQuery)).toEqual({ hit: false, reason: "no file" });
+      expect(store.greens.findGreen(startQuery)).toEqual({ hit: false, reason: "no file" });
+    });
+
+    it("carries unknown fields on a session start, an incident, an incidents session and both sections through a write", async () => {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        filePath,
+        JSON.stringify({
+          version: 1,
+          sections: {
+            sessions: {
+              version: 1,
+              source: "live",
+              sessions: [{ sessionNum: 0, sessionUniqueId: 1, frame: 0, type: "Practice" }],
+            },
+            incidents: {
+              version: 1,
+              source: "live",
+              sessions: [
+                {
+                  sessionNum: 2,
+                  sessionUniqueId: 3,
+                  type: "Race",
+                  incidents: [
+                    {
+                      carIdx: 7,
+                      carNumberRaw: 2,
+                      frame: 40000,
+                      sessionTimeMs: 666000,
+                      delta: 2,
+                      source: "telemetry",
+                      kind: "contact",
+                    },
+                    { carIdx: 9, carNumberRaw: 31, frame: 45000, sessionTimeMs: 1, delta: 1, source: "replayScan" },
+                  ],
+                },
+              ],
+            },
+          },
+        }),
+      );
+
+      store.setActiveSession(header());
+      expect(store.sessions.record(sessionStarted({ sessionNum: 1, sessionUniqueId: 2, frame: 36120 }))).toBe(true);
+      expect(store.incidents.record(incidentRise({ frame: 40300, delta: 2 }))).toBe(true); // folded into the file's
+      await store.flush();
+
+      const { sections } = JSON.parse(readFileSync(filePath, "utf-8"));
+
+      expect(sections.sessions).toEqual({
+        version: 1,
+        source: "live",
+        sessions: [
+          { sessionNum: 0, sessionUniqueId: 1, frame: 0, type: "Practice" },
+          { sessionNum: 1, sessionUniqueId: 2, frame: 36120 },
+        ],
+      });
+      expect(sections.incidents).toEqual({
+        version: 1,
+        source: "live",
+        sessions: [
+          {
+            sessionNum: 2,
+            sessionUniqueId: 3,
+            type: "Race",
+            incidents: [
+              {
+                carIdx: 7,
+                carNumberRaw: 2,
+                frame: 40000,
+                sessionTimeMs: 666000,
+                delta: 4,
+                source: "telemetry",
+                kind: "contact",
+              },
+              { carIdx: 9, carNumberRaw: 31, frame: 45000, sessionTimeMs: 1, delta: 1, source: "replayScan" },
+            ],
+          },
+        ],
+      });
+    });
+
+    it("carries a sessions and an incidents section from a newer build through verbatim, and neither reads nor writes them", async () => {
+      // Key order and nesting this build would not produce, so a rewrite of either cannot pass for it.
+      const newerSessions = { sessions: [{ at: 0, id: [0, 1] }], version: 2 };
+      const newerIncidents = { sessions: [{ cars: { "7": [40000] } }], version: 2 };
+      const warn = vi.fn();
+      const warned = createReplaySessionStore({ directory: dir, logger: { ...silentLogger, warn }, debounceMs: 10 });
+
+      tuned = warned;
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        filePath,
+        JSON.stringify({ version: 1, sections: { sessions: newerSessions, incidents: newerIncidents } }),
+      );
+
+      warned.setActiveSession(header());
+
+      expect(warned.sessions.record(sessionStarted())).toBe(false);
+      expect(warned.sessions.record(sessionStarted({ sessionNum: 1, sessionUniqueId: 2 }))).toBe(false);
+      expect(warned.sessions.list()).toEqual({ hit: false, reason: "newer format" });
+      expect(warned.incidents.record(incidentRise())).toBe(false);
+      expect(warned.incidents.record(incidentRise({ frame: 90000 }))).toBe(false);
+      expect(warned.incidents.list()).toEqual({ hit: false, reason: "newer format" });
+      expect(warn).toHaveBeenCalledTimes(2);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("sessions section from a newer iRaceDeck"));
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("incidents section from a newer iRaceDeck"));
+
+      // Every other section's write carries them through byte for byte.
+      warned.markers.add({ frame: 1, sessionNum: 0, sessionTimeMs: 0 });
+      await warned.flush();
+      warned.laps.recordLapStart(lapStart());
+      warned.greens.record(greenFlag());
+      await warned.flush();
+
+      const text = readFileSync(filePath, "utf-8");
+
+      expect(text).toContain(`"sessions":${JSON.stringify(newerSessions)}`);
+      expect(text).toContain(`"incidents":${JSON.stringify(newerIncidents)}`);
+      expect(JSON.parse(text).sections.markers).toHaveLength(1);
+      expect(JSON.parse(text).sections.greens.sessions).toHaveLength(1);
+    });
+
+    it("every other section survives a sessions and an incidents write, and both survive every other section's write", async () => {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        filePath,
+        JSON.stringify({ version: 1, sections: { future: { anything: [1, 2, 3] }, markers: [] } }),
+      );
+
+      store.setActiveSession(header());
+      store.markers.add({ frame: 1, sessionNum: 0, sessionTimeMs: 0 });
+      store.laps.recordLapStart(lapStart());
+      store.greens.record(greenFlag());
+      await store.flush();
+
+      store.sessions.record(sessionStarted());
+      store.incidents.record(incidentRise());
+      await store.flush();
+
+      const afterNew = JSON.parse(readFileSync(filePath, "utf-8")).sections;
+
+      expect(afterNew.future).toEqual({ anything: [1, 2, 3] });
+      expect(afterNew.markers).toEqual([{ frame: 1, sessionNum: 0, sessionTimeMs: 0 }]);
+      expect(afterNew.laps.sessions[0].cars["7"].laps).toEqual([{ lap: 1, frame: 30821, timeMs: null }]);
+      expect(afterNew.greens.sessions[0].greens).toEqual([{ kind: "start", frame: 30215, sessionTimeMs: 512433 }]);
+      expect(afterNew.sessions.sessions).toEqual([{ sessionNum: 0, sessionUniqueId: 1, frame: 0 }]);
+      expect(afterNew.incidents.sessions[0].incidents).toHaveLength(1);
+
+      store.markers.add({ frame: 500, sessionNum: 0, sessionTimeMs: 0 });
+      await store.flush();
+      store.laps.recordLapStart(lapStart({ lap: 2, frame: 36305 }));
+      await store.flush();
+      store.greens.record(restartFlag(71904));
+      await store.flush();
+
+      const afterAll = JSON.parse(readFileSync(filePath, "utf-8")).sections;
+
+      expect(afterAll.sessions).toEqual(afterNew.sessions);
+      expect(afterAll.incidents).toEqual(afterNew.incidents);
+      expect(afterAll.future).toEqual({ anything: [1, 2, 3] });
+      expect(afterAll.markers).toHaveLength(2);
+      expect(afterAll.laps.sessions[0].cars["7"].laps).toHaveLength(2);
+      expect(afterAll.greens.sessions[0].greens).toHaveLength(2);
+    });
+
+    it("session starts and incidents recorded while the file was locked merge into the file's: its entries stay", async () => {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        filePath,
+        JSON.stringify({
+          version: 1,
+          sections: {
+            markers: [],
+            sessions: { version: 1, sessions: [{ sessionNum: 0, sessionUniqueId: 1, frame: 0 }] },
+            incidents: {
+              version: 1,
+              sessions: [
+                {
+                  sessionNum: 2,
+                  sessionUniqueId: 3,
+                  incidents: [
+                    { carIdx: 7, carNumberRaw: 2, frame: 40000, sessionTimeMs: 666000, delta: 4, source: "telemetry" },
+                  ],
+                },
+              ],
+            },
+          },
+        }),
+      );
+      useFakeStoreTimers();
+      const retrying = storeWith({ loadRetryDelaysMs: [20] });
+
+      syncFs.failRead = 1;
+      retrying.setActiveSession(header());
+      expect(retrying.getActiveSession()).toMatchObject({ path: null });
+
+      // Recorded while the file was locked.
+      expect(retrying.sessions.record(sessionStarted({ frame: 15 }))).toBe(true); // the file has (0, 1) at 0
+      expect(retrying.sessions.record(sessionStarted({ sessionNum: 1, sessionUniqueId: 2, frame: 36120 }))).toBe(true);
+      expect(retrying.incidents.record(incidentRise({ frame: 40010, delta: 2 }))).toBe(true); // the file's crash
+      expect(retrying.incidents.record(incidentRise({ frame: 60000, delta: 1 }))).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(20); // the re-read: readable now, merged, and a save debounced
+      expect(retrying.getActiveSession()).toMatchObject({ path: filePath });
+      await vi.advanceTimersByTimeAsync(10);
+      await waitUntil(() => fsState.landed >= 1);
+      await retrying.flush();
+      expect(fsState.renames).toBe(1);
+
+      const { sections } = JSON.parse(readFileSync(filePath, "utf-8"));
+
+      expect(sections.sessions.sessions).toEqual([
+        { sessionNum: 0, sessionUniqueId: 1, frame: 0 },
+        { sessionNum: 1, sessionUniqueId: 2, frame: 36120 },
+      ]);
+      expect(
+        sections.incidents.sessions[0].incidents.map((e: { frame: number; delta: number }) => [e.frame, e.delta]),
+      ).toEqual([
+        [40000, 4],
+        [60000, 1],
+      ]);
+    });
+
+    it("a session start that is the only thing recorded while the file was locked is still written after the merge", async () => {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(filePath, JSON.stringify({ version: 1, sections: { markers: [] } }));
+      useFakeStoreTimers();
+      const retrying = storeWith({ loadRetryDelaysMs: [20] });
+
+      syncFs.failRead = 1;
+      retrying.setActiveSession(header());
+      expect(retrying.sessions.record(sessionStarted())).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(20); // the re-read and the merge
+      await vi.advanceTimersByTimeAsync(10); // the save the merge scheduled
+      await waitUntil(() => fsState.landed >= 1);
+      await retrying.flush();
+
+      expect(JSON.parse(readFileSync(filePath, "utf-8")).sections.sessions.sessions).toEqual([
+        { sessionNum: 0, sessionUniqueId: 1, frame: 0 },
+      ]);
+    });
+
+    it("an incident that is the only thing recorded while the file was locked is still written after the merge", async () => {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(filePath, JSON.stringify({ version: 1, sections: { markers: [] } }));
+      useFakeStoreTimers();
+      const retrying = storeWith({ loadRetryDelaysMs: [20] });
+
+      syncFs.failRead = 1;
+      retrying.setActiveSession(header());
+      expect(retrying.incidents.record(incidentRise())).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(20);
+      await vi.advanceTimersByTimeAsync(10);
+      await waitUntil(() => fsState.landed >= 1);
+      await retrying.flush();
+
+      expect(JSON.parse(readFileSync(filePath, "utf-8")).sections.incidents.sessions[0].incidents).toHaveLength(1);
+    });
+
+    it("a locked file whose sessions and incidents sections are a newer build's keeps them verbatim; what was recorded meanwhile is dropped", async () => {
+      const newerSessions = { version: 2, starts: [0] };
+      const newerIncidents = { version: 2, list: [40000] };
+
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        filePath,
+        JSON.stringify({ version: 1, sections: { sessions: newerSessions, incidents: newerIncidents } }),
+      );
+      useFakeStoreTimers();
+      const retrying = storeWith({ loadRetryDelaysMs: [20] });
+
+      syncFs.failRead = 1;
+      retrying.setActiveSession(header());
+      expect(retrying.sessions.record(sessionStarted())).toBe(true); // nothing is known of the file yet
+      expect(retrying.incidents.record(incidentRise())).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(20);
+      await vi.advanceTimersByTimeAsync(10);
+      await waitUntil(() => fsState.landed >= 1);
+      await retrying.flush();
+
+      expect(retrying.sessions.list()).toEqual({ hit: false, reason: "newer format" });
+      expect(retrying.incidents.list()).toEqual({ hit: false, reason: "newer format" });
+
+      const { sections } = JSON.parse(readFileSync(filePath, "utf-8"));
+
+      expect(sections.sessions).toEqual(newerSessions);
+      expect(sections.incidents).toEqual(newerIncidents);
+    });
+  });
+
+  describe("listLapStarts through the store (#1426)", () => {
+    const lapQuery = { carIdx: 7, carNumberRaw: 2 };
+
+    it("lists a car's lap starts across every recorded session, frame-ordered, a lap two sessions hold once", () => {
+      store.setActiveSession(header());
+      // Qualifying, then the race.
+      store.laps.recordLapStart(lapStart({ sessionNum: 1, sessionUniqueId: 2, lap: 1, frame: 12000 }));
+      store.laps.recordLapStart(lapStart({ sessionNum: 1, sessionUniqueId: 2, lap: 2, frame: 17500 }));
+      store.laps.recordLapStart(lapStart({ lap: 1, frame: 30821 }));
+      store.laps.recordLapStart(lapStart({ lap: 2, frame: 36305 }));
+      // The walk's sparse session under a replay's own pair, past the live span, holding a lap 40 frames from the live one.
+      store.laps.recordLapStart(lapStart({ sessionUniqueId: 99, lap: 3, frame: 41800 }));
+      store.laps.recordLapStart(lapStart({ lap: 3, frame: 41760 }));
+
+      expect(store.laps.listLapStarts({ ...lapQuery, subSessionId: SUB })).toEqual({
+        hit: true,
+        frames: [12000, 17500, 30821, 36305, 41760],
+      });
+    });
+
+    it("words each miss as findLapStart does, decided the same way", async () => {
+      expect(store.laps.listLapStarts(lapQuery)).toEqual({ hit: false, reason: "no file" }); // no active session
+
+      // Someone else's .rpy: nothing loaded, no lap recorded.
+      store.setActiveSession(header(SUB + 5));
+      expect(store.laps.listLapStarts(lapQuery)).toEqual({ hit: false, reason: "no file" });
+      store.laps.recordLapStart(lapStart({ carIdx: 9, carNumberRaw: 31 }));
+      expect(store.laps.listLapStarts(lapQuery)).toEqual({ hit: false, reason: "no car" });
+      store.laps.recordLapStart(lapStart({ carNumberRaw: 55 }));
+      expect(store.laps.listLapStarts(lapQuery)).toEqual({ hit: false, reason: "car mismatch" });
+      expect(store.laps.listLapStarts({ ...lapQuery, subSessionId: SUB })).toEqual({ hit: false, reason: "no file" });
+
+      // A loaded file without a laps section: the car is not in it.
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(filePath, JSON.stringify({ version: 1, sections: { markers: [] } }));
+      store.setActiveSession(header());
+      expect(store.laps.listLapStarts(lapQuery)).toEqual({ hit: false, reason: "no car" });
+
+      // A newer build's laps section.
+      writeFileSync(filePath, JSON.stringify({ version: 1, sections: { laps: { version: 2, sessions: [] } } }));
+      store.setActiveSession(header(SUB + 6));
+      store.setActiveSession(header());
+      expect(store.laps.listLapStarts(lapQuery)).toEqual({ hit: false, reason: "newer format" });
     });
   });
 });

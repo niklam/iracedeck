@@ -1,6 +1,7 @@
 // @iracedeck/replay-store: the per-session replay store, markers (issue #1162), the
-// lap record (issue #1203) and the green flags (issue #1354), moved out of deck-core
-// (issue #1367). The iRacing subscriber that feeds it lives in @iracedeck/deck-iracing.
+// lap record (issue #1203), the green flags (issue #1354), and the session starts and
+// incidents (issue #1426), moved out of deck-core (issue #1367). The iRacing subscriber
+// that feeds it lives in @iracedeck/deck-iracing.
 export {
   parseReplaySessionFile,
   REPLAY_FILE_FRAME_LAG,
@@ -30,10 +31,14 @@ export {
   findLapStartInSection,
   isNewerLapsSection,
   LAPS_SECTION_VERSION,
+  listLapStartsInSection,
   mergeLapsSectionInto,
   normalizeLapsSection,
   recordLapStartInSection,
   recordLapTimeInSection,
+  type LapStartListing,
+  type LapStartListMissReason,
+  type LapStartListQuery,
   type LapStartLookup,
   type LapStartMissReason,
   type LapStartQuery,
@@ -62,20 +67,56 @@ export {
   type ReplayGreensSession,
 } from "./replay-greens.js";
 export {
+  emptySessionsSection,
+  isNewerSessionsSection,
+  listSessionStartsInSection,
+  mergeSessionsSectionInto,
+  normalizeSessionsSection,
+  recordSessionStartInSection,
+  SESSIONS_SECTION_VERSION,
+  type ReplaySessionsSection,
+  type ReplaySessionStart,
+  type SessionStartListing,
+  type SessionStartListMissReason,
+  type SessionStartRecord,
+} from "./replay-sessions.js";
+export {
+  emptyIncidentsSection,
+  INCIDENT_FOLD_FRAMES,
+  INCIDENTS_SECTION_VERSION,
+  isNewerIncidentsSection,
+  listIncidentsInSection,
+  mergeIncidentsSectionInto,
+  normalizeIncidentsSection,
+  recordIncidentInSection,
+  type IncidentListing,
+  type IncidentListMissReason,
+  type IncidentRecord,
+  type IncidentSource,
+  type ReplayIncident,
+  type ReplayIncidentEntry,
+  type ReplayIncidentsSection,
+  type ReplayIncidentsSession,
+} from "./replay-incidents.js";
+export {
   _resetReplaySessionStore,
   createReplaySessionStore,
   getReplaySessionStore,
   initializeReplaySessionStore,
   isReplaySessionStoreInitialized,
   REPLAY_GREENS_SECTION,
+  REPLAY_INCIDENTS_SECTION,
   REPLAY_LAPS_SECTION,
   REPLAY_MARKERS_SECTION,
+  REPLAY_SESSIONS_SECTION,
   REPLAY_STORE_WRITE_DEBOUNCE_MS,
   REPLAY_STORE_WRITE_MAX_WAIT_MS,
   type ActiveReplaySession,
   type ReplayGreensApi,
+  type ReplayIncidentsApi,
   type ReplayLapsApi,
   type ReplayMarkersApi,
+  type ReplaySessionsApi,
   type ReplaySessionStore,
   type ReplaySessionStoreOptions,
   type SubSessionScoped,

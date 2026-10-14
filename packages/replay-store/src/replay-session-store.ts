@@ -1,11 +1,11 @@
 /**
- * The per-session replay store (issues #1162, #1203, #1354): a process singleton
+ * The per-session replay store (issues #1162, #1203, #1354, #1426): a process singleton
  * and the only owner of `%LOCALAPPDATA%\iRaceDeck\Replay\session_<SubSessionID>.json`.
  *
  * It keeps ONE active record — the session the SDK is connected to, fed by
  * `createReplaySessionSubscriber` — and serves it synchronously to the actions
  * through one API per section: `markers` (#1162), `laps` (#1203), `greens`
- * (#1354). Everything else in the file is carried through untouched: a build
+ * (#1354), `sessions` and `incidents` (#1426). Everything else in the file is carried through untouched: a build
  * that could delete another feature's section by saving its own would make
  * every further section a data-loss bug. That includes a versioned section a
  * NEWER build wrote (its `version` above this build's) and any `markers` entry
@@ -49,12 +49,25 @@ import {
   type ReplayGreensSection,
 } from "./replay-greens.js";
 import {
+  type IncidentListing,
+  type IncidentRecord,
+  isNewerIncidentsSection,
+  listIncidentsInSection,
+  mergeIncidentsSectionInto,
+  normalizeIncidentsSection,
+  recordIncidentInSection,
+  type ReplayIncidentsSection,
+} from "./replay-incidents.js";
+import {
   findLapStartInSection,
   isNewerLapsSection,
+  type LapStartListing,
+  type LapStartListQuery,
   type LapStartLookup,
   type LapStartQuery,
   type LapStartRecord,
   type LapTimeRecord,
+  listLapStartsInSection,
   mergeLapsSectionInto,
   normalizeLapsSection,
   recordLapStartInSection,
@@ -76,6 +89,16 @@ import {
   replaySessionFileName,
   type ReplaySessionHeader,
 } from "./replay-session-file.js";
+import {
+  isNewerSessionsSection,
+  listSessionStartsInSection,
+  mergeSessionsSectionInto,
+  normalizeSessionsSection,
+  recordSessionStartInSection,
+  type ReplaySessionsSection,
+  type SessionStartListing,
+  type SessionStartRecord,
+} from "./replay-sessions.js";
 
 /**
  * Trailing debounce for the file write: long enough that a crossing wave lands
@@ -96,6 +119,8 @@ export const REPLAY_STORE_WRITE_MAX_WAIT_MS = 10_000;
 export const REPLAY_MARKERS_SECTION = "markers";
 export const REPLAY_LAPS_SECTION = "laps";
 export const REPLAY_GREENS_SECTION = "greens";
+export const REPLAY_SESSIONS_SECTION = "sessions";
+export const REPLAY_INCIDENTS_SECTION = "incidents";
 
 /** The session identity an event may carry; a mismatch with the active record is ignored. */
 export interface SubSessionScoped {
@@ -143,6 +168,13 @@ export interface ReplayLapsApi {
   recordLapTime(record: LapTimeRecord & SubSessionScoped): boolean;
   /** The frame a car started a lap at, or why the record has none. */
   findLapStart(query: LapStartQuery & SubSessionScoped): LapStartLookup;
+  /**
+   * Every recorded lap start of one car across every session of the record,
+   * frame-ordered, starts within 60 frames of each other as one (#1426); or
+   * why the record has none, the reasons `findLapStart` gives, decided the
+   * same way.
+   */
+  listLapStarts(query: LapStartListQuery & SubSessionScoped): LapStartListing;
 }
 
 export interface ReplayGreensApi {
@@ -157,6 +189,33 @@ export interface ReplayGreensApi {
   record(record: GreenRecord & SubSessionScoped): boolean;
   /** The frame a race session went green at, or why the record has none. */
   findGreen(query: GreenQuery & SubSessionScoped): GreenLookup;
+}
+
+export interface ReplaySessionsApi {
+  /**
+   * A session began at `frame` (`replay.sessionStarted`). Returns true when
+   * the record holds a start for that `(sessionNum, sessionUniqueId)` — stored
+   * now, or already there, in which case the first one stays and nothing is
+   * written. Returns false when there is no active session, the
+   * `subSessionId` differs, or the file's `sessions` section is a newer
+   * build's (carried through, not written).
+   */
+  record(record: SessionStartRecord & SubSessionScoped): boolean;
+  /** Every recorded session start in frame order, or why the record has none to give. */
+  list(scope?: SubSessionScoped): SessionStartListing;
+}
+
+export interface ReplayIncidentsApi {
+  /**
+   * A car's incident count rose at `frame` (`replay.incident`). A rise within
+   * `INCIDENT_FOLD_FRAMES` after the same car's last entry is folded into it.
+   * Returns false when there is no active session, the `subSessionId` differs,
+   * or the file's `incidents` section is a newer build's (carried through, not
+   * written).
+   */
+  record(record: IncidentRecord & SubSessionScoped): boolean;
+  /** Every recorded incident in frame order, or why the record has none to give. */
+  list(scope?: SubSessionScoped): IncidentListing;
 }
 
 /**
@@ -178,6 +237,8 @@ export interface ReplaySessionStore {
   readonly markers: ReplayMarkersApi;
   readonly laps: ReplayLapsApi;
   readonly greens: ReplayGreensApi;
+  readonly sessions: ReplaySessionsApi;
+  readonly incidents: ReplayIncidentsApi;
   /**
    * The session the SDK is connected to appeared (or changed). Flushes the
    * previous session's pending write, then loads `session_<id>.json` — or opens
@@ -231,6 +292,14 @@ interface ActiveRecord {
   greens: ReplayGreensSection | undefined;
   /** The file's `greens` section is a newer build's: carried through, neither read nor written into. */
   greensNewerFormat: boolean;
+  /** Materialized on first use, so a file with no `sessions` section stays without one until a start is recorded. */
+  sessions: ReplaySessionsSection | undefined;
+  /** The file's `sessions` section is a newer build's: carried through, neither read nor written into. */
+  sessionsNewerFormat: boolean;
+  /** Materialized on first use, so a file with no `incidents` section stays without one until an incident is recorded. */
+  incidents: ReplayIncidentsSection | undefined;
+  /** The file's `incidents` section is a newer build's: carried through, neither read nor written into. */
+  incidentsNewerFormat: boolean;
   /** Present while the file could not be READ: the load is retried on `loadRetryDelaysMs`, then on demand. */
   reload?: { attempt: number; timer?: ReturnType<typeof setTimeout> };
 }
@@ -315,6 +384,10 @@ export function createReplaySessionStore(opts: ReplaySessionStoreOptions): Repla
   let warnedNewerLaps = false;
   /** The same one-time warning for a newer build's `greens` section. */
   let warnedNewerGreens = false;
+  /** The same one-time warning for a newer build's `sessions` section. */
+  let warnedNewerSessions = false;
+  /** The same one-time warning for a newer build's `incidents` section. */
+  let warnedNewerIncidents = false;
 
   /**
    * The active record has changes the disk does not — including a write that
@@ -528,6 +601,14 @@ export function createReplaySessionStore(opts: ReplaySessionStoreOptions): Repla
       record.file.sections[REPLAY_GREENS_SECTION] = record.greens;
     }
 
+    if (record.sessions !== undefined && !record.sessionsNewerFormat) {
+      record.file.sections[REPLAY_SESSIONS_SECTION] = record.sessions;
+    }
+
+    if (record.incidents !== undefined && !record.incidentsNewerFormat) {
+      record.file.sections[REPLAY_INCIDENTS_SECTION] = record.incidents;
+    }
+
     return JSON.stringify(record.file) + "\n";
   }
 
@@ -647,6 +728,10 @@ export function createReplaySessionStore(opts: ReplaySessionStoreOptions): Repla
     const lapsNewerFormat = isNewerLapsSection(rawLaps);
     const rawGreens = file.sections[REPLAY_GREENS_SECTION];
     const greensNewerFormat = isNewerGreensSection(rawGreens);
+    const rawSessions = file.sections[REPLAY_SESSIONS_SECTION];
+    const sessionsNewerFormat = isNewerSessionsSection(rawSessions);
+    const rawIncidents = file.sections[REPLAY_INCIDENTS_SECTION];
+    const incidentsNewerFormat = isNewerIncidentsSection(rawIncidents);
 
     return {
       file,
@@ -658,6 +743,11 @@ export function createReplaySessionStore(opts: ReplaySessionStoreOptions): Repla
       lapsNewerFormat,
       greens: rawGreens === undefined || greensNewerFormat ? undefined : normalizeGreensSection(rawGreens),
       greensNewerFormat,
+      sessions: rawSessions === undefined || sessionsNewerFormat ? undefined : normalizeSessionsSection(rawSessions),
+      sessionsNewerFormat,
+      incidents:
+        rawIncidents === undefined || incidentsNewerFormat ? undefined : normalizeIncidentsSection(rawIncidents),
+      incidentsNewerFormat,
     };
   }
 
@@ -737,8 +827,9 @@ export function createReplaySessionStore(opts: ReplaySessionStoreOptions): Repla
    * false, nothing changes. Readable: the in-memory record is merged INTO what
    * the disk holds — markers as a union under the dedupe rule, laps as a union
    * keeping the disk's entry where both have one, greens keeping the disk's
-   * start and taking the restarts as a union under their dedupe rule — and the
-   * result is written normally. Gone or corrupt-and-preserved: the in-memory
+   * start and taking the restarts as a union under their dedupe rule, session
+   * starts and incidents keeping the disk's entry where both have one — and
+   * the result is written normally. Gone or corrupt-and-preserved: the in-memory
    * record is the file now. Corrupt and not preservable: memory-only for good.
    */
   function tryReload(record: ActiveRecord): boolean {
@@ -754,9 +845,15 @@ export function createReplaySessionStore(opts: ReplaySessionStoreOptions): Repla
 
     if (loaded === "unwritable") return false;
 
-    // Greens count: a session whose only recorded content is a green would
-    // otherwise never be written after the merge.
-    const hadContent = record.markers.length > 0 || record.laps !== undefined || record.greens !== undefined;
+    // Greens, session starts and incidents count: a session whose only
+    // recorded content is one of them would otherwise never be written after
+    // the merge.
+    const hadContent =
+      record.markers.length > 0 ||
+      record.laps !== undefined ||
+      record.greens !== undefined ||
+      record.sessions !== undefined ||
+      record.incidents !== undefined;
 
     if (loaded === "none") {
       record.path = filePath;
@@ -790,6 +887,26 @@ export function createReplaySessionStore(opts: ReplaySessionStoreOptions): Repla
           );
         } else {
           mergeGreensSectionInto(greensOf(merged), record.greens);
+        }
+      }
+
+      if (record.sessions !== undefined) {
+        if (merged.sessionsNewerFormat) {
+          logger.warn(
+            "Replay session file carries a newer sessions section; the session starts recorded while it was unreadable are dropped",
+          );
+        } else {
+          mergeSessionsSectionInto(sessionsOf(merged), record.sessions);
+        }
+      }
+
+      if (record.incidents !== undefined) {
+        if (merged.incidentsNewerFormat) {
+          logger.warn(
+            "Replay session file carries a newer incidents section; the incidents recorded while it was unreadable are dropped",
+          );
+        } else {
+          mergeIncidentsSectionInto(incidentsOf(merged), record.incidents);
         }
       }
 
@@ -863,6 +980,72 @@ export function createReplaySessionStore(opts: ReplaySessionStoreOptions): Repla
 
     return record.greens;
   }
+
+  /** The record's writable sessions section, or null (with a one-time warning) when the file's is a newer build's. */
+  function writableSessionsOf(record: ActiveRecord): ReplaySessionsSection | null {
+    if (record.sessionsNewerFormat) {
+      if (!warnedNewerSessions) {
+        warnedNewerSessions = true;
+        logger.warn(
+          "Replay session file carries a sessions section from a newer iRaceDeck; session starts are not recorded into it by this version",
+        );
+      }
+
+      return null;
+    }
+
+    return sessionsOf(record);
+  }
+
+  function sessionsOf(record: ActiveRecord): ReplaySessionsSection {
+    record.sessions ??= normalizeSessionsSection(undefined);
+
+    return record.sessions;
+  }
+
+  /** The record's writable incidents section, or null (with a one-time warning) when the file's is a newer build's. */
+  function writableIncidentsOf(record: ActiveRecord): ReplayIncidentsSection | null {
+    if (record.incidentsNewerFormat) {
+      if (!warnedNewerIncidents) {
+        warnedNewerIncidents = true;
+        logger.warn(
+          "Replay session file carries an incidents section from a newer iRaceDeck; incidents are not recorded into it by this version",
+        );
+      }
+
+      return null;
+    }
+
+    return incidentsOf(record);
+  }
+
+  function incidentsOf(record: ActiveRecord): ReplayIncidentsSection {
+    record.incidents ??= normalizeIncidentsSection(undefined);
+
+    return record.incidents;
+  }
+
+  /**
+   * Nothing came from disk and no recorder has recorded into the record: the
+   * plugin was not running for this session (someone else's .rpy, an offline
+   * replay opened later). A marker set in review does not count. Used by the
+   * #1426 list readers of session starts and incidents; `findLapStart`,
+   * `listLapStarts` and `findGreen` keep their own, older rules, which a
+   * session start or an incident alone does not change.
+   */
+  function recordedNothing(record: ActiveRecord): boolean {
+    return (
+      !record.loadedFromDisk &&
+      record.laps === undefined &&
+      record.greens === undefined &&
+      record.sessions === undefined &&
+      record.incidents === undefined
+    );
+  }
+
+  /** How a versioned section of the active record reads, for the open's debug line. */
+  const sectionState = (newerFormat: boolean, section: object | undefined): string =>
+    newerFormat ? "newer format" : section === undefined ? "absent" : "present";
 
   const pendingKey = (r: { sessionNum: number; sessionUniqueId: number; carIdx: number; lap: number }): string =>
     `${r.sessionNum}:${r.sessionUniqueId}:${r.carIdx}:${r.lap}`;
@@ -992,6 +1175,19 @@ export function createReplaySessionStore(opts: ReplaySessionStoreOptions): Repla
 
       return findLapStartInSection(target.laps, query, { exactInstance: hasExactInstanceIds(target) });
     },
+
+    listLapStarts(query) {
+      const target = activeFor(query);
+
+      if (target === null) return { hit: false, reason: "no file" };
+
+      if (target.lapsNewerFormat) return { hit: false, reason: "newer format" };
+
+      // `findLapStart`'s rule: nothing came from disk and no lap was recorded.
+      if (!target.loadedFromDisk && target.laps === undefined) return { hit: false, reason: "no file" };
+
+      return listLapStartsInSection(target.laps, query);
+    },
   };
 
   const greens: ReplayGreensApi = {
@@ -1039,11 +1235,82 @@ export function createReplaySessionStore(opts: ReplaySessionStoreOptions): Repla
     },
   };
 
+  const sessions: ReplaySessionsApi = {
+    record(record) {
+      const target = activeFor(record);
+
+      if (target === null) return false;
+
+      const section = writableSessionsOf(target);
+
+      if (section === null) return false;
+
+      const where = `session ${record.sessionNum} (unique id ${record.sessionUniqueId}) at frame ${record.frame}`;
+
+      // The first start recorded for a pair stays; a second one is not a
+      // reason to rewrite the file.
+      if (recordSessionStartInSection(section, record)) {
+        logger.debug(`Session start recorded: ${where}`);
+        scheduleSave();
+      } else {
+        logger.debug(`Session start not recorded: the record already holds a start for ${where}`);
+      }
+
+      return true;
+    },
+
+    list(scope = {}) {
+      const target = activeFor(scope);
+
+      if (target === null) return { hit: false, reason: "no file" };
+
+      if (target.sessionsNewerFormat) return { hit: false, reason: "newer format" };
+
+      if (recordedNothing(target)) return { hit: false, reason: "no file" };
+
+      return { hit: true, starts: listSessionStartsInSection(target.sessions) };
+    },
+  };
+
+  const incidents: ReplayIncidentsApi = {
+    record(record) {
+      const target = activeFor(record);
+
+      if (target === null) return false;
+
+      const section = writableIncidentsOf(target);
+
+      if (section === null) return false;
+
+      recordIncidentInSection(section, record);
+      logger.debug(
+        `Incident recorded: car index ${record.carIdx} (#${record.carNumberRaw}) +${record.delta} from ${record.source} at frame ${record.frame} (session ${record.sessionNum}, unique id ${record.sessionUniqueId}, ${record.sessionTimeMs} ms)`,
+      );
+      scheduleSave();
+
+      return true;
+    },
+
+    list(scope = {}) {
+      const target = activeFor(scope);
+
+      if (target === null) return { hit: false, reason: "no file" };
+
+      if (target.incidentsNewerFormat) return { hit: false, reason: "newer format" };
+
+      if (recordedNothing(target)) return { hit: false, reason: "no file" };
+
+      return { hit: true, incidents: listIncidentsInSection(target.incidents) };
+    },
+  };
+
   return {
     directory,
     markers,
     laps,
     greens,
+    sessions,
+    incidents,
 
     setActiveSession(header) {
       if (active !== null && active.file.subSessionId === header.subSessionId) {
@@ -1072,7 +1339,7 @@ export function createReplaySessionStore(opts: ReplaySessionStoreOptions): Repla
       } else {
         logger.info("Replay session opened");
         logger.debug(
-          `Replay session ${header.subSessionId}: ${active.path} (${active.markers.length} markers, laps section ${active.lapsNewerFormat ? "newer format" : active.laps === undefined ? "absent" : "present"}, greens section ${active.greensNewerFormat ? "newer format" : active.greens === undefined ? "absent" : "present"})`,
+          `Replay session ${header.subSessionId}: ${active.path} (${active.markers.length} markers, laps section ${sectionState(active.lapsNewerFormat, active.laps)}, greens section ${sectionState(active.greensNewerFormat, active.greens)}, sessions section ${sectionState(active.sessionsNewerFormat, active.sessions)}, incidents section ${sectionState(active.incidentsNewerFormat, active.incidents)})`,
         );
       }
     },
