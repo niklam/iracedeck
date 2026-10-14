@@ -57,11 +57,14 @@
  *   Whether a live crossing seen on a replay tick could instead be recorded
  *   is a separate question, out of scope here: doing so would need the LIVE
  *   frame rather than the cursor's (`resolveReplayFrame` returns
- *   `ReplayFrameNum`, the cursor's position, while a replay plays), and what
- *   `ReplayFrameNumEnd` means during a replay is not established — in the
- *   two 2026-09-29 snapshots it read 40182 with `ReplayFrameNum` at 13059
- *   mid-replay, and 1 at the live end, which looks like a frames-remaining
- *   count rather than an absolute frame, but that reading is not confirmed.
+ *   `ReplayFrameNum`, the cursor's position, while a replay plays). That
+ *   frame is now known (#1426, measured over ten snapshots): out of the car
+ *   `ReplayFrameNumEnd` counts the frames from the cursor to the end of the
+ *   tape — 1 at the live edge, 40182 with `ReplayFrameNum` at 13059 in the
+ *   2026-09-29 snapshot scrubbed back — so the live frame is
+ *   `ReplayFrameNum + ReplayFrameNumEnd`, which the session record reads
+ *   (`resolveReplayLiveTick`). What the per-car arrays and flags do out of
+ *   the car is the open part, and this gate is unchanged.
  * - **Session change** (`SessionNum` or `SessionUniqueID` moves) re-seeds; the
  *   store starts a new session record from the events' identity.
  * - **The pace car is skipped** (`resolvePaceCarIdx`), and so is a car the

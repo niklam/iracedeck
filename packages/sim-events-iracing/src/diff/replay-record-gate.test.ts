@@ -4,7 +4,12 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { createInitialState, type TranslatorState } from "../state.js";
 import { diffReplayGreens } from "./replay-greens.js";
 import { diffReplayLaps } from "./replay-laps.js";
-import { resolveReplayRecordTick, resolveSubSessionId } from "./replay-record-gate.js";
+import {
+  LIVE_EDGE_MAX_FRAMES,
+  resolveReplayLiveTick,
+  resolveReplayRecordTick,
+  resolveSubSessionId,
+} from "./replay-record-gate.js";
 
 type TickOverrides = Partial<{
   frame: number | undefined;
@@ -73,6 +78,103 @@ describe("resolveReplayRecordTick", () => {
   it("refuses a tick with no readable frame", () => {
     expect(resolveReplayRecordTick(tick({ frame: undefined }), false)).toBeNull();
     expect(resolveReplayRecordTick(tick({ frame: Number.NaN }), false)).toBeNull();
+  });
+});
+
+describe("resolveReplayLiveTick (issue #1426)", () => {
+  type EdgeOverrides = Partial<{
+    cursorFrame: number | undefined;
+    toEnd: number | undefined;
+    sessionNum: number | undefined;
+    uniqueId: number | undefined;
+    flag: boolean;
+  }>;
+
+  /** Out of the car in the in-session replay: the cursor and its distance to the end of the tape. */
+  function outOfCar(o: EdgeOverrides = {}): TelemetryData {
+    return {
+      ReplayFrameNum: "cursorFrame" in o ? o.cursorFrame : 53_592,
+      ReplayFrameNumEnd: "toEnd" in o ? o.toEnd : 1,
+      SessionNum: "sessionNum" in o ? o.sessionNum : 0,
+      SessionUniqueID: "uniqueId" in o ? o.uniqueId : 3,
+      IsReplayPlaying: o.flag ?? true,
+    } as TelemetryData;
+  }
+
+  describe("in the car", () => {
+    it("is resolveReplayRecordTick's own answer, the frame ReplayFrameNumEnd", () => {
+      const t = tick({ frame: 30_215 });
+
+      expect(resolveReplayLiveTick(t, false, false)).toEqual(resolveReplayRecordTick(t, false));
+      expect(resolveReplayLiveTick(t, false, false)).toEqual({ sessionNum: 2, sessionUniqueId: 4, frame: 30_215 });
+    });
+
+    it("refuses what resolveReplayRecordTick refuses", () => {
+      expect(resolveReplayLiveTick(tick({ sessionNum: -1 }), false, false)).toBeNull();
+      expect(resolveReplayLiveTick(tick({ frame: undefined }), false, false)).toBeNull();
+    });
+  });
+
+  describe("out of the car", () => {
+    it("at the live edge, the frame is the cursor plus its distance to the end of the tape", () => {
+      expect(resolveReplayLiveTick(outOfCar(), true, false)).toEqual({
+        sessionNum: 0,
+        sessionUniqueId: 3,
+        frame: 53_593,
+      });
+    });
+
+    it(`counts a cursor up to ${LIVE_EDGE_MAX_FRAMES} frames from the end as at the edge, and not one further`, () => {
+      expect(LIVE_EDGE_MAX_FRAMES).toBe(120);
+      expect(resolveReplayLiveTick(outOfCar({ toEnd: 0 }), true, false)?.frame).toBe(53_592);
+      expect(resolveReplayLiveTick(outOfCar({ toEnd: 120 }), true, false)?.frame).toBe(53_712);
+      expect(resolveReplayLiveTick(outOfCar({ toEnd: 121 }), true, false)).toBeNull();
+    });
+
+    it("refuses a replay scrubbed back: not live", () => {
+      // 21 s back and further, as measured (#1426).
+      expect(resolveReplayLiveTick(outOfCar({ cursorFrame: 39_856, toEnd: 1_201 }), true, false)).toBeNull();
+      expect(resolveReplayLiveTick(outOfCar({ cursorFrame: 13_059, toEnd: 40_182 }), true, false)).toBeNull();
+    });
+
+    it("refuses a replay-only session, even at its end", () => {
+      expect(resolveReplayLiveTick(outOfCar(), true, true)).toBeNull();
+    });
+
+    it("refuses a tick read mid-seek (frame 0, raw flag false), whatever ReplayFrameNumEnd says", () => {
+      // The measured mid-seek reading: the whole tape's length at the end.
+      expect(
+        resolveReplayLiveTick(outOfCar({ cursorFrame: 0, toEnd: 204_563, sessionNum: -1, flag: false }), true, false),
+      ).toBeNull();
+      // And one that would pass the edge limit: the flag alone refuses it.
+      expect(
+        resolveReplayLiveTick(outOfCar({ cursorFrame: 0, toEnd: 1, sessionNum: -1, flag: false }), true, false),
+      ).toBeNull();
+      expect(resolveReplayLiveTick(outOfCar({ cursorFrame: 0, toEnd: 1, flag: false }), true, false)).toBeNull();
+    });
+
+    it("refuses a tick inside the exit grace, where the debounced state says a replay and the flag does not", () => {
+      expect(resolveReplayLiveTick(outOfCar({ flag: false }), true, false)).toBeNull();
+    });
+
+    it("refuses a tick with no session or no readable cursor or distance", () => {
+      expect(resolveReplayLiveTick(outOfCar({ sessionNum: -1 }), true, false)).toBeNull();
+      expect(resolveReplayLiveTick(outOfCar({ sessionNum: undefined }), true, false)).toBeNull();
+      expect(resolveReplayLiveTick(outOfCar({ cursorFrame: undefined }), true, false)).toBeNull();
+      expect(resolveReplayLiveTick(outOfCar({ cursorFrame: Number.NaN }), true, false)).toBeNull();
+      expect(resolveReplayLiveTick(outOfCar({ cursorFrame: -1 }), true, false)).toBeNull();
+      expect(resolveReplayLiveTick(outOfCar({ toEnd: undefined }), true, false)).toBeNull();
+      expect(resolveReplayLiveTick(outOfCar({ toEnd: Number.NaN }), true, false)).toBeNull();
+      expect(resolveReplayLiveTick(outOfCar({ toEnd: -1 }), true, false)).toBeNull();
+    });
+
+    it("reads SessionUniqueID 0 from a build that does not carry it", () => {
+      expect(resolveReplayLiveTick(outOfCar({ uniqueId: undefined }), true, false)?.sessionUniqueId).toBe(0);
+    });
+
+    it("is never what the in-car gate answers: resolveReplayRecordTick still refuses every out-of-car tick", () => {
+      expect(resolveReplayRecordTick(outOfCar(), true)).toBeNull();
+    });
   });
 });
 
