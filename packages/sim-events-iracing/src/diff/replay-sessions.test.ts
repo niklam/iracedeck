@@ -210,7 +210,20 @@ describe("diffReplaySessions", () => {
     expect(feed([MID_SEEK], { inReplay: true })).toEqual([]);
     expect(feed(twoTicks("edge", { frame: 72_000, time: 600 }))).toEqual([]);
     expect(feed(twoTicks("car", { frame: 90_000, time: 100 }))).toEqual([]);
-    expect(state.replaySessionsPublished).toEqual(["2:4"]);
+    expect(state.replaySessionsPublished).toEqual(["86697546:2:4"]);
+  });
+
+  it("publishes a pair again for another event in the same sim run", () => {
+    expect(feed(twoTicks("car", { frame: 36_000, time: 0 }))).toEqual([started(36_000)]);
+
+    const next: Record<string, unknown> = { WeekendInfo: { SubSessionID: 86697547, SimMode: "full" } };
+
+    expect(feed(twoTicks("car", { frame: 1_200, time: 0 }), { sessionInfo: next })).toEqual([
+      {
+        event: "replay.sessionStarted",
+        data: { subSessionId: 86697547, sessionNum: 2, sessionUniqueId: 4, frame: 1_200 },
+      },
+    ]);
   });
 
   it("publishes a restarted event's second instance of a session number, later on the tape", () => {

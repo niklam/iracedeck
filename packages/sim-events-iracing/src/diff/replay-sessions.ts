@@ -29,7 +29,9 @@
  *   it. Agreement does not catch a seek, whose readings can hold still for a
  *   quarter of a second; the raw-flag condition of the gate does.
  * - **A pair is published once**: `(sessionNum, sessionUniqueId)` already
- *   published is never published again. A restarted offline event repeats a
+ *   published for the event (`SubSessionID`) is never published again; the
+ *   event is part of the key because the list outlives a session change and
+ *   a later event in the same sim run can repeat the pair. A restarted offline event repeats a
  *   `sessionNum` under a new `sessionUniqueId` (maintainer, 2026-10-12), which
  *   is a new pair, published when it is seen, further along the tape.
  * - **Its state survives the translator's wipes**, unlike the other replay
@@ -57,8 +59,8 @@ const FRAMES_PER_SECOND = 60;
 export const SESSION_START_AGREEMENT_FRAMES = 2;
 
 /** The key a published pair is remembered by. */
-function pairKey(sessionNum: number, sessionUniqueId: number): string {
-  return `${sessionNum}:${sessionUniqueId}`;
+function pairKey(subSessionId: number, sessionNum: number, sessionUniqueId: number): string {
+  return `${subSessionId}:${sessionNum}:${sessionUniqueId}`;
 }
 
 /**
@@ -85,7 +87,8 @@ export function diffReplaySessions(
   }
 
   const { sessionNum, sessionUniqueId, frame } = live;
-  const key = pairKey(sessionNum, sessionUniqueId);
+  const subSessionId = resolveSubSessionId(sessionInfo);
+  const key = pairKey(subSessionId, sessionNum, sessionUniqueId);
 
   if (state.replaySessionsPublished.includes(key)) {
     state.replaySessionsCandidate = null;
@@ -117,7 +120,7 @@ export function diffReplaySessions(
   emit({
     event: "replay.sessionStarted",
     data: {
-      subSessionId: resolveSubSessionId(sessionInfo),
+      subSessionId,
       sessionNum,
       sessionUniqueId,
       frame: start,
