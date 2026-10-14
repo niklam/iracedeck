@@ -1,20 +1,16 @@
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  _resetReplayCursor,
-  cancelReplayCursorOwner,
-  claimReplayCursor,
-  clearReplayLanding,
-  pendingReplayLanding,
-  recordReplayLanding,
-} from "../../shared/replay-cursor.js";
+import { _resetReplayCursor, cancelReplayCursorOwner, claimReplayCursor } from "./replay-cursor.js";
 import {
   _resetReplayPositionState,
-  keepReplayTarget,
+  markReplayTargetSent,
+  pendingReplayTarget,
   recordReplayTarget,
   REPLAY_TARGET_GIVE_UP_MS,
+  replayTargetGiveUpMs,
   resolveReplayPosition,
+  settleReplayTarget,
 } from "./replay-position-state.js";
 
 const logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
@@ -222,15 +218,16 @@ describe("replay position state", () => {
   });
 
   describe("giving a target up", () => {
-    it("holds it until the give-up time, then takes the replay where it reads", () => {
+    it("holds it until the jump's own wait has run out, then takes the replay where it reads", () => {
       recordReplayTarget(END + 500, replayOn(600), 1_000);
 
-      expect(position(replayOn(END), 1_000 + REPLAY_TARGET_GIVE_UP_MS - 1)).toMatchObject({
-        frame: END + 500,
-        seeking: true,
-      });
-      expect(position(replayOn(END), 1_000 + REPLAY_TARGET_GIVE_UP_MS)).toMatchObject({ frame: END, seeking: false });
-      expect(position(replayOn(END), 1_000 + REPLAY_TARGET_GIVE_UP_MS + 1)?.seeking).toBe(false);
+      // A jump of 204463 frames: twice its time at iRacing's search rate, more than the three-second floor (#1430).
+      const waitMs = replayTargetGiveUpMs(END + 500 - 600);
+
+      expect(waitMs).toBeGreaterThan(REPLAY_TARGET_GIVE_UP_MS);
+      expect(position(replayOn(END), 1_000 + waitMs - 1)).toMatchObject({ frame: END + 500, seeking: true });
+      expect(position(replayOn(END), 1_000 + waitMs)).toMatchObject({ frame: END, seeking: false });
+      expect(position(replayOn(END), 1_000 + waitMs + 1)?.seeking).toBe(false);
     });
 
     it("is unknown afterwards when the reading is not the replay's, so nothing is measured from frame 0", () => {
@@ -326,25 +323,17 @@ describe("replay position state", () => {
     });
   });
 
-  describe("the replay cursor", () => {
-    it("drops the target when anything else takes the cursor for a command", () => {
+  describe("the replay cursor (#1430)", () => {
+    it("keeps the target when anything takes the cursor: the replay is still headed there", () => {
       recordReplayTarget(640, replayOn(600), 1_000);
       cancelReplayCursorOwner("play-pause");
 
-      expect(position(replayOn(612), 1_100)).toMatchObject({ frame: 612, seeking: false });
-      expect(position(NOT_THE_REPLAY, 1_200)).toBeNull();
+      expect(position(NOT_THE_REPLAY, 1_100)).toMatchObject({ frame: 640, seeking: true });
     });
 
-    it("drops the target when something claims the cursor", () => {
-      recordReplayTarget(640, replayOn(600), 1_000);
-      claimReplayCursor("jump-to-fastest-lap");
-
-      expect(position(NOT_THE_REPLAY, 1_100)).toBeNull();
-    });
-
-    it("keeps the target through a take of the dial's own, and its run with it", () => {
+    it("keeps the target when something claims the cursor, and the run with it", () => {
       recordReplayTarget(602, replayOn(600), 1_000);
-      keepReplayTarget(() => cancelReplayCursorOwner("dial-frame-jog"));
+      claimReplayCursor("jump-to-fastest-lap");
 
       expect(position(NOT_THE_REPLAY, 1_050)).toMatchObject({ frame: 602, seeking: true });
 
@@ -354,46 +343,78 @@ describe("replay position state", () => {
 
       expect(logged()).toEqual([]);
     });
+  });
 
-    it("puts the target back even when the take throws", () => {
-      recordReplayTarget(602, replayOn(600), 1_000);
+  describe("the jump's own wait (#1430)", () => {
+    /** Six hours of recording at 60 frames a second. */
+    const SIX_HOURS = 1_296_000;
 
-      expect(() =>
-        keepReplayTarget(() => {
-          cancelReplayCursorOwner("dial-frame-jog");
-
-          throw new Error("send failed");
-        }),
-      ).toThrow("send failed");
-      expect(position(NOT_THE_REPLAY, 1_050)).toMatchObject({ frame: 602, seeking: true });
+    it("is three seconds for a short jump and twice the jump's length at iRacing's search rate for a long one", () => {
+      expect(replayTargetGiveUpMs(30)).toBe(REPLAY_TARGET_GIVE_UP_MS);
+      // 1296000 frames at 2048 a sim update is 633 updates, 10.55 s; twice that.
+      expect(replayTargetGiveUpMs(SIX_HOURS)).toBe(Math.ceil(2 * 633 * (1000 / 60)));
     });
 
-    it("hands back whatever the take returns", () => {
-      expect(keepReplayTarget(() => "sent")).toBe("sent");
+    it("keeps a target across six hours standing for as long as its jump could still be seeking", () => {
+      recordReplayTarget(SIX_HOURS, replayOn(10, { ReplayFrameNumEnd: SIX_HOURS + 100 }), 1_000);
+
+      const waitMs = replayTargetGiveUpMs(SIX_HOURS - 10);
+
+      expect(position(NOT_THE_REPLAY, 1_000 + 10_000)).toMatchObject({ frame: SIX_HOURS, seeking: true });
+      expect(position(NOT_THE_REPLAY, 1_000 + waitMs - 1)).toMatchObject({ seeking: true });
+      expect(position(NOT_THE_REPLAY, 1_000 + waitMs)).toBeNull();
+    });
+
+    it("does not give a target up while the replay jump that recorded it holds the cursor", () => {
+      let held = true;
+
+      recordReplayTarget(640, replayOn(600), 1_000, { heldBy: () => held });
+
+      expect(position(NOT_THE_REPLAY, 1_000 + 60_000)).toMatchObject({ frame: 640, seeking: true });
+
+      held = false;
+
+      expect(position(NOT_THE_REPLAY, 1_000 + 60_000)).toBeNull();
     });
   });
 
-  describe("Replay Markers' pending landing", () => {
-    it("is never written: a move leaves the marker surfaces' landing as it was", () => {
-      recordReplayTarget(602, replayOn(600), 1_000);
+  describe("a target recorded before its seek (#1430)", () => {
+    it("is a position at once, never reads back and is never timed before its seek goes out", () => {
+      const target = recordReplayTarget(40_000, replayOn(600), 1_000, { sent: false });
 
-      expect(pendingReplayLanding()).toBeNull();
+      expect(position(replayOn(40_000), 1_000 + 60_000)).toMatchObject({ frame: 40_000, seeking: true });
+      expect(pendingReplayTarget()).toMatchObject({ id: target.id, sent: false });
     });
 
-    it("does not end the target when a marker surface settles or clears its own landing", () => {
-      recordReplayLanding(40_000, 900);
-      recordReplayTarget(602, replayOn(600), 1_000);
-      // What a visible marker key does on a tick once the replay is within a second of its landing.
-      clearReplayLanding();
+    it("judges a read-back from the send: a frame the replay ran across before the seek is not a landing", () => {
+      const target = recordReplayTarget(40_000, replayOn(39_990, { ReplayPlaySpeed: 16 }), 1_000, { sent: false });
 
-      expect(position(NOT_THE_REPLAY, 1_020)).toMatchObject({ frame: 602, seeking: true });
+      // The replay fast-forwarded onto the frame while its pause took hold; the seek goes out from there.
+      markReplayTargetSent(target, replayOn(40_000), 1_100);
+
+      expect(settleReplayTarget(replayOn(40_000), 1_120, logger as never)).toEqual({ kind: "none" });
+      expect(settleReplayTarget(NOT_THE_REPLAY, 1_140, logger as never)).toEqual({ kind: "none" });
+      expect(settleReplayTarget(replayOn(40_000), 1_160, logger as never)).toMatchObject({ kind: "read-back" });
     });
 
-    it("is not a position: a turn is never measured from a marker the replay has played past", () => {
-      recordReplayLanding(40_000, 1_000);
+    it("reads back on its frame once sent from anywhere else", () => {
+      const target = recordReplayTarget(40_000, replayOn(600), 1_000, { sent: false });
 
-      expect(position(replayOn(40_180), 1_500)).toMatchObject({ frame: 40_180, seeking: false });
-      expect(position(NOT_THE_REPLAY, 1_600)).toBeNull();
+      markReplayTargetSent(target, replayOn(600), 1_100);
+
+      expect(settleReplayTarget(replayOn(40_000), 1_150, logger as never)).toMatchObject({
+        kind: "read-back",
+        target: { frame: 40_000, sent: true, sentAt: 1_100 },
+      });
+    });
+
+    it("is marked only by the record it belongs to", () => {
+      const first = recordReplayTarget(40_000, replayOn(600), 1_000, { sent: false });
+
+      recordReplayTarget(41_000, replayOn(600), 1_010, { sent: false });
+      markReplayTargetSent(first, replayOn(600), 1_100);
+
+      expect(pendingReplayTarget()).toMatchObject({ frame: 41_000, sent: false });
     });
   });
 });

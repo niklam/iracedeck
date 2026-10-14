@@ -15,7 +15,6 @@ import {
   resolveIconColors,
   resolveTitleSettings,
 } from "@iracedeck/deck-core";
-import { getCommands } from "@iracedeck/deck-iracing";
 import fastForwardIconSvg from "@iracedeck/icons/replay-transport/fast-forward.svg";
 import frameBackwardIconSvg from "@iracedeck/icons/replay-transport/frame-backward.svg";
 import frameForwardIconSvg from "@iracedeck/icons/replay-transport/frame-forward.svg";
@@ -24,10 +23,11 @@ import playIconSvg from "@iracedeck/icons/replay-transport/play.svg";
 import rewindIconSvg from "@iracedeck/icons/replay-transport/rewind.svg";
 import slowMotionIconSvg from "@iracedeck/icons/replay-transport/slow-motion.svg";
 import stopIconSvg from "@iracedeck/icons/replay-transport/stop.svg";
+import { type ReplayCommand } from "@iracedeck/iracing-sdk";
 import { getGlobalColors } from "@iracedeck/settings";
 import z from "zod";
 
-import { cancelReplayCursorOwner } from "../../shared/replay-cursor.js";
+import { pressReplayCommand, type ReplayGateCommand } from "../../shared/replay-command-gate.js";
 
 type TransportAction =
   "play" | "pause" | "stop" | "fast-forward" | "rewind" | "slow-motion" | "frame-forward" | "frame-backward";
@@ -80,6 +80,29 @@ export const ReplayTransportSettings = CommonSettings.extend({
 
 export type ReplayTransportSettings = z.infer<typeof ReplayTransportSettings>;
 
+/** The gate command each transport action sends; the SDK call stays the one the action always made. */
+const TRANSPORT_COMMANDS: Record<TransportAction, ReplayGateCommand> = {
+  play: { kind: "speed", speed: 1, slowMotion: false, send: (r) => r.play() },
+  pause: { kind: "pause" },
+  stop: { kind: "pause" },
+  "fast-forward": { kind: "speed", speed: 2, slowMotion: false, send: (r) => (r as ReplayCommand).fastForward() },
+  rewind: { kind: "speed", speed: -2, slowMotion: false, send: (r) => (r as ReplayCommand).rewind() },
+  "slow-motion": { kind: "speed", speed: 2, slowMotion: true, send: (r) => (r as ReplayCommand).slowMotion() },
+  "frame-forward": { kind: "step", direction: 1 },
+  "frame-backward": { kind: "step", direction: -1 },
+};
+
+const TRANSPORT_LOG_NAMES: Record<TransportAction, string> = {
+  play: "Play",
+  pause: "Pause",
+  stop: "Stop",
+  "fast-forward": "Fast forward",
+  rewind: "Rewind",
+  "slow-motion": "Slow motion",
+  "frame-forward": "Frame forward",
+  "frame-backward": "Frame backward",
+};
+
 /**
  * @internal Exported for testing
  *
@@ -124,7 +147,7 @@ export class ReplayTransport extends ConnectionStateAwareAction<ReplayTransportS
   override async onKeyDown(ev: IDeckKeyDownEvent<ReplayTransportSettings>): Promise<void> {
     this.logger.info("Key down received");
     const settings = this.parseSettings(ev.payload.settings);
-    this.executeTransport(settings.transport);
+    this.executeTransport(settings.transport, ev.action.id);
   }
 
   override async onDialDown(_ev: IDeckDialDownEvent<ReplayTransportSettings>): Promise<void> {
@@ -150,64 +173,21 @@ export class ReplayTransport extends ConnectionStateAwareAction<ReplayTransportS
     return parsed.success ? parsed.data : ReplayTransportSettings.parse({});
   }
 
-  private executeTransport(transport: TransportAction): void {
-    const replay = getCommands().replay;
-
+  private executeTransport(transport: TransportAction, origin?: string): void {
     // A pause or a frame step mid-walk breaks a running Jump to Fastest Lap
-    // walk's probes as surely as a seek, so every transport command takes the
-    // cursor first, as Replay Control's transport modes do (#1334).
-    cancelReplayCursorOwner(`replay-transport-${transport}`);
+    // walk's probes as surely as a seek, so every transport command goes
+    // through the replay command gate, which takes the cursor first and holds
+    // or retargets the command behind a jump under way (#1334, #1430).
+    const result = pressReplayCommand(TRANSPORT_COMMANDS[transport], {
+      by: `replay-transport-${transport}`,
+      origin,
+    });
+    const success = result.kind === "sent" ? result.ok : false;
 
-    switch (transport) {
-      case "play": {
-        const success = replay.play();
-        this.logger.info("Play executed");
-        this.logger.debug(`Result: ${success}`);
-        break;
-      }
-      case "pause": {
-        const success = replay.pause();
-        this.logger.info("Pause executed");
-        this.logger.debug(`Result: ${success}`);
-        break;
-      }
-      case "stop": {
-        const success = replay.pause();
-        this.logger.info("Stop executed");
-        this.logger.debug(`Result: ${success}`);
-        break;
-      }
-      case "fast-forward": {
-        const success = replay.fastForward();
-        this.logger.info("Fast forward executed");
-        this.logger.debug(`Result: ${success}`);
-        break;
-      }
-      case "rewind": {
-        const success = replay.rewind();
-        this.logger.info("Rewind executed");
-        this.logger.debug(`Result: ${success}`);
-        break;
-      }
-      case "slow-motion": {
-        const success = replay.slowMotion();
-        this.logger.info("Slow motion executed");
-        this.logger.debug(`Result: ${success}`);
-        break;
-      }
-      case "frame-forward": {
-        const success = replay.nextFrame();
-        this.logger.info("Frame forward executed");
-        this.logger.debug(`Result: ${success}`);
-        break;
-      }
-      case "frame-backward": {
-        const success = replay.prevFrame();
-        this.logger.info("Frame backward executed");
-        this.logger.debug(`Result: ${success}`);
-        break;
-      }
-    }
+    if (result.kind !== "sent") this.logger.debug(`Gate result: ${result.kind}`);
+
+    this.logger.info(`${TRANSPORT_LOG_NAMES[transport]} executed`);
+    this.logger.debug(`Result: ${success}`);
   }
 
   private async updateDisplay(

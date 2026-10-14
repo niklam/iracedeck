@@ -2,10 +2,10 @@ import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 import { describe, expect, it, vi } from "vitest";
 
+import type { ReplayPosition } from "../../shared/replay-position-state.js";
 import type { ReplayDialModeIo, ReplaySpeed } from "./replay-control-dial-mode.js";
 import { ReplayControlDialSettings } from "./replay-control-dial-settings.js";
-import { describeReplayPosition, formatReplayTime, frameJogMode, planFrameMove } from "./replay-control-frame-jog.js";
-import type { ReplayPosition } from "./replay-position-state.js";
+import { describeReplayPosition, formatReplayTime, frameJogMode } from "./replay-control-frame-jog.js";
 
 const PAUSED: ReplaySpeed = { speed: 0, slowMotion: false };
 const dial = ReplayControlDialSettings.parse({});
@@ -38,7 +38,6 @@ function fakeIo(options: FakeIoOptions = {}) {
     liveSpeed: () => options.liveSpeed ?? PAUSED,
     telemetry: () => options.telemetry ?? null,
     position: () => (options.position === undefined ? at(5000) : options.position),
-    send: vi.fn<ReplayDialModeIo["send"]>(() => true),
     setSpeed: vi.fn<ReplayDialModeIo["setSpeed"]>(() => true),
     pause: vi.fn<ReplayDialModeIo["pause"]>((owner) => {
       calls.push(`pause:${owner}`);
@@ -106,91 +105,6 @@ describe("describeReplayPosition", () => {
   });
 });
 
-describe("planFrameMove", () => {
-  it("steps one frame for a single detent on a replay at rest", () => {
-    expect(planFrameMove(1, at(5000))).toEqual({ kind: "step", direction: 1 });
-    expect(planFrameMove(-1, at(5000))).toEqual({ kind: "step", direction: -1 });
-  });
-
-  it("jumps to the absolute frame for several detents in one event", () => {
-    expect(planFrameMove(2, at(5000))).toEqual({ kind: "jump", frame: 5002 });
-    expect(planFrameMove(-4, at(5000))).toEqual({ kind: "jump", frame: 4996 });
-    expect(planFrameMove(37, at(5000))).toEqual({ kind: "jump", frame: 5037 });
-  });
-
-  it("never steps while a move is under way: a single detent jumps from the pending target", () => {
-    const heading = at(5010, { seeking: true });
-
-    expect(planFrameMove(1, heading)).toEqual({ kind: "jump", frame: 5011 });
-    expect(planFrameMove(-1, heading)).toEqual({ kind: "jump", frame: 5009 });
-    expect(planFrameMove(3, heading)).toEqual({ kind: "jump", frame: 5013 });
-  });
-
-  it("sends nothing when the position is not known", () => {
-    expect(planFrameMove(1, null).kind).toBe("none");
-    expect(planFrameMove(-5, null).kind).toBe("none");
-  });
-
-  it("stops at the start of the recording", () => {
-    expect(planFrameMove(-5, at(3))).toEqual({ kind: "jump", frame: 0 });
-    expect(planFrameMove(-1, at(0)).kind).toBe("none");
-    expect(planFrameMove(-4, at(0)).kind).toBe("none");
-    expect(planFrameMove(1, at(0))).toEqual({ kind: "step", direction: 1 });
-  });
-
-  it("aims a jump no closer to the end of the recording than it can land", () => {
-    expect(planFrameMove(2, at(9980))).toEqual({ kind: "jump", frame: 9982 });
-    expect(planFrameMove(10, at(9982))).toEqual({ kind: "jump", frame: 9992 });
-    expect(planFrameMove(40, at(9990))).toEqual({ kind: "jump", frame: 9992 });
-    expect(planFrameMove(-10, at(9999))).toEqual({ kind: "jump", frame: 9989 });
-  });
-
-  it("goes on through the last frames one step at a time, up to the last frame but one", () => {
-    expect(planFrameMove(1, at(9992))).toEqual({ kind: "step", direction: 1 });
-    expect(planFrameMove(1, at(9998))).toEqual({ kind: "step", direction: 1 });
-    expect(planFrameMove(1, at(9999)).kind).toBe("none");
-    expect(planFrameMove(1, at(10_000)).kind).toBe("none");
-    expect(planFrameMove(-1, at(10_000))).toEqual({ kind: "step", direction: -1 });
-  });
-
-  it("turns several detents in the last frames into one step, either way", () => {
-    expect(planFrameMove(6, at(9992))).toEqual({ kind: "step", direction: 1 });
-    expect(planFrameMove(4, at(9997))).toEqual({ kind: "step", direction: 1 });
-    expect(planFrameMove(4, at(9999)).kind).toBe("none");
-    expect(planFrameMove(-2, at(9999))).toEqual({ kind: "step", direction: -1 });
-  });
-
-  it("is bounded only by the start when the recording's end is not known", () => {
-    expect(planFrameMove(500, at(9999, { endFrame: undefined }))).toEqual({ kind: "jump", frame: 10_499 });
-    expect(planFrameMove(1, at(9999, { endFrame: undefined }))).toEqual({ kind: "step", direction: 1 });
-  });
-
-  it("asks again for a pending target, which is what puts a move that never read back right", () => {
-    expect(planFrameMove(-3, at(0, { seeking: true }))).toEqual({ kind: "jump", frame: 0 });
-    expect(planFrameMove(3, at(9992, { seeking: true }))).toEqual({ kind: "jump", frame: 9992 });
-    expect(planFrameMove(30, at(9980, { seeking: true }))).toEqual({ kind: "jump", frame: 9992 });
-  });
-
-  it("sends nothing while a move into the last frames has not read back, and still jumps back out", () => {
-    expect(planFrameMove(1, at(9995, { seeking: true })).kind).toBe("none");
-    expect(planFrameMove(3, at(9993, { seeking: true })).kind).toBe("none");
-    expect(planFrameMove(-1, at(9995, { seeking: true })).kind).toBe("none");
-    expect(planFrameMove(-5, at(9995, { seeking: true }))).toEqual({ kind: "jump", frame: 9990 });
-  });
-
-  it("measures every jump from the position it was given, as an absolute frame", () => {
-    for (const ticks of [1, -1, 2, -2, 3, -4, 12]) {
-      for (const position of [at(5000), at(5000, { seeking: true })]) {
-        const move = planFrameMove(ticks, position);
-
-        expect(["step", "jump"]).toContain(move.kind);
-
-        if (move.kind === "jump") expect(move.frame).toBe(5000 + ticks);
-      }
-    }
-  });
-});
-
 describe("frameJogMode", () => {
   it("names its box and describes its rotation for the dial hint", () => {
     expect(frameJogMode.label).toBe("FRAME");
@@ -235,7 +149,7 @@ describe("frameJogMode", () => {
 
       for (const ticks of [1, -1, 2, -2, 3, -4, 12]) frameJogMode.rotate(ticks, dial, io);
 
-      expect(io.send).not.toHaveBeenCalled();
+      expect(io.setSpeed).not.toHaveBeenCalled();
     });
 
     it("sends nothing when the position is not known", () => {
@@ -398,7 +312,6 @@ describe("frameJogMode", () => {
       frameJogMode.view(dial, io);
 
       expect(calls).toEqual([]);
-      expect(io.send).not.toHaveBeenCalled();
       expect(io.setSpeed).not.toHaveBeenCalled();
     });
   });

@@ -45,7 +45,14 @@ vi.mock("@iracedeck/deck-core", async () => {
   return {
     CommonSettings: { extend: (shape: never) => z.object(shape).passthrough() },
     ConnectionStateAwareAction: class MockConnectionStateAwareAction {
-      logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+      logger = {
+        trace: vi.fn(),
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        createScope: vi.fn(() => ({ trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() })),
+      };
       sdkController = {
         subscribe: vi.fn(),
         unsubscribe: vi.fn(),

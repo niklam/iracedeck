@@ -12,7 +12,15 @@ import type { LapStartLookup, LapStartQuery, LapStartRecord } from "@iracedeck/r
 import { getGlobalSettings } from "@iracedeck/settings";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
+import {
+  _configureReplayCommandGate,
+  _resetReplayCommandGate,
+  pressReplayCommand,
+} from "../../shared/replay-command-gate.js";
+import { type FakeReplay, fakeReplay } from "../../shared/replay-command-gate.test-support.js";
 import { _resetReplayCursor, cancelReplayCursorOwner, claimReplayCursor } from "../../shared/replay-cursor.js";
+import { beginReplayJump, runReplayJump } from "../../shared/replay-jump-playback.js";
+import { _resetReplayPositionState } from "../../shared/replay-position-state.js";
 import { withSteppedReplayState } from "../../shared/test-support/replay-state.js";
 import { ReplayControlDialSettings } from "./replay-control-dial-settings.js";
 import type { ReplayControlDialHost } from "./replay-control-dial-surface.js";
@@ -202,7 +210,15 @@ vi.mock("@iracedeck/deck-core", () => ({
     safeParse: (data: Record<string, unknown>) => ({ success: true, data: { ...data } }),
   },
   ConnectionStateAwareAction: class MockConnectionStateAwareAction {
-    logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    logger = {
+      trace: vi.fn(),
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      // The replay command gate's own scope (#1430): its lines stay out of the action's.
+      createScope: vi.fn(() => ({ trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() })),
+    };
     // The controller's debounced replay state (#1324) runs the SDK's real rule,
     // stepped from whatever telemetry the test has set, at every read.
     sdkController = withSteppedReplayState({
@@ -286,9 +302,30 @@ vi.mock("@iracedeck/settings", () => ({
   getGlobalSettings: vi.fn(() => ({ fastestLapSearchDelayMs: 400 })),
 }));
 
+/**
+ * Runs the fake clock until a press has done all it will, for a test whose
+ * walk ends on a search that found nothing. Not `vi.runAllTimersAsync()`: the
+ * replay command gate keeps its record of such a search, and polls the replay
+ * while it stands (#1430), so no timer is ever the last one.
+ */
+async function runPressOut(): Promise<void> {
+  await vi.advanceTimersByTimeAsync(120_000);
+}
+
 describe("ReplayControl", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // The replay command gate (#1430) and the target it records are module
+    // state every press reaches: each test starts with nothing under way.
+    _resetReplayCommandGate();
+    _resetReplayPositionState();
+  });
+
+  afterEach(() => {
+    // And ends with nothing under way: a test on real timers that leaves the
+    // gate polling would otherwise have its timer fire in a later test.
+    _resetReplayCommandGate();
+    _resetReplayPositionState();
   });
 
   describe("parseSpeedSetting", () => {
@@ -898,9 +935,17 @@ describe("ReplayControl", () => {
 
     beforeEach(async () => {
       vi.clearAllMocks();
+      // A press of a mode with a long-press repeat arms the repeat. On fake
+      // timers it goes with the test, rather than firing in a later one through
+      // the replay command gate every action shares (#1430).
+      vi.useFakeTimers();
       const { getCommands } = await import("@iracedeck/deck-iracing");
       vi.mocked(getCommands).mockReturnValue({ replay: mockReplay, camera: { switchNum: vi.fn() } } as any);
       action = new ReplayControl();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
     });
 
     describe("slow-motion telemetry (#1202)", () => {
@@ -1058,7 +1103,7 @@ describe("ReplayControl", () => {
 
         await action.onKeyDown(fakeEvent("ctx-1", { mode: "play-backward" }) as any);
 
-        expect(mockReplay.setPlaySpeed).toHaveBeenCalledWith(-1);
+        expect(mockReplay.setPlaySpeed).toHaveBeenCalledWith(-1, false);
         expect((action as any).replaySpeed.get("ctx-1")).toBe(-1);
       });
 
@@ -1105,7 +1150,7 @@ describe("ReplayControl", () => {
 
         await action.onKeyDown(fakeEvent("ctx-1", { mode: "fast-forward", stepRate: 1 }) as any);
 
-        expect(mockReplay.setPlaySpeed).toHaveBeenCalledWith(2);
+        expect(mockReplay.setPlaySpeed).toHaveBeenCalledWith(2, false);
       });
 
       it("should step fast-forward by stepRate=2 to 4x from 2x", async () => {
@@ -1114,7 +1159,7 @@ describe("ReplayControl", () => {
 
         await action.onKeyDown(fakeEvent("ctx-1", { mode: "fast-forward", stepRate: 2 }) as any);
 
-        expect(mockReplay.setPlaySpeed).toHaveBeenCalledWith(4);
+        expect(mockReplay.setPlaySpeed).toHaveBeenCalledWith(4, false);
       });
 
       it("should always start fast-forward at 2x from paused, regardless of stepRate", async () => {
@@ -1122,7 +1167,7 @@ describe("ReplayControl", () => {
 
         await action.onKeyDown(fakeEvent("ctx-1", { mode: "fast-forward", stepRate: 3 }) as any);
 
-        expect(mockReplay.setPlaySpeed).toHaveBeenCalledWith(2);
+        expect(mockReplay.setPlaySpeed).toHaveBeenCalledWith(2, false);
       });
 
       it("should clamp fast-forward to 16x when stepRate would exceed it", async () => {
@@ -1131,7 +1176,7 @@ describe("ReplayControl", () => {
 
         await action.onKeyDown(fakeEvent("ctx-1", { mode: "fast-forward", stepRate: 5 }) as any);
 
-        expect(mockReplay.setPlaySpeed).toHaveBeenCalledWith(16);
+        expect(mockReplay.setPlaySpeed).toHaveBeenCalledWith(16, false);
       });
 
       it("should step rewind by stepRate=2 to -4x from -2x", async () => {
@@ -1140,7 +1185,7 @@ describe("ReplayControl", () => {
 
         await action.onKeyDown(fakeEvent("ctx-1", { mode: "rewind", stepRate: 2 }) as any);
 
-        expect(mockReplay.setPlaySpeed).toHaveBeenCalledWith(-4);
+        expect(mockReplay.setPlaySpeed).toHaveBeenCalledWith(-4, false);
       });
 
       it("should clamp rewind to -16x when stepRate would exceed it", async () => {
@@ -1149,7 +1194,7 @@ describe("ReplayControl", () => {
 
         await action.onKeyDown(fakeEvent("ctx-1", { mode: "rewind", stepRate: 5 }) as any);
 
-        expect(mockReplay.setPlaySpeed).toHaveBeenCalledWith(-16);
+        expect(mockReplay.setPlaySpeed).toHaveBeenCalledWith(-16, false);
       });
 
       it("should reset to -2x when entering rewind from forward play, regardless of stepRate", async () => {
@@ -1157,7 +1202,7 @@ describe("ReplayControl", () => {
 
         await action.onKeyDown(fakeEvent("ctx-1", { mode: "rewind", stepRate: 3 }) as any);
 
-        expect(mockReplay.setPlaySpeed).toHaveBeenCalledWith(-2);
+        expect(mockReplay.setPlaySpeed).toHaveBeenCalledWith(-2, false);
       });
     });
 
@@ -1891,8 +1936,8 @@ describe("ReplayControl", () => {
     });
 
     describe("a command a key sends supersedes the dial's pending speed", () => {
-      // Every keypad mode takes the replay cursor before it sends
-      // (`cancelFastestLapWalk`), and a cursor take drops the pending speed.
+      // Every keypad mode takes the replay cursor before it sends (the replay
+      // command gate's press, #1430), and a cursor take drops the pending speed.
       const keyReplay = {
         play: vi.fn(() => true),
         pause: vi.fn(() => true),
@@ -1927,6 +1972,8 @@ describe("ReplayControl", () => {
         expect(resolveLiveSpeed(STALE_4X, t0 + 10)).toEqual(PAUSED);
 
         await action.onKeyDown(keyEvent("key-1", settings) as never);
+        // Released, so Fast Forward's long-press repeat does not outlive the test.
+        await action.onKeyUp(keyEvent("key-1", settings) as never);
 
         expect(resolveLiveSpeed(STALE_4X, t0 + 20)).toEqual(STALE_4X);
       });
@@ -2085,6 +2132,12 @@ describe("ReplayControl", () => {
       // setting's three values are covered in "Replay jump playback (#1276)".
       setJumpPlayback("play");
       action = new ReplayControl();
+      // The replay command gate (#1430) reads the replay the buffers simulate,
+      // so the jumps a press sends read back and nothing stands after a walk.
+      _configureReplayCommandGate({
+        readTelemetry: () => action["sdkController"].getCurrentTelemetry(),
+        inReplay: () => true,
+      });
     });
 
     afterEach(() => {
@@ -2151,12 +2204,16 @@ describe("ReplayControl", () => {
       });
 
       it("aborts the walk and warns when camera.switchNum fails", async () => {
+        vi.useFakeTimers();
+        onTestFinished(() => void vi.useRealTimers());
         // Camera switch returns false (SDK refused) — walker must not start.
         mockCamera.switchNum.mockReturnValueOnce(false);
         action["sdkController"].getCurrentTelemetry = vi.fn(() => telemetryWithBest(2, 5, 0) as any);
 
         await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
         await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+        // Nothing is under way, so the wait before the switch ends with no timer.
+        await vi.advanceTimersByTimeAsync(0);
 
         expect(mockCamera.switchNum).toHaveBeenCalledWith(2, 0, 0);
         expect(mockReplay.pause).not.toHaveBeenCalled();
@@ -2390,6 +2447,14 @@ describe("ReplayControl", () => {
           mockReplay.prevLap,
           mockReplay.setPlayPosition,
         ].reduce((n, command) => n + command.mock.calls.length, 0);
+      }
+
+      /** The searches only a walk sends. */
+      function walkSearches(): number {
+        return [mockReplay.goToStart, mockReplay.nextSession, mockReplay.nextLap, mockReplay.prevLap].reduce(
+          (n, command) => n + command.mock.calls.length,
+          0,
+        );
       }
 
       describe("session map building", () => {
@@ -3154,7 +3219,7 @@ describe("ReplayControl", () => {
             expect(cancelReplayCursorOwner("next")).toBe("jump-to-fastest-lap walk");
             expect(action["logger"].info).toHaveBeenCalledWith("Jump to fastest lap: walk cancelled by next");
 
-            await vi.runAllTimersAsync();
+            await runPressOut();
 
             expect(countReplayCommands()).toBe(commandsBefore);
             expect(mockReplay.setPlaySpeed).not.toHaveBeenCalled();
@@ -3175,8 +3240,10 @@ describe("ReplayControl", () => {
 
             await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
             await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+            // Nothing is under way, so the waits before the switch and the walk end with no timer.
+            await vi.advanceTimersByTimeAsync(0);
 
-            // The pause is sent before the walk's first await; the cache says so at once.
+            // The pause is sent before the walk's first timer; the cache says so at once.
             expect(mockReplay.pause).toHaveBeenCalledTimes(1);
             expect(action["replaySpeed"].get("ctx-1")).toBe(0);
 
@@ -3488,23 +3555,28 @@ describe("ReplayControl", () => {
             await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
             await vi.advanceTimersByTimeAsync(1200);
 
-            const commandsBefore = countReplayCommands();
+            const searchesBefore = walkSearches();
 
             // The cache says paused (the walk mirrored its pause), so Play/Pause sends play.
             await action.onKeyDown(fakeEvent("ctx-2", { mode: "play-pause" }) as any);
 
-            expect(mockReplay.play).toHaveBeenCalledTimes(1);
             expect(action["logger"].info).toHaveBeenCalledWith("Jump to fastest lap: walk cancelled by play-pause");
 
-            await vi.runAllTimersAsync();
+            await runPressOut();
 
-            expect(countReplayCommands()).toBe(commandsBefore + 1);
+            // The walk sent nothing more. The Play went out once: the walk's
+            // last Next Session search shows nothing on a paused replay, so the
+            // Play waited until that search could no longer be running and then
+            // went out by the gate's takeover (#1430).
+            expect(walkSearches()).toBe(searchesBefore);
+            expect(mockReplay.pause).toHaveBeenCalledTimes(1);
+            expect(mockReplay.play).toHaveBeenCalledTimes(1);
             expect(action["replaySpeed"].get("ctx-1")).toBe(1);
             expect(mockStore.laps.recordLapStart).not.toHaveBeenCalled();
 
             // The slot is released: a new press walks.
             await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
-            await vi.runAllTimersAsync();
+            await runPressOut();
 
             expect(mockReplay.pause).toHaveBeenCalledTimes(2);
           } finally {
@@ -3522,6 +3594,7 @@ describe("ReplayControl", () => {
             await action.onWillAppear(fakeEvent("ctx-2", { mode: "jump-to-fastest-lap" }) as any);
             await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
             await action.onKeyDown(fakeEvent("ctx-2", { mode: "jump-to-fastest-lap" }) as any);
+            await vi.advanceTimersByTimeAsync(0);
 
             expect(mockReplay.pause).toHaveBeenCalledTimes(1);
             expect(mockCamera.switchNum).toHaveBeenCalledTimes(1);
@@ -3967,9 +4040,20 @@ describe("ReplayControl", () => {
 
             try {
               await pressInsideGrace();
-              await vi.runAllTimersAsync();
+              await runPressOut();
 
-              expect(action["logger"].info).toHaveBeenCalledWith(RAN_FROM_CAR);
+              // The raw flag reading false is a seek to the replay command gate,
+              // so the camera switch waits for it to end (#1430). It never does:
+              // by the time the wait gives up the grace has run out too, and the
+              // walk refuses before it sends anything, where it used to run and
+              // learn from its own samples that it ran from the car.
+              expect(action["logger"].debug).toHaveBeenCalledWith(
+                "Jump to fastest lap: a jump was still under way; camera switched anyway",
+              );
+              expect(action["logger"].info).toHaveBeenCalledWith(
+                "Jump to fastest lap: replay not open; iRacing ignores replay commands from the car",
+              );
+              expect(countReplayCommands()).toBe(0);
               expect(_getFastestLapSessionCache()).toBeNull();
               expect(mockReplay.setPlayPosition).not.toHaveBeenCalled();
               expect(mockStore.laps.recordLapStart).not.toHaveBeenCalled();
@@ -4032,7 +4116,7 @@ describe("ReplayControl", () => {
 
             await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
             await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
-            await vi.runAllTimersAsync();
+            await runPressOut();
 
             expect(action["logger"].warn).toHaveBeenCalledWith(
               "Jump to fastest lap: goToStart did not move the cursor; aborting map build",
@@ -4088,16 +4172,15 @@ describe("ReplayControl", () => {
             // frame within the timeout.
             const settled = action["sdkController"].getCurrentTelemetry;
             let seeking = false;
-            let reads = 0;
 
+            // The frame flips at every one of the walk's polls. By the clock,
+            // not by the read: the replay command gate reads the telemetry too.
             action["sdkController"].getCurrentTelemetry = vi.fn(() => {
               const tel = settled() as any;
 
               if (!seeking) return tel;
 
-              reads++;
-
-              return { ...tel, ReplayFrameNum: tel.ReplayFrameNum + 100 + (reads % 2) };
+              return { ...tel, ReplayFrameNum: tel.ReplayFrameNum + 100 + (Math.floor(Date.now() / 50) % 2) };
             });
             mockReplay.nextSession.mockImplementation(() => {
               seeking = true;
@@ -4170,13 +4253,14 @@ describe("ReplayControl", () => {
             await action.onKeyDown(fakeEvent("ctx-2", { mode: "play-pause" }) as any);
             expect(action["logger"].info).toHaveBeenCalledWith("Jump to fastest lap: walk cancelled by play-pause");
 
-            // Re-press at once: the new walk starts (second pause), not "press ignored".
+            // Re-press at once: the new walk starts (its camera switch), not "press ignored".
             await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+            await vi.advanceTimersByTimeAsync(0);
 
             expect(action["logger"].info).not.toHaveBeenCalledWith(
               "Jump to fastest lap: previous press still in flight; press ignored",
             );
-            expect(mockReplay.pause).toHaveBeenCalledTimes(2);
+            expect(mockCamera.switchNum).toHaveBeenCalledTimes(2);
 
             const newWalk = action["activeFastestLapPress"];
 
@@ -4186,7 +4270,7 @@ describe("ReplayControl", () => {
             await vi.advanceTimersByTimeAsync(100);
             expect(action["activeFastestLapPress"]).toBe(newWalk);
 
-            await vi.runAllTimersAsync();
+            await runPressOut();
 
             // Exactly one walk converged and recorded; the cancelled one sent nothing more.
             expect(mockStore.laps.recordLapStart).toHaveBeenCalledTimes(1);
@@ -4603,9 +4687,12 @@ describe("ReplayControl", () => {
               const replay = liveReplay(before);
 
               await press();
+              // Nothing is under way, so the waits before the camera switch and
+              // before the walk settle at once, with no timer.
+              await vi.advanceTimersByTimeAsync(0);
 
-              // The walk's own pause is out before its first await: the speed
-              // to restore was read before it, not after.
+              // The walk's own pause is out before its first timer: the speed
+              // to restore was read at the press, before it, not after.
               expect(replay.speedCommands()).toEqual(["pause"]);
               expect(cachedSpeed()).toEqual(PAUSED);
 
@@ -4690,7 +4777,7 @@ describe("ReplayControl", () => {
             const commandsBefore = countReplayCommands();
 
             expect(cancelReplayCursorOwner("next")).toBe("jump-to-fastest-lap walk");
-            await vi.runAllTimersAsync();
+            await runPressOut();
 
             expect(countReplayCommands()).toBe(commandsBefore);
             expect(replay.speedCommands()).toEqual(["pause"]);
@@ -5190,6 +5277,262 @@ describe("ReplayControl", () => {
       expect(mockReplay.goToEnd).toHaveBeenCalledOnce();
       // The action tells the controller every sent goToEnd; the saved-replay rule is the SDK's.
       expect(action["sdkController"].noteReplayLeftForLive).toHaveBeenCalledOnce();
+    });
+  });
+
+  // The replay command gate (#1430): every key of this action sends through it,
+  // so a key pressed while a position jump is under way sends nothing but a
+  // position jump into it, and a command that waits goes out on the read-back.
+  // Against the gate's fake iRacing replay, which counts a command sent into a
+  // jump or into a search on its way as thrown.
+  describe("a key pressed while a replay jump is under way (#1430)", () => {
+    /** Where every jump under way here is going: about 1.6 s of seeking from the frame the replay starts on. */
+    const TARGET = 300_000;
+    /** Where Jump to Fastest Lap's record says the lap starts: its jump goes one second before it. */
+    const LAP_START = TARGET + 60;
+    /** How far the fake's Next Lap search goes. */
+    const LAP_FRAMES = 3_000;
+    const MY_CAR = 9;
+
+    let action: ReplayControl;
+    let sim: FakeReplay;
+    const camera = { switchNum: vi.fn<(carNum: number, group: number, cam: number) => boolean>(() => true) };
+
+    function fakeEvent(actionId: string, settings: Record<string, unknown>) {
+      return {
+        action: { id: actionId, isDial: () => false, setTitle: vi.fn(), setImage: vi.fn() },
+        payload: { settings },
+      };
+    }
+
+    /** A tap: down and straight up, so a mode with a long-press repeat sends once. */
+    async function pressKey(contextId: string, mode: string): Promise<void> {
+      await action.onWillAppear(fakeEvent(contextId, { mode }) as any);
+      await action.onKeyDown(fakeEvent(contextId, { mode }) as any);
+      await action.onKeyUp(fakeEvent(contextId, { mode }) as any);
+    }
+
+    /** The three jumps a key can meet under way. Each sends its seek at once, from a paused replay. */
+    const JUMPS_UNDER_WAY: [string, () => void][] = [
+      [
+        "a marker jump",
+        () => {
+          const jump = beginReplayJump("replay-markers next", sim.telemetry(), undefined, Date.now(), {
+            origin: "ctx-marker",
+            frame: TARGET,
+          });
+
+          void runReplayJump(jump, { frame: TARGET, readTelemetry: () => sim.telemetry() }).finally(() => jump.end());
+        },
+      ],
+      [
+        "a fastest-lap record jump",
+        () => {
+          void action["jumpToRecordedLapStart"]("ctx-fastest", {
+            carIdx: 4,
+            carNum: 4,
+            lap: 3,
+            frame: LAP_START,
+            timeMs: null,
+          });
+        },
+      ],
+      [
+        "a dial jump",
+        () => {
+          pressReplayCommand({ kind: "jump", frame: TARGET }, { by: "dial-frame-jog", origin: "ctx-dial" });
+        },
+      ],
+    ];
+
+    /** The frame each jump under way is going to: a record jump lands one second before its lap start. */
+    function targetOf(name: string): number {
+      return name === "a fastest-lap record jump" ? LAP_START - 60 : TARGET;
+    }
+
+    beforeEach(async () => {
+      vi.useFakeTimers();
+      sim = fakeReplay({ frame: 100_000, searches: { nextLap: (from) => from + LAP_FRAMES } });
+      _configureReplayCommandGate({
+        replay: () => sim.replay,
+        readTelemetry: () => sim.telemetry(),
+        inReplay: () => true,
+      });
+
+      const { getCommands } = await import("@iracedeck/deck-iracing");
+
+      vi.mocked(getCommands).mockReturnValue({ replay: sim.replay, camera } as any);
+      vi.mocked(getCarNumberRawFromSessionInfo).mockImplementation((_si: unknown, idx: number) => idx);
+      vi.mocked(getGlobalSettings).mockReturnValue({
+        fastestLapSearchDelayMs: 400,
+        replayJumpPlayback: "remember",
+      } as ReturnType<typeof getGlobalSettings>);
+      camera.switchNum.mockReset();
+      camera.switchNum.mockImplementation(() => true);
+      _resetReplayCursor();
+      action = new ReplayControl();
+      action["sdkController"].getCurrentTelemetry = vi.fn(() => sim.telemetry());
+      action["sdkController"].getSessionInfo = vi.fn(() => ({ DriverInfo: { DriverCarIdx: MY_CAR } }) as any);
+    });
+
+    afterEach(() => {
+      vi.mocked(getGlobalSettings).mockReturnValue({ fastestLapSearchDelayMs: 400 } as ReturnType<
+        typeof getGlobalSettings
+      >);
+      vi.useRealTimers();
+    });
+
+    /** The commands sent from `from` on, by name. */
+    const callsFrom = (from: number): string[] => sim.calls.slice(from).map((call) => call.split(" ")[0]);
+
+    describe.each(JUMPS_UNDER_WAY)("with %s under way", (name, startJump) => {
+      const target = targetOf(name);
+
+      /** Starts the jump, lets it get going, and returns where the commands it sent end. */
+      async function jumpUnderWay(): Promise<number> {
+        startJump();
+        await vi.advanceTimersByTimeAsync(100);
+
+        expect(sim.busy()).toBe(true);
+
+        return sim.calls.length;
+      }
+
+      it("Play / Pause waits for the landing, then plays from the target", async () => {
+        const from = await jumpUnderWay();
+
+        await pressKey("ctx-play", "play-pause");
+
+        expect(callsFrom(from)).toEqual([]);
+
+        await vi.advanceTimersByTimeAsync(5_000);
+
+        expect(callsFrom(from)).toEqual(["play"]);
+        expect(sim.thrown).toBe(0);
+        expect(sim.speed()).toEqual({ speed: 1, slowMotion: false });
+        expect(sim.frame()).toBeGreaterThanOrEqual(target);
+      });
+
+      it("a speed mode waits for the landing, then sets its speed there", async () => {
+        const from = await jumpUnderWay();
+
+        await pressKey("ctx-ff", "fast-forward");
+
+        expect(callsFrom(from)).toEqual([]);
+
+        await vi.advanceTimersByTimeAsync(5_000);
+
+        expect(sim.calls.slice(from)).toEqual(["setPlaySpeed 2 false"]);
+        expect(sim.thrown).toBe(0);
+        expect(sim.speed()).toEqual({ speed: 2, slowMotion: false });
+      });
+
+      it("a frame step becomes a position jump one frame on from the target", async () => {
+        const from = await jumpUnderWay();
+
+        await pressKey("ctx-step", "frame-forward");
+
+        expect(callsFrom(from)).toEqual(["setPlayPosition"]);
+
+        await vi.advanceTimersByTimeAsync(5_000);
+
+        expect(callsFrom(from)).toEqual(["setPlayPosition"]);
+        expect(sim.thrown).toBe(0);
+        expect(sim.frame()).toBe(target + 1);
+        expect(sim.speed()).toEqual({ speed: 0, slowMotion: false });
+      });
+
+      it("the long-press repeat of a frame step sends nothing but position jumps into it", async () => {
+        const from = await jumpUnderWay();
+
+        await action.onWillAppear(fakeEvent("ctx-step", { mode: "frame-forward" }) as any);
+        await action.onKeyDown(fakeEvent("ctx-step", { mode: "frame-forward" }) as any);
+        // The first step, then the repeat from half a second on.
+        await vi.advanceTimersByTimeAsync(1_100);
+        await action.onKeyUp(fakeEvent("ctx-step", { mode: "frame-forward" }) as any);
+
+        const steps = vi
+          .mocked(action["logger"].info)
+          .mock.calls.filter(([line]) => line === "Frame forward executed").length;
+
+        expect(steps).toBeGreaterThan(1);
+        // The first step met the seek under way and went out as a position
+        // jump one frame on from its target. That retarget lands at once, and
+        // the steps after it meet a quiet replay, where a real frame step goes.
+        expect(callsFrom(from)[0]).toBe("setPlayPosition");
+        expect(callsFrom(from).every((call) => call === "setPlayPosition" || call === "nextFrame")).toBe(true);
+
+        await vi.advanceTimersByTimeAsync(5_000);
+
+        expect(sim.thrown).toBe(0);
+        expect(sim.frame()).toBe(target + steps);
+      });
+
+      it("a search waits for the landing to hold, then searches from the target", async () => {
+        const from = await jumpUnderWay();
+
+        await pressKey("ctx-lap", "next-lap");
+
+        expect(callsFrom(from)).toEqual([]);
+
+        await vi.advanceTimersByTimeAsync(5_000);
+
+        expect(callsFrom(from)[0]).toBe("nextLap");
+        expect(sim.thrown).toBe(0);
+        expect(sim.frame()).toBe(target + LAP_FRAMES);
+      });
+    });
+
+    describe("Jump to Fastest Lap's record jump and its camera switch", () => {
+      it("with a Play held behind it, the camera still switches after the landing", async () => {
+        const busyAtSwitch: boolean[] = [];
+
+        camera.switchNum.mockImplementation(() => {
+          busyAtSwitch.push(sim.busy());
+
+          return true;
+        });
+        void action["jumpToRecordedLapStart"]("ctx-fastest", {
+          carIdx: 4,
+          carNum: 4,
+          lap: 3,
+          frame: LAP_START,
+          timeMs: null,
+        });
+        await vi.advanceTimersByTimeAsync(100);
+        await pressKey("ctx-play", "play-pause");
+
+        expect(action["logger"].info).toHaveBeenCalledWith("Jump to fastest lap: jump cancelled by play-pause");
+        expect(camera.switchNum).not.toHaveBeenCalled();
+
+        await vi.advanceTimersByTimeAsync(5_000);
+
+        expect(camera.switchNum).toHaveBeenCalledExactlyOnceWith(4, 0, 0);
+        expect(busyAtSwitch).toEqual([false]);
+        expect(sim.calls.filter((call) => call === "play")).toHaveLength(1);
+        expect(sim.thrown).toBe(0);
+        expect(sim.frame()).toBeGreaterThanOrEqual(LAP_START - 60);
+      });
+
+      it("with a car key as the canceller, it does not: the driver's camera choice is the newer one", async () => {
+        void action["jumpToRecordedLapStart"]("ctx-fastest", {
+          carIdx: 4,
+          carNum: 4,
+          lap: 3,
+          frame: LAP_START,
+          timeMs: null,
+        });
+        await vi.advanceTimersByTimeAsync(100);
+        await pressKey("ctx-car", "jump-to-my-car");
+
+        expect(action["logger"].info).toHaveBeenCalledWith("Jump to fastest lap: jump cancelled by jump-to-my-car");
+
+        await vi.advanceTimersByTimeAsync(5_000);
+
+        expect(camera.switchNum).toHaveBeenCalledExactlyOnceWith(MY_CAR, 0, 0);
+        expect(sim.frame()).toBe(LAP_START - 60);
+        expect(sim.thrown).toBe(0);
+      });
     });
   });
 });

@@ -236,7 +236,7 @@ export class ReplayMarkers extends SimIRacingAction<ReplayMarkersSettings> {
     const settings = this.parseSettings(ev.payload.settings);
     this.logger.info(`Key down: ${settings.mode}`);
 
-    const confirmation = this.execute(settings);
+    const confirmation = this.execute(settings, ev.action.id);
 
     if (confirmation) this.flash(ev.action.id, settings, confirmation);
   }
@@ -274,7 +274,7 @@ export class ReplayMarkers extends SimIRacingAction<ReplayMarkersSettings> {
    * nothing shows nothing. A Next / Previous jump is started here and finishes
    * on its own ({@link followMarkerJump}): the press does not wait for the landing.
    */
-  private execute(settings: ReplayMarkersSettings): ReplayMarkerConfirmation | undefined {
+  private execute(settings: ReplayMarkersSettings, contextId: string): ReplayMarkerConfirmation | undefined {
     const context = this.readReplayContext();
 
     if (!context.ok) {
@@ -308,9 +308,9 @@ export class ReplayMarkers extends SimIRacingAction<ReplayMarkersSettings> {
           return undefined;
         }
 
-        // From the shared pending landing while the replay has not reached it
-        // (#1230), so a press right after a turn or another press steps on.
-        const anchor = resolveMarkerJumpAnchor(context.frame);
+        // From the replay's pending target while the replay has not reached it
+        // (#1230, #1430), so a press right after a turn or another press steps on.
+        const anchor = resolveMarkerJumpAnchor(context.frame, context.telemetry);
         const target = resolveJumpTarget(settings.mode, context, anchor);
 
         if (!target) {
@@ -320,10 +320,16 @@ export class ReplayMarkers extends SimIRacingAction<ReplayMarkersSettings> {
           return undefined;
         }
 
-        // Takes the replay cursor (#1203) and records the shared landing before
-        // it returns; a paused replay has its seek by then too. The rest — the
+        // Takes the replay cursor (#1203) and records the target before it
+        // returns; a paused replay has its seek by then too. The rest — the
         // landing, and the speed the setting asks for — follows the press.
-        const jump = jumpToMarkerFrame(settings.mode, target.frame, () => this.sdkController.getCurrentTelemetry());
+        const jump = jumpToMarkerFrame(
+          settings.mode,
+          target.frame,
+          () => this.sdkController.getCurrentTelemetry(),
+          Date.now(),
+          contextId,
+        );
         this.logger.info(`Jumped to ${settings.mode} marker`);
         this.logger.debug(`current=${context.frame}, anchor=${anchor}, target=${target.frame}`);
         followMarkerJump(this.logger, `${settings.mode} marker`, target.frame, jump);
@@ -343,7 +349,9 @@ export class ReplayMarkers extends SimIRacingAction<ReplayMarkersSettings> {
   private isJumpAvailable(mode: ReplayMarkersJumpMode): boolean {
     const context = this.readReplayContext();
 
-    return context.ok && resolveJumpTarget(mode, context, resolveMarkerJumpAnchor(context.frame)) !== null;
+    return (
+      context.ok && resolveJumpTarget(mode, context, resolveMarkerJumpAnchor(context.frame, context.telemetry)) !== null
+    );
   }
 
   /**

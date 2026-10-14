@@ -5,39 +5,24 @@
  * gestures and every push to the screen. Design:
  * `docs/superpowers/specs/2026-10-04-issue-1316-replay-control-dial.md`.
  *
- * What a turn sends follows from how iRacing treats the two commands that can
- * move a replay by frames, measured on 2026-10-12 and recorded in
- * `replay-position-state.ts`: a frame step is immediate but only one counts
- * per sim update, and it wrecks a position jump still under way; an absolute
- * jump may follow another at any pace and the newest wins, but from the second
- * one on the replay takes some 400 ms to show it. So a single detent on a
- * replay at rest is a frame step, and everything else — several detents in one
- * event, or any turn while the last move has not read back — is one absolute
- * jump to the frame the turn is heading for. A jump relative to the current
- * frame is never sent: iRacing resolves one from the start of the recording
- * while an earlier jump is settling, which is what threw the replay to
- * 0:00.00 on a fast turn.
+ * What a turn sends is the shared frame-move rule (`shared/replay-frame-move.ts`,
+ * moved there in #1430 so a Frame Forward key and its repeat follow it too):
+ * a single detent on a replay at rest is a frame step, and everything else —
+ * several detents in one event, or any turn while the last move of any surface
+ * has not read back — is one absolute jump to the frame the turn is heading
+ * for. A turn made while a marker or fastest-lap jump is still landing
+ * therefore steps from the frame that jump is going to and leaves the replay
+ * paused there.
  */
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 
+import { type FrameMove, planFrameMove } from "../../shared/replay-frame-move.js";
+import type { ReplayPosition } from "../../shared/replay-position-state.js";
 import type { ReplayDialMode } from "./replay-control-dial-mode.js";
-import type { ReplayPosition } from "./replay-position-state.js";
 import { formatSpeedDisplay } from "./replay-speed-format.js";
 
 /** The replay-cursor owner every Frame Jog command is sent under. */
 const CURSOR_OWNER = "dial-frame-jog";
-
-/**
- * How many frames short of the recording's end a position jump is aimed at
- * most. Measured on 2026-10-12 against a saved replay: a jump to any of the
- * last four frames, or past the end, lands five frames short of it, so its
- * target never reads back; frame steps go on to the last frame but one. Five
- * is that measurement and the rest is slack. It is not relied on: aimed too
- * far on another recording, a jump is one more target that does not read
- * back and is given up, and the frames past the margin are still reached one
- * step at a time.
- */
-const JUMP_END_MARGIN_FRAMES = 8;
 
 /**
  * @internal Exported for testing
@@ -55,59 +40,6 @@ export function formatReplayTime(seconds: number | undefined): string {
   const wholeSeconds = Math.floor((hundredths % 6000) / 100);
 
   return `${minutes}:${String(wholeSeconds).padStart(2, "0")}.${String(hundredths % 100).padStart(2, "0")}`;
-}
-
-/**
- * @internal Exported for testing
- *
- * What one turn sends: one frame step, one absolute jump, or nothing.
- */
-export type FrameMove =
-  { kind: "step"; direction: 1 | -1 } | { kind: "jump"; frame: number } | { kind: "none"; reason: string };
-
-/**
- * @internal Exported for testing
- *
- * Decides what a turn of `ticks` detents (positive is forward) sends from
- * where the replay stands or is headed. Nothing when that is not known, and
- * nothing when the replay is at rest on the end of the recording the turn
- * points at. A frame step only for a single detent with nothing under way;
- * otherwise an absolute jump, measured from the pending target while one
- * stands — also when that is the frame it already asks for, since a target
- * that has not read back is put right by asking again.
- *
- * The last frames of the recording are the exception, because a jump cannot
- * land there ({@link JUMP_END_MARGIN_FRAMES}) and a step can: a jump is aimed
- * no further than the margin, a turn of several detents past it is one frame
- * step, and while a move into that stretch has not read back nothing is sent,
- * since a step has to wait and a jump would pull the replay back.
- */
-export function planFrameMove(ticks: number, position: ReplayPosition | null): FrameMove {
-  if (position === null) return { kind: "none", reason: "the replay's position is not known" };
-
-  const { frame, endFrame, seeking } = position;
-  const direction = ticks > 0 ? 1 : -1;
-  // A step reaches the last frame but one; a jump stops short of the margin.
-  const lastStep = endFrame === undefined ? Infinity : endFrame - 1;
-  const lastJump = endFrame === undefined ? Infinity : endFrame - JUMP_END_MARGIN_FRAMES;
-  const target = ticks > 0 ? Math.min(frame + ticks, Math.max(frame, lastStep)) : Math.max(frame + ticks, 0);
-
-  if (seeking) {
-    if (target <= lastJump || frame <= lastJump) return { kind: "jump", frame: Math.min(target, lastJump) };
-
-    return { kind: "none", reason: "a move into the last frames of the recording has not read back" };
-  }
-
-  if (target === frame) return { kind: "none", reason: `at the ${ticks > 0 ? "end" : "start"} of the recording` };
-
-  if (Math.abs(ticks) === 1) return { kind: "step", direction };
-
-  if (target <= lastJump) return { kind: "jump", frame: target };
-
-  // Several detents towards frames only a step reaches: as far as a jump goes, then one frame per turn.
-  if (ticks > 0 && frame < lastJump) return { kind: "jump", frame: lastJump };
-
-  return { kind: "step", direction };
 }
 
 /**

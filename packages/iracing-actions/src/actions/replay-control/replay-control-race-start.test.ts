@@ -2,14 +2,22 @@
  * Replay Control's Jump to Race Start mode (issue #1354): the press path, its
  * guards, the three ways it finds the frame, and the key's unavailable look.
  * What the press aims at is `green-flag-target.test.ts`'s; the replay search
- * it borrows is covered, as Jump to Fastest Lap's, in `replay-control.test.ts`.
+ * it borrows is covered, as Jump to Fastest Lap's, in `replay-control.test.ts`,
+ * except for the camera switches a search makes for itself (#1430), which are
+ * pinned here for both presses on this file's replay of laps and cars.
  */
 import { getCarNumberRawFromSessionInfo, type ReplayPosMode, type TelemetryData } from "@iracedeck/iracing-sdk";
 import type { GreenLookup, GreenQuery, LapStartLookup, LapStartQuery, LapStartRecord } from "@iracedeck/replay-store";
 import { getGlobalSettings } from "@iracedeck/settings";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  _configureReplayCommandGate,
+  _resetReplayCommandGate,
+  pressReplayCommand,
+} from "../../shared/replay-command-gate.js";
 import { _resetReplayCursor, cancelReplayCursorOwner } from "../../shared/replay-cursor.js";
+import { _resetReplayPositionState } from "../../shared/replay-position-state.js";
 import { withSteppedReplayState } from "../../shared/test-support/replay-state.js";
 import { GREEN_APPROACH_FRAMES } from "./green-flag-target.js";
 import { _resetFastestLapSessionCache, generateReplayControlSvg, ReplayControl } from "./replay-control.js";
@@ -63,7 +71,15 @@ vi.mock("@iracedeck/deck-core", () => ({
     }),
   },
   ConnectionStateAwareAction: class MockConnectionStateAwareAction {
-    logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    logger = {
+      trace: vi.fn(),
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      // The replay command gate's own scope (#1430): its lines stay out of the action's.
+      createScope: vi.fn(() => ({ trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() })),
+    };
     sdkController = withSteppedReplayState({
       subscribe: vi.fn(),
       unsubscribe: vi.fn(),
@@ -224,6 +240,19 @@ function fakeReplay(
      * paused replay: nothing shows that a search is under way.
      */
     sessionSearchTakesMs?: (distanceFrames: number) => number;
+    /**
+     * How long a jump that takes time reads as the frame it left from before
+     * the telemetry shows the seek, as iRacing's does until its next update.
+     * Omitted, it shows at once.
+     */
+    seekShowsAfterMs?: number;
+    /**
+     * Frames by which a car crosses each line later than the layout says
+     * (#1430). iRacing's lap search stops where the car on screen crosses a
+     * line, so with the camera on another car it lands on that car's lines.
+     * Omitted, every car crosses together.
+     */
+    lineOffsets?: Partial<Record<number, number>>;
   },
 ) {
   const { layout } = options;
@@ -236,18 +265,24 @@ function fakeReplay(
     inReplay: true,
     /** True while a jump the sim has not finished is under way. */
     seeking: false,
+    /** When the telemetry starts to show the seek under way. */
+    seekShowsAt: 0,
   };
   const bufferEnd = (): number => layout[layout.length - 1].endFrame;
-  /** The frame of a session's first line crossing: into lap 1 after a grid wait, else into lap 1 after a full lap 0. */
-  const firstLine = (session: SessionLayout): number => session.startFrame + (gridWait > 0 ? gridWait : FRAMES_PER_LAP);
+  /**
+   * The frame of a car's first line crossing in a session: into lap 1 after a
+   * grid wait, else into lap 1 after a full lap 0, and later by its offset.
+   */
+  const firstLine = (session: SessionLayout, carIdx: number): number =>
+    session.startFrame + (gridWait > 0 ? gridWait : FRAMES_PER_LAP) + (options.lineOffsets?.[carIdx] ?? 0);
   const findSession = (frame: number): SessionLayout | null =>
     layout.find((s) => frame >= s.startFrame && frame <= s.endFrame) ?? null;
 
-  /** The frames a lap search can land on in `session`: `short` before each line. */
+  /** The frames a lap search can land on in `session`: `short` before each line the car on screen crosses. */
   const landings = (session: SessionLayout): number[] => {
     const frames: number[] = [];
 
-    for (let line = firstLine(session); line <= session.endFrame; line += FRAMES_PER_LAP) {
+    for (let line = firstLine(session, state.camCarIdx); line <= session.endFrame; line += FRAMES_PER_LAP) {
       frames.push(line - short);
     }
 
@@ -295,6 +330,7 @@ function fakeReplay(
     const takesMs = options.seekTakesMs?.(Math.abs(target - state.frame)) ?? 0;
 
     state.seeking = options.seekStalls?.(frame) === true || takesMs > 0;
+    state.seekShowsAt = Date.now() + (options.seekShowsAfterMs ?? 0);
 
     if (options.seekStalls?.(frame) === true) return true;
 
@@ -345,17 +381,16 @@ function fakeReplay(
     const dists: number[] = [];
 
     if (session) {
-      const sinceLine = state.frame - firstLine(session);
-      // Before the first line: standing on the grid, or running lap 0.
-      const lap = sinceLine < 0 ? 0 : 1 + Math.floor(sinceLine / FRAMES_PER_LAP);
-      const dist =
-        sinceLine >= 0
-          ? (sinceLine % FRAMES_PER_LAP) / FRAMES_PER_LAP
-          : gridWait > 0
-            ? GRID_SLOT_DIST
-            : (state.frame - session.startFrame) / FRAMES_PER_LAP;
-
       for (const carIdx of [VIEWED_CAR, POLE_CAR]) {
+        const sinceLine = state.frame - firstLine(session, carIdx);
+        // Before the first line: standing on the grid, or running lap 0.
+        const lap = sinceLine < 0 ? 0 : 1 + Math.floor(sinceLine / FRAMES_PER_LAP);
+        const dist =
+          sinceLine >= 0
+            ? (sinceLine % FRAMES_PER_LAP) / FRAMES_PER_LAP
+            : gridWait > 0
+              ? GRID_SLOT_DIST
+              : Math.max(0, (sinceLine + FRAMES_PER_LAP) / FRAMES_PER_LAP);
         const present = options.onTrack?.(carIdx, state.frame) ?? true;
 
         laps[carIdx] = present ? lap : -1;
@@ -363,7 +398,7 @@ function fakeReplay(
       }
     }
 
-    if (state.seeking) {
+    if (state.seeking && Date.now() >= state.seekShowsAt) {
       return {
         CamCarIdx: state.camCarIdx,
         IsReplayPlaying: false,
@@ -461,6 +496,16 @@ function countReplayCommands(): number {
   ].reduce((n, command) => n + command.mock.calls.length, 0);
 }
 
+/**
+ * Runs the fake clock until a press has done all it will, for a test whose
+ * walk ends on a search that found nothing. Not `vi.runAllTimersAsync()`: the
+ * replay command gate keeps its record of such a search, and polls the replay
+ * while it stands (#1430), so no timer is ever the last one.
+ */
+async function runPressOut(): Promise<void> {
+  await vi.advanceTimersByTimeAsync(120_000);
+}
+
 function seekFrames(): number[] {
   return mockReplay.setPlayPosition.mock.calls.map((call) => call[1]);
 }
@@ -496,6 +541,10 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
     vi.useFakeTimers();
     _resetFastestLapSessionCache();
     _resetReplayCursor();
+    // The replay command gate (#1430) and the target it records are module
+    // state every press reaches: each test starts with nothing under way.
+    _resetReplayCommandGate();
+    _resetReplayPositionState();
 
     const { getReplaySessionStore, isReplaySessionStoreInitialized } = await import("@iracedeck/replay-store");
     const { getCommands } = await import("@iracedeck/deck-iracing");
@@ -521,6 +570,12 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
     // Play, so the end of a press is one command these paused replays show.
     setJumpPlayback("play");
     action = new ReplayControl();
+    // The replay command gate (#1430) reads the replay these tests simulate,
+    // so the jumps a press sends read back and nothing stands after a walk.
+    _configureReplayCommandGate({
+      readTelemetry: () => action["sdkController"].getCurrentTelemetry(),
+      inReplay: () => true,
+    });
   });
 
   afterEach(() => {
@@ -795,13 +850,21 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
       await vi.advanceTimersByTimeAsync(200);
       await press("ctx-lap", { mode: "next-lap" });
 
-      // The cursor reaches the frame after all: the cancelled press must not apply its speed.
+      expect(action["logger"].info).toHaveBeenCalledWith("Jump to race start: jump cancelled by next-lap");
+      // The search waits for the jump under way to land: sent into it, it
+      // would throw the jump (#1430).
+      expect(mockReplay.nextLap).not.toHaveBeenCalled();
+
+      // The cursor reaches the frame after all: the cancelled press logs no
+      // landing of its own, and the search goes out on the read-back.
       replay.state.frame = 29_915;
-      await vi.runAllTimersAsync();
+      await runPressOut();
 
       expect(mockReplay.nextLap).toHaveBeenCalledTimes(1);
-      expect(mockReplay.setPlaySpeed).not.toHaveBeenCalled();
-      expect(action["logger"].info).toHaveBeenCalledWith("Jump to race start: jump cancelled by next-lap");
+      expect(mockReplay.nextLap.mock.invocationCallOrder[0]).toBeGreaterThan(
+        mockReplay.setPlayPosition.mock.invocationCallOrder[0],
+      );
+      expect(action["logger"].debug).not.toHaveBeenCalledWith(expect.stringContaining("landed on"));
       expect(action["activeFastestLapPress"]).toBeNull();
     });
   });
@@ -1530,7 +1593,7 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
         });
 
         await press();
-        await vi.runAllTimersAsync();
+        await runPressOut();
 
         expect(action["logger"].warn).toHaveBeenCalledWith("Jump to race start: jump did not settle; aborting walk");
         expect(action["logger"].warn).toHaveBeenCalledWith(
@@ -1759,7 +1822,7 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
       mockReplay.setPlayPosition.mockImplementation(() => false);
 
       await press();
-      await vi.runAllTimersAsync();
+      await runPressOut();
 
       expect(action["logger"].warn).toHaveBeenCalledWith("Jump to race start: jump not sent; aborting walk");
       expect(mockReplay.setPlaySpeed).not.toHaveBeenCalled();
@@ -1811,6 +1874,265 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
         "Jump to race start: could not switch the camera back; it is left on the pole car",
       );
       expect(mockReplay.setPlaySpeed).toHaveBeenLastCalledWith(1, false);
+    });
+  });
+
+  // A camera switch a search makes for itself outside a jump's landing step
+  // (#1430): iRacing drops a camera change that arrives during a seek, and a
+  // lap search follows the car on screen. Jump to Fastest Lap's search and
+  // Jump to Race Start's are the same walk; both are pressed here.
+  describe("the camera switches a search makes for itself (#1430)", () => {
+    /** A dial jump's frame, well into the race: about half a second of seeking from the cursor. */
+    const DIAL_FRAME = IN_RACE + 30_000;
+
+    type Search = [label: string, start: () => Promise<void>];
+
+    const SEARCHES: Search[] = [
+      ["Jump to race start", () => press()],
+      [
+        "Jump to fastest lap",
+        async () => {
+          // An Always My Car key pressed while watching another car: the press
+          // puts the camera on the target before the search.
+          void action.walkToFastestLap(
+            "ctx-fastest",
+            POLE_CAR,
+            9,
+            2,
+            { carNumberRaw: POLE_CAR, userId: 700, subSessionId: undefined },
+            VIEWED_CAR,
+            POLE_CAR,
+          );
+        },
+      ],
+    ];
+
+    /** Each camera switch, with whether a seek was under way in the sim when it was sent. */
+    function recordSwitches(replay: ReturnType<typeof fakeReplay>): { carNum: number; seeking: boolean }[] {
+      const switches: { carNum: number; seeking: boolean }[] = [];
+      const switchNum = mockCamera.switchNum.getMockImplementation() as (carNum: number) => boolean;
+
+      mockCamera.switchNum.mockImplementation((carNum) => {
+        switches.push({ carNum, seeking: replay.state.seeking });
+
+        return switchNum(carNum);
+      });
+
+      return switches;
+    }
+
+    describe.each(SEARCHES)("%s", (label, start) => {
+      it("borrows the camera for the target car at once on a quiet replay", async () => {
+        const replay = fakeReplay(action, { sessionTypes: WEEKEND_TYPES, layout: WEEKEND, cursor: IN_RACE });
+        const switches = recordSwitches(replay);
+
+        await start();
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(switches).toEqual([{ carNum: POLE_CAR, seeking: false }]);
+        expect(action["logger"].debug).not.toHaveBeenCalledWith(
+          `${label}: a jump was still under way; camera switched anyway`,
+        );
+      });
+
+      it("borrows the camera only once a jump under way has landed, and searches on the target car", async () => {
+        const replay = fakeReplay(action, {
+          sessionTypes: WEEKEND_TYPES,
+          layout: WEEKEND,
+          cursor: IN_RACE,
+          // The dial jump takes half a second, and its seek shows from the sim's next update.
+          seekTakesMs: (distance) => (distance === DIAL_FRAME - IN_RACE ? 500 : 0),
+          seekShowsAfterMs: 20,
+        });
+        const switches = recordSwitches(replay);
+
+        pressReplayCommand({ kind: "jump", frame: DIAL_FRAME }, { by: "dial-frame-jog", origin: "ctx-dial" });
+        await vi.advanceTimersByTimeAsync(10);
+        await start();
+        await vi.advanceTimersByTimeAsync(250);
+
+        // The seek is under way: a switch sent now would be dropped.
+        expect(replay.state.seeking).toBe(true);
+        expect(switches).toEqual([]);
+
+        await runPressOut();
+
+        expect(switches[0]).toEqual({ carNum: POLE_CAR, seeking: false });
+        expect(mockCamera.switchNum.mock.invocationCallOrder[0]).toBeLessThan(
+          mockReplay.pause.mock.invocationCallOrder[0],
+        );
+        // The search ran on the target car and recorded its lap.
+        expect(mockStore.laps.recordLapStart).toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({ carIdx: POLE_CAR }),
+        );
+      });
+
+      it("hands the camera back after a search that gave up only once the way back has landed", async () => {
+        const replay = fakeReplay(action, {
+          sessionTypes: WEEKEND_TYPES,
+          layout: WEEKEND,
+          cursor: IN_RACE,
+          // The first probe is never reached: the search gives up on it.
+          seekStalls: (frame) => frame === 44_999,
+        });
+        const seek = mockReplay.setPlayPosition.getMockImplementation() as (
+          mode: ReplayPosMode,
+          frame: number,
+        ) => boolean;
+
+        // The way back takes longer than the walk waits for it, and lands later.
+        mockReplay.setPlayPosition.mockImplementation((mode, frame) => {
+          if (frame !== IN_RACE) return seek(mode, frame);
+
+          replay.state.seeking = true;
+          setTimeout(() => {
+            replay.state.frame = IN_RACE;
+            replay.state.seeking = false;
+          }, 2_500);
+
+          return true;
+        });
+
+        const switches = recordSwitches(replay);
+
+        await start();
+        await runPressOut();
+
+        expect(action["logger"].warn).toHaveBeenCalledWith(
+          `${label}: could not put the replay back; it is left paused where the search stopped`,
+        );
+        expect(replay.state.frame).toBe(IN_RACE);
+        expect(switches).toEqual([
+          { carNum: POLE_CAR, seeking: false },
+          { carNum: VIEWED_CAR, seeking: false },
+        ]);
+        expect(action["logger"].debug).not.toHaveBeenCalledWith(
+          `${label}: a jump was still under way; camera switched anyway`,
+        );
+      });
+
+      it("hands the camera back anyway when the wait runs out, and says so", async () => {
+        const replay = fakeReplay(action, {
+          sessionTypes: WEEKEND_TYPES,
+          layout: WEEKEND,
+          cursor: IN_RACE,
+          // Every jump stalls: the probe and the way back.
+          seekStalls: () => true,
+        });
+        const switches = recordSwitches(replay);
+
+        await start();
+        await runPressOut();
+
+        expect(action["logger"].warn).toHaveBeenCalledWith(
+          `${label}: could not put the replay back; it is left paused where the search stopped`,
+        );
+        expect(action["logger"].debug).toHaveBeenCalledWith(
+          `${label}: a jump was still under way; camera switched anyway`,
+        );
+        expect(switches).toEqual([
+          { carNum: POLE_CAR, seeking: false },
+          { carNum: VIEWED_CAR, seeking: true },
+        ]);
+        expect(replay.state.camCarIdx).toBe(VIEWED_CAR);
+      });
+    });
+
+    // What the walk does when its camera never reached the target car, as a
+    // switch sent into a seek is dropped: its bisection reads the target car's
+    // own lap, but every lap search stops where the car on screen crosses a
+    // line, and the walk's checks of the target car there fail. Pinned for each
+    // way the car on screen can be off, which between them take every exit the
+    // walk has here: whichever it takes, nothing reaches the record.
+    describe("a search whose camera never reached the target car", () => {
+      /** The car on screen crosses each line `offset` frames after the target car, and the switch onto the target is lost. */
+      function cameraLeftOnAnotherCar(offset: number): ReturnType<typeof fakeReplay> {
+        const replay = fakeReplay(action, {
+          sessionTypes: WEEKEND_TYPES,
+          layout: WEEKEND,
+          cursor: IN_RACE,
+          lineOffsets: { [VIEWED_CAR]: offset },
+        });
+
+        mockCamera.switchNum.mockImplementation(() => true);
+
+        return replay;
+      }
+
+      const NOT_CONVERGED = (lap: number, dist: string): string =>
+        `walk did not converge (not at the end of lap ${lap} before the back-step (lap=${lap}, dist=${dist}, session=2/3)); nothing recorded`;
+
+      it.each([
+        ["well after", 2_000, "0.3998"],
+        ["just after", 300, "0.0598"],
+        ["just before", -300, "0.9398"],
+        ["well before", -2_000, "0.5998"],
+      ])(
+        "Jump to Fastest Lap, the car on screen crossing each line %s the target car: rests where it got to with a warning, and records nothing",
+        async (_how, offset, dist) => {
+          const replay = cameraLeftOnAnotherCar(offset);
+
+          void action.walkToFastestLap(
+            "ctx-fastest",
+            POLE_CAR,
+            9,
+            2,
+            { carNumberRaw: POLE_CAR, userId: 700, subSessionId: undefined },
+            VIEWED_CAR,
+            POLE_CAR,
+          );
+          await runPressOut();
+
+          expect(replay.state.camCarIdx).toBe(VIEWED_CAR);
+          expect(action["logger"].warn).toHaveBeenCalledExactlyOnceWith(
+            `Jump to fastest lap: ${NOT_CONVERGED(8, dist)}`,
+          );
+          expect(mockStore.laps.recordLapStart).not.toHaveBeenCalled();
+          expect(action["logger"].info).not.toHaveBeenCalledWith(
+            "Jump to fastest lap: replay put back where the press found it",
+          );
+        },
+      );
+
+      it.each<[string, number, string[], "put back" | "taken"]>([
+        ["well after", 2_000, ["Jump to race start: lap-step 2 did not move the cursor; aborting"], "put back"],
+        ["just after", 300, ["Jump to race start: lap-step 2 did not move the cursor; aborting"], "put back"],
+        // Off by less than the run-up's bound: the frame is taken, and still not recorded.
+        ["just before", -300, [`Jump to race start: ${NOT_CONVERGED(0, "0.9398")}`], "taken"],
+        [
+          "well before",
+          -2_000,
+          [
+            `Jump to race start: ${NOT_CONVERGED(0, "0.5998")}`,
+            "Jump to race start: the search did not reach the start of the pole car's lap 1",
+          ],
+          "put back",
+        ],
+      ])(
+        "Jump to Race Start, the car on screen crossing each line %s the pole car: warns, records nothing, and the replay is %s",
+        async (_how, offset, warnings, outcome) => {
+          const replay = cameraLeftOnAnotherCar(offset);
+
+          await press();
+          await runPressOut();
+
+          expect(replay.state.camCarIdx).toBe(VIEWED_CAR);
+          expect(vi.mocked(action["logger"].warn).mock.calls.map((call) => call[0])).toEqual(warnings);
+          expect(mockStore.laps.recordLapStart).not.toHaveBeenCalled();
+
+          if (outcome === "put back") {
+            expect(replay.state.frame).toBe(IN_RACE);
+            expect(action["logger"].info).toHaveBeenCalledWith(
+              "Jump to race start: replay put back where the press found it",
+            );
+          } else {
+            expect(replay.state.frame).not.toBe(IN_RACE);
+            expect(action["logger"].info).not.toHaveBeenCalledWith(
+              "Jump to race start: replay put back where the press found it",
+            );
+          }
+        },
+      );
     });
   });
 

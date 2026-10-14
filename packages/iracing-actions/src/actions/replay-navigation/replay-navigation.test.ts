@@ -2,10 +2,16 @@ import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  _configureReplayCommandGate,
+  _resetReplayCommandGate,
+  pressReplayCommand,
+} from "../../shared/replay-command-gate.js";
+import {
   cursorTestEvent,
   type ReplayCursorProbe,
   stageReplayCursorProbe,
 } from "../../shared/replay-cursor.test-support.js";
+import { _resetReplayPositionState } from "../../shared/replay-position-state.js";
 import { steppedReplayState } from "../../shared/test-support/replay-state.js";
 import { generateReplayNavigationSvg, ReplayNavigation } from "./replay-navigation.js";
 
@@ -121,12 +127,24 @@ vi.mock("@iracedeck/deck-core", () => ({
 }));
 
 vi.mock("@iracedeck/settings", () => ({
+  getGlobalSettings: vi.fn(() => ({})),
   getGlobalColors: vi.fn(() => ({})),
 }));
+
+const REPLAY_READING = {
+  IsReplayPlaying: true,
+  ReplayFrameNum: 2000,
+  ReplayFrameNumEnd: 200000,
+  ReplayPlaySpeed: 0,
+  ReplayPlaySlowMotion: false,
+  SessionNum: 0,
+} as TelemetryData;
 
 describe("ReplayNavigation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    _resetReplayCommandGate();
+    _resetReplayPositionState();
   });
 
   describe("generateReplayNavigationSvg", () => {
@@ -382,6 +400,29 @@ describe("ReplayNavigation", () => {
       await action.onDialRotate(cursorTestEvent({ navigation: "next-lap" }, 0) as any);
 
       probe.expectUntouched();
+    });
+  });
+
+  describe("behind another surface's position jump (#1430)", () => {
+    it("a next-lap search pressed during a jump is held: only the jump goes out", async () => {
+      const replay = {
+        setPlayPosition: vi.fn(() => true),
+        play: vi.fn(() => true),
+        nextFrame: vi.fn(() => true),
+        prevFrame: vi.fn(() => true),
+        goToStart: vi.fn(() => true),
+        goToEnd: vi.fn(() => true),
+        nextLap: vi.fn(() => true),
+      };
+      const { getCommands } = await import("@iracedeck/deck-iracing");
+      vi.mocked(getCommands).mockReturnValue({ replay } as any);
+      _configureReplayCommandGate({ readTelemetry: () => REPLAY_READING, inReplay: () => true });
+
+      pressReplayCommand({ kind: "jump", frame: 160000 }, { by: "marker" });
+      await new ReplayNavigation().onKeyDown(cursorTestEvent({ navigation: "next-lap" }) as any);
+
+      expect(replay.nextLap).not.toHaveBeenCalled();
+      expect(replay.setPlayPosition).toHaveBeenCalledTimes(1);
     });
   });
 });

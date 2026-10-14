@@ -1,6 +1,7 @@
 import { ReplayPosMode, replaySpeedToSdk, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { _configureReplayCommandGate, _resetReplayCommandGate } from "./replay-command-gate.js";
 import {
   _resetReplayCursor,
   cancelReplayCursorOwner,
@@ -19,6 +20,7 @@ import {
   resolveReplayJumpSpeed,
   runReplayJump,
 } from "./replay-jump-playback.js";
+import { _resetReplayPositionState } from "./replay-position-state.js";
 
 const { mockGetGlobalSettings } = vi.hoisted(() => ({
   mockGetGlobalSettings: vi.fn((): Record<string, unknown> => ({})),
@@ -28,9 +30,10 @@ vi.mock("@iracedeck/settings", () => ({
   getGlobalSettings: mockGetGlobalSettings,
 }));
 
-/** Telemetry as iRacing reports a speed: raw value plus the slow-motion flag. */
+/** Telemetry as iRacing reports a speed on a replay: raw value plus the slow-motion flag. */
 function telemetryAt(speed: ReplaySpeed, frame = 90_000): TelemetryData {
   return {
+    IsReplayPlaying: true,
     ReplayFrameNum: frame,
     ReplayPlaySpeed: replaySpeedToSdk(speed.speed, speed.slowMotion),
     ReplayPlaySlowMotion: speed.slowMotion,
@@ -85,7 +88,7 @@ function fakeSim(initial: ReplaySpeed, options: { frame?: number; lagMs?: number
     }),
   };
 
-  return {
+  const sim = {
     replay,
     calls,
     refuse,
@@ -93,6 +96,21 @@ function fakeSim(initial: ReplaySpeed, options: { frame?: number; lagMs?: number
     readTelemetry: (): TelemetryData => ({ ...sample }),
     speed: (): ReplaySpeed => captureReplaySpeed(null, sample, 0),
   };
+
+  activeSim = { replay: withConveniences(replay), readTelemetry: sim.readTelemetry };
+
+  return sim;
+}
+
+/** The fake the gate sends through and reads: the one the test made last. */
+let activeSim: { replay: object; readTelemetry: () => TelemetryData | null } = {
+  replay: {},
+  readTelemetry: () => null,
+};
+
+/** The gate sends `pause()` and `play()`; the SDK's are `setPlaySpeed(0)` and `setPlaySpeed(1)`. */
+function withConveniences<R extends { setPlaySpeed: (speed: number, slowMotion?: boolean) => boolean }>(replay: R) {
+  return { ...replay, pause: () => replay.setPlaySpeed(0), play: () => replay.setPlaySpeed(1) };
 }
 
 function setMode(mode: unknown): void {
@@ -109,6 +127,15 @@ async function settle(outcome: Promise<ReplayJumpOutcome>, ms = 5_000): Promise<
 describe("replay-jump-playback (#1276)", () => {
   beforeEach(() => {
     _resetReplayCursor();
+    _resetReplayCommandGate();
+    _resetReplayPositionState();
+    _configureReplayCommandGate({
+      replay: () => activeSim.replay as never,
+      readTelemetry: () => activeSim.readTelemetry(),
+      inReplay: () => true,
+      connected: () => true,
+      now: () => Date.now(),
+    });
     vi.useFakeTimers();
     mockGetGlobalSettings.mockReset();
     setMode("remember");
@@ -204,9 +231,7 @@ describe("replay-jump-playback (#1276)", () => {
         setMode("remember");
         const sim = fakeSim(before);
         const jump = beginReplayJump("next", sim.readTelemetry());
-        const outcome = await settle(
-          runReplayJump(jump, { frame: 64_401, replay: sim.replay, readTelemetry: sim.readTelemetry }),
-        );
+        const outcome = await settle(runReplayJump(jump, { frame: 64_401, readTelemetry: sim.readTelemetry }));
 
         jump.end();
 
@@ -223,9 +248,7 @@ describe("replay-jump-playback (#1276)", () => {
         setMode("play");
         const sim = fakeSim(before);
         const jump = beginReplayJump("next", sim.readTelemetry());
-        const outcome = await settle(
-          runReplayJump(jump, { frame: 64_401, replay: sim.replay, readTelemetry: sim.readTelemetry }),
-        );
+        const outcome = await settle(runReplayJump(jump, { frame: 64_401, readTelemetry: sim.readTelemetry }));
 
         jump.end();
 
@@ -240,9 +263,7 @@ describe("replay-jump-playback (#1276)", () => {
         setMode("stopped");
         const sim = fakeSim(before);
         const jump = beginReplayJump("next", sim.readTelemetry());
-        const outcome = await settle(
-          runReplayJump(jump, { frame: 64_401, replay: sim.replay, readTelemetry: sim.readTelemetry }),
-        );
+        const outcome = await settle(runReplayJump(jump, { frame: 64_401, readTelemetry: sim.readTelemetry }));
 
         jump.end();
 
@@ -259,7 +280,7 @@ describe("replay-jump-playback (#1276)", () => {
       const sim = fakeSim(PAUSED);
       const jump = beginReplayJump("next", sim.readTelemetry());
 
-      void runReplayJump(jump, { frame: 64_401, replay: sim.replay, readTelemetry: sim.readTelemetry });
+      void runReplayJump(jump, { frame: 64_401, readTelemetry: sim.readTelemetry });
 
       expect(sim.replay.setPlayPosition).toHaveBeenCalledExactlyOnceWith(ReplayPosMode.Begin, 64_401);
     });
@@ -270,7 +291,6 @@ describe("replay-jump-playback (#1276)", () => {
       const onPaused = vi.fn();
       const outcome = runReplayJump(jump, {
         frame: 64_401,
-        replay: sim.replay,
         readTelemetry: sim.readTelemetry,
         onPaused,
       });
@@ -299,7 +319,6 @@ describe("replay-jump-playback (#1276)", () => {
       });
       const outcome = runReplayJump(jump, {
         frame: 64_401,
-        replay: sim.replay,
         readTelemetry: sim.readTelemetry,
         afterLanding,
       });
@@ -321,7 +340,6 @@ describe("replay-jump-playback (#1276)", () => {
       const outcome = await settle(
         runReplayJump(jump, {
           frame: 64_401,
-          replay: sim.replay,
           readTelemetry: sim.readTelemetry,
           afterLanding: () => false,
         }),
@@ -344,9 +362,7 @@ describe("replay-jump-playback (#1276)", () => {
 
           sim.ignore.setPlayPosition = true;
 
-          const outcome = await settle(
-            runReplayJump(jump, { frame: 64_401, replay: sim.replay, readTelemetry: sim.readTelemetry }),
-          );
+          const outcome = await settle(runReplayJump(jump, { frame: 64_401, readTelemetry: sim.readTelemetry }));
 
           jump.end();
 
@@ -369,7 +385,7 @@ describe("replay-jump-playback (#1276)", () => {
 
         let outcome: ReplayJumpOutcome | null = null;
 
-        void runReplayJump(jump, { frame: 64_401, replay: sim.replay, readTelemetry: sim.readTelemetry }).then(
+        void runReplayJump(jump, { frame: 64_401, readTelemetry: sim.readTelemetry }).then(
           (result) => (outcome = result),
         );
 
@@ -388,9 +404,7 @@ describe("replay-jump-playback (#1276)", () => {
 
       sim.ignore.setPlaySpeed = true;
 
-      const outcome = await settle(
-        runReplayJump(jump, { frame: 64_401, replay: sim.replay, readTelemetry: sim.readTelemetry }),
-      );
+      const outcome = await settle(runReplayJump(jump, { frame: 64_401, readTelemetry: sim.readTelemetry }));
 
       jump.end();
 
@@ -404,9 +418,9 @@ describe("replay-jump-playback (#1276)", () => {
 
       moving.refuse.setPlaySpeed = true;
 
-      await expect(
-        runReplayJump(first, { frame: 64_401, replay: moving.replay, readTelemetry: moving.readTelemetry }),
-      ).resolves.toMatchObject({ kind: "stopped", reason: "pause-failed" });
+      await expect(runReplayJump(first, { frame: 64_401, readTelemetry: moving.readTelemetry })).resolves.toMatchObject(
+        { kind: "stopped", reason: "pause-failed" },
+      );
       first.end();
       expect(moving.calls).toEqual(["speed 0"]);
 
@@ -416,7 +430,7 @@ describe("replay-jump-playback (#1276)", () => {
       paused.refuse.setPlayPosition = true;
 
       await expect(
-        runReplayJump(second, { frame: 64_401, replay: paused.replay, readTelemetry: paused.readTelemetry }),
+        runReplayJump(second, { frame: 64_401, readTelemetry: paused.readTelemetry }),
       ).resolves.toMatchObject({ kind: "stopped", reason: "seek-failed" });
       second.end();
       expect(paused.calls).toEqual(["seek 64401"]);
@@ -455,14 +469,18 @@ describe("replay-jump-playback (#1276)", () => {
           }),
         };
 
-        return { replay, calls, readTelemetry: (): TelemetryData => ({ ...sample }) };
+        const sim = { replay, calls, readTelemetry: (): TelemetryData => ({ ...sample }) };
+
+        activeSim = { replay: withConveniences(replay), readTelemetry: sim.readTelemetry };
+
+        return sim;
       }
 
       function run(sim: ReturnType<typeof slowSeekSim>, frame: number) {
         const jump = beginReplayJump("next", sim.readTelemetry());
         const state: { outcome: ReplayJumpOutcome | null } = { outcome: null };
 
-        void runReplayJump(jump, { frame, replay: sim.replay, readTelemetry: sim.readTelemetry }).then((result) => {
+        void runReplayJump(jump, { frame, readTelemetry: sim.readTelemetry }).then((result) => {
           state.outcome = result;
           jump.end();
         });
@@ -547,7 +565,6 @@ describe("replay-jump-playback (#1276)", () => {
       const first = beginReplayJump("dial-next", sim.readTelemetry());
       const firstOutcome = runReplayJump(first, {
         frame: 64_401,
-        replay: sim.replay,
         readTelemetry: sim.readTelemetry,
       });
 
@@ -565,7 +582,6 @@ describe("replay-jump-playback (#1276)", () => {
       const second = beginReplayJump("dial-next", sim.readTelemetry());
       const secondOutcome = runReplayJump(second, {
         frame: 70_000,
-        replay: sim.replay,
         readTelemetry: sim.readTelemetry,
       });
 
@@ -586,7 +602,7 @@ describe("replay-jump-playback (#1276)", () => {
         const sim = fakeSim(NORMAL, { lagMs: 400 });
         const onCancelled = vi.fn();
         const jump = beginReplayJump("next", sim.readTelemetry(), onCancelled);
-        const outcome = runReplayJump(jump, { frame: 64_401, replay: sim.replay, readTelemetry: sim.readTelemetry });
+        const outcome = runReplayJump(jump, { frame: 64_401, readTelemetry: sim.readTelemetry });
 
         await vi.advanceTimersByTimeAsync(500);
         expect(sim.calls).toEqual(["speed 0", "seek 64401"]);
@@ -608,9 +624,10 @@ describe("replay-jump-playback (#1276)", () => {
 
         cancelReplayCursorOwner("rewind");
 
-        await expect(
-          runReplayJump(jump, { frame: 64_401, replay: sim.replay, readTelemetry: sim.readTelemetry }),
-        ).resolves.toEqual({ kind: "cancelled", by: "rewind" });
+        await expect(runReplayJump(jump, { frame: 64_401, readTelemetry: sim.readTelemetry })).resolves.toEqual({
+          kind: "cancelled",
+          by: "rewind",
+        });
         jump.end();
         expect(sim.calls).toEqual([]);
       });
@@ -620,7 +637,6 @@ describe("replay-jump-playback (#1276)", () => {
         const first = beginReplayJump("next", sim.readTelemetry());
         const firstOutcome = runReplayJump(first, {
           frame: 64_401,
-          replay: sim.replay,
           readTelemetry: sim.readTelemetry,
         });
 
@@ -644,7 +660,6 @@ describe("replay-jump-playback (#1276)", () => {
         const first = beginReplayJump("replay-markers-dial-next", sim.readTelemetry());
         const firstOutcome = runReplayJump(first, {
           frame: 64_401,
-          replay: sim.replay,
           readTelemetry: sim.readTelemetry,
         });
 
@@ -662,7 +677,6 @@ describe("replay-jump-playback (#1276)", () => {
 
         const secondOutcome = runReplayJump(second, {
           frame: 70_000,
-          replay: sim.replay,
           readTelemetry: sim.readTelemetry,
         });
 
@@ -685,7 +699,6 @@ describe("replay-jump-playback (#1276)", () => {
         const first = beginReplayJump("next", sim.readTelemetry());
         const firstOutcome = runReplayJump(first, {
           frame: 64_401,
-          replay: sim.replay,
           readTelemetry: sim.readTelemetry,
         });
 
@@ -695,7 +708,6 @@ describe("replay-jump-playback (#1276)", () => {
         const second = beginReplayJump("next", sim.readTelemetry());
         const secondOutcome = runReplayJump(second, {
           frame: 70_000,
-          replay: sim.replay,
           readTelemetry: sim.readTelemetry,
         });
 
@@ -712,14 +724,14 @@ describe("replay-jump-playback (#1276)", () => {
         expect(sim.calls).toEqual(["speed 0", "seek 64401", "seek 70000"]);
       });
 
-      it("a takeover still pauses a replay that does not read paused yet", async () => {
-        // The second press arrives before the first jump's pause shows: no seek
-        // has been sent, so a second pause goes into nothing.
+      it("a takeover in the first jump's pause window sends its seek at once, with no second pause (#1430)", async () => {
+        // The second press arrives before the first jump's pause shows: a pause
+        // and then a jump on a playing replay land on the jump's frame, measured
+        // 57 of 57 with the jump sent before the pause had read back.
         const sim = fakeSim(NORMAL, { lagMs: 40 });
         const first = beginReplayJump("next", sim.readTelemetry());
         const firstOutcome = runReplayJump(first, {
           frame: 64_401,
-          replay: sim.replay,
           readTelemetry: sim.readTelemetry,
         });
 
@@ -732,25 +744,25 @@ describe("replay-jump-playback (#1276)", () => {
 
         const secondOutcome = runReplayJump(second, {
           frame: 70_000,
-          replay: sim.replay,
           readTelemetry: sim.readTelemetry,
         });
 
+        // Within the call: the seek, and no second pause before it.
+        expect(sim.calls).toEqual(["speed 0", "seek 70000"]);
+
         await expect(settle(firstOutcome)).resolves.toMatchObject({ kind: "cancelled" });
         first.end();
-        await expect(settle(secondOutcome)).resolves.toEqual({ kind: "landed", speed: NORMAL, command: "sent" });
+        await expect(settle(secondOutcome)).resolves.toMatchObject({ kind: "landed", speed: NORMAL });
         second.end();
-        expect(sim.calls).toEqual(["speed 0", "speed 0", "seek 70000", "speed 1"]);
+        expect(sim.calls.slice(0, 2)).toEqual(["speed 0", "seek 70000"]);
+        expect(sim.readTelemetry().ReplayFrameNum).toBe(70_000);
       });
 
       it("a jump that follows a finished one is not a takeover", async () => {
         const sim = fakeSim(NORMAL);
         const first = beginReplayJump("next", sim.readTelemetry());
 
-        await settle(
-          runReplayJump(first, { frame: 64_401, replay: sim.replay, readTelemetry: sim.readTelemetry }),
-          200,
-        );
+        await settle(runReplayJump(first, { frame: 64_401, readTelemetry: sim.readTelemetry }), 200);
         first.end();
 
         expect(beginReplayJump("next", sim.readTelemetry()).tookOver).toBe(false);
@@ -773,7 +785,6 @@ describe("replay-jump-playback (#1276)", () => {
         const first = beginReplayJump("next", sim.readTelemetry());
         const firstOutcome = runReplayJump(first, {
           frame: 64_401,
-          replay: sim.replay,
           readTelemetry: sim.readTelemetry,
         });
 
@@ -800,7 +811,7 @@ describe("replay-jump-playback (#1276)", () => {
         const sim = fakeSim(NORMAL);
         const first = beginReplayJump("next", sim.readTelemetry());
 
-        await settle(runReplayJump(first, { frame: 64_401, replay: sim.replay, readTelemetry: sim.readTelemetry }));
+        await settle(runReplayJump(first, { frame: 64_401, readTelemetry: sim.readTelemetry }));
         first.end();
         expect(sim.speed()).toEqual(NORMAL);
 
@@ -822,7 +833,7 @@ describe("replay-jump-playback (#1276)", () => {
       const jump = beginReplayJump("jump-to-fastest-lap walk", sim.readTelemetry());
 
       // The walk paused and moved the cursor itself; its last sample reads paused.
-      expect(applyReplayJumpPlayback(jump, sim.replay, telemetryAt(PAUSED, 64_401))).toEqual({
+      expect(applyReplayJumpPlayback(jump, telemetryAt(PAUSED, 64_401))).toEqual({
         speed: QUARTER,
         command: "sent",
       });
@@ -837,7 +848,7 @@ describe("replay-jump-playback (#1276)", () => {
 
       cancelReplayCursorOwner("next marker");
 
-      expect(applyReplayJumpPlayback(jump, sim.replay, telemetryAt(PAUSED))).toBeNull();
+      expect(applyReplayJumpPlayback(jump, telemetryAt(PAUSED))).toBeNull();
       expect(sim.calls).toEqual([]);
       jump.end();
     });
@@ -849,7 +860,7 @@ describe("replay-jump-playback (#1276)", () => {
 
       sim.refuse.setPlaySpeed = true;
 
-      expect(applyReplayJumpPlayback(jump, sim.replay, telemetryAt(PAUSED))).toEqual({
+      expect(applyReplayJumpPlayback(jump, telemetryAt(PAUSED))).toEqual({
         speed: PAUSED,
         command: "failed",
       });
@@ -861,7 +872,7 @@ describe("replay-jump-playback (#1276)", () => {
       const sim = fakeSim(PAUSED);
       const jump = beginReplayJump("jump-to-fastest-lap walk", sim.readTelemetry());
 
-      expect(applyReplayJumpPlayback(jump, sim.replay, null)).toEqual({ speed: PAUSED, command: "sent" });
+      expect(applyReplayJumpPlayback(jump, null)).toEqual({ speed: PAUSED, command: "sent" });
       expect(sim.calls).toEqual(["speed 0"]);
       jump.end();
     });
@@ -873,7 +884,7 @@ describe("replay-jump-playback (#1276)", () => {
 
       setMode("play");
 
-      expect(applyReplayJumpPlayback(jump, sim.replay, telemetryAt(PAUSED))).toEqual({
+      expect(applyReplayJumpPlayback(jump, telemetryAt(PAUSED))).toEqual({
         speed: NORMAL,
         command: "sent",
       });

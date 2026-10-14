@@ -14,7 +14,7 @@ import {
   resolveIconColors,
   resolveTitleSettings,
 } from "@iracedeck/deck-core";
-import { getCommands, SimIRacingAction } from "@iracedeck/deck-iracing";
+import { SimIRacingAction } from "@iracedeck/deck-iracing";
 import eraseTapeIcon from "@iracedeck/icons/replay-navigation/erase-tape.svg";
 import jumpToEndIcon from "@iracedeck/icons/replay-navigation/jump-to-end.svg";
 import jumpToStartIcon from "@iracedeck/icons/replay-navigation/jump-to-start.svg";
@@ -26,13 +26,11 @@ import prevLapIcon from "@iracedeck/icons/replay-navigation/prev-lap.svg";
 import prevSessionIcon from "@iracedeck/icons/replay-navigation/prev-session.svg";
 import searchSessionTimeIcon from "@iracedeck/icons/replay-navigation/search-session-time.svg";
 import setPlayPositionIcon from "@iracedeck/icons/replay-navigation/set-play-position.svg";
+import { type ReplayCommand } from "@iracedeck/iracing-sdk";
 import { getGlobalColors } from "@iracedeck/settings";
 import z from "zod";
 
-import { cancelReplayCursorOwner } from "../../shared/replay-cursor.js";
-
-/** ReplayPosMode.Begin — position from beginning of replay */
-const REPLAY_POS_BEGIN = 0;
+import { pressReplayCommand, type ReplayGateCommand } from "../../shared/replay-command-gate.js";
 
 type NavigationAction =
   | "next-session"
@@ -148,6 +146,55 @@ export function generateReplayNavigationSvg(
  */
 export const REPLAY_NAVIGATION_UUID = "com.iracedeck.sd.core.replay-navigation" as const;
 
+const NAVIGATION_LOG_MESSAGES: Record<ReplayNavigationSettings["navigation"], string> = {
+  "next-session": "Next session executed",
+  "prev-session": "Previous session executed",
+  "next-lap": "Next lap executed",
+  "prev-lap": "Previous lap executed",
+  "next-incident": "Next incident executed",
+  "prev-incident": "Previous incident executed",
+  "jump-to-start": "Jump to start executed",
+  "jump-to-end": "Jump to end executed",
+  "set-play-position": "Set play position executed",
+  "search-session-time": "Search session time executed",
+  "erase-tape": "Erase tape executed",
+};
+
+/** The gate command a navigation setting sends; the SDK call stays the one the action always made. */
+function navigationCommand(settings: ReplayNavigationSettings): ReplayGateCommand {
+  switch (settings.navigation) {
+    case "next-session":
+      return { kind: "search", search: "nextSession" };
+    case "prev-session":
+      return { kind: "search", search: "prevSession" };
+    case "next-lap":
+      return { kind: "search", search: "nextLap" };
+    case "prev-lap":
+      return { kind: "search", search: "prevLap" };
+    case "next-incident":
+      return { kind: "search", search: "nextIncident" };
+    case "prev-incident":
+      return { kind: "search", search: "prevIncident" };
+    case "jump-to-start":
+      return { kind: "go-to", end: "start" };
+    case "jump-to-end":
+      return { kind: "go-to", end: "end" };
+    case "set-play-position":
+      return { kind: "jump", frame: settings.frameNumber };
+    case "search-session-time": {
+      const { sessionNum, sessionTimeMs } = settings;
+
+      return {
+        kind: "other",
+        name: "searchSessionTime",
+        send: (r) => (r as ReplayCommand).searchSessionTime(sessionNum, sessionTimeMs),
+      };
+    }
+    case "erase-tape":
+      return { kind: "other", name: "eraseTape", send: (r) => (r as ReplayCommand).eraseTape() };
+  }
+}
+
 export class ReplayNavigation extends SimIRacingAction<ReplayNavigationSettings> {
   override async onWillAppear(ev: IDeckWillAppearEvent<ReplayNavigationSettings>): Promise<void> {
     await super.onWillAppear(ev);
@@ -164,7 +211,7 @@ export class ReplayNavigation extends SimIRacingAction<ReplayNavigationSettings>
   override async onKeyDown(ev: IDeckKeyDownEvent<ReplayNavigationSettings>): Promise<void> {
     this.logger.info("Key down received");
     const settings = this.parseSettings(ev.payload.settings);
-    this.executeNavigation(settings);
+    this.executeNavigation(settings, ev.action.id);
   }
 
   override async onDialDown(ev: IDeckDialDownEvent<ReplayNavigationSettings>): Promise<void> {
@@ -196,90 +243,34 @@ export class ReplayNavigation extends SimIRacingAction<ReplayNavigationSettings>
     return parsed.success ? parsed.data : ReplayNavigationSettings.parse({});
   }
 
-  private executeNavigation(settings: ReplayNavigationSettings): void {
-    const replay = getCommands().replay;
+  private executeNavigation(settings: ReplayNavigationSettings, origin?: string): void {
+    const navigation = settings.navigation;
 
-    // Every navigation command moves the replay, so it takes the cursor first:
-    // a running Jump to Fastest Lap walk stops and the Replay Markers landing
-    // is cleared, as for Replay Control (#1334).
-    cancelReplayCursorOwner(`replay-navigation-${settings.navigation}`);
+    // Every navigation command moves the replay, so it goes through the replay
+    // command gate, which takes the cursor first (a running Jump to Fastest
+    // Lap walk stops and the Replay Markers landing is cleared, as for Replay
+    // Control, #1334) and holds or retargets it behind a jump under way (#1430).
+    const result = pressReplayCommand(navigationCommand(settings), { by: `replay-navigation-${navigation}`, origin });
+    const success = result.kind === "sent" ? result.ok : false;
 
-    switch (settings.navigation) {
-      case "next-session": {
-        const success = replay.nextSession();
-        this.logger.info("Next session executed");
-        this.logger.debug(`Result: ${success}`);
-        break;
-      }
-      case "prev-session": {
-        const success = replay.prevSession();
-        this.logger.info("Previous session executed");
-        this.logger.debug(`Result: ${success}`);
-        break;
-      }
-      case "next-lap": {
-        const success = replay.nextLap();
-        this.logger.info("Next lap executed");
-        this.logger.debug(`Result: ${success}`);
-        break;
-      }
-      case "prev-lap": {
-        const success = replay.prevLap();
-        this.logger.info("Previous lap executed");
-        this.logger.debug(`Result: ${success}`);
-        break;
-      }
-      case "next-incident": {
-        const success = replay.nextIncident();
-        this.logger.info("Next incident executed");
-        this.logger.debug(`Result: ${success}`);
-        break;
-      }
-      case "prev-incident": {
-        const success = replay.prevIncident();
-        this.logger.info("Previous incident executed");
-        this.logger.debug(`Result: ${success}`);
-        break;
-      }
-      case "jump-to-start": {
-        const success = replay.goToStart();
-        this.logger.info("Jump to start executed");
-        this.logger.debug(`Result: ${success}`);
-        break;
-      }
-      case "jump-to-end": {
-        const success = replay.goToEnd();
+    if (result.kind !== "sent") this.logger.debug(`Gate result: ${result.kind}`);
 
-        // In a live session this leaves the replay for the car: every replay
-        // consumer must read live at once, not hold the old replay frame
-        // through the post-seek grace (#1230, #1324). In a saved replay it is
-        // only a seek, and the controller leaves its state alone.
-        if (success) this.sdkController.noteReplayLeftForLive();
+    // In a live session Jump to End leaves the replay for the car: every replay
+    // consumer must read live at once, not hold the old replay frame through
+    // the post-seek grace (#1230, #1324). In a saved replay it is only a seek,
+    // and the controller leaves its state alone.
+    if (navigation === "jump-to-end" && success) this.sdkController.noteReplayLeftForLive();
 
-        this.logger.info("Jump to end executed");
-        this.logger.debug(`Result: ${success}`);
-        break;
-      }
-      case "set-play-position": {
-        const success = replay.setPlayPosition(REPLAY_POS_BEGIN, settings.frameNumber);
-        this.logger.info("Set play position executed");
-        this.logger.debug(`Result: ${success}, frameNumber: ${settings.frameNumber}`);
-        break;
-      }
-      case "search-session-time": {
-        const success = replay.searchSessionTime(settings.sessionNum, settings.sessionTimeMs);
-        this.logger.info("Search session time executed");
-        this.logger.debug(
-          `Result: ${success}, sessionNum: ${settings.sessionNum}, sessionTimeMs: ${settings.sessionTimeMs}`,
-        );
-        break;
-      }
-      case "erase-tape": {
-        const success = replay.eraseTape();
-        this.logger.info("Erase tape executed");
-        this.logger.debug(`Result: ${success}`);
-        break;
-      }
+    this.logger.info(NAVIGATION_LOG_MESSAGES[navigation]);
+
+    if (navigation === "set-play-position") {
+      this.logger.debug(`Result: ${success}, frameNumber: ${settings.frameNumber}`);
+    } else if (navigation === "search-session-time") {
+      this.logger.debug(
+        `Result: ${success}, sessionNum: ${settings.sessionNum}, sessionTimeMs: ${settings.sessionTimeMs}`,
+      );
+    } else {
+      this.logger.debug(`Result: ${success}`);
     }
   }
 

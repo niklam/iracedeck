@@ -33,7 +33,6 @@ import { type DialInputEvent, hasDialInputContext } from "../../shared/dial-cont
 import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
 import type { DialPendingPreview } from "../../shared/dial-preview.js";
 import { classifyDialReleaseForHost } from "../../shared/dial-release.js";
-import { clearReplayLanding } from "../../shared/replay-cursor.js";
 import {
   addMarkerAt,
   CONFIRMATION_FLASH_MS,
@@ -267,9 +266,9 @@ export class ReplayMarkersDialSurface {
       return;
     }
 
-    // The shared pending landing (#1230): a jump any Replay Markers surface
-    // sent that the replay has not reached yet.
-    const anchor = resolveMarkerJumpAnchor(context.frame);
+    // The replay's pending target (#1230, #1430): a jump any surface sent
+    // that the replay has not reached yet.
+    const anchor = resolveMarkerJumpAnchor(context.frame, context.telemetry);
     const first = resolveJumpTarget(direction, context, anchor);
 
     if (!first) {
@@ -283,10 +282,17 @@ export class ReplayMarkersDialSurface {
     }
 
     const target = walkMarkers(context.store.markers.list(context.scope), first, direction, Math.abs(ticks));
-    // Takes the replay cursor and records the shared landing before it
-    // returns, so the render below and the next detent both read it; a paused
-    // replay has its seek by then too.
-    const jump = jumpToMarkerFrame(CURSOR_OWNER[direction], target.frame, () => this.host.readTelemetry());
+    // Takes the replay cursor and records the target before it returns, so
+    // the render below and the next detent both read it; a paused replay has
+    // its seek by then too. A Replay Markers detent carries the dial's own
+    // origin token (#1430).
+    const jump = jumpToMarkerFrame(
+      CURSOR_OWNER[direction],
+      target.frame,
+      () => this.host.readTelemetry(),
+      Date.now(),
+      ctx.action.id,
+    );
     this.host.logger.info(`Dial jumped to ${direction} marker`);
     this.host.logger.debug(`ticks=${ticks}, anchor=${anchor}, target=${target.frame}`);
     followMarkerJump(this.host.logger, `Dial ${direction} marker`, target.frame, jump);
@@ -365,11 +371,6 @@ export class ReplayMarkersDialSurface {
     if (!ctx || !ctx.action.dialCanvas()) return;
 
     const context = this.host.readReplayContext();
-
-    // No replay context, nothing to land in. A landing the replay reached, or
-    // whose hold ran out, is dropped by the anchor read in `boxArgs`.
-    if (!context.ok) clearReplayLanding();
-
     const frame = this.buildFrame(ctx, context);
 
     if (frame.sig !== ctx.lastRenderSig) this.scheduleRender(ctx, false, frame);
@@ -535,7 +536,7 @@ export class ReplayMarkersDialSurface {
 
   /** The dash-box arguments for the current state; `pending` and the flash ride every render. */
   private boxArgs(ctx: ReplayMarkersDialContext, context: ReplayContextResult): DialBoxArgs {
-    const anchor = context.ok ? resolveMarkerJumpAnchor(context.frame) : 0;
+    const anchor = context.ok ? resolveMarkerJumpAnchor(context.frame, context.telemetry) : 0;
     const view = resolveDialView(context, anchor, ctx.dial);
     const value = ctx.flash ?? view.value;
 

@@ -1,15 +1,14 @@
 import { ReplayPosMode, replaySpeedFromTelemetry, replaySpeedToSdk, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { _configureReplayCommandGate, _resetReplayCommandGate } from "../../shared/replay-command-gate.js";
 import {
   _resetReplayCursor,
   cancelReplayCursorOwner,
   claimReplayCursor,
-  clearReplayLanding,
   currentReplayCursorOwner,
-  pendingReplayLanding,
-  recordReplayLanding,
 } from "../../shared/replay-cursor.js";
+import { _resetReplayPositionState, REPLAY_TARGET_GIVE_UP_MS } from "../../shared/replay-position-state.js";
 import type { ReplayDialModeIo, ReplaySpeed } from "./replay-control-dial-mode.js";
 import { REPLAY_DIAL_MODES, ReplayControlDialSettings } from "./replay-control-dial-settings.js";
 import {
@@ -20,7 +19,6 @@ import {
 } from "./replay-control-dial-surface.js";
 import { frameJogMode } from "./replay-control-frame-jog.js";
 import { speedMode } from "./replay-control-speed-mode.js";
-import { _resetReplayPositionState, REPLAY_TARGET_GIVE_UP_MS } from "./replay-position-state.js";
 import {
   _resetReplaySpeedState,
   DIAL_SPEED_HOLD_MS,
@@ -221,6 +219,9 @@ describe("ReplayControlDialSurface", () => {
     _resetReplayCursor();
     _resetReplaySpeedState();
     _resetReplayPositionState();
+    _resetReplayCommandGate();
+    // The gate reads the same replay the surface does (#1430).
+    _configureReplayCommandGate({ readTelemetry: () => env.telemetry, inReplay: () => env.inReplay });
     env.inReplay = true;
     env.telemetry = replayAt(speed(1));
     mocks.thresholdMs.value = 500;
@@ -240,7 +241,6 @@ describe("ReplayControlDialSurface", () => {
       ["clockwise from -8x", speed(-8), 1, [-4, false]],
       ["clockwise out of pause", PAUSED, 1, [4, true]],
       ["counter-clockwise out of pause", PAUSED, -1, [-4, true]],
-      ["counter-clockwise into pause", speed(4, true), -1, [0, false]],
       ["three detents", speed(1), 3, [8, false]],
       ["a spin longer than the ladder", speed(1), -40, [-8, false]],
       ["off the ladder at 3x", speed(3), 1, [4, false]],
@@ -252,6 +252,15 @@ describe("ReplayControlDialSurface", () => {
       expect(mocks.setPlaySpeed).toHaveBeenCalledTimes(1);
       expect(mocks.setPlaySpeed).toHaveBeenCalledWith(...expected);
       expect(mocks.pause).not.toHaveBeenCalled();
+    });
+
+    it("sends a pause for a detent into pause (#1430: a 0 goes through the gate as a pause)", async () => {
+      const { surface, ctx, d } = await onScreen(speed(4, true));
+
+      surface.rotate(ctx as never, d, -1, false);
+
+      expect(mocks.pause).toHaveBeenCalledTimes(1);
+      expect(mocks.setPlaySpeed).not.toHaveBeenCalled();
     });
 
     it("sends nothing at a ladder end, either way", async () => {
@@ -768,7 +777,8 @@ describe("ReplayControlDialSurface", () => {
       surface.rotate(ctx as never, d, 1, false);
 
       expect(mocks.nextFrame).toHaveBeenCalledTimes(1);
-      expect(vi.getTimerCount()).toBe(1);
+      // The follow timer, and the gate's poll while the step's target stands (#1430).
+      expect(vi.getTimerCount()).toBe(2);
 
       env.telemetry = { ...replayAt(PAUSED), ReplayFrameNum: 5_001 } as TelemetryData;
       await vi.advanceTimersByTimeAsync(200);
@@ -815,7 +825,7 @@ describe("ReplayControlDialSurface", () => {
       const jog = () => {
         if (io.liveSpeed().speed !== 0) io.pause("dial-frame-jog");
 
-        io.send("dial-frame-jog", (replay) => replay.nextFrame());
+        io.step("dial-frame-jog", 1);
       };
 
       jog();
@@ -1029,27 +1039,6 @@ describe("ReplayControlDialSurface", () => {
       expect(io.step("dial-frame-jog", 1)).toBe(false);
     });
 
-    it("never writes Replay Markers' pending landing, and is not ended when a marker surface settles its own", async () => {
-      const { surface } = await onScreen(PAUSED);
-      const io = ioOf(surface);
-
-      env.telemetry = pausedOn(600);
-      recordReplayLanding(40_000, Date.now());
-      io.jumpTo("dial-frame-jog", 603);
-
-      // The dial's own cursor take cleared the marker landing, as any replay command does.
-      expect(pendingReplayLanding()).toBeNull();
-
-      // A visible marker key settles a landing within a second of the frame on every tick.
-      recordReplayLanding(603, Date.now());
-      clearReplayLanding();
-      env.telemetry = SEEKING;
-
-      expect(io.position()).toMatchObject({ frame: 603, seeking: true });
-      expect(io.step("dial-frame-jog", 1)).toBe(false);
-      expect(mocks.nextFrame).not.toHaveBeenCalled();
-    });
-
     it("a turn back onto the frame still on screen is not taken as landed in the entry that sent it", async () => {
       const d = dial({ mode: "frame-jog" });
       const { surface, ctx } = await onScreen(PAUSED, d);
@@ -1129,7 +1118,6 @@ describe("ReplayControlDialSurface", () => {
       io.jumpTo("dial-frame-jog", 640);
       io.pause("dial-play-pause");
       io.setSpeed("dial-speed", PAUSED);
-      io.send("dial-test", () => true);
       // Neither pause went out: nothing but another jump may, with a move under way.
       expect(mocks.pause).not.toHaveBeenCalled();
       expect(mocks.setPlaySpeed).not.toHaveBeenCalled();
@@ -1335,16 +1323,16 @@ describe("ReplayControlDialSurface", () => {
       expect(mocks.setPlayPosition).not.toHaveBeenCalled();
     });
 
-    it("a replay command of another action ends the move under way", async () => {
+    it("a cursor take by another action leaves the move under way: the replay is still headed there (#1430)", async () => {
       const { surface } = await onScreen(PAUSED);
       const io = ioOf(surface);
 
       env.telemetry = pausedOn(600);
       io.jumpTo("dial-frame-jog", 640);
-      cancelReplayCursorOwner("next-lap");
-      env.telemetry = pausedOn(612);
+      cancelReplayCursorOwner("jump-to-my-car");
+      env.telemetry = SEEKING;
 
-      expect(io.position()).toMatchObject({ frame: 612, seeking: false });
+      expect(io.position()).toMatchObject({ frame: 640, seeking: true });
     });
 
     it("redraws the dials until the move reads back, with no tick, and then stops reading", async () => {
@@ -2474,11 +2462,8 @@ describe("ReplayControlDialSurface", () => {
       surface.rotate(ctx as never, d, -1, false);
       await settle(200);
 
-      expect(mocks.setPlaySpeed.mock.calls).toEqual([
-        [0, false],
-        [4, true],
-        [0, false],
-      ]);
+      expect(mocks.pause).toHaveBeenCalledTimes(2);
+      expect(mocks.setPlaySpeed.mock.calls).toEqual([[4, true]]);
       expect(shownValue(lastBox(ctx))).toBe("PAUSED");
       expect(ctx.setDialCanvas).toHaveBeenCalledTimes(1);
     });

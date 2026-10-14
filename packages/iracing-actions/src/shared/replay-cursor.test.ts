@@ -5,13 +5,10 @@ import {
   cancelReplayCursorOwner,
   claimReplayCursor,
   clearReplayJumpSpeed,
-  clearReplayLanding,
   currentReplayCursorOwner,
   onReplayCursorTaken,
   pendingReplayJumpSpeed,
-  pendingReplayLanding,
   recordReplayJumpSpeed,
-  recordReplayLanding,
 } from "./replay-cursor.js";
 
 describe("replay-cursor", () => {
@@ -91,59 +88,6 @@ describe("replay-cursor", () => {
     expect(cancelReplayCursorOwner("later jump")).toBeNull();
   });
 
-  describe("the pending landing (#1230)", () => {
-    it("is null until a jump records one, and then names its frame and send time", () => {
-      expect(pendingReplayLanding()).toBeNull();
-
-      recordReplayLanding(4_000, 10_000);
-
-      expect(pendingReplayLanding()).toEqual({ frame: 4_000, sentAt: 10_000 });
-    });
-
-    it("one value, process-wide: a later jump replaces the earlier one", () => {
-      recordReplayLanding(4_000, 10_000);
-      recordReplayLanding(6_000, 10_050);
-
-      expect(pendingReplayLanding()).toEqual({ frame: 6_000, sentAt: 10_050 });
-    });
-
-    it("hands back the record it stored, so a jump can tell its own landing from a later one to the same frame", () => {
-      const first = recordReplayLanding(4_000, 10_000);
-
-      expect(pendingReplayLanding()).toBe(first);
-
-      const second = recordReplayLanding(4_000, 10_000);
-
-      expect(second).toEqual(first);
-      expect(second).not.toBe(first);
-      expect(pendingReplayLanding()).toBe(second);
-    });
-
-    it("anything else taking the cursor clears it — a one-shot command or a new claim", () => {
-      recordReplayLanding(4_000, 10_000);
-      cancelReplayCursorOwner("play-pause");
-      expect(pendingReplayLanding()).toBeNull();
-
-      recordReplayLanding(4_000, 10_000);
-      claimReplayCursor("jump-to-fastest-lap");
-      expect(pendingReplayLanding()).toBeNull();
-    });
-
-    it("clears even with no claim in flight, and on an explicit clear and a reset", () => {
-      recordReplayLanding(4_000, 10_000);
-      expect(cancelReplayCursorOwner("rewind")).toBeNull();
-      expect(pendingReplayLanding()).toBeNull();
-
-      recordReplayLanding(4_000, 10_000);
-      clearReplayLanding();
-      expect(pendingReplayLanding()).toBeNull();
-
-      recordReplayLanding(4_000, 10_000);
-      _resetReplayCursor();
-      expect(pendingReplayLanding()).toBeNull();
-    });
-  });
-
   describe("onReplayCursorTaken (#1316)", () => {
     it("tells a listener on every one-shot command, claim in flight or not", () => {
       const taken = vi.fn();
@@ -169,14 +113,11 @@ describe("replay-cursor", () => {
       stop();
     });
 
-    it("says nothing for what does not take the cursor: a release, a landing, a read", () => {
+    it("says nothing for what does not take the cursor: a release, a read", () => {
       const taken = vi.fn();
       const claim = claimReplayCursor("fastest-lap walk");
       const stop = onReplayCursorTaken(taken);
 
-      recordReplayLanding(4_000, 10_000);
-      pendingReplayLanding();
-      clearReplayLanding();
       currentReplayCursorOwner();
       claim.release();
 
@@ -248,14 +189,6 @@ describe("replay-cursor", () => {
       recordReplayJumpSpeed(rewinding);
       _resetReplayCursor();
       expect(pendingReplayJumpSpeed()).toBeNull();
-    });
-
-    it("is separate from the pending landing", () => {
-      recordReplayLanding(4_000, 10_000);
-      recordReplayJumpSpeed(rewinding);
-      clearReplayLanding();
-
-      expect(pendingReplayJumpSpeed()).toBe(rewinding);
     });
   });
 });

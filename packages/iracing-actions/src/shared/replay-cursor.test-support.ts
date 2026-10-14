@@ -6,29 +6,23 @@
  */
 import { expect, type Mock, vi } from "vitest";
 
-import {
-  _resetReplayCursor,
-  claimReplayCursor,
-  currentReplayCursorOwner,
-  pendingReplayLanding,
-  recordReplayLanding,
-} from "./replay-cursor.js";
+import { _resetReplayCursor, claimReplayCursor, currentReplayCursorOwner } from "./replay-cursor.js";
 
 export interface ReplayCursorProbe<C extends string> {
   /** Stand-in replay commands; each records its name when sent and returns `true`. */
   readonly replay: Record<C, Mock<() => boolean>>;
   /**
    * The walk was cancelled by `owner` before anything was sent, `sentCommand`
-   * was the one command sent, and the cursor and the marker landing are free.
+   * was the one command sent, and the cursor is free.
    */
   expectTakenBefore(owner: string, sentCommand: C): void;
-  /** Nothing was sent, and the walk and the marker landing both stand. */
+  /** Nothing was sent, and the walk stands. */
   expectUntouched(): void;
 }
 
 /**
- * Resets the replay cursor, then stages a Jump to Fastest Lap walk in flight
- * and a pending marker landing. Call it in `beforeEach` and hand `replay` to
+ * Resets the replay cursor, then stages a Jump to Fastest Lap walk in flight.
+ * Call it in `beforeEach` and hand `replay` to
  * the mocked `getCommands()`.
  */
 export function stageReplayCursorProbe<C extends string>(commands: readonly C[]): ReplayCursorProbe<C> {
@@ -52,7 +46,6 @@ export function stageReplayCursorProbe<C extends string>(commands: readonly C[])
     cancelledBy = by;
     sentAtCancel = sent.length;
   });
-  recordReplayLanding(4_000, 10_000);
 
   return {
     replay,
@@ -61,13 +54,11 @@ export function stageReplayCursorProbe<C extends string>(commands: readonly C[])
       expect(sentAtCancel).toBe(0);
       expect(sent).toEqual([sentCommand]);
       expect(currentReplayCursorOwner()).toBeNull();
-      expect(pendingReplayLanding()).toBeNull();
     },
     expectUntouched() {
       expect(sent).toEqual([]);
       expect(cancelledBy).toBeNull();
       expect(currentReplayCursorOwner()).toBe("jump-to-fastest-lap");
-      expect(pendingReplayLanding()).toEqual({ frame: 4_000, sentAt: 10_000 });
     },
   };
 }

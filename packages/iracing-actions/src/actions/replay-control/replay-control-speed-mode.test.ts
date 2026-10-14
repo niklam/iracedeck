@@ -38,12 +38,10 @@ function fakeIo(live: ReplaySpeed) {
   const logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
   const setSpeed = vi.fn<ReplayDialModeIo["setSpeed"]>(() => true);
   const pause = vi.fn<ReplayDialModeIo["pause"]>(() => true);
-  const send = vi.fn<ReplayDialModeIo["send"]>(() => true);
   const io: ReplayDialModeIo = {
     logger: logger as unknown as ILogger,
     liveSpeed: () => live,
     telemetry: () => null,
-    send,
     setSpeed,
     pause,
     // Speed Control never moves the replay by frames.
@@ -52,7 +50,7 @@ function fakeIo(live: ReplaySpeed) {
     jumpTo: () => false,
   };
 
-  return { io, logger, setSpeed, pause, send };
+  return { io, logger, setSpeed, pause };
 }
 
 describe("speedMode", () => {
@@ -73,14 +71,13 @@ describe("speedMode", () => {
       ["clockwise off the ladder at 3x", speed(3), 1, speed(4)],
       ["counter-clockwise off the ladder at 3x", speed(3), -1, speed(2)],
     ])("should send one speed, the stop reached: %s", (_name, live, ticks, expected) => {
-      const { io, setSpeed, pause, send } = fakeIo(live);
+      const { io, setSpeed, pause } = fakeIo(live);
 
       speedMode.rotate(ticks, dial(), io);
 
       expect(setSpeed).toHaveBeenCalledTimes(1);
       expect(setSpeed).toHaveBeenCalledWith("dial-speed", expected);
       expect(pause).not.toHaveBeenCalled();
-      expect(send).not.toHaveBeenCalled();
     });
 
     it.each<[string, ReplaySpeed, number]>([
@@ -172,13 +169,12 @@ describe("speedMode", () => {
     });
 
     it("should send nothing", () => {
-      const { io, setSpeed, pause, send } = fakeIo(speed(1));
+      const { io, setSpeed, pause } = fakeIo(speed(1));
 
       speedMode.view(dial(), io);
 
       expect(setSpeed).not.toHaveBeenCalled();
       expect(pause).not.toHaveBeenCalled();
-      expect(send).not.toHaveBeenCalled();
     });
   });
 

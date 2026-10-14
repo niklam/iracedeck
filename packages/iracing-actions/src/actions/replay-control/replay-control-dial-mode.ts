@@ -6,12 +6,12 @@
  * what the box reads while that mode is selected. A new mode is one module
  * exporting a {@link ReplayDialMode} plus one row in the surface's registry.
  */
-import type { ReplayCommand, TelemetryData } from "@iracedeck/iracing-sdk";
+import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 
 import type { DialSideMarks } from "../../shared/dial-box.js";
+import type { ReplayPosition } from "../../shared/replay-position-state.js";
 import type { ReplayControlDialSettings } from "./replay-control-dial-settings.js";
-import type { ReplayPosition } from "./replay-position-state.js";
 
 /**
  * A replay speed in the shape `setPlaySpeed(speed, slowMotion)` takes and
@@ -25,16 +25,19 @@ export interface ReplaySpeed {
 }
 
 /**
- * What the surface hands a mode. Every command goes out through {@link send}
- * (or the helpers built on it), which first takes the replay cursor from an
- * in-flight Jump to Fastest Lap walk — a mode never calls `getCommands()`
- * itself. The surface calls a mode only while a replay is on screen.
+ * What the surface hands a mode. Every command goes out through these helpers,
+ * which press it through the replay command gate (`shared/replay-command-gate.ts`,
+ * #1430): the gate takes the replay cursor from an in-flight replay jump, and
+ * decides whether the command goes out now, waits for a jump or a search
+ * under way to land, or is not sent at all — a mode never calls
+ * `getCommands()` itself. The surface calls a mode only while a replay is on
+ * screen.
  *
  * A mode that moves the replay by frames uses {@link position}, {@link step}
- * and {@link jumpTo}, never {@link send}: the three share the dial's one
- * pending target (`replay-position-state.ts`), which is what keeps a move from
- * being measured from a frame the replay has already left, and a frame step
- * from being sent into a jump still under way.
+ * and {@link jumpTo}: the three share the plugin's one pending target
+ * (`shared/replay-position-state.ts`), which is what keeps a move from being
+ * measured from a frame the replay has already left, and a frame step from
+ * being sent into a jump still under way.
  */
 export interface ReplayDialModeIo {
   readonly logger: ILogger;
@@ -42,24 +45,21 @@ export interface ReplayDialModeIo {
   liveSpeed(): ReplaySpeed;
   /** The latest raw telemetry tick, for a field the surface does not model. */
   telemetry(): TelemetryData | null;
-  /** Cancels the replay-cursor owner under `owner`, then runs `run` against the replay commands. Returns `run`'s result. */
-  send(owner: string, run: (replay: ReplayCommand) => boolean): boolean;
   /**
-   * Sends one `setPlaySpeed` through {@link send} and records it as the live
-   * speed; a non-zero target is also remembered as the resume speed. A
-   * non-zero speed asked for while a frame move has not read back is held and
-   * sent when it has (true is returned at once): sent into a jump under way,
-   * it would end the jump somewhere else and play from there. While it is
-   * held it is what {@link liveSpeed} reads. A speed of 0 asked for then is
-   * not sent, like {@link pause}.
+   * Presses one speed through the gate and records it as the live speed; a
+   * non-zero target is also remembered as the resume speed. A speed asked for
+   * while a jump or a search is under way waits in the gate's slot and goes
+   * out when it has landed (true is returned at once): sent into a jump under
+   * way, it would end the jump somewhere else and play from there. While it
+   * waits it is what {@link liveSpeed} reads. A speed of 0 is a {@link pause}.
    */
   setSpeed(owner: string, target: ReplaySpeed): boolean;
   /**
-   * Pauses through {@link send}. The speed that was playing stays the
-   * remembered resume speed, so Press resumes it. While a frame move has not
-   * read back nothing is sent and true is returned: the replay is paused for
-   * the move already, and a pause sent alone into a jump under way would end
-   * it somewhere else. A mode therefore pauses before it moves, never after.
+   * Presses a pause through the gate. The speed that was playing stays the
+   * remembered resume speed, so Press resumes it. While a jump is under way
+   * nothing is sent and true is returned: the replay is paused for the jump
+   * already, and a pause sent alone into a jump under way would end it
+   * somewhere else. A mode therefore pauses before it moves, never after.
    */
   pause(owner: string): boolean;
   /**
@@ -79,8 +79,8 @@ export interface ReplayDialModeIo {
   step(owner: string, direction: 1 | -1): boolean;
   /**
    * Sends the replay to an absolute frame and records it as the pending
-   * target. Safe while a step or an earlier jump is under way: iRacing lands
-   * on the newest target.
+   * target. Safe while a step or an earlier jump of any surface is under way:
+   * iRacing lands on the newest target.
    */
   jumpTo(owner: string, frame: number): boolean;
 }

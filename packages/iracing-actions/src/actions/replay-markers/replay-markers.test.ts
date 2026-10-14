@@ -1,14 +1,18 @@
 import { ReplayPosMode, replaySpeedToSdk, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { _configureReplayCommandGate, _resetReplayCommandGate } from "../../shared/replay-command-gate.js";
 import {
   _resetReplayCursor,
   cancelReplayCursorOwner,
   claimReplayCursor,
-  clearReplayLanding,
   currentReplayCursorOwner,
-  pendingReplayLanding,
 } from "../../shared/replay-cursor.js";
+import {
+  _resetReplayPositionState,
+  clearReplayTarget,
+  pendingReplayTarget,
+} from "../../shared/replay-position-state.js";
 import { withSteppedReplayState } from "../../shared/test-support/replay-state.js";
 import { REPLAY_EXIT_GRACE_MS } from "./replay-markers-ops.js";
 import {
@@ -261,7 +265,14 @@ function makeAction(telemetry: TelemetryData | null = LIVE, subSessionId: unknow
   );
   // The controller's debounced replay state (#1324), stepped with the real rule
   // from whatever telemetry the test has set, at every read.
-  withSteppedReplayState(action["sdkController"]);
+  const controller = withSteppedReplayState(action["sdkController"]);
+
+  // The replay command gate (#1430) reads the replay this action reads.
+  _configureReplayCommandGate({
+    readTelemetry: () => controller.getCurrentTelemetry(),
+    inReplay: () => controller.getReplayState().inReplay,
+    connected: () => controller.getConnectionStatus(),
+  });
 
   return { action, sdk };
 }
@@ -290,10 +301,13 @@ describe("ReplayMarkers", () => {
     mocks.setPlaySpeed.mockReturnValue(true);
     mocks.getGlobalSettings.mockReturnValue({});
     _resetReplayCursor();
+    _resetReplayCommandGate();
+    _resetReplayPositionState();
     vi.useFakeTimers();
   });
 
   afterEach(() => {
+    _resetReplayCommandGate();
     vi.useRealTimers();
   });
 
@@ -657,7 +671,7 @@ describe("ReplayMarkers", () => {
       await action.onKeyDown(keyDown({ mode: "next" }));
       mocks.setPlayPosition.mockClear();
       mocks.markers.next.mockClear();
-      clearReplayLanding(); // the landing alone: the replay state is what is under test
+      clearReplayTarget(); // the target alone: the replay state is what is under test
 
       sdk.getCurrentTelemetry.mockReturnValue({ ...REPLAY, IsReplayPlaying: false } as TelemetryData);
       await vi.advanceTimersByTimeAsync(300);
@@ -729,9 +743,11 @@ describe("ReplayMarkers", () => {
 
       await action.onKeyDown(keyDown({ mode: "next" }));
 
-      // Back from the press with the jump under way: paused, not yet sought.
+      // Back from the press with the jump under way: paused, not yet sought, and its
+      // marker already the target, under the key's own origin token (#1430).
       expect(sim.calls).toEqual(["speed 0"]);
       expect(currentReplayCursorOwner()).toBe("next");
+      expect(pendingReplayTarget()).toMatchObject({ frame: 15_000, origin: "ctx-1" });
       expect(action["logger"].info).toHaveBeenCalledWith("Jumped to next marker");
     });
 
@@ -774,7 +790,7 @@ describe("ReplayMarkers", () => {
 
         sim.ignore.seek = true;
         await action.onKeyDown(keyDown({ mode: "next" }));
-        expect(pendingReplayLanding()).toMatchObject({ frame: 15_000 });
+        expect(pendingReplayTarget()).toMatchObject({ frame: 15_000 });
         await vi.advanceTimersByTimeAsync(5_000);
 
         expect(sim.calls).toEqual(["speed 0", "seek 15000"]);
@@ -788,8 +804,9 @@ describe("ReplayMarkers", () => {
         );
         expect(currentReplayCursorOwner()).toBeNull();
 
-        // The landing it recorded anchors no more: the next press measures from the live frame.
-        expect(pendingReplayLanding()).toBeNull();
+        // The seek went out, so its target was left to its own wait, which has given it up:
+        // the next press measures from the live frame.
+        expect(pendingReplayTarget()).toBeNull();
         mocks.markers.next.mockClear();
         await action.onKeyDown(keyDown({ mode: "next" }));
         expect(mocks.markers.next).toHaveBeenCalledWith(12_000, { subSessionId: 86697546 });
@@ -805,7 +822,7 @@ describe("ReplayMarkers", () => {
 
       expect(sim.calls).toEqual(["speed 0"]);
       expect(action["logger"].warn).toHaveBeenCalledExactlyOnceWith("next marker: replay did not pause; jump not sent");
-      expect(pendingReplayLanding()).toBeNull();
+      expect(pendingReplayTarget()).toBeNull();
     });
 
     it("another replay command during the wait ends the jump with nothing more sent", async () => {
@@ -841,7 +858,7 @@ describe("ReplayMarkers", () => {
       expect(action["logger"].debug).toHaveBeenCalledWith("next marker: jump to frame 15000 cancelled by next");
     });
 
-    it("a jump that fails outright is logged, not left unhandled, and hands the cursor back", async () => {
+    it("a seek that throws is a seek refused: it warns, hands the cursor back and leaves no target (#1430)", async () => {
       const { action } = replayAtSpeed(PAUSED);
 
       mocks.setPlayPosition.mockImplementation(() => {
@@ -850,10 +867,11 @@ describe("ReplayMarkers", () => {
       await action.onKeyDown(keyDown({ mode: "next" }));
       await vi.advanceTimersByTimeAsync(0);
 
-      expect(action["logger"].error).toHaveBeenCalledExactlyOnceWith(
-        "next marker: jump failed: Error: broadcast failed",
-      );
+      // The gate catches the throw, so the jump resolves stopped rather than rejecting.
+      expect(action["logger"].warn).toHaveBeenCalledExactlyOnceWith("next marker: jump not sent");
+      expect(action["logger"].error).not.toHaveBeenCalled();
       expect(currentReplayCursorOwner()).toBeNull();
+      expect(pendingReplayTarget()).toBeNull();
     });
   });
 
@@ -1159,10 +1177,13 @@ describe("ReplayMarkers on a dial (#1230)", () => {
     mocks.setPlaySpeed.mockReturnValue(true);
     mocks.getGlobalSettings.mockReturnValue({});
     _resetReplayCursor();
+    _resetReplayCommandGate();
+    _resetReplayPositionState();
     vi.useFakeTimers();
   });
 
   afterEach(() => {
+    _resetReplayCommandGate();
     vi.useRealTimers();
   });
 
@@ -1219,7 +1240,7 @@ describe("ReplayMarkers on a dial (#1230)", () => {
     expect(mocks.markers.deleteNearest).toHaveBeenCalledWith(12_100, { subSessionId: 86697546 });
   });
 
-  describe("one shared landing across the keypad and every dial", () => {
+  describe("one shared target across the keypad and every dial (#1430)", () => {
     const FRAMES: Marker[] = [1_000, 2_000, 3_000, 4_000].map((frame) => ({ frame, sessionNum: 1, sessionTimeMs: 0 }));
     const sent = () => mocks.setPlayPosition.mock.calls.map((c) => c[1]);
     const replayAt = (frame: number) => ({ ...REPLAY, ReplayFrameNum: frame }) as TelemetryData;
@@ -1247,7 +1268,7 @@ describe("ReplayMarkers on a dial (#1230)", () => {
       expect(sent()).toEqual([1_000, 2_000]);
     });
 
-    it("a dial turn after keypad Previous within the hold measures from the keypad's landing", async () => {
+    it("a dial turn after keypad Previous measures from the keypad's target", async () => {
       const { action } = makeAction(replayAt(2_500));
       await action.onWillAppear(dialEvent({}) as never);
 
@@ -1276,14 +1297,14 @@ describe("ReplayMarkers on a dial (#1230)", () => {
       ]);
     });
 
-    it("a jump the keypad could not send leaves no landing: the dial measures from the live frame again", async () => {
+    it("a jump the keypad could not send leaves no target: the dial measures from the live frame again", async () => {
       const { action } = makeAction(replayAt(500));
       await action.onWillAppear(dialEvent({}) as never);
 
       await turn(action, 1);
       mocks.setPlayPosition.mockReturnValueOnce(false);
       await action.onKeyDown(keyDown({ mode: "next" }, "key-1"));
-      // The refused jump clears its landing once it has ended, a step after the press.
+      // The refused jump clears the target it recorded once it has ended.
       await vi.advanceTimersByTimeAsync(0);
       await turn(action, 1);
 

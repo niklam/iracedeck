@@ -2,18 +2,18 @@ import { ReplayPosMode, replaySpeedToSdk, type TelemetryData } from "@iracedeck/
 import type { ReplayMarker, ReplaySessionStore } from "@iracedeck/replay-store";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { _configureReplayCommandGate, _resetReplayCommandGate } from "../../shared/replay-command-gate.js";
 import {
   _resetReplayCursor,
   cancelReplayCursorOwner,
   claimReplayCursor,
   currentReplayCursorOwner,
-  pendingReplayLanding,
 } from "../../shared/replay-cursor.js";
+import { _resetReplayPositionState, pendingReplayTarget } from "../../shared/replay-position-state.js";
 import { steppedReplayState } from "../../shared/test-support/replay-state.js";
 import { buildTriggerDescription, ReplayMarkersDialSurface } from "./replay-markers-dial-surface.js";
 import {
   CONFIRMATION_FLASH_MS,
-  DIAL_LANDING_HOLD_MS,
   readReplayContext,
   REPLAY_EXIT_GRACE_MS,
   resolveJumpTarget,
@@ -288,6 +288,16 @@ describe("ReplayMarkersDialSurface", () => {
     vi.useFakeTimers();
     vi.clearAllMocks();
     _resetReplayCursor();
+    _resetReplayCommandGate();
+    _resetReplayPositionState();
+    // The gate reads the replay the surface reads: the same telemetry, and the
+    // same debounced replay state over it (#1430).
+    const gateReplay = steppedReplayState(() => env.telemetry);
+    _configureReplayCommandGate({
+      readTelemetry: () => env.telemetry,
+      inReplay: () => gateReplay.getReplayState().inReplay,
+      connected: () => env.connected,
+    });
     env.connected = true;
     env.storeReady = true;
     env.telemetry = replayAt(500);
@@ -300,6 +310,7 @@ describe("ReplayMarkersDialSurface", () => {
   });
 
   afterEach(() => {
+    _resetReplayCommandGate();
     vi.unstubAllGlobals();
     vi.useRealTimers();
   });
@@ -366,7 +377,9 @@ describe("ReplayMarkersDialSurface", () => {
       surface.rotate(ctx as never, dial(), 9, false);
       expect(mocks.setPlayPosition).toHaveBeenLastCalledWith(ReplayPosMode.Begin, 3_000);
 
-      await vi.advanceTimersByTimeAsync(DIAL_LANDING_HOLD_MS);
+      // The jump lands, then the replay moves on to 2 500.
+      env.telemetry = replayAt(3_000);
+      await settle();
       env.telemetry = replayAt(2_500);
       surface.rotate(ctx as never, dial(), -9, false);
       expect(mocks.setPlayPosition).toHaveBeenLastCalledWith(ReplayPosMode.Begin, 1_000);
@@ -425,7 +438,7 @@ describe("ReplayMarkersDialSurface", () => {
     });
   });
 
-  describe("the pending landing", () => {
+  describe("the pending target (#1230, #1430)", () => {
     it("a second event before telemetry catches up steps from the last target, not the stale frame", async () => {
       setMarkers([1_000, 2_000, 3_000]);
       const surface = makeSurface();
@@ -439,17 +452,18 @@ describe("ReplayMarkersDialSurface", () => {
       expect(mocks.setPlayPosition.mock.calls.map((c) => c[1])).toEqual([1_000, 2_000, 1_000]);
     });
 
-    it("a jump still on its way anchors past DIAL_LANDING_HOLD_MS", async () => {
+    it("a jump still on its way anchors however long it takes, with no hold of its own (#1430)", async () => {
       setMarkers([1_000, 2_000, 3_000]);
       const surface = makeSurface();
       const ctx = dialContext();
       await appear(surface, ctx);
 
       surface.rotate(ctx as never, dial(), 1, false);
-      await vi.advanceTimersByTimeAsync(DIAL_LANDING_HOLD_MS);
+      // Well past the second the marker surfaces once held a landing for.
+      await vi.advanceTimersByTimeAsync(2_500);
       surface.rotate(ctx as never, dial(), 1, false);
 
-      // The first jump has not landed and has not given up: the turn steps on from its marker.
+      // The first jump has not read back and has not given up: the turn steps on from its marker.
       expect(mocks.setPlayPosition.mock.calls.map((c) => c[1])).toEqual([1_000, 2_000]);
     });
 
@@ -467,23 +481,24 @@ describe("ReplayMarkersDialSurface", () => {
       expect(mocks.setPlayPosition.mock.calls.map((c) => c[1])).toEqual([1_000, 1_000]);
     });
 
-    it("once telemetry reaches the target, the live frame anchors again", async () => {
+    it("once the target's frame reads back, the live frame anchors again (#1430)", async () => {
       setMarkers([1_000, 2_000, 3_000, 4_000]);
       const surface = makeSurface();
       const ctx = dialContext();
       await appear(surface, ctx);
 
       surface.rotate(ctx as never, dial(), 2, false);
-      env.telemetry = replayAt(2_010);
+      // The target ends on its own frame reading back from the replay, not on a frame near it.
+      env.telemetry = replayAt(2_000);
       surface.onTick(ctx.id);
-      // The driver then moves the replay on by other means, inside the hold.
+      // The driver then moves the replay on by other means, straight away.
       env.telemetry = replayAt(3_500);
       surface.rotate(ctx as never, dial(), 1, false);
 
       expect(mocks.setPlayPosition.mock.calls.map((c) => c[1])).toEqual([2_000, 4_000]);
     });
 
-    it("a jump that was not sent leaves no landing: the next turn measures from the live frame", async () => {
+    it("a jump that was not sent leaves no target: the next turn measures from the live frame", async () => {
       setMarkers([1_000, 2_000, 3_000]);
       const surface = makeSurface();
       const ctx = dialContext();
@@ -491,7 +506,7 @@ describe("ReplayMarkersDialSurface", () => {
 
       mocks.setPlayPosition.mockReturnValueOnce(false);
       surface.rotate(ctx as never, dial(), 1, false);
-      // The refused jump clears its landing once it has ended, a step after the turn.
+      // The refused jump clears the target it recorded once it has ended.
       await settle(0);
       surface.rotate(ctx as never, dial(), 1, false);
 
@@ -514,19 +529,37 @@ describe("ReplayMarkersDialSurface", () => {
       expect(mocks.setPlayPosition.mock.calls.map((c) => c[1])).toEqual([1_000, 2_000, 3_000]);
     });
 
-    it("anything else taking the replay cursor clears it", async () => {
+    it("a tick with no replay context leaves the target standing (#1430)", async () => {
       setMarkers([1_000, 2_000, 3_000]);
       const surface = makeSurface();
       const ctx = dialContext();
       await appear(surface, ctx);
 
       surface.rotate(ctx as never, dial(), 1, false);
-      // A Replay Control seek, say: it takes the cursor in its own name.
-      cancelReplayCursorOwner("rewind");
+      // The store goes away for a tick: the dial has no context, and the replay is still headed for 1 000.
+      env.storeReady = false;
+      surface.onTick(ctx.id);
+      expect(pendingReplayTarget()).toMatchObject({ frame: 1_000 });
+
+      env.storeReady = true;
       surface.rotate(ctx as never, dial(), 1, false);
 
-      // Measured from the live 500 again, not from the 1 000 the dial sent.
-      expect(mocks.setPlayPosition.mock.calls.map((c) => c[1])).toEqual([1_000, 1_000]);
+      expect(mocks.setPlayPosition.mock.calls.map((c) => c[1])).toEqual([1_000, 2_000]);
+    });
+
+    it("a cursor take by a key that sends no replay command leaves the target standing (#1430)", async () => {
+      setMarkers([1_000, 2_000, 3_000]);
+      const surface = makeSurface();
+      const ctx = dialContext();
+      await appear(surface, ctx);
+
+      surface.rotate(ctx as never, dial(), 1, false);
+      // Jump to My Car, say: it takes the cursor in its own name and sends no replay command.
+      cancelReplayCursorOwner("jump-to-my-car");
+      surface.rotate(ctx as never, dial(), 1, false);
+
+      // The replay is still headed for the 1 000 the dial sent, so the turn steps on from there.
+      expect(mocks.setPlayPosition.mock.calls.map((c) => c[1])).toEqual([1_000, 2_000]);
     });
   });
 
@@ -571,10 +604,10 @@ describe("ReplayMarkersDialSurface", () => {
 
       surface.rotate(ctx as never, dial(), 1, false);
 
-      // Paused, not yet sought; the landing already anchors the next detent.
+      // Paused, not yet sought; the target already anchors the next detent, under the dial's own origin token.
       expect(sim.calls).toEqual(["speed 0"]);
       expect(currentReplayCursorOwner()).toBe("dial-next");
-      expect(pendingReplayLanding()).toMatchObject({ frame: 1_000 });
+      expect(pendingReplayTarget()).toMatchObject({ frame: 1_000, origin: "dial-1" });
       expect(logger.info).toHaveBeenCalledWith("Dial jumped to next marker");
     });
 
@@ -628,8 +661,9 @@ describe("ReplayMarkersDialSurface", () => {
         );
         expect(currentReplayCursorOwner()).toBeNull();
 
-        // The landing it recorded anchors no more: the next detent targets the same marker again.
-        expect(pendingReplayLanding()).toBeNull();
+        // The seek went out, so its target was left to its own wait, which has given it up:
+        // the next detent targets the same marker again.
+        expect(pendingReplayTarget()).toBeNull();
         surface.rotate(ctx as never, dial(), 1, false);
         expect(sim.calls).toEqual(["speed 0", "seek 1000", "seek 1000"]);
       },
@@ -644,7 +678,7 @@ describe("ReplayMarkersDialSurface", () => {
 
       expect(sim.calls).toEqual(["speed 0"]);
       expect(logger.warn).toHaveBeenCalledExactlyOnceWith("Dial next marker: replay did not pause; jump not sent");
-      expect(pendingReplayLanding()).toBeNull();
+      expect(pendingReplayTarget()).toBeNull();
     });
 
     it("another replay command during the wait ends the jump with nothing more sent", async () => {
@@ -686,7 +720,7 @@ describe("ReplayMarkersDialSurface", () => {
         expect(logger.warn).not.toHaveBeenCalled();
       });
 
-      it("a second detent before the first one's seek has gone out still steps on, and only its seek is sent", async () => {
+      it("a second detent before the first one's seek has gone out still steps on, and sends no second pause (#1430)", async () => {
         const { surface, ctx, sim } = await dialAt(AT_1X);
 
         surface.rotate(ctx as never, dial(), 1, false);
@@ -698,7 +732,9 @@ describe("ReplayMarkersDialSurface", () => {
         await settle(1_000);
 
         expect(logger.debug).toHaveBeenCalledWith("Dial next marker: jump to frame 1000 cancelled by dial-next");
-        expect(sim.calls).toEqual(["speed 0", "speed 0", "seek 2000", "speed 1"]);
+        // The gate sends no pause into a jump under way: the first one's pause is already on its
+        // way. Only the second jump's seek goes out, once that pause shows.
+        expect(sim.calls).toEqual(["speed 0", "seek 2000", "speed 1"]);
         expect(env.telemetry).toMatchObject({ ReplayFrameNum: 2_000, ...AT_1X });
       });
 
@@ -740,7 +776,7 @@ describe("ReplayMarkersDialSurface", () => {
       expect(currentReplayCursorOwner()).toBeNull();
     });
 
-    it("a jump that fails outright is logged, not left unhandled, and hands the cursor back", async () => {
+    it("a seek that throws is a seek refused: it warns, hands the cursor back and leaves no target (#1430)", async () => {
       const { surface, ctx } = await dialAt(PAUSED);
 
       mocks.setPlayPosition.mockImplementation(() => {
@@ -749,8 +785,11 @@ describe("ReplayMarkersDialSurface", () => {
       surface.rotate(ctx as never, dial(), 1, false);
       await settle(0);
 
-      expect(logger.error).toHaveBeenCalledExactlyOnceWith("Dial next marker: jump failed: Error: broadcast failed");
+      // The gate catches the throw, so the jump resolves stopped rather than rejecting.
+      expect(logger.warn).toHaveBeenCalledExactlyOnceWith("Dial next marker: jump not sent");
+      expect(logger.error).not.toHaveBeenCalled();
       expect(currentReplayCursorOwner()).toBeNull();
+      expect(pendingReplayTarget()).toBeNull();
     });
   });
 
@@ -840,7 +879,7 @@ describe("ReplayMarkersDialSurface", () => {
       });
 
       surface.rotate(ctx as never, dial(), 2, false);
-      // The replay lands; a new claim would clear a pending landing anyway.
+      // The replay lands on the dial's target, so the next turn measures from there.
       env.telemetry = replayAt(2_000);
       claimReplayCursor("fastest-lap", (by) => {
         cancelledBy.push(by);
@@ -1440,7 +1479,7 @@ describe("ReplayMarkersDialSurface", () => {
       await appear(surface, ctx);
       ctx.setDialCanvas.mockClear();
 
-      // Fifty detents in one second, each changing the display (k / N follows the landing).
+      // Fifty detents in one second, each changing the display (k / N follows the target).
       for (let i = 0; i < 50; i++) {
         surface.rotate(ctx as never, dial(), 1, false);
         await vi.advanceTimersByTimeAsync(20);

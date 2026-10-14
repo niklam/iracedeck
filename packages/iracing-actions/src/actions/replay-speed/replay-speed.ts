@@ -15,13 +15,13 @@ import {
   resolveIconColors,
   resolveTitleSettings,
 } from "@iracedeck/deck-core";
-import { getCommands } from "@iracedeck/deck-iracing";
 import decreaseIconSvg from "@iracedeck/icons/replay-speed/decrease.svg";
 import increaseIconSvg from "@iracedeck/icons/replay-speed/increase.svg";
+import { type ReplayCommand } from "@iracedeck/iracing-sdk";
 import { getGlobalColors } from "@iracedeck/settings";
 import z from "zod";
 
-import { cancelReplayCursorOwner } from "../../shared/replay-cursor.js";
+import { pressReplayCommand, type ReplayGateCommand } from "../../shared/replay-command-gate.js";
 
 type SpeedDirection = "increase" | "decrease";
 
@@ -46,6 +46,19 @@ export const ReplaySpeedSettings = CommonSettings.extend({
 });
 
 export type ReplaySpeedSettings = z.infer<typeof ReplaySpeedSettings>;
+
+/** The gate command each speed command sends; the SDK call stays the one the action always made. */
+const SPEED_COMMANDS: Record<SpeedDirection | "reset", ReplayGateCommand> = {
+  increase: { kind: "speed", speed: 2, slowMotion: false, send: (r) => (r as ReplayCommand).fastForward() },
+  decrease: { kind: "speed", speed: -2, slowMotion: false, send: (r) => (r as ReplayCommand).rewind() },
+  reset: { kind: "speed", speed: 1, slowMotion: false, send: (r) => r.play() },
+};
+
+const SPEED_LOG_MESSAGES: Record<SpeedDirection | "reset", string> = {
+  increase: "Speed increase executed",
+  decrease: "Speed decrease executed",
+  reset: "Speed reset to normal",
+};
 
 /**
  * @internal Exported for testing
@@ -91,7 +104,7 @@ export class ReplaySpeed extends ConnectionStateAwareAction<ReplaySpeedSettings>
   override async onKeyDown(ev: IDeckKeyDownEvent<ReplaySpeedSettings>): Promise<void> {
     this.logger.info("Key down received");
     const settings = this.parseSettings(ev.payload.settings);
-    this.executeSpeed(settings.direction);
+    this.executeSpeed(settings.direction, ev.action.id);
   }
 
   override async onDialDown(_ev: IDeckDialDownEvent<ReplaySpeedSettings>): Promise<void> {
@@ -118,34 +131,17 @@ export class ReplaySpeed extends ConnectionStateAwareAction<ReplaySpeedSettings>
   }
 
   /** Sends a speed command: a direction from a key or a turn, or the dial press's reset to normal speed. */
-  private executeSpeed(command: SpeedDirection | "reset"): void {
-    const replay = getCommands().replay;
-
+  private executeSpeed(command: SpeedDirection | "reset", origin?: string): void {
     // A speed change breaks a running Jump to Fastest Lap walk's probes as
-    // surely as a seek, so it takes the cursor first, as Replay Control's
-    // speed modes do (#1334).
-    cancelReplayCursorOwner(`replay-speed-${command}`);
+    // surely as a seek, so it goes through the replay command gate, which
+    // takes the cursor first and waits behind a jump under way (#1334, #1430).
+    const result = pressReplayCommand(SPEED_COMMANDS[command], { by: `replay-speed-${command}`, origin });
+    const success = result.kind === "sent" ? result.ok : false;
 
-    switch (command) {
-      case "increase": {
-        const success = replay.fastForward();
-        this.logger.info("Speed increase executed");
-        this.logger.debug(`Result: ${success}`);
-        break;
-      }
-      case "decrease": {
-        const success = replay.rewind();
-        this.logger.info("Speed decrease executed");
-        this.logger.debug(`Result: ${success}`);
-        break;
-      }
-      case "reset": {
-        const success = replay.play();
-        this.logger.info("Speed reset to normal");
-        this.logger.debug(`Result: ${success}`);
-        break;
-      }
-    }
+    if (result.kind !== "sent") this.logger.debug(`Gate result: ${result.kind}`);
+
+    this.logger.info(SPEED_LOG_MESSAGES[command]);
+    this.logger.debug(`Result: ${success}`);
   }
 
   private async updateDisplay(
