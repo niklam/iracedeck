@@ -1,5 +1,5 @@
 /**
- * What Replay Control's Jump to Green Flag aims at (issue #1354): which race
+ * What Replay Control's Jump to Race Start aims at (issue #1354): which race
  * session a press targets, where in it the jump lands, and which car's lap 1
  * stands in for the green when it was not recorded. Pure functions over the
  * session YAML and one telemetry sample; the press path, its guards and the
@@ -185,7 +185,7 @@ export function resolveGreenFallbackCar(
  * other key, and a key that is grey whenever the sim is closed would read as
  * broken.
  */
-export function isGreenFlagUnavailable(sessionInfo: unknown): boolean {
+export function isRaceStartUnavailable(sessionInfo: unknown): boolean {
   const sessions = readSessions(sessionInfo);
 
   return sessions.length > 0 && !sessions.some(isRace);

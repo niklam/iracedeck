@@ -156,7 +156,7 @@ const greenFlag = (overrides: Partial<GreenRecord & SubSessionScoped> = {}): Gre
 const restartFlag = (frame: number, overrides: Partial<GreenRecord & SubSessionScoped> = {}) =>
   greenFlag({ kind: "restart", frame, sessionTimeMs: frame * 16, ...overrides });
 
-/** The start of session (2, 3), as Jump to Green Flag asks for it from inside that session. */
+/** The start of session (2, 3), as Jump to Race Start asks for it from inside that session. */
 const startQuery = { sessionNum: 2, sessionUniqueId: 3, kind: "start" } as const;
 
 describe("resolveReplayStoreDirectory", () => {

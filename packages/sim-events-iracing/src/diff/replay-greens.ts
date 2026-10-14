@@ -1,7 +1,7 @@
 /**
  * The replay green record (issue #1354): the frame the race went green at, and
  * the frame of every caution restart, detected live and published as
- * `replay.greenFlag` for @iracedeck/replay-store, so Jump to Green Flag is a
+ * `replay.greenFlag` for @iracedeck/replay-store, so Jump to Race Start is a
  * lookup.
  * Design: docs/superpowers/specs/2026-10-05-issue-1354-replay-jump-to-green-flag.md.
  *

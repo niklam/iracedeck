@@ -412,7 +412,7 @@ describe("ReplayControl", () => {
       "jump-to-live",
       "jump-to-my-car",
       "jump-to-fastest-lap",
-      "jump-to-green-flag",
+      "jump-to-race-start",
       "next-car",
       "prev-car",
       "next-car-number",

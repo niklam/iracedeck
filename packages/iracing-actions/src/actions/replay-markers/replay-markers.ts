@@ -118,7 +118,7 @@ export type ReplayMarkersKeyState = ReplayMarkerConfirmation | "unavailable";
  * styling but not its colour or title text overrides: it is a fixed green /
  * red signal, so it reads the same on every key. The unavailable look is the
  * key's own icon, overrides and all, greyed and faded (`unavailableLook`,
- * shared with Replay Control's Jump to Green Flag), so a customised key still
+ * shared with Replay Control's Jump to Race Start), so a customised key still
  * reads as itself, only switched off.
  */
 export function generateReplayMarkersSvg(settings: ReplayMarkersSettings, state?: ReplayMarkersKeyState): string {

@@ -33,9 +33,9 @@ import frameBackwardIconSvg from "@iracedeck/icons/replay-control/frame-backward
 import frameForwardIconSvg from "@iracedeck/icons/replay-control/frame-forward.svg";
 import jumpToBeginningIconSvg from "@iracedeck/icons/replay-control/jump-to-beginning.svg";
 import jumpToFastestLapIconSvg from "@iracedeck/icons/replay-control/jump-to-fastest-lap.svg";
-import jumpToGreenFlagIconSvg from "@iracedeck/icons/replay-control/jump-to-green-flag.svg";
 import jumpToLiveIconSvg from "@iracedeck/icons/replay-control/jump-to-live.svg";
 import jumpToMyCarIconSvg from "@iracedeck/icons/replay-control/jump-to-my-car.svg";
+import jumpToRaceStartIconSvg from "@iracedeck/icons/replay-control/jump-to-race-start.svg";
 import nextCarNumberIconSvg from "@iracedeck/icons/replay-control/next-car-number.svg";
 import nextCarIconSvg from "@iracedeck/icons/replay-control/next-car.svg";
 import nextIncidentIconSvg from "@iracedeck/icons/replay-control/next-incident.svg";
@@ -99,7 +99,7 @@ import {
   acceptsGreenFallbackLanding,
   greenApproachFrame,
   type GreenFlagTarget,
-  isGreenFlagUnavailable,
+  isRaceStartUnavailable,
   lastListedSessionNum,
   resolveGreenFallbackCar,
   resolveGreenFlagTarget,
@@ -139,7 +139,7 @@ const REPLAY_CONTROL_MODES = [
   "jump-to-live",
   "jump-to-my-car",
   "jump-to-fastest-lap",
-  "jump-to-green-flag",
+  "jump-to-race-start",
   "next-car",
   "prev-car",
   "next-car-number",
@@ -172,7 +172,7 @@ const REPLAY_CONTROL_ICONS: Record<ReplayControlMode, string> = {
   "jump-to-live": jumpToLiveIconSvg,
   "jump-to-my-car": jumpToMyCarIconSvg,
   "jump-to-fastest-lap": jumpToFastestLapIconSvg,
-  "jump-to-green-flag": jumpToGreenFlagIconSvg,
+  "jump-to-race-start": jumpToRaceStartIconSvg,
   "next-car": nextCarIconSvg,
   "prev-car": prevCarIconSvg,
   "next-car-number": nextCarNumberIconSvg,
@@ -203,7 +203,7 @@ const REPLAY_CONTROL_TITLES: Record<ReplayControlMode, string> = {
   "jump-to-live": "JUMP TO\nLIVE",
   "jump-to-my-car": "JUMP TO\nMY CAR",
   "jump-to-fastest-lap": "FASTEST\nLAP",
-  "jump-to-green-flag": "GREEN\nFLAG",
+  "jump-to-race-start": "RACE\nSTART",
   "next-car": "CAR\nNEXT",
   "prev-car": "CAR\nPREVIOUS",
   "next-car-number": "CAR #\nNEXT",
@@ -455,7 +455,7 @@ const FASTEST_LAP_RECORD_JUMP_OWNER = "jump-to-fastest-lap record jump";
 /** What opens the log lines of a Jump to Fastest Lap press, where a shared step writes them. */
 const FASTEST_LAP_LOG_LABEL = "Jump to fastest lap";
 
-// Jump to Green Flag (issue #1354,
+// Jump to Race Start (issue #1354,
 // docs/superpowers/specs/2026-10-05-issue-1354-replay-jump-to-green-flag.md)
 // is a lookup first too. The race start is recorded live in the replay
 // record's `greens` section (the translator's `replay.greenFlag`), so a press
@@ -465,14 +465,14 @@ const FASTEST_LAP_LOG_LABEL = "Jump to fastest lap";
 // from the walk above run for lap 1. The press shares Jump to Fastest Lap's
 // in-flight slot and ends as the Replay jump playback setting says.
 
-/** The owner name a Jump to Green Flag press claims the replay cursor under for its single waited jump. */
-const GREEN_FLAG_JUMP_OWNER = "jump-to-green-flag jump";
+/** The owner name a Jump to Race Start press claims the replay cursor under for its single waited jump. */
+const RACE_START_JUMP_OWNER = "jump-to-race-start jump";
 
-/** The owner name a Jump to Green Flag press claims the replay cursor under while it searches for the pole car's lap 1. */
-const GREEN_FLAG_WALK_OWNER = "jump-to-green-flag walk";
+/** The owner name a Jump to Race Start press claims the replay cursor under while it searches for the pole car's lap 1. */
+const RACE_START_WALK_OWNER = "jump-to-race-start walk";
 
-/** What opens the log lines of a Jump to Green Flag press. */
-const GREEN_FLAG_LOG_LABEL = "Jump to green";
+/** What opens the log lines of a Jump to Race Start press. */
+const RACE_START_LOG_LABEL = "Jump to race start";
 
 /** How a press that holds the in-flight slot names itself: on the replay cursor, and in the log. */
 type ReplayPressIdentity = {
@@ -533,7 +533,7 @@ type LapWalkOrigin = { frame: number | null };
  * instance. `instance` says which instance of `sessionNum`: the one the
  * cursor is in when the walk starts (Jump to Fastest Lap), or the latest one
  * in the recording — the target of a press made from outside that session,
- * which knows no `SessionUniqueID` for it (Jump to Green Flag from practice
+ * which knows no `SessionUniqueID` for it (Jump to Race Start from practice
  * or qualifying, #1354).
  */
 type LapWalkTarget = {
@@ -629,7 +629,7 @@ export function formatSetSpeedLabel(speedSetting: string): string {
  * When mode is "speed-display", the label shows the current speed.
  * When mode is "set-speed", the label shows the configured speed.
  * With `unavailable`, a static mode draws the greyed, faded look Replay
- * Markers gives a key whose press would do nothing (Jump to Green Flag in a
+ * Markers gives a key whose press would do nothing (Jump to Race Start in a
  * replay with no race session, #1354).
  */
 export function generateReplayControlSvg(
@@ -921,7 +921,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
   private activeContexts = new Map<string, ReplayControlSettings>();
 
   /**
-   * The one in-flight Jump to Fastest Lap or Jump to Green Flag press, per
+   * The one in-flight Jump to Fastest Lap or Jump to Race Start press, per
    * action instance — two keys would otherwise run two walks against one
    * cursor. A second press of either while it stands is dropped before any
    * command is sent. Any replay command — this
@@ -948,20 +948,20 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     setLocalSpeed: (speed, slowMotion) => this.setLocalSpeed(speed, slowMotion),
     // The keypad's own Jump to Live, cursor take and replay-state note included.
     jumpToLive: () => this.executeMode("__dial__", this.parseSettings({ mode: "jump-to-live" })),
-    // The keypad's own Jump to Green Flag press (#1354), guards and fallback included.
-    jumpToGreenFlag: () => this.executeMode("__dial__", this.parseSettings({ mode: "jump-to-green-flag" })),
-    canJumpToGreenFlag: () =>
+    // The keypad's own Jump to Race Start press (#1354), guards and fallback included.
+    jumpToRaceStart: () => this.executeMode("__dial__", this.parseSettings({ mode: "jump-to-race-start" })),
+    canJumpToRaceStart: () =>
       resolveGreenFlagTarget(this.sdkController.getSessionInfo(), this.sdkController.getCurrentTelemetry()) !== null,
     refreshKeys: () => this.updateAllTelemetryDisplays(),
   });
 
   /**
-   * Per Jump to Green Flag context: whether the key shows the unavailable
+   * Per Jump to Race Start context: whether the key shows the unavailable
    * look, and the session info it was judged from. iRacing republishes the
    * session YAML only when something in it changed, so a tick usually compares
    * one reference and stops.
    */
-  private greenFlagShown = new Map<string, { sessionInfo: unknown; unavailable: boolean }>();
+  private raceStartShown = new Map<string, { sessionInfo: unknown; unavailable: boolean }>();
 
   override async onWillAppear(ev: IDeckWillAppearEvent<ReplayControlSettings>): Promise<void> {
     await super.onWillAppear(ev);
@@ -1012,7 +1012,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
         }
       }
 
-      this.refreshGreenFlagAvailability(ev.action.id);
+      this.refreshRaceStartAvailability(ev.action.id);
     });
   }
 
@@ -1025,7 +1025,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     this.replaySlowMotion.delete(ev.action.id);
     this.activeContexts.delete(ev.action.id);
     this.lastState.delete(ev.action.id);
-    this.greenFlagShown.delete(ev.action.id);
+    this.raceStartShown.delete(ev.action.id);
   }
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<ReplayControlSettings>): Promise<void> {
@@ -1432,7 +1432,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
   }
 
   /**
-   * Run one Jump to Fastest Lap or Jump to Green Flag press — a walk or a
+   * Run one Jump to Fastest Lap or Jump to Race Start press — a walk or a
    * record jump — holding the replay cursor and this action's in-flight slot
    * for its whole duration, so any replay command cancels it and a second
    * press of either mode is ignored. The press
@@ -1604,7 +1604,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
   }
 
   /**
-   * One Jump to Green Flag press (#1354): a lookup first, like Jump to Fastest
+   * One Jump to Race Start press (#1354): a lookup first, like Jump to Fastest
    * Lap. The target is the race session the cursor is in, else the last race
    * session of the replay (`resolveGreenFlagTarget`). Its recorded start is
    * one waited jump to five seconds before the green, with no camera switch;
@@ -1617,13 +1617,13 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
    * debounced state, not the raw flag, which reads false for ~300 ms after
    * every seek (#1324).
    */
-  private pressJumpToGreenFlag(contextId: string): void {
+  private pressJumpToRaceStart(contextId: string): void {
     const telemetry = this.sdkController.getCurrentTelemetry();
     const sessionInfo = this.sdkController.getSessionInfo();
     const target = resolveGreenFlagTarget(sessionInfo, telemetry);
 
     if (target === null) {
-      this.logger.info("Jump to green: no race session in this replay; press ignored");
+      this.logger.info("Jump to race start: no race session in this replay; press ignored");
 
       return;
     }
@@ -1631,14 +1631,14 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     const cursorSessionNum = telemetry?.SessionNum;
 
     if (typeof cursorSessionNum !== "number" || cursorSessionNum < 0) {
-      this.logger.info("Jump to green: replay session not settled yet; press ignored");
+      this.logger.info("Jump to race start: replay session not settled yet; press ignored");
       this.logger.debug(`SessionNum=${String(cursorSessionNum)}`);
 
       return;
     }
 
     if (this.isFastestLapPressInFlight()) {
-      this.logger.info("Jump to green: previous jump still in flight; press ignored");
+      this.logger.info("Jump to race start: previous jump still in flight; press ignored");
       this.logger.debug(
         `In-flight context: ${this.activeFastestLapPress?.contextId}, ignored press context: ${contextId}`,
       );
@@ -1647,14 +1647,14 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     }
 
     if (!this.sdkController.getReplayState().inReplay) {
-      this.logger.info("Jump to green: replay not open; iRacing ignores replay commands from the car");
+      this.logger.info("Jump to race start: replay not open; iRacing ignores replay commands from the car");
 
       return;
     }
 
     const subSessionId = readSubSessionId(sessionInfo);
 
-    this.logger.info("Jump to green flag executed");
+    this.logger.info("Jump to race start executed");
     this.logger.debug(
       `Target session: ${target.sessionNum}/${target.sessionUniqueId ?? "n/a"} (${target.from}), cursor session: ${cursorSessionNum}, subSession: ${subSessionId ?? "n/a"}`,
     );
@@ -1667,7 +1667,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     });
 
     if (lookup.hit) {
-      this.logger.info(`Jump to green: record HIT (matchedBy ${lookup.matchedBy})`);
+      this.logger.info(`Jump to race start: record HIT (matchedBy ${lookup.matchedBy})`);
       this.logger.debug(`Green of session ${target.sessionNum}/${lookup.sessionUniqueId} at frame ${lookup.frame}`);
 
       // Fire-and-forget: the jump waits for the cursor to land before it sends
@@ -1677,36 +1677,36 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
       return;
     }
 
-    this.logger.info(`Jump to green: record MISS (${lookup.reason}); falling back to lap 1 of the pole car`);
+    this.logger.info(`Jump to race start: record MISS (${lookup.reason}); falling back to lap 1 of the pole car`);
     this.jumpToGreenFromPoleCar(contextId, target, { telemetry, sessionInfo, subSessionId });
   }
 
   /**
-   * The single waited jump of a Jump to Green Flag press: through the shared
+   * The single waited jump of a Jump to Race Start press: through the shared
    * sequence to the run-up before `anchor.frame` — the recorded green, or the
    * recorded start of the pole car's lap 1 — and then whatever the **Replay
    * jump playback** setting says. No camera switch. A jump that stops short
    * leaves the replay paused where it stopped (`runJumpToFrame` logs it).
    */
   private async jumpToGreenApproach(contextId: string, anchor: { frame: number; what: string }): Promise<void> {
-    const press: ReplayPressIdentity = { owner: GREEN_FLAG_JUMP_OWNER, noun: "jump", label: GREEN_FLAG_LOG_LABEL };
+    const press: ReplayPressIdentity = { owner: RACE_START_JUMP_OWNER, noun: "jump", label: RACE_START_LOG_LABEL };
 
     await this.holdFastestLapSlot(contextId, press, async (jump) => {
       const approachFrame = greenApproachFrame(anchor.frame);
-      const outcome = await this.runJumpToFrame(jump, { frame: approachFrame, label: GREEN_FLAG_LOG_LABEL });
+      const outcome = await this.runJumpToFrame(jump, { frame: approachFrame, label: RACE_START_LOG_LABEL });
 
       if (outcome.kind === "cancelled") throw new FastestLapPressCancelled(outcome.by, "jump");
 
       if (outcome.kind === "landed") {
         this.logger.debug(
-          `Jump to green: ${anchor.what} at frame ${anchor.frame}; landed on ${approachFrame}; replay left at ${formatSpeedDisplay(outcome.speed.speed, outcome.speed.slowMotion)} (speed command ${outcome.command})`,
+          `Jump to race start: ${anchor.what} at frame ${anchor.frame}; landed on ${approachFrame}; replay left at ${formatSpeedDisplay(outcome.speed.speed, outcome.speed.slowMotion)} (speed command ${outcome.command})`,
         );
       }
     });
   }
 
   /**
-   * The fallback of a Jump to Green Flag press with no recorded green: the
+   * The fallback of a Jump to Race Start press with no recorded green: the
    * pole car's lap 1, which starts a second or two after the green at most
    * (`resolveGreenFallbackCar`: with no qualifying grid, or a pole sitter who
    * did not take part in the target session, the car the camera is on).
@@ -1724,7 +1724,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     const car = resolveGreenFallbackCar(sessionInfo, target.sessionNum, viewedCarIdx);
 
     if (car === null) {
-      this.logger.warn("Jump to green: no pole car and no viewed car to take lap 1 from; press ignored");
+      this.logger.warn("Jump to race start: no pole car and no viewed car to take lap 1 from; press ignored");
       this.logger.debug(`Pole carIdx: ${resolvePoleCarIdx(sessionInfo) ?? "n/a"}, CamCarIdx: ${viewedCarIdx}`);
 
       return;
@@ -1735,14 +1735,16 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     const carNum = this.getCarNumberRawByIdx(carIdx);
 
     if (carNum === null) {
-      this.logger.warn("Jump to green: could not find the car number of the car to take lap 1 from; press ignored");
+      this.logger.warn(
+        "Jump to race start: could not find the car number of the car to take lap 1 from; press ignored",
+      );
       this.logger.debug(`carIdx: ${carIdx}`);
 
       return;
     }
 
     this.logger.debug(
-      `Jump to green: lap 1 of carIdx ${carIdx}, carNum ${carNum} (${car.from === "pole" ? "pole" : "the viewed car; no pole car in the target session"})`,
+      `Jump to race start: lap 1 of carIdx ${carIdx}, carNum ${carNum} (${car.from === "pole" ? "pole" : "the viewed car; no pole car in the target session"})`,
     );
 
     const lookup = this.lookupRecordedLapStart({
@@ -1755,13 +1757,13 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     });
 
     if (lookup.hit) {
-      this.logger.info(`Jump to green: lap record HIT (matchedBy ${lookup.matchedBy})`);
+      this.logger.info(`Jump to race start: lap record HIT (matchedBy ${lookup.matchedBy})`);
       void this.jumpToGreenApproach(contextId, { frame: lookup.frame, what: `lap 1 of carIdx ${carIdx} starts` });
 
       return;
     }
 
-    this.logger.info(`Jump to green: lap record MISS (${lookup.reason}); searching the replay`);
+    this.logger.info(`Jump to race start: lap record MISS (${lookup.reason}); searching the replay`);
     void this.searchGreenFromPoleCar(contextId, target, {
       carIdx,
       carNum,
@@ -1771,7 +1773,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
   }
 
   /**
-   * The last resort of a Jump to Green Flag press: search the replay for the
+   * The last resort of a Jump to Race Start press: search the replay for the
    * start of the pole car's lap 1 with the walk Jump to Fastest Lap uses, then
    * one waited jump back by the rest of the run-up.
    *
@@ -1796,7 +1798,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     target: GreenFlagTarget,
     car: { carIdx: number; carNum: number; viewedCarIdx: number; identity: FastestLapRecordIdentity },
   ): Promise<void> {
-    const press: ReplayPressIdentity = { owner: GREEN_FLAG_WALK_OWNER, noun: "walk", label: GREEN_FLAG_LOG_LABEL };
+    const press: ReplayPressIdentity = { owner: RACE_START_WALK_OWNER, noun: "walk", label: RACE_START_LOG_LABEL };
 
     await this.holdFastestLapSlot(contextId, press, async (jump) => {
       const camera = getCommands().camera;
@@ -1806,7 +1808,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
 
       if (borrowed && !camera.switchNum(car.carNum, 0, 0)) {
         // If the SDK refused, abort rather than search for the wrong driver's lap.
-        this.logger.warn("Jump to green: camera switch failed, aborting");
+        this.logger.warn("Jump to race start: camera switch failed, aborting");
         this.logger.debug(`Failed switchNum: carNum=${car.carNum}, carIdx=${car.carIdx}`);
 
         return;
@@ -1816,13 +1818,13 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
         if (!borrowed) return;
 
         if (viewedCarNum === null) {
-          this.logger.debug("Jump to green: no car was on screen at the press; camera left on the pole car");
+          this.logger.debug("Jump to race start: no car was on screen at the press; camera left on the pole car");
 
           return;
         }
 
         if (!camera.switchNum(viewedCarNum, 0, 0)) {
-          this.logger.warn("Jump to green: could not switch the camera back; it is left on the pole car");
+          this.logger.warn("Jump to race start: could not switch the camera back; it is left on the pole car");
           this.logger.debug(`Failed switchNum: carNum=${viewedCarNum}, carIdx=${car.viewedCarIdx}`);
         }
       };
@@ -1833,7 +1835,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
         sessionNum: target.sessionNum,
         instance: target.from === "cursor" ? "cursor" : "latest",
         identity: car.identity,
-        label: GREEN_FLAG_LOG_LABEL,
+        label: RACE_START_LOG_LABEL,
       });
 
       // The search gave up, logged why and put the replay back.
@@ -1844,7 +1846,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
       }
 
       if (!acceptsGreenFallbackLanding(landing)) {
-        this.logger.warn("Jump to green: the search did not reach the start of the pole car's lap 1");
+        this.logger.warn("Jump to race start: the search did not reach the start of the pole car's lap 1");
         this.logger.debug(
           `Landed frame ${landing.landedFrame}, dist on the lap before lap 1: ${landing.priorLapDist ?? "n/a"}`,
         );
@@ -1859,7 +1861,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
       const approachFrame = greenApproachFrame(landing.lapStartFrame);
       const outcome = await this.runJumpToFrame(jump, {
         frame: approachFrame,
-        label: GREEN_FLAG_LOG_LABEL,
+        label: RACE_START_LOG_LABEL,
         // The camera goes back once the cursor has landed — sent any earlier it
         // would cut the seek short (#1275) — and never stops the jump: the
         // replay is where the press asked, whichever car is on screen.
@@ -1878,7 +1880,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
 
       if (outcome.kind === "landed") {
         this.logger.debug(
-          `Jump to green: lap 1 of carIdx ${car.carIdx} starts at frame ${landing.lapStartFrame} (search ${landing.converged ? "converged" : "did not converge"}); landed on ${approachFrame}; replay left at ${formatSpeedDisplay(outcome.speed.speed, outcome.speed.slowMotion)} (speed command ${outcome.command})`,
+          `Jump to race start: lap 1 of carIdx ${car.carIdx} starts at frame ${landing.lapStartFrame} (search ${landing.converged ? "converged" : "did not converge"}); landed on ${approachFrame}; replay left at ${formatSpeedDisplay(outcome.speed.speed, outcome.speed.slowMotion)} (speed command ${outcome.command})`,
         );
       }
     });
@@ -1998,7 +2000,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
    *
    * `target` names the lap, the session instance it is in and the mode the
    * walk runs for: Jump to Fastest Lap walks to a lap of the cursor's own
-   * session, Jump to Green Flag to lap 1 of a race session the cursor may not
+   * session, Jump to Race Start to lap 1 of a race session the cursor may not
    * be in (#1354).
    */
   private async walkToLapStart(
@@ -2796,7 +2798,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     // replay back from an in-flight walk (speed-display sends nothing and is
     // left out). Those two take the cursor themselves, once their guards have
     // passed: a press that is ignored must not cancel the one in flight.
-    if (mode !== "jump-to-fastest-lap" && mode !== "jump-to-green-flag" && mode !== "speed-display") {
+    if (mode !== "jump-to-fastest-lap" && mode !== "jump-to-race-start" && mode !== "speed-display") {
       this.cancelFastestLapWalk(mode);
     }
 
@@ -3227,8 +3229,8 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
         );
         break;
       }
-      case "jump-to-green-flag": {
-        this.pressJumpToGreenFlag(contextId);
+      case "jump-to-race-start": {
+        this.pressJumpToRaceStart(contextId);
         break;
       }
       case "next-car": {
@@ -3285,7 +3287,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     const speed = this.replaySpeed.get(ev.action.id);
     const slowMo = this.replaySlowMotion.get(ev.action.id);
     const bindingMissing = this.isBindingMissing(KEYSTROKE_MODES[settings.mode]);
-    const unavailable = this.readGreenFlagUnavailable(ev.action.id, settings);
+    const unavailable = this.readRaceStartUnavailable(ev.action.id, settings);
     const svgDataUri = generateReplayControlSvg(settings, isPlaying, speed, slowMo, bindingMissing, unavailable);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
@@ -3296,54 +3298,54 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
         speed,
         slowMo,
         this.isBindingMissing(KEYSTROKE_MODES[settings.mode]),
-        this.readGreenFlagUnavailable(ev.action.id, settings),
+        this.readRaceStartUnavailable(ev.action.id, settings),
       ),
     );
   }
 
   /**
    * Whether a context draws the unavailable look now, noting what went out so
-   * a tick redraws only on a flip. Only Jump to Green Flag has the look: a
+   * a tick redraws only on a flip. Only Jump to Race Start has the look: a
    * replay with no race session is the one case its press cannot serve. A
    * missing green record does not grey the key — the fallback still lands —
    * and neither does sitting in the car, where every Replay Control jump does
    * nothing and a key grey all race would read as broken.
    */
-  private readGreenFlagUnavailable(contextId: string, settings: ReplayControlSettings): boolean {
-    if (settings.mode !== "jump-to-green-flag") {
-      this.greenFlagShown.delete(contextId);
+  private readRaceStartUnavailable(contextId: string, settings: ReplayControlSettings): boolean {
+    if (settings.mode !== "jump-to-race-start") {
+      this.raceStartShown.delete(contextId);
 
       return false;
     }
 
     const sessionInfo = this.sdkController.getSessionInfo();
-    const unavailable = isGreenFlagUnavailable(sessionInfo);
+    const unavailable = isRaceStartUnavailable(sessionInfo);
 
-    this.greenFlagShown.set(contextId, { sessionInfo, unavailable });
+    this.raceStartShown.set(contextId, { sessionInfo, unavailable });
 
     return unavailable;
   }
 
   /**
-   * Per tick: redraw a Jump to Green Flag key when the session list gains or
+   * Per tick: redraw a Jump to Race Start key when the session list gains or
    * loses its race — a replay of another session was opened, or the YAML
    * arrived. A tick whose session info is the object last judged stops at the
    * comparison.
    */
-  private refreshGreenFlagAvailability(contextId: string): void {
+  private refreshRaceStartAvailability(contextId: string): void {
     const settings = this.activeContexts.get(contextId);
 
-    if (settings?.mode !== "jump-to-green-flag") return;
+    if (settings?.mode !== "jump-to-race-start") return;
 
-    const shown = this.greenFlagShown.get(contextId);
+    const shown = this.raceStartShown.get(contextId);
 
     if (shown !== undefined && shown.sessionInfo === this.sdkController.getSessionInfo()) return;
 
-    const unavailable = this.readGreenFlagUnavailable(contextId, settings);
+    const unavailable = this.readRaceStartUnavailable(contextId, settings);
 
     if (shown !== undefined && shown.unavailable === unavailable) return;
 
-    this.logger.debug(`Jump to green: key now ${unavailable ? "unavailable (no race session)" : "available"}`);
+    this.logger.debug(`Jump to race start: key now ${unavailable ? "unavailable (no race session)" : "available"}`);
     void this.updateKeyImage(
       contextId,
       generateReplayControlSvg(settings, false, undefined, undefined, false, unavailable),
@@ -3355,7 +3357,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
         undefined,
         undefined,
         false,
-        this.readGreenFlagUnavailable(contextId, settings),
+        this.readRaceStartUnavailable(contextId, settings),
       ),
     );
   }

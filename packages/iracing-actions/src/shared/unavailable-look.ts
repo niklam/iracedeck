@@ -1,7 +1,7 @@
 /**
  * The "unavailable" look of a key whose press would do nothing right now:
  * Replay Markers' Next / Previous with no marker that way (#1162), Replay
- * Control's Jump to Green Flag in a replay with no race session (#1354).
+ * Control's Jump to Race Start in a replay with no race session (#1354).
  *
  * It is the key's own icon, overrides and all, with every colour but the
  * background turned grey, border included, and the artwork and title faded by

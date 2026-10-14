@@ -1,7 +1,7 @@
 /**
  * The `greens` section of the per-session replay file (issue #1354): the frame
  * a race went green at, and every caution restart after it, recorded live, so
- * Jump to Green Flag is a lookup. Pure functions over the section; the store
+ * Jump to Race Start is a lookup. Pure functions over the section; the store
  * (`replay-session-store.ts`) owns it, and the translator's `replay.greenFlag`
  * event reaches it through the store's `greens` API.
  * Design: docs/superpowers/specs/2026-10-05-issue-1354-replay-jump-to-green-flag.md.

@@ -113,12 +113,12 @@ export interface ReplayControlDialHost {
   /** The keypad's Jump to Live, which takes the replay cursor itself, under its own mode name (`jump-to-live`). */
   jumpToLive(): void;
   /**
-   * The keypad's Jump to Green Flag press (#1354): its guards, its record
+   * The keypad's Jump to Race Start press (#1354): its guards, its record
    * lookup and its fallback, and the replay cursor taken by the jump it starts.
    */
-  jumpToGreenFlag(): void;
-  /** Whether that press has a race session to aim at; false is the one case a Jump to Green Flag key greys for. */
-  canJumpToGreenFlag(): boolean;
+  jumpToRaceStart(): void;
+  /** Whether that press has a race session to aim at; false is the one case a Jump to Race Start key greys for. */
+  canJumpToRaceStart(): boolean;
   /** Redraws the keypad keys whose icon follows the replay speed. */
   refreshKeys(): void;
 }
@@ -170,9 +170,9 @@ function playCaption(speed: ReplaySpeed): string {
  * and what its hold preview reads. A new gesture is one row here, one value in
  * `REPLAY_DIAL_GESTURES` and one option in the PI. Every send the surface
  * makes itself takes the replay cursor under a `dial-` owner name; Jump to
- * Live and Jump to Green Flag run the keypad's own paths instead, which take
+ * Live and Jump to Race Start run the keypad's own paths instead, which take
  * it themselves: under the mode's name, `jump-to-live`, and as the replay jump
- * the green press starts once its guards have passed.
+ * the race-start press starts once its guards have passed.
  */
 const GESTURES: Record<ActiveGesture, DialGesture> = {
   // A playing replay pauses; a paused one resumes the remembered speed.
@@ -242,13 +242,13 @@ const GESTURES: Record<ActiveGesture, DialGesture> = {
   // The counterpart of Jump to Live at the other end of a race review (#1354).
   // The keypad's own press: with no race session in the replay it sends
   // nothing, so the hold previews nothing either.
-  "jump-to-green-flag": {
-    label: "Jump to Green Flag",
+  "jump-to-race-start": {
+    label: "Jump to Race Start",
     run({ io, host }) {
-      host.jumpToGreenFlag();
-      io.logger.info("Dial pressed Jump to Green Flag");
+      host.jumpToRaceStart();
+      io.logger.info("Dial pressed Jump to Race Start");
     },
-    preview: ({ host }) => (host.canJumpToGreenFlag() ? "GREEN" : null),
+    preview: ({ host }) => (host.canJumpToRaceStart() ? "START" : null),
   },
 };
 

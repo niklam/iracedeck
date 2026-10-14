@@ -1,5 +1,5 @@
 /**
- * Replay Control's Jump to Green Flag mode (issue #1354): the press path, its
+ * Replay Control's Jump to Race Start mode (issue #1354): the press path, its
  * guards, the three ways it finds the frame, and the key's unavailable look.
  * What the press aims at is `green-flag-target.test.ts`'s; the replay search
  * it borrows is covered, as Jump to Fastest Lap's, in `replay-control.test.ts`.
@@ -27,15 +27,15 @@ vi.mock("@iracedeck/iracing-sdk", async (importOriginal) => ({
   getAllCarNumbers: vi.fn(() => []),
 }));
 
-// The dial surface has its own suite (`replay-control-dial-surface.test.ts`), the dial's Jump to Green Flag
+// The dial surface has its own suite (`replay-control-dial-surface.test.ts`), the dial's Jump to Race Start
 // gesture included; here the action only needs one to construct.
 const dialHost = vi.hoisted(() => ({
-  current: null as { jumpToGreenFlag(): void; canJumpToGreenFlag(): boolean } | null,
+  current: null as { jumpToRaceStart(): void; canJumpToRaceStart(): boolean } | null,
 }));
 
 vi.mock("./replay-control-dial-surface.js", () => ({
   ReplayControlDialSurface: class MockReplayControlDialSurface {
-    constructor(host: { jumpToGreenFlag(): void; canJumpToGreenFlag(): boolean }) {
+    constructor(host: { jumpToRaceStart(): void; canJumpToRaceStart(): boolean }) {
       dialHost.current = host;
     }
 
@@ -119,7 +119,7 @@ vi.mock("@iracedeck/settings", () => ({
 type KeyEvent = Parameters<ReplayControl["onKeyDown"]>[0];
 type AppearEvent = Parameters<ReplayControl["onWillAppear"]>[0];
 
-const GREEN = { mode: "jump-to-green-flag" };
+const GREEN = { mode: "jump-to-race-start" };
 
 function fakeEvent(actionId: string, settings: Record<string, unknown> = GREEN) {
   return {
@@ -465,7 +465,7 @@ function seekFrames(): number[] {
   return mockReplay.setPlayPosition.mock.calls.map((call) => call[1]);
 }
 
-describe("Replay Control: Jump to Green Flag (#1354)", () => {
+describe("Replay Control: Jump to Race Start (#1354)", () => {
   let action: ReplayControl;
 
   async function press(contextId = "ctx-green", settings: Record<string, unknown> = GREEN): Promise<void> {
@@ -551,7 +551,7 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
       expect(countReplayCommands()).toBe(2);
       expect(mockCamera.switchNum).not.toHaveBeenCalled();
       expect(mockStore.laps.findLapStart).not.toHaveBeenCalled();
-      expect(action["logger"].info).toHaveBeenCalledWith("Jump to green: record HIT (matchedBy pair)");
+      expect(action["logger"].info).toHaveBeenCalledWith("Jump to race start: record HIT (matchedBy pair)");
       expect(action["activeFastestLapPress"]).toBeNull();
     });
 
@@ -598,7 +598,7 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
         kind: "start",
       });
       expect(mockReplay.setPlayPosition).toHaveBeenCalledExactlyOnceWith(expect.anything(), 29_915);
-      expect(action["logger"].info).toHaveBeenCalledWith("Jump to green: record HIT (matchedBy sessionNum)");
+      expect(action["logger"].info).toHaveBeenCalledWith("Jump to race start: record HIT (matchedBy sessionNum)");
     });
 
     it("targets the feature, the last race session, from outside a heat event's races", async () => {
@@ -640,7 +640,7 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
 
       expect(mockReplay.setPlayPosition).toHaveBeenCalledTimes(1);
       expect(mockReplay.setPlaySpeed).not.toHaveBeenCalled();
-      expect(action["logger"].warn).toHaveBeenCalledWith("Jump to green: jump did not land; nothing more sent");
+      expect(action["logger"].warn).toHaveBeenCalledWith("Jump to race start: jump did not land; nothing more sent");
       expect(action["activeFastestLapPress"]).toBeNull();
     });
 
@@ -653,7 +653,7 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
       await vi.runAllTimersAsync();
 
       expect(mockReplay.setPlaySpeed).not.toHaveBeenCalled();
-      expect(action["logger"].warn).toHaveBeenCalledWith("Jump to green: jump not sent");
+      expect(action["logger"].warn).toHaveBeenCalledWith("Jump to race start: jump not sent");
     });
 
     it("pauses a moving replay before the seek, and restores its speed under Remember", async () => {
@@ -693,7 +693,7 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
       expect(mockCamera.switchNum).not.toHaveBeenCalled();
       expect(mockStore.greens.findGreen).not.toHaveBeenCalled();
       expect(action["logger"].info).toHaveBeenCalledWith(
-        "Jump to green: no race session in this replay; press ignored",
+        "Jump to race start: no race session in this replay; press ignored",
       );
     });
 
@@ -710,7 +710,7 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
       expect(countReplayCommands()).toBe(0);
       expect(mockStore.greens.findGreen).not.toHaveBeenCalled();
       expect(action["logger"].info).toHaveBeenCalledWith(
-        "Jump to green: replay session not settled yet; press ignored",
+        "Jump to race start: replay session not settled yet; press ignored",
       );
     });
 
@@ -727,7 +727,7 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
       expect(mockCamera.switchNum).not.toHaveBeenCalled();
       expect(mockStore.greens.findGreen).not.toHaveBeenCalled();
       expect(action["logger"].info).toHaveBeenCalledWith(
-        "Jump to green: replay not open; iRacing ignores replay commands from the car",
+        "Jump to race start: replay not open; iRacing ignores replay commands from the car",
       );
     });
 
@@ -744,7 +744,9 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
       await vi.advanceTimersByTimeAsync(200);
 
       expect(mockReplay.setPlayPosition).toHaveBeenCalledTimes(1);
-      expect(action["logger"].info).toHaveBeenCalledWith("Jump to green: previous jump still in flight; press ignored");
+      expect(action["logger"].info).toHaveBeenCalledWith(
+        "Jump to race start: previous jump still in flight; press ignored",
+      );
       expect(action["activeFastestLapPress"]?.contextId).toBe("ctx-a");
 
       // iRacing reaches the frame: the first press, not cancelled by the second, applies the setting.
@@ -799,7 +801,7 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
 
       expect(mockReplay.nextLap).toHaveBeenCalledTimes(1);
       expect(mockReplay.setPlaySpeed).not.toHaveBeenCalled();
-      expect(action["logger"].info).toHaveBeenCalledWith("Jump to green: jump cancelled by next-lap");
+      expect(action["logger"].info).toHaveBeenCalledWith("Jump to race start: jump cancelled by next-lap");
       expect(action["activeFastestLapPress"]).toBeNull();
     });
   });
@@ -813,7 +815,7 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
       await vi.runAllTimersAsync();
 
       expect(action["logger"].info).toHaveBeenCalledWith(
-        "Jump to green: record MISS (no green); falling back to lap 1 of the pole car",
+        "Jump to race start: record MISS (no green); falling back to lap 1 of the pole car",
       );
       expect(mockStore.laps.findLapStart).toHaveBeenCalledExactlyOnceWith({
         subSessionId: 89_265_205,
@@ -827,7 +829,7 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
       expect(mockReplay.setPlaySpeed).toHaveBeenCalledExactlyOnceWith(1, false);
       expect(countReplayCommands()).toBe(2);
       expect(mockCamera.switchNum).not.toHaveBeenCalled();
-      expect(action["logger"].info).toHaveBeenCalledWith("Jump to green: lap record HIT (matchedBy pair)");
+      expect(action["logger"].info).toHaveBeenCalledWith("Jump to race start: lap record HIT (matchedBy pair)");
     });
 
     it("names the store's reason in the MISS line", async () => {
@@ -839,7 +841,7 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
       await vi.runAllTimersAsync();
 
       expect(action["logger"].info).toHaveBeenCalledWith(
-        "Jump to green: record MISS (no file); falling back to lap 1 of the pole car",
+        "Jump to race start: record MISS (no file); falling back to lap 1 of the pole car",
       );
     });
 
@@ -901,7 +903,7 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
       expect(countReplayCommands()).toBe(0);
       expect(mockStore.laps.findLapStart).not.toHaveBeenCalled();
       expect(action["logger"].warn).toHaveBeenCalledWith(
-        "Jump to green: no pole car and no viewed car to take lap 1 from; press ignored",
+        "Jump to race start: no pole car and no viewed car to take lap 1 from; press ignored",
       );
     });
   });
@@ -914,7 +916,7 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
       await vi.runAllTimersAsync();
 
       expect(action["logger"].info).toHaveBeenCalledWith(
-        "Jump to green: lap record MISS (no file); searching the replay",
+        "Jump to race start: lap record MISS (no file); searching the replay",
       );
       // The search verified the last frame of lap 0, and that is what it recorded as lap 1's start.
       expect(mockStore.laps.recordLapStart).toHaveBeenCalledExactlyOnceWith({
@@ -960,7 +962,7 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
         ...vi.mocked(action["logger"].warn).mock.calls,
       ].map((call) => String(call[0]));
 
-      expect(lines).toContain("Jump to green: walk converged (lap start recorded)");
+      expect(lines).toContain("Jump to race start: walk converged (lap start recorded)");
       expect(lines.filter((line) => line.startsWith("Jump to fastest lap"))).toEqual([]);
     });
 
@@ -1031,7 +1033,7 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
       await vi.runAllTimersAsync();
 
       expect(action["logger"].warn).toHaveBeenCalledWith(
-        expect.stringContaining("Jump to green: walk did not converge"),
+        expect.stringContaining("Jump to race start: walk did not converge"),
       );
       // Nothing unverified goes into the lap record...
       expect(mockStore.laps.recordLapStart).not.toHaveBeenCalled();
@@ -1073,12 +1075,14 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
       await vi.runAllTimersAsync();
 
       expect(action["logger"].warn).toHaveBeenCalledWith(
-        "Jump to green: the search did not reach the start of the pole car's lap 1",
+        "Jump to race start: the search did not reach the start of the pole car's lap 1",
       );
       // No run-up jump: the search's back-step, then the way back to where the press was made.
       expect(seekFrames().slice(-2)).toEqual([RACE_LAP_1_LINE - 600 - 2, IN_RACE]);
       expect(replay.state.frame).toBe(IN_RACE);
-      expect(action["logger"].info).toHaveBeenCalledWith("Jump to green: replay put back where the press found it");
+      expect(action["logger"].info).toHaveBeenCalledWith(
+        "Jump to race start: replay put back where the press found it",
+      );
       // Paused at the press, so no speed command.
       expect(mockReplay.setPlaySpeed).not.toHaveBeenCalled();
       // The camera goes back too, once the way back has landed.
@@ -1122,7 +1126,7 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
 
       // The pole car reads lap 0 at 0.9995 there, inside both bounds, and it is still not the line.
       expect(action["logger"].warn).toHaveBeenCalledWith(
-        "Jump to green: the search did not reach the start of the pole car's lap 1",
+        "Jump to race start: the search did not reach the start of the pole car's lap 1",
       );
       expect(mockStore.laps.recordLapStart).not.toHaveBeenCalled();
       expect(seekFrames().slice(-2)).toEqual([10_999 - 2, 20_000]);
@@ -1232,7 +1236,7 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
         // ...and one Previous Lap from there leaves the car's time on track.
         expect(mockReplay.prevLap).toHaveBeenCalledTimes(1);
         expect(action["logger"].warn).toHaveBeenCalledExactlyOnceWith(
-          "Jump to green: CarIdxLap unavailable during lap-step 1 (lap=-1); aborting",
+          "Jump to race start: CarIdxLap unavailable during lap-step 1 (lap=-1); aborting",
         );
         expect(replay.state.frame).toBe(IN_RACE);
         expect(replay.state.camCarIdx).toBe(VIEWED_CAR);
@@ -1250,13 +1254,15 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
         await vi.runAllTimersAsync();
 
         expect(action["logger"].warn).toHaveBeenCalledExactlyOnceWith(
-          "Jump to green: carIdx 7 was not found on track in session 2/3; aborting",
+          "Jump to race start: carIdx 7 was not found on track in session 2/3; aborting",
         );
         // Five rounds of halving, none of which moved a bound, then the way back.
         expect(seekFrames()).toHaveLength(31 + 1);
         expect(seekFrames().at(-1)).toBe(IN_RACE);
         expect(replay.state.frame).toBe(IN_RACE);
-        expect(action["logger"].info).toHaveBeenCalledWith("Jump to green: replay put back where the press found it");
+        expect(action["logger"].info).toHaveBeenCalledWith(
+          "Jump to race start: replay put back where the press found it",
+        );
         expect(mockReplay.setPlaySpeed).not.toHaveBeenCalled();
         expect(mockReplay.nextLap).not.toHaveBeenCalled();
         expect(mockStore.laps.recordLapStart).not.toHaveBeenCalled();
@@ -1319,9 +1325,11 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
 
       expect(replay.state.frame).toBe(IN_RACE);
       expect(action["logger"].warn).toHaveBeenCalledWith(
-        "Jump to green: speed command failed; replay left paused on the frame the press found it on",
+        "Jump to race start: speed command failed; replay left paused on the frame the press found it on",
       );
-      expect(action["logger"].info).not.toHaveBeenCalledWith("Jump to green: replay put back where the press found it");
+      expect(action["logger"].info).not.toHaveBeenCalledWith(
+        "Jump to race start: replay put back where the press found it",
+      );
       // The cache says paused, so the Play key plays.
       expect(action["replaySpeed"].get("ctx-green")).toBe(0);
     });
@@ -1353,7 +1361,7 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
         // The search landed after 10.4 s, six times the settle timeout, and was
         // not taken for "already in the last session": the race is in the map.
         expect(action["logger"].info).toHaveBeenCalledWith(
-          "Jump to green: session map built — subSession=123, S0/1[0-1295999], S1/2[1296000-end]",
+          "Jump to race start: session map built — subSession=123, S0/1[0-1295999], S1/2[1296000-end]",
         );
         expect(action["logger"].warn).not.toHaveBeenCalled();
         expect(mockStore.laps.recordLapStart).toHaveBeenCalledExactlyOnceWith(
@@ -1371,7 +1379,7 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
         // Practice to qualifying, qualifying to the race, and nothing from the race.
         expect(mockReplay.nextSession).toHaveBeenCalledTimes(2);
         expect(action["logger"].debug).toHaveBeenCalledWith(
-          "Jump to green: session 2 is the last this event lists; nextSession #3 not sent",
+          "Jump to race start: session 2 is the last this event lists; nextSession #3 not sent",
         );
         expect(mockStore.laps.recordLapStart).toHaveBeenCalledTimes(1);
       });
@@ -1397,7 +1405,7 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
         // and was given only the time a search to the end of the tape from there could take.
         expect(mockReplay.nextSession).toHaveBeenCalledTimes(2);
         expect(action["logger"].debug).toHaveBeenCalledWith(
-          "Jump to green: nextSession #2 did not move the cursor from frame 1296000 in 1600 ms",
+          "Jump to race start: nextSession #2 did not move the cursor from frame 1296000 in 1600 ms",
         );
         expect(mockStore.laps.recordLapStart).toHaveBeenCalledExactlyOnceWith(
           expect.objectContaining({ sessionUniqueId: 2, lap: 1, frame: SIX_HOURS + FRAMES_PER_LAP - 1 }),
@@ -1471,11 +1479,13 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
         await vi.runAllTimersAsync();
 
         expect(action["logger"].warn).toHaveBeenCalledExactlyOnceWith(
-          "Jump to green: jump did not settle; aborting walk",
+          "Jump to race start: jump did not settle; aborting walk",
         );
         expect(seekFrames()).toEqual([648_000, 2_000]);
         expect(replay.state.frame).toBe(2_000);
-        expect(action["logger"].info).toHaveBeenCalledWith("Jump to green: replay put back where the press found it");
+        expect(action["logger"].info).toHaveBeenCalledWith(
+          "Jump to race start: replay put back where the press found it",
+        );
       });
     });
 
@@ -1494,12 +1504,14 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
         await vi.runAllTimersAsync();
 
         expect(action["logger"].warn).toHaveBeenCalledExactlyOnceWith(
-          "Jump to green: jump did not settle; aborting walk",
+          "Jump to race start: jump did not settle; aborting walk",
         );
         expect(seekFrames()).toEqual([44_999, IN_RACE]);
         expect(replay.state.frame).toBe(IN_RACE);
         expect(replay.state.seeking).toBe(false);
-        expect(action["logger"].info).toHaveBeenCalledWith("Jump to green: replay put back where the press found it");
+        expect(action["logger"].info).toHaveBeenCalledWith(
+          "Jump to race start: replay put back where the press found it",
+        );
         expect(mockReplay.setPlaySpeed).not.toHaveBeenCalled();
         // Borrowed for the pole car, and returned after the way back landed.
         expect(mockCamera.switchNum.mock.calls.map((call) => call[0])).toEqual([POLE_CAR, VIEWED_CAR]);
@@ -1520,13 +1532,13 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
         await press();
         await vi.runAllTimersAsync();
 
-        expect(action["logger"].warn).toHaveBeenCalledWith("Jump to green: jump did not settle; aborting walk");
+        expect(action["logger"].warn).toHaveBeenCalledWith("Jump to race start: jump did not settle; aborting walk");
         expect(action["logger"].warn).toHaveBeenCalledWith(
-          "Jump to green: could not put the replay back; it is left paused where the search stopped",
+          "Jump to race start: could not put the replay back; it is left paused where the search stopped",
         );
         expect(seekFrames()).toEqual([44_999, IN_RACE]);
         expect(action["logger"].info).not.toHaveBeenCalledWith(
-          "Jump to green: replay put back where the press found it",
+          "Jump to race start: replay put back where the press found it",
         );
         expect(mockReplay.setPlaySpeed).not.toHaveBeenCalled();
         expect(replay.state.camCarIdx).toBe(VIEWED_CAR);
@@ -1557,9 +1569,9 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
         await press();
         await vi.runAllTimersAsync();
 
-        expect(action["logger"].info).toHaveBeenCalledWith("Jump to green: walk cancelled by next-lap");
+        expect(action["logger"].info).toHaveBeenCalledWith("Jump to race start: walk cancelled by next-lap");
         expect(action["logger"].info).not.toHaveBeenCalledWith(
-          "Jump to green: replay put back where the press found it",
+          "Jump to race start: replay put back where the press found it",
         );
         // That command's effect stands: no speed command, and the camera is left on the pole car.
         expect(mockReplay.setPlaySpeed).not.toHaveBeenCalled();
@@ -1633,9 +1645,11 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
 
       // An expected state of a live event, not a fault: info, and no warning.
       expect(action["logger"].info).toHaveBeenCalledWith(
-        "Jump to green: the target session is not in this recording yet",
+        "Jump to race start: the target session is not in this recording yet",
       );
-      expect(action["logger"].info).toHaveBeenCalledWith("Jump to green: replay put back where the press found it");
+      expect(action["logger"].info).toHaveBeenCalledWith(
+        "Jump to race start: replay put back where the press found it",
+      );
       expect(action["logger"].warn).not.toHaveBeenCalled();
       // The map build walked through the recording; the user's place is restored.
       expect(mockReplay.nextSession).toHaveBeenCalled();
@@ -1685,7 +1699,7 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
       await vi.runAllTimersAsync();
 
       expect(action["logger"].warn).toHaveBeenCalledWith(
-        "Jump to green: the recording holds more sessions than the 11 the search maps; the latest session 2 cannot be told, aborting",
+        "Jump to race start: the recording holds more sessions than the 11 the search maps; the latest session 2 cannot be told, aborting",
       );
       // Not the third race, which is the last one the map reached: the fourth is the latest.
       expect(mockStore.laps.recordLapStart).not.toHaveBeenCalled();
@@ -1729,7 +1743,7 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
       await press();
       await vi.runAllTimersAsync();
 
-      expect(action["logger"].warn).toHaveBeenCalledWith("Jump to green: jump not sent");
+      expect(action["logger"].warn).toHaveBeenCalledWith("Jump to race start: jump not sent");
       expect(mockReplay.setPlaySpeed).not.toHaveBeenCalled();
       expect(mockCamera.switchNum.mock.calls).toEqual([
         [POLE_CAR, 0, 0],
@@ -1747,7 +1761,7 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
       await press();
       await vi.runAllTimersAsync();
 
-      expect(action["logger"].warn).toHaveBeenCalledWith("Jump to green: jump not sent; aborting walk");
+      expect(action["logger"].warn).toHaveBeenCalledWith("Jump to race start: jump not sent; aborting walk");
       expect(mockReplay.setPlaySpeed).not.toHaveBeenCalled();
       expect(mockCamera.switchNum.mock.calls).toEqual([
         [POLE_CAR, 0, 0],
@@ -1766,7 +1780,7 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
       cancelReplayCursorOwner("replay-markers next");
       await vi.runAllTimersAsync();
 
-      expect(action["logger"].info).toHaveBeenCalledWith("Jump to green: walk cancelled by replay-markers next");
+      expect(action["logger"].info).toHaveBeenCalledWith("Jump to race start: walk cancelled by replay-markers next");
       expect(mockCamera.switchNum).toHaveBeenCalledExactlyOnceWith(POLE_CAR, 0, 0);
       expect(replay.state.camCarIdx).toBe(POLE_CAR);
       expect(mockReplay.setPlayPosition).not.toHaveBeenCalled();
@@ -1781,7 +1795,7 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
       await press();
       await vi.runAllTimersAsync();
 
-      expect(action["logger"].warn).toHaveBeenCalledWith("Jump to green: camera switch failed, aborting");
+      expect(action["logger"].warn).toHaveBeenCalledWith("Jump to race start: camera switch failed, aborting");
       expect(countReplayCommands()).toBe(0);
       expect(action["activeFastestLapPress"]).toBeNull();
     });
@@ -1794,7 +1808,7 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
       await vi.runAllTimersAsync();
 
       expect(action["logger"].warn).toHaveBeenCalledWith(
-        "Jump to green: could not switch the camera back; it is left on the pole car",
+        "Jump to race start: could not switch the camera back; it is left on the pole car",
       );
       expect(mockReplay.setPlaySpeed).toHaveBeenLastCalledWith(1, false);
     });
@@ -1807,7 +1821,7 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
       fakeReplay(action, { sessionTypes: WEEKEND_TYPES, layout: WEEKEND, cursor: IN_RACE });
       greenAt(30_215);
 
-      host().jumpToGreenFlag();
+      host().jumpToRaceStart();
       await vi.runAllTimersAsync();
 
       expect(mockStore.greens.findGreen.mock.calls[0][0]).toMatchObject({ sessionNum: 2, sessionUniqueId: 3 });
@@ -1823,21 +1837,23 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
 
       await press("ctx-key");
       await vi.advanceTimersByTimeAsync(200);
-      host().jumpToGreenFlag();
+      host().jumpToRaceStart();
 
       expect(mockReplay.setPlayPosition).toHaveBeenCalledTimes(1);
-      expect(action["logger"].info).toHaveBeenCalledWith("Jump to green: previous jump still in flight; press ignored");
+      expect(action["logger"].info).toHaveBeenCalledWith(
+        "Jump to race start: previous jump still in flight; press ignored",
+      );
       expect(action["activeFastestLapPress"]?.contextId).toBe("ctx-key");
     });
 
     it("says whether a press has a race to aim at, which is what the hold preview shows", () => {
-      expect(host().canJumpToGreenFlag()).toBe(false);
+      expect(host().canJumpToRaceStart()).toBe(false);
 
       fakeReplay(action, { sessionTypes: ["Practice"], layout: [WEEKEND[0]], cursor: 5_000 });
-      expect(host().canJumpToGreenFlag()).toBe(false);
+      expect(host().canJumpToRaceStart()).toBe(false);
 
       fakeReplay(action, { sessionTypes: WEEKEND_TYPES, layout: WEEKEND, cursor: 5_000 });
-      expect(host().canJumpToGreenFlag()).toBe(true);
+      expect(host().canJumpToRaceStart()).toBe(true);
     });
   });
 
@@ -1845,16 +1861,16 @@ describe("Replay Control: Jump to Green Flag (#1354)", () => {
     const lastIcon = () => mockAssembleIcon.mock.calls.at(-1)?.[0] as Record<string, unknown>;
 
     it("has its own title and artwork", () => {
-      const uri = generateReplayControlSvg({ mode: "jump-to-green-flag" });
+      const uri = generateReplayControlSvg({ mode: "jump-to-race-start" });
 
-      expect(uri).toContain("GREEN\nFLAG");
+      expect(uri).toContain("RACE\nSTART");
       expect(String(lastIcon().graphicSvg)).toContain("<svg");
       expect(lastIcon().dimmed).toBeUndefined();
       expect(lastIcon().colors).toEqual({ backgroundColor: "#101010", textColor: "#ffffff", graphic1Color: "#2ecc71" });
     });
 
     it("draws the unavailable look greyed and faded, background kept", () => {
-      generateReplayControlSvg({ mode: "jump-to-green-flag" }, false, undefined, undefined, false, true);
+      generateReplayControlSvg({ mode: "jump-to-race-start" }, false, undefined, undefined, false, true);
 
       expect(lastIcon().dimmed).toBe(true);
       expect(lastIcon().colors).toEqual({

@@ -6,7 +6,7 @@ import {
   GREEN_APPROACH_FRAMES,
   GREEN_FALLBACK_MIN_LAP_DIST,
   greenApproachFrame,
-  isGreenFlagUnavailable,
+  isRaceStartUnavailable,
   lastListedSessionNum,
   resolveGreenFallbackCar,
   resolveGreenFlagTarget,
@@ -225,17 +225,17 @@ describe("resolveGreenFallbackCar", () => {
   });
 });
 
-describe("isGreenFlagUnavailable", () => {
+describe("isRaceStartUnavailable", () => {
   it("is unavailable when the session list holds no race", () => {
-    expect(isGreenFlagUnavailable(sessionInfoWith(["Practice"]))).toBe(true);
-    expect(isGreenFlagUnavailable(sessionInfoWith(["Practice", "Lone Qualify", "Warmup"]))).toBe(true);
-    expect(isGreenFlagUnavailable(sessionInfoWith(["Offline Testing"]))).toBe(true);
+    expect(isRaceStartUnavailable(sessionInfoWith(["Practice"]))).toBe(true);
+    expect(isRaceStartUnavailable(sessionInfoWith(["Practice", "Lone Qualify", "Warmup"]))).toBe(true);
+    expect(isRaceStartUnavailable(sessionInfoWith(["Offline Testing"]))).toBe(true);
   });
 
   it("is available as soon as one session is a race, wherever the cursor is", () => {
-    expect(isGreenFlagUnavailable(sessionInfoWith(["Practice", "Lone Qualify", "Race"]))).toBe(false);
-    expect(isGreenFlagUnavailable(sessionInfoWith(["Race"]))).toBe(false);
-    expect(isGreenFlagUnavailable(sessionInfoWith(["Practice", "Race", "Race"]))).toBe(false);
+    expect(isRaceStartUnavailable(sessionInfoWith(["Practice", "Lone Qualify", "Race"]))).toBe(false);
+    expect(isRaceStartUnavailable(sessionInfoWith(["Race"]))).toBe(false);
+    expect(isRaceStartUnavailable(sessionInfoWith(["Practice", "Race", "Race"]))).toBe(false);
   });
 
   it.each([
@@ -244,14 +244,14 @@ describe("isGreenFlagUnavailable", () => {
     ["an empty session list", { SessionInfo: { Sessions: [] } }],
     ["a session list that is not a list", { SessionInfo: { Sessions: "none" } }],
   ])("keeps the plain look with %s: there is nothing to judge yet", (_name, sessionInfo) => {
-    expect(isGreenFlagUnavailable(sessionInfo)).toBe(false);
+    expect(isRaceStartUnavailable(sessionInfo)).toBe(false);
   });
 
   it("agrees with the target rule: unavailable exactly when a listed weekend has no target", () => {
     for (const types of [["Practice"], ["Practice", "Race"], ["Warmup"], ["Race", "Race"]]) {
       const sessionInfo = sessionInfoWith(types);
 
-      expect(isGreenFlagUnavailable(sessionInfo)).toBe(resolveGreenFlagTarget(sessionInfo, cursorIn(0, 1)) === null);
+      expect(isRaceStartUnavailable(sessionInfo)).toBe(resolveGreenFlagTarget(sessionInfo, cursorIn(0, 1)) === null);
     }
   });
 });

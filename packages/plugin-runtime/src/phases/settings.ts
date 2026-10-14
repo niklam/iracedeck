@@ -235,7 +235,7 @@ export function initSettings(core: Core, audio: Audio, voicePacks: VoicePacks): 
     replaySessionStore.laps.recordLapTime(ev.data);
   });
   // The translator's green recorder (#1354) publishes the race start and every
-  // caution restart; the store keeps them beside the laps for Jump to Green Flag.
+  // caution restart; the store keeps them beside the laps for Jump to Race Start.
   core.bus.subscribe("replay.greenFlag", (ev) => {
     replaySessionStore.greens.record(ev.data);
   });

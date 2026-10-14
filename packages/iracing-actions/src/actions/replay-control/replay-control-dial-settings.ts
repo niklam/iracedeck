@@ -23,7 +23,7 @@ export const REPLAY_DIAL_GESTURES = [
   "set-1x-play",
   "reverse",
   "jump-to-live",
-  "jump-to-green-flag",
+  "jump-to-race-start",
   "none",
 ] as const;
 
