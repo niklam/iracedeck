@@ -121,7 +121,8 @@ export class ReplaySpeed extends ConnectionStateAwareAction<ReplaySpeedSettings>
     if (ev.payload.ticks === 0) return;
 
     const direction: SpeedDirection = ev.payload.ticks > 0 ? "increase" : "decrease";
-    this.executeSpeed(direction);
+    // A detent is a repeat of the turn, never a second press: behind a search it waits (#1430).
+    this.executeSpeed(direction, undefined, true);
   }
 
   private parseSettings(settings: unknown): ReplaySpeedSettings {
@@ -131,11 +132,11 @@ export class ReplaySpeed extends ConnectionStateAwareAction<ReplaySpeedSettings>
   }
 
   /** Sends a speed command: a direction from a key or a turn, or the dial press's reset to normal speed. */
-  private executeSpeed(command: SpeedDirection | "reset", origin?: string): void {
+  private executeSpeed(command: SpeedDirection | "reset", origin?: string, repeat = false): void {
     // A speed change breaks a running Jump to Fastest Lap walk's probes as
     // surely as a seek, so it goes through the replay command gate, which
     // takes the cursor first and waits behind a jump under way (#1334, #1430).
-    const result = pressReplayCommand(SPEED_COMMANDS[command], { by: `replay-speed-${command}`, origin });
+    const result = pressReplayCommand(SPEED_COMMANDS[command], { by: `replay-speed-${command}`, origin, repeat });
     const success = result.kind === "sent" ? result.ok : false;
 
     if (result.kind !== "sent") this.logger.debug(`Gate result: ${result.kind}`);

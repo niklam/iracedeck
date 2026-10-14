@@ -234,7 +234,8 @@ export class ReplayNavigation extends SimIRacingAction<ReplayNavigationSettings>
     if (!pair) return;
 
     const navigation = ev.payload.ticks > 0 ? pair.next : pair.prev;
-    this.executeNavigation({ ...settings, navigation });
+    // A detent is a repeat of the turn, never a second press: behind a search it waits (#1430).
+    this.executeNavigation({ ...settings, navigation }, undefined, true);
   }
 
   private parseSettings(settings: unknown): ReplayNavigationSettings {
@@ -243,14 +244,18 @@ export class ReplayNavigation extends SimIRacingAction<ReplayNavigationSettings>
     return parsed.success ? parsed.data : ReplayNavigationSettings.parse({});
   }
 
-  private executeNavigation(settings: ReplayNavigationSettings, origin?: string): void {
+  private executeNavigation(settings: ReplayNavigationSettings, origin?: string, repeat = false): void {
     const navigation = settings.navigation;
 
     // Every navigation command moves the replay, so it goes through the replay
     // command gate, which takes the cursor first (a running Jump to Fastest
     // Lap walk stops and the Replay Markers landing is cleared, as for Replay
     // Control, #1334) and holds or retargets it behind a jump under way (#1430).
-    const result = pressReplayCommand(navigationCommand(settings), { by: `replay-navigation-${navigation}`, origin });
+    const result = pressReplayCommand(navigationCommand(settings), {
+      by: `replay-navigation-${navigation}`,
+      origin,
+      repeat,
+    });
     const success = result.kind === "sent" ? result.ok : false;
 
     if (result.kind !== "sent") this.logger.debug(`Gate result: ${result.kind}`);

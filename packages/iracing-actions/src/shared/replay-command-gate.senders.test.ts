@@ -367,6 +367,61 @@ describe("the jump sequence and the other senders (#1430)", () => {
     });
   });
 
+  describe("what the second read of #1430 turned up", () => {
+    it("a Play pressed behind the gate's own playback step waits, and does not take over the search", async () => {
+      setUp({ speed: PLAYING, speedLagMs: 20, searches: { nextLap: (from) => from + 60_000 } });
+      void marker(150_000);
+      await wait(60);
+      press({ kind: "search", search: "nextLap" });
+
+      for (let i = 0; i < 200 && !sim.calls.includes("nextLap"); i++) await wait(20);
+
+      await wait(30);
+
+      expect(press(PLAY)).toEqual({ kind: "held" });
+
+      await wait(3_000);
+
+      expect(sim.calls.filter((c) => c.startsWith("setPlayPosition"))).toEqual(["setPlayPosition 0 150000"]);
+      expect(sim.frame()).toBeGreaterThanOrEqual(210_000);
+      expect(sim.thrown).toBe(0);
+    });
+
+    it("a second marker jump carries on the playback a search waiting behind the first one carried", async () => {
+      setUp({ speed: PLAYING, speedLagMs: 20, searches: { nextLap: (from) => from + 500 } });
+      void marker(150_000);
+      await wait(60);
+      press({ kind: "search", search: "nextLap" });
+      void marker(160_000);
+      await wait(4_000);
+
+      expect(sim.calls.at(-1)).toBe("setPlaySpeed 1 false");
+      expect(sim.calls).not.toContain("nextLap");
+    });
+
+    it("runs the jump's step after the landing when a press takes the cursor in the poll that reads it", async () => {
+      setUp();
+
+      const afterLanding = vi.fn(() => true);
+
+      void marker(150_000, { afterLanding });
+      // The seek lands with no poll run since: the press's own reading is the first to see it.
+      vi.setSystemTime(Date.now() + 3_000);
+      press(PLAY);
+      await wait(1_000);
+
+      expect(afterLanding).toHaveBeenCalledTimes(1);
+    });
+
+    it("a jump to the frame on screen while a search is on its way is a real jump, with a target", () => {
+      setUp({ frame: 150_000, searches: { nextSession: (from) => from + 600_000 } });
+      press({ kind: "search", search: "nextSession" });
+      void marker(150_000);
+
+      expect(pendingReplayTarget()).toMatchObject({ frame: 150_000 });
+    });
+  });
+
   describe("the jump's own step after the landing", () => {
     it("still runs when a Play took the cursor during the seek", async () => {
       setUp();

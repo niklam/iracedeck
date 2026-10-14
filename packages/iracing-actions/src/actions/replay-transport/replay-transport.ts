@@ -164,7 +164,8 @@ export class ReplayTransport extends ConnectionStateAwareAction<ReplayTransportS
     if (ev.payload.ticks === 0) return;
 
     const transport: TransportAction = ev.payload.ticks > 0 ? "frame-forward" : "frame-backward";
-    this.executeTransport(transport);
+    // A detent is a repeat of the turn, never a second press: behind a search it waits (#1430).
+    this.executeTransport(transport, undefined, true);
   }
 
   private parseSettings(settings: unknown): ReplayTransportSettings {
@@ -173,7 +174,7 @@ export class ReplayTransport extends ConnectionStateAwareAction<ReplayTransportS
     return parsed.success ? parsed.data : ReplayTransportSettings.parse({});
   }
 
-  private executeTransport(transport: TransportAction, origin?: string): void {
+  private executeTransport(transport: TransportAction, origin?: string, repeat = false): void {
     // A pause or a frame step mid-walk breaks a running Jump to Fastest Lap
     // walk's probes as surely as a seek, so every transport command goes
     // through the replay command gate, which takes the cursor first and holds
@@ -181,6 +182,7 @@ export class ReplayTransport extends ConnectionStateAwareAction<ReplayTransportS
     const result = pressReplayCommand(TRANSPORT_COMMANDS[transport], {
       by: `replay-transport-${transport}`,
       origin,
+      repeat,
     });
     const success = result.kind === "sent" ? result.ok : false;
 

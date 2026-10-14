@@ -347,6 +347,12 @@ interface Slot {
   readonly restoreSpeed: ReplaySpeed | null;
   /** Reads after the read-back, for a search behind a jump. */
   holds: Sample[];
+  /**
+   * Whether it is the gate's own follow-on to a command that went out (the
+   * playback step or the speed a takeover gives back), not a press: a press
+   * that arrives behind it is a first press, which waits, not a second one.
+   */
+  follow?: boolean;
 }
 
 /** A replay jump holding the cursor (`replay-jump-playback.ts`, the walk). */
@@ -367,6 +373,8 @@ interface HeldJump {
   owedSince: number;
   /** Whether its step after the landing runs on the read-back although it no longer holds the cursor. */
   carried: boolean;
+  /** Whether its step after the landing has run, by the jump itself or carried by the gate. */
+  stepDone: boolean;
   /**
    * Whether its frame was the one a paused replay already showed, with nothing
    * under way: such a jump records no target, since it could never read back
@@ -588,7 +596,7 @@ function publish(): void {
 
   for (const origin of tokens) {
     const before = views.get(origin) ?? EMPTY_VIEW;
-    const after = next.get(origin) ?? EMPTY_VIEW;
+    let after = next.get(origin) ?? EMPTY_VIEW;
     const ended = [...(batchEnds.get(origin) ?? [])];
 
     // A fact that is gone with no end recorded for it still ends: never silently.
@@ -604,7 +612,20 @@ function publish(): void {
       runs.delete(origin);
       views.delete(origin);
     } else {
-      if (!runs.has(origin)) runs.set(origin, batchNow);
+      // A fact of the token completed or given up in this change while another began: a new run. A held
+      // press of the token that went out in it began that run at its press; a superseded fact (a
+      // retarget, a takeover) does not end the run at all.
+      const restarted = after.underWay !== null && ended.some((e) => e.fact === "underWay" && e.class !== "superseded");
+
+      if (restarted && after.underWay !== null) {
+        const handedOver = ended.some((e) => e.fact === "waiting" && e.reason === "sent-on-landing");
+        const since = handedOver ? (before.waiting?.since ?? batchNow) : batchNow;
+
+        runs.set(origin, since);
+        after = { ...after, underWay: { ...after.underWay, since } };
+      } else if (!runs.has(origin)) {
+        runs.set(origin, batchNow);
+      }
 
       views.set(origin, after);
     }
@@ -698,6 +719,20 @@ function currentSpeed(reading: ReplayReading | null, now: number): ReplaySpeed {
   return reading?.speed ?? { speed: 0, slowMotion: false };
 }
 
+/** Whether the gate, or a replay jump's playback step, has just sent a playing speed telemetry does not show yet. */
+function startingToMove(now: number): boolean {
+  if (speedSent !== null && speedSent.speed.speed !== 0 && now - speedSent.at < SPEED_SENT_HOLD_MS) return true;
+
+  const applied = pendingReplayJumpSpeed();
+
+  return (
+    applied !== null &&
+    applied.appliedAt !== null &&
+    applied.speed !== 0 &&
+    now - applied.appliedAt < SPEED_SENT_HOLD_MS
+  );
+}
+
 function recordSearch(
   kind: SearchRecordKind,
   telemetry: TelemetryData | null,
@@ -746,7 +781,7 @@ function recordTarget(
   telemetry: TelemetryData | null,
   now: number,
   origin: string | undefined,
-  details: { sent?: boolean; heldBy?: () => boolean } = {},
+  details: { sent?: boolean; heldBy?: () => boolean; minGiveUpMs?: number } = {},
 ): ReplayTarget {
   const previous = pendingReplayTarget();
   const target = recordReplayTarget(frame, telemetry, now, { ...details, origin });
@@ -815,10 +850,15 @@ function dispatch(
 
       if (!ok) return false;
 
+      const searching = searchOnItsWay();
+
       endSearch("forgotten");
 
-      // A jump to the frame on screen, with nothing standing, can never read back conclusively.
-      if (pendingReplayTarget() === null && reading !== null && reading.frame === command.frame) return true;
+      // A jump to the frame on screen, with nothing standing, can never read back conclusively. Not so
+      // while a search may be on its way: the jump is then a real one, which ends the search.
+      if (!searching && pendingReplayTarget() === null && reading !== null && reading.frame === command.frame) {
+        return true;
+      }
 
       // A jump sent bare into a moving replay (an old profile's Set Play Position) runs past its frame,
       // so its target would never read back. The seek itself still shows, as the witness.
@@ -858,7 +898,7 @@ function dispatch(
 
       // A step into a replay that reads paused lands one frame on; one that still reads playing lands
       // wherever the pause catches it, and records nothing. The reading's own speed, not a pause just sent.
-      if (ok && reading !== null && reading.rate === 0) {
+      if (ok && reading !== null && reading.rate === 0 && !startingToMove(now)) {
         const frame = reading.frame + command.direction;
         const last = reading.left === undefined ? Infinity : reading.frame + reading.left - 1;
 
@@ -931,7 +971,15 @@ function settle(telemetry: TelemetryData | null, now: number): void {
 
   if (search !== null && reading !== null) judgeSearch(search, reading, now);
 
-  if (search !== null && !search.landed && search.onItsWay && now - search.sentAt >= search.couldRunMs) {
+  // On a paused replay nothing shows a search, so the time it could run decides. One a playing replay
+  // shows on its way (the frame standing still) stays so until it leaps to its landing.
+  if (
+    search !== null &&
+    !search.landed &&
+    search.onItsWay &&
+    !search.seen &&
+    now - search.sentAt >= search.couldRunMs
+  ) {
     search.onItsWay = false;
     noteEnd(search.origin, "underWay", "nothing-moved");
     log.debug(`Replay search ${search.kind}: no longer taken to be on its way after ${search.couldRunMs} ms`);
@@ -1008,6 +1056,10 @@ function settleTarget(telemetry: TelemetryData | null, now: number): void {
 }
 
 function runCarried(jump: HeldJump, landing: TelemetryData): void {
+  if (jump.stepDone) return;
+
+  jump.stepDone = true;
+
   try {
     jump.afterLanding?.(landing);
   } catch (err) {
@@ -1147,6 +1199,12 @@ function leftReplay(): void {
 function disconnect(): void {
   if (search !== null) endSearch("disconnected");
 
+  if (held !== null) {
+    noteEnd(held.origin, "underWay", "disconnected");
+    closedJumps.set(held.claim, held);
+    held = null;
+  }
+
   if (pendingReplayTarget() !== null) clearTarget("cleared", "disconnected");
 
   emptySlot("disconnected", "the sim disconnected");
@@ -1194,7 +1252,7 @@ function waitBehindSearch(
 
   if (record === null) return { kind: "not-sent", reason: "no search stands" };
 
-  if (slot !== null && slot.behind === "search" && options.repeat !== true) {
+  if (slot !== null && slot.behind === "search" && slot.follow !== true && options.repeat !== true) {
     emptySlot("replaced");
 
     return takeOver(command, options, telemetry, now);
@@ -1242,6 +1300,8 @@ function takeOver(
 
   const moving = currentSpeed(readReplay(telemetry), now).speed !== 0;
   const restore = record !== null && moving ? record.speedAtSend : null;
+  // The jump back may have to cover whatever the search has crossed by now, not one frame.
+  const searchWaitMs = record?.couldRunMs ?? 0;
 
   endSearch("forgotten");
 
@@ -1257,13 +1317,13 @@ function takeOver(
 
   if (!ok) return { kind: "taking-over", ok: false };
 
-  const target = recordTarget(beside, telemetry, now, options.origin);
+  const target = recordTarget(beside, telemetry, now, options.origin, { minGiveUpMs: searchWaitMs });
 
   takeover = {
     targetId: target.id,
     fromFrame: reading.frame,
     sentAt: now,
-    waitMs: replayTargetGiveUpMs(1),
+    waitMs: Math.max(replayTargetGiveUpMs(1), searchWaitMs),
     moved: null,
   };
 
@@ -1494,7 +1554,7 @@ function goOut(current: Slot, telemetry: TelemetryData | null, now: number): voi
     }
   }
 
-  if (!ok || current.command.kind !== "search") return;
+  if (!ok || (current.command.kind !== "search" && current.command.kind !== "go-to")) return;
 
   const follow: SlotCommand | null =
     current.jumpPlayback !== null
@@ -1515,6 +1575,7 @@ function goOut(current: Slot, telemetry: TelemetryData | null, now: number): voi
     jumpPlayback: null,
     restoreSpeed: null,
     holds: [],
+    follow: true,
   };
 }
 
@@ -1858,6 +1919,7 @@ export function openReplayJump(
     owed: false,
     owedSince: 0,
     carried: false,
+    stepDone: false,
     onScreen: false,
     frameOnScreen: null,
     afterLanding: options.afterLanding,
@@ -1873,12 +1935,15 @@ export function openReplayJump(
     settle(options.telemetry, now);
     emptySlot("replaced");
 
+    // Before the search is forgotten: a jump to the frame on screen is a real jump while one is on its way.
+    const searching = searchOnItsWay();
+
     if (options.sendsPositionJump) endSearch("forgotten");
 
     jump.inheritedPause = pausedForJumpUnderWay(null, options.telemetry);
     held = jump;
 
-    if (options.frame !== undefined) recordJumpFrame(jump, options.frame, options.telemetry, now);
+    if (options.frame !== undefined) recordJumpFrame(jump, options.frame, options.telemetry, now, searching);
   });
   arm();
 
@@ -1911,17 +1976,29 @@ export function recordReplayJumpTarget(
   arm();
 }
 
+/** Whether a search the gate sent may still be on its way. */
+function searchOnItsWay(): boolean {
+  return search !== null && !search.landed && search.onItsWay;
+}
+
 /**
  * Records the frame a replay jump is going to as the pending target, unless a
  * paused replay already shows it with nothing under way: such a jump records
  * no target (it could never read back conclusively) and lands at once.
  */
-function recordJumpFrame(jump: HeldJump, frame: number, telemetry: TelemetryData | null, now: number): void {
+function recordJumpFrame(
+  jump: HeldJump,
+  frame: number,
+  telemetry: TelemetryData | null,
+  now: number,
+  searching: boolean = searchOnItsWay(),
+): void {
   const reading = readReplay(telemetry);
 
   jump.onScreen =
     pendingReplayTarget() === null &&
     !witness &&
+    !searching &&
     reading !== null &&
     reading.frame === frame &&
     currentSpeed(reading, now).speed === 0;
@@ -2096,6 +2173,10 @@ onReplayCursorTaken(() => {
 
     jump.carried = ownTarget;
 
+    // Its target read back before this take, and the jump has not yet run its step after the landing:
+    // it now never will, so the gate runs it here.
+    if (!ownTarget && jump.status === "read-back" && jump.landing !== null) runCarried(jump, jump.landing);
+
     if (ownTarget && target !== null && !target.sent) {
       jump.owed = true;
       jump.owedSince = now;
@@ -2138,15 +2219,26 @@ function pausedForJumpUnderWay(claim: ReplayCursorClaim | null, telemetry: Telem
 
 /** Hands over a speed that waits in the slot, emptying it: a replay jump that starts takes it as the speed it captured. */
 export function takeWaitingReplaySpeed(): ReplaySpeed | null {
-  if (slot === null || slot.command.kind !== "speed") return null;
+  if (slot === null) return null;
 
-  const { speed, slowMotion } = slot.command;
+  const { command } = slot;
+  // A speed waiting is the driver's newest word; a search that carries a jump's playback, or the playback
+  // step itself, carries the speed that jump captured, which the jump starting now carries on.
+  const taken: ReplaySpeed | null =
+    command.kind === "speed"
+      ? { speed: command.speed, slowMotion: command.slowMotion }
+      : command.kind === "playback"
+        ? command.captured
+        : slot.jumpPlayback;
+
+  if (taken === null) return null;
+
   const now = env.now();
 
   batch(now, () => emptySlot("replaced"));
   arm();
 
-  return { speed, slowMotion };
+  return { speed: taken.speed, slowMotion: taken.slowMotion };
 }
 
 /** The speed the replay had when the search standing went out, slow motion included; null with none standing. */
@@ -2281,7 +2373,8 @@ export async function waitForReplaySearchLanding(options: {
   const record = search;
   const startedAt = env.now();
 
-  if (record === null) return "not-landed";
+  // A record that has landed already is an earlier search's: the caller's own did not record.
+  if (record === null || record.landed) return "not-landed";
 
   for (;;) {
     if (options.claim !== undefined && options.claim.cancelledBy !== null) return "superseded";
@@ -2341,6 +2434,8 @@ export async function settleReplayByJump(
 
     if (reading === null) return;
 
+    const searchWaitMs = search?.couldRunMs ?? 0;
+
     endSearch("forgotten");
 
     if (currentSpeed(readReplay(telemetry), startNow).speed !== 0) {
@@ -2352,13 +2447,13 @@ export async function settleReplayByJump(
 
     if (!sendRaw("setPlayPosition", (r) => r.setPlayPosition(ReplayPosMode.Begin, beside))) return;
 
-    const target = recordTarget(beside, telemetry, startNow, options.origin);
+    const target = recordTarget(beside, telemetry, startNow, options.origin, { minGiveUpMs: searchWaitMs });
 
     takeover = {
       targetId: target.id,
       fromFrame: reading.frame,
       sentAt: startNow,
-      waitMs: replayTargetGiveUpMs(1),
+      waitMs: Math.max(replayTargetGiveUpMs(1), searchWaitMs),
       moved: null,
     };
     targetId = target.id;

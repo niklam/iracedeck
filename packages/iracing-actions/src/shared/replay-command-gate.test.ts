@@ -15,6 +15,7 @@ import {
   waitForReplaySettled,
   waitingReplaySpeed,
 } from "./replay-command-gate.js";
+import { openReplayJump } from "./replay-command-gate.js";
 import { fakeReplay, type FakeReplay, type FakeReplayOptions } from "./replay-command-gate.test-support.js";
 import { _resetReplayCursor, claimReplayCursor } from "./replay-cursor.js";
 import { _resetReplayPositionState, pendingReplayTarget, replayTargetGiveUpMs } from "./replay-position-state.js";
@@ -666,6 +667,98 @@ describe("replay command gate", () => {
 
       expect(sim.calls).toEqual(["nextLap", "goToEnd"]);
       expect(leftForLive).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("what the second read of #1430 turned up", () => {
+    it("a go to start that took over gets back the speed the replay had when the search went out", async () => {
+      setUp({ frame: 200_000, speed: { speed: 1, slowMotion: false } });
+      press({ kind: "search", search: "nextSession" });
+      press({ kind: "go-to", end: "start" });
+      await wait(3_000);
+
+      const goTo = sim.calls.indexOf("goToStart");
+
+      expect(goTo).toBeGreaterThan(0);
+      expect(sim.calls.slice(goTo + 1)).toEqual(["setPlaySpeed 1 false"]);
+      expect(sim.thrown).toBe(0);
+    });
+
+    it("a takeover's jump waits as long as the search it replaces could have run, not three seconds", () => {
+      setUp({ frame: 0, searches: { nextSession: () => SIX_HOURS - 1_000 } });
+      press({ kind: "search", search: "nextSession" });
+      press(PLAY);
+      press(PLAY);
+
+      expect(getReplayGateRecord().target?.giveUpMs).toBeGreaterThan(20_000);
+    });
+
+    it("a search a playing replay shows on its way stays so past the time it could run", async () => {
+      setUp({
+        frame: 1_290_000,
+        speed: { speed: 1, slowMotion: false },
+        minSeekMs: 8_000,
+        // Forward, near the end of the tape: the time it could run is the 1.6 s floor, far less than it takes.
+        searches: { nextLap: (from) => from + 3_000 },
+      });
+      press({ kind: "search", search: "nextLap" });
+      await wait(50);
+
+      expect(press(PLAY)).toEqual({ kind: "held" });
+
+      await wait(5_000);
+
+      expect(sim.calls).toEqual(["nextLap"]);
+
+      await wait(4_000);
+
+      expect(sim.calls).toEqual(["nextLap", "setPlaySpeed 1 false"]);
+      expect(sim.thrown).toBe(0);
+    });
+
+    it("a frame step right after a Play went out records no target: the replay is starting to move", () => {
+      setUp({ frame: 5_000 });
+      press(PLAY);
+      press({ kind: "step", direction: 1 });
+
+      expect(pendingReplayTarget()).toBeNull();
+    });
+
+    it("a token's new jump in the change that read back its last one starts a new run", () => {
+      setUp({ frame: 2_000 });
+      press({ kind: "jump", frame: 100_000 }, "dial");
+
+      const first = getReplayGateView("dial").underWay?.since;
+
+      // The jump has landed and no poll has read it yet: the next press's own reading does.
+      vi.setSystemTime(Date.now() + 3_000);
+      press({ kind: "jump", frame: 100_010 }, "dial");
+
+      expect(getReplayGateView("dial").underWay?.since).toBe(Date.now());
+      expect(getReplayGateView("dial").underWay?.since).not.toBe(first);
+    });
+
+    it("a disconnect ends a held replay jump's fact at once", async () => {
+      setUp({ frame: 2_000 });
+
+      const claim = claimReplayCursor("walk");
+
+      openReplayJump(claim, { origin: "walk-key", telemetry: sim.telemetry(), sendsPositionJump: true });
+
+      expect(getReplayGateView("walk-key").underWay).not.toBeNull();
+
+      connected = false;
+      await wait(40);
+
+      expect(getReplayGateView("walk-key").underWay).toBeNull();
+    });
+
+    it("the search landing wait does not take an earlier search's landing for the caller's", async () => {
+      setUp({ frame: 2_000, searches: { nextLap: (from) => from + 500 } });
+      press({ kind: "search", search: "nextLap" });
+      await wait(500);
+
+      await expect(waitForReplaySearchLanding({ patienceMs: 400, hardBoundMs: 5_000 })).resolves.toBe("not-landed");
     });
   });
 

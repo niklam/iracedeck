@@ -135,6 +135,12 @@ export interface ReplayTargetDetails {
   readonly heldBy?: () => boolean;
   /** The origin token of the press the target belongs to (the state seam, #1430). */
   readonly origin?: string;
+  /**
+   * The shortest its own wait may be (ms), when the distance from the reading
+   * says less than the jump may have to go: a takeover's jump is one frame
+   * from a reading a far search may have left behind.
+   */
+  readonly minGiveUpMs?: number;
 }
 
 /** The pending target, as the gate reads it. */
@@ -382,7 +388,7 @@ export function recordReplayTarget(
     frame,
     sentAt: nowMs,
     sent: details.sent ?? true,
-    giveUpMs: replayTargetGiveUpMs(jumpDistance(frame, shown, pending, anchor)),
+    giveUpMs: Math.max(replayTargetGiveUpMs(jumpDistance(frame, shown, pending, anchor)), details.minGiveUpMs ?? 0),
     origin: details.origin,
     heldBy: details.heldBy,
     anchor,
