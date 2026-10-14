@@ -1,0 +1,86 @@
+[
+  {
+    "snapshot": "20260928-194048-015",
+    "sessionInfo": {
+      "WeekendInfo": {
+        "SimMode": "full",
+        "SubSessionID": 0
+      }
+    },
+    "telemetry": {
+      "SessionTime": 1704.166666667184,
+      "SessionNum": 0,
+      "SessionUniqueID": 2,
+      "IsOnTrack": false,
+      "IsReplayPlaying": true,
+      "ReplayFrameNum": 69955,
+      "ReplayFrameNumEnd": 34780,
+      "ReplaySessionTime": 1123.5166666666667,
+      "ReplaySessionNum": 0,
+      "ReplayPlaySpeed": 1
+    }
+  },
+  {
+    "snapshot": "20260928-210628-373",
+    "sessionInfo": {
+      "WeekendInfo": {
+        "SimMode": "full",
+        "SubSessionID": 0
+      }
+    },
+    "telemetry": {
+      "SessionTime": 580.0000000015398,
+      "SessionNum": 0,
+      "SessionUniqueID": 2,
+      "IsOnTrack": false,
+      "IsReplayPlaying": true,
+      "ReplayFrameNum": 15021,
+      "ReplayFrameNumEnd": 27630,
+      "ReplaySessionTime": 118.51666666666667,
+      "ReplaySessionNum": 0,
+      "ReplayPlaySpeed": 1
+    }
+  },
+  {
+    "snapshot": "20260929-182921-601",
+    "sessionInfo": {
+      "WeekendInfo": {
+        "SimMode": "full",
+        "SubSessionID": 0
+      }
+    },
+    "telemetry": {
+      "SessionTime": 737.1500000013968,
+      "SessionNum": 0,
+      "SessionUniqueID": 3,
+      "IsOnTrack": false,
+      "IsReplayPlaying": true,
+      "ReplayFrameNum": 13059,
+      "ReplayFrameNumEnd": 40182,
+      "ReplaySessionTime": 66.47999877929688,
+      "ReplaySessionNum": 0,
+      "ReplayPlaySpeed": 0
+    }
+  },
+  {
+    "snapshot": "20260929-182927-480",
+    "sessionInfo": {
+      "WeekendInfo": {
+        "SimMode": "full",
+        "SubSessionID": 0
+      }
+    },
+    "telemetry": {
+      "SessionTime": 743.0166666680582,
+      "SessionNum": 0,
+      "SessionUniqueID": 3,
+      "IsOnTrack": false,
+      "IsReplayPlaying": true,
+      "ReplayFrameNum": 53592,
+      "ReplayFrameNumEnd": 1,
+      "ReplaySessionTime": 742.0166666666667,
+      "ReplaySessionNum": 0,
+      "ReplayPlaySpeed": 1
+    }
+  }
+]

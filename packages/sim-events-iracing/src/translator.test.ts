@@ -5255,6 +5255,168 @@ describe("sim-events-iracing translator", () => {
     });
   });
 
+  // Issue #1426: the session record reads a second class of tick (out of the
+  // car at the live edge), which only a pre-guard diff whose state outlives
+  // the replay wipes can record from — so it is pinned by publishing from the
+  // garage and by publishing a pair once across trips to it. The incident
+  // record is the lap and green records' sibling and is pinned by their
+  // pre-guard-and-wiped signature.
+  describe("replay session record (issue #1426)", () => {
+    const SUB_SESSION = 86697546;
+
+    function liveSession(simMode = "full"): Record<string, unknown> {
+      return {
+        SessionInfo: { Sessions: [{ SessionType: "Practice" }, { SessionType: "Qualify" }, { SessionType: "Race" }] },
+        WeekendInfo: { TrackID: 42, SimMode: simMode, SubSessionID: SUB_SESSION },
+        DriverInfo: { DriverCarIdx: 0, Drivers: [{ CarIdx: 0, CarNumberRaw: 7, UserID: 100 }] },
+      };
+    }
+
+    type SessionTickOptions = { frame: number; time: number; sessionNum?: number; uniqueId?: number };
+
+    /** In the car: the live frame is `ReplayFrameNumEnd`. */
+    function carTick(o: SessionTickOptions): TelemetryData {
+      return telemetry({
+        SessionNum: o.sessionNum ?? 1,
+        SessionUniqueID: o.uniqueId ?? 2,
+        SessionTime: o.time,
+        IsReplayPlaying: false,
+        IsOnTrack: true,
+        ReplayFrameNum: 0,
+        ReplayFrameNumEnd: o.frame,
+      });
+    }
+
+    /** Out of the car at the live edge of the in-session replay: the cursor one frame from the end. */
+    function garageTick(o: SessionTickOptions & { toEnd?: number }): TelemetryData {
+      const toEnd = o.toEnd ?? 1;
+
+      return telemetry({
+        SessionNum: o.sessionNum ?? 1,
+        SessionUniqueID: o.uniqueId ?? 2,
+        SessionTime: o.time,
+        IsReplayPlaying: true,
+        IsOnTrack: false,
+        ReplayFrameNum: o.frame - toEnd,
+        ReplayFrameNumEnd: toEnd,
+      });
+    }
+
+    type RecordedStart = { sessionNum: number; sessionUniqueId: number; frame: number };
+
+    function recordStarts(): RecordedStart[] {
+      const seen: RecordedStart[] = [];
+
+      getEventBus().subscribe("replay.sessionStarted", (ev) => {
+        seen.push({ sessionNum: ev.data.sessionNum, sessionUniqueId: ev.data.sessionUniqueId, frame: ev.data.frame });
+      });
+
+      return seen;
+    }
+
+    it("publishes a session first seen from the garage at the live edge, a tick the replay guard swallows", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(liveSession());
+      const handler = vi.fn();
+      getEventBus().subscribe("replay.sessionStarted", handler);
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(garageTick({ frame: 156_000, time: 600 }));
+      const second = garageTick({ frame: 156_001, time: 600 + 1 / 60 });
+      controller.__tick(second);
+
+      expect(handler).toHaveBeenCalledTimes(1);
+      const published = handler.mock.calls[0]![0] as SimEventOf<"replay.sessionStarted">;
+      expect(published.data).toEqual({ subSessionId: SUB_SESSION, sessionNum: 1, sessionUniqueId: 2, frame: 120_000 });
+      expect(published.telemetry).toBe(second);
+    });
+
+    it("publishes a pair once across trips between the car and the garage: its state outlives the replay wipes", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(liveSession());
+      const seen = recordStarts();
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(carTick({ frame: 156_000, time: 600 }));
+      controller.__tick(carTick({ frame: 156_001, time: 600 + 1 / 60 }));
+
+      // Into the garage: the guard's entry wipe runs on the first of these.
+      for (let i = 0; i < 4; i++) {
+        controller.__tick(garageTick({ frame: 160_000 + i, time: (40_000 + i) / 60 }));
+      }
+
+      // Back in the car: the exit wipe runs on the first live tick.
+      elapseReplayGrace();
+
+      for (let i = 0; i < 4; i++) {
+        controller.__tick(carTick({ frame: 170_000 + i, time: (50_000 + i) / 60 }));
+      }
+
+      expect(seen).toEqual([{ sessionNum: 1, sessionUniqueId: 2, frame: 120_000 }]);
+    });
+
+    it("publishes the next session's start when it begins with the driver in the garage", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(liveSession());
+      const seen = recordStarts();
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(garageTick({ frame: 156_000, time: 600 }));
+      controller.__tick(garageTick({ frame: 156_001, time: 600 + 1 / 60 }));
+      // Qualifying ends; the race loads while the driver sits in the garage.
+      // The translator's session-change reset runs ahead of the recorder.
+      controller.__tick(garageTick({ frame: 200_000, time: 0, sessionNum: 2, uniqueId: 3 }));
+      controller.__tick(garageTick({ frame: 200_001, time: 1 / 60, sessionNum: 2, uniqueId: 3 }));
+      controller.__tick(garageTick({ frame: 200_002, time: 2 / 60, sessionNum: 2, uniqueId: 3 }));
+
+      expect(seen).toEqual([
+        { sessionNum: 1, sessionUniqueId: 2, frame: 120_000 },
+        { sessionNum: 2, sessionUniqueId: 3, frame: 200_000 },
+      ]);
+    });
+
+    it("publishes nothing from the garage while the replay is scrubbed back", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(liveSession());
+      const seen = recordStarts();
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(garageTick({ frame: 156_000, time: 600, toEnd: 27_630 }));
+      controller.__tick(garageTick({ frame: 156_001, time: 600 + 1 / 60, toEnd: 27_630 }));
+
+      expect(seen).toEqual([]);
+    });
+
+    it("stays silent in a replay-only session (SimMode=replay), at its end and on live-looking ticks", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(liveSession("replay"));
+      const seen = recordStarts();
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(garageTick({ frame: 156_000, time: 600 }));
+      controller.__tick(garageTick({ frame: 156_001, time: 600 + 1 / 60 }));
+      controller.__tick(carTick({ frame: 156_002, time: 600 + 2 / 60 }));
+      controller.__tick(carTick({ frame: 156_003, time: 600 + 3 / 60 }));
+
+      expect(seen).toEqual([]);
+    });
+
+    it("logs the publish at debug", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(liveSession());
+      const logger = createMockLogger();
+      initializeSimEventsIracing(getEventBus(), controller, logger);
+
+      controller.__tick(carTick({ frame: 36_000, time: 0 }));
+      controller.__tick(carTick({ frame: 36_001, time: 1 / 60 }));
+
+      expect(vi.mocked(logger.debug).mock.calls.map((c) => c[0])).toContain(
+        "Replay session start: frame=36000 (tick frame=36001 sessionTime=0.017 inCar=true) " +
+          "SessionNum=1 SessionUniqueID=2",
+      );
+    });
+  });
+
   describe("full-course caution wiring (issue #1127)", () => {
     /** car0 is the player, car1 the rival, car2 the pace car, car3 the car behind the rival on the outside line. */
     const PLAYER = 0;

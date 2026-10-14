@@ -96,6 +96,18 @@ export type ReplayLapTimeWait = {
   ticksLeft: number;
 };
 
+/**
+ * One reading of a session's start in the replay session record (issue
+ * #1426): the frame the pair began at, by one live tick. A second live tick
+ * that agrees with it publishes.
+ */
+export type ReplaySessionStartCandidate = {
+  sessionNum: number;
+  sessionUniqueId: number;
+  /** `max(0, live frame − round(SessionTime × 60))` on that tick. */
+  start: number;
+};
+
 /** Live gap snapshot for one class-standings neighbor (issue #933). */
 export type GapNeighborState = {
   /** The neighbor's car index. */
@@ -1348,6 +1360,23 @@ export type TranslatorState = {
    */
   replayGreensLastFlags: number;
 
+  // ── Replay session record (issue #1426) ───────────────────────────────
+  // Runs PRE-guard (`diff/replay-sessions.ts`) and, UNLIKE the two records
+  // above, is PRESERVED by `wipeStateForReplay` and by `resetPerSessionState`:
+  // it records from replay ticks too (out of the car at the live edge), so a
+  // replay edge says nothing about its readings, and a wiped published list
+  // would publish a session again on every trip between the car and the
+  // garage. Its own gate breaks the run on every tick it may not read. Cleared
+  // only by a disconnect.
+  /**
+   * The previous live tick's reading of a session's start, the run a second
+   * agreeing reading publishes; `null` after an ineligible tick, a published
+   * pair's tick, or a publish.
+   */
+  replaySessionsCandidate: ReplaySessionStartCandidate | null;
+  /** `"<sessionNum>:<sessionUniqueId>"` of every pair already published; never published again. */
+  replaySessionsPublished: string[];
+
   // ── Opponent penalty flags (issue #936) ───────────────────────────────
   /** First tick seeds the per-car penalty-bit store silently. */
   opponentFlagsInitialized: boolean;
@@ -1885,6 +1914,9 @@ export function createInitialState(): TranslatorState {
     replayGreensSessionUniqueId: null,
     replayGreensLastSessionState: 0,
     replayGreensLastFlags: 0,
+
+    replaySessionsCandidate: null,
+    replaySessionsPublished: [],
 
     opponentFlagsInitialized: false,
     opponentFlagSeededAt: 0,
