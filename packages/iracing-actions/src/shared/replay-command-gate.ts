@@ -158,6 +158,13 @@ export interface ReplayPressOptions {
   readonly by: string;
   /** The opaque origin token of the press (a key's context id, a dial's own); none for a detent. */
   readonly origin?: string;
+  /**
+   * Whether this is a repeat of the same input rather than a new press: a
+   * held key's auto-repeat, a further dial detent. Behind a search only a new
+   * press is "pressing again", which takes over and ends the search; a repeat
+   * replaces what waits, as the newest word, and waits too.
+   */
+  readonly repeat?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -173,6 +180,8 @@ export interface ReplayGateEnv {
   inReplay(): boolean;
   /** Whether the SDK is connected to the sim. */
   connected(): boolean;
+  /** Tells the debounced replay state that the plugin itself left the replay for live (#1324). */
+  leftForLive(): void;
   now(): number;
 }
 
@@ -197,6 +206,13 @@ const defaultEnv: ReplayGateEnv = {
       return getController().getConnectionStatus();
     } catch {
       return true;
+    }
+  },
+  leftForLive: () => {
+    try {
+      getController().noteReplayLeftForLive();
+    } catch {
+      // No controller: nothing reads the replay state either.
     }
   },
   now: () => Date.now(),
@@ -351,6 +367,14 @@ interface HeldJump {
   owedSince: number;
   /** Whether its step after the landing runs on the read-back although it no longer holds the cursor. */
   carried: boolean;
+  /**
+   * Whether its frame was the one a paused replay already showed, with nothing
+   * under way: such a jump records no target, since it could never read back
+   * conclusively, and it counts as landed at once.
+   */
+  onScreen: boolean;
+  /** The frame of an {@link onScreen} jump, for the seek it still sends. */
+  frameOnScreen: number | null;
   readonly afterLanding: ((landing: TelemetryData) => void) | undefined;
   /** How its target ended, once it has. */
   status: JumpLandingStatus;
@@ -399,6 +423,8 @@ let lastReplay: ReplayReading | null = null;
 let busySince: number | null = null;
 /** Set while the gate itself takes the cursor, so its listener tells a press from an outside take. */
 let gateTaking = false;
+/** The origin token of the press or replay jump taking the cursor, while it does. */
+let takingOrigin: string | undefined = undefined;
 let timer: ReturnType<typeof setTimeout> | null = null;
 
 // ---------------------------------------------------------------------------
@@ -794,6 +820,14 @@ function dispatch(
       // A jump to the frame on screen, with nothing standing, can never read back conclusively.
       if (pendingReplayTarget() === null && reading !== null && reading.frame === command.frame) return true;
 
+      // A jump sent bare into a moving replay (an old profile's Set Play Position) runs past its frame,
+      // so its target would never read back. The seek itself still shows, as the witness.
+      if (currentSpeed(reading, now).speed !== 0 && !pausedForJumpUnderWay(null, telemetry)) {
+        log.debug(`Replay jump to frame ${command.frame} sent into a moving replay; no target recorded`);
+
+        return true;
+      }
+
       recordTarget(command.frame, telemetry, now, origin);
 
       return true;
@@ -822,9 +856,9 @@ function dispatch(
         command.direction > 0 ? r.nextFrame() : r.prevFrame(),
       );
 
-      // A step into a replay that reads paused lands one frame on; one that still plays lands wherever
-      // the pause catches it, and records nothing.
-      if (ok && reading !== null && currentSpeed(reading, now).speed === 0) {
+      // A step into a replay that reads paused lands one frame on; one that still reads playing lands
+      // wherever the pause catches it, and records nothing. The reading's own speed, not a pause just sent.
+      if (ok && reading !== null && reading.rate === 0) {
         const frame = reading.frame + command.direction;
         const last = reading.left === undefined ? Infinity : reading.frame + reading.left - 1;
 
@@ -836,7 +870,8 @@ function dispatch(
     case "pause": {
       const ok = sendRaw("pause", command.send ?? ((r) => r.pause()));
 
-      if (ok) speedSent = null;
+      // Paused from now, for "is the replay moving", until the reading shows it.
+      if (ok) speedSent = { speed: { speed: 0, slowMotion: false }, at: now };
 
       return ok;
     }
@@ -1159,7 +1194,7 @@ function waitBehindSearch(
 
   if (record === null) return { kind: "not-sent", reason: "no search stands" };
 
-  if (slot !== null && slot.behind === "search") {
+  if (slot !== null && slot.behind === "search" && options.repeat !== true) {
     emptySlot("replaced");
 
     return takeOver(command, options, telemetry, now);
@@ -1447,6 +1482,8 @@ function goOut(current: Slot, telemetry: TelemetryData | null, now: number): voi
 
   log.debug(`Replay command sent on the landing: ${describe(current.command)} (${current.by}); result ${ok}`);
 
+  if (ok && current.command.kind === "go-to" && current.command.end === "end") env.leftForLive();
+
   if (ok && sentSpeed !== null) {
     for (const listener of speedSentListeners) {
       try {
@@ -1547,13 +1584,15 @@ function holdsCursor(claim: ReplayCursorClaim): () => boolean {
   return () => held !== null && held.claim === claim && claim.cancelledBy === null;
 }
 
-function takeCursor(by: string): void {
+function takeCursor(by: string, origin: string | undefined): void {
   gateTaking = true;
+  takingOrigin = origin;
 
   try {
     cancelReplayCursorOwner(by);
   } finally {
     gateTaking = false;
+    takingOrigin = undefined;
   }
 }
 
@@ -1575,7 +1614,7 @@ export function pressReplayCommand(command: ReplayGateCommand, options: ReplayPr
     // Read before the take: taking the cursor clears the speed the jump captured.
     const capturedBySequence = before !== null ? pendingReplayJumpSpeed() : null;
 
-    takeCursor(options.by);
+    takeCursor(options.by, options.origin);
     result = decide(command, options, telemetry, now, before, capturedBySequence);
   });
   arm();
@@ -1751,6 +1790,10 @@ export function sendOwnedReplayCommand(
     }
 
     result = dispatch(command, telemetry, now, origin) ? "sent" : "refused";
+
+    if (result === "sent" && command.kind === "speed" && command.speed !== 0 && held?.claim === claim) {
+      held.pausedByGate = false;
+    }
   });
   arm();
 
@@ -1769,13 +1812,19 @@ export interface ReplayJumpGateHandle {
  * jump's: a jump under way in its pause window then still gets its seek. The
  * one place `beginReplayJump` claims.
  */
-export function claimReplayCursorForJump(owner: string, onCancelled?: (by: string) => void): ReplayCursorClaim {
+export function claimReplayCursorForJump(
+  owner: string,
+  onCancelled?: (by: string) => void,
+  origin?: string,
+): ReplayCursorClaim {
   gateTaking = true;
+  takingOrigin = origin;
 
   try {
     return claimReplayCursor(owner, onCancelled);
   } finally {
     gateTaking = false;
+    takingOrigin = undefined;
   }
 }
 
@@ -1809,12 +1858,18 @@ export function openReplayJump(
     owed: false,
     owedSince: 0,
     carried: false,
+    onScreen: false,
+    frameOnScreen: null,
     afterLanding: options.afterLanding,
     status: "pending",
     landing: null,
   };
 
   batch(now, () => {
+    // A jump of its own replaces the target a cancelled jump owes a seek to: that seek must not go out
+    // now, a few milliseconds before this one's, where the earlier of two seeks can win.
+    if (options.frame !== undefined && owed !== null) owed = null;
+
     settle(options.telemetry, now);
     emptySlot("replaced");
 
@@ -1823,13 +1878,7 @@ export function openReplayJump(
     jump.inheritedPause = pausedForJumpUnderWay(null, options.telemetry);
     held = jump;
 
-    if (options.frame !== undefined) {
-      jump.target = recordTarget(options.frame, options.telemetry, now, options.origin, {
-        sent: false,
-        heldBy: holdsCursor(claim),
-      });
-      jumpsByTarget.set(jump.target.id, jump);
-    }
+    if (options.frame !== undefined) recordJumpFrame(jump, options.frame, options.telemetry, now);
   });
   arm();
 
@@ -1855,16 +1904,38 @@ export function recordReplayJumpTarget(
 
   batch(now, () => {
     settle(telemetry, now);
-
-    jump.target = recordTarget(frame, telemetry, now, jump.origin, {
-      sent: false,
-      heldBy: holdsCursor(handle.claim),
-    });
     jump.status = "pending";
     jump.landing = null;
-    jumpsByTarget.set(jump.target.id, jump);
+    recordJumpFrame(jump, frame, telemetry, now);
   });
   arm();
+}
+
+/**
+ * Records the frame a replay jump is going to as the pending target, unless a
+ * paused replay already shows it with nothing under way: such a jump records
+ * no target (it could never read back conclusively) and lands at once.
+ */
+function recordJumpFrame(jump: HeldJump, frame: number, telemetry: TelemetryData | null, now: number): void {
+  const reading = readReplay(telemetry);
+
+  jump.onScreen =
+    pendingReplayTarget() === null &&
+    !witness &&
+    reading !== null &&
+    reading.frame === frame &&
+    currentSpeed(reading, now).speed === 0;
+
+  jump.frameOnScreen = jump.onScreen ? frame : null;
+
+  if (jump.onScreen) {
+    jump.target = null;
+
+    return;
+  }
+
+  jump.target = recordTarget(frame, telemetry, now, jump.origin, { sent: false, heldBy: holdsCursor(jump.claim) });
+  jumpsByTarget.set(jump.target.id, jump);
 }
 
 /** Sends the seek of a replay jump opened with a frame. Says what became of it. */
@@ -1873,7 +1944,16 @@ export function sendReplayJumpSeek(handle: ReplayJumpGateHandle): "sent" | "refu
 
   const own = handle.target;
 
-  if (own === null) return "replaced";
+  if (own === null) {
+    const jump = findJump(handle);
+
+    if (jump === undefined || !jump.onScreen) return "replaced";
+
+    // Sent, and it records nothing: the replay already shows the frame.
+    return sendRaw("setPlayPosition", (r) => r.setPlayPosition(ReplayPosMode.Begin, jump.frameOnScreen ?? 0))
+      ? "sent"
+      : "refused";
+  }
 
   const now = env.now();
   const telemetry = env.readTelemetry();
@@ -1924,9 +2004,11 @@ export function replayJumpLanding(
   });
   arm();
 
-  const jump = handle.target === null ? undefined : findJump(handle);
+  const jump = findJump(handle);
 
-  return { status: jump?.status ?? "cleared", landing: jump?.landing ?? null };
+  if (jump !== undefined && jump.onScreen && handle.target === null) return { status: "read-back", landing: telemetry };
+
+  return { status: handle.target === null ? "cleared" : (jump?.status ?? "cleared"), landing: jump?.landing ?? null };
 }
 
 function findJump(handle: ReplayJumpGateHandle): HeldJump | undefined {
@@ -1995,9 +2077,11 @@ onReplayCursorTaken(() => {
   closedJumps.set(jump.claim, jump);
 
   const now = env.now();
+  // A press or a jump of the same token takes the cursor from its own jump: the run goes on.
+  const sameRun = gateTaking && takingOrigin !== undefined && takingOrigin === jump.origin;
 
   batch(now, () => {
-    noteEnd(jump.origin, "underWay", "claim-taken");
+    if (!sameRun) noteEnd(jump.origin, "underWay", "claim-taken");
 
     const target = pendingReplayTarget();
     const ownTarget = jump.target !== null && target !== null && target.id === jump.target.id;
@@ -2090,8 +2174,11 @@ export function readReplayPosition(telemetry: TelemetryData | null): ReplayPosit
   const now = env.now();
   let position: ReplayPosition | null = null;
 
+  // Only the target is settled against the caller's reading: a display read sends nothing and drops
+  // nothing, and the rest is the gate's own poll's.
   batch(now, () => {
-    settle(telemetry, now);
+    settleTarget(telemetry, now);
+    settleTakeover(telemetry, readReplay(telemetry), now);
     position = resolveReplayPosition(telemetry, now, log);
   });
   arm();

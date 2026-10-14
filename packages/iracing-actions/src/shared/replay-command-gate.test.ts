@@ -621,6 +621,54 @@ describe("replay command gate", () => {
     });
   });
 
+  describe("what the review of #1430 turned up", () => {
+    it("records no target for a jump sent bare into a moving replay, so a Pause once its seek has landed is sent", async () => {
+      setUp({ frame: 2_000, speed: { speed: 1, slowMotion: false } });
+      press({ kind: "jump", frame: 50_000 }, "set-play-position");
+
+      expect(pendingReplayTarget()).toBeNull();
+      // The seek itself still shows, and holds a pause back while it does.
+      expect(press(PAUSE)).toMatchObject({ kind: "not-sent" });
+
+      await wait(500);
+
+      expect(press(PAUSE)).toEqual({ kind: "sent", ok: true });
+    });
+
+    it("lets a repeat of the held input wait behind a search, where a second press would take over", async () => {
+      setUp({ frame: 2_000, searches: { nextSession: (from) => from + 600_000 } });
+      press({ kind: "search", search: "nextSession" });
+      await wait(50);
+      press(PLAY);
+
+      expect(pressReplayCommand(PLAY, { by: "test", repeat: true })).toEqual({ kind: "held" });
+      expect(sim.calls).toEqual(["nextSession"]);
+    });
+
+    it("tells the replay state the plugin left for live when a Jump to Live goes out from the slot", async () => {
+      const leftForLive = vi.fn();
+
+      setUp({ frame: 2_000, searches: { nextLap: (from) => from + 6_000 } });
+      _configureReplayCommandGate({
+        replay: () => sim.replay,
+        readTelemetry: () => sim.telemetry(),
+        inReplay: () => inReplay,
+        connected: () => connected,
+        leftForLive,
+        now: () => Date.now(),
+      });
+      press({ kind: "search", search: "nextLap" });
+      await wait(10);
+
+      expect(press({ kind: "go-to", end: "end" })).toEqual({ kind: "held" });
+
+      await wait(1_000);
+
+      expect(sim.calls).toEqual(["nextLap", "goToEnd"]);
+      expect(leftForLive).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe("the raw record", () => {
     it("says what is under way and what waits", () => {
       setUp({ frame: 2_000 });

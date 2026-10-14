@@ -13,6 +13,9 @@ import {
   pressReplayCommand,
   readReplayPosition,
   type ReplayGateCommand,
+  type ReplayGateNotice,
+  sendOwnedReplayCommand,
+  subscribeReplayGate,
 } from "./replay-command-gate.js";
 import { fakeReplay, type FakeReplay, type FakeReplayOptions } from "./replay-command-gate.test-support.js";
 import { _resetReplayCursor, cancelReplayCursorOwner } from "./replay-cursor.js";
@@ -311,6 +314,57 @@ describe("the jump sequence and the other senders (#1430)", () => {
     expect(sim.calls.slice(0, 3)).toEqual(["nextSession", "setPlaySpeed 0", "setPlayPosition 0 150000"]);
     expect(sim.frame()).toBeGreaterThanOrEqual(150_000);
     expect(sim.thrown).toBe(0);
+  });
+
+  describe("what the review of #1430 turned up", () => {
+    it("a second marker press after the first one's pause has shown sends only its own seek", async () => {
+      setUp({ speed: PLAYING, speedLagMs: 40 });
+      void marker(150_000);
+      // The pause has shown, and the gate's own poll has not run since: the clock moves, no timer fires.
+      vi.setSystemTime(Date.now() + 45);
+      void marker(160_000);
+
+      expect(sim.calls).toEqual(["setPlaySpeed 0", "setPlayPosition 0 160000"]);
+
+      await wait(4_000);
+
+      expect(sim.frame()).toBeGreaterThanOrEqual(160_000);
+      expect(sim.thrown).toBe(0);
+    });
+
+    it("a jump to the frame a paused replay already shows lands at once, and a Play after it is not held", async () => {
+      setUp({ frame: 150_000 });
+
+      const outcome = marker(150_000);
+
+      expect(pendingReplayTarget()).toBeNull();
+      await wait(100);
+      await expect(outcome).resolves.toMatchObject({ kind: "landed" });
+      expect(press(PLAY)).toEqual({ kind: "sent", ok: true });
+    });
+
+    it("a jump that set the replay playing again has not paused it: a Pause pressed then is sent", () => {
+      setUp({ speed: PLAYING });
+
+      const jump = beginReplayJump("walk", sim.telemetry());
+
+      expect(sendOwnedReplayCommand(jump.claim, { kind: "pause" })).toBe("sent");
+      expect(sendOwnedReplayCommand(jump.claim, PLAY)).toBe("sent");
+      expect(press({ kind: "pause" })).toEqual({ kind: "sent", ok: true });
+      jump.end();
+    });
+
+    it("a retarget by the same token does not end its run", () => {
+      setUp({ speed: PLAYING, speedLagMs: 40 });
+
+      const notices: ReplayGateNotice[] = [];
+
+      subscribeReplayGate((notice) => notices.push(notice));
+      void marker(150_000, { origin: "markers-dial" });
+      void marker(160_000, { origin: "markers-dial" });
+
+      expect(notices.flatMap((n) => (n.origin === "markers-dial" ? n.ended : []))).toEqual([]);
+    });
   });
 
   describe("the jump's own step after the landing", () => {

@@ -250,7 +250,7 @@ export function beginReplayJump(
     takeWaitingReplaySpeed() ?? replaySearchSpeedAtSend() ?? captureReplaySpeed(standing, telemetry, nowMs);
   // A pending speed nobody has applied yet belongs to a jump still under way.
   const tookOver = standing !== null && standing.appliedAt === null;
-  const claim = claimReplayCursorForJump(owner, onCancelled);
+  const claim = claimReplayCursorForJump(owner, onCancelled, options.origin);
   const pending: ReplayJumpSpeed = { ...captured, appliedAt: null };
   const afterLanding = options.afterLanding;
 
@@ -358,7 +358,7 @@ async function runSequence(jump: ReplayJump, options: ReplayJumpOptions): Promis
   const atPress = readTelemetry();
 
   // A walk's last jump, whose frame was not known at the press: recorded now, before its pause.
-  if (gate.target === null || gate.target.frame !== frame) recordReplayJumpTarget(gate, frame, atPress);
+  if (gate.target?.frame !== frame) recordReplayJumpTarget(gate, frame, atPress);
 
   // The captured speed as well as the reading: right after another jump
   // applied a speed, telemetry still reads paused while the replay is already

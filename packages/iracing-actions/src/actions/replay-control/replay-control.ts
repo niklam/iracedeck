@@ -1090,7 +1090,8 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
         intervalMs: LONG_PRESS_REPEAT_GAP_MS,
         safetyMs: LONG_PRESS_MAX_DURATION_MS,
         execute: () => {
-          this.executeMode(ev.action.id, settings);
+          // A repeat of the held key, not a second press: behind a search it waits rather than taking over.
+          this.executeMode(ev.action.id, settings, true);
 
           return true;
         },
@@ -2941,7 +2942,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     return { telemetry: finalTel, landedFrame, lapStartFrame, converged: true, priorLapDist };
   }
 
-  private executeMode(contextId: string, settings: ReplayControlSettings): void {
+  private executeMode(contextId: string, settings: ReplayControlSettings, repeat = false): void {
     const { mode } = settings;
 
     // Every replay command goes through the replay command gate (#1430),
@@ -2955,7 +2956,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
 
     /** One press through the gate, named for the mode and this key's context. */
     const press = (command: ReplayGateCommand): ReplayPressResult =>
-      pressReplayCommand(command, { by: mode, origin: contextId });
+      pressReplayCommand(command, { by: mode, origin: contextId, repeat });
 
     switch (mode) {
       case "play-pause": {

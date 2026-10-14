@@ -372,7 +372,10 @@ export class ReplayControlDialSurface {
     // drops the dial's pending speed, since another action's command
     // supersedes it; the dial's own take keeps it.
     const press = (owner: string, command: ReplayGateCommand): ReplayPressResult =>
-      keepDialPendingSpeed(() => pressReplayCommand(command, { by: owner, origin: this.pressOrigin }));
+      keepDialPendingSpeed(() =>
+        // A detent carries no token and is a repeat of the turn, never "pressing again" behind a search.
+        pressReplayCommand(command, { by: owner, origin: this.pressOrigin, repeat: this.pressOrigin === undefined }),
+      );
 
     const position: ReplayDialModeIo["position"] = () => readReplayPosition(this.reading().telemetry);
 
