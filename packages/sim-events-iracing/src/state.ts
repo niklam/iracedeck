@@ -1377,6 +1377,31 @@ export type TranslatorState = {
   /** `"<sessionNum>:<sessionUniqueId>"` of every pair already published; never published again. */
   replaySessionsPublished: string[];
 
+  // ── Replay incident record (issue #1426) ──────────────────────────────
+  // Runs PRE-guard (`diff/replay-incidents.ts`) on the lap record's gate and,
+  // like the lap and green records, is deliberately NOT preserved by
+  // `wipeStateForReplay`: its baselines are a previous eligible tick's counts,
+  // which a replay view makes meaningless, and the first eligible tick back
+  // re-seeds them without emitting.
+  /**
+   * Whether the baselines below hold an eligible tick's values. Every
+   * ineligible tick clears it, so the first eligible tick after it re-seeds
+   * silently.
+   */
+  replayIncidentsSeeded: boolean;
+  /** The `SessionNum` the baselines were seeded in; a change re-seeds. */
+  replayIncidentsSessionNum: number | null;
+  /** The `SessionUniqueID` the baselines were seeded in; a change re-seeds. */
+  replayIncidentsSessionUniqueId: number | null;
+  /** `PlayerCarMyIncidentCount` on the previous eligible tick; `null` when it read none. */
+  replayIncidentsLastPlayerCount: number | null;
+  /**
+   * `DriverInfo.Drivers[].CurDriverIncidentCount` per carIdx on the previous
+   * eligible tick, other cars only; −1 (the sim hiding it) is no baseline, and
+   * a slot the roster did not hold is absent.
+   */
+  replayIncidentsLastCarCounts: number[];
+
   // ── Opponent penalty flags (issue #936) ───────────────────────────────
   /** First tick seeds the per-car penalty-bit store silently. */
   opponentFlagsInitialized: boolean;
@@ -1917,6 +1942,12 @@ export function createInitialState(): TranslatorState {
 
     replaySessionsCandidate: null,
     replaySessionsPublished: [],
+
+    replayIncidentsSeeded: false,
+    replayIncidentsSessionNum: null,
+    replayIncidentsSessionUniqueId: null,
+    replayIncidentsLastPlayerCount: null,
+    replayIncidentsLastCarCounts: [],
 
     opponentFlagsInitialized: false,
     opponentFlagSeededAt: 0,

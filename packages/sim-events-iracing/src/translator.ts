@@ -91,6 +91,7 @@ import { diffPitsOpen } from "./diff/pits-open.js";
 import { updatePositionTracking } from "./diff/race-finish.js";
 import { diffRadar, resolveRadarState } from "./diff/radar.js";
 import { diffReplayGreens } from "./diff/replay-greens.js";
+import { diffReplayIncidents } from "./diff/replay-incidents.js";
 import { diffReplayLaps } from "./diff/replay-laps.js";
 import { diffReplaySessions } from "./diff/replay-sessions.js";
 import { diffRollingStart } from "./diff/rolling-start.js";
@@ -2086,6 +2087,9 @@ function wipeStateForReplay(self: TranslatorInstance): void {
     // session state and flags of the tick before a replay say nothing about
     // the tick after it, and an edge read across the two would put a frame in
     // the file for a green nobody watched. Its pre-guard diff re-seeds too.
+    // The replay incident record's baselines (issue #1426,
+    // `replayIncidents*`) are NOT preserved, for the lap record's reason.
+    //
     // The replay session record (issue #1426) IS preserved, unlike its
     // siblings: it records from out-of-car ticks at the live edge, which are
     // replay ticks, so a replay edge says nothing about its run, and its
@@ -2242,8 +2246,8 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // the ~300 ms false blip after every replay seek is not a trip to live, and
   // it is true throughout a saved replay (`SimMode === "replay"`), whatever
   // the flag reads. The guard below, `diffFirstOnTrack` and the replay
-  // recorders (`diffReplayLaps`, `diffReplayGreens`, `diffReplaySessions`)
-  // read it; the `session.changed` paths and `diffStartCountdown` deliberately
+  // recorders (`diffReplayLaps`, `diffReplayGreens`, `diffReplaySessions`,
+  // `diffReplayIncidents`) read it; the `session.changed` paths and `diffStartCountdown` deliberately
   // do not gate on the replay view at all (#568, #829) and read only the
   // `SimMode` discriminator, as before.
   const replayState = self.controller.getReplayState();
@@ -2473,6 +2477,19 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     replayOnlySession,
     (ev) => publish(self, ev, telemetry, Date.now()),
     self.logger,
+  );
+
+  // The replay incident record (issue #1426) is the lap and green records'
+  // sibling: the same in-car gate, pre-guard for the same reason (an
+  // ineligible tick must unseed it, so a count that rose behind the replay
+  // view is not stamped with the frame the driver came back on), and its
+  // state is in `wipeStateForReplay`'s wiped set like theirs.
+  diffReplayIncidents(
+    self.state,
+    telemetry,
+    self.controller.getSessionInfo() as Record<string, unknown> | null,
+    inReplay,
+    (ev) => publish(self, ev, telemetry, Date.now()),
   );
 
   // `driver.firstOnTrack` is detected on every tick — including replay ticks
