@@ -5,6 +5,7 @@ import {
   findLapStartInSection,
   isNewerLapsSection,
   LAPS_SECTION_VERSION,
+  listLapStartsInSection,
   mergeLapsSectionInto,
   normalizeLapsSection,
   recordLapStartInSection,
@@ -433,6 +434,67 @@ describe("replay laps section (#1203)", () => {
       expect(normalizeLapsSection(undefined)).toEqual(emptyLapsSection());
       expect(normalizeLapsSection([])).toEqual(emptyLapsSection());
       expect(normalizeLapsSection({ version: 1 })).toEqual(emptyLapsSection());
+    });
+  });
+});
+
+describe("listLapStartsInSection (#1426)", () => {
+  const car = { carIdx: 7, carNumberRaw: 2 };
+
+  it("lists one car's lap starts across every session, in frame order, raw", () => {
+    const section = emptyLapsSection();
+
+    // Qualifying, then the race; recorded out of order, and another car beside it.
+    recordLapStartInSection(section, start({ sessionNum: 2, sessionUniqueId: 4, lap: 2, frame: 96305 }));
+    recordLapStartInSection(section, start({ sessionNum: 2, sessionUniqueId: 4, lap: 1, frame: 90821 }));
+    recordLapStartInSection(section, start({ sessionNum: 1, sessionUniqueId: 3, lap: 1, frame: 30500 }));
+    recordLapStartInSection(section, start({ sessionNum: 1, sessionUniqueId: 3, lap: 2, frame: 36000 }));
+    recordLapStartInSection(
+      section,
+      start({ sessionNum: 2, sessionUniqueId: 4, carIdx: 9, carNumberRaw: 31, frame: 90900 }),
+    );
+
+    expect(listLapStartsInSection(section, car)).toEqual({ hit: true, frames: [30500, 36000, 90821, 96305] });
+  });
+
+  it("collapses starts within 60 frames of each other to the earliest: a lap two sessions both hold is one step", () => {
+    const section = emptyLapsSection();
+
+    recordLapStartInSection(section, start({ sessionUniqueId: 4, lap: 1, frame: 30821 }));
+    recordLapStartInSection(section, start({ sessionUniqueId: 4, lap: 2, frame: 36305 }));
+    // The walk's sparse session under a replay's own pair, past the live span so it does not join it.
+    recordLapStartInSection(section, start({ sessionUniqueId: 99, lap: 3, frame: 41800 }));
+    // The same laps the other session also holds: 60 frames apart is one entry.
+    section.sessions[1]?.cars["7"]?.laps.push({ lap: 2, frame: 36365, timeMs: null });
+    section.sessions[0]?.cars["7"]?.laps.push({ lap: 3, frame: 41740, timeMs: null });
+    // 61 frames past the entry kept is another entry.
+    section.sessions[0]?.cars["7"]?.laps.push({ lap: 4, frame: 41801, timeMs: null });
+
+    expect(listLapStartsInSection(section, car)).toEqual({ hit: true, frames: [30821, 36305, 41740, 41801] });
+  });
+
+  it("leaves out a session whose record for the index is another car", () => {
+    const section = emptyLapsSection();
+
+    recordLapStartInSection(section, start({ sessionNum: 1, sessionUniqueId: 3, carNumberRaw: 55, frame: 10000 }));
+    recordLapStartInSection(section, start({ sessionNum: 2, sessionUniqueId: 4, frame: 30821 }));
+
+    expect(listLapStartsInSection(section, car)).toEqual({ hit: true, frames: [30821] });
+  });
+
+  it("misses with 'no car' when no session holds the index, or the file has no laps section", () => {
+    expect(listLapStartsInSection(sectionWithLaps(), { carIdx: 12, carNumberRaw: 2 })).toEqual({
+      hit: false,
+      reason: "no car",
+    });
+    expect(listLapStartsInSection(emptyLapsSection(), car)).toEqual({ hit: false, reason: "no car" });
+    expect(listLapStartsInSection(undefined, car)).toEqual({ hit: false, reason: "no car" });
+  });
+
+  it("misses with 'car mismatch' when every session holding the index holds another car", () => {
+    expect(listLapStartsInSection(sectionWithLaps(), { carIdx: 7, carNumberRaw: 3 })).toEqual({
+      hit: false,
+      reason: "car mismatch",
     });
   });
 });
