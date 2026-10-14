@@ -366,7 +366,7 @@ export const EVENT_TEMPLATES = [
     data: { position: 3 },
   },
 
-  // ── Replay record (issues #1203, #1354) — no callout; @iracedeck/replay-store consumes these ──
+  // ── Replay record (issues #1203, #1354, #1426) — no callout; @iracedeck/replay-store consumes these ──
   {
     name: "replay.lapStarted",
     description: "A car crossed the line and started a lap at a live replay frame (issue #1203) — no callout",
@@ -397,6 +397,26 @@ export const EVENT_TEMPLATES = [
       kind: "start",
       frame: 30215,
       sessionTimeMs: 512433,
+    },
+  },
+  {
+    name: "replay.sessionStarted",
+    description: "A session was first seen live, with the replay frame it began at (issue #1426) — no callout",
+    data: { subSessionId: 86697546, sessionNum: 2, sessionUniqueId: 4, frame: 27994 },
+  },
+  {
+    name: "replay.incident",
+    description: "A car's incident count rose at a live replay frame (issue #1426) — no callout",
+    data: {
+      subSessionId: 86697546,
+      sessionNum: 2,
+      sessionUniqueId: 4,
+      carIdx: 7,
+      carNumberRaw: 2,
+      frame: 41210,
+      sessionTimeMs: 786533,
+      delta: 2,
+      source: "sessionInfo",
     },
   },
 

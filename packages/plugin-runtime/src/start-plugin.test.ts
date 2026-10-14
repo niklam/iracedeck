@@ -101,6 +101,8 @@ function expectedOrder(withExtension: boolean): string[] {
     "initializeEventBus().subscribe", // replay.lapStarted
     "initializeEventBus().subscribe", // replay.lapTimed
     "initializeEventBus().subscribe", // replay.greenFlag
+    "initializeEventBus().subscribe", // replay.sessionStarted
+    "initializeEventBus().subscribe", // replay.incident
     "createSettingsChannelPublisher",
     "initializeCpuProfileCapture",
     "createUpdateCheckService",
