@@ -15,7 +15,7 @@ import {
   waitForReplaySettled,
   waitingReplaySpeed,
 } from "./replay-command-gate.js";
-import { openReplayJump } from "./replay-command-gate.js";
+import { closeReplayJump, openReplayJump } from "./replay-command-gate.js";
 import { fakeReplay, type FakeReplay, type FakeReplayOptions } from "./replay-command-gate.test-support.js";
 import { _resetReplayCursor, claimReplayCursor } from "./replay-cursor.js";
 import { _resetReplayPositionState, pendingReplayTarget, replayTargetGiveUpMs } from "./replay-position-state.js";
@@ -550,6 +550,44 @@ describe("replay command gate", () => {
       press({ kind: "jump", frame: 100_000 });
 
       expect(getReplayGateRecord().target).toMatchObject({ frame: 100_000, origin: undefined });
+    });
+
+    describe("a held replay jump closed as given up (#1437)", () => {
+      /** The under-way ends of a held jump of `walk-key` closed `gave-up` once `before` has run. */
+      function closedGaveUp(before: () => void): ReplayGateNotice["ended"] {
+        setUp({ frame: 2_000 });
+        const notices: ReplayGateNotice[] = [];
+        const claim = claimReplayCursor("walk");
+        const handle = openReplayJump(claim, {
+          origin: "walk-key",
+          telemetry: sim.telemetry(),
+          sendsPositionJump: true,
+        });
+
+        subscribeReplayGate((notice) => notices.push(notice));
+        before();
+        closeReplayJump(handle, "gave-up");
+
+        return notices.filter((n) => n.origin === "walk-key").flatMap((n) => n.ended);
+      }
+
+      it("ends replay-left when the replay was left", () => {
+        expect(closedGaveUp(() => (inReplay = false))).toEqual([
+          { fact: "underWay", class: "gave-up", reason: "replay-left" },
+        ]);
+      });
+
+      it("ends disconnected when the sim is gone", () => {
+        expect(closedGaveUp(() => (connected = false))).toEqual([
+          { fact: "underWay", class: "gave-up", reason: "disconnected" },
+        ]);
+      });
+
+      it("ends walk-gave-up in the replay", () => {
+        expect(closedGaveUp(() => undefined)).toEqual([
+          { fact: "underWay", class: "gave-up", reason: "walk-gave-up" },
+        ]);
+      });
     });
   });
 
