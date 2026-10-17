@@ -93,24 +93,38 @@ interface BusySurface {
 
 // The replay busy indicator (#1437), driven by hand: a test sets a token's look
 // and calls the redraw the surface registered, as the indicator's tick would.
+// With `real` set, registration and the look go through the REAL indicator over
+// the real gate, for the cases that hang on what it does with a registration.
 const busy = vi.hoisted(() => ({
   looks: new Map<string, ReplayBusyLook>(),
   surfaces: new Map<string, BusySurface>(),
   unregistered: [] as string[],
+  real: false,
+  actual: null as null | typeof import("../../shared/replay-busy-indicator.js"),
 }));
 
-vi.mock("../../shared/replay-busy-indicator.js", () => ({
-  registerReplayBusySurface: vi.fn((surface: BusySurface) => {
-    busy.surfaces.set(surface.token, surface);
+vi.mock("../../shared/replay-busy-indicator.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../shared/replay-busy-indicator.js")>();
 
-    return () => {
-      busy.unregistered.push(surface.token);
+  busy.actual = actual;
 
-      if (busy.surfaces.get(surface.token) === surface) busy.surfaces.delete(surface.token);
-    };
-  }),
-  getReplayBusyLook: (token: string): ReplayBusyLook => busy.looks.get(token) ?? { kind: "rest" },
-}));
+  return {
+    registerReplayBusySurface: vi.fn((surface: BusySurface) => {
+      busy.surfaces.set(surface.token, surface);
+
+      const unregisterReal = busy.real ? actual.registerReplayBusySurface(surface) : () => undefined;
+
+      return () => {
+        busy.unregistered.push(surface.token);
+        unregisterReal();
+
+        if (busy.surfaces.get(surface.token) === surface) busy.surfaces.delete(surface.token);
+      };
+    }),
+    getReplayBusyLook: (token: string): ReplayBusyLook =>
+      busy.real ? actual.getReplayBusyLook(token) : (busy.looks.get(token) ?? { kind: "rest" }),
+  };
+});
 
 const STRIP = { id: "sd-plus-strip", width: 200, height: 100 } as const;
 const KNOB = { id: "stream-dock-knob", width: 176, height: 112 } as const;
@@ -2793,13 +2807,38 @@ describe("ReplayControlDialSurface — the busy look (#1437)", () => {
     busy.looks.clear();
     busy.surfaces.clear();
     busy.unregistered.length = 0;
+    busy.real = false;
+    busy.actual?._resetReplayBusyIndicator();
   });
 
   afterEach(() => {
+    busy.actual?._resetReplayBusyIndicator();
+    busy.real = false;
     vi.useRealTimers();
   });
 
   describe("registration", () => {
+    it("keeps a not done the box is showing across a settings change that re-registers it", async () => {
+      busy.real = true;
+      const { surface, ctx } = await onScreen(speed(1));
+
+      busy.actual!.reportReplayPressIgnored("dial-1");
+      await settle();
+
+      expect(shownMark(lastBox(ctx))).toBe("not-done");
+
+      await surface.didReceiveSettings(ctx as never, dial({ pressAction: "jump-to-live" }));
+
+      expect(registerReplayBusySurface).toHaveBeenCalledTimes(2);
+      expect(busy.actual!.getReplayBusyLook("dial-1")).toEqual({ kind: "not-done" });
+      await settle();
+      expect(shownMark(lastBox(ctx))).toBe("not-done");
+
+      // Its second runs out as it would have without the change.
+      await settle(1_000);
+      expect(shownMark(lastBox(ctx))).toBe("none");
+    });
+
     it("registers the dial under its context id on appear, and unregisters it on disappear", async () => {
       const { surface, ctx } = await onScreen(speed(1));
 
