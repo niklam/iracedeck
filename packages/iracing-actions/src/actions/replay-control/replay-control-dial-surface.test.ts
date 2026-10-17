@@ -1,4 +1,11 @@
-import { ReplayPosMode, replaySpeedFromTelemetry, replaySpeedToSdk, type TelemetryData } from "@iracedeck/iracing-sdk";
+import {
+  getCarNumberRawFromSessionInfo,
+  ReplayPosMode,
+  replaySpeedFromTelemetry,
+  replaySpeedToSdk,
+  type TelemetryData,
+} from "@iracedeck/iracing-sdk";
+import type { ReplaySessionStore } from "@iracedeck/replay-store";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -14,6 +21,7 @@ import {
   currentReplayCursorOwner,
 } from "../../shared/replay-cursor.js";
 import { _resetReplayPositionState, REPLAY_TARGET_GIVE_UP_MS } from "../../shared/replay-position-state.js";
+import { lastListedSessionNum } from "./green-flag-target.js";
 import { _resetCarTap, carMode } from "./replay-control-car-mode.js";
 import type { ReplayDialModeIo, ReplaySpeed } from "./replay-control-dial-mode.js";
 import { REPLAY_DIAL_MODES, ReplayControlDialSettings } from "./replay-control-dial-settings.js";
@@ -28,6 +36,7 @@ import { incidentMode } from "./replay-control-incident-mode.js";
 import { lapMode } from "./replay-control-lap-mode.js";
 import { sessionMode } from "./replay-control-session-mode.js";
 import { speedMode } from "./replay-control-speed-mode.js";
+import type { RecordStepSource } from "./replay-record-step.js";
 import {
   _resetReplaySpeedState,
   DIAL_SPEED_HOLD_MS,
@@ -63,14 +72,8 @@ vi.mock("./replay-search-queue.js", () => ({
   _resetReplaySearchQueue: () => undefined,
 }));
 
-/** The replay record the surface reads (#801): null for none initialized. */
-const store = vi.hoisted(() => ({ value: null as unknown }));
-
-vi.mock("@iracedeck/replay-store", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@iracedeck/replay-store")>()),
-  isReplaySessionStoreInitialized: () => store.value !== null,
-  getReplaySessionStore: () => store.value,
-}));
+/** The replay record the host's record source reads (#801): null for none initialized. */
+const store = { value: null as unknown };
 
 const mocks = vi.hoisted(() => ({
   nextLap: vi.fn(() => true),
@@ -181,8 +184,15 @@ const host = {
     replaySeenAt: env.inReplay ? nowMs : null,
   })),
   sessionInfo: vi.fn((): unknown => env.sessionInfo),
-  subSessionId: vi.fn((): number | undefined => undefined),
-  lapApproachFrames: 60,
+  /** The action's record-step source, over {@link store} and the session info, with the camera car the surface hands it. */
+  recordSource: vi.fn((telemetry: TelemetryData | null): RecordStepSource => ({
+    store: store.value as ReplaySessionStore | null,
+    scope: undefined,
+    camCarIdx: telemetry?.CamCarIdx,
+    carNumberRaw: (carIdx) => getCarNumberRawFromSessionInfo(env.sessionInfo, carIdx),
+    lapApproachFrames: 60,
+    lastSessionNum: lastListedSessionNum(env.sessionInfo),
+  })),
   tapBinding: vi.fn((_key: string) => Promise.resolve(true)),
   isBindingMissing: vi.fn((_keys: string | readonly string[]) => false),
   cancelCameraWalks: vi.fn((_by: string) => undefined),
@@ -200,8 +210,7 @@ function makeSurface(): ReplayControlDialSurface {
     refreshKeys: host.refreshKeys,
     replayState: host.replayState as never,
     sessionInfo: host.sessionInfo,
-    subSessionId: host.subSessionId,
-    lapApproachFrames: host.lapApproachFrames,
+    recordSource: host.recordSource,
     tapBinding: host.tapBinding,
     isBindingMissing: host.isBindingMissing,
     cancelCameraWalks: host.cancelCameraWalks,

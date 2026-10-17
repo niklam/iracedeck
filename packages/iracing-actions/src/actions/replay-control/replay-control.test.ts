@@ -1628,8 +1628,30 @@ describe("ReplayControl", () => {
         },
       );
 
-      it("lands a lap step where the keypad's does, a second before the line", () => {
-        expect(host().lapApproachFrames).toBe(60);
+      it("reads the record through the keypad's own source: a lap step lands a second before the line", async () => {
+        const { getReplaySessionStore, isReplaySessionStoreInitialized } = await import("@iracedeck/replay-store");
+        const store = { laps: {}, sessions: {} };
+
+        vi.mocked(isReplaySessionStoreInitialized).mockReturnValueOnce(true);
+        vi.mocked(getReplaySessionStore).mockReturnValueOnce(store as never);
+        vi.mocked(getCarNumberRawFromSessionInfo).mockReturnValueOnce(104);
+        action["sdkController"].getSessionInfo = vi.fn(
+          () =>
+            ({
+              WeekendInfo: { SubSessionID: 77 },
+              SessionInfo: { Sessions: [{ SessionNum: 0 }, { SessionNum: 2 }] },
+            }) as never,
+        );
+
+        const source = host().recordSource({ CamCarIdx: 4 } as TelemetryData);
+
+        expect(source.store).toBe(store);
+        expect(source.scope).toEqual({ subSessionId: 77 });
+        expect(source.camCarIdx).toBe(4);
+        expect(source.carNumberRaw(4)).toBe(104);
+        expect(source.lapApproachFrames).toBe(60);
+        expect(source.lastSessionNum).toBe(2);
+        expect(host().recordSource(null).camCarIdx).toBeUndefined();
       });
 
       it("reads the binding state without setting the action's active binding", () => {

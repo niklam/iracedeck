@@ -32,13 +32,11 @@ import { getCarNumberFromSessionInfo } from "@iracedeck/iracing-sdk";
 
 import { CAR_CYCLE_BINDING_KEY_LIST, CAR_CYCLE_BINDING_KEYS } from "../../shared/car-cycle-bindings.js";
 import type { ReplayDialMode, ReplayDialStepIo } from "./replay-control-dial-mode.js";
+import { NO_CAR_IDX } from "./replay-record-step.js";
 import { formatSpeedDisplay } from "./replay-speed-format.js";
 
 /** The name a Car turn cancels a walk under. */
 const CURSOR_OWNER = "dial-car";
-
-/** iRacing's "no driver" camera index: mid-transition, or the pace car. */
-const NO_CAR_IDX = 255;
 
 type CarDirection = keyof typeof CAR_CYCLE_BINDING_KEYS;
 

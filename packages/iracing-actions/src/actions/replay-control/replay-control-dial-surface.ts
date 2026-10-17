@@ -32,14 +32,8 @@ import {
   NOOP_HOLD_PREVIEW,
   svgToDataUri,
 } from "@iracedeck/deck-core";
-import {
-  getCarNumberRawFromSessionInfo,
-  replaySpeedFromTelemetry,
-  type ReplayState,
-  type TelemetryData,
-} from "@iracedeck/iracing-sdk";
+import { replaySpeedFromTelemetry, type ReplayState, type TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
-import { getReplaySessionStore, isReplaySessionStoreInitialized } from "@iracedeck/replay-store";
 
 import { type DialBoxArgs, renderDialBox, resolveDialBoxColors } from "../../shared/dial-box.js";
 import { type DialInputEvent, hasDialInputContext } from "../../shared/dial-context.js";
@@ -63,7 +57,6 @@ import { REPLAY_TARGET_GIVE_UP_MS } from "../../shared/replay-position-state.js"
 import { resolveReplayWalkStart } from "../../shared/replay-record-walk.js";
 import { isSeeking } from "../../shared/replay-seek.js";
 import { REPLAY_JUMP_MAX_WAIT_MS } from "../../shared/replay-timing.js";
-import { lastListedSessionNum } from "./green-flag-target.js";
 import { carMode } from "./replay-control-car-mode.js";
 import type {
   ReplayDialMode,
@@ -175,10 +168,12 @@ export interface ReplayControlDialHost {
   replayState(nowMs: number): ReplayState;
   /** The session info the SDK holds, or null. */
   sessionInfo(): unknown;
-  /** `WeekendInfo.SubSessionID`, the replay record's scope; undefined lets the store take its active session. */
-  subSessionId(): number | undefined;
-  /** Frames before a lap start a lap step lands at: the action's `LAP_START_APPROACH_FRAMES`. */
-  readonly lapApproachFrames: number;
+  /**
+   * What a record lookup reads besides its anchor, with the camera car from
+   * `telemetry`: the keypad's own record-step source (#1426), so a Lap or
+   * Session turn and a key press read the same record the same way.
+   */
+  recordSource(telemetry: TelemetryData | null): RecordStepSource;
   /** Taps one of the action's key bindings (#801's Car mode); resolves to whether it went out. */
   tapBinding(settingKey: string): Promise<boolean>;
   /** Whether any of the given global binding keys is unset (#612). Stateless, so a dial may ask it. */
@@ -688,19 +683,9 @@ export class ReplayControlDialSurface {
     return findRecordStep(step, start.frame, this.recordSource(), steps);
   }
 
-  /** What a record lookup reads, from the running entry's reading: the store, the camera car and the session info. */
+  /** What a record lookup reads: the action's record-step source, with the camera car from the running entry's reading. */
   private recordSource(): RecordStepSource {
-    const sessionInfo = this.host.sessionInfo();
-    const subSessionId = this.host.subSessionId();
-
-    return {
-      store: isReplaySessionStoreInitialized() ? getReplaySessionStore() : null,
-      scope: subSessionId === undefined ? undefined : { subSessionId },
-      camCarIdx: this.reading().telemetry?.CamCarIdx,
-      carNumberRaw: (carIdx) => getCarNumberRawFromSessionInfo(sessionInfo, carIdx),
-      lapApproachFrames: this.host.lapApproachFrames,
-      lastSessionNum: lastListedSessionNum(sessionInfo),
-    };
+    return this.host.recordSource(this.reading().telemetry);
   }
 
   /**

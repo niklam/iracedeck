@@ -122,7 +122,7 @@ import { halvingProbeFrames } from "./lap-walk-probes.js";
 import { replayControlDialField } from "./replay-control-dial-settings.js";
 import { ReplayControlDialSurface } from "./replay-control-dial-surface.js";
 import { observeIncidentSearch } from "./replay-incident-observer.js";
-import { findRecordStep, RECORD_STEPS, type RecordStepMode } from "./replay-record-step.js";
+import { findRecordStep, RECORD_STEPS, type RecordStepMode, type RecordStepSource } from "./replay-record-step.js";
 import { setReplaySearchQueueLogger } from "./replay-search-queue.js";
 import { formatSpeedDisplay, parseSpeedSetting } from "./replay-speed-format.js";
 import { noteTelemetrySpeed } from "./replay-speed-state.js";
@@ -988,11 +988,10 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
       resolveGreenFlagTarget(this.sdkController.getSessionInfo(), this.sdkController.getCurrentTelemetry()) !== null,
     refreshKeys: () => this.updateAllTelemetryDisplays(),
     // What the Lap and Session modes step from and through (#801): the same
-    // reads as the keypad's record step.
+    // reads, and the same record source, as the keypad's record step.
     replayState: (nowMs) => this.sdkController.getReplayState(nowMs),
     sessionInfo: () => this.sdkController.getSessionInfo(),
-    subSessionId: () => readSubSessionId(this.sdkController.getSessionInfo()),
-    lapApproachFrames: LAP_START_APPROACH_FRAMES,
+    recordSource: (telemetry) => this.recordStepSource(telemetry),
     // The Car mode's binding (#801). Never `setActiveBinding`: its readiness
     // state is one value per action instance, and a dial's would bleed onto the
     // keys; `isBindingMissing` is stateless.
@@ -3021,16 +3020,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     }
 
     const anchor = start.frame;
-    const sessionInfo = this.sdkController.getSessionInfo();
-    const subSessionId = readSubSessionId(sessionInfo);
-    const found = findRecordStep(step, anchor, {
-      store: isReplaySessionStoreInitialized() ? getReplaySessionStore() : null,
-      scope: subSessionId === undefined ? undefined : { subSessionId },
-      camCarIdx: telemetry?.CamCarIdx,
-      carNumberRaw: (carIdx) => this.getCarNumberRawByIdx(carIdx),
-      lapApproachFrames: LAP_START_APPROACH_FRAMES,
-      lastSessionNum: lastListedSessionNum(sessionInfo),
-    });
+    const found = findRecordStep(step, anchor, this.recordStepSource(telemetry));
 
     if (!found.hit) {
       searchOnMiss(found.reason);
@@ -3060,6 +3050,27 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
         jump.end();
       }
     })();
+  }
+
+  /**
+   * What a record step reads (#1426) besides its anchor, with the camera car
+   * from `telemetry`: the store, the SubSessionID scope, the car numbers, the
+   * lap approach and the event's last session, from the session info the SDK
+   * holds now. The one source behind the keypad's Next / Previous Lap and
+   * Session and the dial's Lap and Session modes (#801).
+   */
+  private recordStepSource(telemetry: TelemetryData | null): RecordStepSource {
+    const sessionInfo = this.sdkController.getSessionInfo();
+    const subSessionId = readSubSessionId(sessionInfo);
+
+    return {
+      store: isReplaySessionStoreInitialized() ? getReplaySessionStore() : null,
+      scope: subSessionId === undefined ? undefined : { subSessionId },
+      camCarIdx: telemetry?.CamCarIdx,
+      carNumberRaw: (carIdx) => this.getCarNumberRawByIdx(carIdx),
+      lapApproachFrames: LAP_START_APPROACH_FRAMES,
+      lastSessionNum: lastListedSessionNum(sessionInfo),
+    };
   }
 
   private executeMode(contextId: string, settings: ReplayControlSettings, repeat = false): void {

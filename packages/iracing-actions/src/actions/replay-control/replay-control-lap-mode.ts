@@ -14,13 +14,10 @@
 import type { ReplayPosition } from "../../shared/replay-position-state.js";
 import type { ReplayDialStepIo } from "./replay-control-dial-mode.js";
 import { createRecordStepMode, formatReplayClock } from "./replay-control-step-mode.js";
-import { RECORD_STEPS, type RecordStepSource } from "./replay-record-step.js";
+import { NO_CAR_IDX, RECORD_STEPS, type RecordStepSource } from "./replay-record-step.js";
 
 /** The replay-cursor owner every Lap turn's jump and search goes out under. */
 const CURSOR_OWNER = "dial-lap";
-
-/** iRacing's "no driver" camera index: mid-transition, or the pace car. */
-const NO_CAR_IDX = 255;
 
 /**
  * @internal Exported for testing

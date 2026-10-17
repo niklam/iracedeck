@@ -46,8 +46,8 @@ import {
  */
 export const SESSION_START_LANDING_FRAMES = 120;
 
-/** iRacing's "no driver" camera index: mid-transition, or the pace car. */
-const NO_CAR_IDX = 255;
+/** iRacing's "no driver" camera index (`CamCarIdx`): mid-transition, or the pace car. */
+export const NO_CAR_IDX = 255;
 
 /** The four modes that step through the record. */
 export type RecordStepMode = "next-lap" | "prev-lap" | "next-session" | "prev-session";
