@@ -2238,7 +2238,13 @@ describe("createReplaySessionStore", () => {
 
       expect(store.laps.listLapStarts({ ...lapQuery, subSessionId: SUB })).toEqual({
         hit: true,
-        frames: [12000, 17500, 30821, 36305, 41760],
+        starts: [
+          { frame: 12000, lap: 1, sessionNum: 1, sessionUniqueId: 2 },
+          { frame: 17500, lap: 2, sessionNum: 1, sessionUniqueId: 2 },
+          { frame: 30821, lap: 1, sessionNum: 2, sessionUniqueId: 3 },
+          { frame: 36305, lap: 2, sessionNum: 2, sessionUniqueId: 3 },
+          { frame: 41760, lap: 3, sessionNum: 2, sessionUniqueId: 3 },
+        ],
       });
     });
 

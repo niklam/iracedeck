@@ -13,20 +13,29 @@
  *   {@link SESSION_START_LANDING_FRAMES} after it, so the cursor reads the new
  *   session and a second press does not find the same start again.
  *
- * The step itself is the shared walk (`shared/replay-record-walk.ts`). Every
+ * The step itself is the shared walk (`shared/replay-record-walk.ts`), told
+ * where each list's record has gaps ({@link LAP_SPANS}, {@link SESSION_SPANS})
+ * so a step never crosses laps or a session the plugin did not record. Every
  * way the record cannot answer is a miss with a reason, and the caller then
  * sends iRacing's own search, as the key did before. Pure: the caller reads
  * the store, the camera car and the car number and hands them in.
  */
 import type {
+  LapStartListEntry,
   LapStartListing,
+  ReplaySessionStart,
   ReplaySessionStore,
   SessionStartListing,
   SubSessionScoped,
 } from "@iracedeck/replay-store";
 
 import type { ReplaySearchKind } from "../../shared/replay-command-gate.js";
-import { type ReplayWalkDirection, walkRecordedEntries } from "../../shared/replay-record-walk.js";
+import {
+  type RecordedEntry,
+  type RecordedSpanRule,
+  type ReplayWalkDirection,
+  walkRecordedEntries,
+} from "../../shared/replay-record-walk.js";
 
 /**
  * Frames after a recorded session start a Next / Previous Session step lands
@@ -84,14 +93,44 @@ export type RecordStepResult =
   | { readonly hit: false; readonly reason: string };
 
 /**
- * A store listing's recorded frames, raw, and the offset a jump to one of them
- * lands at, or why it has none.
+ * Two recorded lap starts follow each other in the record when the second is
+ * the next lap of the same session instance. A stint in the garage leaves
+ * laps out, and the record has no lap past the last one recorded, so the last
+ * span is not open: a step that would go there, or cross a session boundary,
+ * is iRacing's search's.
  */
-type Listed = { hit: true; frames: number[]; landing: (frame: number) => number; what: string } | Miss;
+export const LAP_SPANS: RecordedSpanRule<LapStartListEntry> = {
+  adjacent: (a, b) => a.sessionNum === b.sessionNum && a.sessionUniqueId === b.sessionUniqueId && b.lap === a.lap + 1,
+  lastSpanOpen: false,
+};
 
-type Miss = { hit: false; reason: string };
+/**
+ * Two recorded session starts follow each other when the second is the next
+ * session number, or session 0 of another instance (a restarted offline event
+ * starts again at practice). A session after the last recorded start is rare,
+ * and the race is usually the last, so the last span is open.
+ */
+export const SESSION_SPANS: RecordedSpanRule<ReplaySessionStart> = {
+  adjacent: (a, b) =>
+    b.sessionNum === a.sessionNum + 1 || (b.sessionNum === 0 && b.sessionUniqueId !== a.sessionUniqueId),
+  lastSpanOpen: true,
+};
 
-function lapStarts(source: RecordStepSource, store: ReplaySessionStore): Listed {
+/**
+ * A store listing's recorded entries, raw, with the rule for its gaps and the
+ * offset a jump to one of them lands at, or why it has none.
+ */
+type Listed<T extends RecordedEntry> =
+  | {
+      hit: true;
+      entries: readonly T[];
+      rule: RecordedSpanRule<T>;
+      landing: (frame: number) => number;
+      what: string;
+    }
+  | { hit: false; reason: string };
+
+function lapStarts(source: RecordStepSource, store: ReplaySessionStore): Listed<LapStartListEntry> {
   const carIdx = source.camCarIdx;
 
   if (typeof carIdx !== "number" || !Number.isInteger(carIdx) || carIdx < 0 || carIdx === NO_CAR_IDX) {
@@ -108,29 +147,48 @@ function lapStarts(source: RecordStepSource, store: ReplaySessionStore): Listed 
 
   return {
     hit: true,
-    frames: listing.frames,
+    entries: listing.starts,
+    rule: LAP_SPANS,
     landing: (frame) => Math.max(0, frame - source.lapApproachFrames),
-    what: `${listing.frames.length} lap starts of carIdx ${carIdx}`,
+    what: `${listing.starts.length} lap starts of carIdx ${carIdx}`,
   };
 }
 
-function sessionStarts(source: RecordStepSource, store: ReplaySessionStore): Listed {
+function sessionStarts(source: RecordStepSource, store: ReplaySessionStore): Listed<ReplaySessionStart> {
   const listing: SessionStartListing = store.sessions.list(source.scope);
 
   if (!listing.hit) return { hit: false, reason: listing.reason };
 
   return {
     hit: true,
-    frames: listing.starts.map((start) => start.frame),
+    entries: listing.starts,
+    rule: SESSION_SPANS,
     landing: (frame) => frame + SESSION_START_LANDING_FRAMES,
     what: `${listing.starts.length} session starts`,
   };
 }
 
+function stepThrough<T extends RecordedEntry>(
+  listed: Listed<T>,
+  anchor: number,
+  direction: ReplayWalkDirection,
+): RecordStepResult {
+  if (!listed.hit) return listed;
+
+  const walked = walkRecordedEntries(listed.entries, anchor, direction, 1, listed.rule);
+
+  if (!walked.hit) return { hit: false, reason: walked.reason };
+
+  return { hit: true, frame: listed.landing(walked.entry.frame), steps: walked.steps, what: listed.what };
+}
+
 /**
  * Where one step of `step`'s list from `anchor` lands, or the miss: no store,
  * any of the store's reasons (`no file`, `no car`, `car mismatch`,
- * `newer format`), no car on camera for a lap step, or `nothing that way`.
+ * `newer format`), no car on camera for a lap step, or one of the walk's:
+ * `outside the record` (the anchor lies in no recorded span), `gap in the
+ * record` (the step would cross laps or a session the record does not hold)
+ * or `nothing that way`.
  *
  * The walk compares the anchor with the recorded starts themselves and the
  * landing offset is added to the start it picks, never the other way round: a
@@ -141,18 +199,7 @@ function sessionStarts(source: RecordStepSource, store: ReplaySessionStore): Lis
 export function findRecordStep(step: RecordStepSpec, anchor: number, source: RecordStepSource): RecordStepResult {
   if (source.store === null) return { hit: false, reason: "no store" };
 
-  const found = step.list === "lap" ? lapStarts(source, source.store) : sessionStarts(source, source.store);
-
-  if (!found.hit) return found;
-
-  const walked = walkRecordedEntries(
-    found.frames.map((frame) => ({ frame })),
-    anchor,
-    step.direction,
-    1,
-  );
-
-  if (!walked.hit) return { hit: false, reason: walked.reason };
-
-  return { hit: true, frame: found.landing(walked.entry.frame), steps: walked.steps, what: found.what };
+  return step.list === "lap"
+    ? stepThrough(lapStarts(source, source.store), anchor, step.direction)
+    : stepThrough(sessionStarts(source, source.store), anchor, step.direction);
 }

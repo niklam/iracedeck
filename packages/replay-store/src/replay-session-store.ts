@@ -170,7 +170,8 @@ export interface ReplayLapsApi {
   findLapStart(query: LapStartQuery & SubSessionScoped): LapStartLookup;
   /**
    * Every recorded lap start of one car across every session of the record,
-   * frame-ordered, starts within 60 frames of each other as one (#1426); or
+   * frame-ordered, each with its lap and session, starts within 60 frames of
+   * each other as one (#1426); or
    * why the record has none, the reasons `findLapStart` gives, decided the
    * same way.
    */

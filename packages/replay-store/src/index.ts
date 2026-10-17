@@ -36,6 +36,7 @@ export {
   normalizeLapsSection,
   recordLapStartInSection,
   recordLapTimeInSection,
+  type LapStartListEntry,
   type LapStartListing,
   type LapStartListMissReason,
   type LapStartListQuery,

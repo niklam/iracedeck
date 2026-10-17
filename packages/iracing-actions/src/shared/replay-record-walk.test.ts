@@ -8,9 +8,11 @@ import { beginReplayJump, runReplayJump } from "./replay-jump-playback.js";
 import { _resetReplayPositionState, pendingReplayTarget } from "./replay-position-state.js";
 import {
   recordedIndexAt,
+  type RecordedSpanRule,
   resolveReplayWalkAnchor,
   resolveReplayWalkStart,
   stepRecordedFrames,
+  walkRecordedEntries,
   walkRecordedIndex,
 } from "./replay-record-walk.js";
 
@@ -88,6 +90,51 @@ describe("stepRecordedFrames", () => {
       expect(stepRecordedFrames([], 0, "next", 1)).toBeNull();
       expect(stepRecordedFrames([], 0, "previous", 1)).toBeNull();
     });
+  });
+});
+
+describe("walkRecordedEntries with a span rule (#1426)", () => {
+  /** Entries numbered like laps: consecutive numbers follow each other in the record. */
+  type Numbered = { frame: number; n: number };
+  const closed: RecordedSpanRule<Numbered> = { adjacent: (a, b) => b.n === a.n + 1, lastSpanOpen: false };
+  const open: RecordedSpanRule<Numbered> = { ...closed, lastSpanOpen: true };
+  // 1, 2, 3, then a gap, then 7, 8, 9.
+  const list: Numbered[] = [1, 2, 3, 7, 8, 9].map((n) => ({ frame: n * 1_000, n }));
+
+  it("steps more than one entry and stops before a gap, reporting the steps it took", () => {
+    expect(walkRecordedEntries(list, 1_500, "next", 5, closed)).toMatchObject({ hit: true, index: 2, steps: 2 });
+    expect(walkRecordedEntries(list, 8_500, "previous", 5, closed)).toMatchObject({ hit: true, index: 3, steps: 2 });
+  });
+
+  it("a first step that would cross a gap is a miss", () => {
+    expect(walkRecordedEntries(list, 2_950, "next", 3, closed)).toEqual({ hit: false, reason: "gap in the record" });
+    expect(walkRecordedEntries(list, 7_050, "previous", 1, closed)).toEqual({
+      hit: false,
+      reason: "gap in the record",
+    });
+  });
+
+  it("an anchor in no recorded span is outside the record", () => {
+    // Before the list, in the entry before the gap, and past a closed last entry.
+    expect(walkRecordedEntries(list, 500, "next", 1, closed)).toEqual({ hit: false, reason: "outside the record" });
+    expect(walkRecordedEntries(list, 3_500, "previous", 1, closed)).toEqual({
+      hit: false,
+      reason: "outside the record",
+    });
+    expect(walkRecordedEntries(list, 9_500, "previous", 1, closed)).toEqual({
+      hit: false,
+      reason: "outside the record",
+    });
+  });
+
+  it("an open last span takes an anchor past the last entry", () => {
+    expect(walkRecordedEntries(list, 9_500, "previous", 1, open)).toMatchObject({ hit: true, index: 5, steps: 1 });
+    expect(walkRecordedEntries(list, 9_500, "next", 1, open)).toEqual({ hit: false, reason: "nothing that way" });
+  });
+
+  it("without a rule the walk crosses every pair, as Replay Markers always has", () => {
+    expect(walkRecordedEntries(list, 2_500, "next", 3)).toMatchObject({ hit: true, index: 4, steps: 3 });
+    expect(walkRecordedEntries(list, 500, "next", 1)).toMatchObject({ hit: true, index: 0, steps: 1 });
   });
 });
 

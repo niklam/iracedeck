@@ -478,11 +478,25 @@ export interface LapStartListQuery {
  */
 export type LapStartListMissReason = "no file" | "no car" | "car mismatch" | "newer format";
 
+/**
+ * One recorded lap start in a listing: the raw frame, the lap it starts and
+ * the session it was recorded in. A caller stepping through the list reads
+ * whether two entries are back to back in the record from these (#1426): a
+ * lap the driver spent in the garage is not recorded, and the walk must not
+ * step across it as if it were one lap.
+ */
+export interface LapStartListEntry {
+  frame: number;
+  lap: number;
+  sessionNum: number;
+  sessionUniqueId: number;
+}
+
 export type LapStartListing =
   | {
       hit: true;
-      /** The recorded lap-start frames, raw, in frame order; the caller applies its own approach. */
-      frames: number[];
+      /** The recorded lap starts, raw, in frame order; the caller applies its own approach. */
+      starts: LapStartListEntry[];
     }
   | { hit: false; reason: LapStartListMissReason };
 
@@ -494,21 +508,24 @@ export type LapStartListing =
  * `carNumberRaw` in each session; a session whose record for the index carries
  * another number is another car, and none of its laps are listed.
  *
- * Starts within {@link MARKER_DEDUPE_FRAMES} of each other are one entry, the
- * earliest: a lap two recorded sessions both hold (the walk recording under a
- * saved replay's own pair, beside the live session) is one step.
+ * Each entry carries its lap number and the session it was recorded in, so a
+ * caller can tell two entries that follow each other in the record from two
+ * with a gap between them (#1426). Starts within {@link MARKER_DEDUPE_FRAMES}
+ * of each other are one entry, the earliest (its lap and session are the
+ * ones listed): a lap two recorded sessions both hold (the walk recording
+ * under a saved replay's own pair, beside the live session) is one step.
  *
  * A miss: `no car` when no session holds the index (and for a section that is
  * undefined: the file has no `laps` section), `car mismatch` when every session
  * that holds it holds another car. A car with no laps listed is a hit with no
- * frames.
+ * starts.
  */
 export function listLapStartsInSection(
   section: ReplayLapsSection | undefined,
   query: LapStartListQuery,
 ): LapStartListing {
   const key = String(query.carIdx);
-  const frames: number[] = [];
+  const starts: LapStartListEntry[] = [];
   let heldByIndex = false;
   let matched = false;
 
@@ -523,22 +540,29 @@ export function listLapStartsInSection(
 
     matched = true;
 
-    for (const entry of car.laps) frames.push(entry.frame);
+    for (const entry of car.laps) {
+      starts.push({
+        frame: entry.frame,
+        lap: entry.lap,
+        sessionNum: session.sessionNum,
+        sessionUniqueId: session.sessionUniqueId,
+      });
+    }
   }
 
   if (!heldByIndex) return { hit: false, reason: "no car" };
 
   if (!matched) return { hit: false, reason: "car mismatch" };
 
-  frames.sort((a, b) => a - b);
+  starts.sort((a, b) => a.frame - b.frame);
 
-  const collapsed: number[] = [];
+  const collapsed: LapStartListEntry[] = [];
 
-  for (const frame of frames) {
+  for (const start of starts) {
     const kept = collapsed.at(-1);
 
-    if (kept === undefined || frame - kept > MARKER_DEDUPE_FRAMES) collapsed.push(frame);
+    if (kept === undefined || start.frame - kept.frame > MARKER_DEDUPE_FRAMES) collapsed.push(start);
   }
 
-  return { hit: true, frames: collapsed };
+  return { hit: true, starts: collapsed };
 }

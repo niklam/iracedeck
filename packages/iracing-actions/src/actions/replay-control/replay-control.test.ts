@@ -5563,6 +5563,9 @@ describe("ReplayControl", () => {
     const START = 100_000;
     /** The camera car's recorded lap starts: each lands 60 frames before its line. */
     const LAP_STARTS = [50_000, 103_000, 106_000, 109_000];
+    /** Laps 1, 2, 3 … of the race session at `frames`, back to back in the record. */
+    const lapEntries = (frames: number[]) =>
+      frames.map((frame, i) => ({ frame, lap: i + 1, sessionNum: 2, sessionUniqueId: 3 }));
     /** The recorded session starts: each lands 120 frames after it. */
     const SESSION_STARTS = [0, 60_000, 150_000];
     const PAUSED = { speed: 0, slowMotion: false };
@@ -5573,7 +5576,7 @@ describe("ReplayControl", () => {
     let camCarIdx: number;
     const camera = { switchNum: vi.fn<(carNum: number, group: number, cam: number) => boolean>(() => true) };
     const store = {
-      laps: { listLapStarts: vi.fn((): LapStartListing => ({ hit: true, frames: LAP_STARTS })) },
+      laps: { listLapStarts: vi.fn((): LapStartListing => ({ hit: true, starts: lapEntries(LAP_STARTS) })) },
       sessions: {
         list: vi.fn((): SessionStartListing => ({
           hit: true,
@@ -5639,7 +5642,7 @@ describe("ReplayControl", () => {
       } as ReturnType<typeof getGlobalSettings>);
       vi.mocked(isReplaySessionStoreInitialized).mockReturnValue(true);
       vi.mocked(getReplaySessionStore).mockReturnValue(store as any);
-      store.laps.listLapStarts.mockReset().mockImplementation(() => ({ hit: true, frames: LAP_STARTS }));
+      store.laps.listLapStarts.mockReset().mockImplementation(() => ({ hit: true, starts: lapEntries(LAP_STARTS) }));
       store.sessions.list.mockReset().mockImplementation(() => ({
         hit: true,
         starts: SESSION_STARTS.map((frame, i) => ({ sessionNum: i, sessionUniqueId: i + 1, frame })),
@@ -5766,13 +5769,56 @@ describe("ReplayControl", () => {
           "next-lap",
           "nextLap",
           "nothing that way",
-          () => store.laps.listLapStarts.mockImplementation(() => ({ hit: true, frames: [50_000, 99_000] })),
+          // The cursor is at the last recorded lap's landing.
+          () =>
+            store.laps.listLapStarts.mockImplementation(() => ({
+              hit: true,
+              starts: lapEntries([50_000, 100_030]),
+            })),
         ],
         [
           "prev-lap",
           "prevLap",
           "nothing that way",
-          () => store.laps.listLapStarts.mockImplementation(() => ({ hit: true, frames: [] })),
+          // The cursor is just past the first recorded lap's start.
+          () =>
+            store.laps.listLapStarts.mockImplementation(() => ({
+              hit: true,
+              starts: lapEntries([99_950, 103_000]),
+            })),
+        ],
+        [
+          "next-lap",
+          "nextLap",
+          "outside the record",
+          // Past the last recorded lap start: the laps after it may not be recorded.
+          () =>
+            store.laps.listLapStarts.mockImplementation(() => ({
+              hit: true,
+              starts: lapEntries([50_000, 99_000]),
+            })),
+        ],
+        [
+          "prev-lap",
+          "prevLap",
+          "outside the record",
+          () => store.laps.listLapStarts.mockImplementation(() => ({ hit: true, starts: [] })),
+        ],
+        [
+          "next-lap",
+          "nextLap",
+          "gap in the record",
+          // Laps 1-2 then 9-10: the driver was in the garage between.
+          () =>
+            store.laps.listLapStarts.mockImplementation(() => ({
+              hit: true,
+              starts: [
+                { frame: 90_000, lap: 1, sessionNum: 2, sessionUniqueId: 3 },
+                { frame: 100_030, lap: 2, sessionNum: 2, sessionUniqueId: 3 },
+                { frame: 140_000, lap: 9, sessionNum: 2, sessionUniqueId: 3 },
+                { frame: 146_000, lap: 10, sessionNum: 2, sessionUniqueId: 3 },
+              ],
+            })),
         ],
       ];
       const SESSION_MISSES: MissCase[] = [
@@ -5796,6 +5842,20 @@ describe("ReplayControl", () => {
             store.sessions.list.mockImplementation(() => ({
               hit: true,
               starts: [{ sessionNum: 0, sessionUniqueId: 1, frame: 0 }],
+            })),
+        ],
+        [
+          "next-session",
+          "nextSession",
+          "outside the record",
+          // Sessions 0 and 2: the plugin never saw session 1, which the cursor may be in.
+          () =>
+            store.sessions.list.mockImplementation(() => ({
+              hit: true,
+              starts: [
+                { sessionNum: 0, sessionUniqueId: 1, frame: 0 },
+                { sessionNum: 2, sessionUniqueId: 1, frame: 150_000 },
+              ],
             })),
         ],
       ];

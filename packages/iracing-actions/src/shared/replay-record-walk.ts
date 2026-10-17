@@ -160,13 +160,33 @@ export interface RecordedEntry {
   readonly frame: number;
 }
 
-/** Why a walk moved nowhere. */
-export type RecordedWalkMissReason = "nothing that way";
+/**
+ * Why a walk moved nowhere. `nothing that way` is the end of the list (or no
+ * step asked for); the other two come only from a walk with a
+ * {@link RecordedSpanRule}: `outside the record` when the anchor lies in no
+ * recorded span, `gap in the record` when the first step would cross one.
+ */
+export type RecordedWalkMissReason = "nothing that way" | "outside the record" | "gap in the record";
 
 /** Where a walk ended — the entry, its index and how many entries it moved (at least 1) — or why it did not move. */
 export type RecordedWalkResult<T extends RecordedEntry> =
   | { readonly hit: true; readonly entry: T; readonly index: number; readonly steps: number }
   | { readonly hit: false; readonly reason: RecordedWalkMissReason };
+
+/**
+ * Which consecutive entries of a list follow each other in the record, for a
+ * list whose record can have gaps (#1426): laps are recorded only while the
+ * driver is in the car, so a stint in the garage leaves laps out, and a
+ * session the plugin never saw has no start. An entry's **span** runs from it
+ * to the next entry when the two are {@link adjacent}; the last entry's span
+ * runs on only when {@link lastSpanOpen} says so.
+ */
+export interface RecordedSpanRule<T extends RecordedEntry> {
+  /** Whether `b`, the entry after `a` in the list, is the next one in the record. */
+  adjacent(a: T, b: T): boolean;
+  /** Whether the last entry's span is open-ended: nothing after it can be missing from the record. */
+  readonly lastSpanOpen: boolean;
+}
 
 /**
  * Steps `steps` entries through the frame-ordered `entries` from `anchor`.
@@ -178,26 +198,75 @@ export type RecordedWalkResult<T extends RecordedEntry> =
  * header); each further step is the next entry, stopping at the end of the
  * list, and `steps` in the result says how many were taken. A miss is
  * `nothing that way`, zero steps included.
+ *
+ * With a `rule`, the walk steps only through the record and never across a
+ * gap in it, so the caller can fall back to the sim's own search there:
+ *
+ * - the anchor must lie in a recorded span — the last entry at or before it
+ *   exists, and is adjacent to the entry after it, or is the last entry of a
+ *   list whose last span is open — else `outside the record`;
+ * - every pair of entries a step crosses must be adjacent: a first step that
+ *   would cross a gap is `gap in the record`, and a further step stops before
+ *   one, reporting the steps taken.
+ *
+ * Without a rule (Replay Markers) every pair counts as adjacent and the anchor
+ * needs no span: the walk is the marker rule as it always was.
  */
 export function walkRecordedEntries<T extends RecordedEntry>(
   entries: readonly T[],
   anchor: number,
   direction: ReplayWalkDirection,
   steps: number,
+  rule?: RecordedSpanRule<T>,
 ): RecordedWalkResult<T> {
-  if (!(Math.floor(steps) >= 1)) return { hit: false, reason: "nothing that way" };
+  const wanted = Math.floor(steps);
 
+  if (!(wanted >= 1)) return { hit: false, reason: "nothing that way" };
+
+  /** Whether entries `i` and `i + 1` follow each other in the record. */
+  const joined = (i: number): boolean => {
+    const a = entries[i];
+    const b = entries[i + 1];
+
+    return a !== undefined && b !== undefined && (rule === undefined || rule.adjacent(a, b));
+  };
   const frames = entries.map((entry) => entry.frame);
+  const containing = containingIndex(frames, anchor);
+
+  if (rule !== undefined) {
+    const inSpan = containing >= 0 && (containing === entries.length - 1 ? rule.lastSpanOpen : joined(containing));
+
+    if (!inSpan) return { hit: false, reason: "outside the record" };
+  }
+
   const first = firstStepIndex(frames, anchor, direction);
 
   if (first < 0) return { hit: false, reason: "nothing that way" };
 
-  const walked = walkRecordedIndex(entries.length, first, direction, steps);
-  const entry = entries[walked.index];
+  // The pairs between the entry the anchor is in and the first step's entry:
+  // Next crosses every one up to it, Previous the one before the anchor's
+  // entry when it goes back past it. Without a rule an anchor before the list
+  // is in no entry, and its first Next crosses nothing.
+  for (let i = Math.max(0, Math.min(containing, first)); i < Math.max(containing, first); i++) {
+    if (!joined(i)) return { hit: false, reason: "gap in the record" };
+  }
 
-  return entry === undefined
-    ? { hit: false, reason: "nothing that way" }
-    : { hit: true, entry, index: walked.index, steps: walked.steps };
+  const sign = direction === "next" ? 1 : -1;
+  let index = first;
+  let taken = 1;
+
+  while (taken < wanted) {
+    const further = index + sign;
+
+    if (further < 0 || further >= entries.length || !joined(Math.min(index, further))) break;
+
+    index = further;
+    taken++;
+  }
+
+  const entry = entries[index];
+
+  return entry === undefined ? { hit: false, reason: "nothing that way" } : { hit: true, entry, index, steps: taken };
 }
 
 /**
