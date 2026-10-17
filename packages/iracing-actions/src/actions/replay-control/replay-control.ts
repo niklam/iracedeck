@@ -1,6 +1,8 @@
 import {
   applyGraphicTransform,
   assembleIcon,
+  type BusyMark,
+  busyMarkSvg,
   CommonSettings,
   computeGraphicArea,
   extractGraphicContent,
@@ -78,6 +80,14 @@ import z from "zod";
 import { CAR_CYCLE_BINDING_KEYS } from "../../shared/car-cycle-bindings.js";
 import { computeCarNumberTarget } from "../../shared/car-cycling.js";
 import { RepeatController } from "../../shared/repeat-controller.js";
+import {
+  getReplayBusyLook,
+  registerReplayBusySurface,
+  type ReplayBusyLook,
+  reportReplayPressIgnored,
+  setReplayBusyIndicatorLogger,
+} from "../../shared/replay-busy-indicator.js";
+import { replayBusyKeyMark, replayBusyMarkKey } from "../../shared/replay-busy-mark.js";
 import {
   pressReplayCommand,
   type ReplayGateCommand,
@@ -639,6 +649,10 @@ export function formatSetSpeedLabel(speedSetting: string): string {
  * With `unavailable`, a static mode draws the greyed, faded look Replay
  * Markers gives a key whose press would do nothing (Jump to Race Start in a
  * replay with no race session, #1354).
+ * With `busy`, the artwork gives way to the replay busy mark (#1437) while the
+ * title and border stay; it wins over `unavailable` and `bindingMissing`, as
+ * `assembleIcon` decides for the modes it draws. Speed Display and Set Speed,
+ * assembled here by hand, draw the same mark in the same place.
  */
 export function generateReplayControlSvg(
   settings: { mode: ReplayControlMode; speed?: string } & Partial<CommonSettings>,
@@ -647,6 +661,7 @@ export function generateReplayControlSvg(
   replaySlowMotion?: boolean,
   bindingMissing = false,
   unavailable = false,
+  busy?: BusyMark,
 ): string {
   const { mode } = settings;
 
@@ -667,7 +682,9 @@ export function generateReplayControlSvg(
     const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
     const viewBox = parseSvgViewBox(iconSvg);
 
-    if (graphicContent && viewBox) {
+    if (busy) {
+      graphicContent = handBuiltBusyMark(busy, title, colors);
+    } else if (graphicContent && viewBox) {
       graphicContent = applyGraphicTransform(
         graphicContent,
         { x: 0, y: 0, width: viewBox.width, height: viewBox.height },
@@ -711,7 +728,9 @@ export function generateReplayControlSvg(
     const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
     const viewBox = parseSvgViewBox(iconSvg);
 
-    if (graphicContent && viewBox) {
+    if (busy) {
+      graphicContent = handBuiltBusyMark(busy, title, colors);
+    } else if (graphicContent && viewBox) {
       graphicContent = applyGraphicTransform(
         graphicContent,
         { x: 0, y: 0, width: viewBox.width, height: viewBox.height },
@@ -758,7 +777,7 @@ export function generateReplayControlSvg(
 
     const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
 
-    return assembleIcon({ graphicSvg: iconSvg, colors: pauseColors, title, border, graphic });
+    return assembleIcon({ graphicSvg: iconSvg, colors: pauseColors, title, border, graphic, busy });
   }
 
   // All other modes: static title via assembleIcon
@@ -772,8 +791,24 @@ export function generateReplayControlSvg(
     title,
     graphic,
     bindingMissing,
-    ...(unavailable ? unavailableLook(colors, border) : { colors, border }),
+    busy,
+    // A busy key keeps its own colours: the mark takes `graphic1Color`, which
+    // the unavailable look would have turned grey.
+    ...(unavailable && !busy ? unavailableLook(colors, border) : { colors, border }),
   });
+}
+
+/**
+ * The busy mark for an icon assembled by hand (Speed Display, Set Speed): in
+ * the title-aware graphic area, in the colour `assembleIcon` gives it, and
+ * whether or not the graphic is shown.
+ */
+function handBuiltBusyMark(
+  busy: BusyMark,
+  title: Parameters<typeof computeGraphicArea>[0],
+  colors: Record<string, string>,
+): string {
+  return busyMarkSvg(busy, computeGraphicArea(title), colors.graphic1Color ?? colors.textColor ?? "#ffffff");
 }
 
 /**
@@ -919,6 +954,35 @@ const CAMERA_ONLY_MODES: ReadonlySet<ReplayControlMode> = new Set<ReplayControlM
   "prev-car-number",
 ]);
 
+/**
+ * The key modes whose own command is a jump or a search: the replay busy
+ * indicator draws them working while the gate reports it under way (#1437).
+ * Every other mode that sends a replay command draws only waiting and not
+ * done: a speed key's command is never under way, and a held Frame Forward is
+ * under way for as long as the finger is down.
+ */
+const BUSY_DRAWS_WORKING_MODES: ReadonlySet<ReplayControlMode> = new Set<ReplayControlMode>([
+  "next-session",
+  "prev-session",
+  "next-lap",
+  "prev-lap",
+  "next-incident",
+  "prev-incident",
+  "jump-to-beginning",
+  "jump-to-live",
+  "jump-to-fastest-lap",
+  "jump-to-race-start",
+]);
+
+/**
+ * Whether a key in `mode` registers with the replay busy indicator: every mode
+ * whose press sends a replay command with the key's context as its origin.
+ * The camera and car modes send none, and Speed Display sends nothing at all.
+ */
+function registersReplayBusy(mode: ReplayControlMode): boolean {
+  return !CAMERA_ONLY_MODES.has(mode) && mode !== "speed-display";
+}
+
 /** What a press through the gate came to, for the `Result:` debug line: the SDK's answer when it went out. */
 function pressResult(result: ReplayPressResult): string {
   return result.kind === "sent" ? String(result.ok) : result.kind;
@@ -961,6 +1025,13 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
   /** Last rendered state key per context (prevents redundant re-renders) */
   private lastState = new Map<string, string>();
 
+  /**
+   * Per key context registered with the replay busy indicator (#1437): the
+   * unregister its registration returned. A mode that sends no replay command
+   * has no entry.
+   */
+  private readonly busyRegistrations = new Map<string, () => void>();
+
   /** The dial half of the action (#1316); every dial event routes here. */
   private readonly dialSurface = new ReplayControlDialSurface({
     logger: this.logger,
@@ -995,6 +1066,9 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     // (#1430), whose own lines (a press held behind a jump, one dropped) go
     // to a scope of this action's log.
     setReplayCommandGateLogger(this.logger.createScope("ReplayGate"));
+    // The busy indicator (#1437) reads that gate; its lines (a look started or
+    // ended, a spinner stopped at its ceiling) go to a scope of their own.
+    setReplayBusyIndicatorLogger(this.logger.createScope("ReplayBusy"));
   }
 
   override async onWillAppear(ev: IDeckWillAppearEvent<ReplayControlSettings>): Promise<void> {
@@ -1017,6 +1091,9 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
 
     this.activeContexts.set(ev.action.id, settings);
     this.setActiveBinding(KEYSTROKE_MODES[settings.mode] ?? null);
+    // Before the first draw: an unregistered key reads rest, and a key coming
+    // back while its press still stands shows the look at once.
+    this.syncBusyRegistration(ev.action.id, settings.mode);
 
     // Seed initial state from current telemetry
     const current = this.sdkController.getCurrentTelemetry();
@@ -1060,6 +1137,8 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     this.activeContexts.delete(ev.action.id);
     this.lastState.delete(ev.action.id);
     this.raceStartShown.delete(ev.action.id);
+    this.busyRegistrations.get(ev.action.id)?.();
+    this.busyRegistrations.delete(ev.action.id);
   }
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<ReplayControlSettings>): Promise<void> {
@@ -1076,7 +1155,35 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
 
     this.activeContexts.set(ev.action.id, settings);
     this.setActiveBinding(KEYSTROKE_MODES[settings.mode] ?? null);
+    // The mode may have changed, and with it whether the key registers and
+    // whether it draws working.
+    this.syncBusyRegistration(ev.action.id, settings.mode);
     await this.updateDisplay(ev, settings);
+  }
+
+  /**
+   * Registers a key with the replay busy indicator for its mode, replacing any
+   * registration it had, or unregisters it when the mode sends no replay
+   * command. The new registration goes in before the old one is dropped, so a
+   * look standing for the token (a not done's second) carries over.
+   */
+  private syncBusyRegistration(contextId: string, mode: ReplayControlMode): void {
+    const previous = this.busyRegistrations.get(contextId);
+
+    if (registersReplayBusy(mode)) {
+      this.busyRegistrations.set(
+        contextId,
+        registerReplayBusySurface({
+          token: contextId,
+          drawsWorking: BUSY_DRAWS_WORKING_MODES.has(mode),
+          redraw: (look) => this.redrawBusyKey(contextId, look),
+        }),
+      );
+    } else {
+      this.busyRegistrations.delete(contextId);
+    }
+
+    previous?.();
   }
 
   override async onKeyDown(ev: IDeckKeyDownEvent<ReplayControlSettings>): Promise<void> {
@@ -1432,6 +1539,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
       this.logger.debug(
         `In-flight walk context: ${this.activeFastestLapPress?.contextId}, ignored press context: ${contextId}`,
       );
+      reportReplayPressIgnored(contextId);
 
       return;
     }
@@ -1749,6 +1857,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
       this.logger.debug(
         `In-flight context: ${this.activeFastestLapPress?.contextId}, ignored press context: ${contextId}`,
       );
+      reportReplayPressIgnored(contextId);
 
       return;
     }
@@ -3303,6 +3412,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
           this.logger.debug(
             `In-flight walk context: ${this.activeFastestLapPress?.contextId}, ignored press context: ${contextId}`,
           );
+          reportReplayPressIgnored(contextId);
           break;
         }
 
@@ -3434,24 +3544,51 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     ev: IDeckWillAppearEvent<ReplayControlSettings> | IDeckDidReceiveSettingsEvent<ReplayControlSettings>,
     settings: ReplayControlSettings,
   ): Promise<void> {
-    const isPlaying = this.shouldShowPause(ev.action.id);
-    const speed = this.replaySpeed.get(ev.action.id);
-    const slowMo = this.replaySlowMotion.get(ev.action.id);
-    const bindingMissing = this.isBindingMissing(KEYSTROKE_MODES[settings.mode]);
-    const unavailable = this.readRaceStartUnavailable(ev.action.id, settings);
-    const svgDataUri = generateReplayControlSvg(settings, isPlaying, speed, slowMo, bindingMissing, unavailable);
+    const contextId = ev.action.id;
+    const svgDataUri = this.keySvg(contextId, settings);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
-    this.setRegenerateCallback(ev.action.id, () =>
-      generateReplayControlSvg(
-        settings,
-        isPlaying,
-        speed,
-        slowMo,
-        this.isBindingMissing(KEYSTROKE_MODES[settings.mode]),
-        this.readRaceStartUnavailable(ev.action.id, settings),
-      ),
+    this.setRegenerateCallback(contextId, () => this.keySvg(contextId, settings));
+  }
+
+  /**
+   * A key's icon from its state as it stands: playing, the replay speed, a
+   * missing binding, Jump to Race Start's unavailable look, and the replay
+   * busy look (#1437) — read from the indicator unless the caller has it.
+   */
+  private keySvg(
+    contextId: string,
+    settings: ReplayControlSettings,
+    look: ReplayBusyLook = getReplayBusyLook(contextId),
+  ): string {
+    return generateReplayControlSvg(
+      settings,
+      this.shouldShowPause(contextId),
+      this.replaySpeed.get(contextId),
+      this.replaySlowMotion.get(contextId),
+      this.isBindingMissing(KEYSTROKE_MODES[settings.mode]),
+      this.readRaceStartUnavailable(contextId, settings),
+      replayBusyKeyMark(look),
     );
+  }
+
+  /**
+   * The replay busy indicator's redraw (#1437): the key composed from its
+   * state with `look`, through the same path as every other redraw. A
+   * telemetry-driven key also records what went out, so the next telemetry
+   * redraw neither repeats it nor is swallowed by a key from before the look.
+   */
+  private redrawBusyKey(contextId: string, look: ReplayBusyLook): void {
+    const settings = this.activeContexts.get(contextId);
+
+    if (!settings) return;
+
+    if (TELEMETRY_DISPLAY_MODES.has(settings.mode)) {
+      this.lastState.set(contextId, this.telemetryDisplayKey(contextId, settings, replayBusyKeyMark(look)));
+    }
+
+    void this.updateKeyImage(contextId, this.keySvg(contextId, settings, look));
+    this.setRegenerateCallback(contextId, () => this.keySvg(contextId, settings));
   }
 
   /**
@@ -3497,20 +3634,8 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     if (shown !== undefined && shown.unavailable === unavailable) return;
 
     this.logger.debug(`Jump to race start: key now ${unavailable ? "unavailable (no race session)" : "available"}`);
-    void this.updateKeyImage(
-      contextId,
-      generateReplayControlSvg(settings, false, undefined, undefined, false, unavailable),
-    );
-    this.setRegenerateCallback(contextId, () =>
-      generateReplayControlSvg(
-        settings,
-        false,
-        undefined,
-        undefined,
-        false,
-        this.readRaceStartUnavailable(contextId, settings),
-      ),
-    );
+    void this.updateKeyImage(contextId, this.keySvg(contextId, settings));
+    this.setRegenerateCallback(contextId, () => this.keySvg(contextId, settings));
   }
 
   private updateAllTelemetryDisplays(): void {
@@ -3524,28 +3649,29 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
   private async updateDisplayFromTelemetry(contextId: string, settings: ReplayControlSettings): Promise<void> {
     if (!TELEMETRY_DISPLAY_MODES.has(settings.mode)) return;
 
-    const isPlaying = this.shouldShowPause(contextId);
-    const speed = this.replaySpeed.get(contextId) ?? 0;
-    const slowMo = this.replaySlowMotion.get(contextId) ?? false;
-    const bo = settings.borderOverrides;
-    const borderKey = `${bo?.enabled ?? ""}|${bo?.borderWidth ?? ""}|${bo?.borderColor ?? ""}|${bo?.glowEnabled ?? ""}|${bo?.glowWidth ?? ""}`;
-    const stateKey = `${settings.mode}:${speed}:${slowMo}:${borderKey}`;
+    const look = getReplayBusyLook(contextId);
+    const stateKey = this.telemetryDisplayKey(contextId, settings, replayBusyKeyMark(look));
 
     if (this.lastState.get(contextId) === stateKey) return;
 
     this.lastState.set(contextId, stateKey);
 
-    const bindingMissing = this.isBindingMissing(KEYSTROKE_MODES[settings.mode]);
-    const svgDataUri = generateReplayControlSvg(settings, isPlaying, speed, slowMo, bindingMissing);
+    const svgDataUri = this.keySvg(contextId, settings, look);
     await this.updateKeyImage(contextId, svgDataUri);
-    this.setRegenerateCallback(contextId, () =>
-      generateReplayControlSvg(
-        settings,
-        isPlaying,
-        speed,
-        slowMo,
-        this.isBindingMissing(KEYSTROKE_MODES[settings.mode]),
-      ),
-    );
+    this.setRegenerateCallback(contextId, () => this.keySvg(contextId, settings));
+  }
+
+  /**
+   * What a telemetry-driven key last drew, for its redraw de-duplication: the
+   * mode, the replay speed, the border overrides and the busy mark (#1437), so
+   * a look that changed is never mistaken for the icon already on the key.
+   */
+  private telemetryDisplayKey(contextId: string, settings: ReplayControlSettings, mark: BusyMark | undefined): string {
+    const speed = this.replaySpeed.get(contextId) ?? 0;
+    const slowMo = this.replaySlowMotion.get(contextId) ?? false;
+    const bo = settings.borderOverrides;
+    const borderKey = `${bo?.enabled ?? ""}|${bo?.borderWidth ?? ""}|${bo?.borderColor ?? ""}|${bo?.glowEnabled ?? ""}|${bo?.glowWidth ?? ""}`;
+
+    return `${settings.mode}:${speed}:${slowMo}:${borderKey}:${replayBusyMarkKey(mark)}`;
   }
 }
