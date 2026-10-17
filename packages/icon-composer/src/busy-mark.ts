@@ -7,8 +7,7 @@
  * held behind something else) and **not done** (a red cross, the plugin gave
  * up or ignored the press). Drawn in place of the key's artwork, inside the
  * title-aware graphic area, by {@link assembleIcon}'s `busy` option or directly
- * by an action that assembles its icon by hand (Replay Control's Speed Display
- * and Set Speed).
+ * by an action that assembles its icon by hand (Replay Control's Set Speed).
  *
  * Cross-platform constraint: built only from `circle`, `line` and opacity — no
  * filters, masks, clipPath or CSS — so the marks read the same with the

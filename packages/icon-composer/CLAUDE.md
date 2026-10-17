@@ -21,7 +21,7 @@ Design constraint: the glyph uses only `polygon`, `rect` (with `rx`), and `circl
 
 ### Replay Busy Marks (`busy-mark.ts`, issue #1437)
 
-- `busyMarkSvg(mark, area, color)` — The look a pressed replay key shows while its press is carried out, centred in a `GraphicArea`: `working` (eight dots in a ring, the newest one unit larger and fully opaque with a fading tail behind it, stepped by `step`), `waiting` (three still dots in a row) and `not-done` (a round-capped red cross). Called by `assembleIcon()`'s `busy` option, and directly by actions that assemble their icon by hand (Replay Control's Speed Display and Set Speed)
+- `busyMarkSvg(mark, area, color)` — The look a pressed replay key shows while its press is carried out, centred in a `GraphicArea`: `working` (eight dots in a ring, the newest one unit larger and fully opaque with a fading tail behind it, stepped by `step`), `waiting` (three still dots in a row) and `not-done` (a round-capped red cross). Called by `assembleIcon()`'s `busy` option, and directly by actions that assemble their icon by hand (Replay Control's Set Speed)
 - `BusyMark` — `{ kind: "working"; step }`, `{ kind: "waiting" }` or `{ kind: "not-done" }`
 - `BUSY_MARK_FRAMES` (8) — `step` is taken modulo it, negative steps included, so step n and step n + 8 are the same text and the rasterizer's cache serves as the frame cache; coordinates are rounded to two decimals for the same reason
 - `BUSY_NOT_DONE_COLOR` (`#e74c3c`) — the not-done cross is always this red; the dots take the colour passed

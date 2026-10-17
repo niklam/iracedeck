@@ -6586,10 +6586,19 @@ describe("ReplayControl", () => {
         expect(args.busy).toEqual({ kind: "not-done" });
       });
 
-      describe.each([
-        { mode: "speed-display", settings: { mode: "speed-display" } },
-        { mode: "set-speed", settings: { mode: "set-speed", speed: "4" } },
-      ] as const)("$mode, assembled by hand", ({ mode, settings }) => {
+      it("Speed Display draws its artwork and no mark, even handed one: it sends no replay command", () => {
+        const uri = decoded(
+          generateReplayControlSvg({ mode: "speed-display" }, false, 4, false, false, false, { kind: "waiting" }),
+        );
+
+        expect(uri).toContain("speed-display ");
+        expect(busyMarkSvg).not.toHaveBeenCalled();
+      });
+
+      describe("Set Speed, assembled by hand", () => {
+        const mode = "set-speed";
+        const settings = { mode: "set-speed", speed: "4" } as const;
+
         function titleWith(showGraphics: boolean): void {
           vi.mocked(resolveTitleSettings).mockReturnValueOnce({
             showTitle: true,
