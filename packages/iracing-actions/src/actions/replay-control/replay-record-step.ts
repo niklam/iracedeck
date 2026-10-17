@@ -14,7 +14,7 @@
  *   session and a second press does not find the same start again.
  *
  * The step itself is the shared walk (`shared/replay-record-walk.ts`), told
- * where each list's record has gaps ({@link LAP_SPANS}, {@link SESSION_SPANS})
+ * where each list's record has gaps ({@link LAP_SPANS}, {@link sessionSpans})
  * so a step never crosses laps or a session the plugin did not record. Every
  * way the record cannot answer is a miss with a reason, and the caller then
  * sends iRacing's own search, as the key did before. Pure: the caller reads
@@ -85,6 +85,13 @@ export interface RecordStepSource {
   carNumberRaw(carIdx: number): number | null;
   /** Frames before a lap start a lap step lands at: Replay Control's `LAP_START_APPROACH_FRAMES`. */
   readonly lapApproachFrames: number;
+  /**
+   * The event's last session number: the highest `SessionNum` the session
+   * info's `SessionInfo.Sessions` lists, or null with no session info or none
+   * listed. A session step reads it for a restarted offline event
+   * ({@link sessionSpans}).
+   */
+  readonly lastSessionNum: number | null;
 }
 
 /** Where a step lands, or why the record cannot answer. */
@@ -106,15 +113,27 @@ export const LAP_SPANS: RecordedSpanRule<LapStartListEntry> = {
 
 /**
  * Two recorded session starts follow each other when the second is the next
- * session number, or session 0 of another instance (a restarted offline event
- * starts again at practice). A session after the last recorded start is rare,
- * and the race is usually the last, so the last span is open.
+ * session number, or when the first is the event's last session
+ * (`lastSessionNum`) and the second is session 0 of another instance: a
+ * restarted offline event starts again at practice, but only once its last
+ * session has run. Session 0 of another instance after any earlier session
+ * is a gap (sessions between were not recorded: [Q1, (R2), P0'] does not step
+ * from Q1 to P0'), and with no last session known (no session info, or none
+ * listed) a restart pair is a gap too, so the step falls back to the search.
+ * A session after the last recorded start is rare, and the race is usually
+ * the last, so the last span is open.
  */
-export const SESSION_SPANS: RecordedSpanRule<ReplaySessionStart> = {
-  adjacent: (a, b) =>
-    b.sessionNum === a.sessionNum + 1 || (b.sessionNum === 0 && b.sessionUniqueId !== a.sessionUniqueId),
-  lastSpanOpen: true,
-};
+export function sessionSpans(lastSessionNum: number | null): RecordedSpanRule<ReplaySessionStart> {
+  return {
+    adjacent: (a, b) =>
+      b.sessionNum === a.sessionNum + 1 ||
+      (lastSessionNum !== null &&
+        a.sessionNum === lastSessionNum &&
+        b.sessionNum === 0 &&
+        b.sessionUniqueId !== a.sessionUniqueId),
+    lastSpanOpen: true,
+  };
+}
 
 /**
  * A store listing's recorded entries, raw, with the rule for its gaps and the
@@ -162,7 +181,7 @@ function sessionStarts(source: RecordStepSource, store: ReplaySessionStore): Lis
   return {
     hit: true,
     entries: listing.starts,
-    rule: SESSION_SPANS,
+    rule: sessionSpans(source.lastSessionNum),
     landing: (frame) => frame + SESSION_START_LANDING_FRAMES,
     what: `${listing.starts.length} session starts`,
   };

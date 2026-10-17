@@ -5712,6 +5712,35 @@ describe("ReplayControl", () => {
         expect(store.sessions.list).toHaveBeenCalledExactlyOnceWith({ subSessionId: SUB_SESSION });
         expect(store.laps.listLapStarts).not.toHaveBeenCalled();
       });
+
+      it.each<[string, string, number[] | null]>([
+        ["lists sessions 0-2", "seek 150120", [0, 1, 2]],
+        ["lists no sessions", "nextSession", null],
+      ])(
+        "a session step reads the event's last session from the session info: when it %s, R2 -> P0' sends %s",
+        async (_label, expected, listed) => {
+          // The race (session 2), then the restarted event's practice under a new unique id.
+          store.sessions.list.mockImplementation(() => ({
+            hit: true,
+            starts: [
+              { sessionNum: 2, sessionUniqueId: 1, frame: 60_000 },
+              { sessionNum: 0, sessionUniqueId: 2, frame: 150_000 },
+            ],
+          }));
+          action["sdkController"].getSessionInfo = vi.fn(
+            () =>
+              ({
+                WeekendInfo: { SubSessionID: SUB_SESSION },
+                ...(listed === null ? {} : { SessionInfo: { Sessions: listed.map((n) => ({ SessionNum: n })) } }),
+              }) as any,
+          );
+
+          await pressKey("ctx-key", "next-session");
+          await vi.advanceTimersByTimeAsync(5_000);
+
+          expect(commands()).toEqual([expected]);
+        },
+      );
     });
 
     it("a second press during a jump steps from the standing target", async () => {

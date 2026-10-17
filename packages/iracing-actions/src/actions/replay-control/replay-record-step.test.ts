@@ -37,7 +37,12 @@ const lapsAt = (frames: number[]): LapStartListEntry[] => frames.map((frame, i) 
 const sessionsAt = (frames: number[]): ReplaySessionStart[] =>
   frames.map((frame, i) => ({ sessionNum: i, sessionUniqueId: 1, frame }));
 
-function source(lapStarts: LapStartListEntry[], sessionStarts: ReplaySessionStart[]): RecordStepSource {
+/** A source over the two lists; the session info lists sessions 0-2 unless `lastSessionNum` says otherwise. */
+function source(
+  lapStarts: LapStartListEntry[],
+  sessionStarts: ReplaySessionStart[],
+  lastSessionNum: number | null = 2,
+): RecordStepSource {
   const laps: LapStartListing = { hit: true, starts: lapStarts };
   const sessions: SessionStartListing = { hit: true, starts: sessionStarts };
 
@@ -50,6 +55,7 @@ function source(lapStarts: LapStartListEntry[], sessionStarts: ReplaySessionStar
     camCarIdx: CAR,
     carNumberRaw: () => 104,
     lapApproachFrames: 60,
+    lastSessionNum,
   };
 }
 
@@ -251,7 +257,7 @@ describe("findRecordStep: a gap in the record falls back to the search", () => {
       });
     });
 
-    it("a restarted event (0, 1, 2, then 0, 1, 2 of another instance) steps through all six", () => {
+    it("a restarted event with three sessions listed (0, 1, 2, then 0, 1, 2 of another instance) steps through all six", () => {
       const starts = [0, 1, 2, 0, 1, 2].map((sessionNum, i) => ({
         sessionNum,
         sessionUniqueId: i < 3 ? 1 : 2,
@@ -273,6 +279,39 @@ describe("findRecordStep: a gap in the record falls back to the search", () => {
       }
 
       expect(landings).toEqual([10_120, 20_120, 30_120, 40_120, 50_120]);
+    });
+
+    it("session 0 of another instance after a session that is not the event's last is a gap", () => {
+      // Q1, then (R2 unrecorded) the restarted event's P0.
+      const starts = [
+        { sessionNum: 1, sessionUniqueId: 1, frame: 10_000 },
+        { sessionNum: 0, sessionUniqueId: 2, frame: 30_000 },
+      ];
+
+      expect(findRecordStep(RECORD_STEPS["next-session"], 10_500, source([], starts))).toEqual({
+        hit: false,
+        reason: "outside the record",
+      });
+      expect(findRecordStep(RECORD_STEPS["prev-session"], 30_000, source([], starts))).toEqual({
+        hit: false,
+        reason: "gap in the record",
+      });
+    });
+
+    it("with no last session known (no session info, or none listed) a restart pair is a gap", () => {
+      const starts = [
+        { sessionNum: 2, sessionUniqueId: 1, frame: 10_000 },
+        { sessionNum: 0, sessionUniqueId: 2, frame: 30_000 },
+      ];
+
+      expect(findRecordStep(RECORD_STEPS["next-session"], 10_500, source([], starts, null))).toEqual({
+        hit: false,
+        reason: "outside the record",
+      });
+      expect(findRecordStep(RECORD_STEPS["next-session"], 10_500, source([], starts, 2))).toMatchObject({
+        hit: true,
+        frame: 30_120,
+      });
     });
 
     it("Previous from inside the last session hits: its span is open", () => {

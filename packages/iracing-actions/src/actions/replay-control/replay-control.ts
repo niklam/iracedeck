@@ -2999,13 +2999,15 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     }
 
     const anchor = start.frame;
-    const subSessionId = readSubSessionId(this.sdkController.getSessionInfo());
+    const sessionInfo = this.sdkController.getSessionInfo();
+    const subSessionId = readSubSessionId(sessionInfo);
     const found = findRecordStep(step, anchor, {
       store: isReplaySessionStoreInitialized() ? getReplaySessionStore() : null,
       scope: subSessionId === undefined ? undefined : { subSessionId },
       camCarIdx: telemetry?.CamCarIdx,
       carNumberRaw: (carIdx) => this.getCarNumberRawByIdx(carIdx),
       lapApproachFrames: LAP_START_APPROACH_FRAMES,
+      lastSessionNum: lastListedSessionNum(sessionInfo),
     });
 
     if (!found.hit) {
