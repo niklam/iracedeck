@@ -789,15 +789,22 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
   // The dial surface of Replay Control (#1316). Rotation is keyed by `dial.mode`:
   // Speed Control walks the speed ladder with one `setPlaySpeed` broadcast per
   // turn, and Frame Jog (#1317) steps frames with one frame-step or
-  // `setPlayPosition` broadcast. The gesture-slot values (dial.pressAction / .longPressAction /
-  // .tapAction / .longTouchAction) share the map, as on the other dials: each is
-  // a replay broadcast, and no key binding is involved anywhere on this dial.
-  // "none" is omitted (it issues no command). Separate from the keypad map above
-  // because `play-pause`, `jump-to-live` and `jump-to-race-start` are values of
-  // both surfaces.
+  // `setPlayPosition` broadcast. Lap, Session and Incident (#801) step by
+  // waited record jumps and iRacing's own searches, every one a broadcast; Car
+  // taps iRacing's Next / Previous Car binding, clockwise and counter-clockwise,
+  // so either one unset warns — the `pair` form Camera Controls' Track Order
+  // dial uses for the same two keys. The gesture-slot values (dial.pressAction /
+  // .longPressAction / .tapAction / .longTouchAction) share the map, as on the
+  // other dials: each is a replay broadcast. "none" is omitted (it issues no
+  // command). Separate from the keypad map above because `play-pause`,
+  // `jump-to-live` and `jump-to-race-start` are values of both surfaces.
   "replay-control-dial": entry("dial.mode", {
     speed: api,
     "frame-jog": api,
+    lap: api,
+    session: api,
+    incident: api,
+    car: pair(CAR_CYCLE_BINDING_KEYS.next, CAR_CYCLE_BINDING_KEYS.previous),
     "play-pause": api,
     "set-1x-play": api,
     reverse: api,

@@ -149,6 +149,10 @@
 				<sdpi-select id="dial-mode-select" setting="dial.mode" default="speed">
 					<option value="speed">Speed Control</option>
 					<option value="frame-jog">Frame Jog</option>
+					<option value="lap">Lap</option>
+					<option value="session">Session</option>
+					<option value="incident">Incident</option>
+					<option value="car">Car</option>
 				</sdpi-select>
 			</sdpi-item>
 
@@ -340,17 +344,25 @@
 				// still leaves a fully functional keypad PI (the default view).
 				if ((await window.irdResolveController()) === "Encoder") {
 					window.irdApplyDialView();
-					// No dial mode or gesture uses a key binding: the rows below belong to
-					// the keypad's Next / Previous Car modes.
-					document.getElementById("key-bindings-section")?.classList.add("hidden");
+					isDialView = true;
+					updateDialVisibility(dialModeSelect?.value || "speed");
 				}
 			}
 
+			// Whether this instance shows the dial view, which hides the key-binding
+			// rows unless the dial's Mode taps them.
+			let isDialView = false;
+
 			// The Speeds grid belongs to the dial's Speed Control mode only, and the
-			// frame-step hint to Frame Jog.
+			// frame-step hint to Frame Jog. The key-binding rows are the keypad's
+			// Next / Previous Car modes', and on a dial the Car mode's (#801), the one
+			// dial mode that taps a binding: no other dial mode or gesture uses one.
 			function updateDialVisibility(mode) {
 				document.getElementById("dial-speed-stops-section")?.classList.toggle("hidden", mode !== "speed");
 				document.getElementById("dial-frame-jog-section")?.classList.toggle("hidden", mode !== "frame-jog");
+				if (isDialView) {
+					document.getElementById("key-bindings-section")?.classList.toggle("hidden", mode !== "car");
+				}
 			}
 
 			function updateVisibility(mode) {

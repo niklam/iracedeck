@@ -132,15 +132,25 @@ describe("action-comms catalog", () => {
     expect(keyByMap("mute-unmute")).toEqual({ setting: "dial.category", map: { "voice-chat": "audioVoiceChatMute" } });
   });
 
-  it("describes every Replay Control dial mode and every gesture but none, all as API (#1316)", () => {
+  it("describes every Replay Control dial mode and every gesture but none (#1316, #801)", () => {
     // A mode added to REPLAY_DIAL_MODES (and to the PI) without an entry here
-    // renders no status line for it. The dial sends broadcasts only, so a
-    // keybind descriptor here would warn about a binding the dial never taps.
+    // renders no status line for it. Every mode but Car sends broadcasts only,
+    // so a keybind descriptor there would warn about a binding the dial never
+    // taps; Car taps Next / Previous Car, and either one unset warns.
     const dial = COMMS_CATALOG["replay-control-dial"];
 
     expect(dial._meta.modeSetting).toBe("dial.mode");
 
-    for (const mode of REPLAY_DIAL_MODES) expect(dial[mode], mode).toEqual({ method: "api" });
+    for (const mode of REPLAY_DIAL_MODES) {
+      if (mode === "car") {
+        expect(dial[mode], mode).toEqual({
+          method: "keybind",
+          binding: { scope: "global", keys: ["replayControlNextCar", "replayControlPrevCar"] },
+        });
+      } else {
+        expect(dial[mode], mode).toEqual({ method: "api" });
+      }
+    }
 
     for (const gesture of REPLAY_DIAL_GESTURES) {
       if (gesture === "none") expect(dial[gesture]).toBeUndefined();

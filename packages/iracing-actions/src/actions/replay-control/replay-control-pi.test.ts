@@ -163,13 +163,37 @@ describe("replay-control PI dial gesture slots", () => {
 });
 
 describe("replay-control PI dial view", () => {
-  it("hides the keypad's key-binding rows, since no dial mode or gesture uses a binding", () => {
+  it("shows the key-binding rows on a dial only in Car, the one dial mode that taps a binding (#801)", () => {
     // irdApplyDialView() hides #keypad-settings and #keypad-appearance only;
-    // the key-bindings section sits outside both.
+    // the key-bindings section sits outside both, so the dial view decides it.
     const dialBranch = template.match(/=== "Encoder"\) \{([\s\S]*?)\n\t\t\t\t\}/);
 
     expect(dialBranch?.[1]).toContain("window.irdApplyDialView()");
-    expect(dialBranch?.[1]).toContain('document.getElementById("key-bindings-section")?.classList.add("hidden")');
+    expect(dialBranch?.[1]).toContain("isDialView = true;");
+    expect(dialBranch?.[1]).toContain("updateDialVisibility(");
+    expect(template).toMatch(
+      /if \(isDialView\) \{\s*document\.getElementById\("key-bindings-section"\)\?\.classList\.toggle\("hidden", mode !== "car"\);/,
+    );
     expect(dialView).not.toContain("key-bindings-section");
+  });
+
+  it("names the Mode options as the dial's modes are called", () => {
+    const options = [...dialView.matchAll(/<option value="([^"]+)">([^<]+)<\/option>/g)].map((m) => [m[1], m[2]]);
+
+    expect(options.slice(0, REPLAY_DIAL_MODES.length)).toEqual([
+      ["speed", "Speed Control"],
+      ["frame-jog", "Frame Jog"],
+      ["lap", "Lap"],
+      ["session", "Session"],
+      ["incident", "Incident"],
+      ["car", "Car"],
+    ]);
+  });
+
+  it("draws the binding status line from the dial's own comms entry, keyed by dial.mode", () => {
+    expect(template).toContain("var __dialComms = require('./data/action-comms.json')['replay-control-dial'];");
+    expect(dialView).toContain(
+      `<ird-binding-status mode-setting="<%= __dialComms._meta.modeSetting %>" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>`,
+    );
   });
 });

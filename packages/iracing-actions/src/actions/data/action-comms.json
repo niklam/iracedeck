@@ -3333,6 +3333,25 @@
     "frame-jog": {
       "method": "api"
     },
+    "lap": {
+      "method": "api"
+    },
+    "session": {
+      "method": "api"
+    },
+    "incident": {
+      "method": "api"
+    },
+    "car": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "replayControlNextCar",
+          "replayControlPrevCar"
+        ]
+      }
+    },
     "play-pause": {
       "method": "api"
     },
