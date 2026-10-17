@@ -191,10 +191,11 @@ function stepThrough<T extends RecordedEntry>(
   listed: Listed<T>,
   anchor: number,
   direction: ReplayWalkDirection,
+  steps: number,
 ): RecordStepResult {
   if (!listed.hit) return listed;
 
-  const walked = walkRecordedEntries(listed.entries, anchor, direction, 1, listed.rule, (entry) =>
+  const walked = walkRecordedEntries(listed.entries, anchor, direction, steps, listed.rule, (entry) =>
     listed.landing(entry.frame),
   );
 
@@ -223,11 +224,20 @@ function stepThrough<T extends RecordedEntry>(
  * cursor more than two seconds past the landing goes back to its own start.
  * Laps likewise: a cursor at a lap's landing, or up to a second past its
  * line, goes to the lap before.
+ *
+ * `steps` entries are walked (default one, a key's press): the Replay Control
+ * dial's turn of `ticks` detents walks `|ticks|` (#801), and the result's
+ * `steps` says how many the record held, never across a gap in it.
  */
-export function findRecordStep(step: RecordStepSpec, anchor: number, source: RecordStepSource): RecordStepResult {
+export function findRecordStep(
+  step: RecordStepSpec,
+  anchor: number,
+  source: RecordStepSource,
+  steps = 1,
+): RecordStepResult {
   if (source.store === null) return { hit: false, reason: "no store" };
 
   return step.list === "lap"
-    ? stepThrough(lapStarts(source, source.store), anchor, step.direction)
-    : stepThrough(sessionStarts(source, source.store), anchor, step.direction);
+    ? stepThrough(lapStarts(source, source.store), anchor, step.direction, steps)
+    : stepThrough(sessionStarts(source, source.store), anchor, step.direction, steps);
 }

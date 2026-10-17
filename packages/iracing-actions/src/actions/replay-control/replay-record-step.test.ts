@@ -335,3 +335,36 @@ describe("findRecordStep: a gap in the record falls back to the search", () => {
     });
   });
 });
+
+describe("findRecordStep: several steps at once (#801, a dial turn of several detents)", () => {
+  const SESSIONS = sessionsAt([0, 60_000, 150_000]);
+  const LAPS = lapsAt([50_000, 53_000, 56_000, 59_000]);
+
+  it("walks |ticks| laps in one call and says how many it took", () => {
+    expect(findRecordStep(RECORD_STEPS["next-lap"], 50_500, source(LAPS, SESSIONS), 2)).toMatchObject({
+      hit: true,
+      frame: 56_000 - 60,
+      steps: 2,
+    });
+    expect(findRecordStep(RECORD_STEPS["prev-session"], 150_120, source(LAPS, SESSIONS), 2)).toMatchObject({
+      hit: true,
+      frame: 0 + 120,
+      steps: 2,
+    });
+  });
+
+  it("stops at the end of what the record holds, reporting the steps it took", () => {
+    expect(findRecordStep(RECORD_STEPS["next-lap"], 50_500, source(LAPS, SESSIONS), 5)).toMatchObject({
+      hit: true,
+      frame: 59_000 - 60,
+      steps: 3,
+    });
+  });
+
+  it("is one step by default, as a key's press", () => {
+    expect(findRecordStep(RECORD_STEPS["next-lap"], 50_500, source(LAPS, SESSIONS))).toMatchObject({
+      frame: 53_000 - 60,
+      steps: 1,
+    });
+  });
+});
