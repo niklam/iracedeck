@@ -7,12 +7,14 @@
  * ("Stepping through a recorded list").
  *
  * A list is frame-ordered **recorded frames**: a marker, a lap start, a
- * session start, as recorded. The walk decides direction on those, and the
- * caller adds its landing offset to the entry it returns — a lap start lands a
- * second before the line, a session start two seconds after it, a marker on
- * itself. Walking the landings instead would put a cursor between a session's
- * start and its landing (after Jump to Beginning, or iRacing's own search)
- * before that session's landing, and Next would land in the same session.
+ * session start, as recorded. The walk finds the entry the anchor is in, and
+ * Next's entry, on those, and the caller adds its landing offset to the entry
+ * it returns — a lap start lands a second before the line, a session start
+ * two seconds after it, a marker on itself. Walking the landings instead would
+ * put a cursor between a session's start and its landing (after Jump to
+ * Beginning, or iRacing's own search) before that session's landing, and Next
+ * would land in the same session. Previous's window is the one thing measured
+ * from the landing (see below).
  *
  * - **The anchor** is where the replay is headed while a jump of the plugin's
  *   is under way (the one pending target, `replay-position-state.ts`, #1430),
@@ -22,8 +24,12 @@
  * - **Next** is the first entry more than {@link MARKER_NEXT_MIN_AHEAD_FRAMES}
  *   (1 s) past the anchor. **Previous** is the entry the anchor is in when the
  *   anchor is more than {@link MARKER_PREVIOUS_MIN_BEHIND_FRAMES} (2 s) past
- *   it, and the one before otherwise: a media player's previous-track. These
- *   are the marker windows, unchanged.
+ *   that entry's **landing**, and the one before otherwise: a media player's
+ *   previous-track. These are the marker windows, unchanged; a marker lands on
+ *   itself, so for Replay Markers the landing is the entry. Measured from the
+ *   raw start instead, a session's landing (start + 120) on a replay the jump
+ *   left playing is past the window within a frame, and every Previous Session
+ *   press after the first went back to the same session's start.
  * - **`steps`** entries are moved, at least one. The walk stops at the end of
  *   the list rather than wrapping and reports how many steps it took; zero
  *   steps is a miss.
@@ -144,15 +150,25 @@ function containingIndex(frames: readonly number[], anchor: number): number {
   return -1;
 }
 
-/** The index of the first entry a step from `anchor` lands on, or -1 when there is none that way. */
-function firstStepIndex(frames: readonly number[], anchor: number, direction: ReplayWalkDirection): number {
+/**
+ * The index of the first entry a step from `anchor` lands on, or -1 when there
+ * is none that way. Next compares recorded frames; Previous finds the entry
+ * the anchor is in on recorded frames and measures its window from that
+ * entry's landing, `landingAt(index)`.
+ */
+function firstStepIndex(
+  frames: readonly number[],
+  anchor: number,
+  direction: ReplayWalkDirection,
+  landingAt: (index: number) => number,
+): number {
   if (direction === "next") return frames.findIndex((frame) => frame - anchor > MARKER_NEXT_MIN_AHEAD_FRAMES);
 
   const at = containingIndex(frames, anchor);
 
   if (at === -1) return -1;
 
-  const onEntry = anchor - (frames[at] ?? anchor) <= MARKER_PREVIOUS_MIN_BEHIND_FRAMES;
+  const onEntry = anchor - landingAt(at) <= MARKER_PREVIOUS_MIN_BEHIND_FRAMES;
 
   return onEntry ? at - 1 : at;
 }
@@ -192,14 +208,18 @@ export interface RecordedSpanRule<T extends RecordedEntry> {
 
 /**
  * Steps `steps` entries through the frame-ordered `entries` from `anchor`.
- * The comparison is on the entries' own frames, the moments recorded; a
- * caller whose jump lands off the entry (a lap's lead-in, a session's
- * landing) adds that offset to the entry the walk returns, and never walks the
- * landings, so a cursor between a start and its landing still counts as in
- * that entry. The first step follows the marker windows (see the module
- * header); each further step is the next entry, stopping at the end of the
- * list, and `steps` in the result says how many were taken. A miss is
- * `nothing that way`, zero steps included.
+ * The entry the anchor is in, and Next's entry, are found on the entries' own
+ * frames, the moments recorded; a caller whose jump lands off the entry (a
+ * lap's lead-in, a session's landing) adds that offset to the entry the walk
+ * returns, and never walks the landings, so a cursor between a start and its
+ * landing still counts as in that entry. Previous's window is measured from
+ * `landing(entry)` of the entry the anchor is in, so a press after a jump's
+ * own landing, on a replay left playing, goes back past that entry rather
+ * than to it again; `landing` defaults to the entry's frame (Replay Markers).
+ * The first step follows the marker windows (see the module header); each
+ * further step is the next entry, stopping at the end of the list, and
+ * `steps` in the result says how many were taken. A miss is `nothing that
+ * way`, zero steps included.
  *
  * With a `rule`, the walk steps only through the record and never across a
  * gap in it, so the caller can fall back to the sim's own search there:
@@ -220,6 +240,7 @@ export function walkRecordedEntries<T extends RecordedEntry>(
   direction: ReplayWalkDirection,
   steps: number,
   rule?: RecordedSpanRule<T>,
+  landing: (entry: T) => number = (entry) => entry.frame,
 ): RecordedWalkResult<T> {
   const wanted = Math.floor(steps);
 
@@ -241,7 +262,11 @@ export function walkRecordedEntries<T extends RecordedEntry>(
     if (!inSpan) return { hit: false, reason: "outside the record" };
   }
 
-  const first = firstStepIndex(frames, anchor, direction);
+  const first = firstStepIndex(frames, anchor, direction, (i) => {
+    const entry = entries[i];
+
+    return entry === undefined ? anchor : landing(entry);
+  });
 
   if (first < 0) return { hit: false, reason: "nothing that way" };
 

@@ -107,6 +107,54 @@ describe("findRecordStep: direction is decided on the recorded starts, the landi
   });
 });
 
+describe("findRecordStep: Previous measures its window from the entry's landing", () => {
+  const S = 60_000;
+  const SESSIONS = sessionsAt([0, S, 150_000]);
+  const LAPS = lapsAt([50_000, 53_000, 56_000, 59_000]);
+
+  it("on a playing replay, a second Previous Session goes to the session before, not back to the same start", () => {
+    // The first press lands at S + 120 and Replay jump playback resumes play.
+    expect(findRecordStep(RECORD_STEPS["prev-session"], 150_120, source(LAPS, SESSIONS))).toMatchObject({
+      hit: true,
+      frame: S + 120,
+    });
+    // The cursor has moved on to S + 200: still within two seconds of the landing.
+    expect(findRecordStep(RECORD_STEPS["prev-session"], S + 200, source(LAPS, SESSIONS))).toMatchObject({
+      hit: true,
+      frame: 0 + 120,
+    });
+  });
+
+  it("Previous Session more than two seconds past a session's landing goes to that session's own start", () => {
+    expect(findRecordStep(RECORD_STEPS["prev-session"], S + 500, source(LAPS, SESSIONS))).toMatchObject({
+      hit: true,
+      frame: S + 120,
+    });
+  });
+
+  it("Previous Lap at a lap's landing goes to the lap before", () => {
+    expect(findRecordStep(RECORD_STEPS["prev-lap"], 56_000 - 60, source(LAPS, SESSIONS))).toMatchObject({
+      hit: true,
+      frame: 53_000 - 60,
+    });
+  });
+
+  it("Previous Lap half a second after the line goes to the lap before", () => {
+    expect(findRecordStep(RECORD_STEPS["prev-lap"], 56_000 + 30, source(LAPS, SESSIONS))).toMatchObject({
+      hit: true,
+      frame: 53_000 - 60,
+    });
+  });
+
+  it("Previous Lap more than a second after the line goes to its own lap's start", () => {
+    // The landing is a second before the line, so the two-second window ends a second after it.
+    expect(findRecordStep(RECORD_STEPS["prev-lap"], 56_000 + 100, source(LAPS, SESSIONS))).toMatchObject({
+      hit: true,
+      frame: 56_000 - 60,
+    });
+  });
+});
+
 describe("findRecordStep: a gap in the record falls back to the search", () => {
   const NO_SESSIONS: ReplaySessionStart[] = [];
 
@@ -141,14 +189,14 @@ describe("findRecordStep: a gap in the record falls back to the search", () => {
         hit: true,
         frame: at(16) - 60,
       });
-      expect(findRecordStep(RECORD_STEPS["prev-lap"], at(16) + 100, recorded)).toMatchObject({
+      expect(findRecordStep(RECORD_STEPS["prev-lap"], at(16) + 30, recorded)).toMatchObject({
         hit: true,
         frame: at(15) - 60,
       });
     });
 
     it("Previous from inside lap 15 within the window would cross the gap: a miss", () => {
-      expect(findRecordStep(RECORD_STEPS["prev-lap"], at(15) + 100, recorded)).toEqual({
+      expect(findRecordStep(RECORD_STEPS["prev-lap"], at(15) + 30, recorded)).toEqual({
         hit: false,
         reason: "gap in the record",
       });

@@ -175,7 +175,9 @@ function stepThrough<T extends RecordedEntry>(
 ): RecordStepResult {
   if (!listed.hit) return listed;
 
-  const walked = walkRecordedEntries(listed.entries, anchor, direction, 1, listed.rule);
+  const walked = walkRecordedEntries(listed.entries, anchor, direction, 1, listed.rule, (entry) =>
+    listed.landing(entry.frame),
+  );
 
   if (!walked.hit) return { hit: false, reason: walked.reason };
 
@@ -194,7 +196,14 @@ function stepThrough<T extends RecordedEntry>(
  * landing offset is added to the start it picks, never the other way round: a
  * cursor between a session's start and its landing (after Jump to Beginning,
  * or iRacing's own search) is in that session, and Next goes on to the next
- * one rather than to its own landing two seconds on.
+ * one rather than to its own landing two seconds on. Previous's window alone
+ * is measured from the landing of the entry the anchor is in: a replay that
+ * resumed playing after Previous Session landed at start + 120 is past the
+ * raw start's window within a frame, and the next press would go back to the
+ * same session; from the landing it goes to the session before, and only a
+ * cursor more than two seconds past the landing goes back to its own start.
+ * Laps likewise: a cursor at a lap's landing, or up to a second past its
+ * line, goes to the lap before.
  */
 export function findRecordStep(step: RecordStepSpec, anchor: number, source: RecordStepSource): RecordStepResult {
   if (source.store === null) return { hit: false, reason: "no store" };

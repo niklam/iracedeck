@@ -138,6 +138,29 @@ describe("walkRecordedEntries with a span rule (#1426)", () => {
   });
 });
 
+describe("walkRecordedEntries with a landing (#1426)", () => {
+  const list = [1_000, 2_000, 3_000].map((frame) => ({ frame }));
+  const landing = (entry: { frame: number }) => entry.frame + 120;
+
+  it("Previous measures its window from the landing of the entry the anchor is in", () => {
+    // 2 200 is 200 past the start but 80 past the landing: still in the window, so the one before.
+    expect(walkRecordedEntries(list, 2_200, "previous", 1, undefined, landing)).toMatchObject({ hit: true, index: 0 });
+    expect(walkRecordedEntries(list, 2_241, "previous", 1, undefined, landing)).toMatchObject({ hit: true, index: 1 });
+  });
+
+  it("the entry the anchor is in and Next are still found on the recorded frames", () => {
+    // Between a start and its landing the anchor is in that entry: Previous goes before it.
+    expect(walkRecordedEntries(list, 2_050, "previous", 1, undefined, landing)).toMatchObject({ hit: true, index: 0 });
+    expect(walkRecordedEntries(list, 2_050, "next", 1, undefined, landing)).toMatchObject({ hit: true, index: 2 });
+    expect(walkRecordedEntries(list, 1_939, "next", 1, undefined, landing)).toMatchObject({ hit: true, index: 1 });
+  });
+
+  it("with no landing the windows are the marker ones, on the entry itself", () => {
+    expect(walkRecordedEntries(list, 2_120, "previous", 1)).toMatchObject({ hit: true, index: 0 });
+    expect(walkRecordedEntries(list, 2_121, "previous", 1)).toMatchObject({ hit: true, index: 1 });
+  });
+});
+
 describe("walkRecordedIndex", () => {
   it("one step stays on the start and counts one", () => {
     expect(walkRecordedIndex(4, 1, "next", 1)).toEqual({ index: 1, steps: 1 });
