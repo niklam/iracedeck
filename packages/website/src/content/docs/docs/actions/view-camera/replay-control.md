@@ -320,7 +320,7 @@ Jump back to a second before the line on the lap the car the camera is on is run
 
 Jump to the next incident, using iRacing's own incident search.
 
-Since iRaceDeck 3.6 the plugin also records each incident while a session runs live: your own whenever you are in the car, and other cars' where iRacing shows their incident counts, which an official race does only once it is over. The key does not use that record yet; a later version compares the two before it does.
+Since iRaceDeck 3.6 the plugin also records each incident while a session runs live: your own whenever you are in the car, and other cars' where iRacing shows their incident counts, which an official race does only once it is over. The key does not use that record to choose where to go yet. With **Debug logging** on, each press logs where iRacing's search landed beside the nearest recorded incident, which is what a later version will rest on before it switches over.
 
 #### Details
 
