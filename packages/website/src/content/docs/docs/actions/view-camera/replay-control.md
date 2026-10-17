@@ -544,8 +544,8 @@ The dial works in the replay only. iRacing accepts replay commands only when you
 
 - **Method:** iRacing API for the rotation in every mode but Car, and for every press and touch action; Car uses the Next Car / Previous Car key binding
 - **Dial:** In Speed Control, rotating steps the replay speed along the chosen ladder, one stop per detent — clockwise toward fast forward, counter-clockwise toward fast rewind — with no cap on a fast spin, stopping at the ends of the ladder. In Frame Jog, rotating steps the replay one frame per detent — clockwise to the next frame, counter-clockwise to the previous one. In Lap, Session and Incident, each detent is one lap of the car the camera is on, one session or one incident, clockwise forward. In Car, each turn moves the camera one car, clockwise to the car ahead. All of them work in the replay only
-- **Default binding:** No keyboard binding
-- **Telemetry-aware icon:** Yes — in Speed Control the display shows the live replay speed, the speed a press will resume while paused, and which way a turn can still change the speed; in Frame Jog it shows the session time of the frame on screen and whether the replay is paused
+- **Default binding:** No keyboard binding, except Car, which uses iRacing's Next Car / Previous Car binding (V / Shift+V by default)
+- **Telemetry-aware icon:** Yes — in Speed Control the display shows the live replay speed, the speed a press will resume while paused, and which way a turn can still change the speed; in Frame Jog it shows the session time of the frame on screen and whether the replay is paused; in Lap, Session, Incident and Car it shows the lap, session, replay time or car on screen and the steps a paced search still has to go — see [Touch strip](#touch-strip)
 
 #### Controls
 
