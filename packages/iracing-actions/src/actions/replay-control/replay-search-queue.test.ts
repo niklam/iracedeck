@@ -581,6 +581,36 @@ describe("the paced search runner (#801)", () => {
       expect(warn).not.toHaveBeenCalled();
     });
 
+    it("goes on behind a takeover whose jump lands a few frames off, as the gate counts it landed", async () => {
+      // The takeover jumps to the frame beside the reading, which rests three frames past it.
+      setUp({
+        searches: { ...STEPS, nextSession: (f) => f + 600_000 },
+        unlandable: new Set([START + 1]),
+        unlandableRest: START + 4,
+      });
+
+      const key = { by: "next-session", origin: "key" };
+
+      pressReplayCommand({ kind: "search", search: "nextSession" }, key);
+      await wait(50);
+      pressReplayCommand({ kind: "speed", speed: 1, slowMotion: false }, { by: "play-pause", origin: "key" });
+
+      expect(
+        pressReplayCommand({ kind: "speed", speed: 1, slowMotion: false }, { by: "play-pause", origin: "key" }),
+      ).toMatchObject({ kind: "taking-over" });
+      expect(getReplayGateRecord().target?.frame).toBe(START + 1);
+
+      turn("lap", 1);
+      await untilIdle();
+
+      // The run takes the play that waited behind the takeover as its speed, and gives it at the end.
+      expect(sim.calls).toEqual(["nextSession", `setPlayPosition 0 ${START + 1}`, "nextLap", "setPlaySpeed 1 false"]);
+      expect(sim.frame()).toBeGreaterThanOrEqual(START + 4 + 3_000);
+      expect(sim.thrown).toBe(0);
+      expect(runEnds()).toEqual(["jump-landed"]);
+      expect(warn).not.toHaveBeenCalled();
+    });
+
     it("gives up with nothing sent when the record jump's frame never reads back", async () => {
       setUp({ unlandable: new Set([160_000]), unlandableRest: 170_000 });
       recordJump(160_000);

@@ -63,6 +63,7 @@ import {
   type ReplaySpeed,
 } from "../../shared/replay-jump-playback.js";
 import { isSameSpeed } from "../../shared/replay-jump-speed.js";
+import type { ReplayTarget } from "../../shared/replay-position-state.js";
 import { isPaused, waitForReplay } from "../../shared/replay-seek.js";
 import {
   readFastestLapSearchDelayMs,
@@ -539,7 +540,7 @@ async function work(r: Run, atStart: TelemetryData | null): Promise<Ending> {
   const searchOnItsWay = record.search !== null && record.search.onItsWay !== "no";
 
   if (jumpOnItsWay) {
-    const behind = await behindJump(r, record.target?.frame ?? null);
+    const behind = await behindJump(r, record.target);
 
     if (behind !== null) return behind;
   } else if (searchOnItsWay) {
@@ -592,9 +593,40 @@ function playingPathFits(
   return target === "incident" || direction === Math.sign(reading.rate);
 }
 
-/** Behind a jump of the plugin's: wait for its frame to read back and hold. Null to go on. */
-async function behindJump(r: Run, frame: number | null): Promise<Ending | null> {
-  const held = await holdReading(r, { requirePaused: false, timeoutMs: REPLAY_JUMP_MAX_WAIT_MS });
+/**
+ * Behind a jump of the plugin's: wait for it to land and the reading to hold.
+ * Null to go on. `target` is the gate's record of the jump when the wait
+ * began, null for a seek only the witness shows.
+ *
+ * A held reading on the target's frame is a landing. One off it is a landing
+ * only where the gate said so: a takeover's jump, or the settle jump of
+ * `settleReplayByJump`, is judged moved and then held, even a few frames off,
+ * and a plain position jump by its frame alone. The gate keeps that verdict
+ * to itself, so it is read from when the target left the record: before its
+ * own deadline (`sentAt` + `giveUpMs`, as the record last showed them, since
+ * a seek marked sent restarts both) the gate ended it as read back, and at or
+ * after it as given up. Two windows read wrong. A landing in the last poll
+ * before the deadline reads as a give-up, which refuses. And a takeover
+ * recorded with no replay reading on screen has a deadline later than its
+ * nothing-moved wait, so nothing moving reads as a landing. An exported
+ * target fate would make both exact.
+ */
+async function behindJump(r: Run, target: ReplayTarget | null, frame = target?.frame ?? null): Promise<Ending | null> {
+  let standing = target;
+  let leftAt: number | null = null;
+
+  const held = await holdReading(r, {
+    requirePaused: false,
+    timeoutMs: REPLAY_JUMP_MAX_WAIT_MS,
+    observe: () => {
+      if (standing === null || leftAt !== null) return;
+
+      const now = getReplayGateRecord().target;
+
+      if (now !== null && now.id === standing.id) standing = now;
+      else leftAt = Date.now();
+    },
+  });
 
   if (held.kind === "cancelled") return "cancelled";
 
@@ -602,11 +634,18 @@ async function behindJump(r: Run, frame: number | null): Promise<Ending | null> 
 
   if (held.kind === "gave-up") return neverReadBack(r, "the jump under way never read back");
 
-  if (frame !== null && held.reading.frame !== frame) {
-    return neverReadBack(r, `the jump under way did not land on frame ${frame} (reads ${held.reading.frame})`);
+  if (frame === null || held.reading.frame === frame) return null;
+
+  const readBack =
+    standing !== null && standing.sent && leftAt !== null && leftAt < standing.sentAt + standing.giveUpMs;
+
+  if (readBack) {
+    log.debug(`Replay search queue: the jump under way landed on frame ${held.reading.frame} (sent to ${frame})`);
+
+    return null;
   }
 
-  return null;
+  return neverReadBack(r, `the jump under way did not land on frame ${frame} (reads ${held.reading.frame})`);
 }
 
 /** Behind a search that may be on its way: its landing, or a settle by the gate's jump. Null to go on. */
@@ -704,9 +743,14 @@ type HeldReading = Extract<HoldResult, { readonly kind: "held" }>;
 /**
  * Waits until nothing the gate knows of is under way and the reading has
  * shown the same position, or where playback puts it, on three reads 50 ms
- * apart. With `requirePaused`, only a paused reading counts.
+ * apart. With `requirePaused`, only a paused reading counts. `observe` runs
+ * after each of the gate's settles, 50 ms apart, for a caller that watches
+ * the record while the wait goes on.
  */
-async function holdReading(r: Run, options: { requirePaused: boolean; timeoutMs: number }): Promise<HoldResult> {
+async function holdReading(
+  r: Run,
+  options: { requirePaused: boolean; timeoutMs: number; observe?: () => void },
+): Promise<HoldResult> {
   const claim = r.jump?.claim;
 
   if (claim === undefined) return { kind: "cancelled" };
@@ -720,14 +764,14 @@ async function holdReading(r: Run, options: { requirePaused: boolean; timeoutMs:
 
     if (!replayOnScreen()) return { kind: "left" };
 
-    const remaining = Math.max(0, startedAt + options.timeoutMs - Date.now());
-    const settled = await waitForReplaySettled({ reads: 1, timeoutMs: remaining, claim });
+    // One settle of the gate's a poll, so the record can be watched and the replay asked about between them.
+    const settled = await waitForReplaySettled({ reads: 1, timeoutMs: 0, claim });
 
     if (settled === "superseded" || stopped(r)) return { kind: "cancelled" };
 
-    if (settled === "gave-up") return replayOnScreen() ? { kind: "gave-up" } : { kind: "left" };
+    options.observe?.();
 
-    const telemetry = env.readTelemetry();
+    const telemetry = settled === "settled" ? env.readTelemetry() : null;
     const reading = readReading(telemetry, Date.now());
 
     if (reading !== null && (!options.requirePaused || reading.rate === 0)) {
@@ -901,7 +945,7 @@ async function jumpBack(r: Run, frame: number | null): Promise<Ending | null> {
 
   if (sent !== "sent") return neverReadBack(r, `the jump back to frame ${frame} was refused`);
 
-  return behindJump(r, frame);
+  return behindJump(r, getReplayGateRecord().target, frame);
 }
 
 /**
