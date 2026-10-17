@@ -274,6 +274,7 @@ interface Run {
 
 let run: Run | null = null;
 const listeners = new Set<() => void>();
+const speedListeners = new Set<(speed: ReplaySpeed) => void>();
 
 function notify(): void {
   for (const listener of listeners) {
@@ -287,6 +288,17 @@ function notify(): void {
 
 function active(): Run | null {
   return run !== null && !run.ended ? run : null;
+}
+
+/** Tells the speed listeners of a speed the runner sent, so a surface mirrors it before telemetry shows it. */
+function noteSpeedSent(speed: ReplaySpeed): void {
+  for (const listener of speedListeners) {
+    try {
+      listener(speed);
+    } catch (err) {
+      log.debug(`Replay search queue speed listener failed: ${String(err)}`);
+    }
+  }
 }
 
 /** Whether the runner must stop: its run ended, or another replay command took the cursor. */
@@ -349,6 +361,19 @@ export function onReplaySearchChange(listener: () => void): () => void {
   };
 }
 
+/**
+ * Hears every speed the runner sends: its pause, and the speed the Replay jump
+ * playback step leaves at the end of a run at zero, as a record jump's
+ * `onPaused` and landing tell the dial. Returns the unsubscribe.
+ */
+export function onReplaySearchSpeedSent(listener: (speed: ReplaySpeed) => void): () => void {
+  speedListeners.add(listener);
+
+  return () => {
+    speedListeners.delete(listener);
+  };
+}
+
 /** @internal Exported for testing: ends any run and clears the queue, its listeners, environment and logger. */
 export function _resetReplaySearchQueue(): void {
   const current = run;
@@ -361,6 +386,7 @@ export function _resetReplaySearchQueue(): void {
   }
 
   listeners.clear();
+  speedListeners.clear();
   env = defaultEnv;
   log = silentLogger;
 }
@@ -617,6 +643,8 @@ async function pause(r: Run): Promise<Ending | null> {
   if (sent === "cancelled") return "cancelled";
 
   if (sent === "refused") return neverReadBack(r, "the pause was refused");
+
+  if (sent === "sent") noteSpeedSent({ speed: 0, slowMotion: false });
 
   const outcome = await waitForReplay(
     {
@@ -932,6 +960,9 @@ async function endAtZero(r: Run): Promise<Ending> {
   if (applied === null) return "cancelled";
 
   if (applied.command === "failed") log.warn("Replay search queue: speed command failed; replay left as it landed");
+
+  // The speed the replay is at now, as a record jump's landing reports it: the one wanted, or the landing's own.
+  noteSpeedSent(applied.speed);
 
   return "landed";
 }

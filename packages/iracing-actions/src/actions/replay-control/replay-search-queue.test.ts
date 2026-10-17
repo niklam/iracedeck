@@ -25,6 +25,7 @@ import {
   _resetReplaySearchQueue,
   isReplaySearchRunning,
   onReplaySearchChange,
+  onReplaySearchSpeedSent,
   pendingReplaySearch,
   queueReplaySearch,
   replaySearchPatienceMs,
@@ -583,6 +584,27 @@ describe("the paced search runner (#801)", () => {
       expect(heard[1]).toBe(1);
       expect(heard.at(-1)).toBeNull();
       expect(heard.filter((c) => c === null)).toHaveLength(1);
+    });
+
+    it("tells its speed listeners of the pause it sends and of the speed the playback step leaves", async () => {
+      setUp({ speed: { speed: 4, slowMotion: false } });
+      setting("play");
+
+      const heard: { speed: number; slowMotion: boolean }[] = [];
+      const unsubscribe = onReplaySearchSpeedSent((speed) => heard.push(speed));
+
+      turn("lap", 1);
+
+      expect(heard).toEqual([{ speed: 0, slowMotion: false }]);
+
+      await untilIdle();
+      unsubscribe();
+
+      expect(sim.calls).toEqual(["setPlaySpeed 0", "nextLap", "setPlaySpeed 1 false"]);
+      expect(heard).toEqual([
+        { speed: 0, slowMotion: false },
+        { speed: 1, slowMotion: false },
+      ]);
     });
 
     it("gives the speed a superseded run captured back at the end of the run that replaced it", async () => {
