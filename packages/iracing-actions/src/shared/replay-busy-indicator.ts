@@ -17,7 +17,13 @@
  */
 import { type ILogger, silentLogger } from "@iracedeck/logger";
 
-import { getReplayGateView, type ReplayGateNotice, subscribeReplayGate } from "./replay-command-gate.js";
+import {
+  getReplayGateView,
+  type ReplayGateEndReason,
+  type ReplayGateFactEnd,
+  type ReplayGateNotice,
+  subscribeReplayGate,
+} from "./replay-command-gate.js";
 
 /** How often a spinning surface steps (ms): eight frames a second, eight frames to a turn. */
 export const REPLAY_BUSY_FRAME_MS = 125;
@@ -268,6 +274,17 @@ function step(): void {
   syncInterval();
 }
 
+/**
+ * Gave-up reasons that draw rest rather than not done: leaving the replay or losing the sim says the
+ * press stopped mattering, not that it failed (Jump to Live ends its own search by leaving the replay).
+ */
+const GAVE_UP_WITHOUT_NOT_DONE: ReadonlySet<ReplayGateEndReason> = new Set(["replay-left", "disconnected"]);
+
+/** Whether a fact's end shows not done: a give-up, other than by the replay being left or the sim lost. */
+function endShowsNotDone(end: ReplayGateFactEnd): boolean {
+  return end.class === "gave-up" && !GAVE_UP_WITHOUT_NOT_DONE.has(end.reason);
+}
+
 function onNotice(notice: ReplayGateNotice): void {
   const token = notice.origin;
 
@@ -282,7 +299,7 @@ function onNotice(notice: ReplayGateNotice): void {
     return;
   }
 
-  if (notice.ended.some((end) => end.class === "gave-up")) startNotDone(token);
+  if (notice.ended.some(endShowsNotDone)) startNotDone(token);
 
   const reasons = notice.ended.map((end) => end.reason);
 
