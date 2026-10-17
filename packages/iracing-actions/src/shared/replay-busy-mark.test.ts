@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { replayBusyKeyMark, replayBusyMarkKey } from "./replay-busy-mark.js";
+import { replayBusyDialMark, replayBusyKeyMark, replayBusyMarkKey } from "./replay-busy-mark.js";
 
 vi.mock("@iracedeck/deck-core", () => ({ BUSY_MARK_FRAMES: 8 }));
 
@@ -32,5 +32,23 @@ describe("replayBusyMarkKey", () => {
 
   it("tells two steps of the ring apart", () => {
     expect(replayBusyMarkKey({ kind: "working", step: 1 })).not.toBe(replayBusyMarkKey({ kind: "working", step: 2 }));
+  });
+});
+
+describe("replayBusyDialMark (#1437)", () => {
+  it("is no mark at rest, and the still marks as they are", () => {
+    expect(replayBusyDialMark({ kind: "rest" })).toBeUndefined();
+    expect(replayBusyDialMark({ kind: "waiting" })).toEqual({ kind: "waiting" });
+    expect(replayBusyDialMark({ kind: "not-done" })).toEqual({ kind: "not-done" });
+  });
+
+  it("steps the working mark on every second tick of the indicator: 0, 0, 1, 1, 2, 2, 0", () => {
+    const positions = Array.from({ length: 13 }, (_, tick) => {
+      const mark = replayBusyDialMark({ kind: "working", tick });
+
+      return mark?.kind === "working" ? mark.position : -1;
+    });
+
+    expect(positions).toEqual([0, 0, 1, 1, 2, 2, 0, 0, 1, 1, 2, 2, 0]);
   });
 });

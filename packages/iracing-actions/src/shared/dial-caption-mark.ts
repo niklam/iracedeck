@@ -13,12 +13,10 @@
  * style), so the mark reads the same with the `pngRasterization` kill-switch
  * off. Spec: docs/superpowers/specs/2026-10-13-issue-1437-replay-key-busy-look.md.
  */
-import type { ReplayBusyLook } from "./replay-busy-indicator.js";
-
 /**
  * What the mark shows. `position` is the lit dot of the working mark, left to
- * right: a surface derives it from the indicator's tick as `Math.floor(tick / 2) % 3`,
- * so the mark steps on every second tick.
+ * right: `replayBusyDialMark` (`replay-busy-mark.ts`) derives it from the indicator's
+ * tick as `Math.floor(tick / 2) % 3`, so the mark steps on every second tick.
  */
 export type DialCaptionMarkLook =
   | { readonly kind: "working"; readonly position: 0 | 1 | 2 }
@@ -42,24 +40,6 @@ export type DialCaptionMark = DialCaptionMarkLook & { readonly replacesCaption?:
  * @internal Exported for testing
  */
 export const DIAL_NOT_DONE_COLOR = "#e74c3c";
-
-/**
- * The dial box's mark for the replay busy indicator's answer (#1437), or
- * undefined at rest. The mark has three positions, not the key ring's eight,
- * and steps on every second tick: position `Math.floor(tick / 2) % 3`, so
- * the box pushes four frames a second while it spins.
- */
-export function replayBusyDialMark(look: ReplayBusyLook): DialCaptionMarkLook | undefined {
-  switch (look.kind) {
-    case "rest":
-      return undefined;
-    case "working":
-      return { kind: "working", position: (Math.floor(look.tick / 2) % 3) as 0 | 1 | 2 };
-    case "waiting":
-    case "not-done":
-      return { kind: look.kind };
-  }
-}
 
 /** Opacity of the two unlit working dots. */
 const UNLIT_OPACITY = 0.3;
