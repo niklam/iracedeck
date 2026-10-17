@@ -1977,7 +1977,7 @@ describe("ReplayControl", () => {
         claimReplayCursor("fastest-lap", cancelledBy);
         vi.spyOn(action["sdkController"], "noteReplayLeftForLive");
 
-        host().jumpToLive();
+        host().jumpToLive("dial-1");
 
         expect(cancelledBy).toHaveBeenCalledWith("jump-to-live");
         expect(mockReplay.goToEnd).toHaveBeenCalledTimes(1);

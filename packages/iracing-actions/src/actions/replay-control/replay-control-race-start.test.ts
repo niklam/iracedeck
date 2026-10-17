@@ -38,12 +38,12 @@ vi.mock("@iracedeck/iracing-sdk", async (importOriginal) => ({
 // The dial surface has its own suite (`replay-control-dial-surface.test.ts`), the dial's Jump to Race Start
 // gesture included; here the action only needs one to construct.
 const dialHost = vi.hoisted(() => ({
-  current: null as { jumpToRaceStart(): void; canJumpToRaceStart(): boolean } | null,
+  current: null as { jumpToRaceStart(origin: string): void; canJumpToRaceStart(): boolean } | null,
 }));
 
 vi.mock("./replay-control-dial-surface.js", () => ({
   ReplayControlDialSurface: class MockReplayControlDialSurface {
-    constructor(host: { jumpToRaceStart(): void; canJumpToRaceStart(): boolean }) {
+    constructor(host: { jumpToRaceStart(origin: string): void; canJumpToRaceStart(): boolean }) {
       dialHost.current = host;
     }
 
@@ -2172,7 +2172,7 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
       fakeReplay(action, { sessionTypes: WEEKEND_TYPES, layout: WEEKEND, cursor: IN_RACE });
       greenAt(30_215);
 
-      host().jumpToRaceStart();
+      host().jumpToRaceStart("dial-1");
       await vi.runAllTimersAsync();
 
       expect(mockStore.greens.findGreen.mock.calls[0][0]).toMatchObject({ sessionNum: 2, sessionUniqueId: 3 });
@@ -2188,7 +2188,7 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
 
       await press("ctx-key");
       await vi.advanceTimersByTimeAsync(200);
-      host().jumpToRaceStart();
+      host().jumpToRaceStart("dial-1");
 
       expect(mockReplay.setPlayPosition).toHaveBeenCalledTimes(1);
       expect(action["logger"].info).toHaveBeenCalledWith(
