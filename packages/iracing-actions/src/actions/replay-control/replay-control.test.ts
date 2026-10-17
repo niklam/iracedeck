@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 
 import {
   _configureReplayCommandGate,
   _resetReplayCommandGate,
+  getReplayGateRecord,
   pressReplayCommand,
 } from "../../shared/replay-command-gate.js";
 import { type FakeReplay, fakeReplay } from "../../shared/replay-command-gate.test-support.js";
@@ -1982,6 +1983,13 @@ describe("ReplayControl", () => {
         expect(mockReplay.goToEnd).toHaveBeenCalledTimes(1);
         expect(action["sdkController"].noteReplayLeftForLive).toHaveBeenCalledTimes(1);
         expect(action["logger"].info).toHaveBeenCalledWith("Jump to live executed");
+      });
+
+      it("jumpToLive goes out under the dial's own token, so its box can show the busy look (#1437)", () => {
+        host().jumpToLive("dial-1");
+
+        expect(mockReplay.goToEnd).toHaveBeenCalledTimes(1);
+        expect(getReplayGateRecord().search?.origin).toBe("dial-1");
       });
     });
 
