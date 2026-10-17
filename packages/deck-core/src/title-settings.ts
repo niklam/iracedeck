@@ -85,6 +85,9 @@ export {
   dimForBindingWarning,
 } from "@iracedeck/icon-composer";
 
+// Replay busy marks (issue #1437)
+export { BUSY_MARK_FRAMES, BUSY_NOT_DONE_COLOR, busyMarkSvg, type BusyMark } from "@iracedeck/icon-composer";
+
 // ---------------------------------------------------------------------------
 // Global Title Settings Reader
 // ---------------------------------------------------------------------------
