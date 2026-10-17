@@ -33,6 +33,16 @@ export const BUSY_NOT_DONE_COLOR = "#e74c3c";
  */
 const BUSY_MARK_FULL_SIDE = 72;
 
+/**
+ * The largest side the marks are laid out in. A key with no title (or its
+ * title hidden) has the whole 128-unit square as its artwork area, where a ring
+ * filling it read as too big beside the titled keys (maintainer, 2026-10-17);
+ * 84 is the area a default two-line title leaves (83.4), so every key shows
+ * the mark at most at the size it has on a titled key, centred where the
+ * artwork sits.
+ */
+export const BUSY_MARK_MAX_SIDE = 84;
+
 /** Working ring dot radius at full size; the newest dot is one unit larger. */
 const WORKING_DOT = 7;
 /** Working ring opacity by age, newest first. */
@@ -56,12 +66,13 @@ const NOT_DONE_STROKE = 12;
  * same mark in the same area is the same text (the rasterizer's cache is the
  * frame cache). An area with no room (a side of zero or less) draws nothing.
  *
- * Sizes: the authored sizes hold while the area's smaller side is at least
- * 72 units; below that every length shrinks in proportion, so the mark keeps
- * its shape and stays inside the area.
+ * Sizes: the mark is laid out in a square of the area's smaller side, capped
+ * at {@link BUSY_MARK_MAX_SIDE}. The authored sizes hold while that side is at
+ * least 72 units; below that every length shrinks in proportion, so the mark
+ * keeps its shape and stays inside the area.
  */
 export function busyMarkSvg(mark: BusyMark, area: GraphicArea, color: string): string {
-  const side = Math.min(area.width, area.height);
+  const side = Math.min(area.width, area.height, BUSY_MARK_MAX_SIDE);
 
   if (!(side > 0)) return "";
 
