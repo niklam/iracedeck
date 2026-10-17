@@ -5913,6 +5913,34 @@ describe("ReplayControl", () => {
       },
     );
 
+    it.each<[string, string]>([
+      ["next-lap", "nextLap"],
+      ["prev-lap", "prevLap"],
+      ["next-session", "nextSession"],
+      ["prev-session", "prevSession"],
+    ])("%s with no cursor to step from sends the key's search through the gate", async (mode, search) => {
+      // A saved replay whose tick still reads mid-seek once the exit grace is over, with no target standing.
+      action["sdkController"].getReplayState = vi.fn(() => ({
+        inReplay: true,
+        frame: 0,
+        tickReplayPlaying: false,
+        replaySeenAt: null,
+      })) as any;
+
+      await pressKey("ctx-key", mode);
+
+      expect(sim.calls).toEqual([search]);
+      expect(store.laps.listLapStarts).not.toHaveBeenCalled();
+      expect(store.sessions.list).not.toHaveBeenCalled();
+      expect(action["logger"].debug).toHaveBeenCalledWith(
+        expect.stringMatching(/^(Next|Previous) (lap|session): record MISS \(no cursor\)$/),
+      );
+
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      expect(sim.calls).toEqual([search]);
+    });
+
     describe("the playback step after a hit follows the Replay jump playback setting", () => {
       it.each<[string, { speed: number; slowMotion: boolean }, string[], { speed: number; slowMotion: boolean }]>([
         ["remember", PAUSED, ["seek 102940"], PAUSED],

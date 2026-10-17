@@ -75,8 +75,10 @@ export type ReplayWalkStart =
  * holds too. Otherwise there is no step outside a replay, and none with no
  * cursor: a tick still reading mid-seek (`IsReplayPlaying` false, frame 0)
  * once the exit grace has run out, where a walk would send the list's first
- * entry and a search would end the seek where it stands. Within the grace the
- * state holds the last frame a replay tick showed, which is the cursor.
+ * entry. Within the grace the state holds the last frame a replay tick
+ * showed, which is the cursor. What a press does with `no cursor` is the
+ * caller's: Replay Control's record step sends the key's search, which the
+ * gate holds while a seek shows.
  */
 export function resolveReplayWalkStart(
   state: Pick<ReplayState, "inReplay" | "frame" | "tickReplayPlaying" | "replaySeenAt">,

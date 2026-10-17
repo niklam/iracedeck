@@ -2951,10 +2951,14 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
    * replay is headed, else the cursor (`shared/replay-record-walk.ts`).
    *
    * - **Outside a replay** nothing is sent: iRacing honours replay commands
-   *   only out of the car. Nor with **no cursor** to step from — no standing
-   *   target, and a tick still reading mid-seek once the exit grace is over —
-   *   since a step from there would send the list's first entry. A standing
-   *   target is a start either way (`resolveReplayWalkStart`).
+   *   only out of the car. A standing target is a start either way
+   *   (`resolveReplayWalkStart`).
+   * - **No cursor** to step from — no standing target, and a tick still
+   *   reading mid-seek once the exit grace is over (a seek not of the
+   *   plugin's, or a rest state whose flag reads false in a saved replay) —
+   *   is a miss like the record's own: a step from there would send the
+   *   list's first entry, so the key's search goes instead, through the gate,
+   *   which holds it while a seek shows.
    * - **A hit** is one waited record jump to the landing frame
    *   (`beginReplayJump` at the press, its frame recorded as the target before
    *   its pause, then `runReplayJump`, `jump.end()` in a `finally`), carrying
@@ -2975,8 +2979,21 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     const telemetry = this.sdkController.getCurrentTelemetry();
     const start = resolveReplayWalkStart(this.sdkController.getReplayState(now), telemetry, now);
 
-    if (start.frame === null) {
+    if (start.frame === null && start.reason === "not in a replay") {
       this.logger.debug(`${step.label}: ${start.reason}; nothing sent`);
+
+      return;
+    }
+
+    /** A miss sends the key's own search through the gate, as the key did before. */
+    const searchOnMiss = (reason: string): void => {
+      this.logger.info(`${step.label} executed`);
+      this.logger.debug(`${step.label}: record MISS (${reason})`);
+      this.logger.debug(`Result: ${pressResult(press({ kind: "search", search: step.search }))}`);
+    };
+
+    if (start.frame === null) {
+      searchOnMiss(start.reason);
 
       return;
     }
@@ -2991,14 +3008,13 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
       lapApproachFrames: LAP_START_APPROACH_FRAMES,
     });
 
-    this.logger.info(`${step.label} executed`);
-
     if (!found.hit) {
-      this.logger.debug(`${step.label}: record MISS (${found.reason})`);
-      this.logger.debug(`Result: ${pressResult(press({ kind: "search", search: step.search }))}`);
+      searchOnMiss(found.reason);
 
       return;
     }
+
+    this.logger.info(`${step.label} executed`);
 
     const { frame } = found;
 
