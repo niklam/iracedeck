@@ -1354,37 +1354,6 @@ describe("ReplayMarkers", () => {
         expect(redrawn(action)).toHaveLength(2);
       });
 
-      it("a look ending while a flash runs leaves the flash be; a look standing draws over it", async () => {
-        storeWith([AHEAD]);
-        const { action } = makeAction(REPLAY);
-        await appear(action, { mode: "next" });
-        const { surface } = busy.surfaces.get("ctx-1")!;
-
-        // A flash timer standing for the key, however it came to be.
-        action["flashTimers"].set(
-          "ctx-1",
-          setTimeout(() => action["flashTimers"].delete("ctx-1"), CONFIRMATION_FLASH_MS),
-        );
-
-        busy.looks.set("ctx-1", { kind: "waiting" });
-        surface.redraw({ kind: "waiting" });
-
-        expect(redrawn(action)).toHaveLength(1);
-        expect(redrawn(action)[0]![1]).toMatch(/\|busy:waiting$/);
-
-        busy.looks.delete("ctx-1");
-        surface.redraw({ kind: "rest" });
-
-        expect(redrawn(action)).toHaveLength(1);
-
-        // Once the flash is over, the look's end draws the resting icon.
-        await vi.advanceTimersByTimeAsync(CONFIRMATION_FLASH_MS);
-        surface.redraw({ kind: "rest" });
-
-        expect(redrawn(action)).toHaveLength(2);
-        expect(redrawn(action)[1]![1]).not.toContain("busy:");
-      });
-
       it("a redraw for a key that has gone draws nothing", async () => {
         storeWith([AHEAD]);
         const { action } = makeAction(REPLAY);

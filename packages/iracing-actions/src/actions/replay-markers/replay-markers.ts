@@ -291,17 +291,13 @@ export class ReplayMarkers extends SimIRacingAction<ReplayMarkersSettings> {
    * second and the newest render wins. Eight frames a second are 125 ms
    * apart, outside the throttle's 100 ms window, so no frame is dropped; a
    * look that ends inside the window is drawn at the window's end. The render
-   * reads the look when it runs, not the one it was scheduled for. A look
-   * ending while a confirmation flash runs leaves the flash be: the flash's own
-   * end draws the resting icon.
+   * reads the look when it runs, not the one it was scheduled for.
    */
   private redrawBusyKey(contextId: string): void {
     this.imageThrottle.schedule(contextId, async () => {
       const settings = this.activeContexts.get(contextId);
 
       if (!settings) return;
-
-      if (getReplayBusyLook(contextId).kind === "rest" && this.flashTimers.has(contextId)) return;
 
       await this.updateKeyImage(contextId, this.keySvg(contextId, settings));
     });
