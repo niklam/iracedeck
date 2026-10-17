@@ -47,6 +47,7 @@ vi.mock("@iracedeck/settings", () => ({
 vi.mock("@iracedeck/replay-store", () => ({
   MARKER_DEDUPE_FRAMES: 60,
   MARKER_DELETE_WINDOW_FRAMES: 600,
+  MARKER_NEXT_MIN_AHEAD_FRAMES: 60,
   MARKER_PREVIOUS_MIN_BEHIND_FRAMES: 120,
 }));
 
@@ -97,26 +98,30 @@ describe("markerIndexAt", () => {
 
 describe("resolveJumpTarget", () => {
   function context(telemetry: Partial<TelemetryData>): ReplayContext {
-    const next = vi.fn(() => markers(5_000)[0]!);
-    const previous = vi.fn(() => markers(1_000)[0]!);
+    // Walked by the shared rule: from 3 000 Next is 5 000, from 4 200 Previous is 1 000.
+    const list = vi.fn(() => markers(1_000, 5_000));
 
     return {
       ok: true,
       telemetry: telemetry as TelemetryData,
       inReplay: telemetry.IsReplayPlaying === true,
       frame: 3_000,
-      store: { markers: { next, previous } } as unknown as ReplaySessionStore,
+      store: { markers: { list } } as unknown as ReplaySessionStore,
       scope: { subSessionId: 7 },
     };
   }
 
-  it("asks the store's own next / previous from the given frame, scoped", () => {
+  it("walks the store's markers by the shared rule from the given frame, scoped", () => {
     const ctx = context({ IsReplayPlaying: true });
 
     expect(resolveJumpTarget("next", ctx)?.frame).toBe(5_000);
     expect(resolveJumpTarget("previous", ctx, 4_200)?.frame).toBe(1_000);
-    expect(ctx.store.markers.next).toHaveBeenCalledWith(3_000, { subSessionId: 7 });
-    expect(ctx.store.markers.previous).toHaveBeenCalledWith(4_200, { subSessionId: 7 });
+    // From 5 100, within Previous's window of 5 000, the one before; from 5 121, 5 000 itself.
+    expect(resolveJumpTarget("previous", ctx, 5_100)?.frame).toBe(1_000);
+    expect(resolveJumpTarget("previous", ctx, 5_121)?.frame).toBe(5_000);
+    // From 4 940, 5 000 is not more than 60 frames ahead.
+    expect(resolveJumpTarget("next", ctx, 4_940)).toBeNull();
+    expect(ctx.store.markers.list).toHaveBeenCalledWith({ subSessionId: 7 });
   });
 
   it("is null out of a replay without asking the store", () => {
@@ -124,7 +129,7 @@ describe("resolveJumpTarget", () => {
 
     expect(resolveJumpTarget("next", ctx)).toBeNull();
     expect(resolveJumpTarget("previous", ctx)).toBeNull();
-    expect(ctx.store.markers.next).not.toHaveBeenCalled();
+    expect(ctx.store.markers.list).not.toHaveBeenCalled();
   });
 });
 
@@ -135,7 +140,8 @@ describe("the replay state survives the post-seek blip (#1230, read from the con
   /** What telemetry reads for ~300 ms after a `setPlayPosition`, and what it reads from the car. */
   const notPlaying = { IsReplayPlaying: false, ReplayFrameNum: 0, ReplayFrameNumEnd: 90_000 } as TelemetryData;
   const store = {
-    markers: { next: vi.fn(() => markers(5_000)[0]!), previous: vi.fn(() => null) },
+    // From the held 4 000 Next is 5 000; from the blip's frame 0 it would be 1 000.
+    markers: { list: vi.fn(() => markers(1_000, 5_000)) },
   } as unknown as ReplaySessionStore;
   let telemetry: TelemetryData = notPlaying;
   let sessionInfo: unknown = null;
@@ -181,7 +187,7 @@ describe("the replay state survives the post-seek blip (#1230, read from the con
     const context = read(notPlaying, 10_300);
 
     expect(resolveJumpTarget("next", context)?.frame).toBe(5_000);
-    expect(store.markers.next).toHaveBeenLastCalledWith(4_000, undefined);
+    expect(store.markers.list).toHaveBeenLastCalledWith(undefined);
   });
 
   it("false for the whole grace is the car: live, at the live edge", () => {

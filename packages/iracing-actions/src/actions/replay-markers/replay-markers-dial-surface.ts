@@ -235,9 +235,10 @@ export class ReplayMarkersDialSurface {
   }
 
   /**
-   * A turn: one marker per detent from where the store's own Next / Previous
-   * would land, no per-event cap, stopping at the end of the list; one jump
-   * per event, to the last marker reached. The jump is started here and
+   * A turn: one marker per detent from where the keypad's Next / Previous
+   * would land (the shared walk's first step, {@link resolveJumpTarget}), no
+   * per-event cap, stopping at the end of the list; one jump per event, to
+   * the last marker reached. The jump is started here and
    * finishes on its own ({@link followMarkerJump}), drawing nothing when it
    * does: the screen follows the replay through {@link onTick}. A further
    * detent before it has landed takes the cursor from it and steps on from its

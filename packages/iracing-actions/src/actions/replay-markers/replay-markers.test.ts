@@ -29,13 +29,15 @@ import {
 
 type Marker = { frame: number; sessionNum: number; sessionTimeMs: number; [key: string]: unknown };
 
+/** The store's markers at `frames`, in order: Next and Previous walk them by the shared rule (#1426). */
+const markersAt = (...frames: number[]): Marker[] =>
+  frames.map((frame) => ({ frame, sessionNum: 1, sessionTimeMs: 0 }));
+
 const mocks = vi.hoisted(() => ({
   isStoreInitialized: vi.fn(() => true),
   markers: {
     add: vi.fn((_marker: Marker, _scope?: unknown): boolean => true),
     deleteNearest: vi.fn((): Marker | null => null),
-    next: vi.fn((): Marker | null => null),
-    previous: vi.fn((): Marker | null => null),
     list: vi.fn((): Marker[] => []),
   },
   setPlayPosition: vi.fn((_mode: number, _frame: number) => true),
@@ -134,6 +136,7 @@ vi.mock("@iracedeck/replay-store", () => ({
   isReplaySessionStoreInitialized: mocks.isStoreInitialized,
   MARKER_DEDUPE_FRAMES: 60,
   MARKER_DELETE_WINDOW_FRAMES: 600,
+  MARKER_NEXT_MIN_AHEAD_FRAMES: 60,
   MARKER_PREVIOUS_MIN_BEHIND_FRAMES: 120,
 }));
 
@@ -294,8 +297,6 @@ describe("ReplayMarkers", () => {
     mocks.isStoreInitialized.mockReturnValue(true);
     mocks.markers.add.mockReturnValue(true);
     mocks.markers.deleteNearest.mockReturnValue(null);
-    mocks.markers.next.mockReturnValue(null);
-    mocks.markers.previous.mockReturnValue(null);
     mocks.markers.list.mockReturnValue([]);
     mocks.setPlayPosition.mockReturnValue(true);
     mocks.setPlaySpeed.mockReturnValue(true);
@@ -629,28 +630,30 @@ describe("ReplayMarkers", () => {
 
   describe("Next / Previous", () => {
     it("Next jumps to the next marker's frame from the Begin position", async () => {
-      mocks.markers.next.mockReturnValue({ frame: 15_000, sessionNum: 1, sessionTimeMs: 0 });
+      // From 12 000 the next marker is 15 000; from anywhere before 4 940 it would be 5 000.
+      mocks.markers.list.mockReturnValue(markersAt(5_000, 15_000));
       const { action } = makeAction(REPLAY);
 
       await action.onKeyDown(keyDown({ mode: "next" }));
 
-      expect(mocks.markers.next).toHaveBeenCalledWith(12_000, { subSessionId: 86697546 });
+      expect(mocks.markers.list).toHaveBeenCalledWith({ subSessionId: 86697546 });
       expect(mocks.setPlayPosition).toHaveBeenCalledWith(ReplayPosMode.Begin, 15_000);
       expect(action["updateKeyImage"]).not.toHaveBeenCalled();
     });
 
     it("Previous jumps to the previous marker's frame", async () => {
-      mocks.markers.previous.mockReturnValue({ frame: 9_000, sessionNum: 1, sessionTimeMs: 0 });
+      // From 12 000 the previous marker is 9 000; from past 13 120 it would be 13 000.
+      mocks.markers.list.mockReturnValue(markersAt(9_000, 13_000));
       const { action } = makeAction(REPLAY);
 
       await action.onKeyDown(keyDown({ mode: "previous" }));
 
-      expect(mocks.markers.previous).toHaveBeenCalledWith(12_000, { subSessionId: 86697546 });
+      expect(mocks.markers.list).toHaveBeenCalledWith({ subSessionId: 86697546 });
       expect(mocks.setPlayPosition).toHaveBeenCalledWith(ReplayPosMode.Begin, 9_000);
     });
 
     it("takes the replay cursor from an in-flight fastest-lap walk before jumping", async () => {
-      mocks.markers.next.mockReturnValue({ frame: 15_000, sessionNum: 1, sessionTimeMs: 0 });
+      mocks.markers.list.mockReturnValue(markersAt(15_000));
       const onCancelled = vi.fn(() => {
         expect(mocks.setPlayPosition).not.toHaveBeenCalled();
       });
@@ -666,24 +669,24 @@ describe("ReplayMarkers", () => {
     });
 
     it("Next in the post-seek blip still jumps, from the replay's last frame", async () => {
-      mocks.markers.next.mockReturnValue({ frame: 15_000, sessionNum: 1, sessionTimeMs: 0 });
+      // From the held 12 000 the next marker is 15 000; from the blip's frame 0 it would be 5 000.
+      mocks.markers.list.mockReturnValue(markersAt(5_000, 15_000));
       const { action, sdk } = makeAction(REPLAY);
       await action.onKeyDown(keyDown({ mode: "next" }));
       mocks.setPlayPosition.mockClear();
-      mocks.markers.next.mockClear();
+      mocks.markers.list.mockClear();
       clearReplayTarget(); // the target alone: the replay state is what is under test
 
       sdk.getCurrentTelemetry.mockReturnValue({ ...REPLAY, IsReplayPlaying: false } as TelemetryData);
       await vi.advanceTimersByTimeAsync(300);
       await action.onKeyDown(keyDown({ mode: "next" }));
 
-      expect(mocks.markers.next).toHaveBeenCalledWith(12_000, { subSessionId: 86697546 });
+      expect(mocks.markers.list).toHaveBeenCalledWith({ subSessionId: 86697546 });
       expect(mocks.setPlayPosition).toHaveBeenCalledWith(ReplayPosMode.Begin, 15_000);
     });
 
     it.each(["next", "previous"])("%s from the car sends nothing and says why at debug", async (mode) => {
-      mocks.markers.next.mockReturnValue({ frame: 31_000, sessionNum: 2, sessionTimeMs: 0 });
-      mocks.markers.previous.mockReturnValue({ frame: 29_000, sessionNum: 2, sessionTimeMs: 0 });
+      mocks.markers.list.mockReturnValue(markersAt(29_000, 31_000));
       const { action } = makeAction(LIVE);
 
       await action.onKeyDown(keyDown({ mode }));
@@ -707,7 +710,8 @@ describe("ReplayMarkers", () => {
   describe("Next / Previous and the Replay jump playback setting (#1276)", () => {
     /** A replay on REPLAY's frame at `speed`, behind the fake sim, with a marker ahead for Next. */
     function replayAtSpeed(speed: SimSpeed, options?: { lagMs?: number; seekLagMs?: number }) {
-      mocks.markers.next.mockReturnValue({ frame: 15_000, sessionNum: 1, sessionTimeMs: 0 });
+      // From REPLAY's 12 000 the next marker is 15 000, and from 15 000 there is none.
+      mocks.markers.list.mockReturnValue(markersAt(5_000, 15_000));
       const { action, sdk } = makeAction(REPLAY);
       const sim = fakeSim({ ...REPLAY, ...speed } as TelemetryData, options);
       sdk.getCurrentTelemetry.mockImplementation(() => sim.telemetry);
@@ -807,9 +811,9 @@ describe("ReplayMarkers", () => {
         // The seek went out, so its target was left to its own wait, which has given it up:
         // the next press measures from the live frame.
         expect(pendingReplayTarget()).toBeNull();
-        mocks.markers.next.mockClear();
         await action.onKeyDown(keyDown({ mode: "next" }));
-        expect(mocks.markers.next).toHaveBeenCalledWith(12_000, { subSessionId: 86697546 });
+        // From the live 12 000 Next is 15 000 again; from the given-up 15 000 there would be none.
+        expect(pendingReplayTarget()).toMatchObject({ frame: 15_000 });
       },
     );
 
@@ -847,11 +851,11 @@ describe("ReplayMarkers", () => {
       await action.onKeyDown(keyDown({ mode: "next" }));
       await vi.advanceTimersByTimeAsync(100);
       // The first jump has paused the replay and sent its seek; the next marker is further on.
-      mocks.markers.next.mockReturnValue({ frame: 16_000, sessionNum: 1, sessionTimeMs: 0 });
+      // From the first's 15 000 the next is 16 000; from the live 12 000 it would be 15 000 again.
+      mocks.markers.list.mockReturnValue(markersAt(5_000, 15_000, 16_000));
       await action.onKeyDown(keyDown({ mode: "next" }));
       await vi.advanceTimersByTimeAsync(1_000);
 
-      expect(mocks.markers.next).toHaveBeenLastCalledWith(15_000, { subSessionId: 86697546 });
       // The second sends its seek alone: the first paused the replay, and a pause into its seek would end it short.
       expect(sim.calls).toEqual(["speed 0", "seek 15000", "seek 16000", "speed -8"]);
       expect(sim.telemetry).toMatchObject({ ReplayFrameNum: 16_000, ...REWIND_8 });
@@ -915,14 +919,9 @@ describe("ReplayMarkers", () => {
     const AHEAD = { frame: 15_000, sessionNum: 1, sessionTimeMs: 0 };
     const BEHIND = { frame: 9_000, sessionNum: 1, sessionTimeMs: 0 };
 
-    /** The store's own windows: next is > 60 frames ahead, previous > 120 behind. */
+    /** The store's markers, walked by the shared rule: next is > 60 frames ahead, previous > 120 behind. */
     function storeWith(markers: Marker[]): void {
-      mocks.markers.next.mockImplementation(
-        ((frame: number) => markers.find((m) => m.frame - frame > 60) ?? null) as never,
-      );
-      mocks.markers.previous.mockImplementation(
-        ((frame: number) => [...markers].reverse().find((m) => frame - m.frame > 120) ?? null) as never,
-      );
+      mocks.markers.list.mockReturnValue(markers);
     }
 
     function tick(action: ReplayMarkers, id = "ctx-1"): void {
@@ -967,7 +966,7 @@ describe("ReplayMarkers", () => {
       await appear(action, { mode });
 
       expect(shown(action)).not.toContain("dimmed");
-      expect(mocks.markers[mode as "next" | "previous"]).toHaveBeenCalledWith(12_000, { subSessionId: 86697546 });
+      expect(mocks.markers.list).toHaveBeenCalledWith({ subSessionId: 86697546 });
     });
 
     it.each([
@@ -1170,8 +1169,6 @@ describe("ReplayMarkers on a dial (#1230)", () => {
     mocks.isStoreInitialized.mockReturnValue(true);
     mocks.markers.add.mockReturnValue(true);
     mocks.markers.deleteNearest.mockReturnValue(null);
-    mocks.markers.next.mockReturnValue(null);
-    mocks.markers.previous.mockReturnValue(null);
     mocks.markers.list.mockReturnValue([]);
     mocks.setPlayPosition.mockReturnValue(true);
     mocks.setPlaySpeed.mockReturnValue(true);
@@ -1205,13 +1202,14 @@ describe("ReplayMarkers on a dial (#1230)", () => {
   });
 
   it("a turn jumps through the shared store predicate", async () => {
-    mocks.markers.next.mockReturnValue({ frame: 14_000, sessionNum: 1, sessionTimeMs: 0 });
+    // From 12 000 the next marker is 14 000; from anywhere before 4 940 it would be 5 000.
+    mocks.markers.list.mockReturnValue(markersAt(5_000, 14_000));
     const { action } = makeAction(REPLAY);
     await action.onWillAppear(dialEvent({}) as never);
 
     await action.onDialRotate(dialEvent({}, { ticks: 1, pressed: false }) as never);
 
-    expect(mocks.markers.next).toHaveBeenCalledWith(12_000, { subSessionId: 86697546 });
+    expect(mocks.markers.list).toHaveBeenCalledWith({ subSessionId: 86697546 });
     expect(mocks.setPlayPosition).toHaveBeenCalledWith(ReplayPosMode.Begin, 14_000);
   });
 
@@ -1248,13 +1246,7 @@ describe("ReplayMarkers on a dial (#1230)", () => {
       action.onDialRotate(dialEvent({}, { ticks, pressed: false }) as never);
 
     beforeEach(() => {
-      // The store's own windows: next is > 60 frames ahead, previous > 120 behind.
-      mocks.markers.next.mockImplementation(
-        ((frame: number) => FRAMES.find((m) => m.frame - frame > 60) ?? null) as never,
-      );
-      mocks.markers.previous.mockImplementation(
-        ((frame: number) => [...FRAMES].reverse().find((m) => frame - m.frame > 120) ?? null) as never,
-      );
+      // Walked by the shared rule: next is > 60 frames ahead, previous > 120 behind.
       mocks.markers.list.mockReturnValue(FRAMES);
     });
 
@@ -1329,8 +1321,6 @@ describe("ReplayMarkers on a dial (#1230)", () => {
 function expectUntouched(action: ReplayMarkers): void {
   expect(mocks.markers.add).not.toHaveBeenCalled();
   expect(mocks.markers.deleteNearest).not.toHaveBeenCalled();
-  expect(mocks.markers.next).not.toHaveBeenCalled();
-  expect(mocks.markers.previous).not.toHaveBeenCalled();
   expect(mocks.setPlayPosition).not.toHaveBeenCalled();
   expect(mocks.setPlaySpeed).not.toHaveBeenCalled();
   expect(action["updateKeyImage"]).not.toHaveBeenCalled();

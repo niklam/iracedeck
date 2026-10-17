@@ -70,12 +70,13 @@ vi.mock("@iracedeck/deck-core", async () => {
 vi.mock("@iracedeck/replay-store", () => ({
   MARKER_DEDUPE_FRAMES: 60,
   MARKER_DELETE_WINDOW_FRAMES: 600,
+  MARKER_NEXT_MIN_AHEAD_FRAMES: 60,
   MARKER_PREVIOUS_MIN_BEHIND_FRAMES: 120,
 }));
 
 // The store's own pure marker functions, by path past the mocked barrel (the
-// module has no imports), so the fake store answers next / previous / add /
-// delete exactly as the real one does.
+// module has no imports), so the fake store answers add / delete exactly as
+// the real one does. Next and previous are the shared walk over list() (#1426).
 const markerFns = await vi.importActual<typeof import("../../../../replay-store/src/replay-markers.js")>(
   "../../../../replay-store/src/replay-markers.js",
 );
@@ -95,8 +96,6 @@ const env = {
 const storeMarkers = {
   add: vi.fn((marker: ReplayMarker, _scope?: unknown) => markerFns.addMarker(env.markers, marker)),
   deleteNearest: vi.fn((frame: number, _scope?: unknown) => markerFns.deleteNearestMarker(env.markers, frame)),
-  next: vi.fn((frame: number, _scope?: unknown) => markerFns.nextMarker(env.markers, frame)),
-  previous: vi.fn((frame: number, _scope?: unknown) => markerFns.previousMarker(env.markers, frame)),
   list: vi.fn((_scope?: unknown) => env.markers.map((m) => ({ ...m }))),
 };
 const store = { markers: storeMarkers, getActiveSession: () => env.active } as unknown as ReplaySessionStore;

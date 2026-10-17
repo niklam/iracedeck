@@ -36,6 +36,7 @@ import {
   recordedIndexAt,
   type ReplayWalkDirection,
   resolveReplayWalkAnchor,
+  walkRecordedEntries,
   walkRecordedIndex,
 } from "../../shared/replay-record-walk.js";
 
@@ -219,9 +220,13 @@ export function readReplayContext(source: ReplayContextSource, nowMs: number = D
  *   out of the car (irsdk_defines.h: "camera and replay commands only work
  *   when you are out of your car"), so from the car a jump would be sent,
  *   ignored, and logged as done;
- * - otherwise the store's own `next` (the first marker more than 1 s ahead) or
- *   `previous` (the media-player rule, its 2 s window measured from the anchor
- *   marker).
+ * - otherwise the shared walk's first step over the store's markers
+ *   (`walkRecordedEntries`, `shared/replay-record-walk.ts`, #1426): Next is
+ *   the first marker more than 1 s ahead, Previous the media-player rule, its
+ *   2 s window measured from the anchor marker. The windows live in that one
+ *   walk for every surface — Replay Markers and Replay Control's lap and
+ *   session steps — and a marker lands on itself, so no offset is added and
+ *   no span rule applies.
  *
  * `fromFrame` defaults to the context's live frame; a jump passes
  * {@link resolveMarkerJumpAnchor} — the replay's pending target while the
@@ -234,9 +239,9 @@ export function resolveJumpTarget(
 ): ReplayMarker | null {
   if (!context.inReplay) return null;
 
-  return direction === "next"
-    ? context.store.markers.next(fromFrame, context.scope)
-    : context.store.markers.previous(fromFrame, context.scope);
+  const walked = walkRecordedEntries(context.store.markers.list(context.scope), fromFrame, direction, 1);
+
+  return walked.hit ? walked.entry : null;
 }
 
 /**
