@@ -25,9 +25,18 @@
  *   {@link SESSION_START_AGREEMENT_FRAMES}, so a tick on which the session
  *   number has moved and the clock has not cannot put a wrong start in the
  *   file. The run is the previous live tick's reading; an ineligible tick, a
- *   tick with no readable `SessionTime`, or a reading for another pair breaks
- *   it. Agreement does not catch a seek, whose readings can hold still for a
- *   quarter of a second; the raw-flag condition of the gate does.
+ *   tick with no readable `SessionTime`, a tick with no session info, or a
+ *   reading for another event (`SubSessionID`) or pair breaks it. Agreement
+ *   does not catch a seek, whose readings can hold still for a quarter of a
+ *   second; the raw-flag condition of the gate does.
+ * - **Both agreeing ticks need session info.** The first ticks of a
+ *   connection can read none, and a reading taken there would be filed under
+ *   `SubSessionID` 0: the next tick, with session info, would agree with it and
+ *   publish at once, before the store has opened the event's record (its
+ *   subscriber runs after the translator on that tick), so the store would
+ *   drop the event while the pair counted as published, and the session's
+ *   start would never be recorded for that connection. Requiring session info
+ *   on both ticks means the store has opened the record on the first of them.
  * - **A new pair's start must come after the event's earlier ones.**
  *   Agreement does not catch a clock that stays stale for two ticks or more
  *   at a session change: the frame and the old `SessionTime` both advance at
@@ -76,6 +85,8 @@ function pairKey(subSessionId: number, sessionNum: number, sessionUniqueId: numb
 }
 
 /**
+ * @param sessionInfo - The controller's session info; null on a tick that has
+ *   none yet, which records nothing and breaks the run
  * @param inReplay - The translator's read of the controller's debounced replay state (#1324)
  * @param replayOnlySession - The controller's sticky saved-replay answer (#604,
  *   `ReplayState.replayOnlySession`), which keeps its value through a tick whose
@@ -95,6 +106,12 @@ export function diffReplaySessions(
   const sessionTimeS = telemetry.SessionTime;
 
   if (live === null || typeof sessionTimeS !== "number" || !(sessionTimeS >= 0)) {
+    state.replaySessionsCandidate = null;
+
+    return;
+  }
+
+  if (sessionInfo === null) {
     state.replaySessionsCandidate = null;
 
     return;
@@ -127,12 +144,13 @@ export function diffReplaySessions(
   const previous = state.replaySessionsCandidate;
   const agrees =
     previous !== null &&
+    previous.subSessionId === subSessionId &&
     previous.sessionNum === sessionNum &&
     previous.sessionUniqueId === sessionUniqueId &&
     Math.abs(previous.start - start) <= SESSION_START_AGREEMENT_FRAMES;
 
   if (!agrees) {
-    state.replaySessionsCandidate = { sessionNum, sessionUniqueId, start };
+    state.replaySessionsCandidate = { subSessionId, sessionNum, sessionUniqueId, start };
 
     return;
   }

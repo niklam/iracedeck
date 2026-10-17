@@ -109,10 +109,13 @@ export type ReplayIncidentCarReading = {
 
 /**
  * One reading of a session's start in the replay session record (issue
- * #1426): the frame the pair began at, by one live tick. A second live tick
- * that agrees with it publishes.
+ * #1426): the frame the pair began at, by one live tick with session info. A
+ * second such tick that agrees with it, for the same event and pair,
+ * publishes.
  */
 export type ReplaySessionStartCandidate = {
+  /** `WeekendInfo.SubSessionID` on that tick; 0 for an offline session. */
+  subSessionId: number;
   sessionNum: number;
   sessionUniqueId: number;
   /** `max(0, live frame − round(SessionTime × 60))` on that tick. */

@@ -176,6 +176,37 @@ describe("diffReplaySessions", () => {
     expect(run(state, inCar({ frame: 36_001, time: 1 / 60, sessionNum: 3 }))).toEqual([]);
   });
 
+  describe("a tick with no session info (the first ticks of a connection)", () => {
+    it("seeds nothing: the start is published on the second tick with session info, never the first", () => {
+      const [noInfo, firstInfo, secondInfo] = [
+        inCar({ frame: 36_000, time: 0 }),
+        inCar({ frame: 36_001, time: 1 / 60 }),
+        inCar({ frame: 36_002, time: 2 / 60 }),
+      ];
+
+      expect(run(state, noInfo, { sessionInfo: null })).toEqual([]);
+      // The store's subscriber opens the event's record on this tick, after the translator.
+      expect(run(state, firstInfo)).toEqual([]);
+      expect(run(state, secondInfo)).toEqual([started(36_000)]);
+      expect(state.replaySessionsPublished).toEqual(["86697546:2:4"]);
+    });
+
+    it("breaks the run: the readings either side of it do not agree with each other", () => {
+      expect(run(state, inCar({ frame: 36_000, time: 0 }))).toEqual([]);
+      expect(run(state, inCar({ frame: 36_001, time: 1 / 60 }), { sessionInfo: null })).toEqual([]);
+      expect(run(state, inCar({ frame: 36_002, time: 2 / 60 }))).toEqual([]);
+      expect(run(state, inCar({ frame: 36_003, time: 3 / 60 }))).toEqual([started(36_000)]);
+    });
+  });
+
+  it("does not let a reading of one event agree with a reading of another", () => {
+    const other: Record<string, unknown> = { WeekendInfo: { SubSessionID: 86697547, SimMode: "full" } };
+
+    expect(run(state, inCar({ frame: 36_000, time: 0 }), { sessionInfo: other })).toEqual([]);
+    expect(run(state, inCar({ frame: 36_001, time: 1 / 60 }))).toEqual([]);
+    expect(run(state, inCar({ frame: 36_002, time: 2 / 60 }))).toEqual([started(36_000)]);
+  });
+
   it("never reads a tick mid-seek, whatever its numbers say", () => {
     // Even two of them in a row, which would agree with each other.
     expect(feed([MID_SEEK, MID_SEEK], { inReplay: true })).toEqual([]);
@@ -305,7 +336,9 @@ describe("diffReplaySessions", () => {
   });
 
   it("reads SubSessionID 0 when the session info has none", () => {
-    const out = feed(twoTicks("car", { frame: 36_000, time: 0 }), { sessionInfo: null });
+    const out = feed(twoTicks("car", { frame: 36_000, time: 0 }), {
+      sessionInfo: { WeekendInfo: { SimMode: "full" } },
+    });
 
     expect(out).toEqual([
       { event: "replay.sessionStarted", data: { subSessionId: 0, sessionNum: 2, sessionUniqueId: 4, frame: 36_000 } },
