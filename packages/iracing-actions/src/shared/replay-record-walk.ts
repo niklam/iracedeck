@@ -58,31 +58,39 @@ export function resolveReplayWalkAnchor(liveFrame: number, telemetry: TelemetryD
   return headed?.seeking === true ? headed.frame : liveFrame;
 }
 
+/** Where a press steps from, or why it has nowhere to step from. */
+export type ReplayWalkStart =
+  | { readonly frame: number; readonly from: "target" | "cursor" }
+  | { readonly frame: null; readonly reason: "not in a replay" | "no cursor" };
+
 /**
- * The anchor of a press read from the controller's debounced replay state, or
- * null when there is no cursor to step from: no pending target, and a tick
- * still reading mid-seek (`IsReplayPlaying` false, frame 0) once the exit
- * grace has run out. A walk from that frame would send the list's first
- * entry, and a search sent into a seek ends it where it stands, so such a
- * press sends nothing. Within the grace the state holds the last frame a
- * replay tick showed, which is the cursor.
+ * Where a press steps from, read from the controller's debounced replay
+ * state: the pending target while one stands, else the cursor. A standing
+ * target wins even where the debounced state has given the replay up — a
+ * seek longer than the exit grace reads like a replay that was left in a live
+ * session — since the plugin's own jump is still headed there, as the gate
+ * holds too. Otherwise there is no step outside a replay, and none with no
+ * cursor: a tick still reading mid-seek (`IsReplayPlaying` false, frame 0)
+ * once the exit grace has run out, where a walk would send the list's first
+ * entry and a search would end the seek where it stands. Within the grace the
+ * state holds the last frame a replay tick showed, which is the cursor.
  */
-export function resolveReplayWalkCursor(
-  state: Pick<ReplayState, "frame" | "tickReplayPlaying" | "replaySeenAt">,
+export function resolveReplayWalkStart(
+  state: Pick<ReplayState, "inReplay" | "frame" | "tickReplayPlaying" | "replaySeenAt">,
   telemetry: TelemetryData | null,
   nowMs: number,
-): number | null {
+): ReplayWalkStart {
   const headed = readReplayPosition(telemetry);
 
-  if (headed?.seeking === true) return headed.frame;
+  if (headed?.seeking === true) return { frame: headed.frame, from: "target" };
 
-  if (state.frame === null) return null;
+  if (!state.inReplay) return { frame: null, reason: "not in a replay" };
 
   const held = state.replaySeenAt !== null && nowMs - state.replaySeenAt < REPLAY_EXIT_GRACE_MS;
 
-  if (!state.tickReplayPlaying && !held) return null;
+  if (state.frame === null || (!state.tickReplayPlaying && !held)) return { frame: null, reason: "no cursor" };
 
-  return state.frame;
+  return { frame: state.frame, from: "cursor" };
 }
 
 /**

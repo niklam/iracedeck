@@ -174,6 +174,8 @@ const mockStore = {
       reason: "no file",
     })),
     recordLapStart: vi.fn<(record: LapStartRecord & { subSessionId?: number }) => boolean>(() => true),
+    // Next / Previous Lap step through the record first (#1426); a miss sends the search.
+    listLapStarts: vi.fn(() => ({ hit: false, reason: "no file" })),
   },
 };
 

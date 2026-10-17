@@ -96,6 +96,7 @@ import {
   type ReplayJumpOutcome,
   runReplayJump,
 } from "../../shared/replay-jump-playback.js";
+import { resolveReplayWalkStart } from "../../shared/replay-record-walk.js";
 import { replaySeekWaitMs, seekReplayFrame } from "../../shared/replay-seek.js";
 import {
   readFastestLapSearchDelayMs,
@@ -116,6 +117,8 @@ import {
 import { halvingProbeFrames } from "./lap-walk-probes.js";
 import { replayControlDialField } from "./replay-control-dial-settings.js";
 import { ReplayControlDialSurface } from "./replay-control-dial-surface.js";
+import { observeIncidentSearch } from "./replay-incident-observer.js";
+import { findRecordStep, RECORD_STEPS, type RecordStepMode } from "./replay-record-step.js";
 import { formatSpeedDisplay, parseSpeedSetting } from "./replay-speed-format.js";
 import { noteTelemetrySpeed } from "./replay-speed-state.js";
 
@@ -2942,6 +2945,83 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     return { telemetry: finalTel, landedFrame, lapStartFrame, converged: true, priorLapDist };
   }
 
+  /**
+   * One Next / Previous Lap or Next / Previous Session press (#1426): a step
+   * through the record (`replay-record-step.ts`), measured from where the
+   * replay is headed, else the cursor (`shared/replay-record-walk.ts`).
+   *
+   * - **Outside a replay** nothing is sent: iRacing honours replay commands
+   *   only out of the car. Nor with **no cursor** to step from — no standing
+   *   target, and a tick still reading mid-seek once the exit grace is over —
+   *   since a step from there would send the list's first entry. A standing
+   *   target is a start either way (`resolveReplayWalkStart`).
+   * - **A hit** is one waited record jump to the landing frame
+   *   (`beginReplayJump` at the press, its frame recorded as the target before
+   *   its pause, then `runReplayJump`, `jump.end()` in a `finally`), carrying
+   *   this key's origin token. Claiming the cursor cancels a Jump to Fastest
+   *   Lap walk in flight. No camera switch: a lap list is the viewed car's, a
+   *   session belongs to everyone. The outcome updates the speed cache.
+   * - **A miss** sends iRacing's own search through the gate, as the key did
+   *   before, with its origin token: the gate holds it behind a jump or a
+   *   search of the plugin's that is still under way.
+   */
+  private pressRecordStep(
+    contextId: string,
+    mode: RecordStepMode,
+    press: (command: ReplayGateCommand) => ReplayPressResult,
+  ): void {
+    const step = RECORD_STEPS[mode];
+    const now = Date.now();
+    const telemetry = this.sdkController.getCurrentTelemetry();
+    const start = resolveReplayWalkStart(this.sdkController.getReplayState(now), telemetry, now);
+
+    if (start.frame === null) {
+      this.logger.debug(`${step.label}: ${start.reason}; nothing sent`);
+
+      return;
+    }
+
+    const anchor = start.frame;
+    const subSessionId = readSubSessionId(this.sdkController.getSessionInfo());
+    const found = findRecordStep(step, anchor, {
+      store: isReplaySessionStoreInitialized() ? getReplaySessionStore() : null,
+      scope: subSessionId === undefined ? undefined : { subSessionId },
+      camCarIdx: telemetry?.CamCarIdx,
+      carNumberRaw: (carIdx) => this.getCarNumberRawByIdx(carIdx),
+      lapApproachFrames: LAP_START_APPROACH_FRAMES,
+    });
+
+    this.logger.info(`${step.label} executed`);
+
+    if (!found.hit) {
+      this.logger.debug(`${step.label}: record MISS (${found.reason})`);
+      this.logger.debug(`Result: ${pressResult(press({ kind: "search", search: step.search }))}`);
+
+      return;
+    }
+
+    const { frame } = found;
+
+    this.logger.debug(`${step.label}: record HIT (${found.what}); from ${start.from} frame ${anchor} to ${frame}`);
+
+    const jump = beginReplayJump(`replay-control-${mode}`, telemetry, undefined, now, { frame, origin: contextId });
+
+    void (async () => {
+      try {
+        const outcome = await this.runJumpToFrame(jump, { frame, label: step.label });
+
+        // A jump that stopped short was logged by `runJumpToFrame`.
+        if (outcome.kind !== "stopped") {
+          this.logger.debug(`${step.label}: ${describeReplayJump(outcome, frame).detail}`);
+        }
+      } catch (error) {
+        this.logger.error(`${step.label}: jump failed: ${error instanceof Error ? error.message : String(error)}`);
+      } finally {
+        jump.end();
+      }
+    })();
+  }
+
   private executeMode(contextId: string, settings: ReplayControlSettings, repeat = false): void {
     const { mode } = settings;
 
@@ -3167,40 +3247,39 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
         this.logger.debug("Speed display pressed — no action");
         break;
       }
-      case "next-session": {
-        const success = pressResult(press({ kind: "search", search: "nextSession" }));
-        this.logger.info("Next session executed");
-        this.logger.debug(`Result: ${success}`);
-        break;
-      }
-      case "prev-session": {
-        const success = pressResult(press({ kind: "search", search: "prevSession" }));
-        this.logger.info("Previous session executed");
-        this.logger.debug(`Result: ${success}`);
-        break;
-      }
-      case "next-lap": {
-        const success = pressResult(press({ kind: "search", search: "nextLap" }));
-        this.logger.info("Next lap executed");
-        this.logger.debug(`Result: ${success}`);
-        break;
-      }
+      case "next-session":
+      case "prev-session":
+      case "next-lap":
       case "prev-lap": {
-        const success = pressResult(press({ kind: "search", search: "prevLap" }));
-        this.logger.info("Previous lap executed");
-        this.logger.debug(`Result: ${success}`);
+        // A step through the record, with iRacing's search behind a miss (#1426).
+        this.pressRecordStep(contextId, mode, press);
         break;
       }
-      case "next-incident": {
-        const success = pressResult(press({ kind: "search", search: "nextIncident" }));
-        this.logger.info("Next incident executed");
-        this.logger.debug(`Result: ${success}`);
-        break;
-      }
+      case "next-incident":
       case "prev-incident": {
-        const success = pressResult(press({ kind: "search", search: "prevIncident" }));
-        this.logger.info("Previous incident executed");
-        this.logger.debug(`Result: ${success}`);
+        const label = mode === "next-incident" ? "Next incident" : "Previous incident";
+        const telemetry = this.sdkController.getCurrentTelemetry();
+        const at = {
+          label,
+          frame: this.sdkController.getReplayState().frame,
+          camCarIdx: typeof telemetry?.CamCarIdx === "number" ? telemetry.CamCarIdx : null,
+        };
+        const result = press({ kind: "search", search: mode === "next-incident" ? "nextIncident" : "prevIncident" });
+
+        this.logger.info(`${label} executed`);
+        this.logger.debug(`Result: ${pressResult(result)}`);
+        // Where the search lands against the recorded incidents, at debug (#1426). It sends nothing.
+        void observeIncidentSearch(result, at, {
+          logger: this.logger,
+          readTelemetry: () => this.sdkController.getCurrentTelemetry(),
+          listIncidents: () => {
+            if (!isReplaySessionStoreInitialized()) return { hit: false, reason: "no store" };
+
+            const subSessionId = readSubSessionId(this.sdkController.getSessionInfo());
+
+            return getReplaySessionStore().incidents.list(subSessionId === undefined ? undefined : { subSessionId });
+          },
+        });
         break;
       }
       case "jump-to-beginning": {

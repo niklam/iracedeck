@@ -1,4 +1,4 @@
-import { REPLAY_EXIT_GRACE_MS, type ReplayState, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { REPLAY_EXIT_GRACE_MS, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { _configureReplayCommandGate, _resetReplayCommandGate, pressReplayCommand } from "./replay-command-gate.js";
@@ -9,7 +9,7 @@ import { _resetReplayPositionState, pendingReplayTarget } from "./replay-positio
 import {
   recordedIndexAt,
   resolveReplayWalkAnchor,
-  resolveReplayWalkCursor,
+  resolveReplayWalkStart,
   stepRecordedFrames,
   walkRecordedIndex,
 } from "./replay-record-walk.js";
@@ -136,27 +136,46 @@ describe("the anchor and the cursor", () => {
     vi.useRealTimers();
   });
 
+  type WalkState = Parameters<typeof resolveReplayWalkStart>[0];
+
   /** The debounced state as the controller reads it on a replay tick showing `frame`. */
-  const replayTick = (frame: number): Pick<ReplayState, "frame" | "tickReplayPlaying" | "replaySeenAt"> => ({
+  const replayTick = (frame: number): WalkState => ({
+    inReplay: true,
     frame,
     tickReplayPlaying: true,
     replaySeenAt: Date.now(),
   });
+  /** A tick that reads mid-seek: no frame of its own, and seen as a replay `seenAgo` ms ago (null: never). */
+  const midSeekState = (frame: number | null, seenAgo: number | null, inReplay = true): WalkState => ({
+    inReplay,
+    frame,
+    tickReplayPlaying: false,
+    replaySeenAt: seenAgo === null ? null : Date.now() - seenAgo,
+  });
+  const midSeek = { IsReplayPlaying: false, ReplayFrameNum: 0, SessionNum: -1 } as TelemetryData;
 
   it("with nothing under way the anchor is the cursor", () => {
     expect(resolveReplayWalkAnchor(100_000, sim.telemetry())).toBe(100_000);
-    expect(resolveReplayWalkCursor(replayTick(100_000), sim.telemetry(), Date.now())).toBe(100_000);
+    expect(resolveReplayWalkStart(replayTick(100_000), sim.telemetry(), Date.now())).toEqual({
+      frame: 100_000,
+      from: "cursor",
+    });
   });
 
-  it("a standing target is the anchor", () => {
+  it("a standing target is the anchor, whatever the tick reads", () => {
     pressReplayCommand({ kind: "jump", frame: 900_000 }, { by: "test" });
 
     expect(pendingReplayTarget()).toMatchObject({ frame: 900_000 });
     expect(resolveReplayWalkAnchor(100_000, sim.telemetry())).toBe(900_000);
-    // A tick that reads mid-seek has no frame of its own, but the target does.
-    expect(
-      resolveReplayWalkCursor({ frame: 0, tickReplayPlaying: false, replaySeenAt: null }, sim.telemetry(), Date.now()),
-    ).toBe(900_000);
+    expect(resolveReplayWalkStart(midSeekState(0, null), sim.telemetry(), Date.now())).toEqual({
+      frame: 900_000,
+      from: "target",
+    });
+    // A seek longer than the grace reads like a replay left in a live session; the plugin's jump is still headed there.
+    expect(resolveReplayWalkStart(midSeekState(0, null, false), sim.telemetry(), Date.now())).toEqual({
+      frame: 900_000,
+      from: "target",
+    });
   });
 
   it("a target still anchors after more than a second for as long as its jump holds the cursor", async () => {
@@ -170,9 +189,10 @@ describe("the anchor and the cursor", () => {
 
     expect(sim.busy()).toBe(true);
     expect(resolveReplayWalkAnchor(100_000, sim.telemetry())).toBe(1_100_000);
-    expect(
-      resolveReplayWalkCursor({ frame: 0, tickReplayPlaying: false, replaySeenAt: null }, sim.telemetry(), Date.now()),
-    ).toBe(1_100_000);
+    expect(resolveReplayWalkStart(midSeekState(0, 4_000, false), sim.telemetry(), Date.now())).toEqual({
+      frame: 1_100_000,
+      from: "target",
+    });
 
     await vi.advanceTimersByTimeAsync(10_000);
     await run;
@@ -182,29 +202,35 @@ describe("the anchor and the cursor", () => {
   });
 
   it("with no target, a tick that reads mid-seek inside the grace takes the debounced frame", () => {
-    const seenAt = Date.now() - (REPLAY_EXIT_GRACE_MS - 1);
-    const midSeek = { IsReplayPlaying: false, ReplayFrameNum: 0, SessionNum: -1 } as TelemetryData;
-
-    expect(
-      resolveReplayWalkCursor({ frame: 42_000, tickReplayPlaying: false, replaySeenAt: seenAt }, midSeek, Date.now()),
-    ).toBe(42_000);
+    expect(resolveReplayWalkStart(midSeekState(42_000, REPLAY_EXIT_GRACE_MS - 1), midSeek, Date.now())).toEqual({
+      frame: 42_000,
+      from: "cursor",
+    });
   });
 
   it("with no target and a tick still reading mid-seek once the grace is over, there is no cursor", () => {
-    const seenAt = Date.now() - REPLAY_EXIT_GRACE_MS;
-    const midSeek = { IsReplayPlaying: false, ReplayFrameNum: 0, SessionNum: -1 } as TelemetryData;
-
-    expect(
-      resolveReplayWalkCursor({ frame: 0, tickReplayPlaying: false, replaySeenAt: seenAt }, midSeek, Date.now()),
-    ).toBeNull();
-    expect(
-      resolveReplayWalkCursor({ frame: 0, tickReplayPlaying: false, replaySeenAt: null }, midSeek, Date.now()),
-    ).toBeNull();
+    // A saved replay: the state stays in a replay, its frame the tick's 0.
+    expect(resolveReplayWalkStart(midSeekState(0, REPLAY_EXIT_GRACE_MS), midSeek, Date.now())).toEqual({
+      frame: null,
+      reason: "no cursor",
+    });
+    expect(resolveReplayWalkStart(midSeekState(0, null), midSeek, Date.now())).toEqual({
+      frame: null,
+      reason: "no cursor",
+    });
   });
 
   it("no frame at all is no cursor", () => {
-    expect(
-      resolveReplayWalkCursor({ frame: null, tickReplayPlaying: true, replaySeenAt: Date.now() }, null, Date.now()),
-    ).toBeNull();
+    expect(resolveReplayWalkStart({ ...replayTick(0), frame: null }, null, Date.now())).toEqual({
+      frame: null,
+      reason: "no cursor",
+    });
+  });
+
+  it("with no target, outside a replay there is nothing to step from", () => {
+    expect(resolveReplayWalkStart({ ...replayTick(5_000), inReplay: false }, sim.telemetry(), Date.now())).toEqual({
+      frame: null,
+      reason: "not in a replay",
+    });
   });
 });

@@ -8,19 +8,31 @@ import {
   type TelemetryData,
   TrkLoc,
 } from "@iracedeck/iracing-sdk";
-import type { LapStartLookup, LapStartQuery, LapStartRecord } from "@iracedeck/replay-store";
+import {
+  getReplaySessionStore,
+  type IncidentListing,
+  isReplaySessionStoreInitialized,
+  type LapStartListing,
+  type LapStartLookup,
+  type LapStartQuery,
+  type LapStartRecord,
+  type SessionStartListing,
+} from "@iracedeck/replay-store";
 import { getGlobalSettings } from "@iracedeck/settings";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
 import {
   _configureReplayCommandGate,
   _resetReplayCommandGate,
+  getReplayGateView,
   pressReplayCommand,
+  type ReplayGateNotice,
+  subscribeReplayGate,
 } from "../../shared/replay-command-gate.js";
 import { type FakeReplay, fakeReplay } from "../../shared/replay-command-gate.test-support.js";
 import { _resetReplayCursor, cancelReplayCursorOwner, claimReplayCursor } from "../../shared/replay-cursor.js";
 import { beginReplayJump, runReplayJump } from "../../shared/replay-jump-playback.js";
-import { _resetReplayPositionState } from "../../shared/replay-position-state.js";
+import { _resetReplayPositionState, pendingReplayTarget } from "../../shared/replay-position-state.js";
 import { withSteppedReplayState } from "../../shared/test-support/replay-state.js";
 import { ReplayControlDialSettings } from "./replay-control-dial-settings.js";
 import type { ReplayControlDialHost } from "./replay-control-dial-surface.js";
@@ -295,6 +307,9 @@ vi.mock("@iracedeck/deck-core", () => ({
 vi.mock("@iracedeck/replay-store", () => ({
   getReplaySessionStore: vi.fn(),
   isReplaySessionStoreInitialized: vi.fn(() => false),
+  // The shared walk's windows (#1426), which the record steps read.
+  MARKER_NEXT_MIN_AHEAD_FRAMES: 60,
+  MARKER_PREVIOUS_MIN_BEHIND_FRAMES: 120,
 }));
 
 vi.mock("@iracedeck/settings", () => ({
@@ -1967,6 +1982,10 @@ describe("ReplayControl", () => {
         ["Jump to Live", { mode: "jump-to-live" }],
       ])("a %s key inside the hold lets the live speed follow telemetry at once", async (_name, settings) => {
         await action.onWillAppear(keyEvent("key-1", settings) as never);
+
+        // A record step sends nothing outside a replay (#1426): Next Lap is pressed in one.
+        if (settings.mode === "next-lap") nowReading(REPLAY_4X);
+
         // A Frame Jog detent paused the playing replay: the dial reads 0x for the hold.
         noteDialSpeedSent(PAUSED, t0);
         expect(resolveLiveSpeed(STALE_4X, t0 + 10)).toEqual(PAUSED);
@@ -5532,6 +5551,454 @@ describe("ReplayControl", () => {
         expect(camera.switchNum).toHaveBeenCalledExactlyOnceWith(MY_CAR, 0, 0);
         expect(sim.frame()).toBe(LAP_START - 60);
         expect(sim.thrown).toBe(0);
+      });
+    });
+  });
+
+  describe("Next / Previous Lap and Session step through the record (#1426)", () => {
+    /** The car the camera is on at the press, and the number the session info gives it. */
+    const CAM_CAR = 4;
+    const SUB_SESSION = 4_242;
+    /** Where the replay stands at the press. */
+    const START = 100_000;
+    /** The camera car's recorded lap starts: each lands 60 frames before its line. */
+    const LAP_STARTS = [50_000, 103_000, 106_000, 109_000];
+    /** The recorded session starts: each lands 120 frames after it. */
+    const SESSION_STARTS = [0, 60_000, 150_000];
+    const PAUSED = { speed: 0, slowMotion: false };
+    const NORMAL = { speed: 1, slowMotion: false };
+
+    let action: ReplayControl;
+    let sim: FakeReplay;
+    let camCarIdx: number;
+    const camera = { switchNum: vi.fn<(carNum: number, group: number, cam: number) => boolean>(() => true) };
+    const store = {
+      laps: { listLapStarts: vi.fn((): LapStartListing => ({ hit: true, frames: LAP_STARTS })) },
+      sessions: {
+        list: vi.fn((): SessionStartListing => ({
+          hit: true,
+          starts: SESSION_STARTS.map((frame, i) => ({ sessionNum: i, sessionUniqueId: i + 1, frame })),
+        })),
+      },
+      incidents: { list: vi.fn((): IncidentListing => ({ hit: true, incidents: [] })) },
+    };
+
+    function keyEvent(actionId: string, settings: Record<string, unknown>) {
+      return {
+        action: { id: actionId, isDial: () => false, setTitle: vi.fn(), setImage: vi.fn() },
+        payload: { settings },
+      };
+    }
+
+    async function pressKey(contextId: string, mode: string): Promise<void> {
+      await action.onWillAppear(keyEvent(contextId, { mode }) as any);
+      await action.onKeyDown(keyEvent(contextId, { mode }) as any);
+      await action.onKeyUp(keyEvent(contextId, { mode }) as any);
+    }
+
+    /** The sim's telemetry with the camera car, which the fake does not carry. */
+    const telemetry = (): TelemetryData => ({ ...sim.telemetry(), CamCarIdx: camCarIdx });
+
+    /** Every frame a position jump was sent to, in order. */
+    const seeks = (): number[] =>
+      sim.calls.filter((call) => call.startsWith("setPlayPosition")).map((call) => Number(call.split(" ")[2]));
+
+    /** The commands sent, a seek as "seek <frame>" and a speed as "speed <value>". */
+    const commands = (): string[] =>
+      sim.calls.map((call) => {
+        const [name, a, b] = call.split(" ");
+
+        if (name === "setPlayPosition") return `seek ${b}`;
+
+        if (name === "setPlaySpeed") return `speed ${a}`;
+
+        return name;
+      });
+
+    function setUp(options: Parameters<typeof fakeReplay>[0] = {}): void {
+      sim = fakeReplay({ frame: START, ...options });
+      _configureReplayCommandGate({
+        replay: () => sim.replay,
+        readTelemetry: telemetry,
+        inReplay: () => true,
+      });
+    }
+
+    beforeEach(async () => {
+      vi.useFakeTimers();
+      camCarIdx = CAM_CAR;
+      setUp();
+
+      const { getCommands } = await import("@iracedeck/deck-iracing");
+
+      vi.mocked(getCommands).mockImplementation(() => ({ replay: sim.replay, camera }) as any);
+      vi.mocked(getCarNumberRawFromSessionInfo).mockImplementation((_si: unknown, idx: number) => idx + 100);
+      vi.mocked(getGlobalSettings).mockReturnValue({
+        fastestLapSearchDelayMs: 400,
+        replayJumpPlayback: "remember",
+      } as ReturnType<typeof getGlobalSettings>);
+      vi.mocked(isReplaySessionStoreInitialized).mockReturnValue(true);
+      vi.mocked(getReplaySessionStore).mockReturnValue(store as any);
+      store.laps.listLapStarts.mockReset().mockImplementation(() => ({ hit: true, frames: LAP_STARTS }));
+      store.sessions.list.mockReset().mockImplementation(() => ({
+        hit: true,
+        starts: SESSION_STARTS.map((frame, i) => ({ sessionNum: i, sessionUniqueId: i + 1, frame })),
+      }));
+      store.incidents.list.mockReset().mockImplementation(() => ({ hit: true, incidents: [] }));
+      camera.switchNum.mockClear();
+      _resetReplayCursor();
+      action = new ReplayControl();
+      action["sdkController"].getCurrentTelemetry = vi.fn(() => telemetry());
+      action["sdkController"].getSessionInfo = vi.fn(
+        () => ({ WeekendInfo: { SubSessionID: SUB_SESSION }, DriverInfo: { DriverCarIdx: 9 } }) as any,
+      );
+    });
+
+    afterEach(() => {
+      vi.mocked(getGlobalSettings).mockReturnValue({ fastestLapSearchDelayMs: 400 } as ReturnType<
+        typeof getGlobalSettings
+      >);
+      vi.mocked(isReplaySessionStoreInitialized).mockReturnValue(false);
+      vi.useRealTimers();
+    });
+
+    /** Uses `playback` for the Replay jump playback setting. */
+    function setPlayback(playback: string): void {
+      vi.mocked(getGlobalSettings).mockReturnValue({
+        fastestLapSearchDelayMs: 400,
+        replayJumpPlayback: playback,
+      } as ReturnType<typeof getGlobalSettings>);
+    }
+
+    describe("a hit is one waited jump to the landing frame, with no camera switch", () => {
+      it.each<[string, number, string]>([
+        ["next-lap", 103_000 - 60, "a lap start minus 60"],
+        ["prev-lap", 50_000 - 60, "a lap start minus 60"],
+        ["next-session", 150_000 + 120, "a session start plus 120"],
+        ["prev-session", 60_000 + 120, "a session start plus 120"],
+      ])("%s lands on %i, %s", async (mode, landing) => {
+        await pressKey("ctx-key", mode);
+        await vi.advanceTimersByTimeAsync(5_000);
+
+        expect(seeks()).toEqual([landing]);
+        expect(commands()).toEqual([`seek ${landing}`]);
+        expect(sim.frame()).toBe(landing);
+        expect(sim.thrown).toBe(0);
+        expect(camera.switchNum).not.toHaveBeenCalled();
+        expect(pendingReplayTarget()).toBeNull();
+      });
+
+      it("a lap step lists the camera car's starts, verified by its number, in this session's record", async () => {
+        await pressKey("ctx-key", "next-lap");
+
+        expect(store.laps.listLapStarts).toHaveBeenCalledExactlyOnceWith({
+          carIdx: CAM_CAR,
+          carNumberRaw: CAM_CAR + 100,
+          subSessionId: SUB_SESSION,
+        });
+        expect(action["logger"].debug).toHaveBeenCalledWith(
+          `Next lap: record HIT (4 lap starts of carIdx ${CAM_CAR}); from cursor frame ${START} to ${103_000 - 60}`,
+        );
+      });
+
+      it("a session step lists the record's session starts", async () => {
+        await pressKey("ctx-key", "prev-session");
+
+        expect(store.sessions.list).toHaveBeenCalledExactlyOnceWith({ subSessionId: SUB_SESSION });
+        expect(store.laps.listLapStarts).not.toHaveBeenCalled();
+      });
+    });
+
+    it("a second press during a jump steps from the standing target", async () => {
+      setUp({ minSeekMs: 400 });
+
+      await pressKey("ctx-key", "next-lap");
+      await vi.advanceTimersByTimeAsync(100);
+
+      expect(sim.busy()).toBe(true);
+      expect(pendingReplayTarget()).toMatchObject({ frame: 102_940 });
+
+      await pressKey("ctx-key", "next-lap");
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      expect(seeks()).toEqual([102_940, 105_940]);
+      expect(sim.frame()).toBe(105_940);
+      expect(sim.thrown).toBe(0);
+    });
+
+    it("a jump that stops short drops its target, so the next press steps from the cursor", async () => {
+      // The jump rests short of its frame, as one iRacing could not reach.
+      setUp({ unlandable: new Set([102_940]), unlandableRest: 101_000 });
+
+      await pressKey("ctx-key", "next-lap");
+      await vi.advanceTimersByTimeAsync(10_000);
+
+      expect(sim.frame()).toBe(101_000);
+      expect(pendingReplayTarget()).toBeNull();
+      expect(action["logger"].warn).toHaveBeenCalledWith("Next lap: jump did not land; nothing more sent");
+
+      await pressKey("ctx-key", "next-lap");
+
+      // From 101000, not from the dropped 102940: the same lap start again.
+      expect(seeks()).toEqual([102_940, 102_940]);
+    });
+
+    describe("a miss sends the sim's search once, through the gate, and nothing else", () => {
+      type MissCase = [string, string, string, () => void];
+
+      const LAP_MISSES: MissCase[] = [
+        ["next-lap", "nextLap", "no store", () => vi.mocked(isReplaySessionStoreInitialized).mockReturnValue(false)],
+        ...(["no file", "no car", "car mismatch", "newer format"] as const).map((reason): MissCase => [
+          "prev-lap",
+          "prevLap",
+          reason,
+          () => store.laps.listLapStarts.mockImplementation(() => ({ hit: false, reason })),
+        ]),
+        ["next-lap", "nextLap", "no car on camera (CamCarIdx 255)", () => (camCarIdx = 255)],
+        ["prev-lap", "prevLap", "no car on camera (CamCarIdx -1)", () => (camCarIdx = -1)],
+        [
+          "next-lap",
+          "nextLap",
+          "no car number for carIdx 4",
+          () => vi.mocked(getCarNumberRawFromSessionInfo).mockImplementation(() => null),
+        ],
+        [
+          "next-lap",
+          "nextLap",
+          "nothing that way",
+          () => store.laps.listLapStarts.mockImplementation(() => ({ hit: true, frames: [50_000, 99_000] })),
+        ],
+        [
+          "prev-lap",
+          "prevLap",
+          "nothing that way",
+          () => store.laps.listLapStarts.mockImplementation(() => ({ hit: true, frames: [] })),
+        ],
+      ];
+      const SESSION_MISSES: MissCase[] = [
+        [
+          "prev-session",
+          "prevSession",
+          "no store",
+          () => vi.mocked(isReplaySessionStoreInitialized).mockReturnValue(false),
+        ],
+        ...(["no file", "newer format"] as const).map((reason): MissCase => [
+          "next-session",
+          "nextSession",
+          reason,
+          () => store.sessions.list.mockImplementation(() => ({ hit: false, reason })),
+        ]),
+        [
+          "next-session",
+          "nextSession",
+          "nothing that way",
+          () =>
+            store.sessions.list.mockImplementation(() => ({
+              hit: true,
+              starts: [{ sessionNum: 0, sessionUniqueId: 1, frame: 0 }],
+            })),
+        ],
+      ];
+
+      it.each([...LAP_MISSES, ...SESSION_MISSES])("%s on %s: %s", async (mode, search, reason, arrange) => {
+        arrange();
+
+        await pressKey("ctx-key", mode);
+
+        expect(sim.calls).toEqual([search]);
+        expect(action["logger"].debug).toHaveBeenCalledWith(
+          expect.stringMatching(
+            new RegExp(`^(Next|Previous) (lap|session): record MISS \\(${reason.replace(/[()]/g, "\\$&")}\\)$`),
+          ),
+        );
+
+        await vi.advanceTimersByTimeAsync(5_000);
+
+        expect(sim.calls).toEqual([search]);
+        expect(camera.switchNum).not.toHaveBeenCalled();
+      });
+    });
+
+    it("a miss pressed during a record jump sends nothing into it: the gate holds it until the landing", async () => {
+      setUp({ minSeekMs: 400 });
+      store.sessions.list.mockImplementation(() => ({ hit: false, reason: "no file" }));
+
+      await pressKey("ctx-lap", "next-lap");
+      await vi.advanceTimersByTimeAsync(100);
+
+      const from = sim.calls.length;
+
+      await pressKey("ctx-session", "next-session");
+
+      expect(sim.calls.slice(from)).toEqual([]);
+
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      expect(sim.calls.slice(from)).toEqual(["nextSession"]);
+      expect(sim.thrown).toBe(0);
+    });
+
+    it.each(["next-lap", "prev-lap", "next-session", "prev-session"])(
+      "%s outside a replay sends nothing",
+      async (mode) => {
+        sim.leave();
+
+        await pressKey("ctx-key", mode);
+        await vi.advanceTimersByTimeAsync(5_000);
+
+        expect(sim.calls).toEqual([]);
+        expect(store.laps.listLapStarts).not.toHaveBeenCalled();
+        expect(store.sessions.list).not.toHaveBeenCalled();
+        expect(action["logger"].debug).toHaveBeenCalledWith(expect.stringMatching(/: not in a replay; nothing sent$/));
+      },
+    );
+
+    describe("the playback step after a hit follows the Replay jump playback setting", () => {
+      it.each<[string, { speed: number; slowMotion: boolean }, string[], { speed: number; slowMotion: boolean }]>([
+        ["remember", PAUSED, ["seek 102940"], PAUSED],
+        ["play", PAUSED, ["seek 102940", "speed 1"], NORMAL],
+        ["stopped", PAUSED, ["seek 102940"], PAUSED],
+        ["remember", NORMAL, ["speed 0", "seek 102940", "speed 1"], NORMAL],
+        ["play", NORMAL, ["speed 0", "seek 102940", "speed 1"], NORMAL],
+        ["stopped", NORMAL, ["speed 0", "seek 102940"], PAUSED],
+      ])("%s, from a replay at %o", async (playback, before, sent, after) => {
+        setUp({ speed: before });
+        setPlayback(playback);
+
+        await pressKey("ctx-key", "next-lap");
+        await vi.advanceTimersByTimeAsync(5_000);
+
+        expect(commands()).toEqual(sent);
+        expect(sim.speed()).toEqual(after);
+        expect(action["replaySpeed"].get("ctx-key")).toBe(after.speed);
+        expect(sim.thrown).toBe(0);
+      });
+    });
+
+    describe("each press carries its key's origin token", () => {
+      let notices: ReplayGateNotice[];
+
+      beforeEach(() => {
+        notices = [];
+        onTestFinished(subscribeReplayGate((notice) => notices.push(notice)));
+      });
+
+      it("the jump on a hit", async () => {
+        setUp({ minSeekMs: 400 });
+
+        await pressKey("ctx-lap", "next-lap");
+
+        expect(getReplayGateView("ctx-lap").underWay).not.toBeNull();
+
+        await vi.advanceTimersByTimeAsync(5_000);
+
+        expect(notices.length).toBeGreaterThan(0);
+        expect(new Set(notices.map((notice) => notice.origin))).toEqual(new Set(["ctx-lap"]));
+        expect(getReplayGateView("ctx-lap").underWay).toBeNull();
+      });
+
+      it("the search on a miss", async () => {
+        setUp({ searches: { nextSession: (from) => from + 2_000 } });
+        store.sessions.list.mockImplementation(() => ({ hit: false, reason: "no file" }));
+
+        await pressKey("ctx-session", "next-session");
+
+        expect(getReplayGateView("ctx-session").underWay).not.toBeNull();
+        expect(new Set(notices.map((notice) => notice.origin))).toEqual(new Set(["ctx-session"]));
+      });
+    });
+
+    describe("the incident comparison", () => {
+      const INCIDENTS = [
+        {
+          frame: 90_000,
+          carIdx: 2,
+          carNumberRaw: 102,
+          sessionNum: 0,
+          sessionUniqueId: 1,
+          delta: 1,
+          source: "telemetry",
+          sessionTimeMs: 1_500_000,
+        },
+        {
+          frame: 104_500,
+          carIdx: 7,
+          carNumberRaw: 107,
+          sessionNum: 0,
+          sessionUniqueId: 1,
+          delta: 4,
+          source: "sessionInfo",
+          sessionTimeMs: 1_741_000,
+        },
+      ];
+
+      it("logs a landing against the nearest recorded incident, sends nothing and carries no token of its own", async () => {
+        const notices: ReplayGateNotice[] = [];
+
+        onTestFinished(subscribeReplayGate((notice) => notices.push(notice)));
+        // The search moves the camera to the car involved.
+        setUp({
+          searches: {
+            nextIncident: (from) => {
+              camCarIdx = 7;
+
+              return from + 5_000;
+            },
+          },
+        });
+        store.incidents.list.mockImplementation(() => ({ hit: true, incidents: INCIDENTS }));
+
+        await pressKey("ctx-inc", "next-incident");
+        await vi.advanceTimersByTimeAsync(2_000);
+
+        expect(action["logger"].debug).toHaveBeenCalledWith(
+          `Next incident comparison: press frame=${START} camCar=${CAM_CAR}; landed frame=105000 camCar=7; ` +
+            "nearest recorded incident frame=104500 carIdx=7 delta=4 source=sessionInfo; difference=500 frames",
+        );
+        expect(store.incidents.list).toHaveBeenCalledWith({ subSessionId: SUB_SESSION });
+        // The key's search, and nothing from the observer.
+        expect(sim.calls).toEqual(["nextIncident"]);
+        expect(new Set(notices.map((notice) => notice.origin))).toEqual(new Set(["ctx-inc"]));
+      });
+
+      it("says so when nothing is recorded", async () => {
+        setUp({ searches: { prevIncident: (from) => from - 3_000 } });
+        store.incidents.list.mockImplementation(() => ({ hit: false, reason: "no file" }));
+
+        await pressKey("ctx-inc", "prev-incident");
+        await vi.advanceTimersByTimeAsync(2_000);
+
+        expect(action["logger"].debug).toHaveBeenCalledWith(
+          `Previous incident comparison: press frame=${START} camCar=${CAM_CAR}; landed frame=97000 camCar=${CAM_CAR}; no recorded incident (no file)`,
+        );
+      });
+
+      it("logs a search that did not land, with nothing compared", async () => {
+        // A search with nothing to find, on a paused replay: only the time it could run tells.
+        await pressKey("ctx-inc", "next-incident");
+        await vi.advanceTimersByTimeAsync(60_000);
+
+        expect(action["logger"].debug).toHaveBeenCalledWith(
+          `Next incident comparison: search not-landed; press frame=${START} camCar=${CAM_CAR}; nothing compared`,
+        );
+        expect(store.incidents.list).not.toHaveBeenCalled();
+        expect(sim.calls).toEqual(["nextIncident"]);
+      });
+
+      it("a press the gate held compares nothing", async () => {
+        setUp({ minSeekMs: 400 });
+
+        await pressKey("ctx-lap", "next-lap");
+        await vi.advanceTimersByTimeAsync(100);
+        await pressKey("ctx-inc", "next-incident");
+
+        expect(action["logger"].debug).toHaveBeenCalledWith(
+          expect.stringMatching(/^Next incident comparison: search held; press frame=\d+ camCar=4; nothing compared$/),
+        );
+
+        await vi.advanceTimersByTimeAsync(5_000);
+
+        expect(store.incidents.list).not.toHaveBeenCalled();
       });
     });
   });
