@@ -1,5 +1,8 @@
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
+import { BINDING_WARNING_GLYPH } from "./binding-warning.js";
+import { BUSY_NOT_DONE_COLOR, type BusyMark, busyMarkSvg } from "./busy-mark.js";
 import { parseIconTitleDefaults, parseSvgViewBox } from "./icon-template.js";
 import {
   assembleIcon,
@@ -537,5 +540,130 @@ describe("assembleIcon dimmed", () => {
 
   it("adds no empty group when the title is hidden", () => {
     expect(build(true, { ...DEFAULT_TITLE, showTitle: false }).split(dim).length - 1).toBe(1);
+  });
+});
+
+describe("assembleIcon busy (#1437)", () => {
+  const WORKING: BusyMark = { kind: "working", step: 3 };
+  const base = { graphicSvg: MOCK_GRAPHIC_TRIMMED, colors: COLORS, title: DEFAULT_TITLE, border: BORDER_DEFAULTS };
+  const build = (options: Partial<Parameters<typeof assembleIcon>[0]> = {}) =>
+    decodeDataUri(assembleIcon({ ...base, graphic: GRAPHIC_DEFAULTS, ...options }));
+  const titleOf = (svg: string) => svg.slice(svg.indexOf("<text"), svg.lastIndexOf("</text>") + "</text>".length);
+  /** The artwork's own rect, which no mark contains. */
+  const ARTWORK = '<rect x="0" y="0" width="100" height="80"';
+
+  it("draws the mark in place of the artwork, in the title-aware area", () => {
+    const svg = build({ busy: WORKING });
+
+    expect(svg).not.toContain(ARTWORK);
+    expect(svg).toContain(busyMarkSvg(WORKING, computeGraphicArea(DEFAULT_TITLE), "#ffffff"));
+  });
+
+  it("draws the mark with the graphic hidden", () => {
+    const svg = build({ busy: WORKING, title: { ...DEFAULT_TITLE, showGraphics: false } });
+
+    expect(svg).not.toContain(ARTWORK);
+    expect(svg).toContain(busyMarkSvg(WORKING, computeGraphicArea(DEFAULT_TITLE), "#ffffff"));
+  });
+
+  it("draws the mark alone on a key with its title hidden, in the whole area", () => {
+    const title = { ...DEFAULT_TITLE, showTitle: false };
+    const svg = build({ busy: { kind: "waiting" }, title });
+
+    expect(svg).not.toContain("<text");
+    expect(svg).toContain(busyMarkSvg({ kind: "waiting" }, computeGraphicArea(title), "#ffffff"));
+  });
+
+  it("leaves the title and the border as they are", () => {
+    const border = { ...BORDER_DEFAULTS, enabled: true };
+    const plain = build({ border });
+
+    for (const busy of [WORKING, { kind: "waiting" } as const, { kind: "not-done" } as const]) {
+      const svg = build({ border, busy });
+
+      expect(titleOf(svg)).toBe(titleOf(plain));
+      expect(titleOf(svg)).toContain(">TEST<");
+      expect(svg).toContain(`stroke="${BORDER_DEFAULTS.borderColor}"`);
+    }
+  });
+
+  describe("colour", () => {
+    const fills = (colors: Record<string, string>) =>
+      build({ colors, busy: { kind: "waiting" } }).match(/<circle [^>]*fill="([^"]*)"/g);
+
+    it("follows graphic1Color", () => {
+      expect(fills({ ...COLORS, graphic1Color: "#123456" })).toEqual(Array(3).fill(expect.stringContaining("#123456")));
+    });
+
+    it("falls back to textColor, then to white", () => {
+      expect(fills({ backgroundColor: "#000000", textColor: "#abcdef" })).toEqual(
+        Array(3).fill(expect.stringContaining("#abcdef")),
+      );
+      expect(fills({ backgroundColor: "#000000" })).toEqual(Array(3).fill(expect.stringContaining("#ffffff")));
+    });
+
+    it("draws not done in the fixed red whatever the colours", () => {
+      const svg = build({ colors: { ...COLORS, graphic1Color: "#00ff00" }, busy: { kind: "not-done" } });
+
+      expect(svg).not.toContain("#00ff00");
+      expect(svg.split(`stroke="${BUSY_NOT_DONE_COLOR}"`).length - 1).toBe(2);
+    });
+  });
+
+  it("wins over dimmed: neither the mark nor the title is faded", () => {
+    const svg = build({ busy: WORKING, dimmed: true });
+
+    expect(svg).not.toContain(`<g opacity="${DIMMED_OPACITY}">`);
+    expect(svg).toBe(build({ busy: WORKING }));
+  });
+
+  it("wins over bindingMissing: no warning triangle", () => {
+    const svg = build({ busy: WORKING, bindingMissing: true });
+
+    expect(svg).not.toContain(BINDING_WARNING_GLYPH);
+    expect(svg).toBe(build({ busy: WORKING }));
+  });
+
+  it("does not read the artwork, so a graphic with no viewBox does not throw", () => {
+    expect(() =>
+      assembleIcon({ ...base, graphicSvg: MOCK_GRAPHIC_NO_VIEWBOX, graphic: GRAPHIC_DEFAULTS, busy: WORKING }),
+    ).not.toThrow();
+  });
+
+  describe("with no busy mark", () => {
+    // sha256 of the data URI each combination produced before the busy option
+    // existed: proof the option changed nothing for a key that is not busy.
+    // A later change to the base output updates these on purpose.
+    const sha = (dataUri: string) => createHash("sha256").update(dataUri).digest("hex");
+    const combos: Record<string, [Parameters<typeof assembleIcon>[0], string]> = {
+      plain: [base, "6b4c4175bbee786013d2eb63ab62b8786e82b28fc08bd7a4f5c4857fc2f82878"],
+      scaled: [
+        { ...base, graphic: GRAPHIC_DEFAULTS },
+        "4a220cd1ecf275a148a78531735ed21d24431b719c41a349e0f7093760bf2cde",
+      ],
+      dimmed: [
+        { ...base, graphic: GRAPHIC_DEFAULTS, dimmed: true },
+        "c75ca1e4fe1452b4e63cc91dbfdec0c1e03e3cf15da6e00639197dc88ab9daa2",
+      ],
+      bindingMissing: [
+        { ...base, graphic: GRAPHIC_DEFAULTS, bindingMissing: true },
+        "720a980ad6828ecff4e738ea49548cf032cd35784f453a1a09aa942c18a2d341",
+      ],
+      hiddenGraphicsAndTitle: [
+        {
+          ...base,
+          title: { ...DEFAULT_TITLE, showGraphics: false, showTitle: false },
+          border: { ...BORDER_DEFAULTS, enabled: true },
+          bindingMissing: true,
+          dimmed: true,
+        },
+        "bd1bc5c37b3db584018d984edc0099ea8832dedbb8ad3ac2cce8bd0bc12b9e16",
+      ],
+    };
+
+    it.each(Object.entries(combos))("gives %s the same bytes as before", (_name, [options, expected]) => {
+      expect(sha(assembleIcon(options))).toBe(expected);
+      expect(sha(assembleIcon({ ...options, busy: undefined }))).toBe(expected);
+    });
   });
 });
