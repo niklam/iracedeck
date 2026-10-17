@@ -73,6 +73,7 @@ import {
   STABILIZATION_POLL_INTERVAL_MS,
   STABILIZATION_TIMEOUT_MULTIPLIER,
 } from "../../shared/replay-timing.js";
+import { keepDialPendingSpeed } from "./replay-speed-state.js";
 
 /** What a paced search steps through. */
 export type ReplaySearchTarget = "lap" | "session" | "incident";
@@ -425,10 +426,14 @@ function startRun(turn: ReplaySearchTurn, ticks: number, previous: Run | null): 
   const atStart = env.readTelemetry();
 
   try {
-    r.jump = beginReplayJump(turn.owner, atStart, (by) => cancelled(r, by), Date.now(), {
-      origin: turn.origin,
-      sendsPositionJump: false,
-    });
+    // The dial's own cursor take, as its record jump's is: a speed or pause the dial sent just before the turn still
+    // stands until telemetry shows it, where any other action's take drops it.
+    r.jump = keepDialPendingSpeed(() =>
+      beginReplayJump(turn.owner, atStart, (by) => cancelled(r, by), Date.now(), {
+        origin: turn.origin,
+        sendsPositionJump: false,
+      }),
+    );
   } catch (err) {
     log.warn(`Replay search queue: the ${turn.target} run could not start: ${String(err)}`);
     r.ended = true;

@@ -35,6 +35,12 @@ import {
   SEARCH_QUEUE_MAX,
   setReplaySearchQueueLogger,
 } from "./replay-search-queue.js";
+import {
+  _resetReplaySpeedState,
+  keepDialPendingSpeed,
+  noteDialSpeedSent,
+  resolveLiveSpeed,
+} from "./replay-speed-state.js";
 
 const { mockGetGlobalSettings } = vi.hoisted(() => ({
   mockGetGlobalSettings: vi.fn((): Record<string, unknown> => ({})),
@@ -465,6 +471,29 @@ describe("the paced search runner (#801)", () => {
       await untilIdle();
 
       expect(sim.calls).toEqual(["nextLap"]);
+    });
+
+    it("keeps the dial's pending speed when its turn starts a run, as the dial's own cursor take", async () => {
+      _resetReplaySpeedState();
+      setUp({ speed: { speed: 2, slowMotion: false }, speedLagMs: 300 });
+
+      // The dial's press pauses the replay, as the surface sends it: its own take keeps the pending speed it then notes.
+      const paused = keepDialPendingSpeed(() =>
+        pressReplayCommand({ kind: "pause" }, { by: "replay-control-dial press", origin: "dial-a" }),
+      );
+
+      expect(paused).toEqual({ kind: "sent", ok: true });
+      noteDialSpeedSent({ speed: 0, slowMotion: false }, Date.now());
+
+      // Within the hold a turn starts a run on the paused path, telemetry still showing the 2x from before the press.
+      turn("lap", 1);
+
+      expect(isReplaySearchRunning("lap")).toBe(true);
+      expect(resolveLiveSpeed({ speed: 2, slowMotion: false }, Date.now())).toEqual({ speed: 0, slowMotion: false });
+
+      await untilIdle();
+
+      expect(sim.thrown).toBe(0);
     });
 
     it("waits behind a key's search for its landing, then pauses a replay it left playing", async () => {
