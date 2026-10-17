@@ -651,8 +651,9 @@ export function formatSetSpeedLabel(speedSetting: string): string {
  * replay with no race session, #1354).
  * With `busy`, the artwork gives way to the replay busy mark (#1437) while the
  * title and border stay; it wins over `unavailable` and `bindingMissing`, as
- * `assembleIcon` decides for the modes it draws. Speed Display and Set Speed,
- * assembled here by hand, draw the same mark in the same place.
+ * `assembleIcon` decides for the modes it draws. Set Speed, assembled here by
+ * hand, draws the same mark in the same place. Speed Display sends no replay
+ * command and never registers with the indicator, so it draws no mark.
  */
 export function generateReplayControlSvg(
   settings: { mode: ReplayControlMode; speed?: string } & Partial<CommonSettings>,
@@ -682,9 +683,7 @@ export function generateReplayControlSvg(
     const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
     const viewBox = parseSvgViewBox(iconSvg);
 
-    if (busy) {
-      graphicContent = handBuiltBusyMark(busy, title, colors);
-    } else if (graphicContent && viewBox) {
+    if (graphicContent && viewBox) {
       graphicContent = applyGraphicTransform(
         graphicContent,
         { x: 0, y: 0, width: viewBox.width, height: viewBox.height },
@@ -799,7 +798,7 @@ export function generateReplayControlSvg(
 }
 
 /**
- * The busy mark for an icon assembled by hand (Speed Display, Set Speed): in
+ * The busy mark for the icon assembled by hand (Set Speed): in
  * the title-aware graphic area, in the colour `assembleIcon` gives it, and
  * whether or not the graphic is shown.
  */
