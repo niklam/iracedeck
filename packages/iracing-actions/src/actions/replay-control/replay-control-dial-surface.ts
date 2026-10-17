@@ -1001,10 +1001,11 @@ export class ReplayControlDialSurface {
   private boxArgs(ctx: ReplayControlDialContext): DialBoxArgs {
     const colors = resolveDialBoxColors(ctx.dial.colors, DIAL_ACCENT);
     const mode = DIAL_MODES[ctx.dial.mode];
-    // The busy look (#1437), part of the signature as kind and position. The
-    // play state is all this caption says, so it gives way to the mark; the
-    // layout it set stays, and the value with it. #801's pending count is
-    // drawn beside the mark instead.
+    // The busy look (#1437), part of the signature as kind and position.
+    // `replacesCaption` is always true here because today's only caption is
+    // the play state, which gives way to the mark; the layout it set stays,
+    // and the value with it. #801's pending count must be passed with
+    // `replacesCaption: false`, so the count stays beside the mark (spec, "Dials").
     const look = ctx.busy === null ? undefined : replayBusyDialMark(getReplayBusyLook(ctx.action.id));
     const mark: Pick<DialBoxArgs, "captionMark"> = look ? { captionMark: { ...look, replacesCaption: true } } : {};
 
