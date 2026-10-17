@@ -3135,8 +3135,11 @@ describe("ReplayControlDialSurface", () => {
         expect(shownCaption(lastBox(ctx))).toBe("PAUSED");
       });
 
-      it("subscribes to the search while a dial is on screen, and lets go when the last one leaves", async () => {
+      it("subscribes to the search's count while a dial is on screen and lets go when the last one leaves, but to its speeds for the surface's life", async () => {
         const surface = makeSurface();
+        expect(queue.listeners.size).toBe(0);
+        expect(queue.speedListeners.size).toBe(1);
+
         const a = dialContext("a");
         const b = dialContext("b");
         await appear(surface, a, dial({ mode: "lap" }));
@@ -3149,7 +3152,32 @@ describe("ReplayControlDialSurface", () => {
         expect(queue.speedListeners.size).toBe(1);
         surface.willDisappear("b");
         expect(queue.listeners.size).toBe(0);
-        expect(queue.speedListeners.size).toBe(0);
+        expect(queue.speedListeners.size).toBe(1);
+      });
+
+      it("mirrors the runner's pause and playback speed into the keys with no dial on screen, as after a page flip mid-run", async () => {
+        const playing = { ...pausedOn(54_000), ...replayAt({ speed: 1, slowMotion: false }) } as TelemetryData;
+        const { surface, ctx } = await dialIn("incident", playing);
+
+        // The page flips away while the run the turn started goes on.
+        surface.willDisappear(ctx.id);
+        host.setLocalSpeed.mockClear();
+        host.refreshKeys.mockClear();
+        ctx.setDialCanvas.mockClear();
+
+        for (const listener of queue.speedListeners) listener({ speed: 0, slowMotion: false });
+
+        await settle();
+        expect(host.setLocalSpeed).toHaveBeenLastCalledWith(0, false);
+        expect(host.refreshKeys).toHaveBeenCalledTimes(1);
+
+        for (const listener of queue.speedListeners) listener({ speed: 2, slowMotion: false });
+
+        await settle();
+        expect(host.setLocalSpeed).toHaveBeenLastCalledWith(2, false);
+        expect(host.refreshKeys).toHaveBeenCalledTimes(2);
+        // Nothing is drawn on a dial that has left.
+        expect(ctx.setDialCanvas).not.toHaveBeenCalled();
       });
 
       it("mirrors every speed the search's runner sends into the caption and the keys, as a record jump's", async () => {
