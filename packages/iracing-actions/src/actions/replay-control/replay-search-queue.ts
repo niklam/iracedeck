@@ -23,7 +23,9 @@
  *    search that has not landed is settled by the gate's jump and sent once
  *    more; a second ends the run, settling once more.
  * 4. **End.** At zero, the **Replay jump playback** step on a held landing.
- *    Every other ending sends nothing more but the settle jump of step 3.
+ *    The count is read once the landing has held, so a turn made during that
+ *    hold is stepped, and a reversal to zero during a hold ends on it. Every
+ *    other ending sends nothing more but the settle jump of step 3.
  *
  * **The playing path.** On a replay playing at 1x or slower with nothing of
  * the plugin's on its way, the first search goes out before any pause and the
@@ -679,6 +681,9 @@ type HoldResult =
   | { readonly kind: "cancelled" }
   | { readonly kind: "left" };
 
+/** A reading that has held. */
+type HeldReading = Extract<HoldResult, { readonly kind: "held" }>;
+
 /**
  * Waits until nothing the gate knows of is under way and the reading has
  * shown the same position, or where playback puts it, on three reads 50 ms
@@ -842,7 +847,13 @@ async function playingPath(r: Run, reading: Reading): Promise<Ending> {
       break;
   }
 
-  if (r.count === 0) return endAtZero(r);
+  if (r.count === 0) {
+    const ended = await endAtZero(r);
+
+    if (ended !== null) return ended;
+
+    // A turn made while the landing held: the run goes on as with a count left at the landing.
+  }
 
   const paused = await pause(r);
 
@@ -888,8 +899,8 @@ async function pausedRun(r: Run, misses = 0): Promise<Ending> {
   for (;;) {
     if (stopped(r)) return "cancelled";
 
-    if (r.count === 0) return endAtZero(r);
-
+    // The count is read once the reading has held, never before: a turn made during the hold, the end's hold
+    // included, is a step still to make, and a reversal to zero during it ends the run on that same hold.
     const held = await holdReading(r, { requirePaused: true, timeoutMs: readReplayJumpTimeoutMs() });
 
     if (held.kind === "cancelled") return "cancelled";
@@ -898,7 +909,13 @@ async function pausedRun(r: Run, misses = 0): Promise<Ending> {
 
     if (held.kind === "gave-up") return neverReadBack(r, "the replay did not settle paused");
 
-    if (r.count === 0) return endAtZero(r);
+    if (r.count === 0) {
+      const ended = await endAtZero(r, held);
+
+      if (ended !== null) return ended;
+
+      continue;
+    }
 
     const step = await runOneSearch(r, directionOf(r.count), { watchLanding: false });
 
@@ -940,22 +957,41 @@ async function pausedRun(r: Run, misses = 0): Promise<Ending> {
   }
 }
 
-/** The count is zero: the Replay jump playback step on a landing that has held. */
-async function endAtZero(r: Run): Promise<Ending> {
+/**
+ * The count is zero: the Replay jump playback step on a landing that has
+ * held, `held` when the caller's hold already did so. Null when a turn made
+ * during the hold left a count to step: the run goes on. The count is read
+ * after the hold, and nothing is awaited between that read and the run's end.
+ */
+async function endAtZero(r: Run, held?: HeldReading): Promise<Ending | null> {
   const jump = r.jump;
 
   if (jump === null) return "cancelled";
 
-  const held = await holdReading(r, { requirePaused: false, timeoutMs: readReplayJumpTimeoutMs() });
+  let landing: HeldReading;
 
-  if (held.kind === "cancelled") return "cancelled";
+  if (held !== undefined) {
+    landing = held;
+  } else {
+    const result = await holdReading(r, { requirePaused: false, timeoutMs: readReplayJumpTimeoutMs() });
 
-  if (held.kind === "left") return leftReplay(r);
+    if (result.kind === "cancelled") return "cancelled";
 
-  if (held.kind === "gave-up") return neverReadBack(r, "the landing never held");
+    if (result.kind === "left") return leftReplay(r);
+
+    if (result.kind === "gave-up") return neverReadBack(r, "the landing never held");
+
+    landing = result;
+  }
+
+  if (r.count !== 0) {
+    log.debug(`Replay search queue: a ${r.target} turn came while the landing held; the run goes on`);
+
+    return null;
+  }
 
   const playback = r.inheritedSpeed === null ? jump : { ...jump, captured: r.inheritedSpeed };
-  const applied = applyReplayJumpPlayback(playback, held.telemetry);
+  const applied = applyReplayJumpPlayback(playback, landing.telemetry);
 
   if (applied === null) return "cancelled";
 

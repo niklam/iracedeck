@@ -55,6 +55,9 @@ vi.mock("@iracedeck/deck-iracing", () => ({
 const SIX_HOURS = 1_296_000;
 const START = 50_000;
 
+/** How long one hold of a reading takes: three reads, 50 ms apart. */
+const HOLD_ONE_MS = 100;
+
 const PLAYING = { speed: 1, slowMotion: false } as const;
 const REVERSE = { speed: -1, slowMotion: false } as const;
 const HALF = { speed: 2, slowMotion: true } as const;
@@ -145,6 +148,21 @@ function trackSends(names: readonly string[]): { name: string; at: number; busy:
   return sends;
 }
 
+/** Runs `act` when the runner hears its `nth` search land (the sim no longer busy). Returns the unsubscribe. */
+function onLanding(nth: number, act: () => void): () => void {
+  let seen = 0;
+
+  return onReplaySearchChange(() => {
+    const searches = sim.calls.filter((c) => /^(next|prev)(Lap|Session|Incident)$/.test(c)).length;
+
+    if (sim.busy() || searches <= seen) return;
+
+    seen = searches;
+
+    if (seen === nth) act();
+  });
+}
+
 /** A record jump of the dial's (#1276's sequence), as the Lap mode sends one: the seek goes out at once on a paused replay. */
 function recordJump(frame: number, origin = "dial-a"): void {
   const jump = beginReplayJump("replay-control-dial lap record", sim.telemetry(), undefined, Date.now(), {
@@ -215,6 +233,39 @@ describe("the paced search runner (#801)", () => {
       expect(sim.calls.slice(0, 2)).toEqual(["setPlaySpeed 0", "nextLap"]);
       // The pause reads back 30 ms after it goes out.
       expect(sends[1].at - (sends[0].at + 30)).toBeGreaterThanOrEqual(100);
+    });
+
+    it("sends the search of a turn made while the end's landing holds, then the playback step", async () => {
+      setUp();
+      setting("play");
+      onLanding(1, () => setTimeout(() => turn("lap", 1), 30));
+      turn("lap", 1);
+      await untilIdle();
+
+      expect(sim.calls).toEqual(["nextLap", "nextLap", "setPlaySpeed 1 false"]);
+      expect(sim.frame()).toBe(START + 6_000);
+      expect(sim.thrown).toBe(0);
+      expect(runEnds()).toEqual(["jump-landed"]);
+    });
+
+    it("ends on the hold it was making when a reversal brings the count to zero, with no second hold", async () => {
+      setUp();
+      setting("play");
+
+      const sends = trackSends(["setPlaySpeed"]);
+      let landedAt = 0;
+
+      onLanding(1, () => {
+        landedAt = Date.now();
+        setTimeout(() => turn("lap", -1), 30);
+      });
+      turn("lap", 2);
+      await untilIdle();
+
+      expect(sim.calls).toEqual(["nextLap", "setPlaySpeed 1 false"]);
+      // One hold is three reads 50 ms apart; a second would put the playback step 100 ms later still.
+      expect(sends[0].at - landedAt).toBeLessThan(HOLD_ONE_MS + 50);
+      expect(sim.thrown).toBe(0);
     });
 
     it("settles a search that has not landed within the patience by a jump, then sends it once more once that has held", async () => {
@@ -734,6 +785,17 @@ describe("the paced search runner (#801)", () => {
       await untilIdle();
 
       expect(sim.calls).toEqual(["nextSession"]);
+      expect(runEnds()).toEqual(["jump-landed"]);
+    });
+
+    it("goes on with a turn made while the landing at zero holds: pauses, steps, then the playback step", async () => {
+      setUp({ frame: 200_000, speed: PLAYING });
+      onLanding(1, () => setTimeout(() => turn("lap", 1), 30));
+      turn("lap", 1);
+      await untilIdle();
+
+      expect(sim.calls).toEqual(["nextLap", "setPlaySpeed 0", "nextLap", "setPlaySpeed 1 false"]);
+      expect(sim.thrown).toBe(0);
       expect(runEnds()).toEqual(["jump-landed"]);
     });
 
