@@ -269,6 +269,50 @@ describe("replay busy indicator", () => {
     expect(kinds(key.looks)).toEqual(["waiting", "not-done"]);
   });
 
+  it.each(["replay-left", "disconnected"] as const)(
+    "a gave-up end by %s returns to rest with no not done pending",
+    (reason) => {
+      const key = surface("k1");
+
+      registerReplayBusySurface(key);
+      notify("k1", { underWay: Date.now() });
+      key.looks.length = 0;
+
+      notify("k1", {}, [{ fact: "underWay", class: "gave-up", reason }]);
+
+      expect(kinds(key.looks)).toEqual(["rest"]);
+      expect(getReplayBusyLook("k1")).toEqual({ kind: "rest" });
+      expect(vi.getTimerCount()).toBe(0);
+    },
+  );
+
+  it("an off-target end still draws not done", () => {
+    const key = surface("k1");
+
+    registerReplayBusySurface(key);
+    notify("k1", { waiting: 1 });
+    notify("k1", {}, [{ fact: "waiting", class: "gave-up", reason: "off-target" }]);
+
+    expect(kinds(key.looks)).toEqual(["waiting", "not-done"]);
+    expect(vi.getTimerCount()).toBe(1);
+  });
+
+  it("a notice ending one fact by replay-left and another off target draws not done", () => {
+    const key = surface("k1");
+
+    registerReplayBusySurface(key);
+    notify("k1", { underWay: Date.now(), waiting: 1 });
+    key.looks.length = 0;
+
+    notify("k1", {}, [
+      { fact: "underWay", class: "gave-up", reason: "replay-left" },
+      { fact: "waiting", class: "gave-up", reason: "off-target" },
+    ]);
+
+    expect(kinds(key.looks)).toEqual(["not-done"]);
+    expect(vi.getTimerCount()).toBe(1);
+  });
+
   it("an ignored press draws not done for one second", () => {
     const key = surface("k1");
 
