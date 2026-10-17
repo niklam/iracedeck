@@ -6,17 +6,20 @@
  * `docs/superpowers/specs/2026-10-12-issue-1426-replay-record-steps.md`
  * ("Stepping through a recorded list").
  *
- * A list is frame-ordered **landing frames**: the frame a jump to that entry
- * sends. Markers are their own frames; a lap start lands a second before the
- * line, a session start two seconds after it, which the caller works out
- * before it walks.
+ * A list is frame-ordered **recorded frames**: a marker, a lap start, a
+ * session start, as recorded. The walk decides direction on those, and the
+ * caller adds its landing offset to the entry it returns — a lap start lands a
+ * second before the line, a session start two seconds after it, a marker on
+ * itself. Walking the landings instead would put a cursor between a session's
+ * start and its landing (after Jump to Beginning, or iRacing's own search)
+ * before that session's landing, and Next would land in the same session.
  *
  * - **The anchor** is where the replay is headed while a jump of the plugin's
  *   is under way (the one pending target, `replay-position-state.ts`, #1430),
  *   otherwise the cursor: the controller's debounced frame, which keeps the
  *   last frame a replay tick showed through the exit grace (#1324). With
  *   neither, a press has no cursor to step from.
- * - **Next** is the first landing more than {@link MARKER_NEXT_MIN_AHEAD_FRAMES}
+ * - **Next** is the first entry more than {@link MARKER_NEXT_MIN_AHEAD_FRAMES}
  *   (1 s) past the anchor. **Previous** is the entry the anchor is in when the
  *   anchor is more than {@link MARKER_PREVIOUS_MIN_BEHIND_FRAMES} (2 s) past
  *   it, and the one before otherwise: a media player's previous-track. These
@@ -35,7 +38,7 @@ import { readReplayPosition } from "./replay-command-gate.js";
 /** The two ways a walk goes: forward (Next, a clockwise turn) or back (Previous, counter-clockwise). */
 export type ReplayWalkDirection = "next" | "previous";
 
-/** Where a walk ended: the landing frame, and how many entries it moved (at least 1). */
+/** Where a walk ended: the entry's frame, and how many entries it moved (at least 1). */
 export interface ReplayWalkStep {
   readonly frame: number;
   readonly steps: number;
@@ -128,20 +131,22 @@ export function walkRecordedIndex(
   return { index, steps: 1 + Math.abs(index - start) };
 }
 
+/** The index of the last entry at or before `anchor`, or -1. `frames` is ordered. */
+function containingIndex(frames: readonly number[], anchor: number): number {
+  for (let i = frames.length - 1; i >= 0; i--) {
+    const frame = frames[i];
+
+    if (frame !== undefined && frame <= anchor) return i;
+  }
+
+  return -1;
+}
+
 /** The index of the first entry a step from `anchor` lands on, or -1 when there is none that way. */
 function firstStepIndex(frames: readonly number[], anchor: number, direction: ReplayWalkDirection): number {
   if (direction === "next") return frames.findIndex((frame) => frame - anchor > MARKER_NEXT_MIN_AHEAD_FRAMES);
 
-  let at = -1;
-
-  for (let i = frames.length - 1; i >= 0; i--) {
-    const frame = frames[i];
-
-    if (frame !== undefined && frame <= anchor) {
-      at = i;
-      break;
-    }
-  }
+  const at = containingIndex(frames, anchor);
 
   if (at === -1) return -1;
 
@@ -150,12 +155,54 @@ function firstStepIndex(frames: readonly number[], anchor: number, direction: Re
   return onEntry ? at - 1 : at;
 }
 
+/** An entry of a recorded list: whatever it is, it sits at a frame. */
+export interface RecordedEntry {
+  readonly frame: number;
+}
+
+/** Why a walk moved nowhere. */
+export type RecordedWalkMissReason = "nothing that way";
+
+/** Where a walk ended — the entry, its index and how many entries it moved (at least 1) — or why it did not move. */
+export type RecordedWalkResult<T extends RecordedEntry> =
+  | { readonly hit: true; readonly entry: T; readonly index: number; readonly steps: number }
+  | { readonly hit: false; readonly reason: RecordedWalkMissReason };
+
 /**
- * Steps `steps` entries through the frame-ordered landing frames `frames`
- * from `anchor`, or null on a miss: nothing that way, or zero steps. The
- * first step follows the marker windows (see the module header); each further
- * step is the next entry, stopping at the end of the list, and `steps` in the
- * result says how many were taken.
+ * Steps `steps` entries through the frame-ordered `entries` from `anchor`.
+ * The comparison is on the entries' own frames, the moments recorded; a
+ * caller whose jump lands off the entry (a lap's lead-in, a session's
+ * landing) adds that offset to the entry the walk returns, and never walks the
+ * landings, so a cursor between a start and its landing still counts as in
+ * that entry. The first step follows the marker windows (see the module
+ * header); each further step is the next entry, stopping at the end of the
+ * list, and `steps` in the result says how many were taken. A miss is
+ * `nothing that way`, zero steps included.
+ */
+export function walkRecordedEntries<T extends RecordedEntry>(
+  entries: readonly T[],
+  anchor: number,
+  direction: ReplayWalkDirection,
+  steps: number,
+): RecordedWalkResult<T> {
+  if (!(Math.floor(steps) >= 1)) return { hit: false, reason: "nothing that way" };
+
+  const frames = entries.map((entry) => entry.frame);
+  const first = firstStepIndex(frames, anchor, direction);
+
+  if (first < 0) return { hit: false, reason: "nothing that way" };
+
+  const walked = walkRecordedIndex(entries.length, first, direction, steps);
+  const entry = entries[walked.index];
+
+  return entry === undefined
+    ? { hit: false, reason: "nothing that way" }
+    : { hit: true, entry, index: walked.index, steps: walked.steps };
+}
+
+/**
+ * Steps `steps` entries through the frame-ordered frames `frames` from
+ * `anchor`, or null on a miss: {@link walkRecordedEntries} over bare frames.
  */
 export function stepRecordedFrames(
   frames: readonly number[],
@@ -163,14 +210,12 @@ export function stepRecordedFrames(
   direction: ReplayWalkDirection,
   steps: number,
 ): ReplayWalkStep | null {
-  if (!(Math.floor(steps) >= 1)) return null;
+  const walked = walkRecordedEntries(
+    frames.map((frame) => ({ frame })),
+    anchor,
+    direction,
+    steps,
+  );
 
-  const first = firstStepIndex(frames, anchor, direction);
-
-  if (first < 0) return null;
-
-  const walked = walkRecordedIndex(frames.length, first, direction, steps);
-  const frame = frames[walked.index];
-
-  return frame === undefined ? null : { frame, steps: walked.steps };
+  return walked.hit ? { frame: walked.entry.frame, steps: walked.steps } : null;
 }

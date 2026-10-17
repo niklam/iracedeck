@@ -26,7 +26,7 @@ import type {
 } from "@iracedeck/replay-store";
 
 import type { ReplaySearchKind } from "../../shared/replay-command-gate.js";
-import { type ReplayWalkDirection, stepRecordedFrames } from "../../shared/replay-record-walk.js";
+import { type ReplayWalkDirection, walkRecordedEntries } from "../../shared/replay-record-walk.js";
 
 /**
  * Frames after a recorded session start a Next / Previous Session step lands
@@ -83,10 +83,15 @@ export type RecordStepResult =
   | { readonly hit: true; readonly frame: number; readonly steps: number; readonly what: string }
   | { readonly hit: false; readonly reason: string };
 
-/** A store listing's frames, or why it has none. */
-type Landings = { hit: true; landings: number[]; what: string } | { hit: false; reason: string };
+/**
+ * A store listing's recorded frames, raw, and the offset a jump to one of them
+ * lands at, or why it has none.
+ */
+type Listed = { hit: true; frames: number[]; landing: (frame: number) => number; what: string } | Miss;
 
-function lapLandings(source: RecordStepSource, store: ReplaySessionStore): Landings {
+type Miss = { hit: false; reason: string };
+
+function lapStarts(source: RecordStepSource, store: ReplaySessionStore): Listed {
   const carIdx = source.camCarIdx;
 
   if (typeof carIdx !== "number" || !Number.isInteger(carIdx) || carIdx < 0 || carIdx === NO_CAR_IDX) {
@@ -103,19 +108,21 @@ function lapLandings(source: RecordStepSource, store: ReplaySessionStore): Landi
 
   return {
     hit: true,
-    landings: listing.frames.map((frame) => Math.max(0, frame - source.lapApproachFrames)),
+    frames: listing.frames,
+    landing: (frame) => Math.max(0, frame - source.lapApproachFrames),
     what: `${listing.frames.length} lap starts of carIdx ${carIdx}`,
   };
 }
 
-function sessionLandings(source: RecordStepSource, store: ReplaySessionStore): Landings {
+function sessionStarts(source: RecordStepSource, store: ReplaySessionStore): Listed {
   const listing: SessionStartListing = store.sessions.list(source.scope);
 
   if (!listing.hit) return { hit: false, reason: listing.reason };
 
   return {
     hit: true,
-    landings: listing.starts.map((start) => start.frame + SESSION_START_LANDING_FRAMES),
+    frames: listing.starts.map((start) => start.frame),
+    landing: (frame) => frame + SESSION_START_LANDING_FRAMES,
     what: `${listing.starts.length} session starts`,
   };
 }
@@ -124,17 +131,28 @@ function sessionLandings(source: RecordStepSource, store: ReplaySessionStore): L
  * Where one step of `step`'s list from `anchor` lands, or the miss: no store,
  * any of the store's reasons (`no file`, `no car`, `car mismatch`,
  * `newer format`), no car on camera for a lap step, or `nothing that way`.
+ *
+ * The walk compares the anchor with the recorded starts themselves and the
+ * landing offset is added to the start it picks, never the other way round: a
+ * cursor between a session's start and its landing (after Jump to Beginning,
+ * or iRacing's own search) is in that session, and Next goes on to the next
+ * one rather than to its own landing two seconds on.
  */
 export function findRecordStep(step: RecordStepSpec, anchor: number, source: RecordStepSource): RecordStepResult {
   if (source.store === null) return { hit: false, reason: "no store" };
 
-  const found = step.list === "lap" ? lapLandings(source, source.store) : sessionLandings(source, source.store);
+  const found = step.list === "lap" ? lapStarts(source, source.store) : sessionStarts(source, source.store);
 
   if (!found.hit) return found;
 
-  const walked = stepRecordedFrames(found.landings, anchor, step.direction, 1);
+  const walked = walkRecordedEntries(
+    found.frames.map((frame) => ({ frame })),
+    anchor,
+    step.direction,
+    1,
+  );
 
-  if (walked === null) return { hit: false, reason: "nothing that way" };
+  if (!walked.hit) return { hit: false, reason: walked.reason };
 
-  return { hit: true, frame: walked.frame, steps: walked.steps, what: found.what };
+  return { hit: true, frame: found.landing(walked.entry.frame), steps: walked.steps, what: found.what };
 }
