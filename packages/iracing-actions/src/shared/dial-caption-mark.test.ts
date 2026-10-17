@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { type CaptionLine, DIAL_NOT_DONE_COLOR, placeMarkedCaption, replayBusyDialMark } from "./dial-caption-mark.js";
+import { type CaptionLine, DIAL_NOT_DONE_COLOR, placeMarkedCaption } from "./dial-caption-mark.js";
 
 // The strip's caption line at 200×100: baseline 88, 13 px, the mark 15 px in.
 const LINE: CaptionLine = { width: 200, baselineY: 88, fontSize: 13, left: 15, color: "#3498db" };
@@ -11,24 +11,6 @@ const { BUSY_NOT_DONE_COLOR } = await import("@iracedeck/deck-core");
 function circles(svg: string): string[] {
   return svg.match(/<circle [^>]*\/>/g) ?? [];
 }
-
-describe("replayBusyDialMark (#1437)", () => {
-  it("is no mark at rest, and the still marks as they are", () => {
-    expect(replayBusyDialMark({ kind: "rest" })).toBeUndefined();
-    expect(replayBusyDialMark({ kind: "waiting" })).toEqual({ kind: "waiting" });
-    expect(replayBusyDialMark({ kind: "not-done" })).toEqual({ kind: "not-done" });
-  });
-
-  it("steps the working mark on every second tick of the indicator: 0, 0, 1, 1, 2, 2, 0", () => {
-    const positions = Array.from({ length: 13 }, (_, tick) => {
-      const mark = replayBusyDialMark({ kind: "working", tick });
-
-      return mark?.kind === "working" ? mark.position : -1;
-    });
-
-    expect(positions).toEqual([0, 0, 1, 1, 2, 2, 0, 0, 1, 1, 2, 2, 0]);
-  });
-});
 
 describe("placeMarkedCaption (#1437)", () => {
   it("draws working as three dots in the caption colour with only the one at `position` bright", () => {
