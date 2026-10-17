@@ -12,6 +12,7 @@
 import { applyBindingWarning } from "@iracedeck/deck-core";
 
 import type { DialBoxArgs } from "./dial-box.js";
+import { placeMarkedCaption } from "./dial-caption-mark.js";
 import { fitValueFontSize } from "./dial-fit.js";
 import { PENDING_BAR_HEIGHT, renderPendingBar } from "./dial-preview.js";
 import { renderSideMarkers, resolveSideMarks } from "./dial-side-markers.js";
@@ -61,6 +62,8 @@ const CAPTION_TOP = CAPTION_Y - Math.round(CAPTION_FONT * 0.72); // 89
 const CAPTIONED_VALUE_CAP = 40;
 /** The value's visual centre with a caption: midway between the label's baseline and the caption's top. */
 const CAPTIONED_VALUE_CENTER_Y = Math.round((LABEL_Y + CAPTION_TOP) / 2); // 59
+/** The caption mark's left edge (#1437): inside the border by the same gap as on the strip. */
+const CAPTION_MARK_LEFT = INSET + STROKE + Math.round(CAPTION_FONT * 0.4); // 17
 /** Opacity of a dimmed box (#1230). */
 const DIMMED_OPACITY = 0.35;
 
@@ -75,6 +78,7 @@ export function renderKnobBox(args: DialBoxArgs): string {
     caption = "",
     dimmed = false,
     pending = null,
+    captionMark,
   } = args;
   const hasCaption = caption !== "";
   const displayValue = pending ? pending.text : value;
@@ -113,9 +117,27 @@ export function renderKnobBox(args: DialBoxArgs): string {
     ? renderSideMarkers({ width: W, labelY, labelFontSize, color: colors.label, marks: resolveSideMarks(sideMarker) })
     : "";
 
-  const captionText = hasCaption
+  let captionText = hasCaption
     ? `<text data-caption="true" x="${W / 2}" y="${CAPTION_Y}" text-anchor="middle" fill="${colors.label}" ${FONT} font-size="${CAPTION_FONT}">${caption}</text>`
     : "";
+
+  // The caption mark (#1437), as on the strip: at the line's left end, the
+  // text beside it or left out; the value's layout follows the text alone.
+  if (captionMark) {
+    const placed = placeMarkedCaption(captionMark, captionMark.replacesCaption ? "" : caption, {
+      width: W,
+      baselineY: CAPTION_Y,
+      fontSize: CAPTION_FONT,
+      left: CAPTION_MARK_LEFT,
+      color: colors.label,
+    });
+    const text =
+      hasCaption && !captionMark.replacesCaption
+        ? `<text data-caption="true" x="${placed.textX}" y="${CAPTION_Y}" text-anchor="middle" fill="${colors.label}" ${FONT} font-size="${placed.textFontSize}">${caption}</text>`
+        : "";
+
+    captionText = text + placed.mark;
+  }
 
   const content = label + valueText + markers + captionText;
   const panel = `<rect x="${INSET}" y="${INSET}" width="${W - 2 * INSET}" height="${H - 2 * INSET}" rx="${Math.max(0, RADIUS - INSET)}" fill="${colors.background}" stroke="${colors.border}" stroke-width="${STROKE}"/>`;

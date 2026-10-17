@@ -38,6 +38,8 @@ import { type DialInputEvent, hasDialInputContext } from "../../shared/dial-cont
 import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
 import type { DialPendingPreview } from "../../shared/dial-preview.js";
 import { classifyDialReleaseForHost } from "../../shared/dial-release.js";
+import { getReplayBusyLook, registerReplayBusySurface } from "../../shared/replay-busy-indicator.js";
+import { replayBusyDialMark } from "../../shared/replay-busy-mark.js";
 import {
   getReplayGateRecord,
   isReplayMoveUnderWay,
@@ -116,13 +118,18 @@ export interface ReplayControlDialHost {
   telemetry(): TelemetryData | null;
   /** The action's own optimistic speed cache, so the keypad's speed icons follow a dial send at once. */
   setLocalSpeed(speed: number, slowMotion: boolean): void;
-  /** The keypad's Jump to Live, which takes the replay cursor itself, under its own mode name (`jump-to-live`). */
-  jumpToLive(): void;
+  /**
+   * The keypad's Jump to Live, which takes the replay cursor itself, under its
+   * own mode name (`jump-to-live`). `origin` is the dial's context id, the
+   * press's origin token (#1437), so the dial's own box shows the jump.
+   */
+  jumpToLive(origin: string): void;
   /**
    * The keypad's Jump to Race Start press (#1354): its guards, its record
    * lookup and its fallback, and the replay cursor taken by the jump it starts.
+   * `origin` is the dial's context id, as for {@link jumpToLive}.
    */
-  jumpToRaceStart(): void;
+  jumpToRaceStart(origin: string): void;
   /** Whether that press has a race session to aim at; false is the one case a Jump to Race Start key greys for. */
   canJumpToRaceStart(): boolean;
   /** Redraws the keypad keys whose icon follows the replay speed. */
@@ -140,6 +147,8 @@ export interface ReplayDialReading {
 interface GestureEnv {
   readonly io: ReplayDialModeIo;
   readonly host: ReplayControlDialHost;
+  /** The dial's context id: the press's origin token. */
+  readonly origin: string;
 }
 
 /** One thing a gesture slot can run. */
@@ -169,6 +178,24 @@ function describeSpeed(speed: ReplaySpeed): string {
 
 function playCaption(speed: ReplaySpeed): string {
   return formatPlayCaption(speed.speed, speed.slowMotion);
+}
+
+/** The gesture slots whose run is a jump or a search: the dial's box shows working for them (#1437). */
+const JUMP_GESTURES: ReadonlySet<ReplayControlDialGesture> = new Set(["jump-to-live", "jump-to-race-start"]);
+
+/**
+ * @internal Exported for testing
+ *
+ * Whether the dial's box draws working for `gesture` (#1437): only for a
+ * gesture whose own command is a jump or a search. Every gesture carries the
+ * dial's token, but a speed gesture's own command is never under way, and the
+ * one jump that can carry its token, the short one the gate sends when its
+ * press takes over from a search, is not something to draw. A turn (Frame Jog,
+ * Speed Control) carries no token at all. A speed gesture held behind
+ * something under way still shows waiting, and one given up not done.
+ */
+export function gestureDrawsWorking(gesture: ReplayControlDialGesture): boolean {
+  return JUMP_GESTURES.has(gesture);
 }
 
 /**
@@ -239,8 +266,8 @@ const GESTURES: Record<ActiveGesture, DialGesture> = {
   },
   "jump-to-live": {
     label: "Jump to Live",
-    run({ io, host }) {
-      host.jumpToLive();
+    run({ io, host, origin }) {
+      host.jumpToLive(origin);
       io.logger.info("Dial jumped to live");
     },
     preview: () => "LIVE",
@@ -250,8 +277,8 @@ const GESTURES: Record<ActiveGesture, DialGesture> = {
   // nothing, so the hold previews nothing either.
   "jump-to-race-start": {
     label: "Jump to Race Start",
-    run({ io, host }) {
-      host.jumpToRaceStart();
+    run({ io, host, origin }) {
+      host.jumpToRaceStart(origin);
       io.logger.info("Dial pressed Jump to Race Start");
     },
     preview: ({ host }) => (host.canJumpToRaceStart() ? "START" : null),
@@ -282,6 +309,14 @@ interface ReplayControlDialContext {
    * that is waiting instead of leaving it to be drawn.
    */
   queuedSig: string | null;
+  /** The dial's registration with the replay busy indicator (#1437), and what it registered with; null while none. */
+  busy: { readonly drawsWorking: boolean; readonly unregister: () => void } | null;
+  /**
+   * Whether the gesture that last went to the gate draws working
+   * ({@link gestureDrawsWorking}), or null before one has: the box's look
+   * follows the gesture that made the press, not the dial's slots.
+   */
+  lastGestureDrawsWorking: boolean | null;
 }
 
 /** A dash-box frame and the signature it is compared by. */
@@ -470,6 +505,7 @@ export class ReplayControlDialSurface {
       { line1: "REPLAY", line2: "CONTROL", backgroundColor: NAME_CARD_BACKGROUND },
       this.host.logger,
     );
+    this.syncBusyRegistration(ctx);
     await this.applyTriggerDescription(ctx);
     this.scheduleRender(ctx, true);
   }
@@ -479,8 +515,9 @@ export class ReplayControlDialSurface {
 
     if (!ctx) return;
 
-    // The context is going away: no revert frame for the preview.
+    // The context is going away: no revert frame for the preview, no busy look.
     ctx.holdPreview.dispose();
+    this.unregisterBusy(ctx);
     this.renderThrottle.clear(actionId);
     this.contexts.delete(actionId);
     // The lapse timer is left running: the pending speed it answers for
@@ -496,8 +533,45 @@ export class ReplayControlDialSurface {
     // for the old one without a frame of its own — the render below is the revert.
     ctx.holdPreview.dispose();
     ctx.preview = null;
+    // Before any gesture, the push slot may have become, or stopped being, a jump.
+    this.syncBusyRegistration(ctx);
     await this.applyTriggerDescription(ctx);
     this.scheduleRender(ctx, true);
+  }
+
+  /**
+   * Registers the dial with the replay busy indicator (#1437) under its
+   * context id, the token its presses carry, or re-registers it when whether
+   * it draws working changed. That follows the gesture that last went to the
+   * gate; before one has, the push slot's, the gesture most likely behind a
+   * fact the dial finds standing when it appears (a page turned back mid-jump).
+   * The indicator's redraw goes through {@link scheduleIfChanged}, so the
+   * throttle stays in front of it and a tick whose look draws the same frame
+   * pushes nothing.
+   */
+  private syncBusyRegistration(ctx: ReplayControlDialContext): void {
+    const drawsWorking = ctx.lastGestureDrawsWorking ?? gestureDrawsWorking(ctx.dial.pressAction);
+
+    if (ctx.busy?.drawsWorking === drawsWorking) return;
+
+    const previous = ctx.busy;
+    const unregister = registerReplayBusySurface({
+      token: ctx.action.id,
+      drawsWorking,
+      redraw: () => {
+        if (this.contexts.get(ctx.action.id) === ctx) this.withReading(() => this.scheduleIfChanged(ctx));
+      },
+    });
+
+    ctx.busy = { drawsWorking, unregister };
+    // The new entry first, as the keys do: the old one's unregister is then a
+    // no-op, where unregistering first would clear a not done the box is showing.
+    previous?.unregister();
+  }
+
+  private unregisterBusy(ctx: ReplayControlDialContext): void {
+    ctx.busy?.unregister();
+    ctx.busy = null;
   }
 
   /**
@@ -574,7 +648,7 @@ export class ReplayControlDialSurface {
     if (gesture === "none") return;
 
     this.host.logger.info(kind === "long" ? "Replay control dial long-pressed" : "Replay control dial pressed");
-    this.runGesture(gesture, ctx.action.id);
+    this.runGesture(gesture, ctx);
   }
 
   touchTap(action: IDeckActionContext, dial: ReplayControlDialSettings, hold: boolean): void {
@@ -590,7 +664,7 @@ export class ReplayControlDialSurface {
     if (gesture === "none") return;
 
     this.host.logger.info(hold ? "Replay control dial long touch" : "Replay control dial tap");
-    this.withReading(() => this.runGesture(gesture, ctx.action.id));
+    this.withReading(() => this.runGesture(gesture, ctx));
   }
 
   /**
@@ -724,18 +798,25 @@ export class ReplayControlDialSurface {
   }
 
   /** Runs a gesture slot's assignment; outside a replay it sends nothing. */
-  private runGesture(gesture: ActiveGesture, origin: string): void {
+  private runGesture(gesture: ActiveGesture, ctx: ReplayControlDialContext): void {
     if (!this.isReplayOnScreen()) {
       this.host.logger.debug(`Dial ${gesture}: no replay on screen, and iRacing ignores replay commands from the car`);
 
       return;
     }
 
+    // The box draws working for this gesture only if it jumps or searches, decided
+    // before its press reaches the gate, so the press's first notice already reads it.
+    ctx.lastGestureDrawsWorking = gestureDrawsWorking(gesture);
+    this.syncBusyRegistration(ctx);
+
+    const origin = ctx.action.id;
+
     // A gesture's commands carry the dial's own origin token; a detent's carry none.
     this.pressOrigin = origin;
 
     try {
-      GESTURES[gesture].run({ io: this.io, host: this.host });
+      GESTURES[gesture].run({ io: this.io, host: this.host, origin });
     } finally {
       this.pressOrigin = undefined;
     }
@@ -823,7 +904,7 @@ export class ReplayControlDialSurface {
 
     if (gesture === "none" || !this.isReplayOnScreen()) return null;
 
-    const text = GESTURES[gesture].preview({ io: this.io, host: this.host });
+    const text = GESTURES[gesture].preview({ io: this.io, host: this.host, origin: ctx.action.id });
 
     if (text === null) return null;
 
@@ -894,6 +975,8 @@ export class ReplayControlDialSurface {
       holdPreview: NOOP_HOLD_PREVIEW,
       lastRenderSig: null,
       queuedSig: null,
+      busy: null,
+      lastGestureDrawsWorking: null,
     };
     // The real helper only where the extended gestures exist (#1120).
     created.holdPreview = __FEATURE_DIAL_EXTENDED_GESTURES__
@@ -917,6 +1000,13 @@ export class ReplayControlDialSurface {
   private boxArgs(ctx: ReplayControlDialContext): DialBoxArgs {
     const colors = resolveDialBoxColors(ctx.dial.colors, DIAL_ACCENT);
     const mode = DIAL_MODES[ctx.dial.mode];
+    // The busy look (#1437), part of the signature as kind and position.
+    // `replacesCaption` is always true here because today's only caption is
+    // the play state, which gives way to the mark; the layout it set stays,
+    // and the value with it. #801's pending count must be passed with
+    // `replacesCaption: false`, so the count stays beside the mark (spec, "Dials").
+    const look = ctx.busy === null ? undefined : replayBusyDialMark(getReplayBusyLook(ctx.action.id));
+    const mark: Pick<DialBoxArgs, "captionMark"> = look ? { captionMark: { ...look, replacesCaption: true } } : {};
 
     if (!this.isReplayOnScreen()) {
       // A dimmed box with an empty value slot enlarges its label into that
@@ -930,6 +1020,8 @@ export class ReplayControlDialSurface {
         caption: "",
         dimmed: true,
         pending: null,
+        // A fact the gate still holds when the replay is left ends there, on its own wait.
+        ...mark,
       };
     }
 
@@ -943,6 +1035,7 @@ export class ReplayControlDialSurface {
       caption: view.caption,
       dimmed: false,
       pending: ctx.preview,
+      ...mark,
     };
   }
 

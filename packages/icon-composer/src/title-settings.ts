@@ -5,6 +5,7 @@
  * No dependencies on global settings stores — all inputs are parameters.
  */
 import { applyBindingWarning } from "./binding-warning.js";
+import { type BusyMark, busyMarkSvg } from "./busy-mark.js";
 import { extractGraphicContent, generateBorderParts, ICON_BASE_TEMPLATE } from "./icon-base.js";
 import {
   escapeXml,
@@ -576,6 +577,13 @@ function dimContent(content: string): string {
  *   {@link DIMMED_OPACITY} over the untouched background and border — the key
  *   is there but a press would do nothing right now (e.g. Replay Markers' Next
  *   with no marker ahead, #1162). A plain `<g opacity>`, so it needs no filter.
+ * @param options.busy - When set, the artwork gives way to the replay busy
+ *   mark (issue #1437, see {@link busyMarkSvg}), drawn in the title-aware
+ *   graphic area whether or not `showGraphics` is on; the title and border stay
+ *   as they are. The mark takes `graphic1Color`, then `textColor`, then white;
+ *   not done is always the fixed red. A busy key ignores `dimmed` and
+ *   `bindingMissing`: the press is what the user is looking at, so neither the
+ *   fade nor the warning triangle is drawn while the mark is.
  * @returns SVG data URI string
  */
 export function assembleIcon(options: {
@@ -587,8 +595,58 @@ export function assembleIcon(options: {
   templateValues?: Record<string, string>;
   bindingMissing?: boolean;
   dimmed?: boolean;
+  busy?: BusyMark;
 }): string {
-  const { graphicSvg, colors, title, border, graphic, templateValues, bindingMissing, dimmed } = options;
+  const { colors, title, border, busy } = options;
+
+  // A busy key draws its mark instead of the artwork, and is never dimmed:
+  // the press is what the user is looking at (#1437).
+  const dimmed = options.dimmed && !busy;
+  let graphicContent = busy
+    ? busyMarkSvg(busy, computeGraphicArea(title), colors.graphic1Color ?? colors.textColor ?? "#ffffff")
+    : artworkContent(options);
+
+  const rawTitleContent = title.showTitle
+    ? generateTitleText({
+        text: title.titleText,
+        fontSize: title.fontSize,
+        bold: title.bold,
+        position: title.position,
+        customPosition: title.customPosition,
+        fill: colors.textColor ?? "#ffffff",
+      })
+    : "";
+
+  const titleContent = dimmed ? dimContent(rawTitleContent) : rawTitleContent;
+
+  if (dimmed) graphicContent = dimContent(graphicContent);
+
+  const borderSvg = generateBorderParts(border);
+  const borderContent = borderSvg.defs + borderSvg.rects;
+
+  const svg = renderIconTemplate(ICON_BASE_TEMPLATE, {
+    backgroundColor: colors.backgroundColor ?? "#000000",
+    borderContent,
+    graphicContent,
+    titleContent,
+  });
+
+  return svgToDataUri(svg);
+}
+
+/**
+ * The key's own artwork for {@link assembleIcon}: colourised, scaled into the
+ * title-aware area, with the binding-missing overlay when it applies.
+ */
+function artworkContent(options: {
+  graphicSvg: string;
+  colors: Record<string, string>;
+  title: ResolvedTitleSettings;
+  graphic?: ResolvedGraphicSettings;
+  templateValues?: Record<string, string>;
+  bindingMissing?: boolean;
+}): string {
+  const { graphicSvg, colors, title, graphic, templateValues, bindingMissing } = options;
 
   const rawGraphic = extractGraphicContent(graphicSvg);
   let graphicContent = title.showGraphics
@@ -625,30 +683,5 @@ export function assembleIcon(options: {
     graphicContent = applyBindingWarning(graphicContent);
   }
 
-  const rawTitleContent = title.showTitle
-    ? generateTitleText({
-        text: title.titleText,
-        fontSize: title.fontSize,
-        bold: title.bold,
-        position: title.position,
-        customPosition: title.customPosition,
-        fill: colors.textColor ?? "#ffffff",
-      })
-    : "";
-
-  const titleContent = dimmed ? dimContent(rawTitleContent) : rawTitleContent;
-
-  if (dimmed) graphicContent = dimContent(graphicContent);
-
-  const borderSvg = generateBorderParts(border);
-  const borderContent = borderSvg.defs + borderSvg.rects;
-
-  const svg = renderIconTemplate(ICON_BASE_TEMPLATE, {
-    backgroundColor: colors.backgroundColor ?? "#000000",
-    borderContent,
-    graphicContent,
-    titleContent,
-  });
-
-  return svgToDataUri(svg);
+  return graphicContent;
 }

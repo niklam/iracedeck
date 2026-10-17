@@ -33,6 +33,8 @@ import { type DialInputEvent, hasDialInputContext } from "../../shared/dial-cont
 import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
 import type { DialPendingPreview } from "../../shared/dial-preview.js";
 import { classifyDialReleaseForHost } from "../../shared/dial-release.js";
+import { getReplayBusyLook, registerReplayBusySurface } from "../../shared/replay-busy-indicator.js";
+import { replayBusyDialMark } from "../../shared/replay-busy-mark.js";
 import {
   addMarkerAt,
   CONFIRMATION_FLASH_MS,
@@ -85,6 +87,16 @@ interface ReplayMarkersDialContext {
   holdPreview: HoldPreview;
   /** Signature of the last frame pushed; a render whose signature matches pushes nothing. */
   lastRenderSig: string | null;
+  /**
+   * Signature of a built frame waiting in the throttle, or null. While one
+   * waits, "would the screen change" is asked against it rather than the frame
+   * on screen, so a state that goes back before the flush (a busy look that
+   * ended inside the window) replaces the frame that is waiting instead of
+   * leaving it to be drawn.
+   */
+  queuedSig: string | null;
+  /** The dial's unregister from the replay busy indicator (#1437); null while not registered. */
+  unregisterBusy: (() => void) | null;
 }
 
 /** A dash-box frame and the signature it is compared by. */
@@ -206,6 +218,7 @@ export class ReplayMarkersDialSurface {
       { line1: "REPLAY", line2: "MARKERS", backgroundColor: NAME_CARD_BACKGROUND },
       this.host.logger,
     );
+    this.registerBusy(ctx);
     await this.applyTriggerDescription(ctx);
     this.scheduleRender(ctx, true);
   }
@@ -215,9 +228,11 @@ export class ReplayMarkersDialSurface {
 
     if (!ctx) return;
 
-    // The context is going away: no revert frame for the preview, no flash end.
+    // The context is going away: no revert frame for the preview, no flash end, no busy look.
     ctx.holdPreview.dispose();
     this.clearFlash(ctx);
+    ctx.unregisterBusy?.();
+    ctx.unregisterBusy = null;
     this.renderThrottle.clear(actionId);
     this.contexts.delete(actionId);
   }
@@ -225,6 +240,7 @@ export class ReplayMarkersDialSurface {
   async didReceiveSettings(action: IDeckActionContext, dial: ReplayMarkersDialSettings): Promise<void> {
     const ctx = this.ensureContext(action, dial);
 
+    this.registerBusy(ctx);
     // The long-press gesture may have changed mid-hold: drop a preview computed
     // for the old one without a frame of its own — the render below is the revert.
     ctx.holdPreview.dispose();
@@ -232,6 +248,25 @@ export class ReplayMarkersDialSurface {
     this.clearFlash(ctx);
     await this.applyTriggerDescription(ctx);
     this.scheduleRender(ctx, true);
+  }
+
+  /**
+   * Registers the dial with the replay busy indicator (#1437) under its
+   * context id, the token its detents' jumps carry. A detent is a jump, so the
+   * box draws working; Add and Delete send no replay command. The indicator's
+   * redraw goes through {@link scheduleIfChanged}, so the throttle stays in
+   * front of it and a tick whose look draws the same frame pushes nothing.
+   */
+  private registerBusy(ctx: ReplayMarkersDialContext): void {
+    if (ctx.unregisterBusy !== null) return;
+
+    ctx.unregisterBusy = registerReplayBusySurface({
+      token: ctx.action.id,
+      drawsWorking: true,
+      redraw: () => {
+        if (this.contexts.get(ctx.action.id) === ctx) this.scheduleIfChanged(ctx);
+      },
+    });
   }
 
   /**
@@ -368,12 +403,20 @@ export class ReplayMarkersDialSurface {
   onTick(actionId: string): void {
     const ctx = this.contexts.get(actionId);
 
-    if (!ctx || !ctx.action.dialCanvas()) return;
+    if (ctx) this.scheduleIfChanged(ctx);
+  }
 
-    const context = this.host.readReplayContext();
-    const frame = this.buildFrame(ctx, context);
+  /**
+   * Queues a push when what the dial would show differs from what it shows,
+   * or from a built frame already waiting in the throttle. The frame is built
+   * once and handed to the flush.
+   */
+  private scheduleIfChanged(ctx: ReplayMarkersDialContext): void {
+    if (!ctx.action.dialCanvas()) return;
 
-    if (frame.sig !== ctx.lastRenderSig) this.scheduleRender(ctx, false, frame);
+    const frame = this.buildFrame(ctx, this.host.readReplayContext());
+
+    if (frame.sig !== (ctx.queuedSig ?? ctx.lastRenderSig)) this.scheduleRender(ctx, false, frame);
   }
 
   /** Runs Add or Delete with the keypad's own operations; a press that changes nothing shows nothing. */
@@ -519,6 +562,8 @@ export class ReplayMarkersDialSurface {
       preview: null,
       holdPreview: NOOP_HOLD_PREVIEW,
       lastRenderSig: null,
+      queuedSig: null,
+      unregisterBusy: null,
     };
     // The real helper only where the extended gestures exist (#1120).
     created.holdPreview = __FEATURE_DIAL_EXTENDED_GESTURES__
@@ -539,6 +584,9 @@ export class ReplayMarkersDialSurface {
     const anchor = context.ok ? resolveMarkerJumpAnchor(context.frame, context.telemetry) : 0;
     const view = resolveDialView(context, anchor, ctx.dial);
     const value = ctx.flash ?? view.value;
+    // The busy look (#1437), part of the signature as kind and position: the
+    // caption's text (Add's, from the car) stays beside it.
+    const mark = ctx.unregisterBusy === null ? undefined : replayBusyDialMark(getReplayBusyLook(ctx.action.id));
 
     return {
       abbr: DIAL_LABEL,
@@ -550,6 +598,7 @@ export class ReplayMarkersDialSurface {
       caption: view.caption,
       dimmed: view.dimmed,
       pending: ctx.preview,
+      ...(mark ? { captionMark: mark } : {}),
     };
   }
 
@@ -576,10 +625,15 @@ export class ReplayMarkersDialSurface {
   private scheduleRender(ctx: ReplayMarkersDialContext, force = false, built?: BuiltFrame): void {
     if (force) ctx.lastRenderSig = null;
 
+    // Set before the schedule: outside its window the throttle flushes at once.
+    ctx.queuedSig = built?.sig ?? null;
     this.renderThrottle.schedule(ctx.action.id, () => this.renderIfChanged(ctx, built));
   }
 
   private async renderIfChanged(ctx: ReplayMarkersDialContext, built?: BuiltFrame): Promise<void> {
+    // The throttle runs only the latest schedule, so nothing is waiting any more.
+    ctx.queuedSig = null;
+
     // A context that went away (or was replaced) since the schedule draws nothing.
     if (this.contexts.get(ctx.action.id) !== ctx) return;
 

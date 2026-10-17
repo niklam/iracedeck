@@ -93,6 +93,9 @@ export {
   dimForBindingWarning,
 } from "./title-settings.js";
 
+// Replay busy marks (issue #1437, re-exports from icon-composer)
+export { BUSY_MARK_FRAMES, BUSY_NOT_DONE_COLOR, busyMarkSvg, type BusyMark } from "./title-settings.js";
+
 // Icon base template (re-exports from icon-composer)
 export { generateBorderParts, ICON_BASE_TEMPLATE, extractGraphicContent } from "./icon-base.js";
 

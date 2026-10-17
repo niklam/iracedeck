@@ -2,7 +2,12 @@ import { ReplayPosMode, replaySpeedToSdk, type TelemetryData } from "@iracedeck/
 import type { ReplayMarker, ReplaySessionStore } from "@iracedeck/replay-store";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { _configureReplayCommandGate, _resetReplayCommandGate } from "../../shared/replay-command-gate.js";
+import { registerReplayBusySurface, type ReplayBusyLook } from "../../shared/replay-busy-indicator.js";
+import {
+  _configureReplayCommandGate,
+  _resetReplayCommandGate,
+  getReplayGateView,
+} from "../../shared/replay-command-gate.js";
 import {
   _resetReplayCursor,
   cancelReplayCursorOwner,
@@ -25,6 +30,34 @@ const mocks = vi.hoisted(() => ({
   setPlaySpeed: vi.fn((_speed: number, _slowMotion?: boolean) => true),
   getGlobalSettings: vi.fn((): Record<string, unknown> => ({})),
   thresholdMs: { value: 500 },
+}));
+
+/** A busy surface as the dial registers it (#1437). */
+interface BusySurface {
+  readonly token: string;
+  readonly drawsWorking: boolean;
+  redraw(look: ReplayBusyLook): void;
+}
+
+// The replay busy indicator (#1437), driven by hand: a test sets a token's look
+// and calls the redraw the surface registered, as the indicator's tick would.
+const busy = vi.hoisted(() => ({
+  looks: new Map<string, ReplayBusyLook>(),
+  surfaces: new Map<string, BusySurface>(),
+  unregistered: [] as string[],
+}));
+
+vi.mock("../../shared/replay-busy-indicator.js", () => ({
+  registerReplayBusySurface: vi.fn((surface: BusySurface) => {
+    busy.surfaces.set(surface.token, surface);
+
+    return () => {
+      busy.unregistered.push(surface.token);
+
+      if (busy.surfaces.get(surface.token) === surface) busy.surfaces.delete(surface.token);
+    };
+  }),
+  getReplayBusyLook: (token: string): ReplayBusyLook => busy.looks.get(token) ?? { kind: "rest" },
 }));
 
 // The dial surface reads the replay commands through deck-iracing; this suite
@@ -1560,5 +1593,183 @@ describe("ReplayMarkersDialSurface", () => {
       await appear(surface, knob);
       expect(knob.setTriggerDescription).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("ReplayMarkersDialSurface — the busy look (#1437)", () => {
+  /** Sets `token`'s look and redraws its surface, as the indicator does. */
+  function showLook(look: ReplayBusyLook, token = "dial-1"): void {
+    busy.looks.set(token, look);
+    busy.surfaces.get(token)?.redraw(look);
+  }
+
+  /** The caption mark the box draws: its kind, and the lit dot of a working one. */
+  function shownMark(svg: string): string {
+    const mark = /<g data-caption-mark="([\w-]+)">(.*?)<\/g>/.exec(svg);
+
+    if (!mark) return "none";
+
+    if (mark[1] !== "working") return mark[1];
+
+    const lit = [...mark[2].matchAll(/<circle [^>]*\/>/g)].findIndex((dot) => !dot[0].includes("opacity"));
+
+    return `working ${lit}`;
+  }
+
+  async function onScreen(ctx = dialContext(), d = dial()) {
+    const surface = makeSurface();
+    await appear(surface, ctx, d);
+
+    return { surface, ctx };
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+    _resetReplayCursor();
+    _resetReplayCommandGate();
+    _resetReplayPositionState();
+    const gateReplay = steppedReplayState(() => env.telemetry);
+    _configureReplayCommandGate({
+      readTelemetry: () => env.telemetry,
+      inReplay: () => gateReplay.getReplayState().inReplay,
+      connected: () => env.connected,
+    });
+    env.connected = true;
+    env.storeReady = true;
+    env.telemetry = replayAt(500);
+    env.active = { subSessionId: 42 };
+    setMarkers([1_000, 3_000, 5_000]);
+    mocks.thresholdMs.value = 500;
+    mocks.setPlayPosition.mockReturnValue(true);
+    mocks.setPlaySpeed.mockReturnValue(true);
+    mocks.getGlobalSettings.mockReturnValue({});
+    busy.looks.clear();
+    busy.surfaces.clear();
+    busy.unregistered.length = 0;
+  });
+
+  afterEach(() => {
+    _resetReplayCommandGate();
+    vi.useRealTimers();
+  });
+
+  it("registers the dial under its context id, drawing working, and unregisters it on disappear", async () => {
+    const { surface, ctx } = await onScreen();
+
+    expect(busy.surfaces.get("dial-1")).toMatchObject({ token: "dial-1", drawsWorking: true });
+
+    // A settings change keeps the one registration: a detent is a jump whatever the slots say.
+    await surface.didReceiveSettings(ctx as never, dial({ pressAction: "none" }));
+
+    expect(registerReplayBusySurface).toHaveBeenCalledTimes(1);
+
+    surface.willDisappear(ctx.id);
+
+    expect(busy.unregistered).toEqual(["dial-1"]);
+    expect(busy.surfaces.has("dial-1")).toBe(false);
+  });
+
+  it("a detent's jump is under way under the dial's token, which is what the indicator reads", async () => {
+    const { surface, ctx } = await onScreen();
+
+    surface.rotate(ctx as never, dial(), 1, false);
+
+    expect(getReplayGateView("dial-1").underWay).not.toBeNull();
+  });
+
+  it("draws the look at the left of the caption line, and nothing at rest", async () => {
+    const { ctx } = await onScreen();
+
+    expect(shownMark(lastBox(ctx))).toBe("none");
+
+    for (const [look, mark] of [
+      [{ kind: "working", tick: 3 }, "working 1"],
+      [{ kind: "waiting" }, "waiting"],
+      [{ kind: "not-done" }, "not-done"],
+      [{ kind: "rest" }, "none"],
+    ] as const) {
+      showLook(look);
+      await settle();
+
+      expect(shownMark(lastBox(ctx))).toBe(mark);
+    }
+  });
+
+  it("steps the mark on every second tick: positions 0, 0, 1, 1, 2, 2, 0", async () => {
+    const { ctx } = await onScreen();
+    const shown: string[] = [];
+
+    for (let tick = 0; tick < 7; tick++) {
+      showLook({ kind: "working", tick });
+      await settle(125);
+      shown.push(shownMark(lastBox(ctx)));
+    }
+
+    expect(shown).toEqual(["working 0", "working 0", "working 1", "working 1", "working 2", "working 2", "working 0"]);
+  });
+
+  it("pushes only when the mark moves, and never more often than the throttle allows", async () => {
+    const { ctx } = await onScreen();
+    const pushedAt: number[] = [];
+    ctx.setDialCanvas.mockClear();
+    ctx.setDialCanvas.mockImplementation(() => {
+      pushedAt.push(Date.now());
+
+      return Promise.resolve();
+    });
+
+    // The indicator's eight ticks a second: the mark moves four times a second.
+    for (let tick = 0; tick < 16; tick++) {
+      showLook({ kind: "working", tick });
+      await settle(125);
+    }
+
+    expect(pushedAt).toHaveLength(8);
+
+    // A redraw every 20 ms, each moving the mark.
+    pushedAt.length = 0;
+
+    for (let i = 0; i < 50; i++) {
+      showLook({ kind: "working", tick: i * 2 });
+      await settle(20);
+    }
+
+    await settle(200);
+
+    expect(pushedAt.length).toBeGreaterThan(5);
+    expect(pushedAt.length).toBeLessThanOrEqual(11);
+    pushedAt.slice(1).forEach((at, i) => expect(at - pushedAt[i]).toBeGreaterThanOrEqual(100));
+  });
+
+  it("does not leave a frame queued in the throttle on screen once the look has gone back", async () => {
+    const { ctx } = await onScreen();
+
+    // Outside the window: drawn at once.
+    showLook({ kind: "waiting" });
+    // Inside it the rest frame queues, and the look goes back to what is on screen before it flushes.
+    showLook({ kind: "rest" });
+    showLook({ kind: "waiting" });
+    await settle(200);
+
+    expect(shownMark(lastBox(ctx))).toBe("waiting");
+  });
+
+  it.each([
+    ["strip", STRIP],
+    ["knob", KNOB],
+  ] as const)("on the %s, draws the caption's text and the mark together", async (_name, canvas) => {
+    env.telemetry = LIVE;
+    const { ctx } = await onScreen(dialContext("dial-1", canvas), dial({ secondsBack: 8 }));
+    const before = lastBox(ctx);
+
+    showLook({ kind: "not-done" });
+    await settle();
+
+    const after = lastBox(ctx);
+
+    expect(after).toMatch(/data-caption="true"[^>]*>ADD −8 s<\/text>/);
+    expect(shownMark(after)).toBe("not-done");
+    expect(shownValue(after)).toBe(shownValue(before));
   });
 });

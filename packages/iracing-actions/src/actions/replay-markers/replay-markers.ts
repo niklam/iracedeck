@@ -1,5 +1,6 @@
 import {
   assembleIcon,
+  type BusyMark,
   getGlobalBorderSettings,
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
@@ -27,6 +28,8 @@ import previousIconSvg from "@iracedeck/icons/replay-markers/previous.svg";
 import { getReplaySessionStore, isReplaySessionStoreInitialized } from "@iracedeck/replay-store";
 import { getGlobalColors } from "@iracedeck/settings";
 
+import { getReplayBusyLook, registerReplayBusySurface } from "../../shared/replay-busy-indicator.js";
+import { replayBusyKeyMark } from "../../shared/replay-busy-mark.js";
 import { unavailableLook } from "../../shared/unavailable-look.js";
 import { ReplayMarkersDialSurface } from "./replay-markers-dial-surface.js";
 import {
@@ -120,8 +123,19 @@ export type ReplayMarkersKeyState = ReplayMarkerConfirmation | "unavailable";
  * key's own icon, overrides and all, greyed and faded (`unavailableLook`,
  * shared with Replay Control's Jump to Race Start), so a customised key still
  * reads as itself, only switched off.
+ *
+ * With `busy` (#1437), the key's own icon in its own colours with the replay
+ * busy mark in place of the artwork. It beats both states: the press is what
+ * the user is looking at, so neither the grey nor a flash is drawn while it
+ * stands.
  */
-export function generateReplayMarkersSvg(settings: ReplayMarkersSettings, state?: ReplayMarkersKeyState): string {
+export function generateReplayMarkersSvg(
+  settings: ReplayMarkersSettings,
+  state?: ReplayMarkersKeyState,
+  busy?: BusyMark,
+): string {
+  if (busy) state = undefined;
+
   if (state === "added" || state === "deleted") {
     const confirmation = state;
     const iconSvg = CONFIRMATION_ICONS[confirmation];
@@ -155,6 +169,7 @@ export function generateReplayMarkersSvg(settings: ReplayMarkersSettings, state?
     graphicSvg: iconSvg,
     title,
     graphic,
+    busy,
     ...(unavailable ? unavailableLook(colors, border) : { colors, border }),
   });
 }
@@ -167,6 +182,12 @@ export class ReplayMarkers extends SimIRacingAction<ReplayMarkersSettings> {
   private readonly imageThrottle = new IconUpdateThrottle();
   /** Per Next / Previous context: whether the icon on the key shows the jump as available. */
   private readonly shownAvailable = new Map<string, boolean>();
+  /**
+   * Per Next / Previous key: the unregister of its registration with the
+   * replay busy indicator (#1437). Add and Delete send no replay command and
+   * have no entry.
+   */
+  private readonly busyRegistrations = new Map<string, () => void>();
 
   /** Where both surfaces read the replay context from. */
   private readonly contextSource: ReplayContextSource = {
@@ -200,6 +221,9 @@ export class ReplayMarkers extends SimIRacingAction<ReplayMarkersSettings> {
     }
 
     this.activeContexts.set(contextId, settings);
+    // Before the first draw: an unregistered key reads rest, and a key coming
+    // back while its jump still stands shows the look at once.
+    this.syncBusyRegistration(contextId, settings.mode);
     await this.updateDisplay(ev, settings);
     // Next / Previous follow the replay as it plays and the marker list as any
     // key edits it; a tick only compares, and renders on a flip.
@@ -214,6 +238,8 @@ export class ReplayMarkers extends SimIRacingAction<ReplayMarkersSettings> {
     this.cancelFlash(contextId);
     this.activeContexts.delete(contextId);
     this.shownAvailable.delete(contextId);
+    this.busyRegistrations.get(contextId)?.();
+    this.busyRegistrations.delete(contextId);
     await super.onWillDisappear(ev);
   }
 
@@ -229,7 +255,52 @@ export class ReplayMarkers extends SimIRacingAction<ReplayMarkersSettings> {
 
     this.activeContexts.set(ev.action.id, settings);
     this.cancelFlash(ev.action.id);
+    this.syncBusyRegistration(ev.action.id, settings.mode);
     await this.updateDisplay(ev, settings);
+  }
+
+  /**
+   * Registers a Next / Previous key with the replay busy indicator, replacing
+   * any registration it had, or unregisters a key whose mode no longer jumps.
+   * The jump is the key's own command, so it draws working. The new
+   * registration goes in before the old one is dropped, so a look standing for
+   * the token carries over.
+   */
+  private syncBusyRegistration(contextId: string, mode: ReplayMarkersMode): void {
+    const previous = this.busyRegistrations.get(contextId);
+
+    if (isJumpMode(mode)) {
+      this.busyRegistrations.set(
+        contextId,
+        registerReplayBusySurface({
+          token: contextId,
+          drawsWorking: true,
+          redraw: () => this.redrawBusyKey(contextId),
+        }),
+      );
+    } else {
+      this.busyRegistrations.delete(contextId);
+    }
+
+    previous?.();
+  }
+
+  /**
+   * The replay busy indicator's redraw (#1437), through the same throttle as
+   * the availability redraw, so the two together stay within ten images a
+   * second and the newest render wins. Eight frames a second are 125 ms
+   * apart, outside the throttle's 100 ms window, so no frame is dropped; a
+   * look that ends inside the window is drawn at the window's end. The render
+   * reads the look when it runs, not the one it was scheduled for.
+   */
+  private redrawBusyKey(contextId: string): void {
+    this.imageThrottle.schedule(contextId, async () => {
+      const settings = this.activeContexts.get(contextId);
+
+      if (!settings) return;
+
+      await this.updateKeyImage(contextId, this.keySvg(contextId, settings));
+    });
   }
 
   override async onKeyDown(ev: IDeckKeyDownEvent<ReplayMarkersSettings>): Promise<void> {
@@ -355,6 +426,20 @@ export class ReplayMarkers extends SimIRacingAction<ReplayMarkersSettings> {
   }
 
   /**
+   * The icon a context shows now, computed fresh: the replay busy look while
+   * the indicator reports one (#1437), else {@link restingSvg}. A busy key
+   * records no availability, since none is on the key; the redraw at the end
+   * of the look records it.
+   */
+  private keySvg(contextId: string, settings: ReplayMarkersSettings): string {
+    const busy = replayBusyKeyMark(getReplayBusyLook(contextId));
+
+    if (busy) return generateReplayMarkersSvg(settings, undefined, busy);
+
+    return this.restingSvg(contextId, settings);
+  }
+
+  /**
    * The icon a context shows at rest, computed fresh. For Next / Previous it
    * also records which look went out, so a tick renders only on a flip.
    */
@@ -386,14 +471,22 @@ export class ReplayMarkers extends SimIRacingAction<ReplayMarkersSettings> {
 
       const settings = this.activeContexts.get(contextId);
 
-      if (settings) await this.updateKeyImage(contextId, this.restingSvg(contextId, settings));
+      if (settings) await this.updateKeyImage(contextId, this.keySvg(contextId, settings));
     });
   }
 
+  /**
+   * Whether a tick must redraw the key: a Next / Previous key whose
+   * availability differs from what it shows. Never while a flash runs, nor
+   * while the replay busy look stands (#1437): the key shows no availability
+   * then, and the indicator's redraw at the end of the look draws it fresh.
+   */
   private needsRedraw(contextId: string): boolean {
     const settings = this.activeContexts.get(contextId);
 
     if (!settings || !isJumpMode(settings.mode) || this.flashTimers.has(contextId)) return false;
+
+    if (getReplayBusyLook(contextId).kind !== "rest") return false;
 
     return this.shownAvailable.get(contextId) !== this.isJumpAvailable(settings.mode);
   }
@@ -406,7 +499,7 @@ export class ReplayMarkers extends SimIRacingAction<ReplayMarkersSettings> {
       this.flashTimers.delete(contextId);
       const current = this.activeContexts.get(contextId);
 
-      if (current) void this.updateKeyImage(contextId, this.restingSvg(contextId, current));
+      if (current) void this.updateKeyImage(contextId, this.keySvg(contextId, current));
     }, CONFIRMATION_FLASH_MS);
 
     this.flashTimers.set(contextId, timer);
@@ -427,9 +520,7 @@ export class ReplayMarkers extends SimIRacingAction<ReplayMarkersSettings> {
   ): Promise<void> {
     const contextId = ev.action.id;
     await ev.action.setTitle("");
-    await this.setKeyImage(ev, this.restingSvg(contextId, settings));
-    this.setRegenerateCallback(contextId, () =>
-      this.restingSvg(contextId, this.activeContexts.get(contextId) ?? settings),
-    );
+    await this.setKeyImage(ev, this.keySvg(contextId, settings));
+    this.setRegenerateCallback(contextId, () => this.keySvg(contextId, this.activeContexts.get(contextId) ?? settings));
   }
 }

@@ -31,6 +31,10 @@ A marker set live lands about one second earlier than its moment when you watch 
 Offline sessions (test drives and AI races) have no session id, so their markers are kept in memory only. They work for that session and its in-session replay, but they are gone once you leave the session, and no file is written.
 :::
 
+## What a pressed key shows
+
+A Next Marker or Previous Marker key you pressed shows what became of the jump, the same way as the [Replay Control](/docs/actions/view-camera/replay-control/#what-a-pressed-key-shows) keys: a ring of dots going round while the replay is on its way to the marker, three still dots while the press waits for another jump or search to land (behind a search, press again to act at once), and a red cross for a second when the jump did not land. A jump to a nearby marker lands at once, so the dots only flash; a marker hours away in a long replay keeps them turning until the replay arrives. On the marker dial, the same marks appear at the left end of the dial screen's bottom line.
+
 ## Modes
 
 Select the mode from the **Mode** dropdown in the Property Inspector.
