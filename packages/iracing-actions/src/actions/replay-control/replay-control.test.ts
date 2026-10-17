@@ -310,6 +310,8 @@ vi.mock("@iracedeck/replay-store", () => ({
   // The shared walk's windows (#1426), which the record steps read.
   MARKER_NEXT_MIN_AHEAD_FRAMES: 60,
   MARKER_PREVIOUS_MIN_BEHIND_FRAMES: 120,
+  // The incident comparison's lag correction (#1426).
+  REPLAY_FILE_FRAME_LAG: 59,
 }));
 
 vi.mock("@iracedeck/settings", () => ({
@@ -6041,7 +6043,8 @@ describe("ReplayControl", () => {
 
         expect(action["logger"].debug).toHaveBeenCalledWith(
           `Next incident comparison: press frame=${START} camCar=${CAM_CAR}; landed frame=105000 camCar=7; ` +
-            "nearest recorded incident frame=104500 carIdx=7 delta=4 source=sessionInfo; difference=500 frames",
+            "nearest recorded incident frame=104500 carIdx=7 delta=4 source=sessionInfo; " +
+            "difference=500 frames (441 after the 59-frame lag)",
         );
         expect(store.incidents.list).toHaveBeenCalledWith({ subSessionId: SUB_SESSION });
         // The key's search, and nothing from the observer.

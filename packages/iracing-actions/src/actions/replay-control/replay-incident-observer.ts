@@ -18,7 +18,7 @@
  */
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
-import type { IncidentListing, ReplayIncident } from "@iracedeck/replay-store";
+import { type IncidentListing, REPLAY_FILE_FRAME_LAG, type ReplayIncident } from "@iracedeck/replay-store";
 
 import {
   type ReplayPressResult,
@@ -60,14 +60,20 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
  * @internal Exported for testing
  *
  * The recorded incident nearest `frame`; on a tie the earlier one. Null for an
- * empty list.
+ * empty list. `lagFrames` is added to each recorded frame first: incidents are
+ * stored in live numbering, and the replay shows the same moment about
+ * `REPLAY_FILE_FRAME_LAG` frames later.
  */
-export function nearestIncident(incidents: readonly ReplayIncident[], frame: number): ReplayIncident | null {
+export function nearestIncident(
+  incidents: readonly ReplayIncident[],
+  frame: number,
+  lagFrames = 0,
+): ReplayIncident | null {
   let best: ReplayIncident | null = null;
   let bestDistance = Number.POSITIVE_INFINITY;
 
   for (const incident of incidents) {
-    const distance = Math.abs(incident.frame - frame);
+    const distance = Math.abs(incident.frame + lagFrames - frame);
 
     if (distance < bestDistance) {
       best = incident;
@@ -151,7 +157,10 @@ export function observeIncidentSearch(
         return;
       }
 
-      const nearest = nearestIncident(listing.incidents, landedFrame);
+      // Incidents are recorded in live numbering; the replay shows the same
+      // moment about REPLAY_FILE_FRAME_LAG frames later, so the nearest is
+      // picked on the corrected frame and both differences are logged.
+      const nearest = nearestIncident(listing.incidents, landedFrame, REPLAY_FILE_FRAME_LAG);
 
       if (nearest === null) {
         logger.debug(`${label} comparison: ${pressPart(press)}; ${landed}; no recorded incident (none recorded)`);
@@ -162,7 +171,8 @@ export function observeIncidentSearch(
       logger.debug(
         `${label} comparison: ${pressPart(press)}; ${landed}; ` +
           `nearest recorded incident frame=${nearest.frame} carIdx=${nearest.carIdx} delta=${nearest.delta} ` +
-          `source=${nearest.source}; difference=${landedFrame - nearest.frame} frames`,
+          `source=${nearest.source}; difference=${landedFrame - nearest.frame} frames ` +
+          `(${landedFrame - nearest.frame - REPLAY_FILE_FRAME_LAG} after the ${REPLAY_FILE_FRAME_LAG}-frame lag)`,
       );
     })
     .catch((error: unknown) => {
