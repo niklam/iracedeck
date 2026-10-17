@@ -536,14 +536,14 @@ Switch the replay camera to the previous car by car number order. Every car in t
 
 ## On a dial
 
-Placed on a Stream Deck+ dial or a Mirabox knob, Replay Control becomes a replay dial. The dial's own **Mode** setting picks what turning does — **Speed Control** steps the replay speed along a ladder of speeds you choose, from fast rewind through pause to fast forward, and **Frame Jog** steps the replay one frame at a time — and the press and touch gestures are the same whatever the Mode: Play / Pause, Set 1x and Play, Reverse Direction or Jump to Live. Everything the dial sends is an iRacing replay command, so it needs no key binding. The Property Inspector automatically shows the dial settings below (instead of the keypad Mode and its settings) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
+Placed on a Stream Deck+ dial or a Mirabox knob, Replay Control becomes a replay dial. The dial's own **Mode** setting picks what turning does — **Speed Control** steps the replay speed along a ladder of speeds you choose, from fast rewind through pause to fast forward; **Frame Jog** steps the replay one frame at a time; **Lap**, **Session** and **Incident** step through the replay's laps, sessions and incidents; and **Car** moves the camera from car to car — and the press and touch gestures are the same whatever the Mode: Play / Pause, Set 1x and Play, Reverse Direction or Jump to Live. Everything the dial sends is an iRacing replay command, so it needs no key binding, except in **Car**, which uses iRacing's Next Car / Previous Car binding. The Property Inspector automatically shows the dial settings below (instead of the keypad Mode and its settings) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
 
 The dial works in the replay only. iRacing accepts replay commands only when you are out of the car, so from the car a turn or a press sends nothing and the display is dimmed — open the replay first. Every command the dial sends — a new speed, a pause, a frame step, a jump to live — also stops a running [Jump to Fastest Lap](#jump-to-fastest-lap) search, so your command stands. A turn or press that sends nothing leaves the search running: a turn past an end of the speed ladder, and Reverse Direction while the replay is paused.
 
 #### Details
 
-- **Method:** iRacing API for the rotation in both modes and for every press and touch action
-- **Dial:** In Speed Control, rotating steps the replay speed along the chosen ladder, one stop per detent — clockwise toward fast forward, counter-clockwise toward fast rewind — with no cap on a fast spin, stopping at the ends of the ladder. In Frame Jog, rotating steps the replay one frame per detent — clockwise to the next frame, counter-clockwise to the previous one. Both work in the replay only
+- **Method:** iRacing API for the rotation in every mode but Car, and for every press and touch action; Car uses the Next Car / Previous Car key binding
+- **Dial:** In Speed Control, rotating steps the replay speed along the chosen ladder, one stop per detent — clockwise toward fast forward, counter-clockwise toward fast rewind — with no cap on a fast spin, stopping at the ends of the ladder. In Frame Jog, rotating steps the replay one frame per detent — clockwise to the next frame, counter-clockwise to the previous one. In Lap, Session and Incident, each detent is one lap of the car the camera is on, one session or one incident, clockwise forward. In Car, each turn moves the camera one car, clockwise to the car ahead. All of them work in the replay only
 - **Default binding:** No keyboard binding
 - **Telemetry-aware icon:** Yes — in Speed Control the display shows the live replay speed, the speed a press will resume while paused, and which way a turn can still change the speed; in Frame Jog it shows the session time of the frame on screen and whether the replay is paused
 
@@ -558,6 +558,10 @@ What turning the dial does. Defaults to **Speed Control**. The press and touch s
 
 - **Speed Control** (default) — steps the replay speed along your speed ladder — see [Speed Control](#speed-control)
 - **Frame Jog** — steps the replay one frame per detent — see [Frame Jog](#frame-jog)
+- **Lap** — steps the laps of the car the camera is on — see [Lap and Session](#lap-and-session)
+- **Session** — steps the sessions of the replay — see [Lap and Session](#lap-and-session)
+- **Incident** — steps iRacing's incidents — see [Incident](#incident)
+- **Car** — moves the camera to the car ahead or behind — see [Car](#car)
 
 #### Speed Control
 
@@ -600,6 +604,29 @@ Every step is a request to iRacing, which takes a moment to move the replay, and
 
 Frame Jog has no settings of its own: the **Speeds** grid belongs to Speed Control and is hidden in this mode.
 
+#### Lap and Session
+
+Each detent moves the replay one lap of the car the camera is on, or one session: clockwise forward, counter-clockwise back. The replay lands a second before the car takes the line, or just inside the session, exactly as the [Next Lap](#next-lap) and [Next Session](#next-session) keys do.
+
+- **From iRaceDeck's record, a whole turn is one jump.** Where iRaceDeck recorded the laps or the sessions while the session ran live (see [Next Lap](#next-lap)), a spin of five detents is a single jump five laps on, however fast you spin, and the replay then does what **Replay jump playback** in the [Settings window](/docs/getting-started/settings/#delays) says. A turn while that jump is still landing steps on from where it is going.
+- **Without a record, the dial steps through iRacing's own search.** iRacing's lap and session searches cannot be sent one straight after another, so the dial sends one at a time and waits for each to land. The touch strip counts the steps still to go (`+3`, `-2`), a turn the other way takes steps off and can reverse, and a spin queues at most ten steps. The replay is paused while it steps, and once the last step lands it does what **Replay jump playback** says.
+- **The record and the search join up.** Where the record runs out part-way through a turn, the dial jumps as far as the record reaches, and the next detent carries on with the search.
+
+#### Incident
+
+Each detent is one step of iRacing's own incident search, paced the same way as a lap or session search without a record. iRaceDeck records incidents too, but the dial does not use that record yet.
+
+#### Car
+
+Each turn moves the camera one car: clockwise to the car ahead on track, counter-clockwise to the car behind. It presses iRacing's **Next Car** / **Previous Car** key binding (V / Shift+V by default, set on the **Key Bindings** tab of the [Settings window](/docs/getting-started/settings/)), the same binding [Camera Controls](/docs/actions/view-camera/camera-controls/)' dial uses, so one turn is one car however fast you spin. Turned while a replay jump is still landing, the camera moves once the jump has landed, because iRacing ignores a camera change during a jump; a further turn in that time replaces the first, so the camera still moves by one car. Car is the one mode that needs a key binding: the Property Inspector shows the binding while the Mode is Car, and the touch strip shows a warning while it is unset.
+
+:::caution[Lap, Session and Incident depend on how fast iRacing can move its replay]
+Fast turns ride on iRacing's replay seeking: they are less exact than slow ones, and they vary with your PC and the length of the replay. Two limits come from stepping through iRacing's own search:
+
+- **A turn past the end** — no further lap, session or incident that way — does nothing on a replay playing at normal speed or slower. On a paused replay, or after the first step of a spin, the dial waits a few seconds before it gives up, and leaves the replay paused a frame or two from where it was.
+- **A step to something far away**, more than about an hour and a half of recording, is given up the same way, unless it is the first step of a turn made while the replay plays at normal speed or slower. The [Next Session](#next-session) and [Next Incident](#next-incident) keys reach it in every case, and a Lap or Session turn from iRaceDeck's record is one jump however far.
+:::
+
 #### Touch strip
 
 The touch strip (and the screen above a Mirabox knob) shows a "dash box" for the selected Mode:
@@ -608,6 +635,10 @@ The touch strip (and the screen above a Mirabox knob) shows a "dash box" for the
 |---|---|---|---|---|
 | Speed Control | `SPEED` | The live replay speed — `4x`, `-1/4x`, or `PAUSED` | While paused, the speed a **Play / Pause** press will resume — `► 4x` forward, `◄ 2x` in reverse | Each side lights up while a turn that way would change the speed, and stays dimmed at that end of the ladder |
 | Frame Jog | `FRAME` | The session time of the frame on screen, as minutes, seconds and hundredths — `12:34.56` — or, while a turn is still landing, of the frame it is heading for. A frame is 1/60 of a second, so every step changes the hundredths | `PAUSED`, or the speed the replay is playing at — `4x`, `-1/4x` | Both sides are lit: a turn either way steps a frame |
+| Lap | `LAP` | The lap of the car the camera is on, from iRaceDeck's record — `L12` — or the replay time, `m:ss`, where the record has none | While the dial steps through iRacing's search, the steps still to go — `+3`; otherwise `PAUSED` or the playing speed | A side is dimmed only when the record has laps and none lies that way |
+| Session | `SESSION` | The session on screen — `RACE`, `QUALIFY` | As for Lap | As for Lap, with sessions |
+| Incident | `INCIDENT` | The replay time, `m:ss` | As for Lap | Both sides are lit |
+| Car | `CAR` | The car the camera is on — `#12` | `PAUSED` or the playing speed | Both sides are lit; a warning shows while the Next Car / Previous Car binding is unset |
 
 From the car, or while iRacing is not running, the box is dimmed and shows only its label. You can override the border, label, value, and background colors in the **Dash Box Appearance** section of the dial settings.
 
