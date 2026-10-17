@@ -508,6 +508,11 @@ const runs = new Map<string, number>();
 let batchDepth = 0;
 let batchNow = 0;
 const batchEnds = new Map<string, ReplayGateFactEnd[]>();
+/**
+ * A take of a jump by its own token, noted as no end: the run goes on when the take puts a new fact up.
+ * Read only when the take leaves the token with nothing under way, and cleared at every publish.
+ */
+const sameRunEnds = new Map<string, ReplayGateEndReason>();
 
 /** Runs `listener` on every change of any token's view. Returns the unsubscribe. */
 export function subscribeReplayGate(listener: (notice: ReplayGateNotice) => void): () => void {
@@ -599,9 +604,12 @@ function publish(): void {
     let after = next.get(origin) ?? EMPTY_VIEW;
     const ended = [...(batchEnds.get(origin) ?? [])];
 
-    // A fact that is gone with no end recorded for it still ends: never silently.
+    // A fact that is gone with no end recorded for it still ends: never silently. A take by its own token
+    // that left nothing under way was superseded; anything else ran out.
     if (before.underWay !== null && after.underWay === null && !ended.some((e) => e.fact === "underWay")) {
-      ended.push({ fact: "underWay", class: "gave-up", reason: "wait-ran-out" });
+      const reason = sameRunEnds.get(origin) ?? "wait-ran-out";
+
+      ended.push({ fact: "underWay", class: END_CLASS[reason], reason });
     }
 
     if (before.waiting !== null && after.waiting === null && !ended.some((e) => e.fact === "waiting")) {
@@ -634,6 +642,7 @@ function publish(): void {
   }
 
   batchEnds.clear();
+  sameRunEnds.clear();
 
   for (const notice of notices) {
     for (const listener of listeners) {
@@ -2161,11 +2170,13 @@ onReplayCursorTaken(() => {
   closedJumps.set(jump.claim, jump);
 
   const now = env.now();
-  // A press or a jump of the same token takes the cursor from its own jump: the run goes on.
+  // A press or a jump of the same token takes the cursor from its own jump: the run goes on, so no end is
+  // noted. Should the take leave the token nothing under way, its fact ends replaced, not run out.
   const sameRun = gateTaking && takingOrigin !== undefined && takingOrigin === jump.origin;
 
   batch(now, () => {
-    if (!sameRun) noteEnd(jump.origin, "underWay", "claim-taken");
+    if (sameRun && jump.origin !== undefined) sameRunEnds.set(jump.origin, "replaced");
+    else noteEnd(jump.origin, "underWay", "claim-taken");
 
     const target = pendingReplayTarget();
     const ownTarget = jump.target !== null && target !== null && target.id === jump.target.id;
@@ -2572,6 +2583,7 @@ export function _resetReplayCommandGate(): void {
   views.clear();
   runs.clear();
   batchEnds.clear();
+  sameRunEnds.clear();
   batchDepth = 0;
   env = defaultEnv;
   log = silentLogger;
