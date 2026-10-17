@@ -571,6 +571,30 @@ describe("the paced search runner (#801)", () => {
       expect(heard.filter((c) => c === null)).toHaveLength(1);
     });
 
+    it("gives the speed a superseded run captured back at the end of the run that replaced it", async () => {
+      setUp({ speed: { speed: 4, slowMotion: false }, minSeekMs: 300 });
+      turn("lap", 1, "dial-a");
+      await until("nextLap");
+      turn("incident", 1, "dial-b");
+      await untilIdle();
+
+      // The lap run paused the replay at 4x; its search was on its way, which read paused when it went out.
+      expect(sim.calls).toEqual(["setPlaySpeed 0", "nextLap", "nextIncident", "setPlaySpeed 4 false"]);
+      expect(sim.thrown).toBe(0);
+    });
+
+    it("ends with no give-up when the replay is left during the run", async () => {
+      setUp();
+      turn("lap", 3);
+      await until("nextLap");
+      inReplay = false;
+      await untilIdle(5_000);
+
+      expect(sim.calls).toEqual(["nextLap"]);
+      expect(runEnds()).toEqual(["claim-taken"]);
+      expect(warn).not.toHaveBeenCalled();
+    });
+
     it("catches a failure inside the runner, ends the run and hands the cursor back", async () => {
       setUp();
 
