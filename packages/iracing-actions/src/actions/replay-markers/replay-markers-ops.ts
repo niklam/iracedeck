@@ -21,19 +21,23 @@ import type { ILogger } from "@iracedeck/logger";
 import {
   MARKER_DEDUPE_FRAMES,
   MARKER_DELETE_WINDOW_FRAMES,
-  MARKER_PREVIOUS_MIN_BEHIND_FRAMES,
   type ReplayMarker,
   type ReplaySessionStore,
   type SubSessionScoped,
 } from "@iracedeck/replay-store";
 
-import { readReplayPosition } from "../../shared/replay-command-gate.js";
 import {
   beginReplayJump,
   describeReplayJump,
   type ReplayJumpOutcome,
   runReplayJump,
 } from "../../shared/replay-jump-playback.js";
+import {
+  recordedIndexAt,
+  type ReplayWalkDirection,
+  resolveReplayWalkAnchor,
+  walkRecordedIndex,
+} from "../../shared/replay-record-walk.js";
 
 /** Replay frames per second — the recording's fixed rate. */
 const FRAMES_PER_SECOND = 60;
@@ -55,7 +59,7 @@ export const CONFIRMATION_FLASH_MS = 1_000;
 export { REPLAY_EXIT_GRACE_MS };
 
 /** The two ways a jump goes: forward (Next, a clockwise turn) or back (Previous, counter-clockwise). */
-export type MarkerDirection = "next" | "previous";
+export type MarkerDirection = ReplayWalkDirection;
 
 /**
  * @internal Exported for testing
@@ -240,7 +244,8 @@ export function resolveJumpTarget(
  * end of the list rather than wrapping — a wrap would jump from the last lap to
  * the first without the driver seeing why. `steps` of 1 (or less) is `first`
  * itself. A `first` missing from the list (it cannot be, but the list is a
- * copy read separately) is returned as is.
+ * copy read separately) is returned as is. The walk is the shared one
+ * (`shared/replay-record-walk.ts`, #1426).
  */
 export function walkMarkers(
   markers: readonly ReplayMarker[],
@@ -252,48 +257,31 @@ export function walkMarkers(
 
   if (start === -1 || steps <= 1) return first;
 
-  const delta = (direction === "next" ? 1 : -1) * (Math.floor(steps) - 1);
-  const index = Math.min(markers.length - 1, Math.max(0, start + delta));
-
-  return markers[index] ?? first;
+  return markers[walkRecordedIndex(markers.length, start, direction, steps).index] ?? first;
 }
 
 /**
  * @internal Exported for testing
  *
  * The index of the marker whose moment is playing at `frame` — at it, or up to
- * {@link MARKER_PREVIOUS_MIN_BEHIND_FRAMES} (2 s) past it, the window Previous
- * treats as "still playing" — or -1. `markers` is ordered by frame.
+ * two seconds past it, the window Previous treats as "still playing" — or -1.
+ * `markers` is ordered by frame. The shared walk's rule
+ * (`recordedIndexAt`, #1426).
  */
 export function markerIndexAt(markers: readonly ReplayMarker[], frame: number): number {
-  for (let i = markers.length - 1; i >= 0; i--) {
-    const marker = markers[i];
-
-    if (marker === undefined || marker.frame > frame) continue;
-
-    return frame - marker.frame <= MARKER_PREVIOUS_MIN_BEHIND_FRAMES ? i : -1;
-  }
-
-  return -1;
+  return recordedIndexAt(
+    markers.map((m) => m.frame),
+    frame,
+  );
 }
 
 /**
  * The frame every Replay Markers surface measures a jump from — the keypad's
- * Next / Previous and every dial alike: the replay's one pending target
- * (`shared/replay-position-state.ts`, #1430) while it stands, else
- * `liveFrame`. A marker jump records its marker as the target at the press,
- * before the pause it sends a moving replay, so a second press or a detent in
- * that window steps on from it rather than sending the same marker again;
- * and the target stands until its frame reads back, which replaced the
- * marker surfaces' own rule of a second and 60 frames. Any surface's jump is
- * the target, a dial's frame move included: the replay is headed there.
- * `telemetry` is the reading the target is settled against.
+ * Next / Previous and every dial alike: the shared walk's anchor
+ * (`resolveReplayWalkAnchor`, moved to `shared/replay-record-walk.ts` in
+ * #1426), the replay's one pending target while it stands, else `liveFrame`.
  */
-export function resolveMarkerJumpAnchor(liveFrame: number, telemetry: TelemetryData | null): number {
-  const headed = readReplayPosition(telemetry);
-
-  return headed?.seeking === true ? headed.frame : liveFrame;
-}
+export const resolveMarkerJumpAnchor = resolveReplayWalkAnchor;
 
 /**
  * Whether the store holds an active record that a call with `context.scope`
