@@ -5,13 +5,23 @@
  * and every push to the dial's screen; a mode owns only what a turn does and
  * what the box reads while that mode is selected. A new mode is one module
  * exporting a {@link ReplayDialMode} plus one row in the surface's registry.
+ *
+ * #801 added Lap, Session, Incident and Car, and with them what a mode that
+ * moves the replay by the record, by iRacing's search or by a key binding
+ * needs from the surface: a waited record jump, the record step, the paced
+ * search, a binding tap and the jump wait a camera tap sits behind. Design:
+ * `docs/superpowers/specs/2026-10-12-issue-801-replay-control-dial-stepping.md`
+ * ("The seam").
  */
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 
 import type { DialSideMarks } from "../../shared/dial-box.js";
+import type { ReplaySettledOutcome } from "../../shared/replay-command-gate.js";
 import type { ReplayPosition } from "../../shared/replay-position-state.js";
 import type { ReplayControlDialSettings } from "./replay-control-dial-settings.js";
+import type { RecordStepResult, RecordStepSource, RecordStepSpec } from "./replay-record-step.js";
+import type { ReplaySearchTarget } from "./replay-search-queue.js";
 
 /**
  * A replay speed in the shape `setPlaySpeed(speed, slowMotion)` takes and
@@ -85,22 +95,100 @@ export interface ReplayDialModeIo {
   jumpTo(owner: string, frame: number): boolean;
 }
 
+/**
+ * What the surface hands a mode that steps through the record, iRacing's
+ * searches or a key binding (#801): {@link ReplayDialModeIo} and what Lap,
+ * Session, Incident and Car need beside it. Kept apart so a mode that moves
+ * the replay by speed or by frames is handed, and tested against, only what
+ * it uses. The members that carry the turning dial's origin token
+ * ({@link recordJump}, {@link queueSearch}) have it bound by the surface, so
+ * a mode never handles the token: the surface hands each dial an `io` of its
+ * own.
+ */
+export interface ReplayDialStepIo extends ReplayDialModeIo {
+  /**
+   * One waited jump to `frame` through the shared jump sequence
+   * (`shared/replay-jump-playback.ts`, #1276), carrying the turning dial's
+   * origin token: the replay cursor is claimed and the frame recorded as the
+   * pending target at the call, before the pause a moving replay is sent, so
+   * a turn made while it runs steps on from where it is headed and its own
+   * jump takes the cursor over. Ends as the Replay jump playback setting
+   * says. Resolves once the jump has ended, however it ended; a cancellation
+   * or a timeout is logged, never thrown. Unlike {@link jumpTo}, a one-shot
+   * that waits for nothing.
+   */
+  recordJump(owner: string, frame: number): Promise<void>;
+  /**
+   * The record step (#1426's `findRecordStep`) of `steps` entries from where
+   * the replay is headed, else the cursor (`resolveReplayWalkStart`). A miss
+   * names why, "no cursor" included; nothing is sent.
+   */
+  recordStep(step: RecordStepSpec, steps: number): RecordStepResult;
+  /**
+   * What a record lookup reads — the store, the camera car, the session info —
+   * from this entry's reading, for a view, which reads the record in memory
+   * and waits for nothing.
+   */
+  recordSource(): RecordStepSource;
+  /** The session info the SDK holds, or null. */
+  sessionInfo(): unknown;
+  /**
+   * Adds a turn of `ticks` detents to the paced search
+   * (`replay-search-queue.ts`) under `owner`, carrying the turning dial's
+   * origin token; the runner works in the background.
+   */
+  queueSearch(owner: string, target: ReplaySearchTarget, ticks: number): void;
+  /** Whether the paced search is working for `target`: a Lap or Session turn then adds to its count. */
+  isSearchRunning(target: ReplaySearchTarget): boolean;
+  /** What the paced search has left for `target` (signed), or null when no run is for it. */
+  pendingSearch(target: ReplaySearchTarget): number | null;
+  /** Taps one of the action's key bindings by its global setting key; resolves to whether it went out. */
+  tapBinding(settingKey: string): Promise<boolean>;
+  /** Whether any of the given global binding keys is unset (#612). */
+  isBindingMissing(keys: string | readonly string[]): boolean;
+  /**
+   * Cancels a Jump to Fastest Lap or Jump to Race Start walk that holds the
+   * replay cursor — the two whose searches ride on the camera's car — and no
+   * other owner, naming `by`.
+   */
+  cancelCameraWalks(by: string): void;
+  /** Whether a position jump is under way: a pending target standing, or a seek showing. A search is not one. */
+  isJumpUnderWay(): boolean;
+  /**
+   * Waits until no jump has been under way on three reads 50 ms apart, with
+   * no claim and bounded by the longest any jump waits
+   * (`REPLAY_JUMP_MAX_WAIT_MS`): a jump that starts meanwhile is waited for
+   * too. Takes no cursor and sends nothing.
+   */
+  waitForJumpsToSettle(): Promise<ReplaySettledOutcome>;
+  /** Whether the dial this `io` was handed for is still on screen, with a replay to act on. */
+  isStillOnScreen(): boolean;
+}
+
 /** What the dash box reads in a mode, under the mode's label. All of it goes into the displayed signature. */
 export interface ReplayDialModeView {
-  /** The value slot. */
-  value: string;
+  /**
+   * The value slot. Null when this reading cannot say — a tick read mid-seek,
+   * which shows frame 0 and replay time 0 — and the box keeps the value it
+   * last drew for the dial (#801).
+   */
+  value: string | null;
   /** The small line along the bottom; empty for none. */
   caption: string;
   /** Lit where a turn that way would do something. */
   sides: DialSideMarks;
+  /** Whether a key binding the mode taps is unset: the box draws the missing-binding warning (#612). */
+  bindingMissing?: boolean;
 }
 
 /**
  * One rotation mode of the Replay Control dial. It holds no state of its own:
  * what it reads comes from `dial`, `io` and the replay speed state every dial
- * shares (`replay-speed-state.ts`).
+ * shares (`replay-speed-state.ts`) — save Car's one tap waiting behind a jump,
+ * which is one for the whole plugin (#801). `Io` is what the mode is handed:
+ * {@link ReplayDialStepIo} for the modes that need it.
  */
-export interface ReplayDialMode {
+export interface ReplayDialMode<Io extends ReplayDialModeIo = ReplayDialModeIo> {
   /** The box's label, e.g. `SPEED`: shown in a replay and, dimmed, outside one. */
   readonly label: string;
   /** What a turn does, for the Stream Deck app's dial hint (the Rotate trigger description). */
@@ -108,9 +196,11 @@ export interface ReplayDialMode {
   /**
    * A turn of `ticks` detents (never 0; positive is clockwise). Scales by
    * `ticks` and sends at most one command per event unless the mode documents
-   * otherwise.
+   * otherwise. A turn that waits for something may return a promise: the
+   * surface logs a rejection and redraws once it settles, and a further turn
+   * meanwhile is the mode's to take (#801).
    */
-  rotate(ticks: number, dial: ReplayControlDialSettings, io: ReplayDialModeIo): void;
+  rotate(ticks: number, dial: ReplayControlDialSettings, io: Io): void | Promise<void>;
   /** What the box shows now. Pure: called on every tick and compared, so it sends nothing. */
-  view(dial: ReplayControlDialSettings, io: ReplayDialModeIo): ReplayDialModeView;
+  view(dial: ReplayControlDialSettings, io: Io): ReplayDialModeView;
 }

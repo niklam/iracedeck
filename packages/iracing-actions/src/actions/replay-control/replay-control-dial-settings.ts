@@ -10,10 +10,12 @@ import z from "zod";
 import { dialAppearanceFields } from "../../shared/dial-box.js";
 
 /**
- * What the dial's rotation does: Speed Control (#1316) or Frame Jog (#1317).
- * `dial.mode` is dial-only; the keypad's `mode` is ignored on a dial.
+ * What the dial's rotation does: Speed Control (#1316), Frame Jog (#1317), or
+ * Lap, Session, Incident and Car stepping (#801). `dial.mode` is dial-only;
+ * the keypad's `mode` is ignored on a dial. A value this build does not know
+ * reads as Speed Control, and nothing is migrated.
  */
-export const REPLAY_DIAL_MODES = ["speed", "frame-jog"] as const;
+export const REPLAY_DIAL_MODES = ["speed", "frame-jog", "lap", "session", "incident", "car"] as const;
 
 export type ReplayControlDialMode = (typeof REPLAY_DIAL_MODES)[number];
 

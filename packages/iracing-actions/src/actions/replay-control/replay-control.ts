@@ -86,7 +86,11 @@ import {
   setReplayCommandGateLogger,
   waitForReplayJumpsToSettle,
 } from "../../shared/replay-command-gate.js";
-import { cancelReplayCursorOwner, type ReplayCursorClaim } from "../../shared/replay-cursor.js";
+import {
+  cancelReplayCursorOwner,
+  cancelReplayCursorOwnerIf,
+  type ReplayCursorClaim,
+} from "../../shared/replay-cursor.js";
 import {
   applyReplayJumpPlayback,
   beginReplayJump,
@@ -119,6 +123,7 @@ import { replayControlDialField } from "./replay-control-dial-settings.js";
 import { ReplayControlDialSurface } from "./replay-control-dial-surface.js";
 import { observeIncidentSearch } from "./replay-incident-observer.js";
 import { findRecordStep, RECORD_STEPS, type RecordStepMode } from "./replay-record-step.js";
+import { setReplaySearchQueueLogger } from "./replay-search-queue.js";
 import { formatSpeedDisplay, parseSpeedSetting } from "./replay-speed-format.js";
 import { noteTelemetrySpeed } from "./replay-speed-state.js";
 
@@ -982,6 +987,21 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     canJumpToRaceStart: () =>
       resolveGreenFlagTarget(this.sdkController.getSessionInfo(), this.sdkController.getCurrentTelemetry()) !== null,
     refreshKeys: () => this.updateAllTelemetryDisplays(),
+    // What the Lap and Session modes step from and through (#801): the same
+    // reads as the keypad's record step.
+    replayState: (nowMs) => this.sdkController.getReplayState(nowMs),
+    sessionInfo: () => this.sdkController.getSessionInfo(),
+    subSessionId: () => readSubSessionId(this.sdkController.getSessionInfo()),
+    lapApproachFrames: LAP_START_APPROACH_FRAMES,
+    // The Car mode's binding (#801). Never `setActiveBinding`: its readiness
+    // state is one value per action instance, and a dial's would bleed onto the
+    // keys; `isBindingMissing` is stateless.
+    tapBinding: (settingKey) => this.tapBinding(settingKey),
+    isBindingMissing: (keys) => this.isBindingMissing(keys),
+    // Only the two walks whose searches ride on the camera's car stop for a camera switch.
+    cancelCameraWalks: (by) => {
+      cancelReplayCursorOwnerIf([FASTEST_LAP_WALK_OWNER, RACE_START_WALK_OWNER], by);
+    },
   });
 
   /**
@@ -998,6 +1018,8 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     // (#1430), whose own lines (a press held behind a jump, one dropped) go
     // to a scope of this action's log.
     setReplayCommandGateLogger(this.logger.createScope("ReplayGate"));
+    // The dial's paced search (#801) logs to a scope of its own beside it.
+    setReplaySearchQueueLogger(this.logger.createScope("ReplaySearch"));
   }
 
   override async onWillAppear(ev: IDeckWillAppearEvent<ReplayControlSettings>): Promise<void> {

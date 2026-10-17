@@ -1605,6 +1605,40 @@ describe("ReplayControl", () => {
       vi.mocked(getCommands).mockReset();
     });
 
+    describe("what the host hands the stepping modes (#801)", () => {
+      it.each(["jump-to-fastest-lap walk", "jump-to-race-start walk"])(
+        "a Car turn cancels the %s, whose searches ride on the camera's car",
+        (owner) => {
+          const claim = claimReplayCursor(owner);
+
+          host().cancelCameraWalks("dial-car");
+
+          expect(claim.cancelledBy).toBe("dial-car");
+        },
+      );
+
+      it.each(["dial-lap", "replay-markers next", "jump-to-fastest-lap record jump", "jump-to-race-start jump"])(
+        "a Car turn leaves %s standing",
+        (owner) => {
+          const claim = claimReplayCursor(owner);
+
+          host().cancelCameraWalks("dial-car");
+
+          expect(claim.cancelledBy).toBeNull();
+        },
+      );
+
+      it("lands a lap step where the keypad's does, a second before the line", () => {
+        expect(host().lapApproachFrames).toBe(60);
+      });
+
+      it("reads the binding state without setting the action's active binding", () => {
+        host().isBindingMissing(["replayControlNextCar", "replayControlPrevCar"]);
+
+        expect(action["setActiveBinding"]).not.toHaveBeenCalled();
+      });
+    });
+
     describe("lifecycle", () => {
       it("a dial appearing goes to the surface with its dial settings, never onto the key path", async () => {
         const ev = dialEvent();
