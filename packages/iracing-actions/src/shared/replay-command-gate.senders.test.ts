@@ -365,6 +365,23 @@ describe("the jump sequence and the other senders (#1430)", () => {
 
       expect(notices.flatMap((n) => (n.origin === "markers-dial" ? n.ended : []))).toEqual([]);
     });
+
+    it("a token's walk taken by its own Play, which leaves it nothing under way, ends replaced, not run out (#1437)", () => {
+      setUp();
+
+      const notices: ReplayGateNotice[] = [];
+      // A walk has no target of its own: only its held jump keeps the token under way.
+      const jump = beginReplayJump("walk", sim.telemetry(), undefined, Date.now(), { origin: "walk-key" });
+
+      subscribeReplayGate((notice) => notices.push(notice));
+
+      expect(press(PLAY, "walk-key")).toEqual({ kind: "sent", ok: true });
+      jump.end();
+
+      expect(notices.flatMap((n) => (n.origin === "walk-key" ? n.ended : []))).toEqual([
+        { fact: "underWay", class: "superseded", reason: "replaced" },
+      ]);
+    });
   });
 
   describe("what the second read of #1430 turned up", () => {
