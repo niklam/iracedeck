@@ -27,7 +27,7 @@ The key you pressed shows what became of the press until the replay has caught u
 - **Three still dots:** the press is waiting for another jump or search to land, and acts when it does. Behind a search, press the key again to act at once.
 - **A red cross, for a second:** the press was not done. The search found nothing, the jump did not land where it was going, or another Jump to Fastest Lap or Jump to Race Start was still running.
 
-Only the key you pressed shows it. On a dial, the same three marks appear at the left end of the dial screen's bottom line, for a press or a gesture that jumps; turning the dial to change the speed or to step frames shows none.
+Only the key you pressed shows it. On a dial, the marks appear at the left end of the dial screen's bottom line after a press or a touch gesture: the turning dots only for Jump to Live and Jump to Race Start, and the still dots or the red cross for any of them. Turning the dial to change the speed or to step frames shows none.
 
 ## Modes
 
