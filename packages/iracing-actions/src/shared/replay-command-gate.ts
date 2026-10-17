@@ -2122,14 +2122,21 @@ export function closeReplayJump(handle: ReplayJumpGateHandle, result: ReplayJump
 
     held = null;
     closedJumps.set(handle.claim, jump);
-    noteEnd(
-      jump.origin,
-      "underWay",
-      result === "landed" ? "jump-landed" : result === "gave-up" ? "walk-gave-up" : "claim-taken",
-    );
+    noteEnd(jump.origin, "underWay", closedJumpEnd(result));
     clearUnsent(handle);
   });
   arm();
+}
+
+/** The end a closed jump notes: one that gave up out of the replay, or with the sim gone, says which. */
+function closedJumpEnd(result: ReplayJumpResult): ReplayGateEndReason {
+  if (result === "landed") return "jump-landed";
+
+  if (result === "cancelled") return "claim-taken";
+
+  if (!env.connected()) return "disconnected";
+
+  return env.inReplay() ? "walk-gave-up" : "replay-left";
 }
 
 function clearUnsent(handle: ReplayJumpGateHandle): void {
