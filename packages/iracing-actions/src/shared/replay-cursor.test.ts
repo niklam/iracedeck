@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   _resetReplayCursor,
   cancelReplayCursorOwner,
+  cancelReplayCursorOwnerIf,
   claimReplayCursor,
   clearReplayJumpSpeed,
   currentReplayCursorOwner,
@@ -86,6 +87,44 @@ describe("replay-cursor", () => {
     expect(claim.cancelledBy).toBeNull();
     expect(onCancelled).not.toHaveBeenCalled();
     expect(cancelReplayCursorOwner("later jump")).toBeNull();
+  });
+
+  describe("cancelReplayCursorOwnerIf (#801)", () => {
+    const WALKS = ["fastest-lap walk", "race-start walk"];
+
+    it.each(WALKS)("cancels a claim held by %s, naming the command", (owner) => {
+      const onCancelled = vi.fn();
+      const claim = claimReplayCursor(owner, onCancelled);
+
+      expect(cancelReplayCursorOwnerIf(WALKS, "dial-car")).toBe(owner);
+      expect(claim.cancelledBy).toBe("dial-car");
+      expect(onCancelled).toHaveBeenCalledExactlyOnceWith("dial-car");
+      expect(currentReplayCursorOwner()).toBeNull();
+    });
+
+    it("leaves any other owner standing, its jump speed kept and no listener told", () => {
+      const listener = vi.fn();
+      const claim = claimReplayCursor("dial-lap");
+
+      recordReplayJumpSpeed({ speed: 2, slowMotion: false, appliedAt: null });
+      const unsubscribe = onReplayCursorTaken(listener);
+
+      expect(cancelReplayCursorOwnerIf(WALKS, "dial-car")).toBeNull();
+      expect(claim.cancelledBy).toBeNull();
+      expect(currentReplayCursorOwner()).toBe("dial-lap");
+      expect(pendingReplayJumpSpeed()).not.toBeNull();
+      expect(listener).not.toHaveBeenCalled();
+      unsubscribe();
+    });
+
+    it("is a no-op that returns null with nothing in flight, or a claim already cancelled", () => {
+      expect(cancelReplayCursorOwnerIf(WALKS, "dial-car")).toBeNull();
+
+      claimReplayCursor("fastest-lap walk");
+      cancelReplayCursorOwner("play-pause");
+
+      expect(cancelReplayCursorOwnerIf(WALKS, "dial-car")).toBeNull();
+    });
   });
 
   describe("onReplayCursorTaken (#1316)", () => {
