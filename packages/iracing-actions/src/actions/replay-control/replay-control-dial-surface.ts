@@ -84,6 +84,7 @@ import {
 import {
   isReplaySearchRunning,
   onReplaySearchChange,
+  onReplaySearchSpeedSent,
   pendingReplaySearch,
   queueReplaySearch,
 } from "./replay-search-queue.js";
@@ -437,6 +438,9 @@ export class ReplayControlDialSurface {
   /** The paced search's change subscription while any dial is on screen (#801), or null. */
   private searchUnsubscribe: (() => void) | null = null;
 
+  /** The paced search's sent-speed subscription while any dial is on screen (#801), or null. */
+  private searchSpeedUnsubscribe: (() => void) | null = null;
+
   /** Whether a synchronous entry ({@link withReading}) is running. */
   private inEntry = false;
 
@@ -564,6 +568,8 @@ export class ReplayControlDialSurface {
     if (this.contexts.size === 0) {
       this.searchUnsubscribe?.();
       this.searchUnsubscribe = null;
+      this.searchSpeedUnsubscribe?.();
+      this.searchSpeedUnsubscribe = null;
     }
 
     // The lapse timer is left running: the pending speed it answers for
@@ -1100,6 +1106,16 @@ export class ReplayControlDialSurface {
     // The paced search's count is drawn on the box (#801): redraw on its every
     // change while any dial is on screen.
     this.searchUnsubscribe ??= onReplaySearchChange(() => this.withReading(() => this.renderAll()));
+    // The speeds the search's runner sends (its pause, the playback step at the
+    // end of a run) are this plugin's sends: mirrored into the dials and the
+    // keys as a record jump's pause and landing are, and drawn at once, since
+    // a paused replay may deliver no tick.
+    this.searchSpeedUnsubscribe ??= onReplaySearchSpeedSent((speed) =>
+      this.withReading(() => {
+        this.noteSpeedSent(speed);
+        this.renderAll();
+      }),
+    );
     // The real helper only where the extended gestures exist (#1120).
     created.holdPreview = __FEATURE_DIAL_EXTENDED_GESTURES__
       ? createHoldPreview({

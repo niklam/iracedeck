@@ -54,6 +54,7 @@ const queue = vi.hoisted(() => ({
   pending: null as { target: string; count: number; origin: string } | null,
   running: null as string | null,
   listeners: new Set<() => void>(),
+  speedListeners: new Set<(speed: { speed: number; slowMotion: boolean }) => void>(),
 }));
 
 vi.mock("./replay-search-queue.js", () => ({
@@ -67,6 +68,13 @@ vi.mock("./replay-search-queue.js", () => ({
 
     return () => {
       queue.listeners.delete(listener);
+    };
+  },
+  onReplaySearchSpeedSent: (listener: (speed: { speed: number; slowMotion: boolean }) => void) => {
+    queue.speedListeners.add(listener);
+
+    return () => {
+      queue.speedListeners.delete(listener);
     };
   },
   _resetReplaySearchQueue: () => undefined,
@@ -313,6 +321,7 @@ describe("ReplayControlDialSurface", () => {
     queue.pending = null;
     queue.running = null;
     queue.listeners.clear();
+    queue.speedListeners.clear();
     host.isBindingMissing.mockReturnValue(false);
     host.tapBinding.mockResolvedValue(true);
     mocks.thresholdMs.value = 500;
@@ -3133,11 +3142,38 @@ describe("ReplayControlDialSurface", () => {
         await appear(surface, a, dial({ mode: "lap" }));
         await appear(surface, b, dial({ mode: "incident" }));
         expect(queue.listeners.size).toBe(1);
+        expect(queue.speedListeners.size).toBe(1);
 
         surface.willDisappear("a");
         expect(queue.listeners.size).toBe(1);
+        expect(queue.speedListeners.size).toBe(1);
         surface.willDisappear("b");
         expect(queue.listeners.size).toBe(0);
+        expect(queue.speedListeners.size).toBe(0);
+      });
+
+      it("mirrors every speed the search's runner sends into the caption and the keys, as a record jump's", async () => {
+        const playing = { ...pausedOn(54_000), ...replayAt({ speed: 1, slowMotion: false }) } as TelemetryData;
+        const { ctx } = await dialIn("incident", playing);
+        expect(shownCaption(lastBox(ctx))).toBe("1x");
+
+        // The runner paused the replay for its search: no tick follows yet.
+        for (const listener of queue.speedListeners) listener({ speed: 0, slowMotion: false });
+
+        await settle();
+        expect(host.setLocalSpeed).toHaveBeenLastCalledWith(0, false);
+        expect(host.refreshKeys).toHaveBeenCalled();
+        expect(shownCaption(lastBox(ctx))).toBe("PAUSED");
+
+        // The run ended at zero and its playback step played the replay on at 2x.
+        host.refreshKeys.mockClear();
+
+        for (const listener of queue.speedListeners) listener({ speed: 2, slowMotion: false });
+
+        await settle();
+        expect(host.setLocalSpeed).toHaveBeenLastCalledWith(2, false);
+        expect(host.refreshKeys).toHaveBeenCalled();
+        expect(shownCaption(lastBox(ctx))).toBe("2x");
       });
 
       it("Lap and Session side marks: lit with somewhere to go, dim with a record that has nothing that way, lit with no record", async () => {
