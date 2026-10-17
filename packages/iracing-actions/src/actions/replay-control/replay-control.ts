@@ -1052,10 +1052,9 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     setLocalSpeed: (speed, slowMotion) => this.setLocalSpeed(speed, slowMotion),
     // The keypad's own Jump to Live, cursor take and replay-state note included, under the dial's
     // token so its box shows the busy look (#1437).
-    jumpToLive: (origin) => this.executeMode(origin ?? "__dial__", this.parseSettings({ mode: "jump-to-live" })),
+    jumpToLive: (origin) => this.executeMode(origin, this.parseSettings({ mode: "jump-to-live" })),
     // The keypad's own Jump to Race Start press (#1354), guards and fallback included.
-    jumpToRaceStart: (origin) =>
-      this.executeMode(origin ?? "__dial__", this.parseSettings({ mode: "jump-to-race-start" })),
+    jumpToRaceStart: (origin) => this.executeMode(origin, this.parseSettings({ mode: "jump-to-race-start" })),
     canJumpToRaceStart: () =>
       resolveGreenFlagTarget(this.sdkController.getSessionInfo(), this.sdkController.getCurrentTelemetry()) !== null,
     // The keypad's Jump to My Car switch (#801), without its cursor take: the

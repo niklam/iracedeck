@@ -167,16 +167,15 @@ export interface ReplayControlDialHost {
   /**
    * The keypad's Jump to Live, which takes the replay cursor itself, under its
    * own mode name (`jump-to-live`). `origin` is the dial's context id, the
-   * press's origin token (#1437), so the dial's own box shows the jump; the
-   * surface always passes it.
+   * press's origin token (#1437), so the dial's own box shows the jump.
    */
-  jumpToLive(origin?: string): void;
+  jumpToLive(origin: string): void;
   /**
    * The keypad's Jump to Race Start press (#1354): its guards, its record
    * lookup and its fallback, and the replay cursor taken by the jump it starts.
    * `origin` is the dial's context id, as for {@link jumpToLive}.
    */
-  jumpToRaceStart(origin?: string): void;
+  jumpToRaceStart(origin: string): void;
   /** Whether that press has a race session to aim at; false is the one case a Jump to Race Start key greys for. */
   canJumpToRaceStart(): boolean;
   /**
