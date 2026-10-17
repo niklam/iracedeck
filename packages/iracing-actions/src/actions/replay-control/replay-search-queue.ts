@@ -931,13 +931,25 @@ async function playingPath(r: Run, reading: Reading): Promise<Ending> {
   return pausedRun(r);
 }
 
-/** The jump back to the frame a playing landing first read, waited for to read back and hold. Null to go on. */
+/**
+ * The jump back to the frame a playing landing first read, waited for to read
+ * back and hold. Null to go on. A replay the pause left on that very frame (a
+ * slow replay can still be on it) gets no jump: one to the frame on screen
+ * can never read back conclusively, and with the runner holding the cursor
+ * the gate would keep its target to the two-minute ceiling.
+ */
 async function jumpBack(r: Run, frame: number | null): Promise<Ending | null> {
   const claim = r.jump?.claim;
 
   if (claim === undefined) return "cancelled";
 
   if (frame === null) return neverReadBack(r, "the landing's first frame was not read");
+
+  if (readReading(env.readTelemetry(), Date.now())?.frame === frame) {
+    log.debug(`Replay search queue: the pause left the replay on frame ${frame}, where the landing first read`);
+
+    return null;
+  }
 
   const sent = sendOwnedReplayCommand(claim, { kind: "jump", frame }, { origin: r.origin });
 

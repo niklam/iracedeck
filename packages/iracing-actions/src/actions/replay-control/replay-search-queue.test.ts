@@ -911,6 +911,43 @@ describe("the paced search runner (#801)", () => {
       expect(sim.thrown).toBe(0);
     });
 
+    it("sends no jump back when the pause left a slow replay on the frame the landing first read, and steps on promptly", async () => {
+      // The fake's search clears slow motion, so the replay stands on the landing frame by landing on the tape's
+      // last frame: the frame the slow replay iRacing leaves would still show when the pause reads back.
+      setUp({ speed: { speed: 16, slowMotion: true }, end: START + 3_000 });
+
+      // A jump to the frame on screen moves nothing and shows no seek, so it could never read back.
+      const setPlayPosition = vi.mocked(sim.replay.setPlayPosition);
+      const original = setPlayPosition.getMockImplementation();
+
+      if (original === undefined) throw new Error("no setPlayPosition on the fake");
+
+      setPlayPosition.mockImplementation((mode, frame) => {
+        if (frame === sim.frame()) {
+          sim.calls.push(`setPlayPosition ${mode} ${frame}`);
+
+          return true;
+        }
+
+        return original(mode, frame);
+      });
+
+      const sends = trackSends(["setPlaySpeed", "prevLap"]);
+
+      turn("lap", 1);
+      turn("lap", -2);
+      await untilIdle(10_000);
+
+      expect(sim.calls).toEqual(["nextLap", "setPlaySpeed 0", "prevLap", "prevLap", "setPlaySpeed 16 true"]);
+      // The first step back goes out on the pause's held read-back, not at a give-up.
+      expect(sends[1].name).toBe("prevLap");
+      expect(sends[1].at - sends[0].at).toBeLessThan(500);
+      expect(sim.frame()).toBe(START + 3_000 - 6_000);
+      expect(sim.thrown).toBe(0);
+      expect(warn).not.toHaveBeenCalled();
+      expect(runEnds()).toEqual(["jump-landed"]);
+    });
+
     it.each([
       [
         "a lap step in the direction of play",
