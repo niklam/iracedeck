@@ -5,7 +5,7 @@ import { lapMode } from "./replay-control-lap-mode.js";
 import { sessionMode } from "./replay-control-session-mode.js";
 import { formatReplayClock, recordSides, stepCaption } from "./replay-control-step-mode.js";
 import { fakeStepIo, lapsAt, recordSource, sessionsAt } from "./replay-dial-step-io.test-support.js";
-import { RECORD_STEPS } from "./replay-record-step.js";
+import { listRecord, RECORD_STEPS } from "./replay-record-step.js";
 
 vi.mock("@iracedeck/settings", () => ({ getGlobalSettings: vi.fn(() => ({})) }));
 
@@ -71,7 +71,7 @@ describe("recordSides", () => {
   const position = (frame: number) => ({ frame, time: undefined, endFrame: undefined, seeking: false });
 
   it("is dim only on a side where the record has entries and none lies that way", () => {
-    const source = recordSource(null, sessionsAt([0, 60_000, 150_000]));
+    const source = listRecord("session", recordSource(null, sessionsAt([0, 60_000, 150_000])));
     const steps = { next: RECORD_STEPS["next-session"], previous: RECORD_STEPS["prev-session"] };
 
     // In the first session, at its landing: nothing before it.
@@ -83,21 +83,61 @@ describe("recordSides", () => {
   });
 
   it("is lit both ways with no record, since iRacing's search may still move", () => {
-    expect(recordSides(position(5_000), recordSource(null, null), LAP_STEPS)).toEqual({ left: true, right: true });
-    expect(recordSides(position(5_000), { ...recordSource(null, null), store: null }, LAP_STEPS)).toEqual({
+    expect(recordSides(position(5_000), listRecord("lap", recordSource(null, null)), LAP_STEPS)).toEqual({
+      left: true,
+      right: true,
+    });
+    expect(
+      recordSides(position(5_000), listRecord("lap", { ...recordSource(null, null), store: null }), LAP_STEPS),
+    ).toEqual({
       left: true,
       right: true,
     });
   });
 
   it("is lit at the last recorded lap, whose end the record does not hold", () => {
-    const source = recordSource(lapsAt([50_000, 53_000, 56_000]), null);
+    const source = listRecord("lap", recordSource(lapsAt([50_000, 53_000, 56_000]), null));
 
     expect(recordSides(position(57_000), source, LAP_STEPS)).toEqual({ left: true, right: true });
   });
 
   it("is lit both ways with no position", () => {
-    expect(recordSides(null, recordSource(lapsAt([50_000]), null), LAP_STEPS)).toEqual({ left: true, right: true });
+    expect(recordSides(null, listRecord("lap", recordSource(lapsAt([50_000]), null)), LAP_STEPS)).toEqual({
+      left: true,
+      right: true,
+    });
+  });
+});
+
+describe("a view reads the record once", () => {
+  const at = (frame: number, seeking: boolean) => ({ frame, time: undefined, endFrame: undefined, seeking });
+
+  it.each([false, true])("Lap: one lap listing for the value and both side marks (seeking: %s)", (seeking) => {
+    const io = fakeStepIo();
+    const source = recordSource(lapsAt([50_000, 53_000, 56_000]), sessionsAt([0, 40_000]));
+    const listLapStarts = vi.spyOn(source.store!.laps, "listLapStarts");
+    const listSessions = vi.spyOn(source.store!.sessions, "list");
+
+    io.recordSource.mockReturnValue(source);
+    io.position.mockReturnValue(at(54_000, seeking));
+
+    expect(lapMode.view(dial, io)).toMatchObject({ value: "L2", sides: { left: true, right: true } });
+    expect(listLapStarts).toHaveBeenCalledTimes(1);
+    expect(listSessions).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])("Session: one session listing for the value and both side marks (seeking: %s)", (seeking) => {
+    const io = fakeStepIo();
+    const source = recordSource(lapsAt([50_000]), sessionsAt([0, 40_000, 90_000]));
+    const listLapStarts = vi.spyOn(source.store!.laps, "listLapStarts");
+    const listSessions = vi.spyOn(source.store!.sessions, "list");
+
+    io.recordSource.mockReturnValue(source);
+    io.position.mockReturnValue(at(54_000, seeking));
+
+    expect(sessionMode.view(dial, io).sides).toEqual({ left: true, right: true });
+    expect(listSessions).toHaveBeenCalledTimes(1);
+    expect(listLapStarts).not.toHaveBeenCalled();
   });
 });
 

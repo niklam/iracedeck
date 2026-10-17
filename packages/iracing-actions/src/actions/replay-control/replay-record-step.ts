@@ -135,21 +135,30 @@ export function sessionSpans(lastSessionNum: number | null): RecordedSpanRule<Re
   };
 }
 
-/**
- * A store listing's recorded entries, raw, with the rule for its gaps and the
- * offset a jump to one of them lands at, or why it has none.
- */
-type Listed<T extends RecordedEntry> =
-  | {
-      hit: true;
-      entries: readonly T[];
-      rule: RecordedSpanRule<T>;
-      landing: (frame: number) => number;
-      what: string;
-    }
-  | { hit: false; reason: string };
+/** A store listing's recorded entries, raw, sorted by frame, with the rule for its gaps and the offset a jump to one of them lands at. */
+interface ListedEntries<T extends RecordedEntry> {
+  readonly hit: true;
+  readonly entries: readonly T[];
+  readonly rule: RecordedSpanRule<T>;
+  /** The frame a jump to the entry at `frame` lands at. */
+  readonly landing: (frame: number) => number;
+  /** What the list is, for the log. */
+  readonly what: string;
+}
 
-function lapStarts(source: RecordStepSource, store: ReplaySessionStore): Listed<LapStartListEntry> {
+/**
+ * One read of a list from the record ({@link listRecord}): the entries a step
+ * walks, or why the record cannot answer. Read once and stepped through as
+ * often as needed ({@link stepRecordListing}): a dial view's value and both
+ * its side marks come from one listing (#801), since every store listing
+ * allocates and sorts the whole list.
+ */
+export type RecordListing =
+  | (ListedEntries<LapStartListEntry> & { readonly list: "lap" })
+  | (ListedEntries<ReplaySessionStart> & { readonly list: "session" })
+  | { readonly hit: false; readonly reason: string };
+
+function lapStarts(source: RecordStepSource, store: ReplaySessionStore): RecordListing {
   const carIdx = source.camCarIdx;
 
   if (typeof carIdx !== "number" || !Number.isInteger(carIdx) || carIdx < 0 || carIdx === NO_CAR_IDX) {
@@ -166,6 +175,7 @@ function lapStarts(source: RecordStepSource, store: ReplaySessionStore): Listed<
 
   return {
     hit: true,
+    list: "lap",
     entries: listing.starts,
     rule: LAP_SPANS,
     landing: (frame) => Math.max(0, frame - source.lapApproachFrames),
@@ -173,13 +183,14 @@ function lapStarts(source: RecordStepSource, store: ReplaySessionStore): Listed<
   };
 }
 
-function sessionStarts(source: RecordStepSource, store: ReplaySessionStore): Listed<ReplaySessionStart> {
+function sessionStarts(source: RecordStepSource, store: ReplaySessionStore): RecordListing {
   const listing: SessionStartListing = store.sessions.list(source.scope);
 
   if (!listing.hit) return { hit: false, reason: listing.reason };
 
   return {
     hit: true,
+    list: "session",
     entries: listing.starts,
     rule: sessionSpans(source.lastSessionNum),
     landing: (frame) => frame + SESSION_START_LANDING_FRAMES,
@@ -188,13 +199,11 @@ function sessionStarts(source: RecordStepSource, store: ReplaySessionStore): Lis
 }
 
 function stepThrough<T extends RecordedEntry>(
-  listed: Listed<T>,
+  listed: ListedEntries<T>,
   anchor: number,
   direction: ReplayWalkDirection,
   steps: number,
 ): RecordStepResult {
-  if (!listed.hit) return listed;
-
   const walked = walkRecordedEntries(listed.entries, anchor, direction, steps, listed.rule, (entry) =>
     listed.landing(entry.frame),
   );
@@ -235,9 +244,33 @@ export function findRecordStep(
   source: RecordStepSource,
   steps = 1,
 ): RecordStepResult {
+  return stepRecordListing(listRecord(step.list, source), anchor, step.direction, steps);
+}
+
+/**
+ * Reads `list` from the record once: the camera car's lap starts, or the
+ * session starts, or the miss {@link findRecordStep} would report: no store,
+ * any of the store's reasons, no car on camera for a lap list.
+ */
+export function listRecord(list: RecordStepSpec["list"], source: RecordStepSource): RecordListing {
   if (source.store === null) return { hit: false, reason: "no store" };
 
-  return step.list === "lap"
-    ? stepThrough(lapStarts(source, source.store), anchor, step.direction, steps)
-    : stepThrough(sessionStarts(source, source.store), anchor, step.direction, steps);
+  return list === "lap" ? lapStarts(source, source.store) : sessionStarts(source, source.store);
+}
+
+/**
+ * {@link findRecordStep} on a list already read ({@link listRecord}): where
+ * `steps` entries `direction` from `anchor` land, or the miss.
+ */
+export function stepRecordListing(
+  listing: RecordListing,
+  anchor: number,
+  direction: ReplayWalkDirection,
+  steps = 1,
+): RecordStepResult {
+  if (!listing.hit) return listing;
+
+  return listing.list === "lap"
+    ? stepThrough(listing, anchor, direction, steps)
+    : stepThrough(listing, anchor, direction, steps);
 }

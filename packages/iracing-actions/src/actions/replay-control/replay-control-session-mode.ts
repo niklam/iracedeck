@@ -13,7 +13,7 @@
 import type { ReplayPosition } from "../../shared/replay-position-state.js";
 import type { ReplayDialStepIo } from "./replay-control-dial-mode.js";
 import { createRecordStepMode } from "./replay-control-step-mode.js";
-import { RECORD_STEPS, type RecordStepSource } from "./replay-record-step.js";
+import { RECORD_STEPS, type RecordListing } from "./replay-record-step.js";
 
 /** The replay-cursor owner every Session turn's jump and search goes out under. */
 const CURSOR_OWNER = "dial-session";
@@ -37,19 +37,17 @@ export function sessionName(sessionInfo: unknown, sessionNum: number): string {
 /**
  * @internal Exported for testing
  *
- * The session the record says `frame` is in: the last recorded session start
- * at or before it. Null with no store or no start recorded by then.
+ * The session the record says `frame` is in, from the session list already
+ * read (`listRecord("session", source)`): the last recorded session start at
+ * or before it. Null when the list could not be read or holds no start by
+ * then.
  */
-export function recordedSessionAt(frame: number, source: RecordStepSource): number | null {
-  if (source.store === null) return null;
-
-  const listing = source.store.sessions.list(source.scope);
-
-  if (!listing.hit) return null;
+export function recordedSessionAt(frame: number, listing: RecordListing): number | null {
+  if (!listing.hit || listing.list !== "session") return null;
 
   let sessionNum: number | null = null;
 
-  for (const start of listing.starts) {
+  for (const start of listing.entries) {
     if (start.frame > frame) break;
 
     sessionNum = start.sessionNum;
@@ -63,11 +61,11 @@ export function recordedSessionAt(frame: number, source: RecordStepSource): numb
  * while a jump is under way, the session the record puts its landing in; null
  * when neither can say, and the box keeps what it showed.
  */
-function sessionValue(io: ReplayDialStepIo, position: ReplayPosition | null, source: RecordStepSource): string | null {
+function sessionValue(io: ReplayDialStepIo, position: ReplayPosition | null, listing: RecordListing): string | null {
   if (position === null) return null;
 
   if (position.seeking) {
-    const landing = recordedSessionAt(position.frame, source);
+    const landing = recordedSessionAt(position.frame, listing);
 
     return landing === null ? null : sessionName(io.sessionInfo(), landing);
   }

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ReplayControlDialSettings } from "./replay-control-dial-settings.js";
 import { lapMode, recordedLapAt } from "./replay-control-lap-mode.js";
 import { fakeStepIo, lapsAt, recordSource } from "./replay-dial-step-io.test-support.js";
+import { listRecord } from "./replay-record-step.js";
 
 vi.mock("@iracedeck/settings", () => ({ getGlobalSettings: vi.fn(() => ({})) }));
 
@@ -24,20 +25,20 @@ describe("recordedLapAt", () => {
   it("is the lap whose landing, a second before the line, is the last at or before the frame", () => {
     const source = recordSource(LAPS, null);
 
-    expect(recordedLapAt(54_000, source)).toBe(2);
+    expect(recordedLapAt(54_000, listRecord("lap", source))).toBe(2);
     // At the landing a lap step jumps to: that lap, not the one a second from finishing.
-    expect(recordedLapAt(56_000 - 60, source)).toBe(3);
-    expect(recordedLapAt(56_000 - 61, source)).toBe(2);
-    expect(recordedLapAt(80_000, source)).toBe(4);
+    expect(recordedLapAt(56_000 - 60, listRecord("lap", source))).toBe(3);
+    expect(recordedLapAt(56_000 - 61, listRecord("lap", source))).toBe(2);
+    expect(recordedLapAt(80_000, listRecord("lap", source))).toBe(4);
   });
 
   it("is null before the first recorded lap, with no store, no car on camera or no car number", () => {
-    expect(recordedLapAt(10_000, recordSource(LAPS, null))).toBeNull();
-    expect(recordedLapAt(54_000, { ...recordSource(LAPS, null), store: null })).toBeNull();
-    expect(recordedLapAt(54_000, { ...recordSource(LAPS, null), camCarIdx: undefined })).toBeNull();
-    expect(recordedLapAt(54_000, recordSource(LAPS, null, 255))).toBeNull();
-    expect(recordedLapAt(54_000, recordSource(LAPS, null, 7))).toBeNull();
-    expect(recordedLapAt(54_000, recordSource(null, null))).toBeNull();
+    expect(recordedLapAt(10_000, listRecord("lap", recordSource(LAPS, null)))).toBeNull();
+    expect(recordedLapAt(54_000, listRecord("lap", { ...recordSource(LAPS, null), store: null }))).toBeNull();
+    expect(recordedLapAt(54_000, listRecord("lap", { ...recordSource(LAPS, null), camCarIdx: undefined }))).toBeNull();
+    expect(recordedLapAt(54_000, listRecord("lap", recordSource(LAPS, null, 255)))).toBeNull();
+    expect(recordedLapAt(54_000, listRecord("lap", recordSource(LAPS, null, 7)))).toBeNull();
+    expect(recordedLapAt(54_000, listRecord("lap", recordSource(null, null)))).toBeNull();
   });
 });
 

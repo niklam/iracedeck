@@ -19,7 +19,7 @@
 import type { DialSideMarks } from "../../shared/dial-box.js";
 import type { ReplayPosition } from "../../shared/replay-position-state.js";
 import type { ReplayDialMode, ReplayDialStepIo } from "./replay-control-dial-mode.js";
-import { findRecordStep, type RecordStepSource, type RecordStepSpec } from "./replay-record-step.js";
+import { listRecord, type RecordListing, type RecordStepSpec, stepRecordListing } from "./replay-record-step.js";
 import type { ReplaySearchTarget } from "./replay-search-queue.js";
 import { formatSpeedDisplay } from "./replay-speed-format.js";
 
@@ -66,20 +66,21 @@ export interface RecordStepPair {
 /**
  * @internal Exported for testing
  *
- * The side marks of a mode that steps through the record: a side is dim only
- * when the record has entries and none lies that way from `frame`. Every other
- * miss — no store, no car on camera, outside the record, a gap — leaves it
- * lit, since iRacing's search may still move. With no position both are lit.
+ * The side marks of a mode that steps through the record, from its list
+ * already read (`listing`): a side is dim only when the record has entries
+ * and none lies that way from `frame`. Every other miss — no store, no car on
+ * camera, outside the record, a gap — leaves it lit, since iRacing's search
+ * may still move. With no position both are lit.
  */
 export function recordSides(
   position: ReplayPosition | null,
-  source: RecordStepSource,
+  listing: RecordListing,
   steps: RecordStepPair,
 ): DialSideMarks {
   if (position === null) return { left: true, right: true };
 
   const lit = (step: RecordStepSpec): boolean => {
-    const found = findRecordStep(step, position.frame, source);
+    const found = stepRecordListing(listing, position.frame, step.direction);
 
     return found.hit || found.reason !== "nothing that way";
   };
@@ -97,8 +98,8 @@ export interface RecordStepModeConfig {
   /** What opens its log lines. */
   readonly logLabel: string;
   readonly steps: RecordStepPair;
-  /** The value slot; null when this reading cannot say (a tick read mid-seek). */
-  value(io: ReplayDialStepIo, position: ReplayPosition | null, source: RecordStepSource): string | null;
+  /** The value slot, from the mode's list read once for the view; null when this reading cannot say (a tick read mid-seek). */
+  value(io: ReplayDialStepIo, position: ReplayPosition | null, listing: RecordListing): string | null;
 }
 
 /**
@@ -149,12 +150,14 @@ export function createRecordStepMode(config: RecordStepModeConfig): ReplayDialMo
 
     view(_dial, io) {
       const position = io.position();
-      const source = io.recordSource();
+      // One read of the list for the value and both side marks: every store
+      // listing allocates and sorts the whole list, and a view runs every tick.
+      const listing = listRecord(steps.next.list, io.recordSource());
 
       return {
-        value: config.value(io, position, source),
+        value: config.value(io, position, listing),
         caption: stepCaption(io, target),
-        sides: recordSides(position, source, steps),
+        sides: recordSides(position, listing, steps),
       };
     },
   };

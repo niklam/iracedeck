@@ -14,7 +14,7 @@
 import type { ReplayPosition } from "../../shared/replay-position-state.js";
 import type { ReplayDialStepIo } from "./replay-control-dial-mode.js";
 import { createRecordStepMode, formatReplayClock } from "./replay-control-step-mode.js";
-import { NO_CAR_IDX, RECORD_STEPS, type RecordStepSource } from "./replay-record-step.js";
+import { RECORD_STEPS, type RecordListing } from "./replay-record-step.js";
 
 /** The replay-cursor owner every Lap turn's jump and search goes out under. */
 const CURSOR_OWNER = "dial-lap";
@@ -22,31 +22,21 @@ const CURSOR_OWNER = "dial-lap";
 /**
  * @internal Exported for testing
  *
- * The recorded lap of the camera car that is on screen at `frame`: the last
- * recorded lap start whose landing — the frame a lap step jumps to, a second
- * before the line — is at or before it, so a turn that lands on a lap reads
- * that lap at once rather than the one it is a second from finishing. Null
- * with no store, no car on camera, no car number or no lap recorded by then.
+ * The recorded lap of the camera car that is on screen at `frame`, from its
+ * lap list already read (`listRecord("lap", source)`): the last recorded lap
+ * start whose landing — the frame a lap step jumps to, a second before the
+ * line — is at or before it, so a turn that lands on a lap reads that lap at
+ * once rather than the one it is a second from finishing. Null when the list
+ * could not be read (no store, no car on camera, no car number) or holds no
+ * lap by then.
  */
-export function recordedLapAt(frame: number, source: RecordStepSource): number | null {
-  const carIdx = source.camCarIdx;
-
-  if (source.store === null) return null;
-
-  if (typeof carIdx !== "number" || !Number.isInteger(carIdx) || carIdx < 0 || carIdx === NO_CAR_IDX) return null;
-
-  const carNumberRaw = source.carNumberRaw(carIdx);
-
-  if (carNumberRaw === null) return null;
-
-  const listing = source.store.laps.listLapStarts({ carIdx, carNumberRaw, ...source.scope });
-
-  if (!listing.hit) return null;
+export function recordedLapAt(frame: number, listing: RecordListing): number | null {
+  if (!listing.hit || listing.list !== "lap") return null;
 
   let lap: number | null = null;
 
-  for (const start of listing.starts) {
-    if (start.frame - source.lapApproachFrames > frame) break;
+  for (const start of listing.entries) {
+    if (listing.landing(start.frame) > frame) break;
 
     lap = start.lap;
   }
@@ -55,10 +45,10 @@ export function recordedLapAt(frame: number, source: RecordStepSource): number |
 }
 
 /** The Lap value: `L12` from the record, else the replay time; null mid-seek. */
-function lapValue(_io: ReplayDialStepIo, position: ReplayPosition | null, source: RecordStepSource): string | null {
+function lapValue(_io: ReplayDialStepIo, position: ReplayPosition | null, listing: RecordListing): string | null {
   if (position === null) return null;
 
-  const lap = recordedLapAt(position.frame, source);
+  const lap = recordedLapAt(position.frame, listing);
 
   return lap === null ? formatReplayClock(position.time) : `L${lap}`;
 }
