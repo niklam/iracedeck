@@ -1,7 +1,12 @@
 import { ReplayPosMode, replaySpeedToSdk, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { _configureReplayCommandGate, _resetReplayCommandGate } from "./replay-command-gate.js";
+import {
+  _configureReplayCommandGate,
+  _resetReplayCommandGate,
+  type ReplayGateFactEnd,
+  subscribeReplayGate,
+} from "./replay-command-gate.js";
 import {
   _resetReplayCursor,
   cancelReplayCursorOwner,
@@ -14,6 +19,7 @@ import {
   captureReplaySpeed,
   describeReplayJump,
   JUMP_SPEED_HOLD_MS,
+  noteReplayJumpLanded,
   readReplayJumpPlayback,
   type ReplayJumpOutcome,
   type ReplaySpeed,
@@ -930,6 +936,42 @@ describe("replay-jump-playback (#1276)", () => {
       expect(describeReplayJump({ kind: "stopped", reason: "seek-failed", telemetry: null }, 64_401).detail).toBe(
         "reason=seek-failed target=64401 lastFrame=n/a lastSpeed=n/a",
       );
+    });
+  });
+
+  describe("the end a jump reports to the gate (#1437)", () => {
+    /** The under-way ends the gate notes for `origin` while `run` runs. */
+    function underWayEnds(origin: string, run: () => void): ReplayGateFactEnd[] {
+      const ends: ReplayGateFactEnd[] = [];
+      const unsubscribe = subscribeReplayGate((notice) => {
+        if (notice.origin === origin) ends.push(...notice.ended.filter((end) => end.fact === "underWay"));
+      });
+
+      try {
+        run();
+      } finally {
+        unsubscribe();
+      }
+
+      return ends;
+    }
+
+    it("a jump that never ran the sequence ends landed once noteReplayJumpLanded says so", () => {
+      const jump = beginReplayJump("walk", null, undefined, Date.now(), { origin: "ctx-walk" });
+
+      noteReplayJumpLanded(jump);
+
+      expect(underWayEnds("ctx-walk", () => jump.end())).toEqual([
+        { fact: "underWay", class: "completed", reason: "jump-landed" },
+      ]);
+    });
+
+    it("without it, the same jump ends as a walk that gave up", () => {
+      const jump = beginReplayJump("walk", null, undefined, Date.now(), { origin: "ctx-walk" });
+
+      expect(underWayEnds("ctx-walk", () => jump.end())).toEqual([
+        { fact: "underWay", class: "gave-up", reason: "walk-gave-up" },
+      ]);
     });
   });
 });

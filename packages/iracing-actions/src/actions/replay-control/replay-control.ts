@@ -105,6 +105,7 @@ import {
   applyReplayJumpPlayback,
   beginReplayJump,
   describeReplayJump,
+  noteReplayJumpLanded,
   type ReplayJump,
   type ReplayJumpApplied,
   type ReplayJumpOutcome,
@@ -1665,6 +1666,8 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
 
       if (applied === null) throw new FastestLapPressCancelled(jump.claim.cancelledBy ?? "unknown");
 
+      // The walk never ran through `runReplayJump`: say it landed, or `end()` reports it gave up.
+      noteReplayJumpLanded(jump);
       this.mirrorReplayJumpSpeed(FASTEST_LAP_LOG_LABEL, applied);
       this.logger.debug(
         `Jump to fastest lap: walk ${landing.converged ? "converged" : "did not converge"} on frame ${landing.landedFrame}; replay left at ${formatSpeedDisplay(applied.speed.speed, applied.speed.slowMotion)} (speed command ${applied.command})`,

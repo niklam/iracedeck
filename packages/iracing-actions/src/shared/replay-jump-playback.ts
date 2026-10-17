@@ -115,7 +115,8 @@ export interface ReplayJump {
   /**
    * Hand the cursor back. Call it once, in a `finally`, however the jump
    * ended; `result` says how, for the gate's state seam, and defaults to what
-   * {@link runReplayJump} saw.
+   * {@link runReplayJump} saw — or, for a walk, {@link noteReplayJumpLanded} —
+   * noted, and else to cancelled or gave-up.
    */
   end(result?: ReplayJumpResult): void;
 }
@@ -297,11 +298,22 @@ export function beginReplayJump(
 
 /** Notes how {@link runReplayJump} saw the jump end, for its `end()`. */
 function noteSeen(jump: ReplayJump, outcome: ReplayJumpOutcome): ReplayJumpOutcome {
-  const seen = outcome.kind === "landed" ? "landed" : outcome.kind === "cancelled" ? "cancelled" : "gave-up";
-
-  (jump as { seen?: ReplayJumpResult | null }).seen = seen;
+  setSeen(jump, outcome.kind === "landed" ? "landed" : outcome.kind === "cancelled" ? "cancelled" : "gave-up");
 
   return outcome;
+}
+
+/**
+ * Notes that a jump which never went through {@link runReplayJump} landed:
+ * a walk, once its last landing has had the setting applied. Without it the
+ * jump's `end()` reports it gave up.
+ */
+export function noteReplayJumpLanded(jump: ReplayJump): void {
+  setSeen(jump, "landed");
+}
+
+function setSeen(jump: ReplayJump, seen: ReplayJumpResult): void {
+  (jump as { seen?: ReplayJumpResult | null }).seen = seen;
 }
 
 /**

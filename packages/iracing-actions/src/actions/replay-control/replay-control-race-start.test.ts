@@ -15,6 +15,8 @@ import {
   _configureReplayCommandGate,
   _resetReplayCommandGate,
   pressReplayCommand,
+  type ReplayGateFactEnd,
+  subscribeReplayGate,
 } from "../../shared/replay-command-gate.js";
 import { _resetReplayCursor, cancelReplayCursorOwner } from "../../shared/replay-cursor.js";
 import { _resetReplayPositionState } from "../../shared/replay-position-state.js";
@@ -1042,6 +1044,48 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
       expect(mockReplay.setPlaySpeed).toHaveBeenLastCalledWith(1, false);
       expect(mockReplay.play).not.toHaveBeenCalled();
       expect(action["activeFastestLapPress"]).toBeNull();
+    });
+
+    describe("the end the search reports to the gate (#1437)", () => {
+      /** The under-way ends the gate notes for the press's token while `run` runs. */
+      async function walkEnds(run: () => Promise<void>): Promise<ReplayGateFactEnd[]> {
+        const ends: ReplayGateFactEnd[] = [];
+        const stop = subscribeReplayGate((notice) => {
+          if (notice.origin === "ctx-green") ends.push(...notice.ended.filter((end) => end.fact === "underWay"));
+        });
+
+        try {
+          await run();
+        } finally {
+          stop();
+        }
+
+        // The walk's own end: its probes and its way back end facts of their own.
+        return ends.filter((end) => end.reason === "jump-landed" || end.reason === "walk-gave-up");
+      }
+
+      it("ends completed when it lands before lap 1", async () => {
+        fakeReplay(action, { sessionTypes: WEEKEND_TYPES, layout: WEEKEND, cursor: IN_RACE });
+
+        const ends = await walkEnds(async () => {
+          await press();
+          await vi.runAllTimersAsync();
+        });
+
+        expect(ends.at(-1)).toEqual({ fact: "underWay", class: "completed", reason: "jump-landed" });
+        expect(ends.some((end) => end.reason === "walk-gave-up")).toBe(false);
+      });
+
+      it("ends given up when it puts the replay back", async () => {
+        fakeReplay(action, { sessionTypes: WEEKEND_TYPES, layout: WEEKEND, cursor: IN_RACE, lapSearchShort: 600 });
+
+        const ends = await walkEnds(async () => {
+          await press();
+          await vi.runAllTimersAsync();
+        });
+
+        expect(ends).toEqual([{ fact: "underWay", class: "gave-up", reason: "walk-gave-up" }]);
+      });
     });
 
     it("logs the search as its own, not as Jump to Fastest Lap's", async () => {

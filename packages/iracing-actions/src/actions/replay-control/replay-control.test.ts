@@ -28,6 +28,7 @@ import {
   getReplayGateRecord,
   getReplayGateView,
   pressReplayCommand,
+  type ReplayGateFactEnd,
   type ReplayGateNotice,
   subscribeReplayGate,
 } from "../../shared/replay-command-gate.js";
@@ -3394,6 +3395,67 @@ describe("ReplayControl", () => {
             expect(mockStore.laps.recordLapStart).not.toHaveBeenCalled();
             expect(action["activeFastestLapPress"]).toBeNull();
           } finally {
+            vi.useRealTimers();
+          }
+        });
+      });
+
+      describe("the end the walk reports to the gate (#1437)", () => {
+        /** Every under-way end the gate notes for `ctx-1` until the returned stop. */
+        function recordUnderWayEnds(): { ends: ReplayGateFactEnd[]; stop: () => void } {
+          const ends: ReplayGateFactEnd[] = [];
+          const stop = subscribeReplayGate((notice) => {
+            if (notice.origin === "ctx-1") ends.push(...notice.ended.filter((end) => end.fact === "underWay"));
+          });
+
+          return { ends, stop };
+        }
+
+        it("a converged walk ends completed, as a jump that landed", async () => {
+          vi.useFakeTimers();
+          const { ends, stop } = recordUnderWayEnds();
+
+          try {
+            singleSessionBuffer(4, 4);
+
+            await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+            await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+            await vi.runAllTimersAsync();
+
+            expect(action["logger"].info).toHaveBeenCalledWith(
+              "Jump to fastest lap: walk converged (lap start recorded)",
+            );
+            // The walk's own end is its last: completed. (Its probes end facts of their own on the way.)
+            expect(ends.at(-1)).toEqual({ fact: "underWay", class: "completed", reason: "jump-landed" });
+            expect(ends.some((end) => end.reason === "walk-gave-up")).toBe(false);
+          } finally {
+            stop();
+            vi.useRealTimers();
+          }
+        });
+
+        it("a walk that gives up still ends as one", async () => {
+          vi.useFakeTimers();
+          const { ends, stop } = recordUnderWayEnds();
+
+          try {
+            singleSessionBuffer(4, 4);
+            // The cursor never moves on setPlayPosition.
+            mockReplay.setPlayPosition.mockImplementation(() => true);
+
+            await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+            await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+            await vi.runAllTimersAsync();
+
+            expect(action["logger"].warn).toHaveBeenCalledWith(
+              "Jump to fastest lap: jump did not settle; aborting walk",
+            );
+            // The way back's own seek, which never lands either, runs out after the walk has ended.
+            expect(ends.filter((end) => end.reason === "walk-gave-up" || end.reason === "jump-landed")).toEqual([
+              { fact: "underWay", class: "gave-up", reason: "walk-gave-up" },
+            ]);
+          } finally {
+            stop();
             vi.useRealTimers();
           }
         });
