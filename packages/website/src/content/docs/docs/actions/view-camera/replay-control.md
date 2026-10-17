@@ -246,7 +246,9 @@ Read-only display of the current replay speed. Pressing the button does nothing 
 
 ### Next Session
 
-Jump to the next session in the replay.
+Jump to the start of the next session in the replay, such as from qualifying to the race.
+
+While a session runs live, iRaceDeck records the frame at which each session starts, in the same per-session replay record that [Jump to Fastest Lap](#jump-to-fastest-lap) uses, whether you are in the car or watching from the garage. With that record the press is a single jump to just inside the next session, in the in-session replay and in a saved replay opened later alike, and the replay then does what **Replay jump playback** in the [Settings window](/docs/getting-started/settings/#delays) says, exactly as for Jump to Fastest Lap. Without a record — iRaceDeck was not running when the session started, the replay file is someone else's, or the replay was recorded before iRaceDeck 3.6 — the key uses iRacing's own session search, as it always has.
 
 #### Details
 
@@ -263,7 +265,7 @@ Jump to the next session in the replay.
 
 ### Previous Session
 
-Jump to the previous session in the replay.
+Jump back to the start of the session on screen, or, pressed just after arriving at a session's start, to the start of the session before. It uses the session record the same way as [Next Session](#next-session), and iRacing's own search without one.
 
 #### Details
 
@@ -280,7 +282,9 @@ Jump to the previous session in the replay.
 
 ### Next Lap
 
-Jump forward one lap.
+Jump forward one lap of the car the camera is on, to a second before it takes the line.
+
+While the plugin runs during a live session it records the frame at which every car starts every lap, the record [Jump to Fastest Lap](#jump-to-fastest-lap) uses. With it the press is a single jump to the next lap start, in the in-session replay and in a saved replay opened later (which lands about a second earlier), and the replay then does what **Replay jump playback** in the [Settings window](/docs/getting-started/settings/#delays) says, exactly as for Jump to Fastest Lap. Laps run one after another across the sessions of the replay, so a press on the last lap of qualifying goes on to the car's first lap of the race. Where the record has no further lap — a replay recorded without iRaceDeck, the laps after you left the car, or a car with nothing recorded — the key uses iRacing's own lap search, as it always has. A second press while the jump is still on its way steps on from where the replay is going, so two quick presses go two laps.
 
 #### Details
 
@@ -297,7 +301,7 @@ Jump forward one lap.
 
 ### Previous Lap
 
-Jump backward one lap.
+Jump back to a second before the line on the lap the car the camera is on is running, or, pressed just after arriving there, to the lap before. It uses the lap record the same way as [Next Lap](#next-lap), and iRacing's own search where the record has nothing that way.
 
 #### Details
 
@@ -314,7 +318,9 @@ Jump backward one lap.
 
 ### Next Incident
 
-Jump to the next incident.
+Jump to the next incident, using iRacing's own incident search.
+
+Since iRaceDeck 3.6 the plugin also records each incident while a session runs live: your own whenever you are in the car, and other cars' where iRacing shows their incident counts, which an official race does only once it is over. The key does not use that record yet; a later version compares the two before it does.
 
 #### Details
 
