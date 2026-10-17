@@ -19,6 +19,16 @@ A press or a dial input made while the replay is still jumping, such as a marker
 
 On a Stream Deck+ dial or a Mirabox knob, Replay Control becomes a replay dial: turn it to change the replay speed or to step through the replay frame by frame, and press it to play or pause — see [On a dial](#on-a-dial).
 
+## What a pressed key shows
+
+The key you pressed shows what became of the press until the replay has caught up. The title and border stay as they are, and the mark takes the place of the artwork:
+
+- **A ring of dots going round:** the replay is on its way for this key. Next and Previous Lap, Session and Incident, Jump to Beginning, Jump to Live, Jump to Fastest Lap and Jump to Race Start show it from the moment you press until the jump or search lands. Most land at once, so the dots only flash; a long search, or a jump far across a long replay, keeps them turning until the replay arrives.
+- **Three still dots:** the press is waiting for another jump or search to land, and acts when it does. Press the key again to act at once.
+- **A red cross, for a second:** the press was not done. The search found nothing, the jump did not land where it was going, or another Jump to Fastest Lap or Jump to Race Start was still running.
+
+Only the key you pressed shows it. On a dial, the same three marks appear at the left end of the dial screen's bottom line, for a press or a gesture that jumps; turning the dial to change the speed or to step frames shows none.
+
 ## Modes
 
 Select the mode from the **Mode** dropdown in the Property Inspector.
