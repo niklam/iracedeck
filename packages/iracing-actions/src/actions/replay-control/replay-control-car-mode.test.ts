@@ -2,7 +2,7 @@ import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ReplaySettledOutcome } from "../../shared/replay-command-gate.js";
-import { _resetCarTap, carMode } from "./replay-control-car-mode.js";
+import { _isCarTapWaiting, _resetCarTap, carMode } from "./replay-control-car-mode.js";
 import { ReplayControlDialSettings } from "./replay-control-dial-settings.js";
 import { fakeStepIo, type FakeStepIo } from "./replay-dial-step-io.test-support.js";
 
@@ -170,6 +170,49 @@ describe("carMode", () => {
       await turn;
 
       expect(io.tapBinding).not.toHaveBeenCalled();
+    });
+
+    it("a jump wait that rejects drops the tap, logs why, and leaves no turn waiting", async () => {
+      const io = fakeStepIo();
+      let fail!: (error: Error) => void;
+
+      io.isJumpUnderWay.mockReturnValue(true);
+      io.waitForJumpsToSettle.mockReturnValueOnce(
+        new Promise<ReplaySettledOutcome>((_resolve, reject) => (fail = reject)),
+      );
+
+      const first = carMode.rotate(1, dial, io);
+      const second = carMode.rotate(-1, dial, io);
+
+      expect(_isCarTapWaiting()).toBe(true);
+
+      fail(new Error("gate gone"));
+      await expect(Promise.all([first, second])).resolves.toBeDefined();
+
+      expect(io.tapBinding).not.toHaveBeenCalled();
+      expect(_isCarTapWaiting()).toBe(false);
+      expect(io.logger.warn).toHaveBeenCalledWith(expect.stringContaining("gate gone"));
+
+      // The next turn is a turn of its own: on a quiet replay it taps at once.
+      io.isJumpUnderWay.mockReturnValue(false);
+      await carMode.rotate(1, dial, io);
+
+      expect(io.tapBinding).toHaveBeenCalledExactlyOnceWith(NEXT);
+    });
+
+    it("a jump wait that throws at once leaves the next turn a turn of its own", async () => {
+      const io = fakeStepIo();
+
+      io.isJumpUnderWay.mockReturnValueOnce(true);
+      io.waitForJumpsToSettle.mockImplementationOnce(() => {
+        throw new Error("no gate");
+      });
+
+      await carMode.rotate(1, dial, io);
+      await carMode.rotate(-1, dial, io);
+
+      expect(io.tapBinding).toHaveBeenCalledExactlyOnceWith(PREVIOUS);
+      expect(_isCarTapWaiting()).toBe(false);
     });
 
     it("a turn after the wait ended is a turn of its own", async () => {

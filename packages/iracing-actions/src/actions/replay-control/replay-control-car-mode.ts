@@ -74,6 +74,16 @@ async function tapWhenJumpsSettle(io: ReplayDialStepIo, generation: number): Pro
 
   try {
     outcome = await io.waitForJumpsToSettle();
+  } catch (error) {
+    // A wait that failed taps nothing, and leaves no turn waiting that holds a
+    // dial's io: the next turn is a turn of its own.
+    if (waitGeneration === generation) waiting = null;
+
+    io.logger.warn(
+      `Dial car: tap dropped, the wait for the jump under way failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+
+    return;
   } finally {
     // The wait is over: a turn from here on is a turn of its own, never one
     // folded into a tap that is already going out.
@@ -113,6 +123,15 @@ export function _resetCarTap(): void {
   waiting = null;
   waiter = null;
   waitGeneration++;
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * Whether a tap is waiting behind a jump.
+ */
+export function _isCarTapWaiting(): boolean {
+  return waiting !== null;
 }
 
 /** The Car mode. Clockwise is iRacing's Next Car, the car ahead on track; counter-clockwise Previous Car. */
@@ -155,11 +174,16 @@ export const carMode: ReplayDialMode<ReplayDialStepIo> = {
     const generation = ++waitGeneration;
     const run = tapWhenJumpsSettle(io, generation);
 
-    // Set after the call: a wait that failed at once has already cleared nothing of its own.
+    // Set after the call: a wait that ended at once (one that threw before its
+    // first await) has already cleared nothing of its own, so the run clears
+    // it when it settles, either way.
     waiter = run;
-    run.catch(() => {
+
+    const clear = (): void => {
       if (waitGeneration === generation && waiter === run) waiter = null;
-    });
+    };
+
+    run.then(clear, clear);
 
     return run;
   },
