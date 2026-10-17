@@ -9,6 +9,8 @@ import {
   pressReplayCommand,
   type ReplayGateNotice,
   replaySearchMayRunMs,
+  replaySearchSpeedAtSend,
+  sendOwnedReplayCommand,
   settleReplayByJump,
   subscribeReplayGate,
   waitForReplaySearchLanding,
@@ -18,6 +20,7 @@ import {
 import { openReplayJump } from "./replay-command-gate.js";
 import { fakeReplay, type FakeReplay, type FakeReplayOptions } from "./replay-command-gate.test-support.js";
 import { _resetReplayCursor, claimReplayCursor } from "./replay-cursor.js";
+import { beginReplayJump, runReplayJump } from "./replay-jump-playback.js";
 import { _resetReplayPositionState, pendingReplayTarget, replayTargetGiveUpMs } from "./replay-position-state.js";
 
 const { mockGetGlobalSettings } = vi.hoisted(() => ({
@@ -806,6 +809,70 @@ describe("replay command gate", () => {
       await wait(500);
 
       expect(sim.thrown).toBe(0);
+    });
+  });
+
+  describe("a replay jump started while a search is on its way (#801)", () => {
+    const TWO_X = { speed: 2, slowMotion: false } as const;
+    const QUARTER = { speed: 4, slowMotion: true } as const;
+    const PAUSED = { speed: 0, slowMotion: false } as const;
+
+    /** A marker press under way: the shared jump sequence to `frame`, ended once it settles. */
+    async function markerJump(frame: number) {
+      const jump = beginReplayJump("marker", sim.telemetry(), undefined, Date.now(), { frame, origin: "marker" });
+      const outcome = runReplayJump(jump, { frame, readTelemetry: () => sim.telemetry() });
+
+      return { jump, outcome: outcome.finally(() => jump.end()) };
+    }
+
+    it("captures the speed a replay jump holding the cursor captured, not the paused speed its search went out at", async () => {
+      mockGetGlobalSettings.mockReturnValue({ replayJumpPlayback: "remember" });
+      setUp({ frame: 2_000, speed: TWO_X, searches: { nextLap: (from) => from + 60_000 } });
+
+      // The dial's paced search runner: a replay jump that pauses the replay and sends its search.
+      const runner = beginReplayJump("dial-search", sim.telemetry(), undefined, Date.now(), {
+        origin: "dial",
+        sendsPositionJump: false,
+      });
+
+      expect(runner.captured).toEqual(TWO_X);
+      expect(sendOwnedReplayCommand(runner.claim, { kind: "pause" })).toBe("sent");
+      expect(sendOwnedReplayCommand(runner.claim, { kind: "search", search: "nextLap" })).toBe("sent");
+      await wait(50);
+
+      // The search went out on a paused replay.
+      expect(replaySearchSpeedAtSend()).toEqual(PAUSED);
+
+      const { jump, outcome } = await markerJump(150_000);
+
+      expect(jump.captured).toEqual(TWO_X);
+
+      await wait(5_000);
+      runner.end();
+
+      await expect(outcome).resolves.toMatchObject({ kind: "landed", speed: TWO_X });
+      expect(sim.speed()).toEqual(TWO_X);
+    });
+
+    it("captures the speed a key's search went out at, slow motion included", async () => {
+      mockGetGlobalSettings.mockReturnValue({ replayJumpPlayback: "remember" });
+      setUp({ frame: 2_000, speed: QUARTER, searches: { nextLap: (from) => from + 60_000 } });
+
+      press({ kind: "search", search: "nextLap" }, "key-next");
+      await wait(50);
+
+      // The search has cleared slow motion; the speed it went out at is still a quarter.
+      expect(sim.speed()).not.toEqual(QUARTER);
+      expect(replaySearchSpeedAtSend()).toEqual(QUARTER);
+
+      const { jump, outcome } = await markerJump(150_000);
+
+      expect(jump.captured).toEqual(QUARTER);
+
+      await wait(5_000);
+
+      await expect(outcome).resolves.toMatchObject({ kind: "landed", speed: QUARTER });
+      expect(sim.speed()).toEqual(QUARTER);
     });
   });
 

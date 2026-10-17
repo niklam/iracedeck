@@ -234,9 +234,13 @@ export function captureReplaySpeed(
  *
  * The speed captured is, in order: a speed waiting in the gate's slot (the
  * driver's newest word, which the jump takes instead of sending it), the
- * speed the replay had when a search still on its way went out, and else
- * {@link captureReplaySpeed}. Each is read before the claim: claiming clears
- * the pending jump speed with the cursor.
+ * pending speed of a jump still under way (one nobody has applied yet: that
+ * jump paused the replay, so a search it sent went out paused — #801's dial
+ * search runner, the fastest-lap walk), the speed the replay had when a
+ * search still on its way went out, and else {@link captureReplaySpeed}. A
+ * key's search takes the cursor, which clears the pending jump speed, so a
+ * jump behind one reads the search's speed. Each is read before the claim:
+ * claiming clears the pending jump speed with the cursor.
  */
 export function beginReplayJump(
   owner: string,
@@ -247,7 +251,10 @@ export function beginReplayJump(
 ): ReplayJump {
   const standing = pendingReplayJumpSpeed();
   const captured =
-    takeWaitingReplaySpeed() ?? replaySearchSpeedAtSend() ?? captureReplaySpeed(standing, telemetry, nowMs);
+    takeWaitingReplaySpeed() ??
+    (standing !== null && standing.appliedAt === null ? captureReplaySpeed(standing, telemetry, nowMs) : null) ??
+    replaySearchSpeedAtSend() ??
+    captureReplaySpeed(standing, telemetry, nowMs);
   // A pending speed nobody has applied yet belongs to a jump still under way.
   const tookOver = standing !== null && standing.appliedAt === null;
   const claim = claimReplayCursorForJump(owner, onCancelled, options.origin);
