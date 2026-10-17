@@ -1,3 +1,4 @@
+import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { describe, expect, it, vi } from "vitest";
 
 import { ReplayControlDialSettings } from "./replay-control-dial-settings.js";
@@ -114,16 +115,19 @@ describe("a view reads the record once", () => {
 
   it.each([false, true])("Lap: one lap listing for the value and both side marks (seeking: %s)", (seeking) => {
     const io = fakeStepIo();
-    const source = recordSource(lapsAt([50_000, 53_000, 56_000]), sessionsAt([0, 40_000]));
+    const source = recordSource(lapsAt([50_000, 53_000, 56_000]), sessionsAt([0, 10_000, 40_000]));
     const listLapStarts = vi.spyOn(source.store!.laps, "listLapStarts");
     const listSessions = vi.spyOn(source.store!.sessions, "list");
 
     io.recordSource.mockReturnValue(source);
+    io.telemetry.mockReturnValue({ IsReplayPlaying: true, ReplaySessionNum: 2 } as TelemetryData);
     io.position.mockReturnValue(at(54_000, seeking));
 
     expect(lapMode.view(dial, io)).toMatchObject({ value: "L2", sides: { left: true, right: true } });
     expect(listLapStarts).toHaveBeenCalledTimes(1);
-    expect(listSessions).not.toHaveBeenCalled();
+    // The session on screen: the replay's own reading, or while a jump is under
+    // way the record's session at the landing, read once.
+    expect(listSessions).toHaveBeenCalledTimes(seeking ? 1 : 0);
   });
 
   it.each([false, true])("Session: one session listing for the value and both side marks (seeking: %s)", (seeking) => {
