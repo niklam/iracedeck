@@ -721,8 +721,7 @@ export class ReplayControlDialSurface {
 
     if (ctx.busy?.drawsWorking === drawsWorking) return;
 
-    this.unregisterBusy(ctx);
-
+    const previous = ctx.busy;
     const unregister = registerReplayBusySurface({
       token: ctx.action.id,
       drawsWorking,
@@ -732,6 +731,9 @@ export class ReplayControlDialSurface {
     });
 
     ctx.busy = { drawsWorking, unregister };
+    // The new entry first, as the keys do: the old one's unregister is then a
+    // no-op, where unregistering first would clear a not done the box is showing.
+    previous?.unregister();
   }
 
   private unregisterBusy(ctx: ReplayControlDialContext): void {
