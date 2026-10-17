@@ -292,16 +292,16 @@ const JUMP_GESTURES: ReadonlySet<ReplayControlDialGesture> = new Set(["jump-to-l
 /**
  * @internal Exported for testing
  *
- * Whether the dial's box draws working (#1437): only when one of its press
- * slots jumps or searches. Every press carries the dial's token, but the
- * speed gestures are under way for no time worth a spinner, and a turn
- * (Frame Jog, Speed Control) carries no token at all. A speed gesture held
- * behind something under way still shows waiting, and one given up not done.
+ * Whether the dial's box draws working for `gesture` (#1437): only for a
+ * gesture whose own command is a jump or a search. Every gesture carries the
+ * dial's token, but a speed gesture's own command is never under way, and the
+ * one jump that can carry its token, the short one the gate sends when its
+ * press takes over from a search, is not something to draw. A turn (Frame Jog,
+ * Speed Control) carries no token at all. A speed gesture held behind
+ * something under way still shows waiting, and one given up not done.
  */
-export function dialDrawsWorking(dial: ReplayControlDialSettings): boolean {
-  return [dial.pressAction, dial.longPressAction, dial.tapAction, dial.longTouchAction].some((g) =>
-    JUMP_GESTURES.has(g),
-  );
+export function gestureDrawsWorking(gesture: ReplayControlDialGesture): boolean {
+  return JUMP_GESTURES.has(gesture);
 }
 
 /**
@@ -454,6 +454,12 @@ interface ReplayControlDialContext {
   queuedSig: string | null;
   /** The dial's registration with the replay busy indicator (#1437), and what it registered with; null while none. */
   busy: { readonly drawsWorking: boolean; readonly unregister: () => void } | null;
+  /**
+   * Whether the gesture that last went to the gate draws working
+   * ({@link gestureDrawsWorking}), or null before one has: the box's look
+   * follows the gesture that made the press, not the dial's slots.
+   */
+  lastGestureDrawsWorking: boolean | null;
 }
 
 /** A dash-box frame and the signature it is compared by. */
@@ -703,7 +709,7 @@ export class ReplayControlDialSurface {
     // for the old one without a frame of its own — the render below is the revert.
     ctx.holdPreview.dispose();
     ctx.preview = null;
-    // A slot may have become, or stopped being, a jump.
+    // Before any gesture, the push slot may have become, or stopped being, a jump.
     this.syncBusyRegistration(ctx);
     await this.applyTriggerDescription(ctx);
     this.scheduleRender(ctx, true);
@@ -711,13 +717,16 @@ export class ReplayControlDialSurface {
 
   /**
    * Registers the dial with the replay busy indicator (#1437) under its
-   * context id, the token its presses carry, or re-registers it when its
-   * slots changed whether it draws working. The indicator's redraw goes
-   * through {@link scheduleIfChanged}, so the throttle stays in front of it
-   * and a tick whose look draws the same frame pushes nothing.
+   * context id, the token its presses carry, or re-registers it when whether
+   * it draws working changed. That follows the gesture that last went to the
+   * gate; before one has, the push slot's, the gesture most likely behind a
+   * fact the dial finds standing when it appears (a page turned back mid-jump).
+   * The indicator's redraw goes through {@link scheduleIfChanged}, so the
+   * throttle stays in front of it and a tick whose look draws the same frame
+   * pushes nothing.
    */
   private syncBusyRegistration(ctx: ReplayControlDialContext): void {
-    const drawsWorking = dialDrawsWorking(ctx.dial);
+    const drawsWorking = ctx.lastGestureDrawsWorking ?? gestureDrawsWorking(ctx.dial.pressAction);
 
     if (ctx.busy?.drawsWorking === drawsWorking) return;
 
@@ -1093,11 +1102,18 @@ export class ReplayControlDialSurface {
       return;
     }
 
+    // The box draws working for this gesture only if it jumps or searches, decided
+    // before its press reaches the gate, so the press's first notice already reads it.
+    ctx.lastGestureDrawsWorking = gestureDrawsWorking(gesture);
+    this.syncBusyRegistration(ctx);
+
+    const origin = ctx.action.id;
+
     // A gesture's commands carry the dial's own origin token; a detent's carry none.
-    this.pressOrigin = ctx.action.id;
+    this.pressOrigin = origin;
 
     try {
-      GESTURES[gesture].run({ io: this.io, host: this.host, dialIo: ctx.io, origin: ctx.action.id });
+      GESTURES[gesture].run({ io: this.io, host: this.host, dialIo: ctx.io, origin });
     } finally {
       this.pressOrigin = undefined;
     }
@@ -1260,6 +1276,7 @@ export class ReplayControlDialSurface {
       shownView: null,
       queuedSig: null,
       busy: null,
+      lastGestureDrawsWorking: null,
     };
 
     // The paced search's count is drawn on the box (#801): redraw on its every

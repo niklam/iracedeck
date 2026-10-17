@@ -98,6 +98,7 @@ const mocks = vi.hoisted(() => ({
   nextFrame: vi.fn(() => true),
   prevFrame: vi.fn(() => true),
   setPlayPosition: vi.fn((_mode: number, _frame: number) => true),
+  nextSession: vi.fn(() => true),
   thresholdMs: { value: 500 },
 }));
 
@@ -113,6 +114,7 @@ vi.mock("@iracedeck/deck-iracing", () => ({
       prevFrame: mocks.prevFrame,
       setPlayPosition: mocks.setPlayPosition,
       nextLap: mocks.nextLap,
+      nextSession: mocks.nextSession,
     },
   }),
 }));
@@ -3748,6 +3750,7 @@ describe("ReplayControlDialSurface — the busy look (#1437)", () => {
   afterEach(() => {
     busy.actual?._resetReplayBusyIndicator();
     busy.real = false;
+    host.jumpToLive.mockImplementation(() => undefined);
     vi.useRealTimers();
   });
 
@@ -3785,15 +3788,21 @@ describe("ReplayControlDialSurface — the busy look (#1437)", () => {
       expect(busy.surfaces.has("dial-1")).toBe(false);
     });
 
-    it.each(["pressAction", "longPressAction", "tapAction", "longTouchAction"])(
-      "draws working when %s jumps or searches",
-      async (slot) => {
-        for (const gesture of ["jump-to-live", "jump-to-race-start"]) {
-          busy.surfaces.clear();
-          await onScreen(speed(1), dial({ [slot]: gesture }));
+    it("on appear draws working as the push slot does: true when it jumps or searches", async () => {
+      for (const gesture of ["jump-to-live", "jump-to-race-start"]) {
+        busy.surfaces.clear();
+        await onScreen(speed(1), dial({ pressAction: gesture }));
 
-          expect(busy.surfaces.get("dial-1")?.drawsWorking).toBe(true);
-        }
+        expect(busy.surfaces.get("dial-1")?.drawsWorking).toBe(true);
+      }
+    });
+
+    it.each(["longPressAction", "tapAction", "longTouchAction"])(
+      "on appear draws no working for a jump on %s alone: that gesture decides when it fires",
+      async (slot) => {
+        await onScreen(speed(1), dial({ [slot]: "jump-to-live" }));
+
+        expect(busy.surfaces.get("dial-1")?.drawsWorking).toBe(false);
       },
     );
 
@@ -3803,15 +3812,16 @@ describe("ReplayControlDialSurface — the busy look (#1437)", () => {
       expect(busy.surfaces.get("dial-1")?.drawsWorking).toBe(false);
     });
 
-    it("re-registers when a settings change makes a slot a jump, and only then", async () => {
+    it("re-registers when a settings change makes the push slot a jump, and only then", async () => {
       const { surface, ctx } = await onScreen(speed(1));
 
-      // The rotation mode changes no press: the registration stands.
+      // The rotation mode, and a jump on another slot, change nothing until a gesture fires.
       await surface.didReceiveSettings(ctx as never, dial({ mode: "frame-jog" }));
+      await surface.didReceiveSettings(ctx as never, dial({ longPressAction: "jump-to-live" }));
 
       expect(registerReplayBusySurface).toHaveBeenCalledTimes(1);
 
-      await surface.didReceiveSettings(ctx as never, dial({ longPressAction: "jump-to-live" }));
+      await surface.didReceiveSettings(ctx as never, dial({ pressAction: "jump-to-live" }));
 
       expect(registerReplayBusySurface).toHaveBeenCalledTimes(2);
       expect(busy.unregistered).toEqual(["dial-1"]);
@@ -3820,6 +3830,87 @@ describe("ReplayControlDialSurface — the busy look (#1437)", () => {
       await surface.didReceiveSettings(ctx as never, dial());
 
       expect(busy.surfaces.get("dial-1")?.drawsWorking).toBe(false);
+    });
+
+    it("a gesture re-registers the dial with its own kind before its press reaches the gate", async () => {
+      // Push is a speed gesture, hold a jump: the box follows whichever fired.
+      const d = dial({ pressAction: "play-pause", longPressAction: "jump-to-live" });
+      const { surface, ctx } = await onScreen(speed(1), d);
+      const seen: string[] = [];
+
+      host.jumpToLive.mockImplementation(() => {
+        seen.push(`jump-to-live drawsWorking=${busy.surfaces.get("dial-1")?.drawsWorking}`);
+      });
+      mocks.pause.mockImplementation(() => {
+        seen.push(`pause drawsWorking=${busy.surfaces.get("dial-1")?.drawsWorking}`);
+
+        return true;
+      });
+
+      await press(surface, ctx, d, 600);
+      await settle(DIAL_SPEED_HOLD_MS);
+      await press(surface, ctx, d);
+
+      expect(seen).toEqual(["jump-to-live drawsWorking=true", "pause drawsWorking=false"]);
+    });
+
+    it("the gesture's kind outlasts a settings change", async () => {
+      const d = dial({ pressAction: "play-pause", longPressAction: "jump-to-live" });
+      const { surface, ctx } = await onScreen(speed(1), d);
+
+      await press(surface, ctx, d, 600);
+
+      expect(busy.surfaces.get("dial-1")?.drawsWorking).toBe(true);
+
+      await surface.didReceiveSettings(ctx as never, dial({ pressAction: "reverse", longPressAction: "jump-to-live" }));
+
+      expect(busy.surfaces.get("dial-1")?.drawsWorking).toBe(true);
+    });
+
+    it("a speed gesture whose takeover jump is under way on its token draws rest, and still waiting and not done", async () => {
+      busy.real = true;
+      // A jump on the hold, so the dial has drawn working before the speed gesture fires.
+      const d = dial({ pressAction: "play-pause", longPressAction: "jump-to-live" });
+      const { surface, ctx } = await onScreen(speed(1), d);
+
+      await press(surface, ctx, d, 600);
+
+      expect(busy.surfaces.get("dial-1")?.drawsWorking).toBe(true);
+
+      // A key's search goes out on the playing replay.
+      expect(
+        pressReplayCommand({ kind: "search", search: "nextSession" }, { by: "next-session", origin: "key-1" }),
+      ).toEqual({
+        kind: "sent",
+        ok: true,
+      });
+
+      // Play/Pause behind it waits.
+      await press(surface, ctx, d);
+      await settle();
+
+      expect(getReplayGateView("dial-1").waiting).not.toBeNull();
+      expect(shownMark(lastBox(ctx))).toBe("waiting");
+
+      // Pressed again, it takes over: the pause and a short jump beside the reading, under the dial's token.
+      await press(surface, ctx, d);
+      await settle();
+
+      expect(getReplayGateView("dial-1")).toMatchObject({ underWay: expect.anything(), waiting: null });
+      expect(busy.actual!.getReplayBusyLook("dial-1")).toEqual({ kind: "rest" });
+      expect(shownMark(lastBox(ctx))).toBe("none");
+
+      // The replay never moves, so the takeover's jump is given up: not done.
+      const marks = new Set<string>();
+
+      for (let i = 0; i < 120 && getReplayGateView("dial-1").underWay !== null; i++) {
+        await settle(500);
+        marks.add(shownMark(lastBox(ctx)));
+      }
+
+      expect(getReplayGateView("dial-1").underWay).toBeNull();
+      expect(marks).toContain("not-done");
+      expect(marks).not.toContain("working 0");
     });
 
     it("hands Jump to Live and Jump to Race Start the dial's token", async () => {
