@@ -59,6 +59,36 @@ vi.mock("@iracedeck/deck-iracing", async (importOriginal) => ({
   })),
 }));
 
+// The replay busy indicator (#1437) has its own suite; here it is a recorder,
+// so a test sets the look a token shows and reads what registered.
+const busy = vi.hoisted(() => {
+  type Look = import("../../shared/replay-busy-indicator.js").ReplayBusyLook;
+  type Surface = import("../../shared/replay-busy-indicator.js").ReplayBusySurface;
+
+  const looks = new Map<string, Look>();
+  const surfaces = new Map<string, { surface: Surface; unregister: ReturnType<typeof vi.fn> }>();
+
+  return {
+    looks,
+    surfaces,
+    register: vi.fn((surface: Surface) => {
+      const unregister = vi.fn();
+
+      surfaces.set(surface.token, { surface, unregister });
+
+      return unregister;
+    }),
+    getLook: vi.fn((token: string): Look => looks.get(token) ?? { kind: "rest" }),
+  };
+});
+
+vi.mock("../../shared/replay-busy-indicator.js", () => ({
+  registerReplayBusySurface: busy.register,
+  getReplayBusyLook: busy.getLook,
+  reportReplayPressIgnored: vi.fn(),
+  setReplayBusyIndicatorLogger: vi.fn(),
+}));
+
 vi.mock("@iracedeck/deck-core", async () => {
   const { z } = await import("zod");
   // The real dial-gesture module, by path (zero imports): the dial instances
@@ -121,13 +151,18 @@ vi.mock("@iracedeck/deck-core", async () => {
         title,
         colors,
         dimmed,
+        busy: mark,
       }: {
         graphicSvg: string;
         title: { titleText: string };
         colors: unknown;
         dimmed?: boolean;
-      }) => `icon|${graphicSvg}|${title.titleText}|${JSON.stringify(colors)}${dimmed ? "|dimmed" : ""}`,
+        busy?: { kind: string; step?: number };
+      }) =>
+        `icon|${graphicSvg}|${title.titleText}|${JSON.stringify(colors)}${dimmed ? "|dimmed" : ""}` +
+        (mark ? `|busy:${mark.kind}${mark.step === undefined ? "" : `:${mark.step}`}` : ""),
     ),
+    BUSY_MARK_FRAMES: 8,
   };
 });
 
@@ -304,6 +339,8 @@ describe("ReplayMarkers", () => {
     _resetReplayCursor();
     _resetReplayCommandGate();
     _resetReplayPositionState();
+    busy.looks.clear();
+    busy.surfaces.clear();
     vi.useFakeTimers();
   });
 
@@ -1141,6 +1178,229 @@ describe("ReplayMarkers", () => {
       tick(action, "ctx-1");
       tick(action, "ctx-2");
       expect(redrawn(action)).toEqual([["ctx-2", expect.stringMatching(/\|dimmed$/)]]);
+    });
+  });
+
+  describe("the replay busy look on a key (#1437)", () => {
+    const AHEAD = { frame: 15_000, sessionNum: 1, sessionTimeMs: 0 };
+
+    function storeWith(markers: Marker[]): void {
+      mocks.markers.next.mockImplementation(
+        ((frame: number) => markers.find((m) => m.frame - frame > 60) ?? null) as never,
+      );
+      mocks.markers.previous.mockImplementation(
+        ((frame: number) => [...markers].reverse().find((m) => frame - m.frame > 120) ?? null) as never,
+      );
+    }
+
+    function tick(action: ReplayMarkers, id = "ctx-1"): void {
+      const sdk = action["sdkController"] as unknown as Sdk;
+      const call = sdk.subscribe.mock.calls.find(([subId]) => subId === id);
+      (call![1] as () => void)();
+    }
+
+    const shown = (action: ReplayMarkers) => vi.mocked(action["setKeyImage"]).mock.calls.at(-1)![1] as string;
+    const redrawn = (action: ReplayMarkers) => vi.mocked(action["updateKeyImage"]).mock.calls;
+
+    describe("which keys register", () => {
+      it.each(["next", "previous"])("%s registers its context, drawing working", async (mode) => {
+        const { action } = makeAction(REPLAY);
+
+        await appear(action, { mode });
+
+        expect(busy.register).toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({ token: "ctx-1", drawsWorking: true }),
+        );
+      });
+
+      it.each(["add", "delete"])("%s sends no replay command and does not register", async (mode) => {
+        const { action } = makeAction(REPLAY);
+
+        await appear(action, { mode });
+
+        expect(busy.register).not.toHaveBeenCalled();
+      });
+
+      it("unregisters on disappear", async () => {
+        const { action } = makeAction(REPLAY);
+        await appear(action, { mode: "next" });
+        const { unregister } = busy.surfaces.get("ctx-1")!;
+
+        await action.onWillDisappear(keyDown({ mode: "next" }));
+
+        expect(unregister).toHaveBeenCalledTimes(1);
+        expect(action["busyRegistrations"].has("ctx-1")).toBe(false);
+      });
+
+      it("follows a mode change: Add to Next registers, Next to Previous re-registers, Previous to Delete unregisters", async () => {
+        const { action } = makeAction(REPLAY);
+        await appear(action, { mode: "add" });
+        expect(busy.register).not.toHaveBeenCalled();
+
+        await action.onDidReceiveSettings(keyDown({ mode: "next" }));
+        const first = busy.surfaces.get("ctx-1")!;
+        expect(busy.register).toHaveBeenCalledTimes(1);
+
+        await action.onDidReceiveSettings(keyDown({ mode: "previous" }));
+        const second = busy.surfaces.get("ctx-1")!;
+        expect(busy.register).toHaveBeenCalledTimes(2);
+        expect(first.unregister).toHaveBeenCalledTimes(1);
+        expect(busy.register.mock.invocationCallOrder[1]).toBeLessThan(first.unregister.mock.invocationCallOrder[0]);
+
+        await action.onDidReceiveSettings(keyDown({ mode: "delete" }));
+        expect(busy.register).toHaveBeenCalledTimes(2);
+        expect(second.unregister).toHaveBeenCalledTimes(1);
+        expect(action["busyRegistrations"].has("ctx-1")).toBe(false);
+      });
+    });
+
+    describe("generateReplayMarkersSvg with a busy mark", () => {
+      const settings = ReplayMarkersSettings.parse({ mode: "next", colorOverrides: { graphic1Color: "#2ecc71" } });
+
+      it("beats the greyed look: the key's own colours, not dimmed, with the mark", () => {
+        const result = generateReplayMarkersSvg(settings, "unavailable", { kind: "working", step: 3 });
+
+        expect(result).toContain("|<svg>next</svg>|MARKER\nNEXT|");
+        expect(result).not.toContain("grey(");
+        expect(result).not.toContain("dimmed");
+        expect(result).toMatch(/\|busy:working:3$/);
+      });
+
+      it("beats a confirmation flash while it stands", () => {
+        const result = generateReplayMarkersSvg(ReplayMarkersSettings.parse({ mode: "add" }), "added", {
+          kind: "waiting",
+        });
+
+        expect(result).toContain("|<svg>add</svg>|MARKER\nADD|");
+        expect(result).not.toContain("ADDED");
+        expect(result).toMatch(/\|busy:waiting$/);
+      });
+
+      it("draws no mark without one", () => {
+        expect(generateReplayMarkersSvg(settings)).not.toContain("busy:");
+        expect(generateReplayMarkersSvg(settings, "unavailable")).toMatch(/\|dimmed$/);
+      });
+    });
+
+    describe("drawing", () => {
+      it("a key appearing while its jump stands shows the look, not the greyed icon", async () => {
+        storeWith([]);
+        const { action } = makeAction(REPLAY);
+        busy.looks.set("ctx-1", { kind: "waiting" });
+
+        await appear(action, { mode: "next" });
+
+        expect(shown(action)).toMatch(/\|busy:waiting$/);
+        expect(shown(action)).not.toContain("dimmed");
+        // No availability is on the key, so none is recorded.
+        expect(action["shownAvailable"].has("ctx-1")).toBe(false);
+      });
+
+      it("the indicator's redraw goes through the throttle and draws the look of the moment", async () => {
+        storeWith([AHEAD]);
+        const { action } = makeAction(REPLAY);
+        await appear(action, { mode: "next" });
+        const { surface } = busy.surfaces.get("ctx-1")!;
+
+        busy.looks.set("ctx-1", { kind: "working", tick: 13 });
+        surface.redraw({ kind: "working", tick: 13 });
+
+        expect(vi.mocked(action["imageThrottle"].schedule)).toHaveBeenCalledTimes(1);
+        expect(redrawn(action)).toHaveLength(1);
+        expect(redrawn(action)[0]).toEqual(["ctx-1", expect.stringMatching(/\|busy:working:5$/)]);
+
+        busy.looks.delete("ctx-1");
+        surface.redraw({ kind: "rest" });
+
+        expect(redrawn(action)).toHaveLength(2);
+        expect(redrawn(action)[1]![1]).not.toContain("busy:");
+        expect(redrawn(action)[1]![1]).not.toContain("dimmed");
+      });
+
+      it("the regenerate reads the look of the moment", async () => {
+        storeWith([AHEAD]);
+        const { action } = makeAction(REPLAY);
+        await appear(action, { mode: "next" });
+        const regenerate = vi.mocked(action["setRegenerateCallback"]).mock.calls.at(-1)![1] as () => string;
+
+        busy.looks.set("ctx-1", { kind: "not-done" });
+        expect(regenerate()).toMatch(/\|busy:not-done$/);
+
+        busy.looks.delete("ctx-1");
+        expect(regenerate()).not.toContain("busy:");
+      });
+
+      it("the availability refresh leaves a busy key alone, and the end of the look draws it fresh", async () => {
+        storeWith([AHEAD]);
+        const { action, sdk } = makeAction(REPLAY);
+        await appear(action, { mode: "next" });
+        const { surface } = busy.surfaces.get("ctx-1")!;
+
+        busy.looks.set("ctx-1", { kind: "working", tick: 0 });
+        surface.redraw({ kind: "working", tick: 0 });
+        vi.mocked(action["imageThrottle"].schedule).mockClear();
+
+        // The jump lands past the only marker: Next is no longer available, but the key is busy.
+        sdk.getCurrentTelemetry.mockReturnValue({ ...REPLAY, ReplayFrameNum: 15_000 } as TelemetryData);
+        tick(action);
+
+        expect(vi.mocked(action["imageThrottle"].schedule)).not.toHaveBeenCalled();
+        expect(redrawn(action)).toHaveLength(1);
+
+        busy.looks.delete("ctx-1");
+        surface.redraw({ kind: "rest" });
+
+        expect(redrawn(action)).toHaveLength(2);
+        expect(redrawn(action)[1]![1]).toMatch(/\|dimmed$/);
+
+        // And the tick after it, with nothing changed, draws nothing more.
+        tick(action);
+        expect(redrawn(action)).toHaveLength(2);
+      });
+
+      it("a look ending while a flash runs leaves the flash be; a look standing draws over it", async () => {
+        storeWith([AHEAD]);
+        const { action } = makeAction(REPLAY);
+        await appear(action, { mode: "next" });
+        const { surface } = busy.surfaces.get("ctx-1")!;
+
+        // A flash timer standing for the key, however it came to be.
+        action["flashTimers"].set(
+          "ctx-1",
+          setTimeout(() => action["flashTimers"].delete("ctx-1"), CONFIRMATION_FLASH_MS),
+        );
+
+        busy.looks.set("ctx-1", { kind: "waiting" });
+        surface.redraw({ kind: "waiting" });
+
+        expect(redrawn(action)).toHaveLength(1);
+        expect(redrawn(action)[0]![1]).toMatch(/\|busy:waiting$/);
+
+        busy.looks.delete("ctx-1");
+        surface.redraw({ kind: "rest" });
+
+        expect(redrawn(action)).toHaveLength(1);
+
+        // Once the flash is over, the look's end draws the resting icon.
+        await vi.advanceTimersByTimeAsync(CONFIRMATION_FLASH_MS);
+        surface.redraw({ kind: "rest" });
+
+        expect(redrawn(action)).toHaveLength(2);
+        expect(redrawn(action)[1]![1]).not.toContain("busy:");
+      });
+
+      it("a redraw for a key that has gone draws nothing", async () => {
+        storeWith([AHEAD]);
+        const { action } = makeAction(REPLAY);
+        await appear(action, { mode: "next" });
+        const { surface } = busy.surfaces.get("ctx-1")!;
+
+        await action.onWillDisappear(keyDown({ mode: "next" }));
+        busy.looks.set("ctx-1", { kind: "waiting" });
+        surface.redraw({ kind: "waiting" });
+
+        expect(redrawn(action)).toHaveLength(0);
+      });
     });
   });
 });
