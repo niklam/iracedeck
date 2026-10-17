@@ -534,6 +534,53 @@ describe("the paced search runner (#801)", () => {
       expect(sim.thrown).toBe(0);
     });
 
+    it("waits in a live session behind a record jump seeking past the controller's grace, then steps and applies the playback", async () => {
+      setUp();
+      setting("play");
+
+      // A live session's controller: the replay is given up a second after telemetry stops reading as one.
+      let notReplaySince: number | null = null;
+      const liveInReplay = (): boolean => {
+        if (sim.telemetry().IsReplayPlaying === true) {
+          notReplaySince = null;
+
+          return true;
+        }
+
+        notReplaySince ??= Date.now();
+
+        return Date.now() - notReplaySince < 1_000;
+      };
+
+      _configureReplayCommandGate({
+        replay: () => sim.replay,
+        readTelemetry: () => sim.telemetry(),
+        inReplay: liveInReplay,
+        connected: () => true,
+        now: () => Date.now(),
+      });
+      _configureReplaySearchQueue({ readTelemetry: () => sim.telemetry(), inReplay: liveInReplay });
+
+      // 350000 frames: about 2.9 s of seeking. The turn comes once the controller has given the replay up.
+      recordJump(400_000);
+      await wait(1_200);
+
+      expect(liveInReplay()).toBe(false);
+
+      turn("lap", 1);
+      await wait(500);
+
+      expect(isReplaySearchRunning("lap")).toBe(true);
+
+      await untilIdle();
+
+      expect(sim.calls).toEqual(["setPlayPosition 0 400000", "nextLap", "setPlaySpeed 1 false"]);
+      expect(sim.frame()).toBe(403_000);
+      expect(sim.thrown).toBe(0);
+      expect(runEnds()).toEqual(["jump-landed"]);
+      expect(warn).not.toHaveBeenCalled();
+    });
+
     it("gives up with nothing sent when the record jump's frame never reads back", async () => {
       setUp({ unlandable: new Set([160_000]), unlandableRest: 170_000 });
       recordJump(160_000);

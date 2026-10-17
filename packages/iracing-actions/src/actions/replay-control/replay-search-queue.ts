@@ -486,9 +486,26 @@ function finish(r: Run, result: ReplayJumpResult): void {
 /** How a run ended, as its replay jump reports it to the gate's state seam. */
 type Ending = ReplayJumpResult;
 
+/**
+ * Whether the replay counts as on screen: the controller says so, or a move of
+ * the plugin's own is under way (a target stands, or a seek shows), as the
+ * dial surface counts it. In a live session the controller gives the replay up
+ * a second into a seek, which a long jump outlasts; a run behind that jump
+ * waits for its landing rather than ending at once. The run's own replay jump
+ * is not such a move, so it is not asked whether the plugin is moving the
+ * replay: it always is while the run holds the cursor.
+ */
+function replayOnScreen(): boolean {
+  if (env.inReplay()) return true;
+
+  const record = getReplayGateRecord();
+
+  return record.target !== null || record.seekShowing;
+}
+
 /** The gave-up ending with a warning: a read-back that never came. */
 function neverReadBack(r: Run, what: string): Ending {
-  if (!env.inReplay()) return leftReplay(r);
+  if (!replayOnScreen()) return leftReplay(r);
 
   log.warn(`Replay search queue: ${what}; the rest of the ${r.target} run is dropped`);
 
@@ -701,14 +718,14 @@ async function holdReading(r: Run, options: { requirePaused: boolean; timeoutMs:
   for (;;) {
     if (stopped(r)) return { kind: "cancelled" };
 
-    if (!env.inReplay()) return { kind: "left" };
+    if (!replayOnScreen()) return { kind: "left" };
 
     const remaining = Math.max(0, startedAt + options.timeoutMs - Date.now());
     const settled = await waitForReplaySettled({ reads: 1, timeoutMs: remaining, claim });
 
     if (settled === "superseded" || stopped(r)) return { kind: "cancelled" };
 
-    if (settled === "gave-up") return env.inReplay() ? { kind: "gave-up" } : { kind: "left" };
+    if (settled === "gave-up") return replayOnScreen() ? { kind: "gave-up" } : { kind: "left" };
 
     const telemetry = env.readTelemetry();
     const reading = readReading(telemetry, Date.now());
@@ -723,7 +740,7 @@ async function holdReading(r: Run, options: { requirePaused: boolean; timeoutMs:
 
     if (agreeing >= HOLD_READS && telemetry !== null && reading !== null) return { kind: "held", telemetry, reading };
 
-    if (Date.now() - startedAt >= options.timeoutMs) return env.inReplay() ? { kind: "gave-up" } : { kind: "left" };
+    if (Date.now() - startedAt >= options.timeoutMs) return replayOnScreen() ? { kind: "gave-up" } : { kind: "left" };
 
     await sleep(HOLD_GAP_MS);
   }
