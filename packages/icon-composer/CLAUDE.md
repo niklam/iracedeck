@@ -26,7 +26,7 @@ Design constraint: the glyph uses only `polygon`, `rect` (with `rx`), and `circl
 - `BUSY_MARK_FRAMES` (8) — `step` is taken modulo it, negative steps included, so step n and step n + 8 are the same text and the rasterizer's cache serves as the frame cache; coordinates are rounded to two decimals for the same reason
 - `BUSY_NOT_DONE_COLOR` (`#e74c3c`) — the not-done cross is always this red; the dots take the colour passed
 
-The marks keep their authored sizes (ring dot 7, waiting dot 9, cross stroke 12) while the area's smaller side is at least 72 units; below that every length shrinks by `side / 72`, so a key whose title leaves little room shows the same mark smaller and inside the area, and an area with no room draws nothing. Like the binding-missing glyph, the marks use only `circle`, `line` and opacity — no filters, masks, clipPath, or CSS. Keep it that way.
+The marks are laid out in a square of the area's smaller side, capped at `BUSY_MARK_MAX_SIDE` (84, the area a default two-line title leaves), so a key with no title or a hidden title shows the mark no larger than a titled key does, centred where the artwork sits (#1437, from the maintainer's hands-on test). They keep their authored sizes (ring dot 7, waiting dot 9, cross stroke 12) while that side is at least 72 units; below that every length shrinks by `side / 72`, so a key whose title leaves little room shows the same mark smaller and inside the area, and an area with no room draws nothing. Like the binding-missing glyph, the marks use only `circle`, `line` and opacity — no filters, masks, clipPath, or CSS. Keep it that way.
 
 ### Icon Base Template (`icon-base.ts`)
 

@@ -18,7 +18,7 @@ export {
 } from "./binding-warning.js";
 
 // Replay busy marks (issue #1437)
-export { BUSY_MARK_FRAMES, BUSY_NOT_DONE_COLOR, busyMarkSvg, type BusyMark } from "./busy-mark.js";
+export { BUSY_MARK_FRAMES, BUSY_MARK_MAX_SIDE, BUSY_NOT_DONE_COLOR, busyMarkSvg, type BusyMark } from "./busy-mark.js";
 
 // Icon base template and border parts
 export { extractGraphicContent, generateBorderParts, ICON_BASE_TEMPLATE } from "./icon-base.js";

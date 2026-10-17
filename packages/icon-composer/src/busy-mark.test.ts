@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { BUSY_MARK_FRAMES, BUSY_NOT_DONE_COLOR, type BusyMark, busyMarkSvg } from "./busy-mark.js";
+import { BUSY_MARK_FRAMES, BUSY_MARK_MAX_SIDE, BUSY_NOT_DONE_COLOR, type BusyMark, busyMarkSvg } from "./busy-mark.js";
 import type { GraphicArea } from "./title-settings.js";
 
 /** The whole 144-unit canvas less its padding: a key with no title. */
@@ -62,13 +62,13 @@ describe("busyMarkSvg", () => {
     it("puts dot 0 at the top and goes clockwise around the area's centre", () => {
       const dots = circles(busyMarkSvg({ kind: "working", step: 0 }, FULL, "#fff"));
 
-      // radius = 128 / 2 - 7 - 1 = 56 around (72, 72)
-      expect(dots[0]).toMatchObject({ cx: 72, cy: 16 });
-      expect(dots[2]).toMatchObject({ cx: 128, cy: 72 });
-      expect(dots[4]).toMatchObject({ cx: 72, cy: 128 });
-      expect(dots[6]).toMatchObject({ cx: 16, cy: 72 });
-      expect(dots[1].cx).toBeCloseTo(72 + 56 * Math.SQRT1_2, 1);
-      expect(dots[1].cy).toBeCloseTo(72 - 56 * Math.SQRT1_2, 1);
+      // laid out in the 84-unit cap: radius = 84 / 2 - 7 - 1 = 34 around (72, 72)
+      expect(dots[0]).toMatchObject({ cx: 72, cy: 38 });
+      expect(dots[2]).toMatchObject({ cx: 106, cy: 72 });
+      expect(dots[4]).toMatchObject({ cx: 72, cy: 106 });
+      expect(dots[6]).toMatchObject({ cx: 38, cy: 72 });
+      expect(dots[1].cx).toBeCloseTo(72 + 34 * Math.SQRT1_2, 1);
+      expect(dots[1].cy).toBeCloseTo(72 - 34 * Math.SQRT1_2, 1);
     });
 
     it("moves the newest dot with the step", () => {
@@ -140,9 +140,9 @@ describe("busyMarkSvg", () => {
       expect(BUSY_NOT_DONE_COLOR).toBe("#e74c3c");
       expect(svg).toContain('stroke-width="12"');
       expect(svg).toContain('stroke-linecap="round"');
-      // half-size = 128 / 2 - 10 = 54 around (72, 72)
-      expect(svg).toContain('<line x1="18" y1="18" x2="126" y2="126"');
-      expect(svg).toContain('<line x1="18" y1="126" x2="126" y2="18"');
+      // laid out in the 84-unit cap: half-size = 84 / 2 - 10 = 32 around (72, 72)
+      expect(svg).toContain('<line x1="40" y1="40" x2="104" y2="104"');
+      expect(svg).toContain('<line x1="40" y1="104" x2="104" y2="40"');
     });
   });
 
@@ -228,5 +228,52 @@ describe("busyMarkSvg", () => {
         expect(busyMarkSvg(mark, { x: 8, y: 8, width: 128, height: -4 }, "#fff")).toBe("");
       }
     });
+  });
+});
+
+describe("busyMarkSvg's size cap", () => {
+  // A key with no title has the whole 128-unit square as its artwork area; the
+  // mark there must be no larger than on a key with the default two-line
+  // title (an 83.4-unit area), centred where the artwork sits (#1437).
+  const untitled: GraphicArea = { x: 8, y: 8, width: 128, height: 128 };
+  const capped: GraphicArea = {
+    x: 72 - BUSY_MARK_MAX_SIDE / 2,
+    y: 72 - BUSY_MARK_MAX_SIDE / 2,
+    width: BUSY_MARK_MAX_SIDE,
+    height: BUSY_MARK_MAX_SIDE,
+  };
+  const twoLines: GraphicArea = { x: 8, y: 8, width: 128, height: 83.4 };
+  const marks: BusyMark[] = [{ kind: "working", step: 3 }, { kind: "waiting" }, { kind: "not-done" }];
+
+  it("lays the mark out in a square of at most BUSY_MARK_MAX_SIDE, covering the two-line title's area", () => {
+    expect(BUSY_MARK_MAX_SIDE).toBeGreaterThanOrEqual(twoLines.height);
+    expect(BUSY_MARK_MAX_SIDE).toBeLessThan(90);
+  });
+
+  it.each(marks)("draws $kind on an untitled key exactly as in a capped square with the same centre", (mark) => {
+    expect(busyMarkSvg(mark, untitled, "#fff")).toBe(busyMarkSvg(mark, capped, "#fff"));
+  });
+
+  it("keeps the working ring on an untitled key within the cap's extent", () => {
+    const xs = [
+      ...busyMarkSvg({ kind: "working", step: 0 }, untitled, "#fff").matchAll(/cx="([\d.]+)"[^>]*r="([\d.]+)"/g),
+    ].map(([, cx, r]) => [Number(cx) - Number(r), Number(cx) + Number(r)]);
+    const left = Math.min(...xs.map(([l]) => l));
+    const right = Math.max(...xs.map(([, r]) => r));
+
+    expect(right - left).toBeLessThanOrEqual(BUSY_MARK_MAX_SIDE);
+    expect((left + right) / 2).toBeCloseTo(72, 0);
+  });
+
+  it("leaves the two-line title's mark as it was: its area is under the cap", () => {
+    const side = Math.min(twoLines.width, twoLines.height);
+    const square: GraphicArea = {
+      x: 72 - side / 2,
+      y: twoLines.y + twoLines.height / 2 - side / 2,
+      width: side,
+      height: side,
+    };
+
+    for (const mark of marks) expect(busyMarkSvg(mark, twoLines, "#fff")).toBe(busyMarkSvg(mark, square, "#fff"));
   });
 });
