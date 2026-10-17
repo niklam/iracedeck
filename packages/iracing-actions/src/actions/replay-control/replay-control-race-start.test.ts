@@ -63,7 +63,30 @@ vi.mock("@iracedeck/deck-iracing", async (importOriginal) => ({
   getCommands: vi.fn(),
 }));
 
+// The replay busy indicator (#1437) has its own suite; here a test sets the
+// look a key shows and reads which ignored presses were reported.
+const busy = vi.hoisted(() => {
+  type Look = import("../../shared/replay-busy-indicator.js").ReplayBusyLook;
+
+  const looks = new Map<string, Look>();
+
+  return {
+    looks,
+    getLook: vi.fn((token: string): Look => looks.get(token) ?? { kind: "rest" }),
+    reportIgnored: vi.fn((_token: string) => {}),
+  };
+});
+
+vi.mock("../../shared/replay-busy-indicator.js", () => ({
+  registerReplayBusySurface: vi.fn(() => () => {}),
+  getReplayBusyLook: busy.getLook,
+  reportReplayPressIgnored: busy.reportIgnored,
+  setReplayBusyIndicatorLogger: vi.fn(),
+}));
+
 vi.mock("@iracedeck/deck-core", () => ({
+  BUSY_MARK_FRAMES: 8,
+  busyMarkSvg: vi.fn(() => "<busy-mark/>"),
   CommonSettings: {
     extend: (_fields: unknown) => ({
       parse: (data: Record<string, unknown>) => ({ ...data }),
@@ -539,6 +562,7 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    busy.looks.clear();
     // Every press polls for a landing; a real-timer poll would outlive its test.
     vi.useFakeTimers();
     _resetFastestLapSessionCache();
@@ -752,6 +776,8 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
       expect(action["logger"].info).toHaveBeenCalledWith(
         "Jump to race start: no race session in this replay; press ignored",
       );
+      // Not a press ignored behind one in flight: the busy look leaves it alone (#1437).
+      expect(busy.reportIgnored).not.toHaveBeenCalled();
     });
 
     it("ignores a press on the SessionNum -1 tick after a seek", async () => {
@@ -804,6 +830,8 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
       expect(action["logger"].info).toHaveBeenCalledWith(
         "Jump to race start: previous jump still in flight; press ignored",
       );
+      // The ignored key shows not done (#1437); the first is left alone.
+      expect(busy.reportIgnored).toHaveBeenCalledExactlyOnceWith("ctx-b");
       expect(action["activeFastestLapPress"]?.contextId).toBe("ctx-a");
 
       // iRacing reaches the frame: the first press, not cancelled by the second, applies the setting.
@@ -838,6 +866,7 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
       expect(action["logger"].info).toHaveBeenCalledWith(
         "Jump to fastest lap: previous press still in flight; press ignored",
       );
+      expect(busy.reportIgnored).toHaveBeenCalledExactlyOnceWith("ctx-fastest");
       expect(mockReplay.setPlayPosition).toHaveBeenCalledTimes(1);
       expect(mockCamera.switchNum).not.toHaveBeenCalled();
     });
@@ -2277,6 +2306,40 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
 
       expect(action["updateKeyImage"]).toHaveBeenCalledTimes(2);
       expect(lastIcon().dimmed).toBe(true);
+    });
+
+    it("a busy key is drawn busy, in its own colours, even where it would be unavailable (#1437)", () => {
+      generateReplayControlSvg({ mode: "jump-to-race-start" }, false, undefined, undefined, false, true, {
+        kind: "not-done",
+      });
+
+      expect(lastIcon().busy).toEqual({ kind: "not-done" });
+      expect(lastIcon().dimmed).toBeUndefined();
+      expect(lastIcon().colors).toEqual({ backgroundColor: "#101010", textColor: "#ffffff", graphic1Color: "#2ecc71" });
+      expect(lastIcon().border).toEqual({ enabled: true, borderWidth: 7, borderColor: "#00aaff" });
+    });
+
+    it("the availability redraw draws the busy look of the moment (#1437)", async () => {
+      fakeReplay(action, { sessionTypes: ["Practice"], layout: [WEEKEND[0]], cursor: 5_000 });
+      await appear();
+
+      const tick = vi.mocked(action["sdkController"].subscribe).mock.calls[0][1] as (
+        telemetry: TelemetryData | null,
+      ) => void;
+
+      busy.looks.set("ctx-green", { kind: "working", tick: 9 });
+      fakeReplay(action, { sessionTypes: WEEKEND_TYPES, layout: WEEKEND, cursor: 5_000 });
+      tick(action["sdkController"].getCurrentTelemetry());
+
+      expect(action["updateKeyImage"]).toHaveBeenCalledExactlyOnceWith("ctx-green", expect.any(String));
+      expect(lastIcon().busy).toEqual({ kind: "working", step: 1 });
+
+      const regenerate = vi.mocked(action["setRegenerateCallback"]).mock.calls.at(-1)?.[1] as () => string;
+
+      busy.looks.delete("ctx-green");
+      regenerate();
+
+      expect(lastIcon().busy).toBeUndefined();
     });
 
     it("regenerates with the look of the moment", async () => {

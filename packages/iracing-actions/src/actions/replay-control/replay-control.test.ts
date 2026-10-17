@@ -1,4 +1,5 @@
 import type { ReplayJumpPlayback } from "@iracedeck/app-constants";
+import { assembleIcon, busyMarkSvg, resolveIconColors, resolveTitleSettings } from "@iracedeck/deck-core";
 import {
   getAllCarNumbers,
   getCarNumberFromSessionInfo,
@@ -179,6 +180,38 @@ vi.mock("./replay-control-dial-surface.js", () => ({
   },
 }));
 
+// The replay busy indicator (#1437) has its own suite; here it is a recorder,
+// so a test sets the look a token shows and reads what registered.
+const busy = vi.hoisted(() => {
+  type Look = import("../../shared/replay-busy-indicator.js").ReplayBusyLook;
+  type Surface = import("../../shared/replay-busy-indicator.js").ReplayBusySurface;
+
+  const looks = new Map<string, Look>();
+  const surfaces = new Map<string, { surface: Surface; unregister: ReturnType<typeof vi.fn> }>();
+
+  return {
+    looks,
+    surfaces,
+    register: vi.fn((surface: Surface) => {
+      const unregister = vi.fn();
+
+      surfaces.set(surface.token, { surface, unregister });
+
+      return unregister;
+    }),
+    getLook: vi.fn((token: string): Look => looks.get(token) ?? { kind: "rest" }),
+    reportIgnored: vi.fn((_token: string) => {}),
+    setLogger: vi.fn(),
+  };
+});
+
+vi.mock("../../shared/replay-busy-indicator.js", () => ({
+  registerReplayBusySurface: busy.register,
+  getReplayBusyLook: busy.getLook,
+  reportReplayPressIgnored: busy.reportIgnored,
+  setReplayBusyIndicatorLogger: busy.setLogger,
+}));
+
 vi.mock("@iracedeck/deck-iracing", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@iracedeck/deck-iracing")>()),
   getCommands: vi.fn(() => ({
@@ -276,11 +309,26 @@ vi.mock("@iracedeck/deck-core", () => ({
     customPosition: 0,
   })),
   assembleIcon: vi.fn(
-    ({ graphicSvg, title }: { graphicSvg: string; colors: unknown; title: { titleText: string } }) => {
-      const encoded = encodeURIComponent(`<svg>${graphicSvg}${title?.titleText ?? ""}</svg>`);
+    ({
+      graphicSvg,
+      title,
+      busy: mark,
+    }: {
+      graphicSvg: string;
+      colors: unknown;
+      title: { titleText: string };
+      busy?: { kind: string; step?: number };
+    }) => {
+      const busyText = mark ? `[busy:${mark.kind}${mark.step === undefined ? "" : `:${mark.step}`}]` : "";
+      const encoded = encodeURIComponent(`<svg>${graphicSvg}${busyText}${title?.titleText ?? ""}</svg>`);
 
       return `data:image/svg+xml,${encoded}`;
     },
+  ),
+  BUSY_MARK_FRAMES: 8,
+  busyMarkSvg: vi.fn(
+    (mark: { kind: string; step?: number }, _area: unknown, color: string) =>
+      `<busy-mark ${mark.kind}${mark.step === undefined ? "" : `:${mark.step}`} ${color}/>`,
   ),
   extractGraphicContent: vi.fn((svg: string) =>
     svg
@@ -336,6 +384,8 @@ describe("ReplayControl", () => {
     // state every press reaches: each test starts with nothing under way.
     _resetReplayCommandGate();
     _resetReplayPositionState();
+    busy.looks.clear();
+    busy.surfaces.clear();
   });
 
   afterEach(() => {
@@ -4210,6 +4260,8 @@ describe("ReplayControl", () => {
             expect(action["logger"].info).toHaveBeenCalledWith(
               "Jump to fastest lap: replay session not settled yet; press ignored",
             );
+            // Not a press ignored behind one in flight: out of #1437's scope.
+            expect(busy.reportIgnored).not.toHaveBeenCalled();
             expect(mockCamera.switchNum).not.toHaveBeenCalled();
             expect(mockStore.laps.findLapStart).not.toHaveBeenCalled();
             expect(countReplayCommands()).toBe(0);
@@ -4337,6 +4389,8 @@ describe("ReplayControl", () => {
             expect(action["logger"].info).toHaveBeenCalledWith(
               "Jump to fastest lap: previous press still in flight; press ignored",
             );
+            // The ignored key shows not done (#1437); the walking one is left alone.
+            expect(busy.reportIgnored).toHaveBeenCalledExactlyOnceWith("ctx-2");
 
             await vi.runAllTimersAsync();
 
@@ -6208,6 +6262,374 @@ describe("ReplayControl", () => {
         await vi.advanceTimersByTimeAsync(5_000);
 
         expect(store.incidents.list).not.toHaveBeenCalled();
+      });
+    });
+  });
+
+  describe("the replay busy look on a key (#1437)", () => {
+    function fakeEvent(actionId: string, settings: Record<string, unknown>, isDial = false) {
+      return {
+        action: { id: actionId, isDial: () => isDial, setTitle: vi.fn(), setImage: vi.fn() },
+        payload: { settings },
+      };
+    }
+
+    let action: ReplayControl;
+
+    async function appear(contextId: string, mode: string, isDial = false): Promise<void> {
+      await action.onWillAppear(fakeEvent(contextId, { mode }, isDial) as any);
+    }
+
+    /** The mocked icon functions write a busy mark as `[busy:<kind>(:<step>)]`. */
+    const decoded = (uri: string): string => decodeURIComponent(uri);
+
+    beforeEach(() => {
+      action = new ReplayControl();
+    });
+
+    describe("which keys register, and how", () => {
+      const DRAWS_WORKING = [
+        "next-session",
+        "prev-session",
+        "next-lap",
+        "prev-lap",
+        "next-incident",
+        "prev-incident",
+        "jump-to-beginning",
+        "jump-to-live",
+        "jump-to-fastest-lap",
+        "jump-to-race-start",
+      ];
+      const NO_WORKING = [
+        "play-pause",
+        "play-backward",
+        "stop",
+        "fast-forward",
+        "rewind",
+        "slow-motion",
+        "slow-motion-rewind",
+        "frame-forward",
+        "frame-backward",
+        "speed-increase",
+        "speed-decrease",
+        "set-speed",
+      ];
+      const NOT_REGISTERED = [
+        "jump-to-my-car",
+        "next-car",
+        "prev-car",
+        "next-car-number",
+        "prev-car-number",
+        "speed-display",
+      ];
+
+      it.each(DRAWS_WORKING)("%s registers its context, drawing working", async (mode) => {
+        await appear("ctx-1", mode);
+
+        expect(busy.register).toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({ token: "ctx-1", drawsWorking: true }),
+        );
+      });
+
+      it.each(NO_WORKING)("%s registers its context, drawing only waiting and not done", async (mode) => {
+        await appear("ctx-1", mode);
+
+        expect(busy.register).toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({ token: "ctx-1", drawsWorking: false }),
+        );
+      });
+
+      it.each(NOT_REGISTERED)("%s sends no replay command and does not register", async (mode) => {
+        await appear("ctx-1", mode);
+
+        expect(busy.register).not.toHaveBeenCalled();
+      });
+
+      it("a dial does not register: its box is another surface", async () => {
+        await appear("ctx-dial", "next-lap", true);
+
+        expect(busy.register).not.toHaveBeenCalled();
+      });
+
+      it("registers before the first draw, so a key coming back shows the standing look at once", async () => {
+        busy.looks.set("ctx-1", { kind: "waiting" });
+
+        await appear("ctx-1", "next-lap");
+
+        expect(busy.register.mock.invocationCallOrder[0]).toBeLessThan(
+          vi.mocked(action["setKeyImage"]).mock.invocationCallOrder[0],
+        );
+        expect(decoded(vi.mocked(action["setKeyImage"]).mock.calls[0][1])).toContain("[busy:waiting]");
+      });
+
+      it("unregisters on disappear", async () => {
+        await appear("ctx-1", "next-lap");
+        const { unregister } = busy.surfaces.get("ctx-1")!;
+
+        await action.onWillDisappear(fakeEvent("ctx-1", { mode: "next-lap" }) as any);
+
+        expect(unregister).toHaveBeenCalledTimes(1);
+        expect(action["busyRegistrations"].has("ctx-1")).toBe(false);
+      });
+
+      it("re-registers on a mode change, the new registration in before the old one is dropped", async () => {
+        await appear("ctx-1", "stop");
+        const first = busy.surfaces.get("ctx-1")!;
+
+        await action.onDidReceiveSettings(fakeEvent("ctx-1", { mode: "next-incident" }) as any);
+        const second = busy.surfaces.get("ctx-1")!;
+
+        expect(busy.register).toHaveBeenCalledTimes(2);
+        expect(first.surface.drawsWorking).toBe(false);
+        expect(second.surface.drawsWorking).toBe(true);
+        expect(first.unregister).toHaveBeenCalledTimes(1);
+        expect(busy.register.mock.invocationCallOrder[1]).toBeLessThan(first.unregister.mock.invocationCallOrder[0]);
+        expect(second.unregister).not.toHaveBeenCalled();
+      });
+
+      it("unregisters on a change to a mode that sends no replay command", async () => {
+        await appear("ctx-1", "next-lap");
+        const { unregister } = busy.surfaces.get("ctx-1")!;
+
+        await action.onDidReceiveSettings(fakeEvent("ctx-1", { mode: "next-car" }) as any);
+
+        expect(busy.register).toHaveBeenCalledTimes(1);
+        expect(unregister).toHaveBeenCalledTimes(1);
+        expect(action["busyRegistrations"].has("ctx-1")).toBe(false);
+      });
+
+      it("sets the indicator's logger to a scope of its own", () => {
+        expect(busy.setLogger).toHaveBeenCalled();
+        expect(action["logger"].createScope).toHaveBeenCalledWith("ReplayBusy");
+      });
+    });
+
+    describe("drawing", () => {
+      it("the appear and settings draws pass the look, and the regenerate reads the look of the moment", async () => {
+        busy.looks.set("ctx-1", { kind: "working", tick: 11 });
+        await appear("ctx-1", "next-lap");
+
+        expect(decoded(vi.mocked(action["setKeyImage"]).mock.calls[0][1])).toContain("[busy:working:3]");
+
+        busy.looks.delete("ctx-1");
+        const regenerate = vi.mocked(action["setRegenerateCallback"]).mock.calls.at(-1)![1] as () => string;
+
+        expect(decoded(regenerate())).not.toContain("[busy:");
+
+        busy.looks.set("ctx-1", { kind: "not-done" });
+        await action.onDidReceiveSettings(fakeEvent("ctx-1", { mode: "next-lap" }) as any);
+
+        expect(decoded(vi.mocked(action["setKeyImage"]).mock.calls.at(-1)![1])).toContain("[busy:not-done]");
+      });
+
+      it("the telemetry draw passes the look, and its de-duplication key changes with it", async () => {
+        await appear("ctx-1", "play-pause");
+        const updateKeyImage = vi.mocked(action["updateKeyImage"]);
+        const settings = action["activeContexts"].get("ctx-1")!;
+
+        await action["updateDisplayFromTelemetry"]("ctx-1", settings);
+        const atRest = updateKeyImage.mock.calls.length;
+
+        expect(action["lastState"].get("ctx-1")).toMatch(/:rest$/);
+
+        // The same state again draws nothing.
+        await action["updateDisplayFromTelemetry"]("ctx-1", settings);
+        expect(updateKeyImage).toHaveBeenCalledTimes(atRest);
+
+        // A look the key has not drawn yet is drawn, step by step.
+        busy.looks.set("ctx-1", { kind: "waiting" });
+        await action["updateDisplayFromTelemetry"]("ctx-1", settings);
+
+        expect(updateKeyImage).toHaveBeenCalledTimes(atRest + 1);
+        expect(decoded(updateKeyImage.mock.calls.at(-1)![1])).toContain("[busy:waiting]");
+        expect(action["lastState"].get("ctx-1")).toMatch(/:waiting$/);
+
+        busy.looks.set("ctx-1", { kind: "working", tick: 1 });
+        await action["updateDisplayFromTelemetry"]("ctx-1", settings);
+        busy.looks.set("ctx-1", { kind: "working", tick: 2 });
+        await action["updateDisplayFromTelemetry"]("ctx-1", settings);
+
+        expect(updateKeyImage).toHaveBeenCalledTimes(atRest + 3);
+        expect(action["lastState"].get("ctx-1")).toMatch(/:working:2$/);
+
+        const regenerate = vi.mocked(action["setRegenerateCallback"]).mock.calls.at(-1)![1] as () => string;
+
+        busy.looks.delete("ctx-1");
+        expect(decoded(regenerate())).not.toContain("[busy:");
+      });
+
+      it("the indicator's redraw composes the key from its state and sends it through updateKeyImage", async () => {
+        await appear("ctx-1", "next-incident");
+        const { surface } = busy.surfaces.get("ctx-1")!;
+        const updateKeyImage = vi.mocked(action["updateKeyImage"]);
+
+        updateKeyImage.mockClear();
+        busy.looks.set("ctx-1", { kind: "working", tick: 10 });
+        surface.redraw({ kind: "working", tick: 10 });
+
+        expect(updateKeyImage).toHaveBeenCalledExactlyOnceWith("ctx-1", expect.any(String));
+        expect(decoded(updateKeyImage.mock.calls[0][1])).toContain("[busy:working:2]");
+        expect(decoded(updateKeyImage.mock.calls[0][1])).toContain("NEXT");
+
+        const regenerate = vi.mocked(action["setRegenerateCallback"]).mock.calls.at(-1)![1] as () => string;
+
+        busy.looks.set("ctx-1", { kind: "waiting" });
+        expect(decoded(regenerate())).toContain("[busy:waiting]");
+
+        busy.looks.delete("ctx-1");
+        surface.redraw({ kind: "rest" });
+
+        expect(updateKeyImage).toHaveBeenCalledTimes(2);
+        expect(decoded(updateKeyImage.mock.calls[1][1])).not.toContain("[busy:");
+      });
+
+      it("a redraw of a Play / Pause key keeps its playing state and records the look for the telemetry draw", async () => {
+        vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue({
+          ReplayPlaySpeed: 1,
+          ReplayPlaySlowMotion: false,
+        } as TelemetryData);
+        await appear("ctx-1", "play-pause");
+        const { surface } = busy.surfaces.get("ctx-1")!;
+        const updateKeyImage = vi.mocked(action["updateKeyImage"]);
+
+        updateKeyImage.mockClear();
+        busy.looks.set("ctx-1", { kind: "waiting" });
+        surface.redraw({ kind: "waiting" });
+
+        expect(updateKeyImage).toHaveBeenCalledTimes(1);
+        expect(decoded(updateKeyImage.mock.calls[0][1])).toContain("pause-icon");
+        expect(decoded(updateKeyImage.mock.calls[0][1])).toContain("[busy:waiting]");
+        expect(action["lastState"].get("ctx-1")).toMatch(/:waiting$/);
+
+        // The telemetry draw that follows a press sees the look already drawn.
+        await action["updateDisplayFromTelemetry"]("ctx-1", action["activeContexts"].get("ctx-1")!);
+        expect(updateKeyImage).toHaveBeenCalledTimes(1);
+      });
+
+      it("a redraw for a key that has gone draws nothing", async () => {
+        await appear("ctx-1", "next-lap");
+        const { surface } = busy.surfaces.get("ctx-1")!;
+
+        await action.onWillDisappear(fakeEvent("ctx-1", { mode: "next-lap" }) as any);
+        vi.mocked(action["updateKeyImage"]).mockClear();
+        surface.redraw({ kind: "waiting" });
+
+        expect(action["updateKeyImage"]).not.toHaveBeenCalled();
+      });
+    });
+
+    describe("a press ignored behind one in flight", () => {
+      it("Jump to Fastest Lap's walk reports the ignored press", async () => {
+        action["activeFastestLapPress"] = { contextId: "ctx-1", claim: { cancelledBy: null } as any };
+
+        await action.walkToFastestLap("ctx-2", 4, 4, 0, {} as any);
+
+        expect(action["logger"].info).toHaveBeenCalledWith(
+          "Jump to fastest lap: walk already in flight; press ignored",
+        );
+        expect(busy.reportIgnored).toHaveBeenCalledExactlyOnceWith("ctx-2");
+      });
+    });
+
+    describe("generateReplayControlSvg with a busy mark", () => {
+      const MARKS = [{ kind: "working", step: 5 }, { kind: "waiting" }, { kind: "not-done" }] as const;
+      const markText = (mark: (typeof MARKS)[number]): string =>
+        "step" in mark ? `${mark.kind}:${mark.step}` : mark.kind;
+
+      it.each(MARKS)("a key drawn by assembleIcon takes the mark: %o", (mark) => {
+        const uri = decoded(generateReplayControlSvg({ mode: "next-lap" }, false, 0, false, false, false, mark));
+
+        expect(uri).toContain(`[busy:${markText(mark)}]`);
+        expect(vi.mocked(assembleIcon).mock.calls.at(-1)![0].busy).toEqual(mark);
+      });
+
+      it.each(MARKS)("a playing Play / Pause key takes the mark: %o", (mark) => {
+        const uri = decoded(generateReplayControlSvg({ mode: "play-pause" }, true, 1, false, false, false, mark));
+
+        expect(uri).toContain("pause-icon");
+        expect(uri).toContain(`[busy:${markText(mark)}]`);
+      });
+
+      it("passes no mark at rest, so the icon is unchanged", () => {
+        const plain = generateReplayControlSvg({ mode: "next-lap" });
+
+        expect(generateReplayControlSvg({ mode: "next-lap" }, false, 0, false, false, false, undefined)).toBe(plain);
+        expect(vi.mocked(assembleIcon).mock.calls.at(-1)![0].busy).toBeUndefined();
+      });
+
+      it("a busy unavailable key keeps its own colours and is not dimmed", () => {
+        vi.mocked(resolveIconColors).mockReturnValueOnce({ graphic1Color: "#2ecc71", textColor: "#ffffff" });
+
+        generateReplayControlSvg({ mode: "jump-to-race-start" }, false, 0, false, false, true, { kind: "waiting" });
+
+        const args = vi.mocked(assembleIcon).mock.calls.at(-1)![0];
+
+        expect(args.busy).toEqual({ kind: "waiting" });
+        expect(args.dimmed).toBeUndefined();
+        expect(args.colors).toEqual({ graphic1Color: "#2ecc71", textColor: "#ffffff" });
+      });
+
+      it("passes bindingMissing beside the mark, for assembleIcon to set aside", () => {
+        generateReplayControlSvg({ mode: "next-car" }, false, 0, false, true, false, { kind: "not-done" });
+
+        const args = vi.mocked(assembleIcon).mock.calls.at(-1)![0];
+
+        expect(args.bindingMissing).toBe(true);
+        expect(args.busy).toEqual({ kind: "not-done" });
+      });
+
+      describe.each([
+        { mode: "speed-display", settings: { mode: "speed-display" } },
+        { mode: "set-speed", settings: { mode: "set-speed", speed: "4" } },
+      ] as const)("$mode, assembled by hand", ({ mode, settings }) => {
+        function titleWith(showGraphics: boolean): void {
+          vi.mocked(resolveTitleSettings).mockReturnValueOnce({
+            showTitle: true,
+            showGraphics,
+            titleText: "TITLE",
+            bold: true,
+            fontSize: 18,
+            position: "bottom",
+            customPosition: 0,
+          } as any);
+        }
+
+        it.each([true, false])("draws the mark in place of the artwork with showGraphics %s", (showGraphics) => {
+          titleWith(showGraphics);
+
+          const uri = decoded(generateReplayControlSvg(settings, false, 4, false, false, false, { kind: "waiting" }));
+
+          expect(uri).toContain("<busy-mark waiting #ffffff/>");
+          expect(uri).not.toContain(`${mode} `);
+          expect(vi.mocked(busyMarkSvg)).toHaveBeenCalledExactlyOnceWith(
+            { kind: "waiting" },
+            { x: 8, y: 8, width: 128, height: 128 },
+            "#ffffff",
+          );
+        });
+
+        it.each(MARKS)("draws each mark: %o", (mark) => {
+          const uri = decoded(generateReplayControlSvg(settings, false, 4, false, false, false, mark));
+
+          expect(uri).toContain(`<busy-mark ${markText(mark)} #ffffff/>`);
+        });
+
+        it("colours the mark graphic1Color, then textColor", () => {
+          vi.mocked(resolveIconColors).mockReturnValueOnce({ graphic1Color: "#123456", textColor: "#abcdef" });
+          generateReplayControlSvg(settings, false, 4, false, false, false, { kind: "waiting" });
+          expect(vi.mocked(busyMarkSvg).mock.calls.at(-1)![2]).toBe("#123456");
+
+          vi.mocked(resolveIconColors).mockReturnValueOnce({ textColor: "#abcdef" });
+          generateReplayControlSvg(settings, false, 4, false, false, false, { kind: "waiting" });
+          expect(vi.mocked(busyMarkSvg).mock.calls.at(-1)![2]).toBe("#abcdef");
+        });
+
+        it("draws its artwork and no mark at rest", () => {
+          const uri = decoded(generateReplayControlSvg(settings, false, 4, false));
+
+          expect(uri).toContain(`${mode} `);
+          expect(busyMarkSvg).not.toHaveBeenCalled();
+        });
       });
     });
   });
