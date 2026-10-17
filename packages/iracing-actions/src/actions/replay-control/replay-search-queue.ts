@@ -261,7 +261,7 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
 interface Run {
   readonly target: ReplaySearchTarget;
   readonly origin: string;
-  /** The net steps still to make, the search on its way included. */
+  /** The net steps still to make, the search on its way included; less {@link inFlight}, it is within ±{@link SEARCH_QUEUE_MAX}. */
   count: number;
   /** The direction of the search on its way, or 0. */
   inFlight: 0 | 1 | -1;
@@ -312,7 +312,8 @@ export function queueReplaySearch(turn: ReplaySearchTurn): void {
   const current = active();
 
   if (current !== null && current.target === turn.target) {
-    current.count = clampCount(current.count + ticks);
+    // The clamp is on what is left after the search on its way, the count a dial shows, never on the two together.
+    current.count = current.inFlight + clampCount(current.count - current.inFlight + ticks);
     log.debug(
       `Replay search queue: ${turn.target} ${ticks > 0 ? "+" : ""}${ticks} from ${turn.origin}; ` +
         `${current.count - current.inFlight} left after the search on its way`,
@@ -740,7 +741,7 @@ async function runOneSearch(r: Run, direction: 1 | -1, options: { watchLanding: 
     watcher?.stop();
   }
 
-  if (outcome === "landed") r.count = clampCount(r.count - direction);
+  if (outcome === "landed") r.count -= direction;
 
   r.inFlight = 0;
 

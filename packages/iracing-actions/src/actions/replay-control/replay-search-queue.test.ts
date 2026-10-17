@@ -380,6 +380,20 @@ describe("the paced search runner (#801)", () => {
       expect(sim.calls).toHaveLength(SEARCH_QUEUE_MAX);
     });
 
+    it("clamps what is left after the search on its way, never showing more than ten", async () => {
+      setUp({ frame: 200_000, minSeekMs: 300 });
+      turn("lap", 1);
+      await until("nextLap");
+      turn("lap", -15);
+
+      expect(pendingReplaySearch()?.count).toBe(-SEARCH_QUEUE_MAX);
+
+      await untilIdle();
+
+      expect(sim.calls).toEqual(["nextLap", ...Array<string>(SEARCH_QUEUE_MAX).fill("prevLap")]);
+      expect(sim.thrown).toBe(0);
+    });
+
     it("pauses a moving replay before awaiting anything when nothing is on its way, and sends no pause on a paused one", async () => {
       setUp({ speed: { speed: 4, slowMotion: false } });
       turn("lap", 1);
