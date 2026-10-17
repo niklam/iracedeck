@@ -10,16 +10,24 @@ type Row = Record<string, unknown>;
 /**
  * The player in car 0 (#7); two opponents, cars 1 (#42) and 2 (#3042); the
  * pace car in 3 and a spectator in 4. `counts` are each row's
- * `CurDriverIncidentCount`, by carIdx.
+ * `CurDriverIncidentCount`, by carIdx; each row's `UserID` is 100 + carIdx
+ * unless `users` names another, and `numbers` replaces a row's `CarNumberRaw`.
  */
-function sessionInfo(counts: Array<number | undefined>, o: { driverCarIdx?: number | null } = {}): Row {
+function sessionInfo(
+  counts: Array<number | undefined>,
+  o: { driverCarIdx?: number | null; users?: Record<number, number>; numbers?: Record<number, number> } = {},
+): Row {
   const rows: Row[] = [
     { CarIdx: 0, CarNumberRaw: 7 },
     { CarIdx: 1, CarNumberRaw: 42 },
     { CarIdx: 2, CarNumberRaw: 3042 },
     { CarIdx: 3, CarNumberRaw: 0, CarIsPaceCar: 1 },
     { CarIdx: 4, CarNumberRaw: 99, IsSpectator: 1 },
-  ];
+  ].map((row) => ({
+    ...row,
+    UserID: o.users?.[row.CarIdx] ?? 100 + row.CarIdx,
+    ...(o.numbers?.[row.CarIdx] === undefined ? {} : { CarNumberRaw: o.numbers[row.CarIdx] }),
+  }));
 
   return {
     WeekendInfo: { SubSessionID: 86697546, SimMode: "full" },
@@ -185,11 +193,47 @@ describe("diffReplayIncidents", () => {
       expect(run(tick(), sessionInfo([0, 6, 0]))).toEqual([]);
     });
 
-    it("re-seeds silently on a decrease (a driver swap)", () => {
+    it("re-seeds silently on a decrease", () => {
       run(tick(), sessionInfo([0, 9, 0]));
 
       expect(run(tick(), sessionInfo([0, 2, 0]))).toEqual([]);
       expect(run(tick(), sessionInfo([0, 3, 0]))).toEqual([incident(1, 42, 1, "sessionInfo")]);
+    });
+
+    describe("a baseline belongs to one driver in one car", () => {
+      it("re-seeds silently on a driver swap that raises the count: the new driver's own", () => {
+        run(tick(), sessionInfo([0, 4, 0]));
+
+        // The team's second driver takes car 1 carrying 10 of his own.
+        expect(run(tick(), sessionInfo([0, 10, 0], { users: { 1: 555 } }))).toEqual([]);
+        // His next incident is a rise over his own count.
+        expect(run(tick(), sessionInfo([0, 11, 0], { users: { 1: 555 } }))).toEqual([
+          incident(1, 42, 1, "sessionInfo"),
+        ]);
+      });
+
+      it("re-seeds silently when a new car takes a freed carIdx with a higher count", () => {
+        run(tick(), sessionInfo([0, 2, 0]));
+
+        expect(run(tick(), sessionInfo([0, 5, 0], { users: { 1: 777 }, numbers: { 1: 51 } }))).toEqual([]);
+        expect(run(tick(), sessionInfo([0, 6, 0], { users: { 1: 777 }, numbers: { 1: 51 } }))).toEqual([
+          incident(1, 51, 1, "sessionInfo"),
+        ]);
+      });
+
+      it("re-seeds on a car number change alone, and on a UserID change alone", () => {
+        run(tick(), sessionInfo([0, 2, 2]));
+
+        expect(run(tick(), sessionInfo([0, 5, 5], { numbers: { 1: 51 }, users: { 2: 888 } }))).toEqual([]);
+      });
+
+      it("publishes a rise when the identity holds", () => {
+        run(tick(), sessionInfo([0, 2, 0], { users: { 1: 555 } }));
+
+        expect(run(tick(), sessionInfo([0, 5, 0], { users: { 1: 555 } }))).toEqual([
+          incident(1, 42, 3, "sessionInfo"),
+        ]);
+      });
     });
 
     it("seeds a car the roster had not held silently", () => {
@@ -231,6 +275,31 @@ describe("diffReplayIncidents", () => {
         incident(2, 3042, 1, "sessionInfo"),
       ]);
     });
+  });
+
+  it("walks the roster once per session-info object, however many ticks read it", () => {
+    let walks = 0;
+    const rows = (sessionInfo([0, 1, 2]).DriverInfo as Row).Drivers;
+    const info: Row = {
+      WeekendInfo: { SubSessionID: 86697546, SimMode: "full" },
+      DriverInfo: {
+        DriverCarIdx: 0,
+        get Drivers() {
+          walks++;
+
+          return rows;
+        },
+      },
+    };
+
+    for (let i = 0; i < 10; i++) run(tick({ player: 0 }), info);
+
+    expect(walks).toBe(1);
+
+    // Another session-info object read in between does not make it walk again.
+    run(tick({ player: 0 }), sessionInfo([0, 1, 2]));
+    run(tick({ player: 0 }), info);
+    expect(walks).toBe(1);
   });
 
   it("reads SessionTime 0 on a tick that carries none", () => {

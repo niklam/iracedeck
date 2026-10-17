@@ -5401,6 +5401,47 @@ describe("sim-events-iracing translator", () => {
       expect(seen).toEqual([]);
     });
 
+    it("refuses a stale clock at a session change: the latest start outlives the session-change reset", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(liveSession());
+      const seen = recordStarts();
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(garageTick({ frame: 156_000, time: 600 }));
+      controller.__tick(garageTick({ frame: 156_001, time: 600 + 1 / 60 }));
+
+      // The race's number arrives with qualifying's clock still running, for three ticks.
+      for (const frame of [200_000, 200_001, 200_002]) {
+        controller.__tick(garageTick({ frame, time: (frame - 120_000) / 60, sessionNum: 2, uniqueId: 3 }));
+      }
+
+      controller.__tick(garageTick({ frame: 200_003, time: 3 / 60, sessionNum: 2, uniqueId: 3 }));
+      controller.__tick(garageTick({ frame: 200_004, time: 4 / 60, sessionNum: 2, uniqueId: 3 }));
+
+      expect(seen).toEqual([
+        { sessionNum: 1, sessionUniqueId: 2, frame: 120_000 },
+        { sessionNum: 2, sessionUniqueId: 3, frame: 200_000 },
+      ]);
+    });
+
+    it("stays silent at the end of a saved replay's tape on ticks whose session info reads null", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(liveSession("replay"));
+      const seen = recordStarts();
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      // Scrubbed back: the controller learns it is a saved replay.
+      controller.__tick(garageTick({ frame: 156_000, time: 600, toEnd: 27_630 }));
+      // An empty or unparsable YAML read: the controller keeps its saved-replay
+      // answer, while a per-tick SimMode read has nothing to say no with.
+      controller.__setSessionInfo(null);
+      controller.__tick(garageTick({ frame: 156_001, time: 600 + 1 / 60 }));
+      controller.__tick(garageTick({ frame: 156_002, time: 600 + 2 / 60 }));
+
+      expect(controller.getReplayState().replayOnlySession).toBe(true);
+      expect(seen).toEqual([]);
+    });
+
     it("logs the publish at debug", () => {
       const controller = createMockController();
       controller.__setSessionInfo(liveSession());

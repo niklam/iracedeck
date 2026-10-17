@@ -2097,6 +2097,7 @@ function wipeStateForReplay(self: TranslatorInstance): void {
     // or each one would publish the session's start again.
     replaySessionsCandidate: self.state.replaySessionsCandidate,
     replaySessionsPublished: self.state.replaySessionsPublished,
+    replaySessionsLatestStart: self.state.replaySessionsLatestStart,
   };
 
   self.state = createInitialState();
@@ -2167,6 +2168,7 @@ function resetPerSessionState(self: TranslatorInstance, telemetry: TelemetryData
     // with the new session's first reading.
     replaySessionsCandidate: self.state.replaySessionsCandidate,
     replaySessionsPublished: self.state.replaySessionsPublished,
+    replaySessionsLatestStart: self.state.replaySessionsLatestStart,
   };
 
   self.state = createInitialState();
@@ -2467,14 +2469,17 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // PRESERVED by `wipeStateForReplay` (and by `resetPerSessionState`, which
   // runs above it on a session-change tick): the published list is what keeps
   // a session from going out again after every trip to the garage. It reads
-  // the `SimMode` discriminator this tick already resolved, as the countdown
-  // does.
+  // the controller's saved-replay answer (`replayState.replayOnlySession`),
+  // not this tick's `replayOnlySession`: that one reads false on any tick
+  // whose session info is null, while the controller keeps its answer through
+  // such a tick, and at the end of a saved replay's tape the out-of-car gate
+  // would otherwise take the tick as the live edge of a live session.
   diffReplaySessions(
     self.state,
     telemetry,
     self.controller.getSessionInfo() as Record<string, unknown> | null,
     inReplay,
-    replayOnlySession,
+    replayState.replayOnlySession,
     (ev) => publish(self, ev, telemetry, Date.now()),
     self.logger,
   );

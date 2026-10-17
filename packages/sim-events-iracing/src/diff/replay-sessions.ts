@@ -28,6 +28,18 @@
  *   tick with no readable `SessionTime`, or a reading for another pair breaks
  *   it. Agreement does not catch a seek, whose readings can hold still for a
  *   quarter of a second; the raw-flag condition of the gate does.
+ * - **A new pair's start must come after the event's earlier ones.**
+ *   Agreement does not catch a clock that stays stale for two ticks or more
+ *   at a session change: the frame and the old `SessionTime` both advance at
+ *   60 a second, so the stale readings agree with each other on the previous
+ *   session's start, and the store keeps the first start it is given. So a
+ *   reading for a new pair that is not later than the latest start already
+ *   published for the same `SubSessionID` (by more than
+ *   {@link SESSION_START_AGREEMENT_FRAMES}, the readings' own jitter) is
+ *   refused: the run is dropped, a debug line says so, and the first tick
+ *   with a fresh clock starts the run that records it. Every later session
+ *   of an event, a restarted offline event's included, is later on the tape.
+ *   The latest start survives the wipes with the published list.
  * - **A pair is published once**: `(sessionNum, sessionUniqueId)` already
  *   published for the event (`SubSessionID`) is never published again; the
  *   event is part of the key because the list outlives a session change and
@@ -65,7 +77,9 @@ function pairKey(subSessionId: number, sessionNum: number, sessionUniqueId: numb
 
 /**
  * @param inReplay - The translator's read of the controller's debounced replay state (#1324)
- * @param replayOnlySession - The translator's `isReplayOnlySession` reading for the tick (#604)
+ * @param replayOnlySession - The controller's sticky saved-replay answer (#604,
+ *   `ReplayState.replayOnlySession`), which keeps its value through a tick whose
+ *   session info reads null, where a per-tick `isReplayOnlySession` reads false
  * @param logger - Takes the per-publish debug line; silent when omitted
  */
 export function diffReplaySessions(
@@ -97,6 +111,19 @@ export function diffReplaySessions(
   }
 
   const start = Math.max(0, frame - Math.round(sessionTimeS * FRAMES_PER_SECOND));
+  const latest: number | undefined = state.replaySessionsLatestStart[subSessionId];
+
+  if (latest !== undefined && start <= latest + SESSION_START_AGREEMENT_FRAMES) {
+    state.replaySessionsCandidate = null;
+    logger.debug(
+      `Replay session start refused: frame=${start} is not after the event's latest start ${latest} ` +
+        `(tick frame=${frame} sessionTime=${sessionTimeS.toFixed(3)}) SessionNum=${sessionNum} ` +
+        `SessionUniqueID=${sessionUniqueId}`,
+    );
+
+    return;
+  }
+
   const previous = state.replaySessionsCandidate;
   const agrees =
     previous !== null &&
@@ -112,6 +139,8 @@ export function diffReplaySessions(
 
   state.replaySessionsCandidate = null;
   state.replaySessionsPublished.push(key);
+  // Every start published passed the guard above, so it is the latest.
+  state.replaySessionsLatestStart[subSessionId] = start;
 
   logger.debug(
     `Replay session start: frame=${start} (tick frame=${frame} sessionTime=${sessionTimeS.toFixed(3)} ` +

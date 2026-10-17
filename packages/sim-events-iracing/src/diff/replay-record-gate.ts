@@ -104,8 +104,8 @@ export const LIVE_EDGE_MAX_FRAMES = 120;
  * in the car or out of it at the live edge; `null` otherwise — the second
  * class of tick in the module comment. In the car (`inReplay` false) it is
  * {@link resolveReplayRecordTick}'s own answer. Out of the car it asks for a
- * live session (`replayOnlySession` false: the translator's
- * `isReplayOnlySession` reading, taken as given), the tick's own raw
+ * live session (`replayOnlySession` false: the controller's saved-replay
+ * answer, #604, taken as given), the tick's own raw
  * `IsReplayPlaying` true, `SessionNum >= 0`, and the cursor within
  * {@link LIVE_EDGE_MAX_FRAMES} of the end of the tape, and the frame is
  * `ReplayFrameNum + ReplayFrameNumEnd`.

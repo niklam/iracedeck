@@ -20,7 +20,12 @@
  *   baseline: an official session hides every opponent's count until it is
  *   over (survey of 2026-09-21), and the step from −1 to a number there is the
  *   reveal, whose frame is long past, so it re-seeds silently. A decrease
- *   re-seeds too (a driver swap), and so does a car the roster had not held.
+ *   re-seeds too, and so does a car the roster had not held.
+ * - **A baseline belongs to one driver in one car.** Each other-car baseline
+ *   keeps the row's `UserID` and `CarNumberRaw`, and a tick whose row differs
+ *   in either re-seeds that slot silently: a driver swap in a team event can
+ *   raise `CurDriverIncidentCount` (the new driver's own count), and so can a
+ *   new car taking a freed carIdx, and neither is an incident.
  *   The driver's own row is skipped, so the driver is never published twice,
  *   and so are the pace car and spectator rows. The YAML lags the incident by
  *   an amount nobody has measured; the incident comparison is what measures it.
@@ -41,10 +46,15 @@
  *   raw (#1162: no lag correction; the later consumer subtracts its lead-in),
  *   and `sessionTimeMs` is `SessionTime` in whole milliseconds (0 on a tick
  *   that carries none).
+ * - **The roster is read once per session-info version**, not per tick:
+ *   `IRacingSDK.getSessionInfo()` returns the same object until iRacing bumps
+ *   `SessionInfoUpdate`, so the reading is memoised on that object's identity
+ *   (the pattern of `iracing-sdk`'s `template-context.ts`), and an in-car tick
+ *   at 60 Hz with unchanged session info walks nothing.
  */
 import { getCarNumberRawFromSessionInfo, type TelemetryData } from "@iracedeck/iracing-sdk";
 
-import type { TranslatorState } from "../state.js";
+import type { ReplayIncidentCarReading, TranslatorState } from "../state.js";
 import { resolveReplayRecordTick, resolveSubSessionId } from "./replay-record-gate.js";
 import type { EmitFn } from "./types.js";
 
@@ -74,12 +84,20 @@ function readCount(value: unknown): number {
   return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : -1;
 }
 
+/** A roster field that names something: a finite number, else `null`. */
+function readIdentityField(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
 /**
- * Other cars' counts this tick, by carIdx: every roster row but the driver's
- * own, the pace car and spectators.
+ * Other cars' readings, by carIdx: every roster row but the driver's own, the
+ * pace car and spectators.
  */
-function readCarCounts(sessionInfo: Record<string, unknown> | null, playerCarIdx: number | null): number[] {
-  const counts: number[] = [];
+function walkCarReadings(
+  sessionInfo: Record<string, unknown> | null,
+  playerCarIdx: number | null,
+): ReplayIncidentCarReading[] {
+  const readings: ReplayIncidentCarReading[] = [];
 
   for (const driver of readDrivers(sessionInfo)) {
     const carIdx = driver?.CarIdx;
@@ -88,10 +106,49 @@ function readCarCounts(sessionInfo: Record<string, unknown> | null, playerCarIdx
 
     if (carIdx === playerCarIdx || driver?.CarIsPaceCar === 1 || driver?.IsSpectator === 1) continue;
 
-    counts[carIdx] = readCount(driver?.CurDriverIncidentCount);
+    readings[carIdx] = {
+      count: readCount(driver?.CurDriverIncidentCount),
+      userId: readIdentityField(driver?.UserID),
+      carNumberRaw: readIdentityField(driver?.CarNumberRaw),
+    };
   }
 
-  return counts;
+  return readings;
+}
+
+/**
+ * {@link walkCarReadings} memoised on the identity of the session-info object
+ * (see the module comment) and the driver's carIdx it skipped. A WeakMap, so a
+ * superseded session-info object is not kept alive by its entry. The arrays it
+ * hands out are shared between ticks and never mutated.
+ */
+const carReadingsMemo = new WeakMap<
+  object,
+  { playerCarIdx: number | null; readings: readonly ReplayIncidentCarReading[] }
+>();
+
+const NO_CAR_READINGS: readonly ReplayIncidentCarReading[] = Object.freeze([]);
+
+function readCarReadings(
+  sessionInfo: Record<string, unknown> | null,
+  playerCarIdx: number | null,
+): readonly ReplayIncidentCarReading[] {
+  if (sessionInfo === null) return NO_CAR_READINGS;
+
+  const memo = carReadingsMemo.get(sessionInfo);
+
+  if (memo !== undefined && memo.playerCarIdx === playerCarIdx) return memo.readings;
+
+  const readings = walkCarReadings(sessionInfo, playerCarIdx);
+
+  carReadingsMemo.set(sessionInfo, { playerCarIdx, readings });
+
+  return readings;
+}
+
+/** Whether two readings of one slot are the same driver in the same car. */
+function sameIdentity(a: ReplayIncidentCarReading, b: ReplayIncidentCarReading): boolean {
+  return a.userId === b.userId && a.carNumberRaw === b.carNumberRaw;
 }
 
 /** `PlayerCarMyIncidentCount`, or `null` when the tick carries no count. */
@@ -122,21 +179,21 @@ export function diffReplayIncidents(
   const { sessionNum, sessionUniqueId, frame } = live;
   const playerCarIdx = resolvePlayerCarIdx(sessionInfo, telemetry);
   const playerCount = readPlayerCount(telemetry);
-  const carCounts = readCarCounts(sessionInfo, playerCarIdx);
+  const carReadings = readCarReadings(sessionInfo, playerCarIdx);
 
   const seeding =
     !state.replayIncidentsSeeded ||
     sessionNum !== state.replayIncidentsSessionNum ||
     sessionUniqueId !== state.replayIncidentsSessionUniqueId;
   const prevPlayerCount = state.replayIncidentsLastPlayerCount;
-  const prevCarCounts = state.replayIncidentsLastCarCounts;
+  const prevCarReadings = state.replayIncidentsLastCarReadings;
 
   // The baselines advance on every eligible tick, the seed included.
   state.replayIncidentsSeeded = true;
   state.replayIncidentsSessionNum = sessionNum;
   state.replayIncidentsSessionUniqueId = sessionUniqueId;
   state.replayIncidentsLastPlayerCount = playerCount;
-  state.replayIncidentsLastCarCounts = carCounts;
+  state.replayIncidentsLastCarReadings = carReadings;
 
   if (seeding) return;
 
@@ -173,13 +230,16 @@ export function diffReplayIncidents(
     publish(playerCarIdx, playerCount - prevPlayerCount, "telemetry");
   }
 
-  for (let carIdx = 0; carIdx < carCounts.length; carIdx++) {
-    const cur = carCounts[carIdx];
-    // A slot the previous tick's roster did not hold has no baseline.
-    const prev: number | undefined = prevCarCounts[carIdx];
+  for (let carIdx = 0; carIdx < carReadings.length; carIdx++) {
+    const cur: ReplayIncidentCarReading | undefined = carReadings[carIdx];
+    // A slot the previous tick's roster did not hold has no baseline, and
+    // nor does one another driver or another car held.
+    const prev: ReplayIncidentCarReading | undefined = prevCarReadings[carIdx];
 
-    if (cur === undefined || prev === undefined || prev < 0 || cur <= prev) continue;
+    if (cur === undefined || prev === undefined || !sameIdentity(cur, prev)) continue;
 
-    publish(carIdx, cur - prev, "sessionInfo");
+    if (prev.count < 0 || cur.count <= prev.count) continue;
+
+    publish(carIdx, cur.count - prev.count, "sessionInfo");
   }
 }

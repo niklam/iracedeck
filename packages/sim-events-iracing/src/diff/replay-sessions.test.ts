@@ -232,6 +232,68 @@ describe("diffReplaySessions", () => {
     expect(feed(twoTicks("car", { frame: 180_000, time: 0, uniqueId: 7 }))).toEqual([started(180_000, 2, 7)]);
   });
 
+  describe("a clock still reading the previous session", () => {
+    /** Ticks of the race (2:3) at `frames`, whose clock still reads qualifying's (1:2, begun at 120000). */
+    function staleTicks(frames: number[]): TelemetryData[] {
+      return frames.map((frame) => inCar({ frame, time: (frame - 120_000) / 60, sessionNum: 2, uniqueId: 3 }));
+    }
+
+    beforeEach(() => {
+      // Qualifying is recorded first: it began at 120000.
+      expect(feed(twoTicks("car", { frame: 156_000, time: 600, sessionNum: 1, uniqueId: 2 }))).toEqual([
+        started(120_000, 1, 2),
+      ]);
+    });
+
+    it("publishes nothing from three agreeing stale ticks, and the right start from the fresh ticks after", () => {
+      // Each stale tick puts the race's start at qualifying's, and the three agree.
+      expect(feed(staleTicks([200_000, 200_001, 200_002]))).toEqual([]);
+      // The clock catches up: the race began at 200000.
+      expect(
+        feed([
+          inCar({ frame: 200_003, time: 3 / 60, sessionNum: 2, uniqueId: 3 }),
+          inCar({ frame: 200_004, time: 4 / 60, sessionNum: 2, uniqueId: 3 }),
+        ]),
+      ).toEqual([started(200_000, 2, 3)]);
+    });
+
+    it(`refuses a stale reading up to ${SESSION_START_AGREEMENT_FRAMES} frames after the latest start`, () => {
+      // Rounding can put a stale reading a frame or two past the old start.
+      const jittered = [
+        inCar({ frame: 200_000, time: (200_000 - 120_002) / 60, sessionNum: 2, uniqueId: 3 }),
+        inCar({ frame: 200_001, time: (200_001 - 120_002) / 60, sessionNum: 2, uniqueId: 3 }),
+      ];
+
+      expect(feed(jittered)).toEqual([]);
+    });
+
+    it("logs the refusal at debug", () => {
+      const logger = { debug: vi.fn() } as unknown as ILogger;
+
+      feed(staleTicks([200_000]), { logger });
+
+      expect(vi.mocked(logger.debug).mock.calls.map((c) => c[0])).toEqual([
+        "Replay session start refused: frame=120000 is not after the event's latest start 120000 " +
+          "(tick frame=200000 sessionTime=1333.333) SessionNum=2 SessionUniqueID=3",
+      ]);
+    });
+
+    it("still publishes a restarted event's pair, later on the tape", () => {
+      expect(feed(twoTicks("car", { frame: 400_000, time: 0, sessionNum: 1, uniqueId: 9 }))).toEqual([
+        started(400_000, 1, 9),
+      ]);
+    });
+
+    it("moves the latest start on with each publish", () => {
+      expect(feed(twoTicks("car", { frame: 200_000, time: 0, sessionNum: 2, uniqueId: 3 }))).toEqual([
+        started(200_000, 2, 3),
+      ]);
+      expect(state.replaySessionsLatestStart).toEqual({ 86697546: 200_000 });
+      // A new pair whose reading falls at qualifying's start is not after the race's.
+      expect(feed(twoTicks("car", { frame: 156_000, time: 600, sessionNum: 1, uniqueId: 9 }))).toEqual([]);
+    });
+  });
+
   it("publishes each session of an event in turn", () => {
     const out = [
       ...feed(twoTicks("car", { frame: 0, time: 0, sessionNum: 0, uniqueId: 1 })),

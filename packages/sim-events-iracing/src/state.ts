@@ -97,6 +97,17 @@ export type ReplayLapTimeWait = {
 };
 
 /**
+ * One other car's roster row as the replay incident record reads it (issue
+ * #1426): its `CurDriverIncidentCount` (−1 when hidden or unreadable) and the
+ * identity that count belongs to. `null` for an identity field the row lacks.
+ */
+export type ReplayIncidentCarReading = {
+  count: number;
+  userId: number | null;
+  carNumberRaw: number | null;
+};
+
+/**
  * One reading of a session's start in the replay session record (issue
  * #1426): the frame the pair began at, by one live tick. A second live tick
  * that agrees with it publishes.
@@ -1374,8 +1385,14 @@ export type TranslatorState = {
    * pair's tick, or a publish.
    */
   replaySessionsCandidate: ReplaySessionStartCandidate | null;
-  /** `"<sessionNum>:<sessionUniqueId>"` of every pair already published; never published again. */
+  /** `"<subSessionId>:<sessionNum>:<sessionUniqueId>"` of every pair already published; never published again. */
   replaySessionsPublished: string[];
+  /**
+   * The latest start published, per `SubSessionID`. A candidate start for a
+   * new pair that does not come after it (beyond the agreement tolerance) is
+   * a clock still reading the session before, and is refused.
+   */
+  replaySessionsLatestStart: Record<number, number>;
 
   // ── Replay incident record (issue #1426) ──────────────────────────────
   // Runs PRE-guard (`diff/replay-incidents.ts`) on the lap record's gate and,
@@ -1396,11 +1413,14 @@ export type TranslatorState = {
   /** `PlayerCarMyIncidentCount` on the previous eligible tick; `null` when it read none. */
   replayIncidentsLastPlayerCount: number | null;
   /**
-   * `DriverInfo.Drivers[].CurDriverIncidentCount` per carIdx on the previous
-   * eligible tick, other cars only; −1 (the sim hiding it) is no baseline, and
-   * a slot the roster did not hold is absent.
+   * Each other car's roster reading per carIdx on the previous eligible tick:
+   * its `CurDriverIncidentCount` with the `UserID` and `CarNumberRaw` it
+   * belongs to. A count of −1 (the sim hiding it) is no baseline, a slot whose
+   * identity differs on the next tick is none either, and a slot the roster
+   * did not hold is absent. The array is shared with the roster memo of
+   * `diff/replay-incidents.ts` and never mutated.
    */
-  replayIncidentsLastCarCounts: number[];
+  replayIncidentsLastCarReadings: readonly ReplayIncidentCarReading[];
 
   // ── Opponent penalty flags (issue #936) ───────────────────────────────
   /** First tick seeds the per-car penalty-bit store silently. */
@@ -1942,12 +1962,13 @@ export function createInitialState(): TranslatorState {
 
     replaySessionsCandidate: null,
     replaySessionsPublished: [],
+    replaySessionsLatestStart: {},
 
     replayIncidentsSeeded: false,
     replayIncidentsSessionNum: null,
     replayIncidentsSessionUniqueId: null,
     replayIncidentsLastPlayerCount: null,
-    replayIncidentsLastCarCounts: [],
+    replayIncidentsLastCarReadings: [],
 
     opponentFlagsInitialized: false,
     opponentFlagSeededAt: 0,
