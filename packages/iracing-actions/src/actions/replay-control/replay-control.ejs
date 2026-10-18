@@ -236,6 +236,10 @@
 					<option value="none">None</option>
 				</sdpi-select>
 			</sdpi-item>
+			<%# What "Mode default" runs in the dial's current Mode, under each
+			    gesture and shown only while it holds that pick (#801); the script
+			    fills and toggles it. %>
+			<div id="dial-press-action-mode-default" class="ird-supporting-text hidden" data-mode-default-for="dial.pressAction">Mode default: Set 1x and Play</div>
 			<% if (locals.platform?.features?.dialExtendedGestures !== false) { %>
 			<sdpi-item label="Long Press">
 				<sdpi-select setting="dial.longPressAction" default="mode-default">
@@ -249,6 +253,7 @@
 					<option value="none">None</option>
 				</sdpi-select>
 			</sdpi-item>
+			<div id="dial-long-press-action-mode-default" class="ird-supporting-text hidden" data-mode-default-for="dial.longPressAction">Mode default: Set 1x and Play</div>
 
 			<sdpi-item label="Tap Display">
 				<sdpi-select setting="dial.tapAction" default="none">
@@ -262,6 +267,7 @@
 					<option value="jump-to-my-car">Jump to My Car</option>
 				</sdpi-select>
 			</sdpi-item>
+			<div id="dial-tap-action-mode-default" class="ird-supporting-text hidden" data-mode-default-for="dial.tapAction">Mode default: Set 1x and Play</div>
 
 			<sdpi-item label="Long Touch">
 				<sdpi-select setting="dial.longTouchAction" default="none">
@@ -275,6 +281,7 @@
 					<option value="jump-to-my-car">Jump to My Car</option>
 				</sdpi-select>
 			</sdpi-item>
+			<div id="dial-long-touch-action-mode-default" class="ird-supporting-text hidden" data-mode-default-for="dial.longTouchAction">Mode default: Set 1x and Play</div>
 			<% } %>
 
 			<%- include('dial-appearance') %>
@@ -343,6 +350,26 @@
 					});
 				}
 
+				// The Mode default lines follow both the dial's Mode and each
+				// gesture's own pick (#801).
+				updateModeDefaultHints();
+				const modeDefaultSources = [dialModeSelect].concat(
+					Array.from(document.querySelectorAll("[data-mode-default-for]"), modeDefaultGestureSelect),
+				);
+				for (const source of modeDefaultSources) {
+					source?.addEventListener("change", updateModeDefaultHints);
+					source?.addEventListener("input", updateModeDefaultHints);
+				}
+
+				let lastModeDefaultState = modeDefaultState();
+				window.irdPoll(() => {
+					const currentModeDefaultState = modeDefaultState();
+					if (currentModeDefaultState !== lastModeDefaultState) {
+						lastModeDefaultState = currentModeDefaultState;
+						updateModeDefaultHints();
+					}
+				});
+
 				// A ladder with no speed on it would be a dial that does nothing, so
 				// the last ticked box of the Speeds grid refuses to clear.
 				const speedStopsGrid = document.getElementById("dial-speed-stops-grid");
@@ -371,6 +398,44 @@
 				document.getElementById("dial-frame-jog-section")?.classList.toggle("hidden", mode !== "frame-jog");
 				if (isDialView) {
 					document.getElementById("key-bindings-section")?.classList.toggle("hidden", mode !== "track-order");
+				}
+			}
+
+			// What a gesture's "Mode default" runs in each dial Mode, named as the
+			// gesture options are: `resolveDialGesture` in
+			// replay-control-dial-surface.ts decides it, and replay-control-pi.test.ts
+			// holds this copy to it (#801).
+			function modeDefaultLabel(dialMode) {
+				return dialMode === "track-order" ? "Jump to My Car" : "Set 1x and Play";
+			}
+
+			// An untouched sdpi-select reports "", so its default attribute stands
+			// in for it, as ird-binding-status reads it.
+			function selectValue(select) {
+				return (select && (select.value || select.getAttribute("default"))) || "";
+			}
+
+			function modeDefaultGestureSelect(hint) {
+				return document.querySelector('sdpi-select[setting="' + hint.dataset.modeDefaultFor + '"]');
+			}
+
+			// The dial's Mode and every gesture pick, as one string the poll compares.
+			function modeDefaultState() {
+				const hints = Array.from(document.querySelectorAll("[data-mode-default-for]"));
+
+				return [selectValue(document.getElementById("dial-mode-select"))]
+					.concat(hints.map((hint) => selectValue(modeDefaultGestureSelect(hint))))
+					.join("|");
+			}
+
+			// Each line names the dial Mode's default, and shows only while its
+			// gesture holds "Mode default"; a specific pick needs no line.
+			function updateModeDefaultHints() {
+				const label = modeDefaultLabel(selectValue(document.getElementById("dial-mode-select")) || "speed");
+
+				for (const hint of document.querySelectorAll("[data-mode-default-for]")) {
+					hint.textContent = "Mode default: " + label;
+					hint.classList.toggle("hidden", selectValue(modeDefaultGestureSelect(hint)) !== "mode-default");
 				}
 			}
 

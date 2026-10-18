@@ -1,6 +1,7 @@
+// @vitest-environment jsdom
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { join } from "node:path";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   REPLAY_DIAL_GESTURES,
@@ -8,6 +9,7 @@ import {
   ReplayControlDialSettings,
   SPEED_STOP_TOKENS,
 } from "./replay-control-dial-settings.js";
+import { resolveDialGesture } from "./replay-control-dial-surface.js";
 
 /**
  * The PI runs in a browser context and cannot import action code, so the dial
@@ -17,7 +19,8 @@ import {
  * stores a token the schema ignores, a speed nobody can tick, a dropdown that
  * shows one default while the dial runs another — so these hold it.
  */
-const template = readFileSync(fileURLToPath(new URL("./replay-control.ejs", import.meta.url)), "utf-8");
+// Read by path: under jsdom the global URL is the DOM's, which node:fs does not take.
+const template = readFileSync(join(import.meta.dirname, "replay-control.ejs"), "utf-8");
 
 /** The schema's own defaults, read by parsing a dial that has stored nothing. */
 const defaults = ReplayControlDialSettings.parse(undefined);
@@ -210,5 +213,194 @@ describe("replay-control PI dial view", () => {
     expect(dialView).toContain(
       `<ird-binding-status mode-setting="<%= __dialComms._meta.modeSetting %>" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>`,
     );
+  });
+});
+
+/**
+ * The line under each gesture dropdown that says what its "Mode default" runs
+ * in the dial's current Mode (#801). The template's script is run in jsdom
+ * over the dial view's own markup, so these cover its behaviour, not only its
+ * text: what it shows on load, on a change or input event, and on the poll.
+ */
+describe("replay-control PI Mode default lines (#801)", () => {
+  const HINTS = {
+    pressAction: "dial-press-action-mode-default",
+    longPressAction: "dial-long-press-action-mode-default",
+    tapAction: "dial-tap-action-mode-default",
+    longTouchAction: "dial-long-touch-action-mode-default",
+  } as const;
+  const SLOTS = Object.keys(HINTS) as (keyof typeof HINTS)[];
+
+  /** The template's one inline script. */
+  const script = template.match(/<script>([\s\S]*?)<\/script>/)?.[1] ?? "";
+
+  interface PiScript {
+    modeDefaultLabel(dialMode: string): string;
+  }
+
+  /** The one shape of a jsdom element these tests touch. */
+  interface DomElement {
+    value?: string;
+    textContent: string | null;
+    classList: { contains(token: string): boolean };
+    dispatchEvent(event: unknown): boolean;
+  }
+
+  /**
+   * The jsdom globals these tests use, typed here: the package compiles
+   * without the DOM lib, which would otherwise reach every file in it.
+   */
+  const dom = globalThis as unknown as {
+    window: object;
+    document: {
+      body: { innerHTML: string };
+      getElementById(id: string): DomElement | null;
+      querySelector(selector: string): DomElement | null;
+    };
+    customElements: { get(name: string): unknown; define(name: string, constructor: unknown): void };
+    HTMLElement: new () => object;
+    Event: new (type: string) => unknown;
+  };
+
+  let polls: (() => void)[] = [];
+  const applyDialView = vi.fn();
+
+  beforeAll(() => {
+    // The script waits for sdpi-select before it wires anything.
+    if (!dom.customElements.get("sdpi-select")) {
+      dom.customElements.define("sdpi-select", class extends dom.HTMLElement {});
+    }
+  });
+
+  beforeEach(() => {
+    dom.document.body.innerHTML = "";
+  });
+
+  /** Renders the dial view and runs the script over it, as a dial's PI opens. */
+  async function mount(): Promise<PiScript> {
+    dom.document.body.innerHTML = `${dialView}</div>`;
+    polls = [];
+    applyDialView.mockClear();
+    Object.assign(dom.window, {
+      irdPoll: (callback: () => void) => polls.push(callback),
+      irdKeepOneChecked: vi.fn(),
+      irdResolveController: vi.fn(async () => "Encoder"),
+      irdApplyDialView: applyDialView,
+    });
+
+    const api = new Function(`${script}\nreturn { modeDefaultLabel };`)() as PiScript;
+
+    // initialize() wires the lines before it resolves the controller, so the
+    // dial view being applied means the wiring is done.
+    await vi.waitFor(() => expect(applyDialView).toHaveBeenCalled());
+
+    return api;
+  }
+
+  /** Sets an sdpi-select's value as the component holds it ("" until something is picked). */
+  function pick(setting: string, value: string, event?: "change" | "input"): void {
+    const element = dom.document.querySelector(`sdpi-select[setting="${setting}"]`);
+
+    if (!element) throw new Error(`no sdpi-select bound to ${setting}`);
+
+    element.value = value;
+
+    if (event) element.dispatchEvent(new dom.Event(event));
+  }
+
+  function hint(slot: keyof typeof HINTS): { text: string; shown: boolean } {
+    const element = dom.document.getElementById(HINTS[slot]);
+
+    if (!element) throw new Error(`#${HINTS[slot]} not rendered`);
+
+    return { text: element.textContent ?? "", shown: !element.classList.contains("hidden") };
+  }
+
+  /** The label a gesture dropdown gives one of its options. */
+  function optionLabel(slot: keyof typeof HINTS, value: string): string | undefined {
+    const escaped = `dial.${slot}`.replace(".", "\\.");
+    const body = dialView.match(new RegExp(`setting="${escaped}"[^>]*>([\\s\\S]*?)</sdpi-select>`))?.[1] ?? "";
+
+    return body.match(new RegExp(`<option value="${value}">([^<]+)</option>`))?.[1];
+  }
+
+  it.each(SLOTS)("sits right under the %s dropdown, in the supporting-text style, hidden by default", (slot) => {
+    const start = dialView.indexOf(`setting="dial.${slot}"`);
+    const end = dialView.indexOf("</sdpi-item>", start);
+    const next = dialView.slice(end).search(/<sdpi-item |<%[-=]? *(include|\})/);
+    const between = dialView.slice(end, end + next);
+
+    expect(start).toBeGreaterThan(-1);
+    expect(between).toContain(
+      `<div id="${HINTS[slot]}" class="ird-supporting-text hidden" data-mode-default-for="dial.${slot}">`,
+    );
+  });
+
+  it("is one line per gesture slot and no more", () => {
+    expect(dialView.split("data-mode-default-for=").length - 1).toBe(SLOTS.length);
+  });
+
+  it.each(REPLAY_DIAL_MODES)(
+    "names in %s the gesture resolveDialGesture runs, as the dropdowns call it",
+    async (mode) => {
+      const api = await mount();
+      const resolved = resolveDialGesture("mode-default", mode);
+
+      expect(resolved).not.toBeNull();
+
+      for (const slot of SLOTS) {
+        expect(optionLabel(slot, resolved as string), slot).toBeDefined();
+        expect(api.modeDefaultLabel(mode), slot).toBe(optionLabel(slot, resolved as string));
+      }
+    },
+  );
+
+  it("shows only the untouched Long Press, the one slot whose default is the Mode default", async () => {
+    await mount();
+
+    expect(hint("longPressAction")).toEqual({ text: "Mode default: Set 1x and Play", shown: true });
+    expect(hint("pressAction").shown).toBe(false);
+    expect(hint("tapAction").shown).toBe(false);
+    expect(hint("longTouchAction").shown).toBe(false);
+  });
+
+  it("says Jump to My Car once the dial's Mode is Track Order, and Set 1x and Play again after", async () => {
+    await mount();
+
+    pick("dial.mode", "track-order", "change");
+
+    for (const slot of SLOTS) expect(hint(slot).text, slot).toBe("Mode default: Jump to My Car");
+
+    pick("dial.mode", "lap", "input");
+
+    for (const slot of SLOTS) expect(hint(slot).text, slot).toBe("Mode default: Set 1x and Play");
+  });
+
+  it("shows a line when its dropdown picks the Mode default and hides it on a specific action", async () => {
+    await mount();
+
+    pick("dial.pressAction", "mode-default", "change");
+    pick("dial.tapAction", "mode-default", "input");
+    pick("dial.longPressAction", "play-pause", "change");
+
+    expect(hint("pressAction").shown).toBe(true);
+    expect(hint("tapAction").shown).toBe(true);
+    expect(hint("longPressAction").shown).toBe(false);
+    expect(hint("longTouchAction").shown).toBe(false);
+  });
+
+  it("catches up on the poll when a value changes without an event, as settings arriving late do", async () => {
+    await mount();
+
+    pick("dial.mode", "track-order");
+    pick("dial.longTouchAction", "mode-default");
+
+    expect(hint("longTouchAction").shown).toBe(false);
+    expect(hint("longPressAction").text).toBe("Mode default: Set 1x and Play");
+
+    for (const poll of polls) poll();
+
+    expect(hint("longTouchAction")).toEqual({ text: "Mode default: Jump to My Car", shown: true });
+    expect(hint("longPressAction").text).toBe("Mode default: Jump to My Car");
   });
 });
