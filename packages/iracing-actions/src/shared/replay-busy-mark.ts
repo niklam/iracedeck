@@ -14,7 +14,7 @@
  */
 import { BUSY_MARK_FRAMES, type BusyMark } from "@iracedeck/deck-core";
 
-import type { DialCaptionMarkLook } from "./dial-caption-mark.js";
+import type { DialCaptionMark } from "./dial-caption-mark.js";
 import type { ReplayBusyLook } from "./replay-busy-indicator.js";
 
 /**
@@ -51,7 +51,7 @@ export function replayBusyMarkKey(mark: BusyMark | undefined): string {
  * and steps on every second tick: position `Math.floor(tick / 2) % 3`, so
  * the box pushes four frames a second while it spins.
  */
-export function replayBusyDialMark(look: ReplayBusyLook): DialCaptionMarkLook | undefined {
+export function replayBusyDialMark(look: ReplayBusyLook): DialCaptionMark | undefined {
   switch (look.kind) {
     case "rest":
       return undefined;

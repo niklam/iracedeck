@@ -147,19 +147,18 @@ export function renderKnobBox(args: DialBoxArgs): string {
     : "";
 
   // The caption mark (#1437), as on the strip: at the line's left end, the
-  // text beside it or left out; the value's layout follows the text alone.
+  // text beside it; the value's layout follows the text (or the reserved line) alone.
   if (captionMark) {
-    const placed = placeMarkedCaption(captionMark, captionMark.replacesCaption ? "" : caption, {
+    const placed = placeMarkedCaption(captionMark, caption, {
       width: W,
       baselineY: CAPTION_Y,
       fontSize: CAPTION_FONT,
       left: CAPTION_MARK_LEFT,
       color: colors.label,
     });
-    const text =
-      hasCaption && !captionMark.replacesCaption
-        ? `<text data-caption="true" x="${placed.textX}" y="${CAPTION_Y}" text-anchor="middle" fill="${colors.label}" ${FONT} font-size="${placed.textFontSize}">${caption}</text>`
-        : "";
+    const text = hasCaption
+      ? `<text data-caption="true" x="${placed.textX}" y="${CAPTION_Y}" text-anchor="middle" fill="${colors.label}" ${FONT} font-size="${placed.textFontSize}">${caption}</text>`
+      : "";
 
     captionText = text + placed.mark;
   }

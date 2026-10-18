@@ -17,19 +17,13 @@
  * What the mark shows. `position` is the lit dot of the working mark, left to
  * right: `replayBusyDialMark` (`replay-busy-mark.ts`) derives it from the indicator's
  * tick as `Math.floor(tick / 2) % 3`, so the mark steps on every second tick.
+ * Any caption text is drawn beside the mark; a caption that gives way to it is
+ * not passed, with the box's `reserveCaptionLine` keeping the layout it set.
  */
-export type DialCaptionMarkLook =
+export type DialCaptionMark =
   | { readonly kind: "working"; readonly position: 0 | 1 | 2 }
   | { readonly kind: "waiting" }
   | { readonly kind: "not-done" };
-
-/**
- * A caption mark. `replacesCaption` makes the mark stand in for the caption's
- * text: the text is not drawn, but the box keeps the layout the caption set, so
- * the value does not move while the mark shows (a play-state caption giving way
- * to the mark). Without it the caption's text is drawn beside the mark.
- */
-export type DialCaptionMark = DialCaptionMarkLook & { readonly replacesCaption?: boolean };
 
 /**
  * The not-done cross's red — deck-core's `BUSY_NOT_DONE_COLOR`, which a test
@@ -84,7 +78,7 @@ function markGeometry(line: CaptionLine): { r: number; spacing: number; width: n
   return { r, spacing, width: 2 * spacing + 2 * r, cy: line.baselineY - Math.round(line.fontSize * 0.36) };
 }
 
-function markSvg(look: DialCaptionMarkLook, line: CaptionLine): string {
+function markSvg(look: DialCaptionMark, line: CaptionLine): string {
   const { r, spacing, width, cy } = markGeometry(line);
 
   if (look.kind === "not-done") {
@@ -118,7 +112,7 @@ function markSvg(look: DialCaptionMarkLook, line: CaptionLine): string {
  * cross the right edge (the same distance in from it as the mark is from the
  * left). Text width is the same ~0.6 em estimate the value fit uses.
  */
-export function placeMarkedCaption(look: DialCaptionMarkLook, text: string, line: CaptionLine): MarkedCaption {
+export function placeMarkedCaption(look: DialCaptionMark, text: string, line: CaptionLine): MarkedCaption {
   const { width: markWidth } = markGeometry(line);
   const mark = markSvg(look, line);
   const centre = line.width / 2;

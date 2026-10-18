@@ -140,21 +140,20 @@ export function renderStripBox(args: DialBoxArgs & { width: number; height: numb
     : "";
 
   // The caption mark (#1437) at the line's left end; the caption's text keeps
-  // its place beside it, or is left out when the mark stands in for it. The
-  // layout above follows the caption's text alone: an unmarked value never
-  // reaches down to the caption line, so a mark on its own moves nothing.
+  // its place beside it. The layout above follows the caption's text (or the
+  // reserved line) alone: an unmarked value never reaches down to the caption
+  // line, so a mark on its own moves nothing.
   if (captionMark) {
-    const placed = placeMarkedCaption(captionMark, captionMark.replacesCaption ? "" : caption, {
+    const placed = placeMarkedCaption(captionMark, caption, {
       width: w,
       baselineY: captionY,
       fontSize: captionFontSize,
       left: inset + strokeWidth + Math.round(captionFontSize * 0.4),
       color: colors.label,
     });
-    const text =
-      hasCaption && !captionMark.replacesCaption
-        ? `<text data-caption="true" x="${placed.textX}" y="${captionY}" text-anchor="middle" fill="${colors.label}" font-family="Arial, sans-serif" font-size="${placed.textFontSize}" font-weight="bold">${caption}</text>`
-        : "";
+    const text = hasCaption
+      ? `<text data-caption="true" x="${placed.textX}" y="${captionY}" text-anchor="middle" fill="${colors.label}" font-family="Arial, sans-serif" font-size="${placed.textFontSize}" font-weight="bold">${caption}</text>`
+      : "";
 
     captionText = text + placed.mark;
   }

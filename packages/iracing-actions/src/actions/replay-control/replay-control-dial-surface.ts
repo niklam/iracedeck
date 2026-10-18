@@ -1304,12 +1304,8 @@ export class ReplayControlDialSurface {
     const colors = resolveDialBoxColors(ctx.dial.colors, DIAL_ACCENT);
     const mode = DIAL_MODES[ctx.dial.mode];
     // The busy look (#1437), part of the signature as kind and position.
-    // `replacesCaption` is always true here because today's only caption is
-    // the play state, which gives way to the mark; the layout it set stays,
-    // and the value with it. #801's pending count must be passed with
-    // `replacesCaption: false`, so the count stays beside the mark (spec, "Dials").
     const look = ctx.busy === null ? undefined : replayBusyDialMark(getReplayBusyLook(ctx.action.id));
-    const mark: Pick<DialBoxArgs, "captionMark"> = look ? { captionMark: { ...look, replacesCaption: true } } : {};
+    const mark: Pick<DialBoxArgs, "captionMark"> = look ? { captionMark: look } : {};
 
     if (!this.isReplayOnScreen()) {
       // A dimmed box with an empty value slot enlarges its label into that
@@ -1340,13 +1336,17 @@ export class ReplayControlDialSurface {
 
     ctx.shownView = { mode: ctx.dial.mode, value, sides, caption, neighbours };
 
+    // The caption gives way to the mark and is not drawn; its line stays
+    // reserved, so the value keeps the place the caption gave it.
+    const givesWay = look !== undefined && caption !== "";
+
     return {
       abbr: mode.label,
       value,
       colors,
       sideMarker: sides,
-      caption,
-      ...(view.reserveCaption === true ? { reserveCaptionLine: true } : {}),
+      caption: givesWay ? "" : caption,
+      ...(view.reserveCaption === true || givesWay ? { reserveCaptionLine: true } : {}),
       ...(neighbours === null ? {} : { neighbours }),
       dimmed: false,
       pending: ctx.preview,

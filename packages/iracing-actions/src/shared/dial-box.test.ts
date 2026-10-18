@@ -242,13 +242,13 @@ describe("renderDialBox with a caption mark (#1437)", () => {
         expect(svg.match(/<circle /g)).toHaveLength(3);
       });
 
-      it("keeps the caption's layout but not its text when the mark replaces it", () => {
-        const base = { abbr: "SPEED", value: "PAUSED", colors: accentColors(), caption: "▶ 1x" };
-        const svg = renderDialBox(canvas, { ...base, captionMark: { ...WORKING, replacesCaption: true } });
+      it("keeps a caption's layout without its text when the caption gives way to the mark on a reserved line", () => {
+        const base = { abbr: "SPEED", value: "PAUSED", colors: accentColors() };
+        const svg = renderDialBox(canvas, { ...base, reserveCaptionLine: true, captionMark: WORKING });
 
-        expect(svg).not.toContain("▶ 1x");
+        expect(svg).not.toContain("data-caption=");
         expect(svg).toContain('<g data-caption-mark="working">');
-        expect(aboveCaption(svg)).toBe(aboveCaption(renderDialBox(canvas, base)));
+        expect(aboveCaption(svg)).toBe(aboveCaption(renderDialBox(canvas, { ...base, caption: "▶ 1x" })));
       });
 
       it("dims the mark with the rest of a dimmed box", () => {
