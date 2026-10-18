@@ -6,8 +6,9 @@ import type { DialBoxArgs, DialBoxColors } from "./dial-box.js";
  * holds the exact markup the renderers produced for each BEFORE the box grew
  * its `neighbours` slot and its `reserveCaptionLine` flag (#801), and
  * `dial-box-baseline.test.ts` asserts that a box passing neither still draws
- * those bytes. Add a case here only together with a re-capture from a renderer
- * known to be right, and say why in the commit.
+ * those bytes. The caption mark's shapes (#1437) are a list of their own below,
+ * in the same fixture. Add a case only together with a re-capture from a
+ * renderer known to be right, and say why in the commit.
  */
 const ACCENT: DialBoxColors = { border: "#e74c3c", label: "#e74c3c", value: "#e74c3c", background: "#0d0d0d" };
 const CUSTOM: DialBoxColors = { border: "#111111", label: "#222222", value: "#333333", background: "#444444" };
@@ -119,6 +120,97 @@ export const DIAL_BOX_BASELINE_SHAPES: readonly DialBoxBaselineShape[] = [
   {
     name: "pending sides",
     args: { abbr: "SPEED", value: "1x", colors: ACCENT, sideMarker: { left: true, right: true }, pending: AMBER },
+  },
+];
+
+/**
+ * The replay busy look's caption mark (#1437), one entry per way the replay
+ * dials pass it, each drawn on both canvases and held in the same fixture.
+ * The first four (the mark alone, beside a caption, beside the pending count,
+ * on a reserved line in place of the play state) are byte for byte what the
+ * mark drew when the maintainer tested it, before #801's `reserveCaptionLine`
+ * took over from the mark's own `replacesCaption`; the last two add #801's
+ * neighbours and the dimmed box. A change to the mark's drawing re-captures
+ * these entries and says why in the commit; the shapes above never take a mark.
+ */
+export const DIAL_BOX_MARK_BASELINE_SHAPES: readonly DialBoxBaselineShape[] = [
+  // Replay Markers' detent jump with no caption, and Replay Control's Incident with no count.
+  {
+    name: "mark alone",
+    args: {
+      abbr: "MARKERS",
+      value: "3 / 12",
+      colors: ACCENT,
+      sideMarker: { left: true, right: true },
+      captionMark: { kind: "working", position: 1 },
+    },
+  },
+  // Replay Markers' Add caption, from the car, keeps its place beside the mark.
+  {
+    name: "mark beside caption",
+    args: {
+      abbr: "MARKERS",
+      value: "3 / 12",
+      colors: ACCENT,
+      sideMarker: { left: true, right: false },
+      caption: "ADD -5 s",
+      captionMark: { kind: "not-done" },
+    },
+  },
+  // #801's pending count stays beside the mark.
+  {
+    name: "mark beside count",
+    args: {
+      abbr: "INCIDENT",
+      value: "60:05",
+      colors: ACCENT,
+      sideMarker: { left: true, right: true },
+      caption: "+3",
+      reserveCaptionLine: true,
+      captionMark: { kind: "working", position: 0 },
+    },
+  },
+  // Speed Control's play state gives way to the mark, its line kept.
+  {
+    name: "mark on reserved line",
+    args: {
+      abbr: "SPEED",
+      value: "0x",
+      colors: ACCENT,
+      sideMarker: { left: true, right: true },
+      caption: "",
+      reserveCaptionLine: true,
+      dimmed: false,
+      pending: null,
+      captionMark: { kind: "waiting" },
+    },
+  },
+  // Track Order's neighbours on the value line, the mark on the caption line.
+  {
+    name: "mark with neighbours",
+    args: {
+      abbr: "TRK ORD",
+      value: "#12",
+      colors: ACCENT,
+      sideMarker: { left: true, right: true },
+      caption: "",
+      reserveCaptionLine: true,
+      neighbours: { left: "#5", right: "#42" },
+      captionMark: { kind: "working", position: 2 },
+    },
+  },
+  // Out of the replay: the whole box dims, the mark with it.
+  {
+    name: "mark dimmed",
+    args: {
+      abbr: "SPEED",
+      value: "",
+      colors: ACCENT,
+      caption: "",
+      dimmed: true,
+      pending: null,
+      captionMark: { kind: "not-done" },
+    },
   },
 ];
 

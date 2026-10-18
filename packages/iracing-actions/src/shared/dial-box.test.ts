@@ -251,6 +251,34 @@ describe("renderDialBox with a caption mark (#1437)", () => {
         expect(aboveCaption(svg)).toBe(aboveCaption(renderDialBox(canvas, { ...base, caption: "▶ 1x" })));
       });
 
+      it("keeps the mark on the caption line below the neighbours on the value line", () => {
+        for (const reserveCaptionLine of [false, true]) {
+          for (const captionMark of [WORKING, { kind: "waiting" } as const, { kind: "not-done" } as const]) {
+            const svg = renderDialBox(canvas, {
+              abbr: "TRK ORD",
+              value: "#12",
+              colors: accentColors(),
+              sideMarker: { left: true, right: true },
+              reserveCaptionLine,
+              neighbours: { left: "#5", right: "#42" },
+              captionMark,
+            });
+            const baselines = [...svg.matchAll(/<text data-neighbour="\w+"[^>]*y="(\d+)"/g)].map((m) => Number(m[1]));
+            const markTops = [
+              ...[...svg.matchAll(/<circle [^>]*cy="([\d.]+)" r="([\d.]+)"/g)].map((m) => Number(m[1]) - Number(m[2])),
+              ...[...svg.matchAll(/<line [^>]*y1="([\d.]+)"[^>]*y2="([\d.]+)"[^>]*stroke-width="([\d.]+)"/g)].map(
+                (m) => Math.min(Number(m[1]), Number(m[2])) - Number(m[3]) / 2,
+              ),
+            ];
+
+            // Digits and "#" have no descenders, so a neighbour reaches no lower than its baseline.
+            expect(baselines).toHaveLength(2);
+            expect(markTops.length).toBeGreaterThan(0);
+            expect(Math.max(...baselines)).toBeLessThan(Math.min(...markTops));
+          }
+        }
+      });
+
       it("dims the mark with the rest of a dimmed box", () => {
         const svg = renderDialBox(canvas, {
           abbr: "SPEED",
