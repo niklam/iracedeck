@@ -20,6 +20,40 @@ const TEST = /\.test\.(?:[cm]?[jt]s|[jt]sx)$/;
 // Static `import … from "x"`, `export … from "x"`, side-effect `import "x"` and dynamic `import("x")`.
 const SPECIFIER = /(?:\bfrom\s*|\bimport\s*\(?\s*)["']([^"']+)["']/g;
 
+// Text that never runs, so an import-shaped example in it is no dependency. A comment opener
+// counts only at a line start or after whitespace (or `{`, for MDX's `{/* … */}`), so a URL (`https://…`) or a glob
+// (`src/**/*.ts`) in a string does not swallow the code after it.
+const BLOCK_COMMENT = /(^|[\s{])\/\*[\s\S]*?\*\//g;
+const LINE_COMMENT = /(^|\s)\/\/.*$/gm;
+const HTML_COMMENT = /<!--[\s\S]*?-->/g;
+const FENCE = /^\s*(?:```|~~~)/;
+
+/**
+ * `text` without what the build never executes: comments, and in an MDX page its fenced
+ * code blocks, which show code rather than import it.
+ */
+function executableText(source, text) {
+  let code = text;
+  if (source.endsWith(".mdx")) {
+    let fenced = false;
+    code = code
+      .split("\n")
+      .filter((line) => {
+        if (FENCE.test(line)) {
+          fenced = !fenced;
+
+          return false;
+        }
+
+        return !fenced;
+      })
+      .join("\n");
+  }
+  if (source.endsWith(".mdx") || source.endsWith(".astro")) code = code.replace(HTML_COMMENT, "");
+
+  return code.replace(BLOCK_COMMENT, "$1").replace(LINE_COMMENT, "$1");
+}
+
 function packageNamesByDir() {
   const names = new Map();
   const manifests = execFileSync("git", ["ls-files", "packages/*/package.json"], { cwd: ROOT, encoding: "utf-8" })
@@ -40,7 +74,7 @@ function packageNamesByDir() {
 function workspaceImports(source, text, namesByDir) {
   const packages = new Set();
   const follow = new Set();
-  for (const [, spec] of text.matchAll(SPECIFIER)) {
+  for (const [, spec] of executableText(source, text).matchAll(SPECIFIER)) {
     if (spec.startsWith("@iracedeck/")) {
       packages.add(spec.split("/").slice(0, 2).join("/"));
     } else if (spec.startsWith(".")) {
@@ -141,5 +175,33 @@ describe("website workspace dependencies (#1458)", () => {
     expect([...packages].sort()).toEqual(["@iracedeck/deck-core", "@iracedeck/iracing-actions"]);
     // The website's own files are scanned already, so only the root module is left to follow.
     expect([...follow]).toEqual(["scripts/lib/w.mjs"]);
+  });
+
+  it("ignores import-shaped text in comments and MDX code fences, but not the imports beside it", () => {
+    const mdx = [
+      `import A from "@iracedeck/a";`,
+      "```typescript",
+      `import { b } from "@iracedeck/b";`,
+      "```",
+      `{/* import c from "@iracedeck/c"; */}`,
+      `<!-- import d from "@iracedeck/d"; -->`,
+      `import E from "@iracedeck/e";`,
+    ].join("\n");
+    const code = [
+      `// import f from "@iracedeck/f";`,
+      `/* import g from "@iracedeck/g"; */`,
+      `const url = "https://example.com"; import h from "@iracedeck/h";`,
+      `const glob = "src/**/*.ts";`,
+      `const i = await import("@iracedeck/i"); // */`,
+    ].join("\n");
+
+    expect([...workspaceImports("packages/website/src/page.mdx", mdx, namesByDir).packages].sort()).toEqual([
+      "@iracedeck/a",
+      "@iracedeck/e",
+    ]);
+    expect([...workspaceImports("packages/website/scripts/gen.mts", code, namesByDir).packages].sort()).toEqual([
+      "@iracedeck/h",
+      "@iracedeck/i",
+    ]);
   });
 });
