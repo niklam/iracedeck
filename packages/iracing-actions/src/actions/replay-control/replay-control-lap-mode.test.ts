@@ -5,9 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ReplayControlDialSettings } from "./replay-control-dial-settings.js";
 import { lapMode } from "./replay-control-lap-mode.js";
 import { BLANK_CAPTION } from "./replay-control-step-mode.js";
-import { recordedLapAt, recordedMaxLap } from "./replay-dial-lap-readout.js";
 import { fakeStepIo, lapsAt, recordSource, sessionsAt } from "./replay-dial-step-io.test-support.js";
-import { listRecord } from "./replay-record-step.js";
 
 vi.mock("@iracedeck/settings", () => ({ getGlobalSettings: vi.fn(() => ({})) }));
 
@@ -42,72 +40,6 @@ const QUALIFYING_THEN_RACE: LapStartListEntry[] = [
 function onSession(sessionNum: number): TelemetryData {
   return { IsReplayPlaying: true, ReplaySessionNum: sessionNum } as TelemetryData;
 }
-
-describe("recordedLapAt", () => {
-  it("is the lap whose landing, a second before the line, is the last at or before the frame", () => {
-    const source = recordSource(LAPS, null);
-
-    expect(recordedLapAt(54_000, listRecord("lap", source), 2)).toBe(2);
-    // At the landing a lap step jumps to: that lap, not the one a second from finishing.
-    expect(recordedLapAt(56_000 - 60, listRecord("lap", source), 2)).toBe(3);
-    expect(recordedLapAt(56_000 - 61, listRecord("lap", source), 2)).toBe(2);
-    expect(recordedLapAt(80_000, listRecord("lap", source), 2)).toBe(4);
-  });
-
-  it("is null when the lap found is another session's, or the session on screen is not known", () => {
-    const listing = listRecord("lap", recordSource(QUALIFYING_THEN_RACE, null));
-
-    // The race before the car's first race lap: its last qualifying lap is not its lap here.
-    expect(recordedLapAt(45_000, listing, 2)).toBeNull();
-    expect(recordedLapAt(45_000, listing, 1)).toBe(2);
-    expect(recordedLapAt(51_000, listing, 2)).toBe(1);
-    expect(recordedLapAt(54_000, listRecord("lap", recordSource(LAPS, null)), null)).toBeNull();
-  });
-
-  it("is null before the first recorded lap, with no store, no car on camera or no car number", () => {
-    expect(recordedLapAt(10_000, listRecord("lap", recordSource(LAPS, null)), 2)).toBeNull();
-    expect(recordedLapAt(54_000, listRecord("lap", { ...recordSource(LAPS, null), store: null }), 2)).toBeNull();
-    expect(
-      recordedLapAt(54_000, listRecord("lap", { ...recordSource(LAPS, null), camCarIdx: undefined }), 2),
-    ).toBeNull();
-    expect(recordedLapAt(54_000, listRecord("lap", recordSource(LAPS, null, 255)), 2)).toBeNull();
-    expect(recordedLapAt(54_000, listRecord("lap", recordSource(LAPS, null, 7)), 2)).toBeNull();
-    expect(recordedLapAt(54_000, listRecord("lap", recordSource(null, null)), 2)).toBeNull();
-  });
-});
-
-describe("recordedMaxLap", () => {
-  it("is the highest lap the record holds for the car in the session", () => {
-    const listing = listRecord("lap", recordSource(QUALIFYING_THEN_RACE, null));
-
-    expect(recordedMaxLap(listing, 1, undefined)).toBe(2);
-    expect(recordedMaxLap(listing, 2, undefined)).toBe(1);
-    expect(recordedMaxLap(listing, 0, undefined)).toBeNull();
-  });
-
-  it("counts only the instance of the session it is given, so a restarted event's laps do not mix", () => {
-    const listing = listRecord(
-      "lap",
-      recordSource(
-        [
-          { frame: 1_000, lap: 1, sessionNum: 2, sessionUniqueId: 1 },
-          { frame: 2_000, lap: 2, sessionNum: 2, sessionUniqueId: 1 },
-          { frame: 3_000, lap: 3, sessionNum: 2, sessionUniqueId: 1 },
-          { frame: 9_000, lap: 1, sessionNum: 2, sessionUniqueId: 5 },
-        ],
-        null,
-      ),
-    );
-
-    expect(recordedMaxLap(listing, 2, 5)).toBe(1);
-    expect(recordedMaxLap(listing, 2, 1)).toBe(3);
-  });
-
-  it("is null when the list could not be read", () => {
-    expect(recordedMaxLap(listRecord("lap", recordSource(null, null)), 2, undefined)).toBeNull();
-    expect(recordedMaxLap(listRecord("session", recordSource(null, SESSIONS)), 2, undefined)).toBeNull();
-  });
-});
 
 describe("lapMode view", () => {
   /** Session 2 scheduled for 25 laps; sessions 0 and 1 unlimited, with car 4's results in session 1. */

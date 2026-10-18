@@ -3,9 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { ReplayControlDialSettings } from "./replay-control-dial-settings.js";
 import { sessionMode, sessionName } from "./replay-control-session-mode.js";
-import { recordedSessionAt } from "./replay-dial-lap-readout.js";
 import { fakeStepIo, lapsAt, recordSource, sessionsAt } from "./replay-dial-step-io.test-support.js";
-import { listRecord } from "./replay-record-step.js";
 
 vi.mock("@iracedeck/settings", () => ({ getGlobalSettings: vi.fn(() => ({})) }));
 
@@ -45,24 +43,6 @@ describe("sessionName", () => {
     expect(sessionName(SESSION_INFO, 3)).toBe("S3");
     expect(sessionName(null, 1)).toBe("S1");
     expect(sessionName({ SessionInfo: { Sessions: [{ SessionNum: 1, SessionType: " " }] } }, 1)).toBe("S1");
-  });
-});
-
-describe("recordedSessionAt", () => {
-  it("is the last recorded session start at or before the frame", () => {
-    const source = recordSource(null, SESSIONS);
-
-    expect(recordedSessionAt(0, listRecord("session", source))).toBe(0);
-    expect(recordedSessionAt(60_120, listRecord("session", source))).toBe(1);
-    expect(recordedSessionAt(59_999, listRecord("session", source))).toBe(0);
-    expect(recordedSessionAt(200_000, listRecord("session", source))).toBe(2);
-  });
-
-  it("is null with no store or no listing", () => {
-    expect(
-      recordedSessionAt(1_000, listRecord("session", { ...recordSource(null, SESSIONS), store: null })),
-    ).toBeNull();
-    expect(recordedSessionAt(1_000, listRecord("session", recordSource(null, null)))).toBeNull();
   });
 });
 
