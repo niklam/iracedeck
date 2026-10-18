@@ -1184,13 +1184,9 @@ describe("ReplayMarkers", () => {
   describe("the replay busy look on a key (#1437)", () => {
     const AHEAD = { frame: 15_000, sessionNum: 1, sessionTimeMs: 0 };
 
+    /** The store holds `markers`: Next and Previous walk them by the shared rule (#1426). */
     function storeWith(markers: Marker[]): void {
-      mocks.markers.next.mockImplementation(
-        ((frame: number) => markers.find((m) => m.frame - frame > 60) ?? null) as never,
-      );
-      mocks.markers.previous.mockImplementation(
-        ((frame: number) => [...markers].reverse().find((m) => frame - m.frame > 120) ?? null) as never,
-      );
+      mocks.markers.list.mockReturnValue(markers);
     }
 
     function tick(action: ReplayMarkers, id = "ctx-1"): void {
