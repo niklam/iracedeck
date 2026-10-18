@@ -497,7 +497,9 @@ interface ReplayControlDialContext {
    * Whether the input that last went to the gate under the dial's token
    * draws working ({@link gestureDrawsWorking}, {@link TURN_DRAWS_WORKING}),
    * or null before one has: the box's look follows the gesture or the turn
-   * that made the press, not the dial's slots.
+   * that made the press, not the dial's slots. A gesture that sends nothing
+   * (Reverse on a paused replay, Jump to My Car) did not go to the gate and
+   * leaves it as it was.
    */
   lastInputDrawsWorking: boolean | null;
 }
@@ -580,6 +582,14 @@ export class ReplayControlDialSurface {
    */
   private pressOrigin: string | undefined = undefined;
 
+  /**
+   * The gesture running now and the dial it runs on, beside
+   * {@link pressOrigin}; null outside one. The press funnel reads it to turn
+   * the box's look off working only when a gesture that does not draw working
+   * actually presses something (#1437).
+   */
+  private runningGesture: { readonly ctx: ReplayControlDialContext; readonly gesture: ActiveGesture } | null = null;
+
   /** When the host's debounced state last said a replay is on screen (ms), or null before it ever did. */
   private replaySeenAt: number | null = null;
 
@@ -603,11 +613,22 @@ export class ReplayControlDialSurface {
     // from an in-flight replay jump (#1203) as every command did. A cursor take
     // drops the dial's pending speed, since another action's command
     // supersedes it; the dial's own take keeps it.
-    const press = (owner: string, command: ReplayGateCommand): ReplayPressResult =>
-      keepDialPendingSpeed(() =>
+    const press = (owner: string, command: ReplayGateCommand): ReplayPressResult => {
+      // A gesture that draws working registered so before it ran; one that
+      // does not takes the working look off here, as its press goes to the
+      // gate, so a gesture that never gets this far leaves the look alone.
+      const running = this.runningGesture;
+
+      if (running && !gestureDrawsWorking(running.gesture)) {
+        running.ctx.lastInputDrawsWorking = false;
+        this.syncBusyRegistration(running.ctx);
+      }
+
+      return keepDialPendingSpeed(() =>
         // A detent carries no token and is a repeat of the turn, never "pressing again" behind a search.
         pressReplayCommand(command, { by: owner, origin: this.pressOrigin, repeat: this.pressOrigin === undefined }),
       );
+    };
 
     const position: ReplayDialModeIo["position"] = () => readReplayPosition(this.reading().telemetry);
 
@@ -1153,20 +1174,26 @@ export class ReplayControlDialSurface {
       return;
     }
 
-    // The box draws working for this gesture only if it jumps or searches, decided
-    // before its press reaches the gate, so the press's first notice already reads it.
-    ctx.lastInputDrawsWorking = gestureDrawsWorking(gesture);
-    this.syncBusyRegistration(ctx);
+    // A gesture that jumps draws working, registered before it runs so its
+    // press's first notice already reads it. Any other gesture changes the look
+    // only if one of its presses reaches the gate, in the press funnel: one
+    // that sends nothing leaves a search the dial's turn started drawn working.
+    if (gestureDrawsWorking(gesture)) {
+      ctx.lastInputDrawsWorking = true;
+      this.syncBusyRegistration(ctx);
+    }
 
     const origin = ctx.action.id;
 
     // A gesture's commands carry the dial's own origin token; a detent's carry none.
     this.pressOrigin = origin;
+    this.runningGesture = { ctx, gesture };
 
     try {
       GESTURES[gesture].run({ io: this.io, host: this.host, dialIo: ctx.io, origin });
     } finally {
       this.pressOrigin = undefined;
+      this.runningGesture = null;
     }
 
     this.renderAll();

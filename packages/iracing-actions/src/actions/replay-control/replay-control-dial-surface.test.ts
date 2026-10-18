@@ -3757,6 +3757,7 @@ describe("ReplayControlDialSurface — the busy look (#1437)", () => {
     busy.actual?._resetReplayBusyIndicator();
     busy.real = false;
     host.jumpToLive.mockImplementation(() => undefined);
+    host.jumpToRaceStart.mockImplementation(() => undefined);
     vi.useRealTimers();
   });
 
@@ -4013,6 +4014,69 @@ describe("ReplayControlDialSurface — the busy look (#1437)", () => {
       expect(busy.actual!.getReplayBusyLook("dial-1")).toMatchObject({ kind: "working" });
       expect(shownMark(lastBox(ctx))).toMatch(/^working \d$/);
     });
+
+    it.each([
+      ["Reverse on a paused replay", "reverse"],
+      ["Jump to My Car", "jump-to-my-car"],
+    ])(
+      "a gesture that sends nothing (%s) leaves the dial's own search drawn working, through the real indicator",
+      async (_name, gesture) => {
+        busy.real = true;
+        const d = dial({ mode: "lap", pressAction: gesture });
+        const { surface, ctx } = await onScreen(PAUSED, d);
+
+        // The turn's paced search goes out under the dial's token (the runner is a double here).
+        surface.rotate(ctx as never, d, 1, false);
+        expect(
+          pressReplayCommand(
+            { kind: "search", search: "nextLap" },
+            { by: "replay-control-dial lap", origin: "dial-1" },
+          ),
+        ).toEqual({ kind: "sent", ok: true });
+        await settle();
+
+        expect(busy.actual!.getReplayBusyLook("dial-1")).toMatchObject({ kind: "working" });
+
+        const registrations = vi.mocked(registerReplayBusySurface).mock.calls.length;
+        mocks.setPlaySpeed.mockClear();
+        mocks.pause.mockClear();
+
+        await press(surface, ctx, d);
+        await settle();
+
+        // Nothing went to the gate, so the registration and the look stand.
+        expect(mocks.setPlaySpeed).not.toHaveBeenCalled();
+        expect(mocks.pause).not.toHaveBeenCalled();
+        expect(registerReplayBusySurface).toHaveBeenCalledTimes(registrations);
+        expect(busy.surfaces.get("dial-1")?.drawsWorking).toBe(true);
+        expect(busy.actual!.getReplayBusyLook("dial-1")).toMatchObject({ kind: "working" });
+        expect(shownMark(lastBox(ctx))).toMatch(/^working \d$/);
+      },
+    );
+
+    it.each(["jump-to-live", "jump-to-race-start"])(
+      "%s re-registers the dial as drawing working before its press, from a speed gesture's registration",
+      async (gesture) => {
+        const d = dial({ pressAction: "play-pause", longPressAction: gesture });
+        const { surface, ctx } = await onScreen(speed(1), d);
+        const seen: boolean[] = [];
+        const record = (): undefined => {
+          seen.push(busy.surfaces.get("dial-1")?.drawsWorking === true);
+
+          return undefined;
+        };
+
+        await press(surface, ctx, d);
+        await settle(DIAL_SPEED_HOLD_MS);
+        expect(busy.surfaces.get("dial-1")?.drawsWorking).toBe(false);
+
+        host.jumpToLive.mockImplementation(record);
+        host.jumpToRaceStart.mockImplementation(record);
+        await press(surface, ctx, d, 600);
+
+        expect(seen).toEqual([true]);
+      },
+    );
 
     it("hands Jump to Live and Jump to Race Start the dial's token", async () => {
       const { surface, ctx } = await onScreen(speed(1));
