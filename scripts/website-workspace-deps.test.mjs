@@ -14,8 +14,8 @@ import { describe, expect, it } from "vitest";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const WEBSITE_DIR = "packages/website";
-const SOURCE = /\.(?:[cm]?[jt]s|astro|mdx)$/;
-const TEST = /\.test\.[cm]?[jt]s$/;
+const SOURCE = /\.(?:[cm]?[jt]s|[jt]sx|astro|mdx)$/;
+const TEST = /\.test\.(?:[cm]?[jt]s|[jt]sx)$/;
 
 // Static `import … from "x"`, `export … from "x"`, side-effect `import "x"` and dynamic `import("x")`.
 const SPECIFIER = /(?:\bfrom\s*|\bimport\s*\(?\s*)["']([^"']+)["']/g;
@@ -95,6 +95,13 @@ describe("website workspace dependencies (#1458)", () => {
 
   const sources = websiteSources();
   const { reached, scanned } = scan(sources, namesByDir);
+
+  it("treats JSX and TSX as sources and their tests as tests, though the site has none yet", () => {
+    for (const ext of [".jsx", ".tsx"]) {
+      expect(SOURCE.test(`packages/website/src/a${ext}`)).toBe(true);
+      expect(TEST.test(`packages/website/src/a.test${ext}`)).toBe(true);
+    }
+  });
 
   it("scans every kind of source the build compiles", () => {
     for (const ext of [".mts", ".mjs", ".ts", ".astro", ".mdx"]) {
