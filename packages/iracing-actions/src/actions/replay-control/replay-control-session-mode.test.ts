@@ -74,8 +74,34 @@ describe("sessionMode view", () => {
 
     expect(sessionMode.view(dial, io)).toMatchObject({ value: "RACE", caption: "2/25" });
 
-    // Without the record the lap on screen is not known.
+    // Without the record, scrubbed back in an in-session replay, the lap on screen is not known.
     io.recordSource.mockReturnValue(recordSource(null, SESSIONS));
+    expect(sessionMode.view(dial, io).caption).toBe("--/25");
+  });
+
+  it("captions telemetry's lap without the record where the per-car arrays are the replay's own", () => {
+    const io = fakeStepIo();
+
+    io.sessionInfo.mockReturnValue({
+      SessionInfo: { Sessions: [...SESSION_INFO.SessionInfo.Sessions.slice(0, 2), { ...RACE, SessionLaps: 25 }] },
+    });
+    io.recordSource.mockReturnValue(recordSource(null, null));
+    io.position.mockReturnValue({ frame: 164_000, time: 2_733, endFrame: undefined, seeking: false });
+
+    const race = (extra: Partial<TelemetryData>) =>
+      ({ IsReplayPlaying: true, ReplaySessionNum: 2, CamCarIdx: 4, ...extra }) as TelemetryData;
+
+    // A saved replay iRaceDeck never recorded: car 4 has completed 13.
+    io.isSavedReplay.mockReturnValue(true);
+    io.telemetry.mockReturnValue(race({ CarIdxLapCompleted: [0, 0, 0, 0, 13] }));
+    expect(sessionMode.view(dial, io)).toMatchObject({ value: "RACE", caption: "14/25" });
+
+    // An in-session replay: at the live edge the same, scrubbed back unknown.
+    io.isSavedReplay.mockReturnValue(false);
+    io.telemetry.mockReturnValue(race({ CarIdxLapCompleted: [0, 0, 0, 0, 13], ReplayFrameNumEnd: 1 }));
+    expect(sessionMode.view(dial, io).caption).toBe("14/25");
+
+    io.telemetry.mockReturnValue(race({ CarIdxLapCompleted: [0, 0, 0, 0, -1], ReplayFrameNumEnd: 40_182 }));
     expect(sessionMode.view(dial, io).caption).toBe("--/25");
   });
 

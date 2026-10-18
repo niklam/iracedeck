@@ -92,14 +92,25 @@ describe("lapMode view", () => {
     expect(lapMode.view(dial, io).value).toBe("--");
   });
 
-  it("reads --/25 without the record, the lap on screen being unknown", () => {
+  it("reads --/25 without the record, scrubbed back in an in-session replay, the lap on screen being unknown", () => {
     const io = fakeStepIo();
 
     io.sessionInfo.mockReturnValue(SESSION_INFO);
-    io.telemetry.mockReturnValue(onCar4(2));
+    io.telemetry.mockReturnValue({ ...onCar4(2), CarIdxLapCompleted: [0, 0, 0, 0, -1], ReplayFrameNumEnd: 40_182 });
     io.position.mockReturnValue({ frame: 57_000, time: 950, endFrame: undefined, seeking: false });
 
     expect(lapMode.view(dial, io)).toMatchObject({ value: "--/25", caption: "15:50" });
+  });
+
+  it("reads the lap from telemetry without the record in a saved replay, CarIdxLapCompleted + 1", () => {
+    const io = fakeStepIo();
+
+    io.isSavedReplay.mockReturnValue(true);
+    io.sessionInfo.mockReturnValue(SESSION_INFO);
+    io.telemetry.mockReturnValue({ ...onCar4(2), CarIdxLapCompleted: [0, 0, 0, 0, 13] });
+    io.position.mockReturnValue({ frame: 57_000, time: 950, endFrame: undefined, seeking: false });
+
+    expect(lapMode.view(dial, io)).toMatchObject({ value: "14/25", caption: "15:50" });
   });
 
   it("shows the lap at the pending landing while a jump is under way, and the target's time beneath", () => {

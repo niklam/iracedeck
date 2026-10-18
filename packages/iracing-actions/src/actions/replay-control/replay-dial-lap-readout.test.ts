@@ -2,7 +2,13 @@ import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import type { LapStartListEntry } from "@iracedeck/replay-store";
 import { describe, expect, it, vi } from "vitest";
 
-import { lapOfLapsReadout, recordedLapAt, recordedMaxLap, recordedSessionAt } from "./replay-dial-lap-readout.js";
+import {
+  lapOfLapsReadout,
+  recordedLapAt,
+  recordedMaxLap,
+  recordedSessionAt,
+  telemetryLapAt,
+} from "./replay-dial-lap-readout.js";
 import { fakeStepIo, lapsAt, recordSource, sessionsAt } from "./replay-dial-step-io.test-support.js";
 import { listRecord } from "./replay-record-step.js";
 
@@ -284,5 +290,148 @@ describe("lapOfLapsReadout: the numerator and the denominator count the same lap
     // The crossing that completed lap 16 is recorded as lap 17's start, at 51 000.
     expect(readout(lapStarts(17), over, 52_000)).toBe("16/16");
     expect(readout(lapStarts(17), over, 16_000)).toBe("5/16");
+  });
+});
+
+describe("lapOfLapsReadout without a recorded lap: the lap from telemetry where the arrays are the replay's", () => {
+  /** Telemetry on session 2, the camera on car 4, its `CarIdxLapCompleted` reading `completed`. */
+  function car4Completed(completed: number, extra: Partial<TelemetryData> = {}): TelemetryData {
+    return { ...onCar4(2), CarIdxLapCompleted: [3, 0, 7, 9, completed, 2], ...extra } as TelemetryData;
+  }
+
+  /** The readout at 57 000 of session 2 (25 laps), a saved replay or not, over `laps` (null: no record file). */
+  function readout(
+    telemetry: TelemetryData,
+    {
+      saved = true,
+      laps = null as LapStartListEntry[] | null,
+      sessionInfo = SCHEDULED as unknown,
+      seeking = false,
+    } = {},
+  ): string | null {
+    const io = fakeStepIo();
+    const source = recordSource(laps, SESSIONS);
+
+    io.recordSource.mockReturnValue(source);
+    io.sessionInfo.mockReturnValue(sessionInfo);
+    io.telemetry.mockReturnValue(telemetry);
+    io.isSavedReplay.mockReturnValue(saved);
+
+    return lapOfLapsReadout(io, at(57_000, seeking), listRecord("lap", source));
+  }
+
+  it("in a saved replay iRaceDeck never recorded, reads CarIdxLapCompleted + 1 over the session's laps", () => {
+    expect(readout(car4Completed(13))).toBe("14/25");
+  });
+
+  it("in a saved replay whose record has no lap of the car by then, or none of it at all, reads telemetry too", () => {
+    // The record's first lap of car 4 is at 60 000, after the cursor.
+    expect(readout(car4Completed(13), { laps: lapsAt([60_000]) })).toBe("14/25");
+    // The record lists no lap of car 4.
+    expect(readout(car4Completed(13), { laps: [] })).toBe("14/25");
+  });
+
+  it("prefers the record's lap where it has one", () => {
+    expect(readout(car4Completed(13), { laps: LAPS })).toBe("3/25");
+  });
+
+  it("scrubbed back in an in-session replay, where the arrays read the live field, still reads --/25", () => {
+    expect(readout(car4Completed(13, { ReplayFrameNumEnd: 40_182 }), { saved: false })).toBe("--/25");
+    expect(readout(car4Completed(13), { saved: false })).toBe("--/25");
+  });
+
+  it("at the live edge of an in-session replay with no record, reads telemetry's lap", () => {
+    expect(readout(car4Completed(13, { ReplayFrameNumEnd: 1 }), { saved: false })).toBe("14/25");
+  });
+
+  it("reads -- for a car whose count is -1 or missing", () => {
+    expect(readout(car4Completed(-1))).toBe("--/25");
+    expect(readout(onCar4(2))).toBe("--/25");
+    expect(readout({ ...car4Completed(13), CamCarIdx: 9 } as TelemetryData)).toBe("--/25");
+  });
+
+  it("caps the lap at the count: a finisher's cool-down lap, 25 of 25 completed, reads 25/25", () => {
+    expect(readout(car4Completed(25))).toBe("25/25");
+  });
+
+  it("keeps an unlimited session's denominator from its results, and none without them", () => {
+    const unlimited = (results: unknown) => ({
+      SessionInfo: { Sessions: [{ SessionNum: 2, SessionLaps: "unlimited", ResultsPositions: results }] },
+    });
+
+    expect(readout(car4Completed(13), { sessionInfo: unlimited([{ CarIdx: 4, LapsComplete: 20 }]) })).toBe("14/20");
+    expect(readout(car4Completed(13), { sessionInfo: unlimited(null) })).toBe("14");
+  });
+
+  it("does not read telemetry while a jump is under way: the pending landing's lap, or --", () => {
+    expect(readout(car4Completed(13), { seeking: true })).toBe("--/25");
+    // Mid-seek with the record, the landing's lap as before.
+    expect(readout(car4Completed(13), { laps: LAPS, seeking: true })).toBe("3/25");
+  });
+
+  it("numbers a lap as the record does at the same moment", () => {
+    /**
+     * Car 4's `CarIdxLapCompleted` over a race (session 2), one reading every
+     * 500 frames from 40 000: −1 on the grid, 0 from the start crossing, then
+     * a lap completed every 3 000 frames.
+     */
+    const ticks = Array.from({ length: 40 }, (_, i) => {
+      const frame = 40_000 + 500 * i;
+
+      return { frame, completed: frame < 45_000 ? -1 : Math.floor((frame - 45_000) / 3_000) };
+    });
+    // The recorder's rule (`replay-laps.ts`): a rise by exactly 1, or −1 → 0,
+    // is the start of lap `completed + 1` at that frame.
+    const recorded: LapStartListEntry[] = [];
+
+    for (let i = 1; i < ticks.length; i++) {
+      const prev = ticks[i - 1].completed;
+      const cur = ticks[i].completed;
+
+      if ((prev >= 0 && cur === prev + 1) || (prev === -1 && cur === 0)) {
+        recorded.push({ frame: ticks[i].frame, lap: cur + 1, sessionNum: 2, sessionUniqueId: 1 });
+      }
+    }
+
+    expect(recorded.map((start) => start.lap)).toEqual([1, 2, 3, 4, 5]);
+
+    const lapAt = (frame: number, completed: number, laps: LapStartListEntry[] | null): string | null => {
+      const io = fakeStepIo();
+      const source = recordSource(laps, SESSIONS);
+
+      io.recordSource.mockReturnValue(source);
+      io.sessionInfo.mockReturnValue(SCHEDULED);
+      io.telemetry.mockReturnValue(car4Completed(completed));
+      io.isSavedReplay.mockReturnValue(true);
+
+      return lapOfLapsReadout(io, at(frame), listRecord("lap", source));
+    };
+
+    // Every reading from the first crossing on. None falls in the second before
+    // a crossing, where the record already reads the lap its step lands on.
+    for (const { frame, completed } of ticks.filter((tick) => tick.completed >= 0)) {
+      expect(lapAt(frame, completed, null)).toBe(lapAt(frame, completed, recorded));
+    }
+
+    expect(lapAt(46_000, 0, null)).toBe("1/25");
+    expect(lapAt(51_500, 2, null)).toBe("3/25");
+  });
+});
+
+describe("telemetryLapAt", () => {
+  it("is CarIdxLapCompleted + 1 of the camera car where the arrays are trusted and the reading is the replay's", () => {
+    const io = fakeStepIo();
+
+    io.isSavedReplay.mockReturnValue(true);
+    io.telemetry.mockReturnValue({ CamCarIdx: 1, CarIdxLapCompleted: [5, 0] } as TelemetryData);
+
+    expect(telemetryLapAt(io, at(1_000))).toBe(1);
+    expect(telemetryLapAt(io, at(1_000, true))).toBeNull();
+
+    io.telemetry.mockReturnValue({ CamCarIdx: 255, CarIdxLapCompleted: [5, 0] } as TelemetryData);
+    expect(telemetryLapAt(io, at(1_000))).toBeNull();
+
+    io.telemetry.mockReturnValue(null);
+    expect(telemetryLapAt(io, at(1_000))).toBeNull();
   });
 });

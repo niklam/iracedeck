@@ -6,9 +6,10 @@
  * `docs/superpowers/specs/2026-10-12-issue-801-replay-control-dial-stepping.md`.
  *
  * The box shows the viewed car's lap over the laps in the session, `12/25`
- * (`replay-dial-lap-readout.ts`, the lap from the record), with the replay
- * time, `m:ss`, beneath it, which the paced search's count takes while it
- * works for laps (the maintainer's second test round, 2026-10-18).
+ * (`replay-dial-lap-readout.ts`, the lap from the record, else from telemetry
+ * where the per-car arrays are the replay's own), with the replay time,
+ * `m:ss`, beneath it, which the paced search's count takes while it works for
+ * laps (the maintainer's second test round, 2026-10-18).
  */
 import { createRecordStepMode, formatReplayClock } from "./replay-control-step-mode.js";
 import { lapOfLapsReadout } from "./replay-dial-lap-readout.js";
