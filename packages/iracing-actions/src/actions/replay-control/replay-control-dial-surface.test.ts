@@ -32,6 +32,7 @@ import type { ReplayDialModeIo, ReplaySpeed } from "./replay-control-dial-mode.j
 import { REPLAY_DIAL_MODES, ReplayControlDialSettings } from "./replay-control-dial-settings.js";
 import {
   buildTriggerDescription,
+  CAPTION_GIVES_WAY_TO_MARK,
   DIAL_MODES,
   REPLAY_DIAL_MODE_LABELS,
   ReplayControlDialSurface,
@@ -4034,6 +4035,94 @@ describe("ReplayControlDialSurface — the busy look (#1437)", () => {
         expect(labelText(after)).toBe(labelText(before));
         surface.willDisappear(ctx.id);
       }
+    });
+
+    it("lets only the play state give way to the mark: every stepping mode's caption stays beside it", () => {
+      expect(CAPTION_GIVES_WAY_TO_MARK).toEqual({
+        speed: true,
+        "frame-jog": true,
+        lap: false,
+        session: false,
+        incident: false,
+        "track-order": false,
+      });
+    });
+
+    describe.each([STRIP, KNOB])("#801's pending count and the mark on $id", (canvas) => {
+      /** Every text but the caption's: the label and the value, which neither the count nor the mark moves. */
+      const aboveCaption = (svg: string) => svg.match(/<text(?! data-caption)[^>]*>[^<]*<\/text>/g);
+
+      beforeEach(() => {
+        queue.pending = null;
+      });
+
+      afterEach(() => {
+        queue.pending = null;
+      });
+
+      async function setCount(count: number | null): Promise<void> {
+        queue.pending = count === null ? null : { target: "incident", count, origin: "dial-1" };
+
+        for (const listener of queue.listeners) listener();
+
+        await settle();
+      }
+
+      it("draws the count alone, the count with the mark beside it, and the mark alone", async () => {
+        const { ctx } = await onScreen(PAUSED, dial({ mode: "incident" }), dialContext("dial-1", canvas));
+        const idle = lastBox(ctx);
+
+        expect(shownCaption(idle)).toBe("");
+        expect(shownMark(idle)).toBe("none");
+
+        await setCount(3);
+        const countAlone = lastBox(ctx);
+
+        expect(shownCaption(countAlone)).toBe("+3");
+        expect(shownMark(countAlone)).toBe("none");
+
+        showLook({ kind: "working", tick: 2 });
+        await settle();
+        const both = lastBox(ctx);
+
+        expect(shownCaption(both)).toBe("+3");
+        expect(shownMark(both)).toBe("working 1");
+
+        // The count's left edge (the renderer's 0.6 em estimate) is clear of the mark's right edge.
+        const textX = Number(/<text data-caption="true" x="([\d.]+)"/.exec(both)![1]);
+        const fontSize = Number(/<text data-caption="true"[^>]*font-size="(\d+)"/.exec(both)![1]);
+        const markRight = Math.max(
+          ...[...both.matchAll(/<circle cx="([\d.]+)"[^>]*r="([\d.]+)"/g)].map((m) => Number(m[1]) + Number(m[2])),
+        );
+
+        expect(textX - ("+3".length * 0.6 * fontSize) / 2).toBeGreaterThan(markRight);
+
+        await setCount(null);
+        const markAlone = lastBox(ctx);
+
+        expect(shownCaption(markAlone)).toBe("");
+        expect(shownMark(markAlone)).toBe("working 1");
+
+        // The value has one size and place throughout: the line is kept whether or not the count shows.
+        for (const svg of [countAlone, both, markAlone]) expect(aboveCaption(svg)).toEqual(aboveCaption(idle));
+      });
+
+      it("keeps a waiting or not-done mark beside the count too", async () => {
+        const { ctx } = await onScreen(PAUSED, dial({ mode: "incident" }), dialContext("dial-1", canvas));
+
+        await setCount(-2);
+
+        for (const [look, mark] of [
+          [{ kind: "waiting" }, "waiting"],
+          [{ kind: "not-done" }, "not-done"],
+        ] as const) {
+          showLook(look);
+          await settle();
+
+          expect(shownCaption(lastBox(ctx))).toBe("-2");
+          expect(shownMark(lastBox(ctx))).toBe(mark);
+        }
+      });
     });
 
     it("draws nothing for a redraw after the dial has gone", async () => {

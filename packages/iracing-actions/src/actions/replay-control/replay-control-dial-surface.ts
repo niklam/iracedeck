@@ -304,6 +304,26 @@ export function gestureDrawsWorking(gesture: ReplayControlDialGesture): boolean 
 }
 
 /**
+ * @internal Exported for testing
+ *
+ * Whether a mode's caption gives way to the busy mark (#1437): only the play
+ * state, Speed Control's and Frame Jog's, which says nothing worth keeping
+ * while the replay is moved for the dial. The stepping modes' caption stays
+ * beside the mark: #801's pending count (`+3`) is progress, which the mark
+ * cannot show (spec, "Dials"), and Lap's replay time and Session's lap of the
+ * session go on saying where the replay is. A record over every mode, so a new
+ * one does not compile until it says.
+ */
+export const CAPTION_GIVES_WAY_TO_MARK: Readonly<Record<ReplayControlDialMode, boolean>> = {
+  speed: true,
+  "frame-jog": true,
+  lap: false,
+  session: false,
+  incident: false,
+  "track-order": false,
+};
+
+/**
  * The one table behind every gesture slot: its dial-hint label, what it runs
  * and what its hold preview reads. A new gesture is one row here, one value in
  * `REPLAY_DIAL_GESTURES` and one option in the PI. Every send the surface
@@ -1336,9 +1356,10 @@ export class ReplayControlDialSurface {
 
     ctx.shownView = { mode: ctx.dial.mode, value, sides, caption, neighbours };
 
-    // The caption gives way to the mark and is not drawn; its line stays
-    // reserved, so the value keeps the place the caption gave it.
-    const givesWay = look !== undefined && caption !== "";
+    // The play state gives way to the mark and is not drawn; its line stays
+    // reserved, so the value keeps the place the caption gave it. Any other
+    // caption, the pending count first, is drawn beside the mark.
+    const givesWay = look !== undefined && caption !== "" && CAPTION_GIVES_WAY_TO_MARK[ctx.dial.mode];
 
     return {
       abbr: mode.label,
