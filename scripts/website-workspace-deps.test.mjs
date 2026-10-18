@@ -11,7 +11,7 @@ import { describe, expect, it } from "vitest";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const WEBSITE_DIR = "packages/website";
-const SOURCE = /\.(?:[cm]?[jt]s|mts|astro)$/;
+const SOURCE = /\.(?:[cm]?[jt]s|astro|mdx)$/;
 const TEST = /\.test\.[cm]?[jt]s$/;
 
 // Static `import … from "x"`, `export … from "x"`, side-effect `import "x"` and dynamic `import("x")`.
@@ -58,13 +58,20 @@ describe("website workspace dependencies (#1458)", () => {
   const pkg = JSON.parse(readFileSync(path.join(ROOT, WEBSITE_DIR, "package.json"), "utf-8"));
   const declared = new Set(Object.keys({ ...pkg.dependencies, ...pkg.devDependencies }));
 
+  const sources = websiteSources();
   const reached = new Map();
-  for (const file of websiteSources()) {
+  for (const file of sources) {
     for (const name of workspaceImports(file, readFileSync(path.join(ROOT, file), "utf-8"), namesByDir)) {
       if (!reached.has(name)) reached.set(name, []);
       reached.get(name).push(file);
     }
   }
+
+  it("scans every kind of source the build compiles", () => {
+    for (const ext of [".mts", ".mjs", ".ts", ".astro", ".mdx"]) {
+      expect(sources.some((f) => f.endsWith(ext))).toBe(true);
+    }
+  });
 
   it("finds the gallery's imports, so the scan is not vacuous", () => {
     expect([...reached.keys()]).toEqual(
