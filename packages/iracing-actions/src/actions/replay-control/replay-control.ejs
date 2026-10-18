@@ -363,8 +363,9 @@
 
 			// The Speeds grid belongs to the dial's Speed Control mode only, and the
 			// frame-step hint to Frame Jog. The key-binding rows are the keypad's
-			// Next / Previous Car modes', and on a dial the Car mode's (#801), the one
-			// dial mode that taps a binding: no other dial mode or gesture uses one.
+			// Next / Previous Car modes', and on a dial the Track Order mode's (#801),
+			// the one dial mode that taps a binding: no other dial mode or gesture
+			// uses one.
 			function updateDialVisibility(mode) {
 				document.getElementById("dial-speed-stops-section")?.classList.toggle("hidden", mode !== "speed");
 				document.getElementById("dial-frame-jog-section")?.classList.toggle("hidden", mode !== "frame-jog");

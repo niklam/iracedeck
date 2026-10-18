@@ -773,7 +773,8 @@ export class ReplayControlDialSurface {
    * A dial's own `io` (#801): the shared one and what the stepping modes need
    * beside it. The members that carry an origin token — the record jump and
    * the paced search — have this dial's context id `origin` bound, and the
-   * check a waiting Car tap makes before it goes out asks `isCurrent` whether
+   * check a waiting camera switch (a Track Order tap, or the Jump to My Car
+   * gesture's switch) makes before it goes out asks `isCurrent` whether
    * the context it was built for is still the one on screen.
    */
   private dialIo(origin: string, isCurrent: () => boolean): ReplayDialStepIo {

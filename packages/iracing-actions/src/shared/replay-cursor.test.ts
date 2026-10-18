@@ -96,9 +96,9 @@ describe("replay-cursor", () => {
       const onCancelled = vi.fn();
       const claim = claimReplayCursor(owner, onCancelled);
 
-      expect(cancelReplayCursorOwnerIf(WALKS, "dial-car")).toBe(owner);
-      expect(claim.cancelledBy).toBe("dial-car");
-      expect(onCancelled).toHaveBeenCalledExactlyOnceWith("dial-car");
+      expect(cancelReplayCursorOwnerIf(WALKS, "dial-track-order")).toBe(owner);
+      expect(claim.cancelledBy).toBe("dial-track-order");
+      expect(onCancelled).toHaveBeenCalledExactlyOnceWith("dial-track-order");
       expect(currentReplayCursorOwner()).toBeNull();
     });
 
@@ -109,7 +109,7 @@ describe("replay-cursor", () => {
       recordReplayJumpSpeed({ speed: 2, slowMotion: false, appliedAt: null });
       const unsubscribe = onReplayCursorTaken(listener);
 
-      expect(cancelReplayCursorOwnerIf(WALKS, "dial-car")).toBeNull();
+      expect(cancelReplayCursorOwnerIf(WALKS, "dial-track-order")).toBeNull();
       expect(claim.cancelledBy).toBeNull();
       expect(currentReplayCursorOwner()).toBe("dial-lap");
       expect(pendingReplayJumpSpeed()).not.toBeNull();
@@ -118,12 +118,12 @@ describe("replay-cursor", () => {
     });
 
     it("is a no-op that returns null with nothing in flight, or a claim already cancelled", () => {
-      expect(cancelReplayCursorOwnerIf(WALKS, "dial-car")).toBeNull();
+      expect(cancelReplayCursorOwnerIf(WALKS, "dial-track-order")).toBeNull();
 
       claimReplayCursor("fastest-lap walk");
       cancelReplayCursorOwner("play-pause");
 
-      expect(cancelReplayCursorOwnerIf(WALKS, "dial-car")).toBeNull();
+      expect(cancelReplayCursorOwnerIf(WALKS, "dial-track-order")).toBeNull();
     });
   });
 

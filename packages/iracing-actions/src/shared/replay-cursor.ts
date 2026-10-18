@@ -155,9 +155,9 @@ export function cancelReplayCursorOwner(by: string): string | null {
 /**
  * Cancel the in-flight claim only when its owner is one of `owners`, before
  * sending a command that would break that owner and no other (#801): the
- * Replay Control dial's Car mode, whose camera switch points a fastest-lap or
- * race-start walk's searches at another car, but harms no jump or search
- * run. Any other owner is left standing, and nothing is cleared or told: the
+ * Replay Control dial's Track Order mode and its Jump to My Car gesture,
+ * whose camera switch points a fastest-lap or race-start walk's searches at
+ * another car, but harms no jump or search run. Any other owner is left standing, and nothing is cleared or told: the
  * cursor is not taken. Returns the cancelled owner's name, or `null`.
  */
 export function cancelReplayCursorOwnerIf(owners: readonly string[], by: string): string | null {
