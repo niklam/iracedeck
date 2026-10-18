@@ -155,6 +155,21 @@ describe("replay-control PI dial gesture slots", () => {
     expect(select(`dial.${slot}`).fallback).toBe(defaults[slot]);
   });
 
+  it("puts the Mode default first on Long Press, its default (#801)", () => {
+    const longPress = select("dial.longPressAction");
+
+    expect(longPress.fallback).toBe("mode-default");
+    expect(longPress.values[0]).toBe("mode-default");
+  });
+
+  it.each(SLOTS)("%s names the Mode default and Jump to My Car as the PI calls them", (slot) => {
+    const escaped = `dial.${slot}`.replace(".", "\\.");
+    const body = dialView.match(new RegExp(`setting="${escaped}"[^>]*>([\\s\\S]*?)</sdpi-select>`))?.[1] ?? "";
+
+    expect(body).toContain('<option value="mode-default">Mode default</option>');
+    expect(body).toContain('<option value="jump-to-my-car">Jump to My Car</option>');
+  });
+
   it("offers on Press everything the gated slots offer, so a knob reaches all of it", () => {
     const press = new Set(select("dial.pressAction").values);
 

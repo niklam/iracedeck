@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   parseSpeedStops,
+  REPLAY_DIAL_GESTURES,
   REPLAY_DIAL_MODES,
   ReplayControlDialSettings,
   SPEED_STOP_TOKENS,
@@ -57,7 +58,7 @@ describe("ReplayControlDialSettings", () => {
 
     expect(dial.mode).toBe("speed");
     expect(dial.pressAction).toBe("play-pause");
-    expect(dial.longPressAction).toBe("set-1x-play");
+    expect(dial.longPressAction).toBe("mode-default");
     expect(dial.tapAction).toBe("none");
     expect(dial.longTouchAction).toBe("none");
     expect(ticked(dial.speedStops)).toEqual(DEFAULT_TICKED);
@@ -79,6 +80,40 @@ describe("ReplayControlDialSettings", () => {
     expect(dial.tapAction).toBe("jump-to-live");
     expect(dial.speedStops["16"]).toBe(true);
   });
+
+  it("should offer the Mode default and Jump to My Car as gestures (#801)", () => {
+    expect(REPLAY_DIAL_GESTURES).toEqual([
+      "mode-default",
+      "play-pause",
+      "set-1x-play",
+      "reverse",
+      "jump-to-live",
+      "jump-to-race-start",
+      "jump-to-my-car",
+      "none",
+    ]);
+  });
+
+  it("should keep the two new gesture values in every slot", () => {
+    const dial = ReplayControlDialSettings.parse({
+      pressAction: "mode-default",
+      longPressAction: "jump-to-my-car",
+      tapAction: "jump-to-my-car",
+      longTouchAction: "mode-default",
+    });
+
+    expect(dial.pressAction).toBe("mode-default");
+    expect(dial.longPressAction).toBe("jump-to-my-car");
+    expect(dial.tapAction).toBe("jump-to-my-car");
+    expect(dial.longTouchAction).toBe("mode-default");
+  });
+
+  it.each(["a-newer-gesture", "", 3, null])(
+    "should read an unknown stored long press %j as the Mode default",
+    (value) => {
+      expect(ReplayControlDialSettings.parse({ longPressAction: value }).longPressAction).toBe("mode-default");
+    },
+  );
 
   it("should offer Speed Control, Frame Jog, Lap, Session, Incident and Track Order, in that order", () => {
     expect(REPLAY_DIAL_MODES).toEqual(["speed", "frame-jog", "lap", "session", "incident", "track-order"]);

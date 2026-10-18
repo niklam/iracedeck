@@ -1607,26 +1607,55 @@ describe("ReplayControl", () => {
 
     describe("what the host hands the stepping modes (#801)", () => {
       it.each(["jump-to-fastest-lap walk", "jump-to-race-start walk"])(
-        "a Car turn cancels the %s, whose searches ride on the camera's car",
+        "a Track Order turn cancels the %s, whose searches ride on the camera's car",
         (owner) => {
           const claim = claimReplayCursor(owner);
 
-          host().cancelCameraWalks("dial-car");
+          host().cancelCameraWalks("dial-track-order");
 
-          expect(claim.cancelledBy).toBe("dial-car");
+          expect(claim.cancelledBy).toBe("dial-track-order");
         },
       );
 
       it.each(["dial-lap", "replay-markers next", "jump-to-fastest-lap record jump", "jump-to-race-start jump"])(
-        "a Car turn leaves %s standing",
+        "a Track Order turn leaves %s standing",
         (owner) => {
           const claim = claimReplayCursor(owner);
 
-          host().cancelCameraWalks("dial-car");
+          host().cancelCameraWalks("dial-track-order");
 
           expect(claim.cancelledBy).toBeNull();
         },
       );
+
+      it("Jump to My Car is the keypad's own press: a walk cancelled, the camera switched to the player's car", async () => {
+        const { getCommands } = await import("@iracedeck/deck-iracing");
+        const camera = { switchNum: vi.fn(() => true) };
+
+        vi.mocked(getCommands).mockReturnValue({ replay: mockReplay, camera } as never);
+        // Read once by the check and once by the press.
+        vi.mocked(getCarNumberRawFromSessionInfo).mockReturnValueOnce(42).mockReturnValueOnce(42);
+        action["sdkController"].getSessionInfo = vi.fn(() => ({ DriverInfo: { DriverCarIdx: 3 } }) as never);
+        const walk = claimReplayCursor("jump-to-fastest-lap walk");
+
+        expect(host().canJumpToMyCar()).toBe(true);
+        host().jumpToMyCar();
+
+        expect(camera.switchNum).toHaveBeenCalledExactlyOnceWith(42, 0, 0);
+        expect(walk.cancelledBy).toBe("jump-to-my-car");
+      });
+
+      it("Jump to My Car has nothing to switch to with no player's car, or no number for it", () => {
+        action["sdkController"].getSessionInfo = vi.fn(() => ({ DriverInfo: { DriverCarIdx: -1 } }) as never);
+        expect(host().canJumpToMyCar()).toBe(false);
+
+        action["sdkController"].getSessionInfo = vi.fn(() => ({ DriverInfo: { DriverCarIdx: 3 } }) as never);
+        vi.mocked(getCarNumberRawFromSessionInfo).mockReturnValueOnce(null);
+        expect(host().canJumpToMyCar()).toBe(false);
+
+        action["sdkController"].getSessionInfo = vi.fn(() => null as never);
+        expect(host().canJumpToMyCar()).toBe(false);
+      });
 
       it("reads the record through the keypad's own source: a lap step lands a second before the line", async () => {
         const { getReplaySessionStore, isReplaySessionStoreInitialized } = await import("@iracedeck/replay-store");
@@ -5109,7 +5138,7 @@ describe("ReplayControl", () => {
         });
 
         it("warns when the target car has no resolvable car number", async () => {
-          vi.mocked(getCarNumberRawFromSessionInfo).mockReturnValue(null);
+          vi.mocked(getCarNumberRawFromSessionInfo).mockReturnValueOnce(null);
           action["sdkController"].getCurrentTelemetry = vi.fn(() => telemetryWithBest(2, 5, 3) as any);
 
           await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);

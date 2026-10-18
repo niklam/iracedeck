@@ -795,8 +795,9 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
   // so either one unset warns — the `pair` form Camera Controls' Track Order
   // dial uses for the same two keys. The gesture-slot values (dial.pressAction /
   // .longPressAction / .tapAction / .longTouchAction) share the map, as on the
-  // other dials: each is a replay broadcast. "none" is omitted (it issues no
-  // command). Separate from the keypad map above because `play-pause`,
+  // other dials: each is a broadcast — a replay command, or Jump to My Car's
+  // camera switch; "mode-default" resolves to Jump to My Car or Set 1x and
+  // Play, both broadcasts. "none" is omitted (it issues no command). Separate from the keypad map above because `play-pause`,
   // `jump-to-live` and `jump-to-race-start` are values of both surfaces.
   "replay-control-dial": entry("dial.mode", {
     speed: api,
@@ -810,6 +811,8 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     reverse: api,
     "jump-to-live": api,
     "jump-to-race-start": api,
+    "jump-to-my-car": api,
+    "mode-default": api,
   }),
 
   "replay-navigation": entry(

@@ -5,12 +5,14 @@
  * Rotating runs the dial's rotation mode (`dial.mode`, one module per mode
  * behind `replay-control-dial-mode.ts`): Speed Control walks the replay speed
  * along a ladder the user shapes, Frame Jog (#1317) steps the replay one
- * frame per detent, and Lap, Session, Incident and Track Order (#801) step through the
- * replay record, iRacing's own searches and its Next / Previous Car binding.
- * The press gestures are shared by every
- * mode — Play/Pause, Set 1x and play, Reverse direction, Jump to Live — so
- * changing the Mode never changes what a press does. The dial's screen is the
- * shared dash box, drawn from what the mode says it shows.
+ * frame per detent, and Lap, Session, Incident and Track Order (#801) step
+ * through the replay record, iRacing's own searches and its Next / Previous
+ * Car binding. The press gestures are shared by every mode — Play/Pause, Set
+ * 1x and play, Reverse direction, Jump to Live, Jump to Race Start, Jump to My
+ * Car — so changing the Mode never changes what a specific pick does; the one
+ * exception is the Mode default, Long Press's default, which runs Jump to My
+ * Car in Track Order and Set 1x and play elsewhere (#801). The dial's screen
+ * is the shared dash box, drawn from what the mode says it shows.
  *
  * Every command is a one-shot pressed through the replay command gate
  * (`shared/replay-command-gate.ts`, #1430), which takes the replay cursor from
@@ -159,6 +161,13 @@ export interface ReplayControlDialHost {
   jumpToRaceStart(): void;
   /** Whether that press has a race session to aim at; false is the one case a Jump to Race Start key greys for. */
   canJumpToRaceStart(): boolean;
+  /**
+   * The keypad's Jump to My Car press (#801): the camera switched to the
+   * player's car, a walk that searches on the camera's car cancelled first.
+   */
+  jumpToMyCar(): void;
+  /** Whether that press has a car to switch to: the player's car and its number in the session info. */
+  canJumpToMyCar(): boolean;
   /** Redraws the keypad keys whose icon follows the replay speed. */
   refreshKeys(): void;
   /**
@@ -214,7 +223,27 @@ interface DialGesture {
   preview(env: GestureEnv): string | null;
 }
 
-type ActiveGesture = Exclude<ReplayControlDialGesture, "none">;
+/** A gesture that runs something itself: not None, and not the Mode default, which resolves to one of these. */
+type ActiveGesture = Exclude<ReplayControlDialGesture, "none" | "mode-default">;
+
+/**
+ * @internal Exported for testing
+ *
+ * What a gesture slot runs in `mode`: its own pick, or for `mode-default`
+ * the mode's (#801, the maintainer's second test round): Jump to My Car in
+ * Track Order, whose turns move the camera from car to car, and Set 1x and
+ * Play in every other mode. Null for None.
+ */
+export function resolveDialGesture(
+  gesture: ReplayControlDialGesture,
+  mode: ReplayControlDialMode,
+): ActiveGesture | null {
+  if (gesture === "none") return null;
+
+  if (gesture !== "mode-default") return gesture;
+
+  return mode === "track-order" ? "jump-to-my-car" : "set-1x-play";
+}
 
 function flipped(speed: ReplaySpeed): ReplaySpeed {
   return { speed: -speed.speed, slowMotion: speed.slowMotion };
@@ -233,9 +262,11 @@ function playCaption(speed: ReplaySpeed): string {
  * and what its hold preview reads. A new gesture is one row here, one value in
  * `REPLAY_DIAL_GESTURES` and one option in the PI. Every send the surface
  * makes itself takes the replay cursor under a `dial-` owner name; Jump to
- * Live and Jump to Race Start run the keypad's own paths instead, which take
- * it themselves: under the mode's name, `jump-to-live`, and as the replay jump
- * the race-start press starts once its guards have passed.
+ * Live, Jump to Race Start and Jump to My Car run the keypad's own paths
+ * instead, which take it themselves: under the mode's name (`jump-to-live`,
+ * `jump-to-my-car`), and as the replay jump the race-start press starts once
+ * its guards have passed. The
+ * Mode default has no row: it resolves to one ({@link resolveDialGesture}).
  */
 const GESTURES: Record<ActiveGesture, DialGesture> = {
   // A playing replay pauses; a paused one resumes the remembered speed.
@@ -313,6 +344,17 @@ const GESTURES: Record<ActiveGesture, DialGesture> = {
     },
     preview: ({ host }) => (host.canJumpToRaceStart() ? "START" : null),
   },
+  // The keypad's own Jump to My Car (#801): a camera switch, not a replay
+  // command. With no car of the player's to switch to it sends nothing, so
+  // the hold previews nothing either.
+  "jump-to-my-car": {
+    label: "Jump to My Car",
+    run({ io, host }) {
+      host.jumpToMyCar();
+      io.logger.info("Dial pressed Jump to My Car");
+    },
+    preview: ({ host }) => (host.canJumpToMyCar() ? "MY CAR" : null),
+  },
 };
 
 /** Per-context runtime state. In memory only. */
@@ -375,8 +417,15 @@ interface BuiltFrame {
  */
 export function buildTriggerDescription(dial: ReplayControlDialSettings): DeckTriggerDescription {
   const description: DeckTriggerDescription = { rotate: DIAL_MODES[dial.mode].rotateDescription };
-  const pushLabel = dial.pressAction === "none" ? undefined : GESTURES[dial.pressAction].label;
-  const holdLabel = dial.longPressAction === "none" ? undefined : GESTURES[dial.longPressAction].label;
+  // The Mode default is labelled as what it runs in this mode; the settings
+  // carry the mode, so a Mode change redraws the hint.
+  const label = (gesture: ReplayControlDialGesture): string | undefined => {
+    const active = resolveDialGesture(gesture, dial.mode);
+
+    return active === null ? undefined : GESTURES[active].label;
+  };
+  const pushLabel = label(dial.pressAction);
+  const holdLabel = label(dial.longPressAction);
 
   if (pushLabel && holdLabel) {
     description.push = `${pushLabel} (hold: ${holdLabel})`;
@@ -386,9 +435,12 @@ export function buildTriggerDescription(dial: ReplayControlDialSettings): DeckTr
     description.push = `Hold: ${holdLabel}`;
   }
 
-  if (dial.tapAction !== "none") description.touch = GESTURES[dial.tapAction].label;
+  const touchLabel = label(dial.tapAction);
+  const longTouchLabel = label(dial.longTouchAction);
 
-  if (dial.longTouchAction !== "none") description.longTouch = GESTURES[dial.longTouchAction].label;
+  if (touchLabel) description.touch = touchLabel;
+
+  if (longTouchLabel) description.longTouch = longTouchLabel;
 
   return description;
 }
@@ -783,9 +835,12 @@ export class ReplayControlDialSurface {
 
     if (kind === "push-turn") return;
 
-    const gesture = kind === "long" ? ctx.dial.longPressAction : ctx.dial.pressAction;
+    const gesture = resolveDialGesture(
+      kind === "long" ? ctx.dial.longPressAction : ctx.dial.pressAction,
+      ctx.dial.mode,
+    );
 
-    if (gesture === "none") return;
+    if (gesture === null) return;
 
     this.host.logger.info(kind === "long" ? "Replay control dial long-pressed" : "Replay control dial pressed");
     this.runGesture(gesture, ctx.action.id);
@@ -799,9 +854,9 @@ export class ReplayControlDialSurface {
     if (!ctx) return;
 
     // hold → the Long Touch slot; a plain tap → Tap Display.
-    const gesture = hold ? ctx.dial.longTouchAction : ctx.dial.tapAction;
+    const gesture = resolveDialGesture(hold ? ctx.dial.longTouchAction : ctx.dial.tapAction, ctx.dial.mode);
 
-    if (gesture === "none") return;
+    if (gesture === null) return;
 
     this.host.logger.info(hold ? "Replay control dial long touch" : "Replay control dial tap");
     this.withReading(() => this.runGesture(gesture, ctx.action.id));
@@ -1033,9 +1088,9 @@ export class ReplayControlDialSurface {
    * than a default (#1120, trap 2).
    */
   private resolvePreview(ctx: ReplayControlDialContext): DialPendingPreview | null {
-    const gesture = ctx.dial.longPressAction;
+    const gesture = resolveDialGesture(ctx.dial.longPressAction, ctx.dial.mode);
 
-    if (gesture === "none" || !this.isReplayOnScreen()) return null;
+    if (gesture === null || !this.isReplayOnScreen()) return null;
 
     const text = GESTURES[gesture].preview({ io: this.io, host: this.host });
 

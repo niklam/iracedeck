@@ -3366,6 +3366,12 @@
     },
     "jump-to-race-start": {
       "method": "api"
+    },
+    "jump-to-my-car": {
+      "method": "api"
+    },
+    "mode-default": {
+      "method": "api"
     }
   },
   "replay-navigation": {

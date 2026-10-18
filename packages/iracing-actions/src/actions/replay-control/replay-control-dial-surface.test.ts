@@ -29,6 +29,7 @@ import {
   DIAL_MODES,
   ReplayControlDialSurface,
   type ReplayDialReading,
+  resolveDialGesture,
 } from "./replay-control-dial-surface.js";
 import { frameJogMode } from "./replay-control-frame-jog.js";
 import { incidentMode } from "./replay-control-incident-mode.js";
@@ -184,6 +185,8 @@ const host = {
   jumpToLive: vi.fn(() => undefined),
   jumpToRaceStart: vi.fn(() => undefined),
   canJumpToRaceStart: vi.fn(() => true),
+  jumpToMyCar: vi.fn(() => undefined),
+  canJumpToMyCar: vi.fn(() => true),
   refreshKeys: vi.fn(() => undefined),
   /** The debounced replay state: in a replay, at the frame a fresh read shows, seen just now. */
   replayState: vi.fn((nowMs: number) => ({
@@ -218,6 +221,8 @@ function makeSurface(): ReplayControlDialSurface {
     jumpToLive: host.jumpToLive,
     jumpToRaceStart: host.jumpToRaceStart,
     canJumpToRaceStart: host.canJumpToRaceStart,
+    jumpToMyCar: host.jumpToMyCar,
+    canJumpToMyCar: host.canJumpToMyCar,
     refreshKeys: host.refreshKeys,
     replayState: host.replayState as never,
     sessionInfo: host.sessionInfo,
@@ -1731,6 +1736,71 @@ describe("ReplayControlDialSurface", () => {
       expect(host.jumpToRaceStart).not.toHaveBeenCalled();
     });
 
+    it("Jump to My Car runs the action's own press and sends nothing itself (#801)", async () => {
+      const { surface, ctx } = await onScreen(speed(1));
+
+      await press(surface, ctx, dial({ pressAction: "jump-to-my-car" }));
+
+      expect(host.jumpToMyCar).toHaveBeenCalledTimes(1);
+      expect(host.jumpToLive).not.toHaveBeenCalled();
+      expect(host.jumpToRaceStart).not.toHaveBeenCalled();
+      expect(mocks.setPlaySpeed).not.toHaveBeenCalled();
+      expect(mocks.pause).not.toHaveBeenCalled();
+    });
+
+    it("Jump to My Car sends nothing from the car, like every other gesture (#801)", async () => {
+      const { surface, ctx } = await onScreen(speed(1));
+
+      env.inReplay = false;
+      await press(surface, ctx, dial({ pressAction: "jump-to-my-car" }));
+
+      expect(host.jumpToMyCar).not.toHaveBeenCalled();
+    });
+
+    describe("the Mode default (#801)", () => {
+      it("is Long Press's default", () => {
+        expect(dial().longPressAction).toBe("mode-default");
+      });
+
+      it.each(REPLAY_DIAL_MODES.filter((mode) => mode !== "track-order"))(
+        "a long press runs Set 1x and Play in %s",
+        async (mode) => {
+          const d = dial({ mode });
+          const { surface, ctx } = await onScreen(speed(-4), d);
+
+          await press(surface, ctx, d, 500);
+
+          expect(mocks.setPlaySpeed.mock.calls).toEqual([[1, false]]);
+          expect(host.jumpToMyCar).not.toHaveBeenCalled();
+        },
+      );
+
+      it("a long press runs Jump to My Car in Track Order", async () => {
+        const d = dial({ mode: "track-order" });
+        const { surface, ctx } = await onScreen(speed(-4), d);
+
+        await press(surface, ctx, d, 500);
+
+        expect(host.jumpToMyCar).toHaveBeenCalledTimes(1);
+        expectNothingSent();
+      });
+
+      it("follows the Mode on any slot it is set on, and a specific pick does not", async () => {
+        const track = dial({ mode: "track-order", pressAction: "mode-default", tapAction: "mode-default" });
+        const { surface, ctx } = await onScreen(speed(2), track);
+
+        await press(surface, ctx, track);
+        surface.touchTap(ctx as never, track, false);
+        expect(host.jumpToMyCar).toHaveBeenCalledTimes(2);
+
+        // A specific pick is the same in every mode.
+        const pick = dial({ mode: "track-order", longPressAction: "set-1x-play" });
+        await press(surface, ctx, pick, 500);
+        expect(mocks.setPlaySpeed.mock.calls).toEqual([[1, false]]);
+        expect(host.jumpToMyCar).toHaveBeenCalledTimes(2);
+      });
+    });
+
     it("Jump to Live runs the action's own jump and sends nothing itself", async () => {
       const { surface, ctx } = await onScreen(speed(1));
 
@@ -2230,9 +2300,12 @@ describe("ReplayControlDialSurface", () => {
       ["Reverse while paused", "reverse", PAUSED, speed(2), "◄ 2x"],
       ["Jump to Live", "jump-to-live", speed(1), null, "LIVE"],
       ["Jump to Race Start", "jump-to-race-start", speed(1), null, "START"],
+      ["Jump to My Car", "jump-to-my-car", speed(1), null, "MY CAR"],
+      ["the Mode default outside Track Order, as Set 1x and play", "mode-default", speed(-4), null, "► 1x"],
     ])("previews %s", async (_name, longPressAction, live, remembered, expected) => {
       if (remembered) noteTelemetrySpeed(remembered, Date.now());
 
+      host.canJumpToMyCar.mockReturnValue(true);
       const d = dial({ longPressAction });
       const { surface, ctx } = await onScreen(live, d);
 
@@ -2243,6 +2316,18 @@ describe("ReplayControlDialSurface", () => {
       expect(lastBox(ctx)).toContain("data-pending-bar");
     });
 
+    it("previews the Mode default in Track Order as Jump to My Car", async () => {
+      host.canJumpToMyCar.mockReturnValue(true);
+      const d = dial({ mode: "track-order" });
+      const { surface, ctx } = await onScreen(speed(1), d);
+
+      surface.down(ctx as never, d);
+      await vi.advanceTimersByTimeAsync(500);
+
+      expect(shownValue(lastBox(ctx))).toBe("MY CAR");
+      expect(lastBox(ctx)).toContain("data-pending-bar");
+    });
+
     it.each<[string, () => void, Record<string, unknown>]>([
       ["a long press set to None", () => undefined, { longPressAction: "none" }],
       ["a dial out of a replay", () => (env.inReplay = false), {}],
@@ -2250,6 +2335,16 @@ describe("ReplayControlDialSurface", () => {
         "Jump to Race Start in a replay with no race session",
         () => host.canJumpToRaceStart.mockReturnValue(false),
         { longPressAction: "jump-to-race-start" },
+      ],
+      [
+        "Jump to My Car with no car of the player's to switch to",
+        () => host.canJumpToMyCar.mockReturnValue(false),
+        { longPressAction: "jump-to-my-car" },
+      ],
+      [
+        "the Mode default in Track Order with no car of the player's",
+        () => host.canJumpToMyCar.mockReturnValue(false),
+        { mode: "track-order" },
       ],
       ["absent telemetry", () => (env.telemetry = null), {}],
     ])("leaves the screen still for %s", async (_name, arrange, overrides) => {
@@ -3413,6 +3508,21 @@ describe("ReplayControlDialSurface", () => {
       }
     });
 
+    it("name the Mode default by what it runs in the dial's mode (#801)", () => {
+      expect(buildTriggerDescription(dial({ mode: "track-order" }))).toEqual({
+        rotate: "Cycle Cars by Track Order",
+        push: "Play/Pause (hold: Jump to My Car)",
+      });
+      expect(buildTriggerDescription(dial({ mode: "lap", tapAction: "mode-default" }))).toEqual({
+        rotate: "Next / previous lap",
+        push: "Play/Pause (hold: Set 1x and play)",
+        touch: "Set 1x and play",
+      });
+      expect(
+        buildTriggerDescription(dial({ mode: "track-order", pressAction: "jump-to-my-car", longPressAction: "none" })),
+      ).toEqual({ rotate: "Cycle Cars by Track Order", push: "Jump to My Car" });
+    });
+
     it("name Frame Jog's rotation on a Frame Jog dial, with the same gesture hints", () => {
       expect(buildTriggerDescription(dial({ mode: "frame-jog" }))).toEqual({
         rotate: "Next / previous frame",
@@ -3435,5 +3545,20 @@ describe("ReplayControlDialSurface", () => {
       await appear(surface, knob);
       expect(knob.setTriggerDescription).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("resolveDialGesture", () => {
+  it.each(REPLAY_DIAL_MODES)("resolves the Mode default in %s", (mode) => {
+    expect(resolveDialGesture("mode-default", mode)).toBe(mode === "track-order" ? "jump-to-my-car" : "set-1x-play");
+  });
+
+  it("passes a specific pick through in every mode, and None as nothing", () => {
+    for (const mode of REPLAY_DIAL_MODES) {
+      expect(resolveDialGesture("jump-to-my-car", mode)).toBe("jump-to-my-car");
+      expect(resolveDialGesture("set-1x-play", mode)).toBe("set-1x-play");
+      expect(resolveDialGesture("play-pause", mode)).toBe("play-pause");
+      expect(resolveDialGesture("none", mode)).toBeNull();
+    }
   });
 });

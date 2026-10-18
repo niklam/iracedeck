@@ -986,6 +986,9 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     jumpToRaceStart: () => this.executeMode("__dial__", this.parseSettings({ mode: "jump-to-race-start" })),
     canJumpToRaceStart: () =>
       resolveGreenFlagTarget(this.sdkController.getSessionInfo(), this.sdkController.getCurrentTelemetry()) !== null,
+    // The keypad's own Jump to My Car (#801), the walk cancel of a camera-only mode included.
+    jumpToMyCar: () => this.executeMode("__dial__", this.parseSettings({ mode: "jump-to-my-car" })),
+    canJumpToMyCar: () => "carNum" in this.resolveMyCarNumberRaw(),
     refreshKeys: () => this.updateAllTelemetryDisplays(),
     // What the Lap and Session modes step from and through (#801): the same
     // reads, and the same record source, as the keypad's record step.
@@ -1294,6 +1297,23 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     const sessionInfo = this.sdkController.getSessionInfo();
 
     return getCarNumberRawFromSessionInfo(sessionInfo, carIdx);
+  }
+
+  /**
+   * The player's car for Jump to My Car: its raw number for the camera
+   * switch, or why there is none. Shared by the press and the dial's hold
+   * preview of it (#801), so the preview promises only what the press does.
+   */
+  private resolveMyCarNumberRaw(): { carNum: number } | { miss: string } {
+    const sessionInfo = this.sdkController.getSessionInfo();
+    const driverInfo = (sessionInfo as Record<string, unknown>)?.DriverInfo as Record<string, unknown> | undefined;
+    const driverCarIdx = (driverInfo?.DriverCarIdx as number) ?? -1;
+
+    if (driverCarIdx < 0) return { miss: "No session info available for jump to my car" };
+
+    const carNum = this.getCarNumberRawByIdx(driverCarIdx);
+
+    return carNum === null ? { miss: "Could not find car number for player" } : { carNum };
   }
 
   /**
@@ -3354,22 +3374,14 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
         break;
       }
       case "jump-to-my-car": {
-        const sessionInfo = this.sdkController.getSessionInfo();
-        const driverInfo = (sessionInfo as Record<string, unknown>)?.DriverInfo as Record<string, unknown> | undefined;
-        const driverCarIdx = (driverInfo?.DriverCarIdx as number) ?? -1;
+        const myCar = this.resolveMyCarNumberRaw();
 
-        if (driverCarIdx < 0) {
-          this.logger.warn("No session info available for jump to my car");
+        if ("miss" in myCar) {
+          this.logger.warn(myCar.miss);
           break;
         }
 
-        const carNum = this.getCarNumberRawByIdx(driverCarIdx);
-
-        if (carNum === null) {
-          this.logger.warn("Could not find car number for player");
-          break;
-        }
-
+        const { carNum } = myCar;
         const camera = getCommands().camera;
         const success = camera.switchNum(carNum, 0, 0);
         this.logger.info("Jump to my car executed");
