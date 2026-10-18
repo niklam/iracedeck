@@ -50,7 +50,7 @@
  * `CarIdxLapCompleted`) adds its own condition on top; it never loosens this
  * one.
  */
-import { resolveReplayFrame, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { REPLAY_LIVE_EDGE_MAX_FRAMES, resolveReplayFrame, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 /** The identity and frame of an eligible tick — see {@link resolveReplayRecordTick} and {@link resolveReplayLiveTick}. */
 export type ReplayRecordTick = {
@@ -93,11 +93,11 @@ export function resolveReplayRecordTick(telemetry: TelemetryData, inReplay: bool
 
 /**
  * How far from the end of the tape, in frames, an out-of-car cursor may sit
- * and still count as at the live edge — 2 s. Measured at the edge,
- * `ReplayFrameNumEnd` reads 1; the nearest scrubbed-back reading measured is
- * 1201 (#1426).
+ * and still count as at the live edge — 2 s: the SDK's
+ * `REPLAY_LIVE_EDGE_MAX_FRAMES`, where the measurement is recorded (#1426),
+ * under the name this module and its tests use.
  */
-export const LIVE_EDGE_MAX_FRAMES = 120;
+export const LIVE_EDGE_MAX_FRAMES = REPLAY_LIVE_EDGE_MAX_FRAMES;
 
 /**
  * The tick's session identity and live frame when it shows the live session,

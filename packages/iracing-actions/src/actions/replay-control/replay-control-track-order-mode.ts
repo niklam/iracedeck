@@ -47,6 +47,7 @@ import {
   carInWorld,
   findNearestCarOnTrack,
   getCarNumberFromSessionInfo,
+  REPLAY_LIVE_EDGE_MAX_FRAMES,
   type TelemetryData,
 } from "@iracedeck/iracing-sdk";
 
@@ -54,16 +55,6 @@ import { CAR_CYCLE_BINDING_KEY_LIST, CAR_CYCLE_BINDING_KEYS } from "../../shared
 import type { ReplayDialMode, ReplayDialStepIo } from "./replay-control-dial-mode.js";
 import { BLANK_CAPTION } from "./replay-control-step-mode.js";
 import { NO_CAR_IDX } from "./replay-record-step.js";
-
-/**
- * How far from the end of the tape, in frames, an in-session replay's cursor
- * may sit and still read the live field as its own — 2 s. The same bound as
- * sim-events-iracing's `LIVE_EDGE_MAX_FRAMES` (`diff/replay-record-gate.ts`,
- * #1426), which its package does not export: measured at the edge,
- * `ReplayFrameNumEnd` reads 1, and the nearest scrubbed-back reading measured
- * is 1201.
- */
-export const TRACK_ORDER_LIVE_EDGE_MAX_FRAMES = 120;
 
 /**
  * Each session info's car numbers by carIdx, built once per session-info
@@ -302,7 +293,7 @@ export const trackOrderMode: ReplayDialMode<ReplayDialStepIo> = {
  *
  * Whether the per-car track positions are the replay's own: in a saved
  * replay always; in an in-session replay only at the live edge, the cursor
- * within {@link TRACK_ORDER_LIVE_EDGE_MAX_FRAMES} of the end of the tape
+ * within the SDK's `REPLAY_LIVE_EDGE_MAX_FRAMES` of the end of the tape
  * (`ReplayFrameNumEnd`). Scrubbed back further, they read the live field.
  */
 export function trackPositionsTrusted(
@@ -313,7 +304,7 @@ export function trackPositionsTrusted(
 
   const toEnd = telemetry?.ReplayFrameNumEnd;
 
-  return typeof toEnd === "number" && toEnd >= 0 && toEnd <= TRACK_ORDER_LIVE_EDGE_MAX_FRAMES;
+  return typeof toEnd === "number" && toEnd >= 0 && toEnd <= REPLAY_LIVE_EDGE_MAX_FRAMES;
 }
 
 /**

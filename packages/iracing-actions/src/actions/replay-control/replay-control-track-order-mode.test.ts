@@ -1,4 +1,4 @@
-import type { TelemetryData } from "@iracedeck/iracing-sdk";
+import { REPLAY_LIVE_EDGE_MAX_FRAMES, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ReplaySettledOutcome } from "../../shared/replay-command-gate.js";
@@ -8,7 +8,6 @@ import {
   _isTrackOrderTapWaiting,
   _resetTrackOrderTap,
   neighbourCaption,
-  TRACK_ORDER_LIVE_EDGE_MAX_FRAMES,
   trackOrderMode,
   trackOrderNeighbours,
   trackPositionsTrusted,
@@ -322,7 +321,7 @@ describe("trackOrderMode", () => {
         const io = fakeStepIo();
 
         io.sessionInfo.mockReturnValue(FIELD_INFO);
-        io.telemetry.mockReturnValue(field({ ReplayFrameNumEnd: TRACK_ORDER_LIVE_EDGE_MAX_FRAMES + 1 }));
+        io.telemetry.mockReturnValue(field({ ReplayFrameNumEnd: REPLAY_LIVE_EDGE_MAX_FRAMES + 1 }));
 
         expect(trackOrderMode.view(dial, io)).toMatchObject({ value: "#12", caption: BLANK_CAPTION });
       });
@@ -398,8 +397,8 @@ describe("trackPositionsTrusted", () => {
     expect(trackPositionsTrusted(io(true), null)).toBe(true);
   });
 
-  it(`trusts an in-session replay only within ${TRACK_ORDER_LIVE_EDGE_MAX_FRAMES} frames of the end of the tape`, () => {
-    expect(TRACK_ORDER_LIVE_EDGE_MAX_FRAMES).toBe(120);
+  it(`trusts an in-session replay only within ${REPLAY_LIVE_EDGE_MAX_FRAMES} frames of the end of the tape`, () => {
+    expect(REPLAY_LIVE_EDGE_MAX_FRAMES).toBe(120);
     expect(trackPositionsTrusted(io(false), { ReplayFrameNumEnd: 0 } as TelemetryData)).toBe(true);
     expect(trackPositionsTrusted(io(false), { ReplayFrameNumEnd: 120 } as TelemetryData)).toBe(true);
     expect(trackPositionsTrusted(io(false), { ReplayFrameNumEnd: 121 } as TelemetryData)).toBe(false);

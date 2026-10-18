@@ -187,6 +187,20 @@ export function resolveReplayFrame(t: TelemetryData | null | undefined): number 
 export const REPLAY_EXIT_GRACE_MS = 1_000;
 
 /**
+ * How far from the end of the tape, in frames, the cursor of a replay watched
+ * inside a live session may sit and still count as at the live edge — 2 s.
+ * There the tick shows the live session, so its per-car arrays and session
+ * identity are the replay's own; scrubbed back further they still read the
+ * live field (#1281). Out of the car `ReplayFrameNumEnd` counts the frames
+ * from the cursor to the end of the tape: measured over ten snapshots
+ * (#1426), it reads 1 at the live edge and 1201 at the nearest scrubbed-back
+ * reading, 21 s back. The one bound the replay recorders' live-edge gate
+ * (`sim-events-iracing`'s `replay-record-gate.ts`) and Replay Control's Track
+ * Order neighbours (#801) share.
+ */
+export const REPLAY_LIVE_EDGE_MAX_FRAMES = 120;
+
+/**
  * Whether a replay is on screen and the frame it shows, debounced (#1324). The
  * one instance lives on `SDKController`, stepped by {@link nextReplayState}
  * on every poll that reads telemetry (before the `SessionTick` dedupe, so a
