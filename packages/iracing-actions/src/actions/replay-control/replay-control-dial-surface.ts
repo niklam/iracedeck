@@ -306,6 +306,26 @@ export function gestureDrawsWorking(gesture: ReplayControlDialGesture): boolean 
 /**
  * @internal Exported for testing
  *
+ * Whether a turn in each rotation mode draws working on the dial's box
+ * (#1437): only where the turn is a jump or a search under the dial's token,
+ * Lap's, Session's and Incident's record jump or paced search (#801), which
+ * the spec's "Dials" names with a Replay Markers detent. Speed Control and
+ * Frame Jog send under no token, and Track Order sends no replay command at
+ * all (a key binding tap), so their turns put nothing under the token to
+ * draw. A record over every mode, so a new one does not compile until it says.
+ */
+export const TURN_DRAWS_WORKING: Readonly<Record<ReplayControlDialMode, boolean>> = {
+  speed: false,
+  "frame-jog": false,
+  lap: true,
+  session: true,
+  incident: true,
+  "track-order": false,
+};
+
+/**
+ * @internal Exported for testing
+ *
  * Whether a mode's caption gives way to the busy mark (#1437): only the play
  * state, Speed Control's and Frame Jog's, which says nothing worth keeping
  * while the replay is moved for the dial. The stepping modes' caption stays
@@ -474,11 +494,12 @@ interface ReplayControlDialContext {
   /** The dial's registration with the replay busy indicator (#1437), and what it registered with; null while none. */
   busy: { readonly drawsWorking: boolean; readonly unregister: () => void } | null;
   /**
-   * Whether the gesture that last went to the gate draws working
-   * ({@link gestureDrawsWorking}), or null before one has: the box's look
-   * follows the gesture that made the press, not the dial's slots.
+   * Whether the input that last went to the gate under the dial's token
+   * draws working ({@link gestureDrawsWorking}, {@link TURN_DRAWS_WORKING}),
+   * or null before one has: the box's look follows the gesture or the turn
+   * that made the press, not the dial's slots.
    */
-  lastGestureDrawsWorking: boolean | null;
+  lastInputDrawsWorking: boolean | null;
 }
 
 /** A dash-box frame and the signature it is compared by. */
@@ -728,7 +749,7 @@ export class ReplayControlDialSurface {
     // for the old one without a frame of its own — the render below is the revert.
     ctx.holdPreview.dispose();
     ctx.preview = null;
-    // Before any gesture, the push slot may have become, or stopped being, a jump.
+    // Before any gesture or turn, the mode or the push slot may have changed what it draws.
     this.syncBusyRegistration(ctx);
     await this.applyTriggerDescription(ctx);
     this.scheduleRender(ctx, true);
@@ -736,16 +757,19 @@ export class ReplayControlDialSurface {
 
   /**
    * Registers the dial with the replay busy indicator (#1437) under its
-   * context id, the token its presses carry, or re-registers it when whether
-   * it draws working changed. That follows the gesture that last went to the
-   * gate; before one has, the push slot's, the gesture most likely behind a
-   * fact the dial finds standing when it appears (a page turned back mid-jump).
+   * context id, the token its presses and its stepping turns carry, or
+   * re-registers it when whether it draws working changed. That follows the
+   * gesture or turn that last went to the gate; before one has, a stepping
+   * mode's turn or else the push slot's gesture, whichever is most likely
+   * behind a fact the dial finds standing when it appears (a page turned back
+   * mid-jump).
    * The indicator's redraw goes through {@link scheduleIfChanged}, so the
    * throttle stays in front of it and a tick whose look draws the same frame
    * pushes nothing.
    */
   private syncBusyRegistration(ctx: ReplayControlDialContext): void {
-    const drawsWorking = ctx.lastGestureDrawsWorking ?? gestureDrawsWorking(ctx.dial.pressAction);
+    const drawsWorking =
+      ctx.lastInputDrawsWorking ?? (TURN_DRAWS_WORKING[ctx.dial.mode] || gestureDrawsWorking(ctx.dial.pressAction));
 
     if (ctx.busy?.drawsWorking === drawsWorking) return;
 
@@ -792,6 +816,14 @@ export class ReplayControlDialSurface {
         this.host.logger.debug("Dial rotate: no replay on screen, and iRacing ignores replay commands from the car");
 
         return;
+      }
+
+      // A turn that jumps or searches under the dial's token draws working,
+      // decided before it goes out, as a gesture's is; a tokenless turn puts
+      // nothing under the token and leaves the registration as it is.
+      if (TURN_DRAWS_WORKING[ctx.dial.mode]) {
+        ctx.lastInputDrawsWorking = true;
+        this.syncBusyRegistration(ctx);
       }
 
       const turn = DIAL_MODES[ctx.dial.mode].rotate(ticks, ctx.dial, ctx.io);
@@ -1123,7 +1155,7 @@ export class ReplayControlDialSurface {
 
     // The box draws working for this gesture only if it jumps or searches, decided
     // before its press reaches the gate, so the press's first notice already reads it.
-    ctx.lastGestureDrawsWorking = gestureDrawsWorking(gesture);
+    ctx.lastInputDrawsWorking = gestureDrawsWorking(gesture);
     this.syncBusyRegistration(ctx);
 
     const origin = ctx.action.id;
@@ -1295,7 +1327,7 @@ export class ReplayControlDialSurface {
       shownView: null,
       queuedSig: null,
       busy: null,
-      lastGestureDrawsWorking: null,
+      lastInputDrawsWorking: null,
     };
 
     // The paced search's count is drawn on the box (#801): redraw on its every
