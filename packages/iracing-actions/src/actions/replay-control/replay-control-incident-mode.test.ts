@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 
 import { ReplayControlDialSettings } from "./replay-control-dial-settings.js";
 import { incidentMode } from "./replay-control-incident-mode.js";
-import { BLANK_CAPTION } from "./replay-control-step-mode.js";
 import { fakeStepIo } from "./replay-dial-step-io.test-support.js";
 
 vi.mock("@iracedeck/settings", () => ({ getGlobalSettings: vi.fn(() => ({})) }));
@@ -39,12 +38,13 @@ describe("incidentMode", () => {
     expect(io.queueSearch).toHaveBeenCalledExactlyOnceWith("dial-incident", "incident", 2);
   });
 
-  it("shows the replay time, no caption but a blank one that keeps the time in place, and both side marks", () => {
+  it("shows the replay time, no caption but its line kept so the time stays in place, and both side marks", () => {
     const io = fakeStepIo();
 
     expect(incidentMode.view(dial, io)).toEqual({
       value: "1:23",
-      caption: BLANK_CAPTION,
+      caption: "",
+      reserveCaption: true,
       sides: { left: true, right: true },
     });
   });
@@ -57,10 +57,10 @@ describe("incidentMode", () => {
 
     // Another target's count is not this mode's.
     io.pendingSearch.mockImplementation((target) => (target === "lap" ? 3 : null));
-    expect(incidentMode.view(dial, io).caption).toBe(BLANK_CAPTION);
+    expect(incidentMode.view(dial, io).caption).toBe("");
 
     io.pendingSearch.mockReturnValue(0);
-    expect(incidentMode.view(dial, io).caption).toBe(BLANK_CAPTION);
+    expect(incidentMode.view(dial, io).caption).toBe("");
   });
 
   it("says nothing on a tick read mid-seek, and shows a pending target's time during a jump", () => {

@@ -16,7 +16,7 @@
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 
-import type { DialSideMarks } from "../../shared/dial-box.js";
+import type { DialNeighbours, DialSideMarks } from "../../shared/dial-box.js";
 import type { ReplaySettledOutcome } from "../../shared/replay-command-gate.js";
 import type { ReplayPosition } from "../../shared/replay-position-state.js";
 import type { ReplayControlDialSettings } from "./replay-control-dial-settings.js";
@@ -192,6 +192,18 @@ export interface ReplayDialModeView {
    * drew for the dial, as it keeps a null value (#801).
    */
   caption: string | null;
+  /**
+   * Lay the value out as if a caption were shown, whether or not one is (the
+   * box's `reserveCaptionLine`): for a mode whose caption comes and goes, so
+   * the value keeps its size and place when it does (#801).
+   */
+  reserveCaption?: boolean;
+  /**
+   * Short texts the box draws dimmed beside the value (#801: Track Order's
+   * cars on track behind and ahead). They belong to the value: when the value
+   * is null they keep what the box last drew, as the side marks do.
+   */
+  neighbours?: DialNeighbours | null;
   /** Lit where a turn that way would do something. */
   sides: DialSideMarks;
   /** Whether a key binding the mode taps is unset: the box draws the missing-binding warning (#612). */

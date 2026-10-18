@@ -38,16 +38,6 @@ export function formatReplayClock(seconds: number | undefined): string {
 }
 
 /**
- * A caption that draws nothing but still counts as one (#801): the box fits
- * and places its value by whether a caption is set (`caption !== ""`), so a
- * mode whose caption comes and goes — Incident's search count, Track Order's
- * neighbours — passes this for none, and its value keeps the size and place
- * it has in the other stepping modes rather than jumping when the caption
- * appears. A no-break space, which SVG does not collapse to nothing.
- */
-export const BLANK_CAPTION = "\u00a0";
-
-/**
  * @internal Exported for testing
  *
  * The caption of a stepping mode: what the paced search has left while it
@@ -175,6 +165,9 @@ export function createRecordStepMode(config: RecordStepModeConfig): ReplayDialMo
       return {
         value: config.value(io, position, listing),
         caption: stepCaption(io, target, () => config.caption(io, position, listing)),
+        // The caption line is kept whether or not the caption has anything to
+        // say, so the value keeps its size and place when the count comes and goes.
+        reserveCaption: true,
         sides: recordSides(position, listing, steps),
       };
     },

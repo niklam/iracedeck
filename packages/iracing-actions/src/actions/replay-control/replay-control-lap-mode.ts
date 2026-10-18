@@ -10,7 +10,7 @@
  * time, `m:ss`, beneath it, which the paced search's count takes while it
  * works for laps (the maintainer's second test round, 2026-10-18).
  */
-import { BLANK_CAPTION, createRecordStepMode, formatReplayClock } from "./replay-control-step-mode.js";
+import { createRecordStepMode, formatReplayClock } from "./replay-control-step-mode.js";
 import { lapOfLapsReadout } from "./replay-dial-lap-readout.js";
 import { RECORD_STEPS } from "./replay-record-step.js";
 
@@ -28,6 +28,6 @@ export const lapMode = createRecordStepMode({
   value: (io, position, listing) => lapOfLapsReadout(io, position, listing),
   // The position's time: a pending target's while a jump is under way, where
   // telemetry reads 0; null on a tick read mid-seek, and the box keeps it. No
-  // time to show is a blank caption, so the value does not move.
-  caption: (_io, position) => (position === null ? null : formatReplayClock(position.time) || BLANK_CAPTION),
+  // time to show is no caption, its line kept, so the value does not move.
+  caption: (_io, position) => (position === null ? null : formatReplayClock(position.time)),
 });

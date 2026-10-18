@@ -3,12 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ReplaySettledOutcome } from "../../shared/replay-command-gate.js";
 import { ReplayControlDialSettings } from "./replay-control-dial-settings.js";
-import { BLANK_CAPTION } from "./replay-control-step-mode.js";
 import {
   _isTrackOrderTapWaiting,
   _resetTrackOrderTap,
   jumpToMyCarFromDial,
-  neighbourCaption,
+  neighbourNumbers,
   trackOrderMode,
   trackOrderNeighbours,
   trackPositionsTrusted,
@@ -320,7 +319,7 @@ describe("trackOrderMode", () => {
       },
     };
 
-    it("shows the viewed car's number alone, with a blank caption that keeps it in place, and both side marks", () => {
+    it("shows the viewed car's number alone, no caption but its line kept so the number stays in place, and both side marks", () => {
       const io = fakeStepIo();
 
       io.sessionInfo.mockReturnValue(SESSION_INFO);
@@ -328,7 +327,9 @@ describe("trackOrderMode", () => {
 
       expect(trackOrderMode.view(dial, io)).toEqual({
         value: "#042",
-        caption: BLANK_CAPTION,
+        caption: "",
+        reserveCaption: true,
+        neighbours: null,
         sides: { left: true, right: true },
         bindingMissing: false,
       });
@@ -359,10 +360,9 @@ describe("trackOrderMode", () => {
         } as TelemetryData;
       }
 
-      const flanked = (behind: string, ahead: string) =>
-        expect.stringMatching(new RegExp(`^#${behind}\u00a0+#${ahead}$`));
+      const flanked = (behind: string, ahead: string) => ({ left: `#${behind}`, right: `#${ahead}` });
 
-      it("flank the car in a saved replay, behind on the left and ahead on the right", () => {
+      it("flank the car in a saved replay, behind on the left and ahead on the right, with no caption", () => {
         const io = fakeStepIo();
 
         io.sessionInfo.mockReturnValue(FIELD_INFO);
@@ -370,7 +370,12 @@ describe("trackOrderMode", () => {
         // Scrubbed far back: in a saved replay the arrays are the replay's own anyway.
         io.telemetry.mockReturnValue(field({ ReplayFrameNumEnd: 90_000 }));
 
-        expect(trackOrderMode.view(dial, io)).toMatchObject({ value: "#12", caption: flanked("5", "042") });
+        expect(trackOrderMode.view(dial, io)).toMatchObject({
+          value: "#12",
+          neighbours: flanked("5", "042"),
+          caption: "",
+          reserveCaption: true,
+        });
       });
 
       it("flank the car at the live edge of an in-session replay", () => {
@@ -379,7 +384,7 @@ describe("trackOrderMode", () => {
         io.sessionInfo.mockReturnValue(FIELD_INFO);
         io.telemetry.mockReturnValue(field({ ReplayFrameNumEnd: 1 }));
 
-        expect(trackOrderMode.view(dial, io).caption).toEqual(flanked("5", "042"));
+        expect(trackOrderMode.view(dial, io).neighbours).toEqual(flanked("5", "042"));
       });
 
       it("do not show scrubbed back in an in-session replay, where the arrays read the live field", () => {
@@ -388,7 +393,7 @@ describe("trackOrderMode", () => {
         io.sessionInfo.mockReturnValue(FIELD_INFO);
         io.telemetry.mockReturnValue(field({ ReplayFrameNumEnd: REPLAY_LIVE_EDGE_MAX_FRAMES + 1 }));
 
-        expect(trackOrderMode.view(dial, io)).toMatchObject({ value: "#12", caption: BLANK_CAPTION });
+        expect(trackOrderMode.view(dial, io)).toMatchObject({ value: "#12", neighbours: null });
       });
 
       it("do not show while a jump is under way, nor with no car number for the camera car", () => {
@@ -398,14 +403,14 @@ describe("trackOrderMode", () => {
         io.isSavedReplay.mockReturnValue(true);
         io.telemetry.mockReturnValue(field({}));
         io.position.mockReturnValue({ frame: 9_000, time: 150, endFrame: undefined, seeking: true });
-        expect(trackOrderMode.view(dial, io).caption).toBe(BLANK_CAPTION);
+        expect(trackOrderMode.view(dial, io).neighbours).toBeNull();
 
         io.position.mockReturnValue({ frame: 9_000, time: 150, endFrame: undefined, seeking: false });
         io.telemetry.mockReturnValue(field({ CamCarIdx: 255 }));
-        expect(trackOrderMode.view(dial, io)).toMatchObject({ value: "", caption: BLANK_CAPTION });
+        expect(trackOrderMode.view(dial, io)).toMatchObject({ value: "", neighbours: null });
       });
 
-      it("keep what the box showed on a tick read mid-seek", () => {
+      it("say nothing on a tick read mid-seek: the value is null, and the box keeps the car and its neighbours", () => {
         const io = fakeStepIo();
 
         io.sessionInfo.mockReturnValue(FIELD_INFO);
@@ -413,7 +418,7 @@ describe("trackOrderMode", () => {
         io.telemetry.mockReturnValue(field({}));
         io.position.mockReturnValue(null);
 
-        expect(trackOrderMode.view(dial, io)).toMatchObject({ value: null, caption: null });
+        expect(trackOrderMode.view(dial, io)).toMatchObject({ value: null, neighbours: null });
       });
 
       it("wrap round the line: the car first past it is ahead of the car last before it", () => {
@@ -424,7 +429,7 @@ describe("trackOrderMode", () => {
         io.telemetry.mockReturnValue(field({ CamCarIdx: 7 }));
 
         // Car 7 at 0.95: car 2 at 0.10 is 0.15 ahead, car 4 at 0.50 0.45 behind.
-        expect(trackOrderMode.view(dial, io)).toMatchObject({ value: "#042", caption: flanked("12", "5") });
+        expect(trackOrderMode.view(dial, io)).toMatchObject({ value: "#042", neighbours: flanked("12", "5") });
       });
     });
 
@@ -447,8 +452,9 @@ describe("trackOrderMode", () => {
       expect(trackOrderMode.view(dial, io).bindingMissing).toBe(true);
     });
 
-    it("is labelled TRACK ORDER and describes its turn as Camera Controls does", () => {
-      expect(trackOrderMode.label).toBe("TRACK ORDER");
+    it("is labelled TRK ORD, short enough to clear the side marks, and describes its turn as Camera Controls does", () => {
+      // The surface's test measures every mode's label against the marks.
+      expect(trackOrderMode.label).toBe("TRK ORD");
       expect(trackOrderMode.rotateDescription).toBe("Cycle Cars by Track Order");
     });
   });
@@ -519,7 +525,7 @@ describe("trackOrderNeighbours", () => {
   });
 });
 
-describe("neighbourCaption", () => {
+describe("neighbourNumbers", () => {
   const INFO = {
     DriverInfo: {
       Drivers: [
@@ -530,18 +536,18 @@ describe("neighbourCaption", () => {
     },
   };
 
-  it("is the car behind, a gap, then the car ahead, counting only cars with a number", () => {
+  it("is the car behind on the left and the car ahead on the right, counting only cars with a number", () => {
     // Car 2 is closest ahead but has no number in the session info.
     const telemetry = { CarIdxLapDistPct: [0.2, 0.5, 0.55, 0.9], CarIdxTrackSurface: [3, 3, 3, 3] } as TelemetryData;
 
-    expect(neighbourCaption(telemetry, 1, INFO)).toBe("#3" + "\u00a0".repeat(10) + "#7");
+    expect(neighbourNumbers(telemetry, 1, INFO)).toEqual({ left: "#3", right: "#7" });
   });
 
   it("two cars at the identical lap distance are not both neighbours: a gap of 0 is none", () => {
     // Car 3 sits at car 1's own lap distance; car 0 is the one car round the lap.
     const telemetry = { CarIdxLapDistPct: [0.2, 0.5, -1, 0.5], CarIdxTrackSurface: [3, 3, -1, 3] } as TelemetryData;
 
-    expect(neighbourCaption(telemetry, 1, INFO)).toBe("#3" + "\u00a0".repeat(10) + "#3");
+    expect(neighbourNumbers(telemetry, 1, INFO)).toEqual({ left: "#3", right: "#3" });
   });
 
   it("reads the session info's driver list once per session-info object, not per car per view", () => {
@@ -555,9 +561,9 @@ describe("neighbourCaption", () => {
     };
     const telemetry = { CarIdxLapDistPct: [0.2, 0.5, 0.55, 0.9], CarIdxTrackSurface: [3, 3, 3, 3] } as TelemetryData;
 
-    expect(neighbourCaption(telemetry, 1, counted)).toBe("#3" + "\u00a0".repeat(10) + "#7");
+    expect(neighbourNumbers(telemetry, 1, counted)).toEqual({ left: "#3", right: "#7" });
     reads = 0;
-    expect(neighbourCaption(telemetry, 1, counted)).toBe("#3" + "\u00a0".repeat(10) + "#7");
+    expect(neighbourNumbers(telemetry, 1, counted)).toEqual({ left: "#3", right: "#7" });
     expect(reads).toBe(0);
 
     // A new session info object is read afresh.
@@ -565,13 +571,13 @@ describe("neighbourCaption", () => {
       DriverInfo: { Drivers: INFO.DriverInfo.Drivers.map((d) => (d.CarIdx === 3 ? { ...d, CarNumber: "77" } : d)) },
     };
 
-    expect(neighbourCaption(telemetry, 1, renumbered)).toBe("#3" + "\u00a0".repeat(10) + "#77");
+    expect(neighbourNumbers(telemetry, 1, renumbered)).toEqual({ left: "#3", right: "#77" });
   });
 
   it("is null with no other numbered car on track", () => {
     const telemetry = { CarIdxLapDistPct: [-1, 0.5], CarIdxTrackSurface: [-1, 3] } as TelemetryData;
 
-    expect(neighbourCaption(telemetry, 1, INFO)).toBeNull();
-    expect(neighbourCaption(null, 1, INFO)).toBeNull();
+    expect(neighbourNumbers(telemetry, 1, INFO)).toBeNull();
+    expect(neighbourNumbers(null, 1, INFO)).toBeNull();
   });
 });

@@ -42,10 +42,12 @@
  * live edge of an in-session replay. Scrubbed back in an in-session replay
  * those arrays read the live field (#1281's capture), so there the number
  * shows alone. The neighbours are a preview: iRacing's binding picks the car,
- * and the pace car is a stop of its own (#1277). The shared dash box has no
- * flank slots beside its value, so they are drawn as its caption, behind on
- * the left and ahead on the right; with none the caption is blank rather than
- * absent, so the number keeps the size and place the other modes' value has.
+ * and the pace car is a stop of its own (#1277). They are drawn in the dash
+ * box's neighbours slot, dimmed beside the number, behind on the left and
+ * ahead on the right. There is no caption, and its line is kept, so the
+ * number has the size and place the other stepping modes' value has. The box
+ * label is `TRK ORD`: `TRACK ORDER` ran into the side marks on the Stream
+ * Dock knob (`labelClearsSideMarks`); the Mode option keeps the full name.
  */
 import {
   carInWorld,
@@ -56,8 +58,8 @@ import {
 } from "@iracedeck/iracing-sdk";
 
 import { CAR_CYCLE_BINDING_KEY_LIST, CAR_CYCLE_BINDING_KEYS } from "../../shared/car-cycle-bindings.js";
+import type { DialNeighbours } from "../../shared/dial-box.js";
 import type { ReplayDialMode, ReplayDialStepIo } from "./replay-control-dial-mode.js";
-import { BLANK_CAPTION } from "./replay-control-step-mode.js";
 import { NO_CAR_IDX } from "./replay-record-step.js";
 
 /**
@@ -100,9 +102,6 @@ function carNumberOf(sessionInfo: unknown, carIdx: number): string | null {
 
   return numbers.get(carIdx) ?? null;
 }
-
-/** The gap between the two neighbours in the caption: no-break spaces, which SVG does not collapse. */
-const NEIGHBOUR_GAP = "\u00a0".repeat(10);
 
 /** The name a Track Order turn cancels a walk under. */
 const CURSOR_OWNER = "dial-track-order";
@@ -288,7 +287,7 @@ export function _isTrackOrderTapWaiting(): boolean {
 
 /** The Track Order mode. Clockwise is iRacing's Next Car, the car ahead on track; counter-clockwise Previous Car. */
 export const trackOrderMode: ReplayDialMode<ReplayDialStepIo> = {
-  label: "TRACK ORDER",
+  label: "TRK ORD",
   rotateDescription: "Cycle Cars by Track Order",
 
   rotate(ticks, _dial, io) {
@@ -314,23 +313,19 @@ export const trackOrderMode: ReplayDialMode<ReplayDialStepIo> = {
     const number =
       typeof carIdx === "number" && carIdx >= 0 && carIdx !== NO_CAR_IDX ? carNumberOf(sessionInfo, carIdx) : null;
 
-    // A tick read mid-seek is not the replay's: the box keeps the car and the
-    // neighbours it showed (null). While a jump is under way the arrays are
-    // not the replay's either, so the number shows alone.
-    let caption: string | null = null;
-
-    if (position !== null) {
-      const flanks =
-        number !== null && !position.seeking && trackPositionsTrusted(io, telemetry)
-          ? neighbourCaption(telemetry, carIdx as number, sessionInfo)
-          : null;
-
-      caption = flanks ?? BLANK_CAPTION;
-    }
+    // A tick read mid-seek is not the replay's: the value is null, and the box
+    // keeps the car and the neighbours it showed. While a jump is under way
+    // the arrays are not the replay's either, so the number shows alone.
+    const neighbours =
+      position !== null && number !== null && !position.seeking && trackPositionsTrusted(io, telemetry)
+        ? neighbourNumbers(telemetry, carIdx as number, sessionInfo)
+        : null;
 
     return {
       value: position === null ? null : number === null ? "" : `#${number}`,
-      caption,
+      caption: "",
+      reserveCaption: true,
+      neighbours,
       sides: { left: true, right: true },
       bindingMissing: io.isBindingMissing(CAR_CYCLE_BINDING_KEY_LIST),
     };
@@ -387,15 +382,19 @@ export function trackOrderNeighbours(
 /**
  * @internal Exported for testing
  *
- * The caption that flanks the car: the number of the car behind on the left
- * and of the car ahead on the right, a gap apart. Only cars with a number in
- * the session info count. Null when there is no other such car on track.
+ * The numbers that flank the car in the box: the car behind on the left and
+ * the car ahead on the right. Only cars with a number in the session info
+ * count. Null when there is no other such car on track.
  */
-export function neighbourCaption(telemetry: TelemetryData | null, carIdx: number, sessionInfo: unknown): string | null {
+export function neighbourNumbers(
+  telemetry: TelemetryData | null,
+  carIdx: number,
+  sessionInfo: unknown,
+): DialNeighbours | null {
   const numberOf = (idx: number): string | null => carNumberOf(sessionInfo, idx);
   const { ahead, behind } = trackOrderNeighbours(telemetry, carIdx, (idx) => numberOf(idx) !== null);
 
   if (ahead === null || behind === null) return null;
 
-  return `#${numberOf(behind)}${NEIGHBOUR_GAP}#${numberOf(ahead)}`;
+  return { left: `#${numberOf(behind)}`, right: `#${numberOf(ahead)}` };
 }

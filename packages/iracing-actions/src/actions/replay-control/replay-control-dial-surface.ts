@@ -37,7 +37,7 @@ import {
 import { replaySpeedFromTelemetry, type ReplayState, type TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 
-import { type DialBoxArgs, renderDialBox, resolveDialBoxColors } from "../../shared/dial-box.js";
+import { type DialBoxArgs, type DialNeighbours, renderDialBox, resolveDialBoxColors } from "../../shared/dial-box.js";
 import { type DialInputEvent, hasDialInputContext } from "../../shared/dial-context.js";
 import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
 import type { DialPendingPreview } from "../../shared/dial-preview.js";
@@ -66,10 +66,11 @@ import type {
   ReplayDialStepIo,
   ReplaySpeed,
 } from "./replay-control-dial-mode.js";
-import type {
-  ReplayControlDialGesture,
-  ReplayControlDialMode,
-  ReplayControlDialSettings,
+import {
+  REPLAY_DIAL_MODES,
+  type ReplayControlDialGesture,
+  type ReplayControlDialMode,
+  type ReplayControlDialSettings,
 } from "./replay-control-dial-settings.js";
 import { frameJogMode } from "./replay-control-frame-jog.js";
 import { incidentMode } from "./replay-control-incident-mode.js";
@@ -133,6 +134,15 @@ export const DIAL_MODES: Record<ReplayControlDialMode, ReplayDialMode<ReplayDial
   incident: incidentMode,
   "track-order": trackOrderMode,
 };
+
+/**
+ * @internal Exported for testing
+ *
+ * Every mode's box label, in `REPLAY_DIAL_MODES` order: each must clear the
+ * side marks on both canvases (`labelClearsSideMarks`, #801), which a test
+ * checks over this list so a new mode cannot be missed.
+ */
+export const REPLAY_DIAL_MODE_LABELS: readonly string[] = REPLAY_DIAL_MODES.map((mode) => DIAL_MODES[mode].label);
 
 /** What the dial surface needs from the owning action. */
 export interface ReplayControlDialHost {
@@ -405,6 +415,7 @@ interface ReplayControlDialContext {
     readonly value: string;
     readonly sides: ReplayDialModeView["sides"];
     readonly caption: string;
+    readonly neighbours: DialNeighbours | null;
   } | null;
   /**
    * Signature of a built frame waiting in the throttle, or null. While one
@@ -1227,13 +1238,15 @@ export class ReplayControlDialSurface {
 
     const view = mode.view(ctx.dial, ctx.io);
     // A tick read mid-seek (#801): the box keeps what this mode last showed,
-    // the value with its side marks, and the caption, each where it cannot say.
+    // the value with its side marks and neighbours, and the caption, each
+    // where it cannot say.
     const shown = ctx.shownView?.mode === ctx.dial.mode ? ctx.shownView : null;
     const value = view.value ?? shown?.value ?? "";
     const sides = view.value === null ? (shown?.sides ?? view.sides) : view.sides;
+    const neighbours = view.value === null ? (shown?.neighbours ?? null) : (view.neighbours ?? null);
     const caption = view.caption ?? shown?.caption ?? "";
 
-    ctx.shownView = { mode: ctx.dial.mode, value, sides, caption };
+    ctx.shownView = { mode: ctx.dial.mode, value, sides, caption, neighbours };
 
     return {
       abbr: mode.label,
@@ -1241,6 +1254,8 @@ export class ReplayControlDialSurface {
       colors,
       sideMarker: sides,
       caption,
+      ...(view.reserveCaption === true ? { reserveCaptionLine: true } : {}),
+      ...(neighbours === null ? {} : { neighbours }),
       dimmed: false,
       pending: ctx.preview,
       ...(view.bindingMissing === true ? { bindingMissing: true } : {}),

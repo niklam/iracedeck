@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ReplayControlDialSettings } from "./replay-control-dial-settings.js";
 import { lapMode } from "./replay-control-lap-mode.js";
 import { sessionMode } from "./replay-control-session-mode.js";
-import { BLANK_CAPTION, formatReplayClock, recordSides, stepCaption } from "./replay-control-step-mode.js";
+import { formatReplayClock, recordSides, stepCaption } from "./replay-control-step-mode.js";
 import { fakeStepIo, lapsAt, recordSource, sessionsAt } from "./replay-dial-step-io.test-support.js";
 import { listRecord, RECORD_STEPS } from "./replay-record-step.js";
 
@@ -53,7 +53,7 @@ describe("stepCaption", () => {
 
     io.pendingSearch.mockImplementation((target) => (target === "incident" ? count : null));
 
-    expect(stepCaption(io, "incident", () => BLANK_CAPTION)).toBe(expected);
+    expect(stepCaption(io, "incident", () => "")).toBe(expected);
     // Even where the mode's own caption could not say: the count is progress.
     expect(stepCaption(io, "incident", () => null)).toBe(expected);
     expect(stepCaption(io, "lap", () => "1:23")).toBe("1:23");
@@ -80,10 +80,11 @@ describe("stepCaption", () => {
     expect(stepCaption(io, "lap", () => "1:23")).toBe("1:23");
   });
 
-  it("a blank caption draws nothing but counts as a caption, so the value keeps its place", () => {
-    expect(BLANK_CAPTION).not.toBe("");
-    expect(BLANK_CAPTION.trim()).toBe("");
-    expect(BLANK_CAPTION).toBe("\u00a0");
+  it("Lap and Session keep the caption line whatever it shows, so the value keeps its size and place", () => {
+    const io = fakeStepIo();
+
+    expect(lapMode.view(dial, io).reserveCaption).toBe(true);
+    expect(sessionMode.view(dial, io).reserveCaption).toBe(true);
   });
 });
 

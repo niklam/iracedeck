@@ -8,6 +8,7 @@ import {
 import type { ReplaySessionStore } from "@iracedeck/replay-store";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { labelClearsSideMarks } from "../../shared/dial-label-fit.js";
 import {
   _configureReplayCommandGate,
   _resetReplayCommandGate,
@@ -27,6 +28,7 @@ import { REPLAY_DIAL_MODES, ReplayControlDialSettings } from "./replay-control-d
 import {
   buildTriggerDescription,
   DIAL_MODES,
+  REPLAY_DIAL_MODE_LABELS,
   ReplayControlDialSurface,
   type ReplayDialReading,
   resolveDialGesture,
@@ -36,7 +38,6 @@ import { incidentMode } from "./replay-control-incident-mode.js";
 import { lapMode } from "./replay-control-lap-mode.js";
 import { sessionMode } from "./replay-control-session-mode.js";
 import { speedMode } from "./replay-control-speed-mode.js";
-import { BLANK_CAPTION } from "./replay-control-step-mode.js";
 import { _resetTrackOrderTap, trackOrderMode } from "./replay-control-track-order-mode.js";
 import type { RecordStepSource } from "./replay-record-step.js";
 import {
@@ -256,13 +257,22 @@ function lastBox(ctx: DialContext): string {
 }
 
 /** Every mode's label, which `shownValue` skips. */
-const MODE_LABELS = new Set(["SPEED", "FRAME", "LAP", "SESSION", "INCIDENT", "TRACK ORDER"]);
+const MODE_LABELS = new Set(REPLAY_DIAL_MODE_LABELS);
 
-/** The value slot's text: the last `<text>` that is neither the caption nor the label. */
+/** The value slot's text: the last `<text>` that is neither the caption, a neighbour nor the label. */
 function shownValue(svg: string): string {
-  const texts = [...svg.matchAll(/<text(?! data-caption)[^>]*>([^<]*)<\/text>/g)].map((m) => m[1]);
+  const texts = [...svg.matchAll(/<text(?! data-)[^>]*>([^<]*)<\/text>/g)].map((m) => m[1]);
 
   return texts.filter((t) => !MODE_LABELS.has(t)).at(-1) ?? "";
+}
+
+/** The texts drawn beside the value (#801), or null with none. */
+function shownNeighbours(svg: string): { left: string; right: string } | null {
+  const side = (name: string) => new RegExp(`<text data-neighbour="${name}"[^>]*>([^<]*)</text>`).exec(svg)?.[1] ?? "";
+  const left = side("left");
+  const right = side("right");
+
+  return left === "" && right === "" ? null : { left, right };
 }
 
 function shownCaption(svg: string): string {
@@ -2051,8 +2061,18 @@ describe("ReplayControlDialSurface", () => {
     it("labels are distinct, so the box says which mode the dial is in", () => {
       const labels = REPLAY_DIAL_MODES.map((mode) => DIAL_MODES[mode].label);
 
-      expect(labels).toEqual(["SPEED", "FRAME", "LAP", "SESSION", "INCIDENT", "TRACK ORDER"]);
+      expect(labels).toEqual(["SPEED", "FRAME", "LAP", "SESSION", "INCIDENT", "TRK ORD"]);
+      expect(REPLAY_DIAL_MODE_LABELS).toEqual(labels);
+      expect(new Set(labels).size).toBe(labels.length);
     });
+
+    it.each(REPLAY_DIAL_MODE_LABELS)(
+      "%s leaves at least INCIDENT's room between itself and the side marks on the strip and the knob",
+      (label) => {
+        expect(labelClearsSideMarks(label, "strip")).toBe(true);
+        expect(labelClearsSideMarks(label, "knob")).toBe(true);
+      },
+    );
 
     it("a Frame Jog dial's turn goes to Frame Jog, never to the speed ladder", async () => {
       const d = dial({ mode: "frame-jog" });
@@ -3268,16 +3288,32 @@ describe("ReplayControlDialSurface", () => {
         expect(shownCaption(lastBox(qualifying))).toBe("--");
       });
 
-      it("Incident shows the replay time over a blank caption, Track Order the viewed car's number alone", async () => {
+      it("Incident shows the replay time with no caption, Track Order the viewed car's number alone", async () => {
         const { ctx } = await dialIn("incident", pausedOn(3_600 * 60 + 5 * 60));
         const car = dialContext("track-order");
         await dialIn("track-order", pausedOn(600), car);
 
         expect(shownValue(lastBox(ctx))).toBe("60:05");
-        expect(shownCaption(lastBox(ctx))).toBe(BLANK_CAPTION);
+        expect(lastBox(ctx)).not.toContain("data-caption");
         expect(shownValue(lastBox(car))).toBe("#12");
-        expect(shownCaption(lastBox(car))).toBe(BLANK_CAPTION);
+        expect(lastBox(car)).not.toContain("data-caption");
+        expect(shownNeighbours(lastBox(car))).toBeNull();
         expect(sides(lastBox(car))).toEqual({ left: true, right: true });
+      });
+
+      it("the stepping modes keep the caption line, so their value has the size and place it has with a caption", async () => {
+        const valueText = (svg: string) => /<text x="[^"]+" y="\d+"[^>]*>60:05<\/text>/.exec(svg)?.[0];
+        const { ctx } = await dialIn("incident", pausedOn(3_600 * 60 + 5 * 60));
+        const idle = valueText(lastBox(ctx));
+
+        queue.pending = { target: "incident", count: 3, origin: ctx.id };
+
+        for (const listener of queue.listeners) listener();
+
+        await settle();
+        expect(shownCaption(lastBox(ctx))).toBe("+3");
+        expect(idle).toBeDefined();
+        expect(valueText(lastBox(ctx))).toBe(idle);
       });
 
       it("Track Order flanks the car with its neighbours on track in a saved replay, and not scrubbed back in a live session's", async () => {
@@ -3302,13 +3338,22 @@ describe("ReplayControlDialSurface", () => {
         surface.onTick(ctx.id, tickOf());
         await settle();
         expect(shownValue(lastBox(ctx))).toBe("#12");
-        expect(shownCaption(lastBox(ctx))).toMatch(/^#5\u00a0+#42$/);
+        expect(shownNeighbours(lastBox(ctx))).toEqual({ left: "#5", right: "#42" });
+        expect(lastBox(ctx)).not.toContain("data-caption");
 
+        // A tick read mid-seek keeps the car and its neighbours, as it keeps a value.
+        env.telemetry = SEEKING;
+        surface.onTick(ctx.id, tickOf());
+        await settle();
+        expect(shownValue(lastBox(ctx))).toBe("#12");
+        expect(shownNeighbours(lastBox(ctx))).toEqual({ left: "#5", right: "#42" });
+
+        env.telemetry = onTrack;
         env.replayOnlySession = false;
         surface.onTick(ctx.id, tickOf());
         await settle();
         expect(shownValue(lastBox(ctx))).toBe("#12");
-        expect(shownCaption(lastBox(ctx))).toBe(BLANK_CAPTION);
+        expect(shownNeighbours(lastBox(ctx))).toBeNull();
       });
 
       it("the caption shows the search's count for the mode's target, redrawn on every change it reports", async () => {
@@ -3335,7 +3380,7 @@ describe("ReplayControlDialSurface", () => {
         for (const listener of queue.listeners) listener();
 
         await settle();
-        expect(shownCaption(lastBox(ctx))).toBe(BLANK_CAPTION);
+        expect(shownCaption(lastBox(ctx))).toBe("");
       });
 
       it("subscribes to the search's count while a dial is on screen and lets go when the last one leaves, but to its speeds for the surface's life", async () => {

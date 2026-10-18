@@ -4,7 +4,6 @@ import { describe, expect, it, vi } from "vitest";
 
 import { ReplayControlDialSettings } from "./replay-control-dial-settings.js";
 import { lapMode } from "./replay-control-lap-mode.js";
-import { BLANK_CAPTION } from "./replay-control-step-mode.js";
 import { fakeStepIo, lapsAt, recordSource, sessionsAt } from "./replay-dial-step-io.test-support.js";
 
 vi.mock("@iracedeck/settings", () => ({ getGlobalSettings: vi.fn(() => ({})) }));
@@ -152,13 +151,13 @@ describe("lapMode view", () => {
     expect(lapMode.view(dial, io).value).toBe("--/25");
   });
 
-  it("reads -- when the replay reads no session, and a blank caption with no time to show", () => {
+  it("reads -- when the replay reads no session, and no caption, its line kept, with no time to show", () => {
     const io = fakeStepIo();
 
     io.recordSource.mockReturnValue(recordSource(LAPS, null));
     io.position.mockReturnValue({ frame: 57_000, time: undefined, endFrame: undefined, seeking: false });
 
-    expect(lapMode.view(dial, io)).toMatchObject({ value: "--", caption: BLANK_CAPTION });
+    expect(lapMode.view(dial, io)).toMatchObject({ value: "--", caption: "", reserveCaption: true });
   });
 
   it("says nothing on a tick read mid-seek, value or caption, so the box keeps what it showed", () => {
