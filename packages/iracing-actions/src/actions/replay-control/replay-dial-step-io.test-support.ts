@@ -77,6 +77,7 @@ export function fakeStepIo(): FakeStepIo {
     tapBinding: vi.fn((_key: string) => Promise.resolve(true)),
     isBindingMissing: vi.fn((_keys: string | readonly string[]) => false),
     cancelCameraWalks: vi.fn(),
+    jumpToMyCar: vi.fn(),
     isJumpUnderWay: vi.fn(() => false),
     waitForJumpsToSettle: vi.fn((): Promise<ReplaySettledOutcome> => Promise.resolve("settled")),
     isStillOnScreen: vi.fn(() => true),

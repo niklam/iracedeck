@@ -76,7 +76,7 @@ import { incidentMode } from "./replay-control-incident-mode.js";
 import { lapMode } from "./replay-control-lap-mode.js";
 import { sessionMode } from "./replay-control-session-mode.js";
 import { speedMode } from "./replay-control-speed-mode.js";
-import { trackOrderMode } from "./replay-control-track-order-mode.js";
+import { jumpToMyCarFromDial, trackOrderMode } from "./replay-control-track-order-mode.js";
 import {
   findRecordStep,
   type RecordStepResult,
@@ -162,8 +162,12 @@ export interface ReplayControlDialHost {
   /** Whether that press has a race session to aim at; false is the one case a Jump to Race Start key greys for. */
   canJumpToRaceStart(): boolean;
   /**
-   * The keypad's Jump to My Car press (#801): the camera switched to the
-   * player's car, a walk that searches on the camera's car cancelled first.
+   * The camera switched to the player's car (#801): the keypad's Jump to My
+   * Car switch without the keypad's cursor take. The dial's gesture cancels
+   * only the two walks itself and, during a position jump, waits for it to
+   * land as the Track Order mode's one waiting camera switch
+   * (`jumpToMyCarFromDial`); the keypad's key still takes the cursor from
+   * any owner.
    */
   jumpToMyCar(): void;
   /** Whether that press has a car to switch to: the player's car and its number in the session info. */
@@ -202,10 +206,15 @@ export interface ReplayDialReading {
   readonly speed: ReplaySpeed | null;
 }
 
-/** What a gesture runs against. */
+/** What a gesture previews against. */
 interface GestureEnv {
   readonly io: ReplayDialModeIo;
   readonly host: ReplayControlDialHost;
+}
+
+/** What a gesture runs against: also the pressed dial's own `io`, for a gesture that waits as a mode's turn does. */
+interface GestureRunEnv extends GestureEnv {
+  readonly dialIo: ReplayDialStepIo;
 }
 
 /** One thing a gesture slot can run. */
@@ -213,7 +222,7 @@ interface DialGesture {
   /** The slot's name in the Stream Deck app's dial hint (the trigger description). */
   readonly label: string;
   /** Runs it. Called only while a replay is on screen. */
-  run(env: GestureEnv): void;
+  run(env: GestureRunEnv): void;
   /**
    * What a release would do right now, for the hold preview (#1120), or null
    * when it would do nothing, which previews nothing rather than a promise.
@@ -262,11 +271,12 @@ function playCaption(speed: ReplaySpeed): string {
  * and what its hold preview reads. A new gesture is one row here, one value in
  * `REPLAY_DIAL_GESTURES` and one option in the PI. Every send the surface
  * makes itself takes the replay cursor under a `dial-` owner name; Jump to
- * Live, Jump to Race Start and Jump to My Car run the keypad's own paths
- * instead, which take it themselves: under the mode's name (`jump-to-live`,
- * `jump-to-my-car`), and as the replay jump the race-start press starts once
- * its guards have passed. The
- * Mode default has no row: it resolves to one ({@link resolveDialGesture}).
+ * Live and Jump to Race Start run the keypad's own paths instead, which take
+ * it themselves: under the mode's name (`jump-to-live`), and as the replay
+ * jump the race-start press starts once its guards have passed. Jump to My
+ * Car is a camera switch and takes no cursor: it cancels only the two walks
+ * and waits behind a position jump, as a Track Order turn does. The Mode
+ * default has no row: it resolves to one ({@link resolveDialGesture}).
  */
 const GESTURES: Record<ActiveGesture, DialGesture> = {
   // A playing replay pauses; a paused one resumes the remembered speed.
@@ -344,14 +354,18 @@ const GESTURES: Record<ActiveGesture, DialGesture> = {
     },
     preview: ({ host }) => (host.canJumpToRaceStart() ? "START" : null),
   },
-  // The keypad's own Jump to My Car (#801): a camera switch, not a replay
-  // command. With no car of the player's to switch to it sends nothing, so
-  // the hold previews nothing either.
+  // The player's car on camera (#801): a camera switch, not a replay command,
+  // made as a Track Order turn makes one: only the two walks cancelled, and
+  // behind a position jump it waits for the landing, as the one switch that
+  // waits. With no car of the player's to switch to it sends nothing, so the
+  // hold previews nothing either.
   "jump-to-my-car": {
     label: "Jump to My Car",
-    run({ io, host }) {
-      host.jumpToMyCar();
+    run({ io, dialIo }) {
       io.logger.info("Dial pressed Jump to My Car");
+      jumpToMyCarFromDial(dialIo).catch((error: unknown) => {
+        io.logger.warn(`Dial Jump to My Car failed: ${error instanceof Error ? error.message : String(error)}`);
+      });
     },
     preview: ({ host }) => (host.canJumpToMyCar() ? "MY CAR" : null),
   },
@@ -781,6 +795,7 @@ export class ReplayControlDialSurface {
       tapBinding: (settingKey) => host.tapBinding(settingKey),
       isBindingMissing: (keys) => host.isBindingMissing(keys),
       cancelCameraWalks: (by) => host.cancelCameraWalks(by),
+      jumpToMyCar: () => host.jumpToMyCar(),
       isJumpUnderWay: () => {
         const telemetry = this.reading().telemetry;
 
@@ -843,7 +858,7 @@ export class ReplayControlDialSurface {
     if (gesture === null) return;
 
     this.host.logger.info(kind === "long" ? "Replay control dial long-pressed" : "Replay control dial pressed");
-    this.runGesture(gesture, ctx.action.id);
+    this.runGesture(gesture, ctx);
   }
 
   touchTap(action: IDeckActionContext, dial: ReplayControlDialSettings, hold: boolean): void {
@@ -859,7 +874,7 @@ export class ReplayControlDialSurface {
     if (gesture === null) return;
 
     this.host.logger.info(hold ? "Replay control dial long touch" : "Replay control dial tap");
-    this.withReading(() => this.runGesture(gesture, ctx.action.id));
+    this.withReading(() => this.runGesture(gesture, ctx));
   }
 
   /**
@@ -992,8 +1007,8 @@ export class ReplayControlDialSurface {
     return currentReplayCursorOwner() !== null || isReplayMoveUnderWay() || this.io.position()?.seeking === true;
   }
 
-  /** Runs a gesture slot's assignment; outside a replay it sends nothing. */
-  private runGesture(gesture: ActiveGesture, origin: string): void {
+  /** Runs a gesture slot's assignment for the dial `ctx`; outside a replay it sends nothing. */
+  private runGesture(gesture: ActiveGesture, ctx: ReplayControlDialContext): void {
     if (!this.isReplayOnScreen()) {
       this.host.logger.debug(`Dial ${gesture}: no replay on screen, and iRacing ignores replay commands from the car`);
 
@@ -1001,10 +1016,10 @@ export class ReplayControlDialSurface {
     }
 
     // A gesture's commands carry the dial's own origin token; a detent's carry none.
-    this.pressOrigin = origin;
+    this.pressOrigin = ctx.action.id;
 
     try {
-      GESTURES[gesture].run({ io: this.io, host: this.host });
+      GESTURES[gesture].run({ io: this.io, host: this.host, dialIo: ctx.io });
     } finally {
       this.pressOrigin = undefined;
     }

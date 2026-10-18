@@ -27,6 +27,10 @@
  *   long as the jump takes; it is dropped only at the ceiling #1276 puts on
  *   any jump's wait, when the dial that turned it has left the screen, or when
  *   the replay has been left.
+ * - **The dial's Jump to My Car gesture is the same kind of switch**
+ *   ({@link jumpToMyCarFromDial}): it cancels only the two walks, waits behind
+ *   a position jump as the one waiting switch, and replaces a waiting tap or
+ *   is replaced by a later turn.
  *
  * It sends no replay command, so it passes no origin token and draws nothing
  * of #1437's.
@@ -103,43 +107,66 @@ const NEIGHBOUR_GAP = "\u00a0".repeat(10);
 /** The name a Track Order turn cancels a walk under. */
 const CURSOR_OWNER = "dial-track-order";
 
+/** The name the dial's Jump to My Car gesture cancels a walk under. */
+const MY_CAR_OWNER = "dial-jump-to-my-car";
+
 type CarDirection = keyof typeof CAR_CYCLE_BINDING_KEYS;
 
-/** The one tap waiting behind a jump, for the whole plugin: the newest turn's direction and the dial that turned it. */
-let waiting: { direction: CarDirection; io: ReplayDialStepIo } | null = null;
+/**
+ * A camera switch of the dial's: a Track Order turn's tap to the next or the
+ * previous car, or the Jump to My Car gesture's switch to the player's car
+ * (#801). Both are camera changes a jump swallows, so they share the one
+ * switch that waits behind a jump.
+ */
+type CameraSwitch = { readonly kind: "car"; readonly direction: CarDirection } | { readonly kind: "my-car" };
 
-/** The wait that tap sits behind, or null when none waits. */
+/** The one camera switch waiting behind a jump, for the whole plugin: the newest one asked for, and the dial that asked. */
+let waiting: { change: CameraSwitch; io: ReplayDialStepIo } | null = null;
+
+/** The wait that switch sits behind, or null when none waits. */
 let waiter: Promise<void> | null = null;
 
 /** Which wait {@link waiter} is, so a wait that ended clears only itself. */
 let waitGeneration = 0;
 
-/** What a direction is called in the log. */
-function describe(direction: CarDirection): string {
-  return direction === "next" ? "next car" : "previous car";
+/** What a switch is called in the log. */
+function describe(change: CameraSwitch): string {
+  if (change.kind === "my-car") return "my car";
+
+  return change.direction === "next" ? "next car" : "previous car";
 }
 
-/** Taps the binding for `direction`, a walk cancelled first. */
-async function tap(io: ReplayDialStepIo, direction: CarDirection): Promise<void> {
-  const key = CAR_CYCLE_BINDING_KEYS[direction];
+/** The name a switch cancels a walk under. */
+function ownerOf(change: CameraSwitch): string {
+  return change.kind === "my-car" ? MY_CAR_OWNER : CURSOR_OWNER;
+}
 
-  io.cancelCameraWalks(CURSOR_OWNER);
+/** Makes the switch, a walk cancelled first: the car binding's tap, or the switch to the player's car. */
+async function send(io: ReplayDialStepIo, change: CameraSwitch): Promise<void> {
+  io.cancelCameraWalks(ownerOf(change));
 
+  if (change.kind === "my-car") {
+    io.jumpToMyCar();
+
+    return;
+  }
+
+  const key = CAR_CYCLE_BINDING_KEYS[change.direction];
   const sent = await io.tapBinding(key);
 
-  io.logger.info(`Dial track order: ${describe(direction)}`);
+  io.logger.info(`Dial track order: ${describe(change)}`);
   io.logger.debug(`Dial track order: tapped ${key}, result: ${sent}`);
 }
 
-/** Waits for the jump under way, then taps whatever turn is waiting by then — or drops it. */
-async function tapWhenJumpsSettle(io: ReplayDialStepIo, generation: number): Promise<void> {
+/** Waits for the jump under way, then makes whatever switch is waiting by then — or drops it. */
+async function switchWhenJumpsSettle(io: ReplayDialStepIo, generation: number): Promise<void> {
   let outcome: Awaited<ReturnType<ReplayDialStepIo["waitForJumpsToSettle"]>>;
 
   try {
     outcome = await io.waitForJumpsToSettle();
   } catch (error) {
-    // A wait that failed taps nothing, and leaves no turn waiting that holds a
-    // dial's io: the next turn is a turn of its own.
+    // A wait that failed sends nothing, and leaves no switch waiting that
+    // holds a dial's io: the next one asked for is one of its own.
     if (waitGeneration === generation) waiting = null;
 
     io.logger.warn(
@@ -148,8 +175,8 @@ async function tapWhenJumpsSettle(io: ReplayDialStepIo, generation: number): Pro
 
     return;
   } finally {
-    // The wait is over: a turn from here on is a turn of its own, never one
-    // folded into a tap that is already going out.
+    // The wait is over: a switch asked for from here on is one of its own,
+    // never one folded into a switch that is already going out.
     if (waitGeneration === generation) waiter = null;
   }
 
@@ -163,7 +190,7 @@ async function tapWhenJumpsSettle(io: ReplayDialStepIo, generation: number): Pro
 
   if (outcome !== "settled") {
     turn.io.logger.debug(
-      `Dial track order: tap dropped, the jump under way did not land within the longest a jump waits`,
+      `Dial track order: tap dropped (${describe(turn.change)}), the jump under way did not land within the longest a jump waits`,
     );
 
     return;
@@ -171,20 +198,78 @@ async function tapWhenJumpsSettle(io: ReplayDialStepIo, generation: number): Pro
 
   if (!turn.io.isStillOnScreen()) {
     turn.io.logger.debug(
-      "Dial track order: tap dropped, the dial left the screen or the replay was left while it waited",
+      `Dial track order: tap dropped (${describe(turn.change)}), the dial left the screen or the replay was left while it waited`,
     );
 
     return;
   }
 
-  await tap(turn.io, turn.direction);
+  await send(turn.io, turn.change);
+}
+
+/**
+ * Asks for a camera switch: made at once on a quiet replay, or behind a
+ * position jump under way as the one switch that waits for the whole plugin,
+ * replacing any switch already waiting. A walk is cancelled at once, not when
+ * the switch goes out: it would keep moving the replay meanwhile. Resolves
+ * when the switch has gone out or been dropped.
+ */
+function requestCameraSwitch(io: ReplayDialStepIo, change: CameraSwitch, asked: string): Promise<void> {
+  io.cancelCameraWalks(ownerOf(change));
+
+  if (waiter !== null) {
+    const replaced = waiting?.change;
+
+    waiting = { change, io };
+    io.logger.debug(
+      `Dial track order: ${asked}; the switch waiting for a jump now goes to the ${describe(change)}` +
+        (replaced === undefined ? "" : ` (was ${describe(replaced)})`),
+    );
+
+    return waiter;
+  }
+
+  if (!io.isJumpUnderWay()) return send(io, change);
+
+  waiting = { change, io };
+  io.logger.debug(`Dial track order: ${asked}; a jump is under way, the ${describe(change)} switch waits for it`);
+
+  const generation = ++waitGeneration;
+  const run = switchWhenJumpsSettle(io, generation);
+
+  // Set after the call: a wait that ended at once (one that threw before its
+  // first await) has already cleared nothing of its own, so the run clears
+  // it when it settles, either way.
+  waiter = run;
+
+  const clear = (): void => {
+    if (waitGeneration === generation && waiter === run) waiter = null;
+  };
+
+  run.then(clear, clear);
+
+  return run;
+}
+
+/**
+ * The dial's Jump to My Car gesture (#801): the camera to the player's car,
+ * as a Track Order turn moves it. Only a Jump to Fastest Lap or Jump to Race
+ * Start walk is cancelled, never a record jump's run, a marker jump's or the
+ * paced search's, and during a position jump the switch waits for it to land
+ * — the same one waiting switch a Track Order turn uses, so whichever was
+ * asked for last goes out. The keypad's Jump to My Car key is not this: it
+ * takes the replay cursor from any owner. Resolves when the switch has gone
+ * out or been dropped.
+ */
+export function jumpToMyCarFromDial(io: ReplayDialStepIo): Promise<void> {
+  return requestCameraSwitch(io, { kind: "my-car" }, "Jump to My Car");
 }
 
 /**
  * @internal Exported for testing
  *
- * Forgets the tap waiting behind a jump. The wait itself runs on and taps
- * nothing.
+ * Forgets the switch waiting behind a jump. The wait itself runs on and
+ * sends nothing.
  */
 export function _resetTrackOrderTap(): void {
   waiting = null;
@@ -195,13 +280,13 @@ export function _resetTrackOrderTap(): void {
 /**
  * @internal Exported for testing
  *
- * Whether a tap is waiting behind a jump.
+ * Whether a camera switch is waiting behind a jump.
  */
 export function _isTrackOrderTapWaiting(): boolean {
   return waiting !== null;
 }
 
-/** The Car mode. Clockwise is iRacing's Next Car, the car ahead on track; counter-clockwise Previous Car. */
+/** The Track Order mode. Clockwise is iRacing's Next Car, the car ahead on track; counter-clockwise Previous Car. */
 export const trackOrderMode: ReplayDialMode<ReplayDialStepIo> = {
   label: "TRACK ORDER",
   rotateDescription: "Cycle Cars by Track Order",
@@ -218,43 +303,7 @@ export const trackOrderMode: ReplayDialMode<ReplayDialStepIo> = {
       return;
     }
 
-    // Stop a walk now, not when the tap goes out: it would keep moving the replay meanwhile.
-    io.cancelCameraWalks(CURSOR_OWNER);
-
-    if (waiter !== null) {
-      const replaced = waiting?.direction;
-
-      waiting = { direction, io };
-      io.logger.debug(
-        `Dial track order: ticks=${ticks}; the tap waiting for a jump now goes to the ${describe(direction)}` +
-          (replaced === undefined ? "" : ` (was ${describe(replaced)})`),
-      );
-
-      return waiter;
-    }
-
-    if (!io.isJumpUnderWay()) return tap(io, direction);
-
-    waiting = { direction, io };
-    io.logger.debug(
-      `Dial track order: ticks=${ticks}; a jump is under way, the ${describe(direction)} tap waits for it`,
-    );
-
-    const generation = ++waitGeneration;
-    const run = tapWhenJumpsSettle(io, generation);
-
-    // Set after the call: a wait that ended at once (one that threw before its
-    // first await) has already cleared nothing of its own, so the run clears
-    // it when it settles, either way.
-    waiter = run;
-
-    const clear = (): void => {
-      if (waitGeneration === generation && waiter === run) waiter = null;
-    };
-
-    run.then(clear, clear);
-
-    return run;
+    return requestCameraSwitch(io, { kind: "car", direction }, `ticks=${ticks}`);
   },
 
   view(_dial, io) {

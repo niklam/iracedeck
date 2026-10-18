@@ -1628,22 +1628,26 @@ describe("ReplayControl", () => {
         },
       );
 
-      it("Jump to My Car is the keypad's own press: a walk cancelled, the camera switched to the player's car", async () => {
-        const { getCommands } = await import("@iracedeck/deck-iracing");
-        const camera = { switchNum: vi.fn(() => true) };
+      it.each(["jump-to-fastest-lap walk", "dial-lap"])(
+        "Jump to My Car switches the camera to the player's car and takes no cursor: %s is left standing",
+        async (owner) => {
+          const { getCommands } = await import("@iracedeck/deck-iracing");
+          const camera = { switchNum: vi.fn(() => true) };
 
-        vi.mocked(getCommands).mockReturnValue({ replay: mockReplay, camera } as never);
-        // Read once by the check and once by the press.
-        vi.mocked(getCarNumberRawFromSessionInfo).mockReturnValueOnce(42).mockReturnValueOnce(42);
-        action["sdkController"].getSessionInfo = vi.fn(() => ({ DriverInfo: { DriverCarIdx: 3 } }) as never);
-        const walk = claimReplayCursor("jump-to-fastest-lap walk");
+          vi.mocked(getCommands).mockReturnValue({ replay: mockReplay, camera } as never);
+          // Read once by the check and once by the switch.
+          vi.mocked(getCarNumberRawFromSessionInfo).mockReturnValueOnce(42).mockReturnValueOnce(42);
+          action["sdkController"].getSessionInfo = vi.fn(() => ({ DriverInfo: { DriverCarIdx: 3 } }) as never);
+          // A walk is the dial gesture's to cancel (`cancelCameraWalks`); a paced search's run is never.
+          const claim = claimReplayCursor(owner);
 
-        expect(host().canJumpToMyCar()).toBe(true);
-        host().jumpToMyCar();
+          expect(host().canJumpToMyCar()).toBe(true);
+          host().jumpToMyCar();
 
-        expect(camera.switchNum).toHaveBeenCalledExactlyOnceWith(42, 0, 0);
-        expect(walk.cancelledBy).toBe("jump-to-my-car");
-      });
+          expect(camera.switchNum).toHaveBeenCalledExactlyOnceWith(42, 0, 0);
+          expect(claim.cancelledBy).toBeNull();
+        },
+      );
 
       it("Jump to My Car has nothing to switch to with no player's car, or no number for it", () => {
         action["sdkController"].getSessionInfo = vi.fn(() => ({ DriverInfo: { DriverCarIdx: -1 } }) as never);

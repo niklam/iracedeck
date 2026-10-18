@@ -986,8 +986,9 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     jumpToRaceStart: () => this.executeMode("__dial__", this.parseSettings({ mode: "jump-to-race-start" })),
     canJumpToRaceStart: () =>
       resolveGreenFlagTarget(this.sdkController.getSessionInfo(), this.sdkController.getCurrentTelemetry()) !== null,
-    // The keypad's own Jump to My Car (#801), the walk cancel of a camera-only mode included.
-    jumpToMyCar: () => this.executeMode("__dial__", this.parseSettings({ mode: "jump-to-my-car" })),
+    // The keypad's Jump to My Car switch (#801), without its cursor take: the
+    // dial's gesture cancels only the two walks, and waits behind a position jump.
+    jumpToMyCar: () => this.switchToMyCar(),
     canJumpToMyCar: () => "carNum" in this.resolveMyCarNumberRaw(),
     refreshKeys: () => this.updateAllTelemetryDisplays(),
     // What the Lap and Session modes step from and through (#801): the same
@@ -1334,6 +1335,29 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     }
 
     return (telemetry?.CamCarIdx as number) ?? -1;
+  }
+
+  /**
+   * The camera to the player's car: Jump to My Car's switch, which takes no
+   * cursor of its own. The keypad's key has taken it before this runs, as
+   * every camera-only mode does; the dial's gesture cancels only the two walks
+   * (#801). With no player's car, or no number for it, it warns and sends
+   * nothing.
+   */
+  private switchToMyCar(): void {
+    const myCar = this.resolveMyCarNumberRaw();
+
+    if ("miss" in myCar) {
+      this.logger.warn(myCar.miss);
+
+      return;
+    }
+
+    const { carNum } = myCar;
+    const camera = getCommands().camera;
+    const success = camera.switchNum(carNum, 0, 0);
+    this.logger.info("Jump to my car executed");
+    this.logger.debug(`Result: ${success}, carNum: ${carNum}`);
   }
 
   /**
@@ -3374,18 +3398,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
         break;
       }
       case "jump-to-my-car": {
-        const myCar = this.resolveMyCarNumberRaw();
-
-        if ("miss" in myCar) {
-          this.logger.warn(myCar.miss);
-          break;
-        }
-
-        const { carNum } = myCar;
-        const camera = getCommands().camera;
-        const success = camera.switchNum(carNum, 0, 0);
-        this.logger.info("Jump to my car executed");
-        this.logger.debug(`Result: ${success}, carNum: ${carNum}`);
+        this.switchToMyCar();
         break;
       }
       case "jump-to-fastest-lap": {

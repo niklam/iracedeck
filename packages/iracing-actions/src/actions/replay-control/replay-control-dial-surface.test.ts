@@ -3154,6 +3154,51 @@ describe("ReplayControlDialSurface", () => {
         expect(host.tapBinding).not.toHaveBeenCalled();
       });
 
+      it("a Long Press cancels only the two walks: another dial's paced search run is left standing", async () => {
+        const { surface, ctx, d } = await dialIn("track-order", pausedOn(600));
+        // The runner of another dial's paced search, holding the cursor.
+        const run = claimReplayCursor("dial-lap");
+
+        await press(surface, ctx, d, 500);
+        await settle(0);
+
+        expect(host.cancelCameraWalks).toHaveBeenCalledWith("dial-jump-to-my-car");
+        expect(host.jumpToMyCar).toHaveBeenCalledOnce();
+        expect(run.cancelledBy).toBeNull();
+        expect(currentReplayCursorOwner()).toBe("dial-lap");
+        run.release();
+      });
+
+      it("a Long Press during a position jump switches to my car once the jump has landed", async () => {
+        const { surface, ctx, d } = await dialIn("track-order", pausedOn(600));
+
+        surface["io"].jumpTo("dial-frame-jog", 9_000);
+        env.telemetry = SEEKING;
+        await press(surface, ctx, d, 500);
+        await vi.advanceTimersByTimeAsync(3_500);
+        expect(host.jumpToMyCar).not.toHaveBeenCalled();
+
+        env.telemetry = pausedOn(9_000);
+        await vi.advanceTimersByTimeAsync(400);
+
+        expect(host.jumpToMyCar).toHaveBeenCalledOnce();
+        expect(host.tapBinding).not.toHaveBeenCalled();
+      });
+
+      it("a turn and a Long Press during one jump are one waiting switch: the later one goes out", async () => {
+        const { surface, ctx, d } = await dialIn("track-order", pausedOn(600));
+
+        surface["io"].jumpTo("dial-frame-jog", 9_000);
+        env.telemetry = SEEKING;
+        surface.rotate(ctx as never, d, 1, false);
+        await press(surface, ctx, d, 500);
+        env.telemetry = pausedOn(9_000);
+        await vi.advanceTimersByTimeAsync(400);
+
+        expect(host.jumpToMyCar).toHaveBeenCalledOnce();
+        expect(host.tapBinding).not.toHaveBeenCalled();
+      });
+
       it("draws the missing-binding warning on the box", async () => {
         host.isBindingMissing.mockReturnValue(true);
         const { ctx } = await dialIn("track-order", pausedOn(600));

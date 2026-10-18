@@ -7,6 +7,7 @@ import { BLANK_CAPTION } from "./replay-control-step-mode.js";
 import {
   _isTrackOrderTapWaiting,
   _resetTrackOrderTap,
+  jumpToMyCarFromDial,
   neighbourCaption,
   trackOrderMode,
   trackOrderNeighbours,
@@ -242,6 +243,70 @@ describe("trackOrderMode", () => {
       await Promise.all([first, second]);
 
       expect(io.tapBinding.mock.calls).toEqual([[NEXT], [PREVIOUS]]);
+    });
+  });
+
+  describe("the dial's Jump to My Car (jumpToMyCarFromDial)", () => {
+    it("on a quiet replay cancels only the walks, under its own name, then switches at once", async () => {
+      const io = fakeStepIo();
+
+      await jumpToMyCarFromDial(io);
+
+      expect(io.cancelCameraWalks).toHaveBeenCalledWith("dial-jump-to-my-car");
+      expect(io.jumpToMyCar).toHaveBeenCalledOnce();
+      expect(io.tapBinding).not.toHaveBeenCalled();
+      expect(io.recordJump).not.toHaveBeenCalled();
+      expect(io.queueSearch).not.toHaveBeenCalled();
+    });
+
+    it("during a position jump switches only once it has settled", async () => {
+      const io = fakeStepIo();
+      const jump = jumpUnderWay(io);
+
+      const pending = jumpToMyCarFromDial(io);
+      await vi.advanceTimersByTimeAsync(500);
+      expect(io.jumpToMyCar).not.toHaveBeenCalled();
+      expect(_isTrackOrderTapWaiting()).toBe(true);
+
+      jump.land();
+      await pending;
+
+      expect(io.jumpToMyCar).toHaveBeenCalledOnce();
+    });
+
+    it("shares the one waiting switch with a turn: whichever was asked for last goes out", async () => {
+      const io = fakeStepIo();
+      let jump = jumpUnderWay(io);
+
+      const turn = trackOrderMode.rotate(1, dial, io);
+      const myCar = jumpToMyCarFromDial(io);
+
+      expect(io.waitForJumpsToSettle).toHaveBeenCalledTimes(1);
+      jump.land();
+      await Promise.all([turn, myCar]);
+      expect(io.jumpToMyCar).toHaveBeenCalledOnce();
+      expect(io.tapBinding).not.toHaveBeenCalled();
+
+      jump = jumpUnderWay(io);
+      const second = jumpToMyCarFromDial(io);
+      const later = trackOrderMode.rotate(-1, dial, io);
+
+      jump.land();
+      await Promise.all([second, later]);
+      expect(io.jumpToMyCar).toHaveBeenCalledOnce();
+      expect(io.tapBinding).toHaveBeenCalledExactlyOnceWith(PREVIOUS);
+    });
+
+    it("is dropped with nothing sent at the ceiling of the jump wait", async () => {
+      const io = fakeStepIo();
+      const jump = jumpUnderWay(io);
+
+      const pending = jumpToMyCarFromDial(io);
+
+      jump.giveUp();
+      await pending;
+
+      expect(io.jumpToMyCar).not.toHaveBeenCalled();
     });
   });
 
