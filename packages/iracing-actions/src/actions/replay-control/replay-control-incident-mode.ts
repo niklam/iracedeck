@@ -41,7 +41,7 @@ export const incidentMode: ReplayDialMode<ReplayDialStepIo> = {
       // The position's time: a pending target's while a jump is under way, where
       // telemetry reads 0; null on a tick read mid-seek, and the box keeps its value.
       value: position === null ? null : formatReplayClock(position.time),
-      caption: stepCaption(io, "incident", BLANK_CAPTION),
+      caption: stepCaption(io, "incident", () => BLANK_CAPTION),
       sides: { left: true, right: true },
     };
   },

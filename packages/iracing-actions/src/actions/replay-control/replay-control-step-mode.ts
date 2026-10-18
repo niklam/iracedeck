@@ -51,16 +51,22 @@ export const BLANK_CAPTION = "\u00a0";
  * @internal Exported for testing
  *
  * The caption of a stepping mode: what the paced search has left while it
- * works for `target`, `+3` or `-2`, and otherwise `otherwise`, the mode's own
- * caption (null keeps what the box showed, as a null value does). A record
- * jump has no count: it is one step however far it goes.
+ * works for `target`, `+3` or `-2`, and otherwise what `otherwise` gives, the
+ * mode's own caption (null keeps what the box showed, as a null value does).
+ * `otherwise` is called only when no count replaces it, so a caption that
+ * reads the record (Session's lap of the session) costs nothing while a count
+ * shows. A record jump has no count: it is one step however far it goes.
  */
-export function stepCaption(io: ReplayDialStepIo, target: ReplaySearchTarget, otherwise: string | null): string | null {
+export function stepCaption(
+  io: ReplayDialStepIo,
+  target: ReplaySearchTarget,
+  otherwise: () => string | null,
+): string | null {
   const pending = io.pendingSearch(target);
 
   if (pending !== null && pending !== 0) return pending > 0 ? `+${pending}` : `${pending}`;
 
-  return otherwise;
+  return otherwise();
 }
 
 /** Where a turn steps through the record, each way. */
@@ -168,7 +174,7 @@ export function createRecordStepMode(config: RecordStepModeConfig): ReplayDialMo
 
       return {
         value: config.value(io, position, listing),
-        caption: stepCaption(io, target, config.caption(io, position, listing)),
+        caption: stepCaption(io, target, () => config.caption(io, position, listing)),
         sides: recordSides(position, listing, steps),
       };
     },

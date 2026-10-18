@@ -41,8 +41,8 @@ describe("stepCaption", () => {
   it("shows the mode's own caption with no run for the target", () => {
     const io = fakeStepIo();
 
-    expect(stepCaption(io, "lap", "1:23")).toBe("1:23");
-    expect(stepCaption(io, "lap", null)).toBeNull();
+    expect(stepCaption(io, "lap", () => "1:23")).toBe("1:23");
+    expect(stepCaption(io, "lap", () => null)).toBeNull();
   });
 
   it.each<[number, string]>([
@@ -53,10 +53,23 @@ describe("stepCaption", () => {
 
     io.pendingSearch.mockImplementation((target) => (target === "incident" ? count : null));
 
-    expect(stepCaption(io, "incident", BLANK_CAPTION)).toBe(expected);
+    expect(stepCaption(io, "incident", () => BLANK_CAPTION)).toBe(expected);
     // Even where the mode's own caption could not say: the count is progress.
-    expect(stepCaption(io, "incident", null)).toBe(expected);
-    expect(stepCaption(io, "lap", "1:23")).toBe("1:23");
+    expect(stepCaption(io, "incident", () => null)).toBe(expected);
+    expect(stepCaption(io, "lap", () => "1:23")).toBe("1:23");
+  });
+
+  it("asks for the mode's own caption only when no count replaces it", () => {
+    const io = fakeStepIo();
+    const own = vi.fn(() => "1:23");
+
+    io.pendingSearch.mockReturnValue(2);
+    expect(stepCaption(io, "lap", own)).toBe("+2");
+    expect(own).not.toHaveBeenCalled();
+
+    io.pendingSearch.mockReturnValue(null);
+    expect(stepCaption(io, "lap", own)).toBe("1:23");
+    expect(own).toHaveBeenCalledOnce();
   });
 
   it("shows the mode's own caption once nothing is left after the search on its way", () => {
@@ -64,7 +77,7 @@ describe("stepCaption", () => {
 
     io.pendingSearch.mockReturnValue(0);
 
-    expect(stepCaption(io, "lap", "1:23")).toBe("1:23");
+    expect(stepCaption(io, "lap", () => "1:23")).toBe("1:23");
   });
 
   it("a blank caption draws nothing but counts as a caption, so the value keeps its place", () => {
@@ -154,6 +167,19 @@ describe("a view reads the record once", () => {
       expect(listLapStarts).toHaveBeenCalledTimes(1);
     },
   );
+
+  it("Session: no lap listing while the search's count takes the caption", () => {
+    const io = fakeStepIo();
+    const source = recordSource(lapsAt([50_000]), sessionsAt([0, 40_000, 90_000]));
+    const listLapStarts = vi.spyOn(source.store!.laps, "listLapStarts");
+
+    io.recordSource.mockReturnValue(source);
+    io.position.mockReturnValue(at(54_000, false));
+    io.pendingSearch.mockImplementation((target) => (target === "session" ? 3 : null));
+
+    expect(sessionMode.view(dial, io).caption).toBe("+3");
+    expect(listLapStarts).not.toHaveBeenCalled();
+  });
 });
 
 describe.each([
