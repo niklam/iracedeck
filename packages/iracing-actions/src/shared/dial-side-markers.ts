@@ -32,6 +32,22 @@ export function resolveSideMarks(sideMarker: DialSideMarker): DialSideMarks {
 const DIM = ' opacity="0.22"';
 
 /**
+ * Where the side markers sit for a box `width` wide whose label is
+ * `labelFontSize`: each triangle is `markerH` tall (0.9 em) and `markerW`
+ * wide, centred `offset` (0.3 of the width) out from the box's centre. The
+ * one source of that geometry, for the drawing below and for the check that a
+ * label clears the markers (`dial-label-fit.ts`, #801).
+ */
+export function sideMarkGeometry(
+  width: number,
+  labelFontSize: number,
+): { offset: number; markerW: number; markerH: number } {
+  const markerH = Math.round(labelFontSize * 0.9);
+
+  return { offset: Math.round(width * 0.3), markerW: Math.round(markerH * 0.7), markerH };
+}
+
+/**
  * Draws both side markers, vertically centred on the label: each triangle is
  * 0.9 em tall, 0.3 of the box width out from the centre, pointing outwards.
  */
@@ -43,11 +59,9 @@ export function renderSideMarkers(args: {
   marks: DialSideMarks;
 }): string {
   const { width: w, labelY, labelFontSize, color, marks } = args;
-  const markerH = Math.round(labelFontSize * 0.9);
-  const markerW = Math.round(markerH * 0.7);
+  const { offset, markerW, markerH } = sideMarkGeometry(w, labelFontSize);
   // The label's visual center (its baseline minus the ~0.36em bold-Arial offset).
   const cy = labelY - Math.round(labelFontSize * 0.36);
-  const offset = Math.round(w * 0.3);
   const leftCx = w / 2 - offset;
   const rightCx = w / 2 + offset;
   const leftPoints = `${leftCx - markerW / 2},${cy} ${leftCx + markerW / 2},${cy - markerH / 2} ${leftCx + markerW / 2},${cy + markerH / 2}`;
