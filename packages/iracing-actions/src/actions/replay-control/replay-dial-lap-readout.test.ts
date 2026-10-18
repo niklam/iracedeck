@@ -239,3 +239,50 @@ describe("lapOfLapsReadout", () => {
     expect(lapOfLapsReadout(io, at(59_000 - 60, true), listRecord("lap", source))).toBe("4/25");
   });
 });
+
+describe("lapOfLapsReadout: the numerator and the denominator count the same laps", () => {
+  /** Car 4's lap starts 1 … `count` of session 0 (instance 1), a lap every 3 000 frames from 3 000. */
+  const lapStarts = (count: number): LapStartListEntry[] =>
+    Array.from({ length: count }, (_, i) => ({
+      frame: 3_000 * (i + 1),
+      lap: i + 1,
+      sessionNum: 0,
+      sessionUniqueId: 1,
+    }));
+  const ONE_SESSION = sessionsAt([0]);
+
+  function readout(laps: LapStartListEntry[], session: Record<string, unknown>, frame: number): string | null {
+    const io = fakeStepIo();
+    const source = recordSource(laps, ONE_SESSION);
+
+    io.recordSource.mockReturnValue(source);
+    io.sessionInfo.mockReturnValue({ SessionInfo: { Sessions: [{ SessionNum: 0, ...session }] } });
+    io.telemetry.mockReturnValue(onCar4(0));
+
+    return lapOfLapsReadout(io, at(frame), listRecord("lap", source));
+  }
+
+  it("a 25-lap race's finisher on the cool-down lap reads 25/25, not the recorder's 26", () => {
+    // The finish crossing at 78 000 is recorded as lap 26's start.
+    expect(readout(lapStarts(26), { SessionLaps: 25 }, 79_000)).toBe("25/25");
+    expect(readout(lapStarts(26), { SessionLaps: 25 }, 76_000)).toBe("25/25");
+    expect(readout(lapStarts(26), { SessionLaps: 25 }, 73_000)).toBe("24/25");
+  });
+
+  it("live in a timed session, on lap 13 with 12 complete, reads 13/13 with a results row or without one", () => {
+    const live = { SessionLaps: "unlimited", ResultsOfficial: 0 };
+
+    expect(readout(lapStarts(13), { ...live, ResultsPositions: [{ CarIdx: 4, LapsComplete: 12 }] }, 39_500)).toBe(
+      "13/13",
+    );
+    expect(readout(lapStarts(13), live, 39_500)).toBe("13/13");
+  });
+
+  it("after a timed race's flag, with 16 complete, reads 16/16 on the cool-down lap and k/16 before it", () => {
+    const over = { SessionLaps: "unlimited", ResultsOfficial: 1, ResultsPositions: [{ CarIdx: 4, LapsComplete: 16 }] };
+
+    // The crossing that completed lap 16 is recorded as lap 17's start, at 51 000.
+    expect(readout(lapStarts(17), over, 52_000)).toBe("16/16");
+    expect(readout(lapStarts(17), over, 16_000)).toBe("5/16");
+  });
+});

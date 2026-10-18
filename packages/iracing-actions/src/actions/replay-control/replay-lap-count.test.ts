@@ -56,6 +56,31 @@ describe("sessionLapCount", () => {
     ).toBe(9);
   });
 
+  it("counts the lap under way: the larger of the car's completed laps and the highest recorded lap", () => {
+    // Live in a timed session, car 4 on lap 13 with 12 complete: 13, with a results row or without one.
+    const live = (rows: unknown) => info({ SessionLaps: "unlimited", ResultsOfficial: 0, ResultsPositions: rows });
+
+    expect(sessionLapCount(live([{ CarIdx: 4, LapsComplete: 12 }]), 0, 4, 13)).toBe(13);
+    expect(sessionLapCount(live(null), 0, 4, 13)).toBe(13);
+    // A record that holds fewer laps than the results (the plugin started late) takes the results'.
+    expect(sessionLapCount(live([{ CarIdx: 4, LapsComplete: 12 }]), 0, 4, 5)).toBe(12);
+  });
+
+  it("once the results are official, is the car's completed laps: the finish crossing's lap start is not a lap", () => {
+    const over = (rows: unknown, official: unknown = 1) =>
+      info({ SessionLaps: "unlimited", ResultsOfficial: official, ResultsPositions: rows });
+
+    // Sixteen complete, and the crossing that completed the sixteenth recorded as lap 17's start.
+    expect(sessionLapCount(over([{ CarIdx: 4, LapsComplete: 16 }]), 0, 4, 17)).toBe(16);
+    expect(sessionLapCount(over([{ CarIdx: 4, LapsComplete: 16 }], "1"), 0, 4, 17)).toBe(16);
+    // A car that completed none has no laps to count.
+    expect(sessionLapCount(over([{ CarIdx: 4, LapsComplete: 0 }]), 0, 4, 1)).toBeNull();
+    // No row for the car: the record is all there is.
+    expect(sessionLapCount(over([{ CarIdx: 7, LapsComplete: 16 }]), 0, 4, 9)).toBe(9);
+    // Not official yet: the lap under way counts.
+    expect(sessionLapCount(over([{ CarIdx: 4, LapsComplete: 16 }], 0), 0, 4, 17)).toBe(17);
+  });
+
   it("is null with none of the three", () => {
     expect(sessionLapCount(info({ SessionLaps: "unlimited" }), 0, 4, null)).toBeNull();
     expect(sessionLapCount(info({ SessionLaps: "unlimited" }), 0, 4, 0)).toBeNull();
@@ -74,6 +99,9 @@ describe("formatLapOfLaps", () => {
     [12, null, "12"],
     [null, 25, "--/25"],
     [null, null, "--"],
+    // Never past the count: a finisher's cool-down lap is the recorder's lap 26 of 25.
+    [26, 25, "25/25"],
+    [25, 25, "25/25"],
   ])("formats lap %s of %s as %j", (lap, laps, expected) => {
     expect(formatLapOfLaps(lap, laps)).toBe(expected);
   });
