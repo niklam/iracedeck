@@ -2,8 +2,9 @@ import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { describe, expect, it, vi } from "vitest";
 
 import { ReplayControlDialSettings } from "./replay-control-dial-settings.js";
-import { recordedSessionAt, sessionMode, sessionName } from "./replay-control-session-mode.js";
-import { fakeStepIo, recordSource, sessionsAt } from "./replay-dial-step-io.test-support.js";
+import { sessionMode, sessionName } from "./replay-control-session-mode.js";
+import { recordedSessionAt } from "./replay-dial-lap-readout.js";
+import { fakeStepIo, lapsAt, recordSource, sessionsAt } from "./replay-dial-step-io.test-support.js";
 import { listRecord } from "./replay-record-step.js";
 
 vi.mock("@iracedeck/settings", () => ({ getGlobalSettings: vi.fn(() => ({})) }));
@@ -30,6 +31,8 @@ const SESSION_INFO = {
 };
 
 const SESSIONS = sessionsAt([0, 60_000, 150_000]);
+
+const RACE = SESSION_INFO.SessionInfo.Sessions[2];
 
 describe("sessionName", () => {
   it("is the session's type, upper-cased", () => {
@@ -74,7 +77,37 @@ describe("sessionMode view", () => {
       ReplaySessionNum: 1,
     } as TelemetryData);
 
-    expect(sessionMode.view(dial, io)).toMatchObject({ value: "OPEN QUALIFY", caption: "PAUSED" });
+    // No record, and no laps in the session info: the lap is unknown and there is no count.
+    expect(sessionMode.view(dial, io)).toMatchObject({ value: "OPEN QUALIFY", caption: "--" });
+  });
+
+  it("captions the viewed car's lap over the laps in the session, as Lap's value", () => {
+    const io = fakeStepIo();
+
+    io.sessionInfo.mockReturnValue({
+      SessionInfo: { Sessions: [...SESSION_INFO.SessionInfo.Sessions.slice(0, 2), { ...RACE, SessionLaps: 25 }] },
+    });
+    // Car 4's laps 1-3 of the race (session 2), the line crossed at 160 000, 163 000 and 166 000.
+    io.recordSource.mockReturnValue(recordSource(lapsAt([160_000, 163_000, 166_000]), SESSIONS));
+    io.telemetry.mockReturnValue({ IsReplayPlaying: true, ReplaySessionNum: 2, CamCarIdx: 4 } as TelemetryData);
+    io.position.mockReturnValue({ frame: 164_000, time: 2_733, endFrame: undefined, seeking: false });
+
+    expect(sessionMode.view(dial, io)).toMatchObject({ value: "RACE", caption: "2/25" });
+
+    // Without the record the lap on screen is not known.
+    io.recordSource.mockReturnValue(recordSource(null, SESSIONS));
+    expect(sessionMode.view(dial, io).caption).toBe("--/25");
+  });
+
+  it("shows the search's count in the caption while it works for sessions, and keeps it on a tick read mid-seek", () => {
+    const io = fakeStepIo();
+
+    io.pendingSearch.mockImplementation((target) => (target === "session" ? -2 : null));
+    expect(sessionMode.view(dial, io).caption).toBe("-2");
+
+    io.pendingSearch.mockReturnValue(null);
+    io.position.mockReturnValue(null);
+    expect(sessionMode.view(dial, io).caption).toBeNull();
   });
 
   it("shows the session the record puts the pending landing in while a jump is under way", () => {

@@ -8,12 +8,17 @@
  * The box shows the cursor's session by its type from the session info,
  * `SessionInfo.Sessions[ReplaySessionNum].SessionType` upper-cased (`RACE`),
  * which the box fits. While a jump is under way the reading is not the
- * replay's, so it shows the session the record says the jump lands in.
+ * replay's, so it shows the session the record says the jump lands in. The
+ * caption is the viewed car's lap over the laps in that session, `12/25`, as
+ * Lap's value (`replay-dial-lap-readout.ts`), which the paced search's count
+ * takes while it works for sessions (the maintainer's second test round,
+ * 2026-10-18).
  */
 import type { ReplayPosition } from "../../shared/replay-position-state.js";
 import type { ReplayDialStepIo } from "./replay-control-dial-mode.js";
 import { createRecordStepMode } from "./replay-control-step-mode.js";
-import { RECORD_STEPS, type RecordListing } from "./replay-record-step.js";
+import { lapOfLapsReadout, recordedSessionAt } from "./replay-dial-lap-readout.js";
+import { listRecord, RECORD_STEPS, type RecordListing } from "./replay-record-step.js";
 
 /** The replay-cursor owner every Session turn's jump and search goes out under. */
 const CURSOR_OWNER = "dial-session";
@@ -32,28 +37,6 @@ export function sessionName(sessionInfo: unknown, sessionNum: number): string {
   const type = sessions.find((session) => session?.SessionNum === sessionNum)?.SessionType;
 
   return typeof type === "string" && type.trim() !== "" ? type.trim().toUpperCase() : `S${sessionNum}`;
-}
-
-/**
- * @internal Exported for testing
- *
- * The session the record says `frame` is in, from the session list already
- * read (`listRecord("session", source)`): the last recorded session start at
- * or before it. Null when the list could not be read or holds no start by
- * then.
- */
-export function recordedSessionAt(frame: number, listing: RecordListing): number | null {
-  if (!listing.hit || listing.list !== "session") return null;
-
-  let sessionNum: number | null = null;
-
-  for (const start of listing.entries) {
-    if (start.frame > frame) break;
-
-    sessionNum = start.sessionNum;
-  }
-
-  return sessionNum;
 }
 
 /**
@@ -84,4 +67,6 @@ export const sessionMode = createRecordStepMode({
   logLabel: "Dial session",
   steps: { next: RECORD_STEPS["next-session"], previous: RECORD_STEPS["prev-session"] },
   value: sessionValue,
+  // The camera car's lap list, read only for the caption: the mode's own list is the sessions.
+  caption: (io, position, listing) => lapOfLapsReadout(io, position, listRecord("lap", io.recordSource()), listing),
 });

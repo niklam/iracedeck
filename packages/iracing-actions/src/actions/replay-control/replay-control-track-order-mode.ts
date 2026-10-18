@@ -30,13 +30,41 @@
  *
  * It sends no replay command, so it passes no origin token and draws nothing
  * of #1437's.
+ *
+ * **The box** (the maintainer's second test round, 2026-10-18) shows the
+ * viewed car's number, `#12`, and the numbers of the cars on track behind and
+ * ahead of it, as Camera Controls' Car # mode flanks its car — only where the
+ * per-car track positions are the replay's own: in a saved replay, and at the
+ * live edge of an in-session replay. Scrubbed back in an in-session replay
+ * those arrays read the live field (#1281's capture), so there the number
+ * shows alone. The neighbours are a preview: iRacing's binding picks the car,
+ * and the pace car is a stop of its own (#1277). The shared dash box has no
+ * flank slots beside its value, so they are drawn as its caption, behind on
+ * the left and ahead on the right; with none the caption is blank rather than
+ * absent, so the number keeps the size and place the other modes' value has.
  */
-import { getCarNumberFromSessionInfo } from "@iracedeck/iracing-sdk";
+import { getCarNumberFromSessionInfo, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 import { CAR_CYCLE_BINDING_KEY_LIST, CAR_CYCLE_BINDING_KEYS } from "../../shared/car-cycle-bindings.js";
 import type { ReplayDialMode, ReplayDialStepIo } from "./replay-control-dial-mode.js";
+import { BLANK_CAPTION } from "./replay-control-step-mode.js";
 import { NO_CAR_IDX } from "./replay-record-step.js";
-import { formatSpeedDisplay } from "./replay-speed-format.js";
+
+/**
+ * How far from the end of the tape, in frames, an in-session replay's cursor
+ * may sit and still read the live field as its own — 2 s. The same bound as
+ * sim-events-iracing's `LIVE_EDGE_MAX_FRAMES` (`diff/replay-record-gate.ts`,
+ * #1426), which its package does not export: measured at the edge,
+ * `ReplayFrameNumEnd` reads 1, and the nearest scrubbed-back reading measured
+ * is 1201.
+ */
+export const TRACK_ORDER_LIVE_EDGE_MAX_FRAMES = 120;
+
+/** `CarIdxTrackSurface`'s `irsdk_NotInWorld`: a car not on track (in the garage, or not there at all). */
+const NOT_IN_WORLD = -1;
+
+/** The gap between the two neighbours in the caption: no-break spaces, which SVG does not collapse. */
+const NEIGHBOUR_GAP = "\u00a0".repeat(10);
 
 /** The name a Track Order turn cancels a walk under. */
 const CURSOR_OWNER = "dial-track-order";
@@ -196,19 +224,119 @@ export const trackOrderMode: ReplayDialMode<ReplayDialStepIo> = {
   },
 
   view(_dial, io) {
-    const live = io.liveSpeed();
-    const carIdx = io.telemetry()?.CamCarIdx;
+    const position = io.position();
+    const telemetry = io.telemetry();
+    const carIdx = telemetry?.CamCarIdx;
+    const sessionInfo = io.sessionInfo();
     const number =
       typeof carIdx === "number" && carIdx >= 0 && carIdx !== NO_CAR_IDX
-        ? getCarNumberFromSessionInfo(io.sessionInfo(), carIdx)
+        ? getCarNumberFromSessionInfo(sessionInfo, carIdx)
         : null;
 
+    // A tick read mid-seek is not the replay's: the box keeps the car and the
+    // neighbours it showed (null). While a jump is under way the arrays are
+    // not the replay's either, so the number shows alone.
+    let caption: string | null = null;
+
+    if (position !== null) {
+      const flanks =
+        number !== null && !position.seeking && trackPositionsTrusted(io, telemetry)
+          ? neighbourCaption(telemetry, carIdx as number, sessionInfo)
+          : null;
+
+      caption = flanks ?? BLANK_CAPTION;
+    }
+
     return {
-      // A tick read mid-seek is not the replay's: the box keeps the car it showed.
-      value: io.position() === null ? null : number === null ? "" : `#${number}`,
-      caption: formatSpeedDisplay(live.speed, live.slowMotion),
+      value: position === null ? null : number === null ? "" : `#${number}`,
+      caption,
       sides: { left: true, right: true },
       bindingMissing: io.isBindingMissing(CAR_CYCLE_BINDING_KEY_LIST),
     };
   },
 };
+
+/**
+ * @internal Exported for testing
+ *
+ * Whether the per-car track positions are the replay's own: in a saved
+ * replay always; in an in-session replay only at the live edge, the cursor
+ * within {@link TRACK_ORDER_LIVE_EDGE_MAX_FRAMES} of the end of the tape
+ * (`ReplayFrameNumEnd`). Scrubbed back further, they read the live field.
+ */
+export function trackPositionsTrusted(
+  io: Pick<ReplayDialStepIo, "isSavedReplay">,
+  telemetry: TelemetryData | null,
+): boolean {
+  if (io.isSavedReplay()) return true;
+
+  const toEnd = telemetry?.ReplayFrameNumEnd;
+
+  return typeof toEnd === "number" && toEnd >= 0 && toEnd <= TRACK_ORDER_LIVE_EDGE_MAX_FRAMES;
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * The cars immediately ahead of and behind `carIdx` on track, by
+ * `CarIdxLapDistPct` round the lap (wrapping at the line): ahead is the
+ * smallest distance forward to another car, behind the smallest distance
+ * back. A car counts when `isCandidate` accepts it, it is in the world
+ * (`CarIdxTrackSurface` set and not `NotInWorld`) and its lap distance is a
+ * fraction of the lap; the camera car must be in the world too. Null either
+ * way when there is no other car (with one, it is both), or the camera car is
+ * not on track. A tie goes to the lower index.
+ */
+export function trackOrderNeighbours(
+  carIdx: number,
+  lapDistPct: readonly number[] | undefined,
+  trackSurface: readonly number[] | undefined,
+  isCandidate: (idx: number) => boolean = () => true,
+): { ahead: number | null; behind: number | null } {
+  const onTrack = (idx: number): boolean => {
+    const pct = lapDistPct?.[idx];
+    const surface = trackSurface?.[idx];
+
+    return typeof pct === "number" && pct >= 0 && pct <= 1 && typeof surface === "number" && surface !== NOT_IN_WORLD;
+  };
+
+  if (!lapDistPct || !onTrack(carIdx)) return { ahead: null, behind: null };
+
+  const own = lapDistPct[carIdx];
+  let ahead: { idx: number; gap: number } | null = null;
+  let behind: { idx: number; gap: number } | null = null;
+
+  for (let idx = 0; idx < lapDistPct.length; idx++) {
+    if (idx === carIdx || !onTrack(idx) || !isCandidate(idx)) continue;
+
+    const forward = (((lapDistPct[idx] - own) % 1) + 1) % 1;
+    const back = (((own - lapDistPct[idx]) % 1) + 1) % 1;
+
+    if (ahead === null || forward < ahead.gap) ahead = { idx, gap: forward };
+
+    if (behind === null || back < behind.gap) behind = { idx, gap: back };
+  }
+
+  return { ahead: ahead?.idx ?? null, behind: behind?.idx ?? null };
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * The caption that flanks the car: the number of the car behind on the left
+ * and of the car ahead on the right, a gap apart. Only cars with a number in
+ * the session info count. Null when there is no other such car on track.
+ */
+export function neighbourCaption(telemetry: TelemetryData | null, carIdx: number, sessionInfo: unknown): string | null {
+  const numberOf = (idx: number): string | null => getCarNumberFromSessionInfo(sessionInfo, idx);
+  const { ahead, behind } = trackOrderNeighbours(
+    carIdx,
+    telemetry?.CarIdxLapDistPct,
+    telemetry?.CarIdxTrackSurface,
+    (idx) => numberOf(idx) !== null,
+  );
+
+  if (ahead === null || behind === null) return null;
+
+  return `#${numberOf(behind)}${NEIGHBOUR_GAP}#${numberOf(ahead)}`;
+}

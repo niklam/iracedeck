@@ -339,15 +339,16 @@ interface ReplayControlDialContext {
   /** Signature of the last frame pushed; a render whose signature matches pushes nothing. */
   lastRenderSig: string | null;
   /**
-   * The value and side marks the box last showed in a replay, kept for a tick
-   * whose reading cannot say (a mode's view returns a null value mid-seek,
-   * #801), which leaves them as they were. Null before any, and after the
-   * mode changes.
+   * The value, side marks and caption the box last showed in a replay, kept
+   * for a tick whose reading cannot say (a mode's view returns a null value or
+   * caption mid-seek, #801), which leaves them as they were. Null before any,
+   * and after the mode changes.
    */
   shownView: {
     readonly mode: ReplayControlDialMode;
     readonly value: string;
     readonly sides: ReplayDialModeView["sides"];
+    readonly caption: string;
   } | null;
   /**
    * Signature of a built frame waiting in the throttle, or null. While one
@@ -739,6 +740,7 @@ export class ReplayControlDialSurface {
       waitForJumpsToSettle: () =>
         waitForReplaySettled({ jumpsOnly: true, reads: 3, timeoutMs: REPLAY_JUMP_MAX_WAIT_MS }),
       isStillOnScreen: () => isCurrent() && this.isReplayOnScreen(),
+      isSavedReplay: () => host.replayState(Date.now()).replayOnlySession,
     };
   }
 
@@ -1153,24 +1155,21 @@ export class ReplayControlDialSurface {
     }
 
     const view = mode.view(ctx.dial, ctx.io);
-    let { value, sides } = view;
+    // A tick read mid-seek (#801): the box keeps what this mode last showed,
+    // the value with its side marks, and the caption, each where it cannot say.
+    const shown = ctx.shownView?.mode === ctx.dial.mode ? ctx.shownView : null;
+    const value = view.value ?? shown?.value ?? "";
+    const sides = view.value === null ? (shown?.sides ?? view.sides) : view.sides;
+    const caption = view.caption ?? shown?.caption ?? "";
 
-    if (value === null) {
-      // A tick read mid-seek (#801): the box keeps what this mode last showed.
-      const shown = ctx.shownView?.mode === ctx.dial.mode ? ctx.shownView : null;
-
-      value = shown?.value ?? "";
-      sides = shown?.sides ?? sides;
-    } else {
-      ctx.shownView = { mode: ctx.dial.mode, value, sides };
-    }
+    ctx.shownView = { mode: ctx.dial.mode, value, sides, caption };
 
     return {
       abbr: mode.label,
       value,
       colors,
       sideMarker: sides,
-      caption: view.caption,
+      caption,
       dimmed: false,
       pending: ctx.preview,
       ...(view.bindingMissing === true ? { bindingMissing: true } : {}),

@@ -21,15 +21,13 @@ import type { ReplayPosition } from "../../shared/replay-position-state.js";
 import type { ReplayDialMode, ReplayDialStepIo } from "./replay-control-dial-mode.js";
 import { listRecord, type RecordListing, type RecordStepSpec, stepRecordListing } from "./replay-record-step.js";
 import type { ReplaySearchTarget } from "./replay-search-queue.js";
-import { formatSpeedDisplay } from "./replay-speed-format.js";
 
 /**
  * @internal Exported for testing
  *
  * Formats `ReplaySessionTime` (seconds) as `m:ss`, the replay time a stepping
- * mode shows where it has nothing better: Incident always, Lap without a
- * recorded lap at the cursor. Minutes are not folded into hours; a missing,
- * non-finite or negative time reads as nothing.
+ * mode shows: Incident's value and Lap's caption. Minutes are not folded into
+ * hours; a missing, non-finite or negative time reads as nothing.
  */
 export function formatReplayClock(seconds: number | undefined): string {
   if (seconds === undefined || !Number.isFinite(seconds) || seconds < 0) return "";
@@ -40,21 +38,29 @@ export function formatReplayClock(seconds: number | undefined): string {
 }
 
 /**
+ * A caption that draws nothing but still counts as one (#801): the box fits
+ * and places its value by whether a caption is set (`caption !== ""`), so a
+ * mode whose caption comes and goes — Incident's search count, Track Order's
+ * neighbours — passes this for none, and its value keeps the size and place
+ * it has in the other stepping modes rather than jumping when the caption
+ * appears. A no-break space, which SVG does not collapse to nothing.
+ */
+export const BLANK_CAPTION = "\u00a0";
+
+/**
  * @internal Exported for testing
  *
  * The caption of a stepping mode: what the paced search has left while it
- * works for `target`, `+3` or `-2`, and otherwise the play state, as Frame Jog
- * shows it (`PAUSED` or the live speed). A record jump has no count: it is one
- * step however far it goes.
+ * works for `target`, `+3` or `-2`, and otherwise `otherwise`, the mode's own
+ * caption (null keeps what the box showed, as a null value does). A record
+ * jump has no count: it is one step however far it goes.
  */
-export function stepCaption(io: ReplayDialStepIo, target: ReplaySearchTarget): string {
+export function stepCaption(io: ReplayDialStepIo, target: ReplaySearchTarget, otherwise: string | null): string | null {
   const pending = io.pendingSearch(target);
 
   if (pending !== null && pending !== 0) return pending > 0 ? `+${pending}` : `${pending}`;
 
-  const live = io.liveSpeed();
-
-  return formatSpeedDisplay(live.speed, live.slowMotion);
+  return otherwise;
 }
 
 /** Where a turn steps through the record, each way. */
@@ -100,6 +106,12 @@ export interface RecordStepModeConfig {
   readonly steps: RecordStepPair;
   /** The value slot, from the mode's list read once for the view; null when this reading cannot say (a tick read mid-seek). */
   value(io: ReplayDialStepIo, position: ReplayPosition | null, listing: RecordListing): string | null;
+  /**
+   * The caption while the paced search is not counting for this mode, from the
+   * same list; null when this reading cannot say, and the box keeps what it
+   * showed.
+   */
+  caption(io: ReplayDialStepIo, position: ReplayPosition | null, listing: RecordListing): string | null;
 }
 
 /**
@@ -156,7 +168,7 @@ export function createRecordStepMode(config: RecordStepModeConfig): ReplayDialMo
 
       return {
         value: config.value(io, position, listing),
-        caption: stepCaption(io, target),
+        caption: stepCaption(io, target, config.caption(io, position, listing)),
         sides: recordSides(position, listing, steps),
       };
     },

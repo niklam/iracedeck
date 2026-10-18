@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ReplayControlDialSettings } from "./replay-control-dial-settings.js";
 import { lapMode } from "./replay-control-lap-mode.js";
 import { sessionMode } from "./replay-control-session-mode.js";
-import { formatReplayClock, recordSides, stepCaption } from "./replay-control-step-mode.js";
+import { BLANK_CAPTION, formatReplayClock, recordSides, stepCaption } from "./replay-control-step-mode.js";
 import { fakeStepIo, lapsAt, recordSource, sessionsAt } from "./replay-dial-step-io.test-support.js";
 import { listRecord, RECORD_STEPS } from "./replay-record-step.js";
 
@@ -38,33 +38,39 @@ describe("formatReplayClock", () => {
 });
 
 describe("stepCaption", () => {
-  it("shows the play state with no run for the target", () => {
+  it("shows the mode's own caption with no run for the target", () => {
     const io = fakeStepIo();
 
-    expect(stepCaption(io, "lap")).toBe("PAUSED");
-
-    io.liveSpeed.mockReturnValue({ speed: 2, slowMotion: false });
-    expect(stepCaption(io, "lap")).toBe("2x");
+    expect(stepCaption(io, "lap", "1:23")).toBe("1:23");
+    expect(stepCaption(io, "lap", null)).toBeNull();
   });
 
   it.each<[number, string]>([
     [3, "+3"],
     [-2, "-2"],
-  ])("shows what the search has left for the target, %i as %j", (count, expected) => {
+  ])("shows what the search has left for the target, %i as %j, in place of the mode's own", (count, expected) => {
     const io = fakeStepIo();
 
     io.pendingSearch.mockImplementation((target) => (target === "incident" ? count : null));
 
-    expect(stepCaption(io, "incident")).toBe(expected);
-    expect(stepCaption(io, "lap")).toBe("PAUSED");
+    expect(stepCaption(io, "incident", BLANK_CAPTION)).toBe(expected);
+    // Even where the mode's own caption could not say: the count is progress.
+    expect(stepCaption(io, "incident", null)).toBe(expected);
+    expect(stepCaption(io, "lap", "1:23")).toBe("1:23");
   });
 
-  it("shows the play state once nothing is left after the search on its way", () => {
+  it("shows the mode's own caption once nothing is left after the search on its way", () => {
     const io = fakeStepIo();
 
     io.pendingSearch.mockReturnValue(0);
 
-    expect(stepCaption(io, "lap")).toBe("PAUSED");
+    expect(stepCaption(io, "lap", "1:23")).toBe("1:23");
+  });
+
+  it("a blank caption draws nothing but counts as a caption, so the value keeps its place", () => {
+    expect(BLANK_CAPTION).not.toBe("");
+    expect(BLANK_CAPTION.trim()).toBe("");
+    expect(BLANK_CAPTION).toBe("\u00a0");
   });
 });
 
@@ -123,26 +129,31 @@ describe("a view reads the record once", () => {
     io.telemetry.mockReturnValue({ IsReplayPlaying: true, ReplaySessionNum: 2 } as TelemetryData);
     io.position.mockReturnValue(at(54_000, seeking));
 
-    expect(lapMode.view(dial, io)).toMatchObject({ value: "L2", sides: { left: true, right: true } });
+    // Lap 2 of the three the record holds for the car in session 2.
+    expect(lapMode.view(dial, io)).toMatchObject({ value: "2/3", sides: { left: true, right: true } });
     expect(listLapStarts).toHaveBeenCalledTimes(1);
     // The session on screen: the replay's own reading, or while a jump is under
     // way the record's session at the landing, read once.
     expect(listSessions).toHaveBeenCalledTimes(seeking ? 1 : 0);
   });
 
-  it.each([false, true])("Session: one session listing for the value and both side marks (seeking: %s)", (seeking) => {
-    const io = fakeStepIo();
-    const source = recordSource(lapsAt([50_000]), sessionsAt([0, 40_000, 90_000]));
-    const listLapStarts = vi.spyOn(source.store!.laps, "listLapStarts");
-    const listSessions = vi.spyOn(source.store!.sessions, "list");
+  it.each([false, true])(
+    "Session: one session listing for the value, both side marks and the caption's session, one lap listing for the caption (seeking: %s)",
+    (seeking) => {
+      const io = fakeStepIo();
+      const source = recordSource(lapsAt([50_000]), sessionsAt([0, 40_000, 90_000]));
+      const listLapStarts = vi.spyOn(source.store!.laps, "listLapStarts");
+      const listSessions = vi.spyOn(source.store!.sessions, "list");
 
-    io.recordSource.mockReturnValue(source);
-    io.position.mockReturnValue(at(54_000, seeking));
+      io.recordSource.mockReturnValue(source);
+      io.position.mockReturnValue(at(54_000, seeking));
 
-    expect(sessionMode.view(dial, io).sides).toEqual({ left: true, right: true });
-    expect(listSessions).toHaveBeenCalledTimes(1);
-    expect(listLapStarts).not.toHaveBeenCalled();
-  });
+      expect(sessionMode.view(dial, io).sides).toEqual({ left: true, right: true });
+      expect(listSessions).toHaveBeenCalledTimes(1);
+      // The caption is the viewed car's lap, from its lap list.
+      expect(listLapStarts).toHaveBeenCalledTimes(1);
+    },
+  );
 });
 
 describe.each([

@@ -11,9 +11,14 @@
  * so a detent is one of iRacing's own steps, as the key is today. #1426
  * records incidents; stepping from the record is its follow-up's, for the keys
  * and the dial together.
+ *
+ * The box shows the replay time, `m:ss`, and no caption but the paced
+ * search's count while it works for incidents (the maintainer's second test
+ * round, 2026-10-18). With no count the caption is blank rather than absent,
+ * so the time keeps its size and place when the count comes and goes.
  */
 import type { ReplayDialMode, ReplayDialStepIo } from "./replay-control-dial-mode.js";
-import { formatReplayClock, stepCaption } from "./replay-control-step-mode.js";
+import { BLANK_CAPTION, formatReplayClock, stepCaption } from "./replay-control-step-mode.js";
 
 /** The replay-cursor owner every Incident turn's searches go out under. */
 const CURSOR_OWNER = "dial-incident";
@@ -36,7 +41,7 @@ export const incidentMode: ReplayDialMode<ReplayDialStepIo> = {
       // The position's time: a pending target's while a jump is under way, where
       // telemetry reads 0; null on a tick read mid-seek, and the box keeps its value.
       value: position === null ? null : formatReplayClock(position.time),
-      caption: stepCaption(io, "incident"),
+      caption: stepCaption(io, "incident", BLANK_CAPTION),
       sides: { left: true, right: true },
     };
   },

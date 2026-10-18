@@ -163,6 +163,12 @@ export interface ReplayDialStepIo extends ReplayDialModeIo {
   waitForJumpsToSettle(): Promise<ReplaySettledOutcome>;
   /** Whether the dial this `io` was handed for is still on screen, with a replay to act on. */
   isStillOnScreen(): boolean;
+  /**
+   * Whether the loaded session is a saved replay (`WeekendInfo.SimMode`
+   * "replay", the controller's sticky answer, #604): there the per-car
+   * telemetry arrays are the replay's own wherever the cursor is.
+   */
+  isSavedReplay(): boolean;
 }
 
 /** What the dash box reads in a mode, under the mode's label. All of it goes into the displayed signature. */
@@ -173,8 +179,12 @@ export interface ReplayDialModeView {
    * last drew for the dial (#801).
    */
   value: string | null;
-  /** The small line along the bottom; empty for none. */
-  caption: string;
+  /**
+   * The small line along the bottom; empty for none. Null when this reading
+   * cannot say — a tick read mid-seek — and the box keeps the caption it last
+   * drew for the dial, as it keeps a null value (#801).
+   */
+  caption: string | null;
   /** Lit where a turn that way would do something. */
   sides: DialSideMarks;
   /** Whether a key binding the mode taps is unset: the box draws the missing-binding warning (#612). */

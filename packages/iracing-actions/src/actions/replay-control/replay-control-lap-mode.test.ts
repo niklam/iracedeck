@@ -3,7 +3,9 @@ import type { LapStartListEntry } from "@iracedeck/replay-store";
 import { describe, expect, it, vi } from "vitest";
 
 import { ReplayControlDialSettings } from "./replay-control-dial-settings.js";
-import { lapMode, recordedLapAt } from "./replay-control-lap-mode.js";
+import { lapMode } from "./replay-control-lap-mode.js";
+import { BLANK_CAPTION } from "./replay-control-step-mode.js";
+import { recordedLapAt, recordedMaxLap } from "./replay-dial-lap-readout.js";
 import { fakeStepIo, lapsAt, recordSource, sessionsAt } from "./replay-dial-step-io.test-support.js";
 import { listRecord } from "./replay-record-step.js";
 
@@ -74,81 +76,177 @@ describe("recordedLapAt", () => {
   });
 });
 
+describe("recordedMaxLap", () => {
+  it("is the highest lap the record holds for the car in the session", () => {
+    const listing = listRecord("lap", recordSource(QUALIFYING_THEN_RACE, null));
+
+    expect(recordedMaxLap(listing, 1, undefined)).toBe(2);
+    expect(recordedMaxLap(listing, 2, undefined)).toBe(1);
+    expect(recordedMaxLap(listing, 0, undefined)).toBeNull();
+  });
+
+  it("counts only the instance of the session it is given, so a restarted event's laps do not mix", () => {
+    const listing = listRecord(
+      "lap",
+      recordSource(
+        [
+          { frame: 1_000, lap: 1, sessionNum: 2, sessionUniqueId: 1 },
+          { frame: 2_000, lap: 2, sessionNum: 2, sessionUniqueId: 1 },
+          { frame: 3_000, lap: 3, sessionNum: 2, sessionUniqueId: 1 },
+          { frame: 9_000, lap: 1, sessionNum: 2, sessionUniqueId: 5 },
+        ],
+        null,
+      ),
+    );
+
+    expect(recordedMaxLap(listing, 2, 5)).toBe(1);
+    expect(recordedMaxLap(listing, 2, 1)).toBe(3);
+  });
+
+  it("is null when the list could not be read", () => {
+    expect(recordedMaxLap(listRecord("lap", recordSource(null, null)), 2, undefined)).toBeNull();
+    expect(recordedMaxLap(listRecord("session", recordSource(null, SESSIONS)), 2, undefined)).toBeNull();
+  });
+});
+
 describe("lapMode view", () => {
-  it("shows the viewed car's lap from the record at the cursor", () => {
+  /** Session 2 scheduled for 25 laps; sessions 0 and 1 unlimited, with car 4's results in session 1. */
+  const SESSION_INFO = {
+    SessionInfo: {
+      Sessions: [
+        { SessionNum: 0, SessionLaps: "unlimited", ResultsPositions: null },
+        { SessionNum: 1, SessionLaps: "unlimited", ResultsPositions: [{ CarIdx: 4, LapsComplete: 9 }] },
+        { SessionNum: 2, SessionLaps: 25 },
+      ],
+    },
+  };
+
+  /** Telemetry on the replay's own reading of session `sessionNum`, the camera on car 4. */
+  function onCar4(sessionNum: number): TelemetryData {
+    return { ...onSession(sessionNum), CamCarIdx: 4 } as TelemetryData;
+  }
+
+  it("shows the viewed car's lap from the record over the session's laps, and the replay time beneath", () => {
     const io = fakeStepIo();
 
     io.recordSource.mockReturnValue(recordSource(LAPS, null));
-    io.telemetry.mockReturnValue(onSession(2));
+    io.sessionInfo.mockReturnValue(SESSION_INFO);
+    io.telemetry.mockReturnValue(onCar4(2));
     io.position.mockReturnValue({ frame: 57_000, time: 950, endFrame: undefined, seeking: false });
 
-    expect(lapMode.view(dial, io)).toMatchObject({ value: "L3", caption: "PAUSED" });
+    expect(lapMode.view(dial, io)).toMatchObject({ value: "3/25", caption: "15:50" });
   });
 
-  it("shows the lap at the pending landing while a jump is under way", () => {
+  it("counts an unlimited session's laps from the car's results, else from the record, else not at all", () => {
+    const io = fakeStepIo();
+
+    io.recordSource.mockReturnValue(recordSource(LAPS, null));
+    io.telemetry.mockReturnValue(onCar4(2));
+    io.position.mockReturnValue({ frame: 57_000, time: 950, endFrame: undefined, seeking: false });
+
+    // Session 2 unlimited, with car 4 in its results: the laps it completed.
+    io.sessionInfo.mockReturnValue({
+      SessionInfo: {
+        Sessions: [{ SessionNum: 2, SessionLaps: "unlimited", ResultsPositions: [{ CarIdx: 4, LapsComplete: 7 }] }],
+      },
+    });
+    expect(lapMode.view(dial, io).value).toBe("3/7");
+
+    // No results yet: the highest lap the record holds for the car in it.
+    io.sessionInfo.mockReturnValue({ SessionInfo: { Sessions: [{ SessionNum: 2, SessionLaps: "unlimited" }] } });
+    expect(lapMode.view(dial, io).value).toBe("3/4");
+
+    // No record either: no denominator, and the lap is unknown.
+    io.recordSource.mockReturnValue(recordSource(null, null));
+    expect(lapMode.view(dial, io).value).toBe("--");
+  });
+
+  it("reads --/25 without the record, the lap on screen being unknown", () => {
+    const io = fakeStepIo();
+
+    io.sessionInfo.mockReturnValue(SESSION_INFO);
+    io.telemetry.mockReturnValue(onCar4(2));
+    io.position.mockReturnValue({ frame: 57_000, time: 950, endFrame: undefined, seeking: false });
+
+    expect(lapMode.view(dial, io)).toMatchObject({ value: "--/25", caption: "15:50" });
+  });
+
+  it("shows the lap at the pending landing while a jump is under way, and the target's time beneath", () => {
     const io = fakeStepIo();
 
     io.recordSource.mockReturnValue(recordSource(LAPS, SESSIONS));
-    io.position.mockReturnValue({ frame: 59_000 - 60, time: undefined, endFrame: undefined, seeking: true });
+    io.sessionInfo.mockReturnValue(SESSION_INFO);
+    io.telemetry.mockReturnValue({ IsReplayPlaying: false, ReplayFrameNum: 0, CamCarIdx: 4 } as TelemetryData);
+    io.position.mockReturnValue({ frame: 59_000 - 60, time: 982, endFrame: undefined, seeking: true });
 
-    expect(lapMode.view(dial, io).value).toBe("L4");
+    expect(lapMode.view(dial, io)).toMatchObject({ value: "4/25", caption: "16:22" });
   });
 
-  it("shows the replay time, not an earlier session's lap, before the car's first lap of the session on screen", () => {
+  it("does not show an earlier session's lap before the car's first lap of the session on screen", () => {
     const io = fakeStepIo();
 
     io.recordSource.mockReturnValue(recordSource(QUALIFYING_THEN_RACE, SESSIONS));
-    io.telemetry.mockReturnValue(onSession(2));
+    io.sessionInfo.mockReturnValue(SESSION_INFO);
+    io.telemetry.mockReturnValue(onCar4(2));
     io.position.mockReturnValue({ frame: 45_000, time: 750, endFrame: undefined, seeking: false });
 
-    expect(lapMode.view(dial, io).value).toBe("12:30");
+    expect(lapMode.view(dial, io)).toMatchObject({ value: "--/25", caption: "12:30" });
 
     // Once it has crossed the line in the race, the race lap.
     io.position.mockReturnValue({ frame: 51_000, time: 850, endFrame: undefined, seeking: false });
 
-    expect(lapMode.view(dial, io).value).toBe("L1");
+    expect(lapMode.view(dial, io).value).toBe("1/25");
+  });
+
+  it("counts the record's laps of the session on screen only, not an earlier session's", () => {
+    const io = fakeStepIo();
+
+    io.recordSource.mockReturnValue(recordSource(QUALIFYING_THEN_RACE, SESSIONS));
+    io.telemetry.mockReturnValue(onCar4(1));
+    io.sessionInfo.mockReturnValue({ SessionInfo: { Sessions: [{ SessionNum: 1, SessionLaps: "unlimited" }] } });
+    io.position.mockReturnValue({ frame: 21_000, time: 350, endFrame: undefined, seeking: false });
+
+    // Qualifying lap 1 of the two the record holds there; the race lap is another session's.
+    expect(lapMode.view(dial, io).value).toBe("1/2");
   });
 
   it("judges a pending landing's session from the record, not the qualifying lap before it", () => {
     const io = fakeStepIo();
 
     io.recordSource.mockReturnValue(recordSource(QUALIFYING_THEN_RACE, SESSIONS));
+    io.sessionInfo.mockReturnValue(SESSION_INFO);
     io.position.mockReturnValue({ frame: 40_120, time: undefined, endFrame: undefined, seeking: true });
 
-    expect(lapMode.view(dial, io).value).toBe("");
+    expect(lapMode.view(dial, io).value).toBe("--/25");
   });
 
-  it("shows the replay time when the replay reads no session", () => {
+  it("reads -- when the replay reads no session, and a blank caption with no time to show", () => {
     const io = fakeStepIo();
 
     io.recordSource.mockReturnValue(recordSource(LAPS, null));
-    io.position.mockReturnValue({ frame: 57_000, time: 950, endFrame: undefined, seeking: false });
+    io.position.mockReturnValue({ frame: 57_000, time: undefined, endFrame: undefined, seeking: false });
 
-    expect(lapMode.view(dial, io).value).toBe("15:50");
+    expect(lapMode.view(dial, io)).toMatchObject({ value: "--", caption: BLANK_CAPTION });
   });
 
-  it("shows the replay time, m:ss, with no recorded lap for the car at the cursor", () => {
-    const io = fakeStepIo();
-
-    io.position.mockReturnValue({ frame: 5_000, time: 83.5, endFrame: undefined, seeking: false });
-
-    expect(lapMode.view(dial, io).value).toBe("1:23");
-  });
-
-  it("says nothing on a tick read mid-seek, so the box keeps what it showed", () => {
+  it("says nothing on a tick read mid-seek, value or caption, so the box keeps what it showed", () => {
     const io = fakeStepIo();
 
     io.position.mockReturnValue(null);
 
-    expect(lapMode.view(dial, io).value).toBeNull();
+    expect(lapMode.view(dial, io)).toMatchObject({ value: null, caption: null });
   });
 
-  it("shows the search's count in the caption while it works for laps", () => {
+  it("shows the search's count in the caption while it works for laps, in place of the time", () => {
     const io = fakeStepIo();
 
     io.pendingSearch.mockImplementation((target) => (target === "lap" ? -2 : null));
 
     expect(lapMode.view(dial, io).caption).toBe("-2");
+
+    io.pendingSearch.mockImplementation((target) => (target === "session" ? -2 : null));
+
+    expect(lapMode.view(dial, io).caption).toBe("1:23");
   });
 
   it("is labelled LAP and describes its turn", () => {

@@ -35,6 +35,7 @@ import { incidentMode } from "./replay-control-incident-mode.js";
 import { lapMode } from "./replay-control-lap-mode.js";
 import { sessionMode } from "./replay-control-session-mode.js";
 import { speedMode } from "./replay-control-speed-mode.js";
+import { BLANK_CAPTION } from "./replay-control-step-mode.js";
 import { _resetTrackOrderTap, trackOrderMode } from "./replay-control-track-order-mode.js";
 import type { RecordStepSource } from "./replay-record-step.js";
 import {
@@ -161,6 +162,8 @@ const env = {
   telemetry: null as TelemetryData | null,
   /** What the SDK's session info is. */
   sessionInfo: null as unknown,
+  /** Whether the loaded session is a saved replay (the controller's sticky `SimMode` answer). */
+  replayOnlySession: false,
 };
 
 /** A tick as the owning action hands it over, carrying `telemetry` (what a fresh read returns, unless given). */
@@ -186,7 +189,7 @@ const host = {
   replayState: vi.fn((nowMs: number) => ({
     inReplay: env.inReplay,
     frame: env.telemetry?.ReplayFrameNum ?? null,
-    replayOnlySession: false,
+    replayOnlySession: env.replayOnlySession,
     tickReplayPlaying: env.telemetry?.IsReplayPlaying === true,
     tickFrame: env.telemetry?.ReplayFrameNum ?? null,
     replaySeenAt: env.inReplay ? nowMs : null,
@@ -317,6 +320,7 @@ describe("ReplayControlDialSurface", () => {
     env.inReplay = true;
     env.telemetry = replayAt(speed(1));
     env.sessionInfo = null;
+    env.replayOnlySession = false;
     queue.turns.length = 0;
     queue.pending = null;
     queue.running = null;
@@ -2937,7 +2941,7 @@ describe("ReplayControlDialSurface", () => {
         expect(logger.error).not.toHaveBeenCalled();
         expect(logger.warn).not.toHaveBeenCalled();
         expect(host.setLocalSpeed).toHaveBeenLastCalledWith(0, false);
-        expect(shownValue(lastBox(ctx))).toBe("L3");
+        expect(shownValue(lastBox(ctx))).toBe("3/8");
       });
     });
 
@@ -3079,33 +3083,92 @@ describe("ReplayControlDialSurface", () => {
     });
 
     describe("the display", () => {
-      it("Lap shows the viewed car's lap from the record, and the replay time without one", async () => {
+      it("Lap shows the viewed car's lap from the record over the laps the record holds, and the replay time beneath", async () => {
         withRecord();
         const { ctx } = await dialIn("lap", pausedOn(57_000));
 
-        expect(shownValue(lastBox(ctx))).toBe("L3");
-        expect(shownCaption(lastBox(ctx))).toBe("PAUSED");
+        // The session info schedules no laps: the record's eight for car 4 in the race.
+        expect(shownValue(lastBox(ctx))).toBe("3/8");
+        expect(shownCaption(lastBox(ctx))).toBe("15:50");
 
+        // Without the record the lap on screen is not known, and nothing counts the laps.
         store.value = null;
         const other = dialContext("no-record");
         await dialIn("lap", pausedOn(5_010), other);
-        expect(shownValue(lastBox(other))).toBe("1:23");
+        expect(shownValue(lastBox(other))).toBe("--");
+        expect(shownCaption(lastBox(other))).toBe("1:23");
       });
 
-      it("Session shows the session's type, upper-cased", async () => {
-        const { ctx } = await dialIn("session", pausedOn(30_000, { ReplaySessionNum: 1 }));
+      it("Lap counts a session's scheduled laps over the record's", async () => {
+        withRecord();
+        const { surface, ctx } = await dialIn("lap", pausedOn(57_000));
+        expect(shownValue(lastBox(ctx))).toBe("3/8");
 
-        expect(shownValue(lastBox(ctx))).toBe("QUALIFY");
+        env.sessionInfo = {
+          ...SESSION_INFO,
+          SessionInfo: { Sessions: [{ SessionNum: 2, SessionType: "Race", SessionLaps: 25 }] },
+        };
+        surface.onTick(ctx.id, tickOf());
+        await settle();
+
+        expect(shownValue(lastBox(ctx))).toBe("3/25");
       });
 
-      it("Incident shows the replay time, Track Order the viewed car's number", async () => {
+      it("Session shows the session's type, upper-cased, and the viewed car's lap of the session beneath", async () => {
+        withRecord();
+        const { ctx } = await dialIn("session", pausedOn(57_000));
+
+        expect(shownValue(lastBox(ctx))).toBe("RACE");
+        expect(shownCaption(lastBox(ctx))).toBe("3/8");
+
+        const qualifying = dialContext("qualifying");
+        await dialIn("session", pausedOn(30_000, { ReplaySessionNum: 1 }), qualifying);
+        expect(shownValue(lastBox(qualifying))).toBe("QUALIFY");
+        // No lap of car 4's recorded in qualifying, and nothing to count its laps.
+        expect(shownCaption(lastBox(qualifying))).toBe("--");
+      });
+
+      it("Incident shows the replay time over a blank caption, Track Order the viewed car's number alone", async () => {
         const { ctx } = await dialIn("incident", pausedOn(3_600 * 60 + 5 * 60));
         const car = dialContext("track-order");
         await dialIn("track-order", pausedOn(600), car);
 
         expect(shownValue(lastBox(ctx))).toBe("60:05");
+        expect(shownCaption(lastBox(ctx))).toBe(BLANK_CAPTION);
         expect(shownValue(lastBox(car))).toBe("#12");
+        expect(shownCaption(lastBox(car))).toBe(BLANK_CAPTION);
         expect(sides(lastBox(car))).toEqual({ left: true, right: true });
+      });
+
+      it("Track Order flanks the car with its neighbours on track in a saved replay, and not scrubbed back in a live session's", async () => {
+        const field = {
+          DriverInfo: {
+            Drivers: [
+              { CarIdx: 2, CarNumber: "5", CarNumberRaw: 5 },
+              { CarIdx: 4, CarNumber: "12", CarNumberRaw: 104 },
+              { CarIdx: 7, CarNumber: "42", CarNumberRaw: 42 },
+            ],
+          },
+        };
+        const onTrack = pausedOn(600, {
+          CarIdxLapDistPct: [-1, -1, 0.1, -1, 0.5, -1, -1, 0.95],
+          CarIdxTrackSurface: [-1, -1, 3, -1, 3, -1, -1, 3],
+          ReplayFrameNumEnd: 90_000,
+        });
+        const { surface, ctx } = await dialIn("track-order", onTrack);
+
+        env.sessionInfo = field;
+        env.replayOnlySession = true;
+        surface.onTick(ctx.id, tickOf());
+        await settle();
+        expect(shownValue(lastBox(ctx))).toBe("#12");
+        expect(shownCaption(lastBox(ctx))).toMatch(/^#5\u00a0+#42$/);
+
+        env.replayOnlySession = false;
+        surface.onTick(ctx.id, tickOf());
+        await settle();
+        expect(shownValue(lastBox(ctx))).toBe("#12");
+        expect(shownCaption(lastBox(ctx))).toBe(BLANK_CAPTION);
       });
 
       it("the caption shows the search's count for the mode's target, redrawn on every change it reports", async () => {
@@ -3132,7 +3195,7 @@ describe("ReplayControlDialSurface", () => {
         for (const listener of queue.listeners) listener();
 
         await settle();
-        expect(shownCaption(lastBox(ctx))).toBe("PAUSED");
+        expect(shownCaption(lastBox(ctx))).toBe(BLANK_CAPTION);
       });
 
       it("subscribes to the search's count while a dial is on screen and lets go when the last one leaves, but to its speeds for the surface's life", async () => {
@@ -3180,9 +3243,10 @@ describe("ReplayControlDialSurface", () => {
         expect(ctx.setDialCanvas).not.toHaveBeenCalled();
       });
 
-      it("mirrors every speed the search's runner sends into the caption and the keys, as a record jump's", async () => {
+      it("mirrors every speed the search's runner sends into a dial's caption and the keys, as a record jump's", async () => {
         const playing = { ...pausedOn(54_000), ...replayAt({ speed: 1, slowMotion: false }) } as TelemetryData;
-        const { ctx } = await dialIn("incident", playing);
+        // Frame Jog's caption is the play state.
+        const { ctx } = await dialIn("frame-jog", playing);
         expect(shownCaption(lastBox(ctx))).toBe("1x");
 
         // The runner paused the replay for its search: no tick follows yet.
@@ -3230,16 +3294,32 @@ describe("ReplayControlDialSurface", () => {
         expect(shownValue(lastBox(ctx))).toBe("1:00");
       });
 
+      it("a tick read mid-seek leaves the caption as it was too", async () => {
+        withRecord();
+        const { surface, ctx } = await dialIn("lap", pausedOn(57_000));
+        expect(shownCaption(lastBox(ctx))).toBe("15:50");
+
+        env.telemetry = SEEKING;
+        surface.onTick(ctx.id, tickOf());
+        await settle();
+
+        expect(shownValue(lastBox(ctx))).toBe("3/8");
+        expect(shownCaption(lastBox(ctx))).toBe("15:50");
+      });
+
       it("during a record jump, Lap and Session show the entry at the pending landing", async () => {
         withRecord();
         const { surface, ctx, d } = await dialIn("lap", pausedOn(54_000));
-        expect(shownValue(lastBox(ctx))).toBe("L2");
+        expect(shownValue(lastBox(ctx))).toBe("2/8");
+        expect(shownCaption(lastBox(ctx))).toBe("15:00");
 
         surface.rotate(ctx as never, d, 2, false);
         env.telemetry = SEEKING;
         surface.onTick(ctx.id, tickOf());
         await settle();
-        expect(shownValue(lastBox(ctx))).toBe("L4");
+        expect(shownValue(lastBox(ctx))).toBe("4/8");
+        // The target's time beneath it, worked out from the reading the jump started from.
+        expect(shownCaption(lastBox(ctx))).toBe("16:22");
 
         const session = dialContext("session");
         await dialIn("session", SEEKING, session);

@@ -80,5 +80,6 @@ export function fakeStepIo(): FakeStepIo {
     isJumpUnderWay: vi.fn(() => false),
     waitForJumpsToSettle: vi.fn((): Promise<ReplaySettledOutcome> => Promise.resolve("settled")),
     isStillOnScreen: vi.fn(() => true),
+    isSavedReplay: vi.fn(() => false),
   } as FakeStepIo;
 }

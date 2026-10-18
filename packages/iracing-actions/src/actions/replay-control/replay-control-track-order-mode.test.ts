@@ -3,7 +3,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ReplaySettledOutcome } from "../../shared/replay-command-gate.js";
 import { ReplayControlDialSettings } from "./replay-control-dial-settings.js";
-import { _isTrackOrderTapWaiting, _resetTrackOrderTap, trackOrderMode } from "./replay-control-track-order-mode.js";
+import { BLANK_CAPTION } from "./replay-control-step-mode.js";
+import {
+  _isTrackOrderTapWaiting,
+  _resetTrackOrderTap,
+  neighbourCaption,
+  TRACK_ORDER_LIVE_EDGE_MAX_FRAMES,
+  trackOrderMode,
+  trackOrderNeighbours,
+  trackPositionsTrusted,
+} from "./replay-control-track-order-mode.js";
 import { fakeStepIo, type FakeStepIo } from "./replay-dial-step-io.test-support.js";
 
 vi.mock("@iracedeck/settings", () => ({ getGlobalSettings: vi.fn(() => ({})) }));
@@ -247,7 +256,7 @@ describe("trackOrderMode", () => {
       },
     };
 
-    it("shows the viewed car's number, the play state, both side marks", () => {
+    it("shows the viewed car's number alone, with a blank caption that keeps it in place, and both side marks", () => {
       const io = fakeStepIo();
 
       io.sessionInfo.mockReturnValue(SESSION_INFO);
@@ -255,9 +264,103 @@ describe("trackOrderMode", () => {
 
       expect(trackOrderMode.view(dial, io)).toEqual({
         value: "#042",
-        caption: "PAUSED",
+        caption: BLANK_CAPTION,
         sides: { left: true, right: true },
         bindingMissing: false,
+      });
+    });
+
+    describe("the neighbours on track", () => {
+      /** Car 2 (#5) at 0.10, car 4 (#12) at 0.50, car 7 (#042) at 0.95, car 9 (#88) in the garage. */
+      const FIELD_INFO = {
+        DriverInfo: {
+          Drivers: [
+            { CarIdx: 2, CarNumber: "5", CarNumberRaw: 5 },
+            ...SESSION_INFO.DriverInfo.Drivers,
+            { CarIdx: 9, CarNumber: "88", CarNumberRaw: 88 },
+          ],
+        },
+      };
+      const LAP_DIST = [-1, -1, 0.1, -1, 0.5, -1, -1, 0.95, -1, 0.7];
+      const SURFACE = [-1, -1, 3, -1, 3, -1, -1, 3, -1, -1];
+
+      function field(extra: Partial<TelemetryData>): TelemetryData {
+        return {
+          IsReplayPlaying: true,
+          ReplayFrameNum: 5_000,
+          CamCarIdx: 4,
+          CarIdxLapDistPct: LAP_DIST,
+          CarIdxTrackSurface: SURFACE,
+          ...extra,
+        } as TelemetryData;
+      }
+
+      const flanked = (behind: string, ahead: string) =>
+        expect.stringMatching(new RegExp(`^#${behind}\u00a0+#${ahead}$`));
+
+      it("flank the car in a saved replay, behind on the left and ahead on the right", () => {
+        const io = fakeStepIo();
+
+        io.sessionInfo.mockReturnValue(FIELD_INFO);
+        io.isSavedReplay.mockReturnValue(true);
+        // Scrubbed far back: in a saved replay the arrays are the replay's own anyway.
+        io.telemetry.mockReturnValue(field({ ReplayFrameNumEnd: 90_000 }));
+
+        expect(trackOrderMode.view(dial, io)).toMatchObject({ value: "#12", caption: flanked("5", "042") });
+      });
+
+      it("flank the car at the live edge of an in-session replay", () => {
+        const io = fakeStepIo();
+
+        io.sessionInfo.mockReturnValue(FIELD_INFO);
+        io.telemetry.mockReturnValue(field({ ReplayFrameNumEnd: 1 }));
+
+        expect(trackOrderMode.view(dial, io).caption).toEqual(flanked("5", "042"));
+      });
+
+      it("do not show scrubbed back in an in-session replay, where the arrays read the live field", () => {
+        const io = fakeStepIo();
+
+        io.sessionInfo.mockReturnValue(FIELD_INFO);
+        io.telemetry.mockReturnValue(field({ ReplayFrameNumEnd: TRACK_ORDER_LIVE_EDGE_MAX_FRAMES + 1 }));
+
+        expect(trackOrderMode.view(dial, io)).toMatchObject({ value: "#12", caption: BLANK_CAPTION });
+      });
+
+      it("do not show while a jump is under way, nor with no car number for the camera car", () => {
+        const io = fakeStepIo();
+
+        io.sessionInfo.mockReturnValue(FIELD_INFO);
+        io.isSavedReplay.mockReturnValue(true);
+        io.telemetry.mockReturnValue(field({}));
+        io.position.mockReturnValue({ frame: 9_000, time: 150, endFrame: undefined, seeking: true });
+        expect(trackOrderMode.view(dial, io).caption).toBe(BLANK_CAPTION);
+
+        io.position.mockReturnValue({ frame: 9_000, time: 150, endFrame: undefined, seeking: false });
+        io.telemetry.mockReturnValue(field({ CamCarIdx: 255 }));
+        expect(trackOrderMode.view(dial, io)).toMatchObject({ value: "", caption: BLANK_CAPTION });
+      });
+
+      it("keep what the box showed on a tick read mid-seek", () => {
+        const io = fakeStepIo();
+
+        io.sessionInfo.mockReturnValue(FIELD_INFO);
+        io.isSavedReplay.mockReturnValue(true);
+        io.telemetry.mockReturnValue(field({}));
+        io.position.mockReturnValue(null);
+
+        expect(trackOrderMode.view(dial, io)).toMatchObject({ value: null, caption: null });
+      });
+
+      it("wrap round the line: the car first past it is ahead of the car last before it", () => {
+        const io = fakeStepIo();
+
+        io.sessionInfo.mockReturnValue(FIELD_INFO);
+        io.isSavedReplay.mockReturnValue(true);
+        io.telemetry.mockReturnValue(field({ CamCarIdx: 7 }));
+
+        // Car 7 at 0.95: car 2 at 0.10 is 0.15 ahead, car 4 at 0.50 0.45 behind.
+        expect(trackOrderMode.view(dial, io)).toMatchObject({ value: "#042", caption: flanked("12", "5") });
       });
     });
 
@@ -284,5 +387,86 @@ describe("trackOrderMode", () => {
       expect(trackOrderMode.label).toBe("TRACK ORDER");
       expect(trackOrderMode.rotateDescription).toBe("Cycle Cars by Track Order");
     });
+  });
+});
+
+describe("trackPositionsTrusted", () => {
+  const io = (saved: boolean) => ({ isSavedReplay: () => saved });
+
+  it("trusts a saved replay wherever the cursor is", () => {
+    expect(trackPositionsTrusted(io(true), { ReplayFrameNumEnd: 500_000 } as TelemetryData)).toBe(true);
+    expect(trackPositionsTrusted(io(true), null)).toBe(true);
+  });
+
+  it(`trusts an in-session replay only within ${TRACK_ORDER_LIVE_EDGE_MAX_FRAMES} frames of the end of the tape`, () => {
+    expect(TRACK_ORDER_LIVE_EDGE_MAX_FRAMES).toBe(120);
+    expect(trackPositionsTrusted(io(false), { ReplayFrameNumEnd: 0 } as TelemetryData)).toBe(true);
+    expect(trackPositionsTrusted(io(false), { ReplayFrameNumEnd: 120 } as TelemetryData)).toBe(true);
+    expect(trackPositionsTrusted(io(false), { ReplayFrameNumEnd: 121 } as TelemetryData)).toBe(false);
+    expect(trackPositionsTrusted(io(false), { ReplayFrameNumEnd: 1_201 } as TelemetryData)).toBe(false);
+    expect(trackPositionsTrusted(io(false), { ReplayFrameNumEnd: -1 } as TelemetryData)).toBe(false);
+    expect(trackPositionsTrusted(io(false), {} as TelemetryData)).toBe(false);
+    expect(trackPositionsTrusted(io(false), null)).toBe(false);
+  });
+});
+
+describe("trackOrderNeighbours", () => {
+  const ON = 3;
+  const OFF = -1;
+
+  it("is the car with the smallest gap forward ahead, and the smallest gap back behind", () => {
+    expect(trackOrderNeighbours(1, [0.2, 0.5, 0.6, 0.9], [ON, ON, ON, ON])).toEqual({ ahead: 2, behind: 0 });
+  });
+
+  it("wraps round the line both ways", () => {
+    expect(trackOrderNeighbours(3, [0.2, 0.5, 0.6, 0.9], [ON, ON, ON, ON])).toEqual({ ahead: 0, behind: 2 });
+    expect(trackOrderNeighbours(0, [0.2, 0.5, 0.6, 0.9], [ON, ON, ON, ON])).toEqual({ ahead: 1, behind: 3 });
+  });
+
+  it("skips a car not in the world, one with no lap distance, and one the caller refuses", () => {
+    expect(trackOrderNeighbours(1, [0.2, 0.5, 0.6, 0.9], [ON, ON, OFF, ON])).toEqual({ ahead: 3, behind: 0 });
+    expect(trackOrderNeighbours(1, [0.2, 0.5, -1, 0.9], [ON, ON, ON, ON])).toEqual({ ahead: 3, behind: 0 });
+    expect(trackOrderNeighbours(1, [0.2, 0.5, 0.6, 0.9], [ON, ON, ON, ON], (idx) => idx !== 0)).toEqual({
+      ahead: 2,
+      behind: 3,
+    });
+    expect(trackOrderNeighbours(1, [0.2, 0.5, 0.6, 0.9], [ON, ON, ON])).toEqual({ ahead: 2, behind: 0 });
+  });
+
+  it("is the one other car both ways, and none with no other car or the camera car off track", () => {
+    expect(trackOrderNeighbours(1, [0.2, 0.5], [ON, ON])).toEqual({ ahead: 0, behind: 0 });
+    expect(trackOrderNeighbours(1, [0.2, 0.5], [OFF, ON])).toEqual({ ahead: null, behind: null });
+    expect(trackOrderNeighbours(1, [0.2, 0.5], [ON, OFF])).toEqual({ ahead: null, behind: null });
+    expect(trackOrderNeighbours(1, undefined, undefined)).toEqual({ ahead: null, behind: null });
+  });
+
+  it("gives a tie to the lower index", () => {
+    expect(trackOrderNeighbours(1, [0.6, 0.5, 0.6], [ON, ON, ON])).toEqual({ ahead: 0, behind: 0 });
+  });
+});
+
+describe("neighbourCaption", () => {
+  const INFO = {
+    DriverInfo: {
+      Drivers: [
+        { CarIdx: 0, CarNumber: "3", CarNumberRaw: 3 },
+        { CarIdx: 1, CarNumber: "12", CarNumberRaw: 12 },
+        { CarIdx: 3, CarNumber: "7", CarNumberRaw: 7 },
+      ],
+    },
+  };
+
+  it("is the car behind, a gap, then the car ahead, counting only cars with a number", () => {
+    // Car 2 is closest ahead but has no number in the session info.
+    const telemetry = { CarIdxLapDistPct: [0.2, 0.5, 0.55, 0.9], CarIdxTrackSurface: [3, 3, 3, 3] } as TelemetryData;
+
+    expect(neighbourCaption(telemetry, 1, INFO)).toBe("#3" + "\u00a0".repeat(10) + "#7");
+  });
+
+  it("is null with no other numbered car on track", () => {
+    const telemetry = { CarIdxLapDistPct: [-1, 0.5], CarIdxTrackSurface: [-1, 3] } as TelemetryData;
+
+    expect(neighbourCaption(telemetry, 1, INFO)).toBeNull();
+    expect(neighbourCaption(null, 1, INFO)).toBeNull();
   });
 });
