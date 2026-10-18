@@ -414,34 +414,44 @@ describe("trackOrderNeighbours", () => {
   const ON = 3;
   const OFF = -1;
 
+  /** A reading of the field: each car's lap distance and track surface. */
+  const field = (lapDistPct: number[] | undefined, trackSurface: number[] | undefined) =>
+    ({ CarIdxLapDistPct: lapDistPct, CarIdxTrackSurface: trackSurface }) as TelemetryData;
+
   it("is the car with the smallest gap forward ahead, and the smallest gap back behind", () => {
-    expect(trackOrderNeighbours(1, [0.2, 0.5, 0.6, 0.9], [ON, ON, ON, ON])).toEqual({ ahead: 2, behind: 0 });
+    expect(trackOrderNeighbours(field([0.2, 0.5, 0.6, 0.9], [ON, ON, ON, ON]), 1)).toEqual({ ahead: 2, behind: 0 });
   });
 
   it("wraps round the line both ways", () => {
-    expect(trackOrderNeighbours(3, [0.2, 0.5, 0.6, 0.9], [ON, ON, ON, ON])).toEqual({ ahead: 0, behind: 2 });
-    expect(trackOrderNeighbours(0, [0.2, 0.5, 0.6, 0.9], [ON, ON, ON, ON])).toEqual({ ahead: 1, behind: 3 });
+    expect(trackOrderNeighbours(field([0.2, 0.5, 0.6, 0.9], [ON, ON, ON, ON]), 3)).toEqual({ ahead: 0, behind: 2 });
+    expect(trackOrderNeighbours(field([0.2, 0.5, 0.6, 0.9], [ON, ON, ON, ON]), 0)).toEqual({ ahead: 1, behind: 3 });
   });
 
   it("skips a car not in the world, one with no lap distance, and one the caller refuses", () => {
-    expect(trackOrderNeighbours(1, [0.2, 0.5, 0.6, 0.9], [ON, ON, OFF, ON])).toEqual({ ahead: 3, behind: 0 });
-    expect(trackOrderNeighbours(1, [0.2, 0.5, -1, 0.9], [ON, ON, ON, ON])).toEqual({ ahead: 3, behind: 0 });
-    expect(trackOrderNeighbours(1, [0.2, 0.5, 0.6, 0.9], [ON, ON, ON, ON], (idx) => idx !== 0)).toEqual({
+    expect(trackOrderNeighbours(field([0.2, 0.5, 0.6, 0.9], [ON, ON, OFF, ON]), 1)).toEqual({ ahead: 3, behind: 0 });
+    expect(trackOrderNeighbours(field([0.2, 0.5, -1, 0.9], [ON, ON, ON, ON]), 1)).toEqual({ ahead: 3, behind: 0 });
+    expect(trackOrderNeighbours(field([0.2, 0.5, 0.6, 0.9], [ON, ON, ON, ON]), 1, (idx) => idx !== 0)).toEqual({
       ahead: 2,
       behind: 3,
     });
-    expect(trackOrderNeighbours(1, [0.2, 0.5, 0.6, 0.9], [ON, ON, ON])).toEqual({ ahead: 2, behind: 0 });
   });
 
   it("is the one other car both ways, and none with no other car or the camera car off track", () => {
-    expect(trackOrderNeighbours(1, [0.2, 0.5], [ON, ON])).toEqual({ ahead: 0, behind: 0 });
-    expect(trackOrderNeighbours(1, [0.2, 0.5], [OFF, ON])).toEqual({ ahead: null, behind: null });
-    expect(trackOrderNeighbours(1, [0.2, 0.5], [ON, OFF])).toEqual({ ahead: null, behind: null });
-    expect(trackOrderNeighbours(1, undefined, undefined)).toEqual({ ahead: null, behind: null });
+    expect(trackOrderNeighbours(field([0.2, 0.5], [ON, ON]), 1)).toEqual({ ahead: 0, behind: 0 });
+    expect(trackOrderNeighbours(field([0.2, 0.5], [OFF, ON]), 1)).toEqual({ ahead: null, behind: null });
+    expect(trackOrderNeighbours(field([0.2, 0.5], [ON, OFF]), 1)).toEqual({ ahead: null, behind: null });
+    expect(trackOrderNeighbours(field([0.2, -1], [ON, ON]), 1)).toEqual({ ahead: null, behind: null });
+    expect(trackOrderNeighbours(field(undefined, undefined), 1)).toEqual({ ahead: null, behind: null });
+    expect(trackOrderNeighbours(null, 1)).toEqual({ ahead: null, behind: null });
   });
 
   it("gives a tie to the lower index", () => {
-    expect(trackOrderNeighbours(1, [0.6, 0.5, 0.6], [ON, ON, ON])).toEqual({ ahead: 0, behind: 0 });
+    expect(trackOrderNeighbours(field([0.6, 0.5, 0.6], [ON, ON, ON]), 1)).toEqual({ ahead: 0, behind: 0 });
+  });
+
+  it("does not count a car at the camera car's own lap distance, either way", () => {
+    expect(trackOrderNeighbours(field([0.2, 0.5, 0.5], [ON, ON, ON]), 1)).toEqual({ ahead: 0, behind: 0 });
+    expect(trackOrderNeighbours(field([-1, 0.5, 0.5], [OFF, ON, ON]), 1)).toEqual({ ahead: null, behind: null });
   });
 });
 
@@ -461,6 +471,13 @@ describe("neighbourCaption", () => {
     const telemetry = { CarIdxLapDistPct: [0.2, 0.5, 0.55, 0.9], CarIdxTrackSurface: [3, 3, 3, 3] } as TelemetryData;
 
     expect(neighbourCaption(telemetry, 1, INFO)).toBe("#3" + "\u00a0".repeat(10) + "#7");
+  });
+
+  it("two cars at the identical lap distance are not both neighbours: a gap of 0 is none", () => {
+    // Car 3 sits at car 1's own lap distance; car 0 is the one car round the lap.
+    const telemetry = { CarIdxLapDistPct: [0.2, 0.5, -1, 0.5], CarIdxTrackSurface: [3, 3, -1, 3] } as TelemetryData;
+
+    expect(neighbourCaption(telemetry, 1, INFO)).toBe("#3" + "\u00a0".repeat(10) + "#3");
   });
 
   it("is null with no other numbered car on track", () => {

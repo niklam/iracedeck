@@ -43,7 +43,12 @@
  * the left and ahead on the right; with none the caption is blank rather than
  * absent, so the number keeps the size and place the other modes' value has.
  */
-import { getCarNumberFromSessionInfo, type TelemetryData } from "@iracedeck/iracing-sdk";
+import {
+  carInWorld,
+  findNearestCarOnTrack,
+  getCarNumberFromSessionInfo,
+  type TelemetryData,
+} from "@iracedeck/iracing-sdk";
 
 import { CAR_CYCLE_BINDING_KEY_LIST, CAR_CYCLE_BINDING_KEYS } from "../../shared/car-cycle-bindings.js";
 import type { ReplayDialMode, ReplayDialStepIo } from "./replay-control-dial-mode.js";
@@ -59,9 +64,6 @@ import { NO_CAR_IDX } from "./replay-record-step.js";
  * is 1201.
  */
 export const TRACK_ORDER_LIVE_EDGE_MAX_FRAMES = 120;
-
-/** `CarIdxTrackSurface`'s `irsdk_NotInWorld`: a car not on track (in the garage, or not there at all). */
-const NOT_IN_WORLD = -1;
 
 /** The gap between the two neighbours in the caption: no-break spaces, which SVG does not collapse. */
 const NEIGHBOUR_GAP = "\u00a0".repeat(10);
@@ -278,46 +280,29 @@ export function trackPositionsTrusted(
 /**
  * @internal Exported for testing
  *
- * The cars immediately ahead of and behind `carIdx` on track, by
- * `CarIdxLapDistPct` round the lap (wrapping at the line): ahead is the
- * smallest distance forward to another car, behind the smallest distance
- * back. A car counts when `isCandidate` accepts it, it is in the world
- * (`CarIdxTrackSurface` set and not `NotInWorld`) and its lap distance is a
- * fraction of the lap; the camera car must be in the world too. Null either
- * way when there is no other car (with one, it is both), or the camera car is
- * not on track. A tie goes to the lower index.
+ * The cars immediately ahead of and behind `carIdx` on track: the SDK's
+ * `findNearestCarOnTrack` each way, by `CarIdxLapDistPct` round the lap, over
+ * the cars in the world (`carInWorld`) that `isCandidate` accepts. A car at
+ * the same lap distance is no neighbour either way (a gap of 0, the SDK's
+ * rule), and a tie goes to the lower index. Null either way when there is no
+ * other such car (with one, it is both), or the camera car is not in the
+ * world: off it, the SDK would fall back to the car nearest the line.
  */
 export function trackOrderNeighbours(
+  telemetry: TelemetryData | null,
   carIdx: number,
-  lapDistPct: readonly number[] | undefined,
-  trackSurface: readonly number[] | undefined,
   isCandidate: (idx: number) => boolean = () => true,
 ): { ahead: number | null; behind: number | null } {
-  const onTrack = (idx: number): boolean => {
-    const pct = lapDistPct?.[idx];
-    const surface = trackSurface?.[idx];
-
-    return typeof pct === "number" && pct >= 0 && pct <= 1 && typeof surface === "number" && surface !== NOT_IN_WORLD;
-  };
-
-  if (!lapDistPct || !onTrack(carIdx)) return { ahead: null, behind: null };
-
-  const own = lapDistPct[carIdx];
-  let ahead: { idx: number; gap: number } | null = null;
-  let behind: { idx: number; gap: number } | null = null;
-
-  for (let idx = 0; idx < lapDistPct.length; idx++) {
-    if (idx === carIdx || !onTrack(idx) || !isCandidate(idx)) continue;
-
-    const forward = (((lapDistPct[idx] - own) % 1) + 1) % 1;
-    const back = (((own - lapDistPct[idx]) % 1) + 1) % 1;
-
-    if (ahead === null || forward < ahead.gap) ahead = { idx, gap: forward };
-
-    if (behind === null || back < behind.gap) behind = { idx, gap: back };
+  if (!Array.isArray(telemetry?.CarIdxLapDistPct) || !carInWorld(telemetry)(carIdx)) {
+    return { ahead: null, behind: null };
   }
 
-  return { ahead: ahead?.idx ?? null, behind: behind?.idx ?? null };
+  const options = { skipIdx: (idx: number) => !isCandidate(idx) };
+
+  return {
+    ahead: findNearestCarOnTrack(telemetry, carIdx, "ahead", options),
+    behind: findNearestCarOnTrack(telemetry, carIdx, "behind", options),
+  };
 }
 
 /**
@@ -329,12 +314,7 @@ export function trackOrderNeighbours(
  */
 export function neighbourCaption(telemetry: TelemetryData | null, carIdx: number, sessionInfo: unknown): string | null {
   const numberOf = (idx: number): string | null => getCarNumberFromSessionInfo(sessionInfo, idx);
-  const { ahead, behind } = trackOrderNeighbours(
-    carIdx,
-    telemetry?.CarIdxLapDistPct,
-    telemetry?.CarIdxTrackSurface,
-    (idx) => numberOf(idx) !== null,
-  );
+  const { ahead, behind } = trackOrderNeighbours(telemetry, carIdx, (idx) => numberOf(idx) !== null);
 
   if (ahead === null || behind === null) return null;
 
