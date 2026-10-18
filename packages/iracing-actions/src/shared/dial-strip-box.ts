@@ -9,11 +9,24 @@ import type { DialBoxArgs } from "./dial-box.js";
 import { fitValueFontSize } from "./dial-fit.js";
 import { PENDING_BAR_HEIGHT, renderPendingBar } from "./dial-preview.js";
 import { renderSideMarkers, resolveSideMarks } from "./dial-side-markers.js";
+import { renderValueNeighbours } from "./dial-value-neighbours.js";
 
 /** The default identity-only (valueless) label scale, as a fraction of the box's shorter side. */
 const DEFAULT_IDENTITY_LABEL_SCALE = 0.24;
 /** Opacity of a dimmed box (#1230). */
 const DIMMED_OPACITY = 0.35;
+/** The neighbours' largest size: Camera Controls' Car # carousel's side numbers on the strip (#801). */
+const NEIGHBOUR_FONT_CAP = 18;
+/** How far inside the border stroke a neighbour may reach. */
+const NEIGHBOUR_EDGE_PAD = 4;
+
+/**
+ * The label's font size on a `width`x`height` strip box with a value: 15 % of
+ * the shorter side. Exported for the label-fit check (`dial-label-fit.ts`).
+ */
+export function stripLabelFontSize(width: number, height: number): number {
+  return Math.round(Math.min(width, height) * 0.15);
+}
 
 /**
  * Renders the dash-box SVG. The background fills the panel INSIDE the border and
@@ -36,6 +49,8 @@ export function renderStripBox(args: DialBoxArgs & { width: number; height: numb
     bindingMissing = false,
     sideMarker,
     caption = "",
+    reserveCaptionLine = false,
+    neighbours = null,
     dimmed = false,
     pending = null,
   } = args;
@@ -48,6 +63,9 @@ export function renderStripBox(args: DialBoxArgs & { width: number; height: numb
   const valueColor = pending ? pending.color : colors.value;
   const identityOnly = displayValue === "";
   const hasCaption = caption !== "";
+  // The value and an identity label are laid out for a caption line when one
+  // is drawn or reserved (#801); only a set caption draws text there.
+  const captionLine = hasCaption || reserveCaptionLine;
 
   // The caption sits just inside the panel's bottom edge; `captionTop` is its
   // cap height above the baseline, the line everything above must clear.
@@ -55,12 +73,12 @@ export function renderStripBox(args: DialBoxArgs & { width: number; height: numb
   const captionY = h - inset - strokeWidth - 2;
   const captionTop = captionY - Math.round(captionFontSize * 0.72);
 
-  const labelFontSize = identityOnly ? Math.round(minSide * identityLabelScale) : Math.round(minSide * 0.15);
+  const labelFontSize = identityOnly ? Math.round(minSide * identityLabelScale) : stripLabelFontSize(w, h);
   // SVG <text> y is the BASELINE and resvg ignores dominant-baseline, so a
   // centered identity-only label must add the baseline offset (~0.36em for bold
   // Arial) — otherwise it renders visibly ABOVE center (#804). The
   // label-above-value layout keeps its historic baseline (0.28h).
-  const identityCenterY = hasCaption ? Math.round((inset + captionTop) / 2) : Math.round(h * 0.5);
+  const identityCenterY = captionLine ? Math.round((inset + captionTop) / 2) : Math.round(h * 0.5);
   const labelY = identityOnly ? identityCenterY + Math.round(labelFontSize * 0.36) : Math.round(h * 0.28);
 
   const labelText = `<text x="${w / 2}" y="${labelY}" text-anchor="middle" fill="${colors.label}" font-family="Arial, sans-serif" font-size="${labelFontSize}" font-weight="bold">${abbr}</text>`;
@@ -71,21 +89,35 @@ export function renderStripBox(args: DialBoxArgs & { width: number; height: numb
     const valueFontSize = fitValueFontSize(
       displayValue,
       w - 2 * (inset + strokeWidth + Math.round(w * 0.05)),
-      Math.round(h * (hasCaption ? 0.4 : 0.52)),
+      Math.round(h * (captionLine ? 0.4 : 0.52)),
     );
     // With a caption the value's visual centre is midway between the label's
     // baseline and the caption's top; without one, its historic baseline.
-    const valueY = hasCaption
+    const valueY = captionLine
       ? Math.round((labelY + captionTop) / 2) + Math.round(valueFontSize * 0.36)
       : Math.round(h * 0.64) + 13;
     valueText = `<text x="${w / 2}" y="${valueY}" text-anchor="middle" fill="${valueColor}" font-family="Arial, sans-serif" font-size="${valueFontSize}" font-weight="bold">${displayValue}</text>`;
+
+    if (neighbours) {
+      valueText += renderValueNeighbours({
+        neighbours,
+        value: displayValue,
+        valueFontSize,
+        centerX: w / 2,
+        baselineY: valueY,
+        contentLeft: inset + strokeWidth + NEIGHBOUR_EDGE_PAD,
+        contentRight: w - inset - strokeWidth - NEIGHBOUR_EDGE_PAD,
+        cap: NEIGHBOUR_FONT_CAP,
+        color: colors.label,
+      });
+    }
 
     // The pending underline sits just under the value's baseline, clamped so it
     // stays inside the panel — the border strokes ON the inset rect, so half of
     // it eats inward. Every caller draws at 200×100, where the clamp never
     // binds; it is there so a smaller box can never push the mark off the panel.
     if (pending) {
-      const barFloor = hasCaption ? captionTop - 1 : h - inset - Math.round(strokeWidth / 2);
+      const barFloor = captionLine ? captionTop - 1 : h - inset - Math.round(strokeWidth / 2);
       const barTop = Math.min(valueY + 4, barFloor - PENDING_BAR_HEIGHT);
       valueText += renderPendingBar({ centerX: w / 2, y: barTop, width: w, color: pending.color });
     }

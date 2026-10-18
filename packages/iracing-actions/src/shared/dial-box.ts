@@ -23,8 +23,10 @@ import { renderKnobBox } from "./dial-knob-box.js";
 import type { DialPendingPreview } from "./dial-preview.js";
 import type { DialSideMarker } from "./dial-side-markers.js";
 import { renderStripBox } from "./dial-strip-box.js";
+import type { DialNeighbours } from "./dial-value-neighbours.js";
 
 export type { DialSideMarker, DialSideMarks } from "./dial-side-markers.js";
+export type { DialNeighbours } from "./dial-value-neighbours.js";
 
 /** Default panel background — near-black, ≈ the device screen, so the default look is unchanged. */
 export const DIAL_BOX_BACKGROUND = "#0d0d0d";
@@ -91,6 +93,24 @@ export interface DialBoxArgs {
    * overlap. Absent or empty, the box is drawn exactly as without it.
    */
   caption?: string;
+  /**
+   * Lay the value out as if a caption were set (the same size and place)
+   * while drawing no caption text (#801). For a box whose caption comes and
+   * goes (Replay Control's Incident shows the paced search's count only while
+   * it works), so the value does not jump when it appears. A set `caption`
+   * draws as usual. Absent or false, the box is drawn exactly as without it.
+   */
+  reserveCaptionLine?: boolean;
+  /**
+   * Short dimmed texts beside the value, left and right of it, as Camera
+   * Controls' Car # carousel flanks its car (#801: Replay Control's Track
+   * Order, the cars on track behind and ahead). Smaller than the value, on its
+   * baseline, in the label colour; an empty side draws nothing. They shrink to
+   * the room the value leaves and are dropped when that is too small to read,
+   * never overlapping it. Not drawn beside an identity-only box. Absent or
+   * null, the box is drawn exactly as without them.
+   */
+  neighbours?: DialNeighbours | null;
   /**
    * Fade the whole box — panel and content — to show the dial can do nothing
    * right now (#1230: no store or no telemetry), like a keypad's unavailable look.

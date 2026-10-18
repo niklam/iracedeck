@@ -98,3 +98,73 @@ describe("dialAppearanceFields", () => {
     }
   });
 });
+
+describe("renderDialBox — a reserved caption line and the value's neighbours (#801)", () => {
+  const CANVASES = [
+    { id: "sd-plus-strip", width: 200, height: 100 },
+    { id: "stream-dock-knob", width: 176, height: 112 },
+  ] as const;
+  const base = { abbr: "TRK ORD", value: "#12", colors: accentColors(), sideMarker: { left: true, right: true } };
+  const withoutCaptionText = (svg: string): string => svg.replace(/<text data-caption[^>]*>[^<]*<\/text>/, "");
+
+  describe.each(CANVASES)("on $id", (canvas) => {
+    it("lays the value out as a caption would, and draws no caption text", () => {
+      const reserved = renderDialBox(canvas, { ...base, reserveCaptionLine: true });
+      const blank = renderDialBox(canvas, { ...base, caption: "\u00a0" });
+
+      expect(reserved).not.toContain("data-caption");
+      expect(reserved).toBe(withoutCaptionText(blank));
+      expect(reserved).not.toBe(renderDialBox(canvas, base));
+    });
+
+    it("places an identity label as a caption would, too", () => {
+      const identity = { ...base, value: "" };
+
+      expect(renderDialBox(canvas, { ...identity, reserveCaptionLine: true })).toBe(
+        withoutCaptionText(renderDialBox(canvas, { ...identity, caption: "\u00a0" })),
+      );
+    });
+
+    it("still draws a caption that is set", () => {
+      expect(renderDialBox(canvas, { ...base, caption: "+3", reserveCaptionLine: true })).toBe(
+        renderDialBox(canvas, { ...base, caption: "+3" }),
+      );
+    });
+
+    it("draws neither with the flag false and the neighbours null", () => {
+      expect(renderDialBox(canvas, { ...base, reserveCaptionLine: false, neighbours: null })).toBe(
+        renderDialBox(canvas, base),
+      );
+    });
+
+    it("flanks the value with its neighbours, smaller and on its baseline, adding nothing else", () => {
+      const args = { ...base, reserveCaptionLine: true };
+      const svg = renderDialBox(canvas, { ...args, neighbours: { left: "#5", right: "#42" } });
+      const value = /<text x="[^"]+" y="(\d+)"[^>]*font-size="(\d+)"[^>]*>#12<\/text>/.exec(svg);
+      const flanks = [
+        ...svg.matchAll(/<text data-neighbour="(\w+)"[^>]*y="(\d+)"[^>]*font-size="(\d+)"[^>]*>([^<]*)</g),
+      ];
+
+      expect(flanks.map((m) => [m[1], m[4]])).toEqual([
+        ["left", "#5"],
+        ["right", "#42"],
+      ]);
+
+      for (const m of flanks) {
+        expect(m[2]).toBe(value?.[1]);
+        expect(Number(m[3])).toBeLessThan(Number(value?.[2]));
+      }
+
+      expect(svg.replace(/<text data-neighbour[^>]*>[^<]*<\/text>/g, "")).toBe(renderDialBox(canvas, args));
+    });
+
+    it("draws the neighbours beside a pending preview, and none beside an identity-only box", () => {
+      const neighbours = { left: "#5", right: "#42" };
+
+      expect(renderDialBox(canvas, { ...base, neighbours, pending: { text: "1x", color: "#f39c12" } })).toContain(
+        "data-neighbour",
+      );
+      expect(renderDialBox(canvas, { ...base, value: "", neighbours })).not.toContain("data-neighbour");
+    });
+  });
+});

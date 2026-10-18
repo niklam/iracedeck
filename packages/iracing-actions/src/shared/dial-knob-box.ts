@@ -15,6 +15,7 @@ import type { DialBoxArgs } from "./dial-box.js";
 import { fitValueFontSize } from "./dial-fit.js";
 import { PENDING_BAR_HEIGHT, renderPendingBar } from "./dial-preview.js";
 import { renderSideMarkers, resolveSideMarks } from "./dial-side-markers.js";
+import { renderValueNeighbours } from "./dial-value-neighbours.js";
 
 /**
  * The knob screen's size — deck-core's `STREAM_DOCK_KNOB_CANVAS` (176×112),
@@ -40,7 +41,8 @@ const RADIUS = Math.round(H * 0.16); // 18
 const INSET = Math.max(5, Math.round(H * 0.045)); // 5
 const STROKE = Math.max(5, Math.round(H * 0.05)); // 6
 
-const LABEL_FONT = 16;
+/** The label line's font size with a value. Exported for the label-fit check (`dial-label-fit.ts`). */
+export const KNOB_LABEL_FONT = 16;
 const LABEL_Y = 28;
 // Capped so a wide short value ("3 mm") clears the border stroke with a visible
 // margin — the 0.6 em fit underestimates wide glyphs such as "m" (design gate).
@@ -63,6 +65,10 @@ const CAPTIONED_VALUE_CAP = 40;
 const CAPTIONED_VALUE_CENTER_Y = Math.round((LABEL_Y + CAPTION_TOP) / 2); // 59
 /** Opacity of a dimmed box (#1230). */
 const DIMMED_OPACITY = 0.35;
+/** The neighbours' largest size: the knob carousel's corner numbers (#801). */
+const NEIGHBOUR_FONT_CAP = 16;
+/** How far inside the border stroke a neighbour may reach. */
+const NEIGHBOUR_EDGE_PAD = 4;
 
 export function renderKnobBox(args: DialBoxArgs): string {
   const {
@@ -73,19 +79,24 @@ export function renderKnobBox(args: DialBoxArgs): string {
     bindingMissing = false,
     sideMarker,
     caption = "",
+    reserveCaptionLine = false,
+    neighbours = null,
     dimmed = false,
     pending = null,
   } = args;
   const hasCaption = caption !== "";
+  // The value and an identity label are laid out for a caption line when one
+  // is drawn or reserved (#801); only a set caption draws text there.
+  const captionLine = hasCaption || reserveCaptionLine;
   const displayValue = pending ? pending.text : value;
   const valueColor = pending ? pending.color : colors.value;
   const identityOnly = displayValue === "";
 
-  const labelFontSize = identityOnly ? Math.round(H * identityLabelScale) : LABEL_FONT;
+  const labelFontSize = identityOnly ? Math.round(H * identityLabelScale) : KNOB_LABEL_FONT;
   // <text> y is the BASELINE (resvg ignores dominant-baseline): a centered
   // identity label adds ~0.36 em; the label-above-value layout uses a fixed top line.
   // A caption moves the centred identity label up into the room above it.
-  const identityCenterY = hasCaption ? Math.round((INSET + CAPTION_TOP) / 2) : Math.round(H * 0.5);
+  const identityCenterY = captionLine ? Math.round((INSET + CAPTION_TOP) / 2) : Math.round(H * 0.5);
   const labelY = identityOnly ? identityCenterY + Math.round(labelFontSize * 0.36) : LABEL_Y;
   const label = `<text x="${W / 2}" y="${labelY}" text-anchor="middle" fill="${colors.label}" ${FONT} font-size="${labelFontSize}">${abbr}</text>`;
 
@@ -95,15 +106,29 @@ export function renderKnobBox(args: DialBoxArgs): string {
     const valueFontSize = fitValueFontSize(
       displayValue,
       W - 2 * (INSET + STROKE + 8),
-      hasCaption ? CAPTIONED_VALUE_CAP : VALUE_CAP,
+      captionLine ? CAPTIONED_VALUE_CAP : VALUE_CAP,
     );
     // Baseline = visual centre + ~0.36 em (bold Arial), as for the identity label.
-    const valueY = (hasCaption ? CAPTIONED_VALUE_CENTER_Y : VALUE_CENTER_Y) + Math.round(valueFontSize * 0.36);
+    const valueY = (captionLine ? CAPTIONED_VALUE_CENTER_Y : VALUE_CENTER_Y) + Math.round(valueFontSize * 0.36);
     valueText = `<text x="${W / 2}" y="${valueY}" text-anchor="middle" fill="${valueColor}" ${FONT} font-size="${valueFontSize}">${displayValue}</text>`;
+
+    if (neighbours) {
+      valueText += renderValueNeighbours({
+        neighbours,
+        value: displayValue,
+        valueFontSize,
+        centerX: W / 2,
+        baselineY: valueY,
+        contentLeft: INSET + STROKE + NEIGHBOUR_EDGE_PAD,
+        contentRight: W - INSET - STROKE - NEIGHBOUR_EDGE_PAD,
+        cap: NEIGHBOUR_FONT_CAP,
+        color: colors.label,
+      });
+    }
 
     // Just under the value's baseline, clamped inside the panel.
     if (pending) {
-      const barFloor = hasCaption ? CAPTION_TOP - 1 : PANEL_INNER_BOTTOM;
+      const barFloor = captionLine ? CAPTION_TOP - 1 : PANEL_INNER_BOTTOM;
       const barTop = Math.min(valueY + 4, barFloor - PENDING_BAR_HEIGHT);
       valueText += renderPendingBar({ centerX: W / 2, y: barTop, width: W, color: pending.color });
     }
