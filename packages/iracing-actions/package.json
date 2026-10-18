@@ -30,12 +30,12 @@
     "@iracedeck/replay-store": "workspace:*",
     "@iracedeck/settings": "workspace:*",
     "@iracedeck/sim-events-iracing": "workspace:*",
-    "zod": "4.6.5"
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@tsconfig/node22": "22.0.6",
-    "@types/node": "26.6.4",
+    "@types/node": "26.6.5",
     "typescript": "5.9.3",
-    "vitest": "5.0.3"
+    "vitest": "5.0.5"
   }
 }

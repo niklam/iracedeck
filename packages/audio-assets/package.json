@@ -30,12 +30,12 @@
     "@iracedeck/callout-script": "workspace:*",
     "@iracedeck/track-data": "workspace:*",
     "@iracedeck/voice-packs": "workspace:*",
-    "@types/node": "26.6.4",
+    "@types/node": "26.6.5",
     "fflate": "0.8.3",
     "ffmpeg-static": "5.3.0",
     "tsx": "4.23.15",
     "typescript": "5.9.3",
-    "vitest": "5.0.3",
-    "zod": "4.6.5"
+    "vitest": "5.0.5",
+    "zod": "4.6.7"
   }
 }
