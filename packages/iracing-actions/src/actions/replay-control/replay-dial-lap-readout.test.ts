@@ -102,9 +102,15 @@ describe("recordedMaxLap", () => {
   it("is the highest lap the record holds for the car in the session", () => {
     const listing = listRecord("lap", recordSource(QUALIFYING_THEN_RACE, null));
 
-    expect(recordedMaxLap(listing, 1, undefined)).toBe(2);
-    expect(recordedMaxLap(listing, 2, undefined)).toBe(1);
-    expect(recordedMaxLap(listing, 0, undefined)).toBeNull();
+    expect(recordedMaxLap(listing, 1, 1)).toBe(2);
+    expect(recordedMaxLap(listing, 2, 1)).toBe(1);
+    expect(recordedMaxLap(listing, 0, 1)).toBeNull();
+  });
+
+  it("counts nothing when the instance on screen is not known", () => {
+    const listing = listRecord("lap", recordSource(QUALIFYING_THEN_RACE, null));
+
+    expect(recordedMaxLap(listing, 1, null)).toBeNull();
   });
 
   it("counts only the instance of the session it is given, so a restarted event's laps do not mix", () => {
@@ -126,8 +132,56 @@ describe("recordedMaxLap", () => {
   });
 
   it("is null when the list could not be read", () => {
-    expect(recordedMaxLap(listRecord("lap", recordSource(null, null)), 2, undefined)).toBeNull();
-    expect(recordedMaxLap(listRecord("session", recordSource(null, SESSIONS)), 2, undefined)).toBeNull();
+    expect(recordedMaxLap(listRecord("lap", recordSource(null, null)), 2, 1)).toBeNull();
+    expect(recordedMaxLap(listRecord("session", recordSource(null, SESSIONS)), 2, 1)).toBeNull();
+  });
+});
+
+describe("lapOfLapsReadout in a restarted event", () => {
+  /** An offline event restarted at 50 000: session 0 again, a new instance. */
+  const RESTARTED = [
+    { sessionNum: 0, sessionUniqueId: 1, frame: 0 },
+    { sessionNum: 0, sessionUniqueId: 2, frame: 50_000 },
+  ];
+  /** Car 4's laps 1-3 of the first instance, then lap 1 of the second at 60 000. */
+  const LAPS_BOTH: LapStartListEntry[] = [
+    { frame: 10_000, lap: 1, sessionNum: 0, sessionUniqueId: 1 },
+    { frame: 20_000, lap: 2, sessionNum: 0, sessionUniqueId: 1 },
+    { frame: 30_000, lap: 3, sessionNum: 0, sessionUniqueId: 1 },
+    { frame: 60_000, lap: 1, sessionNum: 0, sessionUniqueId: 2 },
+  ];
+  const UNLIMITED = { SessionInfo: { Sessions: [{ SessionNum: 0, SessionLaps: "unlimited" }] } };
+
+  function readout(
+    frame: number,
+    sessions: typeof RESTARTED | null = RESTARTED,
+    laps: LapStartListEntry[] = LAPS_BOTH,
+  ): string | null {
+    const io = fakeStepIo();
+    const source = recordSource(laps, sessions);
+
+    io.recordSource.mockReturnValue(source);
+    io.sessionInfo.mockReturnValue(UNLIMITED);
+    io.telemetry.mockReturnValue(onCar4(0));
+
+    return lapOfLapsReadout(io, at(frame), listRecord("lap", source));
+  }
+
+  it("reads -- with no denominator before the car's first crossing of the second instance", () => {
+    // Live, before that crossing is recorded: the first instance's three laps are not counted.
+    expect(readout(55_000, RESTARTED, LAPS_BOTH.slice(0, 3))).toBe("--");
+    // Its crossing recorded later, the lap on screen is still unknown there.
+    expect(readout(55_000)).toBe("--/1");
+  });
+
+  it("counts the second instance's laps alone once the car has crossed the line in it", () => {
+    expect(readout(61_000)).toBe("1/1");
+    // The first instance's own reading is its own.
+    expect(readout(25_000)).toBe("2/3");
+  });
+
+  it("with no session record counts no recorded laps, and takes the lap by its session alone", () => {
+    expect(readout(25_000, null)).toBe("2");
   });
 });
 

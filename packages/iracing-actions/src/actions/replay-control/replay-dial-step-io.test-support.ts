@@ -36,9 +36,9 @@ export function recordSource(
   };
 }
 
-/** Laps 1, 2, 3 … of session (2, 3) at `frames`. */
+/** Laps 1, 2, 3 … of session 2 at `frames`, in the one instance {@link sessionsAt} records. */
 export function lapsAt(frames: number[]): LapStartListEntry[] {
-  return frames.map((frame, i) => ({ frame, lap: i + 1, sessionNum: 2, sessionUniqueId: 3 }));
+  return frames.map((frame, i) => ({ frame, lap: i + 1, sessionNum: 2, sessionUniqueId: 1 }));
 }
 
 /** Sessions 0, 1, 2 … of one instance at `frames`. */

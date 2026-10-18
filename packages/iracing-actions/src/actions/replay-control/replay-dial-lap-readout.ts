@@ -11,10 +11,13 @@
  * Without a recorded lap for the car at the cursor it is unknown (`--`), and
  * so it is when the car's last recorded lap by then is another session's: the
  * record spans every session of the file, so a race watched before the car's
- * first race lap crossing would otherwise show its last qualifying lap. The
- * laps in the session are `replay-lap-count.ts`'s.
+ * first race lap crossing would otherwise show its last qualifying lap. Where
+ * the session record places the cursor in an instance of that session, only
+ * that instance's laps count: a restarted offline event numbers its sessions
+ * from 0 again, and the first instance's laps are not the second's. The laps
+ * in the session are `replay-lap-count.ts`'s.
  */
-import type { LapStartListEntry } from "@iracedeck/replay-store";
+import type { LapStartListEntry, ReplaySessionStart } from "@iracedeck/replay-store";
 
 import type { ReplayPosition } from "../../shared/replay-position-state.js";
 import type { ReplayDialStepIo } from "./replay-control-dial-mode.js";
@@ -30,29 +33,42 @@ import { listRecord, type RecordListing } from "./replay-record-step.js";
  * then.
  */
 export function recordedSessionAt(frame: number, listing: RecordListing): number | null {
+  return recordedSessionStartAt(frame, listing)?.sessionNum ?? null;
+}
+
+/** The recorded session start {@link recordedSessionAt} reads, its instance included. */
+function recordedSessionStartAt(frame: number, listing: RecordListing): ReplaySessionStart | null {
   if (!listing.hit || listing.list !== "session") return null;
 
-  let sessionNum: number | null = null;
+  let found: ReplaySessionStart | null = null;
 
   for (const start of listing.entries) {
     if (start.frame > frame) break;
 
-    sessionNum = start.sessionNum;
+    found = start;
   }
 
-  return sessionNum;
+  return found;
+}
+
+/** The session on screen, and its instance (`SessionUniqueID`) when the session record can say. */
+interface SessionOnScreen {
+  readonly sessionNum: number;
+  readonly sessionUniqueId: number | null;
 }
 
 /**
  * The recorded lap start of the camera car that is on screen at `frame`, from
  * its lap list already read: the last whose landing — the frame a lap step
  * jumps to, a second before the line — is at or before it, and only when it
- * is in `sessionNum`. See {@link recordedLapAt}.
+ * is in `sessionNum` and, when known, its instance `sessionUniqueId`. See
+ * {@link recordedLapAt}.
  */
 function recordedLapStartAt(
   frame: number,
   listing: RecordListing,
   sessionNum: number | null,
+  sessionUniqueId: number | null,
 ): LapStartListEntry | null {
   if (!listing.hit || listing.list !== "lap" || sessionNum === null) return null;
 
@@ -64,7 +80,9 @@ function recordedLapStartAt(
     found = start;
   }
 
-  return found !== null && found.sessionNum === sessionNum ? found : null;
+  if (found === null || found.sessionNum !== sessionNum) return null;
+
+  return sessionUniqueId === null || found.sessionUniqueId === sessionUniqueId ? found : null;
 }
 
 /**
@@ -77,36 +95,42 @@ function recordedLapStartAt(
  * once rather than the one it is a second from finishing. That lap counts
  * only when it is in `sessionNum`, the session on screen at `frame`: the list
  * spans every session of the file, and the last lap of an earlier session is
- * not the car's lap in a later one it has not yet crossed the line in. Null
- * when the list could not be read (no store, no car on camera, no car
- * number), holds no lap by then, the lap found is another session's, or the
- * session on screen is not known.
+ * not the car's lap in a later one it has not yet crossed the line in. With
+ * `sessionUniqueId`, it must be that instance's lap too. Null when the list
+ * could not be read (no store, no car on camera, no car number), holds no lap
+ * by then, the lap found is another session's or instance's, or the session
+ * on screen is not known.
  */
-export function recordedLapAt(frame: number, listing: RecordListing, sessionNum: number | null): number | null {
-  return recordedLapStartAt(frame, listing, sessionNum)?.lap ?? null;
+export function recordedLapAt(
+  frame: number,
+  listing: RecordListing,
+  sessionNum: number | null,
+  sessionUniqueId: number | null = null,
+): number | null {
+  return recordedLapStartAt(frame, listing, sessionNum, sessionUniqueId)?.lap ?? null;
 }
 
 /**
  * @internal Exported for testing
  *
- * The highest lap the record holds for the camera car in session
- * `sessionNum`, from its lap list already read; with `sessionUniqueId`, only
- * that instance of the session (a restarted offline event numbers its
- * sessions from 0 again). Null when the list could not be read or holds none.
+ * The highest lap the record holds for the camera car in instance
+ * `sessionUniqueId` of session `sessionNum`, from its lap list already read:
+ * a restarted offline event numbers its sessions from 0 again, so the session
+ * number alone would count an earlier instance's laps. Null when the instance
+ * is not known (nothing is counted then), the list could not be read, or it
+ * holds none.
  */
 export function recordedMaxLap(
   listing: RecordListing,
   sessionNum: number,
-  sessionUniqueId: number | undefined,
+  sessionUniqueId: number | null,
 ): number | null {
-  if (!listing.hit || listing.list !== "lap") return null;
+  if (sessionUniqueId === null || !listing.hit || listing.list !== "lap") return null;
 
   let max: number | null = null;
 
   for (const start of listing.entries) {
-    if (start.sessionNum !== sessionNum) continue;
-
-    if (sessionUniqueId !== undefined && start.sessionUniqueId !== sessionUniqueId) continue;
+    if (start.sessionNum !== sessionNum || start.sessionUniqueId !== sessionUniqueId) continue;
 
     if (max === null || start.lap > max) max = start.lap;
   }
@@ -117,31 +141,37 @@ export function recordedMaxLap(
 /**
  * The session on screen: on a reading that is the replay's, its
  * `ReplaySessionNum`; while a jump is under way, the session the record puts
- * the pending landing in (from `sessionListing`, read here when not handed
- * one). Null when neither can say.
+ * the pending landing in. Its instance is that of the recorded session start
+ * at the cursor, when that start is of the same session, and otherwise
+ * unknown. Null when neither can say which session.
  */
 function sessionOnScreen(
   io: ReplayDialStepIo,
   position: ReplayPosition,
-  sessionListing: RecordListing | null,
-): number | null {
+  sessionListing: RecordListing,
+): SessionOnScreen | null {
+  const start = recordedSessionStartAt(position.frame, sessionListing);
+
   if (position.seeking) {
-    return recordedSessionAt(position.frame, sessionListing ?? listRecord("session", io.recordSource()));
+    return start === null ? null : { sessionNum: start.sessionNum, sessionUniqueId: start.sessionUniqueId };
   }
 
   const sessionNum = io.telemetry()?.ReplaySessionNum;
 
-  return typeof sessionNum === "number" && sessionNum >= 0 ? sessionNum : null;
+  if (typeof sessionNum !== "number" || sessionNum < 0) return null;
+
+  return { sessionNum, sessionUniqueId: start?.sessionNum === sessionNum ? start.sessionUniqueId : null };
 }
 
 /**
  * @internal Exported for testing
  *
  * The viewed car's lap over the laps in the session on screen, `12/25`, from
- * the camera car's lap list already read (`lapListing`) and, where the caller
- * has it, the session list. An unknown lap reads `--` and an unknown count
- * drops the denominator (`formatLapOfLaps`). Null on a tick read mid-seek
- * (no position): the box keeps what it showed.
+ * the camera car's lap list already read (`lapListing`) and the session list
+ * (`sessionListing`, read here when the caller has none to hand). An unknown
+ * lap reads `--` and an unknown count drops the denominator
+ * (`formatLapOfLaps`). Null on a tick read mid-seek (no position): the box
+ * keeps what it showed.
  */
 export function lapOfLapsReadout(
   io: ReplayDialStepIo,
@@ -151,16 +181,17 @@ export function lapOfLapsReadout(
 ): string | null {
   if (position === null) return null;
 
-  const sessionNum = sessionOnScreen(io, position, sessionListing);
+  const session = sessionOnScreen(io, position, sessionListing ?? listRecord("session", io.recordSource()));
 
-  if (sessionNum === null) return formatLapOfLaps(null, null);
+  if (session === null) return formatLapOfLaps(null, null);
 
-  const start = recordedLapStartAt(position.frame, lapListing, sessionNum);
+  const { sessionNum, sessionUniqueId } = session;
+  const start = recordedLapStartAt(position.frame, lapListing, sessionNum, sessionUniqueId);
   const laps = sessionLapCount(
     io.sessionInfo(),
     sessionNum,
     io.telemetry()?.CamCarIdx,
-    recordedMaxLap(lapListing, sessionNum, start?.sessionUniqueId),
+    recordedMaxLap(lapListing, sessionNum, sessionUniqueId),
   );
 
   return formatLapOfLaps(start?.lap ?? null, laps);

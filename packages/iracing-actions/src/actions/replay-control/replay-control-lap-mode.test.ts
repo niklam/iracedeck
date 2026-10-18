@@ -72,7 +72,7 @@ describe("lapMode view", () => {
   it("counts an unlimited session's laps from the car's results, else from the record, else not at all", () => {
     const io = fakeStepIo();
 
-    io.recordSource.mockReturnValue(recordSource(LAPS, null));
+    io.recordSource.mockReturnValue(recordSource(LAPS, SESSIONS));
     io.telemetry.mockReturnValue(onCar4(2));
     io.position.mockReturnValue({ frame: 57_000, time: 950, endFrame: undefined, seeking: false });
 

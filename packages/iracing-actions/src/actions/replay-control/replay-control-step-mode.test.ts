@@ -132,9 +132,9 @@ describe("a view reads the record once", () => {
     // Lap 2 of the three the record holds for the car in session 2.
     expect(lapMode.view(dial, io)).toMatchObject({ value: "2/3", sides: { left: true, right: true } });
     expect(listLapStarts).toHaveBeenCalledTimes(1);
-    // The session on screen: the replay's own reading, or while a jump is under
-    // way the record's session at the landing, read once.
-    expect(listSessions).toHaveBeenCalledTimes(seeking ? 1 : 0);
+    // The session on screen and its instance, from the session record, read
+    // once whether or not a jump is under way.
+    expect(listSessions).toHaveBeenCalledTimes(1);
   });
 
   it.each([false, true])(
