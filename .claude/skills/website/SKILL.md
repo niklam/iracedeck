@@ -164,7 +164,7 @@ pnpm deploy               # Build + deploy to Firebase
 
 Domain: **iracedeck.com** (Firebase Hosting with custom domain).
 
-The release deploy builds the site alone, `turbo run build --filter=@iracedeck/website`, so turbo builds only the workspace packages `packages/website/package.json` declares. Every workspace package a website source imports — by name, or by a relative path such as the gallery generator's `../../iracing-actions/src/…` — must be declared there, or the deploy fails on a missing `dist/` while every PR check, which builds the whole workspace, stays green (#1458). `scripts/website-workspace-deps.test.mjs` enforces it.
+The release deploy builds the site alone, `turbo run build --filter=@iracedeck/website`, so turbo builds only the workspace packages `packages/website/package.json` declares. Every workspace package a website source imports — by name, by a relative path such as the gallery generator's `../../iracing-actions/src/…`, or through a root `scripts/` module it imports, as the voice-catalog generator reaches `voice-packs` through `scripts/lib/voice-catalog-data.mjs` — must be declared there, or the deploy fails on a missing `dist/` while every PR check, which builds the whole workspace, stays green (#1458). `scripts/website-workspace-deps.test.mjs` enforces it.
 
 ## Common Changes
 

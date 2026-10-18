@@ -31,6 +31,7 @@
     "@iracedeck/deck-core": "workspace:*",
     "@iracedeck/icon-composer": "workspace:*",
     "@iracedeck/iracing-actions": "workspace:*",
+    "@iracedeck/voice-packs": "workspace:*",
     "firebase-tools": "15.32.1",
     "satteri": "0.10.5",
     "tsx": "4.23.15"
