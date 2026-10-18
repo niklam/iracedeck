@@ -519,14 +519,24 @@ function neverReadBack(r: Run, what: string): Ending {
 }
 
 /**
- * The replay was left during the run. That is not a give-up of the runner's,
- * so it must draw no cross: the gate's replay-jump end has no replay-left
- * result, and cancelled is the one that says "not given up".
+ * The replay was left during the run. It ends as gave-up, out of the replay,
+ * which the gate files as `replay-left` (#1437): a gave-up that says why and
+ * draws no cross on the dial. Cancelled would file it as `claim-taken`, a
+ * take by another press, which nobody made.
  */
 function leftReplay(r: Run): Ending {
   log.debug(`Replay search queue: the replay was left; the ${r.target} run ends`);
 
-  return "cancelled";
+  return "gave-up";
+}
+
+/**
+ * A search of the run's that the gate stopped waiting on with the run's claim
+ * still standing. Off screen, the gate ended it because the replay was left,
+ * and so does the run; otherwise another command took its place.
+ */
+function searchEnded(r: Run): Ending {
+  return stopped(r) || replayOnScreen() ? "cancelled" : leftReplay(r);
 }
 
 /**
@@ -687,7 +697,7 @@ async function behindSearch(r: Run): Promise<Ending | null> {
     case "gave-up":
       return neverReadBack(r, "the search under way never landed");
     case "superseded":
-      return "cancelled";
+      return searchEnded(r);
   }
 }
 
@@ -898,7 +908,7 @@ async function playingPath(r: Run, reading: Reading): Promise<Ending> {
     case "gave-up":
       return neverReadBack(r, step.refused === true ? "the search was refused" : "the search never landed");
     case "superseded":
-      return "cancelled";
+      return searchEnded(r);
     case "not-landed": {
       // Neither sign within the patience: settled as on a paused replay, and the step is tried once more there.
       const settled = await settleReplayByJump({ claim: r.jump?.claim, origin: r.origin });
@@ -1030,7 +1040,7 @@ async function pausedRun(r: Run, misses = 0): Promise<Ending> {
       case "gave-up":
         return neverReadBack(r, step.refused === true ? "the search was refused" : "the search never landed");
       case "superseded":
-        return "cancelled";
+        return searchEnded(r);
     }
   }
 }

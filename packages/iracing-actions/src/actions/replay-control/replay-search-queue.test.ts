@@ -130,7 +130,10 @@ function runEnds(origin = "dial-a"): string[] {
   return notices
     .filter((n) => n.origin === origin)
     .flatMap((n) => n.ended.map((e) => e.reason))
-    .filter((reason) => reason === "jump-landed" || reason === "walk-gave-up" || reason === "claim-taken");
+    .filter(
+      (reason) =>
+        reason === "jump-landed" || reason === "walk-gave-up" || reason === "claim-taken" || reason === "replay-left",
+    );
 }
 
 /** Records each send of the named commands: when it went out, and whether the sim was still busy with a move. */
@@ -776,7 +779,7 @@ describe("the paced search runner (#801)", () => {
       expect(sim.thrown).toBe(0);
     });
 
-    it("ends with no give-up when the replay is left during the run", async () => {
+    it("ends as replay-left when the replay is left with a search on its way (#1437)", async () => {
       setUp();
       turn("lap", 3);
       await until("nextLap");
@@ -784,7 +787,22 @@ describe("the paced search runner (#801)", () => {
       await untilIdle(5_000);
 
       expect(sim.calls).toEqual(["nextLap"]);
-      expect(runEnds()).toEqual(["claim-taken"]);
+      // The search's own fact, which the gate ends on leaving, then the run's: both out of the replay, so the
+      // dial draws no cross, and neither a take by another press nor a give-up of the runner's.
+      expect(runEnds()).toEqual(["replay-left", "replay-left"]);
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it("ends as replay-left when the replay is left while its pause is read back (#1437)", async () => {
+      setUp({ speed: { speed: 4, slowMotion: false }, speedLagMs: 60_000 });
+      turn("lap", 3);
+      await until("setPlaySpeed 0");
+      await wait(150);
+      inReplay = false;
+      await untilIdle(5_000);
+
+      expect(sim.calls).toEqual(["setPlaySpeed 0"]);
+      expect(runEnds()).toEqual(["replay-left"]);
       expect(warn).not.toHaveBeenCalled();
     });
 
