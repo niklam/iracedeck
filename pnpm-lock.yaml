@@ -1614,6 +1614,9 @@ importers:
       '@iracedeck/icon-composer':
         specifier: workspace:*
         version: link:../icon-composer
+      '@iracedeck/iracing-actions':
+        specifier: workspace:*
+        version: link:../iracing-actions
       firebase-tools:
         specifier: 15.32.1
         version: 15.32.1(@types/node@26.6.2)(encoding@0.1.13)(supports-color@7.2.0)
