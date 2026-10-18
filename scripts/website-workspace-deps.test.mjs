@@ -17,8 +17,9 @@ const WEBSITE_DIR = "packages/website";
 const SOURCE = /\.(?:[cm]?[jt]s|[jt]sx|astro|mdx)$/;
 const TEST = /\.test\.(?:[cm]?[jt]s|[jt]sx)$/;
 
-// Static `import … from "x"`, `export … from "x"`, side-effect `import "x"` and dynamic `import("x")`.
-const SPECIFIER = /(?:\bfrom\s*|\bimport\s*\(?\s*)["']([^"']+)["']/g;
+// Static `import … from "x"`, `export … from "x"`, side-effect `import "x"`, dynamic `import("x")`
+// and CommonJS `require("x")`.
+const SPECIFIER = /(?:\bfrom\s*|\bimport\s*\(?\s*|\brequire\s*\(\s*)["']([^"']+)["']/g;
 
 // Text that never runs, so an import-shaped example in it is no dependency. A comment opener
 // counts only at a line start or after whitespace (or `{`, for MDX's `{/* … */}`), so a URL (`https://…`) or a glob
@@ -175,6 +176,15 @@ describe("website workspace dependencies (#1458)", () => {
     expect([...packages].sort()).toEqual(["@iracedeck/deck-core", "@iracedeck/iracing-actions"]);
     // The website's own files are scanned already, so only the root module is left to follow.
     expect([...follow]).toEqual(["scripts/lib/w.mjs"]);
+  });
+
+  it("reads a CommonJS require as an import", () => {
+    const text = `const a = require("@iracedeck/a");\nconst b = require( '../../icon-composer/src/b.js' );\n`;
+
+    expect([...workspaceImports("packages/website/scripts/gen.cjs", text, namesByDir).packages].sort()).toEqual([
+      "@iracedeck/a",
+      "@iracedeck/icon-composer",
+    ]);
   });
 
   it("ignores import-shaped text in comments and MDX code fences, but not the imports beside it", () => {
