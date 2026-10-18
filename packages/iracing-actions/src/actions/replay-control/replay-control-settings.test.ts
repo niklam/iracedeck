@@ -149,7 +149,7 @@ describe("ReplayControl settings (#1316)", () => {
 
       expect(dial.mode).toBe("speed");
       expect(dial.pressAction).toBe("reverse");
-      expect(dial.longPressAction).toBe("set-1x-play");
+      expect(dial.longPressAction).toBe("mode-default");
       expect(dial.speedStops["16"]).toBe(true);
       expect(dial.speedStops.s4).toBe(false);
       expect(dial.speedStops["8"]).toBe(true);
