@@ -22,12 +22,15 @@ const TEST = /\.test\.(?:[cm]?[jt]s|[jt]sx)$/;
 const SPECIFIER = /(?:\bfrom\s*|\bimport\s*\(?\s*|\brequire\s*\(\s*)["']([^"']+)["']/g;
 
 // Text that never runs, so an import-shaped example in it is no dependency. A comment opener
-// counts only at a line start or after whitespace (or `{`, for MDX's `{/* … */}`), so a URL (`https://…`) or a glob
+// counts only at a line start or after whitespace or punctuation that ends or opens code
+// (`;`, `,`, brackets — and `{` for MDX's `{/* … */}`), so a URL (`https://…`) or a glob
 // (`src/**/*.ts`) in a string does not swallow the code after it.
-const BLOCK_COMMENT = /(^|[\s{])\/\*[\s\S]*?\*\//g;
-const LINE_COMMENT = /(^|\s)\/\/.*$/gm;
+const BLOCK_COMMENT = /(^|[\s;,(){}[\]])\/\*[\s\S]*?\*\//g;
+const LINE_COMMENT = /(^|[\s;,(){}[\]])\/\/.*$/gm;
 const HTML_COMMENT = /<!--[\s\S]*?-->/g;
-const FENCE = /^\s*(?:```|~~~)/;
+// A fence closes only on the opener's character, at least as long, with nothing after it.
+const FENCE_OPEN = /^\s*(`{3,}|~{3,})/;
+const FENCE_CLOSE = /^\s*(`{3,}|~{3,})\s*$/;
 
 /**
  * `text` without what the build never executes: comments, and in an MDX page its fenced
@@ -36,17 +39,19 @@ const FENCE = /^\s*(?:```|~~~)/;
 function executableText(source, text) {
   let code = text;
   if (source.endsWith(".mdx")) {
-    let fenced = false;
+    let fence = null;
     code = code
       .split("\n")
       .filter((line) => {
-        if (FENCE.test(line)) {
-          fenced = !fenced;
+        if (fence === null) {
+          fence = line.match(FENCE_OPEN)?.[1] ?? null;
 
-          return false;
+          return fence === null;
         }
+        const close = line.match(FENCE_CLOSE)?.[1];
+        if (close && close[0] === fence[0] && close.length >= fence.length) fence = null;
 
-        return !fenced;
+        return false;
       })
       .join("\n");
   }
@@ -195,6 +200,11 @@ describe("website workspace dependencies (#1458)", () => {
       "```",
       `{/* import c from "@iracedeck/c"; */}`,
       `<!-- import d from "@iracedeck/d"; -->`,
+      // A backtick line inside a tilde fence does not close it.
+      "~~~markdown",
+      "```",
+      `import { k } from "@iracedeck/k";`,
+      "~~~~",
       `import E from "@iracedeck/e";`,
     ].join("\n");
     const code = [
@@ -202,6 +212,7 @@ describe("website workspace dependencies (#1458)", () => {
       `/* import g from "@iracedeck/g"; */`,
       `const url = "https://example.com"; import h from "@iracedeck/h";`,
       `const glob = "src/**/*.ts";`,
+      `const x = 1;// import j from "@iracedeck/j";`,
       `const i = await import("@iracedeck/i"); // */`,
     ].join("\n");
 
