@@ -65,6 +65,47 @@ import { NO_CAR_IDX } from "./replay-record-step.js";
  */
 export const TRACK_ORDER_LIVE_EDGE_MAX_FRAMES = 120;
 
+/**
+ * Each session info's car numbers by carIdx, built once per session-info
+ * object: the SDK parses a new one on every update, and a view runs every
+ * tick, asking for every in-world car's number to find the neighbours.
+ */
+const carNumbersBySessionInfo = new WeakMap<object, ReadonlyMap<number, string>>();
+
+/** The display number of every car in the session info's driver list, by carIdx; the SDK's lookup, once per car. */
+function buildCarNumbers(sessionInfo: object): ReadonlyMap<number, string> {
+  const drivers = (sessionInfo as { DriverInfo?: { Drivers?: unknown } }).DriverInfo?.Drivers;
+  const numbers = new Map<number, string>();
+
+  if (!Array.isArray(drivers)) return numbers;
+
+  for (const driver of drivers) {
+    const carIdx = (driver as { CarIdx?: unknown } | null)?.CarIdx;
+
+    if (typeof carIdx !== "number" || numbers.has(carIdx)) continue;
+
+    const number = getCarNumberFromSessionInfo(sessionInfo, carIdx);
+
+    if (number !== null) numbers.set(carIdx, number);
+  }
+
+  return numbers;
+}
+
+/** The display number of the car at `carIdx` (`getCarNumberFromSessionInfo`), from the map built for this session info. */
+function carNumberOf(sessionInfo: unknown, carIdx: number): string | null {
+  if (typeof sessionInfo !== "object" || sessionInfo === null) return null;
+
+  let numbers = carNumbersBySessionInfo.get(sessionInfo);
+
+  if (numbers === undefined) {
+    numbers = buildCarNumbers(sessionInfo);
+    carNumbersBySessionInfo.set(sessionInfo, numbers);
+  }
+
+  return numbers.get(carIdx) ?? null;
+}
+
 /** The gap between the two neighbours in the caption: no-break spaces, which SVG does not collapse. */
 const NEIGHBOUR_GAP = "\u00a0".repeat(10);
 
@@ -231,9 +272,7 @@ export const trackOrderMode: ReplayDialMode<ReplayDialStepIo> = {
     const carIdx = telemetry?.CamCarIdx;
     const sessionInfo = io.sessionInfo();
     const number =
-      typeof carIdx === "number" && carIdx >= 0 && carIdx !== NO_CAR_IDX
-        ? getCarNumberFromSessionInfo(sessionInfo, carIdx)
-        : null;
+      typeof carIdx === "number" && carIdx >= 0 && carIdx !== NO_CAR_IDX ? carNumberOf(sessionInfo, carIdx) : null;
 
     // A tick read mid-seek is not the replay's: the box keeps the car and the
     // neighbours it showed (null). While a jump is under way the arrays are
@@ -313,7 +352,7 @@ export function trackOrderNeighbours(
  * the session info count. Null when there is no other such car on track.
  */
 export function neighbourCaption(telemetry: TelemetryData | null, carIdx: number, sessionInfo: unknown): string | null {
-  const numberOf = (idx: number): string | null => getCarNumberFromSessionInfo(sessionInfo, idx);
+  const numberOf = (idx: number): string | null => carNumberOf(sessionInfo, idx);
   const { ahead, behind } = trackOrderNeighbours(telemetry, carIdx, (idx) => numberOf(idx) !== null);
 
   if (ahead === null || behind === null) return null;

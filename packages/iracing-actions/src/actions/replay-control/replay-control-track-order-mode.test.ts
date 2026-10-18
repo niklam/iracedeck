@@ -480,6 +480,30 @@ describe("neighbourCaption", () => {
     expect(neighbourCaption(telemetry, 1, INFO)).toBe("#3" + "\u00a0".repeat(10) + "#3");
   });
 
+  it("reads the session info's driver list once per session-info object, not per car per view", () => {
+    let reads = 0;
+    const counted = {
+      get DriverInfo() {
+        reads++;
+
+        return INFO.DriverInfo;
+      },
+    };
+    const telemetry = { CarIdxLapDistPct: [0.2, 0.5, 0.55, 0.9], CarIdxTrackSurface: [3, 3, 3, 3] } as TelemetryData;
+
+    expect(neighbourCaption(telemetry, 1, counted)).toBe("#3" + "\u00a0".repeat(10) + "#7");
+    reads = 0;
+    expect(neighbourCaption(telemetry, 1, counted)).toBe("#3" + "\u00a0".repeat(10) + "#7");
+    expect(reads).toBe(0);
+
+    // A new session info object is read afresh.
+    const renumbered = {
+      DriverInfo: { Drivers: INFO.DriverInfo.Drivers.map((d) => (d.CarIdx === 3 ? { ...d, CarNumber: "77" } : d)) },
+    };
+
+    expect(neighbourCaption(telemetry, 1, renumbered)).toBe("#3" + "\u00a0".repeat(10) + "#77");
+  });
+
   it("is null with no other numbered car on track", () => {
     const telemetry = { CarIdxLapDistPct: [-1, 0.5], CarIdxTrackSurface: [-1, 3] } as TelemetryData;
 
