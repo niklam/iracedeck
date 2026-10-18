@@ -41,7 +41,8 @@
  * per-car track positions are the replay's own: in a saved replay, and at the
  * live edge of an in-session replay. Scrubbed back in an in-session replay
  * those arrays read the live field (#1281's capture), so there the number
- * shows alone. The neighbours are a preview: iRacing's binding picks the car,
+ * shows alone (`replay-car-arrays.ts`, the rule the lap on screen's fallback
+ * reads too). The neighbours are a preview: iRacing's binding picks the car,
  * and the pace car is a stop of its own (#1277). They are drawn in the dash
  * box's neighbours slot, dimmed beside the number, behind on the left and
  * ahead on the right. There is no caption, and its line is kept, so the
@@ -53,12 +54,12 @@ import {
   carInWorld,
   findNearestCarOnTrack,
   getCarNumberFromSessionInfo,
-  REPLAY_LIVE_EDGE_MAX_FRAMES,
   type TelemetryData,
 } from "@iracedeck/iracing-sdk";
 
 import { CAR_CYCLE_BINDING_KEY_LIST, CAR_CYCLE_BINDING_KEYS } from "../../shared/car-cycle-bindings.js";
 import type { DialNeighbours } from "../../shared/dial-box.js";
+import { carArraysTrusted } from "./replay-car-arrays.js";
 import type { ReplayDialMode, ReplayDialStepIo } from "./replay-control-dial-mode.js";
 import { NO_CAR_IDX } from "./replay-record-step.js";
 
@@ -317,7 +318,7 @@ export const trackOrderMode: ReplayDialMode<ReplayDialStepIo> = {
     // keeps the car and the neighbours it showed. While a jump is under way
     // the arrays are not the replay's either, so the number shows alone.
     const neighbours =
-      position !== null && number !== null && !position.seeking && trackPositionsTrusted(io, telemetry)
+      position !== null && number !== null && !position.seeking && carArraysTrusted(io, telemetry)
         ? neighbourNumbers(telemetry, carIdx as number, sessionInfo)
         : null;
 
@@ -331,25 +332,6 @@ export const trackOrderMode: ReplayDialMode<ReplayDialStepIo> = {
     };
   },
 };
-
-/**
- * @internal Exported for testing
- *
- * Whether the per-car track positions are the replay's own: in a saved
- * replay always; in an in-session replay only at the live edge, the cursor
- * within the SDK's `REPLAY_LIVE_EDGE_MAX_FRAMES` of the end of the tape
- * (`ReplayFrameNumEnd`). Scrubbed back further, they read the live field.
- */
-export function trackPositionsTrusted(
-  io: Pick<ReplayDialStepIo, "isSavedReplay">,
-  telemetry: TelemetryData | null,
-): boolean {
-  if (io.isSavedReplay()) return true;
-
-  const toEnd = telemetry?.ReplayFrameNumEnd;
-
-  return typeof toEnd === "number" && toEnd >= 0 && toEnd <= REPLAY_LIVE_EDGE_MAX_FRAMES;
-}
 
 /**
  * @internal Exported for testing
