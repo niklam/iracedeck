@@ -18,47 +18,9 @@ const SOURCE = /\.(?:[cm]?[jt]s|[jt]sx|astro|mdx)$/;
 const TEST = /\.test\.(?:[cm]?[jt]s|[jt]sx)$/;
 
 // Static `import … from "x"`, `export … from "x"`, side-effect `import "x"`, dynamic `import("x")`
-// and CommonJS `require("x")`.
+// and CommonJS `require("x")`. Matched over the raw text on purpose: an example in a comment or
+// a code fence counts too, which can only fail the guard loudly, never let an import through.
 const SPECIFIER = /(?:\bfrom\s*|\bimport\s*\(?\s*|\brequire\s*\(\s*)["']([^"']+)["']/g;
-
-// Text that never runs, so an import-shaped example in it is no dependency. A comment opener
-// counts only at a line start or after whitespace or punctuation that ends or opens code
-// (`;`, `,`, brackets — and `{` for MDX's `{/* … */}`), so a URL (`https://…`) or a glob
-// (`src/**/*.ts`) in a string does not swallow the code after it.
-const BLOCK_COMMENT = /(^|[\s;,(){}[\]])\/\*[\s\S]*?\*\//g;
-const LINE_COMMENT = /(^|[\s;,(){}[\]])\/\/.*$/gm;
-const HTML_COMMENT = /<!--[\s\S]*?-->/g;
-// A fence closes only on the opener's character, at least as long, with nothing after it.
-const FENCE_OPEN = /^\s*(`{3,}|~{3,})/;
-const FENCE_CLOSE = /^\s*(`{3,}|~{3,})\s*$/;
-
-/**
- * `text` without what the build never executes: comments, and in an MDX page its fenced
- * code blocks, which show code rather than import it.
- */
-function executableText(source, text) {
-  let code = text;
-  if (source.endsWith(".mdx")) {
-    let fence = null;
-    code = code
-      .split("\n")
-      .filter((line) => {
-        if (fence === null) {
-          fence = line.match(FENCE_OPEN)?.[1] ?? null;
-
-          return fence === null;
-        }
-        const close = line.match(FENCE_CLOSE)?.[1];
-        if (close && close[0] === fence[0] && close.length >= fence.length) fence = null;
-
-        return false;
-      })
-      .join("\n");
-  }
-  if (source.endsWith(".mdx") || source.endsWith(".astro")) code = code.replace(HTML_COMMENT, "");
-
-  return code.replace(BLOCK_COMMENT, "$1").replace(LINE_COMMENT, "$1");
-}
 
 function packageNamesByDir() {
   const names = new Map();
@@ -80,7 +42,7 @@ function packageNamesByDir() {
 function workspaceImports(source, text, namesByDir) {
   const packages = new Set();
   const follow = new Set();
-  for (const [, spec] of executableText(source, text).matchAll(SPECIFIER)) {
+  for (const [, spec] of text.matchAll(SPECIFIER)) {
     if (spec.startsWith("@iracedeck/")) {
       packages.add(spec.split("/").slice(0, 2).join("/"));
     } else if (spec.startsWith(".")) {
@@ -189,40 +151,6 @@ describe("website workspace dependencies (#1458)", () => {
     expect([...workspaceImports("packages/website/scripts/gen.cjs", text, namesByDir).packages].sort()).toEqual([
       "@iracedeck/a",
       "@iracedeck/icon-composer",
-    ]);
-  });
-
-  it("ignores import-shaped text in comments and MDX code fences, but not the imports beside it", () => {
-    const mdx = [
-      `import A from "@iracedeck/a";`,
-      "```typescript",
-      `import { b } from "@iracedeck/b";`,
-      "```",
-      `{/* import c from "@iracedeck/c"; */}`,
-      `<!-- import d from "@iracedeck/d"; -->`,
-      // A backtick line inside a tilde fence does not close it.
-      "~~~markdown",
-      "```",
-      `import { k } from "@iracedeck/k";`,
-      "~~~~",
-      `import E from "@iracedeck/e";`,
-    ].join("\n");
-    const code = [
-      `// import f from "@iracedeck/f";`,
-      `/* import g from "@iracedeck/g"; */`,
-      `const url = "https://example.com"; import h from "@iracedeck/h";`,
-      `const glob = "src/**/*.ts";`,
-      `const x = 1;// import j from "@iracedeck/j";`,
-      `const i = await import("@iracedeck/i"); // */`,
-    ].join("\n");
-
-    expect([...workspaceImports("packages/website/src/page.mdx", mdx, namesByDir).packages].sort()).toEqual([
-      "@iracedeck/a",
-      "@iracedeck/e",
-    ]);
-    expect([...workspaceImports("packages/website/scripts/gen.mts", code, namesByDir).packages].sort()).toEqual([
-      "@iracedeck/h",
-      "@iracedeck/i",
     ]);
   });
 });
