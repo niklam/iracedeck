@@ -168,3 +168,100 @@ describe("renderDialBox — a reserved caption line and the value's neighbours (
     });
   });
 });
+
+describe("renderDialBox with a caption mark (#1437)", () => {
+  const CANVASES = [
+    { id: "sd-plus-strip", width: 200, height: 100 },
+    { id: "stream-dock-knob", width: 176, height: 112 },
+  ] as const;
+  const WORKING = { kind: "working", position: 1 } as const;
+
+  /** Everything in the box but its caption line: the panel, the label and the value. */
+  function aboveCaption(svg: string): string {
+    return svg.replace(/<text data-caption="true"[^>]*>[^<]*<\/text>/, "").replace(/<g data-caption-mark=.*?<\/g>/, "");
+  }
+
+  for (const canvas of CANVASES) {
+    describe(canvas.id, () => {
+      it("draws a pending count and the mark together, the count clear of the mark", () => {
+        const svg = renderDialBox(canvas, {
+          abbr: "MARKERS",
+          value: "3 / 12",
+          colors: accentColors(),
+          caption: "+3",
+          captionMark: WORKING,
+        });
+
+        expect(svg).toMatch(/<text data-caption="true"[^>]*>\+3<\/text>/);
+        expect(svg).toContain('<g data-caption-mark="working">');
+
+        const textX = Number(/<text data-caption="true" x="([\d.]+)"/.exec(svg)![1]);
+        const markRight = Math.max(
+          ...[...svg.matchAll(/<circle cx="([\d.]+)"[^>]*r="([\d.]+)"/g)].map((m) => Number(m[1]) + Number(m[2])),
+        );
+
+        expect(textX - "+3".length * 0.6 * 14).toBeGreaterThan(markRight);
+      });
+
+      it("draws the mark in the label colour, at the caption's height", () => {
+        const svg = renderDialBox(canvas, {
+          abbr: "MARKERS",
+          value: "3",
+          colors: { ...accentColors(), label: "#00ff00" },
+          caption: "+3",
+          captionMark: { kind: "waiting" },
+        });
+        const captionY = Number(/<text data-caption="true"[^>]*y="(\d+)"/.exec(svg)![1]);
+        const cys = [...svg.matchAll(/<circle [^>]*cy="([\d.]+)"/g)].map((m) => Number(m[1]));
+
+        expect(svg.match(/<circle [^>]*fill="#00ff00"/g)).toHaveLength(3);
+        expect(cys.every((cy) => cy < captionY && cy > captionY - 10)).toBe(true);
+      });
+
+      it("leaves the label and the value where the caption's text puts them", () => {
+        const base = { abbr: "MARKERS", value: "12", colors: accentColors() };
+
+        for (const caption of ["", "ADD −5 s"]) {
+          const plain = renderDialBox(canvas, { ...base, caption });
+
+          for (const captionMark of [WORKING, { kind: "waiting" } as const, { kind: "not-done" } as const]) {
+            expect(aboveCaption(renderDialBox(canvas, { ...base, caption, captionMark }))).toBe(aboveCaption(plain));
+          }
+        }
+      });
+
+      it("draws the mark on the caption line with no caption text", () => {
+        const svg = renderDialBox(canvas, {
+          abbr: "MARKERS",
+          value: "12",
+          colors: accentColors(),
+          captionMark: WORKING,
+        });
+
+        expect(svg).not.toContain("data-caption=");
+        expect(svg.match(/<circle /g)).toHaveLength(3);
+      });
+
+      it("keeps the caption's layout but not its text when the mark replaces it", () => {
+        const base = { abbr: "SPEED", value: "PAUSED", colors: accentColors(), caption: "▶ 1x" };
+        const svg = renderDialBox(canvas, { ...base, captionMark: { ...WORKING, replacesCaption: true } });
+
+        expect(svg).not.toContain("▶ 1x");
+        expect(svg).toContain('<g data-caption-mark="working">');
+        expect(aboveCaption(svg)).toBe(aboveCaption(renderDialBox(canvas, base)));
+      });
+
+      it("dims the mark with the rest of a dimmed box", () => {
+        const svg = renderDialBox(canvas, {
+          abbr: "SPEED",
+          value: "",
+          colors: accentColors(),
+          dimmed: true,
+          captionMark: { kind: "not-done" },
+        });
+
+        expect(svg).toMatch(/<g data-dimmed="true"[^>]*>.*<g data-caption-mark="not-done">.*<\/g><\/svg>$/);
+      });
+    });
+  }
+});

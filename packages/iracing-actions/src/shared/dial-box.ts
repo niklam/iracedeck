@@ -19,12 +19,14 @@
 import type { DialCanvasProfile } from "@iracedeck/deck-core";
 import { z } from "zod";
 
+import type { DialCaptionMark } from "./dial-caption-mark.js";
 import { renderKnobBox } from "./dial-knob-box.js";
 import type { DialPendingPreview } from "./dial-preview.js";
 import type { DialSideMarker } from "./dial-side-markers.js";
 import { renderStripBox } from "./dial-strip-box.js";
 import type { DialNeighbours } from "./dial-value-neighbours.js";
 
+export type { DialCaptionMark, DialCaptionMarkLook } from "./dial-caption-mark.js";
 export type { DialSideMarker, DialSideMarks } from "./dial-side-markers.js";
 export type { DialNeighbours } from "./dial-value-neighbours.js";
 
@@ -124,6 +126,17 @@ export interface DialBoxArgs {
    * box (no live value) borrows the value slot for the duration.
    */
   pending?: DialPendingPreview | null;
+  /**
+   * The replay busy look (#1437) at the left end of the caption line, at the
+   * caption's height, in the label color (the not-done cross in its fixed red).
+   * The caption's text keeps its place beside it, moving right or shrinking only
+   * as far as it must to clear the mark, unless the mark `replacesCaption`. The
+   * label and the value stay where the caption's text alone puts them, so the
+   * mark showing and going moves nothing; with no caption text the mark is drawn
+   * on the caption line all the same. Absent, the box is drawn byte for byte as
+   * without it.
+   */
+  captionMark?: DialCaptionMark;
 }
 
 /**

@@ -6,6 +6,7 @@
 import { applyBindingWarning } from "@iracedeck/deck-core";
 
 import type { DialBoxArgs } from "./dial-box.js";
+import { placeMarkedCaption } from "./dial-caption-mark.js";
 import { fitValueFontSize } from "./dial-fit.js";
 import { PENDING_BAR_HEIGHT, renderPendingBar } from "./dial-preview.js";
 import { renderSideMarkers, resolveSideMarks } from "./dial-side-markers.js";
@@ -53,6 +54,7 @@ export function renderStripBox(args: DialBoxArgs & { width: number; height: numb
     neighbours = null,
     dimmed = false,
     pending = null,
+    captionMark,
   } = args;
 
   const minSide = Math.min(w, h);
@@ -133,9 +135,29 @@ export function renderStripBox(args: DialBoxArgs & { width: number; height: numb
       })
     : "";
 
-  const captionText = hasCaption
+  let captionText = hasCaption
     ? `<text data-caption="true" x="${w / 2}" y="${captionY}" text-anchor="middle" fill="${colors.label}" font-family="Arial, sans-serif" font-size="${captionFontSize}" font-weight="bold">${caption}</text>`
     : "";
+
+  // The caption mark (#1437) at the line's left end; the caption's text keeps
+  // its place beside it, or is left out when the mark stands in for it. The
+  // layout above follows the caption's text alone: an unmarked value never
+  // reaches down to the caption line, so a mark on its own moves nothing.
+  if (captionMark) {
+    const placed = placeMarkedCaption(captionMark, captionMark.replacesCaption ? "" : caption, {
+      width: w,
+      baselineY: captionY,
+      fontSize: captionFontSize,
+      left: inset + strokeWidth + Math.round(captionFontSize * 0.4),
+      color: colors.label,
+    });
+    const text =
+      hasCaption && !captionMark.replacesCaption
+        ? `<text data-caption="true" x="${placed.textX}" y="${captionY}" text-anchor="middle" fill="${colors.label}" font-family="Arial, sans-serif" font-size="${placed.textFontSize}" font-weight="bold">${caption}</text>`
+        : "";
+
+    captionText = text + placed.mark;
+  }
 
   const content = labelText + valueText + markerContent + captionText;
 
