@@ -80,8 +80,8 @@ describe("ReplayControlDialSettings", () => {
     expect(dial.speedStops["16"]).toBe(true);
   });
 
-  it("should offer Speed Control, Frame Jog, Lap, Session, Incident and Car, in that order", () => {
-    expect(REPLAY_DIAL_MODES).toEqual(["speed", "frame-jog", "lap", "session", "incident", "car"]);
+  it("should offer Speed Control, Frame Jog, Lap, Session, Incident and Track Order, in that order", () => {
+    expect(REPLAY_DIAL_MODES).toEqual(["speed", "frame-jog", "lap", "session", "incident", "track-order"]);
   });
 
   it.each(["green", "LAP", "", 3, null])("should read an unknown stored mode %j as Speed Control (#801)", (mode) => {
@@ -89,9 +89,13 @@ describe("ReplayControlDialSettings", () => {
   });
 
   it("should keep the gesture slots when the mode is one of #801's", () => {
-    const dial = ReplayControlDialSettings.parse({ mode: "car", pressAction: "jump-to-live", longPressAction: "none" });
+    const dial = ReplayControlDialSettings.parse({
+      mode: "track-order",
+      pressAction: "jump-to-live",
+      longPressAction: "none",
+    });
 
-    expect(dial.mode).toBe("car");
+    expect(dial.mode).toBe("track-order");
     expect(dial.pressAction).toBe("jump-to-live");
     expect(dial.longPressAction).toBe("none");
   });

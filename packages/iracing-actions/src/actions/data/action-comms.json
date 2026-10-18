@@ -3342,7 +3342,7 @@
     "incident": {
       "method": "api"
     },
-    "car": {
+    "track-order": {
       "method": "keybind",
       "binding": {
         "scope": "global",

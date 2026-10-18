@@ -2,8 +2,8 @@ import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ReplaySettledOutcome } from "../../shared/replay-command-gate.js";
-import { _isCarTapWaiting, _resetCarTap, carMode } from "./replay-control-car-mode.js";
 import { ReplayControlDialSettings } from "./replay-control-dial-settings.js";
+import { _isTrackOrderTapWaiting, _resetTrackOrderTap, trackOrderMode } from "./replay-control-track-order-mode.js";
 import { fakeStepIo, type FakeStepIo } from "./replay-dial-step-io.test-support.js";
 
 vi.mock("@iracedeck/settings", () => ({ getGlobalSettings: vi.fn(() => ({})) }));
@@ -17,7 +17,7 @@ vi.mock("@iracedeck/deck-iracing", () => ({
   }),
 }));
 
-const dial = ReplayControlDialSettings.parse({ mode: "car" });
+const dial = ReplayControlDialSettings.parse({ mode: "track-order" });
 
 const NEXT = "replayControlNextCar";
 const PREVIOUS = "replayControlPrevCar";
@@ -32,10 +32,10 @@ function jumpUnderWay(io: FakeStepIo) {
   return { land: () => end("settled"), giveUp: () => end("gave-up") };
 }
 
-describe("carMode", () => {
+describe("trackOrderMode", () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    _resetCarTap();
+    _resetTrackOrderTap();
   });
 
   afterEach(() => {
@@ -51,7 +51,7 @@ describe("carMode", () => {
     ])("taps one binding per event whatever the ticks: %i → %s", async (ticks, key) => {
       const io = fakeStepIo();
 
-      await carMode.rotate(ticks, dial, io);
+      await trackOrderMode.rotate(ticks, dial, io);
 
       expect(io.tapBinding).toHaveBeenCalledExactlyOnceWith(key);
       expect(io.waitForJumpsToSettle).not.toHaveBeenCalled();
@@ -60,9 +60,9 @@ describe("carMode", () => {
     it("cancels a camera walk before it taps, and sends no replay command", async () => {
       const io = fakeStepIo();
 
-      await carMode.rotate(1, dial, io);
+      await trackOrderMode.rotate(1, dial, io);
 
-      expect(io.cancelCameraWalks).toHaveBeenCalledWith("dial-car");
+      expect(io.cancelCameraWalks).toHaveBeenCalledWith("dial-track-order");
       expect(io.cancelCameraWalks.mock.invocationCallOrder[0]).toBeLessThan(
         io.tapBinding.mock.invocationCallOrder[0] ?? 0,
       );
@@ -77,10 +77,10 @@ describe("carMode", () => {
       const io = fakeStepIo();
 
       io.isBindingMissing.mockImplementation((keys) => keys === PREVIOUS);
-      await carMode.rotate(-1, dial, io);
+      await trackOrderMode.rotate(-1, dial, io);
 
       expect(io.tapBinding).not.toHaveBeenCalled();
-      expect(io.logger.warn).toHaveBeenCalledWith("Dial car: binding not configured, nothing sent");
+      expect(io.logger.warn).toHaveBeenCalledWith("Dial track order: binding not configured, nothing sent");
     });
   });
 
@@ -89,7 +89,7 @@ describe("carMode", () => {
       const io = fakeStepIo();
       const jump = jumpUnderWay(io);
 
-      const turn = carMode.rotate(1, dial, io);
+      const turn = trackOrderMode.rotate(1, dial, io);
       await vi.advanceTimersByTimeAsync(500);
       expect(io.tapBinding).not.toHaveBeenCalled();
       // The walk is stopped at the turn, not when the tap goes out.
@@ -105,9 +105,9 @@ describe("carMode", () => {
       const io = fakeStepIo();
       const jump = jumpUnderWay(io);
 
-      const first = carMode.rotate(1, dial, io);
-      const second = carMode.rotate(-1, dial, io);
-      const third = carMode.rotate(-3, dial, io);
+      const first = trackOrderMode.rotate(1, dial, io);
+      const second = trackOrderMode.rotate(-1, dial, io);
+      const third = trackOrderMode.rotate(-3, dial, io);
 
       expect(io.waitForJumpsToSettle).toHaveBeenCalledTimes(1);
 
@@ -122,8 +122,8 @@ describe("carMode", () => {
       const b = fakeStepIo();
       const jump = jumpUnderWay(a);
 
-      const first = carMode.rotate(1, dial, a);
-      const second = carMode.rotate(-1, dial, b);
+      const first = trackOrderMode.rotate(1, dial, a);
+      const second = trackOrderMode.rotate(-1, dial, b);
 
       jump.land();
       await Promise.all([first, second]);
@@ -136,7 +136,7 @@ describe("carMode", () => {
       const io = fakeStepIo();
       const jump = jumpUnderWay(io);
 
-      const turn = carMode.rotate(1, dial, io);
+      const turn = trackOrderMode.rotate(1, dial, io);
       await vi.advanceTimersByTimeAsync(ms);
       expect(io.tapBinding).not.toHaveBeenCalled();
 
@@ -150,7 +150,7 @@ describe("carMode", () => {
       const io = fakeStepIo();
       const jump = jumpUnderWay(io);
 
-      const turn = carMode.rotate(1, dial, io);
+      const turn = trackOrderMode.rotate(1, dial, io);
 
       jump.giveUp();
       await turn;
@@ -163,7 +163,7 @@ describe("carMode", () => {
       const io = fakeStepIo();
       const jump = jumpUnderWay(io);
 
-      const turn = carMode.rotate(1, dial, io);
+      const turn = trackOrderMode.rotate(1, dial, io);
 
       io.isStillOnScreen.mockReturnValue(false);
       jump.land();
@@ -181,21 +181,21 @@ describe("carMode", () => {
         new Promise<ReplaySettledOutcome>((_resolve, reject) => (fail = reject)),
       );
 
-      const first = carMode.rotate(1, dial, io);
-      const second = carMode.rotate(-1, dial, io);
+      const first = trackOrderMode.rotate(1, dial, io);
+      const second = trackOrderMode.rotate(-1, dial, io);
 
-      expect(_isCarTapWaiting()).toBe(true);
+      expect(_isTrackOrderTapWaiting()).toBe(true);
 
       fail(new Error("gate gone"));
       await expect(Promise.all([first, second])).resolves.toBeDefined();
 
       expect(io.tapBinding).not.toHaveBeenCalled();
-      expect(_isCarTapWaiting()).toBe(false);
+      expect(_isTrackOrderTapWaiting()).toBe(false);
       expect(io.logger.warn).toHaveBeenCalledWith(expect.stringContaining("gate gone"));
 
       // The next turn is a turn of its own: on a quiet replay it taps at once.
       io.isJumpUnderWay.mockReturnValue(false);
-      await carMode.rotate(1, dial, io);
+      await trackOrderMode.rotate(1, dial, io);
 
       expect(io.tapBinding).toHaveBeenCalledExactlyOnceWith(NEXT);
     });
@@ -208,11 +208,11 @@ describe("carMode", () => {
         throw new Error("no gate");
       });
 
-      await carMode.rotate(1, dial, io);
-      await carMode.rotate(-1, dial, io);
+      await trackOrderMode.rotate(1, dial, io);
+      await trackOrderMode.rotate(-1, dial, io);
 
       expect(io.tapBinding).toHaveBeenCalledExactlyOnceWith(PREVIOUS);
-      expect(_isCarTapWaiting()).toBe(false);
+      expect(_isTrackOrderTapWaiting()).toBe(false);
     });
 
     it("a turn after the wait ended is a turn of its own", async () => {
@@ -222,13 +222,13 @@ describe("carMode", () => {
 
       io.tapBinding.mockReturnValueOnce(new Promise<boolean>((resolve) => (releaseTap = () => resolve(true))));
 
-      const first = carMode.rotate(1, dial, io);
+      const first = trackOrderMode.rotate(1, dial, io);
 
       jump.land();
       await vi.advanceTimersByTimeAsync(0);
       // The first tap is going out; this one is not folded into it.
       io.isJumpUnderWay.mockReturnValue(false);
-      const second = carMode.rotate(-1, dial, io);
+      const second = trackOrderMode.rotate(-1, dial, io);
 
       releaseTap();
       await Promise.all([first, second]);
@@ -253,7 +253,7 @@ describe("carMode", () => {
       io.sessionInfo.mockReturnValue(SESSION_INFO);
       io.telemetry.mockReturnValue({ IsReplayPlaying: true, ReplayFrameNum: 5_000, CamCarIdx: 7 } as TelemetryData);
 
-      expect(carMode.view(dial, io)).toEqual({
+      expect(trackOrderMode.view(dial, io)).toEqual({
         value: "#042",
         caption: "PAUSED",
         sides: { left: true, right: true },
@@ -266,10 +266,10 @@ describe("carMode", () => {
 
       io.sessionInfo.mockReturnValue(SESSION_INFO);
       io.telemetry.mockReturnValue({ IsReplayPlaying: true, CamCarIdx: 255 } as TelemetryData);
-      expect(carMode.view(dial, io).value).toBe("");
+      expect(trackOrderMode.view(dial, io).value).toBe("");
 
       io.position.mockReturnValue(null);
-      expect(carMode.view(dial, io).value).toBeNull();
+      expect(trackOrderMode.view(dial, io).value).toBeNull();
     });
 
     it("flags a missing binding, either one of the pair", () => {
@@ -277,12 +277,12 @@ describe("carMode", () => {
 
       io.isBindingMissing.mockImplementation((keys) => Array.isArray(keys) && keys.includes(NEXT));
 
-      expect(carMode.view(dial, io).bindingMissing).toBe(true);
+      expect(trackOrderMode.view(dial, io).bindingMissing).toBe(true);
     });
 
-    it("is labelled CAR and describes its turn", () => {
-      expect(carMode.label).toBe("CAR");
-      expect(carMode.rotateDescription).toBe("Next / previous car");
+    it("is labelled TRACK ORDER and describes its turn as Camera Controls does", () => {
+      expect(trackOrderMode.label).toBe("TRACK ORDER");
+      expect(trackOrderMode.rotateDescription).toBe("Cycle Cars by Track Order");
     });
   });
 });

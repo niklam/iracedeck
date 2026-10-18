@@ -152,7 +152,7 @@
 					<option value="lap">Lap</option>
 					<option value="session">Session</option>
 					<option value="incident">Incident</option>
-					<option value="car">Car</option>
+					<option value="track-order">Track Order</option>
 				</sdpi-select>
 			</sdpi-item>
 
@@ -361,7 +361,7 @@
 				document.getElementById("dial-speed-stops-section")?.classList.toggle("hidden", mode !== "speed");
 				document.getElementById("dial-frame-jog-section")?.classList.toggle("hidden", mode !== "frame-jog");
 				if (isDialView) {
-					document.getElementById("key-bindings-section")?.classList.toggle("hidden", mode !== "car");
+					document.getElementById("key-bindings-section")?.classList.toggle("hidden", mode !== "track-order");
 				}
 			}
 

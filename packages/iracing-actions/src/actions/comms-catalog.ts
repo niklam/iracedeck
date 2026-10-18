@@ -790,7 +790,7 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
   // Speed Control walks the speed ladder with one `setPlaySpeed` broadcast per
   // turn, and Frame Jog (#1317) steps frames with one frame-step or
   // `setPlayPosition` broadcast. Lap, Session and Incident (#801) step by
-  // waited record jumps and iRacing's own searches, every one a broadcast; Car
+  // waited record jumps and iRacing's own searches, every one a broadcast; Track Order
   // taps iRacing's Next / Previous Car binding, clockwise and counter-clockwise,
   // so either one unset warns — the `pair` form Camera Controls' Track Order
   // dial uses for the same two keys. The gesture-slot values (dial.pressAction /
@@ -804,7 +804,7 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     lap: api,
     session: api,
     incident: api,
-    car: pair(CAR_CYCLE_BINDING_KEYS.next, CAR_CYCLE_BINDING_KEYS.previous),
+    "track-order": pair(CAR_CYCLE_BINDING_KEYS.next, CAR_CYCLE_BINDING_KEYS.previous),
     "play-pause": api,
     "set-1x-play": api,
     reverse: api,

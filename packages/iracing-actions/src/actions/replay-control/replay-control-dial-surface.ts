@@ -5,7 +5,7 @@
  * Rotating runs the dial's rotation mode (`dial.mode`, one module per mode
  * behind `replay-control-dial-mode.ts`): Speed Control walks the replay speed
  * along a ladder the user shapes, Frame Jog (#1317) steps the replay one
- * frame per detent, and Lap, Session, Incident and Car (#801) step through the
+ * frame per detent, and Lap, Session, Incident and Track Order (#801) step through the
  * replay record, iRacing's own searches and its Next / Previous Car binding.
  * The press gestures are shared by every
  * mode — Play/Pause, Set 1x and play, Reverse direction, Jump to Live — so
@@ -57,7 +57,6 @@ import { REPLAY_TARGET_GIVE_UP_MS } from "../../shared/replay-position-state.js"
 import { resolveReplayWalkStart } from "../../shared/replay-record-walk.js";
 import { isSeeking } from "../../shared/replay-seek.js";
 import { REPLAY_JUMP_MAX_WAIT_MS } from "../../shared/replay-timing.js";
-import { carMode } from "./replay-control-car-mode.js";
 import type {
   ReplayDialMode,
   ReplayDialModeIo,
@@ -75,6 +74,7 @@ import { incidentMode } from "./replay-control-incident-mode.js";
 import { lapMode } from "./replay-control-lap-mode.js";
 import { sessionMode } from "./replay-control-session-mode.js";
 import { speedMode } from "./replay-control-speed-mode.js";
+import { trackOrderMode } from "./replay-control-track-order-mode.js";
 import {
   findRecordStep,
   type RecordStepResult,
@@ -129,7 +129,7 @@ export const DIAL_MODES: Record<ReplayControlDialMode, ReplayDialMode<ReplayDial
   lap: lapMode,
   session: sessionMode,
   incident: incidentMode,
-  car: carMode,
+  "track-order": trackOrderMode,
 };
 
 /** What the dial surface needs from the owning action. */
@@ -175,7 +175,7 @@ export interface ReplayControlDialHost {
    * Session turn and a key press read the same record the same way.
    */
   recordSource(telemetry: TelemetryData | null): RecordStepSource;
-  /** Taps one of the action's key bindings (#801's Car mode); resolves to whether it went out. */
+  /** Taps one of the action's key bindings (#801's Track Order mode); resolves to whether it went out. */
   tapBinding(settingKey: string): Promise<boolean>;
   /** Whether any of the given global binding keys is unset (#612). Stateless, so a dial may ask it. */
   isBindingMissing(keys: string | readonly string[]): boolean;

@@ -22,7 +22,6 @@ import {
 } from "../../shared/replay-cursor.js";
 import { _resetReplayPositionState, REPLAY_TARGET_GIVE_UP_MS } from "../../shared/replay-position-state.js";
 import { lastListedSessionNum } from "./green-flag-target.js";
-import { _resetCarTap, carMode } from "./replay-control-car-mode.js";
 import type { ReplayDialModeIo, ReplaySpeed } from "./replay-control-dial-mode.js";
 import { REPLAY_DIAL_MODES, ReplayControlDialSettings } from "./replay-control-dial-settings.js";
 import {
@@ -36,6 +35,7 @@ import { incidentMode } from "./replay-control-incident-mode.js";
 import { lapMode } from "./replay-control-lap-mode.js";
 import { sessionMode } from "./replay-control-session-mode.js";
 import { speedMode } from "./replay-control-speed-mode.js";
+import { _resetTrackOrderTap, trackOrderMode } from "./replay-control-track-order-mode.js";
 import type { RecordStepSource } from "./replay-record-step.js";
 import {
   _resetReplaySpeedState,
@@ -248,7 +248,7 @@ function lastBox(ctx: DialContext): string {
 }
 
 /** Every mode's label, which `shownValue` skips. */
-const MODE_LABELS = new Set(["SPEED", "FRAME", "LAP", "SESSION", "INCIDENT", "CAR"]);
+const MODE_LABELS = new Set(["SPEED", "FRAME", "LAP", "SESSION", "INCIDENT", "TRACK ORDER"]);
 
 /** The value slot's text: the last `<text>` that is neither the caption nor the label. */
 function shownValue(svg: string): string {
@@ -1964,20 +1964,20 @@ describe("ReplayControlDialSurface", () => {
       env.telemetry = { ...replayAt(s), ReplaySessionTime: seconds } as TelemetryData;
     }
 
-    it("registers one mode per dial.mode value: Speed Control, Frame Jog, Lap, Session, Incident and Car", () => {
+    it("registers one mode per dial.mode value: Speed Control, Frame Jog, Lap, Session, Incident and Track Order", () => {
       expect(Object.keys(DIAL_MODES)).toEqual([...REPLAY_DIAL_MODES]);
       expect(DIAL_MODES.speed).toBe(speedMode);
       expect(DIAL_MODES["frame-jog"]).toBe(frameJogMode);
       expect(DIAL_MODES.lap).toBe(lapMode);
       expect(DIAL_MODES.session).toBe(sessionMode);
       expect(DIAL_MODES.incident).toBe(incidentMode);
-      expect(DIAL_MODES.car).toBe(carMode);
+      expect(DIAL_MODES["track-order"]).toBe(trackOrderMode);
     });
 
     it("labels are distinct, so the box says which mode the dial is in", () => {
       const labels = REPLAY_DIAL_MODES.map((mode) => DIAL_MODES[mode].label);
 
-      expect(labels).toEqual(["SPEED", "FRAME", "LAP", "SESSION", "INCIDENT", "CAR"]);
+      expect(labels).toEqual(["SPEED", "FRAME", "LAP", "SESSION", "INCIDENT", "TRACK ORDER"]);
     });
 
     it("a Frame Jog dial's turn goes to Frame Jog, never to the speed ladder", async () => {
@@ -2760,7 +2760,7 @@ describe("ReplayControlDialSurface", () => {
     });
   });
 
-  describe("Lap, Session, Incident and Car (#801)", () => {
+  describe("Lap, Session, Incident and Track Order (#801)", () => {
     /** Car 4 (number 12, raw 104) in a three-session event. */
     const SESSION_INFO = {
       SessionInfo: {
@@ -2819,7 +2819,7 @@ describe("ReplayControlDialSurface", () => {
 
     beforeEach(() => {
       store.value = null;
-      _resetCarTap();
+      _resetTrackOrderTap();
     });
 
     describe("Lap and Session: one waited jump per turn", () => {
@@ -2912,7 +2912,7 @@ describe("ReplayControlDialSurface", () => {
         expect(queue.turns).toEqual([{ target: "lap", ticks: 2, origin: ctx.id, owner: "dial-lap" }]);
       });
 
-      it.each(["lap", "session", "incident", "car"])("a %s turn from the car sends nothing", async (mode) => {
+      it.each(["lap", "session", "incident", "track-order"])("a %s turn from the car sends nothing", async (mode) => {
         withRecord();
         const { surface, ctx, d } = await dialIn(mode, pausedOn(54_000));
         env.inReplay = false;
@@ -2987,8 +2987,8 @@ describe("ReplayControlDialSurface", () => {
         expect(queue.turns.map((turn) => turn.origin)).toEqual(["a", "b"]);
       });
 
-      it("a Car turn carries none: it sends no replay command and claims nothing", async () => {
-        const { surface, ctx, d } = await dialIn("car", pausedOn(54_000));
+      it("a Track Order turn carries none: it sends no replay command and claims nothing", async () => {
+        const { surface, ctx, d } = await dialIn("track-order", pausedOn(54_000));
 
         surface.rotate(ctx as never, d, 1, false);
         await settle();
@@ -3001,18 +3001,18 @@ describe("ReplayControlDialSurface", () => {
 
     describe("Car", () => {
       it("taps at once on a quiet replay, one tap per event, the right binding each way", async () => {
-        const { surface, ctx, d } = await dialIn("car", pausedOn(54_000));
+        const { surface, ctx, d } = await dialIn("track-order", pausedOn(54_000));
 
         surface.rotate(ctx as never, d, 3, false);
         surface.rotate(ctx as never, d, -1, false);
         await settle();
 
         expect(host.tapBinding.mock.calls).toEqual([["replayControlNextCar"], ["replayControlPrevCar"]]);
-        expect(host.cancelCameraWalks).toHaveBeenCalledWith("dial-car");
+        expect(host.cancelCameraWalks).toHaveBeenCalledWith("dial-track-order");
       });
 
       it("taps at once behind a search: a search does not swallow a camera change", async () => {
-        const { surface, ctx, d } = await dialIn("car", pausedOn(54_000));
+        const { surface, ctx, d } = await dialIn("track-order", pausedOn(54_000));
 
         // A key's search on its way: no target, and no seek showing.
         pressReplayCommand({ kind: "search", search: "nextLap" }, { by: "next-lap", origin: "key" });
@@ -3025,7 +3025,7 @@ describe("ReplayControlDialSurface", () => {
       });
 
       it("a turn during a jump waits until no jump has shown for three reads, then taps once", async () => {
-        const { surface, ctx, d } = await dialIn("car", pausedOn(600));
+        const { surface, ctx, d } = await dialIn("track-order", pausedOn(600));
 
         // A jump of the plugin's under way: a target standing, the replay seeking.
         surface["io"].jumpTo("dial-frame-jog", 9_000);
@@ -3042,7 +3042,7 @@ describe("ReplayControlDialSurface", () => {
       });
 
       it("a tap still waiting when the dial disappears is dropped", async () => {
-        const { surface, ctx, d } = await dialIn("car", pausedOn(600));
+        const { surface, ctx, d } = await dialIn("track-order", pausedOn(600));
 
         surface["io"].jumpTo("dial-frame-jog", 9_000);
         env.telemetry = SEEKING;
@@ -3057,7 +3057,7 @@ describe("ReplayControlDialSurface", () => {
 
       it("draws the missing-binding warning on the box", async () => {
         host.isBindingMissing.mockReturnValue(true);
-        const { ctx } = await dialIn("car", pausedOn(600));
+        const { ctx } = await dialIn("track-order", pausedOn(600));
 
         expect(lastBox(ctx)).toContain("<binding-warning/>");
         expect(shownValue(lastBox(ctx))).toBe("#12");
@@ -3098,10 +3098,10 @@ describe("ReplayControlDialSurface", () => {
         expect(shownValue(lastBox(ctx))).toBe("QUALIFY");
       });
 
-      it("Incident shows the replay time, Car the viewed car's number", async () => {
+      it("Incident shows the replay time, Track Order the viewed car's number", async () => {
         const { ctx } = await dialIn("incident", pausedOn(3_600 * 60 + 5 * 60));
-        const car = dialContext("car");
-        await dialIn("car", pausedOn(600), car);
+        const car = dialContext("track-order");
+        await dialIn("track-order", pausedOn(600), car);
 
         expect(shownValue(lastBox(ctx))).toBe("60:05");
         expect(shownValue(lastBox(car))).toBe("#12");

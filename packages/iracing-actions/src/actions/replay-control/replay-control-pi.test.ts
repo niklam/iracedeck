@@ -172,7 +172,7 @@ describe("replay-control PI dial view", () => {
     expect(dialBranch?.[1]).toContain("isDialView = true;");
     expect(dialBranch?.[1]).toContain("updateDialVisibility(");
     expect(template).toMatch(
-      /if \(isDialView\) \{\s*document\.getElementById\("key-bindings-section"\)\?\.classList\.toggle\("hidden", mode !== "car"\);/,
+      /if \(isDialView\) \{\s*document\.getElementById\("key-bindings-section"\)\?\.classList\.toggle\("hidden", mode !== "track-order"\);/,
     );
     expect(dialView).not.toContain("key-bindings-section");
   });
@@ -186,7 +186,7 @@ describe("replay-control PI dial view", () => {
       ["lap", "Lap"],
       ["session", "Session"],
       ["incident", "Incident"],
-      ["car", "Car"],
+      ["track-order", "Track Order"],
     ]);
   });
 

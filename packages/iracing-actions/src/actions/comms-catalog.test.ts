@@ -134,15 +134,15 @@ describe("action-comms catalog", () => {
 
   it("describes every Replay Control dial mode and every gesture but none (#1316, #801)", () => {
     // A mode added to REPLAY_DIAL_MODES (and to the PI) without an entry here
-    // renders no status line for it. Every mode but Car sends broadcasts only,
+    // renders no status line for it. Every mode but Track Order sends broadcasts only,
     // so a keybind descriptor there would warn about a binding the dial never
-    // taps; Car taps Next / Previous Car, and either one unset warns.
+    // taps; Track Order taps Next / Previous Car, and either one unset warns.
     const dial = COMMS_CATALOG["replay-control-dial"];
 
     expect(dial._meta.modeSetting).toBe("dial.mode");
 
     for (const mode of REPLAY_DIAL_MODES) {
-      if (mode === "car") {
+      if (mode === "track-order") {
         expect(dial[mode], mode).toEqual({
           method: "keybind",
           binding: { scope: "global", keys: ["replayControlNextCar", "replayControlPrevCar"] },

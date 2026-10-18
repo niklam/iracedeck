@@ -992,7 +992,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     replayState: (nowMs) => this.sdkController.getReplayState(nowMs),
     sessionInfo: () => this.sdkController.getSessionInfo(),
     recordSource: (telemetry) => this.recordStepSource(telemetry),
-    // The Car mode's binding (#801). Never `setActiveBinding`: its readiness
+    // The Track Order mode's binding (#801). Never `setActiveBinding`: its readiness
     // state is one value per action instance, and a dial's would bleed onto the
     // keys; `isBindingMissing` is stateless.
     tapBinding: (settingKey) => this.tapBinding(settingKey),

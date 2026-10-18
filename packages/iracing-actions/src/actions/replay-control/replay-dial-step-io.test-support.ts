@@ -1,6 +1,6 @@
 /**
  * Test support for the Replay Control dial's stepping modes (#801): a fake of
- * the `io` the surface hands Lap, Session, Incident and Car, every member a
+ * the `io` the surface hands Lap, Session, Incident and Track Order, every member a
  * mock a test can set, so a mode is tested against the seam alone. Imported
  * only by tests; nothing in the plugin bundle reaches it.
  */

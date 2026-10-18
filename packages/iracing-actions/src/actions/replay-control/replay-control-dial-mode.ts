@@ -6,7 +6,7 @@
  * what the box reads while that mode is selected. A new mode is one module
  * exporting a {@link ReplayDialMode} plus one row in the surface's registry.
  *
- * #801 added Lap, Session, Incident and Car, and with them what a mode that
+ * #801 added Lap, Session, Incident and Track Order, and with them what a mode that
  * moves the replay by the record, by iRacing's search or by a key binding
  * needs from the surface: a waited record jump, the record step, the paced
  * search, a binding tap and the jump wait a camera tap sits behind. Design:
@@ -98,7 +98,7 @@ export interface ReplayDialModeIo {
 /**
  * What the surface hands a mode that steps through the record, iRacing's
  * searches or a key binding (#801): {@link ReplayDialModeIo} and what Lap,
- * Session, Incident and Car need beside it. Kept apart so a mode that moves
+ * Session, Incident and Track Order need beside it. Kept apart so a mode that moves
  * the replay by speed or by frames is handed, and tested against, only what
  * it uses. The members that carry the turning dial's origin token
  * ({@link recordJump}, {@link queueSearch}) have it bound by the surface, so
@@ -184,7 +184,7 @@ export interface ReplayDialModeView {
 /**
  * One rotation mode of the Replay Control dial. It holds no state of its own:
  * what it reads comes from `dial`, `io` and the replay speed state every dial
- * shares (`replay-speed-state.ts`) — save Car's one tap waiting behind a jump,
+ * shares (`replay-speed-state.ts`) — save Track Order's one tap waiting behind a jump,
  * which is one for the whole plugin (#801). `Io` is what the mode is handed:
  * {@link ReplayDialStepIo} for the modes that need it.
  */

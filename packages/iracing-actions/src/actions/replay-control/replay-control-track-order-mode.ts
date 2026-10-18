@@ -1,9 +1,12 @@
 /**
- * Replay Control dial — Car (#801): iRacing's Next Car / Previous Car binding,
- * one tap per rotate event, whatever its `ticks`. A rotation mode of the dial
- * surface (`replay-control-dial-mode.ts`). Design:
+ * Replay Control dial — Track Order (#801): iRacing's Next Car / Previous Car
+ * binding, one tap per rotate event, whatever its `ticks`. Camera Controls'
+ * Track Order rotation, and named after it (stored `track-order`; it was Car
+ * until the maintainer's second test round, when nothing had shipped under
+ * that value). A rotation mode of the dial surface
+ * (`replay-control-dial-mode.ts`). Design:
  * `docs/superpowers/specs/2026-10-12-issue-801-replay-control-dial-stepping.md`
- * ("Car").
+ * ("Car", "The display").
  *
  * - **One tap per event**, not per detent: a keyboard tap holds the key for
  *   about 100 ms and a continued spin arrives as further events. The keys are
@@ -35,8 +38,8 @@ import type { ReplayDialMode, ReplayDialStepIo } from "./replay-control-dial-mod
 import { NO_CAR_IDX } from "./replay-record-step.js";
 import { formatSpeedDisplay } from "./replay-speed-format.js";
 
-/** The name a Car turn cancels a walk under. */
-const CURSOR_OWNER = "dial-car";
+/** The name a Track Order turn cancels a walk under. */
+const CURSOR_OWNER = "dial-track-order";
 
 type CarDirection = keyof typeof CAR_CYCLE_BINDING_KEYS;
 
@@ -62,8 +65,8 @@ async function tap(io: ReplayDialStepIo, direction: CarDirection): Promise<void>
 
   const sent = await io.tapBinding(key);
 
-  io.logger.info(`Dial car: ${describe(direction)}`);
-  io.logger.debug(`Dial car: tapped ${key}, result: ${sent}`);
+  io.logger.info(`Dial track order: ${describe(direction)}`);
+  io.logger.debug(`Dial track order: tapped ${key}, result: ${sent}`);
 }
 
 /** Waits for the jump under way, then taps whatever turn is waiting by then — or drops it. */
@@ -78,7 +81,7 @@ async function tapWhenJumpsSettle(io: ReplayDialStepIo, generation: number): Pro
     if (waitGeneration === generation) waiting = null;
 
     io.logger.warn(
-      `Dial car: tap dropped, the wait for the jump under way failed: ${error instanceof Error ? error.message : String(error)}`,
+      `Dial track order: tap dropped, the wait for the jump under way failed: ${error instanceof Error ? error.message : String(error)}`,
     );
 
     return;
@@ -97,13 +100,17 @@ async function tapWhenJumpsSettle(io: ReplayDialStepIo, generation: number): Pro
   if (turn === null) return;
 
   if (outcome !== "settled") {
-    turn.io.logger.debug(`Dial car: tap dropped, the jump under way did not land within the longest a jump waits`);
+    turn.io.logger.debug(
+      `Dial track order: tap dropped, the jump under way did not land within the longest a jump waits`,
+    );
 
     return;
   }
 
   if (!turn.io.isStillOnScreen()) {
-    turn.io.logger.debug("Dial car: tap dropped, the dial left the screen or the replay was left while it waited");
+    turn.io.logger.debug(
+      "Dial track order: tap dropped, the dial left the screen or the replay was left while it waited",
+    );
 
     return;
   }
@@ -117,7 +124,7 @@ async function tapWhenJumpsSettle(io: ReplayDialStepIo, generation: number): Pro
  * Forgets the tap waiting behind a jump. The wait itself runs on and taps
  * nothing.
  */
-export function _resetCarTap(): void {
+export function _resetTrackOrderTap(): void {
   waiting = null;
   waiter = null;
   waitGeneration++;
@@ -128,14 +135,14 @@ export function _resetCarTap(): void {
  *
  * Whether a tap is waiting behind a jump.
  */
-export function _isCarTapWaiting(): boolean {
+export function _isTrackOrderTapWaiting(): boolean {
   return waiting !== null;
 }
 
 /** The Car mode. Clockwise is iRacing's Next Car, the car ahead on track; counter-clockwise Previous Car. */
-export const carMode: ReplayDialMode<ReplayDialStepIo> = {
-  label: "CAR",
-  rotateDescription: "Next / previous car",
+export const trackOrderMode: ReplayDialMode<ReplayDialStepIo> = {
+  label: "TRACK ORDER",
+  rotateDescription: "Cycle Cars by Track Order",
 
   rotate(ticks, _dial, io) {
     const direction: CarDirection = ticks > 0 ? "next" : "previous";
@@ -143,8 +150,8 @@ export const carMode: ReplayDialMode<ReplayDialStepIo> = {
 
     // `tapBinding` resolves with nothing to say for an unset binding, so check first.
     if (io.isBindingMissing(key)) {
-      io.logger.warn("Dial car: binding not configured, nothing sent");
-      io.logger.debug(`Dial car: direction=${direction}, binding=${key}`);
+      io.logger.warn("Dial track order: binding not configured, nothing sent");
+      io.logger.debug(`Dial track order: direction=${direction}, binding=${key}`);
 
       return;
     }
@@ -157,7 +164,7 @@ export const carMode: ReplayDialMode<ReplayDialStepIo> = {
 
       waiting = { direction, io };
       io.logger.debug(
-        `Dial car: ticks=${ticks}; the tap waiting for a jump now goes to the ${describe(direction)}` +
+        `Dial track order: ticks=${ticks}; the tap waiting for a jump now goes to the ${describe(direction)}` +
           (replaced === undefined ? "" : ` (was ${describe(replaced)})`),
       );
 
@@ -167,7 +174,9 @@ export const carMode: ReplayDialMode<ReplayDialStepIo> = {
     if (!io.isJumpUnderWay()) return tap(io, direction);
 
     waiting = { direction, io };
-    io.logger.debug(`Dial car: ticks=${ticks}; a jump is under way, the ${describe(direction)} tap waits for it`);
+    io.logger.debug(
+      `Dial track order: ticks=${ticks}; a jump is under way, the ${describe(direction)} tap waits for it`,
+    );
 
     const generation = ++waitGeneration;
     const run = tapWhenJumpsSettle(io, generation);
