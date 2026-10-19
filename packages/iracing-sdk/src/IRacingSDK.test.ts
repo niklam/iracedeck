@@ -1,3 +1,4 @@
+import { silentLogger } from "@iracedeck/logger";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { INativeSDK } from "./interfaces.js";
@@ -187,7 +188,8 @@ describe("IRacingSDK", () => {
       expect(mockNative.getSessionInfoStr).toHaveBeenCalledTimes(1);
     });
 
-    // The Euro NASCAR car's session info repeats `Tires:` under CarSetup (#1461)
+    // The Euro NASCAR car's session info repeats `Tires:` under CarSetup (#1461),
+    // shaped as in a live dump: the first holds TireType, the second the corners
     const DUPLICATE_KEY_YAML = [
       "---",
       "DriverInfo:",
@@ -196,19 +198,17 @@ describe("IRacingSDK", () => {
       " - CarIdx: 0",
       '   CarNumber: "46"',
       "CarSetup:",
-      " TireType:",
-      "  TireType: Dry",
+      " Tires:",
+      "  TireType:",
+      "   TireType: Dry",
       " Tires:",
       "  LeftFront:",
-      "   StartingPressure: 100 kPa",
-      " Tires:",
-      "  LeftFront:",
-      "   StartingPressure: 110 kPa",
+      "   ColdPressure: 159 kPa",
       "...",
       "",
     ].join("\n");
 
-    it("parses YAML that repeats a map key, keeping the later value", () => {
+    it("parses YAML that repeats a map key, keeping both sections", () => {
       vi.mocked(mockNative.getVarHeaderEntry).mockReturnValue(null);
       vi.mocked(mockNative.getSessionInfoStr).mockReturnValue(DUPLICATE_KEY_YAML);
       sdk.connect();
@@ -216,12 +216,35 @@ describe("IRacingSDK", () => {
       const sessionInfo = sdk.getSessionInfo() as Record<string, any> | null;
 
       expect(sessionInfo?.DriverInfo.Drivers[0].CarNumber).toBe("46");
-      expect(sessionInfo?.CarSetup.Tires.LeftFront.StartingPressure).toBe("110 kPa");
+      expect(sessionInfo?.CarSetup.Tires.TireType.TireType).toBe("Dry");
+      expect(sessionInfo?.CarSetup.Tires.LeftFront.ColdPressure).toBe("159 kPa");
+    });
+
+    it("warns about a repeated key once per connection", () => {
+      const logger = { ...silentLogger, warn: vi.fn(), debug: vi.fn() };
+      sdk = new IRacingSDK(mockNative, logger);
+      vi.mocked(mockNative.getVarHeaderEntry).mockReturnValue(null);
+      vi.mocked(mockNative.getSessionInfoStr).mockReturnValue(DUPLICATE_KEY_YAML);
+      sdk.connect();
+      sdk.getSessionInfo();
+
+      const header = mockNative.getHeader();
+      vi.mocked(mockNative.getHeader).mockReturnValue({ ...header!, sessionInfoUpdate: 1 });
+      sdk.getSessionInfo();
+
+      expect(logger.warn).toHaveBeenCalledTimes(1);
+      expect(logger.debug).toHaveBeenCalledWith("Repeated session info keys: CarSetup.Tires");
+
+      sdk.disconnect();
+      sdk.connect();
+      sdk.getSessionInfo();
+
+      expect(logger.warn).toHaveBeenCalledTimes(2);
     });
 
     it("parses a failed update once and logs it once, until the next update", () => {
-      const logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
-      sdk = new IRacingSDK(mockNative, logger as never);
+      const logger = { ...silentLogger, error: vi.fn() };
+      sdk = new IRacingSDK(mockNative, logger);
       vi.mocked(mockNative.getVarHeaderEntry).mockReturnValue(null);
       vi.mocked(mockNative.getSessionInfoStr).mockReturnValue("WeekendInfo: [unclosed");
       sdk.connect();

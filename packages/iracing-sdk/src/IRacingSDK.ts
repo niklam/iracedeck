@@ -3,9 +3,9 @@
  * Uses native addon to access the official iRacing SDK
  */
 import { ILogger, silentLogger } from "@iracedeck/logger";
-import yaml from "yaml";
 
 import type { INativeSDK } from "./interfaces.js";
+import { parseSessionInfoYaml } from "./session-yaml.js";
 import { SessionInfo, TelemetryData, VarHeader, VarType } from "./types.js";
 
 /**
@@ -18,6 +18,8 @@ export class IRacingSDK {
   private varHeaders: VarHeader[] = [];
   private lastSessionInfoUpdate = -1;
   private sessionInfo: SessionInfo | null = null;
+  /** Repeated session-info keys already logged on this connection (#1461) */
+  private reportedRepeatedKeys = new Set<string>();
   private connected = false;
 
   constructor(native: INativeSDK, logger: ILogger = silentLogger) {
@@ -77,6 +79,7 @@ export class IRacingSDK {
     this.varHeaders = [];
     this.sessionInfo = null;
     this.lastSessionInfoUpdate = -1;
+    this.reportedRepeatedKeys.clear();
   }
 
   /**
@@ -213,9 +216,18 @@ export class IRacingSDK {
     this.lastSessionInfoUpdate = header.sessionInfoUpdate;
 
     // iRacing's YAML can repeat a map key (the Euro NASCAR car's setup repeats
-    // `Tires:`, #1461), so duplicates are accepted and the later value wins
+    // `Tires:`, #1461); parseSessionInfoYaml merges the repeats
     try {
-      this.sessionInfo = yaml.parse(yamlString, { uniqueKeys: false });
+      const { info, repeatedKeys } = parseSessionInfoYaml(yamlString);
+      const unreported = repeatedKeys.filter((key) => !this.reportedRepeatedKeys.has(key));
+
+      this.sessionInfo = info;
+
+      if (unreported.length > 0) {
+        unreported.forEach((key) => this.reportedRepeatedKeys.add(key));
+        this.logger.warn("Session info repeats a key; the repeats were merged");
+        this.logger.debug(`Repeated session info keys: ${unreported.join(", ")}`);
+      }
     } catch (error) {
       this.sessionInfo = null;
       this.logger.error(`[IRacingSDK] Failed to parse session info YAML: ${error}`);
