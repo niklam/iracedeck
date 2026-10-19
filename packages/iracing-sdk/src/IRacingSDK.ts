@@ -197,8 +197,9 @@ export class IRacingSDK {
       return null;
     }
 
-    // Check if session info has been updated
-    if (header.sessionInfoUpdate === this.lastSessionInfoUpdate && this.sessionInfo) {
+    // Each update is parsed once, whether or not it parses: a failed one is
+    // not retried until iRacing publishes the next update (#1461)
+    if (header.sessionInfoUpdate === this.lastSessionInfoUpdate) {
       return this.sessionInfo;
     }
 
@@ -209,14 +210,15 @@ export class IRacingSDK {
       return null;
     }
 
-    // Parse YAML to object
-    try {
-      this.sessionInfo = yaml.parse(yamlString);
-      this.lastSessionInfoUpdate = header.sessionInfoUpdate;
-    } catch (error) {
-      this.logger.error(`[IRacingSDK] Failed to parse session info YAML: ${error}`);
+    this.lastSessionInfoUpdate = header.sessionInfoUpdate;
 
-      return null;
+    // iRacing's YAML can repeat a map key (the Euro NASCAR car's setup repeats
+    // `Tires:`, #1461), so duplicates are accepted and the later value wins
+    try {
+      this.sessionInfo = yaml.parse(yamlString, { uniqueKeys: false });
+    } catch (error) {
+      this.sessionInfo = null;
+      this.logger.error(`[IRacingSDK] Failed to parse session info YAML: ${error}`);
     }
 
     return this.sessionInfo;
