@@ -1,6 +1,6 @@
 {
   "name": "@iracedeck/plugin-runtime",
-  "version": "3.6.0",
+  "version": "3.6.1-dev.0",
   "description": "The one composition root the three deck plugins share: startPlugin(host), its startup phases and the shared action list.",
   "type": "module",
   "main": "src/index.ts",

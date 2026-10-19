@@ -1,6 +1,6 @@
 {
   "name": "iracedeck",
-  "version": "3.6.0",
+  "version": "3.6.1-dev.0",
   "private": true,
   "packageManager": "pnpm@12.6.0",
   "engines": {
