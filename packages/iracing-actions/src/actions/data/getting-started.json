@@ -44,7 +44,7 @@
       "blocks": [
         {
           "type": "paragraph",
-          "html": "Rather than arranging every key yourself, you can switch to a layout iRaceDeck already ships. <strong>iRaceDeck Default</strong> is the everyday one: pit service, chat macros, black box selection, the Race Engineer, and folders leading to the rest. Three more sit alongside it — <strong>Replay</strong> for watching replays and broadcasts, <strong>Car Selector</strong> for picking a car out of a grid, and <strong>Race Admin Per Car</strong> for admin commands aimed at the car you picked."
+          "html": "Rather than arranging every key yourself, you can switch to a layout iRaceDeck already ships. <strong>iRaceDeck Default</strong> is the everyday one: pit service, chat macros, black box selection, the Race Engineer, and folders leading to the rest. Alongside it are <strong>Practice</strong>, <strong>Test</strong>, <strong>Qualifying</strong> and <strong>Race</strong>, one for each kind of session — iRaceDeck can switch to them for you as the session changes — plus <strong>Replay</strong> for watching replays and broadcasts, <strong>Car Selector</strong> for picking a car out of a grid, and <strong>Race Admin Per Car</strong> for admin commands aimed at the car you picked."
         },
         {
           "type": "paragraph",

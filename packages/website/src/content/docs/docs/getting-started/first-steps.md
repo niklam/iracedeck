@@ -21,7 +21,7 @@ Three worth starting with:
 
 ## Start from a ready-made layout
 
-Rather than arranging every key yourself, you can switch to a layout iRaceDeck already ships. **iRaceDeck Default** is the everyday one: pit service, chat macros, black box selection, the Race Engineer, and folders leading to the rest. Three more sit alongside it — **Replay** for watching replays and broadcasts, **Car Selector** for picking a car out of a grid, and **Race Admin Per Car** for admin commands aimed at the car you picked.
+Rather than arranging every key yourself, you can switch to a layout iRaceDeck already ships. **iRaceDeck Default** is the everyday one: pit service, chat macros, black box selection, the Race Engineer, and folders leading to the rest. Alongside it are **Practice**, **Test**, **Qualifying** and **Race**, one for each kind of session — iRaceDeck can switch to them for you as the session changes — plus **Replay** for watching replays and broadcasts, **Car Selector** for picking a car out of a grid, and **Race Admin Per Car** for admin commands aimed at the car you picked.
 
 There is nothing to import by hand. The first time you switch to one, the Stream Deck app offers to install it.
 

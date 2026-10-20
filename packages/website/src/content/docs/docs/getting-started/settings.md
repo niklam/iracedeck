@@ -102,13 +102,15 @@ If you upgraded from an earlier version, your old **On startup** checkbox carrie
 
 ### Profiles
 
-![The Profiles tab, showing the deck picker and the bundled profiles](../../../../assets/settings-window/profiles.png)
+![The Profiles tab, showing the deck picker, the bundled profiles and the automatic switch by session type](../../../../assets/settings-window/profiles.png)
 
 **Stream Deck only.** Mirabox and Ulanzi Deck have no profile system, so this tab is not shown there.
 
-Switch a connected Stream Deck to one of the ready-made iRaceDeck layouts. Because the window is not tied to a particular deck the way a Property Inspector is, it asks which one to switch — with a single deck connected it is already picked for you.
+Switch a connected Stream Deck to one of the ready-made iRaceDeck layouts, or let iRaceDeck switch it for you by session type.
 
-The Stream Deck app asks to install a profile the first time you switch to it. Every bundled profile is listed, whichever deck you pick: each one ships as a variant per supported device, and iRaceDeck resolves the variant that fits the deck you selected when you press **Switch**.
+**Stream Deck Profiles.** Because the window is not tied to a particular deck the way a Property Inspector is, it asks which one to switch — with a single deck connected it is already picked for you. The Stream Deck app asks to install a profile the first time you switch to it. Each profile ships as a version per supported device, and the card lists only the profiles the deck you picked has a version of; iRaceDeck switches to that deck's version when you press **Switch**. For a deck iRaceDeck has no profiles for yet — the Mini, the Neo, the Galleon 100 SD — the card says *iRaceDeck has no ready-made profiles for this Stream Deck yet.* in place of the list. See [supported devices](/docs/features/stream-deck-profiles/#supported-devices).
+
+**Automatically switch to profile.** An on/off toggle, **Switch profiles by session type** (off by default), and one row per session type — **Test**, **Practice**, **Qualifying**, **Race** and **Replay** — each set to **Do not change the profile** (the default) or one of the bundled profiles. When it is on, every connected Stream Deck that has a version of the chosen profile switches to it when that session type begins, and goes back to the profile it was on when iRacing closes. The rows can be set up while the toggle is off. Which sessions count as which type, and how a manual switch is treated, is on the [Stream Deck Profiles](/docs/features/stream-deck-profiles/#switching-automatically-by-session-type) page.
 
 ### Delays
 
