@@ -42,28 +42,83 @@ export enum AudioChannel {
  */
 export type AudioDeviceInfo = { index: number; name: string; id: string; isDefault: boolean };
 
-// Try to load native addon (only on Windows, with safety catch).
+/**
+ * How this package's native addon was loaded (#1373). Read once, at module load.
+ *
+ * - `native`: the `.node` loaded; every call goes to it.
+ * - `mock` / `platform`: not Windows, so the addon was never tried.
+ * - `mock` / `forced`: `IRACEDECK_MOCK` or a `.mock` file asked for the mock.
+ * - `load-failed`: Windows, not forced, and the `.node` threw on load. `error`
+ *   is the thrown message, which names the file and the OS reason, so it is
+ *   for the log only — it holds a path under the user's profile. The class
+ *   still delegates to the silent mock: nothing it does misleads but the
+ *   silence, which the plugin's banner explains.
+ *
+ * Declared here and again, identically, in `@iracedeck/iracing-native`: both
+ * are zero-dependency leaves, and `plugin-runtime` reads the two structurally.
+ */
+export type NativeLoadStatus =
+  | { readonly kind: "native" }
+  | { readonly kind: "mock"; readonly reason: "platform" | "forced" }
+  | { readonly kind: "load-failed"; readonly error: string };
+
+/** The outcome of {@link loadNativeAddon}: the addon, or `null` for every status but `native`. */
+export interface NativeLoadResult<T> {
+  readonly addon: T | null;
+  readonly status: NativeLoadStatus;
+}
+
+/**
+ * The load decision, without the module-scope side effects (#1373): the
+ * platform, the force flag and the loader come in, so the failed path is
+ * testable without a `.node` and without un-mocking the suite (#1084). Off
+ * Windows and under the force flag the loader is never called.
+ *
+ * @internal Exported for testing
+ */
+export function loadNativeAddon<T>(options: {
+  platform: string;
+  forceMock: boolean;
+  load: () => T;
+}): NativeLoadResult<T> {
+  if (options.platform !== "win32") return { addon: null, status: { kind: "mock", reason: "platform" } };
+
+  if (options.forceMock) return { addon: null, status: { kind: "mock", reason: "forced" } };
+
+  try {
+    return { addon: options.load(), status: { kind: "native" } };
+  } catch (err) {
+    return { addon: null, status: { kind: "load-failed", error: err instanceof Error ? err.message : String(err) } };
+  }
+}
+
+// Load the native addon (only on Windows, and never under the force flag).
 // Force mock mode by creating a `.mock` file in the sdPlugin folder,
 // or by setting IRACEDECK_MOCK=1 in the environment.
-let addon: any = null;
-const forceMock = !!process.env.IRACEDECK_MOCK || existsSync(join(process.cwd(), ".mock"));
-
-if (platform() === "win32" && !forceMock) {
-  try {
+const moduleLoad: NativeLoadResult<any> = loadNativeAddon({
+  platform: platform(),
+  forceMock: !!process.env.IRACEDECK_MOCK || existsSync(join(process.cwd(), ".mock")),
+  load: () => {
     const __dirname = dirname(fileURLToPath(import.meta.url));
     const require = createRequire(import.meta.url);
-    addon = require(join(__dirname, "..", "build", "Release", "audio_native.node"));
-  } catch {
-    /* Native addon not available — mock will be used */
-  }
+
+    return require(join(__dirname, "..", "build", "Release", "audio_native.node"));
+  },
+});
+const addon: any = moduleLoad.addon;
+
+/** How this package's native addon was loaded at module load (#1373). Fixed for the run. */
+export function getNativeLoadStatus(): NativeLoadStatus {
+  return moduleLoad.status;
 }
 
 /**
  * miniaudio-backed 4-channel audio mixer.
  *
- * On Windows, delegates to the native addon. On macOS/Linux (or when the
- * native addon is unavailable), delegates to {@link AudioNativeMock} which
- * returns success for every call but produces no audio.
+ * On Windows, delegates to the native addon. On macOS/Linux, under the forced
+ * mock, or when the `.node` failed to load (see {@link getNativeLoadStatus}),
+ * delegates to {@link AudioNativeMock} which returns success for every call
+ * but produces no audio.
  *
  * The method surface is the one consumed by `@iracedeck/audio-service`'s
  * `initializeAudio(logger, native, …)` — any shape-compatible object can be
