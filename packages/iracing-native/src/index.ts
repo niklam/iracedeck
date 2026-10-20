@@ -21,33 +21,99 @@ import { IRacingNativeMock } from "./mock-impl.js";
 export * from "./defines.js";
 export { IRacingNativeMock } from "./mock-impl.js";
 
-// Try to load native addon (only on Windows, with safety catch).
+/**
+ * How this package's native addon was loaded (#1373). Read once, at module load.
+ *
+ * - `native`: the `.node` loaded; every call goes to it.
+ * - `mock` / `platform`: not Windows, so the addon was never tried.
+ * - `mock` / `forced`: `IRACEDECK_MOCK` or a `.mock` file asked for the mock.
+ * - `load-failed`: Windows, not forced, and the `.node` threw on load. `error`
+ *   is the thrown message, which names the file and the OS reason, so it is
+ *   for the log only — it holds a path under the user's profile.
+ *
+ * Declared here and again, identically, in `@iracedeck/audio-native`: both are
+ * zero-dependency leaves, and `plugin-runtime` reads the two structurally.
+ */
+export type NativeLoadStatus =
+  | { readonly kind: "native" }
+  | { readonly kind: "mock"; readonly reason: "platform" | "forced" }
+  | { readonly kind: "load-failed"; readonly error: string };
+
+/** The outcome of {@link loadNativeAddon}: the addon, or `null` for every status but `native`. */
+export interface NativeLoadResult<T> {
+  readonly addon: T | null;
+  readonly status: NativeLoadStatus;
+}
+
+/**
+ * The load decision, without the module-scope side effects (#1373): the
+ * platform, the force flag and the loader come in, so the failed path is
+ * testable without a `.node` and without un-mocking the suite (#1084). Off
+ * Windows and under the force flag the loader is never called.
+ *
+ * @internal Exported for testing
+ */
+export function loadNativeAddon<T>(options: {
+  platform: string;
+  forceMock: boolean;
+  load: () => T;
+}): NativeLoadResult<T> {
+  if (options.platform !== "win32") return { addon: null, status: { kind: "mock", reason: "platform" } };
+
+  if (options.forceMock) return { addon: null, status: { kind: "mock", reason: "forced" } };
+
+  try {
+    return { addon: options.load(), status: { kind: "native" } };
+  } catch (err) {
+    return { addon: null, status: { kind: "load-failed", error: err instanceof Error ? err.message : String(err) } };
+  }
+}
+
+// Load the native addon (only on Windows, and never under the force flag).
 // Force mock mode by creating a `.mock` file in the sdPlugin folder,
 // or by setting IRACEDECK_MOCK=1 in the environment.
-let addon: any = null;
-const forceMock = !!process.env.IRACEDECK_MOCK || existsSync(join(process.cwd(), ".mock"));
-
-if (platform() === "win32" && !forceMock) {
-  try {
+const moduleLoad: NativeLoadResult<any> = loadNativeAddon({
+  platform: platform(),
+  forceMock: !!process.env.IRACEDECK_MOCK || existsSync(join(process.cwd(), ".mock")),
+  load: () => {
     const __dirname = dirname(fileURLToPath(import.meta.url));
     const require = createRequire(import.meta.url);
-    addon = require(join(__dirname, "..", "build", "Release", "iracing_native.node"));
-  } catch {
-    /* Native addon not available — mock will be used */
-  }
+
+    return require(join(__dirname, "..", "build", "Release", "iracing_native.node"));
+  },
+});
+
+/** How this package's native addon was loaded at module load (#1373). Fixed for the run. */
+export function getNativeLoadStatus(): NativeLoadStatus {
+  return moduleLoad.status;
 }
 
 /**
  * iRacing Native SDK
  *
  * Provides direct access to the iRacing SDK via native addon.
- * On non-Windows platforms (or when the native addon is unavailable),
- * delegates to IRacingNativeMock for simulated data.
+ * On non-Windows platforms, or when the mock is forced, delegates to
+ * IRacingNativeMock for simulated data. When the `.node` failed to load
+ * (#1373), the data side reports "not connected" instead — `startup()` returns
+ * `false` and never starts the mock's rotating telemetry — while the input side
+ * (keys, clipboard, focus, pointer, chat) and the elevation probe keep the
+ * mock's no-op answers.
  *
  * This is the low-level interface - for most use cases, use @iracedeck/iracing-sdk instead.
  */
 export class IRacingNative {
   private mock: IRacingNativeMock | null = null;
+  private readonly addon: any;
+  private readonly loadFailed: boolean;
+
+  /**
+   * @param load - The load to delegate to; defaults to the module's own.
+   *   `@internal` — only a test passes one, to drive a load outcome without a `.node`.
+   */
+  constructor(load: NativeLoadResult<any> = moduleLoad) {
+    this.addon = load.addon;
+    this.loadFailed = load.status.kind === "load-failed";
+  }
 
   private getMock(): IRacingNativeMock {
     if (!this.mock) this.mock = new IRacingNativeMock();
@@ -61,18 +127,25 @@ export class IRacingNative {
 
   /**
    * Initialize connection to iRacing
-   * @returns true if connected
+   * @returns true if connected; always false when the `.node` failed to load
    */
   startup(): boolean {
-    return addon ? addon.startup() : this.getMock().startup();
+    if (this.addon) return this.addon.startup();
+
+    // A broken install must read as "iRacing not running", never as the mock's
+    // believable rotating telemetry (#1373). The mock is never started, so every
+    // data method below answers as disconnected: false, null, null.
+    if (this.loadFailed) return false;
+
+    return this.getMock().startup();
   }
 
   /**
    * Close connection to iRacing
    */
   shutdown(): void {
-    if (addon) {
-      addon.shutdown();
+    if (this.addon) {
+      this.addon.shutdown();
     } else {
       this.getMock().shutdown();
     }
@@ -83,7 +156,7 @@ export class IRacingNative {
    * @returns true if connected
    */
   isConnected(): boolean {
-    return addon ? addon.isConnected() : this.getMock().isConnected();
+    return this.addon ? this.addon.isConnected() : this.getMock().isConnected();
   }
 
   // ============================================================================
@@ -95,7 +168,7 @@ export class IRacingNative {
    * @returns Header object or null if not connected
    */
   getHeader(): IRSDKHeader | null {
-    return addon ? addon.getHeader() : this.getMock().getHeader();
+    return this.addon ? this.addon.getHeader() : this.getMock().getHeader();
   }
 
   /**
@@ -104,7 +177,7 @@ export class IRacingNative {
    * @returns Buffer with telemetry data or null
    */
   getData(index: number): Buffer | null {
-    return addon ? addon.getData(index) : this.getMock().getData(index);
+    return this.addon ? this.addon.getData(index) : this.getMock().getData(index);
   }
 
   /**
@@ -113,7 +186,7 @@ export class IRacingNative {
    * @returns Buffer with new data or null if timeout
    */
   waitForData(timeoutMs?: number): Buffer | null {
-    return addon ? addon.waitForData(timeoutMs) : this.getMock().waitForData(timeoutMs);
+    return this.addon ? this.addon.waitForData(timeoutMs) : this.getMock().waitForData(timeoutMs);
   }
 
   /**
@@ -121,7 +194,7 @@ export class IRacingNative {
    * @returns Session info string or null
    */
   getSessionInfoStr(): string | null {
-    return addon ? addon.getSessionInfoStr() : this.getMock().getSessionInfoStr();
+    return this.addon ? this.addon.getSessionInfoStr() : this.getMock().getSessionInfoStr();
   }
 
   /**
@@ -130,7 +203,7 @@ export class IRacingNative {
    * @returns Variable header object or null
    */
   getVarHeaderEntry(index: number): VarHeader | null {
-    return addon ? addon.getVarHeaderEntry(index) : this.getMock().getVarHeaderEntry(index);
+    return this.addon ? this.addon.getVarHeaderEntry(index) : this.getMock().getVarHeaderEntry(index);
   }
 
   /**
@@ -139,7 +212,7 @@ export class IRacingNative {
    * @returns Index or -1 if not found
    */
   varNameToIndex(name: string): number {
-    return addon ? addon.varNameToIndex(name) : this.getMock().varNameToIndex(name);
+    return this.addon ? this.addon.varNameToIndex(name) : this.getMock().varNameToIndex(name);
   }
 
   // ============================================================================
@@ -154,8 +227,8 @@ export class IRacingNative {
    * @param var3 - Third parameter (optional)
    */
   broadcastMsg(msg: BroadcastMsg | number, var1: number, var2?: number, var3?: number): void {
-    if (addon) {
-      addon.broadcastMsg(msg, var1, var2 ?? 0, var3 ?? 0);
+    if (this.addon) {
+      this.addon.broadcastMsg(msg, var1, var2 ?? 0, var3 ?? 0);
     } else {
       this.getMock().broadcastMsg(msg, var1, var2, var3);
     }
@@ -188,8 +261,8 @@ export class IRacingNative {
     pasteToEnterDelayMs?: number,
     enterToCloseDelayMs?: number,
   ): Promise<boolean> {
-    return addon
-      ? addon.sendChatMessage(
+    return this.addon
+      ? this.addon.sendChatMessage(
           message,
           openToPasteDelayMs ?? 200,
           pasteToEnterDelayMs ?? 200,
@@ -209,7 +282,7 @@ export class IRacingNative {
    * @returns FocusResult status code (0=already focused, 1=focused, 2=not found, 3=timed out)
    */
   focusIRacingWindow(): FocusResult {
-    return addon ? addon.focusIRacingWindow() : this.getMock().focusIRacingWindow();
+    return this.addon ? this.addon.focusIRacingWindow() : this.getMock().focusIRacingWindow();
   }
 
   /**
@@ -223,8 +296,8 @@ export class IRacingNative {
    * @returns PointerMoveResult status code (0=moved, 1=not found, 2=failed)
    */
   moveMouseToIRacingWindow(xFraction: number, yFraction: number): PointerMoveResult {
-    return addon
-      ? addon.moveMouseToIRacingWindow(xFraction, yFraction)
+    return this.addon
+      ? this.addon.moveMouseToIRacingWindow(xFraction, yFraction)
       : this.getMock().moveMouseToIRacingWindow(xFraction, yFraction);
   }
 
@@ -243,8 +316,8 @@ export class IRacingNative {
    * @param scanCodes - Array of PS/2 scan codes
    */
   sendScanKeys(scanCodes: number[]): void {
-    if (addon) {
-      addon.sendScanKeys(scanCodes);
+    if (this.addon) {
+      this.addon.sendScanKeys(scanCodes);
     } else {
       this.getMock().sendScanKeys(scanCodes);
     }
@@ -258,8 +331,8 @@ export class IRacingNative {
    * @param scanCodes - Array of PS/2 scan codes
    */
   sendScanKeyDown(scanCodes: number[]): void {
-    if (addon) {
-      addon.sendScanKeyDown(scanCodes);
+    if (this.addon) {
+      this.addon.sendScanKeyDown(scanCodes);
     } else {
       this.getMock().sendScanKeyDown(scanCodes);
     }
@@ -273,8 +346,8 @@ export class IRacingNative {
    * @param scanCodes - Array of PS/2 scan codes
    */
   sendScanKeyUp(scanCodes: number[]): void {
-    if (addon) {
-      addon.sendScanKeyUp(scanCodes);
+    if (this.addon) {
+      this.addon.sendScanKeyUp(scanCodes);
     } else {
       this.getMock().sendScanKeyUp(scanCodes);
     }
@@ -292,8 +365,8 @@ export class IRacingNative {
    * @param holdMs - Per-chord hold in ms (default 0 = atomic batch, no sleep)
    */
   sendScanKeySequence(chords: number[][], holdMs = 0): void {
-    if (addon) {
-      addon.sendScanKeySequence(chords, holdMs);
+    if (this.addon) {
+      this.addon.sendScanKeySequence(chords, holdMs);
     } else {
       this.getMock().sendScanKeySequence(chords, holdMs);
     }
@@ -313,7 +386,7 @@ export class IRacingNative {
    * @returns true on success
    */
   setClipboardText(text: string): boolean {
-    return addon ? addon.setClipboardText(text) : this.getMock().setClipboardText(text);
+    return this.addon ? this.addon.setClipboardText(text) : this.getMock().setClipboardText(text);
   }
 
   /**
@@ -324,6 +397,6 @@ export class IRacingNative {
    * @returns Elevation status, including a `mismatch` flag.
    */
   getElevationStatus(): ElevationStatus {
-    return addon ? addon.getElevationStatus() : this.getMock().getElevationStatus();
+    return this.addon ? this.addon.getElevationStatus() : this.getMock().getElevationStatus();
   }
 }
