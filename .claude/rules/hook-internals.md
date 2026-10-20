@@ -35,6 +35,10 @@ Where the code lives: `lib.mjs`'s `replayRebase` (the replay, with `git merge-tr
 
 `git commit` is denied, naming `pnpm debug:plugin off`, when it would record the Elgato `manifest.json` with a `Debug` key in its `Nodejs` block (#1338). The manifest is read from the staged copy for a plain commit, from the working copy for `-a`, a pathspec or a chained `git add` that selects it, and from both when the selection is only decided at run time; a manifest dirty with the key but left out of the commit passes. `pack:plugin` and `manifest-no-debug.test.mjs` are the other two guards.
 
+## Control bytes in a spec (#1466)
+
+A push to `master` that changes only spec Markdown starts no CI run, so `scripts/no-control-bytes.test.mjs` would not see a spec until the next code push, where it would fail a change that never touched it. Two checks stand in for it at the commit. The spec-commit rule in `rules-bash.mjs` is the early message, in a Claude Code session only: it sees the Bash tool and nothing else, and it fails open on text it cannot read. Unlike the section check it is not forward-only, so an amendment is checked too, and one deny names the byte and any missing sections together. The guard every committer meets is `scripts/check-staged-spec-bytes.mjs`, the first step of `.husky/pre-commit`. It reads the index the commit records, so it also covers the PowerShell tool, a terminal and `git commit --only`. All three readers share `scripts/lib/control-bytes.mjs`.
+
 ## Which checkout's data a rule reads
 
 Hooks run the scripts of the session's `CLAUDE_PROJECT_DIR`. The `pnpm --filter <pkg> <script>` rule is the one exception about *data*: it reads the package manifests of the checkout holding the session's cwd rather than always the main one (#1021). It does not follow a `cd` inside the command, so a `master` session running `cd ../ir-<n> && pnpm --filter …` is still judged by `master`'s manifests (`hooks.md` rule 5 keeps the short form).
