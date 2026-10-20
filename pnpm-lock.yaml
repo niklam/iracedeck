@@ -895,6 +895,9 @@ importers:
       '@elgato/streamdeck':
         specifier: 3.0.2
         version: 3.0.2
+      '@iracedeck/app-constants':
+        specifier: workspace:*
+        version: link:../app-constants
       '@iracedeck/audio-assets':
         specifier: workspace:*
         version: link:../audio-assets
@@ -913,6 +916,9 @@ importers:
       '@iracedeck/deck-core':
         specifier: workspace:*
         version: link:../deck-core
+      '@iracedeck/deck-iracing':
+        specifier: workspace:*
+        version: link:../deck-iracing
       '@iracedeck/event-bus':
         specifier: workspace:*
         version: link:../event-bus

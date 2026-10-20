@@ -1,20 +1,42 @@
 import type StreamDeck from "@elgato/streamdeck";
 import type { ElgatoPlatformAdapter } from "@iracedeck/deck-adapter-elgato";
-import { initProfileSwitcher } from "@iracedeck/deck-core";
+import { getFeatureFlag, initProfileSwitcher, requestProfileSwitch } from "@iracedeck/deck-core";
+import { onIRacingTerminated } from "@iracedeck/deck-iracing";
 import { STREAM_DECK_ACTIONS } from "@iracedeck/plugin-runtime";
-import { updateGlobalSettings } from "@iracedeck/settings";
+import { getGlobalSettings, updateGlobalSettings } from "@iracedeck/settings";
+import { getSessionKind } from "@iracedeck/sim-events-iracing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createElgatoExtension } from "./elgato-extension.js";
+import { createElgatoExtension, SESSION_PROFILE_SUBSCRIPTION_ID } from "./elgato-extension.js";
+
+const { controller } = vi.hoisted(() => ({
+  controller: { subscribe: vi.fn(), unsubscribe: vi.fn() },
+}));
 
 vi.mock("@iracedeck/deck-core", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
+  getCurrentProfile: vi.fn(() => undefined),
+  getFeatureFlag: vi.fn(() => true),
   initProfileSwitcher: vi.fn(),
+  requestProfileSwitch: vi.fn(async () => undefined),
+}));
+
+vi.mock("@iracedeck/deck-iracing", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  getController: vi.fn(() => controller),
+  onIRacingTerminated: vi.fn(() => () => undefined),
 }));
 
 vi.mock("@iracedeck/settings", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
+  getGlobalSettings: vi.fn(),
   updateGlobalSettings: vi.fn(),
+}));
+
+vi.mock("@iracedeck/sim-events-iracing", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  getSessionKind: vi.fn(() => null),
+  getSessionType: vi.fn(() => ""),
 }));
 
 type Device = { id: string; name: string; type: number; isConnected: boolean };
@@ -26,7 +48,7 @@ function fakes(devices: Device[]) {
   const adapter = {
     switchToBundledProfile: vi.fn(),
     switchToProfile: vi.fn(),
-    createLogger: vi.fn(() => ({})),
+    createLogger: vi.fn(() => ({ trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() })),
   } as unknown as ElgatoPlatformAdapter;
 
   return { sd, adapter };
@@ -42,6 +64,8 @@ describe("createElgatoExtension", () => {
 
     expect(initProfileSwitcher).not.toHaveBeenCalled();
     expect(sd.devices.onDeviceDidConnect).not.toHaveBeenCalled();
+    expect(controller.subscribe).not.toHaveBeenCalled();
+    expect(onIRacingTerminated).not.toHaveBeenCalled();
   });
 
   it("starts the profile switcher and both device listeners (#736)", () => {
@@ -108,6 +132,47 @@ describe("createElgatoExtension", () => {
 
     expect(adapter.switchToProfile).toHaveBeenCalledWith("dev", "Default", 3);
     expect(updateGlobalSettings).toHaveBeenCalledOnce();
+  });
+
+  it("starts the session-kind profile switch on the SDK ticks and iRacing's exit (#1111)", () => {
+    const { sd, adapter } = fakes([]);
+
+    createElgatoExtension(sd, adapter).start();
+
+    expect(controller.subscribe).toHaveBeenCalledExactlyOnceWith(SESSION_PROFILE_SUBSCRIPTION_ID, expect.any(Function));
+    expect(onIRacingTerminated).toHaveBeenCalledOnce();
+    expect(adapter.createLogger).toHaveBeenCalledWith("SessionProfile");
+  });
+
+  it("leaves the session-kind profile switch off when the build has no profiles", () => {
+    const { sd, adapter } = fakes([]);
+
+    vi.mocked(getFeatureFlag).mockReturnValueOnce(false);
+    createElgatoExtension(sd, adapter).start();
+
+    expect(getFeatureFlag).toHaveBeenCalledWith("profiles");
+    expect(controller.subscribe).not.toHaveBeenCalled();
+    expect(onIRacingTerminated).not.toHaveBeenCalled();
+  });
+
+  it("switches each connected deck to its variant of the mapped profile, on page 0, through the switcher's history", () => {
+    const { sd, adapter } = fakes([
+      { id: "xl", name: "XL", type: 2, isConnected: true },
+      { id: "gone", name: "Gone", type: 0, isConnected: false },
+    ]);
+
+    vi.mocked(getSessionKind).mockReturnValue("race");
+    vi.mocked(getGlobalSettings).mockReturnValue({
+      profileAutoSwitchEnabled: true,
+      profileForSessionKindRace: "iRaceDeck Race",
+    } as ReturnType<typeof getGlobalSettings>);
+
+    createElgatoExtension(sd, adapter).start();
+    const [, onTick] = controller.subscribe.mock.calls[0];
+    onTick(null, true);
+
+    expect(requestProfileSwitch).toHaveBeenCalledExactlyOnceWith("xl", "iRaceDeck Race XL", 0);
+    vi.mocked(getSessionKind).mockReturnValue(null);
   });
 
   it("adds Switch Profile and nothing else", () => {
