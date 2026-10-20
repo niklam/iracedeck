@@ -16,6 +16,7 @@ import path from "node:path";
 import { DEBUG_VALUE, ELGATO_MANIFEST, manifestDebug } from "../lib/debug-plugin.mjs";
 import { FULL_SHA, rangeChain, readSummary } from "./coderabbit-summary.mjs";
 import { MAIN_BRANCH, SPEC_DIR } from "./lib.mjs";
+import { findControlByte } from "./rules-tools.mjs";
 
 const TITLE_RE = /^(feat|fix|improve|perf|refactor|docs|ci|chore|test|build|style|revert)(\([^)]+\))?!?: .+ \(#\d+\)$/;
 
@@ -896,10 +897,18 @@ export const rules = [
       // text the hook cannot read, because a spec is never blocked over bytes
       // the hook failed to find. The bytes are read from where the commit will
       // take them — the index or the working copy, per `commitSelection`.
+      //
+      // The control-byte check is the exception to forward-only: it covers an
+      // amendment too. A push that changes only specs starts no CI run (#1466),
+      // so `scripts/no-control-bytes.test.mjs` no longer sees a spec until the
+      // next code push, and the commit is the last place it is caught in time.
       for (const f of committed.filter((x) => x.startsWith(SPEC_DIR))) {
-        if (ctx.tracked?.(dir, f)) continue;
         const text = ctx.committedText?.(dir, f, fromIndex.has(f) ? "index" : "worktree");
         if (text === undefined) continue;
+        const found = findControlByte(text);
+        if (found)
+          return `${f} has a raw control byte 0x${found.code} on line ${found.line}. Write it as an escape (\\x${found.code}) — a spec-only push runs no CI, so nothing after this commit would catch it (#1466, #1103).`;
+        if (ctx.tracked?.(dir, f)) continue;
         const missing = missingSpecParts(text);
         if (missing.length)
           return `${f} is missing ${missing.join(" and ")}. A spec carries the header block, an Out of scope section and a Testing/Verification section. See .claude/rules/specs-and-plans.md.`;

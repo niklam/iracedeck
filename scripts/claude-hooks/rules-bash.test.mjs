@@ -1049,6 +1049,19 @@ describe("git commit", () => {
         "git commit -m x",
         ctx({ staged: () => ["docs/superpowers/specs/a.md"], committedText: () => undefined }),
       ));
+    // #1466: a spec-only push runs no CI, so the commit is the last check.
+    it("denies a raw control byte in a new spec, naming the line", () =>
+      expect(deny("git commit -m x", spec(`${whole}\n\nPK\x03`))).toMatch(
+        /a\.md has a raw control byte 0x03 on line 13/,
+      ));
+    it("denies a raw control byte in an AMENDMENT too — unlike the sections, this is not forward-only", () =>
+      expect(
+        deny(
+          "git commit -m x",
+          ctx({ staged: () => ["docs/superpowers/specs/a.md"], committedText: () => "# T\x00", tracked: () => true }),
+        ),
+      ).toMatch(/0x00 on line 1/));
+    it("allows tab, CR and LF in a spec", () => passes("git commit -m x", spec(whole.replace("vitest", "a\tb\r\nc"))));
     it("leaves an AMENDMENT alone — the requirement is forward-only", () =>
       passes(
         "git commit -m x",

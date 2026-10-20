@@ -52,6 +52,17 @@ export function checkAgent({ subagent_type: type, model, isolation } = {}) {
 const CONTROL_BYTE = /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/;
 
 /**
+ * The first raw control byte in `text` as its two-digit hex code and 1-based
+ * line, or `null` when there is none. Shared with the spec-commit rule in
+ * `rules-bash.mjs` (#1466).
+ */
+export function findControlByte(text) {
+  const at = text.search(CONTROL_BYTE);
+  if (at === -1) return null;
+  return { code: text.charCodeAt(at).toString(16).padStart(2, "0"), line: text.slice(0, at).split("\n").length };
+}
+
+/**
  * Edit and Write never put a raw control byte into a file: a literal NUL makes
  * git classify the file as binary, and every later change to it then ships
  * with no visible diff (#1103). `scripts/no-control-bytes.test.mjs` guards the
@@ -60,11 +71,9 @@ const CONTROL_BYTE = /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/;
 export function checkEdit({ content, new_string: newString } = {}) {
   for (const text of [content, newString]) {
     if (typeof text !== "string") continue;
-    const at = text.search(CONTROL_BYTE);
-    if (at === -1) continue;
-    const code = text.charCodeAt(at).toString(16).padStart(2, "0");
-    const line = text.slice(0, at).split("\n").length;
-    return `Raw control byte 0x${code} on line ${line} of the text being written. Write it as an escape (\\x${code}) instead — a literal NUL makes git treat the file as binary and hide every diff of it (#1103).`;
+    const found = findControlByte(text);
+    if (!found) continue;
+    return `Raw control byte 0x${found.code} on line ${found.line} of the text being written. Write it as an escape (\\x${found.code}) instead — a literal NUL makes git treat the file as binary and hide every diff of it (#1103).`;
   }
   return null;
 }
