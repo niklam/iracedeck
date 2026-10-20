@@ -3,6 +3,9 @@ paths:
   - "changelog.d/**"
   - "packages/website/src/content/docs/changelog.mdx"
   - "packages/website/src/changelog-fragments-plugin.*"
+  - "packages/website/scripts/generate-changelog-json.mjs"
+  - "packages/website/astro.config.mjs"
+  - "packages/app-updates/src/published-changelog*"
   - "scripts/lib/changelog-*"
   - "scripts/generate-changelog-data.*"
   - "scripts/release-hooks.mjs"
@@ -43,9 +46,6 @@ What the fold writes, and every released section in `changelog.mdx`, is parsed b
 - `## <version>`, then a date line `_YYYY-MM-DD_`, newest version first. (`_Unreleased_` appears only in the composed text, never in the file.)
 - Only these bold category headers, in this order, and only with content: `**Features**`, `**Improvements**`, `**Bug Fixes**`, `**Breaking changes**`, `**Maintenance**`.
 - Plain single-line bullets, one self-contained sentence each. No PR numbers, download links or marketplace boilerplate; contributor credits are optional and inline (`(thanks @handle)`).
-
-Fixing a typo in a released section is still an edit to `changelog.mdx`, not a fragment.
-
 ## Verify
 
-`pnpm test` loads, composes and parses the real `changelog.d/` and `changelog.mdx`, so a malformed fragment fails the suite, and holds `changelog.json` gitignored with its turbo wiring in place. `pnpm --filter @iracedeck/website build` must pass; the page renders at `/changelog/` with the fragments on top. A fragment added or edited makes the Settings window screenshot stale; see `@.claude/rules/website-screenshots.md`.
+Beyond what `changelog.md` lists, `pnpm test` holds `changelog.json` gitignored with its turbo wiring in place, and `pnpm --filter @iracedeck/website build` must pass; the page renders at `/changelog/` with the fragments on top.

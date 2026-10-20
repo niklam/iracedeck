@@ -37,7 +37,7 @@ Where the code lives: `lib.mjs`'s `replayRebase` (the replay, with `git merge-tr
 
 ## Which checkout's data a rule reads
 
-Hooks run the scripts of the session's `CLAUDE_PROJECT_DIR`. The `pnpm --filter <pkg> <script>` rule is the one exception about *data*: it reads the package manifests of the checkout holding the session's cwd rather than always the main one (#1021). It does not follow a `cd` inside the command, so a `master` session running `cd ../ir-<n> && pnpm --filter …` is still judged by `master`'s manifests.
+Hooks run the scripts of the session's `CLAUDE_PROJECT_DIR`. The `pnpm --filter <pkg> <script>` rule is the one exception about *data*: it reads the package manifests of the checkout holding the session's cwd rather than always the main one (#1021). It does not follow a `cd` inside the command, so a `master` session running `cd ../ir-<n> && pnpm --filter …` is still judged by `master`'s manifests (`hooks.md` rule 5 keeps the short form).
 
 ## A shape trap fires at command position, not on a mention
 

@@ -40,7 +40,7 @@ Deck layer
 - `@iracedeck/diagnostics` — the watchdog, resource monitor, CPU profiles, snapshot sections. Log lines in `logging.md`. Has its own `CLAUDE.md`.
 - `@iracedeck/app-updates` — the version-upgrade changelog opener and the What's New update check. Has its own `CLAUDE.md`.
 - `@iracedeck/settings-window` — the settings window's plugin side: loopback server and request guard (reviewed at `xhigh`). Rules in `settings-window.md`. Has its own `CLAUDE.md`.
-- `@iracedeck/deck-core` — the deck abstraction; sim-neutral (a sim only through `SimConnection`; a lint rule refuses iRacing imports). Focus in `keyboard-shortcuts.md`. Has its own `CLAUDE.md`.
+- `@iracedeck/deck-core` — the deck abstraction; sim-neutral (a sim only through `SimConnection`; a lint rule refuses iRacing imports). Window focus in `keyboard-shortcuts.md`. Has its own `CLAUDE.md`.
 - `@iracedeck/deck-iracing` — iRacing's side of the sim seam: `SimIRacingAction`, the SDK singleton and `getCommands()`, the shared iRacing helpers. Has its own `CLAUDE.md`.
 - `@iracedeck/deck-adapter-elgato`, `-mirabox`, `-ulanzi` — each host protocol adapted to deck-core's `IDeckPlatformAdapter`. Each has its own `CLAUDE.md`.
 - `@iracedeck/iracing-actions` — every action, one folder each under `src/actions/<name>/`; never imports `@elgato/streamdeck`. Has its own `CLAUDE.md`.

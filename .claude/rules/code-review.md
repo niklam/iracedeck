@@ -15,7 +15,7 @@ The hook refuses an invocation that names no level, because the skill otherwise 
 
 Two tie-breakers: a diff that spans rows takes the **highest** row any changed file falls into (the level is per review, not per file), and an honest choice between two rows takes the **higher** one.
 
-**`xhigh` is the top level; `max` is not used** (Niklas, 2026-10-17: `max` gave worse results than `xhigh` wherever it was compared). What used to be the `max` row is reviewed at `xhigh`, and the hook refuses `/code-review max`.
+**`xhigh` is the top level; `max` is not used** (Niklas, 2026-10-17: "The highest level of review should be xhigh, I don't want us to use max anymore. I'm seeing everywhere that max provides not as good results as xhigh."). What used to be the `max` row is reviewed at `xhigh`, and the hook refuses `/code-review max`.
 
 ### What each row means in this repo
 
@@ -56,7 +56,7 @@ Decided by Niklas on 2026-09-06 after #1066, whose reviews cost half of its 6.8M
 1. **Review at a consumer seam, before the consumer starts.** A task whose OUTPUT another task builds on — an artifact shape, a public type, a generated file a page renders — gets a task-scoped review as soon as it lands, and the dependent task is dispatched only afterwards. On #1066 the generator's review changed its artifact's shape three times before the page rendering it was written — the one place a staged review paid for itself.
 2. **A leaf task gets no review of its own.** Descriptions, prose pages, a linter nobody else consumes, rule edits: their findings surface in the full read at the end a few hours later, and their fixes were small.
 3. **Fix diffs are verified by the coordinator, never by a scoped re-review agent.** A fix round is 30–200 lines. Read the diff, run the covering tests, check the finding is gone.
-4. **The whole branch gets exactly one full read: the `/code-review`,** at the level from the table above, targeted at the worktree, report-only. It is not optional — on #1066 it found three release-breaking defects no task review could see. But do not run a second full-branch reviewer beside it; the `superpowers` plan-execution skill's own "final review" step is that duplicate, and this rule replaces it. The one named exception is the second read (below): a different method, on the kinds of diff named there, after this read's findings are applied.
+4. **The whole branch gets exactly one full read: the `/code-review`,** at the level from the table above, targeted at the worktree, report-only. It is not optional — on #1066 it found three defects no task review could see, one of which would have failed the release and one of which would have turned `master` red at every bump. But do not run a second full-branch reviewer beside it; the `superpowers` plan-execution skill's own "final review" step is that duplicate, and this rule replaces it. The one named exception is the second read (below): a different method, on the kinds of diff named there, after this read's findings are applied.
 5. **Reviewer models follow the same complexity rule as workers** (`CLAUDE.md`): a review that must weigh a claim against the code runs on `opus`; a mechanical check runs on `sonnet`; the `/code-review` picks its own.
 
 The repo's skills and the `superpowers` plugin describe a per-task review cadence; this section overrides it for issue work here.
