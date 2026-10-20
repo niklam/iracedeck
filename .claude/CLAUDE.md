@@ -85,7 +85,7 @@ You can import or reference specific rule files from other markdown using `@.cla
 **Always loaded** (no `paths` frontmatter):
 
 - `build-and-commit.md` — worktree workflow, pre-commit checks, build commands, dependency build-script decisions and pinned pnpm versions, conventional commits, issue labels and the Roadmap board, merging, post-merge cleanup, releasing and the voice-pack publishing rules.
-- `changelog.md` — when and how to add a changelog fragment in `changelog.d/`: the format, weight and order, one change per fragment, the fold into `changelog.mdx` at a stable release, the machine-read format and the gitignored `changelog.json`.
+- `changelog.md` — when and how to add a changelog fragment in `changelog.d/`: the format, weight and order, one change per fragment, and how a fragment is checked.
 - `code-review.md` — the effort-level table, targeting the worktree, report-only, and how reviews are staged inside an issue.
 - `code-style.md` — formatting, linting, types, Zod, exact versions, tsconfig inheritance, fenced-code languages.
 - `hooks.md` — the Claude Code hooks that enforce the mechanical rules; read it before adding a "never do X" anywhere else.
@@ -98,8 +98,10 @@ You can import or reference specific rule files from other markdown using `@.cla
 
 - `action-documentation.md` — action doc format: settings, keyboard and icon-state tables, communication method.
 - `black-box-icons.md` — black box key icon design.
+- `changelog-internals.md` — how fragments are composed, the fold into `changelog.mdx` at a stable release, the gitignored `changelog.json` and the machine-read format of the dated sections.
 - `encoders-and-touchscreen.md` — dials and the touch strip: platform facts, release-time press classification, the hold preview, dial-action rules.
 - `global-settings.md` — global settings architecture, the plugin-owned settings store and its migrations, run-scoped keys, warning banners, the version-upgrade changelog.
+- `hook-internals.md` — how the hook guards decide: the merge gate's review conditions, the command-position lexer, `git -C` scoping.
 - `icons.md` — icon types, SVG structure, colour slots and locks, previews, distinctiveness.
 - `key-icon-types.md` — Default / Black Box / Inverted key icon layouts and labels.
 - `keyboard-shortcuts.md` — SDK-first, binding architecture, atomic sequences, window focus modes, cross-package sync.
