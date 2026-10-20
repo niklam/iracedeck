@@ -28,6 +28,7 @@ import {
 } from "@iracedeck/settings";
 import { readSimState, simStateHeadline } from "@iracedeck/sim-events-iracing";
 
+import { type NativeAddonSnapshot, snapshotNativeAddons } from "./native-addons.js";
 import type { Core } from "./types.js";
 
 /**
@@ -59,6 +60,13 @@ export type EnvironmentState = {
   settingsStoreReady: boolean;
   /** How the cache was filled: "file", "host" (migrated from the deck host) or "fresh"; `null` until it is ready. */
   settingsStoreSource: SettingsStoreSource | null;
+  /**
+   * How each native addon loaded (#1373): `native`, `mock` with its reason
+   * (`platform` or `forced`), or `load-failed` — which is why a snapshot from
+   * a broken install has no telemetry. Never the load error: it names the
+   * `.node` path.
+   */
+  nativeAddons: { iracing: NativeAddonSnapshot; audio: NativeAddonSnapshot };
 };
 
 /**
@@ -76,6 +84,7 @@ function readEnvironment(core: Core): EnvironmentState {
     elevationMismatch: hasElevationMismatch(),
     settingsStoreReady: isSettingsStoreReady(),
     settingsStoreSource: getSettingsStoreSource(),
+    nativeAddons: snapshotNativeAddons(core.nativeAddons),
   };
 }
 

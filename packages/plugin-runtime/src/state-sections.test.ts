@@ -14,6 +14,7 @@ import {
 import { _resetSimEventsIracing, readSimState } from "@iracedeck/sim-events-iracing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { NativeAddonStatuses } from "./native-addons.js";
 import { registerStateSections } from "./state-sections.js";
 import type { Core } from "./types.js";
 
@@ -69,12 +70,16 @@ async function startSettingsWith(stored: Record<string, unknown>): Promise<void>
 
 let sdkConnected = false;
 
+/** Both addons loaded natively: the healthy install. */
+const NATIVE_ADDONS: NativeAddonStatuses = { iracing: { kind: "native" }, audio: { kind: "native" } };
+
 /** A `Core` whose controller answers `sdkConnected`, and whose paths are real-looking Windows ones. */
-function createCore(): Core {
+function createCore(nativeAddons: NativeAddonStatuses = NATIVE_ADDONS): Core {
   return {
     binDir: BIN_DIR,
     logLocation: { kind: "file", path: LOG_PATH },
     controller: { getConnectionStatus: () => sdkConnected },
+    nativeAddons,
   } as unknown as Core;
 }
 
@@ -118,7 +123,7 @@ describe("registerStateSections (#1387)", () => {
     it("reads nothing at registration", () => {
       const getConnectionStatus = vi.fn(() => false);
 
-      registerStateSections({ controller: { getConnectionStatus } } as unknown as Core);
+      registerStateSections({ controller: { getConnectionStatus }, nativeAddons: NATIVE_ADDONS } as unknown as Core);
 
       expect(getConnectionStatus).not.toHaveBeenCalled();
 
@@ -141,7 +146,36 @@ describe("registerStateSections (#1387)", () => {
         elevationMismatch: false,
         settingsStoreReady: false,
         settingsStoreSource: null,
+        nativeAddons: { iracing: { kind: "native" }, audio: { kind: "native" } },
       });
+    });
+
+    // #1373: a snapshot from a broken install says why its telemetry is empty.
+    it("records each native addon's load kind, and a mock's reason", () => {
+      registerStateSections(
+        createCore({ iracing: { kind: "mock", reason: "forced" }, audio: { kind: "mock", reason: "platform" } }),
+      );
+
+      expect(collect().state.environment).toMatchObject({
+        nativeAddons: { iracing: { kind: "mock", reason: "forced" }, audio: { kind: "mock", reason: "platform" } },
+      });
+    });
+
+    it("records a failed load by its kind alone: the load error names the .node path", () => {
+      const error = `${BIN_DIR}\\iracing_native.node is not a valid Win32 application.`;
+      registerStateSections(createCore({ iracing: { kind: "load-failed", error }, audio: { kind: "native" } }));
+
+      const collected = collect();
+
+      // toEqual, not toMatchObject: the failed entry holds its kind and nothing else.
+      expect((collected.state.environment as Record<string, unknown>).nativeAddons).toEqual({
+        iracing: { kind: "load-failed" },
+        audio: { kind: "native" },
+      });
+      const json = JSON.stringify(collected);
+
+      expect(json).not.toContain("not a valid Win32 application");
+      expect(json).not.toContain("someone");
     });
 
     it("leads the Markdown report with the plugin version and the deck host", () => {
@@ -177,6 +211,7 @@ describe("registerStateSections (#1387)", () => {
         elevationMismatch: true,
         settingsStoreReady: true,
         settingsStoreSource: "file",
+        nativeAddons: { iracing: { kind: "native" }, audio: { kind: "native" } },
       });
     });
 
