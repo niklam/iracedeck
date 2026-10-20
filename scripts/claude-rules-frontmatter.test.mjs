@@ -44,6 +44,9 @@ describe(".claude/rules frontmatter", () => {
     const claudeMd = readFileSync(join(repoRoot, ".claude", "CLAUDE.md"), "utf-8");
     const total = always.reduce((sum, r) => sum + r.text.length, claudeMd.length);
     const listing = always.map((r) => `${r.name} (${r.text.length})`).join(", ");
+    // Printed on every run so the margin is visible before it runs out (#1465);
+    // otherwise the first sign is a red inside whichever unrelated PR adds the last line.
+    console.info(`always-loaded instructions: ${total} of ${REPO_BUDGET} chars, ${REPO_BUDGET - total} headroom`);
     expect(total, `always loaded: CLAUDE.md (${claudeMd.length}), ${listing}`).toBeLessThanOrEqual(REPO_BUDGET);
   });
 });
