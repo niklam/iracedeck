@@ -1,4 +1,10 @@
-import { CHANGELOG_NOTIFICATION_POLICIES, PI_WARNINGS_KEY } from "@iracedeck/app-constants";
+import {
+  CHANGELOG_NOTIFICATION_POLICIES,
+  PI_WARNINGS_KEY,
+  PROFILE_AUTO_SWITCH_ENABLED_KEY,
+  PROFILE_FOR_SESSION_KIND_KEYS,
+  PROFILE_SWITCH_SESSION_KINDS,
+} from "@iracedeck/app-constants";
 import { type ILogger, silentLogger } from "@iracedeck/logger";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -915,6 +921,80 @@ describe("updateCheck (issue #1016)", () => {
 
     expect(parsed.updateCheck).toBe(true);
     expect(parsed.driverName).toBe("nick");
+  });
+});
+
+describe("profileAutoSwitchEnabled (issue #1111)", () => {
+  it("is the key app-constants names", () => {
+    expect(Object.keys(GlobalSettingsSchema.shape)).toContain(PROFILE_AUTO_SWITCH_ENABLED_KEY);
+  });
+
+  it("defaults to off", () => {
+    expect(GlobalSettingsSchema.parse({}).profileAutoSwitchEnabled).toBe(false);
+  });
+
+  it("accepts the string form the settings window saves", () => {
+    expect(GlobalSettingsSchema.parse({ profileAutoSwitchEnabled: "true" }).profileAutoSwitchEnabled).toBe(true);
+    expect(GlobalSettingsSchema.parse({ profileAutoSwitchEnabled: "false" }).profileAutoSwitchEnabled).toBe(false);
+  });
+
+  it("accepts a real boolean", () => {
+    expect(GlobalSettingsSchema.parse({ profileAutoSwitchEnabled: true }).profileAutoSwitchEnabled).toBe(true);
+    expect(GlobalSettingsSchema.parse({ profileAutoSwitchEnabled: false }).profileAutoSwitchEnabled).toBe(false);
+  });
+
+  it("falls back to off on a malformed value rather than aborting the parse (issue #896)", () => {
+    for (const value of [1, { bogus: true }, null]) {
+      const parsed = GlobalSettingsSchema.parse({ profileAutoSwitchEnabled: value, driverName: "nick" });
+
+      expect(parsed.profileAutoSwitchEnabled).toBe(false);
+      expect(parsed.driverName).toBe("nick");
+    }
+  });
+});
+
+describe("profileForSessionKind* (issue #1111)", () => {
+  const keys = PROFILE_SWITCH_SESSION_KINDS.map((kind) => PROFILE_FOR_SESSION_KIND_KEYS[kind]);
+
+  it("has a schema field for every key app-constants names", () => {
+    const shape = Object.keys(GlobalSettingsSchema.shape);
+
+    for (const key of keys) expect(shape, key).toContain(key);
+  });
+
+  it.each(keys)("%s defaults to Do not change the profile", (key) => {
+    expect(GlobalSettingsSchema.parse({})[key]).toBe("");
+  });
+
+  it.each(keys)("%s keeps a profile display name", (key) => {
+    expect(GlobalSettingsSchema.parse({ [key]: "iRaceDeck Practice" })[key]).toBe("iRaceDeck Practice");
+  });
+
+  it.each(keys)("%s keeps an explicit empty string", (key) => {
+    expect(GlobalSettingsSchema.parse({ [key]: "" })[key]).toBe("");
+  });
+
+  it.each(keys)("%s reads a non-string value as empty instead of aborting the parse (issue #896)", (key) => {
+    for (const value of [42, { name: "iRaceDeck Race" }, null, true]) {
+      const parsed = GlobalSettingsSchema.parse({ [key]: value, driverName: "nick" });
+
+      expect(parsed[key]).toBe("");
+      expect(parsed.driverName).toBe("nick");
+    }
+  });
+
+  it("keeps each kind's mapping independent of the others", () => {
+    const parsed = GlobalSettingsSchema.parse({
+      profileForSessionKindPractice: "iRaceDeck Practice",
+      profileForSessionKindRace: "iRaceDeck Race",
+      profileForSessionKindQualifying: 7,
+    });
+
+    expect(parsed.profileForSessionKindTest).toBe("");
+    expect(parsed.profileForSessionKindPractice).toBe("iRaceDeck Practice");
+    expect(parsed.profileForSessionKindQualifying).toBe("");
+    expect(parsed.profileForSessionKindRace).toBe("iRaceDeck Race");
+    expect(parsed.profileForSessionKindReplay).toBe("");
   });
 });
 

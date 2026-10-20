@@ -586,6 +586,38 @@ export const GlobalSettingsSchema = z
       .transform((val) => val === true || val === "true")
       .default(true)
       .catch(true),
+    /**
+     * Whether the Stream Deck plugin switches every deck to the bundled profile
+     * mapped to the session kind iRacing enters, and back when iRacing exits
+     * (issue #1111). Off by default. The key name is
+     * `PROFILE_AUTO_SWITCH_ENABLED_KEY` in `@iracedeck/app-constants`
+     * (`profile-auto-switch.ts`), which the reactor and the settings window
+     * read; a test holds the two equal.
+     *
+     * `.catch(false)` like every plain-value field here: a malformed persisted
+     * value must fall back to the default rather than abort the whole parse
+     * (#896).
+     */
+    profileAutoSwitchEnabled: z
+      .union([z.boolean(), z.string()])
+      .transform((val) => val === true || val === "true")
+      .default(false)
+      .catch(false),
+    /**
+     * The bundled profile each session kind switches to (issue #1111): its
+     * display name (`iRaceDeck Practice`), or `""` for "Do not change the
+     * profile". The key names are `PROFILE_FOR_SESSION_KIND_KEYS` in
+     * `@iracedeck/app-constants`; a test holds them equal to these.
+     *
+     * A non-string value (a damaged file) reads as `""` through `.catch`
+     * rather than aborting the whole parse (#896), so a broken row only stops
+     * that kind from switching.
+     */
+    profileForSessionKindTest: z.string().default("").catch(""),
+    profileForSessionKindPractice: z.string().default("").catch(""),
+    profileForSessionKindQualifying: z.string().default("").catch(""),
+    profileForSessionKindRace: z.string().default("").catch(""),
+    profileForSessionKindReplay: z.string().default("").catch(""),
     // Every Race Engineer callout opt-in (#1350): declared in @iracedeck/callout-settings.
     ...calloutEnabledFields(),
   })

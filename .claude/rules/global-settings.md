@@ -168,6 +168,10 @@ Plugin-level title defaults, flat keys read via `getGlobalTitleSettings()` and s
 
 `"default"` defers to the icon's `<desc>` title metadata. In action code: `resolveTitleSettings(graphicSvg, getGlobalTitleSettings(), settings.titleOverrides, "DEFAULT\nTITLE")`.
 
+## Profile auto-switch keys (#1111)
+
+`profileAutoSwitchEnabled` (boolean, default `false`) turns on switching every Stream Deck to the bundled profile mapped to the session kind iRacing enters; `profileForSessionKindTest` / `…Practice` / `…Qualifying` / `…Race` / `…Replay` (string, default `""`) hold each kind's mapped profile **display name** (`iRaceDeck Practice`), `""` meaning "Do not change the profile". The key names, the five kinds and their labels live in `@iracedeck/app-constants`' `profile-auto-switch.ts` (`PROFILE_AUTO_SWITCH_ENABLED_KEY`, `PROFILE_FOR_SESSION_KIND_KEYS`, `PROFILE_SWITCH_SESSION_KINDS`, `PROFILE_SWITCH_SESSION_KIND_LABELS`); the schema spells them as literals and `global-settings.test.ts` holds the two equal. User choices, so never run-scoped. Spec: `docs/superpowers/specs/2026-09-04-issue-1111-profile-by-session-kind.md`.
+
 ## Radio Frame switches — `frameOptionsFromSettings()`
 
 `raceEngineerRadioBeeps` and `raceEngineerPitAmbience` (#1064) are read ONLY through `frameOptionsFromSettings(settings)` → `{ beeps, ambience }`: off only for an explicit `false` / `"false"`, otherwise on, so a wrong reading fails towards the full frame. Every reader uses it — the plugins' `getFrameOptions`, the Background preview's `readFrameOptions`, the scenario harness; don't write another `!== false` pair. Its return type is the structural `RadioFrameSwitches` because `@iracedeck/settings` must not depend on `audio-scenarios`.
