@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   _resetProfileSwitcher,
+  getCurrentProfile,
   initProfileSwitcher,
   isProfileSwitcherInitialized,
   notifyProfileVisible,
@@ -180,6 +181,28 @@ describe("profile-switcher", () => {
       await requestProfileSwitchBack(undefined);
 
       expect(fn).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("getCurrentProfile", () => {
+    it("is undefined for a device with no observations", () => {
+      initProfileSwitcher(vi.fn().mockResolvedValue(undefined));
+
+      expect(getCurrentProfile("dev-1")).toBeUndefined();
+    });
+
+    it("tracks named switches, marker reports and back switches", async () => {
+      initProfileSwitcher(vi.fn().mockResolvedValue(undefined));
+
+      notifyProfileVisible("dev-1", "iRaceDeck Default");
+      expect(getCurrentProfile("dev-1")).toBe("iRaceDeck Default");
+
+      await requestProfileSwitch("dev-1", "iRaceDeck Replay");
+      expect(getCurrentProfile("dev-1")).toBe("iRaceDeck Replay");
+
+      await requestProfileSwitchBack("dev-1");
+      expect(getCurrentProfile("dev-1")).toBe("iRaceDeck Default");
+      expect(getCurrentProfile("dev-2")).toBeUndefined();
     });
   });
 

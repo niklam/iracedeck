@@ -71,6 +71,20 @@ export function initProfileSwitcher(fn: ProfileSwitcher, log?: ILogger): void {
   logger = log;
 }
 
+/**
+ * The profile the plugin last knew `deviceId` to be on — the top of its history
+ * stack — or `undefined` when nothing has been observed for the device. Only as
+ * good as the observations: a switch made in the Stream Deck app to a profile
+ * without a host-profile marker is invisible to the plugin (issue #762). Read by
+ * the automatic session-kind switcher (issue #1111) to remember where a deck was
+ * before its first automatic switch.
+ */
+export function getCurrentProfile(deviceId: string): string | undefined {
+  const stack = switchHistory.get(deviceId);
+
+  return stack?.[stack.length - 1];
+}
+
 /** Whether a profile switcher has been registered. */
 export function isProfileSwitcherInitialized(): boolean {
   return switcher !== undefined;

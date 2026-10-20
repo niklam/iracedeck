@@ -212,8 +212,9 @@ export const DEVICE_SPECS: Record<DeviceType, DeviceSpec> = {
  * - `controls`: which surfaces iRaceDeck supports. Neo is `keys` (its touch
  *   points are not supported). Galleon, Studio, and the dial-bearing Stream
  *   Decks are `keys-and-dials`.
- * - `profileTemplates`: `target` = the three devices this issue ships templates
- *   for (Stream Deck, XL, + XL); `candidate` = supported decks eligible later;
+ * - `profileTemplates`: `target` = the devices iRaceDeck ships templates for
+ *   (Stream Deck, XL, + XL since #736; Stream Deck + since #1457); `candidate` =
+ *   supported decks eligible later;
  *   `excluded` = unsupported devices plus the deliberate skips (Studio, Mobile).
  */
 export const DEVICE_SUPPORT: Record<DeviceType, DeviceSupport> = {
@@ -240,7 +241,7 @@ export const DEVICE_SUPPORT: Record<DeviceType, DeviceSupport> = {
   [DeviceType.StreamDeckPlus]: {
     type: DeviceType.StreamDeckPlus,
     controls: "keys-and-dials",
-    profileTemplates: "candidate",
+    profileTemplates: "target",
   },
   [DeviceType.ScufController]: {
     type: DeviceType.ScufController,
@@ -304,10 +305,11 @@ const LEGACY_PROFILE_NAMES: Record<string, string> = {
 /** A bundled profile template key. */
 export type ProfileTemplate = keyof typeof PROFILE_NAMES;
 
-/** Devices this issue ships profile templates for (the `target` set), in display order. */
+/** Devices iRaceDeck ships profile templates for (the `target` set), in display order. */
 export const PROFILE_TARGET_DEVICES: readonly DeviceType[] = [
   DeviceType.StreamDeck,
   DeviceType.StreamDeckXL,
+  DeviceType.StreamDeckPlus,
   DeviceType.StreamDeckPlusXL,
 ];
 

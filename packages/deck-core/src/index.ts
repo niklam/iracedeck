@@ -338,6 +338,7 @@ export {
 // Profile switcher singleton (issue #736)
 export {
   _resetProfileSwitcher,
+  getCurrentProfile,
   initProfileSwitcher,
   isProfileSwitcherInitialized,
   notifyProfileVisible,

@@ -88,10 +88,11 @@ describe("DEVICE_SUPPORT", () => {
 });
 
 describe("profile templates", () => {
-  it("targets exactly Stream Deck, XL, and + XL", () => {
+  it("targets exactly Stream Deck, XL, Stream Deck + and + XL", () => {
     expect(PROFILE_TARGET_DEVICES).toEqual([
       DeviceType.StreamDeck,
       DeviceType.StreamDeckXL,
+      DeviceType.StreamDeckPlus,
       DeviceType.StreamDeckPlusXL,
     ]);
   });
