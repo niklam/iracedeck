@@ -95,6 +95,9 @@ export { DevBaseUrl } from "./dev-base-url.js";
 // Profile Variants - hides the profile rows the chosen deck has no variant of (#1457)
 export { ProfileVariants } from "./profile-variants.js";
 
+// Label Width - widens the sdpi-item label column inside it (settings window Profiles pane)
+export { LabelWidth } from "./label-width.js";
+
 // Shared Poller - one per-page polling interval with page-lifecycle cleanup
 export { createSharedPoller, installSharedPoller, POLL_INTERVAL_MS } from "./poller.js";
 

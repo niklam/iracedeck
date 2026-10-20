@@ -15,7 +15,9 @@
   build/profile-auto-switch-partial.test.ts pins them to @iracedeck/app-constants
   (PROFILE_AUTO_SWITCH_ENABLED_KEY, PROFILE_FOR_SESSION_KIND_KEYS,
   PROFILE_SWITCH_SESSION_KIND_LABELS) and to the schema. The profile list comes
-  from the generated, manifest-derived profiles.json, one option per template.
+  from the generated, manifest-derived profiles.json, one option per template;
+  an option's text drops the "iRaceDeck " prefix every template shares, while
+  its value keeps the full display name the plugin resolves.
 
   The checkbox carries no `default`: off is the schema default, and
   `default="false"` would render it checked (a truthy string).
@@ -46,7 +48,7 @@
 <sdpi-item label="<%= kind.label %>">
   <sdpi-select setting="<%= kind.setting %>" default="" global>
     <option value="">Do not change the profile</option>
-<% __profileNames.forEach(function (name) { %>    <option value="<%= name %>"><%= name %></option>
+<% __profileNames.forEach(function (name) { %>    <option value="<%= name %>"><%= name.replace(/^iRaceDeck /, '') %></option>
 <% }); %>  </sdpi-select>
 </sdpi-item>
 <% }); %>

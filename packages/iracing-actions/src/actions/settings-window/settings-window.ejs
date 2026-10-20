@@ -433,10 +433,13 @@
 			<section class="sw-pane" id="pane-profiles" hidden>
 				<h2>Profiles</h2>
 				<p class="sw-sub">Install or switch to a ready-made iRaceDeck profile on a connected Stream Deck, or let iRaceDeck switch it for you by session type.</p>
+				<%# The template names and "Race Admin Per Car" wrap in sdpi-item's 95px label column; this pane's labels get a wider one. %>
+				<ird-label-width width="140">
 				<div class="sw-grid single">
 					<%- include('global-stream-deck-profiles', __sw) %>
 					<%- include('accordion', { title: 'Automatically switch to profile', content: include('global-profile-auto-switch'), settingsWindow: true }) %>
 				</div>
+				</ird-label-width>
 			</section>
 			<% } %>
 

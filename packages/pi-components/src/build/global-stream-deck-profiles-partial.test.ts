@@ -48,7 +48,11 @@ describe("global-stream-deck-profiles.ejs in the settings window (#1457)", () =>
   it("gives each template row the device types it has a variant for, one row per template", () => {
     const html = render({ settingsWindow: true }, fixture);
 
-    expect(rowTypes(html)).toEqual({ "iRaceDeck Default": "2,0", "iRaceDeck Replay": "2,13" });
+    expect(rowTypes(html)).toEqual({ Default: "2,0", Replay: "2,13" });
+    // The label drops the shared prefix; the switch keeps the full display name.
+    expect(html).toContain(
+      '<ird-profile-switch profile="iRaceDeck Default" label="Switch" device-from="sw-deck-device">',
+    );
   });
 
   it("puts every real template's row inside ird-profile-variants, bound to the deck picker", () => {
@@ -58,12 +62,14 @@ describe("global-stream-deck-profiles.ejs in the settings window (#1457)", () =>
 
     expect(html).toContain('<ird-deck-device-select select-id="sw-deck-device">');
     expect(wrapper).not.toBeNull();
-    expect(Object.keys(rowTypes(wrapper![1]))).toEqual(templates);
+    const label = (name: string): string => name.replace(/^iRaceDeck /, "");
+
+    expect(Object.keys(rowTypes(wrapper![1]))).toEqual(templates.map(label));
 
     for (const name of templates) {
       const types = realProfiles.filter((p) => (p.displayName ?? p.name) === name).map((p) => p.deviceType);
 
-      expect(rowTypes(html)[name]!.split(",").map(Number).sort(), name).toEqual([...new Set(types)].sort());
+      expect(rowTypes(html)[label(name)]!.split(",").map(Number).sort(), name).toEqual([...new Set(types)].sort());
     }
   });
 

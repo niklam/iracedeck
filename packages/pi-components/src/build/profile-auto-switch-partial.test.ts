@@ -98,7 +98,7 @@ describe("global-profile-auto-switch.ejs (#1111)", () => {
     for (const row of kindRows) {
       expect(row.options, row.label).toEqual([
         ["", "Do not change the profile"],
-        ...templates.map((name): [string, string] => [name, name]),
+        ...templates.map((name): [string, string] => [name, name.replace(/^iRaceDeck /, "")]),
       ]);
     }
   });
@@ -114,8 +114,8 @@ describe("global-profile-auto-switch.ejs (#1111)", () => {
 
     expect(options).toEqual([
       ["", "Do not change the profile"],
-      ["iRaceDeck Race", "iRaceDeck Race"],
-      ["iRaceDeck Test", "iRaceDeck Test"],
+      ["iRaceDeck Race", "Race"],
+      ["iRaceDeck Test", "Test"],
     ]);
   });
 

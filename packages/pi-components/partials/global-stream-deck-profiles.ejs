@@ -28,6 +28,10 @@
   a row the chosen deck has no variant of and, when it has none at all, shows
   the one-line note in their place. With no deck chosen every row shows. The
   Property Inspector rendering has no picker, so its markup is unchanged.
+
+  In the window a row's label drops the "iRaceDeck " prefix every template
+  shares (the card already says whose profiles they are); the button's
+  `profile` keeps the full display name the plugin resolves.
 %>
 <% if (locals.platform?.features?.profiles !== false) { %>
 <%
@@ -52,7 +56,8 @@
   var __rows = profiles.map(function (p) {
     var device = locals.settingsWindow ? ' device-from="sw-deck-device"' : '';
     var types = locals.settingsWindow ? ' data-device-types="' + p.deviceTypes.join(',') + '"' : '';
-    return '<sdpi-item label="' + p.name + '"' + types + '><ird-profile-switch profile="' + p.name + '" label="Switch"' + device + '></ird-profile-switch></sdpi-item>';
+    var label = locals.settingsWindow ? p.name.replace(/^iRaceDeck /, '') : p.name;
+    return '<sdpi-item label="' + label + '"' + types + '><ird-profile-switch profile="' + p.name + '" label="Switch"' + device + '></ird-profile-switch></sdpi-item>';
   }).join('');
 %>
 <%- include('accordion', {
