@@ -21,6 +21,13 @@
   ird-deck-device-select (populated from the `_deckDevices` global the Elgato
   plugin publishes) and each button carries it (`device-from`). The plugin's
   command handler drops a switch without a device.
+
+  Not every deck has a variant of every template (#1457). In the window each
+  row carries the device types its template ships for (`data-device-types`,
+  from profiles.json) and the rows sit inside ird-profile-variants, which hides
+  a row the chosen deck has no variant of and, when it has none at all, shows
+  the one-line note in their place. With no deck chosen every row shows. The
+  Property Inspector rendering has no picker, so its markup is unchanged.
 %>
 <% if (locals.platform?.features?.profiles !== false) { %>
 <%
@@ -29,10 +36,24 @@
   // a profile via the manifest + `pnpm generate:action-profiles`, not by
   // editing here. Device variants of one template collapse into a single row;
   // the plugin resolves the device-suffixed manifest name at switch time.
-  var __displayNames = require('./data/profiles.json').map(function (p) { return p.displayName || p.name; });
-  var profiles = __displayNames
-    .filter(function (name, i) { return __displayNames.indexOf(name) === i; })
-    .map(function (name) { return { name: name }; });
+  // Each row also collects the device types its template has a variant for.
+  var profiles = [];
+  var __byName = {};
+  require('./data/profiles.json').forEach(function (p) {
+    var name = p.displayName || p.name;
+    if (!__byName[name]) {
+      __byName[name] = { name: name, deviceTypes: [] };
+      profiles.push(__byName[name]);
+    }
+    if (typeof p.deviceType === 'number' && __byName[name].deviceTypes.indexOf(p.deviceType) < 0) {
+      __byName[name].deviceTypes.push(p.deviceType);
+    }
+  });
+  var __rows = profiles.map(function (p) {
+    var device = locals.settingsWindow ? ' device-from="sw-deck-device"' : '';
+    var types = locals.settingsWindow ? ' data-device-types="' + p.deviceTypes.join(',') + '"' : '';
+    return '<sdpi-item label="' + p.name + '"' + types + '><ird-profile-switch profile="' + p.name + '" label="Switch"' + device + '></ird-profile-switch></sdpi-item>';
+  }).join('');
 %>
 <%- include('accordion', {
   title: 'Stream Deck Profiles',
@@ -46,10 +67,12 @@
     ${locals.settingsWindow
       ? '<sdpi-item label="Stream Deck"><ird-deck-device-select select-id="sw-deck-device"></ird-deck-device-select></sdpi-item>'
       : ''}
-    ${profiles.map(function (p) {
-      var device = locals.settingsWindow ? ' device-from="sw-deck-device"' : '';
-      return '<sdpi-item label="' + p.name + '"><ird-profile-switch profile="' + p.name + '" label="Switch"' + device + '></ird-profile-switch></sdpi-item>';
-    }).join('')}
+    ${locals.settingsWindow
+      ? '<ird-profile-variants device-from="sw-deck-device">' + __rows +
+        '<div class="ird-supporting-text" data-no-variants hidden>' +
+        'iRaceDeck has no ready-made profiles for this Stream Deck yet.' +
+        '</div></ird-profile-variants>'
+      : __rows}
   `
 }) %>
 <% } %>

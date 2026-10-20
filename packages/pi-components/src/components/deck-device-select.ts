@@ -24,10 +24,29 @@
  * - `select-id`: id given to the inner `<select>` so switch buttons can find it.
  * - `devices`: global setting key holding the list (default `_deckDevices`).
  * - `placeholder`: text of the empty option (default `Choose a Stream Deck…`).
+ *
+ * The chosen deck's TYPE (#1457): `selectedDeviceType` reads it, and every
+ * change of the effective choice — the user's pick, the one-deck auto-select,
+ * or the chosen deck disconnecting — dispatches a bubbling
+ * `ird-deck-device-change` event whose detail names this picker's `select-id`
+ * and the deck's id and type. `ird-profile-variants` listens for it to hide the
+ * profile rows the chosen deck has no variant of.
  */
 import { skipUnchanged } from "./settings-change-filter.js";
 
 type DeckDevice = { id: string; name: string; type?: number };
+
+/** Dispatched (bubbling) on the picker whenever the effective choice changes (#1457). */
+export const DECK_DEVICE_CHANGE_EVENT = "ird-deck-device-change";
+
+export type DeckDeviceChangeDetail = {
+  /** The picker's `select-id`, which `device-from` attributes name. */
+  selectId: string;
+  /** The chosen deck's id, or `""` with no deck chosen. */
+  deviceId: string;
+  /** The chosen deck's Stream Deck device type, or `undefined` when none is chosen or the list carries none. */
+  deviceType: number | undefined;
+};
 
 const DEFAULT_DEVICES_SETTING = "_deckDevices";
 const DEFAULT_PLACEHOLDER = "Choose a Stream Deck…";
@@ -36,7 +55,20 @@ let styleInjected = false;
 
 export class DeckDeviceSelect extends HTMLElement {
   private select: HTMLSelectElement | null = null;
+  private devices: DeckDevice[] = [];
+  private announced: { deviceId: string; deviceType: number | undefined } = { deviceId: "", deviceType: undefined };
   private _initialized = false;
+
+  /** The chosen deck's device type; `undefined` with no deck chosen or no type published for it. */
+  get selectedDeviceType(): number | undefined {
+    const id = this.select?.value ?? "";
+
+    if (!id) return undefined;
+
+    const type = this.devices.find((d) => d.id === id)?.type;
+
+    return typeof type === "number" ? type : undefined;
+  }
 
   connectedCallback(): void {
     if (this._initialized) return;
@@ -73,6 +105,7 @@ export class DeckDeviceSelect extends HTMLElement {
     this.select = document.createElement("select");
     this.select.id = this.getAttribute("select-id") ?? "";
     this.renderOptions([]);
+    this.select.addEventListener("change", () => this.announce());
     this.appendChild(this.select);
   }
 
@@ -132,6 +165,26 @@ export class DeckDeviceSelect extends HTMLElement {
     } else if (devices.length === 1) {
       this.select.value = devices[0]?.id ?? "";
     }
+
+    this.devices = devices;
+    this.announce();
+  }
+
+  /**
+   * Tell listeners the effective choice changed. Only a change is announced: a
+   * list refresh that keeps the same deck (and type) is silent.
+   */
+  private announce(): void {
+    const deviceId = this.select?.value ?? "";
+    const deviceType = this.selectedDeviceType;
+
+    if (deviceId === this.announced.deviceId && deviceType === this.announced.deviceType) return;
+
+    this.announced = { deviceId, deviceType };
+
+    const detail: DeckDeviceChangeDetail = { selectId: this.select?.id ?? "", deviceId, deviceType };
+
+    this.dispatchEvent(new CustomEvent<DeckDeviceChangeDetail>(DECK_DEVICE_CHANGE_EVENT, { bubbles: true, detail }));
   }
 }
 
