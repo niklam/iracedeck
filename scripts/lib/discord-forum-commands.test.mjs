@@ -1096,15 +1096,18 @@ describe("runFollowUp", () => {
       expect(paths).not.toContain(bugsArchived);
     });
 
-    it("fetches the guild's active threads once for both forums", async () => {
+    it("reads the guild's active threads right before each forum's archived pages", async () => {
+      // A shared active list would stretch the gap in which an unarchived
+      // thread is in neither listing across the first forum's whole paging.
       const client = fakeClient(bothRoutes);
 
       await runFollowUp({ json: true }, { config: BUGS_CONFIG, client, log: fakeLog(), exec: fakeExec(list, lookups) });
 
       const paths = client.get.mock.calls.map(([path]) => path);
-      expect(paths.filter((path) => path === ACTIVE_ROUTE)).toHaveLength(1);
-      expect(paths).toContain(BUGS_CHANNEL_ROUTE);
-      expect(paths).toContain(bugsArchived);
+      const bugsActive = paths.lastIndexOf(ACTIVE_ROUTE);
+      expect(paths.filter((path) => path === ACTIVE_ROUTE)).toHaveLength(2);
+      expect(bugsActive).toBeGreaterThan(paths.indexOf(BUGS_CHANNEL_ROUTE));
+      expect(bugsActive).toBeLessThan(paths.indexOf(bugsArchived));
     });
 
     it("runs on a config that selects no forum, as follow-up's own readConfig gives", async () => {
@@ -1167,6 +1170,18 @@ describe("the bugs forum (#1460)", () => {
         error:
           "Missing one of DISCORD_FEATURE_REQUESTS_CHANNEL_ID / DISCORD_BUGS_CHANNEL_ID — set them in .env.local at the repo root (see .env.local.example).",
       });
+    });
+
+    it("refuses two forums on the same channel id, whichever forum is selected", () => {
+      const env = { ...shared, DISCORD_FEATURE_REQUESTS_CHANNEL_ID: CHANNEL, DISCORD_BUGS_CHANNEL_ID: CHANNEL };
+      const error = {
+        error:
+          "DISCORD_FEATURE_REQUESTS_CHANNEL_ID and DISCORD_BUGS_CHANNEL_ID hold the same channel id; each forum needs its own (see .env.local.example).",
+      };
+
+      for (const forum of ["feature-requests", "bugs", null]) {
+        expect(readConfig("C:/nowhere", { ...env }, forum)).toEqual(error);
+      }
     });
 
     it("throws on an unknown forum", () => {

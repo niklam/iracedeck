@@ -69,9 +69,20 @@ export function readConfig(root, env = { ...process.env }, forumName = DEFAULT_F
     };
   }
 
-  const channels = Object.fromEntries(
-    profiles.filter((profile) => env[profile.channelEnv]).map((profile) => [profile.name, env[profile.channelEnv]]),
+  const configured = profiles.filter((profile) => env[profile.channelEnv]);
+  const shared = configured.filter((profile, i) =>
+    configured.some((other, j) => j !== i && env[other.channelEnv] === env[profile.channelEnv]),
   );
+
+  // Two forums on one channel would make the channel check pass for both and
+  // `follow-up` judge every post by whichever profile it read last.
+  if (shared.length > 0) {
+    return {
+      error: `${shared.map((profile) => profile.channelEnv).join(" and ")} hold the same channel id; each forum needs its own (see .env.local.example).`,
+    };
+  }
+
+  const channels = Object.fromEntries(configured.map((profile) => [profile.name, env[profile.channelEnv]]));
 
   return {
     token: env.DISCORD_BOT_TOKEN,
@@ -93,20 +104,18 @@ export async function fetchTags(client, channelId) {
   return channel.available_tags ?? [];
 }
 
-/** Every active thread in the guild, in any channel; `mergePosts` filters to one. */
-export async function fetchActiveThreads(client, guildId) {
-  return (await client.get(`/guilds/${guildId}/threads/active`)).threads ?? [];
-}
-
 /**
  * Active threads (guild-wide, filtered) plus every archived page of the
  * channel. The page caps fail loud: a silently truncated listing would make
  * `follow-up` report old posts as missing and `list` hide them.
+ *
+ * The active list is fetched here, right before this channel's archived
+ * pages, even when `follow-up` calls this once per forum: a thread unarchived
+ * between the two reads is in neither, so the gap between them is kept to
+ * one channel's paging rather than shared across forums.
  */
-export async function fetchAllPosts(client, { guildId, channelId }, active = null) {
-  // `active` is the guild-wide list, which `follow-up` fetches once for every
-  // forum rather than once per forum.
-  active ??= await fetchActiveThreads(client, guildId);
+export async function fetchAllPosts(client, { guildId, channelId }) {
+  const active = (await client.get(`/guilds/${guildId}/threads/active`)).threads ?? [];
   const archivedPages = [];
   let before = null;
 
@@ -543,13 +552,12 @@ export async function runFollowUp({ json = false }, { config, client, log = cons
   const unconfigured = Object.values(FORUMS).filter((forum) => !config.channels[forum.name]);
   // A post id is a thread id, so it is in at most one channel.
   const postsById = new Map();
-  const active = await fetchActiveThreads(client, config.guildId);
 
   for (const forum of searched) {
     const channelId = config.channels[forum.name];
     const tags = await fetchTags(client, channelId);
 
-    for (const thread of await fetchAllPosts(client, { guildId: config.guildId, channelId }, active)) {
+    for (const thread of await fetchAllPosts(client, { guildId: config.guildId, channelId })) {
       postsById.set(thread.id, { post: describePost(thread, tags, config.guildId, forum.statusTags), forum });
     }
   }
