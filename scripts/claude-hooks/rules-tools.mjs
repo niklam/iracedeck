@@ -6,6 +6,8 @@
  */
 import path from "node:path";
 
+import { CONTROL_BYTE } from "../lib/control-bytes.mjs";
+
 const LEVELS = ["xhigh", "high", "medium", "low"];
 
 /**
@@ -45,11 +47,6 @@ export function checkAgent({ subagent_type: type, model, isolation } = {}) {
     return "Choose the agent's model for THIS task (fable / opus / sonnet / haiku) — an omitted model inherits the coordinator's. Say the choice and the reason in one line.";
   return null;
 }
-
-// Every C0 control byte except tab, LF and CR, plus DEL. Written with escapes,
-// which is the whole point: see checkEdit.
-// eslint-disable-next-line no-control-regex
-const CONTROL_BYTE = /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/;
 
 /**
  * The first raw control byte in `text` as its two-digit hex code and 1-based

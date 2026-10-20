@@ -4,6 +4,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
+import { findControlBytes, hex } from "./lib/control-bytes.mjs";
+
 // scripts/no-control-bytes.test.mjs lives in scripts/, so the repo root is one up.
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -35,40 +37,10 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Tracked files only: CI sees exactly those, and an untracked scratch file or
 // a sibling worker's half-written one must not turn a local run red.
 
-// The same class as CONTROL_BYTE in rules-tools.mjs, applied to a latin1 view
-// of the bytes so each byte is one character.
-// eslint-disable-next-line no-control-regex
-const CONTROL_BYTE = /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/;
-
-/**
- * Every control byte in `buffer` other than tab, LF and CR, with its 1-based
- * line and character column (UTF-8 continuation bytes do not start a column,
- * so the position matches the editor's).
- */
-function findControlBytes(buffer) {
-  // Nearly every file is clean; skip the byte walk for those.
-  if (!CONTROL_BYTE.test(buffer.toString("latin1"))) return [];
-
-  const found = [];
-  let line = 1;
-  let column = 0;
-
-  for (const byte of buffer) {
-    if (byte === 0x0a) {
-      line += 1;
-      column = 0;
-      continue;
-    }
-
-    if ((byte & 0xc0) !== 0x80) column += 1;
-
-    if ((byte < 0x20 && byte !== 0x09 && byte !== 0x0d) || byte === 0x7f) {
-      found.push({ line, column, byte });
-    }
-  }
-
-  return found;
-}
+//
+// A spec-only push to master runs no CI (#1466), so specs are also checked
+// before they are committed: `scripts/check-staged-spec-bytes.mjs` from the
+// husky pre-commit hook, and the spec-commit rule in Claude Code sessions.
 
 function git(args, input) {
   return execFileSync("git", args, { cwd: repoRoot, encoding: "utf8", input, maxBuffer: 64 * 1024 * 1024 });
@@ -88,37 +60,6 @@ function listTextFiles() {
   // A tracked file deleted in the working tree is not there to read.
   return tracked.filter((file) => !binary.has(file) && existsSync(join(repoRoot, file)));
 }
-
-function hex(byte) {
-  return `0x${byte.toString(16).padStart(2, "0")}`;
-}
-
-describe("findControlBytes", () => {
-  it("allows tab, LF and CR", () => {
-    expect(findControlBytes(Buffer.from("a\tb\r\nc\n"))).toEqual([]);
-  });
-
-  it("reports NUL, the other C0 bytes and DEL with their position", () => {
-    const buffer = Buffer.from([0x61, 0x00, 0x0a, 0x62, 0x63, 0x03, 0x1f, 0x0a, 0x7f]);
-
-    expect(findControlBytes(buffer)).toEqual([
-      { line: 1, column: 2, byte: 0x00 },
-      { line: 2, column: 3, byte: 0x03 },
-      { line: 2, column: 4, byte: 0x1f },
-      { line: 3, column: 1, byte: 0x7f },
-    ]);
-  });
-
-  it("does not report the bytes of a multi-byte UTF-8 character", () => {
-    expect(findControlBytes(Buffer.from("– “é” ✓", "utf8"))).toEqual([]);
-  });
-
-  it("counts a multi-byte character as one column", () => {
-    const buffer = Buffer.concat([Buffer.from("“é”", "utf8"), Buffer.from([0x00])]);
-
-    expect(findControlBytes(buffer)).toEqual([{ line: 1, column: 4, byte: 0x00 }]);
-  });
-});
 
 describe("no raw control bytes in the repo's text files (#1103)", () => {
   const textFiles = listTextFiles();
