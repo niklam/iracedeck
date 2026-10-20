@@ -27,4 +27,4 @@ Files your editor or the OS leave here (dotfiles such as `.DS_Store` or a swap f
 
 A fragment describes what users get, not a PR. When a follow-up PR refines a change that is still in development, it edits that change's existing fragment rather than adding a second one. A **Bug Fixes** fragment is only for something that shipped in an earlier release.
 
-The full rules are in `.claude/rules/changelog.md`.
+The full rules are in `.claude/rules/changelog.md`, and the composition, fold and format behind them in `.claude/rules/changelog-internals.md`.
