@@ -14,12 +14,14 @@ on:
   pull_request:
   push:
     branches: [master, 'release/*']
-    # A push that changes only specs runs nothing (#1466): specs commit straight
-    # to master as their own docs(specs) commits, and no step of the four CI
-    # workflows reads one but ci-test's control-byte scan, which the
-    # spec-commit hook runs at the commit instead. Any other change still runs.
+    # A push that changes only spec documents runs nothing (#1466): specs
+    # commit straight to master as their own docs(specs) commits, and no step
+    # of the four CI workflows reads one but ci-test's control-byte scan,
+    # which the spec-commit hook runs at the commit instead. Any other change
+    # still runs, a non-Markdown file under specs/ included: lint and format
+    # read it.
     paths-ignore:
-      - 'docs/superpowers/specs/**'
+      - 'docs/superpowers/specs/**.md'
 
 # The job only reads the repository and runs a compiler, so it is given the
 # minimum token scope and the checkout credential is not left in .git/config for
