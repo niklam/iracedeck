@@ -125,4 +125,4 @@ The v1.21.0 Discord post is the canonical style reference. Match its tone (conci
 
 ## After posting
 
-Run the `discord-feature-requests` skill's **follow-up** (`pnpm discord:feature-requests follow-up`). A release moves every Discord-sourced issue it closed from `Completed` to `Released`, and the requesters are told in their own threads with the version and where to find the feature.
+Run the `discord-forums` skill's **After a release** steps, starting with its follow-up (`pnpm discord:feature-requests follow-up`, which covers both forums). A release moves every Discord-sourced feature request it closed from `Completed` to `Released` and every Discord-reported bug it fixed to `Resolved`, and the posters are told in their own threads with the version — and, for feature requests, where to find the feature. #bugs replies carry no download link.
