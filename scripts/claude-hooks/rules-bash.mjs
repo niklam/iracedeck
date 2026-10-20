@@ -877,7 +877,7 @@ export const rules = [
     },
   },
   {
-    name: "git commit: specs go to master only; a dirty lockfile rides with its package.json",
+    name: "git commit: specs go to master only, with their sections and no control bytes; a dirty lockfile rides with its package.json",
     test: (c, ctx) => {
       if (!has(c, GIT_COMMIT)) return null;
       const dir = gitCwd(c, ctx.cwd, GIT_COMMIT);
@@ -905,13 +905,18 @@ export const rules = [
       for (const f of committed.filter((x) => x.startsWith(SPEC_DIR))) {
         const text = ctx.committedText?.(dir, f, fromIndex.has(f) ? "index" : "worktree");
         if (text === undefined) continue;
+        const problems = [];
         const found = findControlByte(text);
         if (found)
-          return `${f} has a raw control byte 0x${found.code} on line ${found.line}. Write it as an escape (\\x${found.code}) — a spec-only push runs no CI, so nothing after this commit would catch it (#1466, #1103).`;
-        if (ctx.tracked?.(dir, f)) continue;
-        const missing = missingSpecParts(text);
+          problems.push(
+            `${f} has a raw control byte 0x${found.code} on line ${found.line}. Write it as an escape (\\x${found.code}) — a spec-only push runs no CI, so nothing after this commit would catch it (#1466, #1103).`,
+          );
+        const missing = ctx.tracked?.(dir, f) ? [] : missingSpecParts(text);
         if (missing.length)
-          return `${f} is missing ${missing.join(" and ")}. A spec carries the header block, an Out of scope section and a Testing/Verification section. See .claude/rules/specs-and-plans.md.`;
+          problems.push(
+            `${f} is missing ${missing.join(" and ")}. A spec carries the header block, an Out of scope section and a Testing/Verification section. See .claude/rules/specs-and-plans.md.`,
+          );
+        if (problems.length) return problems.join(" ");
       }
       if (
         committed.some((f) => /(^|\/)package\.json$/.test(f)) &&

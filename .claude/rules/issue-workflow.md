@@ -100,7 +100,7 @@ Issue work reaches a target branch only through an approved PR. Two documented p
 
 ### The merge is not finished until the post-merge run is (12)
 
-Since #1070 every CI workflow also runs on pushes to `master` and `release/*` — the only thing that ever checks the tree a squash-merge actually produces. A push that changes only `docs/superpowers/specs/` runs none of them (#1466): no step reads a spec, and the one that scanned them, the control-byte test, is run by the spec-commit hook at the commit instead. A merge always carries code, so it always gets all four. That signal is worth nothing if nobody is looking at it, which is how a new check gets added and quietly ignored.
+Since #1070 every CI workflow also runs on pushes to `master` and `release/*` — the only thing that ever checks the tree a squash-merge actually produces. That signal is worth nothing if nobody is looking at it, which is how a new check gets added and quietly ignored. A push that changes only `docs/superpowers/specs/` runs none of them (#1466): no step reads a spec, and the one that scanned them, the control-byte test, is run by the spec-commit hook at the commit instead. A merge always carries code, so it always gets all four.
 
 **Niklas owns a red master.** The agent that merged is the instrument that watches and reports; it does not own the outcome and does not decide what to do about one.
 

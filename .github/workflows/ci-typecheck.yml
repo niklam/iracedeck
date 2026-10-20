@@ -15,9 +15,9 @@ on:
   push:
     branches: [master, 'release/*']
     # A push that changes only specs runs nothing (#1466): specs commit straight
-    # to master as their own docs(specs) commits, and no step here reads one
-    # except the control-byte scan in ci-test, which the spec-commit hook now
-    # runs at the commit instead. A push that also touches anything else runs.
+    # to master as their own docs(specs) commits, and no step of the four CI
+    # workflows reads one but ci-test's control-byte scan, which the
+    # spec-commit hook runs at the commit instead. Any other change still runs.
     paths-ignore:
       - 'docs/superpowers/specs/**'
 

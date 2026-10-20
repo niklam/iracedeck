@@ -1061,6 +1061,11 @@ describe("git commit", () => {
           ctx({ staged: () => ["docs/superpowers/specs/a.md"], committedText: () => "# T\x00", tracked: () => true }),
         ),
       ).toMatch(/0x00 on line 1/));
+    it("names a control byte and missing sections in one deny", () => {
+      const v = deny("git commit -m x", spec("# T\x01"));
+      expect(v).toMatch(/0x01 on line 1/);
+      expect(v).toMatch(/Out of scope/);
+    });
     it("allows tab, CR and LF in a spec", () => passes("git commit -m x", spec(whole.replace("vitest", "a\tb\r\nc"))));
     it("leaves an AMENDMENT alone — the requirement is forward-only", () =>
       passes(
