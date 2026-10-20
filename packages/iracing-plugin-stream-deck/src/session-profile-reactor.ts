@@ -88,8 +88,9 @@ export function createSessionProfileReactor(deps: SessionProfileReactorDeps): Se
   // The raw session type last named in the "classified as nothing" debug line,
   // so an unknown session logs once rather than at every tick.
   let lastUnclassifiedType = "";
-  // Bumped at every exit, so a switch still in flight from the session that
-  // ended stops before it touches the next session's state.
+  // Bumped at every exit and every newly acted-on pair, so a switch still in
+  // flight for a session that ended, or for a mapping that has since been
+  // superseded, stops before it touches another deck or the newer state.
   let epoch = 0;
   const switched = new Map<string, SwitchedDeck>();
   let unsubscribers: Array<() => void> = [];
@@ -148,20 +149,25 @@ export function createSessionProfileReactor(deps: SessionProfileReactorDeps): Se
 
   const onTick = (): void => {
     try {
-      const kind = deps.getSessionKind();
+      // The toggle first: it is off by default, and then a tick costs one read.
+      const settings = deps.getSettings();
 
-      if (kind === null) {
-        noteUnclassified();
+      if (settings.profileAutoSwitchEnabled !== true) {
+        // Nothing is recorded while off, so turning it on applies at once; a
+        // switch still in flight stops.
+        if (lastKind !== null) {
+          lastKind = null;
+          lastProfile = "";
+          epoch += 1;
+        }
 
         return;
       }
 
-      const settings = deps.getSettings();
+      const kind = deps.getSessionKind();
 
-      if (settings.profileAutoSwitchEnabled !== true) {
-        // Nothing is recorded while off, so turning it on applies at once.
-        lastKind = null;
-        lastProfile = "";
+      if (kind === null) {
+        noteUnclassified();
 
         return;
       }
@@ -172,6 +178,7 @@ export function createSessionProfileReactor(deps: SessionProfileReactorDeps): Se
 
       lastKind = kind;
       lastProfile = profile;
+      epoch += 1;
 
       if (profile === "") {
         logger.debug(`Session kind "${kind}" is set to not change the profile`);

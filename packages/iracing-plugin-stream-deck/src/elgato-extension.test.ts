@@ -161,8 +161,9 @@ describe("createElgatoExtension", () => {
       { id: "gone", name: "Gone", type: 0, isConnected: false },
     ]);
 
-    vi.mocked(getSessionKind).mockReturnValue("race");
-    vi.mocked(getGlobalSettings).mockReturnValue({
+    // One tick reads each once; the Once forms leave nothing behind for later tests.
+    vi.mocked(getSessionKind).mockReturnValueOnce("race");
+    vi.mocked(getGlobalSettings).mockReturnValueOnce({
       profileAutoSwitchEnabled: true,
       profileForSessionKindRace: "iRaceDeck Race",
     } as ReturnType<typeof getGlobalSettings>);
@@ -172,7 +173,15 @@ describe("createElgatoExtension", () => {
     onTick(null, true);
 
     expect(requestProfileSwitch).toHaveBeenCalledExactlyOnceWith("xl", "iRaceDeck Race XL", 0);
-    vi.mocked(getSessionKind).mockReturnValue(null);
+  });
+
+  it("starts the session-kind profile switch when the build names no profiles flag", () => {
+    const { sd, adapter } = fakes([]);
+
+    vi.mocked(getFeatureFlag).mockReturnValueOnce(undefined);
+    createElgatoExtension(sd, adapter).start();
+
+    expect(controller.subscribe).toHaveBeenCalledOnce();
   });
 
   it("adds Switch Profile and nothing else", () => {

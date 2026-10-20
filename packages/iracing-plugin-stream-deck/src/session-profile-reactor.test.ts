@@ -366,6 +366,47 @@ describe("createSessionProfileReactor", () => {
     expect(h.switchProfile).not.toHaveBeenCalled();
   });
 
+  it("does not read the session while the toggle is off", async () => {
+    const h = harness();
+    let reads = 0;
+
+    Object.defineProperty(h.state, "kind", {
+      get: () => {
+        reads++;
+
+        return "practice";
+      },
+    });
+    h.state.settings = settingsWith({ profileAutoSwitchEnabled: false });
+    await h.tick(3);
+
+    expect(reads).toBe(0);
+    expect(h.switchProfile).not.toHaveBeenCalled();
+  });
+
+  it("stops a switch still in flight once a newer mapping has been acted on", async () => {
+    const h = harness({ kind: "practice", decks: [SD, XL] });
+    let releaseFirst: (() => void) | undefined;
+
+    h.switchProfile.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseFirst = resolve;
+        }),
+    );
+    await h.tick();
+    h.state.settings = settingsWith({ profileForSessionKindPractice: "iRaceDeck Race" });
+    await h.tick();
+    releaseFirst?.();
+    await h.tick();
+
+    expect(h.switchProfile.mock.calls).toEqual([
+      ["sd-1", "iRaceDeck Practice SD", 0],
+      ["sd-1", "iRaceDeck Race SD", 0],
+      ["xl-1", "iRaceDeck Race XL", 0],
+    ]);
+  });
+
   it("stops listening when stopped", async () => {
     const h = harness({ kind: "race" });
 

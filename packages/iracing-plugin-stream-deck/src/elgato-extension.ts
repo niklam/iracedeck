@@ -62,8 +62,10 @@ export function createElgatoExtension(sd: typeof StreamDeck, adapter: ElgatoPlat
       // phase started the extension, and are read live at every tick. The switch
       // goes through `requestProfileSwitch` with the manifest name the reactor
       // resolved against profiles.json, so it lands on the per-device history
-      // the Switch Profile action's Back to previous walks (#762).
-      if (getFeatureFlag("profiles") === true) {
+      // the Switch Profile action's Back to previous walks (#762). Gated the way
+      // the settings window gates its Profiles pane (`!== false`), so the card
+      // is never shown for a switch that cannot run.
+      if (getFeatureFlag("profiles") !== false) {
         createSessionProfileReactor({
           getSessionKind,
           getRawSessionType: getSessionType,
