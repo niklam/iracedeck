@@ -12,6 +12,7 @@ The iRacing translator (`initializeSimEventsIracing`, `src/translator.ts`): it d
 - **The canonical live order** — `getLiveRacePositions` / `getLivePosition` (`race-order.ts`). Every position consumer must use it; see `.claude/rules/race-positions.md`.
 - **The pace lineup, that rule's one carve-out** — who a driver lines up behind under a caution or in a rolling-start formation: `getPaceLineup()` (`diff/pace-lineup.ts`), whose `anchor` says which of the two frames the rows were counted in (#1127 / #1167); the formation as a state, `getRollingStartFormation()` (#1167); and the caution catch-up reading, `getCautionGap()` — measured in `diff/caution-gap.ts`, decided by `diffCatchUp` in `diff/caution.ts` (#1168).
 - **The last-stop tire temperature reading** Session Info shows (`getLastStopTireTemps`, #254).
+- **The session kind** the Stream Deck plugin switches profiles by: `getSessionKind()`, from `classifySessionKind()` in `session-kind.ts` (#1111). Deliberately separate from the translator's three-bucket `classifySessionType`, which the Race Engineer depends on; see `.claude/rules/profiles-and-devices.md`.
 
 ## Recording for `@iracedeck/replay-store`
 

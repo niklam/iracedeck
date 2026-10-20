@@ -110,7 +110,7 @@ You can import or reference specific rule files from other markdown using `@.cla
 - `pi-templates.md` — PI EJS templates: layout, partials, shared CSS, Rollup config, key-binding JSON.
 - `platform-feature-flags.md` — build-time flags per plugin, `feature-flags.local.json`, and the development voice root (the `IRACEDECK_DEV_VOICES` opt-in, the `dev.local.json` override, the `stage:dev-voices` build task).
 - `plugin-structure.md` — plugin naming, Rollup config and log policy, native externals and the runtime `bin/package.json`, licenses, the shell `plugin.ts` and the startup phases.
-- `profiles-and-devices.md` — Stream Deck profiles and devices (Elgato-only).
+- `profiles-and-devices.md` — Stream Deck profiles and devices (Elgato-only), and the automatic profile switch by session kind.
 - `race-engineer-callouts.md` — adding or modifying a Race Engineer callout end to end.
 - `race-engineer-callout-examples.md` — one entry per past callout and the pattern it established.
 - `race-positions.md` — the canonical live race order every position consumer must use.
