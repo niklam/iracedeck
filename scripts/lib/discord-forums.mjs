@@ -32,7 +32,7 @@ export const DEFAULT_FORUM = "feature-requests";
  *   "must be set by hand" note;
  * - `expectedTag(issue, releasedVersion)` and `shouldPropose(current, expected)`
  *   are the follow-up mapping and ranking;
- * - `noTagNote(issue, releasedVersion)` explains an `expectedTag` of `null`
+ * - `noTagNote(issue)` explains an `expectedTag` of `null`
  *   when that needs explaining, and is `null` when it is the normal answer.
  */
 export const FORUMS = Object.freeze({

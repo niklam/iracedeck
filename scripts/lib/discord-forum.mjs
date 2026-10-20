@@ -176,9 +176,6 @@ export function featureRequestTag(issue, releasedVersion = null) {
   return inProgress ? "In progress" : "Will Add";
 }
 
-/** #1114's name for the feature-requests mapping. */
-export const expectedTag = featureRequestTag;
-
 /**
  * The #bugs mapping (#1460): only a bug closed as completed whose fix is in a
  * stable tag is `Resolved`. Every other state is `null` — the forum has no
@@ -203,9 +200,6 @@ export function featureRequestShouldPropose(current, expected) {
 
   return rank(expected) > rank(current);
 }
-
-/** #1114's name for the feature-requests ranking. */
-export const shouldPropose = featureRequestShouldPropose;
 
 /** Bugs: the one move there is, onto `Resolved` from a post not carrying it. */
 export function bugShouldPropose(current, expected) {

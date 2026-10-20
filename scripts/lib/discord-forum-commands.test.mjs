@@ -1095,6 +1095,25 @@ describe("runFollowUp", () => {
       expect(paths).not.toContain(BUGS_CHANNEL_ROUTE);
       expect(paths).not.toContain(bugsArchived);
     });
+
+    it("fetches the guild's active threads once for both forums", async () => {
+      const client = fakeClient(bothRoutes);
+
+      await runFollowUp({ json: true }, { config: BUGS_CONFIG, client, log: fakeLog(), exec: fakeExec(list, lookups) });
+
+      const paths = client.get.mock.calls.map(([path]) => path);
+      expect(paths.filter((path) => path === ACTIVE_ROUTE)).toHaveLength(1);
+      expect(paths).toContain(BUGS_CHANNEL_ROUTE);
+      expect(paths).toContain(bugsArchived);
+    });
+
+    it("runs on a config that selects no forum, as follow-up's own readConfig gives", async () => {
+      const config = { ...BUGS_CONFIG, forum: null, channelId: null };
+      const rows = JSON.parse((await run(config, true)).text());
+
+      expect(rows.find((row) => row.issue === 40)).toMatchObject({ forum: "bugs", propose: true });
+      expect(rows.find((row) => row.issue === 1)).toMatchObject({ forum: "feature-requests", propose: true });
+    });
   });
 });
 
@@ -1128,6 +1147,25 @@ describe("the bugs forum (#1460)", () => {
         forum: "feature-requests",
         channelId: CHANNEL,
         channels: BUGS_CONFIG.channels,
+      });
+    });
+
+    it("selects no forum for null, and then any one configured channel will do", () => {
+      // follow-up's case: `pnpm discord:bugs follow-up` on a machine with only
+      // the feature-requests channel still checks that forum.
+      expect(readConfig("C:/nowhere", { ...shared, DISCORD_FEATURE_REQUESTS_CHANNEL_ID: CHANNEL }, null)).toEqual({
+        token: "tok",
+        guildId: GUILD,
+        forum: null,
+        channelId: null,
+        channels: { "feature-requests": CHANNEL },
+      });
+      expect(readConfig("C:/nowhere", { ...shared, DISCORD_BUGS_CHANNEL_ID: BUGS_CHANNEL }, null)).toMatchObject({
+        channels: { bugs: BUGS_CHANNEL },
+      });
+      expect(readConfig("C:/nowhere", { ...shared }, null)).toEqual({
+        error:
+          "Missing one of DISCORD_FEATURE_REQUESTS_CHANNEL_ID / DISCORD_BUGS_CHANNEL_ID — set them in .env.local at the repo root (see .env.local.example).",
       });
     });
 

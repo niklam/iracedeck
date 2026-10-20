@@ -31,7 +31,7 @@ Every command takes `--forum feature-requests` (the default) or `--forum bugs`; 
 | `tag <post-id> "<status tag>"` | feature-requests: one of `Will Add`, `In progress`, `Completed`, `Released`, `Won't do`. bugs: `Resolved`. Keeps category tags. `--dry-run` available. |
 | `follow-up [--json]` | Every `discord`-labelled issue, the forum its post is in, current vs expected tag, and whether a change is proposed. Covers every forum whose channel id is configured, whichever `--forum` is given. |
 
-`DISCORD_FEATURE_REQUESTS_CHANNEL_ID` and `DISCORD_BUGS_CHANNEL_ID` in `.env.local` name the two channels; a command needs only its own forum's. `follow-up` says up front when a forum is not configured, and its posts then show as not found.
+`DISCORD_FEATURE_REQUESTS_CHANNEL_ID` and `DISCORD_BUGS_CHANNEL_ID` in `.env.local` name the two channels; a command needs only its own forum's, and `follow-up` any one of them. It says up front when a forum is not configured, and its posts then show as not found.
 
 ## Source line
 

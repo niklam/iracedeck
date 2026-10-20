@@ -12,7 +12,8 @@ import {
   bugTag,
   describePost,
   DISCORD_MESSAGE_LIMIT,
-  expectedTag,
+  featureRequestShouldPropose,
+  featureRequestTag,
   lowestStableVersion,
   mergePosts,
   parseSourceLine,
@@ -21,7 +22,6 @@ import {
   replaceStatusTag,
   RESOLVED,
   resolveStatusTag,
-  shouldPropose,
   snowflakeToDate,
   sourceLine,
   STANDING_POST_IDS,
@@ -261,24 +261,24 @@ describe("summarizeReactions", () => {
   });
 });
 
-describe("expectedTag", () => {
+describe("featureRequestTag", () => {
   const open = { state: "OPEN", stateReason: null, assignees: [], milestone: null };
 
   it("follows the follow-up table", () => {
-    expect(expectedTag(open)).toBe("Will Add");
-    expect(expectedTag({ ...open, assignees: [{ login: "niklam" }] })).toBe("In progress");
-    expect(expectedTag({ ...open, milestone: { title: "3.2.0" } })).toBe("In progress");
-    expect(expectedTag({ ...open, stateReason: "REOPENED" })).toBe("Will Add");
-    expect(expectedTag({ ...open, state: "CLOSED", stateReason: "COMPLETED" })).toBe("Completed");
-    expect(expectedTag({ ...open, state: "CLOSED", stateReason: "COMPLETED" }, "v3.2.0")).toBe("Released");
-    expect(expectedTag({ ...open, state: "CLOSED", stateReason: "NOT_PLANNED" })).toBe(WONT_DO);
+    expect(featureRequestTag(open)).toBe("Will Add");
+    expect(featureRequestTag({ ...open, assignees: [{ login: "niklam" }] })).toBe("In progress");
+    expect(featureRequestTag({ ...open, milestone: { title: "3.2.0" } })).toBe("In progress");
+    expect(featureRequestTag({ ...open, stateReason: "REOPENED" })).toBe("Will Add");
+    expect(featureRequestTag({ ...open, state: "CLOSED", stateReason: "COMPLETED" })).toBe("Completed");
+    expect(featureRequestTag({ ...open, state: "CLOSED", stateReason: "COMPLETED" }, "v3.2.0")).toBe("Released");
+    expect(featureRequestTag({ ...open, state: "CLOSED", stateReason: "NOT_PLANNED" })).toBe(WONT_DO);
   });
 
   it("has no tag for an issue closed as a duplicate", () => {
     // None of the five fits a duplicate: the post should point at the
     // canonical issue by hand, not be marked Completed because it is closed.
-    expect(expectedTag({ ...open, state: "CLOSED", stateReason: "DUPLICATE" })).toBeNull();
-    expect(expectedTag({ ...open, state: "CLOSED", stateReason: "DUPLICATE" }, "v3.2.0")).toBeNull();
+    expect(featureRequestTag({ ...open, state: "CLOSED", stateReason: "DUPLICATE" })).toBeNull();
+    expect(featureRequestTag({ ...open, state: "CLOSED", stateReason: "DUPLICATE" }, "v3.2.0")).toBeNull();
   });
 });
 
@@ -301,24 +301,24 @@ describe("bugTag", () => {
   });
 });
 
-describe("rank and shouldPropose", () => {
+describe("rank and featureRequestShouldPropose", () => {
   it("ranks the lifecycle with none at zero", () => {
     expect([null, "Will Add", "In progress", "Completed", "Released"].map(rank)).toEqual([0, 1, 2, 3, 4]);
   });
 
   it("proposes only forward moves, with Won't do reachable from anywhere and terminal", () => {
-    expect(shouldPropose(null, "Will Add")).toBe(true);
-    expect(shouldPropose("Will Add", "Released")).toBe(true);
-    expect(shouldPropose("Released", "Completed")).toBe(false);
-    expect(shouldPropose("In progress", "In progress")).toBe(false);
-    expect(shouldPropose("Released", WONT_DO)).toBe(true);
-    expect(shouldPropose(WONT_DO, "Completed")).toBe(false);
-    expect(shouldPropose(WONT_DO, WONT_DO)).toBe(false);
+    expect(featureRequestShouldPropose(null, "Will Add")).toBe(true);
+    expect(featureRequestShouldPropose("Will Add", "Released")).toBe(true);
+    expect(featureRequestShouldPropose("Released", "Completed")).toBe(false);
+    expect(featureRequestShouldPropose("In progress", "In progress")).toBe(false);
+    expect(featureRequestShouldPropose("Released", WONT_DO)).toBe(true);
+    expect(featureRequestShouldPropose(WONT_DO, "Completed")).toBe(false);
+    expect(featureRequestShouldPropose(WONT_DO, WONT_DO)).toBe(false);
   });
 
   it("never proposes a move to no tag", () => {
-    expect(shouldPropose("Will Add", null)).toBe(false);
-    expect(shouldPropose(null, null)).toBe(false);
+    expect(featureRequestShouldPropose("Will Add", null)).toBe(false);
+    expect(featureRequestShouldPropose(null, null)).toBe(false);
     expect(rank(null)).toBe(0);
   });
 });

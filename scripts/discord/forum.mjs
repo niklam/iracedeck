@@ -22,7 +22,7 @@ import { parseArgs } from "node:util";
 
 import { createDiscordClient } from "../lib/discord-api.mjs";
 import { readConfig, runFollowUp, runList, runReply, runShow, runTag } from "../lib/discord-forum-commands.mjs";
-import { DEFAULT_FORUM, FORUMS } from "../lib/discord-forums.mjs";
+import { DEFAULT_FORUM, forumProfile, FORUMS } from "../lib/discord-forums.mjs";
 
 const FORUM_LINES = Object.values(FORUMS)
   .map((forum) => `  ${forum.name.padEnd(18)} status tags: ${forum.statusTags.join(" | ")}  (${forum.channelEnv})`)
@@ -76,7 +76,9 @@ function requirePostId(id) {
 
 async function main(command, positionals, values) {
   // The forum name is checked before main, so readConfig cannot throw on it.
-  const config = readConfig(root, undefined, values.forum);
+  // follow-up covers every configured forum, so it selects none and needs
+  // only one channel; the other commands need their forum's.
+  const config = readConfig(root, undefined, command === "follow-up" ? null : values.forum);
 
   if (config.error) {
     console.error(`Error: ${config.error}`);
@@ -144,11 +146,19 @@ if (cli) {
   const { values, positionals } = cli;
   const [command, ...args] = positionals;
 
+  let forumError = null;
+
+  try {
+    forumProfile(values.forum);
+  } catch (error) {
+    forumError = error.message;
+  }
+
   if (values.help || !command) {
     console.log(USAGE);
     process.exitCode = values.help ? 0 : 1;
-  } else if (!Object.hasOwn(FORUMS, values.forum)) {
-    console.error(`Unknown forum "${values.forum}". Valid: ${Object.keys(FORUMS).join(", ")}\n\n${USAGE}`);
+  } else if (forumError) {
+    console.error(`Error: ${forumError}\n\n${USAGE}`);
     process.exitCode = 1;
   } else {
     process.exitCode = await main(command, args, values);
