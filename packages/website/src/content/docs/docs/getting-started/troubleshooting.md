@@ -31,6 +31,20 @@ Windows blocks a non-elevated program from sending input or commands to an eleva
 
 Then restart the one you changed. The warning clears automatically once the levels match. The check is made fresh each time iRaceDeck connects to iRacing and is never carried over from a previous session, so the banner is always about the run you are in — and it stays away until iRacing is running again, since there is nothing to compare against until then.
 
+## "iRaceDeck could not load its iRacing component" (or "audio component")
+
+iRaceDeck ships two small Windows components of its own: one that talks to iRacing, and one that plays the Race Engineer and the radar. If Windows refuses to load one of them, iRaceDeck shows an error banner at the top of every action's settings (Property Inspector) and in the Settings window, and writes the reason to the plugin log.
+
+- **iRacing component:** every key behaves as if iRacing were not running, even while it is — no telemetry, and no button reaches iRacing.
+- **Audio component:** the Race Engineer and the radar are silent. Everything else works.
+
+The usual causes are an antivirus that quarantined the file, or an install that did not finish. To fix it:
+
+1. Check your antivirus's quarantine or protection history for a file from iRaceDeck, and restore it or allow it.
+2. Reinstall the plugin, then restart your deck software (Stream Deck, Stream Dock or Ulanzi Deck).
+
+The banner goes away on the next start once the component loads. If it comes back, [capture the plugin log](#capturing-logs-for-support) and attach it to your report: the `NativeAddons` error line in it says which file failed and why.
+
 ## Keyboard shortcuts not working
 
 If an action uses keyboard shortcuts (like black box selection), make sure:
