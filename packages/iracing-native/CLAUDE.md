@@ -8,12 +8,14 @@ Over half of the native exports are the SDK data-access half — `startup`, `shu
 
 The package detects the platform at module load time and behaves accordingly:
 
-- **Windows (`win32`)**: Loads the native `.node` addon via `createRequire()`. If the addon is missing (e.g., fresh clone without `node-gyp rebuild`), falls back to the mock.
+- **Windows (`win32`)**: Loads the native `.node` addon via `createRequire()`. If the load throws (the file is missing or quarantined, a runtime DLL is missing, a fresh clone skipped `pnpm build:native`), the package reports it and reads as **not connected** (#1373): `startup()` returns `false` and never starts the mock, so `isConnected()` is `false` and the header and data are `null` — every key shows its no-iRacing state instead of the mock's believable rotating telemetry. The input side (scan keys, clipboard, focus, pointer, chat) keeps delegating to the mock's no-ops, and `getElevationStatus()` to its "no mismatch". A developer who wants the mock on Windows sets `.mock` or `IRACEDECK_MOCK`.
 - **Other platforms**: Skips native addon loading entirely and uses `IRacingNativeMock`.
 - **Force mock**: setting `IRACEDECK_MOCK=1` in the environment or creating a `.mock` file in the process cwd (the sdPlugin folder) forces the mock even on Windows — the same lever as `audio-native`.
 - **The test suite already sets it (#1084).** `vitest.config.ts` sets `test.env.IRACEDECK_MOCK`, so test **workers** — and any child process they spawn — never load this package's `.node`. The main Vitest process is NOT covered: `config.env` does not reach it, so a `globalSetup` or a Vite plugin importing a barrel would still load the addon — the addon is `require()`d in module scope, so importing even a plain enum such as `Flags` used to map the binary into a test worker. To exercise the real addon under test, set `IRACEDECK_REAL_NATIVE=1`; an external `IRACEDECK_MOCK=0` does not work, because the check is `!!process.env.IRACEDECK_MOCK`.
 
-The `IRacingNative` class delegates every method call to either `addon` (native) or `IRacingNativeMock`. Consumers never need to know which is active.
+The `IRacingNative` class delegates every method call to either the addon (native) or `IRacingNativeMock`, with the one failed-load exception above. Consumers never need to know which is active.
+
+**The load status (#1373).** `getNativeLoadStatus()` reports how the module loaded, once, at import: `{ kind: "native" }`, `{ kind: "mock", reason: "platform" | "forced" }`, or `{ kind: "load-failed", error }` with the thrown message (it names the `.node` path, so it goes to the log only). `@iracedeck/audio-native` declares the same `NativeLoadStatus` union; it is not shared, so neither leaf gains a workspace dependency. `plugin-runtime` reads both at startup: an error log line and a Property Inspector banner per failed addon, and the kinds in the Telemetry Snapshot's `environment` section. The decision itself is the pure `loadNativeAddon({ platform, forceMock, load })` (`@internal`), and `IRacingNative`'s constructor takes an optional load result (`@internal`, default the module's own), so a test drives a failed load with a throwing loader and no `.node`. Spec: `docs/superpowers/specs/2026-10-20-issue-1373-native-load-failure.md`.
 
 ### Build behavior
 

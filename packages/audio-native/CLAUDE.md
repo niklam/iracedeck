@@ -6,12 +6,14 @@ Native Node.js addon (C++/N-API) around the miniaudio single-header library. Pro
 
 The package detects the platform at module load and behaves accordingly:
 
-- **Windows (`win32`)**: loads the native `.node` addon via `createRequire()`. If the addon is missing (e.g. fresh clone without `node-gyp rebuild`), falls back to the mock.
+- **Windows (`win32`)**: loads the native `.node` addon via `createRequire()`. If the load throws (the file is missing or quarantined, a runtime DLL is missing, a fresh clone skipped `pnpm build:native`), it falls back to the silent mock and reports the failure (#1373): unlike `iracing-native`, nothing changes in behaviour, because the mock's silence misleads no further than the silence itself, which the plugin's banner now explains.
 - **Other platforms**: skips native addon loading entirely and uses `AudioNativeMock`.
 - **Force mock**: setting `IRACEDECK_MOCK=1` in the environment or creating a `.mock` file in the process cwd (the sdPlugin folder) forces the mock even on Windows.
-- **The test suite already sets it (#1084).** `vitest.config.ts` sets `test.env.IRACEDECK_MOCK`, so test **workers** — and any child process they spawn — never load this package's `.node`. The main Vitest process is not covered; see `iracing-native/CLAUDE.md` for why that matters. No test reaches this package today — every test import of it is type-only — but the lever covers both native packages. Use `IRACEDECK_REAL_NATIVE=1` to opt back in.
+- **The test suite already sets it (#1084).** `vitest.config.ts` sets `test.env.IRACEDECK_MOCK`, so test **workers** — and any child process they spawn — never load this package's `.node`. The main Vitest process is not covered; see `iracing-native/CLAUDE.md` for why that matters. Outside its own tests, the package is loaded only by `plugin-runtime`'s recorded mocks (which import the real module, under the forced mock, and stub its functions); every other test import is type-only. The lever covers both native packages. Use `IRACEDECK_REAL_NATIVE=1` to opt back in.
 
 The `AudioNative` class delegates every method call to either `addon` (native) or `AudioNativeMock`. Consumers never need to know which is active.
+
+**The load status (#1373).** `getNativeLoadStatus()` reports how the module loaded, once, at import — the same `NativeLoadStatus` union `iracing-native` declares (`native`, `mock` with `platform` or `forced`, `load-failed` with the thrown message), declared again here rather than shared. `plugin-runtime` logs an error and raises the `native-addon-audio` banner on a failed load. The decision is the pure `loadNativeAddon({ platform, forceMock, load })` (`@internal`), tested with a fake loader. See `iracing-native/CLAUDE.md` for the rest.
 
 ### Build behavior
 
