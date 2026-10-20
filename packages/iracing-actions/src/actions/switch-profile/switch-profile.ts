@@ -132,9 +132,10 @@ export function profileTitle(profile: string): string {
 }
 
 /**
- * @internal Exported for testing. Bundled profile (manifest) names available
- * for a device type, read from the generated `data/profiles.json` (mirrors the
- * manifest).
+ * Bundled profile (manifest) names available for a device type, read from the
+ * generated `data/profiles.json` (mirrors the manifest). Also exported from the
+ * package for the Stream Deck plugin's automatic session-kind switcher (#1111),
+ * so the one reader of `profiles.json` stays here.
  */
 export function availableProfilesForDevice(deviceType: number | undefined): string[] {
   if (deviceType === undefined) return [];
