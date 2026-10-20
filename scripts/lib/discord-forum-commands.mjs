@@ -1,46 +1,56 @@
 /**
- * The commands behind `scripts/discord/feature-requests.mjs` (#1114). Every
+ * The commands behind `scripts/discord/forum.mjs` (#1114, #1460). Every
  * function takes injected `config` / `client` / `log` (and `exec` for the
  * GitHub side) and returns a process exit code — the entry file owns
- * termination, and the tests own the client.
+ * termination, and the tests own the client. `config.forum` names the forum
+ * profile (`discord-forums.mjs`) that `list`, `show`, `reply` and `tag` act
+ * on; `follow-up` covers every forum in `config.channels`.
  *
- * Design record: docs/superpowers/specs/2026-09-04-issue-1114-discord-feature-requests-tracker.md
+ * Design records: docs/superpowers/specs/2026-09-04-issue-1114-discord-feature-requests-tracker.md
+ * and docs/superpowers/specs/2026-10-18-issue-1460-discord-bugs-forum.md
  */
 import {
   describePost,
   DISCORD_MESSAGE_LIMIT,
-  expectedTag,
   lowestStableVersion,
   mergePosts,
   parseSourceLine,
   postLink,
   replaceStatusTag,
   resolveStatusTag,
-  shouldPropose,
   sourceLine,
   STANDING_POST_IDS,
   summarizeReactions,
   tagNamesOf,
 } from "./discord-forum.mjs";
+import { DEFAULT_FORUM, forumProfile, FORUMS } from "./discord-forums.mjs";
 import { loadEnvLocal } from "./env-local.mjs";
 
-export const REQUIRED_ENV = ["DISCORD_BOT_TOKEN", "DISCORD_GUILD_ID", "DISCORD_FEATURE_REQUESTS_CHANNEL_ID"];
+/** Needed by every forum; each forum adds its own channel variable. */
+const SHARED_ENV = ["DISCORD_BOT_TOKEN", "DISCORD_GUILD_ID"];
 
 const PAGE = 100;
 const MAX_ARCHIVED_PAGES = 20;
 const MAX_MESSAGE_PAGES = 10;
 
 /**
- * Reads the three variables from `env`, filling gaps from `.env.local`.
- * `env` defaults to a COPY of the process environment: the token read from
- * the file must never land in `process.env`, where every child process (gh,
- * git) would inherit it. A shell-exported value still wins over the file.
+ * Reads the token, the guild and the selected forum's channel from `env`,
+ * filling gaps from `.env.local`. `env` defaults to a COPY of the process
+ * environment: the token read from the file must never land in
+ * `process.env`, where every child process (gh, git) would inherit it. A
+ * shell-exported value still wins over the file.
  *
- * @returns {{ token: string, guildId: string, channelId: string } | { error: string }}
+ * Only the SELECTED forum's channel is required, so a machine without
+ * `DISCORD_BUGS_CHANNEL_ID` keeps using feature-requests. `channelId` is the
+ * selected forum's; `channels` maps every forum whose variable is set to its
+ * channel, for `follow-up`, which covers them all.
+ *
+ * @returns {{ token: string, guildId: string, forum: string, channelId: string, channels: Record<string, string> } | { error: string }}
  */
-export function readConfig(root, env = { ...process.env }) {
+export function readConfig(root, env = { ...process.env }, forumName = DEFAULT_FORUM) {
+  const forum = forumProfile(forumName);
   loadEnvLocal(root, env);
-  const missing = REQUIRED_ENV.filter((name) => !env[name]);
+  const missing = [...SHARED_ENV, forum.channelEnv].filter((name) => !env[name]);
 
   if (missing.length > 0) {
     return {
@@ -48,11 +58,24 @@ export function readConfig(root, env = { ...process.env }) {
     };
   }
 
+  const channels = Object.fromEntries(
+    Object.values(FORUMS)
+      .filter((profile) => env[profile.channelEnv])
+      .map((profile) => [profile.name, env[profile.channelEnv]]),
+  );
+
   return {
     token: env.DISCORD_BOT_TOKEN,
     guildId: env.DISCORD_GUILD_ID,
-    channelId: env.DISCORD_FEATURE_REQUESTS_CHANNEL_ID,
+    forum: forum.name,
+    channelId: env[forum.channelEnv],
+    channels,
   };
+}
+
+/** The profile of the forum `config` selected. */
+function forumOf(config) {
+  return forumProfile(config.forum ?? DEFAULT_FORUM);
 }
 
 export async function fetchTags(client, channelId) {
@@ -115,8 +138,10 @@ async function fetchPostThread(client, config, postId, log, { forWrite = false }
 
   const thread = await client.get(`/channels/${postId}`);
 
+  // Per forum: an id pasted from the other forum is never read, replied to or
+  // tagged as if it were this one's.
   if (thread.parent_id !== config.channelId) {
-    log.error(`Error: ${postId} is not a post in the feature-requests channel.`);
+    log.error(`Error: ${postId} is not a post in the ${forumOf(config).label}.`);
 
     return null;
   }
@@ -132,8 +157,11 @@ function formatListRow(post) {
 }
 
 export async function runList({ untagged = false, json = false }, { config, client, log = console }) {
+  const { statusTags } = forumOf(config);
   const tags = await fetchTags(client, config.channelId);
-  let posts = (await fetchAllPosts(client, config)).map((thread) => describePost(thread, tags, config.guildId));
+  let posts = (await fetchAllPosts(client, config)).map((thread) =>
+    describePost(thread, tags, config.guildId, statusTags),
+  );
 
   if (untagged) posts = posts.filter((post) => post.statusTag === null && !post.standing);
 
@@ -147,6 +175,7 @@ export async function runList({ untagged = false, json = false }, { config, clie
 }
 
 export async function runShow({ postId, json = false }, { config, client, log = console }) {
+  const forum = forumOf(config);
   const tags = await fetchTags(client, config.channelId);
   const thread = await fetchPostThread(client, config, postId, log);
 
@@ -158,7 +187,7 @@ export async function runShow({ postId, json = false }, { config, client, log = 
   // its author is not the requester, and its reactions are not votes — and
   // `show --json` is what the issue's "Requested on Discord … by" line credits.
   const starter = messages.find((m) => m.id === postId) ?? null;
-  const described = describePost(thread, tags, config.guildId);
+  const described = describePost(thread, tags, config.guildId, forum.statusTags);
   const author = starter
     ? { id: starter.author.id, handle: starter.author.username }
     : { id: thread.owner_id, handle: null };
@@ -173,7 +202,12 @@ export async function runShow({ postId, json = false }, { config, client, log = 
       .map((m) => ({ id: m.id, author: m.author.username, createdAt: m.timestamp, content: m.content })),
     // The line the issue carries back to this post, ready to paste verbatim;
     // `follow-up` parses exactly this shape.
-    sourceLine: sourceLine({ link: described.link, handle: author.handle ?? "unknown", votes: votes.total }),
+    sourceLine: sourceLine({
+      link: described.link,
+      handle: author.handle ?? "unknown",
+      votes: votes.total,
+      verb: forum.sourceVerb,
+    }),
   };
 
   if (json) {
@@ -247,11 +281,12 @@ export async function runReply({ postId, text, dryRun = false }, { config, clien
 }
 
 export async function runTag({ postId, tagName, dryRun = false }, { config, client, log = console }) {
+  const { statusTags } = forumOf(config);
   const tags = await fetchTags(client, config.channelId);
   let tag;
 
   try {
-    tag = resolveStatusTag(tagName, tags);
+    tag = resolveStatusTag(tagName, tags, statusTags);
   } catch (error) {
     log.error(`Error: ${error.message}`);
 
@@ -265,7 +300,7 @@ export async function runTag({ postId, tagName, dryRun = false }, { config, clie
   let applied;
 
   try {
-    applied = replaceStatusTag(thread.applied_tags ?? [], tag, tags);
+    applied = replaceStatusTag(thread.applied_tags ?? [], tag, tags, statusTags);
   } catch (error) {
     log.error(`Error: ${error.message}`);
 
@@ -303,7 +338,8 @@ const ISSUE_FIELDS = "number,title,url,state,stateReason,assignees,milestone,bod
 const CLOSING_COMMITS_JQ = '.[] | select(.event == "closed") | .commit_id | select(. != null)';
 /** `gh issue list` needs an explicit cap; hitting it means the listing is incomplete. */
 const ISSUE_LIMIT = 500;
-const NO_CLOSING_COMMIT_NOTE = "closed without a linked PR or closing commit; Released must be set by hand";
+const noClosingCommitNote = (forum) =>
+  `closed without a linked PR or closing commit; ${forum.releasedTag} must be set by hand`;
 
 function gh(exec, args) {
   return JSON.parse(exec("gh", args));
@@ -362,11 +398,11 @@ function shippingCommitsOf(exec, issue) {
  *
  * @returns {{ version: string | null, note: string | null }}
  */
-function releasedVersionOf(exec, issue) {
+function releasedVersionOf(exec, issue, forum) {
   try {
     const shas = shippingCommitsOf(exec, issue);
 
-    if (shas.length === 0) return { version: null, note: NO_CLOSING_COMMIT_NOTE };
+    if (shas.length === 0) return { version: null, note: noClosingCommitNote(forum) };
 
     const tags = shas.flatMap((sha) => lines(exec("git", ["tag", "--contains", sha])));
 
@@ -376,15 +412,34 @@ function releasedVersionOf(exec, issue) {
   }
 }
 
-function followUpRow(issue, { config, postsById, exec }) {
+/**
+ * The note for a source line whose post is in none of the forums fetched. It
+ * names every forum searched, and every forum NOT searched because its channel
+ * variable is unset — a post missing from a forum nobody looked in is not
+ * missing.
+ */
+function notFoundNote(postId, searched, unconfigured) {
+  const where = searched.map((forum) => `the ${forum.label}`).join(" or ");
+  const unsearched = unconfigured.map((forum) => `; the ${forum.label} is not configured (${forum.channelEnv})`);
+
+  return `post ${postId} not found in ${where}${unsearched.join("")}`;
+}
+
+/**
+ * One follow-up row. A row whose post was not found has no forum, so no tag
+ * vocabulary applies to it: its `expected` is `null`. Once the post is found,
+ * that forum's profile decides the expected tag, the proposal and the note.
+ */
+function followUpRow(issue, { config, postsById, exec, notFound }) {
   const base = {
     issue: issue.number,
     title: issue.title,
     url: issue.url,
     state: issue.state,
+    forum: null,
     post: null,
     current: null,
-    expected: expectedTag(issue),
+    expected: null,
     version: null,
     propose: false,
     note: null,
@@ -394,46 +449,59 @@ function followUpRow(issue, { config, postsById, exec }) {
   if (!source) return { ...base, note: "no source line in the issue body" };
   if (source.guildId !== config.guildId) return { ...base, note: "source line points at another server" };
 
-  const post = postsById.get(source.postId);
+  const found = postsById.get(source.postId);
 
-  if (!post) return { ...base, note: `post ${source.postId} not found in the channel` };
+  if (!found) return { ...base, note: notFound(source.postId) };
 
-  const row = { ...base, post: { id: post.id, title: post.title, link: post.link }, current: post.statusTag };
+  const { post, forum } = found;
+  const row = {
+    ...base,
+    forum: forum.name,
+    // `archived` is shown because tagging an archived thread unarchives it, so
+    // the maintainer leaves one alone unless it needs a reply.
+    post: { id: post.id, title: post.title, link: post.link, archived: post.archived },
+    current: post.statusTag,
+    expected: forum.expectedTag(issue),
+  };
 
   if (post.standing) return { ...row, note: "standing post; never changed by this tool" };
-  if (row.expected === null)
-    return { ...row, note: "closed as duplicate; point the post at the canonical issue by hand" };
 
   // Only a completed issue can have shipped, and only a row that may still
   // change is worth the gh/git round trips.
   const release =
     issue.state === "CLOSED" && issue.stateReason === "COMPLETED"
-      ? releasedVersionOf(exec, issue)
+      ? releasedVersionOf(exec, issue, forum)
       : { version: null, note: null };
-  const expected = expectedTag(issue, release.version);
+  const expected = forum.expectedTag(issue, release.version);
 
   return {
     ...row,
     expected,
     version: release.version,
-    propose: shouldPropose(post.statusTag, expected),
-    note: release.note,
+    propose: forum.shouldPropose(post.statusTag, expected),
+    // A lookup's own note wins; otherwise a null tag is explained only where
+    // the profile says it needs explaining (an open bug's does not).
+    note: release.note ?? (expected === null ? forum.noTagNote(issue, release.version) : null),
   };
 }
 
 function formatFollowUpRow(row) {
   const move = `${row.current ?? "none"} -> ${row.expected ?? "none"}${row.version ? ` (${row.version})` : ""}`;
-  const verdict = row.propose ? "PROPOSE" : row.current === row.expected ? "up to date" : "no change";
+  // A row with no post has nothing to be up to date with.
+  const verdict = row.propose ? "PROPOSE" : row.post && row.current === row.expected ? "up to date" : "no change";
   const note = row.note ? `  (note: ${row.note})` : "";
-  const post = row.post ? row.post.title : "(no post)";
+  const post = row.post ? `[${row.forum}] ${row.post.title}${row.post.archived ? " (archived)" : ""}` : "(no post)";
 
   return `#${row.issue} ${row.title}\n    ${post}\n    ${move}  ${verdict}${note}`;
 }
 
 /**
  * The reconciliation half of the follow-up run: what each Discord-sourced
- * issue's post carries versus what its GitHub state calls for. Proposes; never
- * sends. `exec(file, args)` returns stdout, so the GitHub side is fakeable.
+ * issue's post carries versus what its GitHub state calls for. Covers every
+ * forum in `config.channels` in one run, whichever forum `config` selected:
+ * each source line's post is looked up across all of them, and the profile of
+ * the forum it is found in applies. Proposes; never sends. `exec(file, args)`
+ * returns stdout, so the GitHub side is fakeable.
  */
 export async function runFollowUp({ json = false }, { config, client, log = console, exec }) {
   const issues = gh(exec, [
@@ -455,16 +523,34 @@ export async function runFollowUp({ json = false }, { config, client, log = cons
 
   exec("git", ["fetch", "--tags", "--quiet"]);
 
-  const tags = await fetchTags(client, config.channelId);
-  const posts = (await fetchAllPosts(client, config)).map((thread) => describePost(thread, tags, config.guildId));
-  const postsById = new Map(posts.map((post) => [post.id, post]));
-  const rows = issues.map((issue) => followUpRow(issue, { config, postsById, exec }));
+  const searched = Object.values(FORUMS).filter((forum) => config.channels[forum.name]);
+  const unconfigured = Object.values(FORUMS).filter((forum) => !config.channels[forum.name]);
+  // A post id is a thread id, so it is in at most one channel.
+  const postsById = new Map();
+
+  for (const forum of searched) {
+    const channelId = config.channels[forum.name];
+    const tags = await fetchTags(client, channelId);
+
+    for (const thread of await fetchAllPosts(client, { guildId: config.guildId, channelId })) {
+      postsById.set(thread.id, { post: describePost(thread, tags, config.guildId, forum.statusTags), forum });
+    }
+  }
+
+  const notFound = (postId) => notFoundNote(postId, searched, unconfigured);
+  const rows = issues.map((issue) => followUpRow(issue, { config, postsById, exec, notFound }));
 
   if (json) {
     log.log(JSON.stringify(rows, null, 2));
 
     return 0;
   }
+
+  for (const forum of unconfigured) {
+    log.log(`Note: the ${forum.label} is not configured (${forum.channelEnv}); its posts are not checked.`);
+  }
+
+  if (unconfigured.length > 0) log.log("");
 
   for (const row of rows) log.log(formatFollowUpRow(row));
 

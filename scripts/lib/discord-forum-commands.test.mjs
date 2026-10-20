@@ -1,5 +1,5 @@
 /**
- * The commands behind `scripts/discord/feature-requests.mjs` (#1114), run
+ * The commands behind `scripts/discord/forum.mjs` (#1114, #1460), run
  * against a fake Discord client that serves a route table and records every
  * write. Reads assert the requests made; writes assert the exact bodies, since
  * a wrong body here is a wrong public post.
@@ -22,12 +22,33 @@ import {
 
 const GUILD = "1477659500851888219";
 const CHANNEL = "1481298096632889366";
-const CONFIG = { token: "tok", guildId: GUILD, channelId: CHANNEL };
+/** readConfig's shape on a machine with only the feature-requests channel set. */
+const CONFIG = {
+  token: "tok",
+  guildId: GUILD,
+  forum: "feature-requests",
+  channelId: CHANNEL,
+  channels: { "feature-requests": CHANNEL },
+};
 
 const TAGS = [
   { id: "t-data", name: "Data", moderated: false },
   { id: "t-will", name: "Will Add", moderated: true },
   { id: "t-rel", name: "Released", moderated: true },
+];
+
+/** The #bugs forum: its own channel and tags, and both channels configured. */
+const BUGS_CHANNEL = "1481297989015310520";
+const BUGS_CONFIG = {
+  token: "tok",
+  guildId: GUILD,
+  forum: "bugs",
+  channelId: BUGS_CHANNEL,
+  channels: { "feature-requests": CHANNEL, bugs: BUGS_CHANNEL },
+};
+const BUG_TAGS = [
+  { id: "b-ui", name: "UI", moderated: false },
+  { id: "b-res", name: "Resolved", moderated: true },
 ];
 
 function thread(id, overrides = {}) {
@@ -40,6 +61,10 @@ function thread(id, overrides = {}) {
     owner_id: "u1",
     ...overrides,
   };
+}
+
+function bugThread(id, overrides = {}) {
+  return thread(id, { parent_id: BUGS_CHANNEL, ...overrides });
 }
 
 function message(id, overrides = {}) {
@@ -87,6 +112,7 @@ function fakeLog() {
 }
 
 const CHANNEL_ROUTE = `/channels/${CHANNEL}`;
+const BUGS_CHANNEL_ROUTE = `/channels/${BUGS_CHANNEL}`;
 const ACTIVE_ROUTE = `/guilds/${GUILD}/threads/active`;
 const ARCHIVED_ROUTE = `/channels/${CHANNEL}/threads/archived/public?limit=100`;
 
@@ -108,12 +134,15 @@ describe("readConfig", () => {
   it("reads .env.local without letting the token into process.env", () => {
     // The token must never reach this process's environment: every child
     // (gh, git) would inherit it. A shell-exported value would still win over
-    // the file, so the three variables are cleared for the duration.
+    // the file, so the variables are cleared for the duration — the bugs
+    // channel too, or a shell that exports it would add it to `channels`.
     const saved = Object.fromEntries(
-      ["DISCORD_BOT_TOKEN", "DISCORD_GUILD_ID", "DISCORD_FEATURE_REQUESTS_CHANNEL_ID"].map((name) => [
-        name,
-        process.env[name],
-      ]),
+      ["DISCORD_BOT_TOKEN", "DISCORD_GUILD_ID", "DISCORD_FEATURE_REQUESTS_CHANNEL_ID", "DISCORD_BUGS_CHANNEL_ID"].map(
+        (name) => [
+          name,
+          process.env[name],
+        ],
+      ),
     );
     const root = mkdtempSync(join(tmpdir(), "ird-discord-"));
 
@@ -369,7 +398,7 @@ describe("runShow", () => {
     const code = await runShow({ postId: "77", json: false }, { config: CONFIG, client, log });
 
     expect(code).toBe(1);
-    expect(log.errors()).toBe("Error: 77 is not a post in the feature-requests channel.");
+    expect(log.errors()).toBe("Error: 77 is not a post in the feature-requests forum.");
     expect(client.get).not.toHaveBeenCalledWith("/channels/77/messages?limit=100");
   });
 });
@@ -605,7 +634,8 @@ describe("runFollowUp", () => {
         title: "Open, untouched",
         url: "u/1",
         state: "OPEN",
-        post: { id: "30", title: "Post 30", link: link("30") },
+        forum: "feature-requests",
+        post: { id: "30", title: "Post 30", link: link("30"), archived: false },
         current: null,
         expected: "Will Add",
         version: null,
@@ -617,7 +647,8 @@ describe("runFollowUp", () => {
         title: "In progress",
         url: "u/2",
         state: "OPEN",
-        post: { id: "20", title: "Post 20", link: link("20") },
+        forum: "feature-requests",
+        post: { id: "20", title: "Post 20", link: link("20"), archived: false },
         current: "Will Add",
         expected: "In progress",
         version: null,
@@ -629,7 +660,8 @@ describe("runFollowUp", () => {
         title: "Shipped",
         url: "u/3",
         state: "CLOSED",
-        post: { id: "10", title: "Post 10", link: link("10") },
+        forum: "feature-requests",
+        post: { id: "10", title: "Post 10", link: link("10"), archived: true },
         current: "Released",
         expected: "Released",
         version: "v3.2.0",
@@ -641,9 +673,10 @@ describe("runFollowUp", () => {
         title: "No link",
         url: "u/4",
         state: "OPEN",
+        forum: null,
         post: null,
         current: null,
-        expected: "Will Add",
+        expected: null,
         version: null,
         propose: false,
         note: "no source line in the issue body",
@@ -653,7 +686,13 @@ describe("runFollowUp", () => {
         title: "Standing",
         url: "u/5",
         state: "CLOSED",
-        post: { id: "1516472792260808724", title: "Post 1516472792260808724", link: link("1516472792260808724") },
+        forum: "feature-requests",
+        post: {
+          id: "1516472792260808724",
+          title: "Post 1516472792260808724",
+          link: link("1516472792260808724"),
+          archived: false,
+        },
         current: "Will Add",
         expected: "Completed",
         version: null,
@@ -665,7 +704,8 @@ describe("runFollowUp", () => {
         title: "Duplicate",
         url: "u/6",
         state: "CLOSED",
-        post: { id: "20", title: "Post 20", link: link("20") },
+        forum: "feature-requests",
+        post: { id: "20", title: "Post 20", link: link("20"), archived: false },
         current: "Will Add",
         expected: null,
         version: null,
@@ -677,9 +717,10 @@ describe("runFollowUp", () => {
         title: "Other server",
         url: "u/7",
         state: "OPEN",
+        forum: null,
         post: null,
         current: null,
-        expected: "Will Add",
+        expected: null,
         version: null,
         propose: false,
         note: "source line points at another server",
@@ -707,7 +748,9 @@ describe("runFollowUp", () => {
 
     expect(log.text()).toMatch(/#1 .*none -> Will Add {2}PROPOSE\n/s);
     expect(log.text()).toMatch(/#3 .*Released -> Released \(v3\.2\.0\) {2}up to date\n/s);
-    expect(log.text()).toMatch(/#4 .*none -> Will Add {2}no change {2}\(note: no source line in the issue body\)\n/s);
+    expect(log.text()).toMatch(/#3 Shipped\n {4}\[feature-requests\] Post 10 \(archived\)\n/);
+    expect(log.text()).toMatch(/#1 Open, untouched\n {4}\[feature-requests\] Post 30\n/);
+    expect(log.text()).toMatch(/#4 .*none -> none {2}no change {2}\(note: no source line in the issue body\)\n/s);
     expect(log.text()).toMatch(
       /#5 .*Will Add -> Completed {2}no change {2}\(note: standing post; never changed by this tool\)\n/s,
     );
@@ -863,6 +906,327 @@ describe("runFollowUp", () => {
         note: "release lookup failed: Command failed: gh pr view 91 --json mergeCommit",
       });
       expect(rows[1]).toMatchObject({ expected: "Released", version: "v3.2.0", propose: false, note: null });
+    });
+  });
+
+  describe("across both forums (#1460)", () => {
+    const reported = (id) => `Reported on Discord: ${link(id)} by someone (0 ❤️)`;
+    const bugsArchived = `/channels/${BUGS_CHANNEL}/threads/archived/public?limit=100`;
+    const bothRoutes = {
+      [CHANNEL_ROUTE]: { id: CHANNEL, available_tags: TAGS },
+      [BUGS_CHANNEL_ROUTE]: { id: BUGS_CHANNEL, available_tags: BUG_TAGS },
+      // The guild's active listing holds both forums' threads; each forum
+      // keeps only its own.
+      [ACTIVE_ROUTE]: {
+        threads: [
+          thread("30"),
+          bugThread("40", { applied_tags: ["b-ui"] }),
+          bugThread("41"),
+          bugThread("42"),
+          bugThread("43"),
+          bugThread("44"),
+          bugThread("46"),
+        ],
+      },
+      [ARCHIVED_ROUTE]: { threads: [], has_more: false },
+      [bugsArchived]: {
+        threads: [bugThread("45", { applied_tags: ["b-res"], thread_metadata: { archived: true } })],
+        has_more: false,
+      },
+    };
+    const list = [
+      issue(1, "A request", { body: sourced("30") }),
+      shipped(40, "Bug fixed and released", {
+        body: reported("40"),
+        closedByPullRequestsReferences: [{ number: 140 }],
+      }),
+      issue(41, "Bug still open", { body: reported("41"), assignees: [{ login: "niklam" }] }),
+      issue(42, "Bug not planned", { state: "CLOSED", stateReason: "NOT_PLANNED", body: reported("42") }),
+      issue(43, "Bug duplicate", { state: "CLOSED", stateReason: "DUPLICATE", body: reported("43") }),
+      shipped(44, "Bug fixed, rc only", { body: reported("44") }),
+      shipped(45, "Bug already resolved", { body: reported("45") }),
+      shipped(46, "Bug closed by hand", { body: reported("46") }),
+      issue(99, "Nowhere", { body: reported("99") }),
+    ];
+    const lookups = {
+      [prView(140)]: JSON.stringify({ mergeCommit: { oid: "s140" } }),
+      [timeline(40)]: "",
+      [gitLog(40)]: "",
+      [gitTag("s140")]: "v3.6.1\n",
+      [timeline(44)]: "s144\n",
+      [gitLog(44)]: "",
+      [gitTag("s144")]: "v3.7.0-rc.1\n",
+      [timeline(45)]: "s145\n",
+      [gitLog(45)]: "",
+      [gitTag("s145")]: "v3.6.0\n",
+      [timeline(46)]: "",
+      [gitLog(46)]: "",
+    };
+
+    async function run(config, json) {
+      const log = fakeLog();
+      const code = await runFollowUp(
+        { json },
+        { config, client: fakeClient(bothRoutes), log, exec: fakeExec(list, lookups) },
+      );
+
+      expect(code).toBe(0);
+
+      return log;
+    }
+
+    it("applies the profile of the forum each post is in, whichever forum is selected", async () => {
+      const rows = JSON.parse((await run(BUGS_CONFIG, true)).text());
+      const byIssue = Object.fromEntries(rows.map((row) => [row.issue, row]));
+
+      expect(byIssue[1]).toMatchObject({
+        forum: "feature-requests",
+        current: null,
+        expected: "Will Add",
+        propose: true,
+        note: null,
+      });
+      expect(byIssue[40]).toMatchObject({
+        forum: "bugs",
+        post: { id: "40", archived: false },
+        current: null,
+        expected: "Resolved",
+        version: "v3.6.1",
+        propose: true,
+        note: null,
+      });
+      // An open bug's post carrying no tag is the normal case: no proposal, no note.
+      expect(byIssue[41]).toMatchObject({ forum: "bugs", expected: null, propose: false, note: null });
+      expect(byIssue[42]).toMatchObject({
+        forum: "bugs",
+        expected: null,
+        propose: false,
+        note: "closed as not planned; reply by hand",
+      });
+      expect(byIssue[43]).toMatchObject({
+        forum: "bugs",
+        expected: null,
+        propose: false,
+        note: "closed as duplicate; reply by hand with the canonical issue",
+      });
+      expect(byIssue[44]).toMatchObject({
+        forum: "bugs",
+        expected: null,
+        version: null,
+        propose: false,
+        note: "fixed, but not in a stable release yet",
+      });
+      expect(byIssue[45]).toMatchObject({
+        forum: "bugs",
+        post: { id: "45", archived: true },
+        current: "Resolved",
+        expected: "Resolved",
+        version: "v3.6.0",
+        propose: false,
+      });
+      expect(byIssue[46]).toMatchObject({
+        forum: "bugs",
+        expected: null,
+        propose: false,
+        note: "closed without a linked PR or closing commit; Resolved must be set by hand",
+      });
+      expect(byIssue[99]).toMatchObject({
+        forum: null,
+        post: null,
+        expected: null,
+        propose: false,
+        note: "post 99 not found in the feature-requests forum or the bugs forum",
+      });
+    });
+
+    it("never looks up a release for an open, not-planned or duplicate bug", async () => {
+      const log = fakeLog();
+      const exec = fakeExec(list, lookups);
+
+      await runFollowUp({ json: true }, { config: BUGS_CONFIG, client: fakeClient(bothRoutes), log, exec });
+
+      const looked = lookupCalls(exec).join("\n");
+      for (const n of [41, 42, 43]) expect(looked).not.toContain(`issues/${n}/timeline`);
+    });
+
+    it("shows the forum and an archived post in the table, and no unconfigured-forum line", async () => {
+      const text = (await run(BUGS_CONFIG, false)).text();
+
+      expect(text).toMatch(/^#1 A request\n/);
+      expect(text).toMatch(
+        /#40 Bug fixed and released\n {4}\[bugs\] Post 40\n {4}none -> Resolved \(v3\.6\.1\) {2}PROPOSE\n/,
+      );
+      expect(text).toMatch(/#41 Bug still open\n {4}\[bugs\] Post 41\n {4}none -> none {2}up to date\n/);
+      expect(text).toMatch(
+        /#45 .*\n {4}\[bugs\] Post 45 \(archived\)\n {4}Resolved -> Resolved \(v3\.6\.0\) {2}up to date\n/,
+      );
+      expect(text).toMatch(/#99 Nowhere\n {4}\(no post\)\n {4}none -> none {2}no change {2}\(note: post 99 not found/);
+      expect(text).toMatch(/9 Discord-sourced issues, 2 proposed changes\.$/);
+      expect(text).not.toContain("not configured");
+    });
+
+    it("says which forum was not searched when its channel is not configured", async () => {
+      // CONFIG has only the feature-requests channel: the bug posts exist, but
+      // nobody looked for them, and both outputs say so.
+      const rows = JSON.parse((await run(CONFIG, true)).text());
+
+      expect(rows.find((row) => row.issue === 40)).toMatchObject({
+        forum: null,
+        expected: null,
+        propose: false,
+        note: "post 40 not found in the feature-requests forum; the bugs forum is not configured (DISCORD_BUGS_CHANNEL_ID)",
+      });
+      expect(rows.find((row) => row.issue === 1)).toMatchObject({ forum: "feature-requests", propose: true });
+
+      const text = (await run(CONFIG, false)).text();
+
+      expect(text.split("\n")[0]).toBe(
+        "Note: the bugs forum is not configured (DISCORD_BUGS_CHANNEL_ID); its posts are not checked.",
+      );
+    });
+
+    it("fetches each configured forum's tags and archived posts, and no other channel", async () => {
+      const client = fakeClient(bothRoutes);
+
+      await runFollowUp({ json: true }, { config: CONFIG, client, log: fakeLog(), exec: fakeExec(list, lookups) });
+
+      const paths = client.get.mock.calls.map(([path]) => path);
+      expect(paths).toContain(CHANNEL_ROUTE);
+      expect(paths).not.toContain(BUGS_CHANNEL_ROUTE);
+      expect(paths).not.toContain(bugsArchived);
+    });
+  });
+});
+
+describe("the bugs forum (#1460)", () => {
+  describe("readConfig", () => {
+    const shared = { DISCORD_BOT_TOKEN: "tok", DISCORD_GUILD_ID: GUILD };
+
+    it("needs no bugs channel while feature-requests is selected", () => {
+      expect(readConfig("C:/nowhere", { ...shared, DISCORD_FEATURE_REQUESTS_CHANNEL_ID: CHANNEL })).toEqual(CONFIG);
+    });
+
+    it("requires only the selected forum's channel, naming it when it is missing", () => {
+      expect(readConfig("C:/nowhere", { ...shared, DISCORD_FEATURE_REQUESTS_CHANNEL_ID: CHANNEL }, "bugs")).toEqual({
+        error: "Missing DISCORD_BUGS_CHANNEL_ID — set them in .env.local at the repo root (see .env.local.example).",
+      });
+      // The other forum's channel is not required in its turn.
+      expect(readConfig("C:/nowhere", { ...shared, DISCORD_BUGS_CHANNEL_ID: BUGS_CHANNEL }, "bugs")).toEqual({
+        token: "tok",
+        guildId: GUILD,
+        forum: "bugs",
+        channelId: BUGS_CHANNEL,
+        channels: { bugs: BUGS_CHANNEL },
+      });
+    });
+
+    it("maps every configured forum to its channel, whichever is selected", () => {
+      const env = { ...shared, DISCORD_FEATURE_REQUESTS_CHANNEL_ID: CHANNEL, DISCORD_BUGS_CHANNEL_ID: BUGS_CHANNEL };
+
+      expect(readConfig("C:/nowhere", { ...env }, "bugs")).toEqual(BUGS_CONFIG);
+      expect(readConfig("C:/nowhere", { ...env })).toMatchObject({
+        forum: "feature-requests",
+        channelId: CHANNEL,
+        channels: BUGS_CONFIG.channels,
+      });
+    });
+
+    it("throws on an unknown forum", () => {
+      expect(() => readConfig("C:/nowhere", { ...shared }, "nope")).toThrow(
+        'Unknown forum "nope". Valid: feature-requests, bugs',
+      );
+    });
+  });
+
+  describe("the channel check refuses the other forum's thread", () => {
+    // Thread 77 is a feature-requests post read with the bugs forum selected;
+    // thread 78 is a bugs post read with feature-requests selected.
+    const routes = {
+      [CHANNEL_ROUTE]: { id: CHANNEL, available_tags: TAGS },
+      [BUGS_CHANNEL_ROUTE]: { id: BUGS_CHANNEL, available_tags: BUG_TAGS },
+      "/channels/77": thread("77", { applied_tags: ["t-will"] }),
+      "/channels/78": bugThread("78"),
+    };
+    const cases = [
+      { config: BUGS_CONFIG, postId: "77", forum: "bugs forum" },
+      { config: CONFIG, postId: "78", forum: "feature-requests forum" },
+    ];
+
+    for (const { config, postId, forum } of cases) {
+      it(`show, reply and tag refuse ${postId} in the ${forum}`, async () => {
+        const client = fakeClient(routes);
+        const log = fakeLog();
+        const deps = { config, client, log };
+
+        expect(await runShow({ postId, json: true }, deps)).toBe(1);
+        expect(await runReply({ postId, text: "hi", dryRun: false }, deps)).toBe(1);
+        expect(await runTag({ postId, tagName: config.forum === "bugs" ? "Resolved" : "Released" }, deps)).toBe(1);
+
+        expect(client.writes).toEqual([]);
+        expect(log.errors()).toBe(Array(3).fill(`Error: ${postId} is not a post in the ${forum}.`).join("\n"));
+        expect(client.get).not.toHaveBeenCalledWith(`/channels/${postId}/messages?limit=100`);
+      });
+    }
+  });
+
+  it("show --json carries a Reported source line and the Resolved status tag", async () => {
+    const client = fakeClient({
+      [BUGS_CHANNEL_ROUTE]: { id: BUGS_CHANNEL, available_tags: BUG_TAGS },
+      "/channels/40": bugThread("40", { applied_tags: ["b-ui", "b-res"] }),
+      "/channels/40/messages?limit=100": [message("40", { reactions: [{ emoji: { name: "👍" }, count: 1 }] })],
+    });
+    const log = fakeLog();
+
+    expect(await runShow({ postId: "40", json: true }, { config: BUGS_CONFIG, client, log })).toBe(0);
+    expect(JSON.parse(log.text())).toMatchObject({
+      tags: ["UI", "Resolved"],
+      statusTag: "Resolved",
+      sourceLine: `Reported on Discord: https://discord.com/channels/${GUILD}/40 by owwidius (1 ❤️)`,
+    });
+  });
+
+  it("list --untagged reads the bugs forum's channel and its status tag", async () => {
+    const client = fakeClient({
+      [BUGS_CHANNEL_ROUTE]: { id: BUGS_CHANNEL, available_tags: BUG_TAGS },
+      [ACTIVE_ROUTE]: { threads: [bugThread("41", { applied_tags: ["b-res"] }), bugThread("40"), thread("30")] },
+      [`/channels/${BUGS_CHANNEL}/threads/archived/public?limit=100`]: { threads: [], has_more: false },
+    });
+    const log = fakeLog();
+
+    expect(await runList({ untagged: true, json: true }, { config: BUGS_CONFIG, client, log })).toBe(0);
+    // 30 is a feature-requests thread in the guild-wide active listing; 41 is Resolved.
+    expect(JSON.parse(log.text()).map((post) => post.id)).toEqual(["40"]);
+  });
+
+  describe("tag", () => {
+    const routes = {
+      [BUGS_CHANNEL_ROUTE]: { id: BUGS_CHANNEL, available_tags: BUG_TAGS },
+      "/channels/40": bugThread("40", { applied_tags: ["b-ui"], thread_metadata: { archived: true } }),
+    };
+
+    it("accepts Resolved, keeps the category tag and unarchives the post", async () => {
+      const client = fakeClient(routes);
+      const log = fakeLog();
+
+      expect(
+        await runTag({ postId: "40", tagName: "Resolved", dryRun: false }, { config: BUGS_CONFIG, client, log }),
+      ).toBe(0);
+      expect(client.writes).toEqual([
+        { method: "PATCH", path: "/channels/40", body: { applied_tags: ["b-ui", "b-res"], archived: false } },
+      ]);
+      expect(log.text()).toBe('Tagged "Post 40": [UI, Resolved]');
+    });
+
+    it("refuses a feature-requests tag before touching the post", async () => {
+      const client = fakeClient(routes);
+      const log = fakeLog();
+
+      expect(
+        await runTag({ postId: "40", tagName: "Released", dryRun: false }, { config: BUGS_CONFIG, client, log }),
+      ).toBe(1);
+      expect(log.errors()).toBe('Error: Unknown status tag "Released". Valid: Resolved');
+      expect(client.writes).toEqual([]);
+      expect(client.get).not.toHaveBeenCalledWith("/channels/40");
     });
   });
 });
