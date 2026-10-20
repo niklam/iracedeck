@@ -1,5 +1,5 @@
 /**
- * The pure half of the feature-requests tooling (#1114). Every function here
+ * The pure half of the Discord forum tooling (#1114, #1460). Every function here
  * is a decision the spec spells out — which tag a GitHub state maps to, which
  * moves count as forward, what a post link looks like — so each test reads as
  * one line of that spec.
@@ -7,6 +7,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  BUG_STATUS_TAGS,
+  bugShouldPropose,
+  bugTag,
   describePost,
   DISCORD_MESSAGE_LIMIT,
   expectedTag,
@@ -16,6 +19,7 @@ import {
   postLink,
   rank,
   replaceStatusTag,
+  RESOLVED,
   resolveStatusTag,
   shouldPropose,
   snowflakeToDate,
@@ -188,6 +192,53 @@ describe("links and the source line", () => {
       "Requested on Discord: https://discord.com/channels/1/2 by owwidius (3 ❤️)",
     );
   });
+
+  it("formats a bug's source line with Reported", () => {
+    expect(
+      sourceLine({ link: "https://discord.com/channels/1/2", handle: "owwidius", votes: 0, verb: "Reported" }),
+    ).toBe("Reported on Discord: https://discord.com/channels/1/2 by owwidius (0 ❤️)");
+  });
+
+  it("parses both verbs and refuses any other", () => {
+    const link = postLink(GUILD, "123");
+
+    expect(parseSourceLine(`Requested on Discord: ${link} by x (1 ❤️)`)).toEqual({ guildId: GUILD, postId: "123" });
+    expect(parseSourceLine(`Reported on Discord: ${link} by x (1 ❤️)`)).toEqual({ guildId: GUILD, postId: "123" });
+    expect(parseSourceLine(`Posted on Discord: ${link} by x (1 ❤️)`)).toBeNull();
+    expect(parseSourceLine(`reported on Discord: ${link} by x (1 ❤️)`)).toBeNull();
+    expect(parseSourceLine(`Requested Reported on Discord: ${link} by x (1 ❤️)`)).toBeNull();
+    expect(parseSourceLine(`> Reported on Discord: ${link} by x (1 ❤️)`)).toBeNull();
+  });
+});
+
+describe("tags with the bugs forum's list", () => {
+  const BUG_TAGS = [
+    { id: "b-ui", name: "UI", moderated: false },
+    { id: "b-res", name: "Resolved", moderated: true },
+    // A feature-requests name on the bugs channel is a category tag there.
+    { id: "b-rel", name: "Released", moderated: false },
+  ];
+
+  it("finds, resolves and replaces only the bugs forum's status tag", () => {
+    expect(BUG_STATUS_TAGS).toEqual([RESOLVED]);
+    expect(statusTagOf(["UI", "Released"], BUG_STATUS_TAGS)).toBeNull();
+    expect(statusTagOf(["UI", "Resolved"], BUG_STATUS_TAGS)).toBe("Resolved");
+    expect(resolveStatusTag("Resolved", BUG_TAGS, BUG_STATUS_TAGS)).toEqual(BUG_TAGS[1]);
+    expect(() => resolveStatusTag("Released", BUG_TAGS, BUG_STATUS_TAGS)).toThrow(
+      'Unknown status tag "Released". Valid: Resolved',
+    );
+    expect(replaceStatusTag(["b-ui", "b-rel"], BUG_TAGS[1], BUG_TAGS, BUG_STATUS_TAGS)).toEqual([
+      "b-ui",
+      "b-rel",
+      "b-res",
+    ]);
+  });
+
+  it("describes a post's status tag from the list it is given", () => {
+    const post = describePost(thread("40", { applied_tags: ["b-rel", "b-res"] }), BUG_TAGS, GUILD, BUG_STATUS_TAGS);
+
+    expect(post).toMatchObject({ tags: ["Released", "Resolved"], statusTag: "Resolved" });
+  });
 });
 
 describe("summarizeReactions", () => {
@@ -231,6 +282,25 @@ describe("expectedTag", () => {
   });
 });
 
+describe("bugTag", () => {
+  const open = { state: "OPEN", stateReason: null, assignees: [], milestone: null };
+  const closed = (stateReason) => ({ ...open, state: "CLOSED", stateReason });
+
+  it("is Resolved only for a bug closed as completed and shipped in a stable tag", () => {
+    expect(bugTag(closed("COMPLETED"), "v3.6.1")).toBe(RESOLVED);
+    expect(bugTag(closed("COMPLETED"), lowestStableVersion(["v3.7.0-rc.1", "v3.6.1"]))).toBe(RESOLVED);
+  });
+
+  it("is null for every other state, a pre-release-only fix included", () => {
+    expect(bugTag(open)).toBeNull();
+    expect(bugTag({ ...open, assignees: [{ login: "niklam" }], milestone: { title: "3.7.0" } }, "v3.6.1")).toBeNull();
+    expect(bugTag(closed("NOT_PLANNED"), "v3.6.1")).toBeNull();
+    expect(bugTag(closed("DUPLICATE"), "v3.6.1")).toBeNull();
+    expect(bugTag(closed("COMPLETED"))).toBeNull();
+    expect(bugTag(closed("COMPLETED"), lowestStableVersion(["v3.7.0-rc.1"]))).toBeNull();
+  });
+});
+
 describe("rank and shouldPropose", () => {
   it("ranks the lifecycle with none at zero", () => {
     expect([null, "Will Add", "In progress", "Completed", "Released"].map(rank)).toEqual([0, 1, 2, 3, 4]);
@@ -250,6 +320,17 @@ describe("rank and shouldPropose", () => {
     expect(shouldPropose("Will Add", null)).toBe(false);
     expect(shouldPropose(null, null)).toBe(false);
     expect(rank(null)).toBe(0);
+  });
+});
+
+describe("bugShouldPropose", () => {
+  it("proposes Resolved over any post not already carrying it, and nothing else", () => {
+    expect(bugShouldPropose(null, RESOLVED)).toBe(true);
+    expect(bugShouldPropose(RESOLVED, RESOLVED)).toBe(false);
+    expect(bugShouldPropose(null, null)).toBe(false);
+    expect(bugShouldPropose(RESOLVED, null)).toBe(false);
+    // A feature-requests tag is never a bugs-forum proposal.
+    expect(bugShouldPropose(null, "Released")).toBe(false);
   });
 });
 

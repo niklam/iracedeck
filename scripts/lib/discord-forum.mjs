@@ -1,16 +1,23 @@
 /**
- * Pure logic for the Discord feature-requests tooling (#1114): what a forum
- * post looks like once flattened, which of its tags is the status tag, and
- * which status tag a GitHub issue's state calls for. No IO here — the client
- * lives in `discord-api.mjs`, the commands in `discord-forum-commands.mjs`.
+ * Pure logic for the Discord forum tooling (#1114, #1460): what a forum post
+ * looks like once flattened, which of its tags is the status tag, and which
+ * status tag a GitHub issue's state calls for in each forum. No IO here — the
+ * client lives in `discord-api.mjs`, the commands in
+ * `discord-forum-commands.mjs`, and the per-forum profiles that choose among
+ * these functions in `discord-forums.mjs`, which imports this file and never
+ * the other way round.
  *
- * Design record: docs/superpowers/specs/2026-09-04-issue-1114-discord-feature-requests-tracker.md
+ * Design records: docs/superpowers/specs/2026-09-04-issue-1114-discord-feature-requests-tracker.md
+ * and docs/superpowers/specs/2026-10-18-issue-1460-discord-bugs-forum.md
  */
 import { compare, prerelease, valid } from "semver";
 
-/** The channel's lifecycle tags, in lifecycle order. Names are exact. */
+/** The feature-requests forum's lifecycle tags, in lifecycle order. Names are exact. */
 export const STATUS_TAGS = Object.freeze(["Will Add", "In progress", "Completed", "Released", "Won't do"]);
 export const WONT_DO = "Won't do";
+/** The #bugs forum's one status tag: the fix is in a stable release. */
+export const RESOLVED = "Resolved";
+export const BUG_STATUS_TAGS = Object.freeze([RESOLVED]);
 
 /**
  * Posts that are never triaged, replied to, or re-tagged by this tool.
@@ -26,9 +33,11 @@ const STATUS_RANK = { "Will Add": 1, "In progress": 2, Completed: 3, Released: 4
 /**
  * The line an issue body carries back to its post (see `sourceLine`). Anchored
  * to the start of its own line: an issue body can cite other Discord URLs, and
- * the first one found is not the post the issue came from.
+ * the first one found is not the post the issue came from. One shape for both
+ * forums, so one parser: `Requested` for a feature request, `Reported` for a
+ * bug, and no other verb.
  */
-const SOURCE_LINE = /^Requested on Discord: https:\/\/discord\.com\/channels\/(\d+)\/(\d+)/m;
+const SOURCE_LINE = /^(?:Requested|Reported) on Discord: https:\/\/discord\.com\/channels\/(\d+)\/(\d+)/m;
 const MAX_TAGS_PER_POST = 5;
 
 /** @param {string} id */
@@ -70,13 +79,19 @@ export function tagNamesOf(appliedIds, availableTags) {
   return appliedIds.map((id) => byId.get(id) ?? id);
 }
 
-export function statusTagOf(tagNames) {
-  return tagNames.find((name) => STATUS_TAGS.includes(name)) ?? null;
+/*
+ * `statusTags` below is the forum profile's tag list. The default is the
+ * feature-requests list, kept for the #1114 callers; every command passes its
+ * forum's list explicitly.
+ */
+
+export function statusTagOf(tagNames, statusTags = STATUS_TAGS) {
+  return tagNames.find((name) => statusTags.includes(name)) ?? null;
 }
 
-export function resolveStatusTag(name, availableTags) {
-  if (!STATUS_TAGS.includes(name)) {
-    throw new Error(`Unknown status tag "${name}". Valid: ${STATUS_TAGS.join(", ")}`);
+export function resolveStatusTag(name, availableTags, statusTags = STATUS_TAGS) {
+  if (!statusTags.includes(name)) {
+    throw new Error(`Unknown status tag "${name}". Valid: ${statusTags.join(", ")}`);
   }
 
   const tag = availableTags.find((t) => t.name === name);
@@ -91,8 +106,8 @@ export function resolveStatusTag(name, availableTags) {
 }
 
 /** Swaps the post's status tag for `newTag`, keeping every category tag. */
-export function replaceStatusTag(appliedIds, newTag, availableTags) {
-  const statusIds = new Set(availableTags.filter((t) => STATUS_TAGS.includes(t.name)).map((t) => t.id));
+export function replaceStatusTag(appliedIds, newTag, availableTags, statusTags = STATUS_TAGS) {
+  const statusIds = new Set(availableTags.filter((t) => statusTags.includes(t.name)).map((t) => t.id));
   const next = [...appliedIds.filter((id) => !statusIds.has(id)), newTag.id];
 
   if (next.length > MAX_TAGS_PER_POST) {
@@ -113,7 +128,7 @@ export function parseSourceLine(text) {
   return match ? { guildId: match[1], postId: match[2] } : null;
 }
 
-export function describePost(thread, availableTags, guildId) {
+export function describePost(thread, availableTags, guildId, statusTags = STATUS_TAGS) {
   const tags = tagNamesOf(thread.applied_tags ?? [], availableTags);
 
   return {
@@ -125,13 +140,14 @@ export function describePost(thread, availableTags, guildId) {
     replies: thread.message_count ?? 0,
     ownerId: thread.owner_id,
     tags,
-    statusTag: statusTagOf(tags),
+    statusTag: statusTagOf(tags, statusTags),
     standing: STANDING_POST_IDS.includes(thread.id),
   };
 }
 
-export function sourceLine({ link, handle, votes }) {
-  return `Requested on Discord: ${link} by ${handle} (${votes} ❤️)`;
+/** `verb` is the forum profile's: `Requested` for a feature request, `Reported` for a bug. */
+export function sourceLine({ link, handle, votes, verb = "Requested" }) {
+  return `${verb} on Discord: ${link} by ${handle} (${votes} ❤️)`;
 }
 
 export function summarizeReactions(message) {
@@ -141,12 +157,13 @@ export function summarizeReactions(message) {
 }
 
 /**
- * The follow-up table from the spec. `issue` is the `gh issue list --json`
- * shape: state, stateReason, assignees, milestone. Returns `null` when no
- * status tag fits — an issue closed as a duplicate is not done, so its post
- * must be pointed at the canonical issue by hand rather than tagged.
+ * The feature-requests follow-up table from the #1114 spec. `issue` is the
+ * `gh issue list --json` shape: state, stateReason, assignees, milestone.
+ * Returns `null` when no status tag fits — an issue closed as a duplicate is
+ * not done, so its post must be pointed at the canonical issue by hand rather
+ * than tagged.
  */
-export function expectedTag(issue, releasedVersion = null) {
+export function featureRequestTag(issue, releasedVersion = null) {
   if (issue.state === "CLOSED") {
     if (issue.stateReason === "NOT_PLANNED") return WONT_DO;
     if (issue.stateReason === "DUPLICATE") return null;
@@ -159,17 +176,40 @@ export function expectedTag(issue, releasedVersion = null) {
   return inProgress ? "In progress" : "Will Add";
 }
 
+/** #1114's name for the feature-requests mapping. */
+export const expectedTag = featureRequestTag;
+
+/**
+ * The #bugs mapping (#1460): only a bug closed as completed whose fix is in a
+ * stable tag is `Resolved`. Every other state is `null` — the forum has no
+ * "tracked" or "in progress" tag, so an open bug's post carries none, and a
+ * not-planned or duplicate bug gets a hand-written reply rather than a tag.
+ * `releasedVersion` comes from `lowestStableVersion`, so a fix that is only in
+ * a pre-release is `null` too.
+ */
+export function bugTag(issue, releasedVersion = null) {
+  return issue.state === "CLOSED" && issue.stateReason === "COMPLETED" && releasedVersion ? RESOLVED : null;
+}
+
 export function rank(tag) {
   return tag ? (STATUS_RANK[tag] ?? 0) : 0;
 }
 
-/** Forward moves only; Won't do is reachable from anywhere and terminal. */
-export function shouldPropose(current, expected) {
+/** Feature requests: forward moves only; Won't do is reachable from anywhere and terminal. */
+export function featureRequestShouldPropose(current, expected) {
   if (expected === null || current === expected) return false;
   if (expected === WONT_DO) return true;
   if (current === WONT_DO) return false;
 
   return rank(expected) > rank(current);
+}
+
+/** #1114's name for the feature-requests ranking. */
+export const shouldPropose = featureRequestShouldPropose;
+
+/** Bugs: the one move there is, onto `Resolved` from a post not carrying it. */
+export function bugShouldPropose(current, expected) {
+  return expected === RESOLVED && current !== RESOLVED;
 }
 
 /**
