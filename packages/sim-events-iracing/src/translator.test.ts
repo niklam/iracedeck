@@ -64,6 +64,7 @@ import {
   getRaceFinishResult,
   getRaceStartConditions,
   getRollingStartFormation,
+  getSessionKind,
   getSessionStartConditions,
   getStartingGridPosition,
   initializeSimEventsIracing,
@@ -987,6 +988,74 @@ describe("sim-events-iracing translator", () => {
 
       controller.__setSessionInfo({ DriverInfo: { DriverSetupName: "" } });
       expect(getDriverSetupName()).toBeUndefined();
+    });
+  });
+
+  describe("getSessionKind (issue #1111)", () => {
+    function sessionInfo(simMode: string, sessionTypes: string[]): Record<string, unknown> {
+      return {
+        WeekendInfo: { SimMode: simMode },
+        SessionInfo: { Sessions: sessionTypes.map((SessionType, SessionNum) => ({ SessionNum, SessionType })) },
+      };
+    }
+
+    it("returns null before init and before any telemetry tick", () => {
+      expect(getSessionKind()).toBeNull();
+
+      const controller = createMockController();
+      controller.__setSessionInfo(sessionInfo("full", ["Race"]));
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      expect(getSessionKind()).toBeNull();
+    });
+
+    it("classifies the session SessionNum names", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(sessionInfo("full", ["Practice", "Lone Qualify", "Race"]));
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(telemetry({ SessionNum: 0 }));
+      expect(getSessionKind()).toBe("practice");
+
+      controller.__tick(telemetry({ SessionNum: 1 }));
+      expect(getSessionKind()).toBe("qualifying");
+
+      controller.__tick(telemetry({ SessionNum: 2 }));
+      expect(getSessionKind()).toBe("race");
+    });
+
+    it("returns replay in a saved replay, whatever the session type", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(sessionInfo("replay", ["Race"]));
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      controller.__tick(telemetry());
+
+      expect(getSessionKind()).toBe("replay");
+    });
+
+    it("returns null for an unknown session type or missing session info", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(sessionInfo("full", ["Heat Race"]));
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      controller.__tick(telemetry());
+
+      expect(getSessionKind()).toBeNull();
+
+      controller.__setSessionInfo(null);
+      expect(getSessionKind()).toBeNull();
+    });
+
+    it("returns null again after a disconnect", () => {
+      const controller = createMockController();
+      controller.__setSessionInfo(sessionInfo("full", ["Offline Testing"]));
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+      controller.__tick(telemetry());
+      expect(getSessionKind()).toBe("test");
+
+      controller.__tick(null, false);
+
+      expect(getSessionKind()).toBeNull();
     });
   });
 

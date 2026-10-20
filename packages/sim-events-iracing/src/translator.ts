@@ -103,6 +103,7 @@ import { diffToggles } from "./diff/toggles.js";
 import { diffTrackWetness, resolveReportedTrackWetness } from "./diff/track-wetness.js";
 import type { PendingEvent } from "./diff/types.js";
 import { calculateCanonicalRacePositions } from "./race-order.js";
+import { classifySessionKind, type SessionKind } from "./session-kind.js";
 import { resolveSessionType } from "./session-type.js";
 import { buildDegradedSimState, buildSimState, type SimStateSnapshot } from "./sim-state.js";
 import { resolveStandingStart } from "./start-lights.js";
@@ -398,6 +399,24 @@ export function getSessionType(): string {
   const sessionInfo = instance.controller.getSessionInfo() as Record<string, unknown> | null;
 
   return resolveSessionType(sessionInfo, instance.latestTelemetry);
+}
+
+/**
+ * Returns the kind of the current session for profile switching (#1111): the
+ * raw {@link getSessionType} classified by {@link classifySessionKind}, a saved
+ * replay (`WeekendInfo.SimMode === "replay"`, read through the SDK's
+ * `isReplayOnlySession`) winning over the type. `null` when the translator has
+ * no telemetry yet or the session type is not one the classifier knows.
+ */
+export function getSessionKind(): SessionKind | null {
+  if (!instance || !instance.latestTelemetry) return null;
+
+  const sessionInfo = instance.controller.getSessionInfo() as Record<string, unknown> | null;
+
+  return classifySessionKind(
+    resolveSessionType(sessionInfo, instance.latestTelemetry),
+    isReplayOnlySession(sessionInfo) ? "replay" : undefined,
+  );
 }
 
 /**
