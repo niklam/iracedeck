@@ -863,6 +863,30 @@
       "DontAutoSwitchWhenInstalled": true
     },
     {
+      "Name": "iRaceDeck Practice XL",
+      "DeviceType": 2,
+      "AutoInstall": true,
+      "DontAutoSwitchWhenInstalled": true
+    },
+    {
+      "Name": "iRaceDeck Test XL",
+      "DeviceType": 2,
+      "AutoInstall": true,
+      "DontAutoSwitchWhenInstalled": true
+    },
+    {
+      "Name": "iRaceDeck Qualifying XL",
+      "DeviceType": 2,
+      "AutoInstall": true,
+      "DontAutoSwitchWhenInstalled": true
+    },
+    {
+      "Name": "iRaceDeck Race XL",
+      "DeviceType": 2,
+      "AutoInstall": true,
+      "DontAutoSwitchWhenInstalled": true
+    },
+    {
       "Name": "iRaceDeck Default SD",
       "DeviceType": 0,
       "AutoInstall": true,
@@ -887,6 +911,78 @@
       "DontAutoSwitchWhenInstalled": true
     },
     {
+      "Name": "iRaceDeck Practice SD",
+      "DeviceType": 0,
+      "AutoInstall": true,
+      "DontAutoSwitchWhenInstalled": true
+    },
+    {
+      "Name": "iRaceDeck Test SD",
+      "DeviceType": 0,
+      "AutoInstall": true,
+      "DontAutoSwitchWhenInstalled": true
+    },
+    {
+      "Name": "iRaceDeck Qualifying SD",
+      "DeviceType": 0,
+      "AutoInstall": true,
+      "DontAutoSwitchWhenInstalled": true
+    },
+    {
+      "Name": "iRaceDeck Race SD",
+      "DeviceType": 0,
+      "AutoInstall": true,
+      "DontAutoSwitchWhenInstalled": true
+    },
+    {
+      "Name": "iRaceDeck Default Plus",
+      "DeviceType": 7,
+      "AutoInstall": true,
+      "DontAutoSwitchWhenInstalled": false
+    },
+    {
+      "Name": "iRaceDeck Replay Plus",
+      "DeviceType": 7,
+      "AutoInstall": true,
+      "DontAutoSwitchWhenInstalled": true
+    },
+    {
+      "Name": "iRaceDeck Car Selector Plus",
+      "DeviceType": 7,
+      "AutoInstall": true,
+      "DontAutoSwitchWhenInstalled": true
+    },
+    {
+      "Name": "iRaceDeck Race Admin Per Car Plus",
+      "DeviceType": 7,
+      "AutoInstall": true,
+      "DontAutoSwitchWhenInstalled": true
+    },
+    {
+      "Name": "iRaceDeck Practice Plus",
+      "DeviceType": 7,
+      "AutoInstall": true,
+      "DontAutoSwitchWhenInstalled": true
+    },
+    {
+      "Name": "iRaceDeck Test Plus",
+      "DeviceType": 7,
+      "AutoInstall": true,
+      "DontAutoSwitchWhenInstalled": true
+    },
+    {
+      "Name": "iRaceDeck Qualifying Plus",
+      "DeviceType": 7,
+      "AutoInstall": true,
+      "DontAutoSwitchWhenInstalled": true
+    },
+    {
+      "Name": "iRaceDeck Race Plus",
+      "DeviceType": 7,
+      "AutoInstall": true,
+      "DontAutoSwitchWhenInstalled": true
+    },
+    {
       "Name": "iRaceDeck Default Plus XL",
       "DeviceType": 13,
       "AutoInstall": true,
@@ -906,6 +1002,30 @@
     },
     {
       "Name": "iRaceDeck Race Admin Per Car Plus XL",
+      "DeviceType": 13,
+      "AutoInstall": true,
+      "DontAutoSwitchWhenInstalled": true
+    },
+    {
+      "Name": "iRaceDeck Practice Plus XL",
+      "DeviceType": 13,
+      "AutoInstall": true,
+      "DontAutoSwitchWhenInstalled": true
+    },
+    {
+      "Name": "iRaceDeck Test Plus XL",
+      "DeviceType": 13,
+      "AutoInstall": true,
+      "DontAutoSwitchWhenInstalled": true
+    },
+    {
+      "Name": "iRaceDeck Qualifying Plus XL",
+      "DeviceType": 13,
+      "AutoInstall": true,
+      "DontAutoSwitchWhenInstalled": true
+    },
+    {
+      "Name": "iRaceDeck Race Plus XL",
       "DeviceType": 13,
       "AutoInstall": true,
       "DontAutoSwitchWhenInstalled": true

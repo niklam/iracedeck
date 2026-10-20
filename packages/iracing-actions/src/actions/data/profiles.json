@@ -20,6 +20,26 @@
     "displayName": "iRaceDeck Race Admin Per Car"
   },
   {
+    "name": "iRaceDeck Practice XL",
+    "deviceType": 2,
+    "displayName": "iRaceDeck Practice"
+  },
+  {
+    "name": "iRaceDeck Test XL",
+    "deviceType": 2,
+    "displayName": "iRaceDeck Test"
+  },
+  {
+    "name": "iRaceDeck Qualifying XL",
+    "deviceType": 2,
+    "displayName": "iRaceDeck Qualifying"
+  },
+  {
+    "name": "iRaceDeck Race XL",
+    "deviceType": 2,
+    "displayName": "iRaceDeck Race"
+  },
+  {
     "name": "iRaceDeck Default SD",
     "deviceType": 0,
     "displayName": "iRaceDeck Default"
@@ -40,6 +60,66 @@
     "displayName": "iRaceDeck Race Admin Per Car"
   },
   {
+    "name": "iRaceDeck Practice SD",
+    "deviceType": 0,
+    "displayName": "iRaceDeck Practice"
+  },
+  {
+    "name": "iRaceDeck Test SD",
+    "deviceType": 0,
+    "displayName": "iRaceDeck Test"
+  },
+  {
+    "name": "iRaceDeck Qualifying SD",
+    "deviceType": 0,
+    "displayName": "iRaceDeck Qualifying"
+  },
+  {
+    "name": "iRaceDeck Race SD",
+    "deviceType": 0,
+    "displayName": "iRaceDeck Race"
+  },
+  {
+    "name": "iRaceDeck Default Plus",
+    "deviceType": 7,
+    "displayName": "iRaceDeck Default"
+  },
+  {
+    "name": "iRaceDeck Replay Plus",
+    "deviceType": 7,
+    "displayName": "iRaceDeck Replay"
+  },
+  {
+    "name": "iRaceDeck Car Selector Plus",
+    "deviceType": 7,
+    "displayName": "iRaceDeck Car Selector"
+  },
+  {
+    "name": "iRaceDeck Race Admin Per Car Plus",
+    "deviceType": 7,
+    "displayName": "iRaceDeck Race Admin Per Car"
+  },
+  {
+    "name": "iRaceDeck Practice Plus",
+    "deviceType": 7,
+    "displayName": "iRaceDeck Practice"
+  },
+  {
+    "name": "iRaceDeck Test Plus",
+    "deviceType": 7,
+    "displayName": "iRaceDeck Test"
+  },
+  {
+    "name": "iRaceDeck Qualifying Plus",
+    "deviceType": 7,
+    "displayName": "iRaceDeck Qualifying"
+  },
+  {
+    "name": "iRaceDeck Race Plus",
+    "deviceType": 7,
+    "displayName": "iRaceDeck Race"
+  },
+  {
     "name": "iRaceDeck Default Plus XL",
     "deviceType": 13,
     "displayName": "iRaceDeck Default"
@@ -58,5 +138,25 @@
     "name": "iRaceDeck Race Admin Per Car Plus XL",
     "deviceType": 13,
     "displayName": "iRaceDeck Race Admin Per Car"
+  },
+  {
+    "name": "iRaceDeck Practice Plus XL",
+    "deviceType": 13,
+    "displayName": "iRaceDeck Practice"
+  },
+  {
+    "name": "iRaceDeck Test Plus XL",
+    "deviceType": 13,
+    "displayName": "iRaceDeck Test"
+  },
+  {
+    "name": "iRaceDeck Qualifying Plus XL",
+    "deviceType": 13,
+    "displayName": "iRaceDeck Qualifying"
+  },
+  {
+    "name": "iRaceDeck Race Plus XL",
+    "deviceType": 13,
+    "displayName": "iRaceDeck Race"
   }
 ]
