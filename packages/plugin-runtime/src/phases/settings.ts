@@ -1,7 +1,8 @@
 /**
  * Phase 7 (#1349): the plugin-owned settings and replay stores, the settings
  * window, the startup notices (first run, changelog), the global-settings
- * listener with its one-shot store-ready block, and the PI-appear re-pushes.
+ * listener with its one-shot store-ready block and its every-arrival banner
+ * re-assertions, and the PI-appear re-pushes.
  */
 import { SETTINGS_WINDOW_HTML, VOICE_PACK_DEV_BASE_URL_KEY } from "@iracedeck/app-constants";
 import {
@@ -30,6 +31,7 @@ import {
   onGlobalSettingsChange,
   resolveSettingsStorePath,
   runFirstRunCheck,
+  setWarning,
   updateGlobalSettings,
 } from "@iracedeck/settings";
 import {
@@ -49,6 +51,7 @@ import { join } from "node:path";
 
 import { isAudioPreviewKind, migrateLfeIntensityBindingKeys, runAudioPreview } from "../actions.js";
 import { profilesDirFor } from "../log-location.js";
+import { evaluateNativeAddonWarnings } from "../native-addons.js";
 import type { Audio, Core, Settings, VoicePacks } from "../types.js";
 
 export function initSettings(core: Core, audio: Audio, voicePacks: VoicePacks): Settings {
@@ -76,6 +79,10 @@ export function initSettings(core: Core, audio: Audio, voicePacks: VoicePacks): 
   // case on repeated PI re-opens with no hardware change) don't churn the
   // sdpi-components data source and force a full dropdown re-render.
   let lastPushedDeviceListJson = "";
+  // A native addon that failed to load gets an error banner (#1373). The statuses
+  // are fixed for the run, so the records are computed once; they are set again on
+  // every settings arrival below, because `_warnings` is run-scoped.
+  const nativeAddonWarnings = evaluateNativeAddonWarnings(core.nativeAddons);
 
   function pushAudioDevicesIfChanged(): void {
     const devices = getAudio().getAudioDevices();
@@ -482,6 +489,12 @@ export function initSettings(core: Core, audio: Audio, voicePacks: VoicePacks): 
     migrateRaceEngineerVoiceId(voicePacks.state.raceEngineerVoices, voicePacks.logger);
     // The active voice is a setting, so its banner is re-evaluated here (#1064).
     voicePacks.reassertVoiceScriptWarning();
+
+    // A failed native load is fixed for the run, but `_warnings` is run-scoped and
+    // every producer re-asserts within it (#1373). `setWarning` skips a record that
+    // is already identical, so this is free after the first arrival. Set-only: a
+    // native or mock load raises nothing and clears nothing.
+    for (const warning of nativeAddonWarnings) setWarning(warning.id, warning.level, warning.message);
 
     // Apply audio output device (on startup and when changed from PI)
     const saved = s.audioOutputDevice;

@@ -1,9 +1,10 @@
 /**
  * Phase 1 (#1349): the plugin config, the log level, the two run-long
- * monitors, the setup-warning check, the SDK and the event bus — everything
- * later phases read through `Core` — and, last, the plugin-state sections of
- * the Telemetry Snapshot (#1387).
+ * monitors, the setup-warning check, the native addons' load report (#1373),
+ * the SDK and the event bus — everything later phases read through `Core` —
+ * and, last, the plugin-state sections of the Telemetry Snapshot (#1387).
  */
+import { getNativeLoadStatus as getAudioNativeLoadStatus } from "@iracedeck/audio-native";
 import { initPluginConfig, type PluginConfig } from "@iracedeck/deck-core";
 import {
   getController,
@@ -14,12 +15,14 @@ import {
 } from "@iracedeck/deck-iracing";
 import { startMainThreadWatchdog, startResourceMonitor } from "@iracedeck/diagnostics";
 import { initializeEventBus } from "@iracedeck/event-bus";
+import { getNativeLoadStatus as getIRacingNativeLoadStatus } from "@iracedeck/iracing-native";
 import { LogLevel } from "@iracedeck/logger";
 import { getGlobalSettings, onGlobalSettingsChange, validateSetupWarningPatterns } from "@iracedeck/settings";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { requireLogLocation } from "../log-location.js";
+import { type NativeAddonStatuses, nativeLoadErrorLines } from "../native-addons.js";
 import { registerStateSections } from "../state-sections.js";
 import type { Core, PluginHost } from "../types.js";
 
@@ -42,6 +45,24 @@ export function initCore(host: PluginHost): Core {
   };
   onGlobalSettingsChange(applyDebugLogging);
   applyDebugLogging(getGlobalSettings());
+
+  // Say so when a native addon failed to load (#1373): one ERROR per addon,
+  // naming it and carrying the load error, which names the `.node` and the OS
+  // reason. Each package decided at its own module load, before any of this ran,
+  // so the statuses are final here; the level is applied above, though an error
+  // line passes at any level. A native or mock load logs nothing, and gets no
+  // logger. The settings phase raises the matching banners.
+  const nativeAddons: NativeAddonStatuses = {
+    iracing: getIRacingNativeLoadStatus(),
+    audio: getAudioNativeLoadStatus(),
+  };
+  const nativeLoadErrors = nativeLoadErrorLines(nativeAddons);
+
+  if (nativeLoadErrors.length > 0) {
+    const nativeLogger = adapter.createLogger("NativeAddons");
+
+    for (const line of nativeLoadErrors) nativeLogger.error(line);
+  }
 
   // Watch the main thread for the rest of the run (#1330). A freeze blocks every
   // logger on this thread, so the watchdog's worker appends its report straight
@@ -86,7 +107,15 @@ export function initCore(host: PluginHost): Core {
   // both sides can see the bus.
   const bus = initializeEventBus(adapter.createLogger("EventBus"));
 
-  const core: Core = { host, adapter, binDir: host.binDir, logLocation, bus, controller: getController() };
+  const core: Core = {
+    host,
+    adapter,
+    binDir: host.binDir,
+    logLocation,
+    bus,
+    controller: getController(),
+    nativeAddons,
+  };
 
   // Name the plugin-state sections Take Snapshot collects (#1387). Last in this
   // phase and in no order against the later ones: registering only stores four

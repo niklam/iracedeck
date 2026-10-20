@@ -227,6 +227,72 @@ describe("initSettings", () => {
     expect(callLog).not.toContain("armFeatureGateSync");
   });
 
+  describe("the native addon banners (#1373)", () => {
+    /** Each package's `getNativeLoadStatus` is recorded under the same name; initCore reads iRacing's first. */
+    function implementLoadStatuses(...statuses: unknown[]): void {
+      const queue = [...statuses];
+      implement("getNativeLoadStatus", () => queue.shift());
+    }
+
+    function recordSetWarning(): unknown[][] {
+      const calls: unknown[][] = [];
+      implement("setWarning", (...args) => calls.push(args));
+
+      return calls;
+    }
+
+    it("raises one error banner per failed addon after the voice-script banner, on every settings arrival", () => {
+      implementLoadStatuses({ kind: "load-failed", error: "a" }, { kind: "load-failed", error: "b" });
+      // Store not ready: the every-arrival tail alone runs, so this is not the store-ready block.
+      implement("isSettingsStoreReady", () => false);
+      const calls: unknown[][] = [];
+      const order: string[] = [];
+      const { listeners, voicePacks } = boot();
+      vi.spyOn(voicePacks, "reassertVoiceScriptWarning").mockImplementation(() => order.push("voice-script"));
+      implement("setWarning", (...args) => {
+        calls.push(args);
+        order.push(String(args[0]));
+      });
+
+      listeners.at(-1)?.({});
+      listeners.at(-1)?.({});
+
+      expect(calls.map(([id, level]) => [id, level])).toEqual([
+        ["native-addon-iracing", "error"],
+        ["native-addon-audio", "error"],
+        ["native-addon-iracing", "error"],
+        ["native-addon-audio", "error"],
+      ]);
+      expect(String(calls[0][2])).toMatch(/^iRaceDeck could not load its iRacing component/);
+      expect(String(calls[1][2])).toMatch(/^iRaceDeck could not load its audio component/);
+      expect(order.slice(0, 3)).toEqual(["voice-script", "native-addon-iracing", "native-addon-audio"]);
+    });
+
+    it("raises only the failed addon's banner", () => {
+      implementLoadStatuses({ kind: "native" }, { kind: "load-failed", error: "b" });
+      const calls = recordSetWarning();
+      const { listeners } = boot();
+
+      listeners.at(-1)?.({});
+
+      expect(calls.map(([id]) => id)).toEqual(["native-addon-audio"]);
+    });
+
+    it("raises nothing and clears nothing for a native or mock load", () => {
+      implementLoadStatuses({ kind: "native" }, { kind: "mock", reason: "forced" });
+      const calls = recordSetWarning();
+      const { listeners } = boot();
+      callLog.length = 0;
+
+      listeners.at(-1)?.({});
+
+      expect(calls).toEqual([]);
+      expect(callLog).not.toContain("clearWarning");
+      // Positive control: the every-arrival tail did run.
+      expect(callLog).toContain("migrateRaceEngineerVoiceId");
+    });
+  });
+
   it("re-pushes the devices, the voice-pack lists and the installer status when a PI appears", () => {
     const { host, voicePacks } = boot();
     const calls: string[] = [];

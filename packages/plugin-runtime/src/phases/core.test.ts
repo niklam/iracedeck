@@ -153,6 +153,74 @@ describe("initCore", () => {
     ]);
   });
 
+  describe("the native addons' load report (#1373)", () => {
+    /** Each package's `getNativeLoadStatus` is recorded under the same name; initCore reads iRacing's first. */
+    function implementLoadStatuses(...statuses: unknown[]): void {
+      const queue = [...statuses];
+      implement("getNativeLoadStatus", () => queue.shift());
+    }
+
+    /** A host whose logger records every error line under its scope. */
+    function hostRecordingErrors(): { host: ReturnType<typeof createHost>; errors: [string, string][] } {
+      const host = createHost();
+      const errors: [string, string][] = [];
+      const createLogger = host.adapter.createLogger;
+      host.adapter.createLogger = (scope: string) => ({
+        ...createLogger(scope),
+        error: (message: string) => errors.push([scope, message]),
+      });
+
+      return { host, errors };
+    }
+
+    it("logs one error per failed addon, naming it and carrying its error, under NativeAddons", () => {
+      implementLoadStatuses(
+        { kind: "load-failed", error: "iracing_native.node is not a valid Win32 application." },
+        { kind: "load-failed", error: "audio_native.node: The specified module could not be found." },
+      );
+      const { host, errors } = hostRecordingErrors();
+
+      initCore(host);
+
+      expect(errors).toHaveLength(2);
+      expect(errors[0][0]).toBe("NativeAddons");
+      expect(errors[0][1]).toMatch(/^iRacing native addon /);
+      expect(errors[0][1].endsWith(": iracing_native.node is not a valid Win32 application.")).toBe(true);
+      expect(errors[1][0]).toBe("NativeAddons");
+      expect(errors[1][1]).toMatch(/^Audio native addon /);
+      expect(errors[1][1].endsWith(": audio_native.node: The specified module could not be found.")).toBe(true);
+    });
+
+    it("logs only the addon that failed", () => {
+      implementLoadStatuses({ kind: "native" }, { kind: "load-failed", error: "quarantined" });
+      const { host, errors } = hostRecordingErrors();
+
+      initCore(host);
+
+      expect(errors.map(([, message]) => message)).toEqual([
+        expect.stringMatching(/^Audio native addon .*: quarantined$/),
+      ]);
+    });
+
+    it("logs nothing, and makes no logger, for a native or mock load", () => {
+      implementLoadStatuses({ kind: "native" }, { kind: "mock", reason: "forced" });
+      const { host, errors } = hostRecordingErrors();
+
+      initCore(host);
+
+      expect(errors).toEqual([]);
+      expect(host.adapter.scopes).not.toContain("NativeAddons");
+    });
+
+    it("hands the statuses on in Core, for the banners and the snapshot", () => {
+      const iracing = { kind: "load-failed", error: "x" };
+      const audio = { kind: "mock", reason: "platform" };
+      implementLoadStatuses(iracing, audio);
+
+      expect(initCore(createHost()).nativeAddons).toEqual({ iracing, audio });
+    });
+  });
+
   it("returns the bus initializeEventBus made", () => {
     const bus = { subscribe: () => undefined };
     implement("initializeEventBus", () => bus);

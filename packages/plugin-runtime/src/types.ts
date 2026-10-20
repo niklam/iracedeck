@@ -21,6 +21,8 @@ import type {
 } from "@iracedeck/settings-window";
 import type { VoicePackInstaller, VoicePackLaunchStep, VoicePackService } from "@iracedeck/voice-packs";
 
+import type { NativeAddonStatuses } from "./native-addons.js";
+
 /** One `adapter.registerAction` call: the UUID, the logger scope it always used, and the handler factory. */
 export interface ActionRegistration {
   readonly uuid: string;
@@ -63,6 +65,8 @@ export interface Core {
   readonly logLocation: LogLocation;
   readonly bus: IEventBus;
   readonly controller: ReturnType<typeof getController>;
+  /** How each native addon loaded (#1373), read once at startup; fixed for the run. */
+  readonly nativeAddons: NativeAddonStatuses;
 }
 
 /** Phase 3's handoff: the native input layer, used again by window focus (phase 8) and the elevation check (phase 9). */
