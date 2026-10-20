@@ -70,7 +70,7 @@ How it behaves:
 - **Every connected Stream Deck** that has a version of the chosen profile switches, landing on the profile's first page. A deck without one (see [supported devices](#supported-devices)) is left alone.
 - **It switches when the session type changes**, not continuously. If you switch profiles yourself mid-session, iRaceDeck leaves your choice alone until the next session type begins.
 - **Changes apply straight away.** Turning it on, or changing a row, during a session switches to the profile for the session you are in.
-- **When iRacing closes**, each deck it switched goes back to the profile it was on before the first automatic switch. If iRaceDeck didn't know which profile that was — it can't see your own profiles — the deck returns to **iRaceDeck Default** instead.
+- **When iRacing closes**, each deck it switched goes back to the last iRaceDeck profile it knew the deck was on before the first automatic switch, or to **iRaceDeck Default** when it knew none. iRaceDeck can't see or switch to your own profiles, so if you were on one of yours, switch back to it in the Stream Deck app.
 
 Only iRaceDeck's own bundled profiles can be chosen: the Stream Deck app doesn't let a plugin switch to profiles you made yourself. To make a session's layout your own, edit the bundled profile for it in the Stream Deck app.
 
