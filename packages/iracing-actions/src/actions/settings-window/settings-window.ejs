@@ -428,13 +428,14 @@
 				</div>
 			</section>
 
-			<%# ---- Profiles (Elgato only): the same partial as the PI, in device-picker mode ---- %>
+			<%# ---- Profiles (Elgato only): the same partial as the PI, in device-picker mode, then the automatic switch (#1111) ---- %>
 			<% if (locals.platform?.features?.profiles !== false) { %>
 			<section class="sw-pane" id="pane-profiles" hidden>
 				<h2>Profiles</h2>
-				<p class="sw-sub">Install or switch to a ready-made iRaceDeck profile on a connected Stream Deck.</p>
+				<p class="sw-sub">Install or switch to a ready-made iRaceDeck profile on a connected Stream Deck, or let iRaceDeck switch it for you by session type.</p>
 				<div class="sw-grid single">
 					<%- include('global-stream-deck-profiles', __sw) %>
+					<%- include('accordion', { title: 'Automatically switch to profile', content: include('global-profile-auto-switch'), settingsWindow: true }) %>
 				</div>
 			</section>
 			<% } %>

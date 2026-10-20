@@ -1,0 +1,56 @@
+<%#
+  Automatically switch to profile (issue #1111). Settings window only: a card on
+  the Profiles tab, after Stream Deck Profiles, inside the pane that the
+  `profiles` platform flag gates (Elgato only — Mirabox and Ulanzi have no
+  profile system). Emits items only; the window wraps them in the card.
+
+  A master toggle, then one select per session kind. Each select stores a
+  bundled profile's DISPLAY name, or "" for "Do not change the profile", every
+  row's default — so turning the toggle on switches nothing until a row is
+  picked. The rows stay enabled while the toggle is off, so the mapping can be
+  set up first. sdpi-select round-trips the empty value: a stored "" matches the
+  "" option, and `default=""` covers its falsy match.
+
+  The setting keys and row labels are literals because markup cannot import;
+  build/profile-auto-switch-partial.test.ts pins them to @iracedeck/app-constants
+  (PROFILE_AUTO_SWITCH_ENABLED_KEY, PROFILE_FOR_SESSION_KIND_KEYS,
+  PROFILE_SWITCH_SESSION_KIND_LABELS) and to the schema. The profile list comes
+  from the generated, manifest-derived profiles.json, one option per template.
+
+  The checkbox carries no `default`: off is the schema default, and
+  `default="false"` would render it checked (a truthy string).
+%>
+<%
+  var __kinds = [
+    { label: 'Test', setting: 'profileForSessionKindTest' },
+    { label: 'Practice', setting: 'profileForSessionKindPractice' },
+    { label: 'Qualifying', setting: 'profileForSessionKindQualifying' },
+    { label: 'Race', setting: 'profileForSessionKindRace' },
+    { label: 'Replay', setting: 'profileForSessionKindReplay' }
+  ];
+  var __profileNames = [];
+  require('./data/profiles.json').forEach(function (p) {
+    var name = p.displayName || p.name;
+    if (__profileNames.indexOf(name) < 0) __profileNames.push(name);
+  });
+%>
+<sdpi-item label="Auto switch">
+  <sdpi-checkbox setting="profileAutoSwitchEnabled" label="Switch profiles by session type" global></sdpi-checkbox>
+</sdpi-item>
+<div class="ird-supporting-text">
+  When on, iRaceDeck switches every connected Stream Deck to the profile you pick below
+  for the session type, and switches it back to the profile it was on when iRacing
+  closes. Nothing switches until you pick a profile for at least one session type.
+</div>
+<% __kinds.forEach(function (kind) { %>
+<sdpi-item label="<%= kind.label %>">
+  <sdpi-select setting="<%= kind.setting %>" default="" global>
+    <option value="">Do not change the profile</option>
+<% __profileNames.forEach(function (name) { %>    <option value="<%= name %>"><%= name %></option>
+<% }); %>  </sdpi-select>
+</sdpi-item>
+<% }); %>
+<div class="ird-supporting-text">
+  Only iRaceDeck's own profiles can be picked: the Stream Deck app doesn't let a plugin
+  switch to profiles you made yourself. To make one yours, edit it in the Stream Deck app.
+</div>

@@ -22,6 +22,16 @@ function render(template: string, data: Record<string, unknown> = {}): string {
   return ejs.render(template, data, { views: [partialsDir], filename: path.join(partialsDir, "_test.ejs") });
 }
 
+// The templates `require()` shared data (callout ids, profiles etc.); the real
+// build resolves that from iracing-actions' data dir — point the tests there.
+const dataRequire = (spec: string): unknown => {
+  const rel = spec.replace(/^\.\//, "");
+  const file = path.resolve(partialsDir, "../../iracing-actions/src/actions", rel);
+
+  return JSON.parse(readFileSync(file, "utf-8"));
+};
+const withRequire = { require: dataRequire };
+
 describe("accordion.ejs", () => {
   it("renders a collapsible <details> by default (the PI mode)", () => {
     const html = render("<%- include('accordion', { title: 'Title Defaults', content: '<p>body</p>' }) %>");
@@ -81,10 +91,18 @@ describe("global-common-* group partials", () => {
       "global-common-chat": ["chatOpenToPasteDelayMs", "chatPasteToEnterDelayMs", "chatEnterToCloseDelayMs"],
       "global-common-updates": ["changelogNotification"],
       "global-common-diagnostics": ["debugLogging"],
+      "global-profile-auto-switch": [
+        "profileAutoSwitchEnabled",
+        "profileForSessionKindTest",
+        "profileForSessionKindPractice",
+        "profileForSessionKindQualifying",
+        "profileForSessionKindRace",
+        "profileForSessionKindReplay",
+      ],
     };
 
     for (const [partial, keys] of Object.entries(groups)) {
-      const html = render(`<%- include('${partial}') %>`);
+      const html = render(`<%- include('${partial}') %>`, withRequire);
 
       expect(html, partial).not.toContain("<details");
 
@@ -139,16 +157,6 @@ describe("global-common-diagnostics.ejs storage row (#993)", () => {
  * can silently lose a control.
  */
 describe("race-engineer partials", () => {
-  // The templates `require()` shared data (callout ids etc.); the real build
-  // resolves that from iracing-actions' data dir — point the test there.
-  const dataRequire = (spec: string): unknown => {
-    const rel = spec.replace(/^\.\//, "");
-    const file = path.resolve(partialsDir, "../../iracing-actions/src/actions", rel);
-
-    return JSON.parse(readFileSync(file, "utf-8"));
-  };
-  const withRequire = { require: dataRequire };
-
   it("race-engineer-settings emits the live toggles, startup policies, voice, name, device, volumes and radio frame", () => {
     const html = render("<%- include('race-engineer-settings') %>", withRequire);
 
