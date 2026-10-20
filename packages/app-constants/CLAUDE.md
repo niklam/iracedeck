@@ -1,6 +1,6 @@
 # @iracedeck/app-constants
 
-The constants every layer shares, and the Property Inspector's browser bundle with them (spec #1351). Zero dependencies.
+The constants every layer shares, and the Property Inspector's browser bundle with them (spec #1351, extracted in #1364). Zero dependencies.
 
 ## What it owns
 
