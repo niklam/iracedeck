@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 76 76">
+  <desc>{"colors":{"backgroundColor":"#263f30","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"PRACTICE"},"border":{"enabled":false,"glowEnabled":false,"locked":["enabled","glowEnabled"]}}</desc>
+  <path d="M22 56 L52 56 C58 56 61 52 60 46 L58 36 C57 31 52 30 48 33 L42 38 C39 40 36 38 37 35 L40 26 C42 20 38 16 32 17 L24 19 C18 20 15 25 16 31 L17 48 C17 53 18 56 22 56 Z"
+        fill="none" stroke="{{graphic1Color}}" stroke-width="4" stroke-linejoin="round"/>
+  <line x1="38" y1="51" x2="38" y2="61" stroke="{{graphic1Color}}" stroke-width="3" stroke-linecap="round"/>
+</svg>

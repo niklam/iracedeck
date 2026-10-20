@@ -23,9 +23,13 @@ import {
 import carSelectorIconSvg from "@iracedeck/icons/switch-profile/car-selector.svg";
 import chatIconSvg from "@iracedeck/icons/switch-profile/chat.svg";
 import defaultIconSvg from "@iracedeck/icons/switch-profile/default.svg";
+import practiceIconSvg from "@iracedeck/icons/switch-profile/practice.svg";
 import previousIconSvg from "@iracedeck/icons/switch-profile/previous.svg";
+import qualifyingIconSvg from "@iracedeck/icons/switch-profile/qualifying.svg";
 import raceAdminPerCarIconSvg from "@iracedeck/icons/switch-profile/race-admin-per-car.svg";
+import raceIconSvg from "@iracedeck/icons/switch-profile/race.svg";
 import replayIconSvg from "@iracedeck/icons/switch-profile/replay.svg";
+import testIconSvg from "@iracedeck/icons/switch-profile/test.svg";
 import { getGlobalColors } from "@iracedeck/settings";
 import z from "zod";
 
@@ -57,6 +61,11 @@ const PROFILE_ICONS: Record<string, string> = {
   // Legacy display name (pre-#790 rename) — old persisted keys keep their icon.
   "iRaceDeck Race Admin Cars": carSelectorIconSvg,
   "iRaceDeck Race Admin Per Car": raceAdminPerCarIconSvg,
+  // The session-kind profiles (#1456, #1111).
+  "iRaceDeck Practice": practiceIconSvg,
+  "iRaceDeck Test": testIconSvg,
+  "iRaceDeck Qualifying": qualifyingIconSvg,
+  "iRaceDeck Race": raceIconSvg,
   [PREVIOUS_PROFILE_VALUE]: previousIconSvg,
 };
 

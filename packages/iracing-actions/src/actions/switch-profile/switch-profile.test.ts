@@ -16,6 +16,10 @@ vi.mock("@iracedeck/icons/switch-profile/replay.svg", () => ({ default: "<svg>RE
 vi.mock("@iracedeck/icons/switch-profile/chat.svg", () => ({ default: "<svg>CHAT</svg>" }));
 vi.mock("@iracedeck/icons/switch-profile/default.svg", () => ({ default: "<svg>DEFAULT</svg>" }));
 vi.mock("@iracedeck/icons/switch-profile/car-selector.svg", () => ({ default: "<svg>CAR SELECTOR</svg>" }));
+vi.mock("@iracedeck/icons/switch-profile/practice.svg", () => ({ default: "<svg>PRACTICE</svg>" }));
+vi.mock("@iracedeck/icons/switch-profile/test.svg", () => ({ default: "<svg>TEST</svg>" }));
+vi.mock("@iracedeck/icons/switch-profile/qualifying.svg", () => ({ default: "<svg>QUALIFYING</svg>" }));
+vi.mock("@iracedeck/icons/switch-profile/race.svg", () => ({ default: "<svg>RACE</svg>" }));
 
 vi.mock("../data/profiles.json", () => ({
   default: [
@@ -158,6 +162,13 @@ describe("SwitchProfile", () => {
       expect(profileTitle("iRaceDeck Race Admin Per Car Plus XL")).toBe("RACE ADMIN\nPER CAR");
     });
 
+    it("renders the session-kind profiles' titles on one line (#1456, #1111)", () => {
+      expect(profileTitle("iRaceDeck Practice")).toBe("PRACTICE");
+      expect(profileTitle("iRaceDeck Test SD")).toBe("TEST");
+      expect(profileTitle("iRaceDeck Qualifying XL")).toBe("QUALIFYING");
+      expect(profileTitle("iRaceDeck Race Plus XL")).toBe("RACE");
+    });
+
     it("renders the same two-line title for the legacy Race Admin Cars name (pre-#790 rename)", () => {
       expect(profileTitle("iRaceDeck Race Admin Cars")).toBe("CAR\nSELECTOR");
       expect(profileTitle("iRaceDeck Race Admin Cars XL")).toBe("CAR\nSELECTOR");
@@ -231,6 +242,17 @@ describe("SwitchProfile", () => {
       expect(generateSwitchProfileSvg(settings("iRaceDeck Race Admin Cars XL"))).toBe(
         "assembled:<svg>CAR SELECTOR</svg>",
       );
+    });
+
+    it("uses each session-kind profile's own icon, with or without a device suffix (#1456, #1111)", () => {
+      expect(generateSwitchProfileSvg(settings("iRaceDeck Practice"))).toBe("assembled:<svg>PRACTICE</svg>");
+      expect(generateSwitchProfileSvg(settings("iRaceDeck Practice XL"))).toBe("assembled:<svg>PRACTICE</svg>");
+      expect(generateSwitchProfileSvg(settings("iRaceDeck Test"))).toBe("assembled:<svg>TEST</svg>");
+      expect(generateSwitchProfileSvg(settings("iRaceDeck Test SD"))).toBe("assembled:<svg>TEST</svg>");
+      expect(generateSwitchProfileSvg(settings("iRaceDeck Qualifying"))).toBe("assembled:<svg>QUALIFYING</svg>");
+      expect(generateSwitchProfileSvg(settings("iRaceDeck Qualifying Plus"))).toBe("assembled:<svg>QUALIFYING</svg>");
+      expect(generateSwitchProfileSvg(settings("iRaceDeck Race"))).toBe("assembled:<svg>RACE</svg>");
+      expect(generateSwitchProfileSvg(settings("iRaceDeck Race Plus XL"))).toBe("assembled:<svg>RACE</svg>");
     });
 
     it("falls back to the iRaceDeck icon for Default, unknown, or no selection", () => {

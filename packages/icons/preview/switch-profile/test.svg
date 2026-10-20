@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 76 76">
+  <desc>{"colors":{"backgroundColor":"#45392a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"TEST"},"border":{"enabled":false,"glowEnabled":false,"locked":["enabled","glowEnabled"]}}</desc>
+  <path fill="#ffffff" d="M35 17 H41 C42 17 42.6 17.5 43 18.5 L55 53 H21 L33 18.5 C33.4 17.5 34 17 35 17 Z"/>
+  <polygon fill="#45392a" points="30,26 46,26 48,32 28,32"/>
+  <polygon fill="#45392a" points="26,38 50,38 52,44 24,44"/>
+  <rect x="16" y="53" width="44" height="6" rx="2" fill="#ffffff"/>
+</svg>
