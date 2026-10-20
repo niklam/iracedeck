@@ -1,6 +1,6 @@
 /**
  * Minimal Discord REST client for the maintainer tooling behind
- * `scripts/discord/feature-requests.mjs` (#1114).
+ * `scripts/discord/forum.mjs` (#1114, #1460).
  *
  * Deliberately tiny: `Authorization: Bot <token>`, JSON in and out, one retry
  * on 429. It knows nothing about forums, threads, or tags — that lives in

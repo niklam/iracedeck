@@ -1,13 +1,16 @@
 #!/usr/bin/env node
 /**
- * Maintainer CLI for the Discord feature-requests forum (#1114): list posts,
+ * Maintainer CLI for the Discord forums (#1114, #1460): list a forum's posts,
  * read one, reply into it, set its status tag, and compute which posts lag
- * behind their GitHub issues. Used by the `discord-feature-requests` skill;
- * every write here is one the maintainer has approved in that session.
+ * behind their GitHub issues. `--forum` picks the forum profile
+ * (lib/discord-forums.mjs), feature-requests by default; `follow-up` covers
+ * every configured forum whichever is picked. Used by the `discord-forums`
+ * skill; every write here is one the maintainer has approved in that session.
  *
- * Reads DISCORD_BOT_TOKEN, DISCORD_GUILD_ID and
- * DISCORD_FEATURE_REQUESTS_CHANNEL_ID from the shell or the gitignored
- * .env.local at the repo root (see .env.local.example).
+ * Reads DISCORD_BOT_TOKEN, DISCORD_GUILD_ID and the forum's channel variable
+ * (DISCORD_FEATURE_REQUESTS_CHANNEL_ID, DISCORD_BUGS_CHANNEL_ID) from the
+ * shell or the gitignored .env.local at the repo root (see
+ * .env.local.example).
  *
  * The behaviour lives in lib/discord-forum-commands.mjs; this file is argv.
  */
@@ -19,17 +22,28 @@ import { parseArgs } from "node:util";
 
 import { createDiscordClient } from "../lib/discord-api.mjs";
 import { readConfig, runFollowUp, runList, runReply, runShow, runTag } from "../lib/discord-forum-commands.mjs";
+import { DEFAULT_FORUM, FORUMS } from "../lib/discord-forums.mjs";
 
-const USAGE = `Usage: node scripts/discord/feature-requests.mjs <command> [options]
+const FORUM_LINES = Object.values(FORUMS)
+  .map((forum) => `  ${forum.name.padEnd(18)} status tags: ${forum.statusTags.join(" | ")}  (${forum.channelEnv})`)
+  .join("\n");
+
+const USAGE = `Usage: node scripts/discord/forum.mjs [--forum <name>] <command> [options]
+       pnpm discord:feature-requests <command> [options]
+       pnpm discord:bugs <command> [options]
+
+Forums (--forum, default ${DEFAULT_FORUM})
+${FORUM_LINES}
 
 Commands
   list [--untagged]              every post, newest first (--untagged: no status tag yet)
   show <post-id>                 the post, its replies, votes and author
   reply <post-id> --text "…"     post a reply into the thread (or --file <path>)
-  tag <post-id> "<status tag>"   set Will Add | In progress | Completed | Released | Won't do
-  follow-up                      Discord-sourced issues vs their posts' status tags
+  tag <post-id> "<status tag>"   set one of the forum's status tags
+  follow-up                      Discord-sourced issues vs their posts' status tags, in every configured forum
 
 Options
+  --forum     the forum list, show, reply and tag act on
   --json      machine-readable output (list, show, follow-up)
   --dry-run   print the request and send nothing (reply, tag)
   -h, --help  this text`;
@@ -61,7 +75,8 @@ function requirePostId(id) {
 }
 
 async function main(command, positionals, values) {
-  const config = readConfig(root);
+  // The forum name is checked before main, so readConfig cannot throw on it.
+  const config = readConfig(root, undefined, values.forum);
 
   if (config.error) {
     console.error(`Error: ${config.error}`);
@@ -114,6 +129,7 @@ try {
       "dry-run": { type: "boolean", default: false },
       text: { type: "string" },
       file: { type: "string" },
+      forum: { type: "string", default: DEFAULT_FORUM },
       help: { type: "boolean", short: "h", default: false },
     },
   });
@@ -131,6 +147,9 @@ if (cli) {
   if (values.help || !command) {
     console.log(USAGE);
     process.exitCode = values.help ? 0 : 1;
+  } else if (!Object.hasOwn(FORUMS, values.forum)) {
+    console.error(`Unknown forum "${values.forum}". Valid: ${Object.keys(FORUMS).join(", ")}\n\n${USAGE}`);
+    process.exitCode = 1;
   } else {
     process.exitCode = await main(command, args, values);
   }
