@@ -366,6 +366,37 @@ describe("createSessionProfileReactor", () => {
     expect(h.switchProfile).not.toHaveBeenCalled();
   });
 
+  it("switches decks the app reports after the session was first seen, each once", async () => {
+    // The plugin started mid-session: the kind and the mapping are known before
+    // the Stream Deck app has reported any deck as connected.
+    const h = harness({ kind: "race", decks: [] });
+
+    await h.tick(3);
+    expect(h.switchProfile).not.toHaveBeenCalled();
+
+    h.state.decks = [SD];
+    await h.tick(3);
+    h.state.decks = [SD, XL];
+    await h.tick(3);
+
+    expect(h.switchProfile.mock.calls).toEqual([
+      ["sd-1", "iRaceDeck Race SD", 0],
+      ["xl-1", "iRaceDeck Race XL", 0],
+    ]);
+  });
+
+  it("does not return the decks on exit once the toggle has been turned off", async () => {
+    const h = harness({ kind: "practice" });
+
+    h.state.current.set("sd-1", "iRaceDeck Replay SD");
+    await h.tick();
+    h.state.settings = settingsWith({ profileAutoSwitchEnabled: false });
+    await h.tick();
+    await h.exit();
+
+    expect(h.switchProfile.mock.calls).toEqual([["sd-1", "iRaceDeck Practice SD", 0]]);
+  });
+
   it("does not read the session while the toggle is off", async () => {
     const h = harness();
     let reads = 0;

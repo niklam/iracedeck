@@ -80,24 +80,27 @@ interface SwitchedDeck {
 export function createSessionProfileReactor(deps: SessionProfileReactorDeps): SessionProfileReactor {
   const { logger } = deps;
 
-  // The (kind, mapped profile) pair last acted on; `null` kind = nothing acted
-  // on yet. A tick that reads the same pair does nothing, so a manual switch
-  // mid-session is never fought.
-  let lastKind: ProfileSwitchSessionKind | null = null;
-  let lastProfile = "";
+  // The (kind, mapped profile) pair the mapping currently names, as one key;
+  // "" = nothing acted on yet. Each deck records the key it was last given, so
+  // a deck is acted on once per pair: a manual switch mid-session is never
+  // fought, while a deck that connects after the pair was first seen (the
+  // plugin started mid-session, before the app reported its decks) still gets
+  // it.
+  let currentPair = "";
+  const appliedPair = new Map<string, string>();
   // The raw session type last named in the "classified as nothing" debug line,
   // so an unknown session logs once rather than at every tick.
   let lastUnclassifiedType = "";
-  // Bumped at every exit and every newly acted-on pair, so a switch still in
-  // flight for a session that ended, or for a mapping that has since been
-  // superseded, stops before it touches another deck or the newer state.
+  // Bumped at every exit, every new pair and turning the toggle off, so a
+  // switch still in flight for a session that ended, or for a mapping that has
+  // since been superseded, stops before it touches another deck or newer state.
   let epoch = 0;
   const switched = new Map<string, SwitchedDeck>();
   let unsubscribers: Array<() => void> = [];
 
   const resetSession = (): void => {
-    lastKind = null;
-    lastProfile = "";
+    currentPair = "";
+    appliedPair.clear();
     lastUnclassifiedType = "";
     switched.clear();
   };
@@ -111,13 +114,12 @@ export function createSessionProfileReactor(deps: SessionProfileReactorDeps): Se
     logger.debug(`Session type "${raw}" has no session kind; the profile is left as it is`);
   };
 
-  const switchDecks = async (kind: ProfileSwitchSessionKind, profile: string): Promise<void> => {
+  const switchDecks = async (decks: readonly SessionProfileDeck[], profile: string): Promise<void> => {
     const startedIn = epoch;
 
     logger.info("Switching decks to the session's profile");
-    logger.debug(`Session kind "${kind}" maps to "${profile}"`);
 
-    for (const deck of deps.listDecks()) {
+    for (const deck of decks) {
       if (epoch !== startedIn) return;
 
       const manifestName = resolveProfileNameForDevice(profile, deck.type, deps.availableProfiles(deck.type));
@@ -153,11 +155,11 @@ export function createSessionProfileReactor(deps: SessionProfileReactorDeps): Se
       const settings = deps.getSettings();
 
       if (settings.profileAutoSwitchEnabled !== true) {
-        // Nothing is recorded while off, so turning it on applies at once; a
-        // switch still in flight stops.
-        if (lastKind !== null) {
-          lastKind = null;
-          lastProfile = "";
+        // Turning it off forgets everything, the decks to return included: the
+        // switch back on exit is part of the feature being on. Turning it on
+        // again applies at once.
+        if (currentPair !== "" || switched.size > 0) {
+          resetSession();
           epoch += 1;
         }
 
@@ -173,20 +175,27 @@ export function createSessionProfileReactor(deps: SessionProfileReactorDeps): Se
       }
 
       const profile = resolveProfileForKind(kind, settings) ?? "";
+      const pair = `${kind}\u0000${profile}`;
 
-      if (kind === lastKind && profile === lastProfile) return;
-
-      lastKind = kind;
-      lastProfile = profile;
-      epoch += 1;
-
-      if (profile === "") {
-        logger.debug(`Session kind "${kind}" is set to not change the profile`);
-
-        return;
+      if (pair !== currentPair) {
+        currentPair = pair;
+        epoch += 1;
+        logger.debug(
+          profile === ""
+            ? `Session kind "${kind}" is set to not change the profile`
+            : `Session kind "${kind}" maps to "${profile}"`,
+        );
       }
 
-      void switchDecks(kind, profile).catch((error: unknown) => {
+      const pending = deps.listDecks().filter((deck) => appliedPair.get(deck.id) !== pair);
+
+      if (pending.length === 0) return;
+
+      for (const deck of pending) appliedPair.set(deck.id, pair);
+
+      if (profile === "") return;
+
+      void switchDecks(pending, profile).catch((error: unknown) => {
         logger.error(`Automatic profile switch failed: ${String(error)}`);
       });
     } catch (error) {
