@@ -14,6 +14,12 @@ on:
   pull_request:
   push:
     branches: [master, 'release/*']
+    # A push that changes only specs runs nothing (#1466): specs commit straight
+    # to master as their own docs(specs) commits, and no step here reads one
+    # except the control-byte scan in ci-test, which the spec-commit hook now
+    # runs at the commit instead. A push that also touches anything else runs.
+    paths-ignore:
+      - 'docs/superpowers/specs/**'
 
 # The job only reads the repository and runs a compiler, so it is given the
 # minimum token scope and the checkout credential is not left in .git/config for
