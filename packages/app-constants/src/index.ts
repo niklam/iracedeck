@@ -36,6 +36,15 @@ export type { LogLocation } from "./log-location.js";
 // Property Inspector warning banner key and record shape (issues #610, #1014, #1366)
 export { PI_WARNING_LEVELS, PI_WARNINGS_KEY, type PiWarning, type PiWarningLevel } from "./pi-warnings-constants.js";
 
+// Automatic profile switching by session kind (issue #1111)
+export {
+  PROFILE_AUTO_SWITCH_ENABLED_KEY,
+  PROFILE_FOR_SESSION_KIND_KEYS,
+  PROFILE_SWITCH_SESSION_KIND_LABELS,
+  PROFILE_SWITCH_SESSION_KINDS,
+  type ProfileSwitchSessionKind,
+} from "./profile-auto-switch.js";
+
 // Replay jump playback modes (issue #1276)
 export {
   DEFAULT_REPLAY_JUMP_PLAYBACK,
