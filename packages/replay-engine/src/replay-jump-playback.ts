@@ -56,25 +56,8 @@
  * No logger here: the outcome says what happened, and the caller logs it.
  */
 import { replaySpeedFromTelemetry, type TelemetryData } from "@iracedeck/iracing-sdk";
-import {
-  clearReplayJumpSpeed,
-  isPaused,
-  isSameSpeed,
-  isSeeking,
-  PAUSED,
-  pendingReplayJumpSpeed,
-  readReplayJumpPlayback,
-  readReplayJumpTimeoutMs,
-  recordReplayJumpSpeed,
-  REPLAY_JUMP_MAX_WAIT_MS,
-  REPLAY_JUMP_POLL_MS,
-  type ReplayCursorClaim,
-  type ReplayJumpSpeed,
-  type ReplaySpeed,
-  resolveReplayJumpSpeed,
-  waitForReplay,
-} from "@iracedeck/replay-engine";
 
+import { now, sleep } from "./engine-clock.js";
 import {
   claimReplayCursorForJump,
   closeReplayJump,
@@ -89,8 +72,24 @@ import {
   sendReplayJumpSeek,
   takeWaitingReplaySpeed,
 } from "./replay-command-gate.js";
+import {
+  clearReplayJumpSpeed,
+  pendingReplayJumpSpeed,
+  recordReplayJumpSpeed,
+  type ReplayCursorClaim,
+  type ReplayJumpSpeed,
+} from "./replay-cursor.js";
+import {
+  isSameSpeed,
+  PAUSED,
+  readReplayJumpPlayback,
+  type ReplaySpeed,
+  resolveReplayJumpSpeed,
+} from "./replay-jump-speed.js";
+import { isPaused, isSeeking, waitForReplay } from "./replay-seek.js";
+import { readReplayJumpTimeoutMs, REPLAY_JUMP_MAX_WAIT_MS, REPLAY_JUMP_POLL_MS } from "./replay-timing.js";
 
-export { readReplayJumpPlayback, type ReplaySpeed, resolveReplayJumpSpeed } from "@iracedeck/replay-engine";
+export { readReplayJumpPlayback, type ReplaySpeed, resolveReplayJumpSpeed } from "./replay-jump-speed.js";
 export type { ReplayJumpResult } from "./replay-command-gate.js";
 
 /**
@@ -249,7 +248,7 @@ export function beginReplayJump(
   owner: string,
   telemetry: TelemetryData | null,
   onCancelled?: (by: string) => void,
-  nowMs: number = Date.now(),
+  nowMs: number = now(),
   options: ReplayJumpBeginOptions = {},
 ): ReplayJump {
   const standing = pendingReplayJumpSpeed();
@@ -328,7 +327,7 @@ function setSeen(jump: ReplayJump, seen: ReplayJumpResult): void {
 export function applyReplayJumpPlayback(
   jump: ReplayJump,
   landed: TelemetryData | null,
-  nowMs: number = Date.now(),
+  nowMs: number = now(),
 ): ReplayJumpApplied | null {
   if (jump.claim.cancelledBy !== null) return null;
 
@@ -355,8 +354,6 @@ export function applyReplayJumpPlayback(
 
   return applied;
 }
-
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * Steps 2 to 6 for a jump {@link beginReplayJump} started: pause if moving,
@@ -421,14 +418,14 @@ async function runSequence(jump: ReplayJump, options: ReplayJumpOptions): Promis
   // The landing is the gate's read-back of the target. The wait goes on for as
   // long as iRacing shows the seek, and gives up one timeout after it no
   // longer does without the frame having read back.
-  const startedAt = Date.now();
+  const startedAt = now();
   const latest = startedAt + REPLAY_JUMP_MAX_WAIT_MS;
   let deadline = startedAt + timeoutMs;
   let last: TelemetryData | null = null;
   let landing: TelemetryData | null = null;
 
   while (landing === null) {
-    if (Date.now() >= Math.min(deadline, latest)) {
+    if (now() >= Math.min(deadline, latest)) {
       return { kind: "stopped", reason: "seek-timeout", telemetry: last };
     }
 
@@ -445,7 +442,7 @@ async function runSequence(jump: ReplayJump, options: ReplayJumpOptions): Promis
     } else if (state.status !== "pending") {
       return { kind: "stopped", reason: "seek-timeout", telemetry: last };
     } else if (isSeeking(last)) {
-      deadline = Date.now() + timeoutMs;
+      deadline = now() + timeoutMs;
     }
   }
 

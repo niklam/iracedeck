@@ -6,6 +6,8 @@ import {
   type TelemetryData,
 } from "@iracedeck/iracing-sdk";
 import {
+  _configureReplayEngine,
+  _resetReplayCommandGate,
   _resetReplayCursor,
   _resetReplayPositionState,
   _resetReplaySpeedState,
@@ -13,26 +15,24 @@ import {
   claimReplayCursor,
   currentReplayCursorOwner,
   DIAL_SPEED_HOLD_MS,
+  getReplayGateRecord,
+  getReplayGateView,
+  isReplayMoveUnderWay,
   lastListedSessionNum,
   noteTelemetrySpeed,
+  pressReplayCommand,
+  type RecordStepSource,
   rememberedSpeed,
   REPLAY_TARGET_GIVE_UP_MS,
+  type ReplayGateNotice,
+  subscribeReplayGate,
 } from "@iracedeck/replay-engine";
 import type { ReplaySessionStore } from "@iracedeck/replay-store";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { labelClearsSideMarks } from "../../shared/dial-label-fit.js";
 import { registerReplayBusySurface, type ReplayBusyLook } from "../../shared/replay-busy-indicator.js";
-import {
-  _configureReplayCommandGate,
-  _resetReplayCommandGate,
-  getReplayGateRecord,
-  getReplayGateView,
-  isReplayMoveUnderWay,
-  pressReplayCommand,
-  type ReplayGateNotice,
-  subscribeReplayGate,
-} from "../../shared/replay-command-gate.js";
+import { deckReplayEngine } from "../../shared/replay-engine-deck.test-support.js";
 import type { ReplayDialModeIo, ReplaySpeed } from "./replay-control-dial-mode.js";
 import { REPLAY_DIAL_MODES, ReplayControlDialSettings } from "./replay-control-dial-settings.js";
 import {
@@ -51,7 +51,6 @@ import { lapMode } from "./replay-control-lap-mode.js";
 import { sessionMode } from "./replay-control-session-mode.js";
 import { speedMode } from "./replay-control-speed-mode.js";
 import { _resetTrackOrderTap, trackOrderMode } from "./replay-control-track-order-mode.js";
-import type { RecordStepSource } from "./replay-record-step.js";
 
 /**
  * The paced search (#801) is another module's, and its runner is not under
@@ -68,7 +67,8 @@ const queue = vi.hoisted(() => ({
   speedListeners: new Set<(speed: { speed: number; slowMotion: boolean }) => void>(),
 }));
 
-vi.mock("./replay-search-queue.js", () => ({
+vi.mock("@iracedeck/replay-engine", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@iracedeck/replay-engine")>()),
   queueReplaySearch: (turn: { target: string; ticks: number; origin: string; owner: string }) => {
     queue.onTurn?.();
     queue.turns.push(turn);
@@ -122,6 +122,17 @@ vi.mock("@iracedeck/deck-iracing", () => ({
     },
   }),
 }));
+
+/**
+ * The engine as plugin-runtime wires it, over this file's deck-iracing mocks
+ * (#1467); `extra` replaces a read or the replay for a case. It is called
+ * wherever the gate is reset, as the gate's own reset restored its env.
+ */
+function configureEngine(extra: Parameters<typeof _configureReplayEngine>[0] = {}): void {
+  _configureReplayEngine({ ...deckReplayEngine, ...extra });
+}
+
+configureEngine();
 
 vi.mock("@iracedeck/deck-core", async () => {
   // deck-core's dial-gesture and icon-update-throttle modules, reached by PATH
@@ -384,7 +395,7 @@ describe("ReplayControlDialSurface", () => {
     _resetReplayPositionState();
     _resetReplayCommandGate();
     // The gate reads the same replay the surface does (#1430).
-    _configureReplayCommandGate({ readTelemetry: () => env.telemetry, inReplay: () => env.inReplay });
+    configureEngine({ readTelemetry: () => env.telemetry, inReplay: () => env.inReplay });
     env.inReplay = true;
     env.telemetry = replayAt(speed(1));
     env.sessionInfo = null;
@@ -3739,7 +3750,7 @@ describe("ReplayControlDialSurface — the busy look (#1437)", () => {
     _resetReplaySpeedState();
     _resetReplayPositionState();
     _resetReplayCommandGate();
-    _configureReplayCommandGate({ readTelemetry: () => env.telemetry, inReplay: () => env.inReplay });
+    configureEngine({ readTelemetry: () => env.telemetry, inReplay: () => env.inReplay });
     env.inReplay = true;
     env.telemetry = replayAt(speed(1));
     mocks.thresholdMs.value = 500;

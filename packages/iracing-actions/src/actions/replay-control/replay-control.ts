@@ -65,28 +65,46 @@ import {
   replaySpeedFromTelemetry,
   type TelemetryData,
 } from "@iracedeck/iracing-sdk";
-import type { ILogger } from "@iracedeck/logger";
 import {
   acceptsGreenFallbackLanding,
+  applyReplayJumpPlayback,
+  beginReplayJump,
   cancelReplayCursorOwner,
   cancelReplayCursorOwnerIf,
+  describeReplayJump,
+  findRecordStep,
   formatSpeedDisplay,
   greenApproachFrame,
   type GreenFlagTarget,
   halvingProbeFrames,
   isRaceStartUnavailable,
   lastListedSessionNum,
+  noteReplayJumpLanded,
   noteTelemetrySpeed,
+  observeIncidentSearch,
   parseSpeedSetting,
+  pressReplayCommand,
   readFastestLapSearchDelayMs,
+  RECORD_STEPS,
+  type RecordStepMode,
+  type RecordStepSource,
   type ReplayCursorClaim,
+  type ReplayGateCommand,
+  type ReplayJump,
+  type ReplayJumpApplied,
+  type ReplayJumpOutcome,
+  type ReplayPressResult,
   replaySeekWaitMs,
   resolveGreenFallbackCar,
   resolveGreenFlagTarget,
   resolvePoleCarIdx,
+  resolveReplayWalkStart,
+  runReplayJump,
   seekReplayFrame,
+  sendOwnedReplayCommand,
   STABILIZATION_POLL_INTERVAL_MS,
   STABILIZATION_TIMEOUT_MULTIPLIER,
+  waitForReplayJumpsToSettle,
 } from "@iracedeck/replay-engine";
 import {
   getReplaySessionStore,
@@ -109,31 +127,9 @@ import {
   reportReplayPressIgnored,
 } from "../../shared/replay-busy-indicator.js";
 import { replayBusyKeyMark, replayBusyMarkKey } from "../../shared/replay-busy-mark.js";
-import {
-  pressReplayCommand,
-  type ReplayGateCommand,
-  type ReplayPressResult,
-  sendOwnedReplayCommand,
-  setReplayCommandGateLogger,
-  waitForReplayJumpsToSettle,
-} from "../../shared/replay-command-gate.js";
-import {
-  applyReplayJumpPlayback,
-  beginReplayJump,
-  describeReplayJump,
-  noteReplayJumpLanded,
-  type ReplayJump,
-  type ReplayJumpApplied,
-  type ReplayJumpOutcome,
-  runReplayJump,
-} from "../../shared/replay-jump-playback.js";
-import { resolveReplayWalkStart } from "../../shared/replay-record-walk.js";
 import { unavailableLook } from "../../shared/unavailable-look.js";
 import { replayControlDialField } from "./replay-control-dial-settings.js";
 import { ReplayControlDialSurface } from "./replay-control-dial-surface.js";
-import { observeIncidentSearch } from "./replay-incident-observer.js";
-import { findRecordStep, RECORD_STEPS, type RecordStepMode, type RecordStepSource } from "./replay-record-step.js";
-import { setReplaySearchQueueLogger } from "./replay-search-queue.js";
 
 // The speed text helpers moved to their own module so the dial surface shares
 // them (#1316); re-exported so this module's API is unchanged.
@@ -1083,16 +1079,6 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
    * one reference and stops.
    */
   private raceStartShown = new Map<string, { sessionInfo: unknown; unavailable: boolean }>();
-
-  constructor(logger?: ILogger) {
-    super(logger);
-    // Every replay command this action sends goes through the one gate
-    // (#1430), whose own lines (a press held behind a jump, one dropped) go
-    // to a scope of this action's log.
-    setReplayCommandGateLogger(this.logger.createScope("ReplayGate"));
-    // The dial's paced search (#801) logs to a scope of its own beside it.
-    setReplaySearchQueueLogger(this.logger.createScope("ReplaySearch"));
-  }
 
   override async onWillAppear(ev: IDeckWillAppearEvent<ReplayControlSettings>): Promise<void> {
     await super.onWillAppear(ev);

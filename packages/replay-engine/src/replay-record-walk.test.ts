@@ -1,10 +1,12 @@
 import { REPLAY_EXIT_GRACE_MS, type TelemetryData } from "@iracedeck/iracing-sdk";
-import { _resetReplayCursor, _resetReplayPositionState, pendingReplayTarget } from "@iracedeck/replay-engine";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { _configureReplayCommandGate, _resetReplayCommandGate, pressReplayCommand } from "./replay-command-gate.js";
+import { _resetReplayCommandGate, pressReplayCommand } from "./replay-command-gate.js";
 import { fakeReplay, type FakeReplay } from "./replay-command-gate.test-support.js";
+import { _resetReplayCursor } from "./replay-cursor.js";
+import { _configureReplayEngine } from "./replay-engine-env.js";
 import { beginReplayJump, runReplayJump } from "./replay-jump-playback.js";
+import { _resetReplayPositionState, pendingReplayTarget } from "./replay-position-state.js";
 import {
   recordedIndexAt,
   type RecordedSpanRule,
@@ -14,21 +16,6 @@ import {
   walkRecordedEntries,
   walkRecordedIndex,
 } from "./replay-record-walk.js";
-
-const { mockGetGlobalSettings } = vi.hoisted(() => ({
-  mockGetGlobalSettings: vi.fn((): Record<string, unknown> => ({})),
-}));
-
-vi.mock("@iracedeck/settings", () => ({ getGlobalSettings: mockGetGlobalSettings }));
-
-vi.mock("@iracedeck/deck-iracing", () => ({
-  getCommands: vi.fn(() => {
-    throw new Error("the walk's tests send through the fake replay");
-  }),
-  getController: vi.fn(() => {
-    throw new Error("the walk's tests read the fake replay");
-  }),
-}));
 
 describe("stepRecordedFrames", () => {
   const list = [1_000, 2_000, 3_000, 4_000];
@@ -189,9 +176,8 @@ describe("the anchor and the cursor", () => {
     _resetReplayCommandGate();
     _resetReplayCursor();
     _resetReplayPositionState();
-    mockGetGlobalSettings.mockReturnValue({});
     sim = fakeReplay({ frame: 100_000 });
-    _configureReplayCommandGate({
+    _configureReplayEngine({
       replay: () => sim.replay,
       readTelemetry: () => sim.telemetry(),
       inReplay: () => true,

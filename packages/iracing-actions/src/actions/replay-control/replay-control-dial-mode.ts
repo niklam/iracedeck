@@ -15,13 +15,18 @@
  */
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
-import type { ReplayPosition, ReplaySpeed } from "@iracedeck/replay-engine";
+import {
+  type RecordStepResult,
+  type RecordStepSource,
+  type RecordStepSpec,
+  type ReplayPosition,
+  type ReplaySearchTarget,
+  type ReplaySettledOutcome,
+  type ReplaySpeed,
+} from "@iracedeck/replay-engine";
 
 import type { DialNeighbours, DialSideMarks } from "../../shared/dial-box.js";
-import type { ReplaySettledOutcome } from "../../shared/replay-command-gate.js";
 import type { ReplayControlDialSettings } from "./replay-control-dial-settings.js";
-import type { RecordStepResult, RecordStepSource, RecordStepSpec } from "./replay-record-step.js";
-import type { ReplaySearchTarget } from "./replay-search-queue.js";
 
 /**
  * A replay speed in the shape `setPlaySpeed(speed, slowMotion)` takes: the

@@ -11,7 +11,7 @@
 import type { ReplayPosMode, SDKController, TelemetryData } from "@iracedeck/iracing-sdk";
 import { type ILogger, silentLogger } from "@iracedeck/logger";
 
-/** The replay commands the gate sends; `getCommands().replay` is one. */
+/** The replay commands the gate sends; the `replay` of deck-iracing's `getCommands()` is one. */
 export interface ReplayCommandSurface {
   setPlaySpeed(speed: number, slowMotion?: boolean): boolean;
   setPlayPosition(mode: ReplayPosMode, frameNumber: number): boolean;

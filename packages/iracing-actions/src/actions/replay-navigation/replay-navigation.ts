@@ -27,10 +27,9 @@ import prevSessionIcon from "@iracedeck/icons/replay-navigation/prev-session.svg
 import searchSessionTimeIcon from "@iracedeck/icons/replay-navigation/search-session-time.svg";
 import setPlayPositionIcon from "@iracedeck/icons/replay-navigation/set-play-position.svg";
 import { type ReplayCommand } from "@iracedeck/iracing-sdk";
+import { pressReplayCommand, type ReplayGateCommand } from "@iracedeck/replay-engine";
 import { getGlobalColors } from "@iracedeck/settings";
 import z from "zod";
-
-import { pressReplayCommand, type ReplayGateCommand } from "../../shared/replay-command-gate.js";
 
 type NavigationAction =
   | "next-session"

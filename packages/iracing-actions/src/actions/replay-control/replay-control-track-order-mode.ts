@@ -56,12 +56,12 @@ import {
   getCarNumberFromSessionInfo,
   type TelemetryData,
 } from "@iracedeck/iracing-sdk";
+import { NO_CAR_IDX } from "@iracedeck/replay-engine";
 
 import { CAR_CYCLE_BINDING_KEY_LIST, CAR_CYCLE_BINDING_KEYS } from "../../shared/car-cycle-bindings.js";
 import type { DialNeighbours } from "../../shared/dial-box.js";
 import { carArraysTrusted } from "./replay-car-arrays.js";
 import type { ReplayDialMode, ReplayDialStepIo } from "./replay-control-dial-mode.js";
-import { NO_CAR_IDX } from "./replay-record-step.js";
 
 /**
  * Each session info's car numbers by carIdx, built once per session-info

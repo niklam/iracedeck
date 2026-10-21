@@ -18,10 +18,9 @@ import {
 import decreaseIconSvg from "@iracedeck/icons/replay-speed/decrease.svg";
 import increaseIconSvg from "@iracedeck/icons/replay-speed/increase.svg";
 import { type ReplayCommand } from "@iracedeck/iracing-sdk";
+import { pressReplayCommand, type ReplayGateCommand } from "@iracedeck/replay-engine";
 import { getGlobalColors } from "@iracedeck/settings";
 import z from "zod";
-
-import { pressReplayCommand, type ReplayGateCommand } from "../../shared/replay-command-gate.js";
 
 type SpeedDirection = "increase" | "decrease";
 

@@ -4,17 +4,6 @@ import { describe, expect, it, vi } from "vitest";
 
 import { nearestIncident, observeIncidentSearch } from "./replay-incident-observer.js";
 
-vi.mock("@iracedeck/settings", () => ({ getGlobalSettings: vi.fn(() => ({})) }));
-
-vi.mock("@iracedeck/deck-iracing", () => ({
-  getCommands: vi.fn(() => {
-    throw new Error("the observer sends nothing");
-  }),
-  getController: vi.fn(() => {
-    throw new Error("the observer reads through its host");
-  }),
-}));
-
 function incident(frame: number, carIdx: number): ReplayIncident {
   return {
     frame,
@@ -77,7 +66,7 @@ describe("observeIncidentSearch on a search that landed", () => {
     vi.useFakeTimers();
 
     try {
-      const gate = await import("../../shared/replay-command-gate.js");
+      const gate = await import("./replay-command-gate.js");
       const landing = vi.spyOn(gate, "waitForReplaySearchLanding").mockResolvedValue("landed");
       // Raw, 1100 is nearest the landing at 1080; corrected by the lag, 1000 is (1059 against 1159).
       const host = {

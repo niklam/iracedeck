@@ -5,18 +5,9 @@
  * `replay-command-gate.test-support.ts`. The cases are the spec's "The jump
  * sequence" list under Testing.
  */
-import {
-  _configureReplayEngine,
-  _resetReplayCursor,
-  _resetReplayPositionState,
-  cancelReplayCursorOwner,
-  pendingReplayTarget,
-  planFrameMove,
-} from "@iracedeck/replay-engine";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  _configureReplayCommandGate,
   _resetReplayCommandGate,
   pressReplayCommand,
   readReplayPosition,
@@ -26,32 +17,22 @@ import {
   subscribeReplayGate,
 } from "./replay-command-gate.js";
 import { fakeReplay, type FakeReplay, type FakeReplayOptions } from "./replay-command-gate.test-support.js";
+import { _resetReplayCursor, cancelReplayCursorOwner } from "./replay-cursor.js";
+import { _configureReplayEngine } from "./replay-engine-env.js";
+import { planFrameMove } from "./replay-frame-move.js";
 import { beginReplayJump, type ReplayJumpOutcome, runReplayJump } from "./replay-jump-playback.js";
+import { _resetReplayPositionState, pendingReplayTarget } from "./replay-position-state.js";
 
-const { mockGetGlobalSettings } = vi.hoisted(() => ({
-  mockGetGlobalSettings: vi.fn((): Record<string, unknown> => ({})),
-}));
+/** The replay settings the cases set, read by the engine through its env (#1467). */
+const mockSettings = vi.fn((): Record<string, unknown> => ({}));
 
-vi.mock("@iracedeck/settings", () => ({ getGlobalSettings: mockGetGlobalSettings }));
+const engineSetting = (key: string): unknown => (mockSettings() as Record<string, unknown> | undefined)?.[key];
 
-// The engine reads the two replay settings through its env (#1467); read them from the settings mock the cases set.
-const engineSetting = (key: string): unknown => (mockGetGlobalSettings() as Record<string, unknown> | undefined)?.[key];
-
-_configureReplayEngine({
-  settings: {
-    replayJumpPlayback: () => engineSetting("replayJumpPlayback"),
-    fastestLapSearchDelayMs: () => engineSetting("fastestLapSearchDelayMs"),
-  },
-});
-
-vi.mock("@iracedeck/deck-iracing", () => ({
-  getCommands: vi.fn(() => {
-    throw new Error("these tests send through the fake replay");
-  }),
-  getController: vi.fn(() => {
-    throw new Error("these tests read the fake replay");
-  }),
-}));
+// Every `_configureReplayEngine` call here passes these: each call starts from the unconfigured engine.
+const engineSettings = {
+  replayJumpPlayback: () => engineSetting("replayJumpPlayback"),
+  fastestLapSearchDelayMs: () => engineSetting("fastestLapSearchDelayMs"),
+};
 
 const PLAY = { kind: "speed", speed: 1, slowMotion: false } as const;
 const PLAYING = { speed: 1, slowMotion: false } as const;
@@ -60,7 +41,8 @@ let sim: FakeReplay;
 
 function setUp(options: FakeReplayOptions = {}): FakeReplay {
   sim = fakeReplay({ frame: 2_000, ...options });
-  _configureReplayCommandGate({
+  _configureReplayEngine({
+    settings: engineSettings,
     replay: () => sim.replay,
     readTelemetry: () => sim.telemetry(),
     inReplay: () => true,
@@ -72,7 +54,7 @@ function setUp(options: FakeReplayOptions = {}): FakeReplay {
 }
 
 function setting(mode: "remember" | "play" | "stopped"): void {
-  mockGetGlobalSettings.mockReturnValue({ replayJumpPlayback: mode });
+  mockSettings.mockReturnValue({ replayJumpPlayback: mode });
 }
 
 /** A marker press: the shared jump sequence to `frame`, ended in its own `finally`. */
@@ -127,6 +109,7 @@ describe("the jump sequence and the other senders (#1430)", () => {
     _resetReplayCommandGate();
     _resetReplayCursor();
     _resetReplayPositionState();
+    _configureReplayEngine({ settings: engineSettings });
     setting("remember");
   });
 

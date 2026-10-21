@@ -1,0 +1,22 @@
+/**
+ * One reset for the whole engine (#1467), for `iracing-actions`' tests: every
+ * engine module's state, then the env. A module that keeps state adds its
+ * reset here.
+ */
+import { _resetReplayCommandGate } from "./replay-command-gate.js";
+import { _resetReplayCursor } from "./replay-cursor.js";
+import { _resetReplayEngineEnv } from "./replay-engine-env.js";
+import { _resetReplayPositionState } from "./replay-position-state.js";
+import { _resetReplaySearchQueue } from "./replay-search-queue.js";
+import { _resetReplaySpeedState } from "./replay-speed-state.js";
+
+/** @internal For tests: back to an unconfigured engine with nothing under way. */
+export function _resetReplayEngine(): void {
+  // The queue first: ending its run ends the run's jump through the gate.
+  _resetReplaySearchQueue();
+  _resetReplayCommandGate();
+  _resetReplayCursor();
+  _resetReplayPositionState();
+  _resetReplaySpeedState();
+  _resetReplayEngineEnv();
+}

@@ -1,16 +1,7 @@
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
-import {
-  _configureReplayEngine,
-  _resetReplayCursor,
-  _resetReplayPositionState,
-  claimReplayCursor,
-  pendingReplayTarget,
-  replayTargetGiveUpMs,
-} from "@iracedeck/replay-engine";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  _configureReplayCommandGate,
   _resetReplayCommandGate,
   getReplayGateRecord,
   getReplayGateView,
@@ -27,32 +18,21 @@ import {
 } from "./replay-command-gate.js";
 import { closeReplayJump, openReplayJump } from "./replay-command-gate.js";
 import { fakeReplay, type FakeReplay, type FakeReplayOptions } from "./replay-command-gate.test-support.js";
+import { _resetReplayCursor, claimReplayCursor } from "./replay-cursor.js";
+import { _configureReplayEngine } from "./replay-engine-env.js";
 import { beginReplayJump, runReplayJump } from "./replay-jump-playback.js";
+import { _resetReplayPositionState, pendingReplayTarget, replayTargetGiveUpMs } from "./replay-position-state.js";
 
-const { mockGetGlobalSettings } = vi.hoisted(() => ({
-  mockGetGlobalSettings: vi.fn((): Record<string, unknown> => ({})),
-}));
+/** The replay settings the cases set, read by the engine through its env (#1467). */
+const mockSettings = vi.fn((): Record<string, unknown> => ({}));
 
-vi.mock("@iracedeck/settings", () => ({ getGlobalSettings: mockGetGlobalSettings }));
+const engineSetting = (key: string): unknown => (mockSettings() as Record<string, unknown> | undefined)?.[key];
 
-// The engine reads the two replay settings through its env (#1467); read them from the settings mock the cases set.
-const engineSetting = (key: string): unknown => (mockGetGlobalSettings() as Record<string, unknown> | undefined)?.[key];
-
-_configureReplayEngine({
-  settings: {
-    replayJumpPlayback: () => engineSetting("replayJumpPlayback"),
-    fastestLapSearchDelayMs: () => engineSetting("fastestLapSearchDelayMs"),
-  },
-});
-
-vi.mock("@iracedeck/deck-iracing", () => ({
-  getCommands: vi.fn(() => {
-    throw new Error("the gate's tests send through the fake replay");
-  }),
-  getController: vi.fn(() => {
-    throw new Error("the gate's tests read the fake replay");
-  }),
-}));
+// Every `_configureReplayEngine` call here passes these: each call starts from the unconfigured engine.
+const engineSettings = {
+  replayJumpPlayback: () => engineSetting("replayJumpPlayback"),
+  fastestLapSearchDelayMs: () => engineSetting("fastestLapSearchDelayMs"),
+};
 
 /** Six hours of recording. */
 const SIX_HOURS = 1_296_000;
@@ -66,7 +46,8 @@ let connected: boolean;
 
 function setUp(options: FakeReplayOptions = {}): FakeReplay {
   sim = fakeReplay(options);
-  _configureReplayCommandGate({
+  _configureReplayEngine({
+    settings: engineSettings,
     replay: () => sim.replay,
     readTelemetry: () => sim.telemetry(),
     inReplay: () => inReplay,
@@ -97,7 +78,8 @@ describe("replay command gate", () => {
     _resetReplayCommandGate();
     _resetReplayCursor();
     _resetReplayPositionState();
-    mockGetGlobalSettings.mockReturnValue({});
+    _configureReplayEngine({ settings: engineSettings });
+    mockSettings.mockReturnValue({});
     inReplay = true;
     connected = true;
   });
@@ -707,7 +689,8 @@ describe("replay command gate", () => {
       const leftForLive = vi.fn();
 
       setUp({ frame: 2_000, searches: { nextLap: (from) => from + 6_000 } });
-      _configureReplayCommandGate({
+      _configureReplayEngine({
+        settings: engineSettings,
         replay: () => sim.replay,
         readTelemetry: () => sim.telemetry(),
         inReplay: () => inReplay,
@@ -880,7 +863,7 @@ describe("replay command gate", () => {
     }
 
     it("captures the speed a replay jump holding the cursor captured, not the paused speed its search went out at", async () => {
-      mockGetGlobalSettings.mockReturnValue({ replayJumpPlayback: "remember" });
+      mockSettings.mockReturnValue({ replayJumpPlayback: "remember" });
       setUp({ frame: 2_000, speed: TWO_X, searches: { nextLap: (from) => from + 60_000 } });
 
       // The dial's paced search runner: a replay jump that pauses the replay and sends its search.
@@ -909,7 +892,7 @@ describe("replay command gate", () => {
     });
 
     it("captures the speed a key's search went out at, slow motion included", async () => {
-      mockGetGlobalSettings.mockReturnValue({ replayJumpPlayback: "remember" });
+      mockSettings.mockReturnValue({ replayJumpPlayback: "remember" });
       setUp({ frame: 2_000, speed: QUARTER, searches: { nextLap: (from) => from + 60_000 } });
 
       press({ kind: "search", search: "nextLap" }, "key-next");

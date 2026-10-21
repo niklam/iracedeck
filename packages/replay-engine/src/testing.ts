@@ -9,3 +9,9 @@ export {
   stageReplayCursorProbe,
 } from "./replay-cursor.test-support.js";
 export { type SteppedReplayState, steppedReplayState, withSteppedReplayState } from "./replay-state.test-support.js";
+export {
+  fakeReplay,
+  type FakeReplay,
+  type FakeReplayOptions,
+  THROWN_OFFSET,
+} from "./replay-command-gate.test-support.js";

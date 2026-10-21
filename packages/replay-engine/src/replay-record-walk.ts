@@ -52,7 +52,7 @@ export interface ReplayWalkStep {
 
 /**
  * The frame a walk is measured from: the replay's one pending target
- * (`shared/replay-position-state.ts`, #1430) while it stands, else
+ * (`replay-position-state.ts`, #1430) while it stands, else
  * `liveFrame`. A jump records its frame as the target at the press, before
  * the pause it sends a moving replay, so a second press or a detent in that
  * window steps on from it rather than sending the same entry again; and the

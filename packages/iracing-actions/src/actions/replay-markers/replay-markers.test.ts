@@ -1,6 +1,7 @@
 import { ReplayPosMode, replaySpeedToSdk, type TelemetryData } from "@iracedeck/iracing-sdk";
 import {
   _configureReplayEngine,
+  _resetReplayCommandGate,
   _resetReplayCursor,
   _resetReplayPositionState,
   cancelReplayCursorOwner,
@@ -12,7 +13,7 @@ import {
 import { withSteppedReplayState } from "@iracedeck/replay-engine/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { _configureReplayCommandGate, _resetReplayCommandGate } from "../../shared/replay-command-gate.js";
+import { deckReplayEngine } from "../../shared/replay-engine-deck.test-support.js";
 import { REPLAY_EXIT_GRACE_MS } from "./replay-markers-ops.js";
 import {
   buildMarker,
@@ -183,12 +184,22 @@ vi.mock("@iracedeck/settings", () => ({
 const engineSetting = (key: string): unknown =>
   (mocks.getGlobalSettings() as Record<string, unknown> | undefined)?.[key];
 
-_configureReplayEngine({
-  settings: {
-    replayJumpPlayback: () => engineSetting("replayJumpPlayback"),
-    fastestLapSearchDelayMs: () => engineSetting("fastestLapSearchDelayMs"),
-  },
-});
+// Every `_configureReplayEngine` call here passes these: each call starts from the unconfigured engine.
+const engineSettings = {
+  replayJumpPlayback: () => engineSetting("replayJumpPlayback"),
+  fastestLapSearchDelayMs: () => engineSetting("fastestLapSearchDelayMs"),
+};
+
+/**
+ * The engine as plugin-runtime wires it, over this file's deck-iracing mocks
+ * (#1467); `extra` replaces a read or the replay for a case. It is called
+ * wherever the gate is reset, as the gate's own reset restored its env.
+ */
+function configureEngine(extra: Parameters<typeof _configureReplayEngine>[0] = {}): void {
+  _configureReplayEngine({ ...deckReplayEngine, settings: engineSettings, ...extra });
+}
+
+configureEngine();
 
 type Sdk = {
   subscribe: ReturnType<typeof vi.fn>;
@@ -316,7 +327,7 @@ function makeAction(telemetry: TelemetryData | null = LIVE, subSessionId: unknow
   const controller = withSteppedReplayState(action["sdkController"]);
 
   // The replay command gate (#1430) reads the replay this action reads.
-  _configureReplayCommandGate({
+  configureEngine({
     readTelemetry: () => controller.getCurrentTelemetry(),
     inReplay: () => controller.getReplayState().inReplay,
     connected: () => controller.getConnectionStatus(),
@@ -348,6 +359,7 @@ describe("ReplayMarkers", () => {
     mocks.getGlobalSettings.mockReturnValue({});
     _resetReplayCursor();
     _resetReplayCommandGate();
+    configureEngine();
     _resetReplayPositionState();
     busy.looks.clear();
     busy.surfaces.clear();
@@ -356,6 +368,7 @@ describe("ReplayMarkers", () => {
 
   afterEach(() => {
     _resetReplayCommandGate();
+    configureEngine();
     vi.useRealTimers();
   });
 
@@ -1410,12 +1423,14 @@ describe("ReplayMarkers on a dial (#1230)", () => {
     mocks.getGlobalSettings.mockReturnValue({});
     _resetReplayCursor();
     _resetReplayCommandGate();
+    configureEngine();
     _resetReplayPositionState();
     vi.useFakeTimers();
   });
 
   afterEach(() => {
     _resetReplayCommandGate();
+    configureEngine();
     vi.useRealTimers();
   });
 

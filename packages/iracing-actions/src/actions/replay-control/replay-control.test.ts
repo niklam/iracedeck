@@ -11,17 +11,26 @@ import {
 } from "@iracedeck/iracing-sdk";
 import {
   _configureReplayEngine,
+  _resetReplayCommandGate,
   _resetReplayCursor,
   _resetReplayPositionState,
   _resetReplaySpeedState,
+  beginReplayJump,
   cancelReplayCursorOwner,
   claimReplayCursor,
+  getReplayGateRecord,
+  getReplayGateView,
   noteDialSpeedSent,
   pendingReplayTarget,
+  pressReplayCommand,
   rememberedSpeed,
+  type ReplayGateFactEnd,
+  type ReplayGateNotice,
   resolveLiveSpeed,
+  runReplayJump,
+  subscribeReplayGate,
 } from "@iracedeck/replay-engine";
-import { withSteppedReplayState } from "@iracedeck/replay-engine/testing";
+import { type FakeReplay, fakeReplay, withSteppedReplayState } from "@iracedeck/replay-engine/testing";
 import {
   getReplaySessionStore,
   type IncidentListing,
@@ -35,18 +44,7 @@ import {
 import { getGlobalSettings } from "@iracedeck/settings";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
-import {
-  _configureReplayCommandGate,
-  _resetReplayCommandGate,
-  getReplayGateRecord,
-  getReplayGateView,
-  pressReplayCommand,
-  type ReplayGateFactEnd,
-  type ReplayGateNotice,
-  subscribeReplayGate,
-} from "../../shared/replay-command-gate.js";
-import { type FakeReplay, fakeReplay } from "../../shared/replay-command-gate.test-support.js";
-import { beginReplayJump, runReplayJump } from "../../shared/replay-jump-playback.js";
+import { deckReplayEngine } from "../../shared/replay-engine-deck.test-support.js";
 import { ReplayControlDialSettings } from "./replay-control-dial-settings.js";
 import type { ReplayControlDialHost } from "./replay-control-dial-surface.js";
 import {
@@ -382,12 +380,22 @@ vi.mock("@iracedeck/settings", () => ({
 const engineSetting = (key: string): unknown =>
   (vi.mocked(getGlobalSettings)() as Record<string, unknown> | undefined)?.[key];
 
-_configureReplayEngine({
-  settings: {
-    replayJumpPlayback: () => engineSetting("replayJumpPlayback"),
-    fastestLapSearchDelayMs: () => engineSetting("fastestLapSearchDelayMs"),
-  },
-});
+// Every `_configureReplayEngine` call here passes these: each call starts from the unconfigured engine.
+const engineSettings = {
+  replayJumpPlayback: () => engineSetting("replayJumpPlayback"),
+  fastestLapSearchDelayMs: () => engineSetting("fastestLapSearchDelayMs"),
+};
+
+/**
+ * The engine as plugin-runtime wires it, over this file's deck-iracing mocks
+ * (#1467); `extra` replaces a read or the replay for a case. It is called
+ * wherever the gate is reset, as the gate's own reset restored its env.
+ */
+function configureEngine(extra: Parameters<typeof _configureReplayEngine>[0] = {}): void {
+  _configureReplayEngine({ ...deckReplayEngine, settings: engineSettings, ...extra });
+}
+
+configureEngine();
 
 /**
  * Runs the fake clock until a press has done all it will, for a test whose
@@ -405,6 +413,7 @@ describe("ReplayControl", () => {
     // The replay command gate (#1430) and the target it records are module
     // state every press reaches: each test starts with nothing under way.
     _resetReplayCommandGate();
+    configureEngine();
     _resetReplayPositionState();
     busy.looks.clear();
     busy.surfaces.clear();
@@ -414,6 +423,7 @@ describe("ReplayControl", () => {
     // And ends with nothing under way: a test on real timers that leaves the
     // gate polling would otherwise have its timer fire in a later test.
     _resetReplayCommandGate();
+    configureEngine();
     _resetReplayPositionState();
   });
 
@@ -2323,7 +2333,7 @@ describe("ReplayControl", () => {
       action = new ReplayControl();
       // The replay command gate (#1430) reads the replay the buffers simulate,
       // so the jumps a press sends read back and nothing stands after a walk.
-      _configureReplayCommandGate({
+      configureEngine({
         readTelemetry: () => action["sdkController"].getCurrentTelemetry(),
         inReplay: () => true,
       });
@@ -5607,7 +5617,7 @@ describe("ReplayControl", () => {
     beforeEach(async () => {
       vi.useFakeTimers();
       sim = fakeReplay({ frame: 100_000, searches: { nextLap: (from) => from + LAP_FRAMES } });
-      _configureReplayCommandGate({
+      configureEngine({
         replay: () => sim.replay,
         readTelemetry: () => sim.telemetry(),
         inReplay: () => true,
@@ -5855,7 +5865,7 @@ describe("ReplayControl", () => {
 
     function setUp(options: Parameters<typeof fakeReplay>[0] = {}): void {
       sim = fakeReplay({ frame: START, ...options });
-      _configureReplayCommandGate({
+      configureEngine({
         replay: () => sim.replay,
         readTelemetry: telemetry,
         inReplay: () => true,

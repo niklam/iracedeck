@@ -16,14 +16,13 @@
  * Spec: docs/superpowers/specs/2026-10-13-issue-1437-replay-key-busy-look.md.
  */
 import { type ILogger, silentLogger } from "@iracedeck/logger";
-
 import {
   getReplayGateView,
   type ReplayGateEndReason,
   type ReplayGateFactEnd,
   type ReplayGateNotice,
   subscribeReplayGate,
-} from "./replay-command-gate.js";
+} from "@iracedeck/replay-engine";
 
 /** How often a spinning surface steps (ms): eight frames a second, eight frames to a turn. */
 export const REPLAY_BUSY_FRAME_MS = 125;

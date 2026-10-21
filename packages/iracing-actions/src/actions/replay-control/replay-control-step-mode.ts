@@ -16,12 +16,17 @@
  * is working for the same target: the cursor is between searches, with no
  * landing to step from.
  */
-import type { ReplayPosition } from "@iracedeck/replay-engine";
+import {
+  listRecord,
+  type RecordListing,
+  type RecordStepSpec,
+  type ReplayPosition,
+  type ReplaySearchTarget,
+  stepRecordListing,
+} from "@iracedeck/replay-engine";
 
 import type { DialSideMarks } from "../../shared/dial-box.js";
 import type { ReplayDialMode, ReplayDialStepIo } from "./replay-control-dial-mode.js";
-import { listRecord, type RecordListing, type RecordStepSpec, stepRecordListing } from "./replay-record-step.js";
-import type { ReplaySearchTarget } from "./replay-search-queue.js";
 
 /**
  * @internal Exported for testing

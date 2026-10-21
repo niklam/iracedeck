@@ -19,26 +19,23 @@
 import { REPLAY_EXIT_GRACE_MS, type ReplayState, type TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 import {
+  beginReplayJump,
+  describeReplayJump,
+  recordedIndexAt,
+  type ReplayJumpOutcome,
+  type ReplayWalkDirection,
+  resolveReplayWalkAnchor,
+  runReplayJump,
+  walkRecordedEntries,
+  walkRecordedIndex,
+} from "@iracedeck/replay-engine";
+import {
   MARKER_DEDUPE_FRAMES,
   MARKER_DELETE_WINDOW_FRAMES,
   type ReplayMarker,
   type ReplaySessionStore,
   type SubSessionScoped,
 } from "@iracedeck/replay-store";
-
-import {
-  beginReplayJump,
-  describeReplayJump,
-  type ReplayJumpOutcome,
-  runReplayJump,
-} from "../../shared/replay-jump-playback.js";
-import {
-  recordedIndexAt,
-  type ReplayWalkDirection,
-  resolveReplayWalkAnchor,
-  walkRecordedEntries,
-  walkRecordedIndex,
-} from "../../shared/replay-record-walk.js";
 
 /** Replay frames per second — the recording's fixed rate. */
 const FRAMES_PER_SECOND = 60;

@@ -13,7 +13,7 @@
  *   {@link SESSION_START_LANDING_FRAMES} after it, so the cursor reads the new
  *   session and a second press does not find the same start again.
  *
- * The step itself is the shared walk (`shared/replay-record-walk.ts`), told
+ * The step itself is the shared walk (`replay-record-walk.ts`), told
  * where each list's record has gaps ({@link LAP_SPANS}, {@link sessionSpans})
  * so a step never crosses laps or a session the plugin did not record. Every
  * way the record cannot answer is a miss with a reason, and the caller then
@@ -29,13 +29,13 @@ import type {
   SubSessionScoped,
 } from "@iracedeck/replay-store";
 
-import type { ReplaySearchKind } from "../../shared/replay-command-gate.js";
+import type { ReplaySearchKind } from "./replay-command-gate.js";
 import {
   type RecordedEntry,
   type RecordedSpanRule,
   type ReplayWalkDirection,
   walkRecordedEntries,
-} from "../../shared/replay-record-walk.js";
+} from "./replay-record-walk.js";
 
 /**
  * Frames after a recorded session start a Next / Previous Session step lands

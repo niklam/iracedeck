@@ -56,62 +56,47 @@
  *
  * In memory only, and one gate for the whole plugin: iRacing has one replay.
  */
-import { getCommands, getController } from "@iracedeck/deck-iracing";
 import { ReplayPosMode, replaySpeedFromTelemetry, type TelemetryData } from "@iracedeck/iracing-sdk";
-import { type ILogger, silentLogger } from "@iracedeck/logger";
+import type { ILogger } from "@iracedeck/logger";
+
+import { now as engineNow, sleep } from "./engine-clock.js";
 import {
   cancelReplayCursorOwner,
   claimReplayCursor,
-  clearReplayTarget,
-  frameBeside,
-  isPaused,
-  isSameSpeed,
-  isSeeking,
-  markReplayTargetSent,
   onReplayCursorTaken,
   pendingReplayJumpSpeed,
+  type ReplayCursorClaim,
+} from "./replay-cursor.js";
+import { engineEnv, engineLogger, engineReads, type ReplayCommandSurface } from "./replay-engine-env.js";
+import { frameBeside, planFrameMove } from "./replay-frame-move.js";
+import { isSameSpeed, readReplayJumpPlayback, type ReplaySpeed, resolveReplayJumpSpeed } from "./replay-jump-speed.js";
+import {
+  clearReplayTarget,
+  markReplayTargetSent,
   pendingReplayTarget,
   pendingReplayTargetPosition,
-  planFrameMove,
-  readFastestLapSearchDelayMs,
-  readReplayJumpPlayback,
-  readReplayJumpTimeoutMs,
   recordReplayTarget,
-  REPLAY_JUMP_POLL_MS,
-  type ReplayCursorClaim,
   type ReplayPosition,
-  replaySeekWaitMs,
-  type ReplaySpeed,
   type ReplayTarget,
   replayTargetGiveUpMs,
-  resolveReplayJumpSpeed,
   resolveReplayPosition,
   settleReplayTarget,
+} from "./replay-position-state.js";
+import { isPaused, isSeeking, replaySeekWaitMs } from "./replay-seek.js";
+import {
+  HOLD_GAP_MS,
+  readFastestLapSearchDelayMs,
+  readReplayJumpTimeoutMs,
+  REPLAY_JUMP_POLL_MS,
   STABILIZATION_POLL_INTERVAL_MS,
   STABILIZATION_TIMEOUT_MULTIPLIER,
-} from "@iracedeck/replay-engine";
+} from "./replay-timing.js";
+
+export type { ReplayCommandSurface } from "./replay-engine-env.js";
 
 // ---------------------------------------------------------------------------
 // Commands
 // ---------------------------------------------------------------------------
-
-/** The replay commands the gate sends; `getCommands().replay` is one. */
-export interface ReplayCommandSurface {
-  setPlaySpeed(speed: number, slowMotion?: boolean): boolean;
-  setPlayPosition(mode: ReplayPosMode, frameNumber: number): boolean;
-  play(): boolean;
-  pause(): boolean;
-  nextFrame(): boolean;
-  prevFrame(): boolean;
-  goToStart(): boolean;
-  goToEnd(): boolean;
-  nextLap(): boolean;
-  prevLap(): boolean;
-  nextSession(): boolean;
-  prevSession(): boolean;
-  nextIncident(): boolean;
-  prevIncident(): boolean;
-}
 
 /** A lap, session or incident search. */
 export type ReplaySearchKind = "nextLap" | "prevLap" | "nextSession" | "prevSession" | "nextIncident" | "prevIncident";
@@ -172,67 +157,18 @@ export interface ReplayPressOptions {
 // The environment
 // ---------------------------------------------------------------------------
 
-/** What the gate reads and sends through; injectable for tests. */
-export interface ReplayGateEnv {
-  replay(): ReplayCommandSurface;
-  /** A fresh telemetry reading (a native read), or null. */
-  readTelemetry(): TelemetryData | null;
-  /** Whether a replay is on screen: the controller's debounced replay state (#1324). */
-  inReplay(): boolean;
-  /** Whether the SDK is connected to the sim. */
-  connected(): boolean;
-  /** Tells the debounced replay state that the plugin itself left the replay for live (#1324). */
-  leftForLive(): void;
-  now(): number;
-}
+// The gate reads, sends and keeps time through the engine's one env (#1467):
+// `engineReads()`, `engineEnv().replay()` — the gate is the only module that
+// calls it — and the engine clock.
 
-const defaultEnv: ReplayGateEnv = {
-  replay: () => getCommands().replay,
-  readTelemetry: () => {
-    try {
-      return getController().getCurrentTelemetry();
-    } catch {
-      return null;
-    }
-  },
-  inReplay: () => {
-    try {
-      return getController().getReplayState().inReplay;
-    } catch {
-      return false;
-    }
-  },
-  connected: () => {
-    try {
-      return getController().getConnectionStatus();
-    } catch {
-      return true;
-    }
-  },
-  leftForLive: () => {
-    try {
-      getController().noteReplayLeftForLive();
-    } catch {
-      // No controller: nothing reads the replay state either.
-    }
-  },
-  now: () => Date.now(),
-};
-
-let env: ReplayGateEnv = defaultEnv;
-let log: ILogger = silentLogger;
-
-/** The logger the gate's own lines go to. The replay actions set it once, at construction. */
-export function setReplayCommandGateLogger(logger: ILogger): void {
-  log = logger;
+/** The gate's own lines, under the engine logger's `ReplayGate` scope. */
+function log(): ILogger {
+  return engineLogger("ReplayGate");
 }
 
 // ---------------------------------------------------------------------------
 // Readings
 // ---------------------------------------------------------------------------
-
-/** How long apart two reads must be for a landing to count as held (ms). */
-const HOLD_GAP_MS = STABILIZATION_POLL_INTERVAL_MS;
 
 /** How many reads a search behind a jump waits for, the read-back included: the read-back form of the 100 ms that worked every time. */
 const SEARCH_BEHIND_JUMP_READS = 3;
@@ -650,7 +586,7 @@ function publish(): void {
       try {
         listener(notice);
       } catch (err) {
-        log.debug(`Replay gate listener failed: ${String(err)}`);
+        log().debug(`Replay gate listener failed: ${String(err)}`);
       }
     }
   }
@@ -664,9 +600,9 @@ function sendRaw(name: string, send: (replay: ReplayCommandSurface) => boolean):
   let ok = false;
 
   try {
-    ok = send(env.replay());
+    ok = send(engineEnv().replay());
   } catch (err) {
-    log.debug(`Replay command ${name} threw: ${String(err)}`);
+    log().debug(`Replay command ${name} threw: ${String(err)}`);
   }
 
   return ok;
@@ -839,7 +775,7 @@ function clearTarget(fate: TargetFate["kind"], reason: ReplayGateEndReason): voi
 function emptySlot(reason: ReplayGateEndReason, why?: string): void {
   if (slot === null) return;
 
-  if (why !== undefined) log.debug(`Replay command dropped: ${describe(slot.command)} (${slot.by}); ${why}`);
+  if (why !== undefined) log().debug(`Replay command dropped: ${describe(slot.command)} (${slot.by}); ${why}`);
 
   noteEnd(slot.origin, "waiting", reason);
   slot = null;
@@ -873,7 +809,7 @@ function dispatch(
       // A jump sent bare into a moving replay (an old profile's Set Play Position) runs past its frame,
       // so its target would never read back. The seek itself still shows, as the witness.
       if (currentSpeed(reading, now).speed !== 0 && !pausedForJumpUnderWay(null, telemetry)) {
-        log.debug(`Replay jump to frame ${command.frame} sent into a moving replay; no target recorded`);
+        log().debug(`Replay jump to frame ${command.frame} sent into a moving replay; no target recorded`);
 
         return true;
       }
@@ -973,7 +909,7 @@ function settle(telemetry: TelemetryData | null, now: number): void {
 
   if (reading !== null) lastReplay = reading;
 
-  witness = isSeeking(telemetry) && env.inReplay();
+  witness = isSeeking(telemetry) && engineReads().inReplay();
 
   settleOwedSeek(telemetry, now);
   settleTarget(telemetry, now);
@@ -992,10 +928,10 @@ function settle(telemetry: TelemetryData | null, now: number): void {
   ) {
     search.onItsWay = false;
     noteEnd(search.origin, "underWay", "nothing-moved");
-    log.debug(`Replay search ${search.kind}: no longer taken to be on its way after ${search.couldRunMs} ms`);
+    log().debug(`Replay search ${search.kind}: no longer taken to be on its way after ${search.couldRunMs} ms`);
   }
 
-  if (!env.inReplay()) leftReplay();
+  if (!engineReads().inReplay()) leftReplay();
 }
 
 /** The gate's own seek for a jump whose pause window a press took: sent once the pause has read back. */
@@ -1017,7 +953,7 @@ function settleOwedSeek(telemetry: TelemetryData | null, now: number): void {
 
     if (sendRaw("setPlayPosition", (r) => r.setPlayPosition(ReplayPosMode.Begin, target.frame))) {
       markReplayTargetSent(target, telemetry, now);
-      log.debug(`Replay jump's seek to frame ${target.frame} sent for it: a press took the cursor in its pause`);
+      log().debug(`Replay jump's seek to frame ${target.frame} sent for it: a press took the cursor in its pause`);
     } else {
       clearTarget("cleared", "refused");
     }
@@ -1027,13 +963,13 @@ function settleOwedSeek(telemetry: TelemetryData | null, now: number): void {
 
   if (now - jump.owedSince >= readReplayJumpTimeoutMs()) {
     owed = null;
-    log.debug(`Replay jump's seek to frame ${target.frame} not sent: the replay did not pause`);
+    log().debug(`Replay jump's seek to frame ${target.frame} not sent: the replay did not pause`);
     clearTarget("cleared", "wait-ran-out");
   }
 }
 
 function settleTarget(telemetry: TelemetryData | null, now: number): void {
-  const settlement = settleReplayTarget(telemetry, now, log);
+  const settlement = settleReplayTarget(telemetry, now, log());
 
   if (settlement.kind === "none") return;
 
@@ -1060,7 +996,7 @@ function settleTarget(telemetry: TelemetryData | null, now: number): void {
   }
 
   setFate(target.id, { kind: "gave-up" });
-  noteEnd(target.origin, "underWay", env.inReplay() ? "wait-ran-out" : "replay-left");
+  noteEnd(target.origin, "underWay", engineReads().inReplay() ? "wait-ran-out" : "replay-left");
 
   if (jump !== undefined) jump.status = "gave-up";
 }
@@ -1073,7 +1009,7 @@ function runCarried(jump: HeldJump, landing: TelemetryData): void {
   try {
     jump.afterLanding?.(landing);
   } catch (err) {
-    log.debug(`Replay jump's step after the landing threw: ${String(err)}`);
+    log().debug(`Replay jump's step after the landing threw: ${String(err)}`);
   }
 }
 
@@ -1105,7 +1041,7 @@ function settleTakeover(telemetry: TelemetryData | null, reading: ReplayReading 
   }
 
   if (now - current.sentAt >= current.waitMs) {
-    log.debug(`Replay takeover: nothing moved within ${current.waitMs} ms`);
+    log().debug(`Replay takeover: nothing moved within ${current.waitMs} ms`);
     clearTarget("nothing-moved", "nothing-moved");
   }
 }
@@ -1185,7 +1121,7 @@ function judgeSearch(record: SearchRecord, reading: ReplayReading, now: number):
   if (!record.seen && record.onItsWay && advanced && now - record.sentAt >= readFastestLapSearchDelayMs()) {
     record.onItsWay = false;
     noteEnd(record.origin, "underWay", "nothing-moved");
-    log.debug(`Replay search ${record.kind}: the replay kept playing; it found nothing`);
+    log().debug(`Replay search ${record.kind}: the replay kept playing; it found nothing`);
   }
 }
 
@@ -1246,7 +1182,7 @@ function holdBehindJump(
     restoreSpeed: null,
     holds: [],
   };
-  log.debug(`Replay command held: ${describe(command)} (${options.by}) waits for the jump under way to land`);
+  log().debug(`Replay command held: ${describe(command)} (${options.by}) waits for the jump under way to land`);
 
   return { kind: "held" };
 }
@@ -1283,7 +1219,7 @@ function waitBehindSearch(
     restoreSpeed: null,
     holds: [],
   };
-  log.debug(`Replay command held: ${describe(command)} (${options.by}) waits for the ${record.kind} search to land`);
+  log().debug(`Replay command held: ${describe(command)} (${options.by}) waits for the ${record.kind} search to land`);
 
   return { kind: "held" };
 }
@@ -1303,7 +1239,7 @@ function takeOver(
   const reading = readReplay(telemetry) ?? lastReplay;
 
   if (reading === null) {
-    log.debug(`Replay command dropped: ${describe(command)} (${options.by}); no frame to take over from`);
+    log().debug(`Replay command dropped: ${describe(command)} (${options.by}); no frame to take over from`);
 
     return { kind: "not-sent", reason: "no frame to take over from" };
   }
@@ -1321,7 +1257,7 @@ function takeOver(
   const beside = frameBeside(reading.frame, endFrame);
   const ok = sendRaw("setPlayPosition", (r) => r.setPlayPosition(ReplayPosMode.Begin, beside));
 
-  log.debug(
+  log().debug(
     `Replay takeover for ${describe(command)} (${options.by}): jump to frame ${beside} beside ${reading.frame}`,
   );
 
@@ -1408,7 +1344,7 @@ function serviceBehindJump(current: Slot, telemetry: TelemetryData | null, now: 
     if (witness) return;
 
     if (readReplay(telemetry) === null) {
-      if (!env.inReplay()) emptySlot("replay-left", "the replay was left");
+      if (!engineReads().inReplay()) emptySlot("replay-left", "the replay was left");
 
       return;
     }
@@ -1449,7 +1385,10 @@ function serviceBehindJump(current: Slot, telemetry: TelemetryData | null, now: 
 
       return;
     case "gave-up":
-      emptySlot(env.inReplay() ? "off-target" : "replay-left", "the jump it waited on did not land on its target");
+      emptySlot(
+        engineReads().inReplay() ? "off-target" : "replay-left",
+        "the jump it waited on did not land on its target",
+      );
 
       return;
     case "cleared":
@@ -1550,16 +1489,16 @@ function goOut(current: Slot, telemetry: TelemetryData | null, now: number): voi
   const sentSpeed = speedOf(current.command, telemetry);
   const ok = dispatch(current.command, telemetry, now, current.origin);
 
-  log.debug(`Replay command sent on the landing: ${describe(current.command)} (${current.by}); result ${ok}`);
+  log().debug(`Replay command sent on the landing: ${describe(current.command)} (${current.by}); result ${ok}`);
 
-  if (ok && current.command.kind === "go-to" && current.command.end === "end") env.leftForLive();
+  if (ok && current.command.kind === "go-to" && current.command.end === "end") engineReads().leftForLive();
 
   if (ok && sentSpeed !== null) {
     for (const listener of speedSentListeners) {
       try {
         listener(sentSpeed);
       } catch (err) {
-        log.debug(`Replay speed listener failed: ${String(err)}`);
+        log().debug(`Replay speed listener failed: ${String(err)}`);
       }
     }
   }
@@ -1613,7 +1552,7 @@ function arm(): void {
     return;
   }
 
-  busySince ??= env.now();
+  busySince ??= engineNow();
 
   if (timer !== null) return;
 
@@ -1624,16 +1563,16 @@ function arm(): void {
 }
 
 function tick(): void {
-  const now = env.now();
+  const now = engineNow();
 
   batch(now, () => {
-    if (!env.connected()) {
+    if (!engineReads().connected()) {
       disconnect();
 
       return;
     }
 
-    const telemetry = env.readTelemetry();
+    const telemetry = engineReads().readTelemetry();
 
     settle(telemetry, now);
     serviceSlot(telemetry, now);
@@ -1674,8 +1613,8 @@ function takeCursor(by: string, origin: string | undefined): void {
  * result says which.
  */
 export function pressReplayCommand(command: ReplayGateCommand, options: ReplayPressOptions): ReplayPressResult {
-  const now = env.now();
-  const telemetry = env.readTelemetry();
+  const now = engineNow();
+  const telemetry = engineReads().readTelemetry();
   let result: ReplayPressResult = { kind: "not-sent", reason: "nothing decided" };
 
   batch(now, () => {
@@ -1721,7 +1660,7 @@ function decide(
         const from = pendingReplayTargetPosition();
 
         if (from === null) {
-          log.debug(`Replay step dropped (${options.by}): a seek shows, and there is no frame to step from`);
+          log().debug(`Replay step dropped (${options.by}): a seek shows, and there is no frame to step from`);
 
           return { kind: "not-sent", reason: "a seek shows with no frame to step from" };
         }
@@ -1746,14 +1685,14 @@ function decide(
 
       if (underWay) {
         emptySlot("cleared-by-pause");
-        log.debug(`Pause not sent (${options.by}): a jump is under way, and the replay is paused for it`);
+        log().debug(`Pause not sent (${options.by}): a jump is under way, and the replay is paused for it`);
 
         return { kind: "not-sent", reason: "the replay is paused for the jump under way" };
       }
 
       if (before !== null && before.pausedByGate) {
         emptySlot("cleared-by-pause");
-        log.debug(`Pause not sent (${options.by}): the replay jump under way has paused the replay`);
+        log().debug(`Pause not sent (${options.by}): the replay jump under way has paused the replay`);
 
         return { kind: "not-sent", reason: "the replay jump under way has paused the replay" };
       }
@@ -1819,8 +1758,8 @@ export function sendOwnedReplayCommand(
 ): ReplayOwnedSendResult {
   if (claim.cancelledBy !== null) return "cancelled";
 
-  const now = env.now();
-  const telemetry = env.readTelemetry();
+  const now = engineNow();
+  const telemetry = engineReads().readTelemetry();
   let result: ReplayOwnedSendResult = "skipped";
 
   batch(now, () => {
@@ -1919,7 +1858,7 @@ export function openReplayJump(
     readonly afterLanding?: (landing: TelemetryData) => void;
   },
 ): ReplayJumpGateHandle {
-  const now = env.now();
+  const now = engineNow();
   const jump: HeldJump = {
     claim,
     origin: options.origin,
@@ -1975,7 +1914,7 @@ export function recordReplayJumpTarget(
 
   if (jump === null || handle.claim.cancelledBy !== null) return;
 
-  const now = env.now();
+  const now = engineNow();
 
   batch(now, () => {
     settle(telemetry, now);
@@ -2042,8 +1981,8 @@ export function sendReplayJumpSeek(handle: ReplayJumpGateHandle): "sent" | "refu
       : "refused";
   }
 
-  const now = env.now();
-  const telemetry = env.readTelemetry();
+  const now = engineNow();
+  const telemetry = engineReads().readTelemetry();
   let result: "sent" | "refused" | "cancelled" | "replaced" = "replaced";
 
   batch(now, () => {
@@ -2083,7 +2022,7 @@ export function replayJumpLanding(
   handle: ReplayJumpGateHandle,
   telemetry: TelemetryData | null,
 ): { readonly status: JumpLandingStatus; readonly landing: TelemetryData | null } {
-  const now = env.now();
+  const now = engineNow();
 
   batch(now, () => {
     settle(telemetry, now);
@@ -2118,7 +2057,7 @@ export type ReplayJumpResult = "landed" | "gave-up" | "cancelled";
  * window and the gate now owes that seek.
  */
 export function closeReplayJump(handle: ReplayJumpGateHandle, result: ReplayJumpResult): void {
-  const now = env.now();
+  const now = engineNow();
 
   batch(now, () => {
     const jump = held !== null && held.claim === handle.claim ? held : null;
@@ -2144,9 +2083,9 @@ function closedJumpEnd(result: ReplayJumpResult): ReplayGateEndReason {
 
   if (result === "cancelled") return "claim-taken";
 
-  if (!env.connected()) return "disconnected";
+  if (!engineReads().connected()) return "disconnected";
 
-  return env.inReplay() ? "walk-gave-up" : "replay-left";
+  return engineReads().inReplay() ? "walk-gave-up" : "replay-left";
 }
 
 function clearUnsent(handle: ReplayJumpGateHandle): void {
@@ -2170,7 +2109,7 @@ onReplayCursorTaken(() => {
   held = null;
   closedJumps.set(jump.claim, jump);
 
-  const now = env.now();
+  const now = engineNow();
   // A press or a jump of the same token takes the cursor from its own jump: the run goes on, so no end is
   // noted. Should the take leave the token nothing under way, its fact ends replaced, not run out.
   const sameRun = gateTaking && takingOrigin !== undefined && takingOrigin === jump.origin;
@@ -2252,7 +2191,7 @@ export function takeWaitingReplaySpeed(): ReplaySpeed | null {
 
   if (taken === null) return null;
 
-  const now = env.now();
+  const now = engineNow();
 
   batch(now, () => emptySlot("replaced"));
   arm();
@@ -2282,7 +2221,7 @@ export function waitingReplaySpeed(): ReplaySpeed | null {
 
 /** Where the replay stands or is headed, by the shared target, from `telemetry`. */
 export function readReplayPosition(telemetry: TelemetryData | null): ReplayPosition | null {
-  const now = env.now();
+  const now = engineNow();
   let position: ReplayPosition | null = null;
 
   // Only the target is settled against the caller's reading: a display read sends nothing and drops
@@ -2290,7 +2229,7 @@ export function readReplayPosition(telemetry: TelemetryData | null): ReplayPosit
   batch(now, () => {
     settleTarget(telemetry, now);
     settleTakeover(telemetry, readReplay(telemetry), now);
-    position = resolveReplayPosition(telemetry, now, log);
+    position = resolveReplayPosition(telemetry, now, log());
   });
   arm();
 
@@ -2305,8 +2244,6 @@ export function isReplayMoveUnderWay(): boolean {
 // ---------------------------------------------------------------------------
 // The waits #1426 and #801 build on
 // ---------------------------------------------------------------------------
-
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** How a settled wait ended. */
 export type ReplaySettledOutcome = "settled" | "gave-up" | "superseded";
@@ -2326,14 +2263,14 @@ export async function waitForReplaySettled(options: {
   readonly jumpsOnly?: boolean;
 }): Promise<ReplaySettledOutcome> {
   const reads = Math.max(1, options.reads ?? 1);
-  const startedAt = env.now();
+  const startedAt = engineNow();
   let count = 0;
 
   for (;;) {
     if (options.claim !== undefined && options.claim.cancelledBy !== null) return "superseded";
 
-    const now = env.now();
-    const telemetry = env.readTelemetry();
+    const now = engineNow();
+    const telemetry = engineReads().readTelemetry();
 
     batch(now, () => {
       settle(telemetry, now);
@@ -2361,7 +2298,7 @@ export async function waitForReplaySettled(options: {
  */
 export async function waitForReplayJumpsToSettle(claim?: ReplayCursorClaim): Promise<ReplaySettledOutcome> {
   const target = pendingReplayTarget();
-  const targetLeftMs = target === null ? 0 : Math.max(0, target.sentAt + target.giveUpMs - env.now());
+  const targetLeftMs = target === null ? 0 : Math.max(0, target.sentAt + target.giveUpMs - engineNow());
 
   return waitForReplaySettled({
     jumpsOnly: true,
@@ -2390,7 +2327,7 @@ export async function waitForReplaySearchLanding(options: {
   readonly claim?: ReplayCursorClaim;
 }): Promise<ReplaySearchLandingOutcome> {
   const record = search;
-  const startedAt = env.now();
+  const startedAt = engineNow();
 
   // A record that has landed already is an earlier search's: the caller's own did not record.
   if (record === null || record.landed) return "not-landed";
@@ -2398,8 +2335,8 @@ export async function waitForReplaySearchLanding(options: {
   for (;;) {
     if (options.claim !== undefined && options.claim.cancelledBy !== null) return "superseded";
 
-    const now = env.now();
-    const telemetry = env.readTelemetry();
+    const now = engineNow();
+    const telemetry = engineReads().readTelemetry();
 
     batch(now, () => {
       settle(telemetry, now);
@@ -2425,7 +2362,7 @@ export async function waitForReplaySearchLanding(options: {
 export function replaySearchCouldRunMs(): number | null {
   if (search === null || search.landed) return null;
 
-  return Math.max(0, search.sentAt + search.couldRunMs - env.now());
+  return Math.max(0, search.sentAt + search.couldRunMs - engineNow());
 }
 
 /** How a settle by a jump ended. */
@@ -2442,8 +2379,8 @@ export type ReplaySettleByJumpOutcome = "settled" | "nothing-moved" | "supersede
 export async function settleReplayByJump(
   options: { readonly claim?: ReplayCursorClaim; readonly origin?: string } = {},
 ): Promise<ReplaySettleByJumpOutcome> {
-  const startNow = env.now();
-  const telemetry = env.readTelemetry();
+  const startNow = engineNow();
+  const telemetry = engineReads().readTelemetry();
   let targetId: number | null = null;
 
   batch(startNow, () => {
@@ -2486,8 +2423,8 @@ export async function settleReplayByJump(
 
     if (options.claim !== undefined && options.claim.cancelledBy !== null) return "superseded";
 
-    const now = env.now();
-    const reading = env.readTelemetry();
+    const now = engineNow();
+    const reading = engineReads().readTelemetry();
 
     batch(now, () => {
       settle(reading, now);
@@ -2557,12 +2494,7 @@ export function getReplayGateRecord(): ReplayGateRecord {
   };
 }
 
-/** @internal Replace the environment for tests; `undefined` keys keep the default. */
-export function _configureReplayCommandGate(overrides: Partial<ReplayGateEnv>): void {
-  env = { ...defaultEnv, ...overrides };
-}
-
-/** @internal Reset for tests: state, environment, listeners and the timer. */
+/** @internal Reset for tests: state, listeners and the timer. The engine env is reset by `_resetReplayEngineEnv`. */
 export function _resetReplayCommandGate(): void {
   if (timer !== null) clearTimeout(timer);
 
@@ -2586,7 +2518,5 @@ export function _resetReplayCommandGate(): void {
   batchEnds.clear();
   sameRunEnds.clear();
   batchDepth = 0;
-  env = defaultEnv;
-  log = silentLogger;
   clearReplayTarget();
 }

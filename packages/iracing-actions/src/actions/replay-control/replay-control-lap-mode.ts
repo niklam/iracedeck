@@ -11,9 +11,10 @@
  * `m:ss`, beneath it, which the paced search's count takes while it works for
  * laps (the maintainer's second test round, 2026-10-18).
  */
+import { RECORD_STEPS } from "@iracedeck/replay-engine";
+
 import { createRecordStepMode, formatReplayClock } from "./replay-control-step-mode.js";
 import { lapOfLapsReadout } from "./replay-dial-lap-readout.js";
-import { RECORD_STEPS } from "./replay-record-step.js";
 
 /** The replay-cursor owner every Lap turn's jump and search goes out under. */
 const CURSOR_OWNER = "dial-lap";

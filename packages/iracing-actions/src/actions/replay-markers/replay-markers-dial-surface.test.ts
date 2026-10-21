@@ -1,11 +1,13 @@
 import { ReplayPosMode, replaySpeedToSdk, type TelemetryData } from "@iracedeck/iracing-sdk";
 import {
   _configureReplayEngine,
+  _resetReplayCommandGate,
   _resetReplayCursor,
   _resetReplayPositionState,
   cancelReplayCursorOwner,
   claimReplayCursor,
   currentReplayCursorOwner,
+  getReplayGateView,
   pendingReplayTarget,
 } from "@iracedeck/replay-engine";
 import { steppedReplayState } from "@iracedeck/replay-engine/testing";
@@ -13,11 +15,7 @@ import type { ReplayMarker, ReplaySessionStore } from "@iracedeck/replay-store";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { registerReplayBusySurface, type ReplayBusyLook } from "../../shared/replay-busy-indicator.js";
-import {
-  _configureReplayCommandGate,
-  _resetReplayCommandGate,
-  getReplayGateView,
-} from "../../shared/replay-command-gate.js";
+import { deckReplayEngine } from "../../shared/replay-engine-deck.test-support.js";
 import { buildTriggerDescription, ReplayMarkersDialSurface } from "./replay-markers-dial-surface.js";
 import {
   CONFIRMATION_FLASH_MS,
@@ -78,12 +76,22 @@ vi.mock("@iracedeck/settings", () => ({
 const engineSetting = (key: string): unknown =>
   (mocks.getGlobalSettings() as Record<string, unknown> | undefined)?.[key];
 
-_configureReplayEngine({
-  settings: {
-    replayJumpPlayback: () => engineSetting("replayJumpPlayback"),
-    fastestLapSearchDelayMs: () => engineSetting("fastestLapSearchDelayMs"),
-  },
-});
+// Every `_configureReplayEngine` call here passes these: each call starts from the unconfigured engine.
+const engineSettings = {
+  replayJumpPlayback: () => engineSetting("replayJumpPlayback"),
+  fastestLapSearchDelayMs: () => engineSetting("fastestLapSearchDelayMs"),
+};
+
+/**
+ * The engine as plugin-runtime wires it, over this file's deck-iracing mocks
+ * (#1467); `extra` replaces a read or the replay for a case. It is called
+ * wherever the gate is reset, as the gate's own reset restored its env.
+ */
+function configureEngine(extra: Parameters<typeof _configureReplayEngine>[0] = {}): void {
+  _configureReplayEngine({ ...deckReplayEngine, settings: engineSettings, ...extra });
+}
+
+configureEngine();
 
 vi.mock("@iracedeck/deck-core", async () => {
   // deck-core's dial-gesture and icon-update-throttle modules, reached by PATH
@@ -334,11 +342,12 @@ describe("ReplayMarkersDialSurface", () => {
     vi.clearAllMocks();
     _resetReplayCursor();
     _resetReplayCommandGate();
+    configureEngine();
     _resetReplayPositionState();
     // The gate reads the replay the surface reads: the same telemetry, and the
     // same debounced replay state over it (#1430).
     const gateReplay = steppedReplayState(() => env.telemetry);
-    _configureReplayCommandGate({
+    configureEngine({
       readTelemetry: () => env.telemetry,
       inReplay: () => gateReplay.getReplayState().inReplay,
       connected: () => env.connected,
@@ -356,6 +365,7 @@ describe("ReplayMarkersDialSurface", () => {
 
   afterEach(() => {
     _resetReplayCommandGate();
+    configureEngine();
     vi.unstubAllGlobals();
     vi.useRealTimers();
   });
@@ -1640,9 +1650,10 @@ describe("ReplayMarkersDialSurface — the busy look (#1437)", () => {
     vi.clearAllMocks();
     _resetReplayCursor();
     _resetReplayCommandGate();
+    configureEngine();
     _resetReplayPositionState();
     const gateReplay = steppedReplayState(() => env.telemetry);
-    _configureReplayCommandGate({
+    configureEngine({
       readTelemetry: () => env.telemetry,
       inReplay: () => gateReplay.getReplayState().inReplay,
       connected: () => env.connected,
@@ -1663,6 +1674,7 @@ describe("ReplayMarkersDialSurface — the busy look (#1437)", () => {
 
   afterEach(() => {
     _resetReplayCommandGate();
+    configureEngine();
     vi.useRealTimers();
   });
 

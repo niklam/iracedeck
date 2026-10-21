@@ -1,4 +1,5 @@
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
+import { listRecord, RECORD_STEPS } from "@iracedeck/replay-engine";
 import { describe, expect, it, vi } from "vitest";
 
 import { ReplayControlDialSettings } from "./replay-control-dial-settings.js";
@@ -6,7 +7,6 @@ import { lapMode } from "./replay-control-lap-mode.js";
 import { sessionMode } from "./replay-control-session-mode.js";
 import { formatReplayClock, recordSides, stepCaption } from "./replay-control-step-mode.js";
 import { fakeStepIo, lapsAt, recordSource, sessionsAt } from "./replay-dial-step-io.test-support.js";
-import { listRecord, RECORD_STEPS } from "./replay-record-step.js";
 
 vi.mock("@iracedeck/settings", () => ({ getGlobalSettings: vi.fn(() => ({})) }));
 

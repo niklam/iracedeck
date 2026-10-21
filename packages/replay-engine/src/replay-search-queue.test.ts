@@ -1,35 +1,26 @@
 /**
  * The Replay Control dial's paced search (#801) against the fake replay of the
- * gate's tests (`shared/replay-command-gate.test-support.ts`), which counts a
+ * gate's tests (`replay-command-gate.test-support.ts`), which counts a
  * command sent bare into a jump or a search on its way as thrown. The cases
  * are the spec's "The queue", "The first search on a playing replay" and the
  * runner's part of "The origin token", under Testing.
  */
 import { type ILogger, silentLogger } from "@iracedeck/logger";
-import {
-  _configureReplayEngine,
-  _resetReplayCursor,
-  _resetReplayPositionState,
-  _resetReplaySpeedState,
-  currentReplayCursorOwner,
-  keepDialPendingSpeed,
-  noteDialSpeedSent,
-  resolveLiveSpeed,
-} from "@iracedeck/replay-engine";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 
 import {
-  _configureReplayCommandGate,
   _resetReplayCommandGate,
   getReplayGateRecord,
   pressReplayCommand,
   type ReplayGateNotice,
   subscribeReplayGate,
-} from "../../shared/replay-command-gate.js";
-import { fakeReplay, type FakeReplay, type FakeReplayOptions } from "../../shared/replay-command-gate.test-support.js";
-import { beginReplayJump, runReplayJump } from "../../shared/replay-jump-playback.js";
+} from "./replay-command-gate.js";
+import { fakeReplay, type FakeReplay, type FakeReplayOptions } from "./replay-command-gate.test-support.js";
+import { _resetReplayCursor, currentReplayCursorOwner } from "./replay-cursor.js";
+import { _configureReplayEngine } from "./replay-engine-env.js";
+import { beginReplayJump, runReplayJump } from "./replay-jump-playback.js";
+import { _resetReplayPositionState } from "./replay-position-state.js";
 import {
-  _configureReplaySearchQueue,
   _resetReplaySearchQueue,
   isReplaySearchRunning,
   onReplaySearchChange,
@@ -41,33 +32,24 @@ import {
   SEARCH_PATIENCE_MAX_MS,
   SEARCH_PATIENCE_MIN_MS,
   SEARCH_QUEUE_MAX,
-  setReplaySearchQueueLogger,
 } from "./replay-search-queue.js";
+import {
+  _resetReplaySpeedState,
+  keepDialPendingSpeed,
+  noteDialSpeedSent,
+  resolveLiveSpeed,
+} from "./replay-speed-state.js";
 
-const { mockGetGlobalSettings } = vi.hoisted(() => ({
-  mockGetGlobalSettings: vi.fn((): Record<string, unknown> => ({})),
-}));
+/** The replay settings the cases set, read by the engine through its env (#1467). */
+const mockSettings = vi.fn((): Record<string, unknown> => ({}));
 
-vi.mock("@iracedeck/settings", () => ({ getGlobalSettings: mockGetGlobalSettings }));
+const engineSetting = (key: string): unknown => (mockSettings() as Record<string, unknown> | undefined)?.[key];
 
-// The engine reads the two replay settings through its env (#1467); read them from the settings mock the cases set.
-const engineSetting = (key: string): unknown => (mockGetGlobalSettings() as Record<string, unknown> | undefined)?.[key];
-
-_configureReplayEngine({
-  settings: {
-    replayJumpPlayback: () => engineSetting("replayJumpPlayback"),
-    fastestLapSearchDelayMs: () => engineSetting("fastestLapSearchDelayMs"),
-  },
-});
-
-vi.mock("@iracedeck/deck-iracing", () => ({
-  getCommands: vi.fn(() => {
-    throw new Error("these tests send through the fake replay");
-  }),
-  getController: vi.fn(() => {
-    throw new Error("these tests read the fake replay");
-  }),
-}));
+// Every `_configureReplayEngine` call here passes these: each call starts from the unconfigured engine.
+const engineSettings = {
+  replayJumpPlayback: () => engineSetting("replayJumpPlayback"),
+  fastestLapSearchDelayMs: () => engineSetting("fastestLapSearchDelayMs"),
+};
 
 /** Six hours of recording. */
 const SIX_HOURS = 1_296_000;
@@ -93,18 +75,36 @@ const STEPS: NonNullable<FakeReplayOptions["searches"]> = {
 let sim: FakeReplay;
 let inReplay: boolean;
 let notices: ReplayGateNotice[];
-let warn: ReturnType<typeof vi.fn>;
+let warn: Mock<(message: string) => void>;
 
-function setUp(options: FakeReplayOptions = {}): FakeReplay {
-  sim = fakeReplay({ frame: START, searches: STEPS, ...options });
-  _configureReplayCommandGate({
+/** The engine's root logger: the runner's `ReplaySearch` scope warns into {@link warn}. */
+const engineRootLogger: ILogger = {
+  ...silentLogger,
+  createScope: (scope) =>
+    scope === "ReplaySearch" ? { ...silentLogger, warn: (message) => warn(message) } : silentLogger,
+};
+
+/**
+ * The engine over the fake replay, the gate and the runner reading the same
+ * replay state. `extra` replaces one read for a case; a call starts from the
+ * unconfigured engine, so the rest is restated here every time.
+ */
+function configure(extra: Partial<Parameters<typeof _configureReplayEngine>[0]> = {}): void {
+  _configureReplayEngine({
+    settings: engineSettings,
+    logger: engineRootLogger,
     replay: () => sim.replay,
     readTelemetry: () => sim.telemetry(),
     inReplay: () => inReplay,
     connected: () => true,
     now: () => Date.now(),
+    ...extra,
   });
-  _configureReplaySearchQueue({ readTelemetry: () => sim.telemetry(), inReplay: () => inReplay });
+}
+
+function setUp(options: FakeReplayOptions = {}): FakeReplay {
+  sim = fakeReplay({ frame: START, searches: STEPS, ...options });
+  configure();
   notices = [];
   subscribeReplayGate((notice) => notices.push(notice));
 
@@ -112,7 +112,7 @@ function setUp(options: FakeReplayOptions = {}): FakeReplay {
 }
 
 function setting(mode: "remember" | "play" | "stopped", extra: Record<string, unknown> = {}): void {
-  mockGetGlobalSettings.mockReturnValue({ replayJumpPlayback: mode, ...extra });
+  mockSettings.mockReturnValue({ replayJumpPlayback: mode, ...extra });
 }
 
 function turn(target: ReplaySearchTarget, ticks: number, origin = "dial-a"): void {
@@ -204,8 +204,8 @@ describe("the paced search runner (#801)", () => {
     _resetReplayPositionState();
     setting("remember");
     inReplay = true;
-    warn = vi.fn();
-    setReplaySearchQueueLogger({ ...silentLogger, warn } as ILogger);
+    warn = vi.fn<(message: string) => void>();
+    _configureReplayEngine({ settings: engineSettings, logger: engineRootLogger });
   });
 
   afterEach(() => {
@@ -596,14 +596,7 @@ describe("the paced search runner (#801)", () => {
         return Date.now() - notReplaySince < 1_000;
       };
 
-      _configureReplayCommandGate({
-        replay: () => sim.replay,
-        readTelemetry: () => sim.telemetry(),
-        inReplay: liveInReplay,
-        connected: () => true,
-        now: () => Date.now(),
-      });
-      _configureReplaySearchQueue({ readTelemetry: () => sim.telemetry(), inReplay: liveInReplay });
+      configure({ inReplay: liveInReplay });
 
       // 350000 frames: about 2.9 s of seeking. The turn comes once the controller has given the replay up.
       recordJump(400_000);
@@ -821,11 +814,15 @@ describe("the paced search runner (#801)", () => {
     it("catches a failure inside the runner, ends the run and hands the cursor back", async () => {
       setUp();
 
+      // The gate and the runner read one env (#1467): only the runner's own
+      // read of the replay state fails, so the failure is inside the runner.
+      const runnersRead = (): boolean => /\breplayOnScreen\b/.test(new Error().stack ?? "");
       let reads = 0;
 
-      _configureReplaySearchQueue({
-        readTelemetry: () => sim.telemetry(),
+      configure({
         inReplay: () => {
+          if (!runnersRead()) return inReplay;
+
           reads++;
 
           if (reads > 1) throw new Error("the replay state failed");

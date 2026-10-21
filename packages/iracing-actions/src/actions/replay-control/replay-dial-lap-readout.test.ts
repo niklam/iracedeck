@@ -1,4 +1,5 @@
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
+import { listRecord } from "@iracedeck/replay-engine";
 import type { LapStartListEntry } from "@iracedeck/replay-store";
 import { describe, expect, it, vi } from "vitest";
 
@@ -10,7 +11,6 @@ import {
   telemetryLapAt,
 } from "./replay-dial-lap-readout.js";
 import { fakeStepIo, lapsAt, recordSource, sessionsAt } from "./replay-dial-step-io.test-support.js";
-import { listRecord } from "./replay-record-step.js";
 
 vi.mock("@iracedeck/settings", () => ({ getGlobalSettings: vi.fn(() => ({})) }));
 

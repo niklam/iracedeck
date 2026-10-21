@@ -9,23 +9,21 @@
 import { getCarNumberRawFromSessionInfo, type ReplayPosMode, type TelemetryData } from "@iracedeck/iracing-sdk";
 import {
   _configureReplayEngine,
+  _resetReplayCommandGate,
   _resetReplayCursor,
   _resetReplayPositionState,
   cancelReplayCursorOwner,
   GREEN_APPROACH_FRAMES,
+  pressReplayCommand,
+  type ReplayGateFactEnd,
+  subscribeReplayGate,
 } from "@iracedeck/replay-engine";
 import { withSteppedReplayState } from "@iracedeck/replay-engine/testing";
 import type { GreenLookup, GreenQuery, LapStartLookup, LapStartQuery, LapStartRecord } from "@iracedeck/replay-store";
 import { getGlobalSettings } from "@iracedeck/settings";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  _configureReplayCommandGate,
-  _resetReplayCommandGate,
-  pressReplayCommand,
-  type ReplayGateFactEnd,
-  subscribeReplayGate,
-} from "../../shared/replay-command-gate.js";
+import { deckReplayEngine } from "../../shared/replay-engine-deck.test-support.js";
 import { _resetFastestLapSessionCache, generateReplayControlSvg, ReplayControl } from "./replay-control.js";
 
 const { mockAssembleIcon } = vi.hoisted(() => ({
@@ -165,12 +163,22 @@ vi.mock("@iracedeck/settings", () => ({
 const engineSetting = (key: string): unknown =>
   (vi.mocked(getGlobalSettings)() as Record<string, unknown> | undefined)?.[key];
 
-_configureReplayEngine({
-  settings: {
-    replayJumpPlayback: () => engineSetting("replayJumpPlayback"),
-    fastestLapSearchDelayMs: () => engineSetting("fastestLapSearchDelayMs"),
-  },
-});
+// Every `_configureReplayEngine` call here passes these: each call starts from the unconfigured engine.
+const engineSettings = {
+  replayJumpPlayback: () => engineSetting("replayJumpPlayback"),
+  fastestLapSearchDelayMs: () => engineSetting("fastestLapSearchDelayMs"),
+};
+
+/**
+ * The engine as plugin-runtime wires it, over this file's deck-iracing mocks
+ * (#1467); `extra` replaces a read or the replay for a case. It is called
+ * wherever the gate is reset, as the gate's own reset restored its env.
+ */
+function configureEngine(extra: Parameters<typeof _configureReplayEngine>[0] = {}): void {
+  _configureReplayEngine({ ...deckReplayEngine, settings: engineSettings, ...extra });
+}
+
+configureEngine();
 
 type KeyEvent = Parameters<ReplayControl["onKeyDown"]>[0];
 type AppearEvent = Parameters<ReplayControl["onWillAppear"]>[0];
@@ -587,6 +595,7 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
     // The replay command gate (#1430) and the target it records are module
     // state every press reaches: each test starts with nothing under way.
     _resetReplayCommandGate();
+    configureEngine();
     _resetReplayPositionState();
 
     const { getReplaySessionStore, isReplaySessionStoreInitialized } = await import("@iracedeck/replay-store");
@@ -615,7 +624,7 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
     action = new ReplayControl();
     // The replay command gate (#1430) reads the replay these tests simulate,
     // so the jumps a press sends read back and nothing stands after a walk.
-    _configureReplayCommandGate({
+    configureEngine({
       readTelemetry: () => action["sdkController"].getCurrentTelemetry(),
       inReplay: () => true,
     });

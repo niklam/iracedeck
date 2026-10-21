@@ -14,12 +14,11 @@
  * takes while it works for sessions (the maintainer's second test round,
  * 2026-10-18).
  */
-import type { ReplayPosition } from "@iracedeck/replay-engine";
+import { listRecord, RECORD_STEPS, type RecordListing, type ReplayPosition } from "@iracedeck/replay-engine";
 
 import type { ReplayDialStepIo } from "./replay-control-dial-mode.js";
 import { createRecordStepMode } from "./replay-control-step-mode.js";
 import { lapOfLapsReadout, recordedSessionAt } from "./replay-dial-lap-readout.js";
-import { listRecord, RECORD_STEPS, type RecordListing } from "./replay-record-step.js";
 
 /** The replay-cursor owner every Session turn's jump and search goes out under. */
 const CURSOR_OWNER = "dial-session";

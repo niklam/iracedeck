@@ -1,3 +1,4 @@
+import type { ReplayGateFactEnd, ReplayGateNotice, ReplayGateView } from "@iracedeck/replay-engine";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -11,7 +12,6 @@ import {
   reportReplayPressIgnored,
   setReplayBusyIndicatorLogger,
 } from "./replay-busy-indicator.js";
-import type { ReplayGateFactEnd, ReplayGateNotice, ReplayGateView } from "./replay-command-gate.js";
 
 /** A fake of the gate's state seam: views per token, and notices a test emits. */
 const gate = vi.hoisted(() => {
@@ -21,7 +21,8 @@ const gate = vi.hoisted(() => {
   return { views, listeners };
 });
 
-vi.mock("./replay-command-gate.js", () => ({
+vi.mock("@iracedeck/replay-engine", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@iracedeck/replay-engine")>()),
   getReplayGateView: (origin: string): ReplayGateView => gate.views.get(origin) ?? { underWay: null, waiting: null },
   subscribeReplayGate: (listener: (notice: ReplayGateNotice) => void) => {
     gate.listeners.add(listener);

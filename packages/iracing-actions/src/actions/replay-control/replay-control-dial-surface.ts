@@ -37,18 +37,40 @@ import {
 import { replaySpeedFromTelemetry, type ReplayState, type TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 import {
+  beginReplayJump,
   currentReplayCursorOwner,
+  describeReplayJump,
   DIAL_SPEED_HOLD_MS,
+  findRecordStep,
   formatPlayCaption,
   formatSpeedDisplay,
+  getReplayGateRecord,
+  isReplayMoveUnderWay,
+  isReplaySearchRunning,
   isSeeking,
   keepDialPendingSpeed,
   noteDialSpeedSent,
+  onReplaySearchChange,
+  onReplaySearchSpeedSent,
+  onReplaySpeedSentFromSlot,
+  pendingReplaySearch,
+  pressReplayCommand,
+  queueReplaySearch,
+  readReplayPosition,
+  type RecordStepResult,
+  type RecordStepSource,
+  type RecordStepSpec,
   rememberedSpeed,
   REPLAY_JUMP_MAX_WAIT_MS,
   REPLAY_TARGET_GIVE_UP_MS,
+  type ReplayGateCommand,
+  type ReplayPressResult,
   resolveLiveSpeed,
+  resolveReplayWalkStart,
   reverseRememberedSpeed,
+  runReplayJump,
+  waitForReplaySettled,
+  waitingReplaySpeed,
 } from "@iracedeck/replay-engine";
 
 import { type DialBoxArgs, type DialNeighbours, renderDialBox, resolveDialBoxColors } from "../../shared/dial-box.js";
@@ -58,19 +80,6 @@ import type { DialPendingPreview } from "../../shared/dial-preview.js";
 import { classifyDialReleaseForHost } from "../../shared/dial-release.js";
 import { getReplayBusyLook, registerReplayBusySurface } from "../../shared/replay-busy-indicator.js";
 import { replayBusyDialMark } from "../../shared/replay-busy-mark.js";
-import {
-  getReplayGateRecord,
-  isReplayMoveUnderWay,
-  onReplaySpeedSentFromSlot,
-  pressReplayCommand,
-  readReplayPosition,
-  type ReplayGateCommand,
-  type ReplayPressResult,
-  waitForReplaySettled,
-  waitingReplaySpeed,
-} from "../../shared/replay-command-gate.js";
-import { beginReplayJump, describeReplayJump, runReplayJump } from "../../shared/replay-jump-playback.js";
-import { resolveReplayWalkStart } from "../../shared/replay-record-walk.js";
 import type {
   ReplayDialMode,
   ReplayDialModeIo,
@@ -90,19 +99,6 @@ import { lapMode } from "./replay-control-lap-mode.js";
 import { sessionMode } from "./replay-control-session-mode.js";
 import { speedMode } from "./replay-control-speed-mode.js";
 import { jumpToMyCarFromDial, trackOrderMode } from "./replay-control-track-order-mode.js";
-import {
-  findRecordStep,
-  type RecordStepResult,
-  type RecordStepSource,
-  type RecordStepSpec,
-} from "./replay-record-step.js";
-import {
-  isReplaySearchRunning,
-  onReplaySearchChange,
-  onReplaySearchSpeedSent,
-  pendingReplaySearch,
-  queueReplaySearch,
-} from "./replay-search-queue.js";
 
 /** The dash box's default accent — border, label and value, each overridable. */
 const DIAL_ACCENT = "#3498db";

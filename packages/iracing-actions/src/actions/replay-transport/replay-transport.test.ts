@@ -1,13 +1,14 @@
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
-import { _resetReplayPositionState } from "@iracedeck/replay-engine";
+import {
+  _configureReplayEngine,
+  _resetReplayCommandGate,
+  _resetReplayPositionState,
+  pressReplayCommand,
+} from "@iracedeck/replay-engine";
 import { cursorTestEvent, type ReplayCursorProbe, stageReplayCursorProbe } from "@iracedeck/replay-engine/testing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  _configureReplayCommandGate,
-  _resetReplayCommandGate,
-  pressReplayCommand,
-} from "../../shared/replay-command-gate.js";
+import { deckReplayEngine } from "../../shared/replay-engine-deck.test-support.js";
 import { generateReplayTransportSvg, ReplayTransport, ReplayTransportSettings } from "./replay-transport.js";
 
 vi.mock("@iracedeck/icons/replay-transport/play.svg", () => ({
@@ -108,6 +109,17 @@ vi.mock("@iracedeck/settings", () => ({
   getGlobalColors: vi.fn(() => ({})),
 }));
 
+/**
+ * The engine as plugin-runtime wires it, over this file's deck-iracing mocks
+ * (#1467); `extra` replaces a read or the replay for a case. It is called
+ * wherever the gate is reset, as the gate's own reset restored its env.
+ */
+function configureEngine(extra: Parameters<typeof _configureReplayEngine>[0] = {}): void {
+  _configureReplayEngine({ ...deckReplayEngine, ...extra });
+}
+
+configureEngine();
+
 const REPLAY_READING = {
   IsReplayPlaying: true,
   ReplayFrameNum: 2000,
@@ -121,6 +133,7 @@ describe("ReplayTransport", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     _resetReplayCommandGate();
+    configureEngine();
     _resetReplayPositionState();
   });
 
@@ -269,7 +282,7 @@ describe("ReplayTransport", () => {
       };
       const { getCommands } = await import("@iracedeck/deck-iracing");
       vi.mocked(getCommands).mockReturnValue({ replay } as any);
-      _configureReplayCommandGate({ readTelemetry: () => REPLAY_READING, inReplay: () => true });
+      configureEngine({ readTelemetry: () => REPLAY_READING, inReplay: () => true });
 
       pressReplayCommand({ kind: "jump", frame: 160000 }, { by: "marker" });
       await new ReplayTransport().onKeyDown(cursorTestEvent({ transport: "frame-forward" }) as any);

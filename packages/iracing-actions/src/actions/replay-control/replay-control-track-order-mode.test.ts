@@ -1,7 +1,7 @@
 import { REPLAY_LIVE_EDGE_MAX_FRAMES, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { type ReplaySettledOutcome } from "@iracedeck/replay-engine";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { ReplaySettledOutcome } from "../../shared/replay-command-gate.js";
 import { ReplayControlDialSettings } from "./replay-control-dial-settings.js";
 import {
   _isTrackOrderTapWaiting,

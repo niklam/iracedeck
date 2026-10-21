@@ -24,10 +24,9 @@ import rewindIconSvg from "@iracedeck/icons/replay-transport/rewind.svg";
 import slowMotionIconSvg from "@iracedeck/icons/replay-transport/slow-motion.svg";
 import stopIconSvg from "@iracedeck/icons/replay-transport/stop.svg";
 import { type ReplayCommand } from "@iracedeck/iracing-sdk";
+import { pressReplayCommand, type ReplayGateCommand } from "@iracedeck/replay-engine";
 import { getGlobalColors } from "@iracedeck/settings";
 import z from "zod";
-
-import { pressReplayCommand, type ReplayGateCommand } from "../../shared/replay-command-gate.js";
 
 type TransportAction =
   "play" | "pause" | "stop" | "fast-forward" | "rewind" | "slow-motion" | "frame-forward" | "frame-backward";

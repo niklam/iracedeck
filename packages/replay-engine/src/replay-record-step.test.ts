@@ -5,20 +5,9 @@ import type {
   ReplaySessionStore,
   SessionStartListing,
 } from "@iracedeck/replay-store";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { findRecordStep, RECORD_STEPS, type RecordStepSource } from "./replay-record-step.js";
-
-vi.mock("@iracedeck/settings", () => ({ getGlobalSettings: vi.fn(() => ({})) }));
-
-vi.mock("@iracedeck/deck-iracing", () => ({
-  getCommands: vi.fn(() => {
-    throw new Error("a record step sends nothing");
-  }),
-  getController: vi.fn(() => {
-    throw new Error("a record step reads no telemetry");
-  }),
-}));
 
 const CAR = 4;
 

@@ -5,13 +5,16 @@ import { describe, expect, it } from "vitest";
 /**
  * The replay command gate is the one module that sends a replay command
  * (#1430): a send outside it skips the gate's rules for a jump or a search
- * under way. This scans every production source for each way to reach the
- * replay commands: `getCommands().replay`, a destructuring of `replay` out of
- * `getCommands()`, and `.replay` read off a binding of `getCommands()`.
+ * under way. This scans every production source of the engine and of
+ * `iracing-actions` for each way to reach the replay commands:
+ * `getCommands().replay`, a destructuring of `replay` out of `getCommands()`,
+ * and `.replay` read off a binding of `getCommands()`. Inside the engine the
+ * commands are the injected env's `replay()` (#1467), which only the gate calls.
  */
 
-const SRC_ROOT = join(import.meta.dirname, "..");
-const GATE_FILE = "shared/replay-command-gate.ts";
+const ENGINE_ROOT = import.meta.dirname;
+const ACTIONS_ROOT = join(import.meta.dirname, "..", "..", "iracing-actions", "src");
+const GATE_FILE = join(ENGINE_ROOT, "replay-command-gate.ts");
 
 /** `getCommands()` followed, after any whitespace, by `.replay` (so a `const replay = getCommands().replay` too). */
 const REPLAY_REACH = /getCommands\(\)\s*\??\.\s*replay\b/;
@@ -21,6 +24,9 @@ const REPLAY_DESTRUCTURED = /\{[^}]*\breplay\b[^}]*\}\s*=\s*getCommands\(\)/;
 
 /** `const commands = getCommands();`, whose name is then looked for followed by `.replay`. */
 const COMMANDS_BOUND = /\b(?:const|let|var)\s+(\w+)\s*(?::[^=;]+)?=\s*getCommands\(\)\s*;/g;
+
+/** A call of the engine env's `replay()`: `engineEnv().replay()`, or `.replay()` off a binding of the env. */
+const INJECTED_REPLAY = /\.\s*replay\s*\(\s*\)/;
 
 /** True when the source reaches the replay commands directly. */
 function sendsReplayOutsideGate(source: string): boolean {
@@ -33,7 +39,12 @@ function sendsReplayOutsideGate(source: string): boolean {
   return false;
 }
 
-/** Every `.ts` file under `dir` (relative to the source root, `/`-separated) that is not a test, test-support or the gate itself. */
+/** True when the source calls the replay surface the engine was given. */
+function readsInjectedReplay(source: string): boolean {
+  return INJECTED_REPLAY.test(source);
+}
+
+/** Every `.ts` file under `dir` (absolute paths) that is not a test, test-support or the gate itself. */
 function productionSources(dir: string): string[] {
   const found: string[] = [];
 
@@ -49,14 +60,23 @@ function productionSources(dir: string): string[] {
 
     if (entry.name.endsWith(".test.ts") || entry.name.endsWith(".test-support.ts")) continue;
 
-    const rel = relative(SRC_ROOT, full).split(sep).join("/");
+    if (full === GATE_FILE) continue;
 
-    if (rel === GATE_FILE) continue;
-
-    found.push(rel);
+    found.push(full);
   }
 
   return found;
+}
+
+/** The files among `files` whose source matches `check`, relative to the packages directory. */
+function offendersOf(files: string[], check: (source: string) => boolean): string[] {
+  return files
+    .filter((file) => check(readFileSync(file, "utf8")))
+    .map((file) =>
+      relative(join(ENGINE_ROOT, "..", ".."), file)
+        .split(sep)
+        .join("/"),
+    );
 }
 
 describe("the replay command gate is the single sender (#1430)", () => {
@@ -76,15 +96,24 @@ describe("the replay command gate is the single sender (#1430)", () => {
     expect(sendsReplayOutsideGate("const { camera } = getCommands();\ncamera.switchNum(1, 0, 0);")).toBe(false);
   });
 
+  it("flags an engine module reaching the injected replay surface (positive control)", () => {
+    expect(readsInjectedReplay("engineEnv().replay().pause();")).toBe(true);
+    expect(readsInjectedReplay("const env = engineEnv();\nenv.replay().nextLap();")).toBe(true);
+    expect(readsInjectedReplay("engineEnv().camera().switchNum(1, 0, 0);")).toBe(false);
+  });
+
   it("finds the production sources to scan", () => {
-    expect(productionSources(SRC_ROOT).length).toBeGreaterThan(100);
+    expect(productionSources(ACTIONS_ROOT).length).toBeGreaterThan(100);
+    expect(productionSources(ENGINE_ROOT).length).toBeGreaterThan(15);
   });
 
   it("no production source reaches the replay commands outside the gate", () => {
-    const offenders = productionSources(SRC_ROOT).filter((rel) =>
-      sendsReplayOutsideGate(readFileSync(join(SRC_ROOT, rel), "utf8")),
-    );
+    const files = [...productionSources(ENGINE_ROOT), ...productionSources(ACTIONS_ROOT)];
 
-    expect(offenders).toEqual([]);
+    expect(offendersOf(files, sendsReplayOutsideGate)).toEqual([]);
+  });
+
+  it("no engine module but the gate calls the injected replay surface", () => {
+    expect(offendersOf(productionSources(ENGINE_ROOT), readsInjectedReplay)).toEqual([]);
   });
 });

@@ -2,7 +2,7 @@
  * The Replay Control dial's paced search (#801): one runner per process that
  * steps a pending count of lap, session or incident searches through
  * iRacing's own searches, one on its way at a time, as a policy on the replay
- * command gate (`shared/replay-command-gate.ts`, #1430) and never a gate of
+ * command gate (`replay-command-gate.ts`, #1430) and never a gate of
  * its own. Design: docs/superpowers/specs/2026-10-12-issue-801-replay-control-dial-stepping.md,
  * "The paced search".
  *
@@ -40,23 +40,10 @@
  * Each search's outcome comes from one function ({@link runOneSearch}), so
  * #1439 can add an outcome and a start branch without rewriting the runner.
  */
-import { getController } from "@iracedeck/deck-iracing";
 import { replaySpeedFromTelemetry, type TelemetryData } from "@iracedeck/iracing-sdk";
-import { type ILogger, silentLogger } from "@iracedeck/logger";
-import {
-  isPaused,
-  isSameSpeed,
-  keepDialPendingSpeed,
-  readFastestLapSearchDelayMs,
-  readReplayJumpTimeoutMs,
-  REPLAY_JUMP_MAX_WAIT_MS,
-  REPLAY_JUMP_POLL_MS,
-  type ReplayTarget,
-  STABILIZATION_POLL_INTERVAL_MS,
-  STABILIZATION_TIMEOUT_MULTIPLIER,
-  waitForReplay,
-} from "@iracedeck/replay-engine";
+import type { ILogger } from "@iracedeck/logger";
 
+import { now as engineNow, sleep } from "./engine-clock.js";
 import {
   getReplayGateRecord,
   replaySearchCouldRunMs,
@@ -67,14 +54,27 @@ import {
   settleReplayByJump,
   waitForReplaySearchLanding,
   waitForReplaySettled,
-} from "../../shared/replay-command-gate.js";
+} from "./replay-command-gate.js";
+import { engineLogger, engineReads } from "./replay-engine-env.js";
 import {
   applyReplayJumpPlayback,
   beginReplayJump,
   type ReplayJump,
   type ReplayJumpResult,
   type ReplaySpeed,
-} from "../../shared/replay-jump-playback.js";
+} from "./replay-jump-playback.js";
+import { isSameSpeed } from "./replay-jump-speed.js";
+import { type ReplayTarget } from "./replay-position-state.js";
+import { isPaused, waitForReplay } from "./replay-seek.js";
+import { keepDialPendingSpeed } from "./replay-speed-state.js";
+import {
+  HOLD_GAP_MS,
+  readFastestLapSearchDelayMs,
+  readReplayJumpTimeoutMs,
+  REPLAY_JUMP_MAX_WAIT_MS,
+  REPLAY_JUMP_POLL_MS,
+  STABILIZATION_TIMEOUT_MULTIPLIER,
+} from "./replay-timing.js";
 
 /** What a paced search steps through. */
 export type ReplaySearchTarget = "lap" | "session" | "incident";
@@ -110,37 +110,11 @@ export interface ReplaySearchPending {
 // The environment
 // ---------------------------------------------------------------------------
 
-/** What the runner reads besides the gate; injectable for tests. */
-export interface ReplaySearchQueueEnv {
-  /** A fresh telemetry reading, or null. */
-  readTelemetry(): TelemetryData | null;
-  /** Whether a replay is on screen: the controller's debounced replay state (#1324). */
-  inReplay(): boolean;
-}
+// The runner reads through the engine's one env (#1467): `engineReads()` and the engine clock.
 
-const defaultEnv: ReplaySearchQueueEnv = {
-  readTelemetry: () => {
-    try {
-      return getController().getCurrentTelemetry();
-    } catch {
-      return null;
-    }
-  },
-  inReplay: () => {
-    try {
-      return getController().getReplayState().inReplay;
-    } catch {
-      return false;
-    }
-  },
-};
-
-let env: ReplaySearchQueueEnv = defaultEnv;
-let log: ILogger = silentLogger;
-
-/** The logger the runner's lines go to. Replay Control sets it once, at construction. */
-export function setReplaySearchQueueLogger(logger: ILogger): void {
-  log = logger;
+/** The runner's own lines, under the engine logger's `ReplaySearch` scope. */
+function log(): ILogger {
+  return engineLogger("ReplaySearch");
 }
 
 // ---------------------------------------------------------------------------
@@ -149,9 +123,6 @@ export function setReplaySearchQueueLogger(logger: ILogger): void {
 
 /** How many reads a reading must show before a search follows it: the read-back form of the 100 ms that worked 16 of 16. */
 const HOLD_READS = 3;
-
-/** How far apart those reads are (ms). */
-const HOLD_GAP_MS = STABILIZATION_POLL_INTERVAL_MS;
 
 /** Frames per millisecond at 1x. */
 const FRAMES_PER_MS = 60 / 1000;
@@ -256,8 +227,6 @@ function directionOf(count: number): 1 | -1 {
   return count < 0 ? -1 : 1;
 }
 
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
-
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
@@ -286,7 +255,7 @@ function notify(): void {
     try {
       listener();
     } catch (err) {
-      log.debug(`Replay search queue listener failed: ${String(err)}`);
+      log().debug(`Replay search queue listener failed: ${String(err)}`);
     }
   }
 }
@@ -301,7 +270,7 @@ function noteSpeedSent(speed: ReplaySpeed): void {
     try {
       listener(speed);
     } catch (err) {
-      log.debug(`Replay search queue speed listener failed: ${String(err)}`);
+      log().debug(`Replay search queue speed listener failed: ${String(err)}`);
     }
   }
 }
@@ -331,7 +300,7 @@ export function queueReplaySearch(turn: ReplaySearchTurn): void {
   if (current !== null && current.target === turn.target) {
     // The clamp is on what is left after the search on its way, the count a dial shows, never on the two together.
     current.count = current.inFlight + clampCount(current.count - current.inFlight + ticks);
-    log.debug(
+    log().debug(
       `Replay search queue: ${turn.target} ${ticks > 0 ? "+" : ""}${ticks} from ${turn.origin}; ` +
         `${current.count - current.inFlight} left after the search on its way`,
     );
@@ -379,7 +348,7 @@ export function onReplaySearchSpeedSent(listener: (speed: ReplaySpeed) => void):
   };
 }
 
-/** @internal Exported for testing: ends any run and clears the queue, its listeners, environment and logger. */
+/** @internal Exported for testing: ends any run and clears the queue and its listeners. The engine env is reset by `_resetReplayEngineEnv`. */
 export function _resetReplaySearchQueue(): void {
   const current = run;
 
@@ -392,13 +361,6 @@ export function _resetReplaySearchQueue(): void {
 
   listeners.clear();
   speedListeners.clear();
-  env = defaultEnv;
-  log = silentLogger;
-}
-
-/** @internal Replace the environment for tests; `undefined` keys keep the default. */
-export function _configureReplaySearchQueue(overrides: Partial<ReplaySearchQueueEnv>): void {
-  env = { ...defaultEnv, ...overrides };
 }
 
 // ---------------------------------------------------------------------------
@@ -419,24 +381,24 @@ function startRun(turn: ReplaySearchTurn, ticks: number, previous: Run | null): 
   // The new claim cancels the old run's. It is marked ended first, so its own cancellation tells nobody twice.
   if (previous !== null) {
     previous.ended = true;
-    log.debug(`Replay search queue: the ${previous.target} run is superseded by a ${turn.target} turn`);
+    log().debug(`Replay search queue: the ${previous.target} run is superseded by a ${turn.target} turn`);
   }
 
   run = r;
 
-  const atStart = env.readTelemetry();
+  const atStart = engineReads().readTelemetry();
 
   try {
     // The dial's own cursor take, as its record jump's is: a speed or pause the dial sent just before the turn still
     // stands until telemetry shows it, where any other action's take drops it.
     r.jump = keepDialPendingSpeed(() =>
-      beginReplayJump(turn.owner, atStart, (by) => cancelled(r, by), Date.now(), {
+      beginReplayJump(turn.owner, atStart, (by) => cancelled(r, by), engineNow(), {
         origin: turn.origin,
         sendsPositionJump: false,
       }),
     );
   } catch (err) {
-    log.warn(`Replay search queue: the ${turn.target} run could not start: ${String(err)}`);
+    log().warn(`Replay search queue: the ${turn.target} run could not start: ${String(err)}`);
     r.ended = true;
     run = null;
     notify();
@@ -444,7 +406,7 @@ function startRun(turn: ReplaySearchTurn, ticks: number, previous: Run | null): 
     return;
   }
 
-  log.debug(`Replay search queue: ${turn.target} run of ${r.count} started by ${turn.origin}`);
+  log().debug(`Replay search queue: ${turn.target} run of ${r.count} started by ${turn.origin}`);
   notify();
   void drive(r, atStart);
 }
@@ -457,7 +419,7 @@ function cancelled(r: Run, by: string): void {
 
   if (run === r) run = null;
 
-  log.debug(`Replay search queue: the ${r.target} run is cancelled by ${by}; ${r.count - r.inFlight} dropped`);
+  log().debug(`Replay search queue: the ${r.target} run is cancelled by ${by}; ${r.count - r.inFlight} dropped`);
   notify();
 }
 
@@ -468,7 +430,7 @@ async function drive(r: Run, atStart: TelemetryData | null): Promise<void> {
   try {
     result = await work(r, atStart);
   } catch (err) {
-    log.warn(`Replay search queue: the ${r.target} run failed: ${String(err)}`);
+    log().warn(`Replay search queue: the ${r.target} run failed: ${String(err)}`);
     result = "gave-up";
   } finally {
     finish(r, result);
@@ -485,7 +447,7 @@ function finish(r: Run, result: ReplayJumpResult): void {
 
   if (run === r) run = null;
 
-  log.debug(`Replay search queue: the ${r.target} run ended ${final}`);
+  log().debug(`Replay search queue: the ${r.target} run ended ${final}`);
 
   if (wasActive) notify();
 }
@@ -503,7 +465,7 @@ type Ending = ReplayJumpResult;
  * replay: it always is while the run holds the cursor.
  */
 function replayOnScreen(): boolean {
-  if (env.inReplay()) return true;
+  if (engineReads().inReplay()) return true;
 
   const record = getReplayGateRecord();
 
@@ -514,7 +476,7 @@ function replayOnScreen(): boolean {
 function neverReadBack(r: Run, what: string): Ending {
   if (!replayOnScreen()) return leftReplay(r);
 
-  log.warn(`Replay search queue: ${what}; the rest of the ${r.target} run is dropped`);
+  log().warn(`Replay search queue: ${what}; the rest of the ${r.target} run is dropped`);
 
   return "gave-up";
 }
@@ -526,7 +488,7 @@ function neverReadBack(r: Run, what: string): Ending {
  * take by another press, which nobody made.
  */
 function leftReplay(r: Run): Ending {
-  log.debug(`Replay search queue: the replay was left; the ${r.target} run ends`);
+  log().debug(`Replay search queue: the replay was left; the ${r.target} run ends`);
 
   return "gave-up";
 }
@@ -564,7 +526,7 @@ async function work(r: Run, atStart: TelemetryData | null): Promise<Ending> {
 
     if (behind !== null) return behind;
   } else {
-    const reading = readReading(atStart, Date.now());
+    const reading = readReading(atStart, engineNow());
 
     if (reading !== null && playingPathFits(r.target, directionOf(r.count), reading, jump.captured)) {
       return playingPath(r, reading);
@@ -640,7 +602,7 @@ async function behindJump(r: Run, target: ReplayTarget | null, frame = target?.f
       const now = getReplayGateRecord().target;
 
       if (now !== null && now.id === standing.id) standing = now;
-      else leftAt = Date.now();
+      else leftAt = engineNow();
     },
   });
 
@@ -656,7 +618,7 @@ async function behindJump(r: Run, target: ReplayTarget | null, frame = target?.f
     standing !== null && standing.sent && leftAt !== null && leftAt < standing.sentAt + standing.giveUpMs;
 
   if (readBack) {
-    log.debug(`Replay search queue: the jump under way landed on frame ${held.reading.frame} (sent to ${frame})`);
+    log().debug(`Replay search queue: the jump under way landed on frame ${held.reading.frame} (sent to ${frame})`);
 
     return null;
   }
@@ -688,7 +650,7 @@ async function behindSearch(r: Run): Promise<Ending | null> {
       if (settled === "superseded" || stopped(r)) return "cancelled";
 
       if (settled === "nothing-moved") {
-        log.debug(`Replay search queue: the settle jump behind a search moved nothing; the ${r.target} run ends`);
+        log().debug(`Replay search queue: the settle jump behind a search moved nothing; the ${r.target} run ends`);
 
         return "gave-up";
       }
@@ -723,7 +685,7 @@ async function pause(r: Run): Promise<Ending | null> {
   const outcome = await waitForReplay(
     {
       claim,
-      readTelemetry: () => env.readTelemetry(),
+      readTelemetry: () => engineReads().readTelemetry(),
       timeoutMs: readReplayJumpTimeoutMs(),
       pollMs: REPLAY_JUMP_POLL_MS,
     },
@@ -739,7 +701,7 @@ async function pause(r: Run): Promise<Ending | null> {
 
 /** Pauses the replay if it reads moving. Null to go on. */
 async function pauseIfMoving(r: Run): Promise<Ending | null> {
-  const reading = readReading(env.readTelemetry(), Date.now());
+  const reading = readReading(engineReads().readTelemetry(), engineNow());
 
   if (reading === null || reading.rate === 0) return null;
 
@@ -771,7 +733,7 @@ async function holdReading(
 
   if (claim === undefined) return { kind: "cancelled" };
 
-  const startedAt = Date.now();
+  const startedAt = engineNow();
   let last: Reading | null = null;
   let agreeing = 0;
 
@@ -787,8 +749,8 @@ async function holdReading(
 
     options.observe?.();
 
-    const telemetry = settled === "settled" ? env.readTelemetry() : null;
-    const reading = readReading(telemetry, Date.now());
+    const telemetry = settled === "settled" ? engineReads().readTelemetry() : null;
+    const reading = readReading(telemetry, engineNow());
 
     if (reading !== null && (!options.requirePaused || reading.rate === 0)) {
       agreeing = last !== null && agrees(last, reading) ? agreeing + 1 : 1;
@@ -800,7 +762,7 @@ async function holdReading(
 
     if (agreeing >= HOLD_READS && telemetry !== null && reading !== null) return { kind: "held", telemetry, reading };
 
-    if (Date.now() - startedAt >= options.timeoutMs) return replayOnScreen() ? { kind: "gave-up" } : { kind: "left" };
+    if (engineNow() - startedAt >= options.timeoutMs) return replayOnScreen() ? { kind: "gave-up" } : { kind: "left" };
 
     await sleep(HOLD_GAP_MS);
   }
@@ -826,7 +788,7 @@ async function runOneSearch(r: Run, direction: 1 | -1, options: { watchLanding: 
 
   if (claim === undefined) return { outcome: "superseded", landingFrame: null };
 
-  const atSend = env.readTelemetry();
+  const atSend = engineReads().readTelemetry();
   const kind = searchKind(r.target, direction);
   const sent = sendOwnedReplayCommand(claim, { kind: "search", search: kind }, { origin: r.origin });
 
@@ -835,7 +797,7 @@ async function runOneSearch(r: Run, direction: 1 | -1, options: { watchLanding: 
   if (sent !== "sent") return { outcome: "gave-up", landingFrame: null, refused: true };
 
   r.inFlight = direction;
-  log.debug(`Replay search queue: ${kind} sent; ${r.count - r.inFlight} left after it`);
+  log().debug(`Replay search queue: ${kind} sent; ${r.count - r.inFlight} left after it`);
   notify();
 
   const watcher = options.watchLanding ? watchLandingFrame(atSend) : null;
@@ -857,7 +819,7 @@ async function runOneSearch(r: Run, direction: 1 | -1, options: { watchLanding: 
 
   if (!stopped(r)) notify();
 
-  log.debug(`Replay search queue: ${kind} ${outcome}`);
+  log().debug(`Replay search queue: ${kind} ${outcome}`);
 
   return { outcome, landingFrame: watcher?.frame() ?? null };
 }
@@ -868,12 +830,12 @@ async function runOneSearch(r: Run, direction: 1 | -1, options: { watchLanding: 
  * the frame the landing first read.
  */
 function watchLandingFrame(atSend: TelemetryData | null): { frame(): number | null; stop(): void } {
-  let last = readReading(atSend, Date.now());
+  let last = readReading(atSend, engineNow());
   let first: number | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
 
   const step = (): void => {
-    const next = readReading(env.readTelemetry(), Date.now());
+    const next = readReading(engineReads().readTelemetry(), engineNow());
 
     if (first === null && last !== null && next !== null && leapt(last, next)) first = next.frame;
 
@@ -903,7 +865,7 @@ async function playingPath(r: Run, reading: Reading): Promise<Ending> {
 
   switch (step.outcome) {
     case "found-nothing":
-      log.debug(`Replay search queue: the first ${r.target} search found nothing; the replay plays on`);
+      log().debug(`Replay search queue: the first ${r.target} search found nothing; the replay plays on`);
 
       return "gave-up";
     case "gave-up":
@@ -961,8 +923,8 @@ async function jumpBack(r: Run, frame: number | null): Promise<Ending | null> {
 
   if (frame === null) return neverReadBack(r, "the landing's first frame was not read");
 
-  if (readReading(env.readTelemetry(), Date.now())?.frame === frame) {
-    log.debug(`Replay search queue: the pause left the replay on frame ${frame}, where the landing first read`);
+  if (readReading(engineReads().readTelemetry(), engineNow())?.frame === frame) {
+    log().debug(`Replay search queue: the pause left the replay on frame ${frame}, where the landing first read`);
 
     return null;
   }
@@ -1023,13 +985,13 @@ async function pausedRun(r: Run, misses = 0): Promise<Ending> {
         if (settled === "superseded" || stopped(r)) return "cancelled";
 
         if (notLanded >= 2) {
-          log.debug(`Replay search queue: two ${r.target} searches running did not land; nothing further that way`);
+          log().debug(`Replay search queue: two ${r.target} searches running did not land; nothing further that way`);
 
           return "gave-up";
         }
 
         if (settled === "nothing-moved") {
-          log.debug(`Replay search queue: the settle jump moved nothing; the ${r.target} run ends`);
+          log().debug(`Replay search queue: the settle jump moved nothing; the ${r.target} run ends`);
 
           return "gave-up";
         }
@@ -1074,7 +1036,7 @@ async function endAtZero(r: Run, held?: HeldReading): Promise<Ending | null> {
   }
 
   if (r.count !== 0) {
-    log.debug(`Replay search queue: a ${r.target} turn came while the landing held; the run goes on`);
+    log().debug(`Replay search queue: a ${r.target} turn came while the landing held; the run goes on`);
 
     return null;
   }
@@ -1084,7 +1046,7 @@ async function endAtZero(r: Run, held?: HeldReading): Promise<Ending | null> {
 
   if (applied === null) return "cancelled";
 
-  if (applied.command === "failed") log.warn("Replay search queue: speed command failed; replay left as it landed");
+  if (applied.command === "failed") log().warn("Replay search queue: speed command failed; replay left as it landed");
 
   // The speed the replay is at now, as a record jump's landing reports it: the one wanted, or the landing's own.
   noteSpeedSent(applied.speed);
