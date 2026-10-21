@@ -30,9 +30,15 @@ import {
   SETUP_CHASSIS_BINDING_KEY_RENAMES,
   startAudioSessionHold,
 } from "../actions.js";
-import type { Core, Input, Settings, VoicePacks } from "../types.js";
+import type { Core, Input, Replay, Settings, VoicePacks } from "../types.js";
 
-export function startServices(core: Core, input: Input, settings: Settings, voicePacks: VoicePacks): void {
+export function startServices(
+  core: Core,
+  input: Input,
+  settings: Settings,
+  replay: Replay,
+  voicePacks: VoicePacks,
+): void {
   // Initialize global settings listener BEFORE connect - handlers must be registered first.
   // The settings store comes from the settings phase, which built it above the
   // settings-window controller. The running version lets an abandoned migration
@@ -117,7 +123,7 @@ export function startServices(core: Core, input: Input, settings: Settings, voic
   core.controller.subscribe(
     "replay-session",
     createReplaySessionSubscriber({
-      store: settings.replayStore,
+      store: replay.replayStore,
       getSessionInfo: () => core.controller.getSessionInfo(),
       logger: core.adapter.createLogger("ReplaySession"),
     }),

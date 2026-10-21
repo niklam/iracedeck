@@ -14,7 +14,6 @@ vi.mock("@iracedeck/diagnostics", async (io) => (await import("../test-support/m
 vi.mock("@iracedeck/settings-window", async (io) =>
   (await import("../test-support/module-mocks.js")).recordedModule(io),
 );
-vi.mock("@iracedeck/replay-store", async (io) => (await import("../test-support/module-mocks.js")).recordedModule(io));
 vi.mock("@iracedeck/app-updates", async (io) => (await import("../test-support/module-mocks.js")).recordedModule(io));
 vi.mock("@iracedeck/voice-packs", async (io) => (await import("../test-support/module-mocks.js")).recordedModule(io));
 vi.mock("@iracedeck/settings", async (io) => (await import("../test-support/module-mocks.js")).recordedModule(io));
@@ -309,37 +308,16 @@ describe("initSettings", () => {
     expect(callLog).toContain("createVoicePackInstaller().republishStatus");
   });
 
-  it("flushes both stores on the way out", () => {
+  it("flushes the settings store on the way out", () => {
     boot();
     const added = process.listeners("exit").filter((l) => !exitListenersBefore.has(l));
     callLog.length = 0;
 
-    expect(added).toHaveLength(2);
+    expect(added).toHaveLength(1);
 
     for (const listener of added) (listener as () => void)();
 
-    expect(callLog).toEqual(["createFileSettingsStore().flushSync", "initializeReplaySessionStore().flushSync"]);
-  });
-
-  it("hands each replay record event to its section of the store (#1203, #1354, #1426)", () => {
-    const handlers = new Map<string, (ev: { data: unknown }) => void>();
-    implement("initializeEventBus().subscribe", (name, handler) =>
-      handlers.set(name as string, handler as (ev: { data: unknown }) => void),
-    );
-    boot();
-
-    for (const [event, call] of [
-      ["replay.lapStarted", "initializeReplaySessionStore().laps.recordLapStart"],
-      ["replay.lapTimed", "initializeReplaySessionStore().laps.recordLapTime"],
-      ["replay.greenFlag", "initializeReplaySessionStore().greens.record"],
-      ["replay.sessionStarted", "initializeReplaySessionStore().sessions.record"],
-      ["replay.incident", "initializeReplaySessionStore().incidents.record"],
-    ]) {
-      callLog.length = 0;
-      handlers.get(event)?.({ data: {} });
-
-      expect(callLog, event).toEqual([call]);
-    }
+    expect(callLog).toEqual(["createFileSettingsStore().flushSync"]);
   });
 
   it("builds its loggers under today's scopes", () => {
@@ -349,7 +327,6 @@ describe("initSettings", () => {
     expect(host.adapter.scopes.slice(host.adapter.scopes.indexOf("VoicePackCatalog") + 1)).toEqual([
       "VersionCheck",
       "SettingsStore",
-      "ReplaySessionStore",
       "SettingsWindow",
       "CpuProfile",
       "UpdateCheck",

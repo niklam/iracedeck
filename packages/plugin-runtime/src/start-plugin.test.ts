@@ -100,12 +100,6 @@ function expectedOrder(withExtension: boolean): string[] {
     // 7 initSettings
     "onIRacingTerminated",
     "createFileSettingsStore",
-    "initializeReplaySessionStore",
-    "initializeEventBus().subscribe", // replay.lapStarted
-    "initializeEventBus().subscribe", // replay.lapTimed
-    "initializeEventBus().subscribe", // replay.greenFlag
-    "initializeEventBus().subscribe", // replay.sessionStarted
-    "initializeEventBus().subscribe", // replay.incident
     "createSettingsChannelPublisher",
     "initializeCpuProfileCapture",
     "createUpdateCheckService",
@@ -115,6 +109,12 @@ function expectedOrder(withExtension: boolean): string[] {
     "adapter.onPropertyInspectorDidAppear",
     // 8 initReplay
     "configureReplayEngine",
+    "initializeReplaySessionStore",
+    "initializeEventBus().subscribe", // replay.lapStarted
+    "initializeEventBus().subscribe", // replay.lapTimed
+    "initializeEventBus().subscribe", // replay.greenFlag
+    "initializeEventBus().subscribe", // replay.sessionStarted
+    "initializeEventBus().subscribe", // replay.incident
     // 9 registerActions
     "initWindowFocus",
     "initMousePointer",

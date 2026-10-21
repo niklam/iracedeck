@@ -28,9 +28,9 @@ export function startPlugin(host: PluginHost): void {
 
   const settings = initSettings(core, audio, voicePacks);
 
-  initReplay(core);
+  const replay = initReplay(core);
   registerActions(core, input);
-  startServices(core, input, settings, voicePacks);
+  startServices(core, input, settings, replay, voicePacks);
 
   // Always last: every handler is registered before the host can deliver an event.
   core.adapter.connect();

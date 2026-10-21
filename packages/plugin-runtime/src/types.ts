@@ -131,6 +131,10 @@ export interface VoicePacks {
 /** Phase 7's handoff. */
 export interface Settings {
   readonly store: SettingsStore;
-  readonly replayStore: ReplaySessionStore;
   openSettingsWindow(options?: SettingsWindowOpenOptions): ReturnType<SettingsWindowController["open"]>;
+}
+
+/** Phase 8's handoff (#1467): the per-session replay store, fed by the bus and read by the replay subscriber. */
+export interface Replay {
+  readonly replayStore: ReplaySessionStore;
 }

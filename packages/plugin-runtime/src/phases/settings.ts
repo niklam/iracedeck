@@ -1,5 +1,5 @@
 /**
- * Phase 7 (#1349): the plugin-owned settings and replay stores, the settings
+ * Phase 7 (#1349): the plugin-owned settings store, the settings
  * window, the startup notices (first run, changelog), the global-settings
  * listener with its one-shot store-ready block and its every-arrival banner
  * re-assertions, and the PI-appear re-pushes.
@@ -15,7 +15,6 @@ import { getAudio } from "@iracedeck/audio-service";
 import { getPluginPlatform, getPluginVersion, getSimHub, isSimHubReachable } from "@iracedeck/deck-core";
 import { isIRacingActive, onIRacingTerminated } from "@iracedeck/deck-iracing";
 import { getCpuProfileCapture, initializeCpuProfileCapture } from "@iracedeck/diagnostics";
-import { initializeReplaySessionStore, resolveReplayStoreDirectory } from "@iracedeck/replay-store";
 import {
   applyStartupFeatureGates,
   createFileSettingsStore,
@@ -218,43 +217,6 @@ export function initSettings(core: Core, audio: Audio, voicePacks: VoicePacks): 
   // when their host socket closes. A hard kill by the host can't be caught by
   // anything, so a <=250 ms window remains there by construction.
   process.on("exit", () => settingsStore.flushSync());
-
-  // The per-session replay store (#1162, #1203, #1354, #1426): one file per SubSessionID under
-  // %LOCALAPPDATA%\iRaceDeck\Replay\<ecosystem>, holding the replay markers, the lap
-  // record, the greens, the session starts and the incidents. Fed the active session by the subscriber wired beside the elevation
-  // check below; the actions read it synchronously through getReplaySessionStore().
-  // Its writes are debounced like the settings store's, so it gets the same
-  // synchronous flush on the way out.
-  const replaySessionStore = initializeReplaySessionStore({
-    directory: resolveReplayStoreDirectory({ platform: getPluginPlatform(), env: process.env }),
-    logger: core.adapter.createLogger("ReplaySessionStore"),
-  });
-
-  process.on("exit", () => replaySessionStore.flushSync());
-
-  // The translator's lap recorder (#1203) publishes each live lap start and lap
-  // time; the store keeps them in the session's replay file for the fastest-lap
-  // lookup. The store ignores an event whose subSessionId is not the open one.
-  core.bus.subscribe("replay.lapStarted", (ev) => {
-    replaySessionStore.laps.recordLapStart(ev.data);
-  });
-  core.bus.subscribe("replay.lapTimed", (ev) => {
-    replaySessionStore.laps.recordLapTime(ev.data);
-  });
-  // The translator's green recorder (#1354) publishes the race start and every
-  // caution restart; the store keeps them beside the laps for Jump to Race Start.
-  core.bus.subscribe("replay.greenFlag", (ev) => {
-    replaySessionStore.greens.record(ev.data);
-  });
-  // The translator's session and incident recorders (#1426) publish each session's
-  // start and every incident; the store keeps them for Replay Control's session
-  // steps and for comparing its incident searches with what was recorded.
-  core.bus.subscribe("replay.sessionStarted", (ev) => {
-    replaySessionStore.sessions.record(ev.data);
-  });
-  core.bus.subscribe("replay.incident", (ev) => {
-    replaySessionStore.incidents.record(ev.data);
-  });
 
   // Settings window (#992): the plugin serves ui/settings-window.html (compiled
   // from settings-window.ejs, with settings-window-bridge.js injected before
@@ -534,5 +496,5 @@ export function initSettings(core: Core, audio: Audio, voicePacks: VoicePacks): 
     voicePacks.installer.republishStatus();
   });
 
-  return { store: settingsStore, replayStore: replaySessionStore, openSettingsWindow };
+  return { store: settingsStore, openSettingsWindow };
 }
