@@ -958,7 +958,8 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
    * left the screen or the replay has been left.
    */
   private requestKeyCameraSwitch(contextId: string, mode: ReplayControlMode, name: string, send: () => unknown): void {
-    requestCameraSwitch(send, {
+    // The waiter logs a send that fails and never rejects for one.
+    void requestCameraSwitch(send, {
       by: mode,
       label: "Replay control",
       name,
@@ -966,10 +967,6 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
       surface: "the key",
       stillValid: () => this.activeContexts.has(contextId) && this.sdkController.getReplayState().inReplay,
       logger: this.logger,
-    }).catch((error: unknown) => {
-      this.logger.warn(
-        `Replay control: ${name} switch failed: ${error instanceof Error ? error.message : String(error)}`,
-      );
     });
   }
 

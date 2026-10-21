@@ -193,6 +193,23 @@ describe("requestCameraSwitch", () => {
     expect(third).toHaveBeenCalledOnce();
   });
 
+  it("logs a send that fails and resolves every request waiting on it, at once or behind a jump", async () => {
+    const failing = vi.fn(() => Promise.reject(new Error("keystroke refused")));
+
+    await expect(requestCameraSwitch(failing, options({ jumps: quiet() }))).resolves.toBeUndefined();
+
+    const jump = jumpUnderWay();
+    const a = requestCameraSwitch(vi.fn(), options({ jumps: jump.jumps }));
+    const b = requestCameraSwitch(failing, options({ jumps: jump.jumps }));
+
+    jump.land();
+
+    await expect(Promise.all([a, b])).resolves.toBeDefined();
+    expect(failing).toHaveBeenCalledTimes(2);
+    expect(warn).toHaveBeenCalledTimes(2);
+    expect(warn).toHaveBeenCalledWith("Dial track order: the next car switch failed: keystroke refused");
+  });
+
   it("drops it when the wait throws at once, and leaves the next switch one of its own", async () => {
     const send = vi.fn();
     const throwing: CameraSwitchJumps = {

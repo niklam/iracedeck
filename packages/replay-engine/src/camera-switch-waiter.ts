@@ -111,10 +111,23 @@ function loggerOf(options: CameraSwitchOptions): ILogger {
   return options.logger ?? engineLogger("CameraSwitch");
 }
 
-/** Makes the switch, a walk cancelled first. */
+/**
+ * Makes the switch, a walk cancelled first. A send that fails is logged here
+ * and never rejects: a parked switch goes out through the wait every caller
+ * of that wait shares, so its failure is no one caller's to handle.
+ */
 async function send(request: CameraSwitchRequest): Promise<void> {
-  cancelLapWalks(request.options.by);
-  await request.send();
+  const { options } = request;
+
+  cancelLapWalks(options.by);
+
+  try {
+    await request.send();
+  } catch (error) {
+    loggerOf(options).warn(
+      `${options.label}: the ${options.name} switch failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
 }
 
 /** Waits for the jump under way, then makes whatever switch is waiting by then — or drops it. */
@@ -173,7 +186,8 @@ async function switchWhenJumpsSettle(starter: CameraSwitchOptions, generation: n
  * position jump under way as the one switch that waits for the whole plugin,
  * replacing any switch already waiting. The lap walks are cancelled at once,
  * not when the switch goes out: one would keep moving the replay meanwhile.
- * Resolves when the switch has gone out or been dropped.
+ * Resolves when the switch has gone out, failed (logged) or been dropped;
+ * never rejects for a failed send.
  */
 export function requestCameraSwitch(sendSwitch: () => unknown, options: CameraSwitchOptions): Promise<void> {
   const request: CameraSwitchRequest = { send: sendSwitch, options };
