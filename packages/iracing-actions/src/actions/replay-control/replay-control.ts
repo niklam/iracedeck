@@ -70,7 +70,6 @@ import {
   canJumpToRaceStart,
   describeReplayJump,
   findRecordStep,
-  forgetFastestLapSessionMap,
   formatSpeedDisplay,
   isRaceStartUnavailable,
   LAP_START_APPROACH_FRAMES,
@@ -651,10 +650,6 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     await this.updateDisplay(ev, settings);
 
     this.sdkController.subscribe(ev.action.id, (telemetry: TelemetryData | null) => {
-      // A disconnect is the one signal that the replay this map described is
-      // gone; the next walk rebuilds against whatever is open then.
-      if (telemetry === null) forgetFastestLapSessionMap();
-
       this.rememberReplaySpeed(telemetry);
 
       const storedSettings = this.activeContexts.get(ev.action.id);
@@ -777,11 +772,6 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
    * and redraws only on a change.
    */
   private onDialTelemetry(contextId: string, telemetry: TelemetryData | null): void {
-    // As for a key: a disconnect is the one signal that the replay the
-    // fastest-lap map described is gone, and a page of dials alone must not
-    // miss it.
-    if (telemetry === null) forgetFastestLapSessionMap();
-
     const speed = telemetry ? replaySpeedFromTelemetry(telemetry) : null;
 
     this.rememberReplaySpeed(telemetry, speed);

@@ -118,7 +118,6 @@ export {
   _getFastestLapSessionCache,
   _resetFastestLapSessionCache,
   computeFastestLapBisectionProbe,
-  forgetFastestLapSessionMap,
   LAP_START_APPROACH_FRAMES,
 } from "./lap-walk.js";
 export {

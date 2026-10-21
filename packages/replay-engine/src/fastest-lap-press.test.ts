@@ -34,6 +34,7 @@ import { getReplayGateView, type ReplayGateFactEnd, subscribeReplayGate } from "
 import { cancelReplayCursorOwner } from "./replay-cursor.js";
 import { _resetReplayEngine } from "./replay-engine-reset.js";
 import { configureTestEngine, type SpyLogger, type TestControllerReads } from "./replay-engine.test-support.js";
+import { onReplayLeft } from "./replay-left.js";
 import { watchReplayLeft } from "./replay-left.test-support.js";
 import { onReplaySpeedChanged } from "./replay-speed-state.js";
 import { shownReplaySpeed } from "./replay-speed-view.js";
@@ -1200,6 +1201,63 @@ describe("jump-to-fastest-lap", () => {
       const DRIVING = { IsReplayPlaying: false, IsOnTrack: true } as TelemetryData;
       /** A seek under way: out of the replay, nobody driving. */
       const SEEKING = { IsReplayPlaying: false, IsOnTrack: false } as TelemetryData;
+
+      describe("the session map", () => {
+        /** A walk run to its end, so the session map is cached; then a watch over a connected replay. */
+        async function mapCachedThenWatched(watchedInReplay: () => boolean) {
+          singleSessionBuffer(4, 4);
+          await pressJumpToFastestLap({ origin: "ctx-1", target: "viewed-car" });
+          await vi.runAllTimersAsync();
+
+          expect(_getFastestLapSessionCache()).not.toBeNull();
+
+          return watchReplayLeft({ replayState: () => ({ inReplay: watchedInReplay() }), telemetry: () => DRIVING });
+        }
+
+        it("a disconnect drops it, with no Replay Control key or dial listening", async () => {
+          vi.useFakeTimers();
+
+          try {
+            const watch = await mapCachedThenWatched(() => true);
+            const reasons: string[] = [];
+            const stop = onReplayLeft(({ reason }) => reasons.push(reason));
+
+            try {
+              watch.tick(null, false);
+            } finally {
+              stop();
+            }
+
+            expect(reasons).toEqual(["disconnected"]);
+            expect(_getFastestLapSessionCache()).toBeNull();
+          } finally {
+            vi.useRealTimers();
+          }
+        });
+
+        it("leaving the replay for the car keeps it: the same replay may be opened again", async () => {
+          vi.useFakeTimers();
+
+          try {
+            let inReplay = true;
+            const watch = await mapCachedThenWatched(() => inReplay);
+            const reasons: string[] = [];
+            const stop = onReplayLeft(({ reason }) => reasons.push(reason));
+
+            try {
+              inReplay = false;
+              watch.tick();
+            } finally {
+              stop();
+            }
+
+            expect(reasons).toEqual(["left"]);
+            expect(_getFastestLapSessionCache()).not.toBeNull();
+          } finally {
+            vi.useRealTimers();
+          }
+        });
+      });
 
       it("a fastest-lap walk stops when the replay is left, instead of running to its timeout", async () => {
         vi.useFakeTimers();

@@ -17,6 +17,7 @@ import { halvingProbeFrames } from "./lap-walk-probes.js";
 import { type ReplayGateCommand, sendOwnedReplayCommand, waitForReplayJumpsToSettle } from "./replay-command-gate.js";
 import { engineReads } from "./replay-engine-env.js";
 import type { ReplayJump } from "./replay-jump-playback.js";
+import { onReplayLeft } from "./replay-left.js";
 import { replaySeekWaitMs, seekReplayFrame } from "./replay-seek.js";
 import { formatSpeedDisplay } from "./replay-speed-format.js";
 import {
@@ -182,22 +183,29 @@ export type FastestLapSessionMap = {
 };
 
 /**
- * Module-level cache of the session map, dropped on SDK disconnect (Replay
- * Control's null tick, through {@link forgetFastestLapSessionMap}) and
- * replaced on a `SubSessionID` or unseen `SessionUniqueID`. The frames a walk
- * lands on are NOT cached here: they go into the replay record
- * (`store.laps.recordLapStart`), which outlives the process.
+ * Module-level cache of the session map, dropped on SDK disconnect (the
+ * engine's `replayLeft` with reason `disconnected`, through
+ * {@link forgetFastestLapSessionMap}) and replaced on a `SubSessionID` or
+ * unseen `SessionUniqueID`. The frames a walk lands on are NOT cached here:
+ * they go into the replay record (`store.laps.recordLapStart`), which
+ * outlives the process.
  */
 let cachedFastestLapSessionMap: FastestLapSessionMap | null = null;
 
 /**
  * Drops the session map: a disconnect is the one signal that the replay it
  * described is gone, and the next walk rebuilds against whatever is open
- * then. Replay Control calls it on a context's null tick.
+ * then. Leaving the replay for the car keeps it: the same replay may be
+ * opened again.
  */
-export function forgetFastestLapSessionMap(): void {
+function forgetFastestLapSessionMap(): void {
   cachedFastestLapSessionMap = null;
 }
+
+// The engine's disconnect drops the map whether or not any Replay Control key or dial is on screen (#1467).
+onReplayLeft(({ reason }) => {
+  if (reason === "disconnected") forgetFastestLapSessionMap();
+});
 
 /**
  * @internal Exported for testing — clears the module-level session-map cache

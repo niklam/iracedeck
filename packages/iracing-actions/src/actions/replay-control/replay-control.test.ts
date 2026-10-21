@@ -2131,8 +2131,9 @@ describe("ReplayControl", () => {
     // The press, its record jump and its walk are the replay engine's (#1467);
     // their tests are its `fastest-lap-press.test.ts`. Here: what the key hands
     // the engine, and what the key does around a press — its icons, the replay
-    // busy indicator, another key cancelling a walk, a disconnect dropping the
-    // walk's session map — over the engine wired to this action's controller.
+    // busy indicator, another key cancelling a walk — over the engine wired to
+    // this action's controller. A disconnect dropping the walk's session map is
+    // the engine's own, on its `replayLeft` (`fastest-lap-press.test.ts`).
     function fakeEvent(actionId: string, settings: Record<string, unknown> = {}) {
       return {
         action: { id: actionId, isDial: () => false, setTitle: vi.fn(), setImage: vi.fn() },
@@ -2354,62 +2355,6 @@ describe("ReplayControl", () => {
             await runPressOut();
 
             expect(mockReplay.pause).toHaveBeenCalledTimes(2);
-          } finally {
-            vi.useRealTimers();
-          }
-        });
-      });
-
-      describe("the session map follows the replay it describes (#1203 review)", () => {
-        it("an SDK disconnect drops the map", async () => {
-          vi.useFakeTimers();
-
-          try {
-            singleSessionBuffer(4, 4);
-
-            await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
-            await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
-            await vi.runAllTimersAsync();
-
-            expect(_getFastestLapSessionCache()).not.toBeNull();
-
-            const onTick = vi.mocked(action["sdkController"].subscribe).mock.calls[0][1] as (
-              telemetry: unknown,
-            ) => void;
-
-            onTick(null);
-
-            expect(_getFastestLapSessionCache()).toBeNull();
-          } finally {
-            vi.useRealTimers();
-          }
-        });
-
-        it("a disconnect only a dial sees drops the map too: a key off the page no longer listens (#1316)", async () => {
-          vi.useFakeTimers();
-
-          try {
-            singleSessionBuffer(4, 4);
-
-            await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
-            await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
-            await vi.runAllTimersAsync();
-            await action.onWillDisappear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
-
-            expect(_getFastestLapSessionCache()).not.toBeNull();
-
-            const dial = fakeEvent("dial-1", { mode: "play-pause" });
-
-            dial.action.isDial = () => true;
-            await action.onWillAppear(dial as any);
-
-            const onDialTick = vi
-              .mocked(action["sdkController"].subscribe)
-              .mock.calls.find(([id]) => id === "dial-1")?.[1] as (telemetry: unknown) => void;
-
-            onDialTick(null);
-
-            expect(_getFastestLapSessionCache()).toBeNull();
           } finally {
             vi.useRealTimers();
           }
