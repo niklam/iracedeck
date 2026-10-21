@@ -81,18 +81,24 @@ export function lapPressLogger(): ILogger {
   return engineLogger("ReplayControl");
 }
 
-/** The session info the SDK holds now, read from the controller. */
+/** The session info the SDK holds now, read from the controller; undefined when the read fails. */
 export function readSessionInfo(): unknown {
-  return engineEnv().controller?.getSessionInfo();
+  try {
+    return engineEnv().controller?.getSessionInfo();
+  } catch {
+    return undefined;
+  }
 }
 
 /**
  * Whether a replay is on screen, from the controller's debounced replay state
- * (#1324): the read the presses and walks take before they send, as they took
- * it from the action's controller.
+ * (#1324) through {@link engineReads}: the read the presses and walks take
+ * before they send, as they took it from the action's controller. Not the
+ * search queue's own `replayOnScreen()`, which also counts a target the gate
+ * still holds.
  */
-export function replayOnScreen(): boolean {
-  return engineEnv().controller?.getReplayState().inReplay ?? false;
+export function inReplayNow(): boolean {
+  return engineReads().inReplay();
 }
 
 /** A press that has not been cancelled holds the slot; one unwinding after a cancel does not. */

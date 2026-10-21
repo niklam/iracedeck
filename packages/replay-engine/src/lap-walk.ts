@@ -12,7 +12,7 @@ import { getReplaySessionStore, isReplaySessionStoreInitialized } from "@iracede
 
 import { now, pollUntil, sleep } from "./engine-clock.js";
 import { lastListedSessionNum } from "./green-flag-target.js";
-import { FastestLapPressCancelled, lapPressLogger, readSessionInfo, replayOnScreen } from "./lap-press.js";
+import { FastestLapPressCancelled, inReplayNow, lapPressLogger, readSessionInfo } from "./lap-press.js";
 import { halvingProbeFrames } from "./lap-walk-probes.js";
 import { type ReplayGateCommand, sendOwnedReplayCommand, waitForReplayJumpsToSettle } from "./replay-command-gate.js";
 import { engineReads } from "./replay-engine-env.js";
@@ -790,7 +790,7 @@ export async function walkToLapStart(
   // of your car"), and a map built from ignored commands would describe the
   // live view, not the replay. The debounced state, not the raw flag, so a
   // press right after a seek is not taken for the car (#1324).
-  if (!replayOnScreen()) {
+  if (!inReplayNow()) {
     logger.info(`${logLabel}: replay not open; iRacing ignores replay commands from the car`);
 
     return null;

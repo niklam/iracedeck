@@ -26,11 +26,11 @@ import {
   FASTEST_LAP_RECORD_JUMP_OWNER,
   FastestLapPressCancelled,
   holdLapPressSlot,
+  inReplayNow,
   isLapPressInFlight,
   type LapPressIdentity,
   lapPressLogger,
   readSessionInfo,
-  replayOnScreen,
   reportReplayJumpSpeed,
   runJumpToFrame,
   waitToSwitchCamera,
@@ -286,7 +286,7 @@ export function pressJumpToFastestLap(request: {
   // ignored, and logged as done — and a walk would cache a session map
   // describing the live view. The debounced state, not the raw flag,
   // which reads false for ~300 ms after every seek (#1324).
-  if (!replayOnScreen()) {
+  if (!inReplayNow()) {
     logger.info("Jump to fastest lap: replay not open; iRacing ignores replay commands from the car");
 
     return { kind: "refused", reason: "replay not open" };

@@ -296,7 +296,6 @@ describe("jump-to-fastest-lap", () => {
         replayJumpPlayback: () => settings.replayJumpPlayback,
         fastestLapSearchDelayMs: () => settings.fastestLapSearchDelayMs,
       },
-      reads: { inReplay: () => true },
     }));
     sentSpeeds.length = 0;
     onReplaySpeedChanged((speed) => sentSpeeds.push(speed));
@@ -1990,12 +1989,14 @@ describe("jump-to-fastest-lap", () => {
             await pressInsideGrace();
             await runPressOut();
 
-            // The raw flag reading false is a seek to the replay command gate,
-            // so the camera switch waits for it to end (#1430). It never does:
-            // by the time the wait gives up the grace has run out too, and the
-            // walk refuses before it sends anything, where it used to run and
-            // learn from its own samples that it ran from the car.
-            expect(logger.debug).toHaveBeenCalledWith(
+            // The raw flag reading false is a seek to the replay command gate
+            // while the debounced state still holds the replay, so the camera
+            // switch waits for it to end (#1430). The gate and the walk read
+            // the one debounced state: once the grace runs out the gate counts
+            // the replay left, so the wait ends without giving up, and the walk
+            // refuses before it sends anything, where it used to run and learn
+            // from its own samples that it ran from the car.
+            expect(logger.debug).not.toHaveBeenCalledWith(
               "Jump to fastest lap: a jump was still under way; camera switched anyway",
             );
             expect(logger.info).toHaveBeenCalledWith(

@@ -44,13 +44,13 @@ import {
   activeLapPressOrigin,
   FastestLapPressCancelled,
   holdLapPressSlot,
+  inReplayNow,
   isLapPressInFlight,
   type LapPressIdentity,
   lapPressLogger,
   RACE_START_JUMP_OWNER,
   RACE_START_LOG_LABEL,
   readSessionInfo,
-  replayOnScreen,
   runJumpToFrame,
   waitToSwitchCamera,
 } from "./lap-press.js";
@@ -128,7 +128,7 @@ export function pressJumpToRaceStart(request: { readonly origin: string }): LapP
     return { kind: "ignored" };
   }
 
-  if (!replayOnScreen()) {
+  if (!inReplayNow()) {
     logger.info("Jump to race start: replay not open; iRacing ignores replay commands from the car");
 
     return { kind: "refused", reason: "replay not open" };

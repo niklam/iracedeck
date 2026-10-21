@@ -214,7 +214,6 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
         replayJumpPlayback: () => settings.replayJumpPlayback,
         fastestLapSearchDelayMs: () => settings.fastestLapSearchDelayMs,
       },
-      reads: { inReplay: () => true },
     }));
   });
 
