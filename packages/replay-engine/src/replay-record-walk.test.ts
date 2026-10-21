@@ -1,12 +1,11 @@
 import { REPLAY_EXIT_GRACE_MS, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { _resetReplayCommandGate, pressReplayCommand } from "./replay-command-gate.js";
+import { pressReplayCommand } from "./replay-command-gate.js";
 import { fakeReplay, type FakeReplay } from "./replay-command-gate.test-support.js";
-import { _resetReplayCursor } from "./replay-cursor.js";
-import { _configureReplayEngine } from "./replay-engine-env.js";
+import { resetEngine } from "./replay-engine-reset.test-support.js";
 import { beginReplayJump, runReplayJump } from "./replay-jump-playback.js";
-import { _resetReplayPositionState, pendingReplayTarget } from "./replay-position-state.js";
+import { pendingReplayTarget } from "./replay-position-state.js";
 import {
   recordedIndexAt,
   type RecordedSpanRule,
@@ -173,11 +172,8 @@ describe("the anchor and the cursor", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000_000);
-    _resetReplayCommandGate();
-    _resetReplayCursor();
-    _resetReplayPositionState();
     sim = fakeReplay({ frame: 100_000 });
-    _configureReplayEngine({
+    resetEngine({
       replay: () => sim.replay,
       readTelemetry: () => sim.telemetry(),
       inReplay: () => true,
@@ -187,7 +183,7 @@ describe("the anchor and the cursor", () => {
   });
 
   afterEach(() => {
-    _resetReplayCommandGate();
+    resetEngine();
     vi.useRealTimers();
   });
 

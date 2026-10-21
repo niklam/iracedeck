@@ -5,12 +5,14 @@
  * of use, so a test file's `vi.mock("@iracedeck/deck-iracing")` reaches the
  * gate as it did when the gate read deck-iracing itself.
  *
- * A test configures the engine with `_configureReplayEngine({
- * ...deckReplayEngine, settings, ... })`; the call starts from the
- * unconfigured engine, so whatever it leaves out is the unconfigured default.
+ * A test file takes its pair of calls from {@link engineOverDeck}, once, with
+ * what every call must carry (its settings bridge, where it has one), and then
+ * only ever resets through `resetEngine`: each engine module back to nothing
+ * under way, and the engine configured again, in one call.
  */
 import { getCommands, getController } from "@iracedeck/deck-iracing";
-import type { ReplayEngineController, ReplayEngineEnv } from "@iracedeck/replay-engine";
+import { _configureReplayEngine, type ReplayEngineController, type ReplayEngineEnv } from "@iracedeck/replay-engine";
+import { type ReplayEngineTestOverrides, resetEngine } from "@iracedeck/replay-engine/testing";
 
 /** The controller method `key`, looked up on `getController()` at each call. */
 function onEachCall<K extends keyof ReplayEngineController>(key: K): ReplayEngineController[K] {
@@ -37,3 +39,23 @@ export const deckReplayEngine: Pick<ReplayEngineEnv, "controller" | "replay" | "
   replay: () => getCommands().replay,
   camera: () => getCommands().camera,
 };
+
+/** A test file's two ways to set the engine up over its deck-iracing mocks. */
+export interface EngineOverDeck {
+  /** Configure the engine: the deck, the file's `base`, then `extra` for a case. Nothing is reset. */
+  configureEngine(extra?: ReplayEngineTestOverrides): void;
+  /** Reset every engine module, then configure as {@link EngineOverDeck.configureEngine} does. */
+  resetEngine(extra?: ReplayEngineTestOverrides): void;
+}
+
+/**
+ * The engine over the deck mocks, with `base` (the file's settings bridge) on
+ * every call. A call starts from the unconfigured engine, so `extra` replaces
+ * one read or the replay for a case and everything else is restated.
+ */
+export function engineOverDeck(base: ReplayEngineTestOverrides = {}): EngineOverDeck {
+  return {
+    configureEngine: (extra = {}) => _configureReplayEngine({ ...deckReplayEngine, ...base, ...extra }),
+    resetEngine: (extra = {}) => resetEngine({ ...deckReplayEngine, ...base, ...extra }),
+  };
+}

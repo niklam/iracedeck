@@ -9,7 +9,8 @@ import { describe, expect, it } from "vitest";
  * `iracing-actions` for each way to reach the replay commands:
  * `getCommands().replay`, a destructuring of `replay` out of `getCommands()`,
  * and `.replay` read off a binding of `getCommands()`. Inside the engine the
- * commands are the injected env's `replay()` (#1467), which only the gate calls.
+ * commands are the injected env's `replay()` (#1467), which only the gate calls;
+ * `engineEnv` is public in the barrel, so both roots are scanned for that too.
  */
 
 const ENGINE_ROOT = import.meta.dirname;
@@ -28,6 +29,9 @@ const COMMANDS_BOUND = /\b(?:const|let|var)\s+(\w+)\s*(?::[^=;]+)?=\s*getCommand
 /** A call of the engine env's `replay()`: `engineEnv().replay()`, or `.replay()` off a binding of the env. */
 const INJECTED_REPLAY = /\.\s*replay\s*\(\s*\)/;
 
+/** `const { replay } = engineEnv()`, with or without other names beside it, renamed or not. */
+const INJECTED_REPLAY_DESTRUCTURED = /\{[^}]*\breplay\b[^}]*\}\s*=\s*engineEnv\(\)/;
+
 /** True when the source reaches the replay commands directly. */
 function sendsReplayOutsideGate(source: string): boolean {
   if (REPLAY_REACH.test(source) || REPLAY_DESTRUCTURED.test(source)) return true;
@@ -41,7 +45,7 @@ function sendsReplayOutsideGate(source: string): boolean {
 
 /** True when the source calls the replay surface the engine was given. */
 function readsInjectedReplay(source: string): boolean {
-  return INJECTED_REPLAY.test(source);
+  return INJECTED_REPLAY.test(source) || INJECTED_REPLAY_DESTRUCTURED.test(source);
 }
 
 /** Every `.ts` file under `dir` (absolute paths) that is not a test, test-support or the gate itself. */
@@ -102,6 +106,12 @@ describe("the replay command gate is the single sender (#1430)", () => {
     expect(readsInjectedReplay("engineEnv().camera().switchNum(1, 0, 0);")).toBe(false);
   });
 
+  it("flags the injected replay surface destructured out of the env (positive control)", () => {
+    expect(readsInjectedReplay("const { replay } = engineEnv();\nreplay().pause();")).toBe(true);
+    expect(readsInjectedReplay("const { camera, replay: r } = engineEnv();\nr().nextLap();")).toBe(true);
+    expect(readsInjectedReplay("const { camera } = engineEnv();\ncamera().switchNum(1, 0, 0);")).toBe(false);
+  });
+
   it("finds the production sources to scan", () => {
     expect(productionSources(ACTIONS_ROOT).length).toBeGreaterThan(100);
     expect(productionSources(ENGINE_ROOT).length).toBeGreaterThan(15);
@@ -113,7 +123,9 @@ describe("the replay command gate is the single sender (#1430)", () => {
     expect(offendersOf(files, sendsReplayOutsideGate)).toEqual([]);
   });
 
-  it("no engine module but the gate calls the injected replay surface", () => {
-    expect(offendersOf(productionSources(ENGINE_ROOT), readsInjectedReplay)).toEqual([]);
+  it("no production source but the gate calls the injected replay surface", () => {
+    const files = [...productionSources(ENGINE_ROOT), ...productionSources(ACTIONS_ROOT)];
+
+    expect(offendersOf(files, readsInjectedReplay)).toEqual([]);
   });
 });

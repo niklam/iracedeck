@@ -6,10 +6,6 @@ import {
   type TelemetryData,
 } from "@iracedeck/iracing-sdk";
 import {
-  _configureReplayEngine,
-  _resetReplayCommandGate,
-  _resetReplayCursor,
-  _resetReplayPositionState,
   _resetReplaySpeedState,
   cancelReplayCursorOwner,
   claimReplayCursor,
@@ -32,7 +28,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { labelClearsSideMarks } from "../../shared/dial-label-fit.js";
 import { registerReplayBusySurface, type ReplayBusyLook } from "../../shared/replay-busy-indicator.js";
-import { deckReplayEngine } from "../../shared/replay-engine-deck.test-support.js";
+import { engineOverDeck } from "../../shared/replay-engine-deck.test-support.js";
 import type { ReplayDialModeIo, ReplaySpeed } from "./replay-control-dial-mode.js";
 import { REPLAY_DIAL_MODES, ReplayControlDialSettings } from "./replay-control-dial-settings.js";
 import {
@@ -123,14 +119,9 @@ vi.mock("@iracedeck/deck-iracing", () => ({
   }),
 }));
 
-/**
- * The engine as plugin-runtime wires it, over this file's deck-iracing mocks
- * (#1467); `extra` replaces a read or the replay for a case. It is called
- * wherever the gate is reset, as the gate's own reset restored its env.
- */
-function configureEngine(extra: Parameters<typeof _configureReplayEngine>[0] = {}): void {
-  _configureReplayEngine({ ...deckReplayEngine, ...extra });
-}
+// The engine over this file's deck-iracing mocks (#1467). Every reset goes through
+// resetEngine, which resets each engine module and configures the engine again.
+const { configureEngine, resetEngine } = engineOverDeck();
 
 configureEngine();
 
@@ -390,12 +381,8 @@ describe("ReplayControlDialSurface", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
-    _resetReplayCursor();
-    _resetReplaySpeedState();
-    _resetReplayPositionState();
-    _resetReplayCommandGate();
     // The gate reads the same replay the surface does (#1430).
-    configureEngine({ readTelemetry: () => env.telemetry, inReplay: () => env.inReplay });
+    resetEngine({ readTelemetry: () => env.telemetry, inReplay: () => env.inReplay });
     env.inReplay = true;
     env.telemetry = replayAt(speed(1));
     env.sessionInfo = null;
@@ -3746,11 +3733,7 @@ describe("ReplayControlDialSurface — the busy look (#1437)", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
-    _resetReplayCursor();
-    _resetReplaySpeedState();
-    _resetReplayPositionState();
-    _resetReplayCommandGate();
-    configureEngine({ readTelemetry: () => env.telemetry, inReplay: () => env.inReplay });
+    resetEngine({ readTelemetry: () => env.telemetry, inReplay: () => env.inReplay });
     env.inReplay = true;
     env.telemetry = replayAt(speed(1));
     mocks.thresholdMs.value = 500;

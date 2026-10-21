@@ -1,9 +1,6 @@
 import { ReplayPosMode, replaySpeedToSdk, type TelemetryData } from "@iracedeck/iracing-sdk";
 import {
-  _configureReplayEngine,
-  _resetReplayCommandGate,
   _resetReplayCursor,
-  _resetReplayPositionState,
   cancelReplayCursorOwner,
   claimReplayCursor,
   clearReplayTarget,
@@ -13,7 +10,7 @@ import {
 import { withSteppedReplayState } from "@iracedeck/replay-engine/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { deckReplayEngine } from "../../shared/replay-engine-deck.test-support.js";
+import { engineOverDeck } from "../../shared/replay-engine-deck.test-support.js";
 import { REPLAY_EXIT_GRACE_MS } from "./replay-markers-ops.js";
 import {
   buildMarker,
@@ -184,20 +181,15 @@ vi.mock("@iracedeck/settings", () => ({
 const engineSetting = (key: string): unknown =>
   (mocks.getGlobalSettings() as Record<string, unknown> | undefined)?.[key];
 
-// Every `_configureReplayEngine` call here passes these: each call starts from the unconfigured engine.
+// Every configure and reset of the engine here carries these (engineOverDeck below): each starts from the unconfigured engine.
 const engineSettings = {
   replayJumpPlayback: () => engineSetting("replayJumpPlayback"),
   fastestLapSearchDelayMs: () => engineSetting("fastestLapSearchDelayMs"),
 };
 
-/**
- * The engine as plugin-runtime wires it, over this file's deck-iracing mocks
- * (#1467); `extra` replaces a read or the replay for a case. It is called
- * wherever the gate is reset, as the gate's own reset restored its env.
- */
-function configureEngine(extra: Parameters<typeof _configureReplayEngine>[0] = {}): void {
-  _configureReplayEngine({ ...deckReplayEngine, settings: engineSettings, ...extra });
-}
+// The engine over this file's deck-iracing mocks (#1467). Every reset goes through
+// resetEngine, which resets each engine module and configures the engine again.
+const { configureEngine, resetEngine } = engineOverDeck({ settings: engineSettings });
 
 configureEngine();
 
@@ -357,18 +349,14 @@ describe("ReplayMarkers", () => {
     mocks.setPlayPosition.mockReturnValue(true);
     mocks.setPlaySpeed.mockReturnValue(true);
     mocks.getGlobalSettings.mockReturnValue({});
-    _resetReplayCursor();
-    _resetReplayCommandGate();
-    configureEngine();
-    _resetReplayPositionState();
+    resetEngine();
     busy.looks.clear();
     busy.surfaces.clear();
     vi.useFakeTimers();
   });
 
   afterEach(() => {
-    _resetReplayCommandGate();
-    configureEngine();
+    resetEngine();
     vi.useRealTimers();
   });
 
@@ -1421,16 +1409,12 @@ describe("ReplayMarkers on a dial (#1230)", () => {
     mocks.setPlayPosition.mockReturnValue(true);
     mocks.setPlaySpeed.mockReturnValue(true);
     mocks.getGlobalSettings.mockReturnValue({});
-    _resetReplayCursor();
-    _resetReplayCommandGate();
-    configureEngine();
-    _resetReplayPositionState();
+    resetEngine();
     vi.useFakeTimers();
   });
 
   afterEach(() => {
-    _resetReplayCommandGate();
-    configureEngine();
+    resetEngine();
     vi.useRealTimers();
   });
 

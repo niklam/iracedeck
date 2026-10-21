@@ -1,10 +1,7 @@
 import { getCommands } from "@iracedeck/deck-iracing";
 import { ReplayPosMode, replaySpeedToSdk, type TelemetryData } from "@iracedeck/iracing-sdk";
 import {
-  _configureReplayEngine,
-  _resetReplayCommandGate,
   _resetReplayCursor,
-  _resetReplayPositionState,
   cancelReplayCursorOwner,
   claimReplayCursor,
   currentReplayCursorOwner,
@@ -18,7 +15,7 @@ import { steppedReplayState, type SteppedReplayState } from "@iracedeck/replay-e
 import { type ReplayMarker, type ReplaySessionStore } from "@iracedeck/replay-store";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { deckReplayEngine } from "../../shared/replay-engine-deck.test-support.js";
+import { engineOverDeck } from "../../shared/replay-engine-deck.test-support.js";
 import {
   followMarkerJump,
   jumpToMarkerFrame,
@@ -52,14 +49,9 @@ vi.mock("@iracedeck/replay-store", () => ({
   MARKER_PREVIOUS_MIN_BEHIND_FRAMES: 120,
 }));
 
-/**
- * The engine as plugin-runtime wires it, over this file's deck-iracing mocks
- * (#1467); `extra` replaces a read or the replay for a case. It is called
- * wherever the gate is reset, as the gate's own reset restored its env.
- */
-function configureEngine(extra: Parameters<typeof _configureReplayEngine>[0] = {}): void {
-  _configureReplayEngine({ ...deckReplayEngine, ...extra });
-}
+// The engine over this file's deck-iracing mocks (#1467). Every reset goes through
+// resetEngine, which resets each engine module and configures the engine again.
+const { configureEngine, resetEngine } = engineOverDeck();
 
 configureEngine();
 
@@ -365,10 +357,7 @@ async function settled(jump: Promise<ReplayJumpOutcome>, ms = 5_000): Promise<Re
 }
 
 function resetJumpState(): void {
-  _resetReplayCursor();
-  _resetReplayCommandGate();
-  configureEngine();
-  _resetReplayPositionState();
+  resetEngine();
   vi.useFakeTimers({ now: PRESS_AT });
   mockGetGlobalSettings.mockReset().mockReturnValue({});
   vi.mocked(getCommands).mockReset();
@@ -378,8 +367,7 @@ describe("the replay's pending target is the anchor (#1230, #1430)", () => {
   beforeEach(resetJumpState);
 
   afterEach(() => {
-    _resetReplayCommandGate();
-    configureEngine();
+    resetEngine();
     vi.useRealTimers();
   });
 
@@ -466,8 +454,7 @@ describe("jumpToMarkerFrame runs the shared jump sequence (#1276)", () => {
   beforeEach(resetJumpState);
 
   afterEach(() => {
-    _resetReplayCommandGate();
-    configureEngine();
+    resetEngine();
     vi.useRealTimers();
   });
 

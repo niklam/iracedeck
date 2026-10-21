@@ -20,6 +20,7 @@ import { closeReplayJump, openReplayJump } from "./replay-command-gate.js";
 import { fakeReplay, type FakeReplay, type FakeReplayOptions } from "./replay-command-gate.test-support.js";
 import { _resetReplayCursor, claimReplayCursor } from "./replay-cursor.js";
 import { _configureReplayEngine } from "./replay-engine-env.js";
+import { resetEngine } from "./replay-engine-reset.test-support.js";
 import { beginReplayJump, runReplayJump } from "./replay-jump-playback.js";
 import { _resetReplayPositionState, pendingReplayTarget, replayTargetGiveUpMs } from "./replay-position-state.js";
 
@@ -75,17 +76,14 @@ describe("replay command gate", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000_000);
-    _resetReplayCommandGate();
-    _resetReplayCursor();
-    _resetReplayPositionState();
-    _configureReplayEngine({ settings: engineSettings });
+    resetEngine({ settings: engineSettings });
     mockSettings.mockReturnValue({});
     inReplay = true;
     connected = true;
   });
 
   afterEach(() => {
-    _resetReplayCommandGate();
+    resetEngine({ settings: engineSettings });
     vi.useRealTimers();
   });
 

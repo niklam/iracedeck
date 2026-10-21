@@ -8,10 +8,6 @@
  */
 import { getCarNumberRawFromSessionInfo, type ReplayPosMode, type TelemetryData } from "@iracedeck/iracing-sdk";
 import {
-  _configureReplayEngine,
-  _resetReplayCommandGate,
-  _resetReplayCursor,
-  _resetReplayPositionState,
   cancelReplayCursorOwner,
   GREEN_APPROACH_FRAMES,
   pressReplayCommand,
@@ -23,7 +19,7 @@ import type { GreenLookup, GreenQuery, LapStartLookup, LapStartQuery, LapStartRe
 import { getGlobalSettings } from "@iracedeck/settings";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { deckReplayEngine } from "../../shared/replay-engine-deck.test-support.js";
+import { engineOverDeck } from "../../shared/replay-engine-deck.test-support.js";
 import { _resetFastestLapSessionCache, generateReplayControlSvg, ReplayControl } from "./replay-control.js";
 
 const { mockAssembleIcon } = vi.hoisted(() => ({
@@ -163,20 +159,15 @@ vi.mock("@iracedeck/settings", () => ({
 const engineSetting = (key: string): unknown =>
   (vi.mocked(getGlobalSettings)() as Record<string, unknown> | undefined)?.[key];
 
-// Every `_configureReplayEngine` call here passes these: each call starts from the unconfigured engine.
+// Every configure and reset of the engine here carries these (engineOverDeck below): each starts from the unconfigured engine.
 const engineSettings = {
   replayJumpPlayback: () => engineSetting("replayJumpPlayback"),
   fastestLapSearchDelayMs: () => engineSetting("fastestLapSearchDelayMs"),
 };
 
-/**
- * The engine as plugin-runtime wires it, over this file's deck-iracing mocks
- * (#1467); `extra` replaces a read or the replay for a case. It is called
- * wherever the gate is reset, as the gate's own reset restored its env.
- */
-function configureEngine(extra: Parameters<typeof _configureReplayEngine>[0] = {}): void {
-  _configureReplayEngine({ ...deckReplayEngine, settings: engineSettings, ...extra });
-}
+// The engine over this file's deck-iracing mocks (#1467). Every reset goes through
+// resetEngine, which resets each engine module and configures the engine again.
+const { configureEngine, resetEngine } = engineOverDeck({ settings: engineSettings });
 
 configureEngine();
 
@@ -591,12 +582,9 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
     // Every press polls for a landing; a real-timer poll would outlive its test.
     vi.useFakeTimers();
     _resetFastestLapSessionCache();
-    _resetReplayCursor();
     // The replay command gate (#1430) and the target it records are module
     // state every press reaches: each test starts with nothing under way.
-    _resetReplayCommandGate();
-    configureEngine();
-    _resetReplayPositionState();
+    resetEngine();
 
     const { getReplaySessionStore, isReplaySessionStoreInitialized } = await import("@iracedeck/replay-store");
     const { getCommands } = await import("@iracedeck/deck-iracing");

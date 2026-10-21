@@ -18,6 +18,7 @@ import {
 import { fakeReplay, type FakeReplay, type FakeReplayOptions } from "./replay-command-gate.test-support.js";
 import { _resetReplayCursor, currentReplayCursorOwner } from "./replay-cursor.js";
 import { _configureReplayEngine } from "./replay-engine-env.js";
+import { resetEngine } from "./replay-engine-reset.test-support.js";
 import { beginReplayJump, runReplayJump } from "./replay-jump-playback.js";
 import { _resetReplayPositionState } from "./replay-position-state.js";
 import {
@@ -198,19 +199,14 @@ describe("the paced search runner (#801)", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000_000);
-    _resetReplaySearchQueue();
-    _resetReplayCommandGate();
-    _resetReplayCursor();
-    _resetReplayPositionState();
     setting("remember");
     inReplay = true;
     warn = vi.fn<(message: string) => void>();
-    _configureReplayEngine({ settings: engineSettings, logger: engineRootLogger });
+    resetEngine({ settings: engineSettings, logger: engineRootLogger });
   });
 
   afterEach(() => {
-    _resetReplaySearchQueue();
-    _resetReplayCommandGate();
+    resetEngine({ settings: engineSettings });
     vi.useRealTimers();
   });
 
@@ -816,6 +812,7 @@ describe("the paced search runner (#801)", () => {
 
       // The gate and the runner read one env (#1467): only the runner's own
       // read of the replay state fails, so the failure is inside the runner.
+      // Coupled by name to `replayOnScreen` in replay-search-queue.ts: rename it, update this regex.
       const runnersRead = (): boolean => /\breplayOnScreen\b/.test(new Error().stack ?? "");
       let reads = 0;
 

@@ -8,7 +8,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  _resetReplayCommandGate,
   pressReplayCommand,
   readReplayPosition,
   type ReplayGateCommand,
@@ -17,11 +16,12 @@ import {
   subscribeReplayGate,
 } from "./replay-command-gate.js";
 import { fakeReplay, type FakeReplay, type FakeReplayOptions } from "./replay-command-gate.test-support.js";
-import { _resetReplayCursor, cancelReplayCursorOwner } from "./replay-cursor.js";
+import { cancelReplayCursorOwner } from "./replay-cursor.js";
 import { _configureReplayEngine } from "./replay-engine-env.js";
+import { resetEngine } from "./replay-engine-reset.test-support.js";
 import { planFrameMove } from "./replay-frame-move.js";
 import { beginReplayJump, type ReplayJumpOutcome, runReplayJump } from "./replay-jump-playback.js";
-import { _resetReplayPositionState, pendingReplayTarget } from "./replay-position-state.js";
+import { pendingReplayTarget } from "./replay-position-state.js";
 
 /** The replay settings the cases set, read by the engine through its env (#1467). */
 const mockSettings = vi.fn((): Record<string, unknown> => ({}));
@@ -106,15 +106,12 @@ describe("the jump sequence and the other senders (#1430)", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000_000);
-    _resetReplayCommandGate();
-    _resetReplayCursor();
-    _resetReplayPositionState();
-    _configureReplayEngine({ settings: engineSettings });
+    resetEngine({ settings: engineSettings });
     setting("remember");
   });
 
   afterEach(() => {
-    _resetReplayCommandGate();
+    resetEngine({ settings: engineSettings });
     vi.useRealTimers();
   });
 

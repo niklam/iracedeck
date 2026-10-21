@@ -15,3 +15,4 @@ export {
   type FakeReplayOptions,
   THROWN_OFFSET,
 } from "./replay-command-gate.test-support.js";
+export { resetEngine, type ReplayEngineTestOverrides } from "./replay-engine-reset.test-support.js";

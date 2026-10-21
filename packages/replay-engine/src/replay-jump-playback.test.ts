@@ -1,14 +1,10 @@
 import { ReplayPosMode, replaySpeedToSdk, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { _resetReplayCommandGate, type ReplayGateFactEnd, subscribeReplayGate } from "./replay-command-gate.js";
-import {
-  _resetReplayCursor,
-  cancelReplayCursorOwner,
-  currentReplayCursorOwner,
-  pendingReplayJumpSpeed,
-} from "./replay-cursor.js";
+import { type ReplayGateFactEnd, subscribeReplayGate } from "./replay-command-gate.js";
+import { cancelReplayCursorOwner, currentReplayCursorOwner, pendingReplayJumpSpeed } from "./replay-cursor.js";
 import { _configureReplayEngine } from "./replay-engine-env.js";
+import { resetEngine } from "./replay-engine-reset.test-support.js";
 import {
   applyReplayJumpPlayback,
   beginReplayJump,
@@ -22,7 +18,6 @@ import {
   resolveReplayJumpSpeed,
   runReplayJump,
 } from "./replay-jump-playback.js";
-import { _resetReplayPositionState } from "./replay-position-state.js";
 
 /** The replay settings the cases set, read by the engine through its env (#1467). */
 const mockSettings = vi.fn((): Record<string, unknown> => ({}));
@@ -131,10 +126,7 @@ async function settle(outcome: Promise<ReplayJumpOutcome>, ms = 5_000): Promise<
 
 describe("replay-jump-playback (#1276)", () => {
   beforeEach(() => {
-    _resetReplayCursor();
-    _resetReplayCommandGate();
-    _resetReplayPositionState();
-    _configureReplayEngine({
+    resetEngine({
       settings: engineSettings,
       replay: () => activeSim.replay as never,
       readTelemetry: () => activeSim.readTelemetry(),

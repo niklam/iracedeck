@@ -10,10 +10,7 @@ import {
   TrkLoc,
 } from "@iracedeck/iracing-sdk";
 import {
-  _configureReplayEngine,
-  _resetReplayCommandGate,
   _resetReplayCursor,
-  _resetReplayPositionState,
   _resetReplaySpeedState,
   beginReplayJump,
   cancelReplayCursorOwner,
@@ -44,7 +41,7 @@ import {
 import { getGlobalSettings } from "@iracedeck/settings";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
-import { deckReplayEngine } from "../../shared/replay-engine-deck.test-support.js";
+import { engineOverDeck } from "../../shared/replay-engine-deck.test-support.js";
 import { ReplayControlDialSettings } from "./replay-control-dial-settings.js";
 import type { ReplayControlDialHost } from "./replay-control-dial-surface.js";
 import {
@@ -380,20 +377,15 @@ vi.mock("@iracedeck/settings", () => ({
 const engineSetting = (key: string): unknown =>
   (vi.mocked(getGlobalSettings)() as Record<string, unknown> | undefined)?.[key];
 
-// Every `_configureReplayEngine` call here passes these: each call starts from the unconfigured engine.
+// Every configure and reset of the engine here carries these (engineOverDeck below): each starts from the unconfigured engine.
 const engineSettings = {
   replayJumpPlayback: () => engineSetting("replayJumpPlayback"),
   fastestLapSearchDelayMs: () => engineSetting("fastestLapSearchDelayMs"),
 };
 
-/**
- * The engine as plugin-runtime wires it, over this file's deck-iracing mocks
- * (#1467); `extra` replaces a read or the replay for a case. It is called
- * wherever the gate is reset, as the gate's own reset restored its env.
- */
-function configureEngine(extra: Parameters<typeof _configureReplayEngine>[0] = {}): void {
-  _configureReplayEngine({ ...deckReplayEngine, settings: engineSettings, ...extra });
-}
+// The engine over this file's deck-iracing mocks (#1467). Every reset goes through
+// resetEngine, which resets each engine module and configures the engine again.
+const { configureEngine, resetEngine } = engineOverDeck({ settings: engineSettings });
 
 configureEngine();
 
@@ -412,9 +404,7 @@ describe("ReplayControl", () => {
     vi.clearAllMocks();
     // The replay command gate (#1430) and the target it records are module
     // state every press reaches: each test starts with nothing under way.
-    _resetReplayCommandGate();
-    configureEngine();
-    _resetReplayPositionState();
+    resetEngine();
     busy.looks.clear();
     busy.surfaces.clear();
   });
@@ -422,9 +412,7 @@ describe("ReplayControl", () => {
   afterEach(() => {
     // And ends with nothing under way: a test on real timers that leaves the
     // gate polling would otherwise have its timer fire in a later test.
-    _resetReplayCommandGate();
-    configureEngine();
-    _resetReplayPositionState();
+    resetEngine();
   });
 
   describe("parseSpeedSetting", () => {
