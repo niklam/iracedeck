@@ -64,6 +64,8 @@ export default defineConfig({
       "@iracedeck/iracing-native": packageSrc("iracing-native"),
       "@iracedeck/logger": packageSrc("logger"),
       "@iracedeck/race-engineer-wiring": packageSrc("race-engineer-wiring"),
+      "@iracedeck/replay-engine/testing": packageSrc("replay-engine", "src/testing.ts"),
+      "@iracedeck/replay-engine": packageSrc("replay-engine"),
       "@iracedeck/replay-store": packageSrc("replay-store"),
       "@iracedeck/settings": packageSrc("settings"),
       "@iracedeck/settings-window": packageSrc("settings-window"),

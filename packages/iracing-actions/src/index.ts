@@ -64,6 +64,10 @@ export {
 } from "./audio/audio-session-hold.js";
 export { isRaceEngineerEnabled, isRadarEnabled, stopRaceEngineerPlayback } from "./audio/audio-volume.js";
 export { CAR_CYCLE_BINDING_DEFAULTS } from "./shared/car-cycle-bindings.js";
+// The replay busy indicator (#1437) has no registration entry point of its
+// own, so the composition root sets its logger once, before the replay
+// actions are constructed (#1467).
+export { setReplayBusyIndicatorLogger } from "./shared/replay-busy-indicator.js";
 export { PIT_QUICK_ACTIONS_UUID, PitQuickActions } from "./actions/pit-quick-actions/pit-quick-actions.js";
 export { RACE_ADMIN_UUID, RaceAdmin } from "./actions/race-admin/race-admin.js";
 export { REPLAY_CONTROL_UUID, ReplayControl } from "./actions/replay-control/replay-control.js";

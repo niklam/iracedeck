@@ -6468,9 +6468,10 @@ describe("ReplayControl", () => {
         expect(action["busyRegistrations"].has("ctx-1")).toBe(false);
       });
 
-      it("sets the indicator's logger to a scope of its own", () => {
-        expect(busy.setLogger).toHaveBeenCalled();
-        expect(action["logger"].createScope).toHaveBeenCalledWith("ReplayBusy");
+      it("leaves the indicator's logger to the composition root (#1467)", () => {
+        // plugin-runtime's registerActions sets it once, before any action is constructed.
+        expect(busy.setLogger).not.toHaveBeenCalled();
+        expect(action["logger"].createScope).not.toHaveBeenCalledWith("ReplayBusy");
       });
     });
 

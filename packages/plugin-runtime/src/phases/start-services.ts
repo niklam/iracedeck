@@ -1,9 +1,10 @@
 /**
- * Phase 9 (#1349): the global settings listener and what waits on it — the
- * voice-pack launch step, the two binding migrations, the host's extension,
- * the settings-window request, SimHub, the binding dispatcher, the app
- * monitor, the audio session hold, and the two SDK subscribers. Everything
- * here is registered before `startPlugin` connects the adapter.
+ * Phase 10 (#1349; 9 until #1467): the global settings listener and what
+ * waits on it — the voice-pack launch step, the two binding migrations, the
+ * host's extension, the settings-window request, SimHub, the binding
+ * dispatcher, the app monitor, the audio session hold, and the two SDK
+ * subscribers. Everything here is registered before `startPlugin` connects
+ * the adapter.
  */
 import { getAudio } from "@iracedeck/audio-service";
 import { getPluginVersion, initializeBindingDispatcher, initializeSimHub } from "@iracedeck/deck-core";

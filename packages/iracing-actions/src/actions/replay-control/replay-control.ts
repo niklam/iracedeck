@@ -85,7 +85,6 @@ import {
   registerReplayBusySurface,
   type ReplayBusyLook,
   reportReplayPressIgnored,
-  setReplayBusyIndicatorLogger,
 } from "../../shared/replay-busy-indicator.js";
 import { replayBusyKeyMark, replayBusyMarkKey } from "../../shared/replay-busy-mark.js";
 import {
@@ -1095,9 +1094,6 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     setReplayCommandGateLogger(this.logger.createScope("ReplayGate"));
     // The dial's paced search (#801) logs to a scope of its own beside it.
     setReplaySearchQueueLogger(this.logger.createScope("ReplaySearch"));
-    // The busy indicator (#1437) reads that gate; its lines (a look started or
-    // ended, a spinner stopped at its ceiling) go to a scope of their own.
-    setReplayBusyIndicatorLogger(this.logger.createScope("ReplayBusy"));
   }
 
   override async onWillAppear(ev: IDeckWillAppearEvent<ReplayControlSettings>): Promise<void> {

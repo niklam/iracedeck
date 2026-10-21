@@ -92,6 +92,7 @@ export {
   migrateLfeIntensityBindingKeys,
   runAudioPreview,
   SETUP_CHASSIS_BINDING_KEY_RENAMES,
+  setReplayBusyIndicatorLogger,
   startAudioSessionHold,
   stopRaceEngineerPlayback,
   syncFeatureGates,

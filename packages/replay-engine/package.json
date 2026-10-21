@@ -1,0 +1,38 @@
+{
+  "name": "@iracedeck/replay-engine",
+  "version": "3.7.0-dev.0",
+  "description": "The iRacing replay engine: the command gate, the cursor, jump playback, seek, the paced search, the speed state, the camera-switch waiter and the lap walks.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./testing": {
+      "import": "./dist/testing.js",
+      "types": "./dist/testing.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "clean": "rimraf dist",
+    "test": "node ../../scripts/test-package.mjs",
+    "test:watch": "node ../../scripts/test-package.mjs --watch"
+  },
+  "dependencies": {
+    "@iracedeck/app-constants": "workspace:*",
+    "@iracedeck/iracing-sdk": "workspace:*",
+    "@iracedeck/logger": "workspace:*",
+    "@iracedeck/replay-store": "workspace:*"
+  },
+  "devDependencies": {
+    "@tsconfig/node22": "22.0.6",
+    "@types/node": "26.6.5",
+    "rimraf": "6.1.3",
+    "typescript": "5.9.3",
+    "vitest": "5.0.5"
+  }
+}

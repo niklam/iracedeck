@@ -3,6 +3,7 @@ import { initCore } from "./phases/core.js";
 import { initInput } from "./phases/input.js";
 import { initRaceEngineer } from "./phases/race-engineer.js";
 import { registerActions } from "./phases/register-actions.js";
+import { initReplay } from "./phases/replay.js";
 import { initSettings } from "./phases/settings.js";
 import { initSim } from "./phases/sim.js";
 import { startServices } from "./phases/start-services.js";
@@ -27,6 +28,7 @@ export function startPlugin(host: PluginHost): void {
 
   const settings = initSettings(core, audio, voicePacks);
 
+  initReplay(core);
   registerActions(core, input);
   startServices(core, input, settings, voicePacks);
 

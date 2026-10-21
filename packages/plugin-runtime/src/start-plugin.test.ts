@@ -11,6 +11,7 @@ vi.mock("@iracedeck/settings-window", async (io) =>
   (await import("./test-support/module-mocks.js")).recordedModule(io),
 );
 vi.mock("@iracedeck/replay-store", async (io) => (await import("./test-support/module-mocks.js")).recordedModule(io));
+vi.mock("@iracedeck/replay-engine", async (io) => (await import("./test-support/module-mocks.js")).recordedModule(io));
 vi.mock("@iracedeck/app-updates", async (io) => (await import("./test-support/module-mocks.js")).recordedModule(io));
 vi.mock("@iracedeck/voice-packs", async (io) => (await import("./test-support/module-mocks.js")).recordedModule(io));
 vi.mock("@iracedeck/settings", async (io) => (await import("./test-support/module-mocks.js")).recordedModule(io));
@@ -45,7 +46,9 @@ vi.mock("./actions.js", async () => (await import("./test-support/module-mocks.j
  * The four `registerStateSection` calls that end `initCore` are newer than
  * that file too (#1387): the Telemetry Snapshot's plugin-state sections, which
  * no later call is ordered against. So is `startAudioSessionHold` (#1347),
- * which follows the app monitor whose edges it listens to.
+ * which follows the app monitor whose edges it listens to. The replay engine
+ * phase's `configureReplayEngine` and the busy indicator's logger, set by
+ * `registerActions` before the first action is constructed, are newer too (#1467).
  */
 function expectedOrder(withExtension: boolean): string[] {
   return [
@@ -110,14 +113,17 @@ function expectedOrder(withExtension: boolean): string[] {
     "createSettingsWindowController",
     "onGlobalSettingsChange", // the big listener
     "adapter.onPropertyInspectorDidAppear",
-    // 8 registerActions
+    // 8 initReplay
+    "configureReplayEngine",
+    // 9 registerActions
     "initWindowFocus",
     "initMousePointer",
     "adapter.onKeyDown",
     "adapter.onDialDown",
     "adapter.onDialRotate",
+    "setReplayBusyIndicatorLogger",
     "adapter.registerAction*",
-    // 9 startServices
+    // 10 startServices
     "initGlobalSettings",
     "createVoicePackLaunchStep().start",
     "migrateGlobalSettingsKeys",
@@ -130,7 +136,7 @@ function expectedOrder(withExtension: boolean): string[] {
     "startAudioSessionHold", // #1347
     "getController().subscribe", // elevation check
     "getController().subscribe", // replay session
-    // 10
+    // 11 connect
     "adapter.connect",
   ];
 }
@@ -143,9 +149,12 @@ function expectedOrder(withExtension: boolean): string[] {
  * scan helpers, and `().includes` reads stay out. `register` joined the list
  * with #1387: until then the only registrations were the adapter's, which
  * `adapter.` covers, so a bare `registerStateSection` passed unseen.
+ * `configure` and `setReplayBusyIndicatorLogger` joined it with #1467; a
+ * top-level `set*` is deliberately not added, since it would surface setters
+ * the order does not care about.
  */
 const EFFECTFUL =
-  /^(init|start|on[A-Z]|new |adapter\.|extension\.|apply|validate|migrate|seed|wire|create|register)|\.(start|subscribe|refresh|init|set[A-Z]\w*)$/;
+  /^(init|start|on[A-Z]|new |adapter\.|extension\.|apply|validate|migrate|seed|wire|create|register|configure|setReplayBusyIndicatorLogger)|\.(start|subscribe|refresh|init|set[A-Z]\w*)$/;
 
 /**
  * Pure factories whose product goes straight into a recorded call — that
@@ -221,13 +230,14 @@ describe("startPlugin (#1349)", () => {
     const first = host.adapter.scopes.indexOf("WindowFocus");
     expect(first).toBeGreaterThanOrEqual(0);
     expect(host.adapter.scopes.slice(first)).toEqual([
-      // 8 registerActions — the mocked action lists use each UUID as its scope
+      // 9 registerActions — the mocked action lists use each UUID as its scope
       "WindowFocus",
       "MousePointer",
+      "ReplayBusy", // newer than that file (#1467)
       "shared.a",
       "shared.b",
       "sd.switch-profile",
-      // 9 startServices
+      // 10 startServices
       "GlobalSettings",
       "SettingsMigration",
       "SettingsMigration",

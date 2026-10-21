@@ -34,6 +34,7 @@
     "@iracedeck/logger": "workspace:*",
     "@iracedeck/race-engineer-wiring": "workspace:*",
     "@iracedeck/rasterizer": "workspace:*",
+    "@iracedeck/replay-engine": "workspace:*",
     "@iracedeck/replay-store": "workspace:*",
     "@iracedeck/settings": "workspace:*",
     "@iracedeck/settings-window": "workspace:*",

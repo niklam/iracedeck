@@ -69,7 +69,7 @@ export interface Core {
   readonly nativeAddons: NativeAddonStatuses;
 }
 
-/** Phase 3's handoff: the native input layer, used again by window focus (phase 8) and the elevation check (phase 9). */
+/** Phase 3's handoff: the native input layer, used again by window focus (phase 9) and the elevation check (phase 10). */
 export interface Input {
   readonly native: IRacingNative;
 }

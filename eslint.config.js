@@ -100,6 +100,33 @@ export default [
     },
   },
   {
+    // The replay engine is iRacing's, not the deck's (#1467): what it needs from the deck
+    // layer and the settings is injected by plugin-runtime's initReplay phase.
+    // scripts/replay-engine-boundary.test.mjs proves this rule fires.
+    files: ['packages/replay-engine/src/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: [
+                '@iracedeck/deck-core',
+                '@iracedeck/deck-iracing',
+                '@iracedeck/settings',
+                '@iracedeck/icons',
+                '@iracedeck/icons/*',
+                '@iracedeck/iracing-actions',
+              ],
+              message:
+                'The replay engine must not depend on the deck layer, the settings or its own consumers: take it through configureReplayEngine (#1467).',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     // The root Vitest config is loaded with `configLoader: 'native'` (see
     // .claude/rules/testing.md), so Node strips its types itself: CommonJS
     // globals do not exist there, and a type-only import missing the `type`
