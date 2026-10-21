@@ -111,9 +111,11 @@ describe("trackOrderMode", () => {
 
       const calls = vi.mocked(requestCameraSwitch).mock.calls;
 
-      expect(calls.map(([, options]) => [options.by, options.label, options.name, options.asked])).toEqual([
-        ["dial-track-order", "Dial track order", "previous car", "ticks=-2"],
-        ["dial-jump-to-my-car", "Dial track order", "my car", "Jump to My Car"],
+      expect(
+        calls.map(([, options]) => [options.by, options.label, options.name, options.asked, options.surface]),
+      ).toEqual([
+        ["dial-track-order", "Dial track order", "previous car", "ticks=-2", "the dial"],
+        ["dial-jump-to-my-car", "Dial track order", "my car", "Jump to My Car", "the dial"],
       ]);
 
       // What each hands over: its send, the dial's own jump reads, its on-screen check, and its logger.

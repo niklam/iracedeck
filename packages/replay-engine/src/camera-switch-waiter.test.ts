@@ -75,6 +75,7 @@ function options(overrides: Partial<CameraSwitchOptions> = {}): CameraSwitchOpti
     label: "Dial track order",
     name: "next car",
     asked: "ticks=1",
+    surface: "the dial",
     stillValid: () => true,
     ...overrides,
   };

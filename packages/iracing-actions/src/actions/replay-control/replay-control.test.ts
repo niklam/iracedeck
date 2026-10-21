@@ -13,6 +13,7 @@ import {
   _resetReplayCursor,
   _resetReplaySpeedState,
   beginReplayJump,
+  cancelLapWalks,
   cancelReplayCursorOwner,
   claimReplayCursor,
   FASTEST_LAP_WALK_OWNER,
@@ -1685,7 +1686,8 @@ describe("ReplayControl", () => {
         (owner) => {
           const claim = claimReplayCursor(owner);
 
-          host().cancelCameraWalks("dial-track-order");
+          // The one place the camera-switch policy lives since #1467: the engine's waiter calls it.
+          cancelLapWalks("dial-track-order");
 
           expect(claim.cancelledBy).toBe("dial-track-order");
         },
@@ -1696,7 +1698,7 @@ describe("ReplayControl", () => {
         (owner) => {
           const claim = claimReplayCursor(owner);
 
-          host().cancelCameraWalks("dial-track-order");
+          cancelLapWalks("dial-track-order");
 
           expect(claim.cancelledBy).toBeNull();
         },
@@ -1712,7 +1714,7 @@ describe("ReplayControl", () => {
           // Read once by the check and once by the switch.
           vi.mocked(getCarNumberRawFromSessionInfo).mockReturnValueOnce(42).mockReturnValueOnce(42);
           action["sdkController"].getSessionInfo = vi.fn(() => ({ DriverInfo: { DriverCarIdx: 3 } }) as never);
-          // A walk is the dial gesture's to cancel (`cancelCameraWalks`); a paced search's run is never.
+          // A walk is the camera-switch waiter's to cancel (`cancelLapWalks`, #1467); a paced search's run is never.
           const claim = claimReplayCursor(owner);
 
           expect(host().canJumpToMyCar()).toBe(true);
@@ -5884,6 +5886,9 @@ describe("ReplayControl", () => {
 
         expect(sim.frame()).toBe(TARGET);
         expect(camera.switchNum).not.toHaveBeenCalled();
+        expect(action["logger"].debug).toHaveBeenCalledWith(
+          "Replay control: tap dropped (my car), the key left the screen or the replay was left while it waited",
+        );
       });
 
       it("a parked key switch is dropped when the replay is left before the landing", async () => {

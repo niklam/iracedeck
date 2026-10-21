@@ -166,6 +166,7 @@ function requestDialCameraSwitch(io: ReplayDialStepIo, change: CameraSwitch, ask
     label: "Dial track order",
     name: describe(change),
     asked,
+    surface: "the dial",
     stillValid: () => io.isStillOnScreen(),
     jumps: { isUnderWay: () => io.isJumpUnderWay(), waitToSettle: () => io.waitForJumpsToSettle() },
     logger: io.logger,

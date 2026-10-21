@@ -198,11 +198,6 @@ export interface ReplayControlDialHost {
   tapBinding(settingKey: string): Promise<boolean>;
   /** Whether any of the given global binding keys is unset (#612). Stateless, so a dial may ask it. */
   isBindingMissing(keys: string | readonly string[]): boolean;
-  /**
-   * Cancels a Jump to Fastest Lap or Jump to Race Start walk that holds the
-   * replay cursor, and no other owner (the engine's `cancelLapWalks`).
-   */
-  cancelCameraWalks(by: string): void;
 }
 
 /** One reading of the replay: the telemetry and the replay speed it carries, decoded once. */
@@ -930,7 +925,6 @@ export class ReplayControlDialSurface {
       },
       tapBinding: (settingKey) => host.tapBinding(settingKey),
       isBindingMissing: (keys) => host.isBindingMissing(keys),
-      cancelCameraWalks: (by) => host.cancelCameraWalks(by),
       jumpToMyCar: () => host.jumpToMyCar(),
       isJumpUnderWay: () => {
         const telemetry = this.reading().telemetry;

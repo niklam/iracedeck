@@ -147,12 +147,6 @@ export interface ReplayDialStepIo extends ReplayDialModeIo {
   /** Whether any of the given global binding keys is unset (#612). */
   isBindingMissing(keys: string | readonly string[]): boolean;
   /**
-   * Cancels a Jump to Fastest Lap or Jump to Race Start walk that holds the
-   * replay cursor — the two whose searches ride on the camera's car — and no
-   * other owner, naming `by`.
-   */
-  cancelCameraWalks(by: string): void;
-  /**
    * Switches the camera to the player's car: the keypad's Jump to My Car
    * switch, with no cursor taken, since the engine's camera-switch waiter the
    * dial's gesture goes through has cancelled only the two walks (#1467). With

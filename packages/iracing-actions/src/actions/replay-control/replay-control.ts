@@ -69,7 +69,6 @@ import {
   acceptsGreenFallbackLanding,
   applyReplayJumpPlayback,
   beginReplayJump,
-  cancelLapWalks,
   describeReplayJump,
   FASTEST_LAP_WALK_OWNER,
   findRecordStep,
@@ -1065,10 +1064,6 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     // keys; `isBindingMissing` is stateless.
     tapBinding: (settingKey) => this.tapBinding(settingKey),
     isBindingMissing: (keys) => this.isBindingMissing(keys),
-    // Only the two walks whose searches ride on the camera's car stop for a camera switch.
-    cancelCameraWalks: (by) => {
-      cancelLapWalks(by);
-    },
   });
 
   /**
@@ -1413,6 +1408,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
       label: "Replay control",
       name,
       asked: `${mode} pressed`,
+      surface: "the key",
       stillValid: () => this.activeContexts.has(contextId) && this.sdkController.getReplayState().inReplay,
       logger: this.logger,
     }).catch((error: unknown) => {

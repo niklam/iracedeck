@@ -264,7 +264,6 @@ const host = {
   })),
   tapBinding: vi.fn((_key: string) => Promise.resolve(true)),
   isBindingMissing: vi.fn((_keys: string | readonly string[]) => false),
-  cancelCameraWalks: vi.fn((_by: string) => undefined),
 };
 
 function makeSurface(): ReplayControlDialSurface {
@@ -283,7 +282,6 @@ function makeSurface(): ReplayControlDialSurface {
     recordSource: host.recordSource,
     tapBinding: host.tapBinding,
     isBindingMissing: host.isBindingMissing,
-    cancelCameraWalks: host.cancelCameraWalks,
   });
 }
 

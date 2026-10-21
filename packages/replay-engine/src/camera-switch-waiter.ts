@@ -55,6 +55,8 @@ export interface CameraSwitchOptions {
   readonly name: string;
   /** What asked for it, in the log (`ticks=1`, `Jump to My Car`). */
   readonly asked: string;
+  /** What asked for it, as the drop line names it when it is no longer valid (`the dial`, `the key`). */
+  readonly surface: string;
   /** Whether the switch may still go out once a wait ends: its key or dial on screen, with a replay to act on. */
   readonly stillValid: () => boolean;
   /** The jump reads; the gate's own ({@link isReplayJumpUnderWay}, {@link waitForReplayJumpsToLand}) by default. */
@@ -157,7 +159,7 @@ async function switchWhenJumpsSettle(starter: CameraSwitchOptions, generation: n
 
   if (!options.stillValid()) {
     loggerOf(options).debug(
-      `${options.label}: tap dropped (${options.name}), the dial left the screen or the replay was left while it waited`,
+      `${options.label}: tap dropped (${options.name}), ${options.surface} left the screen or the replay was left while it waited`,
     );
 
     return;
