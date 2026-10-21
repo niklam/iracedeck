@@ -87,6 +87,7 @@ import {
   type RecordStepSource,
   type ReplayGateCommand,
   type ReplayPressResult,
+  type ReplaySpeed,
   requestCameraSwitch,
   resolveReplayWalkStart,
   runJumpToFrame,
@@ -617,6 +618,19 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
   private readonly speedSubscription = onReplaySpeedChanged(() => this.updateAllTelemetryDisplays());
 
   /**
+   * The replay speed telemetry carried in this synchronous turn, or null when
+   * none has been read in it (#1467). A fresh read decodes every telemetry
+   * variable, and one turn draws many keys — the busy indicator's frame
+   * redraws every working key, and each registration runs its regenerate
+   * there and then — so the turn reads once and every draw in it shares the
+   * sample. A tick seeds it with its own reading. It lapses at the turn's end:
+   * the next turn reads afresh, since a paused replay may deliver no tick.
+   * Only the sample is shared; the speed shown over it is resolved on every
+   * draw, so a speed sent or held earlier in the turn still shows.
+   */
+  private turnSpeedSample: { readonly speed: ReplaySpeed | null } | null = null;
+
+  /**
    * Per Jump to Race Start context: whether the key shows the unavailable
    * look, and the session info it was judged from. iRacing republishes the
    * session YAML only when something in it changed, so a tick usually compares
@@ -650,7 +664,9 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     await this.updateDisplay(ev, settings);
 
     this.sdkController.subscribe(ev.action.id, (telemetry: TelemetryData | null) => {
-      this.rememberReplaySpeed(telemetry);
+      const speed = this.holdTickSpeed(telemetry);
+
+      this.rememberReplaySpeed(telemetry, speed);
 
       const storedSettings = this.activeContexts.get(ev.action.id);
 
@@ -658,7 +674,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
       // tick is the fresh read, so it costs no telemetry read of its own; the
       // redraw is skipped when the key would draw what it already shows.
       if (storedSettings && TELEMETRY_DISPLAY_MODES.has(storedSettings.mode)) {
-        this.updateDisplayFromTelemetry(ev.action.id, storedSettings, this.getCurrentSpeed(telemetry));
+        this.updateDisplayFromTelemetry(ev.action.id, storedSettings, this.getCurrentSpeed(speed));
       }
 
       this.refreshRaceStartAvailability(ev.action.id);
@@ -772,7 +788,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
    * and redraws only on a change.
    */
   private onDialTelemetry(contextId: string, telemetry: TelemetryData | null): void {
-    const speed = telemetry ? replaySpeedFromTelemetry(telemetry) : null;
+    const speed = this.holdTickSpeed(telemetry);
 
     this.rememberReplaySpeed(telemetry, speed);
     this.dialSurface.onTick(contextId, { telemetry, speed });
@@ -844,17 +860,44 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
   /**
    * The replay speed the keys show and step from (#1467): the engine's one
    * record of it (`shownReplaySpeed`) — a speed the gate holds, else what was
-   * just sent, else what a fresh telemetry read carries — in the units the
-   * user sees: in slow motion the speed is the divisor (5 = 1/5x), decoded
-   * from iRacing's raw value (#1202). Over a fresh read, as the dial's, never
-   * the last tick delivered: a paused replay may deliver none. A tick's
-   * handler passes the tick, which is that read. No telemetry reads as paused.
+   * just sent, else what telemetry carries — in the units the user sees: in
+   * slow motion the speed is the divisor (5 = 1/5x), decoded from iRacing's
+   * raw value (#1202). Over this turn's reading ({@link telemetrySpeedNow}), as
+   * the dial's, never the last tick delivered: a paused replay may deliver
+   * none. A tick's handler passes the tick's speed, which is that reading. No
+   * telemetry reads as paused.
    */
-  private getCurrentSpeed(telemetry: TelemetryData | null = this.sdkController.getCurrentTelemetry()): {
-    speed: number;
-    slowMotion: boolean;
-  } {
-    return shownReplaySpeed(telemetry ? replaySpeedFromTelemetry(telemetry) : null, Date.now());
+  private getCurrentSpeed(telemetrySpeed: ReplaySpeed | null = this.telemetrySpeedNow()): ReplaySpeed {
+    return shownReplaySpeed(telemetrySpeed, Date.now());
+  }
+
+  /** The replay speed telemetry carries this turn: a fresh read at the turn's first ask, shared by the rest of it. */
+  private telemetrySpeedNow(): ReplaySpeed | null {
+    if (this.turnSpeedSample !== null) return this.turnSpeedSample.speed;
+
+    const telemetry = this.sdkController.getCurrentTelemetry();
+
+    return this.holdTurnSpeed(telemetry ? replaySpeedFromTelemetry(telemetry) : null);
+  }
+
+  /** A tick's speed, decoded once: the tick is this turn's fresh reading, so the turn's draws share it. */
+  private holdTickSpeed(telemetry: TelemetryData | null): ReplaySpeed | null {
+    return this.holdTurnSpeed(telemetry ? replaySpeedFromTelemetry(telemetry) : null);
+  }
+
+  /** Keeps `speed` as this turn's sample until the turn ends. */
+  private holdTurnSpeed(speed: ReplaySpeed | null): ReplaySpeed | null {
+    const lapseQueued = this.turnSpeedSample !== null;
+
+    this.turnSpeedSample = { speed };
+
+    if (!lapseQueued) {
+      queueMicrotask(() => {
+        this.turnSpeedSample = null;
+      });
+    }
+
+    return speed;
   }
 
   private getCarNumberRawByIdx(carIdx: number): number | null {

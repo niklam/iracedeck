@@ -439,6 +439,15 @@ function shownSpeed(action: ReplayControl): { speed: number; slowMotion: boolean
   return action["getCurrentSpeed"]();
 }
 
+/**
+ * Ends the synchronous turn (#1467): the action reads telemetry once per turn
+ * and shares that reading with every draw in it, so a reading a test changes
+ * shows from the next turn, as a new reading does in the plugin.
+ */
+function laterTurn(): Promise<void> {
+  return Promise.resolve();
+}
+
 /** Every speed the engine recorded as sent in the running test, in order (#1467): what the keys then show. */
 const sentSpeeds: Array<{ speed: number; slowMotion: boolean }> = [];
 
@@ -1360,6 +1369,7 @@ describe("ReplayControl", () => {
         expect(shownSpeed(action).speed).toBe(4);
 
         vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue(null);
+        await laterTurn();
 
         expect(shownSpeed(action).speed).toBe(0);
         expect(shownSpeed(action).slowMotion).toBe(false);
@@ -1372,6 +1382,7 @@ describe("ReplayControl", () => {
         expect(shownSpeed(action).slowMotion).toBe(true);
 
         vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue(null);
+        await laterTurn();
 
         expect(shownSpeed(action).speed).toBe(0);
         expect(shownSpeed(action).slowMotion).toBe(false);
@@ -2002,6 +2013,7 @@ describe("ReplayControl", () => {
 
         // The replay plays on at 4x on a frame that delivers no tick.
         nowReading(REPLAY_4X);
+        await laterTurn();
         host().refreshKeys();
 
         expect(action["updateKeyImage"]).toHaveBeenCalledTimes(1);
@@ -3910,6 +3922,41 @@ describe("ReplayControl", () => {
         // The telemetry draw that follows a press sees the look already drawn.
         await action["updateDisplayFromTelemetry"]("ctx-1", action["activeContexts"].get("ctx-1")!);
         expect(updateKeyImage).toHaveBeenCalledTimes(1);
+      });
+
+      it("a frame's redraws of every working key, and their regenerates, read telemetry at most once (#1467)", async () => {
+        vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue({
+          ReplayPlaySpeed: 1,
+          ReplayPlaySlowMotion: false,
+        } as TelemetryData);
+        await appear("ctx-1", "next-lap");
+        await appear("ctx-2", "next-incident");
+        await appear("ctx-3", "play-pause");
+        // What the indicator's interval does on each frame: every key showing working redrawn in one pass.
+        const frame = (tick: number): void => {
+          for (const token of ["ctx-1", "ctx-2", "ctx-3"]) {
+            busy.looks.set(token, { kind: "working", tick });
+            busy.surfaces.get(token)!.surface.redraw({ kind: "working", tick });
+            // deck-core runs a regenerate callback as it is registered: the mocked base does not, so the frame does.
+            (vi.mocked(action["setRegenerateCallback"]).mock.calls.at(-1)![1] as () => string)();
+          }
+        };
+        const reads = vi.mocked(action["sdkController"].getCurrentTelemetry);
+
+        // Settle what the appear draws left for the next microtask.
+        await Promise.resolve();
+        reads.mockClear();
+        frame(10);
+
+        expect(reads.mock.calls.length).toBeLessThanOrEqual(1);
+        expect(decodeURIComponent(vi.mocked(action["updateKeyImage"]).mock.calls.at(-1)![1])).toContain("pause-icon");
+
+        // The next frame reads afresh: a paused replay may deliver no tick.
+        await Promise.resolve();
+        reads.mockClear();
+        frame(11);
+
+        expect(reads).toHaveBeenCalledTimes(1);
       });
 
       it("a redraw for a key that has gone draws nothing", async () => {
