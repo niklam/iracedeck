@@ -49,10 +49,8 @@ import {
   isReplaySearchRunning,
   isSeeking,
   keepDialPendingSpeed,
-  noteDialSpeedSent,
   onReplaySearchChange,
-  onReplaySearchSpeedSent,
-  onReplaySpeedSentFromSlot,
+  onReplaySpeedChanged,
   pendingReplaySearch,
   pressReplayCommand,
   queueReplaySearch,
@@ -65,12 +63,11 @@ import {
   REPLAY_TARGET_GIVE_UP_MS,
   type ReplayGateCommand,
   type ReplayPressResult,
-  resolveLiveSpeed,
   resolveReplayWalkStart,
   reverseRememberedSpeed,
   runReplayJump,
+  shownReplaySpeed,
   waitForReplaySettled,
-  waitingReplaySpeed,
 } from "@iracedeck/replay-engine";
 
 import { type DialBoxArgs, type DialNeighbours, renderDialBox, resolveDialBoxColors } from "../../shared/dial-box.js";
@@ -105,8 +102,6 @@ const DIAL_ACCENT = "#3498db";
 
 /** Background of the deck app's dial-slot name card (the keypad icons' panel colour). */
 const NAME_CARD_BACKGROUND = "#2a3a4a";
-
-const PAUSED: ReplaySpeed = { speed: 0, slowMotion: false };
 
 /** How long past the pending-speed hold the lapse redraw waits, so the hold has run out when it looks. */
 const HOLD_LAPSE_MARGIN_MS = 20;
@@ -159,8 +154,6 @@ export interface ReplayControlDialHost {
    * scrubbed replay the content changes without it.
    */
   telemetry(): TelemetryData | null;
-  /** The action's own optimistic speed cache, so the keypad's speed icons follow a dial send at once. */
-  setLocalSpeed(speed: number, slowMotion: boolean): void;
   /**
    * The keypad's Jump to Live, which takes the replay cursor itself, under its
    * own mode name (`jump-to-live`). `origin` is the dial's context id, the
@@ -622,8 +615,14 @@ export class ReplayControlDialSurface {
       }
 
       return keepDialPendingSpeed(() =>
-        // A detent carries no token and is a repeat of the turn, never "pressing again" behind a search.
-        pressReplayCommand(command, { by: owner, origin: this.pressOrigin, repeat: this.pressOrigin === undefined }),
+        // A detent carries no token and is a repeat of the turn, never "pressing again" behind a search. A speed
+        // the dial sends is the speed its Play/Pause resumes (`rememberSpeed`).
+        pressReplayCommand(command, {
+          by: owner,
+          origin: this.pressOrigin,
+          repeat: this.pressOrigin === undefined,
+          rememberSpeed: true,
+        }),
       );
     };
 
@@ -635,7 +634,7 @@ export class ReplayControlDialSurface {
       // asked the replay to do, like one sent that telemetry has not shown yet:
       // read as live, it makes a second Play/Pause take the first back, a jog
       // turn pause before it moves, and a speed step walk on from it.
-      liveSpeed: () => waitingReplaySpeed() ?? resolveLiveSpeed(this.reading().speed, Date.now()),
+      liveSpeed: () => shownReplaySpeed(this.reading().speed, Date.now()),
       telemetry: () => this.reading().telemetry,
       position,
       step: (owner, direction) => {
@@ -670,14 +669,11 @@ export class ReplayControlDialSurface {
         // A speed sent into a jump still under way ends the jump thousands of
         // frames on, and one sent into a search on its way cancels it. The gate
         // holds it until what is under way has landed and sends it then; the
-        // follow timer keeps the dials drawn meanwhile.
+        // follow timer keeps the dials drawn meanwhile. A speed that goes out
+        // is the speed state's: the gate records it.
         const result = press(owner, { kind: "speed", speed: target.speed, slowMotion: target.slowMotion });
 
-        if (result.kind === "sent") {
-          if (result.ok) this.noteSpeedSent(target);
-
-          return result.ok;
-        }
+        if (result.kind === "sent") return result.ok;
 
         if (result.kind === "not-sent") return false;
 
@@ -689,14 +685,11 @@ export class ReplayControlDialSurface {
       pause: (owner) => {
         const result = press(owner, { kind: "pause" });
 
-        // 0x through the same pending hold a speed uses, so the live speed
-        // reads paused at once and a second detent inside the hold does not
-        // pause again. The remembered speed is left alone: it is what was playing.
-        if (result.kind === "sent") {
-          if (result.ok) this.noteSpeedSent(PAUSED);
-
-          return result.ok;
-        }
+        // The gate records a pause that went out as 0x, through the same
+        // pending hold a speed uses, so the live speed reads paused at once and
+        // a second detent inside the hold does not pause again. The remembered
+        // speed is left alone: it is what was playing.
+        if (result.kind === "sent") return result.ok;
 
         // Not sent into a jump under way, which has paused the replay already;
         // held behind a search on a moving replay, it goes out on the landing.
@@ -706,22 +699,12 @@ export class ReplayControlDialSurface {
       },
     };
 
-    // A speed the gate held and sent on the landing is this plugin's send too:
-    // the dials and the keys take it as they would have at the press.
-    onReplaySpeedSentFromSlot((sent) => this.noteSpeedSent(sent));
-
-    // So are the speeds the paced search's runner sends (#801): its pause, and
-    // the playback step at the end of a run, mirrored into the keys as a record
-    // jump's pause and landing are, and drawn at once on any dial on screen,
-    // since a paused replay may deliver no tick. For the surface's life, like
-    // the gate's: a run outlives the page its dial was turned on, and the keys
-    // still show its speed after a page flip.
-    onReplaySearchSpeedSent((speed) =>
-      this.withReading(() => {
-        this.noteSpeedSent(speed);
-        this.renderAll();
-      }),
-    );
+    // Every speed the engine records as sent (#1467) — the dial's own, a speed
+    // the gate held and sent on the landing, the paced search's pause and
+    // closing speed (#801), a record jump's pause and landing, a key's press —
+    // is drawn on the dials and arms the lapse of its hold. For the surface's
+    // life: a run outlives the page its dial was turned on.
+    onReplaySpeedChanged(() => this.noteSpeedSent());
   }
 
   async willAppear(action: IDeckActionContext, dial: ReplayControlDialSettings): Promise<void> {
@@ -871,14 +854,15 @@ export class ReplayControlDialSurface {
   /**
    * One waited record jump to `frame` (#801): the shared jump sequence
    * (#1276), claimed and its frame recorded as the pending target now, as the
-   * dial's own cursor take, so the pending speed it sent stands. Mirrors the
-   * pause and the speed the jump left the replay at into the dials and the
-   * keys, as the keypad's record step does, and logs how it ended.
+   * dial's own cursor take, so the pending speed it sent stands. Its pause and
+   * the speed it leaves the replay at are the dial's resume speed too
+   * (`rememberSpeed`); the gate records them and the dials and keys redraw
+   * from that. Logs how it ended.
    */
   private async recordJump(owner: string, frame: number, origin: string): Promise<void> {
     const telemetry = this.reading().telemetry;
     const jump = keepDialPendingSpeed(() =>
-      beginReplayJump(owner, telemetry, undefined, Date.now(), { frame, origin }),
+      beginReplayJump(owner, telemetry, undefined, Date.now(), { frame, origin, rememberSpeed: true }),
     );
 
     this.armPositionFollow();
@@ -887,10 +871,7 @@ export class ReplayControlDialSurface {
       const outcome = await runReplayJump(jump, {
         frame,
         readTelemetry: () => this.host.telemetry(),
-        onPaused: () => this.noteSpeedSent(PAUSED),
       });
-
-      if (outcome.kind === "landed") this.noteSpeedSent(outcome.speed);
 
       const report = describeReplayJump(outcome, frame);
 
@@ -1197,14 +1178,16 @@ export class ReplayControlDialSurface {
   }
 
   /**
-   * A speed this surface just sent, a pause included: it stands for the live
-   * speed until telemetry reports it (`replay-speed-state.ts`), and the
-   * action's own cache takes it too so the keypad's speed icons follow at once.
+   * A speed the engine just recorded as sent, a pause included: it stands for
+   * the live speed until telemetry reports it (`replay-speed-state.ts`), so
+   * the dials on screen are drawn from it at once — a paused replay may
+   * deliver no tick — and the lapse of its hold is armed. The keys redraw from
+   * the action's own subscription. Inside an entry (a dial's own gesture) the
+   * entry draws when it ends, so nothing is drawn mid-gesture.
    */
-  private noteSpeedSent(speed: ReplaySpeed): void {
-    noteDialSpeedSent(speed, Date.now());
-    this.host.setLocalSpeed(speed.speed, speed.slowMotion);
-    this.host.refreshKeys();
+  private noteSpeedSent(): void {
+    if (!this.inEntry) this.withReading(() => this.renderAll());
+
     this.armHoldLapseTimer();
   }
 
@@ -1246,16 +1229,15 @@ export class ReplayControlDialSurface {
 
   /**
    * The hold of the last send has run out. The live speed is telemetry's
-   * again, read fresh, and everything that took the sent speed is put right
-   * from it: the action's speed cache, so a Play/Pause key does not keep
-   * showing (and deciding from) a speed that never played, and every dial
-   * still showing it — a dial whose frame did not change is left alone. A
-   * send that took reads back as the same speed, and nothing changes.
+   * again, read fresh, and everything that showed the sent speed is redrawn
+   * from it: the keys, so a Play/Pause key does not keep showing (and deciding
+   * from) a speed that never played, and every dial still showing it — a dial
+   * whose frame did not change is left alone. A send that took reads back as
+   * the same speed, and nothing changes.
    */
   private settleLapsedHold(): void {
-    const live = this.io.liveSpeed();
-
-    this.host.setLocalSpeed(live.speed, live.slowMotion);
+    // The read settles the lapsed hold, and a provisional resume speed, before anything redraws from it.
+    this.io.liveSpeed();
     this.host.refreshKeys();
     this.renderAll();
   }

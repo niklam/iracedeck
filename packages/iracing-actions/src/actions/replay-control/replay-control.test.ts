@@ -17,12 +17,15 @@ import {
   claimReplayCursor,
   getReplayGateRecord,
   getReplayGateView,
-  noteDialSpeedSent,
+  noteReplaySpeedSent,
+  onReplaySpeedChanged,
   pendingReplayTarget,
   pressReplayCommand,
+  queueReplaySearch,
   rememberedSpeed,
   type ReplayGateFactEnd,
   type ReplayGateNotice,
+  replayTargetGiveUpMs,
   resolveLiveSpeed,
   runReplayJump,
   subscribeReplayGate,
@@ -399,6 +402,23 @@ async function runPressOut(): Promise<void> {
   await vi.advanceTimersByTimeAsync(120_000);
 }
 
+/** What a fresh telemetry read returns: a replay playing at `speed` (#1467: the keys read the speed fresh). */
+function readingAt(action: ReplayControl, speed: number, slowMotion = false): void {
+  vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue({
+    IsReplayPlaying: true,
+    ReplayPlaySpeed: replaySpeedToSdk(speed, slowMotion),
+    ReplayPlaySlowMotion: slowMotion,
+  } as TelemetryData);
+}
+
+/** The speed the keys show and step from: the engine's one record of it (#1467). */
+function shownSpeed(action: ReplayControl): { speed: number; slowMotion: boolean } {
+  return action["getCurrentSpeed"]();
+}
+
+/** Every speed the engine recorded as sent in the running test, in order (#1467): what the keys then show. */
+const sentSpeeds: Array<{ speed: number; slowMotion: boolean }> = [];
+
 describe("ReplayControl", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -407,6 +427,8 @@ describe("ReplayControl", () => {
     resetEngine();
     busy.looks.clear();
     busy.surfaces.clear();
+    sentSpeeds.length = 0;
+    onReplaySpeedChanged((speed) => sentSpeeds.push(speed));
   });
 
   afterEach(() => {
@@ -1042,7 +1064,9 @@ describe("ReplayControl", () => {
         return calls[calls.length - 1][1] as (telemetry: TelemetryData | null) => void;
       }
 
+      /** A tick: the controller holds it as its current reading, then tells the subscriber. */
       function tick(telemetry: Partial<TelemetryData>): void {
+        vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue(telemetry as TelemetryData);
         telemetryCallback()(telemetry as TelemetryData);
       }
 
@@ -1054,25 +1078,24 @@ describe("ReplayControl", () => {
 
         await action.onWillAppear(fakeEvent("ctx-1", { mode: "speed-display" }) as any);
 
-        expect(action["replaySpeed"].get("ctx-1")).toBe(5);
-        expect(action["replaySlowMotion"].get("ctx-1")).toBe(true);
+        expect(shownSpeed(action)).toEqual({ speed: 5, slowMotion: true });
       });
 
       it("reads raw slow-motion N on each tick as 1/(N+1), keeping direction", async () => {
         await action.onWillAppear(fakeEvent("ctx-1", { mode: "speed-display" }) as any);
 
         tick({ ReplayPlaySpeed: -15, ReplayPlaySlowMotion: true });
-        expect(action["replaySpeed"].get("ctx-1")).toBe(-16);
+        expect(shownSpeed(action).speed).toBe(-16);
 
         tick({ ReplayPlaySpeed: 0, ReplayPlaySlowMotion: true });
-        expect(action["replaySpeed"].get("ctx-1")).toBe(0);
+        expect(shownSpeed(action).speed).toBe(0);
       });
 
       it("leaves normal speeds unchanged", async () => {
         await action.onWillAppear(fakeEvent("ctx-1", { mode: "speed-display" }) as any);
 
         tick({ ReplayPlaySpeed: 4, ReplayPlaySlowMotion: false });
-        expect(action["replaySpeed"].get("ctx-1")).toBe(4);
+        expect(shownSpeed(action).speed).toBe(4);
       });
 
       it("never decodes a tick with a slow-motion flag remembered from an earlier tick", async () => {
@@ -1081,8 +1104,7 @@ describe("ReplayControl", () => {
 
         tick({ ReplayPlaySpeed: 4 });
 
-        expect(action["replaySpeed"].get("ctx-1")).toBe(4);
-        expect(action["replaySlowMotion"].get("ctx-1")).toBe(false);
+        expect(shownSpeed(action)).toEqual({ speed: 4, slowMotion: false });
       });
 
       it("steps from the real speed: 1/5x in iRacing decreases to 1/6x", async () => {
@@ -1119,55 +1141,54 @@ describe("ReplayControl", () => {
       });
 
       it("should pause when playing forward", async () => {
-        (action as any).replaySpeed.set("ctx-1", 1);
+        readingAt(action, 1);
 
         await action.onKeyDown(fakeEvent("ctx-1", { mode: "play-pause" }) as any);
 
         expect(mockReplay.pause).toHaveBeenCalled();
-        expect((action as any).replaySpeed.get("ctx-1")).toBe(0);
+        expect(shownSpeed(action).speed).toBe(0);
       });
 
       it("should play at 1x when paused", async () => {
-        (action as any).replaySpeed.set("ctx-1", 0);
+        readingAt(action, 0);
 
         await action.onKeyDown(fakeEvent("ctx-1", { mode: "play-pause" }) as any);
 
         expect(mockReplay.play).toHaveBeenCalled();
-        expect((action as any).replaySpeed.get("ctx-1")).toBe(1);
+        expect(shownSpeed(action).speed).toBe(1);
       });
 
       it("should pause when playing backward (not mirror)", async () => {
-        (action as any).replaySpeed.set("ctx-1", -4);
+        readingAt(action, -4);
 
         await action.onKeyDown(fakeEvent("ctx-1", { mode: "play-pause" }) as any);
 
         expect(mockReplay.pause).toHaveBeenCalled();
         expect(mockReplay.play).not.toHaveBeenCalled();
         expect(mockReplay.setPlaySpeed).not.toHaveBeenCalled();
-        expect((action as any).replaySpeed.get("ctx-1")).toBe(0);
+        expect(shownSpeed(action).speed).toBe(0);
       });
 
       it("should pause when in slow-motion (not mirror)", async () => {
-        (action as any).replaySpeed.set("ctx-1", 2);
-        (action as any).replaySlowMotion.set("ctx-1", true);
+        readingAt(action, 2, true);
 
         await action.onKeyDown(fakeEvent("ctx-1", { mode: "play-pause" }) as any);
 
         expect(mockReplay.pause).toHaveBeenCalled();
         expect(mockReplay.setPlaySpeed).not.toHaveBeenCalled();
-        expect((action as any).replaySpeed.get("ctx-1")).toBe(0);
+        expect(shownSpeed(action).speed).toBe(0);
       });
 
       it("should always play at 1x, never restore previous speed", async () => {
         // Play at 8x, pause, then play again — should be 1x, not 8x
-        (action as any).replaySpeed.set("ctx-1", 8);
+        readingAt(action, 8);
         await action.onKeyDown(fakeEvent("ctx-1", { mode: "play-pause" }) as any);
         expect(mockReplay.pause).toHaveBeenCalled();
 
         vi.clearAllMocks();
         await action.onKeyDown(fakeEvent("ctx-1", { mode: "play-pause" }) as any);
         expect(mockReplay.play).toHaveBeenCalled();
-        expect((action as any).replaySpeed.get("ctx-1")).toBe(1);
+        expect(shownSpeed(action).speed).toBe(1);
       });
     });
 
@@ -1177,31 +1198,31 @@ describe("ReplayControl", () => {
       });
 
       it("should pause when playing backward", async () => {
-        (action as any).replaySpeed.set("ctx-1", -1);
+        readingAt(action, -1);
 
         await action.onKeyDown(fakeEvent("ctx-1", { mode: "play-backward" }) as any);
 
         expect(mockReplay.pause).toHaveBeenCalled();
-        expect((action as any).replaySpeed.get("ctx-1")).toBe(0);
+        expect(shownSpeed(action).speed).toBe(0);
       });
 
       it("should play backward at -1x when paused", async () => {
-        (action as any).replaySpeed.set("ctx-1", 0);
+        readingAt(action, 0);
 
         await action.onKeyDown(fakeEvent("ctx-1", { mode: "play-backward" }) as any);
 
         expect(mockReplay.setPlaySpeed).toHaveBeenCalledWith(-1, false);
-        expect((action as any).replaySpeed.get("ctx-1")).toBe(-1);
+        expect(shownSpeed(action).speed).toBe(-1);
       });
 
       it("should pause when playing forward (not switch to backward)", async () => {
-        (action as any).replaySpeed.set("ctx-1", 4);
+        readingAt(action, 4);
 
         await action.onKeyDown(fakeEvent("ctx-1", { mode: "play-backward" }) as any);
 
         expect(mockReplay.pause).toHaveBeenCalled();
         expect(mockReplay.setPlaySpeed).not.toHaveBeenCalled();
-        expect((action as any).replaySpeed.get("ctx-1")).toBe(0);
+        expect(shownSpeed(action).speed).toBe(0);
       });
     });
 
@@ -1212,15 +1233,13 @@ describe("ReplayControl", () => {
         await action.onWillAppear(fakeEvent("pb-ctx", { mode: "play-backward" }) as any);
 
         // Playing forward — both should show pause state
-        (action as any).replaySpeed.set("pp-ctx", 1);
-        (action as any).replaySpeed.set("pb-ctx", 1);
+        readingAt(action, 1);
 
         // Press play-backward → pauses
         await action.onKeyDown(fakeEvent("pb-ctx", { mode: "play-backward" }) as any);
 
-        // Both contexts should have speed 0 (paused)
-        expect((action as any).replaySpeed.get("pp-ctx")).toBe(0);
-        expect((action as any).replaySpeed.get("pb-ctx")).toBe(0);
+        // Both keys read the one speed: paused
+        expect(shownSpeed(action).speed).toBe(0);
 
         // Both displays should have been re-rendered
         expect(action["updateKeyImage"]).toHaveBeenCalled();
@@ -1233,7 +1252,7 @@ describe("ReplayControl", () => {
       });
 
       it("should step fast-forward by stepRate (default 1) when starting from 1x", async () => {
-        (action as any).replaySpeed.set("ctx-1", 1);
+        readingAt(action, 1);
 
         await action.onKeyDown(fakeEvent("ctx-1", { mode: "fast-forward", stepRate: 1 }) as any);
 
@@ -1241,8 +1260,7 @@ describe("ReplayControl", () => {
       });
 
       it("should step fast-forward by stepRate=2 to 4x from 2x", async () => {
-        (action as any).replaySpeed.set("ctx-1", 2);
-        (action as any).replaySlowMotion.set("ctx-1", false);
+        readingAt(action, 2);
 
         await action.onKeyDown(fakeEvent("ctx-1", { mode: "fast-forward", stepRate: 2 }) as any);
 
@@ -1250,7 +1268,7 @@ describe("ReplayControl", () => {
       });
 
       it("should always start fast-forward at 2x from paused, regardless of stepRate", async () => {
-        (action as any).replaySpeed.set("ctx-1", 0);
+        readingAt(action, 0);
 
         await action.onKeyDown(fakeEvent("ctx-1", { mode: "fast-forward", stepRate: 3 }) as any);
 
@@ -1258,8 +1276,7 @@ describe("ReplayControl", () => {
       });
 
       it("should clamp fast-forward to 16x when stepRate would exceed it", async () => {
-        (action as any).replaySpeed.set("ctx-1", 14);
-        (action as any).replaySlowMotion.set("ctx-1", false);
+        readingAt(action, 14);
 
         await action.onKeyDown(fakeEvent("ctx-1", { mode: "fast-forward", stepRate: 5 }) as any);
 
@@ -1267,8 +1284,7 @@ describe("ReplayControl", () => {
       });
 
       it("should step rewind by stepRate=2 to -4x from -2x", async () => {
-        (action as any).replaySpeed.set("ctx-1", -2);
-        (action as any).replaySlowMotion.set("ctx-1", false);
+        readingAt(action, -2);
 
         await action.onKeyDown(fakeEvent("ctx-1", { mode: "rewind", stepRate: 2 }) as any);
 
@@ -1276,8 +1292,7 @@ describe("ReplayControl", () => {
       });
 
       it("should clamp rewind to -16x when stepRate would exceed it", async () => {
-        (action as any).replaySpeed.set("ctx-1", -14);
-        (action as any).replaySlowMotion.set("ctx-1", false);
+        readingAt(action, -14);
 
         await action.onKeyDown(fakeEvent("ctx-1", { mode: "rewind", stepRate: 5 }) as any);
 
@@ -1285,7 +1300,7 @@ describe("ReplayControl", () => {
       });
 
       it("should reset to -2x when entering rewind from forward play, regardless of stepRate", async () => {
-        (action as any).replaySpeed.set("ctx-1", 4);
+        readingAt(action, 4);
 
         await action.onKeyDown(fakeEvent("ctx-1", { mode: "rewind", stepRate: 3 }) as any);
 
@@ -1299,19 +1314,17 @@ describe("ReplayControl", () => {
       });
 
       it("should jump to 1/2x on first slow-motion press from forward play", async () => {
-        (action as any).replaySpeed.set("ctx-1", 1);
-        (action as any).replaySlowMotion.set("ctx-1", false);
+        readingAt(action, 1);
 
         await action.onKeyDown(fakeEvent("ctx-1", { mode: "slow-motion", stepRate: 3 }) as any);
 
         expect(mockReplay.setPlaySpeed).toHaveBeenCalledWith(2, true);
-        expect((action as any).replaySpeed.get("ctx-1")).toBe(2);
-        expect((action as any).replaySlowMotion.get("ctx-1")).toBe(true);
+        expect(shownSpeed(action).speed).toBe(2);
+        expect(shownSpeed(action).slowMotion).toBe(true);
       });
 
       it("should jump to 1/2x on first slow-motion press from paused", async () => {
-        (action as any).replaySpeed.set("ctx-1", 0);
-        (action as any).replaySlowMotion.set("ctx-1", false);
+        readingAt(action, 0);
 
         await action.onKeyDown(fakeEvent("ctx-1", { mode: "slow-motion", stepRate: 5 }) as any);
 
@@ -1319,8 +1332,7 @@ describe("ReplayControl", () => {
       });
 
       it("should jump to 1/2x on first slow-motion press from fast-forward", async () => {
-        (action as any).replaySpeed.set("ctx-1", 8);
-        (action as any).replaySlowMotion.set("ctx-1", false);
+        readingAt(action, 8);
 
         await action.onKeyDown(fakeEvent("ctx-1", { mode: "slow-motion", stepRate: 2 }) as any);
 
@@ -1328,8 +1340,7 @@ describe("ReplayControl", () => {
       });
 
       it("should step slow-motion by stepRate=1 from 1/2x to 1/3x", async () => {
-        (action as any).replaySpeed.set("ctx-1", 2);
-        (action as any).replaySlowMotion.set("ctx-1", true);
+        readingAt(action, 2, true);
 
         await action.onKeyDown(fakeEvent("ctx-1", { mode: "slow-motion", stepRate: 1 }) as any);
 
@@ -1337,8 +1348,7 @@ describe("ReplayControl", () => {
       });
 
       it("should step slow-motion by stepRate=2 from 1/2x to 1/4x", async () => {
-        (action as any).replaySpeed.set("ctx-1", 2);
-        (action as any).replaySlowMotion.set("ctx-1", true);
+        readingAt(action, 2, true);
 
         await action.onKeyDown(fakeEvent("ctx-1", { mode: "slow-motion", stepRate: 2 }) as any);
 
@@ -1346,8 +1356,7 @@ describe("ReplayControl", () => {
       });
 
       it("should clamp slow-motion to 1/16x when stepRate would exceed it", async () => {
-        (action as any).replaySpeed.set("ctx-1", 14);
-        (action as any).replaySlowMotion.set("ctx-1", true);
+        readingAt(action, 14, true);
 
         await action.onKeyDown(fakeEvent("ctx-1", { mode: "slow-motion", stepRate: 5 }) as any);
 
@@ -1355,8 +1364,7 @@ describe("ReplayControl", () => {
       });
 
       it("should reset to 1/2x when slow-motion pressed while in slow-motion-rewind", async () => {
-        (action as any).replaySpeed.set("ctx-1", -4);
-        (action as any).replaySlowMotion.set("ctx-1", true);
+        readingAt(action, -4, true);
 
         await action.onKeyDown(fakeEvent("ctx-1", { mode: "slow-motion", stepRate: 3 }) as any);
 
@@ -1364,19 +1372,17 @@ describe("ReplayControl", () => {
       });
 
       it("should jump to -1/2x on first slow-motion-rewind press from paused", async () => {
-        (action as any).replaySpeed.set("ctx-1", 0);
-        (action as any).replaySlowMotion.set("ctx-1", false);
+        readingAt(action, 0);
 
         await action.onKeyDown(fakeEvent("ctx-1", { mode: "slow-motion-rewind", stepRate: 1 }) as any);
 
         expect(mockReplay.setPlaySpeed).toHaveBeenCalledWith(-2, true);
-        expect((action as any).replaySpeed.get("ctx-1")).toBe(-2);
-        expect((action as any).replaySlowMotion.get("ctx-1")).toBe(true);
+        expect(shownSpeed(action).speed).toBe(-2);
+        expect(shownSpeed(action).slowMotion).toBe(true);
       });
 
       it("should jump to -1/2x on first slow-motion-rewind press from rewind", async () => {
-        (action as any).replaySpeed.set("ctx-1", -8);
-        (action as any).replaySlowMotion.set("ctx-1", false);
+        readingAt(action, -8);
 
         await action.onKeyDown(fakeEvent("ctx-1", { mode: "slow-motion-rewind", stepRate: 2 }) as any);
 
@@ -1384,8 +1390,7 @@ describe("ReplayControl", () => {
       });
 
       it("should step slow-motion-rewind by stepRate=2 from -1/2x to -1/4x", async () => {
-        (action as any).replaySpeed.set("ctx-1", -2);
-        (action as any).replaySlowMotion.set("ctx-1", true);
+        readingAt(action, -2, true);
 
         await action.onKeyDown(fakeEvent("ctx-1", { mode: "slow-motion-rewind", stepRate: 2 }) as any);
 
@@ -1393,8 +1398,7 @@ describe("ReplayControl", () => {
       });
 
       it("should clamp slow-motion-rewind to -1/16x when stepRate would exceed it", async () => {
-        (action as any).replaySpeed.set("ctx-1", -14);
-        (action as any).replaySlowMotion.set("ctx-1", true);
+        readingAt(action, -14, true);
 
         await action.onKeyDown(fakeEvent("ctx-1", { mode: "slow-motion-rewind", stepRate: 5 }) as any);
 
@@ -1402,8 +1406,7 @@ describe("ReplayControl", () => {
       });
 
       it("should reset to -1/2x when slow-motion-rewind pressed while in slow-motion forward", async () => {
-        (action as any).replaySpeed.set("ctx-1", 4);
-        (action as any).replaySlowMotion.set("ctx-1", true);
+        readingAt(action, 4, true);
 
         await action.onKeyDown(fakeEvent("ctx-1", { mode: "slow-motion-rewind", stepRate: 3 }) as any);
 
@@ -1415,25 +1418,25 @@ describe("ReplayControl", () => {
       it("should reset speed to 0 when telemetry becomes null", async () => {
         await action.onWillAppear(fakeEvent("ctx-1", { mode: "play-pause" }) as any);
 
-        (action as any).replaySpeed.set("ctx-1", 4);
-        (action as any).replaySlowMotion.set("ctx-1", false);
+        readingAt(action, 4);
+        expect(shownSpeed(action).speed).toBe(4);
 
-        (action as any).updateTelemetryState("ctx-1", null);
+        vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue(null);
 
-        expect((action as any).replaySpeed.get("ctx-1")).toBe(0);
-        expect((action as any).replaySlowMotion.get("ctx-1")).toBe(false);
+        expect(shownSpeed(action).speed).toBe(0);
+        expect(shownSpeed(action).slowMotion).toBe(false);
       });
 
       it("should reset slow-motion flag on disconnect", async () => {
         await action.onWillAppear(fakeEvent("ctx-1", { mode: "play-pause" }) as any);
 
-        (action as any).replaySpeed.set("ctx-1", 2);
-        (action as any).replaySlowMotion.set("ctx-1", true);
+        readingAt(action, 2, true);
+        expect(shownSpeed(action).slowMotion).toBe(true);
 
-        (action as any).updateTelemetryState("ctx-1", null);
+        vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue(null);
 
-        expect((action as any).replaySpeed.get("ctx-1")).toBe(0);
-        expect((action as any).replaySlowMotion.get("ctx-1")).toBe(false);
+        expect(shownSpeed(action).speed).toBe(0);
+        expect(shownSpeed(action).slowMotion).toBe(false);
       });
     });
   });
@@ -1787,14 +1790,6 @@ describe("ReplayControl", () => {
         expect(dialSurface.willAppear.mock.invocationCallOrder[0]).toBeLessThan(subscribe.mock.invocationCallOrder[0]);
       });
 
-      it("a dial seeds the speed cache from the tick it appears on", async () => {
-        nowReading(REPLAY_4X);
-
-        await action.onWillAppear(dialEvent() as never);
-
-        expect(action["replaySpeed"].get("dial-1")).toBe(4);
-      });
-
       it("a key appearing never reaches the surface", async () => {
         await action.onWillAppear(keyEvent("key-1", { mode: "play-pause" }) as never);
 
@@ -1823,7 +1818,7 @@ describe("ReplayControl", () => {
         expect(dialSurface.didReceiveSettings).not.toHaveBeenCalled();
       });
 
-      it("a disappearing dial leaves the surface, the subscription and the speed cache", async () => {
+      it("a disappearing dial leaves the surface and the subscription", async () => {
         nowReading(REPLAY_4X);
         await action.onWillAppear(dialEvent() as never);
 
@@ -1831,8 +1826,6 @@ describe("ReplayControl", () => {
 
         expect(dialSurface.willDisappear).toHaveBeenCalledWith("dial-1");
         expect(action["sdkController"].unsubscribe).toHaveBeenCalledWith("dial-1");
-        expect(action["replaySpeed"].has("dial-1")).toBe(false);
-        expect(action["replaySlowMotion"].has("dial-1")).toBe(false);
       });
     });
 
@@ -1883,12 +1876,11 @@ describe("ReplayControl", () => {
     });
 
     describe("a dial's telemetry tick", () => {
-      it("updates the speed cache, then lets the surface compare its screen", async () => {
+      it("lets the surface compare its screen", async () => {
         await action.onWillAppear(dialEvent() as never);
 
         tickOf("dial-1")(REPLAY_4X);
 
-        expect(action["replaySpeed"].get("dial-1")).toBe(4);
         expect(dialSurface.onTick).toHaveBeenCalledWith("dial-1", expect.anything());
       });
 
@@ -1907,15 +1899,6 @@ describe("ReplayControl", () => {
           ["dial-1", { telemetry: null, speed: null }],
         ]);
         expect(dialSurface.onTick.mock.calls[0][1]).toHaveProperty("telemetry", quarterReverse);
-      });
-
-      it("leaves the speed cache alone on a tick that carries no speed", async () => {
-        await action.onWillAppear(dialEvent() as never);
-        tickOf("dial-1")(REPLAY_4X);
-
-        tickOf("dial-1")({ IsReplayPlaying: true } as TelemetryData);
-
-        expect(action["replaySpeed"].get("dial-1")).toBe(4);
       });
 
       it("feeds the remembered speed while a replay is on screen", async () => {
@@ -1956,10 +1939,10 @@ describe("ReplayControl", () => {
         tickOf("dial-1")(paused);
 
         expect(rememberedSpeed()).toEqual({ speed: 4, slowMotion: false });
-        expect(action["replaySpeed"].get("dial-1")).toBe(0);
+        expect(shownSpeed(action).speed).toBe(0);
       });
 
-      it("a disconnect clears the cache and still reaches the surface, so its box can dim", async () => {
+      it("a disconnect reads as paused and still reaches the surface, so its box can dim", async () => {
         await action.onWillAppear(dialEvent() as never);
         nowReading(REPLAY_4X);
         tickOf("dial-1")(REPLAY_4X);
@@ -1968,7 +1951,7 @@ describe("ReplayControl", () => {
         nowReading(null);
         tickOf("dial-1")(null);
 
-        expect(action["replaySpeed"].get("dial-1")).toBe(0);
+        expect(shownSpeed(action).speed).toBe(0);
         expect(dialSurface.onTick).toHaveBeenCalledWith("dial-1", { telemetry: null, speed: null });
         expect(rememberedSpeed()).toEqual({ speed: 4, slowMotion: false });
       });
@@ -2066,31 +2049,20 @@ describe("ReplayControl", () => {
         expect(read).toHaveBeenCalledTimes(2);
       });
 
-      it("setLocalSpeed writes the speed cache of every context, keys and dials alike", async () => {
-        await action.onWillAppear(keyEvent("key-1", { mode: "speed-display" }) as never);
-        await action.onWillAppear(dialEvent() as never);
-        tickOf("key-1")(REPLAY_4X);
-        tickOf("dial-1")(REPLAY_4X);
-
-        host().setLocalSpeed(-8, true);
-
-        for (const contextId of ["key-1", "dial-1"]) {
-          expect(action["replaySpeed"].get(contextId)).toBe(-8);
-          expect(action["replaySlowMotion"].get(contextId)).toBe(true);
-        }
-      });
-
       it("refreshKeys redraws the keys whose icon follows the speed, and no dial", async () => {
         await action.onWillAppear(keyEvent("key-1", { mode: "speed-display" }) as never);
         await action.onWillAppear(keyEvent("key-2", { mode: "next-lap" }) as never);
         await action.onWillAppear(dialEvent() as never);
 
-        // The speed cache holds a context once a tick has reached it.
+        // A tick on a paused replay has drawn the speed key.
+        nowReading({ ...REPLAY_4X, ReplayPlaySpeed: 0 });
+
         for (const contextId of ["key-1", "key-2", "dial-1"]) tickOf(contextId)({ ...REPLAY_4X, ReplayPlaySpeed: 0 });
 
         vi.mocked(action["updateKeyImage"]).mockClear();
 
-        host().setLocalSpeed(4, false);
+        // The replay plays on at 4x on a frame that delivers no tick.
+        nowReading(REPLAY_4X);
         host().refreshKeys();
 
         expect(action["updateKeyImage"]).toHaveBeenCalledTimes(1);
@@ -2141,35 +2113,39 @@ describe("ReplayControl", () => {
         t0 = Date.now();
       });
 
-      it.each<[string, Record<string, unknown>]>([
-        ["Play/Pause", { mode: "play-pause" }],
-        ["Stop", { mode: "stop" }],
-        ["Fast Forward", { mode: "fast-forward", stepRate: 1 }],
-        ["Set Speed", { mode: "set-speed", speed: "2" }],
-        ["Next Lap", { mode: "next-lap" }],
-        ["Jump to Live", { mode: "jump-to-live" }],
-      ])("a %s key inside the hold lets the live speed follow telemetry at once", async (_name, settings) => {
-        await action.onWillAppear(keyEvent("key-1", settings) as never);
+      it.each<[string, Record<string, unknown>, { speed: number; slowMotion: boolean }]>([
+        ["Play/Pause", { mode: "play-pause" }, { speed: 1, slowMotion: false }],
+        ["Stop", { mode: "stop" }, PAUSED],
+        ["Fast Forward", { mode: "fast-forward", stepRate: 1 }, { speed: 2, slowMotion: false }],
+        ["Set Speed", { mode: "set-speed", speed: "2" }, { speed: 2, slowMotion: false }],
+        ["Next Lap", { mode: "next-lap" }, STALE_4X],
+        ["Jump to Live", { mode: "jump-to-live" }, STALE_4X],
+      ])(
+        "a %s key inside the hold drops the dial's pending speed: the live speed is the key's own send, or telemetry",
+        async (_name, settings, after) => {
+          await action.onWillAppear(keyEvent("key-1", settings) as never);
 
-        // A record step sends nothing outside a replay (#1426): Next Lap is pressed in one.
-        if (settings.mode === "next-lap") nowReading(REPLAY_4X);
+          // A record step sends nothing outside a replay (#1426): Next Lap is pressed in one.
+          if (settings.mode === "next-lap") nowReading(REPLAY_4X);
 
-        // A Frame Jog detent paused the playing replay: the dial reads 0x for the hold.
-        noteDialSpeedSent(PAUSED, t0);
-        expect(resolveLiveSpeed(STALE_4X, t0 + 10)).toEqual(PAUSED);
+          // A Frame Jog detent paused the playing replay: the dial reads 0x for the hold.
+          noteReplaySpeedSent(PAUSED, t0, { rememberSpeed: true });
+          expect(resolveLiveSpeed(STALE_4X, t0 + 10)).toEqual(PAUSED);
 
-        await action.onKeyDown(keyEvent("key-1", settings) as never);
-        // Released, so Fast Forward's long-press repeat does not outlive the test.
-        await action.onKeyUp(keyEvent("key-1", settings) as never);
+          await action.onKeyDown(keyEvent("key-1", settings) as never);
+          // Released, so Fast Forward's long-press repeat does not outlive the test.
+          await action.onKeyUp(keyEvent("key-1", settings) as never);
 
-        expect(resolveLiveSpeed(STALE_4X, t0 + 20)).toEqual(STALE_4X);
-      });
+          // The key's take dropped the dial's pause; a speed the key sent is the engine's record now (#1467).
+          expect(resolveLiveSpeed(STALE_4X, t0 + 20)).toEqual(after);
+        },
+      );
 
       it("the key's speed is then remembered from telemetry again", async () => {
         await action.onWillAppear(keyEvent("key-1", { mode: "set-speed", speed: "8" }) as never);
         nowReading(REPLAY_4X);
         tickOf("key-1")(REPLAY_4X);
-        noteDialSpeedSent(PAUSED, Date.now());
+        noteReplaySpeedSent(PAUSED, Date.now(), { rememberSpeed: true });
 
         await action.onKeyDown(keyEvent("key-1", { mode: "set-speed", speed: "8" }) as never);
         const eightTimes = { ...REPLAY_4X, ReplayPlaySpeed: 8 } as TelemetryData;
@@ -2181,7 +2157,7 @@ describe("ReplayControl", () => {
 
       it("a key press leaves the remembered speed alone", async () => {
         await action.onWillAppear(keyEvent("key-1", { mode: "stop" }) as never);
-        noteDialSpeedSent(STALE_4X, t0);
+        noteReplaySpeedSent(STALE_4X, t0, { rememberSpeed: true });
 
         await action.onKeyDown(keyEvent("key-1", { mode: "stop" }) as never);
 
@@ -2190,22 +2166,23 @@ describe("ReplayControl", () => {
 
       it("a Speed Display key, which sends nothing, leaves the pending speed standing", async () => {
         await action.onWillAppear(keyEvent("key-1", { mode: "speed-display" }) as never);
-        noteDialSpeedSent(PAUSED, t0);
+        noteReplaySpeedSent(PAUSED, t0, { rememberSpeed: true });
 
         await action.onKeyDown(keyEvent("key-1", { mode: "speed-display" }) as never);
 
         expect(resolveLiveSpeed(STALE_4X, t0 + 10)).toEqual(PAUSED);
       });
 
-      it("the cache write a dial's own send asks the host for leaves the pending speed standing", async () => {
+      it("the key redraw a dial's send asks the host for leaves the pending speed standing", async () => {
+        await action.onWillAppear(keyEvent("key-1", { mode: "play-pause" }) as never);
         await action.onWillAppear(dialEvent() as never);
+        nowReading(REPLAY_4X);
         tickOf("dial-1")(REPLAY_4X);
-        noteDialSpeedSent(PAUSED, t0);
+        noteReplaySpeedSent(PAUSED, t0, { rememberSpeed: true });
 
-        host().setLocalSpeed(0, false);
         host().refreshKeys();
 
-        expect(action["replaySpeed"].get("dial-1")).toBe(0);
+        expect(shownSpeed(action).speed).toBe(0);
         expect(resolveLiveSpeed(STALE_4X, t0 + 10)).toEqual(PAUSED);
       });
     });
@@ -2441,8 +2418,7 @@ describe("ReplayControl", () => {
        * `getCurrentTelemetry()` returns SessionUniqueID + SessionNum + the
        * lap/dist for `carIdx`, plus `ReplayFrameNumEnd = bufferEnd - frame`
        * so `ReplayFrameNum + ReplayFrameNumEnd` is the constant recording
-       * length the map build reads, and `ReplayPlaySpeed: 0` so the action's
-       * speed cache has an entry the walk's `setLocalSpeed` calls land in.
+       * length the map build reads, and `ReplayPlaySpeed: 0`: a paused replay.
        * `getSessionInfo()` wires `ResultsPositions` so `findFastestLapForCar`
        * resolves to each session's `fastestLap`; `opts.fastestTime` (seconds)
        * fills `FastestTime` beside it for the #1203 convention check.
@@ -2912,7 +2888,7 @@ describe("ReplayControl", () => {
           expect(action["logger"].info).toHaveBeenCalledWith("Jump to fastest lap: record HIT (matchedBy sessionNum)");
         });
 
-        it("under Play, updates the local speed cache to 1, so the Play key's next press pauses", async () => {
+        it("under Play, records 1x as the speed sent, so the Play key's next press pauses", async () => {
           vi.useFakeTimers();
 
           try {
@@ -2923,7 +2899,7 @@ describe("ReplayControl", () => {
             await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
             await vi.runAllTimersAsync();
 
-            expect(action["replaySpeed"].get("ctx-1")).toBe(1);
+            expect(sentSpeeds.at(-1)).toEqual({ speed: 1, slowMotion: false });
           } finally {
             vi.useRealTimers();
           }
@@ -3096,7 +3072,9 @@ describe("ReplayControl", () => {
               );
               expect(mockReplay.setPlayPosition).toHaveBeenCalledExactlyOnceWith(expect.anything(), 4940);
               expect(mockReplay.setPlaySpeed).not.toHaveBeenCalled();
-              expect(action["replaySpeed"].get("ctx-1")).toBe(0);
+              // The replay was paused at the press, so no pause went out: the keys read it paused.
+              expect(sentSpeeds).toEqual([]);
+              expect(shownSpeed(action).speed).toBe(0);
             } finally {
               vi.useRealTimers();
             }
@@ -3140,7 +3118,7 @@ describe("ReplayControl", () => {
             }
           });
 
-          it("a pause the SDK refuses sends no jump and leaves the speed cache alone", async () => {
+          it("a pause the SDK refuses sends no jump and records no speed", async () => {
             vi.useFakeTimers();
 
             try {
@@ -3150,14 +3128,14 @@ describe("ReplayControl", () => {
               mockReplay.setPlaySpeed.mockReturnValueOnce(false);
 
               await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
-              action["replaySpeed"].set("ctx-1", 1);
               await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
               await vi.runAllTimersAsync();
 
               expect(action["logger"].warn).toHaveBeenCalledWith("Jump to fastest lap: pause failed; jump not sent");
               expect(mockReplay.setPlayPosition).not.toHaveBeenCalled();
               expect(mockReplay.setPlaySpeed).toHaveBeenCalledExactlyOnceWith(0);
-              expect(action["replaySpeed"].get("ctx-1")).toBe(1);
+              // A refused pause is never the engine's speed (#1467).
+              expect(sentSpeeds).toEqual([]);
             } finally {
               vi.useRealTimers();
             }
@@ -3480,7 +3458,36 @@ describe("ReplayControl", () => {
       });
 
       describe("walk repairs (#1203)", () => {
-        it("mirrors the opening pause and the closing speed into the speed cache, and under Play ends playing", async () => {
+        it("redraws the keys at the walk's pause, with no tick (#1467)", async () => {
+          vi.useFakeTimers();
+
+          try {
+            singleSessionBuffer(4, 4);
+            // The replay plays at 1x when the press comes.
+            const read = action["sdkController"].getCurrentTelemetry;
+
+            action["sdkController"].getCurrentTelemetry = vi.fn(() => ({
+              ...(read() as object),
+              ReplayPlaySpeed: 1,
+            })) as any;
+            await action.onWillAppear(fakeEvent("ctx-speed", { mode: "speed-display" }) as any);
+            await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+            await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+            expect(mockReplay.pause).not.toHaveBeenCalled();
+            vi.mocked(action["updateKeyImage"]).mockClear();
+
+            await vi.advanceTimersByTimeAsync(0);
+
+            expect(mockReplay.pause).toHaveBeenCalledTimes(1);
+            expect(action["updateKeyImage"]).toHaveBeenCalledWith("ctx-speed", expect.stringContaining("PAUSED"));
+
+            await runPressOut();
+          } finally {
+            vi.useRealTimers();
+          }
+        });
+
+        it("records the opening pause and the closing speed as sent, and under Play ends playing", async () => {
           vi.useFakeTimers();
 
           try {
@@ -3491,14 +3498,14 @@ describe("ReplayControl", () => {
             // Nothing is under way, so the waits before the switch and the walk end with no timer.
             await vi.advanceTimersByTimeAsync(0);
 
-            // The pause is sent before the walk's first timer; the cache says so at once.
+            // The pause is sent before the walk's first timer; the engine records it at once.
             expect(mockReplay.pause).toHaveBeenCalledTimes(1);
-            expect(action["replaySpeed"].get("ctx-1")).toBe(0);
+            expect(sentSpeeds.at(-1)).toEqual({ speed: 0, slowMotion: false });
 
             await vi.runAllTimersAsync();
 
             expect(mockReplay.setPlaySpeed).toHaveBeenCalledExactlyOnceWith(1, false);
-            expect(action["replaySpeed"].get("ctx-1")).toBe(1);
+            expect(sentSpeeds.at(-1)).toEqual({ speed: 1, slowMotion: false });
             // The speed is the press's last command: after the back-step has landed.
             const lastJump = Math.max(...mockReplay.setPlayPosition.mock.invocationCallOrder);
 
@@ -3668,7 +3675,7 @@ describe("ReplayControl", () => {
             );
             // Whatever the setting says (Play here), an aborted walk stays paused.
             expect(mockReplay.setPlaySpeed).not.toHaveBeenCalled();
-            expect(action["replaySpeed"].get("ctx-1")).toBe(0);
+            expect(sentSpeeds.at(-1)).toEqual({ speed: 0, slowMotion: false });
             expect(mockStore.laps.recordLapStart).not.toHaveBeenCalled();
 
             // The walk slot is released: the next press walks again.
@@ -3819,7 +3826,7 @@ describe("ReplayControl", () => {
             expect(walkSearches()).toBe(searchesBefore);
             expect(mockReplay.pause).toHaveBeenCalledTimes(1);
             expect(mockReplay.play).toHaveBeenCalledTimes(1);
-            expect(action["replaySpeed"].get("ctx-1")).toBe(1);
+            expect(sentSpeeds.at(-1)).toEqual({ speed: 1, slowMotion: false });
             expect(mockStore.laps.recordLapStart).not.toHaveBeenCalled();
 
             // The slot is released: a new press walks.
@@ -3892,7 +3899,7 @@ describe("ReplayControl", () => {
             expect(action["logger"].info).not.toHaveBeenCalledWith(expect.stringContaining("walk converged"));
             // The press still ends through the setting: Play here.
             expect(mockReplay.setPlaySpeed).toHaveBeenCalledExactlyOnceWith(1, false);
-            expect(action["replaySpeed"].get("ctx-1")).toBe(1);
+            expect(sentSpeeds.at(-1)).toEqual({ speed: 1, slowMotion: false });
             expect(action["activeFastestLapPress"]).toBeNull();
           } finally {
             vi.useRealTimers();
@@ -4375,7 +4382,7 @@ describe("ReplayControl", () => {
             expect(mockReplay.nextSession).not.toHaveBeenCalled();
             expect(mockReplay.setPlayPosition).not.toHaveBeenCalled();
             expect(mockReplay.setPlaySpeed).not.toHaveBeenCalled();
-            expect(action["replaySpeed"].get("ctx-1")).toBe(0);
+            expect(sentSpeeds.at(-1)).toEqual({ speed: 0, slowMotion: false });
             expect(action["activeFastestLapPress"]).toBeNull();
           } finally {
             vi.useRealTimers();
@@ -4726,11 +4733,8 @@ describe("ReplayControl", () => {
           };
         }
 
-        /** What the action's speed cache says, which the icons and the Play key read. */
-        const cachedSpeed = () => ({
-          speed: action["replaySpeed"].get("ctx-1"),
-          slowMotion: action["replaySlowMotion"].get("ctx-1"),
-        });
+        /** The speed the icons and the Play key read: the engine's one record of it (#1467). */
+        const cachedSpeed = () => shownSpeed(action);
 
         async function press(): Promise<void> {
           const event = fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" });
@@ -6220,7 +6224,7 @@ describe("ReplayControl", () => {
 
         expect(commands()).toEqual(sent);
         expect(sim.speed()).toEqual(after);
-        expect(action["replaySpeed"].get("ctx-key")).toBe(after.speed);
+        expect(shownSpeed(action).speed).toBe(after.speed);
         expect(sim.thrown).toBe(0);
       });
     });
@@ -6728,6 +6732,157 @@ describe("ReplayControl", () => {
           expect(uri).toContain(`${mode} `);
           expect(busyMarkSvg).not.toHaveBeenCalled();
         });
+      });
+    });
+  });
+
+  describe("one speed model (#1467)", () => {
+    let action: ReplayControl;
+    let sim: FakeReplay;
+
+    function keyEvent(actionId: string, settings: Record<string, unknown>) {
+      return {
+        action: { id: actionId, isDial: () => false, setTitle: vi.fn(), setImage: vi.fn() },
+        payload: { settings },
+      };
+    }
+
+    async function appear(contextId: string, mode: string): Promise<void> {
+      await action.onWillAppear(keyEvent(contextId, { mode }) as never);
+    }
+
+    async function pressKey(contextId: string, mode: string): Promise<void> {
+      await action.onKeyDown(keyEvent(contextId, { mode, stepRate: 1 }) as never);
+      // Released, so Fast Forward's long-press repeat does not outlive the press.
+      await action.onKeyUp(keyEvent(contextId, { mode, stepRate: 1 }) as never);
+    }
+
+    /** Every image the action pushed to `contextId` since the last clear. */
+    function imagesOf(contextId: string): string[] {
+      return vi
+        .mocked(action["updateKeyImage"])
+        .mock.calls.filter(([id]) => id === contextId)
+        .map(([, uri]) => decodeURIComponent(String(uri)));
+    }
+
+    /** A marker's position jump far across the tape, through the gate as a marker sends it. */
+    function markerJump(): void {
+      pressReplayCommand({ kind: "jump", frame: 160_000 }, { by: "replay-markers", origin: "marker" });
+    }
+
+    function setUp(options: Parameters<typeof fakeReplay>[0] = {}): void {
+      sim = fakeReplay({ frame: 2_000, ...options });
+      configureEngine({
+        replay: () => sim.replay,
+        readTelemetry: () => sim.telemetry(),
+        inReplay: () => true,
+      });
+    }
+
+    beforeEach(async () => {
+      vi.useFakeTimers();
+      setUp();
+
+      const { getCommands } = await import("@iracedeck/deck-iracing");
+
+      vi.mocked(getCommands).mockImplementation(() => ({ replay: sim.replay, camera: { switchNum: vi.fn() } }) as any);
+      action = new ReplayControl();
+      // A fresh read is the sim's; no test here delivers a telemetry tick.
+      action["sdkController"].getCurrentTelemetry = vi.fn(() => sim.telemetry());
+    });
+
+    afterEach(async () => {
+      const { getCommands } = await import("@iracedeck/deck-iracing");
+
+      vi.mocked(getCommands).mockReset();
+      vi.useRealTimers();
+    });
+
+    it("a key speed press the gate holds shows only as the waiting speed, and one it drops never shows", async () => {
+      setUp({ unlandable: new Set([160_000]), unlandableRest: 160_004 });
+      await appear("ctx-pp", "play-pause");
+      await appear("ctx-ff", "fast-forward");
+      markerJump();
+      vi.mocked(action["updateKeyImage"]).mockClear();
+
+      await pressKey("ctx-ff", "fast-forward");
+
+      // Held behind the jump: the Play/Pause key reads the waiting 2x, so it offers Pause.
+      expect(sim.calls).toEqual(["setPlayPosition 0 160000"]);
+      expect(shownSpeed(action)).toEqual({ speed: 2, slowMotion: false });
+      expect(imagesOf("ctx-pp").at(-1)).toContain("pause-icon");
+
+      // The jump ends off its target: the gate drops the press, and nothing is sent.
+      await vi.advanceTimersByTimeAsync(replayTargetGiveUpMs(158_000) + 500);
+      vi.mocked(action["updateKeyImage"]).mockClear();
+      action["updateAllTelemetryDisplays"]();
+
+      expect(sim.calls).toEqual(["setPlayPosition 0 160000"]);
+      expect(sentSpeeds).toEqual([]);
+      expect(shownSpeed(action)).toEqual({ speed: 0, slowMotion: false });
+      expect(imagesOf("ctx-pp").at(-1)).toContain("play-pause");
+      expect(imagesOf("ctx-pp").some((image) => image.includes("pause-icon"))).toBe(false);
+    });
+
+    it("a key's speed press sent at once updates the shown speed but not the dial's resume speed", async () => {
+      // Telemetry shows a new speed only 300 ms after it is sent: the 2x read is the send's.
+      setUp({ speed: { speed: 1, slowMotion: false }, speedLagMs: 300 });
+      await appear("ctx-ff", "fast-forward");
+
+      await pressKey("ctx-ff", "fast-forward");
+
+      expect(sim.calls).toEqual(["setPlaySpeed 2 false"]);
+      expect(shownSpeed(action)).toEqual({ speed: 2, slowMotion: false });
+      expect(rememberedSpeed()).toEqual({ speed: 1, slowMotion: false });
+    });
+
+    it("a key's speed press the gate dispatches later updates the dial's resume speed too", async () => {
+      await appear("ctx-ff", "fast-forward");
+      markerJump();
+
+      await pressKey("ctx-ff", "fast-forward");
+      expect(sim.calls).toEqual(["setPlayPosition 0 160000"]);
+
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      expect(sim.calls).toEqual(["setPlayPosition 0 160000", "setPlaySpeed 2 false"]);
+      expect(shownSpeed(action)).toEqual({ speed: 2, slowMotion: false });
+      expect(rememberedSpeed()).toEqual({ speed: 2, slowMotion: false });
+    });
+
+    describe("redraws the keys when the engine sends a speed with no tick", () => {
+      it("a slot dispatch", async () => {
+        setUp({ speed: { speed: 1, slowMotion: false }, searches: { nextSession: (f) => f + 60_000 } });
+        await appear("ctx-speed", "speed-display");
+        pressReplayCommand({ kind: "search", search: "nextSession" }, { by: "test" });
+        await vi.advanceTimersByTimeAsync(120);
+        // A pause behind a search on its way waits for the landing, and shows nothing until it is sent.
+        expect(pressReplayCommand({ kind: "pause" }, { by: "test" })).toEqual({ kind: "held" });
+        action["updateAllTelemetryDisplays"]();
+        expect(imagesOf("ctx-speed").at(-1)).toContain("1x");
+        vi.mocked(action["updateKeyImage"]).mockClear();
+
+        await vi.advanceTimersByTimeAsync(1_500);
+
+        expect(sim.calls).toEqual(["nextSession", "pause"]);
+        expect(imagesOf("ctx-speed").at(-1)).toContain("PAUSED");
+      });
+
+      it("a search's pause", async () => {
+        setUp({ speed: { speed: 4, slowMotion: false }, searches: { nextLap: (f) => f + 3_000 } });
+        await appear("ctx-speed", "speed-display");
+        action["updateAllTelemetryDisplays"]();
+        expect(imagesOf("ctx-speed").at(-1)).toContain("4x");
+        vi.mocked(action["updateKeyImage"]).mockClear();
+
+        // The dial's paced search pauses a replay playing faster than 1x for its search.
+        queueReplaySearch({ target: "lap", ticks: 1, origin: "dial-a", owner: "replay-control-dial lap" });
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(sim.calls[0]).toBe("setPlaySpeed 0");
+        expect(imagesOf("ctx-speed").at(-1)).toContain("PAUSED");
+
+        await vi.advanceTimersByTimeAsync(10_000);
       });
     });
   });

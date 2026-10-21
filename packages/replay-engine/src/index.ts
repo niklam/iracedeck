@@ -82,12 +82,14 @@ export {
   clearDialPendingSpeed,
   DIAL_SPEED_HOLD_MS,
   keepDialPendingSpeed,
-  noteDialSpeedSent,
+  noteReplaySpeedSent,
   noteTelemetrySpeed,
+  onReplaySpeedChanged,
   rememberedSpeed,
   resolveLiveSpeed,
   reverseRememberedSpeed,
 } from "./replay-speed-state.js";
+export { shownReplaySpeed } from "./replay-speed-view.js";
 export {
   acceptsGreenFallbackLanding,
   GREEN_APPROACH_FRAMES,
@@ -110,7 +112,6 @@ export {
   getReplayGateRecord,
   getReplayGateView,
   isReplayMoveUnderWay,
-  onReplaySpeedSentFromSlot,
   pressReplayCommand,
   readReplayPosition,
   type ReplayGateCommand,
@@ -149,7 +150,6 @@ export {
   _resetReplaySearchQueue,
   isReplaySearchRunning,
   onReplaySearchChange,
-  onReplaySearchSpeedSent,
   pendingReplaySearch,
   queueReplaySearch,
   type ReplaySearchPending,

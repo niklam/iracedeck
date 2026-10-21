@@ -25,7 +25,6 @@ import {
   _resetReplaySearchQueue,
   isReplaySearchRunning,
   onReplaySearchChange,
-  onReplaySearchSpeedSent,
   pendingReplaySearch,
   queueReplaySearch,
   replaySearchPatienceMs,
@@ -37,7 +36,8 @@ import {
 import {
   _resetReplaySpeedState,
   keepDialPendingSpeed,
-  noteDialSpeedSent,
+  onReplaySpeedChanged,
+  rememberedSpeed,
   resolveLiveSpeed,
 } from "./replay-speed-state.js";
 
@@ -488,13 +488,16 @@ describe("the paced search runner (#801)", () => {
       _resetReplaySpeedState();
       setUp({ speed: { speed: 2, slowMotion: false }, speedLagMs: 300 });
 
-      // The dial's press pauses the replay, as the surface sends it: its own take keeps the pending speed it then notes.
+      // The dial's press pauses the replay, as the surface sends it: the gate records the pause inside the dial's
+      // own take, and it stands.
       const paused = keepDialPendingSpeed(() =>
-        pressReplayCommand({ kind: "pause" }, { by: "replay-control-dial press", origin: "dial-a" }),
+        pressReplayCommand(
+          { kind: "pause" },
+          { by: "replay-control-dial press", origin: "dial-a", rememberSpeed: true },
+        ),
       );
 
       expect(paused).toEqual({ kind: "sent", ok: true });
-      noteDialSpeedSent({ speed: 0, slowMotion: false }, Date.now());
 
       // Within the hold a turn starts a run on the paused path, telemetry still showing the 2x from before the press.
       turn("lap", 1);
@@ -747,12 +750,12 @@ describe("the paced search runner (#801)", () => {
       expect(heard.filter((c) => c === null)).toHaveLength(1);
     });
 
-    it("tells its speed listeners of the pause it sends and of the speed the playback step leaves", async () => {
+    it("its pause and its closing playback step reach onReplaySpeedChanged", async () => {
       setUp({ speed: { speed: 4, slowMotion: false } });
       setting("play");
 
       const heard: { speed: number; slowMotion: boolean }[] = [];
-      const unsubscribe = onReplaySearchSpeedSent((speed) => heard.push(speed));
+      const unsubscribe = onReplaySpeedChanged((speed) => heard.push(speed));
 
       turn("lap", 1);
 
@@ -766,6 +769,17 @@ describe("the paced search runner (#801)", () => {
         { speed: 0, slowMotion: false },
         { speed: 1, slowMotion: false },
       ]);
+    });
+
+    it("its closing playback step is the dial's resume speed: the runner is the dial's", async () => {
+      setUp({ speed: { speed: 4, slowMotion: false } });
+      setting("remember");
+
+      turn("lap", 1);
+      await untilIdle();
+
+      expect(sim.calls).toEqual(["setPlaySpeed 0", "nextLap", "setPlaySpeed 4 false"]);
+      expect(rememberedSpeed()).toEqual({ speed: 4, slowMotion: false });
     });
 
     it("gives the speed a superseded run captured back at the end of the run that replaced it", async () => {

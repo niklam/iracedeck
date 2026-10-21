@@ -248,7 +248,6 @@ interface Run {
 
 let run: Run | null = null;
 const listeners = new Set<() => void>();
-const speedListeners = new Set<(speed: ReplaySpeed) => void>();
 
 function notify(): void {
   for (const listener of listeners) {
@@ -262,17 +261,6 @@ function notify(): void {
 
 function active(): Run | null {
   return run !== null && !run.ended ? run : null;
-}
-
-/** Tells the speed listeners of a speed the runner sent, so a surface mirrors it before telemetry shows it. */
-function noteSpeedSent(speed: ReplaySpeed): void {
-  for (const listener of speedListeners) {
-    try {
-      listener(speed);
-    } catch (err) {
-      log().debug(`Replay search queue speed listener failed: ${String(err)}`);
-    }
-  }
 }
 
 /** Whether the runner must stop: its run ended, or another replay command took the cursor. */
@@ -335,20 +323,7 @@ export function onReplaySearchChange(listener: () => void): () => void {
   };
 }
 
-/**
- * Hears every speed the runner sends: its pause, and the speed the Replay jump
- * playback step leaves at the end of a run at zero, as a record jump's
- * `onPaused` and landing tell the dial. Returns the unsubscribe.
- */
-export function onReplaySearchSpeedSent(listener: (speed: ReplaySpeed) => void): () => void {
-  speedListeners.add(listener);
-
-  return () => {
-    speedListeners.delete(listener);
-  };
-}
-
-/** @internal Exported for testing: ends any run and clears the queue and its listeners. The engine env is reset by `_resetReplayEngineEnv`. */
+/** @internal Exported for testing: ends any run and clears the queue and its listener. The engine env is reset by `_resetReplayEngineEnv`. */
 export function _resetReplaySearchQueue(): void {
   const current = run;
 
@@ -360,7 +335,6 @@ export function _resetReplaySearchQueue(): void {
   }
 
   listeners.clear();
-  speedListeners.clear();
 }
 
 // ---------------------------------------------------------------------------
@@ -394,6 +368,8 @@ function startRun(turn: ReplaySearchTurn, ticks: number, previous: Run | null): 
     r.jump = keepDialPendingSpeed(() =>
       beginReplayJump(turn.owner, atStart, (by) => cancelled(r, by), engineNow(), {
         origin: turn.origin,
+        // The dial's runner: the speeds it sends are the dial's resume speed, as a record jump's are.
+        rememberSpeed: true,
         sendsPositionJump: false,
       }),
     );
@@ -670,17 +646,16 @@ async function pause(r: Run): Promise<Ending | null> {
 
   if (claim === undefined) return "cancelled";
 
+  // The pause is the speed state's once it goes out: the gate records it, and the surfaces redraw from it.
   const sent = sendOwnedReplayCommand(
     claim,
     { kind: "pause", send: (replay) => replay.setPlaySpeed(0) },
-    { origin: r.origin },
+    { origin: r.origin, rememberSpeed: true },
   );
 
   if (sent === "cancelled") return "cancelled";
 
   if (sent === "refused") return neverReadBack(r, "the pause was refused");
-
-  if (sent === "sent") noteSpeedSent({ speed: 0, slowMotion: false });
 
   const outcome = await waitForReplay(
     {
@@ -790,7 +765,11 @@ async function runOneSearch(r: Run, direction: 1 | -1, options: { watchLanding: 
 
   const atSend = engineReads().readTelemetry();
   const kind = searchKind(r.target, direction);
-  const sent = sendOwnedReplayCommand(claim, { kind: "search", search: kind }, { origin: r.origin });
+  const sent = sendOwnedReplayCommand(
+    claim,
+    { kind: "search", search: kind },
+    { origin: r.origin, rememberSpeed: true },
+  );
 
   if (sent === "cancelled") return { outcome: "superseded", landingFrame: null };
 
@@ -929,7 +908,7 @@ async function jumpBack(r: Run, frame: number | null): Promise<Ending | null> {
     return null;
   }
 
-  const sent = sendOwnedReplayCommand(claim, { kind: "jump", frame }, { origin: r.origin });
+  const sent = sendOwnedReplayCommand(claim, { kind: "jump", frame }, { origin: r.origin, rememberSpeed: true });
 
   if (sent === "cancelled") return "cancelled";
 
@@ -1046,10 +1025,8 @@ async function endAtZero(r: Run, held?: HeldReading): Promise<Ending | null> {
 
   if (applied === null) return "cancelled";
 
+  // A speed the step sent is the speed state's: the gate records it, as a record jump's.
   if (applied.command === "failed") log().warn("Replay search queue: speed command failed; replay left as it landed");
-
-  // The speed the replay is at now, as a record jump's landing reports it: the one wanted, or the landing's own.
-  noteSpeedSent(applied.speed);
 
   return "landed";
 }

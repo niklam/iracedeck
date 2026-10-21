@@ -47,6 +47,12 @@
  *   and the gate reports per token whether something of it is under way or
  *   waiting ({@link subscribeReplayGate}). It adds no behaviour: the gate
  *   sends the same commands in the same order with and without a listener.
+ * - **Every speed it sends is the speed state's** (#1467): a speed, a pause
+ *   or a playback step that went out is recorded in `replay-speed-state.ts`
+ *   once the change that sent it is complete, so every surface reads one
+ *   record of the replay speed. A press says whether its send is the speed
+ *   the dial's Play resumes (`rememberSpeed`); a command the slot sends later
+ *   always is.
  *
  * A one-shot press goes through {@link pressReplayCommand}, which takes the
  * replay cursor (`replay-cursor.ts`) as every command did before. A long-running
@@ -83,6 +89,7 @@ import {
   settleReplayTarget,
 } from "./replay-position-state.js";
 import { isPaused, isSeeking, replaySeekWaitMs } from "./replay-seek.js";
+import { noteReplaySpeedSent } from "./replay-speed-state.js";
 import {
   HOLD_GAP_MS,
   readFastestLapSearchDelayMs,
@@ -151,6 +158,13 @@ export interface ReplayPressOptions {
    * replaces what waits, as the newest word, and waits too.
    */
   readonly repeat?: boolean;
+  /**
+   * Whether a speed this press sends at once is also the speed the dial's
+   * Play/Pause resumes (`replay-speed-state.ts`): true for the dial's own
+   * presses, false (the default) for a key's and a legacy action's. A command
+   * the slot sends later writes it whichever surface pressed it.
+   */
+  readonly rememberSpeed?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -274,6 +288,8 @@ interface Slot {
   readonly command: SlotCommand;
   readonly by: string;
   readonly origin: string | undefined;
+  /** The press's own `rememberSpeed`, for a takeover the slot hands it to. What the slot sends itself always remembers. */
+  readonly rememberSpeed: boolean;
   readonly pressedAt: number;
   readonly behind: "jump" | "search";
   /** The target it waits on; null behind a seek only the witness shows. */
@@ -451,6 +467,16 @@ const batchEnds = new Map<string, ReplayGateFactEnd[]>();
  */
 const sameRunEnds = new Map<string, ReplayGateEndReason>();
 
+/** A speed the gate sent inside the running change, for the speed state once the change is complete. */
+interface SentSpeed {
+  readonly speed: ReplaySpeed;
+  readonly at: number;
+  readonly rememberSpeed: boolean;
+}
+
+/** The speeds sent in the running change, in the order they went out. */
+let sentSpeeds: SentSpeed[] = [];
+
 /** Runs `listener` on every change of any token's view. Returns the unsubscribe. */
 export function subscribeReplayGate(listener: (notice: ReplayGateNotice) => void): () => void {
   listeners.add(listener);
@@ -485,8 +511,33 @@ function batch<T>(now: number, change: () => T): T {
   } finally {
     batchDepth--;
 
-    if (batchDepth === 0) publish();
+    if (batchDepth === 0) {
+      publish();
+      noteSentSpeeds();
+    }
   }
+}
+
+/**
+ * Hands the speeds sent in the change just completed to the speed state, whose
+ * listeners redraw the surfaces: after the gate's own state is settled and
+ * published, so a listener that reads the gate reads it whole. A send made by
+ * a listener goes out in a change of its own, which notes it itself.
+ */
+function noteSentSpeeds(): void {
+  const due = sentSpeeds;
+
+  sentSpeeds = [];
+
+  for (const sent of due) noteReplaySpeedSent(sent.speed, sent.at, { rememberSpeed: sent.rememberSpeed });
+}
+
+/** Records a speed that went out, for the speed state at the end of the change. */
+function noteSpeedSent(speed: ReplaySpeed, now: number, rememberSpeed: boolean): void {
+  sentSpeeds.push({ speed, at: now, rememberSpeed });
+
+  // Every send runs inside a change today; one outside it is noted at once.
+  if (batchDepth === 0) noteSentSpeeds();
 }
 
 /** Every token's view from the state as it stands. */
@@ -781,12 +832,17 @@ function emptySlot(reason: ReplayGateEndReason, why?: string): void {
   slot = null;
 }
 
-/** Sends a command with nothing under way, recording what it starts. Returns the SDK's answer. */
+/**
+ * Sends a command with nothing under way, recording what it starts. Returns
+ * the SDK's answer. A speed or a pause that went out is the speed state's,
+ * remembered as the dial's resume speed with `rememberSpeed`.
+ */
 function dispatch(
   command: SlotCommand,
   telemetry: TelemetryData | null,
   now: number,
   origin: string | undefined,
+  rememberSpeed: boolean,
 ): boolean {
   const reading = readReplay(telemetry);
 
@@ -857,14 +913,20 @@ function dispatch(
       const ok = sendRaw("pause", command.send ?? ((r) => r.pause()));
 
       // Paused from now, for "is the replay moving", until the reading shows it.
-      if (ok) speedSent = { speed: { speed: 0, slowMotion: false }, at: now };
+      if (ok) {
+        speedSent = { speed: { speed: 0, slowMotion: false }, at: now };
+        noteSpeedSent({ speed: 0, slowMotion: false }, now, rememberSpeed);
+      }
 
       return ok;
     }
     case "speed": {
       const ok = sendRaw("setPlaySpeed", command.send ?? ((r) => r.setPlaySpeed(command.speed, command.slowMotion)));
 
-      if (ok) speedSent = { speed: { speed: command.speed, slowMotion: command.slowMotion }, at: now };
+      if (ok) {
+        speedSent = { speed: { speed: command.speed, slowMotion: command.slowMotion }, at: now };
+        noteSpeedSent({ speed: command.speed, slowMotion: command.slowMotion }, now, rememberSpeed);
+      }
 
       return ok;
     }
@@ -883,9 +945,15 @@ function dispatch(
 
       if (live !== null && isSameSpeed(live, wanted)) return true;
 
-      if (wanted.speed === 0) return dispatch({ kind: "pause" }, telemetry, now, origin);
+      if (wanted.speed === 0) return dispatch({ kind: "pause" }, telemetry, now, origin, rememberSpeed);
 
-      return dispatch({ kind: "speed", speed: wanted.speed, slowMotion: wanted.slowMotion }, telemetry, now, origin);
+      return dispatch(
+        { kind: "speed", speed: wanted.speed, slowMotion: wanted.slowMotion },
+        telemetry,
+        now,
+        origin,
+        rememberSpeed,
+      );
     }
   }
 }
@@ -1175,6 +1243,7 @@ function holdBehindJump(
     command,
     by: options.by,
     origin: options.origin,
+    rememberSpeed: options.rememberSpeed === true,
     pressedAt: now,
     behind: "jump",
     behindTargetId: pendingReplayTarget()?.id ?? null,
@@ -1212,6 +1281,7 @@ function waitBehindSearch(
     command,
     by: options.by,
     origin: options.origin,
+    rememberSpeed: options.rememberSpeed === true,
     pressedAt: now,
     behind: "search",
     behindTargetId: null,
@@ -1251,7 +1321,7 @@ function takeOver(
 
   endSearch("forgotten");
 
-  if (moving) dispatch({ kind: "pause" }, telemetry, now, options.origin);
+  if (moving) dispatch({ kind: "pause" }, telemetry, now, options.origin, options.rememberSpeed === true);
 
   const endFrame = reading.left === undefined ? undefined : reading.frame + reading.left;
   const beside = frameBeside(reading.frame, endFrame);
@@ -1279,6 +1349,7 @@ function takeOver(
       command,
       by: options.by,
       origin: options.origin,
+      rememberSpeed: options.rememberSpeed === true,
       pressedAt: now,
       behind: "jump",
       behindTargetId: target.id,
@@ -1326,7 +1397,12 @@ function serviceBehindSearch(current: Slot, telemetry: TelemetryData | null, now
   if (!record.onItsWay) {
     slot = null;
     noteEnd(current.origin, "waiting", "took-over");
-    takeOver(current.command, { by: current.by, origin: current.origin }, telemetry, now);
+    takeOver(
+      current.command,
+      { by: current.by, origin: current.origin, rememberSpeed: current.rememberSpeed },
+      telemetry,
+      now,
+    );
   }
 }
 
@@ -1450,58 +1526,17 @@ function afterJumpLanded(
   goOut(current, telemetry ?? landing, now);
 }
 
-/** Who is told of a speed or a pause the gate sent from the slot (module wiring, not state). */
-const speedSentListeners = new Set<(speed: ReplaySpeed) => void>();
-
 /**
- * Runs `listener` whenever the gate sends a speed or a pause that waited in
- * its slot, with the speed it sent: the surfaces that keep "what this plugin
- * last sent the replay" (the dial's pending speed, the keys' speed cache) take
- * it then, as they would have at the press. Returns the unsubscribe.
+ * A waiting command goes out, and what it carries after it waits behind it.
+ * A speed it sends is the dial's resume speed too, whichever surface pressed
+ * it: what the slot sends later always was (#1467, Decision 4).
  */
-export function onReplaySpeedSentFromSlot(listener: (speed: ReplaySpeed) => void): () => void {
-  speedSentListeners.add(listener);
-
-  return () => {
-    speedSentListeners.delete(listener);
-  };
-}
-
-function speedOf(command: SlotCommand, telemetry: TelemetryData | null): ReplaySpeed | null {
-  switch (command.kind) {
-    case "speed":
-      return { speed: command.speed, slowMotion: command.slowMotion };
-    case "pause":
-      return { speed: 0, slowMotion: false };
-    case "playback": {
-      const wanted = resolveReplayJumpSpeed(readReplayJumpPlayback(), command.captured);
-      const live = readReplay(telemetry)?.speed ?? null;
-
-      return live !== null && isSameSpeed(live, wanted) ? null : wanted;
-    }
-    default:
-      return null;
-  }
-}
-
-/** A waiting command goes out, and what it carries after it waits behind it. */
 function goOut(current: Slot, telemetry: TelemetryData | null, now: number): void {
-  const sentSpeed = speedOf(current.command, telemetry);
-  const ok = dispatch(current.command, telemetry, now, current.origin);
+  const ok = dispatch(current.command, telemetry, now, current.origin, true);
 
   log().debug(`Replay command sent on the landing: ${describe(current.command)} (${current.by}); result ${ok}`);
 
   if (ok && current.command.kind === "go-to" && current.command.end === "end") engineReads().leftForLive();
-
-  if (ok && sentSpeed !== null) {
-    for (const listener of speedSentListeners) {
-      try {
-        listener(sentSpeed);
-      } catch (err) {
-        log().debug(`Replay speed listener failed: ${String(err)}`);
-      }
-    }
-  }
 
   if (!ok || (current.command.kind !== "search" && current.command.kind !== "go-to")) return;
 
@@ -1518,6 +1553,7 @@ function goOut(current: Slot, telemetry: TelemetryData | null, now: number): voi
     command: follow,
     by: current.by,
     origin: current.origin,
+    rememberSpeed: current.rememberSpeed,
     pressedAt: current.pressedAt,
     behind: "search",
     behindTargetId: null,
@@ -1648,13 +1684,13 @@ function decide(
       // A newer word about where the replay should be: whatever waited for the old one goes.
       emptySlot("replaced");
 
-      return { kind: "sent", ok: dispatch(command, telemetry, now, options.origin) };
+      return { kind: "sent", ok: dispatch(command, telemetry, now, options.origin, options.rememberSpeed === true) };
     case "go-to":
       if (searching && !underWay) return waitBehindSearch(command, options, telemetry, now);
 
       emptySlot("replaced");
 
-      return { kind: "sent", ok: dispatch(command, telemetry, now, options.origin) };
+      return { kind: "sent", ok: dispatch(command, telemetry, now, options.origin, options.rememberSpeed === true) };
     case "step": {
       if (underWay) {
         const from = pendingReplayTargetPosition();
@@ -1671,14 +1707,23 @@ function decide(
 
         emptySlot("replaced");
 
-        return { kind: "sent", ok: dispatch({ kind: "jump", frame: move.frame }, telemetry, now, options.origin) };
+        return {
+          kind: "sent",
+          ok: dispatch(
+            { kind: "jump", frame: move.frame },
+            telemetry,
+            now,
+            options.origin,
+            options.rememberSpeed === true,
+          ),
+        };
       }
 
       if (searching) return waitBehindSearch(command, options, telemetry, now);
 
       emptySlot("replaced");
 
-      return { kind: "sent", ok: dispatch(command, telemetry, now, options.origin) };
+      return { kind: "sent", ok: dispatch(command, telemetry, now, options.origin, options.rememberSpeed === true) };
     }
     case "pause": {
       const behindSearch = slot?.behind === "search";
@@ -1713,7 +1758,7 @@ function decide(
 
       emptySlot("cleared-by-pause");
 
-      return { kind: "sent", ok: dispatch(command, telemetry, now, options.origin) };
+      return { kind: "sent", ok: dispatch(command, telemetry, now, options.origin, options.rememberSpeed === true) };
     }
     case "speed":
       if (underWay) return holdBehindJump(command, options, now, null);
@@ -1722,7 +1767,7 @@ function decide(
 
       emptySlot("replaced");
 
-      return { kind: "sent", ok: dispatch(command, telemetry, now, options.origin) };
+      return { kind: "sent", ok: dispatch(command, telemetry, now, options.origin, options.rememberSpeed === true) };
     case "search":
     case "other":
       if (underWay) {
@@ -1733,7 +1778,7 @@ function decide(
 
       emptySlot("replaced");
 
-      return { kind: "sent", ok: dispatch(command, telemetry, now, options.origin) };
+      return { kind: "sent", ok: dispatch(command, telemetry, now, options.origin, options.rememberSpeed === true) };
   }
 }
 
@@ -1749,12 +1794,14 @@ export type ReplayOwnedSendResult = "sent" | "refused" | "skipped" | "cancelled"
  * pause and playback step, the fastest-lap walk's probes. Sent at once — the
  * driver keeps its own order and waits — and recorded as any send is. A
  * pause is skipped while a jump is under way that is not the driver's own
- * unsent seek: the replay is paused for it, and a pause would end it.
+ * unsent seek: the replay is paused for it, and a pause would end it. A speed
+ * or a pause sent is the speed state's, and with `rememberSpeed` the dial's
+ * resume speed too: the dial's record jump and its search runner pass it.
  */
 export function sendOwnedReplayCommand(
   claim: ReplayCursorClaim,
   command: ReplayGateCommand,
-  options: { readonly origin?: string } = {},
+  options: { readonly origin?: string; readonly rememberSpeed?: boolean } = {},
 ): ReplayOwnedSendResult {
   if (claim.cancelledBy !== null) return "cancelled";
 
@@ -1779,7 +1826,7 @@ export function sendOwnedReplayCommand(
         return;
       }
 
-      result = dispatch(command, telemetry, now, origin) ? "sent" : "refused";
+      result = dispatch(command, telemetry, now, origin, options.rememberSpeed === true) ? "sent" : "refused";
 
       if (result === "sent" && held?.claim === claim) held.pausedByGate = true;
 
@@ -1799,7 +1846,7 @@ export function sendOwnedReplayCommand(
       return;
     }
 
-    result = dispatch(command, telemetry, now, origin) ? "sent" : "refused";
+    result = dispatch(command, telemetry, now, origin, options.rememberSpeed === true) ? "sent" : "refused";
 
     if (result === "sent" && command.kind === "speed" && command.speed !== 0 && held?.claim === claim) {
       held.pausedByGate = false;
@@ -2395,7 +2442,7 @@ export async function settleReplayByJump(
     endSearch("forgotten");
 
     if (currentSpeed(readReplay(telemetry), startNow).speed !== 0) {
-      dispatch({ kind: "pause" }, telemetry, startNow, options.origin);
+      dispatch({ kind: "pause" }, telemetry, startNow, options.origin, false);
     }
 
     const endFrame = reading.left === undefined ? undefined : reading.frame + reading.left;
@@ -2512,11 +2559,11 @@ export function _resetReplayCommandGate(): void {
   busySince = null;
   gateTaking = false;
   listeners.clear();
-  speedSentListeners.clear();
   views.clear();
   runs.clear();
   batchEnds.clear();
   sameRunEnds.clear();
+  sentSpeeds = [];
   batchDepth = 0;
   clearReplayTarget();
 }

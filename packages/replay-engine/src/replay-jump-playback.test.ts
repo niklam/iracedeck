@@ -18,6 +18,7 @@ import {
   resolveReplayJumpSpeed,
   runReplayJump,
 } from "./replay-jump-playback.js";
+import { onReplaySpeedChanged, rememberedSpeed } from "./replay-speed-state.js";
 
 /** The replay settings the cases set, read by the engine through its env (#1467). */
 const mockSettings = vi.fn((): Record<string, unknown> => ({}));
@@ -286,21 +287,32 @@ describe("replay-jump-playback (#1276)", () => {
     it("waits for the pause to show before it seeks", async () => {
       const sim = fakeSim(NORMAL, { lagMs: 120 });
       const jump = beginReplayJump("next", sim.readTelemetry());
-      const onPaused = vi.fn();
-      const outcome = runReplayJump(jump, {
-        frame: 64_401,
-        readTelemetry: sim.readTelemetry,
-        onPaused,
-      });
+      const outcome = runReplayJump(jump, { frame: 64_401, readTelemetry: sim.readTelemetry });
 
       expect(sim.calls).toEqual(["speed 0"]);
-      expect(onPaused).toHaveBeenCalledOnce();
 
       await vi.advanceTimersByTimeAsync(100);
       expect(sim.calls).toEqual(["speed 0"]);
 
       await vi.advanceTimersByTimeAsync(50);
       expect(sim.calls).toEqual(["speed 0", "seek 64401"]);
+
+      await settle(outcome);
+      jump.end();
+    });
+
+    it("a jump's pause reaches onReplaySpeedChanged", async () => {
+      const sim = fakeSim(NORMAL, { lagMs: 120 });
+      const heard: ReplaySpeed[] = [];
+
+      onReplaySpeedChanged((speed) => heard.push(speed));
+
+      const jump = beginReplayJump("next", sim.readTelemetry());
+      const outcome = runReplayJump(jump, { frame: 64_401, readTelemetry: sim.readTelemetry });
+
+      // Told as the pause goes out, before the seek: a paused replay may deliver no tick.
+      expect(sim.calls).toEqual(["speed 0"]);
+      expect(heard).toEqual([PAUSED]);
 
       await settle(outcome);
       jump.end();
@@ -837,6 +849,28 @@ describe("replay-jump-playback (#1276)", () => {
       });
       expect(sim.calls).toEqual(["speed 4 slow"]);
       jump.end();
+    });
+
+    it("makes the speed it restores the dial's resume speed only for a jump begun with rememberSpeed", () => {
+      const sim = fakeSim(QUARTER);
+      const keys = beginReplayJump("next", sim.readTelemetry());
+
+      applyReplayJumpPlayback(keys, telemetryAt(PAUSED));
+      keys.end();
+
+      expect(sim.calls).toEqual(["speed 4 slow"]);
+      expect(rememberedSpeed()).toEqual(NORMAL);
+
+      const dials = beginReplayJump("replay-control-dial lap", sim.readTelemetry(), undefined, Date.now(), {
+        rememberSpeed: true,
+      });
+
+      expect(dials.rememberSpeed).toBe(true);
+      applyReplayJumpPlayback(dials, telemetryAt(PAUSED));
+      dials.end();
+
+      expect(sim.calls).toEqual(["speed 4 slow", "speed 4 slow"]);
+      expect(rememberedSpeed()).toEqual(QUARTER);
     });
 
     it("sends nothing and returns null once the jump was cancelled", () => {

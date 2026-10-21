@@ -23,6 +23,7 @@ import { _configureReplayEngine } from "./replay-engine-env.js";
 import { resetEngine } from "./replay-engine-reset.test-support.js";
 import { beginReplayJump, runReplayJump } from "./replay-jump-playback.js";
 import { _resetReplayPositionState, pendingReplayTarget, replayTargetGiveUpMs } from "./replay-position-state.js";
+import { onReplaySpeedChanged, rememberedSpeed, resolveLiveSpeed } from "./replay-speed-state.js";
 
 /** The replay settings the cases set, read by the engine through its env (#1467). */
 const mockSettings = vi.fn((): Record<string, unknown> => ({}));
@@ -908,6 +909,106 @@ describe("replay command gate", () => {
 
       await expect(outcome).resolves.toMatchObject({ kind: "landed", speed: QUARTER });
       expect(sim.speed()).toEqual(QUARTER);
+    });
+  });
+
+  describe("the speed state (#1467)", () => {
+    /** What a change listener heard: each speed, with the speed Play resumed at that moment. */
+    function listen(): Array<{ speed: { speed: number; slowMotion: boolean }; remembered: unknown }> {
+      const heard: Array<{ speed: { speed: number; slowMotion: boolean }; remembered: unknown }> = [];
+
+      onReplaySpeedChanged((speed) => heard.push({ speed, remembered: rememberedSpeed() }));
+
+      return heard;
+    }
+
+    it("feeds the speed state every speed it sends, from the slot too", async () => {
+      setUp({ frame: 2_000 });
+      const heard = listen();
+
+      farJump();
+      // A key's press: no rememberSpeed.
+      expect(press({ kind: "speed", speed: 4, slowMotion: false }, "key-ff")).toEqual({ kind: "held" });
+      expect(heard).toEqual([]);
+
+      await wait(2_000);
+
+      expect(sim.calls).toEqual(["setPlayPosition 0 160000", "setPlaySpeed 4 false"]);
+      // Heard once, on the landing, and the slot's send is the dial's resume speed whichever surface pressed it.
+      expect(heard).toEqual([{ speed: { speed: 4, slowMotion: false }, remembered: { speed: 4, slowMotion: false } }]);
+    });
+
+    it("a key's press sent at once is the shown speed, not the speed Play resumes", () => {
+      setUp({ frame: 2_000 });
+      const heard = listen();
+
+      expect(press({ kind: "speed", speed: 4, slowMotion: false }, "key-ff")).toEqual({ kind: "sent", ok: true });
+
+      expect(heard).toEqual([{ speed: { speed: 4, slowMotion: false }, remembered: { speed: 1, slowMotion: false } }]);
+      expect(resolveLiveSpeed(null, Date.now())).toEqual({ speed: 4, slowMotion: false });
+      expect(rememberedSpeed()).toEqual({ speed: 1, slowMotion: false });
+    });
+
+    it("a press with rememberSpeed writes the speed Play resumes", () => {
+      setUp({ frame: 2_000 });
+
+      pressReplayCommand({ kind: "speed", speed: 8, slowMotion: false }, { by: "dial-speed", rememberSpeed: true });
+
+      expect(rememberedSpeed()).toEqual({ speed: 8, slowMotion: false });
+      expect(resolveLiveSpeed(null, Date.now())).toEqual({ speed: 8, slowMotion: false });
+    });
+
+    it("feeds a pause as 0x, leaving the speed Play resumes alone", () => {
+      setUp({ frame: 2_000, speed: { speed: 2, slowMotion: false } });
+      const heard = listen();
+
+      pressReplayCommand(PAUSE, { by: "dial-play-pause", rememberSpeed: true });
+
+      expect(heard).toEqual([{ speed: { speed: 0, slowMotion: false }, remembered: { speed: 1, slowMotion: false } }]);
+      expect(resolveLiveSpeed({ speed: 2, slowMotion: false }, Date.now())).toEqual({ speed: 0, slowMotion: false });
+    });
+
+    it("a dropped press never reaches the speed state", async () => {
+      setUp({ frame: 2_000, unlandable: new Set([160_000]), unlandableRest: 160_004 });
+      const heard = listen();
+
+      farJump();
+      expect(press({ kind: "speed", speed: 4, slowMotion: false }, "key-ff")).toEqual({ kind: "held" });
+
+      await wait(replayTargetGiveUpMs(158_000) + 500);
+
+      expect(getReplayGateRecord().waiting).toBeNull();
+      expect(sim.calls).toEqual(["setPlayPosition 0 160000"]);
+      expect(heard).toEqual([]);
+      expect(rememberedSpeed()).toEqual({ speed: 1, slowMotion: false });
+    });
+
+    it("a refused send never reaches the speed state", () => {
+      setUp({ frame: 2_000 });
+      vi.mocked(sim.replay.setPlaySpeed).mockReturnValue(false);
+      const heard = listen();
+
+      expect(press({ kind: "speed", speed: 4, slowMotion: false })).toEqual({ kind: "sent", ok: false });
+      expect(heard).toEqual([]);
+    });
+
+    it("tells the listeners once the gate's change is complete, with its notices published", () => {
+      setUp({ frame: 2_000, speed: { speed: 1, slowMotion: false } });
+      const order: string[] = [];
+
+      subscribeReplayGate((notice) => order.push(`notice ${notice.origin}`));
+      onReplaySpeedChanged((speed) => order.push(`speed ${speed.speed}`));
+
+      press({ kind: "search", search: "nextLap" }, "key-next");
+      expect(press({ kind: "speed", speed: 4, slowMotion: false }, "key-ff")).toEqual({ kind: "held" });
+      order.length = 0;
+
+      // Pressing again behind the search takes over: a pause and a jump go out in one change.
+      expect(press({ kind: "speed", speed: 8, slowMotion: false }, "key-ff")).toMatchObject({ kind: "taking-over" });
+
+      expect(sim.calls).toContain("pause");
+      expect(order.at(-1)).toBe("speed 0");
+      expect(order.filter((entry) => entry.startsWith("notice")).length).toBeGreaterThan(0);
     });
   });
 

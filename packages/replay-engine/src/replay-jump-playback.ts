@@ -111,6 +111,8 @@ export interface ReplayJump {
   readonly captured: ReplaySpeed;
   /** Whether this jump started while another jump was under way, which has paused the replay or sent the pause. */
   readonly tookOver: boolean;
+  /** Whether its pause and its playback step are the dial's resume speed too ({@link ReplayJumpBeginOptions.rememberSpeed}). */
+  readonly rememberSpeed: boolean;
   /** The jump's handle with the replay command gate. */
   readonly gate: ReplayJumpGateHandle;
   /**
@@ -157,8 +159,6 @@ export interface ReplayJumpOptions {
   timeoutMs?: number;
   /** How often to read the telemetry while waiting. Default {@link REPLAY_JUMP_POLL_MS}. */
   pollMs?: number;
-  /** Runs right after the sequence's own pause was sent — Replay Control mirrors it into its speed cache. */
-  onPaused?: () => void;
   /**
    * The caller's own step, run once the cursor has landed and before the
    * setting is applied — a camera switch, which is also a command that would
@@ -172,6 +172,14 @@ export interface ReplayJumpOptions {
 export interface ReplayJumpBeginOptions {
   /** The origin token of the press (the gate's state seam): a key's context id, a dial's own. */
   readonly origin?: string;
+  /**
+   * Whether the speeds the jump sends — its pause, and the playback step after
+   * the landing — are also the speed the dial's Play/Pause resumes
+   * (`replay-speed-state.ts`): true for the dial's record jump and its search
+   * runner, false (the default) for a key's jump. Every speed the gate sends
+   * is the shown speed either way.
+   */
+  readonly rememberSpeed?: boolean;
   /**
    * The frame the jump is going to, when it is known at the press: recorded
    * as the replay's pending target before the pause. A walk, whose frame is
@@ -278,6 +286,7 @@ export function beginReplayJump(
     claim,
     captured,
     tookOver,
+    rememberSpeed: options.rememberSpeed === true,
     gate,
     seen: null,
     end(result?: ReplayJumpResult): void {
@@ -338,11 +347,11 @@ export function applyReplayJumpPlayback(
   if (current !== null && isSameSpeed(current, wanted)) {
     applied = { speed: wanted, command: "none" };
   } else {
-    const sent = sendOwnedReplayCommand(jump.claim, {
-      kind: "speed",
-      speed: wanted.speed,
-      slowMotion: wanted.slowMotion,
-    });
+    const sent = sendOwnedReplayCommand(
+      jump.claim,
+      { kind: "speed", speed: wanted.speed, slowMotion: wanted.slowMotion },
+      { rememberSpeed: jump.rememberSpeed },
+    );
 
     if (sent === "cancelled") return null;
 
@@ -366,7 +375,7 @@ export async function runReplayJump(jump: ReplayJump, options: ReplayJumpOptions
 }
 
 async function runSequence(jump: ReplayJump, options: ReplayJumpOptions): Promise<ReplayJumpOutcome> {
-  const { frame, readTelemetry, onPaused, afterLanding } = options;
+  const { frame, readTelemetry, afterLanding } = options;
   const { claim, gate } = jump;
   const timeoutMs = options.timeoutMs ?? readReplayJumpTimeoutMs();
   const pollMs = options.pollMs ?? REPLAY_JUMP_POLL_MS;
@@ -387,15 +396,17 @@ async function runSequence(jump: ReplayJump, options: ReplayJumpOptions): Promis
   const moving = !isPaused(atPress) || jump.captured.speed !== 0;
 
   if (moving && !isReplayPausedForJump(claim, atPress)) {
-    const pause = sendOwnedReplayCommand(claim, { kind: "pause", send: (replay) => replay.setPlaySpeed(0) });
+    const pause = sendOwnedReplayCommand(
+      claim,
+      { kind: "pause", send: (replay) => replay.setPlaySpeed(0) },
+      { rememberSpeed: jump.rememberSpeed },
+    );
 
     if (pause === "cancelled") return { kind: "cancelled", by: claim.cancelledBy ?? "unknown" };
 
     if (pause === "refused") return { kind: "stopped", reason: "pause-failed", telemetry: null };
 
     if (pause === "sent") {
-      onPaused?.();
-
       const pausing = await waitForReplay(
         { claim, readTelemetry, timeoutMs, pollMs },
         (sample): sample is TelemetryData => isPaused(sample),

@@ -1480,8 +1480,8 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
       expect(action["logger"].info).not.toHaveBeenCalledWith(
         "Jump to race start: replay put back where the press found it",
       );
-      // The cache says paused, so the Play key plays.
-      expect(action["replaySpeed"].get("ctx-green")).toBe(0);
+      // The keys read paused (#1467: the engine's one record of the speed), so the Play key plays.
+      expect(action["getCurrentSpeed"]().speed).toBe(0);
     });
 
     describe("the session map of a long recording", () => {

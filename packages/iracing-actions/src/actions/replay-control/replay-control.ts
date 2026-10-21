@@ -82,6 +82,7 @@ import {
   noteReplayJumpLanded,
   noteTelemetrySpeed,
   observeIncidentSearch,
+  onReplaySpeedChanged,
   parseSpeedSetting,
   pressReplayCommand,
   readFastestLapSearchDelayMs,
@@ -102,6 +103,7 @@ import {
   runReplayJump,
   seekReplayFrame,
   sendOwnedReplayCommand,
+  shownReplaySpeed,
   STABILIZATION_POLL_INTERVAL_MS,
   STABILIZATION_TIMEOUT_MULTIPLIER,
   waitForReplayJumpsToSettle,
@@ -990,12 +992,6 @@ function pressResult(result: ReplayPressResult): string {
 }
 
 export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
-  /** Current replay speed from telemetry, keyed by action context ID */
-  private replaySpeed = new Map<string, number>();
-
-  /** Current slow-motion state from telemetry, keyed by action context ID */
-  private replaySlowMotion = new Map<string, boolean>();
-
   private readonly repeat = new RepeatController(this.logger);
 
   /** @internal Compat accessor — tests read repeat state via this field. */
@@ -1043,7 +1039,6 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     // told only when `SessionTick` advances, and a paused or scrubbed replay
     // changes without it. The surface takes one per entry; a tick brings its own.
     telemetry: () => this.sdkController.getCurrentTelemetry(),
-    setLocalSpeed: (speed, slowMotion) => this.setLocalSpeed(speed, slowMotion),
     // The keypad's own Jump to Live, cursor take and replay-state note included, under the dial's
     // token so its box shows the busy look (#1437).
     jumpToLive: (origin) => this.executeMode(origin, this.parseSettings({ mode: "jump-to-live" })),
@@ -1073,6 +1068,15 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
   });
 
   /**
+   * The keys redraw on every speed the engine records as sent (#1467): a
+   * slot dispatch, a search's pause or speed, a walk's or a jump's pause, a
+   * press. A paused replay may deliver no tick, so a tick cannot be what
+   * redraws them; a key whose icon would not change is skipped. For the
+   * action's life, like the dial surface's own subscription.
+   */
+  private readonly speedSubscription = onReplaySpeedChanged(() => this.updateAllTelemetryDisplays());
+
+  /**
    * Per Jump to Race Start context: whether the key shows the unavailable
    * look, and the session info it was judged from. iRacing republishes the
    * session YAML only when something in it changed, so a tick usually compares
@@ -1088,9 +1092,8 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
       const contextId = ev.action.id;
 
       await this.dialSurface.willAppear(ev.action, settings.dial);
-      // A dial joins the speed cache and the telemetry subscription, but never
-      // the key contexts: it has no key icon and no binding.
-      this.seedTelemetryState(contextId, this.sdkController.getCurrentTelemetry());
+      // A dial joins the telemetry subscription, but never the key contexts:
+      // it has no key icon and no binding.
       this.sdkController.subscribe(contextId, (telemetry: TelemetryData | null) =>
         this.onDialTelemetry(contextId, telemetry),
       );
@@ -1104,10 +1107,6 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     // back while its press still stands shows the look at once.
     this.syncBusyRegistration(ev.action.id, settings.mode);
 
-    // Seed initial state from current telemetry
-    const current = this.sdkController.getCurrentTelemetry();
-    this.seedTelemetryState(ev.action.id, current);
-
     await this.updateDisplay(ev, settings);
 
     this.sdkController.subscribe(ev.action.id, (telemetry: TelemetryData | null) => {
@@ -1115,21 +1114,15 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
       // gone; the next walk rebuilds against whatever is open then.
       if (telemetry === null) cachedFastestLapSessionMap = null;
 
-      const prevStateKey = this.buildTelemetryStateKey(ev.action.id);
-      this.updateTelemetryState(ev.action.id, telemetry);
       this.rememberReplaySpeed(telemetry);
-      const newStateKey = this.buildTelemetryStateKey(ev.action.id);
 
       const storedSettings = this.activeContexts.get(ev.action.id);
 
-      if (storedSettings && prevStateKey !== newStateKey) {
-        this.logger.debug(
-          `Telemetry state changed: ${prevStateKey} -> ${newStateKey}, mode=${storedSettings.mode}, inDisplayModes=${TELEMETRY_DISPLAY_MODES.has(storedSettings.mode)}`,
-        );
-
-        if (TELEMETRY_DISPLAY_MODES.has(storedSettings.mode)) {
-          this.updateDisplayFromTelemetry(ev.action.id, storedSettings);
-        }
+      // The speed is the engine's one record over this tick's reading — the
+      // tick is the fresh read, so it costs no telemetry read of its own; the
+      // redraw is skipped when the key would draw what it already shows.
+      if (storedSettings && TELEMETRY_DISPLAY_MODES.has(storedSettings.mode)) {
+        this.updateDisplayFromTelemetry(ev.action.id, storedSettings, this.getCurrentSpeed(telemetry));
       }
 
       this.refreshRaceStartAvailability(ev.action.id);
@@ -1141,8 +1134,6 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     this.dialSurface.willDisappear(ev.action.id);
     await super.onWillDisappear(ev);
     this.sdkController.unsubscribe(ev.action.id);
-    this.replaySpeed.delete(ev.action.id);
-    this.replaySlowMotion.delete(ev.action.id);
     this.activeContexts.delete(ev.action.id);
     this.lastState.delete(ev.action.id);
     this.raceStartShown.delete(ev.action.id);
@@ -1240,9 +1231,9 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
 
   /**
    * One telemetry tick for a dial context. Its replay speed is decoded once
-   * for all three uses: the shared speed cache, the speed Play/Pause resumes,
-   * and the dial's own screen, which is handed the tick so comparing its frame
-   * costs no telemetry read and redraws only on a change.
+   * for both uses: the speed Play/Pause resumes, and the dial's own screen,
+   * which is handed the tick so comparing its frame costs no telemetry read
+   * and redraws only on a change.
    */
   private onDialTelemetry(contextId: string, telemetry: TelemetryData | null): void {
     // As for a key: a disconnect is the one signal that the replay the
@@ -1251,13 +1242,6 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     if (telemetry === null) cachedFastestLapSessionMap = null;
 
     const speed = telemetry ? replaySpeedFromTelemetry(telemetry) : null;
-
-    // The keypad's `updateTelemetryState`, from the speed already decoded: no
-    // telemetry reads as paused, and a tick with no speed leaves the cache.
-    if (!telemetry || speed) {
-      this.replaySpeed.set(contextId, speed?.speed ?? 0);
-      this.replaySlowMotion.set(contextId, speed?.slowMotion ?? false);
-    }
 
     this.rememberReplaySpeed(telemetry, speed);
     this.dialSurface.onTick(contextId, { telemetry, speed });
@@ -1305,81 +1289,41 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     return parsed.success ? parsed.data : ReplayControlSettings.parse({});
   }
 
-  private seedTelemetryState(contextId: string, telemetry: TelemetryData | null): void {
-    if (!telemetry) return;
-
-    this.readReplaySpeed(contextId, telemetry);
-  }
-
-  private updateTelemetryState(contextId: string, telemetry: TelemetryData | null): void {
-    if (!telemetry) {
-      this.replaySpeed.set(contextId, 0);
-      this.replaySlowMotion.set(contextId, false);
-
-      return;
-    }
-
-    this.readReplaySpeed(contextId, telemetry);
-  }
-
-  /**
-   * Caches the replay speed in the units the user sees: in slow motion the
-   * speed is the divisor (5 = 1/5x), decoded from iRacing's raw value (#1202).
-   */
-  private readReplaySpeed(contextId: string, telemetry: TelemetryData): void {
-    const current = replaySpeedFromTelemetry(telemetry);
-
-    if (!current) return;
-
-    this.replaySpeed.set(contextId, current.speed);
-    this.replaySlowMotion.set(contextId, current.slowMotion);
-  }
-
   /**
    * Determines if the replay is currently playing (not paused).
    * Uses ReplayPlaySpeed rather than IsReplayPlaying, because IsReplayPlaying
    * indicates "sim is in replay mode" and stays true even when paused.
    */
-  private isCurrentlyPlaying(contextId: string): boolean {
-    return (this.replaySpeed.get(contextId) ?? 0) !== 0;
+  private isCurrentlyPlaying(): boolean {
+    return this.getCurrentSpeed().speed !== 0;
   }
 
   /**
    * Determines if the play-pause/play-backward icon should show the PAUSE icon.
    * Shows PAUSE when playing in any direction (forward or backward).
    */
-  private shouldShowPause(contextId: string): boolean {
-    return (this.replaySpeed.get(contextId) ?? 0) !== 0;
+  private shouldShowPause(current = this.getCurrentSpeed()): boolean {
+    return current.speed !== 0;
   }
 
-  private buildTelemetryStateKey(contextId: string): string {
-    const speed = this.replaySpeed.get(contextId) ?? 0;
-    const slowMo = this.replaySlowMotion.get(contextId) ?? false;
-
-    return `${speed}:${slowMo}`;
-  }
-
-  private getCurrentSpeed(): { speed: number; slowMotion: boolean } {
-    // Use the first available telemetry context (speed is global, same across all contexts)
-    for (const [contextId] of this.replaySpeed) {
-      return {
-        speed: this.replaySpeed.get(contextId) ?? 0,
-        slowMotion: this.replaySlowMotion.get(contextId) ?? false,
-      };
-    }
-
-    return { speed: 0, slowMotion: false };
+  private buildTelemetryStateKey(current = this.getCurrentSpeed()): string {
+    return `${current.speed}:${current.slowMotion}`;
   }
 
   /**
-   * Optimistically update the local speed cache after sending a command.
-   * Prevents duplicate speeds on rapid presses before telemetry catches up.
+   * The replay speed the keys show and step from (#1467): the engine's one
+   * record of it (`shownReplaySpeed`) — a speed the gate holds, else what was
+   * just sent, else what a fresh telemetry read carries — in the units the
+   * user sees: in slow motion the speed is the divisor (5 = 1/5x), decoded
+   * from iRacing's raw value (#1202). Over a fresh read, as the dial's, never
+   * the last tick delivered: a paused replay may deliver none. A tick's
+   * handler passes the tick, which is that read. No telemetry reads as paused.
    */
-  private setLocalSpeed(speed: number, slowMotion: boolean): void {
-    for (const [contextId] of this.replaySpeed) {
-      this.replaySpeed.set(contextId, speed);
-      this.replaySlowMotion.set(contextId, slowMotion);
-    }
+  private getCurrentSpeed(telemetry: TelemetryData | null = this.sdkController.getCurrentTelemetry()): {
+    speed: number;
+    slowMotion: boolean;
+  } {
+    return shownReplaySpeed(telemetry ? replaySpeedFromTelemetry(telemetry) : null, Date.now());
   }
 
   private getCarNumberRawByIdx(carIdx: number): number | null {
@@ -1755,10 +1699,6 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     const outcome = await runReplayJump(jump, {
       frame,
       readTelemetry: () => this.sdkController.getCurrentTelemetry(),
-      onPaused: () => {
-        this.setLocalSpeed(0, false);
-        this.updateAllTelemetryDisplays();
-      },
       afterLanding,
     });
 
@@ -1772,8 +1712,9 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
   }
 
   /**
-   * Put the speed a jump left the replay at into the speed cache, so the icons
-   * and the Play key follow it without waiting for telemetry.
+   * Report the speed a jump left the replay at, and redraw the keys. A speed
+   * it sent is already the engine's speed state's (the gate records it), so
+   * the icons and the Play key follow it without waiting for telemetry.
    */
   private mirrorReplayJumpSpeed(label: string, applied: ReplayJumpApplied): void {
     if (applied.command === "failed") {
@@ -1781,7 +1722,6 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
       this.logger.debug(`Replay still at ${formatSpeedDisplay(applied.speed.speed, applied.speed.slowMotion)}`);
     }
 
-    this.setLocalSpeed(applied.speed.speed, applied.speed.slowMotion);
     this.updateAllTelemetryDisplays();
   }
 
@@ -2275,7 +2215,6 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
         return;
       }
 
-      this.setLocalSpeed(speed, slowMotion);
       this.updateAllTelemetryDisplays();
     }
 
@@ -2661,11 +2600,10 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     if (settled === "gave-up") this.logger.debug(`${logLabel}: a jump was still under way; walking anyway`);
 
     // Pause first so the cursor doesn't drift between commands and the
-    // post-settle telemetry sample — and tell the speed cache, so a Play
-    // press during or after the walk sends play rather than pause.
+    // post-settle telemetry sample. The gate records the pause as the speed,
+    // so a Play press during or after the walk sends play rather than pause,
+    // and the keys redraw from it.
     send({ kind: "pause" });
-    this.setLocalSpeed(0, false);
-    this.updateAllTelemetryDisplays();
     await wait(readFastestLapSearchDelayMs());
 
     // Phase 1: session map (cache or build). The sample that keys it is a
@@ -3232,13 +3170,11 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
         if (current.speed !== 0) {
           // Any non-zero speed → pause
           const success = pressResult(press({ kind: "pause" }));
-          this.setLocalSpeed(0, false);
           this.logger.info("Pause executed");
           this.logger.debug(`Result: ${success}, was speed: ${current.speed}`);
         } else {
           // Paused → play forward at 1x
           const success = pressResult(press({ kind: "speed", speed: 1, slowMotion: false, send: (r) => r.play() }));
-          this.setLocalSpeed(1, false);
           this.logger.info("Play executed");
           this.logger.debug(`Result: ${success}`);
         }
@@ -3251,13 +3187,11 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
         if (current.speed !== 0) {
           // Any non-zero speed → pause
           const success = pressResult(press({ kind: "pause" }));
-          this.setLocalSpeed(0, false);
           this.logger.info("Pause backward executed");
           this.logger.debug(`Result: ${success}, was speed: ${current.speed}`);
         } else {
           // Paused → play backward at -1x
           const success = pressResult(press({ kind: "speed", speed: -1, slowMotion: false }));
-          this.setLocalSpeed(-1, false);
           this.logger.info("Play backward executed");
           this.logger.debug(`Result: ${success}`);
         }
@@ -3266,7 +3200,6 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
       }
       case "stop": {
         const success = pressResult(press({ kind: "pause" }));
-        this.setLocalSpeed(0, false);
         this.logger.info("Stop executed");
         this.logger.debug(`Result: ${success}`);
         break;
@@ -3283,7 +3216,6 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
         }
 
         const success = pressResult(press({ kind: "speed", speed: nextSpeed, slowMotion: false }));
-        this.setLocalSpeed(nextSpeed, false);
         this.logger.info("Fast forward executed");
         this.logger.debug(`Result: ${success}, speed: ${nextSpeed}, step: ${step}`);
         break;
@@ -3300,7 +3232,6 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
         }
 
         const success = pressResult(press({ kind: "speed", speed: nextSpeed, slowMotion: false }));
-        this.setLocalSpeed(nextSpeed, false);
         this.logger.info("Rewind executed");
         this.logger.debug(`Result: ${success}, speed: ${nextSpeed}, step: ${step}`);
         break;
@@ -3318,7 +3249,6 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
         }
 
         const success = pressResult(press({ kind: "speed", speed: nextSpeed, slowMotion: true }));
-        this.setLocalSpeed(nextSpeed, true);
         this.logger.info("Slow motion executed");
         this.logger.debug(`Result: ${success}, speed: 1/${nextSpeed}x, step: ${step}`);
         break;
@@ -3336,7 +3266,6 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
         }
 
         const success = pressResult(press({ kind: "speed", speed: nextSpeed, slowMotion: true }));
-        this.setLocalSpeed(nextSpeed, true);
         this.logger.info("Slow motion rewind executed");
         this.logger.debug(`Result: ${success}, speed: -1/${Math.abs(nextSpeed)}x, step: ${step}`);
         break;
@@ -3363,19 +3292,15 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
         if (current.slowMotion && absSpeed > 2) {
           const next = absSpeed - 1;
           success = pressResult(press({ kind: "speed", speed: next * sign, slowMotion: true }));
-          this.setLocalSpeed(next * sign, true);
           this.logger.debug(`Speed increase: slow-mo 1/${absSpeed}x -> 1/${next}x`);
         } else if (current.slowMotion && absSpeed <= 2) {
           success = pressResult(press({ kind: "speed", speed: sign, slowMotion: false }));
-          this.setLocalSpeed(sign, false);
           this.logger.debug(`Speed increase: exiting slow-mo to ${sign}x`);
         } else if (absSpeed === 0) {
           success = pressResult(press({ kind: "speed", speed: 1, slowMotion: false, send: (r) => r.play() }));
-          this.setLocalSpeed(1, false);
           this.logger.debug("Speed increase: from paused to 1x");
         } else if (absSpeed < 16) {
           success = pressResult(press({ kind: "speed", speed: (absSpeed + 1) * sign, slowMotion: false }));
-          this.setLocalSpeed((absSpeed + 1) * sign, false);
           this.logger.debug(`Speed increase: ${current.speed}x -> ${(absSpeed + 1) * sign}x`);
         } else {
           // Already at max 16x
@@ -3397,22 +3322,18 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
         if (current.slowMotion && absSpeed < 16) {
           const next = absSpeed + 1;
           success = pressResult(press({ kind: "speed", speed: next * sign, slowMotion: true }));
-          this.setLocalSpeed(next * sign, true);
           this.logger.debug(`Speed decrease: slow-mo 1/${absSpeed}x -> 1/${next}x`);
         } else if (current.slowMotion) {
           this.logger.debug("Speed decrease: already at min slow-mo speed");
           break;
         } else if (absSpeed === 0) {
           success = pressResult(press({ kind: "speed", speed: 2, slowMotion: true }));
-          this.setLocalSpeed(2, true);
           this.logger.debug("Speed decrease: from paused to 1/2x");
         } else if (absSpeed > 1) {
           success = pressResult(press({ kind: "speed", speed: (absSpeed - 1) * sign, slowMotion: false }));
-          this.setLocalSpeed((absSpeed - 1) * sign, false);
           this.logger.debug(`Speed decrease: ${current.speed}x -> ${(absSpeed - 1) * sign}x`);
         } else {
           success = pressResult(press({ kind: "speed", speed: 2 * sign, slowMotion: true }));
-          this.setLocalSpeed(2 * sign, true);
           this.logger.debug(`Speed decrease: entering slow-mo at ${isBackward ? "-" : ""}1/2x`);
         }
 
@@ -3424,7 +3345,6 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
         const { speed, slowMotion } = parseSpeedSetting(settings.speed);
         // A speed of 0 is a pause, which the gate treats as one: never sent into a jump under way.
         const success = pressResult(press(speed === 0 ? { kind: "pause" } : { kind: "speed", speed, slowMotion }));
-        this.setLocalSpeed(speed, slowMotion);
         this.logger.info("Set speed executed");
         this.logger.debug(`Result: ${success}, speed: ${speed}, slowMotion: ${slowMotion}`);
         break;
@@ -3698,12 +3618,13 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     contextId: string,
     settings: ReplayControlSettings,
     look: ReplayBusyLook = getReplayBusyLook(contextId),
+    current = this.getCurrentSpeed(),
   ): string {
     return generateReplayControlSvg(
       settings,
-      this.shouldShowPause(contextId),
-      this.replaySpeed.get(contextId),
-      this.replaySlowMotion.get(contextId),
+      this.shouldShowPause(current),
+      current.speed,
+      current.slowMotion,
       this.isBindingMissing(KEYSTROKE_MODES[settings.mode]),
       this.readRaceStartUnavailable(contextId, settings),
       replayBusyKeyMark(look),
@@ -3721,11 +3642,13 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
 
     if (!settings) return;
 
+    const current = this.getCurrentSpeed();
+
     if (TELEMETRY_DISPLAY_MODES.has(settings.mode)) {
-      this.lastState.set(contextId, this.telemetryDisplayKey(contextId, settings, replayBusyKeyMark(look)));
+      this.lastState.set(contextId, this.telemetryDisplayKey(settings, replayBusyKeyMark(look), current));
     }
 
-    void this.updateKeyImage(contextId, this.keySvg(contextId, settings, look));
+    void this.updateKeyImage(contextId, this.keySvg(contextId, settings, look, current));
     this.setRegenerateCallback(contextId, () => this.keySvg(contextId, settings));
   }
 
@@ -3776,25 +3699,33 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     this.setRegenerateCallback(contextId, () => this.keySvg(contextId, settings));
   }
 
+  /** Redraws every key whose icon follows the speed, from one read of it. */
   private updateAllTelemetryDisplays(): void {
+    let current: { speed: number; slowMotion: boolean } | undefined;
+
     for (const [contextId, settings] of this.activeContexts) {
       if (TELEMETRY_DISPLAY_MODES.has(settings.mode)) {
-        this.updateDisplayFromTelemetry(contextId, settings);
+        current ??= this.getCurrentSpeed();
+        this.updateDisplayFromTelemetry(contextId, settings, current);
       }
     }
   }
 
-  private async updateDisplayFromTelemetry(contextId: string, settings: ReplayControlSettings): Promise<void> {
+  private async updateDisplayFromTelemetry(
+    contextId: string,
+    settings: ReplayControlSettings,
+    current = this.getCurrentSpeed(),
+  ): Promise<void> {
     if (!TELEMETRY_DISPLAY_MODES.has(settings.mode)) return;
 
     const look = getReplayBusyLook(contextId);
-    const stateKey = this.telemetryDisplayKey(contextId, settings, replayBusyKeyMark(look));
+    const stateKey = this.telemetryDisplayKey(settings, replayBusyKeyMark(look), current);
 
     if (this.lastState.get(contextId) === stateKey) return;
 
     this.lastState.set(contextId, stateKey);
 
-    const svgDataUri = this.keySvg(contextId, settings, look);
+    const svgDataUri = this.keySvg(contextId, settings, look, current);
     await this.updateKeyImage(contextId, svgDataUri);
     this.setRegenerateCallback(contextId, () => this.keySvg(contextId, settings));
   }
@@ -3804,12 +3735,14 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
    * mode, the replay speed, the border overrides and the busy mark (#1437), so
    * a look that changed is never mistaken for the icon already on the key.
    */
-  private telemetryDisplayKey(contextId: string, settings: ReplayControlSettings, mark: BusyMark | undefined): string {
-    const speed = this.replaySpeed.get(contextId) ?? 0;
-    const slowMo = this.replaySlowMotion.get(contextId) ?? false;
+  private telemetryDisplayKey(
+    settings: ReplayControlSettings,
+    mark: BusyMark | undefined,
+    current = this.getCurrentSpeed(),
+  ): string {
     const bo = settings.borderOverrides;
     const borderKey = `${bo?.enabled ?? ""}|${bo?.borderWidth ?? ""}|${bo?.borderColor ?? ""}|${bo?.glowEnabled ?? ""}|${bo?.glowWidth ?? ""}`;
 
-    return `${settings.mode}:${speed}:${slowMo}:${borderKey}:${replayBusyMarkKey(mark)}`;
+    return `${settings.mode}:${this.buildTelemetryStateKey(current)}:${borderKey}:${replayBusyMarkKey(mark)}`;
   }
 }
