@@ -30,8 +30,8 @@ export function initReplay(core: Core): Replay {
 
   // The per-session replay store (#1162, #1203, #1354, #1426): one file per SubSessionID under
   // %LOCALAPPDATA%\iRaceDeck\Replay\<ecosystem>, holding the replay markers, the lap
-  // record, the greens, the session starts and the incidents. Fed the active session by the subscriber wired beside the elevation
-  // check below; the actions read it synchronously through getReplaySessionStore().
+  // record, the greens, the session starts and the incidents. Fed the active session by the subscriber startServices wires beside the elevation
+  // check; the actions read it synchronously through getReplaySessionStore().
   // Its writes are debounced like the settings store's, so it gets the same
   // synchronous flush on the way out.
   const replaySessionStore = initializeReplaySessionStore({
