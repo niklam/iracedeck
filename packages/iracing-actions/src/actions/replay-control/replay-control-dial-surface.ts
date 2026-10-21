@@ -170,11 +170,10 @@ export interface ReplayControlDialHost {
   canJumpToRaceStart(): boolean;
   /**
    * The camera switched to the player's car (#801): the keypad's Jump to My
-   * Car switch without the keypad's cursor take. The dial's gesture cancels
-   * only the two walks itself and, during a position jump, waits for it to
-   * land as the Track Order mode's one waiting camera switch
-   * (`jumpToMyCarFromDial`); the keypad's key still takes the cursor from
-   * any owner.
+   * Car switch, the bare send. The dial's gesture hands it to the engine's
+   * one camera-switch waiter (`jumpToMyCarFromDial`, #1467), as the keypad's
+   * key does: only the two walks are cancelled, and during a position jump it
+   * waits for the landing as the one waiting camera switch.
    */
   jumpToMyCar(): void;
   /** Whether that press has a car to switch to: the player's car and its number in the session info. */
@@ -201,7 +200,7 @@ export interface ReplayControlDialHost {
   isBindingMissing(keys: string | readonly string[]): boolean;
   /**
    * Cancels a Jump to Fastest Lap or Jump to Race Start walk that holds the
-   * replay cursor, and no other owner (`cancelReplayCursorOwnerIf`).
+   * replay cursor, and no other owner (the engine's `cancelLapWalks`).
    */
   cancelCameraWalks(by: string): void;
 }

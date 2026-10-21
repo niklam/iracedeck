@@ -104,6 +104,14 @@ export {
   resolvePoleCarIdx,
 } from "./green-flag-target.js";
 export { halvingProbeFrames } from "./lap-walk-probes.js";
+export {
+  _resetCameraSwitchWaiter,
+  type CameraSwitchJumps,
+  type CameraSwitchOptions,
+  isCameraSwitchWaiting,
+  requestCameraSwitch,
+} from "./camera-switch-waiter.js";
+export { cancelLapWalks, FASTEST_LAP_WALK_OWNER, LAP_WALK_OWNERS, RACE_START_WALK_OWNER } from "./lap-walk-owners.js";
 export { formatLapOfLaps, sessionLapCount } from "./replay-lap-count.js";
 export { formatPlayCaption, formatSpeedDisplay, parseSpeedSetting } from "./replay-speed-format.js";
 export { _resetReplayEngine } from "./replay-engine-reset.js";

@@ -15,6 +15,7 @@ import {
   beginReplayJump,
   cancelReplayCursorOwner,
   claimReplayCursor,
+  FASTEST_LAP_WALK_OWNER,
   getReplayGateRecord,
   getReplayGateView,
   noteReplaySpeedSent,
@@ -5770,7 +5771,14 @@ describe("ReplayControl", () => {
         expect(sim.frame()).toBeGreaterThanOrEqual(LAP_START - 60);
       });
 
-      it("with a car key as the canceller, it does not: the driver's camera choice is the newer one", async () => {
+      it("with a car key pressed during it, the jump keeps its claim and the key's switch follows its own: the driver's camera choice is the newer one", async () => {
+        const busyAtSwitch: boolean[] = [];
+
+        camera.switchNum.mockImplementation(() => {
+          busyAtSwitch.push(sim.busy());
+
+          return true;
+        });
         void action["jumpToRecordedLapStart"]("ctx-fastest", {
           carIdx: 4,
           carNum: 4,
@@ -5781,14 +5789,137 @@ describe("ReplayControl", () => {
         await vi.advanceTimersByTimeAsync(100);
         await pressKey("ctx-car", "jump-to-my-car");
 
-        expect(action["logger"].info).toHaveBeenCalledWith("Jump to fastest lap: jump cancelled by jump-to-my-car");
+        // A camera key cancels only a lap walk (#1467): the record jump is not one.
+        expect(action["logger"].info).not.toHaveBeenCalledWith(expect.stringContaining("jump cancelled by"));
+        expect(camera.switchNum).not.toHaveBeenCalled();
 
         await vi.advanceTimersByTimeAsync(5_000);
 
-        expect(camera.switchNum).toHaveBeenCalledExactlyOnceWith(MY_CAR, 0, 0);
+        expect(camera.switchNum.mock.calls).toEqual([
+          [4, 0, 0],
+          [MY_CAR, 0, 0],
+        ]);
+        expect(busyAtSwitch).toEqual([false, false]);
         expect(sim.frame()).toBe(LAP_START - 60);
         expect(sim.thrown).toBe(0);
       });
+    });
+
+    describe("a camera key (#1467): it waits behind the jump, and cancels only a lap walk", () => {
+      /** A dial jump to {@link TARGET}, under way: the seek showing. */
+      async function dialJumpUnderWay(): Promise<void> {
+        pressReplayCommand({ kind: "jump", frame: TARGET }, { by: "dial-frame-jog", origin: "ctx-dial" });
+        await vi.advanceTimersByTimeAsync(100);
+
+        expect(sim.busy()).toBe(true);
+      }
+
+      /** Cars by number for the car-number keys: #4 (carIdx 0), #7 (carIdx 1), #42 (carIdx 2). */
+      function carsByNumber(): void {
+        vi.mocked(getAllCarNumbers).mockReturnValue([
+          { carIdx: 0, carNumber: "4", carNumberRaw: 4, userName: "a" },
+          { carIdx: 1, carNumber: "7", carNumberRaw: 7, userName: "b" },
+          { carIdx: 2, carNumber: "42", carNumberRaw: 42, userName: "c" },
+        ]);
+        onTestFinished(() => {
+          vi.mocked(getAllCarNumbers).mockReset();
+        });
+      }
+
+      it.each<[string, () => void]>([
+        ["jump-to-my-car", () => expect(camera.switchNum).toHaveBeenCalledExactlyOnceWith(MY_CAR, 0, 0)],
+        ["next-car", () => expect(action["tapBinding"]).toHaveBeenCalledExactlyOnceWith("replayControlNextCar")],
+        ["prev-car", () => expect(action["tapBinding"]).toHaveBeenCalledExactlyOnceWith("replayControlPrevCar")],
+        // The camera is on car 2 (#42) when the switch goes out, not on car 1 (#7) as at the press: #42 to #4.
+        ["next-car-number", () => expect(camera.switchNum).toHaveBeenCalledExactlyOnceWith(4, 0, 0)],
+      ])("a camera key pressed during a jump is parked and sent after the jump lands: %s", async (mode, sent) => {
+        carsByNumber();
+        let camCarIdx = 1;
+
+        action["sdkController"].getCurrentTelemetry = vi.fn(
+          () => ({ ...sim.telemetry(), CamCarIdx: camCarIdx }) as TelemetryData,
+        );
+        await dialJumpUnderWay();
+
+        await pressKey("ctx-cam", mode);
+        await vi.advanceTimersByTimeAsync(200);
+
+        expect(camera.switchNum).not.toHaveBeenCalled();
+        expect(action["tapBinding"]).not.toHaveBeenCalled();
+
+        camCarIdx = 2;
+        await vi.advanceTimersByTimeAsync(5_000);
+
+        expect(sim.busy()).toBe(false);
+        expect(sim.frame()).toBe(TARGET);
+        sent();
+        expect(sim.thrown).toBe(0);
+      });
+
+      it("a camera key's parked switch is dropped when the jump's wait gives up", async () => {
+        // A jump that seeks for longer than any jump is waited for.
+        sim = fakeReplay({ frame: 100_000, minSeekMs: 200_000 });
+        configureEngine({ replay: () => sim.replay, readTelemetry: () => sim.telemetry(), inReplay: () => true });
+
+        const { getCommands } = await import("@iracedeck/deck-iracing");
+
+        vi.mocked(getCommands).mockReturnValue({ replay: sim.replay, camera } as never);
+        await dialJumpUnderWay();
+
+        await pressKey("ctx-cam", "jump-to-my-car");
+        await vi.advanceTimersByTimeAsync(125_000);
+        // The jump lands at last; the switch was dropped at the wait's ceiling.
+        await vi.advanceTimersByTimeAsync(80_000);
+
+        expect(sim.frame()).toBe(TARGET);
+        expect(camera.switchNum).not.toHaveBeenCalled();
+      });
+
+      it("a parked key switch is dropped when its key leaves the screen", async () => {
+        await dialJumpUnderWay();
+
+        await pressKey("ctx-cam", "jump-to-my-car");
+        await action.onWillDisappear(fakeEvent("ctx-cam", { mode: "jump-to-my-car" }) as any);
+        await vi.advanceTimersByTimeAsync(5_000);
+
+        expect(sim.frame()).toBe(TARGET);
+        expect(camera.switchNum).not.toHaveBeenCalled();
+      });
+
+      it("a parked key switch is dropped when the replay is left before the landing", async () => {
+        await dialJumpUnderWay();
+
+        await pressKey("ctx-cam", "next-car");
+        // The controller's debounced replay state reads the replay left (a disconnect reads the same).
+        const replayState = action["sdkController"].getReplayState();
+
+        vi.spyOn(action["sdkController"], "getReplayState").mockReturnValue({ ...replayState, inReplay: false });
+        await vi.advanceTimersByTimeAsync(5_000);
+
+        expect(sim.frame()).toBe(TARGET);
+        expect(action["tapBinding"]).not.toHaveBeenCalled();
+      });
+
+      it("a camera key does not cancel a marker jump's claim", async () => {
+        const claim = claimReplayCursor("replay-markers next");
+
+        await pressKey("ctx-cam", "next-car");
+
+        expect(claim.cancelledBy).toBeNull();
+        expect(action["tapBinding"]).toHaveBeenCalledExactlyOnceWith("replayControlNextCar");
+        claim.release();
+      });
+
+      it.each(["jump-to-my-car", "next-car", "prev-car", "next-car-number", "prev-car-number"])(
+        "a camera key cancels a running lap walk: %s",
+        async (mode) => {
+          const walk = claimReplayCursor(FASTEST_LAP_WALK_OWNER);
+
+          await pressKey("ctx-cam", mode);
+
+          expect(walk.cancelledBy).toBe(mode);
+        },
+      );
     });
   });
 

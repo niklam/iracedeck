@@ -2146,8 +2146,8 @@ function clearUnsent(handle: ReplayJumpGateHandle): void {
 }
 
 // A take of the cursor ends the jump that held it. A press, or another replay jump, leaves the gate owing
-// its seek when it was still in its pause; anything else (a car key) sends no replay command, and an
-// unsent seek is then never sent.
+// its seek when it was still in its pause; anything else (a camera switch stopping a lap walk, #1467) sends
+// no replay command, and an unsent seek is then never sent.
 onReplayCursorTaken(() => {
   const jump = held;
 

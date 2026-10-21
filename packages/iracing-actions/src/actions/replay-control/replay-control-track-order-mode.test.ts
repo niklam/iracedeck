@@ -1,19 +1,32 @@
 import { REPLAY_LIVE_EDGE_MAX_FRAMES, type TelemetryData } from "@iracedeck/iracing-sdk";
-import { type ReplaySettledOutcome } from "@iracedeck/replay-engine";
+import {
+  claimReplayCursor,
+  FASTEST_LAP_WALK_OWNER,
+  isCameraSwitchWaiting,
+  RACE_START_WALK_OWNER,
+  type ReplaySettledOutcome,
+  requestCameraSwitch,
+} from "@iracedeck/replay-engine";
+import { resetEngine } from "@iracedeck/replay-engine/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ReplayControlDialSettings } from "./replay-control-dial-settings.js";
 import {
-  _isTrackOrderTapWaiting,
-  _resetTrackOrderTap,
   jumpToMyCarFromDial,
   neighbourNumbers,
   trackOrderMode,
   trackOrderNeighbours,
 } from "./replay-control-track-order-mode.js";
-import { fakeStepIo, type FakeStepIo } from "./replay-dial-step-io.test-support.js";
+import { fakeStepIo } from "./replay-dial-step-io.test-support.js";
 
 vi.mock("@iracedeck/settings", () => ({ getGlobalSettings: vi.fn(() => ({})) }));
+
+// The engine's waiter, real, with its calls recorded: the routing case reads what the mode hands it.
+vi.mock("@iracedeck/replay-engine", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@iracedeck/replay-engine")>();
+
+  return { ...actual, requestCameraSwitch: vi.fn(actual.requestCameraSwitch) };
+});
 
 vi.mock("@iracedeck/deck-iracing", () => ({
   getCommands: vi.fn(() => {
@@ -29,23 +42,15 @@ const dial = ReplayControlDialSettings.parse({ mode: "track-order" });
 const NEXT = "replayControlNextCar";
 const PREVIOUS = "replayControlPrevCar";
 
-/** A jump wait the test ends: `land` resolves it settled, `giveUp` at the ceiling. */
-function jumpUnderWay(io: FakeStepIo) {
-  let end!: (outcome: ReplaySettledOutcome) => void;
-
-  io.isJumpUnderWay.mockReturnValue(true);
-  io.waitForJumpsToSettle.mockReturnValue(new Promise<ReplaySettledOutcome>((resolve) => (end = resolve)));
-
-  return { land: () => end("settled"), giveUp: () => end("gave-up") };
-}
-
 describe("trackOrderMode", () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    _resetTrackOrderTap();
+    resetEngine();
+    vi.mocked(requestCameraSwitch).mockClear();
   });
 
   afterEach(() => {
+    resetEngine();
     vi.useRealTimers();
   });
 
@@ -66,13 +71,17 @@ describe("trackOrderMode", () => {
 
     it("cancels a camera walk before it taps, and sends no replay command", async () => {
       const io = fakeStepIo();
+      const walk = claimReplayCursor(FASTEST_LAP_WALK_OWNER);
+      let cancelledAtTap: string | null | undefined;
 
+      io.tapBinding.mockImplementation(() => {
+        cancelledAtTap = walk.cancelledBy;
+
+        return Promise.resolve(true);
+      });
       await trackOrderMode.rotate(1, dial, io);
 
-      expect(io.cancelCameraWalks).toHaveBeenCalledWith("dial-track-order");
-      expect(io.cancelCameraWalks.mock.invocationCallOrder[0]).toBeLessThan(
-        io.tapBinding.mock.invocationCallOrder[0] ?? 0,
-      );
+      expect(cancelledAtTap).toBe("dial-track-order");
       expect(io.recordJump).not.toHaveBeenCalled();
       expect(io.queueSearch).not.toHaveBeenCalled();
       expect(io.jumpTo).not.toHaveBeenCalled();
@@ -91,220 +100,84 @@ describe("trackOrderMode", () => {
     });
   });
 
-  describe("during a position jump", () => {
-    it("sends nothing until the jump has settled, then one tap", async () => {
+  describe("the shared camera-switch waiter", () => {
+    it("routes a turn and the My Car gesture through the shared waiter", async () => {
       const io = fakeStepIo();
-      const jump = jumpUnderWay(io);
+      const jumps = { underWay: false };
 
-      const turn = trackOrderMode.rotate(1, dial, io);
-      await vi.advanceTimersByTimeAsync(500);
-      expect(io.tapBinding).not.toHaveBeenCalled();
-      // The walk is stopped at the turn, not when the tap goes out.
-      expect(io.cancelCameraWalks).toHaveBeenCalledTimes(1);
+      io.isJumpUnderWay.mockImplementation(() => jumps.underWay);
+      await trackOrderMode.rotate(-2, dial, io);
+      await jumpToMyCarFromDial(io);
 
-      jump.land();
-      await turn;
+      const calls = vi.mocked(requestCameraSwitch).mock.calls;
 
-      expect(io.tapBinding).toHaveBeenCalledExactlyOnceWith(NEXT);
-    });
+      expect(calls.map(([, options]) => [options.by, options.label, options.name, options.asked])).toEqual([
+        ["dial-track-order", "Dial track order", "previous car", "ticks=-2"],
+        ["dial-jump-to-my-car", "Dial track order", "my car", "Jump to My Car"],
+      ]);
 
-    it("a second turn while one waits replaces it: one tap, in the newer direction", async () => {
-      const io = fakeStepIo();
-      const jump = jumpUnderWay(io);
-
-      const first = trackOrderMode.rotate(1, dial, io);
-      const second = trackOrderMode.rotate(-1, dial, io);
-      const third = trackOrderMode.rotate(-3, dial, io);
-
-      expect(io.waitForJumpsToSettle).toHaveBeenCalledTimes(1);
-
-      jump.land();
-      await Promise.all([first, second, third]);
+      // What each hands over: its send, the dial's own jump reads, its on-screen check, and its logger.
+      const [[sendTap, turn], [sendMyCar, myCar]] = calls;
 
       expect(io.tapBinding).toHaveBeenCalledExactlyOnceWith(PREVIOUS);
+      expect(io.jumpToMyCar).toHaveBeenCalledOnce();
+      await sendTap();
+      expect(io.tapBinding).toHaveBeenLastCalledWith(PREVIOUS);
+      await sendMyCar();
+      expect(io.jumpToMyCar).toHaveBeenCalledTimes(2);
+
+      for (const options of [turn, myCar]) {
+        expect(options.logger).toBe(io.logger);
+        jumps.underWay = true;
+        expect(options.jumps?.isUnderWay()).toBe(true);
+        jumps.underWay = false;
+        await options.jumps?.waitToSettle();
+        io.isStillOnScreen.mockReturnValueOnce(false);
+        expect(options.stillValid()).toBe(false);
+      }
+
+      expect(io.waitForJumpsToSettle).toHaveBeenCalledTimes(2);
     });
 
-    it("a turn on another dial replaces the tap too, and goes out through that dial", async () => {
-      const a = fakeStepIo();
-      const b = fakeStepIo();
-      const jump = jumpUnderWay(a);
-
-      const first = trackOrderMode.rotate(1, dial, a);
-      const second = trackOrderMode.rotate(-1, dial, b);
-
-      jump.land();
-      await Promise.all([first, second]);
-
-      expect(a.tapBinding).not.toHaveBeenCalled();
-      expect(b.tapBinding).toHaveBeenCalledExactlyOnceWith(PREVIOUS);
-    });
-
-    it.each([3_000, 30_000])("a tap still waiting after %i ms is sent when the jump lands", async (ms) => {
+    it("waits behind a position jump as the one switch the waiter holds", async () => {
       const io = fakeStepIo();
-      const jump = jumpUnderWay(io);
-
-      const turn = trackOrderMode.rotate(1, dial, io);
-      await vi.advanceTimersByTimeAsync(ms);
-      expect(io.tapBinding).not.toHaveBeenCalled();
-
-      jump.land();
-      await turn;
-
-      expect(io.tapBinding).toHaveBeenCalledExactlyOnceWith(NEXT);
-    });
-
-    it("is dropped with nothing sent at the ceiling of the jump wait", async () => {
-      const io = fakeStepIo();
-      const jump = jumpUnderWay(io);
-
-      const turn = trackOrderMode.rotate(1, dial, io);
-
-      jump.giveUp();
-      await turn;
-
-      expect(io.tapBinding).not.toHaveBeenCalled();
-      expect(io.logger.debug).toHaveBeenCalledWith(expect.stringContaining("tap dropped"));
-    });
-
-    it("is dropped with nothing sent when the dial left the screen or the replay was left", async () => {
-      const io = fakeStepIo();
-      const jump = jumpUnderWay(io);
-
-      const turn = trackOrderMode.rotate(1, dial, io);
-
-      io.isStillOnScreen.mockReturnValue(false);
-      jump.land();
-      await turn;
-
-      expect(io.tapBinding).not.toHaveBeenCalled();
-    });
-
-    it("a jump wait that rejects drops the tap, logs why, and leaves no turn waiting", async () => {
-      const io = fakeStepIo();
-      let fail!: (error: Error) => void;
+      let land!: (outcome: ReplaySettledOutcome) => void;
 
       io.isJumpUnderWay.mockReturnValue(true);
-      io.waitForJumpsToSettle.mockReturnValueOnce(
-        new Promise<ReplaySettledOutcome>((_resolve, reject) => (fail = reject)),
-      );
+      io.waitForJumpsToSettle.mockReturnValue(new Promise<ReplaySettledOutcome>((resolve) => (land = resolve)));
 
-      const first = trackOrderMode.rotate(1, dial, io);
-      const second = trackOrderMode.rotate(-1, dial, io);
+      const turn = trackOrderMode.rotate(1, dial, io);
 
-      expect(_isTrackOrderTapWaiting()).toBe(true);
-
-      fail(new Error("gate gone"));
-      await expect(Promise.all([first, second])).resolves.toBeDefined();
-
+      expect(isCameraSwitchWaiting()).toBe(true);
       expect(io.tapBinding).not.toHaveBeenCalled();
-      expect(_isTrackOrderTapWaiting()).toBe(false);
-      expect(io.logger.warn).toHaveBeenCalledWith(expect.stringContaining("gate gone"));
 
-      // The next turn is a turn of its own: on a quiet replay it taps at once.
-      io.isJumpUnderWay.mockReturnValue(false);
-      await trackOrderMode.rotate(1, dial, io);
+      land("settled");
+      await turn;
 
       expect(io.tapBinding).toHaveBeenCalledExactlyOnceWith(NEXT);
-    });
-
-    it("a jump wait that throws at once leaves the next turn a turn of its own", async () => {
-      const io = fakeStepIo();
-
-      io.isJumpUnderWay.mockReturnValueOnce(true);
-      io.waitForJumpsToSettle.mockImplementationOnce(() => {
-        throw new Error("no gate");
-      });
-
-      await trackOrderMode.rotate(1, dial, io);
-      await trackOrderMode.rotate(-1, dial, io);
-
-      expect(io.tapBinding).toHaveBeenCalledExactlyOnceWith(PREVIOUS);
-      expect(_isTrackOrderTapWaiting()).toBe(false);
-    });
-
-    it("a turn after the wait ended is a turn of its own", async () => {
-      const io = fakeStepIo();
-      const jump = jumpUnderWay(io);
-      let releaseTap!: () => void;
-
-      io.tapBinding.mockReturnValueOnce(new Promise<boolean>((resolve) => (releaseTap = () => resolve(true))));
-
-      const first = trackOrderMode.rotate(1, dial, io);
-
-      jump.land();
-      await vi.advanceTimersByTimeAsync(0);
-      // The first tap is going out; this one is not folded into it.
-      io.isJumpUnderWay.mockReturnValue(false);
-      const second = trackOrderMode.rotate(-1, dial, io);
-
-      releaseTap();
-      await Promise.all([first, second]);
-
-      expect(io.tapBinding.mock.calls).toEqual([[NEXT], [PREVIOUS]]);
+      expect(isCameraSwitchWaiting()).toBe(false);
     });
   });
 
   describe("the dial's Jump to My Car (jumpToMyCarFromDial)", () => {
     it("on a quiet replay cancels only the walks, under its own name, then switches at once", async () => {
       const io = fakeStepIo();
+      const walk = claimReplayCursor(RACE_START_WALK_OWNER);
 
       await jumpToMyCarFromDial(io);
 
-      expect(io.cancelCameraWalks).toHaveBeenCalledWith("dial-jump-to-my-car");
+      expect(walk.cancelledBy).toBe("dial-jump-to-my-car");
       expect(io.jumpToMyCar).toHaveBeenCalledOnce();
       expect(io.tapBinding).not.toHaveBeenCalled();
       expect(io.recordJump).not.toHaveBeenCalled();
       expect(io.queueSearch).not.toHaveBeenCalled();
-    });
 
-    it("during a position jump switches only once it has settled", async () => {
-      const io = fakeStepIo();
-      const jump = jumpUnderWay(io);
+      // Any other owner is left standing.
+      const record = claimReplayCursor("jump-to-fastest-lap record jump");
 
-      const pending = jumpToMyCarFromDial(io);
-      await vi.advanceTimersByTimeAsync(500);
-      expect(io.jumpToMyCar).not.toHaveBeenCalled();
-      expect(_isTrackOrderTapWaiting()).toBe(true);
+      await jumpToMyCarFromDial(io);
 
-      jump.land();
-      await pending;
-
-      expect(io.jumpToMyCar).toHaveBeenCalledOnce();
-    });
-
-    it("shares the one waiting switch with a turn: whichever was asked for last goes out", async () => {
-      const io = fakeStepIo();
-      let jump = jumpUnderWay(io);
-
-      const turn = trackOrderMode.rotate(1, dial, io);
-      const myCar = jumpToMyCarFromDial(io);
-
-      expect(io.waitForJumpsToSettle).toHaveBeenCalledTimes(1);
-      jump.land();
-      await Promise.all([turn, myCar]);
-      expect(io.jumpToMyCar).toHaveBeenCalledOnce();
-      expect(io.tapBinding).not.toHaveBeenCalled();
-
-      jump = jumpUnderWay(io);
-      const second = jumpToMyCarFromDial(io);
-      const later = trackOrderMode.rotate(-1, dial, io);
-
-      jump.land();
-      await Promise.all([second, later]);
-      expect(io.jumpToMyCar).toHaveBeenCalledOnce();
-      expect(io.tapBinding).toHaveBeenCalledExactlyOnceWith(PREVIOUS);
-    });
-
-    it("is dropped with nothing sent at the ceiling of the jump wait", async () => {
-      const io = fakeStepIo();
-      const jump = jumpUnderWay(io);
-
-      const pending = jumpToMyCarFromDial(io);
-
-      jump.giveUp();
-      await pending;
-
-      expect(io.jumpToMyCar).not.toHaveBeenCalled();
+      expect(record.cancelledBy).toBeNull();
     });
   });
 

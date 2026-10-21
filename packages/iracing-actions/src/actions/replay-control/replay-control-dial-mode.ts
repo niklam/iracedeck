@@ -154,9 +154,9 @@ export interface ReplayDialStepIo extends ReplayDialModeIo {
   cancelCameraWalks(by: string): void;
   /**
    * Switches the camera to the player's car: the keypad's Jump to My Car
-   * switch, with no cursor taken, since the dial's gesture has cancelled only
-   * the two walks itself (`cancelCameraWalks`). With no player's car, or no
-   * number for it, it logs why and sends nothing.
+   * switch, with no cursor taken, since the engine's camera-switch waiter the
+   * dial's gesture goes through has cancelled only the two walks (#1467). With
+   * no player's car, or no number for it, it logs why and sends nothing.
    */
   jumpToMyCar(): void;
   /** Whether a position jump is under way: a pending target standing, or a seek showing. A search is not one. */

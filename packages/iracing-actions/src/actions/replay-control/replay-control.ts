@@ -69,9 +69,9 @@ import {
   acceptsGreenFallbackLanding,
   applyReplayJumpPlayback,
   beginReplayJump,
-  cancelReplayCursorOwner,
-  cancelReplayCursorOwnerIf,
+  cancelLapWalks,
   describeReplayJump,
+  FASTEST_LAP_WALK_OWNER,
   findRecordStep,
   formatSpeedDisplay,
   greenApproachFrame,
@@ -85,6 +85,7 @@ import {
   onReplaySpeedChanged,
   parseSpeedSetting,
   pressReplayCommand,
+  RACE_START_WALK_OWNER,
   readFastestLapSearchDelayMs,
   RECORD_STEPS,
   type RecordStepMode,
@@ -96,6 +97,7 @@ import {
   type ReplayJumpOutcome,
   type ReplayPressResult,
   replaySeekWaitMs,
+  requestCameraSwitch,
   resolveGreenFallbackCar,
   resolveGreenFlagTarget,
   resolvePoleCarIdx,
@@ -468,8 +470,8 @@ class FastestLapPressCancelled extends Error {
   }
 }
 
-/** The owner name the walk claims the replay cursor under (`shared/replay-cursor.ts`). */
-const FASTEST_LAP_WALK_OWNER = "jump-to-fastest-lap walk";
+// The walk claims the replay cursor under the engine's FASTEST_LAP_WALK_OWNER
+// (`lap-walk-owners.ts`, #1467), one of the two owners a camera switch cancels.
 
 /** The owner name a record jump claims the replay cursor under while it waits for the landing (#1275). */
 const FASTEST_LAP_RECORD_JUMP_OWNER = "jump-to-fastest-lap record jump";
@@ -490,8 +492,8 @@ const FASTEST_LAP_LOG_LABEL = "Jump to fastest lap";
 /** The owner name a Jump to Race Start press claims the replay cursor under for its single waited jump. */
 const RACE_START_JUMP_OWNER = "jump-to-race-start jump";
 
-/** The owner name a Jump to Race Start press claims the replay cursor under while it searches for the pole car's lap 1. */
-const RACE_START_WALK_OWNER = "jump-to-race-start walk";
+// While it searches for the pole car's lap 1 the press claims the cursor under
+// the engine's RACE_START_WALK_OWNER (`lap-walk-owners.ts`, #1467).
 
 /** What opens the log lines of a Jump to Race Start press. */
 const RACE_START_LOG_LABEL = "Jump to race start";
@@ -946,8 +948,10 @@ export const REPLAY_CONTROL_UUID = "com.iracedeck.sd.core.replay-control" as con
 
 /**
  * The modes that send no replay command, only a camera change or a keystroke:
- * they stay outside the replay command gate (#1430) and take the replay
- * cursor themselves, which stops a walk searching on the camera's car.
+ * they stay outside the replay command gate (#1430). Each goes through the
+ * engine's one camera-switch waiter (#1467), which cancels a lap walk
+ * searching on the camera's car and nothing else, and holds the switch behind
+ * a position jump under way.
  */
 const CAMERA_ONLY_MODES: ReadonlySet<ReplayControlMode> = new Set<ReplayControlMode>([
   "jump-to-my-car",
@@ -1046,8 +1050,8 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     jumpToRaceStart: (origin) => this.executeMode(origin, this.parseSettings({ mode: "jump-to-race-start" })),
     canJumpToRaceStart: () =>
       resolveGreenFlagTarget(this.sdkController.getSessionInfo(), this.sdkController.getCurrentTelemetry()) !== null,
-    // The keypad's Jump to My Car switch (#801), without its cursor take: the
-    // dial's gesture cancels only the two walks, and waits behind a position jump.
+    // The keypad's Jump to My Car switch (#801), the bare send: the dial's gesture
+    // hands it to the engine's camera-switch waiter, as the key does (#1467).
     jumpToMyCar: () => this.switchToMyCar(),
     canJumpToMyCar: () => "carNum" in this.resolveMyCarNumberRaw(),
     refreshKeys: () => this.updateAllTelemetryDisplays(),
@@ -1063,7 +1067,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     isBindingMissing: (keys) => this.isBindingMissing(keys),
     // Only the two walks whose searches ride on the camera's car stop for a camera switch.
     cancelCameraWalks: (by) => {
-      cancelReplayCursorOwnerIf([FASTEST_LAP_WALK_OWNER, RACE_START_WALK_OWNER], by);
+      cancelLapWalks(by);
     },
   });
 
@@ -1371,10 +1375,10 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
 
   /**
    * The camera to the player's car: Jump to My Car's switch, which takes no
-   * cursor of its own. The keypad's key has taken it before this runs, as
-   * every camera-only mode does; the dial's gesture cancels only the two walks
-   * (#801). With no player's car, or no number for it, it warns and sends
-   * nothing.
+   * cursor of its own. The key and the dial's gesture (#801) both hand it to
+   * the engine's camera-switch waiter, which has cancelled only the two walks
+   * before it runs (#1467). With no player's car, or no number for it, it
+   * warns and sends nothing.
    */
   private switchToMyCar(): void {
     const myCar = this.resolveMyCarNumberRaw();
@@ -1393,15 +1397,60 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
   }
 
   /**
-   * Take the replay cursor for a camera or car key, which sends no replay
-   * command: cancels the in-flight walk (this instance's or any other cursor
-   * owner's), naming the mode that did, so a walk searching on the camera's
-   * car does not go on following another one. A key that sends a replay
-   * command takes the cursor through the replay command gate instead
-   * (`pressReplayCommand`, #1430). The walk observes it at its next await.
+   * A camera or car key's switch (#1467, Decision 3 of the replay engine
+   * spec): through the engine's one camera-switch waiter, as the dial's Track
+   * Order turn and Jump to My Car gesture go. It cancels a lap walk searching
+   * on the camera's car, naming the mode, and no other cursor owner — a
+   * marker or record jump keeps its claim; the walk observes the cancel at its
+   * next await. On a quiet replay `send` runs at once; behind a position jump
+   * it waits for the landing as the one switch that waits for the whole
+   * plugin, and is dropped if the wait gives up, or if by then the key has
+   * left the screen or the replay has been left.
    */
-  private cancelFastestLapWalk(by: string): void {
-    cancelReplayCursorOwner(by);
+  private requestKeyCameraSwitch(contextId: string, mode: ReplayControlMode, name: string, send: () => unknown): void {
+    requestCameraSwitch(send, {
+      by: mode,
+      label: "Replay control",
+      name,
+      asked: `${mode} pressed`,
+      stillValid: () => this.activeContexts.has(contextId) && this.sdkController.getReplayState().inReplay,
+      logger: this.logger,
+    }).catch((error: unknown) => {
+      this.logger.warn(
+        `Replay control: ${name} switch failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    });
+  }
+
+  /**
+   * Next / Previous Car (Number Order)'s switch: the car beside the one on
+   * camera when it goes out, by car number. With no camera car, or none
+   * beside it, it warns and sends nothing.
+   */
+  private switchToAdjacentCarNumber(navDirection: "next" | "prev"): void {
+    const telemetry = this.sdkController.getCurrentTelemetry();
+    const camCarIdx = (telemetry?.CamCarIdx as number) ?? -1;
+
+    if (camCarIdx < 0) {
+      this.logger.warn("No camera target available for car number navigation");
+
+      return;
+    }
+
+    const sessionInfo = this.sdkController.getSessionInfo();
+    // Every car the session has had, departed ones included (#1281).
+    const carNum = findAdjacentCarByNumber(sessionInfo, camCarIdx, navDirection);
+
+    if (carNum === null) {
+      this.logger.warn("Could not find adjacent car by number");
+
+      return;
+    }
+
+    const camera = getCommands().camera;
+    const success = camera.switchNum(carNum, 0, 0);
+    this.logger.info("Car number navigation executed");
+    this.logger.debug(`Direction: ${navDirection}, carNum: ${carNum}, result: ${success}`);
   }
 
   /** A walk that has not been cancelled holds the slot; one unwinding after a cancel does not. */
@@ -3154,10 +3203,10 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     // which takes the replay cursor from an in-flight walk or jump itself and
     // decides whether the command goes out now, waits for the jump under way
     // to land, or is not sent. The camera and car keys send no replay command:
-    // they take the cursor here, so a walk searching on the camera's car stops.
-    // A fastest-lap or green-flag press takes it itself, once its guards have
-    // passed: a press that is ignored must not cancel the one in flight.
-    if (CAMERA_ONLY_MODES.has(mode)) this.cancelFastestLapWalk(mode);
+    // they go through the engine's camera-switch waiter (#1467), which stops
+    // only a lap walk searching on the camera's car. A fastest-lap or
+    // green-flag press takes the cursor itself, once its guards have passed:
+    // a press that is ignored must not cancel the one in flight.
 
     /** One press through the gate, named for the mode and this key's context. */
     const press = (command: ReplayGateCommand): ReplayPressResult =>
@@ -3410,7 +3459,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
         break;
       }
       case "jump-to-my-car": {
-        this.switchToMyCar();
+        this.requestKeyCameraSwitch(contextId, mode, "my car", () => this.switchToMyCar());
         break;
       }
       case "jump-to-fastest-lap": {
@@ -3556,39 +3605,37 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
         // Send the configured keystroke (default: V) so iRacing's own car-ordering
         // drives the cycle. Telemetry-driven selection picks the wrong driver during
         // replay-while-towed, where CamCarIdx reflects the live field.
-        void this.tapBinding(CAR_CYCLE_BINDING_KEYS.next);
-        this.logger.info("Next car executed (keystroke)");
+        this.requestKeyCameraSwitch(contextId, mode, "next car", () => {
+          const tapped = this.tapBinding(CAR_CYCLE_BINDING_KEYS.next);
+
+          this.logger.info("Next car executed (keystroke)");
+
+          return tapped;
+        });
         break;
       }
       case "prev-car": {
-        void this.tapBinding(CAR_CYCLE_BINDING_KEYS.previous);
-        this.logger.info("Previous car executed (keystroke)");
+        this.requestKeyCameraSwitch(contextId, mode, "previous car", () => {
+          const tapped = this.tapBinding(CAR_CYCLE_BINDING_KEYS.previous);
+
+          this.logger.info("Previous car executed (keystroke)");
+
+          return tapped;
+        });
         break;
       }
       case "next-car-number":
       case "prev-car-number": {
-        const telemetry = this.sdkController.getCurrentTelemetry();
-        const camCarIdx = (telemetry?.CamCarIdx as number) ?? -1;
-
-        if (camCarIdx < 0) {
-          this.logger.warn("No camera target available for car number navigation");
-          break;
-        }
-
-        const sessionInfo = this.sdkController.getSessionInfo();
         const navDirection = mode === "next-car-number" ? "next" : "prev";
-        // Every car the session has had, departed ones included (#1281).
-        const carNum = findAdjacentCarByNumber(sessionInfo, camCarIdx, navDirection);
 
-        if (carNum === null) {
-          this.logger.warn("Could not find adjacent car by number");
-          break;
-        }
-
-        const camera = getCommands().camera;
-        const success = camera.switchNum(carNum, 0, 0);
-        this.logger.info("Car number navigation executed");
-        this.logger.debug(`Direction: ${navDirection}, carNum: ${carNum}, result: ${success}`);
+        // The target is read from the camera when the switch goes out, not at
+        // the press: behind a jump the camera may be on another car by then.
+        this.requestKeyCameraSwitch(
+          contextId,
+          mode,
+          navDirection === "next" ? "next car number" : "previous car number",
+          () => this.switchToAdjacentCarNumber(navDirection),
+        );
         break;
       }
     }

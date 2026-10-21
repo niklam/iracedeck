@@ -6,11 +6,13 @@ import {
   type TelemetryData,
 } from "@iracedeck/iracing-sdk";
 import {
+  _resetCameraSwitchWaiter,
   _resetReplaySpeedState,
   cancelReplayCursorOwner,
   claimReplayCursor,
   currentReplayCursorOwner,
   DIAL_SPEED_HOLD_MS,
+  FASTEST_LAP_WALK_OWNER,
   getReplayGateRecord,
   getReplayGateView,
   isReplayMoveUnderWay,
@@ -19,6 +21,7 @@ import {
   noteTelemetrySpeed,
   onReplaySpeedChanged,
   pressReplayCommand,
+  RACE_START_WALK_OWNER,
   type RecordStepSource,
   rememberedSpeed,
   REPLAY_TARGET_GIVE_UP_MS,
@@ -48,7 +51,7 @@ import { incidentMode } from "./replay-control-incident-mode.js";
 import { lapMode } from "./replay-control-lap-mode.js";
 import { sessionMode } from "./replay-control-session-mode.js";
 import { speedMode } from "./replay-control-speed-mode.js";
-import { _resetTrackOrderTap, trackOrderMode } from "./replay-control-track-order-mode.js";
+import { trackOrderMode } from "./replay-control-track-order-mode.js";
 
 /**
  * The paced search (#801) is another module's, and its runner is not under
@@ -2979,7 +2982,7 @@ describe("ReplayControlDialSurface", () => {
 
     beforeEach(() => {
       store.value = null;
-      _resetTrackOrderTap();
+      _resetCameraSwitchWaiter();
     });
 
     describe("Lap and Session: one waited jump per turn", () => {
@@ -3180,13 +3183,15 @@ describe("ReplayControlDialSurface", () => {
     describe("Car", () => {
       it("taps at once on a quiet replay, one tap per event, the right binding each way", async () => {
         const { surface, ctx, d } = await dialIn("track-order", pausedOn(54_000));
+        // A Jump to Fastest Lap walk holding the cursor: the camera switch stops it.
+        const walk = claimReplayCursor(FASTEST_LAP_WALK_OWNER);
 
         surface.rotate(ctx as never, d, 3, false);
         surface.rotate(ctx as never, d, -1, false);
         await settle();
 
         expect(host.tapBinding.mock.calls).toEqual([["replayControlNextCar"], ["replayControlPrevCar"]]);
-        expect(host.cancelCameraWalks).toHaveBeenCalledWith("dial-track-order");
+        expect(walk.cancelledBy).toBe("dial-track-order");
       });
 
       it("taps at once behind a search: a search does not swallow a camera change", async () => {
@@ -3241,11 +3246,19 @@ describe("ReplayControlDialSurface", () => {
         await press(surface, ctx, d, 500);
         await settle(0);
 
-        expect(host.cancelCameraWalks).toHaveBeenCalledWith("dial-jump-to-my-car");
         expect(host.jumpToMyCar).toHaveBeenCalledOnce();
         expect(run.cancelledBy).toBeNull();
         expect(currentReplayCursorOwner()).toBe("dial-lap");
         run.release();
+
+        // A Jump to Race Start walk is one of the two: the gesture stops it, under its own name.
+        const walk = claimReplayCursor(RACE_START_WALK_OWNER);
+
+        await press(surface, ctx, d, 500);
+        await settle(0);
+
+        expect(walk.cancelledBy).toBe("dial-jump-to-my-car");
+        expect(host.jumpToMyCar).toHaveBeenCalledTimes(2);
       });
 
       it("a Long Press during a position jump switches to my car once the jump has landed", async () => {

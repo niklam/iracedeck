@@ -3,6 +3,7 @@
  * engine module's state, then the env. A module that keeps state adds its
  * reset here.
  */
+import { _resetCameraSwitchWaiter } from "./camera-switch-waiter.js";
 import { _resetReplayCommandGate } from "./replay-command-gate.js";
 import { _resetReplayCursor } from "./replay-cursor.js";
 import { _resetReplayEngineEnv } from "./replay-engine-env.js";
@@ -14,6 +15,7 @@ import { _resetReplaySpeedState } from "./replay-speed-state.js";
 export function _resetReplayEngine(): void {
   // The queue first: ending its run ends the run's jump through the gate.
   _resetReplaySearchQueue();
+  _resetCameraSwitchWaiter();
   _resetReplayCommandGate();
   _resetReplayCursor();
   _resetReplayPositionState();
