@@ -117,6 +117,7 @@ packages/
   settings/                Global settings below the deck layer: schema, settings store, migrations, PI warnings
   voice-packs/             Race Engineer voice packs: scanner, catalog, installer, launch step, voice labels
   replay-store/            Per-session replay store: replay markers, the lap record and the greens, one file per session
+  replay-engine/           iRacing replay engine: command gate, cursor, jump playback, speed state, camera waiter, lap walks
   diagnostics/             Self-diagnostics: main-thread watchdog, resource monitor, CPU profile capture, Telemetry Snapshot state sections
   app-updates/             Version-upgrade changelog opener and the What's New update check
   settings-window/         Settings window plugin side: loopback server and guard, launcher, commands
@@ -146,6 +147,7 @@ packages/
 | `@iracedeck/settings`             | Global settings below the deck layer: the schema and cache, migrations, the plugin-owned settings store, run-scoped keys, PI warnings, first run and the startup gates; deck-core re-exports none of them |
 | `@iracedeck/voice-packs`          | The Race Engineer voice-pack stack: the scanner and voice-pack service, the catalog, download, extraction and installer, the launch step that keeps the `default` pack installed, the voice labels; deck-core re-exports none of it |
 | `@iracedeck/replay-store`         | The per-session replay store: replay markers, the lap record and the greens, one file per `SubSessionID`, debounced atomic writes; deck-core re-exports none of it |
+| `@iracedeck/replay-engine`        | The iRacing replay engine the replay actions share: the replay command gate (the one sender of replay commands), the cursor, jump playback and seek, the paced search, the speed state, the camera-switch waiter and the Jump to Fastest Lap / Jump to Race Start walks; imports no deck package or settings, configured once by `plugin-runtime` |
 | `@iracedeck/diagnostics`          | The plugin's self-diagnostics: the main-thread watchdog, the resource monitor, the CPU profile capture, and the registry of plugin-state sections a Telemetry Snapshot records, with its JSON-safe encoder |
 | `@iracedeck/app-updates`          | The version-upgrade changelog opener and the settings window's update check: the published-changelog feed, its sanitizer, the cached service |
 | `@iracedeck/settings-window`      | The settings window's plugin side: the loopback server and its request guard, the controller, the app-window launcher, the command handler, the settings-channel publisher |
@@ -174,8 +176,8 @@ packages/
 
 ```text
 Plugin start (each plugin's plugin.ts is a shell: build the adapter, call startPlugin)
-  -> plugin-runtime (ten startup phases: core, sim, input, audio, voice packs,
-     Race Engineer, settings, actions, services, connect)
+  -> plugin-runtime (eleven startup phases: core, sim, input, audio, voice packs,
+     Race Engineer, settings, replay, actions, services, connect)
     -> initSim starts the sim translator (sim-events-iracing) and returns its query side
       -> race-engineer-wiring builds the Race Engineer's dependencies from it
 

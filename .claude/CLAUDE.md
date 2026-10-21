@@ -37,6 +37,7 @@ Deck layer
 - `@iracedeck/fetch-utils` — request helpers (`abortAfter`, `readCappedJson`) that Node and the PI bundle share. Has its own `CLAUDE.md`.
 - `@iracedeck/settings` — global settings, store, migrations, warnings, first run; import and mock its names here, never via deck-core. Rules in `global-settings.md`. Has its own `CLAUDE.md`.
 - `@iracedeck/replay-store` — per-session replay markers, laps, greens, session starts and incidents. Has its own `CLAUDE.md`.
+- `@iracedeck/replay-engine` — the iRacing replay engine the replay actions share: the command gate (the one sender of replay commands), the cursor, jump playback, the paced search, the speed state, the camera-switch waiter and the lap walks; imports no deck package or settings, and is configured by `plugin-runtime`'s `initReplay`. Has its own `CLAUDE.md`.
 - `@iracedeck/diagnostics` — the watchdog, resource monitor, CPU profiles, snapshot sections. Log lines in `logging.md`. Has its own `CLAUDE.md`.
 - `@iracedeck/app-updates` — the version-upgrade changelog opener and the What's New update check. Has its own `CLAUDE.md`.
 - `@iracedeck/settings-window` — the settings window's plugin side: loopback server and request guard (reviewed at `xhigh`). Rules in `settings-window.md`. Has its own `CLAUDE.md`.

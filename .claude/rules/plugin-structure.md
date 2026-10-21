@@ -19,7 +19,8 @@ The plugin system uses a platform abstraction architecture with these key packag
 - `@iracedeck/settings` — the plugin's global settings: schema and cache, migrations, the plugin-owned settings store, run-scoped keys, PI warnings, first run and the startup gates; below the deck layer, reaching the host only through `SettingsHost`, which `IDeckPlatformAdapter` extends (#1365)
 - `@iracedeck/deck-core` — Platform-agnostic base classes, types (`IDeckWillAppearEvent`, etc.), and shared utilities; sim-neutral, seeing the simulator only through `SimConnection` (#1351)
 - `@iracedeck/voice-packs` — the Race Engineer voice-pack stack: scanner, service, catalog, installer, launch step, voice labels and the missing-script banner (#1366); `initVoicePacks` builds it, and it takes everything it needs from settings injected
-- `@iracedeck/replay-store`, `@iracedeck/diagnostics`, `@iracedeck/app-updates`, `@iracedeck/settings-window` — the per-session replay store, the watchdog / resource monitor / CPU profile capture and the Telemetry Snapshot's state-section registry (#1387), the version and update checks, and the settings window, each moved out of deck-core (#1367); `initCore` and `initSettings` build them
+- `@iracedeck/replay-store`, `@iracedeck/diagnostics`, `@iracedeck/app-updates`, `@iracedeck/settings-window` — the per-session replay store, the watchdog / resource monitor / CPU profile capture and the Telemetry Snapshot's state-section registry (#1387), the version and update checks, and the settings window, each moved out of deck-core (#1367); `initCore` and `initSettings` build them, except the replay store, which `initReplay` builds (#1467)
+- `@iracedeck/replay-engine` — the iRacing replay engine (#1467): the replay command gate, the cursor, jump playback, seek, the paced search, the speed state, the camera-switch waiter and the Jump to Fastest Lap / Jump to Race Start walks, shared by Replay Control, Replay Markers and the legacy replay actions. It imports no deck package and no settings: `initReplay` hands it the SDK controller, the replay and camera command surfaces, the clock, a logger and the two settings it reads through `configureReplayEngine`
 - `@iracedeck/deck-iracing` — iRacing's side of that seam: `SimIRacingConnection`, the `SimIRacingAction` base, the SDK singleton (`initializeSDK`, `getController`, `getCommands`), the app monitor and the other iRacing helpers
 - `@iracedeck/deck-adapter-elgato` — Elgato Stream Deck adapter implementing `IDeckPlatformAdapter`
 - `@iracedeck/deck-adapter-mirabox` — Mirabox adapter implementing `IDeckPlatformAdapter` via WebSocket
@@ -169,7 +170,7 @@ This allows the plugin to receive `applicationDidLaunch` and `applicationDidTerm
 
 ### Startup phases (`@iracedeck/plugin-runtime`)
 
-Every plugin starts through one composition root (#1349). Its `plugin.ts` is a shell: it builds the host's `IDeckPlatformAdapter` — and on Stream Deck a `PluginExtension` — and calls `startPlugin(host)`, which runs ten synchronous phases from `packages/plugin-runtime/src/phases/`, called in this order by `src/start-plugin.ts`:
+Every plugin starts through one composition root (#1349). Its `plugin.ts` is a shell: it builds the host's `IDeckPlatformAdapter` — and on Stream Deck a `PluginExtension` — and calls `startPlugin(host)`, which runs eleven synchronous phases from `packages/plugin-runtime/src/phases/`, called in this order by `src/start-plugin.ts`:
 
 | # | Phase | Takes | Returns | Does |
 | --- | --- | --- | --- | --- |
@@ -179,10 +180,11 @@ Every plugin starts through one composition root (#1349). Its `plugin.ts` is a s
 | 4 | `initAudio` | `Core` | `Audio` | the audio engine rooted at the plugin's assets, the bus-volume and Race Engineer / Radar gate syncers |
 | 5 | `initVoicePacks` | `Core`, `Audio` | `VoicePacks` | scanner, storage, catalog, installer, the launch step (constructed, not started), the run-scoped pushes, the settings window's voice-pack commands |
 | 6 | `initRaceEngineer` | `Core`, `SimRuntime`, `Audio`, `VoicePacks` | — | the scenario engine, `race-engineer-wiring`'s `wireRaceEngineer` (caches, then `registerPitCrew`), then `setScripts` |
-| 7 | `initSettings` | `Core`, `Audio`, `VoicePacks` | `Settings` | the settings and replay stores, the startup notices, the CPU profile capture, the settings window, the global-settings listener with its store-ready block |
-| 8 | `registerActions` | `Core`, `Input` | — | window focus and the mouse pointer, the Always-mode focus listeners, then every action: `SHARED_ACTIONS`, then the extension's `extraActions` |
-| 9 | `startServices` | `Core`, `Input`, `Settings`, `VoicePacks` | — | `initGlobalSettings`, the launch step's start, the binding migrations, the extension's `start()`, the settings-window request, SimHub, the binding dispatcher, the app monitor, the elevation and replay-session subscribers |
-| 10 | `adapter.connect()` | — | — | always last: every handler is registered before the host can deliver an event |
+| 7 | `initSettings` | `Core`, `Audio`, `VoicePacks` | `Settings` | the settings store, the startup notices, the CPU profile capture, the settings window, the global-settings listener with its store-ready block |
+| 8 | `initReplay` | `Core` | `Replay` | the replay engine's env (`configureReplayEngine`) and the replay store with its exit flush and five record subscriptions |
+| 9 | `registerActions` | `Core`, `Input` | — | window focus and the mouse pointer, the Always-mode focus listeners, the replay busy indicator's logger, then every action: `SHARED_ACTIONS`, then the extension's `extraActions` |
+| 10 | `startServices` | `Core`, `Input`, `Settings`, `Replay`, `VoicePacks` | — | `initGlobalSettings`, the launch step's start, the binding migrations, the extension's `start()`, the settings-window request, SimHub, the binding dispatcher, the app monitor, the elevation and replay-session subscribers |
+| 11 | `adapter.connect()` | — | — | always last: every handler is registered before the host can deliver an event |
 
 A data dependency is a parameter, so a phase cannot run before what it needs exists: `initGlobalSettings` after the first pack refresh, the launch step after `initGlobalSettings`, the settings window after the store. The voice-pack phase's mutable state lives on the `VoicePacks` object, created before the service that calls back into it, so the old module scope's temporal-dead-zone hazard is gone by construction. An ordering with no data edge stays inside one phase, adjacent, with its comment:
 
@@ -228,7 +230,7 @@ startPlugin({ adapter, binDir });
 **CRITICAL** — what the phases rely on, each now held in one place for all three plugins:
 - `initGlobalSettings()` (`@iracedeck/settings`) takes a `SettingsHost`, which every `IDeckPlatformAdapter` is (#1365), and `initAppMonitor()` (`@iracedeck/deck-iracing`) takes an `IDeckPlatformAdapter`; neither takes `typeof StreamDeck`
 - `initGlobalSettings()` also takes a required `SettingsStore` (#993). It returns the schema-default cache immediately and loads the file in the background, so nothing may assume settings are present right after the call — gate on `isSettingsStoreReady()` or react in `onGlobalSettingsChange`. The store is created in `initSettings` before the settings-window controller, whose command-handler deps read `settingsStore.path` eagerly, and after `initPluginConfig()` (in `initCore`) — `getPluginPlatform()` throws without it
-- `initSettings` registers `process.on("exit", () => settingsStore.flushSync())` right after creating the store (and the same for the replay store) — without it the last ≤250 ms of settings writes are lost when the host stops the plugin
+- `initSettings` registers `process.on("exit", () => settingsStore.flushSync())` right after creating the store, and `initReplay` the same for the replay store (#1467) — without it the last ≤250 ms of settings writes, or the replay store's last debounced write, are lost when the host stops the plugin
 - The settings channel is published through `createSettingsChannelPublisher` (`@iracedeck/settings-window`), never by hand-rolled `updateGlobalSettings({ _settingsChannel })` + `adapter.setGlobalSettings(...)`: it must fire from the controller's `onStarted` hook as well as the store-ready block, and it owns the mirror-skip logging
 - All init calls are BEFORE `adapter.connect()` (handlers must register first)
 - `initializeEventBus()` comes before any publisher (e.g. `initializeSimEventsIracing`) or subscriber (actions via `getEventBus().subscribe(...)`); both are in `initCore`, ahead of every other phase
