@@ -228,6 +228,73 @@ describe("replayLeft (#1467)", () => {
       expect(pendingReplayTarget()).not.toBeNull();
     });
 
+    it("a probe sent after the edge holds it for its whole wait, counted from its send", async () => {
+      const w = watchLiveSession();
+
+      recordReplayTarget(FAR_FRAME, REPLAY, Date.now());
+      telemetry = SEEKING;
+      await tickFor(w, REPLAY_EXIT_GRACE_MS);
+
+      const edgeAt = Date.now();
+
+      // Five seconds on, the walk's next probe replaces the first, with a six-second wait of its own.
+      await tickFor(w, 5_000);
+
+      const probe = recordReplayTarget(FAR_FRAME + 60, SEEKING, Date.now(), { minGiveUpMs: 6_000 });
+
+      expect(probe.giveUpMs).toBe(6_000);
+      expect(probe.sentAt).toBe(edgeAt + 5_000);
+
+      // Six seconds from the edge is only one second into the probe's wait.
+      await tickFor(w, 6_000 - 50);
+
+      expect(Date.now()).toBe(edgeAt + 10_950);
+      expect(events).toEqual([]);
+
+      await tickFor(w, 50);
+
+      expect(events).toEqual(["left"]);
+    });
+
+    it("a probe sent after the edge that reads back emits nothing", async () => {
+      const w = watchLiveSession();
+
+      recordReplayTarget(FAR_FRAME, REPLAY, Date.now());
+      telemetry = SEEKING;
+      await tickFor(w, REPLAY_EXIT_GRACE_MS);
+      await tickFor(w, 5_000);
+      recordReplayTarget(FAR_FRAME + 60, SEEKING, Date.now(), { minGiveUpMs: 6_000 });
+      await tickFor(w, 3_000);
+
+      // The probe lands: it reads back and the replay is on screen again.
+      clearReplayTarget();
+      telemetry = { ...REPLAY, ReplayFrameNum: FAR_FRAME + 60 } as TelemetryData;
+      await tickFor(w, 20_000);
+
+      expect(events).toEqual([]);
+    });
+
+    it("a target recorded after the edge but not yet sent holds it from the edge", async () => {
+      const w = watchLiveSession();
+
+      telemetry = SEEKING;
+      await tickFor(w, REPLAY_EXIT_GRACE_MS);
+
+      const edgeAt = Date.now();
+
+      // No target and the seek showing: held for the flat three seconds. A jump's press records its target unsent.
+      await tickFor(w, 1_000);
+      recordReplayTarget(FAR_FRAME, SEEKING, Date.now(), { sent: false, minGiveUpMs: 6_000 });
+      await tickFor(w, 5_000 - 50);
+
+      expect(Date.now()).toBe(edgeAt + 5_950);
+      expect(events).toEqual([]);
+
+      await tickFor(w, 50);
+
+      expect(events).toEqual(["left"]);
+    });
+
     it("the hold lapses on its own timer when no tick comes", async () => {
       const w = watchLiveSession();
       const target = recordReplayTarget(FAR_FRAME, REPLAY, Date.now());

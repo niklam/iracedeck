@@ -1077,17 +1077,23 @@ describe("replay command gate", () => {
       watchedInReplay = false;
       watch.tick();
 
-      // A second jump after the edge: its own wait, counted from the edge, lapses before the gate gives it up.
+      // A second jump after the edge holds it for its whole wait, counted from its send (Decision 5).
       await wait(500);
       farJump(400_000);
       const target = pendingReplayTarget();
 
+      expect(target).not.toBeNull();
       expect(press(PLAY, "play")).toEqual({ kind: "held" });
 
-      for (let waited = 0; waited < 30_000 && departures.length === 0; waited += 50) {
-        await wait(50);
-        watch.tick();
-      }
+      // The clock alone moves, so the gate's poll does not run: the watch's tick lands on the instant the target's
+      // wait lapses, before the gate has given the target up, as a tick and the gate's poll may meet in a live session.
+      vi.setSystemTime(target!.sentAt + target!.giveUpMs - 1);
+      watch.tick();
+
+      expect(departures).toEqual([]);
+
+      vi.setSystemTime(target!.sentAt + target!.giveUpMs);
+      watch.tick();
 
       expect(departures).toEqual(["left"]);
       expect(pendingReplayTarget()?.id).toBe(target?.id);

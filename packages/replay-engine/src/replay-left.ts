@@ -15,8 +15,10 @@
  * plugin makes itself; a lap walk's first probe on a long tape is one. So
  * while the state reads false and a move of the plugin's own stands, `left`
  * waits: a position target that has not read back holds it for that target's
- * own wait (`giveUpMs`), a seek that shows with no target for
- * {@link REPLAY_TARGET_GIVE_UP_MS}, both counted from the edge. `left` goes out
+ * own wait (`giveUpMs`), counted from the edge or, for a target sent after it
+ * (a walk's next probe), from its send, so it gets its whole wait; a seek that
+ * shows with no target holds it for {@link REPLAY_TARGET_GIVE_UP_MS} from the
+ * edge. `left` goes out
  * once nothing holds it with the state still false; a state that reads true
  * again first emits nothing. The hold is bounded so the event can still fire
  * during a walk, which always has a target out. A disconnect is not held.
@@ -100,12 +102,14 @@ function clearTimer(w: Watch): void {
 /**
  * Until when a move of the plugin's own holds a departure first read at
  * `edgeAt`, or null when nothing holds it: a standing target for its own
- * wait, else a seek that shows for {@link REPLAY_TARGET_GIVE_UP_MS}.
+ * wait, else a seek that shows for {@link REPLAY_TARGET_GIVE_UP_MS}. A target
+ * sent after the edge counts its wait from its send; one not sent yet, whose
+ * `sentAt` is only when it was recorded, counts from the edge.
  */
 function heldUntil(edgeAt: number, telemetry: TelemetryData | null): number | null {
   const target = pendingReplayTarget();
 
-  if (target !== null) return edgeAt + target.giveUpMs;
+  if (target !== null) return (target.sent ? Math.max(edgeAt, target.sentAt) : edgeAt) + target.giveUpMs;
 
   if (isSeeking(telemetry)) return edgeAt + REPLAY_TARGET_GIVE_UP_MS;
 
