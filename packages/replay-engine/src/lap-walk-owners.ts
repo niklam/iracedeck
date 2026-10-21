@@ -7,7 +7,7 @@
  * waits out its own wait.
  */
 import { cancelReplayCursorOwnerIf } from "./replay-cursor.js";
-import { onReplayLeft } from "./replay-left.js";
+import { onReplayLeft, REPLAY_LEFT_CANCEL } from "./replay-left.js";
 
 /** The owner name the Jump to Fastest Lap walk claims the replay cursor under. */
 export const FASTEST_LAP_WALK_OWNER = "jump-to-fastest-lap walk";
@@ -25,9 +25,6 @@ export const LAP_WALK_OWNERS: readonly string[] = [FASTEST_LAP_WALK_OWNER, RACE_
 export function cancelLapWalks(by: string): string | null {
   return cancelReplayCursorOwnerIf(LAP_WALK_OWNERS, by);
 }
-
-/** What a lap walk's claim is cancelled by when the replay is left or the sim goes away. */
-const REPLAY_LEFT_CANCEL = "replay-left";
 
 // A walk stops when the replay is left (#1467): it unwinds at its next await and its press resolves as cancelled.
 onReplayLeft(() => {

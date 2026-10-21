@@ -76,7 +76,7 @@ import {
 import { engineEnv, engineLogger, engineReads, type ReplayCommandSurface } from "./replay-engine-env.js";
 import { frameBeside, planFrameMove } from "./replay-frame-move.js";
 import { isSameSpeed, readReplayJumpPlayback, type ReplaySpeed, resolveReplayJumpSpeed } from "./replay-jump-speed.js";
-import { onReplayLeft } from "./replay-left.js";
+import { onReplayLeft, REPLAY_LEFT_CANCEL } from "./replay-left.js";
 import {
   clearReplayTarget,
   markReplayTargetSent,
@@ -2149,7 +2149,7 @@ function clearUnsent(handle: ReplayJumpGateHandle): void {
 // A take of the cursor ends the jump that held it. A press, or another replay jump, leaves the gate owing
 // its seek when it was still in its pause; anything else (a camera switch stopping a lap walk, #1467) sends
 // no replay command, and an unsent seek is then never sent.
-onReplayCursorTaken(() => {
+onReplayCursorTaken((by) => {
   const jump = held;
 
   if (jump === null || jump.claim.cancelledBy !== null) return;
@@ -2164,7 +2164,8 @@ onReplayCursorTaken(() => {
 
   batch(now, () => {
     if (sameRun && jump.origin !== undefined) sameRunEnds.set(jump.origin, "replaced");
-    else noteEnd(jump.origin, "underWay", "claim-taken");
+    // A walk stopped because the replay was left (#1467) ended with the replay, not by a take of another press.
+    else noteEnd(jump.origin, "underWay", by === REPLAY_LEFT_CANCEL ? "replay-left" : "claim-taken");
 
     const target = pendingReplayTarget();
     const ownTarget = jump.target !== null && target !== null && target.id === jump.target.id;

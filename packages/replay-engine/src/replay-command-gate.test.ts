@@ -1,6 +1,7 @@
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { FASTEST_LAP_WALK_OWNER } from "./lap-walk-owners.js";
 import {
   _resetReplayCommandGate,
   getReplayGateRecord,
@@ -1066,6 +1067,30 @@ describe("replay command gate", () => {
       expect(departures).toEqual(["left", "disconnected"]);
       expect(ends).toContainEqual({ origin: "again", reason: "disconnected" });
       expect(getReplayGateRecord().search).toBeNull();
+    });
+
+    it("files a lap walk stopped by leaving as replay-left, not as a take by another press", () => {
+      setUp({ frame: 2_000 });
+      const ends: Array<{ origin: string; reason: string }> = [];
+
+      subscribeReplayGate((notice) => {
+        for (const end of notice.ended)
+          if (end.fact === "underWay") ends.push({ origin: notice.origin, reason: end.reason });
+      });
+
+      let watchedInReplay = true;
+      const watch = watchReplayLeft({ replayState: () => ({ inReplay: watchedInReplay }), telemetry: () => DRIVING });
+      const walk = beginReplayJump(FASTEST_LAP_WALK_OWNER, null, undefined, Date.now(), { origin: "walk" });
+
+      expect(getReplayGateView("walk").underWay).not.toBeNull();
+
+      watchedInReplay = false;
+      watch.tick();
+
+      expect(walk.claim.cancelledBy).toBe("replay-left");
+      expect(ends).toContainEqual({ origin: "walk", reason: "replay-left" });
+      expect(ends).not.toContainEqual({ origin: "walk", reason: "claim-taken" });
+      walk.end();
     });
 
     it("keeps a jump's target and the press waiting on it through left", async () => {

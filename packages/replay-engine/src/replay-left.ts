@@ -47,6 +47,13 @@ export interface ReplayLeftEvent {
 export const REPLAY_LEFT_SUBSCRIBER_ID = "replay-engine";
 
 /**
+ * The name a departure takes the replay cursor under: a lap walk's claim is
+ * cancelled by it (`lap-walk-owners.ts`), and the gate files the walk's fact
+ * as ended by `replay-left`, not as a take by another press.
+ */
+export const REPLAY_LEFT_CANCEL = "replay-left";
+
+/**
  * Who is told of a departure. Module wiring, registered once at load, not
  * state: {@link _resetReplayLeft} leaves it alone, as `_resetReplayCursor`
  * leaves the cursor's taken listeners, or the first reset would unwire the
