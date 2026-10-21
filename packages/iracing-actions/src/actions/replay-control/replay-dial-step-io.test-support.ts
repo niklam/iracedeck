@@ -5,11 +5,11 @@
  * only by tests; nothing in the plugin bundle reaches it.
  */
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
+import type { ReplayPosition } from "@iracedeck/replay-engine";
 import type { LapStartListEntry, ReplaySessionStart, ReplaySessionStore } from "@iracedeck/replay-store";
 import { type Mock, vi } from "vitest";
 
 import type { ReplaySettledOutcome } from "../../shared/replay-command-gate.js";
-import type { ReplayPosition } from "../../shared/replay-position-state.js";
 import type { ReplayDialStepIo, ReplaySpeed } from "./replay-control-dial-mode.js";
 import type { RecordStepResult, RecordStepSource } from "./replay-record-step.js";
 

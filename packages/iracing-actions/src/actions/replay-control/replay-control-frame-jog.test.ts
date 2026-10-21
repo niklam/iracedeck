@@ -1,8 +1,8 @@
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
+import type { ReplayPosition } from "@iracedeck/replay-engine";
 import { describe, expect, it, vi } from "vitest";
 
-import type { ReplayPosition } from "../../shared/replay-position-state.js";
 import type { ReplayDialModeIo, ReplaySpeed } from "./replay-control-dial-mode.js";
 import { ReplayControlDialSettings } from "./replay-control-dial-settings.js";
 import { describeReplayPosition, formatReplayTime, frameJogMode } from "./replay-control-frame-jog.js";

@@ -6,6 +6,16 @@
  * runner's part of "The origin token", under Testing.
  */
 import { type ILogger, silentLogger } from "@iracedeck/logger";
+import {
+  _configureReplayEngine,
+  _resetReplayCursor,
+  _resetReplayPositionState,
+  _resetReplaySpeedState,
+  currentReplayCursorOwner,
+  keepDialPendingSpeed,
+  noteDialSpeedSent,
+  resolveLiveSpeed,
+} from "@iracedeck/replay-engine";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -17,9 +27,7 @@ import {
   subscribeReplayGate,
 } from "../../shared/replay-command-gate.js";
 import { fakeReplay, type FakeReplay, type FakeReplayOptions } from "../../shared/replay-command-gate.test-support.js";
-import { _resetReplayCursor, currentReplayCursorOwner } from "../../shared/replay-cursor.js";
 import { beginReplayJump, runReplayJump } from "../../shared/replay-jump-playback.js";
-import { _resetReplayPositionState } from "../../shared/replay-position-state.js";
 import {
   _configureReplaySearchQueue,
   _resetReplaySearchQueue,
@@ -35,18 +43,22 @@ import {
   SEARCH_QUEUE_MAX,
   setReplaySearchQueueLogger,
 } from "./replay-search-queue.js";
-import {
-  _resetReplaySpeedState,
-  keepDialPendingSpeed,
-  noteDialSpeedSent,
-  resolveLiveSpeed,
-} from "./replay-speed-state.js";
 
 const { mockGetGlobalSettings } = vi.hoisted(() => ({
   mockGetGlobalSettings: vi.fn((): Record<string, unknown> => ({})),
 }));
 
 vi.mock("@iracedeck/settings", () => ({ getGlobalSettings: mockGetGlobalSettings }));
+
+// The engine reads the two replay settings through its env (#1467); read them from the settings mock the cases set.
+const engineSetting = (key: string): unknown => (mockGetGlobalSettings() as Record<string, unknown> | undefined)?.[key];
+
+_configureReplayEngine({
+  settings: {
+    replayJumpPlayback: () => engineSetting("replayJumpPlayback"),
+    fastestLapSearchDelayMs: () => engineSetting("fastestLapSearchDelayMs"),
+  },
+});
 
 vi.mock("@iracedeck/deck-iracing", () => ({
   getCommands: vi.fn(() => {

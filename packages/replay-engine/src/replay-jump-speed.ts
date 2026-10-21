@@ -7,7 +7,8 @@
  * each other.
  */
 import { parseReplayJumpPlayback, type ReplayJumpPlayback } from "@iracedeck/app-constants";
-import { getGlobalSettings } from "@iracedeck/settings";
+
+import { engineEnv } from "./replay-engine-env.js";
 
 /** A replay speed in the units `setPlaySpeed` takes: in slow motion `speed` is the divisor (5 = 1/5x). 0 is paused. */
 export interface ReplaySpeed {
@@ -20,7 +21,7 @@ export const NORMAL_SPEED: ReplaySpeed = { speed: 1, slowMotion: false };
 
 /** The live **Replay jump playback** setting; anything unreadable is `remember`. */
 export function readReplayJumpPlayback(): ReplayJumpPlayback {
-  return parseReplayJumpPlayback((getGlobalSettings() as Record<string, unknown>).replayJumpPlayback);
+  return parseReplayJumpPlayback(engineEnv().settings.replayJumpPlayback());
 }
 
 /**
@@ -39,7 +40,20 @@ export function resolveReplayJumpSpeed(mode: ReplayJumpPlayback, captured: Repla
   }
 }
 
-/** Two speeds are the same when the numbers match; the slow-motion flag means nothing on a paused replay. */
+/** How close two speed values must be to count as the same speed. */
+const SAME_SPEED_EPSILON = 1e-6;
+
+/**
+ * A replay speed as one signed number: 8x is 8, -1/4x (`{ -4, true }`) is
+ * -0.25, paused is 0, whatever the slow-motion flag says.
+ */
+function speedValue(s: ReplaySpeed): number {
+  if (s.speed === 0) return 0;
+
+  return s.slowMotion ? Math.sign(s.speed) / Math.abs(s.speed) : s.speed;
+}
+
+/** Whether two replay speeds are the same speed, whatever shape each was written in. */
 export function isSameSpeed(a: ReplaySpeed, b: ReplaySpeed): boolean {
-  return a.speed === b.speed && (a.speed === 0 || a.slowMotion === b.slowMotion);
+  return Math.abs(speedValue(a) - speedValue(b)) < SAME_SPEED_EPSILON;
 }

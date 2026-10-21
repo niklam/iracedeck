@@ -1,8 +1,8 @@
+import { formatSpeedDisplay } from "@iracedeck/replay-engine";
 import { describe, expect, it } from "vitest";
 
 import type { ReplaySpeed } from "./replay-control-dial-mode.js";
 import { parseSpeedStops, SPEED_STOP_TOKENS } from "./replay-control-dial-settings.js";
-import { formatSpeedDisplay } from "./replay-speed-format.js";
 import { buildLadder, canStep, isSameSpeed, speedValue, stopFromToken, walkLadder } from "./replay-speed-ladder.js";
 
 /** A ladder as the text the dial shows, so a failure reads as speeds. */

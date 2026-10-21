@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
+import { _configureReplayEngine, _resetReplayEngineEnv } from "./replay-engine-env.js";
 import {
   readFastestLapSearchDelayMs,
   readReplayJumpTimeoutMs,
@@ -10,22 +11,13 @@ import {
   STABILIZATION_TIMEOUT_MULTIPLIER,
 } from "./replay-timing.js";
 
-const { mockGetGlobalSettings } = vi.hoisted(() => ({
-  mockGetGlobalSettings: vi.fn((): Record<string, unknown> => ({})),
-}));
-
-vi.mock("@iracedeck/settings", () => ({
-  getGlobalSettings: mockGetGlobalSettings,
-}));
-
 function setDelay(value: unknown): void {
-  mockGetGlobalSettings.mockReturnValue({ fastestLapSearchDelayMs: value });
+  _configureReplayEngine({ settings: { fastestLapSearchDelayMs: () => value, replayJumpPlayback: () => undefined } });
 }
 
 describe("replay-timing", () => {
   beforeEach(() => {
-    mockGetGlobalSettings.mockReset();
-    mockGetGlobalSettings.mockReturnValue({});
+    _resetReplayEngineEnv();
   });
 
   describe("readFastestLapSearchDelayMs", () => {

@@ -1,19 +1,18 @@
 import { ReplayPosMode, replaySpeedToSdk, type TelemetryData } from "@iracedeck/iracing-sdk";
+import {
+  _configureReplayEngine,
+  _resetReplayCursor,
+  _resetReplayPositionState,
+  cancelReplayCursorOwner,
+  claimReplayCursor,
+  clearReplayTarget,
+  currentReplayCursorOwner,
+  pendingReplayTarget,
+} from "@iracedeck/replay-engine";
+import { withSteppedReplayState } from "@iracedeck/replay-engine/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { _configureReplayCommandGate, _resetReplayCommandGate } from "../../shared/replay-command-gate.js";
-import {
-  _resetReplayCursor,
-  cancelReplayCursorOwner,
-  claimReplayCursor,
-  currentReplayCursorOwner,
-} from "../../shared/replay-cursor.js";
-import {
-  _resetReplayPositionState,
-  clearReplayTarget,
-  pendingReplayTarget,
-} from "../../shared/replay-position-state.js";
-import { withSteppedReplayState } from "../../shared/test-support/replay-state.js";
 import { REPLAY_EXIT_GRACE_MS } from "./replay-markers-ops.js";
 import {
   buildMarker,
@@ -179,6 +178,17 @@ vi.mock("@iracedeck/settings", () => ({
   getGlobalColors: vi.fn(() => ({})),
   getGlobalSettings: mocks.getGlobalSettings,
 }));
+
+// The engine reads the two replay settings through its env (#1467); read them from the settings mock the cases set.
+const engineSetting = (key: string): unknown =>
+  (mocks.getGlobalSettings() as Record<string, unknown> | undefined)?.[key];
+
+_configureReplayEngine({
+  settings: {
+    replayJumpPlayback: () => engineSetting("replayJumpPlayback"),
+    fastestLapSearchDelayMs: () => engineSetting("fastestLapSearchDelayMs"),
+  },
+});
 
 type Sdk = {
   subscribe: ReturnType<typeof vi.fn>;

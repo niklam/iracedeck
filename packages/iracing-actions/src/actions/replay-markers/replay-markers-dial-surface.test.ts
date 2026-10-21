@@ -1,4 +1,14 @@
 import { ReplayPosMode, replaySpeedToSdk, type TelemetryData } from "@iracedeck/iracing-sdk";
+import {
+  _configureReplayEngine,
+  _resetReplayCursor,
+  _resetReplayPositionState,
+  cancelReplayCursorOwner,
+  claimReplayCursor,
+  currentReplayCursorOwner,
+  pendingReplayTarget,
+} from "@iracedeck/replay-engine";
+import { steppedReplayState } from "@iracedeck/replay-engine/testing";
 import type { ReplayMarker, ReplaySessionStore } from "@iracedeck/replay-store";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -8,14 +18,6 @@ import {
   _resetReplayCommandGate,
   getReplayGateView,
 } from "../../shared/replay-command-gate.js";
-import {
-  _resetReplayCursor,
-  cancelReplayCursorOwner,
-  claimReplayCursor,
-  currentReplayCursorOwner,
-} from "../../shared/replay-cursor.js";
-import { _resetReplayPositionState, pendingReplayTarget } from "../../shared/replay-position-state.js";
-import { steppedReplayState } from "../../shared/test-support/replay-state.js";
 import { buildTriggerDescription, ReplayMarkersDialSurface } from "./replay-markers-dial-surface.js";
 import {
   CONFIRMATION_FLASH_MS,
@@ -71,6 +73,17 @@ vi.mock("@iracedeck/deck-iracing", () => ({
 vi.mock("@iracedeck/settings", () => ({
   getGlobalSettings: mocks.getGlobalSettings,
 }));
+
+// The engine reads the two replay settings through its env (#1467); read them from the settings mock the cases set.
+const engineSetting = (key: string): unknown =>
+  (mocks.getGlobalSettings() as Record<string, unknown> | undefined)?.[key];
+
+_configureReplayEngine({
+  settings: {
+    replayJumpPlayback: () => engineSetting("replayJumpPlayback"),
+    fastestLapSearchDelayMs: () => engineSetting("fastestLapSearchDelayMs"),
+  },
+});
 
 vi.mock("@iracedeck/deck-core", async () => {
   // deck-core's dial-gesture and icon-update-throttle modules, reached by PATH

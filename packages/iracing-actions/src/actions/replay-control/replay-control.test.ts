@@ -10,6 +10,19 @@ import {
   TrkLoc,
 } from "@iracedeck/iracing-sdk";
 import {
+  _configureReplayEngine,
+  _resetReplayCursor,
+  _resetReplayPositionState,
+  _resetReplaySpeedState,
+  cancelReplayCursorOwner,
+  claimReplayCursor,
+  noteDialSpeedSent,
+  pendingReplayTarget,
+  rememberedSpeed,
+  resolveLiveSpeed,
+} from "@iracedeck/replay-engine";
+import { withSteppedReplayState } from "@iracedeck/replay-engine/testing";
+import {
   getReplaySessionStore,
   type IncidentListing,
   isReplaySessionStoreInitialized,
@@ -33,10 +46,7 @@ import {
   subscribeReplayGate,
 } from "../../shared/replay-command-gate.js";
 import { type FakeReplay, fakeReplay } from "../../shared/replay-command-gate.test-support.js";
-import { _resetReplayCursor, cancelReplayCursorOwner, claimReplayCursor } from "../../shared/replay-cursor.js";
 import { beginReplayJump, runReplayJump } from "../../shared/replay-jump-playback.js";
-import { _resetReplayPositionState, pendingReplayTarget } from "../../shared/replay-position-state.js";
-import { withSteppedReplayState } from "../../shared/test-support/replay-state.js";
 import { ReplayControlDialSettings } from "./replay-control-dial-settings.js";
 import type { ReplayControlDialHost } from "./replay-control-dial-surface.js";
 import {
@@ -51,7 +61,6 @@ import {
   parseSpeedSetting,
   ReplayControl,
 } from "./replay-control.js";
-import { _resetReplaySpeedState, noteDialSpeedSent, rememberedSpeed, resolveLiveSpeed } from "./replay-speed-state.js";
 
 // Mock all replay-control icon SVGs
 vi.mock("@iracedeck/icons/replay-control/play-pause.svg", () => ({
@@ -368,6 +377,17 @@ vi.mock("@iracedeck/settings", () => ({
   getGlobalColors: vi.fn(() => ({})),
   getGlobalSettings: vi.fn(() => ({ fastestLapSearchDelayMs: 400 })),
 }));
+
+// The engine reads the two replay settings through its env (#1467); read them from the settings mock the cases set.
+const engineSetting = (key: string): unknown =>
+  (vi.mocked(getGlobalSettings)() as Record<string, unknown> | undefined)?.[key];
+
+_configureReplayEngine({
+  settings: {
+    replayJumpPlayback: () => engineSetting("replayJumpPlayback"),
+    fastestLapSearchDelayMs: () => engineSetting("fastestLapSearchDelayMs"),
+  },
+});
 
 /**
  * Runs the fake clock until a press has done all it will, for a test whose

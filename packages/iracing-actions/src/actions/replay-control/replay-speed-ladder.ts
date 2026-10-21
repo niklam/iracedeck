@@ -8,9 +8,10 @@
  * and signed: clockwise always moves toward the fastest forward stop, so from
  * −8x a clockwise detent goes to −4x. 0x is a stop like any other.
  */
+import { isSameSpeed, parseSpeedSetting } from "@iracedeck/replay-engine";
+
 import type { ReplaySpeed } from "./replay-control-dial-mode.js";
 import { SPEED_STOP_TOKENS, type SpeedStops, type SpeedStopToken } from "./replay-control-dial-settings.js";
-import { parseSpeedSetting } from "./replay-speed-format.js";
 
 /**
  * How close two {@link speedValue}s must be to count as the same speed. The
@@ -34,10 +35,7 @@ export function speedValue(s: ReplaySpeed): number {
   return s.slowMotion ? Math.sign(s.speed) / Math.abs(s.speed) : s.speed;
 }
 
-/** Whether two replay speeds are the same speed, whatever shape each was written in. */
-export function isSameSpeed(a: ReplaySpeed, b: ReplaySpeed): boolean {
-  return Math.abs(speedValue(a) - speedValue(b)) < SAME_SPEED_EPSILON;
-}
+export { isSameSpeed };
 
 /** The forward stop a `dial.speedStops` token names: `"s4"` is ¼x (`{ 4, true }`), `"2"` is 2x. */
 export function stopFromToken(token: SpeedStopToken): ReplaySpeed {

@@ -59,36 +59,37 @@
 import { getCommands, getController } from "@iracedeck/deck-iracing";
 import { ReplayPosMode, replaySpeedFromTelemetry, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { type ILogger, silentLogger } from "@iracedeck/logger";
-
 import {
   cancelReplayCursorOwner,
   claimReplayCursor,
+  clearReplayTarget,
+  frameBeside,
+  isPaused,
+  isSameSpeed,
+  isSeeking,
+  markReplayTargetSent,
   onReplayCursorTaken,
   pendingReplayJumpSpeed,
-  type ReplayCursorClaim,
-} from "./replay-cursor.js";
-import { frameBeside, planFrameMove } from "./replay-frame-move.js";
-import { isSameSpeed, readReplayJumpPlayback, type ReplaySpeed, resolveReplayJumpSpeed } from "./replay-jump-speed.js";
-import {
-  clearReplayTarget,
-  markReplayTargetSent,
   pendingReplayTarget,
   pendingReplayTargetPosition,
+  planFrameMove,
+  readFastestLapSearchDelayMs,
+  readReplayJumpPlayback,
+  readReplayJumpTimeoutMs,
   recordReplayTarget,
+  REPLAY_JUMP_POLL_MS,
+  type ReplayCursorClaim,
   type ReplayPosition,
+  replaySeekWaitMs,
+  type ReplaySpeed,
   type ReplayTarget,
   replayTargetGiveUpMs,
+  resolveReplayJumpSpeed,
   resolveReplayPosition,
   settleReplayTarget,
-} from "./replay-position-state.js";
-import { isPaused, isSeeking, replaySeekWaitMs } from "./replay-seek.js";
-import {
-  readFastestLapSearchDelayMs,
-  readReplayJumpTimeoutMs,
-  REPLAY_JUMP_POLL_MS,
   STABILIZATION_POLL_INTERVAL_MS,
   STABILIZATION_TIMEOUT_MULTIPLIER,
-} from "./replay-timing.js";
+} from "@iracedeck/replay-engine";
 
 // ---------------------------------------------------------------------------
 // Commands

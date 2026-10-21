@@ -15,24 +15,19 @@
  */
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
+import type { ReplayPosition, ReplaySpeed } from "@iracedeck/replay-engine";
 
 import type { DialNeighbours, DialSideMarks } from "../../shared/dial-box.js";
 import type { ReplaySettledOutcome } from "../../shared/replay-command-gate.js";
-import type { ReplayPosition } from "../../shared/replay-position-state.js";
 import type { ReplayControlDialSettings } from "./replay-control-dial-settings.js";
 import type { RecordStepResult, RecordStepSource, RecordStepSpec } from "./replay-record-step.js";
 import type { ReplaySearchTarget } from "./replay-search-queue.js";
 
 /**
- * A replay speed in the shape `setPlaySpeed(speed, slowMotion)` takes and
- * `replaySpeedFromTelemetry` returns: in slow motion `speed` is the signed
- * divisor (−¼x is `{ speed: -4, slowMotion: true }`), and paused is
- * `{ speed: 0, slowMotion: false }`.
+ * A replay speed in the shape `setPlaySpeed(speed, slowMotion)` takes: the
+ * engine's type, re-exported here (#1467).
  */
-export interface ReplaySpeed {
-  speed: number;
-  slowMotion: boolean;
-}
+export type { ReplaySpeed };
 
 /**
  * What the surface hands a mode. Every command goes out through these helpers,

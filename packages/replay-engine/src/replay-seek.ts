@@ -29,6 +29,7 @@
  * wait: a replay command from any other key cancels the claim, and the wait
  * then reports `cancelled` at its next poll instead of running to its timeout.
  */
+import { now, sleep } from "./engine-clock.js";
 import type { ReplayCursorClaim } from "./replay-cursor.js";
 
 /** The telemetry fields the waits read. */
@@ -87,8 +88,6 @@ export interface ReplaySeekOptions<T extends ReplaySeekSample> extends ReplayWai
    */
   requireReplay?: boolean;
 }
-
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Whether a sample shows the cursor on `frame` — and, with `requireSession`, out of the `SessionNum = -1` transient. */
 export function isLandedOn<T extends ReplaySeekSample>(
@@ -156,12 +155,12 @@ export async function waitForReplay<T extends ReplaySeekSample>(
 
   if (claim.cancelledBy !== null) return { kind: "cancelled", by: claim.cancelledBy };
 
-  const startedAt = Date.now();
+  const startedAt = now();
   const latest = maxWaitMs === undefined ? Infinity : startedAt + maxWaitMs;
   let deadline = startedAt + timeoutMs;
   let last: T | null = null;
 
-  while (Date.now() < Math.min(deadline, latest)) {
+  while (now() < Math.min(deadline, latest)) {
     await sleep(pollMs);
 
     if (claim.cancelledBy !== null) return { kind: "cancelled", by: claim.cancelledBy };
@@ -170,7 +169,7 @@ export async function waitForReplay<T extends ReplaySeekSample>(
 
     if (reached(last)) return { kind: "reached", telemetry: last };
 
-    if (seeking?.(last)) deadline = Date.now() + timeoutMs;
+    if (seeking?.(last)) deadline = now() + timeoutMs;
   }
 
   return { kind: "timeout", telemetry: last };

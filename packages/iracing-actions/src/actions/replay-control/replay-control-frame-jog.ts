@@ -15,11 +15,9 @@
  * paused there.
  */
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
+import { formatSpeedDisplay, type FrameMove, planFrameMove, type ReplayPosition } from "@iracedeck/replay-engine";
 
-import { type FrameMove, planFrameMove } from "../../shared/replay-frame-move.js";
-import type { ReplayPosition } from "../../shared/replay-position-state.js";
 import type { ReplayDialMode } from "./replay-control-dial-mode.js";
-import { formatSpeedDisplay } from "./replay-speed-format.js";
 
 /** The replay-cursor owner every Frame Jog command is sent under. */
 const CURSOR_OWNER = "dial-frame-jog";

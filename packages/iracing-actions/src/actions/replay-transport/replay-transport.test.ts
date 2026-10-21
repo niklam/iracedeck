@@ -1,4 +1,6 @@
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
+import { _resetReplayPositionState } from "@iracedeck/replay-engine";
+import { cursorTestEvent, type ReplayCursorProbe, stageReplayCursorProbe } from "@iracedeck/replay-engine/testing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -6,12 +8,6 @@ import {
   _resetReplayCommandGate,
   pressReplayCommand,
 } from "../../shared/replay-command-gate.js";
-import {
-  cursorTestEvent,
-  type ReplayCursorProbe,
-  stageReplayCursorProbe,
-} from "../../shared/replay-cursor.test-support.js";
-import { _resetReplayPositionState } from "../../shared/replay-position-state.js";
 import { generateReplayTransportSvg, ReplayTransport, ReplayTransportSettings } from "./replay-transport.js";
 
 vi.mock("@iracedeck/icons/replay-transport/play.svg", () => ({

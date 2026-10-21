@@ -67,6 +67,28 @@ import {
 } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 import {
+  acceptsGreenFallbackLanding,
+  cancelReplayCursorOwner,
+  cancelReplayCursorOwnerIf,
+  formatSpeedDisplay,
+  greenApproachFrame,
+  type GreenFlagTarget,
+  halvingProbeFrames,
+  isRaceStartUnavailable,
+  lastListedSessionNum,
+  noteTelemetrySpeed,
+  parseSpeedSetting,
+  readFastestLapSearchDelayMs,
+  type ReplayCursorClaim,
+  replaySeekWaitMs,
+  resolveGreenFallbackCar,
+  resolveGreenFlagTarget,
+  resolvePoleCarIdx,
+  seekReplayFrame,
+  STABILIZATION_POLL_INTERVAL_MS,
+  STABILIZATION_TIMEOUT_MULTIPLIER,
+} from "@iracedeck/replay-engine";
+import {
   getReplaySessionStore,
   type GreenLookup,
   type GreenQuery,
@@ -96,11 +118,6 @@ import {
   waitForReplayJumpsToSettle,
 } from "../../shared/replay-command-gate.js";
 import {
-  cancelReplayCursorOwner,
-  cancelReplayCursorOwnerIf,
-  type ReplayCursorClaim,
-} from "../../shared/replay-cursor.js";
-import {
   applyReplayJumpPlayback,
   beginReplayJump,
   describeReplayJump,
@@ -111,35 +128,16 @@ import {
   runReplayJump,
 } from "../../shared/replay-jump-playback.js";
 import { resolveReplayWalkStart } from "../../shared/replay-record-walk.js";
-import { replaySeekWaitMs, seekReplayFrame } from "../../shared/replay-seek.js";
-import {
-  readFastestLapSearchDelayMs,
-  STABILIZATION_POLL_INTERVAL_MS,
-  STABILIZATION_TIMEOUT_MULTIPLIER,
-} from "../../shared/replay-timing.js";
 import { unavailableLook } from "../../shared/unavailable-look.js";
-import {
-  acceptsGreenFallbackLanding,
-  greenApproachFrame,
-  type GreenFlagTarget,
-  isRaceStartUnavailable,
-  lastListedSessionNum,
-  resolveGreenFallbackCar,
-  resolveGreenFlagTarget,
-  resolvePoleCarIdx,
-} from "./green-flag-target.js";
-import { halvingProbeFrames } from "./lap-walk-probes.js";
 import { replayControlDialField } from "./replay-control-dial-settings.js";
 import { ReplayControlDialSurface } from "./replay-control-dial-surface.js";
 import { observeIncidentSearch } from "./replay-incident-observer.js";
 import { findRecordStep, RECORD_STEPS, type RecordStepMode, type RecordStepSource } from "./replay-record-step.js";
 import { setReplaySearchQueueLogger } from "./replay-search-queue.js";
-import { formatSpeedDisplay, parseSpeedSetting } from "./replay-speed-format.js";
-import { noteTelemetrySpeed } from "./replay-speed-state.js";
 
 // The speed text helpers moved to their own module so the dial surface shares
 // them (#1316); re-exported so this module's API is unchanged.
-export { formatSpeedDisplay, parseSpeedSetting } from "./replay-speed-format.js";
+export { formatSpeedDisplay, parseSpeedSetting } from "@iracedeck/replay-engine";
 
 const REPLAY_CONTROL_MODES = [
   "play-pause",

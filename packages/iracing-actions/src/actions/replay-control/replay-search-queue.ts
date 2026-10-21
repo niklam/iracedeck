@@ -43,6 +43,19 @@
 import { getController } from "@iracedeck/deck-iracing";
 import { replaySpeedFromTelemetry, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { type ILogger, silentLogger } from "@iracedeck/logger";
+import {
+  isPaused,
+  isSameSpeed,
+  keepDialPendingSpeed,
+  readFastestLapSearchDelayMs,
+  readReplayJumpTimeoutMs,
+  REPLAY_JUMP_MAX_WAIT_MS,
+  REPLAY_JUMP_POLL_MS,
+  type ReplayTarget,
+  STABILIZATION_POLL_INTERVAL_MS,
+  STABILIZATION_TIMEOUT_MULTIPLIER,
+  waitForReplay,
+} from "@iracedeck/replay-engine";
 
 import {
   getReplayGateRecord,
@@ -62,18 +75,6 @@ import {
   type ReplayJumpResult,
   type ReplaySpeed,
 } from "../../shared/replay-jump-playback.js";
-import { isSameSpeed } from "../../shared/replay-jump-speed.js";
-import type { ReplayTarget } from "../../shared/replay-position-state.js";
-import { isPaused, waitForReplay } from "../../shared/replay-seek.js";
-import {
-  readFastestLapSearchDelayMs,
-  readReplayJumpTimeoutMs,
-  REPLAY_JUMP_MAX_WAIT_MS,
-  REPLAY_JUMP_POLL_MS,
-  STABILIZATION_POLL_INTERVAL_MS,
-  STABILIZATION_TIMEOUT_MULTIPLIER,
-} from "../../shared/replay-timing.js";
-import { keepDialPendingSpeed } from "./replay-speed-state.js";
 
 /** What a paced search steps through. */
 export type ReplaySearchTarget = "lap" | "session" | "incident";

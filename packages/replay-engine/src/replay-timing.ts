@@ -4,7 +4,7 @@
  * jump and the shared jump sequence (`replay-jump-playback.ts`, #1276) all
  * time their waits from the same `fastestLapSearchDelayMs` setting.
  */
-import { getGlobalSettings } from "@iracedeck/settings";
+import { engineEnv } from "./replay-engine-env.js";
 
 /**
  * The shortest a jump waits for the pause, and for a landing iRacing is not
@@ -60,6 +60,9 @@ export const STABILIZATION_TIMEOUT_MULTIPLIER = 4;
  */
 export const STABILIZATION_POLL_INTERVAL_MS = 50;
 
+/** The gap the gate leaves between a held press and the next command: one stabilization poll. */
+export const HOLD_GAP_MS = STABILIZATION_POLL_INTERVAL_MS;
+
 /**
  * Default minimum gap after a replay lap-search broadcast before the next
  * command, when the `fastestLapSearchDelayMs` global setting isn't set. Even
@@ -85,7 +88,7 @@ const REPLAY_LAP_SEARCH_GAP_MAX_MS = 1000;
  * walker.
  */
 export function readFastestLapSearchDelayMs(): number {
-  const raw = (getGlobalSettings() as Record<string, unknown>).fastestLapSearchDelayMs;
+  const raw = engineEnv().settings.fastestLapSearchDelayMs();
   const value = typeof raw === "number" ? raw : Number(raw);
 
   if (!Number.isFinite(value)) return REPLAY_LAP_SEARCH_GAP_DEFAULT_MS;

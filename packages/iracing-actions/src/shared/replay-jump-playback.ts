@@ -56,6 +56,24 @@
  * No logger here: the outcome says what happened, and the caller logs it.
  */
 import { replaySpeedFromTelemetry, type TelemetryData } from "@iracedeck/iracing-sdk";
+import {
+  clearReplayJumpSpeed,
+  isPaused,
+  isSameSpeed,
+  isSeeking,
+  PAUSED,
+  pendingReplayJumpSpeed,
+  readReplayJumpPlayback,
+  readReplayJumpTimeoutMs,
+  recordReplayJumpSpeed,
+  REPLAY_JUMP_MAX_WAIT_MS,
+  REPLAY_JUMP_POLL_MS,
+  type ReplayCursorClaim,
+  type ReplayJumpSpeed,
+  type ReplaySpeed,
+  resolveReplayJumpSpeed,
+  waitForReplay,
+} from "@iracedeck/replay-engine";
 
 import {
   claimReplayCursorForJump,
@@ -71,24 +89,8 @@ import {
   sendReplayJumpSeek,
   takeWaitingReplaySpeed,
 } from "./replay-command-gate.js";
-import {
-  clearReplayJumpSpeed,
-  pendingReplayJumpSpeed,
-  recordReplayJumpSpeed,
-  type ReplayCursorClaim,
-  type ReplayJumpSpeed,
-} from "./replay-cursor.js";
-import {
-  isSameSpeed,
-  PAUSED,
-  readReplayJumpPlayback,
-  type ReplaySpeed,
-  resolveReplayJumpSpeed,
-} from "./replay-jump-speed.js";
-import { isPaused, isSeeking, waitForReplay } from "./replay-seek.js";
-import { readReplayJumpTimeoutMs, REPLAY_JUMP_MAX_WAIT_MS, REPLAY_JUMP_POLL_MS } from "./replay-timing.js";
 
-export { readReplayJumpPlayback, type ReplaySpeed, resolveReplayJumpSpeed } from "./replay-jump-speed.js";
+export { readReplayJumpPlayback, type ReplaySpeed, resolveReplayJumpSpeed } from "@iracedeck/replay-engine";
 export type { ReplayJumpResult } from "./replay-command-gate.js";
 
 /**

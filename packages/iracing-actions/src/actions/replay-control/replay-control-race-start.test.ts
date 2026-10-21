@@ -7,6 +7,14 @@
  * pinned here for both presses on this file's replay of laps and cars.
  */
 import { getCarNumberRawFromSessionInfo, type ReplayPosMode, type TelemetryData } from "@iracedeck/iracing-sdk";
+import {
+  _configureReplayEngine,
+  _resetReplayCursor,
+  _resetReplayPositionState,
+  cancelReplayCursorOwner,
+  GREEN_APPROACH_FRAMES,
+} from "@iracedeck/replay-engine";
+import { withSteppedReplayState } from "@iracedeck/replay-engine/testing";
 import type { GreenLookup, GreenQuery, LapStartLookup, LapStartQuery, LapStartRecord } from "@iracedeck/replay-store";
 import { getGlobalSettings } from "@iracedeck/settings";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -18,10 +26,6 @@ import {
   type ReplayGateFactEnd,
   subscribeReplayGate,
 } from "../../shared/replay-command-gate.js";
-import { _resetReplayCursor, cancelReplayCursorOwner } from "../../shared/replay-cursor.js";
-import { _resetReplayPositionState } from "../../shared/replay-position-state.js";
-import { withSteppedReplayState } from "../../shared/test-support/replay-state.js";
-import { GREEN_APPROACH_FRAMES } from "./green-flag-target.js";
 import { _resetFastestLapSessionCache, generateReplayControlSvg, ReplayControl } from "./replay-control.js";
 
 const { mockAssembleIcon } = vi.hoisted(() => ({
@@ -156,6 +160,17 @@ vi.mock("@iracedeck/settings", () => ({
   getGlobalColors: vi.fn(() => ({})),
   getGlobalSettings: vi.fn(() => ({})),
 }));
+
+// The engine reads the two replay settings through its env (#1467); read them from the settings mock the cases set.
+const engineSetting = (key: string): unknown =>
+  (vi.mocked(getGlobalSettings)() as Record<string, unknown> | undefined)?.[key];
+
+_configureReplayEngine({
+  settings: {
+    replayJumpPlayback: () => engineSetting("replayJumpPlayback"),
+    fastestLapSearchDelayMs: () => engineSetting("fastestLapSearchDelayMs"),
+  },
+});
 
 type KeyEvent = Parameters<ReplayControl["onKeyDown"]>[0];
 type AppearEvent = Parameters<ReplayControl["onWillAppear"]>[0];

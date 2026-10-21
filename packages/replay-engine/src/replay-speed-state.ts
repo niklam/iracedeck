@@ -35,9 +35,8 @@
  * Time is passed in, never read here. In memory only: a plugin restart starts
  * again at 1x, and nothing here belongs in persisted settings.
  */
-import { onReplayCursorTaken } from "../../shared/replay-cursor.js";
-import type { ReplaySpeed } from "./replay-control-dial-mode.js";
-import { isSameSpeed } from "./replay-speed-ladder.js";
+import { onReplayCursorTaken } from "./replay-cursor.js";
+import { isSameSpeed, type ReplaySpeed } from "./replay-jump-speed.js";
 
 /**
  * @internal Exported for testing

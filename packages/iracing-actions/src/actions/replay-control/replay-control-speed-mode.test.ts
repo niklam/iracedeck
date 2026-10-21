@@ -1,10 +1,10 @@
 import type { ILogger } from "@iracedeck/logger";
+import { _resetReplaySpeedState, noteTelemetrySpeed, reverseRememberedSpeed } from "@iracedeck/replay-engine";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ReplayDialModeIo, ReplaySpeed } from "./replay-control-dial-mode.js";
 import { ReplayControlDialSettings, SPEED_STOP_TOKENS } from "./replay-control-dial-settings.js";
 import { speedMode } from "./replay-control-speed-mode.js";
-import { _resetReplaySpeedState, noteTelemetrySpeed, reverseRememberedSpeed } from "./replay-speed-state.js";
 
 const ladderSpy = vi.hoisted(() => ({ buildLadder: vi.fn() }));
 

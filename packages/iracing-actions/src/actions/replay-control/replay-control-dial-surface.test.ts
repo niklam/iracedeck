@@ -5,6 +5,19 @@ import {
   replaySpeedToSdk,
   type TelemetryData,
 } from "@iracedeck/iracing-sdk";
+import {
+  _resetReplayCursor,
+  _resetReplayPositionState,
+  _resetReplaySpeedState,
+  cancelReplayCursorOwner,
+  claimReplayCursor,
+  currentReplayCursorOwner,
+  DIAL_SPEED_HOLD_MS,
+  lastListedSessionNum,
+  noteTelemetrySpeed,
+  rememberedSpeed,
+  REPLAY_TARGET_GIVE_UP_MS,
+} from "@iracedeck/replay-engine";
 import type { ReplaySessionStore } from "@iracedeck/replay-store";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -20,14 +33,6 @@ import {
   type ReplayGateNotice,
   subscribeReplayGate,
 } from "../../shared/replay-command-gate.js";
-import {
-  _resetReplayCursor,
-  cancelReplayCursorOwner,
-  claimReplayCursor,
-  currentReplayCursorOwner,
-} from "../../shared/replay-cursor.js";
-import { _resetReplayPositionState, REPLAY_TARGET_GIVE_UP_MS } from "../../shared/replay-position-state.js";
-import { lastListedSessionNum } from "./green-flag-target.js";
 import type { ReplayDialModeIo, ReplaySpeed } from "./replay-control-dial-mode.js";
 import { REPLAY_DIAL_MODES, ReplayControlDialSettings } from "./replay-control-dial-settings.js";
 import {
@@ -47,12 +52,6 @@ import { sessionMode } from "./replay-control-session-mode.js";
 import { speedMode } from "./replay-control-speed-mode.js";
 import { _resetTrackOrderTap, trackOrderMode } from "./replay-control-track-order-mode.js";
 import type { RecordStepSource } from "./replay-record-step.js";
-import {
-  _resetReplaySpeedState,
-  DIAL_SPEED_HOLD_MS,
-  noteTelemetrySpeed,
-  rememberedSpeed,
-} from "./replay-speed-state.js";
 
 /**
  * The paced search (#801) is another module's, and its runner is not under

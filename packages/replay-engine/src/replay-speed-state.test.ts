@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { _resetReplayCursor, cancelReplayCursorOwner, claimReplayCursor } from "../../shared/replay-cursor.js";
-import type { ReplaySpeed } from "./replay-control-dial-mode.js";
+import { _resetReplayCursor, cancelReplayCursorOwner, claimReplayCursor } from "./replay-cursor.js";
+import type { ReplaySpeed } from "./replay-jump-speed.js";
 import {
   _resetReplaySpeedState,
   clearDialPendingSpeed,

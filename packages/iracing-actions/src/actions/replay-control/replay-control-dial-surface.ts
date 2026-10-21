@@ -36,6 +36,20 @@ import {
 } from "@iracedeck/deck-core";
 import { replaySpeedFromTelemetry, type ReplayState, type TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
+import {
+  currentReplayCursorOwner,
+  DIAL_SPEED_HOLD_MS,
+  formatPlayCaption,
+  formatSpeedDisplay,
+  isSeeking,
+  keepDialPendingSpeed,
+  noteDialSpeedSent,
+  rememberedSpeed,
+  REPLAY_JUMP_MAX_WAIT_MS,
+  REPLAY_TARGET_GIVE_UP_MS,
+  resolveLiveSpeed,
+  reverseRememberedSpeed,
+} from "@iracedeck/replay-engine";
 
 import { type DialBoxArgs, type DialNeighbours, renderDialBox, resolveDialBoxColors } from "../../shared/dial-box.js";
 import { type DialInputEvent, hasDialInputContext } from "../../shared/dial-context.js";
@@ -55,12 +69,8 @@ import {
   waitForReplaySettled,
   waitingReplaySpeed,
 } from "../../shared/replay-command-gate.js";
-import { currentReplayCursorOwner } from "../../shared/replay-cursor.js";
 import { beginReplayJump, describeReplayJump, runReplayJump } from "../../shared/replay-jump-playback.js";
-import { REPLAY_TARGET_GIVE_UP_MS } from "../../shared/replay-position-state.js";
 import { resolveReplayWalkStart } from "../../shared/replay-record-walk.js";
-import { isSeeking } from "../../shared/replay-seek.js";
-import { REPLAY_JUMP_MAX_WAIT_MS } from "../../shared/replay-timing.js";
 import type {
   ReplayDialMode,
   ReplayDialModeIo,
@@ -93,15 +103,6 @@ import {
   pendingReplaySearch,
   queueReplaySearch,
 } from "./replay-search-queue.js";
-import { formatPlayCaption, formatSpeedDisplay } from "./replay-speed-format.js";
-import {
-  DIAL_SPEED_HOLD_MS,
-  keepDialPendingSpeed,
-  noteDialSpeedSent,
-  rememberedSpeed,
-  resolveLiveSpeed,
-  reverseRememberedSpeed,
-} from "./replay-speed-state.js";
 
 /** The dash box's default accent — border, label and value, each overridable. */
 const DIAL_ACCENT = "#3498db";

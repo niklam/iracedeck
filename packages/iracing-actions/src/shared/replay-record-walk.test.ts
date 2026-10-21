@@ -1,11 +1,10 @@
 import { REPLAY_EXIT_GRACE_MS, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { _resetReplayCursor, _resetReplayPositionState, pendingReplayTarget } from "@iracedeck/replay-engine";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { _configureReplayCommandGate, _resetReplayCommandGate, pressReplayCommand } from "./replay-command-gate.js";
 import { fakeReplay, type FakeReplay } from "./replay-command-gate.test-support.js";
-import { _resetReplayCursor } from "./replay-cursor.js";
 import { beginReplayJump, runReplayJump } from "./replay-jump-playback.js";
-import { _resetReplayPositionState, pendingReplayTarget } from "./replay-position-state.js";
 import {
   recordedIndexAt,
   type RecordedSpanRule,

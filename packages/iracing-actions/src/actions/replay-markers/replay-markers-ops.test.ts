@@ -1,5 +1,15 @@
 import { getCommands } from "@iracedeck/deck-iracing";
 import { ReplayPosMode, replaySpeedToSdk, type TelemetryData } from "@iracedeck/iracing-sdk";
+import {
+  _resetReplayCursor,
+  _resetReplayPositionState,
+  cancelReplayCursorOwner,
+  claimReplayCursor,
+  currentReplayCursorOwner,
+  pendingReplayJumpSpeed,
+  pendingReplayTarget,
+} from "@iracedeck/replay-engine";
+import { steppedReplayState, type SteppedReplayState } from "@iracedeck/replay-engine/testing";
 import { type ReplayMarker, type ReplaySessionStore } from "@iracedeck/replay-store";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -8,16 +18,7 @@ import {
   _resetReplayCommandGate,
   pressReplayCommand,
 } from "../../shared/replay-command-gate.js";
-import {
-  _resetReplayCursor,
-  cancelReplayCursorOwner,
-  claimReplayCursor,
-  currentReplayCursorOwner,
-  pendingReplayJumpSpeed,
-} from "../../shared/replay-cursor.js";
 import { describeReplayJump, type ReplayJumpOutcome } from "../../shared/replay-jump-playback.js";
-import { _resetReplayPositionState, pendingReplayTarget } from "../../shared/replay-position-state.js";
-import { steppedReplayState, type SteppedReplayState } from "../../shared/test-support/replay-state.js";
 import {
   followMarkerJump,
   jumpToMarkerFrame,

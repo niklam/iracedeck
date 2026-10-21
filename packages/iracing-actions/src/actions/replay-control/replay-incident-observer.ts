@@ -18,6 +18,12 @@
  */
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
+import {
+  readFastestLapSearchDelayMs,
+  REPLAY_JUMP_MAX_WAIT_MS,
+  STABILIZATION_POLL_INTERVAL_MS,
+  STABILIZATION_TIMEOUT_MULTIPLIER,
+} from "@iracedeck/replay-engine";
 import { type IncidentListing, REPLAY_FILE_FRAME_LAG, type ReplayIncident } from "@iracedeck/replay-store";
 
 import {
@@ -25,12 +31,6 @@ import {
   replaySearchCouldRunMs,
   waitForReplaySearchLanding,
 } from "../../shared/replay-command-gate.js";
-import {
-  readFastestLapSearchDelayMs,
-  REPLAY_JUMP_MAX_WAIT_MS,
-  STABILIZATION_POLL_INTERVAL_MS,
-  STABILIZATION_TIMEOUT_MULTIPLIER,
-} from "../../shared/replay-timing.js";
 
 /** An incident listing, widened with the case where no store was initialized. */
 export type ObservedIncidentListing = IncidentListing | { hit: false; reason: "no store" };

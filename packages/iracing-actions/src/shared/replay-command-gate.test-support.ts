@@ -23,10 +23,10 @@
  * every read and command.
  */
 import { ReplayPosMode, replaySpeedToSdk, type TelemetryData } from "@iracedeck/iracing-sdk";
+import type { ReplaySpeed } from "@iracedeck/replay-engine";
 import { vi } from "vitest";
 
 import type { ReplayCommandSurface, ReplaySearchKind } from "./replay-command-gate.js";
-import type { ReplaySpeed } from "./replay-jump-speed.js";
 
 /** Frames a sim update at iRacing's search rate. */
 const SEARCH_FRAMES_PER_UPDATE = 2048;

@@ -5,11 +5,11 @@
  * in-replay guard, the press gestures and every push to the screen. Design:
  * `docs/superpowers/specs/2026-10-04-issue-1316-replay-control-dial.md`.
  */
+import { formatPlayCaption, formatSpeedDisplay, rememberedSpeed } from "@iracedeck/replay-engine";
+
 import type { ReplayDialMode, ReplaySpeed } from "./replay-control-dial-mode.js";
 import type { SpeedStops } from "./replay-control-dial-settings.js";
-import { formatPlayCaption, formatSpeedDisplay } from "./replay-speed-format.js";
 import { buildLadder, canStep, walkLadder } from "./replay-speed-ladder.js";
-import { rememberedSpeed } from "./replay-speed-state.js";
 
 /** The replay-cursor owner every Speed Control turn is sent under. */
 const CURSOR_OWNER = "dial-speed";
