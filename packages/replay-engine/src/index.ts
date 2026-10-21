@@ -113,42 +113,22 @@ export {
   requestCameraSwitch,
 } from "./camera-switch-waiter.js";
 export { cancelLapWalks, FASTEST_LAP_WALK_OWNER, LAP_WALK_OWNERS, RACE_START_WALK_OWNER } from "./lap-walk-owners.js";
-export {
-  _activeLapPress,
-  _resetLapPress,
-  type ActiveLapPress,
-  activeLapPressOrigin,
-  FASTEST_LAP_LOG_LABEL,
-  FASTEST_LAP_RECORD_JUMP_OWNER,
-  FastestLapPressCancelled,
-  holdLapPressSlot,
-  isLapPressInFlight,
-  type LapPressIdentity,
-  RACE_START_JUMP_OWNER,
-  RACE_START_LOG_LABEL,
-  runJumpToFrame,
-  waitToSwitchCamera,
-} from "./lap-press.js";
+export { _activeLapPress, _resetLapPress, isLapPressInFlight, runJumpToFrame } from "./lap-press.js";
 export {
   _getFastestLapSessionCache,
   _resetFastestLapSessionCache,
   computeFastestLapBisectionProbe,
-  type FastestLapRecordIdentity,
-  type FastestLapWalkLanding,
   forgetFastestLapSessionMap,
   LAP_START_APPROACH_FRAMES,
-  runFastestLapWalk,
 } from "./lap-walk.js";
 export {
   findFastestLapForCar,
   jumpToRecordedLapStart,
   type LapPressResult,
-  lookupRecordedLapStart,
   pressJumpToFastestLap,
   readSubSessionId,
-  readUserId,
-  walkToFastestLap,
 } from "./fastest-lap-press.js";
+export { canJumpToRaceStart, pressJumpToRaceStart } from "./race-start-press.js";
 export { formatLapOfLaps, sessionLapCount } from "./replay-lap-count.js";
 export { formatPlayCaption, formatSpeedDisplay, parseSpeedSetting } from "./replay-speed-format.js";
 export { _resetReplayEngine } from "./replay-engine-reset.js";

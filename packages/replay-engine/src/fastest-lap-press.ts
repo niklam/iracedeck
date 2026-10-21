@@ -95,7 +95,7 @@ export function readUserId(sessionInfo: unknown, carIdx: number): number {
 }
 
 /** A car's raw number for the camera, from the session info the SDK holds now; null when it has none. */
-function carNumberRawByIdx(carIdx: number): number | null {
+export function carNumberRawByIdx(carIdx: number): number | null {
   return getCarNumberRawFromSessionInfo(readSessionInfo(), carIdx);
 }
 

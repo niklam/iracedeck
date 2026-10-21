@@ -17,8 +17,8 @@ import { type ReplayEngineTestOverrides, resetEngine } from "@iracedeck/replay-e
 
 /**
  * An engine logger whose `ReplayControl` scope is `logger` itself (#1467):
- * Jump to Fastest Lap's press and walk moved into the engine and log to that
- * scope, and a Replay Control test reads their lines on the action's logger,
+ * the Jump to Fastest Lap and Jump to Race Start presses moved into the engine
+ * and log to that scope, and a Replay Control test reads their lines on the action's logger,
  * as in the plugin both read as `ReplayControl`. Every other scope is the one
  * `logger` creates, so the gate's lines stay out of it.
  */
