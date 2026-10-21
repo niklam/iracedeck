@@ -16,3 +16,9 @@ export {
   THROWN_OFFSET,
 } from "./replay-command-gate.test-support.js";
 export { resetEngine, type ReplayEngineTestOverrides } from "./replay-engine-reset.test-support.js";
+export {
+  type ReplayLeftControllerReads,
+  replayLeftController,
+  type WatchedReplayController,
+  watchReplayLeft,
+} from "./replay-left.test-support.js";

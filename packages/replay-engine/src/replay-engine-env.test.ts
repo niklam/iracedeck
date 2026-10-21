@@ -2,16 +2,17 @@ import type { ILogger } from "@iracedeck/logger";
 import { silentLogger } from "@iracedeck/logger";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { configureReplayEngine } from "./replay-engine-configure.js";
 import {
   _configureReplayEngine,
   _resetReplayEngineEnv,
-  configureReplayEngine,
   engineEnv,
   engineLogger,
   engineReads,
   type ReplayEngineController,
   type ReplayEngineEnv,
 } from "./replay-engine-env.js";
+import { _resetReplayLeft } from "./replay-left.js";
 
 /** A controller whose every read answers, overridable per test. */
 function fakeController(
@@ -46,7 +47,10 @@ function configured(overrides: Partial<ReplayEngineEnv> = {}): ReplayEngineEnv {
 }
 
 describe("replay engine env (#1467)", () => {
-  afterEach(() => _resetReplayEngineEnv());
+  afterEach(() => {
+    _resetReplayLeft();
+    _resetReplayEngineEnv();
+  });
 
   it("reads nothing and sends nothing before it is configured", () => {
     expect(engineReads().readTelemetry()).toBeNull();

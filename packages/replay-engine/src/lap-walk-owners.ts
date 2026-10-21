@@ -2,9 +2,12 @@
  * The two lap walks' cursor owners (#1467): Jump to Fastest Lap's and Jump to
  * Race Start's searches, the two that ride on the camera's car. A camera
  * switch cancels these and no other owner — a record jump's run, a marker
- * jump's or the paced search's is left standing.
+ * jump's or the paced search's is left standing. So does leaving the replay
+ * (`replay-left.ts`): a walk stops, where a record jump keeps its target and
+ * waits out its own wait.
  */
 import { cancelReplayCursorOwnerIf } from "./replay-cursor.js";
+import { onReplayLeft } from "./replay-left.js";
 
 /** The owner name the Jump to Fastest Lap walk claims the replay cursor under. */
 export const FASTEST_LAP_WALK_OWNER = "jump-to-fastest-lap walk";
@@ -22,3 +25,11 @@ export const LAP_WALK_OWNERS: readonly string[] = [FASTEST_LAP_WALK_OWNER, RACE_
 export function cancelLapWalks(by: string): string | null {
   return cancelReplayCursorOwnerIf(LAP_WALK_OWNERS, by);
 }
+
+/** What a lap walk's claim is cancelled by when the replay is left or the sim goes away. */
+const REPLAY_LEFT_CANCEL = "replay-left";
+
+// A walk stops when the replay is left (#1467): it unwinds at its next await and its press resolves as cancelled.
+onReplayLeft(() => {
+  cancelLapWalks(REPLAY_LEFT_CANCEL);
+});

@@ -64,6 +64,7 @@ import {
   type ReplaySpeed,
 } from "./replay-jump-playback.js";
 import { isSameSpeed } from "./replay-jump-speed.js";
+import { onReplayLeft } from "./replay-left.js";
 import { type ReplayTarget } from "./replay-position-state.js";
 import { isPaused, waitForReplay } from "./replay-seek.js";
 import { keepDialPendingSpeed } from "./replay-speed-state.js";
@@ -242,6 +243,8 @@ interface Run {
   /** Set once the run has ended: by itself, by a take of the cursor, or by a reset. */
   ended: boolean;
   jump: ReplayJump | null;
+  /** Set when the engine said the replay was left (`replay-left.ts`, #1467): the run ends as gave-up at its next check. */
+  replayLeft: boolean;
   /** The speed a run this one superseded captured: that run paused the replay, so its capture is the user's speed. */
   readonly inheritedSpeed: ReplaySpeed | null;
 }
@@ -349,6 +352,7 @@ function startRun(turn: ReplaySearchTurn, ticks: number, previous: Run | null): 
     inFlight: 0,
     ended: false,
     jump: null,
+    replayLeft: false,
     inheritedSpeed: previous === null ? null : (previous.inheritedSpeed ?? previous.jump?.captured ?? null),
   };
 
@@ -448,9 +452,25 @@ function replayOnScreen(): boolean {
   return record.target !== null || record.seekShowing;
 }
 
+/**
+ * Whether the run is out of the replay: the engine said the replay was left
+ * (#1467), or the replay is not on screen by the runner's own read, which
+ * also covers a target of the gate's still standing.
+ */
+function offScreen(r: Run): boolean {
+  return r.replayLeft || !replayOnScreen();
+}
+
+// The replay was left, or the sim went away (#1467): a run under way ends as gave-up at its next check.
+onReplayLeft(() => {
+  const r = active();
+
+  if (r !== null) r.replayLeft = true;
+});
+
 /** The gave-up ending with a warning: a read-back that never came. */
 function neverReadBack(r: Run, what: string): Ending {
-  if (!replayOnScreen()) return leftReplay(r);
+  if (offScreen(r)) return leftReplay(r);
 
   log().warn(`Replay search queue: ${what}; the rest of the ${r.target} run is dropped`);
 
@@ -475,7 +495,7 @@ function leftReplay(r: Run): Ending {
  * and so does the run; otherwise another command took its place.
  */
 function searchEnded(r: Run): Ending {
-  return stopped(r) || replayOnScreen() ? "cancelled" : leftReplay(r);
+  return stopped(r) || !offScreen(r) ? "cancelled" : leftReplay(r);
 }
 
 /**
@@ -715,7 +735,7 @@ async function holdReading(
   for (;;) {
     if (stopped(r)) return { kind: "cancelled" };
 
-    if (!replayOnScreen()) return { kind: "left" };
+    if (offScreen(r)) return { kind: "left" };
 
     // One settle of the gate's a poll, so the record can be watched and the replay asked about between them.
     const settled = await waitForReplaySettled({ reads: 1, timeoutMs: 0, claim });
@@ -737,7 +757,7 @@ async function holdReading(
 
     if (agreeing >= HOLD_READS && telemetry !== null && reading !== null) return { kind: "held", telemetry, reading };
 
-    if (engineNow() - startedAt >= options.timeoutMs) return replayOnScreen() ? { kind: "gave-up" } : { kind: "left" };
+    if (engineNow() - startedAt >= options.timeoutMs) return offScreen(r) ? { kind: "left" } : { kind: "gave-up" };
 
     await sleep(HOLD_GAP_MS);
   }

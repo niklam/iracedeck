@@ -5,7 +5,6 @@
 export {
   _configureReplayEngine,
   _resetReplayEngineEnv,
-  configureReplayEngine,
   engineEnv,
   engineLogger,
   engineReads,
@@ -16,6 +15,8 @@ export {
   type ReplayEngineReads,
   type ReplayEngineSettings,
 } from "./replay-engine-env.js";
+export { configureReplayEngine } from "./replay-engine-configure.js";
+export { _resetReplayLeft } from "./replay-left.js";
 export {
   _resetReplayCursor,
   cancelReplayCursorOwner,

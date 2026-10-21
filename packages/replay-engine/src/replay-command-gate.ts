@@ -76,6 +76,7 @@ import {
 import { engineEnv, engineLogger, engineReads, type ReplayCommandSurface } from "./replay-engine-env.js";
 import { frameBeside, planFrameMove } from "./replay-frame-move.js";
 import { isSameSpeed, readReplayJumpPlayback, type ReplaySpeed, resolveReplayJumpSpeed } from "./replay-jump-speed.js";
+import { onReplayLeft } from "./replay-left.js";
 import {
   clearReplayTarget,
   markReplayTargetSent,
@@ -2187,6 +2188,17 @@ onReplayCursorTaken(() => {
       jump.owedSince = now;
       owed = jump;
     }
+  });
+  arm();
+});
+
+// Leaving the replay is one engine event (#1467, `replay-left.ts`): the gate's own handling of each, as one change.
+// Both are idempotent, so the gate's own poll running either again for the same departure changes nothing, and
+// the event never arrives inside a change: the controller delivers it from its poll, never from a read or a send.
+onReplayLeft(({ reason }) => {
+  batch(engineNow(), () => {
+    if (reason === "disconnected") disconnect();
+    else leftReplay();
   });
   arm();
 });

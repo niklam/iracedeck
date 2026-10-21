@@ -134,8 +134,13 @@ let reads: ReplayEngineReads = derivedReads;
 /** Scoped loggers, per root logger, so a reconfigure scopes under the new one. */
 let scopedLoggers = new WeakMap<ILogger, Map<string, ILogger>>();
 
-/** Inject what the engine reads and sends through. Called once, by plugin-runtime's `initReplay` phase. */
-export function configureReplayEngine(next: ReplayEngineEnv): void {
+/**
+ * Sets what the engine reads and sends through. `configureReplayEngine`
+ * (`replay-engine-configure.ts`) calls it and then starts the watch over the
+ * controller, which this module cannot import: the watch reads the engine
+ * clock, and the clock reads this env.
+ */
+export function setReplayEngineEnv(next: ReplayEngineEnv): void {
   env = next;
   reads = derivedReads;
 }

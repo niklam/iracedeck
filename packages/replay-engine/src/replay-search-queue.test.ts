@@ -5,6 +5,7 @@
  * are the spec's "The queue", "The first search on a playing replay" and the
  * runner's part of "The origin token", under Testing.
  */
+import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { type ILogger, silentLogger } from "@iracedeck/logger";
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 
@@ -20,6 +21,7 @@ import { _resetReplayCursor, currentReplayCursorOwner } from "./replay-cursor.js
 import { _configureReplayEngine } from "./replay-engine-env.js";
 import { resetEngine } from "./replay-engine-reset.test-support.js";
 import { beginReplayJump, runReplayJump } from "./replay-jump-playback.js";
+import { watchReplayLeft } from "./replay-left.test-support.js";
 import { _resetReplayPositionState } from "./replay-position-state.js";
 import {
   _resetReplaySearchQueue,
@@ -818,6 +820,32 @@ describe("the paced search runner (#801)", () => {
 
       expect(sim.calls).toEqual(["setPlaySpeed 0"]);
       expect(runEnds()).toEqual(["replay-left"]);
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it("a run ends gave-up when the replay is left", async () => {
+      // The search stays on its way, and the runner's own reads stay in the replay: only the event says it was left.
+      setUp({ minSeekMs: 60_000 });
+      let watchedInReplay = true;
+      const watch = watchReplayLeft({
+        replayState: () => ({ inReplay: watchedInReplay }),
+        telemetry: () => ({ IsReplayPlaying: false, IsOnTrack: true }) as TelemetryData,
+      });
+
+      turn("lap", 3);
+      await until("nextLap");
+      await wait(100);
+
+      expect(pendingReplaySearch()).not.toBeNull();
+
+      watchedInReplay = false;
+      watch.tick();
+      await wait(100);
+
+      expect(pendingReplaySearch()).toBeNull();
+      expect(sim.calls).toEqual(["nextLap"]);
+      // The search's fact ends out of the replay; the run's as a give-up, never a take by another press.
+      expect(runEnds()).toEqual(["replay-left", "walk-gave-up"]);
       expect(warn).not.toHaveBeenCalled();
     });
 

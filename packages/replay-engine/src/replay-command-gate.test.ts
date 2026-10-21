@@ -22,6 +22,8 @@ import { _resetReplayCursor, claimReplayCursor } from "./replay-cursor.js";
 import { _configureReplayEngine } from "./replay-engine-env.js";
 import { resetEngine } from "./replay-engine-reset.test-support.js";
 import { beginReplayJump, runReplayJump } from "./replay-jump-playback.js";
+import { onReplayLeft } from "./replay-left.js";
+import { watchReplayLeft } from "./replay-left.test-support.js";
 import { _resetReplayPositionState, pendingReplayTarget, replayTargetGiveUpMs } from "./replay-position-state.js";
 import { onReplaySpeedChanged, rememberedSpeed, resolveLiveSpeed } from "./replay-speed-state.js";
 
@@ -1009,6 +1011,87 @@ describe("replay command gate", () => {
       expect(sim.calls).toContain("pause");
       expect(order.at(-1)).toBe("speed 0");
       expect(order.filter((entry) => entry.startsWith("notice")).length).toBeGreaterThan(0);
+    });
+  });
+
+  describe("leaving the replay, one engine event (#1467)", () => {
+    /** Out of the replay and back in the car: no seek shows, so nothing holds the departure. */
+    const DRIVING = { IsReplayPlaying: false, IsOnTrack: true } as TelemetryData;
+
+    let departures: string[];
+    let stopListening: () => void;
+
+    beforeEach(() => {
+      departures = [];
+      stopListening = onReplayLeft((event) => departures.push(event.reason));
+    });
+
+    afterEach(() => stopListening());
+
+    it("runs leftReplay on left and disconnect on disconnected", async () => {
+      // The searches stay on their way for a minute, and the gate's own reads stay in the replay and connected,
+      // so only the event can end them.
+      setUp({ frame: 2_000, searches: { nextSession: (f) => f + 60_000 }, minSeekMs: 60_000 });
+      const ends: Array<{ origin: string; reason: string }> = [];
+
+      subscribeReplayGate((notice) => {
+        for (const end of notice.ended)
+          if (end.fact === "underWay") ends.push({ origin: notice.origin, reason: end.reason });
+      });
+
+      let watchedInReplay = true;
+      const watch = watchReplayLeft({ replayState: () => ({ inReplay: watchedInReplay }), telemetry: () => DRIVING });
+
+      press({ kind: "search", search: "nextSession" }, "next");
+      await wait(40);
+
+      expect(getReplayGateView("next").underWay).not.toBeNull();
+
+      watchedInReplay = false;
+      watch.tick();
+
+      expect(departures).toEqual(["left"]);
+      expect(ends).toContainEqual({ origin: "next", reason: "replay-left" });
+      expect(getReplayGateView("next").underWay).toBeNull();
+
+      watchedInReplay = true;
+      watch.tick();
+      press({ kind: "search", search: "nextSession" }, "again");
+      await wait(40);
+
+      expect(getReplayGateView("again").underWay).not.toBeNull();
+
+      watch.tick(null, false);
+
+      expect(departures).toEqual(["left", "disconnected"]);
+      expect(ends).toContainEqual({ origin: "again", reason: "disconnected" });
+      expect(getReplayGateRecord().search).toBeNull();
+    });
+
+    it("keeps a jump's target and the press waiting on it through left", async () => {
+      setUp({ frame: 2_000, minSeekMs: 60_000 });
+      let watchedInReplay = true;
+      const watch = watchReplayLeft({ replayState: () => ({ inReplay: watchedInReplay }), telemetry: () => DRIVING });
+
+      farJump();
+      watchedInReplay = false;
+      watch.tick();
+
+      // A second jump after the edge: its own wait, counted from the edge, lapses before the gate gives it up.
+      await wait(500);
+      farJump(400_000);
+      const target = pendingReplayTarget();
+
+      expect(press(PLAY, "play")).toEqual({ kind: "held" });
+
+      for (let waited = 0; waited < 30_000 && departures.length === 0; waited += 50) {
+        await wait(50);
+        watch.tick();
+      }
+
+      expect(departures).toEqual(["left"]);
+      expect(pendingReplayTarget()?.id).toBe(target?.id);
+      expect(getReplayGateRecord().waiting).toMatchObject({ origin: "play", behind: "jump" });
     });
   });
 

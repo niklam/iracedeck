@@ -32,7 +32,13 @@ import {
   runReplayJump,
   subscribeReplayGate,
 } from "@iracedeck/replay-engine";
-import { type FakeReplay, fakeReplay, withSteppedReplayState } from "@iracedeck/replay-engine/testing";
+import {
+  type FakeReplay,
+  fakeReplay,
+  steppedReplayState,
+  watchReplayLeft,
+  withSteppedReplayState,
+} from "@iracedeck/replay-engine/testing";
 import {
   getReplaySessionStore,
   type IncidentListing,
@@ -3455,6 +3461,117 @@ describe("ReplayControl", () => {
             ]);
           } finally {
             stop();
+            vi.useRealTimers();
+          }
+        });
+      });
+
+      describe("leaving the replay (#1467)", () => {
+        /** Back in the car: out of the replay, and no seek shows. */
+        const DRIVING = { IsReplayPlaying: false, IsOnTrack: true } as TelemetryData;
+        /** A seek under way: out of the replay, nobody driving. */
+        const SEEKING = { IsReplayPlaying: false, IsOnTrack: false } as TelemetryData;
+
+        it("a fastest-lap walk stops when the replay is left, instead of running to its timeout", async () => {
+          vi.useFakeTimers();
+
+          try {
+            singleSessionBuffer(4, 4);
+            let watchedInReplay = true;
+            const watch = watchReplayLeft({
+              replayState: () => ({ inReplay: watchedInReplay }),
+              telemetry: () => DRIVING,
+            });
+
+            await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+            await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+            await vi.advanceTimersByTimeAsync(1200);
+
+            expect(action["activeFastestLapPress"]).not.toBeNull();
+
+            // The replay is left; the controller's poll ticks on. A probe's target still standing holds the
+            // departure until it reads back.
+            watchedInReplay = false;
+            let commandsAtLeave: number | null = null;
+
+            for (let waited = 0; waited < 10_000 && commandsAtLeave === null; waited += 20) {
+              watch.tick();
+
+              if (
+                vi
+                  .mocked(action["logger"].info)
+                  .mock.calls.some(([line]) => line === "Jump to fastest lap: walk cancelled by replay-left")
+              ) {
+                commandsAtLeave = countReplayCommands();
+              } else {
+                await vi.advanceTimersByTimeAsync(20);
+              }
+            }
+
+            expect(commandsAtLeave).not.toBeNull();
+
+            await runPressOut();
+
+            // No further replay command, nothing recorded, and the press's slot and busy registration are gone.
+            expect(countReplayCommands()).toBe(commandsAtLeave);
+            expect(mockStore.laps.recordLapStart).not.toHaveBeenCalled();
+            expect(action["activeFastestLapPress"]).toBeNull();
+            expect(getReplayGateView("ctx-1").underWay).toBeNull();
+          } finally {
+            vi.useRealTimers();
+          }
+        });
+
+        it("a walk whose probe seek outlasts the one-second grace is not cancelled by its own seek", async () => {
+          vi.useFakeTimers();
+          let ticker: ReturnType<typeof setInterval> | null = null;
+
+          try {
+            const buffer = singleSessionBuffer(4, 4);
+            // Every jump lands 1.5 s after it is sent, inside the walk's 1.6 s wait; in a live session the
+            // debounced replay state gives the replay up a second into it.
+            let pending: number | null = null;
+
+            mockReplay.setPlayPosition.mockImplementation((_mode: unknown, frame: number) => {
+              pending = Math.max(0, Math.min(buffer.bufferEnd(), frame));
+              setTimeout(() => {
+                buffer.cursor.frame = pending as number;
+                pending = null;
+              }, 1_500);
+
+              return true;
+            });
+
+            const tickTelemetry = (): TelemetryData | null =>
+              pending !== null ? SEEKING : action["sdkController"].getCurrentTelemetry();
+            const state = steppedReplayState(tickTelemetry);
+            const watch = watchReplayLeft({ replayState: () => state.getReplayState(), telemetry: tickTelemetry });
+
+            ticker = setInterval(() => watch.tick(), 20);
+
+            await action.onWillAppear(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+            await action.onKeyDown(fakeEvent("ctx-1", { mode: "jump-to-fastest-lap" }) as any);
+
+            // Positive control: a probe's seek did read as out of the replay past the grace.
+            let sawOutOfReplay = false;
+
+            for (let waited = 0; waited < 120_000 && action["activeFastestLapPress"] !== null; waited += 100) {
+              await vi.advanceTimersByTimeAsync(100);
+
+              if (!state.getReplayState().inReplay) sawOutOfReplay = true;
+            }
+
+            expect(sawOutOfReplay).toBe(true);
+            expect(action["logger"].info).not.toHaveBeenCalledWith(
+              "Jump to fastest lap: walk cancelled by replay-left",
+            );
+            expect(action["logger"].info).toHaveBeenCalledWith(
+              "Jump to fastest lap: walk converged (lap start recorded)",
+            );
+            expect(mockReplay.setPlaySpeed).toHaveBeenCalledExactlyOnceWith(1, false);
+          } finally {
+            if (ticker !== null) clearInterval(ticker);
+
             vi.useRealTimers();
           }
         });
