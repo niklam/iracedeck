@@ -36,6 +36,10 @@ Three things to know:
 
 Whether this removes the cause of #1084 is **unestablished**; it removes a path that could produce it.
 
+## A worker that dies with exit code 3221226505 (#1444)
+
+`Worker exited unexpectedly with exit code 3221226505` (0xC0000409) with no stderr, on Windows, is Node 24.15.0's own TCP stack buffer overrun, fixed in 24.16.0 ([nodejs/node#62991](https://github.com/nodejs/node/issues/62991)). It strikes during a WebSocket connect, so it showed as `settings-window-server.test.ts` failing in about one full run in four. Measured 2026-10-20 with no vitest and no repo code involved: 0 crashes in 600 runs on 24.21.0 and 20.20.2, against 27 in 600 on 24.15.0. **Check `node -v` before anything else**: `.nvmrc` pins 24.21.0, the Node 24 that Stream Deck ships, and a local Node older than 24.16.0 brings the crash back. A `pool` or `isolate` setting cannot fix it. The #1084 dropped workers began after 24.15.0 was pinned (#928) and were probably the same bug; no exit code was recorded, so that link is unproven.
+
 ## Root `vitest.config.ts` — native config loader
 
 `pnpm test` / `pnpm test:watch` pass `--configLoader native`, so Node imports the root `vitest.config.ts` directly and strips its types itself, rather than Vite bundling the config first (Vite 8 bundles it with rolldown, and emits ESM here because the root package is `"type": "module"`) (issue #1017). Vite has announced that loader as a future default; opting in early means a dependency bump can't flip it for us.
