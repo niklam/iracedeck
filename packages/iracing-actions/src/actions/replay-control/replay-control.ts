@@ -974,7 +974,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
   /**
    * One Next / Previous Lap or Next / Previous Session press (#1426): a step
    * through the record (`replay-record-step.ts`), measured from where the
-   * replay is headed, else the cursor (`shared/replay-record-walk.ts`).
+   * replay is headed, else the cursor (`replay-engine`'s `replay-record-walk.ts`).
    *
    * - **Outside a replay** nothing is sent: iRacing honours replay commands
    *   only out of the car. A standing target is a start either way

@@ -5,7 +5,7 @@
  * gestures and every push to the screen. Design:
  * `docs/superpowers/specs/2026-10-04-issue-1316-replay-control-dial.md`.
  *
- * What a turn sends is the shared frame-move rule (`shared/replay-frame-move.ts`,
+ * What a turn sends is the shared frame-move rule (`replay-engine`'s `replay-frame-move.ts`,
  * moved there in #1430 so a Frame Forward key and its repeat follow it too):
  * a single detent on a replay at rest is a frame step, and everything else —
  * several detents in one event, or any turn while the last move of any surface

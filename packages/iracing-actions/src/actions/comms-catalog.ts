@@ -833,7 +833,7 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
   ),
 
   // Replay Markers (#1162): Next / Previous jump through the shared replay jump
-  // sequence (`shared/replay-jump-playback.ts`, #1276) — a pause when the replay
+  // sequence (`replay-engine`'s `replay-jump-playback.ts`, #1276) — a pause when the replay
   // is moving, one setPlayPosition and, once it has landed, the speed the Replay
   // jump playback setting asks for — every one a broadcast, so both are `api`.
   // Add and Delete are intentionally omitted — they only write the plugin's own

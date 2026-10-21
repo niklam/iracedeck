@@ -55,7 +55,7 @@ export const MAX_ABSENT_PROBES = 31;
 // start and, once the cursor has landed there, one camera switch.
 //
 // Either way the press ends as the Replay jump playback global setting says
-// (#1276, `shared/replay-jump-playback.ts`): at the speed the replay had when
+// (#1276, `replay-jump-playback.ts`): at the speed the replay had when
 // the key was pressed, at 1×, or paused.
 //
 // The walk is the fallback for a lap the record does not have (the plugin was

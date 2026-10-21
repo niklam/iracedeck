@@ -15,7 +15,7 @@
  * is the shared dash box, drawn from what the mode says it shows.
  *
  * Every command is a one-shot pressed through the replay command gate
- * (`shared/replay-command-gate.ts`, #1430), which takes the replay cursor from
+ * (`replay-engine`'s `replay-command-gate.ts`, #1430), which takes the replay cursor from
  * an in-flight replay jump and sends the command, holds it until a jump or a
  * search under way has landed, or drops it; outside a replay nothing is sent:
  * iRacing ignores replay commands from the car.

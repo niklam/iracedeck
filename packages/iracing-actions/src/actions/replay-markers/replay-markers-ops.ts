@@ -6,7 +6,7 @@
  * press landing on the same marker, and the dial's side marks agreeing with
  * the keypad's greyed keys.
  *
- * A jump is the shared replay jump sequence (`shared/replay-jump-playback.ts`,
+ * A jump is the shared replay jump sequence (`replay-engine`'s `replay-jump-playback.ts`,
  * #1276): it pauses a moving replay, seeks, waits for the landing and then
  * leaves the replay the way the Replay jump playback setting says. So it
  * outlives the press that started it, and {@link jumpToMarkerFrame} returns a
@@ -218,7 +218,7 @@ export function readReplayContext(source: ReplayContextSource, nowMs: number = D
  *   when you are out of your car"), so from the car a jump would be sent,
  *   ignored, and logged as done;
  * - otherwise the shared walk's first step over the store's markers
- *   (`walkRecordedEntries`, `shared/replay-record-walk.ts`, #1426): Next is
+ *   (`walkRecordedEntries`, `replay-engine`'s `replay-record-walk.ts`, #1426): Next is
  *   the first marker more than 1 s ahead, Previous the media-player rule, its
  *   2 s window measured from the anchor marker. The windows live in that one
  *   walk for every surface — Replay Markers and Replay Control's lap and
@@ -247,7 +247,7 @@ export function resolveJumpTarget(
  * the first without the driver seeing why. `steps` of 1 (or less) is `first`
  * itself. A `first` missing from the list (it cannot be, but the list is a
  * copy read separately) is returned as is. The walk is the shared one
- * (`shared/replay-record-walk.ts`, #1426).
+ * (`replay-engine`'s `replay-record-walk.ts`, #1426).
  */
 export function walkMarkers(
   markers: readonly ReplayMarker[],
@@ -280,8 +280,8 @@ export function markerIndexAt(markers: readonly ReplayMarker[], frame: number): 
 /**
  * The frame every Replay Markers surface measures a jump from — the keypad's
  * Next / Previous and every dial alike: the shared walk's anchor
- * (`resolveReplayWalkAnchor`, moved to `shared/replay-record-walk.ts` in
- * #1426), the replay's one pending target while it stands, else `liveFrame`.
+ * (`resolveReplayWalkAnchor`, moved to the shared `replay-record-walk.ts` in
+ * #1426, in `replay-engine` since #1467), the replay's one pending target while it stands, else `liveFrame`.
  */
 export const resolveMarkerJumpAnchor = resolveReplayWalkAnchor;
 
