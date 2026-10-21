@@ -11,8 +11,23 @@
  * under way, and the engine configured again, in one call.
  */
 import { getCommands, getController } from "@iracedeck/deck-iracing";
+import type { ILogger } from "@iracedeck/logger";
 import { _configureReplayEngine, type ReplayEngineController, type ReplayEngineEnv } from "@iracedeck/replay-engine";
 import { type ReplayEngineTestOverrides, resetEngine } from "@iracedeck/replay-engine/testing";
+
+/**
+ * An engine logger whose `ReplayControl` scope is `logger` itself (#1467):
+ * Jump to Fastest Lap's press and walk moved into the engine and log to that
+ * scope, and a Replay Control test reads their lines on the action's logger,
+ * as in the plugin both read as `ReplayControl`. Every other scope is the one
+ * `logger` creates, so the gate's lines stay out of it.
+ */
+export function replayControlScopeOn(logger: ILogger): ILogger {
+  return {
+    ...logger,
+    createScope: (scope: string) => (scope === "ReplayControl" ? logger : logger.createScope(scope)),
+  };
+}
 
 /** The controller method `key`, looked up on `getController()` at each call. */
 function onEachCall<K extends keyof ReplayEngineController>(key: K): ReplayEngineController[K] {

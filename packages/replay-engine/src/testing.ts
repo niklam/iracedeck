@@ -17,6 +17,14 @@ export {
 } from "./replay-command-gate.test-support.js";
 export { resetEngine, type ReplayEngineTestOverrides } from "./replay-engine-reset.test-support.js";
 export {
+  type LapBuffer,
+  type LapBufferReplay,
+  type LapBufferTarget,
+  multiSessionBuffer,
+  type SessionLayout,
+  singleSessionBuffer,
+} from "./lap-walk-buffer.test-support.js";
+export {
   type ReplayLeftControllerReads,
   replayLeftController,
   type WatchedReplayController,

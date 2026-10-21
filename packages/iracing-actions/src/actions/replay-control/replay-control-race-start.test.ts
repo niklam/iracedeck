@@ -2,25 +2,29 @@
  * Replay Control's Jump to Race Start mode (issue #1354): the press path, its
  * guards, the three ways it finds the frame, and the key's unavailable look.
  * What the press aims at is `green-flag-target.test.ts`'s; the replay search
- * it borrows is covered, as Jump to Fastest Lap's, in `replay-control.test.ts`,
+ * it borrows is covered, as Jump to Fastest Lap's, in the replay engine's
+ * `fastest-lap-press.test.ts` (#1467),
  * except for the camera switches a search makes for itself (#1430), which are
  * pinned here for both presses on this file's replay of laps and cars.
  */
 import { getCarNumberRawFromSessionInfo, type ReplayPosMode, type TelemetryData } from "@iracedeck/iracing-sdk";
 import {
+  _activeLapPress,
+  _resetFastestLapSessionCache,
   cancelReplayCursorOwner,
   GREEN_APPROACH_FRAMES,
   pressReplayCommand,
   type ReplayGateFactEnd,
   subscribeReplayGate,
+  walkToFastestLap,
 } from "@iracedeck/replay-engine";
 import { withSteppedReplayState } from "@iracedeck/replay-engine/testing";
 import type { GreenLookup, GreenQuery, LapStartLookup, LapStartQuery, LapStartRecord } from "@iracedeck/replay-store";
 import { getGlobalSettings } from "@iracedeck/settings";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { engineOverDeck } from "../../shared/replay-engine-deck.test-support.js";
-import { _resetFastestLapSessionCache, generateReplayControlSvg, ReplayControl } from "./replay-control.js";
+import { engineOverDeck, replayControlScopeOn } from "../../shared/replay-engine-deck.test-support.js";
+import { generateReplayControlSvg, ReplayControl } from "./replay-control.js";
 
 const { mockAssembleIcon } = vi.hoisted(() => ({
   mockAssembleIcon: vi.fn(
@@ -612,7 +616,11 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
     action = new ReplayControl();
     // The replay command gate (#1430) reads the replay these tests simulate,
     // so the jumps a press sends read back and nothing stands after a walk.
+    // The press machinery and the walk it borrows are the engine's (#1467):
+    // they read this action's controller and log on its logger.
     configureEngine({
+      controller: action["sdkController"],
+      logger: replayControlScopeOn(action["logger"]),
       readTelemetry: () => action["sdkController"].getCurrentTelemetry(),
       inReplay: () => true,
     });
@@ -647,7 +655,7 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
       expect(mockCamera.switchNum).not.toHaveBeenCalled();
       expect(mockStore.laps.findLapStart).not.toHaveBeenCalled();
       expect(action["logger"].info).toHaveBeenCalledWith("Jump to race start: record HIT (matchedBy pair)");
-      expect(action["activeFastestLapPress"]).toBeNull();
+      expect(_activeLapPress()).toBeNull();
     });
 
     it("never sends play() itself: the Replay jump playback setting decides what follows", async () => {
@@ -736,7 +744,7 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
       expect(mockReplay.setPlayPosition).toHaveBeenCalledTimes(1);
       expect(mockReplay.setPlaySpeed).not.toHaveBeenCalled();
       expect(action["logger"].warn).toHaveBeenCalledWith("Jump to race start: jump did not land; nothing more sent");
-      expect(action["activeFastestLapPress"]).toBeNull();
+      expect(_activeLapPress()).toBeNull();
     });
 
     it("warns and sends nothing more when iRacing refuses the seek", async () => {
@@ -846,14 +854,14 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
       );
       // The ignored key shows not done (#1437); the first is left alone.
       expect(busy.reportIgnored).toHaveBeenCalledExactlyOnceWith("ctx-b");
-      expect(action["activeFastestLapPress"]?.contextId).toBe("ctx-a");
+      expect(_activeLapPress()?.origin).toBe("ctx-a");
 
       // iRacing reaches the frame: the first press, not cancelled by the second, applies the setting.
       replay.state.frame = 29_915;
       await vi.runAllTimersAsync();
 
       expect(mockReplay.setPlaySpeed).toHaveBeenCalledExactlyOnceWith(1, false);
-      expect(action["activeFastestLapPress"]).toBeNull();
+      expect(_activeLapPress()).toBeNull();
     });
 
     it("shares the in-flight slot with Jump to Fastest Lap, in both directions", async () => {
@@ -910,7 +918,7 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
         mockReplay.setPlayPosition.mock.invocationCallOrder[0],
       );
       expect(action["logger"].debug).not.toHaveBeenCalledWith(expect.stringContaining("landed on"));
-      expect(action["activeFastestLapPress"]).toBeNull();
+      expect(_activeLapPress()).toBeNull();
     });
   });
 
@@ -1055,7 +1063,7 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
       expect(restoredAt).toBeLessThan(speedAt);
       expect(mockReplay.setPlaySpeed).toHaveBeenLastCalledWith(1, false);
       expect(mockReplay.play).not.toHaveBeenCalled();
-      expect(action["activeFastestLapPress"]).toBeNull();
+      expect(_activeLapPress()).toBeNull();
     });
 
     describe("the end the search reports to the gate (#1437)", () => {
@@ -1348,7 +1356,7 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
         });
         const lapNine = RACE_START + 9 * FRAMES_PER_LAP;
 
-        void action.walkToFastestLap("ctx-green", POLE_CAR, 9, 2, {
+        void walkToFastestLap("ctx-green", POLE_CAR, 9, 2, {
           carNumberRaw: POLE_CAR,
           userId: 700,
           subSessionId: undefined,
@@ -1421,7 +1429,7 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
         expect(mockCamera.switchNum.mock.invocationCallOrder.at(-1) as number).toBeGreaterThan(
           mockReplay.setPlayPosition.mock.invocationCallOrder.at(-1) as number,
         );
-        expect(action["activeFastestLapPress"]).toBeNull();
+        expect(_activeLapPress()).toBeNull();
       });
 
       it("gives a playing replay its speed back after a search that found no car, whatever the setting", async () => {
@@ -1668,7 +1676,7 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
         expect(mockCamera.switchNum.mock.invocationCallOrder[1]).toBeGreaterThan(
           mockReplay.setPlayPosition.mock.invocationCallOrder[1],
         );
-        expect(action["activeFastestLapPress"]).toBeNull();
+        expect(_activeLapPress()).toBeNull();
       });
 
       it("says so when the way back does not land either, and leaves the replay paused", async () => {
@@ -1692,7 +1700,7 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
         );
         expect(mockReplay.setPlaySpeed).not.toHaveBeenCalled();
         expect(replay.state.camCarIdx).toBe(VIEWED_CAR);
-        expect(action["activeFastestLapPress"]).toBeNull();
+        expect(_activeLapPress()).toBeNull();
       });
 
       it("sends nothing more when another replay command arrives during the way back", async () => {
@@ -1726,7 +1734,7 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
         // That command's effect stands: no speed command, and the camera is left on the pole car.
         expect(mockReplay.setPlaySpeed).not.toHaveBeenCalled();
         expect(replay.state.camCarIdx).toBe(POLE_CAR);
-        expect(action["activeFastestLapPress"]).toBeNull();
+        expect(_activeLapPress()).toBeNull();
       });
     });
 
@@ -1742,7 +1750,7 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
           onTrack: (carIdx) => carIdx !== POLE_CAR,
         });
 
-        void action.walkToFastestLap(
+        void walkToFastestLap(
           "ctx-green",
           POLE_CAR,
           9,
@@ -1774,7 +1782,7 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
           onTrack: (carIdx) => carIdx !== POLE_CAR,
         });
 
-        void action.walkToFastestLap("ctx-green", POLE_CAR, 9, 2, {
+        void walkToFastestLap("ctx-green", POLE_CAR, 9, 2, {
           carNumberRaw: POLE_CAR,
           userId: 700,
           subSessionId: undefined,
@@ -1808,7 +1816,7 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
       // The replay was paused at the press, and stays so: Play is the setting, and nothing was jumped to.
       expect(mockReplay.setPlaySpeed).not.toHaveBeenCalled();
       expect(mockStore.laps.recordLapStart).not.toHaveBeenCalled();
-      expect(action["activeFastestLapPress"]).toBeNull();
+      expect(_activeLapPress()).toBeNull();
     });
 
     it("gives a playing replay its speed back when the race is not in the recording, whatever the setting", async () => {
@@ -1918,7 +1926,7 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
         [VIEWED_CAR, 0, 0],
       ]);
       expect(replay.state.camCarIdx).toBe(VIEWED_CAR);
-      expect(action["activeFastestLapPress"]).toBeNull();
+      expect(_activeLapPress()).toBeNull();
     });
 
     it("leaves the camera alone when another replay command cancels the search", async () => {
@@ -1935,7 +1943,7 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
       expect(replay.state.camCarIdx).toBe(POLE_CAR);
       expect(mockReplay.setPlayPosition).not.toHaveBeenCalled();
       expect(mockReplay.setPlaySpeed).not.toHaveBeenCalled();
-      expect(action["activeFastestLapPress"]).toBeNull();
+      expect(_activeLapPress()).toBeNull();
     });
 
     it("aborts before any replay command when the camera will not switch to the pole car", async () => {
@@ -1947,7 +1955,7 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
 
       expect(action["logger"].warn).toHaveBeenCalledWith("Jump to race start: camera switch failed, aborting");
       expect(countReplayCommands()).toBe(0);
-      expect(action["activeFastestLapPress"]).toBeNull();
+      expect(_activeLapPress()).toBeNull();
     });
 
     it("warns, and still applies the setting, when the camera will not switch back", async () => {
@@ -1981,7 +1989,7 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
         async () => {
           // An Always My Car key pressed while watching another car: the press
           // puts the camera on the target before the search.
-          void action.walkToFastestLap(
+          void walkToFastestLap(
             "ctx-fastest",
             POLE_CAR,
             9,
@@ -2159,7 +2167,7 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
         async (_how, offset, dist) => {
           const replay = cameraLeftOnAnotherCar(offset);
 
-          void action.walkToFastestLap(
+          void walkToFastestLap(
             "ctx-fastest",
             POLE_CAR,
             9,
@@ -2252,7 +2260,7 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
       expect(action["logger"].info).toHaveBeenCalledWith(
         "Jump to race start: previous jump still in flight; press ignored",
       );
-      expect(action["activeFastestLapPress"]?.contextId).toBe("ctx-key");
+      expect(_activeLapPress()?.origin).toBe("ctx-key");
     });
 
     it("says whether a press has a race to aim at, which is what the hold preview shows", () => {

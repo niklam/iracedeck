@@ -4,6 +4,8 @@
  * reset here.
  */
 import { _resetCameraSwitchWaiter } from "./camera-switch-waiter.js";
+import { _resetLapPress } from "./lap-press.js";
+import { _resetFastestLapSessionCache } from "./lap-walk.js";
 import { _resetReplayCommandGate } from "./replay-command-gate.js";
 import { _resetReplayCursor } from "./replay-cursor.js";
 import { _resetReplayEngineEnv } from "./replay-engine-env.js";
@@ -19,6 +21,8 @@ export function _resetReplayEngine(): void {
   // The watch next: nothing emits into the modules while they are reset.
   _resetReplayLeft();
   _resetCameraSwitchWaiter();
+  _resetLapPress();
+  _resetFastestLapSessionCache();
   _resetReplayCommandGate();
   _resetReplayCursor();
   _resetReplayPositionState();
