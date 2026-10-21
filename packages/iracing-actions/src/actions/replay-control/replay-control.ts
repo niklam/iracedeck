@@ -1023,7 +1023,8 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
    *   its pause, then `runReplayJump`, `jump.end()` in a `finally`), carrying
    *   this key's origin token. Claiming the cursor cancels a Jump to Fastest
    *   Lap walk in flight. No camera switch: a lap list is the viewed car's, a
-   *   session belongs to everyone. The outcome updates the speed cache.
+   *   session belongs to everyone. The speeds the jump sends reach the keys
+   *   through the engine's speed state (`onReplaySpeedChanged`).
    * - **A miss** sends iRacing's own search through the gate, as the key did
    *   before, with its origin token: the gate holds it behind a jump or a
    *   search of the plugin's that is still under way.

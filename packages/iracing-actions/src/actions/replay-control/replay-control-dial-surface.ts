@@ -553,9 +553,10 @@ export class ReplayControlDialSurface {
    * The one timer that fires when a sent speed's hold runs out, or null. When
    * iRacing does not act on a send (paused at the end of a saved recording) no
    * tick follows it, so nothing else would take the sent speed off the dials,
-   * or out of the action's speed cache, where the send put it for the keys.
-   * Like the hold preview's timer it decides nothing and sends nothing: it
-   * redraws from a fresh reading and hands the action that reading's speed.
+   * or off the keys, which show it from the engine's speed state
+   * (`replay-speed-state`) as the dials do. Like the hold preview's timer it
+   * decides nothing and sends nothing: a fresh reading settles the lapsed
+   * hold, and the keys (`refreshKeys`) and the dials redraw from it.
    */
   private holdLapseTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -734,7 +735,8 @@ export class ReplayControlDialSurface {
     // The lapse timer is left running: the pending speed it answers for
     // outlives the dial, and a dial that comes back inside the hold (a page
     // flip and back) draws that speed and needs the redraw. With no dial on
-    // screen it draws nothing and still resyncs the action's speed cache.
+    // screen it draws nothing and still has the keys redraw from the settled
+    // speed (`refreshKeys`).
   }
 
   async didReceiveSettings(action: IDeckActionContext, dial: ReplayControlDialSettings): Promise<void> {

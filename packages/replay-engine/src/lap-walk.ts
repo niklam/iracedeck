@@ -79,7 +79,8 @@ export const MAX_ABSENT_PROBES = 31;
 //
 // #1203 changed how the walk waits and ends: an absolute jump settles when
 // `ReplayFrameNum` reads the frame that was sent, a search when the frame has
-// moved and held; every speed sent is mirrored into the action's speed cache;
+// moved and held; every speed sent reaches the keys and dials (today through
+// the speed state, `replay-speed-state.ts`, and `onReplaySpeedChanged`);
 // one walk runs per action instance and any other Replay Control command
 // cancels it; and a converged walk writes its landed frame into the record,
 // so the next press is a lookup.
