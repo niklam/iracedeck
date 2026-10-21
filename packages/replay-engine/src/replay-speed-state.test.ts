@@ -79,7 +79,7 @@ describe("replay-speed-state", () => {
 
     it("should hand out a copy, never the stored speed", () => {
       noteDialSpeedSent(speed(2), T0);
-      resolveLiveSpeed(speed(1), T0 + 1).speed = 99;
+      (resolveLiveSpeed(speed(1), T0 + 1) as { speed: number }).speed = 99;
 
       expect(resolveLiveSpeed(speed(1), T0 + 2)).toEqual(speed(2));
     });
@@ -176,7 +176,7 @@ describe("replay-speed-state", () => {
     });
 
     it("should hand out a copy, never the stored speed", () => {
-      rememberedSpeed().speed = 99;
+      (rememberedSpeed() as { speed: number }).speed = 99;
 
       expect(rememberedSpeed()).toEqual(speed(1));
     });
