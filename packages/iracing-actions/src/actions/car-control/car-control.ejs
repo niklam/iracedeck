@@ -32,6 +32,10 @@
 			<sdpi-checkbox setting="autoHold"></sdpi-checkbox>
 		</sdpi-item>
 
+		<sdpi-item id="starter-flash-item" label="Flash while starting" class="hidden">
+			<sdpi-checkbox setting="starterFlash"></sdpi-checkbox>
+		</sdpi-item>
+
 		<sdpi-item id="auto-hold-states-item" label="Auto-hold" class="hidden">
 			<sdpi-checkbox-list setting="autoHoldStates" columns="1">
 				<option value="exit-car">Exit</option>
@@ -74,8 +78,10 @@
 			function updateAutoHoldVisibility(control) {
 				const autoHoldItem = document.getElementById("auto-hold-item");
 				const autoHoldStatesItem = document.getElementById("auto-hold-states-item");
+				const starterFlashItem = document.getElementById("starter-flash-item");
 
 				autoHoldItem?.classList.toggle("hidden", control !== "escape");
+				starterFlashItem?.classList.toggle("hidden", control !== "starter");
 				autoHoldStatesItem?.classList.toggle("hidden", control !== "enter-exit-tow");
 			}
 

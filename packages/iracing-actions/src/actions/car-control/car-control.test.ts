@@ -612,6 +612,22 @@ describe("CarControl", () => {
       }
     });
 
+    it("should draw the badge lit or dimmed from the lit input, independent of the state (issue #1438)", () => {
+      expect(starterArtwork("off", false, true)).not.toContain("opacity=");
+      expect(starterArtwork("on", false, false)).toContain('opacity="0.45"');
+    });
+
+    it("should keep the two-argument output exactly as before (issue #1438)", () => {
+      for (const state of ["on", "off", "na"] as const) {
+        for (const showTitle of [true, false]) {
+          expect(starterArtwork(state, showTitle)).toBe(starterArtwork(state, showTitle, state === "on"));
+        }
+      }
+
+      expect(starterArtwork("off", false)).toContain('<g opacity="0.45">');
+      expect(starterArtwork("on", false)).toContain("<g>");
+    });
+
     it("should shrink the starter badge when a title is opted back in", () => {
       const withTitle = starterArtwork("on", true);
       const without = starterArtwork("on", false);
@@ -1128,6 +1144,169 @@ describe("CarControl", () => {
       await action.onKeyDown(fakeEvent("action-1", { control: "starter" }) as any);
 
       expect(mockHoldBinding).toHaveBeenCalledWith("action-1", "carControlStarter");
+    });
+  });
+
+  describe("starter flash while starting (issue #1438)", () => {
+    const ENGINE_OFF = { IsOnTrack: true, EngineWarnings: 0x0008 };
+    const ENGINE_ON = { IsOnTrack: true, EngineWarnings: 0 };
+    const FLASH_ON = { control: "starter", starterFlash: true };
+
+    let action: CarControl;
+    let telemetry: Record<string, unknown> | null;
+
+    /** The frames drawn so far, decoded; flash frames and telemetry renders alike. */
+    const frames = () => vi.mocked(action["updateKeyImage"]).mock.calls.map(([, uri]) => decodeURIComponent(uri));
+    const isLit = (frame: string) => !frame.includes('<g opacity="0.45">');
+    const tick = () => {
+      const onTelemetry = vi.mocked(action["sdkController"].subscribe).mock.calls[0][1];
+      onTelemetry(telemetry as any, true);
+    };
+    const artworkFor = (starterState: "on" | "off") =>
+      decodeURIComponent(generateCarControlSvg(CarControlSettings.parse(FLASH_ON), { starterState }));
+
+    beforeEach(async () => {
+      vi.useFakeTimers();
+      telemetry = { ...ENGINE_OFF };
+      action = new CarControl();
+      vi.mocked(action["sdkController"].getCurrentTelemetry).mockImplementation(() => telemetry as any);
+      await action.onWillAppear(fakeEvent("action-1", FLASH_ON) as any);
+      vi.mocked(action["updateKeyImage"]).mockClear();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("should alternate the badge every 250 ms for 3 s and end on the OFF artwork", async () => {
+      await action.onKeyDown(fakeEvent("action-1", FLASH_ON) as any);
+
+      expect(frames().map(isLit)).toEqual([true]);
+
+      await vi.advanceTimersByTimeAsync(2750);
+
+      // Twelve frames, starting lit, alternating, all over the real OFF status bar.
+      expect(frames().map(isLit)).toEqual(Array.from({ length: 12 }, (_, i) => i % 2 === 0));
+
+      for (const frame of frames()) {
+        expect(frame).toContain("OFF");
+      }
+
+      await vi.advanceTimersByTimeAsync(250);
+
+      expect(frames()).toHaveLength(13);
+      expect(frames().at(-1)).toBe(artworkFor("off"));
+
+      await vi.advanceTimersByTimeAsync(2000);
+
+      expect(frames()).toHaveLength(13);
+    });
+
+    it("should draw the lit badge over the real status bar, never claiming the engine runs", async () => {
+      await action.onKeyDown(fakeEvent("action-1", FLASH_ON) as any);
+
+      expect(frames()[0]).not.toBe(artworkFor("on"));
+      expect(frames()[0]).not.toBe(artworkFor("off"));
+    });
+
+    it("should stop at once and draw the ON artwork when the engine catches", async () => {
+      await action.onKeyDown(fakeEvent("action-1", FLASH_ON) as any);
+      await vi.advanceTimersByTimeAsync(500);
+
+      telemetry = { ...ENGINE_ON };
+      tick();
+
+      expect(frames().at(-1)).toBe(artworkFor("on"));
+
+      const drawn = frames().length;
+      await vi.advanceTimersByTimeAsync(3000);
+
+      expect(frames()).toHaveLength(drawn);
+    });
+
+    it("should leave the image to the flash while the engine is still off", async () => {
+      await action.onKeyDown(fakeEvent("action-1", FLASH_ON) as any);
+      // A tick that would otherwise re-render (the state key was cleared by a change).
+      action["lastState"].delete("action-1");
+      tick();
+
+      expect(frames()).toHaveLength(1);
+    });
+
+    it("should not flash when the setting is off", async () => {
+      await action.onKeyDown(fakeEvent("action-1", { control: "starter" }) as any);
+      await vi.advanceTimersByTimeAsync(3000);
+
+      expect(frames()).toHaveLength(0);
+      expect(action["starterFlashes"].size).toBe(0);
+    });
+
+    it("should not flash when the engine is already running", async () => {
+      telemetry = { ...ENGINE_ON };
+      await action.onKeyDown(fakeEvent("action-1", FLASH_ON) as any);
+      await vi.advanceTimersByTimeAsync(3000);
+
+      expect(frames()).toHaveLength(0);
+    });
+
+    it("should restart the 3 s window on a second press", async () => {
+      await action.onKeyDown(fakeEvent("action-1", FLASH_ON) as any);
+      await vi.advanceTimersByTimeAsync(2000);
+      await action.onKeyDown(fakeEvent("action-1", FLASH_ON) as any);
+      await vi.advanceTimersByTimeAsync(2750);
+
+      expect(action["starterFlashes"].has("action-1")).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(250);
+
+      expect(action["starterFlashes"].has("action-1")).toBe(false);
+      expect(frames().at(-1)).toBe(artworkFor("off"));
+    });
+
+    it("should keep flashing after a short tap is released", async () => {
+      await action.onKeyDown(fakeEvent("action-1", FLASH_ON) as any);
+      await action.onKeyUp(fakeEvent("action-1", FLASH_ON) as any);
+      await vi.advanceTimersByTimeAsync(1000);
+
+      expect(frames().length).toBeGreaterThan(1);
+    });
+
+    it("should clear the flash on onWillDisappear and draw nothing after it", async () => {
+      await action.onKeyDown(fakeEvent("action-1", FLASH_ON) as any);
+      await action.onWillDisappear(fakeEvent("action-1", FLASH_ON) as any);
+      const drawn = frames().length;
+      await vi.advanceTimersByTimeAsync(3000);
+
+      expect(action["starterFlashes"].has("action-1")).toBe(false);
+      expect(frames()).toHaveLength(drawn);
+    });
+
+    it("should clear the flash on a settings change and draw no further frame", async () => {
+      await action.onKeyDown(fakeEvent("action-1", FLASH_ON) as any);
+      await action.onDidReceiveSettings(fakeEvent("action-1", { control: "starter", starterFlash: false }) as any);
+      const drawn = frames().length;
+      await vi.advanceTimersByTimeAsync(3000);
+
+      expect(action["starterFlashes"].has("action-1")).toBe(false);
+      expect(frames()).toHaveLength(drawn);
+    });
+
+    it("should send the same hold and release as without the setting", async () => {
+      await action.onKeyDown(fakeEvent("action-1", FLASH_ON) as any);
+      await action.onKeyUp(fakeEvent("action-1", FLASH_ON) as any);
+      const withFlash = [mockHoldBinding.mock.calls, mockReleaseBinding.mock.calls, mockTapBinding.mock.calls];
+
+      vi.clearAllMocks();
+      await action.onKeyDown(fakeEvent("action-1", { control: "starter" }) as any);
+      await action.onKeyUp(fakeEvent("action-1", { control: "starter" }) as any);
+
+      expect([mockHoldBinding.mock.calls, mockReleaseBinding.mock.calls, mockTapBinding.mock.calls]).toEqual(withFlash);
+    });
+
+    it("should flash from a dial press too", async () => {
+      await action.onDialDown(fakeEvent("action-1", FLASH_ON) as any);
+
+      expect(action["starterFlashes"].has("action-1")).toBe(true);
     });
   });
 
