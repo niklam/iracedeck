@@ -39,6 +39,11 @@
 <sdpi-item label="Auto switch">
   <sdpi-checkbox setting="profileAutoSwitchEnabled" label="Switch profiles by session type" global></sdpi-checkbox>
 </sdpi-item>
+<%# Orange, not red: shown only while the toggle is off and a row below names a profile (ird-auto-switch-note). %>
+<ird-auto-switch-note hidden>
+  Automatic switching is off, so the profiles picked below are not used. Turn on
+  <b>Switch profiles by session type</b> to use them.
+</ird-auto-switch-note>
 <div class="ird-supporting-text">
   When on, iRaceDeck switches every connected Stream Deck to the profile you pick below
   for the session type, and switches it back to the profile it was on when iRacing
