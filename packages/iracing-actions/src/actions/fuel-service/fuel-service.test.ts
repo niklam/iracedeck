@@ -1594,7 +1594,7 @@ describe("FuelService", () => {
       expect(sent()).toEqual([12, 13, 14]);
       expect(gallons()).toBe(4);
 
-      // Each repeat (650, 900, 1150 ms) starts from the learned head start and
+      // Each repeat (650, 900, 1150 ms) is bumped to the learned minimum move and
       // lands one gallon further on its first send.
       await vi.advanceTimersByTimeAsync(50);
       expect(gallons()).toBe(5);

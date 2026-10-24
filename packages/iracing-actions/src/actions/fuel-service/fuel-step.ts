@@ -13,9 +13,11 @@
  *   is sent and watched again, up to {@link FUEL_STEP_MAX_EXTRA_LTR} past the
  *   press's own request, after which the check stops and logs at info (tank
  *   full, request at zero, or the car is not in a pit-service state);
- * - the extra liters that last made a press land are remembered per car (the
- *   player's `CarPath`) and direction for the plugin's lifetime, so the next
- *   press starts there and lands on its first send;
+ * - the smallest move that is known to land is remembered per car (the
+ *   player's `CarPath`) and direction for the plugin's lifetime, and a later
+ *   press whose own move is smaller is bumped up to it, so it lands on its
+ *   first send — while a press larger than the car's step goes out unchanged
+ *   (see {@link FuelStepper} for how the memory is kept);
  * - a press arriving while a check runs is queued one deep, the newest
  *   replacing an older queued one, and runs from the new baseline once the
  *   running check ends — a held key on a gallon car steps one gallon per check
@@ -73,7 +75,7 @@ export interface FuelStepRequest {
    * still arms fueling).
    */
   direction: FuelStepDirection | null;
-  /** The press's own request in liters, before any head start or escalation. */
+  /** The press's own request in liters, before any bump to the learned minimum move or escalation. */
   firstLtr: number;
 }
 
@@ -98,7 +100,7 @@ export interface FuelStepResult {
   firstLtr?: number;
   /** The last request actually sent (liters); undefined when nothing was sent. */
   sentLtr?: number;
-  /** Liters sent beyond the press's own request (head start included). */
+  /** Whole liters sent beyond the press's own request (the bump to the learned minimum move included). */
   extraLtr: number;
   /** `PitSvFuel` when the step ended; undefined when unreadable or the step never started. */
   endLtr?: number;
@@ -132,8 +134,10 @@ interface RunningStep extends PendingStep {
   direction: FuelStepDirection;
   baselineLtr: number;
   firstLtr: number;
-  /** The head-start memory key (`<CarPath>|<direction>`), or null when the car is unknown. */
+  /** The minimum-move memory key (`<CarPath>|<direction>`), or null when the car is unknown. */
   memoryKey: string | null;
+  /** Whole liters the first send was bumped by to reach the learned minimum move. */
+  bumpLtr: number;
   extraLtr: number;
   sentLtr: number;
   /** Milliseconds the current send has been watched. */
@@ -156,7 +160,7 @@ export function readStepPitSvFuel(telemetry: TelemetryData | null): number | und
  * @internal Exported for testing
  *
  * The player's car path (`DriverInfo.Drivers[DriverCarIdx].CarPath`, e.g.
- * `"mx5 mx52016"`), the key the head starts are remembered under. Null when
+ * `"mx5 mx52016"`), the key the minimum moves are remembered under. Null when
  * session info does not name it.
  */
 export function readPlayerCarPath(sessionInfo: SessionInfo | null): string | null {
@@ -188,10 +192,39 @@ export function readPlayerCarPath(sessionInfo: SessionInfo | null): string | nul
  * there as `emptied`: zero is the floor, there is nothing further to step to,
  * and the clear leaves fueling off — the state the keypad's reduce-to-zero
  * has always left.
+ *
+ * **The learned minimum move.** What a car needs is a distance from the
+ * baseline, not an amount of extra liters: on the MX-5 a request lands once it
+ * is past half a gallon from where the request stands, whatever the key's
+ * amount. So the memory is the move `|sent − baseline|`, and a press's first
+ * request moves by `max(its own move, the minimum)` — its own request plus
+ * the whole liters that reach the minimum. A 1 L press on the MX-5 goes out
+ * as about 3 L; a 5 L press goes out as plain `round(baseline ± 5)`. The check
+ * still escalates whenever a send does not land.
+ *
+ * How the minimum is kept, so it cannot ratchet upward:
+ *
+ * - It is SET (replaced, never maxed) only by a press that landed after
+ *   escalating. That is the one tight evidence there is: the same press's
+ *   send one liter shorter, from the same baseline, did not land, so the
+ *   landing move is what this car needed from that point on its grid.
+ * - A press that lands on its first send only shows that its move suffices,
+ *   and lowers the minimum when that move is smaller. With the bump, a first
+ *   send moves at least the minimum (to within the float epsilon), so this
+ *   rarely changes anything: nothing probes below the minimum. That is
+ *   accepted because the minimum is bounded, as below.
+ * - It therefore only grows when a bumped send genuinely failed, and settles
+ *   at the largest move any baseline on the car's grid needs — about half a
+ *   step plus one liter of whole-liter rounding (≈ 2.9 L on the MX-5), well
+ *   under one step, so a bumped press never skips a step. A one-off error (a
+ *   telemetry tick later than the watch) can add at most the one liter of
+ *   that escalation, and the 8 L bound caps it absolutely.
+ * - A press that never moved (`unmoved`), was emptied, or was not checked
+ *   teaches nothing.
  */
 export class FuelStepper {
-  /** Extra liters that last made a press land, by `<CarPath>|<direction>`. */
-  private readonly headStarts = new Map<string, number>();
+  /** The smallest move (liters from the baseline) known to land, by `<CarPath>|<direction>`. */
+  private readonly minimumMoves = new Map<string, number>();
   private running: RunningStep | null = null;
   private queued: PendingStep | null = null;
   /** True while the stepper itself sends, so its own commands cancel nothing. */
@@ -214,10 +247,10 @@ export class FuelStepper {
   /**
    * @internal Exported for testing
    *
-   * The remembered head start for a car and direction (0 when none).
+   * The learned minimum move (liters) for a car and direction (0 when none).
    */
-  headStartFor(carPath: string, direction: FuelStepDirection): number {
-    return this.headStarts.get(`${carPath}|${direction}`) ?? 0;
+  minimumMoveFor(carPath: string, direction: FuelStepDirection): number {
+    return this.minimumMoves.get(`${carPath}|${direction}`) ?? 0;
   }
 
   /**
@@ -301,14 +334,20 @@ export class FuelStepper {
 
     const carPath = readPlayerCarPath(this.host.getSessionInfo());
     const memoryKey = carPath === null ? null : `${carPath}|${direction}`;
-    const headStart = memoryKey === null ? 0 : (this.headStarts.get(memoryKey) ?? 0);
+    const minimumMoveLtr = memoryKey === null ? 0 : (this.minimumMoves.get(memoryKey) ?? 0);
+    const ownMoveLtr = Math.abs(firstLtr - baselineLtr);
+    // The whole liters that bring the press's own move up to the learned
+    // minimum; 0 for a press that already moves far enough. The epsilon keeps
+    // float noise (3.0000000001) from costing a whole extra liter.
+    const bumpLtr = Math.max(0, Math.ceil(minimumMoveLtr - ownMoveLtr - MOVE_EPSILON_LTR));
     const run: RunningStep = {
       ...step,
       direction,
       baselineLtr,
       firstLtr,
       memoryKey,
-      extraLtr: headStart,
+      bumpLtr,
+      extraLtr: bumpLtr,
       sentLtr: firstLtr,
       watchedMs: 0,
       timer: null,
@@ -316,8 +355,10 @@ export class FuelStepper {
 
     this.running = run;
 
-    if (headStart > 0) {
-      this.host.logger.debug(`Fuel step: starting ${headStart} L past the request (learned for ${carPath})`);
+    if (bumpLtr > 0) {
+      this.host.logger.debug(
+        `Fuel step: starting ${bumpLtr} L past the request to move ${minimumMoveLtr.toFixed(2)}L (learned for ${carPath})`,
+      );
     }
 
     this.send(run);
@@ -350,7 +391,7 @@ export class FuelStepper {
     const nowLtr = readStepPitSvFuel(this.host.getTelemetry());
 
     if (nowLtr !== undefined && this.moved(run, nowLtr)) {
-      if (run.memoryKey !== null) this.headStarts.set(run.memoryKey, run.extraLtr);
+      this.learn(run);
 
       if (run.extraLtr > 0) {
         this.host.logger.debug(
@@ -384,6 +425,21 @@ export class FuelStepper {
       run.watchedMs += FUEL_STEP_POLL_MS;
       this.check(run);
     }, FUEL_STEP_POLL_MS);
+  }
+
+  /** Updates the learned minimum move from a press that landed (see the class comment). */
+  private learn(run: RunningStep): void {
+    if (run.memoryKey === null) return;
+
+    const moveLtr = Math.abs(run.sentLtr - run.baselineLtr);
+    const escalated = run.extraLtr > run.bumpLtr;
+    const known = this.minimumMoves.get(run.memoryKey);
+
+    if (escalated) {
+      this.minimumMoves.set(run.memoryKey, moveLtr);
+    } else if (known !== undefined && moveLtr < known) {
+      this.minimumMoves.set(run.memoryKey, moveLtr);
+    }
   }
 
   private moved(run: RunningStep, nowLtr: number): boolean {

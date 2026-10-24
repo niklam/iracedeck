@@ -192,8 +192,9 @@ describe("FuelStepper", () => {
 
       expect(sent()).toEqual([6, 5]);
       expect(car.pitSvFuel).toBe(5);
-      expect(stepper.headStartFor(PORSCHE, "add")).toBe(0);
-      expect(stepper.headStartFor(PORSCHE, "reduce")).toBe(0);
+      // A car whose first sends always land learns nothing.
+      expect(stepper.minimumMoveFor(PORSCHE, "add")).toBe(0);
+      expect(stepper.minimumMoveFor(PORSCHE, "reduce")).toBe(0);
     });
   });
 
@@ -223,16 +224,18 @@ describe("FuelStepper", () => {
       expect(car.pitSvFuel).toBeCloseTo(4 * GALLON, 5);
     });
 
-    it("remembers the head start per car and direction, so the next press lands on its first send", async () => {
+    it("remembers the minimum move per car and direction, so the next small press lands on its first send", async () => {
       const first = press("add", 1);
       await vi.advanceTimersByTimeAsync(1_000);
       await expect(first).resolves.toMatchObject({ extraLtr: 2 });
-      expect(stepper.headStartFor(MX5, "add")).toBe(2);
+      // 14 - 11.36: the distance from the baseline that landed.
+      expect(stepper.minimumMoveFor(MX5, "add")).toBeCloseTo(14 - 3 * GALLON, 5);
       // Learned for adding only.
-      expect(stepper.headStartFor(MX5, "reduce")).toBe(0);
+      expect(stepper.minimumMoveFor(MX5, "reduce")).toBe(0);
       mockPitFuel.mockClear();
 
-      // From 4 gal (15.14 L): round(16.14) = 16, +2 head start = 18 → 5 gal at once.
+      // From 4 gal (15.14 L): round(16.14) = 16 moves 0.86 L; 2 more whole liters
+      // reach the 2.64 L minimum, so 18 goes out → 5 gal at once.
       const second = press("add", 1);
       await vi.advanceTimersByTimeAsync(TICK_MS + 4);
 
@@ -240,13 +243,13 @@ describe("FuelStepper", () => {
       expect(sent()).toEqual([18]);
       expect(car.pitSvFuel).toBeCloseTo(5 * GALLON, 5);
 
-      // The reduce direction learns its own head start the first time…
+      // The reduce direction learns its own minimum the first time…
       mockPitFuel.mockClear();
       const reduce = press("reduce", 1);
       await vi.advanceTimersByTimeAsync(1_000);
       await expect(reduce).resolves.toMatchObject({ outcome: "landed" });
       expect(sent()).toEqual([18, 17]);
-      expect(stepper.headStartFor(MX5, "reduce")).toBe(1);
+      expect(stepper.minimumMoveFor(MX5, "reduce")).toBeCloseTo(5 * GALLON - 17, 5);
 
       // …and uses it from then on.
       mockPitFuel.mockClear();
@@ -257,7 +260,45 @@ describe("FuelStepper", () => {
       expect(car.pitSvFuel).toBeCloseTo(3 * GALLON, 5);
     });
 
-    it("keys the head start by car: another car starts without one", async () => {
+    it("sends a press larger than the step as its own request after a small press taught the minimum", async () => {
+      // A 1 L press teaches the 2.64 L minimum (12, 13, 14 from 3 gal)…
+      const small = press("add", 1);
+      await vi.advanceTimersByTimeAsync(1_000);
+      await expect(small).resolves.toMatchObject({ outcome: "landed", sentLtr: 14 });
+
+      // …back to 3 gal…
+      const back = press("reduce", 1);
+      await vi.advanceTimersByTimeAsync(1_000);
+      await expect(back).resolves.toMatchObject({ outcome: "landed" });
+      expect(car.pitSvFuel).toBeCloseTo(3 * GALLON, 5);
+      mockPitFuel.mockClear();
+
+      // …and a 5 L Add moves 4.64 L on its own, past the minimum: plain
+      // round(11.36 + 5) = 16, which banks 4 gal — not 18, which would bank 5.
+      const large = press("add", 5);
+      await vi.advanceTimersByTimeAsync(TICK_MS + 4);
+
+      await expect(large).resolves.toMatchObject({ outcome: "landed", extraLtr: 0, sentLtr: 16 });
+      expect(sent()).toEqual([16]);
+      expect(car.pitSvFuel).toBeCloseTo(4 * GALLON, 5);
+      // Landing on its first send with a larger move does not raise the minimum.
+      expect(stepper.minimumMoveFor(MX5, "add")).toBeCloseTo(14 - 3 * GALLON, 5);
+    });
+
+    it("keeps the minimum when a bumped press lands on its first send", async () => {
+      // 12, 13, 14 from 3 gal: the minimum is 2.64 L.
+      const first = press("add", 1);
+      await vi.advanceTimersByTimeAsync(1_000);
+      await first;
+
+      // From 4 gal the bumped 18 (2.86 L) lands at once; the minimum stays.
+      const second = press("add", 1);
+      await vi.advanceTimersByTimeAsync(1_000);
+      await expect(second).resolves.toMatchObject({ outcome: "landed", sentLtr: 18 });
+      expect(stepper.minimumMoveFor(MX5, "add")).toBeCloseTo(14 - 3 * GALLON, 5);
+    });
+
+    it("keys the minimum move by car: another car starts without one", async () => {
       const mx5 = press("add", 1);
       await vi.advanceTimersByTimeAsync(1_000);
       await expect(mx5).resolves.toMatchObject({ extraLtr: 2 });
@@ -271,7 +312,7 @@ describe("FuelStepper", () => {
       await expect(porsche).resolves.toMatchObject({ outcome: "landed", extraLtr: 0 });
       expect(sent()).toEqual([6]);
       // The MX-5's memory survives the car change.
-      expect(stepper.headStartFor(MX5, "add")).toBe(2);
+      expect(stepper.minimumMoveFor(MX5, "add")).toBeCloseTo(14 - 3 * GALLON, 5);
     });
 
     it("remembers nothing when session info does not name the car", async () => {
@@ -304,7 +345,7 @@ describe("FuelStepper", () => {
       });
       expect(sent()).toEqual([12, 13, 14, 15, 16, 17, 18, 19, 20]);
       expect(logger.info).toHaveBeenCalledWith(expect.stringContaining("did not move"));
-      expect(stepper.headStartFor(MX5, "add")).toBe(0);
+      expect(stepper.minimumMoveFor(MX5, "add")).toBe(0);
       expect(stepper.busy).toBe(false);
     });
 
@@ -367,7 +408,7 @@ describe("FuelStepper", () => {
       await vi.advanceTimersByTimeAsync(2_000);
 
       await expect(first).resolves.toMatchObject({ outcome: "landed", sentLtr: 14 });
-      // From 4 gal with the learned head start: 16 + 2 = 18 → 5 gal.
+      // From 4 gal, bumped to the learned minimum move: 16 + 2 = 18 → 5 gal.
       await expect(second).resolves.toMatchObject({ outcome: "landed", baselineLtr: 4 * GALLON, sentLtr: 18 });
       expect(sent()).toEqual([12, 13, 14, 18]);
       expect(car.pitSvFuel).toBeCloseTo(5 * GALLON, 5);

@@ -3625,7 +3625,7 @@ describe("FuelService dial surface", () => {
   describe("Add Amount steps past the car's fuel step (#1314)", () => {
     /** One US gallon in liters — the MX-5's fuel step. */
     const GALLON = 3.78541;
-    /** The MX-5 in session info: a named car (the head starts are kept per car) with a 50 L tank. */
+    /** The MX-5 in session info: a named car (the minimum moves are kept per car) with a 50 L tank. */
     const SESSION_MX5 = {
       DriverInfo: {
         DriverCarFuelMaxLtr: 50,
@@ -3692,7 +3692,7 @@ describe("FuelService dial surface", () => {
       expect(dialValue("fs1")).toBeCloseTo(4 * GALLON, 5);
     });
 
-    it("the next detent starts from the learned head start and lands on its first send", async () => {
+    it("the next detent is bumped to the learned minimum move and lands on its first send", async () => {
       const telemetry = bankWholeGallons(3);
       const ctx = dialContext("fs2");
       await appear(ctx, SETTINGS);
@@ -3704,7 +3704,7 @@ describe("FuelService dial surface", () => {
       await action.onDialRotate(rotateEvent(ctx, SETTINGS, 1) as never);
       await vi.advanceTimersByTimeAsync(1_000);
 
-      // 15.14 + 1 detent + the 2 L head start = 18.14 → 18 → 5 gal at once, and
+      // 15.14 + 1 detent, bumped by 2 L to the learned 3 L move = 18.14 → 18 → 5 gal at once, and
       // the trailing flush has nothing new to send.
       expect(sent()).toEqual([expect.closeTo(4 * GALLON + 3, 5)]);
       expect(telemetry.PitSvFuel).toBeCloseTo(5 * GALLON, 5);
@@ -3739,7 +3739,7 @@ describe("FuelService dial surface", () => {
       await vi.advanceTimersByTimeAsync(2_000);
 
       // The first detent lands on 4 gal (12, 13, 14); the second then runs from
-      // 15.14 + 1 detent + the 2 L head start = 18.14 → 5 gal.
+      // 15.14 + 1 detent, bumped by 2 L to the learned 3 L move = 18.14 → 5 gal.
       expect(sent()).toEqual([
         expect.closeTo(3 * GALLON + 1, 5),
         expect.closeTo(3 * GALLON + 2, 5),
