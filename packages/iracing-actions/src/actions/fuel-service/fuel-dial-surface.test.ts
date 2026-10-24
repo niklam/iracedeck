@@ -16,7 +16,6 @@ import {
   PENDING_BAR_TOP_Y,
   readEffectiveMaxLtr,
   readFuelLevel,
-  readPitSvFuel,
   renderFuelBarSvg,
   renderStripCanvasSvg,
   resolveAutofuelAddLtr,
@@ -497,17 +496,6 @@ describe("fuel-dial-surface pure helpers", () => {
       expect(readFuelLevel(null)).toBe(0);
       expect(readFuelLevel({} as never)).toBe(0);
       expect(readFuelLevel({ FuelLevel: -3 } as never)).toBe(0);
-    });
-  });
-
-  describe("readPitSvFuel", () => {
-    it("reads finite PitSvFuel", () => {
-      expect(readPitSvFuel({ PitSvFuel: 42 } as never)).toBe(42);
-    });
-
-    it("returns undefined for missing/non-finite", () => {
-      expect(readPitSvFuel(null)).toBeUndefined();
-      expect(readPitSvFuel({} as never)).toBeUndefined();
     });
   });
 

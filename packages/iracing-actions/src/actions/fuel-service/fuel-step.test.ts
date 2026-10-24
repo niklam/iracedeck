@@ -9,8 +9,8 @@ import {
   type FuelStepDirection,
   FuelStepper,
   type FuelStepResult,
+  readPitSvFuel,
   readPlayerCarPath,
-  readStepPitSvFuel,
 } from "./fuel-step.js";
 
 const { mockPitFuel, mockPitClearFuel } = vi.hoisted(() => ({
@@ -86,11 +86,11 @@ const gallonGrid = (liters: number) => Math.round(liters / GALLON) * GALLON;
 const literGrid = (liters: number) => liters;
 
 describe("fuel-step helpers", () => {
-  it("readStepPitSvFuel reads a finite PitSvFuel and nothing else", () => {
-    expect(readStepPitSvFuel({ PitSvFuel: 12.5 } as unknown as TelemetryData)).toBe(12.5);
-    expect(readStepPitSvFuel({ PitSvFuel: Number.NaN } as unknown as TelemetryData)).toBeUndefined();
-    expect(readStepPitSvFuel({} as TelemetryData)).toBeUndefined();
-    expect(readStepPitSvFuel(null)).toBeUndefined();
+  it("readPitSvFuel reads a finite PitSvFuel and nothing else", () => {
+    expect(readPitSvFuel({ PitSvFuel: 12.5 } as unknown as TelemetryData)).toBe(12.5);
+    expect(readPitSvFuel({ PitSvFuel: Number.NaN } as unknown as TelemetryData)).toBeUndefined();
+    expect(readPitSvFuel({} as TelemetryData)).toBeUndefined();
+    expect(readPitSvFuel(null)).toBeUndefined();
   });
 
   it("readPlayerCarPath finds the player's own car by DriverCarIdx", () => {

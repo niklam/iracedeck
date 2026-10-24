@@ -56,7 +56,7 @@ import {
   resolveDisplayUnits,
   TOGGLE_AUTOFUEL_KEY,
 } from "./fuel-service-settings.js";
-import type { FuelStepper, FuelStepResult } from "./fuel-step.js";
+import { type FuelStepper, type FuelStepResult, readPitSvFuel } from "./fuel-step.js";
 
 /**
  * Push + Turn pair members — directional fuel endpoints dispatched per pressed
@@ -436,20 +436,6 @@ export function readFuelLevel(telemetry: TelemetryData | null): number {
   const value = telemetry.FuelLevel;
 
   return typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : 0;
-}
-
-/**
- * @internal Exported for testing
- *
- * Reads `PitSvFuel` (the requested pit fuel add, liters) from telemetry, or
- * undefined when unavailable.
- */
-export function readPitSvFuel(telemetry: TelemetryData | null): number | undefined {
-  if (!telemetry) return undefined;
-
-  const value = telemetry.PitSvFuel;
-
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 /**

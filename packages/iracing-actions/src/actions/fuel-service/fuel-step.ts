@@ -146,11 +146,12 @@ interface RunningStep extends PendingStep {
 }
 
 /**
- * @internal Exported for testing
- *
- * Reads `PitSvFuel` (the requested pit fuel add, liters), or undefined when unavailable.
+ * Reads `PitSvFuel` (the requested pit fuel add, liters) from telemetry, or
+ * undefined when unavailable. The one reader both Fuel Service surfaces use:
+ * it lives here, the leaf of the fuel modules, so the dial surface can import
+ * it without a cycle.
  */
-export function readStepPitSvFuel(telemetry: TelemetryData | null): number | undefined {
+export function readPitSvFuel(telemetry: TelemetryData | null): number | undefined {
   const value = telemetry?.PitSvFuel;
 
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
@@ -293,12 +294,12 @@ export class FuelStepper {
 
     if (running) {
       this.host.logger.debug("Fuel step: cancelled by another fuel command");
-      this.end(running, "cancelled", readStepPitSvFuel(this.host.getTelemetry()), false);
+      this.end(running, "cancelled", readPitSvFuel(this.host.getTelemetry()), false);
     }
   }
 
   private start(step: PendingStep): void {
-    const baselineLtr = readStepPitSvFuel(this.host.getTelemetry());
+    const baselineLtr = readPitSvFuel(this.host.getTelemetry());
     const request = step.resolve(baselineLtr ?? 0);
 
     if (!request) {
@@ -388,7 +389,7 @@ export class FuelStepper {
 
     if (this.running !== run) return;
 
-    const nowLtr = readStepPitSvFuel(this.host.getTelemetry());
+    const nowLtr = readPitSvFuel(this.host.getTelemetry());
 
     if (nowLtr !== undefined && this.moved(run, nowLtr)) {
       this.learn(run);
