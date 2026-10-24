@@ -498,7 +498,25 @@ describe("FuelStepper", () => {
       const result = stepper.sendFuelStep((baselineLtr) => ({ direction: null, firstLtr: baselineLtr }));
 
       await expect(result).resolves.toMatchObject({ outcome: "unchecked" });
-      expect(sent()).toEqual([3 * GALLON]);
+      // 11.36 L goes out as whole liters.
+      expect(sent()).toEqual([11]);
+    });
+
+    it("rounds a fractional request before sending, measuring and learning from it", async () => {
+      useCar(new FakeCar(literGrid, 10, PORSCHE));
+
+      // A dial detent of 0.5 L from 10 L: 10.5 goes out as 11 and lands at once.
+      const detent = stepper.sendFuelStep(() => ({ direction: "add", firstLtr: 10.5 }));
+      await vi.advanceTimersByTimeAsync(100);
+
+      await expect(detent).resolves.toMatchObject({ outcome: "landed", firstLtr: 11, sentLtr: 11, extraLtr: 0 });
+      expect(stepper.minimumMoveFor(PORSCHE, "add")).toBe(0);
+
+      // So a 1 L press afterwards is not inflated: from 11 it sends 12.
+      const key = press("add", 1);
+      await vi.advanceTimersByTimeAsync(100);
+      await expect(key).resolves.toMatchObject({ outcome: "landed", sentLtr: 12 });
+      expect(sent()).toEqual([11, 12]);
     });
 
     it("sends nothing when the resolver asks for nothing", async () => {

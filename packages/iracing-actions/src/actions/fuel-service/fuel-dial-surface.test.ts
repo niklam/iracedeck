@@ -28,6 +28,7 @@ import {
 } from "./fuel-dial-surface.js";
 import { resolveDisplayUnits } from "./fuel-service-settings.js";
 import { FUEL_SERVICE_UUID, FuelService } from "./fuel-service.js";
+import type { FuelStepper } from "./fuel-step.js";
 
 const {
   mockPitClearFuel,
@@ -1368,8 +1369,8 @@ describe("FuelService dial surface", () => {
       await appear(ctx, { stepSize: 1, unitMode: "gallons" });
       await action.onDialRotate(rotateEvent(ctx, { stepSize: 1, unitMode: "gallons" }, 1) as never);
 
-      // 1 gal -> 3.78541 L
-      expect(mockPitFuel).toHaveBeenCalledWith(expect.closeTo(3.78541, 4));
+      // 1 gal -> 3.78541 L, sent as whole liters (#1314): round(3.785) = 4
+      expect(mockPitFuel).toHaveBeenCalledWith(4);
     });
   });
 
@@ -3623,6 +3624,21 @@ describe("FuelService dial surface", () => {
       },
     };
     const SETTINGS = { stepSize: 1, unitMode: "liters", dialMode: "add-amount" };
+    const PORSCHE_PATH = "porsche992cup";
+    /** A whole-liter car in session info, 110 L tank. */
+    const SESSION_PORSCHE = {
+      DriverInfo: {
+        DriverCarFuelMaxLtr: 110,
+        DriverCarMaxFuelPct: 1,
+        DriverCarIdx: 1,
+        Drivers: [{ CarIdx: 1, CarPath: PORSCHE_PATH }],
+      },
+    };
+
+    /** The action's fuel step check, for reading what it learned. */
+    function stepperOf(act: FuelService): FuelStepper {
+      return (act as unknown as { stepper: FuelStepper }).stepper;
+    }
 
     /**
      * A car that banks whole US gallons, like the MX-5: `pit.fuel(n)` truncates
@@ -3669,12 +3685,8 @@ describe("FuelService dial surface", () => {
       await action.onDialRotate(rotateEvent(ctx, SETTINGS, 1) as never);
       await vi.advanceTimersByTimeAsync(1_000);
 
-      // 12.36 → 12 and 13.36 → 13 bank 3 gal again; 14.36 → 14 lands on 4 gal.
-      expect(sent()).toEqual([
-        expect.closeTo(3 * GALLON + 1, 5),
-        expect.closeTo(3 * GALLON + 2, 5),
-        expect.closeTo(3 * GALLON + 3, 5),
-      ]);
+      // 12.36 goes out as 12, which banks 3 gal again, as does 13; 14 lands on 4 gal.
+      expect(sent()).toEqual([12, 13, 14]);
       expect(telemetry.PitSvFuel).toBeCloseTo(4 * GALLON, 5);
       // The dialed value follows the bank, so the next detent starts above it.
       expect(dialValue("fs1")).toBeCloseTo(4 * GALLON, 5);
@@ -3692,9 +3704,9 @@ describe("FuelService dial surface", () => {
       await action.onDialRotate(rotateEvent(ctx, SETTINGS, 1) as never);
       await vi.advanceTimersByTimeAsync(1_000);
 
-      // 15.14 + 1 detent, bumped by 2 L to the learned 3 L move = 18.14 → 18 → 5 gal at once, and
-      // the trailing flush has nothing new to send.
-      expect(sent()).toEqual([expect.closeTo(4 * GALLON + 3, 5)]);
+      // 15.14 + 1 detent → 16, bumped by 2 L to the learned 2.64 L move = 18 → 5 gal at
+      // once, and the trailing flush has nothing new to send.
+      expect(sent()).toEqual([18]);
       expect(telemetry.PitSvFuel).toBeCloseTo(5 * GALLON, 5);
     });
 
@@ -3706,8 +3718,8 @@ describe("FuelService dial surface", () => {
       await action.onDialRotate(rotateEvent(ctx, SETTINGS, -1) as never);
       await vi.advanceTimersByTimeAsync(1_000);
 
-      // 10.36 → 10 banks 3 gal again; 9.36 → 9 lands on 2 gal.
-      expect(sent()).toEqual([expect.closeTo(3 * GALLON - 1, 5), expect.closeTo(3 * GALLON - 2, 5)]);
+      // 10.36 goes out as 10, which banks 3 gal again; 9 lands on 2 gal.
+      expect(sent()).toEqual([10, 9]);
       expect(telemetry.PitSvFuel).toBeCloseTo(2 * GALLON, 5);
       expect(dialValue("fs3")).toBeCloseTo(2 * GALLON, 5);
     });
@@ -3727,13 +3739,8 @@ describe("FuelService dial surface", () => {
       await vi.advanceTimersByTimeAsync(2_000);
 
       // The first detent lands on 4 gal (12, 13, 14); the second then runs from
-      // 15.14 + 1 detent, bumped by 2 L to the learned 3 L move = 18.14 → 5 gal.
-      expect(sent()).toEqual([
-        expect.closeTo(3 * GALLON + 1, 5),
-        expect.closeTo(3 * GALLON + 2, 5),
-        expect.closeTo(3 * GALLON + 3, 5),
-        expect.closeTo(4 * GALLON + 3, 5),
-      ]);
+      // 15.14 + 1 detent → 16, bumped by 2 L to the learned 2.64 L move = 18 → 5 gal.
+      expect(sent()).toEqual([12, 13, 14, 18]);
       expect(telemetry.PitSvFuel).toBeCloseTo(5 * GALLON, 5);
       expect(dialValue("fs4")).toBeCloseTo(5 * GALLON, 5);
     });
@@ -3758,14 +3765,14 @@ describe("FuelService dial surface", () => {
       const ctx = dialContext("fs6");
       await appear(ctx, SETTINGS);
 
-      // 7.57 - 1 → 6.57 → 6 banks 2 gal again: the check is now stepping.
+      // 7.57 - 1 = 6.57 goes out as 7, which banks 2 gal again: the check is now stepping.
       await action.onDialRotate(rotateEvent(ctx, SETTINGS, -1) as never);
       await vi.advanceTimersByTimeAsync(150);
       // A far turn down to 0 clears fueling — which ends the check.
       await action.onDialRotate(rotateEvent(ctx, SETTINGS, -10) as never);
       await vi.advanceTimersByTimeAsync(3_000);
 
-      expect(sent()).toEqual([expect.closeTo(2 * GALLON - 1, 5)]);
+      expect(sent()).toEqual([7]);
       expect(mockPitClearFuel).toHaveBeenCalledOnce();
       expect(mockPitClearFuel.mock.invocationCallOrder[0]).toBeGreaterThan(mockPitFuel.mock.invocationCallOrder[0]!);
       expect(telemetry.PitSvFuel).toBeCloseTo(2 * GALLON, 5);
@@ -3784,14 +3791,63 @@ describe("FuelService dial surface", () => {
         await vi.advanceTimersByTimeAsync(500);
       }
 
-      // Each truncated send (3, 7, 11 L) lands, so the dial is never re-based on
-      // the bank: three 1 gal detents still dial 3 gal, not 3 × 3 L.
-      expect(sent()).toEqual([
-        expect.closeTo(GALLON, 5),
-        expect.closeTo(2 * GALLON, 5),
-        expect.closeTo(3 * GALLON, 5),
-      ]);
+      // Each rounded send (4, 8, 11 L) lands, so the dial is never re-based on
+      // the bank: three 1 gal detents still dial 3 gal, not 3 × 4 L.
+      expect(sent()).toEqual([4, 8, 11]);
       expect(dialValue("fs8")).toBeCloseTo(3 * GALLON, 5);
+    });
+
+    it("a 0.5 L step on a whole-liter car moves 1 L every second detent and learns nothing", async () => {
+      mockGetSessionInfo.mockReturnValue(SESSION_PORSCHE);
+      const telemetry = bankWholeLiters({ DisplayUnits: 1, PitSvFuel: 10, FuelLevel: 0, PitSvFlags: 0 });
+      const settings = { stepSize: 0.5, unitMode: "liters", dialMode: "add-amount" };
+      const ctx = dialContext("fs9");
+      await appear(ctx, settings);
+
+      for (let detent = 0; detent < 4; detent++) {
+        await action.onDialRotate(rotateEvent(ctx, settings, 1) as never);
+        await vi.advanceTimersByTimeAsync(500);
+      }
+
+      // 10.5 → 11 (lands); 11.0 rounds to the bank → one unchecked send that
+      // changes nothing; 11.5 → 12 (lands); 12.0 → unchecked again. Never a
+      // fractional request the sim would truncate and the check misread.
+      expect(sent()).toEqual([11, 11, 12, 12]);
+      expect(telemetry.PitSvFuel).toBe(12);
+      expect(dialValue("fs9")).toBe(12);
+      expect(stepperOf(action).minimumMoveFor(PORSCHE_PATH, "add")).toBe(0);
+    });
+
+    it("a fractional detent does not teach a minimum that inflates a later key press", async () => {
+      mockGetSessionInfo.mockReturnValue(SESSION_PORSCHE);
+      bankWholeLiters({ DisplayUnits: 1, PitSvFuel: 10, FuelLevel: 0, PitSvFlags: 0 });
+      const settings = { stepSize: 0.5, unitMode: "liters", dialMode: "add-amount" };
+      const ctx = dialContext("fs10");
+      await appear(ctx, settings);
+
+      // Before #1314's rounding fix this detent sent 10.5 (banked 10), escalated
+      // to 11.5 and learned a 1.5 L move, so the key below sent 13 from 11.
+      await action.onDialRotate(rotateEvent(ctx, settings, 1) as never);
+      await vi.advanceTimersByTimeAsync(500);
+      mockPitFuel.mockClear();
+
+      const key = {
+        id: "key-1",
+        isKey: () => true,
+        isDial: () => false,
+        setTitle: vi.fn().mockResolvedValue(undefined),
+        setImage: vi.fn().mockResolvedValue(undefined),
+        setSettings: vi.fn().mockResolvedValue(undefined),
+      };
+      await action.onKeyDown({
+        action: key,
+        payload: { settings: { mode: "add-fuel", amount: 1, unit: "l" } },
+      } as never);
+      await action.onKeyUp({ action: key, payload: { settings: {} } } as never);
+      await vi.advanceTimersByTimeAsync(500);
+
+      expect(sent()).toEqual([12]);
+      expect(stepperOf(action).minimumMoveFor(PORSCHE_PATH, "add")).toBe(0);
     });
 
     it("leaves Fill To alone: one send per rotation, no check", async () => {

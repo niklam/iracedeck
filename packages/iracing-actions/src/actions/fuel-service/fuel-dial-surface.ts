@@ -1395,8 +1395,9 @@ export class FuelDialSurface {
    * moment, against the live `PitSvFuel` — because a rotation that arrives while
    * another check runs waits in the stepper's queue and must run from the
    * baseline that check left. The direction is the request's side of that
-   * baseline, which is the rotation's direction; a request equal to it is sent
-   * once without a check, so a turn still arms fueling as it always has.
+   * baseline, which is the rotation's direction, decided in whole liters — what
+   * the stepper actually sends: a request that rounds to the banked amount is
+   * sent once without a check, so a turn still arms fueling as it always has.
    */
   private sendAddAmountStep(ctx: FuelDialContext, target: number): void {
     ctx.throttle.lastSentLtr = target;
@@ -1404,14 +1405,21 @@ export class FuelDialSurface {
     this.host.logger.info("Fuel request sent");
     this.host.logger.debug(`Sent ${target.toFixed(2)}L (fuel step check)`);
 
+    // The dialed add when the step started, kept fractional: the re-base in
+    // onAddAmountStepEnd measures detents turned since against it, not
+    // against the rounded request.
+    let startLtr: number | null = null;
+
     void this.stepper.sendFuelStep(
       (baselineLtr) => {
-        const firstLtr = this.effectiveAddLtr(ctx);
-        const direction = firstLtr > baselineLtr ? "add" : firstLtr < baselineLtr ? "reduce" : null;
+        startLtr = this.effectiveAddLtr(ctx);
+        const requestLtr = Math.round(startLtr);
+        const bankLtr = Math.round(baselineLtr);
+        const direction = requestLtr > bankLtr ? "add" : requestLtr < bankLtr ? "reduce" : null;
 
-        return { direction, firstLtr };
+        return { direction, firstLtr: requestLtr };
       },
-      (result) => this.onAddAmountStepEnd(ctx, result),
+      (result) => this.onAddAmountStepEnd(ctx, startLtr, result),
     );
     void this.renderFeedback(ctx);
   }
@@ -1434,16 +1442,19 @@ export class FuelDialSurface {
    * A step whose own request landed (no extra liters, so every whole-liter car)
    * leaves the dial exactly as before #1314: the dialed value keeps its
    * fraction — a 1 gal step on a liter car still adds 3.785 L per detent over a
-   * spin, not the 3 L each truncated send banks.
+   * spin, not the whole liters each rounded send banks.
+   *
+   * `startLtr` is the dialed add when the step started (null when it never
+   * started), the fractional value the detents turned since are measured from.
    */
-  private onAddAmountStepEnd(ctx: FuelDialContext, result: FuelStepResult): void {
+  private onAddAmountStepEnd(ctx: FuelDialContext, startLtr: number | null, result: FuelStepResult): void {
     const steppedPast = result.outcome === "landed" && result.extraLtr > 0;
 
     if (!steppedPast && result.outcome !== "unmoved" && result.outcome !== "emptied") return;
 
-    if (result.firstLtr === undefined) return;
+    if (startLtr === null) return;
 
-    const turnedSinceLtr = ctx.dialValueLtr - result.firstLtr;
+    const turnedSinceLtr = ctx.dialValueLtr - startLtr;
     const bankedLtr = result.outcome === "emptied" ? 0 : (result.endLtr ?? result.baselineLtr ?? 0);
     ctx.dialValueLtr = clampTargetLtr(bankedLtr + turnedSinceLtr, this.effectiveMaxLtr());
 

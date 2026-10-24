@@ -75,7 +75,11 @@ export interface FuelStepRequest {
    * still arms fueling).
    */
   direction: FuelStepDirection | null;
-  /** The press's own request in liters, before any bump to the learned minimum move or escalation. */
+  /**
+   * The press's own request in liters, before any bump to the learned minimum
+   * move or escalation. The stepper rounds it to whole liters itself (see
+   * {@link FuelStepper}), so a caller may hand over a fractional value.
+   */
   firstLtr: number;
 }
 
@@ -185,8 +189,17 @@ export function readPlayerCarPath(sessionInfo: SessionInfo | null): string | nul
  * reads `PitSvFuel` back, and steps further until the request moves. See the
  * module comment for the rules.
  *
- * **A request at or below zero is never sent as `pit.fuel`.** The broadcast
- * carries an integer — the native layer truncates — and `pit.fuel(0)` means
+ * **Every request is a whole number of liters.** The broadcast carries an
+ * integer and the native layer truncates whatever it is given, so the stepper
+ * rounds the press's own request (`Math.round`) before anything else, and
+ * every send, `sentLtr` and the learned move are that integer plus whole
+ * liters. Measuring a fractional request the sim never saw would read a
+ * truncation as "did not land" and learn a move the car does not need: a
+ * 0.5 L dial detent from 10 L once went out as 10.5 (banked 10), escalated
+ * to 11.5 (banked 11) and taught a 1.5 L minimum, so a later 1 L key press
+ * added 2 L.
+ *
+ * **A request at or below zero is never sent as `pit.fuel`.** `pit.fuel(0)` means
  * "keep the existing amount", so a request that would reach zero (a reduce
  * press, or a reduce escalation stepping past the last whole step) goes through
  * {@link FuelPipeline.sendNoFuel} instead (1 L then clear) and the step ends
@@ -308,12 +321,13 @@ export class FuelStepper {
       return;
     }
 
-    const { direction, firstLtr } = request;
+    const { direction } = request;
+    const firstLtr = Math.round(request.firstLtr);
 
     // No direction to check, or no baseline to check against: send once, as
     // before #1314. An empty request still goes through the empty path.
     if (direction === null || baselineLtr === undefined) {
-      if (Math.trunc(firstLtr) <= 0) {
+      if (firstLtr <= 0) {
         this.own(() => this.pipeline.sendNoFuel());
         this.finishStarted(step, { outcome: "emptied", baselineLtr, firstLtr, sentLtr: firstLtr, extraLtr: 0 });
 
@@ -370,7 +384,7 @@ export class FuelStepper {
     const liters = run.direction === "add" ? run.firstLtr + run.extraLtr : run.firstLtr - run.extraLtr;
     run.sentLtr = liters;
 
-    if (Math.trunc(liters) <= 0) {
+    if (liters <= 0) {
       this.own(() => this.pipeline.sendNoFuel());
       this.host.logger.debug(`Fuel step: request ${liters.toFixed(2)}L reached zero — emptied it instead`);
       this.end(run, "emptied", undefined, true);
