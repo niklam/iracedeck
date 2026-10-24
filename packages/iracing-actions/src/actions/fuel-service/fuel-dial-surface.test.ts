@@ -333,6 +333,24 @@ function getTelemetryCallback(act: FuelService): (telemetry: unknown) => void {
   return subscribe.mock.calls.at(-1)?.[1] as (telemetry: unknown) => void;
 }
 
+/**
+ * Gives the dial a car that banks whole liters, like the Porsche 911 GT3
+ * (#1314): every `pit.fuel(n)` with n > 0 moves `PitSvFuel` to n (the native
+ * layer truncates), so a fuel step check lands on its first send. Returns the
+ * live telemetry object the mocked controller now serves.
+ */
+function bankWholeLiters(base: Record<string, unknown>): Record<string, unknown> {
+  const telemetry = { ...base };
+  mockGetCurrentTelemetry.mockReturnValue(telemetry);
+  mockPitFuel.mockImplementation((liters: number) => {
+    if (liters > 0) telemetry.PitSvFuel = Math.trunc(liters);
+
+    return true;
+  });
+
+  return telemetry;
+}
+
 const SESSION_90L = { DriverInfo: { DriverCarFuelMaxLtr: 90, DriverCarMaxFuelPct: 1 } };
 const SESSION_110L = { DriverInfo: { DriverCarFuelMaxLtr: 110, DriverCarMaxFuelPct: 1 } };
 
@@ -1179,6 +1197,9 @@ describe("FuelService dial surface", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers();
+    // A car that banks nothing: PitSvFuel stays as the test set it (a test that
+    // needs a request to land installs bankWholeLiters, #1314).
+    mockPitFuel.mockImplementation(() => true);
     mockDualPressThreshold.value = 500;
     mockGetSessionInfo.mockReturnValue(SESSION_110L);
     // Default telemetry: metric, no current fuel, no pending request, fuel off.
@@ -1491,6 +1512,9 @@ describe("FuelService dial surface", () => {
 
   describe("throttle coalescing", () => {
     it("sends the leading change immediately and coalesces the tail into one flush", async () => {
+      // A whole-liter car, so the leading send's fuel step check (#1314) lands
+      // at once and the trailing flush is not held behind it.
+      bankWholeLiters({ DisplayUnits: 1, PitSvFuel: 0, FuelLevel: 0, PitSvFlags: 0 });
       const ctx = dialContext("t1");
       await appear(ctx, { stepSize: 1, unitMode: "liters" });
 
@@ -3595,6 +3619,203 @@ describe("FuelService dial surface", () => {
       await appear(ctx, {});
 
       expect(ctx.setTriggerDescription).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("Add Amount steps past the car's fuel step (#1314)", () => {
+    /** One US gallon in liters — the MX-5's fuel step. */
+    const GALLON = 3.78541;
+    /** The MX-5 in session info: a named car (the head starts are kept per car) with a 50 L tank. */
+    const SESSION_MX5 = {
+      DriverInfo: {
+        DriverCarFuelMaxLtr: 50,
+        DriverCarMaxFuelPct: 1,
+        DriverCarIdx: 4,
+        Drivers: [{ CarIdx: 4, CarPath: "mx5 mx52016" }],
+      },
+    };
+    const SETTINGS = { stepSize: 1, unitMode: "liters", dialMode: "add-amount" };
+
+    /**
+     * A car that banks whole US gallons, like the MX-5: `pit.fuel(n)` truncates
+     * n to whole liters and banks the nearest gallon. Returns the live telemetry.
+     */
+    function bankWholeGallons(startGallons: number): Record<string, unknown> {
+      const telemetry: Record<string, unknown> = {
+        DisplayUnits: 1,
+        PitSvFuel: startGallons * GALLON,
+        FuelLevel: 0,
+        PitSvFlags: 0,
+      };
+      mockGetCurrentTelemetry.mockReturnValue(telemetry);
+      mockPitFuel.mockImplementation((liters: number) => {
+        const whole = Math.trunc(liters);
+
+        if (whole > 0) telemetry.PitSvFuel = Math.round(whole / GALLON) * GALLON;
+
+        return true;
+      });
+
+      return telemetry;
+    }
+
+    /** Reads the dialed value (liters) off the action's private context map. */
+    function dialValue(id: string): number {
+      const contexts = (action as unknown as { dialSurface: { contextsState: Map<string, { dialValueLtr: number }> } })
+        .dialSurface.contextsState;
+
+      return contexts.get(id)?.dialValueLtr ?? Number.NaN;
+    }
+
+    const sent = () => mockPitFuel.mock.calls.map(([liters]) => liters);
+
+    beforeEach(() => {
+      mockGetSessionInfo.mockReturnValue(SESSION_MX5);
+    });
+
+    it("one clockwise detent moves one gallon, stepping past the liters that round back", async () => {
+      const telemetry = bankWholeGallons(3);
+      const ctx = dialContext("fs1");
+      await appear(ctx, SETTINGS);
+
+      await action.onDialRotate(rotateEvent(ctx, SETTINGS, 1) as never);
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      // 12.36 → 12 and 13.36 → 13 bank 3 gal again; 14.36 → 14 lands on 4 gal.
+      expect(sent()).toEqual([
+        expect.closeTo(3 * GALLON + 1, 5),
+        expect.closeTo(3 * GALLON + 2, 5),
+        expect.closeTo(3 * GALLON + 3, 5),
+      ]);
+      expect(telemetry.PitSvFuel).toBeCloseTo(4 * GALLON, 5);
+      // The dialed value follows the bank, so the next detent starts above it.
+      expect(dialValue("fs1")).toBeCloseTo(4 * GALLON, 5);
+    });
+
+    it("the next detent starts from the learned head start and lands on its first send", async () => {
+      const telemetry = bankWholeGallons(3);
+      const ctx = dialContext("fs2");
+      await appear(ctx, SETTINGS);
+
+      await action.onDialRotate(rotateEvent(ctx, SETTINGS, 1) as never);
+      await vi.advanceTimersByTimeAsync(1_000);
+      mockPitFuel.mockClear();
+
+      await action.onDialRotate(rotateEvent(ctx, SETTINGS, 1) as never);
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      // 15.14 + 1 detent + the 2 L head start = 18.14 → 18 → 5 gal at once, and
+      // the trailing flush has nothing new to send.
+      expect(sent()).toEqual([expect.closeTo(4 * GALLON + 3, 5)]);
+      expect(telemetry.PitSvFuel).toBeCloseTo(5 * GALLON, 5);
+    });
+
+    it("one counter-clockwise detent moves one gallon down", async () => {
+      const telemetry = bankWholeGallons(3);
+      const ctx = dialContext("fs3");
+      await appear(ctx, SETTINGS);
+
+      await action.onDialRotate(rotateEvent(ctx, SETTINGS, -1) as never);
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      // 10.36 → 10 banks 3 gal again; 9.36 → 9 lands on 2 gal.
+      expect(sent()).toEqual([expect.closeTo(3 * GALLON - 1, 5), expect.closeTo(3 * GALLON - 2, 5)]);
+      expect(telemetry.PitSvFuel).toBeCloseTo(2 * GALLON, 5);
+      expect(dialValue("fs3")).toBeCloseTo(2 * GALLON, 5);
+    });
+
+    it("a detent turned while the check runs is held, then runs on top of the new bank", async () => {
+      const telemetry = bankWholeGallons(3);
+      const ctx = dialContext("fs4");
+      await appear(ctx, SETTINGS);
+
+      await action.onDialRotate(rotateEvent(ctx, SETTINGS, 1) as never);
+      await vi.advanceTimersByTimeAsync(150);
+      await action.onDialRotate(rotateEvent(ctx, SETTINGS, 1) as never);
+
+      // Held behind the running check: nothing new went out.
+      expect(sent()).toHaveLength(1);
+
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      // The first detent lands on 4 gal (12, 13, 14); the second then runs from
+      // 15.14 + 1 detent + the 2 L head start = 18.14 → 5 gal.
+      expect(sent()).toEqual([
+        expect.closeTo(3 * GALLON + 1, 5),
+        expect.closeTo(3 * GALLON + 2, 5),
+        expect.closeTo(3 * GALLON + 3, 5),
+        expect.closeTo(4 * GALLON + 3, 5),
+      ]);
+      expect(telemetry.PitSvFuel).toBeCloseTo(5 * GALLON, 5);
+      expect(dialValue("fs4")).toBeCloseTo(5 * GALLON, 5);
+    });
+
+    it("leaves the dialed value matching the bank, so the telemetry re-seed after the grace window changes nothing", async () => {
+      bankWholeGallons(3);
+      const ctx = dialContext("fs5");
+      await appear(ctx, SETTINGS);
+
+      await action.onDialRotate(rotateEvent(ctx, SETTINGS, 1) as never);
+      await vi.advanceTimersByTimeAsync(4_000);
+      const before = dialValue("fs5");
+
+      getTelemetryCallback(action)({ DisplayUnits: 1, PitSvFuel: 4 * GALLON, FuelLevel: 0, PitSvFlags: 0 });
+
+      expect(before).toBeCloseTo(4 * GALLON, 5);
+      expect(dialValue("fs5")).toBeCloseTo(before, 5);
+    });
+
+    it("a dial turned to 0 during a check clears at once, and the check sends nothing more", async () => {
+      const telemetry = bankWholeGallons(2);
+      const ctx = dialContext("fs6");
+      await appear(ctx, SETTINGS);
+
+      // 7.57 - 1 → 6.57 → 6 banks 2 gal again: the check is now stepping.
+      await action.onDialRotate(rotateEvent(ctx, SETTINGS, -1) as never);
+      await vi.advanceTimersByTimeAsync(150);
+      // A far turn down to 0 clears fueling — which ends the check.
+      await action.onDialRotate(rotateEvent(ctx, SETTINGS, -10) as never);
+      await vi.advanceTimersByTimeAsync(3_000);
+
+      expect(sent()).toEqual([expect.closeTo(2 * GALLON - 1, 5)]);
+      expect(mockPitClearFuel).toHaveBeenCalledOnce();
+      expect(mockPitClearFuel.mock.invocationCallOrder[0]).toBeGreaterThan(mockPitFuel.mock.invocationCallOrder[0]!);
+      expect(telemetry.PitSvFuel).toBeCloseTo(2 * GALLON, 5);
+      expect(dialValue("fs6")).toBe(0);
+    });
+
+    it("keeps the dialed fraction when each request lands on its own (a whole-liter car)", async () => {
+      mockGetSessionInfo.mockReturnValue(SESSION_110L);
+      bankWholeLiters({ DisplayUnits: 1, PitSvFuel: 0, FuelLevel: 0, PitSvFlags: 0 });
+      const settings = { stepSize: 1, unitMode: "gallons", dialMode: "add-amount" };
+      const ctx = dialContext("fs8");
+      await appear(ctx, settings);
+
+      for (let detent = 0; detent < 3; detent++) {
+        await action.onDialRotate(rotateEvent(ctx, settings, 1) as never);
+        await vi.advanceTimersByTimeAsync(500);
+      }
+
+      // Each truncated send (3, 7, 11 L) lands, so the dial is never re-based on
+      // the bank: three 1 gal detents still dial 3 gal, not 3 × 3 L.
+      expect(sent()).toEqual([
+        expect.closeTo(GALLON, 5),
+        expect.closeTo(2 * GALLON, 5),
+        expect.closeTo(3 * GALLON, 5),
+      ]);
+      expect(dialValue("fs8")).toBeCloseTo(3 * GALLON, 5);
+    });
+
+    it("leaves Fill To alone: one send per rotation, no check", async () => {
+      bankWholeGallons(3);
+      const settings = { stepSize: 1, unitMode: "liters", dialMode: "fill-to" };
+      const ctx = dialContext("fs7");
+      await appear(ctx, settings);
+
+      await action.onDialRotate(rotateEvent(ctx, settings, 1) as never);
+      await vi.advanceTimersByTimeAsync(3_000);
+
+      expect(mockPitFuel).toHaveBeenCalledOnce();
     });
   });
 });

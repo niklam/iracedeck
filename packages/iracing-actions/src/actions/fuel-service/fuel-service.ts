@@ -413,6 +413,7 @@ export class FuelService extends SimIRacingAction<FuelServiceSettings> {
       isBindingMissing: (keys) => this.isBindingMissing(keys),
     },
     this.pipeline,
+    this.stepper,
   );
 
   /** @internal Compat accessor — tests read repeat state via this field. */
