@@ -861,7 +861,7 @@ export function generateCarControlSvg(
     const resolvedTitle = resolveTitleSettings(template, getGlobalTitleSettings(), settings.titleOverrides);
     const artwork = isIgnition
       ? ignitionArtwork(state, resolvedTitle.showTitle)
-      : starterArtwork(state, resolvedTitle.showTitle, telemetryState?.starterBadgeLit ?? state === "on");
+      : starterArtwork(state, resolvedTitle.showTitle, telemetryState?.starterBadgeLit);
 
     return generateToggleStateSvg({
       template,
@@ -1079,9 +1079,12 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
     }
 
     // Display only, and after the hold is sent so it never delays the key (issue #1438).
+    // The stored settings decide, not the press's: a PI change can land during the hold's await.
+    const storedSettings = this.activeContexts.get(actionId);
+
     if (
-      settings.control === "starter" &&
-      settings.starterFlash &&
+      storedSettings?.control === "starter" &&
+      storedSettings.starterFlash &&
       starterToggleState(this.sdkController.getCurrentTelemetry()) !== "on"
     ) {
       this.startStarterFlash(actionId);
@@ -1104,7 +1107,7 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
       lit: true,
     };
     this.starterFlashes.set(contextId, flash);
-    this.drawStarterFlashFrame(contextId, true);
+    this.drawStarterFlashFrame(contextId);
   }
 
   private stepStarterFlash(contextId: string): void {
@@ -1121,7 +1124,7 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
     }
 
     flash.lit = !flash.lit;
-    this.drawStarterFlashFrame(contextId, flash.lit);
+    this.drawStarterFlashFrame(contextId);
   }
 
   /** Ends the flash and draws the real state now, rather than waiting for a telemetry tick. */
@@ -1145,8 +1148,12 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
     }
   }
 
-  /** Frames go straight to updateKeyImage: at 4 Hz they are under the throttle's 10 Hz cap. */
-  private drawStarterFlashFrame(contextId: string, lit: boolean): void {
+  /**
+   * Draws the flash's current frame. Frames go straight to updateKeyImage: at 4 Hz they are
+   * under the throttle's 10 Hz cap. The frame reads the same telemetry a tick would, so the
+   * engine catching ends the flash here too, without waiting for a subscriber tick.
+   */
+  private drawStarterFlashFrame(contextId: string): void {
     const settings = this.activeContexts.get(contextId);
 
     if (!settings || settings.control !== "starter") {
@@ -1155,12 +1162,15 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
       return;
     }
 
-    const state = this.getTelemetryState(this.sdkController.getCurrentTelemetry(), "starter");
-    const svgDataUri = generateCarControlSvg(
-      settings,
-      { ...state, starterBadgeLit: lit },
-      this.isBindingMissing(CAR_CONTROL_GLOBAL_KEYS.starter),
-    );
+    const state = this.getTelemetryState(this.sdkController.getCurrentTelemetry(), "starter", contextId);
+
+    if (state.starterState === "on") {
+      this.endStarterFlash(contextId);
+
+      return;
+    }
+
+    const svgDataUri = generateCarControlSvg(settings, state, this.isBindingMissing(CAR_CONTROL_GLOBAL_KEYS.starter));
 
     void this.updateKeyImage(contextId, svgDataUri).catch((err) =>
       this.logger.error(`Starter flash frame failed: ${err}`),
@@ -1262,7 +1272,16 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
     }
   }
 
-  private getTelemetryState(telemetry: TelemetryData | null, control: CarControlType): CarControlTelemetryState {
+  /**
+   * `contextId` lets a running Starter flash (issue #1438) put its current frame into the
+   * state, so every path that renders the key — the frame step, the regenerate callback a
+   * global-settings change runs — draws the same frame rather than the bare state.
+   */
+  private getTelemetryState(
+    telemetry: TelemetryData | null,
+    control: CarControlType,
+    contextId?: string,
+  ): CarControlTelemetryState {
     const state: CarControlTelemetryState = {};
 
     if (control === "pit-speed-limiter") {
@@ -1281,6 +1300,10 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
       state.ignitionState = ignitionToggleState(telemetry);
     } else if (control === "starter") {
       state.starterState = starterToggleState(telemetry);
+
+      const flash = contextId === undefined ? undefined : this.starterFlashes.get(contextId);
+
+      if (flash) state.starterBadgeLit = flash.lit;
     }
 
     return state;
@@ -1302,7 +1325,7 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
     await this.setKeyImage(ev, svgDataUri);
     this.setRegenerateCallback(ev.action.id, () => {
       const currentTelemetry = this.sdkController.getCurrentTelemetry();
-      const currentState = this.getTelemetryState(currentTelemetry, settings.control);
+      const currentState = this.getTelemetryState(currentTelemetry, settings.control, ev.action.id);
 
       return generateCarControlSvg(
         settings,
@@ -1392,7 +1415,7 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
       if (!storedSettings || !TELEMETRY_AWARE_CONTROLS.has(storedSettings.control)) return;
 
       const currentTelemetry = this.sdkController.getCurrentTelemetry();
-      const currentState = this.getTelemetryState(currentTelemetry, storedSettings.control);
+      const currentState = this.getTelemetryState(currentTelemetry, storedSettings.control, contextId);
       const svgDataUri = generateCarControlSvg(
         storedSettings,
         currentState,
@@ -1401,7 +1424,7 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
       await this.updateKeyImage(contextId, svgDataUri);
       this.setRegenerateCallback(contextId, () => {
         const t = this.sdkController.getCurrentTelemetry();
-        const s = this.getTelemetryState(t, storedSettings.control);
+        const s = this.getTelemetryState(t, storedSettings.control, contextId);
 
         return generateCarControlSvg(
           storedSettings,

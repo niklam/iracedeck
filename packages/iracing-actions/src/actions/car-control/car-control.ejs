@@ -55,13 +55,13 @@
 				const controlSelect = document.getElementById("control-select");
 				if (!controlSelect) return;
 
-				updateAutoHoldVisibility(controlSelect.value || "pit-speed-limiter");
+				updateModeSettingsVisibility(controlSelect.value || "pit-speed-limiter");
 
 				controlSelect.addEventListener("change", (ev) => {
-					updateAutoHoldVisibility(ev.target.value);
+					updateModeSettingsVisibility(ev.target.value);
 				});
 				controlSelect.addEventListener("input", (ev) => {
-					updateAutoHoldVisibility(ev.target.value);
+					updateModeSettingsVisibility(ev.target.value);
 				});
 
 				// Polling fallback: sdpi-select events can be unreliable on programmatic value restores
@@ -70,12 +70,12 @@
 					const currentControl = controlSelect.value;
 					if (currentControl && currentControl !== lastControl) {
 						lastControl = currentControl;
-						updateAutoHoldVisibility(currentControl);
+						updateModeSettingsVisibility(currentControl);
 					}
 				});
 			}
 
-			function updateAutoHoldVisibility(control) {
+			function updateModeSettingsVisibility(control) {
 				const autoHoldItem = document.getElementById("auto-hold-item");
 				const autoHoldStatesItem = document.getElementById("auto-hold-states-item");
 				const starterFlashItem = document.getElementById("starter-flash-item");
