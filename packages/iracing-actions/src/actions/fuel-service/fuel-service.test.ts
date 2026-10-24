@@ -1546,6 +1546,16 @@ describe("FuelService", () => {
 
     const sent = () => mockPitFuel.mock.calls.map(([liters]) => liters);
 
+    /** Makes every `pit.fuel` arm the checkbox in the sim, as iRacing does; a clear shows only later. */
+    function armOnFuel(telemetry: Record<string, unknown>) {
+      const bank = mockPitFuel.getMockImplementation()!;
+      mockPitFuel.mockImplementation((liters?: number) => {
+        telemetry.PitSvFlags = 0x0010;
+
+        return bank(liters);
+      });
+    }
+
     beforeEach(async () => {
       vi.useFakeTimers();
       action = new FuelService();
@@ -1691,6 +1701,40 @@ describe("FuelService", () => {
 
       expect(sent()).toEqual([12]);
       expect(mockPitClearFuel).toHaveBeenCalledOnce();
+    });
+
+    it("Set Fuel Amount during a check keeps the off state the user had", async () => {
+      mockGetGlobalSettings.mockReturnValue({ enableFuelingOnChange: false });
+      armOnFuel(bankWholeGallons(3));
+
+      const add = action.onKeyDown(fakeEvent("action-1", { mode: "add-fuel", amount: 1, unit: "l" }) as any);
+      await action.onKeyUp(fakeEvent("action-1") as any);
+      await vi.advanceTimersByTimeAsync(100);
+      // The checkbox reads ON now, but only because the running check armed it.
+      await action.onKeyDown(fakeEvent("action-2", { mode: "set-fuel-amount", amount: 10, unit: "l" }) as any);
+      await vi.advanceTimersByTimeAsync(2_000);
+      await add;
+
+      // The set cancels the check and clears after itself, once.
+      expect(sent()).toEqual([12, 10]);
+      expect(mockPitClearFuel).toHaveBeenCalledOnce();
+      expect(mockPitClearFuel.mock.invocationCallOrder[0]).toBeGreaterThan(mockPitFuel.mock.invocationCallOrder[1]!);
+    });
+
+    it("Toggle Fuel Fill during a check turns fueling on, as the user's off state means", async () => {
+      mockGetGlobalSettings.mockReturnValue({ enableFuelingOnChange: false });
+      armOnFuel(bankWholeGallons(3));
+
+      const add = action.onKeyDown(fakeEvent("action-1", { mode: "add-fuel", amount: 1, unit: "l" }) as any);
+      await action.onKeyUp(fakeEvent("action-1") as any);
+      await vi.advanceTimersByTimeAsync(100);
+      await action.onKeyDown(fakeEvent("action-2", { mode: "toggle-fuel-fill" }) as any);
+      await vi.advanceTimersByTimeAsync(2_000);
+      await add;
+
+      // Armed (pit.fuel(0) keeps the amount), the check cancelled, and no clear at all.
+      expect(sent()).toEqual([12, 0]);
+      expect(mockPitClearFuel).not.toHaveBeenCalled();
     });
 
     it("leaves Set Fuel Amount alone: one request, no check", async () => {

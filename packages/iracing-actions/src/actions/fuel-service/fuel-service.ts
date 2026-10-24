@@ -398,9 +398,11 @@ export class FuelService extends SimIRacingAction<FuelServiceSettings> {
   );
   /**
    * The preserve-off decision of the keypad step whose check is running, or
-   * null when none is. A press queued behind it inherits the decision instead of
-   * reading the checkbox, which the running check has just armed and will clear
-   * again when it ends — read fresh, it would wrongly say "fueling is on".
+   * null when none is. While it is set, every keypad decision that reads the
+   * checkbox — a press queued behind the step, Set Fuel Amount, the lap-margin
+   * clear, Toggle Fuel Fill — uses it instead: the running check has just armed
+   * the checkbox and will clear it again when it ends, so read fresh it would
+   * wrongly say "fueling is on".
    */
   private runningKeypadPreserve: boolean | null = null;
   /** The dial half of the action; all IDeck dial events route here. */
@@ -670,6 +672,11 @@ export class FuelService extends SimIRacingAction<FuelServiceSettings> {
    * rotation window would spam iRacing.
    */
   private shouldPreserveFuelingState(): boolean {
+    // While a keypad Add / Reduce check runs, its own `pit.fuel` has armed the
+    // checkbox and its end will clear it again (#1314): the live checkbox is
+    // transient, so every keypad decision reads the running step's decision.
+    if (this.runningKeypadPreserve !== null) return this.runningKeypadPreserve;
+
     const globalSettings = getGlobalSettings() as Record<string, unknown>;
     const raw = globalSettings.enableFuelingOnChange;
     // sdpi-checkbox stores "false" as a string — treat both boolean false and string "false" as disabled
@@ -731,8 +738,9 @@ export class FuelService extends SimIRacingAction<FuelServiceSettings> {
     }
 
     // Read the preserve decision BEFORE sending — pit.fuel arms the checkbox. A
-    // press queued behind a running keypad step inherits that step's decision.
-    const preserve = this.runningKeypadPreserve ?? this.shouldPreserveFuelingState();
+    // press queued behind a running keypad step inherits that step's decision
+    // (shouldPreserveFuelingState returns it while the step runs).
+    const preserve = this.shouldPreserveFuelingState();
     const direction = mode === "add-fuel" ? "add" : "reduce";
 
     await this.stepper.sendFuelStep(
@@ -841,7 +849,11 @@ export class FuelService extends SimIRacingAction<FuelServiceSettings> {
       return;
     }
 
-    const isSet = isFuelFillOn(telemetry);
+    // While a keypad Add / Reduce check that preserves the off state runs, the
+    // checkbox reads ON only because the check armed it (#1314): the user's
+    // fueling is off, so this press turns it on. Arming cancels the check, whose
+    // end then sends no clear.
+    const isSet = this.runningKeypadPreserve === true ? false : isFuelFillOn(telemetry);
     // Toggle ON arms keeping the banked amount (pit.fuel(0)); toggle OFF is a
     // deliberate user clear, forced past the dedup guard.
     const success = isSet ? this.pipeline.forceClearFuel() : this.pipeline.arm();
