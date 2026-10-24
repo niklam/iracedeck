@@ -45,7 +45,7 @@ import fuelServiceTemplate from "../../../icons/fuel-service.svg";
 import { borderColorForState, statusBarNA, statusBarOff, statusBarOn } from "../../icons/status-bar.js";
 import { showBlackBox } from "../../shared/black-box.js";
 import { RepeatController } from "../../shared/repeat-controller.js";
-import { FuelDialSurface, readPitSvFuel } from "./fuel-dial-surface.js";
+import { FuelDialSurface } from "./fuel-dial-surface.js";
 import { FuelPipeline } from "./fuel-pipeline.js";
 import {
   FUEL_SERVICE_GLOBAL_KEYS,
@@ -54,6 +54,7 @@ import {
   type FuelUnit,
   parseFuelServiceSettings,
 } from "./fuel-service-settings.js";
+import { FuelStepper, type FuelStepResult } from "./fuel-step.js";
 
 export { FUEL_SERVICE_GLOBAL_KEYS } from "./fuel-service-settings.js";
 
@@ -227,6 +228,9 @@ const REPEAT_HOLD_THRESHOLD_MS = 400;
  * chat pipeline), so this interval alone sets the repeat cadence — a deliberate
  * ~4 adjustments/sec keeps a held button controllable (#759). Telemetry updates
  * at 60 Hz, so the `PitSvFuel` baseline is fresh again well before each repeat.
+ * An Add / Reduce execute resolves only when its fuel step check ends (#1314),
+ * a tick or two once the request lands, so the gap follows a landed step: on a
+ * gallon car a held key moves one gallon per repeat.
  */
 const REPEAT_GAP_MS = 250;
 /** Maximum duration for long-press repeat before auto-stop (safety net for missed keyUp) */
@@ -380,6 +384,25 @@ export class FuelService extends SimIRacingAction<FuelServiceSettings> {
   private readonly repeat = new RepeatController(this.logger);
   /** Shared iRacing fuel-request pipeline — one per action, used by BOTH surfaces. */
   private readonly pipeline = new FuelPipeline(this.logger);
+  /**
+   * The fuel step check (#1314) — one per action, shared by the keypad's Add /
+   * Reduce Fuel and the dial's Add Amount rotation, like the pipeline it sends through.
+   */
+  private readonly stepper = new FuelStepper(
+    {
+      logger: this.logger,
+      getTelemetry: () => this.sdkController.getCurrentTelemetry(),
+      getSessionInfo: () => this.sdkController.getSessionInfo(),
+    },
+    this.pipeline,
+  );
+  /**
+   * The preserve-off decision of the keypad step whose check is running, or
+   * null when none is. A press queued behind it inherits the decision instead of
+   * reading the checkbox, which the running check has just armed and will clear
+   * again when it ends — read fresh, it would wrongly say "fueling is on".
+   */
+  private runningKeypadPreserve: boolean | null = null;
   /** The dial half of the action; all IDeck dial events route here. */
   private readonly dialSurface = new FuelDialSurface(
     {
@@ -591,7 +614,9 @@ export class FuelService extends SimIRacingAction<FuelServiceSettings> {
       case "add-fuel":
       case "reduce-fuel":
       case "set-fuel-amount":
-        this.executeSdkFuelAdjust(mode, settings);
+        // Awaited: Add / Reduce resolve once their step check ends (#1314), so a
+        // held key's repeat loop waits for one step before the next.
+        await this.executeSdkFuelAdjust(mode, settings);
         break;
 
       case "clear-fuel":
@@ -659,16 +684,20 @@ export class FuelService extends SimIRacingAction<FuelServiceSettings> {
   /**
    * Adjusts the pit fuel request via the SDK (#759). `pit.fuel` sets an
    * ABSOLUTE add amount, so add/reduce compute against the live `PitSvFuel`
-   * baseline (fresh on every press — telemetry is 60 Hz vs the ~250 ms repeat
-   * cadence). iRacing banks whole liters, so the target is rounded; a target at
-   * or below zero empties the request instead (`pit.fuel(0)` would mean "keep
-   * the existing amount"). With preserve-off active, a follow-up clear restores
-   * the user's unchecked fuel box (the former `#-fuel` chat behavior).
+   * baseline. Set Fuel Amount sends its rounded target once: banking the grid
+   * point nearest to it is correct. Add / Reduce go through the fuel step check
+   * (#1314, {@link FuelStepper}): iRacing rounds a request to the car's own fuel
+   * step (whole gallons on the MX-5), so the check steps further until the
+   * request moves, and the press resolves once its check ends. A target at or
+   * below zero empties the request instead (`pit.fuel(0)` would mean "keep the
+   * existing amount"). With preserve-off active, one follow-up clear restores the
+   * user's unchecked fuel box (the former `#-fuel` chat behavior) — for a step,
+   * once, after its check.
    */
-  private executeSdkFuelAdjust(
+  private async executeSdkFuelAdjust(
     mode: "add-fuel" | "reduce-fuel" | "set-fuel-amount",
     settings: FuelServiceSettings,
-  ): void {
+  ): Promise<void> {
     const telemetry = this.sdkController.getCurrentTelemetry();
 
     if (!telemetry) {
@@ -694,31 +723,90 @@ export class FuelService extends SimIRacingAction<FuelServiceSettings> {
       return;
     }
 
-    // Read the preserve decision BEFORE sending — pit.fuel arms the checkbox.
-    const preserve = this.shouldPreserveFuelingState();
-    const currentLtr = readPitSvFuel(telemetry) ?? 0;
+    if (mode === "set-fuel-amount") {
+      this.sendSetFuelAmount(deltaLtr, settings, resolvedUnit);
 
-    let targetLtr: number;
-
-    switch (mode) {
-      case "add-fuel":
-        targetLtr = currentLtr + deltaLtr;
-        break;
-      case "reduce-fuel":
-        targetLtr = currentLtr - deltaLtr;
-        break;
-      case "set-fuel-amount":
-        targetLtr = deltaLtr;
-        break;
+      return;
     }
 
+    // Read the preserve decision BEFORE sending — pit.fuel arms the checkbox. A
+    // press queued behind a running keypad step inherits that step's decision.
+    const preserve = this.runningKeypadPreserve ?? this.shouldPreserveFuelingState();
+    const direction = mode === "add-fuel" ? "add" : "reduce";
+
+    await this.stepper.sendFuelStep(
+      (baselineLtr) => {
+        this.runningKeypadPreserve = preserve;
+
+        return {
+          direction,
+          firstLtr: Math.round(direction === "add" ? baselineLtr + deltaLtr : baselineLtr - deltaLtr),
+        };
+      },
+      (result) => this.onKeypadStepEnd(mode, settings, resolvedUnit, preserve, result),
+    );
+  }
+
+  /**
+   * Ends a keypad Add / Reduce step: sends the preserve-off clear exactly once
+   * when the step left fueling armed, and logs the outcome. The stepper runs this
+   * before a queued press starts, so the clear lands between the two steps.
+   */
+  private onKeypadStepEnd(
+    mode: "add-fuel" | "reduce-fuel",
+    settings: FuelServiceSettings,
+    resolvedUnit: "l" | "g" | "k",
+    preserve: boolean,
+    result: FuelStepResult,
+  ): void {
+    // A press that never started (superseded or cancelled in the queue) leaves
+    // the running step's decision in place.
+    if (result.outcome !== "superseded" && !(result.outcome === "cancelled" && result.firstLtr === undefined)) {
+      this.runningKeypadPreserve = null;
+    }
+
+    switch (result.outcome) {
+      case "emptied":
+        // Empty and fueling off — already the preserved state.
+        this.logger.info("Fuel request emptied");
+        this.logger.debug(`${mode}: request ${result.sentLtr?.toFixed(2)}L ≤ 0 — sent no-fuel`);
+
+        return;
+
+      case "landed":
+      case "unmoved":
+      case "unchecked": {
+        if (preserve) {
+          this.pipeline.clearFuel();
+        }
+
+        const baseline = result.baselineLtr === undefined ? "unknown" : `${result.baselineLtr.toFixed(2)}L`;
+        this.logger.info("Fuel request sent");
+        this.logger.debug(
+          `${mode}: ${settings.amount} ${resolvedUnit} → pit.fuel(${result.sentLtr}) (baseline ${baseline}, ${result.outcome}, +${result.extraLtr} L)${preserve ? ", cleared to preserve off state" : ""}`,
+        );
+
+        return;
+      }
+
+      default:
+        // Cancelled by another fuel command, which now owns the request (and the
+        // checkbox), so no preserve clear; or never sent anything.
+        this.logger.debug(`${mode}: press ${result.outcome}`);
+    }
+  }
+
+  /** Set Fuel Amount: one absolute request, unchanged by #1314. */
+  private sendSetFuelAmount(targetLtr: number, settings: FuelServiceSettings, resolvedUnit: "l" | "g" | "k"): void {
+    // Read the preserve decision BEFORE sending — pit.fuel arms the checkbox.
+    const preserve = this.shouldPreserveFuelingState();
     const roundedLtr = Math.round(targetLtr);
 
     if (roundedLtr <= 0) {
       // Empty the banked amount and leave fueling off — already the preserved state.
       this.pipeline.sendNoFuel();
       this.logger.info("Fuel request emptied");
-      this.logger.debug(`${mode}: target ${targetLtr.toFixed(2)}L ≤ 0 — sent no-fuel`);
+      this.logger.debug(`set-fuel-amount: target ${targetLtr.toFixed(2)}L ≤ 0 — sent no-fuel`);
 
       return;
     }
@@ -731,7 +819,7 @@ export class FuelService extends SimIRacingAction<FuelServiceSettings> {
 
     this.logger.info("Fuel request sent");
     this.logger.debug(
-      `${mode}: ${settings.amount} ${resolvedUnit} → pit.fuel(${roundedLtr}) (baseline ${currentLtr.toFixed(2)}L)${preserve ? ", cleared to preserve off state" : ""}`,
+      `set-fuel-amount: ${settings.amount} ${resolvedUnit} → pit.fuel(${roundedLtr})${preserve ? ", cleared to preserve off state" : ""}`,
     );
   }
 

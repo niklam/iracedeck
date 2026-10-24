@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   amountToLiters,
@@ -25,7 +25,7 @@ const {
   mockIsSimHubReachable,
 } = vi.hoisted(() => ({
   mockPitClearFuel: vi.fn(() => true),
-  mockPitFuel: vi.fn(() => true),
+  mockPitFuel: vi.fn((_liters?: number) => true),
   mockGetCommands: vi.fn(() => ({
     pit: {
       clearFuel: mockPitClearFuel,
@@ -338,10 +338,39 @@ function fakeDialEvent(actionId: string, settings: Record<string, unknown> = {})
 /** Telemetry with fueling OFF, a 10 L banked pit request, and metric display units. */
 const METRIC_TELEMETRY = { PitSvFlags: 0, PitSvFuel: 10, DisplayUnits: 1 };
 
+/** The telemetry object a whole-liter car banks into, or null for a car that banks nothing. */
+let bankedTelemetry: Record<string, unknown> | null = null;
+/** How the fixture car rounds a whole-liter request: whole liters unless a test banks gallons. */
+let bankGrid: (wholeLiters: number) => number = (wholeLiters) => wholeLiters;
+
+/**
+ * Gives the action a car that banks whole liters, like the Porsche 911 GT3
+ * (#1314): every `pit.fuel(n)` with n > 0 moves `PitSvFuel` to n at once, so an
+ * Add / Reduce press's fuel step check lands on its first send. Without it the
+ * banked amount never moves, and every press steps on to 8 L past its request.
+ * Returns the live telemetry object.
+ */
+function bankWholeLiters(action: FuelService, base: Record<string, unknown> = METRIC_TELEMETRY) {
+  const telemetry = { ...base };
+  internals(action).sdkController.getCurrentTelemetry.mockReturnValue(telemetry);
+  bankedTelemetry = telemetry;
+
+  return telemetry;
+}
+
 describe("FuelService", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetGlobalSettings.mockReturnValue({});
+    bankedTelemetry = null;
+    bankGrid = (wholeLiters) => wholeLiters;
+    mockPitFuel.mockImplementation((liters?: number) => {
+      const whole = liters === undefined ? 0 : Math.trunc(liters);
+
+      if (bankedTelemetry && whole > 0) bankedTelemetry.PitSvFuel = bankGrid(whole);
+
+      return true;
+    });
   });
 
   describe("constants", () => {
@@ -561,7 +590,7 @@ describe("FuelService", () => {
 
     beforeEach(() => {
       action = new FuelService();
-      internals(action).sdkController.getCurrentTelemetry.mockReturnValue(METRIC_TELEMETRY);
+      bankWholeLiters(action);
     });
 
     it("should send the fuel amount without a follow-up clear when enableFuelingOnChange is true (default)", async () => {
@@ -586,7 +615,7 @@ describe("FuelService", () => {
 
     it("should not clear when enableFuelingOnChange is false but fuel fill is already on", async () => {
       mockGetGlobalSettings.mockReturnValue({ enableFuelingOnChange: false });
-      internals(action).sdkController.getCurrentTelemetry.mockReturnValue({ ...METRIC_TELEMETRY, PitSvFlags: 0x0010 });
+      bankWholeLiters(action, { ...METRIC_TELEMETRY, PitSvFlags: 0x0010 });
 
       await action.onKeyDown(fakeEvent("action-1", { mode: "add-fuel", amount: 5, unit: "l" }) as any);
 
@@ -673,7 +702,7 @@ describe("FuelService", () => {
     beforeEach(() => {
       action = new FuelService();
       mockGetGlobalSettings.mockReturnValue({ enableFuelingOnChange: true });
-      internals(action).sdkController.getCurrentTelemetry.mockReturnValue(METRIC_TELEMETRY);
+      bankWholeLiters(action);
     });
 
     it("should add against the live PitSvFuel baseline", async () => {
@@ -721,7 +750,7 @@ describe("FuelService", () => {
     });
 
     it("should resolve the auto unit from live DisplayUnits", async () => {
-      internals(action).sdkController.getCurrentTelemetry.mockReturnValue({
+      bankWholeLiters(action, {
         PitSvFlags: 0,
         PitSvFuel: 10,
         DisplayUnits: 0,
@@ -876,7 +905,7 @@ describe("FuelService", () => {
 
     it("should not execute keypad modes from dial press events", async () => {
       const ev = fakeDialEvent("dial-1", { mode: "add-fuel", amount: 5, unit: "l" });
-      internals(action).sdkController.getCurrentTelemetry.mockReturnValue(METRIC_TELEMETRY);
+      bankWholeLiters(action);
       // The dial is on the deck first: an input event never creates a context (#1329).
       await action.onWillAppear(ev as any);
 
@@ -1208,7 +1237,7 @@ describe("FuelService", () => {
       action = new FuelService();
       mockGetGlobalSettings.mockReturnValue({ enableFuelingOnChange: true });
       // Amount modes need live telemetry for the PitSvFuel baseline.
-      internals(action).sdkController.getCurrentTelemetry.mockReturnValue(METRIC_TELEMETRY);
+      bankWholeLiters(action);
       // Appear so activeContexts is populated
       await action.onWillAppear(fakeEvent("action-1", { mode: "add-fuel" }) as any);
     });
@@ -1500,12 +1529,186 @@ describe("FuelService", () => {
     });
   });
 
+  describe("Add / Reduce step past the car's fuel step (#1314)", () => {
+    /** One US gallon in liters — the MX-5's fuel step. */
+    const GALLON = 3.78541;
+    const SESSION_MX5 = { DriverInfo: { DriverCarIdx: 2, Drivers: [{ CarIdx: 2, CarPath: "mx5 mx52016" }] } };
+    let action: FuelService;
+
+    /** The MX-5: banks the nearest whole US gallon of the whole-liter request. */
+    function bankWholeGallons(gallons: number) {
+      const telemetry = bankWholeLiters(action, { ...METRIC_TELEMETRY, PitSvFuel: gallons * GALLON });
+      bankGrid = (wholeLiters) => Math.round(wholeLiters / GALLON) * GALLON;
+      internals(action).sdkController.getSessionInfo.mockReturnValue(SESSION_MX5);
+
+      return telemetry;
+    }
+
+    const sent = () => mockPitFuel.mock.calls.map(([liters]) => liters);
+
+    beforeEach(async () => {
+      vi.useFakeTimers();
+      action = new FuelService();
+      mockGetGlobalSettings.mockReturnValue({ enableFuelingOnChange: true });
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("a whole-liter car sends one request per press", async () => {
+      bankWholeLiters(action);
+
+      await action.onKeyDown(fakeEvent("action-1", { mode: "add-fuel", amount: 1, unit: "l" }) as any);
+      await action.onKeyUp(fakeEvent("action-1") as any);
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      expect(sent()).toEqual([11]);
+    });
+
+    it("a 1 L Reduce on a gallon car moves one gallon", async () => {
+      const telemetry = bankWholeGallons(3);
+
+      const down = action.onKeyDown(fakeEvent("action-1", { mode: "reduce-fuel", amount: 1, unit: "l" }) as any);
+      await action.onKeyUp(fakeEvent("action-1") as any);
+      await vi.advanceTimersByTimeAsync(1_000);
+      await down;
+
+      // The issue's log: pit.fuel(10) banks 3 gal again; 9 lands on 2 gal.
+      expect(sent()).toEqual([10, 9]);
+      expect(telemetry.PitSvFuel).toBeCloseTo(2 * GALLON, 5);
+      expect(internals(action).logger.info).toHaveBeenCalledWith("Fuel request sent");
+    });
+
+    it("a held Add key on a gallon car steps one gallon per check", async () => {
+      const telemetry = bankWholeGallons(3);
+      const gallons = () => Math.round((telemetry.PitSvFuel as number) / GALLON);
+      // The repeat loop reads the key's settings from its appeared context.
+      await action.onWillAppear(fakeEvent("action-1", { mode: "add-fuel", amount: 1, unit: "l" }) as any);
+
+      const down = action.onKeyDown(fakeEvent("action-1", { mode: "add-fuel", amount: 1, unit: "l" }) as any);
+
+      // The press: 12 and 13 bank 3 gal again, 14 lands on 4 gal at 600 ms.
+      await vi.advanceTimersByTimeAsync(600);
+      await down;
+      expect(sent()).toEqual([12, 13, 14]);
+      expect(gallons()).toBe(4);
+
+      // Each repeat (650, 900, 1150 ms) starts from the learned head start and
+      // lands one gallon further on its first send.
+      await vi.advanceTimersByTimeAsync(50);
+      expect(gallons()).toBe(5);
+      await vi.advanceTimersByTimeAsync(250);
+      expect(gallons()).toBe(6);
+      await vi.advanceTimersByTimeAsync(250);
+      expect(gallons()).toBe(7);
+
+      await action.onKeyUp(fakeEvent("action-1") as any);
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      expect(sent()).toEqual([12, 13, 14, 18, 22, 26]);
+      expect(gallons()).toBe(7);
+    });
+
+    it("a second tap during the first press's check waits for it, then runs from the new baseline", async () => {
+      const telemetry = bankWholeGallons(3);
+
+      const first = action.onKeyDown(fakeEvent("action-1", { mode: "add-fuel", amount: 1, unit: "l" }) as any);
+      await action.onKeyUp(fakeEvent("action-1") as any);
+      await vi.advanceTimersByTimeAsync(100);
+      const second = action.onKeyDown(fakeEvent("action-1", { mode: "add-fuel", amount: 1, unit: "l" }) as any);
+      await action.onKeyUp(fakeEvent("action-1") as any);
+
+      expect(sent()).toEqual([12]);
+
+      await vi.advanceTimersByTimeAsync(2_000);
+      await Promise.all([first, second]);
+
+      expect(sent()).toEqual([12, 13, 14, 18]);
+      expect(telemetry.PitSvFuel).toBeCloseTo(5 * GALLON, 5);
+    });
+
+    it("sends the preserve-off clear once, after the check", async () => {
+      mockGetGlobalSettings.mockReturnValue({ enableFuelingOnChange: false });
+      bankWholeGallons(3);
+
+      const down = action.onKeyDown(fakeEvent("action-1", { mode: "reduce-fuel", amount: 1, unit: "l" }) as any);
+      await action.onKeyUp(fakeEvent("action-1") as any);
+
+      // Mid-check: no clear yet.
+      await vi.advanceTimersByTimeAsync(100);
+      expect(mockPitClearFuel).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(1_000);
+      await down;
+
+      expect(sent()).toEqual([10, 9]);
+      expect(mockPitClearFuel).toHaveBeenCalledOnce();
+      expect(mockPitClearFuel.mock.invocationCallOrder[0]).toBeGreaterThan(mockPitFuel.mock.invocationCallOrder[1]!);
+    });
+
+    it("a queued press inherits the running press's preserve-off decision", async () => {
+      mockGetGlobalSettings.mockReturnValue({ enableFuelingOnChange: false });
+      const telemetry = bankWholeGallons(3);
+      // pit.fuel arms the checkbox in the sim; the clear only shows up later.
+      const bankOnly = mockPitFuel.getMockImplementation()!;
+      mockPitFuel.mockImplementation((liters?: number) => {
+        telemetry.PitSvFlags = 0x0010;
+
+        return bankOnly(liters);
+      });
+
+      const first = action.onKeyDown(fakeEvent("action-1", { mode: "add-fuel", amount: 1, unit: "l" }) as any);
+      await action.onKeyUp(fakeEvent("action-1") as any);
+      await vi.advanceTimersByTimeAsync(100);
+      // The checkbox reads ON now (armed by the running check), but this press
+      // must still restore the off state when its own step ends.
+      const second = action.onKeyDown(fakeEvent("action-1", { mode: "add-fuel", amount: 1, unit: "l" }) as any);
+      await action.onKeyUp(fakeEvent("action-1") as any);
+      await vi.advanceTimersByTimeAsync(2_000);
+      await Promise.all([first, second]);
+
+      expect(sent()).toEqual([12, 13, 14, 18]);
+      // One clear after each step: after 14, and after 18.
+      expect(mockPitClearFuel).toHaveBeenCalledTimes(2);
+      const fuelOrder = mockPitFuel.mock.invocationCallOrder;
+      const clearOrder = mockPitClearFuel.mock.invocationCallOrder;
+
+      expect(clearOrder[0]).toBeGreaterThan(fuelOrder[2]!);
+      expect(clearOrder[0]).toBeLessThan(fuelOrder[3]!);
+      expect(clearOrder[1]).toBeGreaterThan(fuelOrder[3]!);
+    });
+
+    it("a Clear Fuel press during a check ends it, so no later step re-arms fueling", async () => {
+      bankWholeGallons(3);
+
+      const add = action.onKeyDown(fakeEvent("action-1", { mode: "add-fuel", amount: 1, unit: "l" }) as any);
+      await action.onKeyUp(fakeEvent("action-1") as any);
+      await vi.advanceTimersByTimeAsync(100);
+      await action.onKeyDown(fakeEvent("action-2", { mode: "clear-fuel" }) as any);
+      await vi.advanceTimersByTimeAsync(2_000);
+      await add;
+
+      expect(sent()).toEqual([12]);
+      expect(mockPitClearFuel).toHaveBeenCalledOnce();
+    });
+
+    it("leaves Set Fuel Amount alone: one request, no check", async () => {
+      bankWholeGallons(3);
+
+      await action.onKeyDown(fakeEvent("action-1", { mode: "set-fuel-amount", amount: 10, unit: "l" }) as any);
+      await vi.advanceTimersByTimeAsync(3_000);
+
+      expect(sent()).toEqual([10]);
+    });
+  });
+
   describe("showBlackBox (#818)", () => {
     let action: FuelService;
 
     beforeEach(() => {
       action = new FuelService();
-      internals(action).sdkController.getCurrentTelemetry.mockReturnValue(METRIC_TELEMETRY);
+      bankWholeLiters(action);
       mockTapBindingSequence.mockResolvedValue(true);
       mockTapBinding.mockResolvedValue(true);
       mockIsBindingKeyboardBound.mockImplementation(() => true);
