@@ -7,6 +7,7 @@ import {
   claimReplayCursor,
   clearReplayJumpSpeed,
   currentReplayCursorOwner,
+  interruptReplayCursorOwnerIf,
   onReplayCursorTaken,
   pendingReplayJumpSpeed,
   recordReplayJumpSpeed,
@@ -124,6 +125,74 @@ describe("replay-cursor", () => {
       cancelReplayCursorOwner("play-pause");
 
       expect(cancelReplayCursorOwnerIf(WALKS, "dial-track-order")).toBeNull();
+    });
+  });
+
+  describe("interruptReplayCursorOwnerIf (#1428 / #1435)", () => {
+    const WALKS = ["fastest-lap walk", "race-start walk"];
+
+    it.each(WALKS)("interrupts a claim held by %s without taking the cursor", (owner) => {
+      const onCancelled = vi.fn();
+      const claim = claimReplayCursor(owner, onCancelled);
+
+      expect(claim.interruptedBy).toBeNull();
+      expect(interruptReplayCursorOwnerIf(WALKS, "next-car")).toBe(owner);
+      expect(claim.interruptedBy).toBe("next-car");
+      // Still the current claim: not cancelled, its owner still standing, its holder told nothing.
+      expect(claim.cancelledBy).toBeNull();
+      expect(currentReplayCursorOwner()).toBe(owner);
+      expect(onCancelled).not.toHaveBeenCalled();
+    });
+
+    it("leaves the pending jump speed and the cursor-taken listeners alone", () => {
+      const listener = vi.fn();
+
+      claimReplayCursor("fastest-lap walk");
+      recordReplayJumpSpeed({ speed: 4, slowMotion: true, appliedAt: null });
+      const unsubscribe = onReplayCursorTaken(listener);
+
+      interruptReplayCursorOwnerIf(WALKS, "next-car");
+
+      expect(pendingReplayJumpSpeed()).toEqual({ speed: 4, slowMotion: true, appliedAt: null });
+      expect(listener).not.toHaveBeenCalled();
+      unsubscribe();
+    });
+
+    it("touches no owner outside the list", () => {
+      const claim = claimReplayCursor("replay-markers jump");
+
+      expect(interruptReplayCursorOwnerIf(WALKS, "next-car")).toBeNull();
+      expect(claim.interruptedBy).toBeNull();
+      expect(claim.cancelledBy).toBeNull();
+    });
+
+    it("is a no-op that returns null with nothing in flight, a claim already cancelled, or one already interrupted", () => {
+      expect(interruptReplayCursorOwnerIf(WALKS, "next-car")).toBeNull();
+
+      const cancelled = claimReplayCursor("fastest-lap walk");
+
+      cancelReplayCursorOwner("play-pause");
+      expect(interruptReplayCursorOwnerIf(WALKS, "next-car")).toBeNull();
+      expect(cancelled.interruptedBy).toBeNull();
+
+      const walk = claimReplayCursor("race-start walk");
+
+      interruptReplayCursorOwnerIf(WALKS, "next-car");
+      // A second interrupt does not rename the first.
+      expect(interruptReplayCursorOwnerIf(WALKS, "jump-to-my-car")).toBeNull();
+      expect(walk.interruptedBy).toBe("next-car");
+    });
+
+    it("an interrupted claim is still cancelled by a take, which names the command", () => {
+      const onCancelled = vi.fn();
+      const claim = claimReplayCursor("fastest-lap walk", onCancelled);
+
+      interruptReplayCursorOwnerIf(WALKS, "next-car");
+
+      expect(cancelReplayCursorOwner("frame-forward")).toBe("fastest-lap walk");
+      expect(claim.cancelledBy).toBe("frame-forward");
+      expect(onCancelled).toHaveBeenCalledExactlyOnceWith("frame-forward");
+      expect(currentReplayCursorOwner()).toBeNull();
     });
   });
 
