@@ -2989,7 +2989,7 @@ describe("ReplayControl", () => {
       });
     });
 
-    describe("a camera key (#1467): it waits behind the jump, and cancels only a lap walk", () => {
+    describe("a camera key (#1467): it waits behind the jump, and interrupts only a lap walk", () => {
       /** A dial jump to {@link TARGET}, under way: the seek showing. */
       async function dialJumpUnderWay(): Promise<void> {
         pressReplayCommand({ kind: "jump", frame: TARGET }, { by: "dial-frame-jog", origin: "ctx-dial" });
@@ -3103,13 +3103,14 @@ describe("ReplayControl", () => {
       });
 
       it.each(["jump-to-my-car", "next-car", "prev-car", "next-car-number", "prev-car-number"])(
-        "a camera key cancels a running lap walk: %s",
+        "a camera key interrupts a running lap walk without taking its cursor (#1428 / #1435): %s",
         async (mode) => {
           const walk = claimReplayCursor(FASTEST_LAP_WALK_OWNER);
 
           await pressKey("ctx-cam", mode);
 
-          expect(walk.cancelledBy).toBe(mode);
+          expect(walk.interruptedBy).toBe(mode);
+          expect(walk.cancelledBy).toBeNull();
         },
       );
     });

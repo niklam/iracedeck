@@ -69,19 +69,20 @@ describe("trackOrderMode", () => {
       expect(io.waitForJumpsToSettle).not.toHaveBeenCalled();
     });
 
-    it("cancels a camera walk before it taps, and sends no replay command", async () => {
+    it("interrupts a camera walk before it taps, and sends no replay command (#1428 / #1435)", async () => {
       const io = fakeStepIo();
       const walk = claimReplayCursor(FASTEST_LAP_WALK_OWNER);
-      let cancelledAtTap: string | null | undefined;
+      let interruptedAtTap: string | null | undefined;
 
       io.tapBinding.mockImplementation(() => {
-        cancelledAtTap = walk.cancelledBy;
+        interruptedAtTap = walk.interruptedBy;
 
         return Promise.resolve(true);
       });
       await trackOrderMode.rotate(1, dial, io);
 
-      expect(cancelledAtTap).toBe("dial-track-order");
+      expect(interruptedAtTap).toBe("dial-track-order");
+      expect(walk.cancelledBy).toBeNull();
       expect(io.recordJump).not.toHaveBeenCalled();
       expect(io.queueSearch).not.toHaveBeenCalled();
       expect(io.jumpTo).not.toHaveBeenCalled();
@@ -162,13 +163,14 @@ describe("trackOrderMode", () => {
   });
 
   describe("the dial's Jump to My Car (jumpToMyCarFromDial)", () => {
-    it("on a quiet replay cancels only the walks, under its own name, then switches at once", async () => {
+    it("on a quiet replay interrupts only the walks, under its own name, then switches at once", async () => {
       const io = fakeStepIo();
       const walk = claimReplayCursor(RACE_START_WALK_OWNER);
 
       await jumpToMyCarFromDial(io);
 
-      expect(walk.cancelledBy).toBe("dial-jump-to-my-car");
+      expect(walk.interruptedBy).toBe("dial-jump-to-my-car");
+      expect(walk.cancelledBy).toBeNull();
       expect(io.jumpToMyCar).toHaveBeenCalledOnce();
       expect(io.tapBinding).not.toHaveBeenCalled();
       expect(io.recordJump).not.toHaveBeenCalled();
@@ -180,6 +182,7 @@ describe("trackOrderMode", () => {
       await jumpToMyCarFromDial(io);
 
       expect(record.cancelledBy).toBeNull();
+      expect(record.interruptedBy).toBeNull();
     });
   });
 

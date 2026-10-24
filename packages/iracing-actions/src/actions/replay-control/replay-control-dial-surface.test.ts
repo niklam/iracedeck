@@ -3181,7 +3181,7 @@ describe("ReplayControlDialSurface", () => {
     describe("Car", () => {
       it("taps at once on a quiet replay, one tap per event, the right binding each way", async () => {
         const { surface, ctx, d } = await dialIn("track-order", pausedOn(54_000));
-        // A Jump to Fastest Lap walk holding the cursor: the camera switch stops it.
+        // A Jump to Fastest Lap walk holding the cursor: the camera switch interrupts it (#1428 / #1435).
         const walk = claimReplayCursor(FASTEST_LAP_WALK_OWNER);
 
         surface.rotate(ctx as never, d, 3, false);
@@ -3189,7 +3189,8 @@ describe("ReplayControlDialSurface", () => {
         await settle();
 
         expect(host.tapBinding.mock.calls).toEqual([["replayControlNextCar"], ["replayControlPrevCar"]]);
-        expect(walk.cancelledBy).toBe("dial-track-order");
+        expect(walk.interruptedBy).toBe("dial-track-order");
+        expect(walk.cancelledBy).toBeNull();
       });
 
       it("taps at once behind a search: a search does not swallow a camera change", async () => {
@@ -3236,7 +3237,7 @@ describe("ReplayControlDialSurface", () => {
         expect(host.tapBinding).not.toHaveBeenCalled();
       });
 
-      it("a Long Press cancels only the two walks: another dial's paced search run is left standing", async () => {
+      it("a Long Press interrupts only the two walks: another dial's paced search run is left standing", async () => {
         const { surface, ctx, d } = await dialIn("track-order", pausedOn(600));
         // The runner of another dial's paced search, holding the cursor.
         const run = claimReplayCursor("dial-lap");
@@ -3246,16 +3247,18 @@ describe("ReplayControlDialSurface", () => {
 
         expect(host.jumpToMyCar).toHaveBeenCalledOnce();
         expect(run.cancelledBy).toBeNull();
+        expect(run.interruptedBy).toBeNull();
         expect(currentReplayCursorOwner()).toBe("dial-lap");
         run.release();
 
-        // A Jump to Race Start walk is one of the two: the gesture stops it, under its own name.
+        // A Jump to Race Start walk is one of the two: the gesture interrupts it, under its own name.
         const walk = claimReplayCursor(RACE_START_WALK_OWNER);
 
         await press(surface, ctx, d, 500);
         await settle(0);
 
-        expect(walk.cancelledBy).toBe("dial-jump-to-my-car");
+        expect(walk.interruptedBy).toBe("dial-jump-to-my-car");
+        expect(walk.cancelledBy).toBeNull();
         expect(host.jumpToMyCar).toHaveBeenCalledTimes(2);
       });
 
