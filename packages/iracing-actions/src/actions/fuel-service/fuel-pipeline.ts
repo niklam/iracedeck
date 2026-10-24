@@ -23,8 +23,20 @@ export class FuelPipeline {
    * released so a later clear isn't wrongly skipped.
    */
   private lastFuelFillObserved = false;
+  /**
+   * Told before every command this pipeline sends (#1314). The fuel step check
+   * (`FuelStepper` in `fuel-step.ts`) listens so that a command from anywhere else — a Clear
+   * Fuel or Set Fuel Amount press, a dial gesture, the fill-to monitor — ends a
+   * check still stepping the request, instead of the check's next send undoing it.
+   */
+  private commandListener: (() => void) | null = null;
 
   constructor(private readonly logger: ILogger) {}
+
+  /** Sets (or, with null, removes) the one listener told before every command. */
+  setCommandListener(listener: (() => void) | null): void {
+    this.commandListener = listener;
+  }
 
   /** Whether the last pit command this pipeline sent was a clear. */
   get lastPitWasClear(): boolean {
@@ -33,6 +45,7 @@ export class FuelPipeline {
 
   /** Sends a `pit.fuel` request and records that the last pit command was not a clear. */
   fuel(liters: number): boolean {
+    this.commandListener?.();
     const success = getCommands().pit.fuel(liters);
     this.lastClear = false;
 
@@ -62,6 +75,7 @@ export class FuelPipeline {
    * guard must not suppress the send.
    */
   forceClearFuel(): boolean {
+    this.commandListener?.();
     const success = getCommands().pit.clearFuel();
     this.lastClear = true;
 
