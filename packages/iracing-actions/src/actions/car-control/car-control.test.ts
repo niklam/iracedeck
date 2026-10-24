@@ -1357,6 +1357,25 @@ describe("CarControl", () => {
       expect([mockHoldBinding.mock.calls, mockReleaseBinding.mock.calls, mockTapBinding.mock.calls]).toEqual(withFlash);
     });
 
+    it("should not flash a press that sent another control when Mode changes to Starter mid-send", async () => {
+      await action.onDidReceiveSettings(fakeEvent("action-1", { control: "ignition", starterFlash: true }) as any);
+      mockTapBinding.mockImplementationOnce(async () => {
+        await action.onDidReceiveSettings(fakeEvent("action-1", FLASH_ON) as any);
+      });
+      await action.onKeyDown(fakeEvent("action-1", { control: "ignition", starterFlash: true }) as any);
+
+      expect(mockTapBinding).toHaveBeenCalledWith("carControlIgnition");
+      expect(action["starterFlashes"].size).toBe(0);
+    });
+
+    it("should not flash when the Starter binding is missing", async () => {
+      vi.mocked(action["isBindingMissing"]).mockReturnValue(true);
+      await action.onKeyDown(fakeEvent("action-1", FLASH_ON) as any);
+
+      expect(mockHoldBinding).toHaveBeenCalledWith("action-1", "carControlStarter");
+      expect(action["starterFlashes"].size).toBe(0);
+    });
+
     it("should flash from a dial press too", async () => {
       await action.onDialDown(fakeEvent("action-1", FLASH_ON) as any);
 

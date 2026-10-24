@@ -1079,12 +1079,16 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
     }
 
     // Display only, and after the hold is sent so it never delays the key (issue #1438).
-    // The stored settings decide, not the press's: a PI change can land during the hold's await.
+    // A PI change can land during the hold's await, so both the press (what was sent) and
+    // the stored settings (what the key is now) must be a Starter with the flash on. An
+    // unbound Starter sent nothing, so it does not claim to be cranking.
     const storedSettings = this.activeContexts.get(actionId);
 
     if (
+      settings.control === "starter" &&
       storedSettings?.control === "starter" &&
       storedSettings.starterFlash &&
+      !this.isBindingMissing(CAR_CONTROL_GLOBAL_KEYS.starter) &&
       starterToggleState(this.sdkController.getCurrentTelemetry()) !== "on"
     ) {
       this.startStarterFlash(actionId);
