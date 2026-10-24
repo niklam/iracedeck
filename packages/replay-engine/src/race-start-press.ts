@@ -271,9 +271,11 @@ function jumpToGreenFromPoleCar(
  * iRacing's lap search follows the camera, so the camera goes onto the pole
  * car for the search and back onto the car that was on screen at the press
  * once the cursor has landed — the green belongs to the whole field, and the
- * user had chosen what to watch. It goes back too when the search gives up
- * or the last jump stops short, but not when another replay command
- * cancelled the press: that command's own effect stands.
+ * user had chosen what to watch. It goes back too when the search gives up,
+ * when a camera key interrupts it (#1428 / #1435: the replay is put back and
+ * the key's own switch follows) or when the last jump stops short, but not
+ * when another replay command cancelled the press: that command's own effect
+ * stands.
  *
  * A search that could not verify its landing still anchors the jump when
  * the landing is near the end of the lap before lap 1
@@ -294,20 +296,28 @@ async function searchGreenFromPoleCar(
 
   await holdLapPressSlot(origin, press, async (jump) => {
     const camera = engineEnv().camera();
-    const borrowed = car.viewedCarIdx !== car.carIdx;
     const viewedCarNum = car.viewedCarIdx >= 0 && car.viewedCarIdx !== 255 ? carNumberRawByIdx(car.viewedCarIdx) : null;
+    /** Whether the press moved the camera onto the pole car, and so owes the move back. */
+    let borrowed = false;
 
-    if (borrowed) {
+    if (car.viewedCarIdx !== car.carIdx) {
       // Not into a jump still under way, which would swallow the switch and
       // leave the search following the car on screen (#1430).
       await waitToSwitchCamera(jump.claim, RACE_START_LOG_LABEL);
 
-      if (!camera.switchNum(car.carNum, 0, 0)) {
-        // If the SDK refused, abort rather than search for the wrong driver's lap.
-        logger.warn("Jump to race start: camera switch failed, aborting");
-        logger.debug(`Failed switchNum: carNum=${car.carNum}, carIdx=${car.carIdx}`);
+      // A camera key that interrupted the press meanwhile (#1428 / #1435)
+      // wants another car: nothing is borrowed, and the walk stops at its
+      // first checkpoint.
+      if (jump.claim.interruptedBy === null) {
+        if (!camera.switchNum(car.carNum, 0, 0)) {
+          // If the SDK refused, abort rather than search for the wrong driver's lap.
+          logger.warn("Jump to race start: camera switch failed, aborting");
+          logger.debug(`Failed switchNum: carNum=${car.carNum}, carIdx=${car.carIdx}`);
 
-        return;
+          return;
+        }
+
+        borrowed = true;
       }
     }
 
@@ -351,7 +361,9 @@ async function searchGreenFromPoleCar(
       label: RACE_START_LOG_LABEL,
     });
 
-    // The search gave up, logged why and put the replay back.
+    // The search gave up, logged why and put the replay back; or a camera key
+    // interrupted it (#1428 / #1435), and the replay is put back the same
+    // way before that key's own switch goes out.
     if (landing === null) {
       await restoreCameraWhenSettled();
 

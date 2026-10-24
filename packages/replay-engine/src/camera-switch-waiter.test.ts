@@ -13,12 +13,35 @@ import {
   isCameraSwitchWaiting,
   requestCameraSwitch,
 } from "./camera-switch-waiter.js";
-import { cancelLapWalks, FASTEST_LAP_WALK_OWNER, LAP_WALK_OWNERS, RACE_START_WALK_OWNER } from "./lap-walk-owners.js";
-import { pressReplayCommand, type ReplaySettledOutcome } from "./replay-command-gate.js";
+import {
+  cancelLapWalks,
+  FASTEST_LAP_WALK_OWNER,
+  interruptLapWalks,
+  LAP_WALK_OWNERS,
+  RACE_START_WALK_OWNER,
+} from "./lap-walk-owners.js";
+import {
+  claimReplayCursorForJump,
+  closeReplayJump,
+  isReplayJumpSequenceOpen,
+  openReplayJump,
+  pressReplayCommand,
+  replayJumpLanding,
+  type ReplaySettledOutcome,
+  sendReplayJumpSeek,
+} from "./replay-command-gate.js";
 import { fakeReplay, type FakeReplay } from "./replay-command-gate.test-support.js";
-import { claimReplayCursor, currentReplayCursorOwner } from "./replay-cursor.js";
+import {
+  claimReplayCursor,
+  currentReplayCursorOwner,
+  onReplayCursorTaken,
+  pendingReplayJumpSpeed,
+  recordReplayJumpSpeed,
+} from "./replay-cursor.js";
 import { _configureReplayEngine } from "./replay-engine-env.js";
 import { resetEngine } from "./replay-engine-reset.test-support.js";
+import { noteReplaySpeedSent, resolveLiveSpeed } from "./replay-speed-state.js";
+import { REPLAY_JUMP_MAX_WAIT_MS } from "./replay-timing.js";
 
 let debug: Mock<(message: string) => void>;
 let warn: Mock<(message: string) => void>;
@@ -282,31 +305,190 @@ describe("requestCameraSwitch", () => {
     expect(second).toHaveBeenCalledOnce();
   });
 
-  it("cancels only the lap walks, at the request and at the send", async () => {
+  it("interrupts only the lap walks, at the request and at the send, and cancels none (#1428 / #1435)", async () => {
     const marker = claimReplayCursor("replay-markers jump");
 
     await requestCameraSwitch(vi.fn(), options({ by: "next-car", jumps: quiet() }));
 
     expect(marker.cancelledBy).toBeNull();
+    expect(marker.interruptedBy).toBeNull();
     expect(currentReplayCursorOwner()).toBe("replay-markers jump");
     marker.release();
 
-    // A walk standing at the request is cancelled then, under `by`.
+    // A walk standing at the request is interrupted then, under `by`: it keeps the cursor.
     const walk = claimReplayCursor(FASTEST_LAP_WALK_OWNER);
     const jump = jumpUnderWay();
     const send = vi.fn();
     const request = requestCameraSwitch(send, options({ by: "next-car", jumps: jump.jumps }));
 
-    expect(walk.cancelledBy).toBe("next-car");
+    expect(walk.interruptedBy).toBe("next-car");
+    expect(walk.cancelledBy).toBeNull();
+    expect(currentReplayCursorOwner()).toBe(FASTEST_LAP_WALK_OWNER);
 
-    // One that starts while the switch waits is cancelled again when it goes out.
+    // One that starts while the switch waits is interrupted when it would go
+    // out, and the switch waits again, behind that walk putting the replay back.
     const later = claimReplayCursor(RACE_START_WALK_OWNER);
+
+    jump.land();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(later.interruptedBy).toBe("next-car");
+    expect(later.cancelledBy).toBeNull();
+    expect(send).not.toHaveBeenCalled();
+    expect(jump.jumps.waitToSettle).toHaveBeenCalledTimes(2);
 
     jump.land();
     await request;
 
-    expect(later.cancelledBy).toBe("next-car");
     expect(send).toHaveBeenCalledOnce();
+  });
+
+  it("an angle-only switch (interruptsWalks: false) leaves a walk alone", async () => {
+    const walk = claimReplayCursor(RACE_START_WALK_OWNER);
+    const send = vi.fn();
+
+    await requestCameraSwitch(send, options({ by: "cycle-camera", interruptsWalks: false, jumps: quiet() }));
+
+    expect(send).toHaveBeenCalledOnce();
+    expect(walk.interruptedBy).toBeNull();
+    expect(walk.cancelledBy).toBeNull();
+    expect(currentReplayCursorOwner()).toBe(RACE_START_WALK_OWNER);
+  });
+
+  describe("what holds a switch beside the jump reads (#1428 / #1435)", () => {
+    /** Telemetry for a paused replay on `frame`, nothing under way. */
+    function quietReplay(frame: number): FakeReplay {
+      const sim = fakeReplay({ frame });
+
+      _configureReplayEngine({
+        logger: engineRootLogger,
+        now: () => Date.now(),
+        replay: () => sim.replay,
+        readTelemetry: () => sim.telemetry(),
+        inReplay: () => true,
+        connected: () => true,
+      });
+
+      return sim;
+    }
+
+    it("a switch asked for between a jump's landing and its end() waits for the end", async () => {
+      const sim = quietReplay(2_000);
+      const claim = claimReplayCursorForJump("replay-markers jump");
+      const handle = openReplayJump(claim, {
+        frame: 50_000,
+        origin: "marker",
+        telemetry: sim.telemetry(),
+        sendsPositionJump: true,
+      });
+
+      expect(sendReplayJumpSeek(handle)).toBe("sent");
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      // Landed and read back, its own step after the landing still to run: no jump reads as under way.
+      expect(sim.frame()).toBe(50_000);
+      expect(replayJumpLanding(handle, sim.telemetry()).status).toBe("read-back");
+      expect(isReplayJumpSequenceOpen()).toBe(true);
+
+      const send = vi.fn();
+      const request = requestCameraSwitch(send, options());
+
+      expect(isCameraSwitchWaiting()).toBe(true);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(send).not.toHaveBeenCalled();
+
+      closeReplayJump(handle, "landed");
+      claim.release();
+      expect(isReplayJumpSequenceOpen()).toBe(false);
+      await vi.advanceTimersByTimeAsync(500);
+      await request;
+
+      expect(send).toHaveBeenCalledOnce();
+      expect(sim.thrown).toBe(0);
+    });
+
+    it("a jump to the frame on screen holds it until its end() too", async () => {
+      const sim = quietReplay(2_000);
+      const claim = claimReplayCursorForJump("replay-markers jump");
+      const handle = openReplayJump(claim, {
+        frame: 2_000,
+        origin: "marker",
+        telemetry: sim.telemetry(),
+        sendsPositionJump: true,
+      });
+
+      // It records no target, so the open sequence is all that holds the switch.
+      expect(isReplayJumpSequenceOpen()).toBe(true);
+
+      const send = vi.fn();
+      const request = requestCameraSwitch(send, options());
+
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(send).not.toHaveBeenCalled();
+
+      closeReplayJump(handle, "landed");
+      await vi.advanceTimersByTimeAsync(500);
+      await request;
+
+      expect(send).toHaveBeenCalledOnce();
+    });
+
+    it("a jump sequence with no frame (a paced search's run) does not hold it", async () => {
+      const sim = quietReplay(2_000);
+      const claim = claimReplayCursorForJump("dial-lap search");
+
+      openReplayJump(claim, { origin: "dial", telemetry: sim.telemetry(), sendsPositionJump: false });
+
+      expect(isReplayJumpSequenceOpen()).toBe(false);
+
+      const send = vi.fn();
+
+      await requestCameraSwitch(send, options());
+
+      expect(send).toHaveBeenCalledOnce();
+    });
+
+    it("gives up at the ceiling a jump sequence never ended by", async () => {
+      const sim = quietReplay(2_000);
+      const claim = claimReplayCursorForJump("replay-markers jump");
+
+      openReplayJump(claim, { frame: 2_000, origin: "marker", telemetry: sim.telemetry(), sendsPositionJump: true });
+
+      const send = vi.fn();
+      const request = requestCameraSwitch(send, options());
+
+      await vi.advanceTimersByTimeAsync(REPLAY_JUMP_MAX_WAIT_MS + 1_000);
+      await request;
+
+      expect(send).not.toHaveBeenCalled();
+      expect(debug).toHaveBeenCalledWith(
+        "Dial track order: tap dropped (next car), the jump under way did not land within the longest a jump waits",
+      );
+    });
+
+    it("an injected jump read gets the holds too", async () => {
+      const sim = quietReplay(2_000);
+      const claim = claimReplayCursorForJump("replay-markers jump");
+      const handle = openReplayJump(claim, {
+        frame: 2_000,
+        origin: "marker",
+        telemetry: sim.telemetry(),
+        sendsPositionJump: true,
+      });
+      const jumps = quiet();
+      const send = vi.fn();
+      const request = requestCameraSwitch(send, options({ jumps }));
+
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(send).not.toHaveBeenCalled();
+
+      closeReplayJump(handle, "landed");
+      await vi.advanceTimersByTimeAsync(100);
+      await request;
+
+      expect(send).toHaveBeenCalledOnce();
+      expect(jumps.waitToSettle).toHaveBeenCalledOnce();
+    });
   });
 
   it("uses the gate's own reads when no jumps are injected", async () => {
@@ -356,5 +538,46 @@ describe("lap-walk owners", () => {
 
     expect(cancelLapWalks("by")).toBe(RACE_START_WALK_OWNER);
     expect(walk.cancelledBy).toBe("by");
+  });
+
+  it("interruptLapWalks interrupts a walk's claim and no other owner's (#1428 / #1435)", () => {
+    const record = claimReplayCursor("jump-to-fastest-lap record jump");
+
+    expect(interruptLapWalks("next-car")).toBeNull();
+    expect(record.interruptedBy).toBeNull();
+    expect(record.cancelledBy).toBeNull();
+
+    for (const owner of LAP_WALK_OWNERS) {
+      const walk = claimReplayCursor(owner);
+
+      expect(interruptLapWalks("next-car")).toBe(owner);
+      expect(walk.interruptedBy).toBe("next-car");
+      expect(walk.cancelledBy).toBeNull();
+      expect(currentReplayCursorOwner()).toBe(owner);
+    }
+  });
+
+  it("interruptLapWalks leaves the pending jump speed, the dial's pending speed and the cursor-taken listeners alone", () => {
+    const listener = vi.fn();
+    const at = Date.now();
+
+    claimReplayCursor(FASTEST_LAP_WALK_OWNER);
+    recordReplayJumpSpeed({ speed: 2, slowMotion: false, appliedAt: null });
+    // The dial's pending speed: a send the telemetry has not shown yet.
+    noteReplaySpeedSent({ speed: 8, slowMotion: false }, at, { rememberSpeed: true });
+    const unsubscribe = onReplayCursorTaken(listener);
+
+    interruptLapWalks("next-car");
+
+    expect(pendingReplayJumpSpeed()).toEqual({ speed: 2, slowMotion: false, appliedAt: null });
+    expect(resolveLiveSpeed({ speed: 0, slowMotion: false }, at)).toEqual({ speed: 8, slowMotion: false });
+    expect(listener).not.toHaveBeenCalled();
+    unsubscribe();
+
+    // A cancel, by contrast, takes the cursor and clears both.
+    cancelLapWalks("frame-forward");
+
+    expect(pendingReplayJumpSpeed()).toBeNull();
+    expect(resolveLiveSpeed({ speed: 0, slowMotion: false }, at)).toEqual({ speed: 0, slowMotion: false });
   });
 });

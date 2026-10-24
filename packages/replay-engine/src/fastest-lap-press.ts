@@ -419,7 +419,9 @@ export function pressJumpToFastestLap(request: {
  * replay commands from the car. A walk that gives up puts the replay back
  * on the frame and at the speed the press found it (#1354), and the camera
  * back on `viewedCarIdx`, the car that was on screen at the press, when the
- * press had moved it. Only when the sim does not honour the way back does
+ * press had moved it. A camera key that interrupts the walk (#1428 / #1435)
+ * ends the press the same way, and its own switch goes out after that. Only
+ * when the sim does not honour the way back does
  * the replay stay paused where the walk stopped, with the speed state saying
  * so, so the Play key plays.
  *
@@ -458,11 +460,19 @@ export async function walkToFastestLap(
     // The camera onto the target car before the walk: iRacing's lap search
     // is camera-focus-relative, so the walk must start on the right driver.
     // For viewed-car this is usually a no-op (the camera is already there);
-    // for always-my-car it actively re-frames.
+    // for always-my-car it actively re-frames. A camera key that interrupted
+    // the press during the wait (#1428 / #1435) wants another car: the
+    // switch is not made, and the walk stops at its first checkpoint.
+    let cameraMoved = false;
+
     if (cameraCarNum !== null) {
       await waitToSwitchCamera(jump.claim, FASTEST_LAP_LOG_LABEL);
 
-      if (!engineEnv().camera().switchNum(cameraCarNum, 0, 0)) {
+      if (jump.claim.interruptedBy !== null) {
+        // Nothing switched, so nothing to switch back.
+      } else if (engineEnv().camera().switchNum(cameraCarNum, 0, 0)) {
+        cameraMoved = true;
+      } else {
         // If the SDK refused, abort rather than walk the wrong driver.
         logger.warn("Jump to fastest lap: camera switch failed, aborting");
         logger.debug(`Failed switchNum: carNum=${cameraCarNum}, carIdx=${carIdx}`);
@@ -480,12 +490,16 @@ export async function walkToFastestLap(
       label: FASTEST_LAP_LOG_LABEL,
     });
 
-    // A walk that gave up has put the replay back where the press found it,
-    // whatever the setting says: nothing was jumped to. The camera the press
-    // moved onto the target car goes back too, once no seek is in flight.
+    // A walk that gave up, or that a camera key interrupted (#1428 / #1435),
+    // has put the replay back where the press found it, whatever the setting
+    // says: nothing was jumped to. The camera the press moved onto the target
+    // car goes back too, once no seek is in flight, and only when the press
+    // moved it; an interrupting key's own switch goes out after this.
     if (landing === null) {
       const viewedCarNum =
-        viewedCarIdx !== carIdx && viewedCarIdx >= 0 && viewedCarIdx !== 255 ? carNumberRawByIdx(viewedCarIdx) : null;
+        cameraMoved && viewedCarIdx !== carIdx && viewedCarIdx >= 0 && viewedCarIdx !== 255
+          ? carNumberRawByIdx(viewedCarIdx)
+          : null;
 
       if (viewedCarNum === null) return;
 

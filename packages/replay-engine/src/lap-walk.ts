@@ -6,13 +6,28 @@
  * state through the engine env, the time through the engine clock, and sends
  * every command through the replay command gate as the holder of the press's
  * cursor claim. Its lines go to the engine's `ReplayControl` scope.
+ *
+ * A walk is stopped two ways, both observed at every `checkpoint` and every
+ * poll of its own waits. A replay command from any key cancels its claim:
+ * {@link FastestLapPressCancelled}, and nothing more is sent. A camera switch
+ * interrupts it (#1428 / #1435, `interruptLapWalks`): {@link LapWalkInterrupted},
+ * which {@link runFastestLapWalk} catches to put the replay back as a walk
+ * that gave up does, since the walk still holds the cursor.
  */
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { getReplaySessionStore, isReplaySessionStoreInitialized } from "@iracedeck/replay-store";
 
 import { now, pollUntil, sleep } from "./engine-clock.js";
 import { lastListedSessionNum } from "./green-flag-target.js";
-import { FastestLapPressCancelled, inReplayNow, lapPressLogger, readSessionInfo } from "./lap-press.js";
+import {
+  FastestLapPressCancelled,
+  inReplayNow,
+  lapPressLogger,
+  LapWalkInterrupted,
+  readSessionInfo,
+  throwIfWalkStopped,
+  walkStopView,
+} from "./lap-press.js";
 import { halvingProbeFrames } from "./lap-walk-probes.js";
 import { type ReplayGateCommand, sendOwnedReplayCommand, waitForReplayJumpsToSettle } from "./replay-command-gate.js";
 import { engineReads } from "./replay-engine-env.js";
@@ -266,9 +281,11 @@ export type LapWalkResult = Omit<FastestLapWalkLanding, "putBack">;
 /**
  * Where the press found the replay, for putting it back. `frame` is null
  * until the walk has read it from a settled sample, and again for a walk that
- * turned out to run from the car, where no command is honoured.
+ * turned out to run from the car, where no command is honoured. `paused` says
+ * whether the walk has sent its opening pause: a walk stopped after it and
+ * before `frame` was read has moved the replay by that pause alone (#1428).
  */
-export type LapWalkOrigin = { frame: number | null };
+export type LapWalkOrigin = { frame: number | null; paused: boolean };
 
 /**
  * What a walk looks for: the start of one lap of one car in one session
@@ -340,20 +357,34 @@ export function computeFastestLapBisectionProbe(
 }
 
 /**
- * Walk to a lap start ({@link walkToLapStart}) and, when the walk gives up,
- * put the replay back where the press found it ({@link putReplayBack}). So a
- * null landing means the press changed nothing: a search that cannot find
- * its lap must not leave the user somewhere in the recording they did not
- * ask for (#1354; as first built an aborted walk stayed where it stopped,
- * which for a car that had retired was the last frame of the tape).
+ * Walk to a lap start ({@link walkToLapStart}) and, when the walk gives up or
+ * a camera switch interrupts it, put the replay back where the press found it
+ * ({@link putReplayBack}). So a null landing means the press changed nothing:
+ * a search that cannot find its lap must not leave the user somewhere in the
+ * recording they did not ask for (#1354; as first built an aborted walk
+ * stayed where it stopped, which for a car that had retired was the last
+ * frame of the tape), and a camera key pressed during the search means the
+ * driver no longer wants the lap (#1428 / #1435). The caller then undoes its
+ * own camera move, as for a walk that gave up, and the camera switch that
+ * interrupted the walk goes out after that.
  */
 export async function runFastestLapWalk(
   jump: ReplayJump,
   target: LapWalkTarget,
 ): Promise<FastestLapWalkLanding | null> {
-  const origin: LapWalkOrigin = { frame: null };
+  const origin: LapWalkOrigin = { frame: null, paused: false };
   const putBack = (): Promise<void> => putReplayBack(jump, target.label, origin);
-  const landing = await walkToLapStart(jump, target, origin);
+  let landing: LapWalkResult | null;
+
+  try {
+    landing = await walkToLapStart(jump, target, origin);
+  } catch (error) {
+    if (!(error instanceof LapWalkInterrupted)) throw error;
+
+    await putReplayBack(jump, target.label, origin, error.by);
+
+    return null;
+  }
 
   if (landing === null) {
     await putBack();
@@ -365,26 +396,46 @@ export async function runFastestLapWalk(
 }
 
 /**
- * Undo a walk that came to nothing: the cursor back on the frame the press
+ * Undo a walk that came to nothing, or that a camera switch interrupted
+ * (`interruptedBy`, #1428 / #1435): the cursor back on the frame the press
  * found it on, then the speed it had there. Not the **Replay jump playback**
  * setting: nothing was jumped to, so the press leaves the replay as if it
- * had not been made. Does nothing for a walk that never read where the
- * replay was — it sent nothing, or the telemetry never settled after its
- * opening pause — or that ran from the car, where every command is ignored.
- * A way back the sim does not honour is logged, and the replay stays paused
- * where the walk stopped. Throws
- * {@link FastestLapPressCancelled} when another replay command has taken the
- * cursor: that command's own effect stands.
+ * had not been made. A walk that never read where the replay was but sent
+ * its opening pause (stopped in that pause, or the telemetry never settled
+ * after it) has moved the replay by the pause alone, so only the speed goes
+ * back, when it was not zero. One that sent nothing, or that ran from the
+ * car, where every command is ignored, sends nothing. A way back the sim
+ * does not honour is logged, and the replay stays paused where the walk
+ * stopped. Runs on an interrupted claim, which still holds the cursor;
+ * throws {@link FastestLapPressCancelled} when another replay command has
+ * taken the cursor: that command's own effect stands, and nothing more is
+ * sent.
  */
-export async function putReplayBack(jump: ReplayJump, label: string, origin: LapWalkOrigin): Promise<void> {
+export async function putReplayBack(
+  jump: ReplayJump,
+  label: string,
+  origin: LapWalkOrigin,
+  interruptedBy?: string,
+): Promise<void> {
   const { frame } = origin;
   const { claim } = jump;
+  const logger = lapPressLogger();
 
-  if (frame === null) return;
+  if (frame === null) {
+    if (!origin.paused) return;
+
+    if (claim.cancelledBy !== null) throw new FastestLapPressCancelled(claim.cancelledBy);
+
+    if (!restoreCapturedSpeed(jump, label, null)) return;
+
+    logPutBack(label, interruptedBy);
+    logger.debug(`Opening pause undone: ${formatSpeedDisplay(jump.captured.speed, jump.captured.slowMotion)}`);
+
+    return;
+  }
 
   if (claim.cancelledBy !== null) throw new FastestLapPressCancelled(claim.cancelledBy);
 
-  const logger = lapPressLogger();
   const readTelemetry = (): TelemetryData | null => engineReads().readTelemetry();
   const now = readTelemetry();
   // Out of the `SessionNum = -1` transient, where the frame reads 0 whatever it is.
@@ -424,22 +475,51 @@ export async function putReplayBack(jump: ReplayJump, label: string, origin: Lap
     }
   }
 
+  if (!restoreCapturedSpeed(jump, label, frame)) return;
+
+  logPutBack(label, interruptedBy);
+  logger.debug(`Frame ${frame}, ${formatSpeedDisplay(jump.captured.speed, jump.captured.slowMotion)} before the press`);
+}
+
+/**
+ * Sends the speed captured at the press, when it was not zero: the way
+ * back's last step, on `frame` once the cursor is back there (null when only
+ * the opening pause is undone). False when the send failed, logged; throws
+ * {@link FastestLapPressCancelled} when a replay command took the cursor.
+ */
+function restoreCapturedSpeed(jump: ReplayJump, label: string, frame: number | null): boolean {
+  const { claim } = jump;
   const { speed, slowMotion } = jump.captured;
 
-  if (speed !== 0) {
-    if (claim.cancelledBy !== null) throw new FastestLapPressCancelled(claim.cancelledBy);
+  if (speed === 0) return true;
 
-    if (sendOwnedReplayCommand(claim, { kind: "speed", speed, slowMotion }) !== "sent") {
+  if (claim.cancelledBy !== null) throw new FastestLapPressCancelled(claim.cancelledBy);
+
+  if (sendOwnedReplayCommand(claim, { kind: "speed", speed, slowMotion }) !== "sent") {
+    const logger = lapPressLogger();
+
+    if (frame === null) {
+      logger.warn(`${label}: speed command failed; replay left paused`);
+      logger.debug(`Failed setPlaySpeed: ${formatSpeedDisplay(speed, slowMotion)}`);
+    } else {
       logger.warn(`${label}: speed command failed; replay left paused on the frame the press found it on`);
       logger.debug(`Failed setPlaySpeed: ${formatSpeedDisplay(speed, slowMotion)} on frame ${frame}`);
-
-      return;
     }
-    // The gate records the speed it sent, and the keys redraw from the speed state's change subscription.
+
+    return false;
   }
 
-  logger.info(`${label}: replay put back where the press found it`);
-  logger.debug(`Frame ${frame}, ${formatSpeedDisplay(speed, slowMotion)} before the press`);
+  // The gate records the speed it sent, and the keys redraw from the speed state's change subscription.
+  return true;
+}
+
+/** The way back's one info line: for a walk a camera switch interrupted, or one that came to nothing. */
+function logPutBack(label: string, interruptedBy: string | undefined): void {
+  lapPressLogger().info(
+    interruptedBy === undefined
+      ? `${label}: replay put back where the press found it`
+      : `${label}: walk interrupted by ${interruptedBy}; replay put back`,
+  );
 }
 
 /**
@@ -450,7 +530,9 @@ export async function putReplayBack(jump: ReplayJump, label: string, origin: Lap
  * leaves the replay paused where the walk stopped for the caller,
  * {@link runFastestLapWalk}, to put back: `origin` is where it tells that
  * caller the frame the press found the replay on. Throws
- * {@link FastestLapPressCancelled} when another replay command took the cursor.
+ * {@link FastestLapPressCancelled} when another replay command took the
+ * cursor, and {@link LapWalkInterrupted} when a camera switch interrupted the
+ * walk, from its next `checkpoint` or poll.
  *
  * `target` names the lap, the session instance it is in and the mode the
  * walk runs for: Jump to Fastest Lap walks to a lap of the cursor's own
@@ -469,11 +551,13 @@ export async function walkToLapStart(
   /** One of the walk's own commands, through the replay command gate as the cursor's holder (#1430). */
   const send = (command: ReplayGateCommand): boolean => sendOwnedReplayCommand(claim, command) === "sent";
 
-  const checkpoint = (): void => {
-    if (claim.cancelledBy !== null) throw new FastestLapPressCancelled(claim.cancelledBy);
-  };
+  /** A cancel throws {@link FastestLapPressCancelled}, an interrupt {@link LapWalkInterrupted}. */
+  const checkpoint = (): void => throwIfWalkStopped(claim);
 
-  /** Every wait in the walk: a cancellation is observed as soon as the sleep ends. */
+  /** The claim the walk's own waits poll: stopped by a cancel or an interrupt, which `checkpoint` tells apart. */
+  const waitClaim = walkStopView(claim);
+
+  /** Every wait in the walk: a cancellation or an interrupt is observed as soon as the sleep ends. */
   const wait = async (ms: number): Promise<void> => {
     await sleep(ms);
     checkpoint();
@@ -529,7 +613,7 @@ export async function walkToLapStart(
   const readSettledSample = async (): Promise<TelemetryData | null> => {
     const settled = await pollUntil(
       () => {
-        // A cancellation is observed as soon as a sleep ends, as `wait` does it.
+        // A cancellation or an interrupt is observed as soon as a sleep ends, as `wait` does it.
         checkpoint();
 
         const tel = readTelemetry();
@@ -559,14 +643,18 @@ export async function walkToLapStart(
 
     const outcome = await seekReplayFrame({
       frame,
-      claim,
+      claim: waitClaim,
       send: (f) => send({ kind: "jump", frame: f }),
       readTelemetry,
       timeoutMs,
       pollMs: STABILIZATION_POLL_INTERVAL_MS,
     });
 
-    if (outcome.kind === "cancelled") throw new FastestLapPressCancelled(outcome.by);
+    if (outcome.kind === "cancelled") {
+      checkpoint();
+
+      throw new FastestLapPressCancelled(outcome.by);
+    }
 
     if (outcome.kind === "reached") {
       unlandedJumpFrame = null;
@@ -810,17 +898,23 @@ export async function walkToLapStart(
   // would end it where it stands (#1430). A wait that runs out goes on: the
   // walk's first command is a position jump or a search from wherever the
   // replay is, and every later step reads where it landed.
-  const settled = await waitForReplayJumpsToSettle(claim);
+  const settled = await waitForReplayJumpsToSettle(waitClaim);
 
-  if (settled === "superseded") throw new FastestLapPressCancelled(claim.cancelledBy ?? "unknown");
+  if (settled === "superseded") {
+    checkpoint();
+
+    throw new FastestLapPressCancelled(claim.cancelledBy ?? "unknown");
+  }
 
   if (settled === "gave-up") logger.debug(`${logLabel}: a jump was still under way; walking anyway`);
 
   // Pause first so the cursor doesn't drift between commands and the
   // post-settle telemetry sample. The gate records the pause as the speed,
   // so a Play press during or after the walk sends play rather than pause,
-  // and the keys redraw from it.
-  send({ kind: "pause" });
+  // and the keys redraw from it. A walk stopped from here on has moved the
+  // replay by the pause at least, which its way back undoes.
+  checkpoint();
+  origin.paused = send({ kind: "pause" });
   await wait(readFastestLapSearchDelayMs());
 
   // Phase 1: session map (cache or build). The sample that keys it is a
@@ -878,6 +972,7 @@ export async function walkToLapStart(
       logger.info(`${logLabel}: the walk ran from the car (IsReplayPlaying never read true); session map discarded`);
       // Nothing to put back, and no command to do it with.
       origin.frame = null;
+      origin.paused = false;
 
       return null;
     }

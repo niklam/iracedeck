@@ -24,6 +24,7 @@ export {
   claimReplayCursor,
   clearReplayJumpSpeed,
   currentReplayCursorOwner,
+  interruptReplayCursorOwnerIf,
   onReplayCursorTaken,
   pendingReplayJumpSpeed,
   recordReplayJumpSpeed,
@@ -112,8 +113,21 @@ export {
   isCameraSwitchWaiting,
   requestCameraSwitch,
 } from "./camera-switch-waiter.js";
-export { cancelLapWalks, FASTEST_LAP_WALK_OWNER, LAP_WALK_OWNERS, RACE_START_WALK_OWNER } from "./lap-walk-owners.js";
-export { _activeLapPress, _resetLapPress, isLapPressInFlight, runJumpToFrame } from "./lap-press.js";
+export {
+  cancelLapWalks,
+  FASTEST_LAP_WALK_OWNER,
+  interruptLapWalks,
+  LAP_WALK_OWNERS,
+  RACE_START_WALK_OWNER,
+} from "./lap-walk-owners.js";
+export {
+  _activeLapPress,
+  _resetLapPress,
+  isInterruptedLapPressUnwinding,
+  isLapPressInFlight,
+  LapWalkInterrupted,
+  runJumpToFrame,
+} from "./lap-press.js";
 export {
   _getFastestLapSessionCache,
   _resetFastestLapSessionCache,
@@ -135,6 +149,7 @@ export {
   _resetReplayCommandGate,
   getReplayGateRecord,
   getReplayGateView,
+  isReplayJumpSequenceOpen,
   isReplayMoveUnderWay,
   pressReplayCommand,
   readReplayPosition,

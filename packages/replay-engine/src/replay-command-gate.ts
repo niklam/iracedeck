@@ -2296,6 +2296,21 @@ export function readReplayPosition(telemetry: TelemetryData | null): ReplayPosit
   return position;
 }
 
+/**
+ * Whether a replay jump sequence with a frame of its own holds the cursor:
+ * opened with a frame (`openReplayJump`), or given one since
+ * (`recordReplayJumpTarget`), and not yet closed (`closeReplayJump`, the
+ * sequence's `end()`) or taken. True from the press through the landing to
+ * the end, so it covers the jump's own step after the landing and its
+ * playback step. A paced search's run and a lap walk's search, which open no
+ * frame, are not counted. Read by the camera-switch waiter (#1428 / #1435),
+ * whose switch goes out after the jump's own camera switch; it changes
+ * nothing the gate sends.
+ */
+export function isReplayJumpSequenceOpen(): boolean {
+  return held !== null && held.claim.cancelledBy === null && (held.target !== null || held.onScreen);
+}
+
 /** Whether the plugin is moving the replay right now: a jump, a search on its way, a held replay jump, a waiting press. */
 export function isReplayMoveUnderWay(): boolean {
   return busy() || (held !== null && held.claim.cancelledBy === null);
