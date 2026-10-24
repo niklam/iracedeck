@@ -45,7 +45,9 @@ Increase the pending fuel for the next pit stop. Pressing the button raises iRac
 
 #### Setting: Amount
 
-The increment to add. Numeric — supports comma or period decimal separators (e.g., `1`, `2.5`, `0,5`). Defaults to `1`. iRacing banks fuel in whole liters, so the resulting request is rounded to an integer number of liters.
+The increment to add. Numeric — supports comma or period decimal separators (e.g., `1`, `2.5`, `0,5`). Defaults to `1`.
+
+iRacing rounds every fuel request to the car's own fuel step: whole liters in most cars, whole gallons in some, such as the Global MX-5 Cup. When the amount is smaller than that step, iRaceDeck keeps raising the request until iRacing accepts it, so every press adds at least one step. It remembers the step for each car, so later presses land at once.
 
 #### Setting: Unit
 
@@ -76,7 +78,7 @@ Decrease the pending fuel for the next pit stop by the configured amount. Reduci
 
 #### Setting: Amount
 
-The decrement to subtract. Numeric — supports comma or period decimal separators. Defaults to `1`.
+The decrement to subtract. Numeric — supports comma or period decimal separators. Defaults to `1`. As with Add Fuel, an amount smaller than the car's fuel step still lowers the request by at least one step.
 
 #### Setting: Unit
 
@@ -238,7 +240,7 @@ The touch-strip slot is drawn by the plugin as one full pixmap: a full-width **s
 
 Whether a manual-mode turn sets the amount to add or the desired total. Defaults to **Add Amount**. (In autofuel mode a turn adjusts the lap margin regardless of this setting.)
 
-- **Add Amount** (default) — The dial sets how much fuel to add over the full tank range. The add is fixed: it does not change as fuel burns. The readout shows `+<add> = <total>`; the displayed add is read live from iRacing's pit request, so it shows what the game actually banked (after its whole-litre rounding) rather than the dialed figure — it never briefly shows the dialed amount and then resyncs. The total reflects live fuel burn.
+- **Add Amount** (default) — The dial sets how much fuel to add over the full tank range. The add is fixed: it does not change as fuel burns. The readout shows `+<add> = <total>`; the displayed add is read live from iRacing's pit request, so it shows what the game actually banked (after rounding to the car's fuel step) rather than the dialed figure — it never briefly shows the dialed amount and then resyncs. In a car whose fuel step is larger than the dial's step size, such as a car that fuels in whole gallons, each turn still moves the request by at least one step. The total reflects live fuel burn.
 - **Target Amount** — The dial sets the whole-number total you want in the tank after the stop. The add (target − current, rounded up so you never finish under target) is recomputed continuously as fuel burns and the request is updated whenever the whole-unit amount changes, **while fuel-fill is on**. The top-up pauses while the car is actively receiving pit service — updating the request mid-fueling would interrupt the fueling — and resumes once the stop ends, re-sending the remaining need if fueling was cut short. While fuel-fill is off the fuel amount is **not** updated — rotating still plans the target, and turning fueling on or pressing sends it. A red vertical target line marks the target on the bar (the readout for this mode shows `→ <target>`). The round-up alone keeps you at or above the target, so no safety buffer is needed.
 
 #### Setting: Amount (step size)
