@@ -3850,6 +3850,29 @@ describe("FuelService dial surface", () => {
       expect(stepperOf(action).minimumMoveFor(PORSCHE_PATH, "add")).toBe(0);
     });
 
+    it("logs the info line once the step has sent, never for a detent superseded in the queue", async () => {
+      bankWholeGallons(3);
+      const ctx = dialContext("fs11");
+      await appear(ctx, SETTINGS);
+      const info = (action as unknown as { logger: { info: ReturnType<typeof vi.fn> } }).logger.info;
+      info.mockClear();
+
+      // The first detent's check runs (12, 13, 14). Two more detents arrive while
+      // it does: the second queues, the third replaces it in the queue.
+      await action.onDialRotate(rotateEvent(ctx, SETTINGS, 1) as never);
+      expect(info).not.toHaveBeenCalledWith("Fuel request sent");
+      await vi.advanceTimersByTimeAsync(150);
+      await action.onDialRotate(rotateEvent(ctx, SETTINGS, 1) as never);
+      await vi.advanceTimersByTimeAsync(150);
+      await action.onDialRotate(rotateEvent(ctx, SETTINGS, 1) as never);
+      await vi.advanceTimersByTimeAsync(3_000);
+
+      // Two steps sent (the first and the newest), so two info lines, not three.
+      const sentLines = info.mock.calls.filter(([line]) => line === "Fuel request sent");
+
+      expect(sentLines).toHaveLength(2);
+    });
+
     it("leaves Fill To alone: one send per rotation, no check", async () => {
       bankWholeGallons(3);
       const settings = { stepSize: 1, unitMode: "liters", dialMode: "fill-to" };

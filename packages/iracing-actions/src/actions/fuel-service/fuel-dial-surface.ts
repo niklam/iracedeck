@@ -1402,8 +1402,9 @@ export class FuelDialSurface {
   private sendAddAmountStep(ctx: FuelDialContext, target: number): void {
     ctx.throttle.lastSentLtr = target;
     ctx.lastSentWholeAdd = Math.round(fuelToDisplayUnits(target, this.effectiveDisplayUnits(ctx)));
-    this.host.logger.info("Fuel request sent");
-    this.host.logger.debug(`Sent ${target.toFixed(2)}L (fuel step check)`);
+    // Debug only: the step may yet be queued and superseded without sending
+    // anything. The info line comes from onAddAmountStepEnd, once it has sent.
+    this.host.logger.debug(`Add Amount ${target.toFixed(2)}L handed to the fuel step check`);
 
     // The dialed add when the step started, kept fractional: the re-base in
     // onAddAmountStepEnd measures detents turned since against it, not
@@ -1448,6 +1449,8 @@ export class FuelDialSurface {
    * started), the fractional value the detents turned since are measured from.
    */
   private onAddAmountStepEnd(ctx: FuelDialContext, startLtr: number | null, result: FuelStepResult): void {
+    this.logAddAmountStepEnd(result);
+
     const steppedPast = result.outcome === "landed" && result.extraLtr > 0;
 
     if (!steppedPast && result.outcome !== "unmoved" && result.outcome !== "emptied") return;
@@ -1470,6 +1473,29 @@ export class FuelDialSurface {
       ctx.throttle.lastSentLtr = settledLtr;
       ctx.lastSentWholeAdd =
         settledLtr <= 0 ? null : Math.round(fuelToDisplayUnits(settledLtr, this.effectiveDisplayUnits(ctx)));
+    }
+  }
+
+  /** Logs what an Add Amount step sent, at info only when it sent something — as the keypad does. */
+  private logAddAmountStepEnd(result: FuelStepResult): void {
+    switch (result.outcome) {
+      case "landed":
+      case "unmoved":
+      case "unchecked":
+        this.host.logger.info("Fuel request sent");
+        this.host.logger.debug(
+          `Add Amount: pit.fuel(${result.sentLtr}) (${result.outcome}, +${result.extraLtr} L, baseline ${result.baselineLtr?.toFixed(2) ?? "unknown"}L)`,
+        );
+
+        return;
+
+      case "emptied":
+        this.host.logger.info("Fuel request emptied");
+
+        return;
+
+      default:
+        this.host.logger.debug(`Add Amount step ${result.outcome}`);
     }
   }
 
