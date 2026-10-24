@@ -33,7 +33,7 @@ The Practice, Test, Qualifying and Race profiles are the ones [automatic switchi
 
 ## Installing a profile
 
-There is nothing to import by hand. The first time you switch to a bundled profile, the Stream Deck app asks to install it — confirm, and the profile is added to your device's profile list. Updates work the same way: after an iRaceDeck update, switching to a profile installs its latest version.
+There is nothing to import by hand. The first time you switch to a bundled profile, the Stream Deck app asks to install it — confirm, and the profile is added to your device's profile list. Once a profile is installed it is yours: an iRaceDeck update never overwrites it, so your edits stay. A newer version of a bundled profile only reaches you if you have not installed that profile yet.
 
 Installing a profile never moves you off the one you are on: only **iRaceDeck Default** is switched to when it is first installed.
 
