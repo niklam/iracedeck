@@ -42,6 +42,8 @@ class FakeCar {
   capacityLtr = Number.POSITIVE_INFINITY;
   /** True while the car is not in a pit-service state: nothing is banked. */
   ignoring = false;
+  /** How long after a command `PitSvFuel` shows it. */
+  lagMs = TICK_MS;
 
   constructor(
     private readonly grid: (wholeLiters: number) => number,
@@ -60,7 +62,7 @@ class FakeCar {
     const banked = Math.min(this.grid(whole), this.capacityLtr);
     setTimeout(() => {
       this.pitSvFuel = banked;
-    }, TICK_MS);
+    }, this.lagMs);
   }
 
   telemetry(): TelemetryData | null {
@@ -296,6 +298,28 @@ describe("FuelStepper", () => {
       await vi.advanceTimersByTimeAsync(1_000);
       await expect(second).resolves.toMatchObject({ outcome: "landed", sentLtr: 18 });
       expect(stepper.minimumMoveFor(MX5, "add")).toBeCloseTo(14 - 3 * GALLON, 5);
+    });
+
+    it("does not learn from a send that iRacing shows only after the watch expired", async () => {
+      useCar(new FakeCar(literGrid, 10, PORSCHE));
+      car.lagMs = FUEL_STEP_WATCH_MS + 50;
+
+      // 11 shows at 350 ms, after the check escalated to 12 at 300 ms: the step
+      // "lands" on 11, which is the late send, not evidence about the grid.
+      const late = press("add", 1);
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      await expect(late).resolves.toMatchObject({ outcome: "landed", sentLtr: 12, endLtr: 11 });
+      expect(stepper.minimumMoveFor(PORSCHE, "add")).toBe(0);
+
+      // The late 12 has shown by now; the next 1 L press sends baseline + 1, unbumped.
+      car.lagMs = TICK_MS;
+      mockPitFuel.mockClear();
+      const next = press("add", 1);
+      await vi.advanceTimersByTimeAsync(100);
+
+      await expect(next).resolves.toMatchObject({ outcome: "landed", baselineLtr: 12, sentLtr: 13, extraLtr: 0 });
+      expect(sent()).toEqual([13]);
     });
 
     it("keys the minimum move by car: another car starts without one", async () => {

@@ -61,6 +61,12 @@ export const FUEL_STEP_MAX_EXTRA_LTR = 8;
 /** A `PitSvFuel` change smaller than this is float noise, not a move. */
 const MOVE_EPSILON_LTR = 0.01;
 
+/**
+ * An escalated landing this close to the PREVIOUS send is that send showing up
+ * late, not the escalated one landing (see the class comment).
+ */
+const LATE_REFLECTION_LTR = 0.5;
+
 /** Which way a press moves the pit fuel request. */
 export type FuelStepDirection = "add" | "reduce";
 
@@ -142,6 +148,10 @@ interface RunningStep extends PendingStep {
   memoryKey: string | null;
   /** Whole liters the first send was bumped by to reach the learned minimum move. */
   bumpLtr: number;
+  /** The send before the current one, or null while only one has gone out. */
+  previousSentLtr: number | null;
+  /** How many sends this step has made. */
+  sends: number;
   extraLtr: number;
   sentLtr: number;
   /** Milliseconds the current send has been watched. */
@@ -232,9 +242,18 @@ export function readPlayerCarPath(sessionInfo: SessionInfo | null): string | nul
  * - It therefore only grows when a bumped send genuinely failed, and settles
  *   at the largest move any baseline on the car's grid needs — about half a
  *   step plus one liter of whole-liter rounding (≈ 2.9 L on the MX-5), well
- *   under one step, so a bumped press never skips a step. A one-off error (a
- *   telemetry tick later than the watch) can add at most the one liter of
- *   that escalation, and the 8 L bound caps it absolutely.
+ *   under one step, so a bumped press never skips a step.
+ * - A late reflection teaches nothing. If iRacing shows a send later than the
+ *   watch, the check escalates and then "lands" on the EARLIER send's effect;
+ *   learning that escalated move would be permanent, since a bumped first send
+ *   always moves at least the minimum and nothing would ever lower it again
+ *   (every later 1 L press on a liter car would add 2 L until a restart). So
+ *   an escalated landing whose `PitSvFuel` sits within
+ *   {@link LATE_REFLECTION_LTR} of the previous send — the one declared
+ *   unmoved — is not learned from. It cannot misfire on a real grid: a send
+ *   that rounded back sits within half a step of the baseline, and a true
+ *   landing is a full step from the baseline, so on any grid whose step is
+ *   larger than 1 L the landing is at least half a step from that send.
  * - A press that never moved (`unmoved`), was emptied, or was not checked
  *   teaches nothing.
  */
@@ -364,6 +383,8 @@ export class FuelStepper {
       firstLtr,
       memoryKey,
       bumpLtr,
+      previousSentLtr: null,
+      sends: 0,
       extraLtr: bumpLtr,
       sentLtr: firstLtr,
       watchedMs: 0,
@@ -384,6 +405,8 @@ export class FuelStepper {
   /** Sends the run's current request (its own request plus `extraLtr`) and starts watching it. */
   private send(run: RunningStep): void {
     const liters = run.direction === "add" ? run.firstLtr + run.extraLtr : run.firstLtr - run.extraLtr;
+    run.previousSentLtr = run.sends > 0 ? run.sentLtr : null;
+    run.sends += 1;
     run.sentLtr = liters;
 
     if (liters <= 0) {
@@ -408,7 +431,7 @@ export class FuelStepper {
     const nowLtr = readPitSvFuel(this.host.getTelemetry());
 
     if (nowLtr !== undefined && this.moved(run, nowLtr)) {
-      this.learn(run);
+      this.learn(run, nowLtr);
 
       if (run.extraLtr > 0) {
         this.host.logger.debug(
@@ -456,12 +479,20 @@ export class FuelStepper {
   }
 
   /** Updates the learned minimum move from a press that landed (see the class comment). */
-  private learn(run: RunningStep): void {
+  private learn(run: RunningStep, landedLtr: number): void {
     if (run.memoryKey === null) return;
 
     const moveLtr = Math.abs(run.sentLtr - run.baselineLtr);
     const escalated = run.extraLtr > run.bumpLtr;
     const known = this.minimumMoves.get(run.memoryKey);
+
+    if (escalated && run.previousSentLtr !== null && Math.abs(landedLtr - run.previousSentLtr) <= LATE_REFLECTION_LTR) {
+      this.host.logger.debug(
+        `Fuel step: landed at ${landedLtr.toFixed(2)}L, the previous send ${run.previousSentLtr} L showing late — not learned`,
+      );
+
+      return;
+    }
 
     if (escalated) {
       this.minimumMoves.set(run.memoryKey, moveLtr);
