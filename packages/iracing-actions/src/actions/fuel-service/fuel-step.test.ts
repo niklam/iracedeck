@@ -363,14 +363,40 @@ describe("FuelStepper", () => {
   });
 
   describe("reaching zero", () => {
-    it("empties the request through the no-fuel path instead of sending pit.fuel(0)", async () => {
+    it("clears fueling when a reduce lands at zero, ending it as emptied", async () => {
       useCar(new FakeCar(gallonGrid, GALLON, MX5));
+      const onEnd = vi.fn((_result: FuelStepResult) => undefined);
 
       // 1 gal (3.79 L) - 1 → 3, 2 bank 1 gal again; 1 lands on 0 gal.
-      const toZero = press("reduce", 1);
+      const toZero = press("reduce", 1, onEnd);
+
+      // Not yet: the clear follows the landing, not the send.
+      await vi.advanceTimersByTimeAsync(2 * FUEL_STEP_WATCH_MS + 1);
+      expect(mockPitClearFuel).not.toHaveBeenCalled();
+
       await vi.advanceTimersByTimeAsync(1_000);
-      await expect(toZero).resolves.toMatchObject({ outcome: "landed", sentLtr: 1 });
-      mockPitFuel.mockClear();
+
+      await expect(toZero).resolves.toMatchObject({ outcome: "emptied", sentLtr: 1, endLtr: 0 });
+      expect(sent()).toEqual([3, 2, 1]);
+      expect(mockPitClearFuel).toHaveBeenCalledOnce();
+      expect(mockPitClearFuel.mock.invocationCallOrder[0]).toBeGreaterThan(mockPitFuel.mock.invocationCallOrder[2]!);
+      // The clear is the step's own command: it ended the step, it did not cancel it.
+      expect(onEnd).toHaveBeenCalledWith(expect.objectContaining({ outcome: "emptied" }));
+      expect(stepper.busy).toBe(false);
+    });
+
+    it("an add from zero lands normally: only a reduce at zero empties", async () => {
+      useCar(new FakeCar(literGrid, 0, PORSCHE));
+
+      const add = press("add", 1);
+      await vi.advanceTimersByTimeAsync(100);
+
+      await expect(add).resolves.toMatchObject({ outcome: "landed", sentLtr: 1 });
+      expect(mockPitClearFuel).not.toHaveBeenCalled();
+    });
+
+    it("empties the request through the no-fuel path instead of sending pit.fuel(0)", async () => {
+      useCar(new FakeCar(gallonGrid, 0, MX5));
 
       // At 0: round(0 - 1) = -1 is at or below zero → 1 L then clear, and the step ends.
       const empty = press("reduce", 1);

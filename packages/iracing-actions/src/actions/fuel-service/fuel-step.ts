@@ -203,7 +203,9 @@ export function readPlayerCarPath(sessionInfo: SessionInfo | null): string | nul
  * "keep the existing amount", so a request that would reach zero (a reduce
  * press, or a reduce escalation stepping past the last whole step) goes through
  * {@link FuelPipeline.sendNoFuel} instead (1 L then clear) and the step ends
- * there as `emptied`: zero is the floor, there is nothing further to step to,
+ * there as `emptied`. A reduce that LANDS at zero (a gallon car banks
+ * `pit.fuel(1)` as 0 gal) is followed by the clear and ends `emptied` too, so
+ * every car leaves the same state: zero is the floor, there is nothing further to step to,
  * and the clear leaves fueling off — the state the keypad's reduce-to-zero
  * has always left.
  *
@@ -412,6 +414,17 @@ export class FuelStepper {
         this.host.logger.debug(
           `Fuel step: landed at ${nowLtr.toFixed(2)}L, ${run.extraLtr} L past the request ${run.firstLtr.toFixed(2)}L`,
         );
+      }
+
+      // A reduce that lands at zero (on the MX-5, `pit.fuel(1)` banks 0 gal) is
+      // the empty request: clear the box too, as `sendNoFuel` does on a car
+      // whose reduce reaches zero by request, so both leave fueling off.
+      if (run.direction === "reduce" && nowLtr <= MOVE_EPSILON_LTR) {
+        this.own(() => this.pipeline.clearFuel());
+        this.host.logger.debug("Fuel step: reduce landed at zero — cleared fueling");
+        this.end(run, "emptied", nowLtr, true);
+
+        return;
       }
 
       this.end(run, "landed", nowLtr, true);
