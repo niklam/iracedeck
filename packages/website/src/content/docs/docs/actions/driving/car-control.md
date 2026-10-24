@@ -140,7 +140,7 @@ Engage the car starter. Hold the button to crank.
 #### Setting: Flash while starting
 
 - **Off** (default) — The icon shows only the engine state
-- **On** — After a press the START badge flashes between dimmed and full strength for up to 3 seconds. It stops as soon as the engine is running and shows the green `ON` look; if the engine has not started after 3 seconds, the icon returns to the actual state. The bar and border keep showing the real engine state while it flashes, a short tap flashes too, and a press while the engine is already running does not flash. Holding the button to crank works exactly as without the setting. Works on keys and dials.
+- **On** — After a press the START badge flashes between dimmed and full strength for up to 3 seconds. It stops as soon as the engine is running and shows the green `ON` look; if the engine has not started after 3 seconds, the icon returns to the actual state. The bar and border keep showing the real engine state while it flashes, a short tap flashes too, and a press while the engine is already running, or with no Starter key binding set, does not flash. Holding the button to crank works exactly as without the setting.
 
 ---
 

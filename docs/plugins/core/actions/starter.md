@@ -21,7 +21,7 @@ Engages the car's starter motor.
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
-| Flash while starting (`starterFlash`) | Checkbox | Off | After a press, the badge alternates between dimmed and full strength every 250 ms for up to 3 seconds. It stops as soon as the engine is running; otherwise the icon returns to the actual state after 3 seconds. The status bar and border keep the real state throughout. No flash starts when the engine is already running. Display only: the hold-to-crank behaviour is unchanged. |
+| Flash while starting (`starterFlash`) | Checkbox | Off | After a press, the badge alternates between dimmed and full strength every 250 ms for up to 3 seconds. It stops as soon as the engine is running; otherwise the icon returns to the actual state after 3 seconds. The status bar and border keep the real state throughout. No flash starts when the engine is already running or the Starter binding is unset. Display only: the hold-to-crank behaviour is unchanged. |
 
 ## Keyboard Simulation
 
