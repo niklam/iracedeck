@@ -3873,6 +3873,26 @@ describe("FuelService dial surface", () => {
       expect(sentLines).toHaveLength(2);
     });
 
+    it("leaves the dial alone when it was switched to Fill To while the check ran", async () => {
+      const telemetry = bankWholeGallons(3);
+      const settings = { ...SETTINGS, pressAction: "switch-mode" };
+      const ctx = dialContext("fs12");
+      await appear(ctx, settings);
+
+      await action.onDialRotate(rotateEvent(ctx, settings, 1) as never);
+      await vi.advanceTimersByTimeAsync(100);
+      // Mid-check: the switch re-seeds the dialed value as the total, 0 + 11.36 → 11.
+      await pressDial(ctx, settings);
+      expect(dialValue("fs12")).toBe(11);
+
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      // The check still landed (12, 13, 14 → 4 gal), but did not re-base the total.
+      expect(sent()).toEqual([12, 13, 14]);
+      expect(telemetry.PitSvFuel).toBeCloseTo(4 * GALLON, 5);
+      expect(dialValue("fs12")).toBe(11);
+    });
+
     it("leaves Fill To alone: one send per rotation, no check", async () => {
       bankWholeGallons(3);
       const settings = { stepSize: 1, unitMode: "liters", dialMode: "fill-to" };

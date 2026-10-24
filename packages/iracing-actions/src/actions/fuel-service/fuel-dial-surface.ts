@@ -1451,6 +1451,11 @@ export class FuelDialSurface {
   private onAddAmountStepEnd(ctx: FuelDialContext, startLtr: number | null, result: FuelStepResult): void {
     this.logAddAmountStepEnd(result);
 
+    // Switched to Fill To while the check ran: the switch sends no pipeline
+    // command, so it cancelled nothing, and its re-seed has already set the
+    // dialed value to a TOTAL. Re-basing an add on top of it would be wrong.
+    if (ctx.settings.dial.mode !== "add-amount") return;
+
     const steppedPast = result.outcome === "landed" && result.extraLtr > 0;
 
     if (!steppedPast && result.outcome !== "unmoved" && result.outcome !== "emptied") return;
