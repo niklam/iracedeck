@@ -115,8 +115,39 @@ describe("ReplayControlDialSettings", () => {
     },
   );
 
-  it("should offer Speed Control, Frame Jog, Lap, Session, Incident and Track Order, in that order", () => {
-    expect(REPLAY_DIAL_MODES).toEqual(["speed", "frame-jog", "lap", "session", "incident", "track-order"]);
+  it("should offer Speed Control, Frame Jog, Lap, Session, Incident, Track Order, Car # and Position, in that order", () => {
+    expect(REPLAY_DIAL_MODES).toEqual([
+      "speed",
+      "frame-jog",
+      "lap",
+      "session",
+      "incident",
+      "track-order",
+      "car-number",
+      "race-position",
+    ]);
+  });
+
+  it("should take the two camera-car modes under Camera Controls' stored values (#1448)", () => {
+    expect(ReplayControlDialSettings.parse({ mode: "car-number" }).mode).toBe("car-number");
+    expect(ReplayControlDialSettings.parse({ mode: "race-position" }).mode).toBe("race-position");
+  });
+
+  it.each<[Record<string, unknown>, Record<string, unknown>]>([
+    [{}, { mode: "speed", pressAction: "play-pause", longPressAction: "mode-default" }],
+    [
+      { mode: "track-order", pressAction: "jump-to-live", longPressAction: "none" },
+      { mode: "track-order", pressAction: "jump-to-live", longPressAction: "none" },
+    ],
+    [
+      { mode: "lap", tapAction: "jump-to-my-car" },
+      { mode: "lap", tapAction: "jump-to-my-car" },
+    ],
+    // Camera Controls' other values are not this dial's modes, and read as Speed Control as before.
+    [{ mode: "camera" }, { mode: "speed" }],
+    [{ mode: "car" }, { mode: "speed" }],
+  ])("should read a dial stored before #1448, %j, as it read then", (stored, expected) => {
+    expect(ReplayControlDialSettings.parse(stored)).toMatchObject(expected);
   });
 
   it.each(["green", "LAP", "", 3, null])("should read an unknown stored mode %j as Speed Control (#801)", (mode) => {

@@ -793,7 +793,9 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
   // waited record jumps and iRacing's own searches, every one a broadcast; Track Order
   // taps iRacing's Next / Previous Car binding, clockwise and counter-clockwise,
   // so either one unset warns — the `pair` form Camera Controls' Track Order
-  // dial uses for the same two keys. The gesture-slot values (dial.pressAction /
+  // dial uses for the same two keys. Car # and Position (#1448) switch the
+  // camera to a car number (`camera.switchNum`), a broadcast, as Camera
+  // Controls' dial does in the same modes. The gesture-slot values (dial.pressAction /
   // .longPressAction / .tapAction / .longTouchAction) share the map, as on the
   // other dials: each is a broadcast — a replay command, or Jump to My Car's
   // camera switch; "mode-default" resolves to Jump to My Car or Set 1x and
@@ -806,6 +808,8 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     session: api,
     incident: api,
     "track-order": pair(CAR_CYCLE_BINDING_KEYS.next, CAR_CYCLE_BINDING_KEYS.previous),
+    "car-number": api,
+    "race-position": api,
     "play-pause": api,
     "set-1x-play": api,
     reverse: api,

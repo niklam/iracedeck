@@ -153,6 +153,8 @@
 					<option value="session">Session</option>
 					<option value="incident">Incident</option>
 					<option value="track-order">Track Order</option>
+					<option value="car-number">Cars by Number</option>
+					<option value="race-position">Cars by Position</option>
 				</sdpi-select>
 			</sdpi-item>
 
@@ -404,9 +406,12 @@
 			// What a gesture's "Mode default" runs in each dial Mode, named as the
 			// gesture options are: `resolveDialGesture` in
 			// replay-control-dial-surface.ts decides it, and replay-control-pi.test.ts
-			// holds this copy to it (#801).
+			// holds this copy to it (#801): Jump to My Car in the Modes whose turns
+			// move the camera from car to car (#1448), Set 1x and Play elsewhere.
+			const CAMERA_CAR_DIAL_MODES = ["track-order", "car-number", "race-position"];
+
 			function modeDefaultLabel(dialMode) {
-				return dialMode === "track-order" ? "Jump to My Car" : "Set 1x and Play";
+				return CAMERA_CAR_DIAL_MODES.includes(dialMode) ? "Jump to My Car" : "Set 1x and Play";
 			}
 
 			// An untouched sdpi-select reports "", so its default attribute stands

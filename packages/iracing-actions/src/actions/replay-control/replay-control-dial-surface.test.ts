@@ -34,6 +34,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { labelClearsSideMarks } from "../../shared/dial-label-fit.js";
 import { registerReplayBusySurface, type ReplayBusyLook } from "../../shared/replay-busy-indicator.js";
 import { engineOverDeck } from "../../shared/replay-engine-deck.test-support.js";
+import { carNumberMode, racePositionMode } from "./replay-control-camera-car-modes.js";
 import type { ReplayDialModeIo, ReplaySpeed } from "./replay-control-dial-mode.js";
 import { REPLAY_DIAL_MODES, ReplayControlDialSettings } from "./replay-control-dial-settings.js";
 import {
@@ -242,6 +243,10 @@ const host = {
   canJumpToRaceStart: vi.fn(() => true),
   jumpToMyCar: vi.fn(() => undefined),
   canJumpToMyCar: vi.fn(() => true),
+  /** The Car # and Position modes' camera switch (#1448). */
+  switchToCarNumber: vi.fn((_carNumberRaw: number) => true),
+  /** The canonical live race order the Position mode reads (#1448). */
+  racePositions: vi.fn((): number[] | null => null),
   refreshKeys: vi.fn(() => undefined),
   /** The debounced replay state: in a replay, at the frame a fresh read shows, seen just now. */
   replayState: vi.fn((nowMs: number) => ({
@@ -276,6 +281,8 @@ function makeSurface(): ReplayControlDialSurface {
     canJumpToRaceStart: host.canJumpToRaceStart,
     jumpToMyCar: host.jumpToMyCar,
     canJumpToMyCar: host.canJumpToMyCar,
+    switchToCarNumber: host.switchToCarNumber,
+    racePositions: host.racePositions,
     refreshKeys: host.refreshKeys,
     replayState: host.replayState as never,
     sessionInfo: host.sessionInfo,
@@ -1814,7 +1821,10 @@ describe("ReplayControlDialSurface", () => {
         expect(dial().longPressAction).toBe("mode-default");
       });
 
-      it.each(REPLAY_DIAL_MODES.filter((mode) => mode !== "track-order"))(
+      /** The modes whose turns move the camera from car to car (#801, #1448). */
+      const CAMERA_CAR_MODES: readonly string[] = ["track-order", "car-number", "race-position"];
+
+      it.each(REPLAY_DIAL_MODES.filter((mode) => !CAMERA_CAR_MODES.includes(mode)))(
         "a long press runs Set 1x and Play in %s",
         async (mode) => {
           const d = dial({ mode });
@@ -1827,8 +1837,8 @@ describe("ReplayControlDialSurface", () => {
         },
       );
 
-      it("a long press runs Jump to My Car in Track Order", async () => {
-        const d = dial({ mode: "track-order" });
+      it.each(CAMERA_CAR_MODES)("a long press runs Jump to My Car in %s", async (mode) => {
+        const d = dial({ mode });
         const { surface, ctx } = await onScreen(speed(-4), d);
 
         await press(surface, ctx, d, 500);
@@ -2090,7 +2100,7 @@ describe("ReplayControlDialSurface", () => {
       env.telemetry = { ...replayAt(s), ReplaySessionTime: seconds } as TelemetryData;
     }
 
-    it("registers one mode per dial.mode value: Speed Control, Frame Jog, Lap, Session, Incident and Track Order", () => {
+    it("registers one mode per dial.mode value: Speed Control, Frame Jog, Lap, Session, Incident, Track Order, Car # and Position", () => {
       expect(Object.keys(DIAL_MODES)).toEqual([...REPLAY_DIAL_MODES]);
       expect(DIAL_MODES.speed).toBe(speedMode);
       expect(DIAL_MODES["frame-jog"]).toBe(frameJogMode);
@@ -2098,12 +2108,14 @@ describe("ReplayControlDialSurface", () => {
       expect(DIAL_MODES.session).toBe(sessionMode);
       expect(DIAL_MODES.incident).toBe(incidentMode);
       expect(DIAL_MODES["track-order"]).toBe(trackOrderMode);
+      expect(DIAL_MODES["car-number"]).toBe(carNumberMode);
+      expect(DIAL_MODES["race-position"]).toBe(racePositionMode);
     });
 
     it("labels are distinct, so the box says which mode the dial is in", () => {
       const labels = REPLAY_DIAL_MODES.map((mode) => DIAL_MODES[mode].label);
 
-      expect(labels).toEqual(["SPEED", "FRAME", "LAP", "SESSION", "INCIDENT", "TRK ORD"]);
+      expect(labels).toEqual(["SPEED", "FRAME", "LAP", "SESSION", "INCIDENT", "TRK ORD", "CAR #", "POS"]);
       expect(REPLAY_DIAL_MODE_LABELS).toEqual(labels);
       expect(new Set(labels).size).toBe(labels.length);
     });
@@ -3696,7 +3708,9 @@ describe("ReplayControlDialSurface", () => {
 
 describe("resolveDialGesture", () => {
   it.each(REPLAY_DIAL_MODES)("resolves the Mode default in %s", (mode) => {
-    expect(resolveDialGesture("mode-default", mode)).toBe(mode === "track-order" ? "jump-to-my-car" : "set-1x-play");
+    const cameraCar = mode === "track-order" || mode === "car-number" || mode === "race-position";
+
+    expect(resolveDialGesture("mode-default", mode)).toBe(cameraCar ? "jump-to-my-car" : "set-1x-play");
   });
 
   it("passes a specific pick through in every mode, and None as nothing", () => {
@@ -3925,6 +3939,8 @@ describe("ReplayControlDialSurface — the busy look (#1437)", () => {
         session: true,
         incident: true,
         "track-order": false,
+        "car-number": false,
+        "race-position": false,
       });
     });
 
@@ -3934,7 +3950,7 @@ describe("ReplayControlDialSurface — the busy look (#1437)", () => {
       expect(busy.surfaces.get("dial-1")?.drawsWorking).toBe(true);
     });
 
-    it.each(["speed", "frame-jog", "track-order"])(
+    it.each(["speed", "frame-jog", "track-order", "car-number", "race-position"])(
       "on appear in %s draws working only as its push slot does",
       async (mode) => {
         await onScreen(PAUSED, dial({ mode, pressAction: "play-pause" }));
@@ -3975,17 +3991,20 @@ describe("ReplayControlDialSurface — the busy look (#1437)", () => {
       },
     );
 
-    it.each(["speed", "frame-jog", "track-order"])("in %s, a turn leaves the registration as it is", async (mode) => {
-      const d = dial({ mode, pressAction: "play-pause" });
-      const { surface, ctx } = await onScreen(PAUSED, d);
+    it.each(["speed", "frame-jog", "track-order", "car-number", "race-position"])(
+      "in %s, a turn leaves the registration as it is",
+      async (mode) => {
+        const d = dial({ mode, pressAction: "play-pause" });
+        const { surface, ctx } = await onScreen(PAUSED, d);
 
-      surface.rotate(ctx as never, d, 1, false);
-      surface.rotate(ctx as never, d, -1, false);
-      await settle();
+        surface.rotate(ctx as never, d, 1, false);
+        surface.rotate(ctx as never, d, -1, false);
+        await settle();
 
-      expect(registerReplayBusySurface).toHaveBeenCalledTimes(1);
-      expect(busy.surfaces.get("dial-1")?.drawsWorking).toBe(false);
-    });
+        expect(registerReplayBusySurface).toHaveBeenCalledTimes(1);
+        expect(busy.surfaces.get("dial-1")?.drawsWorking).toBe(false);
+      },
+    );
 
     it("draws working for the run a stepping turn started, through the real indicator", async () => {
       busy.real = true;
@@ -4206,6 +4225,8 @@ describe("ReplayControlDialSurface — the busy look (#1437)", () => {
         session: false,
         incident: false,
         "track-order": false,
+        "car-number": false,
+        "race-position": false,
       });
     });
 

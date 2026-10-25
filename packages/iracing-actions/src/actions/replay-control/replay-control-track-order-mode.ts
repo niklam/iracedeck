@@ -56,59 +56,14 @@
  * label is `TRK ORD`: `TRACK ORDER` ran into the side marks on the Stream
  * Dock knob (`labelClearsSideMarks`); the Mode option keeps the full name.
  */
-import {
-  carInWorld,
-  findNearestCarOnTrack,
-  getCarNumberFromSessionInfo,
-  type TelemetryData,
-} from "@iracedeck/iracing-sdk";
+import { carInWorld, findNearestCarOnTrack, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { NO_CAR_IDX, requestCameraSwitch } from "@iracedeck/replay-engine";
 
 import { CAR_CYCLE_BINDING_KEY_LIST, CAR_CYCLE_BINDING_KEYS } from "../../shared/car-cycle-bindings.js";
 import type { DialNeighbours } from "../../shared/dial-box.js";
 import { carArraysTrusted } from "./replay-car-arrays.js";
+import { carNumberOf } from "./replay-car-numbers.js";
 import type { ReplayDialMode, ReplayDialStepIo } from "./replay-control-dial-mode.js";
-
-/**
- * Each session info's car numbers by carIdx, built once per session-info
- * object: the SDK parses a new one on every update, and a view runs every
- * tick, asking for every in-world car's number to find the neighbours.
- */
-const carNumbersBySessionInfo = new WeakMap<object, ReadonlyMap<number, string>>();
-
-/** The display number of every car in the session info's driver list, by carIdx; the SDK's lookup, once per car. */
-function buildCarNumbers(sessionInfo: object): ReadonlyMap<number, string> {
-  const drivers = (sessionInfo as { DriverInfo?: { Drivers?: unknown } }).DriverInfo?.Drivers;
-  const numbers = new Map<number, string>();
-
-  if (!Array.isArray(drivers)) return numbers;
-
-  for (const driver of drivers) {
-    const carIdx = (driver as { CarIdx?: unknown } | null)?.CarIdx;
-
-    if (typeof carIdx !== "number" || numbers.has(carIdx)) continue;
-
-    const number = getCarNumberFromSessionInfo(sessionInfo, carIdx);
-
-    if (number !== null) numbers.set(carIdx, number);
-  }
-
-  return numbers;
-}
-
-/** The display number of the car at `carIdx` (`getCarNumberFromSessionInfo`), from the map built for this session info. */
-function carNumberOf(sessionInfo: unknown, carIdx: number): string | null {
-  if (typeof sessionInfo !== "object" || sessionInfo === null) return null;
-
-  let numbers = carNumbersBySessionInfo.get(sessionInfo);
-
-  if (numbers === undefined) {
-    numbers = buildCarNumbers(sessionInfo);
-    carNumbersBySessionInfo.set(sessionInfo, numbers);
-  }
-
-  return numbers.get(carIdx) ?? null;
-}
 
 /** The name a Track Order turn cancels a walk under. */
 const CURSOR_OWNER = "dial-track-order";

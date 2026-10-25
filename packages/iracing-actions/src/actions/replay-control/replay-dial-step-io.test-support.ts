@@ -56,7 +56,7 @@ export type FakeStepIo = {
     : ReplayDialStepIo[K];
 };
 
-/** A fake `io`: a paused replay at frame 5000, no record, no search, bindings set, no jump under way. */
+/** A fake `io`: a paused replay at frame 5000, no record, no search, bindings set, no jump under way, no race order. */
 export function fakeStepIo(): FakeStepIo {
   const paused: ReplaySpeed = { speed: 0, slowMotion: false };
   const at: ReplayPosition = { frame: 5_000, time: 83.5, endFrame: 100_000, seeking: false };
@@ -80,6 +80,8 @@ export function fakeStepIo(): FakeStepIo {
     tapBinding: vi.fn((_key: string) => Promise.resolve(true)),
     isBindingMissing: vi.fn((_keys: string | readonly string[]) => false),
     jumpToMyCar: vi.fn(),
+    switchToCarNumber: vi.fn((_carNumberRaw: number) => true),
+    racePositions: vi.fn((): number[] | null => null),
     isJumpUnderWay: vi.fn(() => false),
     waitForJumpsToSettle: vi.fn((): Promise<ReplaySettledOutcome> => Promise.resolve("settled")),
     isStillOnScreen: vi.fn(() => true),
