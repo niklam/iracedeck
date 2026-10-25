@@ -83,7 +83,7 @@ Toggle the announcement of the leader crossing the start/finish line.
 
 ### Spotter Louder
 
-Raise the spotter volume.
+Raise the spotter volume. Each press plays a short, high [tick](#a-tick-on-every-step), so you can count steps by ear.
 
 #### Details
 
@@ -100,7 +100,7 @@ Raise the spotter volume.
 
 ### Spotter Quieter
 
-Lower the spotter volume.
+Lower the spotter volume. Each press plays a short, low [tick](#a-tick-on-every-step), so you can count steps by ear.
 
 #### Details
 
@@ -131,6 +131,16 @@ The key reads **SKIP CALL / SPOTTER**. It taps iRacing's *Spotter Silence* key b
 #### Settings
 
 - No additional settings
+
+## A tick on every step
+
+iRacing plays no sound when its spotter volume changes and doesn't report the level, so Spotter Louder and Spotter Quieter play one short tick per step: three presses, three ticks. Louder ticks at a higher pitch than Quieter, so a press on the wrong key is heard at once, and a key held in a paired style ticks once for every step it repeats.
+
+- **How loud.** The tick plays at your iRaceDeck **Radar** volume, the level every iRaceDeck sound follows. Below 20 it plays at 20, so it stays audible, and a Radar volume of 0 does not silence it.
+- **When it ticks.** Only for a key press that was sent to iRacing: a key with no binding, or a press while iRacing isn't running, makes no tick. iRacing doesn't report when the spotter is already at its loudest or quietest, so at that limit a press still ticks even though nothing changed.
+- **No setting.** The tick always plays, whatever the Race Engineer, Radar and callout switches say. The report keys and Skip Spotter Call are not volume steps and make no tick.
+
+The same tick plays when you turn the [Audio Controls dial](/docs/actions/audio-voice/audio-controls/#a-tick-on-every-step) in its **Spotter** mode.
 
 ## Key Styles — paired +/− buttons
 

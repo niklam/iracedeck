@@ -20,6 +20,8 @@ Select the mode from the **Mode** dropdown in the Property Inspector. Voice Chat
 
 Every Volume Up and Volume Down key also has a **Key Style**, so an up and a down key placed side by side read as one volume control — see [Key Styles](#key-styles--paired--buttons).
 
+Every volume step, from a key or the dial, plays a short tick, so you can count steps by ear — see [A tick on every step](#a-tick-on-every-step).
+
 A key whose Mode and Action don't go together, such as Master with Mute, shows the warning triangle and does nothing when pressed. The Property Inspector never offers such a pair, but an imported or hand-edited profile can carry one. Open the key's settings and the Action switches to Volume Up.
 
 ### Push to Talk
@@ -124,7 +126,7 @@ Every volume key (Voice Chat, Master, Race Engineer Volume and Radar Volume, eac
 
 **Race Engineer and Radar keys show their live level**, from 0 to 100 and without a unit, as the dial does. It updates wherever the level changes: the key, its partner, the dial, the Settings window sliders. While the Race Engineer or the Radar is switched off the key reads **OFF**; pressing still steps the level, and the number comes back when the feature is switched on.
 
-**Voice Chat and Master keys have no level to show.** iRacing doesn't report its volume, so on these keys the level styles are drawn without it: **Split** as **Big +/−**, **Edge chevrons** as **Big chevrons**, **Joined pill** as **Pill end**. The key keeps your choice, so moving it to Race Engineer or Radar shows the level again. Each key keeps a one-word label (**VOICE**, **MASTER**, **ENGINEER**, **RADAR**) so pairs side by side can be told apart; the label follows the normal title settings, so you can change or hide it under the title overrides.
+**Voice Chat and Master keys have no level to show.** iRacing doesn't report its volume, so the [tick](#a-tick-on-every-step) each press plays is the only way to count steps, and on these keys the level styles are drawn without it: **Split** as **Big +/−**, **Edge chevrons** as **Big chevrons**, **Joined pill** as **Pill end**. The key keeps your choice, so moving it to Race Engineer or Radar shows the level again. Each key keeps a one-word label (**VOICE**, **MASTER**, **ENGINEER**, **RADAR**) so pairs side by side can be told apart; the label follows the normal title settings, so you can change or hide it under the title overrides.
 
 **Hold to repeat.** In any style except Legacy, holding a key keeps stepping until you let go. On Voice Chat and Master every step is another press of the key binding. On Race Engineer and Radar every step is 5%. A Legacy key steps once per press.
 
@@ -132,11 +134,23 @@ Every volume key (Voice Chat, Master, Race Engineer Volume and Radar Volume, eac
 
 ---
 
+## A tick on every step
+
+Every volume step plays one short tick, so you can count steps without looking at the deck: three presses of Volume Down, three ticks. Going up ticks at a higher pitch than going down, so a press on the wrong key is heard at once. Holding a key in a paired style ticks once for every step it repeats, and turning the dial ticks once per detent, spaced so a fast turn is heard as separate ticks rather than one smear.
+
+- **Race Engineer and Radar** tick at the level you just set, so each step up sounds a little louder than the last. A press at 0 or 100 changes nothing and makes no tick: twenty ticks down from 100 and then silence means you are at 0. They tick while the Race Engineer or the Radar is switched off, too.
+- **Voice Chat, Master and Spotter** tick at your **Radar** volume, the level every iRaceDeck sound follows, because iRacing does not report its own volumes. A tick means the key press was sent to iRacing: a key with no binding, or a press while iRacing isn't running, makes no tick. iRacing also does not report when its volume is already at the top or the bottom, so at its limit a press still ticks even though nothing changed.
+- **Quiet levels stay audible.** Below 20 the tick plays at 20, so it can still be heard at the low end, and a Radar volume of 0 does not silence it.
+
+There is no setting for the tick: it always plays, whatever the Race Engineer, Radar and callout switches say. Push to Talk, Mute / Unmute, Mute a Driver and Skip Spotter Call are not volume steps and make no tick, and neither do the volume sliders in the Settings window, which have their own **Test** buttons.
+
+---
+
 ## On a dial
 
 Placed on a Stream Deck+ dial or a Mirabox knob, Audio Controls becomes a volume dial: rotating adjusts the selected audio category, and the press is configurable as **Push to Talk** (Stream Deck+ only), **Mute / Unmute**, **Mute a Driver** (while the dial's Mode is Voice Chat), or **Skip Spotter Call** (while the dial's Mode is Spotter). The Property Inspector automatically shows the dial settings below (instead of the keypad Mode settings) when the instance sits on a dial.
 
-Rotate the dial to adjust the volume of the category selected in the dial's **Mode** setting. For **Voice Chat**, **Master**, and **Spotter**, each detent taps the matching iRacing volume key binding — iRacing steps its volume a fixed amount per press, and it exposes no current volume state, so the touch strip shows the category name only (there is no level to display; this is an iRacing limitation, not a missing feature). The **Spotter** mode drives iRacing's AI spotter through the same *Spotter Louder* / *Spotter Quieter* / *Spotter Silence* key bindings as the [AI Spotter Controls](/docs/actions/audio-voice/ai-spotter-controls/) action — they are shared plugin-wide, so configure them once (in either action's Related Key Bindings section) and both actions use them; the spotter volume dial lives here, on the audio dial, rather than on a separate AI Spotter dial. For **Race Engineer** and **Radar**, each detent steps iRaceDeck's own level by 5% — and because these levels are iRaceDeck's, the touch strip shows a **live level bar** with the current value, updating immediately when the level changes anywhere (the dial itself, the keypad buttons, the Pit Crew sliders). When the Race Engineer or Radar feature is disabled, the bar dims and reads **OFF**.
+Rotate the dial to adjust the volume of the category selected in the dial's **Mode** setting. For **Voice Chat**, **Master**, and **Spotter**, each detent taps the matching iRacing volume key binding — iRacing steps its volume a fixed amount per press, and it exposes no current volume state, so the touch strip shows the category name only (there is no level to display; this is an iRacing limitation, not a missing feature). Each detent that sends a key press plays a [tick](#a-tick-on-every-step) at your Radar volume, which is how you count steps on these modes; at iRacing's own limit a detent still ticks. The **Spotter** mode drives iRacing's AI spotter through the same *Spotter Louder* / *Spotter Quieter* / *Spotter Silence* key bindings as the [AI Spotter Controls](/docs/actions/audio-voice/ai-spotter-controls/) action — they are shared plugin-wide, so configure them once (in either action's Related Key Bindings section) and both actions use them; the spotter volume dial lives here, on the audio dial, rather than on a separate AI Spotter dial. For **Race Engineer** and **Radar**, each detent steps iRaceDeck's own level by 5% and ticks at the new level, with no tick once the level reaches 0 or 100 — and because these levels are iRaceDeck's, the touch strip shows a **live level bar** with the current value, updating immediately when the level changes anywhere (the dial itself, the keypad buttons, the Pit Crew sliders). When the Race Engineer or Radar feature is disabled, the bar dims and reads **OFF**.
 
 While **Push to Talk** is held, the strip's top band turns red and reads **ON AIR** — transmit state is plugin-owned, so it can always be shown. If a key binding the dial needs is not configured, the strip dims and shows the standard warning triangle. It shows the same triangle when the dial's **Press Action** is one its **Mode** does not offer, such as Master with Mute a Driver, which an imported or hand-edited profile can carry; the dial's description in the Stream Deck app then lists no press, and opening the dial's settings switches the press to **None**.
 
