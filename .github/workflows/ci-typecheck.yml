@@ -100,9 +100,11 @@ jobs:
       # reached, so pruning to it would drop valid entries for the rest and
       # make a partial cache the newest one the next run restores; skipping
       # the save leaves the last complete one in place. The prune refuses, and
-      # so skips the save, when it cannot tell what this run used.
+      # so skips the save, when it cannot tell what this run used; a refusal is
+      # housekeeping, so `continue-on-error` keeps it from failing the job.
       - name: Prune the turbo cache to this run
         id: prune
+        continue-on-error: true
         run: node scripts/prune-turbo-cache.mjs
 
       - name: Save the turbo cache

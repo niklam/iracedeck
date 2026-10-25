@@ -117,9 +117,13 @@ jobs:
       # after a successful build: a failed turbo run's summary lists only the
       # tasks it reached, so pruning to it would drop valid entries for the
       # rest and make a partial cache the newest one the next run restores.
+      # A refusal is housekeeping, not a test result, so it must not turn the
+      # required check red: `continue-on-error` keeps the job going, the step's
+      # outcome stays `failure` and the save below is skipped.
       - name: Prune the turbo cache to this build
         id: prune
         if: matrix.shard == 1
+        continue-on-error: true
         run: node scripts/prune-turbo-cache.mjs
 
       - name: Save the turbo cache
@@ -138,7 +142,10 @@ jobs:
   # failed or cancelled shard makes this job SKIPPED, and GitHub treats a
   # skipped required check as satisfied — a red shard would merge. With it the
   # job always runs and fails on any result but success: failure, cancelled
-  # and skipped alike.
+  # and skipped alike. It also runs, and fails, on a run cancelled because a
+  # newer push superseded it; that red sits on an old head the merge gate
+  # never reads. Do not narrow it to `!cancelled()`: a cancelled run at the
+  # current head would then leave this check skipped, which counts as passing.
   gate:
     name: Run tests
     needs: test
