@@ -147,6 +147,26 @@ function seekFrames(): number[] {
   return mockReplay.setPlayPosition.mock.calls.map((call) => call[1]);
 }
 
+/**
+ * Records the frames the press seeks to once its search is over — after its
+ * last crossing probe, when its claim is no longer interruptible (#1428 /
+ * #1435) — over whatever seek the case has installed by then. Jump to Race
+ * Start's walk makes no run-up jump of its own (`jumpToRunUp: false`), so
+ * this is the press's one jump: to the green's approach, or back.
+ */
+function seeksAfterSearch(): () => number[] {
+  const frames: number[] = [];
+  const seek = mockReplay.setPlayPosition.getMockImplementation();
+
+  mockReplay.setPlayPosition.mockImplementation((mode, frame) => {
+    if (_activeLapPress()?.claim.interruptible === false) frames.push(frame);
+
+    return seek === undefined ? true : seek(mode, frame);
+  });
+
+  return () => frames;
+}
+
 describe("Replay Control: Jump to Race Start (#1354)", () => {
   /** The engine's `ReplayControl` scope: where the press and the walk log. */
   let logger: SpyLogger;
@@ -776,6 +796,7 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
         cursor: IN_RACE,
         lapSearchShort: 11,
       });
+      const afterSearch = seeksAfterSearch();
 
       await press();
       await vi.runAllTimersAsync();
@@ -784,6 +805,8 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
       expect(mockStore.laps.recordLapStart).toHaveBeenCalledExactlyOnceWith(
         expect.objectContaining({ carIdx: POLE_CAR, lap: 1, frame: RACE_LAP_1_LINE }),
       );
+      // One jump after the last crossing probe, straight to the green's approach: no run-up jump before it.
+      expect(afterSearch()).toEqual([RACE_LAP_1_LINE - GREEN_APPROACH_FRAMES]);
       expect(replay.state.frame).toBe(RACE_LAP_1_LINE - GREEN_APPROACH_FRAMES);
       expect(mockReplay.setPlaySpeed).toHaveBeenLastCalledWith(1, false);
       expect(replay.state.camCarIdx).toBe(VIEWED_CAR);
@@ -824,6 +847,7 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
         cursor: IN_RACE,
         lapSearchShort: lead,
       });
+      const afterSearch = seeksAfterSearch();
 
       await press();
       await vi.runAllTimersAsync();
@@ -832,6 +856,8 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
         expect.stringContaining("Jump to race start: walk did not converge (lap 1 not reached within 120 frames"),
       );
       expect(mockStore.laps.recordLapStart).not.toHaveBeenCalled();
+      // One jump after the last crossing probe, to the green's approach from the unverified landing.
+      expect(afterSearch()).toEqual([RACE_LAP_1_LINE - lead - GREEN_APPROACH_FRAMES]);
       expect(replay.state.frame).toBe(RACE_LAP_1_LINE - lead - GREEN_APPROACH_FRAMES);
       expect(replay.state.camCarIdx).toBe(VIEWED_CAR);
     });
@@ -844,6 +870,7 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
         cursor: IN_RACE,
         lapSearchShort: 600,
       });
+      const afterSearch = seeksAfterSearch();
 
       await press();
       await vi.runAllTimersAsync();
@@ -851,8 +878,10 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
       expect(logger.warn).toHaveBeenCalledWith(
         "Jump to race start: the search did not reach the start of the pole car's lap 1",
       );
-      // No run-up jump: the search's jump to a second before its landing, then the way back to where the press was made.
-      expect(seekFrames().slice(-2)).toEqual([RACE_LAP_1_LINE - 600 - LAP_START_APPROACH_FRAMES, IN_RACE]);
+      // No jump to the green's approach, and none to the walk's run-up: after the last crossing probe, the one
+      // jump is the way back to where the press was made.
+      expect(afterSearch()).toEqual([IN_RACE]);
+      expect(seekFrames()).not.toContain(RACE_LAP_1_LINE - 600 - LAP_START_APPROACH_FRAMES);
       expect(replay.state.frame).toBe(IN_RACE);
       expect(logger.info).toHaveBeenCalledWith("Jump to race start: replay put back where the press found it");
       // Paused at the press, so no speed command.
@@ -892,6 +921,7 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
 
       // iRacing's lap search does nothing: the probe in the grid wait is all the search has.
       mockReplay.nextLap.mockImplementation(() => true);
+      const afterSearch = seeksAfterSearch();
 
       await press();
       await vi.runAllTimersAsync();
@@ -901,7 +931,9 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
         "Jump to race start: the search did not reach the start of the pole car's lap 1",
       );
       expect(mockStore.laps.recordLapStart).not.toHaveBeenCalled();
-      expect(seekFrames().slice(-2)).toEqual([10_999 - LAP_START_APPROACH_FRAMES, 20_000]);
+      // The bisection probe the search ended on, then straight back: no run-up jump between them.
+      expect(seekFrames().slice(-2)).toEqual([10_999, 20_000]);
+      expect(afterSearch()).toEqual([20_000]);
       expect(replay.state.frame).toBe(20_000);
       expect(mockReplay.setPlaySpeed).not.toHaveBeenCalled();
     });
@@ -2256,12 +2288,17 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
           (commands) =>
             commands.some(isLapSearch) && commands.at(-1)?.startsWith("seek") === true && commands.at(-2) === "speed 0",
         );
+        const afterSearch = seeksAfterSearch();
 
         await press();
         await runPressOut();
         await key.request();
 
         expect(key.atKey()).not.toBeNull();
+        // The key came during the press's one jump after its search, the jump to the green's approach (#1432).
+        expect(afterSearch()).toEqual([RACE_LAP_1_LINE - GREEN_APPROACH_FRAMES]);
+        expect(weekend.commands[(key.atKey() ?? 0) - 1]).toBe(`seek ${RACE_LAP_1_LINE - GREEN_APPROACH_FRAMES}`);
+        expect(count(weekend.commands, (command) => command === `camera ${KEY_CAR}`)).toBe(1);
         // It lands, its own camera step and playback step run, and only then does the key switch, once.
         expect(weekend.commands.slice(key.atKey() ?? 0)).toEqual([
           `camera ${VIEWED_CAR}`,

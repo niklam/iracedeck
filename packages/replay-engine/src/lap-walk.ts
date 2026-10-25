@@ -98,8 +98,11 @@ export const MAX_ABSENT_PROBES = 31;
 //      apart, the earlier reading the lap before the target and the later
 //      the target, bracketed from where a lap search left the cursor (one
 //      Next Lap nudge when that is not near enough) and bisected to adjacent
-//      frames by absolute jumps. The later is the lap start, and the cursor
-//      is left `LAP_START_APPROACH_FRAMES` before it.
+//      frames by absolute jumps. The later is the lap start, and Jump to
+//      Fastest Lap's walk leaves the cursor `LAP_START_APPROACH_FRAMES`
+//      before it. Jump to Race Start's makes no such jump
+//      (`jumpToRunUp: false`): it leaves the cursor where its last probe did,
+//      and the press's own jump, to the green's approach or back, follows.
 //
 // #1203 changed how the walk waits and ends: an absolute jump settles when
 // `ReplayFrameNum` reads the frame that was sent, a search when the frame has
@@ -264,9 +267,16 @@ export type FastestLapRecordIdentity = {
  * is the caller's step (the **Replay jump playback** setting, #1276).
  */
 export type FastestLapWalkLanding = {
-  /** The sample read on the landed frame, which the playback step compares the speed wanted against. */
+  /** The sample read on {@link landedFrame}, which the playback step compares the speed wanted against. */
   telemetry: TelemetryData;
-  /** The frame the cursor is on: `LAP_START_APPROACH_FRAMES` before `lapStartFrame`, at 0 at the latest. */
+  /**
+   * The frame the walk left the cursor on. After its jump to the lap's
+   * run-up, `LAP_START_APPROACH_FRAMES` before `lapStartFrame` (at 0 at the
+   * latest); for a walk that makes none (`LapWalkTarget.jumpToRunUp` false),
+   * the frame of the last settled sample it read, where its last crossing
+   * probe or lap search left the cursor: not a frame anybody asked for, and
+   * one that caller jumps away from next.
+   */
   landedFrame: number;
   /**
    * The frame the walk takes for the lap's start. When `converged`, the first
@@ -320,6 +330,16 @@ export type LapWalkTarget = {
   identity: FastestLapRecordIdentity;
   /** What opens the walk's log lines, so each mode that walks reads as itself. */
   label: string;
+  /**
+   * Whether the walk ends with its jump to the lap's run-up,
+   * `LAP_START_APPROACH_FRAMES` before the lap start, where a record jump to
+   * the same lap lands: true by default (Jump to Fastest Lap). Jump to Race
+   * Start passes false: its next step is a jump of its own, to the green's
+   * approach or back to where the press found the replay, so a run-up jump
+   * would be a wasted seek to a frame nobody asked for, and a longer wait for
+   * a camera key behind it.
+   */
+  jumpToRunUp?: boolean;
 };
 
 /**
@@ -636,13 +656,19 @@ export async function walkToLapStart(
   let lastSettledFrame: number | null = null;
   let unlandedJumpFrame: number | null = null;
 
+  /** The sample {@link lastSettledFrame} was read from: where a walk that makes no run-up jump leaves the cursor. */
+  let lastSettledSample: TelemetryData | null = null;
+
   /** Every telemetry sample the walk takes goes through here, so the flag check above sees them all. */
   const readTelemetry = (): TelemetryData | null => {
     const tel = engineReads().readTelemetry();
 
     if (tel?.IsReplayPlaying === true) sawReplayFlag = true;
 
-    if (isSettledSample(tel) && typeof tel.ReplayFrameNum === "number") lastSettledFrame = tel.ReplayFrameNum;
+    if (isSettledSample(tel) && typeof tel.ReplayFrameNum === "number") {
+      lastSettledFrame = tel.ReplayFrameNum;
+      lastSettledSample = tel;
+    }
 
     return tel;
   };
@@ -1514,14 +1540,17 @@ export async function walkToLapStart(
   // Phase 6: the search has its answer, or has given up. A cancellation or an
   // interrupt that arrived during the last crossing probe ends the press
   // here, before anything is recorded. From here on a camera switch no
-  // longer interrupts the walk (#1428 / #1435): the jump to the lap's run-up
-  // is a plain jump, which it waits for.
+  // longer interrupts the walk (#1428 / #1435): the jump to the lap's run-up,
+  // or the caller's own jump, is a plain jump, which it waits for.
   checkpoint();
   endReplayCursorInterrupts(claim);
 
   const found = crossing as Crossing | null;
   const lapStartFrame = found !== null ? found.on.frame : (readFrame(searchLanding) ?? stepsFrame);
-  const landedFrame = Math.max(0, lapStartFrame - LAP_START_APPROACH_FRAMES);
+  const jumpToRunUp = target.jumpToRunUp !== false;
+  /** With no run-up jump, the sample the cursor rests on: where the last probe or lap search left it. */
+  const restingSample = jumpToRunUp ? null : (lastSettledSample as TelemetryData | null);
+  const landedFrame = readFrame(restingSample) ?? Math.max(0, lapStartFrame - LAP_START_APPROACH_FRAMES);
   const searchLandingDist = carDist(searchLanding);
   const priorLapDist = typeof searchLandingDist === "number" ? searchLandingDist : null;
   const count = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? "" : "s"}`;
@@ -1566,6 +1595,15 @@ export async function walkToLapStart(
     );
   }
 
+  const result = { lapStartFrame, converged: found !== null, priorLapDist };
+
+  // Phase 7, skipped for a caller whose next step is a jump of its own (Jump
+  // to Race Start, `jumpToRunUp: false`): the cursor stays, paused, where the
+  // last probe left it, and the caller's jump is the press's one jump after
+  // the search. A walk that never read a settled sample has nowhere it knows
+  // the cursor to be, and comes to nothing.
+  if (!jumpToRunUp) return restingSample === null ? null : { telemetry: restingSample, landedFrame, ...result };
+
   // Phase 7: the cursor to the lap's run-up, where a record jump to the same
   // lap lands, so the first press of a lap and every later one look alike.
   // The replay is left paused there.
@@ -1573,5 +1611,5 @@ export async function walkToLapStart(
 
   if (finalTel == null) return null;
 
-  return { telemetry: finalTel, landedFrame, lapStartFrame, converged: found !== null, priorLapDist };
+  return { telemetry: finalTel, landedFrame, ...result };
 }

@@ -266,7 +266,9 @@ function jumpToGreenFromPoleCar(
 /**
  * The last resort of a Jump to Race Start press: search the replay for the
  * start of the pole car's lap 1 with the walk Jump to Fastest Lap uses, then
- * one waited jump back by the rest of the run-up.
+ * one waited jump to the green's approach: the walk makes no run-up jump of
+ * its own (`jumpToRunUp: false`), so this is the one jump after its last
+ * probe, as the way back is for a search that came to nothing.
  *
  * iRacing's lap search follows the camera, so the camera goes onto the pole
  * car for the search and back onto the car that was on screen at the press
@@ -359,6 +361,9 @@ async function searchGreenFromPoleCar(
       instance: target.from === "cursor" ? "cursor" : "latest",
       identity: car.identity,
       label: RACE_START_LOG_LABEL,
+      // The press's next jump is its own, to the green's approach or back to
+      // where it was made: the walk's run-up jump would be a wasted seek.
+      jumpToRunUp: false,
     });
 
     // The search gave up, logged why and put the replay back; or a camera key
