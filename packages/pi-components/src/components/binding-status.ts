@@ -41,6 +41,8 @@ interface BindingKeyConstant {
 interface BindingKeyMulti {
   scope: "global" | "action";
   keys: string[];
+  /** Omitted (or `"all"`): every key is required. `"any"`: one bound key is enough (#1463). */
+  require?: "all" | "any";
 }
 interface BindingKeyResolved {
   scope: "global" | "action";
@@ -384,11 +386,15 @@ export class BindingStatus extends HTMLElement {
     if (keys.some((k) => !this.loadedBindings.has(k))) return "pending";
 
     const parsed = keys.map((k) => parseStoredBinding(this.bindings.get(k) ?? ""));
+    const anyOf = isMultiKey(ref) && ref.require === "any";
 
-    // Warn if ANY required key is unset (multi-key modes need all of them).
-    if (parsed.some((p) => p === null)) return [this.missingRow()];
+    // An all-required mode warns if ANY key is unset; an any-of mode (#1463)
+    // only when EVERY key is, and then lists just the keys that are bound.
+    if (anyOf ? parsed.every((p) => p === null) : parsed.some((p) => p === null)) return [this.missingRow()];
 
-    const set = parsed as Array<{ kind: "keyboard"; text: string } | { kind: "simhub"; role: string }>;
+    const set = parsed.filter((p) => p !== null) as Array<
+      { kind: "keyboard"; text: string } | { kind: "simhub"; role: string }
+    >;
 
     // Single SimHub role.
     if (set.length === 1 && set[0].kind === "simhub") {

@@ -24,13 +24,21 @@ export interface BindingKeyConstant {
 }
 
 /**
- * Several constant keys, ALL required for the mode (warn if any is unset).
- * Used by setup view-* modes, which nudge-and-read via the adjustment's
- * increase AND decrease keys.
+ * Several constant keys. By default ALL are required for the mode (warn if any
+ * is unset): setup view-* modes nudge-and-read via the adjustment's increase
+ * AND decrease keys.
+ *
+ * With `require: "any"` the mode works with ANY one of them bound, so it warns
+ * only when every key is unset (#1463). Car Control's Wipers and Visor uses
+ * that: it sends the visor binding in an open-cockpit car and the wiper
+ * bindings in a closed one, so a driver who only ever drives one kind of car
+ * binds one side and must not be told the other is missing.
  */
 export interface BindingKeyMulti {
   scope: "global" | "action";
   keys: string[];
+  /** Omitted (or `"all"`): every key is required. `"any"`: one bound key is enough. */
+  require?: "all" | "any";
 }
 
 /** A binding key resolved from a secondary setting's current value. */
@@ -70,16 +78,22 @@ export function isConstantBindingKey(ref: BindingKeyRef): ref is BindingKeyConst
   return "key" in ref;
 }
 
-/** Type guard: a multi-key (all-required) binding reference. */
+/** Type guard: a multi-key binding reference (all-required, or any-of with `require: "any"`). */
 export function isMultiBindingKey(ref: BindingKeyRef): ref is BindingKeyMulti {
   return "keys" in ref;
 }
 
+/** Whether a binding reference is satisfied by ANY one of its keys being bound (#1463). */
+export function isAnyOfBindingKey(ref: BindingKeyRef): ref is BindingKeyMulti & { require: "any" } {
+  return isMultiBindingKey(ref) && ref.require === "any";
+}
+
 /**
- * Resolve a binding key reference to ALL concrete setting keys it requires,
+ * Resolve a binding key reference to ALL concrete setting keys it names,
  * given the action's current settings (needed for `keyBy` references). A
  * `keyBy` reference whose secondary value isn't mapped resolves to an empty
- * array.
+ * array. For an any-of multi-key reference (`require: "any"`) these are the
+ * candidates, of which one bound key is enough — check {@link isAnyOfBindingKey}.
  */
 export function resolveBindingKeys(ref: BindingKeyRef | undefined, settings: Record<string, unknown>): string[] {
   if (!ref) return [];
@@ -128,6 +142,14 @@ export function keybind(key: string, scope: "global" | "action" = "global"): Com
 /** Build a keybind descriptor requiring several constant keys (all required). */
 export function keybindKeys(keys: string[], scope: "global" | "action" = "global"): CommDescriptor {
   return { method: "keybind", binding: { scope, keys } };
+}
+
+/**
+ * Build a keybind descriptor naming several constant keys of which ANY ONE
+ * bound is enough: it warns only when every key is unset (#1463).
+ */
+export function keybindAnyKeys(keys: string[], scope: "global" | "action" = "global"): CommDescriptor {
+  return { method: "keybind", binding: { scope, keys, require: "any" } };
 }
 
 /**

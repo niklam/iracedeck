@@ -148,9 +148,11 @@ export {
 
 // Per-mode sim-communication descriptors (issue #612)
 export {
+  isAnyOfBindingKey,
   isConstantBindingKey,
   isMultiBindingKey,
   keybind,
+  keybindAnyKeys,
   keybindBy,
   keybindFixed,
   keybindKeys,

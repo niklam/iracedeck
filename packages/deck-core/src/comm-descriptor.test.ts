@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  isAnyOfBindingKey,
   isConstantBindingKey,
   isMultiBindingKey,
   keybind,
+  keybindAnyKeys,
   keybindBy,
   keybindFixed,
   keybindKeys,
@@ -53,6 +55,22 @@ describe("comm-descriptor helpers", () => {
     expect(d.method).toBe("keybind");
     expect(isMultiBindingKey(d.binding!)).toBe(true);
     expect(isConstantBindingKey(d.binding!)).toBe(false);
+  });
+
+  it("keybindKeys() is all-required, not any-of", () => {
+    expect(isAnyOfBindingKey(keybindKeys(["incKey", "decKey"]).binding!)).toBe(false);
+  });
+
+  it("keybindAnyKeys() builds an any-of multi-key descriptor (#1463)", () => {
+    const d = keybindAnyKeys(["visorKey", "triggerKey", "toggleKey"]);
+    expect(d).toEqual({
+      method: "keybind",
+      binding: { scope: "global", keys: ["visorKey", "triggerKey", "toggleKey"], require: "any" },
+    });
+    expect(isMultiBindingKey(d.binding!)).toBe(true);
+    expect(isAnyOfBindingKey(d.binding!)).toBe(true);
+    expect(isAnyOfBindingKey({ scope: "global", key: "k" })).toBe(false);
+    expect(resolveBindingKeys(d.binding, {})).toEqual(["visorKey", "triggerKey", "toggleKey"]);
   });
 
   it("keybindFixed() builds a keybind descriptor with no binding (fixed key)", () => {
