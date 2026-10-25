@@ -42,6 +42,19 @@
 			<div class="ird-supporting-text hidden" id="internal-volume-note">
 				Adjusts iRaceDeck's own audio level.
 			</div>
+
+			<%# Paired +/- key styles on the volume keys (#1453). The mode is Mode + Action. %>
+			<%- include('adjust-style', {
+				modeSelectId: ['category-select', 'action-select'],
+				pairedModes: [
+					'master-volume-up', 'master-volume-down',
+					'voice-chat-volume-up', 'voice-chat-volume-down',
+					'race-engineer-volume-up', 'race-engineer-volume-down',
+					'radar-volume-up', 'radar-volume-down'
+				],
+				noValueModes: ['master-volume-up', 'master-volume-down', 'voice-chat-volume-up', 'voice-chat-volume-down'],
+				helpText: 'Place the up and down keys next to each other to read as one control. Race Engineer and Radar keys show the current level. Hold a key to keep stepping.'
+			}) %>
 		</div>
 
 		<!-- Dial settings — shown only when this instance is a dial (#782). -->

@@ -1,8 +1,14 @@
 <%
 // Paired adjust key styles (spec 2026-07-07). Params:
-//   modeSelectId — DOM id of the action's mode <sdpi-select>
-//   pairedModes  — adjust-mode values that support paired styles (value source exists)
-//   viewModes    — View-mode values (get the Display Style select instead)
+//   modeSelectId — DOM id of the action's mode <sdpi-select>, or a list of ids
+//                  when the mode is made of several selects (#1453: Audio
+//                  Controls' Mode + Action); the mode is then their values
+//                  joined with "-" (e.g. "master-volume-up")
+//   pairedModes  — adjust-mode values that support paired styles
+//   viewModes    — optional; View-mode values (get the Display Style select instead)
+//   noValueModes — optional (#1453); paired modes with no value to show. They
+//                  get a note: their value styles draw in the no-value form
+//   helpText     — optional; replaces the default supporting text under the selects
 // Both style selects bind the SAME `keyStyle` setting; visibility picks which
 // one applies to the current mode. `legacy` doubles as the View "Default".
 // Both selects persist to the same `keyStyle` setting with disjoint option sets
@@ -10,6 +16,9 @@
 // a value from the other set and render blank. This is cosmetic: action code
 // treats any style that doesn't apply to the current mode as `legacy`/default
 // (renderPairedIconOrNull returns null), so consumers MUST keep that fallback.
+var __modeSelectIds = Array.isArray(modeSelectId) ? modeSelectId : [modeSelectId];
+var __viewModes = locals.viewModes || [];
+var __noValueModes = locals.noValueModes || [];
 %>
 <sdpi-item label="Key Style" id="adjust-style-item" class="hidden">
   <sdpi-select id="adjust-style-select" setting="keyStyle" default="legacy">
@@ -42,14 +51,19 @@
     <option value="bottom">Bottom</option>
   </sdpi-select>
 </sdpi-item>
+<div class="ird-supporting-text hidden" id="adjust-style-no-value-note">
+  iRacing doesn't report its volume, so value styles show without a value: Split as Big +/−, Edge chevrons as Big chevrons, Joined pill as Pill end.
+</div>
 <div class="ird-supporting-text" id="adjust-style-help">
-  Place two keys with opposite directions next to each other — or three with a View key in the middle. Both keys show the live value; hold a key to keep stepping.
+  <% if (locals.helpText) { %><%= helpText %><% } else { %>Place two keys with opposite directions next to each other — or three with a View key in the middle. Both keys show the live value; hold a key to keep stepping.<% } %>
 </div>
 
 <script>
   (function () {
+    const MODE_SELECT_IDS = <%- JSON.stringify(__modeSelectIds) %>;
     const PAIRED_MODES = <%- JSON.stringify(pairedModes) %>;
-    const VIEW_MODES = <%- JSON.stringify(viewModes) %>;
+    const VIEW_MODES = <%- JSON.stringify(__viewModes) %>;
+    const NO_VALUE_MODES = <%- JSON.stringify(__noValueModes) %>;
     const POSITION_AWARE = ["edge-chevrons", "joined-pill", "pill-end", "big-chevron"];
 
     // Untouched sdpi controls report an empty value (nothing persisted yet), so
@@ -60,18 +74,25 @@
       return (el && (el.value || el.getAttribute("default"))) || "";
     }
 
+    // The current mode: one select's value, or several joined with "-".
+    function resolveMode() {
+      return MODE_SELECT_IDS.map(resolveSelectValue).join("-");
+    }
+
     function updateAdjustStyleVisibility() {
-      const mode = resolveSelectValue("<%= modeSelectId %>");
+      const mode = resolveMode();
       const styleItem = document.getElementById("adjust-style-item");
       const viewStyleItem = document.getElementById("adjust-view-style-item");
       const positionItem = document.getElementById("adjust-position-item");
       const help = document.getElementById("adjust-style-help");
+      const noValueNote = document.getElementById("adjust-style-no-value-note");
 
       const isPaired = PAIRED_MODES.includes(mode);
       const isView = VIEW_MODES.includes(mode);
       styleItem?.classList.toggle("hidden", !isPaired);
       viewStyleItem?.classList.toggle("hidden", !isView);
       help?.classList.toggle("hidden", !isPaired && !isView);
+      noValueNote?.classList.toggle("hidden", !(isPaired && NO_VALUE_MODES.includes(mode)));
 
       const style = resolveSelectValue(isView ? "adjust-view-style-select" : "adjust-style-select") || "legacy";
       positionItem?.classList.toggle("hidden", !(isPaired && POSITION_AWARE.includes(style)));
@@ -81,7 +102,7 @@
       await customElements.whenDefined("sdpi-select");
       updateAdjustStyleVisibility();
 
-      for (const id of ["<%= modeSelectId %>", "adjust-style-select", "adjust-view-style-select"]) {
+      for (const id of [...MODE_SELECT_IDS, "adjust-style-select", "adjust-view-style-select"]) {
         const el = document.getElementById(id);
         el?.addEventListener("change", updateAdjustStyleVisibility);
         el?.addEventListener("input", updateAdjustStyleVisibility);
@@ -90,7 +111,7 @@
       // Polling fallback on the shared page poller — sdpi-select events can be unreliable (#903).
       let last = "";
       window.irdPoll(() => {
-        const mode = resolveSelectValue("<%= modeSelectId %>");
+        const mode = resolveMode();
         const style = resolveSelectValue("adjust-style-select");
         const key = mode + "|" + style;
         if (key !== last) {

@@ -21,6 +21,14 @@
 		<% var __comms = require('./data/action-comms.json')['ai-spotter-controls']; %>
 		<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
 
+		<%# Paired +/- key styles on Spotter Louder / Quieter (#1453). %>
+		<%- include('adjust-style', {
+			modeSelectId: 'control-select',
+			pairedModes: ['louder', 'quieter'],
+			noValueModes: ['louder', 'quieter'],
+			helpText: 'Place Spotter Louder and Spotter Quieter next to each other to read as one control. Hold a key to keep stepping.'
+		}) %>
+
 		<%- include('action-settings-footer') %>
 
 		<%- include('title-overrides') %>
