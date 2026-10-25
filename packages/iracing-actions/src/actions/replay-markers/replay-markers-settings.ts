@@ -1,9 +1,9 @@
 /**
  * Replay Markers settings (#1162, the dial half #1230). One schema for both
- * surfaces: the keypad reads `mode`, `secondsBack` and `deleteWindow`, the dial reads the
- * `dial` root object, so the two cannot collide (the Fuel Service rule). Kept
- * apart from the action so the dial surface can import it without importing
- * the action that owns the surface.
+ * surfaces: the keypad reads `mode`, `secondsBack` and `deleteWindow`, the
+ * dial reads the `dial` root object, so the two cannot collide (the Fuel
+ * Service rule). Kept apart from the action so the dial surface can import it
+ * without importing the action that owns the surface.
  */
 import { CommonSettings } from "@iracedeck/deck-core";
 import { MARKER_DELETE_WINDOW_FRAMES } from "@iracedeck/replay-store";
@@ -32,10 +32,8 @@ export const SECONDS_BACK_MAX = 60;
  * window, so the number lives in one place and an existing key keeps it.
  */
 export const DELETE_WINDOW_DEFAULT = MARKER_DELETE_WINDOW_FRAMES / 60;
-/** @internal Exported for testing */
-export const DELETE_WINDOW_MIN = 1;
-/** @internal Exported for testing */
-export const DELETE_WINDOW_MAX = 60;
+const DELETE_WINDOW_MIN = 1;
+const DELETE_WINDOW_MAX = 60;
 
 /**
  * A number typed into the PI arrives as a string. Anything out of range is

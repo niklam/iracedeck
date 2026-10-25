@@ -1661,6 +1661,40 @@ describe("ReplayMarkers", () => {
       expect(redrawn(action)).toHaveLength(0);
     });
 
+    it("a press before the key is drawn as Add / Delete does neither; after the mode change it acts on its look", async () => {
+      const markers = workingStore([marker(12_000)]);
+      const { action } = makeAction(REPLAY);
+      await appear(action, { mode: "delete" });
+      expect(shown(action)).toContain(DELETE_LOOK);
+
+      // The press beats the settings change: the key still shows the Delete Marker key's look.
+      await action.onKeyDown(keyDown({ mode: "add-delete" }));
+      expect(mocks.markers.add).not.toHaveBeenCalled();
+      expect(mocks.markers.deleteNearest).not.toHaveBeenCalled();
+
+      await action.onDidReceiveSettings(keyDown({ mode: "add-delete" }));
+      expect(shown(action)).toContain(DELETE_LOOK);
+
+      await action.onKeyDown(keyDown({ mode: "add-delete" }));
+      expect(markers).toHaveLength(0);
+      expect(mocks.markers.add).not.toHaveBeenCalled();
+    });
+
+    it("the regenerate callback records the look a press then runs", async () => {
+      const markers = workingStore();
+      const { action } = makeAction(REPLAY);
+      await appear(action, { mode: "add-delete" });
+      expect(shown(action)).toContain(ADD_LOOK);
+
+      markers.push(marker(12_000));
+      const regenerate = vi.mocked(action["setRegenerateCallback"]).mock.calls[0]![1] as () => string;
+      expect(regenerate()).toContain(DELETE_LOOK);
+
+      await action.onKeyDown(keyDown({ mode: "add-delete" }));
+      expect(markers).toHaveLength(0);
+      expect(mocks.markers.add).not.toHaveBeenCalled();
+    });
+
     it("sends no replay command and does not register with the busy indicator", async () => {
       workingStore([marker(12_000)]);
       const { action } = makeAction(REPLAY);

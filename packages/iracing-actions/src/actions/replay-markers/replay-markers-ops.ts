@@ -93,11 +93,10 @@ export function buildMarker(
  * `windowSeconds` (the key's or the dial's Delete Window, #1454; required, so
  * no caller keeps the store's 10 s by omission), measured to the marker's
  * frame or to the frame its Add was pressed at (`pressFrame`), whichever is
- * closer. The
- * second distance is what lets Delete from the car reach a marker set with a
- * long Seconds back — the car sits at the live edge, the marker well behind
- * it. Markers without a numeric `pressFrame` (older files) use the frame
- * alone. On a tie the earlier marker goes.
+ * closer. The second distance is what lets Delete from the car reach a marker
+ * set with a long Seconds back — the car sits at the live edge, the marker
+ * well behind it. Markers without a numeric `pressFrame` (older files) use
+ * the frame alone. On a tie the earlier marker goes.
  */
 export function pickMarkerToDelete(
   markers: readonly ReplayMarker[],

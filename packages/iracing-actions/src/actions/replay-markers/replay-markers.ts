@@ -393,6 +393,15 @@ export class ReplayMarkers extends SimIRacingAction<ReplayMarkersSettings> {
         // delete. A shown Delete whose marker has just left the window does
         // nothing, and the next tick redraws Add.
         const operation = this.shownOperation(contextId);
+
+        if (operation === null) {
+          // Pressed before the key was drawn as Add / Delete (a mode change
+          // still on its way): it shows neither, so it does neither.
+          this.logger.debug("add-delete: key does not show Add or Delete yet; ignoring");
+
+          return undefined;
+        }
+
         this.logger.debug(`add-delete: key shows ${operation}`);
 
         return operation === "delete" ? this.deleteMarker(context, settings) : this.addMarker(context, settings);
@@ -455,11 +464,14 @@ export class ReplayMarkers extends SimIRacingAction<ReplayMarkersSettings> {
   }
 
   /**
-   * The operation an Add / Delete key shows, as last drawn; Add when nothing
-   * is recorded, the look such a key draws by default.
+   * The operation an Add / Delete key shows, as last drawn, or null when the
+   * key has not been drawn as Add / Delete — still showing another mode's look
+   * because the press beat the settings change that made it Add / Delete.
    */
-  private shownOperation(contextId: string): MarkerOperation {
-    return this.shownLook.get(contextId) === "delete" ? "delete" : "add";
+  private shownOperation(contextId: string): MarkerOperation | null {
+    const look = this.shownLook.get(contextId);
+
+    return look === "add" || look === "delete" ? look : null;
   }
 
   /**

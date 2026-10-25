@@ -92,7 +92,7 @@ Right after you add a marker with it, that new marker is within the window, so t
 The key briefly shows **MARKER ADDED** or **MARKER DELETED**, the same as the single-purpose keys; a press that changes nothing shows nothing. It never turns grey: without iRacing it shows the plain Add look.
 
 :::note
-With **Seconds Back** larger than **Delete Window**, a press on the Add look can place the new marker within one second of a marker that is outside the window. That press is refused as a duplicate and shows nothing, exactly as an Add Marker key's duplicate press does. Keep Seconds Back below Delete Window to avoid it.
+With **Seconds Back** equal to or larger than **Delete Window**, a press on the Add look can place the new marker within one second of a marker that is outside the window. That press is refused as a duplicate and shows nothing, exactly as an Add Marker key's duplicate press does. Keep Seconds Back below Delete Window to avoid it.
 :::
 
 #### Details

@@ -465,7 +465,7 @@
               "value": "add-delete",
               "label": "Add / Delete Marker",
               "additionalSettings": ["secondsBack", "deleteWindow"],
-              "description": "Shows and runs Delete Marker while a marker is within deleteWindow (default 10, 1-60), Add Marker (secondsBack, default 5, 0-60) otherwise, switching icon and title live with the Add and Delete artwork; a press runs the operation the key shows, so right after an Add it shows Delete (an undo) until the window passes; never greyed, the plain Add look without iRacing; with secondsBack larger than deleteWindow an Add can be refused as a duplicate of a marker the window does not reach; sends nothing to iRacing"
+              "description": "Shows and runs Delete Marker while a marker is within deleteWindow (default 10, 1-60), Add Marker (secondsBack, default 5, 0-60) otherwise, switching icon and title live with the Add and Delete artwork; a press runs the operation the key shows, so right after an Add it shows Delete (an undo) until the window passes; never greyed, the plain Add look without iRacing; with secondsBack equal to or larger than deleteWindow an Add can be refused as a duplicate of a marker the window does not reach; sends nothing to iRacing"
             },
             {
               "value": "next",
