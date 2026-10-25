@@ -32,10 +32,6 @@
 			<sdpi-checkbox setting="autoHold"></sdpi-checkbox>
 		</sdpi-item>
 
-		<sdpi-item id="starter-flash-item" label="Flash while starting" class="hidden">
-			<sdpi-checkbox setting="starterFlash"></sdpi-checkbox>
-		</sdpi-item>
-
 		<sdpi-item id="auto-hold-states-item" label="Auto-hold" class="hidden">
 			<sdpi-checkbox-list setting="autoHoldStates" columns="1">
 				<option value="exit-car">Exit</option>
@@ -55,13 +51,13 @@
 				const controlSelect = document.getElementById("control-select");
 				if (!controlSelect) return;
 
-				updateModeSettingsVisibility(controlSelect.value || "pit-speed-limiter");
+				updateAutoHoldVisibility(controlSelect.value || "pit-speed-limiter");
 
 				controlSelect.addEventListener("change", (ev) => {
-					updateModeSettingsVisibility(ev.target.value);
+					updateAutoHoldVisibility(ev.target.value);
 				});
 				controlSelect.addEventListener("input", (ev) => {
-					updateModeSettingsVisibility(ev.target.value);
+					updateAutoHoldVisibility(ev.target.value);
 				});
 
 				// Polling fallback: sdpi-select events can be unreliable on programmatic value restores
@@ -70,18 +66,16 @@
 					const currentControl = controlSelect.value;
 					if (currentControl && currentControl !== lastControl) {
 						lastControl = currentControl;
-						updateModeSettingsVisibility(currentControl);
+						updateAutoHoldVisibility(currentControl);
 					}
 				});
 			}
 
-			function updateModeSettingsVisibility(control) {
+			function updateAutoHoldVisibility(control) {
 				const autoHoldItem = document.getElementById("auto-hold-item");
 				const autoHoldStatesItem = document.getElementById("auto-hold-states-item");
-				const starterFlashItem = document.getElementById("starter-flash-item");
 
 				autoHoldItem?.classList.toggle("hidden", control !== "escape");
-				starterFlashItem?.classList.toggle("hidden", control !== "starter");
 				autoHoldStatesItem?.classList.toggle("hidden", control !== "enter-exit-tow");
 			}
 
