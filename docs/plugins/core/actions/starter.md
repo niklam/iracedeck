@@ -19,9 +19,7 @@ Engages the car's starter motor.
 
 ## Settings
 
-| Setting | Type | Default | Description |
-|---------|------|---------|-------------|
-| Flash while starting (`starterFlash`) | Checkbox | Off | After a press, the badge alternates between dimmed and full strength every 250 ms for up to 3 seconds. It stops as soon as the engine is running; otherwise the icon returns to the actual state after 3 seconds. The status bar and border keep the real state throughout. No flash starts when the engine is already running or the Starter binding is unset. Display only: the hold-to-crank behaviour is unchanged. |
+None.
 
 ## Keyboard Simulation
 
@@ -40,7 +38,7 @@ No title is shown by default — the artwork already reads `START` — but a tit
 | Off | Engine not running, press to crank — red `OFF` status bar, red border, and the artwork is dimmed |
 | On | Engine running — green `ON` status bar, green border, and the artwork is at full brightness |
 | Not available | No live telemetry — grey `N/A` status bar, grey border, dimmed artwork. Does not mean the car has no starter; pressing still sends the configured binding. |
-| Flashing | Only with Flash while starting on, for up to 3 seconds after a press — the artwork alternates between dimmed and full brightness every 250 ms over the real status bar and border, so a full-brightness badge over a red `OFF` bar is a flash frame, not a running engine. |
+| Flashing | After a press — the artwork alternates between dimmed and full brightness every 250 ms over the real status bar and border, so a full-brightness badge over a red `OFF` bar is a flash frame, not a running engine. It runs for as long as the key is held (cranking reads as engine running, so the engine state cannot end it then); after release it stops when the engine reads running, or 3 seconds after the press. No flash starts when the engine is already running or the Starter binding is unset. Display only: the hold-to-crank behaviour is unchanged. |
 
 ## Telemetry Integration
 
