@@ -252,6 +252,52 @@ describe("ird-binding-status", () => {
     expect(text()).toContain("No binding set");
   });
 
+  describe("any-of multi-key mode (#1463)", () => {
+    const ANY_COMMS = {
+      "wipers-and-visor": {
+        method: "keybind",
+        binding: { scope: "global", keys: ["visorKey", "triggerKey", "toggleKey"], require: "any" },
+      },
+    };
+
+    it("does not warn when only one key is bound, and lists only that key", () => {
+      el = mount(ANY_COMMS);
+      setBinding("visorKey", keyboardBinding("v"));
+      setBinding("triggerKey", "");
+      setBinding("toggleKey", "");
+      setMode("wipers-and-visor");
+      expect(text()).not.toContain("No binding set");
+      expect(text()).toContain("Key binding: Ctrl+V");
+    });
+
+    it("lists every bound key when several are bound", () => {
+      el = mount(ANY_COMMS);
+      setBinding("visorKey", "");
+      setBinding("triggerKey", keyboardBinding("t"));
+      setBinding("toggleKey", keyboardBinding("g"));
+      setMode("wipers-and-visor");
+      expect(text()).toContain("Key binding: Ctrl+T, Ctrl+G");
+    });
+
+    it("warns only when every key is unset", () => {
+      el = mount(ANY_COMMS);
+      setBinding("visorKey", "");
+      setBinding("triggerKey", "");
+      setBinding("toggleKey", "");
+      setMode("wipers-and-visor");
+      expect(text()).toContain("No binding set");
+      setBinding("toggleKey", keyboardBinding("g"));
+      expect(text()).not.toContain("No binding set");
+    });
+
+    it("waits for every key's value before judging", () => {
+      el = mount(ANY_COMMS);
+      setBinding("visorKey", "");
+      setMode("wipers-and-visor");
+      expect(text()).toBe("");
+    });
+  });
+
   // On hosts that retain navigated-away PI pages, disconnectedCallback never
   // fires — pagehide is the only teardown signal the component gets (#903).
   describe("page lifecycle (issue #903)", () => {
