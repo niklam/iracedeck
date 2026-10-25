@@ -4,12 +4,13 @@
  *
  *   node scripts/prune-turbo-cache.mjs [--cache-dir <dir>] [--runs-dir <dir>]
  *
- * CI restores `.turbo/cache` with `actions/cache`, lets turbo read and write
- * it, and saves it again under a new key. Turbo never evicts anything from its
- * local cache, so a directory restored and saved run after run only grows —
- * the developer cache in a long-lived checkout reached 97 GB. Before the save,
- * this deletes every entry that no task of this job's runs hashed to, so a
- * saved cache is one build's outputs.
+ * CI saves `.turbo/cache` with `actions/cache` after a push run, and PR runs
+ * restore it. Turbo never evicts anything from its local cache, so a directory
+ * restored and saved run after run would only grow — the developer cache in a
+ * long-lived checkout reached 97 GB. Before the save, this deletes every entry
+ * that no task of this job's runs hashed to, so a saved cache is one build's
+ * outputs. A push run restores nothing today, so there it mostly checks: it is
+ * what refuses when turbo wrote somewhere other than the path being saved.
  *
  * The hashes come from turbo's run summaries (`TURBO_RUN_SUMMARY=true` writes
  * `.turbo/runs/<id>.json`), whose `tasks[]` lists every task of the run with
@@ -23,10 +24,11 @@
  * delete on too little information: no runs directory, no summary in it, a
  * summary that is unreadable, has no tasks or a task without a hash, no cache
  * directory, or a cache directory in which none of the summaries' hashes has
- * an entry. That last one is what a cache written somewhere else looks like
- * (turbo's cache directory and the restored path disagreeing), and what turbo
- * renaming its entry files would look like; pruning then would delete
- * everything, or keep everything and let the cache grow unnoticed.
+ * an entry. On a run that restored nothing, that last one is what a cache
+ * written somewhere else looks like (turbo's cache directory and the saved
+ * path disagreeing), and what turbo renaming its entry files would look like;
+ * saving then would store an empty cache unnoticed. On a run that restored a
+ * cache it is weaker: restored entries for unchanged tasks still match.
  *
  * Defaults are what CI uses: the cache directory is `TURBO_CACHE_DIR` — the
  * variable turbo itself reads — or `.turbo/cache`, and the runs directory is

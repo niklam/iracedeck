@@ -68,12 +68,12 @@ jobs:
 
       - run: pnpm install
 
-      # Turbo's cache persists between runs, and only a PR run reads it; the
-      # reasons are in ci-test.yml, which does the same (#1492). This job has a
-      # key prefix of its own because it runs beside Tests and the two would
-      # race to save one key. Its second restore key is Tests' prefix: that
-      # cache holds the same `build` outputs this job needs before `tsc`, so
-      # the first run after a change here is not cold.
+      # Turbo's cache persists between runs: only a push saves it and only a
+      # PR run reads it, for the reasons in ci-test.yml, which does the same
+      # (#1492). This job has a key prefix of its own because it runs beside
+      # Tests and the two would race to save one key. Its second restore key
+      # is Tests' prefix, for when no typecheck entry is left: that cache holds
+      # the `build` outputs this job needs before `tsc`.
       - name: Restore the turbo cache
         if: github.event_name == 'pull_request'
         uses: actions/cache/restore@v6
@@ -88,27 +88,27 @@ jobs:
       # `dependsOn: ["^build"]`, because packages resolve each other's types
       # through emitted `dist/`. So this is the same one command a developer
       # runs locally, and a red run here reproduces with `pnpm typecheck`.
-      # Reads and writes the cache on a PR, only writes on a push, so the
+      # Only reads the cache on a PR, only writes it on a push, so the
       # post-merge run typechecks a full build of the merged tree (#1070).
       - run: pnpm typecheck
         env:
-          TURBO_CACHE: ${{ github.event_name == 'pull_request' && 'local:rw' || 'local:w' }}
+          TURBO_CACHE: ${{ github.event_name == 'pull_request' && 'local:r' || 'local:w' }}
           TURBO_RUN_SUMMARY: 'true'
 
-      # Pruned to this run's entries, then saved — only after a green
-      # typecheck. A failed turbo run's summary lists only the tasks it
-      # reached, so pruning to it would drop valid entries for the rest and
-      # make a partial cache the newest one the next run restores; skipping
-      # the save leaves the last complete one in place. The prune refuses, and
-      # so skips the save, when it cannot tell what this run used; a refusal is
-      # housekeeping, so `continue-on-error` keeps it from failing the job.
+      # On a push, pruned to this run's entries, then saved — only after a
+      # green typecheck, since a failed turbo run's summary lists only the
+      # tasks it reached. The prune refuses, and so skips the save, when it
+      # cannot tell what this run used or none of its hashes has an entry in
+      # TURBO_CACHE_DIR; a refusal is housekeeping, so `continue-on-error`
+      # keeps it from failing the job.
       - name: Prune the turbo cache to this run
         id: prune
+        if: github.event_name != 'pull_request'
         continue-on-error: true
         run: node scripts/prune-turbo-cache.mjs
 
       - name: Save the turbo cache
-        if: steps.prune.outcome == 'success'
+        if: github.event_name != 'pull_request' && steps.prune.outcome == 'success'
         uses: actions/cache/save@v6
         with:
           path: ${{ env.TURBO_CACHE_DIR }}
