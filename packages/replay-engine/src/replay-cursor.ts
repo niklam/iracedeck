@@ -27,7 +27,10 @@
  * search at its next await and puts the replay back as its own claim holder,
  * and a command that takes the cursor meanwhile still cancels it. An
  * interrupt clears nothing and tells no `onReplayCursorTaken` listener,
- * since nothing was sent.
+ * since nothing was sent. Only a walk's search is interruptible: once the
+ * walk has its answer its holder ends that ({@link endReplayCursorInterrupts}),
+ * and what is left — the jump to the lap, the way back after a search that
+ * came to nothing — is waited for by a camera switch like any other jump.
  *
  * Where the replay is headed is not kept here since #1430: the one pending
  * target (`replay-position-state.ts`) is recorded by every position jump of
@@ -66,6 +69,12 @@ export interface ReplayCursorClaim {
    * holder may still send, and a later take still cancels it.
    */
   readonly interruptedBy: string | null;
+  /**
+   * Whether a camera switch may still interrupt the claim: true from the
+   * claim until its holder ends it ({@link endReplayCursorInterrupts}), for a
+   * lap walk once its search has its answer.
+   */
+  readonly interruptible: boolean;
   /** Hand the cursor back when done. A no-op once the claim has been cancelled or superseded. */
   release(): void;
 }
@@ -73,6 +82,7 @@ export interface ReplayCursorClaim {
 class Claim implements ReplayCursorClaim {
   cancelledBy: string | null = null;
   interruptedBy: string | null = null;
+  interruptible = true;
 
   constructor(
     readonly owner: string,
@@ -87,7 +97,7 @@ class Claim implements ReplayCursorClaim {
   }
 
   interrupt(by: string): void {
-    if (this.cancelledBy !== null || this.interruptedBy !== null) return;
+    if (this.cancelledBy !== null || this.interruptedBy !== null || !this.interruptible) return;
 
     this.interruptedBy = by;
   }
@@ -175,12 +185,13 @@ export function cancelReplayCursorOwner(by: string): string | null {
 }
 
 /**
- * Cancel the in-flight claim only when its owner is one of `owners`, before
- * sending a command that would break that owner and no other (#801): the
- * Replay Control dial's Track Order mode and its Jump to My Car gesture,
- * whose camera switch points a fastest-lap or race-start walk's searches at
- * another car, but harms no jump or search run. Any other owner is left standing, and nothing is cleared or told: the
- * cursor is not taken. Returns the cancelled owner's name, or `null`.
+ * Cancel the in-flight claim only when its owner is one of `owners` (#801):
+ * since #1428 / #1435 the lap walks stopped because the replay was left
+ * (`cancelLapWalks`, `replay-left.ts`); a camera switch interrupts instead.
+ * A cancel is a take, as {@link cancelReplayCursorOwner}'s: the pending jump
+ * speed is cleared and `onReplayCursorTaken` is told. Any other owner is left
+ * standing, and then nothing is cleared or told. Returns the cancelled
+ * owner's name, or `null`.
  */
 export function cancelReplayCursorOwnerIf(owners: readonly string[], by: string): string | null {
   const owner = currentReplayCursorOwner();
@@ -197,19 +208,29 @@ export function cancelReplayCursorOwnerIf(owners: readonly string[], by: string)
  * stays current with `interruptedBy` set, so its holder can still put the
  * replay back, and the pending jump speed, the dial's pending speed and the
  * `onReplayCursorTaken` listeners are left alone. Returns the interrupted
- * owner's name, or `null` when no such claim stood or it was already
- * interrupted.
+ * owner's name, or `null` when no such claim stood, it was already
+ * interrupted, or its holder had ended its interrupts.
  */
 export function interruptReplayCursorOwnerIf(owners: readonly string[], by: string): string | null {
   const claim = current;
 
-  if (claim === null || claim.cancelledBy !== null || claim.interruptedBy !== null) return null;
+  if (claim === null || claim.cancelledBy !== null || claim.interruptedBy !== null || !claim.interruptible) return null;
 
   if (!owners.includes(claim.owner)) return null;
 
   claim.interrupt(by);
 
   return claim.owner;
+}
+
+/**
+ * Ends a claim's interrupts (#1428 / #1435): from here on a camera switch no
+ * longer interrupts it, and waits for what the holder still does. A lap walk
+ * calls it the moment its search has its answer. Idempotent, and a no-op for
+ * a claim that is not this module's.
+ */
+export function endReplayCursorInterrupts(claim: ReplayCursorClaim): void {
+  if (claim instanceof Claim) claim.interruptible = false;
 }
 
 /** The owner whose claim currently stands, or `null`. */

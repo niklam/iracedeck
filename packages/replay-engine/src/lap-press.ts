@@ -7,6 +7,14 @@
  * (#1428 / #1435). One replay, one press: the
  * slot is module state, where it was one per action instance. Every line goes
  * to the engine's `ReplayControl` scope, so the log reads as it did.
+ *
+ * An interrupted press still holds the slot while it puts the replay back and
+ * undoes its own camera move, so a second Jump to Fastest Lap or Jump to Race
+ * Start pressed meanwhile is ignored like any press during one in flight;
+ * only a cancel frees the slot early. A press that starts tells the
+ * {@link onLapPressStarted} listeners first: the camera-switch waiter drops a
+ * switch still waiting from before it (#1428 / #1435), which would otherwise
+ * interrupt this newer press's walk.
  */
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
@@ -79,6 +87,9 @@ export function walkStopView(claim: ReplayCursorClaim): ReplayCursorClaim {
     },
     get interruptedBy() {
       return claim.interruptedBy;
+    },
+    get interruptible() {
+      return claim.interruptible;
     },
     release: () => claim.release(),
   };
@@ -153,13 +164,38 @@ export function isLapPressInFlight(): boolean {
 }
 
 /**
- * Whether the press in the slot is a walk a camera switch interrupted that is
- * still winding down (#1428 / #1435): putting the replay back, and its own
- * camera move back. The camera switch waits for it, so it goes out after the
- * put-back has landed and is not overridden by the walk's camera move.
+ * Whether the press in the slot is past the part a camera switch may
+ * interrupt and still winding down (#1428 / #1435): a walk a camera switch
+ * interrupted, putting the replay back and undoing its own camera move; or a
+ * walk whose search has its answer (`endReplayCursorInterrupts`), jumping to
+ * the lap, or putting the replay back after a search that came to nothing,
+ * with its own camera step still to run. A camera switch waits for it, so it
+ * goes out after the press's last replay command and camera move and is not
+ * overridden by them.
  */
-export function isInterruptedLapPressUnwinding(): boolean {
-  return isLapPressInFlight() && activeLapPress?.claim.interruptedBy !== null;
+export function isLapPressWindingDown(): boolean {
+  if (!isLapPressInFlight() || activeLapPress === null) return false;
+
+  const { claim } = activeLapPress;
+
+  return claim.interruptedBy !== null || !claim.interruptible;
+}
+
+/** Who is told when a lap press starts. Module wiring, registered once at load: {@link _resetLapPress} leaves it. */
+const startListeners = new Set<(label: string) => void>();
+
+/**
+ * Runs `listener` whenever a Jump to Fastest Lap or Jump to Race Start press
+ * starts (past its guards, before it sends anything), with what opens the
+ * press's log lines. For the camera-switch waiter, which drops a switch still
+ * waiting from before the press (#1428 / #1435). Returns the unsubscribe.
+ */
+export function onLapPressStarted(listener: (label: string) => void): () => void {
+  startListeners.add(listener);
+
+  return () => {
+    startListeners.delete(listener);
+  };
 }
 
 /** The origin token of the press in the slot, for the ignored press's debug line. */
@@ -201,6 +237,9 @@ export async function holdLapPressSlot(
   target: { frame?: number; afterLanding?: (landing: TelemetryData) => boolean } = {},
 ): Promise<void> {
   const { owner, noun, label } = press;
+
+  for (const listener of [...startListeners]) listener(label);
+
   const jump = beginReplayJump(
     owner,
     engineReads().readTelemetry(),

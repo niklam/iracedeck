@@ -13,15 +13,18 @@ import type { ReplaySpeed } from "./replay-jump-speed.js";
 describe("putReplayBack (#1354, #1428 / #1435)", () => {
   let sim: FakeReplay;
   let info: Mock<(message: string) => void>;
+  let debug: Mock<(message: string) => void>;
 
   /** The engine over `sim`, the walk's `ReplayControl` lines into {@link info}. */
   function configure(speed: ReplaySpeed): void {
     sim = fakeReplay({ frame: 30_000, speed });
     info = vi.fn();
+    debug = vi.fn();
 
     const root: ILogger = {
       ...silentLogger,
-      createScope: (scope) => (scope === "ReplayControl" ? { ...silentLogger, info: (m) => info(m) } : silentLogger),
+      createScope: (scope) =>
+        scope === "ReplayControl" ? { ...silentLogger, info: (m) => info(m), debug: (m) => debug(m) } : silentLogger,
     };
 
     resetEngine({
@@ -58,6 +61,33 @@ describe("putReplayBack (#1354, #1428 / #1435)", () => {
     await putReplayBack(jump, "Jump to fastest lap", { frame: null, paused: false });
 
     expect(sent()).toEqual([]);
+    jump.end();
+  });
+
+  it("interrupted before it sent its opening pause: sends nothing, and the press ends as interrupted in the log", async () => {
+    configure({ speed: 1, slowMotion: false });
+    const jump = walkJump();
+
+    interruptReplayCursorOwnerIf(["jump-to-fastest-lap walk"], "next-car");
+    await putReplayBack(jump, "Jump to fastest lap", { frame: null, paused: false }, "next-car");
+
+    expect(sent()).toEqual([]);
+    expect(info).toHaveBeenCalledWith("Jump to fastest lap: walk interrupted before it moved the replay");
+    expect(debug).toHaveBeenCalledWith("Interrupted by next-car; nothing to put back");
+    jump.end();
+  });
+
+  it("interrupted, with a way back the sim refuses: the press still ends as interrupted in the log", async () => {
+    configure({ speed: 1, slowMotion: false });
+    vi.mocked(sim.replay.setPlaySpeed).mockImplementation(() => false);
+    const jump = walkJump();
+
+    interruptReplayCursorOwnerIf(["jump-to-fastest-lap walk"], "next-car");
+    await putReplayBack(jump, "Jump to fastest lap", { frame: null, paused: true }, "next-car");
+
+    expect(info).toHaveBeenCalledWith("Jump to fastest lap: walk interrupted; replay not put back");
+    expect(debug).toHaveBeenCalledWith("Interrupted by next-car; the way back did not complete");
+    expect(info).not.toHaveBeenCalledWith("Jump to fastest lap: walk interrupted by next-car; replay put back");
     jump.end();
   });
 

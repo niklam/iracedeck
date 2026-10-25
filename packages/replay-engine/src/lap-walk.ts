@@ -12,7 +12,10 @@
  * {@link FastestLapPressCancelled}, and nothing more is sent. A camera switch
  * interrupts it (#1428 / #1435, `interruptLapWalks`): {@link LapWalkInterrupted},
  * which {@link runFastestLapWalk} catches to put the replay back as a walk
- * that gave up does, since the walk still holds the cursor.
+ * that gave up does, since the walk still holds the cursor. Only the search
+ * is interruptible: the moment it has its answer (or has given up) the walk
+ * ends its claim's interrupts (`endReplayCursorInterrupts`), and a camera
+ * switch then waits for the jump to the lap or the way back to finish.
  */
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { getReplaySessionStore, isReplaySessionStoreInitialized } from "@iracedeck/replay-store";
@@ -30,6 +33,7 @@ import {
 } from "./lap-press.js";
 import { halvingProbeFrames } from "./lap-walk-probes.js";
 import { type ReplayGateCommand, sendOwnedReplayCommand, waitForReplayJumpsToSettle } from "./replay-command-gate.js";
+import { endReplayCursorInterrupts } from "./replay-cursor.js";
 import { engineReads } from "./replay-engine-env.js";
 import type { ReplayJump } from "./replay-jump-playback.js";
 import { onReplayLeft } from "./replay-left.js";
@@ -386,6 +390,10 @@ export async function runFastestLapWalk(
     return null;
   }
 
+  // The search is over, found or not: what is left (the way back here, or
+  // the caller's jump to the lap) is a plain jump a camera switch waits for.
+  endReplayCursorInterrupts(jump.claim);
+
   if (landing === null) {
     await putBack();
 
@@ -422,11 +430,22 @@ export async function putReplayBack(
   const logger = lapPressLogger();
 
   if (frame === null) {
-    if (!origin.paused) return;
+    if (!origin.paused) {
+      if (interruptedBy !== undefined) {
+        logger.info(`${label}: walk interrupted before it moved the replay`);
+        logger.debug(`Interrupted by ${interruptedBy}; nothing to put back`);
+      }
+
+      return;
+    }
 
     if (claim.cancelledBy !== null) throw new FastestLapPressCancelled(claim.cancelledBy);
 
-    if (!restoreCapturedSpeed(jump, label, null)) return;
+    if (!restoreCapturedSpeed(jump, label, null)) {
+      logNotPutBack(label, interruptedBy);
+
+      return;
+    }
 
     logPutBack(label, interruptedBy);
     logger.debug(`Opening pause undone: ${formatSpeedDisplay(jump.captured.speed, jump.captured.slowMotion)}`);
@@ -470,12 +489,17 @@ export async function putReplayBack(
           ? `setPlayPosition to frame ${frame} failed`
           : `Sent frame ${frame}, saw frame ${outcome.telemetry?.ReplayFrameNum ?? "n/a"} after ${timeoutMs} ms`,
       );
+      logNotPutBack(label, interruptedBy);
 
       return;
     }
   }
 
-  if (!restoreCapturedSpeed(jump, label, frame)) return;
+  if (!restoreCapturedSpeed(jump, label, frame)) {
+    logNotPutBack(label, interruptedBy);
+
+    return;
+  }
 
   logPutBack(label, interruptedBy);
   logger.debug(`Frame ${frame}, ${formatSpeedDisplay(jump.captured.speed, jump.captured.slowMotion)} before the press`);
@@ -511,6 +535,16 @@ function restoreCapturedSpeed(jump: ReplayJump, label: string, frame: number | n
 
   // The gate records the speed it sent, and the keys redraw from the speed state's change subscription.
   return true;
+}
+
+/** For a walk a camera switch interrupted whose way back failed (already warned): the press ends as interrupted. */
+function logNotPutBack(label: string, interruptedBy: string | undefined): void {
+  if (interruptedBy === undefined) return;
+
+  const logger = lapPressLogger();
+
+  logger.info(`${label}: walk interrupted; replay not put back`);
+  logger.debug(`Interrupted by ${interruptedBy}; the way back did not complete`);
 }
 
 /** The way back's one info line: for a walk a camera switch interrupted, or one that came to nothing. */
@@ -1296,9 +1330,12 @@ export async function walkToLapStart(
   }
 
   // Phase 7: the cursor is where the walk leaves it, paused. A cancellation
-  // that arrived during the back-step ends the press here, before anything
-  // is recorded.
+  // or an interrupt that arrived during the back-step ends the press here,
+  // before anything is recorded. From here on the search has its answer and a
+  // camera switch no longer interrupts it (#1428 / #1435): it waits for what
+  // the press does with the landing.
   checkpoint();
+  endReplayCursorInterrupts(claim);
 
   const lapStartFrame = landedFrame + FASTEST_LAP_FINAL_BACKSTEP_TICKS;
   const landedDist = carDist(finalTel);

@@ -24,6 +24,7 @@ export {
   claimReplayCursor,
   clearReplayJumpSpeed,
   currentReplayCursorOwner,
+  endReplayCursorInterrupts,
   interruptReplayCursorOwnerIf,
   onReplayCursorTaken,
   pendingReplayJumpSpeed,
@@ -123,7 +124,7 @@ export {
 export {
   _activeLapPress,
   _resetLapPress,
-  isInterruptedLapPressUnwinding,
+  isLapPressWindingDown,
   isLapPressInFlight,
   LapWalkInterrupted,
   runJumpToFrame,

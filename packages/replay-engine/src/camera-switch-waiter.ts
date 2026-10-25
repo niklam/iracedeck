@@ -12,20 +12,27 @@
  *   Start walk would point its searches at another car, so the switch
  *   interrupts it (`interruptLapWalks`). The walk keeps its claim, stops its
  *   search and puts the replay back — frame, speed, and its own camera move
- *   undone — and the switch goes out after that. A record jump's run, a
- *   marker jump's or the paced search's is left standing. The walks are
- *   interrupted at the request, since a walk would keep moving the replay
- *   meanwhile, and again when the switch goes out; a walk that the second
- *   interrupt catches (one pressed while the switch waited) is waited for in
- *   turn. A switch that changes only the camera's angle, not its car, passes
- *   `interruptsWalks: false` and leaves a walk alone.
+ *   undone — and the switch goes out after that. Only the search is
+ *   interruptible: a walk that has its answer is jumping to the lap, which
+ *   the switch waits for like any jump. A record jump's run, a marker jump's
+ *   or the paced search's is left standing. The walks are interrupted at the
+ *   request, since a walk would keep moving the replay meanwhile, and again
+ *   when the switch goes out; a walk the second interrupt catches is waited
+ *   for in turn. A switch that changes only the camera's angle, not its car,
+ *   passes `interruptsWalks: false` and leaves a walk alone.
+ * - **A lap press drops a switch still waiting from before it** (#1428 /
+ *   #1435): Jump to Fastest Lap or Jump to Race Start is the newer press, so
+ *   the older switch never goes out at the walk's first quiet moment to
+ *   interrupt it. A camera switch asked for after the press interrupts its
+ *   walk as above.
  * - **A switch during a position jump waits for it**: a jump swallows a
  *   camera change (9 of 9, #1430's captures), a search does not. The wait is
  *   the gate's for jumps only, with no claim, so it takes no cursor and
  *   cancels nothing: the jump lands, its playback step runs, and the switch
  *   follows. A jump that starts meanwhile is waited for too. Two holds count
- *   as under way beside the jump reads, whatever reads a caller injects: an
- *   interrupted walk still winding down, and a jump sequence with a frame
+ *   as under way beside the jump reads, whatever reads a caller injects: a
+ *   lap press winding down (interrupted, or past its search; its last replay
+ *   command and its own camera step still to come), and a jump sequence with a frame
  *   from its press until its `end()` (`isReplayJumpSequenceOpen`), so the
  *   switch follows the jump's own camera switch after its landing rather
  *   than racing it. A paced search's run opens no frame and holds nothing.
@@ -45,7 +52,7 @@
 import type { ILogger } from "@iracedeck/logger";
 
 import { now, pollUntil } from "./engine-clock.js";
-import { isInterruptedLapPressUnwinding } from "./lap-press.js";
+import { isLapPressWindingDown, onLapPressStarted } from "./lap-press.js";
 import { interruptLapWalks } from "./lap-walk-owners.js";
 import {
   isReplayJumpSequenceOpen,
@@ -143,14 +150,16 @@ function waitForReplayJumpsToLand(timeoutMs: number = REPLAY_JUMP_MAX_WAIT_MS): 
 
 /**
  * What the plugin holds a camera switch for beside the jump reads (#1428 /
- * #1435): a lap walk a camera switch interrupted that is still putting the
- * replay back and undoing its own camera move, and a jump sequence with a
+ * #1435): a lap press winding down — a walk a camera switch interrupted,
+ * putting the replay back and undoing its own camera move, or one past its
+ * search, jumping to the lap or putting back a search that came to nothing,
+ * its own camera step still to run — and a jump sequence with a
  * frame that has not ended — between its landing and its `end()` it runs its
  * own camera switch and its playback step. Both are reads of what the plugin
  * keeps, not of a timer.
  */
 function isHeldByPlugin(): boolean {
-  return isInterruptedLapPressUnwinding() || isReplayJumpSequenceOpen();
+  return isLapPressWindingDown() || isReplayJumpSequenceOpen();
 }
 
 function jumpsOf(options: CameraSwitchOptions): CameraSwitchJumps {
@@ -329,6 +338,24 @@ export function requestCameraSwitch(sendSwitch: () => unknown, options: CameraSw
 
   return run;
 }
+
+/**
+ * A lap press drops the switch still waiting from before it (#1428 / #1435):
+ * the press is the newer one, and the older switch would otherwise go out at
+ * its walk's first quiet moment and interrupt it. The wait runs on and sends
+ * nothing; a switch asked for after the press is one of its own.
+ */
+onLapPressStarted((label) => {
+  const dropped = waiting;
+
+  if (dropped === null) return;
+
+  waiting = null;
+
+  const { options } = dropped;
+
+  loggerOf(options).debug(`${options.label}: tap dropped (${options.name}), a ${label} press came after it`);
+});
 
 /** Whether a camera switch is waiting behind a jump. */
 export function isCameraSwitchWaiting(): boolean {

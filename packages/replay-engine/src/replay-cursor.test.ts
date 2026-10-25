@@ -7,6 +7,7 @@ import {
   claimReplayCursor,
   clearReplayJumpSpeed,
   currentReplayCursorOwner,
+  endReplayCursorInterrupts,
   interruptReplayCursorOwnerIf,
   onReplayCursorTaken,
   pendingReplayJumpSpeed,
@@ -181,6 +182,21 @@ describe("replay-cursor", () => {
       // A second interrupt does not rename the first.
       expect(interruptReplayCursorOwnerIf(WALKS, "jump-to-my-car")).toBeNull();
       expect(walk.interruptedBy).toBe("next-car");
+    });
+
+    it("leaves a claim whose holder ended its interrupts alone, and still lets a take cancel it", () => {
+      const claim = claimReplayCursor("race-start walk");
+
+      expect(claim.interruptible).toBe(true);
+      endReplayCursorInterrupts(claim);
+      endReplayCursorInterrupts(claim);
+
+      expect(claim.interruptible).toBe(false);
+      expect(interruptReplayCursorOwnerIf(WALKS, "next-car")).toBeNull();
+      expect(claim.interruptedBy).toBeNull();
+      expect(currentReplayCursorOwner()).toBe("race-start walk");
+      expect(cancelReplayCursorOwner("frame-forward")).toBe("race-start walk");
+      expect(claim.cancelledBy).toBe("frame-forward");
     });
 
     it("an interrupted claim is still cancelled by a take, which names the command", () => {

@@ -13,6 +13,7 @@ import {
   isCameraSwitchWaiting,
   requestCameraSwitch,
 } from "./camera-switch-waiter.js";
+import { holdLapPressSlot } from "./lap-press.js";
 import {
   cancelLapWalks,
   FASTEST_LAP_WALK_OWNER,
@@ -37,6 +38,7 @@ import {
   onReplayCursorTaken,
   pendingReplayJumpSpeed,
   recordReplayJumpSpeed,
+  type ReplayCursorClaim,
 } from "./replay-cursor.js";
 import { _configureReplayEngine } from "./replay-engine-env.js";
 import { resetEngine } from "./replay-engine-reset.test-support.js";
@@ -325,22 +327,70 @@ describe("requestCameraSwitch", () => {
     expect(walk.cancelledBy).toBeNull();
     expect(currentReplayCursorOwner()).toBe(FASTEST_LAP_WALK_OWNER);
 
-    // One that starts while the switch waits is interrupted when it would go
-    // out, and the switch waits again, behind that walk putting the replay back.
-    const later = claimReplayCursor(RACE_START_WALK_OWNER);
-
-    jump.land();
-    await vi.advanceTimersByTimeAsync(0);
-
-    expect(later.interruptedBy).toBe("next-car");
-    expect(later.cancelledBy).toBeNull();
-    expect(send).not.toHaveBeenCalled();
-    expect(jump.jumps.waitToSettle).toHaveBeenCalledTimes(2);
-
     jump.land();
     await request;
 
     expect(send).toHaveBeenCalledOnce();
+  });
+
+  it("a lap press drops a switch still waiting from before it; one asked for after the press interrupts its walk (#1428 / #1435)", async () => {
+    const sim = fakeReplay({ frame: 2_000 });
+
+    _configureReplayEngine({
+      logger: engineRootLogger,
+      now: () => Date.now(),
+      replay: () => sim.replay,
+      readTelemetry: () => sim.telemetry(),
+      inReplay: () => true,
+      connected: () => true,
+    });
+
+    // A switch parked behind an earlier jump (a marker, a Frame Jog spin).
+    const jump = jumpUnderWay();
+    const before = vi.fn();
+    const parked = requestCameraSwitch(before, options({ by: "next-car", jumps: jump.jumps }));
+
+    expect(isCameraSwitchWaiting()).toBe(true);
+
+    // Then a Jump to Fastest Lap press: the newer press drops it.
+    const walk: { claim: ReplayCursorClaim | null } = { claim: null };
+    let finish!: () => void;
+    const press = holdLapPressSlot(
+      "ctx-fastest",
+      { owner: FASTEST_LAP_WALK_OWNER, noun: "walk", label: "Jump to fastest lap" },
+      (pressJump) => {
+        walk.claim = pressJump.claim;
+
+        return new Promise<void>((resolve) => (finish = resolve));
+      },
+    );
+
+    expect(isCameraSwitchWaiting()).toBe(false);
+    expect(debug).toHaveBeenCalledWith(
+      "Dial track order: tap dropped (next car), a Jump to fastest lap press came after it",
+    );
+
+    jump.land();
+    await parked;
+
+    // It never goes out, and never interrupts the newer walk.
+    expect(before).not.toHaveBeenCalled();
+    expect(walk.claim?.interruptedBy).toBeNull();
+
+    // A switch asked for after the press interrupts the walk, and waits for the press to wind down.
+    const after = vi.fn();
+    const request = requestCameraSwitch(after, options({ by: "next-car", jumps: quiet() }));
+
+    expect(walk.claim?.interruptedBy).toBe("next-car");
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(after).not.toHaveBeenCalled();
+
+    finish();
+    await press;
+    await vi.advanceTimersByTimeAsync(100);
+    await request;
+
+    expect(after).toHaveBeenCalledOnce();
   });
 
   it("an angle-only switch (interruptsWalks: false) leaves a walk alone", async () => {
