@@ -155,7 +155,7 @@ function stepLists(script: CalloutScript): readonly (readonly ScriptStep[])[] {
     ...Object.values(script.scenarios).flatMap((entry) =>
       entry.skip !== true && entry.sequence ? [entry.sequence] : [],
     ),
-    ...Object.values(script.frames).flatMap((frame) => [frame.open, frame.close]),
+    ...Object.values(script.frames).flatMap((frame) => [frame.open, frame.close, ...(frame.cut ? [frame.cut] : [])]),
     ...Object.values(script.fragments ?? {}).map((fragment) => fragment.sequence),
   ];
 }

@@ -40,6 +40,18 @@ describe("coverageOf — reads authored names the way the engine reads the files
     expect(coverage.scriptedGroups).toEqual(new Set(["flags"]));
   });
 
+  it("reads a frame's cut tail too — a misspelled sfx/ literal only in cut is a finding (#1407)", () => {
+    const { missingSharedClips } = coverageOf({
+      script: script({
+        frames: { radio: { open: [], close: [], cut: [{ clip: "sfx/IRD-tick-opne.mp3" }] } },
+      }),
+      authored: [],
+      sharedClips: SHARED_CLIPS,
+    });
+
+    expect(missingSharedClips).toEqual(["sfx/IRD-tick-opne.mp3"]);
+  });
+
   // A frame's built-in paths used to be skipped unread: a misspelled tick
   // linted clean and aborted every framed callout at fire time (#835).
   it("checks a shared sfx/ literal against the plugin's built-ins — a misspelled tick is a finding, the right path is not", () => {
