@@ -69,6 +69,10 @@ export const SOURCES = Object.freeze({
   rootPackageJson: path.join(repoRoot, "package.json"),
   localFeaturesPath: path.join(repoRoot, "feature-flags.local.json"),
   devLocalPath: path.join(repoRoot, DEV_LOCAL_FILE),
+  // Shipped at the plugin root (#905). Named here rather than joined inline so
+  // scripts/turbo-inputs.test.mjs can hold turbo.json to hashing every source.
+  licensePath: path.join(repoRoot, "LICENSE"),
+  thirdPartyLicensesPath: path.join(repoRoot, "THIRD-PARTY-LICENSES.md"),
 });
 
 /** The `config.json` platforms, one per deck host; the `Platform` type is derived from this list. */
@@ -541,8 +545,8 @@ export function createPluginRollupConfig(options) {
       {
         name: "copy-license-files",
         generateBundle() {
-          for (const file of ["LICENSE", "THIRD-PARTY-LICENSES.md"]) {
-            copyFileSync(path.join(repoRoot, file), path.join(sdPluginDir, file));
+          for (const source of [SOURCES.licensePath, SOURCES.thirdPartyLicensesPath]) {
+            copyFileSync(source, path.join(sdPluginDir, path.basename(source)));
           }
         },
       },

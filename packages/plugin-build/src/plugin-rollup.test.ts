@@ -404,9 +404,10 @@ describe("createPluginRollupConfig", () => {
       expect(readdirSync(SOURCES.rasterizerFontsDir).length).toBeGreaterThan(0);
       expect(existsSync(SOURCES.rootPackageJson)).toBe(true);
 
-      for (const file of ["LICENSE", "THIRD-PARTY-LICENSES.md"]) {
-        expect(existsSync(path.join(SOURCES.repoRoot, file))).toBe(true);
-      }
+      expect(SOURCES.licensePath).toBe(path.join(SOURCES.repoRoot, "LICENSE"));
+      expect(SOURCES.thirdPartyLicensesPath).toBe(path.join(SOURCES.repoRoot, "THIRD-PARTY-LICENSES.md"));
+      expect(existsSync(SOURCES.licensePath)).toBe(true);
+      expect(existsSync(SOURCES.thirdPartyLicensesPath)).toBe(true);
     });
 
     it("anchors the repo on the factory's own location", () => {
