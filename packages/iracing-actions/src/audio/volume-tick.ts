@@ -80,7 +80,7 @@ interface PendingTick {
 
 /** Ticks waiting for their slot, oldest first. */
 let pending: PendingTick[] = [];
-/** When the last tick started, from `Date.now()`. */
+/** When the last tick started, from `performance.now()`: monotonic, so a wall-clock step cannot stall the queue. */
 let lastPlayedAt = Number.NEGATIVE_INFINITY;
 /** The timer that plays the next waiting tick, or null when none waits. */
 let timer: ReturnType<typeof setTimeout> | null = null;
@@ -117,7 +117,7 @@ export function tickIRacingVolumeStep(direction: VolumeTickDirection): void {
 }
 
 function enqueue(tick: PendingTick): void {
-  if (timer === null && pending.length === 0 && Date.now() - lastPlayedAt >= VOLUME_TICK_SPACING_MS) {
+  if (timer === null && pending.length === 0 && performance.now() - lastPlayedAt >= VOLUME_TICK_SPACING_MS) {
     play(tick);
 
     return;
@@ -133,7 +133,7 @@ function enqueue(tick: PendingTick): void {
 function schedule(): void {
   if (timer !== null) return;
 
-  timer = setTimeout(drain, Math.max(0, lastPlayedAt + VOLUME_TICK_SPACING_MS - Date.now()));
+  timer = setTimeout(drain, Math.max(0, lastPlayedAt + VOLUME_TICK_SPACING_MS - performance.now()));
 }
 
 function drain(): void {
@@ -148,7 +148,7 @@ function drain(): void {
 }
 
 function play(tick: PendingTick): void {
-  lastPlayedAt = Date.now();
+  lastPlayedAt = performance.now();
 
   try {
     getAudio().playOnChannelAtLevel(
