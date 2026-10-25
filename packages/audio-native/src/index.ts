@@ -2,7 +2,8 @@
  * @iracedeck/audio-native
  *
  * Native Node.js addon wrapping the miniaudio single-header library.
- * Provides a 4-channel mixer used by Pit Crew and other audio actions.
+ * Provides a 5-channel mixer (one channel per {@link AudioChannel} entry) used by
+ * the Race Engineer, the radar and other audio actions.
  *
  * On non-Windows platforms, a mock implementation is used automatically
  * to enable development and testing on macOS/Linux.
@@ -19,6 +20,12 @@ export { AudioNativeMock } from "./mock-impl.js";
 
 /**
  * Audio mixer channel indices for the miniaudio engine.
+ *
+ * The indices are dense from 0, and `IRD_MAX_CHANNELS` in `addon.cc` is their
+ * count: a new channel is an entry here, the same entry in
+ * `@iracedeck/audio-service`'s copy of this enum, and a bump of that constant.
+ * A binary built before the bump refuses the new channel (its play returns
+ * false), so a stale `.node` makes the channel silent rather than crashing.
  */
 export enum AudioChannel {
   /** Pit lane background noise (loops) */
@@ -29,6 +36,11 @@ export enum AudioChannel {
   Voice = 2,
   /** Directional radar ticks (independent) */
   Radar = 3,
+  /**
+   * Control feedback such as the volume step tick (#1455). Routed to no bus in
+   * `@iracedeck/audio-service`: each clip is played at a level its caller passes.
+   */
+  Feedback = 4,
 }
 
 /**
@@ -113,7 +125,7 @@ export function getNativeLoadStatus(): NativeLoadStatus {
 }
 
 /**
- * miniaudio-backed 4-channel audio mixer.
+ * miniaudio-backed multi-channel audio mixer, one channel per {@link AudioChannel} entry.
  *
  * On Windows, delegates to the native addon. On macOS/Linux, under the forced
  * mock, or when the `.node` failed to load (see {@link getNativeLoadStatus}),
@@ -188,7 +200,7 @@ export class AudioNative {
    * Stops any existing sound on that channel first.
    * Supports WAV, MP3, and FLAC formats.
    *
-   * @param channel - Channel index (0–3, use AudioChannel enum)
+   * @param channel - Channel index (an {@link AudioChannel} value)
    * @param filePath - Absolute path to the audio file
    * @param loop - Whether to loop the sound (default false)
    * @param volume - Volume level 0.0–1.0 (default 1.0)
@@ -202,7 +214,7 @@ export class AudioNative {
 
   /**
    * Stop playback on a specific channel and release the sound.
-   * @param channel - Channel index (0–3)
+   * @param channel - Channel index (an {@link AudioChannel} value)
    */
   stopChannel(channel: number): void {
     if (addon) {
@@ -214,7 +226,7 @@ export class AudioNative {
 
   /**
    * Set the volume on a specific channel.
-   * @param channel - Channel index (0–3)
+   * @param channel - Channel index (an {@link AudioChannel} value)
    * @param volume - Volume level 0.0–1.0
    */
   setChannelVolume(channel: number, volume: number): void {
@@ -227,7 +239,7 @@ export class AudioNative {
 
   /**
    * Check if a channel is currently playing audio.
-   * @param channel - Channel index (0–3)
+   * @param channel - Channel index (an {@link AudioChannel} value)
    * @returns true if the channel has active playback
    */
   isChannelPlaying(channel: number): boolean {
@@ -238,7 +250,7 @@ export class AudioNative {
    * Register a callback that fires when a channel's sound finishes playing.
    * The callback is marshaled from the audio thread to the JS main thread.
    *
-   * @param channel - Channel index (0–3)
+   * @param channel - Channel index (an {@link AudioChannel} value)
    * @param callback - Function to call when playback completes
    */
   setChannelEndCallback(channel: number, callback: () => void): void {

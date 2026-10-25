@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { AudioChannel } from "./index.js";
 import { AudioNativeMock } from "./mock-impl.js";
 
 describe("AudioNativeMock", () => {
@@ -38,6 +39,22 @@ describe("AudioNativeMock", () => {
     it("playOnChannel returns true with any args", () => {
       expect(mock.playOnChannel(0, "/some/path.mp3")).toBe(true);
       expect(mock.playOnChannel(2, "/other.mp3", true, 0.5)).toBe(true);
+    });
+
+    it("accepts every channel, the Feedback channel included (#1455)", () => {
+      for (const channel of [
+        AudioChannel.Ambient,
+        AudioChannel.SFX,
+        AudioChannel.Voice,
+        AudioChannel.Radar,
+        AudioChannel.Feedback,
+      ]) {
+        expect(mock.playOnChannel(channel, "/tick.mp3", false, 0.3)).toBe(true);
+        expect(() => mock.setChannelEndCallback(channel, () => {})).not.toThrow();
+        expect(() => mock.setChannelVolume(channel, 0.5)).not.toThrow();
+        expect(() => mock.stopChannel(channel)).not.toThrow();
+        expect(mock.isChannelPlaying(channel)).toBe(false);
+      }
     });
 
     it("stopChannel does not throw", () => {

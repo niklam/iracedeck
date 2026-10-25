@@ -2,7 +2,8 @@
  * @iracedeck/audio-native
  *
  * Native Node.js addon wrapping the miniaudio single-header library.
- * Provides a 4-channel mixer used by Pit Engineer and other audio actions.
+ * Provides a 5-channel mixer (IRD_MAX_CHANNELS) used by the Race Engineer, the
+ * radar and other audio actions.
  */
 
 #include <chrono>
@@ -138,7 +139,13 @@ static bool DeserializeDeviceId(const std::string &hex, ma_device_id &outId)
 // Audio Engine (miniaudio — multi-channel mixer)
 // ============================================================================
 
-static const int IRD_MAX_CHANNELS = 4;
+// The mixer's channel count: Ambient, SFX, Voice, Radar and Feedback (#1455),
+// the indices of the AudioChannel enum in src/index.ts and in
+// @iracedeck/audio-service. It sizes every per-channel table below; a new
+// channel is an enum entry there plus a bump here. Every entry point refuses
+// a channel at or above it, so a binary built before a bump refuses the new
+// channel (its play returns false) rather than crashing.
+static const int IRD_MAX_CHANNELS = 5;
 static ma_context *g_audioContext = nullptr;
 static ma_engine *g_engine = nullptr;
 static ma_sound *g_channels[IRD_MAX_CHANNELS] = {};
@@ -1138,7 +1145,7 @@ Napi::Value DestroyAudioEngine(const Napi::CallbackInfo &info)
 
 /**
  * Play an audio file on a specific channel.
- * @param channel - Channel index (0-3)
+ * @param channel - Channel index (0 to IRD_MAX_CHANNELS - 1)
  * @param filePath - Absolute path to audio file (WAV, MP3, or FLAC)
  * @param loop - Whether to loop the sound (default false)
  * @param volume - Volume level 0.0-1.0 (default 1.0)
@@ -1223,7 +1230,7 @@ Napi::Value PlayOnChannel(const Napi::CallbackInfo &info)
 
 /**
  * Stop playback on a specific channel.
- * @param channel - Channel index (0-3)
+ * @param channel - Channel index (0 to IRD_MAX_CHANNELS - 1)
  */
 Napi::Value StopChannel(const Napi::CallbackInfo &info)
 {
@@ -1246,7 +1253,7 @@ Napi::Value StopChannel(const Napi::CallbackInfo &info)
 
 /**
  * Set volume on a specific channel.
- * @param channel - Channel index (0-3)
+ * @param channel - Channel index (0 to IRD_MAX_CHANNELS - 1)
  * @param volume - Volume level 0.0-1.0
  */
 Napi::Value SetChannelVolume(const Napi::CallbackInfo &info)
@@ -1272,7 +1279,7 @@ Napi::Value SetChannelVolume(const Napi::CallbackInfo &info)
 
 /**
  * Check if a channel is currently playing.
- * @param channel - Channel index (0-3)
+ * @param channel - Channel index (0 to IRD_MAX_CHANNELS - 1)
  * @returns true if the channel has an active sound playing
  */
 Napi::Value IsChannelPlaying(const Napi::CallbackInfo &info)
@@ -1298,7 +1305,7 @@ Napi::Value IsChannelPlaying(const Napi::CallbackInfo &info)
  * Register a JS callback that fires when a channel's sound finishes playing.
  * Uses ThreadSafeFunction to marshal from the audio thread to the JS main thread.
  *
- * @param channel - Channel index (0-3)
+ * @param channel - Channel index (0 to IRD_MAX_CHANNELS - 1)
  * @param callback - JavaScript function to call on completion
  */
 Napi::Value SetChannelEndCallback(const Napi::CallbackInfo &info)
@@ -1356,7 +1363,7 @@ Napi::Value StopAllChannels(const Napi::CallbackInfo &info)
 /**
  * Seek a channel to a random position within the sound.
  * Useful for looping ambient tracks so each play starts at a different point.
- * @param channel - Channel index (0-3)
+ * @param channel - Channel index (0 to IRD_MAX_CHANNELS - 1)
  */
 Napi::Value SeekChannelRandom(const Napi::CallbackInfo &info)
 {

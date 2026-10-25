@@ -14,7 +14,7 @@ Sim and telemetry
 
 Audio and the Race Engineer (end-to-end walkthrough: `race-engineer-callouts.md`)
 
-- `@iracedeck/audio-native` — native miniaudio 4-channel mixer. Has its own `CLAUDE.md`.
+- `@iracedeck/audio-native` — native miniaudio 5-channel mixer. Has its own `CLAUDE.md`.
 - `@iracedeck/audio-service` — the mixer singleton over audio-native: buses, voice sequences, the device lifecycle. Has its own `CLAUDE.md`.
 - `@iracedeck/audio-assets` — voice clips, `sfx/`, the ElevenLabs generator, per-voice configs, the packer and the catalog. Has its own `CLAUDE.md`.
 - `@iracedeck/callout-script` — the `callouts.json` grammar, the script-vs-clips coverage rules and the `<pack>::<voice>` id; a `zod`-only leaf. Has its own `CLAUDE.md`.

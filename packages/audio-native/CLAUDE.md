@@ -1,6 +1,6 @@
 # @iracedeck/audio-native
 
-Native Node.js addon (C++/N-API) around the miniaudio single-header library. Provides a 4-channel mixer with per-channel volume, looping, completion callbacks, and device selection.
+Native Node.js addon (C++/N-API) around the miniaudio single-header library. Provides a 5-channel mixer with per-channel volume, looping, completion callbacks, and device selection.
 
 ## Cross-platform architecture
 
@@ -44,7 +44,7 @@ The `install` script in `package.json` is a no-op `echo`, so `pnpm install` neve
 
 ## Audio engine functions
 
-The addon embeds miniaudio for multi-channel mixing. 4 independent channels with per-channel volume, looping, and completion callbacks via `ThreadSafeFunction`.
+The addon embeds miniaudio for multi-channel mixing. 5 independent channels (`IRD_MAX_CHANNELS`, one per `AudioChannel` entry) with per-channel volume, looping, and completion callbacks via `ThreadSafeFunction`.
 
 `stopChannel`, `isChannelPlaying`, `stopAllChannels`, and `destroyAudioEngine` do exactly what their names say (see `src/index.ts`); the functions below have behavior worth documenting.
 
@@ -59,7 +59,7 @@ The device lifecycle pair (issue #849). `startAudioEngine` lazily creates the en
 **The audio client miniaudio abandons at a reroute is released by the namer thread (#1414, spec `docs/superpowers/specs/2026-10-11-issue-1414-rerouted-stream-release.md`).** At a reroute miniaudio 0.11.25 reinitialises its device and sets `pAudioClientPlayback` to NULL without releasing the old `IAudioClient`; its own comment in `ma_device_reinit__wasapi` calls it a known leak, because releasing inside Windows' notification callback deadlocks. One default change is several reroutes (four on the machine measured), so clients are abandoned on the endpoint the stream moves to as well as the one it left. Measured on 2026-10-11: about nine handles per reroute (274 to 3910 over 100 default changes), and after a reroute onto a SteelSeries Sonar device the audio power request for the headset Sonar plays through stayed until the process exited, which undoes #849. **The vendored `miniaudio.h` therefore carries one local change**, marked `iRaceDeck (#1414)`: right before that NULL it hands the pointer to `MA_IRD_ON_ABANDONED_AUDIO_CLIENT`, which `addon.cc` defines as `irdOnAbandonedAudioClient`. That function runs on the notification thread, so it only queues the pointer under the namer's mutex. The namer releases each client 1 s after it was abandoned: twice the rename's delay, so the rename for the same reroute goes first, and a due time per client, so a default that keeps changing cannot hold the older ones back. Nothing is released on the JS thread or inside the callback, and nothing is queued while no namer runs, which is why the namer starts in `initAudioEngine` on WASAPI and not only when an identity is set. `destroyAudioEngine` has the namer release what is still queued; the env cleanup hook drops it instead, because a reroute may be in flight there and the process is ending. **On a miniaudio upgrade** the new header has no hook and `addon.cc` stops compiling (it checks `MA_IRD_ABANDONED_AUDIO_CLIENT_HOOK_PRESENT`): re-read `ma_device_reinit__wasapi`, and put the hook back only if it still drops the client without releasing it. If it releases the client itself, delete the hook and `irdOnAbandonedAudioClient`, or ours becomes a second release of freed memory.
 
 ### `playOnChannel(channel: number, filePath: string, loop?: boolean, volume?: number): boolean`
-Plays a file on a specific channel (0–3). Stops any existing sound on that channel first. Supports WAV, MP3, FLAC.
+Plays a file on a specific channel (an `AudioChannel` value, 0–4). Stops any existing sound on that channel first. Supports WAV, MP3, FLAC.
 
 ### `setChannelVolume(channel: number, volume: number): void`
 Sets per-channel volume (0.0–1.0). Only works on an existing `ma_sound`.
@@ -120,7 +120,8 @@ export enum AudioChannel {
   SFX = 1, // walkie-talkie open/close ticks
   Voice = 2, // engineer voice messages, reminders, toggles
   Radar = 3, // directional radar ticks (independent)
+  Feedback = 4, // control feedback, the volume step tick (#1455); no bus
 }
 ```
 
-The same enum is duplicated in `@iracedeck/audio-service` (`packages/audio-service/src/audio-service.ts`) — keep the two in sync when channels change.
+The same enum is duplicated in `@iracedeck/audio-service` (`packages/audio-service/src/audio-service.ts`) — keep the two in sync when channels change; a type-level check in that package's tests fails when they differ. A new channel is an entry in both enums plus a bump of `IRD_MAX_CHANNELS` in `addon.cc`, which sizes every per-channel table there (`g_channels`, `g_completionTSFN`, `g_tsfnRegistered`); the service sizes its own per-channel state from its enum. Every native entry point refuses a channel at or above `IRD_MAX_CHANNELS`, so a `.node` built before a bump refuses the new channel: its play returns false and the channel is silent rather than a crash. `pnpm build:ts` builds no binary, so a channel change needs a full native build (`pnpm --filter @iracedeck/audio-native build`) before a manual test.
