@@ -4,6 +4,7 @@
  * a position jump as one newest-wins switch for the whole plugin. Moved here
  * with the waiter from `replay-control-track-order-mode.test.ts`.
  */
+import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { type ILogger, silentLogger } from "@iracedeck/logger";
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 
@@ -42,6 +43,7 @@ import {
 } from "./replay-cursor.js";
 import { _configureReplayEngine } from "./replay-engine-env.js";
 import { resetEngine } from "./replay-engine-reset.test-support.js";
+import { watchReplayLeft } from "./replay-left.test-support.js";
 import { noteReplaySpeedSent, resolveLiveSpeed } from "./replay-speed-state.js";
 import { REPLAY_JUMP_MAX_WAIT_MS } from "./replay-timing.js";
 
@@ -121,21 +123,69 @@ describe("requestCameraSwitch", () => {
     vi.useRealTimers();
   });
 
-  it("sends at once outside a replay, whatever the jump reads and the plugin's holds say", async () => {
-    resetEngine({ logger: engineRootLogger, now: () => Date.now(), inReplay: () => false });
+  describe("leaving the replay (#1428 / #1435 second read)", () => {
+    let inReplay: boolean;
 
-    const send = vi.fn();
-    const jump = jumpUnderWay();
+    beforeEach(() => {
+      inReplay = true;
+      resetEngine({ logger: engineRootLogger, now: () => Date.now(), inReplay: () => inReplay });
+    });
 
-    const request = requestCameraSwitch(send, options({ jumps: jump.jumps }));
+    /** The engine's departure event, as its watch emits it on a disconnect (which is never held). */
+    function leaveReplay(): void {
+      // A connected tick with telemetry first: the watch counts a disconnect only after one.
+      const watched = watchReplayLeft({ replayState: () => ({ inReplay }), telemetry: () => ({}) as TelemetryData });
 
-    // A jump left standing by leaving the replay (#1428 / #1435 second read)
-    // must not park a live press, which the replay's absence would then drop.
-    expect(send).toHaveBeenCalledOnce();
-    await request;
+      inReplay = false;
+      watched.tick(null, false);
+    }
 
-    expect(jump.jumps.waitToSettle).not.toHaveBeenCalled();
-    expect(isCameraSwitchWaiting()).toBe(false);
+    it("still waits behind a long seek whose replay state reads false, with no departure", () => {
+      // An in-session replay reads "not in a replay" a second into a long seek:
+      // that is not a departure, and the switch must not go out into the seek.
+      inReplay = false;
+
+      const send = vi.fn();
+      const jump = jumpUnderWay();
+
+      void requestCameraSwitch(send, options({ jumps: jump.jumps }));
+
+      expect(send).not.toHaveBeenCalled();
+      expect(isCameraSwitchWaiting()).toBe(true);
+    });
+
+    it("sends at once once the replay has been left, whatever the jump reads say", async () => {
+      leaveReplay();
+
+      const send = vi.fn();
+      const jump = jumpUnderWay();
+
+      const request = requestCameraSwitch(send, options({ jumps: jump.jumps }));
+
+      // A jump left standing by leaving the replay must not park a live
+      // press, which the replay's absence would then drop.
+      expect(send).toHaveBeenCalledOnce();
+      await request;
+
+      expect(jump.jumps.waitToSettle).not.toHaveBeenCalled();
+      expect(isCameraSwitchWaiting()).toBe(false);
+    });
+
+    it("waits behind a jump again once a replay is back on screen", () => {
+      leaveReplay();
+      inReplay = true;
+
+      const send = vi.fn();
+      const jump = jumpUnderWay();
+
+      void requestCameraSwitch(send, options({ jumps: jump.jumps }));
+
+      // Back in a replay the departure no longer stands, even when the state
+      // reads false again during a later seek.
+      inReplay = false;
+      expect(send).not.toHaveBeenCalled();
+      expect(isCameraSwitchWaiting()).toBe(true);
+    });
   });
 
   it("sends at once while no jump is under way", async () => {

@@ -65,6 +65,7 @@ import {
   waitForReplaySettled,
 } from "./replay-command-gate.js";
 import { engineLogger, engineReads } from "./replay-engine-env.js";
+import { onReplayLeft } from "./replay-left.js";
 import { isSeeking } from "./replay-seek.js";
 import { REPLAY_JUMP_MAX_WAIT_MS, STABILIZATION_POLL_INTERVAL_MS } from "./replay-timing.js";
 
@@ -171,15 +172,34 @@ function jumpsOf(options: CameraSwitchOptions): CameraSwitchJumps {
 }
 
 /**
+ * Whether the replay has been left and not come back since: the engine's own
+ * departure event (`onReplayLeft`), which is held through the plugin's seeks.
+ * Not the debounced replay state alone, which reads false a second into a
+ * long seek in an in-session replay — exactly when a switch must wait.
+ */
+let replayDeparted = false;
+
+onReplayLeft(() => {
+  replayDeparted = true;
+});
+
+/** Whether the replay has been left, on a fresh reading: back in a replay, the departure no longer stands. */
+function hasLeftReplay(): boolean {
+  if (engineReads().inReplay()) replayDeparted = false;
+
+  return replayDeparted;
+}
+
+/**
  * Whether anything a switch waits for is under way: a jump, or one of the
- * plugin's holds. Only in a replay: live, no seek can swallow the switch, and
- * a jump or walk left standing by leaving the replay (its target not yet
- * given up, its landing wait not yet run out) must not park a live Camera
- * Controls or Race Admin press behind it, to be dropped because the replay
- * was left.
+ * plugin's holds. Not once the replay has been left: live, no seek can
+ * swallow the switch, and a jump or walk left standing by the departure (its
+ * target not yet given up, its landing wait not yet run out) must not park a
+ * live Camera Controls or Race Admin press behind it, to be dropped because
+ * the replay was left.
  */
 function isUnderWay(options: CameraSwitchOptions): boolean {
-  return engineReads().inReplay() && (jumpsOf(options).isUnderWay() || isHeldByPlugin());
+  return !hasLeftReplay() && (jumpsOf(options).isUnderWay() || isHeldByPlugin());
 }
 
 /**
@@ -389,4 +409,5 @@ export function _resetCameraSwitchWaiter(): void {
   waiting = null;
   waiter = null;
   waitGeneration++;
+  replayDeparted = false;
 }
