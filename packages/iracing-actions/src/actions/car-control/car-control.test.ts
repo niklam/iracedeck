@@ -1164,6 +1164,11 @@ describe("CarControl", () => {
     };
     const artworkFor = (starterState: "on" | "off") =>
       decodeURIComponent(generateCarControlSvg(CarControlSettings.parse(FLASH_ON), { starterState }));
+    /** A Starter key-down, then the macrotask the first frame waits for. */
+    const press = async () => {
+      await action.onKeyDown(fakeEvent("action-1", FLASH_ON) as any);
+      await vi.advanceTimersByTimeAsync(0);
+    };
 
     beforeEach(async () => {
       vi.useFakeTimers();
@@ -1179,7 +1184,7 @@ describe("CarControl", () => {
     });
 
     it("should alternate the badge every 250 ms for 3 s and end on the OFF artwork", async () => {
-      await action.onKeyDown(fakeEvent("action-1", FLASH_ON) as any);
+      await press();
 
       expect(frames().map(isLit)).toEqual([true]);
 
@@ -1202,8 +1207,34 @@ describe("CarControl", () => {
       expect(frames()).toHaveLength(13);
     });
 
-    it("should draw the lit badge over the real status bar, never claiming the engine runs", async () => {
+    it("should flash while the hold is still being sent, not only once it resolves", async () => {
+      // Regression (found on hardware): a SimHub-role hold is an HTTP round trip, and the
+      // flash used to start only after it resolved — by then the engine had caught, so the
+      // key never visibly flashed.
+      let resolveHold!: () => void;
+      mockHoldBinding.mockImplementationOnce(() => new Promise<void>((resolve) => (resolveHold = resolve)));
+      const keyDown = action.onKeyDown(fakeEvent("action-1", FLASH_ON) as any);
+      await vi.advanceTimersByTimeAsync(500);
+
+      expect(frames().map(isLit)).toEqual([true, false, true]);
+
+      resolveHold();
+      await keyDown;
+    });
+
+    it("should leave the hold's request to go out before the first frame is drawn", async () => {
       await action.onKeyDown(fakeEvent("action-1", FLASH_ON) as any);
+
+      expect(mockHoldBinding).toHaveBeenCalledWith("action-1", "carControlStarter");
+      expect(frames()).toHaveLength(0);
+
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(frames()).toHaveLength(1);
+    });
+
+    it("should draw the lit badge over the real status bar, never claiming the engine runs", async () => {
+      await press();
 
       expect(frames()).toHaveLength(1);
       expect(isLit(frames()[0])).toBe(true);
@@ -1213,7 +1244,7 @@ describe("CarControl", () => {
     });
 
     it("should stop at once and draw the ON artwork when the engine catches", async () => {
-      await action.onKeyDown(fakeEvent("action-1", FLASH_ON) as any);
+      await press();
       await vi.advanceTimersByTimeAsync(500);
 
       expect(action["starterFlashes"].has("action-1")).toBe(true);
@@ -1232,7 +1263,7 @@ describe("CarControl", () => {
     });
 
     it("should end the flash from the frame step when the engine reads running before a tick", async () => {
-      await action.onKeyDown(fakeEvent("action-1", FLASH_ON) as any);
+      await press();
 
       telemetry = { ...ENGINE_ON };
       await vi.advanceTimersByTimeAsync(250);
@@ -1243,7 +1274,7 @@ describe("CarControl", () => {
     });
 
     it("should have the regenerate callback draw the current frame, not the bare state", async () => {
-      await action.onKeyDown(fakeEvent("action-1", FLASH_ON) as any);
+      await press();
       const regenerate = vi.mocked(action["setRegenerateCallback"]).mock.calls.at(-1)![1];
 
       expect(isLit(decodeURIComponent(regenerate()))).toBe(true);
@@ -1260,7 +1291,7 @@ describe("CarControl", () => {
       mockHoldBinding.mockImplementationOnce(async () => {
         await action.onDidReceiveSettings(fakeEvent("action-1", { control: "starter", starterFlash: false }) as any);
       });
-      await action.onKeyDown(fakeEvent("action-1", FLASH_ON) as any);
+      await press();
       vi.mocked(action["updateKeyImage"]).mockClear();
       await vi.advanceTimersByTimeAsync(3000);
 
@@ -1269,7 +1300,7 @@ describe("CarControl", () => {
     });
 
     it("should leave the image to the flash while the engine is still off", async () => {
-      await action.onKeyDown(fakeEvent("action-1", FLASH_ON) as any);
+      await press();
       // A tick that would otherwise re-render (the state key was cleared by a change).
       action["lastState"].delete("action-1");
       tick();
@@ -1289,16 +1320,16 @@ describe("CarControl", () => {
 
     it("should not flash when the engine is already running", async () => {
       telemetry = { ...ENGINE_ON };
-      await action.onKeyDown(fakeEvent("action-1", FLASH_ON) as any);
+      await press();
       await vi.advanceTimersByTimeAsync(3000);
 
       expect(frames()).toHaveLength(0);
     });
 
     it("should restart the 3 s window on a second press", async () => {
-      await action.onKeyDown(fakeEvent("action-1", FLASH_ON) as any);
+      await press();
       await vi.advanceTimersByTimeAsync(2000);
-      await action.onKeyDown(fakeEvent("action-1", FLASH_ON) as any);
+      await press();
       await vi.advanceTimersByTimeAsync(2750);
 
       expect(action["starterFlashes"].has("action-1")).toBe(true);
@@ -1310,7 +1341,7 @@ describe("CarControl", () => {
     });
 
     it("should keep flashing after a short tap is released", async () => {
-      await action.onKeyDown(fakeEvent("action-1", FLASH_ON) as any);
+      await press();
       await action.onKeyUp(fakeEvent("action-1", FLASH_ON) as any);
       await vi.advanceTimersByTimeAsync(1000);
 
@@ -1318,7 +1349,7 @@ describe("CarControl", () => {
     });
 
     it("should clear the flash on onWillDisappear and draw nothing after it", async () => {
-      await action.onKeyDown(fakeEvent("action-1", FLASH_ON) as any);
+      await press();
 
       expect(action["starterFlashes"].has("action-1")).toBe(true);
 
@@ -1331,7 +1362,7 @@ describe("CarControl", () => {
     });
 
     it("should clear the flash on a settings change and draw no further frame", async () => {
-      await action.onKeyDown(fakeEvent("action-1", FLASH_ON) as any);
+      await press();
 
       expect(action["starterFlashes"].has("action-1")).toBe(true);
 
@@ -1344,7 +1375,7 @@ describe("CarControl", () => {
     });
 
     it("should send the same hold and release as without the setting", async () => {
-      await action.onKeyDown(fakeEvent("action-1", FLASH_ON) as any);
+      await press();
       await action.onKeyUp(fakeEvent("action-1", FLASH_ON) as any);
       const withFlash = [mockHoldBinding.mock.calls, mockReleaseBinding.mock.calls, mockTapBinding.mock.calls];
 
@@ -1370,7 +1401,7 @@ describe("CarControl", () => {
 
     it("should not flash when the Starter binding is missing", async () => {
       vi.mocked(action["isBindingMissing"]).mockReturnValue(true);
-      await action.onKeyDown(fakeEvent("action-1", FLASH_ON) as any);
+      await press();
 
       expect(mockHoldBinding).toHaveBeenCalledWith("action-1", "carControlStarter");
       expect(action["starterFlashes"].size).toBe(0);

@@ -915,7 +915,12 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
    */
   private starterFlashes = new Map<
     string,
-    { timer: ReturnType<typeof setInterval>; framesLeft: number; lit: boolean }
+    {
+      timer: ReturnType<typeof setInterval>;
+      firstFrame: ReturnType<typeof setTimeout>;
+      framesLeft: number;
+      lit: boolean;
+    }
   >();
 
   /**
@@ -1073,26 +1078,45 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
     }
 
     if (HOLD_CONTROLS.has(settings.control)) {
-      await this.holdBinding(actionId, settingKey);
+      // The Starter flash (issue #1438) starts with the press, not after the hold resolves:
+      // a SimHub role's hold is an HTTP round trip, and an engine that catches during it
+      // would end the flash before it was ever seen. Its first frame waits a macrotask, so
+      // the hold's request still leaves first.
+      const held = this.holdBinding(actionId, settingKey);
+
+      this.startStarterFlashIfWanted(actionId, settings);
+      await held;
     } else {
       await this.tapBinding(settingKey);
     }
+  }
 
-    // Display only, and after the hold is sent so it never delays the key (issue #1438).
-    // A PI change can land during the hold's await, so both the press (what was sent) and
-    // the stored settings (what the key is now) must be a Starter with the flash on. An
-    // unbound Starter sent nothing, so it does not claim to be cranking.
+  /**
+   * The press (what is being sent) and the stored settings (what the key is) must both be a
+   * Starter with the flash on. An unbound Starter sends nothing, so it does not claim to be
+   * cranking, and an engine already running needs no flash. A PI change that lands during
+   * the hold's await reaches onDidReceiveSettings, which stops the flash.
+   */
+  private startStarterFlashIfWanted(actionId: string, settings: CarControlSettings): void {
     const storedSettings = this.activeContexts.get(actionId);
 
-    if (
-      settings.control === "starter" &&
-      storedSettings?.control === "starter" &&
-      storedSettings.starterFlash &&
-      !this.isBindingMissing(CAR_CONTROL_GLOBAL_KEYS.starter) &&
-      starterToggleState(this.sdkController.getCurrentTelemetry()) !== "on"
-    ) {
-      this.startStarterFlash(actionId);
+    if (settings.control !== "starter" || storedSettings?.control !== "starter" || !storedSettings.starterFlash) {
+      return;
     }
+
+    if (this.isBindingMissing(CAR_CONTROL_GLOBAL_KEYS.starter)) {
+      this.logger.debug("Starter flash skipped: no Starter binding");
+
+      return;
+    }
+
+    if (starterToggleState(this.sdkController.getCurrentTelemetry()) === "on") {
+      this.logger.debug("Starter flash skipped: engine already running");
+
+      return;
+    }
+
+    this.startStarterFlash(actionId);
   }
 
   /**
@@ -1107,11 +1131,12 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
 
     const flash = {
       timer: setInterval(() => this.stepStarterFlash(contextId), STARTER_FLASH_INTERVAL_MS),
+      firstFrame: setTimeout(() => this.drawStarterFlashFrame(contextId), 0),
       framesLeft: STARTER_FLASH_DURATION_MS / STARTER_FLASH_INTERVAL_MS,
       lit: true,
     };
     this.starterFlashes.set(contextId, flash);
-    this.drawStarterFlashFrame(contextId);
+    this.logger.debug("Starter flash started");
   }
 
   private stepStarterFlash(contextId: string): void {
@@ -1122,7 +1147,7 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
     flash.framesLeft--;
 
     if (flash.framesLeft <= 0) {
-      this.endStarterFlash(contextId);
+      this.endStarterFlash(contextId, "time elapsed");
 
       return;
     }
@@ -1132,9 +1157,10 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
   }
 
   /** Ends the flash and draws the real state now, rather than waiting for a telemetry tick. */
-  private endStarterFlash(contextId: string): void {
+  private endStarterFlash(contextId: string, reason: string): void {
     this.stopStarterFlash(contextId);
     this.lastState.delete(contextId);
+    this.logger.debug(`Starter flash ended: ${reason}`);
 
     const settings = this.activeContexts.get(contextId);
 
@@ -1148,6 +1174,7 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
 
     if (flash) {
       clearInterval(flash.timer);
+      clearTimeout(flash.firstFrame);
       this.starterFlashes.delete(contextId);
     }
   }
@@ -1158,6 +1185,8 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
    * engine catching ends the flash here too, without waiting for a subscriber tick.
    */
   private drawStarterFlashFrame(contextId: string): void {
+    if (!this.starterFlashes.has(contextId)) return;
+
     const settings = this.activeContexts.get(contextId);
 
     if (!settings || settings.control !== "starter") {
@@ -1169,7 +1198,7 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
     const state = this.getTelemetryState(this.sdkController.getCurrentTelemetry(), "starter", contextId);
 
     if (state.starterState === "on") {
-      this.endStarterFlash(contextId);
+      this.endStarterFlash(contextId, "engine running");
 
       return;
     }
@@ -1398,6 +1427,7 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
       if (starterToggleState(telemetry) !== "on") return;
 
       this.stopStarterFlash(contextId);
+      this.logger.debug("Starter flash ended: engine running");
       this.lastState.delete(contextId);
     }
 
