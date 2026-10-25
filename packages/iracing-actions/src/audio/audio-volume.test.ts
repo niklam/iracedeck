@@ -25,7 +25,7 @@ const hoisted = vi.hoisted(() => {
   const getAudio = vi.fn(() => ({ setBusVolume, stopChannel }));
   const stopRaceEngineerScenarios = vi.fn();
   const isBackgroundTestInFlight = vi.fn(() => false);
-  const playVolumeTicks = vi.fn();
+  const playVolumeTick = vi.fn();
 
   let globalSettings: Record<string, unknown> = {};
   const updateGlobalSettings = vi.fn((partial: Record<string, unknown>) => {
@@ -39,7 +39,7 @@ const hoisted = vi.hoisted(() => {
     stopRaceEngineerScenarios,
     getAudio,
     isBackgroundTestInFlight,
-    playVolumeTicks,
+    playVolumeTick,
     updateGlobalSettings,
     getGlobalSettings,
     setGlobalSettings: (next: Record<string, unknown>) => {
@@ -51,7 +51,7 @@ const hoisted = vi.hoisted(() => {
 // The tick module is its own unit (volume-tick.test.ts); here only what the
 // step helpers ask of it is checked: one tick per applied step, at the new level.
 vi.mock("./volume-tick.js", () => ({
-  playVolumeTicks: hoisted.playVolumeTicks,
+  playVolumeTick: hoisted.playVolumeTick,
 }));
 
 vi.mock("@iracedeck/audio-scenarios/pit-crew", () => ({
@@ -343,22 +343,26 @@ describe("audio-volume", () => {
 
       stepRaceEngineerVolumeBy(1);
 
-      expect(hoisted.playVolumeTicks.mock.calls).toEqual([["up", 1, 55]]);
+      expect(hoisted.playVolumeTick.mock.calls).toEqual([["up", 55]]);
     });
 
-    it("ticks once per applied step, down, at the new level", () => {
+    it("ticks once per applied step, down, each at the level it reached", () => {
       hoisted.setGlobalSettings({ radarVolume: 50 });
 
       stepRadarVolumeBy(-3);
 
-      expect(hoisted.playVolumeTicks.mock.calls).toEqual([["down", 3, 35]]);
+      expect(hoisted.playVolumeTick.mock.calls).toEqual([
+        ["down", 45],
+        ["down", 40],
+        ["down", 35],
+      ]);
     });
 
     it("stepRadarVolumeBy(+3) from 95 ticks once — the one step it applied", () => {
       hoisted.setGlobalSettings({ radarVolume: 95 });
 
       expect(stepRadarVolumeBy(3)).toBe(100);
-      expect(hoisted.playVolumeTicks.mock.calls).toEqual([["up", 1, 100]]);
+      expect(hoisted.playVolumeTick.mock.calls).toEqual([["up", 100]]);
     });
 
     it("counts a partial step off the 5-grid as a step", () => {
@@ -366,7 +370,7 @@ describe("audio-volume", () => {
 
       stepRadarVolume("up");
 
-      expect(hoisted.playVolumeTicks.mock.calls).toEqual([["up", 1, 100]]);
+      expect(hoisted.playVolumeTick.mock.calls).toEqual([["up", 100]]);
     });
 
     it("ticks nothing for a step at the clamp, either level, either end", () => {
@@ -377,7 +381,7 @@ describe("audio-volume", () => {
       stepRaceEngineerVolume("down");
       stepRaceEngineerVolumeBy(-2);
 
-      expect(hoisted.playVolumeTicks).not.toHaveBeenCalled();
+      expect(hoisted.playVolumeTick).not.toHaveBeenCalled();
     });
 
     it("ticks a Race Engineer step taken with the engineer off, at the stored value", () => {
@@ -386,7 +390,7 @@ describe("audio-volume", () => {
       stepRaceEngineerVolume("down");
 
       expect(hoisted.setBusVolume).toHaveBeenCalledWith(0, 0);
-      expect(hoisted.playVolumeTicks.mock.calls).toEqual([["down", 1, 45]]);
+      expect(hoisted.playVolumeTick.mock.calls).toEqual([["down", 45]]);
     });
 
     it("ticks a Radar step taken with the radar off", () => {
@@ -394,7 +398,7 @@ describe("audio-volume", () => {
 
       stepRadarVolume("up");
 
-      expect(hoisted.playVolumeTicks.mock.calls).toEqual([["up", 1, 55]]);
+      expect(hoisted.playVolumeTick.mock.calls).toEqual([["up", 55]]);
     });
   });
 });

@@ -11,7 +11,7 @@ import {
   VOLUME_MIN,
   VOLUME_STEP,
 } from "./audio-levels.js";
-import { playVolumeTicks } from "./volume-tick.js";
+import { playVolumeTick } from "./volume-tick.js";
 
 // The readers and the step constants live in the `audio-levels.ts` leaf (so the
 // tick module can read Radar Volume without a cycle); every caller keeps
@@ -135,7 +135,8 @@ function clampVolume(value: number): number {
 
 /**
  * The volume step tick for a level that moved from `current` to `next`
- * (#1455): one tick per step actually applied, at the new level. Rounded up,
+ * (#1455): one tick per step actually applied, each at the level that step
+ * reached, so the last is at `next`. Rounded up,
  * so a level the Settings window left off the 5-grid (52 → 57, 98 → 100)
  * still counts the step it took. The callers return before this when the
  * level did not move, so a press at 0 or 100 is silent: twenty ticks down
@@ -147,7 +148,14 @@ function clampVolume(value: number): number {
  * Not gated by the Race Engineer or radar switch: the tick is deck feedback.
  */
 function tickAppliedSteps(current: number, next: number): void {
-  playVolumeTicks(next > current ? "up" : "down", Math.ceil(Math.abs(next - current) / VOLUME_STEP), next);
+  const sign = next > current ? 1 : -1;
+  const count = Math.ceil(Math.abs(next - current) / VOLUME_STEP);
+
+  // A multi-detent dial event ticks each step at the level it passed through,
+  // so a fast spin still rises or falls in loudness step by step.
+  for (let i = 1; i <= count; i++) {
+    playVolumeTick(sign > 0 ? "up" : "down", i === count ? next : current + sign * i * VOLUME_STEP);
+  }
 }
 
 /**
