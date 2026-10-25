@@ -112,12 +112,30 @@ describe("requestCameraSwitch", () => {
     vi.setSystemTime(1_000_000);
     debug = vi.fn();
     warn = vi.fn();
-    resetEngine({ logger: engineRootLogger, now: () => Date.now() });
+    // A replay on screen: outside one every switch goes out at once.
+    resetEngine({ logger: engineRootLogger, now: () => Date.now(), inReplay: () => true });
   });
 
   afterEach(() => {
     resetEngine();
     vi.useRealTimers();
+  });
+
+  it("sends at once outside a replay, whatever the jump reads and the plugin's holds say", async () => {
+    resetEngine({ logger: engineRootLogger, now: () => Date.now(), inReplay: () => false });
+
+    const send = vi.fn();
+    const jump = jumpUnderWay();
+
+    const request = requestCameraSwitch(send, options({ jumps: jump.jumps }));
+
+    // A jump left standing by leaving the replay (#1428 / #1435 second read)
+    // must not park a live press, which the replay's absence would then drop.
+    expect(send).toHaveBeenCalledOnce();
+    await request;
+
+    expect(jump.jumps.waitToSettle).not.toHaveBeenCalled();
+    expect(isCameraSwitchWaiting()).toBe(false);
   });
 
   it("sends at once while no jump is under way", async () => {

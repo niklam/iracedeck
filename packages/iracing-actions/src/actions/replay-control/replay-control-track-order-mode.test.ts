@@ -45,7 +45,8 @@ const PREVIOUS = "replayControlPrevCar";
 describe("trackOrderMode", () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    resetEngine();
+    // A replay on screen: outside one the waiter sends every switch at once.
+    resetEngine({ inReplay: () => true });
     vi.mocked(requestCameraSwitch).mockClear();
   });
 

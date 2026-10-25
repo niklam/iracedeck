@@ -170,9 +170,16 @@ function jumpsOf(options: CameraSwitchOptions): CameraSwitchJumps {
   return options.jumps ?? GATE_JUMPS;
 }
 
-/** Whether anything a switch waits for is under way: a jump, or one of the plugin's holds. */
+/**
+ * Whether anything a switch waits for is under way: a jump, or one of the
+ * plugin's holds. Only in a replay: live, no seek can swallow the switch, and
+ * a jump or walk left standing by leaving the replay (its target not yet
+ * given up, its landing wait not yet run out) must not park a live Camera
+ * Controls or Race Admin press behind it, to be dropped because the replay
+ * was left.
+ */
 function isUnderWay(options: CameraSwitchOptions): boolean {
-  return jumpsOf(options).isUnderWay() || isHeldByPlugin();
+  return engineReads().inReplay() && (jumpsOf(options).isUnderWay() || isHeldByPlugin());
 }
 
 /**
