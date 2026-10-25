@@ -503,9 +503,10 @@ export const REPLAY_CONTROL_UUID = "com.iracedeck.sd.core.replay-control" as con
 /**
  * The modes that send no replay command, only a camera change or a keystroke:
  * they stay outside the replay command gate (#1430). Each goes through the
- * engine's one camera-switch waiter (#1467), which cancels a lap walk
- * searching on the camera's car and nothing else, and holds the switch behind
- * a position jump under way.
+ * engine's one camera-switch waiter (#1467), which interrupts a lap walk
+ * searching on the camera's car and nothing else (the walk puts the replay
+ * back first, #1428 / #1435), and holds the switch behind a position jump
+ * under way.
  */
 const CAMERA_ONLY_MODES: ReadonlySet<ReplayControlMode> = new Set<ReplayControlMode>([
   "jump-to-my-car",
@@ -926,8 +927,9 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
   /**
    * The camera to the player's car: Jump to My Car's switch, which takes no
    * cursor of its own. The key and the dial's gesture (#801) both hand it to
-   * the engine's camera-switch waiter, which has cancelled only the two walks
-   * before it runs (#1467). With no player's car, or no number for it, it
+   * the engine's camera-switch waiter, which has interrupted only the two
+   * walks, and waited for one to put the replay back, before it runs (#1467,
+   * #1428 / #1435). With no player's car, or no number for it, it
    * warns and sends nothing.
    */
   private switchToMyCar(): void {
@@ -949,10 +951,11 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
   /**
    * A camera or car key's switch (#1467, Decision 3 of the replay engine
    * spec): through the engine's one camera-switch waiter, as the dial's Track
-   * Order turn and Jump to My Car gesture go. It cancels a lap walk searching
-   * on the camera's car, naming the mode, and no other cursor owner — a
-   * marker or record jump keeps its claim; the walk observes the cancel at its
-   * next await. On a quiet replay `send` runs at once; behind a position jump
+   * Order turn and Jump to My Car gesture go. It interrupts a lap walk
+   * searching on the camera's car, naming the mode, and no other cursor owner
+   * — a marker or record jump keeps its claim; the walk observes the
+   * interrupt at its next await, puts the replay back, and the switch goes out
+   * after that (#1428 / #1435). On a quiet replay `send` runs at once; behind a position jump
    * it waits for the landing as the one switch that waits for the whole
    * plugin, and is dropped if the wait gives up, or if by then the key has
    * left the screen or the replay has been left.
