@@ -111,6 +111,11 @@ export function describeSpeakGate(callout: Pick<Callout, "speakGate">): string |
   return callout.speakGate;
 }
 
+/** What ends the callout early in words — a waiting one is dropped, a playing one cut — or `null`. */
+export function describeEndsOn(callout: Pick<Callout, "endsOn">): string | null {
+  return callout.endsOn;
+}
+
 // ─── Vocabulary ──────────────────────────────────────────────────────────────
 
 /** Look a var up by name; `undefined` when the vocabulary does not carry it. */

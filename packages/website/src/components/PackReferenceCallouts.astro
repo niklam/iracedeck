@@ -11,6 +11,7 @@ import {
   caseHref,
   condHref,
   describeBase,
+  describeEndsOn,
   describeScheduling,
   describeSpeakGate,
   describeTrigger,
@@ -68,6 +69,12 @@ function hasReferences(c: (typeof callouts)[number]): boolean {
               <>
                 <dt>Re-checked at speak time</dt>
                 <dd>{describeSpeakGate(c)}</dd>
+              </>
+            )}
+            {c.endsOn !== null && (
+              <>
+                <dt>Ends when</dt>
+                <dd>{describeEndsOn(c)}</dd>
               </>
             )}
             <dt>Default frame</dt>

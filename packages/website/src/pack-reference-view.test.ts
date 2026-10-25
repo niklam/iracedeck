@@ -9,6 +9,7 @@ import {
   caseHref,
   condHref,
   describeBase,
+  describeEndsOn,
   describeScheduling,
   describeSpeakGate,
   describeTrigger,
@@ -48,6 +49,7 @@ function callout(overrides: Partial<Callout>): Callout {
     queueable: false,
     interrupt: false,
     speakGate: null,
+    endsOn: null,
     base: null,
     comment: null,
     test: null,
@@ -163,6 +165,13 @@ describe("describeSpeakGate", () => {
   it("returns the gate's sentence, or null when there is none", () => {
     expect(describeSpeakGate({ speakGate: "The limiter is still on." })).toBe("The limiter is still on.");
     expect(describeSpeakGate({ speakGate: null })).toBeNull();
+  });
+});
+
+describe("describeEndsOn", () => {
+  it("returns the ending event's sentence, or null when there is none", () => {
+    expect(describeEndsOn({ endsOn: "You leave pit road." })).toBe("You leave pit road.");
+    expect(describeEndsOn({ endsOn: null })).toBeNull();
   });
 });
 

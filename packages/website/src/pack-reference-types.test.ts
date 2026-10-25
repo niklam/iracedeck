@@ -117,6 +117,25 @@ describe("parsePackReference", () => {
     expect(() => parsePackReference(drifted)).toThrow("callouts[0].speakGate: expected a string");
   });
 
+  it("keeps what ends a callout early, and refuses one that is neither a string nor null (issue #1407)", () => {
+    const ending = copy();
+    ending.callouts[0].endsOn = "You leave pit road while the warning is waiting or still being spoken.";
+
+    expect(parseCallouts(ending.callouts)[0].endsOn).toBe(
+      "You leave pit road while the warning is waiting or still being spoken.",
+    );
+
+    const open = copy();
+    open.callouts[0].endsOn = null;
+
+    expect(parseCallouts(open.callouts)[0].endsOn).toBeNull();
+
+    const drifted = copy();
+    drifted.callouts[0].endsOn = 5;
+
+    expect(() => parsePackReference(drifted)).toThrow("callouts[0].endsOn: expected a string");
+  });
+
   it("refuses a key the type does not declare, at its own path", () => {
     const drifted = copy();
     drifted.callouts[0].extra = "stray";

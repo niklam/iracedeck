@@ -48,6 +48,8 @@ export type Callout = {
   interrupt: boolean;
   /** The contract's speak-time gate — what is re-checked after the script expands, before the callout takes the radio; `null` when it has none. */
   speakGate: string | null;
+  /** What ends the callout early — a waiting one dropped, a playing one cut — in one sentence; `null` when nothing does. */
+  endsOn: string | null;
   /** The contract's `base` — what a bare literal clip path in the entry resolves against; `null` for the audio root. */
   base: string | null;
   /** The entry's `comment` (what is said); `null` when the entry carries none. */
@@ -204,6 +206,7 @@ const CALLOUT_KEYS = [
   "queueable",
   "interrupt",
   "speakGate",
+  "endsOn",
   "base",
   "comment",
   "test",
@@ -226,6 +229,7 @@ export function parseCallout(value: unknown, path = "callout"): Callout {
     queueable: boolean(source.queueable, `${path}.queueable`),
     interrupt: boolean(source.interrupt, `${path}.interrupt`),
     speakGate: nullableString(source.speakGate, `${path}.speakGate`),
+    endsOn: nullableString(source.endsOn, `${path}.endsOn`),
     base: nullableString(source.base, `${path}.base`),
     comment: nullableString(source.comment, `${path}.comment`),
     test: nullableString(source.test, `${path}.test`),
