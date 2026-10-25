@@ -378,7 +378,7 @@ async function searchGreenFromPoleCar(
     if (!acceptsGreenFallbackLanding(landing)) {
       logger.warn("Jump to race start: the search did not reach the start of the pole car's lap 1");
       logger.debug(
-        `The lap search landed on frame ${landing.lapStartFrame}, dist on the lap before lap 1: ${landing.priorLapDist ?? "n/a"}`,
+        `The walk's unverified lap start is frame ${landing.lapStartFrame}, dist on the lap before lap 1: ${landing.priorLapDist ?? "n/a"}`,
       );
       // The camera only once the way back has landed: sent during the seek
       // it would cut it short (#1275), and iRacing would drop it (#1430).

@@ -878,6 +878,10 @@ describe("Replay Control: Jump to Race Start (#1354)", () => {
       expect(logger.warn).toHaveBeenCalledWith(
         "Jump to race start: the search did not reach the start of the pole car's lap 1",
       );
+      // The frame the walk could not verify, named as the walk's, not as a lap search's landing.
+      expect(logger.debug).toHaveBeenCalledWith(
+        `The walk's unverified lap start is frame ${RACE_LAP_1_LINE - 600}, dist on the lap before lap 1: 0.88`,
+      );
       // No jump to the green's approach, and none to the walk's run-up: after the last crossing probe, the one
       // jump is the way back to where the press was made.
       expect(afterSearch()).toEqual([IN_RACE]);
