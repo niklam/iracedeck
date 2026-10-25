@@ -10,10 +10,12 @@ The issue has the timings. In short, `Tests` takes about 4½ minutes: a 110 s bu
 
 ### Decision
 
-The `Tests` and `Typecheck` workflows restore turbo's local cache directory (`.turbo/cache`) with `actions/cache` before building, and save it afterwards. The trigger decides how turbo may use it:
+The `Tests` and `Typecheck` workflows keep turbo's local cache directory (`.turbo/cache`) with `actions/cache`. The trigger decides how turbo may use it:
 
-- **`pull_request`: read and write** (`--cache=local:rw`). A PR that touches one package rebuilds that package and its dependents, and everything else is a hit.
-- **`push` to `master` / `release/*`: write only** (`--cache=local:w`, which is what `--force` means). Every task runs, so the post-merge check (#1070) stays a full build of the merged tree. The outputs are still saved, and that is what warms the next PR. GitHub lets a PR run restore caches saved on its base branch, while a cache saved by a PR run is visible only to re-runs of that PR. The master push therefore has to be the writer.
+- **`pull_request`: restore, read only** (`local:r`), save nothing. A PR that touches one package rebuilds that package and its dependents, and everything else is a hit.
+- **`push` to `master` / `release/*`: restore nothing, write only** (`local:w`, which is what `--force` means), then save. Every task runs, so the post-merge check (#1070) stays a full build of the merged tree. The outputs are still saved, and that is what warms the next PR. GitHub lets a PR run restore caches saved on its base branch, while a cache saved by a PR run is visible only to re-runs of that PR. The master push therefore has to be the writer.
+
+*Amended during implementation:* PR runs first read and wrote the cache and saved it too. The second read found that GitHub restores a PR's own cache before its base branch's, so a PR that had saved one kept restoring it after a rebase onto a newer `master`, and every task `master` had changed since missed. PR entries also spent the 10 GB on caches only that PR could use and could push `master`'s out. Saving on pushes alone means every PR run starts from the newest `master` cache.
 
 The cache mode reaches turbo either through `TURBO_CACHE`, if turbo 2.11 reads it, or by `scripts/build.mjs` forwarding its arguments to `turbo run build`. The builder picks one, and either way a developer still gets the same command (`pnpm build`, `pnpm typecheck`) locally.
 
@@ -21,7 +23,7 @@ The cache mode reaches turbo either through `TURBO_CACHE`, if turbo 2.11 reads i
 
 - Key `turbo-<workflow>-<run_id>-<run_attempt>`, and restore keys `turbo-<workflow>-` (newest first). The key changes every run because a cache entry cannot be overwritten, so a fixed key would freeze the first one ever saved.
 - One prefix per workflow, because `Tests` and `Typecheck` run at the same moment and would race to save the same key. `Typecheck` also lists `turbo-tests-` as a second restore key, since the Tests cache holds the same `build` outputs that `Typecheck` needs before it runs `tsc`.
-- In the sharded `Tests` workflow (section 2), only shard 1 saves. The other shards restore and do not save.
+- In the sharded `Tests` workflow (section 2), only shard 1 of a push run saves. Every shard of a PR run restores.
 
 ### The saved cache is pruned to this run
 
