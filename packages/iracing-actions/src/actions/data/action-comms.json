@@ -323,6 +323,18 @@
         "key": "carControlTearOffVisor"
       }
     },
+    "wipers-and-visor": {
+      "method": "keybind",
+      "binding": {
+        "scope": "global",
+        "keys": [
+          "carControlTearOffVisor",
+          "cockpitMiscTriggerWipers",
+          "cockpitMiscToggleWipers"
+        ],
+        "require": "any"
+      }
+    },
     "ignition": {
       "method": "keybind",
       "binding": {

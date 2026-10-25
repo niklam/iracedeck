@@ -80,6 +80,18 @@
     { "id": "drs", "label": "DRS", "default": "", "setting": "carControlDrs" },
     { "id": "tearOffVisor", "label": "Tear Off Visor", "default": "", "setting": "carControlTearOffVisor" },
     {
+      "id": "triggerWipers",
+      "label": "Trigger Wipers",
+      "default": "Ctrl+Alt+W",
+      "setting": "cockpitMiscTriggerWipers"
+    },
+    {
+      "id": "toggleWipers",
+      "label": "Toggle Wipers",
+      "default": "Shift+W",
+      "setting": "cockpitMiscToggleWipers"
+    },
+    {
       "id": "handbrake",
       "label": "Handbrake",
       "default": "",

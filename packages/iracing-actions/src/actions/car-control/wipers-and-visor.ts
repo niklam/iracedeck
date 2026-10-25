@@ -15,22 +15,9 @@ import triggerWipersIcon from "@iracedeck/icons/cockpit-misc/trigger-wipers.svg"
 import { hasVisor, hasWipers, isLiveOnTrack, type TelemetryData } from "@iracedeck/iracing-sdk";
 import z from "zod";
 
-/**
- * The three global bindings the mode sends. The wiper bindings keep their
- * Cockpit Misc setting names, so binding them in either action binds both.
- */
-export const WIPERS_AND_VISOR_BINDINGS = {
-  visor: "carControlTearOffVisor",
-  trigger: "cockpitMiscTriggerWipers",
-  toggle: "cockpitMiscToggleWipers",
-} as const;
+import { WIPERS_AND_VISOR_BINDINGS } from "./wipers-and-visor-bindings.js";
 
-/** Every binding the mode can send, in the order the PI lists them. */
-export const WIPERS_AND_VISOR_BINDING_KEYS: readonly string[] = [
-  WIPERS_AND_VISOR_BINDINGS.visor,
-  WIPERS_AND_VISOR_BINDINGS.trigger,
-  WIPERS_AND_VISOR_BINDINGS.toggle,
-];
+export { WIPERS_AND_VISOR_BINDING_KEYS, WIPERS_AND_VISOR_BINDINGS } from "./wipers-and-visor-bindings.js";
 
 /** What a tap does on a wiper car; a long press does the other. */
 export const WIPERS_ON_TAP_OPTIONS = ["trigger", "toggle"] as const;

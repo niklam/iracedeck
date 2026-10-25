@@ -105,6 +105,18 @@ describe("action-comms catalog", () => {
     expect(missing, `binding keys missing from key-bindings.json: ${missing.join(", ")}`).toEqual([]);
   });
 
+  it("lets Car Control's Wipers and Visor work with any one of its three bindings (#1463)", () => {
+    // A visor-only or wiper-only driver binds one side; the PI must warn only when none is bound.
+    expect(COMMS_CATALOG["car-control"]["wipers-and-visor"]).toEqual({
+      method: "keybind",
+      binding: {
+        scope: "global",
+        keys: ["carControlTearOffVisor", "cockpitMiscTriggerWipers", "cockpitMiscToggleWipers"],
+        require: "any",
+      },
+    });
+  });
+
   it("describes every Audio Controls dial category (#782, #809)", () => {
     // The descriptors themselves are derived from the settings tables, but a
     // category could still be added to DIAL_CATEGORIES (and to the PI) without

@@ -29,6 +29,7 @@ import {
   type ActionCommMap,
   type CommDescriptor,
   keybind,
+  keybindAnyKeys,
   keybindBy,
   keybindFixed,
   keybindKeys,
@@ -45,6 +46,7 @@ import {
   rotationBindingKeys,
 } from "./audio-controls/audio-controls-settings.js";
 import { SUB_CAMERA_BINDING_KEYS } from "./camera-controls/sub-camera-bindings.js";
+import { WIPERS_AND_VISOR_BINDING_KEYS } from "./car-control/wipers-and-visor-bindings.js";
 
 const api: CommDescriptor = { method: "api" };
 const chat: CommDescriptor = { method: "chat" };
@@ -196,6 +198,10 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     drs: keybind("carControlDrs"),
     "headlight-flash": keybind("carControlHeadlightFlash"),
     "tear-off-visor": keybind("carControlTearOffVisor"),
+    // Sends the visor binding in an open-cockpit car and the wiper bindings in a closed
+    // one (#1463), so the PI warns only when none of the three is bound: a driver of one
+    // kind of car never binds the other side. The key's own warning follows the car.
+    "wipers-and-visor": keybindAnyKeys([...WIPERS_AND_VISOR_BINDING_KEYS]),
     ignition: keybind("carControlIgnition"),
     starter: keybind("carControlStarter"),
     "enter-exit-tow": keybind("carControlEnterExitTow"),
