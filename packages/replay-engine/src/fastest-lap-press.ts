@@ -386,18 +386,19 @@ export function pressJumpToFastestLap(request: {
  *      is no information, and another frame of the open interval is probed
  *      instead, up to `MAX_ABSENT_PROBES` of them (#1354).
  *   3. **Lap-step refinement.** `nextLap` / `prevLap` until
- *      `CarIdxLap[carIdx]` is the lap before the target, a distance nudge
- *      to that lap's end, and a `FASTEST_LAP_FINAL_BACKSTEP_TICKS`
- *      back-step, so the car is visibly approaching the line.
- *   4. **Record what was verified.** The landed frame goes into the record
- *      as the car's start of `targetLap` ONLY when the walk converged: the
- *      sample before the back-step showed the car on `targetLap − 1` at
- *      `dist ≥` `FASTEST_LAP_DIST_THRESHOLD` in the target session
- *      instance, and the sample at the back-stepped frame agreed on lap and
- *      session. Anything less — lap steps exhausted, a nudge that did not
- *      move, a landing in another lap or session — stays where it got to,
- *      warns `walk did not converge`, and records nothing: a later press
- *      would trust that frame forever.
+ *      `CarIdxLap[carIdx]` is the lap before the target.
+ *   4. **Find the line and record it** (#1432). From where a lap search left
+ *      the cursor (after one Next Lap nudge when that is not near enough),
+ *      absolute jumps bracket the frame `CarIdxLap` flips to `targetLap`
+ *      within `LAP_CROSSING_MAX_FRAMES` and bisect it to adjacent frames,
+ *      both in the target session instance. The first frame on `targetLap`
+ *      goes into the record as the car's start of it, and the cursor is left
+ *      `LAP_START_APPROACH_FRAMES` before it, where a record hit lands.
+ *      Anything less — lap steps exhausted, a nudge that did not move, no
+ *      flip within the bound, a probe in another lap or session — warns
+ *      `walk did not converge`, records nothing, and leaves the cursor a
+ *      second before where the lap search rested: a later press would trust
+ *      a recorded frame forever.
  *   5. **Leave the replay as the Replay jump playback setting says**
  *      (#1276), converged or not: at the speed it had at the press, at 1×,
  *      or paused (`applyReplayJumpPlayback`, recorded by the gate in the

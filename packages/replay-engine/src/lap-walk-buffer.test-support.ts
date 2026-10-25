@@ -19,6 +19,13 @@
  *   - `nextLap` → cursor to start of next lap (lap+1, dist=0).
  *   - `prevLap` → cursor to end of previous lap (lap-1, dist≈0.999).
  *
+ * `opts.lead` (#1432) is how many frames short of the line iRacing's lap
+ * search rests: `nextLap` lands `lead` frames before the next line the
+ * car has not reached within `lead` frames, still reading the lap before
+ * it, and `prevLap` `lead` frames before the line of the lap the car
+ * reads (one, at least). `lead: 0`, the default, is the model above: a
+ * Next Lap that lands on the line.
+ *
  * `getCurrentTelemetry()` returns SessionUniqueID + SessionNum + the
  * lap/dist for `carIdx`, plus `ReplayFrameNumEnd = bufferEnd - frame`
  * so `ReplayFrameNum + ReplayFrameNumEnd` is the constant recording
@@ -74,9 +81,11 @@ export function multiSessionBuffer(
     fastestTime?: number;
     subSessionId?: number;
     userId?: number;
+    lead?: number;
   } = {},
 ): LapBuffer {
   const cursor = { frame: opts.initialCursor ?? sessions[0].startFrame };
+  const lead = opts.lead ?? 0;
   // Read at every use: a test may extend the last session after the map is built (a live recording growing).
   const bufferEnd = (): number => sessions[sessions.length - 1].endFrame;
 
@@ -117,9 +126,10 @@ export function multiSessionBuffer(
     if (!session) return false;
 
     const relFrame = cursor.frame - session.startFrame;
-    const lap = Math.floor(relFrame / session.framesPerLap);
+    // The lap whose end is the next line more than `lead` frames ahead.
+    const lap = Math.floor((relFrame + lead) / session.framesPerLap);
 
-    cursor.frame = Math.min(bufferEnd(), session.startFrame + (lap + 1) * session.framesPerLap);
+    cursor.frame = Math.min(bufferEnd(), session.startFrame + (lap + 1) * session.framesPerLap - lead);
 
     return true;
   });
@@ -130,8 +140,8 @@ export function multiSessionBuffer(
 
     const relFrame = cursor.frame - session.startFrame;
     const lap = Math.floor(relFrame / session.framesPerLap);
-    // Last frame of the PREVIOUS lap (lap-1, dist ≈ 0.999).
-    const prevLapEnd = session.startFrame + lap * session.framesPerLap - 1;
+    // Last frame of the PREVIOUS lap (lap-1, dist ≈ 0.999), or `lead` frames short of its end.
+    const prevLapEnd = session.startFrame + lap * session.framesPerLap - Math.max(1, lead);
 
     cursor.frame = Math.max(session.startFrame, prevLapEnd);
 
@@ -211,7 +221,7 @@ export function singleSessionBuffer(
   replay: LapBufferReplay,
   carIdx: number,
   fastestLap: number,
-  opts: { initialCursor?: number; fastestTime?: number; subSessionId?: number; userId?: number } = {},
+  opts: { initialCursor?: number; fastestTime?: number; subSessionId?: number; userId?: number; lead?: number } = {},
 ): LapBuffer {
   return multiSessionBuffer(
     target,

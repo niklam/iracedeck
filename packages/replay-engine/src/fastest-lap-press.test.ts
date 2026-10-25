@@ -29,7 +29,13 @@ import {
   singleSessionBuffer as oneSessionLapBuffer,
   type SessionLayout,
 } from "./lap-walk-buffer.test-support.js";
-import { _getFastestLapSessionCache } from "./lap-walk.js";
+import { interruptLapWalks } from "./lap-walk-owners.js";
+import {
+  _getFastestLapSessionCache,
+  LAP_CROSSING_MAX_FRAMES,
+  LAP_CROSSING_NEAR_FRAMES,
+  LAP_START_APPROACH_FRAMES,
+} from "./lap-walk.js";
 import { getReplayGateView, type ReplayGateFactEnd, subscribeReplayGate } from "./replay-command-gate.js";
 import { cancelReplayCursorOwner } from "./replay-cursor.js";
 import { _resetReplayEngine } from "./replay-engine-reset.js";
@@ -234,6 +240,21 @@ describe("jump-to-fastest-lap", () => {
     const telemetry = controller.getCurrentTelemetry();
 
     return shownReplaySpeed(telemetry ? replaySpeedFromTelemetry(telemetry) : null, Date.now());
+  }
+
+  /**
+   * The absolute jumps sent after the last lap search, in order: the crossing
+   * probes, then the jump to the lap's run-up (#1432).
+   */
+  function seeksAfterLastLapSearch(): number[] {
+    const lastLapSearch = Math.max(
+      0,
+      ...mockReplay.nextLap.mock.invocationCallOrder,
+      ...mockReplay.prevLap.mock.invocationCallOrder,
+    );
+    const order = mockReplay.setPlayPosition.mock.invocationCallOrder;
+
+    return mockReplay.setPlayPosition.mock.calls.filter((_call, i) => order[i] > lastLapSearch).map((call) => call[1]);
   }
 
   /** A buffer over this case's controller and replay (`lap-walk-buffer.test-support.ts`). */
@@ -1377,7 +1398,7 @@ describe("jump-to-fastest-lap", () => {
 
           expect(mockReplay.setPlaySpeed).toHaveBeenCalledExactlyOnceWith(1, false);
           expect(sentSpeeds.at(-1)).toEqual({ speed: 1, slowMotion: false });
-          // The speed is the press's last command: after the back-step has landed.
+          // The speed is the press's last command: after the jump to the lap's run-up has landed.
           const lastJump = Math.max(...mockReplay.setPlayPosition.mock.invocationCallOrder);
 
           expect(mockReplay.setPlaySpeed.mock.invocationCallOrder[0]).toBeGreaterThan(lastJump);
@@ -1390,7 +1411,7 @@ describe("jump-to-fastest-lap", () => {
         }
       });
 
-      it("a converged walk records its landed frame, back-adjusted by the back-step, with the time left to the store", async () => {
+      it("a converged walk records the first frame of the lap, with the time left to the store, and rests a second before it", async () => {
         vi.useFakeTimers();
 
         try {
@@ -1399,9 +1420,6 @@ describe("jump-to-fastest-lap", () => {
           await pressJumpToFastestLap({ origin: "ctx-1", target: "viewed-car" });
           await vi.runAllTimersAsync();
 
-          const backstepFrame = mockReplay.setPlayPosition.mock.calls.at(-1)?.[1];
-
-          expect(typeof backstepFrame).toBe("number");
           expect(mockStore.laps.recordLapStart).toHaveBeenCalledTimes(1);
           expect(mockStore.laps.recordLapStart).toHaveBeenCalledWith({
             subSessionId: 86_697_546,
@@ -1411,11 +1429,11 @@ describe("jump-to-fastest-lap", () => {
             carNumberRaw: 4,
             userId: 123_456,
             lap: 4,
-            frame: (backstepFrame as number) + 2,
+            // Lap 4 starts on frame 4000 in the fixture: the first frame that reads it (#1432).
+            frame: 4000,
           });
-          // End of lap 3 in the fixture is frame 3999: the recorded start of lap 4 sits there.
-          expect((backstepFrame as number) + 2).toBeGreaterThanOrEqual(3997);
-          expect((backstepFrame as number) + 2).toBeLessThanOrEqual(3999);
+          // The last jump is to the lap's run-up, where a record jump to it lands.
+          expect(mockReplay.setPlayPosition.mock.calls.at(-1)?.[1]).toBe(4000 - LAP_START_APPROACH_FRAMES);
         } finally {
           vi.useRealTimers();
         }
@@ -1496,7 +1514,7 @@ describe("jump-to-fastest-lap", () => {
             });
           }
 
-          // The speed that ends the press must wait for the back-step to land too.
+          // The speed that ends the press must wait for the jump to the run-up to land too.
           mockReplay.setPlaySpeed.mockImplementation(() => {
             if (pending !== null) commandsWhileInFlight++;
 
@@ -1509,8 +1527,7 @@ describe("jump-to-fastest-lap", () => {
           expect(commandsWhileInFlight).toBe(0);
           expect(mockReplay.setPlayPosition.mock.calls.length).toBeGreaterThan(1);
           expect(mockReplay.setPlaySpeed).toHaveBeenCalledExactlyOnceWith(1, false);
-          expect(buffer.cursor.frame).toBeGreaterThanOrEqual(3990);
-          expect(buffer.cursor.frame).toBeLessThanOrEqual(3999);
+          expect(buffer.cursor.frame).toBe(4000 - LAP_START_APPROACH_FRAMES);
         } finally {
           vi.useRealTimers();
         }
@@ -1603,8 +1620,7 @@ describe("jump-to-fastest-lap", () => {
           expect(mockReplay.nextLap.mock.calls.length + mockReplay.prevLap.mock.calls.length).toBeGreaterThan(0);
           expect(commandsInTransit).toBe(0);
           expect(mockReplay.setPlaySpeed).toHaveBeenCalledExactlyOnceWith(1, false);
-          expect(buffer.cursor.frame).toBeGreaterThanOrEqual(3990);
-          expect(buffer.cursor.frame).toBeLessThanOrEqual(3999);
+          expect(buffer.cursor.frame).toBe(4000 - LAP_START_APPROACH_FRAMES);
         } finally {
           vi.useRealTimers();
         }
@@ -1747,8 +1763,8 @@ describe("jump-to-fastest-lap", () => {
           );
           expect(mockStore.laps.recordLapStart).not.toHaveBeenCalled();
           expect(mockReplay.setPlaySpeed).toHaveBeenCalledExactlyOnceWith(1, false);
-          // Left two ticks before the start of lap 5, where the nudge left it.
-          expect(buffer.cursor.frame).toBe(4998);
+          // Left a second before the start of lap 5, where the last lap step left it.
+          expect(buffer.cursor.frame).toBe(5000 - LAP_START_APPROACH_FRAMES);
         } finally {
           vi.useRealTimers();
         }
@@ -1855,7 +1871,7 @@ describe("jump-to-fastest-lap", () => {
           await pressJumpToFastestLap({ origin: "ctx-1", target: "viewed-car" });
           await vi.runAllTimersAsync();
 
-          // Cache hit — and the end read live, so the bisection reached lap 24's end.
+          // Cache hit — and the end read live, so the bisection reached lap 25's start.
           expect(mockReplay.goToStart).toHaveBeenCalledTimes(1);
           expect(logger.warn).not.toHaveBeenCalled();
           expect(mockStore.laps.recordLapStart).toHaveBeenCalledTimes(2);
@@ -1863,8 +1879,7 @@ describe("jump-to-fastest-lap", () => {
           const frame = mockStore.laps.recordLapStart.mock.calls[1][0].frame;
 
           expect(mockStore.laps.recordLapStart.mock.calls[1][0].lap).toBe(25);
-          expect(frame).toBeGreaterThanOrEqual(24_997);
-          expect(frame).toBeLessThanOrEqual(24_999);
+          expect(frame).toBe(25_000);
         } finally {
           vi.useRealTimers();
         }
@@ -1932,11 +1947,8 @@ describe("jump-to-fastest-lap", () => {
             expect(call[1]).toBeGreaterThanOrEqual(1000);
           }
 
-          // End of lap 3 in the second instance: 1000 + 3999.
-          const frame = mockStore.laps.recordLapStart.mock.calls[0][0].frame;
-
-          expect(frame).toBeGreaterThanOrEqual(4997);
-          expect(frame).toBeLessThanOrEqual(4999);
+          // The start of lap 4 in the second instance: 1000 + 4000.
+          expect(mockStore.laps.recordLapStart.mock.calls[0][0].frame).toBe(5000);
           expect(mockStore.laps.recordLapStart).toHaveBeenCalledWith(
             expect.objectContaining({ sessionNum: 0, sessionUniqueId: 2, lap: 4 }),
           );
@@ -2217,13 +2229,13 @@ describe("jump-to-fastest-lap", () => {
           await pressJumpToFastestLap({ origin: "ctx-1", target: "viewed-car" });
           await vi.runAllTimersAsync();
 
-          // The back-step was computed from the true landing (3999), not the
-          // intermediate 3989: it targets 3997 and the record says 3999.
-          expect(mockReplay.setPlayPosition.mock.calls.at(-1)?.[1]).toBe(3997);
+          // The crossing was bracketed from the true landing (3999), not the
+          // intermediate 3989: its first probe is 16 frames past 3999.
+          expect(seeksAfterLastLapSearch()[0]).toBe(3999 + LAP_CROSSING_NEAR_FRAMES);
           expect(mockStore.laps.recordLapStart).toHaveBeenCalledExactlyOnceWith(
-            expect.objectContaining({ frame: 3999 }),
+            expect.objectContaining({ frame: 4000 }),
           );
-          expect(buffer.cursor.frame).toBe(3997);
+          expect(buffer.cursor.frame).toBe(4000 - LAP_START_APPROACH_FRAMES);
         } finally {
           vi.useRealTimers();
         }
@@ -2586,7 +2598,7 @@ describe("jump-to-fastest-lap", () => {
             await vi.runAllTimersAsync();
 
             expect(replay.speedCommands()).toEqual(speedCommands);
-            // The speed, when one is sent, follows the back-step's landing.
+            // The speed, when one is sent, follows the landing of the jump to the run-up.
             expect(replay.afterLastSeek()).toEqual(speedCommands.slice(1));
             expect(replay.speed()).toEqual(after);
             expect(cachedSpeed()).toEqual(after);
@@ -2690,21 +2702,20 @@ describe("jump-to-fastest-lap", () => {
     });
 
     describe("walk phases (end-to-end on a single-session buffer)", () => {
-      it("lands at lap === targetLap - 1 with dist ≥ 0.999 (= end of lap before fastest)", async () => {
+      it("rests a second before the first frame of the fastest lap (#1432)", async () => {
         vi.useFakeTimers();
 
         try {
-          // Fastest lap = 4 → target = lap 3. In the single-session buffer
-          // (1000 frames per lap), end of lap 3 = frame 3 * 1000 + 999 = 3999.
+          // Fastest lap = 4. In the single-session buffer (1000 frames per
+          // lap), lap 4 starts on frame 4 * 1000 = 4000.
           const buffer = singleSessionBuffer(4, 4);
 
           await pressJumpToFastestLap({ origin: "ctx-1", target: "viewed-car" });
           await vi.runAllTimersAsync();
 
-          // After bisection + lap-step + nudge + 2-tick back-step, the cursor
-          // should be at end-of-lap-3 minus 2 ticks (~3997).
-          expect(buffer.cursor.frame).toBeGreaterThanOrEqual(3990);
-          expect(buffer.cursor.frame).toBeLessThanOrEqual(3999);
+          // After the bisection, the lap steps and the crossing probes, the
+          // cursor is where a record jump to the lap would land.
+          expect(buffer.cursor.frame).toBe(4000 - LAP_START_APPROACH_FRAMES);
         } finally {
           vi.useRealTimers();
         }
@@ -2780,7 +2791,7 @@ describe("jump-to-fastest-lap", () => {
           await pressJumpToFastestLap({ origin: "ctx-1", target: "viewed-car" });
           await vi.runAllTimersAsync();
 
-          // Bisection-driven setPlayPosition calls (skip the trailing back-step).
+          // Bisection-driven setPlayPosition calls and the crossing probes (skip the trailing jump to the run-up).
           const bisectionFrames = mockReplay.setPlayPosition.mock.calls.slice(0, -1).map((call) => call[1]);
 
           // Guard against a vacuously-passing loop if the walker never
@@ -2807,7 +2818,7 @@ describe("jump-to-fastest-lap", () => {
           await vi.runAllTimersAsync();
 
           // Either nextLap or prevLap fires at least once during the lap-step
-          // and nudge phases — whichever direction reaches lap=3.
+          // phase — whichever direction reaches lap=3.
           const totalLapStepCalls = mockReplay.nextLap.mock.calls.length + mockReplay.prevLap.mock.calls.length;
 
           expect(totalLapStepCalls).toBeGreaterThan(0);
@@ -2816,7 +2827,7 @@ describe("jump-to-fastest-lap", () => {
         }
       });
 
-      it("does a single setPlayPosition(Begin, frame - 2) for the back-step", async () => {
+      it("bisects the crossing by absolute jumps from the lap search's landing, then jumps once to the run-up (#1432)", async () => {
         vi.useFakeTimers();
 
         try {
@@ -2825,20 +2836,370 @@ describe("jump-to-fastest-lap", () => {
           await pressJumpToFastestLap({ origin: "ctx-1", target: "viewed-car" });
           await vi.runAllTimersAsync();
 
-          // The LAST setPlayPosition is the 2-tick back-step. Frame just
-          // before it (= the pre-back-step cursor position) should be 2
-          // frames higher than the LAST setPlayPosition's target.
-          const calls = mockReplay.setPlayPosition.mock.calls;
-          const lastTargetFrame = calls[calls.length - 1][1];
-          const secondLastTargetFrame = calls[calls.length - 2]?.[1];
+          // The lap steps end on 3999 (Previous Lap, the last frame of lap 3):
+          // 4015 reads lap 4, and four probes bisect the 16 frames between.
+          expect(seeksAfterLastLapSearch()).toEqual([4015, 4007, 4003, 4001, 4000, 4000 - LAP_START_APPROACH_FRAMES]);
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+    });
 
-          // The very last call IS the back-step. It targets a frame 2 less
-          // than the frame the cursor sat on right before it.
-          expect(typeof secondLastTargetFrame).toBe("number");
-          // Cursor frame just before back-step is at end-of-lap-3 ≈ 3999.
-          // Back-step target is 3999 - 2 = 3997.
-          expect(lastTargetFrame).toBeLessThanOrEqual(3997);
-          expect(lastTargetFrame).toBeGreaterThanOrEqual(3995);
+    describe("the crossing: the frame the lap counter flips (#1432)", () => {
+      /** Lap 4 starts on frame 4000 in the single-session buffer, so a record jump to it lands on 3940. */
+      const LAP_4_START = 4000;
+
+      /** Has `frame` read as `patch` makes it, whenever the cursor is on it. */
+      function readsOn(frame: number, patch: (telemetry: TelemetryData) => TelemetryData): void {
+        const read = controller.getCurrentTelemetry;
+
+        controller.getCurrentTelemetry = vi.fn(() => {
+          const telemetry = read();
+
+          return telemetry?.ReplayFrameNum === frame ? patch(telemetry) : telemetry;
+        });
+      }
+
+      /** Car 4 reading `lap` (and `dist`) on the frame the patch applies to. */
+      const carReads =
+        (lap: number, dist: number) =>
+        (telemetry: TelemetryData): TelemetryData => {
+          const laps = [...(telemetry.CarIdxLap as number[])];
+          const dists = [...(telemetry.CarIdxLapDistPct as number[])];
+
+          laps[4] = lap;
+          dists[4] = dist;
+
+          return { ...telemetry, CarIdxLap: laps, CarIdxLapDistPct: dists } as TelemetryData;
+        };
+
+      it("11 frames short, as measured: five probes, each read back before the next, record the first frame of the lap", async () => {
+        vi.useFakeTimers();
+
+        try {
+          const buffer = singleSessionBuffer(4, 4, { lead: 11 });
+          // Every jump lands 300 ms after it is sent: nothing may go out before it reads back.
+          let pending: number | null = null;
+          let commandsWhileInFlight = 0;
+
+          mockReplay.setPlayPosition.mockImplementation((_mode: unknown, frame: number) => {
+            if (pending !== null) commandsWhileInFlight++;
+
+            pending = Math.max(0, Math.min(buffer.bufferEnd(), frame));
+            setTimeout(() => {
+              buffer.cursor.frame = pending as number;
+              pending = null;
+            }, 300);
+
+            return true;
+          });
+
+          await pressJumpToFastestLap({ origin: "ctx-1", target: "viewed-car" });
+          await vi.runAllTimersAsync();
+
+          // Previous Lap rests on 3989, lap 3; 4005 reads lap 4, and four probes bisect the 16 frames between.
+          expect(seeksAfterLastLapSearch()).toEqual([
+            4005,
+            3997,
+            4001,
+            3999,
+            4000,
+            LAP_4_START - LAP_START_APPROACH_FRAMES,
+          ]);
+          expect(commandsWhileInFlight).toBe(0);
+          expect(mockStore.laps.recordLapStart).toHaveBeenCalledExactlyOnceWith(
+            expect.objectContaining({ lap: 4, frame: LAP_4_START }),
+          );
+          expect(buffer.cursor.frame).toBe(LAP_4_START - LAP_START_APPROACH_FRAMES);
+          expect(logger.debug).toHaveBeenCalledWith(
+            "Jump to fastest lap: lap 4 starts at frame 4000; the lap search landed 11 frames before it (5 crossing probes)",
+          );
+          expect(logger.warn).not.toHaveBeenCalled();
+          expect(mockReplay.nextLap).not.toHaveBeenCalled();
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+
+      it("the next press for the lap is a record hit landing on the same frame, with no search", async () => {
+        vi.useFakeTimers();
+
+        try {
+          const buffer = singleSessionBuffer(4, 4, { lead: 11 });
+
+          await pressJumpToFastestLap({ origin: "ctx-1", target: "viewed-car" });
+          await vi.runAllTimersAsync();
+
+          const walked = buffer.cursor.frame;
+          const recorded = mockStore.laps.recordLapStart.mock.calls[0][0].frame;
+
+          mockStore.laps.findLapStart.mockImplementation(() => ({
+            hit: true,
+            frame: recorded,
+            timeMs: null,
+            matchedBy: "pair",
+          }));
+          buffer.cursor.frame = 7000;
+          vi.clearAllMocks();
+
+          await pressJumpToFastestLap({ origin: "ctx-1", target: "viewed-car" });
+          await vi.runAllTimersAsync();
+
+          expect(logger.info).toHaveBeenCalledWith(expect.stringContaining("record HIT"));
+          expect(mockReplay.setPlayPosition.mock.calls.map((call) => call[1])).toEqual([walked]);
+          expect(mockReplay.nextLap).not.toHaveBeenCalled();
+          expect(mockReplay.prevLap).not.toHaveBeenCalled();
+          expect(buffer.cursor.frame).toBe(walked);
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+
+      it("a lap search that lands on the line: the nudge's landing on the lap is bracketed back, with no Previous Lap", async () => {
+        vi.useFakeTimers();
+
+        try {
+          // Fastest lap 6: the lap steps' Next Lap rests on 5000, the first
+          // frame of lap 5, too far from the line; the nudge lands on 6000.
+          const buffer = singleSessionBuffer(4, 6, { lead: 0 });
+
+          await pressJumpToFastestLap({ origin: "ctx-1", target: "viewed-car" });
+          await vi.runAllTimersAsync();
+
+          expect(mockReplay.prevLap).not.toHaveBeenCalled();
+          expect(mockReplay.nextLap).toHaveBeenCalledTimes(2);
+          expect(logger.debug).toHaveBeenCalledWith(
+            `Jump to fastest lap: nudging via nextLap (lap 5 still read on frame ${5000 + LAP_CROSSING_MAX_FRAMES})`,
+          );
+          expect(logger.debug).toHaveBeenCalledWith(
+            "Jump to fastest lap: nextLap landed on lap 6; bracketing back from frame 6000",
+          );
+          expect(logger.debug).toHaveBeenCalledWith(
+            "Jump to fastest lap: lap 6 starts at frame 6000; the lap search landed 0 frames before it (7 crossing probes)",
+          );
+          expect(mockStore.laps.recordLapStart).toHaveBeenCalledExactlyOnceWith(
+            expect.objectContaining({ lap: 6, frame: 6000 }),
+          );
+          expect(buffer.cursor.frame).toBe(6000 - LAP_START_APPROACH_FRAMES);
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+
+      it.each<[number, number]>([
+        [LAP_CROSSING_NEAR_FRAMES, 5],
+        [LAP_CROSSING_NEAR_FRAMES + 1, 8],
+        [LAP_CROSSING_MAX_FRAMES, 9],
+      ])("%i frames short: converges in %i crossing probes, with no nudge", async (lead, probes) => {
+        vi.useFakeTimers();
+
+        try {
+          const buffer = singleSessionBuffer(4, 4, { lead });
+
+          await pressJumpToFastestLap({ origin: "ctx-1", target: "viewed-car" });
+          await vi.runAllTimersAsync();
+
+          expect(mockReplay.nextLap).not.toHaveBeenCalled();
+          expect(seeksAfterLastLapSearch()).toHaveLength(probes + 1);
+          expect(logger.debug).toHaveBeenCalledWith(
+            `Jump to fastest lap: lap 4 starts at frame 4000; the lap search landed ${lead} frames before it (${probes} crossing probes)`,
+          );
+          expect(mockStore.laps.recordLapStart).toHaveBeenCalledExactlyOnceWith(
+            expect.objectContaining({ lap: 4, frame: LAP_4_START }),
+          );
+          expect(buffer.cursor.frame).toBe(LAP_4_START - LAP_START_APPROACH_FRAMES);
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+
+      it("more than 120 frames short: does not converge, records nothing, and rests a second before the lap search's landing", async () => {
+        vi.useFakeTimers();
+
+        try {
+          const lead = LAP_CROSSING_MAX_FRAMES + 1;
+          const landing = LAP_4_START - lead;
+          const buffer = singleSessionBuffer(4, 4, { lead });
+
+          await pressJumpToFastestLap({ origin: "ctx-1", target: "viewed-car" });
+          await vi.runAllTimersAsync();
+
+          expect(logger.warn).toHaveBeenCalledWith(
+            `Jump to fastest lap: walk did not converge (lap 4 not reached within 120 frames of the lap search's landing (frame ${landing}, lap=3, dist=0.8790, session=2/3)); nothing recorded`,
+          );
+          // One nudge, as at most one: it lands on lap 4, too far from the line to bracket back.
+          expect(mockReplay.nextLap).toHaveBeenCalledOnce();
+          expect(mockStore.laps.recordLapStart).not.toHaveBeenCalled();
+          expect(logger.info).not.toHaveBeenCalledWith(expect.stringContaining("walk converged"));
+          expect(buffer.cursor.frame).toBe(landing - LAP_START_APPROACH_FRAMES);
+          // The press still ends as the setting says: Play here.
+          expect(mockReplay.setPlaySpeed).toHaveBeenCalledExactlyOnceWith(1, false);
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+
+      it("lap steps that end on a bisection probe mid-lap: one nudge, then the bracket from its landing", async () => {
+        vi.useFakeTimers();
+
+        try {
+          // 2000 frames a lap: the first probe, 4999, is in the middle of lap 2, the lap before the target.
+          const buffer = multiSessionBuffer(
+            4,
+            [{ sessionNum: 2, sessionUniqueId: 3, startFrame: 0, endFrame: 9999, framesPerLap: 2000, fastestLap: 3 }],
+            { initialCursor: 5000, lead: 11 },
+          );
+
+          await pressJumpToFastestLap({ origin: "ctx-1", target: "viewed-car" });
+          await vi.runAllTimersAsync();
+
+          expect(mockReplay.nextLap).toHaveBeenCalledOnce();
+          expect(mockReplay.prevLap).not.toHaveBeenCalled();
+          expect(logger.debug).toHaveBeenCalledWith(
+            "Jump to fastest lap: nudging via nextLap (the lap steps ended on a bisection probe, frame 4999)",
+          );
+          expect(logger.debug).toHaveBeenCalledWith(
+            "Jump to fastest lap: lap 3 starts at frame 6000; the lap search landed 11 frames before it (5 crossing probes)",
+          );
+          expect(mockStore.laps.recordLapStart).toHaveBeenCalledExactlyOnceWith(
+            expect.objectContaining({ lap: 3, frame: 6000 }),
+          );
+          expect(buffer.cursor.frame).toBe(6000 - LAP_START_APPROACH_FRAMES);
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+
+      it("a bisection probe in the lap's last frames whose nudge does not bracket: brackets from the probe", async () => {
+        vi.useFakeTimers();
+
+        try {
+          // Fastest lap 5: the first probe, 4999, is the last frame of lap 4; the nudge rests on 5989, lap 5.
+          const buffer = singleSessionBuffer(4, 5, { lead: 11 });
+
+          await pressJumpToFastestLap({ origin: "ctx-1", target: "viewed-car" });
+          await vi.runAllTimersAsync();
+
+          expect(mockReplay.nextLap).toHaveBeenCalledOnce();
+          expect(logger.debug).toHaveBeenCalledWith(
+            "Jump to fastest lap: nextLap landed on lap 5; bracketing back from frame 5989",
+          );
+          expect(logger.debug).toHaveBeenCalledWith(
+            "Jump to fastest lap: lap 5 starts at frame 5000; the bisection probe was 1 frame before it (7 crossing probes)",
+          );
+          expect(mockStore.laps.recordLapStart).toHaveBeenCalledExactlyOnceWith(
+            expect.objectContaining({ lap: 5, frame: 5000 }),
+          );
+          expect(buffer.cursor.frame).toBe(5000 - LAP_START_APPROACH_FRAMES);
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+
+      it.each<[string, (telemetry: TelemetryData) => TelemetryData, string]>([
+        ["another session", (telemetry) => ({ ...telemetry, SessionUniqueID: 99 }) as TelemetryData, "session 2/99"],
+        ["the car out of the world", carReads(-1, -1), "the car out of the world"],
+        ["the lap after the target", carReads(5, 0.01), "lap 5"],
+      ])("a crossing probe that reads %s: does not converge, and records nothing", async (_what, patch, read) => {
+        vi.useFakeTimers();
+
+        try {
+          // The lap steps end on 3999 (Previous Lap); the first crossing probe is 4015.
+          const buffer = singleSessionBuffer(4, 4);
+
+          readsOn(3999 + LAP_CROSSING_NEAR_FRAMES, patch);
+
+          await pressJumpToFastestLap({ origin: "ctx-1", target: "viewed-car" });
+          await vi.runAllTimersAsync();
+
+          expect(logger.warn).toHaveBeenCalledWith(
+            `Jump to fastest lap: walk did not converge (a crossing probe on frame 4015 read ${read}); nothing recorded`,
+          );
+          expect(seeksAfterLastLapSearch()).toEqual([4015, 3999 - LAP_START_APPROACH_FRAMES]);
+          expect(mockStore.laps.recordLapStart).not.toHaveBeenCalled();
+          expect(buffer.cursor.frame).toBe(3999 - LAP_START_APPROACH_FRAMES);
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+
+      it("a crossing probe past the session's end is clamped to it", async () => {
+        vi.useFakeTimers();
+
+        try {
+          // The recording ends on 4002: lap 4 starts two frames before its end.
+          multiSessionBuffer(
+            4,
+            [{ sessionNum: 2, sessionUniqueId: 3, startFrame: 0, endFrame: 4002, framesPerLap: 1000, fastestLap: 4 }],
+            { initialCursor: 2000, lead: 11 },
+          );
+
+          await pressJumpToFastestLap({ origin: "ctx-1", target: "viewed-car" });
+          await vi.runAllTimersAsync();
+
+          // From 3989, the first probe would be 4005: it goes to 4002.
+          expect(seeksAfterLastLapSearch()[0]).toBe(4002);
+          expect(Math.max(...mockReplay.setPlayPosition.mock.calls.map((call) => call[1]))).toBe(4002);
+          expect(mockStore.laps.recordLapStart).toHaveBeenCalledExactlyOnceWith(
+            expect.objectContaining({ lap: 4, frame: LAP_4_START }),
+          );
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+
+      it("a replay key during a crossing probe cancels the walk: no further probe, nothing recorded", async () => {
+        vi.useFakeTimers();
+
+        try {
+          singleSessionBuffer(4, 4);
+
+          const seek = mockReplay.setPlayPosition.getMockImplementation()!;
+
+          mockReplay.setPlayPosition.mockImplementation((mode, frame) => {
+            if (frame === 4015) setTimeout(() => cancelReplayCursorOwner("next"), 10);
+
+            return seek(mode, frame);
+          });
+
+          await pressJumpToFastestLap({ origin: "ctx-1", target: "viewed-car" });
+          await runPressOut();
+
+          expect(logger.info).toHaveBeenCalledWith("Jump to fastest lap: walk cancelled by next");
+          expect(seeksAfterLastLapSearch()).toEqual([4015]);
+          expect(mockReplay.setPlaySpeed).not.toHaveBeenCalled();
+          expect(mockStore.laps.recordLapStart).not.toHaveBeenCalled();
+          expect(_activeLapPress()).toBeNull();
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+
+      it("a camera switch during a crossing probe interrupts the walk: the replay is put back, nothing recorded", async () => {
+        vi.useFakeTimers();
+
+        try {
+          const buffer = singleSessionBuffer(4, 4);
+
+          const seek = mockReplay.setPlayPosition.getMockImplementation()!;
+
+          mockReplay.setPlayPosition.mockImplementation((mode, frame) => {
+            if (frame === 4015) setTimeout(() => interruptLapWalks("next-car"), 10);
+
+            return seek(mode, frame);
+          });
+
+          await pressJumpToFastestLap({ origin: "ctx-1", target: "viewed-car" });
+          await runPressOut();
+
+          expect(logger.info).toHaveBeenCalledWith(
+            "Jump to fastest lap: walk interrupted by next-car; replay put back",
+          );
+          // No further probe: the way back to the frame the press found the replay on.
+          expect(seeksAfterLastLapSearch()).toEqual([4015, 5000]);
+          expect(buffer.cursor.frame).toBe(5000);
+          expect(mockStore.laps.recordLapStart).not.toHaveBeenCalled();
+          expect(_activeLapPress()).toBeNull();
         } finally {
           vi.useRealTimers();
         }

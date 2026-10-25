@@ -93,16 +93,21 @@ export const MAX_ABSENT_PROBES = 31;
 //   2. Bisect within the target session's bounds (looked up from the cache)
 //      until `CarIdxLap[carIdx]` is within `CLOSE_ENOUGH_LAPS` of the target.
 //   3. Lap-step refinement: `nextLap` / `prevLap` until `CarIdxLap[carIdx]`
-//      is the lap before the target, a distance nudge to its end, and a
-//      two-tick back-step.
+//      is the lap before the target.
+//   4. The crossing (#1432): two frames at most `LAP_CROSSING_MAX_FRAMES`
+//      apart, the earlier reading the lap before the target and the later
+//      the target, bracketed from where a lap search left the cursor (one
+//      Next Lap nudge when that is not near enough) and bisected to adjacent
+//      frames by absolute jumps. The later is the lap start, and the cursor
+//      is left `LAP_START_APPROACH_FRAMES` before it.
 //
 // #1203 changed how the walk waits and ends: an absolute jump settles when
 // `ReplayFrameNum` reads the frame that was sent, a search when the frame has
 // moved and held; every speed sent reaches the keys and dials (today through
 // the speed state, `replay-speed-state.ts`, and `onReplaySpeedChanged`);
 // one walk runs per action instance and any other Replay Control command
-// cancels it; and a converged walk writes its landed frame into the record,
-// so the next press is a lookup.
+// cancels it; and a converged walk writes the lap start it found into the
+// record, so the next press is a lookup.
 
 /**
  * After bisection, the lap-step phase takes over. `CLOSE_ENOUGH_LAPS = 2`
@@ -128,27 +133,30 @@ export const MAX_LAP_STEPS = 10;
 export const MAX_SESSIONS = 10;
 
 /**
- * Threshold for `CarIdxLapDistPct` (0..1) at which the cursor is "close
- * enough to the end of the lap". After lap-step lands on the right lap,
- * if dist is below this we do one extra `nextLap` (with `prevLap` recovery
- * on overshoot) so the cursor parks at the very end of the lap-before-the-
- * fastest, ready for a Play press to show the line-crossing.
+ * How far from where a lap search left the cursor the walk's first crossing
+ * probe looks for the frame the lap counter flips (#1432): the 11 frames
+ * iRacing's Next Lap was measured to rest short of the line, with half
+ * again and rounded up to a power of two, so the measured case is bisected
+ * in four more probes.
  */
-export const FASTEST_LAP_DIST_THRESHOLD = 0.999;
+export const LAP_CROSSING_NEAR_FRAMES = 16;
 
 /**
- * Number of `prevFrame` calls applied as the very last step. At 60 Hz that's
- * ~16 ms per tick, so 2 ticks ≈ 32 ms of buffer before the line-crossing —
- * the cursor lands far enough back that the next Play press shows the car
- * visibly approaching, not already crossing.
+ * The furthest from where a lap search left the cursor the walk looks for
+ * the frame the lap counter flips (#1432): two seconds of replay. A flip
+ * further away is not found, and the walk records nothing. Eleven times the
+ * measured offset, and above the ~100 frames a rolling start's lap search
+ * was measured to rest before the line; each doubling of it costs one probe.
  */
-export const FASTEST_LAP_FINAL_BACKSTEP_TICKS = 2;
+export const LAP_CROSSING_MAX_FRAMES = 120;
 
 /**
  * Frames before the recorded lap start a record hit lands at: one second of
  * approach in the in-session replay, two in a saved file (a live-recorded
  * frame lands about a second early there — the #1162 lag decision), both
- * showing the crossing into the timed lap.
+ * showing the crossing into the timed lap. A walk that found the lap start
+ * leaves the cursor here too (#1432), so its press and every later one land
+ * alike.
  */
 export const LAP_START_APPROACH_FRAMES = 60;
 
@@ -258,17 +266,22 @@ export type FastestLapRecordIdentity = {
 export type FastestLapWalkLanding = {
   /** The sample read on the landed frame, which the playback step compares the speed wanted against. */
   telemetry: TelemetryData;
-  /** The frame the cursor is on: the back-step short of where the walk got to. */
+  /** The frame the cursor is on: `LAP_START_APPROACH_FRAMES` before `lapStartFrame`, at 0 at the latest. */
   landedFrame: number;
-  /** The frame the walk takes for the lap's start: `landedFrame` plus the back-step. Verified only when `converged`. */
+  /**
+   * The frame the walk takes for the lap's start. When `converged`, the first
+   * frame it read the car on the target lap, the frame before reading the
+   * lap before it (#1432); otherwise, unverified, where the last lap search
+   * on the lap before left the cursor (else the frame the lap steps ended on).
+   */
   lapStartFrame: number;
-  /** Whether the walk verified the landing as the lap start. Only then did it go into the record. */
+  /** Whether the walk found the frame the car's lap counter flips. Only then did it go into the record. */
   converged: boolean;
   /**
-   * The car's `CarIdxLapDistPct` on the landed frame, when one of iRacing's
-   * lap searches put the cursor there and that sample shows the car in the
-   * target session instance on the lap before the target; null otherwise. What a caller with a looser need than the record's
-   * judges an unverified landing by (#1354, #1432).
+   * The car's `CarIdxLapDistPct` where one of iRacing's lap searches last
+   * left the cursor showing the car in the target session instance on the
+   * lap before the target; null when none did. What a caller with a looser
+   * need than the record's judges an unverified landing by (#1354, #1432).
    */
   priorLapDist: number | null;
   /**
@@ -1085,9 +1098,8 @@ export async function walkToLapStart(
     return null;
   }
 
-  // Target the lap BEFORE the fastest one — we want to land at the end
-  // of that lap (just before the S/F crossing into the fastest lap), so
-  // playing from there shows the line-crossing into the fast lap.
+  // The bisection and the lap steps aim at the lap BEFORE the target: the
+  // side of the line the crossing phase brackets the lap start from.
   const targetLapMinus1 = Math.max(0, targetLap - 1);
 
   // Phase 3: bisect within the target session until we're within
@@ -1245,142 +1257,321 @@ export async function walkToLapStart(
     notConverged = `lap-step budget of ${MAX_LAP_STEPS} exhausted at lap ${carLap(tel) ?? "n/a"}, target ${targetLapMinus1}`;
   }
 
-  // Phase 5: dist refinement. We're on the right lap but maybe not at
-  // the end. If dist < 0.999, press nextLap to advance to the end; if
-  // that overshoots into the next lap, press prevLap to come back. Each
-  // nudge must be seen to land, or nothing about the frame is known.
-  let nudges = 0;
-
-  if (notConverged === null) {
-    const refineDist = carDist(tel);
-    // On lap 0 a car can stand still within a few metres of the line — on
-    // its grid slot, in its pit stall — for minutes, so there a distance
-    // near 1 proves nothing about the frame: a probe that landed on lap 0
-    // without a lap search is nudged whatever it reads (#1354).
-    const unplaced = targetLapMinus1 === 0 && !landedByLapSearch;
-
-    if (unplaced || (typeof refineDist === "number" && refineDist < FASTEST_LAP_DIST_THRESHOLD)) {
-      logger.debug(
-        `${logLabel}: nudging via nextLap (currently lap=${targetLapMinus1}, dist=${typeof refineDist === "number" ? refineDist.toFixed(4) : "n/a"})`,
-      );
-      const forward = await search(() => send({ kind: "search", search: "nextLap" }), "nextLap (nudge)");
-
-      nudges++;
-
-      if (forward.kind !== "moved") {
-        notConverged = `nudge (nextLap) ${forward.kind}`;
-      } else {
-        tel = forward.telemetry;
-        landedByLapSearch = true;
-        const afterLap = carLap(tel);
-
-        if (typeof afterLap === "number" && afterLap > targetLapMinus1) {
-          logger.debug(`${logLabel}: nextLap overshot to lap=${afterLap}; recovering via prevLap`);
-          const back = await search(() => send({ kind: "search", search: "prevLap" }), "prevLap (nudge recovery)");
-
-          nudges++;
-
-          if (back.kind !== "moved") {
-            notConverged = `nudge recovery (prevLap) ${back.kind}`;
-          } else {
-            tel = back.telemetry;
-          }
-        }
-      }
-    }
-  }
-
-  // The frame about to be recorded is the one before the back-step: verify
-  // its sample says what the record will claim.
+  // Phase 5: the crossing (#1432). The walk has converged when it holds two
+  // frames at most LAP_CROSSING_MAX_FRAMES apart, the earlier reading the car
+  // on the lap before the target and the later on the target lap, both in the
+  // target session instance; a bisection then narrows them to adjacent
+  // frames, and the later is the lap start. Nothing about the distance enters
+  // it: iRacing's lap search rests short of the line by an offset it does not
+  // keep (11 frames on #1432's tape, about 100 for lap 1 of a rolling start).
+  // Every probe is an absolute jump that reads back before the next is sent,
+  // so a cancel or an interrupt stops the phase as it stops a bisection probe.
   const describeSample = (sample: TelemetryData | null): string =>
     `lap=${carLap(sample) ?? "n/a"}, dist=${typeof carDist(sample) === "number" ? (carDist(sample) as number).toFixed(4) : "n/a"}, session=${sample?.SessionNum ?? "n/a"}/${sample?.SessionUniqueID ?? "n/a"}`;
   const inTargetSession = (sample: TelemetryData | null): boolean =>
     sample?.SessionNum === targetSessionNum && sample?.SessionUniqueID === sessionUniqueId;
 
-  if (notConverged === null) {
-    const preLap = carLap(tel);
-    const preDist = carDist(tel);
+  /** A sample on one side of the line: the lap before the target (`before`) or the target lap (`on`). */
+  type CrossingSample = { frame: number; sample: TelemetryData; side: "before" | "on" };
 
-    if (!inTargetSession(tel)) {
-      notConverged = `landed outside the target session ${targetSessionNum}/${sessionUniqueId} (${describeSample(tel)})`;
-    } else if (preLap !== targetLapMinus1 || typeof preDist !== "number" || preDist < FASTEST_LAP_DIST_THRESHOLD) {
-      notConverged = `not at the end of lap ${targetLapMinus1} before the back-step (${describeSample(tel)})`;
+  /** Which side of the line a sample is on, or what else it read, for the log. */
+  const crossingSide = (sample: TelemetryData): "before" | "on" | string => {
+    if (!inTargetSession(sample)) return `session ${sample.SessionNum ?? "n/a"}/${sample.SessionUniqueID ?? "n/a"}`;
+
+    const lap = carLap(sample);
+    const dist = carDist(sample);
+
+    if (typeof lap !== "number" || lap < 0 || typeof dist !== "number" || dist < 0) return "the car out of the world";
+
+    if (lap === targetLapMinus1) return "before";
+
+    if (lap === targetLap) return "on";
+
+    return `lap ${lap}`;
+  };
+
+  /** A crossing step that ended the phase: the walk aborts (a jump that did not land), or does not converge. */
+  type CrossingStop = { kind: "aborted" } | { kind: "stopped"; reason: string };
+
+  let crossingProbes = 0;
+  let nudges = 0;
+  /**
+   * Where a lap search last left the cursor on the lap before the target, in
+   * the target session instance: what an unconverged walk returns as its
+   * unverified lap start, and the sample its `priorLapDist` is read on.
+   */
+  let searchLanding: TelemetryData | null = null;
+
+  const toFrameInSession = (frame: number): number => Math.min(endFrame, Math.max(bounds.startFrame, frame));
+
+  /** One crossing probe: an absolute jump, read back, that must land on one side of the line. */
+  const probeCrossing = async (frame: number): Promise<CrossingSample | CrossingStop> => {
+    const sample = await jumpTo(frame);
+
+    crossingProbes++;
+
+    if (sample == null) return { kind: "aborted" };
+
+    const side = crossingSide(sample);
+
+    if (side !== "before" && side !== "on") {
+      return { kind: "stopped", reason: `a crossing probe on frame ${frame} read ${side}` };
     }
-  }
 
-  // Phase 6: single absolute-frame back-step. Read the current frame,
-  // jump to `frame - FASTEST_LAP_FINAL_BACKSTEP_TICKS` in one broadcast.
-  const preBackstepFrame = readFrame(tel);
+    return { frame, sample, side };
+  };
 
-  if (preBackstepFrame === null) {
-    logger.warn(`${logLabel}: ReplayFrameNum unavailable before the back-step; aborting`);
+  type Bracket =
+    | { kind: "bracketed"; before: CrossingSample; on: CrossingSample }
+    | { kind: "unbracketed"; reason: string; last: CrossingSample };
+
+  /**
+   * Look for the other side of the line from `anchor`: forward from the lap
+   * before, backward from the target lap, first LAP_CROSSING_NEAR_FRAMES away
+   * and then LAP_CROSSING_MAX_FRAMES, each clamped to the session instance.
+   * `from` names the anchor for the log.
+   */
+  const bracketFrom = async (anchor: CrossingSample, from: string): Promise<Bracket | CrossingStop> => {
+    const direction = anchor.side === "before" ? 1 : -1;
+    let last = anchor;
+
+    for (const reach of [LAP_CROSSING_NEAR_FRAMES, LAP_CROSSING_MAX_FRAMES]) {
+      const frame = toFrameInSession(anchor.frame + direction * reach);
+
+      if (frame === last.frame) break;
+
+      const probe = await probeCrossing(frame);
+
+      if (!("side" in probe)) return probe;
+
+      if (probe.side !== anchor.side) {
+        return direction === 1
+          ? { kind: "bracketed", before: last, on: probe }
+          : { kind: "bracketed", before: probe, on: last };
+      }
+
+      last = probe;
+    }
+
+    const where = `${from} (frame ${anchor.frame}, ${describeSample(anchor.sample)})`;
+
+    return {
+      kind: "unbracketed",
+      last,
+      reason:
+        direction === 1
+          ? `lap ${targetLap} not reached within ${LAP_CROSSING_MAX_FRAMES} frames of ${where}`
+          : `lap ${targetLapMinus1} not found within ${LAP_CROSSING_MAX_FRAMES} frames before ${where}`,
+    };
+  };
+
+  /** The crossing the walk found: the adjacent frames either side of the line, and the anchor it was bracketed from. */
+  type Crossing = { before: CrossingSample; on: CrossingSample; anchor: CrossingSample; from: string };
+
+  /** Bracket from `anchor`, then bisect the bracket to adjacent frames. */
+  const findCrossing = async (
+    anchor: CrossingSample,
+    from: string,
+  ): Promise<Crossing | Extract<Bracket, { kind: "unbracketed" }> | CrossingStop> => {
+    const bracket = await bracketFrom(anchor, from);
+
+    if (bracket.kind !== "bracketed") return bracket;
+
+    let { before, on } = bracket;
+
+    while (on.frame - before.frame > 1) {
+      const probe = await probeCrossing(Math.floor((before.frame + on.frame) / 2));
+
+      if (!("side" in probe)) return probe;
+
+      if (probe.side === "before") before = probe;
+      else on = probe;
+    }
+
+    return { before, on, anchor, from };
+  };
+
+  /**
+   * The one Next Lap nudge, for a cursor the lap steps did not leave near the
+   * line: where it lands is bracketed from, forward on the lap before the
+   * target, backward on the target lap (the old overshoot, which a Previous
+   * Lap recovered at an offset nobody had measured).
+   */
+  const nudge = async (why: string): Promise<CrossingSample | CrossingStop> => {
+    logger.debug(`${logLabel}: nudging via nextLap (${why})`);
+
+    const forward = await search(() => send({ kind: "search", search: "nextLap" }), "nextLap (nudge)");
+
+    nudges++;
+
+    if (forward.kind !== "moved") return { kind: "stopped", reason: `nudge (nextLap) ${forward.kind}` };
+
+    const sample = forward.telemetry;
+    const frame = readFrame(sample);
+    const side = crossingSide(sample);
+
+    if (frame === null || (side !== "before" && side !== "on")) {
+      return { kind: "stopped", reason: `nudge (nextLap) on frame ${frame ?? "n/a"} read ${side}` };
+    }
+
+    if (side === "before") {
+      searchLanding = sample;
+    } else {
+      logger.debug(`${logLabel}: nextLap landed on lap ${targetLap}; bracketing back from frame ${frame}`);
+    }
+
+    return { frame, sample, side };
+  };
+
+  // Where the lap steps left the cursor: what every abort and every walk that
+  // does not converge falls back on.
+  const stepsFrame = readFrame(tel);
+
+  if (stepsFrame === null) {
+    logger.warn(`${logLabel}: ReplayFrameNum unavailable after the lap steps; aborting`);
 
     return null;
   }
 
-  const landedFrame = Math.max(0, preBackstepFrame - FASTEST_LAP_FINAL_BACKSTEP_TICKS);
+  if (notConverged === null && !inTargetSession(tel)) {
+    notConverged = `landed outside the target session ${targetSessionNum}/${sessionUniqueId} (${describeSample(tel)})`;
+  }
+
+  let crossing: Crossing | null = null;
+
+  if (notConverged === null && tel !== null && crossingSide(tel) === "before") {
+    const stepsSample: CrossingSample = { frame: stepsFrame, sample: tel, side: "before" };
+    const lapSearchLanding = "the lap search's landing";
+    /** The first search that did not bracket: its reason stands for the walk. */
+    let firstMiss: string | null = null;
+    /** The furthest frame the last attempt that did not bracket read. */
+    let missedOn = stepsFrame;
+
+    /** One bracket attempt: true when the phase is over, found or stopped. */
+    const attempt = async (anchor: CrossingSample, from: string): Promise<boolean | "aborted"> => {
+      const found = await findCrossing(anchor, from);
+
+      if ("anchor" in found) {
+        crossing = found;
+
+        return true;
+      }
+
+      if (found.kind === "aborted") return "aborted";
+
+      if (found.kind === "stopped") {
+        notConverged = found.reason;
+
+        return true;
+      }
+
+      firstMiss ??= found.reason;
+      missedOn = found.last.frame;
+
+      return false;
+    };
+
+    /** The nudge, then a bracket from its landing: true when the phase is over. */
+    const nudgeAndAttempt = async (why: string): Promise<boolean | "aborted"> => {
+      const landing = await nudge(why);
+
+      if (!("side" in landing)) {
+        if (landing.kind === "aborted") return "aborted";
+
+        notConverged = landing.reason;
+
+        return true;
+      }
+
+      return attempt(landing, lapSearchLanding);
+    };
+
+    let over: boolean | "aborted";
+
+    if (landedByLapSearch) {
+      // A lap search's landing is near the line, or the nudge is owed.
+      searchLanding = tel;
+      over = await attempt(stepsSample, lapSearchLanding);
+
+      if (over === false) over = await nudgeAndAttempt(`lap ${targetLapMinus1} still read on frame ${missedOn}`);
+    } else {
+      // A bisection probe is anywhere in the lap: the nudge first, and the
+      // probe's own frame only for one that fell in the lap's last frames.
+      // On lap 0 this is what keeps a car standing on its grid slot within
+      // metres of the line from being taken for one at it (#1354).
+      over = await nudgeAndAttempt(`the lap steps ended on a bisection probe, frame ${stepsFrame}`);
+
+      if (over === false) over = await attempt(stepsSample, "the bisection probe");
+    }
+
+    if (over === "aborted") return null;
+
+    if (over === false) notConverged = firstMiss;
+  } else if (notConverged === null && tel !== null) {
+    notConverged = `the lap steps ended on ${crossingSide(tel)} (frame ${stepsFrame})`;
+  }
+
+  // Phase 6: the search has its answer, or has given up. A cancellation or an
+  // interrupt that arrived during the last crossing probe ends the press
+  // here, before anything is recorded. From here on a camera switch no
+  // longer interrupts the walk (#1428 / #1435): the jump to the lap's run-up
+  // is a plain jump, which it waits for.
+  checkpoint();
+  endReplayCursorInterrupts(claim);
+
+  const found = crossing as Crossing | null;
+  const lapStartFrame = found !== null ? found.on.frame : (readFrame(searchLanding) ?? stepsFrame);
+  const landedFrame = Math.max(0, lapStartFrame - LAP_START_APPROACH_FRAMES);
+  const searchLandingDist = carDist(searchLanding);
+  const priorLapDist = typeof searchLandingDist === "number" ? searchLandingDist : null;
+  const count = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? "" : "s"}`;
+  const probes = count(crossingProbes, "crossing probe");
+  const iterations = `${bisectionSteps} bisection + ${lapSteps} lap-step + ${nudges} nudge iterations + ${probes}`;
+
+  if (found === null) {
+    logger.warn(`${logLabel}: walk did not converge (${notConverged ?? "no crossing found"}); nothing recorded`);
+    logger.debug(
+      `${logLabel}: gave up after ${iterations} (lap start frame=${lapStartFrame}, landed frame=${landedFrame}, target=${targetLap}, session=${targetSessionNum}/${sessionUniqueId})`,
+    );
+  } else {
+    // The first frame on the target lap is where this car started it: into
+    // the record it goes, so the next press for this lap is a lookup (and a
+    // press after a restart, and a marker-style jump from another feature).
+    // It is what the live recorder writes too: the first tick of the lap.
+    let recorded = false;
+
+    if (isReplaySessionStoreInitialized()) {
+      recorded = getReplaySessionStore().laps.recordLapStart({
+        subSessionId,
+        sessionNum: targetSessionNum,
+        sessionUniqueId,
+        carIdx,
+        carNumberRaw: identity.carNumberRaw,
+        userId: identity.userId,
+        lap: targetLap,
+        frame: lapStartFrame,
+      });
+    }
+
+    const offset = lapStartFrame - found.anchor.frame;
+    const anchorSays =
+      found.from === "the bisection probe"
+        ? `the bisection probe was ${count(offset, "frame")} before it`
+        : `the lap search landed ${count(Math.abs(offset), "frame")} ${offset >= 0 ? "before" : "after"} it`;
+
+    logger.info(`${logLabel}: walk converged (lap start ${recorded ? "recorded" : "not recorded"})`);
+    logger.debug(`${logLabel}: lap ${targetLap} starts at frame ${lapStartFrame}; ${anchorSays} (${probes})`);
+    logger.debug(
+      `${logLabel}: converged after ${iterations} (lap start frame=${lapStartFrame}, landed frame=${landedFrame}, ${describeSample(found.on.sample)}, target=${targetLap}, session=${targetSessionNum}/${sessionUniqueId})`,
+    );
+  }
+
+  // Phase 7: the cursor to the lap's run-up, where a record jump to the same
+  // lap lands, so the first press of a lap and every later one look alike.
+  // The replay is left paused there.
   const finalTel = await jumpTo(landedFrame);
 
   if (finalTel == null) return null;
 
-  // Two ticks back must still be the same lap of the same session instance
-  // (the distance is allowed to dip under the threshold by those ticks).
-  if (notConverged === null && (!inTargetSession(finalTel) || carLap(finalTel) !== targetLapMinus1)) {
-    notConverged = `back-step landed elsewhere (${describeSample(finalTel)})`;
-  }
-
-  // Phase 7: the cursor is where the walk leaves it, paused. A cancellation
-  // or an interrupt that arrived during the back-step ends the press here,
-  // before anything is recorded. From here on the search has its answer and a
-  // camera switch no longer interrupts it (#1428 / #1435): it waits for what
-  // the press does with the landing.
-  checkpoint();
-  endReplayCursorInterrupts(claim);
-
-  const lapStartFrame = landedFrame + FASTEST_LAP_FINAL_BACKSTEP_TICKS;
-  const landedDist = carDist(finalTel);
-  // Only for a landing a lap search produced: a bisection probe's distance
-  // says where the car was on some frame, not that the frame is near a line.
-  const priorLapDist =
-    landedByLapSearch &&
-    inTargetSession(finalTel) &&
-    carLap(finalTel) === targetLapMinus1 &&
-    typeof landedDist === "number"
-      ? landedDist
-      : null;
-
-  if (notConverged !== null) {
-    logger.warn(`${logLabel}: walk did not converge (${notConverged}); nothing recorded`);
-    logger.debug(
-      `${logLabel}: gave up after ${bisectionSteps} bisection + ${lapSteps} lap-step + ${nudges} nudge iterations (landed frame=${landedFrame}, target=${targetLap}, session=${targetSessionNum}/${sessionUniqueId})`,
-    );
-
-    return { telemetry: finalTel, landedFrame, lapStartFrame, converged: false, priorLapDist };
-  }
-
-  // The verified frame, back-adjusted by the back-step, is where this car
-  // started `targetLap` as far as the walk can tell: into the record it
-  // goes, so the next press for this lap is a lookup (and a press after a
-  // restart, and a marker-style jump from another feature).
-  let recorded = false;
-
-  if (isReplaySessionStoreInitialized()) {
-    recorded = getReplaySessionStore().laps.recordLapStart({
-      subSessionId,
-      sessionNum: targetSessionNum,
-      sessionUniqueId,
-      carIdx,
-      carNumberRaw: identity.carNumberRaw,
-      userId: identity.userId,
-      lap: targetLap,
-      frame: lapStartFrame,
-    });
-  }
-
-  logger.info(`${logLabel}: walk converged (lap start ${recorded ? "recorded" : "not recorded"})`);
-  logger.debug(
-    `${logLabel}: converged after ${bisectionSteps} bisection + ${lapSteps} lap-step + ${nudges} nudge iterations + ${FASTEST_LAP_FINAL_BACKSTEP_TICKS}-tick back-step (landed frame=${landedFrame}, lap start frame=${lapStartFrame}, ${describeSample(finalTel)}, target=${targetLap}, session=${targetSessionNum}/${sessionUniqueId})`,
-  );
-
-  return { telemetry: finalTel, landedFrame, lapStartFrame, converged: true, priorLapDist };
+  return { telemetry: finalTel, landedFrame, lapStartFrame, converged: found !== null, priorLapDist };
 }

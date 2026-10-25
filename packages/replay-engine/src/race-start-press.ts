@@ -277,14 +277,14 @@ function jumpToGreenFromPoleCar(
  * when another replay command cancelled the press: that command's own effect
  * stands.
  *
- * A search that could not verify its landing still anchors the jump when
- * the landing is near the end of the lap before lap 1
- * (`acceptsGreenFallbackLanding`): the anchor of a five-second run-up need
- * not be the exact frame the lap record demands, and iRacing's Next Lap can
- * land a few frames short of what the walk verifies (#1432). Anything
- * further off is a search that came to nothing, and like one that gave up
- * on the way it ends with the replay back on the frame and at the speed the
- * press found it: the press leaves no trace but its log lines.
+ * A search that did not find the line still anchors the jump on where
+ * iRacing's lap search left the pole car, when that is near the end of the
+ * lap before lap 1 (`acceptsGreenFallbackLanding`): the anchor of a
+ * five-second run-up need not be the exact frame the lap record demands
+ * (#1432). Anything further off is a search that came to nothing, and like
+ * one that gave up on the way it ends with the replay back on the frame and
+ * at the speed the press found it: the press leaves no trace but its log
+ * lines.
  */
 async function searchGreenFromPoleCar(
   origin: string,
@@ -373,7 +373,7 @@ async function searchGreenFromPoleCar(
     if (!acceptsGreenFallbackLanding(landing)) {
       logger.warn("Jump to race start: the search did not reach the start of the pole car's lap 1");
       logger.debug(
-        `Landed frame ${landing.landedFrame}, dist on the lap before lap 1: ${landing.priorLapDist ?? "n/a"}`,
+        `The lap search landed on frame ${landing.lapStartFrame}, dist on the lap before lap 1: ${landing.priorLapDist ?? "n/a"}`,
       );
       // The camera only once the way back has landed: sent during the seek
       // it would cut it short (#1275), and iRacing would drop it (#1430).

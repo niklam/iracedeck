@@ -103,7 +103,8 @@ export interface RaceWeekend {
  * `[startFrame + N * FRAMES_PER_LAP, startFrame + (N + 1) * FRAMES_PER_LAP)`,
  * for every car alike. `nextLap` / `prevLap` land `lapSearchShort` frames
  * before the next / previous line, which is how iRacing's lap search behaves:
- * one frame short by default, so the search can verify its landing.
+ * one frame short by default; the walk finds the line from wherever they rest
+ * (#1432).
  * `switchNum` moves the camera (car numbers equal car indexes here).
  *
  * With `gridWaitFrames` a session opens with the cars standing on the grid for
@@ -336,7 +337,7 @@ export const WEEKEND: RaceWeekendSession[] = [
 ];
 export const WEEKEND_TYPES = ["Practice", "Lone Qualify", "Race"];
 export const RACE_START = 20_000;
-/** The last frame of the race's lap 0: where a verified lap search leaves the pole car. */
+/** The first frame of the race's lap 1, for every car: the pole car's lap-1 start a search finds (#1432). */
 export const RACE_LAP_1_LINE = RACE_START + FRAMES_PER_LAP;
 
 /** A cursor well into the race, a few laps after the start. */
