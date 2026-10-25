@@ -92,9 +92,9 @@ Raise the spotter volume. Each press plays a short, high [tick](#a-tick-on-every
 - **Default binding:** No default key binding
 - **Telemetry-aware icon:** No
 
-#### Settings
+#### Setting: Key Style
 
-- **Key Style** — see [Key Styles](#key-styles--paired--buttons)
+How the key draws as one half of a +/− pair. Default: **Split** for a newly placed key, **Legacy (arrows)** for an existing one. See [Key Styles](#key-styles--paired--buttons).
 
 ---
 
@@ -109,9 +109,9 @@ Lower the spotter volume. Each press plays a short, low [tick](#a-tick-on-every-
 - **Default binding:** No default key binding
 - **Telemetry-aware icon:** No
 
-#### Settings
+#### Setting: Key Style
 
-- **Key Style** — see [Key Styles](#key-styles--paired--buttons)
+How the key draws as one half of a +/− pair. Default: **Split** for a newly placed key, **Legacy (arrows)** for an existing one. See [Key Styles](#key-styles--paired--buttons).
 
 ---
 
