@@ -138,6 +138,7 @@ The missing-binding warning on the key checks only the bindings the current car 
 | Visor car | The Tear Off Visor icon, titled `VISOR` / `TEAR OFF` |
 | Windshield car, **Wipers on tap** = Trigger | The Trigger Wipers icon, titled `TRIGGER` / `WIPERS` |
 | Windshield car, **Wipers on tap** = Toggle | The Toggle Wipers icon, titled `TOGGLE` / `WIPERS` |
+| Windshield car with only one of the two wiper controls | That control's icon, whatever **Wipers on tap** says, since both presses send it |
 | No car to read (menus, garage, spectating, replays) | A combined icon split diagonally — wipers in the top-left half, a helmet in the bottom-right — titled `WIPERS` / `VISOR`; a press does nothing |
 | Car with neither a visor nor wipers | The combined icon, greyed out; a press does nothing |
 
