@@ -12,7 +12,7 @@ import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "j
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
-import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
+import { type CalloutScript } from "@iracedeck/callout-script";
 import type {
   IEventBus,
   SimEventMap,
@@ -29,6 +29,7 @@ import { NO_FRAME, WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios, poolMemberPattern } from "../../interpreter.js";
 import { descriptionNamesGroup } from "../../reference/pack-reference.js";
+import { familyReferences } from "./family-references.test-util.js";
 import { PIT_READBACK_CONTRACTS, PIT_READBACK_SCENARIO_IDS, registerReadbackVocabulary } from "./readback.js";
 import {
   hasSpeakableTreads,
@@ -648,7 +649,7 @@ describe("the bundled script's tire-wear entry (issue #1108)", () => {
   });
 
   it("references only the tire-wear vocabulary, with the declared case keys, and no frame, fragment or named pool", () => {
-    const refs = collectScriptReferences(REPORT_ONLY_SCRIPT);
+    const refs = familyReferences(REPORT_ONLY_SCRIPT);
     const vocabulary = engine.vocabulary();
 
     expect([...refs.vars].sort()).toEqual([
@@ -674,7 +675,7 @@ describe("the bundled script's tire-wear entry (issue #1108)", () => {
   it("addresses exactly the published clip sources — the slashed form throughout", () => {
     const sources = TIRE_WEAR_CLIP_SOURCES.map(({ group, base }) => `${group}/${base}`).sort();
 
-    expect([...collectScriptReferences(REPORT_ONLY_SCRIPT).pools].sort()).toEqual(sources);
+    expect([...familyReferences(REPORT_ONLY_SCRIPT).pools].sort()).toEqual(sources);
     expect(sources).toHaveLength(17);
 
     for (const { group, base } of TIRE_WEAR_CLIP_SOURCES) {

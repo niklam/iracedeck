@@ -436,6 +436,9 @@ const PIT_LIMITER_CLIP_PATHS = [
   `voice/${VOICE}/pit-limiter/speeding-01.mp3`,
   `voice/${VOICE}/pit-limiter/no-limiter-speeding-01.mp3`,
   `voice/${VOICE}/pit-limiter/entry-01.mp3`,
+  // The bundled `radio` frame's cut tail (issue #1407), heard when a line
+  // that ends on an event is abandoned mid-word.
+  `voice/${VOICE}/radio/never-mind-01.mp3`,
 ] as const;
 
 // Tire-wear clips referenced from `tire-wear.ts` (issue #1108) — one variant of
@@ -2219,6 +2222,41 @@ describe("pit-limiter / no-limiter family registration (issue #1051)", () => {
     flush(audio);
 
     expect(played("pit-limiter/dropped")).toBe(true);
+  });
+
+  // `limiter-dropped` ends on `pitLane.exited` (issue #1407), and its family
+  // sibling `limiter-on-track` is TRIGGERED by that same event. The end is the
+  // contract's, not the family's, so the exit that abandons one must still arm
+  // the other. To make the second half reachable the driver re-engages the
+  // limiter after the drop and carries it out of the pits, so on-track's live
+  // re-check is true when its window closes.
+  it("limiter-on-track still fires after a pitLane.exited that ended a playing limiter-dropped", () => {
+    bus.publishEvent("limiter.dropped", {} as never, HAS_LIMITER);
+    // The open tick finishes: the dropped warning's words are playing.
+    audio._triggerChannelEnd(AudioChannel.SFX);
+    expect(voiceClipsPlayed()).toEqual([`voice/${VOICE}/pit-limiter/dropped-01.mp3`]);
+
+    mockLatestTelemetry.mockReturnValue(STILL_ENGAGED_ON_TRACK);
+    bus.publishEvent("pitLane.exited", {} as never, STILL_ENGAGED_ON_TRACK);
+    // The cut tail plays out before the on-track window closes, as it would at
+    // pit-exit speed: a short never-mind and a click against a 1.5 s delay.
+    flush(audio);
+    // The never-mind is spoken on the Voice channel like the body — the cut
+    // tail's clips are the engineer's words, and only its ticks are sound
+    // effects (issue #1407).
+    expect(voiceClipsPlayed()).toEqual([
+      `voice/${VOICE}/pit-limiter/dropped-01.mp3`,
+      `voice/${VOICE}/radio/never-mind-01.mp3`,
+    ]);
+
+    vi.advanceTimersByTime(LIMITER_ON_TRACK_DELAY_MS);
+    flush(audio);
+
+    expect(voiceClipsPlayed()).toEqual([
+      `voice/${VOICE}/pit-limiter/dropped-01.mp3`,
+      `voice/${VOICE}/radio/never-mind-01.mp3`,
+      `voice/${VOICE}/pit-limiter/on-track-01.mp3`,
+    ]);
   });
 
   it.each([...LIMITER_FIRES, ...NO_LIMITER_FIRES])("$id is suppressed when the master gate is off", (row) => {

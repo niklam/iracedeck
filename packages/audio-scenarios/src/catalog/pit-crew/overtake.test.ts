@@ -13,7 +13,7 @@ import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "j
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
-import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
+import { type CalloutScript } from "@iracedeck/callout-script";
 import { OVERTAKE_CALLOUTS } from "@iracedeck/callout-settings";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -22,6 +22,7 @@ import type { ScenarioContext } from "../../dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios, poolMemberPattern } from "../../interpreter.js";
 import { familyGate } from "./callout-gate.test-util.js";
+import { familyReferences } from "./family-references.test-util.js";
 import { _resetPositionReadoutCooldown, registerPitCrew } from "./index.js";
 import {
   buildOvertakeGainedContract,
@@ -828,7 +829,7 @@ describe("the bundled script's overtake reaction entries (issue #1065)", () => {
   });
 
   it("references only vocabulary this family registers, with the declared case keys", () => {
-    const refs = collectScriptReferences(REACTION_SCRIPT);
+    const refs = familyReferences(REACTION_SCRIPT);
     const vocabulary = engine.vocabulary();
 
     expect(refs.vars).toEqual(["overtake.lost.comeOn"]);
@@ -856,7 +857,7 @@ describe("the bundled script's overtake reaction entries (issue #1065)", () => {
       "position-overtake/nice-pass-p3-class",
     ];
 
-    expect([...collectScriptReferences(REACTION_SCRIPT).pools].sort()).toEqual(sources);
+    expect([...familyReferences(REACTION_SCRIPT).pools].sort()).toEqual(sources);
     expect(OVERTAKE_CLIP_SOURCES.map(({ group, base }) => `${group}/${base}`).sort()).toEqual(sources);
 
     for (const { group, base } of OVERTAKE_CLIP_SOURCES) {

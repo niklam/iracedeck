@@ -60,11 +60,17 @@ export type OfferInput<F> = {
   yieldsToGroup?: boolean;
 };
 
+/**
+ * Why an entry left the queue without playing. `ended` is never produced by
+ * the queue itself: the interpreter removes the fire and reports it so when
+ * its contract's `endsOn` event arrives (issue #1407).
+ */
 export type QueueDropReason =
   | { kind: "superseded"; by: string }
   | { kind: "queue-full" }
   | { kind: "expired"; waitedMs: number; maxWaitMs: number }
-  | { kind: "cleared" };
+  | { kind: "cleared" }
+  | { kind: "ended" };
 
 export type QueueDrop<F> = { entry: QueuedFire<F>; reason: QueueDropReason };
 

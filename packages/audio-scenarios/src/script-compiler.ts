@@ -19,7 +19,10 @@
  * warns about it once. A frame that fails to compile takes every scenario
  * that uses it down with it, with the frame's own reason, and is reported
  * under `failedFrames` so the engine can name that reason for a legacy
- * scenario too.
+ * scenario too. Its `cut` tail is the exception (issue #1407): compiled after
+ * the open and close on a budget of its own, a tail that fails leaves the
+ * frame whole with `cut: null` and is reported under `failedCuts`, since it
+ * is only what an ended line plays.
  *
  * Fragments (issue #1065): a script may define sub-sequences under
  * `fragments` and include them from its entries and frames. An include
@@ -90,8 +93,13 @@ export const FRAGMENT_EXPANSION_LIMIT = 2000;
 export type CompiledVoiceScript = {
   /** Scenario id → the body the interpreter expands, and the frame name it is wrapped in (`NO_FRAME` = none). */
   scenarios: ReadonlyMap<string, { resolved: ResolvedStep[]; frame: string }>;
-  /** Frame name → its compiled `open` / `close` steps. Only frames that compiled are present. */
-  frames: ReadonlyMap<string, { open: ResolvedStep[]; close: ResolvedStep[] }>;
+  /**
+   * Frame name → its compiled `open` / `close` steps, and its `cut` tail
+   * (issue #1407) — `null` when the frame defines none or its `cut` did not
+   * compile (see `failedCuts`), which the engine reads as "play the `close`
+   * instead". Only frames that compiled are present.
+   */
+  frames: ReadonlyMap<string, CompiledFrame>;
   /**
    * Frame name → why it did not compile. Disjoint from `frames`: a name is in
    * one or the other, or in neither when the script never defined it — which
@@ -99,6 +107,15 @@ export type CompiledVoiceScript = {
    * compile: <reason>" when a legacy scenario asks for one.
    */
   failedFrames: ReadonlyMap<string, string>;
+  /**
+   * Frame name → why its `cut` tail did not compile (issue #1407), for a frame
+   * that otherwise compiled and is in `frames` with `cut: null`. A broken tail
+   * never fails its frame: the tail is only what an end plays, and failing
+   * the frame would silence every callout it wraps to save a "never mind" —
+   * an ended line closes the radio with the frame's `close` instead, and the
+   * engine and `lint:pack` report the reason.
+   */
+  failedCuts: ReadonlyMap<string, string>;
   /** Pool name → its manifest `(group, base)` source. Consulted before the code registry for this voice. */
   pools: ReadonlyMap<string, { group: string; base: string }>;
   /** Every contract this voice does NOT speak, and why. `deliberate` = `skip: true` or no entry at all. */
@@ -137,8 +154,18 @@ class CompileProblem {
   constructor(readonly reason: string) {}
 }
 
-/** A frame's compilation outcome, kept so a failed frame can explain every scenario it fails. */
-type FrameResult = { ok: true; open: ResolvedStep[]; close: ResolvedStep[] } | { ok: false; reason: string };
+/**
+ * One compiled frame: its `open` and `close`, and its `cut` tail — `null` when
+ * it defines none or the one it defines did not compile (issue #1407).
+ */
+export type CompiledFrame = { open: ResolvedStep[]; close: ResolvedStep[]; cut: ResolvedStep[] | null };
+
+/**
+ * A frame's compilation outcome, kept so a failed frame can explain every
+ * scenario it fails. A compiled frame whose `cut` failed carries `cut: null`
+ * and the reason in `cutProblem`.
+ */
+type FrameResult = ({ ok: true; cutProblem: string | null } & CompiledFrame) | { ok: false; reason: string };
 
 /**
  * Compile one voice's script against what the engine registered. Never
@@ -181,12 +208,19 @@ export function compileVoiceScript(script: CalloutScript, deps: CompileDeps, voi
     if (!Object.hasOwn(script.scenarios, id)) skipped.push({ id, reason: "no script", deliberate: true });
   }
 
-  const compiledFrames = new Map<string, { open: ResolvedStep[]; close: ResolvedStep[] }>();
+  const compiledFrames = new Map<string, CompiledFrame>();
   const failedFrames = new Map<string, string>();
+  const failedCuts = new Map<string, string>();
 
   for (const [name, result] of frames) {
-    if (result.ok) compiledFrames.set(name, { open: result.open, close: result.close });
-    else failedFrames.set(name, result.reason);
+    if (!result.ok) {
+      failedFrames.set(name, result.reason);
+      continue;
+    }
+
+    compiledFrames.set(name, { open: result.open, close: result.close, cut: result.cut });
+
+    if (result.cutProblem !== null) failedCuts.set(name, result.cutProblem);
   }
 
   const pools = new Map<string, { group: string; base: string }>();
@@ -197,6 +231,7 @@ export function compileVoiceScript(script: CalloutScript, deps: CompileDeps, voi
     scenarios,
     frames: compiledFrames,
     failedFrames,
+    failedCuts,
     pools,
     skipped,
     fragmentProblems: checkUnreached(converter),
@@ -204,14 +239,33 @@ export function compileVoiceScript(script: CalloutScript, deps: CompileDeps, voi
 }
 
 function compileFrame(converter: StepConverter, frame: FrameDefinition): FrameResult {
-  // One budget for the whole frame: its two halves play around one body. No
+  // One budget for the frame's two halves: they play around one body. No
   // base: the interpreter expands a frame with none, whatever the contract.
   converter.beginUnit();
 
+  let open: ResolvedStep[];
+  let close: ResolvedStep[];
+
   try {
-    return { ok: true, open: converter.convertAll(frame.open), close: converter.convertAll(frame.close) };
+    open = converter.convertAll(frame.open);
+    close = converter.convertAll(frame.close);
   } catch (err) {
     return { ok: false, reason: describe(err) };
+  }
+
+  if (frame.cut === undefined) return { ok: true, open, close, cut: null, cutProblem: null };
+
+  // The cut tail (issue #1407) on a budget of its own, after the halves have
+  // compiled: it plays INSTEAD of the close, never around a body with the
+  // open, and it must not be able to push the halves over the limit or fail
+  // them. A tail that does not compile leaves the frame whole with no tail,
+  // so an ended line closes the radio with the close (see `failedCuts`).
+  converter.beginUnit();
+
+  try {
+    return { ok: true, open, close, cut: converter.convertAll(frame.cut), cutProblem: null };
+  } catch (err) {
+    return { ok: true, open, close, cut: null, cutProblem: describe(err) };
   }
 }
 

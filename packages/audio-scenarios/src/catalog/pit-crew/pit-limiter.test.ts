@@ -28,7 +28,7 @@ import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "j
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
-import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
+import { type CalloutScript } from "@iracedeck/callout-script";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -36,6 +36,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ScenarioContract } from "../../dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios, poolMemberPattern } from "../../interpreter.js";
+import { familyReferences } from "./family-references.test-util.js";
 import {
   LIMITER_DROPPED,
   LIMITER_MISSING,
@@ -213,6 +214,8 @@ const manifest: AudioAssetsManifest = {
     "sfx/IRD-ambient-pit.mp3",
     ...PIT_LIMITER_CLIP_SOURCES.map(({ group, base }) => `voice/${VOICE}/${group}/${base}-01.mp3`),
     `voice/${VOICE}/blocker/line-01.mp3`,
+    // The bundled `radio` frame's cut tail (issue #1407) draws from this pool.
+    `voice/${VOICE}/radio/never-mind-01.mp3`,
   ],
   ambientLoop: "sfx/IRD-ambient-pit.mp3",
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
@@ -354,6 +357,18 @@ describe("PIT_LIMITER_CONTRACTS structure (issue #1065)", () => {
     expect(LIMITER_SPEEDING.triggerDelay).toBeUndefined();
     expect(LIMITER_SPEEDING.queueable).toBeUndefined();
   });
+
+  it("limiter-dropped carries endsOn pitLane.exited, and no other limiter contract does (issue #1407)", () => {
+    expect(LIMITER_DROPPED.endsOn?.event).toBe("pitLane.exited");
+    expect(LIMITER_DROPPED.endsOn?.description).toBeTruthy();
+
+    // Scoped to the line that was heard out on track. `limiter-on-track` is
+    // TRIGGERED by `pitLane.exited`, so ending it there would silence it for
+    // good; the other two are left as they are (the spec's Out of scope).
+    expect(LIMITER_ON_TRACK.endsOn).toBeUndefined();
+    expect(LIMITER_MISSING.endsOn).toBeUndefined();
+    expect(LIMITER_SPEEDING.endsOn).toBeUndefined();
+  });
 });
 
 describe("pit-limiter through the engine and the bundled script (issue #1065)", () => {
@@ -436,6 +451,55 @@ describe("pit-limiter through the engine and the bundled script (issue #1065)", 
       engine.setScripts(new Map());
 
       bus.publishEvent("limiter.dropped", {} as never, WITH_LIMITER);
+      flush(audio);
+
+      expect(audio._played).toEqual([]);
+    });
+  });
+
+  // `endsOn` (issue #1407), through the bundled voice's own `radio` frame and
+  // its `cut` tail. The engine's state-by-state behaviour is pinned in
+  // `interpreter-ends-on.test.ts` against a test frame; what only shows here is
+  // that the shipped contract and the shipped frame meet: the warning cannot be
+  // heard out on the track.
+  describe("the dropped warning ends when the car leaves pit road", () => {
+    const NEVER_MIND = `voice/${VOICE}/radio/never-mind-01.mp3`;
+    const DROPPED = `voice/${VOICE}/pit-limiter/dropped-01.mp3`;
+
+    it("cut mid-line: the warning stops, then the never-mind and the close tick", () => {
+      bus.publishEvent("limiter.dropped", {} as never, WITH_LIMITER);
+      // The open tick finishes, so the warning itself is what is playing.
+      audio._triggerChannelEnd(AudioChannel.SFX);
+      expect(voiceClipsPlayed()).toEqual([DROPPED]);
+
+      bus.publishEvent("pitLane.exited", {} as never);
+      flush(audio);
+
+      expect(audio._played.map((p) => p.path)).toEqual([
+        "sfx/IRD-tick-open.mp3",
+        "sfx/IRD-ambient-pit.mp3",
+        DROPPED,
+        NEVER_MIND,
+        "sfx/IRD-tick-close.mp3",
+      ]);
+      // The never-mind is the engineer speaking, at voice volume like the
+      // warning; only the cut tail's tick is a sound effect (issue #1407).
+      expect(voiceClipsPlayed()).toEqual([DROPPED, NEVER_MIND]);
+      expect(audio.stopChannel).toHaveBeenCalledWith(AudioChannel.Voice);
+    });
+
+    it("cut before any word: a pit exit during the open tick is silence — no never-mind, no close tick", () => {
+      bus.publishEvent("limiter.dropped", {} as never, WITH_LIMITER);
+      expect(audio._played.map((p) => p.path)).toEqual(["sfx/IRD-tick-open.mp3"]);
+
+      bus.publishEvent("pitLane.exited", {} as never);
+      flush(audio);
+
+      expect(audio._played.map((p) => p.path)).toEqual(["sfx/IRD-tick-open.mp3"]);
+    });
+
+    it("a pit exit with no dropped warning anywhere plays nothing of it", () => {
+      bus.publishEvent("pitLane.exited", {} as never);
       flush(audio);
 
       expect(audio._played).toEqual([]);
@@ -560,7 +624,7 @@ describe("pit-limiter through the engine and the bundled script (issue #1065)", 
     });
 
     it("references no condition at all — the two the family registers are published, not used (issue #1138)", () => {
-      const refs = collectScriptReferences(PIT_LIMITER_SCRIPT);
+      const refs = familyReferences(PIT_LIMITER_SCRIPT);
       const vocabulary = engine.vocabulary();
 
       expect(refs.vars).toEqual([]);
@@ -579,7 +643,7 @@ describe("pit-limiter through the engine and the bundled script (issue #1065)", 
     it("addresses exactly the published clip sources — the slashed form, no named pool — and every one has a clip in the bundled voice", () => {
       const sources = ["pit-limiter/dropped", "pit-limiter/missing", "pit-limiter/on-track", "pit-limiter/speeding"];
 
-      expect([...collectScriptReferences(PIT_LIMITER_SCRIPT).pools].sort()).toEqual(sources);
+      expect([...familyReferences(PIT_LIMITER_SCRIPT).pools].sort()).toEqual(sources);
       expect(PIT_LIMITER_CLIP_SOURCES.map(({ group, base }) => `${group}/${base}`).sort()).toEqual(sources);
       expect(Object.keys(SCRIPT.pools ?? {})).toEqual([]);
 

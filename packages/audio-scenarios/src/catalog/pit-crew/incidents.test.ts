@@ -14,7 +14,7 @@ import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "j
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
-import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
+import { type CalloutScript } from "@iracedeck/callout-script";
 import type { IEventBus, IncidentType, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -22,6 +22,7 @@ import { DEFAULT_MAX_QUEUE_WAIT_MS, poolRef, WEIGHT } from "../../dsl.js";
 import type { ScenarioContext, ScenarioContract } from "../../dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios, poolMemberPattern } from "../../interpreter.js";
+import { familyReferences } from "./family-references.test-util.js";
 import {
   _resetLastIncidentPoints,
   INCIDENT_CLIP_SOURCES,
@@ -440,7 +441,7 @@ describe("the bundled script's incident entries (issue #1065)", () => {
   });
 
   it("references only the var this family registers, no condition, case, fragment or frame", () => {
-    const refs = collectScriptReferences(INCIDENT_SCRIPT);
+    const refs = familyReferences(INCIDENT_SCRIPT);
 
     expect(refs.vars).toEqual(["incident.points"]);
     expect(refs.conds).toEqual([]);
@@ -460,7 +461,7 @@ describe("the bundled script's incident entries (issue #1065)", () => {
       "incidents/out-of-control",
     ];
 
-    expect([...collectScriptReferences(INCIDENT_SCRIPT).pools].sort()).toEqual(sources);
+    expect([...familyReferences(INCIDENT_SCRIPT).pools].sort()).toEqual(sources);
     expect(INCIDENT_CLIP_SOURCES.map(({ group, base }) => `${group}/${base}`).sort()).toEqual(sources);
 
     for (const { group, base } of INCIDENT_CLIP_SOURCES) {

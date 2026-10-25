@@ -161,6 +161,13 @@ export type HeardRig = {
   press: (id: string) => void;
   /** The Voice channel's clips in order, as paths under the voice's folder without the take number. */
   heard: () => string[];
+  /**
+   * The SFX channel's clips in order, named the same way (`sfx/…` for a clip
+   * outside the voice's folder): the radio frame's ticks. A cut tail's spoken
+   * clip — the never-mind (issue #1407) — is the engineer's voice and is in
+   * `heard()`; only the tail's ticks are here.
+   */
+  radio: () => string[];
   /** What was heard since the last call, and nothing kept. */
   heardAndCleared: () => string[];
 };
@@ -235,15 +242,19 @@ export function useHeardRig(clipMs: ClipDurations): HeardRig {
     } as SimEventOf<SimEventName>);
   };
 
-  const heard: HeardRig["heard"] = () =>
+  const clipsOn = (channel: AudioChannel): string[] =>
     audio.played
-      .filter((p) => p.channel === AudioChannel.Voice)
+      .filter((p) => p.channel === channel)
       .map((p) => {
         const path = p.path.replaceAll("\\", "/");
         const at = path.indexOf(`voice/${VOICE}/`);
+        const sfx = path.lastIndexOf("sfx/");
+        const named = at >= 0 ? path.slice(at + `voice/${VOICE}/`.length) : sfx >= 0 ? path.slice(sfx) : path;
 
-        return (at < 0 ? path : path.slice(at + `voice/${VOICE}/`.length)).replace(/(-\d+)?\.mp3$/, "");
+        return named.replace(/(-\d+)?\.mp3$/, "");
       });
+
+  const heard: HeardRig["heard"] = () => clipsOn(AudioChannel.Voice);
 
   return {
     boot: (sessionPreset, { ticking = true } = {}) => {
@@ -274,6 +285,7 @@ export function useHeardRig(clipMs: ClipDurations): HeardRig {
       vi.advanceTimersByTime(10_000);
     },
     heard,
+    radio: () => clipsOn(AudioChannel.SFX),
     heardAndCleared: () => {
       const clips = heard();
 

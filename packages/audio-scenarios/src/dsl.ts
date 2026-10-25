@@ -177,6 +177,58 @@ export type SpeakGate = {
 };
 
 /**
+ * The event that ends a contract's fires early (issue #1407): a line that is
+ * only true while some condition holds — the pit limiter warning while the
+ * car is on pit road — must not be heard once the condition has stopped
+ * holding. When `event` is published, the engine ends every fire of the
+ * contract wherever it is:
+ *
+ * - a pending `triggerDelay` / `settle` timer is cleared;
+ * - a fire waiting in its bus's queue — one an `interrupt` cut and stashed
+ *   included — is removed, logged as dropped with the reason `ended`;
+ * - the playing fire stops silently while it is still in its frame's open
+ *   ops ("if it has not started, it does not start"), and once words have
+ *   been heard — a body clip has started, or a resume continued a line the
+ *   driver had begun to hear — the body is cut mid-clip and the frame's
+ *   **cut tail** plays (the frame's `cut`, else its `close`; nothing for
+ *   `frame: "none"`), so the engineer audibly abandons the line and lets go
+ *   of the button. The `cut`'s clips are his words, spoken on the callout's
+ *   channel at voice volume; only the built-in ticks in it are sound
+ *   effects, and Radio beeps drops only those. The tail holds the bus like any fire and may itself be
+ *   cut by a same-family or heavier `interrupt` arrival;
+ * - a playing fire whose line was heard in full — in its frame's close ops,
+ *   or in a trailing pause after its last clip — is letting go of the
+ *   button: it is left to finish, so "never mind" never follows a complete
+ *   line.
+ *
+ * An ended fire is never re-queued, whatever its `queueable` or `resumable`
+ * say. A fire cut for any other reason (an interrupt, a same-family
+ * replacement, a disable, `stopAll`) plays no tail: only an end does.
+ *
+ * **Ordering.** An end reaches only the fires that exist when `event` is
+ * dispatched. A trigger published AFTER the end event in the same translator
+ * batch starts a fire nothing ends, and the line is heard after the condition
+ * stopped holding. So a contract's `when.event` must never be published
+ * after its `endsOn.event` on the same tick. `pit-crew.limiter-dropped`
+ * holds this: the limiter diff emits nothing on a tick `OnPitRoad` reads
+ * false, and `diffLimiter` runs before `diffPitLane`, so `limiter.dropped`
+ * never follows `pitLane.exited` in a batch. A new `endsOn` contract must be
+ * checked against its translator the same way.
+ *
+ * Code-owned like `speakGate`: what makes a line stop being true is pacing,
+ * which is withheld from voice packs (#1064). `event` must differ from the
+ * contract's `when.event` — a line ended by its own trigger could never be
+ * heard — and validation disables a contract that breaks it.
+ *
+ * `description` is one sentence for the pack reference ("Ends when: …"), in
+ * the sim's terms, held to the same rules as `SpeakGate.description`.
+ */
+export type EndsOn = {
+  event: SimEventName;
+  description: string;
+};
+
+/**
  * The code-owned half of a scenario (issue #1064): WHETHER and WHEN the
  * engineer speaks, and how the fire is scheduled. What he says — the
  * `sequence` — is the voice pack's half, paired to the contract by `id` in
@@ -197,6 +249,8 @@ export type ScenarioContract = {
   };
   /** The speak-time gate (issue #1138); see {@link SpeakGate}. */
   speakGate?: SpeakGate;
+  /** The event that ends this contract's fires early (issue #1407); see {@link EndsOn}. */
+  endsOn?: EndsOn;
   /**
    * One sentence for a pack author on WHEN the callout fires, in the sim's
    * terms rather than the code's — "The pace car pulls away on a rolling-start

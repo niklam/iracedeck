@@ -46,7 +46,7 @@ export type StepReferences = {
  * Every list is deduped and sorted, so two scripts that reference the same
  * things compare equal however they are laid out. The five
  * {@link StepReferences} lists are merged over every sequence the script
- * plays: entries, the frames' `open` / `close`, and every fragment's
+ * plays: entries, the frames' `open` / `close` / `cut`, and every fragment's
  * `sequence`.
  */
 export type ScriptReferences = StepReferences & {
@@ -223,7 +223,8 @@ function liveFragments(script: CalloutScript, fragments: Readonly<Record<string,
     if (entry.skip !== true && entry.sequence) pending.push(...includesOf(entry.sequence));
   }
 
-  for (const frame of Object.values(script.frames)) pending.push(...includesOf(frame.open), ...includesOf(frame.close));
+  for (const frame of Object.values(script.frames))
+    pending.push(...includesOf(frame.open), ...includesOf(frame.close), ...includesOf(frame.cut ?? []));
 
   while (pending.length > 0) {
     const name = pending.pop() as string;
@@ -240,7 +241,7 @@ function liveFragments(script: CalloutScript, fragments: Readonly<Record<string,
 /**
  * Walk a parsed script and list everything it references by name — through
  * every `then`/`else`/`optional`/`of` branch, through the frames' own
- * `open`/`close` sequences, and through every fragment's sequence (a pool
+ * `open`/`close`/`cut` sequences, and through every fragment's sequence (a pool
  * used only inside a fragment still has to exist). A `skip: true` entry is
  * listed by id only (see {@link ScriptReferences.scenarioIds}).
  */
@@ -261,6 +262,7 @@ export function collectScriptReferences(script: CalloutScript): ScriptReferences
   for (const frame of Object.values(script.frames)) {
     collector.walk(frame.open);
     collector.walk(frame.close);
+    collector.walk(frame.cut ?? []);
   }
 
   const fragments = script.fragments ?? {};

@@ -1948,7 +1948,7 @@
   },
   "frames": {
     "radio": {
-      "comment": "The walkie-talkie frame: an open tick, the pit-lane ambience bed, a close tick.",
+      "comment": "The walkie-talkie frame: an open tick, the pit-lane ambience bed, a close tick. A line ended mid-word (its condition stopped being true) is abandoned with a short never-mind and the same close.",
       "open": [
         {
           "clip": "sfx/IRD-tick-open.mp3"
@@ -1961,6 +1961,15 @@
         }
       ],
       "close": [
+        {
+          "ambient": "stop"
+        },
+        {
+          "clip": "sfx/IRD-tick-close.mp3"
+        }
+      ],
+      "cut": [
+        "pool:radio/never-mind",
         {
           "ambient": "stop"
         },

@@ -12,7 +12,7 @@ import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "j
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
-import { type CalloutScript, collectScriptReferences, type ScriptStep } from "@iracedeck/callout-script";
+import { type CalloutScript, type ScriptStep } from "@iracedeck/callout-script";
 import { SESSION_START_CALLOUTS } from "@iracedeck/callout-settings";
 import type { IEventBus, SessionStartSnapshot, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { TrackWetness } from "@iracedeck/event-bus";
@@ -26,6 +26,7 @@ import {
   poolMemberPattern,
 } from "../../interpreter.js";
 import { familyGate } from "./callout-gate.test-util.js";
+import { familyReferences } from "./family-references.test-util.js";
 import { registerPitCrew } from "./index.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { START_BRIEF_SETTLE_MAX_MS, START_BRIEF_SETTLE_POLL_MS, START_BRIEF_SPEAK_GATE } from "./race-start.js";
@@ -1047,7 +1048,7 @@ describe("the bundled script's session-start entry (issue #1065)", () => {
   });
 
   it("references only vocabulary the session-start family registers, and no case, frame, fragment or alias", () => {
-    const refs = collectScriptReferences(SESSION_START_SCRIPT);
+    const refs = familyReferences(SESSION_START_SCRIPT);
     const vocabulary = getScenarioEngine().vocabulary();
 
     expect(refs.vars).toEqual([
@@ -1080,7 +1081,7 @@ describe("the bundled script's session-start entry (issue #1065)", () => {
       "setup-warning/qualifying",
     ];
 
-    expect([...collectScriptReferences(SESSION_START_SCRIPT).pools].sort()).toEqual(sources);
+    expect([...familyReferences(SESSION_START_SCRIPT).pools].sort()).toEqual(sources);
     expect(SESSION_START_CLIP_SOURCES.map(({ group, base }) => `${group}/${base}`).sort()).toEqual(sources);
 
     for (const { group, base } of SESSION_START_CLIP_SOURCES) {

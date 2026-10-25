@@ -229,6 +229,21 @@ describe("collectScriptReferences", () => {
     expect(refs.fragments).toEqual(["dead", "dead-helper", "in-frame", "only-skipped", "through-used", "used"]);
   });
 
+  it("walks a frame's cut tail for pools and includes (#1407)", () => {
+    const script: CalloutScript = {
+      schema: 1,
+      scenarios: {},
+      frames: { radio: { open: [], close: [], cut: ["pool:radio/never-mind", "@cut-tail"] } },
+      pools: {},
+      fragments: { "cut-tail": { sequence: ["pool:b"] }, dead: { sequence: ["pool:c"] } },
+    };
+    const refs = collectScriptReferences(script);
+
+    expect(refs.pools).toEqual(["b", "c", "radio/never-mind"]);
+    expect(refs.includes).toEqual(["cut-tail"]);
+    expect(refs.unincludedFragments).toEqual(["dead"]);
+  });
+
   it("does not list a fragment that reaches itself only through a live include as unincluded", () => {
     const script: CalloutScript = {
       schema: 1,

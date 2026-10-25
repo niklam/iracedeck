@@ -11,7 +11,7 @@ import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "j
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
-import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
+import { type CalloutScript } from "@iracedeck/callout-script";
 import { INCIDENT_CALLOUTS, QUALIFYING_INVALIDATION_CALLOUTS } from "@iracedeck/callout-settings";
 import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -26,6 +26,7 @@ import {
   poolMemberPattern,
 } from "../../interpreter.js";
 import { familyGate } from "./callout-gate.test-util.js";
+import { familyReferences } from "./family-references.test-util.js";
 import { _resetLastIncidentPoints, INCIDENT_SCENARIO_IDS } from "./incidents.js";
 import { registerPitCrew } from "./index.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
@@ -914,7 +915,7 @@ describe("the bundled script's qualifying-invalidation entry (issue #1065)", () 
   });
 
   it("references only vocabulary the family registers, with the declared case keys, and no var, frame, fragment or alias", () => {
-    const refs = collectScriptReferences(QUALIFYING_SCRIPT);
+    const refs = familyReferences(QUALIFYING_SCRIPT);
     const vocabulary = getScenarioEngine().vocabulary();
 
     expect(refs.vars).toEqual([]);
@@ -946,7 +947,7 @@ describe("the bundled script's qualifying-invalidation entry (issue #1065)", () 
       "qualifying-invalidation/plenty-of-laps",
     ];
 
-    expect([...collectScriptReferences(QUALIFYING_SCRIPT).pools].sort()).toEqual(sources);
+    expect([...familyReferences(QUALIFYING_SCRIPT).pools].sort()).toEqual(sources);
     expect(QUALIFYING_INVALIDATION_CLIP_SOURCES.map(({ group, base }) => `${group}/${base}`).sort()).toEqual(sources);
 
     for (const { group, base } of QUALIFYING_INVALIDATION_CLIP_SOURCES) {

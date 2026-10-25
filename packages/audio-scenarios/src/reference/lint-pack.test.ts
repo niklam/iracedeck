@@ -31,6 +31,7 @@ function contract(id: string, overrides: Partial<ContractReport> = {}): Contract
     queueable: false,
     interrupt: false,
     speakGate: null,
+    endsOn: null,
     base: null,
     ...overrides,
   };
@@ -409,6 +410,19 @@ describe("lintPack", () => {
       `${VOICE} callout: "pit-crew.flag-green" is skipped — frame "radio": unknown var "no.such.var"`,
       `${VOICE} frame: "radio" does not compile — unknown var "no.such.var" — every callout framed by it is skipped`,
       `${VOICE} fragment: "tail" is defined but nothing includes it — a fragment nothing includes is checked by nobody`,
+    ]);
+  });
+
+  it("reports a frame whose cut tail does not compile on its own — the frame and its callouts still compile (issue #1407)", () => {
+    const script = structuredClone(SCRIPT) as unknown as {
+      frames: Record<string, { open: unknown[]; close: unknown[]; cut?: unknown[] }>;
+    };
+    script.frames.radio = { ...script.frames.radio, cut: ["{{no.such.var}}"] };
+
+    const report = lint(packFiles({ script }));
+
+    expect(messages(report.problems)).toEqual([
+      `${VOICE} frame: "radio" cut does not compile — unknown var "no.such.var" — an ended line plays the frame's close instead`,
     ]);
   });
 

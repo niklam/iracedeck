@@ -22,7 +22,7 @@ import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "j
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
-import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
+import { type CalloutScript } from "@iracedeck/callout-script";
 import { LAP_TIME_CALLOUTS, POSITION_CALLOUTS } from "@iracedeck/callout-settings";
 import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -32,6 +32,7 @@ import type { ScenarioContext } from "../../dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios, poolMemberPattern } from "../../interpreter.js";
 import { familyGate } from "./callout-gate.test-util.js";
+import { familyReferences } from "./family-references.test-util.js";
 import { _resetPositionReadoutCooldown, canAnnouncePosition, registerPitCrew } from "./index.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { readPositionReadoutDebugState, registerPositionReadoutVocabulary } from "./position-readout.js";
@@ -1014,7 +1015,7 @@ describe("the bundled script's position entry (issue #1065)", () => {
   });
 
   it("references only vocabulary this family registers, with the declared case keys", () => {
-    const refs = collectScriptReferences(POSITION_SCRIPT);
+    const refs = familyReferences(POSITION_SCRIPT);
     const vocabulary = engine.vocabulary();
 
     expect(refs.vars).toEqual(["position.intro", "position.number", "position.pole"]);
@@ -1031,7 +1032,7 @@ describe("the bundled script's position entry (issue #1065)", () => {
   it("addresses exactly the two fixed lines as pools — the slashed form — and every one has a clip in the bundled voice", () => {
     const sources = ["position-intro-worse/currently", "position-invalid-lap/that-lap-didnt-count"];
 
-    expect([...collectScriptReferences(POSITION_SCRIPT).pools].sort()).toEqual(sources);
+    expect([...familyReferences(POSITION_SCRIPT).pools].sort()).toEqual(sources);
     expect(POSITION_CLIP_SOURCES.map(({ group, base }) => `${group}/${base}`).sort()).toEqual(sources);
 
     for (const { group, base } of POSITION_CLIP_SOURCES) {

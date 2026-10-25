@@ -5892,6 +5892,7 @@ describe("pack-owned scripts (issue #1064)", () => {
         queueable: false,
         interrupt: false,
         speakGate: null,
+        endsOn: null,
         base: null,
       },
       {
@@ -5904,6 +5905,7 @@ describe("pack-owned scripts (issue #1064)", () => {
         queueable: true,
         interrupt: true,
         speakGate: null,
+        endsOn: null,
         base: "voice/{voice}",
       },
     ]);
@@ -5928,6 +5930,7 @@ describe("pack-owned scripts (issue #1064)", () => {
         queueable: false,
         interrupt: false,
         speakGate: null,
+        endsOn: null,
         base: null,
       },
     ]);

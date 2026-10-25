@@ -16,7 +16,7 @@ import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "j
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
-import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
+import { type CalloutScript } from "@iracedeck/callout-script";
 import type { IEventBus, SessionStartSnapshot, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -24,6 +24,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ScenarioContract } from "../../dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios, poolMemberPattern } from "../../interpreter.js";
+import { familyReferences } from "./family-references.test-util.js";
 import {
   lacksPitLimiter,
   NO_LIMITER_CLIP_SOURCES,
@@ -416,7 +417,7 @@ describe("no-limiter through the engine and the bundled script (issue #1065)", (
     });
 
     it("references only the three vars the family registers — no condition, case, fragment or frame", () => {
-      const refs = collectScriptReferences(NO_LIMITER_SCRIPT);
+      const refs = familyReferences(NO_LIMITER_SCRIPT);
       const vocabulary = engine.vocabulary();
 
       expect(refs.conds).toEqual([]);
@@ -433,7 +434,7 @@ describe("no-limiter through the engine and the bundled script (issue #1065)", (
     it("addresses exactly the published clip sources — the slashed form, no named pool — and every one has a clip in the bundled voice", () => {
       const sources = ["pit-limiter/entry", "pit-limiter/no-limiter-speeding"];
 
-      expect([...collectScriptReferences(NO_LIMITER_SCRIPT).pools].sort()).toEqual(sources);
+      expect([...familyReferences(NO_LIMITER_SCRIPT).pools].sort()).toEqual(sources);
       expect(NO_LIMITER_CLIP_SOURCES.map(({ group, base }) => `${group}/${base}`).sort()).toEqual(sources);
       expect(Object.keys(SCRIPT.pools ?? {})).toEqual([]);
 

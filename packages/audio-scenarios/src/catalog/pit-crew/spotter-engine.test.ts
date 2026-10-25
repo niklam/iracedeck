@@ -2,7 +2,7 @@ import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "j
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
-import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
+import { type CalloutScript } from "@iracedeck/callout-script";
 import type { IEventBus, RadarState, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 // Re-import the (mocked) enum so the test uses identical values.
 import { TrackDirection } from "@iracedeck/sim-events-iracing";
@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NO_FRAME, WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest } from "../../interpreter.js";
 import { _resetAudioScenarios, getScenarioEngine, initializeAudioScenarios } from "../../interpreter.js";
+import { familyReferences } from "./family-references.test-util.js";
 import {
   _resetSpotterEngine,
   registerSpotterEngine,
@@ -867,7 +868,7 @@ describe("scripted fires (issue #1065)", () => {
   });
 
   it("references only the spotterClip var and no pool — every clip reaches the script through the engine's choice", () => {
-    const refs = collectScriptReferences(SPOTTER_SCRIPT);
+    const refs = familyReferences(SPOTTER_SCRIPT);
 
     expect(refs.vars).toEqual(["spotterClip"]);
     expect(refs.pools).toEqual([]);

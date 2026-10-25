@@ -11,12 +11,13 @@ import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "j
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
-import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
+import { type CalloutScript } from "@iracedeck/callout-script";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios, poolMemberPattern } from "../../interpreter.js";
+import { familyReferences } from "./family-references.test-util.js";
 import {
   AUTO_FUEL_CLIP_SOURCES,
   AUTO_FUEL_CONTRACTS,
@@ -676,7 +677,7 @@ describe("the bundled script's toggle-confirmation entries (issue #1065)", () =>
   });
 
   it("references no vocabulary, no fragment and no frame — and the family registers none", () => {
-    const refs = collectScriptReferences(TOGGLE_SCRIPT);
+    const refs = familyReferences(TOGGLE_SCRIPT);
     const vocabulary = engine.vocabulary();
 
     expect(refs.vars).toEqual([]);
@@ -722,7 +723,7 @@ describe("the bundled script's toggle-confirmation entries (issue #1065)", () =>
       "pit-actions/windshield-on",
     ];
 
-    expect([...collectScriptReferences(TOGGLE_SCRIPT).pools].sort()).toEqual(sources);
+    expect([...familyReferences(TOGGLE_SCRIPT).pools].sort()).toEqual(sources);
     expect(TOGGLE_CONFIRMATION_CLIP_SOURCES.map(({ group, base }) => `${group}/${base}`).sort()).toEqual(sources);
     expect(Object.keys(SCRIPT.pools ?? {})).toEqual([]);
 
@@ -782,7 +783,7 @@ describe("the bundled script's autofuel entries (issue #474)", () => {
       "pit-actions/auto-fuel-on-refuel",
     ];
 
-    expect([...collectScriptReferences(AUTO_FUEL_SCRIPT).pools].sort()).toEqual(sources);
+    expect([...familyReferences(AUTO_FUEL_SCRIPT).pools].sort()).toEqual(sources);
     expect(AUTO_FUEL_CLIP_SOURCES.map(({ group, base }) => `${group}/${base}`).sort()).toEqual(sources);
 
     // Disjoint lists: the acknowledgment in particular is NOT here — its

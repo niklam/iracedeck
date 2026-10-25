@@ -591,6 +591,19 @@ describe("the exported sub-schemas", () => {
     expect(CalloutScriptEntrySchema.safeParse({}).success).toBe(false);
     expect(FrameDefinitionSchema.safeParse({ open: [], close: [] }).success).toBe(true);
     expect(FrameDefinitionSchema.safeParse({ open: [] }).success).toBe(false);
+  });
+
+  it("accept an optional cut tail on a frame, and refuse a misspelled or non-array one (#1407)", () => {
+    expect(
+      FrameDefinitionSchema.safeParse({ open: [], close: [], cut: ["pool:radio/never-mind", { ambient: "stop" }] })
+        .success,
+    ).toBe(true);
+
+    const typo = FrameDefinitionSchema.safeParse({ open: [], close: [], cutt: [] });
+
+    expect(typo.success).toBe(false);
+    expect(JSON.stringify(typo.error?.issues)).toContain("Unrecognized key");
+    expect(FrameDefinitionSchema.safeParse({ open: [], close: [], cut: "pool:x" }).success).toBe(false);
     expect(PoolDefinitionSchema.safeParse({ group: "flags", base: "blue" }).success).toBe(true);
     expect(PoolDefinitionSchema.safeParse({ group: "flags" }).success).toBe(false);
     expect(FragmentDefinitionSchema.safeParse({ sequence: ["a.mp3"] }).success).toBe(true);

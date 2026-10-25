@@ -30,6 +30,7 @@ function contract(overrides: Partial<ContractReport> & { id: string }): Contract
     queueable: false,
     interrupt: false,
     speakGate: null,
+    endsOn: null,
     base: null,
     ...overrides,
   };
@@ -224,6 +225,7 @@ describe("buildPackReference", () => {
       queueable: true,
       interrupt: true,
       speakGate: null,
+      endsOn: null,
       base: null,
       comment: "An incident and what it cost.",
       test: "Harness → Incidents → Contact.",
@@ -253,6 +255,26 @@ describe("buildPackReference", () => {
     expect(ref.callouts.map((c) => [c.id, c.speakGate])).toEqual([
       ["gate.none", null],
       ["gate.some", "The car is still too far left when the nag comes to speak."],
+    ]);
+  });
+
+  it("carries each contract's ending-event description, null when it has none (issue #1407)", () => {
+    const ref = buildPackReference(
+      input({
+        contracts: [
+          contract({ id: "ends.none" }),
+          contract({
+            id: "ends.some",
+            endsOn: "You leave pit road while the warning is waiting or still being spoken.",
+          }),
+        ],
+        script: { ...SCRIPT, scenarios: { "ends.none": { skip: true }, "ends.some": { skip: true } } },
+      }),
+    );
+
+    expect(ref.callouts.map((c) => [c.id, c.endsOn])).toEqual([
+      ["ends.none", null],
+      ["ends.some", "You leave pit road while the warning is waiting or still being spoken."],
     ]);
   });
 
@@ -339,6 +361,7 @@ describe("buildPackReference", () => {
       queueable: false,
       interrupt: false,
       speakGate: null,
+      endsOn: null,
       base: null,
       comment: "Not spoken in this voice.",
       test: null,

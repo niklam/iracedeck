@@ -492,6 +492,12 @@ function lintVoice(id: string, ctx: VoiceContext): VoiceLintSummary {
     problem("frame", `"${name}" does not compile — ${reason} — every callout framed by it is skipped`);
   }
 
+  // A broken cut tail never fails its frame (issue #1407), so it is reported
+  // on its own: the plugin plays the frame's close for an ended line instead.
+  for (const [name, reason] of sortedEntries(compiled.failedCuts)) {
+    problem("frame", `"${name}" cut does not compile — ${reason} — an ended line plays the frame's close instead`);
+  }
+
   for (const [name, reason] of sortedEntries(compiled.fragmentProblems)) {
     problem("fragment", `"${name}" does not compile — ${reason}`);
   }

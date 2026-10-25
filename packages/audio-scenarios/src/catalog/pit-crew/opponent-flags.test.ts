@@ -21,7 +21,7 @@ import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "j
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
-import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
+import { type CalloutScript } from "@iracedeck/callout-script";
 import type { IEventBus, OpponentFlagRelation, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { OpponentPenaltyFlag } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -30,6 +30,7 @@ import type { ScenarioContext, ScenarioContract } from "../../dsl.js";
 import { poolRef, WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios, poolMemberPattern } from "../../interpreter.js";
+import { familyReferences } from "./family-references.test-util.js";
 import {
   OPPONENT_FLAG_CLIP_SOURCES,
   OPPONENT_FLAG_CONTRACTS,
@@ -652,7 +653,7 @@ describe("the bundled script's opponent-flag entries (issue #1065; car numbers s
   });
 
   it("references only the car-number var, no condition, case, fragment or frame", () => {
-    const refs = collectScriptReferences(OPPONENT_FLAG_SCRIPT);
+    const refs = familyReferences(OPPONENT_FLAG_SCRIPT);
 
     expect(refs.vars).toEqual(["opponentFlag.carNumber"]);
     expect(refs.conds).toEqual([]);
@@ -674,7 +675,7 @@ describe("the bundled script's opponent-flag entries (issue #1065; car numbers s
       "opponent-flags/others",
     ];
 
-    expect([...collectScriptReferences(OPPONENT_FLAG_SCRIPT).pools].sort()).toEqual(sources);
+    expect([...familyReferences(OPPONENT_FLAG_SCRIPT).pools].sort()).toEqual(sources);
     expect(OPPONENT_FLAG_CLIP_SOURCES.map(({ group, base }) => `${group}/${base}`).sort()).toEqual(sources);
 
     for (const { group, base } of OPPONENT_FLAG_CLIP_SOURCES) {
