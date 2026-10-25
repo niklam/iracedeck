@@ -193,11 +193,24 @@ export type SpeakGate = {
  *   **cut tail** plays (the frame's `cut`, else its `close`; nothing for
  *   `frame: "none"`), so the engineer audibly abandons the line and lets go
  *   of the button. The tail holds the bus like any fire and may itself be
- *   cut by a same-family or heavier `interrupt` arrival.
+ *   cut by a same-family or heavier `interrupt` arrival;
+ * - a playing fire already in its frame's close ops was heard in full and is
+ *   letting go of the button: it is left to finish, so "never mind" never
+ *   follows a complete line.
  *
  * An ended fire is never re-queued, whatever its `queueable` or `resumable`
  * say. A fire cut for any other reason (an interrupt, a same-family
  * replacement, a disable, `stopAll`) plays no tail: only an end does.
+ *
+ * **Ordering.** An end reaches only the fires that exist when `event` is
+ * dispatched. A trigger published AFTER the end event in the same translator
+ * batch starts a fire nothing ends, and the line is heard after the condition
+ * stopped holding. So a contract's `when.event` must never be published
+ * after its `endsOn.event` on the same tick. `pit-crew.limiter-dropped`
+ * holds this: the limiter diff emits nothing on a tick `OnPitRoad` reads
+ * false, and `diffLimiter` runs before `diffPitLane`, so `limiter.dropped`
+ * never follows `pitLane.exited` in a batch. A new `endsOn` contract must be
+ * checked against its translator the same way.
  *
  * Code-owned like `speakGate`: what makes a line stop being true is pacing,
  * which is withheld from voice packs (#1064). `event` must differ from the
