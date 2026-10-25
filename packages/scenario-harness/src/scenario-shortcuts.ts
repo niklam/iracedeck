@@ -1286,6 +1286,105 @@ const PIT_STATUS_EMPTY_STOP_SHORTCUT: TelemetrySequenceShortcut = {
 };
 
 /**
+ * Pit-road speed for the two limiter-cut runs (issue #1407): 43 km/h, above
+ * the limiter diff's 5 m/s crawl threshold — a slower car drops the limiter
+ * without a warning — and under every session preset's pit speed limit
+ * (60 km/h at the least), so no speeding warning joins the run.
+ */
+const LIMITER_CUT_SPEED_MPS = 12;
+
+/**
+ * How long after the limiter comes off the mid-line run crosses the pit exit
+ * line: past the radio's open click (0.29 s), so the warning's words are
+ * playing, and well inside its shortest take — the first-party voices' takes
+ * run 2.35–2.51 s (`default`) and 1.25 s (`shawn`), measured 2026-10-25 — so
+ * the cut lands mid-word in either, with room for the UI's step timing.
+ */
+const LIMITER_CUT_MID_LINE_MS = 1000;
+
+/**
+ * How long the run listens after the exit: the cut tail (a never-mind take of
+ * at most 0.91 s and the close click) with room to spare, and short of the
+ * translator's exit readback, which is due {@link PIT_READBACK_EXIT_DELAY_MS}
+ * after the exit — the closing replay bracket wipes it before it is published.
+ */
+const LIMITER_CUT_LISTEN_MS = 3000;
+
+/**
+ * The car leaving pit road while the limiter-dropped warning is still waiting
+ * or speaking (issue #1407), driven through the TRANSLATOR: the warning's
+ * contract ends on `pitLane.exited`, an edge a bus-event button cannot place
+ * against the line it ends. `dropHoldMs` is the time from the limiter coming
+ * off to the exit: {@link LIMITER_CUT_MID_LINE_MS} for the cut mid-word, or 0
+ * for the exit on the very next tick, inside the open click.
+ *
+ * The setup is done inside a replay-mode bracket (the
+ * {@link PIT_STATUS_EMPTY_STOP_SHORTCUT} idiom): on pit road, moving, with the
+ * limiter on — both the `EngineWarnings` bit the translator's limiter diff
+ * reads and the `dcPitSpeedLimiterToggle` the contracts' gates read — seeded
+ * rather than announced, so no pit-entry readback or `limiter.missing` holds
+ * the Voice bus when the warning fires. Live, the limiter comes off (so
+ * `limiter.dropped`) and the car crosses the exit line with it OFF (so
+ * `pitLane.exited`, and `limiter-on-track`, which that same event triggers,
+ * stays silent at its re-check). A second bracket closes the run on the
+ * circuit and takes the pending exit readback with it, so each press is the
+ * two events and nothing else.
+ */
+function limiterDroppedExitShortcut(
+  id: string,
+  label: string,
+  description: string,
+  dropHoldMs: number,
+): TelemetrySequenceShortcut {
+  return {
+    id,
+    category: "Pit Limiter",
+    label,
+    description,
+    telemetrySequence: [
+      {
+        patch: {
+          IsReplayPlaying: true,
+          IsOnTrack: true,
+          OnPitRoad: true,
+          PlayerTrackSurface: TrkLoc.AproachingPits,
+          PlayerCarInPitStall: false,
+          PitstopActive: false,
+          PlayerCarPitSvStatus: PitSvStatus.None,
+          EngineWarnings: EngineWarnings.PitSpeedLimiter,
+          dcPitSpeedLimiterToggle: true,
+          Speed: LIMITER_CUT_SPEED_MPS,
+        },
+        holdMs: AUTO_FUEL_SEED_MS,
+      },
+      { patch: { IsReplayPlaying: false }, holdMs: REPLAY_EXIT_SETTLE_MS },
+      SEEDED_TICK,
+      // The limiter comes off between the cones: `limiter.dropped`.
+      { patch: { EngineWarnings: 0, dcPitSpeedLimiterToggle: false }, holdMs: dropHoldMs, tick: true },
+      // Over the exit line: `pitLane.exited`, which ends the warning.
+      { patch: { OnPitRoad: false, PlayerTrackSurface: TrkLoc.OnTrack }, holdMs: LIMITER_CUT_LISTEN_MS, tick: true },
+      // Close the bracket: up to speed on the circuit, seeded rather than spoken.
+      { patch: { IsReplayPlaying: true, Speed: 60 }, holdMs: AUTO_FUEL_SEED_MS },
+      { patch: { IsReplayPlaying: false }, holdMs: REPLAY_EXIT_SETTLE_MS },
+    ],
+  };
+}
+
+const LIMITER_DROPPED_EXIT_SHORTCUT = limiterDroppedExitShortcut(
+  "limiter-dropped-exit",
+  "Limiter dropped, then pit exit (cut mid-line)",
+  'Drives the TRANSLATOR down pit road with the limiter on, switches it off at 43 km/h, and crosses the pit exit line one second later, while the "limiter dropped" warning is still being spoken. Expect the warning cut mid-word, then a "never mind" and the closing click — and nothing more: the limiter is off at the exit, so "limiter still on" stays silent. No preset needed: the run opens and closes inside a replay-mode bracket, so it starts from anywhere and hands back a car on the circuit. Needs the mock SDK CONNECTED; with it disconnected the translator sees no ticks and the button is silent for the wrong reason.',
+  LIMITER_CUT_MID_LINE_MS,
+);
+
+const LIMITER_DROPPED_EXIT_EARLY_SHORTCUT = limiterDroppedExitShortcut(
+  "limiter-dropped-exit-early",
+  "Limiter dropped, then pit exit (cut before words)",
+  'The same run as "Limiter dropped, then pit exit (cut mid-line)", but the car crosses the pit exit line one tick after the limiter comes off, during the open click of the radio. Expect silence apart from a clipped open click at most: a warning ended before any word is stopped there, with no "never mind" and no closing click. Needs the mock SDK CONNECTED; with it disconnected the translator sees no ticks and the button is silent for the wrong reason.',
+  0,
+);
+
+/**
  * How long a replay-mode bracket's opening step is held — a few of the mock
  * controller's 14 ms ticks, all the translator needs to wipe its state on the
  * way in (the same bracket as {@link AUTO_FUEL_SEED_MS}).
@@ -2423,6 +2522,9 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     data: {},
     telemetryPatch: { dcPitSpeedLimiterToggle: false },
   },
+  // The same warning ended by the car leaving pit road (issue #1407).
+  LIMITER_DROPPED_EXIT_SHORTCUT,
+  LIMITER_DROPPED_EXIT_EARLY_SHORTCUT,
   {
     id: "limiter-speeding",
     category: "Pit Limiter",

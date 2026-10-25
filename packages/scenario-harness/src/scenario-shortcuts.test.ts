@@ -3,6 +3,7 @@ import { CAUTION_FOLLOW_DELAY_MS, CAUTION_LINEUP_CHANGE_DELAY_MS } from "@iraced
 import type { CalloutScript } from "@iracedeck/callout-script";
 import { _resetEventBus, getEventBus, initializeEventBus, type SimEventName } from "@iracedeck/event-bus";
 import {
+  EngineWarnings,
   Flags,
   PitSvFlags,
   PitSvStatus,
@@ -25,6 +26,7 @@ import {
   isDamageRepairNeeded,
   type PaceLineup,
   PIT_APPROACH_COOLDOWN_MS,
+  PIT_READBACK_EXIT_DELAY_MS,
   PIT_STATUS_EMPTY_STOP_MAX_MS,
   YELLOW_CLEARED_HOLD_MS,
 } from "@iracedeck/sim-events-iracing";
@@ -1114,6 +1116,165 @@ describe('the "Nothing To Do (empty stop)" shortcut (issue #1180)', () => {
     runSequence(controller, longStop);
 
     expect(events).toEqual([]);
+  });
+});
+
+describe("the two limiter-cut shortcuts (issue #1407)", () => {
+  beforeEach(() => {
+    initializeEventBus(silentLogger);
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    _resetSimEventsIracing();
+    _resetEventBus();
+  });
+
+  const MID_LINE = "limiter-dropped-exit";
+  const EARLY = "limiter-dropped-exit-early";
+
+  function stepsOf(id: string): readonly TelemetryStep[] {
+    return SCENARIO_SHORTCUTS.find((s) => s.id === id)?.telemetrySequence ?? [];
+  }
+
+  type Timed = Published & { at: number };
+
+  /**
+   * The translator started at boot or from the race session and hot-lap
+   * presets, recording EVERY event in the catalog with the fake clock's time:
+   * the brackets must keep the setup and the teardown silent, so a narrower
+   * recorder would hide a pit-lane event or a readback they let slip.
+   */
+  function startRecording(from: "boot" | "hot-lap"): { controller: MockSDKController; events: Timed[] } {
+    let controller: MockSDKController;
+
+    if (from === "boot") {
+      controller = new MockSDKController();
+      controller.setConnected(true);
+      initializeSimEventsIracing(getEventBus(), controller as unknown as SDKController, silentLogger);
+      controller.tickOnce();
+    } else {
+      controller = startTranslator().controller;
+    }
+
+    const events: Timed[] = [];
+
+    for (const name of ALL_EVENT_NAMES) {
+      getEventBus().subscribe(name, (ev) => events.push({ event: ev.event, data: ev.data, at: Date.now() }));
+    }
+
+    return { controller, events };
+  }
+
+  const names = (events: readonly Timed[]): string[] => events.map((e) => e.event);
+
+  /**
+   * One press, as the translator reports it: the warning, the limiter switch
+   * on the same tick — which a real press of the button publishes too, and
+   * which no callout speaks — and the exit that ends the warning.
+   */
+  const PRESS = ["limiter.dropped", "carControl.limiterToggled", "pitLane.exited"];
+
+  it("are telemetry sequences in the Pit Limiter category, listed right after the warning they end", () => {
+    const ids = SCENARIO_SHORTCUTS.map((s) => s.id);
+    const dropped = ids.indexOf("limiter-dropped");
+
+    expect(ids.slice(dropped, dropped + 3)).toEqual(["limiter-dropped", MID_LINE, EARLY]);
+
+    for (const id of [MID_LINE, EARLY]) {
+      const shortcut = SCENARIO_SHORTCUTS.find((s) => s.id === id);
+
+      expect(shortcut?.event, id).toBeUndefined();
+      expect(shortcut?.category, id).toBe("Pit Limiter");
+    }
+
+    expect(SCENARIO_SHORTCUTS.find((s) => s.id === MID_LINE)?.label).toBe(
+      "Limiter dropped, then pit exit (cut mid-line)",
+    );
+    expect(SCENARIO_SHORTCUTS.find((s) => s.id === EARLY)?.label).toBe(
+      "Limiter dropped, then pit exit (cut before words)",
+    );
+  });
+
+  it("seeds the car on pit road, moving above a crawl and under the pit limit, with both limiter signals on", () => {
+    for (const id of [MID_LINE, EARLY]) {
+      const setup = stepsOf(id)[0]?.patch ?? {};
+
+      expect(setup, id).toMatchObject({
+        IsReplayPlaying: true,
+        IsOnTrack: true,
+        OnPitRoad: true,
+        PlayerCarInPitStall: false,
+        // The bit the translator's limiter diff reads, and the field the
+        // contracts' gates read: the two are different signals.
+        EngineWarnings: EngineWarnings.PitSpeedLimiter,
+        dcPitSpeedLimiterToggle: true,
+      });
+      // `diff/limiter.ts` warns of nothing below 5 m/s; `race` posts 60 km/h.
+      expect(setup.Speed as number, id).toBeGreaterThan(5);
+      expect(setup.Speed as number, id).toBeLessThan(60 / 3.6);
+    }
+  });
+
+  it.each([
+    { id: MID_LINE, apart: 1000 },
+    { id: EARLY, apart: 0 },
+  ])(
+    "$id: the translator publishes limiter.dropped, then pitLane.exited $apart ms later, and nothing else",
+    ({ id, apart }) => {
+      const { controller, events } = startRecording("hot-lap");
+
+      runSequence(controller, stepsOf(id));
+
+      expect(names(events)).toEqual(PRESS);
+      expect(events[2].at - events[0].at).toBe(apart);
+    },
+  );
+
+  it("the early run crosses the exit line on the very next tick after the drop", () => {
+    // Both steps tick themselves and the first holds nothing, so the UI makes
+    // the exit the translator's next tick — inside the 0.29 s open click.
+    const steps = stepsOf(EARLY);
+    const drop = steps.findIndex((s) => s.patch.dcPitSpeedLimiterToggle === false);
+
+    expect(steps[drop]).toMatchObject({ holdMs: 0, tick: true });
+    expect(steps[drop + 1]).toMatchObject({ patch: { OnPitRoad: false }, tick: true });
+  });
+
+  it("needs no preset: from boot, in the garage, the only addition is the first-time-on-track marker no callout speaks", () => {
+    const { controller, events } = startRecording("boot");
+
+    runSequence(controller, stepsOf(MID_LINE));
+
+    expect(names(events)).toEqual(["driver.firstOnTrack", ...PRESS]);
+  });
+
+  it("plays the same on a second press, and hands back a car on the circuit with the limiter off", () => {
+    const { controller, events } = startRecording("hot-lap");
+
+    runSequence(controller, stepsOf(MID_LINE));
+    runSequence(controller, stepsOf(EARLY));
+
+    expect(names(events)).toEqual([...PRESS, ...PRESS]);
+    expect(getLatestTelemetry()).toMatchObject({
+      IsReplayPlaying: false,
+      IsOnTrack: true,
+      OnPitRoad: false,
+      PlayerTrackSurface: TrkLoc.OnTrack,
+      EngineWarnings: 0,
+      dcPitSpeedLimiterToggle: false,
+    });
+  });
+
+  it("positive control: without the closing bracket the exit readback follows, so the recorder would have seen it", () => {
+    const { controller, events } = startRecording("hot-lap");
+    const steps = stepsOf(MID_LINE);
+    const exit = steps.findIndex((s) => s.patch.OnPitRoad === false);
+
+    runSequence(controller, [...steps.slice(0, exit + 1), { patch: {}, holdMs: PIT_READBACK_EXIT_DELAY_MS }]);
+
+    expect(names(events)).toEqual([...PRESS, "pitService.readbackRequested"]);
   });
 });
 
