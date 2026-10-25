@@ -19,7 +19,7 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@elgato/streamdeck": "3.0.2",
+    "@elgato/streamdeck": "3.0.3",
     "@iracedeck/app-constants": "workspace:*",
     "@iracedeck/deck-core": "workspace:*",
     "@iracedeck/logger": "workspace:*"
