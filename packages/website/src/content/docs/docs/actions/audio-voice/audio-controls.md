@@ -18,6 +18,8 @@ The Mode dropdown is split into two groups:
 
 Select the mode from the **Mode** dropdown in the Property Inspector. Voice Chat and Master modes also expose an **Action** setting for Volume Up / Volume Down (and, for Voice Chat, Mute and Mute a Driver). Race Engineer Volume and Radar Volume expose an **Action** setting for Volume Up / Volume Down.
 
+Every Volume Up and Volume Down key also has a **Key Style**, so an up and a down key placed side by side read as one volume control — see [Key Styles](#key-styles--paired--buttons).
+
 A key whose Mode and Action don't go together, such as Master with Mute, shows the warning triangle and does nothing when pressed. The Property Inspector never offers such a pair, but an imported or hand-edited profile can carry one. Open the key's settings and the Action switches to Volume Up.
 
 ### Push to Talk
@@ -84,7 +86,7 @@ Adjust iRaceDeck's own **Race Engineer voice** level — the same level as the R
 - **Method:** iRaceDeck audio (no iRacing command)
 - **Dial:** See [On a dial](#on-a-dial)
 - **Default binding:** None — controls iRaceDeck audio directly (no iRacing key binding)
-- **Telemetry-aware icon:** No
+- **Telemetry-aware icon:** Yes, in a paired [Key Style](#key-styles--paired--buttons) — the key shows the current Race Engineer volume (iRaceDeck's own setting, not telemetry), or **OFF** while the Race Engineer is switched off
 
 #### Setting: Action
 
@@ -102,12 +104,31 @@ Adjust iRaceDeck's own proximity **Radar** tick level — the same level as the 
 - **Method:** iRaceDeck audio (no iRacing command)
 - **Dial:** See [On a dial](#on-a-dial)
 - **Default binding:** None — controls iRaceDeck audio directly (no iRacing key binding)
-- **Telemetry-aware icon:** No
+- **Telemetry-aware icon:** Yes, in a paired [Key Style](#key-styles--paired--buttons) — the key shows the current Radar volume (iRaceDeck's own setting, not telemetry), or **OFF** while the Radar is switched off
 
 #### Setting: Action
 
 - **Volume Up** (default) — Pressing the button raises the Radar volume by 5% (max 100%)
 - **Volume Down** — Pressing the button lowers the Radar volume by 5% (min 0%)
+
+---
+
+## Key Styles — paired +/− buttons
+
+Every volume key (Voice Chat, Master, Race Engineer Volume and Radar Volume, each with Volume Up or Volume Down) can render as one half of a **paired control**: place the up and the down key next to each other and the two read as one volume control with a + half and a − half. Choose the look under **Key Style**:
+
+- **Legacy (arrows)** — the classic speaker icon with its two lines of text (default for existing keys).
+- **Split** — label on top, the level in the middle, a big + or − below (default for newly placed keys).
+- **Edge chevrons**, **Joined pill** — alternative pair looks that show the level. With **Joined pill** the two keys share one frame.
+- **Big +/−**, **Big chevrons**, **Pill end** — the + or − alone, with a one-word label underneath.
+
+**Race Engineer and Radar keys show their live level**, from 0 to 100 and without a unit, as the dial does. It updates wherever the level changes: the key, its partner, the dial, the Settings window sliders. While the Race Engineer or the Radar is switched off the key reads **OFF**; pressing still steps the level, and the number comes back when the feature is switched on.
+
+**Voice Chat and Master keys have no level to show.** iRacing doesn't report its volume, so on these keys the level styles are drawn without it: **Split** as **Big +/−**, **Edge chevrons** as **Big chevrons**, **Joined pill** as **Pill end**. The key keeps your choice, so moving it to Race Engineer or Radar shows the level again. Each key keeps a one-word label (**VOICE**, **MASTER**, **ENGINEER**, **RADAR**) so pairs side by side can be told apart; the label follows the normal title settings, so you can change or hide it under the title overrides.
+
+**Hold to repeat.** In any style except Legacy, holding a key keeps stepping until you let go. On Voice Chat and Master every step is another press of the key binding. On Race Engineer and Radar every step is 5%. A Legacy key steps once per press.
+
+**Edge chevrons**, **Joined pill**, **Pill end** and **Big chevrons** take a **Position in Pair** setting (*Auto* follows the direction: up on the right, down on the left; pick *Top* or *Bottom* for a vertical stack). Colors follow the normal color overrides (the +/− accent is the *Graphic 1* slot); pill styles turn the normal border off, because the pill is the frame. Push to Talk and the two mutes are single presses with no opposite key, so they keep their icons and offer no Key Style.
 
 ---
 

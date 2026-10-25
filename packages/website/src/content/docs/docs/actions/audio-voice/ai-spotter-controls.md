@@ -11,7 +11,7 @@ Manage iRacing's AI spotter directly from your Stream Deck. Trigger reports, tog
 
 ## Modes
 
-Select the mode from the **Mode** dropdown in the Property Inspector.
+Select the mode from the **Mode** dropdown in the Property Inspector. Spotter Louder and Spotter Quieter also have a **Key Style** — see [Key Styles](#key-styles--paired--buttons).
 
 ### Damage Report
 
@@ -94,7 +94,7 @@ Raise the spotter volume.
 
 #### Settings
 
-- No additional settings
+- **Key Style** — see [Key Styles](#key-styles--paired--buttons)
 
 ---
 
@@ -111,7 +111,7 @@ Lower the spotter volume.
 
 #### Settings
 
-- No additional settings
+- **Key Style** — see [Key Styles](#key-styles--paired--buttons)
 
 ---
 
@@ -131,3 +131,17 @@ The key reads **SKIP CALL / SPOTTER**. It taps iRacing's *Spotter Silence* key b
 #### Settings
 
 - No additional settings
+
+## Key Styles — paired +/− buttons
+
+Spotter Louder and Spotter Quieter can render as one **paired control**: place the two keys next to each other and they read as one spotter volume control with a + half and a − half. Choose the look under **Key Style**:
+
+- **Legacy (arrows)** — the classic speaker icon with its two lines of text (default for existing keys).
+- **Big +/−** — a big + or − with the **SPOTTER** label (newly placed keys start on **Split**, which draws this way).
+- **Big chevrons**, **Pill end** — alternative pair looks. With **Pill end** the two keys share one frame.
+
+iRacing doesn't report the spotter volume, so the styles that would show a level are drawn without it: **Split** as **Big +/−**, **Edge chevrons** as **Big chevrons**, **Joined pill** as **Pill end**. The label follows the normal title settings, so you can change or hide it under the title overrides.
+
+**Hold to repeat.** In any style except Legacy, holding the key keeps pressing the Spotter Louder or Spotter Quieter key binding until you let go. A Legacy key steps once per press.
+
+**Big chevrons** and **Pill end** take a **Position in Pair** setting (*Auto* follows the direction: louder on the right, quieter on the left; pick *Top* or *Bottom* for a vertical stack). Colors follow the normal color overrides (the +/− accent is the *Graphic 1* slot); **Pill end** turns the normal border off, because the pill is the frame. The report keys and Skip Spotter Call keep their icons and offer no Key Style.
