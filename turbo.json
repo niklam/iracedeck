@@ -1,20 +1,16 @@
 {
-  "$schema": "https://v2-8-1.turborepo.dev/schema.json",
+  "$schema": "https://v2-11-9.turborepo.dev/schema.json",
   "agentGuidance": false,
+  "globalDependencies": ["tsconfig.base.json"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
       "outputs": [
         "dist/**",
-        "build/**",
-        "bin/**",
         "browser/pi-components.js",
         "browser/ulanzi-pi-bridge.js",
         "browser/settings-window-bridge.js",
-        "browser/pi-settings-bridge.js",
-        "com.iracedeck.sd.sdPlugin/**",
-        "com.iracedeck.sd.*.sdPlugin/**",
-        "com.ulanzi.*.ulanziPlugin/**"
+        "browser/pi-settings-bridge.js"
       ]
     },
     "typecheck": {
@@ -33,7 +29,15 @@
     },
     "@iracedeck/audio-assets#build": {
       "dependsOn": ["@iracedeck/callout-script#build"],
-      "inputs": ["voice/**", "src/build/**", "src/presets.mjs"],
+      "inputs": [
+        "voice/**",
+        "sfx/**",
+        "catalog/**",
+        "manifest.json",
+        "manifest.bundled.json",
+        "src/build/**",
+        "src/presets.mjs"
+      ],
       "outputs": [".cache/**"]
     },
     "@iracedeck/audio-assets#stage:dev-voices": {
@@ -74,7 +78,10 @@
         "$TURBO_ROOT$/scripts/lib/rollup-logs.mjs",
         "$TURBO_ROOT$/scripts/install-runtime-deps.mjs",
         "$TURBO_ROOT$/scripts/lib/runtime-deps.mjs",
-        "$TURBO_ROOT$/scripts/lib/runtime-install-env.mjs"
+        "$TURBO_ROOT$/scripts/lib/runtime-install-env.mjs",
+        "$TURBO_ROOT$/LICENSE",
+        "$TURBO_ROOT$/THIRD-PARTY-LICENSES.md",
+        "$TURBO_ROOT$/packages/iracing-plugin-stream-deck/com.iracedeck.sd.core.sdPlugin/imgs/plugin/**"
       ],
       "outputs": ["com.iracedeck.sd.*.sdPlugin/**"]
     },
@@ -91,7 +98,9 @@
         "$TURBO_ROOT$/scripts/lib/rollup-logs.mjs",
         "$TURBO_ROOT$/scripts/install-runtime-deps.mjs",
         "$TURBO_ROOT$/scripts/lib/runtime-deps.mjs",
-        "$TURBO_ROOT$/scripts/lib/runtime-install-env.mjs"
+        "$TURBO_ROOT$/scripts/lib/runtime-install-env.mjs",
+        "$TURBO_ROOT$/LICENSE",
+        "$TURBO_ROOT$/THIRD-PARTY-LICENSES.md"
       ],
       "outputs": ["com.iracedeck.sd.*.sdPlugin/**"]
     },
@@ -108,7 +117,10 @@
         "$TURBO_ROOT$/scripts/lib/rollup-logs.mjs",
         "$TURBO_ROOT$/scripts/install-runtime-deps.mjs",
         "$TURBO_ROOT$/scripts/lib/runtime-deps.mjs",
-        "$TURBO_ROOT$/scripts/lib/runtime-install-env.mjs"
+        "$TURBO_ROOT$/scripts/lib/runtime-install-env.mjs",
+        "$TURBO_ROOT$/LICENSE",
+        "$TURBO_ROOT$/THIRD-PARTY-LICENSES.md",
+        "$TURBO_ROOT$/packages/iracing-plugin-stream-deck/com.iracedeck.sd.core.sdPlugin/imgs/plugin/**"
       ],
       "outputs": ["com.ulanzi.*.ulanziPlugin/**"]
     },
@@ -130,6 +142,11 @@
       "dependsOn": ["^build"],
       "inputs": [
         "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/lib/changelog-*.mjs",
+        "!$TURBO_ROOT$/scripts/lib/changelog-*.test.mjs",
+        "$TURBO_ROOT$/changelog.d/**",
+        "$TURBO_ROOT$/package.json",
+        "$TURBO_ROOT$/scripts/lib/voice-catalog-data.mjs",
         "$TURBO_ROOT$/packages/icons/**",
         "$TURBO_ROOT$/packages/iracing-actions/icons/**",
         "$TURBO_ROOT$/packages/iracing-actions/src/**",
@@ -142,6 +159,7 @@
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/lib/changelog-*.mjs",
+        "!$TURBO_ROOT$/scripts/lib/changelog-*.test.mjs",
         "$TURBO_ROOT$/changelog.d/**",
         "$TURBO_ROOT$/package.json",
         "$TURBO_ROOT$/scripts/lib/voice-catalog-data.mjs",
