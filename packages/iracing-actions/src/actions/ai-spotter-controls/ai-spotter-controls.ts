@@ -2,12 +2,15 @@ import {
   assembleIcon,
   CommonSettings,
   ConnectionStateAwareAction,
+  getDualPressThresholdMs,
   getGlobalBorderSettings,
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
+  type IDeckKeyUpEvent,
   type IDeckWillAppearEvent,
+  type IDeckWillDisappearEvent,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
@@ -23,7 +26,19 @@ import weatherReportIconSvg from "@iracedeck/icons/ai-spotter-controls/weather-r
 import { getGlobalColors } from "@iracedeck/settings";
 import z from "zod";
 
+import {
+  ADJUST_REPEAT_INTERVAL_MS,
+  ADJUST_REPEAT_SAFETY_MS,
+  adjustStyleSettingsFields,
+  seedFreshKeyStyle,
+} from "../../shared/adjust-styles.js";
+import { RepeatController } from "../../shared/repeat-controller.js";
 import { SPOTTER_CONTROLS, SPOTTER_GLOBAL_KEYS, type SpotterControl } from "../../shared/spotter-bindings.js";
+import {
+  renderVolumeKeyIconOrNull,
+  type VolumeKeyDescription,
+  volumeKeyRepeats,
+} from "../../shared/volume-key-styles.js";
 
 // The spotter id↔global-key map lives in `shared/spotter-bindings.ts` (also
 // consumed by the Audio Controls dial's Spotter mode, #809); re-exported here
@@ -64,7 +79,14 @@ export const SPOTTER_TITLES: Record<SpotterControl, string> = {
  * @internal Exported for testing
  */
 export const AiSpotterControlsSettings = CommonSettings.extend({
-  control: z.enum(SPOTTER_CONTROLS).default("damage-report"),
+  // .catch (#1453): an unknown stored control still lands on Damage Report,
+  // but no longer fails the whole parse and resets the key's other fields
+  // (its key style among them) along with it.
+  control: z.enum(SPOTTER_CONTROLS).default("damage-report").catch("damage-report"),
+  // Paired +/- key styles on Spotter Louder / Quieter (#1453): `keyStyle` and
+  // `pairPosition`, both with `.catch`. The other controls keep the stored
+  // value and ignore it.
+  ...adjustStyleSettingsFields,
 });
 
 export type AiSpotterControlsSettings = z.infer<typeof AiSpotterControlsSettings>;
@@ -89,6 +111,54 @@ export function generateAiSpotterControlsSvg(settings: AiSpotterControlsSettings
   return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic, bindingMissing });
 }
 
+/** The spotter controls that form a volume pair (#1453). */
+type SpotterVolumeControl = Extract<SpotterControl, "louder" | "quieter">;
+
+function isSpotterVolumeControl(control: SpotterControl): control is SpotterVolumeControl {
+  return control === "louder" || control === "quieter";
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * The volume key a spotter control is, for its paired +/− style (#1453), or
+ * null for a control that is not a volume key. iRacing reports no spotter
+ * volume, so the key has no level: a value style draws its no-value form.
+ */
+export function describeSpotterVolumeKey(control: SpotterControl): VolumeKeyDescription | null {
+  if (!isSpotterVolumeControl(control)) return null;
+
+  return { label: "SPOTTER", direction: control === "louder" ? "increase" : "decrease" };
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * The key icon: Spotter Louder / Quieter in a paired style draws through the
+ * shared volume module (#1453); every other control, and a volume key on
+ * Legacy, draws {@link generateAiSpotterControlsSvg} as before.
+ */
+export function renderAiSpotterControlsIcon(settings: AiSpotterControlsSettings, bindingMissing = false): string {
+  const description = describeSpotterVolumeKey(settings.control);
+
+  if (description) {
+    const styled = renderVolumeKeyIconOrNull({
+      description,
+      keyStyle: settings.keyStyle,
+      pairPosition: settings.pairPosition,
+      colorSourceSvg: SPOTTER_ICONS[settings.control],
+      colorOverrides: settings.colorOverrides,
+      titleOverrides: settings.titleOverrides,
+      borderOverrides: settings.borderOverrides,
+      bindingMissing,
+    });
+
+    if (styled) return styled;
+  }
+
+  return generateAiSpotterControlsSvg(settings, bindingMissing);
+}
+
 /**
  * AI Spotter Controls Action
  * Provides controls for the iRacing AI spotter: damage/weather reports, lap reporting,
@@ -97,7 +167,15 @@ export function generateAiSpotterControlsSvg(settings: AiSpotterControlsSettings
 export const AI_SPOTTER_CONTROLS_UUID = "com.iracedeck.sd.core.ai-spotter-controls" as const;
 
 export class AiSpotterControls extends ConnectionStateAwareAction<AiSpotterControlsSettings> {
+  /** Hold-to-repeat for Spotter Louder / Quieter in a paired style (#1453); Legacy keys step once per press. */
+  private readonly repeat = new RepeatController(this.logger);
+
   override async onWillAppear(ev: IDeckWillAppearEvent<AiSpotterControlsSettings>): Promise<void> {
+    // BEFORE super (#1453): the base stamps a missing `addedWithVersion` with
+    // its own setSettings({...payload, addedWithVersion}). Seeding first, and
+    // handing the base the seeded payload, makes that stamp write land last
+    // AND carry the seeded style.
+    await this.persistFreshKeySeed(ev);
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
     this.setActiveBinding(SPOTTER_GLOBAL_KEYS[settings.control]);
@@ -107,6 +185,7 @@ export class AiSpotterControls extends ConnectionStateAwareAction<AiSpotterContr
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<AiSpotterControlsSettings>): Promise<void> {
     await super.onDidReceiveSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
+    this.repeat.clear(ev.action.id);
     this.setActiveBinding(SPOTTER_GLOBAL_KEYS[settings.control]);
     await this.updateDisplay(ev, settings);
   }
@@ -114,8 +193,28 @@ export class AiSpotterControls extends ConnectionStateAwareAction<AiSpotterContr
   override async onKeyDown(ev: IDeckKeyDownEvent<AiSpotterControlsSettings>): Promise<void> {
     this.logger.info("Key down received");
     const settings = this.parseSettings(ev.payload.settings);
+    const { control } = settings;
 
-    const settingKey = SPOTTER_GLOBAL_KEYS[settings.control];
+    if (isSpotterVolumeControl(control)) {
+      // Hold-to-repeat in every paired style (#1453): armed SYNCHRONOUSLY,
+      // before the first step's await, so a racing keyUp always finds the
+      // timers to clear. Every step, the first and each repeat, goes through
+      // performVolumeStep; a tap that did not send ends the repeat.
+      if (volumeKeyRepeats(settings.keyStyle)) {
+        this.repeat.onKeyDown(ev.action.id, {
+          holdMs: getDualPressThresholdMs(),
+          intervalMs: ADJUST_REPEAT_INTERVAL_MS,
+          safetyMs: ADJUST_REPEAT_SAFETY_MS,
+          execute: () => this.performVolumeStep(control),
+        });
+      }
+
+      await this.performVolumeStep(control);
+
+      return;
+    }
+
+    const settingKey = SPOTTER_GLOBAL_KEYS[control];
 
     if (!settingKey) {
       this.logger.warn(`No global key mapping for ${settings.control}`);
@@ -124,6 +223,47 @@ export class AiSpotterControls extends ConnectionStateAwareAction<AiSpotterContr
     }
 
     await this.tapBinding(settingKey);
+  }
+
+  override async onKeyUp(ev: IDeckKeyUpEvent<AiSpotterControlsSettings>): Promise<void> {
+    this.repeat.onKeyUp(ev.action.id);
+  }
+
+  override async onWillDisappear(ev: IDeckWillDisappearEvent<AiSpotterControlsSettings>): Promise<void> {
+    this.repeat.clear(ev.action.id);
+    await super.onWillDisappear(ev);
+  }
+
+  /**
+   * One spotter volume step — the first press and every hold-to-repeat step
+   * alike (#1453): a tap of the Spotter Louder / Quieter key binding. Returns
+   * whether the press was sent.
+   */
+  private async performVolumeStep(control: SpotterVolumeControl): Promise<boolean> {
+    return this.tapBinding(SPOTTER_GLOBAL_KEYS[control]);
+  }
+
+  /**
+   * Seed a freshly placed key with the Split style (#1453) and hand the
+   * seeded object on as `ev.payload.settings`, so the base class's
+   * `addedWithVersion` stamp keeps it. Only a key with no stored settings at
+   * all is seeded; every existing key stays Legacy. Logs and swallows a
+   * failed persist: the key then draws Legacy until the next write.
+   */
+  private async persistFreshKeySeed(ev: IDeckWillAppearEvent<AiSpotterControlsSettings>): Promise<void> {
+    const seeded = seedFreshKeyStyle(ev.payload.settings);
+
+    if (!seeded) return;
+
+    try {
+      await ev.action.setSettings(seeded);
+    } catch (err) {
+      this.logger.warn(`Failed to persist the seeded key style: ${err instanceof Error ? err.message : err}`);
+
+      return;
+    }
+
+    ev.payload.settings = seeded as AiSpotterControlsSettings;
   }
 
   private parseSettings(settings: unknown): AiSpotterControlsSettings {
@@ -136,14 +276,10 @@ export class AiSpotterControls extends ConnectionStateAwareAction<AiSpotterContr
     ev: IDeckWillAppearEvent<AiSpotterControlsSettings> | IDeckDidReceiveSettingsEvent<AiSpotterControlsSettings>,
     settings: AiSpotterControlsSettings,
   ): Promise<void> {
-    const svgDataUri = generateAiSpotterControlsSvg(
-      settings,
-      this.isBindingMissing(SPOTTER_GLOBAL_KEYS[settings.control]),
-    );
+    const render = () =>
+      renderAiSpotterControlsIcon(settings, this.isBindingMissing(SPOTTER_GLOBAL_KEYS[settings.control]));
     await ev.action.setTitle("");
-    await this.setKeyImage(ev, svgDataUri);
-    this.setRegenerateCallback(ev.action.id, () =>
-      generateAiSpotterControlsSvg(settings, this.isBindingMissing(SPOTTER_GLOBAL_KEYS[settings.control])),
-    );
+    await this.setKeyImage(ev, render());
+    this.setRegenerateCallback(ev.action.id, render);
   }
 }
