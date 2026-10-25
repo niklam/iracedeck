@@ -240,7 +240,7 @@ Add a new category with binding entries — field reference in `.claude/rules/pi
 
 #### 10. Add comms catalog entry — `packages/iracing-actions/src/actions/comms-catalog.ts` (#612)
 
-Add one `CommDescriptor` per mode (api / chat / keybind — use the `keybind` / `keybindBy` / `keybindKeys` / `keybindFixed` helpers). Editing the catalog in a Claude Code session regenerates the JSON the PI reads through the post-edit hook; outside one, run it yourself:
+Add one `CommDescriptor` per mode (api / chat / keybind — use the `keybind` / `keybindBy` / `keybindKeys` / `keybindAnyKeys` / `keybindFixed` helpers). Editing the catalog in a Claude Code session regenerates the JSON the PI reads through the post-edit hook; outside one, run it yourself:
 
 ```bash
 pnpm generate:action-comms
