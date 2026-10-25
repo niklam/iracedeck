@@ -3,7 +3,7 @@ title: Replay Markers
 description: Mark a moment while you drive or watch, and jump back to it in the replay.
 sidebar:
   badge:
-    text: "4 modes"
+    text: "5 modes"
     variant: tip
 ---
 
@@ -64,20 +64,51 @@ The setting is per key, so one deck can carry both kinds: a key with a longer va
 
 ### Delete Marker
 
-Removes the marker nearest the current moment, if there is one within 10 seconds of it — or within 10 seconds of where you pressed **Add Marker** for it. From the car that reaches a marker you added moments ago, however far back it was set; in a replay it reaches the marker you just jumped to while its moment is playing. There is no confirmation step — the 10-second window already limits what a press can reach.
+Removes the marker nearest the current moment, if one is within the key's **Delete Window** of it — 10 seconds by default — or within that window of where you pressed **Add Marker** for it. From the car that reaches a marker you added moments ago, however far back it was set; in a replay it reaches the marker you just jumped to while its moment is playing. There is no confirmation step — the Delete Window already limits what a press can reach.
 
 When a marker is deleted, the key briefly shows **MARKER DELETED**; a press with no marker in reach shows nothing.
+
+The key turns grey whenever a press would delete nothing — no marker within its Delete Window, iRacing not running, or no replay position — the same look as [Next Marker](#next-marker) and [Previous Marker](#previous-marker), your colour and title overrides kept, only faded. Unlike those two it works from the car as well: right after you press an Add Marker key, the Delete key lights up for the length of its window and then greys again. In a replay it lights up as a marker comes within the window and greys once the replay has played on past it.
 
 #### Details
 
 - **Method:** Stored by iRaceDeck — no iRacing command
 - **Dial:** No rotation support
 - **Default binding:** No keyboard binding
-- **Telemetry-aware icon:** No
+- **Telemetry-aware icon:** Yes — greyed out while there is no marker within its Delete Window
 
-#### Settings
+#### Setting: Delete Window
 
-- No additional settings
+How far from the current moment, in seconds, a press reaches for a marker — measured to the marker itself and to the moment its Add Marker key was pressed, whichever is nearer. Defaults to **10**, range **1–60** whole seconds; a value outside the range is brought into it, and a cleared field uses the default. A smaller window guards better against deleting the wrong marker when you mark moments close together; a larger one reaches a marker you passed a while ago.
+
+---
+
+### Add / Delete Marker
+
+One key for both: it shows and does **Delete Marker** while a marker is within its **Delete Window**, and **Add Marker** otherwise. The icon and title switch as the replay plays or you drive, so the key always says what a press will do, using the same artwork and titles as the Add Marker and Delete Marker keys. A press does what the key shows at that moment.
+
+Right after you add a marker with it, that new marker is within the window, so the key shows **Delete** — an undo for a mistaken press — until the window has passed, and then goes back to **Add**. To mark two moments close together, wait for the key to read Add again, use a separate Add Marker key, or set a shorter Delete Window. Pressing twice quickly from Add adds one marker, never adds and then deletes it.
+
+The key briefly shows **MARKER ADDED** or **MARKER DELETED**, the same as the single-purpose keys; a press that changes nothing shows nothing. It never turns grey: without iRacing it shows the plain Add look.
+
+:::note
+With **Seconds Back** larger than **Delete Window**, a press on the Add look can place the new marker within one second of a marker that is outside the window. That press is refused as a duplicate and shows nothing, exactly as an Add Marker key's duplicate press does. Keep Seconds Back below Delete Window to avoid it.
+:::
+
+#### Details
+
+- **Method:** Stored by iRaceDeck — no iRacing command
+- **Dial:** No rotation support
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** Yes — switches between the Add and Delete looks as a marker comes within or leaves its Delete Window
+
+#### Setting: Seconds Back
+
+How many seconds before the current moment a marker added by this key is placed. Defaults to **5**, range **0–60** whole seconds, as on the [Add Marker](#add-marker) key.
+
+#### Setting: Delete Window
+
+How far from the current moment, in seconds, the key reaches for a marker to delete — measured to the marker itself and to the moment it was added, whichever is nearer — and so how long the key shows Delete. Defaults to **10**, range **1–60** whole seconds, as on the [Delete Marker](#delete-marker) key.
 
 ---
 
@@ -157,15 +188,19 @@ After a press, the value briefly shows `ADDED k / N` or `DELETED` for one second
 
 How many seconds before the current moment a marker added from the dial is placed. Defaults to **5**, range **0–60** whole seconds — the dial's own value, separate from any key's. From the car the current moment is the live end of the recording; in a replay it is the frame on screen.
 
+#### Setting: Delete Window
+
+How far from the current moment, in seconds, a Delete Marker run from the dial reaches — by any gesture set to Delete Marker, and in the `DELETE k / N` preview while you hold the dial. Measured to the marker itself and to the moment its Add was pressed, whichever is nearer. Defaults to **10**, range **1–60** whole seconds — the dial's own value, separate from any key's. It shows on a Mirabox knob too, whose **Press Action** can be Delete Marker.
+
 #### Setting: Press Action / Long Press
 
 What a short or long press of the dial button does, chosen from:
 
 - **Add Marker** (default for **Press Action**) — adds a marker **Seconds Back** before the current moment, exactly like the [Add Marker](#add-marker) key. It works from the car as well as in the replay, which is why it is the press default.
-- **Delete Marker** (default for **Long Press**) — removes the marker within 10 seconds of the current moment, exactly like the [Delete Marker](#delete-marker) key.
+- **Delete Marker** (default for **Long Press**) — removes the nearest marker within the dial's **Delete Window** of the current moment, exactly like the [Delete Marker](#delete-marker) key.
 - **None** — does nothing.
 
-A press is classified when you release the dial — a hold past the [Long-press threshold](/docs/features/dials/#the-long-press-threshold) fires the Long Press action. Hold past the threshold and the strip previews what letting go will do: `DELETE k / N` for the marker that would go, or `ADD −5 s` when Long Press is set to Add Marker. When the release would do nothing — no marker within reach, a marker that would duplicate one already there, or no data from iRacing — the strip stays as it is. See [Seeing the outcome before you let go](/docs/features/dials/#seeing-the-outcome-before-you-let-go). Long Press is Stream Deck+ only.
+A press is classified when you release the dial — a hold past the [Long-press threshold](/docs/features/dials/#the-long-press-threshold) fires the Long Press action. Hold past the threshold and the strip previews what letting go will do: `DELETE k / N` for the marker that would go, or `ADD −5 s` when Long Press is set to Add Marker. When the release would do nothing — no marker within the dial's **Delete Window**, a marker that would duplicate one already there, or no data from iRacing — the strip stays as it is. See [Seeing the outcome before you let go](/docs/features/dials/#seeing-the-outcome-before-you-let-go). Long Press is Stream Deck+ only.
 
 #### Setting: Tap Display / Long Touch
 

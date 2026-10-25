@@ -34,7 +34,7 @@
 | **Display & Session**   | 2       | 15    | Incidents, laps, position, iRating, gaps ahead/behind, fuel, flags    |
 | **Driving Controls**    | 3       | 21    | Black box cycling, look direction, car control                        |
 | **Cockpit & Interface** | 5       | 32    | Wipers, FFB, splits & reference, telemetry, UI toggles                |
-| **View & Camera**       | 6       | 97    | FOV, replay, replay markers, camera controls, broadcast tools         |
+| **View & Camera**       | 6       | 98    | FOV, replay, replay markers, camera controls, broadcast tools         |
 | **Media**               | 1       | 7     | Video recording, screenshots                                          |
 | **Pit Service**         | 3       | 15    | Fuel (button and dial), tires, compounds, tearoff, fast repair        |
 | **Car Setup**           | 7       | 44    | Brakes (button and dial), chassis, aero, engine, fuel mix, hybrid/ERS, traction control |

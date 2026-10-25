@@ -458,7 +458,14 @@
             {
               "value": "delete",
               "label": "Delete Marker",
-              "description": "Remove the marker nearest the current frame within 10 s of its frame or of the frame its Add was pressed at; sends nothing to iRacing"
+              "additionalSettings": ["deleteWindow"],
+              "description": "Remove the marker nearest the current frame within deleteWindow (default 10, 1-60 whole seconds; blank reads as the default, out of range clamps) of its frame or of the frame its Add was pressed at, whichever is nearer; the key shows the shared unavailable look (greyed, overrides kept) while no marker is in reach, iRacing is not running or there is no replay position, from the car and in a replay; sends nothing to iRacing"
+            },
+            {
+              "value": "add-delete",
+              "label": "Add / Delete Marker",
+              "additionalSettings": ["secondsBack", "deleteWindow"],
+              "description": "Shows and runs Delete Marker while a marker is within deleteWindow (default 10, 1-60), Add Marker (secondsBack, default 5, 0-60) otherwise, switching icon and title live with the Add and Delete artwork; a press runs the operation the key shows, so right after an Add it shows Delete (an undo) until the window passes; never greyed, the plain Add look without iRacing; with secondsBack larger than deleteWindow an Add can be refused as a duplicate of a marker the window does not reach; sends nothing to iRacing"
             },
             {
               "value": "next",
