@@ -31,16 +31,13 @@ export type WipersOnTap = (typeof WIPERS_ON_TAP_OPTIONS)[number];
 export const WipersOnTapField = z.enum(WIPERS_ON_TAP_OPTIONS).default("trigger").catch("trigger");
 
 /**
- * The kind of car the user is in:
+ * The resolved car, with which wiper variables a wiper car exposes:
  * - `visor` — an open-cockpit car with a tear-off visor;
  * - `wipers` — a car with windshield wipers;
  * - `unknown` — anything but a driver live in their own car (menus, garage,
  *   spectating, a replay, no sim), so the car cannot be told;
  * - `neither` — live in their own car, and the car exposes neither.
  */
-export type WipersAndVisorKind = "visor" | "wipers" | "unknown" | "neither";
-
-/** The resolved car, with which wiper variables a wiper car exposes. */
 export type WipersAndVisorCar =
   { kind: "visor" } | { kind: "wipers"; trigger: boolean; toggle: boolean } | { kind: "unknown" } | { kind: "neither" };
 
