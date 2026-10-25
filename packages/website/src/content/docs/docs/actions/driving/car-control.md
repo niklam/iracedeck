@@ -144,7 +144,7 @@ The missing-binding warning on the key checks only the bindings the current car 
 
 #### Setting: Wipers on tap
 
-What a tap does in a car with a windshield. The long press always does the other one. Has no effect in a visor car. Default **Trigger**.
+What a tap does in a car with a windshield. The long press always does the other one, and the Property Inspector says so beside the setting. Has no effect in a visor car. Default **Trigger**.
 
 - **Trigger** (default) — a tap triggers a single wiper sweep; a long press turns the wipers on or off
 - **Toggle** — a tap turns the wipers on or off; a long press triggers a single sweep
