@@ -238,6 +238,18 @@ describe("the camera-car modes (#1448)", () => {
       expect(io.logger.debug).toHaveBeenCalledWith(expect.stringContaining("not the replay's here, nothing sent"));
     });
 
+    it("with no position reading yet, still checks the arrays at the turn and interrupts no walk", async () => {
+      const io = fieldIo(4, { saved: false, toEnd: REPLAY_LIVE_EDGE_MAX_FRAMES + 1 });
+      const walk = claimReplayCursor(FASTEST_LAP_WALK_OWNER);
+
+      vi.mocked(io.position).mockReturnValue(null);
+      await racePositionMode.rotate(1, positionDial, io);
+
+      expect(io.switchToCarNumber).not.toHaveBeenCalled();
+      expect(requestCameraSwitch).not.toHaveBeenCalled();
+      expect(walk.interruptedBy).toBeNull();
+    });
+
     it("behind a jump decides when the jump has landed: landed scrubbed back, it sends nothing", async () => {
       const io = fieldIo(4, { saved: false, toEnd: 1 });
       let land!: (outcome: ReplaySettledOutcome) => void;

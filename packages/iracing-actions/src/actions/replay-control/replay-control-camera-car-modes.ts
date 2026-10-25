@@ -48,7 +48,7 @@
  * (`labelClearsSideMarks`, 9.8 px against 10.2), so the spec's fallback
  * applies; the Mode options keep the full names.
  */
-import { getAllCarNumbers, type TelemetryData } from "@iracedeck/iracing-sdk";
+import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { requestCameraSwitch } from "@iracedeck/replay-engine";
 
 import { type CarCycleDirection, computeCarNumberTarget } from "../../shared/car-cycling.js";
@@ -59,7 +59,7 @@ import {
   resolveRaceOrder,
 } from "../../shared/race-position-cycling.js";
 import { carArraysTrusted } from "./replay-car-arrays.js";
-import { cameraCarIdx, carNumberOf } from "./replay-car-numbers.js";
+import { allCarNumbersOf, cameraCarIdx, carNumberOf } from "./replay-car-numbers.js";
 import type { ReplayDialMode, ReplayDialModeView, ReplayDialStepIo } from "./replay-control-dial-mode.js";
 
 /** What Position shows where the race order cannot be trusted, or the camera car has no position. */
@@ -138,7 +138,7 @@ export const carNumberMode: ReplayDialMode<ReplayDialStepIo> = {
     return requestCarStep(io, { by: CAR_NUMBER_OWNER, label: CAR_NUMBER_LABEL, name, asked: `ticks=${ticks}` }, () => {
       // From the camera car when the switch goes out, not at the turn.
       const camCarIdx = cameraCarIdx(io.telemetry());
-      const target = computeCarNumberTarget(camCarIdx, getAllCarNumbers(io.sessionInfo(), true, true), direction);
+      const target = computeCarNumberTarget(camCarIdx, allCarNumbersOf(io.sessionInfo()), direction);
 
       if (target === null) {
         io.logger.debug(`${CAR_NUMBER_LABEL}: no other car to switch to, nothing sent (camera car ${camCarIdx})`);
@@ -176,7 +176,7 @@ export const carNumberMode: ReplayDialMode<ReplayDialStepIo> = {
  * right (clockwise). Null with no other car to go to.
  */
 export function carNumberNeighbours(camCarIdx: number | undefined, sessionInfo: unknown): DialNeighbours | null {
-  const cars = getAllCarNumbers(sessionInfo, true, true);
+  const cars = allCarNumbersOf(sessionInfo);
   const next = computeCarNumberTarget(camCarIdx, cars, "next");
   const previous = computeCarNumberTarget(camCarIdx, cars, "previous");
 
@@ -204,7 +204,9 @@ export const racePositionMode: ReplayDialMode<ReplayDialStepIo> = {
     // the replay's: where it is not, nothing is asked of the waiter, so no
     // walk is interrupted for a turn that would send nothing. Behind a jump
     // the send decides, once it has landed.
-    if (position !== null && !position.seeking && !io.isJumpUnderWay() && !carArraysTrusted(io, io.telemetry())) {
+    // No reading yet counts as nothing under way: the check runs on fresh
+    // telemetry, so a turn that would send nothing interrupts no walk.
+    if (!position?.seeking && !io.isJumpUnderWay() && !carArraysTrusted(io, io.telemetry())) {
       io.logger.debug(`${POSITION_LABEL}: the race order is not the replay's here, nothing sent (ticks=${ticks})`);
 
       return;

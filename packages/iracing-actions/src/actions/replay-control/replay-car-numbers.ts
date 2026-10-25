@@ -5,7 +5,7 @@
  * each session info's numbers are built once, by carIdx: the SDK parses a new
  * session info object on every update.
  */
-import { getCarNumberFromSessionInfo } from "@iracedeck/iracing-sdk";
+import { getAllCarNumbers, getCarNumberFromSessionInfo } from "@iracedeck/iracing-sdk";
 import { NO_CAR_IDX } from "@iracedeck/replay-engine";
 
 const carNumbersBySessionInfo = new WeakMap<object, ReadonlyMap<number, string>>();
@@ -42,6 +42,25 @@ export function carNumberOf(sessionInfo: unknown, carIdx: number): string | null
   }
 
   return numbers.get(carIdx) ?? null;
+}
+
+const allCarNumbersBySessionInfo = new WeakMap<object, ReturnType<typeof getAllCarNumbers>>();
+
+/**
+ * Every car the session has had, by number, no pace car (`getAllCarNumbers(sessionInfo, true, true)`,
+ * #1281): the Car # walk's field, built once per session info, since its view runs every tick.
+ */
+export function allCarNumbersOf(sessionInfo: unknown): ReturnType<typeof getAllCarNumbers> {
+  if (typeof sessionInfo !== "object" || sessionInfo === null) return getAllCarNumbers(sessionInfo, true, true);
+
+  let cars = allCarNumbersBySessionInfo.get(sessionInfo);
+
+  if (cars === undefined) {
+    cars = getAllCarNumbers(sessionInfo, true, true);
+    allCarNumbersBySessionInfo.set(sessionInfo, cars);
+  }
+
+  return cars;
 }
 
 /** The camera car's index from a reading: `CamCarIdx` when it names a car, else undefined (none, or the no-car sentinel). */
