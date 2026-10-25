@@ -666,7 +666,7 @@ The touch strip (and the screen above a Mirabox knob) shows a "dash box" for the
 | Incident | `INCIDENT` | The replay time, `m:ss` | None; while the dial steps through iRacing's search, the steps still to go | Both sides are lit |
 | Track Order | `TRK ORD` | The car the camera is on — `#12` — with the cars on track behind (left) and ahead (right) dimmed on either side — `#7` and `#31` — in a saved replay or at the live point of the session's replay; elsewhere the number alone | None | Both sides are lit; a warning shows while the Next Car / Previous Car binding is unset |
 | Cars by Number | `CAR #` | The car the camera is on — `#12` — with the car numbers a turn each way goes to dimmed on either side | None | Both sides are lit |
-| Cars by Position | `POSITION` | The race position of the car the camera is on — `P4` — with the positions a turn each way goes to dimmed on either side — `P3` and `P5` — in a saved replay or at the live point of the session's replay; elsewhere `P--`, with no neighbours | The car number of the car the camera is on — `#12` | Each side is lit while a turn that way has a car to go to |
+| Cars by Position | `POS` | The race position of the car the camera is on — `P4` — with the positions a turn each way goes to dimmed on either side — `P3` and `P5` — in a saved replay or at the live point of the session's replay; elsewhere `P--`, with no neighbours | The car number of the car the camera is on — `#12` | Each side is lit while a turn that way has a car to go to; both are dark at `P--` |
 
 From the car, or while iRacing is not running, the box is dimmed and shows only its label. You can override the border, label, value, and background colors in the **Dash Box Appearance** section of the dial settings.
 
