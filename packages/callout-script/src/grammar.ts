@@ -128,8 +128,12 @@ export type CalloutScriptEntry = {
   sequence?: ScriptStep[];
 };
 
-/** What a frame name means: the steps played around a callout's body. */
-export type FrameDefinition = { comment?: string; open: ScriptStep[]; close: ScriptStep[] };
+/**
+ * What a frame name means: the steps played around a callout's body. `cut`
+ * (#1407) is the optional tail played when the line is ended on an event
+ * instead of reaching its `close`; a frame without one is valid.
+ */
+export type FrameDefinition = { comment?: string; open: ScriptStep[]; close: ScriptStep[]; cut?: ScriptStep[] };
 
 /** A named pool: an alias for a clip group + base name in the voice's manifest. */
 export type PoolDefinition = { group: string; base: string; comment?: string };

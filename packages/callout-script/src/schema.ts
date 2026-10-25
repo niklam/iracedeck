@@ -207,6 +207,7 @@ export const FrameDefinitionSchema: z.ZodType<FrameDefinition> = z.strictObject(
   comment: z.string().optional(),
   open: steps,
   close: steps,
+  cut: steps.optional(),
 });
 
 export const PoolDefinitionSchema: z.ZodType<PoolDefinition> = z.strictObject({
