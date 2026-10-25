@@ -129,21 +129,30 @@ export interface WipersAndVisorAppearance {
   unavailable: boolean;
 }
 
+/** Whether a wiper car's tap sends Toggle Wipers, which is what its key shows. */
+function tapToggles(
+  car: Extract<WipersAndVisorCar, { kind: "wipers" }>,
+  wipersOnTap: WipersOnTap | undefined,
+): boolean {
+  return wipersAndVisorBinding(car, "tap", wipersOnTap) === WIPERS_AND_VISOR_BINDINGS.toggle;
+}
+
 /**
- * The key's appearance for a kind and the Wipers on tap choice. A known car
+ * The key's appearance for a car and the Wipers on tap choice. A known car
  * shows the existing artwork of what a tap does (the visor, or the wiper
- * action a tap sends); an unknown car shows the combined icon; a car with
- * neither shows it in the unavailable look.
+ * action a tap actually sends — on a car with only one wiper variable that is
+ * the one it has, whatever the swap); an unknown car shows the combined icon;
+ * a car with neither shows it in the unavailable look.
  */
 export function wipersAndVisorAppearance(
-  kind: WipersAndVisorKind,
+  car: WipersAndVisorCar,
   wipersOnTap: WipersOnTap | undefined,
 ): WipersAndVisorAppearance {
-  switch (kind) {
+  switch (car.kind) {
     case "visor":
       return { iconSvg: tearOffVisorIcon, title: "VISOR\nTEAR OFF", unavailable: false };
     case "wipers":
-      return wipersOnTap === "toggle"
+      return tapToggles(car, wipersOnTap)
         ? { iconSvg: toggleWipersIcon, title: "TOGGLE\nWIPERS", unavailable: false }
         : { iconSvg: triggerWipersIcon, title: "TRIGGER\nWIPERS", unavailable: false };
     case "neither":
@@ -154,9 +163,12 @@ export function wipersAndVisorAppearance(
 }
 
 /**
- * The part of the render key this mode owns: the resolved kind and the Wipers
- * on tap choice, so the key is redrawn only when one of them changes.
+ * The part of the render key this mode owns: the resolved kind and, on a wiper
+ * car, which wiper action a tap sends, so the key is redrawn only when what it
+ * shows changes.
  */
-export function wipersAndVisorRenderKey(kind: WipersAndVisorKind, wipersOnTap: WipersOnTap | undefined): string {
-  return `${kind}|${wipersOnTap === "toggle" ? "toggle" : "trigger"}`;
+export function wipersAndVisorRenderKey(car: WipersAndVisorCar, wipersOnTap: WipersOnTap | undefined): string {
+  if (car.kind !== "wipers") return car.kind;
+
+  return `wipers|${tapToggles(car, wipersOnTap) ? "toggle" : "trigger"}`;
 }

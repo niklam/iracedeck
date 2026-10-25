@@ -164,7 +164,7 @@ describe("wipers-and-visor (#1463)", () => {
   describe("wipersAndVisorAppearance", () => {
     it("shows the Tear Off Visor art on a visor car, whatever the swap", () => {
       for (const swap of ["trigger", "toggle"] as const) {
-        expect(wipersAndVisorAppearance("visor", swap)).toEqual({
+        expect(wipersAndVisorAppearance(visor, swap)).toEqual({
           iconSvg: tearOffVisorIcon,
           title: "VISOR\nTEAR OFF",
           unavailable: false,
@@ -173,13 +173,13 @@ describe("wipers-and-visor (#1463)", () => {
     });
 
     it("shows what a tap does on a wiper car", () => {
-      expect(wipersAndVisorAppearance("wipers", "trigger")).toEqual({
+      expect(wipersAndVisorAppearance(wipers, "trigger")).toEqual({
         iconSvg: triggerWipersIcon,
         title: "TRIGGER\nWIPERS",
         unavailable: false,
       });
-      expect(wipersAndVisorAppearance("wipers", undefined).iconSvg).toBe(triggerWipersIcon);
-      expect(wipersAndVisorAppearance("wipers", "toggle")).toEqual({
+      expect(wipersAndVisorAppearance(wipers, undefined).iconSvg).toBe(triggerWipersIcon);
+      expect(wipersAndVisorAppearance(wipers, "toggle")).toEqual({
         iconSvg: toggleWipersIcon,
         title: "TOGGLE\nWIPERS",
         unavailable: false,
@@ -187,7 +187,7 @@ describe("wipers-and-visor (#1463)", () => {
     });
 
     it("shows the combined icon for an unknown car", () => {
-      expect(wipersAndVisorAppearance("unknown", "trigger")).toEqual({
+      expect(wipersAndVisorAppearance(unknown, "trigger")).toEqual({
         iconSvg: wipersAndVisorIcon,
         title: "WIPERS\nVISOR",
         unavailable: false,
@@ -195,11 +195,18 @@ describe("wipers-and-visor (#1463)", () => {
     });
 
     it("shows the combined icon in the unavailable look for a car with neither", () => {
-      expect(wipersAndVisorAppearance("neither", "trigger")).toEqual({
+      expect(wipersAndVisorAppearance(neither, "trigger")).toEqual({
         iconSvg: wipersAndVisorIcon,
         title: "WIPERS\nVISOR",
         unavailable: true,
       });
+    });
+
+    it("shows the one wiper action a single-variable car has, whatever the swap", () => {
+      for (const swap of ["trigger", "toggle"] as const) {
+        expect(wipersAndVisorAppearance(triggerOnly, swap).iconSvg).toBe(triggerWipersIcon);
+        expect(wipersAndVisorAppearance(toggleOnly, swap).iconSvg).toBe(toggleWipersIcon);
+      }
     });
 
     it("draws four distinct artworks", () => {
@@ -208,18 +215,25 @@ describe("wipers-and-visor (#1463)", () => {
   });
 
   describe("wipersAndVisorRenderKey", () => {
-    it("changes with the kind and with the swap", () => {
-      const keys = new Set(
-        (["visor", "wipers", "unknown", "neither"] as const).flatMap((kind) => [
-          wipersAndVisorRenderKey(kind, "trigger"),
-          wipersAndVisorRenderKey(kind, "toggle"),
-        ]),
-      );
-      expect(keys.size).toBe(8);
+    it("changes with the kind and, on a wiper car, with the swap", () => {
+      const keys = new Set([
+        wipersAndVisorRenderKey(visor, "trigger"),
+        wipersAndVisorRenderKey(unknown, "trigger"),
+        wipersAndVisorRenderKey(neither, "trigger"),
+        wipersAndVisorRenderKey(wipers, "trigger"),
+        wipersAndVisorRenderKey(wipers, "toggle"),
+      ]);
+      expect(keys.size).toBe(5);
+    });
+
+    it("does not change with the swap where the art does not", () => {
+      for (const car of [visor, unknown, neither, triggerOnly, toggleOnly]) {
+        expect(wipersAndVisorRenderKey(car, "toggle")).toBe(wipersAndVisorRenderKey(car, "trigger"));
+      }
     });
 
     it("treats a missing swap as Trigger", () => {
-      expect(wipersAndVisorRenderKey("wipers", undefined)).toBe(wipersAndVisorRenderKey("wipers", "trigger"));
+      expect(wipersAndVisorRenderKey(wipers, undefined)).toBe(wipersAndVisorRenderKey(wipers, "trigger"));
     });
   });
 });

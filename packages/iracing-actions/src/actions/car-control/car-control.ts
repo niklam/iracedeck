@@ -895,8 +895,8 @@ export function generateCarControlSvg(
   // combined icon when the car is unknown, and the combined icon greyed out when the car
   // has neither a visor nor wipers.
   if (control === "wipers-and-visor") {
-    const kind = telemetryState?.wipersAndVisorCar?.kind ?? "unknown";
-    const { iconSvg, title: defaultTitle, unavailable } = wipersAndVisorAppearance(kind, settings.wipersOnTap);
+    const car = telemetryState?.wipersAndVisorCar ?? { kind: "unknown" };
+    const { iconSvg, title: defaultTitle, unavailable } = wipersAndVisorAppearance(car, settings.wipersOnTap);
     const colors = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
     const title = resolveTitleSettings(iconSvg, getGlobalTitleSettings(), settings.titleOverrides, defaultTitle);
     const border = resolveBorderSettings(iconSvg, getGlobalBorderSettings(), settings.borderOverrides);
@@ -1603,11 +1603,11 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
     }
 
     if (settings.control === "wipers-and-visor") {
-      // Keyed on the resolved car kind and the swap (issue #1463), so a tick that changes
-      // neither does not redraw the key.
-      const kind = telemetryState.wipersAndVisorCar?.kind ?? "unknown";
+      // Keyed on the resolved car kind and what a tap shows (issue #1463), so a tick that
+      // changes neither does not redraw the key.
+      const car = telemetryState.wipersAndVisorCar ?? { kind: "unknown" };
 
-      return `wipers-and-visor|${wipersAndVisorRenderKey(kind, settings.wipersOnTap)}|${borderKey}|${warn}`;
+      return `wipers-and-visor|${wipersAndVisorRenderKey(car, settings.wipersOnTap)}|${borderKey}|${warn}`;
     }
 
     return settings.control;
