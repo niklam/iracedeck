@@ -31,7 +31,6 @@ import {
 } from "@iracedeck/replay-engine";
 import {
   MARKER_DEDUPE_FRAMES,
-  MARKER_DELETE_WINDOW_FRAMES,
   type ReplayMarker,
   type ReplaySessionStore,
   type SubSessionScoped,
@@ -91,14 +90,21 @@ export function buildMarker(
  * @internal Exported for testing
  *
  * The marker a Delete press at `current` removes: the nearest one within
- * {@link MARKER_DELETE_WINDOW_FRAMES}, measured to the marker's frame or to
- * the frame its Add was pressed at (`pressFrame`), whichever is closer. The
+ * `windowSeconds` (the key's or the dial's Delete Window, #1454; required, so
+ * no caller keeps the store's 10 s by omission), measured to the marker's
+ * frame or to the frame its Add was pressed at (`pressFrame`), whichever is
+ * closer. The
  * second distance is what lets Delete from the car reach a marker set with a
  * long Seconds back — the car sits at the live edge, the marker well behind
  * it. Markers without a numeric `pressFrame` (older files) use the frame
  * alone. On a tie the earlier marker goes.
  */
-export function pickMarkerToDelete(markers: readonly ReplayMarker[], current: number): ReplayMarker | null {
+export function pickMarkerToDelete(
+  markers: readonly ReplayMarker[],
+  current: number,
+  windowSeconds: number,
+): ReplayMarker | null {
+  const windowFrames = windowSeconds * FRAMES_PER_SECOND;
   let best: ReplayMarker | null = null;
   let bestDistance = Number.POSITIVE_INFINITY;
 
@@ -110,7 +116,7 @@ export function pickMarkerToDelete(markers: readonly ReplayMarker[], current: nu
         : Number.POSITIVE_INFINITY;
     const distance = Math.min(toFrame, toPress);
 
-    if (distance <= MARKER_DELETE_WINDOW_FRAMES && distance < bestDistance) {
+    if (distance <= windowFrames && distance < bestDistance) {
       best = marker;
       bestDistance = distance;
     }
@@ -321,14 +327,19 @@ export function addMarkerAt(context: ReplayContext, secondsBack: number): { mark
   return { marker, added: context.store.markers.add(marker, context.scope) };
 }
 
-/** The marker a Delete press at the context's frame would remove, or null. Read-only. */
-export function previewDeleteMarker(context: ReplayContext): ReplayMarker | null {
-  return pickMarkerToDelete(context.store.markers.list(context.scope), context.frame);
+/**
+ * The marker a Delete press at the context's frame would remove within
+ * `windowSeconds`, or null. Read-only: the keypad's greyed Delete key, the
+ * Add / Delete key's look and the dial's hold preview all ask this, the same
+ * pick the press makes (#1454).
+ */
+export function previewDeleteMarker(context: ReplayContext, windowSeconds: number): ReplayMarker | null {
+  return pickMarkerToDelete(context.store.markers.list(context.scope), context.frame, windowSeconds);
 }
 
 /** Deletes the marker {@link previewDeleteMarker} names; null when there is none in reach. */
-export function deleteMarkerAt(context: ReplayContext): ReplayMarker | null {
-  const target = previewDeleteMarker(context);
+export function deleteMarkerAt(context: ReplayContext, windowSeconds: number): ReplayMarker | null {
+  const target = previewDeleteMarker(context, windowSeconds);
 
   // Deleting at the chosen marker's own frame removes exactly that one: it is
   // at distance 0, and Add keeps any other more than 1 s away.

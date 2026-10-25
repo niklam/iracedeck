@@ -15,6 +15,7 @@ import { REPLAY_EXIT_GRACE_MS } from "./replay-markers-ops.js";
 import {
   buildMarker,
   CONFIRMATION_FLASH_MS,
+  DELETE_WINDOW_DEFAULT,
   generateReplayMarkersSvg,
   pickMarkerToDelete,
   readSubSessionId,
@@ -34,7 +35,7 @@ const mocks = vi.hoisted(() => ({
   isStoreInitialized: vi.fn(() => true),
   markers: {
     add: vi.fn((_marker: Marker, _scope?: unknown): boolean => true),
-    deleteNearest: vi.fn((): Marker | null => null),
+    deleteNearest: vi.fn((_frame?: number, _scope?: unknown): Marker | null => null),
     list: vi.fn((): Marker[] => []),
   },
   setPlayPosition: vi.fn((_mode: number, _frame: number) => true),
@@ -339,6 +340,30 @@ async function appear(action: ReplayMarkers, settings: Record<string, unknown>, 
   await action.onWillAppear(keyDown(settings, id));
 }
 
+/**
+ * A store behind the marker mocks that keeps what is added and removes what
+ * is deleted, with the real store's 1 s duplicate rule (#1454): the Delete and
+ * Add / Delete looks follow what the presses did. `markers` is the list itself.
+ */
+function workingStore(initial: Marker[] = []): Marker[] {
+  const markers = [...initial];
+  mocks.markers.list.mockImplementation(() => [...markers].sort((a, b) => a.frame - b.frame));
+  mocks.markers.add.mockImplementation((marker: Marker) => {
+    if (markers.some((m) => Math.abs(m.frame - marker.frame) <= 60)) return false;
+
+    markers.push(marker);
+
+    return true;
+  });
+  mocks.markers.deleteNearest.mockImplementation((frame?: number) => {
+    const index = markers.findIndex((m) => m.frame === frame);
+
+    return index === -1 ? null : markers.splice(index, 1)[0]!;
+  });
+
+  return markers;
+}
+
 describe("ReplayMarkers", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -391,14 +416,21 @@ describe("ReplayMarkers", () => {
       const stored = { mode: "previous", secondsBack: "12", colorOverrides: { backgroundColor: "#123456" } };
       const { dial, ...keypad } = ReplayMarkersSettings.parse(stored);
 
-      // Every stored key reads as it did, and nothing else appears beside the new `dial`.
-      expect(keypad).toEqual({ mode: "previous", secondsBack: 12, colorOverrides: { backgroundColor: "#123456" } });
+      // Every stored key reads as it did, and nothing else appears beside the new
+      // `dial` and the Delete Window at its default (#1454).
+      expect(keypad).toEqual({
+        mode: "previous",
+        secondsBack: 12,
+        deleteWindow: 10,
+        colorOverrides: { backgroundColor: "#123456" },
+      });
       expect(dial).toEqual(ReplayMarkersDialSettings.parse({}));
     });
 
     it("an empty dial fills every default", () => {
       expect(ReplayMarkersSettings.parse({ dial: {} }).dial).toEqual({
         secondsBack: 5,
+        deleteWindow: 10,
         pressAction: "add",
         longPressAction: "delete",
         tapAction: "none",
@@ -432,6 +464,54 @@ describe("ReplayMarkers", () => {
 
       expect(parsed.mode).toBe("delete");
       expect(parsed.dial).toEqual(ReplayMarkersDialSettings.parse({}));
+    });
+
+    describe("Delete Window (#1454)", () => {
+      it("defaults to the store's 10 s window", () => {
+        expect(DELETE_WINDOW_DEFAULT).toBe(10);
+      });
+
+      it.each([
+        [undefined, 10],
+        ["", 10],
+        [" ", 10],
+        [null, 10],
+        ["0", 1],
+        [0, 1],
+        [-4, 1],
+        [61, 60],
+        [7.4, 7],
+        ["3", 3],
+        ["abc", 10],
+      ])("deleteWindow %j reads as %j, on the keypad and the dial alike", (input, expected) => {
+        expect(ReplayMarkersSettings.parse({ deleteWindow: input }).deleteWindow).toBe(expected);
+        expect(ReplayMarkersSettings.parse({ dial: { deleteWindow: input } }).dial.deleteWindow).toBe(expected);
+      });
+
+      it("a bad window leaves the mode and Seconds Back intact", () => {
+        expect(ReplayMarkersSettings.parse({ mode: "add-delete", secondsBack: 8, deleteWindow: {} })).toMatchObject({
+          mode: "add-delete",
+          secondsBack: 8,
+          deleteWindow: 10,
+        });
+      });
+
+      it("a dial without the field keeps 10 s and its other settings", () => {
+        expect(ReplayMarkersSettings.parse({ dial: { secondsBack: 9 } }).dial).toMatchObject({
+          secondsBack: 9,
+          deleteWindow: 10,
+        });
+      });
+    });
+
+    it("an unknown mode resets only the mode, keeping the key's overrides (#1454)", () => {
+      const parsed = ReplayMarkersSettings.parse({
+        mode: "a-future-mode",
+        secondsBack: 12,
+        colorOverrides: { backgroundColor: "#123456" },
+      });
+
+      expect(parsed).toMatchObject({ mode: "add", secondsBack: 12, colorOverrides: { backgroundColor: "#123456" } });
     });
   });
 
@@ -609,30 +689,70 @@ describe("ReplayMarkers", () => {
     it("reaches a 15 s marker from the car through its press frame", () => {
       const fifteenBack = m(30_000 - 15 * 60, 30_000);
 
-      expect(pickMarkerToDelete([fifteenBack], 30_000 + 60)).toBe(fifteenBack);
+      expect(pickMarkerToDelete([fifteenBack], 30_000 + 60, 10)).toBe(fifteenBack);
     });
 
     it("a marker without a press frame is measured by its frame alone", () => {
-      expect(pickMarkerToDelete([m(30_000 - 15 * 60)], 30_000)).toBeNull();
-      expect(pickMarkerToDelete([m(29_500)], 30_000)).toEqual(m(29_500));
+      expect(pickMarkerToDelete([m(30_000 - 15 * 60)], 30_000, 10)).toBeNull();
+      expect(pickMarkerToDelete([m(29_500)], 30_000, 10)).toEqual(m(29_500));
     });
 
     it("picks the nearer of two by either distance", () => {
       const byFrame = m(20_000, 20_300);
       const byPress = m(19_000, 20_050);
 
-      expect(pickMarkerToDelete([byPress, byFrame], 20_060)).toBe(byPress);
+      expect(pickMarkerToDelete([byPress, byFrame], 20_060, 10)).toBe(byPress);
     });
 
     it("on a tie the earlier marker goes", () => {
       const early = m(10_000);
       const late = m(10_200);
 
-      expect(pickMarkerToDelete([early, late], 10_100)).toBe(early);
+      expect(pickMarkerToDelete([early, late], 10_100, 10)).toBe(early);
     });
 
     it("ignores a non-numeric press frame", () => {
-      expect(pickMarkerToDelete([{ ...m(0), pressFrame: "30000" }], 30_000)).toBeNull();
+      expect(pickMarkerToDelete([{ ...m(0), pressFrame: "30000" }], 30_000, 10)).toBeNull();
+    });
+
+    describe("the window argument (#1454)", () => {
+      it.each([
+        [3, 180, true],
+        [3, 181, false],
+        [10, 600, true],
+        [10, 601, false],
+        [60, 3_600, true],
+        [60, 3_601, false],
+      ])("to the marker's frame: a %j s window reaches %j frames and no further", (windowSeconds, offset, hit) => {
+        const marker = m(10_000);
+
+        expect(pickMarkerToDelete([marker], 10_000 + offset, windowSeconds)).toBe(hit ? marker : null);
+        expect(pickMarkerToDelete([marker], 10_000 - offset, windowSeconds)).toBe(hit ? marker : null);
+      });
+
+      it.each([
+        [3, 180, true],
+        [3, 181, false],
+      ])("to the press frame: a %j s window reaches %j frames and no further", (windowSeconds, offset, hit) => {
+        // Set 20 s back, so the marker's own frame is far outside any window here.
+        const marker = m(20_000 - 1_200, 20_000);
+
+        expect(pickMarkerToDelete([marker], 20_000 + offset, windowSeconds)).toBe(hit ? marker : null);
+      });
+
+      it("nearest wins and a tie goes to the earlier marker, inside a narrow window", () => {
+        const early = m(10_000);
+        const late = m(10_200);
+        const nearer = m(10_150);
+
+        expect(pickMarkerToDelete([early, late], 10_100, 2)).toBe(early);
+        expect(pickMarkerToDelete([early, nearer], 10_100, 2)).toBe(nearer);
+      });
+
+      it("a marker without a press frame is measured by its frame alone", () => {
+        expect(pickMarkerToDelete([m(10_000)], 10_181, 3)).toBeNull();
+        expect(pickMarkerToDelete([m(10_000)], 10_180, 3)).toEqual(m(10_000));
+      });
     });
   });
 
@@ -928,7 +1048,7 @@ describe("ReplayMarkers", () => {
   });
 
   describe("does nothing", () => {
-    it.each(["add", "delete", "next", "previous"])("%s while not connected", async (mode) => {
+    it.each(["add", "delete", "add-delete", "next", "previous"])("%s while not connected", async (mode) => {
       const { action, sdk } = makeAction(LIVE);
       sdk.getConnectionStatus.mockReturnValue(false);
 
@@ -937,7 +1057,7 @@ describe("ReplayMarkers", () => {
       expectUntouched(action);
     });
 
-    it.each(["add", "delete", "next", "previous"])("%s with no telemetry", async (mode) => {
+    it.each(["add", "delete", "add-delete", "next", "previous"])("%s with no telemetry", async (mode) => {
       const { action } = makeAction(null);
 
       await action.onKeyDown(keyDown({ mode }));
@@ -1126,10 +1246,10 @@ describe("ReplayMarkers", () => {
       expect(regenerate()).not.toContain("dimmed");
     });
 
-    it.each(["add", "delete"])("%s is never greyed and never redrawn by a tick", async (mode) => {
+    it("add is never greyed and never redrawn by a tick", async () => {
       storeWith([]);
       const { action, sdk } = makeAction(LIVE);
-      await appear(action, { mode });
+      await appear(action, { mode: "add" });
       expect(shown(action)).not.toContain("dimmed");
 
       sdk.getConnectionStatus.mockReturnValue(false);
@@ -1189,6 +1309,368 @@ describe("ReplayMarkers", () => {
       tick(action, "ctx-1");
       tick(action, "ctx-2");
       expect(redrawn(action)).toEqual([["ctx-2", expect.stringMatching(/\|dimmed$/)]]);
+    });
+  });
+
+  describe("the greyed Delete key (#1454)", () => {
+    /** A marker at `frame`, set with Seconds Back 0 when `pressFrame` is omitted. */
+    const marker = (frame: number, pressFrame?: number): Marker => ({
+      frame,
+      ...(pressFrame === undefined ? {} : { pressFrame }),
+      sessionNum: 1,
+      sessionTimeMs: 0,
+    });
+
+    function tick(action: ReplayMarkers, id = "ctx-1"): void {
+      const sdk = action["sdkController"] as unknown as Sdk;
+      const call = sdk.subscribe.mock.calls.find(([subId]) => subId === id);
+      (call![1] as () => void)();
+    }
+
+    function replayAt(sdk: Sdk, frame: number): void {
+      sdk.getCurrentTelemetry.mockReturnValue({ ...REPLAY, ReplayFrameNum: frame } as TelemetryData);
+    }
+
+    function liveAt(sdk: Sdk, frame: number): void {
+      sdk.getCurrentTelemetry.mockReturnValue({ ...LIVE, ReplayFrameNumEnd: frame } as TelemetryData);
+    }
+
+    const shown = (action: ReplayMarkers) => vi.mocked(action["setKeyImage"]).mock.calls.at(-1)![1] as string;
+    const redrawn = (action: ReplayMarkers) => vi.mocked(action["updateKeyImage"]).mock.calls;
+    const lastRedraw = (action: ReplayMarkers) => redrawn(action).at(-1)![1] as string;
+
+    it.each([
+      ["from the car", LIVE],
+      ["in a replay", REPLAY],
+    ])("greys with no markers %s, keeping its own icon", async (_label, telemetry) => {
+      workingStore();
+      const { action } = makeAction(telemetry);
+
+      await appear(action, { mode: "delete" });
+
+      expect(shown(action)).toContain("|<svg>delete</svg>|MARKER\nDELETE|");
+      expect(shown(action)).toMatch(/\|dimmed$/);
+    });
+
+    it.each([
+      ["not connected", (sdk: Sdk) => sdk.getConnectionStatus.mockReturnValue(false)],
+      ["no telemetry", (sdk: Sdk) => sdk.getCurrentTelemetry.mockReturnValue(null)],
+      ["no store", () => mocks.isStoreInitialized.mockReturnValue(false)],
+    ])("greys with %s, even with a marker on the frame", async (_label, breakIt) => {
+      workingStore([marker(12_000)]);
+      const { action, sdk } = makeAction(REPLAY);
+      breakIt(sdk);
+
+      await appear(action, { mode: "delete" });
+
+      expect(shown(action)).toMatch(/\|dimmed$/);
+    });
+
+    it("from the car: an Add from another key lights it for the window, then it greys", async () => {
+      workingStore();
+      const { action, sdk } = makeAction(LIVE);
+      await appear(action, { mode: "delete" }, "ctx-1");
+      await appear(action, { mode: "add", secondsBack: 15 }, "ctx-2");
+
+      await action.onKeyDown(keyDown({ mode: "add", secondsBack: 15 }, "ctx-2"));
+      vi.mocked(action["updateKeyImage"]).mockClear();
+      tick(action, "ctx-1");
+      expect(redrawn(action)).toEqual([["ctx-1", expect.not.stringContaining("dimmed")]]);
+
+      // The car drives on: the marker is 15 s back, but its press frame is the reach.
+      liveAt(sdk, 30_600);
+      tick(action, "ctx-1");
+      expect(redrawn(action)).toHaveLength(1);
+
+      liveAt(sdk, 30_601);
+      tick(action, "ctx-1");
+      expect(redrawn(action)).toHaveLength(2);
+      expect(lastRedraw(action)).toMatch(/\|dimmed$/);
+    });
+
+    it.each([
+      [10, 600],
+      [3, 180],
+    ])("in a replay, a %j s window lights it that far either side of a marker", async (deleteWindow, reach) => {
+      workingStore([marker(15_000)]);
+      const { action, sdk } = makeAction({ ...REPLAY, ReplayFrameNum: 15_000 - reach - 1 } as TelemetryData);
+      await appear(action, { mode: "delete", deleteWindow });
+      expect(shown(action)).toMatch(/\|dimmed$/);
+
+      replayAt(sdk, 15_000 - reach);
+      tick(action);
+      expect(redrawn(action)).toHaveLength(1);
+      expect(lastRedraw(action)).not.toContain("dimmed");
+
+      replayAt(sdk, 15_000 + reach);
+      tick(action);
+      expect(redrawn(action)).toHaveLength(1);
+
+      replayAt(sdk, 15_000 + reach + 1);
+      tick(action);
+      expect(redrawn(action)).toHaveLength(2);
+      expect(lastRedraw(action)).toMatch(/\|dimmed$/);
+    });
+
+    it("an unchanged tick neither redraws nor schedules", async () => {
+      workingStore([marker(15_000)]);
+      const { action, sdk } = makeAction(REPLAY);
+      await appear(action, { mode: "delete" });
+
+      for (let frame = 12_000; frame < 14_000; frame += 100) {
+        replayAt(sdk, frame);
+        tick(action);
+      }
+
+      expect(redrawn(action)).toHaveLength(0);
+      expect(vi.mocked(action["imageThrottle"].schedule)).not.toHaveBeenCalled();
+    });
+
+    it("a press on a grey key deletes nothing and flashes nothing", async () => {
+      workingStore([marker(1_000)]);
+      const { action } = makeAction(LIVE);
+      await appear(action, { mode: "delete" });
+
+      await action.onKeyDown(keyDown({ mode: "delete" }));
+
+      expect(mocks.markers.deleteNearest).not.toHaveBeenCalled();
+      expect(redrawn(action)).toHaveLength(0);
+    });
+
+    it("a press acts on a fresh read: a lit key whose marker has just left the window deletes nothing", async () => {
+      workingStore([marker(12_000)]);
+      const { action, sdk } = makeAction(REPLAY);
+      await appear(action, { mode: "delete" });
+      expect(shown(action)).not.toContain("dimmed");
+
+      replayAt(sdk, 12_601);
+      await action.onKeyDown(keyDown({ mode: "delete" }));
+
+      expect(mocks.markers.deleteNearest).not.toHaveBeenCalled();
+      expect(redrawn(action)).toHaveLength(0);
+    });
+
+    it("the press honours the key's window", async () => {
+      const markers = workingStore([marker(12_000)]);
+      const { action } = makeAction({ ...REPLAY, ReplayFrameNum: 12_300 } as TelemetryData);
+
+      await action.onKeyDown(keyDown({ mode: "delete", deleteWindow: 3 }));
+      expect(markers).toHaveLength(1);
+
+      await action.onKeyDown(keyDown({ mode: "delete", deleteWindow: 5 }));
+      expect(markers).toHaveLength(0);
+    });
+
+    it("after the Deleted flash it rests grey when nothing else is in reach", async () => {
+      workingStore([marker(12_000)]);
+      const { action } = makeAction(REPLAY);
+      await appear(action, { mode: "delete" });
+
+      await action.onKeyDown(keyDown({ mode: "delete" }));
+      expect(lastRedraw(action)).toContain("MARKER\nDELETED");
+
+      // A tick during the flash leaves it alone.
+      tick(action);
+      expect(redrawn(action)).toHaveLength(1);
+
+      vi.advanceTimersByTime(CONFIRMATION_FLASH_MS);
+      expect(redrawn(action)).toHaveLength(2);
+      expect(lastRedraw(action)).toContain("|<svg>delete</svg>|MARKER\nDELETE|");
+      expect(lastRedraw(action)).toMatch(/\|dimmed$/);
+    });
+  });
+
+  describe("Add / Delete (#1454)", () => {
+    const marker = (frame: number): Marker => ({ frame, sessionNum: 1, sessionTimeMs: 0 });
+
+    function tick(action: ReplayMarkers, id = "ctx-1"): void {
+      const sdk = action["sdkController"] as unknown as Sdk;
+      const call = sdk.subscribe.mock.calls.find(([subId]) => subId === id);
+      (call![1] as () => void)();
+    }
+
+    function replayAt(sdk: Sdk, frame: number): void {
+      sdk.getCurrentTelemetry.mockReturnValue({ ...REPLAY, ReplayFrameNum: frame } as TelemetryData);
+    }
+
+    function liveAt(sdk: Sdk, frame: number): void {
+      sdk.getCurrentTelemetry.mockReturnValue({ ...LIVE, ReplayFrameNumEnd: frame } as TelemetryData);
+    }
+
+    const ADD_LOOK = "|<svg>add</svg>|MARKER\nADD|";
+    const DELETE_LOOK = "|<svg>delete</svg>|MARKER\nDELETE|";
+    const shown = (action: ReplayMarkers) => vi.mocked(action["setKeyImage"]).mock.calls.at(-1)![1] as string;
+    const redrawn = (action: ReplayMarkers) => vi.mocked(action["updateKeyImage"]).mock.calls;
+    const lastRedraw = (action: ReplayMarkers) => redrawn(action).at(-1)![1] as string;
+
+    it("draws the Add or the Delete look, with the key's own overrides on both", () => {
+      const settings = ReplayMarkersSettings.parse({
+        mode: "add-delete",
+        colorOverrides: { backgroundColor: "#123456" },
+      });
+
+      expect(generateReplayMarkersSvg(settings)).toContain(ADD_LOOK);
+      expect(generateReplayMarkersSvg(settings, undefined, undefined, "add")).toContain(ADD_LOOK);
+      expect(generateReplayMarkersSvg(settings, undefined, undefined, "delete")).toContain(DELETE_LOOK);
+      expect(generateReplayMarkersSvg(settings, undefined, undefined, "delete")).toContain("#123456");
+      expect(generateReplayMarkersSvg(settings, undefined, undefined, "add")).toContain("#123456");
+    });
+
+    it("shows Add with nothing in reach and Delete within its window", async () => {
+      workingStore([marker(15_000)]);
+      const far = makeAction({ ...REPLAY, ReplayFrameNum: 14_399 } as TelemetryData).action;
+      await appear(far, { mode: "add-delete" });
+      expect(shown(far)).toContain(ADD_LOOK);
+
+      const near = makeAction({ ...REPLAY, ReplayFrameNum: 14_400 } as TelemetryData).action;
+      await appear(near, { mode: "add-delete" });
+      expect(shown(near)).toContain(DELETE_LOOK);
+      expect(shown(near)).not.toContain("dimmed");
+    });
+
+    it("switches both ways as the replay plays, redrawing only on a change", async () => {
+      workingStore([marker(15_000)]);
+      const { action, sdk } = makeAction({ ...REPLAY, ReplayFrameNum: 14_000 } as TelemetryData);
+      await appear(action, { mode: "add-delete", deleteWindow: 3 });
+      expect(shown(action)).toContain(ADD_LOOK);
+
+      replayAt(sdk, 14_819);
+      tick(action);
+      expect(redrawn(action)).toHaveLength(0);
+
+      replayAt(sdk, 14_820);
+      tick(action);
+      expect(redrawn(action)).toHaveLength(1);
+      expect(lastRedraw(action)).toContain(DELETE_LOOK);
+
+      replayAt(sdk, 15_100);
+      tick(action);
+      expect(redrawn(action)).toHaveLength(1);
+
+      replayAt(sdk, 15_181);
+      tick(action);
+      expect(redrawn(action)).toHaveLength(2);
+      expect(lastRedraw(action)).toContain(ADD_LOOK);
+    });
+
+    it("is never grey: without iRacing it shows the plain Add look", async () => {
+      workingStore([marker(12_000)]);
+      const { action, sdk } = makeAction(REPLAY);
+      sdk.getConnectionStatus.mockReturnValue(false);
+
+      await appear(action, { mode: "add-delete" });
+
+      expect(shown(action)).toContain(ADD_LOOK);
+      expect(shown(action)).not.toContain("dimmed");
+    });
+
+    it("a key showing Delete whose marker has just gone does nothing, and never adds", async () => {
+      const markers = workingStore([marker(12_000)]);
+      const { action } = makeAction(REPLAY);
+      await appear(action, { mode: "add-delete" });
+      expect(shown(action)).toContain(DELETE_LOOK);
+
+      // Another key deleted it; no tick has redrawn this one yet.
+      markers.splice(0);
+      await action.onKeyDown(keyDown({ mode: "add-delete" }));
+
+      expect(mocks.markers.add).not.toHaveBeenCalled();
+      expect(mocks.markers.deleteNearest).not.toHaveBeenCalled();
+      expect(redrawn(action)).toHaveLength(0);
+
+      tick(action);
+      expect(lastRedraw(action)).toContain(ADD_LOOK);
+    });
+
+    it("a key showing Add adds, even with a marker come into reach since the last tick", async () => {
+      const markers = workingStore();
+      const { action } = makeAction({ ...REPLAY, ReplayFrameNum: 14_000 } as TelemetryData);
+      await appear(action, { mode: "add-delete" });
+      expect(shown(action)).toContain(ADD_LOOK);
+
+      markers.push(marker(14_300));
+      await action.onKeyDown(keyDown({ mode: "add-delete" }));
+
+      expect(mocks.markers.deleteNearest).not.toHaveBeenCalled();
+      expect(markers.map((m) => m.frame).sort()).toEqual([13_700, 14_300]);
+      expect(lastRedraw(action)).toContain("MARKER\nADDED");
+    });
+
+    it("from the car: Add, then Delete as an undo for the window, then Add again", async () => {
+      const markers = workingStore();
+      const { action, sdk } = makeAction(LIVE);
+      await appear(action, { mode: "add-delete" });
+      expect(shown(action)).toContain(ADD_LOOK);
+
+      await action.onKeyDown(keyDown({ mode: "add-delete" }));
+      expect(markers).toHaveLength(1);
+      expect(lastRedraw(action)).toContain("MARKER\nADDED");
+
+      // A second press inside the flash repeats Add: refused as a duplicate, nothing deleted.
+      vi.advanceTimersByTime(CONFIRMATION_FLASH_MS / 2);
+      liveAt(sdk, 30_030);
+      await action.onKeyDown(keyDown({ mode: "add-delete" }));
+      expect(mocks.markers.add).toHaveBeenCalledTimes(2);
+      expect(mocks.markers.deleteNearest).not.toHaveBeenCalled();
+      expect(markers).toHaveLength(1);
+      expect(redrawn(action)).toHaveLength(1);
+
+      // The flash ends on Delete: the marker just set is in reach by its press frame.
+      vi.advanceTimersByTime(CONFIRMATION_FLASH_MS / 2);
+      expect(redrawn(action)).toHaveLength(2);
+      expect(lastRedraw(action)).toContain(DELETE_LOOK);
+
+      await action.onKeyDown(keyDown({ mode: "add-delete" }));
+      expect(markers).toHaveLength(0);
+      expect(lastRedraw(action)).toContain("MARKER\nDELETED");
+
+      vi.advanceTimersByTime(CONFIRMATION_FLASH_MS);
+      expect(lastRedraw(action)).toContain(ADD_LOOK);
+    });
+
+    it("after an Add it returns to Add once the window has passed", async () => {
+      workingStore();
+      const { action, sdk } = makeAction(LIVE);
+      await appear(action, { mode: "add-delete", deleteWindow: 3 });
+      await action.onKeyDown(keyDown({ mode: "add-delete", deleteWindow: 3 }));
+      vi.advanceTimersByTime(CONFIRMATION_FLASH_MS);
+      expect(lastRedraw(action)).toContain(DELETE_LOOK);
+
+      liveAt(sdk, 30_180);
+      tick(action);
+      expect(lastRedraw(action)).toContain(DELETE_LOOK);
+
+      liveAt(sdk, 30_181);
+      tick(action);
+      expect(lastRedraw(action)).toContain(ADD_LOOK);
+    });
+
+    it("Seconds Back beyond the window: the key shows Add, and a duplicate Add flashes nothing", async () => {
+      // A marker 20 s back, set from 30 000 - 1 180: outside a 3 s window by either distance.
+      const markers = workingStore([{ ...marker(28_820), pressFrame: 28_820 }]);
+      const { action } = makeAction(LIVE);
+      await appear(action, { mode: "add-delete", secondsBack: 20, deleteWindow: 3 });
+      expect(shown(action)).toContain(ADD_LOOK);
+
+      // The new marker would land at 28 800, within 1 s of the old one.
+      await action.onKeyDown(keyDown({ mode: "add-delete", secondsBack: 20, deleteWindow: 3 }));
+
+      expect(mocks.markers.add).toHaveBeenCalledTimes(1);
+      expect(markers).toHaveLength(1);
+      expect(mocks.markers.deleteNearest).not.toHaveBeenCalled();
+      expect(redrawn(action)).toHaveLength(0);
+    });
+
+    it("sends no replay command and does not register with the busy indicator", async () => {
+      workingStore([marker(12_000)]);
+      const { action } = makeAction(REPLAY);
+      await appear(action, { mode: "add-delete" });
+
+      await action.onKeyDown(keyDown({ mode: "add-delete" }));
+
+      expect(busy.register).not.toHaveBeenCalled();
+      expect(mocks.setPlayPosition).not.toHaveBeenCalled();
+      expect(mocks.setPlaySpeed).not.toHaveBeenCalled();
     });
   });
 
@@ -1300,7 +1782,7 @@ describe("ReplayMarkers", () => {
         expect(shown(action)).toMatch(/\|busy:waiting$/);
         expect(shown(action)).not.toContain("dimmed");
         // No availability is on the key, so none is recorded.
-        expect(action["shownAvailable"].has("ctx-1")).toBe(false);
+        expect(action["shownLook"].has("ctx-1")).toBe(false);
       });
 
       it("the indicator's redraw goes through the throttle and draws the look of the moment", async () => {

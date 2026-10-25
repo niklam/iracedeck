@@ -15,6 +15,7 @@
 				<sdpi-select id="mode-select" setting="mode" default="add">
 					<option value="add">Add Marker</option>
 					<option value="delete">Delete Marker</option>
+					<option value="add-delete">Add / Delete Marker</option>
 					<option value="next">Next Marker</option>
 					<option value="previous">Previous Marker</option>
 				</sdpi-select>
@@ -24,6 +25,10 @@
 
 			<sdpi-item label="Seconds Back" id="seconds-back-item" class="hidden">
 				<sdpi-textfield setting="secondsBack" type="number" min="0" max="60" default="5" placeholder="5"></sdpi-textfield>
+			</sdpi-item>
+
+			<sdpi-item label="Delete Window" id="delete-window-item" class="hidden">
+				<sdpi-textfield setting="deleteWindow" type="number" min="1" max="60" default="10" placeholder="10"></sdpi-textfield>
 			</sdpi-item>
 		</div>
 
@@ -39,6 +44,11 @@
 
 			<sdpi-item label="Seconds Back">
 				<sdpi-textfield setting="dial.secondsBack" type="number" min="0" max="60" default="5" placeholder="5"></sdpi-textfield>
+			</sdpi-item>
+
+			<!-- Outside the extended-gestures block: a Mirabox knob's Press can be Delete Marker (#1454). -->
+			<sdpi-item label="Delete Window">
+				<sdpi-textfield setting="dial.deleteWindow" type="number" min="1" max="60" default="10" placeholder="10"></sdpi-textfield>
 			</sdpi-item>
 
 			<sdpi-item label="Press Action">
@@ -82,9 +92,14 @@
 		<script>
 			function updateVisibility(mode) {
 				const secondsBackItem = document.getElementById("seconds-back-item");
+				const deleteWindowItem = document.getElementById("delete-window-item");
 
 				if (secondsBackItem) {
-					secondsBackItem.classList.toggle("hidden", mode !== "add");
+					secondsBackItem.classList.toggle("hidden", mode !== "add" && mode !== "add-delete");
+				}
+
+				if (deleteWindowItem) {
+					deleteWindowItem.classList.toggle("hidden", mode !== "delete" && mode !== "add-delete");
 				}
 			}
 

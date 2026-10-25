@@ -444,7 +444,7 @@ export class ReplayMarkersDialSurface {
       return;
     }
 
-    const removed = deleteMarkerAt(context);
+    const removed = deleteMarkerAt(context, ctx.dial.deleteWindow);
     this.host.logger.info(removed ? "Marker deleted" : "No marker near the current frame");
     this.host.logger.debug(`current=${context.frame} removed=${removed?.frame ?? "none"}`);
 
@@ -472,7 +472,7 @@ export class ReplayMarkersDialSurface {
       return previewAddMarker(context, ctx.dial.secondsBack) ? { text: addCaption(ctx.dial.secondsBack), color } : null;
     }
 
-    const target = previewDeleteMarker(context);
+    const target = previewDeleteMarker(context, ctx.dial.deleteWindow);
 
     if (!target) return null;
 

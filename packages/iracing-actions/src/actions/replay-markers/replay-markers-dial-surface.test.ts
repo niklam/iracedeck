@@ -1081,6 +1081,63 @@ describe("ReplayMarkersDialSurface", () => {
         expect(env.markers).toEqual([]);
       });
     });
+
+    describe("the dial's Delete Window (#1454)", () => {
+      type Slot = "pressAction" | "longPressAction" | "tapAction" | "longTouchAction";
+
+      async function run(
+        surface: ReplayMarkersDialSurface,
+        ctx: DialContext,
+        d: ReplayMarkersDialSettings,
+        slot: Slot,
+      ) {
+        if (slot === "pressAction") await press(surface, ctx, d);
+        else if (slot === "longPressAction") await press(surface, ctx, d, 600);
+        else surface.touchTap(ctx as never, d, slot === "longTouchAction");
+      }
+
+      it.each<Slot>(["pressAction", "longPressAction", "tapAction", "longTouchAction"])(
+        "%s set to Delete reaches exactly the dial's window",
+        async (slot) => {
+          // Every other slot does nothing, so only the slot under test can delete.
+          const d = dial({
+            pressAction: "none",
+            longPressAction: "none",
+            tapAction: "none",
+            longTouchAction: "none",
+            [slot]: "delete",
+            deleteWindow: 3,
+          });
+          setMarkers([5_000]);
+          env.telemetry = replayAt(5_181);
+          const surface = makeSurface();
+          const ctx = dialContext();
+          await appear(surface, ctx, d);
+
+          await run(surface, ctx, d, slot);
+          expect(env.markers).toHaveLength(1);
+
+          env.telemetry = replayAt(5_180);
+          await run(surface, ctx, d, slot);
+          expect(env.markers).toEqual([]);
+        },
+      );
+
+      it("a dial stored before the setting deletes within 10 s", async () => {
+        setMarkers([5_000]);
+        env.telemetry = replayAt(5_601);
+        const surface = makeSurface();
+        const ctx = dialContext();
+        await appear(surface, ctx);
+
+        await press(surface, ctx, dial(), 600);
+        expect(env.markers).toHaveLength(1);
+
+        env.telemetry = replayAt(5_600);
+        await press(surface, ctx, dial(), 600);
+        expect(env.markers).toEqual([]);
+      });
+    });
   });
 
   describe("a late input event never re-creates a disappeared context (#1329)", () => {
@@ -1173,6 +1230,26 @@ describe("ReplayMarkersDialSurface", () => {
       expect(lastBox(ctx)).toContain(">DELETE 2 / 2</text>");
       expect(lastBox(ctx)).toContain("data-pending-bar");
       expect(storeMarkers.deleteNearest).not.toHaveBeenCalled();
+    });
+
+    it("previews a delete only within the dial's Delete Window (#1454)", async () => {
+      setMarkers([5_000]);
+      env.telemetry = replayAt(5_181);
+      const surface = makeSurface();
+      const ctx = dialContext();
+      const d = dial({ deleteWindow: 3 });
+      await appear(surface, ctx, d);
+
+      surface.down(ctx as never, d);
+      await vi.advanceTimersByTimeAsync(500);
+      expect(lastBox(ctx)).not.toContain("data-pending-bar");
+      await surface.up(ctx.id);
+      expect(env.markers).toHaveLength(1);
+
+      env.telemetry = replayAt(5_180);
+      surface.down(ctx as never, d);
+      await vi.advanceTimersByTimeAsync(500);
+      expect(lastBox(ctx)).toContain(">DELETE 1 / 1</text>");
     });
 
     it("previews a non-duplicate Add", async () => {

@@ -39,7 +39,9 @@ import {
   followMarkerJump,
   jumpToMarkerFrame,
   type MarkerDirection,
+  previewDeleteMarker,
   readReplayContext,
+  type ReplayContext,
   type ReplayContextResult,
   type ReplayContextSource,
   resolveJumpTarget,
@@ -55,6 +57,7 @@ import {
 // them (#1230); re-exported so this module's API is unchanged.
 export { buildMarker, CONFIRMATION_FLASH_MS, pickMarkerToDelete, readSubSessionId } from "./replay-markers-ops.js";
 export {
+  DELETE_WINDOW_DEFAULT,
   ReplayMarkersDialSettings,
   ReplayMarkersSettings,
   SECONDS_BACK_DEFAULT,
@@ -68,7 +71,10 @@ export {
  * replay the way the Replay jump playback setting says (#1276). Design:
  * `docs/superpowers/specs/2026-09-13-issue-1162-replay-markers.md`. Since
  * #1230 the action is dual-surface: a dial instance routes every event to
- * {@link ReplayMarkersDialSurface}.
+ * {@link ReplayMarkersDialSurface}. Since #1454 Delete greys when no marker is
+ * within its Delete Window, and Add / Delete shows and runs whichever of the
+ * two a press would do
+ * (`docs/superpowers/specs/2026-10-18-issue-1454-replay-marker-delete-window.md`).
  */
 
 /** The modes that jump, and so grey out when there is nowhere to jump to. */
@@ -78,15 +84,28 @@ function isJumpMode(mode: ReplayMarkersMode): mode is ReplayMarkersJumpMode {
   return mode === "next" || mode === "previous";
 }
 
-/** Title text for each mode (format: "subLabel\nmainLabel"). */
-const REPLAY_MARKERS_TITLES: Record<ReplayMarkersMode, string> = {
+/** The two operations an Add / Delete key switches between (#1454). */
+export type MarkerOperation = "add" | "delete";
+
+/** What a key draws: its mode, or for Add / Delete the operation a press would run. */
+type ReplayMarkersLook = Exclude<ReplayMarkersMode, "add-delete">;
+
+/**
+ * The resting look recorded for a key whose look follows the replay:
+ * `available` / `unavailable` for Next, Previous and Delete, the operation for
+ * Add / Delete. Add Marker's look never changes and records nothing.
+ */
+type RestingLook = "available" | "unavailable" | MarkerOperation;
+
+/** Title text for each look (format: "subLabel\nmainLabel"). */
+const REPLAY_MARKERS_TITLES: Record<ReplayMarkersLook, string> = {
   add: "MARKER\nADD",
   delete: "MARKER\nDELETE",
   next: "MARKER\nNEXT",
   previous: "MARKER\nPREVIOUS",
 };
 
-const REPLAY_MARKERS_ICONS: Record<ReplayMarkersMode, string> = {
+const REPLAY_MARKERS_ICONS: Record<ReplayMarkersLook, string> = {
   add: addIconSvg,
   delete: deleteIconSvg,
   next: nextIconSvg,
@@ -109,7 +128,7 @@ const CONFIRMATION_TITLES: Record<ReplayMarkerConfirmation, string> = {
 /**
  * What a key shows besides its plain mode icon: the brief Added / Deleted
  * flash, or `"unavailable"` — a Next / Previous key whose press would send
- * nothing right now.
+ * nothing right now, or a Delete key with no marker in reach (#1454).
  */
 export type ReplayMarkersKeyState = ReplayMarkerConfirmation | "unavailable";
 
@@ -128,11 +147,15 @@ export type ReplayMarkersKeyState = ReplayMarkerConfirmation | "unavailable";
  * busy mark in place of the artwork. It beats both states: the press is what
  * the user is looking at, so neither the grey nor a flash is drawn while it
  * stands.
+ *
+ * An Add / Delete key (#1454) draws the Add or the Delete key's look, as
+ * `operation` says (Add when it is omitted), with its own overrides on both.
  */
 export function generateReplayMarkersSvg(
   settings: ReplayMarkersSettings,
   state?: ReplayMarkersKeyState,
   busy?: BusyMark,
+  operation?: MarkerOperation,
 ): string {
   if (busy) state = undefined;
 
@@ -154,13 +177,14 @@ export function generateReplayMarkersSvg(
   }
 
   const unavailable = state === "unavailable";
-  const iconSvg = REPLAY_MARKERS_ICONS[settings.mode] ?? REPLAY_MARKERS_ICONS.add;
+  const look: ReplayMarkersLook = settings.mode === "add-delete" ? (operation ?? "add") : settings.mode;
+  const iconSvg = REPLAY_MARKERS_ICONS[look] ?? REPLAY_MARKERS_ICONS.add;
   const colors = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
   const title = resolveTitleSettings(
     iconSvg,
     getGlobalTitleSettings(),
     settings.titleOverrides,
-    REPLAY_MARKERS_TITLES[settings.mode] ?? REPLAY_MARKERS_TITLES.add,
+    REPLAY_MARKERS_TITLES[look] ?? REPLAY_MARKERS_TITLES.add,
   );
   const border = resolveBorderSettings(iconSvg, getGlobalBorderSettings(), settings.borderOverrides);
   const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
@@ -180,8 +204,12 @@ export class ReplayMarkers extends SimIRacingAction<ReplayMarkersSettings> {
   private readonly activeContexts = new Map<string, ReplayMarkersSettings>();
   private readonly flashTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly imageThrottle = new IconUpdateThrottle();
-  /** Per Next / Previous context: whether the icon on the key shows the jump as available. */
-  private readonly shownAvailable = new Map<string, boolean>();
+  /**
+   * Per key whose look follows the replay (every mode but Add): the resting
+   * look on the key. A tick redraws only when a fresh read differs from it,
+   * and an Add / Delete press runs the operation recorded here (#1454).
+   */
+  private readonly shownLook = new Map<string, RestingLook>();
   /**
    * Per Next / Previous key: the unregister of its registration with the
    * replay busy indicator (#1437). Add and Delete send no replay command and
@@ -225,8 +253,8 @@ export class ReplayMarkers extends SimIRacingAction<ReplayMarkersSettings> {
     // back while its jump still stands shows the look at once.
     this.syncBusyRegistration(contextId, settings.mode);
     await this.updateDisplay(ev, settings);
-    // Next / Previous follow the replay as it plays and the marker list as any
-    // key edits it; a tick only compares, and renders on a flip.
+    // Every mode but Add follows the replay as it plays and the marker list as
+    // any key edits it; a tick only compares, and renders on a flip.
     this.sdkController.subscribe(contextId, () => this.refreshAvailability(contextId));
   }
 
@@ -237,7 +265,7 @@ export class ReplayMarkers extends SimIRacingAction<ReplayMarkersSettings> {
     this.dialSurface.willDisappear(contextId);
     this.cancelFlash(contextId);
     this.activeContexts.delete(contextId);
-    this.shownAvailable.delete(contextId);
+    this.shownLook.delete(contextId);
     this.busyRegistrations.get(contextId)?.();
     this.busyRegistrations.delete(contextId);
     await super.onWillDisappear(ev);
@@ -355,19 +383,19 @@ export class ReplayMarkers extends SimIRacingAction<ReplayMarkersSettings> {
     }
 
     switch (settings.mode) {
-      case "add": {
-        const { marker, added } = addMarkerAt(context, settings.secondsBack);
-        this.logger.info(added ? "Marker added" : "Marker not added");
-        this.logger.debug(`frame=${marker.frame} current=${context.frame} secondsBack=${settings.secondsBack}`);
+      case "add":
+        return this.addMarker(context, settings);
+      case "delete":
+        return this.deleteMarker(context, settings);
+      case "add-delete": {
+        // What the key shows, never a fresh read (#1454): the look can lag the
+        // replay by a throttle window, and a key that showed Add must not
+        // delete. A shown Delete whose marker has just left the window does
+        // nothing, and the next tick redraws Add.
+        const operation = this.shownOperation(contextId);
+        this.logger.debug(`add-delete: key shows ${operation}`);
 
-        return added ? "added" : undefined;
-      }
-      case "delete": {
-        const removed = deleteMarkerAt(context);
-        this.logger.info(removed ? "Marker deleted" : "No marker near the current frame");
-        this.logger.debug(`current=${context.frame} removed=${removed?.frame ?? "none"}`);
-
-        return removed ? "deleted" : undefined;
+        return operation === "delete" ? this.deleteMarker(context, settings) : this.addMarker(context, settings);
       }
       case "next":
       case "previous": {
@@ -410,6 +438,42 @@ export class ReplayMarkers extends SimIRacingAction<ReplayMarkersSettings> {
     }
   }
 
+  private addMarker(context: ReplayContext, settings: ReplayMarkersSettings): ReplayMarkerConfirmation | undefined {
+    const { marker, added } = addMarkerAt(context, settings.secondsBack);
+    this.logger.info(added ? "Marker added" : "Marker not added");
+    this.logger.debug(`frame=${marker.frame} current=${context.frame} secondsBack=${settings.secondsBack}`);
+
+    return added ? "added" : undefined;
+  }
+
+  private deleteMarker(context: ReplayContext, settings: ReplayMarkersSettings): ReplayMarkerConfirmation | undefined {
+    const removed = deleteMarkerAt(context, settings.deleteWindow);
+    this.logger.info(removed ? "Marker deleted" : "No marker near the current frame");
+    this.logger.debug(`current=${context.frame} window=${settings.deleteWindow}s removed=${removed?.frame ?? "none"}`);
+
+    return removed ? "deleted" : undefined;
+  }
+
+  /**
+   * The operation an Add / Delete key shows, as last drawn; Add when nothing
+   * is recorded, the look such a key draws by default.
+   */
+  private shownOperation(contextId: string): MarkerOperation {
+    return this.shownLook.get(contextId) === "delete" ? "delete" : "add";
+  }
+
+  /**
+   * Whether a Delete press would remove a marker now — the press's own pick
+   * ({@link previewDeleteMarker}), read fresh: connected, a store and a frame,
+   * and a marker within `windowSeconds`. From the car as well as in a replay,
+   * since Delete sends no replay command (#1454).
+   */
+  private isDeleteAvailable(windowSeconds: number): boolean {
+    const context = this.readReplayContext();
+
+    return context.ok && previewDeleteMarker(context, windowSeconds) !== null;
+  }
+
   /**
    * Whether a Next / Previous press would jump now — the one predicate the
    * press and the dial's turn and side marks apply ({@link resolveJumpTarget}),
@@ -440,26 +504,49 @@ export class ReplayMarkers extends SimIRacingAction<ReplayMarkersSettings> {
   }
 
   /**
-   * The icon a context shows at rest, computed fresh. For Next / Previous it
-   * also records which look went out, so a tick renders only on a flip.
+   * The resting look a key would show now, read fresh, or null for Add
+   * Marker, whose look never changes. Next / Previous grey when a press would
+   * send nothing, Delete when it would remove nothing, and Add / Delete shows
+   * Delete while a marker is within its window and Add otherwise (#1454).
+   */
+  private restingLook(settings: ReplayMarkersSettings): RestingLook | null {
+    switch (settings.mode) {
+      case "add":
+        return null;
+      case "delete":
+        return this.isDeleteAvailable(settings.deleteWindow) ? "available" : "unavailable";
+      case "add-delete":
+        return this.isDeleteAvailable(settings.deleteWindow) ? "delete" : "add";
+      case "next":
+      case "previous":
+        return this.isJumpAvailable(settings.mode) ? "available" : "unavailable";
+    }
+  }
+
+  /**
+   * The icon a context shows at rest, computed fresh. For every mode but Add
+   * it also records which look went out, so a tick renders only on a flip.
    */
   private restingSvg(contextId: string, settings: ReplayMarkersSettings): string {
-    if (!isJumpMode(settings.mode)) {
-      this.shownAvailable.delete(contextId);
+    const look = this.restingLook(settings);
+
+    if (look === null) {
+      this.shownLook.delete(contextId);
 
       return generateReplayMarkersSvg(settings);
     }
 
-    const available = this.isJumpAvailable(settings.mode);
-    this.shownAvailable.set(contextId, available);
+    this.shownLook.set(contextId, look);
 
-    return generateReplayMarkersSvg(settings, available ? undefined : "unavailable");
+    if (look === "add" || look === "delete") return generateReplayMarkersSvg(settings, undefined, undefined, look);
+
+    return generateReplayMarkersSvg(settings, look === "unavailable" ? "unavailable" : undefined);
   }
 
   /**
-   * Per tick: re-read a Next / Previous key's availability and redraw it, at
-   * most 10 Hz, only when it differs from what the key shows. A key in its
-   * confirmation flash is left alone; the flash's own end redraws it.
+   * Per tick: re-read a key's resting look and redraw it, at most 10 Hz, only
+   * when it differs from what the key shows. A key in its confirmation flash
+   * is left alone; the flash's own end redraws it.
    */
   private refreshAvailability(contextId: string): void {
     if (!this.needsRedraw(contextId)) return;
@@ -476,19 +563,19 @@ export class ReplayMarkers extends SimIRacingAction<ReplayMarkersSettings> {
   }
 
   /**
-   * Whether a tick must redraw the key: a Next / Previous key whose
-   * availability differs from what it shows. Never while a flash runs, nor
-   * while the replay busy look stands (#1437): the key shows no availability
-   * then, and the indicator's redraw at the end of the look draws it fresh.
+   * Whether a tick must redraw the key: a key whose resting look differs from
+   * what it shows. Never for Add Marker, never while a flash runs, nor while
+   * the replay busy look stands (#1437): the key shows no resting look then,
+   * and the indicator's redraw at the end of the look draws it fresh.
    */
   private needsRedraw(contextId: string): boolean {
     const settings = this.activeContexts.get(contextId);
 
-    if (!settings || !isJumpMode(settings.mode) || this.flashTimers.has(contextId)) return false;
+    if (!settings || settings.mode === "add" || this.flashTimers.has(contextId)) return false;
 
     if (getReplayBusyLook(contextId).kind !== "rest") return false;
 
-    return this.shownAvailable.get(contextId) !== this.isJumpAvailable(settings.mode);
+    return this.shownLook.get(contextId) !== this.restingLook(settings);
   }
 
   private flash(contextId: string, settings: ReplayMarkersSettings, confirmation: ReplayMarkerConfirmation): void {
