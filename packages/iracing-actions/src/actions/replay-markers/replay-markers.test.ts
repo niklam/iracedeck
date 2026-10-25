@@ -1680,6 +1680,40 @@ describe("ReplayMarkers", () => {
       expect(mocks.markers.add).not.toHaveBeenCalled();
     });
 
+    it("a press that beats a change away from Add / Delete does nothing", async () => {
+      // Outside this key's 10 s window, inside a 60 s Delete's, and ahead for a Next.
+      workingStore([marker(13_000)]);
+      const { action } = makeAction(REPLAY);
+      await appear(action, { mode: "add-delete" });
+      expect(shown(action)).toContain(ADD_LOOK);
+
+      // The key still reads MARKER ADD; a Delete or Next press in its place must not run.
+      await action.onKeyDown(keyDown({ mode: "delete", deleteWindow: 60 }));
+      await action.onKeyDown(keyDown({ mode: "next" }));
+
+      expect(mocks.markers.add).not.toHaveBeenCalled();
+      expect(mocks.markers.deleteNearest).not.toHaveBeenCalled();
+      expect(mocks.setPlayPosition).not.toHaveBeenCalled();
+    });
+
+    it("a look recorded before a busy Next key is not run by a press that beats the change back", async () => {
+      workingStore([marker(12_000)]);
+      const { action } = makeAction(REPLAY);
+      await appear(action, { mode: "add-delete" });
+      expect(shown(action)).toContain(DELETE_LOOK);
+
+      // Back to Next while its jump still stands: the key draws the busy look,
+      // and the Delete look recorded above stays behind it.
+      busy.looks.set("ctx-1", { kind: "working", tick: 1 });
+      await action.onDidReceiveSettings(keyDown({ mode: "next" }));
+      expect(shown(action)).toContain("|busy:");
+
+      await action.onKeyDown(keyDown({ mode: "add-delete" }));
+
+      expect(mocks.markers.deleteNearest).not.toHaveBeenCalled();
+      expect(mocks.markers.add).not.toHaveBeenCalled();
+    });
+
     it("the regenerate callback records the look a press then runs", async () => {
       const markers = workingStore();
       const { action } = makeAction(REPLAY);

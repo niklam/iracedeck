@@ -335,6 +335,16 @@ export class ReplayMarkers extends SimIRacingAction<ReplayMarkersSettings> {
     const settings = this.parseSettings(ev.payload.settings);
     this.logger.info(`Key down: ${settings.mode}`);
 
+    // A press that beat a mode change (#1454): the key still shows the mode it
+    // was drawn for, so a press in the new mode would do what it does not show.
+    const drawnMode = this.activeContexts.get(ev.action.id)?.mode;
+
+    if (drawnMode !== undefined && drawnMode !== settings.mode) {
+      this.logger.debug(`Key shows ${drawnMode}, press says ${settings.mode}; ignoring until the key is redrawn`);
+
+      return;
+    }
+
     const confirmation = this.execute(settings, ev.action.id);
 
     if (confirmation) this.flash(ev.action.id, settings, confirmation);

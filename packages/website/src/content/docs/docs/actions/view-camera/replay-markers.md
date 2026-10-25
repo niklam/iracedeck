@@ -87,7 +87,7 @@ How far from the current moment, in seconds, a press reaches for a marker — me
 
 One key for both: it shows and does **Delete Marker** while a marker is within its **Delete Window**, and **Add Marker** otherwise. The icon and title switch as the replay plays or you drive, so the key always says what a press will do, using the same artwork and titles as the Add Marker and Delete Marker keys. A press does what the key shows at that moment.
 
-Right after you add a marker with it, that new marker is within the window, so the key shows **Delete** — an undo for a mistaken press — until the window has passed, and then goes back to **Add**. To mark two moments close together, wait for the key to read Add again, use a separate Add Marker key, or set a shorter Delete Window. Pressing twice quickly from Add adds one marker, never adds and then deletes it.
+Right after you add a marker with it, that new marker is within the window, so the key shows **Delete** — an undo for a mistaken press — until the window has passed, and then goes back to **Add**. To mark two moments close together, wait for the key to read Add again, use a separate Add Marker key, or set a shorter Delete Window. Pressing twice quickly from Add never adds and then deletes: the second press adds too, and at normal speed it lands within a second of the first marker and is refused, so you get one marker — in a replay playing faster than normal, the two presses can be far enough apart in the recording to add two.
 
 The key briefly shows **MARKER ADDED** or **MARKER DELETED**, the same as the single-purpose keys; a press that changes nothing shows nothing. It never turns grey: without iRacing it shows the plain Add look.
 
