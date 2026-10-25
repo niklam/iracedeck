@@ -58,6 +58,7 @@ function createFakeAudio(): FakeAudio {
     [AudioChannel.SFX]: null,
     [AudioChannel.Voice]: null,
     [AudioChannel.Radar]: null,
+    [AudioChannel.Feedback]: null,
   };
   const played: { channel: AudioChannel; path: string; loop: boolean }[] = [];
   const stopped: AudioChannel[] = [];

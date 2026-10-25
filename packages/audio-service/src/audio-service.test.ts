@@ -1,15 +1,26 @@
-import type { AudioNative } from "@iracedeck/audio-native";
+import type { AudioNative, AudioChannel as NativeAudioChannel } from "@iracedeck/audio-native";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   _resetAudio,
+  AudioBus,
   AudioChannel,
   getAudio,
   IDLE_STOP_DELAY_MS,
   initializeAudio,
   isAudioInitialized,
 } from "./audio-service.js";
+
+// The service keeps its own copy of the native channel enum (it imports
+// `@iracedeck/audio-native` by type only). This fails to compile when the two
+// differ in a name or an index, so a channel added to one is added to both.
+type EnumShape<E> = { [K in keyof E]: E[K] extends number ? `${E[K]}` : never };
+type Same<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
+const channelEnumsInSync: Same<EnumShape<typeof NativeAudioChannel>, EnumShape<typeof AudioChannel>> = true;
+
+/** Every channel, in index order — the same derivation as the service's. */
+const ALL_CHANNELS = Object.values(AudioChannel).filter((value): value is AudioChannel => typeof value === "number");
 
 function createMockNative(): AudioNative {
   return {
@@ -463,15 +474,15 @@ describe("AudioService", () => {
 
       // Bring every channel to the active state first — idle channels
       // intentionally don't fire onComplete on stop now.
-      for (const ch of [AudioChannel.Ambient, AudioChannel.SFX, AudioChannel.Voice, AudioChannel.Radar]) {
+      for (const ch of ALL_CHANNELS) {
         getAudio().playOnChannel(ch, `/clip-${ch}.mp3`);
       }
 
       getAudio().stopAllChannels();
 
-      expect(onComplete).toHaveBeenCalledTimes(4);
+      expect(onComplete).toHaveBeenCalledTimes(ALL_CHANNELS.length);
 
-      for (const ch of [AudioChannel.Ambient, AudioChannel.SFX, AudioChannel.Voice, AudioChannel.Radar]) {
+      for (const ch of ALL_CHANNELS) {
         expect(onComplete).toHaveBeenCalledWith(ch);
       }
     });
@@ -484,13 +495,13 @@ describe("AudioService", () => {
       const onComplete = vi.fn();
       getAudio().setPlaybackObserver({ onComplete });
 
-      for (const ch of [AudioChannel.Ambient, AudioChannel.SFX, AudioChannel.Voice, AudioChannel.Radar]) {
+      for (const ch of ALL_CHANNELS) {
         getAudio().playOnChannel(ch, `/clip-${ch}.mp3`);
       }
 
       getAudio().setAudioDevice(2);
 
-      expect(onComplete).toHaveBeenCalledTimes(4);
+      expect(onComplete).toHaveBeenCalledTimes(ALL_CHANNELS.length);
     });
 
     it("fires onComplete for every active channel when switching audio device by id", () => {
@@ -501,13 +512,13 @@ describe("AudioService", () => {
       const onComplete = vi.fn();
       getAudio().setPlaybackObserver({ onComplete });
 
-      for (const ch of [AudioChannel.Ambient, AudioChannel.SFX, AudioChannel.Voice, AudioChannel.Radar]) {
+      for (const ch of ALL_CHANNELS) {
         getAudio().playOnChannel(ch, `/clip-${ch}.mp3`);
       }
 
       getAudio().setAudioDeviceById("default-id");
 
-      expect(onComplete).toHaveBeenCalledTimes(4);
+      expect(onComplete).toHaveBeenCalledTimes(ALL_CHANNELS.length);
     });
 
     it("does not fire onComplete for stopChannel on an already-idle channel", () => {
@@ -602,6 +613,157 @@ describe("AudioService", () => {
       endCallbacks[AudioChannel.Ambient]();
 
       expect(onComplete).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("Feedback channel (#1455 — the volume step tick, in no bus)", () => {
+    function createServiceWithEndCallbacks() {
+      const native = createMockNative();
+      const endCallbacks: Record<number, () => void> = {};
+      (native.setChannelEndCallback as ReturnType<typeof vi.fn>).mockImplementation((ch: number, cb: () => void) => {
+        endCallbacks[ch] = cb;
+      });
+      initializeAudio(mockLogger as never, native);
+      getAudio().init();
+
+      return { native, endCallbacks };
+    }
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("is the channel after Radar, so a .node built before it refuses it", () => {
+      expect(channelEnumsInSync).toBe(true);
+      expect(AudioChannel.Feedback).toBe(4);
+      expect(ALL_CHANNELS).toEqual([0, 1, 2, 3, 4]);
+    });
+
+    it("setBusVolume on every bus leaves it alone", () => {
+      const { native } = createServiceWithEndCallbacks();
+      vi.clearAllMocks();
+
+      for (const bus of [AudioBus.Voice, AudioBus.Background, AudioBus.Alerts]) {
+        getAudio().setBusVolume(bus, 0.3);
+      }
+
+      const touched = (native.setChannelVolume as ReturnType<typeof vi.fn>).mock.calls.map(([ch]) => ch);
+      expect(touched).not.toContain(AudioChannel.Feedback);
+      // Positive control: every channel in a bus was written.
+      expect(new Set(touched)).toEqual(
+        new Set([AudioChannel.Ambient, AudioChannel.SFX, AudioChannel.Voice, AudioChannel.Radar]),
+      );
+    });
+
+    it("plays at the given level through the perceptual curve", () => {
+      const { native } = createServiceWithEndCallbacks();
+
+      expect(getAudio().playOnChannelAtLevel(AudioChannel.Feedback, "/tick-up.wav", 0.5)).toBe(true);
+      // 0.5^2.5 ≈ 0.17678, times Feedback's mix ratio of 1.0.
+      expect(native.playOnChannel).toHaveBeenLastCalledWith(
+        AudioChannel.Feedback,
+        "/tick-up.wav",
+        false,
+        expect.closeTo(0.1768, 4),
+      );
+
+      getAudio().playOnChannelAtLevel(AudioChannel.Feedback, "/tick-up.wav", 1);
+      expect(native.playOnChannel).toHaveBeenLastCalledWith(AudioChannel.Feedback, "/tick-up.wav", false, 1);
+    });
+
+    it("clamps the level before the curve, non-finite to 0", () => {
+      const { native } = createServiceWithEndCallbacks();
+
+      getAudio().playOnChannelAtLevel(AudioChannel.Feedback, "/tick.wav", 1.5);
+      expect(native.playOnChannel).toHaveBeenLastCalledWith(AudioChannel.Feedback, "/tick.wav", false, 1);
+
+      getAudio().playOnChannelAtLevel(AudioChannel.Feedback, "/tick.wav", -0.2);
+      expect(native.playOnChannel).toHaveBeenLastCalledWith(AudioChannel.Feedback, "/tick.wav", false, 0);
+
+      getAudio().playOnChannelAtLevel(AudioChannel.Feedback, "/tick.wav", Number.NaN);
+      expect(native.playOnChannel).toHaveBeenLastCalledWith(AudioChannel.Feedback, "/tick.wav", false, 0);
+    });
+
+    it("applies the level to that play only, not to the channel's stored volume", () => {
+      const { native } = createServiceWithEndCallbacks();
+
+      getAudio().playOnChannelAtLevel(AudioChannel.Feedback, "/tick.wav", 0.2);
+      getAudio().playOnChannel(AudioChannel.Feedback, "/other.wav");
+
+      expect(native.playOnChannel).toHaveBeenLastCalledWith(AudioChannel.Feedback, "/other.wav", false, 1.0);
+      expect(native.setChannelVolume).not.toHaveBeenCalledWith(AudioChannel.Feedback, expect.anything());
+    });
+
+    it("refuses a channel routed to a bus, whose bus volume would overwrite the level", () => {
+      const { native } = createServiceWithEndCallbacks();
+      vi.clearAllMocks();
+
+      for (const ch of [AudioChannel.Ambient, AudioChannel.SFX, AudioChannel.Voice, AudioChannel.Radar]) {
+        expect(getAudio().playOnChannelAtLevel(ch, "/tick.wav", 0.5)).toBe(false);
+      }
+
+      expect(native.playOnChannel).not.toHaveBeenCalled();
+      expect(mockLogger.warn).toHaveBeenCalledTimes(4);
+    });
+
+    it("returns false before init, and when the native play fails", () => {
+      const native = createMockNative();
+      initializeAudio(mockLogger as never, native);
+      expect(getAudio().playOnChannelAtLevel(AudioChannel.Feedback, "/tick.wav", 0.5)).toBe(false);
+      expect(native.playOnChannel).not.toHaveBeenCalled();
+
+      getAudio().init();
+      (native.playOnChannel as ReturnType<typeof vi.fn>).mockReturnValue(false);
+      expect(getAudio().playOnChannelAtLevel(AudioChannel.Feedback, "/tick.wav", 0.5)).toBe(false);
+      expect(native.startAudioEngine).not.toHaveBeenCalled();
+    });
+
+    it("registers a native end callback for it, as for every channel", () => {
+      const { native, endCallbacks } = createServiceWithEndCallbacks();
+
+      expect(native.setChannelEndCallback).toHaveBeenCalledTimes(ALL_CHANNELS.length);
+      expect(typeof endCallbacks[AudioChannel.Feedback]).toBe("function");
+    });
+
+    it("starts the device for a tick and releases it after the idle window once the tick ends (#849)", () => {
+      const { native, endCallbacks } = createServiceWithEndCallbacks();
+      const onComplete = vi.fn();
+      getAudio().setPlaybackObserver({ onComplete });
+
+      getAudio().playOnChannelAtLevel(AudioChannel.Feedback, "/tick.wav", 0.5);
+      expect(native.startAudioEngine).toHaveBeenCalledTimes(1);
+
+      // While the tick plays the release is not armed.
+      vi.advanceTimersByTime(IDLE_STOP_DELAY_MS * 2);
+      expect(native.stopAudioEngine).not.toHaveBeenCalled();
+
+      endCallbacks[AudioChannel.Feedback]();
+      expect(onComplete).toHaveBeenCalledWith(AudioChannel.Feedback);
+
+      vi.advanceTimersByTime(IDLE_STOP_DELAY_MS);
+      expect(native.stopAudioEngine).toHaveBeenCalledTimes(1);
+    });
+
+    it("stopAllChannels clears it", () => {
+      const { native } = createServiceWithEndCallbacks();
+      const onComplete = vi.fn();
+      getAudio().setPlaybackObserver({ onComplete });
+      getAudio().playOnChannelAtLevel(AudioChannel.Feedback, "/tick.wav", 0.5);
+      const oneShot = vi.fn();
+      getAudio().onChannelComplete(AudioChannel.Feedback, oneShot);
+
+      getAudio().stopAllChannels();
+
+      expect(onComplete).toHaveBeenCalledWith(AudioChannel.Feedback);
+      // The one-shot completion callback is dropped, not fired.
+      expect(oneShot).not.toHaveBeenCalled();
+      // Idle again, so the device release arms.
+      vi.advanceTimersByTime(IDLE_STOP_DELAY_MS);
+      expect(native.stopAudioEngine).toHaveBeenCalledTimes(1);
     });
   });
 

@@ -2,11 +2,18 @@
  * Audio Service Singleton — Multi-Channel Mixer (miniaudio)
  *
  * Provides a multi-channel audio mixer via the miniaudio native engine.
- * Four independent channels can play simultaneously:
- *   Channel 0 (Ambient) — pit lane background noise loop
- *   Channel 1 (SFX)     — walkie-talkie open/close ticks
- *   Channel 2 (Voice)   — engineer messages, reminders, toggles
- *   Channel 3 (Radar) — directional radar ticks
+ * Five independent channels can play simultaneously:
+ *   Channel 0 (Ambient)  — pit lane background noise loop
+ *   Channel 1 (SFX)      — walkie-talkie open/close ticks
+ *   Channel 2 (Voice)    — engineer messages, reminders, toggles
+ *   Channel 3 (Radar)    — directional radar ticks
+ *   Channel 4 (Feedback) — control feedback, the volume step tick (#1455)
+ *
+ * Every channel routes to exactly one bus, with one exception: Feedback
+ * routes to none. Its level is passed per play
+ * ({@link IAudioService.playOnChannelAtLevel}), because a tick plays at the
+ * level of whichever setting was stepped, and a bus volume written over it
+ * mid-play would be the wrong one.
  *
  * Also provides a voice sequence engine that chains audio clips with
  * random connector words ("and", "also", "plus") between them.
@@ -36,18 +43,33 @@ import path from "node:path";
 
 // ─── Channel enum ────────────────────────────────────────────────────────────
 
+/**
+ * The mixer channels: a copy of `@iracedeck/audio-native`'s enum, kept in
+ * sync by a type-level check in the tests. The indices are dense from 0, and
+ * every per-channel table and all-channels loop below is sized from this
+ * enum, so a new channel is an entry here and in the native enum plus a bump
+ * of the native `IRD_MAX_CHANNELS`.
+ */
 export enum AudioChannel {
   Ambient = 0,
   SFX = 1,
   Voice = 2,
   Radar = 3,
+  /** Control feedback such as the volume step tick (#1455). Routed to no bus. */
+  Feedback = 4,
 }
+
+/** Every mixer channel, in index order. */
+const ALL_CHANNELS: readonly AudioChannel[] = Object.values(AudioChannel).filter(
+  (value): value is AudioChannel => typeof value === "number",
+);
 
 // ─── Bus system ──────────────────────────────────────────────────────────────
 
 /**
- * Logical audio groups (busses). Channels are routed to exactly one bus.
- * Bus volume multiplies each channel's intrinsic mix ratio, so a single
+ * Logical audio groups (busses). Channels are routed to exactly one bus, except
+ * Feedback, which belongs to none (see {@link CHANNEL_BUS_MAP}). Bus volume
+ * multiplies each channel's intrinsic mix ratio, so a single
  * `setBusVolume(Background, 0.2)` ducks both Ambient and SFX in one call
  * while preserving their relative balance.
  *
@@ -67,12 +89,19 @@ export enum AudioBus {
  * Default channel routing. Edit here to re-route channels between busses.
  * The mix ratio is the channel's volume at bus = 1.0 (e.g. SFX and Ambient
  * are pre-attenuated so they sit under the voice when the bus is at full).
+ *
+ * `null` is "no bus", and is written out rather than left as a missing key
+ * so the table stays exhaustive over the enum. Feedback is the one such
+ * channel (#1455): `setBusVolume` never touches it, and each clip on it is
+ * played at the level its caller passes to `playOnChannelAtLevel`, which
+ * stands in for the bus volume (the mix ratio still applies).
  */
-const CHANNEL_BUS_MAP: Readonly<Record<AudioChannel, AudioBus>> = {
+const CHANNEL_BUS_MAP: Readonly<Record<AudioChannel, AudioBus | null>> = {
   [AudioChannel.Ambient]: AudioBus.Background,
   [AudioChannel.SFX]: AudioBus.Background,
   [AudioChannel.Voice]: AudioBus.Voice,
   [AudioChannel.Radar]: AudioBus.Alerts,
+  [AudioChannel.Feedback]: null,
 };
 
 const CHANNEL_MIX_RATIO: Readonly<Record<AudioChannel, number>> = {
@@ -80,6 +109,7 @@ const CHANNEL_MIX_RATIO: Readonly<Record<AudioChannel, number>> = {
   [AudioChannel.SFX]: 0.7,
   [AudioChannel.Voice]: 1.0,
   [AudioChannel.Radar]: 1.0,
+  [AudioChannel.Feedback]: 1.0,
 };
 
 // ─── Perceptual volume curve (#531) ──────────────────────────────────────────
@@ -269,6 +299,18 @@ export interface IAudioService {
   playOnChannel(channel: AudioChannel, filePath: string, loop?: boolean): boolean;
 
   /**
+   * Play an audio file once on a channel that belongs to no bus (today only
+   * {@link AudioChannel.Feedback}, #1455) at an explicit level. `level` is a
+   * 0–1 user-facing value that stands in for the bus volume: it goes through
+   * the same perceptual curve as {@link setBusVolume} (exponent 2.5, #531),
+   * is clamped first, and applies to this play only — the channel's stored
+   * volume is untouched. Refused (false, with a warning) on a channel routed
+   * to a bus, whose bus volume would overwrite the level mid-play. Returns
+   * true on success, like {@link playOnChannel}.
+   */
+  playOnChannelAtLevel(channel: AudioChannel, filePath: string, level: number): boolean;
+
+  /**
    * Replace the ordered list of audio roots. Called after a voice-pack scan:
    * each installed pack is its own root (issue #1034), so the list grows and
    * shrinks as packs are installed and removed. A pack root carries the clip
@@ -431,20 +473,20 @@ class AudioService implements IAudioService {
   private voiceSeqCompleteCallback: (() => void) | null = null;
 
   // Per-channel volume state (persists across sound changes on the same channel)
-  private channelVolumes: number[] = [1.0, 1.0, 1.0, 1.0];
+  private channelVolumes: number[] = ALL_CHANNELS.map(() => 1.0);
 
   // Per-bus master volume (applied on top of each channel's intrinsic mix ratio)
   private busVolumes: number[] = [1.0, 1.0, 1.0];
 
   // Per-channel one-shot callbacks (managed at JS level, wrapping the native TSFN)
-  private channelCallbacks: ((() => void) | null)[] = [null, null, null, null];
+  private channelCallbacks: ((() => void) | null)[] = ALL_CHANNELS.map(() => null);
 
   // Per-channel "is something currently playing on this channel" tracker. Set
   // when a play call succeeds, cleared on any teardown path (natural end,
   // manual stop, voice-sequence end). Gates `notifyPlaybackEnd` so we don't
   // emit synthetic completions on already-idle channels and don't double-fire
   // when the native engine echoes an end callback after a manual stop.
-  private channelActive: boolean[] = [false, false, false, false];
+  private channelActive: boolean[] = ALL_CHANNELS.map(() => false);
 
   // Persistent observer for clip start/complete on any channel.
   private playbackObserver: PlaybackObserver | null = null;
@@ -497,9 +539,10 @@ class AudioService implements IAudioService {
     this.identity = identity ?? null;
 
     // Register persistent native end callbacks for all channels.
-    // These dispatch to the JS-level one-shot callbacks.
-    for (let ch = 0; ch < 4; ch++) {
-      const channel = ch;
+    // These dispatch to the JS-level one-shot callbacks, and they are what
+    // clears `channelActive`, so a channel without one would keep the idle
+    // device release from ever arming (#849).
+    for (const channel of ALL_CHANNELS) {
       this.native.setChannelEndCallback(channel, () => {
         this.handleChannelEnd(channel);
       });
@@ -706,6 +749,26 @@ class AudioService implements IAudioService {
     return this.notifyPlaybackStart(channel, resolved);
   }
 
+  playOnChannelAtLevel(channel: AudioChannel, filePath: string, level: number): boolean {
+    if (!this.engineReady) return false;
+
+    if (CHANNEL_BUS_MAP[channel] !== null) {
+      this.logger.warn(`Refused a play at an explicit level on ch${channel}: it is routed to a bus`);
+
+      return false;
+    }
+
+    const resolved = this.resolvePath(filePath);
+    const volume = toPerceivedAmplitude(clampVolume01(level)) * CHANNEL_MIX_RATIO[channel];
+    this.logger.debug(`Play ch${channel} at ${volume.toFixed(4)}: ${resolved}`);
+
+    const ok = this.native.playOnChannel(channel, resolved, false, volume);
+
+    if (!ok) return false;
+
+    return this.notifyPlaybackStart(channel, resolved);
+  }
+
   /**
    * Resolve a clip path against the service's configured roots. Absolute
    * paths pass through unchanged, so callers that build their own absolute
@@ -894,12 +957,12 @@ class AudioService implements IAudioService {
     this.cancelVoiceSequence();
     this.native.stopAllChannels();
 
-    for (let i = 0; i < 4; i++) {
-      this.channelCallbacks[i] = null;
+    for (const channel of ALL_CHANNELS) {
+      this.channelCallbacks[channel] = null;
 
-      if (this.channelActive[i]) {
-        this.channelActive[i] = false;
-        this.notifyPlaybackEnd(i as AudioChannel);
+      if (this.channelActive[channel]) {
+        this.channelActive[channel] = false;
+        this.notifyPlaybackEnd(channel);
       }
     }
   }
@@ -925,10 +988,8 @@ class AudioService implements IAudioService {
 
     // Recompute effective channel volumes for every channel routed to this
     // bus. Mix ratio stays linear — it's pre-tuned channel balance, not a
-    // user-facing control.
-    for (const channelStr of Object.keys(CHANNEL_BUS_MAP)) {
-      const channel = Number(channelStr) as AudioChannel;
-
+    // user-facing control. A channel in no bus (Feedback) never matches.
+    for (const channel of ALL_CHANNELS) {
       if (CHANNEL_BUS_MAP[channel] !== bus) continue;
 
       const effective = perceived * CHANNEL_MIX_RATIO[channel];
