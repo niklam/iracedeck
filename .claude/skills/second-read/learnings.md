@@ -18,4 +18,5 @@ Read at the start of every run on a live branch; a blind run that tests the brie
 - Runtime validation of files this repo's own build generates, such as a plugin's `bin/config.json` (#316).
 - API stability, migration guards or changelog entries for private workspace packages: nothing outside this repository consumes them (#677).
 - A new Race Engineer callout defaulting to on: that is the maintainer's standing decision (#534).
+- A finding that assumes pnpm runs a `pre<script>` / `post<script>` by itself when turbo runs a task: it does not here; each plugin's `postbuild` runs once, because its `build` calls it explicitly (#1491's build log).
 - A finding that assumes `SessionTime` follows the replay cursor out of the car: it stays live while an in-session replay is scrubbed back, and `ReplaySessionTime` is the one that follows the cursor (measured on ten snapshots, #1426's spec).
