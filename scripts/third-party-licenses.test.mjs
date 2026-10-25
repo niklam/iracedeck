@@ -102,12 +102,15 @@ describe("shipped license files (#905)", () => {
     expect(FACTORY_SOURCE).toContain('name: "copy-license-files"');
     // Assert the actual copy invocation — source anchored to the repo root,
     // destination to the artifact root — not just the filenames appearing
-    // somewhere in the factory. `repoRoot` there is the factory's own anchor.
+    // somewhere in the factory. `repoRoot` there is the factory's own anchor,
+    // and the two sources are named in its SOURCES (#1491).
     expect(FACTORY_SOURCE).toContain(
       'const repoRoot = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../../..");',
     );
-    expect(FACTORY_SOURCE).toMatch(/for \(const file of \["LICENSE", "THIRD-PARTY-LICENSES\.md"\]\)/);
-    expect(FACTORY_SOURCE).toMatch(/copyFileSync\(path\.join\(repoRoot, file\), path\.join\(sdPluginDir, file\)\)/);
+    expect(FACTORY_SOURCE).toContain('licensePath: path.join(repoRoot, "LICENSE"),');
+    expect(FACTORY_SOURCE).toContain('thirdPartyLicensesPath: path.join(repoRoot, "THIRD-PARTY-LICENSES.md"),');
+    expect(FACTORY_SOURCE).toMatch(/for \(const source of \[SOURCES\.licensePath, SOURCES\.thirdPartyLicensesPath\]\)/);
+    expect(FACTORY_SOURCE).toMatch(/copyFileSync\(source, path\.join\(sdPluginDir, path\.basename\(source\)\)\)/);
   });
 
   describe.each(PLUGINS)("%s", (pkg, artifact) => {
