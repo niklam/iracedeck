@@ -87,7 +87,7 @@ Beside the clips, at `voice/my-voice/callouts.json`:
 
 Each entry names a callout by id and plays one pool: `pool:<group>/<base>`, the path of the clips you just recorded with the take number left off. `comment` and `test` are for you and whoever reads the file next; iRaceDeck does not act on them.
 
-The `frames` block matters more than it looks. All three of these callouts are framed by default, so the script must say what `radio` means or every one of them is skipped with `unknown frame "radio"` in the log. The frame above is the reference voice's, and `sfx/IRD-tick-open.mp3` and `sfx/IRD-tick-close.mp3` are the plugin's own sound effects, available to every pack. If you would rather hear your lines with no ticks and no ambience, add `"frame": "none"` to each entry instead, and `"frames": {}` is enough.
+The `frames` block matters more than it looks. All three of these callouts are framed by default, so the script must say what `radio` means or every one of them is skipped with `unknown frame "radio"` in the log. The frame above is the reference voice's without its optional `cut` tail (see [the format](/docs/voice-packs/format/)), and `sfx/IRD-tick-open.mp3` and `sfx/IRD-tick-close.mp3` are the plugin's own sound effects, available to every pack. If you would rather hear your lines with no ticks and no ambience, add `"frame": "none"` to each entry instead, and `"frames": {}` is enough.
 
 The [format page](/docs/voice-packs/format/) has every key and every step form.
 
