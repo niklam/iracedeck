@@ -1,3 +1,10 @@
+import { assembleIcon } from "@iracedeck/deck-core";
+import tearOffVisorIcon from "@iracedeck/icons/car-control/tear-off-visor.svg";
+import wipersAndVisorIcon from "@iracedeck/icons/car-control/wipers-and-visor.svg";
+import toggleWipersIcon from "@iracedeck/icons/cockpit-misc/toggle-wipers.svg";
+import triggerWipersIcon from "@iracedeck/icons/cockpit-misc/trigger-wipers.svg";
+import type { TelemetryData } from "@iracedeck/iracing-sdk";
+import { getGlobalSettings } from "@iracedeck/settings";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import ignitionTemplate from "../../../icons/car-control-ignition.svg";
@@ -93,6 +100,9 @@ vi.mock("@iracedeck/icons/car-control/second-down-shift.svg", () => ({
 vi.mock("@iracedeck/iracing-sdk", () => ({
   hasFlag: (value: number, flag: number) => (value & flag) !== 0,
   hasPitLimiter: (t: { dcPitSpeedLimiterToggle?: unknown } | null) => t?.dcPitSpeedLimiterToggle !== undefined,
+  hasVisor: (t: { dcTearOffVisor?: unknown } | null) => t?.dcTearOffVisor !== undefined,
+  hasWipers: (t: { dcToggleWindshieldWipers?: unknown; dcTriggerWindshieldWipers?: unknown } | null) =>
+    t?.dcToggleWindshieldWipers !== undefined || t?.dcTriggerWindshieldWipers !== undefined,
   isLiveOnTrack: (t: { IsOnTrack?: unknown; IsReplayPlaying?: unknown } | null | undefined) =>
     t?.IsOnTrack === true && t?.IsReplayPlaying !== true,
   EngineWarnings: { PitSpeedLimiter: 0x0010, EngineStalled: 0x0008 },
@@ -104,7 +114,11 @@ vi.mock("@iracedeck/deck-iracing", async (importOriginal) => ({
   getSDK: vi.fn(() => ({ sdk: { getSessionInfo: mockGetSessionInfo } })),
 }));
 
-vi.mock("@iracedeck/deck-core", () => ({
+vi.mock("@iracedeck/deck-core", async () => ({
+  // The real tap/long-press tracker, so Wipers and Visor's press classification runs against
+  // the live `dualPressThresholdMs` read from the mocked global settings (#1463).
+  DualPressTracker: (await import("../../../../deck-core/src/dual-press.js")).DualPressTracker,
+  hexToGrayscale: vi.fn((hex: string) => `grey(${hex})`),
   IconUpdateThrottle: class {
     schedule(_id: string, render: () => unknown): void {
       try {
@@ -294,8 +308,12 @@ describe("CarControl", () => {
       expect(CAR_CONTROL_GLOBAL_KEYS["second-down-shift"]).toBe("carControlSecondDownShift");
     });
 
-    it("should have exactly 14 entries", () => {
-      expect(Object.keys(CAR_CONTROL_GLOBAL_KEYS)).toHaveLength(14);
+    it("should have an empty mapping for wipers-and-visor (resolved per car, #1463)", () => {
+      expect(CAR_CONTROL_GLOBAL_KEYS["wipers-and-visor"]).toBe("");
+    });
+
+    it("should have exactly 15 entries", () => {
+      expect(Object.keys(CAR_CONTROL_GLOBAL_KEYS)).toHaveLength(15);
     });
   });
 
@@ -400,6 +418,335 @@ describe("CarControl", () => {
       await action.onKeyDown(fakeEvent("action-1", { control: "ignition" }) as any);
 
       expect(mockTapBinding).toHaveBeenCalledWith("carControlIgnition");
+    });
+  });
+
+  describe("wipers and visor (issue #1463)", () => {
+    const VISOR_FRAME = { IsOnTrack: true, IsReplayPlaying: false, dcTearOffVisor: false } as TelemetryData;
+    const WIPER_FRAME = {
+      IsOnTrack: true,
+      IsReplayPlaying: false,
+      dcTriggerWindshieldWipers: false,
+      dcToggleWindshieldWipers: false,
+    } as TelemetryData;
+    const TRIGGER_ONLY_FRAME = {
+      IsOnTrack: true,
+      IsReplayPlaying: false,
+      dcTriggerWindshieldWipers: false,
+    } as TelemetryData;
+    const TOGGLE_ONLY_FRAME = {
+      IsOnTrack: true,
+      IsReplayPlaying: false,
+      dcToggleWindshieldWipers: true,
+    } as TelemetryData;
+    const NEITHER_FRAME = { IsOnTrack: true, IsReplayPlaying: false } as TelemetryData;
+    const REPLAY_FRAME = { ...WIPER_FRAME, IsReplayPlaying: true } as TelemetryData;
+
+    const TRIGGER = "cockpitMiscTriggerWipers";
+    const TOGGLE = "cockpitMiscToggleWipers";
+    const VISOR = "carControlTearOffVisor";
+
+    let action: CarControl;
+
+    beforeEach(() => {
+      // Fake timers BEFORE the action is built: the tracker captures Date.now at construction.
+      vi.useFakeTimers();
+      vi.mocked(getGlobalSettings).mockReturnValue({});
+      action = new CarControl();
+    });
+
+    afterEach(() => {
+      vi.mocked(getGlobalSettings).mockReturnValue({});
+      vi.useRealTimers();
+    });
+
+    function setTelemetry(frame: TelemetryData | null): void {
+      vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue(frame);
+    }
+
+    /** Press, hold for `holdMs`, release. */
+    async function press(settings: Record<string, unknown>, holdMs: number): Promise<void> {
+      await action.onKeyDown(fakeEvent("action-1", { control: "wipers-and-visor", ...settings }) as any);
+      vi.advanceTimersByTime(holdMs);
+      await action.onKeyUp(fakeEvent("action-1", { control: "wipers-and-visor", ...settings }) as any);
+    }
+
+    function lastAssembleArgs(): { graphicSvg: string; title: { titleText: string }; [k: string]: unknown } {
+      const calls = vi.mocked(assembleIcon).mock.calls;
+
+      return calls[calls.length - 1][0] as never;
+    }
+
+    describe("visor car", () => {
+      it("taps the visor binding on key-down, at once", async () => {
+        setTelemetry(VISOR_FRAME);
+        await action.onKeyDown(fakeEvent("action-1", { control: "wipers-and-visor" }) as any);
+
+        expect(mockTapBinding).toHaveBeenCalledTimes(1);
+        expect(mockTapBinding).toHaveBeenCalledWith(VISOR);
+      });
+
+      it("sends nothing on key-up, however long the key was held", async () => {
+        setTelemetry(VISOR_FRAME);
+        await press({}, 100);
+        await press({}, 5000);
+
+        expect(mockTapBinding).toHaveBeenCalledTimes(2);
+        expect(mockTapBinding.mock.calls.every(([key]) => key === VISOR)).toBe(true);
+        expect(mockHoldBinding).not.toHaveBeenCalled();
+      });
+
+      it("tears off whatever Wipers on tap says", async () => {
+        setTelemetry(VISOR_FRAME);
+        await press({ wipersOnTap: "toggle" }, 100);
+
+        expect(mockTapBinding).toHaveBeenCalledWith(VISOR);
+      });
+    });
+
+    describe("wiper car", () => {
+      it("sends nothing on key-down", async () => {
+        setTelemetry(WIPER_FRAME);
+        await action.onKeyDown(fakeEvent("action-1", { control: "wipers-and-visor" }) as any);
+
+        expect(mockTapBinding).not.toHaveBeenCalled();
+      });
+
+      it("triggers on a release under the threshold, by default", async () => {
+        setTelemetry(WIPER_FRAME);
+        await press({}, 499);
+
+        expect(mockTapBinding).toHaveBeenCalledTimes(1);
+        expect(mockTapBinding).toHaveBeenCalledWith(TRIGGER);
+      });
+
+      it("toggles on a release at or over the threshold, by default", async () => {
+        setTelemetry(WIPER_FRAME);
+        await press({}, 500);
+        await press({}, 2000);
+
+        expect(mockTapBinding.mock.calls).toEqual([[TOGGLE], [TOGGLE]]);
+      });
+
+      it("swaps the two when Wipers on tap is Toggle", async () => {
+        setTelemetry(WIPER_FRAME);
+        await press({ wipersOnTap: "toggle" }, 100);
+        await press({ wipersOnTap: "toggle" }, 800);
+
+        expect(mockTapBinding.mock.calls).toEqual([[TOGGLE], [TRIGGER]]);
+      });
+
+      it("reads a key stored without Wipers on tap as Trigger", async () => {
+        setTelemetry(WIPER_FRAME);
+        await press({}, 100);
+
+        expect(mockTapBinding).toHaveBeenCalledWith(TRIGGER);
+      });
+
+      it("reads the threshold live from global settings on each press", async () => {
+        setTelemetry(WIPER_FRAME);
+        vi.mocked(getGlobalSettings).mockReturnValue({ dualPressThresholdMs: 1000 });
+        await press({}, 600);
+        vi.mocked(getGlobalSettings).mockReturnValue({ dualPressThresholdMs: 300 });
+        await press({}, 400);
+
+        expect(mockTapBinding.mock.calls).toEqual([[TRIGGER], [TOGGLE]]);
+      });
+
+      it("sends the one wiper binding for both presses on a car with only one wiper variable", async () => {
+        setTelemetry(TRIGGER_ONLY_FRAME);
+        await press({}, 100);
+        await press({}, 800);
+        setTelemetry(TOGGLE_ONLY_FRAME);
+        await press({ wipersOnTap: "toggle" }, 100);
+        await press({ wipersOnTap: "toggle" }, 800);
+
+        expect(mockTapBinding.mock.calls).toEqual([[TRIGGER], [TRIGGER], [TOGGLE], [TOGGLE]]);
+      });
+
+      it("sends nothing on a stray release with no key-down", async () => {
+        setTelemetry(WIPER_FRAME);
+        await action.onKeyUp(fakeEvent("action-1", { control: "wipers-and-visor" }) as any);
+
+        expect(mockTapBinding).not.toHaveBeenCalled();
+      });
+
+      it("drops a press still held when the key disappears", async () => {
+        setTelemetry(WIPER_FRAME);
+        await action.onKeyDown(fakeEvent("action-1", { control: "wipers-and-visor" }) as any);
+        await action.onWillDisappear(fakeEvent("action-1", { control: "wipers-and-visor" }) as any);
+        await action.onKeyUp(fakeEvent("action-1", { control: "wipers-and-visor" }) as any);
+
+        expect(mockTapBinding).not.toHaveBeenCalled();
+      });
+    });
+
+    describe("unknown car or neither", () => {
+      it.each([
+        ["no telemetry", null],
+        ["a replay frame (the watched car)", REPLAY_FRAME],
+        ["off track", { ...VISOR_FRAME, IsOnTrack: false } as TelemetryData],
+        ["a car with neither", NEITHER_FRAME],
+      ])("sends nothing on press or release with %s", async (_label, frame) => {
+        setTelemetry(frame);
+        await press({}, 100);
+        await press({}, 2000);
+
+        expect(mockTapBinding).not.toHaveBeenCalled();
+        expect(mockHoldBinding).not.toHaveBeenCalled();
+        expect(action["logger"].debug).toHaveBeenCalledWith(expect.stringContaining("press ignored"));
+      });
+    });
+
+    describe("icon and title", () => {
+      const settings = (wipersOnTap?: "trigger" | "toggle") =>
+        ({ control: "wipers-and-visor", ...(wipersOnTap ? { wipersOnTap } : {}) }) as unknown as CarControlSettings;
+
+      it("shows the Tear Off Visor art on a visor car", () => {
+        generateCarControlSvg(settings(), { wipersAndVisorCar: { kind: "visor" } });
+
+        expect(lastAssembleArgs().graphicSvg).toBe(tearOffVisorIcon);
+        expect(lastAssembleArgs().title.titleText).toBe("VISOR\nTEAR OFF");
+        expect(lastAssembleArgs().dimmed).toBeUndefined();
+      });
+
+      it("shows the Trigger Wipers art on a wiper car, and Toggle Wipers when swapped", () => {
+        const car = { kind: "wipers" as const, trigger: true, toggle: true };
+        generateCarControlSvg(settings(), { wipersAndVisorCar: car });
+        expect(lastAssembleArgs().graphicSvg).toBe(triggerWipersIcon);
+        expect(lastAssembleArgs().title.titleText).toBe("TRIGGER\nWIPERS");
+
+        generateCarControlSvg(settings("toggle"), { wipersAndVisorCar: car });
+        expect(lastAssembleArgs().graphicSvg).toBe(toggleWipersIcon);
+        expect(lastAssembleArgs().title.titleText).toBe("TOGGLE\nWIPERS");
+      });
+
+      it("shows the combined icon, not greyed, for an unknown car", () => {
+        generateCarControlSvg(settings(), { wipersAndVisorCar: { kind: "unknown" } });
+        expect(lastAssembleArgs().graphicSvg).toBe(wipersAndVisorIcon);
+        expect(lastAssembleArgs().title.titleText).toBe("WIPERS\nVISOR");
+        expect(lastAssembleArgs().dimmed).toBeUndefined();
+
+        generateCarControlSvg(settings(), {});
+        expect(lastAssembleArgs().graphicSvg).toBe(wipersAndVisorIcon);
+      });
+
+      it("shows the combined icon in the unavailable look for a car with neither", () => {
+        generateCarControlSvg(settings(), { wipersAndVisorCar: { kind: "neither" } });
+        const args = lastAssembleArgs();
+
+        expect(args.graphicSvg).toBe(wipersAndVisorIcon);
+        expect(args.title.titleText).toBe("WIPERS\nVISOR");
+        expect(args.dimmed).toBe(true);
+        expect((args.border as { borderColor: string }).borderColor).toBe("grey(#00aaff)");
+      });
+
+      it("passes the binding-missing flag through", () => {
+        generateCarControlSvg(settings(), { wipersAndVisorCar: { kind: "visor" } }, true);
+
+        expect(lastAssembleArgs().bindingMissing).toBe(true);
+      });
+    });
+
+    describe("re-render on telemetry", () => {
+      async function appearAndGetTick(settingsExtra: Record<string, unknown> = {}) {
+        setTelemetry(null);
+        await action.onWillAppear(fakeEvent("action-1", { control: "wipers-and-visor", ...settingsExtra }) as any);
+        const tick = vi.mocked(action["sdkController"].subscribe).mock.calls[0][1] as (t: TelemetryData | null) => void;
+
+        return async (frame: TelemetryData | null) => {
+          setTelemetry(frame);
+          tick(frame);
+          await vi.runAllTimersAsync();
+        };
+      }
+
+      it("redraws when the car kind changes, and not when it stays the same", async () => {
+        const tick = await appearAndGetTick();
+        const updates = () => vi.mocked(action["updateKeyImage"]).mock.calls.length;
+
+        await tick(null);
+        expect(updates()).toBe(0);
+
+        await tick(VISOR_FRAME);
+        expect(updates()).toBe(1);
+
+        await tick({ ...VISOR_FRAME, Speed: 42 } as TelemetryData);
+        expect(updates()).toBe(1);
+
+        await tick(WIPER_FRAME);
+        expect(updates()).toBe(2);
+
+        await tick({ ...WIPER_FRAME, dcToggleWindshieldWipers: true } as TelemetryData);
+        expect(updates()).toBe(2);
+
+        await tick(REPLAY_FRAME);
+        expect(updates()).toBe(3);
+        expect(lastAssembleArgs().graphicSvg).toBe(wipersAndVisorIcon);
+      });
+
+      it("keys the render on the swap as well as the kind", () => {
+        const car = { kind: "wipers" as const, trigger: true, toggle: true };
+        const trigger = action["buildStateKey"]({ control: "wipers-and-visor" } as any, { wipersAndVisorCar: car });
+        const toggle = action["buildStateKey"]({ control: "wipers-and-visor", wipersOnTap: "toggle" } as any, {
+          wipersAndVisorCar: car,
+        });
+        const visorKey = action["buildStateKey"]({ control: "wipers-and-visor" } as any, {
+          wipersAndVisorCar: { kind: "visor" },
+        });
+
+        expect(new Set([trigger, toggle, visorKey]).size).toBe(3);
+      });
+    });
+
+    describe("missing-binding warning", () => {
+      beforeEach(() => {
+        // A visor-only user: the visor is bound, neither wiper binding is.
+        vi.mocked(action["isBindingMissing"]).mockImplementation(
+          (key: string | readonly string[] | null | undefined) => key === TRIGGER || key === TOGGLE,
+        );
+      });
+
+      it("shows none on a visor car when only the wiper bindings are unbound", async () => {
+        setTelemetry(VISOR_FRAME);
+        await action.onWillAppear(fakeEvent("action-1", { control: "wipers-and-visor" }) as any);
+
+        expect(lastAssembleArgs().bindingMissing).toBe(false);
+        expect(action["setActiveBinding"]).toHaveBeenCalledWith(VISOR);
+      });
+
+      it("shows it on a wiper car whose tap binding is unbound", async () => {
+        setTelemetry(WIPER_FRAME);
+        await action.onWillAppear(fakeEvent("action-1", { control: "wipers-and-visor" }) as any);
+
+        expect(lastAssembleArgs().bindingMissing).toBe(true);
+        expect(action["setActiveBinding"]).toHaveBeenCalledWith(TRIGGER);
+      });
+
+      it("checks the binding the tap sends when Wipers on tap is Toggle", async () => {
+        vi.mocked(action["isBindingMissing"]).mockImplementation(
+          (key: string | readonly string[] | null | undefined) => key === TRIGGER,
+        );
+        setTelemetry(WIPER_FRAME);
+        await action.onWillAppear(fakeEvent("action-1", { control: "wipers-and-visor", wipersOnTap: "toggle" }) as any);
+
+        expect(lastAssembleArgs().bindingMissing).toBe(false);
+        expect(action["setActiveBinding"]).toHaveBeenCalledWith(TOGGLE);
+      });
+
+      it("shows none, and tracks no binding, for an unknown car or one with neither", async () => {
+        vi.mocked(action["isBindingMissing"]).mockImplementation(
+          (key: string | readonly string[] | null | undefined) => typeof key === "string" && key.length > 0,
+        );
+
+        for (const frame of [null, NEITHER_FRAME]) {
+          setTelemetry(frame);
+          await action.onWillAppear(fakeEvent("action-1", { control: "wipers-and-visor" }) as any);
+          expect(lastAssembleArgs().bindingMissing).toBe(false);
+        }
+
+        expect(action["setActiveBinding"]).not.toHaveBeenCalled();
+      });
     });
   });
 

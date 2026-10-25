@@ -2,6 +2,7 @@ import {
   applyBindingWarning,
   assembleIcon,
   CommonSettings,
+  DualPressTracker,
   generateBorderParts,
   generateTitleText,
   getGlobalBorderSettings,
@@ -65,6 +66,16 @@ import {
   statusBarOn,
   type ToggleState,
 } from "../../icons/status-bar.js";
+import { unavailableLook } from "../../shared/unavailable-look.js";
+import {
+  resolveWipersAndVisorCar,
+  wipersAndVisorAppearance,
+  wipersAndVisorBinding,
+  type WipersAndVisorCar,
+  wipersAndVisorRenderKey,
+  wipersAndVisorRequiredBinding,
+  WipersOnTapField,
+} from "./wipers-and-visor.js";
 
 const WHITE = "#ffffff";
 const GRAY = "#888888";
@@ -88,6 +99,7 @@ type CarControlType =
   | "push-to-pass"
   | "drs"
   | "tear-off-visor"
+  | "wipers-and-visor"
   | "escape"
   | "handbrake"
   | "second-clutch"
@@ -137,6 +149,8 @@ const TELEMETRY_AWARE_CONTROLS = new Set<CarControlType>([
   "enter-exit-tow",
   "ignition",
   "starter",
+  // Re-renders when the car kind changes (#1463).
+  "wipers-and-visor",
 ]);
 
 /** Controls that use hold pattern (press on keyDown, release on keyUp) */
@@ -279,6 +293,8 @@ export const CAR_CONTROL_GLOBAL_KEYS: Record<CarControlType, string> = {
   "push-to-pass": "carControlPushToPass",
   drs: "carControlDrs",
   "tear-off-visor": "carControlTearOffVisor",
+  // Resolved per car (visor or wiper binding) by wipers-and-visor.ts (#1463).
+  "wipers-and-visor": "",
   escape: "",
   handbrake: "carControlHandbrake",
   "second-clutch": "carControlSecondClutch",
@@ -690,6 +706,8 @@ export type CarControlTelemetryState = {
    * flash while starting (issue #1438). Undefined follows the state.
    */
   starterBadgeLit?: boolean;
+  /** The car Wipers and Visor acts for (issue #1463); absent means unknown. */
+  wipersAndVisorCar?: WipersAndVisorCar;
 };
 
 /**
@@ -703,6 +721,7 @@ export const CarControlSettings = CommonSettings.extend({
       "drs",
       "headlight-flash",
       "tear-off-visor",
+      "wipers-and-visor",
       "ignition",
       "starter",
       "enter-exit-tow",
@@ -722,6 +741,8 @@ export const CarControlSettings = CommonSettings.extend({
     .array(z.enum(["exit-car", "reset-to-pits", "tow"]))
     .default([])
     .transform((arr) => [...new Set(arr)]),
+  /** Wipers and Visor (#1463): what a tap does on a wiper car; a long press does the other. */
+  wipersOnTap: WipersOnTapField,
 });
 
 export type CarControlSettings = z.infer<typeof CarControlSettings>;
@@ -870,6 +891,26 @@ export function generateCarControlSvg(
     return assembleIcon({ graphicSvg: iconSvg, colors, title, border, graphic, bindingMissing });
   }
 
+  // Wipers and Visor (issue #1463) shows the art of what the current car's tap does, the
+  // combined icon when the car is unknown, and the combined icon greyed out when the car
+  // has neither a visor nor wipers.
+  if (control === "wipers-and-visor") {
+    const kind = telemetryState?.wipersAndVisorCar?.kind ?? "unknown";
+    const { iconSvg, title: defaultTitle, unavailable } = wipersAndVisorAppearance(kind, settings.wipersOnTap);
+    const colors = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
+    const title = resolveTitleSettings(iconSvg, getGlobalTitleSettings(), settings.titleOverrides, defaultTitle);
+    const border = resolveBorderSettings(iconSvg, getGlobalBorderSettings(), settings.borderOverrides);
+    const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
+
+    return assembleIcon({
+      graphicSvg: iconSvg,
+      title,
+      graphic,
+      bindingMissing,
+      ...(unavailable ? unavailableLook(colors, border) : { colors, border }),
+    });
+  }
+
   // Ignition and Starter are tri-state telemetry keys (issue #561). Both go through the
   // shared toggle renderer rather than repeating the resolve/render pipeline a fourth
   // time; the artwork stays state-neutral and the status bar plus the state-driven
@@ -916,11 +957,12 @@ export function generateCarControlSvg(
 /**
  * Car Control Action
  * Provides core car operation controls (starter, ignition, pit limiter, enter/exit/tow, pause,
- * headlight flash, push to pass, DRS, tear off visor, escape, and backup inputs: handbrake,
- * second clutch, second up/down shift).
+ * headlight flash, push to pass, DRS, tear off visor, wipers and visor, escape, and backup
+ * inputs: handbrake, second clutch, second up/down shift).
  * Starter, headlight flash, enter/exit/tow, handbrake, and second clutch use long-press
  * (hold while pressed); all others use tap.
  * Escape uses direct keyboard (hardcoded ESC key) with optional auto-hold.
+ * Wipers and Visor taps the visor on key-down, or classifies a wiper press on release (#1463).
  */
 export const CAR_CONTROL_UUID = "com.iracedeck.sd.core.car-control" as const;
 
@@ -961,11 +1003,14 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
    */
   private readonly imageThrottle = new IconUpdateThrottle();
 
+  /** Classifies a Wipers and Visor press on a wiper car as a tap or a long press, on release (#1463). */
+  private readonly dualPress = new DualPressTracker();
+
   override async onWillAppear(ev: IDeckWillAppearEvent<CarControlSettings>): Promise<void> {
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
-    const globalKey = CAR_CONTROL_GLOBAL_KEYS[settings.control];
+    const globalKey = this.requiredBinding(settings);
 
     if (globalKey) {
       this.setActiveBinding(globalKey);
@@ -990,6 +1035,7 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
     this.stopStarterFlash(ev.action.id);
     this.activeContexts.delete(ev.action.id);
     this.lastState.delete(ev.action.id);
+    this.dualPress.clear(ev.action.id);
 
     const settings = this.parseSettings(ev.payload.settings);
 
@@ -1012,7 +1058,7 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
     this.stopStarterFlash(ev.action.id);
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
-    const globalKey = CAR_CONTROL_GLOBAL_KEYS[settings.control];
+    const globalKey = this.requiredBinding(settings);
 
     if (globalKey) {
       this.setActiveBinding(globalKey);
@@ -1031,6 +1077,12 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
     this.logger.info("Key up received");
     this.releaseStarterFlash(ev.action.id);
     const settings = this.parseSettings(ev.payload.settings);
+
+    if (settings.control === "wipers-and-visor") {
+      await this.executeWipersAndVisorRelease(ev.action.id, settings);
+
+      return;
+    }
 
     if (settings.control === "escape") {
       if (!settings.autoHold) {
@@ -1063,6 +1115,12 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
     this.releaseStarterFlash(ev.action.id);
     const settings = this.parseSettings(ev.payload.settings);
 
+    if (settings.control === "wipers-and-visor") {
+      await this.executeWipersAndVisorRelease(ev.action.id, settings);
+
+      return;
+    }
+
     if (settings.control === "escape") {
       if (!settings.autoHold) {
         await getKeyboard().releaseKeyCombination(ESC_KEY);
@@ -1089,6 +1147,12 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
   }
 
   private async executeControl(actionId: string, settings: CarControlSettings): Promise<void> {
+    if (settings.control === "wipers-and-visor") {
+      await this.executeWipersAndVisorPress(actionId, settings);
+
+      return;
+    }
+
     if (settings.control === "escape") {
       await this.executeEscape(actionId, settings);
 
@@ -1359,6 +1423,72 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
     }
   }
 
+  /**
+   * Wipers and Visor key-down (#1463): a visor car tears off at once; a wiper car only
+   * starts timing the press, which is classified on release; an unknown car or one with
+   * neither sends nothing.
+   */
+  private async executeWipersAndVisorPress(actionId: string, settings: CarControlSettings): Promise<void> {
+    const car = resolveWipersAndVisorCar(this.sdkController.getCurrentTelemetry());
+
+    if (car.kind === "wipers") {
+      this.dualPress.recordKeyDown(actionId);
+
+      return;
+    }
+
+    this.dualPress.clear(actionId);
+    const binding = wipersAndVisorBinding(car, "down", settings.wipersOnTap);
+
+    if (!binding) {
+      this.logger.debug(`Wipers and Visor: ${car.kind} car, press ignored`);
+
+      return;
+    }
+
+    await this.tapBinding(binding);
+  }
+
+  /**
+   * Wipers and Visor release (#1463): on a wiper car, classify the press against the live
+   * dual-press threshold and send the tap's or the long press's wiper binding. A release
+   * with no timed key-down (a visor car, an unknown car) sends nothing.
+   */
+  private async executeWipersAndVisorRelease(actionId: string, settings: CarControlSettings): Promise<void> {
+    const press = this.dualPress.computeOutcome<"tap" | "long">(actionId, "tap", "long");
+
+    if (press === undefined) return;
+
+    const car = resolveWipersAndVisorCar(this.sdkController.getCurrentTelemetry());
+    const binding = wipersAndVisorBinding(car, press, settings.wipersOnTap);
+
+    if (!binding) {
+      this.logger.debug(`Wipers and Visor: ${car.kind} car on release, press ignored`);
+
+      return;
+    }
+
+    this.logger.debug(`Wipers and Visor: ${press} press sends ${binding}`);
+    await this.tapBinding(binding);
+  }
+
+  /**
+   * The binding this key's missing-binding warning and readiness check: the mode's fixed key,
+   * or for Wipers and Visor the one its current car uses (#1463), "" when none applies.
+   */
+  private requiredBinding(settings: CarControlSettings, telemetryState?: CarControlTelemetryState): string {
+    if (settings.control !== "wipers-and-visor") return CAR_CONTROL_GLOBAL_KEYS[settings.control];
+
+    const car = telemetryState?.wipersAndVisorCar ?? resolveWipersAndVisorCar(this.sdkController.getCurrentTelemetry());
+
+    return wipersAndVisorRequiredBinding(car, settings.wipersOnTap) ?? "";
+  }
+
+  /** Per-context missing-binding flag for the key icon (#612), resolved like {@link requiredBinding}. */
+  private isRequiredBindingMissing(settings: CarControlSettings, telemetryState?: CarControlTelemetryState): boolean {
+    return this.isBindingMissing(this.requiredBinding(settings, telemetryState));
+  }
+
   private clearAutoHoldTimer(actionId: string): void {
     const timer = this.autoHoldTimers.get(actionId);
 
@@ -1400,6 +1530,8 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
       const flash = contextId === undefined ? undefined : this.starterFlashes.get(contextId);
 
       if (flash) state.starterBadgeLit = flash.lit;
+    } else if (control === "wipers-and-visor") {
+      state.wipersAndVisorCar = resolveWipersAndVisorCar(telemetry);
     }
 
     return state;
@@ -1415,7 +1547,7 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
     const svgDataUri = generateCarControlSvg(
       settings,
       telemetryState,
-      this.isBindingMissing(CAR_CONTROL_GLOBAL_KEYS[settings.control]),
+      this.isRequiredBindingMissing(settings, telemetryState),
     );
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
@@ -1423,11 +1555,7 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
       const currentTelemetry = this.sdkController.getCurrentTelemetry();
       const currentState = this.getTelemetryState(currentTelemetry, settings.control, ev.action.id);
 
-      return generateCarControlSvg(
-        settings,
-        currentState,
-        this.isBindingMissing(CAR_CONTROL_GLOBAL_KEYS[settings.control]),
-      );
+      return generateCarControlSvg(settings, currentState, this.isRequiredBindingMissing(settings, currentState));
     });
 
     // Initialize state cache
@@ -1440,7 +1568,7 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
     const borderKey = `${bo?.enabled ?? ""}|${bo?.borderWidth ?? ""}|${bo?.borderColor ?? ""}|${bo?.glowEnabled ?? ""}|${bo?.glowWidth ?? ""}`;
     // Include the binding-missing flag so a telemetry tick re-renders the key
     // when the user sets/clears the control's binding (#612).
-    const warn = this.isBindingMissing(CAR_CONTROL_GLOBAL_KEYS[settings.control]) ? "warn" : "";
+    const warn = this.isRequiredBindingMissing(settings, telemetryState) ? "warn" : "";
 
     if (settings.control === "pit-speed-limiter") {
       // Key on the resolved tri-state (issue #638) so the key matches the rendered icon —
@@ -1472,6 +1600,14 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
 
     if (settings.control === "starter") {
       return `starter|${telemetryState.starterState ?? "na"}|${borderKey}|${warn}`;
+    }
+
+    if (settings.control === "wipers-and-visor") {
+      // Keyed on the resolved car kind and the swap (issue #1463), so a tick that changes
+      // neither does not redraw the key.
+      const kind = telemetryState.wipersAndVisorCar?.kind ?? "unknown";
+
+      return `wipers-and-visor|${wipersAndVisorRenderKey(kind, settings.wipersOnTap)}|${borderKey}|${warn}`;
     }
 
     return settings.control;
@@ -1521,18 +1657,14 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
       const svgDataUri = generateCarControlSvg(
         storedSettings,
         currentState,
-        this.isBindingMissing(CAR_CONTROL_GLOBAL_KEYS[storedSettings.control]),
+        this.isRequiredBindingMissing(storedSettings, currentState),
       );
       await this.updateKeyImage(contextId, svgDataUri);
       this.setRegenerateCallback(contextId, () => {
         const t = this.sdkController.getCurrentTelemetry();
         const s = this.getTelemetryState(t, storedSettings.control, contextId);
 
-        return generateCarControlSvg(
-          storedSettings,
-          s,
-          this.isBindingMissing(CAR_CONTROL_GLOBAL_KEYS[storedSettings.control]),
-        );
+        return generateCarControlSvg(storedSettings, s, this.isRequiredBindingMissing(storedSettings, s));
       });
     });
   }
