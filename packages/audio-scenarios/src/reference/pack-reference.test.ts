@@ -30,6 +30,7 @@ function contract(overrides: Partial<ContractReport> & { id: string }): Contract
     queueable: false,
     interrupt: false,
     speakGate: null,
+    endsOn: null,
     base: null,
     ...overrides,
   };

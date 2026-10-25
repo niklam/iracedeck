@@ -90,8 +90,13 @@ export const FRAGMENT_EXPANSION_LIMIT = 2000;
 export type CompiledVoiceScript = {
   /** Scenario id → the body the interpreter expands, and the frame name it is wrapped in (`NO_FRAME` = none). */
   scenarios: ReadonlyMap<string, { resolved: ResolvedStep[]; frame: string }>;
-  /** Frame name → its compiled `open` / `close` steps. Only frames that compiled are present. */
-  frames: ReadonlyMap<string, { open: ResolvedStep[]; close: ResolvedStep[] }>;
+  /**
+   * Frame name → its compiled `open` / `close` steps, and its `cut` tail
+   * (issue #1407) — `null` when the frame defines none, which the engine
+   * reads as "play the `close` instead". Only frames that compiled are
+   * present.
+   */
+  frames: ReadonlyMap<string, CompiledFrame>;
   /**
    * Frame name → why it did not compile. Disjoint from `frames`: a name is in
    * one or the other, or in neither when the script never defined it — which
@@ -137,8 +142,11 @@ class CompileProblem {
   constructor(readonly reason: string) {}
 }
 
+/** One compiled frame: its `open` and `close`, and its `cut` tail or `null` when it defines none (issue #1407). */
+export type CompiledFrame = { open: ResolvedStep[]; close: ResolvedStep[]; cut: ResolvedStep[] | null };
+
 /** A frame's compilation outcome, kept so a failed frame can explain every scenario it fails. */
-type FrameResult = { ok: true; open: ResolvedStep[]; close: ResolvedStep[] } | { ok: false; reason: string };
+type FrameResult = ({ ok: true } & CompiledFrame) | { ok: false; reason: string };
 
 /**
  * Compile one voice's script against what the engine registered. Never
@@ -181,11 +189,11 @@ export function compileVoiceScript(script: CalloutScript, deps: CompileDeps, voi
     if (!Object.hasOwn(script.scenarios, id)) skipped.push({ id, reason: "no script", deliberate: true });
   }
 
-  const compiledFrames = new Map<string, { open: ResolvedStep[]; close: ResolvedStep[] }>();
+  const compiledFrames = new Map<string, CompiledFrame>();
   const failedFrames = new Map<string, string>();
 
   for (const [name, result] of frames) {
-    if (result.ok) compiledFrames.set(name, { open: result.open, close: result.close });
+    if (result.ok) compiledFrames.set(name, { open: result.open, close: result.close, cut: result.cut });
     else failedFrames.set(name, result.reason);
   }
 
@@ -204,12 +212,18 @@ export function compileVoiceScript(script: CalloutScript, deps: CompileDeps, voi
 }
 
 function compileFrame(converter: StepConverter, frame: FrameDefinition): FrameResult {
-  // One budget for the whole frame: its two halves play around one body. No
-  // base: the interpreter expands a frame with none, whatever the contract.
+  // One budget for the whole frame: its halves play around one body, and the
+  // cut tail (issue #1407) replaces the close when a line is ended. No base:
+  // the interpreter expands a frame with none, whatever the contract.
   converter.beginUnit();
 
   try {
-    return { ok: true, open: converter.convertAll(frame.open), close: converter.convertAll(frame.close) };
+    return {
+      ok: true,
+      open: converter.convertAll(frame.open),
+      close: converter.convertAll(frame.close),
+      cut: frame.cut === undefined ? null : converter.convertAll(frame.cut),
+    };
   } catch (err) {
     return { ok: false, reason: describe(err) };
   }

@@ -492,6 +492,9 @@ describe.each(FIRST_PARTY_SCRIPTS)("voice $voice", ({ voice, script }) => {
         ...Object.entries(script.frames).flatMap(([name, frame]): [string, readonly ScriptStep[]][] => [
           [`frame "${name}" open`, frame.open],
           [`frame "${name}" close`, frame.close],
+          // The cut tail an ended line plays (issue #1407): a typo there
+          // aborts every callout an event can end, so it is held the same way.
+          ...(frame.cut ? [[`frame "${name}" cut`, frame.cut] as [string, readonly ScriptStep[]]] : []),
         ]),
         ...Object.entries(script.fragments ?? {}).map(([name, fragment]): [string, readonly ScriptStep[]] => [
           `fragment "${name}"`,

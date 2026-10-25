@@ -434,6 +434,35 @@ describe("compileVoiceScript — frames", () => {
     ]);
   });
 
+  it("compiles a frame's cut tail beside open and close, and reports null for a frame that defines none (issue #1407)", () => {
+    const { compiled } = compileOne(["pool:flag-blue"], {
+      script: {
+        frames: {
+          radio: { ...RADIO_FRAME, cut: ["pool:flag-blue", { ambient: "stop" }, "/sfx/IRD-tick-close.mp3"] },
+          terse: { open: ["/sfx/IRD-tick-open.mp3"], close: [] },
+        },
+      },
+    });
+
+    expect(shape(compiled.frames.get("radio")!.cut!)).toEqual(
+      shape([
+        { kind: "pool", name: "flag-blue", noRepeat: true },
+        { kind: "ambient", action: "stop" },
+        { kind: "clip", path: "/sfx/IRD-tick-close.mp3" },
+      ]),
+    );
+    expect(compiled.frames.get("terse")!.cut).toBeNull();
+  });
+
+  it("fails a frame whose cut tail references something unknown, like its open or close (issue #1407)", () => {
+    const { compiled, scenario } = compileOne(["pool:flag-blue"], {
+      script: { frames: { radio: { ...RADIO_FRAME, cut: ["pool:never-mind"] } } },
+    });
+
+    expect(scenario).toBeUndefined();
+    expect([...compiled.failedFrames]).toEqual([["radio", 'unknown pool "never-mind"']]);
+  });
+
   it("skips a scenario whose frame references something unknown, naming the frame and the reference", () => {
     const { compiled, scenario } = compileOne(["pool:flag-blue"], {
       script: { frames: { radio: { open: ["pool:beep"], close: [] } } },

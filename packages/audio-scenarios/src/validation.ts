@@ -107,6 +107,19 @@ export function validateScenario(
     }
   }
 
+  // The end event (issue #1407): a line ended by the very event that
+  // triggers it could never be heard, and the description is what the pack
+  // reference prints as "Ends when: …".
+  if (s.endsOn !== undefined) {
+    if (s.when !== undefined && s.endsOn.event === s.when.event) {
+      errors.push("endsOn.event must differ from when.event");
+    }
+
+    if (typeof s.endsOn.description !== "string" || s.endsOn.description.trim().length === 0) {
+      errors.push("endsOn.description must be a non-empty sentence");
+    }
+  }
+
   if (resolved !== null) walk(resolved, s.base, new Set([s.id]));
 
   return { errors, warnings };

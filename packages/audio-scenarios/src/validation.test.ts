@@ -358,6 +358,56 @@ describe("contracts (issue #1064)", () => {
     expect(joined).toContain("weight must be a finite number");
   });
 
+  describe("endsOn (issue #1407)", () => {
+    it("accepts an endsOn on another event, and on a contract with no when", () => {
+      engine.defineContract({
+        id: "ends-on-exit",
+        channel: AudioChannel.Voice,
+        bus: AudioBus.Voice,
+        when: { event: "limiter.dropped" },
+        endsOn: { event: "pitLane.exited", description: "The car leaves pit road." },
+      });
+      engine.defineContract({
+        id: "fire-only",
+        channel: AudioChannel.Voice,
+        bus: AudioBus.Voice,
+        endsOn: { event: "pitLane.exited", description: "The car leaves pit road." },
+      });
+
+      expect(errorLogs).toEqual([]);
+      expect(engine.describeState().contracts.map((c) => [c.id, c.enabled])).toEqual([
+        ["ends-on-exit", true],
+        ["fire-only", true],
+      ]);
+    });
+
+    it("endsOn.event equal to when.event is an error", () => {
+      engine.defineContract({
+        id: "ends-on-trigger",
+        channel: AudioChannel.Voice,
+        bus: AudioBus.Voice,
+        when: { event: "pitLane.exited" },
+        endsOn: { event: "pitLane.exited", description: "The car leaves pit road." },
+      });
+
+      expect(errorLogs.join("\n")).toContain("endsOn.event must differ from when.event");
+      expect(engine.describeState().contracts[0]).toMatchObject({ id: "ends-on-trigger", enabled: false });
+    });
+
+    it("empty endsOn description is an error", () => {
+      engine.defineContract({
+        id: "ends-undescribed",
+        channel: AudioChannel.Voice,
+        bus: AudioBus.Voice,
+        when: { event: "limiter.dropped" },
+        endsOn: { event: "pitLane.exited", description: "  " },
+      });
+
+      expect(errorLogs.join("\n")).toContain("endsOn.description must be a non-empty sentence");
+      expect(engine.describeState().contracts[0]).toMatchObject({ id: "ends-undescribed", enabled: false });
+    });
+  });
+
   it("accepts a contract without any sequence-shaped check — its bodies are compiled per voice", () => {
     engine.defineContract({
       id: "good-contract",

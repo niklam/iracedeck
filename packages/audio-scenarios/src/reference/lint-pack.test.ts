@@ -31,6 +31,7 @@ function contract(id: string, overrides: Partial<ContractReport> = {}): Contract
     queueable: false,
     interrupt: false,
     speakGate: null,
+    endsOn: null,
     base: null,
     ...overrides,
   };
