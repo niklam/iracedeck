@@ -158,11 +158,11 @@ describe("replay-control PI dial gesture slots", () => {
     expect(select(`dial.${slot}`).fallback).toBe(defaults[slot]);
   });
 
-  it("puts the Mode default first on Long Press, its default (#801)", () => {
+  it("puts None first and the Mode default second on Long Press, which defaults to it (#801, #1448)", () => {
     const longPress = select("dial.longPressAction");
 
     expect(longPress.fallback).toBe("mode-default");
-    expect(longPress.values[0]).toBe("mode-default");
+    expect(longPress.values.slice(0, 2)).toEqual(["none", "mode-default"]);
   });
 
   it.each(SLOTS)("%s names the Mode default and Jump to My Car as the PI calls them", (slot) => {

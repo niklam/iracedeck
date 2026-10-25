@@ -53,17 +53,17 @@
 
 			<sdpi-item label="Press Action">
 				<sdpi-select setting="dial.pressAction" default="add">
+					<option value="none">None</option>
 					<option value="add">Add Marker</option>
 					<option value="delete">Delete Marker</option>
-					<option value="none">None</option>
 				</sdpi-select>
 			</sdpi-item>
 			<% if (locals.platform?.features?.dialExtendedGestures !== false) { %>
 			<sdpi-item label="Long Press">
 				<sdpi-select setting="dial.longPressAction" default="delete">
+					<option value="none">None</option>
 					<option value="add">Add Marker</option>
 					<option value="delete">Delete Marker</option>
-					<option value="none">None</option>
 				</sdpi-select>
 			</sdpi-item>
 

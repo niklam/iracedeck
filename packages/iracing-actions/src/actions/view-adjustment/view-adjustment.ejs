@@ -67,9 +67,9 @@
 
 			<sdpi-item label="Press Action">
 				<sdpi-select setting="dial.pressAction" default="recenter-vr">
+					<option value="none">None</option>
 					<option value="recenter-vr">Recenter VR</option>
 					<option value="mouse-to-sim">Mouse to Sim</option>
-					<option value="none">None</option>
 				</sdpi-select>
 			</sdpi-item>
 			<ird-binding-status mode-setting="dial.pressAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
@@ -77,9 +77,9 @@
 			<% if (locals.platform?.features?.dialExtendedGestures !== false) { %>
 			<sdpi-item label="Long Press">
 				<sdpi-select setting="dial.longPressAction" default="none">
+					<option value="none">None</option>
 					<option value="recenter-vr">Recenter VR</option>
 					<option value="mouse-to-sim">Mouse to Sim</option>
-					<option value="none">None</option>
 				</sdpi-select>
 			</sdpi-item>
 			<ird-binding-status mode-setting="dial.longPressAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>

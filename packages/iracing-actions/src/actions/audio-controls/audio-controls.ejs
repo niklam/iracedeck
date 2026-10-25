@@ -72,6 +72,7 @@
 
 			<sdpi-item label="Press Action">
 				<sdpi-select id="dial-press-select" setting="dial.pressAction" default="none">
+					<option value="none">None</option>
 					<%# Push to Talk holds its key until the release, which a Mirabox knob never sends (#1013). %>
 					<% if (locals.platform?.features?.dialExtendedGestures !== false) { %>
 					<option value="push-to-talk">Push to Talk</option>
@@ -79,7 +80,6 @@
 					<option value="mute-unmute" id="dial-mute-option">Mute / Unmute</option>
 					<option value="mute-driver">Mute a Driver</option>
 					<option value="skip-call">Skip Spotter Call</option>
-					<option value="none">None</option>
 				</sdpi-select>
 			</sdpi-item>
 			<div id="dial-press-status">

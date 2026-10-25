@@ -76,8 +76,8 @@
 
 			<sdpi-item label="Press Action">
 				<sdpi-select setting="dial.pressAction" default="toggle-tc">
-					<option value="toggle-tc">Toggle TC</option>
 					<option value="none">None</option>
+					<option value="toggle-tc">Toggle TC</option>
 				</sdpi-select>
 			</sdpi-item>
 			<ird-binding-status mode-setting="dial.pressAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
@@ -85,8 +85,8 @@
 			<% if (locals.platform?.features?.dialExtendedGestures !== false) { %>
 			<sdpi-item label="Long Press">
 				<sdpi-select setting="dial.longPressAction" default="none">
-					<option value="toggle-tc">Toggle TC</option>
 					<option value="none">None</option>
+					<option value="toggle-tc">Toggle TC</option>
 				</sdpi-select>
 			</sdpi-item>
 			<ird-binding-status mode-setting="dial.longPressAction" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
