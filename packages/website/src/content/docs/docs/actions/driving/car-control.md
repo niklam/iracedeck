@@ -108,7 +108,7 @@ Tear off a layer of visor film in open-wheel cars, clearing the view.
 One key that clears your view in whatever car you drive: it becomes **Tear Off Visor** in an open-cockpit car and the windshield wipers in a car with a windshield, so a driver who switches between car classes needs one key instead of three. It works out which kind of car you are in from iRacing's telemetry and follows you live when you switch cars or get into the car.
 
 - **Car with a visor** — a press tears off the visor straight away, on the press itself, exactly like the **Tear Off Visor** mode. Holding the key does nothing more.
-- **Car with a windshield** — a tap triggers the wipers (a single sweep) and a long press turns the wipers on or off. A press counts as long when you hold it past the plugin-wide [Long-press threshold](/docs/getting-started/settings/#general) on the Settings window's **General** tab (default 500 ms), the same threshold the setup keys use. The press is decided when you let go, so one press never does both. The **Wipers on tap** setting swaps the two. If a car offers only one of the two wiper controls, a tap and a long press both send that one.
+- **Car with a windshield** — a tap triggers the wipers (a single sweep) and a long press turns the wipers on or off. A press counts as long when you hold it past the plugin-wide [Long-press threshold](/docs/getting-started/settings/#general) on the Settings window's **General** tab (default 500 ms), the same threshold the setup keys use. The press is decided when you let go, so one press never does both. The **Wipers on tap** setting swaps the two. While the wipers are on, a tap always turns them off, whichever way **Wipers on tap** is set. If a car offers only one of the two wiper controls, a tap and a long press both send that one.
 - **No car to read** — in the menus, in the garage before you get in, while spectating or watching a replay, or with iRacing closed, the key shows a combined wipers-and-visor icon and a press does nothing. Sending a guess could tear off a visor in a car that turns out to have wipers, or the other way round.
 - **Car with neither** — if you are in a car that has neither a visor nor wipers, the key shows the combined icon greyed out and a press does nothing.
 
@@ -127,7 +127,7 @@ The mode adds no new bindings. It reuses three that already exist, and they are 
 |---------------|-------------|-------------|
 | Visor car, any press | Tear Off Visor | *(none)* |
 | Windshield car, tap (long press with **Wipers on tap** set to Toggle) | Trigger Wipers | `Ctrl+Alt+W` |
-| Windshield car, long press (tap with **Wipers on tap** set to Toggle) | Toggle Wipers | `Shift+W` |
+| Windshield car, long press (tap with **Wipers on tap** set to Toggle, and any tap while the wipers are on) | Toggle Wipers | `Shift+W` |
 
 The missing-binding warning on the key checks only the bindings the current car uses, so an unbound wiper binding never warns while you drive a visor car, and the other way round. The Property Inspector, which cannot know which car you will drive, warns only when none of the three is bound.
 
@@ -137,14 +137,14 @@ The missing-binding warning on the key checks only the bindings the current car 
 |-------|------|
 | Visor car | The Tear Off Visor icon, titled `VISOR` / `TEAR OFF` |
 | Windshield car, **Wipers on tap** = Trigger | The Trigger Wipers icon, titled `TRIGGER` / `WIPERS` |
-| Windshield car, **Wipers on tap** = Toggle | The Toggle Wipers icon, titled `TOGGLE` / `WIPERS` |
+| Windshield car, **Wipers on tap** = Toggle, or the wipers are on | The Toggle Wipers icon, titled `TOGGLE` / `WIPERS` — a tap turns running wipers off |
 | Windshield car with only one of the two wiper controls | That control's icon, whatever **Wipers on tap** says, since both presses send it |
 | No car to read (menus, garage, spectating, replays) | A combined icon split diagonally — wipers in the top-left half, a helmet in the bottom-right — titled `WIPERS` / `VISOR`; a press does nothing |
 | Car with neither a visor nor wipers | The combined icon, greyed out; a press does nothing |
 
 #### Setting: Wipers on tap
 
-What a tap does in a car with a windshield. The long press always does the other one. Has no effect in a visor car. Default **Trigger**.
+What a tap does in a car with a windshield. The long press always does the other one, and the Property Inspector says so beside the setting. While the wipers are on, a tap turns them off whichever option is chosen. Has no effect in a visor car. Default **Trigger**.
 
 - **Trigger** (default) — a tap triggers a single wiper sweep; a long press turns the wipers on or off
 - **Toggle** — a tap turns the wipers on or off; a long press triggers a single sweep
