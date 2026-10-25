@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 118 78" stroke-width="0.5" stroke="#fff" fill="#fff">
+  <desc>{"colors":{"backgroundColor":"#2a3a2a","textColor":"#ffffff","graphic1Color":"#ffffff"},"title":{"text":"WIPERS\nVISOR"},"border":{"color":"#5a6a5a"}}</desc>
+  
+
+    <path d="M115,3L3,75" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" opacity="0.35"/>
+
+    <path d="M8.25,36.95 Q2.25,36.95 2.85,31.55 L5.85,8.75 Q6.45,2.75 12.45,2.75 L42.45,2.75 Q48.45,2.75 49.05,8.75 L52.05,31.55 Q52.65,36.95 46.65,36.95 Z" fill="none" stroke="#888888" stroke-width="3.5" stroke-linejoin="round"/>
+    <line x1="27.45" y1="35.15" x2="17.25" y2="10.55" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
+    <line x1="22.86" y1="24.08" x2="17.25" y2="10.55" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
+    <circle cx="27.45" cy="35.15" r="2.5" fill="#ffffff" stroke="none"/>
+    <circle cx="33.45" cy="13.55" r="2" fill="#ffffff" stroke="none"/>
+    <circle cx="39.45" cy="20.15" r="2" fill="#ffffff" stroke="none"/>
+    <circle cx="32.25" cy="23.75" r="2" fill="#ffffff" stroke="none"/>
+    <path d="M21.45,9.95 Q28.65,7.55 34.05,12.35" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" opacity="0.7"/>
+
+    <path d="M67.65,66.85Q67.65,40.25,91.45,40.25Q115.25,40.25,115.25,66.85L115.25,71.05Q115.25,75.25,111.05,75.25L71.85,75.25Q67.65,75.25,67.65,71.05Z"
+          fill="none" stroke="#ffffff" stroke-width="3.5" stroke-linejoin="round"/>
+    <path d="M73.25,57.05Q73.25,52.85,80.25,52.85L102.65,52.85Q109.65,52.85,109.65,57.05L109.65,62.65Q109.65,65.45,105.45,65.45L77.45,65.45Q73.25,65.45,73.25,62.65Z"
+          fill="#ffffff" opacity="0.3" stroke="#ffffff" stroke-width="1.5"/>
+
+</svg>
