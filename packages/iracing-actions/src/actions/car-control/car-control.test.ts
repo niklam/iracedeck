@@ -10,6 +10,7 @@ import {
   getEnterExitTowState,
   getPitSpeedLimit,
   getSessionContext,
+  hasEngineCaught,
   ignitionArtwork,
   ignitionToggleState,
   isDrsActive,
@@ -21,6 +22,8 @@ import {
   parsePitSpeedLimit,
   pitLimiterSpeedGraphic,
   pitLimiterToggleState,
+  STARTER_CHUK_MS,
+  STARTER_CRANK_FRAMES_MS,
   starterArtwork,
   starterToggleState,
 } from "./car-control.js";
@@ -1147,9 +1150,36 @@ describe("CarControl", () => {
     });
   });
 
+  describe("hasEngineCaught (issue #1438)", () => {
+    const live = (extra: Record<string, unknown>) => ({ IsOnTrack: true, ...extra }) as any;
+
+    it("should not count a cranking engine, whose stall bit is already clear, as caught", () => {
+      expect(hasEngineCaught(live({ EngineWarnings: 0, RPM: 250 }))).toBe(false);
+    });
+
+    it("should count an engine at idle as caught", () => {
+      expect(hasEngineCaught(live({ EngineWarnings: 0, RPM: 900 }))).toBe(true);
+    });
+
+    it("should never count a stalled engine as caught, whatever the RPM", () => {
+      expect(hasEngineCaught(live({ EngineWarnings: 0x0008, RPM: 900 }))).toBe(false);
+    });
+
+    it("should fall back on the stall bit when there is no RPM", () => {
+      expect(hasEngineCaught(live({ EngineWarnings: 0 }))).toBe(true);
+    });
+
+    it("should not count N/A as caught", () => {
+      expect(hasEngineCaught(null)).toBe(false);
+      expect(hasEngineCaught({ IsOnTrack: false, EngineWarnings: 0, RPM: 900 } as any)).toBe(false);
+    });
+  });
+
   describe("starter flash while starting (issue #1438)", () => {
-    const ENGINE_OFF = { IsOnTrack: true, EngineWarnings: 0x0008 };
-    const ENGINE_ON = { IsOnTrack: true, EngineWarnings: 0 };
+    const ENGINE_OFF = { IsOnTrack: true, EngineWarnings: 0x0008, RPM: 0 };
+    /** The starter turning the engine over: iRacing already clears the stall bit. */
+    const CRANKING = { IsOnTrack: true, EngineWarnings: 0, RPM: 250 };
+    const CAUGHT = { IsOnTrack: true, EngineWarnings: 0, RPM: 900 };
     const STARTER = { control: "starter" };
 
     let action: CarControl;
@@ -1171,10 +1201,6 @@ describe("CarControl", () => {
       await vi.advanceTimersByTimeAsync(0);
     };
     const release = () => action.onKeyUp(fakeEvent("action-1", STARTER) as any);
-    const tap = async () => {
-      await press();
-      await release();
-    };
 
     beforeEach(async () => {
       vi.useFakeTimers();
@@ -1195,65 +1221,69 @@ describe("CarControl", () => {
       expect(flashing()).toBe(true);
     });
 
-    it("should alternate the badge every 250 ms after a tap and end on the OFF artwork at 3 s", async () => {
-      await tap();
+    it("should crank slow first, then faster, each frame shorter than the last", () => {
+      for (let i = 1; i < STARTER_CRANK_FRAMES_MS.length; i++) {
+        expect(STARTER_CRANK_FRAMES_MS[i]).toBeLessThan(STARTER_CRANK_FRAMES_MS[i - 1]);
+      }
 
-      expect(frames().map(isLit)).toEqual([true]);
+      // The fastest frame stays under the 10 Hz cap the key's other updates keep.
+      expect(STARTER_CRANK_FRAMES_MS.at(-1)).toBeGreaterThanOrEqual(100);
+    });
 
-      await vi.advanceTimersByTimeAsync(2750);
+    it("should hold each frame for its ramp length, then repeat the fastest while held", async () => {
+      await press();
 
-      // Twelve frames, starting lit, alternating, all over the real OFF status bar.
-      expect(frames().map(isLit)).toEqual(Array.from({ length: 12 }, (_, i) => i % 2 === 0));
+      expect(frames()).toHaveLength(1);
+
+      for (const [i, length] of STARTER_CRANK_FRAMES_MS.entries()) {
+        await vi.advanceTimersByTimeAsync(length - 1);
+
+        expect(frames()).toHaveLength(i + 1);
+
+        await vi.advanceTimersByTimeAsync(1);
+
+        expect(frames()).toHaveLength(i + 2);
+      }
+
+      const fastest = STARTER_CRANK_FRAMES_MS.at(-1)!;
+      await vi.advanceTimersByTimeAsync(fastest * 5);
+
+      expect(frames()).toHaveLength(STARTER_CRANK_FRAMES_MS.length + 6);
+      expect(flashing()).toBe(true);
+    });
+
+    it("should alternate lit and dimmed, beginning lit, over the real OFF status bar", async () => {
+      await press();
+      await vi.advanceTimersByTimeAsync(STARTER_CRANK_FRAMES_MS.slice(0, 4).reduce((a, b) => a + b, 0));
+
+      expect(frames().map(isLit)).toEqual([true, false, true, false, true]);
 
       for (const frame of frames()) {
         expect(frame).toContain("OFF");
       }
 
-      await vi.advanceTimersByTimeAsync(250);
-
-      expect(flashing()).toBe(false);
-      expect(frames()).toHaveLength(13);
-      expect(frames().at(-1)).toBe(artworkFor("off"));
-
-      await vi.advanceTimersByTimeAsync(2000);
-
-      expect(frames()).toHaveLength(13);
+      expect(frames()[0]).not.toBe(artworkFor("on"));
+      expect(frames()[0]).not.toBe(artworkFor("off"));
     });
 
-    it("should keep flashing while held although cranking reads as engine running", async () => {
+    it("should keep flashing while the engine cranks, though its stall bit reads running", async () => {
       // Regression (found on hardware): iRacing clears EngineStalled as soon as the starter
-      // turns the engine over, so the flash ended ~45 ms into every hold.
+      // turns the engine over, so a stop on the stall bit ended the flash ~45 ms into a hold.
       await press();
-      telemetry = { ...ENGINE_ON };
+      telemetry = { ...CRANKING };
       tick();
-      await vi.advanceTimersByTimeAsync(1000);
+      await vi.advanceTimersByTimeAsync(3000);
 
       expect(flashing()).toBe(true);
-      expect(frames().map(isLit)).toEqual([true, false, true, false, true]);
     });
 
-    it("should keep flashing for as long as the key is held, past 3 s", async () => {
+    it("should end at once on release when the engine has not caught, without a tail", async () => {
       await press();
-      await vi.advanceTimersByTimeAsync(5000);
-
-      expect(flashing()).toBe(true);
-      expect(frames()).toHaveLength(21);
-
+      await vi.advanceTimersByTimeAsync(1000);
       await release();
 
-      // Past the deadline with the engine off: the release ends it on the OFF artwork.
       expect(flashing()).toBe(false);
       expect(frames().at(-1)).toBe(artworkFor("off"));
-    });
-
-    it("should end at once on release when the engine is running, on the ON artwork", async () => {
-      await press();
-      await vi.advanceTimersByTimeAsync(1000);
-      telemetry = { ...ENGINE_ON };
-      await release();
-
-      expect(flashing()).toBe(false);
-      expect(frames().at(-1)).toBe(artworkFor("on"));
 
       const drawn = frames().length;
       await vi.advanceTimersByTimeAsync(3000);
@@ -1261,29 +1291,69 @@ describe("CarControl", () => {
       expect(frames()).toHaveLength(drawn);
     });
 
-    it("should end at once when the engine catches after a tap", async () => {
-      await tap();
-      await vi.advanceTimersByTimeAsync(500);
+    it("should end at once and go green when the engine catches during the hold", async () => {
+      await press();
+      telemetry = { ...CRANKING };
+      await vi.advanceTimersByTimeAsync(1000);
+      const drawn = frames().length;
 
-      expect(flashing()).toBe(true);
-      expect(frames()).toHaveLength(3);
-
-      telemetry = { ...ENGINE_ON };
+      telemetry = { ...CAUGHT };
       tick();
 
       expect(flashing()).toBe(false);
-      expect(frames()).toHaveLength(4);
+      expect(frames()).toHaveLength(drawn + 1);
       expect(frames().at(-1)).toBe(artworkFor("on"));
+
+      await release();
+      await vi.advanceTimersByTimeAsync(3000);
+
+      expect(frames()).toHaveLength(drawn + 1);
     });
 
-    it("should end from the frame step after a tap when the engine reads running before a tick", async () => {
-      await tap();
-      telemetry = { ...ENGINE_ON };
-      await vi.advanceTimersByTimeAsync(250);
+    it("should end from the frame step when the engine catches before a tick", async () => {
+      await press();
+      telemetry = { ...CAUGHT };
+      await vi.advanceTimersByTimeAsync(STARTER_CRANK_FRAMES_MS[0]);
 
       expect(flashing()).toBe(false);
       expect(frames()).toHaveLength(2);
       expect(frames().at(-1)).toBe(artworkFor("on"));
+    });
+
+    it("should give a running engine one dimmed chuk, then the ON look, however long it is held", async () => {
+      telemetry = { ...CAUGHT };
+      await press();
+
+      expect(frames()).toHaveLength(1);
+      expect(isLit(frames()[0])).toBe(false);
+      expect(frames()[0]).toContain("ON");
+
+      await vi.advanceTimersByTimeAsync(STARTER_CHUK_MS - 1);
+
+      expect(frames()).toHaveLength(1);
+
+      await vi.advanceTimersByTimeAsync(1);
+
+      expect(flashing()).toBe(false);
+      expect(frames()).toHaveLength(2);
+      expect(frames().at(-1)).toBe(artworkFor("on"));
+
+      await vi.advanceTimersByTimeAsync(3000);
+      await release();
+
+      expect(frames()).toHaveLength(2);
+    });
+
+    it("should finish the chuk even when the key is released at once", async () => {
+      telemetry = { ...CAUGHT };
+      await press();
+      await release();
+
+      expect(flashing()).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(STARTER_CHUK_MS);
+
+      expect(flashing()).toBe(false);
     });
 
     it("should flash while the hold is still being sent, not only once it resolves", async () => {
@@ -1292,7 +1362,7 @@ describe("CarControl", () => {
       let resolveHold!: () => void;
       mockHoldBinding.mockImplementationOnce(() => new Promise<void>((resolve) => (resolveHold = resolve)));
       const keyDown = action.onKeyDown(fakeEvent("action-1", STARTER) as any);
-      await vi.advanceTimersByTimeAsync(500);
+      await vi.advanceTimersByTimeAsync(STARTER_CRANK_FRAMES_MS[0] + STARTER_CRANK_FRAMES_MS[1]);
 
       expect(frames().map(isLit)).toEqual([true, false, true]);
 
@@ -1311,23 +1381,13 @@ describe("CarControl", () => {
       expect(frames()).toHaveLength(1);
     });
 
-    it("should draw the lit badge over the real status bar", async () => {
-      await press();
-
-      expect(frames()).toHaveLength(1);
-      expect(isLit(frames()[0])).toBe(true);
-      expect(frames()[0]).toContain("OFF");
-      expect(frames()[0]).not.toBe(artworkFor("on"));
-      expect(frames()[0]).not.toBe(artworkFor("off"));
-    });
-
     it("should have the regenerate callback draw the current frame, not the bare state", async () => {
       await press();
       const regenerate = vi.mocked(action["setRegenerateCallback"]).mock.calls.at(-1)![1];
 
       expect(isLit(decodeURIComponent(regenerate()))).toBe(true);
 
-      await vi.advanceTimersByTimeAsync(250);
+      await vi.advanceTimersByTimeAsync(STARTER_CRANK_FRAMES_MS[0]);
 
       expect(decodeURIComponent(regenerate())).toBe(frames().at(-1));
       expect(isLit(frames().at(-1)!)).toBe(false);
@@ -1337,18 +1397,25 @@ describe("CarControl", () => {
       await press();
       // A tick that would otherwise re-render (the state key was cleared by a change).
       action["lastState"].delete("action-1");
+      telemetry = { ...CRANKING };
       tick();
 
       expect(frames()).toHaveLength(1);
     });
 
-    it("should not flash when the engine is already running", async () => {
-      telemetry = { ...ENGINE_ON };
+    it("should restart the ramp on a second press", async () => {
       await press();
       await vi.advanceTimersByTimeAsync(3000);
+      await release();
+      await press();
+      const drawn = frames().length;
+      await vi.advanceTimersByTimeAsync(STARTER_CRANK_FRAMES_MS[0] - 1);
 
-      expect(flashing()).toBe(false);
-      expect(frames()).toHaveLength(0);
+      expect(frames()).toHaveLength(drawn);
+
+      await vi.advanceTimersByTimeAsync(1);
+
+      expect(frames()).toHaveLength(drawn + 1);
     });
 
     it("should not flash when the Starter binding is missing", async () => {
@@ -1357,20 +1424,6 @@ describe("CarControl", () => {
 
       expect(mockHoldBinding).toHaveBeenCalledWith("action-1", "carControlStarter");
       expect(flashing()).toBe(false);
-    });
-
-    it("should restart the 3 s window on a second tap", async () => {
-      await tap();
-      await vi.advanceTimersByTimeAsync(2000);
-      await tap();
-      await vi.advanceTimersByTimeAsync(2750);
-
-      expect(flashing()).toBe(true);
-
-      await vi.advanceTimersByTimeAsync(250);
-
-      expect(flashing()).toBe(false);
-      expect(frames().at(-1)).toBe(artworkFor("off"));
     });
 
     it("should stop the flash when the Mode changes away from Starter during the hold", async () => {
@@ -1422,18 +1475,20 @@ describe("CarControl", () => {
       expect(frames()).toHaveLength(drawn);
     });
 
-    it("should send the same hold and release whether or not it flashes", async () => {
-      await tap();
-      const withFlash = [mockHoldBinding.mock.calls, mockReleaseBinding.mock.calls, mockTapBinding.mock.calls];
+    it("should send the same hold and release whether it cranks or chuks", async () => {
+      await press();
+      await release();
+      const cranked = [mockHoldBinding.mock.calls, mockReleaseBinding.mock.calls, mockTapBinding.mock.calls];
 
       vi.clearAllMocks();
-      telemetry = { ...ENGINE_ON };
-      await tap();
+      telemetry = { ...CAUGHT };
+      await press();
+      await release();
 
-      expect([mockHoldBinding.mock.calls, mockReleaseBinding.mock.calls, mockTapBinding.mock.calls]).toEqual(withFlash);
+      expect([mockHoldBinding.mock.calls, mockReleaseBinding.mock.calls, mockTapBinding.mock.calls]).toEqual(cranked);
     });
 
-    it("should flash from a dial press and hand over on dial up", async () => {
+    it("should flash from a dial press and end on dial up", async () => {
       await action.onDialDown(fakeEvent("action-1", STARTER) as any);
       await vi.advanceTimersByTimeAsync(4000);
 
