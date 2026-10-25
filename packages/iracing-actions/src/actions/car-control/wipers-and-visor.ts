@@ -33,18 +33,13 @@ export const WipersOnTapField = z.enum(WIPERS_ON_TAP_OPTIONS).default("trigger")
 /**
  * The resolved car, with which wiper variables a wiper car exposes:
  * - `visor` — an open-cockpit car with a tear-off visor;
- * - `wipers` — a car with windshield wipers, and whether they are on (`on`
- *   is only ever true on a car exposing the Toggle variable, which carries
- *   the on/off state);
+ * - `wipers` — a car with windshield wipers;
  * - `unknown` — anything but a driver live in their own car (menus, garage,
  *   spectating, a replay, no sim), so the car cannot be told;
  * - `neither` — live in their own car, and the car exposes neither.
  */
 export type WipersAndVisorCar =
-  | { kind: "visor" }
-  | { kind: "wipers"; trigger: boolean; toggle: boolean; on: boolean }
-  | { kind: "unknown" }
-  | { kind: "neither" };
+  { kind: "visor" } | { kind: "wipers"; trigger: boolean; toggle: boolean } | { kind: "unknown" } | { kind: "neither" };
 
 /**
  * Resolve the car from a telemetry frame. Gated on `isLiveOnTrack` like the
@@ -65,7 +60,6 @@ export function resolveWipersAndVisorCar(telemetry: TelemetryData | null | undef
       kind: "wipers",
       trigger: telemetry.dcTriggerWindshieldWipers !== undefined,
       toggle: telemetry.dcToggleWindshieldWipers !== undefined,
-      on: telemetry.dcToggleWindshieldWipers === true,
     };
   }
 
@@ -80,10 +74,9 @@ export type WipersAndVisorPress = "down" | "tap" | "long";
  *
  * - A visor car tears off on key-down; its release sends nothing.
  * - A wiper car sends nothing on key-down. On release a tap sends the Wipers
- *   on tap choice (Trigger by default) and a long press the other, except
- *   that while the wipers are on a tap sends Toggle, so it turns them off
- *   rather than adding a sweep. A car that exposes only one wiper variable
- *   gets that one's binding for both, so the key is never dead on a wiper car.
+ *   on tap choice (Trigger by default) and a long press the other. A car that
+ *   exposes only one wiper variable gets that one's binding for both, so the
+ *   key is never dead on a wiper car.
  * - An unknown car, or one with neither, sends nothing: a guess could tear
  *   off a visor on a car that turns out to have wipers.
  *
@@ -101,8 +94,6 @@ export function wipersAndVisorBinding(
   if (car.trigger !== car.toggle) {
     return car.trigger ? WIPERS_AND_VISOR_BINDINGS.trigger : WIPERS_AND_VISOR_BINDINGS.toggle;
   }
-
-  if (press === "tap" && car.on) return WIPERS_AND_VISOR_BINDINGS.toggle;
 
   const tapToggles = wipersOnTap === "toggle";
   const sendsToggle = press === "tap" ? tapToggles : !tapToggles;
