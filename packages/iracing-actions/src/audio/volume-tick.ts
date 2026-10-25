@@ -148,8 +148,6 @@ function drain(): void {
 }
 
 function play(tick: PendingTick): void {
-  lastPlayedAt = performance.now();
-
   try {
     getAudio().playOnChannelAtLevel(
       AudioChannel.Feedback,
@@ -161,6 +159,12 @@ function play(tick: PendingTick): void {
     // an audio service that is not initialized yet; a failed play itself
     // returns false and is logged by the service.
   }
+
+  // Stamped AFTER the play: on an idle-stopped device the call opens and
+  // starts it synchronously (#849), which can take longer than the spacing.
+  // Stamped before, the next queued tick would be due at once and replace
+  // this one on the channel before it was heard.
+  lastPlayedAt = performance.now();
 }
 
 /** @internal For tests: drops every waiting tick and forgets when the last one played. */

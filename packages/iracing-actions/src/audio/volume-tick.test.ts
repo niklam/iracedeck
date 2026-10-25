@@ -121,6 +121,24 @@ describe("volume-tick", () => {
       expect(plays()).toHaveLength(3);
     });
 
+    it("spaces the next tick from when the play returned, so a slow device start does not cut the first tick", () => {
+      // The first play opens an idle-stopped device synchronously and takes 100 ms.
+      hoisted.playOnChannelAtLevel.mockImplementationOnce(() => {
+        vi.advanceTimersByTime(100);
+
+        return true;
+      });
+
+      playVolumeTicks("up", 2, 50);
+      expect(plays()).toHaveLength(1);
+
+      vi.advanceTimersByTime(VOLUME_TICK_SPACING_MS - 1);
+      expect(plays()).toHaveLength(1);
+
+      vi.advanceTimersByTime(1);
+      expect(plays()).toHaveLength(2);
+    });
+
     it("plays a tick at once when the last one started at least the spacing ago", () => {
       playVolumeTick("up", 50);
       vi.advanceTimersByTime(VOLUME_TICK_SPACING_MS);
