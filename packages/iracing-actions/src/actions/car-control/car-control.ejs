@@ -35,6 +35,9 @@
 				<option value="toggle">Toggle</option>
 			</sdpi-select>
 		</sdpi-item>
+		<div class="ird-supporting-text hidden" id="wipers-on-tap-note">
+			In a car with a windshield, a tap does what you pick here and a long press does the other one. While the wipers are on, a tap turns them off. In an open-cockpit car, a press tears off the visor.
+		</div>
 
 		<sdpi-item id="auto-hold-item" label="Auto Hold" class="hidden">
 			<sdpi-checkbox setting="autoHold"></sdpi-checkbox>
@@ -83,10 +86,12 @@
 				const autoHoldItem = document.getElementById("auto-hold-item");
 				const autoHoldStatesItem = document.getElementById("auto-hold-states-item");
 				const wipersOnTapItem = document.getElementById("wipers-on-tap-item");
+				const wipersOnTapNote = document.getElementById("wipers-on-tap-note");
 
 				autoHoldItem?.classList.toggle("hidden", control !== "escape");
 				autoHoldStatesItem?.classList.toggle("hidden", control !== "enter-exit-tow");
 				wipersOnTapItem?.classList.toggle("hidden", control !== "wipers-and-visor");
+				wipersOnTapNote?.classList.toggle("hidden", control !== "wipers-and-visor");
 			}
 
 			if (document.readyState === "loading") {
