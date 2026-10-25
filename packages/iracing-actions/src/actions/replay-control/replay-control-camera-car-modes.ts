@@ -185,6 +185,18 @@ export function carNumberNeighbours(camCarIdx: number | undefined, sessionInfo: 
   return sidesOf(`#${next.carNumber}`, `#${previous.carNumber}`);
 }
 
+/**
+ * The camera car as the race-order walk takes it: the raw `CamCarIdx`, as
+ * Camera Controls' dial passes it, so a camera on no car (`NO_CAR_IDX`)
+ * re-enters the order at an end like any unranked car rather than stalling
+ * the walk. Only an absent reading is undefined.
+ */
+function walkCarIdx(telemetry: TelemetryData | null): number | undefined {
+  const carIdx = telemetry?.CamCarIdx;
+
+  return typeof carIdx === "number" ? carIdx : undefined;
+}
+
 /** The race order now: the canonical one, official `CarIdxPosition` as the fallback. */
 function raceOrder(io: ReplayDialStepIo, telemetry: TelemetryData | null): number[] | null {
   return resolveRaceOrder(io.racePositions(), telemetry?.CarIdxPosition);
@@ -222,7 +234,7 @@ export const racePositionMode: ReplayDialMode<ReplayDialStepIo> = {
       }
 
       // From the camera car when the switch goes out, not at the turn.
-      const camCarIdx = cameraCarIdx(telemetry);
+      const camCarIdx = walkCarIdx(telemetry);
       const order = raceOrder(io, telemetry);
       const target = computeRacePositionTarget(camCarIdx, order, direction);
       const carNumberRaw =
@@ -265,8 +277,8 @@ export const racePositionMode: ReplayDialMode<ReplayDialStepIo> = {
     }
 
     const order = raceOrder(io, telemetry);
-    const next = computeRacePositionTarget(camCarIdx, order, "next");
-    const previous = computeRacePositionTarget(camCarIdx, order, "previous");
+    const next = computeRacePositionTarget(walkCarIdx(telemetry), order, "next");
+    const previous = computeRacePositionTarget(walkCarIdx(telemetry), order, "previous");
     // The camera car's own rank, read straight off the order: a car ranked
     // alone has no target either way and still has its position.
     const rank = camCarIdx === undefined ? undefined : order?.[camCarIdx];

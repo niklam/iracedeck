@@ -188,6 +188,8 @@ describe("the camera-car modes (#1448)", () => {
       ["last place counter-clockwise round to the leader", 7, -1, 12],
       ["the unranked pace car clockwise: re-enters at the end, last place", 0, 1, 77],
       ["the unranked pace car counter-clockwise: re-enters at the leader", 0, -1, 12],
+      ["no car on camera (NO_CAR_IDX) clockwise: re-enters at last place, as Camera Controls does", 255, 1, 77],
+      ["no car on camera (NO_CAR_IDX) counter-clockwise: re-enters at the leader", 255, -1, 12],
     ])("switches %s, by car number", async (_name, camCarIdx, ticks, raw) => {
       const io = fieldIo(camCarIdx);
 
@@ -462,6 +464,15 @@ describe("the camera-car modes (#1448)", () => {
         expect(racePositionMode.view(positionDial, fieldIo(0))).toMatchObject({
           value: "P--",
           caption: "#0",
+          neighbours: { left: "P1", right: "P5" },
+          sides: { left: true, right: true },
+        });
+      });
+
+      it("with no car on camera (NO_CAR_IDX) shows P-- and the ends a turn re-enters at, as Camera Controls does", () => {
+        expect(racePositionMode.view(positionDial, fieldIo(255))).toMatchObject({
+          value: "P--",
+          caption: "",
           neighbours: { left: "P1", right: "P5" },
           sides: { left: true, right: true },
         });
