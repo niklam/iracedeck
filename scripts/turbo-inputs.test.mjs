@@ -62,8 +62,10 @@ const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 // The pseudo package name turbo gives the repo root, as in `//#generate:changelog-data`.
 const ROOT = "//";
 
-// Directories that never hold a project config worth checking.
-const SKIP_DIRS = new Set(["node_modules", "dist", "build", ".turbo"]);
+// Directories that never hold a project config worth checking. `build/` is
+// skipped only at a package root, where node-gyp writes it: `src/build/` in
+// audio-assets and pi-components is source (#1125).
+const SKIP_DIRS = new Set(["node_modules", "dist", ".turbo"]);
 
 // Tasks the import walk (check B) must find an entry point for. The walk finds
 // its tasks from the package scripts, so this is not the list it checks — it is
@@ -119,9 +121,16 @@ const PLUGIN_PACKAGES = [
 // imports (JSON, SVG, a `dist/` file) is recorded as read but not opened.
 const CODE_EXTENSIONS = new Set([".mjs", ".js", ".cjs", ".ts", ".mts", ".cts", ".tsx", ".astro", ".mdx"]);
 
-// Node flags whose value is the next argument, so `node --import tsx gen.mjs`
-// runs `gen.mjs` rather than a file named `tsx`.
-const NODE_FLAGS_WITH_VALUE = new Set(["--import", "--require", "-r", "--loader", "--experimental-loader"]);
+// Node and tsx flags whose value is the next argument, so `node --import tsx
+// gen.mjs` runs `gen.mjs` rather than a file named `tsx`.
+const NODE_FLAGS_WITH_VALUE = new Set([
+  "--import",
+  "--require",
+  "-r",
+  "--loader",
+  "--experimental-loader",
+  "--tsconfig",
+]);
 
 // ---------------------------------------------------------------------------
 // Paths and globs
@@ -276,9 +285,13 @@ function isHashed(turbo, repo, pkg, task, file) {
   return closure.some((t) => !(t.pkg === pkg && t.task === task) && outputsCover(t.config?.outputs, t.dir, file));
 }
 
-/** The files that stand for a directory: a probe for files yet to be added, and each tracked file under it. */
-function filesOfDirectory(dir, tracked) {
-  return [`${dir}/${PROBE}`, ...tracked.filter((f) => isInside(f, dir))];
+/**
+ * The files that stand for a directory: a probe for files yet to be added, and
+ * each listed file under it — tracked files, plus for a copy source the
+ * gitignored files on disk there, which the copy picks up too.
+ */
+function filesOfDirectory(dir, files) {
+  return [`${dir}/${PROBE}`, ...files.filter((f) => isInside(f, dir))];
 }
 
 /** The `inputs` entry that would hash `file` for a task of the package at `pkgDir`. */
@@ -427,11 +440,11 @@ function checkShippedFolders(turbo, repo, shippedFolders, tracked) {
  * each plugin's build: inside the plugin, inside a dependency whose build
  * hashes it, or named in the plugin's own inputs.
  */
-function checkPluginSources(turbo, repo, sources, plugins, tracked) {
+function checkPluginSources(turbo, repo, sources, plugins, copiedFiles) {
   const violations = [];
   for (const pkg of plugins) {
     for (const { key, file, isDirectory } of sources) {
-      const files = isDirectory ? filesOfDirectory(file, tracked) : [file];
+      const files = isDirectory ? filesOfDirectory(file, copiedFiles) : [file];
       if (files.every((f) => isHashed(turbo, repo, pkg, "build", f))) continue;
       const entry = isDirectory ? `${file}/**` : file;
       violations.push(
@@ -473,8 +486,12 @@ function filesOfExportTarget(pkgDir, target, tracked) {
   return [file.replaceAll("*", "__turbo_inputs_probe__"), ...tracked.filter((f) => pattern.test(f))];
 }
 
+// Export conditions in the order a runtime picks them, and the order tsc does.
+const RUNTIME_CONDITIONS = ["import", "node", "default", "require", "types"];
+const TYPES_CONDITIONS = ["types", "import", "node", "default", "require"];
+
 /** The file a workspace package specifier (`@iracedeck/x/sub`) resolves to, by its `exports`. */
-function resolveWorkspaceSpecifier(specifier, workspace) {
+function resolveWorkspaceSpecifier(specifier, workspace, conditions = RUNTIME_CONDITIONS) {
   const parts = specifier.split("/");
   const name = specifier.startsWith("@") ? parts.slice(0, 2).join("/") : parts[0];
   const pkg = workspace.get(name);
@@ -486,7 +503,7 @@ function resolveWorkspaceSpecifier(specifier, workspace) {
   const pickCondition = (value) => {
     if (typeof value === "string") return value;
     if (!value || typeof value !== "object") return undefined;
-    for (const condition of ["import", "node", "default", "require", "types"]) {
+    for (const condition of conditions) {
       const picked = pickCondition(value[condition]);
       if (picked) return picked;
     }
@@ -522,6 +539,23 @@ function trackedFiles() {
   const result = spawnSync("git", ["ls-files", "-z"], { cwd: repoRoot, encoding: "utf-8" });
   if (result.status !== 0) throw new Error(`git ls-files failed: ${result.stderr}`);
   return result.stdout.split("\0").filter(Boolean);
+}
+
+/**
+ * The gitignored files on disk under `dirs`. A copy step picks these up with
+ * the tracked ones (`iracing-actions/src/actions/data/changelog.json` under the
+ * action templates), so check E must see them. An ignored directory is listed
+ * as one `dir/` entry and not descended, which keeps `node_modules/` out.
+ */
+function ignoredFilesUnder(dirs) {
+  if (dirs.length === 0) return [];
+  const result = spawnSync(
+    "git",
+    ["ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z", "--", ...dirs],
+    { cwd: repoRoot, encoding: "utf-8", maxBuffer: 64 * 1024 * 1024 },
+  );
+  if (result.status !== 0) throw new Error(`git ls-files --ignored failed: ${result.stderr}`);
+  return result.stdout.split("\0").filter((f) => f && !f.endsWith("/"));
 }
 
 /**
@@ -583,9 +617,11 @@ function loadWorkspace() {
 
 function findTsconfigs(absDir) {
   const found = [];
+  const atPackageRoot = path.dirname(absDir) === path.join(repoRoot, "packages");
   for (const entry of readdirSync(absDir, { withFileTypes: true })) {
     if (entry.isDirectory()) {
-      if (!SKIP_DIRS.has(entry.name)) found.push(...findTsconfigs(path.join(absDir, entry.name)));
+      const skip = SKIP_DIRS.has(entry.name) || (atPackageRoot && entry.name === "build");
+      if (!skip) found.push(...findTsconfigs(path.join(absDir, entry.name)));
     } else if (/^tsconfig.*\.json$/.test(entry.name)) {
       found.push(path.join(absDir, entry.name));
     }
@@ -721,8 +757,9 @@ function resolveRelative(fromAbs, specifier) {
  * The repo files one file imports, resolved. Read with TypeScript's
  * preprocessor, so comments and strings are skipped exactly as the compiler
  * skips them, and static imports, re-exports, `import("…")` and `require("…")`
- * with a literal are all found. Bare specifiers are followed only into
- * workspace packages, through their `exports`; external packages are hashed
+ * with a literal are all found, in a `.d.ts` too. Bare specifiers are followed
+ * only into workspace packages, through their `exports` — both the target a
+ * runtime loads and the one tsc reads for types; external packages are hashed
  * through the lockfile. A file is read once however many walks reach it.
  */
 function createImportReader(workspace) {
@@ -731,13 +768,18 @@ function createImportReader(workspace) {
     if (cache.has(file)) return cache.get(file);
     const abs = path.join(repoRoot, file);
     let targets = [];
-    if (CODE_EXTENSIONS.has(path.extname(file)) && !file.endsWith(".d.ts") && existsSync(abs)) {
-      targets = ts
+    if (CODE_EXTENSIONS.has(path.extname(file)) && existsSync(abs)) {
+      const resolved = ts
         .preProcessFile(readFileSync(abs, "utf-8"), true, true)
-        .importedFiles.map(({ fileName: specifier }) =>
-          specifier.startsWith(".") ? resolveRelative(abs, specifier) : resolveWorkspaceSpecifier(specifier, workspace),
-        )
-        .filter((target) => target !== undefined);
+        .importedFiles.flatMap(({ fileName: specifier }) =>
+          specifier.startsWith(".")
+            ? [resolveRelative(abs, specifier)]
+            : [
+                resolveWorkspaceSpecifier(specifier, workspace),
+                resolveWorkspaceSpecifier(specifier, workspace, TYPES_CONDITIONS),
+              ],
+        );
+      targets = [...new Set(resolved.filter((target) => target !== undefined))];
     }
     cache.set(file, targets);
     return targets;
@@ -807,6 +849,13 @@ const pluginSources = Object.entries(SOURCES)
     file: repoRelative(absPath),
     isDirectory: existsSync(absPath) && statSync(absPath).isDirectory(),
   }));
+// What a SOURCES directory copy picks up: its tracked files and the gitignored ones on disk.
+const copiedFiles = [
+  ...tracked,
+  ...ignoredFilesUnder(pluginSources.filter(({ isDirectory }) => isDirectory).map(({ file }) => file)),
+];
+// The generated changelog the action templates directory carries once `//#generate:changelog-data` has run.
+const GENERATED_CHANGELOG = "packages/iracing-actions/src/actions/data/changelog.json";
 
 // One batched gitignore lookup for every path the checks will ask about.
 const ignore = createIgnoreLookup(tracked);
@@ -818,6 +867,8 @@ ignore.prime([
   ),
   ...[...SHIPPED_FOLDERS].map((folder) => `${workspace.get("@iracedeck/audio-assets").dir}/${folder}/${PROBE}`),
   ...GENERATED_IN_SCRIPT.map(({ file }) => file),
+  ...copiedFiles,
+  GENERATED_CHANGELOG,
 ]);
 const generatedInScript = new Map();
 for (const { file, tasks } of GENERATED_IN_SCRIPT) {
@@ -900,6 +951,9 @@ describe("turbo hashes every file a cached task reads (#1491)", () => {
       );
       expect(resolveWorkspaceSpecifier("@iracedeck/audio-assets/catalog/default.json", workspace)).toBe(
         "packages/audio-assets/catalog/default.json",
+      );
+      expect(resolveWorkspaceSpecifier("@iracedeck/audio-assets/build", workspace, TYPES_CONDITIONS)).toBe(
+        "packages/audio-assets/src/build/index.d.ts",
       );
       expect(resolveWorkspaceSpecifier("@rollup/plugin-json", workspace)).toBeUndefined();
     });
@@ -1152,7 +1206,7 @@ describe("turbo hashes every file a cached task reads (#1491)", () => {
     });
 
     it("every source is hashed by each plugin's build", () => {
-      const violations = checkPluginSources(turbo, repo, pluginSources, PLUGIN_PACKAGES, tracked);
+      const violations = checkPluginSources(turbo, repo, pluginSources, PLUGIN_PACKAGES, copiedFiles);
       expect(violations, violations.join("\n")).toEqual([]);
     });
 
@@ -1169,13 +1223,31 @@ describe("turbo hashes every file a cached task reads (#1491)", () => {
         repo,
         pluginSources,
         PLUGIN_PACKAGES,
-        tracked,
+        copiedFiles,
       );
       expect(violations.map((v) => v.split(" copies ")[0] + " " + v.match(/SOURCES\.\w+/)[0]).sort()).toEqual([
         "@iracedeck/iracing-plugin-mirabox#build SOURCES.elgatoPluginImgsDir",
         "@iracedeck/iracing-plugin-ulanzi#build SOURCES.licensePath",
         "@iracedeck/iracing-plugin-ulanzi#build SOURCES.thirdPartyLicensesPath",
       ]);
+    });
+
+    it("positive control: reports a gitignored file a copied directory carries when nothing generates it first", () => {
+      const key = "@iracedeck/iracing-plugin-mirabox#build";
+      const violations = checkPluginSources(
+        brokenConfig((c) => {
+          const dependsOn = c.tasks[key].dependsOn;
+          if (!dependsOn.includes("//#generate:changelog-data")) throw new Error("positive control is stale");
+          c.tasks[key].dependsOn = dependsOn.filter((d) => d !== "//#generate:changelog-data");
+        }),
+        repo,
+        pluginSources,
+        PLUGIN_PACKAGES,
+        // Listed whether or not a build has written it yet, so the control does not depend on the tree.
+        [...new Set([...copiedFiles, GENERATED_CHANGELOG])],
+      );
+      expect(violations).toHaveLength(1);
+      expect(violations[0]).toContain(`${key} copies SOURCES.actionTemplatesDir`);
     });
   });
 });
