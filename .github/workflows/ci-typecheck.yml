@@ -24,6 +24,18 @@ on:
     paths-ignore:
       - 'docs/superpowers/specs/**.md'
 
+# A new push to a PR cancels that PR's run still in progress: only the newest
+# head's checks can ever be merged on, since the merge gate judges them at the
+# current head (#1492). A push to master or release/* gets a group of its own
+# commit and is never cancelled. That matters even with cancel-in-progress off:
+# a concurrency group admits one running and one pending run, and a newer
+# pending run cancels the older one, so a group per branch would let two quick
+# merges cancel one merge's post-merge check (#1070) — the check step 12 of
+# `.claude/rules/issue-workflow.md` exists to watch.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 # The job only reads the repository and runs a compiler, so it is given the
 # minimum token scope and the checkout credential is not left in .git/config for
 # later steps to reach. All four CI workflows now do this; the other three
@@ -35,6 +47,11 @@ jobs:
   typecheck:
     name: Typecheck
     runs-on: ubuntu-latest
+    env:
+      # Turbo reads TURBO_CACHE_DIR, and so do the cache steps and
+      # scripts/prune-turbo-cache.mjs, so the path restored, the path turbo
+      # writes and the path saved cannot disagree.
+      TURBO_CACHE_DIR: ${{ github.workspace }}/.turbo/cache
     steps:
       - uses: actions/checkout@v7
         with:
@@ -51,8 +68,48 @@ jobs:
 
       - run: pnpm install
 
+      # Turbo's cache persists between runs: only a push saves it and only a
+      # PR run reads it, for the reasons in ci-test.yml, which does the same
+      # (#1492). This job has a key prefix of its own because it runs beside
+      # Tests and the two would race to save one key. Its second restore key
+      # is Tests' prefix, for when no typecheck entry is left: that cache holds
+      # the `build` outputs this job needs before `tsc`.
+      - name: Restore the turbo cache
+        if: github.event_name == 'pull_request'
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ env.TURBO_CACHE_DIR }}
+          key: turbo-typecheck-${{ runner.os }}-${{ runner.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            turbo-typecheck-${{ runner.os }}-${{ runner.arch }}-
+            turbo-tests-${{ runner.os }}-${{ runner.arch }}-
+
       # No explicit build step: the `typecheck` turbo task declares
       # `dependsOn: ["^build"]`, because packages resolve each other's types
       # through emitted `dist/`. So this is the same one command a developer
       # runs locally, and a red run here reproduces with `pnpm typecheck`.
+      # Only reads the cache on a PR, only writes it on a push, so the
+      # post-merge run typechecks a full build of the merged tree (#1070).
       - run: pnpm typecheck
+        env:
+          TURBO_CACHE: ${{ github.event_name == 'pull_request' && 'local:r' || 'local:w' }}
+          TURBO_RUN_SUMMARY: 'true'
+
+      # On a push, pruned to this run's entries, then saved — only after a
+      # green typecheck, since a failed turbo run's summary lists only the
+      # tasks it reached. The prune refuses, and so skips the save, when it
+      # cannot tell what this run used or none of its hashes has an entry in
+      # TURBO_CACHE_DIR; a refusal is housekeeping, so `continue-on-error`
+      # keeps it from failing the job.
+      - name: Prune the turbo cache to this run
+        id: prune
+        if: github.event_name != 'pull_request'
+        continue-on-error: true
+        run: node scripts/prune-turbo-cache.mjs
+
+      - name: Save the turbo cache
+        if: github.event_name != 'pull_request' && steps.prune.outcome == 'success'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ env.TURBO_CACHE_DIR }}
+          key: turbo-typecheck-${{ runner.os }}-${{ runner.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
