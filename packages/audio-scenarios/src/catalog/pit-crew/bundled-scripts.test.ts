@@ -335,6 +335,35 @@ describe("the catalog every first-party script is held complete against (issue #
 
     expect(problems, "speak-time gates whose description is not one sentence on what is re-checked").toEqual([]);
   });
+
+  it("every end event carries the one-sentence description the reference renders (issue #1407)", () => {
+    // `endsOn.description` is published as "Ends when: …" beside the gate, and
+    // `validation.ts` only refuses an empty one — so this is where the rest of
+    // the one-sentence bar is held, the same bar as `description` and the gate.
+    const problems: string[] = [];
+    let checked = 0;
+
+    for (const [id, { endsOn }] of contracts) {
+      // `null` for a contract nothing ends early — nearly the whole catalog.
+      if (endsOn === null) continue;
+
+      checked++;
+
+      const text = endsOn.trim();
+
+      if (text.length === 0) problems.push(`${id}: empty end description`);
+      else if (!text.endsWith(".")) problems.push(`${id}: end description does not end with a full stop`);
+      else if (text.length > DESCRIPTION_MAX_LENGTH)
+        problems.push(`${id}: end description longer than ${DESCRIPTION_MAX_LENGTH} chars`);
+      else if (text.startsWith(id)) problems.push(`${id}: end description starts with its own id`);
+    }
+
+    // Vacuity guard: the loop skips every contract without `endsOn`, so a
+    // catalog that lost the field would pass with nothing checked.
+    // `pit-crew.limiter-dropped` carries one since #1407.
+    expect(checked, "contracts carrying `endsOn`").toBeGreaterThan(0);
+    expect(problems, "end events whose description is not one sentence on when the line is abandoned").toEqual([]);
+  });
 });
 
 /**

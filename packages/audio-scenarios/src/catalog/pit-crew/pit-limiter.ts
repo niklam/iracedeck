@@ -8,6 +8,10 @@
  *     behavior.
  *   - `limiter.missing` (delayed): entered pit road without the limiter on.
  *   - `limiter.dropped`: limiter disengaged while still between pit cones.
+ *     Ended by `pitLane.exited` (`endsOn`, issue #1407), because the warning
+ *     is only true while the car is on pit road: a fire still waiting is
+ *     dropped, one still in its open click stops silently, and one already
+ *     speaking is cut and abandoned through the voice's `cut` tail.
  *   - `limiter.speeding`: above the pit speed limit.
  *
  * The code below decides WHETHER and WHEN each warning fires and how it is
@@ -187,6 +191,14 @@ export const LIMITER_DROPPED: ScenarioContract = {
   bus: AudioBus.Voice,
   base: "pit-crew",
   family: "limiter",
+  // The warning is only true on pit road, and on a busy bus it can wait up to
+  // `maxQueueWaitMs` and then speak out on the track (issue #1407). The end
+  // is this contract's, never the family's: `limiter-on-track` is TRIGGERED
+  // by the same event and must still play after it.
+  endsOn: {
+    event: "pitLane.exited",
+    description: "You leave pit road while the warning is waiting or still being spoken.",
+  },
 };
 
 export const LIMITER_SPEEDING: ScenarioContract = {
