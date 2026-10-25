@@ -474,8 +474,6 @@ describe("pit-limiter through the engine and the bundled script (issue #1065)", 
       bus.publishEvent("pitLane.exited", {} as never);
       flush(audio);
 
-      // Order by path, not channel: the cut tail is a frame part, and the
-      // engine puts every frame clip on the SFX channel (issue #1064).
       expect(audio._played.map((p) => p.path)).toEqual([
         "sfx/IRD-tick-open.mp3",
         "sfx/IRD-ambient-pit.mp3",
@@ -483,6 +481,9 @@ describe("pit-limiter through the engine and the bundled script (issue #1065)", 
         NEVER_MIND,
         "sfx/IRD-tick-close.mp3",
       ]);
+      // The never-mind is the engineer speaking, at voice volume like the
+      // warning; only the cut tail's tick is a sound effect (issue #1407).
+      expect(voiceClipsPlayed()).toEqual([DROPPED, NEVER_MIND]);
       expect(audio.stopChannel).toHaveBeenCalledWith(AudioChannel.Voice);
     });
 

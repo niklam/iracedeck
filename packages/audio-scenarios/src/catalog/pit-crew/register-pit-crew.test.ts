@@ -2240,16 +2240,18 @@ describe("pit-limiter / no-limiter family registration (issue #1051)", () => {
     // The cut tail plays out before the on-track window closes, as it would at
     // pit-exit speed: a short never-mind and a click against a 1.5 s delay.
     flush(audio);
-    // By path, not channel: the cut tail is a frame part, and every frame clip
-    // rides the SFX channel (issue #1064).
-    const spoken = (): string[] => audio._played.map((p) => p.path).filter((p) => p.startsWith(`voice/${VOICE}/`));
-
-    expect(spoken()).toEqual([`voice/${VOICE}/pit-limiter/dropped-01.mp3`, `voice/${VOICE}/radio/never-mind-01.mp3`]);
+    // The never-mind is spoken on the Voice channel like the body — the cut
+    // tail's clips are the engineer's words, and only its ticks are sound
+    // effects (issue #1407).
+    expect(voiceClipsPlayed()).toEqual([
+      `voice/${VOICE}/pit-limiter/dropped-01.mp3`,
+      `voice/${VOICE}/radio/never-mind-01.mp3`,
+    ]);
 
     vi.advanceTimersByTime(LIMITER_ON_TRACK_DELAY_MS);
     flush(audio);
 
-    expect(spoken()).toEqual([
+    expect(voiceClipsPlayed()).toEqual([
       `voice/${VOICE}/pit-limiter/dropped-01.mp3`,
       `voice/${VOICE}/radio/never-mind-01.mp3`,
       `voice/${VOICE}/pit-limiter/on-track-01.mp3`,

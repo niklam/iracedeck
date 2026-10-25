@@ -36,8 +36,10 @@ describe("what the two limiter-cut buttons are heard to do (issue #1407)", () =>
     boot("race");
     press(MID_LINE);
 
-    expect(heard()).toEqual(["pit-limiter/dropped"]);
-    expect(radio()).toEqual(["sfx/IRD-tick-open", "radio/never-mind", "sfx/IRD-tick-close"]);
+    // The never-mind is spoken at voice volume after the cut warning; only the
+    // two clicks are sound effects.
+    expect(heard()).toEqual(["pit-limiter/dropped", "radio/never-mind"]);
+    expect(radio()).toEqual(["sfx/IRD-tick-open", "sfx/IRD-tick-close"]);
   });
 
   it("cut before words: only the open click, and nothing after it", () => {

@@ -326,10 +326,16 @@ describe("endsOn (issue #1407)", () => {
     expect(voiceBus().playingId).toBe("test.ends");
     expect(endedLines()).toEqual(['Scenario "test.ends" ended by pitLane.exited (playing → tail)']);
 
+    // "Never mind" is the engineer speaking: it plays on the Voice channel,
+    // at voice volume like the body; the close tick stays a sound effect.
     audio._stopped.length = 0;
-    audio._triggerChannelEnd(AudioChannel.SFX); // never mind ends: the ambience stops, the close tick plays
+    audio._triggerChannelEnd(AudioChannel.Voice); // never mind ends: the ambience stops, the close tick plays
     expect(audio._stopped).toEqual([AudioChannel.Ambient]);
     expect(played()).toEqual([TICK_OPEN, BODY_A, NEVER_MIND, TICK_CLOSE]);
+    expect(audio._played.slice(-2)).toEqual([
+      { channel: AudioChannel.Voice, path: NEVER_MIND },
+      { channel: AudioChannel.SFX, path: TICK_CLOSE },
+    ]);
 
     // The tail ends, the bus is released and drains what waited.
     audio._triggerChannelEnd(AudioChannel.SFX);
@@ -354,6 +360,29 @@ describe("endsOn (issue #1407)", () => {
     expect(played()).toEqual([TICK_OPEN, BODY_A, TICK_CLOSE]);
     expect(audio._stopped.filter((c) => c === AudioChannel.Ambient)).toEqual([AudioChannel.Ambient]);
     expect(voiceBus().playingId).toBeNull();
+  });
+
+  it("a close fallback plays as the close does — a pack's own close beep stays a sound effect", () => {
+    engine.defineContract(endsContract());
+    engine.setScripts(new Map([["default", script({ open: [TICK_OPEN], close: [{ ambient: "stop" }, BEEP_2] })]]));
+
+    startEndsMidBody();
+    bus.publishEvent("pitLane.exited");
+    flush();
+
+    expect(audio._played.slice(-1)).toEqual([{ channel: AudioChannel.SFX, path: BEEP_2 }]);
+
+    // And Radio beeps drops it there, as it does in the close.
+    init();
+    frameOptions = { beeps: false, ambience: true };
+    engine.defineContract(endsContract());
+    engine.setScripts(new Map([["default", script({ open: [TICK_OPEN], close: [{ ambient: "stop" }, BEEP_2] })]]));
+
+    bus.publishEvent("flag.green.raised");
+    bus.publishEvent("pitLane.exited");
+    flush();
+
+    expect(played()).toEqual([BODY_A]);
   });
 
   it("frame none: playing fire stops and nothing more plays", () => {
@@ -425,8 +454,13 @@ describe("endsOn (issue #1407)", () => {
     bus.publishEvent("pitLane.exited");
 
     // Stopping the Voice channel completed the body clip synchronously; the
-    // cut fire must not have moved on to the next body clip.
+    // cut fire must not have moved on to the next body clip, and that
+    // completion — on the channel "never mind" now plays on — must not have
+    // been taken for the tail's either.
     expect(played()).toEqual([TICK_OPEN, BODY_A, NEVER_MIND]);
+
+    audio._triggerChannelEnd(AudioChannel.Voice); // never mind's own completion: the close follows
+    expect(played()).toEqual([TICK_OPEN, BODY_A, NEVER_MIND, TICK_CLOSE]);
 
     flush();
     expect(played()).toEqual([TICK_OPEN, BODY_A, NEVER_MIND, TICK_CLOSE]);
@@ -671,7 +705,7 @@ describe("endsOn (issue #1407)", () => {
     expect(cutWarns()).toHaveLength(1);
   });
 
-  it("beeps off: the tail drops its clip beeps like open/close do", () => {
+  it("beeps off: the tail drops only its ticks — never mind is still said", () => {
     frameOptions = { beeps: false, ambience: true };
     engine.defineContract(endsContract());
     engine.setScripts(new Map([["default", script()]]));
@@ -683,15 +717,16 @@ describe("endsOn (issue #1407)", () => {
     bus.publishEvent("pitLane.exited");
     flush();
 
-    // The tail is its ambience stop alone: no "never mind", no close tick,
-    // and the bed is stopped once, by the tail rather than at the cut.
-    expect(played()).toEqual([BODY_A]);
+    // The tail is "never mind" and its ambience stop: no close tick, and the
+    // bed is stopped once, by the tail rather than at the cut.
+    expect(played()).toEqual([BODY_A, NEVER_MIND]);
+    expect(audio._played.slice(-1)).toEqual([{ channel: AudioChannel.Voice, path: NEVER_MIND }]);
     expect(audio._stopped.filter((c) => c === AudioChannel.Ambient).length).toBe(1);
     expect(voiceBus().playingId).toBeNull();
     expect(endedLines()).toEqual(['Scenario "test.ends" ended by pitLane.exited (playing → tail)']);
   });
 
-  it("beeps and ambience off: an empty tail stops silently", () => {
+  it("beeps and ambience off: an end mid-word still says never mind", () => {
     frameOptions = { beeps: false, ambience: false };
     engine.defineContract(endsContract());
     engine.setScripts(new Map([["default", script()]]));
@@ -700,8 +735,9 @@ describe("endsOn (issue #1407)", () => {
     bus.publishEvent("pitLane.exited");
     flush();
 
-    expect(played()).toEqual([BODY_A]);
-    expect(endedLines()).toEqual(['Scenario "test.ends" ended by pitLane.exited (playing → silent)']);
+    expect(played()).toEqual([BODY_A, NEVER_MIND]);
+    expect(audio._stopped).not.toContain(AudioChannel.Ambient);
+    expect(endedLines()).toEqual(['Scenario "test.ends" ended by pitLane.exited (playing → tail)']);
   });
 
   it("same-family fire without endsOn is untouched", () => {

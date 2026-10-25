@@ -163,9 +163,9 @@ export type HeardRig = {
   heard: () => string[];
   /**
    * The SFX channel's clips in order, named the same way (`sfx/…` for a clip
-   * outside the voice's folder): the radio frame's ticks, and the frame's
-   * spoken cut tail (issue #1407), which rides the SFX channel with the rest
-   * of the frame.
+   * outside the voice's folder): the radio frame's ticks. A cut tail's spoken
+   * clip — the never-mind (issue #1407) — is the engineer's voice and is in
+   * `heard()`; only the tail's ticks are here.
    */
   radio: () => string[];
   /** What was heard since the last call, and nothing kept. */

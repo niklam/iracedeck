@@ -192,7 +192,9 @@ export type SpeakGate = {
  *   driver had begun to hear — the body is cut mid-clip and the frame's
  *   **cut tail** plays (the frame's `cut`, else its `close`; nothing for
  *   `frame: "none"`), so the engineer audibly abandons the line and lets go
- *   of the button. The tail holds the bus like any fire and may itself be
+ *   of the button. The `cut`'s clips are his words, spoken on the callout's
+ *   channel at voice volume; only the built-in ticks in it are sound
+ *   effects, and Radio beeps drops only those. The tail holds the bus like any fire and may itself be
  *   cut by a same-family or heavier `interrupt` arrival;
  * - a playing fire whose line was heard in full — in its frame's close ops,
  *   or in a trailing pause after its last clip — is letting go of the

@@ -622,8 +622,11 @@ type ActiveFire = {
   sessionGeneration: number;
   /**
    * What an end plays once words have been heard (issue #1407): the frame's
-   * `cut` — else its `close` — expanded and tagged `cut` with the fire, under
-   * the same switches as the open and close. Empty for a fire with no frame
+   * `cut` — else its `close` — expanded and tagged `cut` with the fire. The
+   * cut's clips are spoken on the callout's channel and only its built-in
+   * ticks are sound effects, so Radio beeps drops only those ticks; Pit
+   * ambience drops its ambient ops. A close fallback plays as the close
+   * does, every clip a sound effect. Empty for a fire with no frame
    * around its body (`frame: "none"`, or a body with no clip), for a contract
    * without `endsOn` (nothing ever ends it), and for the frame preview. Only
    * `endFires` plays it: a fire cut for any other reason plays nothing more.
@@ -1519,7 +1522,7 @@ class ScenarioEngine implements IScenarioEngine {
     this.expansionPicks = picks;
 
     try {
-      frame = this.expandFrame(frameName, voice, script, FRAME_PREVIEW_ID, this.fireContext(null), false);
+      frame = this.expandFrame(frameName, voice, script, FRAME_PREVIEW_ID, this.fireContext(null), null);
     } catch (err) {
       if (err instanceof ExpansionAbort) {
         this.logger.debug(`Frame preview "${frameName}" skipped — ${err.reason}`);
@@ -2305,7 +2308,14 @@ class ScenarioEngine implements IScenarioEngine {
       // the fire's — a take of the tail counted but never heard only shifts
       // that pool's no-repeat guard.
       const frame = canProducePlay(body)
-        ? this.expandFrame(frameName, voice, script, entry.raw.id, ctx, entry.raw.endsOn !== undefined)
+        ? this.expandFrame(
+            frameName,
+            voice,
+            script,
+            entry.raw.id,
+            ctx,
+            entry.raw.endsOn !== undefined ? entry.raw.channel : null,
+          )
         : null;
       const bodyOps = this.expandSequence(body, entry.raw.base, entry.raw.channel, ctx, new Set([entry.raw.id]));
       prepared = applyFrame(bodyOps, frame);
@@ -2374,12 +2384,13 @@ class ScenarioEngine implements IScenarioEngine {
    * defines it (see `prepareOps`) — before the body, so a frame that aborts
    * never lets a body side effect commit, and only for a body that could
    * hold a clip, so its warns and aborts concern a callout the frame is
-   * actually due for. `withCut` also expands the cut tail an end plays
-   * (issue #1407) — the frame's `cut`, else its `close`, under the same
-   * switches and tagged `cut` — and leaves it empty otherwise. Unlike an open
-   * or close step, a tail step that resolves to nothing does not abort the
-   * fire: the tail is only what an end plays, so the line still speaks, and
-   * the tail falls back to the close (`expandCutTail`).
+   * actually due for. A `cutChannel` also expands the cut tail an end plays
+   * (issue #1407), tagged `cut` — the frame's `cut`, spoken on that channel
+   * (the callout's own), else its `close` as the close plays — and `null`
+   * leaves it empty. Unlike an open or close step, a tail step that resolves
+   * to nothing does not abort the fire: the tail is only what an end plays,
+   * so the line still speaks, and the tail falls back to the close
+   * (`expandCutTail`).
    * Returns `null` when no frame applies: the scenario
    * wants none (`NO_FRAME`), the voice has no script, or its script does not
    * provide the frame (a legacy scenario's, since a contract's was checked
@@ -2390,9 +2401,12 @@ class ScenarioEngine implements IScenarioEngine {
    *
    * - **Every op the frame produces is tagged with its side**, which is how
    *   the frame is identified afterwards — never by clip path.
-   * - **Every clip the frame plays goes on the SFX channel**, whatever it
-   *   is: a pack's own beep rides the Background bus like the built-in tick,
-   *   under the Background volume and the Radio beeps switch.
+   * - **Every clip the frame's open and close play goes on the SFX
+   *   channel**, whatever it is: a pack's own beep rides the Background bus
+   *   like the built-in tick, under the Background volume and the Radio
+   *   beeps switch. The `cut` is the exception (issue #1407): it is what the
+   *   engineer SAYS when a line is abandoned, so its clips are spoken on the
+   *   callout's channel, and only the built-in ticks in it are sound effects.
    *
    * The user's two switches are applied to the frame's STEPS, before any of
    * them expands, so a step the user switched off can never abort the
@@ -2408,7 +2422,7 @@ class ScenarioEngine implements IScenarioEngine {
     script: CompiledVoiceScript | undefined,
     ownerId: string,
     ctx: ScenarioContext,
-    withCut: boolean,
+    cutChannel: AudioChannel | null,
   ): ExpandedFrame | null {
     if (frameName === NO_FRAME) return null;
 
@@ -2465,13 +2479,38 @@ class ScenarioEngine implements IScenarioEngine {
       throw err;
     }
 
-    return { ...halves, cut: withCut ? this.expandCutTail(frame, frameName, voice, side) : [] };
+    if (cutChannel === null) return { ...halves, cut: [] };
+
+    // The cut is spoken (issue #1407): its clips default to the callout's
+    // channel and only the built-in ticks route to SFX (`channelForPath`).
+    // Pit ambience still drops its ambient steps, but Radio beeps drops only
+    // the SFX plays — the ticks — never the words. So the steps are not
+    // filtered for beeps before they expand (a tick the user switched off is
+    // a built-in the manifest always carries), and the ops are sorted after.
+    const cutSide = (steps: ResolvedStep[]): ExecOp[] =>
+      this.expandSequence(
+        filterFrameSteps(steps, { ambience: options.ambience, beeps: true }),
+        undefined,
+        cutChannel,
+        ctx,
+        new Set([ownerId]),
+      )
+        .filter((op) => {
+          if (op.kind === "ambient") return options.ambience;
+
+          return op.kind !== "play" || op.channel !== AudioChannel.SFX || options.beeps;
+        })
+        .map((op) => ({ ...op, frame: "cut" as const }));
+
+    return { ...halves, cut: this.expandCutTail(frame, frameName, voice, cutSide, (steps) => side(steps, "cut")) };
   }
 
   /**
-   * Expand a frame's cut tail (issue #1407): its `cut`, else its `close` — a
-   * frame with no `cut` closes the radio as it always does, so a pack that
-   * never heard of `cut` still lets go of the button. A `cut` step that
+   * Expand a frame's cut tail (issue #1407): its `cut` through `cutSide`
+   * (spoken on the callout's channel, see `expandFrame`), else its `close`
+   * through `closeSide` — exactly as the close plays, every clip a sound
+   * effect — so a pack that never heard of `cut` still lets go of the button
+   * the way it always does. A `cut` step that
    * resolves to nothing does not abort the fire it rides: the tail is only
    * what an end would play, and trading the line itself for it would silence
    * the warning to save the "never mind". It falls back to the close instead
@@ -2484,14 +2523,15 @@ class ScenarioEngine implements IScenarioEngine {
     frame: CompiledFrame,
     frameName: string,
     voice: string,
-    side: (steps: ResolvedStep[], tag: FrameSide) => ExecOp[],
+    cutSide: (steps: ResolvedStep[]) => ExecOp[],
+    closeSide: (steps: ResolvedStep[]) => ExecOp[],
   ): ExecOp[] {
-    const attempt = (steps: ResolvedStep[]): ExecOp[] | ExpansionAbort => {
+    const attempt = (expand: (steps: ResolvedStep[]) => ExecOp[], steps: ResolvedStep[]): ExecOp[] | ExpansionAbort => {
       const picks = this.expansionPicks;
       const before = picks === null ? null : new Map(picks);
 
       try {
-        return side(steps, "cut");
+        return expand(steps);
       } catch (err) {
         if (!(err instanceof ExpansionAbort)) throw err;
 
@@ -2505,7 +2545,7 @@ class ScenarioEngine implements IScenarioEngine {
       }
     };
 
-    const tail = attempt(frame.cut ?? frame.close);
+    const tail = frame.cut === null ? attempt(closeSide, frame.close) : attempt(cutSide, frame.cut);
 
     if (!(tail instanceof ExpansionAbort)) return tail;
 
@@ -2520,7 +2560,7 @@ class ScenarioEngine implements IScenarioEngine {
 
     if (frame.cut === null) return [];
 
-    const close = attempt(frame.close);
+    const close = attempt(closeSide, frame.close);
 
     return close instanceof ExpansionAbort ? [] : close;
   }
