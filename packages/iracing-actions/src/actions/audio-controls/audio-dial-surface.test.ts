@@ -45,6 +45,12 @@ vi.mock("../../audio/audio-volume.js", () => ({
   isRadarEnabled: mockIsRadarEnabled,
 }));
 
+// The tick (#1455) is counted, not played: the tick module's spacing and cap
+// are its own unit's (volume-tick.test.ts); here, which surface asks for one.
+const { mockTick } = vi.hoisted(() => ({ mockTick: vi.fn() }));
+
+vi.mock("../../audio/volume-tick.js", () => ({ tickIRacingVolumeStep: mockTick }));
+
 vi.mock("../../audio/feature-gates.js", () => ({
   toggleRaceEngineerFeature: mockToggleRaceEngineerFeature,
   toggleRadarFeature: mockToggleRadarFeature,
@@ -420,6 +426,80 @@ describe("AudioDialSurface (through AudioControls)", () => {
 
       expect(mockIsBindingMissing).toHaveBeenCalledWith(["spotterLouder", "spotterQuieter", "spotterSilence"]);
       expect(lastFeedbackSvg(ctx)).toContain("<binding-warning/>");
+    });
+  });
+
+  describe("volume step tick (#1455)", () => {
+    beforeEach(() => {
+      mockTapBinding.mockResolvedValue(true);
+    });
+
+    afterEach(() => {
+      mockTapBinding.mockResolvedValue(undefined);
+    });
+
+    it.each([
+      ["voice-chat", 2, "up"],
+      ["master", -3, "down"],
+      ["spotter", 4, "up"],
+      ["spotter", -1, "down"],
+    ] as const)("ticks a %s rotation of %i once per tap sent, in its direction", async (category, ticks, direction) => {
+      const ctx = await appearedDial();
+      await action.onDialRotate(ev(ctx, { dial: { category } }, { ticks }));
+
+      expect(mockTapBinding).toHaveBeenCalledTimes(Math.abs(ticks));
+      expect(mockTick.mock.calls).toEqual(Array.from({ length: Math.abs(ticks) }, () => [direction]));
+    });
+
+    it("caps the ticks with the taps, at five per event", async () => {
+      const ctx = await appearedDial();
+      await action.onDialRotate(ev(ctx, { dial: { category: "master" } }, { ticks: 9 }));
+
+      expect(mockTick).toHaveBeenCalledTimes(5);
+    });
+
+    it("ticks only the taps that were sent", async () => {
+      mockTapBinding.mockResolvedValueOnce(true).mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+      const ctx = await appearedDial();
+      await action.onDialRotate(ev(ctx, { dial: { category: "voice-chat" } }, { ticks: 3 }));
+
+      expect(mockTick).toHaveBeenCalledTimes(2);
+    });
+
+    it("ticks nothing when the volume binding is not configured", async () => {
+      mockIsBindingMissing.mockReturnValue(true);
+      const ctx = await appearedDial();
+      await action.onDialRotate(ev(ctx, { dial: { category: "spotter" } }, { ticks: 2 }));
+
+      expect(mockTick).not.toHaveBeenCalled();
+    });
+
+    it("leaves a Race Engineer / Radar rotation's ticks to the step helper, so none is doubled", async () => {
+      const ctx = await appearedDial();
+      await action.onDialRotate(ev(ctx, { dial: { category: "race-engineer" } }, { ticks: 3 }));
+      await action.onDialRotate(ev(ctx, { dial: { category: "radar" } }, { ticks: -2 }));
+
+      expect(mockStepRaceEngineerVolumeBy).toHaveBeenCalledWith(3);
+      expect(mockStepRadarVolumeBy).toHaveBeenCalledWith(-2);
+      expect(mockTick).not.toHaveBeenCalled();
+      await flush();
+    });
+
+    it.each([
+      ["voice-chat", "mute-unmute"],
+      ["voice-chat", "mute-driver"],
+      ["voice-chat", "push-to-talk"],
+      ["spotter", "skip-call"],
+      ["race-engineer", "mute-unmute"],
+      ["radar", "mute-unmute"],
+    ])("never ticks a %s %s press, which is not a step", async (category, pressAction) => {
+      const ctx = await appearedDial();
+      const settings = { dial: { category, pressAction } };
+      await action.onDialDown(ev(ctx, settings));
+      await action.onDialUp(ev(ctx, settings));
+
+      expect(mockTick).not.toHaveBeenCalled();
+      await flush();
     });
   });
 

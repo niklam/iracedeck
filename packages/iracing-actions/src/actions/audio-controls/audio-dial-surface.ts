@@ -23,6 +23,7 @@ import {
 import type { ILogger } from "@iracedeck/logger";
 import { onGlobalSettingsChange } from "@iracedeck/settings";
 
+import { tickIRacingVolumeStep } from "../../audio/volume-tick.js";
 import { type DialInputEvent, hasDialInputContext } from "../../shared/dial-context.js";
 import { KNOB_BOX_HEIGHT, KNOB_BOX_WIDTH } from "../../shared/dial-knob-box.js";
 import { INTERNAL_AUDIO_BUSES } from "./audio-buses.js";
@@ -334,7 +335,9 @@ export class AudioDialSurface {
     const category = settings.dial.category;
 
     // Internal categories step the plugin-owned volume globals directly (the
-    // #590 deferral this closes) — one signed multi-step persist+apply.
+    // #590 deferral this closes) — one signed multi-step persist+apply. The
+    // step helper ticks each applied detent itself (#1455), so nothing ticks
+    // here.
     if (isInternalAudioCategory(category)) {
       const next = INTERNAL_AUDIO_BUSES[category].stepBy(ticks);
       this.host.logger.debug(`${category} volume → ${next} (ticks=${ticks})`);
@@ -345,8 +348,10 @@ export class AudioDialSurface {
 
     // Keybind categories tap the volume binding once per detent, capped so a
     // fast spin can't queue a long tap burst (iRacing steps a fixed amount per
-    // press — there is no absolute-volume command to scale instead).
+    // press — there is no absolute-volume command to scale instead). Each tap
+    // that was sent ticks once (#1455), so the ticks share the taps' cap.
     const key = resolveRotationBinding(category, ticks);
+    const direction = ticks > 0 ? "up" : "down";
 
     if (this.host.isBindingMissing(key)) {
       this.host.logger.debug(`Rotate ignored — ${key} binding not configured`);
@@ -357,7 +362,7 @@ export class AudioDialSurface {
     const taps = Math.min(Math.abs(ticks), MAX_TAPS_PER_EVENT);
 
     for (let i = 0; i < taps; i++) {
-      await this.host.tapBinding(key);
+      if (await this.host.tapBinding(key)) tickIRacingVolumeStep(direction);
     }
   }
 

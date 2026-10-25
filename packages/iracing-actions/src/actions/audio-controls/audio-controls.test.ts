@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { _resetVolumeTicks } from "../../audio/volume-tick.js";
 import { parseAudioControlsSettings } from "./audio-controls-settings.js";
 import { AUDIO_CONTROLS_GLOBAL_KEYS, AudioControls, generateAudioControlsSvg } from "./audio-controls.js";
 
@@ -11,6 +12,22 @@ const { mockTapBinding, mockHoldBinding, mockReleaseBinding, mockStepRadarVolume
     mockStepRadarVolumeBy: vi.fn((_steps: number) => 50),
     mockStepRaceEngineerVolumeBy: vi.fn((_steps: number) => 50),
   }));
+
+// The REAL volume-tick module (#1455) over a mocked mixer and sim connection,
+// so these tests see the tick a press actually plays — the connected gate
+// included. The step helpers are mocked above, so an iRaceDeck-level step
+// plays nothing here: that tick is the helper's (audio-volume.test.ts), and
+// a play here would be the action ticking it a second time.
+const tick = vi.hoisted(() => ({
+  playOnChannelAtLevel: vi.fn((_channel: number, _path: string, _level: number) => true),
+  isConnected: vi.fn(() => true),
+  globalSettings: {} as Record<string, unknown>,
+}));
+
+vi.mock("@iracedeck/audio-service", () => ({
+  AudioChannel: { Ambient: 0, SFX: 1, Voice: 2, Radar: 3, Feedback: 4 },
+  getAudio: () => ({ playOnChannelAtLevel: tick.playOnChannelAtLevel }),
+}));
 
 vi.mock("../../audio/audio-volume.js", () => ({
   stepRadarVolume: vi.fn(() => 50),
@@ -99,6 +116,7 @@ vi.mock("@iracedeck/deck-core", () => ({
     async onDidReceiveSettings() {}
     async onWillDisappear() {}
   },
+  getSimConnection: () => ({ isConnected: tick.isConnected }),
   formatKeyBinding: vi.fn((b: { key: string; modifiers: string[] }) => {
     if (b.modifiers?.length) {
       return `${b.modifiers.join("+")}+${b.key}`;
@@ -163,7 +181,7 @@ vi.mock("@iracedeck/deck-core", () => ({
 
 vi.mock("@iracedeck/settings", () => ({
   getGlobalColors: vi.fn(() => ({})),
-  getGlobalSettings: vi.fn(() => ({})),
+  getGlobalSettings: vi.fn(() => tick.globalSettings),
   isSimHubBinding: vi.fn(
     (v: unknown) => v !== null && typeof v === "object" && (v as Record<string, unknown>).type === "simhub",
   ),
@@ -190,6 +208,9 @@ function fakeKeyUpEvent(actionId: string, settings: Record<string, unknown> = {}
 describe("AudioControls", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    _resetVolumeTicks();
+    tick.isConnected.mockReturnValue(true);
+    tick.globalSettings = {};
   });
 
   describe("AUDIO_CONTROLS_GLOBAL_KEYS", () => {
@@ -672,6 +693,80 @@ describe("AudioControls", () => {
       expect(mockStepRadarVolumeBy).not.toHaveBeenCalled();
       expect(mockTapBinding).not.toHaveBeenCalled();
       expect(mockHoldBinding).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("volume step tick (#1455)", () => {
+    let action: AudioControls;
+
+    beforeEach(() => {
+      action = new AudioControls();
+      mockTapBinding.mockResolvedValue(true);
+      tick.globalSettings = { radarVolume: 40 };
+    });
+
+    afterEach(() => {
+      mockTapBinding.mockResolvedValue(undefined);
+    });
+
+    const press = (category: string, act?: string) =>
+      action.onKeyDown(fakeEvent("action-1", act ? { category, action: act } : { category }) as any);
+
+    it.each([
+      ["master", "volume-up", "sfx/IRD-volume-up.wav"],
+      ["master", "volume-down", "sfx/IRD-volume-down.wav"],
+      ["voice-chat", "volume-up", "sfx/IRD-volume-up.wav"],
+      ["voice-chat", "volume-down", "sfx/IRD-volume-down.wav"],
+    ])("a sent %s %s tap ticks once, at the Radar Volume level, on Feedback", async (category, act, clip) => {
+      await press(category, act);
+
+      expect(tick.playOnChannelAtLevel.mock.calls).toEqual([[4, clip, 0.4]]);
+    });
+
+    it("ticks at the floor when Radar Volume is below it", async () => {
+      tick.globalSettings = { radarVolume: 0 };
+
+      await press("master", "volume-up");
+
+      expect(tick.playOnChannelAtLevel.mock.calls).toEqual([[4, "sfx/IRD-volume-up.wav", 0.2]]);
+    });
+
+    it("does not tick a tap that was not sent (an unset binding, a failed send)", async () => {
+      mockTapBinding.mockResolvedValue(false);
+
+      await press("master", "volume-up");
+      await press("voice-chat", "volume-down");
+
+      expect(tick.playOnChannelAtLevel).not.toHaveBeenCalled();
+    });
+
+    it("does not tick while the sim is not connected", async () => {
+      tick.isConnected.mockReturnValue(false);
+
+      await press("master", "volume-up");
+
+      expect(mockTapBinding).toHaveBeenCalledWith("audioMasterVolumeUp");
+      expect(tick.playOnChannelAtLevel).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["voice-chat", "mute"],
+      ["voice-chat", "mute-driver"],
+      ["push-to-talk", undefined],
+    ])("never ticks %s %s, which is not a step", async (category, act) => {
+      await press(category, act);
+
+      expect(tick.playOnChannelAtLevel).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["race-engineer", "volume-up"],
+      ["radar", "volume-down"],
+    ])("leaves the %s %s tick to the step helper, so it is not ticked twice", async (category, act) => {
+      await press(category, act);
+
+      expect(mockTapBinding).not.toHaveBeenCalled();
+      expect(tick.playOnChannelAtLevel).not.toHaveBeenCalled();
     });
   });
 });

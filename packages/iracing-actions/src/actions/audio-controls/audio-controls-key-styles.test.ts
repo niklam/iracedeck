@@ -54,6 +54,13 @@ vi.mock("../../audio/feature-gates.js", () => ({
   toggleRadarFeature: vi.fn(),
 }));
 
+// The tick (#1455) is counted, not played: every hold-repeat step goes
+// through performVolumeStep, so each sent iRacing step ticks; an iRaceDeck
+// step ticks inside the (mocked) step helper, never here.
+const { mockTick } = vi.hoisted(() => ({ mockTick: vi.fn() }));
+
+vi.mock("../../audio/volume-tick.js", () => ({ tickIRacingVolumeStep: mockTick }));
+
 const STAMP = "9.9.9";
 
 vi.mock("@iracedeck/deck-core", async (importOriginal) => {
@@ -336,6 +343,24 @@ describe("hold to repeat", () => {
     await press(new AudioControls(), { category: "master", action: "volume-down", keyStyle: "split" }, 1000);
     expect(mockTapBinding).toHaveBeenCalledTimes(4);
     expect(new Set(mockTapBinding.mock.calls.map((c) => c[0]))).toEqual(new Set(["audioMasterVolumeDown"]));
+  });
+
+  it("a held Voice Chat key ticks the press and every repeat step (#1455)", async () => {
+    await press(new AudioControls(), { category: "voice-chat", action: "volume-up", keyStyle: "split" }, 1000);
+    expect(mockTapBinding).toHaveBeenCalledTimes(4);
+    expect(mockTick.mock.calls).toEqual([["up"], ["up"], ["up"], ["up"]]);
+  });
+
+  it("a held Master key whose tap is not sent neither repeats nor ticks (#1455)", async () => {
+    mockTapBinding.mockImplementation(async () => false);
+    await press(new AudioControls(), { category: "master", action: "volume-up", keyStyle: "split" }, 1000);
+    expect(mockTick).not.toHaveBeenCalled();
+  });
+
+  it("a held Radar key leaves its ticks to the step helper (#1455)", async () => {
+    await press(new AudioControls(), { category: "radar", action: "volume-down", keyStyle: "split" }, 1000);
+    expect(stepRadarVolumeBy).toHaveBeenCalledTimes(4);
+    expect(mockTick).not.toHaveBeenCalled();
   });
 
   it("a held Legacy key steps once", async () => {

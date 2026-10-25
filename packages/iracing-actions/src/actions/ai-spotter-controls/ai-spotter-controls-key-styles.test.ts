@@ -20,6 +20,12 @@ const { mockTapBinding, mockIsBindingMissing } = vi.hoisted(() => ({
   mockIsBindingMissing: vi.fn((_keys?: string | readonly string[] | null) => false),
 }));
 
+// The tick (#1455) is counted, not played: every hold-repeat step goes
+// through performVolumeStep, so each one ticks.
+const { mockTick } = vi.hoisted(() => ({ mockTick: vi.fn() }));
+
+vi.mock("../../audio/volume-tick.js", () => ({ tickIRacingVolumeStep: mockTick }));
+
 const STAMP = "9.9.9";
 
 vi.mock("@iracedeck/deck-core", async (importOriginal) => {
@@ -199,6 +205,17 @@ describe("hold to repeat", () => {
     await press({ control: "louder", keyStyle: "pill-end" }, 1000);
     expect(mockTapBinding).toHaveBeenCalledTimes(4);
     expect(new Set(mockTapBinding.mock.calls.map((c) => c[0]))).toEqual(new Set(["spotterLouder"]));
+  });
+
+  it("ticks once for the press and once for every repeat step (#1455)", async () => {
+    await press({ control: "quieter", keyStyle: "split" }, 1000);
+    expect(mockTapBinding).toHaveBeenCalledTimes(4);
+    expect(mockTick.mock.calls).toEqual([["down"], ["down"], ["down"], ["down"]]);
+  });
+
+  it("a held report key never ticks (#1455)", async () => {
+    await press({ control: "announce-leader", keyStyle: "split" }, 1000);
+    expect(mockTick).not.toHaveBeenCalled();
   });
 
   it("a held Legacy key steps once", async () => {

@@ -32,6 +32,7 @@ import voiceChatVolumeDownIconSvg from "@iracedeck/icons/audio-controls/voice-ch
 import voiceChatVolumeUpIconSvg from "@iracedeck/icons/audio-controls/voice-chat-volume-up.svg";
 import { getGlobalColors } from "@iracedeck/settings";
 
+import { tickIRacingVolumeStep } from "../../audio/volume-tick.js";
 import { ADJUST_REPEAT_INTERVAL_MS, ADJUST_REPEAT_SAFETY_MS, seedFreshKeyStyle } from "../../shared/adjust-styles.js";
 import { RepeatController } from "../../shared/repeat-controller.js";
 import {
@@ -460,6 +461,11 @@ export class AudioControls extends ConnectionStateAwareAction<AudioControlsSetti
    * stepping respects the master gate: the value updates but Voice stays
    * muted while the feature is off): true when the level moved, false at 0
    * or 100.
+   *
+   * The volume step tick (#1455): an iRacing step ticks here, after a tap
+   * that was sent (only while the sim is connected — see
+   * {@link tickIRacingVolumeStep}); an iRaceDeck step ticks inside the shared
+   * step helper, so it is not ticked here a second time.
    */
   private async performVolumeStep(category: VolumeCategory, audioAction: VolumeAction): Promise<boolean> {
     const down = audioAction === "volume-down";
@@ -481,7 +487,11 @@ export class AudioControls extends ConnectionStateAwareAction<AudioControlsSetti
       return false;
     }
 
-    return this.tapBinding(settingKey);
+    const sent = await this.tapBinding(settingKey);
+
+    if (sent) tickIRacingVolumeStep(down ? "down" : "up");
+
+    return sent;
   }
 
   private async executeControl(category: AudioCategory, audioAction: AudioAction): Promise<void> {

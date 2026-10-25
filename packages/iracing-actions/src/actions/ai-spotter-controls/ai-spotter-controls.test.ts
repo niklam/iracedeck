@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { _resetVolumeTicks } from "../../audio/volume-tick.js";
 import {
   AiSpotterControls,
   AiSpotterControlsSettings,
@@ -11,6 +12,19 @@ import {
 
 const { mockTapBinding } = vi.hoisted(() => ({
   mockTapBinding: vi.fn().mockResolvedValue(undefined),
+}));
+
+// The REAL volume-tick module (#1455) over a mocked mixer and sim connection,
+// so the tests see the tick a press actually plays, the connected gate included.
+const tick = vi.hoisted(() => ({
+  playOnChannelAtLevel: vi.fn((_channel: number, _path: string, _level: number) => true),
+  isConnected: vi.fn(() => true),
+  globalSettings: {} as Record<string, unknown>,
+}));
+
+vi.mock("@iracedeck/audio-service", () => ({
+  AudioChannel: { Ambient: 0, SFX: 1, Voice: 2, Radar: 3, Feedback: 4 },
+  getAudio: () => ({ playOnChannelAtLevel: tick.playOnChannelAtLevel }),
 }));
 
 vi.mock("@iracedeck/icons/ai-spotter-controls/damage-report.svg", () => ({
@@ -36,6 +50,7 @@ vi.mock("@iracedeck/icons/ai-spotter-controls/silence.svg", () => ({
 }));
 
 vi.mock("@iracedeck/deck-core", () => ({
+  getSimConnection: () => ({ isConnected: tick.isConnected }),
   CommonSettings: {
     extend: (_fields: unknown) => {
       const schema = {
@@ -115,7 +130,7 @@ vi.mock("@iracedeck/deck-core", () => ({
 
 vi.mock("@iracedeck/settings", () => ({
   getGlobalColors: vi.fn(() => ({})),
-  getGlobalSettings: vi.fn(() => ({})),
+  getGlobalSettings: vi.fn(() => tick.globalSettings),
   isSimHubBinding: vi.fn(
     (v: unknown) => v !== null && typeof v === "object" && (v as Record<string, unknown>).type === "simhub",
   ),
@@ -132,6 +147,9 @@ function fakeEvent(actionId: string, settings: Record<string, unknown> = {}) {
 describe("AiSpotterControls", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    _resetVolumeTicks();
+    tick.isConnected.mockReturnValue(true);
+    tick.globalSettings = {};
   });
 
   describe("SPOTTER_GLOBAL_KEYS", () => {
@@ -314,5 +332,60 @@ describe("AiSpotterControls", () => {
 
       expect(mockTapBinding).toHaveBeenCalledWith("spotterSilence");
     });
+  });
+
+  describe("volume step tick (#1455)", () => {
+    let action: AiSpotterControls;
+
+    beforeEach(() => {
+      action = new AiSpotterControls();
+      mockTapBinding.mockResolvedValue(true);
+      tick.globalSettings = { radarVolume: 60 };
+    });
+
+    afterEach(() => {
+      mockTapBinding.mockResolvedValue(undefined);
+    });
+
+    const press = (control: string) => action.onKeyDown(fakeEvent("action-1", { control }) as any);
+
+    it("Spotter Louder ticks the up clip once, at the Radar Volume level", async () => {
+      await press("louder");
+
+      expect(tick.playOnChannelAtLevel.mock.calls).toEqual([[4, "sfx/IRD-volume-up.wav", 0.6]]);
+    });
+
+    it("Spotter Quieter ticks the down clip once", async () => {
+      await press("quieter");
+
+      expect(tick.playOnChannelAtLevel.mock.calls).toEqual([[4, "sfx/IRD-volume-down.wav", 0.6]]);
+    });
+
+    it("does not tick a tap that was not sent", async () => {
+      mockTapBinding.mockResolvedValue(false);
+
+      await press("louder");
+
+      expect(tick.playOnChannelAtLevel).not.toHaveBeenCalled();
+    });
+
+    it("does not tick while the sim is not connected", async () => {
+      tick.isConnected.mockReturnValue(false);
+
+      await press("quieter");
+
+      expect(mockTapBinding).toHaveBeenCalledWith("spotterQuieter");
+      expect(tick.playOnChannelAtLevel).not.toHaveBeenCalled();
+    });
+
+    it.each(["damage-report", "weather-report", "toggle-report-laps", "announce-leader", "silence"])(
+      "never ticks %s, which is not a step",
+      async (control) => {
+        await press(control);
+
+        expect(mockTapBinding).toHaveBeenCalledTimes(1);
+        expect(tick.playOnChannelAtLevel).not.toHaveBeenCalled();
+      },
+    );
   });
 });

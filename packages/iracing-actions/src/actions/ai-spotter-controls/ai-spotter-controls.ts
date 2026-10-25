@@ -26,6 +26,7 @@ import weatherReportIconSvg from "@iracedeck/icons/ai-spotter-controls/weather-r
 import { getGlobalColors } from "@iracedeck/settings";
 import z from "zod";
 
+import { tickIRacingVolumeStep } from "../../audio/volume-tick.js";
 import {
   ADJUST_REPEAT_INTERVAL_MS,
   ADJUST_REPEAT_SAFETY_MS,
@@ -237,10 +238,15 @@ export class AiSpotterControls extends ConnectionStateAwareAction<AiSpotterContr
   /**
    * One spotter volume step — the first press and every hold-to-repeat step
    * alike (#1453): a tap of the Spotter Louder / Quieter key binding. Returns
-   * whether the press was sent.
+   * whether the press was sent, and a sent press ticks (#1455) while the sim
+   * is connected. The other controls are not steps and never tick.
    */
   private async performVolumeStep(control: SpotterVolumeControl): Promise<boolean> {
-    return this.tapBinding(SPOTTER_GLOBAL_KEYS[control]);
+    const sent = await this.tapBinding(SPOTTER_GLOBAL_KEYS[control]);
+
+    if (sent) tickIRacingVolumeStep(control === "louder" ? "up" : "down");
+
+    return sent;
   }
 
   /**
