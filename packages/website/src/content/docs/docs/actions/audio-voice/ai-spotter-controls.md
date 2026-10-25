@@ -149,6 +149,7 @@ Spotter Louder and Spotter Quieter can render as one **paired control**: place t
 - **Legacy (arrows)** — the classic speaker icon with its two lines of text (default for existing keys).
 - **Big +/−** — a big + or − with the **SPOTTER** label (newly placed keys start on **Split**, which draws this way).
 - **Big chevrons**, **Pill end** — alternative pair looks. With **Pill end** the two keys share one frame.
+- **Split**, **Edge chevrons**, **Joined pill** — also in the list, and drawn as **Big +/−**, **Big chevrons** and **Pill end** (below).
 
 iRacing doesn't report the spotter volume, so the styles that would show a level are drawn without it: **Split** as **Big +/−**, **Edge chevrons** as **Big chevrons**, **Joined pill** as **Pill end**. The label follows the normal title settings, so you can change or hide it under the title overrides.
 
