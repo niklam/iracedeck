@@ -3,6 +3,21 @@ import { isBackgroundTestInFlight, stopRaceEngineerScenarios } from "@iracedeck/
 import { AudioBus, AudioChannel, getAudio } from "@iracedeck/audio-service";
 import { frameOptionsFromSettings, getGlobalSettings, updateGlobalSettings } from "@iracedeck/settings";
 
+import {
+  readBackgroundVolume,
+  readRaceEngineerVolume,
+  readRadarVolume,
+  VOLUME_MAX,
+  VOLUME_MIN,
+  VOLUME_STEP,
+} from "./audio-levels.js";
+import { playVolumeTicks } from "./volume-tick.js";
+
+// The readers and the step constants live in the `audio-levels.ts` leaf (so the
+// tick module can read Radar Volume without a cycle); every caller keeps
+// importing them from here.
+export { readBackgroundVolume, readRaceEngineerVolume, readRadarVolume, VOLUME_MAX, VOLUME_MIN, VOLUME_STEP };
+
 /**
  * Shared volume + audio-bus helpers for iRaceDeck's own audio (Race Engineer
  * voice on {@link AudioBus.Voice}, pit ambience/SFX on
@@ -17,13 +32,6 @@ import { frameOptionsFromSettings, getGlobalSettings, updateGlobalSettings } fro
  * {@link applyRaceEngineerAudio} ensures a volume nudge from either action
  * respects an in-flight Voice Test / toggle acknowledgment the same way.
  */
-
-/** Volume step per key press, in 0–100 units. */
-export const VOLUME_STEP = 5;
-/** Lowest persisted volume (silent). */
-export const VOLUME_MIN = 0;
-/** Highest persisted volume (full). */
-export const VOLUME_MAX = 100;
 
 // ─── Race Engineer master-gate in-flight bypass flags ────────────────────────
 
@@ -82,37 +90,6 @@ export function readFrameOptions(): FrameOptions {
   return frameOptionsFromSettings(getGlobalSettings());
 }
 
-// ─── Volume readers ──────────────────────────────────────────────────────────
-
-/**
- * Read a 0–100 volume global. Defaults to {@link VOLUME_MAX} when missing or
- * unparseable so a very early startup (cache not yet hydrated) plays at full
- * volume rather than silently; rounds and clamps to the valid range.
- */
-function readVolume(key: string): number {
-  const raw = (getGlobalSettings() as Record<string, unknown>)[key];
-  const n = typeof raw === "number" ? raw : typeof raw === "string" ? Number(raw) : VOLUME_MAX;
-
-  if (!Number.isFinite(n)) return VOLUME_MAX;
-
-  return Math.max(VOLUME_MIN, Math.min(VOLUME_MAX, Math.round(n)));
-}
-
-/** Current Radar tick volume (0–100). */
-export function readRadarVolume(): number {
-  return readVolume("radarVolume");
-}
-
-/** Current Race Engineer voice volume (0–100). */
-export function readRaceEngineerVolume(): number {
-  return readVolume("raceEngineerVolume");
-}
-
-/** Current pit ambience / walkie-talkie SFX volume (0–100). */
-export function readBackgroundVolume(): number {
-  return readVolume("backgroundVolume");
-}
-
 // ─── Bus application ─────────────────────────────────────────────────────────
 
 /**
@@ -157,10 +134,28 @@ function clampVolume(value: number): number {
 }
 
 /**
+ * The volume step tick for a level that moved from `current` to `next`
+ * (#1455): one tick per step actually applied, at the new level. Rounded up,
+ * so a level the Settings window left off the 5-grid (52 → 57, 98 → 100)
+ * still counts the step it took. The callers return before this when the
+ * level did not move, so a press at 0 or 100 is silent: twenty ticks down
+ * from 100 and then nothing means 0.
+ *
+ * Here rather than in the surfaces, so every one of them — the Audio Controls
+ * keys and their hold-repeat, the dial, the Pit Crew key's Radar Volume mode,
+ * and any added later — ticks exactly once per step without remembering to.
+ * Not gated by the Race Engineer or radar switch: the tick is deck feedback.
+ */
+function tickAppliedSteps(current: number, next: number): void {
+  playVolumeTicks(next > current ? "up" : "down", Math.ceil(Math.abs(next - current) / VOLUME_STEP), next);
+}
+
+/**
  * Step the global `radarVolume` by `steps × VOLUME_STEP` (signed — a dial may
  * deliver several detents per event), persist it, and apply it to
- * {@link AudioBus.Alerts}. A no-op (no persist, no bus write) when already
- * clamped at the boundary. Returns the resulting volume.
+ * {@link AudioBus.Alerts}, then tick each applied step (#1455). A no-op (no
+ * persist, no bus write, no tick) when already clamped at the boundary.
+ * Returns the resulting volume.
  */
 export function stepRadarVolumeBy(steps: number): number {
   const current = readRadarVolume();
@@ -170,6 +165,7 @@ export function stepRadarVolumeBy(steps: number): number {
 
   updateGlobalSettings({ radarVolume: next });
   applyRadarVolume();
+  tickAppliedSteps(current, next);
 
   return next;
 }
@@ -183,7 +179,8 @@ export function stepRadarVolume(direction: "up" | "down"): number {
  * Step the global `raceEngineerVolume` by `steps × VOLUME_STEP` (signed),
  * persist it, and re-apply the Race Engineer audio gate. While Race Engineer
  * is disabled the value still updates but Voice stays muted (the gate is
- * respected). A no-op when already clamped at the boundary. Returns the
+ * respected) — and the step still ticks, at the value it stored (#1455). A
+ * no-op (no tick either) when already clamped at the boundary. Returns the
  * resulting volume.
  */
 export function stepRaceEngineerVolumeBy(steps: number): number {
@@ -194,6 +191,7 @@ export function stepRaceEngineerVolumeBy(steps: number): number {
 
   updateGlobalSettings({ raceEngineerVolume: next });
   applyRaceEngineerAudio();
+  tickAppliedSteps(current, next);
 
   return next;
 }

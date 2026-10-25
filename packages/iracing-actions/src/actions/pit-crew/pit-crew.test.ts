@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { z } from "zod";
 
 import { _resetFeatureGateSync } from "../../audio/feature-gates.js";
+import { _resetVolumeTicks } from "../../audio/volume-tick.js";
 // Imports appear above the `vi.mock(...)` blocks because the repo-wide
 // prettier config (@elgato/prettier-config + @trivago/prettier-plugin-sort-imports)
 // hoists every import to the top and won't leave them interleaved with other
@@ -32,7 +33,10 @@ const hoisted = vi.hoisted(() => {
   const setBusVolume = vi.fn();
   const playOnChannel = vi.fn<(...args: unknown[]) => boolean>().mockReturnValue(true);
   const onChannelComplete = vi.fn();
-  const getAudio = vi.fn(() => ({ setBusVolume, playOnChannel, onChannelComplete }));
+  // The volume step tick (#1455) plays through the real step helper and the
+  // real tick module; this is the one call it makes on the mixer.
+  const playOnChannelAtLevel = vi.fn((_channel: number, _path: string, _level: number) => true);
+  const getAudio = vi.fn(() => ({ setBusVolume, playOnChannel, playOnChannelAtLevel, onChannelComplete }));
 
   const setRadarEnabled = vi.fn();
   const playRadarTest = vi.fn();
@@ -81,6 +85,7 @@ const hoisted = vi.hoisted(() => {
   return {
     setBusVolume,
     playOnChannel,
+    playOnChannelAtLevel,
     onChannelComplete,
     getAudio,
     setRadarEnabled,
@@ -141,7 +146,7 @@ vi.mock("@iracedeck/audio-scenarios/pit-crew", () => ({
 
 vi.mock("@iracedeck/audio-service", () => ({
   AudioBus: { Voice: 0, Background: 1, Alerts: 2 },
-  AudioChannel: { Ambient: 0, SFX: 1, Voice: 2, Radar: 3 },
+  AudioChannel: { Ambient: 0, SFX: 1, Voice: 2, Radar: 3, Feedback: 4 },
   getAudio: hoisted.getAudio,
 }));
 
@@ -276,6 +281,7 @@ beforeEach(() => {
   // intends, otherwise a previous test that forced false to exercise the
   // missing-clip path poisons every test that mounts the action.
   hoisted.playOnChannel.mockReturnValue(true);
+  _resetVolumeTicks();
   hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: true, pitCrewRadarEnabled: true, radarVolume: 100 });
   hoisted.globalSettingsListeners.clear();
   hoisted.resetSdk();
@@ -1200,6 +1206,40 @@ describe("PitCrew action", () => {
 
       expect(hoisted.setBusVolume).toHaveBeenCalledWith(2, 0.75);
       expect(hoisted.updateGlobalSettings).toHaveBeenCalledWith({ radarVolume: 75 });
+    });
+
+    it("ticks the step once, up, at the new Radar level (#1455)", async () => {
+      hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: true, pitCrewRadarEnabled: true, radarVolume: 70 });
+      const action = new PitCrew();
+      await action.onWillAppear(buildAppearEvent({ mode: "radar-volume", direction: "up" }) as never);
+      vi.clearAllMocks();
+
+      await action.onKeyDown(buildAppearEvent({ mode: "radar-volume", direction: "up" }) as never);
+
+      expect(hoisted.playOnChannelAtLevel.mock.calls).toEqual([[4, "sfx/IRD-volume-up.wav", 0.75]]);
+    });
+
+    it("ticks a step down with the radar switched off, at the floor below it (#1455)", async () => {
+      hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: false, pitCrewRadarEnabled: false, radarVolume: 10 });
+      const action = new PitCrew();
+      await action.onWillAppear(buildAppearEvent({ mode: "radar-volume", direction: "down" }) as never);
+      vi.clearAllMocks();
+
+      await action.onKeyDown(buildAppearEvent({ mode: "radar-volume", direction: "down" }) as never);
+
+      expect(hoisted.updateGlobalSettings).toHaveBeenCalledWith({ radarVolume: 5 });
+      expect(hoisted.playOnChannelAtLevel.mock.calls).toEqual([[4, "sfx/IRD-volume-down.wav", 0.2]]);
+    });
+
+    it("does not tick a press at the limit (#1455)", async () => {
+      hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: true, pitCrewRadarEnabled: true, radarVolume: 100 });
+      const action = new PitCrew();
+      await action.onWillAppear(buildAppearEvent({ mode: "radar-volume", direction: "up" }) as never);
+      vi.clearAllMocks();
+
+      await action.onKeyDown(buildAppearEvent({ mode: "radar-volume", direction: "up" }) as never);
+
+      expect(hoisted.playOnChannelAtLevel).not.toHaveBeenCalled();
     });
 
     it("steps down by 5 on direction=down", async () => {

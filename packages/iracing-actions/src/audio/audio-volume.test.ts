@@ -25,6 +25,7 @@ const hoisted = vi.hoisted(() => {
   const getAudio = vi.fn(() => ({ setBusVolume, stopChannel }));
   const stopRaceEngineerScenarios = vi.fn();
   const isBackgroundTestInFlight = vi.fn(() => false);
+  const playVolumeTicks = vi.fn();
 
   let globalSettings: Record<string, unknown> = {};
   const updateGlobalSettings = vi.fn((partial: Record<string, unknown>) => {
@@ -38,6 +39,7 @@ const hoisted = vi.hoisted(() => {
     stopRaceEngineerScenarios,
     getAudio,
     isBackgroundTestInFlight,
+    playVolumeTicks,
     updateGlobalSettings,
     getGlobalSettings,
     setGlobalSettings: (next: Record<string, unknown>) => {
@@ -45,6 +47,12 @@ const hoisted = vi.hoisted(() => {
     },
   };
 });
+
+// The tick module is its own unit (volume-tick.test.ts); here only what the
+// step helpers ask of it is checked: one tick per applied step, at the new level.
+vi.mock("./volume-tick.js", () => ({
+  playVolumeTicks: hoisted.playVolumeTicks,
+}));
 
 vi.mock("@iracedeck/audio-scenarios/pit-crew", () => ({
   isBackgroundTestInFlight: hoisted.isBackgroundTestInFlight,
@@ -326,6 +334,67 @@ describe("audio-volume", () => {
       expect(stepRaceEngineerVolume("down")).toBe(0);
       expect(hoisted.updateGlobalSettings).not.toHaveBeenCalled();
       expect(hoisted.setBusVolume).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("volume step tick (#1455)", () => {
+    it("stepRaceEngineerVolumeBy(+1) from 50 ticks once, up, at 55", () => {
+      hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: true, raceEngineerVolume: 50 });
+
+      stepRaceEngineerVolumeBy(1);
+
+      expect(hoisted.playVolumeTicks.mock.calls).toEqual([["up", 1, 55]]);
+    });
+
+    it("ticks once per applied step, down, at the new level", () => {
+      hoisted.setGlobalSettings({ radarVolume: 50 });
+
+      stepRadarVolumeBy(-3);
+
+      expect(hoisted.playVolumeTicks.mock.calls).toEqual([["down", 3, 35]]);
+    });
+
+    it("stepRadarVolumeBy(+3) from 95 ticks once — the one step it applied", () => {
+      hoisted.setGlobalSettings({ radarVolume: 95 });
+
+      expect(stepRadarVolumeBy(3)).toBe(100);
+      expect(hoisted.playVolumeTicks.mock.calls).toEqual([["up", 1, 100]]);
+    });
+
+    it("counts a partial step off the 5-grid as a step", () => {
+      hoisted.setGlobalSettings({ radarVolume: 98 });
+
+      stepRadarVolume("up");
+
+      expect(hoisted.playVolumeTicks.mock.calls).toEqual([["up", 1, 100]]);
+    });
+
+    it("ticks nothing for a step at the clamp, either level, either end", () => {
+      hoisted.setGlobalSettings({ radarVolume: 100, raceEngineerVolume: 0 });
+
+      stepRadarVolume("up");
+      stepRadarVolumeBy(4);
+      stepRaceEngineerVolume("down");
+      stepRaceEngineerVolumeBy(-2);
+
+      expect(hoisted.playVolumeTicks).not.toHaveBeenCalled();
+    });
+
+    it("ticks a Race Engineer step taken with the engineer off, at the stored value", () => {
+      hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: false, raceEngineerVolume: 50 });
+
+      stepRaceEngineerVolume("down");
+
+      expect(hoisted.setBusVolume).toHaveBeenCalledWith(0, 0);
+      expect(hoisted.playVolumeTicks.mock.calls).toEqual([["down", 1, 45]]);
+    });
+
+    it("ticks a Radar step taken with the radar off", () => {
+      hoisted.setGlobalSettings({ pitCrewRadarEnabled: false, radarVolume: 50 });
+
+      stepRadarVolume("up");
+
+      expect(hoisted.playVolumeTicks.mock.calls).toEqual([["up", 1, 55]]);
     });
   });
 });
