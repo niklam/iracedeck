@@ -1737,10 +1737,18 @@ class ScenarioEngine implements IScenarioEngine {
 
   /**
    * Subscribe `endFires` to an `endsOn` event (issue #1407), once per distinct
-   * event however many contracts name it. Nothing that ends a line on an
-   * event also fires on it (validation refuses a contract ended by its own
-   * trigger), so where this runs among the event's other handlers does not
-   * matter.
+   * event however many contracts name it. A contract is never ended by its
+   * own trigger (validation refuses it), but the end can still race ANOTHER
+   * contract that the same event triggers, because the bus dispatches in
+   * subscription order: one triggered immediately (no `triggerDelay` /
+   * `settle`), not `queueable`, on the same bus as a line this end stops
+   * silently, plays only if `endFires` ran first — otherwise it meets the
+   * busy bus and is dropped. That order is registration order, and not
+   * stable: a redefined contract subscribes again at the end, while this
+   * subscription keeps its place. Nothing hits it today — `pitLane.exited`
+   * triggers only `limiter-on-track`, whose `triggerDelay` makes it a timer
+   * that runs after every handler — but a new contract of that shape must
+   * not rely on the order.
    */
   private subscribeToEnd(event: SimEventName): void {
     if (this.endSubscriptions.has(event)) return;
@@ -1758,9 +1766,10 @@ class ScenarioEngine implements IScenarioEngine {
    * logged as dropped with the reason `ended`, and the playing fire either
    * plays its cut tail (`playCutTail`) — once words have been heard and the
    * tail is not empty — or is stopped silently and the bus drained, as a
-   * disable does. A fire already in its close ops (`closeStarted`) has been
-   * heard in full and is letting go of the button: it is left to finish, so
-   * the driver never hears "never mind" after a complete line. A fire that is
+   * disable does. A fire whose line has been heard in full (`lineFinished`:
+   * no body clip left from the op in flight on — it is in its close ops, or
+   * in a trailing pause after its last clip) is left to finish, so the
+   * driver never hears "never mind" after a complete line. A fire that is
    * already a cut tail (`ended`) is left alone too, so a second end — a tow
    * or a reset can publish the exit twice — is a no-op. One debug line per
    * contract that had anything to end.
@@ -1803,7 +1812,7 @@ class ScenarioEngine implements IScenarioEngine {
 
         if (fire === null || fire.id !== id || fire.ended) continue;
 
-        if (closeStarted(fire)) {
+        if (lineFinished(fire)) {
           note(id, "playing → closing");
         } else if (fire.cutTail.length > 0 && wordsHeard(fire)) {
           this.playCutTail(state, fire);
@@ -3323,13 +3332,31 @@ function buildResumeState(active: ActiveFire, voice: string | null, generation: 
 }
 
 /**
+ * How many ops of a playing fire's FULL expansion (`sourceOps`) the driver has
+ * started to hear (issue #1407) — the op in flight included, since `index`
+ * points one past it. Judged against the source expansion rather than `ops`
+ * so that a resumed fire is read by where its line actually is, not by its
+ * re-key preroll: the ops before `sourceStart` were heard before the
+ * interrupt, and the op at `sourceStart` was in flight when the interrupt cut
+ * it, so a resumed fire has started at least `sourceStart + 1` source ops
+ * even while its preroll (the first `prerollCount` ops of `ops`, a replay of
+ * the open) is still playing. A fresh fire has `sourceOps === ops` and no
+ * preroll, which makes this `index`.
+ */
+function startedSourceOps(fire: ActiveFire): number {
+  const played = Math.max(0, fire.index - fire.prerollCount);
+
+  return fire.sourceStart > 0 ? fire.sourceStart + Math.max(1, played) : played;
+}
+
+/**
  * Whether the driver has heard words of a playing fire (issue #1407), which
- * decides whether an end plays the cut tail or stops it silently. True once
- * an op with no frame tag — a body op — has been consumed (`index` points one
- * past the op in flight, so a body clip that has just started counts: words
- * started are words heard), and for a resumed fire from its first op, since
- * its head was heard before the interrupt cut it (`sourceStart > 0`) even
- * while its re-key preroll is still playing.
+ * decides whether an end plays the cut tail or stops it silently: an op with
+ * no frame tag — a body op — is among the source ops started
+ * (`startedSourceOps`), so a body clip that has just started counts (words
+ * started are words heard). A resumed fire is read by its source position:
+ * one cut mid-body has been heard even while its re-key preroll plays, and
+ * one cut inside a two-beep open has not, so it stops silently.
  *
  * Any untagged op counts, not only a clip: a body that began with a `pause`
  * or an `ambient` step would count as heard once that op is consumed, before
@@ -3337,16 +3364,25 @@ function buildResumeState(active: ActiveFire, voice: string | null, generation: 
  * would get the tail a beat early, which errs towards closing the radio.
  */
 function wordsHeard(fire: ActiveFire): boolean {
-  return fire.sourceStart > 0 || fire.ops.slice(0, fire.index).some((op) => op.frame === undefined);
+  return fire.sourceOps.slice(0, startedSourceOps(fire)).some((op) => op.frame === undefined);
 }
 
 /**
- * Whether a playing fire has reached its frame's close ops (issue #1407): the
- * line was heard in full and the radio is closing, so an end leaves it to
- * finish. A resumed fire's re-key preroll is tagged `open` and never counts.
+ * Whether a playing fire's line has been heard in full (issue #1407): it has
+ * started, and no body clip (an untagged `play`) remains from the op in
+ * flight on — it is in its close ops, or in a trailing pause or ambience op
+ * after its last clip. An end then leaves it to finish rather than say
+ * "never mind" after a complete line. While the last body clip is itself in
+ * flight the line is still being spoken, so it does not count. Read against
+ * the source expansion like `wordsHeard`, so a fire resumed into its close
+ * counts as finished during its re-key preroll.
  */
-function closeStarted(fire: ActiveFire): boolean {
-  return fire.ops.slice(0, fire.index).some((op) => op.frame === "close");
+function lineFinished(fire: ActiveFire): boolean {
+  const started = startedSourceOps(fire);
+
+  if (started === 0) return false;
+
+  return !fire.sourceOps.slice(started - 1).some((op) => op.kind === "play" && op.frame === undefined);
 }
 
 /**

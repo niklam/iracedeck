@@ -194,9 +194,10 @@ export type SpeakGate = {
  *   `frame: "none"`), so the engineer audibly abandons the line and lets go
  *   of the button. The tail holds the bus like any fire and may itself be
  *   cut by a same-family or heavier `interrupt` arrival;
- * - a playing fire already in its frame's close ops was heard in full and is
- *   letting go of the button: it is left to finish, so "never mind" never
- *   follows a complete line.
+ * - a playing fire whose line was heard in full — in its frame's close ops,
+ *   or in a trailing pause after its last clip — is letting go of the
+ *   button: it is left to finish, so "never mind" never follows a complete
+ *   line.
  *
  * An ended fire is never re-queued, whatever its `queueable` or `resumable`
  * say. A fire cut for any other reason (an interrupt, a same-family

@@ -113,9 +113,22 @@ const LIGHT = "voice/default/other/light-01.mp3";
 const HEAVY = "voice/default/other/heavy-01.mp3";
 const FAMILY = "voice/default/other/family-01.mp3";
 const RADAR = "voice/default/other/radar-01.mp3";
+const BEEP_2 = "voice/default/radio/beep-01.mp3";
 
 const manifest: AudioAssetsManifest = {
-  clips: [TICK_OPEN, TICK_CLOSE, "sfx/IRD-ambient-pit.mp3", NEVER_MIND, BODY_A, BODY_B, LIGHT, HEAVY, FAMILY, RADAR],
+  clips: [
+    TICK_OPEN,
+    TICK_CLOSE,
+    "sfx/IRD-ambient-pit.mp3",
+    NEVER_MIND,
+    BODY_A,
+    BODY_B,
+    LIGHT,
+    HEAVY,
+    FAMILY,
+    RADAR,
+    BEEP_2,
+  ],
   ambientLoop: "sfx/IRD-ambient-pit.mp3",
   ticks: { open: TICK_OPEN, close: TICK_CLOSE },
 };
@@ -448,6 +461,97 @@ describe("endsOn (issue #1407)", () => {
     flush();
 
     expect(played()).toEqual([TICK_OPEN, BODY_A, HEAVY, TICK_OPEN, NEVER_MIND, TICK_CLOSE]);
+    expect(endedLines()).toEqual(['Scenario "test.ends" ended by pitLane.exited (playing → tail)']);
+  });
+
+  it("resumed into its close, ended during the re-key preroll, is left to finish — no never mind", () => {
+    engine.defineContract(endsContract({ weight: WEIGHT.NORMAL, queueable: true, resumable: true }));
+    engine.defineContract(contract("test.heavy", { weight: WEIGHT.CRITICAL, interrupt: true, frame: NO_FRAME }));
+    engine.setScripts(new Map([["default", script()]]));
+
+    startEndsMidBody();
+    audio._triggerChannelEnd(AudioChannel.Voice); // a ends; b plays
+    audio._triggerChannelEnd(AudioChannel.Voice); // b ends; the close tick is in flight
+    engine.fire("test.heavy"); // cuts the close tick and stashes a resume there
+    audio._triggerChannelEnd(AudioChannel.Voice); // the heavy line ends; the resume re-keys with the open tick
+    expect(played()).toEqual([TICK_OPEN, BODY_A, BODY_B, TICK_CLOSE, HEAVY, TICK_OPEN]);
+    expect(mockLogger.info).toHaveBeenCalledWith('Resuming scenario "test.ends"');
+
+    // The whole line was heard before the interrupt: the end leaves the close to finish.
+    bus.publishEvent("pitLane.exited");
+    flush();
+
+    expect(played()).toEqual([TICK_OPEN, BODY_A, BODY_B, TICK_CLOSE, HEAVY, TICK_OPEN, TICK_CLOSE]);
+    expect(played()).not.toContain(NEVER_MIND);
+    expect(endedLines()).toEqual(['Scenario "test.ends" ended by pitLane.exited (playing → closing)']);
+    expect(voiceBus().playingId).toBeNull();
+  });
+
+  it("resumed from inside a two-beep open, ended during the re-key preroll, stops silently", () => {
+    engine.defineContract(endsContract({ weight: WEIGHT.NORMAL, queueable: true, resumable: true }));
+    engine.defineContract(contract("test.heavy", { weight: WEIGHT.CRITICAL, interrupt: true, frame: NO_FRAME }));
+    engine.setScripts(new Map([["default", script({ ...RADIO_WITH_CUT, open: [TICK_OPEN, BEEP_2] })]]));
+
+    bus.publishEvent("flag.green.raised");
+    audio._triggerChannelEnd(AudioChannel.SFX); // the first beep ends; the second is in flight
+    engine.fire("test.heavy"); // cuts the open at its second beep and stashes a resume there
+    audio._triggerChannelEnd(AudioChannel.Voice); // the heavy line ends; the resume re-keys with the first beep
+    expect(played()).toEqual([TICK_OPEN, BEEP_2, HEAVY, TICK_OPEN]);
+    expect(mockLogger.info).toHaveBeenCalledWith('Resuming scenario "test.ends"');
+
+    // Not a word of the body has been heard: nothing to abandon.
+    bus.publishEvent("pitLane.exited");
+    flush();
+
+    expect(played()).toEqual([TICK_OPEN, BEEP_2, HEAVY, TICK_OPEN]);
+    expect(endedLines()).toEqual(['Scenario "test.ends" ended by pitLane.exited (playing → silent)']);
+    expect(voiceBus().playingId).toBeNull();
+  });
+
+  it("ended in a trailing pause after its last clip, it is left to finish — no never mind", () => {
+    vi.useFakeTimers();
+    engine.defineContract(endsContract());
+    const base = script();
+    engine.setScripts(
+      new Map([
+        ["default", { ...base, scenarios: { ...base.scenarios, "test.ends": { sequence: [BODY_A, { pause: 500 }] } } }],
+      ]),
+    );
+
+    startEndsMidBody();
+    audio._triggerChannelEnd(AudioChannel.Voice); // a ends; the trailing pause is armed
+
+    bus.publishEvent("pitLane.exited");
+    expect(endedLines()).toEqual(['Scenario "test.ends" ended by pitLane.exited (playing → closing)']);
+
+    vi.advanceTimersByTime(500);
+    flush();
+
+    expect(played()).toEqual([TICK_OPEN, BODY_A, TICK_CLOSE]);
+    expect(played()).not.toContain(NEVER_MIND);
+  });
+
+  it("ended in a pause between two clips, it plays the tail — the line is not finished", () => {
+    vi.useFakeTimers();
+    engine.defineContract(endsContract());
+    const base = script();
+    engine.setScripts(
+      new Map([
+        [
+          "default",
+          { ...base, scenarios: { ...base.scenarios, "test.ends": { sequence: [BODY_A, { pause: 500 }, BODY_B] } } },
+        ],
+      ]),
+    );
+
+    startEndsMidBody();
+    audio._triggerChannelEnd(AudioChannel.Voice); // a ends; the pause before b is armed
+
+    bus.publishEvent("pitLane.exited");
+    vi.advanceTimersByTime(1000);
+    flush();
+
+    expect(played()).toEqual([TICK_OPEN, BODY_A, NEVER_MIND, TICK_CLOSE]);
     expect(endedLines()).toEqual(['Scenario "test.ends" ended by pitLane.exited (playing → tail)']);
   });
 
