@@ -63,6 +63,7 @@ import {
   getPlayerCarNumberFromSessionInfo,
   type TelemetryData,
 } from "@iracedeck/iracing-sdk";
+import { requestCameraSwitch } from "@iracedeck/replay-engine";
 import { getGlobalColors, getGlobalSettings, updateGlobalSettings } from "@iracedeck/settings";
 import z from "zod";
 
@@ -745,6 +746,14 @@ export class RaceAdmin extends SimIRacingAction<RaceAdminSettings> {
    * number and switch the camera to it, keeping the current camera group
    * (group 0 / camera 0 — the Replay Control driver-walk precedent). Failures
    * alert on the key and change nothing.
+   *
+   * The switch goes through the replay engine's camera-switch waiter (#1428 /
+   * #1435), as every camera key's does: at once live and on a quiet replay,
+   * and behind a replay jump once it has landed, interrupting a Jump to
+   * Fastest Lap or Jump to Race Start walk first. It is dropped if by then the
+   * key has left the screen or the replay has been left. A failed switch
+   * alerts when it goes out, not at the press. The waiter's promise may stay
+   * pending for as long as a jump takes, so it is not awaited.
    */
   private async executeFocusSelect(ev: IDeckKeyDownEvent<RaceAdminSettings>, car: SlotCar): Promise<void> {
     const sessionInfo = this.sdkController.getSessionInfo();
@@ -757,17 +766,33 @@ export class RaceAdmin extends SimIRacingAction<RaceAdminSettings> {
       return;
     }
 
-    const success = getCommands().camera.switchNum(carNumberRaw, 0, 0);
+    const contextId = ev.action.id;
 
-    if (!success) {
-      this.logger.warn("Focus select: camera switch failed");
-      await ev.action.showAlert?.();
+    // The waiter logs a send that fails and never rejects for one.
+    void requestCameraSwitch(
+      async () => {
+        const success = getCommands().camera.switchNum(carNumberRaw, 0, 0);
 
-      return;
-    }
+        if (!success) {
+          this.logger.warn("Focus select: camera switch failed");
+          await ev.action.showAlert?.();
 
-    this.logger.info("Camera focused on selected car");
-    this.logger.debug(`Focused CarIdx ${car.carIdx} (#${car.carNumber})`);
+          return;
+        }
+
+        this.logger.info("Camera focused on selected car");
+        this.logger.debug(`Focused CarIdx ${car.carIdx} (#${car.carNumber})`);
+      },
+      {
+        by: "race-admin select-car",
+        label: "Race admin",
+        name: `car #${car.carNumber}`,
+        asked: "select-car pressed",
+        surface: "the key",
+        stillValid: () => this.activeContexts.has(contextId) && this.sdkController.getReplayState().inReplay,
+        logger: this.logger,
+      },
+    );
   }
 
   /**

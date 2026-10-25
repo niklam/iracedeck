@@ -1,4 +1,5 @@
 import { type KeyCombination, requestProfileSwitch } from "@iracedeck/deck-core";
+import { getCommands } from "@iracedeck/deck-iracing";
 import {
   buildTemplateContext,
   classifyCarNumberTarget,
@@ -6,10 +7,19 @@ import {
   getPlayerCarNumberFromSessionInfo,
   resolveTemplate,
 } from "@iracedeck/iracing-sdk";
+import {
+  beginReplayJump,
+  claimReplayCursor,
+  FASTEST_LAP_WALK_OWNER,
+  pressReplayCommand,
+  runReplayJump,
+} from "@iracedeck/replay-engine";
+import { type FakeReplay, fakeReplay, steppedReplayState } from "@iracedeck/replay-engine/testing";
 import { getGlobalSettings, updateGlobalSettings } from "@iracedeck/settings";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { _resetSelectIntents, setSelectIntent } from "../../shared/car-select-intent.js";
+import { engineOverDeck } from "../../shared/replay-engine-deck.test-support.js";
 import { buildAdminCommand, buildAdminCommandPrefix, resolveDriverTarget } from "./race-admin-commands.js";
 import { getModesByOptgroup, RACE_ADMIN_MODE_META, RACE_ADMIN_MODES } from "./race-admin-modes.js";
 import {
@@ -22,7 +32,10 @@ import { generateRaceAdminSvg, RaceAdmin } from "./race-admin.js";
 
 // Mock SDK
 // Mock iracing-sdk
-vi.mock("@iracedeck/iracing-sdk", () => ({
+vi.mock("@iracedeck/iracing-sdk", async (importOriginal) => ({
+  // The real module under the doubles: the replay engine the focus press
+  // waits on (#1428 / #1435) reads telemetry through it.
+  ...(await importOriginal<typeof import("@iracedeck/iracing-sdk")>()),
   getCarNumberFromSessionInfo: vi.fn(),
   getCarNumberRawFromSessionInfo: vi.fn(() => 24),
   getAllCarNumbers: vi.fn(() => []),
@@ -1235,6 +1248,169 @@ describe("RaceAdmin", () => {
           expect.anything(),
           true,
         );
+      });
+
+      // The focus press's switch goes through the replay engine's camera-switch
+      // waiter (#1428 / #1435): behind a position jump it waits for the landing,
+      // since iRacing drops a camera change sent into a seek. Against the engine
+      // over this file's deck mocks and the gate's fake iRacing replay.
+      describe("behind a replay jump (#1428 / #1435)", () => {
+        /** Where the replay stands at the press. */
+        const START = 100_000;
+        /** Where the marker jump under way goes: about 1.6 s of seeking. */
+        const TARGET = 300_000;
+        /** How far the fake's Next Lap search goes. */
+        const LAP_FRAMES = 3_000;
+
+        const { resetEngine } = engineOverDeck();
+
+        let sim: FakeReplay;
+        let action: RaceAdmin;
+        let showAlert: ReturnType<typeof vi.fn>;
+        /** Each `switchNum` sent, and whether the sim was moving the replay then. */
+        let sent: { args: unknown[]; moving: boolean }[];
+
+        beforeEach(() => {
+          vi.useFakeTimers();
+          setSelectIntent("dev-1", { action: "focus-camera" });
+          sim = fakeReplay({ frame: START, searches: { nextLap: (from) => from + LAP_FRAMES } });
+          sent = [];
+          showAlert = vi.fn(async () => {});
+          mockCameraSwitchNum.mockImplementation((...args: unknown[]) => {
+            sent.push({ args, moving: sim.busy() });
+
+            return true;
+          });
+          vi.mocked(getCommands).mockReturnValue({
+            chat: { sendMessage: mockSendMessage, beginChat: mockBeginChat },
+            camera: { switchNum: mockCameraSwitchNum },
+            replay: sim.replay,
+          } as never);
+          action = makeFocusAction();
+
+          const sdk = action["sdkController"];
+
+          sdk.getCurrentTelemetry = vi.fn(() => sim.telemetry());
+          // The controller's debounced replay state, stepped from the sim's telemetry at every read.
+          Object.assign(
+            sdk,
+            steppedReplayState(
+              () => sim.telemetry(),
+              () => ({}),
+            ),
+          );
+          resetEngine({
+            controller: sdk,
+            replay: () => sim.replay,
+            readTelemetry: () => sim.telemetry(),
+            inReplay: () => true,
+          });
+        });
+
+        afterEach(() => {
+          mockCameraSwitchNum.mockImplementation(() => true);
+          vi.mocked(getCommands).mockImplementation(
+            () =>
+              ({
+                chat: { sendMessage: mockSendMessage, beginChat: mockBeginChat },
+                camera: { switchNum: mockCameraSwitchNum },
+              }) as never,
+          );
+          resetEngine();
+          vi.useRealTimers();
+        });
+
+        /** The car key on screen, then pressed with the focus intent armed. */
+        async function pressFocusKey(): Promise<void> {
+          await action.onWillAppear(makeSelectorAppear("ctx-sel", 1, 0, selectorSettings));
+          await action.onKeyDown(makeFocusKeyDown(showAlert));
+        }
+
+        /** A Next Marker jump to {@link TARGET}, under way: the seek showing. */
+        async function markerJumpUnderWay(): Promise<void> {
+          const jump = beginReplayJump("replay-markers next", sim.telemetry(), undefined, Date.now(), {
+            origin: "ctx-marker",
+            frame: TARGET,
+          });
+
+          void runReplayJump(jump, { frame: TARGET, readTelemetry: () => sim.telemetry() }).finally(() => jump.end());
+          await vi.advanceTimersByTimeAsync(100);
+
+          expect(sim.busy()).toBe(true);
+        }
+
+        it("sends at once on a quiet replay, the same call as live", async () => {
+          await pressFocusKey();
+
+          expect(sent).toEqual([{ args: [24, 0, 0], moving: false }]);
+        });
+
+        it("sends once after the landing, and the jump lands", async () => {
+          await markerJumpUnderWay();
+          await pressFocusKey();
+          await vi.advanceTimersByTimeAsync(200);
+
+          expect(sent).toEqual([]);
+
+          await vi.advanceTimersByTimeAsync(5_000);
+
+          expect(sim.frame()).toBe(TARGET);
+          expect(sent).toEqual([{ args: [24, 0, 0], moving: false }]);
+          expect(sim.thrown).toBe(0);
+          expect(showAlert).not.toHaveBeenCalled();
+        });
+
+        it("alerts when the switch that waited fails, when it goes out, not at the press", async () => {
+          mockCameraSwitchNum.mockImplementation((...args: unknown[]) => {
+            sent.push({ args, moving: sim.busy() });
+
+            return false;
+          });
+          await markerJumpUnderWay();
+          await pressFocusKey();
+          await vi.advanceTimersByTimeAsync(200);
+
+          expect(showAlert).not.toHaveBeenCalled();
+
+          await vi.advanceTimersByTimeAsync(5_000);
+
+          expect(sent).toHaveLength(1);
+          expect(showAlert).toHaveBeenCalledTimes(1);
+          expect(action["logger"].warn).toHaveBeenCalledWith("Focus select: camera switch failed");
+        });
+
+        it("sends at once behind a search on its way", async () => {
+          pressReplayCommand({ kind: "search", search: "nextLap" }, { by: "test search", origin: "ctx-search" });
+
+          expect(sim.busy()).toBe(true);
+
+          await pressFocusKey();
+
+          expect(sent).toEqual([{ args: [24, 0, 0], moving: true }]);
+        });
+
+        it("interrupts a lap walk, and takes no cursor", async () => {
+          const walk = claimReplayCursor(FASTEST_LAP_WALK_OWNER);
+
+          await pressFocusKey();
+
+          expect(walk.interruptedBy).toBe("race-admin select-car");
+          expect(walk.cancelledBy).toBeNull();
+          walk.release();
+        });
+
+        it("sends nothing when the key leaves the screen while it waits", async () => {
+          await markerJumpUnderWay();
+          await pressFocusKey();
+          await action.onWillDisappear(makeSelectorAppear("ctx-sel", 1, 0, selectorSettings));
+          await vi.advanceTimersByTimeAsync(5_000);
+
+          expect(sim.frame()).toBe(TARGET);
+          expect(sent).toEqual([]);
+          expect(action["logger"].debug).toHaveBeenCalledWith(
+            "Race admin: tap dropped (car #24), the key left the screen or the replay was left while it waited",
+          );
+        });
       });
     });
   });
