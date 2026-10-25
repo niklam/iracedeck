@@ -18,9 +18,9 @@ const IRACING_EXE = "iRacingSim64DX11.exe";
 
 /**
  * How long a lost SDK connection must stay lost before it counts as an
- * iRacing exit (issue #870). Some hosts never deliver applicationDidTerminate
- * (Ulanzi maps no app-monitoring events at all; Mirabox delivery is
- * unproven), so a sustained SDK disconnect is the only exit signal there.
+ * iRacing exit (issue #870). Ulanzi maps no app-monitoring events at all, so
+ * a sustained SDK disconnect is the only exit signal there (Stream Deck and
+ * Mirabox both deliver applicationDidTerminate, verified in #1347 and #1419).
  * The window is well above the controller's 2 s reconnect poll, so a
  * transient shared-memory blip reconnects and cancels the confirmation
  * instead of mis-reading as an exit.
@@ -284,7 +284,7 @@ export function isIRacingRunning(): boolean {
  * Check if iRacing is active by ANY available signal (issue #870): the app
  * monitor's launch/terminate tracking OR a live SDK shared-memory connection.
  * The two signals cover each other's gaps — the launch event can lag plugin
- * startup (or never arrive on hosts with unproven app monitoring), while the
+ * startup (or never arrive on a host without app monitoring), while the
  * SDK connects to iRacing directly regardless of the deck host. Returns false
  * when the SDK singleton isn't initialized yet.
  *
