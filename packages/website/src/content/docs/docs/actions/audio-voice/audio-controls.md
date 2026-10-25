@@ -88,7 +88,7 @@ Adjust iRaceDeck's own **Race Engineer voice** level — the same level as the R
 - **Method:** iRaceDeck audio (no iRacing command)
 - **Dial:** See [On a dial](#on-a-dial)
 - **Default binding:** None — controls iRaceDeck audio directly (no iRacing key binding)
-- **Telemetry-aware icon:** Yes, in a paired [Key Style](#key-styles--paired--buttons) — the key shows the current Race Engineer volume (iRaceDeck's own setting, not telemetry), or **OFF** while the Race Engineer is switched off
+- **Telemetry-aware icon:** No — in a paired [Key Style](#key-styles--paired--buttons) the key shows the current Race Engineer volume (iRaceDeck's own setting), or **OFF** while the Race Engineer is switched off
 
 #### Setting: Action
 
@@ -106,7 +106,7 @@ Adjust iRaceDeck's own proximity **Radar** tick level — the same level as the 
 - **Method:** iRaceDeck audio (no iRacing command)
 - **Dial:** See [On a dial](#on-a-dial)
 - **Default binding:** None — controls iRaceDeck audio directly (no iRacing key binding)
-- **Telemetry-aware icon:** Yes, in a paired [Key Style](#key-styles--paired--buttons) — the key shows the current Radar volume (iRaceDeck's own setting, not telemetry), or **OFF** while the Radar is switched off
+- **Telemetry-aware icon:** No — in a paired [Key Style](#key-styles--paired--buttons) the key shows the current Radar volume (iRaceDeck's own setting), or **OFF** while the Radar is switched off
 
 #### Setting: Action
 
@@ -138,7 +138,7 @@ Every volume key (Voice Chat, Master, Race Engineer Volume and Radar Volume, eac
 
 Every volume step plays one short tick, so you can count steps without looking at the deck: three presses of Volume Down, three ticks. Going up ticks at a higher pitch than going down, so a press on the wrong key is heard at once. Holding a key in a paired style ticks once for every step it repeats, and turning the dial ticks once per detent, spaced so a fast turn is heard as separate ticks rather than one smear.
 
-- **Race Engineer and Radar** tick at the level you just set, so each step up sounds a little louder than the last. A press at 0 or 100 changes nothing and makes no tick: twenty ticks down from 100 and then silence means you are at 0. They tick while the Race Engineer or the Radar is switched off, too.
+- **Race Engineer and Radar** tick at the level you just set, so each step up sounds a little louder than the last. A press down at 0 or up at 100 changes nothing and makes no tick: twenty presses down from 100 tick twenty times and reach 0, and the next press down is silent. They tick while the Race Engineer or the Radar is switched off, too.
 - **Voice Chat, Master and Spotter** tick at your **Radar** volume, the level every iRaceDeck sound follows, because iRacing does not report its own volumes. A tick means the key press was sent to iRacing: a key with no binding, or a press while iRacing isn't running, makes no tick. iRacing also does not report when its volume is already at the top or the bottom, so at its limit a press still ticks even though nothing changed.
 - **Quiet levels stay audible.** Below 20 the tick plays at 20, so it can still be heard at the low end, and a Radar volume of 0 does not silence it.
 
