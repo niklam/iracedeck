@@ -38,7 +38,8 @@ No title is shown by default — the artwork already reads `START` — but a tit
 | Off | Engine not running, press to crank — red `OFF` status bar, red border, and the artwork is dimmed |
 | On | Engine running — green `ON` status bar, green border, and the artwork is at full brightness |
 | Not available | No live telemetry — grey `N/A` status bar, grey border, dimmed artwork. Does not mean the car has no starter; pressing still sends the configured binding. |
-| Flashing | After a press — the artwork alternates between dimmed and full brightness every 250 ms over the real status bar and border, so a full-brightness badge over a red `OFF` bar is a flash frame, not a running engine. It runs for as long as the key is held (cranking reads as engine running, so the engine state cannot end it then); after release it stops when the engine reads running, or 3 seconds after the press. No flash starts when the engine is already running or the Starter binding is unset. Display only: the hold-to-crank behaviour is unchanged. |
+| Cranking | While the key is held with the engine not running — the artwork alternates between dimmed and full brightness over the real status bar and border, each frame shorter than the last (450 ms down to 120 ms, then 120 ms for as long as it is held). A full-brightness badge over a red `OFF` bar is a flash frame, not a running engine. It ends on release, or when the engine catches: stall bit clear **and** RPM at or above 500, since iRacing clears the stall bit from the first crank. No flash with the Starter binding unset. Display only: the hold-to-crank behaviour is unchanged. |
+| Chuk | A press while the engine is already running — one 200 ms dimmed blink over the green `ON` bar, then the normal `ON` look, however long the key is held. |
 
 ## Telemetry Integration
 
