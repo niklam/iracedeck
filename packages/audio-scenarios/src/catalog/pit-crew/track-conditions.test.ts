@@ -21,7 +21,7 @@ import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "j
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
-import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
+import { type CalloutScript } from "@iracedeck/callout-script";
 import { TRACK_CONDITIONS_CALLOUTS } from "@iracedeck/callout-settings";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { TrackWetness } from "@iracedeck/event-bus";
@@ -36,6 +36,7 @@ import {
   poolMemberPattern,
 } from "../../interpreter.js";
 import { familyGate } from "./callout-gate.test-util.js";
+import { familyReferences } from "./family-references.test-util.js";
 import { registerPitCrew, type TrackConditionsCalloutId } from "./index.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { _resetRadarEngine } from "./radar-engine.js";
@@ -429,7 +430,7 @@ describe("the bundled script's track-conditions entries (issue #1065)", () => {
   });
 
   it("names no vocabulary, no frame, no fragment and no pool alias — every line is one direct pool step", () => {
-    const refs = collectScriptReferences(TRACK_CONDITIONS_SCRIPT);
+    const refs = familyReferences(TRACK_CONDITIONS_SCRIPT);
 
     expect(refs.vars).toEqual([]);
     expect(refs.conds).toEqual([]);
@@ -463,7 +464,7 @@ describe("the bundled script's track-conditions entries (issue #1065)", () => {
       "track-conditions/worsening-very-wet",
     ];
 
-    expect([...collectScriptReferences(TRACK_CONDITIONS_SCRIPT).pools].sort()).toEqual(sources);
+    expect([...familyReferences(TRACK_CONDITIONS_SCRIPT).pools].sort()).toEqual(sources);
     expect(TRACK_CONDITIONS_CLIP_SOURCES.map(({ group, base }) => `${group}/${base}`).sort()).toEqual(sources);
 
     for (const { group, base } of TRACK_CONDITIONS_CLIP_SOURCES) {

@@ -12,13 +12,14 @@ import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "j
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
-import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
+import { type CalloutScript } from "@iracedeck/callout-script";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ScenarioContract } from "../../dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios, poolMemberPattern } from "../../interpreter.js";
+import { familyReferences } from "./family-references.test-util.js";
 import { PIT_WINDOW_CLIP_SOURCES, PIT_WINDOW_CONTRACTS, PIT_WINDOW_SCENARIO_IDS } from "./pit-window.js";
 
 const mockLogger = {
@@ -288,7 +289,7 @@ describe("the bundled script's pit-window entries (issue #1065)", () => {
   });
 
   it("references no vocabulary, no fragment and no frame — and the family registers none", () => {
-    const refs = collectScriptReferences(PIT_WINDOW_SCRIPT);
+    const refs = familyReferences(PIT_WINDOW_SCRIPT);
     const vocabulary = engine.vocabulary();
 
     expect(refs.vars).toEqual([]);
@@ -304,7 +305,7 @@ describe("the bundled script's pit-window entries (issue #1065)", () => {
   it("addresses exactly the published clip sources — the slashed form, no named pool — and every one has a clip in the bundled voice", () => {
     const sources = ["pit-window/closed", "pit-window/opened"];
 
-    expect([...collectScriptReferences(PIT_WINDOW_SCRIPT).pools].sort()).toEqual(sources);
+    expect([...familyReferences(PIT_WINDOW_SCRIPT).pools].sort()).toEqual(sources);
     expect(PIT_WINDOW_CLIP_SOURCES.map(({ group, base }) => `${group}/${base}`).sort()).toEqual(sources);
     expect(Object.keys(SCRIPT.pools ?? {})).toEqual([]);
 

@@ -15,7 +15,7 @@ import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "j
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
-import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
+import { type CalloutScript } from "@iracedeck/callout-script";
 import type { IEventBus, OpponentPitRelation, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -23,6 +23,7 @@ import { poolRef } from "../../dsl.js";
 import type { ScenarioContract } from "../../dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios, poolMemberPattern } from "../../interpreter.js";
+import { familyReferences } from "./family-references.test-util.js";
 import {
   _resetOpponentPitPending,
   OPPONENT_PIT_CLIP_SOURCES,
@@ -428,7 +429,7 @@ describe("the bundled script's opponent-pit entries (issue #1065)", () => {
   });
 
   it("references only the var this family registers, no condition, case, fragment or frame", () => {
-    const refs = collectScriptReferences(OPPONENT_PIT_SCRIPT);
+    const refs = familyReferences(OPPONENT_PIT_SCRIPT);
 
     expect(refs.vars).toEqual(["opponentPit.number"]);
     expect(refs.conds).toEqual([]);
@@ -448,7 +449,7 @@ describe("the bundled script's opponent-pit entries (issue #1065)", () => {
       "opponent-pit/others",
     ];
 
-    expect([...collectScriptReferences(OPPONENT_PIT_SCRIPT).pools].sort()).toEqual(sources);
+    expect([...familyReferences(OPPONENT_PIT_SCRIPT).pools].sort()).toEqual(sources);
     expect(OPPONENT_PIT_CLIP_SOURCES.map(({ group, base }) => `${group}/${base}`).sort()).toEqual(sources);
 
     for (const { group, base } of OPPONENT_PIT_CLIP_SOURCES) {

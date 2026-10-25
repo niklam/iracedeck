@@ -19,7 +19,7 @@ import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "j
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
-import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
+import { type CalloutScript } from "@iracedeck/callout-script";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import type { LiveGaps } from "@iracedeck/sim-events-iracing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -28,6 +28,7 @@ import { NO_FRAME, WEIGHT } from "../../dsl.js";
 import type { ScenarioContext, ScenarioContract } from "../../dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios, poolMemberPattern } from "../../interpreter.js";
+import { familyReferences } from "./family-references.test-util.js";
 import {
   _resetGapCalloutCooldown,
   buildGapThresholdContract,
@@ -968,7 +969,7 @@ describe("the bundled script's gap entries (issue #1065)", () => {
   });
 
   it("references only the vars this family registers, the one fragment, and no pool by name — every clip reaches the script through a var", () => {
-    const refs = collectScriptReferences(GAP_SCRIPT);
+    const refs = familyReferences(GAP_SCRIPT);
 
     expect(refs.vars).toEqual(["gap.decimal", "gap.line", "gap.readoutIntro", "gap.second", "gap.thresholdLine"]);
     expect(refs.pools).toEqual([]);

@@ -28,7 +28,7 @@ import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "j
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
-import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
+import { type CalloutScript } from "@iracedeck/callout-script";
 import { CAUTION_CALLOUTS } from "@iracedeck/callout-settings";
 import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { calculateRacePositions, Flags, hasFlag, SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
@@ -66,6 +66,7 @@ import {
   registerCautionVocabulary,
   SCENARIO_ID_TO_CAUTION_ID,
 } from "./caution.js";
+import { familyReferences } from "./family-references.test-util.js";
 import { CAUTION_MAX_QUEUE_WAIT_MS, FLAG_CONTRACTS, WAVING_FLAG_COOLDOWN_MS } from "./flag-alerts.js";
 import { registerPitCrew } from "./index.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
@@ -2811,8 +2812,8 @@ describe("the catch-up calls (#1168)", () => {
     });
 
     it("names no new vocabulary — the caution's own three names, and a pool per branch", () => {
-      const refsOf = (id: "catch-up" | "catch-up-reminder"): ReturnType<typeof collectScriptReferences> =>
-        collectScriptReferences({
+      const refsOf = (id: "catch-up" | "catch-up-reminder"): ReturnType<typeof familyReferences> =>
+        familyReferences({
           ...BUNDLED_SCRIPT,
           scenarios: { [cautionScenarioId(id)]: BUNDLED_SCRIPT.scenarios[cautionScenarioId(id)] },
           fragments: {},

@@ -17,7 +17,7 @@ import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "j
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
-import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
+import { type CalloutScript } from "@iracedeck/callout-script";
 import { FLAG_CALLOUTS, PIT_READBACK_CALLOUTS } from "@iracedeck/callout-settings";
 import type { IEventBus, PitReadbackSnapshot, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -26,6 +26,7 @@ import { WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios, poolMemberPattern } from "../../interpreter.js";
 import { familyGate } from "./callout-gate.test-util.js";
+import { familyReferences } from "./family-references.test-util.js";
 import { type FlagCalloutId, type PitReadbackCalloutId, registerPitCrew } from "./index.js";
 import { PIT_BOX_PENDING_HOLD_MS } from "./pit-box.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
@@ -1087,7 +1088,7 @@ describe("the bundled script's readback entries (issue #1065)", () => {
   });
 
   it("references only vocabulary the readback family registers, with the declared case keys", () => {
-    const refs = collectScriptReferences(READBACK_SCRIPT);
+    const refs = familyReferences(READBACK_SCRIPT);
     const vocabulary = engine.vocabulary();
 
     expect(refs.vars).toEqual([]);
@@ -1151,7 +1152,7 @@ describe("the bundled script's readback entries (issue #1065)", () => {
       "pit-readback/windshield-on",
     ];
 
-    expect([...collectScriptReferences(READBACK_SCRIPT).pools].sort()).toEqual(sources);
+    expect([...familyReferences(READBACK_SCRIPT).pools].sort()).toEqual(sources);
     expect(PIT_READBACK_CLIP_SOURCES.map(({ group, base }) => `${group}/${base}`).sort()).toEqual(sources);
 
     for (const { group, base } of PIT_READBACK_CLIP_SOURCES) {

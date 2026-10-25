@@ -10,7 +10,7 @@ import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "j
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
-import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
+import { type CalloutScript } from "@iracedeck/callout-script";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -24,6 +24,7 @@ import {
   registerCornerNameVocabulary,
   SCENARIO_ID_TO_CORNER_NAME_ID,
 } from "./corner-name.js";
+import { familyReferences } from "./family-references.test-util.js";
 
 const mockLogger = {
   trace: vi.fn(),
@@ -295,7 +296,7 @@ describe("the bundled script's corner-name entry (issue #1065)", () => {
   });
 
   it("references only the var this family registers and no pool — the name is var-driven from corner-names/<slug>", () => {
-    const refs = collectScriptReferences(CORNER_NAME_SCRIPT);
+    const refs = familyReferences(CORNER_NAME_SCRIPT);
 
     expect(refs.vars).toEqual(["cornerName.clip"]);
     expect(refs.pools).toEqual([]);

@@ -9,7 +9,7 @@
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
-import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
+import { type CalloutScript } from "@iracedeck/callout-script";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { Flags } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -18,6 +18,7 @@ import type { ScenarioContract } from "../../dsl.js";
 import { WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios, poolMemberPattern } from "../../interpreter.js";
+import { familyReferences } from "./family-references.test-util.js";
 import {
   _getFurledRaisedSpoken,
   _setFurledRaisedSpoken,
@@ -1060,7 +1061,7 @@ describe("FLAG_CLIP_SOURCES", () => {
     // with the `group/base` spellings is also what pins the decision that
     // no flag pool carries a name: a named entry under `pools` would show
     // up here as a reference the sources do not spell.
-    const referenced = collectScriptReferences(FLAG_SCRIPT).pools;
+    const referenced = familyReferences(FLAG_SCRIPT).pools;
     const sources = FLAG_CLIP_SOURCES.map(({ group, base }) => `${group}/${base}`);
 
     expect([...referenced].sort()).toEqual([...sources].sort());
@@ -1088,7 +1089,7 @@ describe("the bundled script's flag entries (issue #1064)", () => {
   });
 
   it("references only vocabulary the flag family registers, with the declared case keys", () => {
-    const refs = collectScriptReferences(FLAG_SCRIPT);
+    const refs = familyReferences(FLAG_SCRIPT);
     const vocabulary = engine.vocabulary();
 
     expect(refs.vars).toEqual([]);

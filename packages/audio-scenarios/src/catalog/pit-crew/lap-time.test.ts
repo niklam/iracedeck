@@ -11,7 +11,7 @@ import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "j
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
-import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
+import { type CalloutScript } from "@iracedeck/callout-script";
 import { LAP_TIME_CALLOUTS } from "@iracedeck/callout-settings";
 import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -19,6 +19,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AudioAssetsManifest } from "../../interpreter.js";
 import { _resetAudioScenarios, getScenarioEngine, initializeAudioScenarios } from "../../interpreter.js";
 import { familyGate } from "./callout-gate.test-util.js";
+import { familyReferences } from "./family-references.test-util.js";
 import { registerPitCrew } from "./index.js";
 import {
   buildLapTimeContract,
@@ -522,7 +523,7 @@ describe("the bundled script's lap-time entry (issue #1065)", () => {
   });
 
   it("references only vocabulary the lap-time family registers, and no pool, frame, fragment or alias", () => {
-    const refs = collectScriptReferences(LAP_TIME_SCRIPT);
+    const refs = familyReferences(LAP_TIME_SCRIPT);
     const vocabulary = getScenarioEngine().vocabulary();
 
     expect(refs.vars).toEqual(["lapTime.decimal", "lapTime.intro", "lapTime.minute", "lapTime.second"]);

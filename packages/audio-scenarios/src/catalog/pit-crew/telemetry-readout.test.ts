@@ -14,7 +14,7 @@ import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "j
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
-import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
+import { type CalloutScript } from "@iracedeck/callout-script";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf, TelemetryReadoutRequest } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -23,6 +23,7 @@ import { NO_FRAME, WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios, poolMemberPattern } from "../../interpreter.js";
 import { descriptionNamesGroup } from "../../reference/pack-reference.js";
+import { familyReferences } from "./family-references.test-util.js";
 import {
   READOUT_WEIGHT,
   registerTelemetryReadoutVocabulary,
@@ -597,7 +598,7 @@ describe("the bundled script's readout entries (issue #466)", () => {
   });
 
   it("addresses exactly the published clip sources and references only readout vars", () => {
-    const refs = collectScriptReferences(READOUT_SCRIPT);
+    const refs = familyReferences(READOUT_SCRIPT);
 
     expect([...refs.pools].sort()).toEqual(
       TELEMETRY_READOUT_CLIP_SOURCES.map(({ group, base }) => `${group}/${base}`).sort(),

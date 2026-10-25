@@ -13,7 +13,7 @@ import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "j
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
-import { type CalloutScript, collectScriptReferences, type ScriptStep } from "@iracedeck/callout-script";
+import { type CalloutScript, type ScriptStep } from "@iracedeck/callout-script";
 import { RACE_START_CALLOUTS } from "@iracedeck/callout-settings";
 import type { IEventBus, RaceStartSnapshot, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { TrackWetness } from "@iracedeck/event-bus";
@@ -28,6 +28,7 @@ import {
   poolMemberPattern,
 } from "../../interpreter.js";
 import { familyGate } from "./callout-gate.test-util.js";
+import { familyReferences } from "./family-references.test-util.js";
 import { registerPitCrew } from "./index.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import {
@@ -1127,7 +1128,7 @@ describe("the bundled script's race-start entry (issue #1065)", () => {
   });
 
   it("references only vocabulary the race-start family registers, with the declared case keys, and no frame, fragment or alias", () => {
-    const refs = collectScriptReferences(RACE_START_SCRIPT);
+    const refs = familyReferences(RACE_START_SCRIPT);
     const vocabulary = getScenarioEngine().vocabulary();
 
     expect(refs.vars).toEqual([
@@ -1168,7 +1169,7 @@ describe("the bundled script's race-start entry (issue #1065)", () => {
       "setup-warning/race",
     ];
 
-    expect([...collectScriptReferences(RACE_START_SCRIPT).pools].sort()).toEqual(sources);
+    expect([...familyReferences(RACE_START_SCRIPT).pools].sort()).toEqual(sources);
     expect(RACE_START_CLIP_SOURCES.map(({ group, base }) => `${group}/${base}`).sort()).toEqual(sources);
 
     for (const { group, base } of RACE_START_CLIP_SOURCES) {

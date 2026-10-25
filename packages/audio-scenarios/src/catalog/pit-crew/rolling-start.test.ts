@@ -20,7 +20,7 @@ import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "j
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
-import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
+import { type CalloutScript } from "@iracedeck/callout-script";
 import { ROLLING_START_CALLOUTS } from "@iracedeck/callout-settings";
 import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { SessionState } from "@iracedeck/iracing-sdk";
@@ -38,6 +38,7 @@ import {
 } from "../../interpreter.js";
 import { familyGate } from "./callout-gate.test-util.js";
 import { registerCautionVocabulary } from "./caution.js";
+import { familyReferences } from "./family-references.test-util.js";
 import { CAUTION_MAX_QUEUE_WAIT_MS } from "./flag-alerts.js";
 import { registerPitCrew, type RollingStartCalloutId, SCENARIO_ID_TO_ROLLING_START_ID } from "./index.js";
 import type { NamingEpisode } from "./named-car.js";
@@ -1078,7 +1079,7 @@ describe("the bundled script's rolling-start entries (issues #1065, #1167)", () 
   });
 
   it("names only the rollingStart vocabulary — never the caution's names, and no position", () => {
-    const refs = collectScriptReferences(FAMILY_SCRIPT);
+    const refs = familyReferences(FAMILY_SCRIPT);
 
     expect([...refs.vars].sort()).toEqual(["rollingStart.followCarNumber"]);
     expect([...refs.conds].sort()).toEqual([
@@ -1095,17 +1096,17 @@ describe("the bundled script's rolling-start entries (issues #1065, #1167)", () 
   it("addresses exactly the published clip sources — its own six, and the ten it shares with the caution family", () => {
     const sources = ROLLING_START_CLIP_SOURCES.map(({ group, base }) => `${group}/${base}`);
 
-    expect([...collectScriptReferences(FAMILY_SCRIPT).pools].sort()).toEqual([...sources].sort());
+    expect([...familyReferences(FAMILY_SCRIPT).pools].sort()).toEqual([...sources].sort());
     expect(sources.filter((source) => source.startsWith("rolling-start/"))).toHaveLength(6);
     expect(sources.filter((source) => source.startsWith("caution/"))).toHaveLength(10);
   });
 
   it("says one lap to green in the caution's own pools — the start and the restart share the words", () => {
-    const pools = collectScriptReferences({
+    const pools = familyReferences({
       ...FAMILY_SCRIPT,
       scenarios: { one: BUNDLED_SCRIPT.scenarios["pit-crew.flag-one-pace-lap-to-go"] },
     }).pools;
-    const cautionPools = collectScriptReferences({
+    const cautionPools = familyReferences({
       ...FAMILY_SCRIPT,
       scenarios: { one: BUNDLED_SCRIPT.scenarios["pit-crew.caution-one-to-go"] },
     }).pools;

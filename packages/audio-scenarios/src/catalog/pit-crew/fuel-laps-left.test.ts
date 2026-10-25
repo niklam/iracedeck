@@ -21,7 +21,7 @@ import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "j
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
-import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
+import { type CalloutScript } from "@iracedeck/callout-script";
 import { FUEL_CALLOUTS } from "@iracedeck/callout-settings";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -35,6 +35,7 @@ import {
   poolMemberPattern,
 } from "../../interpreter.js";
 import { familyGate } from "./callout-gate.test-util.js";
+import { familyReferences } from "./family-references.test-util.js";
 import {
   FUEL_LAPS_LEFT_CLIP_SOURCES,
   FUEL_LAPS_LEFT_CONTRACTS,
@@ -475,7 +476,7 @@ describe("the bundled script's fuel entries (issue #1065)", () => {
   });
 
   it("names no vocabulary, no frame, no fragment and no pool alias — every line is one direct pool step", () => {
-    const refs = collectScriptReferences(FUEL_SCRIPT);
+    const refs = familyReferences(FUEL_SCRIPT);
 
     expect(refs.vars).toEqual([]);
     expect(refs.conds).toEqual([]);
@@ -509,7 +510,7 @@ describe("the bundled script's fuel entries (issue #1065)", () => {
       "fuel/race-covered",
     ];
 
-    expect([...collectScriptReferences(FUEL_SCRIPT).pools].sort()).toEqual(sources);
+    expect([...familyReferences(FUEL_SCRIPT).pools].sort()).toEqual(sources);
     expect(FUEL_LAPS_LEFT_CLIP_SOURCES.map(({ group, base }) => `${group}/${base}`).sort()).toEqual(sources);
 
     for (const { group, base } of FUEL_LAPS_LEFT_CLIP_SOURCES) {

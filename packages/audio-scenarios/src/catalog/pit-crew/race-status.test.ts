@@ -19,7 +19,7 @@ import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "j
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
-import { type CalloutScript, collectScriptReferences } from "@iracedeck/callout-script";
+import { type CalloutScript } from "@iracedeck/callout-script";
 import { RACE_STATUS_CALLOUTS } from "@iracedeck/callout-settings";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -29,6 +29,7 @@ import type { ScenarioContext } from "../../dsl.js";
 import type { AudioAssetsManifest } from "../../interpreter.js";
 import { _resetAudioScenarios, getScenarioEngine, initializeAudioScenarios } from "../../interpreter.js";
 import { familyGate } from "./callout-gate.test-util.js";
+import { familyReferences } from "./family-references.test-util.js";
 import { _resetPositionReadoutCooldown, canAnnouncePosition, registerPitCrew } from "./index.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { readPositionReadoutDebugState } from "./position-readout.js";
@@ -672,7 +673,7 @@ describe("the bundled script's race-status entry (issue #1065)", () => {
   });
 
   it("references only vocabulary the race-status family registers, and no pool, frame, fragment or alias", () => {
-    const refs = collectScriptReferences(RACE_STATUS_SCRIPT);
+    const refs = familyReferences(RACE_STATUS_SCRIPT);
     const vocabulary = getScenarioEngine().vocabulary();
 
     expect(refs.vars).toEqual(["raceStatus.intro", "raceStatus.number", "raceStatus.stillLeading"]);
