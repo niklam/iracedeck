@@ -304,10 +304,11 @@ describe("endsOn (issue #1407)", () => {
 
     bus.publishEvent("pitLane.exited");
 
-    // The body is cut mid-clip and the tail takes the bus at once.
-    expect(audio._stopped).toEqual(
-      expect.arrayContaining([AudioChannel.Voice, AudioChannel.SFX, AudioChannel.Ambient]),
-    );
+    // The body is cut mid-clip and the tail takes the bus at once. The
+    // ambience bed is left running: the tail stops it itself, after "never
+    // mind", so the line is abandoned over the bed rather than into silence.
+    expect(audio._stopped).toEqual(expect.arrayContaining([AudioChannel.Voice, AudioChannel.SFX]));
+    expect(audio._stopped).not.toContain(AudioChannel.Ambient);
     expect(played()).toEqual([TICK_OPEN, BODY_A, NEVER_MIND]);
     expect(voiceBus().playingId).toBe("test.ends");
     expect(endedLines()).toEqual(['Scenario "test.ends" ended by pitLane.exited (playing → tail)']);
@@ -328,10 +329,17 @@ describe("endsOn (issue #1407)", () => {
     engine.setScripts(new Map([["default", script(RADIO_WITHOUT_CUT)]]));
 
     startEndsMidBody();
+    audio._stopped.length = 0;
     bus.publishEvent("pitLane.exited");
+    // The close carries the ambience stop, so the cut leaves the bed to it:
+    // the bed is stopped once, by the tail's first op, not also at the cut.
+    expect(audio._stopped.filter((c) => c === AudioChannel.Ambient)).toEqual([AudioChannel.Ambient]);
+    expect(audio._stopped.indexOf(AudioChannel.Ambient)).toBe(audio._stopped.length - 1);
+
     flush();
 
     expect(played()).toEqual([TICK_OPEN, BODY_A, TICK_CLOSE]);
+    expect(audio._stopped.filter((c) => c === AudioChannel.Ambient)).toEqual([AudioChannel.Ambient]);
     expect(voiceBus().playingId).toBeNull();
   });
 
@@ -443,6 +451,90 @@ describe("endsOn (issue #1407)", () => {
     expect(endedLines()).toEqual(['Scenario "test.ends" ended by pitLane.exited (playing → tail)']);
   });
 
+  it("a cut tail without an ambience stop has the bed stopped at the cut", () => {
+    engine.defineContract(endsContract());
+    engine.setScripts(new Map([["default", script({ ...RADIO_WITH_CUT, cut: [NEVER_MIND, TICK_CLOSE] })]]));
+
+    startEndsMidBody();
+    audio._stopped.length = 0;
+    bus.publishEvent("pitLane.exited");
+
+    // Nothing in the tail would stop the loop, so the cut does.
+    expect(audio._stopped).toEqual(expect.arrayContaining([AudioChannel.Voice, AudioChannel.Ambient]));
+    expect(played()).toEqual([TICK_OPEN, BODY_A, NEVER_MIND]);
+
+    flush();
+    expect(played()).toEqual([TICK_OPEN, BODY_A, NEVER_MIND, TICK_CLOSE]);
+    expect(audio._stopped.filter((c) => c === AudioChannel.Ambient)).toEqual([AudioChannel.Ambient]);
+  });
+
+  it("fire ended during its close ops is left to finish — no never mind after a complete line", () => {
+    engine.defineContract(endsContract({ weight: WEIGHT.NORMAL }));
+    engine.defineContract(contract("test.light", { weight: WEIGHT.CHATTER, queueable: true, frame: NO_FRAME }));
+    engine.setScripts(new Map([["default", script()]]));
+
+    startEndsMidBody();
+    engine.fire("test.light"); // waits behind the playing line
+    audio._triggerChannelEnd(AudioChannel.Voice); // a ends; b plays
+    audio._triggerChannelEnd(AudioChannel.Voice); // b ends; the close stops the bed and plays the close tick
+    expect(played()).toEqual([TICK_OPEN, BODY_A, BODY_B, TICK_CLOSE]);
+    audio._stopped.length = 0;
+
+    bus.publishEvent("pitLane.exited");
+
+    expect(audio._stopped).toEqual([]);
+    expect(voiceBus().playingId).toBe("test.ends");
+    expect(endedLines()).toEqual(['Scenario "test.ends" ended by pitLane.exited (playing → closing)']);
+
+    // The close tick completes and the bus drains what waited.
+    audio._triggerChannelEnd(AudioChannel.SFX);
+    expect(played()).toEqual([TICK_OPEN, BODY_A, BODY_B, TICK_CLOSE, LIGHT]);
+    expect(played()).not.toContain(NEVER_MIND);
+  });
+
+  it("an end during the close still removes the contract's waiting fire", () => {
+    engine.defineContract(endsContract({ queueable: true }));
+    engine.setScripts(new Map([["default", script()]]));
+
+    startEndsMidBody();
+    audio._triggerChannelEnd(AudioChannel.Voice);
+    audio._triggerChannelEnd(AudioChannel.Voice); // the close tick in flight
+    bus.publishEvent("flag.green.raised"); // the same line again, queued behind itself
+    expect(voiceBus().waiting.map((w) => w.id)).toEqual(["test.ends"]);
+
+    bus.publishEvent("pitLane.exited");
+
+    expect(voiceBus().waiting).toEqual([]);
+    expect(endedLines()).toEqual(['Scenario "test.ends" ended by pitLane.exited (waiting, playing → closing)']);
+
+    flush();
+    expect(played()).toEqual([TICK_OPEN, BODY_A, BODY_B, TICK_CLOSE]);
+  });
+
+  it("a cut that fails to resolve keeps the line and falls back to the close, warning once", () => {
+    const missing = "voice/default/radio/missing-01.mp3";
+    engine.defineContract(endsContract());
+    engine.setScripts(new Map([["default", script({ ...RADIO_WITH_CUT, cut: [missing, TICK_CLOSE] })]]));
+
+    // The line itself still plays in full.
+    bus.publishEvent("flag.green.raised");
+    flush();
+    expect(played()).toEqual([TICK_OPEN, BODY_A, BODY_B, TICK_CLOSE]);
+
+    // Ended mid-body, it closes the radio with the frame's close instead.
+    audio._played.length = 0;
+    startEndsMidBody();
+    bus.publishEvent("pitLane.exited");
+    flush();
+
+    expect(played()).toEqual([TICK_OPEN, BODY_A, TICK_CLOSE]);
+    expect(played()).not.toContain(missing);
+
+    const warns = mockLogger.warn.mock.calls.map(([line]) => String(line)).filter((line) => line.includes("cut tail"));
+    expect(warns).toHaveLength(1);
+    expect(warns[0]).toContain('Voice "default" frame "radio" cut tail cannot play');
+  });
+
   it("beeps off: the tail drops its clip beeps like open/close do", () => {
     frameOptions = { beeps: false, ambience: true };
     engine.defineContract(endsContract());
@@ -455,9 +547,10 @@ describe("endsOn (issue #1407)", () => {
     bus.publishEvent("pitLane.exited");
     flush();
 
-    // The tail is its ambience stop alone: no "never mind", no close tick.
+    // The tail is its ambience stop alone: no "never mind", no close tick,
+    // and the bed is stopped once, by the tail rather than at the cut.
     expect(played()).toEqual([BODY_A]);
-    expect(audio._stopped.filter((c) => c === AudioChannel.Ambient).length).toBe(2);
+    expect(audio._stopped.filter((c) => c === AudioChannel.Ambient).length).toBe(1);
     expect(voiceBus().playingId).toBeNull();
     expect(endedLines()).toEqual(['Scenario "test.ends" ended by pitLane.exited (playing → tail)']);
   });

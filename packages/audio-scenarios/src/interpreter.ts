@@ -111,7 +111,12 @@ import { applyBase, DEFAULT_FRAME, DEFAULT_MAX_QUEUE_WAIT_MS, DEFAULT_WEIGHT, NO
 // import with `./validation.js`, which also needs `referenceVoice`.
 import { type AudioAssetsManifest, referenceVoice } from "./manifest.js";
 import { PendingQueue, type QueuedFire, type QueueDrop } from "./pending-queue.js";
-import { type CompileDeps, type CompiledVoiceScript, compileVoiceScript } from "./script-compiler.js";
+import {
+  type CompileDeps,
+  type CompiledFrame,
+  type CompiledVoiceScript,
+  compileVoiceScript,
+} from "./script-compiler.js";
 import { isStatePartError, readStatePart, type StatePartError } from "./state-part.js";
 import { validateScenario } from "./validation.js";
 
@@ -1737,9 +1742,12 @@ class ScenarioEngine implements IScenarioEngine {
    * logged as dropped with the reason `ended`, and the playing fire either
    * plays its cut tail (`playCutTail`) — once words have been heard and the
    * tail is not empty — or is stopped silently and the bus drained, as a
-   * disable does. A fire that is already a cut tail (`ended`) is left alone,
-   * so a second end — a tow or a reset can publish the exit twice — is a
-   * no-op. One debug line per contract that had anything to end.
+   * disable does. A fire already in its close ops (`closeStarted`) has been
+   * heard in full and is letting go of the button: it is left to finish, so
+   * the driver never hears "never mind" after a complete line. A fire that is
+   * already a cut tail (`ended`) is left alone too, so a second end — a tow
+   * or a reset can publish the exit twice — is a no-op. One debug line per
+   * contract that had anything to end.
    *
    * Two passes: every timer and waiting fire goes first, so a silent stop's
    * drain can never start a fire of another contract this same event is
@@ -1779,7 +1787,9 @@ class ScenarioEngine implements IScenarioEngine {
 
         if (fire === null || fire.id !== id || fire.ended) continue;
 
-        if (fire.cutTail.length > 0 && wordsHeard(fire)) {
+        if (closeStarted(fire)) {
+          note(id, "playing → closing");
+        } else if (fire.cutTail.length > 0 && wordsHeard(fire)) {
           this.playCutTail(state, fire);
           note(id, "playing → tail");
         } else {
@@ -1806,6 +1816,13 @@ class ScenarioEngine implements IScenarioEngine {
    * `stepNext` from moving the cut fire into its next body op. It is not
    * `cancelActiveFire`, which would release the bus and drop the `onSettled`
    * a caller waits on; the tail inherits both instead.
+   *
+   * The radio's ambience bed is left running when the tail stops it itself —
+   * both first-party cuts are "never mind", then the bed stops with the close
+   * tick, and a frame without `cut` falls back to its `close`, which carries
+   * the same stop — so "never mind" is said over the bed rather than into
+   * silence. A tail with no ambience stop has the bed stopped at the cut, as
+   * before: nothing else would ever stop the loop.
    */
   private playCutTail(state: BusState, fire: ActiveFire): void {
     fire.cancelled = true;
@@ -1815,9 +1832,14 @@ class ScenarioEngine implements IScenarioEngine {
       fire.pauseTimer = null;
     }
 
-    for (const channel of fire.usedChannels) this.audio.stopChannel(channel);
-
     const tail = fire.cutTail;
+    const tailStopsBed = tail.some((op) => op.kind === "ambient" && op.action === "stop");
+
+    for (const channel of fire.usedChannels) {
+      if (channel === AudioChannel.Ambient && tailStopsBed) continue;
+
+      this.audio.stopChannel(channel);
+    }
 
     this.takeBus(state, {
       id: fire.id,
@@ -2329,8 +2351,10 @@ class ScenarioEngine implements IScenarioEngine {
    * hold a clip, so its warns and aborts concern a callout the frame is
    * actually due for. `withCut` also expands the cut tail an end plays
    * (issue #1407) — the frame's `cut`, else its `close`, under the same
-   * switches and tagged `cut` — and leaves it empty otherwise. A tail step
-   * that resolves to nothing aborts the fire like an open or close step.
+   * switches and tagged `cut` — and leaves it empty otherwise. Unlike an open
+   * or close step, a tail step that resolves to nothing does not abort the
+   * fire: the tail is only what an end plays, so the line still speaks, and
+   * the tail falls back to the close (`expandCutTail`).
    * Returns `null` when no frame applies: the scenario
    * wants none (`NO_FRAME`), the voice has no script, or its script does not
    * provide the frame (a legacy scenario's, since a contract's was checked
@@ -2397,14 +2421,10 @@ class ScenarioEngine implements IScenarioEngine {
         .filter((op) => (op.kind === "ambient" ? options.ambience : options.beeps))
         .map((op) => ({ ...op, frame: tag }));
 
+    let halves: { open: ExecOp[]; close: ExecOp[] };
+
     try {
-      return {
-        open: side(frame.open, "open"),
-        close: side(frame.close, "close"),
-        // A frame with no `cut` closes the radio as it always does, so a pack
-        // that never heard of `cut` still lets go of the button (issue #1407).
-        cut: withCut ? side(frame.cut ?? frame.close, "cut") : [],
-      };
+      halves = { open: side(frame.open, "open"), close: side(frame.close, "close") };
     } catch (err) {
       if (err instanceof ExpansionAbort) {
         const key = `${voice}|${frameName}`;
@@ -2419,6 +2439,65 @@ class ScenarioEngine implements IScenarioEngine {
 
       throw err;
     }
+
+    return { ...halves, cut: withCut ? this.expandCutTail(frame, frameName, voice, side) : [] };
+  }
+
+  /**
+   * Expand a frame's cut tail (issue #1407): its `cut`, else its `close` — a
+   * frame with no `cut` closes the radio as it always does, so a pack that
+   * never heard of `cut` still lets go of the button. A `cut` step that
+   * resolves to nothing does not abort the fire it rides: the tail is only
+   * what an end would play, and trading the line itself for it would silence
+   * the warning to save the "never mind". It falls back to the close instead
+   * — the tail is empty, and an end stops silently, if that aborts too —
+   * after one warn per `(voice, frame)`, keyed apart from the frame-abort
+   * warn in the same set. The picks a failed attempt made are put back, so a
+   * take that will never be played commits nothing.
+   */
+  private expandCutTail(
+    frame: CompiledFrame,
+    frameName: string,
+    voice: string,
+    side: (steps: ResolvedStep[], tag: FrameSide) => ExecOp[],
+  ): ExecOp[] {
+    const attempt = (steps: ResolvedStep[]): ExecOp[] | ExpansionAbort => {
+      const picks = this.expansionPicks;
+      const before = picks === null ? null : new Map(picks);
+
+      try {
+        return side(steps, "cut");
+      } catch (err) {
+        if (!(err instanceof ExpansionAbort)) throw err;
+
+        if (picks !== null && before !== null) {
+          picks.clear();
+
+          for (const [pool, idx] of before) picks.set(pool, idx);
+        }
+
+        return err;
+      }
+    };
+
+    const tail = attempt(frame.cut ?? frame.close);
+
+    if (!(tail instanceof ExpansionAbort)) return tail;
+
+    const key = `${voice}|${frameName}|cut`;
+
+    if (!this.warnedFrameAborts.has(key)) {
+      this.warnedFrameAborts.add(key);
+      this.logger.warn(
+        `Voice "${voice}" frame "${frameName}" cut tail cannot play — ${tail.reason}; an ended line closes the radio instead`,
+      );
+    }
+
+    if (frame.cut === null) return [];
+
+    const close = attempt(frame.close);
+
+    return close instanceof ExpansionAbort ? [] : close;
   }
 
   /** The user's frame switches, read live; a throwing accessor keeps the frame whole. */
@@ -3235,9 +3314,23 @@ function buildResumeState(active: ActiveFire, voice: string | null, generation: 
  * started are words heard), and for a resumed fire from its first op, since
  * its head was heard before the interrupt cut it (`sourceStart > 0`) even
  * while its re-key preroll is still playing.
+ *
+ * Any untagged op counts, not only a clip: a body that began with a `pause`
+ * or an `ambient` step would count as heard once that op is consumed, before
+ * any clip has started. No script has such a body today; one that does
+ * would get the tail a beat early, which errs towards closing the radio.
  */
 function wordsHeard(fire: ActiveFire): boolean {
   return fire.sourceStart > 0 || fire.ops.slice(0, fire.index).some((op) => op.frame === undefined);
+}
+
+/**
+ * Whether a playing fire has reached its frame's close ops (issue #1407): the
+ * line was heard in full and the radio is closing, so an end leaves it to
+ * finish. A resumed fire's re-key preroll is tagged `open` and never counts.
+ */
+function closeStarted(fire: ActiveFire): boolean {
+  return fire.ops.slice(0, fire.index).some((op) => op.frame === "close");
 }
 
 /**
