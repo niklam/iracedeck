@@ -153,6 +153,21 @@ export interface ReplayDialStepIo extends ReplayDialModeIo {
    * no player's car, or no number for it, it logs why and sends nothing.
    */
   jumpToMyCar(): void;
+  /**
+   * Switches the camera to the car with raw number `carNumberRaw`
+   * (`camera.switchNum`), the bare send of the Car # and Position modes
+   * (#1448): the engine's camera-switch waiter they go through has
+   * interrupted a walk first. Resolves nothing and takes no cursor; returns
+   * the SDK's answer.
+   */
+  switchToCarNumber(carNumberRaw: number): boolean;
+  /**
+   * The canonical live race order (`getLiveRacePositions`, per
+   * `.claude/rules/race-positions.md`): a 1-based rank per carIdx, `0` for a
+   * car it does not rank, or null without one. The Position mode falls back
+   * to the official `CarIdxPosition` itself (`resolveRaceOrder`, #1448).
+   */
+  racePositions(): number[] | null;
   /** Whether a position jump is under way: a pending target standing, or a seek showing. A search is not one. */
   isJumpUnderWay(): boolean;
   /**

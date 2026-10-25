@@ -158,11 +158,11 @@ describe("replay-control PI dial gesture slots", () => {
     expect(select(`dial.${slot}`).fallback).toBe(defaults[slot]);
   });
 
-  it("puts the Mode default first on Long Press, its default (#801)", () => {
+  it("puts None first and the Mode default second on Long Press, which defaults to it (#801, #1448)", () => {
     const longPress = select("dial.longPressAction");
 
     expect(longPress.fallback).toBe("mode-default");
-    expect(longPress.values[0]).toBe("mode-default");
+    expect(longPress.values.slice(0, 2)).toEqual(["none", "mode-default"]);
   });
 
   it.each(SLOTS)("%s names the Mode default and Jump to My Car as the PI calls them", (slot) => {
@@ -205,6 +205,8 @@ describe("replay-control PI dial view", () => {
       ["session", "Session"],
       ["incident", "Incident"],
       ["track-order", "Track Order"],
+      ["car-number", "Cars by Number"],
+      ["race-position", "Cars by Position"],
     ]);
   });
 
@@ -370,6 +372,14 @@ describe("replay-control PI Mode default lines (#801)", () => {
     pick("dial.mode", "track-order", "change");
 
     for (const slot of SLOTS) expect(hint(slot).text, slot).toBe("Mode default: Jump to My Car");
+
+    // Car # and Position move the camera from car to car too (#1448).
+    for (const mode of ["car-number", "race-position"]) {
+      pick("dial.mode", "lap", "input");
+      pick("dial.mode", mode, "change");
+
+      for (const slot of SLOTS) expect(hint(slot).text, `${mode} ${slot}`).toBe("Mode default: Jump to My Car");
+    }
 
     pick("dial.mode", "lap", "input");
 

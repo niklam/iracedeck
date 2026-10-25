@@ -320,3 +320,5 @@ Each action's PI shows a per-mode communication/binding status line directly und
 - Templates in `packages/iracing-actions/src/actions/<name>/<name>.ejs` compile to each plugin's `com.iracedeck.sd.{name}.sdPlugin/ui/<name>.html` (output paths are flat — nesting in the source tree doesn't affect the output filename)
 - The `data/` subdirectory under `actions/` is excluded from compilation
 - Changes to templates, partials, data files, or per-action static icons trigger rebuilds in watch mode in whichever plugin is currently running `rollup -w`
+
+- **Dial gesture dropdowns have one order.** Every `dial.*Action` gesture `<sdpi-select>` lists None first, then Mode default where it offers one, then the rest in the action's Press order (#1448); a default comes from the `default` attribute and the schema, never from option position. `packages/iracing-actions/src/actions/dial-gesture-order.test.ts` globs every template and fails on a dropdown that breaks it.

@@ -3364,6 +3364,12 @@
         ]
       }
     },
+    "car-number": {
+      "method": "api"
+    },
+    "race-position": {
+      "method": "api"
+    },
     "play-pause": {
       "method": "api"
     },

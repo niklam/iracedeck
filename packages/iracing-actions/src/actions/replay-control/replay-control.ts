@@ -95,6 +95,7 @@ import {
 } from "@iracedeck/replay-engine";
 import { getReplaySessionStore, isReplaySessionStoreInitialized } from "@iracedeck/replay-store";
 import { getGlobalColors } from "@iracedeck/settings";
+import { getLiveRacePositions } from "@iracedeck/sim-events-iracing";
 import z from "zod";
 
 import { CAR_CYCLE_BINDING_KEYS } from "../../shared/car-cycle-bindings.js";
@@ -596,6 +597,11 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     // hands it to the engine's camera-switch waiter, as the key does (#1467).
     jumpToMyCar: () => this.switchToMyCar(),
     canJumpToMyCar: () => "carNum" in this.resolveMyCarNumberRaw(),
+    // The Car # and Position modes' switch (#1448), the bare send: the dial hands it to the
+    // engine's camera-switch waiter, as the car-number keys do.
+    switchToCarNumber: (carNumberRaw) => getCommands().camera.switchNum(carNumberRaw, 0, 0),
+    // The Position mode's race order: the canonical live order (race-positions.md).
+    racePositions: () => getLiveRacePositions(),
     refreshKeys: () => this.updateAllTelemetryDisplays(),
     // What the Lap and Session modes step from and through (#801): the same
     // reads, and the same record source, as the keypad's record step.

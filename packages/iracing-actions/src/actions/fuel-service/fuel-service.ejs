@@ -131,11 +131,11 @@
 
 			<sdpi-item label="Press Action">
 				<sdpi-select setting="dial.pressAction" default="toggle-fueling">
+					<option value="none">None</option>
 					<option value="toggle-fueling">Toggle Fueling</option>
 					<option value="fill-to-max">Toggle Full / No Fuel</option>
 					<option value="toggle-autofuel-mode">Toggle Autofuel</option>
 					<option value="switch-mode">Switch Mode</option>
-					<option value="none">None</option>
 				</sdpi-select>
 			</sdpi-item>
 			<ird-binding-status mode-setting="dial.pressAction" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
@@ -143,11 +143,11 @@
 			<% if (locals.platform?.features?.dialExtendedGestures !== false) { %>
 			<sdpi-item label="Long Press">
 				<sdpi-select setting="dial.longPressAction" default="toggle-autofuel-mode">
+					<option value="none">None</option>
 					<option value="toggle-fueling">Toggle Fueling</option>
 					<option value="fill-to-max">Toggle Full / No Fuel</option>
 					<option value="toggle-autofuel-mode">Toggle Autofuel</option>
 					<option value="switch-mode">Switch Mode</option>
-					<option value="none">None</option>
 				</sdpi-select>
 			</sdpi-item>
 			<ird-binding-status mode-setting="dial.longPressAction" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>

@@ -5,13 +5,15 @@
  * Rotating runs the dial's rotation mode (`dial.mode`, one module per mode
  * behind `replay-control-dial-mode.ts`): Speed Control walks the replay speed
  * along a ladder the user shapes, Frame Jog (#1317) steps the replay one
- * frame per detent, and Lap, Session, Incident and Track Order (#801) step
+ * frame per detent, Lap, Session, Incident and Track Order (#801) step
  * through the replay record, iRacing's own searches and its Next / Previous
- * Car binding. The press gestures are shared by every mode — Play/Pause, Set
+ * Car binding, and Car # and Position (#1448) switch the camera along the
+ * field by car number and by race order. The press gestures are shared by every mode — Play/Pause, Set
  * 1x and play, Reverse direction, Jump to Live, Jump to Race Start, Jump to My
  * Car — so changing the Mode never changes what a specific pick does; the one
  * exception is the Mode default, Long Press's default, which runs Jump to My
- * Car in Track Order and Set 1x and play elsewhere (#801). The dial's screen
+ * Car in Track Order, Car # and Position and Set 1x and play elsewhere (#801,
+ * #1448). The dial's screen
  * is the shared dash box, drawn from what the mode says it shows.
  *
  * Every command is a one-shot pressed through the replay command gate
@@ -77,6 +79,7 @@ import type { DialPendingPreview } from "../../shared/dial-preview.js";
 import { classifyDialReleaseForHost } from "../../shared/dial-release.js";
 import { getReplayBusyLook, registerReplayBusySurface } from "../../shared/replay-busy-indicator.js";
 import { replayBusyDialMark } from "../../shared/replay-busy-mark.js";
+import { carNumberMode, racePositionMode } from "./replay-control-camera-car-modes.js";
 import type {
   ReplayDialMode,
   ReplayDialModeIo,
@@ -127,6 +130,8 @@ export const DIAL_MODES: Record<ReplayControlDialMode, ReplayDialMode<ReplayDial
   session: sessionMode,
   incident: incidentMode,
   "track-order": trackOrderMode,
+  "car-number": carNumberMode,
+  "race-position": racePositionMode,
 };
 
 /**
@@ -178,6 +183,15 @@ export interface ReplayControlDialHost {
   jumpToMyCar(): void;
   /** Whether that press has a car to switch to: the player's car and its number in the session info. */
   canJumpToMyCar(): boolean;
+  /**
+   * The camera switched to the car with raw number `carNumberRaw`
+   * (`camera.switchNum`), the bare send of the Car # and Position modes
+   * (#1448), which hand it to the engine's camera-switch waiter as a Track
+   * Order turn does. Returns the SDK's answer.
+   */
+  switchToCarNumber(carNumberRaw: number): boolean;
+  /** The canonical live race order (`getLiveRacePositions`, `race-positions.md`), or null: the Position mode's (#1448). */
+  racePositions(): number[] | null;
   /** Redraws the keypad keys whose icon follows the replay speed. */
   refreshKeys(): void;
   /**
@@ -238,13 +252,21 @@ interface DialGesture {
 /** A gesture that runs something itself: not None, and not the Mode default, which resolves to one of these. */
 type ActiveGesture = Exclude<ReplayControlDialGesture, "none" | "mode-default">;
 
+/** The rotation modes whose turns move the camera from car to car: their Mode default is Jump to My Car. */
+const CAMERA_CAR_MODES: ReadonlySet<ReplayControlDialMode> = new Set<ReplayControlDialMode>([
+  "track-order",
+  "car-number",
+  "race-position",
+]);
+
 /**
  * @internal Exported for testing
  *
  * What a gesture slot runs in `mode`: its own pick, or for `mode-default`
  * the mode's (#801, the maintainer's second test round): Jump to My Car in
- * Track Order, whose turns move the camera from car to car, and Set 1x and
- * Play in every other mode. Null for None.
+ * the camera-car modes, Track Order, Car # and Position (#1448), whose turns
+ * move the camera from car to car, and Set 1x and Play in every other mode.
+ * Null for None.
  */
 export function resolveDialGesture(
   gesture: ReplayControlDialGesture,
@@ -254,7 +276,7 @@ export function resolveDialGesture(
 
   if (gesture !== "mode-default") return gesture;
 
-  return mode === "track-order" ? "jump-to-my-car" : "set-1x-play";
+  return CAMERA_CAR_MODES.has(mode) ? "jump-to-my-car" : "set-1x-play";
 }
 
 function flipped(speed: ReplaySpeed): ReplaySpeed {
@@ -294,9 +316,10 @@ export function gestureDrawsWorking(gesture: ReplayControlDialGesture): boolean 
  * (#1437): only where the turn is a jump or a search under the dial's token,
  * Lap's, Session's and Incident's record jump or paced search (#801), which
  * the spec's "Dials" names with a Replay Markers detent. Speed Control and
- * Frame Jog send under no token, and Track Order sends no replay command at
- * all (a key binding tap), so their turns put nothing under the token to
- * draw. A record over every mode, so a new one does not compile until it says.
+ * Frame Jog send under no token, and Track Order, Car # and Position send no
+ * replay command at all (a key binding tap, a camera switch), so their turns
+ * put nothing under the token to draw. A record over every mode, so a new one
+ * does not compile until it says.
  */
 export const TURN_DRAWS_WORKING: Readonly<Record<ReplayControlDialMode, boolean>> = {
   speed: false,
@@ -305,6 +328,8 @@ export const TURN_DRAWS_WORKING: Readonly<Record<ReplayControlDialMode, boolean>
   session: true,
   incident: true,
   "track-order": false,
+  "car-number": false,
+  "race-position": false,
 };
 
 /**
@@ -315,8 +340,9 @@ export const TURN_DRAWS_WORKING: Readonly<Record<ReplayControlDialMode, boolean>
  * while the replay is moved for the dial. The stepping modes' caption stays
  * beside the mark: #801's pending count (`+3`) is progress, which the mark
  * cannot show (spec, "Dials"), and Lap's replay time and Session's lap of the
- * session go on saying where the replay is. A record over every mode, so a new
- * one does not compile until it says.
+ * session go on saying where the replay is; Position's caption is the camera
+ * car's number (#1448). A record over every mode, so a new one does not
+ * compile until it says.
  */
 export const CAPTION_GIVES_WAY_TO_MARK: Readonly<Record<ReplayControlDialMode, boolean>> = {
   speed: true,
@@ -325,6 +351,8 @@ export const CAPTION_GIVES_WAY_TO_MARK: Readonly<Record<ReplayControlDialMode, b
   session: false,
   incident: false,
   "track-order": false,
+  "car-number": false,
+  "race-position": false,
 };
 
 /**
@@ -928,6 +956,8 @@ export class ReplayControlDialSurface {
       tapBinding: (settingKey) => host.tapBinding(settingKey),
       isBindingMissing: (keys) => host.isBindingMissing(keys),
       jumpToMyCar: () => host.jumpToMyCar(),
+      switchToCarNumber: (carNumberRaw) => host.switchToCarNumber(carNumberRaw),
+      racePositions: () => host.racePositions(),
       isJumpUnderWay: () => {
         const telemetry = this.reading().telemetry;
 
