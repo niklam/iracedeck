@@ -13,6 +13,7 @@
 				<option value="drs">DRS</option>
 				<option value="headlight-flash">Headlight Flash</option>
 				<option value="tear-off-visor">Tear Off Visor</option>
+				<option value="wipers-and-visor">Wipers and Visor</option>
 				<option value="ignition">Ignition</option>
 				<option value="starter">Starter</option>
 				<option value="enter-exit-tow">Enter/Exit/Tow Car</option>
@@ -27,6 +28,13 @@
 
 		<% var __comms = require('./data/action-comms.json')['car-control']; %>
 		<ird-binding-status mode-setting="<%= __comms._meta.modeSetting %>" comms='<%= JSON.stringify(__comms) %>'></ird-binding-status>
+
+		<sdpi-item id="wipers-on-tap-item" label="Wipers on tap" class="hidden">
+			<sdpi-select setting="wipersOnTap" default="trigger">
+				<option value="trigger">Trigger</option>
+				<option value="toggle">Toggle</option>
+			</sdpi-select>
+		</sdpi-item>
 
 		<sdpi-item id="auto-hold-item" label="Auto Hold" class="hidden">
 			<sdpi-checkbox setting="autoHold"></sdpi-checkbox>
@@ -51,13 +59,13 @@
 				const controlSelect = document.getElementById("control-select");
 				if (!controlSelect) return;
 
-				updateAutoHoldVisibility(controlSelect.value || "pit-speed-limiter");
+				updateModeVisibility(controlSelect.value || "pit-speed-limiter");
 
 				controlSelect.addEventListener("change", (ev) => {
-					updateAutoHoldVisibility(ev.target.value);
+					updateModeVisibility(ev.target.value);
 				});
 				controlSelect.addEventListener("input", (ev) => {
-					updateAutoHoldVisibility(ev.target.value);
+					updateModeVisibility(ev.target.value);
 				});
 
 				// Polling fallback: sdpi-select events can be unreliable on programmatic value restores
@@ -66,17 +74,19 @@
 					const currentControl = controlSelect.value;
 					if (currentControl && currentControl !== lastControl) {
 						lastControl = currentControl;
-						updateAutoHoldVisibility(currentControl);
+						updateModeVisibility(currentControl);
 					}
 				});
 			}
 
-			function updateAutoHoldVisibility(control) {
+			function updateModeVisibility(control) {
 				const autoHoldItem = document.getElementById("auto-hold-item");
 				const autoHoldStatesItem = document.getElementById("auto-hold-states-item");
+				const wipersOnTapItem = document.getElementById("wipers-on-tap-item");
 
 				autoHoldItem?.classList.toggle("hidden", control !== "escape");
 				autoHoldStatesItem?.classList.toggle("hidden", control !== "enter-exit-tow");
+				wipersOnTapItem?.classList.toggle("hidden", control !== "wipers-and-visor");
 			}
 
 			if (document.readyState === "loading") {
