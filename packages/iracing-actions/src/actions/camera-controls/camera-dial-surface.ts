@@ -129,6 +129,11 @@ import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
 import { type DialPendingPreview, PENDING_BAR_HEIGHT, renderPendingBar } from "../../shared/dial-preview.js";
 import { classifyDialReleaseForHost } from "../../shared/dial-release.js";
 import {
+  carNumberRawAtPosition,
+  computeRacePositionTarget,
+  resolveRaceOrder,
+} from "../../shared/race-position-cycling.js";
+import {
   computeCameraCarousel,
   computeSubCameraCarousel,
   findSessionGroupByNum,
@@ -340,77 +345,6 @@ export const DialSettings = z
   .prefault({});
 
 export type DialSettings = z.infer<typeof DialSettings>;
-
-/**
- * @internal Exported for testing
- *
- * Wrap a 1-based race position by `dir` within a field of `max` cars.
- */
-export function wrapPosition(current: number, dir: 1 | -1, max: number): number {
-  return ((current - 1 + dir + max) % max) + 1;
-}
-
-/**
- * @internal Exported for testing
- *
- * Compute the target race position for a rotation. `order` is a per-car,
- * 1-based rank array indexed by `carIdx` (the canonical live order, or the
- * `CarIdxPosition` fallback the caller supplies) — `0` = not classified.
- *
- * When the focused car IS classified, returns its current position, the wrapped
- * target one detent away, and the field size. When the focused car is NOT
- * classified (the pace / safety car, or a car missing from the order) but the
- * field is non-empty, a detent still acts by re-entering the running order at
- * its natural end — `next` → the leader (P1), `previous` → last place (issue
- * #803, so the pace car in focus doesn't stall cycling). Which physical turn
- * dispatches which direction is decided by `clockwiseDirection` (#884): under
- * the number-primary default, a clockwise detent dispatches `previous`, so it
- * re-enters at last place and walks up the field. `currentPosition` is then
- * `null` (no position badge). Returns `null` when there is no usable order at
- * all (no order, or an empty field), or when no other position along the walk
- * holds a car.
- *
- * Every ranked car is a target, frozen ranks included: the canonical order
- * keeps a towed / finished / departed car at its last-known rank, and a camera
- * switch to it works (issue #1281), so there is no world-presence filter. The
- * walk (both the classified step and the recovery re-entry) only steps past a
- * position NO car holds — a gap in the ranks — wrapping, and never re-targets
- * the focused car's own position.
- */
-export function computeRacePositionTarget(
-  camCarIdx: number | undefined,
-  order: number[] | null,
-  direction: Direction,
-): { currentPosition: number | null; targetPosition: number; maxPosition: number } | null {
-  if (!order || camCarIdx === undefined || camCarIdx < 0) return null;
-
-  const maxPosition = order.reduce((m, p) => (typeof p === "number" && p > m ? p : m), 0);
-
-  if (maxPosition <= 0) return null;
-
-  const dir = direction === "next" ? 1 : -1;
-  const currentPosition = order[camCarIdx];
-  const classified = typeof currentPosition === "number" && currentPosition > 0;
-
-  // Anchor the walk one step from the focused car's own position — or, for an
-  // unclassified focused car (pace / safety car, or a car not in the order),
-  // re-enter the order at its natural end so a detent isn't a no-op: next →
-  // P1, previous → last place. No currentPosition → the carousel omits the
-  // position badge.
-  let candidate = classified ? wrapPosition(currentPosition, dir, maxPosition) : dir === 1 ? 1 : maxPosition;
-
-  for (let step = 0; step < maxPosition; step++) {
-    if (classified && candidate === currentPosition) break; // full circle — no other ranked car
-
-    if (carIdxAtPosition(order, candidate) !== null) {
-      return { currentPosition: classified ? currentPosition : null, targetPosition: candidate, maxPosition };
-    }
-
-    candidate = wrapPosition(candidate, dir, maxPosition);
-  }
-
-  return null;
-}
 
 /** Human-readable label for a gesture slot (for the trigger description). */
 function gestureLabel(action: GestureSlot): string | undefined {
@@ -1410,28 +1344,9 @@ export class CameraDialSurface {
     if (carNumberRaw !== null) this.host.focusCarNumber(carNumberRaw, contextId);
   }
 
-  /**
-   * The race order, canonical first, official `CarIdxPosition` as fallback.
-   *
-   * The canonical order is a dense array of 1-based ranks with `0` for every
-   * car it omits, so "no order at all" arrives as a NON-NULL array of zeros —
-   * `??` alone accepts it and strands the mode at `maxPosition = 0`. An order
-   * that ranks NOBODY is therefore "no live order at all" in the sense
-   * `race-positions.md` means it, and the official counter takes over (#968).
-   *
-   * Before the green flag of a race the canonical order is the qualifying grid
-   * (issue #974), so this mode cycles the formation exactly as it does the
-   * race; the all-zero case is now the rarer one — a non-race session, or a
-   * race whose grid can't be resolved — where the official counter is the last
-   * resort and is itself all-zero pre-green (iRacing scores positions at
-   * start/finish).
-   */
+  /** The race order, canonical first, official `CarIdxPosition` as fallback (`resolveRaceOrder`, #968). */
   private resolveOrder(telemetry: TelemetryData | null): number[] | null {
-    const canonical = this.host.getRacePositions();
-
-    if (canonical?.some((position) => position > 0)) return canonical;
-
-    return telemetry?.CarIdxPosition ?? canonical ?? null;
+    return resolveRaceOrder(this.host.getRacePositions(), telemetry?.CarIdxPosition);
   }
 
   /**
@@ -1873,25 +1788,4 @@ export class CameraDialSurface {
     ctx.lastRenderSig = renderedSignature;
     ctx.lastChangeRenderAt = Date.now();
   }
-}
-
-/** The carIdx running at a given race position (the inverse of `order`), or null when unclassified. */
-function carIdxAtPosition(order: number[], position: number): number | null {
-  const carIdx = order.findIndex((p) => p === position);
-
-  return carIdx < 0 ? null : carIdx;
-}
-
-/**
- * The raw car number (the camera-API identity, not the display string) running
- * at a given race position. Used by the race-position rotation dispatch — see
- * the file header — so execution focuses the car at the SAME target position
- * the carousel's side preview shows, rather than a bare position that
- * iRacing's own `switchPos` would resolve against a potentially different
- * (official) order.
- */
-function carNumberRawAtPosition(order: number[], sessionInfo: unknown, position: number): number | null {
-  const carIdx = carIdxAtPosition(order, position);
-
-  return carIdx === null ? null : getCarNumberRawFromSessionInfo(sessionInfo, carIdx);
 }
