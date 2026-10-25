@@ -3,7 +3,7 @@ title: Actions Overview
 description: All iRaceDeck actions organized by category
 ---
 
-iRaceDeck provides 33 actions with 283 modes for iRacing, organized into 10 categories.
+iRaceDeck provides 33 actions with 284 modes for iRacing, organized into 10 categories.
 
 ## Categories
 
