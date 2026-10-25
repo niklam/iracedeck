@@ -31,7 +31,7 @@ import {
   ADJUST_REPEAT_INTERVAL_MS,
   ADJUST_REPEAT_SAFETY_MS,
   adjustStyleSettingsFields,
-  seedFreshKeyStyle,
+  persistFreshKeyStyleSeed,
 } from "../../shared/adjust-styles.js";
 import { RepeatController } from "../../shared/repeat-controller.js";
 import { SPOTTER_CONTROLS, SPOTTER_GLOBAL_KEYS, type SpotterControl } from "../../shared/spotter-bindings.js";
@@ -176,7 +176,7 @@ export class AiSpotterControls extends ConnectionStateAwareAction<AiSpotterContr
     // its own setSettings({...payload, addedWithVersion}). Seeding first, and
     // handing the base the seeded payload, makes that stamp write land last
     // AND carry the seeded style.
-    await this.persistFreshKeySeed(ev);
+    await persistFreshKeyStyleSeed(ev, this.logger);
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
     this.setActiveBinding(SPOTTER_GLOBAL_KEYS[settings.control]);
@@ -247,29 +247,6 @@ export class AiSpotterControls extends ConnectionStateAwareAction<AiSpotterContr
     if (sent) tickIRacingVolumeStep(control === "louder" ? "up" : "down");
 
     return sent;
-  }
-
-  /**
-   * Seed a freshly placed key with the Split style (#1453) and hand the
-   * seeded object on as `ev.payload.settings`, so the base class's
-   * `addedWithVersion` stamp keeps it. Only a key with no stored settings at
-   * all is seeded; every existing key stays Legacy. Logs and swallows a
-   * failed persist: the key then draws Legacy until the next write.
-   */
-  private async persistFreshKeySeed(ev: IDeckWillAppearEvent<AiSpotterControlsSettings>): Promise<void> {
-    const seeded = seedFreshKeyStyle(ev.payload.settings);
-
-    if (!seeded) return;
-
-    try {
-      await ev.action.setSettings(seeded);
-    } catch (err) {
-      this.logger.warn(`Failed to persist the seeded key style: ${err instanceof Error ? err.message : err}`);
-
-      return;
-    }
-
-    ev.payload.settings = seeded as AiSpotterControlsSettings;
   }
 
   private parseSettings(settings: unknown): AiSpotterControlsSettings {

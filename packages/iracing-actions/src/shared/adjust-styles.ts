@@ -18,6 +18,7 @@ import {
   generateTitleText,
   getGlobalBorderSettings,
   getGlobalTitleSettings,
+  type IDeckWillAppearEvent,
   renderIconTemplate,
   resolveBorderSettings,
   type ResolvedTitleSettings,
@@ -27,6 +28,7 @@ import {
   type TitleOverrides,
 } from "@iracedeck/deck-core";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
+import type { ILogger } from "@iracedeck/logger";
 import { getGlobalColors } from "@iracedeck/settings";
 
 import adjustStyleTemplate from "../../icons/adjust-style.svg";
@@ -64,6 +66,30 @@ export function seedFreshKeyStyle(raw: unknown): Record<string, unknown> | null 
   if (Object.keys(obj).length > 0) return null;
 
   return { keyStyle: "split" };
+}
+
+/**
+ * Persist {@link seedFreshKeyStyle}'s seed for a freshly placed key and hand
+ * the seeded object on as `ev.payload.settings` (#1453). Called BEFORE
+ * `super.onWillAppear`: the base class stamps a missing `addedWithVersion`
+ * by writing `{...payload, addedWithVersion}`, so that write lands last and
+ * carries the seed. Logs and swallows a failed persist: the key then draws
+ * Legacy until the next write.
+ */
+export async function persistFreshKeyStyleSeed<T>(ev: IDeckWillAppearEvent<T>, logger: ILogger): Promise<void> {
+  const seeded = seedFreshKeyStyle(ev.payload.settings);
+
+  if (!seeded) return;
+
+  try {
+    await ev.action.setSettings(seeded);
+  } catch (err) {
+    logger.warn(`Failed to persist the seeded key style: ${err instanceof Error ? err.message : err}`);
+
+    return;
+  }
+
+  ev.payload.settings = seeded as T;
 }
 
 /**
@@ -392,7 +418,11 @@ export function renderAdjustStyleSvg(inputs: AdjustStyleRenderInputs): string {
       ? TITLE_SOURCE_TOP
       : NO_VALUE_STYLES.has(style)
         ? inputs.labelOnNoValueStyles
-          ? TITLE_SOURCE_BOTTOM
+          ? // A Pill end top key's frame is open at the bottom, toward its
+            // partner, so its label goes on the closed top stroke, as Joined pill's does.
+            style === "pill-end" && position === "top"
+            ? TITLE_SOURCE_TOP
+            : TITLE_SOURCE_BOTTOM
           : TITLE_SOURCE_HIDDEN
         : (style === "edge-chevrons" && position === "bottom") || (style === "joined-pill" && position === "top")
           ? TITLE_SOURCE_TOP

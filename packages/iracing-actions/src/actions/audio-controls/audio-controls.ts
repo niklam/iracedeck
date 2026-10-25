@@ -33,7 +33,11 @@ import voiceChatVolumeUpIconSvg from "@iracedeck/icons/audio-controls/voice-chat
 import { getGlobalColors } from "@iracedeck/settings";
 
 import { tickIRacingVolumeStep } from "../../audio/volume-tick.js";
-import { ADJUST_REPEAT_INTERVAL_MS, ADJUST_REPEAT_SAFETY_MS, seedFreshKeyStyle } from "../../shared/adjust-styles.js";
+import {
+  ADJUST_REPEAT_INTERVAL_MS,
+  ADJUST_REPEAT_SAFETY_MS,
+  persistFreshKeyStyleSeed,
+} from "../../shared/adjust-styles.js";
 import { RepeatController } from "../../shared/repeat-controller.js";
 import {
   renderVolumeKeyIconOrNull,
@@ -262,7 +266,7 @@ export class AudioControls extends ConnectionStateAwareAction<AudioControlsSetti
     // The fresh-key seed (#1453) joins the same pre-super step, for the same
     // reason: the stamp then carries the seeded style. A seed and the
     // migration never both apply — an empty payload has nothing to migrate.
-    if (!ev.action.isDial()) await this.persistFreshKeySeed(ev);
+    if (!ev.action.isDial()) await persistFreshKeyStyleSeed(ev, this.logger);
 
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
@@ -423,30 +427,6 @@ export class AudioControls extends ConnectionStateAwareAction<AudioControlsSetti
     }
 
     ev.payload.settings = migrated as AudioControlsSettings;
-  }
-
-  /**
-   * Seed a freshly placed keypad key with the Split style (#1453) and hand
-   * the seeded object on as `ev.payload.settings`, so the base class's
-   * `addedWithVersion` stamp (which writes from the payload) keeps it — the
-   * {@link persistMigratedSettings} shape. Only a key with no stored settings
-   * at all is seeded; every existing key stays Legacy. Logs and swallows a
-   * failed persist: the key then draws Legacy until the next write.
-   */
-  private async persistFreshKeySeed(ev: IDeckWillAppearEvent<AudioControlsSettings>): Promise<void> {
-    const seeded = seedFreshKeyStyle(ev.payload.settings);
-
-    if (!seeded) return;
-
-    try {
-      await ev.action.setSettings(seeded);
-    } catch (err) {
-      this.logger.warn(`Failed to persist the seeded key style: ${err instanceof Error ? err.message : err}`);
-
-      return;
-    }
-
-    ev.payload.settings = seeded as AudioControlsSettings;
   }
 
   /**

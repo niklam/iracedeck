@@ -544,6 +544,19 @@ describe("renderAdjustStyleSvg — labelOnNoValueStyles (#1453)", () => {
     expect(svg).not.toContain("BRAKE BIAS");
   });
 
+  it("puts a Pill end key's label on its closed stroke: the top for the top key, the bottom for the bottom key", () => {
+    for (const pairPosition of ["top", "bottom"] as const) {
+      const svg = decode(
+        renderAdjustStyleSvg({ ...BASE, style: "pill-end", pairPosition, labelOnNoValueStyles: true }),
+      );
+      const pathIndex = svg.indexOf("<path");
+
+      // A knockout is only carved where the label sits on a stroke, never on the open edge.
+      expect(svg.indexOf("<rect", pathIndex)).toBeGreaterThan(pathIndex);
+      expect(svg).toContain(">BRAKE BIAS<");
+    }
+  });
+
   it("leaves the value styles unchanged", () => {
     for (const style of ["split", "edge-chevrons", "joined-pill"] as const) {
       expect(renderAdjustStyleSvg({ ...BASE, style, labelOnNoValueStyles: true })).toBe(
