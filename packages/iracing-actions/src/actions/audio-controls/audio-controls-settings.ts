@@ -9,6 +9,7 @@
 import { CommonSettings } from "@iracedeck/deck-core";
 import z from "zod";
 
+import { adjustStyleSettingsFields } from "../../shared/adjust-styles.js";
 import { SPOTTER_GLOBAL_KEYS } from "../../shared/spotter-bindings.js";
 
 /** Global-settings keys for the shared audio key bindings (both surfaces). */
@@ -194,6 +195,10 @@ export const AudioControlsSettings = CommonSettings.extend({
     .default("push-to-talk")
     .catch("push-to-talk"),
   action: z.enum(["volume-up", "volume-down", "mute", "mute-driver"]).default("volume-up").catch("volume-up"),
+  // Paired +/- key styles on the keypad volume keys (#1453): `keyStyle` and
+  // `pairPosition`, both with `.catch`. Read only by a volume pair; any other
+  // keypad pair keeps the stored value and ignores it.
+  ...adjustStyleSettingsFields,
   dial: AudioDialSettings,
 });
 

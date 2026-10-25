@@ -1,6 +1,7 @@
 import {
   assembleIcon,
   ConnectionStateAwareAction,
+  getDualPressThresholdMs,
   getGlobalBorderSettings,
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
@@ -31,11 +32,17 @@ import voiceChatVolumeDownIconSvg from "@iracedeck/icons/audio-controls/voice-ch
 import voiceChatVolumeUpIconSvg from "@iracedeck/icons/audio-controls/voice-chat-volume-up.svg";
 import { getGlobalColors } from "@iracedeck/settings";
 
+import { ADJUST_REPEAT_INTERVAL_MS, ADJUST_REPEAT_SAFETY_MS, seedFreshKeyStyle } from "../../shared/adjust-styles.js";
+import { RepeatController } from "../../shared/repeat-controller.js";
+import {
+  renderVolumeKeyIconOrNull,
+  type VolumeKeyDescription,
+  volumeKeyRepeats,
+} from "../../shared/volume-key-styles.js";
 import { INTERNAL_AUDIO_BUSES } from "./audio-buses.js";
 import {
   AUDIO_CONTROLS_GLOBAL_KEYS,
   type AudioControlsSettings,
-  type InternalAudioCategory,
   isInternalAudioCategory,
   isKeypadControlAvailable,
   parseAudioControlsSettings,
@@ -48,6 +55,9 @@ export { AUDIO_CONTROLS_GLOBAL_KEYS };
 
 type AudioCategory = "push-to-talk" | "voice-chat" | "master" | "race-engineer" | "radar";
 type AudioAction = "volume-up" | "volume-down" | "mute" | "mute-driver";
+/** A keypad category with a volume pair: every one but Push to Talk. */
+type VolumeCategory = Exclude<AudioCategory, "push-to-talk">;
+type VolumeAction = "volume-up" | "volume-down";
 
 /**
  * Flat record mapping "{category}-{action}" keys to imported SVGs.
@@ -107,7 +117,7 @@ const ACTION_TITLE_LABELS: Record<AudioAction, string> = {
   "mute-driver": "MUTE DRIVER",
 };
 
-const CATEGORY_TITLE_LABELS: Record<Exclude<AudioCategory, "push-to-talk">, string> = {
+const CATEGORY_TITLE_LABELS: Record<VolumeCategory, string> = {
   "voice-chat": "VOICE",
   master: "MASTER",
   "race-engineer": "ENGINEER",
@@ -153,6 +163,70 @@ export function generateAudioControlsSvg(settings: AudioControlsSettings, bindin
   });
 }
 
+/** A keypad pair that is one half of a volume pair: any category but Push to Talk, with Volume Up or Down. */
+function volumePair(
+  settings: Pick<AudioControlsSettings, "category" | "action">,
+): { category: VolumeCategory; action: VolumeAction } | null {
+  const { category, action } = settings;
+
+  if (category === "push-to-talk" || (action !== "volume-up" && action !== "volume-down")) return null;
+
+  return { category, action };
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * The volume key a keypad pair is, for its paired +/− style (#1453), or null
+ * for a pair that is not a volume key (Push to Talk, the mutes). iRacing's
+ * volumes (Master, Voice Chat) have no level; Race Engineer and Radar read
+ * theirs through {@link INTERNAL_AUDIO_BUSES}, the table the dial shares.
+ */
+export function describeAudioVolumeKey(
+  settings: Pick<AudioControlsSettings, "category" | "action">,
+): VolumeKeyDescription | null {
+  const pair = volumePair(settings);
+
+  if (!pair) return null;
+
+  const label = CATEGORY_TITLE_LABELS[pair.category];
+  const direction = pair.action === "volume-up" ? "increase" : "decrease";
+
+  if (!isInternalAudioCategory(pair.category)) return { label, direction };
+
+  const bus = INTERNAL_AUDIO_BUSES[pair.category];
+
+  return { label, direction, readLevel: () => ({ level: bus.read(), enabled: bus.isEnabled() }) };
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * The keypad icon: a volume key in a paired style draws through the shared
+ * volume module (#1453); every other key, and a volume key on Legacy, draws
+ * {@link generateAudioControlsSvg} as before.
+ */
+export function renderAudioControlsIcon(settings: AudioControlsSettings, bindingMissing = false): string {
+  const description = describeAudioVolumeKey(settings);
+
+  if (description) {
+    const styled = renderVolumeKeyIconOrNull({
+      description,
+      keyStyle: settings.keyStyle,
+      pairPosition: settings.pairPosition,
+      colorSourceSvg: AUDIO_ICONS[`${settings.category}-${settings.action}`],
+      colorOverrides: settings.colorOverrides,
+      titleOverrides: settings.titleOverrides,
+      borderOverrides: settings.borderOverrides,
+      bindingMissing,
+    });
+
+    if (styled) return styled;
+  }
+
+  return generateAudioControlsSvg(settings, bindingMissing);
+}
+
 /**
  * Audio Controls Action
  * One action, two surfaces (#782): on a keypad button it provides volume and
@@ -174,12 +248,21 @@ export class AudioControls extends ConnectionStateAwareAction<AudioControlsSetti
     isBindingMissing: (keys) => this.isBindingMissing(keys),
   });
 
+  /** Hold-to-repeat for volume keys in a paired style (#1453); Legacy keys step once per press. */
+  private readonly repeat = new RepeatController(this.logger);
+
   override async onWillAppear(ev: IDeckWillAppearEvent<AudioControlsSettings>): Promise<void> {
     // BEFORE super: the base stamps a missing `addedWithVersion` with its own
     // setSettings({...payload, addedWithVersion}). Migrating first (and handing
     // the base the migrated payload) makes that stamp write land last AND carry
     // the migrated dial — the other order would drop the stamp.
     await this.persistMigratedSettings(ev);
+
+    // The fresh-key seed (#1453) joins the same pre-super step, for the same
+    // reason: the stamp then carries the seeded style. A seed and the
+    // migration never both apply — an empty payload has nothing to migrate.
+    if (!ev.action.isDial()) await this.persistFreshKeySeed(ev);
+
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);
 
@@ -209,6 +292,7 @@ export class AudioControls extends ConnectionStateAwareAction<AudioControlsSetti
       return;
     }
 
+    this.repeat.clear(ev.action.id);
     this.setActiveBinding(this.resolveGlobalKey(settings.category, settings.action));
 
     await this.updateDisplay(ev, settings);
@@ -228,19 +312,45 @@ export class AudioControls extends ConnectionStateAwareAction<AudioControlsSetti
       }
 
       await this.holdBinding(ev.action.id, settingKey);
+
+      return;
+    }
+
+    const pair = volumePair(settings);
+
+    if (pair) {
+      // Hold-to-repeat in every paired style (#1453): armed SYNCHRONOUSLY,
+      // before the first step's await, so a racing keyUp always finds the
+      // timers to clear (the setup actions' pattern). Every step, the first
+      // and each repeat, goes through performVolumeStep; a step that did not
+      // happen (a level at its limit, a binding that did not send) ends the
+      // repeat.
+      if (volumeKeyRepeats(settings.keyStyle)) {
+        this.repeat.onKeyDown(ev.action.id, {
+          holdMs: getDualPressThresholdMs(),
+          intervalMs: ADJUST_REPEAT_INTERVAL_MS,
+          safetyMs: ADJUST_REPEAT_SAFETY_MS,
+          execute: () => this.performVolumeStep(pair.category, pair.action),
+        });
+      }
+
+      await this.performVolumeStep(pair.category, pair.action);
     } else if (isInternalAudioCategory(settings.category)) {
-      // iRaceDeck's own audio buses (Race Engineer voice, Radar ticks): step
-      // the global and apply it to the audio engine directly via the shared
-      // helpers — no keyboard binding is involved, hence no entry in
-      // AUDIO_CONTROLS_GLOBAL_KEYS. The dial surface (#782) steps the same
-      // globals through the signed multi-step helpers.
-      this.stepInternalVolume(settings.category, settings.action);
+      // These categories expose only volume-up / volume-down in the Property
+      // Inspector, so a mute value here is a STALE persisted setting — a
+      // hand-edited or imported profile, or a key whose PI has not been
+      // reopened. It logs and no-ops, matching the dial's `doMute` /
+      // `doMuteDriver`. It used to treat anything that wasn't `volume-down` as
+      // a step up, which turned such a setting into a silent volume increase
+      // on every single press.
+      this.logger.warn(`${settings.action} is not available for the ${settings.category} category`);
     } else {
       await this.executeControl(settings.category, settings.action);
     }
   }
 
   override async onKeyUp(ev: IDeckKeyUpEvent<AudioControlsSettings>): Promise<void> {
+    this.repeat.onKeyUp(ev.action.id);
     const settings = this.parseSettings(ev.payload.settings);
 
     if (settings.category === "push-to-talk") {
@@ -251,6 +361,7 @@ export class AudioControls extends ConnectionStateAwareAction<AudioControlsSetti
 
   override async onWillDisappear(ev: IDeckWillDisappearEvent<AudioControlsSettings>): Promise<void> {
     await this.dialSurface.willDisappear(ev.action.id);
+    this.repeat.clear(ev.action.id);
     await this.releaseBinding(ev.action.id);
     await super.onWillDisappear(ev);
   }
@@ -314,30 +425,63 @@ export class AudioControls extends ConnectionStateAwareAction<AudioControlsSetti
   }
 
   /**
-   * Step an iRaceDeck-internal audio bus (Race Engineer voice or Radar ticks)
-   * one detent up or down through the shared {@link INTERNAL_AUDIO_BUSES}
-   * table — the same wiring the dial rotates, so the two surfaces can't drift.
-   * The helper persists the new value and applies it to the audio engine;
-   * Race Engineer stepping respects the master enable gate (the value updates
-   * but Voice stays muted while the Race Engineer feature is off).
-   *
-   * These categories expose only volume-up / volume-down in the Property
-   * Inspector, so a mute value here is a STALE persisted setting — a
-   * hand-edited or imported profile, or a key whose PI has not been reopened.
-   * It logs and no-ops, matching the dial's `doMute` / `doMuteDriver`. It used
-   * to treat anything that wasn't `volume-down` as a step up, which turned
-   * such a setting into a silent volume increase on every single press.
+   * Seed a freshly placed keypad key with the Split style (#1453) and hand
+   * the seeded object on as `ev.payload.settings`, so the base class's
+   * `addedWithVersion` stamp (which writes from the payload) keeps it — the
+   * {@link persistMigratedSettings} shape. Only a key with no stored settings
+   * at all is seeded; every existing key stays Legacy. Logs and swallows a
+   * failed persist: the key then draws Legacy until the next write.
    */
-  private stepInternalVolume(category: InternalAudioCategory, audioAction: AudioAction): void {
-    if (audioAction !== "volume-up" && audioAction !== "volume-down") {
-      this.logger.warn(`${audioAction} is not available for the ${category} category`);
+  private async persistFreshKeySeed(ev: IDeckWillAppearEvent<AudioControlsSettings>): Promise<void> {
+    const seeded = seedFreshKeyStyle(ev.payload.settings);
+
+    if (!seeded) return;
+
+    try {
+      await ev.action.setSettings(seeded);
+    } catch (err) {
+      this.logger.warn(`Failed to persist the seeded key style: ${err instanceof Error ? err.message : err}`);
 
       return;
     }
 
+    ev.payload.settings = seeded as AudioControlsSettings;
+  }
+
+  /**
+   * One volume step of a keypad volume key — the first press and every
+   * hold-to-repeat step alike (#1453) — and whether it happened.
+   *
+   * iRacing's volumes (Master, Voice Chat) tap the key binding: true when the
+   * press was sent. iRaceDeck's own (Race Engineer voice, Radar ticks) step
+   * the global one detent through the shared {@link INTERNAL_AUDIO_BUSES}
+   * table — the same wiring the dial rotates, so the two surfaces can't drift
+   * — which persists it and applies it to the audio engine (Race Engineer
+   * stepping respects the master gate: the value updates but Voice stays
+   * muted while the feature is off): true when the level moved, false at 0
+   * or 100.
+   */
+  private async performVolumeStep(category: VolumeCategory, audioAction: VolumeAction): Promise<boolean> {
     const down = audioAction === "volume-down";
-    const next = INTERNAL_AUDIO_BUSES[category].stepBy(down ? -1 : 1);
-    this.logger.info(`${category} volume ${down ? "down" : "up"} → ${next}`);
+
+    if (isInternalAudioCategory(category)) {
+      const bus = INTERNAL_AUDIO_BUSES[category];
+      const before = bus.read();
+      const next = bus.stepBy(down ? -1 : 1);
+      this.logger.info(`${category} volume ${down ? "down" : "up"} → ${next}`);
+
+      return next !== before;
+    }
+
+    const settingKey = this.resolveGlobalKey(category, audioAction);
+
+    if (!settingKey) {
+      this.logger.warn(`No global key mapping for ${category} ${audioAction}`);
+
+      return false;
+    }
+
+    return this.tapBinding(settingKey);
   }
 
   private async executeControl(category: AudioCategory, audioAction: AudioAction): Promise<void> {
@@ -366,15 +510,20 @@ export class AudioControls extends ConnectionStateAwareAction<AudioControlsSetti
     ev: IDeckWillAppearEvent<AudioControlsSettings> | IDeckDidReceiveSettingsEvent<AudioControlsSettings>,
     settings: AudioControlsSettings,
   ): Promise<void> {
-    const activeKey = this.resolveGlobalKey(settings.category, settings.action);
-    const svgDataUri = generateAudioControlsSvg(settings, this.isBindingMissing(activeKey));
+    const svgDataUri = this.renderIcon(settings);
     await ev.action.setTitle("");
     await this.setKeyImage(ev, svgDataUri);
-    this.setRegenerateCallback(ev.action.id, () =>
-      generateAudioControlsSvg(
-        settings,
-        this.isBindingMissing(this.resolveGlobalKey(settings.category, settings.action)),
-      ),
+    // The base class re-runs this on every global-settings change, which is
+    // what keeps a Race Engineer / Radar key's level current whoever changes
+    // it: this key, its partner, the dial, the Settings window, a Pit Crew
+    // toggle (#1453).
+    this.setRegenerateCallback(ev.action.id, () => this.renderIcon(settings));
+  }
+
+  private renderIcon(settings: AudioControlsSettings): string {
+    return renderAudioControlsIcon(
+      settings,
+      this.isBindingMissing(this.resolveGlobalKey(settings.category, settings.action)),
     );
   }
 }
