@@ -393,6 +393,66 @@ describe("requestCameraSwitch", () => {
     expect(after).toHaveBeenCalledOnce();
   });
 
+  it("a lap press ends the wait it dropped: a switch asked for during its walk waits on its own (#1428 / #1435)", async () => {
+    const sim = fakeReplay({ frame: 2_000 });
+
+    _configureReplayEngine({
+      logger: engineRootLogger,
+      now: () => Date.now(),
+      replay: () => sim.replay,
+      readTelemetry: () => sim.telemetry(),
+      inReplay: () => true,
+      connected: () => true,
+    });
+
+    // A switch parked behind an earlier jump, with jump reads of its own, a long time ago.
+    const jump = jumpUnderWay();
+    const before = vi.fn();
+    const parked = requestCameraSwitch(before, options({ by: "next-car", jumps: jump.jumps }));
+
+    await vi.advanceTimersByTimeAsync(100_000);
+
+    // Then a Jump to Fastest Lap press, which drops it.
+    let finish!: () => void;
+    const press = holdLapPressSlot(
+      "ctx-fastest",
+      { owner: FASTEST_LAP_WALK_OWNER, noun: "walk", label: "Jump to fastest lap" },
+      () => new Promise<void>((resolve) => (finish = resolve)),
+    );
+
+    // A switch asked for during the walk, with the gate's own reads: it interrupts the walk and waits for its
+    // way back as a wait of its own, not folded into the dropped one's.
+    const after = vi.fn();
+    const request = requestCameraSwitch(after, options({ by: "next-car", name: "my car", asked: "Jump to My Car" }));
+
+    expect(debug).toHaveBeenCalledWith(
+      "Dial track order: Jump to My Car; a jump is under way, the my car switch waits for it",
+    );
+    expect(debug).not.toHaveBeenCalledWith(expect.stringContaining("the switch waiting for a jump now goes to"));
+
+    // Past the dropped wait's ceiling, counted from its own request, and well inside this one's.
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(after).not.toHaveBeenCalled();
+
+    // The walk puts the replay back and the press ends: the switch goes out, once.
+    finish();
+    await press;
+    await vi.advanceTimersByTimeAsync(500);
+    await request;
+
+    expect(after).toHaveBeenCalledOnce();
+    // The dropped wait's own jump reads were never asked again.
+    expect(jump.jumps.waitToSettle).toHaveBeenCalledOnce();
+
+    // The dropped wait ends when its jump lands, and sends nothing: not its switch, nor the newer one again.
+    jump.land();
+    await parked;
+
+    expect(before).not.toHaveBeenCalled();
+    expect(after).toHaveBeenCalledOnce();
+    expect(isCameraSwitchWaiting()).toBe(false);
+  });
+
   it("an angle-only switch (interruptsWalks: false) leaves a walk alone", async () => {
     const walk = claimReplayCursor(RACE_START_WALK_OWNER);
     const send = vi.fn();

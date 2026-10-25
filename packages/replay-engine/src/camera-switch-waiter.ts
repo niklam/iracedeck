@@ -26,8 +26,9 @@
  * - **A lap press drops a switch still waiting from before it** (#1428 /
  *   #1435): Jump to Fastest Lap or Jump to Race Start is the newer press, so
  *   the older switch never goes out at the walk's first quiet moment to
- *   interrupt it. A camera switch asked for after the press interrupts its
- *   walk as above.
+ *   interrupt it, and the wait it sat behind ends with it. A camera switch
+ *   asked for after the press interrupts its walk as above, and waits on its
+ *   own.
  * - **A switch during a position jump waits for it**: a jump swallows a
  *   camera change (9 of 9, #1430's captures), a search does not. The wait is
  *   the gate's for jumps only, with no claim, so it takes no cursor and
@@ -345,15 +346,23 @@ export function requestCameraSwitch(sendSwitch: () => unknown, options: CameraSw
 /**
  * A lap press drops the switch still waiting from before it (#1428 / #1435):
  * the press is the newer one, and the older switch would otherwise go out at
- * its walk's first quiet moment and interrupt it. The wait runs on and sends
- * nothing; a switch asked for after the press is one of its own.
+ * its walk's first quiet moment and interrupt it. The wait it sat behind ends
+ * with it, as {@link _resetCameraSwitchWaiter} ends one: its run goes on to
+ * its end and sends nothing, and a switch asked for after the press is one of
+ * its own — its own ceiling from its own request, and its own jump reads —
+ * never folded into the older wait.
  */
 onLapPressStarted((label) => {
   const dropped = waiting;
 
-  if (dropped === null) return;
-
   waiting = null;
+
+  if (waiter !== null) {
+    waiter = null;
+    waitGeneration++;
+  }
+
+  if (dropped === null) return;
 
   const { options } = dropped;
 
