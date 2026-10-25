@@ -62,7 +62,7 @@ When asked about actions or controls:
 | Car Setup | 7 | 75 | Brakes (button and dial surface, #730/#775), chassis, aero, engine, fuel mix, hybrid/ERS, traction control — adjustment modes plus live-display "View …" sub-modes; each View sub-mode also supports dual-press (tap = configured direction, long-press = opposite) so one key both shows the value and adjusts it (#540); adjustment/View modes with a live telemetry value can also render as paired +/− key styles (2-key and 3-key layouts, several selectable styles, hold-to-repeat) — Phase 1 covers these seven setup actions (#810) |
 | Communication | 2 | 35 | Chat, macros (15), whisper, toggle, reply, race admin commands, car selector |
 | Stream Deck | 1 | 1 | Switch Profile — switch to a bundled iRaceDeck profile or back to the previous one (Elgato-only, no iRacing command) |
-| **Total** | **33** | **314** | |
+| **Total** | **33** | **315** | |
 
 Mode counts reflect the PI Mode dropdown choices documented in each action page. Directional variants (Increase/Decrease) are treated as a single mode with a Direction sub-setting, matching the per-mode website format. Legacy replay actions (Replay Transport, Replay Speed, Replay Navigation) and Camera Cycle (Legacy) still exist in the plugin manifest for backward compatibility but are not counted as documented actions.
 
