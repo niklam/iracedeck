@@ -32,15 +32,18 @@
  * a second copy of a string the config already owns.
  *
  * `minPluginVersion` names the oldest plugin whose engine knows every
- * vocabulary name (var, condition, case) the pack's scripts use. An older
- * plugin's script compiler refuses an entry naming a var or condition it does
- * not know, so a pack offered to it would silence those callouts for good —
+ * vocabulary name (var, condition, case) and every grammar key the pack's
+ * scripts use. An older plugin's script compiler refuses an entry naming a var
+ * or condition it does not know, and its strict grammar refuses an unknown key
+ * and drops the whole voice, so a pack offered to it would silence those
+ * callouts for good —
  * the plugin's voice-pack catalog compares the value with semver and keeps such a pack listed but
  * not offered, and the launch step leaves an installed managed pack where it
- * is. Raise it in the same change that makes a pack's script use a name a
- * released plugin lacks; both packs are at 3.6.0 because their rolling-start
- * entries read the `rollingStart.*` names (#1167) — before that 3.5.0, for the
- * start briefs' `sessionStart.wetnessKnown` / `raceStart.wetnessKnown` (#1284).
+ * is. Raise it in the same change that makes a pack's script use a name or key
+ * a released plugin lacks; both packs are at 3.7.0 because their `radio` frame
+ * carries a `cut` tail (#1407) — before that 3.6.0, for the rolling-start
+ * entries' `rollingStart.*` names (#1167), and 3.5.0 for the start briefs'
+ * `sessionStart.wetnessKnown` / `raceStart.wetnessKnown` (#1284).
  * A pre-release of the named version counts as that version (`3.6.0-dev.0`
  * is offered a pack that needs `3.6.0`): `isVoicePackOfferable` strips the
  * suffix before comparing.
@@ -65,21 +68,21 @@ export const VOICE_PACKS = Object.freeze([
   Object.freeze({
     id: "default",
     label: "Default",
-    version: "1.2.0",
+    version: "1.3.0",
     description: "The Race Engineer voice iRaceDeck ships with.",
     author: "iRaceDeck",
     voices: Object.freeze(["default"]),
-    minPluginVersion: "3.6.0",
+    minPluginVersion: "3.7.0",
     bundled: false,
   }),
   Object.freeze({
     id: "iracedeck-terse",
     label: "Default (Short callouts)",
-    version: "1.1.0",
+    version: "1.2.0",
     description: "The Default engineer in radio shorthand: shorter race-time calls, most of them the fact itself.",
     author: "iRaceDeck",
     voices: Object.freeze(["shawn"]),
-    minPluginVersion: "3.6.0",
+    minPluginVersion: "3.7.0",
     bundled: false,
   }),
 ]);
