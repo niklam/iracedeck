@@ -2,10 +2,13 @@
  * The one camera-switch policy (#1467, Decision 3 of
  * `docs/superpowers/specs/2026-10-20-issue-1467-replay-engine-package.md`;
  * #1428 / #1435, `docs/superpowers/specs/2026-10-24-issue-1428-camera-keys-during-replay-jump.md`):
- * every camera switch the Replay Control key or dial makes — the dial's Track
- * Order turn and Jump to My Car gesture, the keys' Jump to My Car, Next / Prev
- * Car and Next / Prev Car Number — goes through {@link requestCameraSwitch}.
- * Moved from the dial's Track Order mode (#801), where it began.
+ * every camera switch an action's key or dial makes goes through
+ * {@link requestCameraSwitch}: Replay Control's (the dial's Track Order turn
+ * and Jump to My Car gesture; the keys' Jump to My Car, Next / Prev Car and
+ * Next / Prev Car Number), Camera Controls' keypad and dial, and Race Admin's
+ * Car Selector focus press. Camera Controls' Set Camera State, flags on the
+ * camera rather than a target, is sent at once and never comes here. Moved
+ * from the dial's Track Order mode (#801), where it began.
  *
  * - **A walk is interrupted first, and nothing else** (#1428 / #1435): a
  *   camera switch in the middle of a Jump to Fastest Lap or Jump to Race
