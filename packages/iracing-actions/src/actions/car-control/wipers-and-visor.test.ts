@@ -25,9 +25,10 @@ const VISOR_CAR: Partial<TelemetryData> = { dcTearOffVisor: false };
 const WIPER_CAR: Partial<TelemetryData> = { dcTriggerWindshieldWipers: false, dcToggleWindshieldWipers: false };
 
 const visor: WipersAndVisorCar = { kind: "visor" };
-const wipers: WipersAndVisorCar = { kind: "wipers", trigger: true, toggle: true };
-const triggerOnly: WipersAndVisorCar = { kind: "wipers", trigger: true, toggle: false };
-const toggleOnly: WipersAndVisorCar = { kind: "wipers", trigger: false, toggle: true };
+const wipers: WipersAndVisorCar = { kind: "wipers", trigger: true, toggle: true, on: false };
+const wipersOn: WipersAndVisorCar = { kind: "wipers", trigger: true, toggle: true, on: true };
+const triggerOnly: WipersAndVisorCar = { kind: "wipers", trigger: true, toggle: false, on: false };
+const toggleOnly: WipersAndVisorCar = { kind: "wipers", trigger: false, toggle: true, on: false };
 const unknown: WipersAndVisorCar = { kind: "unknown" };
 const neither: WipersAndVisorCar = { kind: "neither" };
 
@@ -86,11 +87,16 @@ describe("wipers-and-visor (#1463)", () => {
 
     it("records which wiper variable a one-variable car exposes", () => {
       expect(resolveWipersAndVisorCar(live({ dcTriggerWindshieldWipers: false }))).toEqual(triggerOnly);
-      expect(resolveWipersAndVisorCar(live({ dcToggleWindshieldWipers: true }))).toEqual(toggleOnly);
+      expect(resolveWipersAndVisorCar(live({ dcToggleWindshieldWipers: false }))).toEqual(toggleOnly);
     });
 
     it("is neither when live in a car that exposes no visor and no wipers", () => {
       expect(resolveWipersAndVisorCar(live({}))).toEqual(neither);
+    });
+
+    it("reads whether the wipers are on from the Toggle variable", () => {
+      expect(resolveWipersAndVisorCar(live({ ...WIPER_CAR, dcToggleWindshieldWipers: true }))).toEqual(wipersOn);
+      expect(resolveWipersAndVisorCar(live({ dcTriggerWindshieldWipers: true }))).toEqual(triggerOnly);
     });
 
     it("prefers the visor if a car ever exposed both", () => {
@@ -118,6 +124,15 @@ describe("wipers-and-visor (#1463)", () => {
     it("swaps the two when Wipers on tap is Toggle", () => {
       expect(wipersAndVisorBinding(wipers, "tap", "toggle")).toBe(TOGGLE);
       expect(wipersAndVisorBinding(wipers, "long", "toggle")).toBe(TRIGGER);
+    });
+
+    it("turns running wipers off on a tap, whatever the swap; the long press is unchanged", () => {
+      expect(wipersAndVisorBinding(wipersOn, "tap", "trigger")).toBe(TOGGLE);
+      expect(wipersAndVisorBinding(wipersOn, "tap", "toggle")).toBe(TOGGLE);
+      expect(wipersAndVisorBinding(wipersOn, "tap", undefined)).toBe(TOGGLE);
+      expect(wipersAndVisorBinding(wipersOn, "long", "trigger")).toBe(TOGGLE);
+      expect(wipersAndVisorBinding(wipersOn, "long", "toggle")).toBe(TRIGGER);
+      expect(wipersAndVisorBinding(wipersOn, "down", "trigger")).toBeNull();
     });
 
     it("reads a missing Wipers on tap as Trigger", () => {
@@ -153,6 +168,7 @@ describe("wipers-and-visor (#1463)", () => {
       expect(wipersAndVisorRequiredBinding(wipers, "trigger")).toBe(TRIGGER);
       expect(wipersAndVisorRequiredBinding(wipers, "toggle")).toBe(TOGGLE);
       expect(wipersAndVisorRequiredBinding(toggleOnly, "trigger")).toBe(TOGGLE);
+      expect(wipersAndVisorRequiredBinding(wipersOn, "trigger")).toBe(TOGGLE);
     });
 
     it("checks nothing for an unknown car or one with neither", () => {
@@ -184,6 +200,16 @@ describe("wipers-and-visor (#1463)", () => {
         title: "TOGGLE\nWIPERS",
         unavailable: false,
       });
+    });
+
+    it("shows the Toggle Wipers art while the wipers are on, since a tap turns them off", () => {
+      for (const swap of ["trigger", "toggle"] as const) {
+        expect(wipersAndVisorAppearance(wipersOn, swap)).toEqual({
+          iconSvg: toggleWipersIcon,
+          title: "TOGGLE\nWIPERS",
+          unavailable: false,
+        });
+      }
     });
 
     it("shows the combined icon for an unknown car", () => {
@@ -224,6 +250,10 @@ describe("wipers-and-visor (#1463)", () => {
         wipersAndVisorRenderKey(wipers, "toggle"),
       ]);
       expect(keys.size).toBe(5);
+    });
+
+    it("changes when the wipers turn on under the default swap", () => {
+      expect(wipersAndVisorRenderKey(wipersOn, "trigger")).not.toBe(wipersAndVisorRenderKey(wipers, "trigger"));
     });
 
     it("does not change with the swap where the art does not", () => {

@@ -541,6 +541,22 @@ describe("CarControl", () => {
         expect(mockTapBinding.mock.calls).toEqual([[TOGGLE], [TRIGGER]]);
       });
 
+      it("turns running wipers off on a tap, under either Wipers on tap setting", async () => {
+        setTelemetry({ ...WIPER_FRAME, dcToggleWindshieldWipers: true } as TelemetryData);
+        await press({}, 100);
+        await press({ wipersOnTap: "toggle" }, 100);
+        await press({ wipersOnTap: "toggle" }, 800);
+
+        expect(mockTapBinding.mock.calls).toEqual([[TOGGLE], [TOGGLE], [TRIGGER]]);
+      });
+
+      it("shows the Toggle Wipers art while the wipers are on", async () => {
+        setTelemetry({ ...WIPER_FRAME, dcToggleWindshieldWipers: true } as TelemetryData);
+        await action.onWillAppear(fakeEvent("action-1", { control: "wipers-and-visor" }) as any);
+
+        expect(lastAssembleArgs().title.titleText).toBe("TOGGLE\nWIPERS");
+      });
+
       it("reads a key stored without Wipers on tap as Trigger", async () => {
         setTelemetry(WIPER_FRAME);
         await press({}, 100);
@@ -616,7 +632,7 @@ describe("CarControl", () => {
       });
 
       it("shows the Trigger Wipers art on a wiper car, and Toggle Wipers when swapped", () => {
-        const car = { kind: "wipers" as const, trigger: true, toggle: true };
+        const car = { kind: "wipers" as const, trigger: true, toggle: true, on: false };
         generateCarControlSvg(settings(), { wipersAndVisorCar: car });
         expect(lastAssembleArgs().graphicSvg).toBe(triggerWipersIcon);
         expect(lastAssembleArgs().title.titleText).toBe("TRIGGER\nWIPERS");
@@ -682,16 +698,20 @@ describe("CarControl", () => {
         await tick(WIPER_FRAME);
         expect(updates()).toBe(2);
 
-        await tick({ ...WIPER_FRAME, dcToggleWindshieldWipers: true } as TelemetryData);
+        await tick({ ...WIPER_FRAME, Speed: 42 } as TelemetryData);
         expect(updates()).toBe(2);
 
-        await tick(REPLAY_FRAME);
+        // The wipers turning on changes what a tap does, so the art changes too.
+        await tick({ ...WIPER_FRAME, dcToggleWindshieldWipers: true } as TelemetryData);
         expect(updates()).toBe(3);
+
+        await tick(REPLAY_FRAME);
+        expect(updates()).toBe(4);
         expect(lastAssembleArgs().graphicSvg).toBe(wipersAndVisorIcon);
       });
 
       it("keys the render on the swap as well as the kind", () => {
-        const car = { kind: "wipers" as const, trigger: true, toggle: true };
+        const car = { kind: "wipers" as const, trigger: true, toggle: true, on: false };
         const trigger = action["buildStateKey"]({ control: "wipers-and-visor" } as any, { wipersAndVisorCar: car });
         const toggle = action["buildStateKey"]({ control: "wipers-and-visor", wipersOnTap: "toggle" } as any, {
           wipersAndVisorCar: car,
