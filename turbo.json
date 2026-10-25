@@ -138,6 +138,21 @@
         "$TURBO_ROOT$/scripts/lib/dev-local.mjs"
       ]
     },
+    "@iracedeck/audio-assets#typecheck": {
+      "dependsOn": ["^build"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/lib/dev-local.mjs"]
+    },
+    "@iracedeck/pi-components#typecheck": {
+      "dependsOn": ["^build"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/lib/changelog-*.mjs",
+        "!$TURBO_ROOT$/scripts/lib/changelog-*.test.mjs",
+        "$TURBO_ROOT$/scripts/lib/plugin-config-shape.mjs",
+        "$TURBO_ROOT$/scripts/lib/version-discovery.mjs",
+        "$TURBO_ROOT$/scripts/lib/settings-window-capture/tabs.mjs"
+      ]
+    },
     "@iracedeck/website#typecheck": {
       "dependsOn": ["^build"],
       "inputs": [
