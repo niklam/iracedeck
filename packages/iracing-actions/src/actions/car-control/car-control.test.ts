@@ -448,15 +448,20 @@ describe("CarControl", () => {
 
     let action: CarControl;
 
+    /** The mocked global settings carry only the keys a test reads, so the partial is cast once here. */
+    function setGlobalSettings(partial: Record<string, unknown>): void {
+      vi.mocked(getGlobalSettings).mockReturnValue(partial as ReturnType<typeof getGlobalSettings>);
+    }
+
     beforeEach(() => {
       // Fake timers BEFORE the action is built: the tracker captures Date.now at construction.
       vi.useFakeTimers();
-      vi.mocked(getGlobalSettings).mockReturnValue({});
+      setGlobalSettings({});
       action = new CarControl();
     });
 
     afterEach(() => {
-      vi.mocked(getGlobalSettings).mockReturnValue({});
+      setGlobalSettings({});
       vi.useRealTimers();
     });
 
@@ -545,9 +550,9 @@ describe("CarControl", () => {
 
       it("reads the threshold live from global settings on each press", async () => {
         setTelemetry(WIPER_FRAME);
-        vi.mocked(getGlobalSettings).mockReturnValue({ dualPressThresholdMs: 1000 });
+        setGlobalSettings({ dualPressThresholdMs: 1000 });
         await press({}, 600);
-        vi.mocked(getGlobalSettings).mockReturnValue({ dualPressThresholdMs: 300 });
+        setGlobalSettings({ dualPressThresholdMs: 300 });
         await press({}, 400);
 
         expect(mockTapBinding.mock.calls).toEqual([[TRIGGER], [TOGGLE]]);
