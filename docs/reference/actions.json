@@ -173,6 +173,7 @@
             { "value": "drs", "label": "DRS", "telemetryAware": true },
             { "value": "headlight-flash", "label": "Headlight Flash", "controlType": "hold" },
             { "value": "tear-off-visor", "label": "Tear Off Visor" },
+            { "value": "wipers-and-visor", "label": "Wipers and Visor", "telemetryAware": true },
             { "value": "ignition", "label": "Ignition" },
             { "value": "starter", "label": "Starter", "controlType": "hold" },
             { "value": "enter-exit-tow", "label": "Enter/Exit/Tow", "controlType": "hold", "telemetryAware": true },
