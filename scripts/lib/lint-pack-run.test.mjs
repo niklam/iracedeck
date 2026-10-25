@@ -37,6 +37,7 @@ function stubCatalog(report) {
     scenarios: new Map(),
     frames: new Map(),
     failedFrames: new Map(),
+    failedCuts: new Map(),
     pools: new Map(),
     skipped: [],
     fragmentProblems: new Map(),

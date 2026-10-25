@@ -454,13 +454,31 @@ describe("compileVoiceScript — frames", () => {
     expect(compiled.frames.get("terse")!.cut).toBeNull();
   });
 
-  it("fails a frame whose cut tail references something unknown, like its open or close (issue #1407)", () => {
-    const { compiled, scenario } = compileOne(["pool:flag-blue"], {
+  it("keeps a frame whose cut tail references something unknown, with no tail and the reason recorded (issue #1407)", () => {
+    // The tail is only what an ended line plays: a broken one must not take
+    // the frame, and with it every callout the frame wraps, down.
+    const { compiled, scenario, skip } = compileOne(["pool:flag-blue"], {
       script: { frames: { radio: { ...RADIO_FRAME, cut: ["pool:never-mind"] } } },
     });
 
-    expect(scenario).toBeUndefined();
-    expect([...compiled.failedFrames]).toEqual([["radio", 'unknown pool "never-mind"']]);
+    expect(skip).toBeUndefined();
+    expect(scenario?.frame).toBe("radio");
+    expect(compiled.failedFrames.size).toBe(0);
+    expect([...compiled.failedCuts]).toEqual([["radio", 'unknown pool "never-mind"']]);
+
+    const radio = compiled.frames.get("radio")!;
+
+    expect(radio.cut).toBeNull();
+    expect(shape(radio.open)).toEqual(shape(RADIO_FRAME.open.map((s) => resolveStep(s as Step))));
+    expect(shape(radio.close)).toEqual(shape(RADIO_FRAME.close.map((s) => resolveStep(s as Step))));
+  });
+
+  it("reports no failed cuts when every cut compiled, or none is defined", () => {
+    expect(compileOne(["pool:flag-blue"]).compiled.failedCuts.size).toBe(0);
+    expect(
+      compileOne(["pool:flag-blue"], { script: { frames: { radio: { ...RADIO_FRAME, cut: ["pool:flag-blue"] } } } })
+        .compiled.failedCuts.size,
+    ).toBe(0);
   });
 
   it("skips a scenario whose frame references something unknown, naming the frame and the reference", () => {
@@ -702,6 +720,25 @@ describe("compileVoiceScript — fragments", () => {
     const compiled = compileVoiceScript(script({ frames: { radio: { open: half, close: half } } }), deps());
 
     expect(compiled.failedFrames.get("radio")).toBe(`fragment expansion exceeds ${FRAGMENT_EXPANSION_LIMIT} steps`);
+  });
+
+  it("gives a frame's cut tail a budget of its own — it can neither push the halves over nor fail them (issue #1407)", () => {
+    const half: ScriptStep[] = Array.from({ length: FRAGMENT_EXPANSION_LIMIT / 2 }, () => "flags/blue-01.mp3");
+    const over: ScriptStep[] = Array.from({ length: FRAGMENT_EXPANSION_LIMIT + 1 }, () => "flags/blue-01.mp3");
+
+    // Halves at the limit between them, and a tail just as long: all compile.
+    const full = compileVoiceScript(script({ frames: { radio: { open: half, close: half, cut: half } } }), deps());
+
+    expect(full.failedFrames.size).toBe(0);
+    expect(full.failedCuts.size).toBe(0);
+    expect(full.frames.get("radio")!.cut).toHaveLength(FRAGMENT_EXPANSION_LIMIT / 2);
+
+    // A tail over the limit on its own fails alone.
+    const tooLong = compileVoiceScript(script({ frames: { radio: { ...RADIO_FRAME, cut: over } } }), deps());
+
+    expect(tooLong.failedFrames.size).toBe(0);
+    expect(tooLong.failedCuts.get("radio")).toBe(`fragment expansion exceeds ${FRAGMENT_EXPANSION_LIMIT} steps`);
+    expect(tooLong.scenarios.has("pit-crew.flag-blue")).toBe(true);
   });
 });
 

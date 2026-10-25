@@ -413,6 +413,19 @@ describe("lintPack", () => {
     ]);
   });
 
+  it("reports a frame whose cut tail does not compile on its own — the frame and its callouts still compile (issue #1407)", () => {
+    const script = structuredClone(SCRIPT) as unknown as {
+      frames: Record<string, { open: unknown[]; close: unknown[]; cut?: unknown[] }>;
+    };
+    script.frames.radio = { ...script.frames.radio, cut: ["{{no.such.var}}"] };
+
+    const report = lint(packFiles({ script }));
+
+    expect(messages(report.problems)).toEqual([
+      `${VOICE} frame: "radio" cut does not compile — unknown var "no.such.var" — an ended line plays the frame's close instead`,
+    ]);
+  });
+
   it("falls back to scanning voice/*/ when the manifest is missing, and says so", () => {
     const report = lint(packFiles({ manifest: null }));
 

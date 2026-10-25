@@ -1410,6 +1410,22 @@ class ScenarioEngine implements IScenarioEngine {
         this.warnedFragments.add(key);
         this.logger.warn(`Voice "${voice}": fragment "${name}" — ${reason}`);
       }
+
+      // A cut tail that did not compile leaves its frame whole (issue #1407):
+      // the voice still speaks every callout, and an ended line closes the
+      // radio with the close. Warned once per (voice, frame) under the key
+      // the runtime tail warn uses (`expandCutTail`), so the two never both
+      // speak for one frame.
+      for (const [name, reason] of result.failedCuts) {
+        const key = `${voice}|${name}|cut`;
+
+        if (this.warnedFrameAborts.has(key)) continue;
+
+        this.warnedFrameAborts.add(key);
+        this.logger.warn(
+          `Voice "${voice}" frame "${name}" cut tail cannot play — ${reason}; an ended line closes the radio instead`,
+        );
+      }
     }
 
     this.compiled = compiled;

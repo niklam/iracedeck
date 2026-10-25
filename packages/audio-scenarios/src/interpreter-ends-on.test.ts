@@ -535,6 +535,38 @@ describe("endsOn (issue #1407)", () => {
     expect(warns[0]).toContain('Voice "default" frame "radio" cut tail cannot play');
   });
 
+  it("a cut that does not compile keeps the line and closes the radio, warning once (issue #1407)", () => {
+    // `pool:never-mind` names a pool the script does not define: a compile
+    // problem in the tail, which must not fail the frame and with it the line.
+    engine.defineContract(endsContract());
+    engine.setScripts(new Map([["default", script({ ...RADIO_WITH_CUT, cut: ["pool:never-mind", TICK_CLOSE] })]]));
+
+    const cutWarns = (): string[] =>
+      mockLogger.warn.mock.calls.map(([line]) => String(line)).filter((line) => line.includes("cut tail"));
+
+    expect(cutWarns()).toEqual([
+      'Voice "default" frame "radio" cut tail cannot play — unknown pool "never-mind"; an ended line closes the radio instead',
+    ]);
+
+    // A recompile (a registration after the load) does not warn again.
+    engine.defineContract(contract("test.late", { frame: NO_FRAME }));
+
+    // The line itself still plays in full.
+    bus.publishEvent("flag.green.raised");
+    flush();
+    expect(played()).toEqual([TICK_OPEN, BODY_A, BODY_B, TICK_CLOSE]);
+
+    // Ended mid-word, it closes the radio with the frame's close.
+    audio._played.length = 0;
+    startEndsMidBody();
+    bus.publishEvent("pitLane.exited");
+    flush();
+
+    expect(played()).toEqual([TICK_OPEN, BODY_A, TICK_CLOSE]);
+    expect(endedLines()).toEqual(['Scenario "test.ends" ended by pitLane.exited (playing → tail)']);
+    expect(cutWarns()).toHaveLength(1);
+  });
+
   it("beeps off: the tail drops its clip beeps like open/close do", () => {
     frameOptions = { beeps: false, ambience: true };
     engine.defineContract(endsContract());
