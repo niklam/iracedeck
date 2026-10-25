@@ -43,24 +43,32 @@
 		<!-- Dial settings — shown only when this instance is a dial (#802). -->
 		<div id="dial-settings" class="hidden">
 			<sdpi-item label="Mode">
-				<sdpi-select setting="dial.setting" default="ffb-force">
+				<sdpi-select id="dial-setting-select" setting="dial.setting" default="ffb-force">
 					<option value="ffb-force">FFB Force (max force)</option>
 					<option value="wheel-lfe">Wheel LFE</option>
 					<option value="bass-shaker-lfe">Bass Shaker LFE</option>
 				</sdpi-select>
 			</sdpi-item>
 			<ird-binding-status mode-setting="dial.setting" comms='<%= JSON.stringify(__dialComms) %>'></ird-binding-status>
+			<%# Show as (#1451): FFB Force only — the LFE settings have no readout. %>
+			<sdpi-item label="Show as" id="dial-ffb-readout-item" class="hidden">
+				<sdpi-select setting="dial.ffbReadout" default="max-force">
+					<option value="max-force">Max force (Nm)</option>
+					<option value="strength">Strength</option>
+				</sdpi-select>
+			</sdpi-item>
 			<% if (locals.platform?.features?.dialExtendedGestures !== false) { %>
 			<div class="ird-supporting-text">
-				Turn the dial to adjust the selected setting. FFB Force shows the live max
-				force in Nm on the touch strip; the LFE settings show the label only
-				(iRacing exposes no LFE state). Both the increase and decrease key bindings
-				must be set below.
+				Turn the dial to adjust the selected setting. FFB Force shows the live value
+				on the touch strip, as the max force in Nm or as iRacing's Strength (Show as);
+				the LFE settings show the label only (iRacing exposes no LFE state). Both the
+				increase and decrease key bindings must be set below.
 			</div>
 			<% } else { %>
 			<div class="ird-supporting-text">
-				Turn the knob to adjust the selected setting. Both the increase and decrease
-				key bindings must be set below.
+				Turn the knob to adjust the selected setting. FFB Force shows the live value
+				on the knob's screen, as the max force in Nm or as iRacing's Strength (Show as).
+				Both the increase and decrease key bindings must be set below.
 			</div>
 			<% } %>
 
@@ -163,6 +171,20 @@
 						}
 					});
 				}
+
+				// Show as (#1451) is visible only while the dial's Mode is FFB Force.
+				const dialSettingSelect = document.getElementById("dial-setting-select");
+				const updateDialVisibility = () => {
+					const readoutItem = document.getElementById("dial-ffb-readout-item");
+					const dialSetting = (dialSettingSelect && dialSettingSelect.value) || "ffb-force";
+					if (readoutItem) readoutItem.classList.toggle("hidden", dialSetting !== "ffb-force");
+				};
+				if (dialSettingSelect) {
+					dialSettingSelect.addEventListener("change", updateDialVisibility);
+					dialSettingSelect.addEventListener("input", updateDialVisibility);
+				}
+				updateDialVisibility();
+				window.irdPoll(updateDialVisibility);
 
 				if ((await window.irdResolveController()) === "Encoder") {
 					window.irdApplyDialView();

@@ -120,6 +120,47 @@ describe("force-feedback dial-surface pure helpers", () => {
     it("returns empty (identity-only) for the LFE settings, which have no readback", () => {
       expect(formatDialValue("wheel-lfe", { SteeringWheelMaxForceNm: 12 } as never)).toBe("");
       expect(formatDialValue("bass-shaker-lfe", null)).toBe("");
+      expect(formatDialValue("wheel-lfe", { SteeringWheelMaxForceNm: 12 } as never, "strength")).toBe("");
+    });
+  });
+
+  describe("formatDialValue Show as (#1451)", () => {
+    it("shows iRacing's Strength when the readout is strength", () => {
+      expect(formatDialValue("ffb-force", { SteeringWheelMaxForceNm: 32.25806427001953 } as never, "strength")).toBe(
+        "10.5",
+      );
+    });
+
+    it("shows --- for a zero or negative max force in either readout", () => {
+      for (const readout of ["max-force", "strength"] as const) {
+        expect(formatDialValue("ffb-force", { SteeringWheelMaxForceNm: 0 } as never, readout)).toBe("---");
+        expect(formatDialValue("ffb-force", { SteeringWheelMaxForceNm: -3 } as never, readout)).toBe("---");
+        expect(formatDialValue("ffb-force", null, readout)).toBe("---");
+      }
+    });
+  });
+
+  describe("DialSettings ffbReadout (#1451)", () => {
+    it("defaults to max-force", () => {
+      expect(DialSettings.parse({}).ffbReadout).toBe("max-force");
+      expect(DialSettings.parse(undefined).ffbReadout).toBe("max-force");
+    });
+
+    it("keeps strength", () => {
+      expect(DialSettings.parse({ ffbReadout: "strength" }).ffbReadout).toBe("strength");
+    });
+
+    it("falls back to max-force on an unknown value without resetting its siblings", () => {
+      const dial = DialSettings.parse({ ffbReadout: "torque", pressAction: "auto-ffb", setting: "ffb-force" });
+
+      expect(dial.ffbReadout).toBe("max-force");
+      expect(dial.pressAction).toBe("auto-ffb");
+    });
+
+    it("leaves the trigger description unchanged with Strength shown", () => {
+      const desc = buildTriggerDescription(DialSettings.parse({ setting: "ffb-force", ffbReadout: "strength" }));
+
+      expect(desc.rotate).toBe("Adjust FFB Force");
     });
   });
 
@@ -194,6 +235,23 @@ describe("ForceFeedback dial surface", () => {
       await action.onDialRotate(rotateEvent(ctx, settings, -1) as never);
 
       expect(mockTapBinding).toHaveBeenCalledWith("cockpitMiscFfbForceDecrease");
+    });
+
+    it("taps the same bindings, with the same cap, while Strength is shown (#1451)", async () => {
+      const ctx = dialContext("d5");
+      const settings = dialSettings({ setting: "ffb-force", ffbReadout: "strength" });
+      await appear(ctx, settings);
+      mockTapBinding.mockClear();
+
+      await action.onDialRotate(rotateEvent(ctx, settings, 1) as never);
+
+      expect(mockTapBinding).toHaveBeenCalledExactlyOnceWith("cockpitMiscFfbForceIncrease");
+
+      mockTapBinding.mockClear();
+      await action.onDialRotate(rotateEvent(ctx, settings, -7) as never);
+
+      expect(mockTapBinding).toHaveBeenCalledTimes(5);
+      expect(mockTapBinding.mock.calls.every(([key]) => key === "cockpitMiscFfbForceDecrease")).toBe(true);
     });
 
     it("adjusts an identity-only LFE setting too", async () => {
@@ -317,6 +375,34 @@ describe("ForceFeedback dial surface", () => {
 
       expect(decoded).toContain(">FFB<");
       expect(decoded).toContain(">12.3 Nm<");
+    });
+
+    it("pushes the Strength readout, under the same FFB label, when Show as is Strength (#1451)", async () => {
+      mockGetCurrentTelemetry.mockReturnValue({ SteeringWheelMaxForceNm: 32.25806427001953 });
+      const ctx = dialContext("f8");
+      await appear(ctx, dialSettings({ setting: "ffb-force", ffbReadout: "strength" }));
+
+      const decoded = decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
+
+      expect(decoded).toContain(">FFB<");
+      expect(decoded).toContain(">10.5<");
+      expect(decoded).not.toContain("Nm");
+    });
+
+    it("re-renders when Show as switches from max force to Strength (#1451)", async () => {
+      mockGetCurrentTelemetry.mockReturnValue({ SteeringWheelMaxForceNm: 32.25806427001953 });
+      const ctx = dialContext("f9");
+      await appear(ctx, dialSettings({ setting: "ffb-force" }));
+
+      expect(decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string)).toContain(">32.3 Nm<");
+      ctx.setDialCanvas.mockClear();
+
+      await action.onDidReceiveSettings(
+        basicEvent(ctx, dialSettings({ setting: "ffb-force", ffbReadout: "strength" })) as never,
+      );
+
+      expect(ctx.setDialCanvas).toHaveBeenCalledTimes(1);
+      expect(decodeURIComponent(ctx.setDialCanvas.mock.calls[0][0] as string)).toContain(">10.5<");
     });
 
     it("pushes a label-only strip for an identity-only LFE setting", async () => {

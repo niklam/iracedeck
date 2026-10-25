@@ -9,15 +9,17 @@
  *
  * `ffb-force` is the one setting iRacing reports live (`SteeringWheelMaxForceNm`,
  * already typed on `TelemetryData`), so the dial's own screen — the Stream
- * Deck+ strip or the Stream Dock knob segment — shows the actual max force in
- * Nm (one decimal). The two LFE values (wheel / bass-shaker volume)
+ * Deck+ strip or the Stream Dock knob segment — shows the live value, as the
+ * max force in Nm or as iRacing's Strength per the dial's Show as choice
+ * (`dial.ffbReadout`, #1451). The two LFE values (wheel / bass-shaker volume)
  * have no telemetry readback, so they render
  * label-only via the dash box's identity-only branch — the Audio-Controls
  * voice-chat/master compromise (#782).
  *
  * `SteeringWheelMaxForceNm` is NOT a `dc*` setup value, so it has no `view-*`
- * entry in `setup-view.ts`; the surface formats it with a small local formatter
- * rather than reusing the shared View formatter machinery the Setup dials use.
+ * entry in `setup-view.ts`; the surface formats it with the shared FFB readout
+ * formatter (`shared/ffb-readout.ts`) rather than the View formatter machinery
+ * the Setup dials use. The readout choice never changes what a turn sends.
  */
 import {
   type DeckTriggerDescription,
@@ -33,6 +35,7 @@ import { dialAppearanceFields, renderDialBox, resolveDialBoxColors } from "../..
 import { type DialInputEvent, hasDialInputContext } from "../../shared/dial-context.js";
 import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
 import { classifyDialReleaseForHost } from "../../shared/dial-release.js";
+import { FFB_READOUTS, type FfbReadout, formatFfbReadout } from "../../shared/ffb-readout.js";
 
 /**
  * Minimum gap (ms) between change-driven feedback pushes — keeps the live FFB
@@ -103,6 +106,10 @@ export const DialSettings = z
     longPressAction: z.enum(GESTURE_ACTIONS).default("none"),
     tapAction: z.enum(GESTURE_ACTIONS).default("none"),
     longTouchAction: z.enum(GESTURE_ACTIONS).default("none"),
+    // What the FFB Force readout shows (#1451). `.catch` per field: a value
+    // from a newer version falls back to Nm without tripping the whole `dial`
+    // object's catch, which would also reset the gestures and colours.
+    ffbReadout: z.enum(FFB_READOUTS).default("max-force").catch("max-force"),
     // Dash-box appearance overrides (colors, issue #811).
     ...dialAppearanceFields,
   })
@@ -163,20 +170,20 @@ const MODE_LABEL: Record<ForceFeedbackDialSetting, string> = {
 /**
  * @internal Exported for testing
  *
- * The value string shown on the dash box. `ffb-force` shows the live max force
- * as "XX.X Nm" (one decimal) from `SteeringWheelMaxForceNm` — the only value
- * iRacing reports — with `---` when telemetry is unavailable. The four LFE
- * settings have no readback and return `""`, so the box renders label-only (the
- * identity-only branch, the #782 compromise).
+ * The value string shown on the dash box. `ffb-force` shows the live value
+ * from `SteeringWheelMaxForceNm` — the only value iRacing reports — as
+ * "XX.X Nm" or as the Strength "XX.X" per `readout` (#1451), with `---` without
+ * a usable value. The LFE settings have no readback and return `""`, so the box
+ * renders label-only (the identity-only branch, the #782 compromise).
  */
-export function formatDialValue(setting: ForceFeedbackDialSetting, telemetry: TelemetryData | null): string {
+export function formatDialValue(
+  setting: ForceFeedbackDialSetting,
+  telemetry: TelemetryData | null,
+  readout: FfbReadout = "max-force",
+): string {
   if (setting !== "ffb-force") return "";
 
-  const nm = telemetry?.SteeringWheelMaxForceNm;
-
-  if (typeof nm !== "number" || !Number.isFinite(nm)) return "---";
-
-  return `${nm.toFixed(1)} Nm`;
+  return formatFfbReadout(telemetry?.SteeringWheelMaxForceNm, readout);
 }
 
 /**
@@ -498,7 +505,7 @@ export class ForceFeedbackDialSurface {
 
   /** A compact signature of the displayed state; a feedback push is due when it changes. */
   private displayedSignature(ctx: ForceFeedbackDialContext): string {
-    const value = formatDialValue(ctx.dial.setting, this.host.getTelemetry());
+    const value = formatDialValue(ctx.dial.setting, this.host.getTelemetry(), ctx.dial.ffbReadout);
 
     return ForceFeedbackDialSurface.signature(ctx.dial.setting, value, this.computeBindingMissing(ctx.dial));
   }
@@ -524,7 +531,7 @@ export class ForceFeedbackDialSurface {
     if (!canvas) return;
 
     const setting = ctx.dial.setting;
-    const value = formatDialValue(setting, this.host.getTelemetry());
+    const value = formatDialValue(setting, this.host.getTelemetry(), ctx.dial.ffbReadout);
     const bindingMissing = this.computeBindingMissing(ctx.dial);
     const boxSvg = renderDialBox(canvas, {
       abbr: MODE_ABBR[setting],
