@@ -179,7 +179,7 @@ const MODE_LABEL: Record<ForceFeedbackDialSetting, string> = {
 export function formatDialValue(
   setting: ForceFeedbackDialSetting,
   telemetry: TelemetryData | null,
-  readout: FfbReadout = "max-force",
+  readout: FfbReadout,
 ): string {
   if (setting !== "ffb-force") return "";
 

@@ -108,18 +108,18 @@ function dialSettings(dial: Record<string, unknown>) {
 describe("force-feedback dial-surface pure helpers", () => {
   describe("formatDialValue", () => {
     it("formats the live max force as one-decimal Nm", () => {
-      expect(formatDialValue("ffb-force", { SteeringWheelMaxForceNm: 12.34 } as never)).toBe("12.3 Nm");
-      expect(formatDialValue("ffb-force", { SteeringWheelMaxForceNm: 8 } as never)).toBe("8.0 Nm");
+      expect(formatDialValue("ffb-force", { SteeringWheelMaxForceNm: 12.34 } as never, "max-force")).toBe("12.3 Nm");
+      expect(formatDialValue("ffb-force", { SteeringWheelMaxForceNm: 8 } as never, "max-force")).toBe("8.0 Nm");
     });
 
     it("shows the placeholder when ffb-force has no telemetry", () => {
-      expect(formatDialValue("ffb-force", null)).toBe("---");
-      expect(formatDialValue("ffb-force", {} as never)).toBe("---");
+      expect(formatDialValue("ffb-force", null, "max-force")).toBe("---");
+      expect(formatDialValue("ffb-force", {} as never, "max-force")).toBe("---");
     });
 
     it("returns empty (identity-only) for the LFE settings, which have no readback", () => {
-      expect(formatDialValue("wheel-lfe", { SteeringWheelMaxForceNm: 12 } as never)).toBe("");
-      expect(formatDialValue("bass-shaker-lfe", null)).toBe("");
+      expect(formatDialValue("wheel-lfe", { SteeringWheelMaxForceNm: 12 } as never, "max-force")).toBe("");
+      expect(formatDialValue("bass-shaker-lfe", null, "max-force")).toBe("");
       expect(formatDialValue("wheel-lfe", { SteeringWheelMaxForceNm: 12 } as never, "strength")).toBe("");
     });
   });

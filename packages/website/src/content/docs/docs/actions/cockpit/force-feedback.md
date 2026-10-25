@@ -111,7 +111,7 @@ The value the dial controls. Each renders as a color-coded "dash box": a short l
 | Wheel LFE | WHEEL | *(none — iRacing exposes no LFE state)* | label only |
 | Bass Shaker LFE | SHAKER | *(none — iRacing exposes no LFE state)* | label only |
 
-When FFB Force has no telemetry the box shows `---`. The LFE settings still rotate (they use their increase/decrease bindings); their strips just show the label.
+When FFB Force has no usable value (no telemetry, or a max force of zero) the box shows `---`, whichever way it is shown. The LFE settings still rotate (they use their increase/decrease bindings); their strips just show the label.
 
 #### Setting: Show as
 
