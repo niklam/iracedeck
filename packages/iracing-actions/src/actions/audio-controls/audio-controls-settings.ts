@@ -9,7 +9,7 @@
 import { CommonSettings } from "@iracedeck/deck-core";
 import z from "zod";
 
-import { adjustStyleSettingsFields } from "../../shared/adjust-styles.js";
+import { adjustStyleSettingsFields } from "../../shared/adjust-style-settings.js";
 import { SPOTTER_GLOBAL_KEYS } from "../../shared/spotter-bindings.js";
 
 /** Global-settings keys for the shared audio key bindings (both surfaces). */

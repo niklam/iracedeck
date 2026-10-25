@@ -28,42 +28,20 @@ import {
 } from "@iracedeck/deck-core";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { getGlobalColors } from "@iracedeck/settings";
-import z from "zod";
 
 import adjustStyleTemplate from "../../icons/adjust-style.svg";
+import { type AdjustKeyStyle, type PairPosition } from "./adjust-style-settings.js";
 import { formatViewValue, isViewSetting, VIEW_DEFS, type ViewSettingId, viewValueCenterY } from "./setup-view.js";
 
-/** Every selectable key style. Which subset applies depends on the mode kind (adjust vs View). */
-export const ADJUST_KEY_STYLES = [
-  "legacy",
-  // Value-showing directional styles (2-key pairs).
-  "edge-chevrons",
-  "split",
-  "joined-pill",
-  // No-value directional styles (3-key group outer keys; also fine standalone).
-  "big-glyph",
-  "big-chevron",
-  "pill-end",
-  // View-key display styles (3-key group middle).
-  "pill-middle-horizontal",
-  "pill-middle-vertical",
-] as const;
-
-export type AdjustKeyStyle = (typeof ADJUST_KEY_STYLES)[number];
-
-export const PAIR_POSITIONS = ["auto", "left", "right", "top", "bottom"] as const;
-export type PairPosition = (typeof PAIR_POSITIONS)[number];
-
-/**
- * Shared settings fields — spread into each action's `CommonSettings.extend`.
- * `.catch` (not just `.default`) so a value persisted by a newer plugin
- * version degrades to the default instead of failing the whole settings parse
- * (which would reset the key to full defaults — the 2.0 contamination bug).
- */
-export const adjustStyleSettingsFields = {
-  keyStyle: z.enum(ADJUST_KEY_STYLES).default("legacy").catch("legacy"),
-  pairPosition: z.enum(PAIR_POSITIONS).default("auto").catch("auto"),
-};
+// The catalog and settings fields live in the svg-free leaf; re-exported so
+// every existing import keeps working.
+export {
+  ADJUST_KEY_STYLES,
+  type AdjustKeyStyle,
+  adjustStyleSettingsFields,
+  PAIR_POSITIONS,
+  type PairPosition,
+} from "./adjust-style-settings.js";
 
 /** Gap between repeat steps while a paired key is held (≈ 6–7 steps/sec). */
 export const ADJUST_REPEAT_INTERVAL_MS = 150;
