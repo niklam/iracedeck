@@ -7,7 +7,7 @@ sidebar:
     variant: tip
 ---
 
-Control force feedback and haptic settings from iRacing's Audio & Force Feedback page: auto-compute FFB, overall FFB force, wheel LFE loudness, and bass shaker LFE loudness. Placed on a **Stream Deck+ dial**, the same action becomes a force-feedback dial with the live max force in Nm on the touch strip — see [On a dial](#on-a-dial) below.
+Control force feedback and haptic settings from iRacing's Audio & Force Feedback page: auto-compute FFB, overall FFB force, wheel LFE loudness, and bass shaker LFE loudness. Placed on a **Stream Deck+ dial**, the same action becomes a force-feedback dial with the live max force in Nm, or iRacing's FFB Strength, on the touch strip — see [On a dial](#on-a-dial) below.
 
 :::note
 iRacing's Options pages label the same two LFE controls "More Intense / Less Intense" under **Wheel LFE Controls** and **Haptic LFE Controls** — those are the identical iRacing bindings as Wheel LFE and Bass Shaker LFE below, just named differently.
@@ -88,13 +88,13 @@ Adjust the bass shaker LFE loudness — the control iRacing's Options pages call
 
 ## On a dial
 
-Placed on a Stream Deck+ dial or a Mirabox knob, Force Feedback becomes a force-feedback dial. Pick one value with the dial's **Mode** dropdown; turning the dial steps it up or down in iRacing, and for **FFB Force** the touch strip shows the live max force in Nm. It uses the same key bindings as the keypad modes, so no extra configuration is needed if you already use them. The Property Inspector automatically shows the dial settings below (instead of the keypad Mode and Direction) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
+Placed on a Stream Deck+ dial or a Mirabox knob, Force Feedback becomes a force-feedback dial. Pick one value with the dial's **Mode** dropdown; turning the dial steps it up or down in iRacing, and for **FFB Force** the touch strip shows the live max force in Nm, or iRacing's Strength if you choose it under [Show as](#setting-show-as). It uses the same key bindings as the keypad modes, so no extra configuration is needed if you already use them. The Property Inspector automatically shows the dial settings below (instead of the keypad Mode and Direction) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
 
 #### Details
 
 - **Method:** Key binding — the same Force Feedback increase/decrease bindings the keypad modes use, plus the *Auto Compute FFB Force* binding for the press gestures. Configure them in the **Related Key Bindings** section; the Property Inspector shows a status line indicating whether each is set.
 - **Dial:** Rotating adjusts the selected value (clockwise = increase, counter-clockwise = decrease). Both the increase and decrease key bindings must be set. A fast spin advances several detents (up to five per turn event).
-- **Telemetry-aware:** Yes for FFB Force — the touch strip shows the live `SteeringWheelMaxForceNm` value as `XX.X Nm`. The two LFE settings have no telemetry, so their strips show the label only.
+- **Telemetry-aware:** Yes for FFB Force — the touch strip shows the live `SteeringWheelMaxForceNm` value as `XX.X Nm`, or as the Strength `XX.X` worked out from it (see [Show as](#setting-show-as)). The two LFE settings have no telemetry, so their strips show the label only.
 
 #### Controls
 
@@ -107,11 +107,20 @@ The value the dial controls. Each renders as a color-coded "dash box": a short l
 
 | Setting | Label | Telemetry source | Shown as |
 |---|---|---|---|
-| FFB Force (max force) | FFB | `SteeringWheelMaxForceNm` | `XX.X Nm` |
+| FFB Force (max force) | FFB | `SteeringWheelMaxForceNm` | `XX.X Nm`, or `XX.X` with Show as Strength |
 | Wheel LFE | WHEEL | *(none — iRacing exposes no LFE state)* | label only |
 | Bass Shaker LFE | SHAKER | *(none — iRacing exposes no LFE state)* | label only |
 
 When FFB Force has no telemetry the box shows `---`. The LFE settings still rotate (they use their increase/decrease bindings); their strips just show the label.
+
+#### Setting: Show as
+
+How FFB Force's live value is shown. The setting appears only while the dial's Mode is FFB Force.
+
+- **Max force (Nm)** (default) — the max force in Nm, as `XX.X Nm`.
+- **Strength** — iRacing's FFB Strength, as `XX.X` with no unit, the way iRacing's own display shows it.
+
+iRacing reports only the max force, so the Strength is worked out from it as 340 ÷ max force (Nm). The label stays **FFB**, and turning the dial taps the same FFB Force Increase / Decrease bindings either way. Strength is the inverse of max force: when one goes up, the other goes down. So with Strength shown, a turn moves the number the opposite way from the Nm readout.
 
 #### Setting: Press Action / Long Press
 
