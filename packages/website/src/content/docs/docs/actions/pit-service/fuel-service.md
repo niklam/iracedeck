@@ -35,7 +35,7 @@ Requires bindings for the **Fuel** black box and at least one other black box â€
 
 ### Add Fuel
 
-Increase the pending fuel for the next pit stop. Pressing the button raises iRacing's fuel request by the configured amount (read against the live pit request, so repeated presses stack correctly). Holding the button repeats the add about four times a second.
+Increase the pending fuel for the next pit stop. Pressing the button raises iRacing's fuel request by the configured amount (read against the live pit request, so repeated presses stack correctly). Holding the button repeats the add about four times a second, or a little more slowly in a car that fuels in whole gallons, where each repeat waits until iRacing has accepted the new amount.
 
 #### Details
 
@@ -68,7 +68,7 @@ Requires bindings for the **Fuel** black box and at least one other black box â€
 
 ### Reduce Fuel
 
-Decrease the pending fuel for the next pit stop by the configured amount. Reducing to zero (or below) empties the fuel request entirely. Holding the button repeats the reduction about four times a second.
+Decrease the pending fuel for the next pit stop by the configured amount. Reducing to zero (or below) empties the fuel request entirely. Holding the button repeats the reduction about four times a second, or a little more slowly in a car that fuels in whole gallons, where each repeat waits until iRacing has accepted the new amount.
 
 #### Details
 
