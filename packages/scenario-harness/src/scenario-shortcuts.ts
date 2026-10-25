@@ -1341,6 +1341,9 @@ function limiterDroppedExitShortcut(
     category: "Pit Limiter",
     label,
     description,
+    // A disconnected translator sees no ticks: refuse the run rather than
+    // play nothing for the wrong reason.
+    requires: ["sdk-connected"],
     telemetrySequence: [
       {
         patch: {

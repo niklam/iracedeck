@@ -1140,6 +1140,12 @@ describe("the two limiter-cut shortcuts (issue #1407)", () => {
 
   type Timed = Published & { at: number };
 
+  it.each([MID_LINE, EARLY])("%s refuses to start while the mock SDK is disconnected", (id) => {
+    // A disconnected translator sees no ticks, so the run would be silent for
+    // the wrong reason; the precondition says so before it starts.
+    expect(SCENARIO_SHORTCUTS.find((s) => s.id === id)?.requires).toEqual(["sdk-connected"]);
+  });
+
   /**
    * The translator started at boot or from the race session and hot-lap
    * presets, recording EVERY event in the catalog with the fake clock's time:
