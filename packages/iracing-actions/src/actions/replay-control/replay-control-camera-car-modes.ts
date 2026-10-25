@@ -265,11 +265,13 @@ export const racePositionMode: ReplayDialMode<ReplayDialStepIo> = {
     const order = raceOrder(io, telemetry);
     const next = computeRacePositionTarget(camCarIdx, order, "next");
     const previous = computeRacePositionTarget(camCarIdx, order, "previous");
-    const current = next?.currentPosition ?? previous?.currentPosition ?? null;
+    // The camera car's own rank, read straight off the order: a car ranked
+    // alone has no target either way and still has its position.
+    const rank = camCarIdx === undefined ? undefined : order?.[camCarIdx];
     const sides = sidesOf(next !== null, previous !== null);
 
     return {
-      value: current === null ? NO_POSITION : `P${current}`,
+      value: typeof rank === "number" && rank > 0 ? `P${rank}` : NO_POSITION,
       caption,
       reserveCaption: true,
       neighbours:
