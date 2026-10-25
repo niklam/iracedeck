@@ -78,6 +78,7 @@ import {
   getCarNumberRawByCarNumber,
   getCarNumberRawFromSessionInfo,
 } from "@iracedeck/iracing-sdk";
+import { requestCameraSwitch } from "@iracedeck/replay-engine";
 import { getGlobalColors, getGlobalSettings, onGlobalSettingsChange } from "@iracedeck/settings";
 import { getLiveRacePositions } from "@iracedeck/sim-events-iracing";
 import z from "zod";
@@ -145,6 +146,37 @@ const TARGET_VALUES = [...CHANGE_CAMERA_TARGET_VALUES, ...CYCLE_TARGET_VALUES, .
 type CycleTarget = (typeof CYCLE_TARGET_VALUES)[number];
 type Target = (typeof TARGET_VALUES)[number];
 type Direction = "next" | "previous";
+type FocusOnTarget = "focus-on-leader" | "focus-on-incident" | "focus-on-most-exciting";
+
+/** Who asked for a camera switch (#1428 / #1435): the key or dial context, and how the waiter's log names it. */
+interface CameraSwitchAsk {
+  readonly contextId: string;
+  readonly surface: "the key" | "the dial";
+  readonly asked: string;
+}
+
+/** What a camera switch is, for the waiter: its walk-interrupt name, its log name, and whether it changes the car. */
+interface CameraSwitchWhat {
+  /** The mode the switch interrupts a lap walk under, after `camera-controls `. */
+  readonly by: string;
+  readonly name: string;
+  /** False for a switch of the camera's angle only, which leaves a lap walk alone. */
+  readonly changesCar: boolean;
+}
+
+/** What a telemetry-driven cycle step's switch is called in the waiter's log, after its direction. */
+const CYCLE_SWITCH_NAMES: Record<Exclude<CycleTarget, "cycle-sub-camera" | "cycle-track-order">, string> = {
+  "cycle-camera": "camera group",
+  "cycle-car": "car number",
+  "cycle-driving": "driving camera",
+};
+
+/** What a focus one-shot's switch is called in the waiter's log. */
+const FOCUS_ON_SWITCH_NAMES: Record<FocusOnTarget, string> = {
+  "focus-on-leader": "leader",
+  "focus-on-incident": "incident",
+  "focus-on-most-exciting": "most exciting car",
+};
 
 /**
  * The binding key a keypad button depends on, or `null` for the SDK-driven
@@ -815,22 +847,20 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
     // both resolve through getEnabledGroupNames(undefined) → the global setting.
     getEnabledCameraGroups: () => getEnabledGroupNames(undefined),
     getGroupGlyph: (groupName) => resolveGroupGlyph(groupName),
-    cycle: (target, direction) => {
-      void this.executeCycle(target, direction).catch((err: unknown) => {
-        this.logger.warn(`Camera dial cycle failed: ${err instanceof Error ? err.message : err}`);
-      });
-    },
+    // Every dispatch below is the keypad's own, through the engine's camera
+    // waiter (#1428 / #1435): the waiter logs a send that fails and never
+    // rejects for one, so nothing here catches.
+    cycle: (target, direction, contextId) =>
+      this.executeCycle(target, direction, this.dialAsk(contextId, `${target} ${direction}`)),
     isBindingMissing: (keys) => this.isBindingMissing(keys),
-    focusCarNumber: (carNumberRaw) => this.focusCarNumber(carNumberRaw),
-    focusMyCar: () => this.focusMyCar(),
-    changeCamera: () => {
-      void this.executeCycle("cycle-camera", "next").catch((err: unknown) => {
-        this.logger.warn(`Camera dial change-camera failed: ${err instanceof Error ? err.message : err}`);
-      });
-    },
-    focusOnLeader: () => this.focusOn("focus-on-leader"),
-    focusOnIncident: () => this.focusOn("focus-on-incident"),
-    focusOnMostExciting: () => this.focusOn("focus-on-most-exciting"),
+    focusCarNumber: (carNumberRaw, contextId) =>
+      this.focusCarNumber(carNumberRaw, this.dialAsk(contextId, `car number ${carNumberRaw}`)),
+    focusMyCar: (contextId) => this.focusMyCar(this.dialAsk(contextId, "focus my car")),
+    changeCamera: (contextId) => this.executeCycle("cycle-camera", "next", this.dialAsk(contextId, "change camera")),
+    focusOnLeader: (contextId) => this.focusOn("focus-on-leader", this.dialAsk(contextId, "focus on leader")),
+    focusOnIncident: (contextId) => this.focusOn("focus-on-incident", this.dialAsk(contextId, "focus on incident")),
+    focusOnMostExciting: (contextId) =>
+      this.focusOn("focus-on-most-exciting", this.dialAsk(contextId, "focus on most exciting")),
   });
 
   /**
@@ -911,12 +941,14 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
       return;
     }
 
+    const ask = this.keyAsk(ev.action.id, settings.target);
+
     if (isCycleTarget(settings.target)) {
-      await this.executeCycle(settings.target, settings.direction, settings.cameraGroupSubset);
+      this.executeCycle(settings.target, settings.direction, ask, settings.cameraGroupSubset);
     } else if (settings.target === "change-camera") {
-      this.executeChangeCamera(settings.cameraGroup);
+      this.executeChangeCamera(settings.cameraGroup, ask);
     } else {
-      this.executeFocus(settings);
+      this.executeFocus(settings, ask);
     }
   }
 
@@ -969,11 +1001,62 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
     }
   }
 
-  private async executeCycle(
+  /** A key's ask for a camera switch: its context, and how the waiter's log names the press. */
+  private keyAsk(contextId: string, target: Target): CameraSwitchAsk {
+    return { contextId, surface: "the key", asked: `${target} pressed` };
+  }
+
+  /** A dial's ask for a camera switch: its context, and how the waiter's log names the input. */
+  private dialAsk(contextId: string, asked: string): CameraSwitchAsk {
+    return { contextId, surface: "the dial", asked: `dial ${asked}` };
+  }
+
+  /** Whether a key or dial context of this action is still on screen. */
+  private isOnScreen(contextId: string): boolean {
+    return this.activeContexts.has(contextId) || this.dialSurface.isOnScreen(contextId);
+  }
+
+  /**
+   * Every camera switch this action's keypad and dial make (#1428 / #1435,
+   * `docs/superpowers/specs/2026-10-24-issue-1428-camera-keys-during-replay-jump.md`)
+   * goes through the replay engine's one camera-switch waiter, as Replay
+   * Control's do: on a quiet replay, and outside a replay, `send` runs at
+   * once, in this call; behind a position jump it waits for the landing as the
+   * one switch that waits for the whole plugin, and is dropped if the wait
+   * gives up, or if by then its key or dial has left the screen or the replay
+   * has been left. A switch of the camera's car interrupts a Jump to Fastest
+   * Lap or Jump to Race Start walk, which puts the replay back first; one of
+   * the angle only (`interruptsWalks: false`) leaves a walk alone.
+   *
+   * `send` works out its target when it runs, from the camera then, so a
+   * switch that waited steps from the car the jump left on screen. The waiter
+   * logs a send that fails and never rejects for one, and the promise may stay
+   * pending for as long as a jump takes, so it is not awaited.
+   */
+  private requestSwitch(ask: CameraSwitchAsk, what: CameraSwitchWhat, send: () => unknown): void {
+    void requestCameraSwitch(send, {
+      by: `camera-controls ${what.by}`,
+      interruptsWalks: what.changesCar,
+      label: "Camera controls",
+      name: what.name,
+      asked: ask.asked,
+      surface: ask.surface,
+      stillValid: () => this.isOnScreen(ask.contextId) && this.sdkController.getReplayState().inReplay,
+      logger: this.logger,
+    });
+  }
+
+  /**
+   * One cycle step, keypad and dial alike, through {@link requestSwitch}.
+   * Cycle by Car # and Cycle by Track Order change the camera's car; Cycle
+   * Camera, Cycle Driving Cam and Cycle Sub-Camera change only its angle.
+   */
+  private executeCycle(
     target: CycleTarget,
     direction: Direction,
+    ask: CameraSwitchAsk,
     cameraGroupSubset?: string | Record<string, unknown>,
-  ): Promise<void> {
+  ): void {
     // The two binding-driven modes are dispatched BEFORE the telemetry guard:
     // they tap an iRacing key binding (Sub-Camera #852, Track Order #1277) and
     // read no telemetry at all, so a momentary gap in the SDK feed (reconnect
@@ -981,17 +1064,30 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
     // keyboard-driven action taps unconditionally, and the plugin-wide offline
     // handling already gates presses while iRacing is not running.
     if (target === "cycle-sub-camera") {
-      await this.cycleSubCamera(direction);
+      this.cycleSubCamera(direction, ask);
 
       return;
     }
 
     if (target === "cycle-track-order") {
-      await this.cycleTrackOrder(direction);
+      this.cycleTrackOrder(direction, ask);
 
       return;
     }
 
+    this.requestSwitch(
+      ask,
+      { by: target, name: `${direction} ${CYCLE_SWITCH_NAMES[target]}`, changesCar: target === "cycle-car" },
+      () => this.sendCycle(target, direction, cameraGroupSubset),
+    );
+  }
+
+  /** A Cycle Camera, Cycle by Car # or Cycle Driving Cam step, from the camera as it is when the switch goes out. */
+  private sendCycle(
+    target: Exclude<CycleTarget, "cycle-sub-camera" | "cycle-track-order">,
+    direction: Direction,
+    cameraGroupSubset?: string | Record<string, unknown>,
+  ): void {
     const telemetry = this.sdkController.getCurrentTelemetry();
 
     if (!telemetry) {
@@ -1116,8 +1212,12 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
    *
    * Shared by the keypad Cycle Sub-Camera mode and the dial's Sub-Camera mode.
    */
-  private async cycleSubCamera(direction: Direction): Promise<void> {
-    await this.tapCycleBinding(subCameraBindingKey(direction), direction, "Sub-camera");
+  private cycleSubCamera(direction: Direction, ask: CameraSwitchAsk): void {
+    this.tapCycleBinding(subCameraBindingKey(direction), direction, "Sub-camera", ask, {
+      by: "cycle-sub-camera",
+      name: `${direction} sub-camera`,
+      changesCar: false,
+    });
   }
 
   /**
@@ -1134,12 +1234,27 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
    * Previous Car modes tap (`shared/car-cycle-bindings.ts`): one sim control,
    * one setting.
    */
-  private async cycleTrackOrder(direction: Direction): Promise<void> {
-    await this.tapCycleBinding(carCycleBindingKey(direction), direction, "Track order car");
+  private cycleTrackOrder(direction: Direction, ask: CameraSwitchAsk): void {
+    this.tapCycleBinding(carCycleBindingKey(direction), direction, "Track order car", ask, {
+      by: "cycle-track-order",
+      name: direction === "next" ? "next car" : "previous car",
+      changesCar: true,
+    });
   }
 
-  /** Taps one of the binding-driven cycle modes' iRacing key bindings, or warns when it is unset. */
-  private async tapCycleBinding(settingKey: string, direction: Direction, what: string): Promise<void> {
+  /**
+   * Taps one of the binding-driven cycle modes' iRacing key bindings through
+   * {@link requestSwitch}, or warns when it is unset. The binding is checked
+   * at the press: an unset one has nothing to send, so it never replaces a
+   * switch waiting behind a jump.
+   */
+  private tapCycleBinding(
+    settingKey: string,
+    direction: Direction,
+    what: string,
+    ask: CameraSwitchAsk,
+    switchWhat: CameraSwitchWhat,
+  ): void {
     // `tapBinding` returns void, so check first: without this an unset binding
     // logs a successful cycle and a support log hides the real cause.
     if (this.isBindingMissing(settingKey)) {
@@ -1149,9 +1264,11 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
       return;
     }
 
-    await this.tapBinding(settingKey);
-    this.logger.info(`${what} cycled`);
-    this.logger.debug(`direction: ${direction}, binding: ${settingKey}`);
+    this.requestSwitch(ask, switchWhat, async () => {
+      await this.tapBinding(settingKey);
+      this.logger.info(`${what} cycled`);
+      this.logger.debug(`direction: ${direction}, binding: ${settingKey}`);
+    });
   }
 
   /**
@@ -1160,7 +1277,12 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
    * gesture (#803) so both go through one SDK dispatch. Reads its own telemetry
    * so the dial can call it without a settings object.
    */
-  private focusMyCar(): void {
+  private focusMyCar(ask: CameraSwitchAsk): void {
+    this.requestSwitch(ask, { by: "focus-your-car", name: "my car", changesCar: true }, () => this.sendFocusMyCar());
+  }
+
+  /** Focus Your Car's switch, worked out when it goes out. */
+  private sendFocusMyCar(): void {
     const telemetry = this.sdkController.getCurrentTelemetry();
 
     if (!telemetry) {
@@ -1197,8 +1319,18 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
    * than the one previewed). Reuses the keypad Switch by Car Number command
    * surface, reading the active camera group / sub-camera from telemetry so
    * the angle is preserved.
+   *
+   * The car is the one the dial resolved at the detent, from the order its
+   * strip previewed; the angle is read when the switch goes out.
    */
-  private focusCarNumber(carNumberRaw: number): void {
+  private focusCarNumber(carNumberRaw: number, ask: CameraSwitchAsk): void {
+    this.requestSwitch(ask, { by: "focus-car-number", name: `car number ${carNumberRaw}`, changesCar: true }, () =>
+      this.sendFocusCarNumber(carNumberRaw),
+    );
+  }
+
+  /** The dial's focus-by-car-number switch, its angle read when it goes out. */
+  private sendFocusCarNumber(carNumberRaw: number): void {
     const telemetry = this.sdkController.getCurrentTelemetry();
 
     if (!telemetry) {
@@ -1220,7 +1352,14 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
    * shared by the keypad focus modes and the dial's focus gestures (#803), each
    * reusing the same SDK camera command.
    */
-  private focusOn(target: "focus-on-leader" | "focus-on-incident" | "focus-on-most-exciting"): void {
+  private focusOn(target: FocusOnTarget, ask: CameraSwitchAsk): void {
+    this.requestSwitch(ask, { by: target, name: FOCUS_ON_SWITCH_NAMES[target], changesCar: true }, () =>
+      this.sendFocusOn(target),
+    );
+  }
+
+  /** A focus one-shot's switch, its angle read when it goes out. */
+  private sendFocusOn(target: FocusOnTarget): void {
     const telemetry = this.sdkController.getCurrentTelemetry();
 
     if (!telemetry) {
@@ -1258,7 +1397,7 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
     }
   }
 
-  private executeFocus(settings: CameraControlsSettings): void {
+  private executeFocus(settings: CameraControlsSettings, ask: CameraSwitchAsk): void {
     const telemetry = this.sdkController.getCurrentTelemetry();
 
     if (!telemetry) {
@@ -1267,13 +1406,9 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
       return;
     }
 
-    const camera = getCommands().camera;
-    const groupNum = telemetry.CamGroupNumber ?? 1;
-    const cameraNum = telemetry.CamCameraNumber ?? 1;
-
     switch (settings.target) {
       case "focus-your-car": {
-        this.focusMyCar();
+        this.focusMyCar(ask);
 
         break;
       }
@@ -1281,30 +1416,46 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
       case "focus-on-incident":
       case "focus-on-most-exciting": {
         // Shared with the dial's focus gestures (#803) so both surfaces use one dispatch.
-        this.focusOn(settings.target);
+        this.focusOn(settings.target, ask);
         break;
       }
       case "switch-by-position": {
-        const success = camera.switchPos(settings.position, groupNum, cameraNum);
-        this.logger.info("Switch by position executed");
-        this.logger.debug(`Result: ${success}, position: ${settings.position}`);
+        const { position } = settings;
+
+        this.requestSwitch(ask, { by: "switch-by-position", name: `position ${position}`, changesCar: true }, () => {
+          const { groupNum, cameraNum } = this.currentAngle();
+          const success = getCommands().camera.switchPos(position, groupNum, cameraNum);
+          this.logger.info("Switch by position executed");
+          this.logger.debug(`Result: ${success}, position: ${position}`);
+        });
         break;
       }
       case "switch-by-car-number": {
-        const carNumberRaw = resolveSwitchCarNumberRaw(this.sdkController.getSessionInfo(), settings.carNumber);
+        // The car is the key's setting, resolved through the roster at the
+        // press: one that resolves to nothing has nothing to send, and never
+        // replaces a switch waiting behind a jump.
+        const { carNumber } = settings;
+        const carNumberRaw = resolveSwitchCarNumberRaw(this.sdkController.getSessionInfo(), carNumber);
 
         if (carNumberRaw === null) {
           this.logger.info("Switch by car number skipped: car number not found in session info");
-          this.logger.debug(`carNumber: ${settings.carNumber}`);
+          this.logger.debug(`carNumber: ${carNumber}`);
           break;
         }
 
-        const success = camera.switchNum(carNumberRaw, groupNum, cameraNum);
-        this.logger.info("Switch by car number executed");
-        this.logger.debug(`Result: ${success}, carNumber: ${settings.carNumber}, carNumberRaw: ${carNumberRaw}`);
+        this.requestSwitch(ask, { by: "switch-by-car-number", name: `car #${carNumber}`, changesCar: true }, () => {
+          const { groupNum, cameraNum } = this.currentAngle();
+          const success = getCommands().camera.switchNum(carNumberRaw, groupNum, cameraNum);
+          this.logger.info("Switch by car number executed");
+          this.logger.debug(`Result: ${success}, carNumber: ${carNumber}, carNumberRaw: ${carNumberRaw}`);
+        });
         break;
       }
       case "set-camera-state": {
+        // Not a camera target but flags on the camera (UI hidden and so on),
+        // which nothing says a seek drops: sent at once, never through the
+        // waiter (#1428 / #1435).
+        const camera = getCommands().camera;
         const success = camera.setState(settings.cameraState);
         this.logger.info("Set camera state executed");
         this.logger.debug(`Result: ${success}, state: ${settings.cameraState}`);
@@ -1369,7 +1520,26 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
     }
   }
 
-  private executeChangeCamera(cameraGroup: number): void {
+  /**
+   * The camera group and sub-camera on screen, read when a switch goes out:
+   * the angle a car switch keeps. The fallbacks are the ones each mode read
+   * at the press before #1428 / #1435.
+   */
+  private currentAngle(): { groupNum: number; cameraNum: number } {
+    const telemetry = this.sdkController.getCurrentTelemetry();
+
+    return { groupNum: telemetry?.CamGroupNumber ?? 1, cameraNum: telemetry?.CamCameraNumber ?? 1 };
+  }
+
+  /** Change Camera, through {@link requestSwitch}: a switch of the angle only, so it leaves a lap walk alone. */
+  private executeChangeCamera(cameraGroup: number, ask: CameraSwitchAsk): void {
+    const name = `${CAMERA_GROUP_MAP[cameraGroup]?.name ?? `group ${cameraGroup}`} camera`;
+
+    this.requestSwitch(ask, { by: "change-camera", name, changesCar: false }, () => this.sendChangeCamera(cameraGroup));
+  }
+
+  /** Change Camera's switch, onto the car the camera is on when it goes out. */
+  private sendChangeCamera(cameraGroup: number): void {
     const telemetry = this.sdkController.getCurrentTelemetry();
 
     if (!telemetry) {

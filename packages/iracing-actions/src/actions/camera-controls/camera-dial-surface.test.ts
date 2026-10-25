@@ -812,10 +812,10 @@ describe("CameraDialSurface", () => {
       surface.rotate(dialContext("d1") as never, dial({ mode: "track-order" }), 1, false);
       surface.rotate(dialContext("d1") as never, dial({ mode: "driving" }), -1, false);
 
-      expect(host.cycle).toHaveBeenNthCalledWith(1, "cycle-camera", "next");
-      expect(host.cycle).toHaveBeenNthCalledWith(2, "cycle-sub-camera", "next");
-      expect(host.cycle).toHaveBeenNthCalledWith(3, "cycle-track-order", "next");
-      expect(host.cycle).toHaveBeenNthCalledWith(4, "cycle-driving", "previous");
+      expect(host.cycle).toHaveBeenNthCalledWith(1, "cycle-camera", "next", "d1");
+      expect(host.cycle).toHaveBeenNthCalledWith(2, "cycle-sub-camera", "next", "d1");
+      expect(host.cycle).toHaveBeenNthCalledWith(3, "cycle-track-order", "next", "d1");
+      expect(host.cycle).toHaveBeenNthCalledWith(4, "cycle-driving", "previous", "d1");
     });
 
     it("dispatches one cycle step per rotate event regardless of tick magnitude", async () => {
@@ -834,8 +834,8 @@ describe("CameraDialSurface", () => {
       surface.rotate(dialContext("d4") as never, dial({ mode: "camera", reverseRotation: true }), 1, false);
       surface.rotate(dialContext("d4") as never, dial({ mode: "driving", reverseRotation: true }), -1, false);
 
-      expect(host.cycle).toHaveBeenNthCalledWith(1, "cycle-camera", "previous");
-      expect(host.cycle).toHaveBeenNthCalledWith(2, "cycle-driving", "next");
+      expect(host.cycle).toHaveBeenNthCalledWith(1, "cycle-camera", "previous", "d4");
+      expect(host.cycle).toHaveBeenNthCalledWith(2, "cycle-driving", "next", "d4");
     });
 
     it("still dispatches sub-camera / camera cycling when the pace car (unclassified) has focus — keypad parity (#803)", async () => {
@@ -850,8 +850,8 @@ describe("CameraDialSurface", () => {
       surface.rotate(dialContext("d3") as never, dial({ mode: "sub-camera" }), 1, false);
       surface.rotate(dialContext("d3") as never, dial({ mode: "camera" }), 1, false);
 
-      expect(host.cycle).toHaveBeenNthCalledWith(1, "cycle-sub-camera", "next");
-      expect(host.cycle).toHaveBeenNthCalledWith(2, "cycle-camera", "next");
+      expect(host.cycle).toHaveBeenNthCalledWith(1, "cycle-sub-camera", "next", "d3");
+      expect(host.cycle).toHaveBeenNthCalledWith(2, "cycle-camera", "next", "d3");
     });
   });
 
@@ -862,11 +862,11 @@ describe("CameraDialSurface", () => {
       await surface.willAppear(dialContext("c1") as never, dial());
       surface.rotate(dialContext("c1") as never, dial({ mode: "car-number" }), 1, false);
 
-      expect(host.focusCarNumber).toHaveBeenCalledWith(3); // focused = #42, clockwise → #3
+      expect(host.focusCarNumber).toHaveBeenCalledWith(3, "c1"); // focused = #42, clockwise → #3
 
       surface.rotate(dialContext("c1") as never, dial({ mode: "car-number" }), -1, false);
 
-      expect(host.focusCarNumber).toHaveBeenLastCalledWith(99); // counter-clockwise → #99
+      expect(host.focusCarNumber).toHaveBeenLastCalledWith(99, "c1"); // counter-clockwise → #99
     });
 
     it("raises the car number on a clockwise detent when reverseRotation is set (#973)", async () => {
@@ -875,7 +875,7 @@ describe("CameraDialSurface", () => {
       await surface.willAppear(dialContext("c1b") as never, dial());
       surface.rotate(dialContext("c1b") as never, dial({ mode: "car-number", reverseRotation: true }), 1, false);
 
-      expect(host.focusCarNumber).toHaveBeenCalledWith(99); // focused = #42, reversed clockwise → #99
+      expect(host.focusCarNumber).toHaveBeenCalledWith(99, "c1b"); // focused = #42, reversed clockwise → #99
     });
 
     it("does not cycle in car-number mode", async () => {
@@ -907,7 +907,7 @@ describe("CameraDialSurface", () => {
       await surface.willAppear(dialContext("c885") as never, dial());
       surface.rotate(dialContext("c885") as never, dial({ mode: "car-number" }), -1, false);
 
-      expect(host.focusCarNumber).toHaveBeenCalledWith(99);
+      expect(host.focusCarNumber).toHaveBeenCalledWith(99, "c885");
     });
 
     it("focuses a car that left the world (post-race) on a clockwise detent (#1281)", async () => {
@@ -929,7 +929,7 @@ describe("CameraDialSurface", () => {
       await surface.willAppear(dialContext("c885b") as never, dial());
       surface.rotate(dialContext("c885b") as never, dial({ mode: "car-number" }), 1, false);
 
-      expect(host.focusCarNumber).toHaveBeenCalledWith(3);
+      expect(host.focusCarNumber).toHaveBeenCalledWith(3, "c885b");
     });
 
     it("walks the whole field in the post-race snapshot shape, every car not in the world (#1281)", async () => {
@@ -941,8 +941,8 @@ describe("CameraDialSurface", () => {
       surface.rotate(dialContext("c1281") as never, dial({ mode: "car-number" }), 1, false);
       surface.rotate(dialContext("c1281") as never, dial({ mode: "car-number" }), -1, false);
 
-      expect(host.focusCarNumber).toHaveBeenNthCalledWith(1, 3); // clockwise → down to #3
-      expect(host.focusCarNumber).toHaveBeenNthCalledWith(2, 99); // counter-clockwise → up to #99
+      expect(host.focusCarNumber).toHaveBeenNthCalledWith(1, 3, "c1281"); // clockwise → down to #3
+      expect(host.focusCarNumber).toHaveBeenNthCalledWith(2, 99, "c1281"); // counter-clockwise → up to #99
     });
 
     it("walks the competitor list only — no pace car, no spectators (#1281)", async () => {
@@ -975,7 +975,7 @@ describe("CameraDialSurface", () => {
       await surface.willAppear(dialContext("c968") as never, dial());
       surface.rotate(dialContext("c968") as never, dial({ mode: "car-number" }), 1, false);
 
-      expect(host.focusCarNumber).toHaveBeenCalledWith(3);
+      expect(host.focusCarNumber).toHaveBeenCalledWith(3, "c968");
     });
 
     it("recovers to an end of the field when the pace car (not in the number list) has focus (#803)", async () => {
@@ -988,11 +988,11 @@ describe("CameraDialSurface", () => {
       surface.rotate(dialContext("c3") as never, dial({ mode: "car-number" }), 1, false);
 
       // Clockwise walks DOWN the number order since #973, so it re-enters at the end.
-      expect(host.focusCarNumber).toHaveBeenCalledWith(99); // last car by number (#99)
+      expect(host.focusCarNumber).toHaveBeenCalledWith(99, "c3"); // last car by number (#99)
 
       surface.rotate(dialContext("c3") as never, dial({ mode: "car-number" }), -1, false);
 
-      expect(host.focusCarNumber).toHaveBeenLastCalledWith(3); // first car by number (#3)
+      expect(host.focusCarNumber).toHaveBeenLastCalledWith(3, "c3"); // first car by number (#3)
     });
   });
 
@@ -1009,8 +1009,8 @@ describe("CameraDialSurface", () => {
       surface.rotate(dialContext("t1") as never, dial({ mode: "track-order" }), -1, false);
 
       expect(host.cycle.mock.calls).toEqual([
-        ["cycle-track-order", "next"],
-        ["cycle-track-order", "previous"],
+        ["cycle-track-order", "next", "t1"],
+        ["cycle-track-order", "previous", "t1"],
       ]);
     });
 
@@ -1023,8 +1023,8 @@ describe("CameraDialSurface", () => {
       surface.rotate(dialContext("t2") as never, reversed, -1, false);
 
       expect(host.cycle.mock.calls).toEqual([
-        ["cycle-track-order", "previous"],
-        ["cycle-track-order", "next"],
+        ["cycle-track-order", "previous", "t2"],
+        ["cycle-track-order", "next", "t2"],
       ]);
     });
 
@@ -1043,7 +1043,7 @@ describe("CameraDialSurface", () => {
       await surface.willAppear(dialContext("t4") as never, dial());
       surface.rotate(dialContext("t4") as never, dial({ mode: "track-order" }), 1, false);
 
-      expect(host.cycle).toHaveBeenCalledWith("cycle-track-order", "next");
+      expect(host.cycle).toHaveBeenCalledWith("cycle-track-order", "next", "t4");
     });
   });
 
@@ -1060,12 +1060,12 @@ describe("CameraDialSurface", () => {
       // Dispatched via focusCarNumber (switchNum), NOT a position-based call —
       // switchPos would resolve the position against iRacing's OWN official
       // order, which can diverge from the canonical order used here.
-      expect(host.focusCarNumber).toHaveBeenCalledWith(11); // carIdx2 (P1)'s raw number
+      expect(host.focusCarNumber).toHaveBeenCalledWith(11, "r1"); // carIdx2 (P1)'s raw number
 
       // Counter-clockwise selects the car behind: P2 → P3 → carIdx1.
       surface.rotate(dialContext("r1") as never, dial({ mode: "race-position" }), -1, false);
 
-      expect(host.focusCarNumber).toHaveBeenLastCalledWith(3); // carIdx1 (P3)'s raw number
+      expect(host.focusCarNumber).toHaveBeenLastCalledWith(3, "r1"); // carIdx1 (P3)'s raw number
     });
 
     it("restores the pre-#884 mapping (clockwise → P# increases) when reverseRotation is set", async () => {
@@ -1075,7 +1075,7 @@ describe("CameraDialSurface", () => {
       await surface.willAppear(dialContext("r1b") as never, dial());
       surface.rotate(dialContext("r1b") as never, dial({ mode: "race-position", reverseRotation: true }), 1, false);
 
-      expect(host.focusCarNumber).toHaveBeenCalledWith(3); // clockwise → P3 (the car behind) again
+      expect(host.focusCarNumber).toHaveBeenCalledWith(3, "r1b"); // clockwise → P3 (the car behind) again
     });
 
     it("focuses the CANONICAL car even when the official CarIdxPosition order disagrees (the preview↔execution seam)", async () => {
@@ -1098,8 +1098,8 @@ describe("CameraDialSurface", () => {
 
       // Must land on the CANONICAL car (#11 / carIdx2) — the same car the
       // carousel preview shows — never the official-order car (#3 / carIdx1).
-      expect(host.focusCarNumber).toHaveBeenCalledWith(11);
-      expect(host.focusCarNumber).not.toHaveBeenCalledWith(3);
+      expect(host.focusCarNumber).toHaveBeenCalledWith(11, "r-diverge");
+      expect(host.focusCarNumber).not.toHaveBeenCalledWith(3, "r-diverge");
     });
 
     it("falls back to official CarIdxPosition when there is no canonical order, resolving the car the SAME way", async () => {
@@ -1116,7 +1116,7 @@ describe("CameraDialSurface", () => {
       // Same car-number resolution path as the canonical case — the fallback
       // order stays coherent between preview and execution too. Clockwise →
       // the car ahead (P1 → carIdx2).
-      expect(host.focusCarNumber).toHaveBeenCalledWith(11);
+      expect(host.focusCarNumber).toHaveBeenCalledWith(11, "r2");
     });
 
     it("falls back to official CarIdxPosition when the canonical order ranks nobody (#968)", async () => {
@@ -1139,7 +1139,7 @@ describe("CameraDialSurface", () => {
       surface.rotate(dialContext("r2") as never, dial({ mode: "race-position" }), 1, false);
 
       // Clockwise → the car ahead (P2 → P1 → carIdx2).
-      expect(host.focusCarNumber).toHaveBeenCalledWith(11);
+      expect(host.focusCarNumber).toHaveBeenCalledWith(11, "r2");
     });
 
     it("keeps using the canonical order once ANY car is ranked, never the official one", async () => {
@@ -1155,8 +1155,8 @@ describe("CameraDialSurface", () => {
       surface.rotate(dialContext("r2") as never, dial({ mode: "race-position" }), 1, false);
 
       // Canonical P1 is carIdx2 (#11); the official order would say carIdx1 (#3).
-      expect(host.focusCarNumber).toHaveBeenCalledWith(11);
-      expect(host.focusCarNumber).not.toHaveBeenCalledWith(3);
+      expect(host.focusCarNumber).toHaveBeenCalledWith(11, "r2");
+      expect(host.focusCarNumber).not.toHaveBeenCalledWith(3, "r2");
     });
 
     it("focuses a car that left the world at its frozen rank (#1281)", async () => {
@@ -1181,8 +1181,8 @@ describe("CameraDialSurface", () => {
       await surface.willAppear(dialContext("r885") as never, dial());
       surface.rotate(dialContext("r885") as never, dial({ mode: "race-position" }), 1, false);
 
-      expect(host.focusCarNumber).toHaveBeenCalledWith(11); // the frozen P1 car
-      expect(host.focusCarNumber).not.toHaveBeenCalledWith(3);
+      expect(host.focusCarNumber).toHaveBeenCalledWith(11, "r885"); // the frozen P1 car
+      expect(host.focusCarNumber).not.toHaveBeenCalledWith(3, "r885");
     });
 
     it("walks the frozen order in the post-race snapshot shape, every car not in the world (#1281)", async () => {
@@ -1199,8 +1199,8 @@ describe("CameraDialSurface", () => {
       surface.rotate(dialContext("r1281") as never, dial({ mode: "race-position" }), 1, false);
       surface.rotate(dialContext("r1281") as never, dial({ mode: "race-position" }), -1, false);
 
-      expect(host.focusCarNumber).toHaveBeenNthCalledWith(1, 11); // clockwise → P1
-      expect(host.focusCarNumber).toHaveBeenNthCalledWith(2, 3); // counter-clockwise → P3
+      expect(host.focusCarNumber).toHaveBeenNthCalledWith(1, 11, "r1281"); // clockwise → P1
+      expect(host.focusCarNumber).toHaveBeenNthCalledWith(2, 3, "r1281"); // counter-clockwise → P3
     });
 
     it("does nothing when the focused car has no position", async () => {
@@ -1239,7 +1239,7 @@ describe("CameraDialSurface", () => {
       await surface.willAppear(dialContext("r5") as never, dial());
       surface.rotate(dialContext("r5") as never, dial({ mode: "race-position" }), 1, false);
 
-      expect(host.focusCarNumber).toHaveBeenCalledWith(22); // last-place (maxPosition) car's raw number
+      expect(host.focusCarNumber).toHaveBeenCalledWith(22, "r5"); // last-place (maxPosition) car's raw number
     });
 
     it("recovers to the leader (P1) on a counter-clockwise detent when the focused car has no position (pace car, #803/#884)", async () => {
@@ -1252,7 +1252,7 @@ describe("CameraDialSurface", () => {
       await surface.willAppear(dialContext("r6") as never, dial());
       surface.rotate(dialContext("r6") as never, dial({ mode: "race-position" }), -1, false);
 
-      expect(host.focusCarNumber).toHaveBeenCalledWith(11); // leader (P1) car's raw number
+      expect(host.focusCarNumber).toHaveBeenCalledWith(11, "r6"); // leader (P1) car's raw number
     });
   });
 
@@ -1291,6 +1291,22 @@ describe("CameraDialSurface", () => {
       expect(host.focusOnIncident).not.toHaveBeenCalled();
       expect(host.focusOnMostExciting).not.toHaveBeenCalled();
     }
+
+    it("is on screen from its appear until its disappear (#1428 / #1435): what a waiting camera switch checks", async () => {
+      const host = makeHost();
+      const surface = new CameraDialSurface(host as never);
+
+      expect(surface.isOnScreen("on-screen")).toBe(false);
+
+      await surface.willAppear(dialContext("on-screen") as never, settings());
+
+      expect(surface.isOnScreen("on-screen")).toBe(true);
+      expect(surface.isOnScreen("another")).toBe(false);
+
+      surface.willDisappear("on-screen");
+
+      expect(surface.isOnScreen("on-screen")).toBe(false);
+    });
 
     it("drops a rotate: no entry, no camera dispatch, no frame", async () => {
       const { host, surface, late } = await appearThenDisappear("late-rotate");
@@ -1347,7 +1363,8 @@ describe("CameraDialSurface", () => {
       surface.down(dialContext("p1") as never, dial({ pressAction: "focus-my-car" }));
       await surface.up("p1");
 
-      expect(host.focusMyCar).toHaveBeenCalled();
+      // With the dial context that asked: the waiter drops the switch if that dial leaves the screen (#1428 / #1435).
+      expect(host.focusMyCar).toHaveBeenCalledExactlyOnceWith("p1");
     });
 
     it("fires the new focus-on-leader gesture on a short press", async () => {
@@ -1357,7 +1374,7 @@ describe("CameraDialSurface", () => {
       surface.down(dialContext("p2") as never, dial({ pressAction: "focus-on-leader" }));
       await surface.up("p2");
 
-      expect(host.focusOnLeader).toHaveBeenCalled();
+      expect(host.focusOnLeader).toHaveBeenCalledExactlyOnceWith("p2");
     });
 
     it("fires the long-press gesture (focus on incident) past the threshold", async () => {
@@ -1394,7 +1411,7 @@ describe("CameraDialSurface", () => {
       await surface.willAppear(dialContext("t1") as never, dial());
       await surface.touchTap(dialContext("t1") as never, dial({ tapAction: "focus-on-most-exciting" }), false);
 
-      expect(host.focusOnMostExciting).toHaveBeenCalled();
+      expect(host.focusOnMostExciting).toHaveBeenCalledExactlyOnceWith("t1");
     });
 
     it("does nothing on touch when the extended gestures are off", async () => {
@@ -1966,7 +1983,7 @@ describe("CameraDialSurface", () => {
       await surface.up("hp2");
       surface.rotate(ctx as never, settings, 1, false);
 
-      expect(host.focusCarNumber).toHaveBeenLastCalledWith(3); // what the right slot promised
+      expect(host.focusCarNumber).toHaveBeenLastCalledWith(3, "hp2"); // what the right slot promised
     });
 
     it("reverts at once on a push+turn mid-hold, and the release fires nothing", async () => {

@@ -1019,6 +1019,11 @@ interface CameraDialContext {
  * and readiness state is one value per action-class instance that a dial
  * context would bleed onto the keypad buttons (see global-settings.md) —
  * `isBindingMissing` is delegated instead, because it is stateless.
+ *
+ * Every dispatch carries the dial context that asked for it (#1428 / #1435):
+ * the action sends it through the replay engine's camera-switch waiter, which
+ * holds a switch behind a replay jump and drops it if that dial has left the
+ * screen by the time it would go out.
  */
 export interface CameraDialHost {
   readonly logger: ILogger;
@@ -1036,7 +1041,7 @@ export interface CameraDialHost {
   /** Colour-resolved carousel glyph for a group name, or null when unmapped. */
   getGroupGlyph(groupName: string): CarouselGlyph | null;
   /** Cycle the given target one step (the keypad's own `executeCycle`). */
-  cycle(target: DialCycleTarget, direction: Direction): void;
+  cycle(target: DialCycleTarget, direction: Direction, contextId: string): void;
   /**
    * Whether any of the given global binding keys is unconfigured (#612). Only
    * the Sub-Camera (#852) and Track Order (#1277) modes are binding-driven —
@@ -1051,17 +1056,17 @@ export interface CameraDialHost {
    * uses) rather than dispatching a bare position, so the camera can't land on
    * a different car than the one previewed — see the file header.
    */
-  focusCarNumber(carNumberRaw: number): void;
+  focusCarNumber(carNumberRaw: number, contextId: string): void;
   /** Center the camera on the player's car (the keypad Focus Your Car mode). */
-  focusMyCar(): void;
+  focusMyCar(contextId: string): void;
   /** Switch to the next camera angle (the keypad Cycle Camera dispatch). */
-  changeCamera(): void;
+  changeCamera(contextId: string): void;
   /** Focus the race leader (the keypad Focus on Leader mode). */
-  focusOnLeader(): void;
+  focusOnLeader(contextId: string): void;
   /** Focus the latest incident (the keypad Focus on Incident mode). */
-  focusOnIncident(): void;
+  focusOnIncident(contextId: string): void;
   /** Focus the director's most-exciting car (the keypad Focus on Most Exciting mode). */
-  focusOnMostExciting(): void;
+  focusOnMostExciting(contextId: string): void;
 }
 
 /**
@@ -1084,6 +1089,11 @@ export class CameraDialSurface {
 
     await this.applyTriggerDescription(ctx);
     await this.renderFeedback(ctx);
+  }
+
+  /** Whether a dial context is on screen: appeared, and not yet gone. */
+  isOnScreen(actionId: string): boolean {
+    return this.contextsState.has(actionId);
   }
 
   willDisappear(actionId: string): void {
@@ -1133,7 +1143,7 @@ export class CameraDialSurface {
     // a continued spin arrives as further rotate events.
     const clockwise = clockwiseDirection(dial.mode, dial.reverseRotation);
     const direction: Direction = ticks > 0 ? clockwise : oppositeDirection(clockwise);
-    this.dispatchRotation(dial.mode, direction);
+    this.dispatchRotation(ctx.action.id, dial.mode, direction);
     this.host.logger.info("Camera dial rotated");
     this.host.logger.debug(`${dial.mode} ${direction}`);
   }
@@ -1183,7 +1193,7 @@ export class CameraDialSurface {
     if (gesture === "none") return;
 
     this.host.logger.info(kind === "long" ? "Camera dial long-pressed" : "Camera dial pressed");
-    this.doGesture(gesture);
+    this.doGesture(actionId, gesture);
   }
 
   async touchTap(action: IDeckActionContext, dial: DialSettings, hold: boolean): Promise<void> {
@@ -1197,7 +1207,7 @@ export class CameraDialSurface {
     if (!this.inputContext(action, dial, "touchTap")) return;
 
     this.host.logger.info(hold ? "Camera dial long touch" : "Camera dial tap");
-    this.doGesture(gesture);
+    this.doGesture(action.id, gesture);
   }
 
   onTelemetry(actionId: string, _telemetry: TelemetryData | null): void {
@@ -1362,9 +1372,9 @@ export class CameraDialSurface {
   }
 
   /** Routes a rotation to the cycle dispatch or the car-focus dispatch by mode. */
-  private dispatchRotation(mode: DialMode, direction: Direction): void {
+  private dispatchRotation(contextId: string, mode: DialMode, direction: Direction): void {
     if (isCycleMode(mode)) {
-      this.host.cycle(CYCLE_MODE_TO_TARGET[mode], direction);
+      this.host.cycle(CYCLE_MODE_TO_TARGET[mode], direction, contextId);
 
       return;
     }
@@ -1379,7 +1389,7 @@ export class CameraDialSurface {
       const cars = getAllCarNumbers(this.host.getSessionInfo(), true, true);
       const target = computeCarNumberTarget(camCarIdx, cars, direction);
 
-      if (target) this.host.focusCarNumber(target.carNumberRaw);
+      if (target) this.host.focusCarNumber(target.carNumberRaw, contextId);
 
       return;
     }
@@ -1397,7 +1407,7 @@ export class CameraDialSurface {
 
     const carNumberRaw = carNumberRawAtPosition(order, this.host.getSessionInfo(), target.targetPosition);
 
-    if (carNumberRaw !== null) this.host.focusCarNumber(carNumberRaw);
+    if (carNumberRaw !== null) this.host.focusCarNumber(carNumberRaw, contextId);
   }
 
   /**
@@ -1435,31 +1445,31 @@ export class CameraDialSurface {
   }
 
   /** Runs a configured press / touch gesture through the keypad's own dispatch. */
-  private doGesture(gesture: GestureSlot): void {
+  private doGesture(contextId: string, gesture: GestureSlot): void {
     switch (gesture) {
       case "focus-my-car":
         this.host.logger.info("Camera dial focus my car");
-        this.host.focusMyCar();
+        this.host.focusMyCar(contextId);
 
         return;
       case "change-camera":
         this.host.logger.info("Camera dial change camera");
-        this.host.changeCamera();
+        this.host.changeCamera(contextId);
 
         return;
       case "focus-on-leader":
         this.host.logger.info("Camera dial focus on leader");
-        this.host.focusOnLeader();
+        this.host.focusOnLeader(contextId);
 
         return;
       case "focus-on-incident":
         this.host.logger.info("Camera dial focus on incident");
-        this.host.focusOnIncident();
+        this.host.focusOnIncident(contextId);
 
         return;
       case "focus-on-most-exciting":
         this.host.logger.info("Camera dial focus on most exciting");
-        this.host.focusOnMostExciting();
+        this.host.focusOnMostExciting(contextId);
 
         return;
       case "none":
