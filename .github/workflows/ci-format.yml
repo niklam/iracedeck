@@ -21,6 +21,18 @@ on:
     paths-ignore:
       - 'docs/superpowers/specs/**.md'
 
+# A new push to a PR cancels that PR's run still in progress: only the newest
+# head's checks can ever be merged on, since the merge gate judges them at the
+# current head (#1492). A push to master or release/* gets a group of its own
+# commit and is never cancelled. That matters even with cancel-in-progress off:
+# a concurrency group admits one running and one pending run, and a newer
+# pending run cancels the older one, so a group per branch would let two quick
+# merges cancel one merge's post-merge check (#1070) — the check step 12 of
+# `.claude/rules/issue-workflow.md` exists to watch.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 # This job only reads the repository, so it gets the minimum token scope and the
 # checkout credential is not left in .git/config for later steps to reach.
 permissions:

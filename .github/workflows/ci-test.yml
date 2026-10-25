@@ -21,15 +21,44 @@ on:
     paths-ignore:
       - 'docs/superpowers/specs/**.md'
 
+# A new push to a PR cancels that PR's run still in progress: only the newest
+# head's checks can ever be merged on, since the merge gate judges them at the
+# current head (#1492). A push to master or release/* gets a group of its own
+# commit and is never cancelled. That matters even with cancel-in-progress off:
+# a concurrency group admits one running and one pending run, and a newer
+# pending run cancels the older one, so a group per branch would let two quick
+# merges cancel one merge's post-merge check (#1070) — the check step 12 of
+# `.claude/rules/issue-workflow.md` exists to watch.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 # This job only reads the repository, so it gets the minimum token scope and the
 # checkout credential is not left in .git/config for later steps to reach.
 permissions:
   contents: read
 
 jobs:
+  # The suite runs in three shards (#1492). Vitest splits by file count, not by
+  # duration, so the balance is worth re-checking when the suite grows. Each
+  # shard builds for itself rather than downloading one build job's output: on
+  # a warm PR run a mostly-cached build is shorter than an extra job's setup,
+  # upload and download, and it keeps no job-to-job contract over hundreds of
+  # MB. The shards are named apart from the gate below.
   test:
-    name: Run tests
+    name: Test shard ${{ matrix.shard }}/3
     runs-on: ubuntu-latest
+    strategy:
+      # A red shard does not cancel the others, so one run names every failing
+      # test rather than only the first shard's.
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    env:
+      # Turbo reads TURBO_CACHE_DIR, and so do the cache steps and
+      # scripts/prune-turbo-cache.mjs, so the path restored, the path turbo
+      # writes and the path saved cannot disagree.
+      TURBO_CACHE_DIR: ${{ github.workspace }}/.turbo/cache
     steps:
       - uses: actions/checkout@v7
         with:
@@ -46,6 +75,79 @@ jobs:
 
       - run: pnpm install
 
-      - run: pnpm build
+      # Turbo's cache persists between runs (#1492), and only a PR run reads it.
+      # A cache entry cannot be overwritten, so every save gets a new key and a
+      # restore takes the newest entry under the prefix. GitHub lets a PR run
+      # restore what its base branch saved, while what a PR run saves is
+      # visible only to later runs of that PR — so the master push is the
+      # writer that warms every PR. A push run reads nothing (below), so it
+      # restores nothing. The runner's OS and architecture are in the key
+      # because a build's outputs depend on them while turbo's hashes do not:
+      # the plugins' `bin/` npm install fetches platform binaries.
+      - name: Restore the turbo cache
+        if: github.event_name == 'pull_request'
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ env.TURBO_CACHE_DIR }}
+          key: turbo-tests-${{ runner.os }}-${{ runner.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            turbo-tests-${{ runner.os }}-${{ runner.arch }}-
 
-      - run: pnpm test
+      # On a PR, turbo reads and writes the cache: everything the PR did not
+      # touch is a hit. That is only correct while every task's declared
+      # inputs cover what it reads, which scripts/turbo-inputs.test.mjs guards
+      # (#1491). On a push to master or release/*, turbo only writes: every
+      # task runs, so the post-merge check stays a full build of the merged
+      # tree (#1070) and a stale hit a PR got away with shows red there. The
+      # env var rather than a flag keeps `pnpm build` the developer's command.
+      # The run summary names every task hash this build used, which is what
+      # the prune below keeps.
+      - name: Build
+        run: pnpm build
+        env:
+          TURBO_CACHE: ${{ github.event_name == 'pull_request' && 'local:rw' || 'local:w' }}
+          TURBO_RUN_SUMMARY: 'true'
+
+      # Shard 1 alone saves, since all three would race for one key. Turbo
+      # never evicts from its local cache, so the restored directory is pruned
+      # to the entries this build used before it is saved, keeping a saved
+      # entry at one build's outputs. The prune refuses, and so skips the save,
+      # when it cannot tell what this build used. Both steps run before the
+      # tests, so a red test does not discard a good build cache, and only
+      # after a successful build: a failed turbo run's summary lists only the
+      # tasks it reached, so pruning to it would drop valid entries for the
+      # rest and make a partial cache the newest one the next run restores.
+      - name: Prune the turbo cache to this build
+        id: prune
+        if: matrix.shard == 1
+        run: node scripts/prune-turbo-cache.mjs
+
+      - name: Save the turbo cache
+        if: matrix.shard == 1 && steps.prune.outcome == 'success'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ env.TURBO_CACHE_DIR }}
+          key: turbo-tests-${{ runner.os }}-${{ runner.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+      # The root script keeps `--configLoader native`; pnpm appends the flag.
+      - run: pnpm test --shard=${{ matrix.shard }}/3
+
+  # The `Protect master` ruleset requires a check named exactly `Run tests`,
+  # and matrix jobs get suffixed names, so this job is that check: it passes
+  # only when every shard passed. `if: always()` is load-bearing. Without it a
+  # failed or cancelled shard makes this job SKIPPED, and GitHub treats a
+  # skipped required check as satisfied — a red shard would merge. With it the
+  # job always runs and fails on any result but success: failure, cancelled
+  # and skipped alike.
+  gate:
+    name: Run tests
+    needs: test
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every shard passed
+        env:
+          RESULT: ${{ needs.test.result }}
+        run: |
+          echo "test shards: $RESULT"
+          test "$RESULT" = success
