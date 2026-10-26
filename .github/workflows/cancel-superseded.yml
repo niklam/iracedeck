@@ -1,0 +1,76 @@
+name: Cancel superseded runs
+
+# A new push to a PR makes the PR's CI runs on older commits worthless: the
+# merge gate only ever judges checks at the current head. This cancels them
+# through the API (#1506). It replaces the `concurrency` groups #1492 gave the
+# four CI workflows: a concurrency group holds the new run until the old one
+# has finished cancelling, and GitHub delivered that cancel to busy runners a
+# minute late (the new run's tests waited 93 s on #1505). Here nothing waits:
+# the new runs start at once, and the old ones stop whenever the cancel reaches
+# them, on free runner minutes.
+#
+# Only pull_request pushes, never push runs: a master or release/* run is the
+# post-merge check of the merged tree (#1070) and must always finish.
+on:
+  pull_request:
+    types: [synchronize]
+
+# The one workflow here that can write: `actions: write` is what cancelling a
+# run takes. Nothing else is granted, and no code from the PR runs in it.
+permissions:
+  actions: write
+  pull-requests: read
+
+jobs:
+  cancel:
+    name: Cancel superseded runs
+    # A fork's pull_request token is read-only, so cancelling would fail there;
+    # its older runs simply finish.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Cancel this PR's CI runs on older commits
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+          EVENT_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          # Keep whatever runs on the PR's head NOW, not this event's head: if a
+          # third push already landed, this run is itself superseded, and
+          # comparing against its own commit would cancel the newest runs.
+          head=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq .head.sha)
+          if [ "$head" != "$EVENT_SHA" ]; then
+            echo "The PR has moved on to $head; the run for that push cancels what is superseded."
+            exit 0
+          fi
+
+          # The four CI workflows' unfinished pull_request runs on this branch,
+          # on any commit but the head. Other workflows (the labeler, this one)
+          # are left alone.
+          gh api -X GET "repos/$GITHUB_REPOSITORY/actions/runs" \
+            -f event=pull_request -f branch="$BRANCH" -f per_page=100 \
+            --jq '.workflow_runs[]
+              | select(.status != "completed")
+              | select(.head_sha != env.EVENT_SHA)
+              | select(.head_repository.full_name == env.GITHUB_REPOSITORY)
+              | select(.name == "Format" or .name == "Lint" or .name == "Tests" or .name == "Typecheck")
+              | "\(.id) \(.name) \(.head_sha[0:7])"' > superseded.txt
+
+          if [ ! -s superseded.txt ]; then
+            echo "Nothing to cancel."
+            exit 0
+          fi
+
+          # A run that finished between the listing and the cancel answers with
+          # an error; that is not a failure of this job.
+          while read -r id name sha; do
+            if gh run cancel "$id" --repo "$GITHUB_REPOSITORY"; then
+              echo "Cancelled $name on $sha (run $id)"
+            else
+              echo "::notice::Could not cancel $name on $sha (run $id); it has probably finished"
+            fi
+          done < superseded.txt
