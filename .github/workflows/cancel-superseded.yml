@@ -74,7 +74,7 @@ jobs:
             | select(.head_sha != env.EVENT_SHA)
             | select(.created_at < env.SELF_CREATED)
             | select(.head_repository.full_name == env.GITHUB_REPOSITORY)
-            | select(.path | test("^[.]github/workflows/ci-[a-z]+[.]yml$"))
+            | select(.path | sub("@.*$"; "") | test("^[.]github/workflows/ci-[a-z]+[.]yml$"))
             | [(.id | tostring), .head_sha[0:7], .name] | join(" ")'
           gh api -X GET --paginate "repos/$GITHUB_REPOSITORY/actions/runs" -f event=pull_request -f branch="$BRANCH" -f per_page=100 --jq "$filter" > superseded.txt
 
