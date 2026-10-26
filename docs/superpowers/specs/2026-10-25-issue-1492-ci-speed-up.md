@@ -57,6 +57,8 @@ A new push to a PR cancels that PR's run still in progress. A push run gets a gr
 
 A cancelled run only ever belongs to an old head, and the merge gate judges checks at the current head, so the gate needs no change.
 
+*Replaced after it merged, by [#1506](https://github.com/niklam/iracedeck/issues/1506):* a concurrency group holds the new run until the old one has finished cancelling, and on the throwaway PR #1505 GitHub delivered that cancel to two busy test shards about a minute late. The new run's tests waited 93 s, longer than before this change, when both runs ran side by side. The four workflows lost their `concurrency` blocks. A separate `cancel-superseded.yml` now cancels a PR's older CI runs through the API on each push, so a new run never waits. Push runs are still never cancelled.
+
 ## Later option: other runners
 
 Not part of this issue. Worth doing only if, after 1–3, a warm PR run is still well above two minutes or cold runs dominate. Notes for that decision:
