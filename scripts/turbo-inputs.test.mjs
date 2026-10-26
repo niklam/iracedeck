@@ -1050,8 +1050,14 @@ describe("turbo hashes every file a cached task reads (#1491)", () => {
         expect(repo.isIgnored(file), `${file} is not gitignored, so default inputs hash it`).toBe(true);
         const script = taskScripts.find(({ pkg, task }) => taskKey(pkg, task) === key);
         expect(script?.entries, `${key} no longer runs ${generator}`).toContain(generator);
+        // Whether it is still read can only be told while the file exists: a
+        // tsconfig program lists only files on disk, and a file nothing has
+        // generated yet is read by nobody. CI's warm cache replays the website
+        // tasks without running Astro, so there `.astro/types.d.ts` is absent
+        // and the check waits for a tree that has built it (#1506).
         const reached = [...walked, ...compiled].some((w) => taskKey(w.pkg, w.task) === key && w.reads.has(file));
-        expect(reached, `${key} no longer reads ${file}; drop it from GENERATED_IN_SCRIPT`).toBe(true);
+        const generated = existsSync(path.join(repoRoot, file));
+        expect(reached || !generated, `${key} no longer reads ${file}; drop it from GENERATED_IN_SCRIPT`).toBe(true);
       },
     );
 
