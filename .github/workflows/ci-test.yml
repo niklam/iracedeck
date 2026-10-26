@@ -21,17 +21,9 @@ on:
     paths-ignore:
       - 'docs/superpowers/specs/**.md'
 
-# A new push to a PR cancels that PR's run still in progress: only the newest
-# head's checks can ever be merged on, since the merge gate judges them at the
-# current head (#1492). A push to master or release/* gets a group of its own
-# commit and is never cancelled. That matters even with cancel-in-progress off:
-# a concurrency group admits one running and one pending run, and a newer
-# pending run cancels the older one, so a group per branch would let two quick
-# merges cancel one merge's post-merge check (#1070) — the check step 12 of
-# `.claude/rules/issue-workflow.md` exists to watch.
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.sha }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+# No `concurrency` group: a superseded PR run is cancelled by
+# cancel-superseded.yml instead, so a new run never waits for an old one to
+# finish cancelling (#1506).
 
 # This job only reads the repository, so it gets the minimum token scope and the
 # checkout credential is not left in .git/config for later steps to reach.
@@ -145,9 +137,9 @@ jobs:
   # skipped required check as satisfied — a red shard would merge. With it the
   # job always runs and fails on any result but success: failure, cancelled
   # and skipped alike. It also runs, and fails, on a run cancelled because a
-  # newer push superseded it. That red usually sits on an old head, but a PR
-  # closed and reopened mid-run, or force-pushed back to an earlier commit,
-  # can leave it on the current head beside a green rerun; re-run the
+  # newer push superseded it (cancel-superseded.yml). That red sits on an old
+  # head, unless the PR is force-pushed back to that earlier commit, which
+  # leaves it on the current head beside a green rerun; re-run the
   # cancelled workflow if the merge gate then refuses. Do not narrow this to
   # `!cancelled()`: a cancelled run at the current head would then leave this
   # check skipped, which counts as passing.

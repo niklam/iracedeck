@@ -1,0 +1,99 @@
+name: Cancel superseded runs
+
+# A new push to a PR makes the PR's CI runs on older commits worthless: the
+# merge gate only ever judges checks at the current head. This cancels them
+# through the API (#1506). It replaces the `concurrency` groups #1492 gave the
+# four CI workflows: a concurrency group holds the new run until the old one
+# has finished cancelling, and GitHub delivered that cancel to busy runners a
+# minute late (the new run's tests waited 93 s on #1505). Here nothing waits:
+# the new runs start at once, and the old ones stop whenever the cancel reaches
+# them, on free runner minutes.
+#
+# Only pull_request pushes, never push runs: a master or release/* run is the
+# post-merge check of the merged tree (#1070) and must always finish.
+on:
+  pull_request:
+    types: [synchronize]
+
+# The one workflow here that can write: `actions: write` is what cancelling a
+# run takes. Nothing else is granted, and no code from the PR runs in it.
+permissions:
+  actions: write
+  pull-requests: read
+
+jobs:
+  cancel:
+    name: Cancel superseded runs
+    # A fork's pull_request token is read-only, and so is a Dependabot PR's,
+    # so cancelling would fail there; their older runs simply finish. A fork is
+    # skipped outright; for Dependabot the cancel fails and is reported.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Housekeeping, not a check of the code: an API hiccup here must not put
+      # a red check on the PR, so a failure only shows in this step. The step's
+      # own timeout sits under the job's, because `continue-on-error` covers a
+      # failed or timed-out step but not a job the job timeout cancels.
+      - name: Cancel this PR's CI runs on older commits
+        continue-on-error: true
+        timeout-minutes: 3
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+          EVENT_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          # Act only while this event's commit is still the PR's head. If a later
+          # push has landed, this run is itself superseded, and the run for that
+          # push does the cancelling.
+          still_head() {
+            local head
+            head=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq .head.sha)
+            if [ "$head" != "$EVENT_SHA" ]; then
+              echo "The PR has moved on to $head; the run for that push cancels what is superseded."
+              return 1
+            fi
+          }
+          still_head || exit 0
+
+          # The CI workflows' unfinished pull_request runs on this branch, on any
+          # commit but the head, matched by workflow file so a renamed workflow
+          # stays covered. Other workflows (the labeler, this one) are left alone.
+          # A run that names its pull requests must name this one; GitHub leaves
+          # the list empty on some runs, and those are still this branch's.
+          filter='.workflow_runs[]
+            | select(.status != "completed")
+            | select(.head_sha != env.EVENT_SHA)
+            | select(.head_repository.full_name == env.GITHUB_REPOSITORY)
+            | select((.pull_requests | length) == 0 or any(.pull_requests[]; .number == (env.PR_NUMBER | tonumber)))
+            | select(.path | sub("@.*$"; "") | test("^[.]github/workflows/ci-[a-z]+[.]yml$"))
+            | [(.id | tostring), .head_sha[0:7], .name] | join(" ")'
+          gh api -X GET --paginate "repos/$GITHUB_REPOSITORY/actions/runs" -f event=pull_request -f branch="$BRANCH" -f per_page=100 --jq "$filter" > superseded.txt
+
+          # Check the head again AFTER the listing. GitHub moves the PR's head
+          # before it creates a push's runs, so if the listing caught any run of
+          # a newer push, that push has already moved the head and this check
+          # exits instead of cancelling the PR's newest checks. A push landing
+          # after the listing has no runs in it. Checking only before the listing
+          # would leave that gap open.
+          still_head || exit 0
+
+          if [ ! -s superseded.txt ]; then
+            echo "Nothing to cancel."
+            exit 0
+          fi
+
+          # A run that finished between the listing and the cancel answers with
+          # an error; that is not a failure of this job, so each refusal is a
+          # notice carrying gh's own message, whatever the cause. gh's stdin is
+          # closed so it cannot read the rest of the list.
+          while read -r id sha name; do
+            if out=$(gh run cancel "$id" --repo "$GITHUB_REPOSITORY" < /dev/null 2>&1); then
+              echo "Cancelled $name on $sha (run $id)"
+            else
+              echo "::notice::Could not cancel $name on $sha (run $id): $out"
+            fi
+          done < superseded.txt
