@@ -24,13 +24,17 @@ permissions:
 jobs:
   cancel:
     name: Cancel superseded runs
-    # A fork's pull_request token is read-only, so cancelling would fail there;
-    # its older runs simply finish.
+    # A fork's pull_request token is read-only, and so is a Dependabot PR's,
+    # so cancelling would fail there; their older runs simply finish. A fork is
+    # skipped outright; for Dependabot the cancel fails and is reported.
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      # Housekeeping, not a check of the code: an API hiccup here must not put
+      # a red check on the PR, so a failure only shows in this step.
       - name: Cancel this PR's CI runs on older commits
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -40,25 +44,31 @@ jobs:
           set -euo pipefail
 
           # Keep whatever runs on the PR's head NOW, not this event's head: if a
-          # third push already landed, this run is itself superseded, and
-          # comparing against its own commit would cancel the newest runs.
+          # later push already landed, this run is itself superseded, and the
+          # run for that push does the cancelling.
           head=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq .head.sha)
           if [ "$head" != "$EVENT_SHA" ]; then
             echo "The PR has moved on to $head; the run for that push cancels what is superseded."
             exit 0
           fi
 
-          # The four CI workflows' unfinished pull_request runs on this branch,
-          # on any commit but the head. Other workflows (the labeler, this one)
-          # are left alone.
-          gh api -X GET "repos/$GITHUB_REPOSITORY/actions/runs" \
-            -f event=pull_request -f branch="$BRANCH" -f per_page=100 \
-            --jq '.workflow_runs[]
-              | select(.status != "completed")
-              | select(.head_sha != env.EVENT_SHA)
-              | select(.head_repository.full_name == env.GITHUB_REPOSITORY)
-              | select(.name == "Format" or .name == "Lint" or .name == "Tests" or .name == "Typecheck")
-              | "\(.id) \(.name) \(.head_sha[0:7])"' > superseded.txt
+          # Only runs created before this one. A push landing after the check
+          # above creates runs on a newer commit, and those must never match:
+          # this run would cancel the PR's newest checks, and that push's own
+          # run would cancel ours, leaving the head with nothing green.
+          export SELF_CREATED=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq .created_at)
+
+          # The CI workflows' unfinished pull_request runs on this branch, on any
+          # commit but the head, matched by workflow file so a renamed workflow
+          # stays covered. Other workflows (the labeler, this one) are left alone.
+          filter='.workflow_runs[]
+            | select(.status != "completed")
+            | select(.head_sha != env.EVENT_SHA)
+            | select(.created_at < env.SELF_CREATED)
+            | select(.head_repository.full_name == env.GITHUB_REPOSITORY)
+            | select(.path | test("^[.]github/workflows/ci-[a-z]+[.]yml$"))
+            | [(.id | tostring), .head_sha[0:7], .name] | join(" ")'
+          gh api -X GET --paginate "repos/$GITHUB_REPOSITORY/actions/runs" -f event=pull_request -f branch="$BRANCH" -f per_page=100 --jq "$filter" > superseded.txt
 
           if [ ! -s superseded.txt ]; then
             echo "Nothing to cancel."
@@ -66,9 +76,10 @@ jobs:
           fi
 
           # A run that finished between the listing and the cancel answers with
-          # an error; that is not a failure of this job.
-          while read -r id name sha; do
-            if gh run cancel "$id" --repo "$GITHUB_REPOSITORY"; then
+          # an error; that is not a failure of this job. gh's stdin is closed so
+          # it cannot read the rest of the list.
+          while read -r id sha name; do
+            if gh run cancel "$id" --repo "$GITHUB_REPOSITORY" < /dev/null; then
               echo "Cancelled $name on $sha (run $id)"
             else
               echo "::notice::Could not cancel $name on $sha (run $id); it has probably finished"
