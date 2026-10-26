@@ -137,9 +137,9 @@ jobs:
   # skipped required check as satisfied — a red shard would merge. With it the
   # job always runs and fails on any result but success: failure, cancelled
   # and skipped alike. It also runs, and fails, on a run cancelled because a
-  # newer push superseded it. That red usually sits on an old head, but a PR
-  # closed and reopened mid-run, or force-pushed back to an earlier commit,
-  # can leave it on the current head beside a green rerun; re-run the
+  # newer push superseded it (cancel-superseded.yml). That red sits on an old
+  # head, unless the PR is force-pushed back to that earlier commit, which
+  # leaves it on the current head beside a green rerun; re-run the
   # cancelled workflow if the merge gate then refuses. Do not narrow this to
   # `!cancelled()`: a cancelled run at the current head would then leave this
   # check skipped, which counts as passing.
