@@ -62,10 +62,13 @@ jobs:
           # The CI workflows' unfinished pull_request runs on this branch, on any
           # commit but the head, matched by workflow file so a renamed workflow
           # stays covered. Other workflows (the labeler, this one) are left alone.
+          # A run that names its pull requests must name this one; GitHub leaves
+          # the list empty on some runs, and those are still this branch's.
           filter='.workflow_runs[]
             | select(.status != "completed")
             | select(.head_sha != env.EVENT_SHA)
             | select(.head_repository.full_name == env.GITHUB_REPOSITORY)
+            | select((.pull_requests | length) == 0 or any(.pull_requests[]; .number == (env.PR_NUMBER | tonumber)))
             | select(.path | sub("@.*$"; "") | test("^[.]github/workflows/ci-[a-z]+[.]yml$"))
             | [(.id | tostring), .head_sha[0:7], .name] | join(" ")'
           gh api -X GET --paginate "repos/$GITHUB_REPOSITORY/actions/runs" -f event=pull_request -f branch="$BRANCH" -f per_page=100 --jq "$filter" > superseded.txt
