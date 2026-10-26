@@ -32,9 +32,12 @@ jobs:
     timeout-minutes: 5
     steps:
       # Housekeeping, not a check of the code: an API hiccup here must not put
-      # a red check on the PR, so a failure only shows in this step.
+      # a red check on the PR, so a failure only shows in this step. The step's
+      # own timeout sits under the job's, because `continue-on-error` covers a
+      # failed or timed-out step but not a job the job timeout cancels.
       - name: Cancel this PR's CI runs on older commits
         continue-on-error: true
+        timeout-minutes: 3
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -55,8 +58,13 @@ jobs:
           # Only runs created before this one. A push landing after the check
           # above creates runs on a newer commit, and those must never match:
           # this run would cancel the PR's newest checks, and that push's own
-          # run would cancel ours, leaving the head with nothing green.
-          export SELF_CREATED=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq .created_at)
+          # run would cancel ours, leaving the head with nothing green. The cut is
+          # strict and `created_at` has one-second resolution, so runs created in
+          # this run's own second are kept: a superseded run left to finish is the
+          # safe side of that edge. Assigned before it is exported, so a failed
+          # lookup fails the step instead of leaving the bound empty.
+          SELF_CREATED=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq .created_at)
+          export SELF_CREATED
 
           # The CI workflows' unfinished pull_request runs on this branch, on any
           # commit but the head, matched by workflow file so a renamed workflow
@@ -76,12 +84,13 @@ jobs:
           fi
 
           # A run that finished between the listing and the cancel answers with
-          # an error; that is not a failure of this job. gh's stdin is closed so
-          # it cannot read the rest of the list.
+          # an error; that is not a failure of this job, so each refusal is a
+          # notice carrying gh's own message, whatever the cause. gh's stdin is
+          # closed so it cannot read the rest of the list.
           while read -r id sha name; do
-            if gh run cancel "$id" --repo "$GITHUB_REPOSITORY" < /dev/null; then
+            if out=$(gh run cancel "$id" --repo "$GITHUB_REPOSITORY" < /dev/null 2>&1); then
               echo "Cancelled $name on $sha (run $id)"
             else
-              echo "::notice::Could not cancel $name on $sha (run $id); it has probably finished"
+              echo "::notice::Could not cancel $name on $sha (run $id): $out"
             fi
           done < superseded.txt
