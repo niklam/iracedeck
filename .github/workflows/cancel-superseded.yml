@@ -46,25 +46,18 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Keep whatever runs on the PR's head NOW, not this event's head: if a
-          # later push already landed, this run is itself superseded, and the
-          # run for that push does the cancelling.
-          head=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq .head.sha)
-          if [ "$head" != "$EVENT_SHA" ]; then
-            echo "The PR has moved on to $head; the run for that push cancels what is superseded."
-            exit 0
-          fi
-
-          # Only runs created before this one. A push landing after the check
-          # above creates runs on a newer commit, and those must never match:
-          # this run would cancel the PR's newest checks, and that push's own
-          # run would cancel ours, leaving the head with nothing green. The cut is
-          # strict and `created_at` has one-second resolution, so runs created in
-          # this run's own second are kept: a superseded run left to finish is the
-          # safe side of that edge. Assigned before it is exported, so a failed
-          # lookup fails the step instead of leaving the bound empty.
-          SELF_CREATED=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq .created_at)
-          export SELF_CREATED
+          # Act only while this event's commit is still the PR's head. If a later
+          # push has landed, this run is itself superseded, and the run for that
+          # push does the cancelling.
+          still_head() {
+            local head
+            head=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq .head.sha)
+            if [ "$head" != "$EVENT_SHA" ]; then
+              echo "The PR has moved on to $head; the run for that push cancels what is superseded."
+              return 1
+            fi
+          }
+          still_head || exit 0
 
           # The CI workflows' unfinished pull_request runs on this branch, on any
           # commit but the head, matched by workflow file so a renamed workflow
@@ -72,11 +65,18 @@ jobs:
           filter='.workflow_runs[]
             | select(.status != "completed")
             | select(.head_sha != env.EVENT_SHA)
-            | select(.created_at < env.SELF_CREATED)
             | select(.head_repository.full_name == env.GITHUB_REPOSITORY)
             | select(.path | sub("@.*$"; "") | test("^[.]github/workflows/ci-[a-z]+[.]yml$"))
             | [(.id | tostring), .head_sha[0:7], .name] | join(" ")'
           gh api -X GET --paginate "repos/$GITHUB_REPOSITORY/actions/runs" -f event=pull_request -f branch="$BRANCH" -f per_page=100 --jq "$filter" > superseded.txt
+
+          # Check the head again AFTER the listing. GitHub moves the PR's head
+          # before it creates a push's runs, so if the listing caught any run of
+          # a newer push, that push has already moved the head and this check
+          # exits instead of cancelling the PR's newest checks. A push landing
+          # after the listing has no runs in it. Checking only before the listing
+          # would leave that gap open.
+          still_head || exit 0
 
           if [ ! -s superseded.txt ]; then
             echo "Nothing to cancel."
