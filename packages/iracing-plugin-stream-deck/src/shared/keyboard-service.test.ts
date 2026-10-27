@@ -729,10 +729,34 @@ describe("Keyboard Service", () => {
         true,
       );
 
-      // The fallback is fire-and-forget from the scan-code path.
-      await vi.waitFor(() => expect(mockScanSender).toHaveBeenCalledWith(ALT_F24));
+      // The fallback is awaited, so both have gone out once the send resolves.
       expect(mockSendKey).toHaveBeenCalledWith(["ctrl", "alt", "l"]);
+      expect(mockScanSender).toHaveBeenCalledWith(ALT_F24);
       expect(mockSendKey.mock.invocationCallOrder[0]).toBeLessThan(mockScanSender.mock.invocationCallOrder[0]);
+    });
+
+    it("resolves the release of an unmappable held Ctrl+Alt chord only after its keysender release and Alt+F24", async () => {
+      const mockScanSender = vi.fn();
+      const keyboard = initializeKeyboard(undefined, mockScanSender, vi.fn(), vi.fn());
+      const unmappable: KeyCombination = { key: "l", code: "UnknownCode", modifiers: ["ctrl", "alt"] };
+
+      expect(await keyboard.releaseKeyCombination(unmappable)).toBe(true);
+
+      expect(mockToggleKey).toHaveBeenCalledWith(["ctrl", "alt", "l"], false);
+      expect(mockScanSender).toHaveBeenCalledWith(ALT_F24);
+    });
+
+    it("reports a failed keysender fallback as a failed send", async () => {
+      const mockScanSender = vi.fn();
+      const keyboard = initializeKeyboard(undefined, mockScanSender, vi.fn(), vi.fn());
+      mockSendKey.mockRejectedValueOnce(new Error("send failed"));
+      mockToggleKey.mockRejectedValueOnce(new Error("press failed"));
+
+      expect(await keyboard.sendKeyCombination({ key: "l", code: "UnknownCode", modifiers: ["ctrl", "alt"] })).toBe(
+        false,
+      );
+      expect(await keyboard.pressKeyCombination({ key: "a", code: "UnknownCode" })).toBe(false);
+      expect(mockScanSender).not.toHaveBeenCalled();
     });
 
     it("falls back to a keysender alt+f24 tap without a scan-code sender", async () => {

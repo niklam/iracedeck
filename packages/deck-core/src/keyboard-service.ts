@@ -295,15 +295,16 @@ class KeyboardService implements IKeyboardService {
   /**
    * Send a key combination using PS/2 scan codes via native SendInput.
    * Layout-independent: the same scan code always sends the same physical key.
+   * A combination the scan-code map cannot build is sent through keysender,
+   * awaited, so the send resolves only once that chord and any Alt+F24
+   * follow-up (#1508) have gone out.
    */
-  private sendViaScanCodes(combination: KeyCombination): boolean {
+  private async sendViaScanCodes(combination: KeyCombination): Promise<boolean> {
     try {
       const scanCodes = this.buildScanCodes(combination);
 
       if (!scanCodes) {
-        void this.sendViaKeysender(combination);
-
-        return true;
+        return await this.sendViaKeysender(combination);
       }
 
       this.logger.debug(
@@ -312,7 +313,7 @@ class KeyboardService implements IKeyboardService {
 
       focusIRacingBeforeInput();
       this.scanKeySender!(scanCodes);
-      void this.releaseCtrlAltLock(combination);
+      await this.releaseCtrlAltLock(combination);
 
       return true;
     } catch (error) {
@@ -438,16 +439,15 @@ class KeyboardService implements IKeyboardService {
   }
 
   /**
-   * Press scan codes without releasing (for key hold).
+   * Press scan codes without releasing (for key hold). A combination the
+   * scan-code map cannot build is pressed through keysender, awaited.
    */
-  private pressViaScanCodes(combination: KeyCombination): boolean {
+  private async pressViaScanCodes(combination: KeyCombination): Promise<boolean> {
     try {
       const scanCodes = this.buildScanCodes(combination);
 
       if (!scanCodes) {
-        void this.toggleViaKeysender(combination, true);
-
-        return true;
+        return await this.toggleViaKeysender(combination, true);
       }
 
       this.logger.debug(
@@ -466,16 +466,17 @@ class KeyboardService implements IKeyboardService {
   }
 
   /**
-   * Release scan codes without pressing (for key release).
+   * Release scan codes without pressing (for key release). A combination the
+   * scan-code map cannot build is released through keysender, awaited, so the
+   * release resolves only once that chord and any Alt+F24 follow-up (#1508)
+   * have gone out.
    */
-  private releaseViaScanCodes(combination: KeyCombination): boolean {
+  private async releaseViaScanCodes(combination: KeyCombination): Promise<boolean> {
     try {
       const scanCodes = this.buildScanCodes(combination);
 
       if (!scanCodes) {
-        void this.toggleViaKeysender(combination, false);
-
-        return true;
+        return await this.toggleViaKeysender(combination, false);
       }
 
       this.logger.debug(
@@ -484,7 +485,7 @@ class KeyboardService implements IKeyboardService {
 
       // No focus on a release (#977): a keyup must never pull the window forward.
       this.scanKeyReleaser!(scanCodes);
-      void this.releaseCtrlAltLock(combination);
+      await this.releaseCtrlAltLock(combination);
 
       return true;
     } catch (error) {
