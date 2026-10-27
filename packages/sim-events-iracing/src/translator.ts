@@ -93,6 +93,7 @@ import { diffRadar, resolveRadarState } from "./diff/radar.js";
 import { diffReplayGreens } from "./diff/replay-greens.js";
 import { diffReplayIncidents } from "./diff/replay-incidents.js";
 import { diffReplayLaps } from "./diff/replay-laps.js";
+import { readSubSessionId } from "./diff/replay-record-gate.js";
 import { diffReplaySessions } from "./diff/replay-sessions.js";
 import { diffRollingStart } from "./diff/rolling-start.js";
 import { updateStallVisit } from "./diff/stall-visit.js";
@@ -2249,20 +2250,6 @@ function diffFirstOnTrack(self: TranslatorInstance, telemetry: TelemetryData, in
   }
 }
 
-/**
- * `WeekendInfo.SubSessionID` for the session-identity check (issue #1509), or
- * `null` when the session info, its `WeekendInfo` or the id is not readable.
- * Unlike the replay recorders' `resolveSubSessionId`, absence is NOT folded
- * into `0`: an offline session genuinely reads 0, and a transition tick with
- * no session info must not read as a change to offline and back.
- */
-function readSubSessionId(sessionInfo: Record<string, unknown> | null): number | null {
-  const weekend = sessionInfo?.WeekendInfo as Record<string, unknown> | undefined;
-  const id = weekend?.SubSessionID;
-
-  return typeof id === "number" && Number.isFinite(id) ? id : null;
-}
-
 function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // Session-change detection + reset (issues #564, #568). Runs on every tick
   // — including replay ticks — because iRacing's between-session transition
@@ -2431,6 +2418,8 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     // A subsession change keeps `SessionNum` as it is, so the event carries
     // `from === to` then (the spec's decision: no payload field, and not the
     // fresh-connect `-1`, which the #871 on-track gate would swallow).
+    // Never null here: both baselines are set in the same block below and
+    // cleared together, so a subsession baseline implies a SessionNum one.
     const previousSessionNum = self.lastObservedSessionNum ?? currentSessionNum;
     resetPerSessionState(self, telemetry);
     // Publish `session.changed` directly from the instance-level tracker so it

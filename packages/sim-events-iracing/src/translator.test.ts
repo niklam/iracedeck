@@ -3521,6 +3521,30 @@ describe("sim-events-iracing translator", () => {
           for (const [event] of handler.mock.calls) {
             expect(event.data.from).toBe(-1);
           }
+
+          // And the reconnect re-seeded: the next event is still detected.
+          handler.mockClear();
+          controller.__setSessionInfo(sessionInfo(89661111));
+          controller.__tick(live());
+
+          expect(handler).toHaveBeenCalledTimes(1);
+          expect(handler.mock.calls[0]![0].data).toEqual({ from: 0, to: 0 });
+        });
+
+        it("publishes on a replay-mode loading tick of a live session (the #568 shape)", () => {
+          // iRacing loads the next event through `IsReplayPlaying: true` ticks
+          // while `SimMode` stays "full"; the identity check must not wait for
+          // a live-on-track tick, as the SessionNum path does not.
+          const { controller, handler } = setUp();
+
+          controller.__setSessionInfo(sessionInfo(89660575));
+          controller.__tick(telemetry({ SessionNum: 0, IsReplayPlaying: true, IsOnTrack: false }));
+
+          expect(handler).toHaveBeenCalledTimes(1);
+          expect(handler.mock.calls[0]![0].data).toEqual({ from: 0, to: 0 });
+
+          controller.__tick(live());
+          expect(handler).toHaveBeenCalledTimes(1);
         });
       });
 
