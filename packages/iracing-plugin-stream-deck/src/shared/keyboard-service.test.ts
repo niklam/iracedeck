@@ -721,6 +721,20 @@ describe("Keyboard Service", () => {
       expect(mockSendKey.mock.invocationCallOrder[0]).toBeLessThan(mockScanSender.mock.invocationCallOrder[0]);
     });
 
+    it("follows a Ctrl+Alt chord the scan-code map cannot build, after its keysender fallback", async () => {
+      const mockScanSender = vi.fn();
+      const keyboard = initializeKeyboard(undefined, mockScanSender);
+
+      expect(await keyboard.sendKeyCombination({ key: "l", code: "UnknownCode", modifiers: ["ctrl", "alt"] })).toBe(
+        true,
+      );
+
+      // The fallback is fire-and-forget from the scan-code path.
+      await vi.waitFor(() => expect(mockScanSender).toHaveBeenCalledWith(ALT_F24));
+      expect(mockSendKey).toHaveBeenCalledWith(["ctrl", "alt", "l"]);
+      expect(mockSendKey.mock.invocationCallOrder[0]).toBeLessThan(mockScanSender.mock.invocationCallOrder[0]);
+    });
+
     it("falls back to a keysender alt+f24 tap without a scan-code sender", async () => {
       const keyboard = initializeKeyboard();
 

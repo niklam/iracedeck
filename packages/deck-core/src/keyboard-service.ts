@@ -169,10 +169,11 @@ function toKeysenderKey(key: KeyboardKey): KeyboardButton {
  * The tap iRaceDeck sends after every Ctrl+Alt chord (#1508). iRacing's text
  * input can lock after a Ctrl+Alt chord until some Alt+key arrives, and while
  * it is locked every chat macro fails silently. This is that Alt+key: left Alt
- * and F24 (scan code 0x76), a key no ordinary keyboard has, so the chord does
- * nothing else in iRacing or Windows.
+ * and F24, a key no ordinary keyboard has, so the chord does nothing else in
+ * iRacing or Windows.
  */
-const CTRL_ALT_LOCK_RELEASE_SCAN_CODES: readonly number[] = [0x38, 0x76];
+const F24_SCAN_CODE = 0x76;
+const CTRL_ALT_LOCK_RELEASE_SCAN_CODES: readonly number[] = [getModifierScanCode("alt")!, F24_SCAN_CODE];
 const CTRL_ALT_LOCK_RELEASE_KEYSENDER_KEYS: readonly KeyboardButton[] = ["alt", "f24"];
 
 /**
