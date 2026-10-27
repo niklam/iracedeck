@@ -19,8 +19,9 @@ The four templates keep their names, files and manifest entries, and stay on the
 Each layout is authored by the maintainer in the Stream Deck app and exported, per the workflow in `.claude/rules/profiles-and-devices.md`. Each one is built around what a driver does in that session:
 
 - **Test** is alone on track: pit service, brake and traction adjustments, lap and delta readouts, black box selection. No chat keys.
-- **Practice** is the Test layout plus chat macros and session info.
-- **Qualifying** and **Race** put fuel and tire service up front, along with brake and traction adjustments, session info, chat macros and black box selection.
+- **Practice** keeps Test's pit service, adjustments, lap and delta readouts and black box selection, and adds chat macros.
+- **Qualifying** carries fuel and tire service, brake and traction adjustments, session info, chat macros and black box selection.
+- **Race** puts fuel and tire service up front, along with brake and traction adjustments, chat macros and black box selection.
 
 A larger deck carries more of the same rather than a different idea, so the four device variants of one template differ in reach, not in purpose.
 
