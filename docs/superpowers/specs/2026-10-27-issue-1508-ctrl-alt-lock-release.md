@@ -25,7 +25,7 @@ Established by hand in iRacing on 2026-10-27, on Stream Deck and Mirabox, with t
   - **A scan-code tap:** a second scan-code tap of Alt+F24 after the chord's. It is held for the same 100 ms as every tap, the shape that was verified; a zero-duration batch was not tested and is not used.
   - **A keysender tap** (a binding without `event.code`, or one the scan-code map cannot build): the same Alt+F24 scan-code tap once the keysender tap settles, or a keysender tap of `alt`+`f24` when no scan-code sender is configured.
   - **The release of a held Ctrl+Alt combination:** after the release, by the same means. A hold's press sends nothing extra; the chord is not complete until it is released.
-  - **A sequence:** an Alt+F24 chord appended to the same atomic batch when any of its chords is a Ctrl+Alt chord, so the sequence stays one `SendInput` call.
+  - **A sequence:** one Alt+F24 tap after the sequence's batch when any of its chords is a Ctrl+Alt chord. Not a chord appended to the batch: that would be a zero-duration Alt+F24, the shape that was not tested. The sequence's own chords stay one atomic `SendInput` call.
 - **The follow-up never costs the keystroke it follows.** It runs after the chord has gone out, in its own `try`, and a failure logs a warning and leaves the chord's own result as it was. It does not focus: the chord before it already did.
 - **Logging.** One debug line per follow-up, `Sending Alt+F24 after a Ctrl+Alt chord`, after the chord's own line. Nothing at info: it accompanies a press that is already logged.
 
@@ -51,7 +51,7 @@ Established by hand in iRacing on 2026-10-27, on Stream Deck and Mirabox, with t
   - A scan-code tap of a Ctrl+Alt chord is followed by an Alt+F24 tap (`[0x38, 0x76]`); a chord with only Ctrl, only Alt or neither is not, and Ctrl+Alt+Shift is.
   - A keysender tap of a Ctrl+Alt chord is followed by the Alt+F24 scan-code tap after it settles, or by a keysender `alt`+`f24` tap without a scan-code sender.
   - The release of a held Ctrl+Alt combination is followed by the tap, on both paths; the press is not.
-  - A sequence with a Ctrl+Alt chord gets the Alt+F24 chord appended in the same call; one without does not; a skipped sequence sends nothing.
+  - A sequence with a Ctrl+Alt chord is followed by one Alt+F24 tap after its batch; one without is not; a skipped sequence sends nothing.
   - A failing follow-up does not change the result of the chord's send.
 - **Manual, in iRacing** (Stream Deck and Mirabox):
   - With another window in front, Toggle Driving Line from the deck, then tire keys and a Chat message: the chat keeps working, every time.
