@@ -275,6 +275,7 @@ function parts(overrides: Partial<SimStateParts> = {}): SimStateParts {
     instance: {
       lastTickInReplay: false,
       lastObservedSessionNum: null,
+      lastObservedSubSessionId: null,
       firstOnTrackSeeded: false,
       firstOnTrackFired: false,
       freshConnectFireChecked: false,

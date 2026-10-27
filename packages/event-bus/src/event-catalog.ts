@@ -871,6 +871,14 @@ export type SimEventMap = {
   >;
 
   "driver.firstOnTrack": SimEvent<"driver.firstOnTrack", EmptySimEventPayload>;
+  /**
+   * The driver is in a different session. `from` and `to` are session numbers
+   * within the event; `from` is `-1` when the translator connected straight
+   * into a session (no previous session to measure against). A new event that
+   * starts at the same session number — an official race's registration
+   * practice handing over to the race event's own practice, both session 0 —
+   * is a change too, and carries `from === to` (issue #1509).
+   */
   "session.changed": SimEvent<"session.changed", { from: number; to: number }>;
   "engine.startup": SimEvent<"engine.startup", EmptySimEventPayload>;
   "lap.started": SimEvent<"lap.started", { lap: number }>;

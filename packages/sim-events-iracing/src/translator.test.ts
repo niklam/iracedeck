@@ -3392,6 +3392,138 @@ describe("sim-events-iracing translator", () => {
         expect(handler.mock.calls[0]![0].data).toEqual({ from: 1, to: 2 });
       });
 
+      // Issue #1509: an official race's registration practice and the race
+      // event's own practice are both SessionNum 0 on one live connection;
+      // only WeekendInfo.SubSessionID changes (89659949 → 89660575 in the
+      // 2026-10-26 log). The pair is the session identity.
+      describe("a new subsession is a session change (issue #1509)", () => {
+        const sessionInfo = (subSessionId: number | undefined, simMode = "full") => ({
+          SessionInfo: { Sessions: [{ SessionType: "Practice" }, { SessionType: "Lone Qualify" }] },
+          WeekendInfo: {
+            TrackID: 42,
+            SimMode: simMode,
+            ...(subSessionId === undefined ? {} : { SubSessionID: subSessionId }),
+          },
+        });
+        const live = () => telemetry({ SessionNum: 0, IsReplayPlaying: false, IsOnTrack: true });
+
+        function setUp() {
+          const controller = createMockController();
+          controller.__setSessionInfo(sessionInfo(89659949));
+          const bus = getEventBus();
+          const handler = vi.fn();
+          bus.subscribe("session.changed", handler);
+          initializeSimEventsIracing(bus, controller, createMockLogger());
+          // Seed: live in the registration practice. The fresh-connect
+          // synthesis may fire here; only what follows is under test.
+          controller.__tick(live());
+          handler.mockClear();
+
+          return { bus, controller, handler };
+        }
+
+        it("publishes session.changed { from: 0, to: 0 } when only the subsession changes", () => {
+          const { controller, handler } = setUp();
+
+          controller.__tick(live());
+          expect(handler).not.toHaveBeenCalled();
+
+          controller.__setSessionInfo(sessionInfo(89660575));
+          controller.__tick(live());
+          controller.__tick(live());
+
+          expect(handler).toHaveBeenCalledTimes(1);
+          expect(handler.mock.calls[0]![0].data).toEqual({ from: 0, to: 0 });
+        });
+
+        it("resets per-session state at the subsession boundary", () => {
+          // `driver.firstOnTrack` is cleared only by the per-session reset, so
+          // its re-fire on the next live tick proves the reset ran.
+          const { bus, controller } = setUp();
+          const firstOnTrack = vi.fn();
+          bus.subscribe("driver.firstOnTrack", firstOnTrack);
+
+          controller.__tick(live());
+          expect(firstOnTrack).not.toHaveBeenCalled();
+
+          controller.__setSessionInfo(sessionInfo(89660575));
+          controller.__tick(live());
+          controller.__tick(live());
+
+          expect(firstOnTrack).toHaveBeenCalledTimes(1);
+        });
+
+        it("neither publishes nor advances the baseline while a saved replay shows another subsession", () => {
+          const { controller, handler } = setUp();
+
+          controller.__setSessionInfo(sessionInfo(70000000, "replay"));
+          controller.__tick(telemetry({ SessionNum: 0, IsReplayPlaying: true, IsOnTrack: false }));
+          expect(handler).not.toHaveBeenCalled();
+
+          // Back to live in the same event: no phantom change against the
+          // replay's subsession.
+          controller.__setSessionInfo(sessionInfo(89659949));
+          controller.__tick(live());
+          expect(handler).not.toHaveBeenCalled();
+        });
+
+        it("publishes once when a tick without a readable SubSessionID sits between the two events", () => {
+          const { controller, handler } = setUp();
+
+          controller.__setSessionInfo(null);
+          controller.__tick(live());
+          controller.__setSessionInfo(sessionInfo(undefined));
+          controller.__tick(live());
+          expect(handler).not.toHaveBeenCalled();
+
+          controller.__setSessionInfo(sessionInfo(89660575));
+          controller.__tick(live());
+
+          expect(handler).toHaveBeenCalledTimes(1);
+          expect(handler.mock.calls[0]![0].data).toEqual({ from: 0, to: 0 });
+        });
+
+        it("publishes once when SessionNum and SubSessionID change on the same tick", () => {
+          const { controller, handler } = setUp();
+
+          controller.__setSessionInfo(sessionInfo(89660575));
+          controller.__tick(telemetry({ SessionNum: 1, IsReplayPlaying: false, IsOnTrack: true }));
+
+          expect(handler).toHaveBeenCalledTimes(1);
+          expect(handler.mock.calls[0]![0].data).toEqual({ from: 0, to: 1 });
+        });
+
+        it("treats offline (SubSessionID 0) to a hosted event as a change", () => {
+          const controller = createMockController();
+          controller.__setSessionInfo(sessionInfo(0));
+          const bus = getEventBus();
+          const handler = vi.fn();
+          bus.subscribe("session.changed", handler);
+          initializeSimEventsIracing(bus, controller, createMockLogger());
+          controller.__tick(live());
+          handler.mockClear();
+
+          controller.__setSessionInfo(sessionInfo(89659949));
+          controller.__tick(live());
+
+          expect(handler).toHaveBeenCalledTimes(1);
+        });
+
+        it("seeds rather than compares after a reconnect into another subsession", () => {
+          const { controller, handler } = setUp();
+
+          controller.__tick(null, false);
+          controller.__setSessionInfo(sessionInfo(89660575));
+          controller.__tick(live());
+
+          // Only a fresh-connect synthesis (from -1) may follow a reconnect,
+          // never a delta measured against the previous connection's event.
+          for (const [event] of handler.mock.calls) {
+            expect(event.data.from).toBe(-1);
+          }
+        });
+      });
+
       // Issue #908: while the fresh-connect check stays unlatched in a
       // replay-only session, the deliberate no-latch behavior means the gate
       // re-evaluates on every tick — but the skip must be LOGGED once per
