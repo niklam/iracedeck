@@ -20,6 +20,11 @@
  * does. Releases never focus — a keyup must not pull the window forward, and
  * `SendInput` keyups update the global key state whatever is in front.
  *
+ * The same layer follows every Ctrl+Alt chord it completes (a tap, the release
+ * of a held combination, a sequence containing one) with an Alt+F24 tap
+ * (#1508): iRacing's text input can lock after a Ctrl+Alt chord until some
+ * Alt+key arrives, and while it is locked every chat macro fails silently.
+ *
  * Usage:
  * 1. Call initializeKeyboard() once at plugin startup
  * 2. Use getKeyboard() in your actions to send key combinations
@@ -161,6 +166,26 @@ function toKeysenderKey(key: KeyboardKey): KeyboardButton {
 }
 
 /**
+ * The tap iRaceDeck sends after every Ctrl+Alt chord (#1508). iRacing's text
+ * input can lock after a Ctrl+Alt chord until some Alt+key arrives, and while
+ * it is locked every chat macro fails silently. This is that Alt+key: left Alt
+ * and F24 (scan code 0x76), a key no ordinary keyboard has, so the chord does
+ * nothing else in iRacing or Windows.
+ */
+const CTRL_ALT_LOCK_RELEASE_SCAN_CODES: readonly number[] = [0x38, 0x76];
+const CTRL_ALT_LOCK_RELEASE_KEYSENDER_KEYS: readonly KeyboardButton[] = ["alt", "f24"];
+
+/**
+ * Whether a combination is a Ctrl+Alt chord: its modifiers include both Ctrl
+ * and Alt, whatever else they hold.
+ */
+function isCtrlAltChord(combination: KeyCombination): boolean {
+  const modifiers = combination.modifiers ?? [];
+
+  return modifiers.includes("ctrl") && modifiers.includes("alt");
+}
+
+/**
  * Convert our KeyboardModifier to keysender's KeyboardButton.
  */
 function toKeysenderModifier(modifier: KeyboardModifier): KeyboardButton {
@@ -286,6 +311,7 @@ class KeyboardService implements IKeyboardService {
 
       focusIRacingBeforeInput();
       this.scanKeySender!(scanCodes);
+      void this.releaseCtrlAltLock(combination);
 
       return true;
     } catch (error) {
@@ -323,6 +349,8 @@ class KeyboardService implements IKeyboardService {
       } else {
         await hw.keyboard.sendKey(keys);
       }
+
+      await this.releaseCtrlAltLock(combination);
 
       return true;
     } catch (error) {
@@ -392,6 +420,14 @@ class KeyboardService implements IKeyboardService {
       focusIRacingBeforeInput();
       this.scanKeySequenceSender(chords, holdMs);
 
+      // One follow-up for the whole sequence: an Alt+key after its last
+      // Ctrl+Alt chord releases a lock any of them caused (#1508).
+      const ctrlAltChord = combinations.find(isCtrlAltChord);
+
+      if (ctrlAltChord) {
+        void this.releaseCtrlAltLock(ctrlAltChord);
+      }
+
       return true;
     } catch (error) {
       this.logger.error(`Failed to send scan code sequence: ${error}`);
@@ -447,12 +483,43 @@ class KeyboardService implements IKeyboardService {
 
       // No focus on a release (#977): a keyup must never pull the window forward.
       this.scanKeyReleaser!(scanCodes);
+      void this.releaseCtrlAltLock(combination);
 
       return true;
     } catch (error) {
       this.logger.error(`Failed to release scan codes: ${JSON.stringify(combination)}: ${error}`);
 
       return false;
+    }
+  }
+
+  /**
+   * Follow a Ctrl+Alt chord with the Alt+F24 tap that releases iRacing's text
+   * input lock (#1508); a no-op for any other combination. Sent as an ordinary
+   * scan-code tap (the 100 ms shape verified in iRacing), or through keysender
+   * when no scan-code sender is configured. The scan-code tap runs before this
+   * returns its promise, so it follows the chord in order even when the
+   * caller does not await it. Never focuses (the chord already did) and never
+   * throws: a failure here must not change the result of the chord it follows.
+   */
+  private async releaseCtrlAltLock(combination: KeyCombination): Promise<void> {
+    if (!isCtrlAltChord(combination)) {
+      return;
+    }
+
+    try {
+      this.logger.debug("Sending Alt+F24 after a Ctrl+Alt chord");
+
+      if (this.scanKeySender) {
+        this.scanKeySender([...CTRL_ALT_LOCK_RELEASE_SCAN_CODES]);
+
+        return;
+      }
+
+      const hw = await this.ensureInitialized();
+      await hw.keyboard.sendKey([...CTRL_ALT_LOCK_RELEASE_KEYSENDER_KEYS]);
+    } catch (error) {
+      this.logger.warn(`Failed to send Alt+F24 after a Ctrl+Alt chord: ${error}`);
     }
   }
 
@@ -520,6 +587,9 @@ class KeyboardService implements IKeyboardService {
       } else {
         await hw.keyboard.toggleKey(keys, state);
       }
+
+      // A held chord is complete only once it is released (#1508).
+      if (!state) await this.releaseCtrlAltLock(combination);
 
       return true;
     } catch (error) {

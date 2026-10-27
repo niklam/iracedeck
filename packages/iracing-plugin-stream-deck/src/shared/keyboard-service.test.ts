@@ -1,4 +1,10 @@
-import { _resetKeyboard, getKeyboard, initializeKeyboard, isKeyboardInitialized } from "@iracedeck/deck-core";
+import {
+  _resetKeyboard,
+  getKeyboard,
+  initializeKeyboard,
+  isKeyboardInitialized,
+  type KeyCombination,
+} from "@iracedeck/deck-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock the keysender module
@@ -640,6 +646,149 @@ describe("Keyboard Service", () => {
       expect(await keyboard.sendKeySequence([{ key: "f1", code: "TotallyNotAKey" }])).toBe(false);
       expect(mockSequenceSender).not.toHaveBeenCalled();
       expect(mockFocusBeforeInput).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("Alt+F24 after a Ctrl+Alt chord (issue #1508)", () => {
+    const ALT_F24 = [0x38, 0x76];
+    const CTRL_ALT_L: KeyCombination = { key: "l", code: "KeyL", modifiers: ["ctrl", "alt"] };
+
+    it("follows a scan-code tap of a Ctrl+Alt chord with an Alt+F24 tap", async () => {
+      const mockScanSender = vi.fn();
+      const keyboard = initializeKeyboard(undefined, mockScanSender);
+
+      expect(await keyboard.sendKeyCombination(CTRL_ALT_L)).toBe(true);
+
+      expect(mockScanSender).toHaveBeenCalledTimes(2);
+      expect(mockScanSender).toHaveBeenNthCalledWith(1, [0x1d, 0x38, 0x26]);
+      expect(mockScanSender).toHaveBeenNthCalledWith(2, ALT_F24);
+    });
+
+    it("follows a chord with Shift as well as Ctrl and Alt", async () => {
+      const mockScanSender = vi.fn();
+      const keyboard = initializeKeyboard(undefined, mockScanSender);
+
+      await keyboard.sendKeyCombination({ key: "l", code: "KeyL", modifiers: ["ctrl", "shift", "alt"] });
+
+      expect(mockScanSender).toHaveBeenLastCalledWith(ALT_F24);
+    });
+
+    it.each([
+      ["Ctrl only", ["ctrl"]],
+      ["Alt only", ["alt"]],
+      ["Ctrl+Shift", ["ctrl", "shift"]],
+      ["no modifier", []],
+    ] as const)("does not follow a %s chord", async (_label, modifiers) => {
+      const mockScanSender = vi.fn();
+      const keyboard = initializeKeyboard(undefined, mockScanSender);
+
+      await keyboard.sendKeyCombination({ key: "l", code: "KeyL", modifiers: [...modifiers] });
+
+      expect(mockScanSender).toHaveBeenCalledOnce();
+    });
+
+    it("does not send the follow-up when the chord itself failed", async () => {
+      const mockScanSender = vi.fn(() => {
+        throw new Error("send failed");
+      });
+      const keyboard = initializeKeyboard(undefined, mockScanSender);
+
+      expect(await keyboard.sendKeyCombination(CTRL_ALT_L)).toBe(false);
+      expect(mockScanSender).toHaveBeenCalledOnce();
+    });
+
+    it("a failing follow-up does not change the chord's result", async () => {
+      const mockScanSender = vi
+        .fn()
+        .mockImplementationOnce(() => undefined)
+        .mockImplementationOnce(() => {
+          throw new Error("follow-up failed");
+        });
+      const keyboard = initializeKeyboard(undefined, mockScanSender);
+
+      expect(await keyboard.sendKeyCombination(CTRL_ALT_L)).toBe(true);
+      expect(mockScanSender).toHaveBeenCalledTimes(2);
+    });
+
+    it("follows a keysender tap with the scan-code Alt+F24 once the tap settles", async () => {
+      const mockScanSender = vi.fn();
+      const keyboard = initializeKeyboard(undefined, mockScanSender);
+
+      expect(await keyboard.sendKeyCombination({ key: "l", modifiers: ["ctrl", "alt"] })).toBe(true);
+
+      expect(mockSendKey).toHaveBeenCalledWith(["ctrl", "alt", "l"]);
+      expect(mockScanSender).toHaveBeenCalledWith(ALT_F24);
+      expect(mockSendKey.mock.invocationCallOrder[0]).toBeLessThan(mockScanSender.mock.invocationCallOrder[0]);
+    });
+
+    it("falls back to a keysender alt+f24 tap without a scan-code sender", async () => {
+      const keyboard = initializeKeyboard();
+
+      await keyboard.sendKeyCombination({ key: "l", modifiers: ["ctrl", "alt"] });
+
+      expect(mockSendKey).toHaveBeenCalledTimes(2);
+      expect(mockSendKey).toHaveBeenLastCalledWith(["alt", "f24"]);
+    });
+
+    it("follows the release of a held Ctrl+Alt chord, not its press", async () => {
+      const mockScanSender = vi.fn();
+      const keyboard = initializeKeyboard(undefined, mockScanSender, vi.fn(), vi.fn());
+
+      await keyboard.pressKeyCombination(CTRL_ALT_L);
+      expect(mockScanSender).not.toHaveBeenCalled();
+
+      await keyboard.releaseKeyCombination(CTRL_ALT_L);
+      expect(mockScanSender).toHaveBeenCalledOnce();
+      expect(mockScanSender).toHaveBeenCalledWith(ALT_F24);
+    });
+
+    it("follows the keysender release of a held Ctrl+Alt chord", async () => {
+      const mockScanSender = vi.fn();
+      const keyboard = initializeKeyboard(undefined, mockScanSender);
+      const legacy: KeyCombination = { key: "l", modifiers: ["ctrl", "alt"] };
+
+      await keyboard.pressKeyCombination(legacy);
+      expect(mockScanSender).not.toHaveBeenCalled();
+
+      await keyboard.releaseKeyCombination(legacy);
+      expect(mockToggleKey).toHaveBeenLastCalledWith(["ctrl", "alt", "l"], false);
+      expect(mockScanSender).toHaveBeenCalledWith(ALT_F24);
+    });
+
+    it("follows a sequence containing a Ctrl+Alt chord with one Alt+F24 tap after the batch", async () => {
+      const mockScanSender = vi.fn();
+      const mockSequenceSender = vi.fn();
+      const keyboard = initializeKeyboard(undefined, mockScanSender, undefined, undefined, mockSequenceSender);
+
+      await keyboard.sendKeySequence([{ key: "f1", code: "F1" }, CTRL_ALT_L, CTRL_ALT_L]);
+
+      expect(mockSequenceSender).toHaveBeenCalledOnce();
+      expect(mockSequenceSender.mock.calls[0][0]).toHaveLength(3);
+      expect(mockScanSender).toHaveBeenCalledOnce();
+      expect(mockScanSender).toHaveBeenCalledWith(ALT_F24);
+      expect(mockSequenceSender.mock.invocationCallOrder[0]).toBeLessThan(mockScanSender.mock.invocationCallOrder[0]);
+    });
+
+    it("does not follow a sequence without a Ctrl+Alt chord, or a skipped one", async () => {
+      const mockScanSender = vi.fn();
+      const mockSequenceSender = vi.fn();
+      const keyboard = initializeKeyboard(undefined, mockScanSender, undefined, undefined, mockSequenceSender);
+
+      await keyboard.sendKeySequence([
+        { key: "f1", code: "F1" },
+        { key: "f4", code: "F4" },
+      ]);
+      expect(await keyboard.sendKeySequence([CTRL_ALT_L, { key: "f1", code: "TotallyNotAKey" }])).toBe(false);
+
+      expect(mockScanSender).not.toHaveBeenCalled();
+    });
+
+    it("does not focus again for the follow-up", async () => {
+      const keyboard = initializeKeyboard(undefined, vi.fn());
+
+      await keyboard.sendKeyCombination(CTRL_ALT_L);
+
+      expect(mockFocusBeforeInput).toHaveBeenCalledOnce();
     });
   });
 
