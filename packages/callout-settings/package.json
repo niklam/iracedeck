@@ -1,6 +1,6 @@
 {
   "name": "@iracedeck/callout-settings",
-  "version": "3.7.0",
+  "version": "3.8.0-dev.0",
   "description": "Race Engineer callout opt-in registry: one entry per calloutEnabled* key, grouped by family",
   "type": "module",
   "main": "dist/index.js",

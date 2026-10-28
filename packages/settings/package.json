@@ -1,6 +1,6 @@
 {
   "name": "@iracedeck/settings",
-  "version": "3.7.0",
+  "version": "3.8.0-dev.0",
   "description": "The plugin's global settings: the schema and cache, the one-shot migrations, the plugin-owned settings store, run-scoped keys, PI warnings, the first-run check and the per-feature startup gates. Sits below the deck layer and reaches the host only through SettingsHost.",
   "type": "module",
   "main": "dist/index.js",

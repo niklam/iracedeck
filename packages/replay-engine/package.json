@@ -1,6 +1,6 @@
 {
   "name": "@iracedeck/replay-engine",
-  "version": "3.7.0",
+  "version": "3.8.0-dev.0",
   "description": "The iRacing replay engine: the command gate, the cursor, jump playback, seek, the paced search, the speed state, the camera-switch waiter and the lap walks.",
   "type": "module",
   "main": "dist/index.js",

@@ -1,6 +1,6 @@
 {
   "name": "@iracedeck/replay-store",
-  "version": "3.7.0",
+  "version": "3.8.0-dev.0",
   "description": "The per-session replay store: replay markers, the lap record, the greens, the session starts and the incidents, one file per SubSessionID, debounced atomic writes.",
   "type": "module",
   "main": "dist/index.js",

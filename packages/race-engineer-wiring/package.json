@@ -1,6 +1,6 @@
 {
   "name": "@iracedeck/race-engineer-wiring",
-  "version": "3.7.0",
+  "version": "3.8.0-dev.0",
   "description": "The Race Engineer's wiring: the bus caches its conditions read, every registerPitCrew dependency, and the call — shared by the three plugins and the scenario harness.",
   "type": "module",
   "main": "dist/index.js",

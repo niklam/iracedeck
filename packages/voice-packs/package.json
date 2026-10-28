@@ -1,6 +1,6 @@
 {
   "name": "@iracedeck/voice-packs",
-  "version": "3.7.0",
+  "version": "3.8.0-dev.0",
   "description": "The Race Engineer voice-pack stack: the scanner, the catalog and its client, the downloader, archive extraction, storage, the installer and launch step, the voice-pack service, voice labels and the missing-callout-script warning.",
   "type": "module",
   "main": "dist/index.js",

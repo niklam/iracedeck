@@ -1,6 +1,6 @@
 {
   "name": "@iracedeck/diagnostics",
-  "version": "3.7.0",
+  "version": "3.8.0-dev.0",
   "description": "The plugin's self-diagnostics: the main-thread watchdog, the resource monitor and the on-demand CPU profile capture.",
   "type": "module",
   "main": "dist/index.js",

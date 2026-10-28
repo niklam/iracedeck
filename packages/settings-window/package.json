@@ -1,6 +1,6 @@
 {
   "name": "@iracedeck/settings-window",
-  "version": "3.7.0",
+  "version": "3.8.0-dev.0",
   "description": "The settings window: the loopback server and its request guard, the app-window launcher, the command handler, the warning banner, the settings-channel publisher and Explorer reveal.",
   "type": "module",
   "main": "dist/index.js",
