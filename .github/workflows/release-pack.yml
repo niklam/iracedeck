@@ -45,22 +45,26 @@ jobs:
       # them once here, with a time limit per attempt and retries, leaves a
       # warm cache that every later node-gyp uses without a request. npm's own
       # node-gyp, which builds keysender, reads the same cache directory.
-      # `$p.Handle` is read so that ExitCode is populated after WaitForExit.
+      # `$p.Handle` is read so that ExitCode is populated after WaitForExit; a
+      # killed attempt is waited for, so the next one does not meet its open
+      # files. A slow download that still finished took 173 s, hence 240 s.
       - name: Fetch node-gyp headers
         shell: pwsh
-        timeout-minutes: 10
+        timeout-minutes: 13
         run: |
           $gyp = "packages/iracing-native/node_modules/node-gyp/bin/node-gyp.js"
+          if (-not (Test-Path $gyp)) { throw "node-gyp not found at $gyp; is it still a devDependency of iracing-native?" }
           $attempts = 3
           for ($attempt = 1; $attempt -le $attempts; $attempt++) {
             $p = Start-Process node -ArgumentList $gyp, "install" -NoNewWindow -PassThru
             $null = $p.Handle
-            if ($p.WaitForExit(180000)) {
+            if ($p.WaitForExit(240000)) {
               if ($p.ExitCode -eq 0) { exit 0 }
               Write-Host "::warning::node-gyp install failed (exit $($p.ExitCode)), attempt $attempt of $attempts"
             } else {
               $p.Kill($true)
-              Write-Host "::warning::node-gyp install timed out after 180 s, attempt $attempt of $attempts"
+              $p.WaitForExit()
+              Write-Host "::warning::node-gyp install timed out after 240 s, attempt $attempt of $attempts"
             }
           }
           throw "Could not fetch the node-gyp headers in $attempts attempts"
