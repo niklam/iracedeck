@@ -21,10 +21,10 @@ Every bundled profile below is provided for all four. On other Stream Deck model
 ## The bundled profiles
 
 - **iRaceDeck Default** — the everyday racing layout: pit service (fuel, tires, quick actions), chat macros, black box selection, the Race Engineer, and folders leading to more. It is the profile a fresh [Switch Profile](/docs/actions/stream-deck/switch-profile/) key targets, and the hub the other profiles come back to.
-- **iRaceDeck Practice** — a layout for practice sessions, when you are working on the car and your laps rather than racing.
-- **iRaceDeck Test** — a starting point for test drives, to shape to your own liking.
-- **iRaceDeck Qualifying** — a starting point for qualifying sessions, to shape to your own liking.
-- **iRaceDeck Race** — a starting point for races, to shape to your own liking.
+- **iRaceDeck Test** — for test drives, alone on track: pit service, brake and traction adjustments, lap and delta readouts and black box selection, without the chat keys a shared session needs.
+- **iRaceDeck Practice** — for practice sessions, when you are working on the car and your laps: pit service, brake and traction adjustments, lap and delta readouts, black box selection and chat macros.
+- **iRaceDeck Qualifying** — for qualifying: fuel and tire service, brake and traction adjustments, session info, chat macros and black box selection.
+- **iRaceDeck Race** — for races: fuel and tire service up front, brake and traction adjustments, chat macros and black box selection.
 - **iRaceDeck Replay** — built for watching replays and broadcasts: replay playback controls and camera-focus keys across multiple pages.
 - **iRaceDeck Car Selector** — a generic pick-a-car grid with two uses: as the race-control car selector, pages of [Select Car](/docs/actions/communication/race-admin/#select-car-admin-target) keys that fill themselves with the cars in the current session; and, opened from the Replay profile by [Camera Controls'](/docs/actions/view-camera/camera-focus/) **Focus Car (pick from grid)** mode, a camera director — press a car to focus on it and stay on the grid to hop car to car.
 - **iRaceDeck Race Admin Per Car** — the admin command page the car selector switches to: [Race Admin](/docs/actions/communication/race-admin/) commands set to the **Selected Car** target, so every key acts on the car you picked.
