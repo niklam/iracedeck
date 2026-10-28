@@ -2,6 +2,7 @@
   "$schema": "https://v2-11-9.turborepo.dev/schema.json",
   "agentGuidance": false,
   "globalDependencies": ["tsconfig.base.json"],
+  "globalPassThroughEnv": ["VCINSTALLDIR", "VSCMD_VER", "WindowsSDKVersion"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],

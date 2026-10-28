@@ -69,6 +69,32 @@ jobs:
           }
           throw "Could not fetch the node-gyp headers in $attempts attempts"
 
+      # Outside a Visual Studio developer prompt, node-gyp finds Visual Studio
+      # by starting Windows PowerShell for `Get-Module -ListAvailable` and
+      # `Get-VSSetupInstance`, which took 100 s on this image, once per native
+      # addon and again for keysender in each plugin's bin/ install (#1513).
+      # With VCINSTALLDIR set it uses that installation and skips the search,
+      # and VSCMD_VER and WindowsSDKVersion are the rest of what it then reads.
+      # So the three are taken from VsDevCmd here and exported to later steps;
+      # turbo.json passes them through to the build tasks, which would
+      # otherwise not see them.
+      - name: Point node-gyp at Visual Studio
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $vs) { throw "vswhere found no Visual Studio with the x64 C++ tools" }
+          $names = "VCINSTALLDIR", "VSCMD_VER", "WindowsSDKVersion"
+          $vars = @{}
+          cmd /c "`"$vs\Common7\Tools\VsDevCmd.bat`" -arch=x64 -host_arch=x64 -no_logo && set" | ForEach-Object {
+            if ($_ -match "^($($names -join '|'))=(.*)$") { $vars[$matches[1]] = $matches[2] }
+          }
+          foreach ($name in $names) {
+            if (-not $vars[$name]) { throw "VsDevCmd did not set $name" }
+            Write-Host "$name=$($vars[$name])"
+            "$name=$($vars[$name])" >> $env:GITHUB_ENV
+          }
+
       - name: Build
         run: pnpm build
 
