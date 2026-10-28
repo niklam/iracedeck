@@ -1,6 +1,6 @@
 {
   "name": "@iracedeck/plugin-build",
-  "version": "3.7.0-dev.0",
+  "version": "3.7.0",
   "description": "Build-only: createPluginRollupConfig(options), the one Rollup config the three deck plugins share, and the externals list their bin folders install.",
   "type": "module",
   "exports": {

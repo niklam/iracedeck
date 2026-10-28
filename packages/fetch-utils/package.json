@@ -1,6 +1,6 @@
 {
   "name": "@iracedeck/fetch-utils",
-  "version": "3.7.0-dev.0",
+  "version": "3.7.0",
   "description": "Request helpers for the plugin's Node process and a Property Inspector's browser bundle: a one-shot request deadline and a byte-capped JSON read. Zero dependencies.",
   "type": "module",
   "main": "dist/index.js",

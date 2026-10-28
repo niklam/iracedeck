@@ -1,6 +1,6 @@
 {
   "name": "@iracedeck/app-constants",
-  "version": "3.7.0-dev.0",
+  "version": "3.7.0",
   "description": "The constants every layer and the Property Inspector's browser bundle share: setting-key names, value sets, settings-window ids, and the pure functions over them. Zero dependencies.",
   "type": "module",
   "main": "dist/index.js",

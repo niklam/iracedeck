@@ -1,6 +1,6 @@
 {
   "name": "@iracedeck/app-updates",
-  "version": "3.7.0-dev.0",
+  "version": "3.7.0",
   "description": "The plugin's release notes and update checks: the version-upgrade changelog opener, the published changelog feed, its sanitizer and the update-check service.",
   "type": "module",
   "main": "dist/index.js",
