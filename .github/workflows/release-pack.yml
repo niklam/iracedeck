@@ -77,13 +77,15 @@ jobs:
       # and VSCMD_VER and WindowsSDKVersion are the rest of what it then reads.
       # So the three are taken from VsDevCmd here and exported to later steps;
       # turbo.json passes them through to the build tasks, which would
-      # otherwise not see them.
+      # otherwise not see them. node-gyp then uses only that installation, so
+      # vswhere is held to the versions node-gyp knows (2019, 2022 and 2026,
+      # majors 16 to 18): a newer Visual Studio on the image is not picked.
       - name: Point node-gyp at Visual Studio
         shell: pwsh
         run: |
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-          $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-          if (-not $vs) { throw "vswhere found no Visual Studio with the x64 C++ tools" }
+          $vs = & $vswhere -latest -products * -version "[16.0,19.0)" -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $vs) { throw "vswhere found no Visual Studio 2019-2026 with the x64 C++ tools" }
           $names = "VCINSTALLDIR", "VSCMD_VER", "WindowsSDKVersion"
           $vars = @{}
           cmd /c "`"$vs\Common7\Tools\VsDevCmd.bat`" -arch=x64 -host_arch=x64 -no_logo && set" | ForEach-Object {
