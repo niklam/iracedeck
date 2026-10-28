@@ -27,13 +27,43 @@ jobs:
         with:
           version: 12.6.0
 
+      # The pinned Node, as every other workflow: a bare `24` builds the release
+      # on whichever Node 24 is newest that day (#1513).
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version-file: '.nvmrc'
           cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # node-gyp downloads Node's headers and node.lib from nodejs.org the
+      # first time anything compiles. Left to the build, the two native addons
+      # fetch them concurrently on the critical path, and each plugin's bin/
+      # install compiles keysender too; from the runner that download has
+      # taken minutes and once failed the build outright (#1513). Fetching
+      # them once here, with a time limit per attempt and retries, leaves a
+      # warm cache that every later node-gyp uses without a request. npm's own
+      # node-gyp, which builds keysender, reads the same cache directory.
+      # `$p.Handle` is read so that ExitCode is populated after WaitForExit.
+      - name: Fetch node-gyp headers
+        shell: pwsh
+        timeout-minutes: 10
+        run: |
+          $gyp = "packages/iracing-native/node_modules/node-gyp/bin/node-gyp.js"
+          $attempts = 3
+          for ($attempt = 1; $attempt -le $attempts; $attempt++) {
+            $p = Start-Process node -ArgumentList $gyp, "install" -NoNewWindow -PassThru
+            $null = $p.Handle
+            if ($p.WaitForExit(180000)) {
+              if ($p.ExitCode -eq 0) { exit 0 }
+              Write-Host "::warning::node-gyp install failed (exit $($p.ExitCode)), attempt $attempt of $attempts"
+            } else {
+              $p.Kill($true)
+              Write-Host "::warning::node-gyp install timed out after 180 s, attempt $attempt of $attempts"
+            }
+          }
+          throw "Could not fetch the node-gyp headers in $attempts attempts"
 
       - name: Build
         run: pnpm build
