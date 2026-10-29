@@ -27,13 +27,75 @@ jobs:
         with:
           version: 12.6.0
 
+      # The pinned Node, as every other workflow: a bare `24` builds the release
+      # on whichever Node 24 is newest that day (#1513).
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version-file: '.nvmrc'
           cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # node-gyp downloads Node's headers and node.lib from nodejs.org the
+      # first time anything compiles. Left to the build, the two native addons
+      # fetch them concurrently on the critical path, and each plugin's bin/
+      # install compiles keysender too; from the runner that download has
+      # taken minutes and once failed the build outright (#1513). Fetching
+      # them once here, with a time limit per attempt and retries, leaves a
+      # warm cache that every later node-gyp uses without a request. npm's own
+      # node-gyp, which builds keysender, reads the same cache directory.
+      # `$p.Handle` is read so that ExitCode is populated after WaitForExit; a
+      # killed attempt is waited for, so the next one does not meet its open
+      # files. A slow download that still finished took 173 s, hence 240 s.
+      - name: Fetch node-gyp headers
+        shell: pwsh
+        timeout-minutes: 13
+        run: |
+          $gyp = "packages/iracing-native/node_modules/node-gyp/bin/node-gyp.js"
+          if (-not (Test-Path $gyp)) { throw "node-gyp not found at $gyp; is it still a devDependency of iracing-native?" }
+          $attempts = 3
+          for ($attempt = 1; $attempt -le $attempts; $attempt++) {
+            $p = Start-Process node -ArgumentList $gyp, "install" -NoNewWindow -PassThru
+            $null = $p.Handle
+            if ($p.WaitForExit(240000)) {
+              if ($p.ExitCode -eq 0) { exit 0 }
+              Write-Host "::warning::node-gyp install failed (exit $($p.ExitCode)), attempt $attempt of $attempts"
+            } else {
+              $p.Kill($true)
+              $p.WaitForExit()
+              Write-Host "::warning::node-gyp install timed out after 240 s, attempt $attempt of $attempts"
+            }
+          }
+          throw "Could not fetch the node-gyp headers in $attempts attempts"
+
+      # Outside a Visual Studio developer prompt, node-gyp finds Visual Studio
+      # by starting Windows PowerShell for `Get-Module -ListAvailable` and
+      # `Get-VSSetupInstance`, which took 100 s on this image, once per native
+      # addon and again for keysender in each plugin's bin/ install (#1513).
+      # With VCINSTALLDIR set it uses that installation and skips the search,
+      # and VSCMD_VER and WindowsSDKVersion are the rest of what it then reads.
+      # So the three are taken from VsDevCmd here and exported to later steps;
+      # turbo.json passes them through to the build tasks, which would
+      # otherwise not see them. node-gyp then uses only that installation, so
+      # vswhere is held to the versions node-gyp knows (2019, 2022 and 2026,
+      # majors 16 to 18): a newer Visual Studio on the image is not picked.
+      - name: Point node-gyp at Visual Studio
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vs = & $vswhere -latest -products * -version "[16.0,19.0)" -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $vs) { throw "vswhere found no Visual Studio 2019-2026 with the x64 C++ tools" }
+          $names = "VCINSTALLDIR", "VSCMD_VER", "WindowsSDKVersion"
+          $vars = @{}
+          cmd /c "`"$vs\Common7\Tools\VsDevCmd.bat`" -arch=x64 -host_arch=x64 -no_logo && set" | ForEach-Object {
+            if ($_ -match "^($($names -join '|'))=(.*)$") { $vars[$matches[1]] = $matches[2] }
+          }
+          foreach ($name in $names) {
+            if (-not $vars[$name]) { throw "VsDevCmd did not set $name" }
+            Write-Host "$name=$($vars[$name])"
+            "$name=$($vars[$name])" >> $env:GITHUB_ENV
+          }
 
       - name: Build
         run: pnpm build
