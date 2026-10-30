@@ -6,6 +6,7 @@ import url from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 
 import {
+  cQuote,
   createRepoFormatter,
   isOnlyCommitIndex,
   parseRawDiff,
@@ -208,6 +209,37 @@ describe("format-staged in a commit", { timeout: 60_000 }, () => {
     expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
     expect(result.stdout).toContain("format-staged: formatted own.json");
     expect(box.git(box.repo, "show", ":own.json")).not.toBe('{"a":6}');
+
+    // Node then keeps the link path as the module's URL, so both sides of the guard are resolved.
+    write(box.repo, "own.json", '{"a":7}');
+    box.git(box.repo, "add", "own.json");
+
+    const preserved = spawnSync(process.execPath, ["--preserve-symlinks-main", path.join(link, "format-staged.mjs")], {
+      cwd: box.repo,
+      env: box.env,
+      encoding: "utf8",
+    });
+
+    // Only scripts/ is linked, so the tools do not resolve from the link path and the step refuses;
+    // what matters here is that it ran at all rather than exiting 0 silently.
+    expect(`${preserved.stdout}${preserved.stderr}`).toMatch(/format-staged: /);
+    expect(preserved.status).not.toBe(0);
+  });
+
+  // A file name cannot hold a quote on Windows; Linux CI covers it.
+  it.skipIf(process.platform === "win32")("rewrites the working copy of a file whose name starts with a quote", () => {
+    const box = sandbox();
+
+    write(box.repo, '"q.json', '{"a":8}');
+    box.git(box.repo, "add", "--", '"q.json');
+    box.hook();
+
+    const result = box.commit(box.repo, "-m", "quoted");
+
+    expect(result.status, result.output).toBe(0);
+    expect(result.output).toContain('format-staged: formatted "q.json');
+    expect(read(box.repo, '"q.json')).toBe(FORMATTED(8));
+    expect(porcelain(box, box.repo)).toEqual([]);
   });
 
   it("keeps another staged path staged and out of a --only commit", () => {
@@ -415,6 +447,27 @@ describe("STAGED_TASKS and toolsFor", () => {
   it("is frozen, so a caller cannot change what the hook runs", () => {
     expect(Object.isFrozen(STAGED_TASKS)).toBe(true);
     expect(STAGED_TASKS.every((task) => Object.isFrozen(task.extensions) && Object.isFrozen(task.tools))).toBe(true);
+  });
+});
+
+describe("cQuote", () => {
+  it("quotes a path so git hash-object --stdin-paths reads it back as itself", () => {
+    expect(cQuote('a "b"\\c\nd')).toBe('"a \\"b\\"\\\\c\\nd"');
+
+    // Windows forbids a quote in a file name; a backslash-free name with spaces still exercises the unquoting.
+    const box = sandbox();
+    const name = process.platform === "win32" ? "a b.json" : 'a "b"\\c.json';
+
+    write(box.repo, name, "{}\n");
+
+    const quoted = execFileSync("git", ["hash-object", "--stdin-paths"], {
+      cwd: box.repo,
+      env: box.env,
+      encoding: "utf8",
+      input: `${cQuote(name)}\n`,
+    });
+
+    expect(quoted).toBe(box.git(box.repo, "hash-object", "--", name));
   });
 });
 

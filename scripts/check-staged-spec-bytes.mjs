@@ -41,7 +41,7 @@ export function stagedSpecOffenders(cwd = process.cwd()) {
 }
 
 // Real paths, as in format-staged.mjs: through a junction a bare href comparison is false and the check would pass silently.
-if (process.argv[1] && realpathSync(process.argv[1]) === url.fileURLToPath(import.meta.url)) {
+if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(url.fileURLToPath(import.meta.url))) {
   const offenders = stagedSpecOffenders();
   if (offenders.length) {
     console.error(

@@ -19,8 +19,11 @@
  *   committing (`GIT_INDEX_FILE`, inherited by every git child), plus the
  *   default `index.lock` under `commit --only`, whose temporary
  *   `next-index-<pid>.lock` is thrown away after the commit.
- * - It writes the working copy only while that still holds exactly the staged
- *   blob, i.e. the file is not partially staged and nobody saved it since.
+ * - It writes the working copy only when, checked just before the write, that
+ *   still holds exactly the staged blob: the file is not partially staged and
+ *   nobody saved it during the hook. A save landing between that check and the
+ *   write (one git process apart) is overwritten; a file has no atomic
+ *   compare-and-swap, and lint-staged overwrote it with no check at all.
  * - It formats every file before writing anything, so a formatter error ends
  *   the commit with the index and the tree as they were.
  *
@@ -298,21 +301,32 @@ function isFile(file) {
 /**
  * The changes whose working copy still hashes to the blob that was staged:
  * not partially staged, and not saved by anyone since. Only these are
- * rewritten on disk; a path git cannot read back on a line is left alone.
+ * rewritten on disk.
  */
 function workingCopiesStillStaged(changes, top, run) {
-  const candidates = changes.filter((change) => !/[\r\n]/.test(change.path) && isFile(path.join(top, change.path)));
+  const candidates = changes.filter((change) => isFile(path.join(top, change.path)));
 
   if (!candidates.length) return [];
 
   const shas = run(["hash-object", "--stdin-paths"], {
-    input: candidates.map((change) => `${change.path}\n`).join(""),
+    input: candidates.map((change) => `${cQuote(change.path)}\n`).join(""),
   })
     .toString("utf8")
     .trim()
     .split("\n");
 
   return candidates.filter((change, i) => shas[i] === change.dstSha);
+}
+
+/**
+ * `path` as a C-quoted line for `git hash-object --stdin-paths`, which unquotes
+ * any line starting with `"` and dies on a bad one. Quoting every path reads
+ * a name that starts with a quote, or holds a newline, as itself.
+ */
+export function cQuote(file) {
+  const escapes = { "\\": "\\\\", '"': '\\"', "\n": "\\n", "\r": "\\r", "\t": "\\t" };
+
+  return `"${file.replace(/[\\"\n\r\t]/g, (char) => escapes[char])}"`;
 }
 
 /**
@@ -381,10 +395,10 @@ export function createRepoFormatter(repoRoot) {
   };
 }
 
-// Node runs the main module from its real path, so compare real paths: through a
-// junction or symlink a bare href comparison is false and the hook would pass
-// having formatted nothing.
-if (process.argv[1] && realpathSync(process.argv[1]) === url.fileURLToPath(import.meta.url)) {
+// Node runs the main module from its real path (unless --preserve-symlinks-main),
+// so compare real paths on both sides: through a junction or symlink a bare href
+// comparison is false and the hook would pass having formatted nothing.
+if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(url.fileURLToPath(import.meta.url))) {
   try {
     process.exitCode = await formatStaged();
   } catch (error) {
