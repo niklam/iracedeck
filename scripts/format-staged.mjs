@@ -218,7 +218,11 @@ export async function formatStaged({
   if (formattingEmptiesCommit(staged, changes) && !mergeInProgress(run)) {
     return refuse(
       logError,
-      "Formatting reverts every staged change, so the commit would record nothing. Nothing was staged or rewritten.",
+      [
+        "Formatting reverts every staged change to what HEAD has. Nothing was staged or rewritten.",
+        "Unstage the change, or, if you meant to amend only the message or to allow an empty commit, commit with --no-verify",
+        "(a hook cannot see git's options, so it cannot tell those apart from a commit that would record nothing).",
+      ].join("\n"),
     );
   }
 
