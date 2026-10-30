@@ -57,15 +57,14 @@ import { resetQualifyingInvalidationLatch } from "./qualifying-invalidation.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
 
-// The translator's live readers are stubbed: a race, a rolling start, no
-// latest tick, and a repair still needed when the damage line comes to speak.
-vi.mock("@iracedeck/sim-events-iracing", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@iracedeck/sim-events-iracing")>()),
+// The sim reads the registration is handed (#1378): a race, a rolling start,
+// no latest tick, and a repair still needed when the damage line comes to speak.
+const SIM_READS = {
   getSessionType: () => "Race",
   getStandingStart: () => false,
   getLatestTelemetry: () => null,
-  isDamageRepairNeeded: () => true,
-}));
+  getDamageRepairNeeded: () => true,
+};
 
 const VOICE = "default";
 const SCRIPT = defaultScript as CalloutScript;
@@ -200,6 +199,7 @@ beforeEach(() => {
   bus = createMockBus();
   initializeAudioScenarios(bus, createTimedAudio(), MANIFEST, mockLogger as never, () => VOICE);
   registerPitCrew(bus, {
+    ...SIM_READS,
     logger: mockLogger as never,
     getCautionPhase: () => "waving",
     getPaceLineup: () => LINEUP,

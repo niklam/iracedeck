@@ -46,12 +46,12 @@ import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
 
-vi.mock("@iracedeck/sim-events-iracing", () => ({
+// The sim reads the registration is handed (#1378): a race with no tick yet.
+const SIM_READS = {
   getSessionType: () => "Race",
   getStandingStart: () => false,
   getLatestTelemetry: () => null,
-  TrackDirection: { Neutral: "neutral", Left: "left", Right: "right" },
-}));
+};
 
 const mockLogger = {
   trace: vi.fn(),
@@ -418,6 +418,7 @@ describe("FUEL_LAPS_LEFT_CONTRACTS opt-in gating (issue #838)", () => {
     fuelEnabled = new Map<FuelCalloutId, boolean>();
 
     registerPitCrew(bus, {
+      ...SIM_READS,
       logger: mockLogger as never,
       isCalloutEnabled: familyGate(FUEL_CALLOUTS, (id) => fuelEnabled.get(id) ?? true),
     });

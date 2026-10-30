@@ -84,17 +84,8 @@ const mockSessionType = vi.fn(() => "Race");
 // default — but the two DELAYED pit-limiter scenarios re-read it at fire time
 // instead of the event envelope, so their tests drive it. Reset per test in the
 // top-level `beforeEach` (`vi.clearAllMocks()` clears calls, not implementations).
+// Both are handed to the registration as its sim reads (#1378).
 const mockLatestTelemetry = vi.fn((): unknown => null);
-
-vi.mock("@iracedeck/sim-events-iracing", () => ({
-  getSessionType: () => mockSessionType(),
-  getStandingStart: () => false,
-  getLatestTelemetry: () => mockLatestTelemetry(),
-  // The damage line's speak-time gate (issue #1288): the settled damage
-  // state, unknown here, which the gate admits.
-  isDamageRepairNeeded: () => null,
-  TrackDirection: { Neutral: "neutral", Left: "left", Right: "right" },
-}));
 
 // Race-formation + start-light scenarios gate on `isLiveOnTrack` (issue #480
 // follow-up), so published events carry in-car telemetry by default.

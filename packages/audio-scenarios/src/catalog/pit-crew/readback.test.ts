@@ -41,9 +41,8 @@ import {
 import { _resetSpotterEngine } from "./spotter-engine.js";
 
 const mockSessionType = vi.fn(() => "Race");
-vi.mock("@iracedeck/sim-events-iracing", () => ({
-  getSessionType: () => mockSessionType(),
-}));
+// The session the registrations see (#1378), over the stub above.
+const SIM_READS = { getSessionType: () => mockSessionType() };
 
 const mockLogger = {
   trace: vi.fn(),
@@ -362,6 +361,7 @@ beforeEach(() => {
   // cases below (the count-in cutting a readback, a meatball stashing one)
   // run against the real scheduling neighbours.
   registerPitCrew(bus, {
+    ...SIM_READS,
     logger: mockLogger as never,
     isCalloutEnabled: (key) =>
       familyGate(FLAG_CALLOUTS, (id) => flagsEnabled.get(id) ?? true)(key) &&

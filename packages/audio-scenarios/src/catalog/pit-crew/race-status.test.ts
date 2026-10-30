@@ -42,9 +42,8 @@ import {
 import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
 
-vi.mock("@iracedeck/sim-events-iracing", () => ({
-  getSessionType: () => "Race",
-}));
+// The session the registration sees (#1378): a race.
+const SIM_READS = { getSessionType: () => "Race" };
 
 const mockLogger = {
   trace: vi.fn(),
@@ -243,6 +242,7 @@ beforeEach(() => {
   audio = createFakeAudio();
   initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
   registerPitCrew(bus, {
+    ...SIM_READS,
     logger: mockLogger as never,
     getLapCompletedSnapshot: () => currentSnapshot,
     isCalloutEnabled: familyGate(RACE_STATUS_CALLOUTS, () => raceStatusEnabled),

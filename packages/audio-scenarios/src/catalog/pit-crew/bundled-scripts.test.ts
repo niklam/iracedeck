@@ -76,15 +76,13 @@ import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
 
-// The catalog reads the translator only at fire time, and nothing fires here;
-// the mock keeps the registration off the real translator's module state, as
-// every other `registerPitCrew`-driven test in this directory does.
-vi.mock("@iracedeck/sim-events-iracing", () => ({
+// The sim reads the registration is handed (#1378). Nothing fires here, so
+// they are only what a race with no tick yet would answer.
+const SIM_READS = {
   getSessionType: () => "Race",
   getStandingStart: () => false,
   getLatestTelemetry: () => null,
-  TrackDirection: { Neutral: "neutral", Left: "left", Right: "right" },
-}));
+};
 
 /**
  * Every first-party voice, held to the completeness bar (#1064, widened to
@@ -229,7 +227,7 @@ function registerCatalog(voice: string): void {
   engine = initializeAudioScenarios(bus, createFakeAudio(), MANIFEST, logger as never, () => voice);
   // A pass-through spy, installed BEFORE the registration so it sees all of it.
   defineScenarioSpy = vi.spyOn(engine, "defineScenario");
-  registerPitCrew(bus, { logger: logger as never });
+  registerPitCrew(bus, { logger: logger as never, ...SIM_READS });
   contracts = new Map(engine.contracts().map((c) => [c.id, c]));
   legacyScenarios = new Map(defineScenarioSpy.mock.calls.map(([s]) => [s.id, s]));
   registrationWarnings = logger.warn.mock.calls.map(([message]) => String(message));
