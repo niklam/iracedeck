@@ -18,6 +18,7 @@ import {
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
   isSimHubReachable,
+  type PressShape,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
@@ -65,11 +66,13 @@ import {
   telemetryMemoValue,
 } from "../../shared/adjust-styles.js";
 import { type BlackBoxId, showBlackBox } from "../../shared/black-box.js";
+import { pressShapeByEvent } from "../../shared/dial-release.js";
 import { RepeatController } from "../../shared/repeat-controller.js";
 import {
   generateSetupViewSvg,
   getAdjustmentModeForView,
   isViewSetting,
+  setupKeyPressShape,
   withUnitsPreference,
 } from "../../shared/setup-view.js";
 import { DialSettings, seedDialFromLegacySetting, SetupChassisDialSurface } from "./setup-chassis-dial-surface.js";
@@ -597,6 +600,27 @@ export class SetupChassis extends SimIRacingAction<SetupChassisSettings> {
   override async onDialRotate(ev: IDeckDialRotateEvent<SetupChassisSettings>): Promise<void> {
     const settings = this.parseSettings(ev.payload.settings);
     await this.dialSurface.rotate(ev.action, settings.dial, ev.payload.ticks, ev.payload.pressed === true);
+  }
+
+  /**
+   * The press shape of this press (#269): a View key's from its dual-press
+   * state (`setupKeyPressShape`, from the settings `onKeyDown` reads), every
+   * other key a tap, and the dial's and the touch's from the dial surface,
+   * which classifies them.
+   */
+  pressShape(
+    ev:
+      | IDeckKeyDownEvent<SetupChassisSettings>
+      | IDeckDialDownEvent<SetupChassisSettings>
+      | IDeckTouchTapEvent<SetupChassisSettings>,
+  ): PressShape {
+    const settings = this.parseSettings(ev.payload.settings);
+
+    return pressShapeByEvent(ev, {
+      key: () => setupKeyPressShape(settings),
+      dial: () => this.dialSurface.pressShape(ev.action, settings.dial),
+      touch: (hold) => this.dialSurface.touchShape(ev.action, settings.dial, hold),
+    });
   }
 
   override async onDialDown(ev: IDeckDialDownEvent<SetupChassisSettings>): Promise<void> {

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { actionPressShapes, describePressShapes } from "../../shared/press-shape.test-support.js";
 import { buildTriggerDescription, DialSettings, formatDialValue } from "./setup-aero-dial-surface.js";
 import { SetupAero } from "./setup-aero.js";
 
@@ -171,6 +172,34 @@ describe("SetupAero dial surface", () => {
   async function appear(ctx: DialContext, settings: Record<string, unknown> = {}) {
     await action.onWillAppear(basicEvent(ctx, settings) as never);
   }
+
+  describePressShapes({
+    dialContext: (id) => dialContext(id),
+    appear: (ctx, dial) => appear(ctx, dialSettings(dial)),
+    ...actionPressShapes(() => action, dialSettings),
+    gesture: "toggle-rf-brake",
+    setThresholdMs: (ms) => {
+      mockDualPressThreshold.value = ms;
+    },
+    readsStoredSettings: false,
+    keyCases: [
+      {
+        name: "a View key with dual-press on is decided at release, short and long",
+        settings: { setting: "view-front-wing", dualPressEnabled: true },
+        shape: { kind: "release", thresholdMs: 500, short: true, long: true },
+      },
+      {
+        name: "a View key with dual-press off ignores the press",
+        settings: { setting: "view-front-wing", dualPressEnabled: false },
+        shape: { kind: "none" },
+      },
+      {
+        name: "an adjust key acts on key down",
+        settings: { setting: "front-wing", dualPressEnabled: true },
+        shape: { kind: "tap" },
+      },
+    ],
+  });
 
   describe("onDialRotate", () => {
     it("taps the increase binding on a clockwise turn", async () => {
