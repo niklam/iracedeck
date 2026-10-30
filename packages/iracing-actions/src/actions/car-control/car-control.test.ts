@@ -1597,6 +1597,10 @@ describe("CarControl", () => {
 
       // The fastest frame stays under the 10 Hz cap the key's other updates keep.
       expect(STARTER_CRANK_FRAMES_MS.at(-1)).toBeGreaterThanOrEqual(100);
+
+      // The first blink comes soon after the press: a 450 ms opening frame showed no blink
+      // at all before an engine that caught quickly (issue #1516).
+      expect(STARTER_CRANK_FRAMES_MS[0]).toBeLessThanOrEqual(200);
     });
 
     it("should hold each frame for its ramp length, then repeat the fastest while held", async () => {
