@@ -652,13 +652,13 @@ describe("runBuild", () => {
 
   function fakeExec(answers = {}) {
     return async (cmd, args, options) => {
-      calls.push({ cmd, args, cwd: options?.cwd, stream: options?.stream ?? false });
+      calls.push({ cmd, args, cwd: options?.cwd, stream: options?.stream ?? false, noOutput: options?.noOutput });
 
       return answers[[cmd, ...args].join(" ")] ?? ok();
     };
   }
 
-  it("restarts the Stream Deck plugin after a good build when Stream Deck links to the tree", async () => {
+  it("stops Stream Deck before the install and starts it after a good build when it links to the tree", async () => {
     const result = await runBuild({ tree: TREE, exec: fakeExec(), links: linkedTo("Stream Deck"), log: silentLog() });
 
     expect(result).toEqual({
@@ -668,7 +668,25 @@ describe("runBuild", () => {
       restartYourself: [],
       stoppedHosts: [],
     });
-    expect(commandLines()).toEqual(["pnpm install", "pnpm build", "pnpm restart:stream-deck"]);
+    expect(commandLines()).toEqual(["pnpm stop:stream-deck", "pnpm install", "pnpm build", "pnpm start:stream-deck"]);
+    // The app it starts outlives the command, so it must not be handed the pipes a capture would wait on.
+    expect(calls.find(({ args }) => args[0] === "start:stream-deck").noOutput).toBe(true);
+  });
+
+  it("does not build when Stream Deck cannot be stopped, and starts the hosts it did stop", async () => {
+    const exec = fakeExec({ "pnpm stop:stream-deck": failed() });
+
+    const result = await runBuild({ tree: TREE, exec, links: linkedTo("Mirabox", "Stream Deck"), log: silentLog() });
+
+    expect(result.ok).toBe(false);
+    expect(result.failure).toMatch(/could not stop Stream Deck/);
+    expect(result.restartYourself).toEqual(["Stream Deck"]);
+    expect(result.stoppedHosts).toEqual([]);
+    expect(commandLines()).toEqual([
+      "node scripts/host-app.mjs stop mirabox",
+      "pnpm stop:stream-deck",
+      "node scripts/host-app.mjs start mirabox",
+    ]);
   });
 
   it("stops Mirabox and Ulanzi before the install and starts them after the build", async () => {
@@ -724,8 +742,13 @@ describe("runBuild", () => {
     expect(result.tsErrors).toEqual([
       "src/plugin.ts(3,7): error TS2322: Type 'string' is not assignable to type 'number'.",
     ]);
-    expect(result.stoppedHosts).toEqual(["Mirabox"]);
-    expect(commandLines()).toEqual(["node scripts/host-app.mjs stop mirabox", "pnpm install", "pnpm build"]);
+    expect(result.stoppedHosts).toEqual(["Stream Deck", "Mirabox"]);
+    expect(commandLines()).toEqual([
+      "pnpm stop:stream-deck",
+      "node scripts/host-app.mjs stop mirabox",
+      "pnpm install",
+      "pnpm build",
+    ]);
   });
 
   it("fails on a non-zero build and leaves the hosts it stopped stopped, restarting nothing", async () => {
@@ -740,9 +763,10 @@ describe("runBuild", () => {
 
     expect(result.ok).toBe(false);
     expect(result.failure).toMatch(/pnpm build/);
-    expect(result.stoppedHosts).toEqual(["Mirabox", "Ulanzi"]);
+    expect(result.stoppedHosts).toEqual(["Stream Deck", "Mirabox", "Ulanzi"]);
     expect(result.restartYourself).toEqual([]);
     expect(commandLines()).toEqual([
+      "pnpm stop:stream-deck",
       "node scripts/host-app.mjs stop mirabox",
       "node scripts/host-app.mjs stop ulanzi",
       "pnpm install",
@@ -796,7 +820,7 @@ describe("runBuild", () => {
 
   it("names every host whose restart failed for Niklas to restart himself", async () => {
     const exec = fakeExec({
-      "pnpm restart:stream-deck": failed(),
+      "pnpm start:stream-deck": failed(),
       "node scripts/host-app.mjs start mirabox": failed(),
     });
 
@@ -805,6 +829,36 @@ describe("runBuild", () => {
     expect(result.ok).toBe(true);
     expect(result.restartYourself).toEqual(["Stream Deck", "Mirabox"]);
     expect(result.stoppedHosts).toEqual([]);
+    // Starting the app loads the new plugin; the streamdeck CLI's plugin restart is not needed.
+    expect(commandLines()).not.toContain("pnpm restart:stream-deck");
+  });
+});
+
+describe("defaultExec — noOutput", { timeout: GIT_TIMEOUT_MS }, () => {
+  // A command that leaves a process running behind it, holding the output it inherited, as
+  // `start:stream-deck` leaves StreamDeck.exe. Detached, so it outlives its parent on Windows too.
+  const LINGER_MS = 4000;
+  const leavesAProcess = [
+    "-e",
+    `require("node:child_process").spawn(process.execPath, ["-e", "setTimeout(() => {}, ${LINGER_MS})"], { stdio: "inherit", detached: true }).unref()`,
+  ];
+
+  it("returns once the command exits, without waiting on a process it left running", async () => {
+    const started = Date.now();
+
+    const result = await defaultExec("node", leavesAProcess, { noOutput: true });
+
+    expect(result).toMatchObject({ ok: true, code: 0, out: "" });
+    expect(Date.now() - started).toBeLessThan(LINGER_MS - 1000);
+  });
+
+  it("is what the wait is about: a capturing run waits for the leftover process to close its output", async () => {
+    // The positive control for the test above.
+    const started = Date.now();
+
+    await defaultExec("node", leavesAProcess, { stream: true });
+
+    expect(Date.now() - started).toBeGreaterThanOrEqual(LINGER_MS - 1000);
   });
 });
 
@@ -898,7 +952,7 @@ describe("main", { timeout: GIT_TIMEOUT_MS }, () => {
     expect(output(log)).not.toMatch(/is stopped|previous build/);
   });
 
-  it("on a failed build, says the hosts it stopped stay stopped and Stream Deck runs the previous build", async () => {
+  it("on a failed build, says every host it stopped, Stream Deck included, stays stopped", async () => {
     branch("feature/1-a", "a.txt", "a\n");
     const log = silentLog();
     const links = () =>
@@ -914,8 +968,11 @@ describe("main", { timeout: GIT_TIMEOUT_MS }, () => {
     expect(code).toBe(EXIT_FAILED);
     expect(output(log)).toMatch(/Mirabox is stopped because the build failed, and needs starting once it is fixed/);
     expect(output(log)).toContain("node scripts/host-app.mjs start mirabox");
-    expect(output(log)).toMatch(/Stream Deck was not restarted and still runs the previous build/);
-    expect(commandLines().filter((line) => / start |restart:/.test(line))).toEqual([]);
+    expect(output(log)).toMatch(/Stream Deck is stopped because the build failed, and needs starting once it is fixed/);
+    expect(output(log)).toContain("pnpm start:stream-deck");
+    expect(output(log)).not.toMatch(/previous build/);
+    expect(commandLines()).toContain("pnpm stop:stream-deck");
+    expect(commandLines().filter((line) => /\bstart\b|restart/.test(line))).toEqual([]);
   });
 
   it("on a good build, starts the hosts it stopped again and names none as stopped", async () => {
