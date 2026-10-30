@@ -84,10 +84,12 @@ describe("settings window General tab (#269)", () => {
 });
 
 describe("global-common-dual-press.ejs threshold text (#269)", () => {
-  it("describes the threshold as the one for every long-press, dials and the double bleep included", () => {
+  it("describes the threshold as the one for every key and dial-button long-press, the double bleep included", () => {
     const text = render("<%- include('global-common-dual-press') %>").replace(/\s+/g, " ");
 
-    expect(text).toContain("It applies to every long-press, including the dials and the Press Sounds double bleep.");
+    expect(text).toContain(
+      "It applies to every long-press of a key or a dial button, including the Press Sounds double bleep; a Long Touch on the touch strip follows the Stream Deck's own timing.",
+    );
     expect(text).not.toContain("before a setup View sub-mode treats it as a long-press");
   });
 });
