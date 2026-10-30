@@ -33,7 +33,7 @@ The click plays at the moment the press does its job:
 The bleep plays once, at the long-press threshold, and never again however long you keep holding:
 
 - **On a dual-press key or a Stream Deck+ dial**, the bleep means "let go now and you get the long-press action". Hold until you hear it, then release.
-- **On Car Control's hold controls** — Starter, Headlight Flash, Handbrake, Second Clutch, and Enter/Exit/Tow without auto-hold — the press clicks as the control engages and bleeps once you have held it past the threshold.
+- **On Car Control's hold controls** — Starter, Headlight Flash, Handbrake, Second Clutch, and Enter/Exit/Tow and Escape without auto-hold — the press clicks as the control engages and bleeps once you have held it past the threshold.
 - **A Long Touch on the touch strip** bleeps.
 
 Keys whose hold just repeats, such as the setup **+ / −** keys, never bleep: letting go of a repeating key only stops it, so there is nothing for the bleep to promise.
