@@ -67,7 +67,7 @@ import {
   SCENARIO_ID_TO_CAUTION_ID,
 } from "./caution.js";
 import { familyReferences } from "./family-references.test-util.js";
-import { CAUTION_MAX_QUEUE_WAIT_MS, FLAG_CONTRACTS, WAVING_FLAG_COOLDOWN_MS } from "./flag-alerts.js";
+import { buildFlagAlerts, CAUTION_MAX_QUEUE_WAIT_MS, WAVING_FLAG_COOLDOWN_MS } from "./flag-alerts.js";
 import { registerPitCrew } from "./index.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { _resetRadarEngine } from "./radar-engine.js";
@@ -78,15 +78,18 @@ const mockStandingStart = vi.fn(() => false);
 /** The translator's latest tick, as a speak-time gate reads it — none unless a case sets one. */
 const mockLatestTelemetry = vi.fn((): unknown => null);
 
-// The translator's live readers are stubbed; its PURE lineup resolver is the
-// real one, so the snapshot cases at the end derive their lineup from the
-// committed fixture instead of typing its number in.
-vi.mock("@iracedeck/sim-events-iracing", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@iracedeck/sim-events-iracing")>()),
+// The sim reads every build and registration below is handed (#1378), over
+// the stubs above. The translator's PURE lineup resolver is the real one, so
+// the snapshot cases at the end derive their lineup from the committed
+// fixture instead of typing its number in.
+const SIM_READS = {
   getSessionType: () => mockSessionType(),
   getStandingStart: () => mockStandingStart(),
-  getLatestTelemetry: () => mockLatestTelemetry(),
-}));
+  getLatestTelemetry: () => mockLatestTelemetry() as TelemetryData | null,
+};
+
+/** The flag family's contracts, built over the same reads — the caution's shared gates are checked against them. */
+const FLAG_CONTRACTS = buildFlagAlerts(SIM_READS).contracts;
 
 /** Driver live in their own car, racing — what every contract's shared gate needs. */
 const IN_CAR = { IsOnTrack: true, IsReplayPlaying: false, SessionState: SessionState.Racing };
@@ -188,6 +191,7 @@ function contracts(): readonly ScenarioContract[] {
     getCautionEpisode: () => episodeNow,
     isCautionCalloutEnabled: (id) => id !== "follow" || followEnabled,
     getCautionGap: () => gapNow,
+    ...SIM_READS,
   });
 }
 
@@ -2271,6 +2275,7 @@ describe("the follow and lineup-change calls in the bundled voice, when the car 
         getCautionEpisode: () => ({ id: 1, firstFollowCarIdx: 99 }),
         isCautionCalloutEnabled: (calloutId) => calloutId !== "follow",
         getCautionGap: () => null,
+        ...SIM_READS,
       });
       const c = built.find((x) => x.id === cautionScenarioId(id));
 
@@ -3197,6 +3202,7 @@ describe("the catch-up calls (#1168)", () => {
         getPaceLineup: () => UNNAMED,
         getCautionEpisode: () => ({ id: 1, firstFollowCarIdx: UNNAMED.followCarIdx }),
         ...(wireGap ? { getCautionGap: () => ({ warranted: true }) } : {}),
+        ...SIM_READS,
       });
       // A contract is silent without a script (issue #1065): the gate is what
       // is under test here, so the line must be there to be gated.

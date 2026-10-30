@@ -140,7 +140,7 @@ import {
   SCENARIO_ID_TO_CORNER_NAME_ID,
 } from "./corner-name.js";
 import { DAMAGE_CONTRACTS } from "./damage-alerts.js";
-import { FLAG_CONTRACTS, registerFlagVocabulary } from "./flag-alerts.js";
+import { buildFlagAlerts } from "./flag-alerts.js";
 import { FUEL_LAPS_LEFT_CONTRACTS } from "./fuel-laps-left.js";
 import {
   buildGapThresholdContract,
@@ -1153,11 +1153,16 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
 
   const engine = getScenarioEngine();
 
+  // The flag family, built once over its sim reads (#1378): the vocabulary and
+  // the contracts share one set of gates, so the furled speak-time gates and
+  // the conditions a pack may write stay one definition (#1138).
+  const flagAlerts = buildFlagAlerts(d);
+
   // The vocabulary the flag scripts name (issue #1064) — the `session.type`
   // case var, the furled speak-time gates and the `session.is*` conditions.
   // Registered before any contract so the first `setScripts` compile sees it;
   // a later registration would only mark the compiled scripts dirty.
-  registerFlagVocabulary(engine);
+  flagAlerts.registerVocabulary(engine);
 
   // The vocabulary the readback scripts name (issue #1065) — the seven
   // `readback.*` slot conditions and the `readback.tirePattern` case, every
@@ -1248,7 +1253,7 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   // active voice's business (`scenarios["pit-crew.flag-*"]` in its
   // `callouts.json`, compiled by `setScripts`); the gates wrap the contract's
   // `where:` exactly as they wrap a legacy scenario's.
-  for (const c of FLAG_CONTRACTS) {
+  for (const c of flagAlerts.contracts) {
     engine.defineContract(
       wrapWithMaster(wrapCalloutScenario(c, SCENARIO_ID_TO_FLAG_ID, getFlagCalloutEnabled, "flag callout", logger)),
     );
@@ -1282,6 +1287,8 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
     getCautionEpisode: d.getCautionEpisode,
     isCautionCalloutEnabled: getCautionCalloutEnabled,
     getCautionGap: d.getCautionGap,
+    getSessionType: d.getSessionType,
+    getLatestTelemetry: d.getLatestTelemetry,
   })) {
     engine.defineContract(
       wrapWithMaster(

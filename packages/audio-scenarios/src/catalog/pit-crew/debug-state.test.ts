@@ -638,6 +638,8 @@ describe("the family readers", () => {
         getCautionEpisode: () => ({ id: 3, firstFollowCarIdx: followCarIdx }),
         isCautionCalloutEnabled: () => true,
         getCautionGap: () => null,
+        getSessionType: () => "Race",
+        getLatestTelemetry: () => null,
       });
 
       expect(readCautionDebugState()).toEqual({ lastNamed: null, lastCatchUp: null });
@@ -662,6 +664,8 @@ describe("the family readers", () => {
       getCautionEpisode: () => ({ id: 4, firstFollowCarIdx: 12 }),
       isCautionCalloutEnabled: () => true,
       getCautionGap: () => ({ warranted: true }),
+      getSessionType: () => "Race",
+      getLatestTelemetry: () => null,
     });
     const catchUp = contracts.find((c) => c.id === "pit-crew.caution-catch-up");
 
@@ -679,6 +683,7 @@ describe("the family readers", () => {
       const contracts = buildRollingStartContracts({
         getRollingStartFormation: () => ({ id: 5, firstFollowCarIdx: followCarIdx }),
         getPaceLineup: () => ({ followCarIdx }) as never,
+        getSessionType: () => "Race",
       });
 
       expect(readRollingStartDebugState()).toEqual({ lastNamed: null });

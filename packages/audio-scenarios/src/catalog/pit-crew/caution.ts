@@ -253,17 +253,12 @@ import { type CalloutIdOf, CAUTION_CALLOUTS } from "@iracedeck/callout-settings"
 import type { SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { Flags, hasFlag, type TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
-import {
-  type CautionEpisode,
-  type CautionPhase,
-  getLatestTelemetry,
-  type PaceLineup,
-} from "@iracedeck/sim-events-iracing";
+import type { CautionEpisode, CautionPhase, PaceLineup } from "@iracedeck/sim-events-iracing";
 
 import type { ScenarioContract, SpeakGate } from "../../dsl.js";
 import { poolRef, WEIGHT } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
-import { CAUTION_MAX_QUEUE_WAIT_MS, liveRaceCar, WAVING_FLAG_COOLDOWN_MS } from "./flag-alerts.js";
+import { CAUTION_MAX_QUEUE_WAIT_MS, createLiveRaceCar, WAVING_FLAG_COOLDOWN_MS } from "./flag-alerts.js";
 import { createNamedCarMemory, type LastNamedCar } from "./named-car.js";
 import { type LivePositionResolver, selectLivePosition } from "./position-readout.js";
 
@@ -280,12 +275,12 @@ export type CautionCalloutId = CalloutIdOf<typeof CAUTION_CALLOUTS>;
  * of the latest tick, or `null` when there is none to read.
  *
  * Injected rather than imported — the shape `registerOpponentFlagVocabulary`
- * takes its live-position reader in. Not because it keeps the package free of
- * the translator: this very file imports `getLatestTelemetry` from it, and
- * `package.json` has depended on it since the catalog was written. The reasons
- * are the ones injection actually buys: a test or the harness can hand over a
- * lineup without standing up the translator's module singleton, the harness
- * can substitute its own, and the contract layer holds no reference to live
+ * takes its live-position reader in. Since #1378 every sim read this family
+ * makes is injected, the latest telemetry and the session type included, so
+ * the catalog reads the translator through its deps alone. Injection also
+ * buys what it always did: a test or the harness can hand over a lineup
+ * without standing up the translator's module singleton, the harness can
+ * substitute its own, and the contract layer holds no reference to live
  * global state that a second consumer would have to reset.
  */
 export type PaceLineupResolver = () => PaceLineup | null;
@@ -339,8 +334,10 @@ export type CautionGapResolver = () => { readonly warranted: boolean } | null;
  * still hold a pace row and by the six that record the car they name; the
  * episode that scopes that record; the live opt-in, which the change call
  * asks of the follow call before anything is named (module header, finding
- * 2); and the gap to the car ahead, which the two catch-up calls ask at speak
- * time.
+ * 2); the gap to the car ahead, which the two catch-up calls ask at speak
+ * time; and two sim reads (#1378) — the session type, for the flag family's
+ * live-race gate every contract carries, and the latest telemetry tick, for
+ * the pace-car-off call's speak-time GreenHeld check.
  */
 export type CautionContractDeps = {
   getCautionPhase: CautionPhaseResolver;
@@ -348,6 +345,8 @@ export type CautionContractDeps = {
   getCautionEpisode: CautionEpisodeResolver;
   isCautionCalloutEnabled: (id: CautionCalloutId) => boolean;
   getCautionGap: CautionGapResolver;
+  getSessionType: () => string;
+  getLatestTelemetry: () => TelemetryData | null;
 };
 
 /** The clip group every car number is spoken from (issue #1127) — `09` and `9` are different clips. */
@@ -511,7 +510,12 @@ export function buildCautionContracts({
   getCautionEpisode,
   isCautionCalloutEnabled,
   getCautionGap,
+  getSessionType,
+  getLatestTelemetry,
 }: CautionContractDeps): readonly ScenarioContract[] {
+  /** The flag family's live-race gate, over the session-type read this build was handed (#1378). */
+  const liveRaceCar = createLiveRaceCar(getSessionType);
+
   /** The shared gate, plus "a caution is actually out" for an event that also fires elsewhere. */
   const underCautionCar = (e: SimEventOf<SimEventName>): boolean => liveRaceCar(e) && getCautionPhase() !== "none";
 
@@ -773,7 +777,7 @@ export function buildCautionContracts({
       // "Pace car's off" on a green track is worse than a missed one.
       speakGate: {
         description: "Re-checked at speak time: the full-course caution is still out, or the green is still held.",
-        admit: () => getCautionPhase() !== "none" || greenHeld(getLatestTelemetry() as TelemetryData | null),
+        admit: () => getCautionPhase() !== "none" || greenHeld(getLatestTelemetry()),
       },
       description:
         "The pace car peels off to pit road about five seconds before the green — on the last caution lap, or with the green held at an opening rolling start — never while deploying on a road course.",
@@ -826,6 +830,8 @@ export const CAUTION_SCENARIO_IDS: readonly string[] = buildCautionContracts({
   getCautionEpisode: () => null,
   isCautionCalloutEnabled: () => true,
   getCautionGap: () => null,
+  getSessionType: () => "",
+  getLatestTelemetry: () => null,
 }).map((c) => c.id);
 
 /**

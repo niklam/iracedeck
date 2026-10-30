@@ -40,7 +40,7 @@ import {
   TIRE_WEAR_CALLOUTS,
 } from "@iracedeck/callout-settings";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
-import { PitSvStatus } from "@iracedeck/iracing-sdk";
+import { PitSvStatus, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from "vitest";
 
 import type { Scenario, ScenarioContract } from "../../dsl.js";
@@ -640,6 +640,13 @@ beforeEach(() => {
     // wording.
     getRollingStartFormation: () => ({ id: 1, firstFollowCarIdx: null }),
     getRaceEngineerMasterEnabled,
+    // The sim reads (#1378), over the stubs above: a race, a rolling grid,
+    // the live tick the delayed pit-limiter cases drive, and a damage state
+    // not known yet, which the damage line's speak-time gate admits.
+    getSessionType: () => mockSessionType(),
+    getStandingStart: () => false,
+    getLatestTelemetry: () => mockLatestTelemetry() as TelemetryData | null,
+    getDamageRepairNeeded: () => null,
   });
   // After the registration, as the plugins do (issue #1064): the engine
   // wraps every framed callout in the voice's `radio` frame at fire time.

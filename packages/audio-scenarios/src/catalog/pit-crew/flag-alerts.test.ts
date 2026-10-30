@@ -11,7 +11,7 @@ import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type CalloutScript } from "@iracedeck/callout-script";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
-import { Flags } from "@iracedeck/iracing-sdk";
+import { Flags, SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ScenarioContract } from "../../dsl.js";
@@ -22,10 +22,10 @@ import { familyReferences } from "./family-references.test-util.js";
 import {
   _getFurledRaisedSpoken,
   _setFurledRaisedSpoken,
+  buildFlagAlerts,
   FLAG_CLIP_SOURCES,
-  FLAG_CONTRACTS,
   FLAG_SCENARIO_IDS,
-  registerFlagVocabulary,
+  type FlagAlertsDeps,
   WAVING_FLAG_COOLDOWN_MS,
 } from "./flag-alerts.js";
 import { classifySessionType, isRaceSession } from "./race-start.js";
@@ -36,11 +36,15 @@ const mockStandingStart = vi.fn(() => false);
 // (the default) means "no live signal", which the gate treats as still-up.
 const mockLatestTelemetry = vi.fn((): unknown => null);
 
-vi.mock("@iracedeck/sim-events-iracing", () => ({
+// The family's sim reads (#1378), handed to the one build every test below
+// registers and inspects — the stubs above, switched per case.
+const FLAG_DEPS: FlagAlertsDeps = {
   getSessionType: () => mockSessionType(),
   getStandingStart: () => mockStandingStart(),
-  getLatestTelemetry: () => mockLatestTelemetry(),
-}));
+  getLatestTelemetry: () => mockLatestTelemetry() as TelemetryData | null,
+};
+const FLAG = buildFlagAlerts(FLAG_DEPS);
+const FLAG_CONTRACTS = FLAG.contracts;
 
 // Default telemetry attached to published events: driver live in the car. The
 // race-formation flags gate on `isLiveOnTrack` (issue #480 follow-up), so events
@@ -255,7 +259,7 @@ beforeEach(() => {
   // scripts — no pools are registered in code for this family any more, and
   // the script names none either: its `pool:flags/<base>` steps address the
   // clip group directly, resolved against the manifest at fire time.
-  registerFlagVocabulary(engine);
+  FLAG.registerVocabulary(engine);
 
   for (const c of FLAG_CONTRACTS) engine.defineContract(c);
 
@@ -1161,7 +1165,7 @@ describe("the shared session rule (issue #1064)", () => {
   });
 });
 
-describe("registerFlagVocabulary (issue #1064)", () => {
+describe("the flag vocabulary (issue #1064)", () => {
   it("publishes the session case and the two furled reads with their descriptions, verbatim", () => {
     const { conds, cases } = engine.vocabulary();
 
@@ -1677,5 +1681,62 @@ describe("furled → black escalation speak-time gate (issue #846)", () => {
     flush(audio); // filler finishes → queued clear replays → expands to silence
 
     expect(voiceClipsPlayed().filter((p) => p.includes("furled-cleared"))).toEqual([]);
+  });
+});
+
+// Since #1378 the family reads the sim only through the deps a build is
+// handed: each build's gates answer for its own reads, never the translator's.
+describe("buildFlagAlerts — the injected sim reads (issue #1378)", () => {
+  const inCar = { timestamp: 0, data: {}, telemetry: IN_CAR } as unknown as SimEventOf<SimEventName>;
+
+  function reads(overrides: Partial<FlagAlertsDeps>): FlagAlertsDeps {
+    return {
+      getSessionType: () => "Race",
+      getStandingStart: () => false,
+      getLatestTelemetry: () => null,
+      ...overrides,
+    };
+  }
+
+  function where(family: ReturnType<typeof buildFlagAlerts>, id: string): (e: SimEventOf<SimEventName>) => boolean {
+    const found = family.contracts.find((c) => c.id === id)?.when?.where;
+
+    if (!found) throw new Error(`no where: on ${id}`);
+
+    return found;
+  }
+
+  it("two builds gate on their own session type", () => {
+    const race = buildFlagAlerts(reads({ getSessionType: () => "Race" }));
+    const practice = buildFlagAlerts(reads({ getSessionType: () => "Practice" }));
+
+    expect(where(race, "pit-crew.flag-crossed")(inCar)).toBe(true);
+    expect(where(practice, "pit-crew.flag-crossed")(inCar)).toBe(false);
+  });
+
+  it("the rolling-only formation cue reads the build's standing-start grid", () => {
+    const preGreen = {
+      ...inCar,
+      telemetry: { ...IN_CAR, SessionState: SessionState.ParadeLaps },
+    } as SimEventOf<SimEventName>;
+    const standing = buildFlagAlerts(reads({ getStandingStart: () => true }));
+    const rolling = buildFlagAlerts(reads({ getStandingStart: () => false }));
+
+    expect(where(standing, "pit-crew.flag-green-held")(preGreen)).toBe(false);
+    expect(where(rolling, "pit-crew.flag-green-held")(preGreen)).toBe(true);
+  });
+
+  it("the furled gate reads the build's latest telemetry", () => {
+    const up = buildFlagAlerts(reads({ getLatestTelemetry: () => ({ SessionFlags: Flags.Furled }) as TelemetryData }));
+    const down = buildFlagAlerts(reads({ getLatestTelemetry: () => ({ SessionFlags: 0 }) as TelemetryData }));
+    const admit = (family: ReturnType<typeof buildFlagAlerts>): boolean | undefined =>
+      family.contracts.find((c) => c.id === "pit-crew.flag-furled")?.speakGate?.admit({ event: null, now: 0 } as never);
+
+    expect(admit(down)).toBe(false);
+    expect(admit(up)).toBe(true);
+  });
+
+  it("FLAG_SCENARIO_IDS lists a build's contracts, in order", () => {
+    expect(FLAG_SCENARIO_IDS).toEqual(buildFlagAlerts(reads({})).contracts.map((c) => c.id));
   });
 });

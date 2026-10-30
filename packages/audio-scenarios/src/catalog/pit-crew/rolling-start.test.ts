@@ -55,14 +55,14 @@ import { _resetSpotterEngine } from "./spotter-engine.js";
 
 const mockSessionType = vi.fn(() => "Race");
 
-// The translator's live readers are stubbed; everything else is the real
-// module, so the types and enums the catalog imports are the real ones.
-vi.mock("@iracedeck/sim-events-iracing", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@iracedeck/sim-events-iracing")>()),
+// The sim reads every build and registration below is handed (#1378): the
+// session type is a stub the race-only cases switch, the rest answer as a
+// translator with no tick yet would.
+const SIM_READS = {
   getSessionType: () => mockSessionType(),
   getStandingStart: () => false,
   getLatestTelemetry: () => null,
-}));
+};
 
 /** Driver live in the car on the formation lap — what every contract's shared gate needs. */
 const IN_CAR = { IsOnTrack: true, IsReplayPlaying: false, SessionState: SessionState.ParadeLaps };
@@ -103,6 +103,7 @@ function contracts(): readonly ScenarioContract[] {
   return buildRollingStartContracts({
     getRollingStartFormation: () => formationNow,
     getPaceLineup: () => lineupNow,
+    getSessionType: SIM_READS.getSessionType,
   });
 }
 
@@ -1002,6 +1003,7 @@ describe("the formation calls through registerPitCrew", () => {
       ...(wired
         ? { getRollingStartFormation: () => ({ id: 1, firstFollowCarIdx: 99 }), getPaceLineup: () => UNNAMED }
         : {}),
+      ...SIM_READS,
     });
     // A contract is silent without a script (issue #1065): the gate is what is
     // under test here, so the line must be there to be gated.
