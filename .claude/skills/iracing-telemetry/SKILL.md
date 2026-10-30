@@ -189,7 +189,7 @@ if (!hasPitLimiter(getLatestTelemetry())) {
 }
 ```
 
-Each helper takes `TelemetryData | null` and returns `false` for `null`. Add new capability checks here rather than scattering `dc*`-presence tests across consumers.
+Each helper takes `TelemetryData | null` and returns `false` for `null`. In the Race Engineer catalog (`packages/audio-scenarios/src`) the tick comes from the family's injected `getLatestTelemetry` dep instead, never the translator import above, which lint refuses there (#1378). Add new capability checks here rather than scattering `dc*`-presence tests across consumers.
 
 ## Common Units
 
