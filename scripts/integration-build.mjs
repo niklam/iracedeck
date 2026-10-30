@@ -43,7 +43,11 @@
  *    `scripts/host-app.mjs`. `pnpm build:with-restart` is deliberately not used:
  *    it finds Stream Deck through `wmic`, which current Windows 11 no longer
  *    ships, and then silently restarts nothing. Any host whose stop or start
- *    failed is named for the maintainer to restart himself.
+ *    failed is named for the maintainer to restart himself. When the install
+ *    or the build fails, nothing is restarted: a host started then would load a
+ *    half-written plugin, so Mirabox and Ulanzi stay stopped and are named
+ *    (`stoppedHosts`) for the maintainer to start once the build is fixed, and
+ *    Stream Deck keeps running the previous build.
  * 5. Prints every merged branch with its full head sha.
  *
  * It never pushes, and never links or relinks a host: no command it runs is a
@@ -352,10 +356,13 @@ async function checkTree(tree, main, git) {
 
 /**
  * Installs and builds the integration tree, restarting exactly the deck hosts
- * whose plugin link points into it.
+ * whose plugin link points into it — and none of them when the install or the
+ * build fails, since a host started then would load a half-written plugin.
  *
  * @returns {Promise<{ ok: boolean, failure?: string, tsErrors: string[],
- *   linkedHosts: string[], restartYourself: string[] }>}
+ *   linkedHosts: string[], restartYourself: string[], stoppedHosts: string[] }>}
+ *   `stoppedHosts` are the hosts this run stopped and left stopped because the
+ *   install or the build failed; empty otherwise
  */
 export async function runBuild({ tree, exec = defaultExec, links = linkTargets, log = console }) {
   const linkedHosts = links()
@@ -371,8 +378,12 @@ export async function runBuild({ tree, exec = defaultExec, links = linkTargets, 
   const hostApp = (action, id) => run("node", ["scripts/host-app.mjs", action, id]);
   const restartYourself = [];
   const stopped = [];
+  const stoppedHosts = [];
   let tsErrors = [];
   let failure;
+  // "untouched" until the install starts writing into the tree, "built" once
+  // the build passed; anything between leaves the plugin on disk half-written.
+  let plugin = "untouched";
 
   try {
     for (const host of linkedHosts.filter((h) => HOST_APP_IDS[h])) {
@@ -384,25 +395,33 @@ export async function runBuild({ tree, exec = defaultExec, links = linkTargets, 
       stopped.push(host);
     }
 
-    if (!failure && !(await run("pnpm", ["install"])).ok) failure = "pnpm install failed";
+    if (!failure) {
+      plugin = "building";
+      if (!(await run("pnpm", ["install"])).ok) failure = "pnpm install failed";
+    }
 
     if (!failure) {
       const built = await run("pnpm", ["build"]);
       tsErrors = tsDiagnostics(`${built.out}\n${built.err}`);
       if (!built.ok) failure = `pnpm build exited ${built.code}`;
       else if (tsErrors.length > 0) failure = `pnpm build printed ${tsErrors.length} TypeScript diagnostic(s)`;
+      else plugin = "built";
     }
 
     if (!failure && linkedHosts.includes(STREAM_DECK) && !(await run("pnpm", ["restart:stream-deck"])).ok) {
       restartYourself.push(STREAM_DECK);
     }
   } finally {
-    for (const host of stopped) {
-      if (!(await hostApp("start", HOST_APP_IDS[host])).ok) restartYourself.push(host);
+    if (plugin === "building") {
+      stoppedHosts.push(...stopped);
+    } else {
+      for (const host of stopped) {
+        if (!(await hostApp("start", HOST_APP_IDS[host])).ok) restartYourself.push(host);
+      }
     }
   }
 
-  return { ok: !failure, ...(failure ? { failure } : {}), tsErrors, linkedHosts, restartYourself };
+  return { ok: !failure, ...(failure ? { failure } : {}), tsErrors, linkedHosts, restartYourself, stoppedHosts };
 }
 
 /** `{ build, branches }` from the command line; throws on anything else. */
@@ -470,6 +489,15 @@ export async function main(argv, { cwd = process.cwd(), exec, links, log = conso
   if (!build.ok) {
     log.error(`\nThe build failed: ${build.failure}.`);
     for (const line of build.tsErrors) log.error(`  ${line}`);
+    for (const host of build.stoppedHosts) {
+      log.error(
+        `${host} is stopped because the build failed, and needs starting once it is fixed: the next run of this script whose build passes starts it, or node scripts/host-app.mjs start ${HOST_APP_IDS[host]}.`,
+      );
+    }
+    if (build.linkedHosts.includes(STREAM_DECK)) {
+      log.error(`${STREAM_DECK} was not restarted and still runs the previous build.`);
+    }
+
     return EXIT_FAILED;
   }
   log.log("\nBuilt.");

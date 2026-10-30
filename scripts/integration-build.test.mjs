@@ -615,7 +615,13 @@ describe("runBuild", () => {
   it("restarts the Stream Deck plugin after a good build when Stream Deck links to the tree", async () => {
     const result = await runBuild({ tree: TREE, exec: fakeExec(), links: linkedTo("Stream Deck"), log: silentLog() });
 
-    expect(result).toEqual({ ok: true, tsErrors: [], linkedHosts: ["Stream Deck"], restartYourself: [] });
+    expect(result).toEqual({
+      ok: true,
+      tsErrors: [],
+      linkedHosts: ["Stream Deck"],
+      restartYourself: [],
+      stoppedHosts: [],
+    });
     expect(commandLines()).toEqual(["pnpm install", "pnpm build", "pnpm restart:stream-deck"]);
   });
 
@@ -628,6 +634,7 @@ describe("runBuild", () => {
     });
 
     expect(result.ok).toBe(true);
+    expect(result.stoppedHosts).toEqual([]);
     expect(commandLines()).toEqual([
       "node scripts/host-app.mjs stop mirabox",
       "node scripts/host-app.mjs stop ulanzi",
@@ -653,38 +660,65 @@ describe("runBuild", () => {
     expect(output(log)).toMatch(/No deck host links to/);
   });
 
-  it("fails on a TypeScript diagnostic even when the build exits 0, and restarts no plugin", async () => {
+  it("fails on a TypeScript diagnostic even when the build exits 0, and restarts no host", async () => {
     const exec = fakeExec({
       "pnpm build": ok(
         "rollup v4\nsrc/plugin.ts(3,7): error TS2322: Type 'string' is not assignable to type 'number'.\n",
       ),
     });
 
-    const result = await runBuild({ tree: TREE, exec, links: linkedTo("Stream Deck"), log: silentLog() });
+    const result = await runBuild({
+      tree: TREE,
+      exec,
+      links: linkedTo("Stream Deck", "Mirabox"),
+      log: silentLog(),
+    });
 
     expect(result.ok).toBe(false);
     expect(result.tsErrors).toEqual([
       "src/plugin.ts(3,7): error TS2322: Type 'string' is not assignable to type 'number'.",
     ]);
-    expect(commandLines()).not.toContain("pnpm restart:stream-deck");
+    expect(result.stoppedHosts).toEqual(["Mirabox"]);
+    expect(commandLines()).toEqual(["node scripts/host-app.mjs stop mirabox", "pnpm install", "pnpm build"]);
   });
 
-  it("fails on a non-zero build and still starts the hosts it stopped", async () => {
+  it("fails on a non-zero build and leaves the hosts it stopped stopped, restarting nothing", async () => {
     const exec = fakeExec({ "pnpm build": failed("boom") });
 
-    const result = await runBuild({ tree: TREE, exec, links: linkedTo("Stream Deck", "Mirabox"), log: silentLog() });
+    const result = await runBuild({
+      tree: TREE,
+      exec,
+      links: linkedTo("Stream Deck", "Mirabox", "Ulanzi"),
+      log: silentLog(),
+    });
 
     expect(result.ok).toBe(false);
     expect(result.failure).toMatch(/pnpm build/);
+    expect(result.stoppedHosts).toEqual(["Mirabox", "Ulanzi"]);
+    expect(result.restartYourself).toEqual([]);
     expect(commandLines()).toEqual([
       "node scripts/host-app.mjs stop mirabox",
+      "node scripts/host-app.mjs stop ulanzi",
       "pnpm install",
       "pnpm build",
-      "node scripts/host-app.mjs start mirabox",
     ]);
   });
 
-  it("does not build when the install fails", async () => {
+  it("does not build when the install fails, and leaves the hosts it stopped stopped", async () => {
+    const result = await runBuild({
+      tree: TREE,
+      exec: fakeExec({ "pnpm install": failed() }),
+      links: linkedTo("Mirabox"),
+      log: silentLog(),
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.failure).toMatch(/pnpm install/);
+    expect(result.stoppedHosts).toEqual(["Mirabox"]);
+    expect(commandLines()).toEqual(["node scripts/host-app.mjs stop mirabox", "pnpm install"]);
+  });
+
+  it("reports no stopped host when the install fails with none linked", async () => {
     const result = await runBuild({
       tree: TREE,
       exec: fakeExec({ "pnpm install": failed() }),
@@ -693,7 +727,7 @@ describe("runBuild", () => {
     });
 
     expect(result.ok).toBe(false);
-    expect(result.failure).toMatch(/pnpm install/);
+    expect(result.stoppedHosts).toEqual([]);
     expect(commandLines()).toEqual(["pnpm install"]);
   });
 
@@ -705,6 +739,8 @@ describe("runBuild", () => {
     expect(result.ok).toBe(false);
     expect(result.failure).toMatch(/could not stop Ulanzi/);
     expect(result.restartYourself).toEqual(["Ulanzi"]);
+    // Nothing was installed or built, so the plugin Mirabox loads is intact.
+    expect(result.stoppedHosts).toEqual([]);
     expect(commandLines()).toEqual([
       "node scripts/host-app.mjs stop mirabox",
       "node scripts/host-app.mjs stop ulanzi",
@@ -722,6 +758,7 @@ describe("runBuild", () => {
 
     expect(result.ok).toBe(true);
     expect(result.restartYourself).toEqual(["Stream Deck", "Mirabox"]);
+    expect(result.stoppedHosts).toEqual([]);
   });
 });
 
@@ -812,5 +849,39 @@ describe("main", { timeout: GIT_TIMEOUT_MS }, () => {
 
     expect(code).toBe(EXIT_FAILED);
     expect(output(log)).toMatch(/build failed/i);
+    expect(output(log)).not.toMatch(/is stopped|previous build/);
+  });
+
+  it("on a failed build, says the hosts it stopped stay stopped and Stream Deck runs the previous build", async () => {
+    branch("feature/1-a", "a.txt", "a\n");
+    const log = silentLog();
+    const links = () =>
+      ["Stream Deck", "Mirabox"].map((host) => ({ host, link: "l", target: join(tree, "packages", "x.sdPlugin") }));
+
+    const code = await main(["feature/1-a"], {
+      cwd: repo,
+      exec: recordingExec({ "pnpm build": failed("nope") }),
+      links,
+      log,
+    });
+
+    expect(code).toBe(EXIT_FAILED);
+    expect(output(log)).toMatch(/Mirabox is stopped because the build failed, and needs starting once it is fixed/);
+    expect(output(log)).toContain("node scripts/host-app.mjs start mirabox");
+    expect(output(log)).toMatch(/Stream Deck was not restarted and still runs the previous build/);
+    expect(commandLines().filter((line) => / start |restart:/.test(line))).toEqual([]);
+  });
+
+  it("on a good build, starts the hosts it stopped again and names none as stopped", async () => {
+    branch("feature/1-a", "a.txt", "a\n");
+    const log = silentLog();
+    const links = () => [{ host: "Mirabox", link: "l", target: join(tree, "packages", "x.sdPlugin") }];
+
+    const code = await main(["feature/1-a"], { cwd: repo, exec: recordingExec(), links, log });
+
+    expect(code).toBe(EXIT_OK);
+    expect(commandLines()).toContain("node scripts/host-app.mjs start mirabox");
+    expect(output(log)).not.toMatch(/is stopped/);
+    expect(output(log)).toMatch(/Built\./);
   });
 });
