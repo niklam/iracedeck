@@ -26,8 +26,9 @@ export class FuelPipeline {
   /**
    * Told before every command this pipeline sends (#1314). The fuel step check
    * (`FuelStepper` in `fuel-step.ts`) listens so that a command from anywhere else — a Clear
-   * Fuel or Set Fuel Amount press, a dial gesture, the fill-to monitor — ends a
+   * Fuel or Set Fuel Amount press, a dial gesture, the fill-to monitor's clear — ends a
    * check still stepping the request, instead of the check's next send undoing it.
+   * The stepper's own sends (Target Amount's included, #1483) cancel nothing.
    */
   private commandListener: (() => void) | null = null;
 
