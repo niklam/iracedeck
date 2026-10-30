@@ -8,6 +8,7 @@
  *
  * Spec: docs/superpowers/specs/2026-10-20-issue-1463-car-control-wipers-and-visor.md
  */
+import type { PressShape } from "@iracedeck/deck-core";
 import tearOffVisorIcon from "@iracedeck/icons/car-control/tear-off-visor.svg";
 import wipersAndVisorIcon from "@iracedeck/icons/car-control/wipers-and-visor.svg";
 import toggleWipersIcon from "@iracedeck/icons/cockpit-misc/toggle-wipers.svg";
@@ -99,6 +100,55 @@ export function wipersAndVisorBinding(
   const sendsToggle = press === "tap" ? tapToggles : !tapToggles;
 
   return sendsToggle ? WIPERS_AND_VISOR_BINDINGS.toggle : WIPERS_AND_VISOR_BINDINGS.trigger;
+}
+
+/**
+ * What a key-down does, the one decision the press and its press sound
+ * (#269) both read, so the two cannot disagree:
+ * - `classify` — a wiper car: the press is only timed, and its release is
+ *   classified as a tap or a long press;
+ * - `send` — a visor car: `binding` is sent at once;
+ * - `ignore` — an unknown car, or one with neither: nothing is sent.
+ */
+export type WipersAndVisorDown = { kind: "classify" } | { kind: "send"; binding: string } | { kind: "ignore" };
+
+/** The key-down decision for a car; see {@link WipersAndVisorDown}. */
+export function wipersAndVisorDown(car: WipersAndVisorCar, wipersOnTap: WipersOnTap | undefined): WipersAndVisorDown {
+  if (car.kind === "wipers") return { kind: "classify" };
+
+  const binding = wipersAndVisorBinding(car, "down", wipersOnTap);
+
+  return binding ? { kind: "send", binding } : { kind: "ignore" };
+}
+
+/**
+ * The press shape a key-down has, for the press sounds (#269), from
+ * {@link wipersAndVisorDown}: a wiper car's press is decided at release
+ * against `thresholdMs` (the threshold its classification reads), and each
+ * outcome sounds when it sends a binding; a visor car's tears off now, a tap;
+ * an unknown car or one with neither makes no sound, since the press does
+ * nothing.
+ */
+export function wipersAndVisorPressShape(
+  car: WipersAndVisorCar,
+  wipersOnTap: WipersOnTap | undefined,
+  thresholdMs: number,
+): PressShape {
+  const down = wipersAndVisorDown(car, wipersOnTap);
+
+  switch (down.kind) {
+    case "classify":
+      return {
+        kind: "release",
+        thresholdMs,
+        short: wipersAndVisorBinding(car, "tap", wipersOnTap) !== null,
+        long: wipersAndVisorBinding(car, "long", wipersOnTap) !== null,
+      };
+    case "send":
+      return { kind: "tap" };
+    case "ignore":
+      return { kind: "none" };
+  }
 }
 
 /**

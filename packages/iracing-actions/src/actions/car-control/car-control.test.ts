@@ -118,6 +118,8 @@ vi.mock("@iracedeck/deck-core", async (importOriginal) => ({
   // The real tap/long-press tracker, so Wipers and Visor's press classification runs against
   // the live `dualPressThresholdMs` read from the mocked global settings (#1463).
   DualPressTracker: (await importOriginal<typeof import("@iracedeck/deck-core")>()).DualPressTracker,
+  // The real threshold reader, so a press shape (#269) carries the live `dualPressThresholdMs`.
+  getDualPressThresholdMs: (await importOriginal<typeof import("@iracedeck/deck-core")>()).getDualPressThresholdMs,
   hexToGrayscale: vi.fn((hex: string) => `grey(${hex})`),
   IconUpdateThrottle: class {
     schedule(_id: string, render: () => unknown): void {
@@ -2860,6 +2862,204 @@ describe("CarControl", () => {
 
         expect(mockReleaseBinding).not.toHaveBeenCalled();
       });
+    });
+  });
+
+  describe("press shape (issue #269)", () => {
+    const WIPER_FRAME = {
+      IsOnTrack: true,
+      IsReplayPlaying: false,
+      dcTriggerWindshieldWipers: false,
+      dcToggleWindshieldWipers: false,
+    } as TelemetryData;
+    const VISOR_FRAME = { IsOnTrack: true, IsReplayPlaying: false, dcTearOffVisor: false } as TelemetryData;
+    const NEITHER_FRAME = { IsOnTrack: true, IsReplayPlaying: false } as TelemetryData;
+
+    /** In the pit stall (Exit) or on track in a race (Tow): two of Enter/Exit/Tow's auto-holdable states. */
+    const EXIT_FRAME = { IsOnTrack: true, PlayerCarInPitStall: true, SessionNum: 0 } as unknown as TelemetryData;
+    const TOW_FRAME = { IsOnTrack: true, PlayerCarInPitStall: false, SessionNum: 0 } as unknown as TelemetryData;
+    const RACE_SESSION = { SessionInfo: { Sessions: [{ SessionNum: 0, SessionType: "Race" }] } };
+
+    const HOLD = { kind: "hold", thresholdMs: 640 } as const;
+    const TAP = { kind: "tap" } as const;
+    const NONE = { kind: "none" } as const;
+
+    let action: CarControl;
+
+    function setThreshold(dualPressThresholdMs?: number): void {
+      vi.mocked(getGlobalSettings).mockReturnValue(
+        (dualPressThresholdMs === undefined ? {} : { dualPressThresholdMs }) as ReturnType<typeof getGlobalSettings>,
+      );
+    }
+
+    beforeEach(() => {
+      setThreshold(640);
+      action = new CarControl();
+    });
+
+    afterEach(() => {
+      setThreshold();
+    });
+
+    function setTelemetry(frame: TelemetryData | null, sessionInfo: Record<string, unknown> | null = null): void {
+      vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue(frame);
+      vi.mocked(action["sdkController"].getSessionInfo).mockReturnValue(sessionInfo as never);
+    }
+
+    /** The key-down and the dial-down of one control carry the same settings; only the surface differs. */
+    function shapes(settings: Record<string, unknown>) {
+      const event = (isDial: boolean) => ({
+        action: { id: "action-1", isDial: () => isDial, setTitle: vi.fn(), setImage: vi.fn() },
+        payload: { settings },
+      });
+
+      return { key: action.pressShape(event(false) as any), dial: action.pressShape(event(true) as any) };
+    }
+
+    it.each(["starter", "headlight-flash", "handbrake", "second-clutch"])(
+      "%s holds at the dual-press threshold, on the key and the dial",
+      (control) => {
+        expect(shapes({ control })).toEqual({ key: HOLD, dial: HOLD });
+      },
+    );
+
+    it("reads the threshold live at each press, falling back to the default", () => {
+      setThreshold(900);
+      expect(shapes({ control: "starter" }).key).toEqual({ kind: "hold", thresholdMs: 900 });
+
+      setThreshold();
+      expect(shapes({ control: "starter" }).key).toEqual({ kind: "hold", thresholdMs: 500 });
+    });
+
+    it.each([
+      "ignition",
+      "pit-speed-limiter",
+      "pause-sim",
+      "push-to-pass",
+      "drs",
+      "tear-off-visor",
+      "second-up-shift",
+      "second-down-shift",
+    ])("%s is a tap, on the key and the dial", (control) => {
+      expect(shapes({ control })).toEqual({ key: TAP, dial: TAP });
+    });
+
+    it("Escape is a tap, with auto-hold on or off", () => {
+      expect(shapes({ control: "escape", autoHold: false })).toEqual({ key: TAP, dial: TAP });
+      expect(shapes({ control: "escape", autoHold: true })).toEqual({ key: TAP, dial: TAP });
+    });
+
+    describe("Enter/Exit/Tow", () => {
+      const STATES = [
+        ["exit-car", EXIT_FRAME, null],
+        ["tow", TOW_FRAME, RACE_SESSION],
+      ] as const;
+
+      it.each(STATES)("holds in %s without auto-hold", (_state, frame, session) => {
+        setTelemetry(frame, session);
+
+        expect(shapes({ control: "enter-exit-tow", autoHoldStates: [] })).toEqual({ key: HOLD, dial: HOLD });
+      });
+
+      it.each(STATES)("is a tap in %s with auto-hold on for that state", (state, frame, session) => {
+        setTelemetry(frame, session);
+
+        expect(shapes({ control: "enter-exit-tow", autoHoldStates: [state] })).toEqual({ key: TAP, dial: TAP });
+      });
+
+      it("holds in a state its auto-hold does not cover", () => {
+        setTelemetry(EXIT_FRAME);
+
+        expect(shapes({ control: "enter-exit-tow", autoHoldStates: ["tow"] }).key).toEqual(HOLD);
+      });
+
+      it("holds to enter the car, which never auto-holds", () => {
+        setTelemetry(null);
+
+        expect(shapes({ control: "enter-exit-tow", autoHoldStates: ["exit-car", "reset-to-pits", "tow"] }).key).toEqual(
+          HOLD,
+        );
+      });
+
+      it("agrees with the press: a hold releases on key-up, an auto-hold does not", async () => {
+        vi.useFakeTimers();
+
+        try {
+          setTelemetry(EXIT_FRAME);
+          const manual = { control: "enter-exit-tow", autoHoldStates: [] };
+          const auto = { control: "enter-exit-tow", autoHoldStates: ["exit-car"] };
+
+          expect(shapes(manual).key).toEqual(HOLD);
+          await action.onKeyDown(fakeEvent("action-1", manual) as any);
+          await action.onKeyUp(fakeEvent("action-1", manual) as any);
+          expect(mockReleaseBinding).toHaveBeenCalledTimes(1);
+
+          expect(shapes(auto).key).toEqual(TAP);
+          await action.onKeyDown(fakeEvent("action-2", auto) as any);
+          await action.onKeyUp(fakeEvent("action-2", auto) as any);
+          expect(mockReleaseBinding).toHaveBeenCalledTimes(1);
+        } finally {
+          action["clearAutoHoldTimer"]("action-2");
+          vi.useRealTimers();
+        }
+      });
+    });
+
+    describe("Wipers and Visor", () => {
+      const RELEASE = { kind: "release", thresholdMs: 640, short: true, long: true } as const;
+
+      it("is decided at release on a wiper car, at the dual-press threshold", () => {
+        setTelemetry(WIPER_FRAME);
+
+        expect(shapes({ control: "wipers-and-visor" })).toEqual({ key: RELEASE, dial: RELEASE });
+        expect(shapes({ control: "wipers-and-visor", wipersOnTap: "toggle" }).key).toEqual(RELEASE);
+      });
+
+      it("is a tap on a visor car", () => {
+        setTelemetry(VISOR_FRAME);
+
+        expect(shapes({ control: "wipers-and-visor" })).toEqual({ key: TAP, dial: TAP });
+      });
+
+      it.each([
+        ["a car with neither", NEITHER_FRAME],
+        ["no telemetry (an unknown car)", null],
+        ["a replay frame (an unknown car)", { ...WIPER_FRAME, IsReplayPlaying: true } as TelemetryData],
+      ])("makes no sound on %s", (_label, frame) => {
+        setTelemetry(frame);
+
+        expect(shapes({ control: "wipers-and-visor" })).toEqual({ key: NONE, dial: NONE });
+      });
+
+      it("agrees with what the key-down does on each car", async () => {
+        setTelemetry(VISOR_FRAME);
+        expect(shapes({ control: "wipers-and-visor" }).key).toEqual(TAP);
+        await action.onKeyDown(fakeEvent("action-1", { control: "wipers-and-visor" }) as any);
+        expect(mockTapBinding).toHaveBeenCalledTimes(1);
+
+        setTelemetry(WIPER_FRAME);
+        expect(shapes({ control: "wipers-and-visor" }).key).toEqual(RELEASE);
+        await action.onKeyDown(fakeEvent("action-2", { control: "wipers-and-visor" }) as any);
+        expect(mockTapBinding).toHaveBeenCalledTimes(1);
+
+        setTelemetry(NEITHER_FRAME);
+        expect(shapes({ control: "wipers-and-visor" }).key).toEqual(NONE);
+        await action.onKeyDown(fakeEvent("action-3", { control: "wipers-and-visor" }) as any);
+        expect(mockTapBinding).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    it("has no side effects: asking for the shape sends nothing", () => {
+      setTelemetry(WIPER_FRAME);
+
+      for (const control of ["starter", "escape", "enter-exit-tow", "wipers-and-visor", "ignition"]) {
+        shapes({ control });
+      }
+
+      expect(mockTapBinding).not.toHaveBeenCalled();
+      expect(mockHoldBinding).not.toHaveBeenCalled();
+      expect(mockReleaseBinding).not.toHaveBeenCalled();
+      expect(mockPressKeyCombination).not.toHaveBeenCalled();
     });
   });
 });

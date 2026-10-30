@@ -5,6 +5,7 @@ import {
   DualPressTracker,
   generateBorderParts,
   generateTitleText,
+  getDualPressThresholdMs,
   getGlobalBorderSettings,
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
@@ -15,8 +16,10 @@ import {
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
   type IDeckKeyUpEvent,
+  type IDeckTouchTapEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
+  type PressShape,
   renderIconTemplate,
   resolveBorderSettings,
   resolveGraphicSettings,
@@ -72,6 +75,8 @@ import {
   wipersAndVisorAppearance,
   wipersAndVisorBinding,
   type WipersAndVisorCar,
+  wipersAndVisorDown,
+  wipersAndVisorPressShape,
   wipersAndVisorRenderKey,
   wipersAndVisorRequiredBinding,
   WipersOnTapField,
@@ -1062,6 +1067,46 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
     await this.updateDisplay(ev, settings);
   }
 
+  /**
+   * The shape of this press, for the press sounds (#269), read from the same state the
+   * press acts on. Key and dial alike, since the dial acts on `dialDown` like the key:
+   *
+   * - the hold controls (Starter, Headlight Flash, Handbrake, Second Clutch, and
+   *   Enter/Exit/Tow when auto-hold does not apply) hold the binding while the finger
+   *   does, so they are `hold` at the dual-press threshold;
+   * - Enter/Exit/Tow under auto-hold and Escape are `tap`: a timer, not the finger, ends
+   *   an auto-hold;
+   * - Wipers and Visor follows its key-down decision ({@link wipersAndVisorPressShape});
+   * - everything else acts once, on down: `tap`.
+   */
+  pressShape(
+    ev:
+      | IDeckKeyDownEvent<CarControlSettings>
+      | IDeckDialDownEvent<CarControlSettings>
+      | IDeckTouchTapEvent<CarControlSettings>,
+  ): PressShape {
+    const settings = this.parseSettings(ev.payload.settings);
+
+    switch (settings.control) {
+      case "wipers-and-visor":
+        return wipersAndVisorPressShape(
+          resolveWipersAndVisorCar(this.sdkController.getCurrentTelemetry()),
+          settings.wipersOnTap,
+          getDualPressThresholdMs(),
+        );
+      case "escape":
+        return { kind: "tap" };
+      case "enter-exit-tow":
+        return this.getEnterExitTowAutoHold(settings)
+          ? { kind: "tap" }
+          : { kind: "hold", thresholdMs: getDualPressThresholdMs() };
+      default:
+        return HOLD_CONTROLS.has(settings.control)
+          ? { kind: "hold", thresholdMs: getDualPressThresholdMs() }
+          : { kind: "tap" };
+    }
+  }
+
   override async onKeyDown(ev: IDeckKeyDownEvent<CarControlSettings>): Promise<void> {
     this.logger.info("Key down received");
     const settings = this.parseSettings(ev.payload.settings);
@@ -1425,23 +1470,23 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
    */
   private async executeWipersAndVisorPress(actionId: string, settings: CarControlSettings): Promise<void> {
     const car = resolveWipersAndVisorCar(this.sdkController.getCurrentTelemetry());
+    const down = wipersAndVisorDown(car, settings.wipersOnTap);
 
-    if (car.kind === "wipers") {
+    if (down.kind === "classify") {
       this.dualPress.recordKeyDown(actionId);
 
       return;
     }
 
     this.dualPress.clear(actionId);
-    const binding = wipersAndVisorBinding(car, "down", settings.wipersOnTap);
 
-    if (!binding) {
+    if (down.kind === "ignore") {
       this.logger.debug(`Wipers and Visor: ${car.kind} car, press ignored`);
 
       return;
     }
 
-    await this.tapBinding(binding);
+    await this.tapBinding(down.binding);
   }
 
   /**
