@@ -48,7 +48,7 @@ Review a task's output before another task builds on it; verify small fix diffs 
 
 **Audio.** No clip is generated or regenerated before Niklas has approved its text: report `audio-text` with each line as voice / group / entry / text, and wait. Check the tree for hand edits before generating (`git status`, mtimes). After generating, leave the clips uncommitted, have `qa` build the review page (`review-page` skill) and report `review-page` with its link. Commit the clips only after his approval; redo the entries he names.
 
-**Icons.** Leave the icon SVGs uncommitted until approved: `qa` builds the review page, you report `review-page`, and on approval commit the SVGs with their regenerated previews (`node scripts/generate-icon-previews.mjs`).
+**Icons.** Leave the icon SVGs uncommitted until approved: `qa` builds the review page, you report `review-page`, and on approval commit the SVGs with their regenerated previews (`cd <tree> && node scripts/generate-icon-previews.mjs`).
 
 ## 5. Gates
 

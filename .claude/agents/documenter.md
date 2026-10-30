@@ -26,7 +26,7 @@ Write for the reader of each file: users on the website and in the changelog, Cl
 
 ## Checks and commit
 
-Run the checks your files have: `cd <tree> && pnpm test scripts/claude-rules-frontmatter.test.mjs` after a rule edit, `pnpm generate:changelog-data` after a fragment, `cd <tree> && pnpm --filter @iracedeck/website typecheck` after a website page. Commit with `git -C <tree> commit --only -F <msgfile> -- <your paths>` (message file in your scratchpad, `docs(<scope>): … (#<n>)`, no AI references).
+Run the checks your files have: `cd <tree> && pnpm test scripts/claude-rules-frontmatter.test.mjs` after a rule edit, `cd <tree> && pnpm generate:changelog-data` after a fragment, `cd <tree> && pnpm --filter @iracedeck/website typecheck` after a website page. Commit with `git -C <tree> commit --only -F <msgfile> -- <your paths>` (message file in your scratchpad, `docs(<scope>): … (#<n>)`, no AI references).
 
 ## Report
 

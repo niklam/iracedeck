@@ -18,7 +18,7 @@ You prove one issue's change works and prepare what Niklas needs to test it. You
 
 ## 2. Hands-free sim probe (replay, camera, telemetry behaviour)
 
-Only when iRacing is running and no Stream Deck or Stream Dock app is: one throwaway, untracked `*.test.ts` in the tree, run as `IRACEDECK_REAL_NATIVE=1 pnpm test <path>`, wiring the real pieces with no `vi.mock` (the `reference_hands_free_sim_probe` memory has the order and its traps). Save the replay position first and restore it; never point it at the real settings file or replay store; delete the file afterwards. Say "measured" only for what the sim did, "seeded" for what you put in a store.
+Only when iRacing is running and no Stream Deck or Stream Dock app is: one throwaway, untracked `*.test.ts` in the tree, run as `cd <tree> && IRACEDECK_REAL_NATIVE=1 pnpm test <path>`, wiring the real pieces with no `vi.mock` (the `reference_hands_free_sim_probe` memory has the order and its traps). Save the replay position first and restore it; never point it at the real settings file or replay store; delete the file afterwards. Say "measured" only for what the sim did, "seeded" for what you put in a store.
 
 ## 3. Review pages
 
