@@ -113,6 +113,7 @@ In `packages/audio-assets/configs/default.voice.json`, **and in every other firs
 - Add (or extend) a group with one entry per `(direction × subject)` combination.
 - Each entry: `name` (kebab-case, suffix `-01` so future variants append as `-02`), `text`, optionally `seed` (omit it on new entries — the generator defaults an omitted seed to `1` — or set `"seed": 1` explicitly; NEVER an arbitrary/random value, since the seed only selects which take ElevenLabs produces. Bump it deliberately for a different take when the generated clip doesn't sound right — the seed feeds the hash, so the change re-cuts only that clip), optional `previous_request_ids` to bias prosody continuity.
 - Use `<break time="0.3s" />` for natural pauses inside a single line.
+- No hyphens, dashes, ellipses, colons or semicolons in `text`: ElevenLabs reads them as a pause and fills it with "ahhmm". A pause is a period, even when the grammar reads oddly (`"Change. You're behind"`); the generator and `clip-text.test.ts` refuse the rest (#1518, `packages/audio-assets/CLAUDE.md`).
 - Per-entry overrides for `model_id`, `language_code` (inside `voice_settings`), `output_format`, normalization flags etc. are supported and shallow-merge on top of the voice's defaults.
 
 Generate the clips:
