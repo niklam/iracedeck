@@ -27,6 +27,9 @@ export { linkLocations, linkTargets, REAL_DIRECTORY } from "../lib/plugin-links.
 
 export const SPEC_DIR = "docs/superpowers/specs/";
 export const MAIN_BRANCH = "master";
+/** The one permanent worktree the deck links to for combined manual tests, and its local, never-pushed branch (#1520). */
+export const INTEGRATION_TREE = "ir-integration";
+export const INTEGRATION_BRANCH = "integration";
 export const BOARD = { number: 1, owner: "niklam", statusField: "Status" };
 
 // ---------------------------------------------------------------------------
@@ -515,15 +518,20 @@ export function workspacePackages(root) {
 
 /** The board's node id plus its Status field and option ids, read fresh — never hardcoded (the ids regenerate if the option list is ever rewritten). */
 export function boardStatusField(cwd) {
-  const project = ghJson(["project", "view", String(BOARD.number), "--owner", BOARD.owner, "--format", "json"], cwd);
+  const projectId = boardProjectId(cwd);
   const fields = ghJson(
     ["project", "field-list", String(BOARD.number), "--owner", BOARD.owner, "--format", "json"],
     cwd,
   );
   const status = fields?.fields?.find((f) => f.name === BOARD.statusField);
-  if (!project?.id || !status?.id) return undefined;
+  if (!projectId || !status?.id) return undefined;
   const options = Object.fromEntries((status.options ?? []).map((o) => [o.name, o.id]));
-  return { projectId: project.id, fieldId: status.id, options };
+  return { projectId, fieldId: status.id, options };
+}
+
+/** The board's node id, or `undefined` when gh cannot read it. */
+function boardProjectId(cwd) {
+  return ghJson(["project", "view", String(BOARD.number), "--owner", BOARD.owner, "--format", "json"], cwd)?.id;
 }
 
 /** The board item for an issue: `{ itemId, status }`, or `undefined` when the issue is not on the board. */
@@ -538,12 +546,64 @@ export function boardItemForIssue(issueNumber, cwd) {
   return { itemId: node.id, status: node.fieldValueByName?.name ?? "(none)" };
 }
 
-/** Lanes a card may be moved FROM for each automated move — never backwards (a Done card stays Done). */
+/**
+ * Lanes a card may be moved FROM for each automated move — never backwards (a
+ * Done card stays Done). `Next` is the PO's (#1520): it orders the milestone
+ * Niklas planned, so a card enters from Backlog or Planned, never back from
+ * work that has started. `Dropped` is for an issue closed as not planned or a
+ * duplicate, which whoever closes it moves by hand (`build-and-commit.md`): from
+ * any lane before Testing, since a merged or shipped card is never dropped.
+ */
 export const BOARD_MOVES = {
   Backlog: ["(none)"],
+  Next: ["(none)", "Backlog", "Planned"],
   "In progress": ["(none)", "Backlog", "Planned", "Next"],
   Testing: ["(none)", "Backlog", "Planned", "Next", "In progress"],
+  Dropped: ["(none)", "Backlog", "Planned", "Next", "In progress"],
 };
+
+/** Lanes whose cards are history — merged, shipped or closed — so their order is never moved. */
+const FROZEN_LANES = ["Testing", "Done", "Dropped"];
+
+/**
+ * Moves an issue's card within its lane (#1520): to the top for a null
+ * `afterIssueNumber`, otherwise right after that issue's card, which must be
+ * in the same lane. GitHub keeps one item order for the whole project
+ * (`updateProjectV2ItemPosition`) and a lane shows its cards in that order,
+ * so "top of the project" is the top of the card's lane. To put a milestone's
+ * cards at the top of `Next` in order, move the first with `null` and each
+ * next one after the one before it; other cards keep their relative order
+ * below. A card in Testing, Done or Dropped is never moved. Returns a
+ * human-readable line either way; `IRACEDECK_HOOKS_DRY_RUN=1` reports the
+ * move instead of making it.
+ */
+export function moveBoardItemAfter(issueNumber, afterIssueNumber, cwd) {
+  if (afterIssueNumber === issueNumber) return `board: cannot place #${issueNumber} after itself`;
+  const item = boardItemForIssue(issueNumber, cwd);
+  if (!item) return `board: #${issueNumber} is not on the Roadmap board`;
+  if (FROZEN_LANES.includes(item.status))
+    return `board: #${issueNumber} is in ${item.status}; its position is not moved (${FROZEN_LANES.join("/")} are history)`;
+  let after;
+  if (afterIssueNumber != null) {
+    after = boardItemForIssue(afterIssueNumber, cwd);
+    if (!after) return `board: #${afterIssueNumber} is not on the Roadmap board`;
+    if (after.status !== item.status)
+      return `board: #${afterIssueNumber} is in ${after.status}, not ${item.status}; place #${issueNumber} after a card in its own lane`;
+  }
+  const where = after ? `after #${afterIssueNumber} in ${item.status}` : `to the top of ${item.status}`;
+  if (dryRun()) return `board (dry run): would move #${issueNumber} ${where}`;
+  const project = boardProjectId(cwd);
+  if (!project)
+    return `board: could not read the project (missing \`project\` token scope? \`gh auth refresh -s project,read:project\`)`;
+  // GitHub refuses a declared variable the query does not use, so the top move declares no `$after`.
+  const query = after
+    ? "mutation($project:ID!,$item:ID!,$after:ID!){updateProjectV2ItemPosition(input:{projectId:$project,itemId:$item,afterId:$after}){clientMutationId}}"
+    : "mutation($project:ID!,$item:ID!){updateProjectV2ItemPosition(input:{projectId:$project,itemId:$item}){clientMutationId}}";
+  const vars = { project, item: item.itemId, ...(after ? { after: after.itemId } : {}) };
+  return ghGraphql(query, vars, cwd)
+    ? `board: #${issueNumber} moved ${where}`
+    : `board: moving #${issueNumber} ${where} failed (gh or GitHub refused the mutation)`;
+}
 
 /** Set `IRACEDECK_HOOKS_DRY_RUN=1` to have every board mutation report instead of run (tests, pipe-checks). */
 export const dryRun = () => !!process.env.IRACEDECK_HOOKS_DRY_RUN;

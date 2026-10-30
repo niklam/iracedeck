@@ -15,6 +15,8 @@ import {
   issueFromWorktreePath,
   maskInert,
   matchAt,
+  POWERSHELL,
+  resolveDir,
   trustedMask,
   words,
   worktreeAddTarget,
@@ -96,6 +98,102 @@ describe("helpers", () => {
   });
 });
 
+// #1520: Git Bash spells a drive `/c/…` and hands native programs `C:/…`, while
+// `path.resolve` reads `/c/…` as a folder `c` at the root of the current drive.
+// That put `cd /c/…/master && pnpm build` in a `C:\c\…` no deck link points into.
+describe("resolveDir: a Git Bash drive path names its drive", () => {
+  const BASE = "C:\\repo\\master";
+  const win = { platform: "win32" };
+  it("maps /c/…, /C/…, a bare /d and /cygdrive/c/… on Windows", () => {
+    expect(resolveDir(BASE, "/c/Users/x", win)).toBe("C:\\Users\\x");
+    expect(resolveDir(BASE, "/C/Users/x/", win)).toBe("C:\\Users\\x");
+    expect(resolveDir(BASE, "/d", win)).toBe("D:\\");
+    expect(resolveDir(BASE, "/cygdrive/c/Users/x", win)).toBe("C:\\Users\\x");
+    expect(resolveDir(BASE, "/cygdrive/d", win)).toBe("D:\\");
+  });
+  it("leaves every other spelling to path.resolve", () => {
+    expect(resolveDir(BASE, "../ir-5", win)).toBe("C:\\repo\\ir-5");
+    expect(resolveDir(BASE, "C:/Users/x", win)).toBe("C:\\Users\\x");
+    expect(resolveDir(BASE, "D:\\x", win)).toBe("D:\\x");
+    // Not a drive: a longer first segment, or a letter that does not end it.
+    expect(resolveDir(BASE, "/cc/x", win)).toBe("C:\\cc\\x");
+    expect(resolveDir(BASE, "/c-x/y", win)).toBe("C:\\c-x\\y");
+    expect(resolveDir(BASE, "/cygdrive/cc", win)).toBe("C:\\cygdrive\\cc");
+  });
+  it("reads /c/… as PowerShell does there: a folder at the root of the drive", () =>
+    expect(resolveDir(BASE, "/c/Users/x", { ...win, shell: POWERSHELL })).toBe("C:\\c\\Users\\x"));
+  it("off Windows /c is a real directory", () => {
+    expect(resolveDir("/repo/master", "/c/Users/x", { platform: "linux" })).toBe("/c/Users/x");
+    expect(resolveDir("/repo/master", "../ir-5", { platform: "linux" })).toBe("/repo/ir-5");
+  });
+  // Positive control: the plain resolve every guard used to call lands elsewhere.
+  it("is needed: path.win32.resolve misreads the same path", () =>
+    expect(path.win32.resolve(BASE, "/c/Users/x")).toBe("C:\\c\\Users\\x"));
+});
+
+// The guards resolve with the real platform, so these run where Git Bash does.
+// Off Windows the resolver's own tests above are the coverage.
+describe.runIf(process.platform === "win32")("every guard reads a Git Bash drive path (#1520)", () => {
+  /** `C:\repo\x` spelled as Git Bash spells it: `/c/repo/x`. */
+  const gitBash = (p) => p.replace(/^([A-Za-z]):[\\/]/, (_, d) => `/${d.toLowerCase()}/`).replace(/\\/g, "/");
+  const IR5 = tree("ir-5");
+  const INTEGRATION = tree("ir-integration");
+  const linkedMaster = ctx({
+    cwd: IR5,
+    linkTargets: () => [{ host: "Stream Deck", target: path.join(MASTER, "packages", "plugin") }],
+    toplevel: (d) => [MASTER, IR5, INTEGRATION].find((r) => isInside(d, r)),
+  });
+
+  // Positive control: without the mapping these paths resolve away from the tree they name.
+  it("would be misread by a plain resolve", () => {
+    expect(gitBash(MASTER)).toMatch(/^\/[a-z]\/repo\/master$/);
+    expect(path.resolve(IR5, gitBash(MASTER))).not.toBe(MASTER);
+  });
+
+  it("gitCwd follows a cd and a git -C spelled the Git Bash way", () => {
+    const status = cmd(/git\s+(?:-C\s+\S+\s+)?status\b/);
+    expect(gitCwd(`cd ${gitBash(IR5)} && git status`, MASTER, status)).toBe(IR5);
+    expect(gitCwd(`git -C ${gitBash(IR5)} status`, MASTER, status)).toBe(IR5);
+    expect(gitCwd(`cd /cygdrive/${gitBash(IR5).slice(1)} && git status`, MASTER, status)).toBe(IR5);
+  });
+
+  it("asks for a build or an install in the linked tree, through a cd or a pnpm -C", () => {
+    asks(`cd ${gitBash(MASTER)} && pnpm build`, linkedMaster);
+    asks(`pnpm -C ${gitBash(MASTER)} install`, linkedMaster);
+    asks(`pnpm --dir=${gitBash(MASTER)} build`, linkedMaster);
+    asks(`cd /cygdrive/${gitBash(MASTER).slice(1)} && pnpm build`, linkedMaster);
+  });
+  it("passes the same build in an unlinked tree", () => {
+    passes(`cd ${gitBash(IR5)} && pnpm build`, linkedMaster);
+    passes(`pnpm -C ${gitBash(IR5)} install`, linkedMaster);
+  });
+
+  it("denies an integration push from a git -C or cd to the tree, by its branch or its top level", () => {
+    // `toplevel` answers only for real trees and the basename is `packages`/`ir-5`,
+    // so the deny cannot come from the directory's own name.
+    const byBranch = ctx({
+      branch: (d) => (isInside(d, IR5) ? "integration" : "master"),
+      toplevel: () => undefined,
+    });
+    expect(deny(`git -C ${gitBash(IR5)} push`, byBranch)).toMatch(/never pushed/);
+    expect(deny(`cd ${gitBash(IR5)} && git push`, byBranch)).toMatch(/never pushed/);
+    const byTop = ctx({ toplevel: (d) => (isInside(d, INTEGRATION) ? INTEGRATION : undefined) });
+    expect(deny(`git -C ${gitBash(path.join(INTEGRATION, "packages"))} push`, byTop)).toMatch(/never pushed/);
+    passes(`git -C ${gitBash(path.join(IR5, "packages"))} push`, byTop);
+  });
+
+  it("judges a worktree add or remove at a Git Bash path", () => {
+    passes(`git worktree add ${gitBash(tree("ir-1"))} -b fix/1-x`);
+    expect(deny(`git worktree add ${gitBash(path.join(MASTER, ".worktrees", "ir-1"))} -b x`)).toMatch(/siblings/);
+    expect(
+      deny(
+        `git worktree remove ${gitBash(tree("ir-1"))}`,
+        ctx({ linkTargets: () => [{ host: "Stream Deck", target: tree("ir-1", "plugin") }] }),
+      ),
+    ).toMatch(/Stream Deck plugin link/);
+  });
+});
+
 describe("harmless commands pass", () => {
   it.each([
     "ls",
@@ -172,6 +270,82 @@ describe("git push", () => {
     expect(asks("git push --tags")).toMatch(/release/);
   });
   it("ignores --dry-run", () => passes("git push --dry-run origin v3.2.0"));
+
+  // #1520: `integration` is a local branch reset to origin/master and merged
+  // into for every combined build — never a branch anyone else should see.
+  describe("the integration branch is never pushed", () => {
+    const INTEGRATION = tree("ir-integration");
+    const inTree = (o = {}) =>
+      ctx({ branch: (d) => (d === INTEGRATION ? "integration" : "master"), toplevel: (d) => d, ...o });
+    it.each([
+      "git push origin integration",
+      "git push -u origin integration",
+      "git push origin integration:integration",
+      "git push origin +integration",
+      "git push origin refs/heads/integration",
+      "git push origin HEAD:integration",
+      "git push origin ir-5:integration",
+      "git push --force origin integration 2>&1 | tail -2",
+      "git -C ../ir-integration push origin integration",
+      "git status && git push origin integration",
+    ])("denies a refspec naming it: %s", (c) => expect(deny(c, inTree())).toMatch(/integration.*never pushed/));
+    it.each(["git push", "git push origin", "git push -u origin HEAD", "git push origin @"])(
+      "denies a bare or HEAD push from inside the tree: %s",
+      (c) => expect(deny(c, inTree({ cwd: INTEGRATION }))).toMatch(/never pushed/),
+    );
+    it("follows a cd and a git -C into the tree", () => {
+      expect(deny("cd ../ir-integration && git push", inTree())).toMatch(/never pushed/);
+      expect(deny("git -C ../ir-integration push -u origin HEAD", inTree())).toMatch(/never pushed/);
+      expect(deny("git -C ../ir-integration/packages push", inTree({ toplevel: () => INTEGRATION }))).toMatch(
+        /never pushed/,
+      );
+    });
+    it("knows the branch by name wherever it is checked out", () =>
+      expect(deny("git push", ctx({ branch: () => "integration" }))).toMatch(/never pushed/));
+    it("denies --all and --mirror, which carry every local branch, integration with them", () => {
+      expect(deny("git push --all origin")).toMatch(/never pushed/);
+      expect(deny("git push --mirror origin")).toMatch(/never pushed/);
+    });
+    it("lets every other push through, from either tree", () => {
+      passes("git push origin master", inTree());
+      passes("git push", inTree());
+      passes("git push -u origin feature/1520-integration-tests", inTree());
+      passes("git push origin ir-5:ir-5", inTree({ cwd: INTEGRATION }));
+      passes("cd ../ir-integration && git fetch origin && cd ../master && git push", inTree());
+      passes("git -C ../ir-integration fetch && git push", inTree());
+      passes("git push --dry-run origin integration", inTree());
+    });
+    it("is not fooled by a mention", () => {
+      passes(`echo "git push origin integration"`, inTree());
+      passes(`git commit -q -m "never git push origin integration" -- x.md`, inTree());
+    });
+    // Second read: a glob pushes every branch it matches, `heads/` is a ref
+    // name git resolves, and a revision suffix still names the branch's commit.
+    it.each([
+      "git push origin 'refs/heads/*'",
+      "git push origin 'refs/heads/*:refs/heads/*'",
+      "git push origin '+refs/heads/*:refs/remotes/mirror/*'",
+      "git push origin 'refs/heads/int*'",
+      "git push origin heads/integration",
+      "git push origin refs/heads/integration:heads/integration",
+      "git push origin integration~0",
+      "git push origin integration^0",
+      "git push origin 'integration@{0}'",
+      "git push origin 'integration^{commit}:refs/heads/x'",
+      "git push origin integration~0:ir-5",
+    ])("denies a glob, a heads/ name or a revision of it: %s", (c) =>
+      expect(deny(c, inTree())).toMatch(/never pushed/),
+    );
+    it("denies a revision of HEAD from inside the tree", () =>
+      expect(deny("git push origin HEAD~0:ir-5", inTree({ cwd: INTEGRATION }))).toMatch(/never pushed/));
+    it("lets a glob or a name that cannot reach it through", () => {
+      passes("git push origin 'refs/tags/*'", inTree());
+      passes("git push origin 'refs/heads/feature/*'", inTree());
+      passes("git push origin integration-tests", inTree());
+      passes("git push origin heads/ir-5", inTree());
+      passes("git push origin HEAD~0:ir-5", inTree());
+    });
+  });
 });
 
 describe("gh pr create", () => {
@@ -1346,6 +1520,25 @@ describe("git worktree add", () => {
   it("passes when offline (freshness unknown)", () =>
     passes("git worktree add ../ir-1", ctx({ originFresh: () => undefined })));
 
+  // #1520: the one permanent tree the deck links to for combined manual tests.
+  describe("the integration tree", () => {
+    it("accepts ../ir-integration, with no spec gate since it names no issue", () =>
+      passes("git worktree add ../ir-integration -b integration origin/master", ctx({ specFiles: () => [] })));
+    it("still refuses every other name, near misses included", () => {
+      for (const name of ["ir-integrations", "ir-Integration", "integration", "ir-integration-2", "ir-"])
+        expect(deny(`git worktree add ../${name} -b x`)).toMatch(/ir-<issue>/);
+    });
+    it("still has to be a fresh sibling", () => {
+      expect(deny("git worktree add .worktrees/ir-integration -b integration")).toMatch(/siblings/);
+      expect(
+        deny(
+          "git worktree add ../ir-integration -b integration",
+          ctx({ originFresh: () => ({ fresh: false, local: "a", remote: "b" }) }),
+        ),
+      ).toMatch(/stale/);
+    });
+  });
+
   // #1193: 47 of 56 enhancement issues since the #621 policy had a spec, and
   // nothing checked the other nine. The worktree is the last moment before
   // implementation where the issue number is known.
@@ -1392,6 +1585,447 @@ describe("git worktree remove", () => {
       "git -c core.longpaths=true worktree remove --force ../ir-1",
       ctx({ linkTargets: () => [{ host: "Stream Deck", target: tree("master", "p") }] }),
     ));
+});
+
+// #1520: Niklas may be racing on the plugin a deck host runs, and a restart, a
+// relink or a build that replaces files under it breaks that session.
+describe("nothing builds or restarts in a deck-linked tree without Niklas's go", () => {
+  const ROOTS = [MASTER, tree("ir-5"), tree("ir-integration")];
+  const linkedTo = (root, host = "Stream Deck") =>
+    ctx({
+      linkTargets: () => [
+        { host, target: path.join(root, "packages", "iracing-plugin-stream-deck", "com.iracedeck.sd.core.sdPlugin") },
+        { host: "Ulanzi", target: undefined },
+      ],
+      toplevel: (d) => ROOTS.find((r) => isInside(d, r)),
+    });
+  const linked = linkedTo(MASTER);
+  const elsewhere = linkedTo(tree("ir-integration"));
+
+  it.each([
+    "pnpm build:with-restart",
+    "pnpm run build:with-restart",
+    "pnpm build:stream-deck",
+    "pnpm restart:stream-deck",
+    "pnpm watch:stream-deck",
+    "pnpm link:mirabox",
+    "pnpm relink:stream-deck",
+    "pnpm unlink:ulanzi",
+    "pnpm -C ../ir-5 restart:stream-deck",
+    "node scripts/integration-build.mjs fix/1-a feature/2-b",
+    "node ../master/scripts/integration-build.mjs fix/1-a",
+    "node scripts/build-with-restart.mjs",
+    "streamdeck restart com.iracedeck.sd.core",
+    "streamdeck link packages/x",
+    "git status && pnpm restart:stream-deck",
+    "npm run restart:stream-deck",
+    "npm run build:with-restart",
+    "node scripts/link-mirabox.mjs",
+    "node scripts/unlink-ulanzi.mjs",
+  ])("always asks, linked or not: %s", (c) => {
+    expect(asks(c, elsewhere)).toMatch(/Niklas/);
+    expect(asks(c, ctx())).toMatch(/Niklas/);
+  });
+
+  it.each([
+    "pnpm build",
+    "pnpm run build",
+    "pnpm build:ts",
+    "pnpm build:force",
+    "pnpm install",
+    "pnpm i",
+    "pnpm --filter @iracedeck/logger build",
+    "pnpm dev:voices on",
+    "set -o pipefail; pnpm build 2>&1 | tail -5",
+    "pnpm test && pnpm build",
+    "pnpm install --frozen-lockfile && pnpm typecheck",
+    // npm runs the same scripts, and installs (#1520).
+    "npm run build",
+    "npm run-script build:ts",
+    "npm run build -- --force",
+    "npm install",
+    "npm i",
+    "npm ci",
+    "npm --workspace @iracedeck/logger run build",
+    // turbo is what `build:ts` and `build:force` run, reachable without pnpm's script.
+    "pnpm turbo build",
+    "pnpm turbo run build --filter=@iracedeck/logger",
+    "pnpm exec turbo run build",
+    "pnpm dlx turbo build",
+    "npx turbo run build",
+    "npx turbo build",
+    "npx --yes turbo@2.5.0 run build",
+    "npm exec turbo run build",
+    "npm exec -- turbo build",
+    "turbo run build",
+    "turbo build",
+    "turbo run lint build",
+    "turbo watch build",
+    "turbo run dev",
+    "node_modules/.bin/turbo run build",
+    // The root `build` and `dev:voices` scripts, run directly.
+    "node scripts/build.mjs",
+    "node scripts/dev-voices.mjs on",
+  ])("asks in the linked tree, and passes in an unlinked one: %s", (c) => {
+    expect(asks(c, linked)).toMatch(/Stream Deck plugin link points into .*master/);
+    passes(c, elsewhere);
+  });
+
+  it("moves npm by --prefix / -C and turbo by --cwd, as pnpm by -C", () => {
+    asks("npm --prefix ../ir-integration run build", elsewhere);
+    asks("npm run build --prefix=../ir-integration", elsewhere);
+    asks("npm -C ../ir-integration install", elsewhere);
+    passes("npm --prefix ../ir-5 run build", linked);
+    asks("turbo run build --cwd ../ir-integration", elsewhere);
+    asks("turbo run build --cwd=../ir-integration", elsewhere);
+    passes("turbo run build --cwd ../ir-5", linked);
+    asks("pnpm -C ../ir-integration exec turbo run build", elsewhere);
+    asks("cd ../ir-integration && npx turbo run build", elsewhere);
+  });
+
+  it("passes npm and turbo commands that write nothing under the plugin", () => {
+    for (const c of [
+      "npm test",
+      "npm run test",
+      "npm run typecheck",
+      "npm run lint -- --fix",
+      "npm --version",
+      "npm view turbo version",
+      "npx prettier --check .",
+      "npx turbo run test",
+      "pnpm exec turbo run lint typecheck",
+      "pnpm exec tsc --noEmit",
+      "turbo run test",
+      "turbo --version",
+      "turbo run test --filter=build",
+    ])
+      passes(c, linked);
+  });
+
+  it("is not fooled by an npm or turbo mention", () => {
+    passes(`echo "npm run build"`, linked);
+    passes(`grep -n "turbo run build" turbo.json`, linked);
+  });
+
+  it("judges the tree the command runs in: a cd, a pnpm -C or --dir, a subdirectory", () => {
+    asks("cd ../ir-integration && pnpm build", elsewhere);
+    passes("cd ../ir-5 && pnpm build", linked);
+    asks("pnpm -C ../ir-integration build", elsewhere);
+    asks("pnpm --dir ../ir-integration install", elsewhere);
+    asks("pnpm --dir=../ir-integration build", elsewhere);
+    passes("pnpm -C ../ir-5 build", linked);
+    asks("cd packages/logger && pnpm build", linked);
+    asks("cd ../ir-5 && pnpm build && cd ../master && pnpm install", linked);
+  });
+
+  it("is not moved by a git -C, which is git's own", () => {
+    passes("git -C ../ir-integration status && pnpm build", elsewhere);
+    asks("git -C ../ir-5 log -1 && pnpm build", linked);
+  });
+
+  it("names every host linked into the tree", () =>
+    expect(
+      asks(
+        "pnpm build",
+        ctx({
+          linkTargets: () => [
+            { host: "Stream Deck", target: path.join(MASTER, "a") },
+            { host: "Mirabox", target: path.join(MASTER, "b") },
+          ],
+        }),
+      ),
+    ).toMatch(/Stream Deck and Mirabox/));
+
+  it("passes what never replaces the running plugin, linked or not", () => {
+    for (const c of ["pnpm test", "pnpm typecheck", "pnpm lint", "pnpm format:fix", "pnpm test scripts/claude-hooks"])
+      passes(c, linked);
+  });
+
+  it("passes a host's packaged install, which is no link at all", () =>
+    passes(
+      "pnpm build",
+      ctx({ linkTargets: () => [{ host: "Stream Deck", target: "(a real directory, not a link)" }] }),
+    ));
+
+  it("is not fooled by a mention", () => {
+    passes(`echo "pnpm build:with-restart"`, linked);
+    passes(`grep -n "pnpm install" README.md`, linked);
+    passes(`git commit -q -m "run pnpm restart:stream-deck later" -- x.md`, linked);
+  });
+
+  // Second read (#1520): the root scripts that stop, start, clean or switch a
+  // host were not on the name lists. They stay there as the floor, for a
+  // package.json the hook cannot read.
+  it.each([
+    "pnpm switch-test-env",
+    "pnpm switch-test-env:mirabox",
+    "pnpm stop:stream-deck",
+    "pnpm stop:mirabox",
+    "pnpm start:stream-deck",
+    "pnpm start:ulanzi",
+    "node --run restart:stream-deck",
+  ])("always asks by name, with no package.json to read: %s", (c) => {
+    expect(asks(c, elsewhere)).toMatch(/Niklas/);
+    expect(asks(c, ctx())).toMatch(/Niklas/);
+  });
+  it.each(["pnpm clean", "pnpm precommit", "node --run build", "node --run=build", "turbo run clean"])(
+    "asks by name in the linked tree only: %s",
+    (c) => {
+      asks(c, linked);
+      passes(c, elsewhere);
+    },
+  );
+
+  it.each([
+    "streamdeck.cmd restart com.iracedeck.sd.core",
+    "streamdeck.exe link packages/x",
+    "streamdeck.ps1 unlink -d com.iracedeck.sd.core",
+    "node_modules/.bin/streamdeck restart com.iracedeck.sd.core",
+    "pnpm exec streamdeck restart com.iracedeck.sd.core",
+    "pnpm streamdeck restart com.iracedeck.sd.core",
+    "pnpm dlx streamdeck stop com.iracedeck.sd.core",
+    "npx streamdeck restart com.iracedeck.sd.core",
+    "npx --yes streamdeck link packages/x",
+    "npm exec streamdeck unlink -d com.iracedeck.sd.core",
+  ])("asks for the Stream Deck CLI behind any lead: %s", (c) => expect(asks(c, ctx())).toMatch(/deck host/));
+  it("passes the Stream Deck CLI's harmless verbs", () => {
+    passes("npx streamdeck --version", ctx());
+    passes("pnpm exec streamdeck validate packages/x", ctx());
+  });
+
+  it.each([
+    "taskkill /IM StreamDeck.exe /F",
+    "taskkill /F /IM UlanziDeck.exe",
+    "taskkill /im streamdock.exe",
+    'start /B "" "C:\\Program Files\\Elgato\\StreamDeck\\StreamDeck.exe"',
+    "node scripts/host-app.mjs stop mirabox",
+    "node ../master/scripts/host-app.mjs start ulanzi",
+  ])("always asks for what stops or starts a host app: %s", (c) => expect(asks(c, ctx())).toMatch(/Niklas/));
+  it("passes what stops or starts something else", () => {
+    passes("taskkill /IM notepad.exe /F", ctx());
+    passes("start https://iracedeck.com", ctx());
+    passes("node scripts/host-app.mjs", ctx());
+  });
+
+  it("asks for a rimraf of a linked plugin's files, and passes one elsewhere", () => {
+    const bin = "packages/iracing-plugin-stream-deck/com.iracedeck.sd.core.sdPlugin/bin";
+    asks(`rimraf ${bin}/plugin.js`, linked);
+    asks(`pnpm exec rimraf ${bin}`, linked);
+    asks("npx rimraf packages/iracing-plugin-stream-deck", linked);
+    asks(`cd packages/iracing-plugin-stream-deck && rimraf com.iracedeck.sd.core.sdPlugin/bin/plugin.js`, linked);
+    passes(`rimraf ${bin}`, elsewhere);
+    passes("rimraf packages/logger/dist", linked);
+  });
+});
+
+// Second read (#1520): a script name is a list that is always one behind, so
+// a pnpm, npm or `node --run` script is judged by the command line it runs,
+// read from the package.json of the directory it runs in.
+describe("a script is judged by what it runs", () => {
+  const IR5 = tree("ir-5");
+  const pluginOf = (root) => path.join(root, "packages", "iracing-plugin-stream-deck");
+  const ROOT_SCRIPTS = {
+    test: "vitest run --configLoader native",
+    lint: 'eslint "packages/*/src/**" "**/*.mjs"',
+    typecheck: "turbo run typecheck",
+    build: "node scripts/build.mjs",
+    hostkill: "taskkill /IM StreamDeck.exe /F || exit 0",
+    hoststart: 'start /B "" "C:\\Program Files\\Elgato\\StreamDeck\\StreamDeck.exe',
+    "ulanzi-off": "node scripts/host-app.mjs stop ulanzi",
+    swap: "pnpm install && pnpm build && pnpm relink:mirabox",
+    wrapped: "pnpm swap",
+    scrub: "turbo run wipe",
+    "plugin-reload": "pnpm --filter @iracedeck/iracing-plugin-stream-deck reload",
+    "loop-a": "pnpm loop-b",
+    "loop-b": "pnpm loop-a",
+    "loop-c": "pnpm loop-d",
+    "loop-d": "pnpm loop-c && pnpm relink:ulanzi",
+    tidy: "pnpm clean",
+    deep: "pnpm deep1",
+    ...Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`deep${i + 1}`, `pnpm deep${i + 2}`])),
+    deep21: "pnpm relink:ulanzi",
+  };
+  const PLUGIN_SCRIPTS = {
+    clean: "rimraf com.iracedeck.sd.core.sdPlugin/bin/plugin.js",
+    wipe: "rimraf com.iracedeck.sd.core.sdPlugin/bin",
+    typecheck: "tsc --noEmit",
+    reload: "streamdeck restart com.iracedeck.sd.core",
+  };
+  const manifests = {};
+  for (const root of [MASTER, IR5]) {
+    manifests[root] = { name: "iracedeck", scripts: ROOT_SCRIPTS };
+    manifests[pluginOf(root)] = { name: "@iracedeck/iracing-plugin-stream-deck", scripts: PLUGIN_SCRIPTS };
+    manifests[path.join(root, "packages", "logger")] = {
+      name: "@iracedeck/logger",
+      scripts: { clean: "rimraf dist", typecheck: "tsc --noEmit" },
+    };
+  }
+  const scriptsAt = (dir) => {
+    for (let d = dir; ; d = path.dirname(d)) {
+      if (manifests[d]) return { dir: d, ...manifests[d] };
+      if (path.dirname(d) === d) return undefined;
+    }
+  };
+  const workspaceDirs = (root) => Object.keys(manifests).filter((d) => path.dirname(d) === path.join(root, "packages"));
+  const at = (linkRoot, o = {}) =>
+    ctx({
+      linkTargets: () => [
+        { host: "Stream Deck", target: path.join(pluginOf(linkRoot), "com.iracedeck.sd.core.sdPlugin") },
+      ],
+      toplevel: (d) => [MASTER, IR5].find((r) => isInside(d, r)),
+      scriptsAt,
+      workspaceDirs,
+      packages: () => ({
+        "@iracedeck/iracing-plugin-stream-deck": { dir: pluginOf(MASTER), scripts: Object.keys(PLUGIN_SCRIPTS) },
+      }),
+      ...o,
+    });
+  const linked = at(MASTER);
+  const elsewhere = at(tree("ir-integration"));
+
+  it.each([
+    "pnpm hostkill",
+    "pnpm run hostkill",
+    "pnpm hoststart",
+    "pnpm ulanzi-off",
+    "pnpm swap",
+    "pnpm wrapped",
+    "pnpm plugin-reload",
+    "pnpm --filter @iracedeck/iracing-plugin-stream-deck reload",
+    "pnpm --filter=@iracedeck/iracing-plugin-stream-deck run reload",
+    "pnpm -C packages/iracing-plugin-stream-deck reload",
+    "cd packages/iracing-plugin-stream-deck && pnpm reload",
+    "npm run hostkill",
+    "npm --prefix ../ir-5 run swap",
+    "node --run hostkill",
+    "node --run=swap",
+    "cd ../ir-5 && pnpm swap",
+  ])("asks for what the script runs, linked or not: %s", (c) => {
+    expect(asks(c, elsewhere)).toMatch(/Niklas/);
+    expect(asks(c, linked)).toMatch(/Niklas/);
+  });
+
+  it("names the script and what it reached", () =>
+    expect(asks("pnpm wrapped", elsewhere)).toMatch(/`pnpm wrapped` → `pnpm swap` → `pnpm relink:mirabox`/));
+
+  it.each(["pnpm scrub", "pnpm tidy", "turbo run wipe"])("follows turbo to each package's script: %s", (c) => {
+    expect(asks(c, linked)).toMatch(c === "pnpm tidy" ? /pnpm clean/ : /rimraf .*deletes files/);
+    passes(c, elsewhere);
+  });
+
+  it("passes what reaches no build, restart or plugin file", () => {
+    for (const c of ["pnpm test", "pnpm lint", "pnpm typecheck", "pnpm test scripts/claude-hooks", "node --run test"])
+      passes(c, linked);
+  });
+  it("passes a build in an unlinked tree", () => passes("pnpm build", at(MASTER, { cwd: IR5 })));
+
+  it("stops at a cycle, and still judges what the cycle runs", () => {
+    passes("pnpm loop-a", linked);
+    expect(asks("pnpm loop-c", elsewhere)).toMatch(/relink:ulanzi/);
+  });
+  it("stops at its depth bound, where the name is all it judges", () => passes("pnpm deep", elsewhere));
+
+  it("falls back to the name when the script cannot be read", () => {
+    passes("pnpm no-such-script", linked);
+    passes("pnpm hostkill", at(MASTER, { scriptsAt: () => undefined }));
+    passes("pnpm --filter ./packages/* reload", linked);
+    expect(asks("pnpm stop:stream-deck", at(MASTER, { scriptsAt: () => undefined }))).toMatch(/Niklas/);
+  });
+
+  it("does not read a pnpm built-in as a script", () =>
+    passes(
+      "pnpm install",
+      at(MASTER, { cwd: IR5, scriptsAt: () => ({ dir: IR5, scripts: { install: "pnpm relink:x" } }) }),
+    ));
+});
+
+// #1520: PowerShell is this environment's primary shell, and its commands
+// reached no guard. They get every rule that is not bash syntax.
+describe("PowerShell commands", () => {
+  const ROOTS = [MASTER, tree("ir-5"), tree("ir-integration")];
+  const ps = (root, o = {}) =>
+    ctx({
+      shell: POWERSHELL,
+      linkTargets: () => [{ host: "Stream Deck", target: path.join(root, "packages", "plugin") }],
+      toplevel: (d) => ROOTS.find((r) => isInside(d, r)),
+      ...o,
+    });
+  const linked = ps(MASTER);
+  const elsewhere = ps(tree("ir-integration"));
+
+  it("asks for a build in the linked tree and passes it elsewhere", () => {
+    expect(asks("pnpm build", linked)).toMatch(/Stream Deck plugin link points into .*master/);
+    passes("pnpm build", elsewhere);
+    asks("npm run build", linked);
+    asks("& pnpm install", linked);
+    asks("pnpm restart:stream-deck", elsewhere);
+  });
+
+  it("splits a chain at ; and newlines, and moves the base by cd and Set-Location", () => {
+    asks("git status; pnpm build", linked);
+    asks("git status\npnpm build", linked);
+    for (const c of [
+      "cd ../ir-integration; pnpm build",
+      "cd ..\\ir-integration; pnpm build",
+      "Set-Location ..\\ir-integration; pnpm build",
+      "set-location -Path '..\\ir-integration'; pnpm install",
+      'Set-Location -LiteralPath "..\\ir-integration" && pnpm build',
+      "sl ../ir-integration\npnpm build",
+      "chdir ../ir-integration; pnpm build",
+    ])
+      asks(c, elsewhere);
+    passes("Set-Location ..\\ir-5; pnpm build", linked);
+    passes("cd -; pnpm build", elsewhere); // unknowable, stays put
+  });
+
+  it("reads PowerShell's escapes, not bash's: a backtick continues a line, a backslash is a character", () => {
+    asks("pnpm `\n  build", linked);
+    asks("pnpm `\r\n  build", linked);
+    // `"C:\x\"` ends at its quote in PowerShell; bash would read `\"` as escaped and hide the build.
+    asks(`Write-Output "C:\\x\\"; pnpm build; Write-Output "C:\\y\\"`, linked);
+    // A backtick-escaped quote or semicolon is a literal character.
+    passes('Write-Output "a`"; pnpm build`""', linked);
+    passes("Write-Output a`; pnpm build", linked);
+  });
+
+  it("denies an integration push, from the tree or by refspec", () => {
+    const INTEGRATION = tree("ir-integration");
+    const inTree = ctx({ shell: POWERSHELL, branch: (d) => (d === INTEGRATION ? "integration" : "master") });
+    expect(deny("git push origin integration", inTree)).toMatch(/never pushed/);
+    expect(deny("Set-Location ..\\ir-integration; git push", inTree)).toMatch(/never pushed/);
+    expect(deny("git -C ..\\ir-integration push -u origin HEAD", inTree)).toMatch(/never pushed/);
+    passes("git push origin master", inTree);
+  });
+
+  it("asks for a PowerShell stop or start of a host app", () => {
+    for (const c of [
+      "Stop-Process -Name StreamDeck -Force",
+      "spps -Name UlanziDeck",
+      "Start-Process 'C:\\Program Files\\Elgato\\StreamDeck\\StreamDeck.exe'",
+      'start-process "C:\\Program Files (x86)\\Ulanzi Studio\\UlanziDeck.exe"',
+    ])
+      expect(asks(c, elsewhere)).toMatch(/stops or starts a deck host app/);
+    passes("Stop-Process -Name notepad", elsewhere);
+  });
+
+  it("keeps the shell-agnostic guards", () => {
+    expect(asks("git push origin v3.2.0", ctx({ shell: POWERSHELL }))).toMatch(/release/);
+    expect(deny("pnpm exec vitest run", ctx({ shell: POWERSHELL }))).toMatch(/vitest/);
+    expect(deny("git worktree add ..\\feature-x -b x", ctx({ shell: POWERSHELL }))).toMatch(/ir-<issue>/);
+  });
+
+  // The bash-syntax traps describe bash; in PowerShell they would only misfire.
+  it.each([
+    ["a heredoc carrying a doubled-backslash path", "Write-Output 'x' <<EOF C:\\\\Users"],
+    ["a piped build without pipefail", "pnpm build 2>&1 | Select-Object -Last 5"],
+    ["jq", "gh pr view --json title | jq .title"],
+    ["IRACEDECK_MOCK=0", "IRACEDECK_MOCK=0 pnpm test"],
+    ["git show of a slashed ref", "git show origin/feature/x:.claude/rules/hooks.md"],
+  ])("does not judge %s", (_, c) => {
+    passes(c, ps(tree("ir-integration")));
+    // Positive control: the same command is refused as a Bash command.
+    deny(c, ctx());
+  });
 });
 
 describe("gh issue and the board", () => {

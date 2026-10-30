@@ -4,7 +4,7 @@ The order an issue is worked in, and which steps are gates.
 
 This file owns the **sequence**, the **gates**, and **why each gate exists** — nothing else. How to perform a step belongs to the rule that owns it, linked in the table. Keeping mechanics out is what stops this file drifting from the five rules it sequences.
 
-If you are picking up an issue, read this first.
+If you are picking up an issue, read this first. In the agent team (#1520) the PO (`/po`) runs steps 1–2 and is the only session that writes to `master` or asks Niklas anything; the issue lead (`issue-lead` skill) runs 3–13 through its role agents and sends every question to the PO.
 
 ## The pipeline
 
@@ -13,15 +13,15 @@ If you are picking up an issue, read this first.
 | 1   | File the issue                                             | —                       | `@.claude/rules/build-and-commit.md`                                        |
 | 2   | Write the spec, commit to `master`                         | unless exempt           | `@.claude/rules/specs-and-plans.md`                                         |
 | 3   | Create the worktree `../ir-<issue>`                        | —                       | `@.claude/rules/build-and-commit.md`                                        |
-| 4   | Implement, committing as you go                            | —                       | the topic rules for what you touched                                        |
+| 4   | Implement, committing as you go                            | Niklas approves each clip and icon | below, and the topic rules for what you touched                  |
 | 5   | `install` → `build` → `typecheck` → `format` → `lint` → `test`, by hand | all green    | `@.claude/rules/testing.md`, `@.claude/rules/code-style.md`                  |
 | 6   | Document it on the website                                 | required if user-facing | `@.claude/rules/website-action-docs.md`, `@.claude/rules/changelog.md`       |
-| 7   | **Ask** to run the code review, then run it; then the second read where it applies | the ask | `@.claude/rules/code-review.md`                                             |
+| 7   | Run the code review, then the second read where it applies | —                       | `@.claude/rules/code-review.md`                                             |
 | 8   | Manual testing                                             | **blocks the PR**       | below                                                                       |
 | 9   | Push, open the PR                                          | —                       | `@.claude/rules/build-and-commit.md`                                        |
 | 10  | Babysit the review                                         | every thread answered   | below                                                                       |
 | 11  | Merge                                                      | approved + checks green **at the current head** | `@.claude/rules/build-and-commit.md`                    |
-| 12  | Watch **all four** post-merge runs to completion           | a red result goes to the coordinator            | below                                                   |
+| 12  | Watch **all four** post-merge runs to completion           | a red result goes to the PO                     | below                                                   |
 | 13  | Remove the worktree                                        | —                                               | `@.claude/rules/build-and-commit.md`                    |
 
 ## Why these gates exist
@@ -42,7 +42,7 @@ Where a spec is required — `@.claude/rules/specs-and-plans.md` lists the exemp
 
 ### Issues are worked in a worktree (3)
 
-Settled by the maintainer: an issue is solved in a sibling worktree, never inside the repo directory, and you do not need to ask which mode to use for issue work. The three-way question in `@.claude/rules/build-and-commit.md` still governs work that is **not** an issue, and the maintainer can direct otherwise at any time.
+Settled by the maintainer: an issue is solved in a sibling worktree, never inside the repo directory, and nobody asks which mode to use (`@.claude/rules/build-and-commit.md`).
 
 ### Nothing verifies your work but you (5)
 
@@ -58,13 +58,15 @@ A feature that ships undocumented is a feature nobody finds. Website documentati
 
 ### Prefer the thorough solution (4)
 
-SOLID over quick wins. A shortcut that leaves tech debt is not a saving; it is a loan against the next person to open the file. When the thorough option costs materially more, say so and let the maintainer choose — do not make that trade silently.
+SOLID over quick wins. A shortcut that leaves tech debt is not a saving; it is a loan against the next person to open the file. Build the thorough option and report what it cost; never offer the maintainer a cheaper, worse option to choose.
 
-### The code review: the ask is the gate, and you run it (7)
+### Niklas hears every clip and sees every icon (4)
 
-Ask whether to run it, naming the level and which row of the table in `@.claude/rules/code-review.md` the change landed in. **On a yes, you run it** — the ask is the gate, not the execution.
+No clip is generated or regenerated before he approves its text, since generating costs ElevenLabs credit, and no clip or icon design is committed before he approves it on a review page (`review-page` skill). These and the manual test are the approvals he wants; product decisions and releases are the only other things he is asked.
 
-Target the worktree explicitly, in the form that rule prescribes — the hook now refuses an untargeted call. The session's working directory is the `master` checkout, so a careless invocation reviews the wrong tree — and once wrote eight files of edits into `master`. Afterwards, check every worktree is still clean, not just the target.
+### The code review: the issue lead runs it (7)
+
+Nobody is asked whether to run it: the issue lead runs it at the level from the table in `@.claude/rules/code-review.md` and says which row the change landed in. Target the worktree explicitly, in the form that rule prescribes — the hook now refuses an untargeted call. The session's working directory is the `master` checkout, so a careless invocation reviews the wrong tree — and once wrote eight files of edits into `master`. Afterwards, check every worktree is still clean, not just the target.
 
 Findings are candidates: verify each against the code, apply the ones that hold, and say which you declined and why.
 
@@ -76,7 +78,9 @@ Review before **manual testing**, not after, because a finding can change what t
 
 **Do not open a PR until the maintainer has tested the change.** Hardware, sim and deck-host behaviour are not knowable from the diff, and a PR opened before testing is one the maintainer may have to unwind.
 
-For a change with nothing runnable to test — a rules or docs change — the gate does not disappear, it changes shape: show the drafted text **in full** and get it approved before opening the PR. The thing at risk is the same either way, wording the maintainer has not seen becoming binding. "There was nothing to test" is not an exemption.
+For a change with nothing runnable to test — a website or other user-facing docs change — the gate does not disappear, it changes shape: show the drafted text **in full** and get it approved before opening the PR. "There was nothing to test" is not an exemption. Rule and `CLAUDE.md` prose is the one exception: it is written for Claude, and its size is held by the budget test and the architecture reviews, so it needs no draft approval.
+
+Once he passes the test, the issue lead pushes and opens the PR without asking. In the integration build (`scripts/integration-build.mjs`) he passes or fails each issue, and the pass belongs to the issue at the head sha the build merged.
 
 ### Babysit the review (10)
 
@@ -92,7 +96,7 @@ One trap with no other home: `gh pr checks` exits non-zero (8) while any check i
 
 ### Merging (11)
 
-Once CodeRabbit has approved and the checks are green, **the agent driving the work merges** — the maintainer is not a second reviewer to wait for. A *review* step never merges; that separation is what `@.claude/rules/build-and-commit.md` protects, and it owns the merge mechanics. Merging includes the issue's Roadmap card moving to `Testing` — the post-merge hook does that and reports when it could not, in which case make the move by hand (#1065, 2026-09-05); `@.claude/rules/build-and-commit.md` has the lanes.
+Once CodeRabbit has approved and the checks are green, **the issue lead merges** — the maintainer is not a second reviewer to wait for. A *review* step never merges; that separation is what `@.claude/rules/build-and-commit.md` protects, and it owns the merge mechanics. Merging includes the issue's Roadmap card moving to `Testing` — the post-merge hook does that and reports when it could not, in which case make the move by hand (#1065, 2026-09-05); `@.claude/rules/build-and-commit.md` has the lanes.
 
 **An approval and a green check are both head-specific.** Neither travels with a push, while the PR still displays the old approval beside the new head, so the merge hook judges both at the **current** head (`@.claude/rules/hooks.md` has what it accepts in place of a fresh review). Each refusal names the condition that failed and what to add or ask for. A `mergeStateStatus` of `BLOCKED` while you believe everything is green means the hook will refuse.
 
@@ -105,8 +109,8 @@ Since #1070 every CI workflow also runs on pushes to `master` and `release/*` �
 **Niklas owns a red master.** The agent that merged is the instrument that watches and reports; it does not own the outcome and does not decide what to do about one.
 
 - **Whoever merges watches all four runs to completion.** Start the watch from the `master` checkout, not from the worktree — a `gh run list` loop whose cwd is the tree you remove in step 13 dies with "not a git repository" and the watch ends unnoticed. `ci-format`, `ci-lint`, `ci-test` and `ci-typecheck` are four separate workflows on the same push, so one green run answers for one of them and nothing else — and the first thing to check is that all four appeared at all (the post-merge hook lists them). Pressing the merge button does not end the step.
-- **A red result goes to the coordinator immediately, and the coordinator takes it to Niklas.** No agent decides on its own to fix it, revert it, or let it stand.
-- **If the merging session ends before the run finishes, the watch passes to the coordinator** — the one party that outlives a worker session.
+- **A red result goes to the PO immediately, and the PO takes it to Niklas.** No agent decides on its own to fix it, revert it, or let it stand.
+- **If the merging session ends before the run finishes, the watch passes to the PO** — the one party that outlives an issue lead.
 
 There is deliberately no flake caveat here. `gh run list` reports a run at its latest attempt, so a failure that passed on a re-run counts as a success — a green history (58 of 60 `ci-test` runs on 2026-09-01, while #1088's flake hid inside it twice) is evidence that the instrument cannot tell, not that reds are usually spurious. Treat a red as real until shown otherwise, and re-run to diagnose rather than to clear.
 

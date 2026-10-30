@@ -99,7 +99,7 @@ export const REMINDERS = [
   },
   {
     match: (rel) => /^\.claude\/rules\/.+\.md$/.test(rel) || /(^|\/)CLAUDE\.md$/.test(rel),
-    text: "Rules/CLAUDE.md edited: this is prose the maintainer must see in full before it becomes binding — show the drafted text in the final message.",
+    text: "Rules/CLAUDE.md edited: this prose is written for Claude and needs no draft approval, but the always-loaded set has a hard budget — when a file without `paths` frontmatter grew, check the headroom `scripts/claude-rules-frontmatter.test.mjs` logs (`--reporter=verbose`).",
   },
 ];
 

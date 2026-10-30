@@ -47,7 +47,7 @@ Confirm the run echoed the right target before trusting a finding, and cross-che
 
 ## When to run one
 
-Before opening a PR — `build-and-commit.md` has the ask-first step. Pick the level from the table at that point, and say which row the change landed in when proposing the review.
+Before manual testing, which comes before the PR. The issue lead runs it without asking (#1520), picks the level from the table at that point, and says in its report which row the change landed in.
 
 ## How reviews are staged inside an issue
 
@@ -55,7 +55,7 @@ Decided by Niklas on 2026-09-06 after #1066, whose reviews cost half of its 6.8M
 
 1. **Review at a consumer seam, before the consumer starts.** A task whose OUTPUT another task builds on — an artifact shape, a public type, a generated file a page renders — gets a task-scoped review as soon as it lands, and the dependent task is dispatched only afterwards. On #1066 the generator's review changed its artifact's shape three times before the page rendering it was written — the one place a staged review paid for itself.
 2. **A leaf task gets no review of its own.** Descriptions, prose pages, a linter nobody else consumes, rule edits: their findings surface in the full read at the end a few hours later, and their fixes were small.
-3. **Fix diffs are verified by the coordinator, never by a scoped re-review agent.** A fix round is 30–200 lines. Read the diff, run the covering tests, check the finding is gone.
+3. **Fix diffs are verified by the issue lead, never by a scoped re-review agent.** A fix round is 30–200 lines. Read the diff, run the covering tests, check the finding is gone.
 4. **The whole branch gets exactly one full read: the `/code-review`,** at the level from the table above, targeted at the worktree, report-only. It is not optional — on #1066 it found three defects no task review could see, one of which would have failed the release and one of which would have turned `master` red at every bump. But do not run a second full-branch reviewer beside it; the `superpowers` plan-execution skill's own "final review" step is that duplicate, and this rule replaces it. The one named exception is the second read (below): a different method, on the kinds of diff named there, after this read's findings are applied.
 5. **Reviewer models follow the same complexity rule as workers** (`CLAUDE.md`): a review that must weigh a claim against the code runs on `opus`; a mechanical check runs on `sonnet`; the `/code-review` picks its own.
 
@@ -65,4 +65,4 @@ The repo's skills and the `superpowers` plugin describe a per-task review cadenc
 
 Once the `/code-review` findings that hold are applied, a branch whose diff changes **a gate or guard**, **a build, release or publish path**, or **a state machine** gets one more pass before manual testing: the `second-read` skill, which says what counts as each and carries the reviewer's brief. It is one read-only `opus` agent that puts each changed behaviour through fixed questions about ordering, lifecycle, failure half-way and bad input. That is the class both the full read and CodeRabbit missed on the eleven PRs measured in the #1396 spec, where it found #1390–#1395; it re-found only 5 of CodeRabbit's 18 majors there, so it replaces neither. It does not run on prose, icons, generated artifacts, PI templates or renames.
 
-Say whether a second read applies, and which of the three kinds the diff is, when naming the `/code-review` level. A branch whose `/code-review` was declined still gets it on these diffs. Its findings are candidates like any review's: verify each against the code; fix what holds and is reachable; fix, file or decline with the reason what holds and is narrow; and put the tally in the PR body, counting how many held. After ten runs in which none held, the step is removed — the skill lists every place that names it.
+Say whether a second read applies, and which of the three kinds the diff is, when naming the `/code-review` level. Its findings are candidates like any review's: verify each against the code; fix what holds and is reachable; fix, file or decline with the reason what holds and is narrow; and put the tally in the PR body, counting how many held. After ten runs in which none held, the step is removed — the skill lists every place that names it.

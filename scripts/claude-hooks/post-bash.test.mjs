@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -23,12 +23,12 @@ afterAll(() => {
 // `../ir-<n>` is meant to run from (#1358).
 const ROOT = path.resolve(import.meta.dirname, "../..");
 
-function fire(command, { stdout = "", withoutGh = false, cwd = ROOT } = {}) {
+function fire(command, { stdout = "", withoutGh = false, cwd = ROOT, tool = "Bash" } = {}) {
   const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !withoutGh || k.toLowerCase() !== "path"));
   if (withoutGh) env.PATH = NO_GH;
   const r = spawnSync(process.execPath, [HOOK], {
     input: JSON.stringify({
-      tool_name: "Bash",
+      tool_name: tool,
       tool_input: { command },
       tool_response: { stdout },
       cwd,
@@ -86,5 +86,31 @@ describe("post-bash.mjs triggers", () => {
     const note = fire("git worktree add ../ir-1321 -b fix/1321-x", { withoutGh: true, cwd: repo });
     expect(note).toMatch(/Worktree for #1321 created/);
     expect(note).not.toMatch(/1325/);
+  });
+
+  // #1520 second read: the PowerShell tool's commands reached the pre-hook
+  // only, so a merge, a worktree or a filing there moved no card, silently.
+  it("is wired for both tools in .claude/settings.json", () => {
+    const settings = JSON.parse(readFileSync(path.join(ROOT, ".claude", "settings.json"), "utf8"));
+    const entries = settings.hooks.PostToolUse.filter((e) => e.hooks.some((h) => h.command.includes("post-bash.mjs")));
+    expect(entries).toHaveLength(1);
+    const matcher = new RegExp(`^(?:${entries[0].matcher})$`);
+    for (const tool of ["Bash", "PowerShell"]) expect(matcher.test(tool), tool).toBe(true);
+    expect(matcher.test("Edit")).toBe(false);
+  });
+
+  it("runs the merge, issue and worktree steps on a PowerShell command too", () => {
+    const tool = "PowerShell";
+    expect(fire("gh pr merge 7 --squash", { withoutGh: true, tool })).toMatch(/could not read the PR back/);
+    expect(fire("gh issue create --title x --body y", { tool })).toMatch(/no issue URL in the output/);
+    expect(fire("git worktree add ..\\ir-1321 -b fix/1321-x", { withoutGh: true, tool })).toMatch(
+      /Worktree for #1321 created/,
+    );
+    // Read as PowerShell reads it: a backtick continues the line, which bash
+    // would take for a command substitution and lose the path behind.
+    const continued = "git worktree add `\n  ..\\ir-1323 -b fix/1323-x";
+    expect(fire(continued, { withoutGh: true, tool })).toMatch(/Worktree for #1323 created/);
+    expect(fire(continued, { withoutGh: true })).toBeNull();
+    expect(fire("Write-Output 'gh pr merge 7'", { tool })).toBeNull();
   });
 });

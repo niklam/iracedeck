@@ -1,24 +1,30 @@
 /**
- * PostToolUse hook for Bash: the follow-through steps that used to be
- * reminders — the board move after a merge, a worktree or an issue filing,
- * the post-merge CI run list, and a diff after a scripted edit.
+ * PostToolUse hook for the Bash and PowerShell tools: the follow-through steps
+ * that used to be reminders — the board move after a merge, a worktree or an
+ * issue filing, the post-merge CI run list, and a diff after a scripted edit.
+ * A PowerShell command (#1520) is read as the pre-hook reads it, through
+ * `powershellAsBash`, so the same triggers find it.
  */
-import path from "node:path";
-
 import { addToBoard, gh, ghJson, git, postContext, readInput, setBoardStatus } from "./lib.mjs";
 import {
+  BASH,
   firstMerge,
   GIT_WORKTREE_ADD,
   gitCwd,
   issueFromWorktreePath,
+  POWERSHELL,
+  powershellAsBash,
+  resolveDir,
   trustedMask,
   worktreeAddTarget,
 } from "./rules-bash.mjs";
 import { missingWorkflows } from "./rules-post.mjs";
 
 const input = await readInput();
-const command = input.tool_input?.command;
-if (typeof command === "string") {
+const raw = input.tool_input?.command;
+if (typeof raw === "string") {
+  const shell = input.tool_name === "PowerShell" ? POWERSHELL : BASH;
+  const command = shell === POWERSHELL ? powershellAsBash(raw) : raw;
   const cwd = input.cwd ?? process.cwd();
   const resp = input.tool_response ?? {};
   const stdout = typeof resp === "string" ? resp : (resp.stdout ?? resp.output ?? "");
@@ -42,7 +48,7 @@ if (typeof command === "string") {
       );
     if (/\bgh\s+issue\s+create\b/.test(text)) notes.push(...afterIssueCreate(stdout, cwd));
     const target = worktreeAddTarget(command);
-    if (target) notes.push(...afterWorktreeAdd(command, target, cwd));
+    if (target) notes.push(...afterWorktreeAdd(command, target, cwd, shell));
   } catch (e) {
     notes.push(`post-bash hook error: ${e?.stack ?? e}`);
   }
@@ -96,8 +102,8 @@ function afterIssueCreate(stdout, cwd) {
 }
 
 /** `target` is the add's own argument (`worktreeAddTarget`), read where the pre-hook's rule read it. */
-function afterWorktreeAdd(command, target, cwd) {
-  const resolved = path.resolve(gitCwd(command, cwd, GIT_WORKTREE_ADD), target);
+function afterWorktreeAdd(command, target, cwd, shell) {
+  const resolved = resolveDir(gitCwd(command, cwd, GIT_WORKTREE_ADD, shell), target, { shell });
   const issue = issueFromWorktreePath(resolved);
   if (!issue) return [];
   const r = gh(["issue", "view", String(issue), "--json", "number"], cwd);

@@ -1,6 +1,8 @@
 import { spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 
 // The rule modules are tested directly; this proves the wiring around them —
 // stdin payload, context, verdict JSON — by running the entry point the
@@ -8,11 +10,12 @@ import { describe, expect, it } from "vitest";
 // verdict needs no network are used, so it runs anywhere.
 const HOOK = path.join(import.meta.dirname, "pre-bash.mjs");
 
-function fire(command) {
+function fire(command, { tool = "Bash", cwd = import.meta.dirname, env } = {}) {
   const r = spawnSync(process.execPath, [HOOK], {
-    input: JSON.stringify({ tool_name: "Bash", tool_input: { command }, cwd: import.meta.dirname }),
+    input: JSON.stringify({ tool_name: tool, tool_input: { command }, cwd }),
     encoding: "utf8",
     timeout: 60_000,
+    ...(env ? { env: { ...process.env, ...env } } : {}),
   });
   expect(r.status, r.stderr).toBe(0);
   return r.stdout.trim() ? JSON.parse(r.stdout).hookSpecificOutput : null;
@@ -42,4 +45,79 @@ describe("pre-bash.mjs, fired as the harness fires it", () => {
   });
 
   it("prints nothing for a command no rule names", () => expect(fire("git status")).toBeNull());
+});
+
+// #1520: the PowerShell tool's commands go through the same hook, with the
+// rules that are not bash syntax.
+describe("pre-bash.mjs, fired for the PowerShell tool", () => {
+  // A deck link of our own: APPDATA points at a temp folder whose Stream Deck
+  // plugin link is a junction into a temp "tree", so the ask does not hinge on
+  // where this machine's real hosts are linked. Neither folder is a git repo,
+  // so the tree is the directory itself.
+  const tmp = mkdtempSync(path.join(os.tmpdir(), "pre-bash-ps-"));
+  const linkedTree = path.join(tmp, "linked");
+  const otherTree = path.join(tmp, "other");
+  const appdata = path.join(tmp, "appdata");
+  const plugins = path.join(appdata, "Elgato", "StreamDeck", "Plugins");
+  for (const d of [path.join(linkedTree, "plugin"), otherTree, plugins]) mkdirSync(d, { recursive: true });
+  symlinkSync(path.join(linkedTree, "plugin"), path.join(plugins, "com.iracedeck.sd.core.sdPlugin"), "junction");
+  const env = {
+    APPDATA: appdata,
+    MIRABOX_PLUGINS_DIR: path.join(tmp, "none"),
+    ULANZI_PLUGINS_DIR: path.join(tmp, "none"),
+  };
+  afterAll(() => rmSync(tmp, { recursive: true, force: true }));
+
+  // The bypass itself: the harness only runs this hook for the tools its matcher names.
+  it("is wired for both tools in .claude/settings.json", () => {
+    const settings = JSON.parse(
+      readFileSync(path.join(import.meta.dirname, "..", "..", ".claude", "settings.json"), "utf8"),
+    );
+    const entries = settings.hooks.PreToolUse.filter((e) => e.hooks.some((h) => h.command.includes("pre-bash.mjs")));
+    expect(entries).toHaveLength(1);
+    const matcher = new RegExp(`^(?:${entries[0].matcher})$`);
+    for (const tool of ["Bash", "PowerShell"]) expect(matcher.test(tool), tool).toBe(true);
+    expect(matcher.test("Edit")).toBe(false);
+  });
+
+  it("asks for a build in the linked tree, as for the Bash tool", () => {
+    const v = fire("pnpm build", { tool: "PowerShell", cwd: linkedTree, env });
+    expect(v.permissionDecision).toBe("ask");
+    expect(v.permissionDecisionReason).toMatch(/Stream Deck plugin link points into/);
+    // Positive control: the same payload from the Bash tool asks too, and an unlinked tree passes.
+    expect(fire("pnpm build", { cwd: linkedTree, env }).permissionDecision).toBe("ask");
+    expect(fire("pnpm build", { tool: "PowerShell", cwd: otherTree, env })).toBeNull();
+  });
+
+  it("follows a Set-Location into the linked tree", () =>
+    expect(
+      fire(`Set-Location '${linkedTree}'; pnpm install`, { tool: "PowerShell", cwd: otherTree, env })
+        .permissionDecision,
+    ).toBe("ask"));
+
+  it("denies an integration push", () =>
+    expect(fire("git push origin integration", { tool: "PowerShell" }).permissionDecisionReason).toMatch(
+      /never pushed/,
+    ));
+
+  // #1520 second read: a script is judged by the command line its package.json gives it.
+  it("reads a script's command line from the package.json it runs from", () => {
+    const scripts = { hop: "pnpm relink:anything", wipe: "rimraf plugin/bin", quiet: "vitest run" };
+    for (const d of [linkedTree, otherTree])
+      writeFileSync(path.join(d, "package.json"), JSON.stringify({ name: "fixture", scripts }));
+    for (const tool of ["Bash", "PowerShell"]) {
+      expect(fire("pnpm hop", { tool, cwd: otherTree, env }).permissionDecisionReason).toMatch(
+        /`pnpm hop` → `pnpm relink:anything`/,
+      );
+      expect(fire("pnpm wipe", { tool, cwd: linkedTree, env }).permissionDecisionReason).toMatch(/deletes files/);
+      expect(fire("pnpm wipe", { tool, cwd: otherTree, env })).toBeNull();
+      expect(fire("pnpm quiet", { tool, cwd: linkedTree, env })).toBeNull();
+    }
+  });
+
+  it("does not judge a heredoc-shaped string, which only bash would read as one", () => {
+    const heredoc = "Write-Output 'x' <<EOF C:\\\\Users";
+    expect(fire(heredoc, { tool: "PowerShell" })).toBeNull();
+    expect(fire(heredoc).permissionDecision).toBe("deny");
+  });
 });

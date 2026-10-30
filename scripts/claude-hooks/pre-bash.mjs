@@ -1,7 +1,12 @@
 /**
- * PreToolUse hook for the Bash tool: runs `rules-bash.mjs` over the command
- * with a real git/gh/filesystem context. Wired in `.claude/settings.json`.
+ * PreToolUse hook for the Bash and PowerShell tools: runs `rules-bash.mjs`
+ * over the command with a real git/gh/filesystem context. Wired in
+ * `.claude/settings.json`. A PowerShell command (#1520) is judged by the rules
+ * that are not bash syntax, read as PowerShell reads it (`ctx.shell`).
  */
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import path from "node:path";
+
 import {
   applyVerdict,
   baseChangedSince,
@@ -22,7 +27,7 @@ import {
   toplevel,
   workspacePackages,
 } from "./lib.mjs";
-import { checkBash } from "./rules-bash.mjs";
+import { BASH, checkBash, POWERSHELL } from "./rules-bash.mjs";
 
 const memo = (fn) => {
   const cache = new Map();
@@ -42,6 +47,7 @@ if (typeof command === "string" && command.trim()) {
   const cwd = input.cwd ?? process.cwd();
   const ctx = {
     cwd,
+    shell: input.tool_name === "PowerShell" ? POWERSHELL : BASH,
     branch: memo(currentBranch),
     staged: memo((dir) => lines(git(["diff", "--cached", "--name-only"], dir))),
     modified: memo((dir) => lines(git(["diff", "--name-only"], dir))),
@@ -74,6 +80,11 @@ if (typeof command === "string" && command.trim()) {
     tracked: memo((dir, rel) => git(["cat-file", "-e", `HEAD:${rel}`], dir).ok),
     issueLabels: memo((issue, dir) => ghJson(["issue", "view", String(issue), "--json", "labels"], dir)),
     linkTargets: memo(() => linkTargets()),
+    // The deck-linked-tree rule judges a script by the command line it runs
+    // (#1520): the nearest package.json at or above a directory, and the
+    // workspace packages of a tree for a turbo task.
+    scriptsAt: memo(nearestManifest),
+    workspaceDirs: memo(packageDirs),
     // The checkout the command runs in, not the main one: `pnpm --filter`
     // resolves the workspace from its cwd, so a worktree whose manifests
     // differ from master's is judged by its own scripts (#1021).
@@ -104,6 +115,38 @@ if (typeof command === "string" && command.trim()) {
     verdict = `Hook error in pre-bash.mjs (fix the hook, then retry): ${e?.stack ?? e}`;
   }
   applyVerdict(verdict);
+}
+
+/**
+ * `{ dir, name, scripts }` of the nearest package.json at or above `dir`, as
+ * pnpm, npm and `node --run` find it; `undefined` when there is none or the
+ * nearest cannot be parsed, which leaves the script judged by its name.
+ */
+function nearestManifest(dir) {
+  for (let d = path.resolve(dir); ; d = path.dirname(d)) {
+    const file = path.join(d, "package.json");
+    if (existsSync(file)) {
+      try {
+        const pkg = JSON.parse(readFileSync(file, "utf8"));
+        return { dir: d, name: pkg.name, scripts: pkg.scripts ?? {} };
+      } catch {
+        return undefined;
+      }
+    }
+    if (path.dirname(d) === d) return undefined;
+  }
+}
+
+/** Every directory under `<root>/packages` that holds a package.json. */
+function packageDirs(root) {
+  const pkgs = path.join(root, "packages");
+  try {
+    return readdirSync(pkgs)
+      .map((d) => path.join(pkgs, d))
+      .filter((d) => existsSync(path.join(d, "package.json")));
+  } catch {
+    return [];
+  }
 }
 
 function lines(res) {

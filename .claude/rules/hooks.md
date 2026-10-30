@@ -9,10 +9,10 @@ The scripts live in `scripts/claude-hooks/` — Node, because `jq` is not instal
 | Event | Matcher | Script | Does |
 | --- | --- | --- | --- |
 | SessionStart | startup, resume | `session-start.mjs` | Prints the worktrees with dirty state, where each deck host's plugin link points, whether `origin/master` is behind the remote, and any running watchers. Replaces four "verify before you act" rules with one report. |
-| PreToolUse | Bash | `pre-bash.mjs` → `rules-bash.mjs` | The command guards below. |
+| PreToolUse | Bash, PowerShell | `pre-bash.mjs` → `rules-bash.mjs` | The command guards below; a PowerShell command skips the bash-syntax traps (pipefail, `jq`, heredoc, `IRACEDECK_MOCK=0`, MSYS). |
 | PreToolUse | Skill, Agent, AskUserQuestion, Edit, Write | `pre-tools.mjs` → `rules-tools.mjs` | `/code-review` must name a level, target an `ir-<issue>` tree and never carry `--fix`; an Agent spawn must choose its `model` (`fork` exempt) and never `isolation: "worktree"`; AskUserQuestion options name the actor as "Claude …" / "You …", never "I …"; an Edit's `new_string` or a Write's `content` carries no raw control byte other than tab, LF and CR (#1103). |
 | PostToolUse | Edit, Write | `post-edit.mjs` → `rules-post.mjs` | Runs the generator whose source was edited (changelog or a changelog fragment, getting-started page, icon SVGs, comms catalog, Elgato manifest profiles, voice configs) and reports what changed — for a fragment that run is its validation at authoring time, since composing is what checks it; injects reminders for `global-settings.ts`, the catalog / bundled script, and rule files. |
-| PostToolUse | Bash | `post-bash.mjs` | After `gh pr merge`: moves the closing issues' Roadmap cards to Testing and lists the four post-merge CI runs. After `gh issue create`: adds the card to the board in Backlog. After `git worktree add ../ir-<n>`: moves the card to In progress. After `sed -i`: prints `git diff --stat`. |
+| PostToolUse | Bash, PowerShell | `post-bash.mjs` | After `gh pr merge`: moves the closing issues' Roadmap cards to Testing and lists the four post-merge CI runs. After `gh issue create`: adds the card to the board in Backlog. After `git worktree add ../ir-<n>`: moves the card to In progress. After `sed -i`: prints `git diff --stat`. |
 
 ## The Bash guards
 
@@ -21,6 +21,7 @@ A **deny** refuses the call and tells the model why. An **ask** forces the permi
 | Command shape | Verdict | Rule it enforces |
 | --- | --- | --- |
 | `git push` of a tag | ask | a tag cuts a release |
+| `git push` of the `integration` branch | deny | that branch is local (#1520) |
 | `gh pr create` | deny on a title that is not `<type>(<scope>): … (#<issue>)` | PR title discipline |
 | `gh pr merge` | deny more than one merge per command; deny unless OPEN, `--squash` (`--merge` for a `release/*` head), APPROVED, every check green, not BLOCKED/DIRTY, and CodeRabbit reviewed the current head — by a review object, by its summary comment of a clean incremental review (#1386), or through a pure rebase of what it last reviewed (#1307, a conflicted replay asks); the last two need the full `--match-head-commit <head>`, and a release back-merge gets neither. `--admin` skips only the review checks. Mechanics: `hook-internals.md` | approval and checks are head-specific |
 | `git commit` with a spec on a non-master branch | deny | specs commit to master only |
@@ -29,8 +30,9 @@ A **deny** refuses the call and tells the model why. An **ask** forces the permi
 | `git worktree add ../ir-<n>` where `origin/master` carries no `docs/superpowers/specs/*-issue-<n>-*.md` | ask, unless the issue's labels are readable and carry no `enhancement` | a feature gets its spec before its worktree; the exemptions are judgement, so the maintainer confirms |
 | `git commit` with a `package.json` while `pnpm-lock.yaml` is dirty and not included | deny | CI's frozen lockfile |
 | `git commit` that would record the Elgato `manifest.json` with a `Debug` key in its `Nodejs` block | deny, naming `pnpm debug:plugin off` | the local inspector switch never ships (#1338) |
-| `git worktree add` anywhere but a sibling of the main checkout (inside it, or nested in another worktree), not named `ir-<issue>`, or from a stale `origin/master` | deny | sibling worktrees; verify the base commit |
+| `git worktree add` anywhere but a sibling of the main checkout (inside it, or nested in another worktree), not named `ir-<issue>` or `ir-integration`, or from a stale `origin/master` | deny | sibling worktrees; verify the base commit |
 | `git worktree remove` while a deck host's plugin link points into that tree | deny | never relink on your own — leave the link and the tree, and tell the maintainer |
+| a restart, relink, watch, host stop/start script, or `integration-build.mjs`; a build, install or clean (pnpm, npm, turbo) in a deck-linked tree; a script by what it runs | ask | nothing touches a linked tree without Niklas's go (#1520) |
 | `gh issue create --milestone/--assignee` | deny | both are set when implementation starts |
 | `updateProjectV2Field` | deny | rewriting the Status options wipes every card's lane |
 | `--fix` on a code-review invocation | deny | report only |
@@ -40,7 +42,7 @@ A **deny** refuses the call and tells the model why. An **ask** forces the permi
 
 1. **A new mechanical rule goes here, not only in prose.** When a rule file gains a "never do X" that a regex over the tool input can check, add it to `rules-bash.mjs` (or the matching module) with a test in the same change. The prose keeps the why; the hook keeps the rule. This file is loaded into every session, so a guard gets one table row here; how it decides — the conditions, the edge cases, the incidents behind them — goes in `hook-internals.md`, which loads only with the hook scripts.
 2. **Deny beats ask, whatever the order.** `checkBash` returns the first deny at once and holds every ask until every rule has run, because one chained command can match an ask rule early in the list and a deny rule late in it — until #1193 the ask won, and confirming it ran the shape the deny exists to stop. The asks are then joined into one prompt (#1307): a chain the maintainer approves runs whole, so an ask hidden behind another would run unseen. Rule order still decides which of two denies is reported.
-3. **Board moves never go backwards.** `BOARD_MOVES` in `lib.mjs` lists the lanes each automated move may start from; a card in Testing or Done is never touched. The lane ids are read fresh from `gh project field-list` on every move, never hardcoded.
+3. **Board moves never go backwards.** `BOARD_MOVES` in `lib.mjs` lists the lanes each automated move may start from; a card in Testing or Done is never touched, nor its position in the lane. `Next` is entered from Backlog or Planned only. The lane ids are read fresh from `gh project field-list` on every move, never hardcoded.
 4. **Exercise the mutating paths with `IRACEDECK_HOOKS_DRY_RUN=1`.** The board helpers then report what they would do instead of doing it. Every other path is read-only except the merge gate's pure-rebase check, which writes objects (never refs) to the shared store. This rule exists because the first pipe-test of the merge hook moved a real card.
 5. **Hooks read the tree of the session's `CLAUDE_PROJECT_DIR`.** A worktree runs the copy of the scripts it has checked out, so a hook change reaches other worktrees when it lands on `master` and they rebase. The `pnpm --filter <pkg> <script>` rule reads the package manifests of the checkout holding the session's cwd and does not follow a `cd` inside the command.
 6. **A hook change is proven by watching it fire**, not by reading it: pipe a synthesised payload through the script, then trigger the matching tool in-session and see the deny or the injected context. The settings watcher only reloads `.claude/settings.json` when that directory had a settings file at session start; otherwise open `/hooks` once.
