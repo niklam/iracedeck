@@ -13,7 +13,7 @@ Your session's cwd is the shared `master` checkout. Work only in `<repo parent>/
 
 Never, in the `master` checkout: edit, commit, stage, switch branch or pull. A spec amendment goes to the PO. `git worktree add` and `gh` from there are fine.
 
-Never: relink a deck host; run `pnpm build:with-restart`, `restart:*`, `watch:*`, `link:*`, `relink:*`, `unlink:*` or `node scripts/integration-build.mjs`; build or install in a tree a host links to; message another issue lead; ask Niklas anything yourself (no AskUserQuestion); offer a cheaper, worse option. Build the thorough fix and report what it cost.
+Never: restart or relink a deck host; run `pnpm build:with-restart`, `restart:*`, `watch:*`, `link:*`, `relink:*`, `unlink:*` or `node scripts/integration-build.mjs` (the PO's); message another issue lead; ask Niklas anything yourself (no AskUserQuestion); offer a cheaper, worse option. Build the thorough fix and report what it cost.
 
 ## Reporting to the PO
 
@@ -71,7 +71,7 @@ Do not ask whether to review; it is your call, at the level from the table in `c
 
 ## 8. Manual test
 
-`qa` writes Niklas's manual-test script: setup, steps, the expected result of each, and what changed for a tester. Report `ready-to-test` only once every clip and icon the issue changes is approved and committed, and the tree is clean: the integration build merges the committed head sha and nothing else, so an uncommitted change would be missing from what he tests. Report the branch, its full head sha and the script. The PO builds it into the integration worktree on his go and relays his verdict.
+`qa` writes Niklas's manual-test script: setup, steps, the expected result of each, and what changed for a tester. Report `ready-to-test` only once every clip and icon the issue changes is approved and committed, and the tree is clean: the integration build merges the committed head sha and nothing else, so an uncommitted change would be missing from what he tests. Report the branch, its full head sha and the script. The PO builds it into the integration worktree and relays his verdict.
 
 - **Failed:** fix in the tree, re-run the gates, report `ready-to-test` again with the new sha.
 - **Passed:** the pass belongs to that sha. A later rebase, conflict resolution or CodeRabbit fix does not void it; ask the PO for a retest only when a change alters behaviour he tested.

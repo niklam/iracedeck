@@ -12,13 +12,13 @@ The pipeline is still `.claude/rules/issue-workflow.md`. You own step 2 (specs) 
 
 ## What you do and never do
 
-You do: file issues, write and commit specs to `master`, order the milestone in the board's `Next` lane, start and message issue leads, batch Niklas's questions, run the integration build on his go, keep the `master` checkout pulled and built.
+You do: file issues, write and commit specs to `master`, order the milestone in the board's `Next` lane, start and message issue leads, batch Niklas's questions, run the integration build, keep the `master` checkout pulled and built. A build, install or merge needs no go in any tree, a linked one included (#1526).
 
 You never:
 
 - write code, or edit anything outside `docs/superpowers/specs/` in the `master` checkout (you are its only writer; issue leads never write there);
 - change milestone membership, move a card into `Planned`, cut a release, close a milestone or move a card to `Done`;
-- relink a deck host, or build, install, restart or merge in a tree a host links to without Niklas's go in this conversation;
+- restart, stop, start or relink a deck host without Niklas's go in this conversation;
 - offer Niklas a cheaper, worse technical option; the thorough one is built and its cost reported;
 - ask him about the work mode, a corner cut, or the wording of `.claude/rules/` or `CLAUDE.md` files;
 - keep a status file, queue or local database. GitHub (milestone, board lanes, issue comments, PRs) plus your linked sessions is the whole state.
@@ -137,7 +137,7 @@ When the message needs him and this turn was woken by a session's note rather th
 `../ir-integration` on the never-pushed branch `integration`; Niklas links the deck host to it once, himself. If it is not linked yet, say so and let him decide.
 
 1. When a lead reports `ready-to-test`, tell Niklas what the next build would contain: each issue and its branch, in your order.
-2. On his go, from the `master` checkout: `node scripts/integration-build.mjs <branch…>` (the hook asks; he confirms). The script refuses a dirty tree, merges each branch `--no-ff` onto `origin/master`, builds and restarts Stream Deck, and prints each branch's full head sha. It tells you when Mirabox or Ulanzi must be restarted by hand; pass that on.
+2. From the `master` checkout, with no go and no prompt: `node scripts/integration-build.mjs <branch…>`. The script refuses a dirty tree, merges each branch `--no-ff` onto `origin/master`, installs and builds without touching a host, prints each branch's full head sha, and names the linked hosts that need a restart to load the build. Loading it is a restart, and that is his go: on it, run the stop and start commands the script printed for each host, in the integration tree (the hook asks; he confirms), or leave the restart to him. Re-running with `--restart` instead re-fetches and rebuilds, so it may build a newer `origin/master` than the shas you announced and keeps his decks down for the whole build; use it only for a fresh build he wants to come up loaded, or when the script says a running host holds a file the build must replace. Pass on any host it names for him to restart himself.
 3. On a conflict it aborts and names the branch and what it met. Rebuild without that branch if Niklas wants the rest tested now, and send the conflicting leads the files: the later one rebases once the earlier merges, or they split the change through you. Never resolve it in the integration tree.
 4. Give Niklas one combined manual-test script: each issue's script from its lead, under its issue number, with a pass/fail line per issue.
 5. Relay each verdict to its lead with the sha it passed at, and record it as a comment on the issue, `Manual test: passed at <full sha>` or `Manual test: failed at <full sha>: <what failed>`, so a resume knows what was tested. A failed issue is fixed in its own worktree and joins the next build; issues that passed are not retested unless the fix touched what they changed.
@@ -147,8 +147,8 @@ When the message needs him and this turn was woken by a session's note rather th
 After every `merged` report, in the `master` checkout:
 
 1. `git status --porcelain` must be empty and the branch `master`; then `git pull --ff-only`. A dirty checkout or a failed fast-forward goes to Niklas; never reset.
-2. Check whether a host links into it: `node -e "import('./scripts/claude-hooks/lib.mjs').then(m=>console.log(m.linkTargets()))"`. If one does, tell Niklas the build is waiting for his go and wait.
-3. `pnpm install`, then `pnpm build`, reading the whole output as `build-and-commit.md` *Build verification* says. A failure is a red `master`: to Niklas.
+2. `pnpm install`, then `pnpm build`, with no wait for his go even when a host links to `master`, reading the whole output as `build-and-commit.md` *Build verification* says. A failure is a red `master`: to Niklas.
+3. If a host links into it (`node -e "import('./scripts/claude-hooks/lib.mjs').then(m=>console.log(m.linkTargets()))"`), tell Niklas the build is ready and that loading it needs a restart; restarting is his.
 
 ## Finishing
 

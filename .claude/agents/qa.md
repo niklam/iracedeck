@@ -9,7 +9,7 @@ You prove one issue's change works and prepare what Niklas needs to test it. You
 
 - Work only in the worktree named in the brief; artifacts you build go in your scratchpad. Never touch the `master` checkout or another `ir-*` tree.
 - Write test scaffolding only. A defect you find goes back to the issue lead with its reproduction; you do not fix production code.
-- Never run `pnpm build:with-restart`, `restart:*`, `watch:*`, `link:*`, `relink:*`, `unlink:*` or `node scripts/integration-build.mjs`, never relink a deck host, and never build in a tree a host links to.
+- Never run `pnpm build:with-restart`, `restart:*`, `watch:*`, `link:*`, `relink:*`, `unlink:*` or `node scripts/integration-build.mjs` (the PO's), and never restart or relink a deck host.
 - Never call the paid audio generator.
 
 ## 1. Scenario harness (Race Engineer callouts)

@@ -80,20 +80,31 @@ describe("pre-bash.mjs, fired for the PowerShell tool", () => {
     expect(matcher.test("Edit")).toBe(false);
   });
 
-  it("asks for a build in the linked tree, as for the Bash tool", () => {
-    const v = fire("pnpm build", { tool: "PowerShell", cwd: linkedTree, env });
+  // `dev:voices` relinks the hosts linked to its tree, so it asks there and
+  // nowhere else; a build needs no go even there (#1526).
+  it("asks for dev:voices in the linked tree, as for the Bash tool, and passes a build there", () => {
+    const v = fire("pnpm dev:voices on", { tool: "PowerShell", cwd: linkedTree, env });
     expect(v.permissionDecision).toBe("ask");
     expect(v.permissionDecisionReason).toMatch(/Stream Deck plugin link points into/);
     // Positive control: the same payload from the Bash tool asks too, and an unlinked tree passes.
-    expect(fire("pnpm build", { cwd: linkedTree, env }).permissionDecision).toBe("ask");
-    expect(fire("pnpm build", { tool: "PowerShell", cwd: otherTree, env })).toBeNull();
+    expect(fire("pnpm dev:voices on", { cwd: linkedTree, env }).permissionDecision).toBe("ask");
+    expect(fire("pnpm dev:voices on", { tool: "PowerShell", cwd: otherTree, env })).toBeNull();
+    for (const tool of ["Bash", "PowerShell"])
+      for (const c of ["pnpm build", "pnpm install"]) expect(fire(c, { tool, cwd: linkedTree, env }), c).toBeNull();
   });
 
   it("follows a Set-Location into the linked tree", () =>
     expect(
-      fire(`Set-Location '${linkedTree}'; pnpm install`, { tool: "PowerShell", cwd: otherTree, env })
+      fire(`Set-Location '${linkedTree}'; pnpm dev:voices on`, { tool: "PowerShell", cwd: otherTree, env })
         .permissionDecision,
     ).toBe("ask"));
+
+  it("asks for a restart wherever it runs", () => {
+    for (const cwd of [linkedTree, otherTree])
+      expect(fire("pnpm restart:stream-deck", { tool: "PowerShell", cwd, env }).permissionDecisionReason).toMatch(
+        /No deck host restarts, stops, starts or relinks without Niklas's go/,
+      );
+  });
 
   it("denies an integration push", () =>
     expect(fire("git push origin integration", { tool: "PowerShell" }).permissionDecisionReason).toMatch(
@@ -102,17 +113,69 @@ describe("pre-bash.mjs, fired for the PowerShell tool", () => {
 
   // #1520 second read: a script is judged by the command line its package.json gives it.
   it("reads a script's command line from the package.json it runs from", () => {
-    const scripts = { hop: "pnpm relink:anything", wipe: "rimraf plugin/bin", quiet: "vitest run" };
+    // `watch` is the Stream Deck plugin's real shape: the restart sits in a
+    // quoted rollup option, escaped once more by the JSON it is read from.
+    const scripts = {
+      hop: "pnpm relink:anything",
+      voices: "pnpm dev:voices on",
+      watch: 'rollup -c -w --watch.onEnd="streamdeck restart com.iracedeck.sd.core"',
+      wipe: "rimraf plugin/bin",
+      quiet: "vitest run",
+    };
     for (const d of [linkedTree, otherTree])
       writeFileSync(path.join(d, "package.json"), JSON.stringify({ name: "fixture", scripts }));
     for (const tool of ["Bash", "PowerShell"]) {
       expect(fire("pnpm hop", { tool, cwd: otherTree, env }).permissionDecisionReason).toMatch(
         /`pnpm hop` → `pnpm relink:anything`/,
       );
-      expect(fire("pnpm wipe", { tool, cwd: linkedTree, env }).permissionDecisionReason).toMatch(/deletes files/);
-      expect(fire("pnpm wipe", { tool, cwd: otherTree, env })).toBeNull();
+      expect(fire("pnpm voices", { tool, cwd: linkedTree, env }).permissionDecisionReason).toMatch(
+        /`pnpm voices` → .*`pnpm dev:voices` there relinks/,
+      );
+      expect(fire("pnpm voices", { tool, cwd: otherTree, env })).toBeNull();
+      for (const cwd of [linkedTree, otherTree])
+        expect(fire("pnpm watch", { tool, cwd, env }).permissionDecisionReason).toMatch(
+          /`pnpm watch` → `rollup --watch\.onEnd` → `streamdeck restart/,
+        );
+      expect(fire("pnpm wipe", { tool, cwd: linkedTree, env })).toBeNull();
       expect(fire("pnpm quiet", { tool, cwd: linkedTree, env })).toBeNull();
     }
+  });
+
+  // #1526 review: the false accepts the review found, fired through the hook
+  // with real package.json files. `sd` carries the Stream Deck plugin's `watch`.
+  // One case per spawn: two dozen hook processes in one test outran its
+  // timeout under the full suite's load.
+  describe("reads every package an unresolved selector may pick, a wrapper's string and node behind a runner", () => {
+    const sd = path.join(otherTree, "packages", "sd");
+    mkdirSync(sd, { recursive: true });
+    writeFileSync(
+      path.join(sd, "package.json"),
+      JSON.stringify({
+        name: "@fixture/sd",
+        scripts: { build: "rollup -c", watch: 'rollup -c -w --watch.onEnd="streamdeck restart com.iracedeck.sd.core"' },
+      }),
+    );
+    const asked = (c, tool) => fire(c, { tool, cwd: otherTree, env })?.permissionDecision;
+    const tools = ["Bash", "PowerShell"];
+    const restarting = [
+      "pnpm -r watch",
+      "pnpm --filter sd watch",
+      "pnpm --filter ./packages/sd watch",
+      "npm run watch -w packages/sd",
+      `bash -c "pnpm restart:stream-deck"`,
+      `cmd /c "pnpm restart:stream-deck"`,
+      `pwsh -c "pnpm restart:stream-deck"`,
+      "npx node scripts/host-app.mjs stop mirabox",
+      "node scripts/integration-build.mjs $(echo --restart) fix/1-a",
+    ];
+    // Positive control: the same shapes over what restarts nothing.
+    const harmless = ["pnpm -r build", "pnpm --filter sd build", `bash -c "pnpm build"`, "npx node scripts/build.mjs"];
+    it.each(tools.flatMap((tool) => restarting.map((c) => [tool, c])))("%s asks: %s", (tool, c) =>
+      expect(asked(c, tool)).toBe("ask"),
+    );
+    it.each(tools.flatMap((tool) => harmless.map((c) => [tool, c])))("%s passes: %s", (tool, c) =>
+      expect(asked(c, tool)).toBeUndefined(),
+    );
   });
 
   it("does not judge a heredoc-shaped string, which only bash would read as one", () => {
