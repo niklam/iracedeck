@@ -173,9 +173,12 @@ const AUTO_HOLD_DURATION = 1500;
  * faster, like a starter spinning up. The last length repeats for as long as the key is
  * held; at 120 ms it stays under the 10 Hz cap the key's other updates keep.
  *
+ * The opening frame is short, so the first blink comes right after the press: a ramp that
+ * opened at 450 ms showed nothing before an engine that caught quickly (issue #1516).
+ *
  * @internal Exported for testing
  */
-export const STARTER_CRANK_FRAMES_MS = [450, 380, 320, 270, 230, 190, 160, 140, 120] as const;
+export const STARTER_CRANK_FRAMES_MS = [200, 180, 160, 145, 130, 120] as const;
 
 /**
  * The single dimmed blink a Starter press gives when the engine is already running — the one
