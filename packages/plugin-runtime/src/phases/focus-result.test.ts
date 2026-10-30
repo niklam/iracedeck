@@ -5,8 +5,9 @@
  * rather than importing them from `@iracedeck/iracing-native`: that package
  * loads the native addon as a module side effect, which a platform-agnostic
  * package must not do. The values are still a native contract, so they have to
- * be kept in sync by hand — this test is the guard, and it lives here because
- * the plugin is a package that already depends on both.
+ * be kept in sync by hand — this test is the guard. It lives beside
+ * `register-actions.ts`, which hands `native.focusIRacingWindow()` to `initWindowFocus`, because
+ * this package already depends on both and deck-core may not import the native one.
  */
 import { FocusResult as CoreFocusResult } from "@iracedeck/deck-core";
 import { FocusResult as NativeFocusResult } from "@iracedeck/iracing-native";

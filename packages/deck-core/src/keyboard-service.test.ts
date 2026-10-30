@@ -1,11 +1,7 @@
-import {
-  _resetKeyboard,
-  getKeyboard,
-  initializeKeyboard,
-  isKeyboardInitialized,
-  type KeyCombination,
-} from "@iracedeck/deck-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { _resetKeyboard, getKeyboard, initializeKeyboard, isKeyboardInitialized } from "./keyboard-service.js";
+import type { KeyCombination } from "./keyboard-types.js";
 
 // Mock the keysender module
 const mockSendKey = vi.fn().mockResolvedValue(undefined);
@@ -31,13 +27,11 @@ vi.mock("@iracedeck/logger", () => ({
 }));
 
 // The focus call the keyboard service makes before every emitted keystroke
-// (#977). The vitest alias maps `@iracedeck/deck-core` to that package's SOURCE,
-// so the module the service imports as `./window-focus-service.js` is mocked
-// here by its path relative to this file; the rest of the module stays real
-// because the deck-core barrel re-exports it.
+// (#977), mocked by the same relative path the service imports it from; the
+// rest of the module stays real.
 const { mockFocusBeforeInput } = vi.hoisted(() => ({ mockFocusBeforeInput: vi.fn() }));
 
-vi.mock("../../../deck-core/src/window-focus-service.js", async (importOriginal) => ({
+vi.mock("./window-focus-service.js", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   focusIRacingBeforeInput: mockFocusBeforeInput,
 }));

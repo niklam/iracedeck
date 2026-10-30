@@ -1,5 +1,7 @@
 /**
- * Tests for BaseAction flag-overlay duration auto-stop (issue #490).
+ * Tests for BaseAction: the image store and the inactive overlay, the flag
+ * overlay (its gating, lifecycle, duration auto-stop of issue #490 and sim
+ * connection), regenerate-callback reconciliation and title template updates.
  *
  * The harness serves a fake sim connection so the flag-overlay and title
  * subscriptions register callbacks the test can drive directly via fake timers.
@@ -8,10 +10,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BaseAction } from "./base-action.js";
 import { createFakeSimConnection, type FakeSimConnection } from "./fake-sim-connection.js";
+import { applyInactiveOverlay, overlayConfig } from "./overlay-utils.js";
+import { _resetPluginConfig, initPluginConfig } from "./plugin-config.js";
 import { _resetSimConnection, initializeSimConnection, type OverlayFlag } from "./sim-connection.js";
 import type {
   IDeckActionContext,
   IDeckDidReceiveSettingsEvent,
+  IDeckEvent,
   IDeckWillAppearEvent,
   IDeckWillDisappearEvent,
 } from "./types.js";
@@ -66,6 +71,24 @@ class TestAction extends BaseAction {
   // Expose protected getKeyImage for issue #642 reconciliation tests.
   getStoredSvg(contextId: string): string | undefined {
     return (this as unknown as { getKeyImage: (id: string) => string | undefined }).getKeyImage(contextId);
+  }
+
+  // Expose protected updateKeyImage for the image-store tests.
+  updateImage(contextId: string, svg: string): Promise<boolean> {
+    return (this as unknown as { updateKeyImage: (id: string, s: string) => Promise<boolean> }).updateKeyImage(
+      contextId,
+      svg,
+    );
+  }
+
+  // Expose the protected `flagOverlayContexts` set: the contexts opted into the flag overlay.
+  getOverlayContexts(): Set<string> {
+    return (this as unknown as { flagOverlayContexts: Set<string> }).flagOverlayContexts;
+  }
+
+  // Expose protected generateFlagOverlaySvg.
+  flagOverlaySvg(flag: OverlayFlag): string {
+    return (this as unknown as { generateFlagOverlaySvg: (f: OverlayFlag) => string }).generateFlagOverlaySvg(flag);
   }
 }
 
@@ -707,5 +730,439 @@ describe("BaseAction title template live updates (issue #899)", () => {
     void ctx.action.onWillDisappear(disappearEvent);
 
     expect(titleSubscriber()).toBeUndefined();
+  });
+});
+
+describe("BaseAction image store and overlays", () => {
+  type KeyEvent = IDeckEvent<Record<string, unknown>>;
+
+  /** A key context whose writes are spies, in the event shape every lifecycle handler takes. */
+  function keyEvent(contextId: string, settings: Record<string, unknown> = {}): KeyEvent {
+    const action: IDeckActionContext = {
+      id: contextId,
+      isKey: vi.fn(() => true),
+      isDial: () => false,
+      setImage: vi.fn().mockResolvedValue(undefined),
+      setTitle: vi.fn().mockResolvedValue(undefined),
+      setSettings: vi.fn().mockResolvedValue(undefined),
+      setFeedback: vi.fn().mockResolvedValue(undefined),
+      setFeedbackLayout: vi.fn().mockResolvedValue(undefined),
+      setTriggerDescription: vi.fn().mockResolvedValue(undefined),
+      dialCanvas: () => null,
+      setDialCanvas: vi.fn().mockResolvedValue(undefined),
+    };
+
+    return { action, payload: { settings } };
+  }
+
+  let action: TestAction;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // The setting's schema default: an inactive action gets the overlay.
+    mockGetGlobalSettings.mockReturnValue({ disableWhenDisconnected: true });
+    action = new TestAction();
+    // Enable overlay for tests (disabled by default in production)
+    overlayConfig.inactiveOverlayEnabled = true;
+  });
+
+  afterEach(() => {
+    overlayConfig.inactiveOverlayEnabled = false;
+  });
+
+  describe("setKeyImage", () => {
+    it("should store the original SVG", async () => {
+      const ev = keyEvent("context-1");
+      const svg = '<svg xmlns="http://www.w3.org/2000/svg"></svg>';
+
+      await action.registerKey(ev, svg);
+
+      expect(action.getStoredSvg("context-1")).toBe(svg);
+    });
+
+    it("should call action.setImage with the SVG when active", async () => {
+      const ev = keyEvent("context-1");
+      const svg = '<svg xmlns="http://www.w3.org/2000/svg"></svg>';
+
+      await action.registerKey(ev, svg);
+
+      expect(ev.action.setImage).toHaveBeenCalledWith(svg);
+    });
+
+    it("should apply grayscale overlay when inactive", async () => {
+      const ev = keyEvent("context-1");
+      const svg = '<svg xmlns="http://www.w3.org/2000/svg" fill="#ff0000"></svg>';
+
+      action.setActive(false);
+      await action.registerKey(ev, svg);
+
+      // setKeyImage applies overlay when inactive
+      expect(ev.action.setImage).toHaveBeenCalledWith(applyInactiveOverlay(svg));
+    });
+
+    it("should store original SVG even when inactive", async () => {
+      const ev = keyEvent("context-1");
+      const svg = '<svg xmlns="http://www.w3.org/2000/svg" fill="#ff0000"></svg>';
+
+      action.setActive(false);
+      await action.registerKey(ev, svg);
+
+      // Original SVG is stored, not the grayscale version
+      expect(action.getStoredSvg("context-1")).toBe(svg);
+    });
+
+    it("should not call setImage for non-key actions", async () => {
+      const ev = keyEvent("context-1");
+
+      vi.mocked(ev.action.isKey).mockReturnValue(false);
+
+      await action.registerKey(ev, "<svg></svg>");
+
+      expect(ev.action.setImage).not.toHaveBeenCalled();
+    });
+
+    it("should update stored SVG when called multiple times", async () => {
+      const ev = keyEvent("context-1");
+
+      await action.registerKey(ev, "<svg>first</svg>");
+      await action.registerKey(ev, "<svg>second</svg>");
+
+      expect(action.getStoredSvg("context-1")).toBe("<svg>second</svg>");
+    });
+  });
+
+  describe("setActive", () => {
+    it("should update isActive state", () => {
+      expect(action.getIsActive()).toBe(true);
+
+      action.setActive(false);
+
+      expect(action.getIsActive()).toBe(false);
+
+      action.setActive(true);
+
+      expect(action.getIsActive()).toBe(true);
+    });
+
+    it("should not trigger any action when state hasn't changed", async () => {
+      const ev = keyEvent("context-1");
+
+      await action.registerKey(ev, "<svg></svg>");
+      vi.mocked(ev.action.setImage).mockClear();
+
+      // Set to true when already true
+      action.setActive(true);
+
+      expect(ev.action.setImage).not.toHaveBeenCalled();
+    });
+
+    it("should refresh all contexts with grayscale overlay when becoming inactive", async () => {
+      const ev1 = keyEvent("context-1");
+      const ev2 = keyEvent("context-2");
+
+      const svg1 = '<svg id="1" fill="#ff0000"></svg>';
+      const svg2 = '<svg id="2" fill="#00ff00"></svg>';
+
+      await action.registerKey(ev1, svg1);
+      await action.registerKey(ev2, svg2);
+
+      vi.mocked(ev1.action.setImage).mockClear();
+      vi.mocked(ev2.action.setImage).mockClear();
+
+      action.setActive(false);
+
+      // BaseAction refreshes all contexts with grayscale overlay
+      expect(ev1.action.setImage).toHaveBeenCalledWith(applyInactiveOverlay(svg1));
+      expect(ev2.action.setImage).toHaveBeenCalledWith(applyInactiveOverlay(svg2));
+    });
+
+    it("should refresh all contexts with original images when becoming active", async () => {
+      const ev1 = keyEvent("context-1");
+      const ev2 = keyEvent("context-2");
+
+      const svg1 = '<svg id="1" fill="#ff0000"></svg>';
+      const svg2 = '<svg id="2" fill="#00ff00"></svg>';
+
+      await action.registerKey(ev1, svg1);
+      await action.registerKey(ev2, svg2);
+
+      action.setActive(false);
+
+      vi.mocked(ev1.action.setImage).mockClear();
+      vi.mocked(ev2.action.setImage).mockClear();
+
+      action.setActive(true);
+
+      // BaseAction refreshes all contexts with original images
+      expect(ev1.action.setImage).toHaveBeenCalledWith(svg1);
+      expect(ev2.action.setImage).toHaveBeenCalledWith(svg2);
+    });
+  });
+
+  describe("onWillDisappear", () => {
+    it("should clear stored context", async () => {
+      const ev = keyEvent("context-1");
+
+      await action.registerKey(ev, "<svg></svg>");
+
+      expect(action.getStoredSvg("context-1")).toBeDefined();
+
+      await action.onWillDisappear(ev);
+
+      expect(action.getStoredSvg("context-1")).toBeUndefined();
+    });
+
+    it("should not affect other contexts", async () => {
+      const ev1 = keyEvent("context-1");
+      const ev2 = keyEvent("context-2");
+
+      await action.registerKey(ev1, "<svg>1</svg>");
+      await action.registerKey(ev2, "<svg>2</svg>");
+
+      await action.onWillDisappear(ev1);
+
+      expect(action.getStoredSvg("context-1")).toBeUndefined();
+      expect(action.getStoredSvg("context-2")).toBe("<svg>2</svg>");
+    });
+
+    it("should remove context from storage", async () => {
+      const ev = keyEvent("context-1");
+
+      await action.registerKey(ev, "<svg></svg>");
+      await action.onWillDisappear(ev);
+
+      expect(action.getStoredSvg("context-1")).toBeUndefined();
+    });
+  });
+
+  describe("getIsActive", () => {
+    it("should return true by default", () => {
+      expect(action.getIsActive()).toBe(true);
+    });
+
+    it("should reflect current active state", () => {
+      action.setActive(false);
+
+      expect(action.getIsActive()).toBe(false);
+
+      action.setActive(true);
+
+      expect(action.getIsActive()).toBe(true);
+    });
+  });
+
+  describe("updateKeyImage", () => {
+    it("should update the stored SVG", async () => {
+      const ev = keyEvent("context-1");
+
+      await action.registerKey(ev, "<svg>original</svg>");
+      await action.updateImage("context-1", "<svg>updated</svg>");
+
+      expect(action.getStoredSvg("context-1")).toBe("<svg>updated</svg>");
+    });
+
+    it("should call action.setImage with the new SVG", async () => {
+      const ev = keyEvent("context-1");
+
+      await action.registerKey(ev, "<svg>original</svg>");
+      vi.mocked(ev.action.setImage).mockClear();
+
+      await action.updateImage("context-1", "<svg>updated</svg>");
+
+      expect(ev.action.setImage).toHaveBeenCalledWith("<svg>updated</svg>");
+    });
+
+    it("should apply grayscale overlay when inactive", async () => {
+      const ev = keyEvent("context-1");
+      const updatedSvg = '<svg fill="#ff0000">updated</svg>';
+
+      await action.registerKey(ev, "<svg>original</svg>");
+      action.setActive(false);
+      vi.mocked(ev.action.setImage).mockClear();
+
+      await action.updateImage("context-1", updatedSvg);
+
+      // updateKeyImage applies overlay when inactive
+      expect(ev.action.setImage).toHaveBeenCalledWith(applyInactiveOverlay(updatedSvg));
+    });
+
+    it("should store original SVG even when inactive", async () => {
+      const ev = keyEvent("context-1");
+      const updatedSvg = '<svg fill="#ff0000">updated</svg>';
+
+      await action.registerKey(ev, "<svg>original</svg>");
+      action.setActive(false);
+
+      await action.updateImage("context-1", updatedSvg);
+
+      // Original SVG is stored, not the grayscale version
+      expect(action.getStoredSvg("context-1")).toBe(updatedSvg);
+    });
+
+    it("should return false for unknown context", async () => {
+      const result = await action.updateImage("unknown-context", "<svg></svg>");
+
+      expect(result).toBe(false);
+    });
+
+    it("should return true for known context", async () => {
+      const ev = keyEvent("context-1");
+
+      await action.registerKey(ev, "<svg>original</svg>");
+
+      const result = await action.updateImage("context-1", "<svg>updated</svg>");
+
+      expect(result).toBe(true);
+    });
+  });
+
+  describe("multiple action instances", () => {
+    it("should have independent active states", () => {
+      const action1 = new TestAction();
+      const action2 = new TestAction();
+
+      action1.setActive(false);
+
+      expect(action1.getIsActive()).toBe(false);
+      expect(action2.getIsActive()).toBe(true);
+    });
+
+    it("should have independent image stores", async () => {
+      const action1 = new TestAction();
+      const action2 = new TestAction();
+
+      const ev1 = keyEvent("context-1");
+      const ev2 = keyEvent("context-2");
+
+      await action1.registerKey(ev1, "<svg>action1</svg>");
+      await action2.registerKey(ev2, "<svg>action2</svg>");
+
+      expect(action1.getStoredSvg("context-1")).toBe("<svg>action1</svg>");
+      expect(action1.getStoredSvg("context-2")).toBeUndefined();
+
+      expect(action2.getStoredSvg("context-2")).toBe("<svg>action2</svg>");
+      expect(action2.getStoredSvg("context-1")).toBeUndefined();
+    });
+  });
+
+  describe("flag overlay - image gating", () => {
+    it("should store SVG but skip setImage when flag overlay is active", async () => {
+      const ev = keyEvent("context-1", { flagsOverlay: true });
+
+      await action.registerKey(ev, "<svg>original</svg>");
+      vi.mocked(ev.action.setImage).mockClear();
+
+      // Simulate flag overlay being active
+      action.getOverlayActive().add("context-1");
+
+      await action.updateImage("context-1", "<svg>updated-during-flag</svg>");
+
+      // SVG is stored (for later restore)
+      expect(action.getStoredSvg("context-1")).toBe("<svg>updated-during-flag</svg>");
+      // But setImage was NOT called (flag overlay takes priority)
+      expect(ev.action.setImage).not.toHaveBeenCalled();
+    });
+
+    it("should call setImage normally when flag overlay is not active", async () => {
+      const ev = keyEvent("context-1", { flagsOverlay: true });
+
+      await action.registerKey(ev, "<svg>original</svg>");
+      vi.mocked(ev.action.setImage).mockClear();
+
+      await action.updateImage("context-1", "<svg>updated</svg>");
+
+      expect(ev.action.setImage).toHaveBeenCalledWith("<svg>updated</svg>");
+    });
+
+    it("should gate setKeyImage as well during active flag overlay", async () => {
+      const ev = keyEvent("context-1", { flagsOverlay: true });
+
+      await action.registerKey(ev, "<svg>original</svg>");
+
+      action.getOverlayActive().add("context-1");
+      vi.mocked(ev.action.setImage).mockClear();
+
+      await action.registerKey(ev, "<svg>new-during-flag</svg>");
+
+      expect(action.getStoredSvg("context-1")).toBe("<svg>new-during-flag</svg>");
+      expect(ev.action.setImage).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("flag overlay - lifecycle", () => {
+    it("should add context to flagOverlayContexts on onWillAppear with flagsOverlay=true", async () => {
+      await action.onWillAppear(keyEvent("context-1", { flagsOverlay: true }));
+
+      expect(action.getOverlayContexts().has("context-1")).toBe(true);
+    });
+
+    it("should not add context when flagsOverlay is false", async () => {
+      await action.onWillAppear(keyEvent("context-1", { flagsOverlay: false }));
+
+      expect(action.getOverlayContexts().has("context-1")).toBe(false);
+    });
+
+    it("should remove context from flagOverlayContexts on onWillDisappear", async () => {
+      const ev = keyEvent("context-1", { flagsOverlay: true });
+
+      await action.onWillAppear(ev);
+      await action.onWillDisappear(ev);
+
+      expect(action.getOverlayContexts().has("context-1")).toBe(false);
+    });
+
+    it("should update context on onDidReceiveSettings", async () => {
+      await action.onWillAppear(keyEvent("context-1", { flagsOverlay: false }));
+      expect(action.getOverlayContexts().has("context-1")).toBe(false);
+
+      await action.onDidReceiveSettings(keyEvent("context-1", { flagsOverlay: true }));
+      expect(action.getOverlayContexts().has("context-1")).toBe(true);
+    });
+  });
+
+  describe("addedWithVersion persistence", () => {
+    afterEach(() => {
+      _resetPluginConfig();
+    });
+
+    it("should persist addedWithVersion on first appear when missing", async () => {
+      initPluginConfig({ version: "1.13.0", platform: "stream-deck" });
+      const ev = keyEvent("context-1", {});
+
+      await action.onWillAppear(ev);
+
+      expect(ev.action.setSettings).toHaveBeenCalledOnce();
+      expect(ev.action.setSettings).toHaveBeenCalledWith(expect.objectContaining({ addedWithVersion: "1.13.0" }));
+    });
+
+    it("should not overwrite existing addedWithVersion", async () => {
+      initPluginConfig({ version: "1.14.0", platform: "stream-deck" });
+      const ev = keyEvent("context-1", { addedWithVersion: "1.12.0" });
+
+      await action.onWillAppear(ev);
+
+      expect(ev.action.setSettings).not.toHaveBeenCalled();
+    });
+
+    it("should not persist when plugin config is not initialized", async () => {
+      const ev = keyEvent("context-1", {});
+
+      await action.onWillAppear(ev);
+
+      expect(ev.action.setSettings).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("flag overlay - SVG generation", () => {
+    it("should generate a valid data URI for a flag", () => {
+      const svg = action.flagOverlaySvg(FLAG_YELLOW);
+      expect(svg).toContain("data:image/svg+xml");
+      // Decode base64 to verify SVG content
+      const base64 = svg.replace("data:image/svg+xml;base64,", "");
+      const decoded = Buffer.from(base64, "base64").toString("utf-8");
+      expect(decoded).toContain("#f1c40f");
+      expect(decoded).toContain("72");
+      expect(decoded).toContain("svg");
+    });
   });
 });

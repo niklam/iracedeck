@@ -1,3 +1,5 @@
+import { describe, expect, it } from "vitest";
+
 import {
   escapeXml,
   generateIconText,
@@ -6,8 +8,7 @@ import {
   renderIconTemplate,
   resolveIconColors,
   validateIconTemplate,
-} from "@iracedeck/deck-core";
-import { describe, expect, it } from "vitest";
+} from "./icon-template.js";
 
 describe("icon-template", () => {
   const validTemplate72 = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
