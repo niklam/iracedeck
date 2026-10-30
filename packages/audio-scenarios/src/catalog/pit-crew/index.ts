@@ -1124,7 +1124,11 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   const getPitLimiterCalloutEnabled = enabledIn(PIT_LIMITER_CALLOUTS);
   const getNoLimiterCalloutEnabled = enabledIn(NO_LIMITER_CALLOUTS);
 
-  registerRadarEngine(bus, d.getRadarMasterEnabled);
+  registerRadarEngine(bus, {
+    getMasterEnabled: d.getRadarMasterEnabled,
+    getLatestTelemetry: d.getLatestTelemetry,
+    getSessionType: d.getSessionType,
+  });
 
   registerPitSpeedingEngine(bus, {
     getMasterEnabled: d.getRaceEngineerMasterEnabled,

@@ -7,6 +7,7 @@
  * paths rather than assuming an `ended` will always arrive.
  */
 import type { IEventBus } from "@iracedeck/event-bus";
+import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -58,9 +59,8 @@ vi.mock("@iracedeck/audio-service", () => ({
   getAudio: hoisted.getAudio,
 }));
 
-vi.mock("@iracedeck/sim-events-iracing", () => ({
-  getLatestTelemetry: hoisted.getLatestTelemetry,
-}));
+/** The engine's one sim read (#1378), over the hoisted stub each case switches. */
+const getLatestTelemetry = (): TelemetryData | null => hoisted.getLatestTelemetry() as TelemetryData | null;
 
 const RADAR_CHANNEL = 3;
 
@@ -87,7 +87,7 @@ function register(): void {
   registerPitSpeedingEngine(hoisted.bus, {
     getMasterEnabled: () => masterEnabled,
     getCueEnabled: () => cueEnabled,
-    getLatestTelemetry: () => null,
+    getLatestTelemetry,
   });
 }
 
@@ -369,7 +369,7 @@ describe("pit-speeding cue engine", () => {
         registerPitSpeedingEngine(otherBus, {
           getMasterEnabled: () => true,
           getCueEnabled: () => true,
-          getLatestTelemetry: () => null,
+          getLatestTelemetry,
         }),
       ).toThrow(/different event bus/);
     });
@@ -379,7 +379,7 @@ describe("pit-speeding cue engine", () => {
       registerPitSpeedingEngine(hoisted.bus, {
         getMasterEnabled: () => false,
         getCueEnabled: () => true,
-        getLatestTelemetry: () => null,
+        getLatestTelemetry,
       });
 
       hoisted.emit("pitSpeeding.started");

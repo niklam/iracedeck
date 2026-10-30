@@ -4,6 +4,7 @@ import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type CalloutScript } from "@iracedeck/callout-script";
 import type { IEventBus, RadarState, SimEventName, SimEventOf } from "@iracedeck/event-bus";
+import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { NO_FRAME, WEIGHT } from "../../dsl.js";
@@ -26,21 +27,16 @@ import {
   type SpotterTrackDirection,
 } from "./spotter-engine.js";
 
-// ─── sim-events-iracing mock ───────────────────────────────────────────────
+// ─── The engine's sim reads ───────────────────────────────────────────────
 //
-// The engine reads telemetry (pit-road) and session type (Lone Qualify) from
-// `@iracedeck/sim-events-iracing`; the track rotation direction arrives through
-// its deps as the catalog's own `SpotterTrackDirection` union (#1378).
+// The engine reads telemetry (pit-road) and session type (Lone Qualify)
+// through its deps (#1378), as it reads the track rotation direction — the
+// catalog's own `SpotterTrackDirection` union. These stubs back them.
 
-const sim = vi.hoisted(() => ({
+const sim = {
   getLatestTelemetry: vi.fn<() => { OnPitRoad?: boolean } | null>(),
   getSessionType: vi.fn<() => string>(),
-}));
-
-vi.mock("@iracedeck/sim-events-iracing", () => ({
-  getLatestTelemetry: sim.getLatestTelemetry,
-  getSessionType: sim.getSessionType,
-}));
+};
 
 // ─── Fake audio service (records plays, drives channel-complete manually) ───
 
@@ -217,8 +213,8 @@ function makeDeps(overrides: Partial<SpotterDeps> = {}): SpotterDeps {
     getStillThereIntervalMs: () => SPOTTER_STILL_THERE_DEFAULT_MS,
     getTrackDirection: () => trackDirection,
     getNearestCarGapMeters: () => nearestGap,
-    getLatestTelemetry: () => null,
-    getSessionType: () => "",
+    getLatestTelemetry: () => sim.getLatestTelemetry() as TelemetryData | null,
+    getSessionType: () => sim.getSessionType(),
     logger: mockLogger as never,
     ...overrides,
   };

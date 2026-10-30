@@ -48,7 +48,6 @@ import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { IEventBus, RadarState, SimEventOf } from "@iracedeck/event-bus";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
-import { getLatestTelemetry, getSessionType } from "@iracedeck/sim-events-iracing";
 
 import type { ScenarioContract } from "../../dsl.js";
 import { NO_FRAME, WEIGHT } from "../../dsl.js";
@@ -391,7 +390,7 @@ function startLoop(): void {
 
 /** Live suppression: master off, both opt-ins off, on pit road, or Lone Qualify. */
 function suppressed(): boolean {
-  return !deps.getMasterEnabled() || !spotterActive() || getSessionType() === "Lone Qualify" || isOnPitRoad();
+  return !deps.getMasterEnabled() || !spotterActive() || deps.getSessionType() === "Lone Qualify" || isOnPitRoad();
 }
 
 function tick(): void {
@@ -543,7 +542,7 @@ function handleTransition(oldState: RadarState, newState: RadarState, dir: Spott
 }
 
 function isOnPitRoad(): boolean {
-  const telemetry = getLatestTelemetry() as { OnPitRoad?: boolean } | null;
+  const telemetry = deps.getLatestTelemetry();
 
   return telemetry?.OnPitRoad === true;
 }

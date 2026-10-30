@@ -36,7 +36,6 @@ import { AudioChannel, getAudio } from "@iracedeck/audio-service";
 import type { IEventBus } from "@iracedeck/event-bus";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
-import { getLatestTelemetry } from "@iracedeck/sim-events-iracing";
 
 /**
  * The warning tone, chosen by ear from six candidates during #912's hardware
@@ -198,7 +197,7 @@ function startTickLoop(): void {
   stopTickLoop();
 
   const fire = (): void => {
-    const snapshot = getLatestTelemetry() as Snapshot;
+    const snapshot: Snapshot = deps.getLatestTelemetry();
 
     if (leftPitRoad(snapshot)) {
       deps.logger?.info("Pit-speeding cue stopped");
