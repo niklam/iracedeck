@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import url from "node:url";
@@ -158,6 +158,7 @@ describe("format-staged in a commit", { timeout: 60_000 }, () => {
       },
     ],
     ["git commit -a", (box, cwd) => box.commit(cwd, "-a", "-m", "own")],
+    ["git commit -i -- own.json", (box, cwd) => box.commit(cwd, "-m", "own", "-i", "--", "own.json")],
   ])("%s records only own.json, formatted, and leaves the sibling's mid-hook save unstaged", (_form, commit) => {
     const box = sandbox();
 
@@ -173,6 +174,40 @@ describe("format-staged in a commit", { timeout: 60_000 }, () => {
     expect(read(box.repo, "sibling.json")).toBe(SIBLING_MID_HOOK);
     expect(porcelain(box, box.repo)).toEqual([" M sibling.json"]);
     expect(read(box.repo, "own.json")).toBe(FORMATTED(2));
+  });
+
+  it("formats what an --amend records", () => {
+    const box = sandbox();
+
+    write(box.repo, "own.json", '{"a":5}');
+    box.git(box.repo, "add", "own.json");
+
+    const result = box.commit(box.repo, "--amend", "-m", "fixture, amended");
+
+    expect(result.status, result.output).toBe(0);
+    expect(box.git(box.repo, "rev-list", "--count", "HEAD")).toBe("1\n");
+    expect(box.git(box.repo, "show", "HEAD:own.json")).toBe(FORMATTED(5));
+    expect(porcelain(box, box.repo)).toEqual([]);
+  });
+
+  // A gate reached through a junction or symlink must still run, not exit 0 having done nothing.
+  it("runs as the main module when its directory is reached through a junction", () => {
+    const box = sandbox();
+    const link = path.join(box.root, "scripts-link");
+
+    symlinkSync(path.join(repoRoot, "scripts"), link, "junction");
+    write(box.repo, "own.json", '{"a":6}');
+    box.git(box.repo, "add", "own.json");
+
+    const result = spawnSync(process.execPath, [path.join(link, "format-staged.mjs")], {
+      cwd: box.repo,
+      env: box.env,
+      encoding: "utf8",
+    });
+
+    expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
+    expect(result.stdout).toContain("format-staged: formatted own.json");
+    expect(box.git(box.repo, "show", ":own.json")).not.toBe('{"a":6}');
   });
 
   it("keeps another staged path staged and out of a --only commit", () => {

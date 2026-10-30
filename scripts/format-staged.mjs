@@ -29,7 +29,7 @@
  * `format` gates.
  */
 import { execFileSync } from "node:child_process";
-import { lstatSync } from "node:fs";
+import { lstatSync, realpathSync } from "node:fs";
 import path from "node:path";
 import url from "node:url";
 
@@ -381,7 +381,10 @@ export function createRepoFormatter(repoRoot) {
   };
 }
 
-if (process.argv[1] && url.pathToFileURL(process.argv[1]).href === import.meta.url) {
+// Node runs the main module from its real path, so compare real paths: through a
+// junction or symlink a bare href comparison is false and the hook would pass
+// having formatted nothing.
+if (process.argv[1] && realpathSync(process.argv[1]) === url.fileURLToPath(import.meta.url)) {
   try {
     process.exitCode = await formatStaged();
   } catch (error) {
