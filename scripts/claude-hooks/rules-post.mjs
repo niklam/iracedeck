@@ -141,13 +141,21 @@ export function createdIssue(stdout) {
 
 /**
  * The `GH_REPO` a command assigns (`GH_REPO=o/r gh pr merge 7`, an `export`,
- * PowerShell's `$env:GH_REPO = 'o/r'`): its value, `null` when it is not a
- * plain value, `undefined` when the command sets none.
+ * PowerShell's `$env:GH_REPO = 'o/r'`): the value of the last assignment,
+ * `null` when it is not a plain value, `undefined` when the command sets none.
+ * The caller passes the text ahead of the command it is for, and its masked
+ * twin (`trustedMask`, same length) so an assignment inside a quoted body is
+ * not one; the value itself is read from the raw text.
  */
-export function assignedGhRepo(command) {
-  const m = /\bGH_REPO\s*=\s*(?:'([^']*)'|"([^"$`\\]*)"|([^\s;&|()'"`$]+))?/.exec(String(command ?? ""));
-  if (!m) return undefined;
-  return m[1] ?? m[2] ?? m[3] ?? null;
+export function assignedGhRepo(command, masked = command) {
+  const raw = String(command ?? "");
+  const assignments = [...String(masked ?? "").matchAll(/\bGH_REPO\s*=\s*/g)];
+  if (!assignments.length) return undefined;
+  const last = assignments.at(-1);
+  const value = /'([^']*)'|"([^"$`\\]*)"|([^\s;&|()'"`$]+)/y;
+  value.lastIndex = last.index + last[0].length;
+  const m = value.exec(raw);
+  return m ? (m[1] ?? m[2] ?? m[3]) : null;
 }
 
 /**

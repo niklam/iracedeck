@@ -58,7 +58,7 @@ if (typeof raw === "string") {
       notes.push(`sed -i ran; git diff --stat:\n${r.out.trim() || "(no tracked changes)"}`);
     }
     const merge = firstMerge(command);
-    if (merge?.readable) notes.push(...afterMerge(merge, raw, command, cwd, shell));
+    if (merge?.readable) notes.push(...afterMerge(merge, command, cwd, shell));
     else if (merge)
       notes.push(
         "gh pr merge ran, but its PR argument could not be read; check by hand whether it merged, and move its Roadmap card to Testing.",
@@ -76,27 +76,31 @@ if (typeof raw === "string") {
  * `merge` is the merge's own arguments (`parseMerge`), so a pin or a body value
  * is never read as the PR. The PR is read back from the repository the merge
  * named, in the directory it ran in, and only one in {@link HOME_REPO} moves a
- * card (#1527).
+ * card (#1527). A `GH_REPO` counts only when assigned ahead of the merge and
+ * outside quoted text. The repository reaches the read-back as `GH_REPO`, not
+ * `--repo`, which gh refuses without a PR argument where the merge itself,
+ * reading `GH_REPO`, took the branch's PR.
  */
-function afterMerge(merge, raw, command, cwd, shell) {
-  const named = mergeRepo(merge, assignedGhRepo(raw));
+function afterMerge(merge, command, cwd, shell) {
+  const text = trustedMask(command);
+  const at = /\bgh\s+pr\s+merge\b/.exec(text)?.index ?? command.length;
+  const named = mergeRepo(merge, assignedGhRepo(command.slice(0, at), text.slice(0, at)));
   if (named === null)
     return [
       "gh pr merge ran with a --repo or GH_REPO the hook cannot read; check by hand whether it merged an iRaceDeck PR, and move its Roadmap card to Testing.",
     ];
   if (named && !isHomeRepo(named))
     return [`gh pr merge ran in ${named}, not ${HOME_REPO}: no Roadmap card moved and no post-merge runs listed.`];
-  const repoArgs = named && !repoOfUrl(merge.ref) ? ["--repo", named] : [];
   const pr = ghJson(
     [
       "pr",
       "view",
       ...(merge.ref ? [merge.ref] : []),
-      ...repoArgs,
       "--json",
       "number,state,title,url,mergeCommit,closingIssuesReferences",
     ],
     gitCwd(command, cwd, GH_PR_MERGE, shell),
+    named && !repoOfUrl(merge.ref) ? { env: { GH_REPO: named } } : undefined,
   );
   if (!pr) return ["gh pr merge: could not read the PR back; check by hand whether it merged."];
   // Whatever gh resolved the repository from (a cd, the session's GH_REPO), its URL says which PR it read.

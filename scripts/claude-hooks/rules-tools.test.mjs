@@ -171,6 +171,16 @@ describe("post rules", () => {
       expect(assignedGhRepo("GH_REPO=$R gh pr merge 5")).toBeNull();
       expect(assignedGhRepo(`GH_REPO="$R" gh pr merge 5`)).toBeNull();
       expect(assignedGhRepo("gh pr merge 5")).toBeUndefined();
+      expect(assignedGhRepo("GH_REPO=a/b; GH_REPO=c/d; ")).toBe("c/d");
+      // The masked twin hides a quoted mention; the value is read from the raw text.
+      const raw = `echo "GH_REPO=x/y"; GH_REPO='a/b' `;
+      expect(
+        assignedGhRepo(
+          raw,
+          raw.replace(/"[^"]*"|'[^']*'/g, (q) => q[0] + "_".repeat(q.length - 2) + q[0]),
+        ),
+      ).toBe("a/b");
+      expect(assignedGhRepo(`echo "GH_REPO=x/y"`, `echo "__________"`)).toBeUndefined();
     });
 
     it("picks a merge's repository in gh's order: URL, flag, environment", () => {
