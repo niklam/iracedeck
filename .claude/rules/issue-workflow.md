@@ -68,7 +68,7 @@ No clip is generated or regenerated before he approves its text, since generatin
 
 Nobody is asked whether to run it: the issue lead runs it at the level from the table in `@.claude/rules/code-review.md` and says which row the change landed in. Target the worktree explicitly, in the form that rule prescribes — the hook now refuses an untargeted call. The session's working directory is the `master` checkout, so a careless invocation reviews the wrong tree — and once wrote eight files of edits into `master`. Afterwards, check every worktree is still clean, not just the target.
 
-Findings are candidates: verify each against the code, apply the ones that hold, and say which you declined and why.
+Findings are candidates: verify each against the code, apply the ones that hold, and say which you declined and why — after a fresh judge has ruled on each decline (`@.claude/rules/code-review.md`).
 
 Some diffs then get the second read, on the code with those findings applied. `@.claude/rules/code-review.md` says which, and why it is not a second full review.
 
@@ -90,7 +90,7 @@ Poll the PR, fix every finding **that holds — nitpicks included**, and answer 
 
 Nitpicks are in scope precisely because they are the ones it is tempting to wave through; "it's only a nitpick" is not a reason to skip one, and it is not a reason to apply one that is wrong either.
 
-**Rejecting a finding is a normal outcome.** A review can be confidently wrong, or right in general and wrong for this project. Reject it in the thread with the reasoning stated — the same standard `@.claude/rules/code-review.md` sets for the local reviewer. What is not acceptable is silently ignoring one.
+**Rejecting a finding is a normal outcome.** A review can be confidently wrong, or right in general and wrong for this project. Reject it in the thread with the reasoning stated, once the judge has upheld the rejection — the same standard `@.claude/rules/code-review.md` sets for the local reviewer. What is not acceptable is silently ignoring one.
 
 One trap with no other home: `gh pr checks` exits non-zero (8) while any check is still pending, so a non-zero exit there is not a failure.
 

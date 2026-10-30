@@ -65,6 +65,9 @@ Do not ask whether to review; it is your call, at the level from the table in `c
 1. `/code-review <level> <tree>` with the scope block that rule prescribes. Baseline `git status --porcelain` in every worktree first and check them after. Verify each finding; apply the ones that hold.
 2. The `second-read` skill when the diff is a gate or guard, a build, release or publish path, or a state machine. Same disposal.
 3. The CodeRabbit CLI on the final branch, after every fix commit: from the tree, `coderabbit review --agent --committed --base master` in the background, output to your scratchpad. Check `reviewedFiles` against `git diff --stat origin/master...HEAD`.
+4. **Your declines go to a judge (#1528).** You wrote the code, so you do not get the last word on a finding against it. After each of the three rounds above, collect every finding you would not fix as asked on the branch (declined, "does not hold", "no change needed", skipped, filed as an issue instead) and spawn ONE fresh `general-purpose` agent, `model: "opus"`, told it is read-only (edit nothing, run no build or test, spawn no agent) and with `git status --porcelain` baselined in every worktree before it and checked after, given only: the tree and `origin/master...HEAD`; each finding verbatim with its file, line and source; your reason in a sentence or two. Never your plan, the spec rationale or this conversation. Ask it to read the code itself and rule on each separately, **upheld** or **overruled**, with the evidence it read. A round with no declines spawns nothing; a finding you fix is not judged.
+   - An **overruled** finding is fixed. Do not argue it back. The one exception: a ruling that would contradict a decision a spec or rule file records goes to the PO as `question`, with both.
+   - Record one line per source in the PR body, naming it: `Judged declines (<source>): N, U upheld, O overruled.`, where `<source>` is `/code-review`, `second read`, `CodeRabbit CLI` or `CodeRabbit PR`.
 
 ## 8. Manual test
 
@@ -84,13 +87,14 @@ git -C <tree> push -u origin <branch>
 gh pr create --base master --head <branch> --title "<type>(<scope>): <description> (#<n>)" --body-file <scratchpad>/pr-body.md
 ```
 
-The body follows `.github/pull_request_template.md`, carries `Fixes #<n>`, the second-read tally line when one ran, and any vacuous test condition with what covers it. No AI references. Report `pr-open`.
+The body follows `.github/pull_request_template.md`, carries `Fixes #<n>`, the second-read tally line when one ran, the `Judged declines` lines, and any vacuous test condition with what covers it. No AI references. Report `pr-open`.
 
 ## 10. Babysit the PR
 
 Load `mcp__ccd_pr__bind_pr`, `mcp__ccd_pr__get_status` and `mcp__ccd_pr__set_monitor` with ToolSearch, bind the PR and turn Auto-fix on. It wakes you on CI failures, conflicts and review comments, not on an approval.
 
 - Fix every finding that holds, nitpicks included, and answer every thread: the fix commit, or the reason it does not hold (`issue-workflow.md` step 10). Never push while CodeRabbit's review is in progress.
+- A thread you would reject goes to the judge first (step 7, item 4), batched per CodeRabbit review. Upheld: reply with your reason plus "upheld by an independent judge". Overruled: fix it and reply with the commit.
 - The approval: act on it when a monitor event brings it; otherwise check `gh pr view <pr> --json reviewDecision,reviews,headRefOid` with a `Monitor` until-loop at an interval of ten minutes or more, with a timeout. That is a review check, not CI polling.
 - CodeRabbit traps: a clean incremental review updates only its summary comment and posts no new `APPROVED`. Over a standing `CHANGES_REQUESTED`, `@coderabbitai approve` once. A rate-limited summary means not reviewed: wait for the reset, then `@coderabbitai review`. Read the "Recent review info" block's range, not a "between" line found anywhere in the comment.
 - When the PO says a sibling merged: `git -C <tree> fetch origin`, `git -C <tree> rebase origin/master` (never merge `master` in), re-run the gates, `git -C <tree> push --force-with-lease`.

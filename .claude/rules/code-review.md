@@ -27,7 +27,7 @@ Two tie-breakers: a diff that spans rows takes the **highest** row any changed f
 
 ## Report only — `--fix` is not part of the command
 
-The hook refuses `--fix`, because findings are candidates rather than verdicts: a review produces confident-sounding findings about behavior that is deliberate, and an auto-applied one rewrites a decision nobody re-litigated — in whatever tree the run targeted, which is how one bare invocation put eight files of unrelated edits into the `master` checkout. So read the findings, verify each against the code, apply the ones that hold as your own edits, and say which you declined and why. Any review-ish subagent gets the same instruction — read-only, report only.
+The hook refuses `--fix`, because findings are candidates rather than verdicts: a review produces confident-sounding findings about behavior that is deliberate, and an auto-applied one rewrites a decision nobody re-litigated — in whatever tree the run targeted, which is how one bare invocation put eight files of unrelated edits into the `master` checkout. So read the findings, verify each against the code, apply the ones that hold as your own edits, and say which you declined and why. The author of the code never declines a finding alone (#1528): every finding they would not fix goes to one fresh read-only `opus` judge per review round, given only the code, the finding and the reason, whose ruling binds (brief in the `issue-lead` skill, step 7). Any review-ish subagent gets the same instruction — read-only, report only.
 
 ## Always target the worktree that holds the work
 
