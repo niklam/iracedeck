@@ -76,11 +76,13 @@ Review before **manual testing**, not after, because a finding can change what t
 
 ### Manual testing gates the PR (8)
 
-**Do not open a PR until the maintainer has tested the change.** Hardware, sim and deck-host behaviour are not knowable from the diff, and a PR opened before testing is one the maintainer may have to unwind.
+**Do not open a PR until the maintainer has tested the change** (dev tooling: its `qa` agent, below). Hardware, sim and deck-host behaviour are not knowable from the diff, and a PR opened before testing is one the maintainer may have to unwind.
+
+**Dev tooling is tested by the issue's `qa` agent instead** (Niklas, 2026-10-30: "Yes, agents test tooling", #1532). When the manual test is commands and their output — Claude Code hooks, repo scripts, the commit hook, build or CI tooling — `qa` runs the script end to end for real: the real commands, the real hook firing in a live session, real commits, not the unit harness, with evidence per step. Its pass is the manual-test pass, at the head sha it ran against. An agent runs such steps more exactly than a person, and a by-hand run misleads easily: #1526's hook test, run in a plain terminal where no Claude Code hook fires, read as a failure. Anything Niklas sees or hears — a deck, the sim, the settings window, the website, clips, icons — stays his test, on a tooling issue too.
 
 For a change with nothing runnable to test — a website or other user-facing docs change — the gate does not disappear, it changes shape: show the drafted text **in full** and get it approved before opening the PR. "There was nothing to test" is not an exemption. Rule and `CLAUDE.md` prose is the one exception: it is written for Claude, and its size is held by the budget test and the architecture reviews, so it needs no draft approval.
 
-Once he passes the test, the issue lead pushes and opens the PR without asking. In the integration build (`scripts/integration-build.mjs`) he passes or fails each issue, and the pass belongs to the issue at the head sha the build merged.
+Once the test passes, the issue lead pushes and opens the PR without asking. In the integration build (`scripts/integration-build.mjs`) he passes or fails each issue, and the pass belongs to the issue at the head sha the build merged.
 
 ### Babysit the review (10)
 
