@@ -8,13 +8,16 @@ import { spawnSyncShim } from "../lib/spawn-shim.mjs";
 import { SUMMARY_OPENER } from "./coderabbit-summary.mjs";
 import {
   baseChangedSince,
+  BOARD_MOVES,
   ghGraphql,
   graphqlArgs,
   MAX_CONFLICTED_LINE_CHECKS,
+  moveBoardItemAfter,
   prComments,
   readIndexFile,
   replayRebase,
   run,
+  setBoardStatus,
   setHookDeadline,
   SPEC_DIR,
   specFilenames,
@@ -446,6 +449,100 @@ describe("the hook-wide deadline", () => {
     vi.mocked(spawnSync).mockClear();
     expect(run("git", ["status"])).toMatchObject({ ok: false });
     expect(spawnSync).not.toHaveBeenCalled();
+  });
+});
+
+// #1520: the PO orders its milestone's cards in Next. Every gh call is answered
+// by a fake that routes on the arguments, so nothing reaches the real board.
+describe("the board's Next lane and positions", () => {
+  const lanes = {
+    10: "Backlog",
+    11: "Next",
+    12: "Next",
+    13: "Testing",
+    14: "Done",
+    15: "In progress",
+    16: "Planned",
+    17: "Dropped",
+  };
+  const calls = () => vi.mocked(spawnSync).mock.calls.map(([, args]) => args);
+  const mutations = () => calls().filter((a) => a.some((x) => /mutation|item-edit/.test(x)));
+  let mutationOk;
+  beforeEach(() => {
+    mutationOk = true;
+    vi.mocked(spawnSync)
+      .mockClear()
+      .mockImplementation((cmd, args) => {
+        const json = (o) => ({ status: 0, stdout: JSON.stringify(o), stderr: "" });
+        if (args[0] === "project" && args[1] === "view") return json({ id: "PVT_board" });
+        const q = args.find((a) => a.startsWith("query=")) ?? "";
+        if (/updateProjectV2ItemPosition/.test(q))
+          return mutationOk
+            ? json({ data: { updateProjectV2ItemPosition: { clientMutationId: null } } })
+            : { status: 1, stdout: "", stderr: "HTTP 403" };
+        const n = Number(args.find((a) => a.startsWith("n="))?.slice(2));
+        if (!(n in lanes)) return json({ data: { repository: { issue: { projectItems: { nodes: [] } } } } });
+        const node = { id: `PVTI_${n}`, project: { number: 1 }, fieldValueByName: { name: lanes[n] } };
+        return json({ data: { repository: { issue: { projectItems: { nodes: [node] } } } } });
+      });
+  });
+  afterEach(() => {
+    vi.mocked(spawnSync).mockImplementation(realSpawnSync);
+    vi.unstubAllEnvs();
+  });
+
+  it("lets a card into Next from Backlog and Planned only, and still out of Next forwards", () => {
+    expect(BOARD_MOVES.Next).toEqual(["(none)", "Backlog", "Planned"]);
+    expect(BOARD_MOVES["In progress"]).toContain("Next");
+    expect(BOARD_MOVES.Testing).toContain("Next");
+    vi.stubEnv("IRACEDECK_HOOKS_DRY_RUN", "1");
+    expect(setBoardStatus(10, "Next", root)).toBe("board (dry run): would move #10 Backlog → Next");
+    expect(setBoardStatus(16, "Next", root)).toMatch(/would move #16 Planned → Next/);
+    for (const n of [13, 14, 15]) expect(setBoardStatus(n, "Next", root)).toMatch(/not moving it to Next/);
+    expect(mutations()).toEqual([]);
+  });
+
+  describe("moveBoardItemAfter, under dry run", () => {
+    beforeEach(() => vi.stubEnv("IRACEDECK_HOOKS_DRY_RUN", "1"));
+    it("puts a card at the top of its lane for a null after", () =>
+      expect(moveBoardItemAfter(12, null, root)).toBe("board (dry run): would move #12 to the top of Next"));
+    it("puts a card after another card in its lane", () =>
+      expect(moveBoardItemAfter(12, 11, root)).toBe("board (dry run): would move #12 after #11 in Next"));
+    it("never moves a card in Testing, Done or Dropped", () => {
+      expect(moveBoardItemAfter(13, null, root)).toMatch(/#13 is in Testing; its position is not moved/);
+      expect(moveBoardItemAfter(14, 13, root)).toMatch(/#14 is in Done; its position is not moved/);
+      expect(moveBoardItemAfter(17, null, root)).toMatch(/#17 is in Dropped; its position is not moved/);
+    });
+    it("refuses an anchor in another lane, off the board, or the card itself", () => {
+      expect(moveBoardItemAfter(12, 10, root)).toMatch(/#10 is in Backlog, not Next/);
+      expect(moveBoardItemAfter(12, 99, root)).toMatch(/#99 is not on the Roadmap board/);
+      expect(moveBoardItemAfter(99, null, root)).toMatch(/#99 is not on the Roadmap board/);
+      expect(moveBoardItemAfter(12, 12, root)).toMatch(/after itself/);
+    });
+    it("sends no mutation at all", () => {
+      moveBoardItemAfter(12, null, root);
+      moveBoardItemAfter(12, 11, root);
+      expect(mutations()).toEqual([]);
+    });
+  });
+
+  describe("moveBoardItemAfter, live (against the fake)", () => {
+    const sent = () =>
+      mutations().map((a) => Object.fromEntries(a.filter((x) => /^\w+=/.test(x)).map((x) => x.split(/=(.*)/s))));
+    it("sends no afterId for the top, and the anchor's item id otherwise", () => {
+      expect(moveBoardItemAfter(12, null, root)).toBe("board: #12 moved to the top of Next");
+      expect(moveBoardItemAfter(12, 11, root)).toBe("board: #12 moved after #11 in Next");
+      const [top, after] = sent();
+      expect(top).toMatchObject({ project: "PVT_board", item: "PVTI_12" });
+      expect(top.query).not.toMatch(/afterId/);
+      expect(top.after).toBeUndefined();
+      expect(after).toMatchObject({ project: "PVT_board", item: "PVTI_12", after: "PVTI_11" });
+      expect(after.query).toMatch(/afterId:\$after/);
+    });
+    it("reports a refused mutation", () => {
+      mutationOk = false;
+      expect(moveBoardItemAfter(12, null, root)).toMatch(/moving #12 to the top of Next failed/);
+    });
   });
 });
 
