@@ -2529,6 +2529,28 @@ describe("a script is judged by what it runs", () => {
       "pnpm install",
       at(MASTER, { cwd: IR5, scriptsAt: () => ({ dir: IR5, scripts: { install: "pnpm relink:x" } }) }),
     ));
+
+  // #1526 PR review: pnpm runs every script a `/<regex>/` selector matches,
+  // which the hook looked up as one script literally named after the pattern.
+  it.each([
+    `pnpm run "/^hostkill$/"`,
+    `pnpm "/kill/"`,
+    `pnpm exec pnpm run '/^host/'`,
+    `pnpm -C packages/iracing-plugin-stream-deck run "/^rel/"`,
+    `pnpm -r "/^watch$/"`,
+  ])("asks for every script a selector matches, judged as each: %s", (c) =>
+    expect(asks(c, elsewhere)).toMatch(/Niklas/),
+  );
+  it("names the script a selector reached", () =>
+    expect(asks(`pnpm run "/^hostkill$/"`, elsewhere)).toMatch(/`pnpm hostkill \(\/\^hostkill\$\/\)`/));
+  it("asks for a selector it cannot read", () => {
+    expect(asks(`pnpm run "/[/"`, elsewhere)).toMatch(/could not be read/);
+    expect(asks(`pnpm run "/^build$/"`, at(MASTER, { scriptsAt: undefined }))).toMatch(/could not be read/);
+  });
+  it("passes a selector whose scripts restart nothing", () => {
+    for (const c of [`pnpm run "/^build$/"`, `pnpm "/^type/"`, `pnpm run "/^no-such-script$/"`, `pnpm -r "/^clean$/"`])
+      passes(c, elsewhere);
+  });
 });
 
 // #1520: PowerShell is this environment's primary shell, and its commands

@@ -1531,6 +1531,7 @@ function pnpmRuns(tokens, base, shell) {
         expand: runSeen || !PNPM_BUILTIN.test(t),
         picks: pnpmPicks({ filters, recursive, workspaceRoot }, dir, shell),
         args: forwarded(tokens.slice(i + 1)),
+        selector: SCRIPT_SELECTOR.test(t),
       };
       const fallback = shellMode && !runSeen && !PNPM_BUILTIN.test(t);
       return fallback ? [run, ...binRuns(tokens.slice(i), dir, shell, true)] : [run];
@@ -2122,7 +2123,7 @@ function deckFindings(c, cwd, ctx, shell, trail = []) {
       if (!whole && (cut === "(" || cut === "\x60"))
         if (tokens.length && !/\s$/.test(args)) tokens.push(tokens.pop().replace(/\$$/, "") + UNREAD);
         else tokens.push(UNREAD);
-      for (const run of read(tokens, base, shell)) {
+      for (const run of read(tokens, base, shell).flatMap((r) => selectedRuns(r, ctx, found))) {
         // A name is judged with its leftover escapes gone ({@link unescaped}):
         // `pnpm "re\`start:stream-deck"` in PowerShell runs the script.
         const name = unescaped(run.script ?? "");
@@ -2154,6 +2155,35 @@ function deckFindings(c, cwd, ctx, shell, trail = []) {
       }
     }
   return found;
+}
+
+/** A pnpm script selector, `/<regex>/`: pnpm runs every script whose name the pattern matches. */
+const SCRIPT_SELECTOR = /^\/(.+)\/$/;
+
+/**
+ * The runs a pnpm script selector stands for (#1526 PR review): `pnpm run
+ * "/^restart:/"` runs `restart:stream-deck`, which the hook would otherwise
+ * look up as a script literally named `/^restart:/`. Each script the pattern
+ * matches in the run's manifests ({@link runManifests}) becomes a run of its
+ * own, judged by name and by what it runs. A pattern the hook cannot read — not
+ * a valid regex, or no manifest to match it against — is a finding in itself,
+ * pushed onto `found`, since it may select a restart. Any other run is itself.
+ */
+function selectedRuns(run, ctx, found) {
+  if (!run.selector) return [run];
+  let re;
+  try {
+    re = new RegExp(run.script.match(SCRIPT_SELECTOR)[1]);
+  } catch {
+    re = null;
+  }
+  const manifests = re && ctx.scriptsAt ? runManifests(run, ctx).filter(Boolean) : [];
+  if (!manifests.length) {
+    found.push(`\`${run.label}\` runs every script its pattern matches, which could not be read`);
+    return [];
+  }
+  const names = [...new Set(manifests.flatMap((m) => Object.keys(m.scripts ?? {})))].filter((n) => re.test(n));
+  return names.map((name) => ({ ...run, script: name, label: `pnpm ${name} (${run.script})`, selector: false }));
 }
 
 /**
