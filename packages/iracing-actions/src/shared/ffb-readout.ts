@@ -36,6 +36,10 @@ function strengthHundredths(nm: number): number | null {
  * without a usable value (missing, non-finite, zero or negative Nm). Snapping
  * to the grid undoes the float32 noise in the telemetry value, so the
  * one-decimal display rounds the stored Strength rather than a neighbour of it.
+ *
+ * @internal Exported for testing: the dial shows {@link formatFfbReadout},
+ * which rounds to tenths, so this is where captured Nm values are checked
+ * against the Strength iRacing showed for them at full precision.
  */
 export function ffbStrengthFromNm(nm: number | null | undefined): number | null {
   if (!usableNm(nm)) return null;

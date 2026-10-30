@@ -8,7 +8,6 @@ import {
   hasPairedValueSource,
   isPillMiddleStyle,
   isPillStyle,
-  isPositionAwareStyle,
   noValueFormOf,
   pairedKeyNeedsTelemetry,
   resolvePairPosition,
@@ -97,14 +96,11 @@ describe("style predicates", () => {
     expect(styleShowsValue("legacy")).toBe(false);
   });
 
-  it("classifies pill / position-aware / pill-middle styles", () => {
+  it("classifies pill / pill-middle styles", () => {
     expect(isPillStyle("joined-pill")).toBe(true);
     expect(isPillStyle("pill-end")).toBe(true);
     expect(isPillStyle("pill-middle-vertical")).toBe(true);
     expect(isPillStyle("split")).toBe(false);
-    expect(isPositionAwareStyle("edge-chevrons")).toBe(true);
-    expect(isPositionAwareStyle("big-chevron")).toBe(true);
-    expect(isPositionAwareStyle("split")).toBe(false);
     expect(isPillMiddleStyle("pill-middle-horizontal")).toBe(true);
     expect(isPillMiddleStyle("joined-pill")).toBe(false);
   });

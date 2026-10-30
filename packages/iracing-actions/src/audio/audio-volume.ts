@@ -204,11 +204,6 @@ export function stepRaceEngineerVolumeBy(steps: number): number {
   return next;
 }
 
-/** Single-step convenience over {@link stepRaceEngineerVolumeBy}. */
-export function stepRaceEngineerVolume(direction: "up" | "down"): number {
-  return stepRaceEngineerVolumeBy(direction === "up" ? 1 : -1);
-}
-
 /**
  * Silence the Race Engineer completely and leave the audio state consistent
  * (issue #1100).

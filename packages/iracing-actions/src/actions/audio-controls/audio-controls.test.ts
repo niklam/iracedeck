@@ -31,7 +31,6 @@ vi.mock("@iracedeck/audio-service", () => ({
 
 vi.mock("../../audio/audio-volume.js", () => ({
   stepRadarVolume: vi.fn(() => 50),
-  stepRaceEngineerVolume: vi.fn(() => 50),
   stepRadarVolumeBy: mockStepRadarVolumeBy,
   stepRaceEngineerVolumeBy: mockStepRaceEngineerVolumeBy,
   readRadarVolume: vi.fn(() => 50),
