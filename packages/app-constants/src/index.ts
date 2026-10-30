@@ -36,6 +36,9 @@ export type { LogLocation } from "./log-location.js";
 // Property Inspector warning banner key and record shape (issues #610, #1014, #1366)
 export { PI_WARNING_LEVELS, PI_WARNINGS_KEY, type PiWarning, type PiWarningLevel } from "./pi-warnings-constants.js";
 
+// Press sounds (issue #269)
+export { DEFAULT_PRESS_SOUND_MODE, PRESS_SOUND_KEY, PRESS_SOUND_MODES, type PressSoundMode } from "./press-sound.js";
+
 // Automatic profile switching by session kind (issue #1111)
 export {
   PROFILE_AUTO_SWITCH_ENABLED_KEY,
