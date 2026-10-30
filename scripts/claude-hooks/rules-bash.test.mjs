@@ -1346,6 +1346,25 @@ describe("git worktree add", () => {
   it("passes when offline (freshness unknown)", () =>
     passes("git worktree add ../ir-1", ctx({ originFresh: () => undefined })));
 
+  // #1520: the one permanent tree the deck links to for combined manual tests.
+  describe("the integration tree", () => {
+    it("accepts ../ir-integration, with no spec gate since it names no issue", () =>
+      passes("git worktree add ../ir-integration -b integration origin/master", ctx({ specFiles: () => [] })));
+    it("still refuses every other name, near misses included", () => {
+      for (const name of ["ir-integrations", "ir-Integration", "integration", "ir-integration-2", "ir-"])
+        expect(deny(`git worktree add ../${name} -b x`)).toMatch(/ir-<issue>/);
+    });
+    it("still has to be a fresh sibling", () => {
+      expect(deny("git worktree add .worktrees/ir-integration -b integration")).toMatch(/siblings/);
+      expect(
+        deny(
+          "git worktree add ../ir-integration -b integration",
+          ctx({ originFresh: () => ({ fresh: false, local: "a", remote: "b" }) }),
+        ),
+      ).toMatch(/stale/);
+    });
+  });
+
   // #1193: 47 of 56 enhancement issues since the #621 policy had a spec, and
   // nothing checked the other nine. The worktree is the last moment before
   // implementation where the issue number is known.

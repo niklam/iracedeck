@@ -27,6 +27,9 @@ export { linkLocations, linkTargets, REAL_DIRECTORY } from "../lib/plugin-links.
 
 export const SPEC_DIR = "docs/superpowers/specs/";
 export const MAIN_BRANCH = "master";
+/** The one permanent worktree the deck links to for combined manual tests, and its local, never-pushed branch (#1520). */
+export const INTEGRATION_TREE = "ir-integration";
+export const INTEGRATION_BRANCH = "integration";
 export const BOARD = { number: 1, owner: "niklam", statusField: "Status" };
 
 // ---------------------------------------------------------------------------

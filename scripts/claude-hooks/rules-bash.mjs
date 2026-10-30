@@ -15,7 +15,7 @@ import path from "node:path";
 
 import { DEBUG_VALUE, ELGATO_MANIFEST, manifestDebug } from "../lib/debug-plugin.mjs";
 import { FULL_SHA, rangeChain, readSummary } from "./coderabbit-summary.mjs";
-import { MAIN_BRANCH, SPEC_DIR } from "./lib.mjs";
+import { INTEGRATION_TREE, MAIN_BRANCH, SPEC_DIR } from "./lib.mjs";
 import { findControlByte } from "./rules-tools.mjs";
 
 const TITLE_RE = /^(feat|fix|improve|perf|refactor|docs|ci|chore|test|build|style|revert)(\([^)]+\))?!?: .+ \(#\d+\)$/;
@@ -975,11 +975,15 @@ export const rules = [
       const sibling = ctx.isInside(path.dirname(resolved), parent) && ctx.isInside(parent, path.dirname(resolved));
       if (ctx.isInside(resolved, ctx.mainRoot(dir)) || !sibling)
         return `Worktrees are siblings of the repo (${path.join(parent, "ir-<issue>")}), never inside it or another tree: ${resolved}.`;
-      if (issueFromWorktreePath(resolved) === undefined)
-        return `Issue worktrees are named ../ir-<issue> (got ${path.basename(resolved)}).`;
+      // The integration tree (#1520) is the one name that is not an issue's,
+      // matched exactly: a near miss like `ir-integrations` is refused.
+      const integration = path.basename(resolved) === INTEGRATION_TREE;
+      if (!integration && issueFromWorktreePath(resolved) === undefined)
+        return `Issue worktrees are named ../ir-<issue>, or ../${INTEGRATION_TREE} for the integration tree (got ${path.basename(resolved)}).`;
       const fresh = ctx.originFresh(dir);
       if (fresh && !fresh.fresh)
         return `origin/${MAIN_BRANCH} is stale (local ${fresh.local}, remote ${fresh.remote}); run \`git fetch origin\` first or the branch starts behind and surfaces as a PR conflict.`;
+      if (integration) return null;
       // The one moment where the issue number is known and implementation has
       // not started (#1193): 47 of the 56 enhancement issues filed since the
       // #621 policy have a spec, and nothing was checking the other nine.
