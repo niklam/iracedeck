@@ -44,12 +44,13 @@ describe("global-common-press-sounds.ejs", () => {
   it("has one Test button per sound, naming the press-tap and press-long preview kinds", () => {
     const buttons = [...html.matchAll(/<ird-audio-test ([^>]*)><\/ird-audio-test>/g)].map((m) => m[1]);
 
-    expect(buttons).toEqual(['preview="press-tap" label="Test click"', 'preview="press-long" label="Test bleep"']);
+    expect(buttons).toEqual(['preview="press-tap" label="Test tap"', 'preview="press-long" label="Test long press"']);
   });
 
-  it("says where the bleep's threshold is set and that sounds need iRacing connected", () => {
+  it("says what each bleep means, where the threshold is set and that sounds need iRacing connected", () => {
     const text = html.replace(/\s+/g, " ");
 
+    expect(text).toContain("A single bleep confirms a tap, and a double bleep tells you");
     expect(text).toContain("long-press threshold set in Dual-Press");
     expect(text).toContain("Sounds play only while iRacing is connected.");
   });
@@ -83,10 +84,10 @@ describe("settings window General tab (#269)", () => {
 });
 
 describe("global-common-dual-press.ejs threshold text (#269)", () => {
-  it("describes the threshold as the one for every long-press, dials and the bleep included", () => {
+  it("describes the threshold as the one for every long-press, dials and the double bleep included", () => {
     const text = render("<%- include('global-common-dual-press') %>").replace(/\s+/g, " ");
 
-    expect(text).toContain("It applies to every long-press, including the dials and the Press Sounds bleep.");
+    expect(text).toContain("It applies to every long-press, including the dials and the Press Sounds double bleep.");
     expect(text).not.toContain("before a setup View sub-mode treats it as a long-press");
   });
 });
