@@ -89,21 +89,108 @@ describe(".nvmrc is the one Node pin", () => {
   });
 });
 
+/**
+ * Walks `seeds` (repo-relative files) and every local action a step names with
+ * `uses: ./<dir>`, recursively, each file once. `read(relPath)` returns the
+ * file's text, or undefined when there is none, so a test can hand in an
+ * in-memory tree. A job-level `uses: ./.github/workflows/x.yml` is a reusable
+ * workflow, which discovery already scans, so only step-level `uses` is followed.
+ */
+function scan(seeds, read) {
+  const violations = [];
+  const visited = new Set();
+  let setupNodeCount = 0;
+  const queue = [...seeds];
+  while (queue.length > 0) {
+    const file = queue.shift();
+    if (visited.has(file)) continue;
+    visited.add(file);
+    const text = read(file);
+    if (text === undefined) continue;
+    const doc = parse(text);
+    setupNodeCount += setupNodeSteps(doc).length;
+    violations.push(...setupNodeViolations(file, doc));
+    for (const { where, step } of stepsOf(doc)) {
+      if (typeof step?.uses !== "string" || !step.uses.startsWith("./")) continue;
+      const dir = path.posix.normalize(step.uses);
+      const target = [`${dir}/action.yml`, `${dir}/action.yaml`].find((f) => read(f) !== undefined);
+      if (dir.startsWith("..") || target === undefined) {
+        violations.push(
+          `${file}: ${where} uses ${step.uses}, which is not a directory with an action.yml or action.yaml`,
+        );
+      } else {
+        queue.push(target);
+      }
+    }
+  }
+  return { violations, setupNodeCount, visited };
+}
+
+/** Reads a repo-relative file from disk, or undefined when it is not a file. */
+function readRepoFile(rel) {
+  const full = path.join(REPO, rel);
+  return existsSync(full) && statSync(full).isFile() ? readFileSync(full, "utf8") : undefined;
+}
+
 describe("every actions/setup-node step reads .nvmrc", () => {
   const files = discoverFiles();
-  const parsed = files.map((f) => ({ f, doc: parse(readFileSync(path.join(REPO, f), "utf8")) }));
+  const result = scan(files, readRepoFile);
 
   it("finds the workflows", () => {
     expect(files.length).toBeGreaterThan(0);
   });
 
   it("walks at least the known number of setup-node steps", () => {
-    const count = parsed.reduce((n, { doc }) => n + setupNodeSteps(doc).length, 0);
-    expect(count).toBeGreaterThanOrEqual(MIN_SETUP_NODE_STEPS);
+    expect(result.setupNodeCount).toBeGreaterThanOrEqual(MIN_SETUP_NODE_STEPS);
   });
 
-  it("has no violation in .github", () => {
-    expect(parsed.flatMap(({ f, doc }) => setupNodeViolations(f, doc))).toEqual([]);
+  it("has no violation in .github or in a local action it uses", () => {
+    expect(result.violations).toEqual([]);
+  });
+});
+
+describe("scan (local actions, in-memory tree)", () => {
+  const tree = (files) => (rel) => files[rel];
+  const caller = (uses) => `jobs:\n  build:\n    steps:\n      - uses: ${uses}\n`;
+  const setup = (withBlock) => `runs:\n  using: composite\n  steps:\n    - uses: actions/setup-node@v4\n${withBlock}`;
+
+  it("follows uses: ./ci/setup and reports its literal node-version", () => {
+    const r = scan(
+      ["w.yml"],
+      tree({ "w.yml": caller("./ci/setup"), "ci/setup/action.yml": setup("      with:\n        node-version: 24\n") }),
+    );
+    expect(r.setupNodeCount).toBe(1);
+    expect(r.violations.join("\n")).toMatch(/ci\/setup\/action\.yml: composite step 1 sets node-version \(24\)/);
+  });
+
+  it("finds an action.yaml and passes a compliant one", () => {
+    const r = scan(
+      ["w.yml"],
+      tree({
+        "w.yml": caller("./ci/setup"),
+        "ci/setup/action.yaml": setup("      with:\n        node-version-file: .nvmrc\n"),
+      }),
+    );
+    expect(r.setupNodeCount).toBe(1);
+    expect(r.violations).toEqual([]);
+  });
+
+  it("reports a dangling ./missing, naming the file and step", () => {
+    const r = scan(["w.yml"], tree({ "w.yml": caller("./missing") }));
+    expect(r.violations).toHaveLength(1);
+    expect(r.violations[0]).toMatch(/w\.yml: job "build" step 1 uses \.\/missing, which is not a directory/);
+  });
+
+  it("does not treat a job-level reusable workflow as a missing action", () => {
+    const doc = "jobs:\n  call:\n    uses: ./.github/workflows/x.yml\n";
+    expect(scan(["w.yml"], tree({ "w.yml": doc })).violations).toEqual([]);
+  });
+
+  it("visits a shared local action once and survives a cycle", () => {
+    const self = "runs:\n  using: composite\n  steps:\n    - uses: ./a\n";
+    const r = scan(["w.yml"], tree({ "w.yml": caller("./a"), "a/action.yml": self }));
+    expect(r.violations).toEqual([]);
+    expect([...r.visited].sort()).toEqual(["a/action.yml", "w.yml"]);
   });
 });
 
