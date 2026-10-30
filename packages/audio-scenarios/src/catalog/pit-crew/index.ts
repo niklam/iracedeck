@@ -182,13 +182,7 @@ import {
 import { PIT_BOX_CONTRACTS } from "./pit-box.js";
 import { buildPitLimiter, SCENARIO_ID_TO_PIT_LIMITER_ID } from "./pit-limiter.js";
 import { registerPitSpeedingEngine } from "./pit-speeding-engine.js";
-import {
-  PIT_STATUS_CONTRACTS,
-  PIT_STATUS_NOTHING_TO_DO_CONTRACT,
-  PIT_STATUS_NOTHING_TO_DO_SCENARIO_ID,
-  PIT_STATUS_REPEAT_CONTRACTS,
-  registerPitStatusVocabulary,
-} from "./pit-status.js";
+import { buildPitStatus, PIT_STATUS_NOTHING_TO_DO_SCENARIO_ID } from "./pit-status.js";
 import { PIT_WINDOW_CONTRACTS } from "./pit-window.js";
 import {
   buildOvertakeGainedPositionContract,
@@ -1173,8 +1167,12 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
 
   // The vocabulary the pit-status repeat nags name (issue #1065) — the five
   // `pitStatus.still*` speak-time gates, each re-reading live telemetry when
-  // its nag comes to speak.
-  registerPitStatusVocabulary(engine);
+  // its nag comes to speak. One build over the live telemetry read (#1378), so
+  // the conditions and the nags' gates are one definition; its contracts
+  // register further down.
+  const pitStatus = buildPitStatus(d);
+
+  pitStatus.registerVocabulary(engine);
 
   // The vocabulary the tire-wear script names (issue #1108) — the per-tire
   // and most-worn `tireWear.*Tread` vars, the `tireWear.hasWear` condition and
@@ -1512,7 +1510,7 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   // precedent), so `SCENARIO_ID_TO_PIT_STATUS_ID` maps both spellings of each
   // id onto the same `PitStatusCalloutId`. The empty-stop release (issue
   // #1180) rides Complete's opt-in the same way.
-  for (const c of [...PIT_STATUS_CONTRACTS, ...PIT_STATUS_REPEAT_CONTRACTS, PIT_STATUS_NOTHING_TO_DO_CONTRACT]) {
+  for (const c of [...pitStatus.contracts, ...pitStatus.repeatContracts, pitStatus.nothingToDoContract]) {
     engine.defineContract(
       wrapWithMaster(
         wrapCalloutScenario(c, SCENARIO_ID_TO_PIT_STATUS_ID, getPitStatusCalloutEnabled, "pit-status callout", logger),

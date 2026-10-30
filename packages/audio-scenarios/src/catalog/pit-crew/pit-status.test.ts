@@ -39,7 +39,7 @@ import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type CalloutScript } from "@iracedeck/callout-script";
 import { PIT_STATUS_CALLOUTS } from "@iracedeck/callout-settings";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
-import { PitSvStatus, TrkLoc } from "@iracedeck/iracing-sdk";
+import { PitSvStatus, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { NO_FRAME, WEIGHT } from "../../dsl.js";
@@ -50,17 +50,14 @@ import { familyReferences } from "./family-references.test-util.js";
 import { type PitStatusCalloutId, registerPitCrew } from "./index.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import {
+  buildPitStatus,
   PIT_STATUS_CLIP_SOURCES,
-  PIT_STATUS_CONTRACTS,
   PIT_STATUS_IN_PROGRESS_HOLD_MS,
-  PIT_STATUS_NOTHING_TO_DO_CONTRACT,
   PIT_STATUS_NOTHING_TO_DO_SCENARIO_ID,
-  PIT_STATUS_REPEAT_CONTRACTS,
   PIT_STATUS_REPEAT_SCENARIO_IDS,
   PIT_STATUS_REPEAT_WEIGHT,
   PIT_STATUS_SCENARIO_IDS,
   POSITIONING_SUBJECTS,
-  registerPitStatusVocabulary,
 } from "./pit-status.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
@@ -69,14 +66,18 @@ import { _resetSpotterEngine } from "./spotter-engine.js";
 // in-progress line's and the empty-stop release's. `null` (the default, and
 // what the scenario harness sees) means "unknown" — a gate must then let the
 // line play rather than suppress on missing data.
-const simMocks = vi.hoisted(() => ({
+const simMocks = {
   latestTelemetry: null as { PlayerCarPitSvStatus?: number; PlayerTrackSurface?: number; Speed?: number } | null,
-}));
+};
 
-vi.mock("@iracedeck/sim-events-iracing", () => ({
-  getSessionType: () => "Race",
-  getLatestTelemetry: () => simMocks.latestTelemetry,
-}));
+/** The family's one sim read (#1378), over the stub above — handed to the build and to the full registration. */
+const getLatestTelemetry = (): TelemetryData | null => simMocks.latestTelemetry as TelemetryData | null;
+
+// The one build every structural and engine-level case below inspects.
+const PIT_STATUS = buildPitStatus({ getLatestTelemetry });
+const PIT_STATUS_CONTRACTS = PIT_STATUS.contracts;
+const PIT_STATUS_REPEAT_CONTRACTS = PIT_STATUS.repeatContracts;
+const PIT_STATUS_NOTHING_TO_DO_CONTRACT = PIT_STATUS.nothingToDoContract;
 
 const mockLogger = {
   trace: vi.fn(),
@@ -252,7 +253,7 @@ function registerFamilyAlone(): void {
   bus = createMockBus();
   audio = createFakeAudio();
   engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
-  registerPitStatusVocabulary(engine);
+  PIT_STATUS.registerVocabulary(engine);
 
   for (const c of [...PIT_STATUS_CONTRACTS, ...PIT_STATUS_REPEAT_CONTRACTS, PIT_STATUS_NOTHING_TO_DO_CONTRACT]) {
     engine.defineContract(c);
@@ -928,7 +929,7 @@ describe("the gate is the contract's, not the script's (issue #1138)", () => {
   });
 });
 
-describe("registerPitStatusVocabulary (issue #1065)", () => {
+describe("the pit-status vocabulary (issue #1065)", () => {
   beforeEach(registerFamilyAlone);
 
   afterEach(() => {
@@ -1111,6 +1112,8 @@ describe("PIT_STATUS_CONTRACTS per-callout opt-out (via registerPitCrew)", () =>
       getPitActionsAllowed: () => true,
       getReadbackSnapshot: () => null,
       isCalloutEnabled: familyGate(PIT_STATUS_CALLOUTS, (id) => enabled.get(id) ?? true),
+      getSessionType: () => "Race",
+      getLatestTelemetry,
     });
     // After the registration, as the plugins do: the whole bundled script,
     // since the real registration holds every family's contracts.
