@@ -199,12 +199,18 @@ export function assignedGhRepo(command, masked = command) {
   return plainValueAt(raw, last.index + last[0].length);
 }
 
-/** The plain value starting at `at` in `raw` — a bare word or a quote that expands nothing — or `null`. */
+/**
+ * The plain value starting at `at` in `raw` — a bare word or a quote that
+ * expands nothing, ending the word — or `null`. A value that runs on into an
+ * expansion or another quote (`niklam/iracedeck$SUFFIX`) is not plain: its
+ * literal prefix is not what the shell passes.
+ */
 function plainValueAt(raw, at) {
   const value = /'([^']*)'|"([^"$`\\]*)"|([^\s;&|()'"`$]+)/y;
   value.lastIndex = at;
   const m = value.exec(raw);
-  return m ? (m[1] ?? m[2] ?? m[3]) : null;
+  if (!m || !/^(?:[\s;&|()]|$)/.test(raw.slice(value.lastIndex))) return null;
+  return m[1] ?? m[2] ?? m[3];
 }
 
 /**

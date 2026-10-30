@@ -15,6 +15,7 @@ import { existsSync } from "node:fs";
 import { addToBoard, ghJson, git, postContext, readInput, setBoardStatus } from "./lib.mjs";
 import {
   BASH,
+  chainCommands,
   firstMerge,
   GIT_WORKTREE_ADD,
   gitCwd,
@@ -70,9 +71,20 @@ if (typeof raw === "string") {
       notes.push(
         "gh pr merge ran, but its PR argument could not be read; check by hand whether it merged, and move its Roadmap card to Testing.",
       );
-    const creates = issueCreateRepos(command, text);
-    if (creates.length)
-      notes.push(...afterIssueCreate(stdout, creates, gitCwd(command, cwd, GH_ISSUE_CREATE, shell), cwd));
+    const repos = issueCreateRepos(command, text);
+    if (repos.length) {
+      // Each create's own directory, so a chain that `cd`s between two creates
+      // judges each by its own checkout; both walks visit the same masked
+      // matches in the same order.
+      const dirs = [...chainCommands(command, cwd, GH_ISSUE_CREATE, shell)].map((c) => c.base);
+      notes.push(
+        ...afterIssueCreate(
+          stdout,
+          repos.map((repo, k) => ({ repo, dir: dirs[k] ?? cwd })),
+          cwd,
+        ),
+      );
+    }
     const target = worktreeAddTarget(command);
     if (target) notes.push(...afterWorktreeAdd(command, target, cwd, shell));
   } catch (e) {
@@ -165,23 +177,25 @@ function afterMerge(merge, command, cwd, shell) {
  * view's, while a create may print none (#1527). Another repository's issue is
  * only reported as left alone, so it needs no age.
  *
- * `targets` is the repository each create named (`issueCreateRepos`); one that
- * named none used the repository of the directory it ran in (`dir`), which is
- * asked of gh only when the reminder below depends on it. The hand-move
- * reminder for a create that printed no new iRaceDeck issue goes out unless
- * every create was in another repository, so a foreign `--web` create is never
- * sent to this board, and a home one is never lost behind a foreign URL.
+ * `creates` holds, for each create, the repository it named (`repo`, from
+ * `issueCreateRepos`) and the directory it ran in (`dir`); one that named none
+ * used that directory's repository, which is asked of gh only when the
+ * reminder below depends on it, once per directory. The hand-move reminder for
+ * a create that printed no new iRaceDeck issue goes out unless every create
+ * was in another repository, so a foreign `--web` create is never sent to this
+ * board, and a home one is never lost behind a foreign URL.
  */
-function afterIssueCreate(stdout, targets, dir, cwd) {
+function afterIssueCreate(stdout, creates, cwd) {
   let resolved;
   const homeCreate = () => {
     if (!resolved) {
-      let checkoutRepo;
-      resolved = targets.map((t) =>
-        t !== undefined
-          ? t
-          : (checkoutRepo ??= ghJson(["repo", "view", "--json", "nameWithOwner"], dir)?.nameWithOwner ?? null),
-      );
+      const checkoutRepo = new Map();
+      const repoOf = (dir) => {
+        if (!checkoutRepo.has(dir))
+          checkoutRepo.set(dir, ghJson(["repo", "view", "--json", "nameWithOwner"], dir)?.nameWithOwner ?? null);
+        return checkoutRepo.get(dir);
+      };
+      resolved = creates.map(({ repo, dir }) => (repo !== undefined ? repo : repoOf(dir)));
     }
     // An unreadable or unresolvable repository may be home.
     return resolved.some((t) => t == null || isHomeRepo(t));

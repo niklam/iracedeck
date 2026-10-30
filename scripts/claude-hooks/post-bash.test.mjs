@@ -27,9 +27,10 @@ const SCRATCH = mkdtempSync(path.join(os.tmpdir(), "post-bash-tree-"));
 
 // A fake `gh` for the steps that read GitHub (#1527): this Node binary under
 // the name `gh`, which `NODE_OPTIONS` hands a script that answers from
-// FAKE_GH_REPLIES (keyed by the first two arguments, a missing key fails) and
-// logs every call to FAKE_GH_LOG — offline, on every platform. The script does
-// nothing in a process not named gh, the hook's own included.
+// FAKE_GH_REPLIES (keyed by the first two arguments, a missing key fails; a
+// reply of `{ byDir: { <dir name>: reply } }` answers by the directory gh runs
+// in) and logs every call to FAKE_GH_LOG — offline, on every platform. The
+// script does nothing in a process not named gh, the hook's own included.
 const FAKE_GH = mkdtempSync(path.join(os.tmpdir(), "post-bash-fake-gh-"));
 const FAKE_GH_SCRIPT = path.join(FAKE_GH, "fake-gh.cjs");
 writeFileSync(
@@ -39,7 +40,8 @@ const path = require("node:path");
 if (path.basename(process.execPath).replace(/\\.exe$/i, "") === "gh") {
   const args = [path.basename(process.argv[1]), ...process.argv.slice(2)];
   fs.appendFileSync(process.env.FAKE_GH_LOG, JSON.stringify({ args, cwd: process.cwd(), GH_REPO: process.env.GH_REPO }) + "\\n");
-  const reply = JSON.parse(process.env.FAKE_GH_REPLIES)[args.slice(0, 2).join(" ")];
+  let reply = JSON.parse(process.env.FAKE_GH_REPLIES)[args.slice(0, 2).join(" ")];
+  if (reply && reply.byDir) reply = reply.byDir[path.basename(process.cwd())];
   if (reply === undefined) {
     fs.writeSync(2, "fake gh: no reply for " + args.join(" "));
     process.exit(1);
@@ -288,7 +290,13 @@ describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", () => {
   });
 
   it("says so when the repository a merge names cannot be read", () => {
-    for (const command of [`gh pr merge 5 -R "$REPO" --squash`, "GH_REPO=$REPO gh pr merge 5 --squash"])
+    for (const command of [
+      `gh pr merge 5 -R "$REPO" --squash`,
+      "GH_REPO=$REPO gh pr merge 5 --squash",
+      // The literal prefix is not what the shell passes (CodeRabbit on #1535).
+      "GH_REPO=niklam/iracedeck$SUFFIX gh pr merge 5 --squash",
+      "gh pr merge 5 -R niklam/iracedeck$SUFFIX --squash",
+    ])
       expect(fire(command, { withoutGh: true }), command).toMatch(/a --repo or GH_REPO the hook cannot read/);
   });
 
@@ -454,6 +462,36 @@ describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", () => {
 
     // CodeRabbit on #1535: whether a create that named no repository was home
     // is the checkout's repository, asked of gh only when the reminder needs it.
+    // CodeRabbit on #1535: two creates in one chain, each in its own checkout.
+    it("judges each create by its own checkout when the chain moves between them", () => {
+      const [foreignCo, homeCo] = ["co-lint", "co-home"].map((name) => {
+        const dir = path.join(SCRATCH, name);
+        mkdirSync(dir, { recursive: true });
+        return dir.replaceAll("\\", "/");
+      });
+      const command = `cd ${foreignCo} && gh issue create --web && cd ${homeCo} && gh issue create --web`;
+      const { note, calls } = fireWithGh(command, {
+        "repo view": {
+          byDir: {
+            "co-lint": { nameWithOwner: "lint-staged/lint-staged" },
+            "co-home": { nameWithOwner: "niklam/iracedeck" },
+          },
+        },
+      });
+      expect(note).toBe(
+        "[hook] gh issue create: no issue URL in the output; add the card to the Roadmap board by hand (Backlog).",
+      );
+      expect(calls.map((c) => path.basename(c.cwd))).toEqual(["co-lint", "co-home"]);
+      // Both in the foreign checkout: nothing for this board.
+      const bothForeign = fireWithGh(`cd ${foreignCo} && gh issue create --web && gh issue create --web`, {
+        "repo view": { byDir: { "co-lint": { nameWithOwner: "lint-staged/lint-staged" } } },
+      });
+      expect(bothForeign.note).toBe(
+        "[hook] gh issue create ran in lint-staged/lint-staged, not niklam/iracedeck: the Roadmap board is left alone.",
+      );
+      expect(bothForeign.calls).toHaveLength(1); // asked once per directory
+    });
+
     it("judges a create that named no repository by the checkout it ran in", () => {
       const foreign = "https://github.com/lint-staged/lint-staged/issues/1865";
       const checkout = (nameWithOwner) => ({ "repo view": { nameWithOwner } });

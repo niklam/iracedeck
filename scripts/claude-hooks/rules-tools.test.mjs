@@ -196,6 +196,11 @@ describe("post rules", () => {
       expect(assignedGhRepo(`export GH_REPO="a/b"; gh pr merge 5`)).toBe("a/b");
       expect(assignedGhRepo("$env:GH_REPO = 'a/b'; gh pr merge 5")).toBe("a/b");
       expect(assignedGhRepo("GH_REPO=$R gh pr merge 5")).toBeNull();
+      // A value that runs on into an expansion or another quote is not plain.
+      expect(assignedGhRepo("GH_REPO=a/b$S gh pr merge 5")).toBeNull();
+      expect(assignedGhRepo(`GH_REPO="a/b"'c' gh pr merge 5`)).toBeNull();
+      expect(assignedGhRepo("GH_REPO=a/b; ")).toBeUndefined();
+      expect(assignedGhRepo("GH_REPO=a/b")).toBe("a/b");
       expect(assignedGhRepo(`GH_REPO="$R" gh pr merge 5`)).toBeNull();
       expect(assignedGhRepo("gh pr merge 5")).toBeUndefined();
       expect(assignedGhRepo("export GH_REPO=a/b; export GH_REPO=c/d; ")).toBe("c/d");
@@ -225,6 +230,7 @@ describe("post rules", () => {
       expect(issueCreateRepos("GH_REPO=c/d gh issue create -R a/b")).toEqual(["a/b"]);
       expect(issueCreateRepos("GH_REPO=c/d; gh issue create --web")).toEqual([undefined]);
       expect(issueCreateRepos("gh issue create -R $R")).toEqual([null]);
+      expect(issueCreateRepos("gh issue create -R a/b$S --web")).toEqual([null]);
       expect(issueCreateRepos("gh issue create --title x")).toEqual([undefined]);
       expect(issueCreateRepos("gh issue create -R a/b --web && gh issue create --web")).toEqual(["a/b", undefined]);
       // The masked twin hides a flag inside a quoted body.
