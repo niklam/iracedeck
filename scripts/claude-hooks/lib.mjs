@@ -19,6 +19,7 @@ import path from "node:path";
 import { spawnSyncShim } from "../lib/spawn-shim.mjs";
 import { changedFiles, parseChangeSignature } from "./change-signature.mjs";
 import { FULL_SHA, isSummaryComment, MAX_COMMENTS, MAX_EDITS } from "./coderabbit-summary.mjs";
+import { HOME_REPO, isHomeRepo, repoOfUrl } from "./rules-post.mjs";
 
 // The deck-host link readers moved to `scripts/lib/plugin-links.mjs` in #1143,
 // where `pnpm dev:voices` also needs them. Re-exported so every hook caller and
@@ -534,12 +535,20 @@ function boardProjectId(cwd) {
   return ghJson(["project", "view", String(BOARD.number), "--owner", BOARD.owner, "--format", "json"], cwd)?.id;
 }
 
-/** The board item for an issue: `{ itemId, status }`, or `undefined` when the issue is not on the board. */
+/**
+ * The board item for an issue of {@link HOME_REPO}: `{ itemId, status }`, or
+ * `undefined` when the issue is not on the board. The number is always read
+ * as a home-repository issue, so a caller holding another repository's number
+ * must not pass it (#1527).
+ */
 export function boardItemForIssue(issueNumber, cwd) {
+  const [owner, name] = HOME_REPO.split("/");
   const query =
     'query($n:Int!){repository(owner:"' +
-    BOARD.owner +
-    '",name:"iracedeck"){issue(number:$n){projectItems(first:10){nodes{id project{number} fieldValueByName(name:"Status"){... on ProjectV2ItemFieldSingleSelectValue{name}}}}}}}';
+    owner +
+    '",name:"' +
+    name +
+    '"){issue(number:$n){projectItems(first:10){nodes{id project{number} fieldValueByName(name:"Status"){... on ProjectV2ItemFieldSingleSelectValue{name}}}}}}}';
   const data = ghJson(["api", "graphql", "-f", `query=${query}`, "-F", `n=${issueNumber}`], cwd);
   const node = data?.data?.repository?.issue?.projectItems?.nodes?.find((n) => n.project?.number === BOARD.number);
   if (!node) return undefined;
@@ -647,8 +656,13 @@ export function setBoardStatus(issueNumber, lane, cwd) {
     : `board: moving #${issueNumber} to ${lane} failed: ${r.err.trim()}`;
 }
 
-/** Adds an issue URL to the board and returns its item id, or `undefined`. */
+/**
+ * Adds an issue URL to the board and returns its item id, or `undefined`. A
+ * URL outside {@link HOME_REPO} is refused (#1527): the board tracks that
+ * repository only, and every lane move looks a card up by its number there.
+ */
 export function addToBoard(issueUrl, cwd) {
+  if (!isHomeRepo(repoOfUrl(issueUrl))) return undefined;
   if (dryRun()) return "dry-run-item";
   const r = ghJson(
     ["project", "item-add", String(BOARD.number), "--owner", BOARD.owner, "--url", issueUrl, "--format", "json"],

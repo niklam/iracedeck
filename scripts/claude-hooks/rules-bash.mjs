@@ -680,16 +680,29 @@ const mergeMentions = (command) => (command.match(/\bgh\s+pr\s+merge\b/g) ?? [])
  * quoted pin reads as no pin, and a quoted flag as no flag, both of which
  * refuse or check more, never less. Without a trusted mask the raw segment is
  * split by {@link words}, as before #1321.
+ *
+ * `repo` is the `--repo` / `-R` value (the last one), for the post-hook's
+ * board moves (#1527): a literal or a quote that expands nothing, `null` when
+ * the flag is there but its value is not readable, `undefined` without it.
  */
 export function parseMerge({ raw, flat, trusted }) {
   const tokens = trusted
     ? [...flat.matchAll(/\S+/g)].map((m) => ({ word: raw.slice(m.index, m.index + m[0].length), shape: m[0] }))
     : words(raw).map((w) => ({ word: w, shape: w }));
   const literal = (t) => t !== undefined && t.word === t.shape;
+  // A plain word, or one in quotes that expand nothing; `null` for anything
+  // else. The mask leaves a bare `$REPO` as it is, so a `$` is refused here.
+  const repoValue = (t) => {
+    if (t === undefined || /[$`]/.test(t.word)) return null;
+    if (literal(t)) return t.word;
+    const quoted = /^'([^']*)'$/.exec(t.word) ?? /^"([^"$`\\]*)"$/.exec(t.word);
+    return quoted ? quoted[1] : null;
+  };
   const at = tokens.findIndex((t, k) => t.shape === "merge" && tokens[k - 1]?.shape === "pr");
   const flags = new Set();
   let ref;
   let pin;
+  let repo;
   let positional = false;
   let readable = at >= 0;
   for (let k = at + 1; readable && k < tokens.length; k++) {
@@ -708,15 +721,21 @@ export function parseMerge({ raw, flat, trusted }) {
       }
       continue;
     }
+    if (/^-R[^=]/.test(t.shape)) {
+      // gh's short flag with its value attached: `-Rowner/repo`.
+      repo = repoValue({ word: t.word.slice(2), shape: t.shape.slice(2) });
+      continue;
+    }
     const eq = t.shape.indexOf("=");
     const name = eq > 0 ? t.shape.slice(0, eq) : t.shape;
     if (!MERGE_VALUE_FLAGS.has(name)) flags.add(name);
     else {
       const value = eq > 0 ? { word: t.word.slice(eq + 1), shape: t.shape.slice(eq + 1) } : tokens[++k];
       if (name === "--match-head-commit") pin = literal(value) ? value.word : undefined;
+      else if (name === "--repo" || name === "-R") repo = repoValue(value);
     }
   }
-  return { ref, flags, pin, readable };
+  return { ref, flags, pin, repo, readable };
 }
 
 const names = (paths, mark = () => "") =>
