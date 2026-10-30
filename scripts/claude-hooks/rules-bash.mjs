@@ -24,8 +24,8 @@ const TITLE_RE = /^(feat|fix|improve|perf|refactor|docs|ci|chore|test|build|styl
  * What a spec must carry beyond its header block (#1193). Measured over all
  * 106 specs: since the #621 policy, "Out of scope" fell from 50 % to 17 % and
  * a Testing/Verification section from 88 % to 70 % — because no rule had ever
- * named either. The only surviving prescription was a pre-#621 template in
- * `.claude/agents/feature-planner.md` that has produced zero specs.
+ * named either. The only surviving prescription was a pre-#621 template in a
+ * planning agent's definition (retired in #1520) that had produced zero specs.
  *
  * The spellings are the ones ALREADY in the corpus, deliberately: the house
  * style has never been uniform, and forcing one would rewrite 45 compliant
