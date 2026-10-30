@@ -19,7 +19,7 @@ git -C <tree> diff --name-status "$base" -- <paths>
 git -C <tree> ls-files --others --exclude-standard -- <paths>
 ```
 
-`<paths>` is `packages/audio-assets/voice` for audio, `packages/icons ':!packages/icons/preview' packages/iracing-actions/icons` for icons (`preview/` is generated from the sources). `A` and untracked files are new, `M` changed; ignore deletions. An empty list means there is no page to build: say so.
+`<paths>` is `packages/audio-assets/voice` for audio, `packages/icons ':!packages/icons/preview' packages/iracing-actions/icons 'packages/iracing-actions/src/actions/*/*.svg'` for icons (`preview/` is generated from the sources). Three kinds come back, each shown its own way below: standalone icons (`packages/icons/`), dynamic templates (`packages/iracing-actions/icons/`), and the static manifest images in each action folder (`key.svg` 72x72, `icon.svg` 20x20 category icon, `dial.svg`). `A` and untracked files are new, `M` changed; ignore deletions. An empty list means there is no page to build: say so.
 
 ## Audio
 
@@ -35,7 +35,13 @@ If the publish refuses the audio files, load the `anthropic-skills:built-in-brow
 
 ## Icons
 
-For each changed icon SVG, compose the key exactly as an action does, through the real pipeline, so the page shows what the deck shows:
+Every kind is rendered through the path the deck uses, so the page shows what the deck shows.
+
+- **Static manifest images** (`src/actions/<action>/*.svg`): already complete SVGs; show before and after as-is, scaled to key size.
+- **Dynamic templates** (`packages/iracing-actions/icons/*.svg`): telemetry-driven Mustache templates rendered by the action through `renderIconTemplate()` with its own values and border parts, not by `assembleIcon`. Render each through the action's exported generator (the `@internal` `generate…Svg` its tests call, from the built `packages/iracing-actions/dist`, rebuilt first if stale), with two or three representative settings and telemetry values taken from that action's tests, so the page shows real states rather than raw placeholders.
+- **Standalone icons** (`packages/icons/`): compose the key as below.
+
+For each changed standalone icon:
 
 1. Use `packages/icon-composer/dist/index.js` from the tree; rebuild the package first if `dist` is older than `src` (`cd <tree> && pnpm --filter @iracedeck/icon-composer build`).
 2. In a Node script in your scratchpad, per side: `resolveIconColors(svg, {}, undefined)` → `resolveTitleSettings(svg, {}, undefined, runtimeTitle)` → `resolveBorderSettings` → `resolveGraphicSettings({}, undefined)` → `assembleIcon(...)`, which returns a base64 data URI for `<img src>`.

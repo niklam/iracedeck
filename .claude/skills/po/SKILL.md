@@ -30,7 +30,7 @@ You never:
 1. `git -C <master> fetch origin`, then confirm the checkout is clean and on `master`. A dirty or diverged checkout goes to Niklas; never reset it.
 2. Read the milestone: `gh issue list --milestone "<milestone>" --state all --limit 200 --json number,title,state,labels,assignees,body`. Parse with `node`, never `jq`.
 3. Read the lanes: `gh project item-list 1 --owner niklam --limit 500 --format json`, filtered with `node` to the milestone's issues.
-4. Read the work in flight: `git worktree list`, `gh pr list --state all --search "milestone:<milestone>" --json number,headRefName,state,reviewDecision,mergedAt`, and each open issue's latest comments.
+4. Read the work in flight: `git worktree list`, `gh pr list --state all --search "milestone:<milestone>" --json number,headRefName,state,reviewDecision,mergedAt`, and each open issue's comments, including its latest `Manual test:` verdict (Integration build, step 5): a pass at a sha the branch still contains is not tested again.
 5. Read your sessions: load `mcp__ccd_session_mgmt__list_sessions` with ToolSearch, then call it with `{"linked": true}`. Map each session to its issue by its `ir-<n>` name.
 6. Reconcile, issue by issue:
    - live session → `SendMessage` asking for its state in the report vocabulary (below);
@@ -49,7 +49,7 @@ node -e "import('./scripts/claude-hooks/lib.mjs').then(m=>console.log(m.setBoard
 node -e "import('./scripts/claude-hooks/lib.mjs').then(m=>console.log(m.moveBoardItemAfter(<n>,<previous-n-or-null>,process.cwd())))"
 ```
 
-Place the first card with `null` (top of lane), then each next card after the one before it. Run the sequence once with `IRACEDECK_HOOKS_DRY_RUN=1` the first time in a session. `setBoardStatus` moves into `Next` only from `Backlog` or `Planned`; a card already in `In progress` or later stays where it is. Tell Niklas the order whenever you set or change it.
+`setBoardStatus` moves into `Next` only from `Backlog` or `Planned`; a card already in `In progress` or later stays where it is and is left out of the positioning. Position only the cards that are in `Next` once the moves are done, in your order: the first with `null` (top of lane), each next one after the previous `Next` card. Run the sequence once with `IRACEDECK_HOOKS_DRY_RUN=1` the first time in a session. Tell Niklas the order whenever you set or change it.
 
 Propose adding, dropping or splitting an issue to Niklas and wait. Work with no issue gets one filed first: `gh issue create` with `kind:` (when not user-facing) and `area:` labels, never `--milestone` or `--assignee` (`build-and-commit.md` *Issue labels*).
 
@@ -75,7 +75,7 @@ Planning against the deck hosts: check each in the rule it names rather than rec
 
 ## Starting an issue lead
 
-Start one when a slot is free and the next issue in order has its spec (or is exempt). A slot is held from start until the lead reports `ready-to-test`; testing, review and merge hold none.
+Start one when a slot is free and the next issue in order has its spec (or is exempt), **every issue it depends on has merged** (its lead branches from `origin/master`, which must already hold them), and no running lead's issue touches the same files or the same package unless you know their files are disjoint. If the next issue fails either check, take the first later one that passes, or wait. A slot is held from start until the lead reports `ready-to-test`; testing, review and merge hold none.
 
 Load `mcp__ccd_session__start_session` with ToolSearch (`select:mcp__ccd_session__start_session`), then:
 
@@ -87,7 +87,7 @@ Load `mcp__ccd_session__start_session` with ToolSearch (`select:mcp__ccd_session
   "name": "ir-<n>",
   "title": "#<n> <issue title>",
   "background": "<why this issue now, what it depends on, which sibling issues touch nearby files, anything Niklas has decided about it>",
-  "prompt": "Issue #<n>. Follow the issue-lead skill. <resume: branch <b>, PR #<p>> <facts the issue and spec do not carry>"
+  "prompt": "Issue #<n>. Follow the issue-lead skill. PO address: <your session's name from ListAgents>. <resume: branch <b>, PR #<p>> <facts the issue and spec do not carry>"
 }
 ```
 
@@ -140,7 +140,7 @@ When the message needs him and this turn was woken by a session's note rather th
 2. On his go, from the `master` checkout: `node scripts/integration-build.mjs <branch…>` (the hook asks; he confirms). The script refuses a dirty tree, merges each branch `--no-ff` onto `origin/master`, builds and restarts Stream Deck, and prints each branch's full head sha. It tells you when Mirabox or Ulanzi must be restarted by hand; pass that on.
 3. On a conflict it aborts and names the branch and what it met. Rebuild without that branch if Niklas wants the rest tested now, and send the conflicting leads the files: the later one rebases once the earlier merges, or they split the change through you. Never resolve it in the integration tree.
 4. Give Niklas one combined manual-test script: each issue's script from its lead, under its issue number, with a pass/fail line per issue.
-5. Relay each verdict to its lead with the sha it passed at. A failed issue is fixed in its own worktree and joins the next build; issues that passed are not retested unless the fix touched what they changed.
+5. Relay each verdict to its lead with the sha it passed at, and record it as a comment on the issue, `Manual test: passed at <full sha>` or `Manual test: failed at <full sha>: <what failed>`, so a resume knows what was tested. A failed issue is fixed in its own worktree and joins the next build; issues that passed are not retested unless the fix touched what they changed.
 
 ## Keeping `master` pulled and built
 
