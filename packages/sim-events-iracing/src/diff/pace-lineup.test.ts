@@ -9,7 +9,6 @@ import {
   indexPaceLines,
   MIN_LINE_POPULATION,
   type PaceLineup,
-  resolveCarAheadInLine,
   resolvePaceLineup,
 } from "./pace-lineup.js";
 
@@ -1687,7 +1686,7 @@ describe("resolvePaceLineup — the player's pace flags (#1168)", () => {
   });
 });
 
-describe("resolveCarAheadInLine — the follow rule, for any car", () => {
+describe("carAheadInLine — the follow rule, for any car", () => {
   const everyone = (): boolean => true;
   const arrays = (cars: Array<[number, number, number]>): [number[], number[]] => {
     const telemetry = paceArrays(cars);
@@ -1698,31 +1697,41 @@ describe("resolveCarAheadInLine — the follow rule, for any car", () => {
   it("names the nearest lower row in the car's OWN line", () => {
     const [lines, rows] = arrays(DOUBLE_FILE);
 
-    expect(resolveCarAheadInLine(lines, rows, 5, everyone)).toBe(3); // line 0 row 3 → row 2
-    expect(resolveCarAheadInLine(lines, rows, 6, everyone)).toBe(4); // line 1 row 2 → row 1
-    expect(resolveCarAheadInLine(lines, rows, 4, everyone)).toBe(2); // line 1 row 1 → row 0
+    expect(carAheadInLine(indexPaceLines(lines, rows, everyone), 5)).toBe(3); // line 0 row 3 → row 2
+    expect(carAheadInLine(indexPaceLines(lines, rows, everyone), 6)).toBe(4); // line 1 row 2 → row 1
+    expect(carAheadInLine(indexPaceLines(lines, rows, everyone), 4)).toBe(2); // line 1 row 1 → row 0
   });
 
   it("hands back the pace car itself for the leader, and nobody for the outside front-row car", () => {
     const [lines, rows] = arrays(DOUBLE_FILE);
 
-    expect(resolveCarAheadInLine(lines, rows, 1, everyone)).toBe(PACE);
-    expect(resolveCarAheadInLine(lines, rows, 2, everyone)).toBeNull();
-    expect(resolveCarAheadInLine(lines, rows, PACE, everyone)).toBeNull();
+    expect(carAheadInLine(indexPaceLines(lines, rows, everyone), 1)).toBe(PACE);
+    expect(carAheadInLine(indexPaceLines(lines, rows, everyone), 2)).toBeNull();
+    expect(carAheadInLine(indexPaceLines(lines, rows, everyone), PACE)).toBeNull();
   });
 
   it("walks past a car that is not in the world", () => {
     const [lines, rows] = arrays(DOUBLE_FILE);
 
-    expect(resolveCarAheadInLine(lines, rows, 5, (carIdx) => carIdx !== 3)).toBe(1);
-    expect(resolveCarAheadInLine(lines, rows, 5, (carIdx) => carIdx !== 3 && carIdx !== 1)).toBe(PACE);
+    expect(
+      carAheadInLine(
+        indexPaceLines(lines, rows, (carIdx) => carIdx !== 3),
+        5,
+      ),
+    ).toBe(1);
+    expect(
+      carAheadInLine(
+        indexPaceLines(lines, rows, (carIdx) => carIdx !== 3 && carIdx !== 1),
+        5,
+      ),
+    ).toBe(PACE);
   });
 
   it("answers nobody for a car that is not lined up, or one the arrays do not carry", () => {
     const [lines, rows] = arrays(DOUBLE_FILE);
 
-    expect(resolveCarAheadInLine(lines, rows, 9, everyone)).toBeNull();
-    expect(resolveCarAheadInLine(lines, rows, 500, everyone)).toBeNull();
+    expect(carAheadInLine(indexPaceLines(lines, rows, everyone), 9)).toBeNull();
+    expect(carAheadInLine(indexPaceLines(lines, rows, everyone), 500)).toBeNull();
   });
 
   it("is the rule the lineup uses for the player — the same car, for every car, on the uneven-lanes snapshot", () => {
@@ -1730,11 +1739,9 @@ describe("resolveCarAheadInLine — the follow rule, for any car", () => {
     const telemetry = capturedTelemetry(snapshot);
 
     for (let carIdx = 0; carIdx < 20; carIdx++) {
-      const ahead = resolveCarAheadInLine(
-        telemetry.CarIdxPaceLine as number[],
-        telemetry.CarIdxPaceRow as number[],
+      const ahead = carAheadInLine(
+        indexPaceLines(telemetry.CarIdxPaceLine as number[], telemetry.CarIdxPaceRow as number[], () => true),
         carIdx,
-        () => true,
       );
       const lineup = resolvePaceLineup(telemetry, session(carIdx), true);
 
@@ -1772,7 +1779,9 @@ describe("indexPaceLines / carAheadInLine — the follow rule read off one index
     expect(asked).toBe(DOUBLE_FILE.length);
 
     for (let carIdx = 0; carIdx < 72; carIdx++) {
-      expect(carAheadInLine(index, carIdx), `car ${carIdx}`).toBe(resolveCarAheadInLine(lines, rows, carIdx, everyone));
+      expect(carAheadInLine(index, carIdx), `car ${carIdx}`).toBe(
+        carAheadInLine(indexPaceLines(lines, rows, everyone), carIdx),
+      );
     }
 
     // …and not again, however many cars then ask.

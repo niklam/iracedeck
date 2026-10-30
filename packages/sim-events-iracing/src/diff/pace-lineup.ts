@@ -542,20 +542,6 @@ export function carAheadInLine(index: PaceLineIndex, carIdx: number): number | n
 }
 
 /**
- * {@link carAheadInLine} for one car, straight from the arrays: the index is
- * built and thrown away. For a caller that asks once; anything that asks of
- * more than one car on a tick indexes it once and asks the index.
- */
-export function resolveCarAheadInLine(
-  lines: unknown[],
-  rows: unknown[],
-  carIdx: number,
-  inWorld: (carIdx: number) => boolean,
-): number | null {
-  return carAheadInLine(indexPaceLines(lines, rows, inWorld), carIdx);
-}
-
-/**
  * The player's own car index from session YAML, or `null` when it cannot be
  * read. Exported (via the package index) because the scenario harness refuses
  * to start a caution shortcut against a session THIS reader would reject — a
