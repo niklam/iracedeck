@@ -15,6 +15,8 @@ import {
   issueFromWorktreePath,
   maskInert,
   matchAt,
+  POWERSHELL,
+  resolveDir,
   trustedMask,
   words,
   worktreeAddTarget,
@@ -93,6 +95,102 @@ describe("helpers", () => {
   });
   it("words respects quotes", () => {
     expect(words(`a "b c" 'd e' f`)).toEqual(["a", "b c", "d e", "f"]);
+  });
+});
+
+// #1520: Git Bash spells a drive `/c/…` and hands native programs `C:/…`, while
+// `path.resolve` reads `/c/…` as a folder `c` at the root of the current drive.
+// That put `cd /c/…/master && pnpm build` in a `C:\c\…` no deck link points into.
+describe("resolveDir: a Git Bash drive path names its drive", () => {
+  const BASE = "C:\\repo\\master";
+  const win = { platform: "win32" };
+  it("maps /c/…, /C/…, a bare /d and /cygdrive/c/… on Windows", () => {
+    expect(resolveDir(BASE, "/c/Users/x", win)).toBe("C:\\Users\\x");
+    expect(resolveDir(BASE, "/C/Users/x/", win)).toBe("C:\\Users\\x");
+    expect(resolveDir(BASE, "/d", win)).toBe("D:\\");
+    expect(resolveDir(BASE, "/cygdrive/c/Users/x", win)).toBe("C:\\Users\\x");
+    expect(resolveDir(BASE, "/cygdrive/d", win)).toBe("D:\\");
+  });
+  it("leaves every other spelling to path.resolve", () => {
+    expect(resolveDir(BASE, "../ir-5", win)).toBe("C:\\repo\\ir-5");
+    expect(resolveDir(BASE, "C:/Users/x", win)).toBe("C:\\Users\\x");
+    expect(resolveDir(BASE, "D:\\x", win)).toBe("D:\\x");
+    // Not a drive: a longer first segment, or a letter that does not end it.
+    expect(resolveDir(BASE, "/cc/x", win)).toBe("C:\\cc\\x");
+    expect(resolveDir(BASE, "/c-x/y", win)).toBe("C:\\c-x\\y");
+    expect(resolveDir(BASE, "/cygdrive/cc", win)).toBe("C:\\cygdrive\\cc");
+  });
+  it("reads /c/… as PowerShell does there: a folder at the root of the drive", () =>
+    expect(resolveDir(BASE, "/c/Users/x", { ...win, shell: POWERSHELL })).toBe("C:\\c\\Users\\x"));
+  it("off Windows /c is a real directory", () => {
+    expect(resolveDir("/repo/master", "/c/Users/x", { platform: "linux" })).toBe("/c/Users/x");
+    expect(resolveDir("/repo/master", "../ir-5", { platform: "linux" })).toBe("/repo/ir-5");
+  });
+  // Positive control: the plain resolve every guard used to call lands elsewhere.
+  it("is needed: path.win32.resolve misreads the same path", () =>
+    expect(path.win32.resolve(BASE, "/c/Users/x")).toBe("C:\\c\\Users\\x"));
+});
+
+// The guards resolve with the real platform, so these run where Git Bash does.
+// Off Windows the resolver's own tests above are the coverage.
+describe.runIf(process.platform === "win32")("every guard reads a Git Bash drive path (#1520)", () => {
+  /** `C:\repo\x` spelled as Git Bash spells it: `/c/repo/x`. */
+  const gitBash = (p) => p.replace(/^([A-Za-z]):[\\/]/, (_, d) => `/${d.toLowerCase()}/`).replace(/\\/g, "/");
+  const IR5 = tree("ir-5");
+  const INTEGRATION = tree("ir-integration");
+  const linkedMaster = ctx({
+    cwd: IR5,
+    linkTargets: () => [{ host: "Stream Deck", target: path.join(MASTER, "packages", "plugin") }],
+    toplevel: (d) => [MASTER, IR5, INTEGRATION].find((r) => isInside(d, r)),
+  });
+
+  // Positive control: without the mapping these paths resolve away from the tree they name.
+  it("would be misread by a plain resolve", () => {
+    expect(gitBash(MASTER)).toMatch(/^\/[a-z]\/repo\/master$/);
+    expect(path.resolve(IR5, gitBash(MASTER))).not.toBe(MASTER);
+  });
+
+  it("gitCwd follows a cd and a git -C spelled the Git Bash way", () => {
+    const status = cmd(/git\s+(?:-C\s+\S+\s+)?status\b/);
+    expect(gitCwd(`cd ${gitBash(IR5)} && git status`, MASTER, status)).toBe(IR5);
+    expect(gitCwd(`git -C ${gitBash(IR5)} status`, MASTER, status)).toBe(IR5);
+    expect(gitCwd(`cd /cygdrive/${gitBash(IR5).slice(1)} && git status`, MASTER, status)).toBe(IR5);
+  });
+
+  it("asks for a build or an install in the linked tree, through a cd or a pnpm -C", () => {
+    asks(`cd ${gitBash(MASTER)} && pnpm build`, linkedMaster);
+    asks(`pnpm -C ${gitBash(MASTER)} install`, linkedMaster);
+    asks(`pnpm --dir=${gitBash(MASTER)} build`, linkedMaster);
+    asks(`cd /cygdrive/${gitBash(MASTER).slice(1)} && pnpm build`, linkedMaster);
+  });
+  it("passes the same build in an unlinked tree", () => {
+    passes(`cd ${gitBash(IR5)} && pnpm build`, linkedMaster);
+    passes(`pnpm -C ${gitBash(IR5)} install`, linkedMaster);
+  });
+
+  it("denies an integration push from a git -C or cd to the tree, by its branch or its top level", () => {
+    // `toplevel` answers only for real trees and the basename is `packages`/`ir-5`,
+    // so the deny cannot come from the directory's own name.
+    const byBranch = ctx({
+      branch: (d) => (isInside(d, IR5) ? "integration" : "master"),
+      toplevel: () => undefined,
+    });
+    expect(deny(`git -C ${gitBash(IR5)} push`, byBranch)).toMatch(/never pushed/);
+    expect(deny(`cd ${gitBash(IR5)} && git push`, byBranch)).toMatch(/never pushed/);
+    const byTop = ctx({ toplevel: (d) => (isInside(d, INTEGRATION) ? INTEGRATION : undefined) });
+    expect(deny(`git -C ${gitBash(path.join(INTEGRATION, "packages"))} push`, byTop)).toMatch(/never pushed/);
+    passes(`git -C ${gitBash(path.join(IR5, "packages"))} push`, byTop);
+  });
+
+  it("judges a worktree add or remove at a Git Bash path", () => {
+    passes(`git worktree add ${gitBash(tree("ir-1"))} -b fix/1-x`);
+    expect(deny(`git worktree add ${gitBash(path.join(MASTER, ".worktrees", "ir-1"))} -b x`)).toMatch(/siblings/);
+    expect(
+      deny(
+        `git worktree remove ${gitBash(tree("ir-1"))}`,
+        ctx({ linkTargets: () => [{ host: "Stream Deck", target: tree("ir-1", "plugin") }] }),
+      ),
+    ).toMatch(/Stream Deck plugin link/);
   });
 });
 
@@ -1494,6 +1592,10 @@ describe("nothing builds or restarts in a deck-linked tree without Niklas's go",
     "streamdeck restart com.iracedeck.sd.core",
     "streamdeck link packages/x",
     "git status && pnpm restart:stream-deck",
+    "npm run restart:stream-deck",
+    "npm run build:with-restart",
+    "node scripts/link-mirabox.mjs",
+    "node scripts/unlink-ulanzi.mjs",
   ])("always asks, linked or not: %s", (c) => {
     expect(asks(c, elsewhere)).toMatch(/Niklas/);
     expect(asks(c, ctx())).toMatch(/Niklas/);
@@ -1511,9 +1613,72 @@ describe("nothing builds or restarts in a deck-linked tree without Niklas's go",
     "set -o pipefail; pnpm build 2>&1 | tail -5",
     "pnpm test && pnpm build",
     "pnpm install --frozen-lockfile && pnpm typecheck",
+    // npm runs the same scripts, and installs (#1520).
+    "npm run build",
+    "npm run-script build:ts",
+    "npm run build -- --force",
+    "npm install",
+    "npm i",
+    "npm ci",
+    "npm --workspace @iracedeck/logger run build",
+    // turbo is what `build:ts` and `build:force` run, reachable without pnpm's script.
+    "pnpm turbo build",
+    "pnpm turbo run build --filter=@iracedeck/logger",
+    "pnpm exec turbo run build",
+    "pnpm dlx turbo build",
+    "npx turbo run build",
+    "npx turbo build",
+    "npx --yes turbo@2.5.0 run build",
+    "npm exec turbo run build",
+    "npm exec -- turbo build",
+    "turbo run build",
+    "turbo build",
+    "turbo run lint build",
+    "turbo watch build",
+    "turbo run dev",
+    "node_modules/.bin/turbo run build",
+    // The root `build` and `dev:voices` scripts, run directly.
+    "node scripts/build.mjs",
+    "node scripts/dev-voices.mjs on",
   ])("asks in the linked tree, and passes in an unlinked one: %s", (c) => {
     expect(asks(c, linked)).toMatch(/Stream Deck plugin link points into .*master/);
     passes(c, elsewhere);
+  });
+
+  it("moves npm by --prefix / -C and turbo by --cwd, as pnpm by -C", () => {
+    asks("npm --prefix ../ir-integration run build", elsewhere);
+    asks("npm run build --prefix=../ir-integration", elsewhere);
+    asks("npm -C ../ir-integration install", elsewhere);
+    passes("npm --prefix ../ir-5 run build", linked);
+    asks("turbo run build --cwd ../ir-integration", elsewhere);
+    asks("turbo run build --cwd=../ir-integration", elsewhere);
+    passes("turbo run build --cwd ../ir-5", linked);
+    asks("pnpm -C ../ir-integration exec turbo run build", elsewhere);
+    asks("cd ../ir-integration && npx turbo run build", elsewhere);
+  });
+
+  it("passes npm and turbo commands that write nothing under the plugin", () => {
+    for (const c of [
+      "npm test",
+      "npm run test",
+      "npm run typecheck",
+      "npm run lint -- --fix",
+      "npm --version",
+      "npm view turbo version",
+      "npx prettier --check .",
+      "npx turbo run test",
+      "pnpm exec turbo run lint typecheck",
+      "pnpm exec tsc --noEmit",
+      "turbo run test",
+      "turbo --version",
+      "turbo run test --filter=build",
+    ])
+      passes(c, linked);
+  });
+
+  it("is not fooled by an npm or turbo mention", () => {
+    passes(`echo "npm run build"`, linked);
+    passes(`grep -n "turbo run build" turbo.json`, linked);
   });
 
   it("judges the tree the command runs in: a cd, a pnpm -C or --dir, a subdirectory", () => {
@@ -1560,6 +1725,84 @@ describe("nothing builds or restarts in a deck-linked tree without Niklas's go",
     passes(`echo "pnpm build:with-restart"`, linked);
     passes(`grep -n "pnpm install" README.md`, linked);
     passes(`git commit -q -m "run pnpm restart:stream-deck later" -- x.md`, linked);
+  });
+});
+
+// #1520: PowerShell is this environment's primary shell, and its commands
+// reached no guard. They get every rule that is not bash syntax.
+describe("PowerShell commands", () => {
+  const ROOTS = [MASTER, tree("ir-5"), tree("ir-integration")];
+  const ps = (root, o = {}) =>
+    ctx({
+      shell: POWERSHELL,
+      linkTargets: () => [{ host: "Stream Deck", target: path.join(root, "packages", "plugin") }],
+      toplevel: (d) => ROOTS.find((r) => isInside(d, r)),
+      ...o,
+    });
+  const linked = ps(MASTER);
+  const elsewhere = ps(tree("ir-integration"));
+
+  it("asks for a build in the linked tree and passes it elsewhere", () => {
+    expect(asks("pnpm build", linked)).toMatch(/Stream Deck plugin link points into .*master/);
+    passes("pnpm build", elsewhere);
+    asks("npm run build", linked);
+    asks("& pnpm install", linked);
+    asks("pnpm restart:stream-deck", elsewhere);
+  });
+
+  it("splits a chain at ; and newlines, and moves the base by cd and Set-Location", () => {
+    asks("git status; pnpm build", linked);
+    asks("git status\npnpm build", linked);
+    for (const c of [
+      "cd ../ir-integration; pnpm build",
+      "cd ..\\ir-integration; pnpm build",
+      "Set-Location ..\\ir-integration; pnpm build",
+      "set-location -Path '..\\ir-integration'; pnpm install",
+      'Set-Location -LiteralPath "..\\ir-integration" && pnpm build',
+      "sl ../ir-integration\npnpm build",
+      "chdir ../ir-integration; pnpm build",
+    ])
+      asks(c, elsewhere);
+    passes("Set-Location ..\\ir-5; pnpm build", linked);
+    passes("cd -; pnpm build", elsewhere); // unknowable, stays put
+  });
+
+  it("reads PowerShell's escapes, not bash's: a backtick continues a line, a backslash is a character", () => {
+    asks("pnpm `\n  build", linked);
+    asks("pnpm `\r\n  build", linked);
+    // `"C:\x\"` ends at its quote in PowerShell; bash would read `\"` as escaped and hide the build.
+    asks(`Write-Output "C:\\x\\"; pnpm build; Write-Output "C:\\y\\"`, linked);
+    // A backtick-escaped quote or semicolon is a literal character.
+    passes('Write-Output "a`"; pnpm build`""', linked);
+    passes("Write-Output a`; pnpm build", linked);
+  });
+
+  it("denies an integration push, from the tree or by refspec", () => {
+    const INTEGRATION = tree("ir-integration");
+    const inTree = ctx({ shell: POWERSHELL, branch: (d) => (d === INTEGRATION ? "integration" : "master") });
+    expect(deny("git push origin integration", inTree)).toMatch(/never pushed/);
+    expect(deny("Set-Location ..\\ir-integration; git push", inTree)).toMatch(/never pushed/);
+    expect(deny("git -C ..\\ir-integration push -u origin HEAD", inTree)).toMatch(/never pushed/);
+    passes("git push origin master", inTree);
+  });
+
+  it("keeps the shell-agnostic guards", () => {
+    expect(asks("git push origin v3.2.0", ctx({ shell: POWERSHELL }))).toMatch(/release/);
+    expect(deny("pnpm exec vitest run", ctx({ shell: POWERSHELL }))).toMatch(/vitest/);
+    expect(deny("git worktree add ..\\feature-x -b x", ctx({ shell: POWERSHELL }))).toMatch(/ir-<issue>/);
+  });
+
+  // The bash-syntax traps describe bash; in PowerShell they would only misfire.
+  it.each([
+    ["a heredoc carrying a doubled-backslash path", "Write-Output 'x' <<EOF C:\\\\Users"],
+    ["a piped build without pipefail", "pnpm build 2>&1 | Select-Object -Last 5"],
+    ["jq", "gh pr view --json title | jq .title"],
+    ["IRACEDECK_MOCK=0", "IRACEDECK_MOCK=0 pnpm test"],
+    ["git show of a slashed ref", "git show origin/feature/x:.claude/rules/hooks.md"],
+  ])("does not judge %s", (_, c) => {
+    passes(c, ps(tree("ir-integration")));
+    // Positive control: the same command is refused as a Bash command.
+    deny(c, ctx());
   });
 });
 

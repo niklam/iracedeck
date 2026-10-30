@@ -3,14 +3,13 @@
  * reminders — the board move after a merge, a worktree or an issue filing,
  * the post-merge CI run list, and a diff after a scripted edit.
  */
-import path from "node:path";
-
 import { addToBoard, gh, ghJson, git, postContext, readInput, setBoardStatus } from "./lib.mjs";
 import {
   firstMerge,
   GIT_WORKTREE_ADD,
   gitCwd,
   issueFromWorktreePath,
+  resolveDir,
   trustedMask,
   worktreeAddTarget,
 } from "./rules-bash.mjs";
@@ -97,7 +96,7 @@ function afterIssueCreate(stdout, cwd) {
 
 /** `target` is the add's own argument (`worktreeAddTarget`), read where the pre-hook's rule read it. */
 function afterWorktreeAdd(command, target, cwd) {
-  const resolved = path.resolve(gitCwd(command, cwd, GIT_WORKTREE_ADD), target);
+  const resolved = resolveDir(gitCwd(command, cwd, GIT_WORKTREE_ADD), target);
   const issue = issueFromWorktreePath(resolved);
   if (!issue) return [];
   const r = gh(["issue", "view", String(issue), "--json", "number"], cwd);

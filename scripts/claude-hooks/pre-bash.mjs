@@ -1,6 +1,8 @@
 /**
- * PreToolUse hook for the Bash tool: runs `rules-bash.mjs` over the command
- * with a real git/gh/filesystem context. Wired in `.claude/settings.json`.
+ * PreToolUse hook for the Bash and PowerShell tools: runs `rules-bash.mjs`
+ * over the command with a real git/gh/filesystem context. Wired in
+ * `.claude/settings.json`. A PowerShell command (#1520) is judged by the rules
+ * that are not bash syntax, read as PowerShell reads it (`ctx.shell`).
  */
 import {
   applyVerdict,
@@ -22,7 +24,7 @@ import {
   toplevel,
   workspacePackages,
 } from "./lib.mjs";
-import { checkBash } from "./rules-bash.mjs";
+import { BASH, checkBash, POWERSHELL } from "./rules-bash.mjs";
 
 const memo = (fn) => {
   const cache = new Map();
@@ -42,6 +44,7 @@ if (typeof command === "string" && command.trim()) {
   const cwd = input.cwd ?? process.cwd();
   const ctx = {
     cwd,
+    shell: input.tool_name === "PowerShell" ? POWERSHELL : BASH,
     branch: memo(currentBranch),
     staged: memo((dir) => lines(git(["diff", "--cached", "--name-only"], dir))),
     modified: memo((dir) => lines(git(["diff", "--name-only"], dir))),

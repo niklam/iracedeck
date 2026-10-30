@@ -1,6 +1,8 @@
 /**
- * PreToolUse rules for the Bash tool — the repo's mechanical "never do X"
- * rules, turned from prose into checks that run before the command does.
+ * PreToolUse rules for the Bash and PowerShell tools — the repo's mechanical
+ * "never do X" rules, turned from prose into checks that run before the
+ * command does. A rule marked `bashOnly` describes bash syntax and is skipped
+ * for a PowerShell command ({@link checkBash}).
  *
  * Each rule is `(command, ctx) → verdict`: a string DENIES with that reason,
  * `{ ask: reason }` forces the permission prompt, anything falsy passes. The
@@ -390,9 +392,47 @@ export function matchAt(command, re) {
   return null;
 }
 
+/**
+ * The shell a command comes from (#1520): `ctx.shell`, bash when unset. The
+ * PowerShell tool's commands are judged by every rule that is not bash syntax
+ * ({@link checkBash}), and two things read differently there — the commands
+ * that move the directory ({@link cdRe}) and a `/c/…` path ({@link resolveDir}).
+ */
+export const BASH = "bash";
+export const POWERSHELL = "powershell";
+
 const QUOTED_ARG = String.raw`("([^"]+)"|'([^']+)'|(\S+))`;
 const CD_RE = new RegExp(String.raw`^\s*(?:\w+=\S*\s+)*cd\s+${QUOTED_ARG}\s*$`, "d");
+/** PowerShell's `Set-Location` and its aliases, any case, with an optional `-Path` / `-LiteralPath`. */
+const PS_CD_RE = new RegExp(
+  String.raw`^\s*(?:cd|chdir|sl|set-location)(?:\s+-(?:path|literalpath))?\s+${QUOTED_ARG}\s*$`,
+  "di",
+);
+const cdRe = (shell) => (shell === POWERSHELL ? PS_CD_RE : CD_RE);
+/** `cd -` / `cd +` go back or forward in a history the hook cannot see: the directory stays put. */
+const HISTORY_DIR = new Set(["-", "+"]);
 const GIT_C_RE = new RegExp(String.raw`\bgit\s+-C\s+${QUOTED_ARG}`, "d");
+
+/** Git Bash's spelling of a drive, `/c/…` or `/cygdrive/c/…`, for `C:\…`. */
+const GIT_BASH_DRIVE = /^(?:\/cygdrive)?\/([a-zA-Z])(?=\/|$)/;
+
+/**
+ * `dir` resolved against `base`, as the shell the command came from reads it
+ * (#1520). Every directory a rule resolves goes through here: a `cd`, a
+ * `git -C`, a `pnpm -C`, a worktree path, a pathspec.
+ *
+ * On Windows, Git Bash spells a drive `/c/…` and hands native programs `C:/…`,
+ * while `path.resolve` reads `/c/…` as a folder `c` at the root of the current
+ * drive: `cd /c/…/master && pnpm build` was judged in a `C:\c\…` no deck link
+ * points into, and passed. PowerShell reads `/c/…` exactly as `path.resolve`
+ * does, and off Windows `/c` is a real directory, so only Git Bash on Windows
+ * maps it. `platform` is injectable for tests and picks the path flavour too.
+ */
+export function resolveDir(base, dir, { shell = BASH, platform = process.platform } = {}) {
+  const flavour = platform === "win32" ? path.win32 : path.posix;
+  const drive = platform === "win32" && shell !== POWERSHELL && GIT_BASH_DRIVE.exec(dir);
+  return flavour.resolve(base, drive ? `${drive[1].toUpperCase()}:${dir.slice(drive[0].length) || "/"}` : dir);
+}
 
 /** The argument `re` (a {@link QUOTED_ARG} regex) finds in `text[a, b)`, read from the raw `command`. */
 function argIn(command, text, a, b, re) {
@@ -415,19 +455,20 @@ function argIn(command, text, a, b, re) {
  * The chain is split, and each `cd` and `-C` found, in the trusted-masked text,
  * and the directory then read from the raw text at that spot — so a
  * `git -C ../master` quoted in a commit message moves nothing (#1321 review).
+ * `shell` picks the `cd` spellings and the path reading ({@link resolveDir}).
  */
-export function gitCwd(command, cwd, re) {
+export function gitCwd(command, cwd, re, shell = BASH) {
   const text = trustedMask(command);
   const segs = ranges(text, CHAIN).filter(([a, b]) => command.slice(a, b).trim());
   const at = re ? segs.findIndex(([a, b]) => re.test(text.slice(a, b))) : -1;
   let base = cwd;
   for (const [a, b] of segs.slice(0, at >= 0 ? at : segs.length)) {
-    const dir = argIn(command, text, a, b, CD_RE);
-    if (dir && dir !== "-") base = path.resolve(base, dir);
+    const dir = argIn(command, text, a, b, cdRe(shell));
+    if (dir && !HISTORY_DIR.has(dir)) base = resolveDir(base, dir, { shell });
   }
   const [a, b] = at >= 0 ? segs[at] : [0, command.length];
   const dir = argIn(command, text, a, b, GIT_C_RE);
-  return dir ? path.resolve(base, dir) : base;
+  return dir ? resolveDir(base, dir, { shell }) : base;
 }
 
 /**
@@ -440,7 +481,7 @@ export function gitCwd(command, cwd, re) {
  * cannot shield a later one. The command's own `-C` is the caller's to read,
  * since git and pnpm spell it differently ({@link optionDir}).
  */
-export function* chainCommands(command, cwd, re) {
+export function* chainCommands(command, cwd, re, shell = BASH) {
   const text = trustedMask(command);
   const global = new RegExp(re.source, [...new Set([...re.flags, "g"])].join(""));
   let base = cwd;
@@ -451,16 +492,16 @@ export function* chainCommands(command, cwd, re) {
       const to = stop >= 0 ? from + stop : b;
       yield { base, head: command.slice(a + m.index, from), args: command.slice(from, to) };
     }
-    const dir = argIn(command, text, a, b, CD_RE);
-    if (dir && dir !== "-") base = path.resolve(base, dir);
+    const dir = argIn(command, text, a, b, cdRe(shell));
+    if (dir && !HISTORY_DIR.has(dir)) base = resolveDir(base, dir, { shell });
   }
 }
 
 /** `base` moved by the directory option `re` (a {@link QUOTED_ARG} regex) finds in `text`, read off its quotes. */
-function optionDir(text, re, base) {
+function optionDir(text, re, base, shell) {
   const m = re.exec(text);
   const dir = m && (m[2] ?? m[3] ?? m[4]);
-  return dir ? path.resolve(base, dir) : base;
+  return dir ? resolveDir(base, dir, { shell }) : base;
 }
 
 /** Splits a command into rough words, respecting simple quotes. */
@@ -832,8 +873,8 @@ export const rules = [
     // it runs in, so `cd ../ir-integration && git push` is caught.
     name: "git push: the integration branch is never pushed",
     test: (c, ctx) => {
-      for (const { base, head, args } of chainCommands(c, ctx.cwd, GIT_PUSH)) {
-        const dir = optionDir(head, GIT_C_RE, base);
+      for (const { base, head, args } of chainCommands(c, ctx.cwd, GIT_PUSH, ctx.shell)) {
+        const dir = optionDir(head, GIT_C_RE, base, ctx.shell);
         const fromIntegration = () =>
           ctx.branch(dir) === INTEGRATION_BRANCH || path.basename(ctx.toplevel?.(dir) ?? dir) === INTEGRATION_TREE;
         if (pushReachesIntegration(words(args), fromIntegration))
@@ -930,7 +971,7 @@ export const rules = [
     name: "git commit: specs go to master only, with their sections and no control bytes; a dirty lockfile rides with its package.json",
     test: (c, ctx) => {
       if (!has(c, GIT_COMMIT)) return null;
-      const dir = gitCwd(c, ctx.cwd, GIT_COMMIT);
+      const dir = gitCwd(c, ctx.cwd, GIT_COMMIT, ctx.shell);
       const branch = ctx.branch(dir);
       const { files: committed, fromIndex } = commitSelection(c, ctx, dir);
       if (branch && branch !== MAIN_BRANCH) {
@@ -989,7 +1030,7 @@ export const rules = [
     name: "git commit: the Elgato manifest never carries a Debug key",
     test: (c, ctx) => {
       if (!has(c, GIT_COMMIT)) return null;
-      const dir = gitCwd(c, ctx.cwd, GIT_COMMIT);
+      const dir = gitCwd(c, ctx.cwd, GIT_COMMIT, ctx.shell);
       for (const commit of matchesAt(c, GIT_COMMIT)) {
         for (const from of manifestSources(c, commit, ctx, dir)) {
           const text = ctx.committedText?.(dir, ELGATO_MANIFEST, from);
@@ -1014,8 +1055,8 @@ export const rules = [
     test: (c, ctx) => {
       const target = worktreeAddTarget(c);
       if (!target) return null;
-      const dir = gitCwd(c, ctx.cwd, GIT_WORKTREE_ADD);
-      const resolved = path.resolve(dir, target);
+      const dir = gitCwd(c, ctx.cwd, GIT_WORKTREE_ADD, ctx.shell);
+      const resolved = resolveDir(dir, target, { shell: ctx.shell });
       // A true sibling, not merely "outside master": the main root is the
       // checkout the git-common-dir belongs to, so a tree nested inside
       // another ir-* worktree is outside it and would otherwise pass (#1358).
@@ -1060,7 +1101,7 @@ export const rules = [
       if (!m) return null;
       const target = words(m[1]).find((w) => !w.startsWith("-"));
       if (!target) return null;
-      const resolved = path.resolve(gitCwd(c, ctx.cwd, GIT_WORKTREE_REMOVE), target);
+      const resolved = resolveDir(gitCwd(c, ctx.cwd, GIT_WORKTREE_REMOVE, ctx.shell), target, { shell: ctx.shell });
       const held = ctx.linkTargets().filter((l) => l.target && ctx.isInside(l.target, resolved));
       if (held.length)
         return `${held.map((l) => l.host).join(" and ")} plugin link points into ${resolved}. Do not relink it yourself, not even to master — leave the link and the worktree as they are and tell Niklas.`;
@@ -1078,24 +1119,22 @@ export const rules = [
     name: "nothing builds or restarts in a deck-linked tree without Niklas's go",
     test: (c, ctx) => {
       const found = [];
-      for (const m of matchesAt(c, DECK_SCRIPT))
-        found.push(`\`${m[0].trim()}\` restarts or rebuilds under a deck host`);
       for (const m of matchesAt(c, STREAMDECK_CLI)) found.push(`\`${m[0].trim()}\` restarts or relinks a deck host`);
-      for (const { base, args } of chainCommands(c, ctx.cwd, PNPM)) {
-        const run = pnpmScript(words(args), base);
-        if (!run) continue;
-        if (DECK_ALWAYS.test(run.script)) {
-          found.push(`\`pnpm ${run.script}\` restarts, relinks or rebuilds under a deck host`);
-          continue;
-        }
-        if (!DECK_IF_LINKED.test(run.script)) continue;
-        const root = ctx.toplevel?.(run.dir) ?? run.dir;
-        const held = ctx.linkTargets().filter((l) => l.target && ctx.isInside(l.target, root));
-        if (held.length)
-          found.push(
-            `${held.map((l) => l.host).join(" and ")} plugin link points into ${root}: \`pnpm ${run.script}\` there replaces files under the running plugin`,
-          );
-      }
+      for (const { re, read } of RUNNERS)
+        for (const { base, args } of chainCommands(c, ctx.cwd, re, ctx.shell))
+          for (const run of read(words(args), base, ctx.shell)) {
+            if (run.always || DECK_ALWAYS.test(run.script)) {
+              found.push(`\`${run.label}\` restarts, relinks or rebuilds under a deck host`);
+              continue;
+            }
+            if (!DECK_IF_LINKED.test(run.script)) continue;
+            const root = ctx.toplevel?.(run.dir) ?? run.dir;
+            const held = ctx.linkTargets().filter((l) => l.target && ctx.isInside(l.target, root));
+            if (held.length)
+              found.push(
+                `${held.map((l) => l.host).join(" and ")} plugin link points into ${root}: \`${run.label}\` there replaces files under the running plugin`,
+              );
+          }
       if (!found.length) return null;
       return {
         ask: `${[...new Set(found)].join("; ")}. Nothing builds, installs or restarts in a deck-linked tree without Niklas's go (#1520): confirm only once he has said go, or run a build in an unlinked ../ir-<issue> tree instead.`,
@@ -1128,6 +1167,7 @@ export const rules = [
     // `[^|&;\n]|\d?>&\d` had two for each, and backtracked exponentially on a
     // long run of them with no pipe at the end.
     name: "a piped pnpm build/test needs pipefail",
+    bashOnly: true,
     test: (c) => {
       const m = matchAt(c, cmd(/pnpm\s+(run\s+)?(build|test|typecheck|lint|format)\b(?:[^|&;\n]|>&\d)*\|(?!\|)/));
       return (
@@ -1176,12 +1216,14 @@ export const rules = [
   },
   {
     name: "jq is not installed",
+    bashOnly: true,
     test: (c) =>
       has(c, cmd(/jq(\s|$)/)) &&
       "jq is not installed here and a jq pipeline fails silently (empty fields, exit 0). Parse `gh --json` with node or python (UTF-8).",
   },
   {
     name: "heredocs collapse doubled backslashes",
+    bashOnly: true,
     test: (c) =>
       has(c, /<<-?\s*['"]?\w+/) &&
       has(c, /[A-Za-z]:\\\\/) &&
@@ -1189,6 +1231,7 @@ export const rules = [
   },
   {
     name: "IRACEDECK_MOCK=0 still mocks",
+    bashOnly: true,
     test: (c) =>
       has(c, cmd(/IRACEDECK_MOCK=0\b/)) &&
       "`IRACEDECK_MOCK=0` still forces the mock (any non-empty value does). Use `IRACEDECK_REAL_NATIVE=1`.",
@@ -1197,6 +1240,7 @@ export const rules = [
     // The arguments are read raw, since MSYS mangles a quoted path just the
     // same; the fix counts only in live text up to the `git show` it covers.
     name: "git show <ref/with/slash>:<dot-path> is mangled by MSYS",
+    bashOnly: true,
     test: (c) =>
       [...matchesAt(c, cmd(/git\s+show\b([^|&;\n]*)/))].some(
         (m) =>
@@ -1338,43 +1382,176 @@ const COMMIT_VALUE_LONG = new Set([
 const BARE_REDIRECT = /^\d*(?:<<-?|<<<|<>|<&|>&|>>|>\||&>>?|<|>)$/;
 
 /**
- * The deck-linked-tree ask (#1520). `PNPM` finds a pnpm command, whose script
- * {@link pnpmScript} reads. `DECK_ALWAYS` are the scripts that restart,
- * relink or watch whatever tree they run in; `DECK_IF_LINKED` the ones that
- * write the plugin's files or its dependencies — a build, an install and the
- * commands that run one — which matter only where a host's link points. The
- * two root scripts that restart are caught when run through `node` too, as is
- * the Stream Deck CLI the `restart:` / `link:` scripts wrap.
+ * The deck-linked-tree ask (#1520). A build, an install or a restart is
+ * reached through a runner — pnpm, npm, npx, a bare turbo, or `node` on the
+ * root script behind a pnpm one — each found at command position and read by
+ * its own `read(tokens, base, shell)` into the runs it makes: `{ label, script,
+ * dir }`, a script or turbo task and the directory it runs in. `DECK_ALWAYS`
+ * are the scripts that restart, relink or watch whatever tree they run in;
+ * `DECK_IF_LINKED` the ones that write the plugin's files or its dependencies —
+ * a build, an install and the commands that run one — which matter only where
+ * a host's link points. The Stream Deck CLI the `restart:` / `link:` scripts
+ * wrap is caught too. A runner's name may carry the `.cmd` / `.exe` / `.ps1`
+ * PowerShell resolves it to.
  */
-const PNPM = cmd(/pnpm(?=\s|$)/);
+const BIN = String.raw`(?:\.(?:cmd|exe|ps1))?(?=\s|$)`;
+const PNPM = cmd(new RegExp(`pnpm${BIN}`));
+const NPM = cmd(new RegExp(`npm${BIN}`));
+const NPX = cmd(new RegExp(`npx${BIN}`));
+const TURBO = cmd(new RegExp(String.raw`(?:\S*[\\/])?turbo${BIN}`));
+const NODE = cmd(new RegExp(`node${BIN}`));
 const DECK_ALWAYS = /^(?:build:with-restart|build:stream-deck|(?:re|un)?link:.+|restart:.+|watch:.+)$/;
 const DECK_IF_LINKED = /^(?:build(?::.+)?|install(?::.+)?|i|add|remove|rm|update|up|dev(?::.+)?|watch)$/;
-const DECK_SCRIPT = cmd(/node(?:\s+-\S+)*\s+(?:\S*[\\/])?(?:integration-build|build-with-restart)\.mjs\b/);
 const STREAMDECK_CLI = cmd(/streamdeck\s+(?:restart|stop|link|unlink)\b/);
 
 /** pnpm options whose value is the next word; `-C` / `--dir` move the directory and are read on their own. */
 const PNPM_VALUE = new Set(["--filter", "-F", "--filter-prod", "--reporter", "--loglevel", "--workspace-concurrency"]);
 
+/** Whether a word names the turbo binary: `turbo`, `turbo@2.5.0`, `node_modules/.bin/turbo.cmd`. */
+const isTurbo = (t) => /^(?:\S*[\\/])?turbo(?:@\S*)?(?:\.(?:cmd|exe|ps1))?$/.test(t);
+
 /**
- * The script or command a pnpm invocation runs — past its global options and
- * an optional `run` — and the directory it runs in: `base`, moved by `-C` /
- * `--dir` (attached or not). `null` when there is none (`pnpm --version`).
+ * The scripts or tasks a pnpm invocation runs — past its global options and an
+ * optional `run` — in `base` moved by `-C` / `--dir` (attached or not). A
+ * `pnpm turbo …`, `pnpm exec turbo …` or `pnpm dlx turbo …` runs turbo's tasks
+ * there ({@link turboRuns}). `[]` when it runs nothing (`pnpm --version`).
  */
-function pnpmScript(tokens, base) {
+function pnpmRuns(tokens, base, shell) {
   let dir = base;
   let runSeen = false;
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i];
     const attached = t.match(/^(?:--dir=|-C)(.+)$/);
-    if (attached) dir = path.resolve(base, attached[1]);
-    else if (t === "-C" || t === "--dir") dir = tokens[i + 1] ? path.resolve(base, tokens[++i]) : dir;
+    if (attached) dir = resolveDir(base, attached[1], { shell });
+    else if (t === "-C" || t === "--dir") dir = tokens[i + 1] ? resolveDir(base, tokens[++i], { shell }) : dir;
     else if (PNPM_VALUE.has(t)) i++;
     else if (t.startsWith("-")) continue;
     else if ((t === "run" || t === "run-script") && !runSeen) runSeen = true;
-    else return { script: t, dir };
+    else if (isTurbo(t)) return turboRuns(tokens.slice(i + 1), dir, shell);
+    else if ((t === "exec" || t === "dlx") && !runSeen) return binRuns(tokens.slice(i + 1), dir, shell);
+    else return [{ label: `pnpm ${t}`, script: t, dir }];
   }
-  return null;
+  return [];
 }
+
+/** npm's install family — every alias npm accepts for install, ci, update, uninstall and rebuild — read as `install`. */
+const NPM_INSTALL =
+  /^(?:i|in|ins|inst|insta|instal|install|isnt|isnta|isntal|isntall|add|ci|ic|clean-install|install-clean|it|cit|install-test|install-ci-test|update|up|upgrade|udpate|uninstall|un|unlink|remove|rm|r|rebuild|rb|dedupe|ddp|prune)$/;
+/** npm options whose value is the next word; `--prefix` / `-C` move the directory and are read on their own. */
+const NPM_VALUE = new Set(["-w", "--workspace", "--loglevel", "--cache", "--userconfig", "--registry"]);
+/** `npm exec`, `npx`, `pnpm exec` and `pnpm dlx` options whose value is the next word. */
+const BIN_VALUE = new Set(["-p", "--package", "-w", "--workspace"]);
+
+/**
+ * What an npm invocation runs: a script (`npm run <s>`, `run-script`), the
+ * install family read as `install`, or turbo through `npm exec`. The directory
+ * is `base` moved by `--prefix` / `-C`, which npm reads anywhere before `--`.
+ */
+function npmRuns(tokens, base, shell) {
+  const end = tokens.indexOf("--") < 0 ? tokens.length : tokens.indexOf("--");
+  let dir = base;
+  const positional = [];
+  for (let i = 0; i < end; i++) {
+    const t = tokens[i];
+    const attached = t.match(/^--prefix=(.+)$/);
+    if (attached) dir = resolveDir(base, attached[1], { shell });
+    else if (t === "--prefix" || t === "-C") dir = tokens[i + 1] ? resolveDir(base, tokens[++i], { shell }) : dir;
+    else if (NPM_VALUE.has(t)) i++;
+    else if (!t.startsWith("-")) positional.push(i);
+  }
+  if (!positional.length) return [];
+  const verb = tokens[positional[0]];
+  if (/^(?:run|run-script|rum|urn)$/.test(verb)) {
+    const script = tokens[positional[1]];
+    return script ? [{ label: `npm run ${script}`, script, dir }] : [];
+  }
+  if (/^(?:exec|x)$/.test(verb)) return binRuns(tokens.slice(positional[0] + 1), dir, shell);
+  return NPM_INSTALL.test(verb) ? [{ label: `npm ${verb}`, script: "install", dir }] : [];
+}
+
+/**
+ * The binary an `exec` / `dlx` / `npx` runs, past its own options and a `--`:
+ * turbo's tasks when it is turbo, nothing otherwise — a build is judged by the
+ * tool that does it, and a `tsc` or `prettier` replaces nothing under a plugin.
+ */
+function binRuns(tokens, dir, shell) {
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+    if (BIN_VALUE.has(t)) i++;
+    else if (t === "--" || t.startsWith("-")) continue;
+    else return isTurbo(t) ? turboRuns(tokens.slice(i + 1), dir, shell) : [];
+  }
+  return [];
+}
+
+/** turbo options whose value is the next word; `--cwd` moves the directory and is read on its own. */
+const TURBO_VALUE = new Set([
+  "--filter",
+  "-F",
+  "--concurrency",
+  "--cache-dir",
+  "--log-order",
+  "--output-logs",
+  "--env-mode",
+  "--ui",
+  "--cache",
+  "--log-prefix",
+  "--graph",
+  "--summarize",
+  "--profile",
+]);
+
+/**
+ * The tasks a turbo invocation runs — `turbo run <tasks>`, `turbo watch <tasks>`
+ * or the `turbo <tasks>` shorthand — in `dir` moved by `--cwd`. A subcommand
+ * that is no task (`prune`, `ls`, `login`) is read as one and matches no rule.
+ */
+function turboRuns(tokens, dir, shell) {
+  let at = dir;
+  const positional = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+    if (t === "--") break;
+    const attached = t.match(/^--cwd=(.+)$/);
+    if (attached) at = resolveDir(dir, attached[1], { shell });
+    else if (t === "--cwd") at = tokens[i + 1] ? resolveDir(dir, tokens[++i], { shell }) : at;
+    else if (TURBO_VALUE.has(t)) i++;
+    else if (!t.startsWith("-")) positional.push(t);
+  }
+  const tasks = /^(?:run|watch)$/.test(positional[0] ?? "") ? positional.slice(1) : positional;
+  return tasks.map((task) => ({ label: `turbo run ${task}`, script: task, dir: at }));
+}
+
+/**
+ * The root scripts a pnpm script wraps, run through `node` (#1520): the ones
+ * that restart or relink a host always ask, as their pnpm scripts do; `build`
+ * (turbo in the cwd) and `dev-voices` (its own tree) ask where linked, so both
+ * the cwd and the script's own tree are judged.
+ */
+const NODE_ALWAYS = /^(?:integration-build|build-with-restart|(?:un)?link-(?:mirabox|ulanzi))$/;
+const NODE_IF_LINKED = { build: "build", "dev-voices": "dev:voices" };
+
+function nodeRuns(tokens, base, shell) {
+  const file = tokens.find((t) => !t.startsWith("-"));
+  const m = file?.match(/^(?:(.*)[\\/])?([\w-]+)\.mjs$/);
+  if (!m) return [];
+  const label = `node ${file}`;
+  if (NODE_ALWAYS.test(m[2])) return [{ label, script: m[2], dir: base, always: true }];
+  const script = NODE_IF_LINKED[m[2]];
+  if (!script) return [];
+  return [
+    { label, script, dir: base },
+    { label, script, dir: resolveDir(base, m[1] ?? ".", { shell }) },
+  ];
+}
+
+const RUNNERS = [
+  { re: PNPM, read: pnpmRuns },
+  { re: NPM, read: npmRuns },
+  { re: NPX, read: binRuns },
+  { re: TURBO, read: turboRuns },
+  { re: NODE, read: nodeRuns },
+];
 
 /** `git push` options whose value is the next word when not attached with `=`. */
 const PUSH_VALUE = new Set(["--repo", "-o", "--push-option", "--receive-pack", "--exec"]);
@@ -1463,7 +1640,7 @@ function pathspecCovers(token, target, ctx, dir) {
   const op = token.value;
   if (/[*?[]/.test(op) || op.startsWith(":")) return true;
   const top = ctx.toplevel?.(dir);
-  const rel = asPath(top ? path.relative(top, path.resolve(dir, op)) : op)
+  const rel = asPath(top ? path.relative(top, resolveDir(dir, op, { shell: ctx.shell })) : op)
     .replace(/^\.\//, "")
     .replace(/\/+$/, "");
   if (rel === "" || rel === ".") return true;
@@ -1542,6 +1719,21 @@ export function classifyCheck(c) {
 const checkName = (c) => c.name ?? c.context ?? c.__typename ?? "?";
 
 /**
+ * A PowerShell command rewritten, at the same length, so the bash lexer reads
+ * its words and boundaries as PowerShell does (#1520). PowerShell's escape is
+ * the backtick, not the backslash: a backtick at a line's end continues it and
+ * `` `" `` or `` `; `` is a literal character, while `\` is an ordinary one —
+ * so `"C:\x\"` ends at that quote, where bash reads `\"` as escaped and would
+ * mask the commands after it. A continuation becomes whitespace, any other
+ * backtick pair two inert `_`, and a `\` a `/`, which Windows paths read the same.
+ */
+export function powershellAsBash(command) {
+  return command.replace(/`\r?\n|`[\s\S]?|\\/g, (m) =>
+    m === "\\" ? "/" : m.endsWith("\n") ? " ".repeat(m.length) : "_".repeat(m.length),
+  );
+}
+
+/**
  * Runs the rules. The first DENY wins at once; the first ask is held until
  * every rule has had its turn, so a deny anywhere beats an ask anywhere,
  * whatever order the two rules sit in. One chained command can match both — a
@@ -1549,11 +1741,18 @@ const checkName = (c) => c.name ?? c.context ?? c.__typename ?? "?";
  * ask, and confirming it ran the command the deny exists to stop (#1193
  * review; the tag-push ask had the same gap). Order still picks which of two
  * denies, or which of two asks, is the one reported.
+ *
+ * A PowerShell command (`ctx.shell`, #1520) is read through
+ * {@link powershellAsBash} and skips the `bashOnly` rules — the traps that
+ * describe bash syntax, which in PowerShell would only misfire.
  */
 export function checkBash(command, ctx) {
+  const powershell = ctx.shell === POWERSHELL;
+  const text = powershell ? powershellAsBash(command) : command;
   const asks = [];
   for (const rule of rules) {
-    const v = rule.test(command, ctx);
+    if (powershell && rule.bashOnly) continue;
+    const v = rule.test(text, ctx);
     if (!v) continue;
     if (typeof v === "string") return v;
     asks.push(v.ask);
