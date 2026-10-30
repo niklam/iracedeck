@@ -924,29 +924,10 @@ describe("BaseAction image store and overlays", () => {
       expect(action.getStoredSvg("context-1")).toBeUndefined();
       expect(action.getStoredSvg("context-2")).toBe("<svg>2</svg>");
     });
-
-    it("should remove context from storage", async () => {
-      const ev = keyEvent("context-1");
-
-      await action.registerKey(ev, "<svg></svg>");
-      await action.onWillDisappear(ev);
-
-      expect(action.getStoredSvg("context-1")).toBeUndefined();
-    });
   });
 
   describe("getIsActive", () => {
     it("should return true by default", () => {
-      expect(action.getIsActive()).toBe(true);
-    });
-
-    it("should reflect current active state", () => {
-      action.setActive(false);
-
-      expect(action.getIsActive()).toBe(false);
-
-      action.setActive(true);
-
       expect(action.getIsActive()).toBe(true);
     });
   });

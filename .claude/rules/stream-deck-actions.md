@@ -45,7 +45,7 @@ The `bin/` folder contains build output and must not be committed to git.
 ## Action Locations
 
 - Action implementations live in `packages/iracing-actions/src/actions/`.
-- Actions import from `@iracedeck/deck-core` (NOT from `@elgato/streamdeck` or `../shared/index.js`), and the iRacing side — `SimIRacingAction`, `getCommands()`, the fuel, unit and hotkey helpers — from `@iracedeck/deck-iracing` (#1351), and the global-settings names — `getGlobalSettings`, `getGlobalColors`, `onGlobalSettingsChange`, `isCalloutEnabled`, `setWarning` / `clearWarning` and the rest of what `packages/settings/src/index.ts` exports — from `@iracedeck/settings` (#1365). deck-core re-exports none of them.
+- Actions import from `@iracedeck/deck-core` (NOT from `@elgato/streamdeck`), and the iRacing side — `SimIRacingAction`, `getCommands()`, the fuel and unit helpers — from `@iracedeck/deck-iracing` (#1351), and the global-settings names — `getGlobalSettings`, `getGlobalColors`, `onGlobalSettingsChange`, `isCalloutEnabled`, `setWarning` / `clearWarning` and the rest of what `packages/settings/src/index.ts` exports — from `@iracedeck/settings` (#1365). deck-core re-exports none of them.
 
 Requirements
 
