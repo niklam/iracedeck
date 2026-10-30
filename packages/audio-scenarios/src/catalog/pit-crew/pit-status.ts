@@ -81,7 +81,8 @@
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventOf } from "@iracedeck/event-bus";
-import { PitSvStatus, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
+import { PitSvStatus, TrkLoc } from "@iracedeck/iracing-sdk";
+import type { TelemetryData } from "@iracedeck/sim-events-iracing";
 
 import type { ScenarioContract } from "../../dsl.js";
 import { NO_FRAME } from "../../dsl.js";

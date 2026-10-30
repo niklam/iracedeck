@@ -66,15 +66,8 @@
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventName, SimEventOf } from "@iracedeck/event-bus";
-import {
-  Flags,
-  hasFlag,
-  isLiveOnTrack,
-  isPenaltyFlagActive,
-  isPostRace,
-  isPreGreen,
-  type TelemetryData,
-} from "@iracedeck/iracing-sdk";
+import { Flags, hasFlag, isLiveOnTrack, isPenaltyFlagActive, isPostRace, isPreGreen } from "@iracedeck/iracing-sdk";
+import type { TelemetryData } from "@iracedeck/sim-events-iracing";
 
 import type { ScenarioContract } from "../../dsl.js";
 import { WEIGHT } from "../../dsl.js";

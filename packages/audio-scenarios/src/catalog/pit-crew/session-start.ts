@@ -73,8 +73,8 @@
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type CalloutIdOf, SESSION_START_CALLOUTS } from "@iracedeck/callout-settings";
 import { type SessionStartSnapshot, TrackWetness } from "@iracedeck/event-bus";
-import { type TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
+import type { TelemetryData } from "@iracedeck/sim-events-iracing";
 
 import type { ScenarioContract } from "../../dsl.js";
 import { poolRef } from "../../dsl.js";

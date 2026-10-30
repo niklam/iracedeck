@@ -78,8 +78,9 @@
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type CalloutIdOf, RACE_START_CALLOUTS } from "@iracedeck/callout-settings";
 import { type RaceStartSnapshot, TrackWetness } from "@iracedeck/event-bus";
-import { isPostRace, SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { isPostRace, SessionState } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
+import type { TelemetryData } from "@iracedeck/sim-events-iracing";
 
 import type { ScenarioContext, ScenarioContract, SpeakGate } from "../../dsl.js";
 import { poolRef } from "../../dsl.js";

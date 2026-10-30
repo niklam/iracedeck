@@ -46,7 +46,8 @@
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventName, SimEventOf, StartCountdownSeconds } from "@iracedeck/event-bus";
-import { isLiveOnTrack, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { isLiveOnTrack } from "@iracedeck/iracing-sdk";
+import type { TelemetryData } from "@iracedeck/sim-events-iracing";
 
 import type { ScenarioContract } from "../../dsl.js";
 import { WEIGHT } from "../../dsl.js";

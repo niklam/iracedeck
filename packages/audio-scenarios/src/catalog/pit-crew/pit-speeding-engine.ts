@@ -34,8 +34,8 @@
  */
 import { AudioChannel, getAudio } from "@iracedeck/audio-service";
 import type { IEventBus } from "@iracedeck/event-bus";
-import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
+import type { TelemetryData } from "@iracedeck/sim-events-iracing";
 
 /**
  * The warning tone, chosen by ear from six candidates during #912's hardware

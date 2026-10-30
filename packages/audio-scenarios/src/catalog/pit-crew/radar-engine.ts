@@ -12,7 +12,7 @@
  */
 import { AudioChannel, getAudio } from "@iracedeck/audio-service";
 import type { IEventBus, SimEventOf } from "@iracedeck/event-bus";
-import type { TelemetryData } from "@iracedeck/iracing-sdk";
+import type { TelemetryData } from "@iracedeck/sim-events-iracing";
 
 export type RadarVisualState = "clear" | "left" | "right" | "both" | "two-left" | "two-right";
 

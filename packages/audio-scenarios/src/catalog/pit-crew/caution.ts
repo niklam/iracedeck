@@ -251,9 +251,9 @@
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type CalloutIdOf, CAUTION_CALLOUTS } from "@iracedeck/callout-settings";
 import type { SimEventName, SimEventOf } from "@iracedeck/event-bus";
-import { Flags, hasFlag, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { Flags, hasFlag } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
-import type { CautionEpisode, CautionPhase, PaceLineup } from "@iracedeck/sim-events-iracing";
+import type { CautionEpisode, CautionPhase, PaceLineup, TelemetryData } from "@iracedeck/sim-events-iracing";
 
 import type { ScenarioContract, SpeakGate } from "../../dsl.js";
 import { poolRef, WEIGHT } from "../../dsl.js";
