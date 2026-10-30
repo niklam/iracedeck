@@ -77,6 +77,9 @@ const WRAP_LOW = 0.2;
  */
 const REFUEL_EPSILON_L = 0.01;
 
+/** The two caution bits, either of which marks a lap as run under caution. */
+const CAUTION_FLAGS = [Flags.Caution, Flags.CautionWaving] as const;
+
 /** Rolling fuel consumption statistics over the validated lap history. */
 export type FuelStats = {
   /** Fuel used on the most recent VALID lap (L), or `null` when none exists. */
@@ -317,7 +320,7 @@ export function diffFuelLaps(t: FuelLapTracker, telemetry: TelemetryData): void 
   const onPitRoad = telemetry.OnPitRoad === true;
   const towed = typeof telemetry.PlayerCarTowTime === "number" && telemetry.PlayerCarTowTime > 0;
   // Missing SessionFlags must not count as caution — don't punish missing data.
-  const caution = hasAnyFlag(telemetry.SessionFlags, [Flags.Caution, Flags.CautionWaving]);
+  const caution = hasAnyFlag(telemetry.SessionFlags, CAUTION_FLAGS);
   const anchor = { lap, sessionTime, fuelLevel, onPitRoad, towed, caution };
 
   if (!t.initialized) {

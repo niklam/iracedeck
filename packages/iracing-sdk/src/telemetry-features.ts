@@ -391,6 +391,9 @@ export function isPostRace(t: TelemetryData | null | undefined): boolean {
   return state === SessionState.Checkered || state === SessionState.CoolDown;
 }
 
+/** The session-flag bits {@link isPenaltyFlagActive} answers to. */
+const PENALTY_FLAGS = [Flags.Black, Flags.Disqualify] as const;
+
 /**
  * Whether a driver-penalty flag — `Black` or `Disqualify` — is currently shown
  * to the player. This is THE definition of "the furled warning escalated into
@@ -408,5 +411,5 @@ export function isPostRace(t: TelemetryData | null | undefined): boolean {
  * @returns true when the Black or Disqualify session-flag bit is set
  */
 export function isPenaltyFlagActive(t: TelemetryData | null | undefined): boolean {
-  return hasAnyFlag(t?.SessionFlags, [Flags.Black, Flags.Disqualify]);
+  return hasAnyFlag(t?.SessionFlags, PENALTY_FLAGS);
 }

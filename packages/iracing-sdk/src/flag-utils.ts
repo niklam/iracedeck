@@ -2,6 +2,10 @@ import { Flags } from "@iracedeck/iracing-native";
 
 import { hasAnyFlag, hasFlag } from "./utils.js";
 
+/** The bits each multi-bit flag below answers to, built once rather than per check. */
+const BLACK_FLAGS = [Flags.Black, Flags.Disqualify] as const;
+const YELLOW_FLAGS = [Flags.Yellow, Flags.YellowWaving, Flags.Caution, Flags.CautionWaving] as const;
+
 /**
  * Describes a resolved race flag with its visual properties.
  */
@@ -23,7 +27,7 @@ export const FLAG_DEFINITIONS: ReadonlyArray<{
 }> = [
   { check: (f) => hasFlag(f, Flags.Red), info: { label: "RED", color: "#e74c3c", textColor: "#ffffff", pulse: false } },
   {
-    check: (f) => hasAnyFlag(f, [Flags.Black, Flags.Disqualify]),
+    check: (f) => hasAnyFlag(f, BLACK_FLAGS),
     info: { label: "BLACK", color: "#1a1a1a", textColor: "#ffffff", pulse: true },
   },
   {
@@ -31,7 +35,7 @@ export const FLAG_DEFINITIONS: ReadonlyArray<{
     info: { label: "REPAIR", color: "#e67e22", textColor: "#ffffff", pulse: true },
   },
   {
-    check: (f) => hasAnyFlag(f, [Flags.Yellow, Flags.YellowWaving, Flags.Caution, Flags.CautionWaving]),
+    check: (f) => hasAnyFlag(f, YELLOW_FLAGS),
     info: { label: "YELLOW", color: "#f1c40f", textColor: "#1a1a1a", pulse: false },
   },
   {

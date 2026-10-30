@@ -52,7 +52,7 @@ export function hasFlag(value: number | undefined, flag: number): boolean {
  *     console.log('Temperature warning!');
  * }
  */
-export function hasAnyFlag(value: number | undefined, flags: number[]): boolean {
+export function hasAnyFlag(value: number | undefined, flags: readonly number[]): boolean {
   if (value === undefined || value === null) {
     return false;
   }
