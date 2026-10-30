@@ -22,7 +22,7 @@ Press sounds play only while iRacing is connected. With iRacing closed, a press 
 
 ## When a Press Bleeps Once
 
-The single bleep plays at the moment the press does its job:
+The single bleep plays at the moment the press acts. It tells you the deck took the press, not that the sim did what the key asks: a key whose binding is not set still bleeps.
 
 - **Most keys act the moment you press them**, and bleep once then.
 - **A key or dial that does one thing on a tap and another on a long press** acts when you let go, so it bleeps once when you release a short press. A long press never gets the single bleep. That covers the setup keys' View sub-modes with dual-press on, Car Control's **Wipers and Visor** on a car with wipers, and the Stream Deck+ dials.
@@ -38,12 +38,12 @@ The double bleep plays once, at the long-press threshold, and never again howeve
 
 Keys whose hold just repeats, such as the setup **+ / −** keys, never bleep twice: letting go of a repeating key only stops it, so there is nothing for the double bleep to promise.
 
-The double bleep comes at the **Long-press threshold** set on the **Dual-Press** card of the same tab (default 500 ms), the same threshold every long press uses. See [The Long-press threshold](/docs/features/dials/#the-long-press-threshold).
+On a key or a dial button, the double bleep comes at the **Long-press threshold** set on the **Dual-Press** card of the same tab (default 500 ms), the same threshold those long presses use. See [The Long-press threshold](/docs/features/dials/#the-long-press-threshold). A Long Touch is different: it bleeps twice when the Stream Deck reports the long touch, on the Stream Deck's own timing rather than the Dual-Press threshold.
 
 ## What Stays Quiet
 
 - **A gesture set to None.** A dial or touch slot that does nothing makes no sound, short or long — a bleep for a press that did nothing would be a false confirmation.
-- **Push + Turn.** Turning a dial while its button is held is silent, also when the turn comes after the double bleep would have been due.
+- **Push + Turn.** Turning a dial while its button is held makes its release silent. Turn before the threshold and there is no double bleep either; turn after it and the double bleep has already played, but the release still makes no sound.
 - **Push to Talk**, on a key or a dial. A bleep as the microphone opens is the sound most likely to be transmitted.
 - **Volume steps** on Audio Controls, AI Spotter Controls and the Pit Crew key's Radar Volume mode. Every step already plays its own [volume tick](/docs/actions/audio-voice/audio-controls/#a-tick-on-every-step), which is that press's sound.
 
