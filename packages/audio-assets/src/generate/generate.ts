@@ -103,7 +103,13 @@ import {
   resolveEntryRequestIds,
 } from "./config.ts";
 import { type SynthesizeOptions, synthesizeSpeech } from "./elevenlabs.ts";
-import { loadManifest, saveManifest } from "./manifest.ts";
+import { clipRelPath, loadManifest, saveManifest } from "./manifest.ts";
+import {
+  describePauseMarks,
+  findEntryPauseMarks,
+  isGrandfathered,
+  loadGrandfatheredPauseMarks,
+} from "./pause-marks.ts";
 import { formatScope, parseScopeArgs, type Scope, validateScope } from "./scope.ts";
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
@@ -206,6 +212,7 @@ async function main(): Promise<void> {
   }
 
   const manifest = loadManifest(MANIFEST_PATH);
+  const grandfathered = loadGrandfatheredPauseMarks(packageRoot);
 
   const scopeSummary = formatScope(scope);
 
@@ -216,6 +223,7 @@ async function main(): Promise<void> {
   let generated = 0;
   let skipped = 0;
   let failed = 0;
+  let refused = 0;
 
   for (const [voiceName, voice] of voiceConfigs) {
     if (scope.voices && !scope.voices.includes(voiceName)) continue;
@@ -231,7 +239,7 @@ async function main(): Promise<void> {
       for (const entry of entries) {
         if (scope.entries && !scope.entries.includes(entry.name)) continue;
 
-        const relPath = path.posix.join("voice", voiceName, groupName, `${entry.name}.mp3`);
+        const relPath = clipRelPath(voiceName, groupName, entry.name);
         const absPath = path.join(packageRoot, relPath);
 
         // The cache key is a pure function of config content (this entry's
@@ -240,10 +248,30 @@ async function main(): Promise<void> {
         // so it's stable across runs and cycle-safe.
         const hash = entryHash(entry, groupName, voice, lookup, hashMemo);
         const manifestEntry = manifest.entries[relPath];
+        const cached = manifestEntry?.hash === hash && existsSync(absPath);
 
-        if (manifestEntry?.hash === hash && existsSync(absPath)) {
+        // Refused in a dry run alike, so an author sees it before spending
+        // credit (#1518), and ahead of the cache hit, so a marked clip copied
+        // in with its manifest row is refused too. A grandfathered entry whose
+        // text is unchanged is re-cut as before — a dependency's new take or a
+        // voice-wide setting reaches it — but said so.
+        const pauseMarks = findEntryPauseMarks(entry);
+        const allowed =
+          pauseMarks.length === 0 || isGrandfathered(entry, grandfathered[voiceName]?.[`${groupName}/${entry.name}`]);
+
+        if (!allowed) {
+          console.error(`[generate] ${relPath}  —  REFUSED: ${describePauseMarks(pauseMarks)}`);
+          refused++;
+          continue;
+        }
+
+        if (cached) {
           skipped++;
           continue;
+        }
+
+        if (pauseMarks.length > 0) {
+          console.warn(`[generate] ${relPath}  —  grandfathered text: ${describePauseMarks(pauseMarks)}`);
         }
 
         const prefix = dryRun ? "[dry-run] WOULD GENERATE" : "[generate]";
@@ -298,9 +326,11 @@ async function main(): Promise<void> {
 
   console.log();
   const verb = dryRun ? "would be generated" : "generated";
-  console.log(`Done. ${generated} ${verb}, ${skipped} skipped (cache hit), ${failed} failed`);
+  console.log(
+    `Done. ${generated} ${verb}, ${skipped} skipped (cache hit), ${failed} failed, ${refused} refused (pause marks)`,
+  );
 
-  if (failed > 0) process.exitCode = 1;
+  if (failed > 0 || refused > 0) process.exitCode = 1;
 }
 
 main().catch((err) => {

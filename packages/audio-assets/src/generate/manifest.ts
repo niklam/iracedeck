@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
 import { z } from "zod";
 
 export const ManifestEntrySchema = z.object({
@@ -20,6 +21,11 @@ export const ManifestSchema = z.object({
 
 export type Manifest = z.infer<typeof ManifestSchema>;
 export type ManifestEntry = z.infer<typeof ManifestEntrySchema>;
+
+/** `voice/<voice-id>/<group>/<name>.mp3`: where the generator writes a clip, and its key in the manifest. */
+export function clipRelPath(voiceId: string, groupName: string, entryName: string): string {
+  return path.posix.join("voice", voiceId, groupName, `${entryName}.mp3`);
+}
 
 export function loadManifest(manifestPath: string): Manifest {
   if (!existsSync(manifestPath)) return { version: 1, entries: {} };
