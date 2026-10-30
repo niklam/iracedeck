@@ -17,6 +17,8 @@ import {
   matchAt,
   POWERSHELL,
   resolveDir,
+  shellQuote,
+  shellWords,
   trustedMask,
   words,
   worktreeAddTarget,
@@ -93,6 +95,19 @@ describe("helpers", () => {
     expect(gitCwd("git status && cd ../ir-5", MASTER, status)).toBe(MASTER); // a later cd moves nothing
     expect(gitCwd("cd - && git status", MASTER, status)).toBe(MASTER); // unknowable, stays put
   });
+  // A runner's forwarded words are appended to a script's line through
+  // shellQuote and read back through shellWords; each must come back whole
+  // (#1526 review: a word with both quote kinds came back unbalanced).
+  it.each(["plain", "two words", "it's", 'say "hi"', `a"b'c`, `'"'"'`, "$R", "`x`", "a\\b", "", "--restart"])(
+    "shellQuote quotes a word so the deck rule reads it back as that one word: %s",
+    (w) => {
+      const quoted = shellQuote(w);
+      expect(shellWords(quoted)).toEqual([w]);
+      expect(maskInert(quoted).sure).toBe(true);
+      expect(shellWords(`${quoted} --restart`)).toEqual([w, "--restart"]);
+    },
+  );
+
   it("words respects quotes", () => {
     expect(words(`a "b c" 'd e' f`)).toEqual(["a", "b c", "d e", "f"]);
   });
@@ -1708,6 +1723,46 @@ describe("nothing restarts or relinks a deck host without Niklas's go", () => {
     );
   });
 
+  // #1526 review: `--restart` was matched as a literal word, so a flag the shell
+  // computes passed. A word the hook cannot read — a variable, a command
+  // substitution, a backtick — may be `--restart`, so it asks.
+  it.each([
+    "R=--restart; node scripts/integration-build.mjs $R fix/1-a",
+    'node scripts/integration-build.mjs "$R" fix/1-a',
+    "node scripts/integration-build.mjs ${R} fix/1-a",
+    "node scripts/integration-build.mjs $(echo --restart) fix/1-a",
+    'node scripts/integration-build.mjs "$(echo --restart)" fix/1-a',
+    "node scripts/integration-build.mjs fix/1-a $(echo --restart)",
+    "node scripts/integration-build.mjs `echo --restart` fix/1-a",
+    "node scripts/integration-build.mjs fix/1-a `echo --restart`",
+  ])("asks for integration-build when its flags could not be read: %s", (c) =>
+    expect(asks(c, ctx())).toMatch(/`node scripts\/integration-build\.mjs .*` .*its flags could not be read/),
+  );
+  it("names the word it could not read", () => {
+    expect(asks("node scripts/integration-build.mjs $(echo --restart) fix/1-a", ctx())).toMatch(
+      /`node scripts\/integration-build\.mjs \$\(…\)`/,
+    );
+    expect(asks("node scripts/integration-build.mjs --flags=`echo --restart`", ctx())).toMatch(
+      /`node scripts\/integration-build\.mjs --flags=\$\(…\)`/,
+    );
+    expect(asks("node scripts/integration-build.mjs $R", ctx())).toMatch(/`node scripts\/integration-build\.mjs \$R`/);
+  });
+  it("passes integration-build whose computed words all follow its --", () => {
+    passes("node scripts/integration-build.mjs fix/1-a -- $R", ctx());
+    passes("node scripts/integration-build.mjs fix/1-a -- $(echo --restart)", ctx());
+    passes("node scripts/integration-build.mjs fix/1-a -- `echo x`", ctx());
+  });
+
+  // A redirect's `&` (`2>&1`, `&>log`) ends no command, so the words after it
+  // are still the command's own; a lone `&` sends it to the background and does.
+  it("reads the words after a redirect that carries a &", () => {
+    asks("node scripts/integration-build.mjs fix/1-a 2>&1 --restart", ctx());
+    asks("node scripts/integration-build.mjs &>build.log --restart fix/1-a", ctx());
+    asks("pnpm build >log 2>&1 && pnpm restart:stream-deck", ctx());
+    passes("node scripts/integration-build.mjs fix/1-a 2>&1 | tail -5", ctx());
+    passes("node scripts/integration-build.mjs fix/1-a & echo --restart", ctx());
+  });
+
   // dev:voices rebuilds and relinks the hosts already linked to its tree, so it
   // is the one command left that asks only where a host's link points.
   it.each([
@@ -1889,6 +1944,115 @@ describe("nothing restarts or relinks a deck host without Niklas's go", () => {
     passes("node scripts/host-app.mjs", ctx());
   });
 
+  // #1526 review: `node` behind a runner was read as a binary that restarts
+  // nothing, so the root scripts it runs were never judged.
+  it.each([
+    "pnpm exec node scripts/integration-build.mjs --restart x",
+    "pnpm exec node.exe scripts/build-with-restart.mjs",
+    "pnpm node scripts/build-with-restart.mjs",
+    "pnpm dlx node scripts/host-app.mjs start ulanzi",
+    "npx node scripts/host-app.mjs stop mirabox",
+    "npx --yes node scripts/link-mirabox.mjs",
+    "npm exec node scripts/build-with-restart.mjs",
+    "npm exec -- node scripts/unlink-ulanzi.mjs",
+    "npx node --run restart:stream-deck",
+  ])("asks for node behind a runner as for node itself: %s", (c) => expect(asks(c, ctx())).toMatch(/Niklas/));
+  it("passes node behind a runner on a script that restarts nothing", () => {
+    for (const c of [
+      "pnpm exec node scripts/build.mjs",
+      "npx node scripts/integration-build.mjs fix/1-a",
+      "npm exec node -- --version",
+      "pnpm node --version",
+    ])
+      passes(c, ctx());
+  });
+
+  // #1526 review: a shell handed a command string ran it unread. Each wrapper's
+  // string is a command line judged by the same rule, as a rollup watch hook is.
+  const encoded = (line) => Buffer.from(line, "utf16le").toString("base64");
+  it.each([
+    `bash -c "pnpm restart:stream-deck"`,
+    `sh -c 'pnpm restart:stream-deck'`,
+    `bash -lc "pnpm restart:stream-deck"`,
+    `bash -e -c "pnpm restart:stream-deck"`,
+    `bash -o pipefail -c "pnpm restart:stream-deck"`,
+    `/usr/bin/bash -c "pnpm build && pnpm restart:stream-deck"`,
+    `bash.exe -c "pnpm restart:stream-deck"`,
+    `zsh -c "streamdeck restart com.iracedeck.sd.core"`,
+    `fish --command "pnpm restart:stream-deck"`,
+    `bash -c "bash -c 'pnpm restart:stream-deck'"`,
+    `bash -c "pnpm \\"restart:stream-deck\\""`,
+    `bash -c $'pnpm restart:stream-deck'`,
+    `timeout 60 bash -c "pnpm restart:stream-deck"`,
+    `xargs -I{} sh -c "pnpm restart:stream-deck"`,
+    `(bash -c "pnpm restart:stream-deck")`,
+    `bash -c "pnpm restart:stream-deck" && echo done`,
+    `git status; bash -c "node scripts/integration-build.mjs --restart fix/1-a"`,
+    `cmd /c "pnpm restart:stream-deck"`,
+    `cmd /c pnpm restart:stream-deck`,
+    `cmd.exe /c "pnpm restart:stream-deck"`,
+    `cmd /k "pnpm restart:stream-deck"`,
+    `CMD.EXE /C "pnpm restart:stream-deck"`,
+    `cmd //c "pnpm restart:stream-deck"`,
+    `cmd /d /s /c "pnpm build && pnpm restart:stream-deck"`,
+    `C:/Windows/System32/cmd.exe /c "taskkill /IM StreamDeck.exe /F"`,
+    `powershell -Command "pnpm restart:stream-deck"`,
+    `powershell -NoProfile -ExecutionPolicy Bypass -Command "pnpm restart:stream-deck"`,
+    `powershell.exe -command "Stop-Process -Name StreamDeck"`,
+    `pwsh -c "pnpm restart:stream-deck"`,
+    `pwsh.exe -NoLogo -c "Stop-Process -Name StreamDeck"`,
+    `pwsh -NoProfile -Command pnpm restart:stream-deck`,
+    `powershell "pnpm restart:stream-deck"`,
+    `pwsh -EncodedCommand ${encoded("pnpm restart:stream-deck")}`,
+    `pwsh -ec ${encoded("Stop-Process -Name StreamDeck")}`,
+    `eval "pnpm restart:stream-deck"`,
+    `eval pnpm restart:stream-deck`,
+    `npx -c "pnpm restart:stream-deck"`,
+    `npm exec --call "pnpm restart:stream-deck"`,
+    `npm exec --call="streamdeck restart com.iracedeck.sd.core"`,
+    `pnpm exec -c pnpm restart:stream-deck`,
+    `pnpm exec --shell-mode "pnpm restart:stream-deck"`,
+    `pnpm exec sh -c "pnpm restart:stream-deck"`,
+    `npx bash -c "pnpm restart:stream-deck"`,
+  ])("asks for what a shell wrapper's command string restarts: %s", (c) => {
+    expect(asks(c, ctx())).toMatch(/`[^`]+` → .*(?:deck host|Niklas)/);
+    asks(c, linked);
+  });
+  it("judges a wrapper's string in the directory it runs in", () => {
+    asks(`bash -c "cd ../ir-integration && pnpm dev:voices on"`, elsewhere);
+    asks(`cd ../ir-integration && bash -c "pnpm dev:voices on"`, elsewhere);
+    asks(`pwsh -wd ../ir-integration -c "pnpm dev:voices on"`, elsewhere);
+    asks(`pwsh -WorkingDirectory ../ir-integration -c "pnpm dev:voices on"`, elsewhere);
+    asks(`pwsh -wd:../ir-integration -c "pnpm dev:voices on"`, elsewhere);
+    asks(`pwsh -c "Set-Location ..\\ir-integration; pnpm dev:voices on"`, elsewhere);
+    passes(`bash -c "pnpm dev:voices on"`, elsewhere);
+    passes(`pwsh -wd ../ir-5 -c "pnpm dev:voices on"`, elsewhere);
+  });
+  // Positive control: a wrapper's string is read as a command line, never a
+  // quoted string merely because it is quoted.
+  it("passes a wrapper whose string restarts nothing, and a quoted mention", () => {
+    for (const c of [
+      `bash -c "pnpm build"`,
+      `sh -c 'pnpm test && pnpm lint'`,
+      `bash -c "echo 'pnpm restart:stream-deck'"`,
+      `bash -c 'git commit -m "run pnpm restart:stream-deck later"'`,
+      `bash scripts/x.sh pnpm restart:stream-deck`,
+      `bash -c`,
+      `cmd /c "pnpm build"`,
+      `cmd /c dir`,
+      `pwsh -c "pnpm build"`,
+      `pwsh -File scripts/restart.ps1`,
+      `pwsh -EncodedCommand ${encoded("pnpm build")}`,
+      `eval "pnpm build"`,
+      `npx -c "pnpm build"`,
+      `echo "bash -c 'pnpm restart:stream-deck'"`,
+      `echo "pnpm build:with-restart"`,
+      `git commit -q -m "run pnpm restart:stream-deck later" -- x.md`,
+      `git commit -q -m "try cmd /c pnpm restart:stream-deck" -- x.md`,
+    ])
+      passes(c, linked);
+  });
+
   // #1526: deleting a linked plugin's build output is a build step like any other.
   it("passes a rimraf of a linked plugin's files", () => {
     const bin = "packages/iracing-plugin-stream-deck/com.iracedeck.sd.core.sdPlugin/bin";
@@ -1931,8 +2095,14 @@ describe("a script is judged by what it runs", () => {
     "plugin-watch": "pnpm --filter @iracedeck/iracing-plugin-stream-deck watch",
     "watch-all": "turbo run watch",
   };
-  // The plugins' real `watch` lines: Stream Deck's restarts the host after every rebuild.
+  // The plugins' real `build` and `watch` lines: Stream Deck's `watch` restarts the host after every rebuild.
+  const PLUGIN_BUILD = {
+    build: "rollup -c && pnpm run postbuild",
+    postbuild: "node ../../scripts/install-runtime-deps.mjs com.iracedeck.sd.core.sdPlugin/bin",
+    test: "node ../../scripts/test-package.mjs",
+  };
   const PLUGIN_SCRIPTS = {
+    ...PLUGIN_BUILD,
     clean: "rimraf com.iracedeck.sd.core.sdPlugin/bin/plugin.js",
     wipe: "rimraf com.iracedeck.sd.core.sdPlugin/bin",
     typecheck: "tsc --noEmit",
@@ -1942,19 +2112,26 @@ describe("a script is judged by what it runs", () => {
       'node ../../scripts/generate-changelog-data.mjs && rollup -c -w --watch.onEnd="streamdeck restart com.iracedeck.sd.core"',
   };
   const MIRABOX_SCRIPTS = {
+    ...PLUGIN_BUILD,
     clean: "rimraf com.iracedeck.sd.core.sdPlugin/bin/plugin.js",
+    typecheck: "tsc --noEmit",
     watch: "node ../../scripts/generate-changelog-data.mjs && rollup -c -w",
   };
   const mirabox = (root) => path.join(root, "packages", "iracing-plugin-mirabox");
+  const ulanzi = (root) => path.join(root, "packages", "iracing-plugin-ulanzi");
+  const logger = (root) => path.join(root, "packages", "logger");
+  const LOGGER_SCRIPTS = {
+    clean: "rimraf dist",
+    typecheck: "tsc --noEmit",
+    test: "node ../../scripts/test-package.mjs",
+  };
   const manifests = {};
   for (const root of [MASTER, IR5]) {
     manifests[root] = { name: "iracedeck", scripts: ROOT_SCRIPTS };
     manifests[pluginOf(root)] = { name: "@iracedeck/iracing-plugin-stream-deck", scripts: PLUGIN_SCRIPTS };
     manifests[mirabox(root)] = { name: "@iracedeck/iracing-plugin-mirabox", scripts: MIRABOX_SCRIPTS };
-    manifests[path.join(root, "packages", "logger")] = {
-      name: "@iracedeck/logger",
-      scripts: { clean: "rimraf dist", typecheck: "tsc --noEmit" },
-    };
+    manifests[ulanzi(root)] = { name: "@iracedeck/iracing-plugin-ulanzi", scripts: MIRABOX_SCRIPTS };
+    manifests[logger(root)] = { name: "@iracedeck/logger", scripts: LOGGER_SCRIPTS };
   }
   const scriptsAt = (dir) => {
     for (let d = dir; ; d = path.dirname(d)) {
@@ -1974,6 +2151,8 @@ describe("a script is judged by what it runs", () => {
       packages: () => ({
         "@iracedeck/iracing-plugin-stream-deck": { dir: pluginOf(MASTER), scripts: Object.keys(PLUGIN_SCRIPTS) },
         "@iracedeck/iracing-plugin-mirabox": { dir: mirabox(MASTER), scripts: Object.keys(MIRABOX_SCRIPTS) },
+        "@iracedeck/iracing-plugin-ulanzi": { dir: ulanzi(MASTER), scripts: Object.keys(MIRABOX_SCRIPTS) },
+        "@iracedeck/logger": { dir: logger(MASTER), scripts: Object.keys(LOGGER_SCRIPTS) },
       }),
       ...o,
     });
@@ -2025,6 +2204,116 @@ describe("a script is judged by what it runs", () => {
     passes("pnpm --filter @iracedeck/iracing-plugin-mirabox watch", linked);
     passes("cd packages/iracing-plugin-mirabox && pnpm watch", linked);
   });
+
+  // #1526 review: a selector the expansion could not resolve exactly — `-r`, a
+  // pattern, a path, a dependency query, an npm workspace option — left the run
+  // judged by its name, so the Stream Deck plugin's `watch` restarted the host
+  // unprompted. A name (scope optional, as pnpm reads it) or a plain path
+  // resolves exactly; anything else reads the script of every package in the
+  // tree, the root's included.
+  it.each([
+    "pnpm -r watch",
+    "pnpm --recursive watch",
+    "pnpm -r --parallel run watch",
+    "pnpm -r --stream run watch",
+    "pnpm recursive run watch",
+    "pnpm m watch",
+    "pnpm --filter iracing-plugin-stream-deck watch",
+    "pnpm -F iracing-plugin-stream-deck watch",
+    "pnpm --filter=iracing-plugin-stream-deck run watch",
+    "pnpm -Firacing-plugin-stream-deck watch",
+    "pnpm --filter ./packages/iracing-plugin-stream-deck watch",
+    "pnpm --filter ./packages/iracing-plugin-stream-deck/ watch",
+    "pnpm --filter {packages/iracing-plugin-stream-deck} watch",
+    "pnpm --filter ./packages watch",
+    "pnpm --filter . watch",
+    "pnpm --filter ./packages/* watch",
+    `pnpm --filter "@iracedeck/iracing-plugin-*" watch`,
+    `pnpm --filter "iracing-plugin-*" watch`,
+    `pnpm --filter "*" watch`,
+    "pnpm --filter @iracedeck/iracing-plugin-stream-deck... watch",
+    "pnpm --filter ...@iracedeck/logger watch",
+    "pnpm --filter !@iracedeck/logger watch",
+    "pnpm --filter [origin/master] watch",
+    "pnpm --filter iracing-plugin-stream-deck --filter @iracedeck/iracing-plugin-mirabox watch",
+    "cd packages && pnpm --filter ./iracing-plugin-stream-deck watch",
+    "pnpm -C packages --filter ./iracing-plugin-stream-deck watch",
+    "pnpm --filter ./iracing-plugin-stream-deck -C packages watch",
+    "pnpm --filter ./packages/* reload",
+    "npm run watch -w packages/iracing-plugin-stream-deck",
+    "npm run watch --workspace packages/iracing-plugin-stream-deck",
+    "npm run watch --workspace=packages/iracing-plugin-stream-deck",
+    "npm run watch -w @iracedeck/iracing-plugin-stream-deck",
+    "npm run watch -w packages",
+    `npm run watch -w "packages/*"`,
+    "npm run watch --workspaces",
+    "npm run watch -ws",
+    "npm --workspaces run watch",
+  ])("reads every package a selector may pick, linked or not: %s", (c) => {
+    expect(asks(c, elsewhere)).toMatch(/→ `streamdeck restart` restarts or relinks a deck host/);
+    asks(c, linked);
+  });
+  // Positive control: the same selectors over a script that restarts nothing,
+  // and an exact selector naming a package whose watch runs no hook.
+  it.each([
+    "pnpm -r build",
+    "pnpm -r test",
+    "pnpm -r --parallel run typecheck",
+    "pnpm -r clean",
+    "pnpm --filter iracing-plugin-mirabox watch",
+    "pnpm --filter iracing-plugin-ulanzi watch",
+    "pnpm --filter ./packages/iracing-plugin-mirabox watch",
+    "pnpm --filter {./packages/iracing-plugin-ulanzi} watch",
+    "pnpm --filter ./packages/logger watch",
+    "pnpm --filter no-such-package watch",
+    `pnpm --filter "@iracedeck/*" build`,
+    `pnpm --filter "@iracedeck/iracing-plugin-*" build`,
+    "pnpm --filter ./packages/* typecheck",
+    "npm run watch -w packages/iracing-plugin-mirabox",
+    "npm run watch -w @iracedeck/iracing-plugin-ulanzi",
+    "npm run build --workspaces",
+    "npm run typecheck -ws",
+  ])("passes a selector whose packages restart nothing, linked or not: %s", (c) => {
+    passes(c, linked);
+    passes(c, elsewhere);
+  });
+
+  // The root is read where the runner may run its script: `pnpm -w`, and a
+  // recursive or every-workspace run, which pnpm and npm put the root in under
+  // `include-workspace-root` — a setting the hook does not read.
+  it("reads the root's script for pnpm -w and for a recursive run", () => {
+    expect(asks("cd packages/logger && pnpm -w voices", linked)).toMatch(
+      /`pnpm voices` → .*`pnpm dev:voices` there relinks/,
+    );
+    asks("cd packages/logger && pnpm --workspace-root run voices", linked);
+    asks("pnpm -r voices", linked);
+    asks("npm run voices --workspaces", linked);
+    passes("cd packages/logger && pnpm voices", linked);
+    passes("pnpm --filter ./packages/logger voices", linked);
+    passes("pnpm -r voices", elsewhere);
+  });
+
+  // #1526 review: a forwarded word holding both quote kinds was wrapped in bare
+  // double quotes, so its `"` closed them early and its `'` opened a quote that
+  // ran on through the next words — swallowing the `--restart` after it.
+  it("forwards a word with both quote kinds as the one word it is", () => {
+    expect(asks(`pnpm integ 'a"b'"'"'c' --restart "d'e"`, elsewhere)).toMatch(
+      /`pnpm integ` → `node scripts\/integration-build\.mjs --restart`/,
+    );
+    passes(`pnpm integ 'a"b'"'"'c' "d'e"`, elsewhere);
+  });
+
+  // #1526 review: a flag the shell computes cannot be read, so it may be `--restart`.
+  it.each([
+    "pnpm integ $R fix/1-a",
+    "pnpm integ $(echo --restart)",
+    "pnpm integ `echo --restart` fix/1-a",
+    "pnpm run integ -- $R",
+    "npm run integ -- $R",
+    "node --run integ -- $(echo --restart)",
+  ])("asks for integration-build through a script when a forwarded word could not be read: %s", (c) =>
+    expect(asks(c, elsewhere)).toMatch(/integ` → `node scripts\/integration-build\.mjs .*flags could not be read/),
+  );
 
   it("asks for dev:voices where linked, through a script too, and passes it elsewhere", () => {
     expect(asks("pnpm dev:voices on", linked)).toMatch(/`pnpm dev:voices` there relinks the running plugin/);
@@ -2079,7 +2368,7 @@ describe("a script is judged by what it runs", () => {
   it("falls back to the name when the script cannot be read", () => {
     passes("pnpm no-such-script", linked);
     passes("pnpm hostkill", at(MASTER, { scriptsAt: () => undefined }));
-    passes("pnpm --filter ./packages/* reload", linked);
+    passes("pnpm -r watch", at(MASTER, { workspaceDirs: undefined }));
     expect(asks("pnpm stop:stream-deck", at(MASTER, { scriptsAt: () => undefined }))).toMatch(/Niklas/);
   });
 
@@ -2161,6 +2450,30 @@ describe("PowerShell commands", () => {
     ])
       expect(asks(c, elsewhere)).toMatch(/stops or starts a deck host app/);
     passes("Stop-Process -Name notepad", elsewhere);
+  });
+
+  // #1526 review: the wrappers a PowerShell command hands a string to.
+  it.each([
+    `bash -c "pnpm restart:stream-deck"`,
+    `cmd /c "pnpm restart:stream-deck"`,
+    `cmd.exe /c pnpm restart:stream-deck`,
+    `powershell -Command "pnpm restart:stream-deck"`,
+    `pwsh -NoProfile -c 'Stop-Process -Name StreamDeck'`,
+    `& pwsh -c "pnpm restart:stream-deck"`,
+    `Invoke-Expression "pnpm restart:stream-deck"`,
+    `Invoke-Expression -Command 'pnpm restart:stream-deck'`,
+    `iex 'pnpm restart:stream-deck'`,
+    `$R = '--restart'; node scripts/integration-build.mjs $R fix/1-a`,
+    `node scripts/integration-build.mjs $(Write-Output --restart) fix/1-a`,
+  ])("asks for what a wrapper runs: %s", (c) => expect(asks(c, elsewhere)).toMatch(/deck host/));
+  it("passes a wrapper whose string restarts nothing", () => {
+    for (const c of [
+      `cmd /c "pnpm build"`,
+      `pwsh -c "pnpm build"`,
+      `iex 'pnpm build'`,
+      `Write-Output "cmd /c pnpm restart:stream-deck"`,
+    ])
+      passes(c, elsewhere);
   });
 
   it("keeps the shell-agnostic guards", () => {

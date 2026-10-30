@@ -141,6 +141,38 @@ describe("pre-bash.mjs, fired for the PowerShell tool", () => {
     }
   });
 
+  // #1526 review: the false accepts the review found, fired through the hook
+  // with real package.json files. `sd` carries the Stream Deck plugin's `watch`.
+  it("reads every package an unresolved selector may pick, a wrapper's string and node behind a runner", () => {
+    const sd = path.join(otherTree, "packages", "sd");
+    mkdirSync(sd, { recursive: true });
+    writeFileSync(
+      path.join(sd, "package.json"),
+      JSON.stringify({
+        name: "@fixture/sd",
+        scripts: { build: "rollup -c", watch: 'rollup -c -w --watch.onEnd="streamdeck restart com.iracedeck.sd.core"' },
+      }),
+    );
+    const asked = (c, tool = "Bash") => fire(c, { tool, cwd: otherTree, env })?.permissionDecision;
+    for (const tool of ["Bash", "PowerShell"]) {
+      for (const c of [
+        "pnpm -r watch",
+        "pnpm --filter sd watch",
+        "pnpm --filter ./packages/sd watch",
+        "npm run watch -w packages/sd",
+        `bash -c "pnpm restart:stream-deck"`,
+        `cmd /c "pnpm restart:stream-deck"`,
+        `pwsh -c "pnpm restart:stream-deck"`,
+        "npx node scripts/host-app.mjs stop mirabox",
+        "node scripts/integration-build.mjs $(echo --restart) fix/1-a",
+      ])
+        expect(asked(c, tool), `${tool}: ${c}`).toBe("ask");
+      // Positive control: the same shapes over what restarts nothing.
+      for (const c of ["pnpm -r build", "pnpm --filter sd build", `bash -c "pnpm build"`, "npx node scripts/build.mjs"])
+        expect(asked(c, tool), `${tool}: ${c}`).toBeUndefined();
+    }
+  });
+
   it("does not judge a heredoc-shaped string, which only bash would read as one", () => {
     const heredoc = "Write-Output 'x' <<EOF C:\\\\Users";
     expect(fire(heredoc, { tool: "PowerShell" })).toBeNull();
