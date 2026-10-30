@@ -1463,6 +1463,106 @@ describe("git worktree remove", () => {
     ));
 });
 
+// #1520: Niklas may be racing on the plugin a deck host runs, and a restart, a
+// relink or a build that replaces files under it breaks that session.
+describe("nothing builds or restarts in a deck-linked tree without Niklas's go", () => {
+  const ROOTS = [MASTER, tree("ir-5"), tree("ir-integration")];
+  const linkedTo = (root, host = "Stream Deck") =>
+    ctx({
+      linkTargets: () => [
+        { host, target: path.join(root, "packages", "iracing-plugin-stream-deck", "com.iracedeck.sd.core.sdPlugin") },
+        { host: "Ulanzi", target: undefined },
+      ],
+      toplevel: (d) => ROOTS.find((r) => isInside(d, r)),
+    });
+  const linked = linkedTo(MASTER);
+  const elsewhere = linkedTo(tree("ir-integration"));
+
+  it.each([
+    "pnpm build:with-restart",
+    "pnpm run build:with-restart",
+    "pnpm build:stream-deck",
+    "pnpm restart:stream-deck",
+    "pnpm watch:stream-deck",
+    "pnpm link:mirabox",
+    "pnpm relink:stream-deck",
+    "pnpm unlink:ulanzi",
+    "pnpm -C ../ir-5 restart:stream-deck",
+    "node scripts/integration-build.mjs fix/1-a feature/2-b",
+    "node ../master/scripts/integration-build.mjs fix/1-a",
+    "node scripts/build-with-restart.mjs",
+    "streamdeck restart com.iracedeck.sd.core",
+    "streamdeck link packages/x",
+    "git status && pnpm restart:stream-deck",
+  ])("always asks, linked or not: %s", (c) => {
+    expect(asks(c, elsewhere)).toMatch(/Niklas/);
+    expect(asks(c, ctx())).toMatch(/Niklas/);
+  });
+
+  it.each([
+    "pnpm build",
+    "pnpm run build",
+    "pnpm build:ts",
+    "pnpm build:force",
+    "pnpm install",
+    "pnpm i",
+    "pnpm --filter @iracedeck/logger build",
+    "pnpm dev:voices on",
+    "set -o pipefail; pnpm build 2>&1 | tail -5",
+    "pnpm test && pnpm build",
+    "pnpm install --frozen-lockfile && pnpm typecheck",
+  ])("asks in the linked tree, and passes in an unlinked one: %s", (c) => {
+    expect(asks(c, linked)).toMatch(/Stream Deck plugin link points into .*master/);
+    passes(c, elsewhere);
+  });
+
+  it("judges the tree the command runs in: a cd, a pnpm -C or --dir, a subdirectory", () => {
+    asks("cd ../ir-integration && pnpm build", elsewhere);
+    passes("cd ../ir-5 && pnpm build", linked);
+    asks("pnpm -C ../ir-integration build", elsewhere);
+    asks("pnpm --dir ../ir-integration install", elsewhere);
+    asks("pnpm --dir=../ir-integration build", elsewhere);
+    passes("pnpm -C ../ir-5 build", linked);
+    asks("cd packages/logger && pnpm build", linked);
+    asks("cd ../ir-5 && pnpm build && cd ../master && pnpm install", linked);
+  });
+
+  it("is not moved by a git -C, which is git's own", () => {
+    passes("git -C ../ir-integration status && pnpm build", elsewhere);
+    asks("git -C ../ir-5 log -1 && pnpm build", linked);
+  });
+
+  it("names every host linked into the tree", () =>
+    expect(
+      asks(
+        "pnpm build",
+        ctx({
+          linkTargets: () => [
+            { host: "Stream Deck", target: path.join(MASTER, "a") },
+            { host: "Mirabox", target: path.join(MASTER, "b") },
+          ],
+        }),
+      ),
+    ).toMatch(/Stream Deck and Mirabox/));
+
+  it("passes what never replaces the running plugin, linked or not", () => {
+    for (const c of ["pnpm test", "pnpm typecheck", "pnpm lint", "pnpm format:fix", "pnpm test scripts/claude-hooks"])
+      passes(c, linked);
+  });
+
+  it("passes a host's packaged install, which is no link at all", () =>
+    passes(
+      "pnpm build",
+      ctx({ linkTargets: () => [{ host: "Stream Deck", target: "(a real directory, not a link)" }] }),
+    ));
+
+  it("is not fooled by a mention", () => {
+    passes(`echo "pnpm build:with-restart"`, linked);
+    passes(`grep -n "pnpm install" README.md`, linked);
+    passes(`git commit -q -m "run pnpm restart:stream-deck later" -- x.md`, linked);
+  });
+});
+
 describe("gh issue and the board", () => {
   it("denies milestone/assignee at filing", () => {
     deny("gh issue create --title x --milestone 3.3");

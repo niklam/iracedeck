@@ -1068,6 +1068,41 @@ export const rules = [
     },
   },
   {
+    // #1520: Niklas may be racing on the plugin a deck host runs, and a
+    // restart, a relink or a build that replaces files under it (audio clips
+    // load on demand) breaks that session. An ASK, not a deny: Niklas saying
+    // go and confirming the prompt is the intended path. A restart, relink or
+    // watch, and the scripts that restart, always ask; a build or an install
+    // asks only in a tree a host's link points into, judged per command of
+    // the chain in the tree it runs in.
+    name: "nothing builds or restarts in a deck-linked tree without Niklas's go",
+    test: (c, ctx) => {
+      const found = [];
+      for (const m of matchesAt(c, DECK_SCRIPT))
+        found.push(`\`${m[0].trim()}\` restarts or rebuilds under a deck host`);
+      for (const m of matchesAt(c, STREAMDECK_CLI)) found.push(`\`${m[0].trim()}\` restarts or relinks a deck host`);
+      for (const { base, args } of chainCommands(c, ctx.cwd, PNPM)) {
+        const run = pnpmScript(words(args), base);
+        if (!run) continue;
+        if (DECK_ALWAYS.test(run.script)) {
+          found.push(`\`pnpm ${run.script}\` restarts, relinks or rebuilds under a deck host`);
+          continue;
+        }
+        if (!DECK_IF_LINKED.test(run.script)) continue;
+        const root = ctx.toplevel?.(run.dir) ?? run.dir;
+        const held = ctx.linkTargets().filter((l) => l.target && ctx.isInside(l.target, root));
+        if (held.length)
+          found.push(
+            `${held.map((l) => l.host).join(" and ")} plugin link points into ${root}: \`pnpm ${run.script}\` there replaces files under the running plugin`,
+          );
+      }
+      if (!found.length) return null;
+      return {
+        ask: `${[...new Set(found)].join("; ")}. Nothing builds, installs or restarts in a deck-linked tree without Niklas's go (#1520): confirm only once he has said go, or run a build in an unlinked ../ir-<issue> tree instead.`,
+      };
+    },
+  },
+  {
     name: "gh issue create: no milestone or assignee at filing",
     test: (c) =>
       has(c, cmd(/gh\s+issue\s+create\b/)) &&
@@ -1301,6 +1336,45 @@ const COMMIT_VALUE_LONG = new Set([
 
 /** A redirection operator standing alone, whose target is the next word. */
 const BARE_REDIRECT = /^\d*(?:<<-?|<<<|<>|<&|>&|>>|>\||&>>?|<|>)$/;
+
+/**
+ * The deck-linked-tree ask (#1520). `PNPM` finds a pnpm command, whose script
+ * {@link pnpmScript} reads. `DECK_ALWAYS` are the scripts that restart,
+ * relink or watch whatever tree they run in; `DECK_IF_LINKED` the ones that
+ * write the plugin's files or its dependencies — a build, an install and the
+ * commands that run one — which matter only where a host's link points. The
+ * two root scripts that restart are caught when run through `node` too, as is
+ * the Stream Deck CLI the `restart:` / `link:` scripts wrap.
+ */
+const PNPM = cmd(/pnpm(?=\s|$)/);
+const DECK_ALWAYS = /^(?:build:with-restart|build:stream-deck|(?:re|un)?link:.+|restart:.+|watch:.+)$/;
+const DECK_IF_LINKED = /^(?:build(?::.+)?|install(?::.+)?|i|add|remove|rm|update|up|dev(?::.+)?|watch)$/;
+const DECK_SCRIPT = cmd(/node(?:\s+-\S+)*\s+(?:\S*[\\/])?(?:integration-build|build-with-restart)\.mjs\b/);
+const STREAMDECK_CLI = cmd(/streamdeck\s+(?:restart|stop|link|unlink)\b/);
+
+/** pnpm options whose value is the next word; `-C` / `--dir` move the directory and are read on their own. */
+const PNPM_VALUE = new Set(["--filter", "-F", "--filter-prod", "--reporter", "--loglevel", "--workspace-concurrency"]);
+
+/**
+ * The script or command a pnpm invocation runs — past its global options and
+ * an optional `run` — and the directory it runs in: `base`, moved by `-C` /
+ * `--dir` (attached or not). `null` when there is none (`pnpm --version`).
+ */
+function pnpmScript(tokens, base) {
+  let dir = base;
+  let runSeen = false;
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+    const attached = t.match(/^(?:--dir=|-C)(.+)$/);
+    if (attached) dir = path.resolve(base, attached[1]);
+    else if (t === "-C" || t === "--dir") dir = tokens[i + 1] ? path.resolve(base, tokens[++i]) : dir;
+    else if (PNPM_VALUE.has(t)) i++;
+    else if (t.startsWith("-")) continue;
+    else if ((t === "run" || t === "run-script") && !runSeen) runSeen = true;
+    else return { script: t, dir };
+  }
+  return null;
+}
 
 /** `git push` options whose value is the next word when not attached with `=`. */
 const PUSH_VALUE = new Set(["--repo", "-o", "--push-option", "--receive-pack", "--exec"]);
