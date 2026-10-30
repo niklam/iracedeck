@@ -5,7 +5,7 @@
  *   - engine.startup — RPM jumps from 0 to >0 (engine ignited).
  *   - lap.started { lap } — Lap counter increments.
  *
- * `session.changed` is NOT emitted here either: `handleTick` publishes it
+ * `session.changed` is NOT emitted here: `handleTick` publishes it
  * from the instance-level `(SubSessionID, SessionNum)` trackers (issues #568,
  * #1509); this diff only keeps `state.lastSessionNum` as dedup bookkeeping.
  *
