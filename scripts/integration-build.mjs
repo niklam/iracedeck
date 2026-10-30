@@ -556,10 +556,12 @@ async function installAndBuild(tree, exec) {
  *   restartYourself: string[], stoppedHosts: string[] }>} `needsRestart` are
  *   the linked hosts a passed build left running their old plugin: all of them
  *   without `restart`, only those with no scripted stop and start with it
- *   (empty when the build failed); `lockedFile` is set only by a failed build
- *   without `restart` whose install or build printed a locked-file error
- *   (`isLockedFileError`) — the signature of a running host holding a file the
- *   build must replace, which only a run with `restart` gets past;
+ *   (empty when the build failed); `lockedFile` is set by a failed build whose
+ *   install or build printed a locked-file error (`isLockedFileError`) — the
+ *   signature of a running host holding a file the build must replace. Without
+ *   `restart` a run with it gets past a host this script controls; with it,
+ *   the host still running is one it has no command for, which has to be
+ *   stopped by hand (#1526 PR review);
  *   `restartYourself` the hosts whose scripted stop or start failed and
  *   `stoppedHosts` the hosts this run stopped and left stopped because the
  *   install or the build failed — both only ever set with `restart`
@@ -604,6 +606,7 @@ export async function runBuild({ tree, restart = false, exec = defaultExec, link
   const stoppedHosts = [];
   let tsErrors = [];
   let failure;
+  let lockedFile;
   // "untouched" until the install starts writing into the tree, "built" once
   // the build passed; anything between leaves the plugin on disk half-written.
   let plugin = "untouched";
@@ -620,7 +623,7 @@ export async function runBuild({ tree, restart = false, exec = defaultExec, link
 
     if (!failure) {
       plugin = "building";
-      ({ failure, tsErrors } = await installAndBuild(tree, exec));
+      ({ failure, tsErrors, lockedFile } = await installAndBuild(tree, exec));
       if (!failure) plugin = "built";
     }
   } finally {
@@ -637,6 +640,7 @@ export async function runBuild({ tree, restart = false, exec = defaultExec, link
     ok: !failure,
     ...(failure ? { failure } : {}),
     tsErrors,
+    ...(lockedFile ? { lockedFile } : {}),
     linkedHosts,
     needsRestart: failure ? [] : linkedHosts.filter((host) => !isControlledHost(host)),
     restartYourself,

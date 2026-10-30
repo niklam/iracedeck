@@ -1128,7 +1128,7 @@ describe("runBuild", () => {
       );
     });
 
-    it("names no host as needing a restart when the build fails, and carries no lockedFile whatever the output", async () => {
+    it("names no host as needing a restart when the build fails, and carries lockedFile for a host it left running", async () => {
       const result = await runBuild({
         tree: TREE,
         restart: true,
@@ -1140,8 +1140,17 @@ describe("runBuild", () => {
       expect(result.ok).toBe(false);
       expect(result.needsRestart).toEqual([]);
       expect(result.stoppedHosts).toEqual(["Stream Deck"]);
-      // The host that could hold the file is stopped, so a restart is no way through.
-      expect(result).not.toHaveProperty("lockedFile");
+      // Acme Deck, which this script cannot stop, may be what holds the file.
+      expect(result.lockedFile).toBe(true);
+      // Positive control: an ordinary failure carries none.
+      const ordinary = await runBuild({
+        tree: TREE,
+        restart: true,
+        exec: fakeExec({ "pnpm build": failedWithErr("boom") }),
+        links: linkedTo("Stream Deck", "Acme Deck"),
+        log: silentLog(),
+      });
+      expect(ordinary).not.toHaveProperty("lockedFile");
     });
   });
 });
@@ -1437,7 +1446,7 @@ describe("main", { timeout: GIT_TIMEOUT_MS }, () => {
     expect(output(log)).not.toMatch(/Mirabox links to .*restart it|undefined/);
   });
 
-  it("with --restart, on a failed build, warns only about the linked host it did not stop, whatever the output says", async () => {
+  it("with --restart, on a locked-file failure, tells a linked host it did not stop to be stopped by hand", async () => {
     branch("feature/1-a", "a.txt", "a\n");
     const log = silentLog();
     const links = () =>
@@ -1452,12 +1461,14 @@ describe("main", { timeout: GIT_TIMEOUT_MS }, () => {
 
     expect(code).toBe(EXIT_FAILED);
     expect(output(log)).toMatch(/Mirabox is stopped because the build failed/);
+    // Acme Deck kept running and may hold the file: "do not restart it" would deadlock.
     expect(output(log)).toContain(
-      `Acme Deck links to ${tree} and keeps running the plugin it loaded: do not restart it until a build passes, or it loads a half-written plugin.`,
+      `Acme Deck links to ${tree} and keeps running the plugin it loaded, and the failure names a locked or busy file (EBUSY / EPERM) that it most likely holds open: no build can pass until it lets go. This script has no command for it, so stop it yourself before the next run. That is Niklas's go.`,
     );
+    expect(output(log)).not.toMatch(/do not restart it until a build passes/);
     expect(output(log)).not.toMatch(/Mirabox links to/);
-    // The host that could hold the file is stopped, so a --restart run is no advice here.
-    expect(output(log)).not.toMatch(/locked or busy|Run this script again with --restart/);
+    // Mirabox, which this run stopped, gets no --restart advice: it already had one.
+    expect(output(log)).not.toMatch(/Run this script again with --restart/);
   });
 
   it("exits 1 when the build fails", async () => {
