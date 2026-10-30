@@ -2452,6 +2452,12 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
 
     if (currentSubSessionId !== null) {
       self.lastObservedSubSessionId = currentSubSessionId;
+    } else if (sessionNumChanged) {
+      // The change was taken on SessionNum alone, so the old subsession no
+      // longer names the session we are in: the next readable id seeds rather
+      // than compares, or a transition read as `(N, 0)`, `(?, 1)`, `(M, 1)`
+      // would publish twice.
+      self.lastObservedSubSessionId = null;
     }
   }
 

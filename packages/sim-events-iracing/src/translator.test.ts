@@ -3483,6 +3483,32 @@ describe("sim-events-iracing translator", () => {
           expect(handler.mock.calls[0]![0].data).toEqual({ from: 0, to: 0 });
         });
 
+        it("publishes once when SessionNum changes on a tick without a readable SubSessionID and a new one follows", () => {
+          const { bus, controller, handler } = setUp();
+          const firstOnTrack = vi.fn();
+          bus.subscribe("driver.firstOnTrack", firstOnTrack);
+          const qualifying = () => telemetry({ SessionNum: 1, IsReplayPlaying: false, IsOnTrack: true });
+
+          controller.__setSessionInfo(sessionInfo(undefined));
+          controller.__tick(qualifying());
+          controller.__setSessionInfo(sessionInfo(89660575));
+          controller.__tick(qualifying());
+          controller.__tick(qualifying());
+
+          expect(handler).toHaveBeenCalledTimes(1);
+          expect(handler.mock.calls[0]![0].data).toEqual({ from: 0, to: 1 });
+          // One reset, not two: each reset clears `firstOnTrackFired`, so a
+          // second one would re-fire it on the next on-track tick.
+          expect(firstOnTrack).toHaveBeenCalledTimes(1);
+
+          // The new subsession was seeded: a later event is still detected.
+          controller.__setSessionInfo(sessionInfo(89661111));
+          controller.__tick(qualifying());
+
+          expect(handler).toHaveBeenCalledTimes(2);
+          expect(handler.mock.calls[1]![0].data).toEqual({ from: 1, to: 1 });
+        });
+
         it("publishes once when SessionNum and SubSessionID change on the same tick", () => {
           const { controller, handler } = setUp();
 
