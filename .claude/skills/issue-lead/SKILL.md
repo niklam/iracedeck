@@ -68,7 +68,7 @@ Do not ask whether to review; it is your call, at the level from the table in `c
 
 ## 8. Manual test
 
-`qa` writes Niklas's manual-test script: setup, steps, the expected result of each, and what changed for a tester. Report `ready-to-test` with the branch, its full head sha and the script. The PO builds it into the integration worktree on his go and relays his verdict.
+`qa` writes Niklas's manual-test script: setup, steps, the expected result of each, and what changed for a tester. Report `ready-to-test` only once every clip and icon the issue changes is approved and committed, and the tree is clean: the integration build merges the committed head sha and nothing else, so an uncommitted change would be missing from what he tests. Report the branch, its full head sha and the script. The PO builds it into the integration worktree on his go and relays his verdict.
 
 - **Failed:** fix in the tree, re-run the gates, report `ready-to-test` again with the new sha.
 - **Passed:** the pass belongs to that sha. A later rebase, conflict resolution or CodeRabbit fix does not void it; ask the PO for a retest only when a change alters behaviour he tested.
