@@ -115,3 +115,76 @@ export function missingWorkflows(runs) {
   const names = new Set((runs ?? []).map((r) => r.workflowName ?? r.name));
   return CI_WORKFLOWS.filter((w) => !names.has(w));
 }
+
+/**
+ * The repository the Roadmap board tracks (#1527). A board card is found by
+ * issue number alone, so an issue, PR or worktree of any other repository
+ * would move the iRaceDeck card that shares its number: the post-hook acts
+ * on this one only.
+ */
+export const HOME_REPO = "niklam/iracedeck";
+
+/** Whether `slug` (`owner/repo`) is {@link HOME_REPO}; GitHub's names are case-insensitive. */
+export const isHomeRepo = (slug) => typeof slug === "string" && slug.toLowerCase() === HOME_REPO;
+
+/** `owner/repo` of a github.com issue or pull request URL, or `undefined`. */
+export function repoOfUrl(url) {
+  const m = /^https:\/\/github\.com\/([^/\s]+)\/([^/\s]+)\/(?:issues|pull)\/\d+/i.exec(String(url ?? ""));
+  return m ? `${m[1]}/${m[2]}` : undefined;
+}
+
+/** The issue `gh issue create` printed: `{ url, repo, number }`, or `undefined` when it printed none. */
+export function createdIssue(stdout) {
+  const m = /https:\/\/github\.com\/([^/\s]+)\/([^/\s]+)\/issues\/(\d+)/.exec(String(stdout ?? ""));
+  return m ? { url: m[0], repo: `${m[1]}/${m[2]}`, number: Number(m[3]) } : undefined;
+}
+
+/**
+ * The `GH_REPO` a command assigns (`GH_REPO=o/r gh pr merge 7`, an `export`,
+ * PowerShell's `$env:GH_REPO = 'o/r'`): its value, `null` when it is not a
+ * plain value, `undefined` when the command sets none.
+ */
+export function assignedGhRepo(command) {
+  const m = /\bGH_REPO\s*=\s*(?:'([^']*)'|"([^"$`\\]*)"|([^\s;&|()'"`$]+))?/.exec(String(command ?? ""));
+  if (!m) return undefined;
+  return m[1] ?? m[2] ?? m[3] ?? null;
+}
+
+/**
+ * The repository a `gh pr merge` names, in gh's order: a PR URL, then
+ * `--repo` / `-R` (`merge.repo` from `parseMerge`), then a `GH_REPO` the
+ * command assigns. `[HOST/]OWNER/REPO` is read as gh reads it, so a host other
+ * than github.com is kept and can never be home. `null` when one is named but
+ * not readable; `undefined` when none is, and gh resolves the checkout's own.
+ */
+export function mergeRepo(merge, envRepo) {
+  const fromUrl = repoOfUrl(merge.ref);
+  if (fromUrl) return fromUrl;
+  const named = merge.repo !== undefined ? merge.repo : envRepo;
+  if (named == null) return named;
+  const parts = named
+    .replace(/^https?:\/\//i, "")
+    .replace(/\.git$/i, "")
+    .replace(/\/+$/, "")
+    .split("/");
+  return parts.length === 3 && parts[0].toLowerCase() === "github.com" ? `${parts[1]}/${parts[2]}` : parts.join("/");
+}
+
+/**
+ * The cards a merged PR moves: its closing issues in {@link HOME_REPO}, or
+ * when it has none the `(#n)` its title ends with (the PR title rule).
+ * `foreign` names the closing issues elsewhere (`Fixes other/repo#5`), whose
+ * numbers are not cards here.
+ */
+export function boardIssues(pr) {
+  const issues = [];
+  const foreign = [];
+  for (const i of pr.closingIssuesReferences ?? []) {
+    const repo = repoOfUrl(i.url) ?? (i.repository ? `${i.repository.owner?.login}/${i.repository.name}` : undefined);
+    if (isHomeRepo(repo)) issues.push(i.number);
+    else foreign.push(`${repo ?? "an unknown repository"}#${i.number}`);
+  }
+  const fromTitle = (pr.title ?? "").match(/\(#(\d+)\)\s*$/);
+  if (issues.length === 0 && fromTitle) issues.push(Number(fromTitle[1]));
+  return { issues, foreign };
+}

@@ -1,7 +1,19 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { generatorReport, generatorsFor, missingWorkflows, remindersFor } from "./rules-post.mjs";
+import { firstMerge } from "./rules-bash.mjs";
+import {
+  assignedGhRepo,
+  boardIssues,
+  createdIssue,
+  generatorReport,
+  generatorsFor,
+  isHomeRepo,
+  mergeRepo,
+  missingWorkflows,
+  remindersFor,
+  repoOfUrl,
+} from "./rules-post.mjs";
 import { checkAgent, checkAsk, checkEdit, checkSkill } from "./rules-tools.mjs";
 
 const MASTER = "C:\\repo\\iRaceDeck\\master";
@@ -129,5 +141,89 @@ describe("post rules", () => {
   it("names the CI workflows a run list is missing", () => {
     expect(missingWorkflows([{ workflowName: "Format" }, { workflowName: "Lint" }])).toEqual(["Tests", "Typecheck"]);
     expect(missingWorkflows(undefined)).toHaveLength(4);
+  });
+
+  describe("repository scoping (#1527)", () => {
+    it("reads the repository of an issue or PR URL, any case, and nothing else", () => {
+      expect(repoOfUrl("https://github.com/niklam/iracedeck/issues/1527")).toBe("niklam/iracedeck");
+      expect(repoOfUrl("https://github.com/Other/Repo/pull/5/files")).toBe("Other/Repo");
+      expect(repoOfUrl("5")).toBeUndefined();
+      expect(repoOfUrl("feature/5-x")).toBeUndefined();
+      expect(repoOfUrl(undefined)).toBeUndefined();
+      expect(isHomeRepo("NiklaM/iRaceDeck")).toBe(true);
+      expect(isHomeRepo("niklam/iracedeck-fork")).toBe(false);
+      expect(isHomeRepo(undefined)).toBe(false);
+    });
+
+    it("finds the issue gh issue create printed", () => {
+      expect(createdIssue("Creating issue in a/b\n\nhttps://github.com/a/b/issues/12\n")).toEqual({
+        url: "https://github.com/a/b/issues/12",
+        repo: "a/b",
+        number: 12,
+      });
+      expect(createdIssue("")).toBeUndefined();
+    });
+
+    it("reads a GH_REPO the command assigns, in bash or PowerShell", () => {
+      expect(assignedGhRepo("GH_REPO=a/b gh pr merge 5")).toBe("a/b");
+      expect(assignedGhRepo(`export GH_REPO="a/b"; gh pr merge 5`)).toBe("a/b");
+      expect(assignedGhRepo("$env:GH_REPO = 'a/b'; gh pr merge 5")).toBe("a/b");
+      expect(assignedGhRepo("GH_REPO=$R gh pr merge 5")).toBeNull();
+      expect(assignedGhRepo(`GH_REPO="$R" gh pr merge 5`)).toBeNull();
+      expect(assignedGhRepo("gh pr merge 5")).toBeUndefined();
+    });
+
+    it("picks a merge's repository in gh's order: URL, flag, environment", () => {
+      expect(mergeRepo({ ref: "https://github.com/a/b/pull/5", repo: "c/d" }, "e/f")).toBe("a/b");
+      expect(mergeRepo({ ref: "5", repo: "c/d" }, "e/f")).toBe("c/d");
+      expect(mergeRepo({ ref: "5" }, "e/f")).toBe("e/f");
+      expect(mergeRepo({ ref: "5" }, undefined)).toBeUndefined();
+      expect(mergeRepo({ ref: "5", repo: null }, "e/f")).toBeNull();
+      expect(mergeRepo({ ref: "5" }, null)).toBeNull();
+      expect(mergeRepo({ repo: "github.com/c/d" })).toBe("c/d");
+      expect(mergeRepo({ repo: "https://github.com/c/d.git" })).toBe("c/d");
+      expect(mergeRepo({ repo: "ghe.example.com/niklam/iracedeck" })).toBe("ghe.example.com/niklam/iracedeck");
+    });
+
+    it("moves only the closing issues of the home repository", () => {
+      const ref = (owner, name, number) => ({
+        number,
+        url: `https://github.com/${owner}/${name}/issues/${number}`,
+        repository: { name, owner: { login: owner } },
+      });
+      const title = "fix(x): y (#1527)";
+      expect(
+        boardIssues({
+          title,
+          closingIssuesReferences: [ref("niklam", "iracedeck", 1527), ref("lint-staged", "lint-staged", 1865)],
+        }),
+      ).toEqual({ issues: [1527], foreign: ["lint-staged/lint-staged#1865"] });
+      // Only foreign closing issues: the title's own (#n) is the card, as with none.
+      expect(boardIssues({ title, closingIssuesReferences: [ref("a", "b", 9)] })).toEqual({
+        issues: [1527],
+        foreign: ["a/b#9"],
+      });
+      expect(boardIssues({ title: "chore: x", closingIssuesReferences: [] })).toEqual({ issues: [], foreign: [] });
+      // The repository object alone is enough when the URL is missing.
+      expect(
+        boardIssues({
+          title: "x",
+          closingIssuesReferences: [{ number: 3, repository: { name: "IRaceDeck", owner: { login: "niklam" } } }],
+        }),
+      ).toEqual({ issues: [3], foreign: [] });
+    });
+  });
+
+  it("parses the --repo of a gh pr merge (#1527)", () => {
+    expect(firstMerge("gh pr merge 5 -R a/b --squash").repo).toBe("a/b");
+    expect(firstMerge("gh pr merge 5 --repo=a/b").repo).toBe("a/b");
+    expect(firstMerge("gh pr merge 5 -Ra/b").repo).toBe("a/b");
+    expect(firstMerge(`gh pr merge 5 --repo "a/b"`).repo).toBe("a/b");
+    expect(firstMerge(`gh pr merge 5 -R "$R"`)).toMatchObject({ repo: null, ref: "5", readable: true });
+    expect(firstMerge("gh pr merge 5 -R")).toMatchObject({ repo: null });
+    expect(firstMerge("gh pr merge 5 --squash").repo).toBeUndefined();
+    // A body that mentions the flag is not the merge's own.
+    expect(firstMerge(`gh pr merge 5 --body "-R a/b"`).repo).toBeUndefined();
+    expect(firstMerge("gh pr merge 5 -R a/b -R c/d").repo).toBe("c/d");
   });
 });

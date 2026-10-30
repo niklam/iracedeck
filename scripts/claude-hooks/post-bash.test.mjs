@@ -114,3 +114,80 @@ describe("post-bash.mjs triggers", () => {
     expect(fire("Write-Output 'gh pr merge 7'", { tool })).toBeNull();
   });
 });
+
+// #1527: a card is found by issue number alone, so a filing or a merge in
+// another repository moved the iRaceDeck card that shares its number.
+describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", () => {
+  const FOREIGN = "https://github.com/lint-staged/lint-staged/issues/1865";
+
+  it("adds an iRaceDeck issue to the board and moves its card — the positive control", () => {
+    for (const url of [
+      "https://github.com/niklam/iracedeck/issues/1527",
+      "https://github.com/Niklam/iRaceDeck/issues/1527",
+    ]) {
+      // Dry run: the add reports an item, and the lane move then asks gh for
+      // the card, which fails without gh — proof the move was attempted.
+      const note = fire("gh issue create --title x --body y", { stdout: `${url}\n`, withoutGh: true });
+      expect(note, url).toContain(`Added ${url} to the Roadmap board`);
+      expect(note, url).toMatch(/board: #1527 /);
+    }
+  });
+
+  it("leaves the board alone for an issue filed in another repository", () => {
+    for (const command of [
+      "gh issue create -R lint-staged/lint-staged --title x --body y",
+      "gh issue create --title x --body y", // gh resolved another checkout's repository
+    ]) {
+      const note = fire(command, { stdout: `Creating issue in lint-staged/lint-staged\n\n${FOREIGN}\n` });
+      expect(note, command).toBe(
+        `[hook] Filed ${FOREIGN} in lint-staged/lint-staged, not niklam/iracedeck: the Roadmap board is left alone.`,
+      );
+    }
+    const ps = fire("gh issue create -R lint-staged/lint-staged --title x --body y", {
+      stdout: FOREIGN,
+      tool: "PowerShell",
+    });
+    expect(ps).toMatch(/left alone/);
+  });
+
+  it("reads a merge in another repository from its arguments, before asking gh anything", () => {
+    for (const command of [
+      "gh pr merge 5 -R other/repo --squash",
+      "gh pr merge 5 --repo=Other/Repo --squash",
+      "gh pr merge 5 -Rother/repo --squash",
+      "gh pr merge 5 --repo 'other/repo' --squash",
+      "gh pr merge 5 --repo github.com/other/repo --squash",
+      "gh pr merge https://github.com/other/repo/pull/5 --squash",
+      "GH_REPO=other/repo gh pr merge 5 --squash",
+      "export GH_REPO=other/repo && gh pr merge 5 --squash",
+    ]) {
+      // Without gh on PATH a read-back would say "could not read the PR back".
+      const note = fire(command, { withoutGh: true });
+      expect(note, command).toMatch(/gh pr merge ran in other\/repo, not niklam\/iracedeck: no Roadmap card moved/i);
+    }
+    expect(fire("gh pr merge 5 --repo ghe.example.com/niklam/iracedeck --squash", { withoutGh: true })).toMatch(
+      /ran in ghe\.example\.com\/niklam\/iracedeck, not niklam\/iracedeck/,
+    );
+    expect(
+      fire("$env:GH_REPO = 'other/repo'; gh pr merge 5 --squash", { withoutGh: true, tool: "PowerShell" }),
+    ).toMatch(/ran in other\/repo/);
+  });
+
+  it("still reads an iRaceDeck merge back, however it names the repository", () => {
+    for (const command of [
+      "gh pr merge 5 --squash",
+      "gh pr merge 5 -R niklam/iracedeck --squash",
+      "gh pr merge 5 --repo NIKLAM/IRACEDECK --squash",
+      "gh pr merge https://github.com/niklam/iracedeck/pull/5 --squash",
+      "GH_REPO=niklam/iracedeck gh pr merge 5 --squash",
+      // The flag beats the environment, as in gh.
+      "GH_REPO=other/repo gh pr merge 5 -R niklam/iracedeck --squash",
+    ])
+      expect(fire(command, { withoutGh: true }), command).toMatch(/could not read the PR back/);
+  });
+
+  it("says so when the repository a merge names cannot be read", () => {
+    for (const command of [`gh pr merge 5 -R "$REPO" --squash`, "GH_REPO=$REPO gh pr merge 5 --squash"])
+      expect(fire(command, { withoutGh: true }), command).toMatch(/a --repo or GH_REPO the hook cannot read/);
+  });
+});

@@ -4,10 +4,16 @@
  * issue filing, the post-merge CI run list, and a diff after a scripted edit.
  * A PowerShell command (#1520) is read as the pre-hook reads it, through
  * `powershellAsBash`, so the same triggers find it.
+ *
+ * Every board move is for an issue of niklam/iracedeck only (#1527): a card is
+ * found by number, so a filing, a merge or a worktree in another repository
+ * would move the iRaceDeck card that shares its number. Those get one line
+ * saying the hook left the board alone.
  */
-import { addToBoard, gh, ghJson, git, postContext, readInput, setBoardStatus } from "./lib.mjs";
+import { addToBoard, ghJson, git, postContext, readInput, setBoardStatus } from "./lib.mjs";
 import {
   BASH,
+  cmd,
   firstMerge,
   GIT_WORKTREE_ADD,
   gitCwd,
@@ -18,7 +24,18 @@ import {
   trustedMask,
   worktreeAddTarget,
 } from "./rules-bash.mjs";
-import { missingWorkflows } from "./rules-post.mjs";
+import {
+  assignedGhRepo,
+  boardIssues,
+  createdIssue,
+  HOME_REPO,
+  isHomeRepo,
+  mergeRepo,
+  missingWorkflows,
+  repoOfUrl,
+} from "./rules-post.mjs";
+
+const GH_PR_MERGE = cmd(/gh\s+pr\s+merge\b/);
 
 const input = await readInput();
 const raw = input.tool_input?.command;
@@ -41,7 +58,7 @@ if (typeof raw === "string") {
       notes.push(`sed -i ran; git diff --stat:\n${r.out.trim() || "(no tracked changes)"}`);
     }
     const merge = firstMerge(command);
-    if (merge?.readable) notes.push(...afterMerge(merge.ref, cwd));
+    if (merge?.readable) notes.push(...afterMerge(merge, raw, command, cwd, shell));
     else if (merge)
       notes.push(
         "gh pr merge ran, but its PR argument could not be read; check by hand whether it merged, and move its Roadmap card to Testing.",
@@ -55,27 +72,65 @@ if (typeof raw === "string") {
   if (notes.length) postContext(`[hook] ${notes.join("\n[hook] ")}`);
 }
 
-/** `ref` is the merge's own PR argument (`parseMerge`), so a pin or a body value is never read as the PR. */
-function afterMerge(ref, cwd) {
+/**
+ * `merge` is the merge's own arguments (`parseMerge`), so a pin or a body value
+ * is never read as the PR. The PR is read back from the repository the merge
+ * named, in the directory it ran in, and only one in {@link HOME_REPO} moves a
+ * card (#1527).
+ */
+function afterMerge(merge, raw, command, cwd, shell) {
+  const named = mergeRepo(merge, assignedGhRepo(raw));
+  if (named === null)
+    return [
+      "gh pr merge ran with a --repo or GH_REPO the hook cannot read; check by hand whether it merged an iRaceDeck PR, and move its Roadmap card to Testing.",
+    ];
+  if (named && !isHomeRepo(named))
+    return [`gh pr merge ran in ${named}, not ${HOME_REPO}: no Roadmap card moved and no post-merge runs listed.`];
+  const repoArgs = named && !repoOfUrl(merge.ref) ? ["--repo", named] : [];
   const pr = ghJson(
-    ["pr", "view", ...(ref ? [ref] : []), "--json", "number,state,title,mergeCommit,closingIssuesReferences"],
-    cwd,
+    [
+      "pr",
+      "view",
+      ...(merge.ref ? [merge.ref] : []),
+      ...repoArgs,
+      "--json",
+      "number,state,title,url,mergeCommit,closingIssuesReferences",
+    ],
+    gitCwd(command, cwd, GH_PR_MERGE, shell),
   );
   if (!pr) return ["gh pr merge: could not read the PR back; check by hand whether it merged."];
+  // Whatever gh resolved the repository from (a cd, the session's GH_REPO), its URL says which PR it read.
+  const prRepo = repoOfUrl(pr.url);
+  if (!isHomeRepo(prRepo))
+    return [
+      `gh pr merge: PR ${pr.url ?? `#${pr.number}`} is in ${prRepo ?? "an unknown repository"}, not ${HOME_REPO}: no Roadmap card moved and no post-merge runs listed.`,
+    ];
   if (pr.state !== "MERGED") return [`PR #${pr.number} is ${pr.state}, not MERGED — the merge did not go through.`];
   const out = [];
-  const issues = (pr.closingIssuesReferences ?? []).map((i) => i.number);
-  const fromTitle = pr.title.match(/\(#(\d+)\)\s*$/);
-  if (issues.length === 0 && fromTitle) issues.push(Number(fromTitle[1]));
+  const { issues, foreign } = boardIssues(pr);
   for (const n of issues) out.push(setBoardStatus(n, "Testing", cwd));
+  if (foreign.length) out.push(`Closing issues outside ${HOME_REPO} have no Roadmap card: ${foreign.join(", ")}.`);
   if (issues.length === 0)
     out.push("No closing issue on the PR; move its Roadmap card to Testing by hand if there is one.");
   const sha = pr.mergeCommit?.oid;
   if (sha) {
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 8_000); // give Actions a moment to create the runs
     const runs =
-      ghJson(["run", "list", "--commit", sha, "--json", "workflowName,status,conclusion,url", "--limit", "20"], cwd) ??
-      [];
+      ghJson(
+        [
+          "run",
+          "list",
+          "--repo",
+          HOME_REPO,
+          "--commit",
+          sha,
+          "--json",
+          "workflowName,status,conclusion,url",
+          "--limit",
+          "20",
+        ],
+        cwd,
+      ) ?? [];
     const missing = missingWorkflows(runs);
     const lines = runs.map(
       (r) => `  ${r.workflowName}: ${r.status}${r.conclusion ? ` (${r.conclusion})` : ""} ${r.url}`,
@@ -90,25 +145,39 @@ function afterMerge(ref, cwd) {
 }
 
 function afterIssueCreate(stdout, cwd) {
-  const url = String(stdout).match(/https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/issues\/(\d+)/);
-  if (!url)
+  const issue = createdIssue(stdout);
+  if (!issue)
     return ["gh issue create: no issue URL in the output; add the card to the Roadmap board by hand (Backlog)."];
-  const itemId = addToBoard(url[0], cwd);
+  if (!isHomeRepo(issue.repo))
+    return [`Filed ${issue.url} in ${issue.repo}, not ${HOME_REPO}: the Roadmap board is left alone.`];
+  const itemId = addToBoard(issue.url, cwd);
   if (!itemId)
-    return [`Filed ${url[0]} but could not add it to the Roadmap board (gh project item-add failed — token scope?).`];
+    return [
+      `Filed ${issue.url} but could not add it to the Roadmap board (gh project item-add failed — token scope?).`,
+    ];
   return [
-    `Added ${url[0]} to the Roadmap board; ${setBoardStatus(Number(url[1]), "Backlog", cwd)}. Milestone and assignee stay empty until implementation starts.`,
+    `Added ${issue.url} to the Roadmap board; ${setBoardStatus(issue.number, "Backlog", cwd)}. Milestone and assignee stay empty until implementation starts.`,
   ];
 }
 
-/** `target` is the add's own argument (`worktreeAddTarget`), read where the pre-hook's rule read it. */
+/**
+ * `target` is the add's own argument (`worktreeAddTarget`), read where the
+ * pre-hook's rule read it. The issue is looked up from the checkout the add
+ * ran in, so an `ir-<n>` added to another repository's checkout is that
+ * repository's issue and moves no card here (#1527).
+ */
 function afterWorktreeAdd(command, target, cwd, shell) {
-  const resolved = resolveDir(gitCwd(command, cwd, GIT_WORKTREE_ADD, shell), target, { shell });
-  const issue = issueFromWorktreePath(resolved);
+  const dir = gitCwd(command, cwd, GIT_WORKTREE_ADD, shell);
+  const issue = issueFromWorktreePath(resolveDir(dir, target, { shell }));
   if (!issue) return [];
-  const r = gh(["issue", "view", String(issue), "--json", "number"], cwd);
-  if (!r.ok)
+  const found = ghJson(["issue", "view", String(issue), "--json", "url"], dir);
+  if (!found)
     return [`Worktree for #${issue} created, but gh cannot see that issue; move its card to In progress by hand.`];
+  const repo = repoOfUrl(found.url);
+  if (!isHomeRepo(repo))
+    return [
+      `Worktree ir-${issue} created in a checkout of ${repo ?? "an unknown repository"}, not ${HOME_REPO}: no Roadmap card moved.`,
+    ];
   return [
     `${setBoardStatus(issue, "In progress", cwd)}. Now set the issue's milestone and assignee (implementation is starting).`,
   ];
