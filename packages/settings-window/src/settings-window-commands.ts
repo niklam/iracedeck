@@ -76,8 +76,8 @@ export interface SettingsWindowCommandDeps {
   /** Elgato only: switch `deviceId` to `profile` (page optional). Omit where profiles don't exist. */
   switchProfile?: (deviceId: string, profile: string, page?: number) => void;
   /**
-   * Play an audio preview ("radar" | "voice" | "background") — the window's
-   * Test buttons. The kind is passed through as a string; the runner owns
+   * Play an audio preview ("radar" | "voice" | "background" | "press-tap" |
+   * "press-long") — the window's Test buttons. The kind is passed through as a string; the runner owns
    * the allow-list (this package has no audio dependency).
    */
   previewAudio?: (kind: string) => void;
