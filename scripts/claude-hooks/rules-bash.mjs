@@ -1115,26 +1115,10 @@ export const rules = [
     // go and confirming the prompt is the intended path. A restart, relink or
     // watch, and the scripts that restart, always ask; a build or an install
     // asks only in a tree a host's link points into, judged per command of
-    // the chain in the tree it runs in.
+    // the chain in the tree it runs in — and a script by what it runs.
     name: "nothing builds or restarts in a deck-linked tree without Niklas's go",
     test: (c, ctx) => {
-      const found = [];
-      for (const m of matchesAt(c, STREAMDECK_CLI)) found.push(`\`${m[0].trim()}\` restarts or relinks a deck host`);
-      for (const { re, read } of RUNNERS)
-        for (const { base, args } of chainCommands(c, ctx.cwd, re, ctx.shell))
-          for (const run of read(words(args), base, ctx.shell)) {
-            if (run.always || DECK_ALWAYS.test(run.script)) {
-              found.push(`\`${run.label}\` restarts, relinks or rebuilds under a deck host`);
-              continue;
-            }
-            if (!DECK_IF_LINKED.test(run.script)) continue;
-            const root = ctx.toplevel?.(run.dir) ?? run.dir;
-            const held = ctx.linkTargets().filter((l) => l.target && ctx.isInside(l.target, root));
-            if (held.length)
-              found.push(
-                `${held.map((l) => l.host).join(" and ")} plugin link points into ${root}: \`${run.label}\` there replaces files under the running plugin`,
-              );
-          }
+      const found = deckFindings(c, ctx.cwd, ctx, ctx.shell);
       if (!found.length) return null;
       return {
         ask: `${[...new Set(found)].join("; ")}. Nothing builds, installs or restarts in a deck-linked tree without Niklas's go (#1520): confirm only once he has said go, or run a build in an unlinked ../ir-<issue> tree instead.`,
@@ -1383,16 +1367,23 @@ const BARE_REDIRECT = /^\d*(?:<<-?|<<<|<>|<&|>&|>>|>\||&>>?|<|>)$/;
 
 /**
  * The deck-linked-tree ask (#1520). A build, an install or a restart is
- * reached through a runner — pnpm, npm, npx, a bare turbo, or `node` on the
- * root script behind a pnpm one — each found at command position and read by
- * its own `read(tokens, base, shell)` into the runs it makes: `{ label, script,
- * dir }`, a script or turbo task and the directory it runs in. `DECK_ALWAYS`
- * are the scripts that restart, relink or watch whatever tree they run in;
+ * reached through a runner — pnpm, npm, npx, a bare turbo, `node` on the root
+ * script behind a pnpm one or `node --run`, and the `rimraf` a `clean` script
+ * runs — each found at command position and read by its own
+ * `read(tokens, base, shell)` into the runs it makes: `{ label, script, dir }`,
+ * a script or turbo task and the directory it runs in. `DECK_ALWAYS` are the
+ * scripts that restart, relink, stop, start or watch whatever tree they run in;
  * `DECK_IF_LINKED` the ones that write the plugin's files or its dependencies —
- * a build, an install and the commands that run one — which matter only where
- * a host's link points. The Stream Deck CLI the `restart:` / `link:` scripts
- * wrap is caught too. A runner's name may carry the `.cmd` / `.exe` / `.ps1`
- * PowerShell resolves it to.
+ * a build, an install, a clean and the commands that run one — which matter
+ * only where a host's link points. The Stream Deck CLI the `restart:` / `link:`
+ * scripts wrap is caught too, and so is a `taskkill`, `start` or
+ * `Start-Process` / `Stop-Process` naming a host app. A runner's name may carry
+ * the `.cmd` / `.exe` / `.ps1` PowerShell resolves it to.
+ *
+ * The names are only the floor. A run marked `expand` — a pnpm or npm script,
+ * `node --run`, a turbo task — is also judged by the command line it runs,
+ * read from the package.json of the directory it runs in ({@link deckFindings}),
+ * so a script nobody has listed yet is judged by what it reaches.
  */
 const BIN = String.raw`(?:\.(?:cmd|exe|ps1))?(?=\s|$)`;
 const PNPM = cmd(new RegExp(`pnpm${BIN}`));
@@ -1400,36 +1391,78 @@ const NPM = cmd(new RegExp(`npm${BIN}`));
 const NPX = cmd(new RegExp(`npx${BIN}`));
 const TURBO = cmd(new RegExp(String.raw`(?:\S*[\\/])?turbo${BIN}`));
 const NODE = cmd(new RegExp(`node${BIN}`));
-const DECK_ALWAYS = /^(?:build:with-restart|build:stream-deck|(?:re|un)?link:.+|restart:.+|watch:.+)$/;
-const DECK_IF_LINKED = /^(?:build(?::.+)?|install(?::.+)?|i|add|remove|rm|update|up|dev(?::.+)?|watch)$/;
-const STREAMDECK_CLI = cmd(/streamdeck\s+(?:restart|stop|link|unlink)\b/);
+const RIMRAF = cmd(new RegExp(String.raw`(?:\S*[\\/])?rimraf${BIN}`));
+const DECK_ALWAYS =
+  /^(?:build:with-restart|build:stream-deck|(?:re|un)?link:.+|restart:.+|watch:.+|start:.+|stop:.+|switch-test-env(?::.+)?)$/;
+const DECK_IF_LINKED =
+  /^(?:build(?::.+)?|install(?::.+)?|i|add|remove|rm|update|up|dev(?::.+)?|watch|clean|precommit)$/;
+const STREAMDECK_VERBS = /^(?:restart|stop|link|unlink)$/;
+const STREAMDECK_CLI = cmd(
+  new RegExp(String.raw`(?:\S*[\\/])?streamdeck(?:\.(?:cmd|exe|ps1))?\s+(?:restart|stop|link|unlink)\b`),
+);
+/** What stops or starts a process; it asks when its arguments name a host app ({@link HOST_APP}). */
+const HOST_CONTROL = cmd(new RegExp(String.raw`(?:taskkill|start|start-process|saps|stop-process|spps)${BIN}`, "i"));
+/** The deck host apps (`scripts/lib/deck-hosts.mjs`, and Elgato's own). */
+const HOST_APP = /\b(?:StreamDeck|StreamDock|UlanziDeck|Ulanzi ?Studio|VSD ?Craft)(?:\.exe)?\b/i;
+/** How deep a script's expansion follows the scripts it runs; past it the name is all that is judged. */
+const MAX_SCRIPT_DEPTH = 8;
 
-/** pnpm options whose value is the next word; `-C` / `--dir` move the directory and are read on their own. */
-const PNPM_VALUE = new Set(["--filter", "-F", "--filter-prod", "--reporter", "--loglevel", "--workspace-concurrency"]);
+/** pnpm options whose value is the next word; `-C` / `--dir` move the directory and `--filter` picks packages, read on their own. */
+const PNPM_VALUE = new Set(["--reporter", "--loglevel", "--workspace-concurrency"]);
+const PNPM_FILTER = new Set(["--filter", "-F", "--filter-prod"]);
+/** pnpm's own commands, which never run a package.json script of that name. */
+const PNPM_BUILTIN =
+  /^(?:install|i|add|remove|rm|uninstall|un|update|up|upgrade|link|ln|unlink|import|rebuild|rb|prune|fetch|dedupe|patch|outdated|list|ls|why|audit|licenses|store|root|bin|config|setup|env|init|publish|pack|deploy|create|self-update|server|doctor|approve-builds|ignored-builds)$/;
+/** A `--filter` naming one package exactly, which the expansion can resolve; any other selector cannot be. */
+const EXACT_PACKAGE = /^(?:@[\w.-]+\/)?[\w-][\w.-]*$/;
 
+const binName = (tool) => new RegExp(String.raw`^(?:\S*[\\/])?${tool}(?:@\S*)?(?:\.(?:cmd|exe|ps1))?$`);
 /** Whether a word names the turbo binary: `turbo`, `turbo@2.5.0`, `node_modules/.bin/turbo.cmd`. */
-const isTurbo = (t) => /^(?:\S*[\\/])?turbo(?:@\S*)?(?:\.(?:cmd|exe|ps1))?$/.test(t);
+const isTurbo = (t) => binName("turbo").test(t);
+const isStreamdeck = (t) => binName("streamdeck").test(t) || /^@elgato\/cli(?:@\S*)?$/.test(t);
+const isRimraf = (t) => binName("rimraf").test(t);
+/** The binaries a `pnpm <bin>`, `pnpm exec` / `dlx`, `npx` or `npm exec` may run that this rule reads. */
+const isBinTool = (t) => isTurbo(t) || isStreamdeck(t) || isRimraf(t);
 
 /**
  * The scripts or tasks a pnpm invocation runs — past its global options and an
  * optional `run` — in `base` moved by `-C` / `--dir` (attached or not). A
  * `pnpm turbo …`, `pnpm exec turbo …` or `pnpm dlx turbo …` runs turbo's tasks
- * there ({@link turboRuns}). `[]` when it runs nothing (`pnpm --version`).
+ * there ({@link turboRuns}), and the Stream Deck CLI or `rimraf` likewise.
+ * `[]` when it runs nothing (`pnpm --version`). A script is expanded unless it
+ * is one of pnpm's own commands; its `--filter`s, when each names a package
+ * exactly, say whose package.json it is read from.
  */
 function pnpmRuns(tokens, base, shell) {
   let dir = base;
   let runSeen = false;
+  let recursive = false;
+  const filters = [];
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i];
     const attached = t.match(/^(?:--dir=|-C)(.+)$/);
+    const filter = t.match(/^(?:--filter=|--filter-prod=|-F)(.+)$/);
     if (attached) dir = resolveDir(base, attached[1], { shell });
     else if (t === "-C" || t === "--dir") dir = tokens[i + 1] ? resolveDir(base, tokens[++i], { shell }) : dir;
-    else if (PNPM_VALUE.has(t)) i++;
+    else if (filter) filters.push(filter[1]);
+    else if (PNPM_FILTER.has(t)) {
+      if (tokens[i + 1]) filters.push(tokens[++i]);
+    } else if (PNPM_VALUE.has(t)) i++;
+    else if (t === "-r" || t === "--recursive") recursive = true;
     else if (t.startsWith("-")) continue;
     else if ((t === "run" || t === "run-script") && !runSeen) runSeen = true;
-    else if (isTurbo(t)) return turboRuns(tokens.slice(i + 1), dir, shell);
+    else if (isBinTool(t) && !runSeen) return binRuns(tokens.slice(i), dir, shell);
     else if ((t === "exec" || t === "dlx") && !runSeen) return binRuns(tokens.slice(i + 1), dir, shell);
-    else return [{ label: `pnpm ${t}`, script: t, dir }];
+    else
+      return [
+        {
+          label: `pnpm ${t}`,
+          script: t,
+          dir,
+          expand: (runSeen || !PNPM_BUILTIN.test(t)) && !recursive,
+          filters,
+        },
+      ];
   }
   return [];
 }
@@ -1446,24 +1479,29 @@ const BIN_VALUE = new Set(["-p", "--package", "-w", "--workspace"]);
  * What an npm invocation runs: a script (`npm run <s>`, `run-script`), the
  * install family read as `install`, or turbo through `npm exec`. The directory
  * is `base` moved by `--prefix` / `-C`, which npm reads anywhere before `--`.
+ * A script is expanded unless a workspace option picks where it runs.
  */
 function npmRuns(tokens, base, shell) {
   const end = tokens.indexOf("--") < 0 ? tokens.length : tokens.indexOf("--");
   let dir = base;
+  let workspaces = false;
   const positional = [];
   for (let i = 0; i < end; i++) {
     const t = tokens[i];
     const attached = t.match(/^--prefix=(.+)$/);
     if (attached) dir = resolveDir(base, attached[1], { shell });
     else if (t === "--prefix" || t === "-C") dir = tokens[i + 1] ? resolveDir(base, tokens[++i], { shell }) : dir;
-    else if (NPM_VALUE.has(t)) i++;
+    else if (NPM_VALUE.has(t)) {
+      if (t === "-w" || t === "--workspace") workspaces = true;
+      i++;
+    } else if (/^(?:--workspaces?(?:=.*)?|-ws)$/.test(t)) workspaces = true;
     else if (!t.startsWith("-")) positional.push(i);
   }
   if (!positional.length) return [];
   const verb = tokens[positional[0]];
   if (/^(?:run|run-script|rum|urn)$/.test(verb)) {
     const script = tokens[positional[1]];
-    return script ? [{ label: `npm run ${script}`, script, dir }] : [];
+    return script ? [{ label: `npm run ${script}`, script, dir, expand: !workspaces }] : [];
   }
   if (/^(?:exec|x)$/.test(verb)) return binRuns(tokens.slice(positional[0] + 1), dir, shell);
   return NPM_INSTALL.test(verb) ? [{ label: `npm ${verb}`, script: "install", dir }] : [];
@@ -1471,17 +1509,43 @@ function npmRuns(tokens, base, shell) {
 
 /**
  * The binary an `exec` / `dlx` / `npx` runs, past its own options and a `--`:
- * turbo's tasks when it is turbo, nothing otherwise — a build is judged by the
- * tool that does it, and a `tsc` or `prettier` replaces nothing under a plugin.
+ * turbo's tasks when it is turbo, the Stream Deck CLI's verb, `rimraf`'s
+ * paths, nothing otherwise — a build is judged by the tool that does it, and a
+ * `tsc` or `prettier` replaces nothing under a plugin.
  */
 function binRuns(tokens, dir, shell) {
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i];
     if (BIN_VALUE.has(t)) i++;
     else if (t === "--" || t.startsWith("-")) continue;
-    else return isTurbo(t) ? turboRuns(tokens.slice(i + 1), dir, shell) : [];
+    else if (isTurbo(t)) return turboRuns(tokens.slice(i + 1), dir, shell);
+    else if (isStreamdeck(t)) return streamdeckRuns(tokens.slice(i + 1), dir);
+    else if (isRimraf(t)) return rimrafRuns(tokens.slice(i + 1), dir, shell);
+    else return [];
   }
   return [];
+}
+
+/** The Stream Deck CLI's `restart`, `stop`, `link` and `unlink`, reached through a runner rather than at command position. */
+function streamdeckRuns(tokens, dir) {
+  const verb = tokens.find((t) => !t.startsWith("-"));
+  return verb && STREAMDECK_VERBS.test(verb)
+    ? [{ label: `streamdeck ${verb}`, script: verb, dir, always: true, why: "restarts or relinks a deck host" }]
+    : [];
+}
+
+/** What a `rimraf` deletes, resolved against the directory it runs in: `removes` is judged against every link target. */
+function rimrafRuns(tokens, dir, shell) {
+  const paths = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+    if (BARE_REDIRECT.test(t)) i++;
+    else if (/^\d*(?:[<>]|&>)/.test(t) || t.startsWith("-")) continue;
+    else paths.push(t);
+  }
+  return paths.length
+    ? [{ label: `rimraf ${paths.join(" ")}`, dir, removes: paths.map((p) => resolveDir(dir, p, { shell })) }]
+    : [];
 }
 
 /** turbo options whose value is the next word; `--cwd` moves the directory and is read on its own. */
@@ -1505,6 +1569,8 @@ const TURBO_VALUE = new Set([
  * The tasks a turbo invocation runs — `turbo run <tasks>`, `turbo watch <tasks>`
  * or the `turbo <tasks>` shorthand — in `dir` moved by `--cwd`. A subcommand
  * that is no task (`prune`, `ls`, `login`) is read as one and matches no rule.
+ * Each task is expanded into every workspace package's script of that name: a
+ * `--filter` is not read, so the expansion over-reaches rather than misses.
  */
 function turboRuns(tokens, dir, shell) {
   let at = dir;
@@ -1519,24 +1585,39 @@ function turboRuns(tokens, dir, shell) {
     else if (!t.startsWith("-")) positional.push(t);
   }
   const tasks = /^(?:run|watch)$/.test(positional[0] ?? "") ? positional.slice(1) : positional;
-  return tasks.map((task) => ({ label: `turbo run ${task}`, script: task, dir: at }));
+  return tasks.map((task) => ({ label: `turbo run ${task}`, script: task, dir: at, expand: true, turbo: true }));
 }
 
 /**
  * The root scripts a pnpm script wraps, run through `node` (#1520): the ones
- * that restart or relink a host always ask, as their pnpm scripts do; `build`
- * (turbo in the cwd) and `dev-voices` (its own tree) ask where linked, so both
- * the cwd and the script's own tree are judged.
+ * that restart, relink, stop or start a host always ask, as their pnpm scripts
+ * do; `build` (turbo in the cwd) and `dev-voices` (its own tree) ask where
+ * linked, so both the cwd and the script's own tree are judged. `node --run
+ * <script>` runs a package.json script, judged as `pnpm <script>` is.
  */
 const NODE_ALWAYS = /^(?:integration-build|build-with-restart|(?:un)?link-(?:mirabox|ulanzi))$/;
 const NODE_IF_LINKED = { build: "build", "dev-voices": "dev:voices" };
 
 function nodeRuns(tokens, base, shell) {
-  const file = tokens.find((t) => !t.startsWith("-"));
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+    const attached = t.match(/^--run=(.+)$/);
+    const script = attached ? attached[1] : t === "--run" ? tokens[i + 1] : undefined;
+    if (script) return [{ label: `node --run ${script}`, script, dir: base, expand: true }];
+    if (t === "--run" || !t.startsWith("-")) break;
+  }
+  const at = tokens.findIndex((t) => !t.startsWith("-"));
+  const file = tokens[at];
   const m = file?.match(/^(?:(.*)[\\/])?([\w-]+)\.mjs$/);
   if (!m) return [];
   const label = `node ${file}`;
   if (NODE_ALWAYS.test(m[2])) return [{ label, script: m[2], dir: base, always: true }];
+  if (m[2] === "host-app") {
+    const action = tokens.slice(at + 1).find((t) => !t.startsWith("-"));
+    return /^(?:start|stop)$/.test(action ?? "")
+      ? [{ label: `${label} ${action}`, script: m[2], dir: base, always: true, why: "stops or starts a deck host app" }]
+      : [];
+  }
   const script = NODE_IF_LINKED[m[2]];
   if (!script) return [];
   return [
@@ -1551,7 +1632,84 @@ const RUNNERS = [
   { re: NPX, read: binRuns },
   { re: TURBO, read: turboRuns },
   { re: NODE, read: nodeRuns },
+  { re: RIMRAF, read: rimrafRuns },
 ];
+
+/**
+ * Every reason the commands of `c`, run from `cwd`, need Niklas's go (#1520):
+ * the deck-linked-tree rule's whole judgement, recursive so a script is judged
+ * by what it runs. `trail` holds the `<package dir>\0<script>` keys being
+ * expanded, which is both the depth ({@link MAX_SCRIPT_DEPTH}) and the cycle
+ * guard. A script the hook cannot read — no `ctx.scriptsAt`, no package.json,
+ * no such script, a `--filter` it cannot resolve — is judged by its name alone.
+ */
+function deckFindings(c, cwd, ctx, shell, trail = []) {
+  const found = [];
+  const links = ctx.linkTargets().filter((l) => l.target);
+  for (const m of matchesAt(c, STREAMDECK_CLI)) found.push(`\`${m[0].trim()}\` restarts or relinks a deck host`);
+  for (const { head, args } of chainCommands(c, cwd, HOST_CONTROL, shell)) {
+    const app = args.match(HOST_APP);
+    if (app) found.push(`\`${head.replace(/^[\s|;&()`]+/, "").trim()} … ${app[0]}\` stops or starts a deck host app`);
+  }
+  for (const { re, read } of RUNNERS)
+    for (const { base, args } of chainCommands(c, cwd, re, shell))
+      for (const run of read(words(args), base, shell)) {
+        if (run.always || DECK_ALWAYS.test(run.script ?? "")) {
+          found.push(`\`${run.label}\` ${run.why ?? "restarts, relinks or rebuilds under a deck host"}`);
+          continue;
+        }
+        if (run.removes) {
+          const held = links.filter((l) =>
+            run.removes.some((p) => ctx.isInside(p, l.target) || ctx.isInside(l.target, p)),
+          );
+          if (held.length)
+            found.push(
+              `${held.map((l) => l.host).join(" and ")} plugin link points into ${held[0].target}: \`${run.label}\` deletes files under the running plugin`,
+            );
+          continue;
+        }
+        if (DECK_IF_LINKED.test(run.script)) {
+          const root = ctx.toplevel?.(run.dir) ?? run.dir;
+          const held = links.filter((l) => ctx.isInside(l.target, root));
+          if (held.length) {
+            found.push(
+              `${held.map((l) => l.host).join(" and ")} plugin link points into ${root}: \`${run.label}\` there replaces files under the running plugin`,
+            );
+            continue;
+          }
+        }
+        if (!run.expand || trail.length >= MAX_SCRIPT_DEPTH) continue;
+        for (const { dir, line, key } of scriptLines(run, ctx)) {
+          if (trail.includes(key)) continue;
+          // A script line runs under cmd.exe on Windows, where `\` is a path
+          // separator and no escape: read as `/` so the bash lexer keeps it.
+          for (const f of deckFindings(line.replace(/\\/g, "/"), dir, ctx, BASH, [...trail, key]))
+            found.push(`\`${run.label}\` → ${f}`);
+        }
+      }
+  return found;
+}
+
+/**
+ * The command lines an expandable run executes, each with the package
+ * directory it runs in: a turbo task's script in every workspace package of
+ * the tree, a filtered pnpm script's in each package its filters name, any
+ * other script's in the nearest package.json above the run's directory.
+ */
+function scriptLines(run, ctx) {
+  if (!ctx.scriptsAt) return [];
+  const root = () => ctx.toplevel?.(run.dir) ?? run.dir;
+  const packages = () => (ctx.workspaceDirs?.(root()) ?? []).map((d) => ctx.scriptsAt(d));
+  let manifests;
+  if (run.turbo) manifests = packages();
+  else if (run.filters?.length) {
+    if (!run.filters.every((f) => EXACT_PACKAGE.test(f))) return [];
+    manifests = [ctx.scriptsAt(root()), ...packages()].filter((m) => m && run.filters.includes(m.name));
+  } else manifests = [ctx.scriptsAt(run.dir)];
+  return manifests
+    .filter((m) => m && typeof m.scripts?.[run.script] === "string")
+    .map((m) => ({ dir: m.dir, line: m.scripts[run.script], key: `${m.dir}\0${run.script}` }));
+}
 
 /** `git push` options whose value is the next word when not attached with `=`. */
 const PUSH_VALUE = new Set(["--repo", "-o", "--push-option", "--receive-pack", "--exec"]);
@@ -1578,13 +1736,24 @@ function pushReachesIntegration(tokens, fromIntegration) {
   if (every) return true;
   const refspecs = positional.slice(1);
   if (!refspecs.length) return fromIntegration();
-  const name = (r) => r.replace(/^\+/, "").replace(/^refs\/heads\//, "");
+  // `refs/heads/x`, `heads/x` and `x` are one branch to git. A glob pushes
+  // every branch it matches, and a revision suffix (`~0`, `^0`, `@{0}`,
+  // `^{commit}`) still names the branch's commit.
+  const name = (r) =>
+    r
+      .replace(/^\+/, "")
+      .replace(/^refs\//, "")
+      .replace(/^heads\//, "");
+  const names = (n, branch) =>
+    n.includes("*")
+      ? new RegExp(`^${n.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*")}$`).test(branch)
+      : new RegExp(`^${branch}(?:[~^@].*)?$`).test(n);
   return refspecs.some((r) => {
     const colon = r.indexOf(":");
     const src = name(colon >= 0 ? r.slice(0, colon) : r);
     const dst = colon >= 0 ? name(r.slice(colon + 1)) : undefined;
-    if (src === INTEGRATION_BRANCH || dst === INTEGRATION_BRANCH) return true;
-    return (src === "HEAD" || src === "@") && fromIntegration();
+    if (names(src, INTEGRATION_BRANCH) || (dst !== undefined && names(dst, INTEGRATION_BRANCH))) return true;
+    return /^(?:HEAD|@)(?:[~^@].*)?$/.test(src) && fromIntegration();
   });
 }
 

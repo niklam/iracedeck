@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -99,6 +99,21 @@ describe("pre-bash.mjs, fired for the PowerShell tool", () => {
     expect(fire("git push origin integration", { tool: "PowerShell" }).permissionDecisionReason).toMatch(
       /never pushed/,
     ));
+
+  // #1520 second read: a script is judged by the command line its package.json gives it.
+  it("reads a script's command line from the package.json it runs from", () => {
+    const scripts = { hop: "pnpm relink:anything", wipe: "rimraf plugin/bin", quiet: "vitest run" };
+    for (const d of [linkedTree, otherTree])
+      writeFileSync(path.join(d, "package.json"), JSON.stringify({ name: "fixture", scripts }));
+    for (const tool of ["Bash", "PowerShell"]) {
+      expect(fire("pnpm hop", { tool, cwd: otherTree, env }).permissionDecisionReason).toMatch(
+        /`pnpm hop` → `pnpm relink:anything`/,
+      );
+      expect(fire("pnpm wipe", { tool, cwd: linkedTree, env }).permissionDecisionReason).toMatch(/deletes files/);
+      expect(fire("pnpm wipe", { tool, cwd: otherTree, env })).toBeNull();
+      expect(fire("pnpm quiet", { tool, cwd: linkedTree, env })).toBeNull();
+    }
+  });
 
   it("does not judge a heredoc-shaped string, which only bash would read as one", () => {
     const heredoc = "Write-Output 'x' <<EOF C:\\\\Users";

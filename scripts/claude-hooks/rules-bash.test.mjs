@@ -319,6 +319,32 @@ describe("git push", () => {
       passes(`echo "git push origin integration"`, inTree());
       passes(`git commit -q -m "never git push origin integration" -- x.md`, inTree());
     });
+    // Second read: a glob pushes every branch it matches, `heads/` is a ref
+    // name git resolves, and a revision suffix still names the branch's commit.
+    it.each([
+      "git push origin 'refs/heads/*'",
+      "git push origin 'refs/heads/*:refs/heads/*'",
+      "git push origin '+refs/heads/*:refs/remotes/mirror/*'",
+      "git push origin 'refs/heads/int*'",
+      "git push origin heads/integration",
+      "git push origin refs/heads/integration:heads/integration",
+      "git push origin integration~0",
+      "git push origin integration^0",
+      "git push origin 'integration@{0}'",
+      "git push origin 'integration^{commit}:refs/heads/x'",
+      "git push origin integration~0:ir-5",
+    ])("denies a glob, a heads/ name or a revision of it: %s", (c) =>
+      expect(deny(c, inTree())).toMatch(/never pushed/),
+    );
+    it("denies a revision of HEAD from inside the tree", () =>
+      expect(deny("git push origin HEAD~0:ir-5", inTree({ cwd: INTEGRATION }))).toMatch(/never pushed/));
+    it("lets a glob or a name that cannot reach it through", () => {
+      passes("git push origin 'refs/tags/*'", inTree());
+      passes("git push origin 'refs/heads/feature/*'", inTree());
+      passes("git push origin integration-tests", inTree());
+      passes("git push origin heads/ir-5", inTree());
+      passes("git push origin HEAD~0:ir-5", inTree());
+    });
   });
 });
 
@@ -1726,6 +1752,191 @@ describe("nothing builds or restarts in a deck-linked tree without Niklas's go",
     passes(`grep -n "pnpm install" README.md`, linked);
     passes(`git commit -q -m "run pnpm restart:stream-deck later" -- x.md`, linked);
   });
+
+  // Second read (#1520): the root scripts that stop, start, clean or switch a
+  // host were not on the name lists. They stay there as the floor, for a
+  // package.json the hook cannot read.
+  it.each([
+    "pnpm switch-test-env",
+    "pnpm switch-test-env:mirabox",
+    "pnpm stop:stream-deck",
+    "pnpm stop:mirabox",
+    "pnpm start:stream-deck",
+    "pnpm start:ulanzi",
+    "node --run restart:stream-deck",
+  ])("always asks by name, with no package.json to read: %s", (c) => {
+    expect(asks(c, elsewhere)).toMatch(/Niklas/);
+    expect(asks(c, ctx())).toMatch(/Niklas/);
+  });
+  it.each(["pnpm clean", "pnpm precommit", "node --run build", "node --run=build", "turbo run clean"])(
+    "asks by name in the linked tree only: %s",
+    (c) => {
+      asks(c, linked);
+      passes(c, elsewhere);
+    },
+  );
+
+  it.each([
+    "streamdeck.cmd restart com.iracedeck.sd.core",
+    "streamdeck.exe link packages/x",
+    "streamdeck.ps1 unlink -d com.iracedeck.sd.core",
+    "node_modules/.bin/streamdeck restart com.iracedeck.sd.core",
+    "pnpm exec streamdeck restart com.iracedeck.sd.core",
+    "pnpm streamdeck restart com.iracedeck.sd.core",
+    "pnpm dlx streamdeck stop com.iracedeck.sd.core",
+    "npx streamdeck restart com.iracedeck.sd.core",
+    "npx --yes streamdeck link packages/x",
+    "npm exec streamdeck unlink -d com.iracedeck.sd.core",
+  ])("asks for the Stream Deck CLI behind any lead: %s", (c) => expect(asks(c, ctx())).toMatch(/deck host/));
+  it("passes the Stream Deck CLI's harmless verbs", () => {
+    passes("npx streamdeck --version", ctx());
+    passes("pnpm exec streamdeck validate packages/x", ctx());
+  });
+
+  it.each([
+    "taskkill /IM StreamDeck.exe /F",
+    "taskkill /F /IM UlanziDeck.exe",
+    "taskkill /im streamdock.exe",
+    'start /B "" "C:\\Program Files\\Elgato\\StreamDeck\\StreamDeck.exe"',
+    "node scripts/host-app.mjs stop mirabox",
+    "node ../master/scripts/host-app.mjs start ulanzi",
+  ])("always asks for what stops or starts a host app: %s", (c) => expect(asks(c, ctx())).toMatch(/Niklas/));
+  it("passes what stops or starts something else", () => {
+    passes("taskkill /IM notepad.exe /F", ctx());
+    passes("start https://iracedeck.com", ctx());
+    passes("node scripts/host-app.mjs", ctx());
+  });
+
+  it("asks for a rimraf of a linked plugin's files, and passes one elsewhere", () => {
+    const bin = "packages/iracing-plugin-stream-deck/com.iracedeck.sd.core.sdPlugin/bin";
+    asks(`rimraf ${bin}/plugin.js`, linked);
+    asks(`pnpm exec rimraf ${bin}`, linked);
+    asks("npx rimraf packages/iracing-plugin-stream-deck", linked);
+    asks(`cd packages/iracing-plugin-stream-deck && rimraf com.iracedeck.sd.core.sdPlugin/bin/plugin.js`, linked);
+    passes(`rimraf ${bin}`, elsewhere);
+    passes("rimraf packages/logger/dist", linked);
+  });
+});
+
+// Second read (#1520): a script name is a list that is always one behind, so
+// a pnpm, npm or `node --run` script is judged by the command line it runs,
+// read from the package.json of the directory it runs in.
+describe("a script is judged by what it runs", () => {
+  const IR5 = tree("ir-5");
+  const pluginOf = (root) => path.join(root, "packages", "iracing-plugin-stream-deck");
+  const ROOT_SCRIPTS = {
+    test: "vitest run --configLoader native",
+    lint: 'eslint "packages/*/src/**" "**/*.mjs"',
+    typecheck: "turbo run typecheck",
+    build: "node scripts/build.mjs",
+    hostkill: "taskkill /IM StreamDeck.exe /F || exit 0",
+    hoststart: 'start /B "" "C:\\Program Files\\Elgato\\StreamDeck\\StreamDeck.exe',
+    "ulanzi-off": "node scripts/host-app.mjs stop ulanzi",
+    swap: "pnpm install && pnpm build && pnpm relink:mirabox",
+    wrapped: "pnpm swap",
+    scrub: "turbo run wipe",
+    "plugin-reload": "pnpm --filter @iracedeck/iracing-plugin-stream-deck reload",
+    "loop-a": "pnpm loop-b",
+    "loop-b": "pnpm loop-a",
+    "loop-c": "pnpm loop-d",
+    "loop-d": "pnpm loop-c && pnpm relink:ulanzi",
+    tidy: "pnpm clean",
+    deep: "pnpm deep1",
+    ...Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`deep${i + 1}`, `pnpm deep${i + 2}`])),
+    deep21: "pnpm relink:ulanzi",
+  };
+  const PLUGIN_SCRIPTS = {
+    clean: "rimraf com.iracedeck.sd.core.sdPlugin/bin/plugin.js",
+    wipe: "rimraf com.iracedeck.sd.core.sdPlugin/bin",
+    typecheck: "tsc --noEmit",
+    reload: "streamdeck restart com.iracedeck.sd.core",
+  };
+  const manifests = {};
+  for (const root of [MASTER, IR5]) {
+    manifests[root] = { name: "iracedeck", scripts: ROOT_SCRIPTS };
+    manifests[pluginOf(root)] = { name: "@iracedeck/iracing-plugin-stream-deck", scripts: PLUGIN_SCRIPTS };
+    manifests[path.join(root, "packages", "logger")] = {
+      name: "@iracedeck/logger",
+      scripts: { clean: "rimraf dist", typecheck: "tsc --noEmit" },
+    };
+  }
+  const scriptsAt = (dir) => {
+    for (let d = dir; ; d = path.dirname(d)) {
+      if (manifests[d]) return { dir: d, ...manifests[d] };
+      if (path.dirname(d) === d) return undefined;
+    }
+  };
+  const workspaceDirs = (root) => Object.keys(manifests).filter((d) => path.dirname(d) === path.join(root, "packages"));
+  const at = (linkRoot, o = {}) =>
+    ctx({
+      linkTargets: () => [
+        { host: "Stream Deck", target: path.join(pluginOf(linkRoot), "com.iracedeck.sd.core.sdPlugin") },
+      ],
+      toplevel: (d) => [MASTER, IR5].find((r) => isInside(d, r)),
+      scriptsAt,
+      workspaceDirs,
+      packages: () => ({
+        "@iracedeck/iracing-plugin-stream-deck": { dir: pluginOf(MASTER), scripts: Object.keys(PLUGIN_SCRIPTS) },
+      }),
+      ...o,
+    });
+  const linked = at(MASTER);
+  const elsewhere = at(tree("ir-integration"));
+
+  it.each([
+    "pnpm hostkill",
+    "pnpm run hostkill",
+    "pnpm hoststart",
+    "pnpm ulanzi-off",
+    "pnpm swap",
+    "pnpm wrapped",
+    "pnpm plugin-reload",
+    "pnpm --filter @iracedeck/iracing-plugin-stream-deck reload",
+    "pnpm --filter=@iracedeck/iracing-plugin-stream-deck run reload",
+    "pnpm -C packages/iracing-plugin-stream-deck reload",
+    "cd packages/iracing-plugin-stream-deck && pnpm reload",
+    "npm run hostkill",
+    "npm --prefix ../ir-5 run swap",
+    "node --run hostkill",
+    "node --run=swap",
+    "cd ../ir-5 && pnpm swap",
+  ])("asks for what the script runs, linked or not: %s", (c) => {
+    expect(asks(c, elsewhere)).toMatch(/Niklas/);
+    expect(asks(c, linked)).toMatch(/Niklas/);
+  });
+
+  it("names the script and what it reached", () =>
+    expect(asks("pnpm wrapped", elsewhere)).toMatch(/`pnpm wrapped` → `pnpm swap` → `pnpm relink:mirabox`/));
+
+  it.each(["pnpm scrub", "pnpm tidy", "turbo run wipe"])("follows turbo to each package's script: %s", (c) => {
+    expect(asks(c, linked)).toMatch(c === "pnpm tidy" ? /pnpm clean/ : /rimraf .*deletes files/);
+    passes(c, elsewhere);
+  });
+
+  it("passes what reaches no build, restart or plugin file", () => {
+    for (const c of ["pnpm test", "pnpm lint", "pnpm typecheck", "pnpm test scripts/claude-hooks", "node --run test"])
+      passes(c, linked);
+  });
+  it("passes a build in an unlinked tree", () => passes("pnpm build", at(MASTER, { cwd: IR5 })));
+
+  it("stops at a cycle, and still judges what the cycle runs", () => {
+    passes("pnpm loop-a", linked);
+    expect(asks("pnpm loop-c", elsewhere)).toMatch(/relink:ulanzi/);
+  });
+  it("stops at its depth bound, where the name is all it judges", () => passes("pnpm deep", elsewhere));
+
+  it("falls back to the name when the script cannot be read", () => {
+    passes("pnpm no-such-script", linked);
+    passes("pnpm hostkill", at(MASTER, { scriptsAt: () => undefined }));
+    passes("pnpm --filter ./packages/* reload", linked);
+    expect(asks("pnpm stop:stream-deck", at(MASTER, { scriptsAt: () => undefined }))).toMatch(/Niklas/);
+  });
+
+  it("does not read a pnpm built-in as a script", () =>
+    passes(
+      "pnpm install",
+      at(MASTER, { cwd: IR5, scriptsAt: () => ({ dir: IR5, scripts: { install: "pnpm relink:x" } }) }),
+    ));
 });
 
 // #1520: PowerShell is this environment's primary shell, and its commands
@@ -1784,6 +1995,17 @@ describe("PowerShell commands", () => {
     expect(deny("Set-Location ..\\ir-integration; git push", inTree)).toMatch(/never pushed/);
     expect(deny("git -C ..\\ir-integration push -u origin HEAD", inTree)).toMatch(/never pushed/);
     passes("git push origin master", inTree);
+  });
+
+  it("asks for a PowerShell stop or start of a host app", () => {
+    for (const c of [
+      "Stop-Process -Name StreamDeck -Force",
+      "spps -Name UlanziDeck",
+      "Start-Process 'C:\\Program Files\\Elgato\\StreamDeck\\StreamDeck.exe'",
+      'start-process "C:\\Program Files (x86)\\Ulanzi Studio\\UlanziDeck.exe"',
+    ])
+      expect(asks(c, elsewhere)).toMatch(/stops or starts a deck host app/);
+    passes("Stop-Process -Name notepad", elsewhere);
   });
 
   it("keeps the shell-agnostic guards", () => {
