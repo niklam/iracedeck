@@ -9,7 +9,7 @@
 import { Flags, SessionState, type TelemetryData } from "@iracedeck/iracing-native";
 
 import { isReplayOnlySession } from "./session-utils.js";
-import { hasFlag } from "./utils.js";
+import { hasAnyFlag } from "./utils.js";
 
 /**
  * Check whether the current car has a pit speed limiter.
@@ -408,5 +408,5 @@ export function isPostRace(t: TelemetryData | null | undefined): boolean {
  * @returns true when the Black or Disqualify session-flag bit is set
  */
 export function isPenaltyFlagActive(t: TelemetryData | null | undefined): boolean {
-  return hasFlag(t?.SessionFlags, Flags.Black) || hasFlag(t?.SessionFlags, Flags.Disqualify);
+  return hasAnyFlag(t?.SessionFlags, [Flags.Black, Flags.Disqualify]);
 }

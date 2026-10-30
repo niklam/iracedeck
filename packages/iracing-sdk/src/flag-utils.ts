@@ -1,6 +1,6 @@
 import { Flags } from "@iracedeck/iracing-native";
 
-import { hasFlag } from "./utils.js";
+import { hasAnyFlag, hasFlag } from "./utils.js";
 
 /**
  * Describes a resolved race flag with its visual properties.
@@ -23,7 +23,7 @@ export const FLAG_DEFINITIONS: ReadonlyArray<{
 }> = [
   { check: (f) => hasFlag(f, Flags.Red), info: { label: "RED", color: "#e74c3c", textColor: "#ffffff", pulse: false } },
   {
-    check: (f) => hasFlag(f, Flags.Black) || hasFlag(f, Flags.Disqualify),
+    check: (f) => hasAnyFlag(f, [Flags.Black, Flags.Disqualify]),
     info: { label: "BLACK", color: "#1a1a1a", textColor: "#ffffff", pulse: true },
   },
   {
@@ -31,11 +31,7 @@ export const FLAG_DEFINITIONS: ReadonlyArray<{
     info: { label: "REPAIR", color: "#e67e22", textColor: "#ffffff", pulse: true },
   },
   {
-    check: (f) =>
-      hasFlag(f, Flags.Yellow) ||
-      hasFlag(f, Flags.YellowWaving) ||
-      hasFlag(f, Flags.Caution) ||
-      hasFlag(f, Flags.CautionWaving),
+    check: (f) => hasAnyFlag(f, [Flags.Yellow, Flags.YellowWaving, Flags.Caution, Flags.CautionWaving]),
     info: { label: "YELLOW", color: "#f1c40f", textColor: "#1a1a1a", pulse: false },
   },
   {

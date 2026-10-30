@@ -61,16 +61,4 @@ export {
 } from "@iracedeck/iracing-native";
 
 // Re-export utility functions for easy access
-export {
-  hasFlag,
-  hasAllFlags,
-  hasAnyFlag,
-  getActiveFlags,
-  getActiveFlagNames,
-  addFlag,
-  addFlags,
-  removeFlag,
-  removeFlags,
-  toggleFlag,
-  setFlag,
-} from "./utils.js";
+export { hasFlag, hasAnyFlag, addFlag, removeFlag } from "./utils.js";

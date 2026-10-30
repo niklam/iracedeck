@@ -68,7 +68,7 @@
  *   and a rolling start it shows whether `StartGo` / `Green` was already up,
  *   rose on the flip tick, or had not risen yet.
  */
-import { Flags, hasFlag, SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { Flags, hasAnyFlag, SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { type ILogger, silentLogger } from "@iracedeck/logger";
 
 import { resolveSessionType } from "../session-type.js";
@@ -89,7 +89,7 @@ const PRE_GREEN_STATES: ReadonlySet<number> = new Set([
 
 /** Whether a full-course caution is out on a tick: either caution bit. */
 function isCautionOut(flags: number): boolean {
-  return hasFlag(flags, Flags.Caution) || hasFlag(flags, Flags.CautionWaving);
+  return hasAnyFlag(flags, [Flags.Caution, Flags.CautionWaving]);
 }
 
 /** `SessionFlags` as unsigned hex — `StartGo` is the sign bit, and a signed print would hide it. */
