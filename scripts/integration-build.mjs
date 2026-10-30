@@ -69,8 +69,9 @@
  *    Ulanzi through `scripts/host-app.mjs`. A host that cannot be stopped
  *    stops the run before the install, and the hosts already stopped are
  *    started again on the untouched plugin. `pnpm build:with-restart` is
- *    deliberately not used: it finds Stream Deck through `wmic`, which
- *    current Windows 11 no longer ships, and then silently restarts nothing.
+ *    deliberately not used: it restarts Stream Deck alone, wherever its link
+ *    points, around a `turbo run build` with no install, where this script
+ *    restarts exactly the hosts linked to its tree around both.
  *    Any host whose stop or start failed is named for the maintainer to
  *    restart himself, and so is a linked host with no scripted stop
  *    (`needsRestart`), which `--restart` leaves running. When the install or
