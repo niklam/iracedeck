@@ -104,7 +104,12 @@ import {
 } from "./config.ts";
 import { type SynthesizeOptions, synthesizeSpeech } from "./elevenlabs.ts";
 import { clipRelPath, loadManifest, saveManifest } from "./manifest.ts";
-import { describePauseMarks, findEntryPauseMarks } from "./pause-marks.ts";
+import {
+  describePauseMarks,
+  findEntryPauseMarks,
+  isGrandfathered,
+  loadGrandfatheredPauseMarks,
+} from "./pause-marks.ts";
 import { formatScope, parseScopeArgs, type Scope, validateScope } from "./scope.ts";
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
@@ -207,6 +212,7 @@ async function main(): Promise<void> {
   }
 
   const manifest = loadManifest(MANIFEST_PATH);
+  const grandfathered = loadGrandfatheredPauseMarks(packageRoot);
 
   const scopeSummary = formatScope(scope);
 
@@ -249,14 +255,19 @@ async function main(): Promise<void> {
         }
 
         // Refused before the API call and in a dry run alike, so an author
-        // sees it before spending credit (#1518). A clip already generated
-        // from such a text was skipped above as a cache hit.
+        // sees it before spending credit (#1518). A grandfathered entry whose
+        // text is unchanged is re-cut as before — a dependency's new take or a
+        // voice-wide setting reaches it — but said so.
         const pauseMarks = findEntryPauseMarks(entry);
 
         if (pauseMarks.length > 0) {
-          console.error(`[generate] ${relPath}  —  REFUSED: ${describePauseMarks(pauseMarks)}`);
-          refused++;
-          continue;
+          if (!isGrandfathered(entry, grandfathered[voiceName]?.[`${groupName}/${entry.name}`])) {
+            console.error(`[generate] ${relPath}  —  REFUSED: ${describePauseMarks(pauseMarks)}`);
+            refused++;
+            continue;
+          }
+
+          console.warn(`[generate] ${relPath}  —  grandfathered text: ${describePauseMarks(pauseMarks)}`);
         }
 
         const prefix = dryRun ? "[dry-run] WOULD GENERATE" : "[generate]";

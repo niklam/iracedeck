@@ -1,14 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { buildEntryLookup, entryHash, type VoiceConfig, VoiceConfigSchema } from "./config.ts";
-import type { Manifest } from "./manifest.ts";
+import { type VoiceConfig, VoiceConfigSchema } from "./config.ts";
 import {
   checkPauseMarks,
   describePauseMarks,
   findEntryPauseMarks,
   findPauseMarks,
-  pauseMarkEntries,
-  type PauseMarkEntry,
+  isGrandfathered,
 } from "./pause-marks.ts";
 
 function buildVoiceConfig(groups: Record<string, Array<Record<string, unknown>>>): VoiceConfig {
@@ -20,20 +18,6 @@ function buildVoiceConfig(groups: Record<string, Array<Record<string, unknown>>>
     groups,
   });
 }
-
-function manifestFor(entries: Record<string, string>): Manifest {
-  return {
-    version: 1,
-    entries: Object.fromEntries(
-      Object.entries(entries).map(([relPath, hash]) => [
-        relPath,
-        { hash, voiceId: "voice-id", model: "eleven_test_model", textPreview: "", generatedAt: "" },
-      ]),
-    ),
-  };
-}
-
-const always = () => true;
 
 describe("findPauseMarks", () => {
   it.each([
@@ -88,70 +72,78 @@ describe("findEntryPauseMarks", () => {
   });
 });
 
-describe("pauseMarkEntries", () => {
-  const voice = buildVoiceConfig({
-    tires: [
-      { name: "clean-01", text: "Left front." },
-      { name: "hyphen-01", text: "Left-front." },
-    ],
-  });
-  const relPath = "voice/voice-id/tires/hyphen-01.mp3";
-  const currentHash = entryHash(voice.groups.tires[1], "tires", voice, buildEntryLookup(voice));
+describe("isGrandfathered", () => {
+  const entry = { name: "a-01", text: "Left-front.", seed: 1 };
 
-  it("reports an offender as generated while its hash matches and its clip exists", () => {
-    expect(pauseMarkEntries("voice-id", voice, manifestFor({ [relPath]: currentHash }), always)).toEqual([
-      { key: "tires/hyphen-01", relPath, text: "Left-front.", marks: ["-"], generated: true },
-    ]);
+  it("grandfathers an entry whose text is the frozen one", () => {
+    expect(isGrandfathered(entry, "Left-front.")).toBe(true);
   });
 
-  it("reports an offender with no manifest row as not generated", () => {
-    expect(pauseMarkEntries("voice-id", voice, manifestFor({}), always)[0]?.generated).toBe(false);
+  // Grandfathering is by text, not by cache hash: a re-cut forced by a
+  // dependency or a voice-wide setting leaves it in force.
+  it("ignores everything but the text fields", () => {
+    expect(isGrandfathered({ ...entry, seed: 7, previous_request_ids: ["x/y"] }, "Left-front.")).toBe(true);
   });
 
-  it("reports an offender whose config changed since it was generated as not generated", () => {
-    expect(
-      pauseMarkEntries("voice-id", voice, manifestFor({ [relPath]: "0000000000000000" }), always)[0]?.generated,
-    ).toBe(false);
+  it("does not grandfather an unlisted entry", () => {
+    expect(isGrandfathered(entry, undefined)).toBe(false);
   });
 
-  // The generator's own cache hit needs the file too, so a missing clip would
-  // be refused there and must not read as grandfathered here.
-  it("reports an offender whose clip is missing as not generated", () => {
-    expect(
-      pauseMarkEntries("voice-id", voice, manifestFor({ [relPath]: currentHash }), () => false)[0]?.generated,
-    ).toBe(false);
+  it("does not grandfather an edited text", () => {
+    expect(isGrandfathered({ ...entry, text: "The left-front." }, "Left-front.")).toBe(false);
+  });
+
+  it("does not grandfather a mark added to the conditioning text", () => {
+    expect(isGrandfathered({ ...entry, next_text: "right-rear" }, "Left-front.")).toBe(false);
   });
 });
 
 describe("checkPauseMarks", () => {
-  const offender = (key: string, generated = true): PauseMarkEntry => ({
-    key,
-    relPath: `voice/voice-id/${key}.mp3`,
-    text: "Left-front.",
-    marks: ["-"],
-    generated,
+  const voice = buildVoiceConfig({
+    tires: [
+      { name: "clean-01", text: "Left front." },
+      { name: "old-01", text: "Left-front." },
+      { name: "new-01", text: "Right-rear." },
+    ],
   });
 
-  it("passes a listed offender whose clip is as generated", () => {
-    expect(checkPauseMarks([offender("tires/a-01")], { tires: ["a-01"] })).toEqual({ refused: [], stale: [] });
+  it("passes a voice whose every marked entry is listed with its text", () => {
+    const voiceOk = buildVoiceConfig({ tires: voice.groups.tires.slice(0, 2) });
+
+    expect(checkPauseMarks("voice-id", voiceOk, { "tires/old-01": "Left-front." })).toEqual({
+      refused: [],
+      stale: [],
+    });
   });
 
   // The positive controls for `clip-text.test.ts`.
-  it("refuses an offender the list does not name — a new or copied line", () => {
-    expect(checkPauseMarks([offender("tires/new-01")], { tires: ["a-01"] }).refused.map((e) => e.key)).toEqual([
+  it("refuses an entry the list does not name — a new or copied line", () => {
+    expect(checkPauseMarks("voice-id", voice, { "tires/old-01": "Left-front." }).refused).toEqual([
+      { key: "tires/new-01", relPath: "voice/voice-id/tires/new-01.mp3", text: "Right-rear.", marks: ["-"] },
+    ]);
+  });
+
+  it("refuses every marked entry of a voice with no list", () => {
+    expect(checkPauseMarks("voice-id", voice, undefined).refused.map((entry) => entry.key)).toEqual([
+      "tires/old-01",
       "tires/new-01",
     ]);
   });
 
-  it("refuses an offender with no list for its voice", () => {
-    expect(checkPauseMarks([offender("tires/a-01")], undefined).refused).toHaveLength(1);
+  it("refuses a listed entry whose text was edited and still carries a mark, and calls its listing stale", () => {
+    const edited = buildVoiceConfig({ tires: [{ name: "old-01", text: "The left-front." }] });
+
+    expect(checkPauseMarks("voice-id", edited, { "tires/old-01": "Left-front." })).toMatchObject({
+      refused: [{ key: "tires/old-01" }],
+      stale: ["tires/old-01"],
+    });
   });
 
-  it("refuses a listed offender that changed since its clip was generated", () => {
-    expect(checkPauseMarks([offender("tires/a-01", false)], { tires: ["a-01"] }).refused).toHaveLength(1);
-  });
+  it("calls a listing stale once its text is fixed or its entry is gone", () => {
+    const fixed = buildVoiceConfig({ tires: [{ name: "old-01", text: "Left front." }] });
 
-  it("reports a listed entry that no longer carries a mark as stale", () => {
-    expect(checkPauseMarks([], { tires: ["a-01"] }).stale).toEqual(["tires/a-01"]);
+    expect(checkPauseMarks("voice-id", fixed, { "tires/old-01": "Left-front.", "tires/gone-01": "Gone-now." })).toEqual(
+      { refused: [], stale: ["tires/old-01", "tires/gone-01"] },
+    );
   });
 });

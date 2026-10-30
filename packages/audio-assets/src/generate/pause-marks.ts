@@ -9,13 +9,16 @@
  * car-number seam (#1127) showed conditioning text bleeding into the audio.
  *
  * The rule is for new and edited text only: the clips that carried a mark when
- * it landed are not changed. They are listed in `pause-marks.grandfathered.json`,
- * which may only shrink, and each stays allowed only while its clip is exactly
- * as generated — so none can be re-cut without its text being fixed first.
+ * it landed are not changed. `pause-marks.grandfathered.json` freezes each of
+ * them by its TEXT, not its cache hash, so a change elsewhere that re-cuts it —
+ * a dependency's new take, a voice-wide setting — still works, while an edit to
+ * its text or a new line under another name is refused. The list only shrinks.
  */
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
 import type { Entry, VoiceConfig } from "./config.ts";
-import { buildEntryLookup, entryHash } from "./config.ts";
-import { clipRelPath, type Manifest } from "./manifest.ts";
+import { clipRelPath } from "./manifest.ts";
 
 // The ASCII hyphen-minus; the soft hyphen; every Unicode hyphen and dash
 // (U+2010–U+2015, the two- and three-em dashes); the minus sign; the small and
@@ -46,63 +49,61 @@ export function describePauseMarks(marks: readonly string[]): string {
   return `text carries pause marks ${unique}: ElevenLabs reads them as a pause and may fill it with a hesitation sound. Write a period where a pause is needed (#1518).`;
 }
 
-export type PauseMarkEntry = {
-  /** `<group>/<name>`, the allow-list's key within a voice. */
-  key: string;
-  relPath: string;
-  text: string;
-  marks: string[];
-  /** True while the clip is exactly as generated — the generator's own cache hit. */
-  generated: boolean;
-};
+/** `pause-marks.grandfathered.json`: voice id → `<group>/<name>` → the entry's `text` when the rule landed. */
+export type GrandfatheredPauseMarks = Record<string, Record<string, string>>;
 
-/** Every entry of `voice` whose text fields carry a pause mark, and whether its clip is as generated. */
-export function pauseMarkEntries(
+export const GRANDFATHERED_FILE = "pause-marks.grandfathered.json";
+
+export function loadGrandfatheredPauseMarks(packageRoot: string): GrandfatheredPauseMarks {
+  return JSON.parse(readFileSync(path.join(packageRoot, GRANDFATHERED_FILE), "utf-8")) as GrandfatheredPauseMarks;
+}
+
+/**
+ * Whether `entry` may carry its marks: it is listed, its `text` is the frozen
+ * one, and its conditioning text is clean — none of the frozen entries had a
+ * mark there, so one appearing is an edit.
+ */
+export function isGrandfathered(entry: Entry, frozenText: string | undefined): boolean {
+  return (
+    frozenText === entry.text &&
+    [entry.previous_text, entry.next_text].every((text) => text === undefined || findPauseMarks(text).length === 0)
+  );
+}
+
+export type RefusedPauseMarkEntry = { key: string; relPath: string; text: string; marks: string[] };
+
+/**
+ * Hold one voice to its list. `refused` is every entry with a mark that the
+ * list does not grandfather — new, renamed, copied from another voice, or
+ * edited. `stale` is every listed key whose entry is gone or whose text no
+ * longer matches, so the list can only shrink.
+ */
+export function checkPauseMarks(
   voiceId: string,
   voice: VoiceConfig,
-  manifest: Manifest,
-  clipExists: (relPath: string) => boolean,
-): PauseMarkEntry[] {
-  const lookup = buildEntryLookup(voice);
-  const memo = new Map<string, string>();
-  const found: PauseMarkEntry[] = [];
+  grandfathered: Record<string, string> | undefined,
+): { refused: RefusedPauseMarkEntry[]; stale: string[] } {
+  const listed = grandfathered ?? {};
+  const refused: RefusedPauseMarkEntry[] = [];
+  const current = new Map<string, string>();
 
   for (const [groupName, entries] of Object.entries(voice.groups)) {
     for (const entry of entries) {
+      const key = `${groupName}/${entry.name}`;
+
+      current.set(key, entry.text);
+
       const marks = findEntryPauseMarks(entry);
 
-      if (marks.length === 0) continue;
+      if (marks.length === 0 || isGrandfathered(entry, listed[key])) continue;
 
-      const relPath = clipRelPath(voiceId, groupName, entry.name);
-      const generated =
-        manifest.entries[relPath]?.hash === entryHash(entry, groupName, voice, lookup, memo) && clipExists(relPath);
-
-      found.push({ key: `${groupName}/${entry.name}`, relPath, text: entry.text, marks, generated });
+      refused.push({ key, relPath: clipRelPath(voiceId, groupName, entry.name), text: entry.text, marks });
     }
   }
 
-  return found;
-}
-
-/** `pause-marks.grandfathered.json`: voice id → group → entry names. */
-export type GrandfatheredPauseMarks = Record<string, Record<string, string[]>>;
-
-/**
- * Hold one voice's offenders to the allow-list. `refused` is every offender the
- * list does not grandfather — new or renamed, or listed but changed since its
- * clip was generated. `stale` is every listed entry that no longer carries a
- * mark or no longer exists, so the list can only shrink.
- */
-export function checkPauseMarks(
-  offenders: readonly PauseMarkEntry[],
-  grandfathered: Record<string, string[]> | undefined,
-): { refused: PauseMarkEntry[]; stale: string[] } {
-  const listed = new Set(
-    Object.entries(grandfathered ?? {}).flatMap(([group, names]) => names.map((name) => `${group}/${name}`)),
-  );
-  const refused = offenders.filter((entry) => !listed.has(entry.key) || !entry.generated);
-  const offending = new Set(offenders.map((entry) => entry.key));
-  const stale = [...listed].filter((key) => !offending.has(key));
+  const stale = Object.entries(listed)
+    .filter(([key, text]) => current.get(key) !== text)
+    .map(([key]) => key);
 
   return { refused, stale };
 }
