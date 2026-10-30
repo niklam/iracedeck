@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   readRaceEngineerVolume: vi.fn(() => 80),
   readBackgroundVolume: vi.fn(() => 40),
   readFrameOptions: vi.fn(() => ({ beeps: true, ambience: true })),
+  playPressSound: vi.fn(),
 }));
 
 vi.mock("@iracedeck/audio-scenarios/pit-crew", () => ({
@@ -29,6 +30,9 @@ vi.mock("./audio-volume.js", () => ({
   readRaceEngineerVolume: mocks.readRaceEngineerVolume,
   readBackgroundVolume: mocks.readBackgroundVolume,
   readFrameOptions: mocks.readFrameOptions,
+}));
+vi.mock("./press-sounds.js", () => ({
+  playPressSound: mocks.playPressSound,
 }));
 vi.mock("./voice-test.js", () => ({
   playRaceEngineerVoiceTest: mocks.playRaceEngineerVoiceTest,
@@ -106,10 +110,40 @@ describe("runAudioPreview", () => {
     expect(logger.debug).toHaveBeenLastCalledWith(expect.stringContaining("on the radio"));
   });
 
+  it.each([
+    ["press-tap", "tap"],
+    ["press-long", "long"],
+  ] as const)("%s: plays the %s press sound through the player (#269)", (kind, sound) => {
+    runAudioPreview(kind, logger);
+
+    expect(mocks.playPressSound.mock.calls).toEqual([[sound]]);
+    // No bus is forced and no other test sequence starts: the player plays on
+    // the Feedback channel, which belongs to no bus.
+    expect(mocks.setBusVolume).not.toHaveBeenCalled();
+    expect(mocks.playRadarTest).not.toHaveBeenCalled();
+    expect(mocks.playBackgroundTest).not.toHaveBeenCalled();
+    expect(mocks.playRaceEngineerVoiceTest).not.toHaveBeenCalled();
+  });
+
   it("exposes the kinds and a type guard so a page-supplied string can be validated", () => {
-    expect(AUDIO_PREVIEW_KINDS).toEqual(["radar", "voice", "background"]);
-    expect(isAudioPreviewKind("voice")).toBe(true);
-    expect(isAudioPreviewKind("nope")).toBe(false);
-    expect(isAudioPreviewKind(42)).toBe(false);
+    expect(AUDIO_PREVIEW_KINDS).toEqual(["radar", "voice", "background", "press-tap", "press-long"]);
+
+    for (const kind of AUDIO_PREVIEW_KINDS) expect(isAudioPreviewKind(kind)).toBe(true);
+
+    for (const value of [
+      "nope",
+      "press",
+      "tap",
+      "long",
+      "press-",
+      "Press-Tap",
+      " press-tap",
+      "",
+      42,
+      null,
+      undefined,
+    ]) {
+      expect(isAudioPreviewKind(value)).toBe(false);
+    }
   });
 });
