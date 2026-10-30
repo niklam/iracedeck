@@ -4,7 +4,7 @@ iRacing's side of the deck layer's sim-connection seam (#1351). `@iracedeck/deck
 
 It has the same shape `@iracedeck/sim-events-iracing` has on the bus side: a second sim is a sibling `deck-<sim>` implementing the same `SimConnection`, chosen in `@iracedeck/plugin-runtime` and nowhere else. Spec: `docs/superpowers/specs/2026-10-07-issue-1351-deck-core-split-and-sim-seam.md`.
 
-**Naming:** a sim's deck-layer classes are named `Sim<Game>…` — `SimIRacingAction`, `SimIRacingConnection` here, and a future `deck-<sim>` would export `SimAssettoCorsaAction` / `SimLmuConnection` and so on. The prefix keeps the game in the name while stopping `IRacing…` from reading as an `I`-prefixed interface, which is how this repo names interfaces (`IDeckPlatformAdapter`, `ILogger`). The older `IRacingSDK`, `IRacingNative` and `IRacingHotkeyPreset` predate the rule and are left as they are.
+**Naming:** a sim's deck-layer classes are named `Sim<Game>…` — `SimIRacingAction`, `SimIRacingConnection` here, and a future `deck-<sim>` would export `SimAssettoCorsaAction` / `SimLmuConnection` and so on. The prefix keeps the game in the name while stopping `IRacing…` from reading as an `I`-prefixed interface, which is how this repo names interfaces (`IDeckPlatformAdapter`, `ILogger`). The older `IRacingSDK` and `IRacingNative` predate the rule and are left as they are.
 
 ## Package Contents
 

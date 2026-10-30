@@ -326,16 +326,23 @@ describe("ConnectionStateAwareAction", () => {
   });
 
   describe("multiple action instances", () => {
-    it("should share the same sim connection from the singleton", () => {
+    it("should read the one singleton connection live, so both follow a change made after they were built", () => {
       const action1 = new TestAction();
       const action2 = new TestAction();
-      const isConnected = vi.spyOn(sim.fake!.connection, "isConnected");
 
-      action1.callGetConnectionStatus();
-      action2.callGetConnectionStatus();
+      sim.fake!.state.connected = false;
+      expect([action1.callGetConnectionStatus(), action2.callGetConnectionStatus()]).toEqual([false, false]);
 
-      // Both should read the same singleton connection
-      expect(isConnected).toHaveBeenCalledTimes(2);
+      sim.fake!.state.connected = true;
+      expect([action1.callGetConnectionStatus(), action2.callGetConnectionStatus()]).toEqual([true, true]);
+
+      // A connection initialised after construction is the one they read.
+      _resetSimConnection();
+      const replacement = createFakeSimConnection();
+      replacement.state.connected = false;
+      initializeSimConnection(replacement.connection);
+
+      expect([action1.callGetConnectionStatus(), action2.callGetConnectionStatus()]).toEqual([false, false]);
     });
 
     it("should have independent active state tracking", () => {
@@ -520,17 +527,20 @@ describe("ConnectionStateAwareAction", () => {
       expect(sim.fake!.subscribers.has("_readiness:ctx-1")).toBe(true);
     });
 
-    it("should hand the event on to BaseAction's onWillDisappear, so the stored image is dropped", async () => {
+    it("should hand the event on to BaseAction's onWillDisappear", async () => {
       const baseOnWillDisappear = vi.spyOn(BaseAction.prototype, "onWillDisappear");
       const ev = {
         action: { id: "ctx-1", setTitle: vi.fn(), setImage: vi.fn(), isKey: vi.fn().mockReturnValue(true) },
         payload: { settings: {} },
       };
 
-      await action.onWillDisappear(ev as never);
+      try {
+        await action.onWillDisappear(ev as never);
 
-      expect(baseOnWillDisappear).toHaveBeenCalledWith(ev);
-      baseOnWillDisappear.mockRestore();
+        expect(baseOnWillDisappear).toHaveBeenCalledWith(ev);
+      } finally {
+        baseOnWillDisappear.mockRestore();
+      }
     });
   });
 });
