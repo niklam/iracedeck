@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -92,6 +92,13 @@ const MODELLED_TURBO_VERSION = "2.11.9";
 // plugins' builds), and a test holds that, so a check on a task outside it
 // fails rather than going unverified.
 const DRY_RUN_TASKS = ["build", "typecheck"];
+
+// How long the dry run may take. This is enforced by `spawnSync`, NOT by a
+// Vitest timeout: the dry run runs while the file is collected, and Vitest
+// cannot interrupt a synchronous `spawnSync`, so a hung turbo would block the
+// worker until the CI job limit. Generous against the <1 s it takes (measured
+// 2026-10-30, turbo 2.11.9).
+const DRY_RUN_TIMEOUT_MS = 60_000;
 
 // Files turbo puts in the global hash with no `globalDependencies` glob naming
 // them, and why. The model leaves them out: no build reads them as input, and
@@ -610,10 +617,12 @@ function sample(list) {
  * hashes itself, in both directions; the config entry it resolves; its direct
  * dependency edges. Then the task graph, and the global hash's files.
  *
- * The files each task is asked about are `onDisk` (git's tracked files that
- * exist, and its untracked files that are not ignored) and every file turbo
- * lists for that task, so a gitignored file on disk is asked about where turbo
- * hashes it, and a deleted one nowhere. Turbo hashing a file the model says it does not is the
+ * The files each task is asked about are `onDisk` (onDiskSnapshot: tracked
+ * and present, untracked and not ignored, and gitignored but named by an
+ * explicit glob — in practice the stable files of two snapshots) and every
+ * file turbo lists for that task, so a deleted file is asked about nowhere and
+ * a gitignored one that no explicit glob names only where turbo hashes it.
+ * Turbo hashing a file the model says it does not is the
  * documented strictness when the file sits in a dot-directory an explicit glob
  * would otherwise match, and a violation otherwise; the model hashing a file
  * turbo does not is always one, since checks A–E would then pass on a file
@@ -831,6 +840,75 @@ function trackedFiles() {
   return result.stdout.split("\0").filter(Boolean);
 }
 
+/**
+ * The repo-relative globs that hash files whether git ignores them or not:
+ * every positive, explicit `inputs` entry of every task (a generic task's
+ * against each package) and every `globalDependencies` glob. Negations only
+ * take files away, and `$TURBO_DEFAULT$` skips ignored files.
+ */
+function explicitInputGlobs(turbo, workspace) {
+  const globs = new Set(turbo.globalDependencies ?? []);
+  const packageDirs = [...workspace].filter(([pkg]) => pkg !== ROOT).map(([, { dir }]) => dir);
+  for (const [key, config] of Object.entries(turbo.tasks ?? {})) {
+    const at = key.lastIndexOf("#");
+    const dirs = at < 0 ? packageDirs : [workspace.get(key.slice(0, at))?.dir ?? ""];
+    for (const glob of config.inputs ?? []) {
+      if (glob.startsWith("!") || glob === "$TURBO_DEFAULT$") continue;
+      for (const dir of dirs) {
+        globs.add(glob.startsWith("$TURBO_ROOT$/") ? glob.slice("$TURBO_ROOT$/".length) : path.posix.join(dir, glob));
+      }
+    }
+  }
+  return [...globs].sort();
+}
+
+/**
+ * The gitignored regular files on disk that `globs` may match, by git's own
+ * pathspec globbing, whose `*` and `**` match dotfiles too — a superset of what
+ * the model's stricter matcher accepts, which then decides. A symlink is left
+ * out: pnpm's `node_modules/<dep>` links are one, turbo hashes none of them,
+ * and the model has no business with them.
+ */
+function ignoredFilesMatching(globs) {
+  if (globs.length === 0) return [];
+  const result = spawnSync(
+    "git",
+    ["ls-files", "--others", "--ignored", "--exclude-standard", "-z", "--", ...globs.map((g) => `:(glob)${g}`)],
+    { cwd: repoRoot, encoding: "utf-8", maxBuffer: 64 * 1024 * 1024 },
+  );
+  if (result.status !== 0) throw new Error(`git ls-files --ignored failed: ${result.stderr}`);
+  return result.stdout.split("\0").filter((f) => {
+    if (!f) return false;
+    try {
+      return lstatSync(path.join(repoRoot, f)).isFile();
+    } catch {
+      return false;
+    }
+  });
+}
+
+/**
+ * The files on disk the cross-check asks every task about, at one moment:
+ * tracked and present, untracked and not ignored (turbo's default inputs hash
+ * both), and gitignored but matched by an explicit glob (which hashes them).
+ */
+function onDiskSnapshot(tracked, explicitGlobs) {
+  const deleted = deletedTrackedFiles();
+  return [...tracked.filter((f) => !deleted.has(f)), ...untrackedFiles(), ...ignoredFilesMatching(explicitGlobs)];
+}
+
+/**
+ * The files in both of two snapshots, taken either side of the dry run. A file
+ * another process creates or deletes meanwhile — `typecheck-script-coverage`
+ * plants a website test file for seconds in a full run — is in one only, and
+ * turbo may or may not have seen it, so it is asked about only where turbo
+ * lists it rather than reported as a model error.
+ */
+function stableOnDisk(before, after) {
+  const later = new Set(after);
+  return [...new Set(before)].filter((f) => later.has(f));
+}
+
 /** The tracked files a working tree has deleted: turbo hashes none of them, so the cross-check asks about none. */
 function deletedTrackedFiles() {
   const result = spawnSync("git", ["ls-files", "--deleted", "-z"], { cwd: repoRoot, encoding: "utf-8" });
@@ -877,6 +955,7 @@ function runTurboDryRun(tasks) {
       encoding: "utf-8",
       env: { ...env, TURBO_TELEMETRY_DISABLED: "1", DO_NOT_TRACK: "1" },
       maxBuffer: 256 * 1024 * 1024,
+      timeout: DRY_RUN_TIMEOUT_MS,
     });
     return { installedVersion, ...readDryRun(tasks, result) };
   } catch (error) {
@@ -884,11 +963,23 @@ function runTurboDryRun(tasks) {
   }
 }
 
-/** The parsed dry run from a `spawnSync` result, as `{ dry }`, or as `{ error }` with turbo's own stderr. */
+/**
+ * The parsed dry run from a `spawnSync` result, as `{ dry }`, or as `{ error }`
+ * with turbo's own stderr. A spawn error is "could not start" only when no
+ * process ever ran (no pid); one that ran and was cut off says how: killed at
+ * DRY_RUN_TIMEOUT_MS, or the error's code (ENOBUFS: its output outgrew
+ * `maxBuffer`).
+ */
 function readDryRun(tasks, result) {
   const command = `turbo run ${tasks.join(" ")} --dry=json`;
   const stderr = result.stderr?.trim() || "(no stderr)";
-  if (result.error) return { error: `${command} could not start: ${result.error.message}` };
+  if (result.error && !result.pid) return { error: `${command} could not start: ${result.error.message}` };
+  if (result.error?.code === "ETIMEDOUT") {
+    return { error: `${command} was killed after ${DRY_RUN_TIMEOUT_MS} ms without finishing: ${stderr}` };
+  }
+  if (result.error) {
+    return { error: `${command} failed after it started (${result.error.code ?? result.error.message}): ${stderr}` };
+  }
   if (result.status !== 0) {
     return { error: `${command} exited ${result.status ?? `on ${result.signal}`}: ${stderr}` };
   }
@@ -1219,11 +1310,12 @@ const copiedFiles = [
 const GENERATED_CHANGELOG = "packages/iracing-actions/src/actions/data/changelog.json";
 // Turbo's own answer, for the cross-check.
 // A failed run is held in `turboRun.error` for the cross-check's tests to report.
+// The files on disk are taken either side of it, and only those in both are
+// asked about everywhere (stableOnDisk).
+const explicitGlobs = explicitInputGlobs(turbo, workspace);
+const onDiskBefore = onDiskSnapshot(tracked, explicitGlobs);
 const turboRun = runTurboDryRun(DRY_RUN_TASKS);
-const deletedTracked = deletedTrackedFiles();
-const untracked = untrackedFiles();
-// Every file on disk turbo's default inputs can see: tracked and present, or untracked and not ignored.
-const onDisk = [...tracked.filter((f) => !deletedTracked.has(f)), ...untracked];
+const onDisk = stableOnDisk(onDiskBefore, onDiskSnapshot(tracked, explicitGlobs));
 
 // One batched gitignore lookup for every path the checks will ask about.
 const ignore = createIgnoreLookup(tracked);
@@ -1238,7 +1330,7 @@ ignore.prime([
   ...copiedFiles,
   GENERATED_CHANGELOG,
   ...(turboRun.dry?.tasks ?? []).flatMap(dryRunInputFiles),
-  ...untracked,
+  ...onDisk,
 ]);
 const generatedInScript = new Map();
 for (const { file, tasks } of GENERATED_IN_SCRIPT) {
@@ -1408,7 +1500,17 @@ describe("turbo hashes every file a cached task reads (#1491)", () => {
         error: "turbo run build typecheck --dry=json exited 1: x Could not find task `nope`",
       });
       expect(() => requireDryRun(failed)).toThrow("exited 1: x Could not find task `nope`");
-      expect(readDryRun(tasks, { error: new Error("spawn ENOENT") }).error).toContain("could not start: spawn ENOENT");
+      const spawnError = (code) => Object.assign(new Error(`spawnSync node ${code}`), { code });
+      expect(readDryRun(tasks, { pid: 0, status: null, error: spawnError("ENOENT") }).error).toBe(
+        "turbo run build typecheck --dry=json could not start: spawnSync node ENOENT",
+      );
+      const killed = { pid: 4242, status: null, signal: "SIGTERM", stderr: "half a plan\n" };
+      expect(readDryRun(tasks, { ...killed, error: spawnError("ETIMEDOUT") }).error).toBe(
+        `turbo run build typecheck --dry=json was killed after ${DRY_RUN_TIMEOUT_MS} ms without finishing: half a plan`,
+      );
+      expect(readDryRun(tasks, { ...killed, error: spawnError("ENOBUFS") }).error).toBe(
+        "turbo run build typecheck --dry=json failed after it started (ENOBUFS): half a plan",
+      );
       expect(readDryRun(tasks, { status: null, signal: "SIGKILL", stderr: "" }).error).toContain(
         "exited on SIGKILL: (no stderr)",
       );
@@ -1518,6 +1620,64 @@ describe("turbo hashes every file a cached task reads (#1491)", () => {
       const violations = compare(requireDryRun(), { files: [...onDisk, probe], ...onlyTasks(id) });
       expect(violations).toHaveLength(1);
       expect(violations[0]).toContain(`${id}: the model says the task hashes ${probe}, but turbo's dry run`);
+    });
+
+    it("positive control: asks about no file another process created or deleted while turbo ran", () => {
+      const id = "@iracedeck/logger#build";
+      const created = "packages/logger/__turbo_inputs_created_meanwhile__.txt";
+      const deleted = "packages/logger/__turbo_inputs_deleted_meanwhile__.txt";
+      expect(stableOnDisk(["a", "b", "b", deleted], ["b", "c", created])).toEqual(["b"]);
+      // Either file alone, in a snapshot the comparison trusted, would be a model error.
+      expect(compare(requireDryRun(), { files: [...onDisk, created], ...onlyTasks(id) })).toHaveLength(1);
+      const files = stableOnDisk([...onDisk, deleted], [...onDisk, created]);
+      expect(files).toEqual([...new Set(onDisk)]);
+      expect(compare(requireDryRun(), { files, ...onlyTasks(id) })).toEqual([]);
+      // A file turbo lists is still asked about, whatever the snapshots say.
+      const listed = doctored((dry) => {
+        dryTaskOf(dry, id).inputs["__turbo_inputs_created_meanwhile__.txt"] = "0";
+      });
+      expect(compare(listed, { files, ...onlyTasks(id) })).toEqual([]);
+      const listedOutside = doctored((dry) => {
+        dryTaskOf(dry, id).inputs["../../__turbo_inputs_created_meanwhile__.txt"] = "0";
+      });
+      expect(compare(listedOutside, { files, ...onlyTasks(id) })).toEqual([
+        `${id}: turbo hashes __turbo_inputs_created_meanwhile__.txt, which the model says the task does not, and ` +
+          `not because of the documented dot-directory strictness: find out why turbo hashes it — ${fixModel}`,
+      ]);
+    });
+
+    it("asks about the gitignored files an explicit glob names", () => {
+      expect(explicitGlobs).toEqual(
+        expect.arrayContaining(["feature-flags.local.json", "dev.local.json", "tsconfig.base.json"]),
+      );
+      expect(explicitGlobs).toContain("packages/audio-assets/sfx/**");
+      expect(explicitGlobs.some((g) => g.includes("$TURBO_") || g.startsWith("!"))).toBe(false);
+      // They reach the candidates: an installed tree always has some, the
+      // `node_modules/.bin/` shims the website's `packages/icons/**` names.
+      const ignoredOnDisk = onDisk.filter((f) => repo.isIgnored(f));
+      expect(ignoredOnDisk.length, "no gitignored file on disk reached the cross-check's candidates").toBeGreaterThan(
+        0,
+      );
+      expect(ignoredFilesMatching(["packages/icons/**"]).every((f) => repo.isIgnored(f))).toBe(true);
+      // pnpm's dependency links are symlinks, not files turbo hashes.
+      expect(ignoredOnDisk.filter((f) => /\/node_modules\/(typescript|vitest)$/.test(f))).toEqual([]);
+    });
+
+    it("positive control: reports a gitignored file an explicit glob hashes when turbo does not list it", () => {
+      const id = "@iracedeck/iracing-plugin-mirabox#build";
+      const file = "feature-flags.local.json";
+      expect(repo.isIgnored(file)).toBe(true);
+      const violations = compare(
+        doctored((dry) => {
+          delete dryTaskOf(dry, id).inputs[`../../${file}`];
+        }),
+        // Present in the snapshots whether or not this tree has the file.
+        { files: [...new Set([...onDisk, file])], ...onlyTasks(id) },
+      );
+      expect(violations).toEqual([
+        `${id}: the model says the task hashes ${file}, but turbo's dry run does not list it, so checks A–E pass ` +
+          `on files turbo never hashes: ${fixModel} (inputsCover)`,
+      ]);
     });
 
     it("positive control: reports a file turbo hashes that the model does not", () => {
