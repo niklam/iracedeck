@@ -10,7 +10,6 @@ export {
   parseSvgViewBox,
   renderIconTemplate,
   resolveIconColors,
-  validateIconTemplate,
   type ColorSlots,
   type GenerateIconTextOptions,
   type IconBorderDefaults,

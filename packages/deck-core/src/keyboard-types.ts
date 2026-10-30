@@ -86,14 +86,6 @@ export interface KeyCombination {
   code?: string;
 }
 
-export interface IRacingHotkeyPreset {
-  id: string;
-  name: string;
-  description: string;
-  defaultKey: KeyCombination;
-  category: "blackbox" | "controls" | "camera" | "misc";
-}
-
 /** All valid keyboard keys as array (for Property Inspector dropdowns) */
 export const KEYBOARD_KEYS: KeyboardKey[] = [
   "a",

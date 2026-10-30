@@ -248,7 +248,6 @@ vi.mock("@iracedeck/deck-core", () => ({
     async onDidReceiveSettings(_ev: unknown): Promise<void> {}
   },
   getClipboard: vi.fn(() => ({ setClipboardText: mockSetClipboardText })),
-  getDeviceSpec: vi.fn(() => ({ grid: [8, 4] as const })),
   requestProfileSwitch: vi.fn(async () => {}),
   getKeyboard: vi.fn(() => ({ sendKeyCombination: mockSendKeyCombination })),
   generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
