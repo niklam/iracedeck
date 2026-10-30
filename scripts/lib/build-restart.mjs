@@ -56,17 +56,24 @@ export function processListScript(image) {
 /**
  * PowerShell's stderr as text. What the script's `catch` cannot reach — a
  * parse error, a failure before the script runs — still arrives as CLIXML, so
- * its error strings are pulled out and their `_x000D__x000A_` escapes undone.
+ * its error strings are pulled out, unescaped as XML, and their
+ * `_x000D__x000A_` escapes undone.
  */
 export function readableStderr(stderr) {
   const text = `${stderr ?? ""}`.trim();
   if (!text.startsWith("#< CLIXML")) return text;
 
   return [...text.matchAll(/<S S="Error">([\s\S]*?)<\/S>/g)]
-    .map(([, line]) => line.replace(/_x([0-9A-F]{4})_/g, (_m, hex) => String.fromCharCode(parseInt(hex, 16))))
+    .map(([, line]) =>
+      line
+        .replace(/&(lt|gt|quot|apos|amp);/g, (_m, name) => XML_ENTITIES[name])
+        .replace(/_x([0-9A-F]{4})_/g, (_m, hex) => String.fromCharCode(parseInt(hex, 16))),
+    )
     .join("")
     .trim();
 }
+
+const XML_ENTITIES = { lt: "<", gt: ">", quot: '"', apos: "'", amp: "&" };
 
 /**
  * `-EncodedCommand` (base64 of UTF-16LE) rather than `-Command`, so the

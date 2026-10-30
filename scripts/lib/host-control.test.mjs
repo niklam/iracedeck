@@ -119,4 +119,13 @@ describe("startHost", () => {
 
     expect(spawn.mock.calls[0][2]).not.toHaveProperty("windowsHide");
   });
+
+  it("starts the host in its own folder, never the checkout the command ran in", () => {
+    const child = fakeChild();
+    const spawn = vi.fn(() => child);
+
+    startHost(HOST, { appPath: APP, spawn, env: {}, platform: "win32", log: fakeLog() });
+
+    expect(spawn.mock.calls[0][2]).toHaveProperty("cwd", "C:\\Program Files (x86)\\Ulanzi Studio");
+  });
 });

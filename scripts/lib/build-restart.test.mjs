@@ -116,6 +116,13 @@ describe("readableStderr", () => {
       "At line:1 char:226\r\nThe Try statement is missing its Catch or Finally block.",
     );
   });
+
+  it("undoes the XML escaping as well", () => {
+    const clixml =
+      '#< CLIXML\r\n<Objs><S S="Error">+ ... &lt;a&gt; &amp;&amp; &quot;b&quot; &apos;c&apos;_x000D__x000A_</S></Objs>';
+
+    expect(readableStderr(clixml)).toBe(`+ ... <a> && "b" 'c'`);
+  });
 });
 
 describe("parseProcessList", () => {
@@ -298,8 +305,9 @@ describe("buildWithRestart", () => {
 
 // The positive control the injected lister cannot give: the real PowerShell
 // command, on the real machine, finds this test's own process. Read-only — it
-// lists processes and touches none.
-describe.runIf(process.platform === "win32")("findRunning against the real system", () => {
+// lists processes and touches none. A cold PowerShell and WMI start on a busy
+// machine can take seconds, hence the timeout above vitest's 5 s default.
+describe.runIf(process.platform === "win32")("findRunning against the real system", { timeout: 30_000 }, () => {
   it("finds the running node.exe processes, this one among them, with their paths", () => {
     const found = findRunning("node.exe", { spawnSync: realSpawnSync });
 

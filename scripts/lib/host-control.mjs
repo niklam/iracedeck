@@ -115,11 +115,16 @@ export function startHost(
  * the inherited nCmdShow then comes up invisible while still running, and the
  * next start is refused as a second instance.
  *
+ * `cwd` is the executable's own folder. Inherited, it would be the checkout the
+ * command ran in, and Windows will not delete a folder that is a running
+ * process's current directory: `git worktree remove` would then fail for as
+ * long as the host runs.
+ *
  * @returns {Promise<number>} 0 once the process has spawned, 1 when it could not.
  */
 export function launchApp(appPath, { spawn, log = console } = {}) {
   return new Promise((resolve) => {
-    const child = spawn(appPath, [], { detached: true, stdio: "ignore" });
+    const child = spawn(appPath, [], { cwd: win32.dirname(appPath), detached: true, stdio: "ignore" });
 
     child.on("error", (error) => {
       log.error(`Error: could not start ${appPath}\n  ${error.message}`);

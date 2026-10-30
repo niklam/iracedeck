@@ -16,10 +16,20 @@ import { spawnSyncShim } from "./lib/spawn-shim.mjs";
 // line saying whether Stream Deck was restarted.
 process.exitCode = await buildWithRestart({
   build: () => {
-    const result = spawnSyncShim("turbo", ["run", "build"], { stdio: "inherit" });
-    if (result.error) throw result.error;
+    // Ctrl+C reaches this process as well as turbo. Without a listener Node
+    // exits at once, skipping the restart, and Stream Deck stays stopped with
+    // nothing said. A listener holds the signal until `spawnSync` returns, so
+    // the interrupted build ends as a failed one and the app is started again.
+    const holdInterrupt = () => {};
+    process.on("SIGINT", holdInterrupt);
+    try {
+      const result = spawnSyncShim("turbo", ["run", "build"], { stdio: "inherit" });
+      if (result.error) throw result.error;
 
-    return result.status ?? 1;
+      return result.status ?? 1;
+    } finally {
+      process.off("SIGINT", holdInterrupt);
+    }
   },
   spawnSync,
   spawn,
