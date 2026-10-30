@@ -22,7 +22,6 @@
     "@iracedeck/audio-scenarios": "workspace:*",
     "@iracedeck/callout-settings": "workspace:*",
     "@iracedeck/event-bus": "workspace:*",
-    "@iracedeck/iracing-sdk": "workspace:*",
     "@iracedeck/logger": "workspace:*",
     "@iracedeck/settings": "workspace:*",
     "@iracedeck/sim-events-iracing": "workspace:*"

@@ -9,6 +9,8 @@
  * telemetry through `getLatestTelemetry()` below. The Architecture page's
  * "Seams & where the abstraction leaks" lists them.
  */
+/** What `getLatestTelemetry()` returns, so a consumer reaches the SDK's telemetry shape through the translator (#1378). */
+export type { TelemetryData } from "@iracedeck/iracing-sdk";
 export {
   _resetSimEventsIracing,
   getCautionEpisode,

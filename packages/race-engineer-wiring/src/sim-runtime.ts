@@ -19,7 +19,6 @@ import type {
   RaceStartConditions,
   SessionStartConditions,
 } from "@iracedeck/event-bus";
-import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import {
   type CautionEpisode,
   type CautionGap,
@@ -52,6 +51,7 @@ import {
   type OvertakeTelemetryGate,
   type PaceLineup,
   type RollingStartFormation,
+  type TelemetryData,
   type TrackDirection,
 } from "@iracedeck/sim-events-iracing";
 
