@@ -9,7 +9,7 @@ The scripts live in `scripts/claude-hooks/` — Node, because `jq` is not instal
 | Event | Matcher | Script | Does |
 | --- | --- | --- | --- |
 | SessionStart | startup, resume | `session-start.mjs` | Prints the worktrees with dirty state, where each deck host's plugin link points, whether `origin/master` is behind the remote, and any running watchers. Replaces four "verify before you act" rules with one report. |
-| PreToolUse | Bash | `pre-bash.mjs` → `rules-bash.mjs` | The command guards below. |
+| PreToolUse | Bash, PowerShell | `pre-bash.mjs` → `rules-bash.mjs` | The command guards below; a PowerShell command skips the bash-syntax traps (pipefail, `jq`, heredoc, `IRACEDECK_MOCK=0`, MSYS). |
 | PreToolUse | Skill, Agent, AskUserQuestion, Edit, Write | `pre-tools.mjs` → `rules-tools.mjs` | `/code-review` must name a level, target an `ir-<issue>` tree and never carry `--fix`; an Agent spawn must choose its `model` (`fork` exempt) and never `isolation: "worktree"`; AskUserQuestion options name the actor as "Claude …" / "You …", never "I …"; an Edit's `new_string` or a Write's `content` carries no raw control byte other than tab, LF and CR (#1103). |
 | PostToolUse | Edit, Write | `post-edit.mjs` → `rules-post.mjs` | Runs the generator whose source was edited (changelog or a changelog fragment, getting-started page, icon SVGs, comms catalog, Elgato manifest profiles, voice configs) and reports what changed — for a fragment that run is its validation at authoring time, since composing is what checks it; injects reminders for `global-settings.ts`, the catalog / bundled script, and rule files. |
 | PostToolUse | Bash | `post-bash.mjs` | After `gh pr merge`: moves the closing issues' Roadmap cards to Testing and lists the four post-merge CI runs. After `gh issue create`: adds the card to the board in Backlog. After `git worktree add ../ir-<n>`: moves the card to In progress. After `sed -i`: prints `git diff --stat`. |
@@ -32,7 +32,7 @@ A **deny** refuses the call and tells the model why. An **ask** forces the permi
 | `git commit` that would record the Elgato `manifest.json` with a `Debug` key in its `Nodejs` block | deny, naming `pnpm debug:plugin off` | the local inspector switch never ships (#1338) |
 | `git worktree add` anywhere but a sibling of the main checkout (inside it, or nested in another worktree), not named `ir-<issue>` or `ir-integration`, or from a stale `origin/master` | deny | sibling worktrees; verify the base commit |
 | `git worktree remove` while a deck host's plugin link points into that tree | deny | never relink on your own — leave the link and the tree, and tell the maintainer |
-| a restart, relink or watch script, or `integration-build.mjs`; a `pnpm build`/`install` in a deck-linked tree | ask | nothing touches a linked tree without Niklas's go (#1520) |
+| a restart, relink or watch script, or `integration-build.mjs`; a build or install (pnpm, npm, turbo) in a deck-linked tree | ask | nothing touches a linked tree without Niklas's go (#1520) |
 | `gh issue create --milestone/--assignee` | deny | both are set when implementation starts |
 | `updateProjectV2Field` | deny | rewriting the Status options wipes every card's lane |
 | `--fix` on a code-review invocation | deny | report only |
