@@ -212,7 +212,6 @@ export {
   resolveReplayWalkAnchor,
   resolveReplayWalkStart,
   type ReplayWalkStart,
-  type ReplayWalkStep,
   walkRecordedEntries,
   walkRecordedIndex,
 } from "./replay-record-walk.js";

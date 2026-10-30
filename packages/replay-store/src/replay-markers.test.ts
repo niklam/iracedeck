@@ -8,7 +8,6 @@ import {
   MARKER_NEXT_MIN_AHEAD_FRAMES,
   MARKER_PREVIOUS_MIN_BEHIND_FRAMES,
   nextMarker,
-  normalizeMarkers,
   partitionMarkers,
   previousMarker,
   type ReplayMarker,
@@ -28,24 +27,22 @@ describe("replay markers (#1162)", () => {
     expect(MARKER_PREVIOUS_MIN_BEHIND_FRAMES).toBe(120);
   });
 
-  describe("normalizeMarkers", () => {
+  describe("partitionMarkers", () => {
     it("orders a loaded section by frame and drops entries that are not markers", () => {
       const raw = [marker(500), { frame: "x" }, null, marker(100), { frame: 300, sessionNum: 1 }, marker(200)];
 
-      expect(normalizeMarkers(raw).map((m) => m.frame)).toEqual([100, 200, 500]);
+      expect(partitionMarkers(raw).markers.map((m) => m.frame)).toEqual([100, 200, 500]);
     });
 
     it("keeps a field on a marker that this build does not know", () => {
-      expect(normalizeMarkers([{ ...marker(5), label: "lift" }])).toEqual([{ ...marker(5), label: "lift" }]);
+      expect(partitionMarkers([{ ...marker(5), label: "lift" }]).markers).toEqual([{ ...marker(5), label: "lift" }]);
     });
 
     it("reads anything that is not an array as no markers", () => {
-      expect(normalizeMarkers(undefined)).toEqual([]);
-      expect(normalizeMarkers({ frame: 1 })).toEqual([]);
+      expect(partitionMarkers(undefined).markers).toEqual([]);
+      expect(partitionMarkers({ frame: 1 }).markers).toEqual([]);
     });
-  });
 
-  describe("partitionMarkers", () => {
     it("keeps the entries it cannot read aside, verbatim and in file order, so the store can re-emit them", () => {
       const span = { kind: "span", frames: [1, 2] };
       const raw = [marker(500), span, null, marker(100), { frame: 300, sessionNum: 1 }];

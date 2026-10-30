@@ -44,12 +44,6 @@ import { readReplayPosition } from "./replay-command-gate.js";
 /** The two ways a walk goes: forward (Next, a clockwise turn) or back (Previous, counter-clockwise). */
 export type ReplayWalkDirection = "next" | "previous";
 
-/** Where a walk ended: the entry's frame, and how many entries it moved (at least 1). */
-export interface ReplayWalkStep {
-  readonly frame: number;
-  readonly steps: number;
-}
-
 /**
  * The frame a walk is measured from: the replay's one pending target
  * (`replay-position-state.ts`, #1430) while it stands, else
@@ -294,24 +288,4 @@ export function walkRecordedEntries<T extends RecordedEntry>(
   const entry = entries[index];
 
   return entry === undefined ? { hit: false, reason: "nothing that way" } : { hit: true, entry, index, steps: taken };
-}
-
-/**
- * Steps `steps` entries through the frame-ordered frames `frames` from
- * `anchor`, or null on a miss: {@link walkRecordedEntries} over bare frames.
- */
-export function stepRecordedFrames(
-  frames: readonly number[],
-  anchor: number,
-  direction: ReplayWalkDirection,
-  steps: number,
-): ReplayWalkStep | null {
-  const walked = walkRecordedEntries(
-    frames.map((frame) => ({ frame })),
-    anchor,
-    direction,
-    steps,
-  );
-
-  return walked.hit ? { frame: walked.entry.frame, steps: walked.steps } : null;
 }
