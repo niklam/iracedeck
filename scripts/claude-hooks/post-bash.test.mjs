@@ -267,6 +267,7 @@ describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", () => {
       "gh pr merge https://github.com/other/repo/pull/5 --squash",
       "GH_REPO=other/repo gh pr merge 5 --squash",
       "export GH_REPO=other/repo && gh pr merge 5 --squash",
+      "GH_REPO=other/repo; export GH_REPO; gh pr merge 5 --squash",
     ]) {
       // Without gh on PATH a read-back would say "could not read the PR back".
       const note = fire(command, { withoutGh: true });
@@ -275,9 +276,11 @@ describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", () => {
     expect(fire("gh pr merge 5 --repo ghe.example.com/niklam/iracedeck --squash", { withoutGh: true })).toMatch(
       /ran in ghe\.example\.com\/niklam\/iracedeck, not niklam\/iracedeck/,
     );
-    expect(
-      fire("$env:GH_REPO = 'other/repo'; gh pr merge 5 --squash", { withoutGh: true, tool: "PowerShell" }),
-    ).toMatch(/ran in other\/repo/);
+    for (const command of [
+      "$env:GH_REPO = 'other/repo'; gh pr merge 5 --squash",
+      "$env:gh_repo = 'other/repo'; gh pr merge 5 --squash",
+    ])
+      expect(fire(command, { withoutGh: true, tool: "PowerShell" }), command).toMatch(/ran in other\/repo/);
   });
 
   it("still reads an iRaceDeck merge back, however it names the repository", () => {

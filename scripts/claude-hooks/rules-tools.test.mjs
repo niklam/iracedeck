@@ -201,6 +201,16 @@ describe("post rules", () => {
       expect(assignedGhRepo(`GH_REPO="a/b"'c' gh pr merge 5`)).toBeNull();
       expect(assignedGhRepo("GH_REPO=a/b; ")).toBeUndefined();
       expect(assignedGhRepo("GH_REPO=a/b")).toBe("a/b");
+      // A bare export exports what came before it; PowerShell's env names ignore case (CodeRabbit CLI).
+      expect(assignedGhRepo("GH_REPO=a/b; export GH_REPO; ")).toBe("a/b");
+      expect(assignedGhRepo("GH_REPO=a/b; declare -x GH_REPO; ")).toBe("a/b");
+      expect(assignedGhRepo("declare -x GH_REPO=a/b; ")).toBe("a/b");
+      expect(assignedGhRepo("$env:gh_repo = 'a/b'; ")).toBe("a/b");
+      expect(assignedGhRepo("$Env:Gh_Repo='a/b'; ")).toBe("a/b");
+      // An export whose value the hook cannot place fails closed.
+      expect(assignedGhRepo("export GH_REPO; ")).toBeNull();
+      // A bash name is case-sensitive: gh_repo is another variable.
+      expect(assignedGhRepo("export gh_repo=a/b; ")).toBeUndefined();
       expect(assignedGhRepo(`GH_REPO="$R" gh pr merge 5`)).toBeNull();
       expect(assignedGhRepo("gh pr merge 5")).toBeUndefined();
       expect(assignedGhRepo("export GH_REPO=a/b; export GH_REPO=c/d; ")).toBe("c/d");

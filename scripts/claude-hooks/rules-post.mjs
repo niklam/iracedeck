@@ -182,21 +182,30 @@ export function pickCreated(found, ageOf) {
  * assignment inside a quoted body is not one. Counted are a prefix of the
  * command's own simple command (`GH_REPO=o/r gh pr merge 7`, `env GH_REPO=…`)
  * and an environment write earlier in the chain (`export GH_REPO=…`,
- * PowerShell's `$env:GH_REPO = …`); a prefix of another command or an
- * unexported assignment never reaches it. The value of the last one that
- * does, read from the raw text: `null` when it is not a plain value,
+ * `declare -x` / `typeset -x`, PowerShell's `$env:GH_REPO = …` in any case);
+ * an assignment ahead of a bare `export GH_REPO` is exported by it. A prefix
+ * of another command or an assignment never exported does not reach it. The
+ * value of the last one that does, read from the raw text: `null` when it is
+ * not a plain value, or when an export names a value the hook cannot place;
  * `undefined` when none reaches the command.
  */
 export function assignedGhRepo(command, masked = command) {
   const raw = String(command ?? "");
   const text = String(masked ?? "");
   const ownStart = Math.max(...[";", "&", "|", "\n", "(", ")"].map((c) => text.lastIndexOf(c))) + 1;
-  const assignments = [...text.matchAll(/(\bexport\s+|\$[Ee][Nn][Vv]:)?\bGH_REPO\s*=\s*/g)].filter(
-    (m) => m[1] || m.index >= ownStart,
-  );
-  if (!assignments.length) return undefined;
-  const last = assignments.at(-1);
-  return plainValueAt(raw, last.index + last[0].length);
+  const bareExports = [...text.matchAll(/\b(?:export|(?:declare|typeset)\s+-x)\s+GH_REPO\b(?!\s*=)/g)];
+  const exportedUpTo = bareExports.length ? bareExports.at(-1).index : -1;
+  // Keyed by where the value starts, so `$env:GH_REPO=` matched by both forms counts once.
+  const assignments = new Map();
+  for (const m of text.matchAll(/(\bexport\s+|\b(?:declare|typeset)\s+-x\s+)?\bGH_REPO\s*=\s*/g))
+    assignments.set(m.index + m[0].length, { at: m.index, exported: !!m[1] });
+  for (const m of text.matchAll(/\$env:gh_repo\s*=\s*/gi))
+    assignments.set(m.index + m[0].length, { at: m.index, exported: true });
+  const reaching = [...assignments]
+    .filter(([, a]) => a.exported || a.at >= ownStart || a.at < exportedUpTo)
+    .sort(([x], [y]) => x - y);
+  if (!reaching.length) return exportedUpTo >= 0 ? null : undefined;
+  return plainValueAt(raw, reaching.at(-1)[0]);
 }
 
 /**
