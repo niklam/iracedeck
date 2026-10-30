@@ -6,11 +6,14 @@ import {
   getGlobalBorderSettings,
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
+  type IDeckDialDownEvent,
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
   type IDeckKeyUpEvent,
+  type IDeckTouchTapEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
+  type PressShape,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
@@ -122,6 +125,18 @@ function isSpotterVolumeControl(control: SpotterControl): control is SpotterVolu
 /**
  * @internal Exported for testing
  *
+ * The shape of a spotter key press, for the press sounds (#269): Spotter
+ * Louder / Quieter make none, since their #1455 tick is the press sound (a
+ * repeating style's hold changes nothing to bleep for); every other control
+ * taps its binding once on key-down.
+ */
+export function spotterPressShape(control: SpotterControl): PressShape {
+  return isSpotterVolumeControl(control) ? { kind: "none" } : { kind: "tap" };
+}
+
+/**
+ * @internal Exported for testing
+ *
  * The volume key a spotter control is, for its paired +/− style (#1453), or
  * null for a control that is not a volume key. iRacing reports no spotter
  * volume, so the key has no level: a value style draws its no-value form.
@@ -189,6 +204,16 @@ export class AiSpotterControls extends ConnectionStateAwareAction<AiSpotterContr
     this.repeat.clear(ev.action.id);
     this.setActiveBinding(SPOTTER_GLOBAL_KEYS[settings.control]);
     await this.updateDisplay(ev, settings);
+  }
+
+  /** The press sounds' shape of this press (#269); see {@link spotterPressShape}. */
+  pressShape(
+    ev:
+      | IDeckKeyDownEvent<AiSpotterControlsSettings>
+      | IDeckDialDownEvent<AiSpotterControlsSettings>
+      | IDeckTouchTapEvent<AiSpotterControlsSettings>,
+  ): PressShape {
+    return spotterPressShape(this.parseSettings(ev.payload.settings).control);
   }
 
   override async onKeyDown(ev: IDeckKeyDownEvent<AiSpotterControlsSettings>): Promise<void> {
