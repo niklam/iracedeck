@@ -10,11 +10,13 @@ import { describe, expect, it } from "vitest";
  * lacks the one for its surface clicks on key down and, on a dial, clicks at a
  * short release at the default threshold and never bleeps. That is right for a
  * plain key and wrong for every dial and every dual-press key, so this pins the
- * two places a long press lives: an action whose Elgato manifest entry
- * declares the `Encoder` controller must declare `dialPressShape`, and an
- * action source that constructs a `DualPressTracker` must declare
- * `keyPressShape` (every tracker today records a key-down; Car Control's also
- * serves its dial, which declares `dialPressShape` as an `Encoder` action).
+ * places a long press lives: an action whose Elgato manifest entry declares
+ * the `Encoder` controller must declare `dialPressShape`, an action source
+ * that constructs a `DualPressTracker` must declare `keyPressShape` (every
+ * tracker today records a key-down; Car Control's dial path shares its tracker,
+ * but no host manifest declares Car Control as a dial), and an action that
+ * handles a touch must declare `touchPressShape`, or every touch clicks, a
+ * gesture set to None included, and a Long Touch clicks instead of bleeping.
  */
 
 const ACTIONS_DIR = import.meta.dirname;
@@ -42,7 +44,7 @@ function actionSources(): ActionSource[] {
 }
 
 /** A `<name>(` member declared on a class: indented, optionally `override`, followed by its parameter list. */
-function declaresMember(text: string, name: "keyPressShape" | "dialPressShape"): boolean {
+function declaresMember(text: string, name: "keyPressShape" | "dialPressShape" | "touchPressShape"): boolean {
   return new RegExp(`^[ \\t]+(?:override[ \\t]+)?${name}[ \\t]*\\(`, "m").test(text);
 }
 
@@ -63,6 +65,9 @@ function sourceDeclaringUuid(uuid: string): ActionSource | undefined {
 
 const encoders = encoderUuids();
 const dualPressSources = sources.filter((s) => /\bnew DualPressTracker\s*\(/.test(s.text));
+const touchSources = sources.filter((s) =>
+  /^[ \t]+(?:override[ \t]+)?(?:async[ \t]+)?onTouchTap[ \t]*\(/m.test(s.text),
+);
 
 describe("press shape coverage (#269)", () => {
   it("finds the Encoder actions in the Elgato manifest", () => {
@@ -108,6 +113,17 @@ describe("press shape coverage (#269)", () => {
     "dual-press action %s declares keyPressShape",
     (_file, source) => {
       expect(declaresMember(source.text, "keyPressShape"), `${source.file} has no keyPressShape`).toBe(true);
+    },
+  );
+
+  it("finds the actions that handle a touch", () => {
+    expect(touchSources.map((s) => s.file)).toContain("setup-aero/setup-aero.ts");
+  });
+
+  it.each(touchSources.map((s) => [s.file, s] as const))(
+    "touch action %s declares touchPressShape",
+    (_file, source) => {
+      expect(declaresMember(source.text, "touchPressShape"), `${source.file} has no touchPressShape`).toBe(true);
     },
   );
 });
