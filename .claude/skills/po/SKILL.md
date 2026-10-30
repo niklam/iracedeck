@@ -107,7 +107,7 @@ Hub and spoke: leads report to you and never to each other. Their end-of-turn re
 | `audio-text` | queue the proposed lines for Niklas's go before any clip is generated |
 | `review-page` | queue the page link for Niklas's verdict |
 | `waiting-prompt` | tell Niklas which session has a permission prompt or hook ask open |
-| `ready-to-test` | free its slot, start the next issue, add it to the next integration build; an agent-run dev-tooling test is recorded instead (Integration build, step 6) |
+| `ready-to-test` | free its slot, start the next issue, add it to the next integration build; a dev-tooling issue joins no build, its agent-run test is recorded (Integration build, step 6) |
 | `pr-open` | nothing |
 | `merged` | pull and build `master` (below); tell every lead whose branch it affects to rebase |
 | `red-run` | take it to Niklas at once; tell nobody to fix it |
