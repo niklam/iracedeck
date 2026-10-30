@@ -45,7 +45,7 @@ Behaviour that affects every key you press.
 
 **Dual-press** governs the keys and dials that do one thing on a tap and another on a hold. The **long-press threshold** is how long you must hold a key or dial before it counts as a long press, and it applies to every long press: the setup keys, the dials and the Press Sounds double bleep — shorter feels snappier, longer is more forgiving if you catch keys accidentally. **Directions** picks which way a tap goes on a setup key's View sub-mode; the hold always fires the opposite.
 
-**Press Sounds** plays a single short bleep when a press acts as a tap and a double bleep when a held key or dial reaches the long-press threshold, so you can hear a press land without looking at the deck. **Press sound** picks **No sound** (the default), **Taps**, **Long-press** or **Both**, and the **Test tap** and **Test long press** buttons let you hear each one before you choose, whatever the setting says. Real presses make a sound only while iRacing is connected, at your Radar volume. See [Press Sounds](/docs/features/press-sounds/).
+**Press Sounds** plays a single short bleep when a press acts as a tap and a double bleep when a held key or dial reaches the long-press threshold, so you can hear a press land without looking at the deck. **Press sound** picks **No sound** (the default), **Taps**, **Long-press** or **Both**, and the **Test tap** and **Test long press** buttons let you hear each one before you choose, whatever the setting says. A real press makes a sound only when it starts while iRacing is connected, at your Radar volume. See [Press Sounds](/docs/features/press-sounds/).
 
 ### Key Bindings
 

@@ -18,7 +18,7 @@ Open the [Settings window](/docs/getting-started/settings/#general) and find the
 
 The **Test tap** and **Test long press** buttons beside it play each sound at the level a press would use, whatever the dropdown says and whether or not iRacing is running, so you can hear both before you choose.
 
-Press sounds play only while iRacing is connected. With iRacing closed, a press reaches nothing in the sim, so a sound would confirm something that did not happen.
+Press sounds play only for a press that starts while iRacing is connected. With iRacing closed, a press reaches nothing in the sim, so a sound would confirm something that did not happen. The check is made when you press: a press already under way finishes with its sounds even if iRacing disconnects before you let go.
 
 ## When a Press Bleeps Once
 
