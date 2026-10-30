@@ -87,7 +87,7 @@ function fire(command, { stdout = "", withoutGh = false, cwd = ROOT, tool = "Bas
 let fakeCalls = 0;
 
 /** {@link fire} with the fake gh first on PATH: the hook's note, and every gh call it made. */
-function fireWithGh(command, replies, { stdout = "", cwd = ROOT, tool = "Bash" } = {}) {
+function fireWithGh(command, replies, { stdout = "", cwd = ROOT, tool = "Bash", env: extra = {} } = {}) {
   const log = path.join(FAKE_GH, `calls-${++fakeCalls}.jsonl`);
   const env = Object.fromEntries(
     Object.entries(process.env).filter(([k]) => !["path", "gh_repo", "node_options"].includes(k.toLowerCase())),
@@ -104,6 +104,7 @@ function fireWithGh(command, replies, { stdout = "", cwd = ROOT, tool = "Bash" }
       FAKE_GH_REPLIES: JSON.stringify(replies),
       FAKE_GH_LOG: log,
       IRACEDECK_HOOKS_DRY_RUN: "1",
+      ...extra,
     },
   });
   expect(r.status, r.stderr).toBe(0);
@@ -404,6 +405,20 @@ describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", () => {
       expect(path.resolve(calls[0].cwd).toLowerCase()).toBe(path.resolve(checkout).toLowerCase());
     });
 
+    // CodeRabbit on #1535: an inherited GH_REPO names the session's default, not the checkout.
+    it("looks a worktree's issue up with an inherited GH_REPO cleared", () => {
+      const { calls } = fireWithGh(
+        "git worktree add ../ir-1321 -b fix/1321-x",
+        {
+          "issue view": { url: "https://github.com/niklam/iracedeck/issues/1321" },
+          "api graphql": boardItem("Backlog"),
+        },
+        { env: { GH_REPO: "lint-staged/lint-staged" } },
+      );
+      const view = calls.find((c) => c.args[0] === "issue");
+      expect(view.GH_REPO).toBe("");
+    });
+
     it("moves the card of a worktree added in the iRaceDeck checkout — the positive control", () => {
       const { note } = fireWithGh("git worktree add ../ir-1321 -b fix/1321-x", {
         "issue view": { url: "https://github.com/niklam/iracedeck/issues/1321" },
@@ -418,6 +433,8 @@ describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", () => {
       [`api repos/${repo}/issues/${n}`]: { created_at: new Date(at).toISOString() },
     });
     const justNow = () => Date.now() - 60_000;
+    /** The fake gh's answer to `gh repo view`: the repository of the checkout a create ran in. */
+    const checkout = (nameWithOwner) => ({ "repo view": { nameWithOwner } });
     const OLD = "2026-09-01T00:00:00Z";
     const filed = (note) => [...note.matchAll(/Added (\S+) to the Roadmap board/g)].map((m) => m[1]);
 
@@ -494,7 +511,6 @@ describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", () => {
 
     it("judges a create that named no repository by the checkout it ran in", () => {
       const foreign = "https://github.com/lint-staged/lint-staged/issues/1865";
-      const checkout = (nameWithOwner) => ({ "repo view": { nameWithOwner } });
       // A foreign view's URL beside a home `--web` create: the home card still needs a hand.
       const homeWeb = fireWithGh(
         "gh issue view 1865 -R lint-staged/lint-staged --json url --jq .url && gh issue create --web",
@@ -512,13 +528,46 @@ describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", () => {
       expect(elsewhere.note).toBe(
         `[hook] Filed ${foreign} in lint-staged/lint-staged, not niklam/iracedeck: the Roadmap board is left alone.`,
       );
-      // A filed home issue settles it without asking.
+      // A create in this checkout files its issue; one naming this repository needs no ask.
       const filedHome = fireWithGh(
         "gh issue create --title x --body y",
+        { ...checkout("niklam/iracedeck"), ...created(1534, justNow()), "api graphql": boardItem(null) },
+        { stdout: `${home(1534)}\n` },
+      );
+      expect(filed(filedHome.note)).toEqual([home(1534)]);
+      const named = fireWithGh(
+        "gh issue create -R niklam/iracedeck --title x --body y",
         { ...created(1534, justNow()), "api graphql": boardItem(null) },
         { stdout: `${home(1534)}\n` },
       );
-      expect(filedHome.calls.some((c) => c.args[0] === "repo")).toBe(false);
+      expect(filed(named.note)).toEqual([home(1534)]);
+      expect(named.calls.some((c) => c.args[0] === "repo")).toBe(false);
+    });
+
+    // CodeRabbit on #1535: a just-created iRaceDeck issue another command printed
+    // is not filed when every create ran in another repository.
+    it("files no iRaceDeck URL beside creates that all ran elsewhere", () => {
+      const viewThenForeign =
+        "gh issue view 1534 --json url --jq .url && gh issue create -R lint-staged/lint-staged --web";
+      const named = fireWithGh(
+        viewThenForeign,
+        { ...created(1534, justNow()), "api graphql": boardItem(null) },
+        {
+          stdout: `${home(1534)}\n`,
+        },
+      );
+      expect(named.note).toBe(
+        "[hook] gh issue create ran in lint-staged/lint-staged, not niklam/iracedeck: the Roadmap board is left alone.",
+      );
+      expect(named.calls).toEqual([]);
+      // The same when the checkout, not a flag, says so.
+      const byCheckout = fireWithGh(
+        "gh issue view 1534 --json url --jq .url && gh issue create --web",
+        { ...checkout("lint-staged/lint-staged"), ...created(1534, justNow()), "api graphql": boardItem(null) },
+        { stdout: `${home(1534)}\n` },
+      );
+      expect(filed(byCheckout.note)).toEqual([]);
+      expect(byCheckout.note).toMatch(/ran in lint-staged\/lint-staged, not niklam\/iracedeck/);
     });
 
     it("names the candidates rather than guess when it cannot read their ages", () => {

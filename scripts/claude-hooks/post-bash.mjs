@@ -179,11 +179,12 @@ function afterMerge(merge, command, cwd, shell) {
  *
  * `creates` holds, for each create, the repository it named (`repo`, from
  * `issueCreateRepos`) and the directory it ran in (`dir`); one that named none
- * used that directory's repository, which is asked of gh only when the
- * reminder below depends on it, once per directory. The hand-move reminder for
- * a create that printed no new iRaceDeck issue goes out unless every create
- * was in another repository, so a foreign `--web` create is never sent to this
- * board, and a home one is never lost behind a foreign URL.
+ * used that directory's repository, which is asked of gh only when a board
+ * decision depends on it, once per directory. An iRaceDeck URL is filed only
+ * when some create may have been home, and the hand-move reminder for a create
+ * that printed no new iRaceDeck issue goes out on the same condition. So a
+ * foreign create never files another command's iRaceDeck URL nor is sent to
+ * this board by hand, and a home one is never lost behind a foreign URL.
  */
 function afterIssueCreate(stdout, creates, cwd) {
   let resolved;
@@ -212,13 +213,14 @@ function afterIssueCreate(stdout, creates, cwd) {
   const out = found
     .filter((issue) => !isHomeRepo(issue.repo))
     .map((issue) => `Filed ${issue.url} in ${issue.repo}, not ${HOME_REPO}: the Roadmap board is left alone.`);
-  const { picked, unsure } = pickCreated(
-    found.filter((issue) => isHomeRepo(issue.repo)),
-    (issue) => {
-      const created = Date.parse(ghJson(["api", `repos/${issue.repo}/issues/${issue.number}`], cwd)?.created_at);
-      return Number.isFinite(created) ? Date.now() - created : undefined;
-    },
-  );
+  const homeFound = found.filter((issue) => isHomeRepo(issue.repo));
+  // An iRaceDeck URL beside creates that all ran elsewhere is another
+  // command's (a view's, an edit's): no create here made it.
+  if (homeFound.length && !homeCreate()) return [...out, leftAlone()];
+  const { picked, unsure } = pickCreated(homeFound, (issue) => {
+    const created = Date.parse(ghJson(["api", `repos/${issue.repo}/issues/${issue.number}`], cwd)?.created_at);
+    return Number.isFinite(created) ? Date.now() - created : undefined;
+  });
   out.push(...picked.map((issue) => fileOnBoard(issue, cwd)));
   if (unsure.length)
     out.push(
@@ -247,13 +249,15 @@ function fileOnBoard(issue, cwd) {
  * `target` is the add's own argument (`worktreeAddTarget`), read where the
  * pre-hook's rule read it. The issue is looked up from the checkout the add
  * ran in, so an `ir-<n>` added to another repository's checkout is that
- * repository's issue and moves no card here (#1527).
+ * repository's issue and moves no card here (#1527). A `GH_REPO` the hook
+ * inherited is cleared for the lookup: it names the session's default, not
+ * the checkout the tree belongs to.
  */
 function afterWorktreeAdd(command, target, cwd, shell) {
   const dir = gitCwd(command, cwd, GIT_WORKTREE_ADD, shell);
   const issue = issueFromWorktreePath(resolveDir(dir, target, { shell }));
   if (!issue) return [];
-  const found = ghJson(["issue", "view", String(issue), "--json", "url"], dir);
+  const found = ghJson(["issue", "view", String(issue), "--json", "url"], dir, { env: { GH_REPO: "" } });
   if (!found)
     return [`Worktree for #${issue} created, but gh cannot see that issue; move its card to In progress by hand.`];
   const repo = repoOfUrl(found.url);
