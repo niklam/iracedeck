@@ -146,8 +146,11 @@ describe("post-bash.mjs triggers", () => {
   });
 
   it("runs the issue step on a real `gh issue create`, behind a wrapper too", () => {
-    expect(fire("gh issue create --title x --body y")).toMatch(/no issue URL in the output/);
-    expect(fire("timeout 60 gh issue create --title x --body y")).toMatch(/no issue URL in the output/);
+    // withoutGh: a create that printed no URL asks gh for the checkout's repository (#1527).
+    expect(fire("gh issue create --title x --body y", { withoutGh: true })).toMatch(/no issue URL in the output/);
+    expect(fire("timeout 60 gh issue create --title x --body y", { withoutGh: true })).toMatch(
+      /no issue URL in the output/,
+    );
   });
 
   it("runs the sed step on a real `sed -i`, after a chain or through xargs", () => {
@@ -193,7 +196,7 @@ describe("post-bash.mjs triggers", () => {
   it("runs the merge, issue and worktree steps on a PowerShell command too", () => {
     const tool = "PowerShell";
     expect(fire("gh pr merge 7 --squash", { withoutGh: true, tool })).toMatch(/could not read the PR back/);
-    expect(fire("gh issue create --title x --body y", { tool })).toMatch(/no issue URL in the output/);
+    expect(fire("gh issue create --title x --body y", { withoutGh: true, tool })).toMatch(/no issue URL in the output/);
     expect(fire("git worktree add ..\\ir-1321 -b fix/1321-x", { withoutGh: true, tool })).toMatch(
       /Worktree for #1321 created/,
     );
