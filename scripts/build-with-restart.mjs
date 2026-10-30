@@ -1,47 +1,27 @@
-import { execSync } from "node:child_process";
+/**
+ * `pnpm build:with-restart`: stops a running Stream Deck app, runs the build
+ * and starts the app again, or says plainly that it could not (#1523).
+ *
+ * This file only wires the real process functions in; the decisions live in
+ * `lib/build-restart.mjs`, where they can be tested.
+ */
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 
-const STREAM_DECK_EXE = "StreamDeck.exe";
+import { buildWithRestart } from "./lib/build-restart.mjs";
+import { spawnSyncShim } from "./lib/spawn-shim.mjs";
 
-function getStreamDeckPath() {
-  try {
-    const output = execSync(`wmic process where "name='${STREAM_DECK_EXE}'" get ExecutablePath`, {
-      encoding: "utf-8",
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-    const match = output
-      .split("\n")
-      .map((line) => line.trim())
-      .find((line) => line.endsWith(".exe"));
-    return match || null;
-  } catch {
-    return null;
-  }
-}
+// `process.exitCode` rather than `process.exit`, as in `host-app.mjs`: on a
+// Windows TTY stdout is asynchronous, and exiting outright can truncate the
+// line saying whether Stream Deck was restarted.
+process.exitCode = await buildWithRestart({
+  build: () => {
+    const result = spawnSyncShim("turbo", ["run", "build"], { stdio: "inherit" });
+    if (result.error) throw result.error;
 
-function stopStreamDeck() {
-  try {
-    execSync(`taskkill /IM ${STREAM_DECK_EXE} /F`, { stdio: "inherit" });
-  } catch {
-    // Process may have already exited
-  }
-}
-
-function startStreamDeck(exePath) {
-  execSync(`start /B "" "${exePath}"`, { shell: "cmd.exe", stdio: "ignore" });
-}
-
-const streamDeckPath = getStreamDeckPath();
-
-if (streamDeckPath) {
-  console.log("Stream Deck is running — stopping before build...");
-  stopStreamDeck();
-}
-
-try {
-  execSync("turbo run build", { stdio: "inherit" });
-} finally {
-  if (streamDeckPath) {
-    console.log("Restarting Stream Deck...");
-    startStreamDeck(streamDeckPath);
-  }
-}
+    return result.status ?? 1;
+  },
+  spawnSync,
+  spawn,
+  exists: existsSync,
+});
