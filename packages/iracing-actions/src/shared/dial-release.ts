@@ -42,9 +42,9 @@ function gestureActs(gesture: ResolvedDialGesture): boolean {
 
 /**
  * The press shape of a dial press (#269), which an action's `dialPressShape`
- * returns through its dial surface: decided at release, clicking on a short
- * release when the press gesture does something and bleeping at the threshold
- * when the long-press gesture does. Every dial surface that
+ * returns through its dial surface: decided at release, the tap sound on a
+ * short release when the press gesture does something and the long sound at
+ * the threshold when the long-press gesture does. Every dial surface that
  * classifies at release passes the gestures it would fire at its `up` and the
  * threshold it hands {@link classifyDialReleaseForHost}.
  *

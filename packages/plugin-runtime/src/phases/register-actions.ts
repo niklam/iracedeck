@@ -48,9 +48,9 @@ export function registerActions(core: Core, input: Input): void {
   // go to a scope set here, once, before the replay actions are constructed (#1467).
   setReplayBusyIndicatorLogger(adapter.createLogger("ReplayBusy"));
 
-  // Press sounds (#269): deck-core's wrapper decides when a press clicks or
-  // bleeps and reads the mode and the sim connection itself; it plays through
-  // the player installed here, the clips and the Feedback channel that live
+  // Press sounds (#269): deck-core's wrapper decides when a press plays the tap
+  // or the long sound and reads the mode and the sim connection itself; it
+  // plays through the player installed here, the clips and the Feedback channel that live
   // with the audio code in iracing-actions. Installed once, before the first
   // action registers, so no press can reach a wrapper without a player.
   initPressSounds({ play: playPressSound, logger: adapter.createLogger("PressSounds") });

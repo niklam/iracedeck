@@ -92,7 +92,7 @@ export function startServices(
 
   // Keep the audio device open while iRacing runs and the Race Engineer, the
   // Radar or press sounds are on, instead of opening it once per burst of
-  // callouts (#1347) or late for a press's click after an idle stop (#269). The
+  // callouts (#1347) or late for a press's sound after an idle stop (#269). The
   // controller decides when; the audio service owns the hold itself. AFTER the
   // app monitor because it follows that monitor's started and terminated
   // edges and is seeded from its view of an iRacing that was already running,

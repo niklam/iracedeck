@@ -238,10 +238,10 @@ export function renderAudioControlsIcon(settings: AudioControlsSettings, binding
  * @internal Exported for testing
  *
  * The shape of an Audio Controls press, for the press sounds (#269). Push to
- * Talk makes no sound on either surface: a click as the microphone opens is
+ * Talk makes no sound on either surface: a bleep as the microphone opens is
  * the sound most likely to be transmitted. Every keypad volume step makes
  * none either, since its #1455 tick is its press sound (a repeating style's
- * hold changes nothing to bleep for). A press that does nothing — a keypad
+ * hold changes nothing to double-bleep for). A press that does nothing — a keypad
  * pair or a dial press the action cannot fire (#1196), or a dial press of
  * `none` — makes no sound. What is left acts once, on the down event, the dial
  * included (it fires at `dialDown`, #1120 decision 2): a `tap`.

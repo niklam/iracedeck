@@ -3,9 +3,9 @@
  * and its default.
  *
  * - `none`       — no sound (the default, labelled "No sound").
- * - `taps`       — a dry click when a press acts as a tap.
- * - `long-press` — a two-note bleep when a hold passes the long-press threshold.
- * - `both`       — the click and the bleep.
+ * - `taps`       — a single bleep when a press acts as a tap.
+ * - `long-press` — a double bleep when a hold passes the long-press threshold.
+ * - `both`       — the single and the double bleep.
  *
  * In the `app-constants` leaf because the settings schema, deck-core's press
  * sound wrapper and the settings window's select all name the same four values

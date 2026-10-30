@@ -502,8 +502,9 @@ export const GlobalSettingsSchema = z
     dualPressDirections: z.enum(["tap-increases", "tap-decreases"]).default("tap-increases").catch("tap-increases"),
     /**
      * Which press sounds play on the deck (issue #269): `none` (the default),
-     * `taps` (a click when a press acts as a tap), `long-press` (a bleep when a
-     * hold passes the long-press threshold, `dualPressThresholdMs` above) or
+     * `taps` (a single bleep when a press acts as a tap), `long-press` (a
+     * double bleep when a hold passes the long-press threshold,
+     * `dualPressThresholdMs` above) or
      * `both`. Read at each key or dial down by deck-core's `withPressSounds`
      * wrapper, through `getPressSoundMode()`, and played only while the sim is
      * connected. The key and the values live in `@iracedeck/app-constants`

@@ -22,7 +22,7 @@
  *   its "audio stream in use" power request for a device nobody will hear.
  *   Press sounds count because without the hold a driver with both master
  *   gates off would pay a device start on the first press after every five
- *   idle seconds, so the click would arrive late on exactly the sporadic
+ *   idle seconds, so the sound would arrive late on exactly the sporadic
  *   presses of a race. Every global-settings change re-evaluates, so toggling
  *   any of the three mid-session takes or releases the hold.
  *

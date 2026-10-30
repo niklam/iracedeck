@@ -8,9 +8,9 @@
  * action (same trigger as before) and the window's `audioPreview` command.
  * One place owns the bus-forcing and in-flight bookkeeping.
  *
- * The two press sound kinds (#269) play the click and the bleep through the
- * press sound player directly, whatever the Press sound setting and the sim
- * connection say, at the level a real press plays at: the Test buttons are
+ * The two press sound kinds (#269) play the single and the double bleep
+ * through the press sound player directly, whatever the Press sound setting
+ * and the sim connection say, at the level a real press plays at: the Test buttons are
  * there so the driver can hear both before choosing, which is exactly while
  * the setting is still `none`.
  */

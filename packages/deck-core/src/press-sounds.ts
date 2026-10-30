@@ -1,6 +1,6 @@
 /**
- * Press sounds (issue #269): a dry click when a press acts as a tap, and a
- * two-note bleep when a hold passes the long-press threshold.
+ * Press sounds (issue #269): a single bleep when a press acts as a tap, and a
+ * double bleep when a hold passes the long-press threshold.
  *
  * One wrapper, {@link withPressSounds}, sits around every registered action
  * handler (applied once in `plugin-runtime`'s `registerActions`) and owns the
@@ -32,7 +32,10 @@ import { classifyDialRelease, DIAL_LONG_PRESS_THRESHOLD_MS } from "./dial-gestur
 import { getSimConnection } from "./sim-connection.js";
 import type { IDeckActionHandler, IDeckEvent, IDeckTouchTapEvent, PressShape } from "./types.js";
 
-/** The two press sounds: the click (`tap`) and the bleep (`long`). */
+/**
+ * The two press sounds: the single bleep of a tap (`tap`) and the double bleep
+ * at the long-press threshold (`long`).
+ */
 export type PressSound = "tap" | "long";
 
 /**
@@ -51,8 +54,8 @@ export interface PressSoundsDeps {
 
 /**
  * The shape a dial press gets when its handler declares none: decided at
- * release, at the default dial threshold, clicking on a short release and never
- * bleeping (nothing is known about its long outcome).
+ * release, at the default dial threshold, playing the tap sound on a short
+ * release and never the long one (nothing is known about its long outcome).
  */
 export const DEFAULT_DIAL_PRESS_SHAPE: PressShape = Object.freeze({
   kind: "release",
@@ -154,12 +157,12 @@ type EveryHandlerMember<H> = { [K in keyof Required<H>]: H[K] | undefined };
  *   member is called, and the down sound plays right after its synchronous
  *   part returns, before its promise is awaited.
  * - A `hold`, or a `release` with a long outcome, arms one timer at
- *   `thresholdMs` that bleeps once if the press is still held.
+ *   `thresholdMs` that plays the long sound once if the press is still held.
  * - A pressed rotation disarms it and marks the press push+turn: silent at
  *   release.
  * - At up a `release` press is classified by {@link classifyDialRelease}, the
  *   comparison every dial surface uses (a release exactly at the threshold is
- *   long), and clicks if it was short and `short` is set.
+ *   long), and plays the tap sound if it was short and `short` is set.
  * - `onWillDisappear` and `onDidReceiveSettings` forget the press and disarm;
  *   a second down replaces a press whose up was lost.
  */
@@ -204,7 +207,7 @@ export function withPressSounds<T>(handler: IDeckActionHandler<T>): IDeckActionH
           () => {
             // A throw here would escape the timer callback uncaught and end the
             // plugin process (the reason `createHoldPreview` gives). The press
-            // is display-only feedback, so any failure is "no bleep".
+            // is display-only feedback, so any failure is "no sound".
             try {
               press.timer = null;
 
@@ -424,9 +427,9 @@ function resolveShape(declared: (() => PressShape) | undefined, fallback: PressS
 /**
  * The sound a touch makes, from the handler's `touchPressShape` (a `tap` when
  * it has none). A touch is complete when it arrives (the host reports a long
- * touch as `hold`), so there is no timer and no up: `tap` and
- * `hold` click, `long` bleeps, and `release` reads the event's own `hold` flag
- * as the release classification.
+ * touch as `hold`), so there is no timer and no up: `tap` and `hold` play the
+ * tap sound, `long` the long one, and `release` reads the event's own `hold`
+ * flag as the release classification.
  */
 function touchSound<T>(handler: IDeckActionHandler<T>, ev: IDeckTouchTapEvent<T>): PressSound | null {
   const mode = readGate();

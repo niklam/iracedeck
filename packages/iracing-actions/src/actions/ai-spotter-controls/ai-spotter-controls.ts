@@ -125,7 +125,7 @@ function isSpotterVolumeControl(control: SpotterControl): control is SpotterVolu
  *
  * The shape of a spotter key press, for the press sounds (#269): Spotter
  * Louder / Quieter make none, since their #1455 tick is the press sound (a
- * repeating style's hold changes nothing to bleep for); every other control
+ * repeating style's hold changes nothing to double-bleep for); every other control
  * taps its binding once on key-down.
  */
 export function spotterPressShape(control: SpotterControl): PressShape {

@@ -460,7 +460,8 @@ export function isViewSetting(id: string): id is ViewSettingId {
  * at `getDualPressThresholdMs()`, the threshold `DualPressTracker` resolves
  * against. With dual-press off a View key is read-only and ignores the press,
  * so it makes no sound. Every other mode acts on key down (`tap`); a
- * hold-to-repeat key's steps are their own feedback, so it never bleeps.
+ * hold-to-repeat key's steps are their own feedback, so it never plays the
+ * long sound.
  */
 export function setupKeyPressShape(settings: { setting: string; dualPressEnabled: boolean }): PressShape {
   if (!isViewSetting(settings.setting)) return { kind: "tap" };

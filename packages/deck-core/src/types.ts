@@ -138,13 +138,16 @@ export interface DeckTriggerDescription {
  * `press-sounds.ts` owns the timing and plays the sounds, so no action plays a
  * press sound itself.
  *
- * - `tap`     — acts now, no long press: a click now, never a bleep.
- * - `hold`    — acts now and keeps acting while held: a click now, a bleep at
- *               `thresholdMs` if still held.
- * - `release` — decided at release: a click at a short release if `short`, a
- *               bleep at `thresholdMs` if `long`. `short` / `long` say whether
- *               that outcome does anything; a gesture set to `none` is `false`.
- * - `long`    — this event is a completed long press (a long touch): a bleep now.
+ * - `tap`     — acts now, no long press: the tap sound (a single bleep) now,
+ *               never the long one.
+ * - `hold`    — acts now and keeps acting while held: the tap sound now, the
+ *               long sound (a double bleep) at `thresholdMs` if still held.
+ * - `release` — decided at release: the tap sound at a short release if
+ *               `short`, the long sound at `thresholdMs` if `long`. `short` /
+ *               `long` say whether that outcome does anything; a gesture set
+ *               to `none` is `false`.
+ * - `long`    — this event is a completed long press (a long touch): the long
+ *               sound now.
  * - `none`    — this press makes no sound.
  *
  * `thresholdMs` is the exact threshold the action classifies with
@@ -175,7 +178,7 @@ export interface IDeckActionHandler<T = unknown> {
    * rules as {@link keyPressShape}, called BEFORE `onDialDown`. It is the
    * wrapper's dial path that calls it, so it never has to ask the context
    * which controller it is. Optional — a handler without it is a `release` at
-   * 500 ms that clicks when short and never bleeps
+   * 500 ms that plays the tap sound when short and never the long one
    * (`DEFAULT_DIAL_PRESS_SHAPE`).
    */
   dialPressShape?(ev: IDeckDialDownEvent<T>): PressShape;
