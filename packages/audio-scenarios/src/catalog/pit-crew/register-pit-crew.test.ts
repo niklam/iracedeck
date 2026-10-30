@@ -66,6 +66,7 @@ import {
   type PitStatusCalloutId,
   type PitWindowCalloutId,
   registerPitCrew,
+  resolvePitCrewDeps,
   type RollingStartCalloutId,
   stopRaceEngineerScenarios,
   type TireWearCalloutId,
@@ -2729,5 +2730,43 @@ describe("telemetry readout registration (issue #466)", () => {
     flush(audio);
 
     expect(voiceClipsPlayed()).toEqual([`voice/${VOICE}/telemetry-readout/no-data-01.mp3`]);
+  });
+});
+
+// One resolution against the defaults (#1378): what every family builder and
+// engine is handed, so each key's answer is decided in one place.
+describe("resolvePitCrewDeps (issue #1378)", () => {
+  it("fills every key but the logger from the defaults when nothing is passed", () => {
+    const resolved = resolvePitCrewDeps({});
+
+    expect(resolved).not.toHaveProperty("logger");
+    expect(resolved.getLatestTelemetry()).toBeNull();
+    expect(resolved.getSessionType()).toBe("");
+    expect(resolved.getStandingStart()).toBe(false);
+    expect(resolved.getDamageRepairNeeded()).toBeNull();
+    expect(resolved.getSpotterTrackDirection()).toBe("neutral");
+
+    for (const value of Object.values(resolved)) expect(typeof value).toBe("function");
+  });
+
+  it("lets a defined dep win", () => {
+    const getSessionType = (): string => "Race";
+
+    expect(resolvePitCrewDeps({ getSessionType }).getSessionType).toBe(getSessionType);
+  });
+
+  it("keeps the default for a dep passed as an explicit undefined", () => {
+    const resolved = resolvePitCrewDeps({ getSessionType: undefined, getLatestTelemetry: undefined });
+
+    expect(resolved.getSessionType()).toBe("");
+    expect(resolved.getLatestTelemetry()).toBeNull();
+  });
+
+  it("returns a fresh object each call, so one caller's deps never reach another's", () => {
+    const first = resolvePitCrewDeps({ getSessionType: () => "Race" });
+    const second = resolvePitCrewDeps({});
+
+    expect(first).not.toBe(second);
+    expect(second.getSessionType()).toBe("");
   });
 });
