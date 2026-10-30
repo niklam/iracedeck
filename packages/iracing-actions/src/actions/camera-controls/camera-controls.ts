@@ -16,6 +16,7 @@ import {
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
   parseSvgViewBox,
+  type PressShape,
   renderIconTemplate,
   requestProfileSwitch,
   resolveBorderSettings,
@@ -86,6 +87,7 @@ import z from "zod";
 import { carCycleBindingKey } from "../../shared/car-cycle-bindings.js";
 import { computeCarNumberTarget } from "../../shared/car-cycling.js";
 import { setSelectIntent } from "../../shared/car-select-intent.js";
+import { pressShapeByEvent } from "../../shared/dial-release.js";
 import { profileEntriesEqual } from "../../shared/profile-entries.js";
 import { availableProfilesForDevice, deviceProfileEntries } from "../race-admin/race-admin-selector.js";
 import { CameraDialSurface, type CarouselGlyph, DialSettings } from "./camera-dial-surface.js";
@@ -955,6 +957,25 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
   override async onDialRotate(ev: IDeckDialRotateEvent<CameraControlsSettings>): Promise<void> {
     const settings = this.parseSettings(ev.payload.settings);
     this.dialSurface.rotate(ev.action, settings.dial, ev.payload.ticks, ev.payload.pressed === true);
+  }
+
+  /**
+   * The press shape of this press (#269): a key acts on key down, so a tap;
+   * the dial's and the touch's come from the dial surface, which classifies them.
+   */
+  pressShape(
+    ev:
+      | IDeckKeyDownEvent<CameraControlsSettings>
+      | IDeckDialDownEvent<CameraControlsSettings>
+      | IDeckTouchTapEvent<CameraControlsSettings>,
+  ): PressShape {
+    const settings = this.parseSettings(ev.payload.settings);
+
+    return pressShapeByEvent(ev, {
+      key: () => ({ kind: "tap" }),
+      dial: () => this.dialSurface.pressShape(ev.action, settings.dial),
+      touch: (hold) => this.dialSurface.touchShape(ev.action, settings.dial, hold),
+    });
   }
 
   override async onDialDown(ev: IDeckDialDownEvent<CameraControlsSettings>): Promise<void> {

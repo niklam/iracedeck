@@ -23,6 +23,7 @@ import {
   IconUpdateThrottle,
   type IDeckActionContext,
   NOOP_HOLD_PREVIEW,
+  type PressShape,
   svgToDataUri,
 } from "@iracedeck/deck-core";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
@@ -32,7 +33,7 @@ import { type DialBoxArgs, type DialSideMarks, renderDialBox, resolveDialBoxColo
 import { type DialInputEvent, hasDialInputContext } from "../../shared/dial-context.js";
 import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
 import type { DialPendingPreview } from "../../shared/dial-preview.js";
-import { classifyDialReleaseForHost } from "../../shared/dial-release.js";
+import { classifyDialReleaseForHost, dialPressShape, touchPressShape } from "../../shared/dial-release.js";
 import { getReplayBusyLook, registerReplayBusySurface } from "../../shared/replay-busy-indicator.js";
 import { replayBusyDialMark } from "../../shared/replay-busy-mark.js";
 import {
@@ -333,6 +334,28 @@ export class ReplayMarkersDialSurface {
     this.host.logger.debug(`ticks=${ticks}, anchor=${anchor}, target=${target.frame}`);
     followMarkerJump(this.host.logger, `Dial ${direction} marker`, target.frame, jump);
     this.scheduleRender(ctx);
+  }
+
+  /**
+   * The press shape of a dial press (#269): released, with the gestures the
+   * release fires and the threshold it classifies with, or `none` when no
+   * context would take the press. `down` and `touchTap` refresh the context from these settings, so they are the ones the release and the touch read.
+   */
+  pressShape(action: IDeckActionContext, dial: ReplayMarkersDialSettings): PressShape {
+    if (!this.contexts.has(action.id)) return { kind: "none" };
+
+    return dialPressShape({
+      pressGesture: dial.pressAction,
+      longPressGesture: dial.longPressAction,
+      thresholdMs: getDualPressThresholdMs(),
+    });
+  }
+
+  /** The press shape of a touch (#269): the slot `touchTap` fires for it, or `none`. */
+  touchShape(action: IDeckActionContext, dial: ReplayMarkersDialSettings, hold: boolean): PressShape {
+    if (!this.contexts.has(action.id)) return { kind: "none" };
+
+    return touchPressShape({ tapGesture: dial.tapAction, longTouchGesture: dial.longTouchAction, hold });
   }
 
   down(action: IDeckActionContext, dial: ReplayMarkersDialSettings): void {

@@ -16,6 +16,7 @@ import {
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
   isSimHubReachable,
+  type PressShape,
   renderIconTemplate,
   resolveBorderSettings,
   resolveGraphicSettings,
@@ -44,6 +45,7 @@ import { getGlobalColors, getGlobalSettings } from "@iracedeck/settings";
 import fuelServiceTemplate from "../../../icons/fuel-service.svg";
 import { borderColorForState, statusBarNA, statusBarOff, statusBarOn } from "../../icons/status-bar.js";
 import { showBlackBox } from "../../shared/black-box.js";
+import { pressShapeByEvent } from "../../shared/dial-release.js";
 import { RepeatController } from "../../shared/repeat-controller.js";
 import { FuelDialSurface } from "./fuel-dial-surface.js";
 import { FuelPipeline } from "./fuel-pipeline.js";
@@ -589,6 +591,25 @@ export class FuelService extends SimIRacingAction<FuelServiceSettings> {
   override async onDialRotate(ev: IDeckDialRotateEvent<FuelServiceSettings>): Promise<void> {
     const settings = this.parseSettings(ev.payload.settings);
     await this.dialSurface.rotate(ev.action, settings, ev.payload.ticks, ev.payload.pressed === true);
+  }
+
+  /**
+   * The press shape of this press (#269): a key acts on key down, so a tap;
+   * the dial's and the touch's come from the dial surface, which classifies them.
+   */
+  pressShape(
+    ev:
+      | IDeckKeyDownEvent<FuelServiceSettings>
+      | IDeckDialDownEvent<FuelServiceSettings>
+      | IDeckTouchTapEvent<FuelServiceSettings>,
+  ): PressShape {
+    const settings = this.parseSettings(ev.payload.settings);
+
+    return pressShapeByEvent(ev, {
+      key: () => ({ kind: "tap" }),
+      dial: () => this.dialSurface.pressShape(ev.action, settings),
+      touch: (hold) => this.dialSurface.touchShape(ev.action, settings, hold),
+    });
   }
 
   override async onDialDown(ev: IDeckDialDownEvent<FuelServiceSettings>): Promise<void> {

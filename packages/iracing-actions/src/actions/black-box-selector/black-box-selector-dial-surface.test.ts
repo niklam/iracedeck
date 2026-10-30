@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { actionPressShapes, describePressShapes } from "../../shared/press-shape.test-support.js";
 import {
   buildTriggerDescription,
   DialSettings,
@@ -238,6 +239,17 @@ describe("BlackBoxSelector dial surface", () => {
   async function appear(ctx: DialContext, settings: Record<string, unknown> = {}) {
     await action.onWillAppear(eventFor(ctx, settings) as never);
   }
+
+  describePressShapes({
+    dialContext: (id) => dialContext(id),
+    appear: (ctx, dial) => appear(ctx, withDial(dial)),
+    ...actionPressShapes(() => action, withDial),
+    gesture: "open-selected-box",
+    setThresholdMs: (ms) => {
+      mockDualPressThreshold.value = ms;
+    },
+    readsStoredSettings: false,
+  });
 
   describe("onDialRotate", () => {
     it("taps Cycle Next on a clockwise turn", async () => {

@@ -34,6 +34,7 @@ import {
   IconUpdateThrottle,
   type IDeckActionContext,
   NOOP_HOLD_PREVIEW,
+  type PressShape,
   svgToDataUri,
 } from "@iracedeck/deck-core";
 import { replaySpeedFromTelemetry, type ReplayState, type TelemetryData } from "@iracedeck/iracing-sdk";
@@ -76,7 +77,7 @@ import { type DialBoxArgs, type DialNeighbours, renderDialBox, resolveDialBoxCol
 import { type DialInputEvent, hasDialInputContext } from "../../shared/dial-context.js";
 import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
 import type { DialPendingPreview } from "../../shared/dial-preview.js";
-import { classifyDialReleaseForHost } from "../../shared/dial-release.js";
+import { classifyDialReleaseForHost, dialPressShape, touchPressShape } from "../../shared/dial-release.js";
 import { getReplayBusyLook, registerReplayBusySurface } from "../../shared/replay-busy-indicator.js";
 import { replayBusyDialMark } from "../../shared/replay-busy-mark.js";
 import { carNumberMode, racePositionMode } from "./replay-control-camera-car-modes.js";
@@ -971,6 +972,32 @@ export class ReplayControlDialSurface {
       isStillOnScreen: () => isCurrent() && this.isReplayOnScreen(),
       isSavedReplay: () => host.replayState(Date.now()).replayOnlySession,
     };
+  }
+
+  /**
+   * The press shape of a dial press (#269): released, with the gestures the
+   * release fires and the threshold it classifies with, or `none` when no
+   * context would take the press. `down` and `touchTap` refresh the context from these settings, so they are the ones the release and the touch read; a slot resolves through {@link resolveDialGesture} as it does there.
+   */
+  pressShape(action: IDeckActionContext, dial: ReplayControlDialSettings): PressShape {
+    if (!this.contexts.has(action.id)) return { kind: "none" };
+
+    return dialPressShape({
+      pressGesture: resolveDialGesture(dial.pressAction, dial.mode),
+      longPressGesture: resolveDialGesture(dial.longPressAction, dial.mode),
+      thresholdMs: getDualPressThresholdMs(),
+    });
+  }
+
+  /** The press shape of a touch (#269): the slot `touchTap` fires for it, or `none`. */
+  touchShape(action: IDeckActionContext, dial: ReplayControlDialSettings, hold: boolean): PressShape {
+    if (!this.contexts.has(action.id)) return { kind: "none" };
+
+    return touchPressShape({
+      tapGesture: resolveDialGesture(dial.tapAction, dial.mode),
+      longTouchGesture: resolveDialGesture(dial.longTouchAction, dial.mode),
+      hold,
+    });
   }
 
   down(action: IDeckActionContext, dial: ReplayControlDialSettings): void {

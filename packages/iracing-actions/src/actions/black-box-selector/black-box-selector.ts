@@ -13,6 +13,7 @@ import {
   type IDeckTouchTapEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
+  type PressShape,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
@@ -35,6 +36,7 @@ import { getGlobalColors, onGlobalSettingsChange } from "@iracedeck/settings";
 import z from "zod";
 
 import { BLACK_BOX_GLOBAL_KEYS } from "../../shared/black-box.js";
+import { pressShapeByEvent } from "../../shared/dial-release.js";
 import { BlackBoxSelectorDialSurface, DialSettings } from "./black-box-selector-dial-surface.js";
 
 const DIRECT_ICONS: Record<string, string> = {
@@ -239,6 +241,25 @@ export class BlackBoxSelector extends ConnectionStateAwareAction<BlackBoxSelecto
   override async onDialRotate(ev: IDeckDialRotateEvent<BlackBoxSelectorSettings>): Promise<void> {
     const settings = this.parseSettings(ev.payload.settings);
     await this.dialSurface.rotate(ev.action, settings.dial, ev.payload.ticks, ev.payload.pressed === true);
+  }
+
+  /**
+   * The press shape of this press (#269): a key acts on key down, so a tap;
+   * the dial's and the touch's come from the dial surface, which classifies them.
+   */
+  pressShape(
+    ev:
+      | IDeckKeyDownEvent<BlackBoxSelectorSettings>
+      | IDeckDialDownEvent<BlackBoxSelectorSettings>
+      | IDeckTouchTapEvent<BlackBoxSelectorSettings>,
+  ): PressShape {
+    const settings = this.parseSettings(ev.payload.settings);
+
+    return pressShapeByEvent(ev, {
+      key: () => ({ kind: "tap" }),
+      dial: () => this.dialSurface.pressShape(ev.action, settings.dial),
+      touch: (hold) => this.dialSurface.touchShape(ev.action, settings.dial, hold),
+    });
   }
 
   override async onDialDown(ev: IDeckDialDownEvent<BlackBoxSelectorSettings>): Promise<void> {

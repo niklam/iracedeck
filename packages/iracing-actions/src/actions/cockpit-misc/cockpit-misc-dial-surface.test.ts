@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { actionPressShapes, describePressShapes } from "../../shared/press-shape.test-support.js";
 import {
   buildTriggerDescription,
   DialSettings,
@@ -239,6 +240,17 @@ describe("CockpitMisc dial surface", () => {
   async function appear(ctx: DialContext, settings: Record<string, unknown> = {}) {
     await action.onWillAppear(basicEvent(ctx, settings) as never);
   }
+
+  describePressShapes({
+    dialContext: (id) => dialContext(id),
+    appear: (ctx, dial) => appear(ctx, dialSettings(dial)),
+    ...actionPressShapes(() => action, dialSettings),
+    gesture: "toggle-wipers",
+    setThresholdMs: (ms) => {
+      mockDualPressThreshold.value = ms;
+    },
+    readsStoredSettings: false,
+  });
 
   describe("onDialRotate", () => {
     it("taps the increase binding on a clockwise turn", async () => {

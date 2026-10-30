@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CAR_CYCLE_BINDING_KEY_LIST } from "../../shared/car-cycle-bindings.js";
 import { computeCarNumberTarget } from "../../shared/car-cycling.js";
 import { resolveDialBoxColors } from "../../shared/dial-box.js";
+import { describePressShapes } from "../../shared/press-shape.test-support.js";
 import {
   buildTriggerDescription,
   CameraDialSurface,
@@ -660,6 +661,23 @@ describe("hold preview centre (#1120)", () => {
 });
 
 describe("CameraDialSurface", () => {
+  describe("press shapes", () => {
+    let surface: CameraDialSurface;
+
+    beforeEach(() => {
+      surface = new CameraDialSurface(makeHost() as never);
+    });
+
+    describePressShapes({
+      dialContext: (id) => dialContext(id),
+      appear: (ctx, d) => surface.willAppear(ctx as never, dial(d)),
+      dialShape: (ctx, d) => surface.pressShape(ctx as never, dial(d)),
+      touchShape: (ctx, d, hold) => surface.touchShape(ctx as never, dial(d), hold),
+      gesture: "focus-my-car",
+      readsStoredSettings: false,
+    });
+  });
+
   describe("legacy settings mapping", () => {
     it("maps the pre-rework mode 'car' to 'car-number' without dropping other fields", () => {
       const parsed = DialSettings.parse({ mode: "car", pressAction: "focus-my-car", longTouchAction: "change-camera" });

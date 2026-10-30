@@ -20,6 +20,7 @@ import z from "zod";
 
 import { CAR_CYCLE_BINDING_KEYS } from "../../shared/car-cycle-bindings.js";
 import { _resetSelectIntents, getSelectIntent } from "../../shared/car-select-intent.js";
+import { describePressShapeRouting } from "../../shared/press-shape.test-support.js";
 import { engineOverDeck } from "../../shared/replay-engine-deck.test-support.js";
 import keyBindings from "../data/key-bindings.json" with { type: "json" };
 import {
@@ -2976,4 +2977,8 @@ describe("camera switches wait for a replay jump to land (#1428 / #1435)", () =>
       "Camera controls: tap dropped (next car), the dial left the screen or the replay was left while it waited",
     );
   });
+});
+
+describe("CameraControls press shape", () => {
+  describePressShapeRouting(() => new CameraControls(), { dial: { pressAction: "focus-my-car" } });
 });

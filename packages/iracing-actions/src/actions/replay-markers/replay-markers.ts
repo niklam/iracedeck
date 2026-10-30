@@ -13,6 +13,7 @@ import {
   type IDeckTouchTapEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
+  type PressShape,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
@@ -28,6 +29,7 @@ import previousIconSvg from "@iracedeck/icons/replay-markers/previous.svg";
 import { getReplaySessionStore, isReplaySessionStoreInitialized } from "@iracedeck/replay-store";
 import { getGlobalColors } from "@iracedeck/settings";
 
+import { pressShapeByEvent } from "../../shared/dial-release.js";
 import { getReplayBusyLook, registerReplayBusySurface } from "../../shared/replay-busy-indicator.js";
 import { replayBusyKeyMark } from "../../shared/replay-busy-mark.js";
 import { unavailableLook } from "../../shared/unavailable-look.js";
@@ -353,6 +355,25 @@ export class ReplayMarkers extends SimIRacingAction<ReplayMarkersSettings> {
   override async onDialRotate(ev: IDeckDialRotateEvent<ReplayMarkersSettings>): Promise<void> {
     const settings = this.parseSettings(ev.payload.settings);
     this.dialSurface.rotate(ev.action, settings.dial, ev.payload.ticks, ev.payload.pressed === true);
+  }
+
+  /**
+   * The press shape of this press (#269): a key acts on key down, so a tap;
+   * the dial's and the touch's come from the dial surface, which classifies them.
+   */
+  pressShape(
+    ev:
+      | IDeckKeyDownEvent<ReplayMarkersSettings>
+      | IDeckDialDownEvent<ReplayMarkersSettings>
+      | IDeckTouchTapEvent<ReplayMarkersSettings>,
+  ): PressShape {
+    const settings = this.parseSettings(ev.payload.settings);
+
+    return pressShapeByEvent(ev, {
+      key: () => ({ kind: "tap" }),
+      dial: () => this.dialSurface.pressShape(ev.action, settings.dial),
+      touch: (hold) => this.dialSurface.touchShape(ev.action, settings.dial, hold),
+    });
   }
 
   override async onDialDown(ev: IDeckDialDownEvent<ReplayMarkersSettings>): Promise<void> {

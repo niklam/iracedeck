@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { actionPressShapes, describePressShapes } from "../../shared/press-shape.test-support.js";
 import { buildTriggerDescription, DialSettings, GESTURE_ACTIONS } from "./splits-delta-cycle-dial-surface.js";
 import { SplitsDeltaCycle } from "./splits-delta-cycle.js";
 
@@ -191,6 +192,17 @@ describe("SplitsDeltaCycle dial surface", () => {
   async function appear(ctx: DialContext, settings: Record<string, unknown> = dialSettings()) {
     await action.onWillAppear(basicEvent(ctx, settings) as never);
   }
+
+  describePressShapes({
+    dialContext: (id) => dialContext(id),
+    appear: (ctx, dial) => appear(ctx, dialSettings(dial)),
+    ...actionPressShapes(() => action, dialSettings),
+    gesture: "toggle-ref-car",
+    setThresholdMs: (ms) => {
+      mockDualPressThreshold.value = ms;
+    },
+    readsStoredSettings: false,
+  });
 
   describe("onDialRotate", () => {
     it("taps the Next binding on a clockwise turn", async () => {

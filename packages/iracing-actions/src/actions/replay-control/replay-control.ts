@@ -22,6 +22,7 @@ import {
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
   parseSvgViewBox,
+  type PressShape,
   renderIconTemplate,
   resolveBorderSettings,
   resolveGraphicSettings,
@@ -100,6 +101,7 @@ import z from "zod";
 
 import { CAR_CYCLE_BINDING_KEYS } from "../../shared/car-cycle-bindings.js";
 import { computeCarNumberTarget } from "../../shared/car-cycling.js";
+import { pressShapeByEvent } from "../../shared/dial-release.js";
 import { RepeatController } from "../../shared/repeat-controller.js";
 import {
   getReplayBusyLook,
@@ -767,6 +769,25 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
 
   override async onKeyUp(ev: IDeckKeyUpEvent<ReplayControlSettings>): Promise<void> {
     this.repeat.onKeyUp(ev.action.id);
+  }
+
+  /**
+   * The press shape of this press (#269): a key acts on key down, so a tap;
+   * the dial's and the touch's come from the dial surface, which classifies them.
+   */
+  pressShape(
+    ev:
+      | IDeckKeyDownEvent<ReplayControlSettings>
+      | IDeckDialDownEvent<ReplayControlSettings>
+      | IDeckTouchTapEvent<ReplayControlSettings>,
+  ): PressShape {
+    const settings = this.parseSettings(ev.payload.settings);
+
+    return pressShapeByEvent(ev, {
+      key: () => ({ kind: "tap" }),
+      dial: () => this.dialSurface.pressShape(ev.action, settings.dial),
+      touch: (hold) => this.dialSurface.touchShape(ev.action, settings.dial, hold),
+    });
   }
 
   override async onDialDown(ev: IDeckDialDownEvent<ReplayControlSettings>): Promise<void> {
