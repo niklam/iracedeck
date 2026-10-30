@@ -123,7 +123,7 @@ describe("post rules", () => {
   it("maps reminders", () => {
     expect(remindersFor("packages/settings/src/global-settings.ts")[0]).toMatch(/build:force/);
     expect(remindersFor("packages/deck-core/src/global-settings.ts")).toEqual([]);
-    expect(remindersFor(".claude/rules/testing.md")[0]).toMatch(/show the drafted text/);
+    expect(remindersFor(".claude/rules/testing.md")[0]).toMatch(/needs no draft approval.*claude-rules-frontmatter/);
     expect(remindersFor("packages/deck-core/src/types.ts")).toEqual([]);
   });
   it("names the CI workflows a run list is missing", () => {
