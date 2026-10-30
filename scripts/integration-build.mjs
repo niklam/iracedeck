@@ -67,11 +67,19 @@ import path from "node:path";
 import url from "node:url";
 import { parseArgs } from "node:util";
 
-import { isInside, linkTargets, mainRepoRoot, REAL_DIRECTORY } from "./claude-hooks/lib.mjs";
+import {
+  INTEGRATION_BRANCH,
+  INTEGRATION_TREE,
+  isInside,
+  linkTargets,
+  mainRepoRoot,
+  REAL_DIRECTORY,
+} from "./claude-hooks/lib.mjs";
 import { shellCommandLine, spawnSyncShim } from "./lib/spawn-shim.mjs";
 
-export const TREE_NAME = "ir-integration";
-export const BRANCH = "integration";
+/** The names the hooks guard too (`lib.mjs`), so the script and the guards cannot drift apart. */
+export const TREE_NAME = INTEGRATION_TREE;
+export const BRANCH = INTEGRATION_BRANCH;
 const INTEGRATION_REF = `refs/heads/${BRANCH}`;
 export const BASE = "origin/master";
 export const USAGE = "usage: node scripts/integration-build.mjs [--no-build] <branch…>";
