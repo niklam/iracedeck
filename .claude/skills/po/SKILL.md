@@ -77,7 +77,7 @@ Planning against the deck hosts: check each in the rule it names rather than rec
 
 Start one when a slot is free and the next issue in order has its spec (or is exempt), **every issue it depends on has merged** (its lead branches from `origin/master`, which must already hold them), and no running lead's issue touches the same files or the same package unless you know their files are disjoint. If the next issue fails either check, take the first later one that passes, or wait. A slot is held from start until the lead reports `ready-to-test`; testing, review and merge hold none.
 
-The test queue caps it too (Niklas, 2026-10-30): start a lead only while fewer than 8 issues wait for his test, counting each at `ready-to-test` with no `Manual test: passed` verdict, plus every lead in implementation, since each will add one. A failed test stays counted. A dev-tooling issue tested by its `qa` agent (Integration build, step 6) leaves the count once that run is reported.
+The test queue caps it too (Niklas, 2026-10-30): start a lead only while fewer than 8 issues wait for his test, counting each at `ready-to-test` with no `Manual test: passed` verdict, plus every lead in implementation, since each will add one. A failed test stays counted. A dev-tooling issue (Integration build, step 6) counts only while in implementation and again while a failed or blocked agent run is fixed: its pass is recorded as soon as it is reported, with no wait for Niklas.
 
 Load `mcp__ccd_session__start_session` with ToolSearch (`select:mcp__ccd_session__start_session`), then:
 

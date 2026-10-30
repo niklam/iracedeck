@@ -43,12 +43,12 @@ Every step has an expected result he can check without reading code. Cover each 
 
 When the manual test is commands and their output (Claude Code hooks, repo scripts, the commit hook, build or CI tooling), you run it, and your pass is the manual-test pass (`issue-workflow.md` step 8). Write the script as in job 4, each step's expected output in place of what he sees, then run every step against the committed head and record its full sha.
 
-- **For real.** The real commands, the tree's own scripts and real commits. A hook is proven by firing it (`hooks.md` rule 6): pipe a synthesised payload through the tree's copy of the script, then trigger the tool in a live session, a headless `claude -p` opened in the tree with `--include-hook-events`. Its unit tests are the suite's, not this test. Pipe through the tree's script, never `master`'s, which still has the old behaviour (#1527 added a foreign issue to the real board that way).
+- **For real.** The real commands, the tree's own scripts and real commits. A hook is proven by firing it (`hooks.md` rule 6): pipe a synthesised payload through the tree's copy of the script, then trigger the tool in a live session, a headless `claude -p` opened in the tree with `--output-format stream-json --verbose --include-hook-events` (the flag prints nothing in the default text output). Its unit tests are the suite's, not this test. Pipe through the tree's script, never `master`'s, which still has the old behaviour (#1527 added a foreign issue to the real board that way).
 - **Nothing real moves.** Set `IRACEDECK_HOOKS_DRY_RUN=1` on every command or session whose hook reaches the board, and never move a real card. Never file, comment on, merge or create anything in another repository: a step about one feeds an existing URL through the payload. Read-only `gh` is fine. Where a step could reach GitHub, read the state it could change (lanes, the board's item count) before and after, and report both.
 - **Scratch commits are dropped.** Make them in the tree only, never push one, and when the run ends return the branch to the recorded head with `git -C <tree> reset --keep <sha>`, which refuses to discard uncommitted work.
 - **Evidence per step.** PASS, FAIL or BLOCKED, with the decisive output line, the full output saved in your scratchpad. A step you could not run is BLOCKED with its cause (`claude auth status` for a signed-out CLI), never PASS.
 
-End with `git status --porcelain` empty in every worktree and the tree's HEAD at the recorded sha.
+Baseline `git status --porcelain` in every worktree before the run, and end with each unchanged from it (another lead's tree may be dirty with its own work; never clean it) and the tree's HEAD at the recorded sha.
 
 ## Report
 

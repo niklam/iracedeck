@@ -76,7 +76,7 @@ Review before **manual testing**, not after, because a finding can change what t
 
 ### Manual testing gates the PR (8)
 
-**Do not open a PR until the maintainer has tested the change.** Hardware, sim and deck-host behaviour are not knowable from the diff, and a PR opened before testing is one the maintainer may have to unwind.
+**Do not open a PR until the maintainer has tested the change** (dev tooling: its `qa` agent, below). Hardware, sim and deck-host behaviour are not knowable from the diff, and a PR opened before testing is one the maintainer may have to unwind.
 
 **Dev tooling is tested by the issue's `qa` agent instead** (Niklas, 2026-10-30: "Yes, agents test tooling", #1532). When the manual test is commands and their output — Claude Code hooks, repo scripts, the commit hook, build or CI tooling — `qa` runs the script end to end for real: the real commands, the real hook firing in a live session, real commits, not the unit harness, with evidence per step. Its pass is the manual-test pass, at the head sha it ran against. An agent runs such steps more exactly than a person, and a by-hand run misleads easily: #1526's hook test, run in a plain terminal where no Claude Code hook fires, read as a failure. Anything Niklas sees or hears — a deck, the sim, the settings window, the website, clips, icons — stays his test, on a tooling issue too.
 
