@@ -242,11 +242,10 @@ export function readPitSvFuel(telemetry: TelemetryData | null): number | undefin
 }
 
 /**
- * @internal Exported for testing
- *
  * The player's car path (`DriverInfo.Drivers[DriverCarIdx].CarPath`, e.g.
- * `"mx5 mx52016"`), the key the minimum moves are remembered under. Null when
- * session info does not name it.
+ * `"mx5 mx52016"`), the key the minimum moves and the fuel step are remembered
+ * under — also read by the dial's fill-to monitor to look up the learned step
+ * (#1483). Null when session info does not name it.
  */
 export function readPlayerCarPath(sessionInfo: SessionInfo | null): string | null {
   const driverInfo = (sessionInfo as Record<string, unknown> | null)?.DriverInfo as Record<string, unknown> | undefined;
