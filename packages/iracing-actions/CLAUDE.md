@@ -52,9 +52,9 @@ src/
                                          # voice-sequence player + toggle acknowledgment
                                          # (audio-toggles), bus volume steppers (audio-volume) over the
                                          # level readers (audio-levels), the volume step tick
-                                         # (volume-tick, #1455), the audio session hold that keeps the
-                                         # device open while iRacing runs and a gate is on
-                                         # (audio-session-hold, #1347)
+                                         # (volume-tick, #1455), the press sound player (press-sounds,
+                                         # #269), the audio session hold that keeps the device open
+                                         # while iRacing runs and a gate is on (audio-session-hold, #1347)
   icons/                                 # status-bar: tri-state (on/off/na) toggle indication shared
                                          # by status bars, state borders, and dial bar styling
   shared/                                # Cross-action utilities (see below)
@@ -95,6 +95,8 @@ The replay engine — the replay command gate (the one sender of replay commands
 The former `icon-update-throttle.ts` (per-context 10 Hz throttle + trailing-edge coalescer for telemetry-driven `setKeyImage` bursts, #493) moved to `@iracedeck/deck-core` in #899 — import `IconUpdateThrottle` from there.
 
 The top-level `icons/` directory holds one 144x144 runtime template per dynamic-icon action (content rendered from live telemetry) — see the directory for the current set and `.claude/rules/icons.md` for the template format.
+
+Press sounds (#269) are decided by `@iracedeck/deck-core`'s `withPressSounds`, which `plugin-runtime`'s `registerActions` wraps around every action; an action only declares its `pressShape` and never plays a press sound itself. What plays is `audio/press-sounds.ts`: `PRESS_SOUND_CLIPS` (the click and the bleep, WAVs at the `sfx/` root) and `playPressSound`, the `play` delegate handed to `initPressSounds`, which plays on `AudioChannel.Feedback` at the volume tick's level rule (`volumeTickLevel(readRadarVolume())`, floor included) and reads neither the mode nor the connection, since the wrapper owns those gates. The settings window's `press-tap` / `press-long` previews (`audio-previews.ts`) call it directly, whatever the setting says, and a Press sound other than `none` is the third gate of the audio session hold. Spec: docs/superpowers/specs/2026-10-28-issue-269-press-sounds.md.
 
 ## Action Pattern
 
