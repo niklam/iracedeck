@@ -231,15 +231,26 @@ interface FuelDialContext {
   lastSentWholeAdd: number | null;
   /**
    * The bank (`PitSvFuel`, liters) a Target Amount step ended at when it could
-   * not reach its floor (`unmoved`), or null (#1483). The sim would not bank
-   * more — a capped bank is the fullest request it allows — so the continuous
-   * monitor treats a bank still equal to this as covering, instead of repeating
-   * a nine-send burst at every whole-unit change of the need. Cleared when the
-   * bank moves and by every new Target Amount send.
+   * not reach its floor (`unmoved`), or null (#1483). Within the same key the
+   * continuous monitor does not re-send a bank still equal to this, instead of
+   * repeating a nine-send burst on every tick. Cleared when the bank moves, when
+   * the need's whole-unit key changes (so a bank stuck by a passing cause, such
+   * as commands ignored out of the car, is retried once per whole unit) and by
+   * every new Target Amount send.
    */
   unreachableBankLtr: number | null;
   /** Counts Target Amount sends, so only the latest one's end sets {@link unreachableBankLtr}. */
   fillToSends: number;
+  /**
+   * The floor (liters) the bank was last checked against: set when a Target
+   * Amount step starts and when the monitor finds the bank covering a new key,
+   * null when nothing is armed (#1483). The monitor re-sends on any tick while
+   * the live bank is short of it, but compares against this recorded value
+   * rather than the live floor, which moves every tick as fuel burns once it
+   * is capped at the space left — so a short bank is acted on at once without
+   * a send per tick of burn.
+   */
+  checkedFloorLtr: number | null;
   throttle: ThrottleState;
   /** Coalescing state for autofuel lap-margin keybind taps. */
   marginThrottle: MarginThrottleState;
@@ -1286,6 +1297,10 @@ export class FuelDialSurface {
       // landing while the write is in flight flips back rather than repeating
       // this one (#957).
       ctx.settings = { ...ctx.settings, dial: { ...ctx.settings.dial, mode: next } };
+      // A floor recorded by an earlier Target Amount request no longer describes
+      // the dial: the re-seed below sets a new target from the live bank.
+      ctx.checkedFloorLtr = null;
+      ctx.unreachableBankLtr = null;
       await persistDialPatch(ctx.action, rawSettings, { mode: next }, this.host.logger, "mode switch");
       this.seedFromTelemetry(ctx, true);
       await this.applyTriggerDescription(ctx);
@@ -1495,9 +1510,10 @@ export class FuelDialSurface {
    * the monitor's whole-unit key are recorded from it at once, so a tick while
    * the step runs or waits does not send it again.
    *
-   * The floor is capped at the tank's capacity ({@link fillToFloorLtr}). A step
-   * that still ends `unmoved` leaves the bank it ended at in
-   * `ctx.unreachableBankLtr`, so the monitor leaves that bank alone (see
+   * The floor is capped at the space left in the tank ({@link fillToFloorLtr})
+   * and recorded in `ctx.checkedFloorLtr` when the step starts. A step that
+   * still ends `unmoved` leaves the bank it ended at in `ctx.unreachableBankLtr`,
+   * so the monitor does not repeat the burst within the same need (see
    * `updateManualFromTelemetry`); every new send clears it, and only the
    * latest send's end may set it, so an older step ending late cannot.
    *
@@ -1521,7 +1537,11 @@ export class FuelDialSurface {
 
         const floorLtr = this.fillToFloorLtr(this.effectiveAddLtr(ctx));
 
-        return floorLtr > 0 ? { floorLtr } : null;
+        if (!(floorLtr > 0)) return null;
+
+        ctx.checkedFloorLtr = floorLtr;
+
+        return { floorLtr };
       },
       (result) => {
         if (result.outcome === "unmoved" && result.endLtr !== undefined && send === ctx.fillToSends) {
@@ -1535,15 +1555,20 @@ export class FuelDialSurface {
 
   /**
    * The floor a Target Amount add is checked against (#1483): the add, capped
-   * at the tank's capacity when known. The add is rounded up to a whole display
-   * unit, so with a near-empty tank whose capacity is not a whole number it can
-   * exceed what the tank holds (Fill to Max on a 40.1 L tank at 0.05 L asks for
-   * 41) — a floor no bank can reach.
+   * at the SPACE left in the tank (capacity − current) when the capacity is
+   * known. The add is rounded up to a whole display unit, so it can exceed that
+   * space by up to one unit (Fill to Max at 30.4 L of a 40 L tank asks for 10,
+   * with 9.6 L of room); if the sim caps the request at the space, or at the
+   * tank, a floor above it is one no bank can reach, and the step would end
+   * `unmoved` short of a fill the stop could have made. The target is clamped
+   * to the capacity, so the raw need (target − current) never exceeds the
+   * space: the capped floor is never below what the target needs, and is
+   * reachable whichever way the sim caps.
    */
   private fillToFloorLtr(addLtr: number): number {
     const maxLtr = this.effectiveMaxLtr();
 
-    return maxLtr === undefined ? addLtr : Math.min(addLtr, maxLtr);
+    return maxLtr === undefined ? addLtr : Math.min(addLtr, Math.max(0, maxLtr - this.currentLtr()));
   }
 
   /**
@@ -1718,6 +1743,7 @@ export class FuelDialSurface {
         lastSentWholeAdd: null,
         unreachableBankLtr: null,
         fillToSends: 0,
+        checkedFloorLtr: null,
         throttle: { timer: null, pendingLtr: null, lastSentLtr: null },
         marginThrottle: { timer: null, pendingTicks: 0 },
         preview: null,
@@ -1952,15 +1978,22 @@ export class FuelDialSurface {
     // the bank then moves only when the burn takes the need past it, instead
     // of a request per liter that iRacing rounds back to the same gallon; a
     // bank a step or more above the need (the target lowered, or a stop that
-    // left early) is lowered once. A covered evaluation records the key without
-    // sending, so it is evaluated once per key change, not every tick, and a
-    // change made in the sim is not fought until the next key change.
+    // left early) is lowered once per key change. A covered evaluation records
+    // the key and the floor (`checkedFloorLtr`) without sending.
     //
-    // A bank a Target Amount step could not raise (it ended `unmoved`: a capped
-    // bank, the fullest request the sim allows) covers as well while it stays
-    // where that step left it, so the monitor does not repeat the step's burst
-    // at every key change (see bankCoversAdd). Monitor steps log their end at
-    // debug only, as the monitor always has.
+    // Between key changes a SHORT bank is acted on at once, on any tick: a live
+    // `PitSvFuel` below the recorded floor is re-sent. That catches a lowering
+    // send that showed only after its step's watch had ended (the step saw the
+    // old bank, at or above the floor, and ended; the grid point below the
+    // floor showed a moment later), and a request lowered in the sim. The
+    // too-high check stays per key change, and an unreadable bank never sends.
+    //
+    // A bank a Target Amount step could not raise (it ended `unmoved`, e.g.
+    // commands ignored while out of the car) is not re-sent within the same
+    // key, so the burst is not repeated tick after tick; a new key clears that
+    // memory, so a stuck bank is retried at most once per whole unit — the old
+    // monitor's cadence. Monitor steps log their end at debug only, as the
+    // monitor always has.
     //
     // A key of null (target reached) clears, as before. The monitor also holds
     // off while a fuel step check runs: that check's own sends move `PitSvFuel`,
@@ -2005,23 +2038,36 @@ export class FuelDialSurface {
       const displayUnits = this.effectiveDisplayUnits(ctx);
       const wholeKey = addLtr <= 0 ? null : Math.round(fuelToDisplayUnits(addLtr, displayUnits));
 
-      if (wholeKey === ctx.lastSentWholeAdd) return;
+      if (wholeKey === ctx.lastSentWholeAdd) {
+        if (wholeKey !== null && this.bankShortOfCheckedFloor(ctx, telemetry)) {
+          this.sendFillToStep(ctx, addLtr, "monitor");
+          this.host.logger.debug(`Continuous fill-to: the bank fell short, requested ${addLtr.toFixed(2)}L`);
+        }
+
+        return;
+      }
+
+      // A new key: retry a bank a step could not raise (at most once per unit).
+      ctx.unreachableBankLtr = null;
 
       if (wholeKey === null) {
         // Target reached: the 0 add clears (never `pit.fuel(0)`).
         this.pipeline.sendFuel(addLtr);
         ctx.lastSentWholeAdd = null;
         ctx.throttle.lastSentLtr = null;
+        ctx.checkedFloorLtr = null;
         this.host.logger.debug("Continuous fill-to: target reached, cleared the request");
 
         return;
       }
 
-      if (this.bankCoversAdd(ctx, addLtr, telemetry)) {
+      if (this.bankCoversAdd(addLtr, telemetry)) {
         // Nothing to send; record the key (and the rotate throttle's no-op
-        // baseline) so this need is not evaluated again until it moves.
+        // baseline) so this need is not evaluated again until it moves, and the
+        // floor a short bank is measured against until then.
         ctx.lastSentWholeAdd = wholeKey;
         ctx.throttle.lastSentLtr = addLtr;
+        ctx.checkedFloorLtr = this.fillToFloorLtr(addLtr);
         this.host.logger.debug(`Continuous fill-to: the bank covers ${addLtr.toFixed(2)}L, nothing sent`);
 
         return;
@@ -2041,35 +2087,47 @@ export class FuelDialSurface {
    * exactly when its bank differs from the rounded-up need, as before #1483,
    * and a coarser car's bank a liter or more above the need is re-sent once — a
    * send the fuel step check confirms without lowering the bank below the need,
-   * and which teaches the step when it has to step up.
+   * and which teaches the step when it has to step up. An unreadable bank does
+   * not cover.
    *
-   * A bank still equal to the one a Target Amount step could not raise
-   * (`ctx.unreachableBankLtr`) covers a need it falls short of too: the sim
-   * would not bank more, so re-sending would only repeat the step's burst. A
-   * need it now sits a step or more ABOVE (a stop cut short) is still lowered.
-   * Once the bank moves the memory is dropped. An unreadable bank does not cover.
+   * Evaluated only on a new key, which has already cleared the memory of a
+   * bank a step could not raise: a stuck bank is retried once per whole unit,
+   * and a capped bank a step or more above the need (a stop cut short) is
+   * lowered like any other. Within a key, the memory is honoured by
+   * {@link bankShortOfCheckedFloor}.
    */
-  private bankCoversAdd(ctx: FuelDialContext, addLtr: number, telemetry: TelemetryData | null): boolean {
+  private bankCoversAdd(addLtr: number, telemetry: TelemetryData | null): boolean {
     const bankLtr = readPitSvFuel(telemetry);
 
-    if (bankLtr === undefined) return false;
-
-    const short = bankLtr < this.fillToFloorLtr(addLtr) - BANK_EPSILON_LTR;
-
-    if (ctx.unreachableBankLtr !== null) {
-      if (Math.abs(bankLtr - ctx.unreachableBankLtr) > BANK_EPSILON_LTR) {
-        ctx.unreachableBankLtr = null;
-      } else if (short) {
-        return true;
-      }
-    }
-
-    if (short) return false;
+    if (bankLtr === undefined || bankLtr < this.fillToFloorLtr(addLtr) - BANK_EPSILON_LTR) return false;
 
     const carPath = readPlayerCarPath(this.host.getSessionInfo());
     const stepLtr = (carPath === null ? undefined : this.stepper.fuelStepFor(carPath)) ?? UNKNOWN_FUEL_STEP_LTR;
 
     return bankLtr < addLtr + stepLtr - BANK_EPSILON_LTR;
+  }
+
+  /**
+   * Whether, within the same key, the live bank has fallen short of the floor
+   * it was last checked against (`ctx.checkedFloorLtr`) — a lowering send that
+   * showed late, or a request lowered in the sim (#1483). An unreadable bank,
+   * or no recorded floor, is never short. A bank still equal to the one a
+   * Target Amount step could not raise is not short either: re-sending would
+   * repeat the step's burst on every tick. A bank that has moved off it drops
+   * that memory.
+   */
+  private bankShortOfCheckedFloor(ctx: FuelDialContext, telemetry: TelemetryData | null): boolean {
+    const bankLtr = readPitSvFuel(telemetry);
+
+    if (bankLtr === undefined || ctx.checkedFloorLtr === null) return false;
+
+    if (ctx.unreachableBankLtr !== null) {
+      if (Math.abs(bankLtr - ctx.unreachableBankLtr) <= BANK_EPSILON_LTR) return false;
+
+      ctx.unreachableBankLtr = null;
+    }
+
+    return bankLtr < ctx.checkedFloorLtr - BANK_EPSILON_LTR;
   }
 
   onTelemetry(actionId: string, telemetry: TelemetryData | null): void {
