@@ -105,10 +105,10 @@ export function wipersAndVisorBinding(
 /**
  * What a key-down does, the one decision the press and its press sound
  * (#269) both read, so the two cannot disagree:
- * - `classify` — a wiper car: the press is only timed, and its release is
+ * - `classify` â€” a wiper car: the press is only timed, and its release is
  *   classified as a tap or a long press;
- * - `send` — a visor car: `binding` is sent at once;
- * - `ignore` — an unknown car, or one with neither: nothing is sent.
+ * - `send` â€” a visor car: `binding` is sent at once;
+ * - `ignore` â€” an unknown car, or one with neither: nothing is sent.
  */
 export type WipersAndVisorDown = { kind: "classify" } | { kind: "send"; binding: string } | { kind: "ignore" };
 
