@@ -403,8 +403,8 @@ export function buildTireToggleMacro(settings: TireServiceSettings): string | nu
 /**
  * Combined bounds covering both the car body in toggle-tires.svg and the four
  * dynamic tire rects this action overlays at runtime. The car SVG keeps its
- * 144x144 viewBox (skipped by scripts/migrate-icons-to-trimmed-viewbox.mjs)
- * because the tire rects are positioned in the same 144x144 space.
+ * 144x144 viewBox (the trimmed-viewBox migration skipped it) because the
+ * tire rects are positioned in the same 144x144 space.
  */
 const TOGGLE_TIRES_BOUNDS = { x: 35, y: 1, width: 74, height: 138 };
 
