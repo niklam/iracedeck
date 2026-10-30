@@ -24,7 +24,9 @@ import {
   integrationTreePath,
   main,
   parseCliArgs,
+  parseMergeTree,
   runBuild,
+  supportsWriteTree,
   tsDiagnostics,
 } from "./integration-build.mjs";
 
@@ -74,20 +76,32 @@ const failed = (out = "", code = 1) => ({ ok: false, code, out, err: "" });
 
 /**
  * Real git through `defaultExec`, canned answers for everything else, and a
- * record of every call. `answers` maps `"<cmd> <args…>"` to a result.
+ * record of every call. `answers` maps `"<cmd> <args…>"` to a result, git
+ * included; `rewrite(args, result)` may replace what a real git call returned.
  */
-function recordingExec(answers = {}) {
+function recordingExec(answers = {}, { rewrite } = {}) {
   return async (cmd, args, options) => {
     calls.push({ cmd, args, cwd: options?.cwd, stream: options?.stream ?? false });
-    if (cmd === "git") return defaultExec(cmd, args, { ...options, stream: false });
     const key = [cmd, ...args].join(" ");
+    if (key in answers) return answers[key];
+    if (cmd !== "git") return ok();
+    const result = await defaultExec(cmd, args, { ...options, stream: false });
 
-    return answers[key] ?? ok();
+    return rewrite ? rewrite(args, result) : result;
   };
 }
 
 const commandLines = () => calls.map(({ cmd, args }) => [cmd, ...args].join(" "));
 const noLinks = () => [];
+
+/** Every ref in the repository with the commit it names. */
+const refs = () => git(["for-each-ref", "--format=%(refname) %(objectname)"]);
+
+/** The git commands that would change the integration tree or what its branch names. */
+const treeWrites = () =>
+  calls.filter(
+    ({ cmd, args }) => cmd === "git" && ["reset", "merge", "worktree", "checkout", "switch"].includes(args[0]),
+  );
 
 beforeEach(() => {
   calls = [];
@@ -252,21 +266,123 @@ describe("buildIntegration — merging", { timeout: GIT_TIMEOUT_MS }, () => {
 });
 
 describe("buildIntegration — a conflict", { timeout: GIT_TIMEOUT_MS }, () => {
-  it("aborts the conflicting merge, reports it against what was merged before, and leaves nothing half-merged", async () => {
+  it("finds a conflict on the third branch before the reset, and leaves the tree exactly as it was", async () => {
+    // The previous build, which a deck host may be running from.
+    branch("feature/0-p", "p.txt", "p\n");
+    await buildIntegration({
+      repoRoot: repo,
+      branches: ["feature/0-p"],
+      build: false,
+      exec: recordingExec(),
+      log: silentLog(),
+    });
+    const headBefore = git(["rev-parse", "HEAD"], tree);
+    const filesBefore = git(["ls-files"], tree);
+    calls = [];
+
+    branch("feature/1-a", "a.txt", "a\n");
+    branch("feature/2-b", "b.txt", "b\n");
+    branch("feature/3-c", "a.txt", "c\n");
+    const refsBefore = refs();
+    const log = silentLog();
+
+    const result = await buildIntegration({
+      repoRoot: repo,
+      branches: ["feature/1-a", "feature/2-b", "feature/3-c"],
+      build: true,
+      exec: recordingExec(),
+      links: () => {
+        throw new Error("links must not be read when nothing is built");
+      },
+      log,
+    });
+
+    expect(result.conflict).toEqual({
+      branch: "feature/3-c",
+      files: ["a.txt"],
+      mergedBefore: ["feature/1-a", "feature/2-b"],
+    });
+    expect(result.merged).toEqual([]);
+    expect(result.treeChanged).toBe(false);
+    expect(result.build).toBeUndefined();
+    // The tree: the same HEAD, the same files, nothing left over.
+    expect(git(["rev-parse", "HEAD"], tree)).toBe(headBefore);
+    expect(git(["symbolic-ref", "--short", "HEAD"], tree)).toBe("integration");
+    expect(git(["ls-files"], tree)).toBe(filesBefore);
+    expect(git(["status", "--porcelain", "--ignored"], tree)).toBe("");
+    expect(existsSync(join(tree, "p.txt"))).toBe(true);
+    expect(existsSync(join(tree, "a.txt")) || existsSync(join(tree, "b.txt"))).toBe(false);
+    // No command that writes the tree ran, and the dry run's commits got no ref.
+    expect(treeWrites()).toEqual([]);
+    expect(calls.filter(({ cwd }) => cwd === tree).map(({ args }) => args[0])).toEqual([
+      "rev-parse",
+      "symbolic-ref",
+      "status",
+    ]);
+    expect(refs()).toBe(refsBefore);
+    expect(calls.some(({ cmd }) => cmd === "pnpm" || cmd === "node")).toBe(false);
+    // The positive control: the dry run did walk the whole chain up to the conflict.
+    expect(calls.filter(({ args }) => args[0] === "merge-tree")).toHaveLength(3);
+    expect(calls.filter(({ args }) => args[0] === "commit-tree")).toHaveLength(2);
+    expect(log.error).not.toHaveBeenCalled();
+  });
+
+  it("reports a conflict with origin/master alone as an empty mergedBefore, without creating a missing tree", async () => {
+    branch("feature/1-x", "shared.txt", "x\n");
+    commitFile("shared.txt", "moved on\n", "master edits shared");
+    git(["push", "-q", "origin", "master"]);
+
+    const result = await buildIntegration({
+      repoRoot: repo,
+      branches: ["feature/1-x"],
+      build: false,
+      exec: recordingExec(),
+      log: silentLog(),
+    });
+
+    expect(result.conflict).toEqual({ branch: "feature/1-x", files: ["shared.txt"], mergedBefore: [] });
+    expect(result.treeChanged).toBe(false);
+    expect(existsSync(tree)).toBe(false);
+    expect(treeWrites()).toEqual([]);
+  });
+
+  it("refuses when merge-tree fails for a reason other than a conflict, before the reset", async () => {
+    branch("feature/1-a", "a.txt", "a\n");
+    const exec = recordingExec(
+      {},
+      { rewrite: (args, result) => (args[0] === "merge-tree" ? failed("", 128) : result) },
+    );
+
+    await expect(
+      buildIntegration({ repoRoot: repo, branches: ["feature/1-a"], build: false, exec, log: silentLog() }),
+    ).rejects.toThrow(IntegrationRefusal);
+    expect(treeWrites()).toEqual([]);
+  });
+
+  it("falls back to aborting a real merge that conflicts after a clean dry run, leaving nothing half-merged", async () => {
     const x = branch("feature/1-x", "shared.txt", "x\n");
     branch("feature/2-y", "shared.txt", "y\n");
     branch("feature/3-z", "z.txt", "z\n");
+    // A dry run that misses the conflict: merge-tree reports its tree as clean.
+    const exec = recordingExec(
+      {},
+      {
+        rewrite: (args, result) =>
+          args[0] === "merge-tree" && result.code === 1 ? ok(`${result.out.split("\n")[0]}\n`) : result,
+      },
+    );
 
     const result = await buildIntegration({
       repoRoot: repo,
       branches: ["feature/1-x", "feature/2-y", "feature/3-z"],
       build: true,
-      exec: recordingExec(),
+      exec,
       links: noLinks,
       log: silentLog(),
     });
 
     expect(result.merged).toEqual([{ branch: "feature/1-x", sha: x }]);
+    expect(result.treeChanged).toBe(true);
     expect(result.conflict).toEqual({
       branch: "feature/2-y",
       files: ["shared.txt"],
@@ -281,22 +397,58 @@ describe("buildIntegration — a conflict", { timeout: GIT_TIMEOUT_MS }, () => {
     expect(result.build).toBeUndefined();
     expect(calls.some(({ cmd }) => cmd === "pnpm")).toBe(false);
   });
+});
 
-  it("reports a conflict with origin/master alone as an empty mergedBefore", async () => {
-    branch("feature/1-x", "shared.txt", "x\n");
-    commitFile("shared.txt", "moved on\n", "master edits shared");
-    git(["push", "-q", "origin", "master"]);
+describe("buildIntegration — the git version", { timeout: GIT_TIMEOUT_MS }, () => {
+  it.each([["git version 2.37.1\n"], ["not git\n"]])("refuses %j before fetching anything", async (answer) => {
+    branch("feature/1-a", "a.txt", "a\n");
 
-    const result = await buildIntegration({
-      repoRoot: repo,
-      branches: ["feature/1-x"],
-      build: false,
-      exec: recordingExec(),
-      log: silentLog(),
+    await expect(
+      buildIntegration({
+        repoRoot: repo,
+        branches: ["feature/1-a"],
+        build: false,
+        exec: recordingExec({ "git --version": ok(answer) }),
+        log: silentLog(),
+      }),
+    ).rejects.toThrow(/git 2\.38 or later is needed for merge-tree --write-tree/);
+    expect(commandLines().filter((line) => /^git (fetch|reset|merge|worktree)/.test(line))).toEqual([]);
+  });
+});
+
+describe("supportsWriteTree", () => {
+  it.each([
+    ["git version 2.38.0", true],
+    ["git version 2.56.0.windows.3\n", true],
+    ["git version 2.39.3 (Apple Git-146)", true],
+    ["git version 3.0.0", true],
+    ["git version 2.37.9", false],
+    ["git version 1.99.0", false],
+    ["", false],
+    [undefined, false],
+  ])("%j → %s", (text, expected) => {
+    expect(supportsWriteTree(text)).toBe(expected);
+  });
+});
+
+describe("parseMergeTree", () => {
+  const OID = "942e3668bf8ba75801ffaa93801d222b3b5991a0";
+
+  it("reads a clean merge as its tree and no files", () => {
+    expect(parseMergeTree(`${OID}\n`)).toEqual({ tree: OID, files: [], messages: "" });
+  });
+
+  it("reads the conflicted names up to the blank line, and the messages after it", () => {
+    expect(parseMergeTree(`${OID}\nother.txt\nshared.txt\n\nAuto-merging other.txt\nCONFLICT (content): x\n`)).toEqual({
+      tree: OID,
+      files: ["other.txt", "shared.txt"],
+      messages: "Auto-merging other.txt\nCONFLICT (content): x",
     });
+  });
 
-    expect(result.conflict).toEqual({ branch: "feature/1-x", files: ["shared.txt"], mergedBefore: [] });
-    expect(git(["status", "--porcelain"], tree)).toBe("");
+  it("is undefined for git's own error text, which also exits 1", () => {
+    expect(parseMergeTree("")).toBeUndefined();
+    expect(parseMergeTree("merge-tree: nope - not something we can merge\n")).toBeUndefined();
   });
 });
 
@@ -623,6 +775,8 @@ describe("main", { timeout: GIT_TIMEOUT_MS }, () => {
 
     expect(code).toBe(EXIT_FAILED);
     expect(output(log)).toMatch(/feature\/2-y conflicts with feature\/1-x/);
+    expect(output(log)).toMatch(/left as it was, with nothing reset, merged or built/);
+    expect(output(log)).not.toMatch(/ is origin\/master/);
     expect(output(log)).toContain("shared.txt");
   });
 

@@ -9,18 +9,30 @@
  * linked to once by the maintainer; the PO session runs this to put every issue
  * that is ready to test into one build. In order:
  *
- * 1. Refuses a tree that is dirty (untracked files included), detached, on any
- *    branch but `integration`, or not a worktree of this repository — and every
- *    branch name it cannot resolve — before anything is fetched, reset or
- *    merged. A missing tree is created from `origin/master`, with no upstream.
- * 2. Fetches, resets `integration` hard to `origin/master`, and merges each
- *    branch with `--no-ff` in the order given. Each is merged by the full sha it
- *    resolved to at the start, so the pass the maintainer gives belongs to
- *    exactly the commit he tested, and the sha is in the merge commit's subject.
- * 3. On a conflict, collects the conflicted files, runs `git merge --abort`,
- *    checks the tree came back clean, reports which branch conflicted with what
- *    was already merged, and stops (exit 1). The earlier merges stay; nothing is
- *    left half-merged. A conflict is resolved in the issue worktrees, never here.
+ * 1. Refuses a git older than 2.38 (step 2 needs `merge-tree --write-tree`),
+ *    a tree that is dirty (untracked files included), detached, on any branch
+ *    but `integration`, or not a worktree of this repository — and every branch
+ *    name it cannot resolve — before anything is fetched, reset or merged.
+ * 2. Fetches, then merges the whole chain without a work tree: from
+ *    `origin/master`'s sha, `git merge-tree --write-tree` merges each branch in
+ *    turn and `git commit-tree` records the result as the base for the next.
+ *    Both write objects only, never a ref, and nothing touches the tree. A
+ *    conflict anywhere in the chain is reported here — which branch, its
+ *    conflicted files, what was merged before it — and the run stops (exit 1)
+ *    with the tree exactly as it was. A deck host may be running from that
+ *    tree, and a reset plus part of the chain, unbuilt and unrestarted, would
+ *    take away the build the maintainer was testing. A conflict is resolved in
+ *    the issue worktrees, never here.
+ * 3. Only once the whole chain merged clean: resets `integration` hard to that
+ *    `origin/master` sha (a missing tree is created there first, with no
+ *    upstream) and merges each branch with `--no-ff` in the order given. Each is
+ *    merged by the full sha it resolved to at the start, so the pass the
+ *    maintainer gives belongs to exactly the commit he tested, and the sha is in
+ *    the merge commit's subject. Should a real merge conflict all the same (a
+ *    fallback that step 2 is there to make unreachable), it collects the
+ *    conflicted files, runs `git merge --abort`, checks the tree came back
+ *    clean, reports the conflict and stops; the earlier merges stay, and nothing
+ *    is left half-merged.
  * 4. Unless `--no-build`: `pnpm install` and `pnpm build` in the tree, output
  *    streamed and scanned for `TS<n>:` diagnostics (fatal even on exit 0, as
  *    `build-and-commit.md` says), then restarts the deck hosts whose plugin
@@ -67,6 +79,35 @@ const STREAM_DECK = "Stream Deck";
 /** The integration worktree: the `ir-integration` sibling of the main checkout. */
 export function integrationTreePath(mainRoot) {
   return path.join(path.dirname(path.resolve(mainRoot)), TREE_NAME);
+}
+
+/** The first git whose `merge-tree` has `--write-tree`, which the dry run of the chain needs. */
+export const MIN_GIT_VERSION = [2, 38];
+
+/** Whether `git --version` output names a git at least `MIN_GIT_VERSION`; false when unreadable. */
+export function supportsWriteTree(versionText) {
+  const m = /\bgit version (\d+)\.(\d+)/.exec(versionText ?? "");
+  if (!m) return false;
+  const [major, minor] = [Number(m[1]), Number(m[2])];
+  const [needMajor, needMinor] = MIN_GIT_VERSION;
+
+  return major > needMajor || (major === needMajor && minor >= needMinor);
+}
+
+/**
+ * `git merge-tree --write-tree --name-only` output: `{ tree, files, messages }`,
+ * or undefined when the first line is no object id (git's own error, which
+ * also exits 1). The conflicted names run from the second line to the first
+ * blank one; git's informational messages follow it.
+ */
+export function parseMergeTree(out) {
+  const lines = out.split(/\r?\n/);
+  if (!/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(lines[0] ?? "")) return undefined;
+  const blank = lines.indexOf("", 1);
+  const end = blank === -1 ? lines.length : blank;
+  const messages = lines.slice(end + 1).join("\n");
+
+  return { tree: lines[0], files: [...new Set(lines.slice(1, end))], messages: messages.trim() };
 }
 
 /** Every line of `text` that carries a TypeScript diagnostic code (`TS2345:`). */
@@ -158,9 +199,12 @@ const samePath = (a, b) => isInside(a, b) && isInside(b, a);
  * @param {typeof linkTargets} [options.links] the deck hosts' plugin links, injected by the tests
  * @param {{ log: Function, error: Function }} [options.log]
  * @returns {Promise<{ tree: string, merged: { branch: string, sha: string }[],
+ *   treeChanged: boolean,
  *   conflict?: { branch: string, files: string[], mergedBefore: string[] },
- *   build?: Awaited<ReturnType<typeof runBuild>> }>}
- * @throws {IntegrationRefusal} before anything is fetched, reset or merged
+ *   build?: Awaited<ReturnType<typeof runBuild>> }>} `merged` lists what the
+ *   tree really holds; `treeChanged` is false when the dry run found a
+ *   conflict, so nothing was reset, merged or built
+ * @throws {IntegrationRefusal} before anything is reset or merged
  */
 export async function buildIntegration({
   repoRoot,
@@ -183,11 +227,19 @@ export async function buildIntegration({
     return r.out.trim();
   };
 
+  const version = await git(["--version"], main);
+  if (!version.ok || !supportsWriteTree(version.out)) {
+    const found = version.ok ? version.out.trim() : `no version (${version.err.trim()})`;
+    throw new IntegrationRefusal(
+      `git ${MIN_GIT_VERSION.join(".")} or later is needed for merge-tree --write-tree; found ${found}.`,
+    );
+  }
+
   const existed = existsSync(tree);
   if (existed) await checkTree(tree, main, git);
 
   await must(["fetch", "origin"], main);
-  await must(["rev-parse", "--verify", "--quiet", `${BASE}^{commit}`], main);
+  const base = await must(["rev-parse", "--verify", "--quiet", `${BASE}^{commit}`], main);
 
   const heads = [];
   for (const branch of branches) {
@@ -196,16 +248,19 @@ export async function buildIntegration({
     heads.push({ branch, sha: r.out.trim() });
   }
 
+  const dryRunConflict = await mergeChainDryRun({ base, heads, cwd: main, git, must, log });
+  if (dryRunConflict) return { tree, merged: [], treeChanged: false, conflict: dryRunConflict };
+
   if (!existed) {
     const hasBranch = (await git(["rev-parse", "--verify", "--quiet", `refs/heads/${BRANCH}`], main)).ok;
     await must(
-      hasBranch ? ["worktree", "add", tree, BRANCH] : ["worktree", "add", "--no-track", "-b", BRANCH, tree, BASE],
+      hasBranch ? ["worktree", "add", tree, BRANCH] : ["worktree", "add", "--no-track", "-b", BRANCH, tree, base],
       main,
     );
     log.log(`Created ${tree} on branch ${BRANCH}.`);
   }
 
-  await must(["reset", "--hard", "--quiet", BASE], tree);
+  await must(["reset", "--hard", "--quiet", base], tree);
 
   const merged = [];
   for (const { branch, sha } of heads) {
@@ -226,12 +281,53 @@ export async function buildIntegration({
     }
     if (files.length === 0) log.error((r.err || r.out).trim());
 
-    return { tree, merged, conflict: { branch, files, mergedBefore: merged.map((m) => m.branch) } };
+    return {
+      tree,
+      merged,
+      treeChanged: true,
+      conflict: { branch, files, mergedBefore: merged.map((m) => m.branch) },
+    };
   }
 
-  if (!build) return { tree, merged };
+  if (!build) return { tree, merged, treeChanged: true };
 
-  return { tree, merged, build: await runBuild({ tree, exec, links, log }) };
+  return { tree, merged, treeChanged: true, build: await runBuild({ tree, exec, links, log }) };
+}
+
+/**
+ * Merges `heads` onto `base` one after another without a work tree, as the
+ * real `--no-ff` merges will: `merge-tree --write-tree` gives each merge's
+ * tree, and `commit-tree` turns it into the two-parent commit the next branch
+ * is merged onto, so every merge sees the same merge base the real one will.
+ * Both write objects only — no ref, no index, no work tree — and run in the
+ * main checkout, never the integration tree.
+ *
+ * @returns {Promise<{ branch: string, files: string[], mergedBefore: string[] } | undefined>}
+ *   the first conflict, or undefined when the whole chain merges clean
+ * @throws {IntegrationRefusal} when git fails for any reason but a conflict
+ */
+async function mergeChainDryRun({ base, heads, cwd, git, must, log }) {
+  let current = base;
+  for (const [i, { branch, sha }] of heads.entries()) {
+    const r = await git(["merge-tree", "--write-tree", "--name-only", current, sha], cwd);
+    const result = r.ok || r.code === 1 ? parseMergeTree(r.out) : undefined;
+    if (!result) {
+      throw new IntegrationRefusal(`git merge-tree of ${branch} failed in ${cwd}:\n${(r.err || r.out).trim()}`);
+    }
+
+    if (!r.ok) {
+      if (result.files.length === 0 && result.messages) log.error(result.messages);
+
+      return { branch, files: result.files, mergedBefore: heads.slice(0, i).map((h) => h.branch) };
+    }
+
+    current = await must(
+      ["commit-tree", result.tree, "-p", current, "-p", sha, "-m", `Dry run: merge ${branch} at ${sha}`],
+      cwd,
+    );
+  }
+
+  return undefined;
 }
 
 /** Refuses an existing tree that is not a clean `integration` worktree of `main`. */
@@ -343,14 +439,27 @@ export async function main(argv, { cwd = process.cwd(), exec, links, log = conso
     return EXIT_FAILED;
   }
 
-  const { tree, merged, conflict, build } = result;
+  const { tree, merged, treeChanged, conflict, build } = result;
+  const conflictFiles = () => {
+    for (const file of conflict.files) log.error(`  ${file}`);
+  };
+  const before = () => (conflict.mergedBefore.length ? conflict.mergedBefore.join(", ") : `${BASE} alone`);
+
+  if (conflict && !treeChanged) {
+    log.error(
+      `\n${conflict.branch} conflicts with ${before()}. Found before the reset: ${tree} was left as it was, with nothing reset, merged or built.`,
+    );
+    conflictFiles();
+
+    return EXIT_FAILED;
+  }
+
   log.log(`\n${tree} is ${BASE}${merged.length ? " plus:" : " alone."}`);
   for (const { branch, sha } of merged) log.log(`  ${branch}  ${sha}`);
 
   if (conflict) {
-    const before = conflict.mergedBefore.length ? conflict.mergedBefore.join(", ") : `${BASE} alone`;
-    log.error(`\n${conflict.branch} conflicts with ${before}; that merge was aborted and nothing was built.`);
-    for (const file of conflict.files) log.error(`  ${file}`);
+    log.error(`\n${conflict.branch} conflicts with ${before()}; that merge was aborted and nothing was built.`);
+    conflictFiles();
 
     return EXIT_FAILED;
   }
@@ -361,7 +470,6 @@ export async function main(argv, { cwd = process.cwd(), exec, links, log = conso
   if (!build.ok) {
     log.error(`\nThe build failed: ${build.failure}.`);
     for (const line of build.tsErrors) log.error(`  ${line}`);
-
     return EXIT_FAILED;
   }
   log.log("\nBuilt.");
