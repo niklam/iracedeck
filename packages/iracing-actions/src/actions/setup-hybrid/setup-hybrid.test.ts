@@ -705,3 +705,49 @@ describe("SetupHybrid", () => {
     });
   });
 });
+
+describe("SetupHybrid key press shape (#269)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it.each(["hys-boost", "hys-regen"])(
+    "is a hold at the dual-press threshold for %s, a finger-held control",
+    (setting) => {
+      const action = new SetupHybrid();
+
+      expect(action.pressShape(fakeEvent("ps-1", { setting, direction: "increase" }) as never)).toEqual({
+        kind: "hold",
+        thresholdMs: 500,
+      });
+    },
+  );
+
+  it.each(["mguk-regen-gain", "mguk-deploy-mode", "mguk-fixed-deploy", "hys-no-boost"])(
+    "stays a tap for %s, which acts on key down",
+    (setting) => {
+      const action = new SetupHybrid();
+
+      expect(action.pressShape(fakeEvent("ps-2", { setting, direction: "increase" }) as never)).toEqual({
+        kind: "tap",
+      });
+    },
+  );
+
+  it.each([
+    "mguk-regen-gain",
+    "mguk-deploy-mode",
+    "mguk-fixed-deploy",
+    "hys-boost",
+    "hys-regen",
+    "hys-no-boost",
+  ])("declares hold exactly when onKeyDown holds the binding: %s", async (setting) => {
+    const action = new SetupHybrid();
+    const settings = { setting, direction: "increase", keyStyle: "legacy" };
+    const shape = action.pressShape(fakeEvent("ps-3", settings) as never);
+
+    await action.onKeyDown(fakeEvent("ps-3", settings) as never);
+
+    expect(shape.kind === "hold").toBe(mockHoldBinding.mock.calls.length > 0);
+  });
+});

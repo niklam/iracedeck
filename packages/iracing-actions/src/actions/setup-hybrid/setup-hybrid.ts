@@ -430,9 +430,9 @@ export class SetupHybrid extends SimIRacingAction<SetupHybridSettings> {
 
   /**
    * The press shape of this press (#269): a View key's from its dual-press
-   * state (`setupKeyPressShape`, from the settings `onKeyDown` reads), every
-   * other key a tap, and the dial's and the touch's from the dial surface,
-   * which classifies them.
+   * state (`setupKeyPressShape`, from the settings `onKeyDown` reads), a
+   * held control's (Boost, Regen) `hold`, every other key a tap, and the
+   * dial's and the touch's from the dial surface, which classifies them.
    */
   pressShape(
     ev:
@@ -443,10 +443,28 @@ export class SetupHybrid extends SimIRacingAction<SetupHybridSettings> {
     const settings = this.parseSettings(ev.payload.settings);
 
     return pressShapeByEvent(ev, {
-      key: () => setupKeyPressShape(settings),
+      key: () => this.keyPressShape(settings),
       dial: () => this.dialSurface.pressShape(ev.action, settings.dial),
       touch: (hold) => this.dialSurface.touchShape(ev.action, settings.dial, hold),
     });
+  }
+
+  /**
+   * The key's shape, from the same branches `onKeyDown` takes: a `HOLD_CONTROLS`
+   * key presses its binding on down and releases it on up, so it is `hold` at
+   * the dual-press threshold (Car Control's rule for a finger-held control) —
+   * or `none` when no binding resolves, since `onKeyDown` then does nothing.
+   */
+  private keyPressShape(settings: SetupHybridSettings): PressShape {
+    const adjustSetting = settings.setting as SetupHybridAdjustSetting;
+
+    if (!isViewSetting(settings.setting) && HOLD_CONTROLS.has(adjustSetting)) {
+      return this.resolveGlobalKey(adjustSetting, "increase")
+        ? { kind: "hold", thresholdMs: getDualPressThresholdMs() }
+        : { kind: "none" };
+    }
+
+    return setupKeyPressShape(settings);
   }
 
   override async onDialDown(ev: IDeckDialDownEvent<SetupHybridSettings>): Promise<void> {

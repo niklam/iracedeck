@@ -2,6 +2,7 @@ import {
   assembleIcon,
   CommonSettings,
   ConnectionStateAwareAction,
+  getDualPressThresholdMs,
   getGlobalBorderSettings,
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
@@ -301,8 +302,12 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
   }
 
   /**
-   * The press shape of this press (#269): a key acts on key down, so a tap;
-   * the dial's and the touch's come from the dial surface, which classifies them.
+   * The press shape of this press (#269): a `HOLD_MODES` key (Active Reset Run)
+   * presses its binding on down and releases it on up, so it is `hold` at the
+   * dual-press threshold (Car Control's rule for a finger-held control); every
+   * other key acts on key down, a tap. The dial's and the touch's come from the
+   * dial surface, which classifies them (the dial taps Active Reset Run
+   * momentarily, so it stays a release there).
    */
   pressShape(
     ev:
@@ -313,7 +318,8 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
     const settings = this.parseSettings(ev.payload.settings);
 
     return pressShapeByEvent(ev, {
-      key: () => ({ kind: "tap" }),
+      key: () =>
+        HOLD_MODES.has(settings.mode) ? { kind: "hold", thresholdMs: getDualPressThresholdMs() } : { kind: "tap" },
       dial: () => this.dialSurface.pressShape(ev.action, settings.dial),
       touch: (hold) => this.dialSurface.touchShape(ev.action, settings.dial, hold),
     });
