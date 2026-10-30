@@ -2944,9 +2944,38 @@ describe("CarControl", () => {
       expect(shapes({ control })).toEqual({ key: TAP, dial: TAP });
     });
 
-    it("Escape is a tap, with auto-hold on or off", () => {
-      expect(shapes({ control: "escape", autoHold: false })).toEqual({ key: TAP, dial: TAP });
-      expect(shapes({ control: "escape", autoHold: true })).toEqual({ key: TAP, dial: TAP });
+    describe("Escape", () => {
+      it("holds at the dual-press threshold with auto-hold off, on the key and the dial", () => {
+        expect(shapes({ control: "escape", autoHold: false })).toEqual({ key: HOLD, dial: HOLD });
+      });
+
+      it("is a tap with auto-hold on, on the key and the dial", () => {
+        expect(shapes({ control: "escape", autoHold: true })).toEqual({ key: TAP, dial: TAP });
+      });
+
+      it("agrees with the press: a hold releases ESC on key-up, an auto-hold does not", async () => {
+        vi.useFakeTimers();
+
+        try {
+          const manual = { control: "escape", autoHold: false };
+          const auto = { control: "escape", autoHold: true };
+
+          expect(shapes(manual).key).toEqual(HOLD);
+          await action.onKeyDown(fakeEvent("action-1", manual) as any);
+          expect(mockPressKeyCombination).toHaveBeenCalledTimes(1);
+          await action.onKeyUp(fakeEvent("action-1", manual) as any);
+          expect(mockReleaseKeyCombination).toHaveBeenCalledTimes(1);
+
+          expect(shapes(auto).key).toEqual(TAP);
+          await action.onKeyDown(fakeEvent("action-2", auto) as any);
+          expect(mockPressKeyCombination).toHaveBeenCalledTimes(2);
+          await action.onKeyUp(fakeEvent("action-2", auto) as any);
+          expect(mockReleaseKeyCombination).toHaveBeenCalledTimes(1);
+        } finally {
+          action["clearAutoHoldTimer"]("action-2");
+          vi.useRealTimers();
+        }
+      });
     });
 
     describe("Enter/Exit/Tow", () => {

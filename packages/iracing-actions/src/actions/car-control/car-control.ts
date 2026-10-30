@@ -1072,9 +1072,9 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
    * press acts on. Key and dial alike, since the dial acts on `dialDown` like the key:
    *
    * - the hold controls (Starter, Headlight Flash, Handbrake, Second Clutch, and
-   *   Enter/Exit/Tow when auto-hold does not apply) hold the binding while the finger
-   *   does, so they are `hold` at the dual-press threshold;
-   * - Enter/Exit/Tow under auto-hold and Escape are `tap`: a timer, not the finger, ends
+   *   Enter/Exit/Tow and Escape when auto-hold does not apply) hold the binding while
+   *   the finger does, so they are `hold` at the dual-press threshold;
+   * - Enter/Exit/Tow and Escape under auto-hold are `tap`: a timer, not the finger, ends
    *   an auto-hold;
    * - Wipers and Visor follows its key-down decision ({@link wipersAndVisorPressShape});
    * - everything else acts once, on down: `tap`.
@@ -1095,7 +1095,7 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
           getDualPressThresholdMs(),
         );
       case "escape":
-        return { kind: "tap" };
+        return settings.autoHold ? { kind: "tap" } : { kind: "hold", thresholdMs: getDualPressThresholdMs() };
       case "enter-exit-tow":
         return this.getEnterExitTowAutoHold(settings)
           ? { kind: "tap" }
