@@ -12,7 +12,10 @@
  * 1. Refuses a git older than 2.38 (step 2 needs `merge-tree --write-tree`),
  *    a tree that is dirty (untracked files included), detached, on any branch
  *    but `integration`, or not a worktree of this repository — and every branch
- *    name it cannot resolve — before anything is fetched, reset or merged.
+ *    name it cannot resolve, or that names the integration branch under any
+ *    spelling (`heads/integration`, `integration~0`, an earlier head's sha: a
+ *    commit no ref but `integration` holds), which would bring the previous
+ *    run's merges back unnamed — before anything is fetched, reset or merged.
  * 2. Fetches, then merges the whole chain without a work tree: from
  *    `origin/master`'s sha, `git merge-tree --write-tree` merges each branch in
  *    turn and `git commit-tree` records the result as the base for the next.
@@ -66,6 +69,7 @@ import { shellCommandLine, spawnSyncShim } from "./lib/spawn-shim.mjs";
 
 export const TREE_NAME = "ir-integration";
 export const BRANCH = "integration";
+const INTEGRATION_REF = `refs/heads/${BRANCH}`;
 export const BASE = "origin/master";
 export const USAGE = "usage: node scripts/integration-build.mjs [--no-build] <branch…>";
 
@@ -181,7 +185,7 @@ function validateBranches(branches) {
   for (const branch of branches) {
     if (typeof branch !== "string" || branch.trim() === "") throw new IntegrationRefusal("A branch name is empty.");
     if (branch.startsWith("-")) throw new IntegrationRefusal(`A branch name cannot start with "-": ${branch}`);
-    if (branch === BRANCH || branch === `refs/heads/${BRANCH}`) {
+    if (branch === BRANCH || branch === INTEGRATION_REF) {
       throw new IntegrationRefusal(`Refusing to merge the ${BRANCH} branch itself.`);
     }
     if (seen.has(branch)) throw new IntegrationRefusal(`${branch} is named more than once.`);
@@ -190,6 +194,30 @@ function validateBranches(branches) {
 }
 
 const samePath = (a, b) => isInside(a, b) && isInside(b, a);
+
+/**
+ * Refuses a name that resolved to the integration branch under another
+ * spelling (`heads/integration`, `integration~0`, `integration^0`, an
+ * earlier head by its sha or through the reflog). Merging one would bring the
+ * previous run's merges back without naming them, so the printout of what the
+ * tree holds would lie. Two checks: the name's full ref, and whether any ref
+ * but `refs/heads/integration` contains the commit — a commit only the
+ * integration branch holds, or none at all, is not an issue branch's head.
+ * `--count=2` is enough: of two refs that contain it, one is another ref.
+ */
+async function refuseIntegrationCommit({ branch, sha, cwd, git, must }) {
+  const full = await git(["rev-parse", "--symbolic-full-name", branch], cwd);
+  if (full.ok && full.out.trim() === INTEGRATION_REF) {
+    throw new IntegrationRefusal(`Refusing to merge the ${BRANCH} branch itself (${branch}).`);
+  }
+
+  const holders = await must(["for-each-ref", "--count=2", "--contains", sha, "--format=%(refname)"], cwd);
+  if (!holders.split(/\r?\n/).some((ref) => ref !== "" && ref !== INTEGRATION_REF)) {
+    throw new IntegrationRefusal(
+      `Refusing to merge ${branch}: its commit ${sha} is on no ref but ${BRANCH}'s, so it would bring an earlier integration build back unnamed. Name the issue branch instead.`,
+    );
+  }
+}
 
 /**
  * Merges `branches` onto a fresh `origin/master` in the integration tree, and
@@ -242,14 +270,30 @@ export async function buildIntegration({
   const existed = existsSync(tree);
   if (existed) await checkTree(tree, main, git);
 
+  const resolve = async (branch) => {
+    const r = await git(["rev-parse", "--verify", "--quiet", `${branch}^{commit}`], main);
+
+    return r.ok ? r.out.trim() : undefined;
+  };
+
+  // Every name that resolves before the fetch is checked before it. The fetch
+  // cannot change the verdict for one of them, since it never moves the
+  // integration branch, which is never pushed; the names it makes resolvable
+  // are remote-tracking ones, checked again below once resolved.
+  for (const branch of branches) {
+    const sha = await resolve(branch);
+    if (sha) await refuseIntegrationCommit({ branch, sha, cwd: main, git, must });
+  }
+
   await must(["fetch", "origin"], main);
   const base = await must(["rev-parse", "--verify", "--quiet", `${BASE}^{commit}`], main);
 
   const heads = [];
   for (const branch of branches) {
-    const r = await git(["rev-parse", "--verify", "--quiet", `${branch}^{commit}`], main);
-    if (!r.ok) throw new IntegrationRefusal(`No branch or commit named ${branch}.`);
-    heads.push({ branch, sha: r.out.trim() });
+    const sha = await resolve(branch);
+    if (!sha) throw new IntegrationRefusal(`No branch or commit named ${branch}.`);
+    await refuseIntegrationCommit({ branch, sha, cwd: main, git, must });
+    heads.push({ branch, sha });
   }
 
   const dryRunConflict = await mergeChainDryRun({ base, heads, cwd: main, git, must, log });

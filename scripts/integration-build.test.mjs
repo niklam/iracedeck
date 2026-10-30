@@ -548,6 +548,52 @@ describe("buildIntegration — refusals", { timeout: GIT_TIMEOUT_MS }, () => {
     expect(calls).toEqual([]);
   });
 
+  const attemptWith = (branches) =>
+    buildIntegration({ repoRoot: repo, branches, build: false, exec: recordingExec(), log: silentLog() });
+
+  it.each([
+    ["heads/integration", /Refusing to merge the integration branch itself \(heads\/integration\)/],
+    ["refs/heads/integration^{commit}", /on no ref but integration's/],
+    ["integration~0", /on no ref but integration's/],
+    ["integration^0", /on no ref but integration's/],
+  ])("refuses %s, another spelling of the integration branch, before fetching anything", async (name, message) => {
+    await seedTree();
+    const headBefore = git(["rev-parse", "HEAD"], tree);
+
+    await expect(attemptWith(["feature/1-a", name])).rejects.toThrow(message);
+    expectUntouched();
+    expect(git(["rev-parse", "HEAD"], tree)).toBe(headBefore);
+  });
+
+  it("refuses the current integration head by its sha", async () => {
+    await seedTree();
+    const head = git(["rev-parse", "HEAD"], tree);
+
+    await expect(attemptWith([head])).rejects.toThrow(/on no ref but integration's/);
+    expectUntouched();
+  });
+
+  it("refuses an earlier integration head that no ref holds any more", async () => {
+    await seedTree();
+    const earlier = git(["rev-parse", "HEAD"], tree);
+    branch("feature/2-b", "b.txt", "b\n");
+    await attemptWith(["feature/2-b"]);
+    calls = [];
+
+    await expect(attemptWith([earlier])).rejects.toThrow(/on no ref but integration's/);
+    expectUntouched();
+  });
+
+  it("accepts a branch whose head the integration branch also holds", async () => {
+    // The positive control: feature/1-a is merged into integration and still has its own ref.
+    await seedTree();
+    const a = git(["rev-parse", "feature/1-a"]);
+
+    const result = await attemptWith(["feature/1-a"]);
+
+    expect(result.merged).toEqual([{ branch: "feature/1-a", sha: a }]);
+  });
+
   it("refuses a directory that is not inside a git repository", async () => {
     const outside = join(workspace, "plain");
     mkdirSync(outside);
