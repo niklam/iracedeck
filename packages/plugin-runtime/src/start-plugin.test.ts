@@ -69,6 +69,7 @@ function expectedOrder(withExtension: boolean): string[] {
     "registerStateSection", // sim
     "registerStateSection", // raceEngineer
     // 2 initSim
+    "createIracingTranslatorOptions", // the six settings-backed options, built by the wiring (#1378)
     "initializeSimEventsIracing",
     "getController().setLivePositionsProvider",
     "createIracingSimRuntime",

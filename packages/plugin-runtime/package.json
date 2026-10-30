@@ -24,7 +24,6 @@
     "@iracedeck/audio-scenarios": "workspace:*",
     "@iracedeck/audio-service": "workspace:*",
     "@iracedeck/callout-script": "workspace:*",
-    "@iracedeck/callout-settings": "workspace:*",
     "@iracedeck/deck-core": "workspace:*",
     "@iracedeck/deck-iracing": "workspace:*",
     "@iracedeck/diagnostics": "workspace:*",

@@ -47,9 +47,13 @@ export function rasterizerMock(): Record<string, unknown> {
   return { createSvgRasterizer: stub("createSvgRasterizer") };
 }
 
-/** `@iracedeck/race-engineer-wiring`: the two calls the bootstrap makes, recorded. */
+/** `@iracedeck/race-engineer-wiring`: the three calls the bootstrap makes, recorded. */
 export function raceEngineerWiringMock(): Record<string, unknown> {
-  return { createIracingSimRuntime: stub("createIracingSimRuntime"), wireRaceEngineer: stub("wireRaceEngineer") };
+  return {
+    createIracingSimRuntime: stub("createIracingSimRuntime"),
+    createIracingTranslatorOptions: stub("createIracingTranslatorOptions"),
+    wireRaceEngineer: stub("wireRaceEngineer"),
+  };
 }
 
 /** The plugin-level hooks `src/actions.ts` re-exports, each mocked as a recorded stub under its own name. */
