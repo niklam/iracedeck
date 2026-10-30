@@ -104,6 +104,7 @@ import {
 } from "./config.ts";
 import { type SynthesizeOptions, synthesizeSpeech } from "./elevenlabs.ts";
 import { loadManifest, saveManifest } from "./manifest.ts";
+import { describePauseMarks, findPauseMarks } from "./pause-marks.ts";
 import { formatScope, parseScopeArgs, type Scope, validateScope } from "./scope.ts";
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
@@ -243,6 +244,17 @@ async function main(): Promise<void> {
 
         if (manifestEntry?.hash === hash && existsSync(absPath)) {
           skipped++;
+          continue;
+        }
+
+        // Refused before the API call and in a dry run alike, so an author
+        // sees it before spending credit (#1518). A clip already generated
+        // from such a text was skipped above as a cache hit.
+        const pauseMarks = findPauseMarks(entry.text);
+
+        if (pauseMarks.length > 0) {
+          console.error(`[generate] ${relPath}  —  REFUSED: ${describePauseMarks(pauseMarks)}`);
+          failed++;
           continue;
         }
 
