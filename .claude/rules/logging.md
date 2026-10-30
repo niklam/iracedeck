@@ -40,7 +40,7 @@ Actions receive their logger via constructor injection — `plugin-runtime`'s `r
 ```typescript
 // plugin-runtime/src/actions.ts: { uuid: MY_ACTION_UUID, scope: "MyAction", create: (logger) => new MyAction(logger) }
 // plugin-runtime/src/phases/register-actions.ts
-adapter.registerAction(action.uuid, action.create(adapter.createLogger(action.scope)));
+adapter.registerAction(action.uuid, withPressSounds(action.create(adapter.createLogger(action.scope))));
 ```
 
 ## Correct Patterns

@@ -171,6 +171,10 @@ Directional Actions (increase/decrease, cycle)
 - For +/- actions use values like `Increase`/`Decrease` or `Up`/`Down` depending on context.
 - For cycle actions use `Next`/`Previous`.
 
+### Press sounds (#269)
+
+An action never plays a press sound itself: deck-core's `withPressSounds`, which `plugin-runtime`'s `registerActions` wraps around every handler, owns the click, the bleep and their timing. An action with a long press (a `DualPressTracker`, a hold control) or a dial instead declares its synchronous `pressShape(ev)` returning deck-core's `PressShape` (`tap`, `hold`, `release` with `short` / `long`, `long`, `none`), using `dialPressShape` / `touchPressShape` / `pressShapeByEvent` from `shared/dial-release.ts` on a dial, and `none` where a sound would mislead (Push to Talk, a volume step that plays the #1455 tick). `actions/press-shape-coverage.test.ts` fails for any action whose Elgato manifest entry declares `Encoder`, or whose source constructs a `DualPressTracker`, without one.
+
 ## Property Inspector Components
 
 Shared PI components live in `packages/pi-components/src/components/` and are bundled to `pi-components.js` by `packages/pi-components/rollup.config.mjs`.
