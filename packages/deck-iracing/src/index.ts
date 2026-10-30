@@ -15,8 +15,6 @@ export { isAutofuelActive, isAutofuelEnabled, isFuelFillOn, isPitstopActive } fr
 export {
   celsiusToFahrenheit,
   formatFuelAmount,
-  formatFuelAmountWithPrefix,
-  formatFuelSettingWithUnit,
   FUEL_UNIT_IMPERIAL,
   FUEL_UNIT_METRIC,
   fuelFromDisplayUnits,
@@ -28,7 +26,6 @@ export {
   LITERS_TO_GALLONS,
   litersToGallons,
 } from "./unit-conversion.js";
-export { getHotkeyPreset, getHotkeysByCategory, IRACING_HOTKEY_PRESETS } from "./iracing-hotkeys.js";
 export { createElevationCheckSubscriber, type ElevationCheckOptions, hasElevationMismatch } from "./elevation-check.js";
 export { ELEVATION_WARNING_ID, ELEVATION_WARNING_MESSAGE, evaluateElevationWarning } from "./elevation-warning.js";
 export {

@@ -4,8 +4,6 @@ import { describe, expect, it } from "vitest";
 import {
   celsiusToFahrenheit,
   formatFuelAmount,
-  formatFuelAmountWithPrefix,
-  formatFuelSettingWithUnit,
   FUEL_UNIT_IMPERIAL,
   FUEL_UNIT_METRIC,
   fuelFromDisplayUnits,
@@ -200,53 +198,6 @@ describe("unit-conversion", () => {
 
     it("should format in gallons for undefined (defaults to English)", () => {
       expect(formatFuelAmount(10, undefined)).toBe("2.6 gal");
-    });
-  });
-
-  describe("formatFuelAmountWithPrefix", () => {
-    it("should format fuel with + prefix for add", () => {
-      expect(formatFuelAmountWithPrefix(10, DisplayUnits.Metric, "+")).toBe("+10 L");
-      expect(formatFuelAmountWithPrefix(1, DisplayUnits.English, "+")).toBeOneOf(["+0 gal", "+0.3 gal"]);
-    });
-
-    it("should format fuel with - prefix for reduce", () => {
-      expect(formatFuelAmountWithPrefix(10, DisplayUnits.Metric, "-")).toBe("-10 L");
-      expect(formatFuelAmountWithPrefix(3.78541, DisplayUnits.English, "-")).toBe("-1 gal");
-    });
-
-    it("should format with specified decimals", () => {
-      expect(formatFuelAmountWithPrefix(10.5, DisplayUnits.Metric, "+", 1)).toBe("+10.5 L");
-      expect(formatFuelAmountWithPrefix(10.5, DisplayUnits.Metric, "+", 0)).toBe("+11 L");
-    });
-
-    it("should format in gallons for undefined (defaults to English)", () => {
-      expect(formatFuelAmountWithPrefix(10, undefined, "+")).toBe("+3 gal");
-    });
-  });
-
-  describe("formatFuelSettingWithUnit", () => {
-    it("should format setting with L suffix for metric units (no conversion)", () => {
-      expect(formatFuelSettingWithUnit(5, DisplayUnits.Metric, "+")).toBe("+5 L");
-      expect(formatFuelSettingWithUnit(10, 1, "-")).toBe("-10 L");
-    });
-
-    it("should format setting with gal suffix for English units (no conversion)", () => {
-      expect(formatFuelSettingWithUnit(5, DisplayUnits.English, "+")).toBe("+5 gal");
-      expect(formatFuelSettingWithUnit(10, 0, "-")).toBe("-10 gal");
-    });
-
-    it("should format setting with gal suffix for undefined (defaults to English)", () => {
-      expect(formatFuelSettingWithUnit(5, undefined, "+")).toBe("+5 gal");
-    });
-
-    it("should format with specified decimals", () => {
-      expect(formatFuelSettingWithUnit(5.5, DisplayUnits.Metric, "+", 1)).toBe("+5.5 L");
-      expect(formatFuelSettingWithUnit(5.5, DisplayUnits.English, "-", 1)).toBe("-5.5 gal");
-    });
-
-    it("should work without prefix", () => {
-      expect(formatFuelSettingWithUnit(5, DisplayUnits.Metric)).toBe("5 L");
-      expect(formatFuelSettingWithUnit(5, DisplayUnits.English)).toBe("5 gal");
     });
   });
 });
