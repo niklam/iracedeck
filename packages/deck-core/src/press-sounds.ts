@@ -5,8 +5,12 @@
  * One wrapper, {@link withPressSounds}, sits around every registered action
  * handler (applied once in `plugin-runtime`'s `registerActions`) and owns the
  * timing. An action only says what shape its press has, through the optional
- * synchronous {@link IDeckActionHandler.pressShape}; no action plays a sound
- * itself. Spec: docs/superpowers/specs/2026-10-28-issue-269-press-sounds.md.
+ * synchronous {@link IDeckActionHandler.keyPressShape},
+ * {@link IDeckActionHandler.dialPressShape} and
+ * {@link IDeckActionHandler.touchPressShape} — one per surface, each called by
+ * the wrapper path that surface's event arrives on, so an action never has to
+ * work out where a press came from; no action plays a sound itself.
+ * Spec: docs/superpowers/specs/2026-10-28-issue-269-press-sounds.md.
  *
  * deck-core stays sim-neutral and audio-free: the mode comes from
  * `@iracedeck/settings`, the connection from {@link getSimConnection}, and the
@@ -19,21 +23,14 @@
  * plugin), and the handler's own result — value, rejection or synchronous
  * throw — reaches the adapter unchanged.
  */
-import { DEFAULT_PRESS_SOUND_MODE, PRESS_SOUND_MODES, type PressSoundMode } from "@iracedeck/app-constants";
+import type { PressSoundMode } from "@iracedeck/app-constants";
 import type { ILogger } from "@iracedeck/logger";
 import { silentLogger } from "@iracedeck/logger";
 import { getGlobalSettings } from "@iracedeck/settings";
 
 import { classifyDialRelease, DIAL_LONG_PRESS_THRESHOLD_MS } from "./dial-gesture.js";
 import { getSimConnection } from "./sim-connection.js";
-import type {
-  IDeckActionHandler,
-  IDeckDialDownEvent,
-  IDeckEvent,
-  IDeckKeyDownEvent,
-  IDeckTouchTapEvent,
-  PressShape,
-} from "./types.js";
+import type { IDeckActionHandler, IDeckEvent, IDeckTouchTapEvent, PressShape } from "./types.js";
 
 /** The two press sounds: the click (`tap`) and the bleep (`long`). */
 export type PressSound = "tap" | "long";
@@ -69,8 +66,9 @@ export const DEFAULT_KEY_PRESS_SHAPE: PressShape = Object.freeze({ kind: "tap" }
 
 /**
  * The longest delay `setTimeout` honours. A larger one (or `Infinity`, which
- * `dialPressShape` uses for a host whose release is never long) overflows to an
- * immediate fire in Node, so such a threshold arms nothing.
+ * `dialGestureShape` in `iracing-actions` uses for a host whose release is
+ * never long) overflows to an immediate fire in Node, so such a threshold arms
+ * nothing.
  */
 const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
@@ -102,17 +100,13 @@ export function _resetPressSounds(): void {
 }
 
 /**
- * Resolve the live press sound mode from global settings. Falls back to
- * `none` when the value is missing (early startup) or not one of the four.
+ * The live press sound mode, from global settings. `GlobalSettingsSchema`
+ * guarantees one of the four: its `.default().catch()` turns a missing,
+ * hand-edited or future value into `none`, and the cache holds a parsed object
+ * from module load on, so there is nothing to re-validate here.
  */
 export function getPressSoundMode(): PressSoundMode {
-  const raw = (getGlobalSettings() as Record<string, unknown>).pressSound;
-
-  if (typeof raw === "string" && (PRESS_SOUND_MODES as readonly string[]).includes(raw)) {
-    return raw as PressSoundMode;
-  }
-
-  return DEFAULT_PRESS_SOUND_MODE;
+  return getGlobalSettings().pressSound;
 }
 
 const playsTaps = (mode: PressSoundMode): boolean => mode === "taps" || mode === "both";
@@ -153,10 +147,12 @@ type EveryHandlerMember<H> = { [K in keyof Required<H>]: H[K] | undefined };
  * Per context id:
  *
  * - At down the mode and the connection are read once. With the mode `none`,
- *   the sim disconnected or no player installed, nothing is recorded and
- *   `pressShape` is never called. Otherwise the shape is asked for, the
- *   handler's own down member is called, and the down sound plays right after
- *   its synchronous part returns, before its promise is awaited.
+ *   the sim disconnected or no player installed, nothing is recorded and no
+ *   shape member is called. Otherwise the surface's own shape member is asked
+ *   (`keyPressShape` on the key path, `dialPressShape` on the dial path), or
+ *   that surface's default when the handler lacks it, the handler's own down
+ *   member is called, and the down sound plays right after its synchronous
+ *   part returns, before its promise is awaited.
  * - A `hold`, or a `release` with a long outcome, arms one timer at
  *   `thresholdMs` that bleeps once if the press is still held.
  * - A pressed rotation disarms it and marks the press push+turn: silent at
@@ -185,7 +181,11 @@ export function withPressSounds<T>(handler: IDeckActionHandler<T>): IDeckActionH
    * Returns the press to finish after the handler's synchronous part, or `null`
    * when this press makes no sound. Never throws.
    */
-  const beginPress = (ev: IDeckKeyDownEvent<T> | IDeckDialDownEvent<T>, surface: PressSurface): ActivePress | null => {
+  const beginPress = (
+    ev: IDeckEvent<T>,
+    surface: PressSurface,
+    declared: (() => PressShape) | undefined,
+  ): ActivePress | null => {
     const contextId = ev.action.id;
     forget(contextId);
 
@@ -193,7 +193,7 @@ export function withPressSounds<T>(handler: IDeckActionHandler<T>): IDeckActionH
 
     if (mode === null) return null;
 
-    const shape = resolveShape(handler, ev, surface === "key" ? DEFAULT_KEY_PRESS_SHAPE : DEFAULT_DIAL_PRESS_SHAPE);
+    const shape = resolveShape(declared, surface === "key" ? DEFAULT_KEY_PRESS_SHAPE : DEFAULT_DIAL_PRESS_SHAPE);
     const press: ActivePress = { surface, shape, mode, startMs: Date.now(), timer: null, rotated: false };
 
     const bleepAtThreshold = playsLong(mode) && (shape.kind === "hold" || (shape.kind === "release" && shape.long));
@@ -274,7 +274,11 @@ export function withPressSounds<T>(handler: IDeckActionHandler<T>): IDeckActionH
   };
 
   const wrapped: EveryHandlerMember<IDeckActionHandler<T>> = {
-    pressShape: handler.pressShape ? (ev) => handler.pressShape!(ev) : undefined,
+    keyPressShape: handler.keyPressShape ? (ev) => handler.keyPressShape!(ev) : undefined,
+
+    dialPressShape: handler.dialPressShape ? (ev) => handler.dialPressShape!(ev) : undefined,
+
+    touchPressShape: handler.touchPressShape ? (ev) => handler.touchPressShape!(ev) : undefined,
 
     onWillAppear: handler.onWillAppear ? (ev) => handler.onWillAppear!(ev) : undefined,
 
@@ -290,7 +294,7 @@ export function withPressSounds<T>(handler: IDeckActionHandler<T>): IDeckActionH
 
     onKeyDown: handler.onKeyDown
       ? async (ev) => {
-          const press = beginPress(ev, "key");
+          const press = beginPress(ev, "key", handler.keyPressShape ? () => handler.keyPressShape!(ev) : undefined);
 
           await callThenPlay(
             () => {
@@ -336,7 +340,7 @@ export function withPressSounds<T>(handler: IDeckActionHandler<T>): IDeckActionH
 
     onDialDown: handler.onDialDown
       ? async (ev) => {
-          const press = beginPress(ev, "dial");
+          const press = beginPress(ev, "dial", handler.dialPressShape ? () => handler.dialPressShape!(ev) : undefined);
 
           await callThenPlay(
             () => {
@@ -400,26 +404,27 @@ function readGate(): PressSoundMode | null {
   }
 }
 
-/** The handler's declared shape, its default when it declares none, or `none` when it throws. */
-function resolveShape<T>(
-  handler: IDeckActionHandler<T>,
-  ev: IDeckKeyDownEvent<T> | IDeckDialDownEvent<T> | IDeckTouchTapEvent<T>,
-  fallback: PressShape,
-): PressShape {
-  if (!handler.pressShape) return fallback;
+/**
+ * The shape the surface's member declares (`declared` calls it with the
+ * event, `this` intact), the surface's default when the handler lacks it, or
+ * `none` when it throws.
+ */
+function resolveShape(declared: (() => PressShape) | undefined, fallback: PressShape): PressShape {
+  if (!declared) return fallback;
 
   try {
-    return handler.pressShape(ev) ?? fallback;
+    return declared() ?? fallback;
   } catch (err) {
-    logger.debug(`pressShape threw; this press makes no sound: ${String(err)}`);
+    logger.debug(`A press shape member threw; this press makes no sound: ${String(err)}`);
 
     return { kind: "none" };
   }
 }
 
 /**
- * The sound a touch makes. A touch is complete when it arrives (the host
- * reports a long touch as `hold`), so there is no timer and no up: `tap` and
+ * The sound a touch makes, from the handler's `touchPressShape` (a `tap` when
+ * it has none). A touch is complete when it arrives (the host reports a long
+ * touch as `hold`), so there is no timer and no up: `tap` and
  * `hold` click, `long` bleeps, and `release` reads the event's own `hold` flag
  * as the release classification.
  */
@@ -428,7 +433,10 @@ function touchSound<T>(handler: IDeckActionHandler<T>, ev: IDeckTouchTapEvent<T>
 
   if (mode === null) return null;
 
-  const shape = resolveShape(handler, ev, DEFAULT_KEY_PRESS_SHAPE);
+  const shape = resolveShape(
+    handler.touchPressShape ? () => handler.touchPressShape!(ev) : undefined,
+    DEFAULT_KEY_PRESS_SHAPE,
+  );
 
   switch (shape.kind) {
     case "tap":

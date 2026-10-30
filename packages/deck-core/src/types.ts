@@ -132,7 +132,9 @@ export interface DeckTriggerDescription {
 
 /**
  * What shape a press has, for the press sounds (issue #269). An action declares
- * it through {@link IDeckActionHandler.pressShape}; `withPressSounds` in
+ * it through {@link IDeckActionHandler.keyPressShape},
+ * {@link IDeckActionHandler.dialPressShape} and
+ * {@link IDeckActionHandler.touchPressShape}; `withPressSounds` in
  * `press-sounds.ts` owns the timing and plays the sounds, so no action plays a
  * press sound itself.
  *
@@ -160,15 +162,30 @@ export type PressShape =
  */
 export interface IDeckActionHandler<T = unknown> {
   /**
-   * The shape of the press this down event starts (issue #269), for the press
-   * sounds. Called by `withPressSounds` with the key-down, dial-down or
-   * touch-tap event, BEFORE the matching handler member, and only while press
-   * sounds are on and the sim is connected. Must be synchronous and free of
-   * side effects: it describes the press, it does not act on it. Optional — a
-   * handler without it is `tap` on a key and on touch, and `release` at 500 ms
-   * with `short` true and `long` false on a dial. A throw reads as `none`.
+   * The shape of the press a key-down starts (issue #269), for the press
+   * sounds. Called by `withPressSounds` with the key-down event, BEFORE
+   * `onKeyDown`, and only while press sounds are on and the sim is connected.
+   * Must be synchronous and free of side effects: it describes the press, it
+   * does not act on it. Optional — a handler without it is a `tap`
+   * (`DEFAULT_KEY_PRESS_SHAPE`). A throw reads as `none`.
    */
-  pressShape?(ev: IDeckKeyDownEvent<T> | IDeckDialDownEvent<T> | IDeckTouchTapEvent<T>): PressShape;
+  keyPressShape?(ev: IDeckKeyDownEvent<T>): PressShape;
+  /**
+   * The shape of the press a dial-down starts (issue #269), under the same
+   * rules as {@link keyPressShape}, called BEFORE `onDialDown`. It is the
+   * wrapper's dial path that calls it, so it never has to ask the context
+   * which controller it is. Optional — a handler without it is a `release` at
+   * 500 ms that clicks when short and never bleeps
+   * (`DEFAULT_DIAL_PRESS_SHAPE`).
+   */
+  dialPressShape?(ev: IDeckDialDownEvent<T>): PressShape;
+  /**
+   * The shape of a touch on a dial's strip (issue #269), under the same rules
+   * as {@link keyPressShape}, called BEFORE `onTouchTap`. A touch arrives
+   * complete (its `hold` says whether it was long), so `release` reads that
+   * flag as its classification. Optional — a handler without it is a `tap`.
+   */
+  touchPressShape?(ev: IDeckTouchTapEvent<T>): PressShape;
   onWillAppear?(ev: IDeckWillAppearEvent<T>): Promise<void>;
   onWillDisappear?(ev: IDeckWillDisappearEvent<T>): Promise<void>;
   onDidReceiveSettings?(ev: IDeckDidReceiveSettingsEvent<T>): Promise<void>;

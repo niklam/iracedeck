@@ -1,4 +1,5 @@
 import type { ILogger } from "@iracedeck/logger";
+import { type GlobalSettings, GlobalSettingsSchema } from "@iracedeck/settings";
 import { afterEach, beforeEach, describe, expect, expectTypeOf, it, type Mock, type MockInstance, vi } from "vitest";
 
 import { classifyDialRelease } from "./dial-gesture.js";
@@ -25,11 +26,19 @@ import type {
 } from "./types.js";
 
 // The mode is a global-settings name, so it is mocked on @iracedeck/settings (#1351).
-const { settings } = vi.hoisted(() => ({ settings: { current: {} as Record<string, unknown> } }));
+// The cache it stands in for always holds a parsed object, so every value the
+// tests set goes through the real schema (`setMode`).
+const { settings } = vi.hoisted(() => ({ settings: { current: {} as GlobalSettings } }));
 
-vi.mock("@iracedeck/settings", () => ({
+vi.mock("@iracedeck/settings", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@iracedeck/settings")>()),
   getGlobalSettings: vi.fn(() => settings.current),
 }));
+
+/** Store `pressSound: value` the way the settings cache holds it: parsed by `GlobalSettingsSchema`. */
+function setMode(value: unknown): void {
+  settings.current = GlobalSettingsSchema.parse({ pressSound: value });
+}
 
 const THRESHOLD = 500;
 
@@ -59,8 +68,20 @@ const touchEv = (hold: boolean, id = "ctx-1"): IDeckTouchTapEvent<unknown> => ({
 
 type ShapeSource = PressShape | (() => PressShape) | undefined;
 
-/** A handler with every press member, declaring `shape` (or none when `undefined`). */
-function makeHandler(shape?: ShapeSource) {
+/** The three shape members, one per surface. */
+const SHAPE_MEMBERS = ["keyPressShape", "dialPressShape", "touchPressShape"] as const;
+
+type ShapeMember = (typeof SHAPE_MEMBERS)[number];
+
+/**
+ * A handler with every press member, declaring `shape` (or none when
+ * `undefined`) through the shape members named in `members` — all three by
+ * default, so a case about the wrapper's timing reads the same on every path.
+ */
+function makeHandler(shape?: ShapeSource, members: readonly ShapeMember[] = SHAPE_MEMBERS) {
+  const declared = () => (typeof shape === "function" ? shape() : shape!);
+  const declares = (member: ShapeMember) => shape !== undefined && members.includes(member);
+
   const handler = {
     onKeyDown: vi.fn(async (_ev: IDeckKeyDownEvent<unknown>) => {}),
     onKeyUp: vi.fn(async (_ev: IDeckEvent<unknown>) => {}),
@@ -70,16 +91,19 @@ function makeHandler(shape?: ShapeSource) {
     onTouchTap: vi.fn(async (_ev: IDeckTouchTapEvent<unknown>) => {}),
     onWillDisappear: vi.fn(async (_ev: IDeckEvent<unknown>) => {}),
     onDidReceiveSettings: vi.fn(async (_ev: IDeckEvent<unknown>) => {}),
-    pressShape: undefined as
-      | ((ev: IDeckKeyDownEvent<unknown> | IDeckDialDownEvent<unknown> | IDeckTouchTapEvent<unknown>) => PressShape)
-      | undefined,
+    keyPressShape: declares("keyPressShape") ? vi.fn((_ev: IDeckKeyDownEvent<unknown>) => declared()) : undefined,
+    dialPressShape: declares("dialPressShape") ? vi.fn((_ev: IDeckDialDownEvent<unknown>) => declared()) : undefined,
+    touchPressShape: declares("touchPressShape") ? vi.fn((_ev: IDeckTouchTapEvent<unknown>) => declared()) : undefined,
   } satisfies IDeckActionHandler<unknown>;
 
-  if (shape !== undefined) {
-    handler.pressShape = vi.fn(() => (typeof shape === "function" ? shape() : shape));
-  }
-
   return handler;
+}
+
+/** Assert no shape member of `handler` was asked. */
+function expectNoShapeAsked(handler: ReturnType<typeof makeHandler>): void {
+  for (const member of SHAPE_MEMBERS) {
+    if (handler[member]) expect(handler[member], member).not.toHaveBeenCalled();
+  }
 }
 
 const release = (short: boolean, long: boolean, thresholdMs = THRESHOLD): PressShape => ({
@@ -102,7 +126,7 @@ beforeEach(() => {
     played.push(sound);
   });
   logger = createMockLogger();
-  settings.current = { pressSound: "both" };
+  setMode("both");
   sim = createFakeSimConnection();
   initializeSimConnection(sim.connection);
   initPressSounds({ play, logger });
@@ -329,20 +353,81 @@ describe("withPressSounds — defaults when a handler declares no shape", () => 
 
     expect(played).toEqual(["tap", "tap"]);
   });
+
+  it("a path whose member is missing takes its own default, whatever the other surfaces declare", async () => {
+    // Only the key declares a shape: a hold that would bleep at the threshold.
+    const keyOnly = withPressSounds(makeHandler({ kind: "hold", thresholdMs: THRESHOLD }, ["keyPressShape"]));
+
+    await dialPress(keyOnly, THRESHOLD + 100);
+    expect(played).toEqual([]); // the dial default never bleeps, and a long release is silent
+    await dialPress(keyOnly, 100);
+    expect(played).toEqual(["tap"]);
+    await keyOnly.onTouchTap!(touchEv(true, "ctx-2"));
+    expect(played).toEqual(["tap", "tap"]);
+
+    // Only the dial declares a shape: none, so a dial press is silent.
+    played.length = 0;
+    const dialOnly = withPressSounds(makeHandler({ kind: "none" }, ["dialPressShape"]));
+
+    await dialPress(dialOnly, 100, "ctx-3");
+    expect(played).toEqual([]);
+    await keyPress(dialOnly, THRESHOLD + 100, "ctx-3");
+    expect(played).toEqual(["tap"]);
+  });
 });
 
-describe("withPressSounds — touch", () => {
-  it("asks pressShape with the touch event", async () => {
+describe("withPressSounds — one shape member per surface", () => {
+  it("a key-down asks keyPressShape only, with its event", async () => {
     const handler = makeHandler({ kind: "tap" });
-    const wrapped = withPressSounds(handler);
+    const down = ev();
+
+    await withPressSounds(handler).onKeyDown!(down);
+
+    expect(handler.keyPressShape).toHaveBeenCalledWith(down);
+    expect(handler.dialPressShape).not.toHaveBeenCalled();
+    expect(handler.touchPressShape).not.toHaveBeenCalled();
+  });
+
+  it("a dial-down asks dialPressShape only, with its event", async () => {
+    const handler = makeHandler({ kind: "tap" });
+    const down = ev();
+
+    await withPressSounds(handler).onDialDown!(down);
+
+    expect(handler.dialPressShape).toHaveBeenCalledWith(down);
+    expect(handler.keyPressShape).not.toHaveBeenCalled();
+    expect(handler.touchPressShape).not.toHaveBeenCalled();
+  });
+
+  it("a touch asks touchPressShape only, with its event", async () => {
+    const handler = makeHandler({ kind: "tap" });
     const touch = touchEv(true);
 
-    await wrapped.onTouchTap!(touch);
+    await withPressSounds(handler).onTouchTap!(touch);
 
-    expect(handler.pressShape).toHaveBeenCalledWith(touch);
+    expect(handler.touchPressShape).toHaveBeenCalledWith(touch);
+    expect(handler.keyPressShape).not.toHaveBeenCalled();
+    expect(handler.dialPressShape).not.toHaveBeenCalled();
     expect(handler.onTouchTap).toHaveBeenCalledWith(touch);
   });
 
+  it("each path follows its own member's shape", async () => {
+    const handler = makeHandler();
+    handler.keyPressShape = vi.fn(() => ({ kind: "none" }) as PressShape);
+    handler.dialPressShape = vi.fn(() => release(false, true));
+    handler.touchPressShape = vi.fn(() => ({ kind: "long" }) as PressShape);
+    const wrapped = withPressSounds(handler);
+
+    await keyPress(wrapped, THRESHOLD + 100, "key");
+    expect(played).toEqual([]);
+    await dialPress(wrapped, THRESHOLD + 100, "dial");
+    expect(played).toEqual(["long"]);
+    await wrapped.onTouchTap!(touchEv(false, "touch"));
+    expect(played).toEqual(["long", "long"]);
+  });
+});
+
+describe("withPressSounds — touch", () => {
   it("a release shape reads the touch's own hold flag", async () => {
     const wrapped = withPressSounds(makeHandler(release(true, true)));
 
@@ -368,7 +453,7 @@ describe("withPressSounds — touch", () => {
 
 describe("withPressSounds — modes", () => {
   it("taps plays clicks only", async () => {
-    settings.current = { pressSound: "taps" };
+    setMode("taps");
     const hold = withPressSounds(makeHandler({ kind: "hold", thresholdMs: THRESHOLD }));
     const rel = withPressSounds(makeHandler(release(true, true)));
     const long = withPressSounds(makeHandler({ kind: "long" }));
@@ -382,7 +467,7 @@ describe("withPressSounds — modes", () => {
   });
 
   it("taps arms no bleep timer", async () => {
-    settings.current = { pressSound: "taps" };
+    setMode("taps");
     const wrapped = withPressSounds(makeHandler({ kind: "hold", thresholdMs: THRESHOLD }));
 
     await wrapped.onKeyDown!(ev());
@@ -391,7 +476,7 @@ describe("withPressSounds — modes", () => {
   });
 
   it("long-press plays bleeps only", async () => {
-    settings.current = { pressSound: "long-press" };
+    setMode("long-press");
     const tap = withPressSounds(makeHandler({ kind: "tap" }));
     const hold = withPressSounds(makeHandler({ kind: "hold", thresholdMs: THRESHOLD }));
     const rel = withPressSounds(makeHandler(release(true, true)));
@@ -412,8 +497,8 @@ describe("withPressSounds — modes", () => {
     expect(played).toEqual(["tap", "long"]);
   });
 
-  it("none arms nothing and never calls pressShape", async () => {
-    settings.current = { pressSound: "none" };
+  it("none arms nothing and never asks a shape", async () => {
+    setMode("none");
     const handler = makeHandler({ kind: "hold", thresholdMs: THRESHOLD });
     const wrapped = withPressSounds(handler);
 
@@ -424,7 +509,7 @@ describe("withPressSounds — modes", () => {
     await wrapped.onTouchTap!(touchEv(true, "ctx-3"));
     vi.advanceTimersByTime(10_000);
 
-    expect(handler.pressShape).not.toHaveBeenCalled();
+    expectNoShapeAsked(handler);
     expect(played).toEqual([]);
     // The press itself still reaches the action.
     expect(handler.onKeyDown).toHaveBeenCalledTimes(2);
@@ -434,12 +519,12 @@ describe("withPressSounds — modes", () => {
 
   it("a missing or unknown stored mode reads as none", async () => {
     for (const value of [undefined, "clicks", 3, null]) {
-      settings.current = { pressSound: value };
+      setMode(value);
       const handler = makeHandler({ kind: "tap" });
 
       await withPressSounds(handler).onKeyDown!(ev());
 
-      expect(handler.pressShape).not.toHaveBeenCalled();
+      expectNoShapeAsked(handler);
     }
 
     expect(played).toEqual([]);
@@ -449,18 +534,18 @@ describe("withPressSounds — modes", () => {
     const wrapped = withPressSounds(makeHandler({ kind: "hold", thresholdMs: THRESHOLD }));
 
     await wrapped.onKeyDown!(ev());
-    settings.current = { pressSound: "none" };
+    setMode("none");
     vi.advanceTimersByTime(THRESHOLD);
 
     expect(played).toEqual(["tap", "long"]);
   });
 
   it("a mode switched on mid-press does not sound that press", async () => {
-    settings.current = { pressSound: "none" };
+    setMode("none");
     const wrapped = withPressSounds(makeHandler(release(true, true)));
 
     await wrapped.onKeyDown!(ev());
-    settings.current = { pressSound: "both" };
+    setMode("both");
     vi.advanceTimersByTime(100);
     await wrapped.onKeyUp!(ev());
 
@@ -469,7 +554,7 @@ describe("withPressSounds — modes", () => {
 });
 
 describe("withPressSounds — the sim connection", () => {
-  it("disconnected at down plays nothing and never calls pressShape", async () => {
+  it("disconnected at down plays nothing and never asks a shape", async () => {
     sim.state.connected = false;
     const handler = makeHandler({ kind: "hold", thresholdMs: THRESHOLD });
     const wrapped = withPressSounds(handler);
@@ -477,7 +562,7 @@ describe("withPressSounds — the sim connection", () => {
     await keyPress(wrapped, THRESHOLD + 100);
     await wrapped.onTouchTap!(touchEv(false));
 
-    expect(handler.pressShape).not.toHaveBeenCalled();
+    expectNoShapeAsked(handler);
     expect(played).toEqual([]);
     expect(handler.onKeyDown).toHaveBeenCalledTimes(1);
   });
@@ -574,7 +659,7 @@ describe("withPressSounds — lifecycle", () => {
     const wrapped = withPressSounds(makeHandler({ kind: "hold", thresholdMs: THRESHOLD }));
 
     await wrapped.onKeyDown!(ev());
-    settings.current = { pressSound: "none" };
+    setMode("none");
     await wrapped.onKeyDown!(ev());
     vi.advanceTimersByTime(THRESHOLD * 2);
 
@@ -615,13 +700,13 @@ describe("withPressSounds — lifecycle", () => {
     expect(played).toEqual(["tap", "long"]);
   });
 
-  it("before initPressSounds nothing plays and pressShape is never called", async () => {
+  it("before initPressSounds nothing plays and no shape is asked", async () => {
     _resetPressSounds();
     const handler = makeHandler({ kind: "hold", thresholdMs: THRESHOLD });
 
     await keyPress(withPressSounds(handler), THRESHOLD + 100);
 
-    expect(handler.pressShape).not.toHaveBeenCalled();
+    expectNoShapeAsked(handler);
     expect(play).not.toHaveBeenCalled();
   });
 
@@ -631,21 +716,53 @@ describe("withPressSounds — lifecycle", () => {
 });
 
 describe("withPressSounds — failures never escape", () => {
-  it("a throwing pressShape plays nothing, is logged at debug, and the press still runs", async () => {
-    const handler = makeHandler(() => {
-      throw new Error("bad shape");
-    });
-    const wrapped = withPressSounds(handler);
+  const throwing = () => {
+    throw new Error("bad shape");
+  };
 
-    await keyPress(wrapped, THRESHOLD + 100);
-    await wrapped.onTouchTap!(touchEv(false));
-    await dialPress(wrapped, 50, "ctx-2");
+  it("a throwing keyPressShape plays nothing, is logged at debug, and the key press still runs", async () => {
+    const handler = makeHandler(throwing, ["keyPressShape"]);
+
+    await keyPress(withPressSounds(handler), THRESHOLD + 100);
 
     expect(played).toEqual([]);
     expect(vi.getTimerCount()).toBe(0);
     expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining("bad shape"));
     expect(handler.onKeyDown).toHaveBeenCalledTimes(1);
     expect(handler.onKeyUp).toHaveBeenCalledTimes(1);
+  });
+
+  it("a throwing dialPressShape plays nothing, is logged at debug, and the dial press still runs", async () => {
+    // Without the throw the dial default would click at this short release.
+    const handler = makeHandler(throwing, ["dialPressShape"]);
+
+    await dialPress(withPressSounds(handler), 50);
+
+    expect(played).toEqual([]);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining("bad shape"));
+    expect(handler.onDialDown).toHaveBeenCalledTimes(1);
+    expect(handler.onDialUp).toHaveBeenCalledTimes(1);
+  });
+
+  it("a throwing touchPressShape plays nothing, is logged at debug, and the touch still runs", async () => {
+    const handler = makeHandler(throwing, ["touchPressShape"]);
+
+    await withPressSounds(handler).onTouchTap!(touchEv(false));
+
+    expect(played).toEqual([]);
+    expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining("bad shape"));
+    expect(handler.onTouchTap).toHaveBeenCalledTimes(1);
+  });
+
+  it("a throwing member silences only its own path", async () => {
+    const wrapped = withPressSounds(makeHandler(throwing, ["keyPressShape"]));
+
+    await keyPress(wrapped, 50);
+    await dialPress(wrapped, 50, "ctx-2");
+    await wrapped.onTouchTap!(touchEv(false, "ctx-3"));
+
+    expect(played).toEqual(["tap", "tap"]);
   });
 
   it("a throwing play inside the timer does not escape", async () => {
@@ -687,14 +804,11 @@ describe("withPressSounds — failures never escape", () => {
 
   it("a mode read that throws plays nothing and the press still runs", async () => {
     const handler = makeHandler({ kind: "tap" });
-    settings.current = new Proxy(
-      {},
-      {
-        get: () => {
-          throw new Error("cache broken");
-        },
+    settings.current = new Proxy({} as GlobalSettings, {
+      get: () => {
+        throw new Error("cache broken");
       },
-    );
+    });
 
     await withPressSounds(handler).onKeyDown!(ev());
 
@@ -731,7 +845,7 @@ describe("withPressSounds — ordering against the handler", () => {
     expect(order).toEqual(["handler-sync", "play:tap", "handler-settled"]);
   });
 
-  it("pressShape is asked before the handler runs", async () => {
+  it("the shape is asked before the handler runs", async () => {
     const order: string[] = [];
     const handler = makeHandler(() => {
       order.push("shape");
@@ -837,7 +951,9 @@ describe("withPressSounds — forwarding every IDeckActionHandler member", () =>
   type Member = keyof IDeckActionHandler<unknown>;
 
   const MEMBERS = [
-    "pressShape",
+    "keyPressShape",
+    "dialPressShape",
+    "touchPressShape",
     "onWillAppear",
     "onWillDisappear",
     "onDidReceiveSettings",
@@ -860,15 +976,27 @@ describe("withPressSounds — forwarding every IDeckActionHandler member", () =>
   });
 
   it("calls every member on the original handler, with the same event, `this` and result", async () => {
-    settings.current = { pressSound: "none" };
+    setMode("none");
     const thisSeen: Partial<Record<Member, unknown>> = {};
-    const shape: PressShape = { kind: "tap" };
+    const keyShape: PressShape = { kind: "tap" };
+    const dialShape: PressShape = { kind: "none" };
+    const touchShape: PressShape = { kind: "long" };
 
     class Handler implements IDeckActionHandler<unknown> {
-      pressShape(_ev: unknown): PressShape {
-        thisSeen.pressShape = this;
+      keyPressShape(): PressShape {
+        thisSeen.keyPressShape = this;
 
-        return shape;
+        return keyShape;
+      }
+      dialPressShape(): PressShape {
+        thisSeen.dialPressShape = this;
+
+        return dialShape;
+      }
+      touchPressShape(): PressShape {
+        thisSeen.touchPressShape = this;
+
+        return touchShape;
       }
       async onWillAppear(): Promise<void> {
         thisSeen.onWillAppear = this;
@@ -909,7 +1037,9 @@ describe("withPressSounds — forwarding every IDeckActionHandler member", () =>
     const rotate = rotateEv(true);
     const touch = touchEv(false);
 
-    expect(wrapped.pressShape!(e)).toBe(shape);
+    expect(wrapped.keyPressShape!(e)).toBe(keyShape);
+    expect(wrapped.dialPressShape!(e)).toBe(dialShape);
+    expect(wrapped.touchPressShape!(touch)).toBe(touchShape);
     await wrapped.onWillAppear!(e);
     await wrapped.onWillDisappear!(e);
     await wrapped.onDidReceiveSettings!(e);
@@ -928,12 +1058,17 @@ describe("withPressSounds — forwarding every IDeckActionHandler member", () =>
     expect(spies.onDialRotate).toHaveBeenCalledWith(rotate);
     expect(spies.onTouchTap).toHaveBeenCalledWith(touch);
     expect(spies.onKeyDown).toHaveBeenCalledWith(e);
+    expect(spies.keyPressShape).toHaveBeenCalledWith(e);
+    expect(spies.dialPressShape).toHaveBeenCalledWith(e);
+    expect(spies.touchPressShape).toHaveBeenCalledWith(touch);
   });
 
   it("a member the handler lacks stays undefined, except the ones that end a press", async () => {
     const wrapped = withPressSounds({});
 
-    expect(wrapped.pressShape).toBeUndefined();
+    expect(wrapped.keyPressShape).toBeUndefined();
+    expect(wrapped.dialPressShape).toBeUndefined();
+    expect(wrapped.touchPressShape).toBeUndefined();
     expect(wrapped.onWillAppear).toBeUndefined();
     expect(wrapped.onKeyDown).toBeUndefined();
     expect(wrapped.onDialDown).toBeUndefined();
@@ -950,19 +1085,19 @@ describe("withPressSounds — forwarding every IDeckActionHandler member", () =>
 
 describe("getPressSoundMode", () => {
   it.each(["none", "taps", "long-press", "both"])("reads %s", (mode) => {
-    settings.current = { pressSound: mode };
+    setMode(mode);
 
     expect(getPressSoundMode()).toBe(mode);
   });
 
-  it("falls back to none when missing or unknown", () => {
+  it("reads none for a missing or unknown stored value, which the schema has already turned into none", () => {
     for (const value of [undefined, "", "BOTH", 1, true, null, {}]) {
-      settings.current = { pressSound: value };
+      setMode(value);
 
       expect(getPressSoundMode()).toBe("none");
     }
 
-    settings.current = {};
+    settings.current = GlobalSettingsSchema.parse({});
     expect(getPressSoundMode()).toBe("none");
   });
 });
