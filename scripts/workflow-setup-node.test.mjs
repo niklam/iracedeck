@@ -57,21 +57,38 @@ function stepsOf(doc) {
 /** @returns {{ where: string, step: any }[]} the setup-node steps of a parsed document. */
 function setupNodeSteps(doc) {
   return stepsOf(doc).filter(
-    ({ step }) => typeof step?.uses === "string" && step.uses.startsWith("actions/setup-node@"),
+    ({ step }) => typeof step?.uses === "string" && step.uses.toLowerCase().startsWith("actions/setup-node@"),
   );
+}
+
+/** Lower-cases a `with` map's keys (inputs are case-insensitive); lists keys spelled twice. */
+function lowerKeys(withBlock) {
+  if (!withBlock || typeof withBlock !== "object") return withBlock;
+  const out = {};
+  const duplicates = [];
+  for (const [k, v] of Object.entries(withBlock)) {
+    const key = k.toLowerCase();
+    if (key in out) duplicates.push(key);
+    out[key] = v;
+  }
+  Object.defineProperty(out, "duplicates", { value: duplicates });
+  return out;
 }
 
 /** Violations, as readable strings, for one parsed workflow or action. */
 function setupNodeViolations(fileName, doc) {
   const violations = [];
   for (const { where, step } of setupNodeSteps(doc)) {
-    const w = step.with;
+    const w = lowerKeys(step.with);
     const label = `${fileName}: ${where}`;
     if (!w || typeof w !== "object") {
       violations.push(
         `${label} has no \`with\`, so it uses the runner's default Node; set node-version-file: '.nvmrc'`,
       );
       continue;
+    }
+    for (const dup of w.duplicates) {
+      violations.push(`${label} spells the input ${dup} more than once (input names are case-insensitive)`);
     }
     if (w["node-version"] !== undefined) {
       violations.push(`${label} sets node-version (${String(w["node-version"])}); read .nvmrc instead`);
@@ -207,6 +224,27 @@ ${withBlock}
   it("reports a literal node-version", () => {
     const v = setupNodeViolations("x.yml", parse(wf("        with:\n          node-version: 24")));
     expect(v.join("\n")).toMatch(/x\.yml: job "build" step 2 sets node-version \(24\)/);
+  });
+
+  it("reports Node-Version beside a correct node-version-file", () => {
+    const block = "        with:\n          node-version-file: .nvmrc\n          Node-Version: 20";
+    const v = setupNodeViolations("c.yml", parse(wf(block)));
+    expect(v).toHaveLength(1);
+    expect(v[0]).toMatch(/c\.yml: job "build" step 2 sets node-version \(20\)/);
+  });
+
+  it("reports a mixed-case uses with a literal version", () => {
+    const doc = parse(
+      "jobs:\n  b:\n    steps:\n      - uses: Actions/Setup-Node@v4\n        with:\n          node-version: 24\n",
+    );
+    expect(setupNodeViolations("d.yml", doc).join("\n")).toMatch(/d\.yml: job "b" step 1 sets node-version \(24\)/);
+  });
+
+  it("reports one input spelled in two cases, and accepts Node-Version-File: .nvmrc", () => {
+    const dup = parse(wf("        with:\n          node-version-file: .nvmrc\n          NODE-VERSION-FILE: .nvmrc"));
+    expect(setupNodeViolations("e.yml", dup).join("\n")).toMatch(/more than once/);
+    const ok = parse(wf("        with:\n          Node-Version-File: .nvmrc"));
+    expect(setupNodeViolations("f.yml", ok)).toEqual([]);
   });
 
   it("reports a setup-node step with no with", () => {
