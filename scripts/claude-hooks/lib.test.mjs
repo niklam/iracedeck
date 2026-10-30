@@ -491,6 +491,15 @@ describe("the board's Next lane and positions", () => {
     vi.unstubAllEnvs();
   });
 
+  it("drops a card from any lane before Testing, never a merged or shipped one", () => {
+    vi.stubEnv("IRACEDECK_HOOKS_DRY_RUN", "1");
+    for (const n of [10, 11, 15, 16])
+      expect(setBoardStatus(n, "Dropped", root)).toMatch(/would move #\d+ .+ → Dropped/);
+    for (const n of [13, 14]) expect(setBoardStatus(n, "Dropped", root)).toMatch(/not moving it to Dropped/);
+    expect(setBoardStatus(17, "Dropped", root)).toBe("board: #17 already in Dropped");
+    expect(mutations()).toEqual([]);
+  });
+
   it("lets a card into Next from Backlog and Planned only, and still out of Next forwards", () => {
     expect(BOARD_MOVES.Next).toEqual(["(none)", "Backlog", "Planned"]);
     expect(BOARD_MOVES["In progress"]).toContain("Next");

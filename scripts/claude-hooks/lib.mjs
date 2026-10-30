@@ -550,13 +550,16 @@ export function boardItemForIssue(issueNumber, cwd) {
  * Lanes a card may be moved FROM for each automated move — never backwards (a
  * Done card stays Done). `Next` is the PO's (#1520): it orders the milestone
  * Niklas planned, so a card enters from Backlog or Planned, never back from
- * work that has started.
+ * work that has started. `Dropped` is for an issue closed as not planned or a
+ * duplicate, which whoever closes it moves by hand (`build-and-commit.md`): from
+ * any lane before Testing, since a merged or shipped card is never dropped.
  */
 export const BOARD_MOVES = {
   Backlog: ["(none)"],
   Next: ["(none)", "Backlog", "Planned"],
   "In progress": ["(none)", "Backlog", "Planned", "Next"],
   Testing: ["(none)", "Backlog", "Planned", "Next", "In progress"],
+  Dropped: ["(none)", "Backlog", "Planned", "Next", "In progress"],
 };
 
 /** Lanes whose cards are history — merged, shipped or closed — so their order is never moved. */
