@@ -2044,22 +2044,27 @@ export class FuelDialSurface {
    * and which teaches the step when it has to step up.
    *
    * A bank still equal to the one a Target Amount step could not raise
-   * (`ctx.unreachableBankLtr`) covers too: the sim would not bank more, so
-   * re-sending would only repeat the step's burst. Once the bank moves the
-   * memory is dropped. An unreadable bank does not cover.
+   * (`ctx.unreachableBankLtr`) covers a need it falls short of too: the sim
+   * would not bank more, so re-sending would only repeat the step's burst. A
+   * need it now sits a step or more ABOVE (a stop cut short) is still lowered.
+   * Once the bank moves the memory is dropped. An unreadable bank does not cover.
    */
   private bankCoversAdd(ctx: FuelDialContext, addLtr: number, telemetry: TelemetryData | null): boolean {
     const bankLtr = readPitSvFuel(telemetry);
 
     if (bankLtr === undefined) return false;
 
-    if (ctx.unreachableBankLtr !== null) {
-      if (Math.abs(bankLtr - ctx.unreachableBankLtr) <= BANK_EPSILON_LTR) return true;
+    const short = bankLtr < this.fillToFloorLtr(addLtr) - BANK_EPSILON_LTR;
 
-      ctx.unreachableBankLtr = null;
+    if (ctx.unreachableBankLtr !== null) {
+      if (Math.abs(bankLtr - ctx.unreachableBankLtr) > BANK_EPSILON_LTR) {
+        ctx.unreachableBankLtr = null;
+      } else if (short) {
+        return true;
+      }
     }
 
-    if (bankLtr < this.fillToFloorLtr(addLtr) - BANK_EPSILON_LTR) return false;
+    if (short) return false;
 
     const carPath = readPlayerCarPath(this.host.getSessionInfo());
     const stepLtr = (carPath === null ? undefined : this.stepper.fuelStepFor(carPath)) ?? UNKNOWN_FUEL_STEP_LTR;

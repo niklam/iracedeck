@@ -4242,6 +4242,29 @@ describe("FuelService dial surface", () => {
 
         expect(sent()[0]).toBe(45);
       });
+
+      it("still lowers the capped bank once the need falls a step below it", async () => {
+        mockGetSessionInfo.mockReturnValue(SESSION_PORSCHE);
+        vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
+        const telemetry = bankOnGrid(literGrid, { PitSvFuel: 20, FuelLevel: 50, PitSvFlags: FUEL_FILL }, 20);
+        const settings = { stepSize: 10, unitMode: "liters", dialMode: "fill-to" };
+        const ctx = dialContext("fu3");
+        await appear(ctx, settings);
+
+        // Target 80: a 30 L floor the 20 L cap can never reach.
+        await action.onDialRotate(rotateEvent(ctx, settings, 1) as never);
+        await vi.advanceTimersByTimeAsync(4_000);
+        mockPitFuel.mockClear();
+
+        // A stop cut short leaves 75 L in the tank: the need is 5 L, and the
+        // capped 20 L bank is now far above it, so the monitor lowers it.
+        telemetry.FuelLevel = 75;
+        getTelemetryCallback(action)(telemetry);
+        await vi.advanceTimersByTimeAsync(400);
+
+        expect(sent()).toEqual([5]);
+        expect(bank(telemetry)).toBe(5);
+      });
     });
   });
 });
