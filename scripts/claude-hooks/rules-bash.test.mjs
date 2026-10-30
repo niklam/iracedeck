@@ -2024,6 +2024,22 @@ describe("nothing restarts or relinks a deck host without Niklas's go", () => {
     "npm exec -- node scripts/unlink-ulanzi.mjs",
     "npx node --run restart:stream-deck",
   ])("asks for node behind a runner as for node itself: %s", (c) => expect(asks(c, ctx())).toMatch(/Niklas/));
+  // #1526 PR review: a runner behind a runner was read as a binary that
+  // restarts nothing, so the script it runs was never judged.
+  it.each([
+    "npx pnpm restart:stream-deck",
+    "pnpm exec pnpm restart:stream-deck",
+    "pnpm dlx pnpm stop:stream-deck",
+    "npm exec npm run relink:stream-deck",
+    "npx npm run switch-test-env",
+    "npx npx pnpm restart:stream-deck",
+    "pnpm exec npx streamdeck restart com.iracedeck.sd.core",
+    "npx pnpm.cmd restart:stream-deck",
+  ])("asks for a runner behind a runner as for the runner itself: %s", (c) => expect(asks(c, ctx())).toMatch(/Niklas/));
+  it("passes a runner behind a runner on what restarts nothing", () => {
+    for (const c of ["npx pnpm build", "pnpm exec pnpm install", "npm exec npm run build", "npx pnpm --version"])
+      passes(c, ctx());
+  });
   it("passes node behind a runner on a script that restarts nothing", () => {
     for (const c of [
       "pnpm exec node scripts/build.mjs",

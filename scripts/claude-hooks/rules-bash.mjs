@@ -1458,6 +1458,10 @@ const isTurbo = (t) => binName("turbo").test(t);
 const isStreamdeck = (t) => binName("streamdeck").test(t) || /^@elgato\/cli(?:@\S*)?$/.test(t);
 const isRollup = (t) => binName("rollup").test(t);
 const isNode = (t) => binName("node").test(t);
+/** The package runners themselves, which an `exec` / `dlx` / `npx` may run in turn. */
+const isPnpm = (t) => binName("pnpm").test(t);
+const isNpm = (t) => binName("npm").test(t);
+const isNpx = (t) => binName("npx").test(t);
 /**
  * The binaries a `pnpm <bin>`, `pnpm exec` / `dlx`, `npx` or `npm exec` may
  * run that this rule reads; a bare `pnpm <bin>` with no script of that name
@@ -1647,7 +1651,8 @@ function npmRuns(tokens, base, shell) {
  * The binary an `exec` / `dlx` / `npx` runs, past its own options and a `--`:
  * turbo's tasks when it is turbo, the Stream Deck CLI's verb, rollup's watch
  * hooks, what `node` runs ({@link nodeRuns}, #1526 review), a shell's command
- * string ({@link wrapperRuns}), nothing otherwise — a command is judged by the
+ * string ({@link wrapperRuns}), what a nested `pnpm`, `npm` or `npx` runs, read
+ * by its own reader (#1526 PR review), nothing otherwise — a command is judged by the
  * tool that runs it, and a `tsc` or `prettier` restarts nothing. `-c` /
  * `--call` (npm, npx) and `--shell-mode` (pnpm, whose `-c` is the same), alone
  * or in a cluster of short options, run a command line in a shell instead of a
@@ -1672,6 +1677,9 @@ function binRuns(tokens, dir, shell, shellMode = false) {
     else if (isRollup(t)) return rollupRuns(tokens.slice(i + 1), dir);
     else if (isNode(t)) return nodeRuns(tokens.slice(i + 1), dir, shell);
     else if (isWrapper(t)) return wrapperRuns(tokens.slice(i), dir, shell);
+    else if (isPnpm(t)) return pnpmRuns(tokens.slice(i + 1), dir, shell);
+    else if (isNpm(t)) return npmRuns(tokens.slice(i + 1), dir, shell);
+    else if (isNpx(t)) return binRuns(tokens.slice(i + 1), dir, shell);
     else return [];
   }
   return [];
