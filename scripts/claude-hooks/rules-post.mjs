@@ -152,19 +152,20 @@ export function createdIssues(stdout) {
   return [...seen.values()];
 }
 
-/** How recent an issue must be to count as just created, when the output names more issues than the command creates. */
+/** How recent an issue must be to count as just created. */
 export const JUST_CREATED_MS = 10 * 60_000;
 
 /**
- * Which of `found` ({@link createdIssues}) the command created, when it ran
- * `creates` `gh issue create`s. As many or fewer than that are all taken; more
- * mean another command printed a bare issue URL too (`gh issue edit` does), and
- * then only the issues `ageOf` (ms since GitHub created it, or `undefined` when
- * it cannot tell) puts within {@link JUST_CREATED_MS} are. `unsure` lists those
- * whose age could not be read, so the caller can name them instead of guessing.
+ * Which of `found` ({@link createdIssues}) the command created: those `ageOf`
+ * (ms since GitHub created it, or `undefined` when it cannot tell) puts within
+ * {@link JUST_CREATED_MS}. Every one is checked, however many creates the
+ * command ran: another command prints a bare issue URL too (`gh issue edit`,
+ * `gh issue view --jq .url`) while a create may print none (`--web`, or one that
+ * failed), so a count can pair a create with another issue's URL. `unsure`
+ * lists those whose age could not be read, so the caller can name them instead
+ * of guessing.
  */
-export function pickCreated(found, creates, ageOf) {
-  if (found.length <= creates) return { picked: found, unsure: [] };
+export function pickCreated(found, ageOf) {
   const picked = [];
   const unsure = [];
   for (const issue of found) {

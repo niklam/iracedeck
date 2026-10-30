@@ -176,20 +176,18 @@ describe("post rules", () => {
       ).toEqual([twelve]);
     });
 
-    it("picks the just-created issues when the output names more than the command created", () => {
+    it("picks only the just-created issues, checking every one", () => {
       const [a, b, c] = [1, 2, 3].map((number) => ({ url: `u${number}`, repo: "a/b", number }));
-      const never = () => {
-        throw new Error("no age is needed when the count fits");
-      };
-      expect(pickCreated([a, b], 2, never)).toEqual({ picked: [a, b], unsure: [] });
-      expect(pickCreated([], 1, never)).toEqual({ picked: [], unsure: [] });
+      expect(pickCreated([], () => 0)).toEqual({ picked: [], unsure: [] });
       const ages = new Map([
         [1, 3 * 24 * 3600_000],
         [2, 30_000],
         [3, undefined],
       ]);
-      expect(pickCreated([a, b, c], 1, (i) => ages.get(i.number))).toEqual({ picked: [b], unsure: [c] });
-      expect(pickCreated([a, b], 1, () => JUST_CREATED_MS)).toEqual({ picked: [], unsure: [] });
+      expect(pickCreated([a, b, c], (i) => ages.get(i.number))).toEqual({ picked: [b], unsure: [c] });
+      // One URL is not enough on its own: a `--web` create prints none, so it may be a view's.
+      expect(pickCreated([a], (i) => ages.get(i.number))).toEqual({ picked: [], unsure: [] });
+      expect(pickCreated([a, b], () => JUST_CREATED_MS)).toEqual({ picked: [], unsure: [] });
     });
 
     it("reads a GH_REPO the command assigns, in bash or PowerShell", () => {

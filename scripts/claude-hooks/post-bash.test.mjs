@@ -208,17 +208,13 @@ describe("post-bash.mjs triggers", () => {
 describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", () => {
   const FOREIGN = "https://github.com/lint-staged/lint-staged/issues/1865";
 
-  it("adds an iRaceDeck issue to the board and moves its card — the positive control", () => {
-    for (const url of [
-      "https://github.com/niklam/iracedeck/issues/1527",
-      "https://github.com/Niklam/iRaceDeck/issues/1527",
-    ]) {
-      // Dry run: the add reports an item, and the lane move then asks gh for
-      // the card, which fails without gh — proof the move was attempted.
-      const note = fire("gh issue create --title x --body y", { stdout: `${url}\n`, withoutGh: true });
-      expect(note, url).toContain(`Added ${url} to the Roadmap board`);
-      expect(note, url).toMatch(/board: #1527 /);
-    }
+  it("names an iRaceDeck issue it cannot date rather than file it", () => {
+    // Without gh the issue's creation time is unknown, so it may not be the one
+    // the create made; the filing with gh answering is the positive control below.
+    const url = "https://github.com/niklam/iracedeck/issues/1527";
+    expect(fire("gh issue create --title x --body y", { stdout: `${url}\n`, withoutGh: true })).toBe(
+      `[hook] gh issue create: could not tell whether ${url} was just filed; add any that was to the Roadmap board by hand (Backlog).`,
+    );
   });
 
   it("leaves the board alone for an issue filed in another repository", () => {
@@ -391,16 +387,21 @@ describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", () => {
       expect(note).toMatch(/^\[hook\] board \(dry run\): would move #1321 Backlog → In progress\./);
     });
 
+    const home = (n, tail = "") => `https://github.com/niklam/iracedeck/issues/${n}${tail}`;
+    /** The fake gh's answer to the hook's age lookup of `repo`#`n`. */
+    const created = (n, at, repo = "niklam/iracedeck") => ({
+      [`api repos/${repo}/issues/${n}`]: { created_at: new Date(at).toISOString() },
+    });
+    const justNow = () => Date.now() - 60_000;
+    const OLD = "2026-09-01T00:00:00Z";
+    const filed = (note) => [...note.matchAll(/Added (\S+) to the Roadmap board/g)].map((m) => m[1]);
+
     // #1527, found by the PO: a chain's output carried a comment's URL first,
     // and the hook filed the commented issue rather than the created one.
-    it("files the issue a chained create printed, not one a comment or an edit printed", () => {
-      const home = (n, tail = "") => `https://github.com/niklam/iracedeck/issues/${n}${tail}`;
-      const ageReply = (created) => ({ created_at: new Date(created).toISOString() });
-      const filed = (note) => [...note.matchAll(/Added (\S+) to the Roadmap board/g)].map((m) => m[1]);
-
+    it("files the issue a chained create printed, not one a comment, an edit or a view printed", () => {
       const comment = fireWithGh(
         "gh issue comment 1483 --body x && gh issue create --title y --body z",
-        { "api graphql": boardItem(null) },
+        { ...created(1534, justNow()), "api graphql": boardItem(null) },
         { stdout: `${home(1483, "#issuecomment-4242")}\n${home(1534)}\n` },
       );
       expect(filed(comment.note)).toEqual([home(1534)]);
@@ -409,23 +410,29 @@ describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", () => {
       // An edit prints a bare URL too: GitHub's creation time tells them apart.
       const edit = fireWithGh(
         "gh issue edit 1483 --add-label x && gh issue create --title y --body z",
-        {
-          "api repos/niklam/iracedeck/issues/1483": ageReply("2026-09-01T00:00:00Z"),
-          "api repos/niklam/iracedeck/issues/1534": ageReply(Date.now() - 60_000),
-          "api graphql": boardItem(null),
-        },
+        { ...created(1483, OLD), ...created(1534, justNow()), "api graphql": boardItem(null) },
         { stdout: `${home(1483)}\n${home(1534)}\n` },
       );
       expect(filed(edit.note)).toEqual([home(1534)]);
 
-      // Two creates, two URLs: both filed, no age asked.
+      // A `--web` create prints no URL, so a view's is the only one in the output (CodeRabbit).
+      const web = fireWithGh(
+        "gh issue view 1483 --json url --jq .url && gh issue create --web",
+        { ...created(1483, OLD), "api graphql": boardItem(null) },
+        { stdout: `${home(1483)}\n` },
+      );
+      expect(web.note).toBe(
+        "[hook] gh issue create: no issue in the output was just created; add the card to the Roadmap board by hand (Backlog).",
+      );
+      expect(web.calls.some((c) => c.args[0] === "api" && c.args[1] === "graphql")).toBe(false);
+
+      // Two creates, two URLs: both filed.
       const two = fireWithGh(
         "gh issue create --title a --body b && gh issue create --title c --body d",
-        { "api graphql": boardItem(null) },
+        { ...created(1534, justNow()), ...created(1535, justNow()), "api graphql": boardItem(null) },
         { stdout: `${home(1534)}\n${home(1535)}\n` },
       );
       expect(filed(two.note)).toEqual([home(1534), home(1535)]);
-      expect(two.calls.filter((c) => c.args[1]?.startsWith("repos/"))).toEqual([]);
     });
 
     it("names the candidates rather than guess when it cannot read their ages", () => {
@@ -438,22 +445,24 @@ describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", () => {
       );
     });
 
-    it("files an iRaceDeck issue into Backlog, and asks gh nothing for another repository's", () => {
-      const replies = { "api graphql": boardItem(null) };
-      const home = fireWithGh(
-        "gh issue create --title x --body y",
-        {},
-        { stdout: "https://github.com/niklam/iracedeck/issues/1527\n" },
+    it("files an iRaceDeck issue into Backlog — the positive control — and asks gh nothing for another repository's", () => {
+      for (const [url, repo] of [
+        [home(1527), "niklam/iracedeck"],
+        ["https://github.com/Niklam/iRaceDeck/issues/1527", "Niklam/iRaceDeck"],
+      ]) {
+        const { note } = fireWithGh(
+          "gh issue create --title x --body y",
+          { ...created(1527, justNow(), repo), "api graphql": boardItem(null) },
+          { stdout: `${url}\n` },
+        );
+        expect(filed(note), url).toEqual([url]);
+        expect(note, url).toContain("board (dry run): would move #1527 (none) → Backlog");
+      }
+      const foreign = fireWithGh(
+        "gh issue create -R lint-staged/lint-staged --title x --body y",
+        { "api graphql": boardItem(null) },
+        { stdout: "https://github.com/lint-staged/lint-staged/issues/1527\n" },
       );
-      expect(home.note).toMatch(/board: #1527 is not on the Roadmap board/); // no reply given: the lookup ran
-      expect(
-        fireWithGh("gh issue create --title x --body y", replies, {
-          stdout: "https://github.com/niklam/iracedeck/issues/1527\n",
-        }).note,
-      ).toContain("board (dry run): would move #1527 (none) → Backlog");
-      const foreign = fireWithGh("gh issue create -R lint-staged/lint-staged --title x --body y", replies, {
-        stdout: "https://github.com/lint-staged/lint-staged/issues/1527\n",
-      });
       expect(foreign.note).toMatch(/the Roadmap board is left alone/);
       expect(foreign.calls).toEqual([]);
     });

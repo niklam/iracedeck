@@ -68,8 +68,7 @@ if (typeof raw === "string") {
       notes.push(
         "gh pr merge ran, but its PR argument could not be read; check by hand whether it merged, and move its Roadmap card to Testing.",
       );
-    const creates = (text.match(/\bgh\s+issue\s+create\b/g) ?? []).length;
-    if (creates) notes.push(...afterIssueCreate(stdout, creates, cwd));
+    if (/\bgh\s+issue\s+create\b/.test(text)) notes.push(...afterIssueCreate(stdout, cwd));
     const target = worktreeAddTarget(command);
     if (target) notes.push(...afterWorktreeAdd(command, target, cwd, shell));
   } catch (e) {
@@ -157,19 +156,26 @@ function afterMerge(merge, command, cwd, shell) {
 }
 
 /**
- * `creates` is how many `gh issue create`s the command ran. Only the issues
- * they printed are filed ({@link pickCreated}): a chain's output can carry
- * other issues' URLs, a comment's or an edit's (#1527).
+ * Only an issue the command just created is filed ({@link pickCreated}): a
+ * chain's output can carry other issues' URLs, a comment's, an edit's or a
+ * view's, while a create may print none (#1527). Another repository's issue is
+ * only reported as left alone, so it needs no age.
  */
-function afterIssueCreate(stdout, creates, cwd) {
+function afterIssueCreate(stdout, cwd) {
   const found = createdIssues(stdout);
   if (!found.length)
     return ["gh issue create: no issue URL in the output; add the card to the Roadmap board by hand (Backlog)."];
-  const { picked, unsure } = pickCreated(found, creates, (issue) => {
-    const created = Date.parse(ghJson(["api", `repos/${issue.repo}/issues/${issue.number}`], cwd)?.created_at);
-    return Number.isFinite(created) ? Date.now() - created : undefined;
-  });
-  const out = picked.map((issue) => fileOnBoard(issue, cwd));
+  const out = found
+    .filter((issue) => !isHomeRepo(issue.repo))
+    .map((issue) => `Filed ${issue.url} in ${issue.repo}, not ${HOME_REPO}: the Roadmap board is left alone.`);
+  const { picked, unsure } = pickCreated(
+    found.filter((issue) => isHomeRepo(issue.repo)),
+    (issue) => {
+      const created = Date.parse(ghJson(["api", `repos/${issue.repo}/issues/${issue.number}`], cwd)?.created_at);
+      return Number.isFinite(created) ? Date.now() - created : undefined;
+    },
+  );
+  out.push(...picked.map((issue) => fileOnBoard(issue, cwd)));
   if (unsure.length)
     out.push(
       `gh issue create: could not tell whether ${unsure.map((i) => i.url).join(", ")} ${unsure.length > 1 ? "were" : "was"} just filed; add any that was to the Roadmap board by hand (Backlog).`,
@@ -182,8 +188,6 @@ function afterIssueCreate(stdout, creates, cwd) {
 }
 
 function fileOnBoard(issue, cwd) {
-  if (!isHomeRepo(issue.repo))
-    return `Filed ${issue.url} in ${issue.repo}, not ${HOME_REPO}: the Roadmap board is left alone.`;
   const itemId = addToBoard(issue.url, cwd);
   if (!itemId)
     return `Filed ${issue.url} but could not add it to the Roadmap board (gh project item-add failed — token scope?).`;
