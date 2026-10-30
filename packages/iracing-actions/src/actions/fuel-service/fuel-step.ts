@@ -23,12 +23,31 @@
  *   running check ends — a held key on a gallon car steps one gallon per check
  *   instead of restarting a check that never finishes;
  * - any other command sent through the {@link FuelPipeline} (a Clear Fuel or
- *   Set Fuel Amount press, a dial gesture, the fill-to monitor) cancels the
- *   running check and the queued press, so a later escalation cannot undo it.
+ *   Set Fuel Amount press, a dial gesture, the fill-to monitor's clear) cancels
+ *   the running check and the queued press, so a later escalation cannot undo it.
+ *
+ * A step completes by one of two rules, chosen by the request's form
+ * ({@link FuelStepRequest}):
+ *
+ * - **the move rule** (Add / Reduce Fuel, the dial's Add Amount): done once
+ *   `PitSvFuel` moves in the press's direction;
+ * - **the floor rule** (the dial's Target Amount, #1483): the request is a
+ *   floor, the least the stop must add, and the step is done once `PitSvFuel`
+ *   is at or above it. Fill To rounds its add up so a stop never finishes
+ *   under target, and a car whose step is coarser than a liter would otherwise
+ *   round that add back down to the grid point below. The stepper picks the
+ *   first request itself from the car's learned step, and escalates a whole
+ *   liter at a time while the bank stays short, bounded as above.
+ *
+ * The car's fuel step itself (one grid point: 3.785 L on the MX-5, 1 L on the
+ * Porsche) is learned per `CarPath` from steps that landed exactly one grid
+ * point away, and is what the floor rule's first request and the dial's
+ * fill-to monitor use (see {@link FuelStepper}).
  *
  * One instance per FuelService action, shared by the keypad's Add / Reduce Fuel
- * and the dial's Add Amount rotation: both drive the same single pit request.
- * Spec: `docs/superpowers/specs/2026-10-18-issue-1314-fuel-step-per-car.md`.
+ * and the dial's Add Amount and Target Amount sends: all drive the same single
+ * pit request. Specs: `docs/superpowers/specs/2026-10-18-issue-1314-fuel-step-per-car.md`,
+ * `docs/superpowers/specs/2026-10-25-issue-1483-fill-to-fuel-step.md`.
  */
 import type { SessionInfo, TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
@@ -67,14 +86,29 @@ const MOVE_EPSILON_LTR = 0.01;
  */
 const LATE_REFLECTION_LTR = 0.5;
 
+/**
+ * The smallest move learned as a car's fuel step: a whole-liter car's step is
+ * 1 L, so anything clearly below it is float noise or a capped bank, not a step.
+ */
+const FUEL_STEP_MIN_LTR = 0.9;
+
+/**
+ * A step that landed on its FIRST send is learned as one grid point only when
+ * it moved less than this: a whole-liter request cannot resolve a finer grid,
+ * so a move under 1.5 L is one whole-liter step, while a larger first-send move
+ * may span several grid points (a first Fill To send from 0 to 46 L on a
+ * whole-liter car is 46 steps, not one). See the class comment.
+ */
+const ONE_STEP_FIRST_SEND_MAX_LTR = 1.5;
+
 /** Which way a press moves the pit fuel request. */
 export type FuelStepDirection = "add" | "reduce";
 
 /**
- * What a press asks for, resolved from the `PitSvFuel` baseline when its check
- * STARTS — a queued press must run from the baseline the previous check left.
+ * A move request (the move rule): the request should move away from the
+ * baseline in `direction`.
  */
-export interface FuelStepRequest {
+export interface FuelStepMoveRequest {
   /**
    * Which way the request should move, or `null` to send `firstLtr` once with no
    * check (the dial's request already equals the banked amount, but a rotation
@@ -90,13 +124,33 @@ export interface FuelStepRequest {
 }
 
 /**
+ * A floor request (the floor rule, #1483): the stop must add at least
+ * `floorLtr` liters. The stepper picks the first whole-liter request itself,
+ * from the car's learned fuel step, and escalates while the bank stays below
+ * the floor. A floor at or below zero asks for nothing (`skipped`).
+ */
+export interface FuelStepFloorRequest {
+  floorLtr: number;
+}
+
+/**
+ * What a press asks for, resolved from the `PitSvFuel` baseline when its check
+ * STARTS — a queued press must run from the baseline the previous check left.
+ */
+export type FuelStepRequest = FuelStepMoveRequest | FuelStepFloorRequest;
+
+/**
  * How a step ended.
  *
- * - `landed` — `PitSvFuel` moved in the press's direction.
- * - `unmoved` — nothing moved up to {@link FUEL_STEP_MAX_EXTRA_LTR} past the request.
+ * - `landed` — the move rule: `PitSvFuel` moved in the press's direction. The
+ *   floor rule: `PitSvFuel` is at or above the floor — at once when it differs
+ *   from the baseline, or, when it still equals a baseline already at or above
+ *   the floor, once the watch has expired (the send may not have shown yet).
+ * - `unmoved` — the move rule: nothing moved up to {@link FUEL_STEP_MAX_EXTRA_LTR}
+ *   past the request. The floor rule: the bank stayed below the floor that far.
  * - `emptied` — the request reached zero, so the request was emptied instead (see {@link FuelStepper}).
  * - `unchecked` — sent once without a check (`direction: null`, or `PitSvFuel` unreadable).
- * - `skipped` — the resolver asked for nothing.
+ * - `skipped` — the resolver asked for nothing (or a floor at or below zero).
  * - `superseded` — a newer press replaced this one in the queue before it ran.
  * - `cancelled` — another fuel command took over the request.
  */
@@ -106,7 +160,12 @@ export interface FuelStepResult {
   outcome: FuelStepOutcome;
   /** `PitSvFuel` when the step started (liters); undefined when it never started. */
   baselineLtr?: number;
-  /** The press's own request; undefined when the step never resolved one. */
+  /** The floor of a floor request (liters); undefined for a move request or a step that never resolved. */
+  floorLtr?: number;
+  /**
+   * The press's own request (for a floor request, the first request the stepper
+   * chose); undefined when the step never resolved one.
+   */
   firstLtr?: number;
   /** The last request actually sent (liters); undefined when nothing was sent. */
   sentLtr?: number;
@@ -142,10 +201,21 @@ interface PendingStep {
 /** The running check. */
 interface RunningStep extends PendingStep {
   direction: FuelStepDirection;
+  /** The floor of a floor request (the floor rule), or null for the move rule. */
+  floorLtr: number | null;
   baselineLtr: number;
   firstLtr: number;
-  /** The minimum-move memory key (`<CarPath>|<direction>`), or null when the car is unknown. */
+  /** The player's car, the key the learned fuel step is kept under; null when unknown. */
+  carPath: string | null;
+  /**
+   * The minimum-move memory key (`<CarPath>|<direction>`), or null when the car
+   * is unknown or the step follows the floor rule (which never uses it).
+   */
   memoryKey: string | null;
+  /** The last `PitSvFuel` read while watching (the baseline until a read). */
+  lastReadingLtr: number;
+  /** {@link lastReadingLtr} when the current send went out: what the previous send left banked. */
+  readingBeforeSendLtr: number;
   /** Whole liters the first send was bumped by to reach the learned minimum move. */
   bumpLtr: number;
   /** The send before the current one, or null while only one has gone out. */
@@ -192,6 +262,27 @@ export function readPlayerCarPath(sessionInfo: SessionInfo | null): string | nul
   const carPath = player?.CarPath;
 
   return typeof carPath === "string" && carPath.length > 0 ? carPath : null;
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * The floor rule's first whole-liter request for a floor (#1483). With the
+ * car's fuel step known it is the whole liter nearest the smallest grid point
+ * at or above the floor — iRacing rounds a request to the nearest grid point,
+ * so that liter banks that point — and never less than the floor rounded up.
+ * With the step unknown it is the floor rounded up, which on a whole-liter car
+ * already banks the floor. The epsilon keeps float noise (5.0000000001) from
+ * costing a whole liter or a whole grid point.
+ */
+export function floorFirstRequestLtr(floorLtr: number, stepLtr: number | undefined): number {
+  const atLeastLtr = Math.max(1, Math.ceil(floorLtr - MOVE_EPSILON_LTR));
+
+  if (stepLtr === undefined || !(stepLtr > 0)) return atLeastLtr;
+
+  const gridPoints = Math.ceil((floorLtr - MOVE_EPSILON_LTR) / stepLtr);
+
+  return Math.max(atLeastLtr, Math.round(gridPoints * stepLtr));
 }
 
 /**
@@ -256,10 +347,46 @@ export function readPlayerCarPath(sessionInfo: SessionInfo | null): string | nul
  *   larger than 1 L the landing is at least half a step from that send.
  * - A press that never moved (`unmoved`), was emptied, or was not checked
  *   teaches nothing.
+ *
+ * **The floor rule (#1483).** A floor request is done once `PitSvFuel` is at or
+ * above the floor. A reading at the floor that differs from the baseline ends
+ * the step at once; one that still EQUALS the baseline ends it only when the
+ * watch expires, because the send may not show yet — lowering a target from
+ * 11.35 L to a 3.5 L floor sends 4, and `PitSvFuel` reads 11.35 for a tick
+ * before 3.785 shows. A reading below the floor is never done: at the watch's
+ * end the next whole liter up is sent, bounded by {@link FUEL_STEP_MAX_EXTRA_LTR}
+ * like the move rule, ending `unmoved`. The first request is
+ * {@link floorFirstRequestLtr}: with the car's step known it already banks the
+ * smallest grid point at or above the floor, so the check confirms on its first
+ * read. A floor step is never bumped to the learned minimum move, and never
+ * reads or writes it: that memory is a distance from the baseline, which the
+ * floor rule does not measure.
+ *
+ * **The learned fuel step.** One grid point of the car, kept per `CarPath` for
+ * the plugin's lifetime as the SMALLEST evidence seen ({@link fuelStepFor}).
+ * Only a step that landed, of either rule and direction, is evidence, and only
+ * where the move is known to span exactly one grid point:
+ *
+ * - an escalated landing: the request one liter short banked the previous
+ *   reading, and iRacing rounds to the nearest grid point, so two requests a
+ *   liter apart bank the same or ADJACENT grid points — the landing minus the
+ *   reading the previous send left is one step. A late reflection is excluded
+ *   exactly as for the minimum move (its end sits within
+ *   {@link LATE_REFLECTION_LTR} of the previous send);
+ * - a first-send landing that moved less than {@link ONE_STEP_FIRST_SEND_MAX_LTR}:
+ *   a whole-liter car's 1 L step. A larger first-send move is not evidence: it
+ *   may span several grid points, and a multiple learned as the step would make
+ *   every later floor request overshoot by it.
+ *
+ * Moves under {@link FUEL_STEP_MIN_LTR} teach nothing. A capped bank (a tank
+ * whose capacity is not a grid point) can still teach a step that is too small;
+ * that only costs extra escalations, since every floor step is checked.
  */
 export class FuelStepper {
   /** The smallest move (liters from the baseline) known to land, by `<CarPath>|<direction>`. */
   private readonly minimumMoves = new Map<string, number>();
+  /** The car's learned fuel step (liters, one grid point), by `CarPath` (#1483). */
+  private readonly fuelSteps = new Map<string, number>();
   private running: RunningStep | null = null;
   private queued: PendingStep | null = null;
   /** True while the stepper itself sends, so its own commands cancel nothing. */
@@ -286,6 +413,15 @@ export class FuelStepper {
    */
   minimumMoveFor(carPath: string, direction: FuelStepDirection): number {
     return this.minimumMoves.get(`${carPath}|${direction}`) ?? 0;
+  }
+
+  /**
+   * The car's learned fuel step (liters, one grid point), or undefined while
+   * none is known (#1483). The floor rule's first request uses it, and so does
+   * the dial's fill-to monitor, to tell a bank a whole step above the need.
+   */
+  fuelStepFor(carPath: string): number | undefined {
+    return this.fuelSteps.get(carPath);
   }
 
   /**
@@ -342,6 +478,12 @@ export class FuelStepper {
       return;
     }
 
+    if ("floorLtr" in request) {
+      this.startFloor(step, request.floorLtr, baselineLtr);
+
+      return;
+    }
+
     const { direction } = request;
     const firstLtr = Math.round(request.firstLtr);
 
@@ -379,9 +521,13 @@ export class FuelStepper {
     const run: RunningStep = {
       ...step,
       direction,
+      floorLtr: null,
       baselineLtr,
       firstLtr,
+      carPath,
       memoryKey,
+      lastReadingLtr: baselineLtr,
+      readingBeforeSendLtr: baselineLtr,
       bumpLtr,
       previousSentLtr: null,
       sends: 0,
@@ -402,10 +548,68 @@ export class FuelStepper {
     this.send(run);
   }
 
+  /**
+   * Starts a floor request (the floor rule, #1483): the first request comes from
+   * the car's learned step ({@link floorFirstRequestLtr}), never from the
+   * minimum-move memory. An unreadable baseline sends it once, unchecked, as
+   * the move rule does.
+   */
+  private startFloor(step: PendingStep, floorLtr: number, baselineLtr: number | undefined): void {
+    if (!(floorLtr > MOVE_EPSILON_LTR)) {
+      this.finishStarted(step, { outcome: "skipped", baselineLtr, floorLtr, extraLtr: 0, endLtr: baselineLtr });
+
+      return;
+    }
+
+    const carPath = readPlayerCarPath(this.host.getSessionInfo());
+    const stepLtr = carPath === null ? undefined : this.fuelSteps.get(carPath);
+    const firstLtr = floorFirstRequestLtr(floorLtr, stepLtr);
+
+    if (baselineLtr === undefined) {
+      this.own(() => this.pipeline.fuel(firstLtr));
+      this.finishStarted(step, {
+        outcome: "unchecked",
+        baselineLtr,
+        floorLtr,
+        firstLtr,
+        sentLtr: firstLtr,
+        extraLtr: 0,
+      });
+
+      return;
+    }
+
+    const run: RunningStep = {
+      ...step,
+      direction: "add",
+      floorLtr,
+      baselineLtr,
+      firstLtr,
+      carPath,
+      memoryKey: null,
+      lastReadingLtr: baselineLtr,
+      readingBeforeSendLtr: baselineLtr,
+      bumpLtr: 0,
+      previousSentLtr: null,
+      sends: 0,
+      extraLtr: 0,
+      sentLtr: firstLtr,
+      watchedMs: 0,
+      timer: null,
+    };
+
+    this.running = run;
+    this.host.logger.debug(
+      `Fuel step: floor ${floorLtr.toFixed(2)}L from ${baselineLtr.toFixed(2)}L, first request ${firstLtr} L (step ${stepLtr === undefined ? "unknown" : `${stepLtr.toFixed(2)}L`})`,
+    );
+    this.send(run);
+  }
+
   /** Sends the run's current request (its own request plus `extraLtr`) and starts watching it. */
   private send(run: RunningStep): void {
     const liters = run.direction === "add" ? run.firstLtr + run.extraLtr : run.firstLtr - run.extraLtr;
     run.previousSentLtr = run.sends > 0 ? run.sentLtr : null;
+    run.readingBeforeSendLtr = run.lastReadingLtr;
     run.sends += 1;
     run.sentLtr = liters;
 
@@ -422,7 +626,10 @@ export class FuelStepper {
     this.check(run);
   }
 
-  /** Reads `PitSvFuel` back: done when it moved, otherwise watch on, step further or give up. */
+  /**
+   * Reads `PitSvFuel` back: done when the run's rule is met (it moved, or it
+   * reached the floor), otherwise watch on, step further or give up.
+   */
   private check(run: RunningStep): void {
     run.timer = null;
 
@@ -430,7 +637,21 @@ export class FuelStepper {
 
     const nowLtr = readPitSvFuel(this.host.getTelemetry());
 
-    if (nowLtr !== undefined && this.moved(run, nowLtr)) {
+    if (nowLtr !== undefined) run.lastReadingLtr = nowLtr;
+
+    if (run.floorLtr !== null) {
+      if (this.reachedFloor(run, run.floorLtr, nowLtr)) {
+        if (run.extraLtr > 0) {
+          this.host.logger.debug(
+            `Fuel step: reached the ${run.floorLtr.toFixed(2)}L floor at ${nowLtr?.toFixed(2)}L, ${run.extraLtr} L past the request ${run.firstLtr} L`,
+          );
+        }
+
+        this.end(run, "landed", nowLtr, true);
+
+        return;
+      }
+    } else if (nowLtr !== undefined && this.moved(run, nowLtr)) {
       this.learn(run, nowLtr);
 
       if (run.extraLtr > 0) {
@@ -458,7 +679,9 @@ export class FuelStepper {
     if (run.watchedMs >= FUEL_STEP_WATCH_MS) {
       if (run.extraLtr >= FUEL_STEP_MAX_EXTRA_LTR) {
         this.host.logger.info(
-          `Fuel request did not move ${FUEL_STEP_MAX_EXTRA_LTR} L past the request — tank full, request at zero, or not in a pit-service state`,
+          run.floorLtr === null
+            ? `Fuel request did not move ${FUEL_STEP_MAX_EXTRA_LTR} L past the request — tank full, request at zero, or not in a pit-service state`
+            : `Fuel request did not reach the target ${FUEL_STEP_MAX_EXTRA_LTR} L past the request — tank full, or not in a pit-service state`,
         );
         this.end(run, "unmoved", nowLtr, true);
 
@@ -466,7 +689,11 @@ export class FuelStepper {
       }
 
       run.extraLtr += 1;
-      this.host.logger.debug(`Fuel step: request unchanged, stepping ${run.extraLtr} L past it`);
+      this.host.logger.debug(
+        run.floorLtr === null
+          ? `Fuel step: request unchanged, stepping ${run.extraLtr} L past it`
+          : `Fuel step: bank ${nowLtr?.toFixed(2) ?? "unreadable"} below the ${run.floorLtr.toFixed(2)}L floor, stepping ${run.extraLtr} L past the request`,
+      );
       this.send(run);
 
       return;
@@ -501,10 +728,52 @@ export class FuelStepper {
     }
   }
 
+  /**
+   * Updates the car's learned fuel step from a step that landed (#1483), when
+   * the landing is known to span exactly one grid point (see the class comment).
+   */
+  private learnStep(run: RunningStep, landedLtr: number): void {
+    if (run.carPath === null) return;
+
+    let evidenceLtr: number;
+
+    if (run.sends > 1) {
+      // A late reflection of the previous send says nothing about adjacency.
+      if (run.previousSentLtr !== null && Math.abs(landedLtr - run.previousSentLtr) <= LATE_REFLECTION_LTR) return;
+
+      evidenceLtr = Math.abs(landedLtr - run.readingBeforeSendLtr);
+    } else {
+      evidenceLtr = Math.abs(landedLtr - run.baselineLtr);
+
+      if (evidenceLtr >= ONE_STEP_FIRST_SEND_MAX_LTR) return;
+    }
+
+    if (evidenceLtr < FUEL_STEP_MIN_LTR) return;
+
+    const known = this.fuelSteps.get(run.carPath);
+
+    if (known === undefined || evidenceLtr < known) {
+      this.fuelSteps.set(run.carPath, evidenceLtr);
+      this.host.logger.debug(`Fuel step: learned a ${evidenceLtr.toFixed(2)}L fuel step for ${run.carPath}`);
+    }
+  }
+
   private moved(run: RunningStep, nowLtr: number): boolean {
     return run.direction === "add"
       ? nowLtr > run.baselineLtr + MOVE_EPSILON_LTR
       : nowLtr < run.baselineLtr - MOVE_EPSILON_LTR;
+  }
+
+  /**
+   * The floor rule's completion: a reading at or above the floor that differs
+   * from the baseline is done at once; one that still equals the baseline is
+   * done only once the watch has expired (the send may not show yet). Below the
+   * floor, or unreadable, is never done.
+   */
+  private reachedFloor(run: RunningStep, floorLtr: number, nowLtr: number | undefined): boolean {
+    if (nowLtr === undefined || nowLtr < floorLtr - MOVE_EPSILON_LTR) return false;
+
+    return Math.abs(nowLtr - run.baselineLtr) > MOVE_EPSILON_LTR || run.watchedMs >= FUEL_STEP_WATCH_MS;
   }
 
   /** Ends the running check, then starts the queued press when `startNext`. */
@@ -513,11 +782,15 @@ export class FuelStepper {
 
     run.timer = null;
     this.running = null;
+
+    if (outcome === "landed" && endLtr !== undefined) this.learnStep(run, endLtr);
+
     this.finishStarted(
       run,
       {
         outcome,
         baselineLtr: run.baselineLtr,
+        ...(run.floorLtr === null ? {} : { floorLtr: run.floorLtr }),
         firstLtr: run.firstLtr,
         sentLtr: run.sentLtr,
         extraLtr: run.extraLtr,
