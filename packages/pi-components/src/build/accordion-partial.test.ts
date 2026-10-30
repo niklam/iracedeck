@@ -87,6 +87,7 @@ describe("global-common-* group partials", () => {
       "global-common-window-focus": ["focusIRacingWindow", "disableWhenDisconnected"],
       "global-common-simhub": ["simHubHost", "simHubPort"],
       "global-common-dual-press": ["dualPressThresholdMs", "dualPressDirections"],
+      "global-common-press-sounds": ["pressSound"],
       "global-common-replay": ["replayJumpPlayback", "fastestLapSearchDelayMs"],
       "global-common-chat": ["chatOpenToPasteDelayMs", "chatPasteToEnterDelayMs", "chatEnterToCloseDelayMs"],
       "global-common-updates": ["changelogNotification"],
