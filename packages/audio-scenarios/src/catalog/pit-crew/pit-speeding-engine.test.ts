@@ -87,6 +87,7 @@ function register(): void {
   registerPitSpeedingEngine(hoisted.bus, {
     getMasterEnabled: () => masterEnabled,
     getCueEnabled: () => cueEnabled,
+    getLatestTelemetry: () => null,
   });
 }
 
@@ -365,13 +366,21 @@ describe("pit-speeding cue engine", () => {
       const otherBus = { subscribe: vi.fn(), unsubscribe: vi.fn(), publish: vi.fn() } as unknown as IEventBus;
 
       expect(() =>
-        registerPitSpeedingEngine(otherBus, { getMasterEnabled: () => true, getCueEnabled: () => true }),
+        registerPitSpeedingEngine(otherBus, {
+          getMasterEnabled: () => true,
+          getCueEnabled: () => true,
+          getLatestTelemetry: () => null,
+        }),
       ).toThrow(/different event bus/);
     });
 
     it("refreshes the gates when re-registered with the same bus", () => {
       register();
-      registerPitSpeedingEngine(hoisted.bus, { getMasterEnabled: () => false, getCueEnabled: () => true });
+      registerPitSpeedingEngine(hoisted.bus, {
+        getMasterEnabled: () => false,
+        getCueEnabled: () => true,
+        getLatestTelemetry: () => null,
+      });
 
       hoisted.emit("pitSpeeding.started");
 

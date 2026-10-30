@@ -34,6 +34,7 @@
  */
 import { AudioChannel, getAudio } from "@iracedeck/audio-service";
 import type { IEventBus } from "@iracedeck/event-bus";
+import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 import { getLatestTelemetry } from "@iracedeck/sim-events-iracing";
 
@@ -106,6 +107,12 @@ export type PitSpeedingDeps = {
   getMasterEnabled: () => boolean;
   /** `calloutEnabledPitSpeedingCue` — read live. */
   getCueEnabled: () => boolean;
+  /**
+   * The latest telemetry tick, for the pit-road and `SessionTick` reads
+   * (#1378); `null` before the first tick. Default `() => null`, the
+   * translator's own answer when it was never initialised.
+   */
+  getLatestTelemetry: () => TelemetryData | null;
   logger?: ILogger;
 };
 
@@ -114,6 +121,7 @@ type Snapshot = { OnPitRoad?: boolean; SessionTick?: number } | null;
 const DEFAULT_DEPS: PitSpeedingDeps = {
   getMasterEnabled: () => true,
   getCueEnabled: () => true,
+  getLatestTelemetry: () => null,
 };
 
 let deps: PitSpeedingDeps = DEFAULT_DEPS;

@@ -118,8 +118,8 @@ import {
   TRACK_CONDITIONS_CALLOUTS,
 } from "@iracedeck/callout-settings";
 import type { IEventBus, PitReadbackSnapshot, SessionStartSnapshot } from "@iracedeck/event-bus";
+import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
-import { TrackDirection } from "@iracedeck/sim-events-iracing";
 
 import type { ScenarioContract } from "../../dsl.js";
 import { getScenarioEngine, isAudioScenariosInitialized } from "../../interpreter.js";
@@ -225,7 +225,7 @@ import {
   registerSessionStartVocabulary,
   SCENARIO_ID_TO_SESSION_START_ID,
 } from "./session-start.js";
-import { registerSpotterEngine, SPOTTER_STILL_THERE_DEFAULT_MS } from "./spotter-engine.js";
+import { registerSpotterEngine, SPOTTER_STILL_THERE_DEFAULT_MS, type SpotterTrackDirection } from "./spotter-engine.js";
 import { START_LIGHT_CONTRACTS } from "./start-lights.js";
 import { registerTelemetryReadoutVocabulary, TELEMETRY_READOUT_CONTRACTS } from "./telemetry-readout.js";
 import { registerTireWearVocabulary, TIRE_WEAR_CONTRACTS } from "./tire-wear.js";
@@ -271,6 +271,7 @@ export {
   SPOTTER_STILL_THERE_DEFAULT_SECONDS,
   SPOTTER_STILL_THERE_MAX_SECONDS,
   SPOTTER_STILL_THERE_MIN_SECONDS,
+  type SpotterTrackDirection,
 } from "./spotter-engine.js";
 export {
   PIT_READBACK_CONTRACTS,
@@ -845,9 +846,10 @@ export type PitCrewDeps = {
   // clause inside those intros, not its own scenario). Default `() => false` —
   // tests that don't supply a closure never append the warning clause.
   getSetupWarningMismatch?: SetupWarningResolver;
-  // Spotter road/oval terminology (issue #651). Plugins wire this to
-  // `getTrackDirection()` from `@iracedeck/sim-events-iracing`. Default Neutral (road).
-  getSpotterTrackDirection?: () => TrackDirection;
+  // Spotter road/oval terminology (issue #651). The wiring converts the sim's
+  // `getTrackDirection()` to the catalog's own union (#1378). Default
+  // `"neutral"` (road).
+  getSpotterTrackDirection?: () => SpotterTrackDirection;
   // Spotter "still there" reminder cadence in ms (issue #651). Plugins wire this
   // to `resolveStillThereIntervalMs(spotterStillThereSeconds)`; read live each
   // tick so a slider change takes effect on the next reminder. Default 3 s.
@@ -961,6 +963,30 @@ export type PitCrewDeps = {
   // isn't expressed as a scenario. Default `() => true` preserves legacy
   // behavior for tests that don't supply a closure.
   getRadarMasterEnabled?: () => boolean;
+  // The latest telemetry tick as the sim reported it (#1378). The wiring
+  // passes `SimRuntime.getLatestTelemetry`; the families that read raw
+  // telemetry at event or speak time — the pit-road, pit-stall and limiter
+  // reads, the flag and race-start gates, the radar and spotter engines —
+  // take it from here rather than from the translator module. Default
+  // `() => null`, the translator's own answer when it was never initialised,
+  // so a caller that wires no reader sees what it saw before.
+  getLatestTelemetry?: () => TelemetryData | null;
+  // The sim's session type name (#1378) — `"Race"`, `"Practice"`, `"Lone
+  // Qualify"`, … — which the flag, race-start, start-light, radar and
+  // spotter families classify through `classifySessionType`. Default
+  // `() => ""`, the translator's own answer when it was never initialised,
+  // which every classifier reads as an unknown session.
+  getSessionType?: () => string;
+  // Whether the race starts from a standing grid rather than behind the pace
+  // car (#480, #1378); the flag family silences the rolling-only formation
+  // calls on one. Default `() => false`, the translator's own answer when it
+  // was never initialised.
+  getStandingStart?: () => boolean;
+  // Whether the car needs a repair, as the translator debounces it (#1138,
+  // #1378); the damage call's speak-time gate drops a line waiting for the
+  // radio once the repair has settled as done. Default `() => null`, the
+  // translator's own answer before its first damage read.
+  getDamageRepairNeeded?: () => boolean | null;
 };
 
 /**
@@ -981,7 +1007,7 @@ const DEFAULT_DEPS = {
   getLivePosition: () => null,
   getOvertakeGate: () => PERMISSIVE_OVERTAKE_GATE,
   getSetupWarningMismatch: () => false,
-  getSpotterTrackDirection: () => TrackDirection.Neutral,
+  getSpotterTrackDirection: () => "neutral",
   getSpotterStillThereIntervalMs: () => SPOTTER_STILL_THERE_DEFAULT_MS,
   getSpotterNearestCarGapMeters: () => null,
   getCornerNameSnapshot: () => null,
@@ -997,6 +1023,10 @@ const DEFAULT_DEPS = {
   getRollingStartFormation: () => null,
   getRaceEngineerMasterEnabled: () => true,
   getRadarMasterEnabled: () => true,
+  getLatestTelemetry: () => null,
+  getSessionType: () => "",
+  getStandingStart: () => false,
+  getDamageRepairNeeded: () => null,
 } satisfies Omit<Required<PitCrewDeps>, "logger">;
 
 export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
@@ -1031,6 +1061,8 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
     getRollingStartFormation = DEFAULT_DEPS.getRollingStartFormation,
     getRaceEngineerMasterEnabled = DEFAULT_DEPS.getRaceEngineerMasterEnabled,
     getRadarMasterEnabled = DEFAULT_DEPS.getRadarMasterEnabled,
+    getLatestTelemetry = DEFAULT_DEPS.getLatestTelemetry,
+    getSessionType = DEFAULT_DEPS.getSessionType,
   } = deps;
 
   // The per-family gates, each resolving its own callout id to a settings key
@@ -1092,6 +1124,7 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   registerPitSpeedingEngine(bus, {
     getMasterEnabled: getRaceEngineerMasterEnabled,
     getCueEnabled: () => getPitSpeedingCalloutEnabled("cue"),
+    getLatestTelemetry,
     logger,
   });
 
@@ -1102,6 +1135,8 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
     getStillThereIntervalMs: getSpotterStillThereIntervalMs,
     getTrackDirection: getSpotterTrackDirection,
     getNearestCarGapMeters: getSpotterNearestCarGapMeters,
+    getLatestTelemetry,
+    getSessionType,
     logger,
   });
 

@@ -4,8 +4,6 @@ import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type CalloutScript } from "@iracedeck/callout-script";
 import type { IEventBus, RadarState, SimEventName, SimEventOf } from "@iracedeck/event-bus";
-// Re-import the (mocked) enum so the test uses identical values.
-import { TrackDirection } from "@iracedeck/sim-events-iracing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { NO_FRAME, WEIGHT } from "../../dsl.js";
@@ -25,14 +23,14 @@ import {
   SPOTTER_SCENARIO_IDS,
   SPOTTER_STILL_THERE_DEFAULT_MS,
   type SpotterDeps,
+  type SpotterTrackDirection,
 } from "./spotter-engine.js";
 
 // ─── sim-events-iracing mock ───────────────────────────────────────────────
 //
-// The engine reads telemetry (pit-road), session type (Lone Qualify) and the
-// track rotation direction from `@iracedeck/sim-events-iracing`. Mock those
-// getters but keep a `TrackDirection` enum whose values match the real one so
-// the engine's `termFor` mapping is exercised against the genuine string keys.
+// The engine reads telemetry (pit-road) and session type (Lone Qualify) from
+// `@iracedeck/sim-events-iracing`; the track rotation direction arrives through
+// its deps as the catalog's own `SpotterTrackDirection` union (#1378).
 
 const sim = vi.hoisted(() => ({
   getLatestTelemetry: vi.fn<() => { OnPitRoad?: boolean } | null>(),
@@ -42,7 +40,6 @@ const sim = vi.hoisted(() => ({
 vi.mock("@iracedeck/sim-events-iracing", () => ({
   getLatestTelemetry: sim.getLatestTelemetry,
   getSessionType: sim.getSessionType,
-  TrackDirection: { Neutral: "neutral", Left: "left", Right: "right" },
 }));
 
 // ─── Fake audio service (records plays, drives channel-complete manually) ───
@@ -207,7 +204,7 @@ const BASE = "voice/luca/spotter/";
 let bus: ReturnType<typeof createMockBus>;
 let audio: FakeAudio;
 let deps: SpotterDeps;
-let trackDirection: TrackDirection;
+let trackDirection: SpotterTrackDirection;
 /** Nearest-car gap (m) the makeDeps closure returns; null disables the clear buffer. */
 let nearestGap: number | null = null;
 
@@ -220,6 +217,8 @@ function makeDeps(overrides: Partial<SpotterDeps> = {}): SpotterDeps {
     getStillThereIntervalMs: () => SPOTTER_STILL_THERE_DEFAULT_MS,
     getTrackDirection: () => trackDirection,
     getNearestCarGapMeters: () => nearestGap,
+    getLatestTelemetry: () => null,
+    getSessionType: () => "",
     logger: mockLogger as never,
     ...overrides,
   };
@@ -252,7 +251,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   bus = createMockBus();
   audio = createFakeAudio();
-  trackDirection = TrackDirection.Neutral;
+  trackDirection = "neutral";
   nearestGap = null;
   initEngine();
   deps = makeDeps();
@@ -291,7 +290,7 @@ describe("registerSpotterEngine", () => {
 
 // ─── Road arrivals (dir Neutral) ─────────────────────────────────────────────
 
-describe("road arrivals (TrackDirection.Neutral)", () => {
+describe("road arrivals (neutral direction)", () => {
   beforeEach(() => {
     registerSpotterEngine(bus, deps);
   });
@@ -423,7 +422,7 @@ describe("final clear", () => {
 
 describe("oval mapping (inside / outside)", () => {
   it("left-going oval: clear → left is car-inside, clear → right is car-outside", () => {
-    trackDirection = TrackDirection.Left;
+    trackDirection = "left";
     registerSpotterEngine(bus, deps);
 
     bus.publishRadar("left");
@@ -435,7 +434,7 @@ describe("oval mapping (inside / outside)", () => {
   });
 
   it("left-going oval: both → left plays clear-outside-car-inside", () => {
-    trackDirection = TrackDirection.Left;
+    trackDirection = "left";
     registerSpotterEngine(bus, deps);
 
     bus.publishRadar("both");
@@ -444,7 +443,7 @@ describe("oval mapping (inside / outside)", () => {
   });
 
   it("right-going oval: clear → left is car-outside", () => {
-    trackDirection = TrackDirection.Right;
+    trackDirection = "right";
     registerSpotterEngine(bus, deps);
 
     bus.publishRadar("left");
@@ -452,7 +451,7 @@ describe("oval mapping (inside / outside)", () => {
   });
 
   it("right-going oval: both → left plays clear-inside-car-outside", () => {
-    trackDirection = TrackDirection.Right;
+    trackDirection = "right";
     registerSpotterEngine(bus, deps);
 
     bus.publishRadar("both");
