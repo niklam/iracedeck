@@ -172,6 +172,56 @@ describe("git push", () => {
     expect(asks("git push --tags")).toMatch(/release/);
   });
   it("ignores --dry-run", () => passes("git push --dry-run origin v3.2.0"));
+
+  // #1520: `integration` is a local branch reset to origin/master and merged
+  // into for every combined build — never a branch anyone else should see.
+  describe("the integration branch is never pushed", () => {
+    const INTEGRATION = tree("ir-integration");
+    const inTree = (o = {}) =>
+      ctx({ branch: (d) => (d === INTEGRATION ? "integration" : "master"), toplevel: (d) => d, ...o });
+    it.each([
+      "git push origin integration",
+      "git push -u origin integration",
+      "git push origin integration:integration",
+      "git push origin +integration",
+      "git push origin refs/heads/integration",
+      "git push origin HEAD:integration",
+      "git push origin ir-5:integration",
+      "git push --force origin integration 2>&1 | tail -2",
+      "git -C ../ir-integration push origin integration",
+      "git status && git push origin integration",
+    ])("denies a refspec naming it: %s", (c) => expect(deny(c, inTree())).toMatch(/integration.*never pushed/));
+    it.each(["git push", "git push origin", "git push -u origin HEAD", "git push origin @"])(
+      "denies a bare or HEAD push from inside the tree: %s",
+      (c) => expect(deny(c, inTree({ cwd: INTEGRATION }))).toMatch(/never pushed/),
+    );
+    it("follows a cd and a git -C into the tree", () => {
+      expect(deny("cd ../ir-integration && git push", inTree())).toMatch(/never pushed/);
+      expect(deny("git -C ../ir-integration push -u origin HEAD", inTree())).toMatch(/never pushed/);
+      expect(deny("git -C ../ir-integration/packages push", inTree({ toplevel: () => INTEGRATION }))).toMatch(
+        /never pushed/,
+      );
+    });
+    it("knows the branch by name wherever it is checked out", () =>
+      expect(deny("git push", ctx({ branch: () => "integration" }))).toMatch(/never pushed/));
+    it("denies --all and --mirror, which carry every local branch, integration with them", () => {
+      expect(deny("git push --all origin")).toMatch(/never pushed/);
+      expect(deny("git push --mirror origin")).toMatch(/never pushed/);
+    });
+    it("lets every other push through, from either tree", () => {
+      passes("git push origin master", inTree());
+      passes("git push", inTree());
+      passes("git push -u origin feature/1520-integration-tests", inTree());
+      passes("git push origin ir-5:ir-5", inTree({ cwd: INTEGRATION }));
+      passes("cd ../ir-integration && git fetch origin && cd ../master && git push", inTree());
+      passes("git -C ../ir-integration fetch && git push", inTree());
+      passes("git push --dry-run origin integration", inTree());
+    });
+    it("is not fooled by a mention", () => {
+      passes(`echo "git push origin integration"`, inTree());
+      passes(`git commit -q -m "never git push origin integration" -- x.md`, inTree());
+    });
+  });
 });
 
 describe("gh pr create", () => {

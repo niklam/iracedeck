@@ -15,7 +15,7 @@ import path from "node:path";
 
 import { DEBUG_VALUE, ELGATO_MANIFEST, manifestDebug } from "../lib/debug-plugin.mjs";
 import { FULL_SHA, rangeChain, readSummary } from "./coderabbit-summary.mjs";
-import { INTEGRATION_TREE, MAIN_BRANCH, SPEC_DIR } from "./lib.mjs";
+import { INTEGRATION_BRANCH, INTEGRATION_TREE, MAIN_BRANCH, SPEC_DIR } from "./lib.mjs";
 import { findControlByte } from "./rules-tools.mjs";
 
 const TITLE_RE = /^(feat|fix|improve|perf|refactor|docs|ci|chore|test|build|style|revert)(\([^)]+\))?!?: .+ \(#\d+\)$/;
@@ -430,6 +430,39 @@ export function gitCwd(command, cwd, re) {
   return dir ? path.resolve(base, dir) : base;
 }
 
+/**
+ * Every command `re` (a {@link cmd} regex) finds at command position, in chain
+ * order, each with `base` — the session cwd moved by the `cd`s chained ahead of
+ * it, as in {@link gitCwd} — and, read raw, `head` (the matched text) and
+ * `args` (what follows it, up to the end of its command: a chain separator, a
+ * lone `&`, a paren or a backtick in the masked text). Where {@link gitCwd}
+ * judges the first match, this judges each one, so a harmless first command
+ * cannot shield a later one. The command's own `-C` is the caller's to read,
+ * since git and pnpm spell it differently ({@link optionDir}).
+ */
+export function* chainCommands(command, cwd, re) {
+  const text = trustedMask(command);
+  const global = new RegExp(re.source, [...new Set([...re.flags, "g"])].join(""));
+  let base = cwd;
+  for (const [a, b] of ranges(text, CHAIN)) {
+    for (const m of text.slice(a, b).matchAll(global)) {
+      const from = a + m.index + m[0].length;
+      const stop = text.slice(from, b).search(/[&()\x60]/);
+      const to = stop >= 0 ? from + stop : b;
+      yield { base, head: command.slice(a + m.index, from), args: command.slice(from, to) };
+    }
+    const dir = argIn(command, text, a, b, CD_RE);
+    if (dir && dir !== "-") base = path.resolve(base, dir);
+  }
+}
+
+/** `base` moved by the directory option `re` (a {@link QUOTED_ARG} regex) finds in `text`, read off its quotes. */
+function optionDir(text, re, base) {
+  const m = re.exec(text);
+  const dir = m && (m[2] ?? m[3] ?? m[4]);
+  return dir ? path.resolve(base, dir) : base;
+}
+
 /** Splits a command into rough words, respecting simple quotes. */
 export function words(command) {
   return [...command.matchAll(/"([^"]*)"|'([^']*)'|(\S+)/g)].map((m) => m[1] ?? m[2] ?? m[3]);
@@ -790,6 +823,23 @@ export const rules = [
           /\bpush(?:\s[^|&;]*)?\s["']?(--tags\b|v\d+\.\d+)/.test(c.slice(a, b)),
       );
       return tagPush && { ask: "Pushing a tag cuts a release. The maintainer confirms." };
+    },
+  },
+  {
+    // #1520: `integration` is origin/master plus the branches under manual
+    // test, reset and re-merged by every combined build — a local branch
+    // nobody else should ever see. Each push of a chain is judged in the tree
+    // it runs in, so `cd ../ir-integration && git push` is caught.
+    name: "git push: the integration branch is never pushed",
+    test: (c, ctx) => {
+      for (const { base, head, args } of chainCommands(c, ctx.cwd, GIT_PUSH)) {
+        const dir = optionDir(head, GIT_C_RE, base);
+        const fromIntegration = () =>
+          ctx.branch(dir) === INTEGRATION_BRANCH || path.basename(ctx.toplevel?.(dir) ?? dir) === INTEGRATION_TREE;
+        if (pushReachesIntegration(words(args), fromIntegration))
+          return `The \`${INTEGRATION_BRANCH}\` branch is local and never pushed: it is origin/${MAIN_BRANCH} plus the branches under manual test, rebuilt by scripts/integration-build.mjs (#1520). Push each issue branch from its own ../ir-<issue> tree.`;
+      }
+      return null;
     },
   },
   {
@@ -1251,6 +1301,41 @@ const COMMIT_VALUE_LONG = new Set([
 
 /** A redirection operator standing alone, whose target is the next word. */
 const BARE_REDIRECT = /^\d*(?:<<-?|<<<|<>|<&|>&|>>|>\||&>>?|<|>)$/;
+
+/** `git push` options whose value is the next word when not attached with `=`. */
+const PUSH_VALUE = new Set(["--repo", "-o", "--push-option", "--receive-pack", "--exec"]);
+
+/**
+ * Whether a `git push` with these words would push the integration branch
+ * (#1520): a refspec naming it on either side (`+`, `refs/heads/` allowed),
+ * `--all` / `--mirror` / `--branches` (every local branch, and refs are shared
+ * by all worktrees), or a push of the current branch — no refspec, or `HEAD` /
+ * `@` — when `fromIntegration()` says that branch is it. `--dry-run` pushes
+ * nothing. The first positional word is the remote.
+ */
+function pushReachesIntegration(tokens, fromIntegration) {
+  const positional = [];
+  let every = false;
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+    if (BARE_REDIRECT.test(t) || PUSH_VALUE.has(t)) i++;
+    else if (/^\d*(?:[<>]|&>)/.test(t)) continue;
+    else if (t === "--dry-run" || t === "-n") return false;
+    else if (/^--(?:all|mirror|branches)$/.test(t)) every = true;
+    else if (!t.startsWith("-")) positional.push(t);
+  }
+  if (every) return true;
+  const refspecs = positional.slice(1);
+  if (!refspecs.length) return fromIntegration();
+  const name = (r) => r.replace(/^\+/, "").replace(/^refs\/heads\//, "");
+  return refspecs.some((r) => {
+    const colon = r.indexOf(":");
+    const src = name(colon >= 0 ? r.slice(0, colon) : r);
+    const dst = colon >= 0 ? name(r.slice(colon + 1)) : undefined;
+    if (src === INTEGRATION_BRANCH || dst === INTEGRATION_BRANCH) return true;
+    return (src === "HEAD" || src === "@") && fromIntegration();
+  });
+}
 
 /**
  * A git command's words split into options and pathspec operands: `long` and
