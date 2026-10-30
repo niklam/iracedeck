@@ -131,9 +131,44 @@ export interface DeckTriggerDescription {
 }
 
 /**
+ * What shape a press has, for the press sounds (issue #269). An action declares
+ * it through {@link IDeckActionHandler.pressShape}; `withPressSounds` in
+ * `press-sounds.ts` owns the timing and plays the sounds, so no action plays a
+ * press sound itself.
+ *
+ * - `tap`     — acts now, no long press: a click now, never a bleep.
+ * - `hold`    — acts now and keeps acting while held: a click now, a bleep at
+ *               `thresholdMs` if still held.
+ * - `release` — decided at release: a click at a short release if `short`, a
+ *               bleep at `thresholdMs` if `long`. `short` / `long` say whether
+ *               that outcome does anything; a gesture set to `none` is `false`.
+ * - `long`    — this event is a completed long press (a long touch): a bleep now.
+ * - `none`    — this press makes no sound.
+ *
+ * `thresholdMs` is the exact threshold the action classifies with
+ * (`getDualPressThresholdMs()` today), read once at down.
+ */
+export type PressShape =
+  | { kind: "tap" }
+  | { kind: "hold"; thresholdMs: number }
+  | { kind: "release"; thresholdMs: number; short: boolean; long: boolean }
+  | { kind: "long" }
+  | { kind: "none" };
+
+/**
  * Interface that action classes implement to handle device events.
  */
 export interface IDeckActionHandler<T = unknown> {
+  /**
+   * The shape of the press this down event starts (issue #269), for the press
+   * sounds. Called by `withPressSounds` with the key-down, dial-down or
+   * touch-tap event, BEFORE the matching handler member, and only while press
+   * sounds are on and the sim is connected. Must be synchronous and free of
+   * side effects: it describes the press, it does not act on it. Optional — a
+   * handler without it is `tap` on a key and on touch, and `release` at 500 ms
+   * with `short` true and `long` false on a dial. A throw reads as `none`.
+   */
+  pressShape?(ev: IDeckKeyDownEvent<T> | IDeckDialDownEvent<T> | IDeckTouchTapEvent<T>): PressShape;
   onWillAppear?(ev: IDeckWillAppearEvent<T>): Promise<void>;
   onWillDisappear?(ev: IDeckWillDisappearEvent<T>): Promise<void>;
   onDidReceiveSettings?(ev: IDeckDidReceiveSettingsEvent<T>): Promise<void>;
