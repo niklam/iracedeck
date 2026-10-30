@@ -95,6 +95,7 @@ export type SimFuelLapsLeftNow = FuelLapsLeftEstimate &
 export type SimInstanceFlags = {
   lastTickInReplay: boolean;
   lastObservedSessionNum: number | null;
+  lastObservedSubSessionId: number | null;
   firstOnTrackSeeded: boolean;
   firstOnTrackFired: boolean;
   freshConnectFireChecked: boolean;

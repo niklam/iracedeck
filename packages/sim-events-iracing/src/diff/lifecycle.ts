@@ -2,9 +2,12 @@
  * Session-level lifecycle events.
  *
  * Emits:
- *   - session.changed { from, to } — SessionNum delta.
  *   - engine.startup — RPM jumps from 0 to >0 (engine ignited).
  *   - lap.started { lap } — Lap counter increments.
+ *
+ * `session.changed` is NOT emitted here: `handleTick` publishes it
+ * from the instance-level `(SubSessionID, SessionNum)` trackers (issues #568,
+ * #1509); this diff only keeps `state.lastSessionNum` as dedup bookkeeping.
  *
  * `driver.firstOnTrack` is NOT emitted here — it's a connection-lifetime
  * milestone that must survive the per-tick state resets the replay guard

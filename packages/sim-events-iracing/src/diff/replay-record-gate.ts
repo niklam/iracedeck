@@ -138,10 +138,21 @@ export function resolveReplayLiveTick(
   };
 }
 
-/** `WeekendInfo.SubSessionID`; 0 when absent — an offline session reads 0 too. */
-export function resolveSubSessionId(sessionInfo: Record<string, unknown> | null): number {
+/**
+ * `WeekendInfo.SubSessionID`, or `null` when the session info, its
+ * `WeekendInfo` or the id is not readable. The translator's session-identity
+ * check (issue #1509) reads it this way: an offline session genuinely reads
+ * 0, so a transition tick with no session info must not read as a change to
+ * offline and back.
+ */
+export function readSubSessionId(sessionInfo: Record<string, unknown> | null): number | null {
   const weekend = sessionInfo?.WeekendInfo as Record<string, unknown> | undefined;
   const id = weekend?.SubSessionID;
 
-  return typeof id === "number" && Number.isFinite(id) ? id : 0;
+  return typeof id === "number" && Number.isFinite(id) ? id : null;
+}
+
+/** `WeekendInfo.SubSessionID`; 0 when absent — an offline session reads 0 too. */
+export function resolveSubSessionId(sessionInfo: Record<string, unknown> | null): number {
+  return readSubSessionId(sessionInfo) ?? 0;
 }

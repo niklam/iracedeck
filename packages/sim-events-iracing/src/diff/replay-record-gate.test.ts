@@ -6,6 +6,7 @@ import { diffReplayGreens } from "./replay-greens.js";
 import { diffReplayLaps } from "./replay-laps.js";
 import {
   LIVE_EDGE_MAX_FRAMES,
+  readSubSessionId,
   resolveReplayLiveTick,
   resolveReplayRecordTick,
   resolveSubSessionId,
@@ -189,6 +190,23 @@ describe("resolveSubSessionId", () => {
     expect(resolveSubSessionId({ WeekendInfo: {} })).toBe(0);
     expect(resolveSubSessionId({ WeekendInfo: { SubSessionID: "86697546" } })).toBe(0);
     expect(resolveSubSessionId({ WeekendInfo: { SubSessionID: Number.NaN } })).toBe(0);
+  });
+});
+
+// Issue #1509: the translator's session identity needs absence told apart
+// from an offline session's real 0.
+describe("readSubSessionId", () => {
+  it("reads WeekendInfo.SubSessionID, a real 0 included", () => {
+    expect(readSubSessionId({ WeekendInfo: { SubSessionID: 86697546 } })).toBe(86697546);
+    expect(readSubSessionId({ WeekendInfo: { SubSessionID: 0 } })).toBe(0);
+  });
+
+  it("reads null when the session info, the section or the field is absent or not a finite number", () => {
+    expect(readSubSessionId(null)).toBeNull();
+    expect(readSubSessionId({})).toBeNull();
+    expect(readSubSessionId({ WeekendInfo: {} })).toBeNull();
+    expect(readSubSessionId({ WeekendInfo: { SubSessionID: "86697546" } })).toBeNull();
+    expect(readSubSessionId({ WeekendInfo: { SubSessionID: Number.NaN } })).toBeNull();
   });
 });
 

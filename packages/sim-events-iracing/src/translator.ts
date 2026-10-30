@@ -93,6 +93,7 @@ import { diffRadar, resolveRadarState } from "./diff/radar.js";
 import { diffReplayGreens } from "./diff/replay-greens.js";
 import { diffReplayIncidents } from "./diff/replay-incidents.js";
 import { diffReplayLaps } from "./diff/replay-laps.js";
+import { readSubSessionId } from "./diff/replay-record-gate.js";
 import { diffReplaySessions } from "./diff/replay-sessions.js";
 import { diffRollingStart } from "./diff/rolling-start.js";
 import { updateStallVisit } from "./diff/stall-visit.js";
@@ -176,6 +177,16 @@ type TranslatorInstance = {
    * only by `handleDisconnect`.
    */
   lastObservedSessionNum: number | null;
+  /**
+   * `WeekendInfo.SubSessionID` tracker, the other half of the session identity
+   * (issue #1509). An official race's registration practice and the race
+   * event's own practice are both `SessionNum 0` on one live connection; only
+   * the subsession tells them apart. Same lifecycle as
+   * `lastObservedSessionNum`: advanced only on a tick that is not a saved
+   * replay and whose session info carries a readable value, reset only by
+   * `handleDisconnect`. `null` until the first such tick.
+   */
+  lastObservedSubSessionId: number | null;
   /**
    * `driver.firstOnTrack` tracking — session-scoped (issue #564), not
    * connection-scoped. Kept on the instance (not `TranslatorState`) so it
@@ -347,6 +358,7 @@ export function initializeSimEventsIracing(
     pitSpeedLimitKey: "",
     lastTickInReplay: false,
     lastObservedSessionNum: null,
+    lastObservedSubSessionId: null,
     firstOnTrackSeeded: false,
     firstOnTrackFired: false,
     freshConnectFireChecked: false,
@@ -1752,6 +1764,7 @@ export function readSimState(): SimStateSnapshot {
   const flags = {
     lastTickInReplay: self.lastTickInReplay,
     lastObservedSessionNum: self.lastObservedSessionNum,
+    lastObservedSubSessionId: self.lastObservedSubSessionId,
     firstOnTrackSeeded: self.firstOnTrackSeeded,
     firstOnTrackFired: self.firstOnTrackFired,
     freshConnectFireChecked: self.freshConnectFireChecked,
@@ -1883,6 +1896,7 @@ function handleDisconnect(self: TranslatorInstance): void {
   self.pitSpeedLimitMps = 0;
   self.pitSpeedLimitKey = "";
   self.lastObservedSessionNum = null;
+  self.lastObservedSubSessionId = null;
   // `driver.firstOnTrack` seeding is reset only here (not on session change)
   // so a mid-drive reconnect seeds silently and doesn't synthesize a welcome.
   // Session-change resets clear only `firstOnTrackFired` — see
@@ -2260,6 +2274,10 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // during the brief `IsReplayPlaying` flicker between live sessions, so the
   // #568 path is preserved while replay-only scrubbing / standalone replay
   // viewing stays silent.
+  //
+  // Issue #1509: "a different session" means a different
+  // `(SubSessionID, SessionNum)` pair, not only a different `SessionNum` —
+  // see the identity check below.
   const currentSessionNum = telemetry.SessionNum ?? null;
   // The ONE "in a replay" answer for this tick (issue #1324): the controller's
   // debounced replay state, stepped before this callback ran. It holds for
@@ -2379,18 +2397,30 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // scrubbed value rather than the last live SessionNum). The `SimMode` field
   // is unaffected by the brief `IsReplayPlaying` flicker during a live
   // qual → race transition, so the #568 path stays intact.
-  const replayOnlySession =
-    currentSessionNum !== null
-      ? isReplayOnlySession(self.controller.getSessionInfo() as Record<string, unknown> | null)
-      : false;
+  const sessionInfoForIdentity =
+    currentSessionNum !== null ? (self.controller.getSessionInfo() as Record<string, unknown> | null) : null;
+  const replayOnlySession = currentSessionNum !== null ? isReplayOnlySession(sessionInfoForIdentity) : false;
 
-  if (
-    !replayOnlySession &&
-    currentSessionNum !== null &&
-    self.lastObservedSessionNum !== null &&
-    currentSessionNum !== self.lastObservedSessionNum
-  ) {
-    const previousSessionNum = self.lastObservedSessionNum;
+  // Issue #1509: the session identity is `(SubSessionID, SessionNum)`. An
+  // official race's registration practice and the race event's own practice
+  // are both `SessionNum 0` on one live connection, so only the subsession
+  // tells them apart. A tick whose session info carries no readable
+  // `SubSessionID` neither seeds nor compares, so a transition that reads
+  // `N`, then nothing, then `M` changes the session once.
+  const currentSubSessionId = currentSessionNum !== null ? readSubSessionId(sessionInfoForIdentity) : null;
+  const sessionNumChanged = self.lastObservedSessionNum !== null && currentSessionNum !== self.lastObservedSessionNum;
+  const subSessionChanged =
+    currentSubSessionId !== null &&
+    self.lastObservedSubSessionId !== null &&
+    currentSubSessionId !== self.lastObservedSubSessionId;
+
+  if (!replayOnlySession && currentSessionNum !== null && (sessionNumChanged || subSessionChanged)) {
+    // A subsession change keeps `SessionNum` as it is, so the event carries
+    // `from === to` then (the spec's decision: no payload field, and not the
+    // fresh-connect `-1`, which the #871 on-track gate would swallow).
+    // Never null here: both baselines are set in the same block below and
+    // cleared together, so a subsession baseline implies a SessionNum one.
+    const previousSessionNum = self.lastObservedSessionNum ?? currentSessionNum;
     resetPerSessionState(self, telemetry);
     // Publish `session.changed` directly from the instance-level tracker so it
     // survives the replay-mode state wipe below (issue #568 follow-up). When
@@ -2402,8 +2432,11 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     // transition. Pre-setting `state.lastSessionNum` to the new value here
     // prevents `diffLifecycle` from double-emitting on the same tick when the
     // transition does NOT pass through replay mode.
+    const subSessionNote = subSessionChanged
+      ? `, SubSessionID ${self.lastObservedSubSessionId} → ${currentSubSessionId}`
+      : "";
     self.logger.info(
-      `session.changed: SessionNum ${previousSessionNum} → ${currentSessionNum} (IsReplayPlaying=${telemetry.IsReplayPlaying ?? false})`,
+      `session.changed: SessionNum ${previousSessionNum} → ${currentSessionNum}${subSessionNote} (IsReplayPlaying=${telemetry.IsReplayPlaying ?? false})`,
     );
     publish(
       self,
@@ -2416,6 +2449,16 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
 
   if (currentSessionNum !== null && !replayOnlySession) {
     self.lastObservedSessionNum = currentSessionNum;
+
+    if (currentSubSessionId !== null) {
+      self.lastObservedSubSessionId = currentSubSessionId;
+    } else if (sessionNumChanged) {
+      // The change was taken on SessionNum alone, so the old subsession no
+      // longer names the session we are in: the next readable id seeds rather
+      // than compares, or a transition read as `(N, 0)`, `(?, 1)`, `(M, 1)`
+      // would publish twice.
+      self.lastObservedSubSessionId = null;
+    }
   }
 
   // Standing-start numeric countdown (issue #829). Runs on every tick BEFORE

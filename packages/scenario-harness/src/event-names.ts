@@ -321,7 +321,11 @@ export const EVENT_TEMPLATES = [
 
   // ── Lifecycle / lap ──
   { name: "driver.firstOnTrack", description: "Driver first leaves the garage", data: {} },
-  { name: "session.changed", description: "Session number changed", data: { from: 0, to: 1 } },
+  {
+    name: "session.changed",
+    description: "Session changed (a new session number, or a new event at the same one: from === to)",
+    data: { from: 0, to: 1 },
+  },
   { name: "engine.startup", description: "Engine started", data: {} },
   { name: "lap.started", description: "New lap started", data: { lap: 2 } },
   {
