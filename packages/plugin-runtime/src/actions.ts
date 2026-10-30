@@ -90,6 +90,7 @@ export {
   isRaceEngineerEnabled,
   isRadarEnabled,
   migrateLfeIntensityBindingKeys,
+  playPressSound,
   runAudioPreview,
   SETUP_CHASSIS_BINDING_KEY_RENAMES,
   setReplayBusyIndicatorLogger,

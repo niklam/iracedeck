@@ -48,7 +48,9 @@ vi.mock("./actions.js", async () => (await import("./test-support/module-mocks.j
  * no later call is ordered against. So is `startAudioSessionHold` (#1347),
  * which follows the app monitor whose edges it listens to. The replay engine
  * phase's `configureReplayEngine` and the busy indicator's logger, set by
- * `registerActions` before the first action is constructed, are newer too (#1467).
+ * `registerActions` before the first action is constructed, are newer too (#1467),
+ * and so is `initPressSounds`, which installs the press sound player before the
+ * first action registers (#269).
  */
 function expectedOrder(withExtension: boolean): string[] {
   return [
@@ -122,6 +124,7 @@ function expectedOrder(withExtension: boolean): string[] {
     "adapter.onDialDown",
     "adapter.onDialRotate",
     "setReplayBusyIndicatorLogger",
+    "initPressSounds", // #269
     "adapter.registerAction*",
     // 10 startServices
     "initGlobalSettings",
@@ -234,6 +237,7 @@ describe("startPlugin (#1349)", () => {
       "WindowFocus",
       "MousePointer",
       "ReplayBusy", // newer than that file (#1467)
+      "PressSounds", // newer than that file (#269)
       "shared.a",
       "shared.b",
       "sd.switch-profile",
@@ -248,6 +252,43 @@ describe("startPlugin (#1349)", () => {
       "Elevation",
       "ReplaySession",
     ]);
+  });
+
+  it("installs the press sound player once, before the first action, and registers every handler wrapped (#269)", () => {
+    const players: { play: unknown; logger: unknown }[] = [];
+    const wrapped: { wraps: unknown }[] = [];
+    implement("initPressSounds", (deps) => players.push(deps as (typeof players)[number]));
+    implement("withPressSounds", (handler) => {
+      const wrapper = { wraps: handler };
+      wrapped.push(wrapper);
+
+      return wrapper;
+    });
+    const host = createHost(createFakeExtension(["sd.switch-profile"]));
+    const registered: { uuid: string; handler: unknown }[] = [];
+    const register = host.adapter.registerAction;
+    host.adapter.registerAction = (uuid, handler) => {
+      registered.push({ uuid, handler });
+      register(uuid, handler);
+    };
+
+    startPlugin(host);
+
+    // Once, and before the first registration, so no press reaches a wrapper without a player.
+    expect(callLog.filter((name) => name === "initPressSounds")).toHaveLength(1);
+    expect(callLog.indexOf("initPressSounds")).toBeLessThan(callLog.indexOf("adapter.registerAction"));
+    expect(players[0].logger).toBe(silentLogger);
+    callLog.length = 0;
+    (players[0].play as (sound: string) => void)("tap");
+    expect(callLog).toEqual(["playPressSound"]);
+
+    // Every handler, the shared list's and the host's extras alike, is
+    // registered as the wrapper around the handler its factory created.
+    expect(registered.map((entry) => entry.uuid)).toEqual(["shared.a", "shared.b", "sd.switch-profile"]);
+    expect(wrapped).toHaveLength(registered.length);
+    expect(registered.map((entry) => entry.handler)).toEqual(wrapped);
+    registered.forEach((entry, i) => expect(entry.handler).toBe(wrapped[i]));
+    expect(new Set(wrapped.map((wrapper) => wrapper.wraps)).size).toBe(registered.length);
   });
 
   it("focuses iRacing ahead of every key press, dial press and dial rotation", () => {
