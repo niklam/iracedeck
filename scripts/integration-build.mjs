@@ -48,25 +48,36 @@
  *    go. A host keeps running the plugin it loaded until it restarts, and
  *    restarting one is the maintainer's go, so once the build passes the hosts
  *    whose plugin link points into the tree are named (`needsRestart`) with
- *    the commands that restart them. When the build fails they are named as
- *    still running their old plugin, not to be restarted until a build passes.
+ *    the commands that restart them — or, for a linked host this script has no
+ *    command for (a label other than Stream Deck, Mirabox and Ulanzi), with
+ *    the need alone, never a command line built for it. When the build fails
+ *    they are named as still running their old plugin, not to be restarted
+ *    until a build passes. One failure is the exception: install or build
+ *    output naming a locked or busy file (`EBUSY`, `EPERM`, "resource busy or
+ *    locked", "operation not permitted") is the running host holding a file the
+ *    build must replace, so no build can pass until it lets go, and "do not
+ *    restart it" would be a deadlock; the run says so instead (`lockedFile`)
+ *    and names a run with `--restart` as the way through, which is the
+ *    maintainer's go.
  *
  *    With `--restart` (#1520's sequence), the hosts whose plugin link points
- *    into the tree — and only those — are stopped before the install and
- *    started after the build, so they come up on the new build. Stream Deck
- *    through the root `stop:stream-deck` and `start:stream-deck` scripts
- *    (starting the app loads the new plugin, so no `restart:stream-deck`
- *    follows), Mirabox and Ulanzi through `scripts/host-app.mjs`. A host that
- *    cannot be stopped stops the run before the install, and the hosts
- *    already stopped are started again on the untouched plugin. `pnpm
- *    build:with-restart` is deliberately not used: it finds Stream Deck
- *    through `wmic`, which current Windows 11 no longer ships, and then
- *    silently restarts nothing. Any host whose stop or start failed is named
- *    for the maintainer to restart himself. When the install or the build
- *    fails, nothing is started: a host started then would load a half-written
- *    plugin, so every host this run stopped stays stopped and is named
- *    (`stoppedHosts`) for the maintainer to start once the build is fixed.
- *    `--restart` with `--no-build` is a usage error: there is no new build to
+ *    into the tree — and only those this script has a stop and start command
+ *    for — are stopped before the install and started after the build, so they
+ *    come up on the new build. Stream Deck through the root
+ *    `stop:stream-deck` and `start:stream-deck` scripts (starting the app
+ *    loads the new plugin, so no `restart:stream-deck` follows), Mirabox and
+ *    Ulanzi through `scripts/host-app.mjs`. A host that cannot be stopped
+ *    stops the run before the install, and the hosts already stopped are
+ *    started again on the untouched plugin. `pnpm build:with-restart` is
+ *    deliberately not used: it finds Stream Deck through `wmic`, which
+ *    current Windows 11 no longer ships, and then silently restarts nothing.
+ *    Any host whose stop or start failed is named for the maintainer to
+ *    restart himself, and so is a linked host with no scripted stop
+ *    (`needsRestart`), which `--restart` leaves running. When the install or
+ *    the build fails, nothing is started: a host started then would load a
+ *    half-written plugin, so every host this run stopped stays stopped and is
+ *    named (`stoppedHosts`) for the maintainer to start once the build is
+ *    fixed. `--restart` with `--no-build` is a usage error: there is no new build to
  *    restart onto (see `parseCliArgs`).
  * 5. Prints every merged branch with its full head sha.
  *
@@ -110,7 +121,7 @@ const HOST_APP_IDS = { Mirabox: "mirabox", Ulanzi: "ulanzi" };
 const STREAM_DECK = "Stream Deck";
 
 /** Whether this script stops and starts `host` around a build. */
-const isControlledHost = (host) => host === STREAM_DECK || Boolean(HOST_APP_IDS[host]);
+const isControlledHost = (host) => host === STREAM_DECK || Object.hasOwn(HOST_APP_IDS, host);
 
 /** The refusal shared by the CLI and `buildIntegration`: `--restart` needs a build to restart onto. */
 const RESTART_WITHOUT_BUILD =
@@ -140,9 +151,27 @@ function controlHost(action, host, exec, tree) {
   return exec(cmd, args, noOutput ? { cwd: tree, noOutput } : { cwd: tree, stream: true });
 }
 
-/** How to restart `host` by hand, as one line: its stop command, then its start command. */
+/**
+ * How to restart `host` by hand, as one line: its stop command, then its start
+ * command; `null` for a host this script has no command for (`isControlledHost`),
+ * since a line built for one would carry `undefined` for the app it names.
+ */
 export function restartCommands(host) {
+  if (!isControlledHost(host)) return null;
+
   return ["stop", "start"].map((action) => hostCommand(action, host).flat().join(" ")).join(" then ");
+}
+
+/**
+ * What a file held open by a running host looks like in install or build
+ * output: Node's `EBUSY` / `EPERM`, and the two texts Windows gives them
+ * ("resource busy or locked", "operation not permitted").
+ */
+const LOCKED_FILE = /\b(?:EBUSY|EPERM)\b|resource busy or locked|operation not permitted/i;
+
+/** Whether `text` names a file that is locked or busy, which a running host holding the plugin open causes. */
+export function isLockedFileError(text) {
+  return LOCKED_FILE.test(text);
 }
 
 /** The integration worktree: the `ir-integration` sibling of the main checkout. */
@@ -482,16 +511,24 @@ async function checkTree(tree, main, git) {
 
 /**
  * `pnpm install` then `pnpm build` in `tree`, output streamed; resolves to the
- * first failure (none when both passed) and the build's TS diagnostics.
+ * first failure (none when both passed), the build's TS diagnostics and, when
+ * a command that exited non-zero printed a locked-file error
+ * (`isLockedFileError`), `lockedFile: true`.
  */
 async function installAndBuild(tree, exec) {
   const run = (cmd, args) => exec(cmd, args, { cwd: tree, stream: true });
+  const locked = (result) => isLockedFileError(`${result.out}\n${result.err}`);
 
-  if (!(await run("pnpm", ["install"])).ok) return { failure: "pnpm install failed", tsErrors: [] };
+  const installed = await run("pnpm", ["install"]);
+  if (!installed.ok) {
+    return { failure: "pnpm install failed", tsErrors: [], ...(locked(installed) ? { lockedFile: true } : {}) };
+  }
 
   const built = await run("pnpm", ["build"]);
   const tsErrors = tsDiagnostics(`${built.out}\n${built.err}`);
-  if (!built.ok) return { failure: `pnpm build exited ${built.code}`, tsErrors };
+  if (!built.ok) {
+    return { failure: `pnpm build exited ${built.code}`, tsErrors, ...(locked(built) ? { lockedFile: true } : {}) };
+  }
   if (tsErrors.length > 0) {
     return { failure: `pnpm build printed ${tsErrors.length} TypeScript diagnostic(s)`, tsErrors };
   }
@@ -507,18 +544,24 @@ async function installAndBuild(tree, exec) {
  * the build passed, since each keeps running the plugin it loaded until it is
  * restarted, which is the maintainer's go.
  *
- * With `restart`, exactly those hosts are stopped first and started after —
- * and none of them when the install or the build fails, since a host started
- * then would load a half-written plugin.
+ * With `restart`, exactly those hosts this script has a stop and start command
+ * for (`isControlledHost`) are stopped first and started after — and none of
+ * them when the install or the build fails, since a host started then would
+ * load a half-written plugin. A linked host it has no command for is not
+ * touched and, once the build passed, is the one `needsRestart` names.
  *
  * @returns {Promise<{ ok: boolean, failure?: string, tsErrors: string[],
- *   linkedHosts: string[], needsRestart: string[], restartYourself: string[],
- *   stoppedHosts: string[] }>} `needsRestart` are the linked hosts a passed
- *   build without `restart` left running their old plugin (empty with
- *   `restart`, or when the build failed); `restartYourself` the hosts whose
- *   scripted stop or start failed and `stoppedHosts` the hosts this run stopped
- *   and left stopped because the install or the build failed — both only ever
- *   set with `restart`
+ *   lockedFile?: true, linkedHosts: string[], needsRestart: string[],
+ *   restartYourself: string[], stoppedHosts: string[] }>} `needsRestart` are
+ *   the linked hosts a passed build left running their old plugin: all of them
+ *   without `restart`, only those with no scripted stop and start with it
+ *   (empty when the build failed); `lockedFile` is set only by a failed build
+ *   without `restart` whose install or build printed a locked-file error
+ *   (`isLockedFileError`) — the signature of a running host holding a file the
+ *   build must replace, which only a run with `restart` gets past;
+ *   `restartYourself` the hosts whose scripted stop or start failed and
+ *   `stoppedHosts` the hosts this run stopped and left stopped because the
+ *   install or the build failed — both only ever set with `restart`
  */
 export async function runBuild({ tree, restart = false, exec = defaultExec, links = linkTargets, log = console }) {
   const linkedHosts = links()
@@ -527,18 +570,27 @@ export async function runBuild({ tree, restart = false, exec = defaultExec, link
   if (linkedHosts.length === 0) {
     log.log(`No deck host links to ${tree}: building without a restart. Linking one is the maintainer's call.`);
   } else if (restart) {
-    log.log(`Linked to ${tree}: ${linkedHosts.join(", ")}. Stopping them around the build (--restart).`);
+    const scripted = linkedHosts.filter(isControlledHost);
+    const unscripted = linkedHosts.filter((host) => !isControlledHost(host));
+    const stopping = scripted.length
+      ? `Stopping ${scripted.join(", ")} around the build (--restart).`
+      : "Stopping none of them (--restart).";
+    const note = unscripted.length
+      ? ` This script has no stop command for ${unscripted.join(", ")}, which keeps running.`
+      : "";
+    log.log(`Linked to ${tree}: ${linkedHosts.join(", ")}. ${stopping}${note}`);
   } else {
     log.log(`Linked to ${tree}: ${linkedHosts.join(", ")}. Building without touching them.`);
   }
 
   if (!restart) {
-    const { failure, tsErrors } = await installAndBuild(tree, exec);
+    const { failure, tsErrors, lockedFile } = await installAndBuild(tree, exec);
 
     return {
       ok: !failure,
       ...(failure ? { failure } : {}),
       tsErrors,
+      ...(lockedFile ? { lockedFile } : {}),
       linkedHosts,
       needsRestart: failure ? [] : linkedHosts,
       restartYourself: [],
@@ -585,7 +637,7 @@ export async function runBuild({ tree, restart = false, exec = defaultExec, link
     ...(failure ? { failure } : {}),
     tsErrors,
     linkedHosts,
-    needsRestart: [],
+    needsRestart: failure ? [] : linkedHosts.filter((host) => !isControlledHost(host)),
     restartYourself,
     stoppedHosts,
   };
@@ -673,10 +725,23 @@ export async function main(argv, { cwd = process.cwd(), exec, links, log = conso
         `${host} is stopped because the build failed, and needs starting once it is fixed: the next run of this script with --restart whose build passes starts it, or ${start}.`,
       );
     }
-    if (!args.restart) {
-      for (const host of build.linkedHosts) {
+    // A host this run did not stop keeps running the plugin it loaded: every linked
+    // one without --restart, only those with no scripted stop with it.
+    const running = args.restart ? build.linkedHosts.filter((host) => !isControlledHost(host)) : build.linkedHosts;
+    for (const host of running) {
+      if (!build.lockedFile) {
         log.error(
           `${host} links to ${tree} and keeps running the plugin it loaded: do not restart it until a build passes, or it loads a half-written plugin.`,
+        );
+      } else if (isControlledHost(host)) {
+        // The failing build is the running host holding a file it must replace, so no
+        // build can pass until the host lets go: "do not restart it" would deadlock.
+        log.error(
+          `${host} links to ${tree} and keeps running the plugin it loaded, and the failure names a locked or busy file (EBUSY / EPERM) that it most likely holds open: no build can pass until it lets go, so a restart is the way through. Run this script again with --restart, which stops it around the build and starts it after. That is Niklas's go.`,
+        );
+      } else {
+        log.error(
+          `${host} links to ${tree} and keeps running the plugin it loaded, and the failure names a locked or busy file (EBUSY / EPERM) that it most likely holds open: no build can pass until it lets go. This script has no command for it, so stop it yourself before the next run. That is Niklas's go.`,
         );
       }
     }
@@ -685,8 +750,11 @@ export async function main(argv, { cwd = process.cwd(), exec, links, log = conso
   }
   log.log("\nBuilt.");
   for (const host of build.needsRestart) {
+    const command = restartCommands(host);
     log.log(
-      `${host} links to ${tree}: restart it to load this build. That is Niklas's go; once he gives it, run ${restartCommands(host)} in ${tree}, or this script again with --restart.`,
+      command
+        ? `${host} links to ${tree}: restart it to load this build. That is Niklas's go; once he gives it, run ${command} in ${tree}, or this script again with --restart.`
+        : `${host} links to ${tree}: restart it yourself to load this build (this script has no command for it); that is Niklas's go.`,
     );
   }
 

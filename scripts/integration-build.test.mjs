@@ -22,6 +22,7 @@ import {
   EXIT_USAGE,
   IntegrationRefusal,
   integrationTreePath,
+  isLockedFileError,
   main,
   parseCliArgs,
   parseMergeTree,
@@ -74,6 +75,11 @@ function output(log) {
 
 const ok = (out = "") => ({ ok: true, code: 0, out, err: "" });
 const failed = (out = "", code = 1) => ({ ok: false, code, out, err: "" });
+/** A failed command whose stderr, not its stdout, carries the message. */
+const failedWithErr = (err, code = 1) => ({ ok: false, code, out: "", err });
+
+/** The message Windows gives npm when a running host holds a native module the install must replace. */
+const LOCKED = "npm error EBUSY: resource busy or locked, rename 'bin/node_modules/keysender/build/Release/x.node'";
 
 /**
  * Real git through `defaultExec`, canned answers for everything else, and a
@@ -791,6 +797,76 @@ describe("runBuild", () => {
       expect(commandLines()).toEqual(["pnpm install"]);
     });
 
+    it("sets lockedFile when a failed build printed a locked-file error, and for no ordinary failure", async () => {
+      const locked = await runBuild({
+        tree: TREE,
+        exec: fakeExec({ "pnpm build": failedWithErr(LOCKED) }),
+        links: linkedTo("Stream Deck"),
+        log: silentLog(),
+      });
+      expect(locked).toMatchObject({ ok: false, failure: "pnpm build exited 1", lockedFile: true, needsRestart: [] });
+
+      const ordinary = await runBuild({
+        tree: TREE,
+        exec: fakeExec({ "pnpm build": failed("nope") }),
+        links: linkedTo("Stream Deck"),
+        log: silentLog(),
+      });
+      expect(ordinary.ok).toBe(false);
+      expect(ordinary).not.toHaveProperty("lockedFile");
+
+      const passed = await runBuild({ tree: TREE, exec: fakeExec(), links: linkedTo("Stream Deck"), log: silentLog() });
+      expect(passed).not.toHaveProperty("lockedFile");
+    });
+
+    it("sets lockedFile when the install, not the build, printed the locked-file error, and then builds nothing", async () => {
+      const result = await runBuild({
+        tree: TREE,
+        exec: fakeExec({ "pnpm install": failedWithErr("EPERM: operation not permitted, unlink 'x.node'") }),
+        links: linkedTo("Mirabox"),
+        log: silentLog(),
+      });
+
+      expect(result).toMatchObject({ ok: false, failure: "pnpm install failed", lockedFile: true });
+      expect(commandLines()).toEqual(["pnpm install"]);
+    });
+
+    it("reads the locked-file error from stdout as well as stderr", async () => {
+      const result = await runBuild({
+        tree: TREE,
+        exec: fakeExec({ "pnpm build": failed(LOCKED) }),
+        links: linkedTo("Ulanzi"),
+        log: silentLog(),
+      });
+
+      expect(result.lockedFile).toBe(true);
+    });
+
+    it("does not set lockedFile when a build that exited 0 failed on a TypeScript diagnostic and also printed EBUSY", async () => {
+      const exec = fakeExec({
+        "pnpm build": ok(`${LOCKED}\nsrc/plugin.ts(3,7): error TS2322: Type 'string' is not assignable.\n`),
+      });
+
+      const result = await runBuild({ tree: TREE, exec, links: linkedTo("Stream Deck"), log: silentLog() });
+
+      expect(result.failure).toMatch(/TypeScript diagnostic/);
+      expect(result).not.toHaveProperty("lockedFile");
+    });
+
+    it("names a linked host this script has no command for and runs no command for it", async () => {
+      const result = await runBuild({
+        tree: TREE,
+        exec: fakeExec(),
+        links: linkedTo("Stream Deck", "Acme Deck"),
+        log: silentLog(),
+      });
+
+      expect(result).toMatchObject({ ok: true, linkedHosts: ["Stream Deck", "Acme Deck"] });
+      expect(result.needsRestart).toEqual(["Stream Deck", "Acme Deck"]);
+      expect(commandLines()).toEqual(["pnpm install", "pnpm build"]);
+      expect(commandLines().join("\n")).not.toContain("undefined");
+    });
+
     it("never reaches a host command even when every host command would fail", async () => {
       // The positive control for hostCommands(): under --restart these answers fail the run.
       const answers = {
@@ -1025,6 +1101,48 @@ describe("runBuild", () => {
       // Starting the app loads the new plugin; the streamdeck CLI's plugin restart is not needed.
       expect(commandLines()).not.toContain("pnpm restart:stream-deck");
     });
+
+    it("leaves a linked host it has no command for running, and names it as needing a restart after a good build", async () => {
+      const log = silentLog();
+
+      const result = await runBuild({
+        tree: TREE,
+        restart: true,
+        exec: fakeExec(),
+        links: linkedTo("Stream Deck", "Acme Deck"),
+        log,
+      });
+
+      expect(result).toEqual({
+        ok: true,
+        tsErrors: [],
+        linkedHosts: ["Stream Deck", "Acme Deck"],
+        needsRestart: ["Acme Deck"],
+        restartYourself: [],
+        stoppedHosts: [],
+      });
+      expect(commandLines()).toEqual(["pnpm stop:stream-deck", "pnpm install", "pnpm build", "pnpm start:stream-deck"]);
+      expect(commandLines().join("\n")).not.toContain("undefined");
+      expect(output(log)).toMatch(
+        /Stopping Stream Deck around the build \(--restart\)\. This script has no stop command for Acme Deck/,
+      );
+    });
+
+    it("names no host as needing a restart when the build fails, and carries no lockedFile whatever the output", async () => {
+      const result = await runBuild({
+        tree: TREE,
+        restart: true,
+        exec: fakeExec({ "pnpm build": failedWithErr(LOCKED) }),
+        links: linkedTo("Stream Deck", "Acme Deck"),
+        log: silentLog(),
+      });
+
+      expect(result.ok).toBe(false);
+      expect(result.needsRestart).toEqual([]);
+      expect(result.stoppedHosts).toEqual(["Stream Deck"]);
+      // The host that could hold the file is stopped, so a restart is no way through.
+      expect(result).not.toHaveProperty("lockedFile");
+    });
   });
 });
 
@@ -1112,6 +1230,36 @@ describe("restartCommands", () => {
     expect(restartCommands("Ulanzi")).toBe(
       "node scripts/host-app.mjs stop ulanzi then node scripts/host-app.mjs start ulanzi",
     );
+  });
+
+  it("has no command for a host it does not control, rather than a line carrying undefined", () => {
+    expect(restartCommands("Acme Deck")).toBeNull();
+    expect(restartCommands("mirabox")).toBeNull();
+    expect(restartCommands("")).toBeNull();
+    expect(restartCommands(undefined)).toBeNull();
+    // A name on Object.prototype is no host either.
+    expect(restartCommands("constructor")).toBeNull();
+  });
+});
+
+describe("isLockedFileError", () => {
+  it.each([
+    ["Node's code", "EBUSY: resource busy or locked, rename 'a.node' -> 'b.node'"],
+    ["npm's code line", "npm error code EBUSY"],
+    ["EPERM", "EPERM: operation not permitted, unlink 'C:\\x\\a.node'"],
+    ["the Windows text alone", "The process cannot access the file: resource busy or locked"],
+    ["the permission text alone", "Error: Operation not permitted"],
+  ])("recognises %s", (_name, text) => {
+    expect(isLockedFileError(text)).toBe(true);
+  });
+
+  it.each([
+    ["nothing", ""],
+    ["a TypeScript diagnostic", "src/a.ts(3,7): error TS2322: Type 'string' is not assignable."],
+    ["a missing file", "ENOENT: no such file or directory, open 'x.node'"],
+    ["a word that only contains the code", "REBUSYING the workers"],
+  ])("does not recognise %s", (_name, text) => {
+    expect(isLockedFileError(text)).toBe(false);
   });
 });
 
@@ -1207,6 +1355,109 @@ describe("main", { timeout: GIT_TIMEOUT_MS }, () => {
       /Stream Deck links to .* keeps running the plugin it loaded: do not restart it until a build passes/,
     );
     expect(output(log)).not.toMatch(/restart it to load this build|is stopped/);
+    // An ordinary failure keeps today's advice, with nothing about a lock or a --restart run.
+    expect(output(log)).not.toMatch(/locked or busy|Run this script again with --restart/);
+  });
+
+  it("by default, on a build that printed a locked-file error, says a --restart run is the way through", async () => {
+    branch("feature/1-a", "a.txt", "a\n");
+    const log = silentLog();
+    const links = () =>
+      ["Stream Deck", "Acme Deck"].map((host) => ({ host, link: "l", target: join(tree, "packages", "x.sdPlugin") }));
+
+    const code = await main(["feature/1-a"], {
+      cwd: repo,
+      exec: recordingExec({ "pnpm build": failedWithErr(LOCKED) }),
+      links,
+      log,
+    });
+
+    expect(code).toBe(EXIT_FAILED);
+    expect(hostCommands()).toEqual([]);
+    expect(output(log)).toContain(
+      `Stream Deck links to ${tree} and keeps running the plugin it loaded, and the failure names a locked or busy file (EBUSY / EPERM) that it most likely holds open: no build can pass until it lets go, so a restart is the way through. Run this script again with --restart, which stops it around the build and starts it after. That is Niklas's go.`,
+    );
+    // --restart cannot stop a host this script has no command for, so that one is told to be stopped by hand.
+    expect(output(log)).toContain(
+      `Acme Deck links to ${tree} and keeps running the plugin it loaded, and the failure names a locked or busy file (EBUSY / EPERM) that it most likely holds open: no build can pass until it lets go. This script has no command for it, so stop it yourself before the next run. That is Niklas's go.`,
+    );
+    // "Do not restart it until a build passes" would deadlock: no build passes while the host holds the file.
+    expect(output(log)).not.toMatch(/do not restart it until a build passes/);
+    expect(output(log)).not.toMatch(/undefined/);
+  });
+
+  it("by default, on a locked-file error with no host linked, gives no restart advice", async () => {
+    branch("feature/1-a", "a.txt", "a\n");
+    const log = silentLog();
+
+    const code = await main(["feature/1-a"], {
+      cwd: repo,
+      exec: recordingExec({ "pnpm install": failedWithErr(LOCKED) }),
+      links: noLinks,
+      log,
+    });
+
+    expect(code).toBe(EXIT_FAILED);
+    expect(output(log)).toMatch(/The build failed: pnpm install failed\./);
+    expect(output(log)).not.toMatch(/locked or busy|--restart|keeps running/);
+  });
+
+  it("by default names a linked host it has no command for without a command line", async () => {
+    branch("feature/1-a", "a.txt", "a\n");
+    const log = silentLog();
+    const links = () =>
+      ["Stream Deck", "Acme Deck"].map((host) => ({ host, link: "l", target: join(tree, "packages", "x.sdPlugin") }));
+
+    const code = await main(["feature/1-a"], { cwd: repo, exec: recordingExec(), links, log });
+
+    expect(code).toBe(EXIT_OK);
+    expect(hostCommands()).toEqual([]);
+    expect(output(log)).toContain(
+      `Acme Deck links to ${tree}: restart it yourself to load this build (this script has no command for it); that is Niklas's go.`,
+    );
+    expect(output(log)).toContain(`Stream Deck links to ${tree}: restart it to load this build.`);
+    expect(output(log)).toContain("run pnpm stop:stream-deck then pnpm start:stream-deck");
+    expect(output(log)).not.toMatch(/undefined/);
+  });
+
+  it("with --restart, names a linked host it has no command for after a good build, and starts the one it stopped", async () => {
+    branch("feature/1-a", "a.txt", "a\n");
+    const log = silentLog();
+    const links = () =>
+      ["Mirabox", "Acme Deck"].map((host) => ({ host, link: "l", target: join(tree, "packages", "x.sdPlugin") }));
+
+    const code = await main(["--restart", "feature/1-a"], { cwd: repo, exec: recordingExec(), links, log });
+
+    expect(code).toBe(EXIT_OK);
+    expect(commandLines()).toContain("node scripts/host-app.mjs stop mirabox");
+    expect(commandLines()).toContain("node scripts/host-app.mjs start mirabox");
+    expect(output(log)).toContain(
+      `Acme Deck links to ${tree}: restart it yourself to load this build (this script has no command for it); that is Niklas's go.`,
+    );
+    expect(output(log)).not.toMatch(/Mirabox links to .*restart it|undefined/);
+  });
+
+  it("with --restart, on a failed build, warns only about the linked host it did not stop, whatever the output says", async () => {
+    branch("feature/1-a", "a.txt", "a\n");
+    const log = silentLog();
+    const links = () =>
+      ["Mirabox", "Acme Deck"].map((host) => ({ host, link: "l", target: join(tree, "packages", "x.sdPlugin") }));
+
+    const code = await main(["--restart", "feature/1-a"], {
+      cwd: repo,
+      exec: recordingExec({ "pnpm build": failedWithErr(LOCKED) }),
+      links,
+      log,
+    });
+
+    expect(code).toBe(EXIT_FAILED);
+    expect(output(log)).toMatch(/Mirabox is stopped because the build failed/);
+    expect(output(log)).toContain(
+      `Acme Deck links to ${tree} and keeps running the plugin it loaded: do not restart it until a build passes, or it loads a half-written plugin.`,
+    );
+    expect(output(log)).not.toMatch(/Mirabox links to/);
+    // The host that could hold the file is stopped, so a --restart run is no advice here.
+    expect(output(log)).not.toMatch(/locked or busy|Run this script again with --restart/);
   });
 
   it("exits 1 when the build fails", async () => {
