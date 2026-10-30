@@ -17,7 +17,7 @@ import { type CalloutScript, type ScriptStep } from "@iracedeck/callout-script";
 import { RACE_START_CALLOUTS } from "@iracedeck/callout-settings";
 import type { IEventBus, RaceStartSnapshot, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { TrackWetness } from "@iracedeck/event-bus";
-import { SessionState } from "@iracedeck/iracing-sdk";
+import { SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AudioAssetsManifest } from "../../interpreter.js";
@@ -33,6 +33,7 @@ import { registerPitCrew } from "./index.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import {
   buildRaceStartContract,
+  buildStartBriefSpeakGate,
   describeMissingStartConditions,
   isRaceSession,
   RACE_START_CLIP_SOURCES,
@@ -43,7 +44,6 @@ import {
   resolveRaceStartGridPosition,
   START_BRIEF_SETTLE_MAX_MS,
   START_BRIEF_SETTLE_POLL_MS,
-  START_BRIEF_SPEAK_GATE,
   startBriefSessionStillCurrent,
 } from "./race-start.js";
 import { _resetRadarEngine } from "./radar-engine.js";
@@ -54,10 +54,12 @@ const mockSessionType = vi.fn<() => string>(() => "Race");
 
 const mockLatestTelemetry = vi.fn<() => Record<string, unknown> | null>(() => null);
 
-vi.mock("@iracedeck/sim-events-iracing", () => ({
+// The contract's two sim reads (#1378), over the stubs above — handed to the
+// direct builds and to the full registration alike.
+const SIM_READS = {
   getSessionType: () => mockSessionType(),
-  getLatestTelemetry: () => mockLatestTelemetry(),
-}));
+  getLatestTelemetry: () => mockLatestTelemetry() as TelemetryData | null,
+};
 
 const mockLogger = {
   trace: vi.fn(),
@@ -343,6 +345,7 @@ beforeEach(() => {
     isCalloutEnabled: familyGate(RACE_START_CALLOUTS, () => raceStartEnabled),
     getRaceStartSnapshot: () => currentSnapshot,
     getSetupWarningMismatch: (kind) => setupWarningMismatch(kind),
+    ...SIM_READS,
   });
   // After the registration, as the plugins do: the brief's body is looked up
   // in the active voice's compiled script at fire time (issue #1065).
@@ -972,7 +975,7 @@ describe("describeMissingStartConditions (issue #1284)", () => {
 
 describe("buildRaceStartContract (issue #1065)", () => {
   it("carries no sequence and keeps every scheduling field verbatim — the 3 s trigger delay included, queueable since #1284 — taking the engine's default frame", () => {
-    const c = buildRaceStartContract(() => null);
+    const c = buildRaceStartContract({ getRaceStartSnapshot: () => null, ...SIM_READS });
 
     expect("sequence" in c).toBe(false);
     expect(c.id).toBe("pit-crew.race-start");
@@ -986,14 +989,19 @@ describe("buildRaceStartContract (issue #1065)", () => {
     expect(c.weight).toBeUndefined();
     expect(c.interrupt).toBeUndefined();
     expect(c.queueable).toBe(true);
-    expect(c.speakGate).toBe(START_BRIEF_SPEAK_GATE);
+    // The shared start-brief gate, over this build's telemetry read (#1378).
+    expect(c.speakGate?.description).toBe(buildStartBriefSpeakGate(() => null).description);
+    mockLatestTelemetry.mockReturnValue({ SessionNum: 3 });
+    expect(c.speakGate?.admit({ event: null, telemetry: { SessionNum: 2 }, now: 0 } as never)).toBe(false);
+    mockLatestTelemetry.mockReturnValue({ SessionNum: 2 });
+    expect(c.speakGate?.admit({ event: null, telemetry: { SessionNum: 2 }, now: 0 } as never)).toBe(true);
     expect(c.cooldown).toBeUndefined();
     expect(c.frame).toBeUndefined();
   });
 
   it("settles on the shared start-brief window, asking what of its own snapshot is still unknown (issue #1284)", () => {
     let snapshot: RaceStartSnapshot | null = snap({ wetness: null });
-    const c = buildRaceStartContract(() => snapshot);
+    const c = buildRaceStartContract({ getRaceStartSnapshot: () => snapshot, ...SIM_READS });
 
     expect(c.settle?.maxWaitMs).toBe(START_BRIEF_SETTLE_MAX_MS);
     expect(c.settle?.pollMs).toBe(START_BRIEF_SETTLE_POLL_MS);
@@ -1205,13 +1213,13 @@ describe("startBriefSessionStillCurrent (issue #1284)", () => {
   it("admits when the live session number matches the event's", () => {
     mockLatestTelemetry.mockReturnValue({ SessionNum: 2 });
 
-    expect(startBriefSessionStillCurrent(ctx({ SessionNum: 2 }))).toBe(true);
+    expect(startBriefSessionStillCurrent(ctx({ SessionNum: 2 }), SIM_READS.getLatestTelemetry)).toBe(true);
   });
 
   it("refuses when the live session number has moved on", () => {
     mockLatestTelemetry.mockReturnValue({ SessionNum: 3 });
 
-    expect(startBriefSessionStillCurrent(ctx({ SessionNum: 2 }))).toBe(false);
+    expect(startBriefSessionStillCurrent(ctx({ SessionNum: 2 }), SIM_READS.getLatestTelemetry)).toBe(false);
   });
 
   it.each([
@@ -1221,6 +1229,6 @@ describe("startBriefSessionStillCurrent (issue #1284)", () => {
   ])("admits on missing data — %s", (_label, envelope, live) => {
     mockLatestTelemetry.mockReturnValue(live);
 
-    expect(startBriefSessionStillCurrent(ctx(envelope))).toBe(true);
+    expect(startBriefSessionStillCurrent(ctx(envelope), SIM_READS.getLatestTelemetry)).toBe(true);
   });
 });

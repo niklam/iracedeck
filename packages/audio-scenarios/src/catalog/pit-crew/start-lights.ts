@@ -47,11 +47,19 @@
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventName, SimEventOf, StartCountdownSeconds } from "@iracedeck/event-bus";
 import { isLiveOnTrack, type TelemetryData } from "@iracedeck/iracing-sdk";
-import { getSessionType } from "@iracedeck/sim-events-iracing";
 
 import type { ScenarioContract } from "../../dsl.js";
 import { WEIGHT } from "../../dsl.js";
 import { isRaceSession } from "./race-start.js";
+
+/**
+ * The family's one sim read (#1378): the session type, for the race-only
+ * gates on all six contracts — injected rather than imported from the
+ * translator.
+ */
+export type StartLightsDeps = {
+  getSessionType: () => string;
+};
 
 // Start lights are a race-only concept. The diff already gates the ready line
 // and the countdown on a standing start (the countdown on the GetInCar/Warmup
@@ -67,8 +75,10 @@ import { isRaceSession } from "./race-start.js";
 // race gate instead (issue #829 — see the header). Live-read at fire time.
 // Safe for the critical `start-go`: at a real race start the driver is in the
 // car, in "Race".
-const liveRaceCar = (e: SimEventOf<SimEventName>): boolean =>
-  isRaceSession(getSessionType()) && isLiveOnTrack(e.telemetry as TelemetryData | null);
+const liveRaceCarOver =
+  (deps: StartLightsDeps) =>
+  (e: SimEventOf<SimEventName>): boolean =>
+    isRaceSession(deps.getSessionType()) && isLiveOnTrack(e.telemetry as TelemetryData | null);
 
 /**
  * The gantry lines' supersede group (issue #1185): "go" replaces a "ready"
@@ -77,7 +87,7 @@ const liveRaceCar = (e: SimEventOf<SimEventName>): boolean =>
  */
 const START_LIGHT_GROUP = "start-light";
 
-const START_READY: ScenarioContract = {
+const startReady = (liveRaceCar: (e: SimEventOf<SimEventName>) => boolean): ScenarioContract => ({
   id: "pit-crew.start-light-ready",
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
@@ -89,9 +99,9 @@ const START_READY: ScenarioContract = {
   supersedeGroup: START_LIGHT_GROUP,
   when: { event: "startLight.start-ready.raised", where: liveRaceCar },
   description: "The start lights come on over the grid of a standing-start race while you sit live in the car.",
-};
+});
 
-const START_GO: ScenarioContract = {
+const startGo = (liveRaceCar: (e: SimEventOf<SimEventName>) => boolean): ScenarioContract => ({
   id: "pit-crew.start-light-go",
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
@@ -111,7 +121,7 @@ const START_GO: ScenarioContract = {
   // pack author to disprove.
   description:
     "iRacing signals the go while you are live in the car in a race: the lights out at a standing start, or the green at a rolling start. A caution restart has its own call and stays silent here.",
-};
+});
 
 /**
  * The four numeric countdown marks. One event (`startLight.countdown.raised`)
@@ -136,7 +146,7 @@ const COUNTDOWN_DESCRIPTIONS: Readonly<Record<StartCountdownSeconds, string>> = 
   10: "The pre-start countdown of a standing-start race passes ten seconds to go, whether you are in the car or still in the garage.",
 };
 
-function countdownContract(seconds: StartCountdownSeconds): ScenarioContract {
+function countdownContract(deps: StartLightsDeps, seconds: StartCountdownSeconds): ScenarioContract {
   return {
     id: `pit-crew.start-light-countdown-${seconds}`,
     channel: AudioChannel.Voice,
@@ -148,20 +158,24 @@ function countdownContract(seconds: StartCountdownSeconds): ScenarioContract {
     when: {
       event: "startLight.countdown.raised",
       where: (e) =>
-        isRaceSession(getSessionType()) && (e as SimEventOf<"startLight.countdown.raised">).data.seconds === seconds,
+        isRaceSession(deps.getSessionType()) &&
+        (e as SimEventOf<"startLight.countdown.raised">).data.seconds === seconds,
     },
     description: COUNTDOWN_DESCRIPTIONS[seconds],
   };
 }
 
-export const START_LIGHT_CONTRACTS: readonly ScenarioContract[] = [
-  START_READY,
-  START_GO,
-  ...COUNTDOWN_SECONDS.map(countdownContract),
-];
+/** The family's six contracts, built over its sim read (#1378): the two gantry lines, then the four countdown marks. */
+export function buildStartLightContracts(deps: StartLightsDeps): readonly ScenarioContract[] {
+  const liveRaceCar = liveRaceCarOver(deps);
 
-/** Contract ids exported for tests so a typo here surfaces as a test failure. */
-export const START_LIGHT_SCENARIO_IDS: readonly string[] = START_LIGHT_CONTRACTS.map((c) => c.id);
+  return [startReady(liveRaceCar), startGo(liveRaceCar), ...COUNTDOWN_SECONDS.map((s) => countdownContract(deps, s))];
+}
+
+/** Contract ids exported for tests so a typo here surfaces as a test failure. Derived from a build with no sim wired. */
+export const START_LIGHT_SCENARIO_IDS: readonly string[] = buildStartLightContracts({ getSessionType: () => "" }).map(
+  (c) => c.id,
+);
 
 /**
  * The clip sources the start-light scripts draw from — every

@@ -139,7 +139,7 @@ import {
   registerCornerNameVocabulary,
   SCENARIO_ID_TO_CORNER_NAME_ID,
 } from "./corner-name.js";
-import { DAMAGE_CONTRACTS } from "./damage-alerts.js";
+import { buildDamageContracts } from "./damage-alerts.js";
 import { buildFlagAlerts } from "./flag-alerts.js";
 import { FUEL_LAPS_LEFT_CONTRACTS } from "./fuel-laps-left.js";
 import {
@@ -220,7 +220,7 @@ import {
   SCENARIO_ID_TO_SESSION_START_ID,
 } from "./session-start.js";
 import { registerSpotterEngine, SPOTTER_STILL_THERE_DEFAULT_MS, type SpotterTrackDirection } from "./spotter-engine.js";
-import { START_LIGHT_CONTRACTS } from "./start-lights.js";
+import { buildStartLightContracts } from "./start-lights.js";
 import { registerTelemetryReadoutVocabulary, TELEMETRY_READOUT_CONTRACTS } from "./telemetry-readout.js";
 import { registerTireWearVocabulary, TIRE_WEAR_CONTRACTS } from "./tire-wear.js";
 import { AUTO_FUEL_CONTRACTS, TOGGLE_CONFIRMATION_CONTRACTS } from "./toggle-confirmations.js";
@@ -1342,7 +1342,7 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   // (`scenarios["pit-crew.start-light-*"]`, addressed as
   // `pool:start-lights/<base>`). Two grouped opt-ins (`lights`, `countdown`)
   // gate the six contracts via `SCENARIO_ID_TO_START_LIGHT_ID`.
-  for (const c of START_LIGHT_CONTRACTS) {
+  for (const c of buildStartLightContracts(d)) {
     engine.defineContract(
       wrapWithMaster(
         wrapCalloutScenario(
@@ -1493,7 +1493,7 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   // contracts registered below through `queueBehind`, which matches by id at
   // fire time, so registering it first is fine; its `speakGate` skips it once
   // the repair bits have cleared.
-  for (const c of DAMAGE_CONTRACTS) {
+  for (const c of buildDamageContracts(d)) {
     engine.defineContract(
       wrapWithMaster(
         wrapCalloutScenario(c, SCENARIO_ID_TO_DAMAGE_ID, getDamageCalloutEnabled, "damage callout", logger),
@@ -1640,7 +1640,7 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   engine.defineContract(
     wrapWithMaster(
       wrapCalloutScenario(
-        buildSessionStartContract(d.getSessionStartSnapshot, logger),
+        buildSessionStartContract(d, logger),
         SCENARIO_ID_TO_SESSION_START_ID,
         getSessionStartCalloutEnabled,
         "session-start callout",
@@ -1798,7 +1798,7 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   engine.defineContract(
     wrapWithMaster(
       wrapCalloutScenario(
-        buildRaceStartContract(d.getRaceStartSnapshot, logger),
+        buildRaceStartContract(d, logger),
         SCENARIO_ID_TO_RACE_START_ID,
         getRaceStartCalloutEnabled,
         "race-start callout",

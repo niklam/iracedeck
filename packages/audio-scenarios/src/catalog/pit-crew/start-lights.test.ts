@@ -38,15 +38,14 @@ import { registerPitCrew, type StartLightCalloutId } from "./index.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
-import { START_LIGHT_CLIP_SOURCES, START_LIGHT_CONTRACTS, START_LIGHT_SCENARIO_IDS } from "./start-lights.js";
+import { buildStartLightContracts, START_LIGHT_CLIP_SOURCES, START_LIGHT_SCENARIO_IDS } from "./start-lights.js";
 
 const mockSessionType = vi.fn(() => "Race");
 
-vi.mock("@iracedeck/sim-events-iracing", () => ({
-  getSessionType: () => mockSessionType(),
-  getLatestTelemetry: () => null,
-  TrackDirection: { Neutral: "neutral", Left: "left", Right: "right" },
-}));
+// The family's one sim read (#1378), over the stub above — handed to the one
+// build every case below inspects and to the full registration.
+const getSessionType = (): string => mockSessionType();
+const START_LIGHT_CONTRACTS = buildStartLightContracts({ getSessionType });
 
 const mockLogger = {
   trace: vi.fn(),
@@ -466,6 +465,8 @@ describe("START_LIGHT_CONTRACTS opt-in gating (issue #480)", () => {
     registerPitCrew(bus, {
       logger: mockLogger as never,
       isCalloutEnabled: familyGate(START_LIGHT_CALLOUTS, (id) => startLightEnabled.get(id) ?? true),
+      getSessionType,
+      getLatestTelemetry: () => null,
     });
     // A contract is silent without a script (issue #1065): the gates are what
     // is under test here, so the lines must be there to be gated.
