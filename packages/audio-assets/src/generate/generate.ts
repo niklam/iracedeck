@@ -248,25 +248,29 @@ async function main(): Promise<void> {
         // so it's stable across runs and cycle-safe.
         const hash = entryHash(entry, groupName, voice, lookup, hashMemo);
         const manifestEntry = manifest.entries[relPath];
+        const cached = manifestEntry?.hash === hash && existsSync(absPath);
 
-        if (manifestEntry?.hash === hash && existsSync(absPath)) {
+        // Refused in a dry run alike, so an author sees it before spending
+        // credit (#1518), and ahead of the cache hit, so a marked clip copied
+        // in with its manifest row is refused too. A grandfathered entry whose
+        // text is unchanged is re-cut as before — a dependency's new take or a
+        // voice-wide setting reaches it — but said so.
+        const pauseMarks = findEntryPauseMarks(entry);
+        const allowed =
+          pauseMarks.length === 0 || isGrandfathered(entry, grandfathered[voiceName]?.[`${groupName}/${entry.name}`]);
+
+        if (!allowed) {
+          console.error(`[generate] ${relPath}  —  REFUSED: ${describePauseMarks(pauseMarks)}`);
+          refused++;
+          continue;
+        }
+
+        if (cached) {
           skipped++;
           continue;
         }
 
-        // Refused before the API call and in a dry run alike, so an author
-        // sees it before spending credit (#1518). A grandfathered entry whose
-        // text is unchanged is re-cut as before — a dependency's new take or a
-        // voice-wide setting reaches it — but said so.
-        const pauseMarks = findEntryPauseMarks(entry);
-
         if (pauseMarks.length > 0) {
-          if (!isGrandfathered(entry, grandfathered[voiceName]?.[`${groupName}/${entry.name}`])) {
-            console.error(`[generate] ${relPath}  —  REFUSED: ${describePauseMarks(pauseMarks)}`);
-            refused++;
-            continue;
-          }
-
           console.warn(`[generate] ${relPath}  —  grandfathered text: ${describePauseMarks(pauseMarks)}`);
         }
 
