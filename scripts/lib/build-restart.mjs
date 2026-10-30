@@ -39,7 +39,10 @@ export const STREAM_DECK = {
  * which is what tells "could not tell" apart from an empty list. The error is
  * caught and written as plain text because PowerShell started with
  * `-EncodedCommand` and a redirected stderr writes its errors, and progress, as
- * CLIXML, which buries the one line that explains the failure.
+ * CLIXML, which buries the one line that explains the failure. Output is
+ * UTF-8 without a BOM, which `findRunning` decodes: redirected, Windows
+ * PowerShell otherwise writes the console's OEM code page, garbling a path
+ * with a character outside ASCII.
  */
 export function processListScript(image) {
   if (!/^[\w.-]+$/.test(image)) throw new Error(`unexpected image name ${JSON.stringify(image)}`);
@@ -47,6 +50,7 @@ export function processListScript(image) {
   return [
     "$ErrorActionPreference = 'Stop'",
     "$ProgressPreference = 'SilentlyContinue'",
+    "[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false",
     // One element: a `;` between `try {}` and `catch {}` is a parse error.
     `try { Get-CimInstance Win32_Process -Filter "Name='${image}'" | ForEach-Object { '{0}|{1}' -f $_.ProcessId, $_.ExecutablePath } } ` +
       "catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }",
@@ -135,12 +139,13 @@ export function findRunning(image, { spawnSync }) {
 
 /**
  * The executable to start again: the running process's own path, else the
- * standard install path when that exists. `undefined` when neither, and then
- * the app is not stopped at all — a stop the script cannot undo is worse than
- * no restart.
+ * standard install path, whichever exists first. `undefined` when neither, and
+ * then the app is not stopped at all — a stop the script cannot undo is worse
+ * than no restart. The process's path is checked too, so one read back wrong
+ * cannot be stopped on the strength of a path nothing can start.
  */
 export function restartPath(processes, { env = process.env, exists }) {
-  const fromProcess = processes.find((entry) => entry.path)?.path;
+  const fromProcess = processes.find((entry) => entry.path && exists(entry.path))?.path;
   if (fromProcess) return fromProcess;
 
   const fallback = STREAM_DECK.defaultAppPath(env);

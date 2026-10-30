@@ -188,6 +188,15 @@ describe("restartPath", () => {
     expect(STREAM_DECK.defaultAppPath(ENV)).toBe(APP);
   });
 
+  it("passes over a process path that does not exist, as one read back garbled would", () => {
+    expect(
+      restartPath([{ pid: 1, path: "D:\\Ty\u00c3\u00b6kalut\\StreamDeck.exe" }], {
+        env: ENV,
+        exists: (p) => p === APP,
+      }),
+    ).toBe(APP);
+  });
+
   it("gives nothing when the fallback does not exist", () => {
     expect(restartPath([{ pid: 1, path: undefined }], { env: ENV, exists: () => false })).toBeUndefined();
     expect(restartPath([{ pid: 1, path: undefined }], { env: {}, exists: () => true })).toBeUndefined();
@@ -320,6 +329,18 @@ describe.runIf(process.platform === "win32")("findRunning against the real syste
     expect(findRunning("iracedeck-no-such-process.exe", { spawnSync: realSpawnSync })).toEqual({
       state: "not-running",
     });
+  });
+
+  it("reads a path outside ASCII back intact, whatever the console code page", () => {
+    // The same script with the listing swapped for one fixed line.
+    const path = "C:\\Ty\u00f6kalut\\Elgato\\StreamDeck.exe";
+    const fixed = (cmd, args, options) => {
+      const script = processListScript("node.exe").replace(/try \{ .* \} catch/, `try { '1|${path}' } catch`);
+
+      return realSpawnSync(cmd, [...args.slice(0, -1), Buffer.from(script, "utf16le").toString("base64")], options);
+    };
+
+    expect(findRunning("node.exe", { spawnSync: fixed })).toEqual({ state: "running", processes: [{ pid: 1, path }] });
   });
 
   it("reports a WMI failure as unknown, in plain words rather than CLIXML", () => {

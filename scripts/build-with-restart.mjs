@@ -7,9 +7,15 @@
  */
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
+import { createRequire } from "node:module";
 
 import { buildWithRestart } from "./lib/build-restart.mjs";
-import { spawnSyncShim } from "./lib/spawn-shim.mjs";
+
+// turbo's own JS entry, run with this Node rather than through the
+// `node_modules/.bin/turbo.cmd` shim: that is a batch file, and on Ctrl+C
+// `cmd.exe` stops at "Terminate batch job (Y/N)?", holding the restart until
+// someone answers.
+const turbo = createRequire(import.meta.url).resolve("turbo/bin/turbo");
 
 // `process.exitCode` rather than `process.exit`, as in `host-app.mjs`: on a
 // Windows TTY stdout is asynchronous, and exiting outright can truncate the
@@ -23,7 +29,7 @@ process.exitCode = await buildWithRestart({
     const holdInterrupt = () => {};
     process.on("SIGINT", holdInterrupt);
     try {
-      const result = spawnSyncShim("turbo", ["run", "build"], { stdio: "inherit" });
+      const result = spawnSync(process.execPath, [turbo, "run", "build"], { stdio: "inherit" });
       if (result.error) throw result.error;
 
       return result.status ?? 1;
