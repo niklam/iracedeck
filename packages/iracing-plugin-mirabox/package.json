@@ -31,12 +31,12 @@
     "ws": "8.22.0"
   },
   "devDependencies": {
-    "@elgato/cli": "1.10.2",
+    "@elgato/cli": "1.10.3",
     "@iracedeck/plugin-build": "workspace:*",
     "@tsconfig/node22": "22.0.6",
     "@types/node": "26.6.5",
     "rimraf": "6.1.3",
-    "rollup": "4.64.8",
+    "rollup": "4.65.0",
     "typescript": "5.9.3"
   },
   "license": "SEE LICENSE IN LICENSE"

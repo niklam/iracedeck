@@ -16,7 +16,7 @@
     "test:watch": "node ../../scripts/test-package.mjs --watch"
   },
   "dependencies": {
-    "@fastify/static": "10.1.6",
+    "@fastify/static": "10.1.7",
     "@fastify/websocket": "11.3.4",
     "@iracedeck/audio-assets": "workspace:*",
     "@iracedeck/audio-native": "workspace:*",
