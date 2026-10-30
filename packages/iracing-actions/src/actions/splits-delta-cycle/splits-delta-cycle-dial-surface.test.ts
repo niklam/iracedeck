@@ -202,6 +202,8 @@ describe("SplitsDeltaCycle dial surface", () => {
       mockDualPressThreshold.value = ms;
     },
     readsStoredSettings: false,
+    // The hold-mode keys (Active Reset Run) are pinned in splits-delta-cycle.test.ts.
+    keyCases: [{ name: "a plain key acts on key down, a tap", settings: {}, shape: { kind: "tap" } }],
   });
 
   describe("onDialRotate", () => {

@@ -47,7 +47,6 @@ import {
   seedFreshKeyStyle,
   telemetryMemoValue,
 } from "../../shared/adjust-styles.js";
-import { pressShapeByEvent } from "../../shared/dial-release.js";
 import { RepeatController } from "../../shared/repeat-controller.js";
 import {
   generateSetupViewSvg,
@@ -429,33 +428,32 @@ export class SetupHybrid extends SimIRacingAction<SetupHybridSettings> {
   }
 
   /**
-   * The press shape of this press (#269): a View key's from its dual-press
-   * state (`setupKeyPressShape`, from the settings `onKeyDown` reads), a
-   * held control's (Boost, Regen) `hold`, every other key a tap, and the
-   * dial's and the touch's from the dial surface, which classifies them.
+   * The press shape of a dial press (#269), from the dial surface, which
+   * classifies the release.
    */
-  pressShape(
-    ev:
-      | IDeckKeyDownEvent<SetupHybridSettings>
-      | IDeckDialDownEvent<SetupHybridSettings>
-      | IDeckTouchTapEvent<SetupHybridSettings>,
-  ): PressShape {
-    const settings = this.parseSettings(ev.payload.settings);
+  dialPressShape(ev: IDeckDialDownEvent<SetupHybridSettings>): PressShape {
+    return this.dialSurface.pressShape(ev.action, this.parseSettings(ev.payload.settings).dial);
+  }
 
-    return pressShapeByEvent(ev, {
-      key: () => this.keyPressShape(settings),
-      dial: () => this.dialSurface.pressShape(ev.action, settings.dial),
-      touch: (hold) => this.dialSurface.touchShape(ev.action, settings.dial, hold),
-    });
+  /** The press shape of a touch on the strip (#269), from the dial surface. */
+  touchPressShape(ev: IDeckTouchTapEvent<SetupHybridSettings>): PressShape {
+    return this.dialSurface.touchShape(
+      ev.action,
+      this.parseSettings(ev.payload.settings).dial,
+      ev.payload.hold === true,
+    );
   }
 
   /**
-   * The key's shape, from the same branches `onKeyDown` takes: a `HOLD_CONTROLS`
-   * key presses its binding on down and releases it on up, so it is `hold` at
-   * the dual-press threshold (Car Control's rule for a finger-held control) —
-   * or `none` when no binding resolves, since `onKeyDown` then does nothing.
+   * The press shape of a key press (#269), from the same branches `onKeyDown`
+   * takes: a `HOLD_CONTROLS` key (Boost, Regen) presses its binding on down
+   * and releases it on up, so it is `hold` at the dual-press threshold (Car
+   * Control's rule for a finger-held control) — or `none` when no binding
+   * resolves, since `onKeyDown` then does nothing; a View key's comes from its
+   * dual-press state (`setupKeyPressShape`), and every other key is a tap.
    */
-  private keyPressShape(settings: SetupHybridSettings): PressShape {
+  keyPressShape(ev: IDeckKeyDownEvent<SetupHybridSettings>): PressShape {
+    const settings = this.parseSettings(ev.payload.settings);
     const adjustSetting = settings.setting as SetupHybridAdjustSetting;
 
     if (!isViewSetting(settings.setting) && HOLD_CONTROLS.has(adjustSetting)) {

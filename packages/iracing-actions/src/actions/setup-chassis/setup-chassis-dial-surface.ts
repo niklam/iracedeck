@@ -34,7 +34,7 @@ import { type DialInputEvent, hasDialInputContext } from "../../shared/dial-cont
 import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
 import { persistDialPatch } from "../../shared/dial-persist.js";
 import type { DialPendingPreview } from "../../shared/dial-preview.js";
-import { classifyDialReleaseForHost, dialPressShape, touchPressShape } from "../../shared/dial-release.js";
+import { classifyDialReleaseForHost, dialGestureShape, touchGestureShape } from "../../shared/dial-release.js";
 import {
   formatViewValue,
   type UnitsPreference,
@@ -428,7 +428,7 @@ export class SetupChassisDialSurface {
 
     if (!ctx) return { kind: "none" };
 
-    return dialPressShape({
+    return dialGestureShape({
       pressGesture: ctx.dial.pressAction,
       longPressGesture: ctx.dial.longPressAction,
       thresholdMs: getDualPressThresholdMs(),
@@ -441,7 +441,7 @@ export class SetupChassisDialSurface {
 
     if (!ctx) return { kind: "none" };
 
-    return touchPressShape({ tapGesture: ctx.dial.tapAction, longTouchGesture: ctx.dial.longTouchAction, hold });
+    return touchGestureShape({ tapGesture: ctx.dial.tapAction, longTouchGesture: ctx.dial.longTouchAction, hold });
   }
 
   down(action: IDeckActionContext, dial: DialSettings): void {

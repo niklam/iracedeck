@@ -16,7 +16,6 @@ import {
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
   type IDeckKeyUpEvent,
-  type IDeckTouchTapEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
   type PressShape,
@@ -1067,8 +1066,18 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
     await this.updateDisplay(ev, settings);
   }
 
+  /** The press sounds' shape of a key press (#269); see {@link carControlPressShape}. */
+  keyPressShape(ev: IDeckKeyDownEvent<CarControlSettings>): PressShape {
+    return this.carControlPressShape(this.parseSettings(ev.payload.settings));
+  }
+
+  /** The press sounds' shape of a dial press (#269); see {@link carControlPressShape}. */
+  dialPressShape(ev: IDeckDialDownEvent<CarControlSettings>): PressShape {
+    return this.carControlPressShape(this.parseSettings(ev.payload.settings));
+  }
+
   /**
-   * The shape of this press, for the press sounds (#269), read from the same state the
+   * The shape of a press, for the press sounds (#269), read from the same state the
    * press acts on. Key and dial alike, since the dial acts on `dialDown` like the key:
    *
    * - the hold controls (Starter, Headlight Flash, Handbrake, Second Clutch, and
@@ -1079,14 +1088,7 @@ export class CarControl extends SimIRacingAction<CarControlSettings> {
    * - Wipers and Visor follows its key-down decision ({@link wipersAndVisorPressShape});
    * - everything else acts once, on down: `tap`.
    */
-  pressShape(
-    ev:
-      | IDeckKeyDownEvent<CarControlSettings>
-      | IDeckDialDownEvent<CarControlSettings>
-      | IDeckTouchTapEvent<CarControlSettings>,
-  ): PressShape {
-    const settings = this.parseSettings(ev.payload.settings);
-
+  private carControlPressShape(settings: CarControlSettings): PressShape {
     switch (settings.control) {
       case "wipers-and-visor":
         return wipersAndVisorPressShape(

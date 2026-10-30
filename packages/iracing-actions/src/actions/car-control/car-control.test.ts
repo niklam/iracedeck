@@ -2906,14 +2906,21 @@ describe("CarControl", () => {
       vi.mocked(action["sdkController"].getSessionInfo).mockReturnValue(sessionInfo as never);
     }
 
-    /** The key-down and the dial-down of one control carry the same settings; only the surface differs. */
+    /**
+     * The key-down and the dial-down of one control carry the same settings;
+     * only the member differs. The context cannot say which controller it is:
+     * the member called is the surface (Ulanzi reports every context as a key).
+     */
     function shapes(settings: Record<string, unknown>) {
-      const event = (isDial: boolean) => ({
-        action: { id: "action-1", isDial: () => isDial, setTitle: vi.fn(), setImage: vi.fn() },
+      const refuse = (): never => {
+        throw new Error("a press shape member asked the context which controller it is");
+      };
+      const event = {
+        action: { id: "action-1", isDial: refuse, isKey: refuse, setTitle: vi.fn(), setImage: vi.fn() },
         payload: { settings },
-      });
+      };
 
-      return { key: action.pressShape(event(false) as any), dial: action.pressShape(event(true) as any) };
+      return { key: action.keyPressShape(event as any), dial: action.dialPressShape(event as any) };
     }
 
     it.each(["starter", "headlight-flash", "handbrake", "second-clutch"])(

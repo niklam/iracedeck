@@ -77,7 +77,7 @@ import { type DialBoxArgs, type DialNeighbours, renderDialBox, resolveDialBoxCol
 import { type DialInputEvent, hasDialInputContext } from "../../shared/dial-context.js";
 import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
 import type { DialPendingPreview } from "../../shared/dial-preview.js";
-import { classifyDialReleaseForHost, dialPressShape, touchPressShape } from "../../shared/dial-release.js";
+import { classifyDialReleaseForHost, dialGestureShape, touchGestureShape } from "../../shared/dial-release.js";
 import { getReplayBusyLook, registerReplayBusySurface } from "../../shared/replay-busy-indicator.js";
 import { replayBusyDialMark } from "../../shared/replay-busy-mark.js";
 import { carNumberMode, racePositionMode } from "./replay-control-camera-car-modes.js";
@@ -982,7 +982,7 @@ export class ReplayControlDialSurface {
   pressShape(action: IDeckActionContext, dial: ReplayControlDialSettings): PressShape {
     if (!this.contexts.has(action.id)) return { kind: "none" };
 
-    return dialPressShape({
+    return dialGestureShape({
       pressGesture: resolveDialGesture(dial.pressAction, dial.mode),
       longPressGesture: resolveDialGesture(dial.longPressAction, dial.mode),
       thresholdMs: getDualPressThresholdMs(),
@@ -993,7 +993,7 @@ export class ReplayControlDialSurface {
   touchShape(action: IDeckActionContext, dial: ReplayControlDialSettings, hold: boolean): PressShape {
     if (!this.contexts.has(action.id)) return { kind: "none" };
 
-    return touchPressShape({
+    return touchGestureShape({
       tapGesture: resolveDialGesture(dial.tapAction, dial.mode),
       longTouchGesture: resolveDialGesture(dial.longTouchAction, dial.mode),
       hold,

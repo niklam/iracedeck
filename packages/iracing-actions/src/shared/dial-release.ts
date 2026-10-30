@@ -1,11 +1,4 @@
-import {
-  classifyDialRelease,
-  type DialReleaseKind,
-  type IDeckDialDownEvent,
-  type IDeckKeyDownEvent,
-  type IDeckTouchTapEvent,
-  type PressShape,
-} from "@iracedeck/deck-core";
+import { classifyDialRelease, type DialReleaseKind, type PressShape } from "@iracedeck/deck-core";
 
 /**
  * Classifies a dial release for the host this build targets (#1013).
@@ -48,9 +41,10 @@ function gestureActs(gesture: ResolvedDialGesture): boolean {
 }
 
 /**
- * The press shape of a dial press (#269): decided at release, clicking on a
- * short release when the press gesture does something and bleeping at the
- * threshold when the long-press gesture does. Every dial surface that
+ * The press shape of a dial press (#269), which an action's `dialPressShape`
+ * returns through its dial surface: decided at release, clicking on a short
+ * release when the press gesture does something and bleeping at the threshold
+ * when the long-press gesture does. Every dial surface that
  * classifies at release passes the gestures it would fire at its `up` and the
  * threshold it hands {@link classifyDialReleaseForHost}.
  *
@@ -59,7 +53,7 @@ function gestureActs(gesture: ResolvedDialGesture): boolean {
  * `long` is false and the threshold is `Infinity`, which arms no timer — the
  * press sounds can never call a Mirabox knob release long, whatever the timing.
  */
-export function dialPressShape(args: {
+export function dialGestureShape(args: {
   pressGesture: ResolvedDialGesture;
   longPressGesture: ResolvedDialGesture;
   thresholdMs: number;
@@ -74,13 +68,14 @@ export function dialPressShape(args: {
 }
 
 /**
- * The press shape of a touch on a dial's strip (#269). A touch arrives
+ * The press shape of a touch on a dial's strip (#269), which an action's
+ * `touchPressShape` returns through its dial surface. A touch arrives
  * complete, its `hold` saying whether it was a long touch: `tap` for a tap
  * whose gesture does something, `long` for such a long touch, `none` when the
  * slot fires nothing — and `none` wherever the extended gestures are compiled
  * out, since every surface's `touchTap` returns at once there.
  */
-export function touchPressShape(args: {
+export function touchGestureShape(args: {
   tapGesture: ResolvedDialGesture;
   longTouchGesture: ResolvedDialGesture;
   hold: boolean;
@@ -90,18 +85,4 @@ export function touchPressShape(args: {
   if (!gestureActs(args.hold ? args.longTouchGesture : args.tapGesture)) return { kind: "none" };
 
   return args.hold ? { kind: "long" } : { kind: "tap" };
-}
-
-/**
- * Which surface a `pressShape` event came from (#269). The key-down and
- * dial-down events share one shape, so the context tells them apart; a touch
- * is the event that carries `hold`.
- */
-export function pressShapeByEvent<T>(
-  ev: IDeckKeyDownEvent<T> | IDeckDialDownEvent<T> | IDeckTouchTapEvent<T>,
-  shapes: { key: () => PressShape; dial: () => PressShape; touch: (hold: boolean) => PressShape },
-): PressShape {
-  if ("hold" in ev.payload) return shapes.touch(ev.payload.hold === true);
-
-  return ev.action.isDial() ? shapes.dial() : shapes.key();
 }

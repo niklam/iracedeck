@@ -31,7 +31,6 @@ import previousIconSvg from "@iracedeck/icons/splits-delta-cycle/previous.svg";
 import { getGlobalColors, onGlobalSettingsChange } from "@iracedeck/settings";
 import z from "zod";
 
-import { pressShapeByEvent } from "../../shared/dial-release.js";
 import { DialSettings, SplitsDeltaCycleDialSurface } from "./splits-delta-cycle-dial-surface.js";
 
 const DIRECTION_ICONS: Record<string, string> = {
@@ -302,27 +301,33 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
   }
 
   /**
-   * The press shape of this press (#269): a `HOLD_MODES` key (Active Reset Run)
-   * presses its binding on down and releases it on up, so it is `hold` at the
-   * dual-press threshold (Car Control's rule for a finger-held control); every
-   * other key acts on key down, a tap. The dial's and the touch's come from the
-   * dial surface, which classifies them (the dial taps Active Reset Run
-   * momentarily, so it stays a release there).
+   * The press shape of a key press (#269): a `HOLD_MODES` key (Active Reset
+   * Run) presses its binding on down and releases it on up, so it is `hold` at
+   * the dual-press threshold (Car Control's rule for a finger-held control);
+   * every other key acts on key down, a tap. The dial taps Active Reset Run
+   * momentarily, so it stays a release there ({@link dialPressShape}).
    */
-  pressShape(
-    ev:
-      | IDeckKeyDownEvent<SplitsDeltaCycleSettings>
-      | IDeckDialDownEvent<SplitsDeltaCycleSettings>
-      | IDeckTouchTapEvent<SplitsDeltaCycleSettings>,
-  ): PressShape {
+  keyPressShape(ev: IDeckKeyDownEvent<SplitsDeltaCycleSettings>): PressShape {
     const settings = this.parseSettings(ev.payload.settings);
 
-    return pressShapeByEvent(ev, {
-      key: () =>
-        HOLD_MODES.has(settings.mode) ? { kind: "hold", thresholdMs: getDualPressThresholdMs() } : { kind: "tap" },
-      dial: () => this.dialSurface.pressShape(ev.action, settings.dial),
-      touch: (hold) => this.dialSurface.touchShape(ev.action, settings.dial, hold),
-    });
+    return HOLD_MODES.has(settings.mode) ? { kind: "hold", thresholdMs: getDualPressThresholdMs() } : { kind: "tap" };
+  }
+
+  /**
+   * The press shape of a dial press (#269), from the dial surface, which
+   * classifies the release.
+   */
+  dialPressShape(ev: IDeckDialDownEvent<SplitsDeltaCycleSettings>): PressShape {
+    return this.dialSurface.pressShape(ev.action, this.parseSettings(ev.payload.settings).dial);
+  }
+
+  /** The press shape of a touch on the strip (#269), from the dial surface. */
+  touchPressShape(ev: IDeckTouchTapEvent<SplitsDeltaCycleSettings>): PressShape {
+    return this.dialSurface.touchShape(
+      ev.action,
+      this.parseSettings(ev.payload.settings).dial,
+      ev.payload.hold === true,
+    );
   }
 
   override async onDialDown(ev: IDeckDialDownEvent<SplitsDeltaCycleSettings>): Promise<void> {

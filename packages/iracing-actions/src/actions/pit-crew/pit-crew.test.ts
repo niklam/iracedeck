@@ -1356,7 +1356,7 @@ describe("PitCrew action", () => {
       (direction) => {
         const action = new PitCrew();
 
-        expect(action.pressShape(buildAppearEvent({ mode: "radar-volume", direction }) as never)).toEqual({
+        expect(action.keyPressShape(buildAppearEvent({ mode: "radar-volume", direction }) as never)).toEqual({
           kind: "none",
         });
       },
@@ -1367,19 +1367,19 @@ describe("PitCrew action", () => {
       (mode) => {
         const action = new PitCrew();
 
-        expect(action.pressShape(buildAppearEvent({ mode }) as never)).toEqual({ kind: "tap" });
+        expect(action.keyPressShape(buildAppearEvent({ mode }) as never)).toEqual({ kind: "tap" });
       },
     );
 
     it("is a tap for a key stored without a mode, which reads as race-engineer", () => {
-      expect(new PitCrew().pressShape(buildAppearEvent() as never)).toEqual({ kind: "tap" });
+      expect(new PitCrew().keyPressShape(buildAppearEvent() as never)).toEqual({ kind: "tap" });
     });
 
     it("has no side effects: asking for the shape steps, toggles and ticks nothing", () => {
       const action = new PitCrew();
 
-      action.pressShape(buildAppearEvent({ mode: "radar-volume", direction: "up" }) as never);
-      action.pressShape(buildAppearEvent({ mode: "radar" }) as never);
+      action.keyPressShape(buildAppearEvent({ mode: "radar-volume", direction: "up" }) as never);
+      action.keyPressShape(buildAppearEvent({ mode: "radar" }) as never);
 
       expect(hoisted.updateGlobalSettings).not.toHaveBeenCalled();
       expect(hoisted.playOnChannelAtLevel).not.toHaveBeenCalled();

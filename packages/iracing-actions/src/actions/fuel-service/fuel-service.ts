@@ -45,7 +45,6 @@ import { getGlobalColors, getGlobalSettings } from "@iracedeck/settings";
 import fuelServiceTemplate from "../../../icons/fuel-service.svg";
 import { borderColorForState, statusBarNA, statusBarOff, statusBarOn } from "../../icons/status-bar.js";
 import { showBlackBox } from "../../shared/black-box.js";
-import { pressShapeByEvent } from "../../shared/dial-release.js";
 import { RepeatController } from "../../shared/repeat-controller.js";
 import { FuelDialSurface } from "./fuel-dial-surface.js";
 import { FuelPipeline } from "./fuel-pipeline.js";
@@ -594,22 +593,16 @@ export class FuelService extends SimIRacingAction<FuelServiceSettings> {
   }
 
   /**
-   * The press shape of this press (#269): a key acts on key down, so a tap;
-   * the dial's and the touch's come from the dial surface, which classifies them.
+   * The press shape of a dial press (#269), from the dial surface, which
+   * classifies the release.
    */
-  pressShape(
-    ev:
-      | IDeckKeyDownEvent<FuelServiceSettings>
-      | IDeckDialDownEvent<FuelServiceSettings>
-      | IDeckTouchTapEvent<FuelServiceSettings>,
-  ): PressShape {
-    const settings = this.parseSettings(ev.payload.settings);
+  dialPressShape(ev: IDeckDialDownEvent<FuelServiceSettings>): PressShape {
+    return this.dialSurface.pressShape(ev.action, this.parseSettings(ev.payload.settings));
+  }
 
-    return pressShapeByEvent(ev, {
-      key: () => ({ kind: "tap" }),
-      dial: () => this.dialSurface.pressShape(ev.action, settings),
-      touch: (hold) => this.dialSurface.touchShape(ev.action, settings, hold),
-    });
+  /** The press shape of a touch on the strip (#269), from the dial surface. */
+  touchPressShape(ev: IDeckTouchTapEvent<FuelServiceSettings>): PressShape {
+    return this.dialSurface.touchShape(ev.action, this.parseSettings(ev.payload.settings), ev.payload.hold === true);
   }
 
   override async onDialDown(ev: IDeckDialDownEvent<FuelServiceSettings>): Promise<void> {

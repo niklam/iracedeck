@@ -778,7 +778,7 @@ describe("AudioControls", () => {
       action = new AudioControls();
     });
 
-    const shapeOf = (settings: Record<string, unknown>) => action.pressShape(fakeEvent("action-1", settings) as any);
+    const shapeOf = (settings: Record<string, unknown>) => action.keyPressShape(fakeEvent("action-1", settings) as any);
 
     it("makes no sound for Push to Talk, which opens the microphone", () => {
       expect(shapeOf({ category: "push-to-talk" })).toEqual({ kind: "none" });

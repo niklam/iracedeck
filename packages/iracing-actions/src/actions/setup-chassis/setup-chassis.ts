@@ -66,7 +66,6 @@ import {
   telemetryMemoValue,
 } from "../../shared/adjust-styles.js";
 import { type BlackBoxId, showBlackBox } from "../../shared/black-box.js";
-import { pressShapeByEvent } from "../../shared/dial-release.js";
 import { RepeatController } from "../../shared/repeat-controller.js";
 import {
   generateSetupViewSvg,
@@ -603,24 +602,29 @@ export class SetupChassis extends SimIRacingAction<SetupChassisSettings> {
   }
 
   /**
-   * The press shape of this press (#269): a View key's from its dual-press
+   * The press shape of a key press (#269): a View key's from its dual-press
    * state (`setupKeyPressShape`, from the settings `onKeyDown` reads), every
-   * other key a tap, and the dial's and the touch's from the dial surface,
-   * which classifies them.
+   * other key a tap.
    */
-  pressShape(
-    ev:
-      | IDeckKeyDownEvent<SetupChassisSettings>
-      | IDeckDialDownEvent<SetupChassisSettings>
-      | IDeckTouchTapEvent<SetupChassisSettings>,
-  ): PressShape {
-    const settings = this.parseSettings(ev.payload.settings);
+  keyPressShape(ev: IDeckKeyDownEvent<SetupChassisSettings>): PressShape {
+    return setupKeyPressShape(this.parseSettings(ev.payload.settings));
+  }
 
-    return pressShapeByEvent(ev, {
-      key: () => setupKeyPressShape(settings),
-      dial: () => this.dialSurface.pressShape(ev.action, settings.dial),
-      touch: (hold) => this.dialSurface.touchShape(ev.action, settings.dial, hold),
-    });
+  /**
+   * The press shape of a dial press (#269), from the dial surface, which
+   * classifies the release.
+   */
+  dialPressShape(ev: IDeckDialDownEvent<SetupChassisSettings>): PressShape {
+    return this.dialSurface.pressShape(ev.action, this.parseSettings(ev.payload.settings).dial);
+  }
+
+  /** The press shape of a touch on the strip (#269), from the dial surface. */
+  touchPressShape(ev: IDeckTouchTapEvent<SetupChassisSettings>): PressShape {
+    return this.dialSurface.touchShape(
+      ev.action,
+      this.parseSettings(ev.payload.settings).dial,
+      ev.payload.hold === true,
+    );
   }
 
   override async onDialDown(ev: IDeckDialDownEvent<SetupChassisSettings>): Promise<void> {

@@ -33,7 +33,7 @@ import { type DialBoxArgs, type DialSideMarks, renderDialBox, resolveDialBoxColo
 import { type DialInputEvent, hasDialInputContext } from "../../shared/dial-context.js";
 import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
 import type { DialPendingPreview } from "../../shared/dial-preview.js";
-import { classifyDialReleaseForHost, dialPressShape, touchPressShape } from "../../shared/dial-release.js";
+import { classifyDialReleaseForHost, dialGestureShape, touchGestureShape } from "../../shared/dial-release.js";
 import { getReplayBusyLook, registerReplayBusySurface } from "../../shared/replay-busy-indicator.js";
 import { replayBusyDialMark } from "../../shared/replay-busy-mark.js";
 import {
@@ -344,7 +344,7 @@ export class ReplayMarkersDialSurface {
   pressShape(action: IDeckActionContext, dial: ReplayMarkersDialSettings): PressShape {
     if (!this.contexts.has(action.id)) return { kind: "none" };
 
-    return dialPressShape({
+    return dialGestureShape({
       pressGesture: dial.pressAction,
       longPressGesture: dial.longPressAction,
       thresholdMs: getDualPressThresholdMs(),
@@ -355,7 +355,7 @@ export class ReplayMarkersDialSurface {
   touchShape(action: IDeckActionContext, dial: ReplayMarkersDialSettings, hold: boolean): PressShape {
     if (!this.contexts.has(action.id)) return { kind: "none" };
 
-    return touchPressShape({ tapGesture: dial.tapAction, longTouchGesture: dial.longTouchAction, hold });
+    return touchGestureShape({ tapGesture: dial.tapAction, longTouchGesture: dial.longTouchAction, hold });
   }
 
   down(action: IDeckActionContext, dial: ReplayMarkersDialSettings): void {

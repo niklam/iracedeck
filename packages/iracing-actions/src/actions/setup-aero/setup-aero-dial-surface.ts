@@ -26,7 +26,7 @@ import z from "zod";
 import { dialAppearanceFields, renderDialBox, resolveDialBoxColors } from "../../shared/dial-box.js";
 import { type DialInputEvent, hasDialInputContext } from "../../shared/dial-context.js";
 import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
-import { classifyDialReleaseForHost, dialPressShape, touchPressShape } from "../../shared/dial-release.js";
+import { classifyDialReleaseForHost, dialGestureShape, touchGestureShape } from "../../shared/dial-release.js";
 import { formatViewValue, type ViewSettingId } from "../../shared/setup-view.js";
 
 const CHANGE_RENDER_MIN_INTERVAL_MS = 100;
@@ -220,7 +220,7 @@ export class SetupAeroDialSurface {
   pressShape(action: IDeckActionContext, dial: DialSettings): PressShape {
     if (!this.contextsState.has(action.id)) return { kind: "none" };
 
-    return dialPressShape({
+    return dialGestureShape({
       pressGesture: dial.pressAction,
       longPressGesture: dial.longPressAction,
       thresholdMs: getDualPressThresholdMs(),
@@ -231,7 +231,7 @@ export class SetupAeroDialSurface {
   touchShape(action: IDeckActionContext, dial: DialSettings, hold: boolean): PressShape {
     if (!this.contextsState.has(action.id)) return { kind: "none" };
 
-    return touchPressShape({ tapGesture: dial.tapAction, longTouchGesture: dial.longTouchAction, hold });
+    return touchGestureShape({ tapGesture: dial.tapAction, longTouchGesture: dial.longTouchAction, hold });
   }
 
   down(action: IDeckActionContext, dial: DialSettings): void {

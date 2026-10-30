@@ -6,11 +6,9 @@ import {
   getGlobalBorderSettings,
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
-  type IDeckDialDownEvent,
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
   type IDeckKeyUpEvent,
-  type IDeckTouchTapEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
   type PressShape,
@@ -206,13 +204,8 @@ export class AiSpotterControls extends ConnectionStateAwareAction<AiSpotterContr
     await this.updateDisplay(ev, settings);
   }
 
-  /** The press sounds' shape of this press (#269); see {@link spotterPressShape}. */
-  pressShape(
-    ev:
-      | IDeckKeyDownEvent<AiSpotterControlsSettings>
-      | IDeckDialDownEvent<AiSpotterControlsSettings>
-      | IDeckTouchTapEvent<AiSpotterControlsSettings>,
-  ): PressShape {
+  /** The press sounds' shape of a key press (#269); see {@link spotterPressShape}. */
+  keyPressShape(ev: IDeckKeyDownEvent<AiSpotterControlsSettings>): PressShape {
     return spotterPressShape(this.parseSettings(ev.payload.settings).control);
   }
 

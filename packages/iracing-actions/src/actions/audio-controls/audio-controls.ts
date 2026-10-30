@@ -11,7 +11,6 @@ import {
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
   type IDeckKeyUpEvent,
-  type IDeckTouchTapEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
   type PressShape,
@@ -247,8 +246,8 @@ export function renderAudioControlsIcon(settings: AudioControlsSettings, binding
  * `none` — makes no sound. What is left acts once, on the down event, the dial
  * included (it fires at `dialDown`, #1120 decision 2): a `tap`.
  */
-export function audioControlsPressShape(settings: AudioControlsSettings, isDial: boolean): PressShape {
-  if (isDial) {
+export function audioControlsPressShape(settings: AudioControlsSettings, surface: "key" | "dial"): PressShape {
+  if (surface === "dial") {
     const { dial } = settings;
 
     return dial.pressAction === "push-to-talk" || !isDialPressAvailable(dial) ? { kind: "none" } : { kind: "tap" };
@@ -332,14 +331,14 @@ export class AudioControls extends ConnectionStateAwareAction<AudioControlsSetti
     await this.updateDisplay(ev, settings);
   }
 
-  /** The press sounds' shape of this press (#269); see {@link audioControlsPressShape}. */
-  pressShape(
-    ev:
-      | IDeckKeyDownEvent<AudioControlsSettings>
-      | IDeckDialDownEvent<AudioControlsSettings>
-      | IDeckTouchTapEvent<AudioControlsSettings>,
-  ): PressShape {
-    return audioControlsPressShape(this.parseSettings(ev.payload.settings), ev.action.isDial());
+  /** The press sounds' shape of a key press (#269); see {@link audioControlsPressShape}. */
+  keyPressShape(ev: IDeckKeyDownEvent<AudioControlsSettings>): PressShape {
+    return audioControlsPressShape(this.parseSettings(ev.payload.settings), "key");
+  }
+
+  /** The press sounds' shape of a dial press (#269); see {@link audioControlsPressShape}. */
+  dialPressShape(ev: IDeckDialDownEvent<AudioControlsSettings>): PressShape {
+    return audioControlsPressShape(this.parseSettings(ev.payload.settings), "dial");
   }
 
   override async onKeyDown(ev: IDeckKeyDownEvent<AudioControlsSettings>): Promise<void> {

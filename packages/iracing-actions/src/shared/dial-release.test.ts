@@ -1,7 +1,6 @@
-import type { IDeckActionContext, PressShape } from "@iracedeck/deck-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { classifyDialReleaseForHost, dialPressShape, pressShapeByEvent, touchPressShape } from "./dial-release.js";
+import { classifyDialReleaseForHost, dialGestureShape, touchGestureShape } from "./dial-release.js";
 
 describe("classifyDialReleaseForHost", () => {
   afterEach(() => {
@@ -55,13 +54,13 @@ describe("classifyDialReleaseForHost", () => {
   });
 });
 
-describe("dialPressShape (#269)", () => {
+describe("dialGestureShape (#269)", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
   it("is a release at the threshold, short and long both set, when both gestures act", () => {
-    expect(dialPressShape({ pressGesture: "toggle", longPressGesture: "reset", thresholdMs: 650 })).toEqual({
+    expect(dialGestureShape({ pressGesture: "toggle", longPressGesture: "reset", thresholdMs: 650 })).toEqual({
       kind: "release",
       thresholdMs: 650,
       short: true,
@@ -70,7 +69,7 @@ describe("dialPressShape (#269)", () => {
   });
 
   it("clears short for a press gesture set to none", () => {
-    expect(dialPressShape({ pressGesture: "none", longPressGesture: "reset", thresholdMs: 500 })).toEqual({
+    expect(dialGestureShape({ pressGesture: "none", longPressGesture: "reset", thresholdMs: 500 })).toEqual({
       kind: "release",
       thresholdMs: 500,
       short: false,
@@ -79,7 +78,7 @@ describe("dialPressShape (#269)", () => {
   });
 
   it("clears long for a long-press gesture set to none", () => {
-    expect(dialPressShape({ pressGesture: "toggle", longPressGesture: "none", thresholdMs: 500 })).toEqual({
+    expect(dialGestureShape({ pressGesture: "toggle", longPressGesture: "none", thresholdMs: 500 })).toEqual({
       kind: "release",
       thresholdMs: 500,
       short: true,
@@ -88,7 +87,7 @@ describe("dialPressShape (#269)", () => {
   });
 
   it("reads a gesture a surface resolved to null as firing nothing", () => {
-    expect(dialPressShape({ pressGesture: null, longPressGesture: null, thresholdMs: 500 })).toEqual({
+    expect(dialGestureShape({ pressGesture: null, longPressGesture: null, thresholdMs: 500 })).toEqual({
       kind: "release",
       thresholdMs: 500,
       short: false,
@@ -99,7 +98,7 @@ describe("dialPressShape (#269)", () => {
   it("with the extended gestures off, is never long and arms at an infinite threshold", () => {
     vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
 
-    expect(dialPressShape({ pressGesture: "toggle", longPressGesture: "reset", thresholdMs: 500 })).toEqual({
+    expect(dialGestureShape({ pressGesture: "toggle", longPressGesture: "reset", thresholdMs: 500 })).toEqual({
       kind: "release",
       thresholdMs: Number.POSITIVE_INFINITY,
       short: true,
@@ -110,70 +109,43 @@ describe("dialPressShape (#269)", () => {
   it("with the extended gestures off, still clears short for a press gesture set to none", () => {
     vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
 
-    expect(dialPressShape({ pressGesture: "none", longPressGesture: "reset", thresholdMs: 500 })).toMatchObject({
+    expect(dialGestureShape({ pressGesture: "none", longPressGesture: "reset", thresholdMs: 500 })).toMatchObject({
       short: false,
       long: false,
     });
   });
 });
 
-describe("touchPressShape (#269)", () => {
+describe("touchGestureShape (#269)", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
   it("is a tap for a tap whose gesture acts", () => {
-    expect(touchPressShape({ tapGesture: "toggle", longTouchGesture: "none", hold: false })).toEqual({ kind: "tap" });
+    expect(touchGestureShape({ tapGesture: "toggle", longTouchGesture: "none", hold: false })).toEqual({ kind: "tap" });
   });
 
   it("is a completed long press for a long touch whose gesture acts", () => {
-    expect(touchPressShape({ tapGesture: "none", longTouchGesture: "reset", hold: true })).toEqual({ kind: "long" });
+    expect(touchGestureShape({ tapGesture: "none", longTouchGesture: "reset", hold: true })).toEqual({ kind: "long" });
   });
 
   it("is none for a tap set to none, even when the long touch acts", () => {
-    expect(touchPressShape({ tapGesture: "none", longTouchGesture: "reset", hold: false })).toEqual({ kind: "none" });
+    expect(touchGestureShape({ tapGesture: "none", longTouchGesture: "reset", hold: false })).toEqual({ kind: "none" });
   });
 
   it("is none for a long touch set to none, even when the tap acts", () => {
-    expect(touchPressShape({ tapGesture: "toggle", longTouchGesture: "none", hold: true })).toEqual({ kind: "none" });
+    expect(touchGestureShape({ tapGesture: "toggle", longTouchGesture: "none", hold: true })).toEqual({ kind: "none" });
   });
 
   it("is none for a slot a surface resolved to null", () => {
-    expect(touchPressShape({ tapGesture: null, longTouchGesture: null, hold: false })).toEqual({ kind: "none" });
+    expect(touchGestureShape({ tapGesture: null, longTouchGesture: null, hold: false })).toEqual({ kind: "none" });
   });
 
   it("is none with the extended gestures off, where no touch fires", () => {
     vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
 
-    expect(touchPressShape({ tapGesture: "toggle", longTouchGesture: "reset", hold: false })).toEqual({ kind: "none" });
-  });
-});
-
-describe("pressShapeByEvent (#269)", () => {
-  const shapes = {
-    key: (): PressShape => ({ kind: "tap" }),
-    dial: (): PressShape => ({ kind: "release", thresholdMs: 500, short: true, long: false }),
-    touch: (hold: boolean): PressShape => (hold ? { kind: "long" } : { kind: "none" }),
-  };
-  const context = (dial: boolean) =>
-    ({ id: "ctx", isDial: () => dial, isKey: () => !dial }) as unknown as IDeckActionContext;
-
-  it("routes a key context's down to the key shape", () => {
-    expect(pressShapeByEvent({ action: context(false), payload: { settings: {} } }, shapes)).toEqual({ kind: "tap" });
-  });
-
-  it("routes a dial context's down to the dial shape", () => {
-    expect(pressShapeByEvent({ action: context(true), payload: { settings: {} } }, shapes)).toMatchObject({
-      kind: "release",
+    expect(touchGestureShape({ tapGesture: "toggle", longTouchGesture: "reset", hold: false })).toEqual({
+      kind: "none",
     });
-  });
-
-  it("routes a touch to the touch shape with its hold flag", () => {
-    expect(
-      pressShapeByEvent({ action: context(true), payload: { settings: {}, tapPos: [0, 0], hold: true } }, shapes),
-    ).toEqual({ kind: "long" });
-    expect(
-      pressShapeByEvent({ action: context(true), payload: { settings: {}, tapPos: [0, 0], hold: false } }, shapes),
-    ).toEqual({ kind: "none" });
   });
 });

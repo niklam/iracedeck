@@ -496,7 +496,7 @@ describe("SplitsDeltaCycle key press shape (#269)", () => {
   it("is a hold at the dual-press threshold for Active Reset Run, a finger-held control", () => {
     const action = new SplitsDeltaCycle();
 
-    expect(action.pressShape(fakeKeyEvent("ps-1", { mode: "active-reset-run" }) as never)).toEqual({
+    expect(action.keyPressShape(fakeKeyEvent("ps-1", { mode: "active-reset-run" }) as never)).toEqual({
       kind: "hold",
       thresholdMs: 500,
     });
@@ -505,12 +505,12 @@ describe("SplitsDeltaCycle key press shape (#269)", () => {
   it.each(MODES.filter((m) => m !== "active-reset-run"))("stays a tap for %s, which acts on key down", (mode) => {
     const action = new SplitsDeltaCycle();
 
-    expect(action.pressShape(fakeKeyEvent("ps-2", { mode }) as never)).toEqual({ kind: "tap" });
+    expect(action.keyPressShape(fakeKeyEvent("ps-2", { mode }) as never)).toEqual({ kind: "tap" });
   });
 
   it.each(MODES)("declares hold exactly when onKeyDown holds the binding: %s", async (mode) => {
     const action = new SplitsDeltaCycle();
-    const shape = action.pressShape(fakeKeyEvent("ps-3", { mode }) as never);
+    const shape = action.keyPressShape(fakeKeyEvent("ps-3", { mode }) as never);
 
     await action.onKeyDown(fakeKeyEvent("ps-3", { mode }) as never);
 

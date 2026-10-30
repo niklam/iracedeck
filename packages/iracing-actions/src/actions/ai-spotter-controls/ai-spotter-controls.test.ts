@@ -396,7 +396,7 @@ describe("AiSpotterControls", () => {
       action = new AiSpotterControls();
     });
 
-    const shapeOf = (settings: Record<string, unknown>) => action.pressShape(fakeEvent("action-1", settings) as any);
+    const shapeOf = (settings: Record<string, unknown>) => action.keyPressShape(fakeEvent("action-1", settings) as any);
 
     it.each(["louder", "quieter"])("makes no sound for a %s step, whose tick is its press sound", (control) => {
       expect(shapeOf({ control, keyStyle: "legacy" })).toEqual({ kind: "none" });

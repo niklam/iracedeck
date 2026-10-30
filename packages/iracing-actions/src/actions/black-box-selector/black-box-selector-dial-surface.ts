@@ -38,7 +38,7 @@ import { dialAppearanceFields, type DialBoxColors, resolveDialBoxColors } from "
 import { type DialInputEvent, hasDialInputContext } from "../../shared/dial-context.js";
 import { KNOB_BOX_HEIGHT, KNOB_BOX_WIDTH } from "../../shared/dial-knob-box.js";
 import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
-import { classifyDialReleaseForHost, dialPressShape, touchPressShape } from "../../shared/dial-release.js";
+import { classifyDialReleaseForHost, dialGestureShape, touchGestureShape } from "../../shared/dial-release.js";
 
 /** Cap on binding taps dispatched for one rotate event (a fast spin coalesces ticks). */
 const MAX_TAPS_PER_EVENT = 5;
@@ -285,7 +285,7 @@ export class BlackBoxSelectorDialSurface {
   pressShape(action: IDeckActionContext, dial: DialSettings): PressShape {
     if (!this.contextsState.has(action.id)) return { kind: "none" };
 
-    return dialPressShape({
+    return dialGestureShape({
       pressGesture: dial.pressAction,
       longPressGesture: dial.longPressAction,
       thresholdMs: getDualPressThresholdMs(),
@@ -296,7 +296,7 @@ export class BlackBoxSelectorDialSurface {
   touchShape(action: IDeckActionContext, dial: DialSettings, hold: boolean): PressShape {
     if (!this.contextsState.has(action.id)) return { kind: "none" };
 
-    return touchPressShape({ tapGesture: dial.tapAction, longTouchGesture: dial.longTouchAction, hold });
+    return touchGestureShape({ tapGesture: dial.tapAction, longTouchGesture: dial.longTouchAction, hold });
   }
 
   down(action: IDeckActionContext, dial: DialSettings): void {

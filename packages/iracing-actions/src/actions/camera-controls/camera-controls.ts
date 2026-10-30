@@ -87,7 +87,6 @@ import z from "zod";
 import { carCycleBindingKey } from "../../shared/car-cycle-bindings.js";
 import { computeCarNumberTarget } from "../../shared/car-cycling.js";
 import { setSelectIntent } from "../../shared/car-select-intent.js";
-import { pressShapeByEvent } from "../../shared/dial-release.js";
 import { profileEntriesEqual } from "../../shared/profile-entries.js";
 import { availableProfilesForDevice, deviceProfileEntries } from "../race-admin/race-admin-selector.js";
 import { CameraDialSurface, type CarouselGlyph, DialSettings } from "./camera-dial-surface.js";
@@ -960,22 +959,20 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
   }
 
   /**
-   * The press shape of this press (#269): a key acts on key down, so a tap;
-   * the dial's and the touch's come from the dial surface, which classifies them.
+   * The press shape of a dial press (#269), from the dial surface, which
+   * classifies the release.
    */
-  pressShape(
-    ev:
-      | IDeckKeyDownEvent<CameraControlsSettings>
-      | IDeckDialDownEvent<CameraControlsSettings>
-      | IDeckTouchTapEvent<CameraControlsSettings>,
-  ): PressShape {
-    const settings = this.parseSettings(ev.payload.settings);
+  dialPressShape(ev: IDeckDialDownEvent<CameraControlsSettings>): PressShape {
+    return this.dialSurface.pressShape(ev.action, this.parseSettings(ev.payload.settings).dial);
+  }
 
-    return pressShapeByEvent(ev, {
-      key: () => ({ kind: "tap" }),
-      dial: () => this.dialSurface.pressShape(ev.action, settings.dial),
-      touch: (hold) => this.dialSurface.touchShape(ev.action, settings.dial, hold),
-    });
+  /** The press shape of a touch on the strip (#269), from the dial surface. */
+  touchPressShape(ev: IDeckTouchTapEvent<CameraControlsSettings>): PressShape {
+    return this.dialSurface.touchShape(
+      ev.action,
+      this.parseSettings(ev.payload.settings).dial,
+      ev.payload.hold === true,
+    );
   }
 
   override async onDialDown(ev: IDeckDialDownEvent<CameraControlsSettings>): Promise<void> {

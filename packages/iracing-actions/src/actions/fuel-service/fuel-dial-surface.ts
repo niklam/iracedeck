@@ -46,7 +46,7 @@ import { KNOB_BOX_HEIGHT, KNOB_BOX_WIDTH } from "../../shared/dial-knob-box.js";
 import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
 import { persistDialPatch } from "../../shared/dial-persist.js";
 import { type DialPendingPreview, renderPendingBar } from "../../shared/dial-preview.js";
-import { classifyDialReleaseForHost, dialPressShape, touchPressShape } from "../../shared/dial-release.js";
+import { classifyDialReleaseForHost, dialGestureShape, touchGestureShape } from "../../shared/dial-release.js";
 import type { FuelPipeline } from "./fuel-pipeline.js";
 import {
   type DialGestureSlot,
@@ -1124,7 +1124,7 @@ export class FuelDialSurface {
 
     if (!ctx) return { kind: "none" };
 
-    return dialPressShape({
+    return dialGestureShape({
       pressGesture: ctx.settings.dial.pressAction,
       longPressGesture: ctx.settings.dial.longPressAction,
       thresholdMs: getDualPressThresholdMs(),
@@ -1137,7 +1137,7 @@ export class FuelDialSurface {
 
     if (!ctx) return { kind: "none" };
 
-    return touchPressShape({
+    return touchGestureShape({
       tapGesture: ctx.settings.dial.tapAction,
       longTouchGesture: ctx.settings.dial.longTouchAction,
       hold,

@@ -28,7 +28,7 @@ import { renderDialBox, resolveDialBoxColors } from "../../shared/dial-box.js";
 import { type DialInputEvent, hasDialInputContext } from "../../shared/dial-context.js";
 import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
 import type { DialPendingPreview } from "../../shared/dial-preview.js";
-import { classifyDialReleaseForHost, dialPressShape, touchPressShape } from "../../shared/dial-release.js";
+import { classifyDialReleaseForHost, dialGestureShape, touchGestureShape } from "../../shared/dial-release.js";
 import { formatViewValue, type ViewSettingId } from "../../shared/setup-view.js";
 import {
   type GestureSlot,
@@ -308,7 +308,7 @@ export class SetupBrakesDialSurface {
   pressShape(action: IDeckActionContext, settings: SetupBrakesSettings): PressShape {
     if (!this.contextsState.has(action.id)) return { kind: "none" };
 
-    return dialPressShape({
+    return dialGestureShape({
       pressGesture: settings.dial.pressAction,
       longPressGesture: settings.dial.longPressAction,
       thresholdMs: getDualPressThresholdMs(),
@@ -319,7 +319,7 @@ export class SetupBrakesDialSurface {
   touchShape(action: IDeckActionContext, settings: SetupBrakesSettings, hold: boolean): PressShape {
     if (!this.contextsState.has(action.id)) return { kind: "none" };
 
-    return touchPressShape({
+    return touchGestureShape({
       tapGesture: settings.dial.tapAction,
       longTouchGesture: settings.dial.longTouchAction,
       hold,
