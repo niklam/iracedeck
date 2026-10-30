@@ -12,4 +12,4 @@ The TypeScript layer over the native iRacing SDK (`@iracedeck/iracing-native`). 
 
 ## Readers
 
-`@iracedeck/sim-events-iracing` is the bus's only translator, but not the only reader: actions read the controller directly through `deck-iracing`'s `SimIRacingAction`, and part of the `audio-scenarios` catalog reads raw telemetry through the translator's `getLatestTelemetry()`. For the live race order use the translator's `getLiveRacePositions` / `getLivePosition`, not this package's position utilities directly (`.claude/rules/race-positions.md`).
+`@iracedeck/sim-events-iracing` is the bus's only translator, but not the only reader: actions read the controller directly through `deck-iracing`'s `SimIRacingAction`, and part of the `audio-scenarios` catalog reads raw telemetry through the translator's `getLatestTelemetry()`, handed to it as a dependency by `race-engineer-wiring` (#1378), and calls this package's telemetry helpers on it. For the live race order use the translator's `getLiveRacePositions` / `getLivePosition`, not this package's position utilities directly (`.claude/rules/race-positions.md`).

@@ -33,6 +33,7 @@ The two largest phases are themselves short sequences of named steps (#1377), on
 
 ## Rules
 
+- `initSim` starts the translator with `race-engineer-wiring`'s `createIracingTranslatorOptions()` and returns its `createIracingSimRuntime()` (#1378). The six settings-backed translator options are built there, beside the runtime, so the scenario harness passes the same ones; that is why this package no longer depends on `callout-settings`.
 - Raw TypeScript, no build: each plugin's Rollup compiles `src/` (the `typescript` include and `.js`→`.ts` resolver of the shared config in `@iracedeck/plugin-build` name this package), and `@rollup/plugin-replace` substitutes the `__FEATURE_*__` constants here as in `iracing-actions`. `platform-features.d.ts` and `svg.d.ts` declare them for this package's own program.
 - `src/actions.ts` is the only importer of `@iracedeck/iracing-actions`: the shared action list and the plugin-level hooks. A new action goes in `SHARED_ACTIONS` (or a host extension's `extraActions`) and every manifest; `src/actions.test.ts` fails until they match.
 - Host differences arrive through `IDeckPlatformAdapter` (`setLogLevel`, `logLocation`, `openUrl`, `onOpenSettingsRequest`) or the optional `PluginExtension`. Test for the extension's presence, never for a host name.
