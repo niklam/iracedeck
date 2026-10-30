@@ -1,2 +1,2 @@
 node scripts/check-staged-spec-bytes.mjs
-pnpm exec lint-staged
+node scripts/format-staged.mjs
