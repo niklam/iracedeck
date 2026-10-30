@@ -91,6 +91,21 @@ export function stopHost(host, { appPath, spawnSync, log = console } = {}) {
 /**
  * Launches the host detached, after reporting which plugin build it will load.
  *
+ * @returns {Promise<number>}
+ */
+export function startHost(
+  host,
+  { appPath, spawn, env = process.env, platform = process.platform, log = console } = {},
+) {
+  describeLinkTarget(host, { env, platform, log });
+
+  return launchApp(appPath, { spawn, log });
+}
+
+/**
+ * Launches an executable detached. Shared with `build-restart.mjs`, which
+ * restarts Stream Deck the same way (#1523).
+ *
  * Success is reported from the `spawn` event, not before it: `spawn()` reports
  * ENOENT asynchronously, so printing "Started ..." eagerly puts a success line
  * above the error in the one-liner's output, which is the line a developer skims.
@@ -100,16 +115,16 @@ export function stopHost(host, { appPath, spawnSync, log = console } = {}) {
  * the inherited nCmdShow then comes up invisible while still running, and the
  * next start is refused as a second instance.
  *
- * @returns {Promise<number>}
+ * `cwd` is the executable's own folder. Inherited, it would be the checkout the
+ * command ran in, and Windows will not delete a folder that is a running
+ * process's current directory: `git worktree remove` would then fail for as
+ * long as the host runs.
+ *
+ * @returns {Promise<number>} 0 once the process has spawned, 1 when it could not.
  */
-export function startHost(
-  host,
-  { appPath, spawn, env = process.env, platform = process.platform, log = console } = {},
-) {
-  describeLinkTarget(host, { env, platform, log });
-
+export function launchApp(appPath, { spawn, log = console } = {}) {
   return new Promise((resolve) => {
-    const child = spawn(appPath, [], { detached: true, stdio: "ignore" });
+    const child = spawn(appPath, [], { cwd: win32.dirname(appPath), detached: true, stdio: "ignore" });
 
     child.on("error", (error) => {
       log.error(`Error: could not start ${appPath}\n  ${error.message}`);
