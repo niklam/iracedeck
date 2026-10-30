@@ -9,6 +9,7 @@ import {
   generatorReport,
   generatorsFor,
   isHomeRepo,
+  issueCreateRepos,
   JUST_CREATED_MS,
   mergeRepo,
   missingWorkflows,
@@ -213,6 +214,23 @@ describe("post rules", () => {
         ),
       ).toBe("a/b");
       expect(assignedGhRepo(`echo "GH_REPO=x/y"`, `echo "__________"`)).toBeUndefined();
+    });
+
+    it("reads the repository each gh issue create names", () => {
+      expect(issueCreateRepos("gh issue create -R a/b --title x")).toEqual(["a/b"]);
+      expect(issueCreateRepos("gh issue create --repo=git@github.com:a/b.git")).toEqual(["a/b"]);
+      expect(issueCreateRepos("gh issue create -Ra/b --web")).toEqual(["a/b"]);
+      expect(issueCreateRepos("GH_REPO=a/b gh issue create --web")).toEqual(["a/b"]);
+      // The flag beats the environment; an unexported or another command's assignment does not reach it.
+      expect(issueCreateRepos("GH_REPO=c/d gh issue create -R a/b")).toEqual(["a/b"]);
+      expect(issueCreateRepos("GH_REPO=c/d; gh issue create --web")).toEqual([undefined]);
+      expect(issueCreateRepos("gh issue create -R $R")).toEqual([null]);
+      expect(issueCreateRepos("gh issue create --title x")).toEqual([undefined]);
+      expect(issueCreateRepos("gh issue create -R a/b --web && gh issue create --web")).toEqual(["a/b", undefined]);
+      // The masked twin hides a flag inside a quoted body.
+      const raw = `gh issue create --body "-R x/y" --web`;
+      expect(issueCreateRepos(raw, `gh issue create --body "______" --web`)).toEqual([undefined]);
+      expect(issueCreateRepos("echo nothing")).toEqual([]);
     });
 
     it("picks a merge's repository in gh's order: URL, flag, environment", () => {

@@ -31,6 +31,7 @@ import {
   createdIssues,
   HOME_REPO,
   isHomeRepo,
+  issueCreateRepos,
   mergeRepo,
   missingWorkflows,
   pickCreated,
@@ -41,6 +42,7 @@ import {
 // does not know matched no segment, and `gitCwd` then walked every `cd` in the
 // chain, those after the merge included.
 const GH_PR_MERGE = /\bgh\s+pr\s+merge\b/;
+const GH_ISSUE_CREATE = /\bgh\s+issue\s+create\b/;
 
 const input = await readInput();
 const raw = input.tool_input?.command;
@@ -68,7 +70,9 @@ if (typeof raw === "string") {
       notes.push(
         "gh pr merge ran, but its PR argument could not be read; check by hand whether it merged, and move its Roadmap card to Testing.",
       );
-    if (/\bgh\s+issue\s+create\b/.test(text)) notes.push(...afterIssueCreate(stdout, cwd));
+    const creates = issueCreateRepos(command, text);
+    if (creates.length)
+      notes.push(...afterIssueCreate(stdout, creates, gitCwd(command, cwd, GH_ISSUE_CREATE, shell), cwd));
     const target = worktreeAddTarget(command);
     if (target) notes.push(...afterWorktreeAdd(command, target, cwd, shell));
   } catch (e) {
@@ -160,11 +164,37 @@ function afterMerge(merge, command, cwd, shell) {
  * chain's output can carry other issues' URLs, a comment's, an edit's or a
  * view's, while a create may print none (#1527). Another repository's issue is
  * only reported as left alone, so it needs no age.
+ *
+ * `targets` is the repository each create named (`issueCreateRepos`); one that
+ * named none used the repository of the directory it ran in (`dir`), which is
+ * asked of gh only when the reminder below depends on it. The hand-move
+ * reminder for a create that printed no new iRaceDeck issue goes out unless
+ * every create was in another repository, so a foreign `--web` create is never
+ * sent to this board, and a home one is never lost behind a foreign URL.
  */
-function afterIssueCreate(stdout, cwd) {
+function afterIssueCreate(stdout, targets, dir, cwd) {
+  let resolved;
+  const homeCreate = () => {
+    if (!resolved) {
+      let checkoutRepo;
+      resolved = targets.map((t) =>
+        t !== undefined
+          ? t
+          : (checkoutRepo ??= ghJson(["repo", "view", "--json", "nameWithOwner"], dir)?.nameWithOwner ?? null),
+      );
+    }
+    // An unreadable or unresolvable repository may be home.
+    return resolved.some((t) => t == null || isHomeRepo(t));
+  };
+  const leftAlone = () =>
+    `gh issue create ran in ${[...new Set(resolved.filter((t) => t != null))].join(", ")}, not ${HOME_REPO}: the Roadmap board is left alone.`;
   const found = createdIssues(stdout);
   if (!found.length)
-    return ["gh issue create: no issue URL in the output; add the card to the Roadmap board by hand (Backlog)."];
+    return [
+      homeCreate()
+        ? "gh issue create: no issue URL in the output; add the card to the Roadmap board by hand (Backlog)."
+        : leftAlone(),
+    ];
   const out = found
     .filter((issue) => !isHomeRepo(issue.repo))
     .map((issue) => `Filed ${issue.url} in ${issue.repo}, not ${HOME_REPO}: the Roadmap board is left alone.`);
@@ -180,10 +210,15 @@ function afterIssueCreate(stdout, cwd) {
     out.push(
       `gh issue create: could not tell whether ${unsure.map((i) => i.url).join(", ")} ${unsure.length > 1 ? "were" : "was"} just filed; add any that was to the Roadmap board by hand (Backlog).`,
     );
-  if (!out.length)
-    out.push(
-      "gh issue create: no issue in the output was just created; add the card to the Roadmap board by hand (Backlog).",
-    );
+  // A home create that printed no new iRaceDeck issue still needs its card,
+  // whatever foreign URLs sit beside it in the output.
+  if (!picked.length && !unsure.length) {
+    if (homeCreate())
+      out.push(
+        "gh issue create: no issue in the output was just created; add the card to the Roadmap board by hand (Backlog).",
+      );
+    else if (!out.length) out.push(leftAlone());
+  }
   return out;
 }
 

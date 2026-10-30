@@ -196,25 +196,23 @@ export function assignedGhRepo(command, masked = command) {
   );
   if (!assignments.length) return undefined;
   const last = assignments.at(-1);
+  return plainValueAt(raw, last.index + last[0].length);
+}
+
+/** The plain value starting at `at` in `raw` — a bare word or a quote that expands nothing — or `null`. */
+function plainValueAt(raw, at) {
   const value = /'([^']*)'|"([^"$`\\]*)"|([^\s;&|()'"`$]+)/y;
-  value.lastIndex = last.index + last[0].length;
+  value.lastIndex = at;
   const m = value.exec(raw);
   return m ? (m[1] ?? m[2] ?? m[3]) : null;
 }
 
 /**
- * The repository a `gh pr merge` names, in gh's order: a PR URL, then
- * `--repo` / `-R` (`merge.repo` from `parseMerge`), then a `GH_REPO` the
- * command assigns. `[HOST/]OWNER/REPO` is read as gh reads it — a URL or an
- * ssh remote (`git@github.com:o/r.git`) included — so a host other than
- * github.com is kept and can never be home. `null` when one is named but not
- * readable; `undefined` when none is, and gh resolves the checkout's own.
+ * `owner/repo` for a repository named the way gh takes one:
+ * `[HOST/]OWNER/REPO`, a URL or an ssh remote (`git@github.com:o/r.git`). A
+ * host other than github.com is kept, so it can never be home.
  */
-export function mergeRepo(merge, envRepo) {
-  const fromUrl = repoOfUrl(merge.ref);
-  if (fromUrl) return fromUrl;
-  const named = merge.repo !== undefined ? merge.repo : envRepo;
-  if (named == null) return named;
+export function normalizeRepo(named) {
   const parts = named
     .replace(/^[a-z][a-z0-9+.-]*:\/\//i, "")
     .replace(/^[^@/]+@/, "")
@@ -223,6 +221,43 @@ export function mergeRepo(merge, envRepo) {
     .replace(/\/+$/, "")
     .split("/");
   return parts.length === 3 && parts[0].toLowerCase() === "github.com" ? `${parts[1]}/${parts[2]}` : parts.join("/");
+}
+
+/**
+ * The repository a `gh pr merge` names, in gh's order: a PR URL, then
+ * `--repo` / `-R` (`merge.repo` from `parseMerge`), then a `GH_REPO` the
+ * command assigns ({@link normalizeRepo}). `null` when one is named but not
+ * readable; `undefined` when none is, and gh resolves the checkout's own.
+ */
+export function mergeRepo(merge, envRepo) {
+  const fromUrl = repoOfUrl(merge.ref);
+  if (fromUrl) return fromUrl;
+  const named = merge.repo !== undefined ? merge.repo : envRepo;
+  return named == null ? named : normalizeRepo(named);
+}
+
+/**
+ * The repository each `gh issue create` in a command targets, in order: its
+ * own `--repo` / `-R`, else a `GH_REPO` that reaches it ({@link assignedGhRepo}),
+ * normalised ({@link normalizeRepo}). `null` when one is named but not
+ * readable; `undefined` when none is, and gh uses the checkout's own. Read in
+ * the masked text (`trustedMask`, same length) so a flag inside a quoted body is
+ * not the create's; values are read from the raw text. A create that prints no
+ * URL (`--web`) is judged by this alone (#1527).
+ */
+export function issueCreateRepos(command, masked = command) {
+  const raw = String(command ?? "");
+  const text = String(masked ?? "");
+  return [...text.matchAll(/\bgh\s+issue\s+create\b/g)].map((m) => {
+    const start = m.index + m[0].length;
+    const stop = text.slice(start).search(/[;&|\n)]/);
+    const end = stop < 0 ? text.length : start + stop;
+    const flags = [...text.slice(start, end).matchAll(/(?:^|\s)(?:-R|--repo)(?:=|\s+)?(?=\S)/g)];
+    const named = flags.length
+      ? plainValueAt(raw, start + flags.at(-1).index + flags.at(-1)[0].length)
+      : assignedGhRepo(raw.slice(0, m.index), text.slice(0, m.index));
+    return named == null ? named : normalizeRepo(named);
+  });
 }
 
 /**

@@ -220,9 +220,14 @@ describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", () => {
   it("leaves the board alone for an issue filed in another repository", () => {
     for (const command of [
       "gh issue create -R lint-staged/lint-staged --title x --body y",
-      "gh issue create --title x --body y", // gh resolved another checkout's repository
+      "gh issue create --repo=git@github.com:lint-staged/lint-staged.git --title x --body y",
+      "GH_REPO=lint-staged/lint-staged gh issue create --title x --body y",
     ]) {
-      const note = fire(command, { stdout: `Creating issue in lint-staged/lint-staged\n\n${FOREIGN}\n` });
+      // withoutGh: a create that names its repository needs no gh read.
+      const note = fire(command, {
+        stdout: `Creating issue in lint-staged/lint-staged\n\n${FOREIGN}\n`,
+        withoutGh: true,
+      });
       expect(note, command).toBe(
         `[hook] Filed ${FOREIGN} in lint-staged/lint-staged, not niklam/iracedeck: the Roadmap board is left alone.`,
       );
@@ -230,8 +235,20 @@ describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", () => {
     const ps = fire("gh issue create -R lint-staged/lint-staged --title x --body y", {
       stdout: FOREIGN,
       tool: "PowerShell",
+      withoutGh: true,
     });
     expect(ps).toMatch(/left alone/);
+  });
+
+  // CodeRabbit on #1535: a create that prints no URL was always sent to this board by hand.
+  it("sends a foreign create that printed no URL nowhere, and a home one to the board by hand", () => {
+    expect(fire("gh issue create -R lint-staged/lint-staged --web", { withoutGh: true })).toBe(
+      "[hook] gh issue create ran in lint-staged/lint-staged, not niklam/iracedeck: the Roadmap board is left alone.",
+    );
+    for (const command of ["gh issue create -R niklam/iracedeck --web", `gh issue create -R "$R" --web`])
+      expect(fire(command, { withoutGh: true }), command).toBe(
+        "[hook] gh issue create: no issue URL in the output; add the card to the Roadmap board by hand (Backlog).",
+      );
   });
 
   it("reads a merge in another repository from its arguments, before asking gh anything", () => {
@@ -433,6 +450,37 @@ describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", () => {
         { stdout: `${home(1534)}\n${home(1535)}\n` },
       );
       expect(filed(two.note)).toEqual([home(1534), home(1535)]);
+    });
+
+    // CodeRabbit on #1535: whether a create that named no repository was home
+    // is the checkout's repository, asked of gh only when the reminder needs it.
+    it("judges a create that named no repository by the checkout it ran in", () => {
+      const foreign = "https://github.com/lint-staged/lint-staged/issues/1865";
+      const checkout = (nameWithOwner) => ({ "repo view": { nameWithOwner } });
+      // A foreign view's URL beside a home `--web` create: the home card still needs a hand.
+      const homeWeb = fireWithGh(
+        "gh issue view 1865 -R lint-staged/lint-staged --json url --jq .url && gh issue create --web",
+        checkout("niklam/iracedeck"),
+        { stdout: `${foreign}\n` },
+      );
+      expect(homeWeb.note).toBe(
+        `[hook] Filed ${foreign} in lint-staged/lint-staged, not niklam/iracedeck: the Roadmap board is left alone.\n` +
+          "[hook] gh issue create: no issue in the output was just created; add the card to the Roadmap board by hand (Backlog).",
+      );
+      // The same output from a create run in a lint-staged checkout: no hand move.
+      const elsewhere = fireWithGh("gh issue create --title x --body y", checkout("lint-staged/lint-staged"), {
+        stdout: `${foreign}\n`,
+      });
+      expect(elsewhere.note).toBe(
+        `[hook] Filed ${foreign} in lint-staged/lint-staged, not niklam/iracedeck: the Roadmap board is left alone.`,
+      );
+      // A filed home issue settles it without asking.
+      const filedHome = fireWithGh(
+        "gh issue create --title x --body y",
+        { ...created(1534, justNow()), "api graphql": boardItem(null) },
+        { stdout: `${home(1534)}\n` },
+      );
+      expect(filedHome.calls.some((c) => c.args[0] === "repo")).toBe(false);
     });
 
     it("names the candidates rather than guess when it cannot read their ages", () => {
