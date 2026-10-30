@@ -71,6 +71,7 @@ There is no single place. Four mechanisms decide a long press, each owned by the
 | The seven setup actions | key, View sub-mode, dual-press off | `none` (the key is read-only and ignores the press, `setup-aero.ts:300-306`) |
 | Car Control | key and dial, Starter, Headlight Flash, Handbrake, Second Clutch, Enter/Exit/Tow and Escape without auto-hold | `hold` at the dual-press threshold |
 | Car Control | Enter/Exit/Tow and Escape with auto-hold | `tap` (the timer, not the finger, ends the hold) |
+| Setup Hybrid (Boost, Regen); Splits & Reference (Active Reset Run) | key | `hold` at the dual-press threshold (press on down, release on up, like Car Control's hold controls) |
 | Car Control | Wipers and Visor | `release` on a wiper car, `tap` on a visor car, `none` on a car with neither |
 | Audio Controls | Push to Talk, key and dial | `none`: a click as the microphone opens is the sound most likely to be transmitted (#1455) |
 | Audio Controls, AI Spotter Controls, the Pit Crew key's Radar Volume mode | every volume step | `none`: #1455's tick is the press sound |
