@@ -32,7 +32,7 @@ A **deny** refuses the call and tells the model why. An **ask** forces the permi
 | `git commit` that would record the Elgato `manifest.json` with a `Debug` key in its `Nodejs` block | deny, naming `pnpm debug:plugin off` | the local inspector switch never ships (#1338) |
 | `git worktree add` anywhere but a sibling of the main checkout (inside it, or nested in another worktree), not named `ir-<issue>` or `ir-integration`, or from a stale `origin/master` | deny | sibling worktrees; verify the base commit |
 | `git worktree remove` while a deck host's plugin link points into that tree | deny | never relink on your own — leave the link and the tree, and tell the maintainer |
-| a restart, relink, watch, host stop/start script, or `integration-build.mjs`; a build, install or clean (pnpm, npm, turbo) in a deck-linked tree; a script by what it runs | ask | nothing touches a linked tree without Niklas's go (#1520) |
+| a restart, relink, root watch, host stop/start script, or `integration-build.mjs --restart`; `dev:voices` in a deck-linked tree (it relinks); a script by what it runs | ask | nothing restarts or relinks a deck host without Niklas's go (#1520); a build, install or clean passes in any tree, a linked one included (#1526) |
 | `gh issue create --milestone/--assignee` | deny | both are set when implementation starts |
 | `updateProjectV2Field` | deny | rewriting the Status options wipes every card's lane |
 | `--fix` on a code-review invocation | deny | report only |
