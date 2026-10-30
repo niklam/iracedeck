@@ -6,13 +6,13 @@
 
 ## The decision
 
-One global setting, **Press sound**, plays a dry click when a press acts as a tap and a two-note bleep when a hold passes the long-press threshold. Both are deck feedback, not Race Engineer callouts.
+One global setting, **Press sound**, plays a single bleep when a press acts as a tap and a two-note bleep when a hold passes the long-press threshold. Both are deck feedback, not Race Engineer callouts.
 
 - **The setting.** `pressSound`, one of `none` (default), `taps`, `long-press`, `both`, in `GlobalSettingsSchema`. It lives on the settings window's General tab in a new **Press Sounds** card beside Dual-Press. No per-action override in this issue (below).
 - **Where it is decided.** One wrapper around every registered action handler, applied once in `plugin-runtime`'s `registerActions`, owns the timing and plays the sounds. An action says only what shape its press has (`keyPressShape`, `dialPressShape`, `touchPressShape`), synchronously, at the down event; an action that says nothing gets a click on key down. No action plays a sound itself.
 - **When the click plays.** At the moment the tap's outcome is decided: on key down for a key that acts on down, and on release, once the release is known to be short, for a key or dial whose long press does something else. A long press never clicks.
 - **When the bleep plays.** Once, at the long-press threshold, on a press whose long outcome does something: dual-press keys, the Car Control hold controls, and Stream Deck+ dials whose long-press gesture is not `none`. It is armed with the same threshold the action classifies with, so on a dial with a hold preview (#1120) it lands on the same tick the preview draws.
-- **The sounds.** Two new clips, `packages/audio-assets/sfx/IRD-press-tap.wav` (a 12 ms unpitched click) and `IRD-press-long.wav` (two equal 2.35 kHz notes, 110 ms), specified below so candidates can be rendered and picked by ear.
+- **The sounds.** Two new clips, `packages/audio-assets/sfx/IRD-press-tap.wav` (one 40 ms 2.35 kHz note) and `IRD-press-long.wav` (two equal 2.35 kHz notes, 110 ms), specified below and picked by ear. Elsewhere in this spec "click" names the tap sound, which began as an unpitched click and became a single bleep on Niklas's pick (2026-10-30); the timing it describes is unchanged.
 - **Channel and level.** `AudioChannel.Feedback`, the bus-less channel #1455 added for the volume step tick, played at the Radar Volume level with the tick's floor. A volume step plays #1455's tick in place of the click, as that spec anticipated.
 - **Only while the sim is connected**, and a non-`none` setting becomes a third gate of the #1347 session hold, so a press in a session never waits for a device start.
 
@@ -86,7 +86,7 @@ Dial surfaces build their shape through one helper beside `classifyDialReleaseFo
 
 Both are mono, 48 kHz, 16-bit PCM WAV with no metadata chunks, at the `sfx/` root beside the speeding and volume ticks. WAV, not MP3, for #1455's reason: an MP3 frame's encoder delay is as long as the click. `sfx/` is copied into the plugins unchanged (`audio-assets` `CLAUDE.md`) and the manifest generator walks `.mp3` only, so nothing else ships them.
 
-**`IRD-press-tap.wav`, the click.** 12 ms (576 samples). White noise from a fixed-seed PRNG (mulberry32, seed 269, so a candidate can be re-rendered), through one RBJ band-pass biquad centred at 3.5 kHz with Q 1.0. Envelope: 0.3 ms linear attack, exponential decay with τ = 2 ms, multiplied by a 2 ms raised-cosine fade reaching exactly zero at the last sample. Peak normalised to −10 dBFS. Unpitched on purpose: every other cue the plugin plays is a tone, so the click is told apart by timbre rather than by a pitch the driver has to remember.
+**`IRD-press-tap.wav`, the tap bleep.** 40 ms (1920 samples): one note of a 2350 Hz sine plus its third harmonic at −20 dB, with a 4 ms raised-cosine attack and a 6 ms raised-cosine release, peak normalised to −14 dBFS. It is the long-press bleep's first note sample for sample, so the two sounds share pitch, timbre and level and differ only in count: one note confirms a tap, two say the long-press threshold has passed. Picked by Niklas on 2026-10-30 over a 12 ms unpitched click (rendered with centres at 2.5, 3.5 and 5 kHz) and over a −4 dBFS level.
 
 **`IRD-press-long.wav`, the bleep.** 110 ms (5280 samples): note, gap, note. Each note is 40 ms of a 2350 Hz sine (about D7, picked by Niklas by ear on 2026-10-30 over the nominal 2794 Hz F7 and 3140 Hz) plus its third harmonic at −20 dB, with a 4 ms raised-cosine attack and a 6 ms raised-cosine release; the gap is 30 ms of digital silence. Peak normalised to −14 dBFS, lower than the click because a sustained tone in the 2–4 kHz band reads louder than a transient at the same peak. "Higher two-note" is read as two notes at one pitch, higher than every existing cue: a rising pair is #1161's "limit off, go" and a falling pair #1272's "limiter on", and #1455 kept its tick to one note for the same reason. 2.35 kHz is still above the pit-speed tone (about 2.1 kHz) and inside the band where hearing is most sensitive, so it cuts through engine noise at a low level, and 110 ms is short enough to land inside a Race Engineer or spotter sentence without taking a syllable.
 
@@ -94,13 +94,13 @@ Both are mono, 48 kHz, 16-bit PCM WAV with no metadata chunks, at the `sfx/` roo
 
 | Cue | What it is | How the press sounds differ |
 | --- | --- | --- |
-| `IRD-tick-open` / `-close` | radio framing, about 290 ms, near full scale | the click is 12 ms and 10 dB down; the bleep is tonal |
+| `IRD-tick-open` / `-close` | radio framing, about 290 ms, near full scale | both press sounds are short tones, the tap 40 ms, well below their level |
 | `IRD-pit-speed-warning.wav` (#912) | one 160 ms tone near 2.1 kHz, repeating every 300 ms | the bleep is higher, shorter, and a double that never repeats |
-| `IRD-volume-up` / `-down.wav` (#1455) | 34 ms tones near 1.56 and 1.03 kHz | the click is unpitched and a third of the length |
+| `IRD-volume-up` / `-down.wav` (#1455) | 34 ms tones near 1.56 and 1.03 kHz | the press sounds are higher (2.35 kHz), and the tap's single note is told from a volume tick by pitch |
 | `sfx/radar/` | directional proximity tones | neither is panned |
 | #1161 exit chirp, #1272 limiter beep (specified, not built) | rising and falling two-note | the bleep's two notes are equal |
 
-**How they are produced.** As #912 and #1455 did: the plan renders a small candidate set with a throwaway script (the click's centre at 2.5, 3.5 and 5 kHz × τ 1.5 and 2.5 ms; the bleep at 2.35, 2.79 and 3.14 kHz), Niklas picks by ear, and the two picked files are committed with their gain baked in. `scripts/compare-loudness.mjs` checks the pick against the volume tick so all deck feedback sits at one loudness. The clip constants (`PRESS_SOUND_CLIPS` in `iracing-actions/src/audio/press-sounds.ts`) carry the provenance note #912 put on its constant: generated for this feature, so no third-party licence and no `THIRD-PARTY-LICENSES.md` entry. Rejected: committing the generator. Nothing regenerates a picked tone, and a script that has to stay green to reproduce a choice made by ear is upkeep with no reader.
+**How they are produced.** As #912 and #1455 did: the plan renders a small candidate set with a throwaway script (round 1: the click's centre at 2.5, 3.5 and 5 kHz × τ 1.5, 2 and 2.5 ms, and the bleep at 2.35, 2.79 and 3.14 kHz; round 2, after Niklas chose bleeps for both: a single and a double bleep at 2350 and 2794 Hz, at −4 dBFS against the −14 dBFS double), Niklas picks by ear, and the two picked files are committed with their gain baked in. `scripts/compare-loudness.mjs` checks the pick against the volume tick so all deck feedback sits at one loudness. The clip constants (`PRESS_SOUND_CLIPS` in `iracing-actions/src/audio/press-sounds.ts`) carry the provenance note #912 put on its constant: generated for this feature, so no third-party licence and no `THIRD-PARTY-LICENSES.md` entry. Rejected: committing the generator. Nothing regenerates a picked tone, and a script that has to stay green to reproduce a choice made by ear is upkeep with no reader.
 
 ## Channel and volume
 
