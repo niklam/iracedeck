@@ -4466,5 +4466,31 @@ describe("FuelService dial surface", () => {
         expect(bank(telemetry)).toBe(5);
       });
     });
+
+    it("a Mode switch from Add Amount re-checks a bank short of the new need, even on the same whole-unit key", async () => {
+      // 30 L in the tank, fueling on, a gallon car with nothing requested yet.
+      const telemetry = bankOnGrid(gallonGrid, { PitSvFuel: 0, FuelLevel: 30, PitSvFlags: FUEL_FILL });
+      const addSettings = { dialMode: "add-amount", stepSize: 8, unitMode: "liters" };
+      const ctx = dialContext("ms1");
+      await appear(ctx, addSettings);
+
+      // Add Amount 8 L banks 2 gal (7.57 L) and records the whole-unit key 8.
+      await action.onDialRotate(rotateEvent(ctx, addSettings, 1) as never);
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      expect(bank(telemetry)).toBeCloseTo(2 * GALLON, 2);
+
+      // The PI switches to Target Amount: the target re-seeds to round(30 + 7.57)
+      // = 38 L, so the need is 8 L — the same key 8 — and the 7.57 L bank is short.
+      const targetSettings = { ...addSettings, dialMode: "fill-to" };
+      await action.onDidReceiveSettings(basicEvent(ctx, targetSettings) as never);
+      mockPitFuel.mockClear();
+
+      getTelemetryCallback(action)(telemetry);
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      expect(sent()[0]).toBe(8);
+      expect(bank(telemetry)).toBeGreaterThanOrEqual(8);
+    });
   });
 });

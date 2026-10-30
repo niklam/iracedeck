@@ -1072,8 +1072,7 @@ export class FuelDialSurface {
     // TOTAL below the fuel in the tank, so the request cleared and every detent
     // moved a target still under the tank level, as if the choice were ignored.
     if (settings.dial.mode !== previousMode) {
-      ctx.checkedFloorLtr = null;
-      ctx.unreachableBankLtr = null;
+      this.clearModeBaselines(ctx);
       this.seedFromTelemetry(ctx, true);
     }
 
@@ -1085,6 +1084,22 @@ export class FuelDialSurface {
 
     await this.applyTriggerDescription(ctx);
     await this.renderFeedback(ctx);
+  }
+
+  /**
+   * Forgets what the previous mode sent, before a Mode change re-seeds the dial
+   * (#1483). Each baseline describes a request of the OLD mode: the floor and
+   * the unreachable bank of a Target Amount request, and the whole-unit key and
+   * the rotate throttle's no-op value, which Add Amount records too. Left in
+   * place, a new Target Amount need that lands on the same key would read as
+   * already evaluated, and a bank short of it would not be re-sent until the
+   * need moved a whole unit.
+   */
+  private clearModeBaselines(ctx: FuelDialContext): void {
+    ctx.checkedFloorLtr = null;
+    ctx.unreachableBankLtr = null;
+    ctx.lastSentWholeAdd = null;
+    ctx.throttle.lastSentLtr = null;
   }
 
   async rotate(
@@ -1309,10 +1324,7 @@ export class FuelDialSurface {
       // landing while the write is in flight flips back rather than repeating
       // this one (#957).
       ctx.settings = { ...ctx.settings, dial: { ...ctx.settings.dial, mode: next } };
-      // A floor recorded by an earlier Target Amount request no longer describes
-      // the dial: the re-seed below sets a new target from the live bank.
-      ctx.checkedFloorLtr = null;
-      ctx.unreachableBankLtr = null;
+      this.clearModeBaselines(ctx);
       await persistDialPatch(ctx.action, rawSettings, { mode: next }, this.host.logger, "mode switch");
       this.seedFromTelemetry(ctx, true);
       await this.applyTriggerDescription(ctx);
