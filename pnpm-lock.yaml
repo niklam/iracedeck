@@ -1263,9 +1263,15 @@ importers:
       '@iracedeck/audio-scenarios':
         specifier: workspace:*
         version: link:../audio-scenarios
+      '@iracedeck/callout-settings':
+        specifier: workspace:*
+        version: link:../callout-settings
       '@iracedeck/event-bus':
         specifier: workspace:*
         version: link:../event-bus
+      '@iracedeck/iracing-sdk':
+        specifier: workspace:*
+        version: link:../iracing-sdk
       '@iracedeck/logger':
         specifier: workspace:*
         version: link:../logger

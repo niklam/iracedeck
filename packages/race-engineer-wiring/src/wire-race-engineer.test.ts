@@ -49,7 +49,7 @@ describe("wireRaceEngineer", () => {
 
     expect(vi.mocked(registerPitCrew)).toHaveBeenCalledExactlyOnceWith(bus, passed);
     expect(passed.getQualifyingInvalidationSnapshot).toBe(getQualifyingInvalidationSnapshot);
-    expect(Object.keys(passed)).toHaveLength(30);
+    expect(Object.keys(passed)).toHaveLength(34);
   });
 
   it("drops an override whose value is undefined rather than erasing the built dependency", () => {
