@@ -448,8 +448,9 @@ export class SetupHybrid extends SimIRacingAction<SetupHybridSettings> {
    * The press shape of a key press (#269), from the same branches `onKeyDown`
    * takes: a `HOLD_CONTROLS` key (Boost, Regen) presses its binding on down
    * and releases it on up, so it is `hold` at the dual-press threshold (Car
-   * Control's rule for a finger-held control) — or `none` when no binding
-   * resolves, since `onKeyDown` then does nothing; a View key's comes from its
+   * Control's rule for a finger-held control) — or `none` when the key has no
+   * global-key mapping, since `onKeyDown` then does nothing (unreachable for
+   * Boost and Regen today, which are always mapped); a View key's comes from its
    * dual-press state (`setupKeyPressShape`), and every other key is a tap.
    */
   keyPressShape(ev: IDeckKeyDownEvent<SetupHybridSettings>): PressShape {
