@@ -2167,10 +2167,14 @@ const SCRIPT_SELECTOR = /^\/(.+)\/$/;
  * matches in the run's manifests ({@link runManifests}) becomes a run of its
  * own, judged by name and by what it runs. A pattern the hook cannot read — not
  * a valid regex, or no manifest to match it against — is a finding in itself,
- * pushed onto `found`, since it may select a restart. Any other run is itself.
+ * pushed onto `found`, since it may select a restart. The selector is also
+ * judged as the literal script name it spells, whichever pnpm would prefer
+ * when a manifest defines one, so a script named `/^build$/` cannot hide
+ * behind the harmless `build` it matches. Any other run is itself.
  */
 function selectedRuns(run, ctx, found) {
   if (!run.selector) return [run];
+  const literal = { ...run, selector: false };
   let re;
   try {
     re = new RegExp(run.script.match(SCRIPT_SELECTOR)[1]);
@@ -2180,10 +2184,13 @@ function selectedRuns(run, ctx, found) {
   const manifests = re && ctx.scriptsAt ? runManifests(run, ctx).filter(Boolean) : [];
   if (!manifests.length) {
     found.push(`\`${run.label}\` runs every script its pattern matches, which could not be read`);
-    return [];
+    return [literal];
   }
   const names = [...new Set(manifests.flatMap((m) => Object.keys(m.scripts ?? {})))].filter((n) => re.test(n));
-  return names.map((name) => ({ ...run, script: name, label: `pnpm ${name} (${run.script})`, selector: false }));
+  return [
+    literal,
+    ...names.map((name) => ({ ...run, script: name, label: `pnpm ${name} (${run.script})`, selector: false })),
+  ];
 }
 
 /**

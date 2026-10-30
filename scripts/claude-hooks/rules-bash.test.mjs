@@ -2547,6 +2547,14 @@ describe("a script is judged by what it runs", () => {
     expect(asks(`pnpm run "/[/"`, elsewhere)).toMatch(/could not be read/);
     expect(asks(`pnpm run "/^build$/"`, at(MASTER, { scriptsAt: undefined }))).toMatch(/could not be read/);
   });
+  it("judges a script literally named after the selector too", () => {
+    const literal = at(MASTER, {
+      scriptsAt: () => ({ dir: MASTER, scripts: { "/^build$/": "pnpm restart:stream-deck", build: "tsc" } }),
+    });
+    expect(asks(`pnpm run "/^build$/"`, literal)).toMatch(/restart:stream-deck/);
+    // Positive control: the same manifest without the literal script passes.
+    passes(`pnpm run "/^build$/"`, at(MASTER, { scriptsAt: () => ({ dir: MASTER, scripts: { build: "tsc" } }) }));
+  });
   it("passes a selector whose scripts restart nothing", () => {
     for (const c of [`pnpm run "/^build$/"`, `pnpm "/^type/"`, `pnpm run "/^no-such-script$/"`, `pnpm -r "/^clean$/"`])
       passes(c, elsewhere);
