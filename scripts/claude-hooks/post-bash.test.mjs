@@ -391,6 +391,53 @@ describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", () => {
       expect(note).toMatch(/^\[hook\] board \(dry run\): would move #1321 Backlog → In progress\./);
     });
 
+    // #1527, found by the PO: a chain's output carried a comment's URL first,
+    // and the hook filed the commented issue rather than the created one.
+    it("files the issue a chained create printed, not one a comment or an edit printed", () => {
+      const home = (n, tail = "") => `https://github.com/niklam/iracedeck/issues/${n}${tail}`;
+      const ageReply = (created) => ({ created_at: new Date(created).toISOString() });
+      const filed = (note) => [...note.matchAll(/Added (\S+) to the Roadmap board/g)].map((m) => m[1]);
+
+      const comment = fireWithGh(
+        "gh issue comment 1483 --body x && gh issue create --title y --body z",
+        { "api graphql": boardItem(null) },
+        { stdout: `${home(1483, "#issuecomment-4242")}\n${home(1534)}\n` },
+      );
+      expect(filed(comment.note)).toEqual([home(1534)]);
+      expect(comment.calls.some((c) => c.args.some((a) => a.includes("1483")))).toBe(false);
+
+      // An edit prints a bare URL too: GitHub's creation time tells them apart.
+      const edit = fireWithGh(
+        "gh issue edit 1483 --add-label x && gh issue create --title y --body z",
+        {
+          "api repos/niklam/iracedeck/issues/1483": ageReply("2026-09-01T00:00:00Z"),
+          "api repos/niklam/iracedeck/issues/1534": ageReply(Date.now() - 60_000),
+          "api graphql": boardItem(null),
+        },
+        { stdout: `${home(1483)}\n${home(1534)}\n` },
+      );
+      expect(filed(edit.note)).toEqual([home(1534)]);
+
+      // Two creates, two URLs: both filed, no age asked.
+      const two = fireWithGh(
+        "gh issue create --title a --body b && gh issue create --title c --body d",
+        { "api graphql": boardItem(null) },
+        { stdout: `${home(1534)}\n${home(1535)}\n` },
+      );
+      expect(filed(two.note)).toEqual([home(1534), home(1535)]);
+      expect(two.calls.filter((c) => c.args[1]?.startsWith("repos/"))).toEqual([]);
+    });
+
+    it("names the candidates rather than guess when it cannot read their ages", () => {
+      const note = fire("gh issue edit 1483 --add-label x && gh issue create --title y --body z", {
+        stdout: "https://github.com/niklam/iracedeck/issues/1483\nhttps://github.com/niklam/iracedeck/issues/1534\n",
+        withoutGh: true,
+      });
+      expect(note).toBe(
+        "[hook] gh issue create: could not tell whether https://github.com/niklam/iracedeck/issues/1483, https://github.com/niklam/iracedeck/issues/1534 were just filed; add any that was to the Roadmap board by hand (Backlog).",
+      );
+    });
+
     it("files an iRaceDeck issue into Backlog, and asks gh nothing for another repository's", () => {
       const replies = { "api graphql": boardItem(null) };
       const home = fireWithGh(

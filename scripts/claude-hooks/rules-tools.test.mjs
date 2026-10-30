@@ -5,12 +5,14 @@ import { firstMerge } from "./rules-bash.mjs";
 import {
   assignedGhRepo,
   boardIssues,
-  createdIssue,
+  createdIssues,
   generatorReport,
   generatorsFor,
   isHomeRepo,
+  JUST_CREATED_MS,
   mergeRepo,
   missingWorkflows,
+  pickCreated,
   remindersFor,
   repoOfUrl,
 } from "./rules-post.mjs";
@@ -155,13 +157,39 @@ describe("post rules", () => {
       expect(isHomeRepo(undefined)).toBe(false);
     });
 
-    it("finds the issue gh issue create printed", () => {
-      expect(createdIssue("Creating issue in a/b\n\nhttps://github.com/a/b/issues/12\n")).toEqual({
-        url: "https://github.com/a/b/issues/12",
-        repo: "a/b",
-        number: 12,
-      });
-      expect(createdIssue("")).toBeUndefined();
+    it("finds the issues gh issue create printed: a URL alone on its line", () => {
+      const twelve = { url: "https://github.com/a/b/issues/12", repo: "a/b", number: 12 };
+      expect(createdIssues("Creating issue in a/b\n\nhttps://github.com/a/b/issues/12\n")).toEqual([twelve]);
+      expect(createdIssues("https://github.com/a/b/issues/12\r\n")).toEqual([twelve]);
+      expect(createdIssues("")).toEqual([]);
+      // A comment's URL, one in a sentence, or a PR's is not a created issue (#1527).
+      expect(
+        createdIssues(
+          [
+            "https://github.com/a/b/issues/5#issuecomment-123",
+            "View this issue on GitHub: https://github.com/a/b/issues/6",
+            "https://github.com/a/b/pull/7",
+            "https://github.com/a/b/issues/12",
+            "https://github.com/a/b/issues/12",
+          ].join("\n"),
+        ),
+      ).toEqual([twelve]);
+    });
+
+    it("picks the just-created issues when the output names more than the command created", () => {
+      const [a, b, c] = [1, 2, 3].map((number) => ({ url: `u${number}`, repo: "a/b", number }));
+      const never = () => {
+        throw new Error("no age is needed when the count fits");
+      };
+      expect(pickCreated([a, b], 2, never)).toEqual({ picked: [a, b], unsure: [] });
+      expect(pickCreated([], 1, never)).toEqual({ picked: [], unsure: [] });
+      const ages = new Map([
+        [1, 3 * 24 * 3600_000],
+        [2, 30_000],
+        [3, undefined],
+      ]);
+      expect(pickCreated([a, b, c], 1, (i) => ages.get(i.number))).toEqual({ picked: [b], unsure: [c] });
+      expect(pickCreated([a, b], 1, () => JUST_CREATED_MS)).toEqual({ picked: [], unsure: [] });
     });
 
     it("reads a GH_REPO the command assigns, in bash or PowerShell", () => {

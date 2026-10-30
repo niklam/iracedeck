@@ -133,10 +133,46 @@ export function repoOfUrl(url) {
   return m ? `${m[1]}/${m[2]}` : undefined;
 }
 
-/** The issue `gh issue create` printed: `{ url, repo, number }`, or `undefined` when it printed none. */
-export function createdIssue(stdout) {
-  const m = /https:\/\/github\.com\/([^/\s]+)\/([^/\s]+)\/issues\/(\d+)/.exec(String(stdout ?? ""));
-  return m ? { url: m[0], repo: `${m[1]}/${m[2]}`, number: Number(m[3]) } : undefined;
+/**
+ * The issues a command's output may have created: `{ url, repo, number }` for
+ * every line that is an issue URL and nothing else, which is how
+ * `gh issue create` prints one, in output order, each once. A URL with a
+ * fragment (`gh issue comment` prints `…/issues/5#issuecomment-…`) or inside a
+ * sentence (`gh issue view`) is not one: the first URL anywhere in a chain's
+ * output once moved the card of the issue a comment went to (#1527).
+ */
+export function createdIssues(stdout) {
+  const seen = new Map();
+  for (const m of String(stdout ?? "").matchAll(
+    /^[ \t]*https:\/\/github\.com\/([^/\s]+)\/([^/\s#?]+)\/issues\/(\d+)\/?[ \t]*\r?$/gm,
+  )) {
+    const url = `https://github.com/${m[1]}/${m[2]}/issues/${m[3]}`;
+    if (!seen.has(url)) seen.set(url, { url, repo: `${m[1]}/${m[2]}`, number: Number(m[3]) });
+  }
+  return [...seen.values()];
+}
+
+/** How recent an issue must be to count as just created, when the output names more issues than the command creates. */
+export const JUST_CREATED_MS = 10 * 60_000;
+
+/**
+ * Which of `found` ({@link createdIssues}) the command created, when it ran
+ * `creates` `gh issue create`s. As many or fewer than that are all taken; more
+ * mean another command printed a bare issue URL too (`gh issue edit` does), and
+ * then only the issues `ageOf` (ms since GitHub created it, or `undefined` when
+ * it cannot tell) puts within {@link JUST_CREATED_MS} are. `unsure` lists those
+ * whose age could not be read, so the caller can name them instead of guessing.
+ */
+export function pickCreated(found, creates, ageOf) {
+  if (found.length <= creates) return { picked: found, unsure: [] };
+  const picked = [];
+  const unsure = [];
+  for (const issue of found) {
+    const age = ageOf(issue);
+    if (age === undefined) unsure.push(issue);
+    else if (age < JUST_CREATED_MS) picked.push(issue);
+  }
+  return { picked, unsure };
 }
 
 /**

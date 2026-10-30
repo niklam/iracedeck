@@ -28,11 +28,12 @@ import {
 import {
   assignedGhRepo,
   boardIssues,
-  createdIssue,
+  createdIssues,
   HOME_REPO,
   isHomeRepo,
   mergeRepo,
   missingWorkflows,
+  pickCreated,
   repoOfUrl,
 } from "./rules-post.mjs";
 
@@ -67,7 +68,8 @@ if (typeof raw === "string") {
       notes.push(
         "gh pr merge ran, but its PR argument could not be read; check by hand whether it merged, and move its Roadmap card to Testing.",
       );
-    if (/\bgh\s+issue\s+create\b/.test(text)) notes.push(...afterIssueCreate(stdout, cwd));
+    const creates = (text.match(/\bgh\s+issue\s+create\b/g) ?? []).length;
+    if (creates) notes.push(...afterIssueCreate(stdout, creates, cwd));
     const target = worktreeAddTarget(command);
     if (target) notes.push(...afterWorktreeAdd(command, target, cwd, shell));
   } catch (e) {
@@ -154,20 +156,38 @@ function afterMerge(merge, command, cwd, shell) {
   return out;
 }
 
-function afterIssueCreate(stdout, cwd) {
-  const issue = createdIssue(stdout);
-  if (!issue)
+/**
+ * `creates` is how many `gh issue create`s the command ran. Only the issues
+ * they printed are filed ({@link pickCreated}): a chain's output can carry
+ * other issues' URLs, a comment's or an edit's (#1527).
+ */
+function afterIssueCreate(stdout, creates, cwd) {
+  const found = createdIssues(stdout);
+  if (!found.length)
     return ["gh issue create: no issue URL in the output; add the card to the Roadmap board by hand (Backlog)."];
+  const { picked, unsure } = pickCreated(found, creates, (issue) => {
+    const created = Date.parse(ghJson(["api", `repos/${issue.repo}/issues/${issue.number}`], cwd)?.created_at);
+    return Number.isFinite(created) ? Date.now() - created : undefined;
+  });
+  const out = picked.map((issue) => fileOnBoard(issue, cwd));
+  if (unsure.length)
+    out.push(
+      `gh issue create: could not tell whether ${unsure.map((i) => i.url).join(", ")} ${unsure.length > 1 ? "were" : "was"} just filed; add any that was to the Roadmap board by hand (Backlog).`,
+    );
+  if (!out.length)
+    out.push(
+      "gh issue create: no issue in the output was just created; add the card to the Roadmap board by hand (Backlog).",
+    );
+  return out;
+}
+
+function fileOnBoard(issue, cwd) {
   if (!isHomeRepo(issue.repo))
-    return [`Filed ${issue.url} in ${issue.repo}, not ${HOME_REPO}: the Roadmap board is left alone.`];
+    return `Filed ${issue.url} in ${issue.repo}, not ${HOME_REPO}: the Roadmap board is left alone.`;
   const itemId = addToBoard(issue.url, cwd);
   if (!itemId)
-    return [
-      `Filed ${issue.url} but could not add it to the Roadmap board (gh project item-add failed — token scope?).`,
-    ];
-  return [
-    `Added ${issue.url} to the Roadmap board; ${setBoardStatus(issue.number, "Backlog", cwd)}. Milestone and assignee stay empty until implementation starts.`,
-  ];
+    return `Filed ${issue.url} but could not add it to the Roadmap board (gh project item-add failed — token scope?).`;
+  return `Added ${issue.url} to the Roadmap board; ${setBoardStatus(issue.number, "Backlog", cwd)}. Milestone and assignee stay empty until implementation starts.`;
 }
 
 /**
