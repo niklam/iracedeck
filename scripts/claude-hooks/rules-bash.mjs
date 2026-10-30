@@ -517,7 +517,7 @@ function optionDir(text, re, base, shell) {
   return dir ? resolveDir(base, dir, { shell }) : base;
 }
 
-/** Splits a command into rough words, respecting simple quotes. */
+/** Splits a command into rough words, respecting simple quotes. A value glued to its quote (`--x="a b"`) needs {@link shellWords}. */
 export function words(command) {
   return [...command.matchAll(/"([^"]*)"|'([^']*)'|(\S+)/g)].map((m) => m[1] ?? m[2] ?? m[3]);
 }
