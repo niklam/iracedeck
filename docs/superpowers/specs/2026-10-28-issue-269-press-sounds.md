@@ -166,7 +166,7 @@ By hand, on Stream Deck with a Stream Deck+, in iRacing:
 
 - Each mode on a plain key, a setup View key with dual-press, the Starter, and a Fuel Service dial: Taps clicks on taps only, Long-press bleeps at the threshold only, Both does both, No sound is silent.
 - On a dual-press key and a dial, a short press clicks at release and a long press bleeps at the moment the threshold passes and does not click; on Fuel Service the bleep and the preview land together; on a dial with no preview (Setup Aero) the bleep still plays.
-- Push+turn on a dial: silent, also when the rotation comes after the bleep would have been due.
+- Push+turn on a dial: the release is silent, and a turn before the threshold also prevents the double bleep. A turn after the threshold arrives once the double bleep has played, so only the release is silenced.
 - A Mirabox key and knob: the key matches Stream Deck; the knob clicks on press and never bleeps.
 - With iRacing closed: no sound. With the Race Engineer and Radar both off and press sounds on: the first press after a long idle in a session clicks on time.
 - Push to Talk and every volume step: no click, the #1455 tick only.
