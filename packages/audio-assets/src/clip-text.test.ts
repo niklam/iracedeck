@@ -17,6 +17,9 @@ const configs = loadVoiceConfigs(path.join(audioAssetsPath, "configs"));
 const grandfathered = loadGrandfatheredPauseMarks(audioAssetsPath);
 const voiceIds = [...configs.keys()];
 
+// The size of each voice's grandfathered list when the rule landed (#1518). Only ever lowered.
+const GRANDFATHERED_COUNTS: Record<string, number> = { default: 852, shawn: 853 };
+
 describe("clip text", () => {
   it("finds the voice configs", () => {
     expect(voiceIds.length).toBeGreaterThan(0);
@@ -38,5 +41,17 @@ describe("clip text", () => {
 
   it("lists only voices that have a config", () => {
     expect(Object.keys(grandfathered).filter((voiceId) => !configs.has(voiceId))).toEqual([]);
+  });
+
+  // Nothing above stops a new marked line arriving WITH its text added to the
+  // list, so the size of each voice's list is frozen here too. When an entry
+  // comes off the list, lower its voice's number in the same change. Never raise
+  // one: a line written after #1518 is never grandfathered.
+  it("holds each voice's list to its frozen size", () => {
+    expect(
+      Object.fromEntries(
+        Object.entries(grandfathered).map(([voiceId, entries]) => [voiceId, Object.keys(entries).length]),
+      ),
+    ).toEqual(GRANDFATHERED_COUNTS);
   });
 });
