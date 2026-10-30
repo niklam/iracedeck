@@ -37,9 +37,6 @@ import {
 /** Where committed catalog entries live, relative to the repository root. */
 export const VOICE_CATALOG_ENTRIES_DIR = "packages/audio-assets/catalog";
 
-/** The command that regenerates the published artifact. */
-export const VOICE_CATALOG_GENERATE_COMMAND = "pnpm --filter @iracedeck/website generate:voice-catalog-json";
-
 /**
  * @typedef {{ schema: 1, packs: object[] }} VoiceCatalogData
  */

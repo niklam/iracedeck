@@ -20,7 +20,6 @@ export const ManifestSchema = z.object({
 });
 
 export type Manifest = z.infer<typeof ManifestSchema>;
-export type ManifestEntry = z.infer<typeof ManifestEntrySchema>;
 
 /** `voice/<voice-id>/<group>/<name>.mp3`: where the generator writes a clip, and its key in the manifest. */
 export function clipRelPath(voiceId: string, groupName: string, entryName: string): string {

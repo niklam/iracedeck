@@ -30,9 +30,6 @@ import { PaceMode, SessionState, TrkLoc } from "@iracedeck/iracing-sdk";
 /** The preset roster's pace car — `DriverInfo.PaceCarIdx` in `race` and `race-oval`. */
 export const FORMATION_PACE_CAR_IDX = 0;
 
-/** The preset roster's player — `DriverInfo.DriverCarIdx`, car "42". */
-export const FORMATION_PLAYER_CAR_IDX = 7;
-
 /** The car the player forms up behind: car "8", one row up on line 0. */
 export const FORMATION_FOLLOW_CAR_IDX = 5;
 
