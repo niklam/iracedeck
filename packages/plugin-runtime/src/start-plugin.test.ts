@@ -314,7 +314,7 @@ describe("startPlugin (#1349)", () => {
     expect(callLog).toEqual(["getController().getSessionInfo"]);
   });
 
-  it("hands the audio session hold the app monitor's edges, the gate readers, the settings listener and the audio service (#1347)", () => {
+  it("hands the audio session hold the app monitor's edges, the gate readers, the settings listener and the audio service (#1347, #269)", () => {
     const holds: Record<string, unknown>[] = [];
     implement("startAudioSessionHold", (deps) => holds.push(deps as Record<string, unknown>));
 
@@ -324,6 +324,7 @@ describe("startPlugin (#1349)", () => {
     expect(Object.keys(holds[0]).sort()).toEqual([
       "audio",
       "isIRacingActive",
+      "isPressSoundEnabled",
       "isRaceEngineerEnabled",
       "isRadarEnabled",
       "logger",
@@ -344,6 +345,7 @@ describe("startPlugin (#1349)", () => {
     call("isIRacingActive");
     call("isRaceEngineerEnabled");
     call("isRadarEnabled");
+    call("isPressSoundEnabled");
     call("onGlobalSettingsChange");
     audio.hold("probe");
     audio.release("probe");
@@ -356,10 +358,20 @@ describe("startPlugin (#1349)", () => {
       "isIRacingActive",
       "isRaceEngineerEnabled",
       "isRadarEnabled",
+      "getPressSoundMode",
       "onGlobalSettingsChange",
       "getAudio().hold",
       "getAudio().release",
     ]);
+
+    // The press sound gate is deck-core's live mode, on for every value but `none`.
+    const pressSoundEnabled = holds[0].isPressSoundEnabled as () => boolean;
+    const answers = (["none", "taps", "long-press", "both"] as const).map((mode) => {
+      implement("getPressSoundMode", () => mode);
+
+      return pressSoundEnabled();
+    });
+    expect(answers).toEqual([false, true, true, true]);
   });
 
   it("opens settings without an extension, and refreshes the device list first with one", () => {

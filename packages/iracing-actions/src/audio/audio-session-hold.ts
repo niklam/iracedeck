@@ -16,11 +16,15 @@
  *   of a run and where both #1330 freezes happened. On a host that delivers no
  *   app-monitoring events (Ulanzi) the started edge IS the SDK connection, so
  *   there the device opens at connect.
- * - **The Race Engineer or the Radar master gate is on**, read live on every
- *   evaluation. With both off nothing plays during a session, so a held stream
- *   would only cost: Windows keeps its "audio stream in use" power request for
- *   a device nobody will hear. Every global-settings change re-evaluates, so
- *   toggling either gate mid-session takes or releases the hold.
+ * - **The Race Engineer or the Radar master gate is on, or press sounds are**
+ *   (#269), each read live on every evaluation. With all three off nothing
+ *   plays during a session, so a held stream would only cost: Windows keeps
+ *   its "audio stream in use" power request for a device nobody will hear.
+ *   Press sounds count because without the hold a driver with both master
+ *   gates off would pay a device start on the first press after every five
+ *   idle seconds, so the click would arrive late on exactly the sporadic
+ *   presses of a race. Every global-settings change re-evaluates, so toggling
+ *   any of the three mid-session takes or releases the hold.
  *
  * Without the hold a race opened the device once per burst of callouts — 16
  * times in 18 minutes on 2026-10-04 — and each open initialises the driver.
@@ -64,13 +68,15 @@ export interface AudioSessionHoldDeps {
   isRaceEngineerEnabled: () => boolean;
   /** The Radar master gate, read live. */
   isRadarEnabled: () => boolean;
+  /** Whether a press sound plays at all (the Press sound setting is not `none`), read live (#269). */
+  isPressSoundEnabled: () => boolean;
   /** Fires for every global-settings write; the listener ignores the settings it is handed. */
   onGlobalSettingsChange: Subscribe;
   logger: ILogger;
 }
 
 /**
- * Start following iRacing and the two master gates, taking and releasing the
+ * Start following iRacing and the three gates, taking and releasing the
  * audio hold as they change. Call once per plugin, after the app monitor is
  * initialised.
  *
@@ -99,12 +105,12 @@ export function startAudioSessionHold(deps: AudioSessionHoldDeps): () => void {
   let evaluateAgain = false;
   let stopped = false;
 
-  /** Bring the hold in line with the two conditions. Throws what its collaborators throw. */
+  /** Bring the hold in line with the conditions above. Throws what its collaborators throw. */
   function apply(trigger: string): void {
     // The gates are read only while iRacing runs: with it closed the answer is
     // already no, and a gate reader that throws cannot get in the way of the
     // release when iRacing exits.
-    const wanted = running && (deps.isRaceEngineerEnabled() || deps.isRadarEnabled());
+    const wanted = running && (deps.isRaceEngineerEnabled() || deps.isRadarEnabled() || deps.isPressSoundEnabled());
 
     if (wanted === held) return;
 
