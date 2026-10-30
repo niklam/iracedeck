@@ -357,6 +357,15 @@ describe("format-staged in a commit", { timeout: 60_000 }, () => {
   });
 });
 
+describe("the husky pre-commit hook", () => {
+  it("runs this step, and lint-staged no longer", () => {
+    const hook = readFileSync(path.join(repoRoot, ".husky", "pre-commit"), "utf8");
+
+    expect(hook).toMatch(/^node scripts\/format-staged\.mjs$/m);
+    expect(hook).not.toMatch(/lint-staged/);
+  });
+});
+
 describe("STAGED_TASKS and toolsFor", () => {
   it("runs ESLint then Prettier on .ts and .mjs, Prettier alone on .json, and nothing on the rest", () => {
     expect(toolsFor("packages/x/src/a.ts")).toEqual(["eslint", "prettier"]);
