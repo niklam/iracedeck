@@ -103,8 +103,8 @@ import {
   resolveEntryRequestIds,
 } from "./config.ts";
 import { type SynthesizeOptions, synthesizeSpeech } from "./elevenlabs.ts";
-import { loadManifest, saveManifest } from "./manifest.ts";
-import { describePauseMarks, findPauseMarks } from "./pause-marks.ts";
+import { clipRelPath, loadManifest, saveManifest } from "./manifest.ts";
+import { describePauseMarks, findEntryPauseMarks } from "./pause-marks.ts";
 import { formatScope, parseScopeArgs, type Scope, validateScope } from "./scope.ts";
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
@@ -217,6 +217,7 @@ async function main(): Promise<void> {
   let generated = 0;
   let skipped = 0;
   let failed = 0;
+  let refused = 0;
 
   for (const [voiceName, voice] of voiceConfigs) {
     if (scope.voices && !scope.voices.includes(voiceName)) continue;
@@ -232,7 +233,7 @@ async function main(): Promise<void> {
       for (const entry of entries) {
         if (scope.entries && !scope.entries.includes(entry.name)) continue;
 
-        const relPath = path.posix.join("voice", voiceName, groupName, `${entry.name}.mp3`);
+        const relPath = clipRelPath(voiceName, groupName, entry.name);
         const absPath = path.join(packageRoot, relPath);
 
         // The cache key is a pure function of config content (this entry's
@@ -250,11 +251,11 @@ async function main(): Promise<void> {
         // Refused before the API call and in a dry run alike, so an author
         // sees it before spending credit (#1518). A clip already generated
         // from such a text was skipped above as a cache hit.
-        const pauseMarks = findPauseMarks(entry.text);
+        const pauseMarks = findEntryPauseMarks(entry);
 
         if (pauseMarks.length > 0) {
           console.error(`[generate] ${relPath}  —  REFUSED: ${describePauseMarks(pauseMarks)}`);
-          failed++;
+          refused++;
           continue;
         }
 
@@ -310,9 +311,11 @@ async function main(): Promise<void> {
 
   console.log();
   const verb = dryRun ? "would be generated" : "generated";
-  console.log(`Done. ${generated} ${verb}, ${skipped} skipped (cache hit), ${failed} failed`);
+  console.log(
+    `Done. ${generated} ${verb}, ${skipped} skipped (cache hit), ${failed} failed, ${refused} refused (pause marks)`,
+  );
 
-  if (failed > 0) process.exitCode = 1;
+  if (failed > 0 || refused > 0) process.exitCode = 1;
 }
 
 main().catch((err) => {
