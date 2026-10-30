@@ -80,20 +80,31 @@ describe("pre-bash.mjs, fired for the PowerShell tool", () => {
     expect(matcher.test("Edit")).toBe(false);
   });
 
-  it("asks for a build in the linked tree, as for the Bash tool", () => {
-    const v = fire("pnpm build", { tool: "PowerShell", cwd: linkedTree, env });
+  // `dev:voices` relinks the hosts linked to its tree, so it asks there and
+  // nowhere else; a build needs no go even there (#1526).
+  it("asks for dev:voices in the linked tree, as for the Bash tool, and passes a build there", () => {
+    const v = fire("pnpm dev:voices on", { tool: "PowerShell", cwd: linkedTree, env });
     expect(v.permissionDecision).toBe("ask");
     expect(v.permissionDecisionReason).toMatch(/Stream Deck plugin link points into/);
     // Positive control: the same payload from the Bash tool asks too, and an unlinked tree passes.
-    expect(fire("pnpm build", { cwd: linkedTree, env }).permissionDecision).toBe("ask");
-    expect(fire("pnpm build", { tool: "PowerShell", cwd: otherTree, env })).toBeNull();
+    expect(fire("pnpm dev:voices on", { cwd: linkedTree, env }).permissionDecision).toBe("ask");
+    expect(fire("pnpm dev:voices on", { tool: "PowerShell", cwd: otherTree, env })).toBeNull();
+    for (const tool of ["Bash", "PowerShell"])
+      for (const c of ["pnpm build", "pnpm install"]) expect(fire(c, { tool, cwd: linkedTree, env }), c).toBeNull();
   });
 
   it("follows a Set-Location into the linked tree", () =>
     expect(
-      fire(`Set-Location '${linkedTree}'; pnpm install`, { tool: "PowerShell", cwd: otherTree, env })
+      fire(`Set-Location '${linkedTree}'; pnpm dev:voices on`, { tool: "PowerShell", cwd: otherTree, env })
         .permissionDecision,
     ).toBe("ask"));
+
+  it("asks for a restart wherever it runs", () => {
+    for (const cwd of [linkedTree, otherTree])
+      expect(fire("pnpm restart:stream-deck", { tool: "PowerShell", cwd, env }).permissionDecisionReason).toMatch(
+        /No deck host restarts, stops, starts or relinks without Niklas's go/,
+      );
+  });
 
   it("denies an integration push", () =>
     expect(fire("git push origin integration", { tool: "PowerShell" }).permissionDecisionReason).toMatch(
@@ -102,15 +113,30 @@ describe("pre-bash.mjs, fired for the PowerShell tool", () => {
 
   // #1520 second read: a script is judged by the command line its package.json gives it.
   it("reads a script's command line from the package.json it runs from", () => {
-    const scripts = { hop: "pnpm relink:anything", wipe: "rimraf plugin/bin", quiet: "vitest run" };
+    // `watch` is the Stream Deck plugin's real shape: the restart sits in a
+    // quoted rollup option, escaped once more by the JSON it is read from.
+    const scripts = {
+      hop: "pnpm relink:anything",
+      voices: "pnpm dev:voices on",
+      watch: 'rollup -c -w --watch.onEnd="streamdeck restart com.iracedeck.sd.core"',
+      wipe: "rimraf plugin/bin",
+      quiet: "vitest run",
+    };
     for (const d of [linkedTree, otherTree])
       writeFileSync(path.join(d, "package.json"), JSON.stringify({ name: "fixture", scripts }));
     for (const tool of ["Bash", "PowerShell"]) {
       expect(fire("pnpm hop", { tool, cwd: otherTree, env }).permissionDecisionReason).toMatch(
         /`pnpm hop` → `pnpm relink:anything`/,
       );
-      expect(fire("pnpm wipe", { tool, cwd: linkedTree, env }).permissionDecisionReason).toMatch(/deletes files/);
-      expect(fire("pnpm wipe", { tool, cwd: otherTree, env })).toBeNull();
+      expect(fire("pnpm voices", { tool, cwd: linkedTree, env }).permissionDecisionReason).toMatch(
+        /`pnpm voices` → .*`pnpm dev:voices` there relinks/,
+      );
+      expect(fire("pnpm voices", { tool, cwd: otherTree, env })).toBeNull();
+      for (const cwd of [linkedTree, otherTree])
+        expect(fire("pnpm watch", { tool, cwd, env }).permissionDecisionReason).toMatch(
+          /`pnpm watch` → `rollup --watch\.onEnd` → `streamdeck restart/,
+        );
+      expect(fire("pnpm wipe", { tool, cwd: linkedTree, env })).toBeNull();
       expect(fire("pnpm quiet", { tool, cwd: linkedTree, env })).toBeNull();
     }
   });
