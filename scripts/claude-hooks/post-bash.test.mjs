@@ -279,7 +279,9 @@ describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", () => {
       expect(fire(command, { withoutGh: true }), command).toMatch(/a --repo or GH_REPO the hook cannot read/);
   });
 
-  describe("with gh answering (a fake gh, the board run dry)", () => {
+  // Each case spawns the hook and a gh per call: several to a test, which
+  // outlasts the 5 s default under a full suite's load.
+  describe("with gh answering (a fake gh, the board run dry)", { timeout: 30_000 }, () => {
     const graphqlFor = (calls) =>
       calls.filter((c) => c.args[0] === "api").map((c) => c.args.find((a) => /^n=/.test(a)));
     const merged = (url, closing, title = "fix(x): y (#1527)") => ({
@@ -323,16 +325,18 @@ describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", () => {
       expect(calls.map((c) => c.args.slice(0, 2).join(" "))).toEqual(["pr view"]);
     });
 
-    it("reads the PR back from the repository and the directory the merge used", () => {
-      const open = {
-        "pr view": { number: 5, state: "OPEN", title: "x", url: "https://github.com/niklam/iracedeck/pull/5" },
-      };
-      const readBack = (command) => {
-        const { note, calls } = fireWithGh(command, open);
-        expect(note, command).toMatch(/PR #5 is OPEN, not MERGED/);
-        expect(calls, command).toHaveLength(1);
-        return calls[0];
-      };
+    const open = {
+      "pr view": { number: 5, state: "OPEN", title: "x", url: "https://github.com/niklam/iracedeck/pull/5" },
+    };
+    /** The one gh call a merge's read-back made, for a home PR that is still open. */
+    const readBack = (command) => {
+      const { note, calls } = fireWithGh(command, open);
+      expect(note, command).toMatch(/PR #5 is OPEN, not MERGED/);
+      expect(calls, command).toHaveLength(1);
+      return calls[0];
+    };
+
+    it("reads the PR back from the repository the merge used", () => {
       // No PR argument: gh refuses --repo without one, so the repository goes as GH_REPO.
       const bare = readBack("GH_REPO=niklam/iracedeck gh pr merge --squash");
       expect(bare.GH_REPO).toBe("niklam/iracedeck");
@@ -351,6 +355,9 @@ describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", () => {
       ])
         expect(readBack(command).GH_REPO, command).toBeUndefined();
       expect(readBack("export GH_REPO=niklam/iracedeck; gh pr merge 5 --squash").GH_REPO).toBe("niklam/iracedeck");
+    });
+
+    it("reads the PR back in the directory the merge ran in", () => {
       const sameDir = (call, dir) => expect(path.resolve(call.cwd).toLowerCase()).toBe(path.resolve(dir).toLowerCase());
       const elsewhere = path.join(SCRATCH, "merge-cwd");
       mkdirSync(elsewhere, { recursive: true });
