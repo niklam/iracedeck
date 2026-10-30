@@ -6,7 +6,9 @@
  * `@iracedeck/event-bus`. Not the only reader of iRacing telemetry (#1351):
  * actions read the SDK controller through `@iracedeck/deck-iracing`'s
  * `SimIRacingAction`, and part of the `audio-scenarios` catalog reads raw
- * telemetry through `getLatestTelemetry()` below. The Architecture page's
+ * telemetry through `getLatestTelemetry()` below, handed to it as a
+ * `PitCrewDeps` read through the Race Engineer's `SimRuntime` (#1378) rather
+ * than imported. The Architecture page's
  * "Seams & where the abstraction leaks" lists them.
  */
 /** What `getLatestTelemetry()` returns, so a consumer reaches the SDK's telemetry shape through the translator (#1378). */

@@ -75,8 +75,9 @@ export type StartLightsDeps = {
 // grid or in a replay (issue #480 follow-up); the countdown marks use the bare
 // race gate instead (issue #829 — see the header). Live-read at fire time.
 // Safe for the critical `start-go`: at a real race start the driver is in the
-// car, in "Race".
-const liveRaceCarOver =
+// car, in "Race". Deliberately not the flag family's `createLiveRaceCar`: that
+// one also refuses after the checkered, which the start lights never need.
+const gantryGateOver =
   (deps: StartLightsDeps) =>
   (e: SimEventOf<SimEventName>): boolean =>
     isRaceSession(deps.getSessionType()) && isLiveOnTrack(e.telemetry as TelemetryData | null);
@@ -88,7 +89,7 @@ const liveRaceCarOver =
  */
 const START_LIGHT_GROUP = "start-light";
 
-const startReady = (liveRaceCar: (e: SimEventOf<SimEventName>) => boolean): ScenarioContract => ({
+const startReady = (gantryGate: (e: SimEventOf<SimEventName>) => boolean): ScenarioContract => ({
   id: "pit-crew.start-light-ready",
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
@@ -98,11 +99,11 @@ const startReady = (liveRaceCar: (e: SimEventOf<SimEventName>) => boolean): Scen
   queueable: true,
   family: "start-light",
   supersedeGroup: START_LIGHT_GROUP,
-  when: { event: "startLight.start-ready.raised", where: liveRaceCar },
+  when: { event: "startLight.start-ready.raised", where: gantryGate },
   description: "The start lights come on over the grid of a standing-start race while you sit live in the car.",
 });
 
-const startGo = (liveRaceCar: (e: SimEventOf<SimEventName>) => boolean): ScenarioContract => ({
+const startGo = (gantryGate: (e: SimEventOf<SimEventName>) => boolean): ScenarioContract => ({
   id: "pit-crew.start-light-go",
   channel: AudioChannel.Voice,
   bus: AudioBus.Voice,
@@ -112,7 +113,7 @@ const startGo = (liveRaceCar: (e: SimEventOf<SimEventName>) => boolean): Scenari
   queueable: true,
   family: "start-light",
   supersedeGroup: START_LIGHT_GROUP,
-  when: { event: "startLight.start-go.raised", where: liveRaceCar },
+  when: { event: "startLight.start-go.raised", where: gantryGate },
   // The sentence used to end "…or the green at a caution restart (measured on
   // an oval)". Issue #1127 made that impossible: a restart now emits
   // `caution.restarted` rather than `startLight.start-go.raised`, so this
@@ -168,9 +169,9 @@ function countdownContract(deps: StartLightsDeps, seconds: StartCountdownSeconds
 
 /** The family's six contracts, built over its sim read (#1378): the two gantry lines, then the four countdown marks. */
 export function buildStartLightContracts(deps: StartLightsDeps): readonly ScenarioContract[] {
-  const liveRaceCar = liveRaceCarOver(deps);
+  const gantryGate = gantryGateOver(deps);
 
-  return [startReady(liveRaceCar), startGo(liveRaceCar), ...COUNTDOWN_SECONDS.map((s) => countdownContract(deps, s))];
+  return [startReady(gantryGate), startGo(gantryGate), ...COUNTDOWN_SECONDS.map((s) => countdownContract(deps, s))];
 }
 
 /** Contract ids exported for tests so a typo here surfaces as a test failure. Derived from a build with no sim wired. */
