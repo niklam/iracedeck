@@ -77,6 +77,8 @@ Planning against the deck hosts: check each in the rule it names rather than rec
 
 Start one when a slot is free and the next issue in order has its spec (or is exempt), **every issue it depends on has merged** (its lead branches from `origin/master`, which must already hold them), and no running lead's issue touches the same files or the same package unless you know their files are disjoint. If the next issue fails either check, take the first later one that passes, or wait. A slot is held from start until the lead reports `ready-to-test`; testing, review and merge hold none.
 
+The test queue caps it too (Niklas, 2026-10-30): start a lead only while fewer than 8 issues wait for his test, counting each at `ready-to-test` with no `Manual test: passed` verdict, plus every lead in implementation, since each will add one. A failed test stays counted. A dev-tooling issue tested by its `qa` agent (Integration build, step 6) leaves the count once that run is reported.
+
 Load `mcp__ccd_session__start_session` with ToolSearch (`select:mcp__ccd_session__start_session`), then:
 
 ```json
@@ -105,7 +107,7 @@ Hub and spoke: leads report to you and never to each other. Their end-of-turn re
 | `audio-text` | queue the proposed lines for Niklas's go before any clip is generated |
 | `review-page` | queue the page link for Niklas's verdict |
 | `waiting-prompt` | tell Niklas which session has a permission prompt or hook ask open |
-| `ready-to-test` | free its slot, start the next issue, add it to the next integration build |
+| `ready-to-test` | free its slot, start the next issue, add it to the next integration build; an agent-run dev-tooling test is recorded instead (Integration build, step 6) |
 | `pr-open` | nothing |
 | `merged` | pull and build `master` (below); tell every lead whose branch it affects to rebase |
 | `red-run` | take it to Niklas at once; tell nobody to fix it |
@@ -141,6 +143,7 @@ When the message needs him and this turn was woken by a session's note rather th
 3. On a conflict it aborts and names the branch and what it met. Rebuild without that branch if Niklas wants the rest tested now, and send the conflicting leads the files: the later one rebases once the earlier merges, or they split the change through you. Never resolve it in the integration tree.
 4. Give Niklas one combined manual-test script: each issue's script from its lead, under its issue number, with a pass/fail line per issue.
 5. Relay each verdict to its lead with the sha it passed at, and record it as a comment on the issue, `Manual test: passed at <full sha>` or `Manual test: failed at <full sha>: <what failed>`, so a resume knows what was tested. A failed issue is fixed in its own worktree and joins the next build; issues that passed are not retested unless the fix touched what they changed.
+6. A dev-tooling issue (`issue-workflow.md` step 8) joins no build: its lead's `qa` agent ran the script. When its `ready-to-test` carries the per-step evidence, check every step is PASS at the reported sha (a FAIL or BLOCKED step goes back to the lead), record `Manual test: passed at <full sha> (agent-run)` on the issue, tell the lead to open the PR, and tell Niklas in one line. A part he would see or hear still goes into a build for him.
 
 ## Keeping `master` pulled and built
 
