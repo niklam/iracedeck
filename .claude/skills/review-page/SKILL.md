@@ -15,11 +15,11 @@ Diff the working tree (committed and uncommitted) against the branch point, so c
 
 ```bash
 base=$(git -C <tree> merge-base origin/master HEAD)
-git -C <tree> diff --name-status "$base" -- <paths>
+git -C <tree> diff --name-status --no-renames "$base" -- <paths>
 git -C <tree> ls-files --others --exclude-standard -- <paths>
 ```
 
-`<paths>` is `packages/audio-assets/voice` for audio, `packages/icons ':!packages/icons/preview' packages/iracing-actions/icons 'packages/iracing-actions/src/actions/*/*.svg'` for icons (`preview/` is generated from the sources). Three kinds come back, each shown its own way below: standalone icons (`packages/icons/`), dynamic templates (`packages/iracing-actions/icons/`), and the static manifest images in each action folder (`key.svg` 72x72, `icon.svg` 20x20 category icon, `dial.svg`). `A` and untracked files are new, `M` changed; ignore deletions. An empty list means there is no page to build: say so.
+`<paths>` is `packages/audio-assets/voice` for audio, `packages/icons ':!packages/icons/preview' packages/iracing-actions/icons 'packages/iracing-actions/src/actions/*/*.svg'` for icons (`preview/` is generated from the sources). Three kinds come back, each shown its own way below: standalone icons (`packages/icons/`), dynamic templates (`packages/iracing-actions/icons/`), and the static manifest images in each action folder (`key.svg` 72x72, `icon.svg` 20x20 category icon, `dial.svg`). `A` and untracked files are new, `M` changed; ignore deletions. `--no-renames` makes a renamed or copied file come back as a deletion plus an `A`, so its new path is always listed. An empty list means there is no page to build: say so.
 
 ## Audio
 
