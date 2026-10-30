@@ -8,10 +8,13 @@ import {
   getGlobalBorderSettings,
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
+  type IDeckDialDownEvent,
   type IDeckDidReceiveSettingsEvent,
   type IDeckKeyDownEvent,
+  type IDeckTouchTapEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
+  type PressShape,
   renderIconTemplate,
   resolveBorderSettings,
   resolveGraphicSettings,
@@ -394,6 +397,16 @@ export class PitCrew extends SimIRacingAction<PitCrewSettings> {
     this.settingsCache.set(contextId, settings);
 
     await this.setKeyImage(ev, generatePitCrewSvg(settings));
+  }
+
+  /**
+   * The shape of this press, for the press sounds (#269): a Radar Volume step makes none,
+   * since its #1455 tick is the press sound; every other mode toggles once on key-down.
+   */
+  pressShape(
+    ev: IDeckKeyDownEvent<PitCrewSettings> | IDeckDialDownEvent<PitCrewSettings> | IDeckTouchTapEvent<PitCrewSettings>,
+  ): PressShape {
+    return Settings.parse(ev.payload.settings).mode === "radar-volume" ? { kind: "none" } : { kind: "tap" };
   }
 
   override async onKeyDown(ev: IDeckKeyDownEvent<PitCrewSettings>): Promise<void> {
