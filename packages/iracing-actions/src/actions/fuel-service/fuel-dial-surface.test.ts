@@ -2832,6 +2832,49 @@ describe("FuelService dial surface", () => {
       );
     });
 
+    it("a Mode change from the Property Inspector re-seeds the target from the tank, as the gesture does (#1483)", async () => {
+      // 30 L in the tank and 4 L requested: the Add Amount dial holds 4 L.
+      mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 4, FuelLevel: 30, PitSvFlags: 0 });
+      const ctx = dialContext("sm-pi");
+      await appear(ctx, { dialMode: "add-amount", stepSize: 1, unitMode: "liters" });
+
+      // The PI switches the Mode to Target Amount.
+      const targetSettings = { dialMode: "fill-to", stepSize: 1, unitMode: "liters" };
+      await action.onDidReceiveSettings(basicEvent(ctx, targetSettings) as never);
+      mockPitFuel.mockClear();
+      mockPitClearFuel.mockClear();
+
+      // One detent up: the target is 30 + 4 + 1 = 35 L, so the stop must add 5 L.
+      // Without the re-seed the target would be 4 + 1 = 5 L, under the 30 L in
+      // the tank, and the request would clear instead.
+      await action.onDialRotate(rotateEvent(ctx, targetSettings, 1) as never);
+
+      expect(mockPitClearFuel).not.toHaveBeenCalled();
+      expect(mockPitFuel.mock.calls[0]?.[0]).toBe(5);
+    });
+
+    it("a settings change that keeps the Mode leaves the dialed target alone", async () => {
+      mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 4, FuelLevel: 30, PitSvFlags: 0 });
+      const ctx = dialContext("sm-pi2");
+      const settings = { dialMode: "fill-to", stepSize: 1, unitMode: "liters" };
+      await appear(ctx, settings);
+      // Dial the target up to 40 L (need 10 L).
+      await action.onDialRotate(rotateEvent(ctx, settings, 6) as never);
+      // The static mock bank never reaches the floor, so let that check run out.
+      await vi.advanceTimersByTimeAsync(4_000);
+
+      // Another field changes in the PI; the bank meanwhile reads 2 L.
+      mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 2, FuelLevel: 30, PitSvFlags: 0 });
+      const changed = { ...settings, pressAction: "toggle-fueling" };
+      await action.onDidReceiveSettings(basicEvent(ctx, changed) as never);
+      mockPitFuel.mockClear();
+
+      // One more detent: 41 L, so 11 L — not a target re-seeded from 30 + 2.
+      await action.onDialRotate(rotateEvent(ctx, changed, 1) as never);
+
+      expect(mockPitFuel.mock.calls[0]?.[0]).toBe(11);
+    });
+
     it("persists by merging over the raw payload, writing no parsed defaults (#957)", async () => {
       const ctx = dialContext("sm3");
       const raw = { unit: "l", mode: "toggle-fuel-fill", dial: { mode: "add-amount", pressAction: "switch-mode" } };

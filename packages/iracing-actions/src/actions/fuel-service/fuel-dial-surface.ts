@@ -1063,7 +1063,19 @@ export class FuelDialSurface {
 
   async didReceiveSettings(action: IDeckActionContext, settings: FuelServiceSettings): Promise<void> {
     const ctx = this.ensureContext(action, settings);
+    const previousMode = ctx.settings.dial.mode;
     ctx.settings = settings;
+
+    // A Mode change in the Property Inspector re-seeds the dialed value for the
+    // new mode, as the switch-mode gesture does (#1483). Without it the old
+    // value carried over: an Add Amount of a few liters became a Target Amount
+    // TOTAL below the fuel in the tank, so the request cleared and every detent
+    // moved a target still under the tank level, as if the choice were ignored.
+    if (settings.dial.mode !== previousMode) {
+      ctx.checkedFloorLtr = null;
+      ctx.unreachableBankLtr = null;
+      this.seedFromTelemetry(ctx, true);
+    }
 
     // The settings may have changed the long-press gesture mid-hold, so a
     // preview computed for the old one is dropped without a revert frame of its
