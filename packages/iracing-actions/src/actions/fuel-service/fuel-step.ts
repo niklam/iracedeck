@@ -216,6 +216,12 @@ interface RunningStep extends PendingStep {
   lastReadingLtr: number;
   /** {@link lastReadingLtr} when the current send went out: what the previous send left banked. */
   readingBeforeSendLtr: number;
+  /**
+   * The distinct readings other than {@link readingBeforeSendLtr} seen while
+   * watching the current send. More than the landing itself means an earlier
+   * send showed late (see `learnStep`).
+   */
+  readingsSinceSendLtr: number[];
   /** Whole liters the first send was bumped by to reach the learned minimum move. */
   bumpLtr: number;
   /** The send before the current one, or null while only one has gone out. */
@@ -369,9 +375,10 @@ export function floorFirstRequestLtr(floorLtr: number, stepLtr: number | undefin
  * - an escalated landing: the request one liter short banked the previous
  *   reading, and iRacing rounds to the nearest grid point, so two requests a
  *   liter apart bank the same or ADJACENT grid points — the landing minus the
- *   reading the previous send left is one step. A late reflection is excluded
- *   exactly as for the minimum move (its end sits within
- *   {@link LATE_REFLECTION_LTR} of the previous send);
+ *   reading the previous send left is one step. A send that shows only after
+ *   its watch makes that reading stale, so such a landing is excluded — by the
+ *   minimum move's guard, by an intermediate reading, or by readings that are
+ *   inconsistent with a grid of the claimed step (`adjacentLanding`);
  * - a first-send landing that moved less than {@link ONE_STEP_FIRST_SEND_MAX_LTR}:
  *   a whole-liter car's 1 L step. A larger first-send move is not evidence: it
  *   may span several grid points, and a multiple learned as the step would make
@@ -527,6 +534,7 @@ export class FuelStepper {
       memoryKey,
       lastReadingLtr: baselineLtr,
       readingBeforeSendLtr: baselineLtr,
+      readingsSinceSendLtr: [],
       bumpLtr,
       previousSentLtr: null,
       sends: 0,
@@ -588,6 +596,7 @@ export class FuelStepper {
       memoryKey: null,
       lastReadingLtr: baselineLtr,
       readingBeforeSendLtr: baselineLtr,
+      readingsSinceSendLtr: [],
       bumpLtr: 0,
       previousSentLtr: null,
       sends: 0,
@@ -609,6 +618,7 @@ export class FuelStepper {
     const liters = run.direction === "add" ? run.firstLtr + run.extraLtr : run.firstLtr - run.extraLtr;
     run.previousSentLtr = run.sends > 0 ? run.sentLtr : null;
     run.readingBeforeSendLtr = run.lastReadingLtr;
+    run.readingsSinceSendLtr = [];
     run.sends += 1;
     run.sentLtr = liters;
 
@@ -636,7 +646,7 @@ export class FuelStepper {
 
     const nowLtr = readPitSvFuel(this.host.getTelemetry());
 
-    if (nowLtr !== undefined) run.lastReadingLtr = nowLtr;
+    if (nowLtr !== undefined) this.observe(run, nowLtr);
 
     if (run.floorLtr !== null) {
       if (this.reachedFloor(run, run.floorLtr, nowLtr)) {
@@ -727,6 +737,17 @@ export class FuelStepper {
     }
   }
 
+  /** Records a reading taken while watching the current send. */
+  private observe(run: RunningStep, nowLtr: number): void {
+    run.lastReadingLtr = nowLtr;
+
+    const isNew =
+      Math.abs(nowLtr - run.readingBeforeSendLtr) > MOVE_EPSILON_LTR &&
+      run.readingsSinceSendLtr.every((seen) => Math.abs(seen - nowLtr) > MOVE_EPSILON_LTR);
+
+    if (isNew) run.readingsSinceSendLtr.push(nowLtr);
+  }
+
   /**
    * Updates the car's learned fuel step from a step that landed (#1483), when
    * the landing is known to span exactly one grid point (see the class comment).
@@ -737,8 +758,7 @@ export class FuelStepper {
     let evidenceLtr: number;
 
     if (run.sends > 1) {
-      // A late reflection of the previous send says nothing about adjacency.
-      if (run.previousSentLtr !== null && Math.abs(landedLtr - run.previousSentLtr) <= LATE_REFLECTION_LTR) return;
+      if (!this.adjacentLanding(run, landedLtr)) return;
 
       evidenceLtr = Math.abs(landedLtr - run.readingBeforeSendLtr);
     } else {
@@ -755,6 +775,44 @@ export class FuelStepper {
       this.fuelSteps.set(run.carPath, evidenceLtr);
       this.host.logger.debug(`Fuel step: learned a ${evidenceLtr.toFixed(2)}L fuel step for ${run.carPath}`);
     }
+  }
+
+  /**
+   * Whether an escalated landing is the current send landing one grid point from
+   * what the previous send left banked — the only escalated landing that is
+   * step evidence. Three ways it is not, each a send showing after its watch:
+   *
+   * - the landing sits within {@link LATE_REFLECTION_LTR} of the previous
+   *   request: that request showing late (the minimum move's guard);
+   * - a reading other than the landing showed while the current send was
+   *   watched: the previous send showing late, so the reading the current send
+   *   started from was stale (MX-5 from 0 L, floor 5: 5 unshown at 300 ms, 6
+   *   sent from a stale 0, then 3.79 and 7.57 show — 7.57 − 0 is two gallons);
+   * - the same, with both showing between two polls so no intermediate reading
+   *   is seen: then the readings are inconsistent with nearest rounding on a
+   *   grid of the claimed step, since the previous request must sit within half
+   *   a step of what it banked, and the current one within half a step of the
+   *   landing. A two-step claim fails this on any grid coarser than 2 L.
+   */
+  private adjacentLanding(run: RunningStep, landedLtr: number): boolean {
+    const previousLtr = run.previousSentLtr;
+
+    if (previousLtr === null) return false;
+
+    if (Math.abs(landedLtr - previousLtr) <= LATE_REFLECTION_LTR) return false;
+
+    if (run.readingsSinceSendLtr.some((seen) => Math.abs(seen - landedLtr) > MOVE_EPSILON_LTR)) {
+      this.host.logger.debug(`Fuel step: an earlier send showed late before ${landedLtr.toFixed(2)}L — not learned`);
+
+      return false;
+    }
+
+    const halfStepLtr = Math.abs(landedLtr - run.readingBeforeSendLtr) / 2 + MOVE_EPSILON_LTR;
+
+    return (
+      Math.abs(previousLtr - run.readingBeforeSendLtr) <= halfStepLtr &&
+      Math.abs(run.sentLtr - landedLtr) <= halfStepLtr
+    );
   }
 
   private moved(run: RunningStep, nowLtr: number): boolean {

@@ -786,6 +786,48 @@ describe("FuelStepper", () => {
       expect(stepper.fuelStepFor(PORSCHE)).toBeUndefined();
     });
 
+    describe("a gallon send that shows only after its watch never teaches two gallons", () => {
+      /** From 0 L a 5 L floor sends 5, which shows `firstLagMs` later; every later send shows `laterLagMs` after it went out. */
+      async function lateFirstSend(firstLagMs: number, laterLagMs: number) {
+        useCar(new FakeCar(gallonGrid, 0, MX5));
+        car.lagMs = firstLagMs;
+        const result = floor(5);
+        car.lagMs = laterLagMs;
+        await vi.advanceTimersByTimeAsync(3_000);
+
+        return result;
+      }
+
+      it("when the late 1 gal is read before the 2 gal lands", async () => {
+        // 5 is unshown at 300 ms, so 6 goes out from a stale 0 L; 3.79 shows at
+        // 350 ms (read at 360), then 7.57 at 380. 7.57 − 0 is two gallons.
+        const result = lateFirstSend(FUEL_STEP_WATCH_MS + 50, 80);
+
+        await expect(result).resolves.toMatchObject({ outcome: "landed", sentLtr: 6 });
+        expect(car.pitSvFuel).toBeCloseTo(2 * GALLON, 5);
+        expect(stepper.fuelStepFor(MX5)).toBeUndefined();
+      });
+
+      it("when the late 1 gal and the 2 gal both show between two polls", async () => {
+        // 3.79 shows at 350 ms and 7.57 at 355: the poll at 360 sees only 7.57.
+        const result = lateFirstSend(FUEL_STEP_WATCH_MS + 50, 55);
+
+        await expect(result).resolves.toMatchObject({ outcome: "landed", sentLtr: 6 });
+        expect(car.pitSvFuel).toBeCloseTo(2 * GALLON, 5);
+        expect(stepper.fuelStepFor(MX5)).toBeUndefined();
+      });
+
+      it("when every send shows late", async () => {
+        const result = lateFirstSend(FUEL_STEP_WATCH_MS + 50, FUEL_STEP_WATCH_MS + 50);
+
+        await expect(result).resolves.toMatchObject({ outcome: "landed" });
+        const learned = stepper.fuelStepFor(MX5);
+
+        // Nothing, or the true gallon — never a multiple of it.
+        expect(learned === undefined || Math.abs(learned - GALLON) < 1e-6).toBe(true);
+      });
+    });
+
     it("keeps the smallest step seen per car", async () => {
       await learnGallonStep();
       useCar(new FakeCar(literGrid, 10, PORSCHE));
