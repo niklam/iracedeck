@@ -180,7 +180,7 @@ import {
   SCENARIO_ID_TO_OVERTAKE_ID,
 } from "./overtake.js";
 import { PIT_BOX_CONTRACTS } from "./pit-box.js";
-import { PIT_LIMITER_CONTRACTS, registerPitLimiterVocabulary, SCENARIO_ID_TO_PIT_LIMITER_ID } from "./pit-limiter.js";
+import { buildPitLimiter, SCENARIO_ID_TO_PIT_LIMITER_ID } from "./pit-limiter.js";
 import { registerPitSpeedingEngine } from "./pit-speeding-engine.js";
 import {
   PIT_STATUS_CONTRACTS,
@@ -1304,10 +1304,13 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   // #1065: each line is the active voice's (`scenarios["pit-crew.limiter-*"]`,
   // addressing `pool:pit-limiter/<base>`), and the two delayed warnings'
   // scripts wrap their body in the `limiter.still*` gates registered here —
-  // before the contracts, as every vocabulary is.
-  registerPitLimiterVocabulary(engine);
+  // before the contracts, as every vocabulary is. One build over the live
+  // telemetry read (#1378), so the conditions and the gates are one definition.
+  const pitLimiter = buildPitLimiter(d);
 
-  for (const c of PIT_LIMITER_CONTRACTS) {
+  pitLimiter.registerVocabulary(engine);
+
+  for (const c of pitLimiter.contracts) {
     engine.defineContract(
       wrapWithMaster(
         wrapCalloutScenario(

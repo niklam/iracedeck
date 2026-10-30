@@ -20,8 +20,10 @@
  * bundled script addresses each line as `pool:pit-limiter/<base>`. The two
  * DELAYED warnings additionally carry their speak-time re-check as the
  * contract's `speakGate` (issue #1138), and publish the same read as a
- * condition ({@link registerPitLimiterVocabulary}) — see the note on the two
- * delayed conditions below.
+ * condition (the family's `registerVocabulary`) — see the note on the two
+ * delayed conditions below. Both halves come from one
+ * {@link buildPitLimiter} over the family's one sim read, the latest
+ * telemetry tick (#1378).
  *
  * All four use the default weight (`WEIGHT.NORMAL`) — informational callouts
  * that yield to higher-weight in-flight pit-lane messages.
@@ -29,7 +31,6 @@
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type CalloutIdOf, PIT_LIMITER_CALLOUTS } from "@iracedeck/callout-settings";
 import { hasPitLimiter, type TelemetryData } from "@iracedeck/iracing-sdk";
-import { getLatestTelemetry } from "@iracedeck/sim-events-iracing";
 
 import type { ScenarioContract } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
@@ -45,7 +46,8 @@ export const LIMITER_ON_TRACK_DELAY_MS = 1500;
 export const LIMITER_MISSING_DELAY_MS = 2500;
 
 /**
- * Live telemetry for the two DELAYED contracts below.
+ * The family's one sim read (#1378): live telemetry for the two DELAYED
+ * contracts below, injected rather than imported from the translator.
  *
  * Read live, NOT from `e.telemetry`, and that distinction is the whole point of
  * the delay. `triggerDelay` re-runs `where:` after N ms, but the interpreter
@@ -58,9 +60,19 @@ export const LIMITER_MISSING_DELAY_MS = 2500;
  * Same reasoning and same source as `flag-alerts.ts`'s `furledBitUp` /
  * `penaltyBitUp` (#846). Do not "simplify" these back to `e.telemetry`.
  */
-function liveTelemetry(): TelemetryData | null {
-  return getLatestTelemetry() as TelemetryData | null;
-}
+export type PitLimiterDeps = {
+  getLatestTelemetry: () => TelemetryData | null;
+};
+
+/**
+ * One build of the pit-limiter family (#1378): the two delayed re-checks as
+ * conditions, and the four contracts whose gates are those same reads.
+ * Register the vocabulary before the contracts, as every family does.
+ */
+export type PitLimiterFamily = {
+  registerVocabulary(engine: Pick<IScenarioEngine, "defineCond">): void;
+  contracts: readonly ScenarioContract[];
+};
 
 /**
  * The two delayed re-checks, each written ONCE and used three times: as the
@@ -72,8 +84,8 @@ function liveTelemetry(): TelemetryData | null {
  * announcing a limiter state the driver already fixed. Both are pure reads,
  * which is what lets the same function be a published condition.
  */
-function limiterStillEngagedOffPitRoad(): boolean {
-  const telemetry = liveTelemetry();
+function limiterStillEngagedOffPitRoad(deps: PitLimiterDeps): boolean {
+  const telemetry = deps.getLatestTelemetry();
 
   // Suppress on cars without a pit limiter (issue #639).
   if (!hasPitLimiter(telemetry)) return false;
@@ -81,8 +93,8 @@ function limiterStillEngagedOffPitRoad(): boolean {
   return telemetry?.dcPitSpeedLimiterToggle === true && telemetry?.OnPitRoad !== true;
 }
 
-function limiterStillMissingOnPitRoad(): boolean {
-  const telemetry = liveTelemetry();
+function limiterStillMissingOnPitRoad(deps: PitLimiterDeps): boolean {
+  const telemetry = deps.getLatestTelemetry();
 
   // Cars without a pit limiter can't be "missing" one (issue #639).
   if (!hasPitLimiter(telemetry)) return false;
@@ -91,7 +103,8 @@ function limiterStillMissingOnPitRoad(): boolean {
 }
 
 /**
- * Register the vocabulary the pit-limiter family publishes (issue #1065):
+ * Define the vocabulary the pit-limiter family publishes (issue #1065) — what
+ * a build's `registerVocabulary` does, over that build's reads (#1378):
  * the two delayed warnings' re-checks, as conditions. Queueing (below)
  * reintroduces the staleness the delay removed — a fire that waited behind a
  * busier line can speak after the driver fixed the problem — and since #1138
@@ -101,20 +114,24 @@ function limiterStillMissingOnPitRoad(): boolean {
  * the same thing, and the pack's own choice where it says less.
  * Descriptions feed the generated reference (#1066).
  */
-export function registerPitLimiterVocabulary(engine: Pick<IScenarioEngine, "defineCond">): void {
+function definePitLimiterVocabulary(
+  engine: Pick<IScenarioEngine, "defineCond">,
+  stillEngagedOffPitRoad: () => boolean,
+  stillMissingOnPitRoad: () => boolean,
+): void {
   engine.defineCond(
     "limiter.stillEngagedOffPitRoad",
-    limiterStillEngagedOffPitRoad,
+    stillEngagedOffPitRoad,
     "The car has a pit limiter and it is still engaged out on the track, according to live telemetry when the line comes to speak — about a second and a half after leaving pit road. The engine already asks this at speak time (it is the warning's own gate), so wrapping the body in it changes nothing; it is here for a pack that wants the warning silent on its own terms. False on a car without a limiter or when telemetry is unavailable.",
   );
   engine.defineCond(
     "limiter.stillMissingOnPitRoad",
-    limiterStillMissingOnPitRoad,
+    stillMissingOnPitRoad,
     "The car has a pit limiter and it is still NOT engaged on pit road, according to live telemetry when the line comes to speak — a couple of seconds after the pit-entry reminder. The engine already asks this at speak time (it is the warning's own gate), so wrapping the body in it changes nothing; it is here for a pack that wants the warning silent on its own terms. False on a car without a limiter or when telemetry is unavailable.",
   );
 }
 
-export const LIMITER_ON_TRACK: ScenarioContract = {
+const limiterOnTrack = (stillEngagedOffPitRoad: () => boolean): ScenarioContract => ({
   id: "pit-crew.limiter-on-track",
   when: {
     // Fires a beat AFTER leaving pit road, not on the limiter toggle (#1051).
@@ -124,7 +141,7 @@ export const LIMITER_ON_TRACK: ScenarioContract = {
     // while the only reachable case was pressing the button out on track, which
     // a driver already knows they did.
     event: "pitLane.exited",
-    where: limiterStillEngagedOffPitRoad,
+    where: stillEngagedOffPitRoad,
   },
   description:
     "About a second and a half after you leave pit road, the pit limiter is still switched on, in a car that has one.",
@@ -145,11 +162,11 @@ export const LIMITER_ON_TRACK: ScenarioContract = {
   speakGate: {
     description:
       "The pit limiter is still engaged out on the track when the warning comes to speak, in a car that has one.",
-    admit: limiterStillEngagedOffPitRoad,
+    admit: stillEngagedOffPitRoad,
   },
-};
+});
 
-export const LIMITER_MISSING: ScenarioContract = {
+const limiterMissing = (stillMissingOnPitRoad: () => boolean): ScenarioContract => ({
   id: "pit-crew.limiter-missing",
   when: {
     event: "limiter.missing",
@@ -158,7 +175,7 @@ export const LIMITER_MISSING: ScenarioContract = {
     // transition; that early nudge is kept, and this only speaks if it went
     // unheeded. Re-checked live, so engaging the limiter in the meantime is
     // silence rather than a scolding.
-    where: limiterStillMissingOnPitRoad,
+    where: stillMissingOnPitRoad,
   },
   description:
     "You drive onto pit road, or pull away from your stall, with the pit limiter off, and it is still off two and a half seconds later, in a car that has one.",
@@ -174,9 +191,9 @@ export const LIMITER_MISSING: ScenarioContract = {
   queueable: true,
   speakGate: {
     description: "The pit limiter is still off on pit road when the warning comes to speak, in a car that has one.",
-    admit: limiterStillMissingOnPitRoad,
+    admit: stillMissingOnPitRoad,
   },
-};
+});
 
 export const LIMITER_DROPPED: ScenarioContract = {
   id: "pit-crew.limiter-dropped",
@@ -216,14 +233,31 @@ export const LIMITER_SPEEDING: ScenarioContract = {
   family: "limiter",
 };
 
-export const PIT_LIMITER_CONTRACTS: readonly ScenarioContract[] = [
-  LIMITER_ON_TRACK,
-  LIMITER_MISSING,
-  LIMITER_DROPPED,
-  LIMITER_SPEEDING,
-];
+/**
+ * Build the pit-limiter family over its sim read (#1378). The two delayed
+ * re-checks are each written ONCE per build and used three times — the
+ * `where:`, the `speakGate` and the published condition — so the three can
+ * never drift apart (the #846 / #1138 rule above).
+ */
+export function buildPitLimiter(deps: PitLimiterDeps): PitLimiterFamily {
+  const stillEngagedOffPitRoad = (): boolean => limiterStillEngagedOffPitRoad(deps);
+  const stillMissingOnPitRoad = (): boolean => limiterStillMissingOnPitRoad(deps);
 
-export const PIT_LIMITER_SCENARIO_IDS: readonly string[] = PIT_LIMITER_CONTRACTS.map((c) => c.id);
+  return {
+    registerVocabulary: (engine) => definePitLimiterVocabulary(engine, stillEngagedOffPitRoad, stillMissingOnPitRoad),
+    contracts: [
+      limiterOnTrack(stillEngagedOffPitRoad),
+      limiterMissing(stillMissingOnPitRoad),
+      LIMITER_DROPPED,
+      LIMITER_SPEEDING,
+    ],
+  };
+}
+
+/** The family's scenario ids, derived from a build with no sim wired — a read cannot change an id. */
+export const PIT_LIMITER_SCENARIO_IDS: readonly string[] = buildPitLimiter({
+  getLatestTelemetry: () => null,
+}).contracts.map((c) => c.id);
 
 /** Stable identifier for each user-toggleable pit-limiter callout (issue #1051). */
 export type PitLimiterCalloutId = CalloutIdOf<typeof PIT_LIMITER_CALLOUTS>;

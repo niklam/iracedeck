@@ -38,16 +38,13 @@ import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js"
 import { _resetAudioScenarios, initializeAudioScenarios, poolMemberPattern } from "../../interpreter.js";
 import { familyReferences } from "./family-references.test-util.js";
 import {
+  buildPitLimiter,
   LIMITER_DROPPED,
-  LIMITER_MISSING,
   LIMITER_MISSING_DELAY_MS,
-  LIMITER_ON_TRACK,
   LIMITER_ON_TRACK_DELAY_MS,
   LIMITER_SPEEDING,
   PIT_LIMITER_CLIP_SOURCES,
-  PIT_LIMITER_CONTRACTS,
   PIT_LIMITER_SCENARIO_IDS,
-  registerPitLimiterVocabulary,
 } from "./pit-limiter.js";
 
 // Live-telemetry feed for the two delayed predicates, mirroring how
@@ -56,9 +53,21 @@ import {
 // see the car" and stay silent on.
 const mockLatestTelemetry = vi.fn((): unknown => null);
 
-vi.mock("@iracedeck/sim-events-iracing", () => ({
-  getLatestTelemetry: () => mockLatestTelemetry(),
-}));
+// The family's one sim read (#1378), handed to the one build every test below
+// inspects and registers — the stub above, switched per case.
+const PIT_LIMITER = buildPitLimiter({ getLatestTelemetry: () => mockLatestTelemetry() as TelemetryData | null });
+const PIT_LIMITER_CONTRACTS = PIT_LIMITER.contracts;
+
+function limiterContract(id: string): ScenarioContract {
+  const found = PIT_LIMITER_CONTRACTS.find((c) => c.id === id);
+
+  if (!found) throw new Error(`no pit-limiter contract "${id}"`);
+
+  return found;
+}
+
+const LIMITER_ON_TRACK = limiterContract("pit-crew.limiter-on-track");
+const LIMITER_MISSING = limiterContract("pit-crew.limiter-missing");
 
 const mockLogger = {
   trace: vi.fn(),
@@ -382,7 +391,7 @@ describe("pit-limiter through the engine and the bundled script (issue #1065)", 
     audio = createFakeAudio();
     engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
     // The production order (`registerPitCrew`): vocabulary, contracts, then the script.
-    registerPitLimiterVocabulary(engine);
+    PIT_LIMITER.registerVocabulary(engine);
 
     for (const c of PIT_LIMITER_CONTRACTS) engine.defineContract(c);
 
@@ -399,7 +408,7 @@ describe("pit-limiter through the engine and the bundled script (issue #1065)", 
     return audio._played.filter((p) => p.channel === AudioChannel.Voice).map((p) => p.path);
   }
 
-  describe("registerPitLimiterVocabulary", () => {
+  describe("the pit-limiter vocabulary", () => {
     it("publishes the two delayed re-checks as conditions, each with a description for a pack author, and nothing else", () => {
       const { vars, conds, cases } = engine.vocabulary();
 
