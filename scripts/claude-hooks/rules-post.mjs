@@ -140,16 +140,23 @@ export function createdIssue(stdout) {
 }
 
 /**
- * The `GH_REPO` a command assigns (`GH_REPO=o/r gh pr merge 7`, an `export`,
- * PowerShell's `$env:GH_REPO = 'o/r'`): the value of the last assignment,
- * `null` when it is not a plain value, `undefined` when the command sets none.
- * The caller passes the text ahead of the command it is for, and its masked
- * twin (`trustedMask`, same length) so an assignment inside a quoted body is
- * not one; the value itself is read from the raw text.
+ * The `GH_REPO` that reaches a command: the caller passes the text ahead of
+ * the command, and its masked twin (`trustedMask`, same length) so an
+ * assignment inside a quoted body is not one. Counted are a prefix of the
+ * command's own simple command (`GH_REPO=o/r gh pr merge 7`, `env GH_REPO=…`)
+ * and an environment write earlier in the chain (`export GH_REPO=…`,
+ * PowerShell's `$env:GH_REPO = …`); a prefix of another command or an
+ * unexported assignment never reaches it. The value of the last one that
+ * does, read from the raw text: `null` when it is not a plain value,
+ * `undefined` when none reaches the command.
  */
 export function assignedGhRepo(command, masked = command) {
   const raw = String(command ?? "");
-  const assignments = [...String(masked ?? "").matchAll(/\bGH_REPO\s*=\s*/g)];
+  const text = String(masked ?? "");
+  const ownStart = Math.max(...[";", "&", "|", "\n", "(", ")"].map((c) => text.lastIndexOf(c))) + 1;
+  const assignments = [...text.matchAll(/(\bexport\s+|\$[Ee][Nn][Vv]:)?\bGH_REPO\s*=\s*/g)].filter(
+    (m) => m[1] || m.index >= ownStart,
+  );
   if (!assignments.length) return undefined;
   const last = assignments.at(-1);
   const value = /'([^']*)'|"([^"$`\\]*)"|([^\s;&|()'"`$]+)/y;
@@ -161,9 +168,10 @@ export function assignedGhRepo(command, masked = command) {
 /**
  * The repository a `gh pr merge` names, in gh's order: a PR URL, then
  * `--repo` / `-R` (`merge.repo` from `parseMerge`), then a `GH_REPO` the
- * command assigns. `[HOST/]OWNER/REPO` is read as gh reads it, so a host other
- * than github.com is kept and can never be home. `null` when one is named but
- * not readable; `undefined` when none is, and gh resolves the checkout's own.
+ * command assigns. `[HOST/]OWNER/REPO` is read as gh reads it — a URL or an
+ * ssh remote (`git@github.com:o/r.git`) included — so a host other than
+ * github.com is kept and can never be home. `null` when one is named but not
+ * readable; `undefined` when none is, and gh resolves the checkout's own.
  */
 export function mergeRepo(merge, envRepo) {
   const fromUrl = repoOfUrl(merge.ref);
@@ -171,7 +179,9 @@ export function mergeRepo(merge, envRepo) {
   const named = merge.repo !== undefined ? merge.repo : envRepo;
   if (named == null) return named;
   const parts = named
-    .replace(/^https?:\/\//i, "")
+    .replace(/^[a-z][a-z0-9+.-]*:\/\//i, "")
+    .replace(/^[^@/]+@/, "")
+    .replace(/^([^/:]+):(?!\d)/, "$1/")
     .replace(/\.git$/i, "")
     .replace(/\/+$/, "")
     .split("/");

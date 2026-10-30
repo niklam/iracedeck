@@ -171,7 +171,13 @@ describe("post rules", () => {
       expect(assignedGhRepo("GH_REPO=$R gh pr merge 5")).toBeNull();
       expect(assignedGhRepo(`GH_REPO="$R" gh pr merge 5`)).toBeNull();
       expect(assignedGhRepo("gh pr merge 5")).toBeUndefined();
-      expect(assignedGhRepo("GH_REPO=a/b; GH_REPO=c/d; ")).toBe("c/d");
+      expect(assignedGhRepo("export GH_REPO=a/b; export GH_REPO=c/d; ")).toBe("c/d");
+      expect(assignedGhRepo("export GH_REPO=a/b && env GH_REPO=c/d ")).toBe("c/d");
+      expect(assignedGhRepo("(cd x && GH_REPO=a/b ")).toBe("a/b");
+      // Neither a prefix of another command nor an unexported assignment reaches the merge.
+      expect(assignedGhRepo("GH_REPO=a/b gh pr view 3 && ")).toBeUndefined();
+      expect(assignedGhRepo("GH_REPO=a/b; ")).toBeUndefined();
+      expect(assignedGhRepo("$(GH_REPO=a/b gh pr view 3) ")).toBeUndefined();
       // The masked twin hides a quoted mention; the value is read from the raw text.
       const raw = `echo "GH_REPO=x/y"; GH_REPO='a/b' `;
       expect(
@@ -192,6 +198,9 @@ describe("post rules", () => {
       expect(mergeRepo({ ref: "5" }, null)).toBeNull();
       expect(mergeRepo({ repo: "github.com/c/d" })).toBe("c/d");
       expect(mergeRepo({ repo: "https://github.com/c/d.git" })).toBe("c/d");
+      expect(mergeRepo({ repo: "git@github.com:niklam/iracedeck.git" })).toBe("niklam/iracedeck");
+      expect(mergeRepo({ repo: "ssh://git@github.com/niklam/iracedeck.git" })).toBe("niklam/iracedeck");
+      expect(mergeRepo({ repo: "git@ghe.example.com:niklam/iracedeck.git" })).toBe("ghe.example.com/niklam/iracedeck");
       expect(mergeRepo({ repo: "ghe.example.com/niklam/iracedeck" })).toBe("ghe.example.com/niklam/iracedeck");
     });
 
@@ -231,6 +240,14 @@ describe("post rules", () => {
     expect(firstMerge(`gh pr merge 5 --repo "a/b"`).repo).toBe("a/b");
     expect(firstMerge(`gh pr merge 5 -R "$R"`)).toMatchObject({ repo: null, ref: "5", readable: true });
     expect(firstMerge("gh pr merge 5 -R")).toMatchObject({ repo: null });
+    // The mask leaves a bare variable as it is: it is still not a literal.
+    for (const command of [
+      "gh pr merge 5 --repo $R",
+      "gh pr merge 5 --repo=$R",
+      "gh pr merge 5 -R$R",
+      "gh pr merge 5 -R `r`",
+    ])
+      expect(firstMerge(command).repo, command).toBeNull();
     expect(firstMerge("gh pr merge 5 --squash").repo).toBeUndefined();
     // A body that mentions the flag is not the merge's own.
     expect(firstMerge(`gh pr merge 5 --body "-R a/b"`).repo).toBeUndefined();

@@ -10,10 +10,11 @@
  * would move the iRaceDeck card that shares its number. Those get one line
  * saying the hook left the board alone.
  */
+import { existsSync } from "node:fs";
+
 import { addToBoard, ghJson, git, postContext, readInput, setBoardStatus } from "./lib.mjs";
 import {
   BASH,
-  cmd,
   firstMerge,
   GIT_WORKTREE_ADD,
   gitCwd,
@@ -35,7 +36,10 @@ import {
   repoOfUrl,
 } from "./rules-post.mjs";
 
-const GH_PR_MERGE = cmd(/gh\s+pr\s+merge\b/);
+// Unanchored, as `firstMerge` is: anchored, a merge behind a wrapper the anchor
+// does not know matched no segment, and `gitCwd` then walked every `cd` in the
+// chain, those after the merge included.
+const GH_PR_MERGE = /\bgh\s+pr\s+merge\b/;
 
 const input = await readInput();
 const raw = input.tool_input?.command;
@@ -76,14 +80,15 @@ if (typeof raw === "string") {
  * `merge` is the merge's own arguments (`parseMerge`), so a pin or a body value
  * is never read as the PR. The PR is read back from the repository the merge
  * named, in the directory it ran in, and only one in {@link HOME_REPO} moves a
- * card (#1527). A `GH_REPO` counts only when assigned ahead of the merge and
- * outside quoted text. The repository reaches the read-back as `GH_REPO`, not
+ * card (#1527). A `GH_REPO` counts only where it reaches the merge
+ * (`assignedGhRepo`). The repository reaches the read-back as `GH_REPO`, not
  * `--repo`, which gh refuses without a PR argument where the merge itself,
- * reading `GH_REPO`, took the branch's PR.
+ * reading `GH_REPO`, took the branch's PR. A directory the chain removed after
+ * the merge is gone by now, so the read-back then runs in the session's.
  */
 function afterMerge(merge, command, cwd, shell) {
   const text = trustedMask(command);
-  const at = /\bgh\s+pr\s+merge\b/.exec(text)?.index ?? command.length;
+  const at = GH_PR_MERGE.exec(text)?.index ?? command.length;
   const named = mergeRepo(merge, assignedGhRepo(command.slice(0, at), text.slice(0, at)));
   if (named === null)
     return [
@@ -91,6 +96,7 @@ function afterMerge(merge, command, cwd, shell) {
     ];
   if (named && !isHomeRepo(named))
     return [`gh pr merge ran in ${named}, not ${HOME_REPO}: no Roadmap card moved and no post-merge runs listed.`];
+  const ran = gitCwd(command, cwd, GH_PR_MERGE, shell);
   const pr = ghJson(
     [
       "pr",
@@ -99,7 +105,7 @@ function afterMerge(merge, command, cwd, shell) {
       "--json",
       "number,state,title,url,mergeCommit,closingIssuesReferences",
     ],
-    gitCwd(command, cwd, GH_PR_MERGE, shell),
+    existsSync(ran) ? ran : cwd,
     named && !repoOfUrl(merge.ref) ? { env: { GH_REPO: named } } : undefined,
   );
   if (!pr) return ["gh pr merge: could not read the PR back; check by hand whether it merged."];

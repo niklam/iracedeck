@@ -341,16 +341,25 @@ describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", () => {
       const byUrl = readBack("gh pr merge https://github.com/niklam/iracedeck/pull/5");
       expect(byUrl.GH_REPO).toBeUndefined();
       expect(byUrl.args).toContain("https://github.com/niklam/iracedeck/pull/5");
-      // An assignment after the merge, or in a body, is not the merge's.
+      // An assignment that never reaches the merge is not the merge's: after it,
+      // in a body, a prefix of another command, or not exported.
       for (const command of [
         "gh pr merge 5 --squash && GH_REPO=other/repo gh issue list",
         `gh pr merge 5 --squash --body "GH_REPO=other/repo"`,
+        "GH_REPO=other/repo gh pr view 3 && gh pr merge 5 --squash",
+        "GH_REPO=other/repo; gh pr merge 5 --squash",
       ])
         expect(readBack(command).GH_REPO, command).toBeUndefined();
+      expect(readBack("export GH_REPO=niklam/iracedeck; gh pr merge 5 --squash").GH_REPO).toBe("niklam/iracedeck");
+      const sameDir = (call, dir) => expect(path.resolve(call.cwd).toLowerCase()).toBe(path.resolve(dir).toLowerCase());
       const elsewhere = path.join(SCRATCH, "merge-cwd");
       mkdirSync(elsewhere, { recursive: true });
-      const cdThenMerge = readBack(`cd ${elsewhere.replaceAll("\\", "/")} && gh pr merge 5 --squash`);
-      expect(path.resolve(cdThenMerge.cwd).toLowerCase()).toBe(path.resolve(elsewhere).toLowerCase());
+      const there = elsewhere.replaceAll("\\", "/");
+      sameDir(readBack(`cd ${there} && gh pr merge 5 --squash`), elsewhere);
+      // A cd after the merge, behind a wrapper the anchor does not know, is not where it ran.
+      sameDir(readBack(`winpty gh pr merge 5 --squash && cd ${there}`), ROOT);
+      // The chain removed the directory the merge ran in: the session's is used.
+      sameDir(readBack(`cd ${there}/removed && gh pr merge 5 --squash`), ROOT);
     });
 
     it("moves no card for a worktree added in another repository's checkout", () => {

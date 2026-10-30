@@ -690,9 +690,10 @@ export function parseMerge({ raw, flat, trusted }) {
     ? [...flat.matchAll(/\S+/g)].map((m) => ({ word: raw.slice(m.index, m.index + m[0].length), shape: m[0] }))
     : words(raw).map((w) => ({ word: w, shape: w }));
   const literal = (t) => t !== undefined && t.word === t.shape;
-  // A plain word, or one in quotes that expand nothing; `null` for anything else.
+  // A plain word, or one in quotes that expand nothing; `null` for anything
+  // else. The mask leaves a bare `$REPO` as it is, so a `$` is refused here.
   const repoValue = (t) => {
-    if (t === undefined) return null;
+    if (t === undefined || /[$`]/.test(t.word)) return null;
     if (literal(t)) return t.word;
     const quoted = /^'([^']*)'$/.exec(t.word) ?? /^"([^"$`\\]*)"$/.exec(t.word);
     return quoted ? quoted[1] : null;
