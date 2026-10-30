@@ -32,7 +32,7 @@ The list is a judgement, not a path filter: a comment edit under `scripts/` does
    - **narrow, and it holds** — fix it on the branch when the fix is small and inside the change's scope; otherwise file an issue, or decline it with the reason;
    - **does not hold** — if the reviewer will raise the same class again, add a non-finding line to `learnings.md`.
 
-   Whoever wrote the code does not decline its findings alone: every "decline" and "does not hold" first goes to a fresh judge, as `code-review.md` says (the brief is in the `issue-lead` skill, step 7), and an overruled one is fixed. Add a `learnings.md` non-finding only for one the judge upheld.
+   Whoever wrote the code does not decline its findings alone: every "decline", "does not hold" and "file an issue" (a held finding left unfixed on the branch) first goes to a fresh judge, as `code-review.md` says (the brief is in the `issue-lead` skill, step 7), and an overruled one is fixed. Add a `learnings.md` non-finding only for one the judge upheld.
 6. Tell the maintainer the tally and anything that needs a decision. Never forward the raw report.
 7. Put one line in the PR body: `Second read: N raised, H held — A fixed, F filed, D declined.` `H` counts every finding whose mechanism was real, whatever was then done with it; it is the number the ten-run check reads.
 

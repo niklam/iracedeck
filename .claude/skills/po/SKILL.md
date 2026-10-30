@@ -101,7 +101,7 @@ Hub and spoke: leads report to you and never to each other. Their end-of-turn re
 |-------|--------|
 | `started` | nothing |
 | `amend-spec` | amend the spec on `master` (Specs above), tell the lead |
-| `question` | queue it for Niklas |
+| `question` | a product decision: queue it for Niklas. A technical one (a judge's ruling against a spec or rule decision, #1528): decide it yourself, the thorough option, amending the spec if it was wrong; never send it to Niklas |
 | `audio-text` | queue the proposed lines for Niklas's go before any clip is generated |
 | `review-page` | queue the page link for Niklas's verdict |
 | `waiting-prompt` | tell Niklas which session has a permission prompt or hook ask open |
