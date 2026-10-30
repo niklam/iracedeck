@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
@@ -21,14 +22,15 @@ import { SOURCES } from "../packages/plugin-build/src/plugin-rollup.mjs";
 // that is a false green on a PR. An audit found eight such reads at once, every
 // one confirmed by editing the file and watching no task hash move.
 //
-// What turbo hashes, as this test models it (turbo 2.11, verified against
-// `turbo run build typecheck --dry=json`):
-//   * `globalDependencies` (repo-root globs) are in every task's hash.
+// What turbo hashes, as this test models it (the turbo MODELLED_TURBO_VERSION
+// names, and the cross-check below holds it to):
+//   * `globalDependencies` (repo-root globs) are in every task's hash, and so
+//     is `.gitattributes`, which turbo adds itself (TURBO_IMPLICIT_GLOBAL_FILES).
 //   * A task's `inputs` are globs relative to its package, or to the repo root
 //     behind `$TURBO_ROOT$/`; `!` excludes; `$TURBO_DEFAULT$` stands for the
 //     package's own files. Without `inputs` the default is the package's files.
 //     A list WITHOUT `$TURBO_DEFAULT$` hashes only what it names (and the
-//     package's package.json, which is always hashed).
+//     package's package.json and turbo.json, which are always hashed).
 //   * The default inputs skip gitignored files; an explicit glob does not, which
 //     is how `$TURBO_ROOT$/feature-flags.local.json` is hashed. So a gitignored
 //     file a task reads — a dependency's `dist/`, a generated JSON — is covered
@@ -42,6 +44,19 @@ import { SOURCES } from "../packages/plugin-build/src/plugin-rollup.mjs";
 //     `<NONEXISTENT>` task, which is how `iracing-actions#build` covers the
 //     action sources the website and the plugins read.
 //
+// That model is a re-implementation, so nothing would tie it to turbo but the
+// claims above (#1503): a turbo bump that hashed differently would leave every
+// check green while checking the wrong thing. Two things tie it. The version it
+// models is pinned (MODELLED_TURBO_VERSION) and must be the one the root
+// package.json declares, node_modules holds and turbo.json's `$schema` names,
+// so a bump fails here until someone re-verifies. And every run asks turbo itself: "the model against
+// turbo's own dry run" runs `turbo run build typecheck --dry=json` and holds
+// the model to it, task by task — the files each task hashes, in both
+// directions; the config entry it resolves; its direct dependency edges; the
+// task graph; and the global hash's files. Beside TURBO_IMPLICIT_GLOBAL_FILES,
+// the one disagreement it allows is the model's documented strictness about
+// dot-directories (below).
+//
 // The checks: A, a tsconfig `extends` outside its package; B, every file
 // reachable by import from what a task runs (its `node` scripts, Rollup and
 // Astro configs) or compiles (its tsc program, the program Rollup bundles
@@ -54,13 +69,46 @@ import { SOURCES } from "../packages/plugin-build/src/plugin-rollup.mjs";
 // a build reads through an npm package's own code; and an environment variable
 // a build reads (`env`). Where its model and turbo differ it errs strict: `**`
 // here does not match a dot-directory, while turbo's explicit globs hash such
-// files too.
+// files too (today only `packages/icons/node_modules/.bin/`, which the website's
+// `$TURBO_ROOT$/packages/icons/**` reaches). In a `!` exclusion the same
+// strictness would err the other way, hashing what turbo excludes; the
+// cross-check reports that rather than allowing it.
 
 // scripts/turbo-inputs.test.mjs lives in scripts/, so the repo root is one up.
 const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 // The pseudo package name turbo gives the repo root, as in `//#generate:changelog-data`.
 const ROOT = "//";
+
+// The turbo whose hashing the model describes (#1503). A turbo bump fails the
+// version test until someone has re-verified the model against the new turbo:
+// the claims in the header comment, then the dry-run cross-check, whose
+// allowances (TURBO_IMPLICIT_GLOBAL_FILES and the dot-directory strictness)
+// must still be the only differences. Only then does this constant move.
+const MODELLED_TURBO_VERSION = "2.11.9";
+
+// The tasks the cross-check asks turbo to plan. Their dependsOn closure reaches
+// every task the checks reason about (`//#generate:changelog-data` through the
+// plugins' builds), and a test holds that, so a check on a task outside it
+// fails rather than going unverified.
+const DRY_RUN_TASKS = ["build", "typecheck"];
+
+// How long the dry run may take. This is enforced by `spawnSync`, NOT by a
+// Vitest timeout: the dry run runs while the file is collected, and Vitest
+// cannot interrupt a synchronous `spawnSync`, so a hung turbo would block the
+// worker until the CI job limit. Generous against the <1 s it takes (measured
+// 2026-10-30, turbo 2.11.9).
+const DRY_RUN_TIMEOUT_MS = 60_000;
+
+// Files turbo puts in the global hash with no `globalDependencies` glob naming
+// them, and why. The model leaves them out: no build reads them as input, and
+// the cross-check holds both this list and turbo to each other.
+const TURBO_IMPLICIT_GLOBAL_FILES = new Map([
+  [
+    ".gitattributes",
+    "turbo hashes a file as git stores it, line endings normalised by `.gitattributes`, so the file is in every hash",
+  ],
+]);
 
 // Directories that never hold a project config worth checking. `build/` is
 // skipped only at a package root, where node-gyp writes it: `src/build/` in
@@ -143,9 +191,20 @@ const taskKey = (pkg, task) => `${pkg}#${task}`;
 // Node's own matcher (stable in Node 24, no warning). Paths are repo-relative
 // with forward slashes on every platform, so posix is the right flavour. It
 // compiles the glob on every call, and the checks ask the same question for
-// every task that reaches a file, so answers are memoised.
+// every task that reaches a file, so answers are memoised. The cross-check
+// asks every task about every tracked file, so a file outside the glob's
+// literal leading directories is turned away before the matcher or the memo:
+// no glob character can stand for a `/` in front of the first one.
 const globAnswers = new Map();
+const globPrefixes = new Map();
 function globMatches(file, glob) {
+  let prefix = globPrefixes.get(glob);
+  if (prefix === undefined) {
+    const firstMeta = glob.search(/[*?[\]{}()!+@\\]/);
+    prefix = firstMeta < 0 ? glob : glob.slice(0, glob.lastIndexOf("/", firstMeta) + 1);
+    globPrefixes.set(glob, prefix);
+  }
+  if (!file.startsWith(prefix)) return false;
   const key = `${glob}\0${file}`;
   let answer = globAnswers.get(key);
   if (answer === undefined) {
@@ -154,6 +213,9 @@ function globMatches(file, glob) {
   }
   return answer;
 }
+
+// The files of a package turbo adds to each of its tasks' inputs, narrowed or not.
+const ALWAYS_HASHED = ["package.json", "turbo.json"];
 
 // A path that stands for "any file under this directory, including one added
 // tomorrow". Inputs that list today's files one by one do not cover it, which is
@@ -217,7 +279,8 @@ function globsCover(globs, pkgDir, file, matchesDefault) {
 
 /** Whether `inputs` (of a task in the package at `pkgDir`) hash `file`. */
 function inputsCover(inputs, pkgDir, file, repo) {
-  if (file === (pkgDir ? `${pkgDir}/package.json` : "package.json")) return true;
+  // Turbo hashes the package's package.json and turbo.json whatever `inputs` say.
+  if (ALWAYS_HASHED.some((name) => file === (pkgDir ? `${pkgDir}/${name}` : name))) return true;
   // The default inputs are the package's own files that git does not ignore.
   // The root package's own files are everything not inside a workspace package.
   const isDefaultInput = (f) =>
@@ -233,10 +296,22 @@ function outputsCover(outputs, pkgDir, file) {
 }
 
 /**
- * Every task whose hash ends up in `pkg#task`'s hash: the task itself and,
- * transitively, its `dependsOn`. `^x` is task x in each direct workspace
- * dependency; `p#x` names one task; a bare `x` is the same package's task x.
+ * The tasks `pkg#task`'s `dependsOn` names directly, as [{ pkg, task }]. `^x`
+ * is task x in each direct workspace dependency; `p#x` names one task; a bare
+ * `x` is the same package's task x.
  */
+function directDependencies(turbo, workspace, pkg, task) {
+  return (taskConfig(turbo, pkg, task)?.dependsOn ?? []).flatMap((dep) => {
+    if (dep.startsWith("^")) return (workspace.get(pkg)?.deps ?? []).map((d) => ({ pkg: d, task: dep.slice(1) }));
+    if (dep.includes("#")) {
+      const at = dep.lastIndexOf("#");
+      return [{ pkg: dep.slice(0, at), task: dep.slice(at + 1) }];
+    }
+    return [{ pkg, task: dep }];
+  });
+}
+
+/** Every task whose hash ends up in `pkg#task`'s hash: the task itself and, transitively, its `dependsOn`. */
 function taskClosure(turbo, workspace, pkg, task) {
   // Memoised per config and workspace object: the checks ask for the same
   // closure once per file, tens of thousands of times.
@@ -249,18 +324,8 @@ function taskClosure(turbo, workspace, pkg, task) {
   const visit = (p, t) => {
     const key = taskKey(p, t);
     if (seen.has(key)) return;
-    const config = taskConfig(turbo, p, t);
-    seen.set(key, { pkg: p, task: t, dir: workspace.get(p)?.dir ?? "", config });
-    for (const dep of config?.dependsOn ?? []) {
-      if (dep.startsWith("^")) {
-        for (const d of workspace.get(p)?.deps ?? []) visit(d, dep.slice(1));
-      } else if (dep.includes("#")) {
-        const at = dep.lastIndexOf("#");
-        visit(dep.slice(0, at), dep.slice(at + 1));
-      } else {
-        visit(p, dep);
-      }
-    }
+    seen.set(key, { pkg: p, task: t, dir: workspace.get(p)?.dir ?? "", config: taskConfig(turbo, p, t) });
+    for (const dep of directDependencies(turbo, workspace, p, t)) visit(dep.pkg, dep.task);
   };
   visit(pkg, task);
   const closure = [...seen.values()];
@@ -457,6 +522,240 @@ function checkPluginSources(turbo, repo, sources, plugins, copiedFiles) {
 }
 
 // ---------------------------------------------------------------------------
+// Turbo's own answer (#1503). The model above re-implements turbo's hashing;
+// these hold it to what the installed turbo's dry run says it hashes. Pure over
+// the parsed config, the repo facts and the parsed `--dry=json`, so a positive
+// control can hand them a doctored dry run.
+
+/**
+ * The version tripwire: the turbo the model describes is the one the root
+ * package.json declares, node_modules holds, the dry run reports and
+ * turbo.json's `$schema` names (`https://v2-11-9.turborepo.dev/schema.json`
+ * is 2.11.9). A `$schema` naming no version is reported as such.
+ */
+function checkTurboVersion({ modelled, declared, installed, dryRun, schema }) {
+  const schemaVersion = /^https:\/\/v(\d+)-(\d+)-(\d+)\.turborepo\.dev\//
+    .exec(schema ?? "")
+    ?.slice(1)
+    .join(".");
+  const seen = [
+    ["the root package.json's turbo devDependency", declared],
+    ["the installed turbo (node_modules/turbo/package.json)", installed],
+    ["the dry run's turboVersion", dryRun],
+    ...(schemaVersion === undefined ? [] : [[`turbo.json's "$schema"`, schemaVersion]]),
+  ];
+  const violations = seen
+    .filter(([, version]) => version !== modelled)
+    .map(
+      ([where, version]) =>
+        `${where} is ${version}, but scripts/turbo-inputs.test.mjs models turbo ${modelled}: re-verify the model ` +
+        `against turbo ${version} — the claims in the file's header comment, then "the model against turbo's own ` +
+        `dry run" — before moving MODELLED_TURBO_VERSION`,
+    );
+  if (schemaVersion === undefined) {
+    violations.push(
+      `turbo.json's "$schema" is ${schema}, which names no turbo version, but scripts/turbo-inputs.test.mjs models ` +
+        `turbo ${modelled}: point it at https://v${modelled.replaceAll(".", "-")}.turborepo.dev/schema.json, the ` +
+        `schema of the turbo the model is verified against`,
+    );
+  }
+  return violations;
+}
+
+/** The repo-relative files turbo's dry run lists as one task's own inputs. */
+function dryRunInputFiles(dryTask) {
+  const dir = toPosix(dryTask.directory ?? "");
+  return Object.keys(dryTask.inputs ?? {}).map((f) => path.posix.normalize(path.posix.join(dir, toPosix(f))));
+}
+
+/**
+ * Globs as the dry run's `resolvedTaskDefinition` prints them: `$TURBO_ROOT$/`
+ * rewritten to the package-relative `../../`, `$TURBO_DEFAULT$` dropped (the
+ * file comparison covers what it stands for), sorted.
+ */
+function asResolvedGlobs(globs, pkgDir) {
+  const up = pkgDir
+    ? `${pkgDir
+        .split("/")
+        .map(() => "..")
+        .join("/")}/`
+    : "";
+  return (globs ?? [])
+    .filter((glob) => glob !== "$TURBO_DEFAULT$")
+    .map((glob) => glob.replace(/^(!?)\$TURBO_ROOT\$\//, (_, bang) => `${bang}${up}`))
+    .sort();
+}
+
+/**
+ * A path with each segment's leading dot swapped for a stand-in, so `*` and
+ * `**` match it as turbo's globs do. A `.` or `..` segment is a step, not a
+ * dotfile, and is left alone, so a glob that reaches up still does.
+ */
+const undot = (p) => p.replace(/(^|\/)\.(?!\.?(?:\/|$))/g, "$1․");
+
+/**
+ * Whether the explicit globs of `inputs` would hash `file` if `*` and `**`
+ * matched a dot-directory or dotfile, as turbo's do — the one way the model is
+ * documented to be stricter than turbo. `$TURBO_DEFAULT$` is no glob: the
+ * default inputs hash dotfiles in the model too.
+ */
+function inputsCoverWithDots(inputs, pkgDir, file) {
+  const globs = (inputs ?? [])
+    .filter((glob) => glob !== "$TURBO_DEFAULT$")
+    .map((glob) => (glob.startsWith("!") ? `!${undot(glob.slice(1))}` : undot(glob)));
+  return globsCover(globs, undot(pkgDir), undot(file), () => false);
+}
+
+/** Up to five items of a list, and how many there are in all. */
+function sample(list) {
+  return `${list.slice(0, 5).join(", ")}${list.length > 5 ? `, … (${list.length} in all)` : ""}`;
+}
+
+/**
+ * Every way the model disagrees with turbo's dry run of DRY_RUN_TASKS (`dry`),
+ * one sentence apiece; an empty list is a pass. Per planned task: the files it
+ * hashes itself, in both directions; the config entry it resolves; its direct
+ * dependency edges. Then the task graph, and the global hash's files.
+ *
+ * The files each task is asked about are `onDisk` (onDiskSnapshot: tracked
+ * and present, untracked and not ignored, and gitignored but named by an
+ * explicit glob — in practice the stable files of two snapshots) and every
+ * file turbo lists for that task, so a deleted file is asked about nowhere and
+ * a gitignored one that no explicit glob names only where turbo hashes it.
+ * Turbo hashing a file the model says it does not is the
+ * documented strictness when the file sits in a dot-directory an explicit glob
+ * would otherwise match, and a violation otherwise; the model hashing a file
+ * turbo does not is always one, since checks A–E would then pass on a file
+ * turbo never looks at.
+ *
+ * `scope` narrows it for a positive control, which doctors one corner of the
+ * dry run and need not pay for the rest: `tasks`, the task ids whose files,
+ * definition and edges are compared (every planned task when absent); `graph`
+ * and `global`, whether the task graph and the global hash are (both by
+ * default).
+ */
+function compareModelWithDryRun(turbo, repo, dry, onDisk, scope = {}) {
+  const { workspace } = repo;
+  const { tasks: scopedTasks, graph = true, global = true } = scope;
+  const violations = [];
+  const sorted = (list) => [...new Set(list)].sort();
+  const fixModel = `scripts/turbo-inputs.test.mjs models turbo ${MODELLED_TURBO_VERSION}; fix the model to match`;
+
+  // The graph. Turbo runs a root script only as a `//#` task turbo.json
+  // declares, so the root's own `build` and `typecheck` scripts are not roots.
+  if (graph) {
+    const modelled = new Set();
+    for (const pkg of workspace.keys()) {
+      if (pkg === ROOT) continue;
+      for (const task of DRY_RUN_TASKS) {
+        for (const t of taskClosure(turbo, workspace, pkg, task)) modelled.add(taskKey(t.pkg, t.task));
+      }
+    }
+    const planned = new Set(dry.tasks.map(({ taskId }) => taskId));
+    for (const id of [...modelled].filter((id) => !planned.has(id)).sort()) {
+      violations.push(`the model's dependsOn closure reaches ${id}, but turbo's dry run does not plan it: ${fixModel}`);
+    }
+    for (const id of [...planned].filter((id) => !modelled.has(id)).sort()) {
+      violations.push(`turbo's dry run plans ${id}, but the model's dependsOn closure does not reach it: ${fixModel}`);
+    }
+  }
+
+  for (const dryTask of dry.tasks) {
+    const { taskId: id, package: pkg, task } = dryTask;
+    if (scopedTasks !== undefined && !scopedTasks.includes(id)) continue;
+    const entry = workspace.get(pkg);
+    if (!entry) {
+      violations.push(`turbo plans ${id} in a package the model's workspace lacks: teach loadWorkspace() about it`);
+      continue;
+    }
+    const { dir } = entry;
+    if (toPosix(dryTask.directory ?? "") !== dir) {
+      violations.push(`turbo runs ${id} in "${toPosix(dryTask.directory)}", the model in "${dir}": ${fixModel}`);
+      continue;
+    }
+    const config = taskConfig(turbo, pkg, task);
+    if (!config) {
+      violations.push(`turbo plans ${id}, but the model finds no entry for it in turbo.json: ${fixModel}`);
+      continue;
+    }
+
+    // The definition: the entry the model picks resolves to what turbo resolved.
+    const key = configKey(turbo, pkg, task);
+    const resolved = dryTask.resolvedTaskDefinition ?? {};
+    const fields = [
+      ["inputs", sorted(asResolvedGlobs(config.inputs, dir)), sorted(resolved.inputs ?? [])],
+      ["outputs", sorted(asResolvedGlobs(config.outputs, dir)), sorted(resolved.outputs ?? [])],
+      ["dependsOn", sorted(config.dependsOn ?? []), sorted(resolved.dependsOn ?? [])],
+      ["cache", [String(config.cache ?? true)], [String(resolved.cache)]],
+    ];
+    for (const [field, mine, theirs] of fields) {
+      if (mine.join("\n") === theirs.join("\n")) continue;
+      violations.push(
+        `${id}: turbo resolves its "${field}" to [${theirs.join(", ")}], but the model reads ` +
+          `[${mine.join(", ")}] from "${key}": taskConfig() picks another entry than turbo does — ${fixModel}`,
+      );
+    }
+
+    // The direct edges, `<NONEXISTENT>` tasks included.
+    const mineDeps = sorted(directDependencies(turbo, workspace, pkg, task).map((d) => taskKey(d.pkg, d.task)));
+    const theirDeps = sorted(dryTask.dependencies ?? []);
+    const extraDeps = mineDeps.filter((d) => !theirDeps.includes(d));
+    const missingDeps = theirDeps.filter((d) => !mineDeps.includes(d));
+    if (extraDeps.length > 0) {
+      violations.push(`${id}: the model has it depend on ${sample(extraDeps)}, turbo does not: ${fixModel}`);
+    }
+    if (missingDeps.length > 0) {
+      violations.push(`${id}: turbo has it depend on ${sample(missingDeps)}, the model does not: ${fixModel}`);
+    }
+
+    // The files it hashes itself.
+    const listed = new Set(dryRunInputFiles(dryTask));
+    const modelOnly = [];
+    const turboOnly = [];
+    for (const file of new Set([...onDisk, ...listed])) {
+      const hashed = inputsCover(config.inputs, dir, file, repo);
+      if (hashed && !listed.has(file)) modelOnly.push(file);
+      if (!hashed && listed.has(file) && !inputsCoverWithDots(config.inputs, dir, file)) turboOnly.push(file);
+    }
+    if (modelOnly.length > 0) {
+      violations.push(
+        `${id}: the model says the task hashes ${sample(modelOnly.sort())}, but turbo's dry run does not list it, ` +
+          `so checks A–E pass on files turbo never hashes: ${fixModel} (inputsCover)`,
+      );
+    }
+    if (turboOnly.length > 0) {
+      violations.push(
+        `${id}: turbo hashes ${sample(turboOnly.sort())}, which the model says the task does not, and not ` +
+          `because of the documented dot-directory strictness: find out why turbo hashes it — ${fixModel}`,
+      );
+    }
+  }
+
+  // The global hash: every file `globalDependencies` names, and only the implicit ones beside them.
+  if (!global) return violations;
+  const globs = turbo.globalDependencies ?? [];
+  const turboGlobal = Object.keys(dry.globalCacheInputs?.files ?? {}).map(toPosix);
+  const modelGlobal = [...new Set([...onDisk, ...turboGlobal])].filter((f) =>
+    globs.some((glob) => globMatches(f, glob)),
+  );
+  for (const file of modelGlobal.filter((f) => !turboGlobal.includes(f)).sort()) {
+    violations.push(`the model treats ${file} as a global dependency, but turbo's global hash lacks it: ${fixModel}`);
+  }
+  for (const file of turboGlobal.filter((f) => !modelGlobal.includes(f) && !TURBO_IMPLICIT_GLOBAL_FILES.has(f))) {
+    violations.push(
+      `turbo's global hash has ${file}, which no "globalDependencies" glob names: find out why turbo hashes it, ` +
+        `then add it to TURBO_IMPLICIT_GLOBAL_FILES with the reason`,
+    );
+  }
+  for (const file of TURBO_IMPLICIT_GLOBAL_FILES.keys()) {
+    if (onDisk.includes(file) && !turboGlobal.includes(file)) {
+      violations.push(`TURBO_IMPLICIT_GLOBAL_FILES names ${file}, but turbo's global hash lacks it: drop the entry`);
+    }
+  }
+  return violations;
+}
+
+// ---------------------------------------------------------------------------
 // package.json `exports`
 
 /** Every file target an `exports` map (or `main` / `types`) names, all conditions included. */
@@ -539,6 +838,159 @@ function trackedFiles() {
   const result = spawnSync("git", ["ls-files", "-z"], { cwd: repoRoot, encoding: "utf-8" });
   if (result.status !== 0) throw new Error(`git ls-files failed: ${result.stderr}`);
   return result.stdout.split("\0").filter(Boolean);
+}
+
+/**
+ * The repo-relative globs that hash files whether git ignores them or not:
+ * every positive, explicit `inputs` entry of every task (a generic task's
+ * against each package) and every `globalDependencies` glob. Negations only
+ * take files away, and `$TURBO_DEFAULT$` skips ignored files.
+ */
+function explicitInputGlobs(turbo, workspace) {
+  const globs = new Set(turbo.globalDependencies ?? []);
+  const packageDirs = [...workspace].filter(([pkg]) => pkg !== ROOT).map(([, { dir }]) => dir);
+  for (const [key, config] of Object.entries(turbo.tasks ?? {})) {
+    const at = key.lastIndexOf("#");
+    const dirs = at < 0 ? packageDirs : [workspace.get(key.slice(0, at))?.dir ?? ""];
+    for (const glob of config.inputs ?? []) {
+      if (glob.startsWith("!") || glob === "$TURBO_DEFAULT$") continue;
+      for (const dir of dirs) {
+        globs.add(glob.startsWith("$TURBO_ROOT$/") ? glob.slice("$TURBO_ROOT$/".length) : path.posix.join(dir, glob));
+      }
+    }
+  }
+  return [...globs].sort();
+}
+
+/**
+ * The gitignored regular files on disk that `globs` may match, by git's own
+ * pathspec globbing, whose `*` and `**` match dotfiles too — a superset of what
+ * the model's stricter matcher accepts, which then decides. A symlink is left
+ * out: pnpm's `node_modules/<dep>` links are one, turbo hashes none of them,
+ * and the model has no business with them.
+ */
+function ignoredFilesMatching(globs) {
+  if (globs.length === 0) return [];
+  const result = spawnSync(
+    "git",
+    ["ls-files", "--others", "--ignored", "--exclude-standard", "-z", "--", ...globs.map((g) => `:(glob)${g}`)],
+    { cwd: repoRoot, encoding: "utf-8", maxBuffer: 64 * 1024 * 1024 },
+  );
+  if (result.status !== 0) throw new Error(`git ls-files --ignored failed: ${result.stderr}`);
+  return result.stdout.split("\0").filter((f) => {
+    if (!f) return false;
+    try {
+      return lstatSync(path.join(repoRoot, f)).isFile();
+    } catch {
+      return false;
+    }
+  });
+}
+
+/**
+ * The files on disk the cross-check asks every task about, at one moment:
+ * tracked and present, untracked and not ignored (turbo's default inputs hash
+ * both), and gitignored but matched by an explicit glob (which hashes them).
+ */
+function onDiskSnapshot(tracked, explicitGlobs) {
+  const deleted = deletedTrackedFiles();
+  return [...tracked.filter((f) => !deleted.has(f)), ...untrackedFiles(), ...ignoredFilesMatching(explicitGlobs)];
+}
+
+/**
+ * The files in both of two snapshots, taken either side of the dry run. A file
+ * another process creates or deletes meanwhile — `typecheck-script-coverage`
+ * plants a website test file for seconds in a full run — is in one only, and
+ * turbo may or may not have seen it, so it is asked about only where turbo
+ * lists it rather than reported as a model error.
+ */
+function stableOnDisk(before, after) {
+  const later = new Set(after);
+  return [...new Set(before)].filter((f) => later.has(f));
+}
+
+/** The tracked files a working tree has deleted: turbo hashes none of them, so the cross-check asks about none. */
+function deletedTrackedFiles() {
+  const result = spawnSync("git", ["ls-files", "--deleted", "-z"], { cwd: repoRoot, encoding: "utf-8" });
+  if (result.status !== 0) throw new Error(`git ls-files --deleted failed: ${result.stderr}`);
+  return new Set(result.stdout.split("\0").filter(Boolean));
+}
+
+/** git's untracked files that are not ignored: turbo's default inputs hash them, so the cross-check asks about them. */
+function untrackedFiles() {
+  const result = spawnSync("git", ["ls-files", "--others", "--exclude-standard", "-z"], {
+    cwd: repoRoot,
+    encoding: "utf-8",
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  if (result.status !== 0) throw new Error(`git ls-files --others failed: ${result.stderr}`);
+  return result.stdout.split("\0").filter(Boolean);
+}
+
+/**
+ * The installed turbo's version and its parsed `turbo run <tasks> --dry=json`,
+ * which plans the tasks and lists every file each one hashes without running
+ * any — or, in `error`, why there is none. It never throws: it runs while the
+ * file is collected, and a turbo that cannot run must fail the cross-check's
+ * tests, not checks A–E, which never needed turbo. Turbo runs through its own
+ * JS entry under this Node rather than a `.bin` shim, which differs by
+ * platform. Every `TURBO_*` variable is dropped (CI sets `TURBO_CACHE`;
+ * `TURBO_BINARY_PATH` would swap the binary), so the answer is the tree's
+ * alone, and telemetry is off, so a test run phones nobody.
+ */
+function runTurboDryRun(tasks) {
+  let installedVersion;
+  try {
+    const require = createRequire(path.join(repoRoot, "package.json"));
+    const manifestPath = require.resolve("turbo/package.json");
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf-8"));
+    installedVersion = manifest.version;
+    const bin = path.join(
+      path.dirname(manifestPath),
+      typeof manifest.bin === "string" ? manifest.bin : manifest.bin.turbo,
+    );
+    const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !/^TURBO_/i.test(name)));
+    const result = spawnSync(process.execPath, [bin, "run", ...tasks, "--dry=json"], {
+      cwd: repoRoot,
+      encoding: "utf-8",
+      env: { ...env, TURBO_TELEMETRY_DISABLED: "1", DO_NOT_TRACK: "1" },
+      maxBuffer: 256 * 1024 * 1024,
+      timeout: DRY_RUN_TIMEOUT_MS,
+    });
+    return { installedVersion, ...readDryRun(tasks, result) };
+  } catch (error) {
+    return { installedVersion, error: `turbo could not be run: ${error.message}` };
+  }
+}
+
+/**
+ * The parsed dry run from a `spawnSync` result, as `{ dry }`, or as `{ error }`
+ * with turbo's own stderr. A spawn error is "could not start" only when no
+ * process ever ran (no pid); one that ran and was cut off says how: killed at
+ * DRY_RUN_TIMEOUT_MS, or the error's code (ENOBUFS: its output outgrew
+ * `maxBuffer`).
+ */
+function readDryRun(tasks, result) {
+  const command = `turbo run ${tasks.join(" ")} --dry=json`;
+  const stderr = result.stderr?.trim() || "(no stderr)";
+  if (result.error && !result.pid) return { error: `${command} could not start: ${result.error.message}` };
+  if (result.error?.code === "ETIMEDOUT") {
+    return { error: `${command} was killed after ${DRY_RUN_TIMEOUT_MS} ms without finishing: ${stderr}` };
+  }
+  if (result.error) {
+    return { error: `${command} failed after it started (${result.error.code ?? result.error.message}): ${stderr}` };
+  }
+  if (result.status !== 0) {
+    return { error: `${command} exited ${result.status ?? `on ${result.signal}`}: ${stderr}` };
+  }
+  let dry;
+  try {
+    dry = JSON.parse(result.stdout);
+  } catch (error) {
+    return { error: `${command} printed no JSON (${error.message}): ${stderr}` };
+  }
+  if (!Array.isArray(dry?.tasks)) return { error: `${command} printed JSON without a "tasks" list: ${stderr}` };
+  return { dry };
 }
 
 /**
@@ -856,6 +1308,14 @@ const copiedFiles = [
 ];
 // The generated changelog the action templates directory carries once `//#generate:changelog-data` has run.
 const GENERATED_CHANGELOG = "packages/iracing-actions/src/actions/data/changelog.json";
+// Turbo's own answer, for the cross-check.
+// A failed run is held in `turboRun.error` for the cross-check's tests to report.
+// The files on disk are taken either side of it, and only those in both are
+// asked about everywhere (stableOnDisk).
+const explicitGlobs = explicitInputGlobs(turbo, workspace);
+const onDiskBefore = onDiskSnapshot(tracked, explicitGlobs);
+const turboRun = runTurboDryRun(DRY_RUN_TASKS);
+const onDisk = stableOnDisk(onDiskBefore, onDiskSnapshot(tracked, explicitGlobs));
 
 // One batched gitignore lookup for every path the checks will ask about.
 const ignore = createIgnoreLookup(tracked);
@@ -869,6 +1329,8 @@ ignore.prime([
   ...GENERATED_IN_SCRIPT.map(({ file }) => file),
   ...copiedFiles,
   GENERATED_CHANGELOG,
+  ...(turboRun.dry?.tasks ?? []).flatMap(dryRunInputFiles),
+  ...onDisk,
 ]);
 const generatedInScript = new Map();
 for (const { file, tasks } of GENERATED_IN_SCRIPT) {
@@ -912,6 +1374,8 @@ describe("turbo hashes every file a cached task reads (#1491)", () => {
       expect(inputsCover(inputs, "packages/a", "packages/a/src/x.test.mjs", fake)).toBe(false);
       expect(inputsCover(inputs, "packages/a", "packages/a/other.mjs", fake)).toBe(false);
       expect(inputsCover(inputs, "packages/a", "packages/a/package.json", fake)).toBe(true);
+      expect(inputsCover(inputs, "packages/a", "packages/a/turbo.json", fake)).toBe(true);
+      expect(inputsCover(["x.mjs"], "", "turbo.json", fake)).toBe(true);
       expect(inputsCover(inputs, "packages/a", "LICENSE", fake)).toBe(true);
       expect(inputsCover(["$TURBO_DEFAULT$"], "packages/a", "packages/a/other.mjs", fake)).toBe(true);
     });
@@ -945,6 +1409,25 @@ describe("turbo hashes every file a cached task reads (#1491)", () => {
       expect(isHashed({ tasks: { build: {} } }, fake, "a", "build", "packages/b/src/x.ts")).toBe(false);
     });
 
+    it("reads the direct edges of ^x, p#x and a bare x", () => {
+      const config = { tasks: { build: { dependsOn: ["^build", "gen", "//#data"] } } };
+      expect(directDependencies(config, ws, "a", "build")).toEqual([
+        { pkg: "b", task: "build" },
+        { pkg: "a", task: "gen" },
+        { pkg: ROOT, task: "data" },
+      ]);
+      expect(directDependencies(config, ws, "a", "gen")).toEqual([]);
+    });
+
+    it("turns a glob away by its literal leading directories without changing the answer", () => {
+      expect(globMatches("packages/a/src/x.ts", "packages/a/src/**")).toBe(true);
+      expect(globMatches("packages/b/src/x.ts", "packages/a/src/**")).toBe(false);
+      expect(globMatches("packages/a/src/x.ts", "packages/*/src/*.ts")).toBe(true);
+      expect(globMatches("tsconfig.base.json", "tsconfig.base.json")).toBe(true);
+      expect(globMatches("tsconfig.base.json.bak", "tsconfig.base.json")).toBe(false);
+      expect(globMatches("scripts/lib/changelog-parse.mjs", "scripts/lib/changelog-*.mjs")).toBe(true);
+    });
+
     it("resolves workspace specifiers through exports, patterns included", () => {
       expect(resolveWorkspaceSpecifier("@iracedeck/audio-assets/build", workspace)).toBe(
         "packages/audio-assets/src/build/index.mjs",
@@ -973,6 +1456,304 @@ describe("turbo hashes every file a cached task reads (#1491)", () => {
       expect(repo.isIgnored("packages/app-constants/dist/index.js")).toBe(true);
       expect(repo.isIgnored("packages/app-constants/package.json")).toBe(false);
       expect(ignore.stats.calls).toBeLessThan(5);
+    });
+  });
+
+  describe("the model against turbo's own dry run (#1503)", () => {
+    // Every test here needs the dry run. One that could not run fails each of
+    // them with turbo's own words, while checks A–E, which never needed turbo,
+    // still run: nothing in this block passes without it.
+    const requireDryRun = (run = turboRun) => {
+      if (run.error) throw new Error(`the cross-check has no dry run to compare with: ${run.error}`);
+      return run.dry;
+    };
+    // A doctored copy of the real dry run, for the positive controls. Only what
+    // a control changes is cloned: the task list, the global hash, and each
+    // task it reaches through dryTaskOf.
+    const doctored = (mutate) => {
+      const real = requireDryRun();
+      const copy = { ...real, globalCacheInputs: structuredClone(real.globalCacheInputs), tasks: [...real.tasks] };
+      mutate(copy);
+      return copy;
+    };
+    const dryTaskOf = (dry, id) => {
+      const index = dry.tasks.findIndex(({ taskId }) => taskId === id);
+      if (index < 0) throw new Error(`positive control is stale: the dry run plans no ${id}`);
+      dry.tasks[index] = structuredClone(dry.tasks[index]);
+      return dry.tasks[index];
+    };
+    const compare = (dry, { config = turbo, files = onDisk, ...scope } = {}) =>
+      compareModelWithDryRun(config, repo, dry, files, scope);
+    // A control compares only the task it doctors: no graph, no global hash.
+    const onlyTasks = (...tasks) => ({ tasks, graph: false, global: false });
+    const fixModel = `scripts/turbo-inputs.test.mjs models turbo ${MODELLED_TURBO_VERSION}; fix the model to match`;
+
+    it("ran turbo's dry run", () => {
+      expect(turboRun.error, turboRun.error).toBeUndefined();
+      expect(requireDryRun().tasks.length).toBeGreaterThan(40);
+    });
+
+    it("positive control: fails the block, with turbo's stderr, when the dry run could not run", () => {
+      const tasks = DRY_RUN_TASKS;
+      const failed = readDryRun(tasks, { status: 1, stdout: "", stderr: "  x Could not find task `nope`\n" });
+      expect(failed).toEqual({
+        error: "turbo run build typecheck --dry=json exited 1: x Could not find task `nope`",
+      });
+      expect(() => requireDryRun(failed)).toThrow("exited 1: x Could not find task `nope`");
+      const spawnError = (code) => Object.assign(new Error(`spawnSync node ${code}`), { code });
+      expect(readDryRun(tasks, { pid: 0, status: null, error: spawnError("ENOENT") }).error).toBe(
+        "turbo run build typecheck --dry=json could not start: spawnSync node ENOENT",
+      );
+      const killed = { pid: 4242, status: null, signal: "SIGTERM", stderr: "half a plan\n" };
+      expect(readDryRun(tasks, { ...killed, error: spawnError("ETIMEDOUT") }).error).toBe(
+        `turbo run build typecheck --dry=json was killed after ${DRY_RUN_TIMEOUT_MS} ms without finishing: half a plan`,
+      );
+      expect(readDryRun(tasks, { ...killed, error: spawnError("ENOBUFS") }).error).toBe(
+        "turbo run build typecheck --dry=json failed after it started (ENOBUFS): half a plan",
+      );
+      expect(readDryRun(tasks, { status: null, signal: "SIGKILL", stderr: "" }).error).toContain(
+        "exited on SIGKILL: (no stderr)",
+      );
+      expect(readDryRun(tasks, { status: 0, stdout: "Turbo telemetry notice", stderr: "" }).error).toContain(
+        "printed no JSON",
+      );
+      expect(readDryRun(tasks, { status: 0, stdout: "{}", stderr: "" }).error).toContain('without a "tasks" list');
+      expect(readDryRun(tasks, { status: 0, stdout: '{"tasks":[]}', stderr: "" })).toEqual({ dry: { tasks: [] } });
+    });
+
+    it("models the turbo that is declared, installed and named by turbo.json's $schema", () => {
+      const violations = checkTurboVersion({
+        modelled: MODELLED_TURBO_VERSION,
+        declared: workspace.get(ROOT).manifest.devDependencies?.turbo,
+        installed: turboRun.installedVersion,
+        dryRun: requireDryRun().turboVersion,
+        schema: turbo.$schema,
+      });
+      expect(violations, violations.join("\n")).toEqual([]);
+    });
+
+    it("positive control: reports a turbo bump the model has not been re-verified against", () => {
+      const violations = checkTurboVersion({
+        modelled: MODELLED_TURBO_VERSION,
+        declared: "2.12.0",
+        installed: "2.12.0",
+        dryRun: "2.12.0",
+        schema: "https://v2-12-0.turborepo.dev/schema.json",
+      });
+      expect(violations).toHaveLength(4);
+      expect(violations.every((v) => v.includes("re-verify the model against turbo 2.12.0"))).toBe(true);
+      expect(violations[0]).toContain("before moving MODELLED_TURBO_VERSION");
+      expect(violations[3]).toMatch(/^turbo\.json's "\$schema" is 2\.12\.0, but /);
+    });
+
+    it("positive control: reports a $schema that is stale, or names no version", () => {
+      const at = (schema) =>
+        checkTurboVersion({
+          modelled: MODELLED_TURBO_VERSION,
+          declared: MODELLED_TURBO_VERSION,
+          installed: MODELLED_TURBO_VERSION,
+          dryRun: MODELLED_TURBO_VERSION,
+          schema,
+        });
+      expect(at("https://v2-11-9.turborepo.dev/schema.json")).toEqual([]);
+      expect(at("https://v2-11-8.turborepo.dev/schema.json")).toEqual([
+        `turbo.json's "$schema" is 2.11.8, but scripts/turbo-inputs.test.mjs models turbo ${MODELLED_TURBO_VERSION}: ` +
+          `re-verify the model against turbo 2.11.8 — the claims in the file's header comment, then "the model ` +
+          `against turbo's own dry run" — before moving MODELLED_TURBO_VERSION`,
+      ]);
+      expect(at("https://turborepo.dev/schema.json")).toHaveLength(1);
+      expect(at("https://turborepo.dev/schema.json")[0]).toContain(
+        `turbo.json's "$schema" is https://turborepo.dev/schema.json, which names no turbo version, but ` +
+          `scripts/turbo-inputs.test.mjs models turbo ${MODELLED_TURBO_VERSION}: point it at ` +
+          `https://v${MODELLED_TURBO_VERSION.replaceAll(".", "-")}.turborepo.dev/schema.json`,
+      );
+      expect(at(undefined)).toHaveLength(1);
+    });
+
+    it("plans every task the checks reason about", () => {
+      const dry = requireDryRun();
+      const planned = new Set(dry.tasks.map(({ taskId }) => taskId));
+      const checked = [...taskScripts.map(({ pkg, task }) => taskKey(pkg, task)), ...EXPECTED_WALKED_TASKS];
+      const unplanned = [...new Set(checked)].filter((key) => !planned.has(key));
+      expect(
+        unplanned,
+        `the dry run of ${DRY_RUN_TASKS.join(" ")} does not plan ${unplanned.join(", ")}, so the model is not ` +
+          `cross-checked for them: add their task to DRY_RUN_TASKS`,
+      ).toEqual([]);
+      expect(dry.tasks.some(({ command }) => command === "<NONEXISTENT>")).toBe(true);
+    });
+
+    it("agrees with turbo on every task's files, definition and edges, and on the global hash", () => {
+      const violations = compare(requireDryRun());
+      expect(violations, violations.join("\n")).toEqual([]);
+    });
+
+    it("leaves `.` and `..` segments alone when it lets a glob match a dotfile", () => {
+      expect(undot("../shared/**")).toBe("../shared/**");
+      expect(undot("./src/../x")).toBe("./src/../x");
+      expect(undot(".bin/tsc")).toBe("․bin/tsc");
+      expect(undot("packages/icons/node_modules/.bin/..x")).toBe("packages/icons/node_modules/․bin/․.x");
+      expect(inputsCoverWithDots(["../b/**"], "packages/a", "packages/b/.hidden/x.svg")).toBe(true);
+      expect(inputsCoverWithDots(["../b/**", "!../b/.hidden/**"], "packages/a", "packages/b/.hidden/x.svg")).toBe(
+        false,
+      );
+    });
+
+    it("positive control: reports a file the model hashes but turbo does not", () => {
+      const id = "@iracedeck/iracing-plugin-mirabox#build";
+      const violations = compare(
+        doctored((dry) => {
+          const { inputs } = dryTaskOf(dry, id);
+          if (!("../../scripts/lib/rollup-logs.mjs" in inputs)) throw new Error("positive control is stale");
+          delete inputs["../../scripts/lib/rollup-logs.mjs"];
+        }),
+        onlyTasks(id),
+      );
+      expect(violations).toHaveLength(1);
+      expect(violations[0]).toContain(`${id}: the model says the task hashes scripts/lib/rollup-logs.mjs`);
+    });
+
+    it("positive control: asks about an untracked file turbo does not list", () => {
+      const id = "@iracedeck/logger#build";
+      const probe = "packages/logger/__turbo_inputs_untracked_probe__.txt";
+      expect(repo.isIgnored(probe)).toBe(false);
+      const violations = compare(requireDryRun(), { files: [...onDisk, probe], ...onlyTasks(id) });
+      expect(violations).toHaveLength(1);
+      expect(violations[0]).toContain(`${id}: the model says the task hashes ${probe}, but turbo's dry run`);
+    });
+
+    it("positive control: asks about no file another process created or deleted while turbo ran", () => {
+      const id = "@iracedeck/logger#build";
+      const created = "packages/logger/__turbo_inputs_created_meanwhile__.txt";
+      const deleted = "packages/logger/__turbo_inputs_deleted_meanwhile__.txt";
+      expect(stableOnDisk(["a", "b", "b", deleted], ["b", "c", created])).toEqual(["b"]);
+      // Either file alone, in a snapshot the comparison trusted, would be a model error.
+      expect(compare(requireDryRun(), { files: [...onDisk, created], ...onlyTasks(id) })).toHaveLength(1);
+      const files = stableOnDisk([...onDisk, deleted], [...onDisk, created]);
+      expect(files).toEqual([...new Set(onDisk)]);
+      expect(compare(requireDryRun(), { files, ...onlyTasks(id) })).toEqual([]);
+      // A file turbo lists is still asked about, whatever the snapshots say.
+      const listed = doctored((dry) => {
+        dryTaskOf(dry, id).inputs["__turbo_inputs_created_meanwhile__.txt"] = "0";
+      });
+      expect(compare(listed, { files, ...onlyTasks(id) })).toEqual([]);
+      const listedOutside = doctored((dry) => {
+        dryTaskOf(dry, id).inputs["../../__turbo_inputs_created_meanwhile__.txt"] = "0";
+      });
+      expect(compare(listedOutside, { files, ...onlyTasks(id) })).toEqual([
+        `${id}: turbo hashes __turbo_inputs_created_meanwhile__.txt, which the model says the task does not, and ` +
+          `not because of the documented dot-directory strictness: find out why turbo hashes it — ${fixModel}`,
+      ]);
+    });
+
+    it("asks about the gitignored files an explicit glob names", () => {
+      expect(explicitGlobs).toEqual(
+        expect.arrayContaining(["feature-flags.local.json", "dev.local.json", "tsconfig.base.json"]),
+      );
+      expect(explicitGlobs).toContain("packages/audio-assets/sfx/**");
+      expect(explicitGlobs.some((g) => g.includes("$TURBO_") || g.startsWith("!"))).toBe(false);
+      // They reach the candidates: an installed tree always has some, the
+      // `node_modules/.bin/` shims the website's `packages/icons/**` names.
+      const ignoredOnDisk = onDisk.filter((f) => repo.isIgnored(f));
+      expect(ignoredOnDisk.length, "no gitignored file on disk reached the cross-check's candidates").toBeGreaterThan(
+        0,
+      );
+      expect(ignoredFilesMatching(["packages/icons/**"]).every((f) => repo.isIgnored(f))).toBe(true);
+      // pnpm's dependency links are symlinks, not files turbo hashes.
+      expect(ignoredOnDisk.filter((f) => /\/node_modules\/(typescript|vitest)$/.test(f))).toEqual([]);
+    });
+
+    it("positive control: reports a gitignored file an explicit glob hashes when turbo does not list it", () => {
+      const id = "@iracedeck/iracing-plugin-mirabox#build";
+      const file = "feature-flags.local.json";
+      expect(repo.isIgnored(file)).toBe(true);
+      const violations = compare(
+        doctored((dry) => {
+          delete dryTaskOf(dry, id).inputs[`../../${file}`];
+        }),
+        // Present in the snapshots whether or not this tree has the file.
+        { files: [...new Set([...onDisk, file])], ...onlyTasks(id) },
+      );
+      expect(violations).toEqual([
+        `${id}: the model says the task hashes ${file}, but turbo's dry run does not list it, so checks A–E pass ` +
+          `on files turbo never hashes: ${fixModel} (inputsCover)`,
+      ]);
+    });
+
+    it("positive control: reports a file turbo hashes that the model does not", () => {
+      const id = "@iracedeck/logger#build";
+      const violations = compare(
+        doctored((dry) => {
+          dryTaskOf(dry, id).inputs["../../README.md"] = "0";
+        }),
+        onlyTasks(id),
+      );
+      expect(violations).toHaveLength(1);
+      expect(violations[0]).toContain(`${id}: turbo hashes README.md, which the model says the task does not`);
+    });
+
+    it("positive control: allows a dot-directory file only where an explicit glob would match it", () => {
+      const id = "@iracedeck/website#build";
+      const violations = compare(
+        doctored((dry) => {
+          const { inputs } = dryTaskOf(dry, id);
+          inputs["../../packages/icons/.hidden/icon.svg"] = "0";
+          inputs["../../.hidden/icon.svg"] = "0";
+        }),
+        onlyTasks(id),
+      );
+      expect(violations).toHaveLength(1);
+      expect(violations[0]).toContain(`${id}: turbo hashes .hidden/icon.svg,`);
+    });
+
+    it("positive control: reports a per-package entry the model would not resolve", () => {
+      const key = "@iracedeck/plugin-build#build";
+      const violations = compare(requireDryRun(), {
+        config: brokenConfig((c) => {
+          if (!c.tasks[key]) throw new Error("positive control is stale");
+          delete c.tasks[key];
+        }),
+        ...onlyTasks(key),
+      });
+      const expected = [
+        `${key}: turbo resolves its "inputs"`,
+        `${key}: turbo resolves its "outputs"`,
+        `${key}: the model says the task hashes`,
+      ];
+      expect(violations.map((v) => expected.find((prefix) => v.startsWith(prefix)) ?? v)).toEqual(expected);
+    });
+
+    it("positive control: reports a dependency edge, and a <NONEXISTENT> task, the model and turbo disagree on", () => {
+      const id = "@iracedeck/website#build";
+      const violations = compare(
+        doctored((dry) => {
+          const task = dryTaskOf(dry, id);
+          task.dependencies = task.dependencies.filter((d) => d !== "@iracedeck/iracing-actions#build");
+          dry.tasks = dry.tasks.filter(({ taskId }) => taskId !== "@iracedeck/icons#build");
+        }),
+        { tasks: [id], graph: true, global: false },
+      );
+      expect(violations).toEqual([
+        `the model's dependsOn closure reaches @iracedeck/icons#build, but turbo's dry run does not plan it: ${fixModel}`,
+        `${id}: the model has it depend on @iracedeck/iracing-actions#build, turbo does not: ${fixModel}`,
+      ]);
+    });
+
+    it("positive control: reports a global dependency turbo does not hash, and a stale implicit one", () => {
+      const violations = compare(
+        doctored((dry) => {
+          delete dry.globalCacheInputs.files["tsconfig.base.json"];
+          delete dry.globalCacheInputs.files[".gitattributes"];
+          dry.globalCacheInputs.files["LICENSE"] = "0";
+        }),
+        { tasks: [], graph: false, global: true },
+      );
+      expect(violations.sort()).toEqual([
+        "TURBO_IMPLICIT_GLOBAL_FILES names .gitattributes, but turbo's global hash lacks it: drop the entry",
+        `the model treats tsconfig.base.json as a global dependency, but turbo's global hash lacks it: ${fixModel}`,
+        `turbo's global hash has LICENSE, which no "globalDependencies" glob names: find out why turbo hashes it, ` +
+          "then add it to TURBO_IMPLICIT_GLOBAL_FILES with the reason",
+      ]);
     });
   });
 
