@@ -16,6 +16,7 @@ import {
   maskInert,
   matchAt,
   POWERSHELL,
+  powershellAsBash,
   resolveDir,
   shellQuote,
   shellWords,
@@ -110,6 +111,38 @@ describe("helpers", () => {
 
   it("words respects quotes", () => {
     expect(words(`a "b c" 'd e' f`)).toEqual(["a", "b c", "d e", "f"]);
+  });
+
+  // #1526 second read: a backslash the shell removes left a word the deck rule
+  // compared unescaped, so `--re\start` passed for `--restart`.
+  it.each([
+    ["re\\start:x", ["restart:x"]],
+    ["a\\ b c", ["a b", "c"]],
+    ["a\\", ["a\\"]],
+    [`"a\\b"`, ["a\\b"]],
+    [`"a\\"b" c`, [`a"b`, "c"]],
+    [`"\\$x\\\\"`, ["$x\\"]],
+    ["'a\\b'", ["a\\b"]],
+    [`--x="a\\"b c"`, [`--x=a"b c`]],
+    [`'a'"b"\\c`, ["abc"]],
+  ])("shellWords applies backslash escapes as bash does: %s", (line, out) => expect(shellWords(line)).toEqual(out));
+
+  // #1526 second read: a PowerShell backtick escape of an ordinary character is
+  // that character; it used to become two inert `_`, so ``re`start`` hid `restart`.
+  it.each([
+    ["pnpm re`start:x", "pnpm re\\start:x"],
+    ["`-`-restart", "\\-\\-restart"],
+    ["--`restart", "--__estart"], // `r is a carriage return
+    ["a`-b", "a\\-b"],
+    ["a`nb", "a__b"],
+    ["--res`tart", "--res__art"],
+    ['"a`"b"', '"a__b"'],
+    ["a`;b", "a__b"],
+    ["a` b", "a__b"],
+    ["C:\\x", "C:/x"],
+  ])("powershellAsBash keeps the length and reads a plain escape as its character: %s", (ps, out) => {
+    expect(powershellAsBash(ps)).toBe(out);
+    expect(powershellAsBash(ps)).toHaveLength(ps.length);
   });
 });
 
@@ -1751,6 +1784,40 @@ describe("nothing restarts or relinks a deck host without Niklas's go", () => {
     passes("node scripts/integration-build.mjs fix/1-a -- $R", ctx());
     passes("node scripts/integration-build.mjs fix/1-a -- $(echo --restart)", ctx());
     passes("node scripts/integration-build.mjs fix/1-a -- `echo x`", ctx());
+    passes("node scripts/integration-build.mjs fix/1-a -- --{restart,} --re*t", ctx());
+  });
+
+  // #1526 second read: a `--restart` the shell spells out of something else —
+  // an escape, a quote, a brace expansion, a glob — reached the script while
+  // the hook saw another word.
+  it.each([
+    "node scripts/integration-build.mjs --re\\start fix/1-a",
+    "node scripts/integration-build.mjs \\--restart fix/1-a",
+    "node scripts/integration-build.mjs --re''start fix/1-a",
+    `node scripts/integration-build.mjs --re"st"art fix/1-a`,
+    "node scripts/integration-build.mjs '--restart' fix/1-a",
+    `cmd /c node scripts/integration-build.mjs --re^start fix/1-a`,
+  ])("asks for integration-build whose --restart the shell unescapes: %s", (c) =>
+    expect(asks(c, ctx())).toMatch(/`node scripts\/integration-build\.mjs --restart` stops and starts/),
+  );
+  it.each([
+    "node scripts/integration-build.mjs --{restart,} fix/1-a",
+    "node scripts/integration-build.mjs --re{s,}tart fix/1-a",
+    "node scripts/integration-build.mjs {--restart,fix/1-a}",
+    "node scripts/integration-build.mjs --{a..z}estart fix/1-a",
+    "node scripts/integration-build.mjs --re*t fix/1-a",
+    "node scripts/integration-build.mjs --restar? fix/1-a",
+    "node scripts/integration-build.mjs --restar[t] fix/1-a",
+  ])("asks for integration-build whose words the shell expands: %s", (c) =>
+    expect(asks(c, ctx())).toMatch(/`node scripts\/integration-build\.mjs .*` .*its flags could not be read/),
+  );
+  // Positive control: a branch name may hold the word, and `@` is no splat in bash.
+  it("passes integration-build on branches that merely contain the word restart", () => {
+    passes("node scripts/integration-build.mjs fix/1523-build-restart-without-wmic", ctx());
+    passes("node scripts/integration-build.mjs fix/1-a feature/2-restart-b", ctx());
+    passes("node scripts/integration-build.mjs fix/1-a", ctx());
+    passes("node scripts/integration-build.mjs @a fix/1-a", ctx());
+    passes("node scripts/integration-build.mjs --no-build fix/1523-build-restart-without-wmic", ctx());
   });
 
   // A redirect's `&` (`2>&1`, `&>log`) ends no command, so the words after it
@@ -2053,6 +2120,49 @@ describe("nothing restarts or relinks a deck host without Niklas's go", () => {
       passes(c, linked);
   });
 
+  // #1526 second read: the shell-mode flag was read only right after `exec`,
+  // while pnpm and npm read their options anywhere ahead of the command — and
+  // npm's `--call` takes a value, which became the verb.
+  it.each([
+    `pnpm -c exec "pnpm restart:stream-deck"`,
+    `pnpm --shell-mode exec "pnpm restart:stream-deck"`,
+    `pnpm -rc exec "pnpm restart:stream-deck"`,
+    `pnpm -c -r exec "pnpm restart:stream-deck"`,
+    `pnpm -c --filter @iracedeck/logger exec "pnpm restart:stream-deck"`,
+    `pnpm -c exec -- "pnpm restart:stream-deck"`,
+    `pnpm -c exec --parallel "pnpm restart:stream-deck"`,
+    `pnpm -c exec --resume-from @iracedeck/logger "pnpm restart:stream-deck"`,
+    `pnpm -c dlx "pnpm restart:stream-deck"`,
+    `pnpm -c "pnpm restart:stream-deck"`,
+    `pnpm exec -c -- "pnpm restart:stream-deck"`,
+    `pnpm exec --shell-mode -- pnpm restart:stream-deck`,
+    `pnpm exec -rc "pnpm restart:stream-deck"`,
+    `npm --call "pnpm restart:stream-deck" exec`,
+    `npm -c "pnpm restart:stream-deck" exec`,
+    `npm --call="pnpm restart:stream-deck" x`,
+    `npm --loglevel silent --call "pnpm restart:stream-deck" exec --yes`,
+    `npm --call "streamdeck restart com.iracedeck.sd.core" exec`,
+    `npx -c -- "pnpm restart:stream-deck"`,
+  ])("asks for a shell-mode exec wherever its flag stands: %s", (c) => {
+    expect(asks(c, ctx())).toMatch(/`[^`]+` → .*(?:deck host|Niklas)/);
+    asks(c, linked);
+  });
+  // Positive control: the same flags over a line that restarts nothing, and a
+  // `--call` npm does not run, ahead of a verb other than exec.
+  it("passes a shell-mode exec whose line restarts nothing", () => {
+    for (const c of [
+      `pnpm -c exec "pnpm build"`,
+      `pnpm -rc exec "pnpm test"`,
+      `pnpm -c build`,
+      `pnpm exec -c -- "pnpm build"`,
+      `npm --call "pnpm build" exec`,
+      `npm -c "pnpm build" x`,
+      `npm --call "pnpm restart:stream-deck" run build`,
+      `git commit -q -m "pnpm -c exec pnpm restart:stream-deck" -- x.md`,
+    ])
+      passes(c, linked);
+  });
+
   // #1526: deleting a linked plugin's build output is a build step like any other.
   it("passes a rimraf of a linked plugin's files", () => {
     const bin = "packages/iracing-plugin-stream-deck/com.iracedeck.sd.core.sdPlugin/bin";
@@ -2278,6 +2388,24 @@ describe("a script is judged by what it runs", () => {
     passes(c, elsewhere);
   });
 
+  // #1526 second read: the `recursive` word after a `-r` was read as the
+  // script, so the watch it runs everywhere was never judged.
+  it.each([
+    "pnpm -r recursive watch",
+    "pnpm -r m watch",
+    "pnpm --recursive multi run watch",
+    "pnpm -r recursive --parallel watch",
+    "pnpm -rc recursive watch",
+  ])("reads pnpm's recursive word after a -r too: %s", (c) => {
+    expect(asks(c, elsewhere)).toMatch(/→ `streamdeck restart` restarts or relinks a deck host/);
+    asks(c, linked);
+  });
+  it("passes a recursive word after -r over a script that restarts nothing", () => {
+    passes("pnpm -r recursive build", elsewhere);
+    passes("pnpm -r m test", elsewhere);
+    passes("pnpm -r recursive run typecheck", linked);
+  });
+
   // The root is read where the runner may run its script: `pnpm -w`, and a
   // recursive or every-workspace run, which pnpm and npm put the root in under
   // `include-workspace-root` — a setting the hook does not read.
@@ -2314,6 +2442,14 @@ describe("a script is judged by what it runs", () => {
   ])("asks for integration-build through a script when a forwarded word could not be read: %s", (c) =>
     expect(asks(c, elsewhere)).toMatch(/integ` → `node scripts\/integration-build\.mjs .*flags could not be read/),
   );
+  // #1526 second read: a script line runs under cmd.exe, whose `^` escapes the
+  // next character, so a forwarded `--re^start` is `--restart` there.
+  it("asks for integration-build through a script whose forwarded --restart cmd.exe unescapes", () => {
+    expect(asks("pnpm integ --re^start fix/1-a", elsewhere)).toMatch(
+      /`pnpm integ` → `node scripts\/integration-build\.mjs --restart`/,
+    );
+    passes("pnpm integ fix/1523-build-restart-without-wmic", elsewhere);
+  });
 
   it("asks for dev:voices where linked, through a script too, and passes it elsewhere", () => {
     expect(asks("pnpm dev:voices on", linked)).toMatch(/`pnpm dev:voices` there relinks the running plugin/);
@@ -2466,6 +2602,42 @@ describe("PowerShell commands", () => {
     `$R = '--restart'; node scripts/integration-build.mjs $R fix/1-a`,
     `node scripts/integration-build.mjs $(Write-Output --restart) fix/1-a`,
   ])("asks for what a wrapper runs: %s", (c) => expect(asks(c, elsewhere)).toMatch(/deck host/));
+
+  // #1526 second read: the shell-mode and `--call` shapes, a backtick escape of
+  // an ordinary character (which PowerShell reads as that character) and a
+  // splat each hid a restart from the PowerShell tool as from Bash.
+  it.each([
+    `pnpm -c exec "pnpm restart:stream-deck"`,
+    `pnpm --shell-mode exec 'pnpm restart:stream-deck'`,
+    `pnpm exec -c -- "pnpm restart:stream-deck"`,
+    `npm --call "pnpm restart:stream-deck" exec`,
+    `npm -c 'pnpm restart:stream-deck' exec`,
+    "pnpm re`start:stream-deck",
+    'pnpm "re`start:stream-deck"',
+    "node scripts/integration-build.mjs --re`start fix/1-a",
+    "node scripts/integration-build.mjs `-`-restart fix/1-a",
+    'node scripts/integration-build.mjs "--re`start" fix/1-a',
+    "$a = @('--restart'); node scripts/integration-build.mjs @a fix/1-a",
+    "node scripts/integration-build.mjs @args fix/1-a",
+    "node scripts/integration-build.mjs @('--restart') fix/1-a",
+    "node scripts/integration-build.mjs --{restart,} fix/1-a",
+  ])("asks for a restart PowerShell spells around the reading: %s", (c) =>
+    expect(asks(c, elsewhere)).toMatch(/deck host/),
+  );
+  it("passes what PowerShell spells into no restart", () => {
+    for (const c of [
+      "node scripts/integration-build.mjs fix/1523-build-restart-without-wmic",
+      "node scripts/integration-build.mjs 'fix/1-a'",
+      "node scripts/integration-build.mjs fix/1-a",
+      // `t is a tab, so this is no --restart.
+      "node scripts/integration-build.mjs --res`tart fix/1-a",
+      `pnpm -c exec "pnpm build"`,
+      `npm --call "pnpm build" exec`,
+      "pnpm -r recursive build",
+      "pnpm b`uild",
+    ])
+      passes(c, elsewhere);
+  });
   it("passes a wrapper whose string restarts nothing", () => {
     for (const c of [
       `cmd /c "pnpm build"`,

@@ -1480,12 +1480,22 @@ function forwarded(tokens) {
  * nothing (`pnpm --version`). A script is expanded unless it is one of pnpm's
  * own commands, read from the packages its selectors pick ({@link pnpmPicks}),
  * and what follows its name is appended to its command line, as pnpm does.
+ *
+ * pnpm reads its options anywhere ahead of the command, a cluster of short
+ * ones (`-rc`) among them, and its `recursive` word after a `-r` too (#1526
+ * second read: `pnpm -r recursive watch` read `recursive` as the script). A
+ * `-c` / `--shell-mode` there puts `exec` in shell mode, as it does after
+ * `exec` ({@link binRuns}), and so does a script name pnpm finds no script
+ * for, which it runs as `exec` would: such a run is also judged as the command
+ * line its words make.
  */
 function pnpmRuns(tokens, base, shell) {
   let dir = base;
   let runSeen = false;
   let recursive = false;
+  let recursiveWord = false;
   let workspaceRoot = false;
+  let shellMode = false;
   const filters = [];
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i];
@@ -1499,22 +1509,28 @@ function pnpmRuns(tokens, base, shell) {
     } else if (PNPM_VALUE.has(t)) i++;
     else if (t === "-r" || t === "--recursive") recursive = true;
     else if (t === "-w" || t === "--workspace-root") workspaceRoot = true;
-    else if (t.startsWith("-")) continue;
-    else if (PNPM_RECURSIVE.test(t) && !runSeen && !recursive) recursive = true;
+    else if (t === "-c" || t === "--shell-mode") shellMode = true;
+    else if (/^-[a-z]{2,}$/.test(t)) {
+      recursive ||= t.includes("r");
+      workspaceRoot ||= t.includes("w");
+      shellMode ||= t.includes("c");
+    } else if (t.startsWith("-")) continue;
+    else if (PNPM_RECURSIVE.test(t) && !runSeen && !recursiveWord) recursive = recursiveWord = true;
     else if ((t === "run" || t === "run-script") && !runSeen) runSeen = true;
-    else if (isBinTool(t) && !runSeen) return binRuns(tokens.slice(i), dir, shell);
-    else if ((t === "exec" || t === "dlx") && !runSeen) return binRuns(tokens.slice(i + 1), dir, shell);
-    else
-      return [
-        {
-          label: `pnpm ${t}`,
-          script: t,
-          dir,
-          expand: runSeen || !PNPM_BUILTIN.test(t),
-          picks: pnpmPicks({ filters, recursive, workspaceRoot }, dir, shell),
-          args: forwarded(tokens.slice(i + 1)),
-        },
-      ];
+    else if (isBinTool(t) && !runSeen) return binRuns(tokens.slice(i), dir, shell, shellMode);
+    else if ((t === "exec" || t === "dlx") && !runSeen) return binRuns(tokens.slice(i + 1), dir, shell, shellMode);
+    else {
+      const run = {
+        label: `pnpm ${t}`,
+        script: t,
+        dir,
+        expand: runSeen || !PNPM_BUILTIN.test(t),
+        picks: pnpmPicks({ filters, recursive, workspaceRoot }, dir, shell),
+        args: forwarded(tokens.slice(i + 1)),
+      };
+      const fallback = shellMode && !runSeen && !PNPM_BUILTIN.test(t);
+      return fallback ? [run, ...binRuns(tokens.slice(i), dir, shell, true)] : [run];
+    }
   }
   return [];
 }
@@ -1571,6 +1587,12 @@ const BIN_VALUE = new Set(["-p", "--package", "-w", "--workspace"]);
  * `--workspace` names, by name or by path, or from every package for
  * `--workspaces` / `-ws` (#1526 review), the root's included, since
  * `include-workspace-root` may be set where the hook does not read it.
+ *
+ * `--call` / `-c` is a config flag like the rest, read anywhere before `--`,
+ * and takes a value — the next word or `--call=…` (#1526 second read: `npm
+ * --call "pnpm restart:stream-deck" exec` read the line as the verb). An
+ * `exec` it comes ahead of runs that line in a shell; one after `exec` is the
+ * exec's own option, read there ({@link binRuns}).
  */
 function npmRuns(tokens, base, shell) {
   const end = tokens.indexOf("--") < 0 ? tokens.length : tokens.indexOf("--");
@@ -1578,11 +1600,16 @@ function npmRuns(tokens, base, shell) {
   const picks = [];
   let withRoot = false;
   const positional = [];
+  const calls = [];
   for (let i = 0; i < end; i++) {
     const t = tokens[i];
     const attached = t.match(/^--prefix=(.+)$/);
     const workspace = t.match(/^--workspace=(.+)$/);
-    if (attached) dir = resolveDir(base, attached[1], { shell });
+    const callValue = t.match(/^--call=([\s\S]*)$/);
+    if (callValue) calls.push({ at: i, line: callValue[1] });
+    else if (t === "--call" || t === "-c") {
+      if (i + 1 < end) calls.push({ at: i, line: tokens[++i] });
+    } else if (attached) dir = resolveDir(base, attached[1], { shell });
     else if (t === "--prefix" || t === "-C") dir = tokens[i + 1] ? resolveDir(base, tokens[++i], { shell }) : dir;
     else if (workspace) picks.push({ workspace: workspace[1], shell });
     else if (t === "-w" || t === "--workspace") {
@@ -1608,7 +1635,12 @@ function npmRuns(tokens, base, shell) {
     };
     return script ? [run] : [];
   }
-  return /^(?:exec|x)$/.test(verb) ? binRuns(tokens.slice(positional[0] + 1), dir, shell) : [];
+  if (!/^(?:exec|x)$/.test(verb)) return [];
+  const ahead = calls.filter((c) => c.at < positional[0]);
+  return [
+    ...ahead.flatMap((c) => shellModeLine("npm --call", [c.line], dir)),
+    ...binRuns(tokens.slice(positional[0] + 1), dir, shell),
+  ];
 }
 
 /**
@@ -1617,19 +1649,22 @@ function npmRuns(tokens, base, shell) {
  * hooks, what `node` runs ({@link nodeRuns}, #1526 review), a shell's command
  * string ({@link wrapperRuns}), nothing otherwise — a command is judged by the
  * tool that runs it, and a `tsc` or `prettier` restarts nothing. `-c` /
- * `--call` (npm, npx) and `--shell-mode` (pnpm, whose `-c` is the same) run a
- * command line in a shell instead of a binary: npm takes it as the next word,
- * pnpm as every word after the flag, so the line is all of them, which
- * over-reaches for npm rather than misses for pnpm.
+ * `--call` (npm, npx) and `--shell-mode` (pnpm, whose `-c` is the same), alone
+ * or in a cluster of short options, run a command line in a shell instead of a
+ * binary: npm takes it as the next word, pnpm as every word after the flag, so
+ * the line is all of them, which over-reaches for npm rather than misses for
+ * pnpm. `shellMode` is that flag met earlier — pnpm's ahead of `exec`
+ * ({@link pnpmRuns}) — and makes the line of every word here. Either way the
+ * line starts past a `--` and the exec options ahead of the command
+ * ({@link shellModeLine}), which pnpm does not hand the shell.
  */
-function binRuns(tokens, dir, shell) {
+function binRuns(tokens, dir, shell, shellMode = false) {
+  if (shellMode) return shellModeLine("exec --shell-mode", tokens, dir);
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i];
     const call = t.match(/^(?:-c|--call|--shell-mode)(?:=([\s\S]*))?$/);
-    if (call) {
-      const line = [...(call[1] === undefined ? [] : [call[1]]), ...tokens.slice(i + 1)].join(" ");
-      return line.trim() ? [{ label: `exec ${t.replace(/=[\s\S]*$/, "")}`, dir, lines: [line] }] : [];
-    }
+    if (call) return shellModeLine(`exec ${t.replace(/=[\s\S]*$/, "")}`, [call[1] ?? "", ...tokens.slice(i + 1)], dir);
+    if (/^-[a-z]{2,}$/.test(t) && t.includes("c")) return shellModeLine(`exec ${t}`, tokens.slice(i + 1), dir);
     if (BIN_VALUE.has(t)) i++;
     else if (t === "--" || t.startsWith("-")) continue;
     else if (isTurbo(t)) return turboRuns(tokens.slice(i + 1), dir, shell);
@@ -1640,6 +1675,25 @@ function binRuns(tokens, dir, shell) {
     else return [];
   }
   return [];
+}
+
+/** The exec options whose value is the next word, skipped with it ahead of a shell-mode line ({@link shellModeLine}). */
+const SHELL_MODE_VALUE = new Set([...BIN_VALUE, ...PNPM_VALUE, ...PNPM_FILTER, "--resume-from"]);
+
+/**
+ * The command line a shell-mode exec runs: its words joined, past a leading
+ * `--`. When options lead — pnpm's `exec --parallel -c …`, which pnpm reads as
+ * its own — the line past them, values and a `--` included, is judged too:
+ * both are, so a word mistaken for an option over-reaches rather than hides
+ * the command (#1526 second read).
+ */
+function shellModeLine(label, words, dir) {
+  const all = words.filter((w) => w !== "");
+  const rest = all[0] === "--" ? all.slice(1) : all;
+  let at = 0;
+  while (at < rest.length && /^-\S*$/.test(rest[at])) at += SHELL_MODE_VALUE.has(rest[at]) ? 2 : 1;
+  const lines = [...new Set([rest, rest.slice(at)].map((w) => w.join(" ")))].filter((l) => l.trim());
+  return lines.length ? [{ label, dir, lines }] : [];
 }
 
 /** The Stream Deck CLI's `restart`, `stop`, `link` and `unlink`, reached through a runner rather than at command position. */
@@ -1724,14 +1778,34 @@ function turboRuns(tokens, dir, shell) {
  * with it the hosts linked to its tree are stopped and started; it is a strict
  * `parseArgs` boolean, so `--restart` is the one spelling — and so a word
  * ahead of the `--` that the shell computes (`$R`, `$(…)`, a backtick,
- * cmd.exe's `%R%`) may be it, and asks too (#1526 review). `dev-voices`
+ * cmd.exe's `%R%`) may be it, and asks too (#1526 review). So does one the
+ * shell rewrites (#1526 second read): a word that is `--restart` once its
+ * escapes are gone ({@link unescaped}: a `\` left inside double quotes, which
+ * a PowerShell backtick escape arrives as, or cmd.exe's `^`), a bash brace
+ * expansion or glob, and a PowerShell splat (`@a`, `@(…)`). None of these
+ * characters can be in a branch name (`git check-ref-format`), so a branch
+ * that merely holds the word `restart` still passes. `dev-voices`
  * rebuilds and relinks the hosts already linked to its own tree, so it asks
  * where linked, and both the cwd and the script's own tree are judged.
  * `node --run <script>` runs a package.json script, judged as `pnpm <script>` is.
  */
 const NODE_ALWAYS = /^(?:build-with-restart|(?:un)?link-(?:mirabox|ulanzi))$/;
-/** A word holding an expansion the hook cannot evaluate, {@link UNREAD} among them. */
-const COMPUTED = /[$\x60]|%[^%\s]+%/;
+/**
+ * A word holding an expansion the hook cannot evaluate, {@link UNREAD} among
+ * them: a variable, a substitution, cmd.exe's `%R%`, a brace expansion
+ * (`--{restart,}`, `{a..b}`) or a glob (`*`, `?`, `[`).
+ */
+const COMPUTED = /[$\x60*?[]|%[^%\s]+%|\{[^{}]*(?:,|\.\.)[^{}]*\}/;
+/** A PowerShell splat, `@name` or an array `@(…)`, which hands the command words the hook cannot see. */
+const PS_SPLAT = /^@[\w(]/;
+/**
+ * A word with the escapes a shell may leave in it removed: a `\` — bash keeps
+ * one before an ordinary character inside double quotes, where a PowerShell
+ * backtick escape arrives as one ({@link powershellAsBash}) — and cmd.exe's
+ * `^`, which a package.json script line runs under. Neither is in a branch
+ * name or a script name, so stripping them over-reaches and never misses.
+ */
+const unescaped = (w) => w.replace(/[\\^]/g, "");
 
 function nodeRuns(tokens, base, shell) {
   for (let i = 0; i < tokens.length; i++) {
@@ -1754,8 +1828,8 @@ function nodeRuns(tokens, base, shell) {
   if (m[2] === "integration-build") {
     const end = args.indexOf("--");
     const own = end < 0 ? args : args.slice(0, end);
-    const computed = own.find((t) => COMPUTED.test(t));
-    if (own.includes("--restart"))
+    const computed = own.find((t) => COMPUTED.test(t) || (shell === POWERSHELL && PS_SPLAT.test(t)));
+    if (own.some((t) => unescaped(t) === "--restart"))
       return [
         {
           label: `${label} --restart`,
@@ -1994,13 +2068,23 @@ const UNREAD = "$(…)";
  * A command's words as the shell joins them: quoted and bare pieces with no
  * space between are one word, `--watch.onEnd="streamdeck restart x"` among
  * them, which {@link words} would split at the quote. A lone unmatched quote
- * stays a character of its word.
+ * stays a character of its word. A backslash escapes as bash reads it (#1526
+ * second read): outside quotes it escapes the next character, a space
+ * included, so `pnpm re\start:stream-deck` runs `restart:stream-deck`; inside
+ * double quotes only before `$`, a backtick, `"`, `\` or a newline; inside
+ * single quotes never. A script line's `\` is already `/` ({@link lineAs}),
+ * and a PowerShell backtick escape of an ordinary character arrives as one
+ * ({@link powershellAsBash}).
  *
  * @internal Exported for testing
  */
 export function shellWords(command) {
-  return [...command.matchAll(/(?:"[^"]*"|'[^']*'|[^\s"']+|["'])+/g)].map((m) =>
-    m[0].replace(/"([^"]*)"|'([^']*)'/g, (_, d, s) => d ?? s),
+  return [...command.matchAll(/(?:"(?:[^"\\]|\\[\s\S])*"|'[^']*'|\\[\s\S]?|[^\s"'\\]+|["'])+/g)].map((m) =>
+    m[0].replace(
+      /"((?:[^"\\]|\\[\s\S])*)"|'([^']*)'|\\([\s\S]?)/g,
+      (_, d, s, e) =>
+        d?.replace(/\\([$\x60"\\\n])/g, (_m, c) => (c === "\n" ? "" : c)) ?? s ?? (e === "\n" ? "" : e || "\\"),
+    ),
   );
 }
 
@@ -2031,11 +2115,14 @@ function deckFindings(c, cwd, ctx, shell, trail = []) {
         if (tokens.length && !/\s$/.test(args)) tokens.push(tokens.pop().replace(/\$$/, "") + UNREAD);
         else tokens.push(UNREAD);
       for (const run of read(tokens, base, shell)) {
-        if (run.always || DECK_ALWAYS.test(run.script ?? "")) {
+        // A name is judged with its leftover escapes gone ({@link unescaped}):
+        // `pnpm "re\`start:stream-deck"` in PowerShell runs the script.
+        const name = unescaped(run.script ?? "");
+        if (run.always || DECK_ALWAYS.test(name)) {
           found.push(`\`${run.label}\` ${run.why ?? "restarts or relinks a deck host"}`);
           continue;
         }
-        if (DECK_IF_LINKED.test(run.script ?? "")) {
+        if (DECK_IF_LINKED.test(name)) {
           const root = ctx.toplevel?.(run.dir) ?? run.dir;
           const held = links.filter((l) => ctx.isInside(l.target, root));
           if (held.length) {
@@ -2330,14 +2417,25 @@ const checkName = (c) => c.name ?? c.context ?? c.__typename ?? "?";
  * the backtick, not the backslash: a backtick at a line's end continues it and
  * `` `" `` or `` `; `` is a literal character, while `\` is an ordinary one —
  * so `"C:\x\"` ends at that quote, where bash reads `\"` as escaped and would
- * mask the commands after it. A continuation becomes whitespace, any other
- * backtick pair two inert `_`, and a `\` a `/`, which Windows paths read the same.
+ * mask the commands after it. A continuation becomes whitespace, and a `\` a
+ * `/`, which Windows paths read the same. A backtick before an ordinary
+ * character — a letter or digit that is no PowerShell escape (`` `n ``, `` `t ``,
+ * `` `0 ``, `` `u{…} `` and the rest), or one of `-:./=+,@%_` — stands for that
+ * character, so it becomes bash's escape of it, `\` and the character: the
+ * same word, with no boundary it could move, and ``re`start`` reaches the deck
+ * rule as the `restart` PowerShell runs (#1526 second read; {@link shellWords}).
+ * Any other backtick pair — a quote, a separator, a space — becomes two inert `_`.
  */
 export function powershellAsBash(command) {
-  return command.replace(/`\r?\n|`[\s\S]?|\\/g, (m) =>
-    m === "\\" ? "/" : m.endsWith("\n") ? " ".repeat(m.length) : "_".repeat(m.length),
-  );
+  return command.replace(/`\r?\n|`[\s\S]?|\\/g, (m) => {
+    if (m === "\\") return "/";
+    if (m.endsWith("\n")) return " ".repeat(m.length);
+    return PS_PLAIN_ESCAPE.test(m) ? `\\${m[1]}` : "_".repeat(m.length);
+  });
 }
+
+/** A PowerShell backtick escape that stands for the character it escapes ({@link powershellAsBash}). */
+const PS_PLAIN_ESCAPE = /^`(?![0abefnrtvu])[A-Za-z0-9\-:./=+,@%_]$/;
 
 /**
  * Runs the rules. The first DENY wins at once; the first ask is held until
