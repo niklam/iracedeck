@@ -14,6 +14,7 @@
  * the index they actually record.
  */
 import { execFileSync } from "node:child_process";
+import { realpathSync } from "node:fs";
 import url from "node:url";
 
 import { findControlBytes, hex } from "./lib/control-bytes.mjs";
@@ -39,7 +40,8 @@ export function stagedSpecOffenders(cwd = process.cwd()) {
   return offenders;
 }
 
-if (process.argv[1] && url.pathToFileURL(process.argv[1]).href === import.meta.url) {
+// Real paths, as in format-staged.mjs: through a junction a bare href comparison is false and the check would pass silently.
+if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(url.fileURLToPath(import.meta.url))) {
   const offenders = stagedSpecOffenders();
   if (offenders.length) {
     console.error(

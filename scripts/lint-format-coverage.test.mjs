@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url";
 import prettier from "prettier";
 import { describe, expect, it } from "vitest";
 
+import { STAGED_TASKS } from "./format-staged.mjs";
+
 // scripts/lint-format-coverage.test.mjs lives in scripts/, so the repo root is one up.
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const pkg = JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf-8"));
@@ -13,7 +15,7 @@ const pkg = JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf-8"));
 // What the prettier CLI reads by default; the API reads nothing unless told.
 const PRETTIER_IGNORE_FILES = [join(repoRoot, ".gitignore"), join(repoRoot, ".prettierignore")];
 
-// The check and fix variants of a gate, and the pre-commit task, drifted apart
+// The check and fix variants of a gate, and the pre-commit step, drifted apart
 // once already: `lint:fix` dropped `scripts/**/*.mjs`, nothing formatted `.mjs`
 // at all, and 71 files went unformatted with every gate green (#1325). So the
 // coverage is compared per tracked file, by asking the tools themselves.
@@ -27,20 +29,18 @@ function args(script, command, flag) {
   return words.slice(1).filter((word) => word !== flag);
 }
 
-/** The extensions a lint-staged key (`*.ts`, `*.{ts,mjs}`) matches. Any other shape throws, so it is looked at. */
-function stagedExtensions(key) {
-  const match = /^\*\.(?:(\w+)|\{(\w+(?:,\w+)*)\})$/.exec(key);
+/**
+ * The extensions the pre-commit step (`scripts/format-staged.mjs`) hands to
+ * `tool`. Anything but a bare extension throws, so it is looked at.
+ */
+function stagedExtensionsFor(tool) {
+  const extensions = STAGED_TASKS.filter((task) => task.tools.includes(tool)).flatMap((task) => task.extensions);
 
-  if (!match) throw new Error(`unexpected lint-staged key: ${key}`);
+  for (const extension of extensions) {
+    if (!/^\w+$/.test(extension)) throw new Error(`unexpected STAGED_TASKS extension: ${extension}`);
+  }
 
-  return match[1] ? [match[1]] : match[2].split(",");
-}
-
-/** The extensions lint-staged hands to a task starting with `command`; a value may be one task or a list. */
-function stagedExtensionsFor(command) {
-  return Object.entries(pkg["lint-staged"])
-    .filter(([, tasks]) => [tasks].flat().some((task) => task.startsWith(command)))
-    .flatMap(([key]) => stagedExtensions(key));
+  return extensions;
 }
 
 const extension = (file) => file.slice(file.lastIndexOf(".") + 1);
@@ -91,9 +91,9 @@ describe("lint and format coverage", () => {
     expect(args(pkg.scripts["format:fix"], "prettier", "--write")).toEqual(formatGlobs);
   });
 
-  // lint-staged runs `eslint --fix` on every staged file of a linted
-  // extension, so a lintable file `lint` skips is one CI never checks but a
-  // commit touching it can still be refused for.
+  // The pre-commit step runs ESLint with fixes on every staged file of a
+  // linted extension, so a lintable file `lint` skips is one CI never checks
+  // but a commit touching it can still be refused for.
   it("lint reaches every tracked file ESLint can lint", () => {
     expect(lintable.filter((file) => !linted.includes(file))).toEqual([]);
   });
@@ -102,11 +102,11 @@ describe("lint and format coverage", () => {
     expect(linted.filter((file) => !formatted.includes(file))).toEqual([]);
   });
 
-  it("lint-staged formats exactly the extensions format checks", () => {
-    expect(sorted(stagedExtensionsFor("prettier --write"))).toEqual(sorted(formatted.map(extension)));
+  it("the pre-commit step formats exactly the extensions format checks", () => {
+    expect(sorted(stagedExtensionsFor("prettier"))).toEqual(sorted(formatted.map(extension)));
   });
 
-  it("lint-staged lints exactly the extensions lint checks", () => {
-    expect(sorted(stagedExtensionsFor("eslint --fix"))).toEqual(sorted(linted.map(extension)));
+  it("the pre-commit step lints exactly the extensions lint checks", () => {
+    expect(sorted(stagedExtensionsFor("eslint"))).toEqual(sorted(linted.map(extension)));
   });
 });
