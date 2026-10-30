@@ -94,12 +94,15 @@ const FUEL_STEP_MIN_LTR = 0.9;
 
 /**
  * A step that landed on its FIRST send is learned as one grid point only when
- * it moved less than this: a whole-liter request cannot resolve a finer grid,
- * so a move under 1.5 L is one whole-liter step, while a larger first-send move
- * may span several grid points (a first Fill To send from 0 to 46 L on a
- * whole-liter car is 46 steps, not one). See the class comment.
+ * it moved a whole liter, to within this: a whole-liter request cannot resolve a
+ * finer grid, so a 1 L move is a whole-liter car's step. Any other first-send
+ * move is not evidence: a larger one may span several grid points (a first Fill
+ * To send from 0 to 46 L on a whole-liter car is 46 steps, not one), and a
+ * fractional one is a capped bank, not a grid point (39 → 40.1 L on a 40.1 L
+ * tank, which as a 1.1 L step would make every later floor overshoot by a
+ * liter). See the class comment.
  */
-const ONE_STEP_FIRST_SEND_MAX_LTR = 1.5;
+const WHOLE_LITER_STEP_TOLERANCE_LTR = 0.05;
 
 /** Which way a press moves the pit fuel request. */
 export type FuelStepDirection = "add" | "reduce";
@@ -379,10 +382,11 @@ export function floorFirstRequestLtr(floorLtr: number, stepLtr: number | undefin
  *   its watch makes that reading stale, so such a landing is excluded — by the
  *   minimum move's guard, by an intermediate reading, or by readings that are
  *   inconsistent with a grid of the claimed step (`adjacentLanding`);
- * - a first-send landing that moved less than {@link ONE_STEP_FIRST_SEND_MAX_LTR}:
- *   a whole-liter car's 1 L step. A larger first-send move is not evidence: it
- *   may span several grid points, and a multiple learned as the step would make
- *   every later floor request overshoot by it.
+ * - a first-send landing that moved a whole liter (to within
+ *   {@link WHOLE_LITER_STEP_TOLERANCE_LTR}): a whole-liter car's 1 L step. Any
+ *   other first-send move is not evidence: a larger one may span several grid
+ *   points, and a multiple learned as the step would make every later floor
+ *   request overshoot by it; a fractional one is a capped bank.
  *
  * Moves under {@link FUEL_STEP_MIN_LTR} teach nothing. A capped bank (a tank
  * whose capacity is not a grid point) can still teach a step that is too small;
@@ -764,7 +768,7 @@ export class FuelStepper {
     } else {
       evidenceLtr = Math.abs(landedLtr - run.baselineLtr);
 
-      if (evidenceLtr >= ONE_STEP_FIRST_SEND_MAX_LTR) return;
+      if (Math.abs(evidenceLtr - 1) > WHOLE_LITER_STEP_TOLERANCE_LTR) return;
     }
 
     if (evidenceLtr < FUEL_STEP_MIN_LTR) return;

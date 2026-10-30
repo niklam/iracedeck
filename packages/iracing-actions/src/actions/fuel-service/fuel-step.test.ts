@@ -683,6 +683,19 @@ describe("FuelStepper", () => {
       expect(stepper.fuelStepFor(PORSCHE)).toBe(1);
     });
 
+    it("learns nothing from a first-send landing on a capped bank that is not a whole liter away", async () => {
+      // A whole-liter car with a 40.1 L tank: from 39 L, 41 banks the capped 40.1.
+      useCar(new FakeCar(literGrid, 39, PORSCHE));
+      car.capacityLtr = 40.1;
+
+      const capped = floor(40.1);
+      await vi.advanceTimersByTimeAsync(100);
+      await expect(capped).resolves.toMatchObject({ outcome: "landed", sentLtr: 41, endLtr: 40.1 });
+
+      // 1.1 L is the cap, not a step; learned, it would overshoot every later floor.
+      expect(stepper.fuelStepFor(PORSCHE)).toBeUndefined();
+    });
+
     it("with the step known, a floor more than a step below the bank lands on the grid point just above it", async () => {
       await learnGallonStep();
       // Back up to 3 gal (11.36 L).
