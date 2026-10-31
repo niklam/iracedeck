@@ -360,9 +360,21 @@ describe("prepare", () => {
 
 describe("the cut tail", () => {
   it("falls back to the close when the cut aborts, warns once, and puts the cut's picks back", () => {
-    const entry = contract(
-      BLUE_ENDED,
-      script({ frames: { radio: { ...RADIO, cut: ["pool:never-mind", "radio/missing.mp3"] } } }),
+    // Two contracts over ONE script map, compiled once: a recompile would
+    // clear the script pools' trackers and hide whether the restore happened.
+    const SPOKEN: ScenarioContract = { ...BLUE, id: "pit-crew.never-mind" };
+    const entry = registry.store(BLUE_ENDED, null);
+    const spoken = registry.store(SPOKEN, null);
+    scripts.setScripts(
+      new Map([
+        [
+          "v1",
+          script({
+            scenarios: { [ID]: { sequence: ["pool:flag-blue"] }, [SPOKEN.id]: { sequence: ["pool:never-mind"] } },
+            frames: { radio: { ...RADIO, cut: ["pool:never-mind", "radio/missing.mp3"] } },
+          }),
+        ],
+      ]),
     );
     randomAt(0);
 
@@ -378,16 +390,16 @@ describe("the cut tail", () => {
       'Voice "v1" frame "radio" cut tail cannot play — clip "radio/missing.mp3" → "radio/missing.mp3" is not in the manifest for the active voice; an ended line closes the radio instead',
     );
 
-    // The line itself still plays, and the failed attempt's pool take was
-    // put back: once this fire is committed, `never-mind` has no take heard,
-    // so a tail that does expand next time still draws take 0.
+    // The line itself still plays, and the failed attempt's `never-mind`
+    // take was put back before the commit: the next body to draw from that
+    // pool gets take 0, where a committed take 0 would have steered it to 1.
     prepared?.commit();
-    const next = expansion.prepare(contract(BLUE_ENDED), null);
-    expect(next?.fire.cutTail[0]).toEqual(
-      play(AudioChannel.Voice, "voice/v1/radio/never-mind-01.mp3", { pool: "never-mind", frame: "cut" }),
+    expect(expansion.prepare(spoken, null)?.fire.ops).toContainEqual(
+      play(AudioChannel.Voice, "voice/v1/radio/never-mind-01.mp3", { pool: "never-mind" }),
     );
 
-    // Warned once per (voice, frame).
+    // Warned once per (voice, frame): the same broken cut again says nothing.
+    expect(expansion.prepare(entry, null)?.fire.cutTail).toHaveLength(2);
     expect(logger.warn).toHaveBeenCalledTimes(1);
   });
 
@@ -467,8 +479,11 @@ describe("prepareFrame", () => {
   });
 
   it("returns null without a line when the frame is unframed", () => {
-    expect(expansion.prepareFrame("none", "v1", compiledScript())).toBeNull();
+    // No scenario in the script, so the compile itself warns about nothing.
+    expect(expansion.prepareFrame("none", "v1", compiledScript(script({ scenarios: {} })))).toBeNull();
     expect(logger.debug).not.toHaveBeenCalledWith(expect.stringContaining("Frame preview"));
+    // Not the legacy "defines no frame" warn either: `none` is never looked up.
+    expect(logger.warn).not.toHaveBeenCalled();
     expect(logger.error).not.toHaveBeenCalled();
   });
 });

@@ -123,9 +123,9 @@ export class ScriptSet {
 
   /**
    * Recompile when a registration landed after the last compile. Called at
-   * the top of `prepareOps`, so a contract defined after `setScripts` (or a
-   * script loaded before the catalog registered) is compiled before its
-   * first fire ever looks it up.
+   * the top of `Expansion.prepare` (and of `playFramePreview`), so a
+   * contract defined after `setScripts` (or a script loaded before the
+   * catalog registered) is compiled before its first fire ever looks it up.
    */
   ensureCompiled(): void {
     if (!this.scriptsDirty) return;
