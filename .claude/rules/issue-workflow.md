@@ -4,7 +4,7 @@ The order an issue is worked in, and which steps are gates.
 
 This file owns the **sequence**, the **gates**, and **why each gate exists** — nothing else. How to perform a step belongs to the rule that owns it, linked in the table. Keeping mechanics out is what stops this file drifting from the five rules it sequences.
 
-If you are picking up an issue, read this first. In the agent team (#1520) the PO (`/po`) runs steps 1–2 and is the only session that writes to `master` or asks Niklas anything; the issue lead (`issue-lead` skill) runs 3–13 through its role agents and sends every question to the PO.
+If you are picking up an issue, read this first. In the agent team (#1520) the PO (`/po`) runs steps 1–2 and is the only team session that writes to `master` or asks Niklas anything (a session he drives directly may commit a spec there too, alone and pushed at once); the issue lead (`issue-lead` skill) runs 3–13 through its role agents and sends every question to the PO.
 
 ## The pipeline
 
