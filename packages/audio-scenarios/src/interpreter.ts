@@ -128,6 +128,7 @@ import type { AudioAssetsManifest } from "./manifest.js";
 import { OnceWarnings } from "./once-warnings.js";
 import { PendingQueue, type QueuedFire, type QueueDrop } from "./pending-queue.js";
 import { PoolStore } from "./pool-store.js";
+import { buildResumeState, planResume } from "./resume.js";
 import type { CompiledVoiceScript } from "./script-compiler.js";
 import { ScriptSet } from "./script-set.js";
 import { isStatePartError, readStatePart, type StatePartError } from "./state-part.js";
@@ -1585,31 +1586,28 @@ class ScenarioEngine implements IScenarioEngine {
   ): void {
     const expanded = prepared.ops;
 
-    // Resume from an interrupt cut (issue #758): when the fresh expansion is
-    // unchanged from the stashed one, continue from the interrupted clip
-    // (re-keying the radio frame when it was already opened). A changed
-    // expansion means the underlying state moved on while stashed — resuming
-    // would speak a stale tail, so fall back to the full fresh replay (the
-    // #481 freshness guarantee).
+    // Resume from an interrupt cut (issue #758): `planResume` continues from
+    // the interrupted clip when the fresh expansion is unchanged from the
+    // stashed one, and falls back to the full fresh replay (the #481
+    // freshness guarantee) when the state moved on while stashed.
     let ops = expanded;
     let sourceStart = 0;
     let prerollCount = 0;
 
-    if (resume && resume.index > 0 && resume.index < expanded.length) {
-      const blocked = this.resumeBlocker(resume, expanded);
+    const plan = planResume(resume, expanded, entry.resolvedSequence !== null, {
+      activeVoice: () => this.getActiveVoice(),
+      generation: () => this.scripts.generation,
+      openTick: () => this.poolStore.currentManifest().ticks.open,
+    });
 
-      if (blocked === null) {
-        const preroll = this.reopenPreroll(expanded, resume.index, entry.resolvedSequence !== null);
-        ops = [...preroll, ...expanded.slice(resume.index)];
-        // `ops` is everything still to be heard — the re-key included — so
-        // the pools it does NOT draw are the ones whose fresh commit is
-        // about to be sliced away unheard (issue #1136).
-        this.poolStore.restoreHeadPoolIndices(resume.ops.slice(0, resume.index), ops);
-        sourceStart = resume.index;
-        prerollCount = preroll.length;
-      } else {
-        this.logger.debug(`Scenario "${entry.raw.id}" replays whole — ${blocked}`);
-      }
+    if (plan.kind === "resume") {
+      ({ ops, sourceStart, prerollCount } = plan);
+      // `ops` is everything still to be heard — the re-key included — so
+      // the pools it does NOT draw are the ones whose fresh commit is
+      // about to be sliced away unheard (issue #1136).
+      this.poolStore.restoreHeadPoolIndices(plan.head, ops);
+    } else if (plan.kind === "whole") {
+      this.logger.debug(`Scenario "${entry.raw.id}" replays whole — ${plan.blocked}`);
     }
 
     const bus = entry.raw.bus;
@@ -1642,71 +1640,6 @@ class ScenarioEngine implements IScenarioEngine {
     this.logger.debug(`Ops (${ops.length}): ${ops.map(opLabel).join(" | ")}`);
 
     this.stepNext(state);
-  }
-
-  /**
-   * When the portion delivered before the cut had opened the radio frame,
-   * the resumed tail re-keys with the frame's open so it doesn't restart
-   * cold mid-sentence.
-   *
-   * The frame is known by its tag (issue #1064): the re-key is exactly the
-   * ops tagged `open` that were delivered before the cut — a pack's own
-   * beep, the ambience bed the cut stopped — as the user's switches left
-   * them, never the built-in tick looked up by path. A tail that resumes
-   * inside the open (a two-beep open cut at its second beep) gets the part
-   * already delivered replayed ahead of it, which completes the open rather
-   * than doubling it.
-   *
-   * One shape is still read by path: a LEGACY scenario whose expansion carries
-   * no tag at all is a sequence playing the built-in tick inline (the catalog
-   * has none since #1064, and #1065 retires the shape), and for that one the
-   * re-key is the manifest's open tick, found by path, unless the tail itself
-   * begins with it. A scripted contract never takes that route — a body of
-   * its playing the tick as an ordinary clip has opened no frame.
-   */
-  private reopenPreroll(expanded: ExecOp[], resumeIndex: number, legacy: boolean): ExecOp[] {
-    const delivered = expanded.slice(0, resumeIndex);
-
-    if (!legacy || expanded.some((op) => op.frame !== undefined)) {
-      return delivered.filter((op) => op.frame === "open");
-    }
-
-    const openTick = this.poolStore.currentManifest().ticks.open;
-    const frameWasOpened = delivered.some((op) => op.kind === "play" && op.path === openTick);
-    const first = expanded[resumeIndex];
-    const resumesWithTick = first.kind === "play" && first.path === openTick;
-
-    if (!frameWasOpened || resumesWithTick) return [];
-
-    return [{ kind: "play", channel: AudioChannel.SFX, path: openTick }];
-  }
-
-  /**
-   * Why a stashed resume may not continue into this fresh expansion, or
-   * `null` when it may. Three things must hold, and only the first is the
-   * #758 rule: the ops must match (`opsEqual`), the ACTIVE VOICE must be the
-   * one the head was spoken in, and the engine's expansion `generation` must
-   * be the one the head was expanded under (issue #1136).
-   *
-   * The last two used to be implied. `opsEqual` compared clip paths, and a
-   * voice's paths name that voice, so a voice change failed the comparison
-   * and replayed whole; a pack redefinition that changed a pool's members
-   * usually changed a path too. Comparing a pool-drawn op by its POOL key
-   * removes both accidents — the key is voice-independent and survives a
-   * redefinition — so an all-pool body (which is every scripted readback)
-   * would otherwise resume its tail in a voice the driver never heard the
-   * head in. They are checked explicitly rather than folded into `opsEqual`
-   * because they are facts about the WORLD between the two expansions, not
-   * about the ops.
-   */
-  private resumeBlocker(resume: ResumeState, expanded: readonly ExecOp[]): string | null {
-    if (resume.voice !== this.getActiveVoice()) return "voice changed while stashed";
-
-    if (resume.generation !== this.scripts.generation) return "scripts changed while stashed";
-
-    if (!opsEqual(expanded, resume.ops)) return "the expansion changed while stashed";
-
-    return null;
   }
 
   /** Advance to the next op in the given bus's active fire. */
@@ -1957,25 +1890,6 @@ class ScenarioEngine implements IScenarioEngine {
 }
 
 /**
- * Capture where an interrupted fire left off, mapped back to its ORIGINAL
- * expansion via the fire's source fields — so a resumed fire that is cut
- * again still stashes an absolute position, not one relative to its tail
- * (issue #758). `active.index` points one past the op in flight; the resume
- * replays that op from its start.
- *
- * `voice` and `generation` stamp the state of the world the ops were expanded
- * under, which `executeFire` re-checks before it continues (issue #1136).
- */
-function buildResumeState(active: ActiveFire, voice: string | null, generation: number): ResumeState | undefined {
-  const playIndex = Math.max(0, active.index - 1);
-  const sourceIndex = active.sourceStart + Math.max(0, playIndex - active.prerollCount);
-
-  if (sourceIndex >= active.sourceOps.length) return undefined;
-
-  return { ops: active.sourceOps, index: sourceIndex, voice, generation };
-}
-
-/**
  * How many ops of a playing fire's FULL expansion (`sourceOps`) the driver has
  * started to hear (issue #1407) — the op in flight included, since `index`
  * points one past it. Judged against the source expansion rather than `ops`
@@ -2061,54 +1975,6 @@ function describeBus(bus: AudioBus, state: BusState | undefined): ScenarioEngine
       after: e.after,
     })),
   };
-}
-
-/**
- * Element-wise equality of two expanded op lists (plain data, no functions).
- * The frame tag is part of an op's identity: the same clip played as a frame
- * and as body are two different ops, and a resume must not mistake one for
- * the other.
- *
- * A play op that came out of a pool is compared by that POOL and its channel,
- * never by the take drawn (issue #1136): `noRepeat` plus the take committed on
- * acceptance make a re-expansion of a two-take pool draw the other take every
- * time, and which recording of a slot came up is not part of what the body
- * says — so a path comparison would fail every resume of a scripted readback.
- * A path-drawn op is compared by path and channel as before, and a pool-drawn
- * op is never equal to a path-drawn one. What the comparison still catches: a
- * var resolving to a different value is a different reference
- * (`pool:numbers/12` against `pool:numbers/13`), and a slot that appears,
- * disappears or reorders changes the shape.
- *
- * What it deliberately no longer catches, because a pool key is voice-
- * independent and survives a redefinition of what the pool holds: a change of
- * ACTIVE VOICE or of the scripts/manifest while the fire was stashed. Those
- * are facts about the world rather than about the ops, and `resumeBlocker`
- * checks them beside this — do not read a `true` from here as "nothing moved".
- */
-function opsEqual(a: readonly ExecOp[], b: readonly ExecOp[]): boolean {
-  if (a.length !== b.length) return false;
-
-  for (let i = 0; i < a.length; i++) {
-    const x = a[i];
-    const y = b[i];
-
-    if (x.kind !== y.kind || x.frame !== y.frame) return false;
-
-    if (x.kind === "play" && y.kind === "play") {
-      if (x.channel !== y.channel) return false;
-
-      if (x.pool !== undefined || y.pool !== undefined) {
-        if (x.pool !== y.pool) return false;
-      } else if (x.path !== y.path) return false;
-    }
-
-    if (x.kind === "ambient" && y.kind === "ambient" && x.action !== y.action) return false;
-
-    if (x.kind === "pause" && y.kind === "pause" && x.ms !== y.ms) return false;
-  }
-
-  return true;
 }
 
 function opLabel(op: ExecOp): string {

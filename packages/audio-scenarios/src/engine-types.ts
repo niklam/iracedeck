@@ -81,7 +81,7 @@ export type WaitingFire = {
 /** Where an interrupted resumable fire left off, for continuation at idle-replay. */
 export type ResumeState = {
   /** The interrupted fire's FULL original expansion. */
-  ops: ExecOp[];
+  ops: readonly ExecOp[];
   /** Index of the op that was in flight when the fire was cut. */
   index: number;
   /**
@@ -180,6 +180,21 @@ export type ActiveFire = {
    * however the preview ends.
    */
   onSettled?: () => void;
+};
+
+/**
+ * A playing fire as every module but playback sees it (issue #1514): every
+ * field read-only, `ops`, `sourceOps` and `cutTail` as `ReadonlyArray`, and
+ * without the two transport internals only playback touches (`pauseTimer`,
+ * `onSettled`). The scheduler and the line ends read a bus's active fire
+ * through this and change it only by calling playback.
+ */
+export type ActiveFireView = Readonly<
+  Omit<ActiveFire, "ops" | "sourceOps" | "cutTail" | "pauseTimer" | "onSettled">
+> & {
+  readonly ops: readonly ExecOp[];
+  readonly sourceOps: readonly ExecOp[];
+  readonly cutTail: readonly ExecOp[];
 };
 
 /**
