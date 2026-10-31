@@ -1,7 +1,9 @@
 /**
  * One reset for the whole engine (#1467), for `iracing-actions`' tests: every
  * engine module's state, then the env. A module that keeps state adds its
- * reset here.
+ * reset here: `replay-engine-reset.coverage.test.ts` fails on module-level
+ * state that no call reached from here writes, unless it is exempted there
+ * with the reason (#1502).
  */
 import { _resetCameraSwitchWaiter } from "./camera-switch-waiter.js";
 import { _resetLapPress } from "./lap-press.js";
