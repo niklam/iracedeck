@@ -1,17 +1,11 @@
 import type StreamDeck from "@elgato/streamdeck";
 import type { ElgatoPlatformAdapter } from "@iracedeck/deck-adapter-elgato";
 import { getFeatureFlag, initProfileSwitcher, requestProfileSwitch } from "@iracedeck/deck-core";
-import { onIRacingTerminated } from "@iracedeck/deck-iracing";
-import { STREAM_DECK_ACTIONS } from "@iracedeck/plugin-runtime";
+import { type HostSim, STREAM_DECK_ACTIONS } from "@iracedeck/plugin-runtime";
 import { getGlobalSettings, updateGlobalSettings } from "@iracedeck/settings";
-import { getSessionKind } from "@iracedeck/sim-events-iracing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createElgatoExtension, SESSION_PROFILE_SUBSCRIPTION_ID } from "./elgato-extension.js";
-
-const { controller } = vi.hoisted(() => ({
-  controller: { subscribe: vi.fn(), unsubscribe: vi.fn() },
-}));
+import { createElgatoExtension } from "./elgato-extension.js";
 
 vi.mock("@iracedeck/deck-core", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -21,22 +15,10 @@ vi.mock("@iracedeck/deck-core", async (importOriginal) => ({
   requestProfileSwitch: vi.fn(async () => undefined),
 }));
 
-vi.mock("@iracedeck/deck-iracing", async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  getController: vi.fn(() => controller),
-  onIRacingTerminated: vi.fn(() => () => undefined),
-}));
-
 vi.mock("@iracedeck/settings", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   getGlobalSettings: vi.fn(),
   updateGlobalSettings: vi.fn(),
-}));
-
-vi.mock("@iracedeck/sim-events-iracing", async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  getSessionKind: vi.fn(() => null),
-  getSessionType: vi.fn(() => ""),
 }));
 
 type Device = { id: string; name: string; type: number; isConnected: boolean };
@@ -54,24 +36,44 @@ function fakes(devices: Device[]) {
   return { sd, adapter };
 }
 
+/** A `HostSim` that records its listeners, so a test can fire a tick by hand. */
+function fakeSim() {
+  const tickListeners: Array<() => void> = [];
+  const unsubscribeTick = vi.fn();
+  const sim = {
+    getSessionKind: vi.fn<HostSim["getSessionKind"]>(() => null),
+    getRawSessionType: vi.fn<HostSim["getRawSessionType"]>(() => ""),
+    onTick: vi.fn<HostSim["onTick"]>((listener) => {
+      tickListeners.push(listener);
+
+      return unsubscribeTick;
+    }),
+    onSimTerminated: vi.fn<HostSim["onSimTerminated"]>(() => () => undefined),
+  };
+  const tick = (): void => tickListeners.forEach((listener) => listener());
+
+  return { sim, tick, unsubscribeTick };
+}
+
 describe("createElgatoExtension", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("does nothing until started", () => {
     const { sd } = fakes([]);
+    const { sim } = fakeSim();
 
     createElgatoExtension(sd, fakes([]).adapter);
 
     expect(initProfileSwitcher).not.toHaveBeenCalled();
     expect(sd.devices.onDeviceDidConnect).not.toHaveBeenCalled();
-    expect(controller.subscribe).not.toHaveBeenCalled();
-    expect(onIRacingTerminated).not.toHaveBeenCalled();
+    expect(sim.onTick).not.toHaveBeenCalled();
+    expect(sim.onSimTerminated).not.toHaveBeenCalled();
   });
 
   it("starts the profile switcher and both device listeners (#736)", () => {
     const { sd, adapter } = fakes([]);
 
-    createElgatoExtension(sd, adapter).start();
+    createElgatoExtension(sd, adapter).start({ sim: fakeSim().sim });
 
     expect(initProfileSwitcher).toHaveBeenCalledOnce();
     expect(adapter.createLogger).toHaveBeenCalledWith("ProfileSwitcher");
@@ -113,7 +115,7 @@ describe("createElgatoExtension", () => {
     const { switchProfile, start, getConnectedDeviceType, refreshDevices } = createElgatoExtension(sd, adapter);
 
     switchProfile("dev", "Default");
-    start();
+    start({ sim: fakeSim().sim });
     refreshDevices();
 
     expect(adapter.switchToBundledProfile).toHaveBeenCalledWith("dev", "Default", undefined);
@@ -125,7 +127,7 @@ describe("createElgatoExtension", () => {
   it("wires the profile switcher to the adapter's profile switch and the device listeners to the deck push", () => {
     const { sd, adapter } = fakes([{ id: "b", name: "B", type: 7, isConnected: true }]);
 
-    createElgatoExtension(sd, adapter).start();
+    createElgatoExtension(sd, adapter).start({ sim: fakeSim().sim });
     const [switcher] = vi.mocked(initProfileSwitcher).mock.calls[0];
     switcher("dev", "Default", 3);
     vi.mocked(sd.devices.onDeviceDidConnect).mock.calls[0][0]({} as never);
@@ -134,25 +136,48 @@ describe("createElgatoExtension", () => {
     expect(updateGlobalSettings).toHaveBeenCalledOnce();
   });
 
-  it("starts the session-kind profile switch on the SDK ticks and iRacing's exit (#1111)", () => {
+  it("starts the session-kind profile switch on the context sim's ticks and exit (#1111, #1500)", () => {
     const { sd, adapter } = fakes([]);
+    const { sim } = fakeSim();
 
-    createElgatoExtension(sd, adapter).start();
+    createElgatoExtension(sd, adapter).start({ sim });
 
-    expect(controller.subscribe).toHaveBeenCalledExactlyOnceWith(SESSION_PROFILE_SUBSCRIPTION_ID, expect.any(Function));
-    expect(onIRacingTerminated).toHaveBeenCalledOnce();
+    expect(sim.onTick).toHaveBeenCalledExactlyOnceWith(expect.any(Function));
+    expect(sim.onSimTerminated).toHaveBeenCalledExactlyOnceWith(expect.any(Function));
     expect(adapter.createLogger).toHaveBeenCalledWith("SessionProfile");
+  });
+
+  it("reads the session kind through the context sim on each tick, never before one (#1500)", () => {
+    const { sd, adapter } = fakes([]);
+    const { sim, tick } = fakeSim();
+
+    const enabled = { profileAutoSwitchEnabled: true } as ReturnType<typeof getGlobalSettings>;
+
+    // Two ticks read the settings twice; the Once forms leave nothing behind for later tests.
+    vi.mocked(getGlobalSettings).mockReturnValueOnce(enabled).mockReturnValueOnce(enabled);
+    createElgatoExtension(sd, adapter).start({ sim });
+
+    expect(sim.getSessionKind).not.toHaveBeenCalled();
+
+    tick();
+    tick();
+
+    expect(sim.getSessionKind).toHaveBeenCalledTimes(2);
+    // A tick with no kind names the raw session type, also read through the context.
+    expect(sim.getRawSessionType).toHaveBeenCalled();
   });
 
   it("leaves the session-kind profile switch off when the build has no profiles", () => {
     const { sd, adapter } = fakes([]);
 
+    const { sim } = fakeSim();
+
     vi.mocked(getFeatureFlag).mockReturnValueOnce(false);
-    createElgatoExtension(sd, adapter).start();
+    createElgatoExtension(sd, adapter).start({ sim });
 
     expect(getFeatureFlag).toHaveBeenCalledWith("profiles");
-    expect(controller.subscribe).not.toHaveBeenCalled();
-    expect(onIRacingTerminated).not.toHaveBeenCalled();
+    expect(sim.onTick).not.toHaveBeenCalled();
+    expect(sim.onSimTerminated).not.toHaveBeenCalled();
   });
 
   it("switches each connected deck to its variant of the mapped profile, on page 0, through the switcher's history", () => {
@@ -161,16 +186,17 @@ describe("createElgatoExtension", () => {
       { id: "gone", name: "Gone", type: 0, isConnected: false },
     ]);
 
-    // One tick reads each once; the Once forms leave nothing behind for later tests.
-    vi.mocked(getSessionKind).mockReturnValueOnce("race");
+    const { sim, tick } = fakeSim();
+
+    // One tick reads each once; the Once form leaves nothing behind for later tests.
+    sim.getSessionKind.mockReturnValue("race");
     vi.mocked(getGlobalSettings).mockReturnValueOnce({
       profileAutoSwitchEnabled: true,
       profileForSessionKindRace: "iRaceDeck Race",
     } as ReturnType<typeof getGlobalSettings>);
 
-    createElgatoExtension(sd, adapter).start();
-    const [, onTick] = controller.subscribe.mock.calls[0];
-    onTick(null, true);
+    createElgatoExtension(sd, adapter).start({ sim });
+    tick();
 
     expect(requestProfileSwitch).toHaveBeenCalledExactlyOnceWith("xl", "iRaceDeck Race XL", 0);
   });
@@ -178,10 +204,12 @@ describe("createElgatoExtension", () => {
   it("starts the session-kind profile switch when the build names no profiles flag", () => {
     const { sd, adapter } = fakes([]);
 
-    vi.mocked(getFeatureFlag).mockReturnValueOnce(undefined);
-    createElgatoExtension(sd, adapter).start();
+    const { sim } = fakeSim();
 
-    expect(controller.subscribe).toHaveBeenCalledOnce();
+    vi.mocked(getFeatureFlag).mockReturnValueOnce(undefined);
+    createElgatoExtension(sd, adapter).start({ sim });
+
+    expect(sim.onTick).toHaveBeenCalledOnce();
   });
 
   it("adds Switch Profile and nothing else", () => {
