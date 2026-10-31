@@ -38,7 +38,8 @@ vi.mock("../actions.js", async () => (await import("../test-support/module-mocks
 function phases() {
   const host = createHost();
   const core = initCore(host);
-  const sim = initSim(core);
+  // The Race Engineer's half of the sim phase's handoff (#1500).
+  const sim = initSim(core).runtime;
   const audio = initAudio(core);
   const voicePacks = initVoicePacks(core, audio);
 

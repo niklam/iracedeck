@@ -4,7 +4,8 @@
  * host's extension, the settings-window request, SimHub, the binding
  * dispatcher, the app monitor, the audio session hold, and the two SDK
  * subscribers. Everything here is registered before `startPlugin` connects
- * the adapter.
+ * the adapter. The extension reads the sim through the sim phase's `HostSim`
+ * (#1500).
  */
 import { getAudio } from "@iracedeck/audio-service";
 import {
@@ -35,7 +36,7 @@ import {
   SETUP_CHASSIS_BINDING_KEY_RENAMES,
   startAudioSessionHold,
 } from "../actions.js";
-import type { Core, Input, Replay, Settings, VoicePacks } from "../types.js";
+import type { Core, HostSim, Input, Replay, Settings, VoicePacks } from "../types.js";
 
 export function startServices(
   core: Core,
@@ -43,6 +44,7 @@ export function startServices(
   settings: Settings,
   replay: Replay,
   voicePacks: VoicePacks,
+  hostSim: HostSim,
 ): void {
   // Initialize global settings listener BEFORE connect - handlers must be registered first.
   // The settings store comes from the settings phase, which built it above the
@@ -71,8 +73,9 @@ export function startServices(
 
   // What only this host has (#1349) — on Stream Deck: the profile switcher for
   // the Switch Profile action and the "Stream Deck Profiles" buttons (#736),
-  // and the connected-deck list for the settings window's device picker.
-  core.host.extension?.start();
+  // and the connected-deck list for the settings window's device picker. The
+  // automatic profile switch reads the sim through the context (#1500).
+  core.host.extension?.start({ sim: hostSim });
 
   core.adapter.onOpenSettingsRequest(() => {
     core.host.extension?.refreshDevices();
