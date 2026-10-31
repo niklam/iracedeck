@@ -37,9 +37,16 @@
  * rather than by name. Each errs towards reporting a binding as not reset, so
  * the test goes red rather than green; the answer is to reset it by name.
  */
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import ts from "typescript";
+
+import {
+  createVirtualProgram,
+  hasModifier,
+  isFunctionValue as isFunctionNode,
+  lineOf,
+  readProductionSources,
+  unwrap,
+} from "./ts-source-scan.test-support.js";
 
 /** Why a binding counts as module state. */
 export type StateKind = "let" | "mutated const" | "opaque initializer" | "static field";
@@ -100,19 +107,7 @@ const TRANSPARENT_CONSTRUCTORS = new Set(["Map", "Set", "WeakMap", "WeakSet", "A
 
 /** The production sources of `dir`: every `.ts` file but tests, test support and declarations. */
 export function readEngineSources(dir: string): Map<string, string> {
-  const sources = new Map<string, string>();
-
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (!entry.isFile() || !entry.name.endsWith(".ts")) continue;
-
-    if (entry.name.endsWith(".d.ts") || entry.name.endsWith(".test.ts") || entry.name.endsWith(".test-support.ts")) {
-      continue;
-    }
-
-    sources.set(entry.name, readFileSync(join(dir, entry.name), "utf8"));
-  }
-
-  return sources;
+  return readProductionSources(dir, false);
 }
 
 interface Binding {
@@ -156,26 +151,8 @@ function relativeModule(specifier: string): string | undefined {
   return `${bare}.ts`;
 }
 
-function unwrap(expression: ts.Expression): ts.Expression {
-  let current = expression;
-
-  while (
-    ts.isParenthesizedExpression(current) ||
-    ts.isAsExpression(current) ||
-    ts.isSatisfiesExpression(current) ||
-    ts.isTypeAssertionExpression(current) ||
-    ts.isNonNullExpression(current)
-  ) {
-    current = current.expression;
-  }
-
-  return current;
-}
-
 function isFunctionValue(expression: ts.Expression): boolean {
-  const value = unwrap(expression);
-
-  return ts.isArrowFunction(value) || ts.isFunctionExpression(value);
+  return isFunctionNode(unwrap(expression));
 }
 
 /** `Object.freeze(x)` → `x`, any depth. */
@@ -207,14 +184,6 @@ function isOpaque(initializer: ts.Expression): boolean {
   }
 
   return false;
-}
-
-function lineOf(file: ts.SourceFile, node: ts.Node): number {
-  return file.getLineAndCharacterOfPosition(node.getStart(file)).line + 1;
-}
-
-function hasModifier(node: ts.Node, kind: ts.SyntaxKind): boolean {
-  return ts.canHaveModifiers(node) && (ts.getModifiers(node) ?? []).some((modifier) => modifier.kind === kind);
 }
 
 function identifiersOf(name: ts.BindingName): ts.Identifier[] {
@@ -254,7 +223,7 @@ function collectModule(name: string, file: ts.SourceFile, checker: ts.TypeChecke
       const from = relativeModule(statement.moduleSpecifier.text);
       const clause = statement.importClause;
 
-      if (from === undefined || clause === undefined || clause.isTypeOnly) continue;
+      if (from === undefined || clause === undefined || clause.phaseModifier === ts.SyntaxKind.TypeKeyword) continue;
 
       const bindings = clause.namedBindings;
 
@@ -465,33 +434,7 @@ function inDestructuringTarget(node: ts.Node): boolean {
  * never scan as "nothing reached, nothing to check".
  */
 export function scanResetCoverage(sources: ReadonlyMap<string, string>, root: ResetRoot): ResetScan {
-  const byPath = new Map<string, string>();
-
-  for (const [name, text] of sources) byPath.set(VIRTUAL_ROOT + name, text);
-
-  const options: ts.CompilerOptions = {
-    noLib: true,
-    noResolve: true,
-    types: [],
-    target: ts.ScriptTarget.ESNext,
-    module: ts.ModuleKind.ESNext,
-  };
-  const host: ts.CompilerHost = {
-    getSourceFile: (fileName, languageVersion) => {
-      const text = byPath.get(fileName);
-
-      return text === undefined ? undefined : ts.createSourceFile(fileName, text, languageVersion, true);
-    },
-    getDefaultLibFileName: () => `${VIRTUAL_ROOT}lib.d.ts`,
-    writeFile: () => undefined,
-    getCurrentDirectory: () => VIRTUAL_ROOT,
-    getCanonicalFileName: (fileName) => fileName,
-    useCaseSensitiveFileNames: () => true,
-    getNewLine: () => "\n",
-    fileExists: (fileName) => byPath.has(fileName),
-    readFile: (fileName) => byPath.get(fileName),
-  };
-  const program = ts.createProgram([...byPath.keys()], options, host);
+  const program = createVirtualProgram(sources, VIRTUAL_ROOT);
   const checker = program.getTypeChecker();
   const modules = new Map<string, Module>();
 

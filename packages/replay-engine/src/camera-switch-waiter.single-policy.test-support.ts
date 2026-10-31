@@ -51,9 +51,17 @@
  * by anything but `getCommands()` or `getSDK()`. Every other blind spot errs
  * towards reporting a send, so the test goes red rather than green.
  */
-import { readdirSync, readFileSync } from "node:fs";
-import { join, relative, sep } from "node:path";
 import ts from "typescript";
+
+import {
+  createVirtualProgram,
+  hasModifier,
+  isFunctionValue,
+  lineOf,
+  outermost,
+  readProductionSources as readSources,
+  unwrap,
+} from "./ts-source-scan.test-support.js";
 
 /** The engine's camera-switch waiter, as `iracing-actions` imports it. */
 export const WAITER = "requestCameraSwitch";
@@ -108,29 +116,7 @@ export function sendKey(send: Pick<CameraSend, "file" | "context">): string {
 
 /** Every production `.ts` file under `dir`, recursively, by its path relative to `dir`: no tests, test support or declarations. */
 export function readProductionSources(dir: string): Map<string, string> {
-  const sources = new Map<string, string>();
-  const walk = (current: string): void => {
-    for (const entry of readdirSync(current, { withFileTypes: true })) {
-      const full = join(current, entry.name);
-
-      if (entry.isDirectory()) {
-        walk(full);
-        continue;
-      }
-
-      if (!entry.isFile() || !entry.name.endsWith(".ts")) continue;
-
-      if (entry.name.endsWith(".d.ts") || entry.name.endsWith(".test.ts") || entry.name.endsWith(".test-support.ts")) {
-        continue;
-      }
-
-      sources.set(relative(dir, full).split(sep).join("/"), readFileSync(full, "utf8"));
-    }
-  };
-
-  walk(dir);
-
-  return sources;
+  return readSources(dir, true);
 }
 
 /** The public methods of the class `className` in `source` (the SDK's `CameraCommand`). */
@@ -235,48 +221,6 @@ interface Def {
 /** Where a node runs: inside a waiter callback, inside a named function, or neither. */
 type Context = { readonly kind: "root" } | { readonly kind: "def"; readonly key: string } | { readonly kind: "none" };
 
-function unwrap(expression: ts.Expression): ts.Expression {
-  let current = expression;
-
-  while (
-    ts.isParenthesizedExpression(current) ||
-    ts.isAsExpression(current) ||
-    ts.isSatisfiesExpression(current) ||
-    ts.isTypeAssertionExpression(current) ||
-    ts.isNonNullExpression(current)
-  ) {
-    current = current.expression;
-  }
-
-  return current;
-}
-
-/** The outermost expression `node` is wrapped in by parentheses, `as`, `satisfies` or `!`. */
-function outermost(node: ts.Node): ts.Node {
-  let current = node;
-
-  while (
-    current.parent !== undefined &&
-    (ts.isParenthesizedExpression(current.parent) ||
-      ts.isAsExpression(current.parent) ||
-      ts.isSatisfiesExpression(current.parent) ||
-      ts.isTypeAssertionExpression(current.parent) ||
-      ts.isNonNullExpression(current.parent))
-  ) {
-    current = current.parent;
-  }
-
-  return current;
-}
-
-function lineOf(file: ts.SourceFile, node: ts.Node): number {
-  return file.getLineAndCharacterOfPosition(node.getStart(file)).line + 1;
-}
-
-function hasModifier(node: ts.Node, kind: ts.SyntaxKind): boolean {
-  return ts.canHaveModifiers(node) && (ts.getModifiers(node) ?? []).some((modifier) => modifier.kind === kind);
-}
-
 function propertyNameText(name: ts.PropertyName | ts.BindingName | undefined): string | undefined {
   if (name === undefined) return undefined;
 
@@ -285,10 +229,6 @@ function propertyNameText(name: ts.PropertyName | ts.BindingName | undefined): s
   }
 
   return undefined;
-}
-
-function isFunctionValue(node: ts.Node): node is ts.ArrowFunction | ts.FunctionExpression {
-  return ts.isArrowFunction(node) || ts.isFunctionExpression(node);
 }
 
 /** Whether `node` sits in a type: a type annotation, an interface, a type alias, `typeof x`. */
@@ -334,44 +274,13 @@ function valueSymbolOf(checker: ts.TypeChecker, id: ts.Identifier): ts.Symbol | 
     : checker.getSymbolAtLocation(id);
 }
 
-function createProgram(sources: ReadonlyMap<string, string>): ts.Program {
-  const byPath = new Map<string, string>();
-
-  for (const [name, text] of sources) byPath.set(VIRTUAL_ROOT + name, text);
-
-  const options: ts.CompilerOptions = {
-    noLib: true,
-    noResolve: true,
-    types: [],
-    target: ts.ScriptTarget.ESNext,
-    module: ts.ModuleKind.ESNext,
-  };
-  const host: ts.CompilerHost = {
-    getSourceFile: (fileName, languageVersion) => {
-      const text = byPath.get(fileName);
-
-      return text === undefined ? undefined : ts.createSourceFile(fileName, text, languageVersion, true);
-    },
-    getDefaultLibFileName: () => `${VIRTUAL_ROOT}lib.d.ts`,
-    writeFile: () => undefined,
-    getCurrentDirectory: () => VIRTUAL_ROOT,
-    getCanonicalFileName: (fileName) => fileName,
-    useCaseSensitiveFileNames: () => true,
-    getNewLine: () => "\n",
-    fileExists: (fileName) => byPath.has(fileName),
-    readFile: (fileName) => byPath.get(fileName),
-  };
-
-  return ts.createProgram([...byPath.keys()], options, host);
-}
-
 /**
  * Scans `sources` (path → text) for camera sends and judges each against the
  * waiter. Throws when a source does not load, so a broken glob can never scan
  * as "nothing found, nothing wrong".
  */
 export function scanCameraSends(sources: ReadonlyMap<string, string>, options: CameraScanOptions): CameraScan {
-  const program = createProgram(sources);
+  const program = createVirtualProgram(sources, VIRTUAL_ROOT);
   const checker = program.getTypeChecker();
   const files: { name: string; file: ts.SourceFile }[] = [];
 
