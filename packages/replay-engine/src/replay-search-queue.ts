@@ -43,7 +43,7 @@
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 
-import { now as engineNow, sleep } from "./engine-clock.js";
+import { now as engineNow, pollUntil } from "./engine-clock.js";
 import {
   getReplayGateRecord,
   replaySearchCouldRunMs,
@@ -705,37 +705,41 @@ async function holdReading(r: Run, options: { requirePaused: boolean; timeoutMs:
 
   if (claim === undefined) return { kind: "cancelled" };
 
-  const startedAt = engineNow();
   let last: Reading | null = null;
   let agreeing = 0;
 
-  for (;;) {
-    if (stopped(r)) return { kind: "cancelled" };
+  const held = await pollUntil(
+    async (): Promise<HoldResult | undefined> => {
+      if (stopped(r)) return { kind: "cancelled" };
 
-    if (offScreen(r)) return { kind: "left" };
+      if (offScreen(r)) return { kind: "left" };
 
-    // One settle of the gate's a poll, so the replay can be asked about between them.
-    const settled = await waitForReplaySettled({ reads: 1, timeoutMs: 0, claim });
+      // One settle of the gate's a poll, so the replay can be asked about between them.
+      const settled = await waitForReplaySettled({ reads: 1, timeoutMs: 0, claim });
 
-    if (settled === "superseded" || stopped(r)) return { kind: "cancelled" };
+      if (settled === "superseded" || stopped(r)) return { kind: "cancelled" };
 
-    const telemetry = settled === "settled" ? engineReads().readTelemetry() : null;
-    const reading = readReading(telemetry, engineNow());
+      const telemetry = settled === "settled" ? engineReads().readTelemetry() : null;
+      const reading = readReading(telemetry, engineNow());
 
-    if (reading !== null && (!options.requirePaused || reading.rate === 0)) {
-      agreeing = last !== null && agrees(last, reading) ? agreeing + 1 : 1;
-      last = reading;
-    } else {
-      agreeing = 0;
-      last = null;
-    }
+      if (reading !== null && (!options.requirePaused || reading.rate === 0)) {
+        agreeing = last !== null && agrees(last, reading) ? agreeing + 1 : 1;
+        last = reading;
+      } else {
+        agreeing = 0;
+        last = null;
+      }
 
-    if (agreeing >= HOLD_READS && telemetry !== null && reading !== null) return { kind: "held", telemetry, reading };
+      if (agreeing >= HOLD_READS && telemetry !== null && reading !== null) return { kind: "held", telemetry, reading };
 
-    if (engineNow() - startedAt >= options.timeoutMs) return offScreen(r) ? { kind: "left" } : { kind: "gave-up" };
+      return undefined;
+    },
+    { intervalMs: HOLD_GAP_MS, timeoutMs: options.timeoutMs },
+  );
 
-    await sleep(HOLD_GAP_MS);
-  }
+  if (held.kind === "done") return held.value;
+
+  return offScreen(r) ? { kind: "left" } : { kind: "gave-up" };
 }
 
 /** What became of one search the runner sent. */
