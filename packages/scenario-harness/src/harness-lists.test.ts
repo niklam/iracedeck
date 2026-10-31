@@ -17,7 +17,10 @@
  *   ("Green" and "Green Held") resolves to the button it names — and when the
  *   contract fires on an event and that shortcut publishes events, the
  *   contract's event must be among them, so a line cannot name a button that
- *   plays some other callout. Two pairings are out of that check's reach: a
+ *   publishes some other event. It compares event names, not payloads: where
+ *   several contracts share an event (`lap.completed`, `opponentFlag.flagged`),
+ *   a line naming another of that event's buttons passes, so the label is
+ *   still the author's to get right. Two pairings are out of that check's reach: a
  *   shortcut that drives telemetry rather than publishing (the translator
  *   decides what it fires; its heard tests cover it), and a contract with no
  *   `event` (the spotter's, fed by the radar engine). The few contracts with no
