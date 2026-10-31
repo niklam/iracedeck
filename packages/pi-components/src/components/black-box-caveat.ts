@@ -100,7 +100,9 @@ function bindingObject(raw: unknown): Record<string, unknown> | null {
  * object) is a usable KEYBOARD binding — the shape `@iracedeck/settings`'
  * `KeyBindingValueSchema` accepts, so the caveat and the runtime agree: `type`
  * absent or "keyboard", a non-empty `key`, and `modifiers` absent or an array of
- * strings. A SimHub role, an empty value, or a corrupt one all return false.
+ * strings. The runtime additionally needs the scan `code` since #1495 (a binding
+ * without one is unbound), so a non-empty string `code` is required here too. A
+ * SimHub role, an empty value, or a corrupt one all return false.
  */
 export function isKeyboardBinding(raw: unknown): boolean {
   const binding = bindingObject(raw);
@@ -110,6 +112,8 @@ export function isKeyboardBinding(raw: unknown): boolean {
   if (binding.type !== undefined && binding.type !== "keyboard") return false;
 
   if (typeof binding.key !== "string" || binding.key.length === 0) return false;
+
+  if (typeof binding.code !== "string" || binding.code.length === 0) return false;
 
   const { modifiers } = binding;
 

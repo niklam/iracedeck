@@ -106,6 +106,18 @@ describe("ird-binding-status", () => {
     expect(text()).toContain("Ctrl+F1");
   });
 
+  it.each([
+    ['{"key":"f1","modifiers":[]}'],
+    ['{"type":"keyboard","key":"f1","modifiers":["ctrl"]}'],
+    ['{"type":"keyboard","key":"f1","modifiers":[],"code":""}'],
+  ])("reads a keyboard binding without a scan code as unset (#1495): %s", (value) => {
+    el = mount(FUEL_COMMS);
+    setMode("toggle-autofuel");
+    setBinding("fuelServiceToggleAutofuel", value);
+    expect(text()).toContain("No binding set");
+    expect(text()).not.toContain("Key binding:");
+  });
+
   it("updates the text live when the binding is changed", () => {
     el = mount(FUEL_COMMS);
     setMode("toggle-autofuel");

@@ -131,9 +131,13 @@ function parseStoredBinding(
     return null;
   }
 
+  // A keyboard binding without a scan `code` is unbound at runtime since #1495
+  // (only a hand-edited or very old settings file holds one), so it reads as unset.
   const kb = parseKeyBinding(value);
 
-  return kb ? { kind: "keyboard", text: formatKeyBinding(kb) } : null;
+  return kb && typeof kb.code === "string" && kb.code.length > 0
+    ? { kind: "keyboard", text: formatKeyBinding(kb) }
+    : null;
 }
 
 let styleInjected = false;

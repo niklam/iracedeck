@@ -364,18 +364,28 @@ describe("binding classifiers", () => {
     expect(isSimHubBinding(simhub)).toBe(true);
     expect(isKeyboardBinding(simhub)).toBe(false);
     expect(isSimHubBinding({ type: "simhub", role: "" })).toBe(false);
-    expect(isKeyboardBinding({ key: "f1" })).toBe(true);
+    expect(isKeyboardBinding({ key: "f1", code: "F1" })).toBe(true);
+    expect(isKeyboardBinding({ key: "f1" })).toBe(false);
   });
 
   it("should match the runtime's KeyBindingValueSchema for keyboard bindings", () => {
     // Accepted: modifiers default to [] and type defaults to "keyboard".
-    expect(isKeyboardBinding(JSON.stringify({ key: "f1" }))).toBe(true);
-    expect(isKeyboardBinding(JSON.stringify({ type: "keyboard", key: "f1", modifiers: ["ctrl"] }))).toBe(true);
+    expect(isKeyboardBinding(JSON.stringify({ key: "f1", code: "F1" }))).toBe(true);
+    expect(isKeyboardBinding(JSON.stringify({ type: "keyboard", key: "f1", modifiers: ["ctrl"], code: "F1" }))).toBe(
+      true,
+    );
     // Rejected, as parseBinding rejects them.
-    expect(isKeyboardBinding(JSON.stringify({ key: "", modifiers: [] }))).toBe(false);
-    expect(isKeyboardBinding(JSON.stringify({ type: "gamepad", key: "f1", modifiers: [] }))).toBe(false);
-    expect(isKeyboardBinding(JSON.stringify({ key: "f1", modifiers: ["ctrl", 3] }))).toBe(false);
-    expect(isKeyboardBinding(JSON.stringify({ key: "f1", modifiers: "ctrl" }))).toBe(false);
+    expect(isKeyboardBinding(JSON.stringify({ key: "", modifiers: [], code: "F1" }))).toBe(false);
+    expect(isKeyboardBinding(JSON.stringify({ type: "gamepad", key: "f1", modifiers: [], code: "F1" }))).toBe(false);
+    expect(isKeyboardBinding(JSON.stringify({ key: "f1", modifiers: ["ctrl", 3], code: "F1" }))).toBe(false);
+    expect(isKeyboardBinding(JSON.stringify({ key: "f1", modifiers: "ctrl", code: "F1" }))).toBe(false);
+  });
+
+  it("should treat a keyboard binding without a scan code as unbound (#1495)", () => {
+    expect(isKeyboardBinding('{"key":"f1","modifiers":[]}')).toBe(false);
+    expect(isKeyboardBinding('{"type":"keyboard","key":"f1","modifiers":["ctrl"]}')).toBe(false);
+    expect(isKeyboardBinding('{"key":"f1","modifiers":[],"code":""}')).toBe(false);
+    expect(isKeyboardBinding('{"key":"f1","modifiers":[],"code":5}')).toBe(false);
   });
 
   it("should reject empty, corrupt and non-binding values", () => {
