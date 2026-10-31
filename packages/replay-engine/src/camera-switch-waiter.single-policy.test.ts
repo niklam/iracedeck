@@ -281,6 +281,53 @@ describe("camera switches go through the camera-switch waiter (#1502)", () => {
       ]);
     });
 
+    it("reports a switch in a function used only from itself or a cycle nothing in the waiter reaches", () => {
+      const recursive = `${WAITER_IMPORT}export function retry(): void {
+  getCommands().camera.switchNum(1, 0, 0);
+  retry();
+}
+`;
+      const hook =
+        `${WAITER_IMPORT}class Base {
+  onWillAppear(): void {}
+}
+` +
+        `export class Action extends Base {
+  override onWillAppear(): void {
+    super.onWillAppear();
+    this.updateDisplay();
+  }
+` +
+        `  private updateDisplay(): void {
+    getCommands().camera.switchNum(2, 0, 0);
+  }
+}
+`;
+      const cycle =
+        `${WAITER_IMPORT}function ping(): void {
+  getCommands().camera.switchNum(3, 0, 0);
+  pong();
+}
+` +
+        `function pong(): void {
+  ping();
+}
+`;
+
+      expect(outsideOf({ "recursive.ts": recursive })).toEqual(["recursive.ts:4 switchNum"]);
+      expect(outsideOf({ "hook.ts": hook })).toEqual(["hook.ts:12 switchNum"]);
+      expect(outsideOf({ "cycle.ts": cycle })).toEqual(["cycle.ts:4 switchNum"]);
+      // The same cycle entered from a waiter callback is inside.
+      expect(
+        outsideOf({
+          "cycle.ts": `${cycle}export function press(): void {
+  void requestCameraSwitch(() => ping(), ${OPTS});
+}
+`,
+        }),
+      ).toEqual([]);
+    });
+
     it("follows a switch handed through an io object's property, as the dial's Car # mode does", () => {
       const host = `${WAITER_IMPORT}export const io = {\n  switchToCar: (n: number) => getCommands().camera.switchNum(n, 0, 0),\n};\n`;
       const mode = (extra: string): string =>

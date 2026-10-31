@@ -52,6 +52,10 @@
  *   (`.then(…)`, `setTimeout(…)`) counts where that callback is written. A use
  *   at module top level, in a constructor or in a class field's initializer
  *   is outside any waiter, and a function nothing uses is never through one.
+ *   A function counts as inside only when a chain of uses reaches it from a
+ *   waiter callback (the smallest fixpoint), so one used only from itself or
+ *   from a cycle of its own (a self-recursive helper, a hook that calls its
+ *   `super` hook) is outside.
  *
  * **What it cannot see**, by design: a key that flows through an anonymous
  * callback's parameter or an object's property, and a camera surface reached
@@ -624,44 +628,70 @@ export function scanCameraSends(sources: ReadonlyMap<string, string>, options: C
     return `${fileOf.get(file) ?? file.fileName}:${lineOf(file, node)} (${node.getText(file).split("\n")[0].slice(0, 60)})`;
   };
 
+  // Two smallest fixpoints. A function is reached when a chain of uses leads to it from a waiter callback. It runs
+  // outside when nothing reaches it from one (the host calls it, or nothing does), when nothing uses it, when a use
+  // sits outside any function, or when a use sits in a function that runs outside. Only a reached function that does
+  // not run outside counts as inside. Starting from "inside" and clearing would keep a group whose uses only loop
+  // back to itself (a self-recursive helper, a lifecycle hook calling its `super` hook), which no waiter reaches.
+  const usesOf = (key: string): ts.Node[] => usesByKey.get(key) ?? [];
+  const reached = new Set<string>();
+
+  for (let changed = true; changed;) {
+    changed = false;
+
+    for (const key of defsByKey.keys()) {
+      if (reached.has(key)) continue;
+
+      const reaching = usesOf(key).some((use) => {
+        const context = contextOf(use);
+
+        return context.kind === "root" || (context.kind === "def" && reached.has(context.key));
+      });
+
+      if (reaching) {
+        reached.add(key);
+        changed = true;
+      }
+    }
+  }
+
+  // Why each function runs outside. One hop only: the chain behind it runs through name-merged members of unrelated
+  // files and says more than it helps.
   const blockedBy = new Map<string, string>();
-  const onlyInWaiter = new Map<string, boolean>();
 
   for (const key of defsByKey.keys()) {
-    const uses = usesByKey.get(key) ?? [];
-
-    onlyInWaiter.set(key, uses.length > 0);
+    const uses = usesOf(key);
+    const topLevel = uses.find((use) => contextOf(use).kind === "none");
 
     if (uses.length === 0) blockedBy.set(key, `nothing uses ${key}`);
+    else if (topLevel !== undefined) blockedBy.set(key, `${key} is used outside any function at ${describe(topLevel)}`);
+    else if (!reached.has(key)) {
+      blockedBy.set(
+        key,
+        `${key} is reached from no waiter callback: its uses are in functions nothing in the waiter runs, at ${describe(uses[0])}`,
+      );
+    }
   }
 
   for (let changed = true; changed;) {
     changed = false;
 
-    for (const [key, ok] of onlyInWaiter) {
-      if (!ok) continue;
+    for (const key of defsByKey.keys()) {
+      if (blockedBy.has(key)) continue;
 
-      for (const use of usesByKey.get(key) ?? []) {
+      for (const use of usesOf(key)) {
         const context = contextOf(use);
 
-        if (context.kind === "root") continue;
+        if (context.kind !== "def" || !blockedBy.has(context.key)) continue;
 
-        if (context.kind === "def" && onlyInWaiter.get(context.key) === true) continue;
-
-        onlyInWaiter.set(key, false);
-        // One hop only: the chain behind it runs through name-merged members
-        // of unrelated files and says more than it helps.
-        blockedBy.set(
-          key,
-          context.kind === "def"
-            ? `${key} is used at ${describe(use)}, in ${context.key}, which runs outside the waiter too`
-            : `${key} is used outside any function at ${describe(use)}`,
-        );
+        blockedBy.set(key, `${key} is used at ${describe(use)}, in ${context.key}, which runs outside the waiter too`);
         changed = true;
         break;
       }
     }
   }
+
+  const onlyInWaiter = new Map<string, boolean>([...defsByKey.keys()].map((key) => [key, !blockedBy.has(key)]));
 
   const judge = (node: ts.Node): { inWaiter: boolean; why?: string } => {
     const context = contextOf(node);
