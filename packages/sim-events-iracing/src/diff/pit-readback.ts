@@ -35,7 +35,7 @@
  * auto-fuel is armed (issue #474) — and reaches this module through
  * `state.fuelPlanChangedThisTick` instead.
  */
-import type { PitReadbackSnapshot } from "@iracedeck/event-bus";
+import type { PitReadbackSnapshot, SimEventName } from "@iracedeck/event-bus";
 import {
   EngineWarnings,
   hasPitLimiter,
@@ -154,11 +154,14 @@ const USER_TOGGLE_EVENTS = new Set<PendingEvent["event"]>([
   "tireService.compoundChanged",
 ]);
 
+/** The events {@link diffPitReadback} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`. */
+export const PIT_READBACK_EVENTS = ["pitService.readbackRequested"] as const satisfies readonly SimEventName[];
+
 export function diffPitReadback(
   state: TranslatorState,
   telemetry: TelemetryData,
   now: number,
-  emit: EmitFn,
+  emit: EmitFn<(typeof PIT_READBACK_EVENTS)[number]>,
   pending: ReadonlyArray<PendingEvent>,
 ): void {
   // `state.lastOnPitRoad` was just updated by `diffPitLane` earlier in the

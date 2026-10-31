@@ -178,6 +178,7 @@
  * pickup. It does NOT stop at one to green — the last caution lap is exactly
  * when being in place matters — and stops when the pace car leaves.
  */
+import type { SimEventName } from "@iracedeck/event-bus";
 import { Flags, hasFlag, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 import type { TranslatorState } from "../state.js";
@@ -690,7 +691,7 @@ function diffCatchUp(
   lineup: PaceLineup | null,
   trackLengthMeters: number | null,
   now: number,
-  emit: EmitFn,
+  emit: EmitFn<(typeof CAUTION_EVENTS)[number]>,
 ): void {
   const onPitRoad = telemetry.OnPitRoad === true;
   const wasOnPitRoad = state.cautionCatchUpLastOnPitRoad;
@@ -963,7 +964,7 @@ function diffPaceCar(
   telemetry: TelemetryData,
   sessionInfo: Record<string, unknown> | null,
   seeding: boolean,
-  emit: EmitFn,
+  emit: EmitFn<(typeof CAUTION_EVENTS)[number]>,
 ): void {
   const paceCarIdx = resolvePaceCarIdx(sessionInfo);
   const surfaces = telemetry.CarIdxTrackSurface;
@@ -1017,7 +1018,7 @@ function diffCautionEpisode(
   sessionInfo: Record<string, unknown> | null,
   canonicalPositions: number[] | null,
   seeding: boolean,
-  emit: EmitFn,
+  emit: EmitFn<(typeof CAUTION_EVENTS)[number]>,
   now: number,
   trackLengthMeters: number | null,
 ): void {
@@ -1220,7 +1221,7 @@ function diffLastLapCheckpoint(
   state: TranslatorState,
   lapDistPct: number | null,
   armedThisTick: boolean,
-  emit: EmitFn,
+  emit: EmitFn<(typeof CAUTION_EVENTS)[number]>,
 ): void {
   if (state.cautionPhase !== "one-to-go") state.cautionCheckpointArmed = false;
 
@@ -1277,7 +1278,7 @@ function diffLineup(
   state: TranslatorState,
   telemetry: TelemetryData,
   sessionInfo: Record<string, unknown> | null,
-  emit: EmitFn,
+  emit: EmitFn<(typeof CAUTION_EVENTS)[number]>,
 ): PaceLineup | null {
   trackCautionEpisode(state);
 
@@ -1338,12 +1339,26 @@ export type CautionDiffOptions = {
   trackLengthMeters?: number | null;
 };
 
+/** The events {@link diffCaution} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`. */
+export const CAUTION_EVENTS = [
+  "caution.extraLap",
+  "caution.fieldCaught",
+  "caution.gapOpened",
+  "caution.gapStillOpen",
+  "caution.lastLapCheckpoint",
+  "caution.lineup.changed",
+  "caution.oneLapToGreen",
+  "caution.restarted",
+  "paceCar.deployed",
+  "paceCar.off",
+] as const satisfies readonly SimEventName[];
+
 export function diffCaution(
   state: TranslatorState,
   telemetry: TelemetryData,
   sessionInfo: Record<string, unknown> | null,
   canonicalPositions: number[] | null,
-  emit: EmitFn,
+  emit: EmitFn<(typeof CAUTION_EVENTS)[number]>,
   options: CautionDiffOptions = {},
 ): void {
   const { now = Date.now(), trackLengthMeters = null } = options;

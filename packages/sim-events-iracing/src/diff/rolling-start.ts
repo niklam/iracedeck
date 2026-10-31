@@ -75,6 +75,7 @@
  * 2.7 s after the green, and the formation ended 15 s before it. The event
  * carries nothing; the callout reads the lineup live when it speaks.
  */
+import type { SimEventName } from "@iracedeck/event-bus";
 import { Flags, hasFlag, SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 import { resolveStandingStart } from "../start-lights.js";
@@ -113,7 +114,7 @@ function diffFormationLineup(
   state: TranslatorState,
   telemetry: TelemetryData,
   sessionInfo: Record<string, unknown> | null,
-  emit: EmitFn,
+  emit: EmitFn<(typeof ROLLING_START_EVENTS)[number]>,
 ): void {
   if (state.rollingStartFormationId === null) return;
 
@@ -137,11 +138,17 @@ function diffFormationLineup(
   emit({ event: "rollingStart.lineup.changed", data: {} });
 }
 
+/** The events {@link diffRollingStart} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`. */
+export const ROLLING_START_EVENTS = [
+  "rollingStart.lineup.changed",
+  "rollingStart.pace-car-moving.raised",
+] as const satisfies readonly SimEventName[];
+
 export function diffRollingStart(
   state: TranslatorState,
   telemetry: TelemetryData,
   sessionInfo: Record<string, unknown> | null,
-  emit: EmitFn,
+  emit: EmitFn<(typeof ROLLING_START_EVENTS)[number]>,
 ): void {
   const sessionState = typeof telemetry.SessionState === "number" ? telemetry.SessionState : SessionState.Invalid;
   const inParade = sessionState === SessionState.ParadeLaps;

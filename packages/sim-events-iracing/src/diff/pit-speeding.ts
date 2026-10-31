@@ -38,6 +38,7 @@
  * from a tick; the translator's disconnect / session-change / replay
  * teardowns cover the exits that stop ticks reaching us at all.
  */
+import type { SimEventName } from "@iracedeck/event-bus";
 import { EngineWarnings, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 import type { TranslatorState } from "../state.js";
@@ -124,7 +125,7 @@ export const PIT_SPEEDING_END_HOLD_MS = 300;
  * only places that clear `pitSpeedingActive`, and both must emit the closing
  * edge BEFORE the state carrying it is wiped.
  */
-function endPitSpeedingIfActive(state: TranslatorState, emit: EmitFn): void {
+function endPitSpeedingIfActive(state: TranslatorState, emit: EmitFn<(typeof PIT_SPEEDING_EVENTS)[number]>): void {
   if (!state.pitSpeedingActive) return;
 
   state.pitSpeedingActive = false;
@@ -132,12 +133,18 @@ function endPitSpeedingIfActive(state: TranslatorState, emit: EmitFn): void {
   emit({ event: "pitSpeeding.ended", data: {} });
 }
 
+/** The events {@link diffPitSpeeding} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`. */
+export const PIT_SPEEDING_EVENTS = [
+  "pitSpeeding.ended",
+  "pitSpeeding.started",
+] as const satisfies readonly SimEventName[];
+
 export function diffPitSpeeding(
   state: TranslatorState,
   telemetry: TelemetryData,
   pitSpeedLimitMps: number,
   now: number,
-  emit: EmitFn,
+  emit: EmitFn<(typeof PIT_SPEEDING_EVENTS)[number]>,
 ): void {
   const isOnTrack = telemetry.IsOnTrack ?? false;
   const onPitRoad = telemetry.OnPitRoad ?? false;

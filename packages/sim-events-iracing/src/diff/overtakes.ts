@@ -82,6 +82,7 @@
  * grid value is a class slot, so it falls back to the live seed there. Without
  * a grid position it seeds to the live position.
  */
+import type { SimEventName } from "@iracedeck/event-bus";
 import { calculateRacePositions, Flags, hasFlag, isPreGreen, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 import type { TranslatorState } from "../state.js";
@@ -98,6 +99,9 @@ export const OVERTAKE_MAX_JUMP = 3;
  */
 export const OVERTAKE_MIN_GAP_M = 10;
 
+/** The events {@link diffOvertakes} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`. */
+export const OVERTAKES_EVENTS = ["overtake.completed", "overtake.lost"] as const satisfies readonly SimEventName[];
+
 export function diffOvertakes(
   state: TranslatorState,
   telemetry: TelemetryData,
@@ -106,7 +110,7 @@ export function diffOvertakes(
   isMultiClass: boolean | null,
   trackLengthMeters: number | null,
   now: number,
-  emit: EmitFn,
+  emit: EmitFn<(typeof OVERTAKES_EVENTS)[number]>,
   /**
    * The player's announced starting grid slot (1-indexed) — the same value the
    * race-start callout speaks (`resolveStartingGridPosition`, #568). It's the

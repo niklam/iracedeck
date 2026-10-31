@@ -813,4 +813,14 @@ describe("endsOn (issue #1407)", () => {
       ["test.light", null],
     ]);
   });
+
+  it("contracts() reports the endsOn event beside the trigger event, null when absent (#1499)", () => {
+    engine.defineContract(endsContract());
+    engine.defineContract(contract("test.light"));
+
+    expect(engine.contracts().map((c) => [c.id, c.event, c.endsOnEvent])).toEqual([
+      ["test.ends", "flag.green.raised", "pitLane.exited"],
+      ["test.light", null, null],
+    ]);
+  });
 });

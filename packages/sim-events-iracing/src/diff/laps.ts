@@ -55,6 +55,7 @@
  *   - `sessionType`: resolved by the orchestrator (translator.ts) since it
  *     reads session info; the diff just consumes the classified value.
  */
+import type { SimEventName } from "@iracedeck/event-bus";
 import {
   Flags,
   hasFlag,
@@ -127,6 +128,13 @@ export function resolveLapIsValid(telemetry: TelemetryData): boolean | undefined
   return flags.every((v) => v === true);
 }
 
+/** The events {@link diffLaps} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`. */
+export const LAPS_EVENTS = [
+  "lap.completed",
+  "position.changed",
+  "race.finished",
+] as const satisfies readonly SimEventName[];
+
 export function diffLaps(
   state: TranslatorState,
   telemetry: TelemetryData,
@@ -134,7 +142,7 @@ export function diffLaps(
   isMultiClass: boolean | null,
   playerResults: PlayerResultsForLap | null,
   now: number,
-  emit: EmitFn,
+  emit: EmitFn<(typeof LAPS_EVENTS)[number]>,
 ): void {
   const lapCompleted = typeof telemetry.LapCompleted === "number" ? telemetry.LapCompleted : -1;
   const lapLastLapTime = typeof telemetry.LapLastLapTime === "number" ? telemetry.LapLastLapTime : 0;

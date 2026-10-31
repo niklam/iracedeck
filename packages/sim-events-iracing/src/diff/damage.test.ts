@@ -16,6 +16,7 @@
  * `settle()` drives a rising edge to its settle and then past the grace, so
  * the tests that pin the edge detection itself stay about the edge.
  */
+import type { SimEventName } from "@iracedeck/event-bus";
 import { EngineWarnings, IncidentFlags, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
 import { describe, expect, it } from "vitest";
 
@@ -46,7 +47,7 @@ function damageEvents(events: PendingEvent[]): PendingEvent[] {
  * grace, so a rising edge emits by the last tick. Returns the last tick's
  * timestamp.
  */
-function settle(state: TranslatorState, warnings: number, at: number, emit: EmitFn): number {
+function settle(state: TranslatorState, warnings: number, at: number, emit: EmitFn<SimEventName>): number {
   diffDamage(state, tick({ EngineWarnings: warnings }), at, emit);
   diffDamage(state, tick({ EngineWarnings: warnings }), at + DAMAGE_DEBOUNCE_MS, emit);
   const end = at + DAMAGE_DEBOUNCE_MS + DAMAGE_INCIDENT_GRACE_MS;
@@ -248,7 +249,7 @@ describe("diffDamage — held behind an incident burst (issue #1211)", () => {
   /** Run one translator-ordered tick and return that tick's event names. */
   function step(state: TranslatorState, telemetry: TelemetryData, now: number, all: PendingEvent[]): string[] {
     const tickEvents: PendingEvent[] = [];
-    const emit: EmitFn = (e) => {
+    const emit: EmitFn<SimEventName> = (e) => {
       tickEvents.push(e);
       all.push(e);
     };

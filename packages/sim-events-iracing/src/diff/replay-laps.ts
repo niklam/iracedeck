@@ -71,6 +71,7 @@
  *   session YAML cannot name: the record is verified by `carNumberRaw` at
  *   lookup, so an entry without one could never answer.
  */
+import type { SimEventName } from "@iracedeck/event-bus";
 import { getCarNumberRawFromSessionInfo, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 import type { ReplayLapTimeWait, TranslatorState } from "../state.js";
@@ -113,12 +114,15 @@ function seed(
   state.replayLapsTimeWait = [];
 }
 
+/** The events {@link diffReplayLaps} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`. */
+export const REPLAY_LAPS_EVENTS = ["replay.lapStarted", "replay.lapTimed"] as const satisfies readonly SimEventName[];
+
 export function diffReplayLaps(
   state: TranslatorState,
   telemetry: TelemetryData,
   sessionInfo: Record<string, unknown> | null,
   inReplay: boolean,
-  emit: EmitFn,
+  emit: EmitFn<(typeof REPLAY_LAPS_EVENTS)[number]>,
 ): void {
   const completed = telemetry.CarIdxLapCompleted;
   const live = resolveReplayRecordTick(telemetry, inReplay);

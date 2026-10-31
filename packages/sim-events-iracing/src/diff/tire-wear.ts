@@ -35,7 +35,7 @@
  * not-in-world state, so neither is a stop and neither reports (maintainer
  * ruling on #1108).
  */
-import type { TireCorner, TireCornerWear, TireWearReport, TireZone } from "@iracedeck/event-bus";
+import type { SimEventName, TireCorner, TireCornerWear, TireWearReport, TireZone } from "@iracedeck/event-bus";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 
 import type { TranslatorState } from "../state.js";
@@ -99,6 +99,9 @@ function has(pending: ReadonlyArray<PendingEvent>, event: PendingEvent["event"])
   return pending.some((p) => p.event === event);
 }
 
+/** The events {@link diffTireWear} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`. */
+export const TIRE_WEAR_EVENTS = ["tireWear.reported"] as const satisfies readonly SimEventName[];
+
 /**
  * `stallVisit` is the tick's answer from `updateStallVisit`, which the caller
  * resolves once per tick and hands to every consumer. It is required so this
@@ -108,7 +111,7 @@ function has(pending: ReadonlyArray<PendingEvent>, event: PendingEvent["event"])
 export function diffTireWear(
   state: TranslatorState,
   telemetry: TelemetryData,
-  emit: EmitFn,
+  emit: EmitFn<(typeof TIRE_WEAR_EVENTS)[number]>,
   pending: ReadonlyArray<PendingEvent>,
   stallVisit: StallVisit,
 ): void {

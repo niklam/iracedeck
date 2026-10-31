@@ -71,6 +71,7 @@
  * Race sessions only, live in car, and silent until the tracker has valid
  * samples — no estimate, no callout, never a guess.
  */
+import type { SimEventName } from "@iracedeck/event-bus";
 import {
   bindingLapsToGo,
   Flags,
@@ -282,6 +283,12 @@ export function resolveFuelRaceCoverage(
   return { lapsNeededAfterCurrent, timedLapsAfterCurrent, remainingLaps };
 }
 
+/** The events {@link diffFuelLapsLeft} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`. */
+export const FUEL_LAPS_LEFT_EVENTS = [
+  "fuel.lapsLeft.crossed",
+  "fuel.lapsLeft.raceCovered",
+] as const satisfies readonly SimEventName[];
+
 /**
  * Per-tick laps-of-fuel-left tracking. `getStats` reads the validated fuel
  * estimator (`computeFuelStats` over the instance tracker); `getMarginLaps`
@@ -297,7 +304,7 @@ export function diffFuelLapsLeft(
   getStats: () => FuelStats,
   getMarginLaps: () => number,
   getLeaderLapTimeS: () => number | null,
-  emit: EmitFn,
+  emit: EmitFn<(typeof FUEL_LAPS_LEFT_EVENTS)[number]>,
 ): void {
   if (!isRaceSession) return;
 

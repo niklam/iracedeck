@@ -33,16 +33,20 @@
  * state, which is true throughout a saved replay, so no such tick reaches
  * this diff.
  */
+import type { SimEventName } from "@iracedeck/event-bus";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 
 import type { TranslatorState } from "../state.js";
 import type { EmitFn } from "./types.js";
 
+/** The events {@link diffPitsOpen} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`. */
+export const PITS_OPEN_EVENTS = ["pitsOpen.changed"] as const satisfies readonly SimEventName[];
+
 export function diffPitsOpen(
   state: TranslatorState,
   telemetry: TelemetryData,
   isRaceSession: boolean,
-  emit: EmitFn,
+  emit: EmitFn<(typeof PITS_OPEN_EVENTS)[number]>,
 ): void {
   const pitsOpen = telemetry.PitsOpen === true;
 

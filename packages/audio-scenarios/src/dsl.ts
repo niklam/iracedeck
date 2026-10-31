@@ -212,8 +212,22 @@ export type SpeakGate = {
  * after its `endsOn.event` on the same tick. `pit-crew.limiter-dropped`
  * holds this: the limiter diff emits nothing on a tick `OnPitRoad` reads
  * false, and `diffLimiter` runs before `diffPitLane`, so `limiter.dropped`
- * never follows `pitLane.exited` in a batch. A new `endsOn` contract must be
- * checked against its translator the same way.
+ * never follows `pitLane.exited` in a batch.
+ *
+ * The order is checked, not trusted (#1499): `ends-on-order.test.ts` in
+ * `@iracedeck/race-engineer-wiring` runs every registered contract with an
+ * `endsOn` through `findEndsOnOrderViolations` over the iRacing translator's
+ * `TICK_ORDER` (`@iracedeck/sim-events-iracing`, `src/tick-order.ts`), the
+ * table of a tick's publishing stages in bus order that the translator's own
+ * tests prove is the code. It fails when a stage that can publish the trigger
+ * comes after one that can publish the end: move the trigger's diff call ahead
+ * of the end's in `handleTick`, and in `TICK_ORDER`. It fails closed when one
+ * stage can publish both, since the table cannot see inside a stage: prove the
+ * order in that module's own tests, then add an exemption for the pair to
+ * the wiring test, citing that test (it has no exemption list until one is
+ * needed). And it fails when either event has no stage that publishes it,
+ * which is a misspelt or dropped name. The check is conservative: it judges the
+ * order the code allows, not whether the sim can produce both on one tick.
  *
  * Code-owned like `speakGate`: what makes a line stop being true is pacing,
  * which is withheld from voice packs (#1064). `event` must differ from the

@@ -34,6 +34,7 @@
  *
  * No paired `cleared` event — audio scenarios only need the rising edge.
  */
+import type { SimEventName } from "@iracedeck/event-bus";
 import { EngineWarnings, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 import type { TranslatorState } from "../state.js";
@@ -69,7 +70,15 @@ export const DAMAGE_INCIDENT_GRACE_MS = 2000;
  */
 export const DAMAGE_REPAIR_MASK = EngineWarnings.MandRepNeeded | EngineWarnings.OptRepNeeded;
 
-export function diffDamage(state: TranslatorState, telemetry: TelemetryData, now: number, emit: EmitFn): void {
+/** The events {@link diffDamage} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`. */
+export const DAMAGE_EVENTS = ["damage.repairNeeded.raised"] as const satisfies readonly SimEventName[];
+
+export function diffDamage(
+  state: TranslatorState,
+  telemetry: TelemetryData,
+  now: number,
+  emit: EmitFn<(typeof DAMAGE_EVENTS)[number]>,
+): void {
   const current = ((telemetry.EngineWarnings ?? 0) & DAMAGE_REPAIR_MASK) !== 0;
 
   // Seed silently on the first tick — the baseline equals the current state
@@ -122,7 +131,12 @@ function settleDamageEdge(state: TranslatorState, current: boolean, now: number)
 }
 
 /** Emit a held rising edge once no incident burst is open and the grace, or a burst's flush, has passed. */
-function releaseHeldDamage(state: TranslatorState, current: boolean, now: number, emit: EmitFn): void {
+function releaseHeldDamage(
+  state: TranslatorState,
+  current: boolean,
+  now: number,
+  emit: EmitFn<(typeof DAMAGE_EVENTS)[number]>,
+): void {
   if (state.damageHeldAt === 0) return;
 
   if (state.incidentBurstFirstAt > 0) {

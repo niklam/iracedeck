@@ -14,6 +14,7 @@
  * performs, so it lives in `diffFirstOnTrack` (in `translator.ts`) keyed off
  * translator-instance state rather than `TranslatorState`.
  */
+import type { SimEventName } from "@iracedeck/event-bus";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 
 import type { TranslatorState } from "../state.js";
@@ -21,7 +22,14 @@ import type { EmitFn } from "./types.js";
 
 const ENGINE_STARTUP_RPM_THRESHOLD = 200;
 
-export function diffLifecycle(state: TranslatorState, telemetry: TelemetryData, emit: EmitFn): void {
+/** The events {@link diffLifecycle} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`. */
+export const LIFECYCLE_EVENTS = ["engine.startup", "lap.started"] as const satisfies readonly SimEventName[];
+
+export function diffLifecycle(
+  state: TranslatorState,
+  telemetry: TelemetryData,
+  emit: EmitFn<(typeof LIFECYCLE_EVENTS)[number]>,
+): void {
   const sessionNum = typeof telemetry.SessionNum === "number" ? telemetry.SessionNum : null;
   const rpm = typeof telemetry.RPM === "number" ? telemetry.RPM : 0;
   const engineRunning = rpm > ENGINE_STARTUP_RPM_THRESHOLD;

@@ -48,6 +48,7 @@
  * (issue #829) so a garage↔car flip mid-countdown can neither drop a
  * boundary mark (a re-seed would lower the ceiling) nor replay a spoken one.
  */
+import type { SimEventName } from "@iracedeck/event-bus";
 import { Flags, hasFlag, SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 import { resolveStandingStart } from "../start-lights.js";
@@ -73,6 +74,12 @@ export const RESTART_GO_GRACE_MS = 1000;
 /** Countdown thresholds (seconds), descending — drives smallest-of-many emit. */
 const COUNTDOWN_THRESHOLDS = [90, 60, 30, 10] as const;
 
+/** The events {@link diffStartLights} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`. */
+export const START_LIGHTS_EVENTS = [
+  "startLight.start-go.raised",
+  "startLight.start-ready.raised",
+] as const satisfies readonly SimEventName[];
+
 /**
  * `now` is the tick's clock (ms), measured against the restart stamp
  * `diffCaution` leaves in `state.cautionRestartedAt`. Defaulted for the tests
@@ -82,7 +89,7 @@ export function diffStartLights(
   state: TranslatorState,
   telemetry: TelemetryData,
   sessionInfo: Record<string, unknown> | null,
-  emit: EmitFn,
+  emit: EmitFn<(typeof START_LIGHTS_EVENTS)[number]>,
   now: number = Date.now(),
 ): void {
   const sessionFlags = telemetry.SessionFlags ?? 0;
@@ -132,11 +139,14 @@ export function diffStartLights(
   state.lastStartLightBits = startBits;
 }
 
+/** The events {@link diffStartCountdown} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`. */
+export const START_COUNTDOWN_EVENTS = ["startLight.countdown.raised"] as const satisfies readonly SimEventName[];
+
 export function diffStartCountdown(
   state: TranslatorState,
   telemetry: TelemetryData,
   sessionInfo: Record<string, unknown> | null,
-  emit: EmitFn,
+  emit: EmitFn<(typeof START_COUNTDOWN_EVENTS)[number]>,
 ): void {
   const sessionFlags = telemetry.SessionFlags ?? 0;
   const sessionState = typeof telemetry.SessionState === "number" ? telemetry.SessionState : SessionState.Invalid;
