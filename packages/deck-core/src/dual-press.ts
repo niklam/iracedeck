@@ -23,20 +23,13 @@ export const DUAL_PRESS_THRESHOLD_FALLBACK_MS = 500;
 
 /**
  * Resolve the live dual-press threshold from global settings, with a safe
- * fallback when the cache is empty (early startup) or the persisted value
- * isn't a finite number.
+ * fallback when the value isn't a finite number. The schema coerces a
+ * persisted string, so the parsed cache never holds one (#1376).
  */
 export function getDualPressThresholdMs(): number {
-  const settings = getGlobalSettings() as Record<string, unknown>;
-  const raw = settings.dualPressThresholdMs;
+  const raw = getGlobalSettings().dualPressThresholdMs;
 
   if (typeof raw === "number" && Number.isFinite(raw)) return raw;
-
-  if (typeof raw === "string" && raw.length > 0) {
-    const parsed = Number(raw);
-
-    if (Number.isFinite(parsed)) return parsed;
-  }
 
   return DUAL_PRESS_THRESHOLD_FALLBACK_MS;
 }
@@ -53,7 +46,7 @@ export const DUAL_PRESS_DIRECTIONS_FALLBACK: DualPressDirections = "tap-increase
  * enum values.
  */
 export function getDualPressDirections(): DualPressDirections {
-  const settings = getGlobalSettings() as Record<string, unknown>;
+  const settings = getGlobalSettings();
   const raw = settings.dualPressDirections;
 
   if (raw === "tap-increases" || raw === "tap-decreases") return raw;

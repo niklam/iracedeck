@@ -349,7 +349,7 @@ class BindingDispatcher implements IBindingDispatcher {
    * scan code reads as unset.
    */
   private peekBinding(settingKey: string): BindingValue | undefined {
-    const globalSettings = getGlobalSettings() as Record<string, unknown>;
+    const globalSettings = getGlobalSettings();
     const binding = parseBinding(globalSettings[settingKey]);
 
     return binding && !cannotSendByScanCode(binding) ? binding : undefined;
@@ -361,7 +361,7 @@ class BindingDispatcher implements IBindingDispatcher {
    * nothing is returned.
    */
   private resolveGlobalBinding(settingKey: string): BindingValue | undefined {
-    const globalSettings = getGlobalSettings() as Record<string, unknown>;
+    const globalSettings = getGlobalSettings();
     const rawValue = globalSettings[settingKey];
     const binding = parseBinding(rawValue);
 

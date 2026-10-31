@@ -82,7 +82,7 @@ export interface ISimHubService {
  * Read the SimHub host and port from global settings, falling back to defaults.
  */
 function getConnectionConfig(): { host: string; port: number } {
-  const settings = getGlobalSettings() as Record<string, unknown>;
+  const settings = getGlobalSettings();
   const host =
     typeof settings.simHubHost === "string" && settings.simHubHost.length > 0 ? settings.simHubHost : DEFAULT_HOST;
   const port = typeof settings.simHubPort === "number" ? settings.simHubPort : DEFAULT_PORT;
