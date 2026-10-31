@@ -65,7 +65,7 @@
 import { ReplayPosMode, type TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 
-import { now as engineNow, sleep } from "./engine-clock.js";
+import { now as engineNow, pollUntil } from "./engine-clock.js";
 import {
   cancelReplayCursorOwner,
   claimReplayCursor,
@@ -2315,29 +2315,29 @@ export async function waitForReplaySettled(options: {
   readonly jumpsOnly?: boolean;
 }): Promise<ReplaySettledOutcome> {
   const reads = Math.max(1, options.reads ?? 1);
-  const startedAt = engineNow();
   let count = 0;
 
-  for (;;) {
-    if (options.claim !== undefined && options.claim.cancelledBy !== null) return "superseded";
+  const settled = await pollUntil(
+    (): ReplaySettledOutcome | undefined => {
+      if (options.claim !== undefined && options.claim.cancelledBy !== null) return "superseded";
 
-    const now = engineNow();
-    const telemetry = engineReads().readTelemetry();
+      const now = engineNow();
+      const telemetry = engineReads().readTelemetry();
 
-    batch(now, () => {
-      settle(telemetry, now);
-      serviceSlot(telemetry, now);
-    });
-    arm();
+      batch(now, () => {
+        settle(telemetry, now);
+        serviceSlot(telemetry, now);
+      });
+      arm();
 
-    count = quiet(options.jumpsOnly === true) ? count + 1 : 0;
+      count = quiet(options.jumpsOnly === true) ? count + 1 : 0;
 
-    if (count >= reads) return "settled";
+      return count >= reads ? "settled" : undefined;
+    },
+    { intervalMs: STABILIZATION_POLL_INTERVAL_MS, timeoutMs: options.timeoutMs },
+  );
 
-    if (now - startedAt >= options.timeoutMs) return "gave-up";
-
-    await sleep(STABILIZATION_POLL_INTERVAL_MS);
-  }
+  return settled.kind === "done" ? settled.value : "gave-up";
 }
 
 /**
@@ -2416,30 +2416,34 @@ export async function waitForReplaySearchLandingWithFrame(
   // A record that has landed already is an earlier search's: the caller's own did not record.
   if (record === null || record.landed) return ended("not-landed");
 
-  for (;;) {
-    if (options.claim !== undefined && options.claim.cancelledBy !== null) return ended("superseded");
+  // The patience is the check's own bound, judged before the poll's: it applies only while the search is unseen.
+  const landing = await pollUntil(
+    (): ReplaySearchLanding | undefined => {
+      if (options.claim !== undefined && options.claim.cancelledBy !== null) return ended("superseded");
 
-    const now = engineNow();
-    const telemetry = engineReads().readTelemetry();
+      const now = engineNow();
+      const telemetry = engineReads().readTelemetry();
 
-    batch(now, () => {
-      settle(telemetry, now);
-      serviceSlot(telemetry, now);
-    });
-    arm();
+      batch(now, () => {
+        settle(telemetry, now);
+        serviceSlot(telemetry, now);
+      });
+      arm();
 
-    if (record.landed) return { outcome: "landed", firstFrame: record.landedFrom?.frame ?? null };
+      if (record.landed) return { outcome: "landed", firstFrame: record.landedFrom?.frame ?? null };
 
-    if (search !== record) return ended("superseded");
+      if (search !== record) return ended("superseded");
 
-    if (record.playing && !record.seen && !record.onItsWay) return ended("found-nothing");
+      if (record.playing && !record.seen && !record.onItsWay) return ended("found-nothing");
 
-    if (!record.seen && now - startedAt >= options.patienceMs) return ended("not-landed");
+      if (!record.seen && now - startedAt >= options.patienceMs) return ended("not-landed");
 
-    if (now - startedAt >= options.hardBoundMs) return ended("gave-up");
+      return undefined;
+    },
+    { intervalMs: REPLAY_JUMP_POLL_MS, timeoutMs: options.hardBoundMs, startedAt },
+  );
 
-    await sleep(REPLAY_JUMP_POLL_MS);
-  }
+  return landing.kind === "done" ? landing.value : ended("gave-up");
 }
 
 /** How long the search standing could still be running (ms); null with none standing. */
@@ -2514,30 +2518,36 @@ export async function settleReplayByJump(
 
   if (targetId === null) return "nothing-moved";
 
-  for (;;) {
-    await sleep(REPLAY_JUMP_POLL_MS);
+  const jumpId = targetId;
+  // No bound of its own: the gate gives up the target it recorded, and that fate ends the wait.
+  const ended = await pollUntil(
+    (): ReplaySettleByJumpOutcome | undefined => {
+      if (options.claim !== undefined && options.claim.cancelledBy !== null) return "superseded";
 
-    if (options.claim !== undefined && options.claim.cancelledBy !== null) return "superseded";
+      const now = engineNow();
+      const reading = engineReads().readTelemetry();
 
-    const now = engineNow();
-    const reading = engineReads().readTelemetry();
+      batch(now, () => {
+        settle(reading, now);
+        serviceSlot(reading, now);
+      });
+      arm();
 
-    batch(now, () => {
-      settle(reading, now);
-      serviceSlot(reading, now);
-    });
-    arm();
+      const fate = fates.get(jumpId);
 
-    const fate = fates.get(targetId);
+      if (fate === undefined) return undefined;
 
-    if (fate === undefined) continue;
+      if (fate.kind === "read-back") return "settled";
 
-    if (fate.kind === "read-back") return "settled";
+      if (fate.kind === "replaced") return "superseded";
 
-    if (fate.kind === "replaced") return "superseded";
+      return "nothing-moved";
+    },
+    { intervalMs: REPLAY_JUMP_POLL_MS, timeoutMs: Infinity, sleepFirst: true },
+  );
 
-    return "nothing-moved";
-  }
+  // A poll with no bound never times out.
+  return ended.kind === "done" ? ended.value : "nothing-moved";
 }
 
 // ---------------------------------------------------------------------------
