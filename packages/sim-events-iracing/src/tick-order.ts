@@ -79,8 +79,9 @@ const TEARDOWN_EVENTS = ["radar.changed", "pitSpeeding.ended"] as const satisfie
  * Every stage that can publish during one `handleTick` call, in the order its
  * publishes reach the bus. A stage that runs only on some ticks — a session
  * change, the entry into a replay, which returns before the live diffs — is
- * listed where it runs. A reorder of any diff call in `handleTick` must update
- * this table; `tick-order.test.ts` fails until it does. Diffs that publish
+ * listed where it runs. A reorder of any diff call in `handleTick`, or a new
+ * call that can publish, must update this table; `tick-order.test.ts` fails
+ * until it does. Diffs that publish
  * nothing (`diffTireTemps`, `diffFuelLaps`) are not listed.
  */
 export const TICK_ORDER: readonly TickStage[] = [

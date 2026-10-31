@@ -2662,9 +2662,9 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   const trackType = resolveTrackType(sessionInfo);
 
   // Diff modules. Their emits are flushed in call order at the end of the
-  // tick, so a reorder of any diff call here (or above the guard) must update
-  // `TICK_ORDER` (`tick-order.ts`, issue #1499); `tick-order.test.ts` fails
-  // until it does. The orders that matter are explained at each call.
+  // tick, so a reorder of any diff call here (or above the guard), or a new
+  // call handed `emit`, must update `TICK_ORDER` (`tick-order.ts`, issue
+  // #1499); `tick-order.test.ts` fails until it does. The orders that matter are explained at each call.
   diffLifecycle(self.state, telemetry, emit);
   // Checkered deferral (issue #771): the leader guard on the winner grace
   // consumes the canonical live order (`.claude/rules/race-positions.md`),

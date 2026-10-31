@@ -172,6 +172,44 @@ function wideEmitters(source: string): string[] {
 }
 
 /**
+ * The exported functions in one module's source whose parameters take an
+ * emitter (`EmitFn<…>`). Each is a stage the translator can call, so each
+ * needs its own row — a second function sharing its module's list would
+ * otherwise publish from a position the table never names. Parameters are
+ * read to the matching parenthesis, since a callback-typed parameter carries
+ * parentheses of its own.
+ */
+function exportedEmitters(source: string): string[] {
+  const names: string[] = [];
+
+  for (const m of source.matchAll(/export function (\w+)\s*(?:<[^>]*>)?\s*\(/g)) {
+    let depth = 1;
+    let i = m.index + m[0].length;
+
+    while (i < source.length && depth > 0) {
+      if (source[i] === "(") depth++;
+      else if (source[i] === ")") depth--;
+
+      i++;
+    }
+
+    if (/EmitFn</.test(source.slice(m.index + m[0].length, i))) names.push(m[1]!);
+  }
+
+  return names;
+}
+
+/**
+ * The `emit` arguments in `translator.ts` — the pending emitter handed to a
+ * call. Each must be a call of a pending row; one handed to anything else (a
+ * translator-local helper typed over the whole union, which no `diff/` scan
+ * sees) would queue events from a position the table never names.
+ */
+function pendingEmitArgs(source: string): number {
+  return [...source.matchAll(/\bemit\s*[,)]/g)].length;
+}
+
+/**
  * Every `publish(self, …)` call in `translator.ts`, by what TICK_ORDER needs
  * to know of it: a literal event (a translator stage), a `(ev) => publish(self,
  * ev, …)` forwarder handed to a direct diff stage, the flush of `pending`
@@ -484,6 +522,38 @@ describe("TICK_ORDER", () => {
       expect(wide).toEqual([]);
     });
 
+    // A second exported function typed by its module's existing list passes
+    // both scans above and goes unspied, so each one must be a row by name.
+    it("gives every exported diff function that takes an emitter a row of its own", () => {
+      const files = readdirSync(new URL("./diff/", import.meta.url)).filter(
+        (f) => f.endsWith(".ts") && !f.endsWith(".test.ts") && f !== "types.ts",
+      );
+      let found = 0;
+      const unlisted: string[] = [];
+
+      for (const file of files) {
+        const source = readFileSync(new URL(`./diff/${file}`, import.meta.url), "utf-8");
+
+        for (const name of exportedEmitters(source)) {
+          found++;
+
+          if (!TICK_ORDER.some((s) => s.stage === name && s.source === `diff/${file}`))
+            unlisted.push(`${file}: ${name}`);
+        }
+      }
+
+      expect(found).toBe(new Set(TICK_ORDER.filter(isModuleStage).map((s) => s.stage)).size);
+      expect(unlisted).toEqual([]);
+    });
+
+    it("hands the pending emitter in translator.ts to pending rows only", () => {
+      const source = readFileSync(new URL("./translator.ts", import.meta.url), "utf-8");
+
+      // One `emit` argument per pending call. The probe test proves each
+      // listed one receives it, so a surplus is a call the table cannot see.
+      expect(pendingEmitArgs(source)).toBe(TICK_ORDER.filter((s) => s.via === "pending").length);
+    });
+
     it("accounts for every publish call in translator.ts", () => {
       const source = readFileSync(new URL("./translator.ts", import.meta.url), "utf-8");
       const sites = classifyPublishSites(source);
@@ -515,6 +585,24 @@ describe("TICK_ORDER", () => {
       expect(wideEmitters(`function diffFoo(emit: (ev: PendingEvent) => void) {}`)).toHaveLength(1);
       // Reading the pending list is not emitting.
       expect(wideEmitters(`function has(pending: ReadonlyArray<PendingEvent>) {}`)).toEqual([]);
+    });
+
+    it("the emitter-function scan finds every exported function taking an emitter, past callback parameters", () => {
+      const source =
+        "export function diffFoo(s: S, pick: (a: number) => boolean, emit: EmitFn<(typeof FOO_EVENTS)[number]>) {}\n" +
+        "export function diffBar(s: S, emit: EmitFn<(typeof FOO_EVENTS)[number]>): void {}\n" +
+        "export function readFoo(s: S): number { return 0; }\n" +
+        "function localHelper(emit: EmitFn<(typeof FOO_EVENTS)[number]>) {}\n";
+
+      expect(exportedEmitters(source)).toEqual(["diffFoo", "diffBar"]);
+    });
+
+    it("the pending-emitter count sees a translator-local receiver", () => {
+      const calls = "diffA(state, t, emit);\ndiffB(state, emit, now);\n";
+
+      expect(pendingEmitArgs(calls)).toBe(2);
+      expect(pendingEmitArgs(`${calls}queueLocal(t, emit);\n`)).toBe(3);
+      expect(pendingEmitArgs("const emit = (ev: PendingEvent): void => {};")).toBe(0);
     });
 
     it("the publish-site scan reports a call the table cannot place", () => {
