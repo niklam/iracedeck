@@ -372,6 +372,36 @@ describe("camera switches go through the camera-switch waiter (#1502)", () => {
       expect(outsideOf({ "aliased.ts": aliased })).toEqual([]);
       expect(scanPlanted({ "aliased.ts": aliased })).toHaveLength(1);
     });
+
+    it("recognises the waiter through a namespace import of the engine", () => {
+      const namespaced = `import * as engine from "@iracedeck/replay-engine";\nimport { getCommands } from "@iracedeck/deck-iracing";\nexport function a(): void {\n  void engine.requestCameraSwitch(() => getCommands().camera.switchNum(1, 0, 0), {});\n}\n`;
+
+      expect(outsideOf({ "namespaced.ts": namespaced })).toEqual([]);
+      expect(scanCameraSends(new Map([["namespaced.ts", namespaced]]), OPTIONS).waiterCalls).toBe(1);
+    });
+
+    it("takes no call for the waiter that is not the engine's requestCameraSwitch", () => {
+      const commands = `import { getCommands } from "@iracedeck/deck-iracing";\n`;
+      // A local function of the same name, which runs its callback at once.
+      const local =
+        `${commands}function requestCameraSwitch(send: () => unknown): void {\n  send();\n}\n` +
+        `export function a(): void {\n  requestCameraSwitch(() => getCommands().camera.switchNum(1, 0, 0));\n}\n`;
+      // A method of the same name on some object.
+      const member = `${commands}export function b(someObj: { requestCameraSwitch(send: () => unknown): void }): void {\n  someObj.requestCameraSwitch(() => getCommands().camera.switchNum(1, 0, 0));\n}\n`;
+      // The name imported from somewhere other than the engine.
+      const elsewhere = `${commands}import { requestCameraSwitch } from "./my-waiter.js";\nexport function c(): void {\n  void requestCameraSwitch(() => getCommands().camera.switchNum(1, 0, 0));\n}\n`;
+      // The engine's namespace, but another of its exports.
+      const otherExport = `${commands}import * as engine from "@iracedeck/replay-engine";\nexport function d(): void {\n  void engine.requestSomething(() => getCommands().camera.switchNum(1, 0, 0));\n}\n`;
+
+      expect(outsideOf({ "local.ts": local })).toEqual(["local.ts:6 switchNum"]);
+      expect(outsideOf({ "member.ts": member })).toEqual(["member.ts:3 switchNum"]);
+      expect(outsideOf({ "elsewhere.ts": elsewhere })).toEqual(["elsewhere.ts:4 switchNum"]);
+      expect(outsideOf({ "other.ts": otherExport })).toEqual(["other.ts:4 switchNum"]);
+
+      for (const source of [local, member, elsewhere, otherExport]) {
+        expect(scanCameraSends(new Map([["x.ts", source]]), OPTIONS).waiterCalls).toBe(0);
+      }
+    });
   });
 
   describe("the exception list", () => {

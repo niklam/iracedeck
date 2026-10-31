@@ -27,8 +27,12 @@
  * **What "through the waiter" means** — a send runs inside a waiter callback
  * when it is lexically inside one, or inside a named function every use of
  * which is, recursively:
- * - a waiter callback is the first argument of a `requestCameraSwitch` call,
- *   or the argument a **wrapper** forwards to it: a named function one of
+ * - a waiter callback is the first argument of a call of the engine's
+ *   waiter — a callee that resolves, by symbol, to `requestCameraSwitch`
+ *   imported from `@iracedeck/replay-engine` (under any alias), or that name
+ *   on a namespace import of it; a local function, a method or an import from
+ *   anywhere else of the same name is not the waiter — or the argument a
+ *   **wrapper** forwards to it: a named function one of
  *   whose parameters is passed straight to the waiter (Camera Controls'
  *   `requestSwitch(ask, what, send)`, Replay Control's
  *   `requestKeyCameraSwitch`), found to any depth of wrapping;
@@ -66,6 +70,9 @@ import {
 /** The engine's camera-switch waiter, as `iracing-actions` imports it. */
 export const WAITER = "requestCameraSwitch";
 
+/** The module the waiter is imported from: a call counts as the waiter only on an import of it from here. */
+export const WAITER_MODULE = "@iracedeck/replay-engine";
+
 /** What kind of camera send a {@link CameraSend} is. */
 export type CameraSendKind = "command" | "keystroke" | "escape";
 
@@ -99,7 +106,7 @@ export interface CameraScanOptions {
 export interface CameraScan {
   /** Every file scanned. */
   readonly files: readonly string[];
-  /** How many `requestCameraSwitch` calls the files make. */
+  /** How many calls of the engine's `requestCameraSwitch` the files make. */
   readonly waiterCalls: number;
   /** Every wrapper found, as `<name>(<parameter index>)`. */
   readonly wrappers: readonly string[];
@@ -300,6 +307,9 @@ export function scanCameraSends(sources: ReadonlyMap<string, string>, options: C
   const bindingKeyOf = new Map<ts.Symbol, string>();
   const exportedKeysByName = new Map<string, string[]>();
   const importedNameOf = new Map<ts.Symbol, string>();
+  /** The module specifier each named or namespace import comes from. */
+  const importedFromOf = new Map<ts.Symbol, string>();
+  const namespaceImports = new Set<ts.Symbol>();
   const calls: ts.CallExpression[] = [];
   const identifiers: ts.Identifier[] = [];
   const memberUses: { name: string; node: ts.Node }[] = [];
@@ -328,8 +338,22 @@ export function scanCameraSends(sources: ReadonlyMap<string, string>, options: C
     const visit = (node: ts.Node): void => {
       if (ts.isImportSpecifier(node)) {
         const symbol = checker.getSymbolAtLocation(node.name);
+        const from = node.parent.parent.parent.moduleSpecifier;
 
-        if (symbol !== undefined) importedNameOf.set(symbol, (node.propertyName ?? node.name).text);
+        if (symbol !== undefined) {
+          importedNameOf.set(symbol, (node.propertyName ?? node.name).text);
+
+          if (ts.isStringLiteral(from)) importedFromOf.set(symbol, from.text);
+        }
+      } else if (ts.isNamespaceImport(node)) {
+        const symbol = checker.getSymbolAtLocation(node.name);
+        const from = node.parent.parent.moduleSpecifier;
+
+        if (symbol !== undefined) {
+          namespaceImports.add(symbol);
+
+          if (ts.isStringLiteral(from)) importedFromOf.set(symbol, from.text);
+        }
       } else if (ts.isCallExpression(node)) {
         calls.push(node);
       } else if (ts.isIdentifier(node)) {
@@ -438,7 +462,40 @@ export function scanCameraSends(sources: ReadonlyMap<string, string>, options: C
     return undefined;
   };
 
-  const waiterCalls = calls.filter((call) => calleeName(call) === WAITER);
+  /** The namespace import `id` names, as the module it imports, if it is one. */
+  const namespaceModuleOf = (id: ts.Expression): string | undefined => {
+    if (!ts.isIdentifier(id)) return undefined;
+
+    const symbol = checker.getSymbolAtLocation(id);
+
+    return symbol !== undefined && namespaceImports.has(symbol) ? importedFromOf.get(symbol) : undefined;
+  };
+
+  /**
+   * Whether a call is the engine's waiter: its callee resolves, by symbol, to
+   * `requestCameraSwitch` imported from the engine — under any alias, or as a
+   * member of a namespace import of it. A local function, a method or an
+   * import from elsewhere of the same name is not the waiter.
+   */
+  const isWaiterCall = (call: ts.CallExpression): boolean => {
+    const callee = unwrap(call.expression);
+
+    if (ts.isIdentifier(callee)) {
+      const symbol = checker.getSymbolAtLocation(callee);
+
+      return (
+        symbol !== undefined && importedNameOf.get(symbol) === WAITER && importedFromOf.get(symbol) === WAITER_MODULE
+      );
+    }
+
+    return (
+      ts.isPropertyAccessExpression(callee) &&
+      callee.name.text === WAITER &&
+      namespaceModuleOf(unwrap(callee.expression)) === WAITER_MODULE
+    );
+  };
+
+  const waiterCalls = calls.filter(isWaiterCall);
 
   // --- Pass 2: wrappers and the waiter callbacks, to a fixpoint.
   const wrapperIndexes = new Map<ts.SignatureDeclaration, Set<number>>();
