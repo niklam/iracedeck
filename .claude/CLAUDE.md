@@ -9,7 +9,7 @@ Sim and telemetry
 - `@iracedeck/iracing-native` — native addon for keyboard input, window focus and the elevation probe; mocked off Windows. Has its own `CLAUDE.md`.
 - `@iracedeck/iracing-sdk` — TypeScript layer over the native SDK: `SDKController`, session YAML, the `Commands` broadcast surface. Has its own `CLAUDE.md`.
 - `@iracedeck/event-bus` — typed pub/sub with the canonical sim-event catalog; sim- and audio-agnostic. Has its own `CLAUDE.md`.
-- `@iracedeck/sim-events-iracing` — the iRacing translator: diffs SDK ticks into bus events, owns the canonical live order (`race-positions.md`) and records for the replay store. Has its own `CLAUDE.md`.
+- `@iracedeck/sim-events-iracing` — the iRacing translator and replay recorder, SDK ticks to bus events; owns the canonical live order (`race-positions.md`). Has its own `CLAUDE.md`.
 - `@iracedeck/track-data` — bundled Lovely Sim Racing corner markers (attribution is a grant condition); a corner a refresh adds needs a `corner-names` entry in every voice. Has its own `CLAUDE.md`.
 
 Audio and the Race Engineer (end-to-end walkthrough: `race-engineer-callouts.md`)

@@ -1,6 +1,6 @@
 # @iracedeck/sim-events-iracing
 
-The iRacing translator (`initializeSimEventsIracing`, `src/translator.ts`): it diffs `sdkController` ticks and publishes semantic events on `@iracedeck/event-bus`, one diff module per family under `src/diff/`.
+The iRacing translator (`initializeSimEventsIracing`, `src/translator.ts`): it diffs `sdkController` ticks and publishes semantic events on `@iracedeck/event-bus`, one diff module per family under `src/diff/`. The `replay.*` events come from a second subscriber beside it, the replay recorder (below).
 
 ## Place in the architecture
 
@@ -17,7 +17,7 @@ The iRacing translator (`initializeSimEventsIracing`, `src/translator.ts`): it d
 
 ## Recording for `@iracedeck/replay-store`
 
-Pre-guard recorder diffs, which share one eligibility module (`diff/replay-record-gate.ts`), publish what the replay store writes:
+The replay recorder (`startReplayRecorder`, `src/replay-recorder.ts`, #1468) is a second SDK-controller subscriber, started by `initializeSimEventsIracing` right after the translator subscribes. Its four recorder diffs share one eligibility module (`diff/replay-record-gate.ts`) and publish what the replay store writes:
 
 - every car's lap crossings — `replay-laps`, `replay.lapStarted` / `replay.lapTimed` (#1203);
 - the race start and caution restarts — `replay-greens`, `replay.greenFlag` (#1354);
@@ -25,14 +25,23 @@ Pre-guard recorder diffs, which share one eligibility module (`diff/replay-recor
 
 The session starts are also recorded out of the car at the live edge of a live session, through the gate module's second resolver.
 
-## The tick order (#1499)
+- **No replay guard.** A recorder must see the ticks it cannot record, to mark itself unseeded on them and re-seed silently on the first eligible tick after; each diff's gate is the only one. Its "in a replay" answer is the controller's debounced replay state, read in its own callback.
+- **Its own state**, `ReplayRecorderState` (`replay-recorder-state.ts`); it reads nothing of `TranslatorState`, and the translator's per-session and replay wipes never reach it. `readSimState()` reports it under `raw.replayRecorder`.
+- **Its own reset points**, listed in the header of `replay-recorder.ts`: the lap, green and incident baselines at a session change (before the diffs run), on entering and on leaving a replay view (after them); everything at a disconnect. The session record (`replay-sessions`' run and published list) survives every reset but the disconnect.
+- **Pinned across the move.** `replay-recorder.equivalence.test.ts` compares the `replay.*` stream of the real init with a golden recorded while the recorders still ran inside the translator; a deliberate behaviour change regenerates it (`REPLAY_GOLDEN_UPDATE=1`) and reviews the diff.
 
-`TICK_ORDER` (`src/tick-order.ts`) lists every stage of one `handleTick` that can publish, in the order its publishes reach the bus: the direct publishes first (the session-change sites, the pre-guard recorder diffs, the replay-entry teardown), then the `pending` batch the live diffs fill, flushed in call order. `findEndsOnOrderViolations` reads it to prove an `endsOn` contract's trigger is never published after its end on one tick (#1407); `race-engineer-wiring`'s `ends-on-order.test.ts` applies it to every registered contract. `tick-order.test.ts` proves the table is the code by spying on the real diff calls and publishes. Keeping it true:
+## Session identity (#1509)
+
+`session-identity.ts` states once which tick starts a different session: a new `(SubSessionID, SessionNum)`, never inside a saved replay, read on every tick, the baseline reset only at a disconnect. The translator (per-session wipe, `session.changed`) and the replay recorder (baseline reset) each read it from a baseline of their own (`readSessionIdentity`, then `advanceSessionIdentity`), so both change on the same ticks. A change to the rule is made there, never in one subscriber.
+
+## The tick order (#1499, #1468)
+
+`src/tick-order.ts` lists every stage that can publish, in the order its publishes reach the bus, in three tables. `TICK_ORDER` is the translator's `handleTick`: the direct publishes first (the session-change sites, the pre-guard diffs, the replay-entry teardown), then the `pending` batch the live diffs fill, flushed in call order. `REPLAY_RECORDER_ORDER` is the replay recorder's tick, its four diffs publishing directly. The controller notifies in subscription order, so a tick's `replay.*` events reach the bus after all of the translator's; `CONTROLLER_TICK_ORDER` is the two end to end, the table an `endsOn` check reads. `findEndsOnOrderViolations` reads it to prove an `endsOn` contract's trigger is never published after its end on one tick (#1407); `race-engineer-wiring`'s `ends-on-order.test.ts` applies it to every registered contract. `tick-order.test.ts` proves the tables are the code by spying on the real diff calls, the publishes and the subscriber boundaries. Keeping them true:
 
 - **A diff module that emits declares what.** It exports `<NAME>_EVENTS` (`as const satisfies readonly SimEventName[]`) and types its emitter `EmitFn<(typeof <NAME>_EVENTS)[number]>`. `EmitFn` has no default, so an emit the list does not name is a compile error; a module with two emitting functions declares one list each (`START_COUNTDOWN_EVENTS`, `START_LIGHTS_EVENTS`).
-- **A new emitting diff, or one that starts emitting,** gets its `TICK_ORDER` row at its call position in `handleTick` (`via: "pending"` for a live diff, `"direct"` for a pre-guard one), whose `events` is the module's list itself rather than a copy, and a `vi.mock` spy line in `tick-order.test.ts` naming the index of its emitter argument. The completeness test fails on a declared list with no row, and the call-order test on a stage it never recorded. A diff that publishes nothing gets no row.
-- **Reordering any diff call in `handleTick`** means moving its row too; the call-order test fails until it does. If an `endsOn` pair then fails in the wiring test, the reorder broke that contract: put the trigger's stage back ahead of its end's.
-- **A new publish site in `translator.ts` itself** gets a `source: "translator.ts"` row and a real tick that publishes from it in the translator-sites test; the completeness test fails on an event those sites name that no such row lists.
+- **A new emitting diff, or one that starts emitting,** gets its row at its call position in the table of the subscriber that calls it — `TICK_ORDER` (`via: "pending"` for a live diff, `"direct"` for a pre-guard one) or `REPLAY_RECORDER_ORDER` (`"direct"`), never both — whose `events` is the module's list itself rather than a copy, and a `vi.mock` spy line in `tick-order.test.ts` naming the index of its emitter argument. The completeness test fails on a declared list with no row, and the call-order test on a stage it never recorded. A diff that publishes nothing gets no row.
+- **Reordering any diff call in either subscriber** means moving its row too; the call-order test fails until it does. If an `endsOn` pair then fails in the wiring test, the reorder broke that contract: put the trigger's stage back ahead of its end's.
+- **A new publish site in `translator.ts` itself** gets a `source: "translator.ts"` row and a real tick that publishes from it in the translator-sites test; the completeness test fails on an event those sites name that no such row lists. `replay-recorder.ts` publishes from one site, `publish`, and the same test fails on a second.
 
 ## Rules
 

@@ -1,10 +1,14 @@
 /**
- * The replay recorders' event stream, pinned before they move (issue #1468).
+ * The replay recorders' event stream, pinned across their move (issue #1468).
  *
  * `diffReplayLaps`, `diffReplayGreens`, `diffReplaySessions` and
- * `diffReplayIncidents` run inside the translator's `handleTick` today, and
- * their state (the `replay*` members of `TranslatorState`) is reset at five
- * points that belong to the translator, not to them:
+ * `diffReplayIncidents` ran inside the translator's `handleTick` until #1468,
+ * and their state (then the `replay*` members of `TranslatorState`) was reset
+ * at five points that belonged to the translator, not to them. They now run
+ * in a controller subscriber of their own (`replay-recorder.ts`) over
+ * `ReplayRecorderState`, which keeps the same five points, named here by
+ * where they lived in the translator (the recorder's own names are in the
+ * header of `replay-recorder.ts`):
  *
  * - A. init (`createInitialState`);
  * - B. `handleDisconnect`: everything, the session record too — while
@@ -19,15 +23,16 @@
  *   tick's seed is thrown away, so whatever changed between the first and the
  *   second live tick is never recorded.
  *
- * This file drives the real translator through its public surface only —
- * `initializeSimEventsIracing` with a real event bus and a fake SDK controller
- * — and compares every `replay.*` event it publishes, in arrival order, with a
- * committed golden file. The tapes are the recorded fixtures that carry what
- * the recorders read, adapted into ticks, plus synthetic tapes built so that
- * each reset above decides their output: move or drop one and a named tape
- * fails. When the recorders become their own subscriber, the same init starts
- * both, the fake controller below serves several subscribers in subscription
- * order as `SDKController` does, and this file must pass unchanged.
+ * This file drives the real init through its public surface only —
+ * `initializeSimEventsIracing`, which starts the translator and the recorder,
+ * with a real event bus and a fake SDK controller that serves its subscribers
+ * in subscription order as `SDKController` does — and compares every
+ * `replay.*` event published, in arrival order, with a committed golden file.
+ * The golden is the stream the recorders produced while they still ran inside
+ * the translator; the move left it unchanged, and it holds the recorder to
+ * that behaviour. The tapes are the recorded fixtures that carry what the
+ * recorders read, adapted into ticks, plus synthetic tapes built so that each
+ * reset above decides their output: move or drop one and a named tape fails.
  *
  * The replay state is the SDK's real `ReplayStateTracker`, stepped once per
  * delivered tick with the faked `Date.now()` — the order `SDKController`

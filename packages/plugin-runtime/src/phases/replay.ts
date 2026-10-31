@@ -41,8 +41,8 @@ export function initReplay(core: Core): Replay {
 
   process.on("exit", () => replaySessionStore.flushSync());
 
-  // The translator's lap recorder (#1203) publishes each live lap start and lap
-  // time; the store keeps them in the session's replay file for the fastest-lap
+  // The replay recorder's lap record (#1203) publishes each live lap start and
+  // lap time; the store keeps them in the session's replay file for the fastest-lap
   // lookup. The store ignores an event whose subSessionId is not the open one.
   core.bus.subscribe("replay.lapStarted", (ev) => {
     replaySessionStore.laps.recordLapStart(ev.data);
@@ -50,13 +50,13 @@ export function initReplay(core: Core): Replay {
   core.bus.subscribe("replay.lapTimed", (ev) => {
     replaySessionStore.laps.recordLapTime(ev.data);
   });
-  // The translator's green recorder (#1354) publishes the race start and every
-  // caution restart; the store keeps them beside the laps for Jump to Race Start.
+  // The replay recorder's green record (#1354) publishes the race start and
+  // every caution restart; the store keeps them beside the laps for Jump to Race Start.
   core.bus.subscribe("replay.greenFlag", (ev) => {
     replaySessionStore.greens.record(ev.data);
   });
-  // The translator's session and incident recorders (#1426) publish each session's
-  // start and every incident; the store keeps them for Replay Control's session
+  // The replay recorder's session and incident records (#1426) publish each
+  // session's start and every incident; the store keeps them for Replay Control's session
   // steps and for comparing its incident searches with what was recorded.
   core.bus.subscribe("replay.sessionStarted", (ev) => {
     replaySessionStore.sessions.record(ev.data);
