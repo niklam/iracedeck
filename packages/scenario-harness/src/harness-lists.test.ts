@@ -209,7 +209,7 @@ describe("every callout can be auditioned from the harness (#1376)", () => {
   });
 
   it.each([...scripts])(
-    "voice %s: every contract's test line names a harness button that fires it",
+    "voice %s: every contract's test line names a harness button that publishes its event",
     (voice, script) => {
       const problems: string[] = [];
 

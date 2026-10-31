@@ -91,8 +91,9 @@ export default [
     // shape #1376 removed from plugin-runtime's settings-window phase and the
     // scenario harness. esquery cannot tie an assertion's operand to the
     // listener's first parameter, so the second selector refuses an `as` or
-    // `<T>` assertion on any bare identifier inside a function passed
-    // straight to `onGlobalSettingsChange(…)` or `<deps>.onGlobalSettingsChange(…)`;
+    // `<T>` assertion on any bare identifier inside a function that takes a
+    // parameter and is passed straight to `onGlobalSettingsChange(…)` or
+    // `<deps>.onGlobalSettingsChange(…)` (a listener with none has no argument to cast);
     // a cast of a value read from the settings (`s.key as T`) passes, as it
     // does on the call. The reach is wider than the argument: a cast of any
     // other identifier inside such a listener is refused too, and is written
@@ -118,7 +119,7 @@ export default [
         ...['TSAsExpression', 'TSTypeAssertion'].map((node) => ({
           selector:
             "CallExpression:matches([callee.name='onGlobalSettingsChange'], [callee.property.name='onGlobalSettingsChange'])" +
-            ` > :function.arguments ${node} > Identifier.expression`,
+            ` > :function[params.length>0].arguments ${node} > Identifier.expression`,
           message:
             "No assertion on a bare identifier inside an onGlobalSettingsChange listener: read the listener's argument as its typed GlobalSettings (a cast hides a renamed or removed key from the compiler, and an undeclared passthrough key already reads as unknown), and cast any other value outside the listener (#1376).",
         })),

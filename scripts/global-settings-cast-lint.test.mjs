@@ -112,7 +112,7 @@ describe("global settings cast lint (#1376)", () => {
       // The selector cannot tell the argument from another identifier, so this
       // over-reach is part of the rule, pinned so the message stays true for it.
       "an assertion on an unrelated identifier inside the listener":
-        "declare const cached: unknown;\nonGlobalSettingsChange(() => apply(cached as Record<string, unknown>));\n",
+        "declare const cached: unknown;\nonGlobalSettingsChange((s) => apply(cached as Record<string, unknown>));\n",
     };
 
     for (const [name, code] of Object.entries(REFUSED_LISTENER)) {
