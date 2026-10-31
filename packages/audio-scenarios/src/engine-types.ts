@@ -135,8 +135,17 @@ export type BusView = {
   readonly schedule: BusState["schedule"];
 };
 
-/** The bus table as playback is handed it: `get` creates a bus's state like `BusTable.get`. */
-export type TransportTable = { get(bus: AudioBus): BusTransport };
+/**
+ * The bus table as playback is handed it: `get` creates a bus's state like
+ * `BusTable.get`, for the fire being put on a bus; `peek` does not, for a
+ * step, a cancel or a cut tail on a bus that may hold nothing — a stray call
+ * must never add a table entry, since the table's insertion order is the one
+ * every per-bus loop runs in.
+ */
+export type TransportTable = {
+  get(bus: AudioBus): BusTransport;
+  peek(bus: AudioBus): BusTransport | undefined;
+};
 
 /**
  * The bus table as every module but playback is handed it — the same

@@ -108,9 +108,12 @@ export class Playback {
     };
   }
 
-  /** Advance to the next op in the given bus's active fire. */
+  /** Advance to the next op in the given bus's active fire; a bus nothing has used is left alone. */
   stepNext(bus: AudioBus): void {
-    const state = this.buses.get(bus);
+    const state = this.buses.peek(bus);
+
+    if (state === undefined) return;
+
     const fire = state.transport.active;
 
     if (!fire || fire.cancelled) return;
@@ -193,14 +196,16 @@ export class Playback {
    * Cancel the currently-executing fire on the given bus. Stops only the
    * channels the fire actually referenced (from its expanded ops), so
    * scenarios running on other buses aren't disturbed. Reports nothing: the
-   * callers that need the bus drained afterwards drain it themselves.
+   * callers that need the bus drained afterwards drain it themselves. A bus
+   * with no active fire — one nothing has used included — is left alone,
+   * and gets no table entry for the asking.
    */
   cancelActiveFire(bus: AudioBus): void {
-    const state = this.buses.get(bus);
+    const state = this.buses.peek(bus);
+
+    if (state === undefined || state.transport.active === null) return;
+
     const fire = state.transport.active;
-
-    if (!fire) return;
-
     fire.cancelled = true;
 
     if (fire.pauseTimer) {
@@ -220,7 +225,8 @@ export class Playback {
    * the bus until the tail finishes and then drains it like any fire, a
    * same-family or heavier `interrupt` arrival may cut it, and nothing
    * stashes it. A bus with no active fire is left alone — the caller has
-   * already read the fire it means to end.
+   * already read the fire it means to end — and a bus nothing has used gets
+   * no table entry.
    *
    * The old fire is marked `cancelled` BEFORE its channels stop: `stopChannel`
    * may fire the body clip's complete callback, and that guard is what keeps
@@ -236,7 +242,7 @@ export class Playback {
    * before: nothing else would ever stop the loop.
    */
   playCutTail(bus: AudioBus): void {
-    const fire = this.buses.get(bus).transport.active;
+    const fire = this.buses.peek(bus)?.transport.active;
 
     if (!fire) return;
 

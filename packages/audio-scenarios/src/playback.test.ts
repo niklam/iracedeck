@@ -487,7 +487,9 @@ describe("cancelActiveFire", () => {
     h.playback.cancelActiveFire(AudioBus.Background);
 
     expect(h.events).toEqual([]);
-    expect(h.buses.peek(AudioBus.Background)?.transport.active).toBeNull();
+    // A stray cancel adds no table entry: the table's order is every per-bus loop's.
+    expect(h.buses.peek(AudioBus.Voice)).toBeUndefined();
+    expect(h.buses.peek(AudioBus.Background)).toBeUndefined();
   });
 
   it("marks the fire cancelled BEFORE a channel stops, so a stop that completes at once cannot advance it", () => {
@@ -626,7 +628,8 @@ describe("playCutTail", () => {
     h.playback.playCutTail(AudioBus.Voice);
 
     expect(h.events).toEqual([]);
-    expect(h.buses.get(AudioBus.Voice).transport.active).toBeNull();
+    // No fire to end, so no bus take — and no table entry for the asking.
+    expect(h.buses.peek(AudioBus.Voice)).toBeUndefined();
   });
 });
 

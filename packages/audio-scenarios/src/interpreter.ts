@@ -926,11 +926,11 @@ class ScenarioEngine implements IScenarioEngine {
    * Cancel every in-flight fire on all buses and clear every bus's queue of
    * deferred replays (unlogged per entry: the reset is the reason). Used when the Race Engineer master gate flips off so a callout
    * caught mid-playback is stopped immediately — including its looping
-   * ambient bed (in each fire's `usedChannels`) — and `playingId` is cleared
-   * so the bus isn't wedged. Without this the gate-off path only mutes the
-   * buses: the ambient loop is orphaned (and becomes audible again on
-   * re-enable) and the stuck `playingId` makes `attemptFire` drop every later
-   * callout as "bus busy" for the rest of the session (issue #587).
+   * ambient bed (in each fire's `usedChannels`) — and the active fire is
+   * cleared so the bus isn't wedged. Without this the gate-off path only
+   * mutes the buses: the ambient loop is orphaned (and becomes audible again
+   * on re-enable) and the stuck active fire makes `attemptFire` drop every
+   * later callout as "bus busy" for the rest of the session (issue #587).
    *
    * `cancelActiveFire` is a no-op on a bus with no active fire, so this is
    * safe to call whether or not anything is playing.
