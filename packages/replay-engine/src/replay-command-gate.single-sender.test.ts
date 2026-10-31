@@ -2,6 +2,9 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import * as barrel from "./index.js";
+import * as testing from "./testing.js";
+
 /**
  * The replay command gate is the one module that sends a replay command
  * (#1430): a send outside it skips the gate's rules for a jump or a search
@@ -9,8 +12,11 @@ import { describe, expect, it } from "vitest";
  * `iracing-actions` for each way to reach the replay commands:
  * `getCommands().replay`, a destructuring of `replay` out of `getCommands()`,
  * and `.replay` read off a binding of `getCommands()`. Inside the engine the
- * commands are the injected env's `replay()` (#1467), which only the gate calls;
- * `engineEnv` is public in the barrel, so both roots are scanned for that too.
+ * commands are also the injected env's `replay()` (#1467), which only the gate
+ * calls. That one is scanned for in the engine alone: the env (`engineEnv` and
+ * the rest of `replay-engine-env.ts`'s internals) is on neither public entry
+ * (#1502), which a test below asserts, so nothing outside the engine can reach
+ * it.
  */
 
 const ENGINE_ROOT = import.meta.dirname;
@@ -41,6 +47,14 @@ function sendsReplayOutsideGate(source: string): boolean {
   }
 
   return false;
+}
+
+/** The env's internals, which no public entry may export: they reach the injected replay surface. */
+const ENV_INTERNALS = ["engineEnv", "engineReads", "engineLogger", "setReplayEngineEnv"];
+
+/** The names among `names` that are env internals. */
+function envInternalsIn(names: readonly string[]): string[] {
+  return names.filter((name) => ENV_INTERNALS.includes(name));
 }
 
 /** True when the source calls the replay surface the engine was given. */
@@ -96,13 +110,29 @@ describe("the replay command gate is the single sender (#1430)", () => {
   it("does not flag a send through the gate", () => {
     expect(sendsReplayOutsideGate(`pressReplayCommand({ kind: "pause" }, { by: "x" })`)).toBe(false);
     expect(sendsReplayOutsideGate("getCommands().pit.fuel(10);")).toBe(false);
-    expect(sendsReplayOutsideGate("const c = getCommands();\nc.camera.switchNum(1, 0, 0);")).toBe(false);
-    expect(sendsReplayOutsideGate("const { camera } = getCommands();\ncamera.switchNum(1, 0, 0);")).toBe(false);
+  });
+
+  it("does not flag a camera switch, which is not a replay command", () => {
+    // Whether a camera switch goes through the camera-switch waiter is
+    // `camera-switch-waiter.single-policy.test.ts`'s check (#1502), so these
+    // are written the way that test allows: inside a `requestCameraSwitch` callback.
+    expect(
+      sendsReplayOutsideGate(
+        "const c = getCommands();\nrequestCameraSwitch(() => c.camera.switchNum(1, 0, 0), options);",
+      ),
+    ).toBe(false);
+    expect(
+      sendsReplayOutsideGate(
+        "const { camera } = getCommands();\nrequestCameraSwitch(() => camera.switchNum(1, 0, 0), options);",
+      ),
+    ).toBe(false);
   });
 
   it("flags an engine module reaching the injected replay surface (positive control)", () => {
     expect(readsInjectedReplay("engineEnv().replay().pause();")).toBe(true);
     expect(readsInjectedReplay("const env = engineEnv();\nenv.replay().nextLap();")).toBe(true);
+    // The injected camera is not the replay; which engine modules may reach it
+    // is pinned by `camera-switch-waiter.single-policy.test.ts`.
     expect(readsInjectedReplay("engineEnv().camera().switchNum(1, 0, 0);")).toBe(false);
   });
 
@@ -110,6 +140,18 @@ describe("the replay command gate is the single sender (#1430)", () => {
     expect(readsInjectedReplay("const { replay } = engineEnv();\nreplay().pause();")).toBe(true);
     expect(readsInjectedReplay("const { camera, replay: r } = engineEnv();\nr().nextLap();")).toBe(true);
     expect(readsInjectedReplay("const { camera } = engineEnv();\ncamera().switchNum(1, 0, 0);")).toBe(false);
+  });
+
+  it("flags an env internal on an entry (positive control)", () => {
+    expect(envInternalsIn(["pressReplayCommand", "engineEnv", "setReplayEngineEnv"])).toEqual([
+      "engineEnv",
+      "setReplayEngineEnv",
+    ]);
+  });
+
+  it("no public entry exports the env, so only the engine can reach the injected replay surface", () => {
+    expect(envInternalsIn(Object.keys(barrel))).toEqual([]);
+    expect(envInternalsIn(Object.keys(testing))).toEqual([]);
   });
 
   it("finds the production sources to scan", () => {
@@ -123,9 +165,7 @@ describe("the replay command gate is the single sender (#1430)", () => {
     expect(offendersOf(files, sendsReplayOutsideGate)).toEqual([]);
   });
 
-  it("no production source but the gate calls the injected replay surface", () => {
-    const files = [...productionSources(ENGINE_ROOT), ...productionSources(ACTIONS_ROOT)];
-
-    expect(offendersOf(files, readsInjectedReplay)).toEqual([]);
+  it("no engine module but the gate calls the injected replay surface", () => {
+    expect(offendersOf(productionSources(ENGINE_ROOT), readsInjectedReplay)).toEqual([]);
   });
 });

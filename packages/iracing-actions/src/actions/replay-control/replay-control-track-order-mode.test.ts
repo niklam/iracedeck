@@ -1,13 +1,12 @@
 import { REPLAY_LIVE_EDGE_MAX_FRAMES, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { type ReplaySettledOutcome, requestCameraSwitch } from "@iracedeck/replay-engine";
 import {
   claimReplayCursor,
   FASTEST_LAP_WALK_OWNER,
   isCameraSwitchWaiting,
   RACE_START_WALK_OWNER,
-  type ReplaySettledOutcome,
-  requestCameraSwitch,
-} from "@iracedeck/replay-engine";
-import { resetEngine } from "@iracedeck/replay-engine/testing";
+  resetEngine,
+} from "@iracedeck/replay-engine/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ReplayControlDialSettings } from "./replay-control-dial-settings.js";

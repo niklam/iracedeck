@@ -7,8 +7,9 @@
  * (`race-start-press.test.ts` in `@iracedeck/replay-engine`).
  */
 import { getCarNumberRawFromSessionInfo, type ReplayPosMode, type TelemetryData } from "@iracedeck/iracing-sdk";
-import { _activeLapPress, pressJumpToRaceStart } from "@iracedeck/replay-engine";
+import { pressJumpToRaceStart } from "@iracedeck/replay-engine";
 import {
+  _activeLapPress,
   IN_RACE,
   type RaceWeekendOptions,
   raceWeekendReplay,

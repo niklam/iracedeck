@@ -6,28 +6,30 @@ import {
   type TelemetryData,
 } from "@iracedeck/iracing-sdk";
 import {
-  _resetCameraSwitchWaiter,
-  _resetReplaySpeedState,
-  cancelReplayCursorOwner,
-  claimReplayCursor,
   currentReplayCursorOwner,
   DIAL_SPEED_HOLD_MS,
-  FASTEST_LAP_WALK_OWNER,
   getReplayGateRecord,
   getReplayGateView,
   isReplayMoveUnderWay,
   lastListedSessionNum,
-  noteReplaySpeedSent,
   noteTelemetrySpeed,
   onReplaySpeedChanged,
   pressReplayCommand,
-  RACE_START_WALK_OWNER,
   type RecordStepSource,
   rememberedSpeed,
   REPLAY_TARGET_GIVE_UP_MS,
   type ReplayGateNotice,
   subscribeReplayGate,
 } from "@iracedeck/replay-engine";
+import {
+  _resetCameraSwitchWaiter,
+  _resetReplaySpeedState,
+  cancelReplayCursorOwner,
+  claimReplayCursor,
+  FASTEST_LAP_WALK_OWNER,
+  noteReplaySpeedSent,
+  RACE_START_WALK_OWNER,
+} from "@iracedeck/replay-engine/testing";
 import type { ReplaySessionStore } from "@iracedeck/replay-store";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -84,7 +86,6 @@ vi.mock("@iracedeck/replay-engine", async (importOriginal) => ({
       queue.listeners.delete(listener);
     };
   },
-  _resetReplaySearchQueue: () => undefined,
 }));
 
 /** The replay record the host's record source reads (#801): null for none initialized. */

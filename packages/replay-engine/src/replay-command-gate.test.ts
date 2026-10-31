@@ -10,6 +10,7 @@ import {
   type ReplayGateNotice,
   replaySearchMayRunMs,
   replaySearchSpeedAtSend,
+  replayTargetFate,
   sendOwnedReplayCommand,
   settleReplayByJump,
   subscribeReplayGate,
@@ -630,14 +631,14 @@ describe("replay command gate", () => {
       const landed = waitForReplaySearchLanding({ patienceMs: 400, hardBoundMs: 5_000 });
 
       await wait(500);
-      await expect(landed).resolves.toBe("landed");
+      expect((await landed).outcome).toBe("landed");
 
       press({ kind: "search", search: "nextSession" });
 
       const quiet = waitForReplaySearchLanding({ patienceMs: 400, hardBoundMs: 5_000 });
 
       await wait(500);
-      await expect(quiet).resolves.toBe("not-landed");
+      expect((await quiet).outcome).toBe("not-landed");
 
       _resetReplayCommandGate();
       setUp({ frame: 2_000, speed: { speed: 1, slowMotion: false } });
@@ -646,7 +647,7 @@ describe("replay command gate", () => {
       const nothing = waitForReplaySearchLanding({ patienceMs: 5_000, hardBoundMs: 10_000 });
 
       await wait(800);
-      await expect(nothing).resolves.toBe("found-nothing");
+      expect((await nothing).outcome).toBe("found-nothing");
     });
 
     it("settle by a jump: pauses a moving replay, jumps beside the reading and reports the landing", async () => {
@@ -660,6 +661,48 @@ describe("replay command gate", () => {
       await expect(settled).resolves.toBe("settled");
       expect(sim.calls.slice(1, 3)).toEqual(["pause", expect.stringMatching(/^setPlayPosition 0 \d+$/)]);
       expect(sim.thrown).toBe(0);
+    });
+
+    // The schedule the waits kept when each polled in its own loop, pinned to the poll: they poll through
+    // `pollUntil` since #1502, and the cases above allow a poll either way.
+    describe("the poll's schedule (#1502)", () => {
+      function timed<T>(promise: Promise<T>): Promise<{ readonly outcome: T; readonly afterMs: number }> {
+        const start = Date.now();
+
+        return promise.then((outcome) => ({ outcome, afterMs: Date.now() - start }));
+      }
+
+      it("settled: reads first and judges the bound after each read, so a read that settles it wins", async () => {
+        setUp({ frame: 2_000 });
+
+        // Reads at 0, 50 and 100 ms: the third settles it, unless the bound has run out at the second.
+        const short = timed(waitForReplaySettled({ reads: 3, timeoutMs: 50 }));
+        const enough = timed(waitForReplaySettled({ reads: 3, timeoutMs: 51 }));
+
+        await wait(200);
+
+        await expect(short).resolves.toEqual({ outcome: "gave-up", afterMs: 50 });
+        await expect(enough).resolves.toEqual({ outcome: "settled", afterMs: 100 });
+      });
+
+      it("a search's landing: the patience and the hard bound end on the poll that reaches them, patience first", async () => {
+        setUp({ frame: 2_000 });
+        press({ kind: "search", search: "nextSession" });
+
+        // A paused replay that nothing moves: the search is never seen, so only the bounds end the waits.
+        const both = timed(waitForReplaySearchLanding({ patienceMs: 400, hardBoundMs: 400 }).then((l) => l.outcome));
+        const patience = timed(
+          waitForReplaySearchLanding({ patienceMs: 390, hardBoundMs: 5_000 }).then((l) => l.outcome),
+        );
+        const hard = timed(waitForReplaySearchLanding({ patienceMs: 5_000, hardBoundMs: 390 }).then((l) => l.outcome));
+
+        await wait(1_000);
+
+        await expect(both).resolves.toEqual({ outcome: "not-landed", afterMs: 400 });
+        // Polls 20 ms apart: the first at or past 390 is at 400.
+        await expect(patience).resolves.toEqual({ outcome: "not-landed", afterMs: 400 });
+        await expect(hard).resolves.toEqual({ outcome: "gave-up", afterMs: 400 });
+      });
     });
   });
 
@@ -800,7 +843,9 @@ describe("replay command gate", () => {
       press({ kind: "search", search: "nextLap" });
       await wait(500);
 
-      await expect(waitForReplaySearchLanding({ patienceMs: 400, hardBoundMs: 5_000 })).resolves.toBe("not-landed");
+      await expect(waitForReplaySearchLanding({ patienceMs: 400, hardBoundMs: 5_000 })).resolves.toMatchObject({
+        outcome: "not-landed",
+      });
     });
   });
 
@@ -1123,6 +1168,167 @@ describe("replay command gate", () => {
       expect(departures).toEqual(["left"]);
       expect(pendingReplayTarget()?.id).toBe(target?.id);
       expect(getReplayGateRecord().waiting).toMatchObject({ origin: "play", behind: "jump" });
+    });
+  });
+
+  describe("what the paced search reads (#1450)", () => {
+    const TWO_THOUSAND_PLAYING = { frame: 2_000, speed: { speed: 1, slowMotion: false } } as const;
+
+    it("a landing on a playing replay begins at the first reading after the leap, not where it held", async () => {
+      setUp({ ...TWO_THOUSAND_PLAYING, searches: { nextLap: (f) => f + 6_000 } });
+      press({ kind: "search", search: "nextLap" });
+
+      // The search stands still for 50 ms, then lands on 8000 and plays on: the gate's reads, 20 ms apart, first
+      // see it 10 ms later, still on 8000, and it has held two reads later.
+      const landing = waitForReplaySearchLanding({ patienceMs: 400, hardBoundMs: 5_000 });
+
+      await wait(500);
+      await expect(landing).resolves.toEqual({ outcome: "landed", firstFrame: 8_000 });
+      expect(sim.frame()).toBeGreaterThan(8_020);
+    });
+
+    it("a leap that did not hold is not the landing's first frame: the leap that held is", async () => {
+      setUp({ ...TWO_THOUSAND_PLAYING, searches: { nextLap: (f) => f + 6_000 } });
+
+      const sentAt = Date.now();
+
+      // One read, the first after the landing, shows the replay 500 frames short of it.
+      _configureReplayEngine({
+        settings: engineSettings,
+        replay: () => sim.replay,
+        readTelemetry: () => {
+          const reading = sim.telemetry();
+
+          return Date.now() - sentAt === 60
+            ? { ...reading, ReplayFrameNum: (reading.ReplayFrameNum ?? 0) - 500 }
+            : reading;
+        },
+        inReplay: () => inReplay,
+        connected: () => connected,
+        now: () => Date.now(),
+      });
+      press({ kind: "search", search: "nextLap" });
+
+      const landing = waitForReplaySearchLanding({ patienceMs: 400, hardBoundMs: 5_000 });
+
+      await wait(500);
+      // 80 ms after the send: 30 ms of play from 8000.
+      await expect(landing).resolves.toEqual({ outcome: "landed", firstFrame: 8_001 });
+    });
+
+    it("a landing on a paused replay begins on the frame it came to rest on", async () => {
+      setUp({ frame: 2_000, searches: { nextLap: (f) => f + 6_000 } });
+      press({ kind: "search", search: "nextLap" });
+
+      const landing = waitForReplaySearchLanding({ patienceMs: 400, hardBoundMs: 5_000 });
+
+      await wait(500);
+      await expect(landing).resolves.toEqual({ outcome: "landed", firstFrame: 8_000 });
+    });
+
+    it("has no first frame for a search that did not land", async () => {
+      setUp({ frame: 2_000 });
+      press({ kind: "search", search: "nextLap" });
+
+      const quiet = waitForReplaySearchLanding({ patienceMs: 400, hardBoundMs: 5_000 });
+
+      await wait(500);
+      await expect(quiet).resolves.toEqual({ outcome: "not-landed", firstFrame: null });
+
+      _resetReplayCommandGate();
+      setUp(TWO_THOUSAND_PLAYING);
+      press({ kind: "search", search: "nextSession" });
+
+      const nothing = waitForReplaySearchLanding({ patienceMs: 5_000, hardBoundMs: 10_000 });
+
+      await wait(800);
+      await expect(nothing).resolves.toEqual({ outcome: "found-nothing", firstFrame: null });
+    });
+
+    it("has no first frame with no search standing", async () => {
+      setUp({ frame: 2_000 });
+
+      await expect(waitForReplaySearchLanding({ patienceMs: 400, hardBoundMs: 5_000 })).resolves.toEqual({
+        outcome: "not-landed",
+        firstFrame: null,
+      });
+    });
+
+    it("a target's fate: none while it stands, read back with the reading it landed on once it has", async () => {
+      setUp({ frame: 2_000 });
+      farJump();
+
+      const id = pendingReplayTarget()?.id ?? -1;
+
+      expect(replayTargetFate(id)).toBeNull();
+
+      await wait(3_000);
+
+      expect(pendingReplayTarget()).toBeNull();
+      expect(replayTargetFate(id)).toEqual({
+        kind: "read-back",
+        held: false,
+        telemetry: expect.objectContaining({ ReplayFrameNum: 160_000 }),
+      });
+    });
+
+    it("a target's fate: replaced, naming the target that replaced it", () => {
+      setUp({ frame: 2_000 });
+      farJump(160_000);
+
+      const first = pendingReplayTarget()?.id ?? -1;
+
+      farJump(170_000);
+
+      expect(replayTargetFate(first)).toEqual({ kind: "replaced", by: pendingReplayTarget()?.id });
+    });
+
+    it("a target's fate: given up when its frame never reads back", async () => {
+      setUp({ frame: 2_000, unlandable: new Set([160_000]), unlandableRest: 160_004 });
+      farJump();
+
+      const id = pendingReplayTarget()?.id ?? -1;
+
+      await wait(4_000);
+
+      expect(replayTargetFate(id)).toEqual({ kind: "gave-up" });
+    });
+
+    it("a target's fate: read back as held for a takeover's jump that rests a few frames off", async () => {
+      setUp({ frame: 2_000, unlandable: new Set([2_001]), unlandableRest: 2_004 });
+      press({ kind: "search", search: "nextSession" });
+      await wait(50);
+      press(PLAY);
+
+      expect(press(PLAY)).toMatchObject({ kind: "taking-over" });
+
+      const id = pendingReplayTarget()?.id ?? -1;
+
+      await wait(500);
+
+      expect(replayTargetFate(id)).toEqual({
+        kind: "read-back",
+        held: true,
+        telemetry: expect.objectContaining({ ReplayFrameNum: 2_004 }),
+      });
+    });
+
+    it("a target's fate: cleared when the sim disconnects with it standing", async () => {
+      setUp({ frame: 2_000 });
+      farJump();
+
+      const id = pendingReplayTarget()?.id ?? -1;
+
+      connected = false;
+      await wait(100);
+
+      expect(replayTargetFate(id)).toEqual({ kind: "cleared" });
+    });
+
+    it("a target's fate: none for an id the gate never recorded", () => {
+      setUp();
+
+      expect(replayTargetFate(123_456)).toBeNull();
     });
   });
 

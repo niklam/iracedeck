@@ -47,7 +47,7 @@
  */
 import { onReplayCursorTaken } from "./replay-cursor.js";
 import { engineLogger } from "./replay-engine-env.js";
-import { isSameSpeed, type ReplaySpeed } from "./replay-jump-speed.js";
+import { isSameSpeed, NORMAL_SPEED, type ReplaySpeed } from "./replay-jump-speed.js";
 
 /**
  * @internal Exported for testing
@@ -83,11 +83,9 @@ interface ProvisionalSpeed {
   readonly sentAt: number;
 }
 
-/** What the replay resumes at before it has been seen playing. */
-const NORMAL_SPEED: ReplaySpeed = { speed: 1, slowMotion: false };
-
 let pending: PendingSpeed | null = null;
 let provisional: ProvisionalSpeed | null = null;
+/** What the replay resumes at before it has been seen playing: 1x. */
 let remembered: ReplaySpeed = { ...NORMAL_SPEED };
 
 /** How many sends have been recorded: what {@link keepDialPendingSpeed} compares across its take. */

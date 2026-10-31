@@ -1,4 +1,5 @@
-import type { ReplayGateFactEnd, ReplayGateNotice, ReplayGateView } from "@iracedeck/replay-engine";
+import type { ReplayGateFactEnd, ReplayGateNotice } from "@iracedeck/replay-engine";
+import type { ReplayGateView } from "@iracedeck/replay-engine";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {

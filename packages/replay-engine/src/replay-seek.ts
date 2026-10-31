@@ -29,7 +29,7 @@
  * wait: a replay command from any other key cancels the claim, and the wait
  * then reports `cancelled` at its next poll instead of running to its timeout.
  */
-import { now, sleep } from "./engine-clock.js";
+import { pollUntil } from "./engine-clock.js";
 import type { ReplayCursorClaim } from "./replay-cursor.js";
 
 /** The telemetry fields the waits read. */
@@ -155,24 +155,25 @@ export async function waitForReplay<T extends ReplaySeekSample>(
 
   if (claim.cancelledBy !== null) return { kind: "cancelled", by: claim.cancelledBy };
 
-  const startedAt = now();
-  const latest = maxWaitMs === undefined ? Infinity : startedAt + maxWaitMs;
-  let deadline = startedAt + timeoutMs;
   let last: T | null = null;
 
-  while (now() < Math.min(deadline, latest)) {
-    await sleep(pollMs);
+  // Sleeps first: the command the caller just sent cannot show yet.
+  const waited = await pollUntil(
+    (poll): ReplayWaitOutcome<T> | undefined => {
+      if (claim.cancelledBy !== null) return { kind: "cancelled", by: claim.cancelledBy };
 
-    if (claim.cancelledBy !== null) return { kind: "cancelled", by: claim.cancelledBy };
+      last = readTelemetry();
 
-    last = readTelemetry();
+      if (reached(last)) return { kind: "reached", telemetry: last };
 
-    if (reached(last)) return { kind: "reached", telemetry: last };
+      if (seeking?.(last)) poll.extend();
 
-    if (seeking?.(last)) deadline = now() + timeoutMs;
-  }
+      return undefined;
+    },
+    { intervalMs: pollMs, timeoutMs, maxWaitMs, sleepFirst: true },
+  );
 
-  return { kind: "timeout", telemetry: last };
+  return waited.kind === "done" ? waited.value : { kind: "timeout", telemetry: last };
 }
 
 /**

@@ -789,34 +789,45 @@ export async function walkToLapStart(
     command();
 
     const gapMs = readFastestLapSearchDelayMs();
-    const deadline = sentAt + waitMs;
     let held: number | null = null;
     let sawMovement = false;
 
-    while (now() < deadline) {
-      await wait(STABILIZATION_POLL_INTERVAL_MS);
-      const tel = readTelemetry();
-      const frame = readFrame(tel);
+    // Sleeps first, the bound counted from the send.
+    const landed = await pollUntil(
+      (): SearchOutcome | undefined => {
+        // A cancellation or an interrupt is observed as soon as a sleep ends, as `wait` does it.
+        checkpoint();
 
-      if (frame === null) {
-        held = null;
+        const tel = readTelemetry();
+        const frame = readFrame(tel);
+
+        if (frame === null) {
+          held = null;
+          sawMovement = true;
+
+          return undefined;
+        }
+
+        if (frame === before) {
+          held = null;
+
+          return undefined;
+        }
+
         sawMovement = true;
-        continue;
-      }
 
-      if (frame === before) {
-        held = null;
-        continue;
-      }
+        if (held === frame && isSettledSample(tel) && now() - sentAt >= gapMs) {
+          return { kind: "moved", telemetry: tel };
+        }
 
-      sawMovement = true;
+        held = frame;
 
-      if (held === frame && isSettledSample(tel) && now() - sentAt >= gapMs) {
-        return { kind: "moved", telemetry: tel };
-      }
+        return undefined;
+      },
+      { intervalMs: STABILIZATION_POLL_INTERVAL_MS, timeoutMs: waitMs, startedAt: sentAt, sleepFirst: true },
+    );
 
-      held = frame;
-    }
+    if (landed.kind === "done") return landed.value;
 
     const telemetry = readTelemetry();
 

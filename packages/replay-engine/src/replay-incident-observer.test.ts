@@ -67,7 +67,9 @@ describe("observeIncidentSearch on a search that landed", () => {
 
     try {
       const gate = await import("./replay-command-gate.js");
-      const landing = vi.spyOn(gate, "waitForReplaySearchLanding").mockResolvedValue("landed");
+      const landing = vi
+        .spyOn(gate, "waitForReplaySearchLanding")
+        .mockResolvedValue({ outcome: "landed", firstFrame: null });
       // Raw, 1100 is nearest the landing at 1080; corrected by the lag, 1000 is (1059 against 1159).
       const host = {
         logger: { debug: vi.fn(), error: vi.fn() },

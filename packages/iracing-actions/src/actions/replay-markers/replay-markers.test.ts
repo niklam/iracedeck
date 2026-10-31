@@ -1,13 +1,13 @@
 import { ReplayPosMode, replaySpeedToSdk, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { currentReplayCursorOwner } from "@iracedeck/replay-engine";
 import {
   _resetReplayCursor,
   cancelReplayCursorOwner,
   claimReplayCursor,
   clearReplayTarget,
-  currentReplayCursorOwner,
   pendingReplayTarget,
-} from "@iracedeck/replay-engine";
-import { withSteppedReplayState } from "@iracedeck/replay-engine/testing";
+  withSteppedReplayState,
+} from "@iracedeck/replay-engine/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { describePressShapeRouting } from "../../shared/press-shape.test-support.js";

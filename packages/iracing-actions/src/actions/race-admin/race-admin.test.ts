@@ -7,14 +7,14 @@ import {
   getPlayerCarNumberFromSessionInfo,
   resolveTemplate,
 } from "@iracedeck/iracing-sdk";
+import { beginReplayJump, pressReplayCommand, runReplayJump } from "@iracedeck/replay-engine";
 import {
-  beginReplayJump,
   claimReplayCursor,
+  type FakeReplay,
+  fakeReplay,
   FASTEST_LAP_WALK_OWNER,
-  pressReplayCommand,
-  runReplayJump,
-} from "@iracedeck/replay-engine";
-import { type FakeReplay, fakeReplay, steppedReplayState } from "@iracedeck/replay-engine/testing";
+  steppedReplayState,
+} from "@iracedeck/replay-engine/testing";
 import { getGlobalSettings, updateGlobalSettings } from "@iracedeck/settings";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
