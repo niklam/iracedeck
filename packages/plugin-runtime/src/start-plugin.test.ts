@@ -474,7 +474,7 @@ describe("startPlugin (#1349)", () => {
     expect(builtSims).toHaveLength(1);
     expect(contexts).toHaveLength(1);
     expect(contexts[0].sim).toBe(builtSims[0].host);
-    expect(wiredSims).toEqual([builtSims[0].runtime]);
+    expect(wiredSims).toHaveLength(1);
     expect(wiredSims[0]).toBe(builtSims[0].runtime);
   });
 

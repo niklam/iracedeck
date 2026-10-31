@@ -188,7 +188,8 @@ describe("createElgatoExtension", () => {
 
     const { sim, tick } = fakeSim();
 
-    // One tick reads each once; the Once form leaves nothing behind for later tests.
+    // The fake sim is this test's own; the settings mock is shared, so it is a
+    // Once form and leaves nothing behind for later tests.
     sim.getSessionKind.mockReturnValue("race");
     vi.mocked(getGlobalSettings).mockReturnValueOnce({
       profileAutoSwitchEnabled: true,
