@@ -42,7 +42,6 @@ const COMPONENT_LICENSE_MARKERS = {
   "iRacing SDK": "Redistribution and use in source and binary forms",
   miniaudio: "MIT No Attribution",
   "@resvg/resvg-js": "Mozilla Public License",
-  keysender: "MIT License",
   yaml: "Permission to use, copy, modify, and/or distribute this software",
   ws: "Permission is hereby granted, free of charge",
   "node-addon-api": "The MIT License (MIT)",

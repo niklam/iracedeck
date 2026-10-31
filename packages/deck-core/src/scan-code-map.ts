@@ -120,12 +120,38 @@ const MODIFIER_SCAN: Record<string, number> = {
   alt: 0x38,
 };
 
+// Lookups go through a Map, never an index into the plain objects above: a
+// stored binding's `code` and modifiers are outside input (a settings file can
+// be edited by hand), and `obj[name]` answers for names inherited from
+// `Object.prototype` (`constructor`, `toString`, …) with a function where a
+// scan code was expected.
+const CODE_TO_SCAN_LOOKUP: ReadonlyMap<string, number> = new Map(Object.entries(CODE_TO_SCAN));
+const MODIFIER_SCAN_LOOKUP: ReadonlyMap<string, number> = new Map(Object.entries(MODIFIER_SCAN));
+
+/**
+ * The event codes this map holds. The test compares them with
+ * `@iracedeck/app-constants`' `KEY_CODE_MAP`, the set the Property Inspector
+ * checks a binding's `code` against (#1495), so the PI and the runtime agree on
+ * which bindings can be sent.
+ *
+ * @internal Exported for testing
+ */
+export const MAPPED_CODES: readonly string[] = Object.freeze(Object.keys(CODE_TO_SCAN));
+
+/**
+ * The modifier names this map holds; the test compares them with
+ * `@iracedeck/app-constants`' `MODIFIERS`, as for {@link MAPPED_CODES}.
+ *
+ * @internal Exported for testing
+ */
+export const MAPPED_MODIFIERS: readonly string[] = Object.freeze(Object.keys(MODIFIER_SCAN));
+
 /**
  * Get the PS/2 scan code for a KeyboardEvent.code value.
  * @returns Scan code, or undefined if the code isn't mapped
  */
 export function getScanCode(code: string): number | undefined {
-  return CODE_TO_SCAN[code];
+  return CODE_TO_SCAN_LOOKUP.get(code);
 }
 
 /**
@@ -133,5 +159,21 @@ export function getScanCode(code: string): number | undefined {
  * @returns Scan code, or undefined if the modifier isn't recognized
  */
 export function getModifierScanCode(modifier: string): number | undefined {
-  return MODIFIER_SCAN[modifier];
+  return MODIFIER_SCAN_LOOKUP.get(modifier);
+}
+
+/**
+ * Whether the keyboard service can send a key combination by scan code
+ * (#1495): its `code` has a scan code, and so does every modifier. This is
+ * exactly what the keyboard service's `buildScanCodes` needs — both rest on
+ * {@link getScanCode} and {@link getModifierScanCode} — so a combination this
+ * refuses is one the service would send nothing for. A missing or empty
+ * `code`, a code the map does not hold (`"F13"`, `"CapsLock"`, a typo) and a
+ * modifier other than `ctrl`, `shift` or `alt` (`"Ctrl"`, `"meta"`) all
+ * return false.
+ */
+export function canSendByScanCode(combination: { code?: string; modifiers?: readonly string[] }): boolean {
+  if (!combination.code || getScanCode(combination.code) === undefined) return false;
+
+  return (combination.modifiers ?? []).every((modifier) => getModifierScanCode(modifier) !== undefined);
 }

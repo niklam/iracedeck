@@ -10,7 +10,6 @@ saveExact: true
 allowBuilds:
   ffmpeg-static: true
   esbuild: false
-  keysender: false
   protobufjs: false
   re2: false
 

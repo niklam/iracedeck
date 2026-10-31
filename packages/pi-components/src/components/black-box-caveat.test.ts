@@ -93,6 +93,16 @@ describe("ird-black-box-caveat", () => {
     expect(isVisible(el)).toBe(false);
   });
 
+  it("should warn when the target's keyboard binding cannot be sent by scan code (#1495)", async () => {
+    globalSettings = {
+      blackBoxLapTiming: keyboardBinding("f1", "F1"),
+      blackBoxFuel: keyboardBinding("f13", "F13"),
+    };
+    const el = await mount(true);
+
+    expect(isVisible(el)).toBe(true);
+  });
+
   it("should warn when the target binding is missing", async () => {
     globalSettings = { blackBoxLapTiming: keyboardBinding("f1", "F1") };
     const el = await mount(true);
@@ -364,18 +374,48 @@ describe("binding classifiers", () => {
     expect(isSimHubBinding(simhub)).toBe(true);
     expect(isKeyboardBinding(simhub)).toBe(false);
     expect(isSimHubBinding({ type: "simhub", role: "" })).toBe(false);
-    expect(isKeyboardBinding({ key: "f1" })).toBe(true);
+    expect(isKeyboardBinding({ key: "f1", code: "F1" })).toBe(true);
+    expect(isKeyboardBinding({ key: "f1" })).toBe(false);
   });
 
   it("should match the runtime's KeyBindingValueSchema for keyboard bindings", () => {
     // Accepted: modifiers default to [] and type defaults to "keyboard".
-    expect(isKeyboardBinding(JSON.stringify({ key: "f1" }))).toBe(true);
-    expect(isKeyboardBinding(JSON.stringify({ type: "keyboard", key: "f1", modifiers: ["ctrl"] }))).toBe(true);
+    expect(isKeyboardBinding(JSON.stringify({ key: "f1", code: "F1" }))).toBe(true);
+    expect(isKeyboardBinding(JSON.stringify({ type: "keyboard", key: "f1", modifiers: ["ctrl"], code: "F1" }))).toBe(
+      true,
+    );
     // Rejected, as parseBinding rejects them.
-    expect(isKeyboardBinding(JSON.stringify({ key: "", modifiers: [] }))).toBe(false);
-    expect(isKeyboardBinding(JSON.stringify({ type: "gamepad", key: "f1", modifiers: [] }))).toBe(false);
-    expect(isKeyboardBinding(JSON.stringify({ key: "f1", modifiers: ["ctrl", 3] }))).toBe(false);
-    expect(isKeyboardBinding(JSON.stringify({ key: "f1", modifiers: "ctrl" }))).toBe(false);
+    expect(isKeyboardBinding(JSON.stringify({ key: "", modifiers: [], code: "F1" }))).toBe(false);
+    expect(isKeyboardBinding(JSON.stringify({ type: "gamepad", key: "f1", modifiers: [], code: "F1" }))).toBe(false);
+    expect(isKeyboardBinding(JSON.stringify({ key: "f1", modifiers: ["ctrl", 3], code: "F1" }))).toBe(false);
+    expect(isKeyboardBinding(JSON.stringify({ key: "f1", modifiers: "ctrl", code: "F1" }))).toBe(false);
+  });
+
+  it("should treat a keyboard binding without a scan code as unbound (#1495)", () => {
+    expect(isKeyboardBinding('{"key":"f1","modifiers":[]}')).toBe(false);
+    expect(isKeyboardBinding('{"type":"keyboard","key":"f1","modifiers":["ctrl"]}')).toBe(false);
+    expect(isKeyboardBinding('{"key":"f1","modifiers":[],"code":""}')).toBe(false);
+    expect(isKeyboardBinding('{"key":"f1","modifiers":[],"code":5}')).toBe(false);
+  });
+
+  it.each([
+    ['{"key":"f13","modifiers":[],"code":"F13"}'],
+    ['{"key":"capslock","modifiers":[],"code":"CapsLock"}'],
+    ['{"key":"f1","modifiers":[],"code":"f1"}'],
+    ['{"key":"f1","modifiers":[],"code":"constructor"}'],
+    ['{"key":"f1","modifiers":["Ctrl"],"code":"F1"}'],
+    ['{"key":"f1","modifiers":["meta"],"code":"F1"}'],
+    ['{"key":"f1","modifiers":["shift","meta"],"code":"F1"}'],
+  ])("should treat a keyboard binding the runtime cannot send by scan code as unbound (#1495): %s", (raw) => {
+    expect(isKeyboardBinding(raw)).toBe(false);
+  });
+
+  it.each([
+    ['{"key":"f1","code":"F1"}'],
+    ['{"key":"f1","modifiers":["ctrl","shift","alt"],"code":"F1"}'],
+    ['{"key":"up","modifiers":["shift"],"code":"ArrowUp"}'],
+  ])("should accept a keyboard binding the runtime can send by scan code (#1495): %s", (raw) => {
+    expect(isKeyboardBinding(raw)).toBe(true);
   });
 
   it("should reject empty, corrupt and non-binding values", () => {

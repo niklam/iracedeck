@@ -1,6 +1,13 @@
+import { KEY_CODE_MAP, MODIFIERS } from "@iracedeck/app-constants";
 import { describe, expect, it } from "vitest";
 
-import { getModifierScanCode, getScanCode } from "./scan-code-map.js";
+import {
+  canSendByScanCode,
+  getModifierScanCode,
+  getScanCode,
+  MAPPED_CODES,
+  MAPPED_MODIFIERS,
+} from "./scan-code-map.js";
 
 describe("scan-code-map", () => {
   describe("getScanCode", () => {
@@ -89,6 +96,70 @@ describe("scan-code-map", () => {
     it("should return undefined for unknown modifiers", () => {
       expect(getModifierScanCode("meta")).toBeUndefined();
       expect(getModifierScanCode("")).toBeUndefined();
+    });
+  });
+});
+
+describe("scan-code-map (#1495)", () => {
+  describe("agrees with the key map the Property Inspector checks against", () => {
+    // The PI cannot import deck-core, so it reads a binding as sendable when
+    // its code is in KEY_CODE_MAP and every modifier is in MODIFIERS. These
+    // pin that both sides hold the same sets, so a binding the PI shows as set
+    // is one the runtime can send, and the other way round.
+    it("holds exactly KEY_CODE_MAP's codes", () => {
+      expect([...MAPPED_CODES].sort()).toEqual(Object.keys(KEY_CODE_MAP).sort());
+    });
+
+    it("holds exactly the MODIFIERS", () => {
+      expect([...MAPPED_MODIFIERS].sort()).toEqual([...MODIFIERS].sort());
+    });
+
+    it("gives every recordable code and modifier a scan code", () => {
+      for (const code of Object.keys(KEY_CODE_MAP)) {
+        expect(getScanCode(code), code).toBeTypeOf("number");
+      }
+
+      for (const modifier of MODIFIERS) {
+        expect(getModifierScanCode(modifier), modifier).toBeTypeOf("number");
+      }
+    });
+  });
+
+  describe("names inherited from Object.prototype are not codes", () => {
+    // A stored code is outside input; an object index would answer these with a
+    // function, which the keyboard service would then push as a scan code.
+    const INHERITED = ["constructor", "__proto__", "toString", "hasOwnProperty", "valueOf", "isPrototypeOf"];
+
+    it.each(INHERITED)("%s has no scan code and is no modifier", (name) => {
+      expect(getScanCode(name)).toBeUndefined();
+      expect(getModifierScanCode(name)).toBeUndefined();
+      expect(canSendByScanCode({ code: name, modifiers: [] })).toBe(false);
+      expect(canSendByScanCode({ code: "F1", modifiers: [name] })).toBe(false);
+    });
+  });
+
+  describe("canSendByScanCode", () => {
+    it.each([
+      ["a code alone", { code: "F1" }],
+      ["a code with no modifiers", { code: "KeyA", modifiers: [] }],
+      ["a code with every supported modifier", { code: "F1", modifiers: ["ctrl", "shift", "alt"] }],
+      ["an extended key", { code: "ArrowUp", modifiers: ["shift"] }],
+    ])("is true for %s", (_label, combination) => {
+      expect(canSendByScanCode(combination)).toBe(true);
+    });
+
+    it.each([
+      ["no code", { modifiers: [] }],
+      ["an empty code", { code: "", modifiers: [] }],
+      ["a code the map does not hold (F13)", { code: "F13", modifiers: [] }],
+      ["a code the map does not hold (CapsLock)", { code: "CapsLock", modifiers: [] }],
+      ["a key name where the code belongs", { code: "f1", modifiers: [] }],
+      ["a capitalised modifier", { code: "F1", modifiers: ["Ctrl"] }],
+      ["an unsupported modifier", { code: "F1", modifiers: ["meta"] }],
+      ["an unsupported modifier beside a supported one", { code: "F1", modifiers: ["shift", "meta"] }],
+      ["an empty modifier", { code: "F1", modifiers: [""] }],
+    ])("is false for %s", (_label, combination) => {
+      expect(canSendByScanCode(combination)).toBe(false);
     });
   });
 });

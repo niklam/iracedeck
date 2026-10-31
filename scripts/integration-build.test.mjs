@@ -79,7 +79,7 @@ const failed = (out = "", code = 1) => ({ ok: false, code, out, err: "" });
 const failedWithErr = (err, code = 1) => ({ ok: false, code, out: "", err });
 
 /** The message Windows gives npm when a running host holds a native module the install must replace. */
-const LOCKED = "npm error EBUSY: resource busy or locked, rename 'bin/node_modules/keysender/build/Release/x.node'";
+const LOCKED = "npm error EBUSY: resource busy or locked, rename 'bin/node_modules/@resvg/resvg-js/x.node'";
 
 /**
  * Real git through `defaultExec`, canned answers for everything else, and a

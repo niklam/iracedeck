@@ -3,19 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { _resetKeyboard, getKeyboard, initializeKeyboard, isKeyboardInitialized } from "./keyboard-service.js";
 import type { KeyCombination } from "./keyboard-types.js";
 
-// Mock the keysender module
-const mockSendKey = vi.fn().mockResolvedValue(undefined);
-const mockToggleKey = vi.fn().mockResolvedValue(undefined);
-
-vi.mock("keysender", () => ({
-  Hardware: class MockHardware {
-    keyboard = {
-      sendKey: mockSendKey,
-      toggleKey: mockToggleKey,
-    };
-  },
-}));
-
 // Mock the logger
 vi.mock("@iracedeck/logger", () => ({
   silentLogger: {
@@ -61,10 +48,11 @@ describe("Keyboard Service", () => {
     it("should return the keyboard service", () => {
       const service = initializeKeyboard();
 
-      expect(service).toHaveProperty("sendKey");
       expect(service).toHaveProperty("sendKeyCombination");
       expect(service).toHaveProperty("pressKeyCombination");
       expect(service).toHaveProperty("releaseKeyCombination");
+      expect(service).toHaveProperty("sendKeySequence");
+      expect(service).not.toHaveProperty("sendKey");
     });
 
     it("should throw if called twice", () => {
@@ -83,102 +71,7 @@ describe("Keyboard Service", () => {
       initializeKeyboard();
       const service = getKeyboard();
 
-      expect(service).toHaveProperty("sendKey");
       expect(service).toHaveProperty("sendKeyCombination");
-    });
-  });
-
-  describe("sendKey", () => {
-    it("should send a key press via keysender", async () => {
-      initializeKeyboard();
-      const keyboard = getKeyboard();
-
-      const result = await keyboard.sendKey("f3");
-
-      expect(result).toBe(true);
-      expect(mockSendKey).toHaveBeenCalledWith("f3");
-    });
-
-    it("should map special keys correctly", async () => {
-      initializeKeyboard();
-      const keyboard = getKeyboard();
-
-      await keyboard.sendKey("pageup");
-      expect(mockSendKey).toHaveBeenCalledWith("pageUp");
-
-      await keyboard.sendKey("pagedown");
-      expect(mockSendKey).toHaveBeenCalledWith("pageDown");
-    });
-
-    it("should return false on error", async () => {
-      mockSendKey.mockRejectedValueOnce(new Error("Test error"));
-      initializeKeyboard();
-      const keyboard = getKeyboard();
-
-      const result = await keyboard.sendKey("a");
-
-      expect(result).toBe(false);
-    });
-  });
-
-  describe("sendKeyCombination - keysender fallback", () => {
-    it("should send via keysender when no code is present", async () => {
-      initializeKeyboard();
-      const keyboard = getKeyboard();
-
-      const result = await keyboard.sendKeyCombination({ key: "f1" });
-
-      expect(result).toBe(true);
-      expect(mockSendKey).toHaveBeenCalledWith("f1");
-    });
-
-    it("should send via keysender when no scanKeySender is configured", async () => {
-      initializeKeyboard();
-      const keyboard = getKeyboard();
-
-      const result = await keyboard.sendKeyCombination({
-        key: "f1",
-        code: "F1",
-      });
-
-      expect(result).toBe(true);
-      expect(mockSendKey).toHaveBeenCalledWith("f1");
-    });
-
-    it("should send a key combination with single modifier via keysender", async () => {
-      initializeKeyboard();
-      const keyboard = getKeyboard();
-
-      const result = await keyboard.sendKeyCombination({
-        key: "r",
-        modifiers: ["shift"],
-      });
-
-      expect(result).toBe(true);
-      expect(mockSendKey).toHaveBeenCalledWith(["shift", "r"]);
-    });
-
-    it("should send a key combination with multiple modifiers via keysender", async () => {
-      initializeKeyboard();
-      const keyboard = getKeyboard();
-
-      const result = await keyboard.sendKeyCombination({
-        key: "s",
-        modifiers: ["ctrl", "shift"],
-      });
-
-      expect(result).toBe(true);
-      expect(mockSendKey).toHaveBeenCalledWith(["ctrl", "shift", "s"]);
-    });
-
-    it("should return false on keysender error", async () => {
-      mockSendKey.mockRejectedValueOnce(new Error("Test error"));
-      initializeKeyboard();
-      const keyboard = getKeyboard();
-
-      const result = await keyboard.sendKeyCombination({ key: "a" });
-
-      expect(result).toBe(false);
     });
   });
 
@@ -195,7 +88,6 @@ describe("Keyboard Service", () => {
 
       expect(result).toBe(true);
       expect(mockScanSender).toHaveBeenCalledWith([0x0c]); // Minus scan code
-      expect(mockSendKey).not.toHaveBeenCalled(); // keysender NOT used
     });
 
     it("should include modifier scan codes before the main key", async () => {
@@ -256,19 +148,16 @@ describe("Keyboard Service", () => {
       expect(mockScanSender).toHaveBeenCalledWith([0x148]); // ArrowUp extended scan code
     });
 
-    it("should fall back to keysender for unmapped code values", async () => {
-      const mockScanSender = vi.fn();
+    it("should return false on sender error", async () => {
+      const mockScanSender = vi.fn(() => {
+        throw new Error("Test error");
+      });
       initializeKeyboard(undefined, mockScanSender);
       const keyboard = getKeyboard();
 
-      const result = await keyboard.sendKeyCombination({
-        key: "a",
-        code: "UnknownCode",
-      });
+      const result = await keyboard.sendKeyCombination({ key: "a", code: "KeyA" });
 
-      expect(result).toBe(true);
-      expect(mockScanSender).not.toHaveBeenCalled();
-      // keysender fallback is called asynchronously
+      expect(result).toBe(false);
     });
   });
 
@@ -285,7 +174,6 @@ describe("Keyboard Service", () => {
 
       expect(result).toBe(true);
       expect(mockPresser).toHaveBeenCalledWith([0x0c]);
-      expect(mockToggleKey).not.toHaveBeenCalled();
     });
 
     it("should include modifier scan codes when pressing", async () => {
@@ -319,41 +207,6 @@ describe("Keyboard Service", () => {
     });
   });
 
-  describe("pressKeyCombination - keysender fallback", () => {
-    it("should press via keysender toggleKey when no presser is configured", async () => {
-      initializeKeyboard();
-      const keyboard = getKeyboard();
-
-      const result = await keyboard.pressKeyCombination({ key: "f1" });
-
-      expect(result).toBe(true);
-      expect(mockToggleKey).toHaveBeenCalledWith("f1", true);
-    });
-
-    it("should press combination with modifiers via keysender toggleKey", async () => {
-      initializeKeyboard();
-      const keyboard = getKeyboard();
-
-      const result = await keyboard.pressKeyCombination({
-        key: "r",
-        modifiers: ["shift"],
-      });
-
-      expect(result).toBe(true);
-      expect(mockToggleKey).toHaveBeenCalledWith(["shift", "r"], true);
-    });
-
-    it("should return false on keysender toggleKey error", async () => {
-      mockToggleKey.mockRejectedValueOnce(new Error("Test error"));
-      initializeKeyboard();
-      const keyboard = getKeyboard();
-
-      const result = await keyboard.pressKeyCombination({ key: "a" });
-
-      expect(result).toBe(false);
-    });
-  });
-
   describe("releaseKeyCombination - scan code path", () => {
     it("should release via scan codes when code and releaser are configured", async () => {
       const mockReleaser = vi.fn();
@@ -367,7 +220,6 @@ describe("Keyboard Service", () => {
 
       expect(result).toBe(true);
       expect(mockReleaser).toHaveBeenCalledWith([0x0c]);
-      expect(mockToggleKey).not.toHaveBeenCalled();
     });
 
     it("should include modifier scan codes when releasing", async () => {
@@ -396,41 +248,6 @@ describe("Keyboard Service", () => {
         key: "a",
         code: "KeyA",
       });
-
-      expect(result).toBe(false);
-    });
-  });
-
-  describe("releaseKeyCombination - keysender fallback", () => {
-    it("should release via keysender toggleKey when no releaser is configured", async () => {
-      initializeKeyboard();
-      const keyboard = getKeyboard();
-
-      const result = await keyboard.releaseKeyCombination({ key: "f1" });
-
-      expect(result).toBe(true);
-      expect(mockToggleKey).toHaveBeenCalledWith("f1", false);
-    });
-
-    it("should release combination with modifiers via keysender toggleKey", async () => {
-      initializeKeyboard();
-      const keyboard = getKeyboard();
-
-      const result = await keyboard.releaseKeyCombination({
-        key: "s",
-        modifiers: ["ctrl", "shift"],
-      });
-
-      expect(result).toBe(true);
-      expect(mockToggleKey).toHaveBeenCalledWith(["ctrl", "shift", "s"], false);
-    });
-
-    it("should return false on keysender toggleKey error", async () => {
-      mockToggleKey.mockRejectedValueOnce(new Error("Test error"));
-      initializeKeyboard();
-      const keyboard = getKeyboard();
-
-      const result = await keyboard.releaseKeyCombination({ key: "a" });
 
       expect(result).toBe(false);
     });
@@ -488,7 +305,7 @@ describe("Keyboard Service", () => {
       expect(mockSequenceSender).toHaveBeenCalledWith([[0x3b]], 16);
     });
 
-    it("should skip (not fall back to keysender) when a combination has no event.code", async () => {
+    it("should skip when a combination has no event.code", async () => {
       const mockSequenceSender = vi.fn();
       const keyboard = initializeKeyboard(undefined, undefined, undefined, undefined, mockSequenceSender);
 
@@ -496,7 +313,6 @@ describe("Keyboard Service", () => {
 
       expect(result).toBe(false);
       expect(mockSequenceSender).not.toHaveBeenCalled();
-      expect(mockSendKey).not.toHaveBeenCalled();
     });
 
     it("should skip when a combination's event.code has no scan code", async () => {
@@ -507,7 +323,98 @@ describe("Keyboard Service", () => {
 
       expect(result).toBe(false);
       expect(mockSequenceSender).not.toHaveBeenCalled();
-      expect(mockSendKey).not.toHaveBeenCalled();
+    });
+
+    it("should skip when a combination's event.code is empty", async () => {
+      const mockSequenceSender = vi.fn();
+      const keyboard = initializeKeyboard(undefined, undefined, undefined, undefined, mockSequenceSender);
+
+      const result = await keyboard.sendKeySequence([{ key: "f1", code: "" }]);
+
+      expect(result).toBe(false);
+      expect(mockSequenceSender).not.toHaveBeenCalled();
+    });
+  });
+
+  // --- Scan codes are the only sending path (#1495) ---
+  //
+  // A tap, press or release whose sender was not injected, or whose
+  // combination has no event.code the scan-code map can build, sends nothing,
+  // focuses nothing and returns false — the contract sendKeySequence has.
+
+  describe("sends nothing without a scan code (issue #1495)", () => {
+    type Method = "sendKeyCombination" | "pressKeyCombination" | "releaseKeyCombination";
+
+    const logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+
+    /** Initialize with all three single-combination senders and return them. */
+    const withSenders = () => {
+      const senders = { tap: vi.fn(), press: vi.fn(), release: vi.fn() };
+      const keyboard = initializeKeyboard(
+        logger as unknown as Parameters<typeof initializeKeyboard>[0],
+        senders.tap,
+        senders.press,
+        senders.release,
+      );
+
+      return { keyboard, senders };
+    };
+
+    const expectNothingSent = (senders: ReturnType<typeof withSenders>["senders"]) => {
+      expect(senders.tap).not.toHaveBeenCalled();
+      expect(senders.press).not.toHaveBeenCalled();
+      expect(senders.release).not.toHaveBeenCalled();
+      expect(mockFocusBeforeInput).not.toHaveBeenCalled();
+    };
+
+    const methods: Method[] = ["sendKeyCombination", "pressKeyCombination", "releaseKeyCombination"];
+
+    describe.each(methods)("%s", (method) => {
+      it("returns false and sends nothing for a combination with no event.code", async () => {
+        const { keyboard, senders } = withSenders();
+
+        expect(await keyboard[method]({ key: "f1" })).toBe(false);
+        expectNothingSent(senders);
+        expect(logger.warn).toHaveBeenCalledWith(
+          "Key combination has no scan code, nothing sent; re-record the binding",
+        );
+      });
+
+      it("returns false and sends nothing for a combination with an empty event.code", async () => {
+        const { keyboard, senders } = withSenders();
+
+        expect(await keyboard[method]({ key: "f1", code: "", modifiers: ["shift"] })).toBe(false);
+        expectNothingSent(senders);
+        expect(logger.warn).toHaveBeenCalledOnce();
+      });
+
+      it("returns false and sends nothing for an event.code with no scan code", async () => {
+        const { keyboard, senders } = withSenders();
+
+        expect(await keyboard[method]({ key: "a", code: "UnknownCode" })).toBe(false);
+        expectNothingSent(senders);
+        expect(logger.warn).toHaveBeenCalledWith("No scan code for the key combination, nothing sent");
+      });
+
+      it("returns false and sends nothing when its scan-code sender was not injected", async () => {
+        const keyboard = initializeKeyboard(logger as unknown as Parameters<typeof initializeKeyboard>[0]);
+
+        expect(await keyboard[method]({ key: "a", code: "KeyA" })).toBe(false);
+        expect(mockFocusBeforeInput).not.toHaveBeenCalled();
+        expect(logger.warn).not.toHaveBeenCalled();
+        expect(logger.debug).toHaveBeenCalledOnce();
+      });
+    });
+
+    it("uses only the sender matching the method: a tap without a tap sender sends nothing", async () => {
+      const press = vi.fn();
+      const release = vi.fn();
+      const keyboard = initializeKeyboard(undefined, undefined, press, release);
+
+      expect(await keyboard.sendKeyCombination({ key: "a", code: "KeyA" })).toBe(false);
+      expect(press).not.toHaveBeenCalled();
+      expect(release).not.toHaveBeenCalled();
+      expect(mockFocusBeforeInput).not.toHaveBeenCalled();
     });
   });
 
@@ -532,38 +439,9 @@ describe("Keyboard Service", () => {
       expect(orderOf(mockFocusBeforeInput)).toBeLessThan(orderOf(mockScanSender));
     });
 
-    it("sendKeyCombination via keysender (no event.code) focuses once, before the fallback send", async () => {
-      const keyboard = initializeKeyboard();
-
-      await keyboard.sendKeyCombination({ key: "f1" });
-
-      expect(mockFocusBeforeInput).toHaveBeenCalledOnce();
-      expect(mockSendKey).toHaveBeenCalledOnce();
-      expect(orderOf(mockFocusBeforeInput)).toBeLessThan(orderOf(mockSendKey));
-    });
-
-    it("an unmapped event.code focuses exactly once — on the keysender fallback that actually sends", async () => {
-      const mockScanSender = vi.fn();
-      const keyboard = initializeKeyboard(undefined, mockScanSender);
-
-      await keyboard.sendKeyCombination({ key: "a", code: "UnknownCode" });
-
-      // The fallback is fire-and-forget from the scan-code path.
-      await vi.waitFor(() => expect(mockSendKey).toHaveBeenCalledOnce());
-
-      expect(mockScanSender).not.toHaveBeenCalled();
-      expect(mockFocusBeforeInput).toHaveBeenCalledOnce();
-      expect(orderOf(mockFocusBeforeInput)).toBeLessThan(orderOf(mockSendKey));
-    });
-
-    it("sendKey focuses once, before its sender", async () => {
-      const keyboard = initializeKeyboard();
-
-      await keyboard.sendKey("f3");
-
-      expect(mockFocusBeforeInput).toHaveBeenCalledOnce();
-      expect(orderOf(mockFocusBeforeInput)).toBeLessThan(orderOf(mockSendKey));
-    });
+    // A tap, press or release that sends nothing (no sender, no event.code, an
+    // unmapped one) never focuses either: see "sends nothing without a scan
+    // code" above.
 
     it("pressKeyCombination via scan codes focuses once, before the press; the release never focuses", async () => {
       const mockPresser = vi.fn();
@@ -578,20 +456,6 @@ describe("Keyboard Service", () => {
       await keyboard.releaseKeyCombination({ key: "a", code: "KeyA" });
 
       expect(mockReleaser).toHaveBeenCalledOnce();
-      expect(mockFocusBeforeInput).toHaveBeenCalledOnce();
-    });
-
-    it("pressKeyCombination via keysender focuses once, before toggleKey(true); the release never focuses", async () => {
-      const keyboard = initializeKeyboard();
-
-      await keyboard.pressKeyCombination({ key: "f1" });
-
-      expect(mockFocusBeforeInput).toHaveBeenCalledOnce();
-      expect(orderOf(mockFocusBeforeInput)).toBeLessThan(orderOf(mockToggleKey));
-
-      await keyboard.releaseKeyCombination({ key: "f1" });
-
-      expect(mockToggleKey).toHaveBeenLastCalledWith("f1", false);
       expect(mockFocusBeforeInput).toHaveBeenCalledOnce();
     });
 
@@ -704,62 +568,49 @@ describe("Keyboard Service", () => {
       expect(mockScanSender).toHaveBeenCalledTimes(2);
     });
 
-    it("follows a keysender tap with the scan-code Alt+F24 once the tap settles", async () => {
+    it.each([
+      ["has no event.code", { key: "l", modifiers: ["ctrl", "alt"] }],
+      ["has an empty event.code", { key: "l", code: "", modifiers: ["ctrl", "alt"] }],
+      ["has an unmapped event.code", { key: "l", code: "UnknownCode", modifiers: ["ctrl", "alt"] }],
+      ["has an unknown modifier", { key: "l", code: "KeyL", modifiers: ["ctrl", "alt", "meta"] }],
+    ] as const)("sends nothing, and no Alt+F24, for a Ctrl+Alt chord that %s", async (_label, chord) => {
       const mockScanSender = vi.fn();
-      const keyboard = initializeKeyboard(undefined, mockScanSender);
+      const mockPresser = vi.fn();
+      const mockReleaser = vi.fn();
+      const keyboard = initializeKeyboard(undefined, mockScanSender, mockPresser, mockReleaser);
+      // "meta" is outside KeyboardModifier: only a hand-edited settings file holds one.
+      const combination = { ...chord, modifiers: [...chord.modifiers] } as KeyCombination;
 
-      expect(await keyboard.sendKeyCombination({ key: "l", modifiers: ["ctrl", "alt"] })).toBe(true);
+      expect(await keyboard.sendKeyCombination(combination)).toBe(false);
+      expect(await keyboard.pressKeyCombination(combination)).toBe(false);
+      expect(await keyboard.releaseKeyCombination(combination)).toBe(false);
 
-      expect(mockSendKey).toHaveBeenCalledWith(["ctrl", "alt", "l"]);
-      expect(mockScanSender).toHaveBeenCalledWith(ALT_F24);
-      expect(mockSendKey.mock.invocationCallOrder[0]).toBeLessThan(mockScanSender.mock.invocationCallOrder[0]);
-    });
-
-    it("follows a Ctrl+Alt chord the scan-code map cannot build, after its keysender fallback", async () => {
-      const mockScanSender = vi.fn();
-      const keyboard = initializeKeyboard(undefined, mockScanSender);
-
-      expect(await keyboard.sendKeyCombination({ key: "l", code: "UnknownCode", modifiers: ["ctrl", "alt"] })).toBe(
-        true,
-      );
-
-      // The fallback is awaited, so both have gone out once the send resolves.
-      expect(mockSendKey).toHaveBeenCalledWith(["ctrl", "alt", "l"]);
-      expect(mockScanSender).toHaveBeenCalledWith(ALT_F24);
-      expect(mockSendKey.mock.invocationCallOrder[0]).toBeLessThan(mockScanSender.mock.invocationCallOrder[0]);
-    });
-
-    it("resolves the release of an unmappable held Ctrl+Alt chord only after its keysender release and Alt+F24", async () => {
-      const mockScanSender = vi.fn();
-      const keyboard = initializeKeyboard(undefined, mockScanSender, vi.fn(), vi.fn());
-      const unmappable: KeyCombination = { key: "l", code: "UnknownCode", modifiers: ["ctrl", "alt"] };
-
-      expect(await keyboard.releaseKeyCombination(unmappable)).toBe(true);
-
-      expect(mockToggleKey).toHaveBeenCalledWith(["ctrl", "alt", "l"], false);
-      expect(mockScanSender).toHaveBeenCalledWith(ALT_F24);
-    });
-
-    it("reports a failed keysender fallback as a failed send", async () => {
-      const mockScanSender = vi.fn();
-      const keyboard = initializeKeyboard(undefined, mockScanSender, vi.fn(), vi.fn());
-      mockSendKey.mockRejectedValueOnce(new Error("send failed"));
-      mockToggleKey.mockRejectedValueOnce(new Error("press failed"));
-
-      expect(await keyboard.sendKeyCombination({ key: "l", code: "UnknownCode", modifiers: ["ctrl", "alt"] })).toBe(
-        false,
-      );
-      expect(await keyboard.pressKeyCombination({ key: "a", code: "UnknownCode" })).toBe(false);
       expect(mockScanSender).not.toHaveBeenCalled();
+      expect(mockPresser).not.toHaveBeenCalled();
+      expect(mockReleaser).not.toHaveBeenCalled();
     });
 
-    it("falls back to a keysender alt+f24 tap without a scan-code sender", async () => {
-      const keyboard = initializeKeyboard();
+    it("attempts no Alt+F24 after a released Ctrl+Alt chord without a scan-code sender", async () => {
+      const mockPresser = vi.fn();
+      const mockReleaser = vi.fn();
+      const keyboard = initializeKeyboard(undefined, undefined, mockPresser, mockReleaser);
 
-      await keyboard.sendKeyCombination({ key: "l", modifiers: ["ctrl", "alt"] });
+      await keyboard.pressKeyCombination(CTRL_ALT_L);
+      expect(await keyboard.releaseKeyCombination(CTRL_ALT_L)).toBe(true);
 
-      expect(mockSendKey).toHaveBeenCalledTimes(2);
-      expect(mockSendKey).toHaveBeenLastCalledWith(["alt", "f24"]);
+      expect(mockPresser).toHaveBeenCalledOnce();
+      expect(mockReleaser).toHaveBeenCalledOnce();
+      expect(mockReleaser).toHaveBeenCalledWith([0x1d, 0x38, 0x26]);
+    });
+
+    it("attempts no Alt+F24 after a Ctrl+Alt sequence without a scan-code sender", async () => {
+      const mockSequenceSender = vi.fn();
+      const keyboard = initializeKeyboard(undefined, undefined, undefined, undefined, mockSequenceSender);
+
+      expect(await keyboard.sendKeySequence([CTRL_ALT_L])).toBe(true);
+
+      expect(mockSequenceSender).toHaveBeenCalledOnce();
+      expect(mockSequenceSender).toHaveBeenCalledWith([[0x1d, 0x38, 0x26]], 0);
     });
 
     it("follows the release of a held Ctrl+Alt chord, not its press", async () => {
@@ -771,19 +622,6 @@ describe("Keyboard Service", () => {
 
       await keyboard.releaseKeyCombination(CTRL_ALT_L);
       expect(mockScanSender).toHaveBeenCalledOnce();
-      expect(mockScanSender).toHaveBeenCalledWith(ALT_F24);
-    });
-
-    it("follows the keysender release of a held Ctrl+Alt chord", async () => {
-      const mockScanSender = vi.fn();
-      const keyboard = initializeKeyboard(undefined, mockScanSender);
-      const legacy: KeyCombination = { key: "l", modifiers: ["ctrl", "alt"] };
-
-      await keyboard.pressKeyCombination(legacy);
-      expect(mockScanSender).not.toHaveBeenCalled();
-
-      await keyboard.releaseKeyCombination(legacy);
-      expect(mockToggleKey).toHaveBeenLastCalledWith(["ctrl", "alt", "l"], false);
       expect(mockScanSender).toHaveBeenCalledWith(ALT_F24);
     });
 

@@ -5,7 +5,7 @@
  * These are extracted from the web component to allow for unit testing
  * in a Node.js environment (without DOM dependencies).
  */
-import { type Modifier, MODIFIERS, parseDefaultKeyBinding } from "@iracedeck/app-constants";
+import { keyForCode, type Modifier, MODIFIERS, parseDefaultKeyBinding } from "@iracedeck/app-constants";
 
 import { KEY_DISPLAY_NAMES } from "./key-maps.js";
 
@@ -114,6 +114,32 @@ export function parseKeyBinding(json: string | null): KeyBindingValue | null {
 
     return null;
   }
+}
+
+const MODIFIER_NAMES: ReadonlySet<string> = new Set(MODIFIERS);
+
+/**
+ * Whether the plugin's keyboard service can send a stored keyboard binding's
+ * `code` and modifiers (#1495). It sends by scan code only, so a binding
+ * whose `code` is missing, empty or not one of `KEY_CODE_MAP`'s codes
+ * (`"F13"`, `"CapsLock"`, a typo), or that carries a modifier other than
+ * `ctrl`, `shift` or `alt` (`"Ctrl"`, `"meta"`), is one the runtime reads as
+ * unbound — and the PI reads it as unset too. The runtime's scan-code map
+ * holds exactly these codes and modifiers (deck-core's `scan-code-map.test.ts`
+ * pins that), since the PI cannot import deck-core. Only a hand-edited or very
+ * old settings file holds such a binding: the recorder writes only these.
+ *
+ * `modifiers` absent counts as none, as the settings schema defaults it; any
+ * other non-array, or a non-string member, is not sendable.
+ */
+export function canSendByScanCode(binding: { code?: unknown; modifiers?: unknown }): boolean {
+  const { code, modifiers } = binding;
+
+  if (typeof code !== "string" || keyForCode(code) === undefined) return false;
+
+  if (modifiers === undefined) return true;
+
+  return Array.isArray(modifiers) && modifiers.every((m) => typeof m === "string" && MODIFIER_NAMES.has(m));
 }
 
 /**

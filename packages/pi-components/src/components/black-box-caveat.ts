@@ -30,6 +30,8 @@
  *   simhub-message="…bound to a SimHub role, so the priming box may flash briefly…"
  * ></ird-black-box-caveat>
  */
+import { canSendByScanCode } from "./key-binding-utils.js";
+
 /**
  * The feature checkbox is a per-action setting whose live value is only reliably
  * readable from the DOM (the same reason ird-binding-status polls). Global
@@ -100,7 +102,10 @@ function bindingObject(raw: unknown): Record<string, unknown> | null {
  * object) is a usable KEYBOARD binding — the shape `@iracedeck/settings`'
  * `KeyBindingValueSchema` accepts, so the caveat and the runtime agree: `type`
  * absent or "keyboard", a non-empty `key`, and `modifiers` absent or an array of
- * strings. A SimHub role, an empty value, or a corrupt one all return false.
+ * strings. The runtime additionally needs a binding it can send by scan code
+ * since #1495 (any other is unbound), so {@link canSendByScanCode} must hold
+ * here too: a recordable `code` and only `ctrl` / `shift` / `alt` modifiers. A
+ * SimHub role, an empty value, or a corrupt one all return false.
  */
 export function isKeyboardBinding(raw: unknown): boolean {
   const binding = bindingObject(raw);
@@ -111,9 +116,7 @@ export function isKeyboardBinding(raw: unknown): boolean {
 
   if (typeof binding.key !== "string" || binding.key.length === 0) return false;
 
-  const { modifiers } = binding;
-
-  return modifiers === undefined || (Array.isArray(modifiers) && modifiers.every((m) => typeof m === "string"));
+  return canSendByScanCode(binding);
 }
 
 /**

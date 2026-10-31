@@ -589,10 +589,6 @@ importers:
       typescript:
         specifier: 5.9.3
         version: 5.9.3
-    optionalDependencies:
-      keysender:
-        specifier: 2.4.0
-        version: 2.4.0
 
   packages/deck-iracing:
     dependencies:
@@ -6006,9 +6002,6 @@ packages:
     resolution: {integrity: sha512-/B6p9eY9DX7aHBfpkHdpirDTZ5QH9xTwL9y837PWuzuv41O5jFdqNQwVQEQsimY0/iVNkwBY4+4hMfhQ7d4Dbw==}
     hasBin: true
 
-  keysender@2.4.0:
-    resolution: {integrity: sha512-t6umrC8Itaw+fCGjMvwYOSA9mY8KFgNmMM+qinjYLjn2EQeoz+NLuLCL0IsAiBxucDFp9fkYaHuVeh1E/DcH8g==}
-
   keyv@4.5.4:
     resolution: {integrity: sha512-oxVHkHR/EJf2CNXnWxRLW6mg7JyCCUcG0DtEGmL2ctUo1PNTin1PUil+r/+4r5MpVgC/fn1kjsx7mjSujKqIpw==}
 
@@ -6518,10 +6511,6 @@ packages:
 
   nlcst-to-string@4.0.0:
     resolution: {integrity: sha512-YKLBCcUYKAg0FNlOBT6aI91qFmSiFKiluk655WzPF+DDMA02qIyy8uiRqI8QXtcFpEvll12LpL5MXqEmAZ+dcA==}
-
-  node-addon-api@8.5.0:
-    resolution: {integrity: sha512-/bRZty2mXUIFY/xU5HLvveNHlswNJej+RnxBjOMkidWfwZzgTbPG1E3K5TOxRLOR+5hX7bSofy8yf1hZevMS8A==}
-    engines: {node: ^18 || ^20 || >= 21}
 
   node-addon-api@8.9.2:
     resolution: {integrity: sha512-VijLXbi3UACN69I0JVXJsX4tjACjNoQDgv2gTF6sx2wWEi8tkSg2eX8p5gSIFi8z2+DL3oHmY6OyKce38SDolg==}
@@ -13065,11 +13054,6 @@ snapshots:
     dependencies:
       commander: 15.0.0
 
-  keysender@2.4.0:
-    dependencies:
-      node-addon-api: 8.5.0
-    optional: true
-
   keyv@4.5.4:
     dependencies:
       json-buffer: 3.0.1
@@ -13632,9 +13616,6 @@ snapshots:
   nlcst-to-string@4.0.0:
     dependencies:
       '@types/nlcst': 2.0.3
-
-  node-addon-api@8.5.0:
-    optional: true
 
   node-addon-api@8.9.2: {}
 

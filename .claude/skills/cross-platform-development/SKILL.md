@@ -11,14 +11,13 @@ description: Use when working with native dependencies, handling platform differ
 
 `@iracedeck/iracing-native` wraps the iRacing SDK (Windows-only C++ N-API addon). Without the mock layer, `pnpm install`, `pnpm build`, and `pnpm test` all fail on macOS/Linux because:
 - `node-gyp` can't compile the Windows-specific C++ code
-- `keysender` (native keyboard module) is Windows-only
 - Package `"os"` restrictions blocked installation entirely
 
 ## Architecture
 
 ### Platform detection in `iracing-native/src/index.ts`
 
-```
+```text
 platform() === "win32"?
   ├── Yes → try loading native .node addon
   │         ├── Success → use real addon
@@ -43,8 +42,8 @@ The `.mock` file is gitignored. The mock rotates through telemetry snapshots (in
 
 ### Native dependencies
 
-- `keysender` is in `optionalDependencies` — in `deck-core` (so Dependabot sees it) and in each plugin's emitted `bin/package.json` — so a failed compile there never aborts an install. The workspace never compiles it: it is declined in `allowBuilds` (`pnpm-workspace.yaml`), so `pnpm install` only downloads it (#1177)
-- A type shim at `iracing-plugin-stream-deck/src/shared/keysender.d.ts` provides TypeScript types when keysender isn't installed
+- Keyboard input goes through `@iracedeck/iracing-native` only (scan codes via `SendInput`), so it is mocked with the rest of that addon. The Windows-only `keysender` module that once sent keys by name was removed in #1495, and with it the plugins' only optional, compiled-at-install `bin/` dependency
+- `@resvg/resvg-js` ships prebuilt binaries for every platform and needs no mock
 - `node-gyp` is skipped on non-Windows via `iracing-native/scripts/build.mjs`
 
 ## When adding new native methods

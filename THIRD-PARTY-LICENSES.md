@@ -9,7 +9,6 @@ Not every component is present in every plugin build (Elgato Stream Deck, Mirabo
 | [iRacing SDK](https://forums.iracing.com/discussion/15068/official-iracing-sdk) | BSD-3-Clause | compiled into `iracing_native.node` |
 | [miniaudio](https://miniaud.io) | Public domain / MIT-0 (dual) | compiled into `audio_native.node` |
 | [@resvg/resvg-js](https://github.com/yisibl/resvg-js) | MPL-2.0 | `bin/node_modules/@resvg/resvg-js` |
-| [keysender](https://github.com/Krombik/keysender) | MIT | `bin/node_modules/keysender` (Windows only) |
 | [yaml](https://github.com/eemeli/yaml) | ISC | `bin/node_modules/yaml` |
 | [ws](https://github.com/websockets/ws) | MIT | `bin/node_modules/ws` (Mirabox and Ulanzi builds) |
 | [node-addon-api](https://github.com/nodejs/node-addon-api) | MIT | `bin/node_modules/node-addon-api` |
@@ -80,34 +79,6 @@ SOFTWARE.
 ## @resvg/resvg-js
 
 resvg-js is licensed under the Mozilla Public License 2.0. The full MPL-2.0 text ships in this plugin at `bin/node_modules/@resvg/resvg-js/LICENSE` (also available at https://www.mozilla.org/en-US/MPL/2.0/). Per MPL-2.0 §3.2, the source code of the covered software is available at https://github.com/yisibl/resvg-js; it embeds the resvg SVG rendering library, also MPL-2.0, whose source is available at https://github.com/linebender/resvg.
-
-## keysender
-
-Ships in Windows builds at `bin/node_modules/keysender` (its `LICENSE` file included).
-
-```text
-MIT License
-
-Copyright (c) 2020 Andrey
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
 
 ## yaml
 
