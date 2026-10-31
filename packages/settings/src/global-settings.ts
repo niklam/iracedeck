@@ -422,8 +422,10 @@ export const GlobalSettingsSchema = z
      * estimate before the Race Engineer derives the spoken count (issue
      * #838). The spoken number is deliberately conservative relative to
      * Session Info's Laps to Empty display. Range 0.0–3.0 in 0.1 steps,
-     * default 0.3. Must match `FUEL_CALLOUT_DEFAULT_MARGIN_LAPS` (and the
-     * min/max constants) in `@iracedeck/sim-events-iracing`. The preprocess
+     * default 0.3. The default and range are the translator's
+     * `FUEL_CALLOUT_*` constants in `@iracedeck/sim-events-iracing`; the
+     * race-engineer-wiring `translator-options.test.ts` fails when either
+     * side moves (#1376). The preprocess
      * normalizes empty-ish persisted values (`null`, `""`, whitespace) to
      * the default — `z.coerce.number()` would otherwise turn them into `0`
      * and silently disable the margin — and the `.catch` keeps any other
@@ -437,8 +439,10 @@ export const GlobalSettingsSchema = z
     /**
      * Corner-name announcement lead in seconds (issue #888) — how far ahead
      * of the corner the name is spoken, scaled by current speed in the
-     * translator. Slider 0–5 s, default 1. Must match the
-     * `CORNER_CALLOUT_*_SECONDS` constants in `@iracedeck/sim-events-iracing`.
+     * translator. Slider 0–5 s, default 1: the translator's
+     * `CORNER_CALLOUT_*_SECONDS` constants in `@iracedeck/sim-events-iracing`,
+     * held together by race-engineer-wiring's `translator-options.test.ts`
+     * (#1376).
      * Same preprocess/catch shape as `fuelCalloutMarginLaps` so empty-ish or
      * malformed persisted values fall back instead of aborting the parse.
      */
