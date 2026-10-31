@@ -28,7 +28,7 @@ gh issue list --state all --limit 300 --search "<synonym or component name>" --j
 gh pr list --state open --limit 100 --search "<keywords>" --json number,title,headRefName
 ```
 
-- `gh issue list` sorts the hits by creation date, not by relevance, so a low limit drops the older matches. Read the whole result. If a query returns exactly its limit, it was cut off: narrow it (more specific words, `label:`, `area:`) and run it again until it comes back under the limit.
+- `gh issue list` and `gh pr list` sort the hits by creation date, not by relevance, so a low limit drops the older matches. Read the whole result. If any of these queries returns exactly its limit, it was cut off: narrow it (more specific words, `label:`, `area:`) and run it again until it comes back under the limit.
 - Search two or three phrasings: the user's words, the component or package name, and the symptom. Add `label:discord` for a mirrored request.
 - Grep `docs/superpowers/specs/` by filename and content for the topic.
 - Read the finished-issue state memories for the area (`reference_finished_issue_states`).
@@ -47,7 +47,7 @@ Classify each real match:
 
 - **Title:** a plain statement of the problem or the outcome, with no `feat:`-style prefix.
 - **Body:** `## Problem`, `## Goal`, `## Tasks` (checkboxes, the first one `Spec on master` when a spec is due), and `## Affected artifacts`. Name every artifact the change touches, per `build-and-commit.md` *Issues*: all three plugins, the website and a changelog fragment for user-facing work, action docs, skills, rules and `CLAUDE.md` files, and the Architecture page when packages or seams change. Say "nothing user-facing" when that is true.
-- **Labels:** `bug` or `enhancement` when user-facing, otherwise one `kind:` (`hygiene`, `dev-experience`, `research`), plus exactly one `area:` for where the work lands (`build-and-commit.md` table), plus `discord` when the issue mirrors a Discord request or bug report. `gh issue create` applies no template labels, so name them all.
+- **Labels:** `bug` or `enhancement` when user-facing, otherwise one `kind:` (`hygiene`, `dev-experience`, `research`), plus exactly one `area:` for where the work lands (`build-and-commit.md` table), plus `discord` when the issue mirrors a Discord request or bug report, `documentation` when the work is documentation, and `breaking change` when it breaks a user's setup or a published contract. `gh issue create` applies no template labels, so name them all.
 - **Never** a milestone or an assignee: the hook refuses both, and they are set when implementation starts. A milestone would also make the PO pick the issue up.
 - **Keep out:** private plans (the default-voice rename) and real third-party pack ids. Use neutral made-up ids in examples.
 
