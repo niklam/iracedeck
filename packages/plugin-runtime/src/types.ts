@@ -43,10 +43,12 @@ export interface HostSim {
   /** The sim's raw session type (`"Lone Qualify"`), for diagnostics only; `""` before the translator has a tick. */
   getRawSessionType(): string;
   /**
-   * Call `listener` on every sim tick, connected or not, AFTER the translator
-   * has handled it, so `getSessionKind()` inside reads this tick's state. The
-   * order is the translator's contract, not the order of controller
-   * subscribers. Returns the unsubscribe.
+   * Call `listener` on each sim update and once when the sim disconnects,
+   * AFTER the sim's own handling of it — even when that handling threw — so
+   * `getSessionKind()` inside reads this update's state. Never called on
+   * registration: the first call is the next update. The order is the sim's
+   * contract, not the order of controller subscribers. Returns the
+   * unsubscribe.
    */
   onTick(listener: () => void): () => void;
   /** Call `listener` each time the sim exits. Returns the unsubscribe. */
