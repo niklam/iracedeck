@@ -30,7 +30,7 @@
  * Seeded on first tick (or when IsOnTrack is false) to avoid false
  * transitions on connect / garage returns.
  */
-import type { PitServiceKind } from "@iracedeck/event-bus";
+import type { PitServiceKind, SimEventName } from "@iracedeck/event-bus";
 import { EngineWarnings, PitSvFlags, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 import type { ServiceDebounceState, TranslatorState } from "../state.js";
@@ -123,13 +123,13 @@ function stepDebouncedFlag(
  * being re-announced later (issue #474 relies on both halves of that).
  */
 function diffPitServiceBit(
-  settledEvent: (on: boolean) => PendingEvent | null,
+  settledEvent: (on: boolean) => PendingEvent<(typeof TOGGLES_EVENTS)[number]> | null,
   flagMask: number,
   pitSvFlags: number,
   baselineFlags: number,
   debounce: ServiceDebounceState,
   now: number,
-  emit: EmitFn,
+  emit: EmitFn<(typeof TOGGLES_EVENTS)[number]>,
 ): boolean {
   const step = stepDebouncedFlag((pitSvFlags & flagMask) !== 0, (baselineFlags & flagMask) !== 0, debounce, now);
 
@@ -143,7 +143,7 @@ function diffPitServiceBit(
 }
 
 /** A settled windshield / fast-repair flip is always the driver's toggle. */
-function toggledEvent(service: PitServiceKind): (on: boolean) => PendingEvent {
+function toggledEvent(service: PitServiceKind): (on: boolean) => PendingEvent<(typeof TOGGLES_EVENTS)[number]> {
   return (on) => ({ event: "pitService.toggled", data: { service, on } });
 }
 
@@ -173,7 +173,7 @@ function isAutoFuelActive(telemetry: TelemetryData): boolean {
  * The baseline still advances through the silence, so the bit is never
  * re-announced later as though it had just moved.
  */
-function fuelSettledEvent(on: boolean, silent: boolean): PendingEvent | null {
+function fuelSettledEvent(on: boolean, silent: boolean): PendingEvent<(typeof TOGGLES_EVENTS)[number]> | null {
   return silent ? null : { event: "pitService.toggled", data: { service: "fuel", on } };
 }
 
@@ -185,7 +185,7 @@ function fuelSettledEvent(on: boolean, silent: boolean): PendingEvent | null {
  * live bit is what keeps a press that never settled — one made and taken back
  * inside the window — from being reported as the plan.
  */
-function autoFuelSwitchedEvent(on: boolean, refuel: boolean): PendingEvent {
+function autoFuelSwitchedEvent(on: boolean, refuel: boolean): PendingEvent<(typeof TOGGLES_EVENTS)[number]> {
   return { event: "pitService.autoFuelSwitched", data: { on, refuel } };
 }
 
@@ -210,7 +210,23 @@ function tireSet(flags: number): Set<string> {
   return s;
 }
 
-export function diffToggles(state: TranslatorState, telemetry: TelemetryData, now: number, emit: EmitFn): void {
+/** The events {@link diffToggles} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`. */
+export const TOGGLES_EVENTS = [
+  "carControl.drsToggled",
+  "carControl.limiterToggled",
+  "carControl.p2pToggled",
+  "pitService.autoFuelSwitched",
+  "pitService.toggled",
+  "tireService.changed",
+  "tireService.compoundChanged",
+] as const satisfies readonly SimEventName[];
+
+export function diffToggles(
+  state: TranslatorState,
+  telemetry: TelemetryData,
+  now: number,
+  emit: EmitFn<(typeof TOGGLES_EVENTS)[number]>,
+): void {
   const pitSvFlags = telemetry.PitSvFlags ?? 0;
   const limiter = ((telemetry.EngineWarnings ?? 0) & EngineWarnings.PitSpeedLimiter) !== 0;
   const p2p = telemetry.P2P_Status === true;

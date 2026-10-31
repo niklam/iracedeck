@@ -58,6 +58,7 @@
  * `InProgress` / `Complete` / `CantFixThat` never repeat: they state a fact,
  * not an uncorrected error.
  */
+import type { SimEventName } from "@iracedeck/event-bus";
 import { PitSvStatus, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
 
 import type { TranslatorState } from "../state.js";
@@ -165,7 +166,12 @@ function isAtRest(state: TranslatorState, now: number): boolean {
  * away from. Missing surface qualifies (#574); missing `PitstopActive` reads
  * as down, so no pulse and no release.
  */
-function trackEmptyStopPulse(state: TranslatorState, telemetry: TelemetryData, now: number, emit: EmitFn): void {
+function trackEmptyStopPulse(
+  state: TranslatorState,
+  telemetry: TelemetryData,
+  now: number,
+  emit: EmitFn<(typeof PIT_STATUS_EVENTS)[number]>,
+): void {
   const active = telemetry.PitstopActive ?? false;
 
   if (active === state.lastPitstopActive) return;
@@ -193,7 +199,19 @@ function trackEmptyStopPulse(state: TranslatorState, telemetry: TelemetryData, n
   emit({ event: "pitService.stopEmpty", data: {} });
 }
 
-export function diffPitStatus(state: TranslatorState, telemetry: TelemetryData, now: number, emit: EmitFn): void {
+/** The events {@link diffPitStatus} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`. */
+export const PIT_STATUS_EVENTS = [
+  "pitService.positioningRepeat",
+  "pitService.statusChanged",
+  "pitService.stopEmpty",
+] as const satisfies readonly SimEventName[];
+
+export function diffPitStatus(
+  state: TranslatorState,
+  telemetry: TelemetryData,
+  now: number,
+  emit: EmitFn<(typeof PIT_STATUS_EVENTS)[number]>,
+): void {
   const status = telemetry.PlayerCarPitSvStatus ?? PitSvStatus.None;
   const isOnTrack = telemetry.IsOnTrack ?? false;
 

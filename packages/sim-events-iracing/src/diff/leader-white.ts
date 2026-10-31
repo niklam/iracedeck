@@ -103,10 +103,14 @@
  * exactly when the marker is load-bearing (and correctly re-arms when an
  * overtime extension adds real time back).
  */
+import type { SimEventName } from "@iracedeck/event-bus";
 import { Flags, hasFlag, resolveLapsRemaining, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 import type { TranslatorState } from "../state.js";
 import type { EmitFn } from "./types.js";
+
+/** The events {@link diffLeaderWhite} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`. */
+export const LEADER_WHITE_EVENTS = ["flag.white-leader.raised"] as const satisfies readonly SimEventName[];
 
 export function diffLeaderWhite(
   state: TranslatorState,
@@ -116,7 +120,7 @@ export function diffLeaderWhite(
   preGreen: boolean,
   postRace: boolean,
   frozenPositions: number[],
-  emit: EmitFn,
+  emit: EmitFn<(typeof LEADER_WHITE_EVENTS)[number]>,
 ): void {
   const leaderIdx = frozenPositions.findIndex((p) => p === 1);
   const leaderLap = leaderIdx >= 0 ? (telemetry.CarIdxLapCompleted?.[leaderIdx] ?? -1) : -1;

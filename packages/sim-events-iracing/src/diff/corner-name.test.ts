@@ -3,7 +3,7 @@ import type { CornerMarker } from "@iracedeck/track-data";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createInitialState, type TranslatorState } from "../state.js";
-import { diffCornerName } from "./corner-name.js";
+import { CORNER_NAME_EVENTS, diffCornerName } from "./corner-name.js";
 import type { EmitFn } from "./types.js";
 
 const MARKERS: CornerMarker[] = [
@@ -21,7 +21,7 @@ function telemetry(overrides: Partial<TelemetryData>): TelemetryData {
 
 describe("diffCornerName", () => {
   let state: TranslatorState;
-  let emit: EmitFn;
+  let emit: EmitFn<(typeof CORNER_NAME_EVENTS)[number]>;
 
   beforeEach(() => {
     state = createInitialState();

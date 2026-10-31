@@ -116,7 +116,7 @@
  * when THEY start their own final lap, so a split would swallow the callout
  * entirely (the last-lap scenario is race-only).
  */
-import type { FlagScope } from "@iracedeck/event-bus";
+import type { FlagScope, SimEventName } from "@iracedeck/event-bus";
 import { Flags, hasFlag, isPenaltyFlagActive, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 import type { TranslatorState } from "../state.js";
@@ -293,11 +293,36 @@ function resolveActiveFlags(
   return { flags, yellowScope, anyYellow, fullCourseYellow };
 }
 
+/** The events {@link diffFlags} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`. */
+export const FLAGS_EVENTS = [
+  "flag.black.raised",
+  "flag.blue.raised",
+  "flag.caution-waving.raised",
+  "flag.checkered.raised",
+  "flag.crossed.raised",
+  "flag.debris.raised",
+  "flag.disqualify.raised",
+  "flag.dq-scoring-invalid.raised",
+  "flag.five-to-go.raised",
+  "flag.furled.cleared",
+  "flag.furled.raised",
+  "flag.green-held.raised",
+  "flag.green.raised",
+  "flag.meatball.raised",
+  "flag.red.raised",
+  "flag.ten-to-go.raised",
+  "flag.white-last-lap.raised",
+  "flag.white.raised",
+  "flag.yellow-waving.raised",
+  "flag.yellow.cleared",
+  "flag.yellow.raised",
+] as const satisfies readonly SimEventName[];
+
 export function diffFlags(
   state: TranslatorState,
   telemetry: TelemetryData,
   now: number,
-  emit: EmitFn,
+  emit: EmitFn<(typeof FLAGS_EVENTS)[number]>,
   isRaceSession = false,
   playerIsLeader = false,
   isPracticeSession = false,

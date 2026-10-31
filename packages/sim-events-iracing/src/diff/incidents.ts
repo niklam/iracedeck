@@ -80,7 +80,7 @@
  * same-shape off-track later carried `Pen2x`) and absent entirely on
  * three of five reports.
  */
-import type { IncidentType } from "@iracedeck/event-bus";
+import type { IncidentType, SimEventName } from "@iracedeck/event-bus";
 import { INCIDENT_REP_MASK, IncidentFlags, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
 import { type ILogger, silentLogger } from "@iracedeck/logger";
 
@@ -247,7 +247,12 @@ function clearIncidentBurst(state: TranslatorState): void {
   state.incidentBurstLatestAt = 0;
 }
 
-function flushIncidentBurst(state: TranslatorState, emit: EmitFn, collisionCarValue: number, logger: ILogger): void {
+function flushIncidentBurst(
+  state: TranslatorState,
+  emit: EmitFn<(typeof INCIDENTS_EVENTS)[number]>,
+  collisionCarValue: number,
+  logger: ILogger,
+): void {
   if (state.incidentBurstDelta > 0) {
     // Every counted burst says the count moved (#1122), typed or not — the
     // type-blind consumers (the qualifying lap-invalidation callout, the
@@ -295,11 +300,19 @@ function flushIncidentBurst(state: TranslatorState, emit: EmitFn, collisionCarVa
   clearIncidentBurst(state);
 }
 
+/** The events {@link diffIncidents} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`. */
+export const INCIDENTS_EVENTS = [
+  "incident.occurred",
+  "incident.scored",
+  "offTrack.ended",
+  "offTrack.started",
+] as const satisfies readonly SimEventName[];
+
 export function diffIncidents(
   state: TranslatorState,
   telemetry: TelemetryData,
   now: number,
-  emit: EmitFn,
+  emit: EmitFn<(typeof INCIDENTS_EVENTS)[number]>,
   collisionCarValue: number = COLLISION_CAR_VALUE_PAVEMENT,
   logger: ILogger = silentLogger,
 ): void {

@@ -47,6 +47,7 @@
  * reads the controller's debounced replay state), so the `replayOnlySession`
  * gate it carried from #604 went.
  */
+import type { SimEventName } from "@iracedeck/event-bus";
 import { classPositionFromOrder, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
 
 import type { TranslatorState } from "../state.js";
@@ -131,6 +132,9 @@ function classify(
   return null;
 }
 
+/** The events {@link diffOpponentPit} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`. */
+export const OPPONENT_PIT_EVENTS = ["opponentPit.entered"] as const satisfies readonly SimEventName[];
+
 export function diffOpponentPit(
   state: TranslatorState,
   telemetry: TelemetryData,
@@ -142,7 +146,7 @@ export function diffOpponentPit(
   isMultiClass: boolean,
   frozenPositions: number[],
   now: number,
-  emit: EmitFn,
+  emit: EmitFn<(typeof OPPONENT_PIT_EVENTS)[number]>,
 ): void {
   // Prune the aggregation window every tick; a quiet window ends the episode.
   if (state.opponentPitRecentEntries.length > 0) {

@@ -14,13 +14,20 @@
  * `state.ts` rather than by this module) so we don't replay stale
  * transitions across sessions.
  */
-import { TrackWetness } from "@iracedeck/event-bus";
+import { type SimEventName, TrackWetness } from "@iracedeck/event-bus";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 
 import type { TranslatorState } from "../state.js";
 import type { EmitFn } from "./types.js";
 
-export function diffTrackWetness(state: TranslatorState, telemetry: TelemetryData, emit: EmitFn): void {
+/** The events {@link diffTrackWetness} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`. */
+export const TRACK_WETNESS_EVENTS = ["track.wetness.changed"] as const satisfies readonly SimEventName[];
+
+export function diffTrackWetness(
+  state: TranslatorState,
+  telemetry: TelemetryData,
+  emit: EmitFn<(typeof TRACK_WETNESS_EVENTS)[number]>,
+): void {
   const raw = telemetry.TrackWetness;
   const current: TrackWetness = isValidTrackWetness(raw) ? (raw as TrackWetness) : TrackWetness.Unknown;
 

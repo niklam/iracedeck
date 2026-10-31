@@ -68,6 +68,7 @@
  *   and a rolling start it shows whether `StartGo` / `Green` was already up,
  *   rose on the flip tick, or had not risen yet.
  */
+import type { SimEventName } from "@iracedeck/event-bus";
 import { Flags, hasAnyFlag, SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { type ILogger, silentLogger } from "@iracedeck/logger";
 
@@ -100,6 +101,9 @@ function hex(flags: number): string {
   return `0x${(flags >>> 0).toString(16).padStart(8, "0")}`;
 }
 
+/** The events {@link diffReplayGreens} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`. */
+export const REPLAY_GREENS_EVENTS = ["replay.greenFlag"] as const satisfies readonly SimEventName[];
+
 /**
  * @param inReplay - The translator's read of the controller's debounced replay state (#1324)
  * @param logger - Takes the per-edge debug line; silent when omitted
@@ -109,7 +113,7 @@ export function diffReplayGreens(
   telemetry: TelemetryData,
   sessionInfo: Record<string, unknown> | null,
   inReplay: boolean,
-  emit: EmitFn,
+  emit: EmitFn<(typeof REPLAY_GREENS_EVENTS)[number]>,
   logger: ILogger = silentLogger,
 ): void {
   const live = resolveReplayRecordTick(telemetry, inReplay);

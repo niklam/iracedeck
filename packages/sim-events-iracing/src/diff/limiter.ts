@@ -14,6 +14,7 @@
  * All three are suppressed while in the pit stall (limiter state is noisy
  * during service) and while the car is creeping (<5 m/s, into/out of box).
  */
+import type { SimEventName } from "@iracedeck/event-bus";
 import { EngineWarnings, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 import type { TranslatorState } from "../state.js";
@@ -23,12 +24,19 @@ const CREEPING_SPEED_MPS = 5;
 const SPEEDING_COOLDOWN_MS = 5000;
 const SPEEDING_MARGIN_MPS = 1.0;
 
+/** The events {@link diffLimiter} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`. */
+export const LIMITER_EVENTS = [
+  "limiter.dropped",
+  "limiter.missing",
+  "limiter.speeding",
+] as const satisfies readonly SimEventName[];
+
 export function diffLimiter(
   state: TranslatorState,
   telemetry: TelemetryData,
   pitSpeedLimitMps: number,
   now: number,
-  emit: EmitFn,
+  emit: EmitFn<(typeof LIMITER_EVENTS)[number]>,
 ): void {
   const onPitRoad = telemetry.OnPitRoad ?? false;
   const inPitStall = telemetry.PlayerCarInPitStall ?? false;

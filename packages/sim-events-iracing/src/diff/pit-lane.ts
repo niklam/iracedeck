@@ -14,6 +14,7 @@
  *   - pitStall.entered / departed — inPitStall off→on / on→off transitions.
  *     Departed only fires while still on pit road (distinguishes from teleport out).
  */
+import type { SimEventName } from "@iracedeck/event-bus";
 import { type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
 
 import type { TranslatorState } from "../state.js";
@@ -29,12 +30,21 @@ import type { EmitFn } from "./types.js";
  */
 export const PIT_APPROACH_COOLDOWN_MS = 10_000;
 
+/** The events {@link diffPitLane} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`. */
+export const PIT_LANE_EVENTS = [
+  "pitLane.approaching",
+  "pitLane.entered",
+  "pitLane.exited",
+  "pitStall.departed",
+  "pitStall.entered",
+] as const satisfies readonly SimEventName[];
+
 export function diffPitLane(
   state: TranslatorState,
   telemetry: TelemetryData,
   trackType: TrackType,
   now: number,
-  emit: EmitFn,
+  emit: EmitFn<(typeof PIT_LANE_EVENTS)[number]>,
 ): void {
   const onPitRoad = telemetry.OnPitRoad ?? false;
   const inPitStall = telemetry.PlayerCarInPitStall ?? false;

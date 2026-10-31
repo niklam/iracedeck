@@ -52,6 +52,7 @@
  *   (the pattern of `iracing-sdk`'s `template-context.ts`), and an in-car tick
  *   at 60 Hz with unchanged session info walks nothing.
  */
+import type { SimEventName } from "@iracedeck/event-bus";
 import { getCarNumberRawFromSessionInfo, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 import type { ReplayIncidentCarReading, TranslatorState } from "../state.js";
@@ -158,6 +159,9 @@ function readPlayerCount(telemetry: TelemetryData): number | null {
   return count >= 0 ? count : null;
 }
 
+/** The events {@link diffReplayIncidents} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`. */
+export const REPLAY_INCIDENTS_EVENTS = ["replay.incident"] as const satisfies readonly SimEventName[];
+
 /**
  * @param inReplay - The translator's read of the controller's debounced replay state (#1324)
  */
@@ -166,7 +170,7 @@ export function diffReplayIncidents(
   telemetry: TelemetryData,
   sessionInfo: Record<string, unknown> | null,
   inReplay: boolean,
-  emit: EmitFn,
+  emit: EmitFn<(typeof REPLAY_INCIDENTS_EVENTS)[number]>,
 ): void {
   const live = resolveReplayRecordTick(telemetry, inReplay);
 

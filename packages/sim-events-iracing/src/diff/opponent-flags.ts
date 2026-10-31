@@ -204,7 +204,7 @@
  * if it qualifies later. A flag merely waiting on a worse flag's hold writes
  * nothing, so the wait never spends its episode's line. Nothing logs at info.
  */
-import { OpponentPenaltyFlag } from "@iracedeck/event-bus";
+import { OpponentPenaltyFlag, type SimEventName } from "@iracedeck/event-bus";
 import {
   classPositionFromOrder,
   decodePenaltyFlags,
@@ -554,6 +554,9 @@ function describeCar(
   );
 }
 
+/** The events {@link diffOpponentFlags} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`. */
+export const OPPONENT_FLAGS_EVENTS = ["opponentFlag.flagged"] as const satisfies readonly SimEventName[];
+
 /**
  * Advance the per-car penalty-flag store and run the announce qualifier for
  * the current tick (issues #936, #1274). `sessionInfo` names the car
@@ -572,7 +575,7 @@ export function diffOpponentFlags(
   frozenPositions: number[],
   resolvers: OpponentFlagResolvers,
   now: number,
-  emit: EmitFn,
+  emit: EmitFn<(typeof OPPONENT_FLAGS_EVENTS)[number]>,
   logger: ILogger = silentLogger,
 ): void {
   // Prune the aggregation window every tick; a quiet window ends the episode.

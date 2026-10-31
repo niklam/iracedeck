@@ -22,6 +22,7 @@
  * Session gating lives HERE (the #655 diff-side precedent) so the scenario
  * harness can fire `cornerName.approaching` freely without iRacing.
  */
+import type { SimEventName } from "@iracedeck/event-bus";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import type { CornerMarker } from "@iracedeck/track-data";
 
@@ -70,6 +71,9 @@ function resetPass(state: TranslatorState): void {
   if (state.cornerSpoken.size > 0) state.cornerSpoken.clear();
 }
 
+/** The events {@link diffCornerName} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`. */
+export const CORNER_NAME_EVENTS = ["cornerName.approaching"] as const satisfies readonly SimEventName[];
+
 export function diffCornerName(
   state: TranslatorState,
   telemetry: TelemetryData,
@@ -77,7 +81,7 @@ export function diffCornerName(
   markers: readonly CornerMarker[] | null,
   trackLengthMeters: number | null,
   getLeadSeconds: () => number,
-  emit: EmitFn,
+  emit: EmitFn<(typeof CORNER_NAME_EVENTS)[number]>,
 ): void {
   // Gates: practice-like session, live in the car, markers + track length
   // known, valid lap position. Anything missing → silent AND the pass state

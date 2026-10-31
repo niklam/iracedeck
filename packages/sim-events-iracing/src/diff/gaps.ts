@@ -26,6 +26,7 @@
  * All math primitives are pure and live in `@iracedeck/iracing-sdk`
  * `gap-utils.ts`; this module only sequences them against state.
  */
+import type { SimEventName } from "@iracedeck/event-bus";
 import {
   appendProgressSample,
   classifyGapTrend,
@@ -371,6 +372,9 @@ export function classifyTrendRate(ema: number | null, samples: number): GapTrend
 
 type Side = "ahead" | "behind";
 
+/** The events {@link diffGaps} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`. */
+export const GAPS_EVENTS = ["gap.thresholdCrossed", "gap.trendChanged"] as const satisfies readonly SimEventName[];
+
 /**
  * Per-tick gap tracking. Called from the translator's `handleTick` after the
  * frozen positions are computed (the same canonical array `diffOvertakes`
@@ -385,7 +389,7 @@ export function diffGaps(
   paceCarIdx: number | null,
   frozenPositions: number[] | null,
   getThresholdSeconds: () => number,
-  emit: EmitFn,
+  emit: EmitFn<(typeof GAPS_EVENTS)[number]>,
   /**
    * The leader's remaining line crossings, the chequered one included, by
    * whichever limit ends the race first (`resolveGapLapsRemaining` in the
@@ -1042,7 +1046,7 @@ function maybeEmitCalloutEvents(
   lapsRemaining: number | null,
   getThresholdSeconds: () => number,
   getMinChangeSeconds: () => number,
-  emit: EmitFn,
+  emit: EmitFn<(typeof GAPS_EVENTS)[number]>,
 ): void {
   // Opening-lap grid assumption (issue #933 follow-up): on lap 1 the field
   // is close BY CONSTRUCTION — the grid put everyone ~a car length apart, so
@@ -1176,7 +1180,7 @@ function processRelevance(
   lapsRemaining: number | null,
   extremes: GapExtremes | null,
   getMinChangeSeconds: () => number,
-  emit: EmitFn,
+  emit: EmitFn<(typeof GAPS_EVENTS)[number]>,
 ): void {
   const live = side === "ahead" ? state.gapLiveAhead : state.gapLiveBehind;
   const idx = side === "ahead" ? state.gapAheadIdx : state.gapBehindIdx;
@@ -1323,7 +1327,7 @@ function processThresholdEpisode(
   extremes: GapExtremes | null,
   getThresholdSeconds: () => number,
   getMinChangeSeconds: () => number,
-  emit: EmitFn,
+  emit: EmitFn<(typeof GAPS_EVENTS)[number]>,
 ): void {
   const live = side === "ahead" ? state.gapLiveAhead : state.gapLiveBehind;
   const idx = side === "ahead" ? state.gapAheadIdx : state.gapBehindIdx;

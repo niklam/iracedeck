@@ -38,7 +38,7 @@
  * (this also suppresses a spurious "pit now" when connecting while already in
  * the box).
  */
-import type { PitBoxMark } from "@iracedeck/event-bus";
+import type { PitBoxMark, SimEventName } from "@iracedeck/event-bus";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 
 import type { TranslatorState } from "../state.js";
@@ -94,12 +94,15 @@ export function selectPitBoxMark(remainingMeters: number): PitBoxMark | null {
   return match;
 }
 
+/** The events {@link diffPitBoxCountdown} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`. */
+export const PIT_BOX_COUNTDOWN_EVENTS = ["pitBox.countdown"] as const satisfies readonly SimEventName[];
+
 export function diffPitBoxCountdown(
   state: TranslatorState,
   telemetry: TelemetryData,
   boxTrkPct: number | null,
   trackLengthMeters: number | null,
-  emit: EmitFn,
+  emit: EmitFn<(typeof PIT_BOX_COUNTDOWN_EVENTS)[number]>,
 ): void {
   const onPitRoad = telemetry.OnPitRoad ?? false;
 

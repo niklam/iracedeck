@@ -66,6 +66,7 @@
  * - **The publish logs one debug line** with the tick's frame and
  *   `SessionTime`, which is what the manual session capture reads.
  */
+import type { SimEventName } from "@iracedeck/event-bus";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { type ILogger, silentLogger } from "@iracedeck/logger";
 
@@ -84,6 +85,9 @@ function pairKey(subSessionId: number, sessionNum: number, sessionUniqueId: numb
   return `${subSessionId}:${sessionNum}:${sessionUniqueId}`;
 }
 
+/** The events {@link diffReplaySessions} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`. */
+export const REPLAY_SESSIONS_EVENTS = ["replay.sessionStarted"] as const satisfies readonly SimEventName[];
+
 /**
  * @param sessionInfo - The controller's session info; null on a tick that has
  *   none yet, which records nothing and breaks the run
@@ -99,7 +103,7 @@ export function diffReplaySessions(
   sessionInfo: Record<string, unknown> | null,
   inReplay: boolean,
   replayOnlySession: boolean,
-  emit: EmitFn,
+  emit: EmitFn<(typeof REPLAY_SESSIONS_EVENTS)[number]>,
   logger: ILogger = silentLogger,
 ): void {
   const live = resolveReplayLiveTick(telemetry, inReplay, replayOnlySession);

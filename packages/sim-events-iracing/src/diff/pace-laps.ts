@@ -46,6 +46,7 @@
  * synthesizes the cue (same caveat as the gantry bits). State resets on any
  * non-`ParadeLaps` tick, so the next session's formation re-arms cleanly.
  */
+import type { SimEventName } from "@iracedeck/event-bus";
 import { Flags, hasFlag, SessionState, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
 
 import { resolveStandingStart } from "../start-lights.js";
@@ -103,11 +104,14 @@ export function resolvePaceCarIdx(sessionInfo: Record<string, unknown> | null): 
   return null;
 }
 
+/** The events {@link diffPaceLaps} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`. */
+export const PACE_LAPS_EVENTS = ["flag.one-pace-lap-to-go.raised"] as const satisfies readonly SimEventName[];
+
 export function diffPaceLaps(
   state: TranslatorState,
   telemetry: TelemetryData,
   sessionInfo: Record<string, unknown> | null,
-  emit: EmitFn,
+  emit: EmitFn<(typeof PACE_LAPS_EVENTS)[number]>,
 ): void {
   const sessionState = typeof telemetry.SessionState === "number" ? telemetry.SessionState : SessionState.Invalid;
   const inParade = sessionState === SessionState.ParadeLaps;
