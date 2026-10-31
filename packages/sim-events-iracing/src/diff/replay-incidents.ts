@@ -55,7 +55,7 @@
 import type { SimEventName } from "@iracedeck/event-bus";
 import { getCarNumberRawFromSessionInfo, type TelemetryData } from "@iracedeck/iracing-sdk";
 
-import type { ReplayIncidentCarReading, TranslatorState } from "../state.js";
+import type { ReplayIncidentCarReading, ReplayRecorderState } from "../replay-recorder-state.js";
 import { resolveReplayRecordTick, resolveSubSessionId } from "./replay-record-gate.js";
 import type { EmitFn } from "./types.js";
 
@@ -166,7 +166,7 @@ export const REPLAY_INCIDENTS_EVENTS = ["replay.incident"] as const satisfies re
  * @param inReplay - The translator's read of the controller's debounced replay state (#1324)
  */
 export function diffReplayIncidents(
-  state: TranslatorState,
+  state: ReplayRecorderState,
   telemetry: TelemetryData,
   sessionInfo: Record<string, unknown> | null,
   inReplay: boolean,

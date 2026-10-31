@@ -20,7 +20,7 @@ import { Flags, hasFlag, SessionState, type TelemetryData } from "@iracedeck/ira
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { createInitialState } from "../state.js";
+import { createInitialReplayRecorderState } from "../replay-recorder-state.js";
 import { diffReplayGreens } from "./replay-greens.js";
 
 type CapturedTick = { t: number; SessionFlags: number; SessionState: number; sessionTick?: number };
@@ -41,7 +41,7 @@ const frameAt = (t: number): number => Math.round(t * 60);
 type RecordedGreen = { index: number; kind: "start" | "restart"; frame: number; sessionTimeMs: number };
 
 function replay(ticks: readonly CapturedTick[], sessionInfo: Record<string, unknown> = RACE_ONLY): RecordedGreen[] {
-  const state = createInitialState();
+  const state = createInitialReplayRecorderState();
   const greens: RecordedGreen[] = [];
 
   ticks.forEach((tick, index) => {

@@ -74,7 +74,7 @@
 import type { SimEventName } from "@iracedeck/event-bus";
 import { getCarNumberRawFromSessionInfo, type TelemetryData } from "@iracedeck/iracing-sdk";
 
-import type { ReplayLapTimeWait, TranslatorState } from "../state.js";
+import type { ReplayLapTimeWait, ReplayRecorderState } from "../replay-recorder-state.js";
 import { resolvePaceCarIdx } from "./pace-laps.js";
 import { resolveReplayRecordTick, resolveSubSessionId } from "./replay-record-gate.js";
 import type { EmitFn } from "./types.js";
@@ -100,7 +100,7 @@ function resolveDriverUserId(sessionInfo: Record<string, unknown> | null, carIdx
 }
 
 function seed(
-  state: TranslatorState,
+  state: ReplayRecorderState,
   completed: readonly number[],
   lastLapTime: readonly number[] | undefined,
   sessionNum: number,
@@ -118,7 +118,7 @@ function seed(
 export const REPLAY_LAPS_EVENTS = ["replay.lapStarted", "replay.lapTimed"] as const satisfies readonly SimEventName[];
 
 export function diffReplayLaps(
-  state: TranslatorState,
+  state: ReplayRecorderState,
   telemetry: TelemetryData,
   sessionInfo: Record<string, unknown> | null,
   inReplay: boolean,

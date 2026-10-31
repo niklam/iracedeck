@@ -2,7 +2,7 @@ import { Flags, SessionState, type TelemetryData } from "@iracedeck/iracing-sdk"
 import { type ILogger, silentLogger } from "@iracedeck/logger";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createInitialState, type TranslatorState } from "../state.js";
+import { createInitialReplayRecorderState, type ReplayRecorderState } from "../replay-recorder-state.js";
 import { diffReplayGreens } from "./replay-greens.js";
 import type { PendingEvent } from "./types.js";
 
@@ -48,7 +48,7 @@ function tick(o: TickOverrides = {}): TelemetryData {
 }
 
 function run(
-  state: TranslatorState,
+  state: ReplayRecorderState,
   telemetry: TelemetryData,
   opts: { sessionInfo?: Record<string, unknown> | null; inReplay?: boolean; logger?: ILogger } = {},
 ): PendingEvent[] {
@@ -76,10 +76,10 @@ function green(kind: "start" | "restart", frame: number, sessionTimeMs: number):
 }
 
 describe("diffReplayGreens", () => {
-  let state: TranslatorState;
+  let state: ReplayRecorderState;
 
   beforeEach(() => {
-    state = createInitialState();
+    state = createInitialReplayRecorderState();
   });
 
   it("seeds silently on the first eligible tick, even one already in Racing", () => {

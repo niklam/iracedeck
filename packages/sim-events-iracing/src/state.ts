@@ -17,6 +17,13 @@ import {
 import { type GapTrendDirection, type ProgressTrace, TrkLoc } from "@iracedeck/iracing-sdk";
 import type { CornerMarker } from "@iracedeck/track-data";
 
+import {
+  createInitialReplayRecorderState,
+  type ReplayIncidentCarReading,
+  type ReplayLapTimeWait,
+  type ReplaySessionStartCandidate,
+} from "./replay-recorder-state.js";
+
 /**
  * How far the current full-course caution has got (issue #1127): thrown and
  * waving, static with the field caught behind the pace car, or running its last
@@ -80,46 +87,6 @@ export type RollingStartFormation = {
    * of a formation are from the first `GetInCar` record; `null` until it is.
    */
   firstFollowCarIdx: number | null;
-};
-
-/**
- * One car's open lap-time wait in the replay lap record (issue #1203): the
- * crossing that started `lap + 1` opened it, and it closes on the first tick
- * `CarIdxLastLapTime` moves off `baselineS` — or untimed when `ticksLeft` runs out.
- */
-export type ReplayLapTimeWait = {
-  /** The completed lap the time will belong to. */
-  lap: number;
-  /** `CarIdxLastLapTime` (seconds) the tick before the crossing; the refresh is a change from it. */
-  baselineS: number;
-  /** Ticks left before the wait closes with no time. */
-  ticksLeft: number;
-};
-
-/**
- * One other car's roster row as the replay incident record reads it (issue
- * #1426): its `CurDriverIncidentCount` (−1 when hidden or unreadable) and the
- * identity that count belongs to. `null` for an identity field the row lacks.
- */
-export type ReplayIncidentCarReading = {
-  count: number;
-  userId: number | null;
-  carNumberRaw: number | null;
-};
-
-/**
- * One reading of a session's start in the replay session record (issue
- * #1426): the frame the pair began at, by one live tick with session info. A
- * second such tick that agrees with it, for the same event and pair,
- * publishes.
- */
-export type ReplaySessionStartCandidate = {
-  /** `WeekendInfo.SubSessionID` on that tick; 0 for an offline session. */
-  subSessionId: number;
-  sessionNum: number;
-  sessionUniqueId: number;
-  /** `max(0, live frame − round(SessionTime × 60))` on that tick. */
-  start: number;
 };
 
 /** Live gap snapshot for one class-standings neighbor (issue #933). */
@@ -2034,28 +2001,8 @@ export function createInitialState(): TranslatorState {
     opponentPitRecentEntries: [],
     opponentPitAggregateAnnounced: false,
 
-    replayLapsSeeded: false,
-    replayLapsSessionNum: null,
-    replayLapsSessionUniqueId: null,
-    replayLapsLastCompleted: [],
-    replayLapsLastLapTime: [],
-    replayLapsTimeWait: [],
-
-    replayGreensSeeded: false,
-    replayGreensSessionNum: null,
-    replayGreensSessionUniqueId: null,
-    replayGreensLastSessionState: 0,
-    replayGreensLastFlags: 0,
-
-    replaySessionsCandidate: null,
-    replaySessionsPublished: [],
-    replaySessionsLatestStart: {},
-
-    replayIncidentsSeeded: false,
-    replayIncidentsSessionNum: null,
-    replayIncidentsSessionUniqueId: null,
-    replayIncidentsLastPlayerCount: null,
-    replayIncidentsLastCarReadings: [],
+    // The replay recorders' members (issue #1468), stated once in their own module.
+    ...createInitialReplayRecorderState(),
 
     opponentFlagsInitialized: false,
     opponentFlagSeededAt: 0,

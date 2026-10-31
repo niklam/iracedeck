@@ -1,7 +1,7 @@
 import { SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { createInitialState, type TranslatorState } from "../state.js";
+import { createInitialReplayRecorderState, type ReplayRecorderState } from "../replay-recorder-state.js";
 import { diffReplayGreens } from "./replay-greens.js";
 import { diffReplayLaps } from "./replay-laps.js";
 import {
@@ -213,7 +213,7 @@ describe("readSubSessionId", () => {
 // The point of one gate: the recorders that call it can never disagree about
 // which ticks are live. Each ineligible tick below must unseed BOTH.
 describe("the gate, as the two recorders apply it", () => {
-  let state: TranslatorState;
+  let state: ReplayRecorderState;
 
   function run(telemetry: TelemetryData, inReplay: boolean): void {
     diffReplayLaps(state, telemetry, null, inReplay, () => {});
@@ -221,7 +221,7 @@ describe("the gate, as the two recorders apply it", () => {
   }
 
   beforeEach(() => {
-    state = createInitialState();
+    state = createInitialReplayRecorderState();
     run(tick(), false);
   });
 

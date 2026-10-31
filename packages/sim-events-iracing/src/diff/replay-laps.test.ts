@@ -1,7 +1,7 @@
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { createInitialState, type TranslatorState } from "../state.js";
+import { createInitialReplayRecorderState, type ReplayRecorderState } from "../replay-recorder-state.js";
 import { diffReplayLaps, REPLAY_LAP_TIME_WAIT_TICKS } from "./replay-laps.js";
 import type { PendingEvent } from "./types.js";
 
@@ -40,7 +40,7 @@ function tick(o: TickOverrides = {}): TelemetryData {
 }
 
 function run(
-  state: TranslatorState,
+  state: ReplayRecorderState,
   telemetry: TelemetryData,
   opts: { sessionInfo?: Record<string, unknown> | null; inReplay?: boolean } = {},
 ): PendingEvent[] {
@@ -63,10 +63,10 @@ function run(
 const IDENTITY = { subSessionId: 86697546, sessionNum: 2, sessionUniqueId: 4 };
 
 describe("diffReplayLaps", () => {
-  let state: TranslatorState;
+  let state: ReplayRecorderState;
 
   beforeEach(() => {
-    state = createInitialState();
+    state = createInitialReplayRecorderState();
   });
 
   it("seeds silently on the first eligible tick", () => {

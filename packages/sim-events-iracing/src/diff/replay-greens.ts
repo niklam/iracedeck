@@ -72,8 +72,8 @@ import type { SimEventName } from "@iracedeck/event-bus";
 import { Flags, hasAnyFlag, SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { type ILogger, silentLogger } from "@iracedeck/logger";
 
+import type { ReplayRecorderState } from "../replay-recorder-state.js";
 import { resolveSessionType } from "../session-type.js";
-import type { TranslatorState } from "../state.js";
 import { isRestartGreenEdge } from "./caution.js";
 import { resolveReplayRecordTick, resolveSubSessionId } from "./replay-record-gate.js";
 import type { EmitFn } from "./types.js";
@@ -109,7 +109,7 @@ export const REPLAY_GREENS_EVENTS = ["replay.greenFlag"] as const satisfies read
  * @param logger - Takes the per-edge debug line; silent when omitted
  */
 export function diffReplayGreens(
-  state: TranslatorState,
+  state: ReplayRecorderState,
   telemetry: TelemetryData,
   sessionInfo: Record<string, unknown> | null,
   inReplay: boolean,

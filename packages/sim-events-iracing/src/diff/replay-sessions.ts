@@ -70,7 +70,7 @@ import type { SimEventName } from "@iracedeck/event-bus";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { type ILogger, silentLogger } from "@iracedeck/logger";
 
-import type { TranslatorState } from "../state.js";
+import type { ReplayRecorderState } from "../replay-recorder-state.js";
 import { resolveReplayLiveTick, resolveSubSessionId } from "./replay-record-gate.js";
 import type { EmitFn } from "./types.js";
 
@@ -98,7 +98,7 @@ export const REPLAY_SESSIONS_EVENTS = ["replay.sessionStarted"] as const satisfi
  * @param logger - Takes the per-publish debug line; silent when omitted
  */
 export function diffReplaySessions(
-  state: TranslatorState,
+  state: ReplayRecorderState,
   telemetry: TelemetryData,
   sessionInfo: Record<string, unknown> | null,
   inReplay: boolean,

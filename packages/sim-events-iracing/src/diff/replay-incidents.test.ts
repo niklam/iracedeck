@@ -1,7 +1,7 @@
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { createInitialState, type TranslatorState } from "../state.js";
+import { createInitialReplayRecorderState, type ReplayRecorderState } from "../replay-recorder-state.js";
 import { diffReplayIncidents } from "./replay-incidents.js";
 import type { PendingEvent } from "./types.js";
 
@@ -78,10 +78,10 @@ function incident(
 }
 
 describe("diffReplayIncidents", () => {
-  let state: TranslatorState;
+  let state: ReplayRecorderState;
 
   beforeEach(() => {
-    state = createInitialState();
+    state = createInitialReplayRecorderState();
   });
 
   function run(telemetry: TelemetryData, info: Row | null = sessionInfo([0, 0, 0]), inReplay = false): PendingEvent[] {
