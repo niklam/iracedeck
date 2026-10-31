@@ -55,6 +55,8 @@ export interface VoicePackScan {
   /** The scanner port, shared with the installer (#1100). */
   readonly fs: VoicePackFileSystem;
   readonly service: VoicePackService;
+  /** The voices the plugin itself bundles, bare ids from the compiled-in manifest; read by the seed. */
+  readonly bundledVoices: readonly string[];
   readonly push: VoicePacks["push"];
   reassertVoiceScriptWarning(): void;
 }
@@ -86,6 +88,10 @@ export function buildVoicePackScan(core: Pick<Core, "adapter">, audio: Pick<Audi
     activeScripts: new Map(),
     lastPublished: { voiceList: "", voiceLabels: "", driverNames: "", packList: "", status: "" },
   };
+
+  // The voices the plugin itself bundles — fixed for the process, since they come
+  // from the compiled-in manifest. Read by the seed and nothing else.
+  const bundledVoices = scanRaceEngineerVoices(audioAssetsManifest);
 
   // The missing-callout-script banner (#1064). State-driven, so it is re-asserted
   // wherever either input can change: after every voice-pack scan
@@ -275,6 +281,7 @@ export function buildVoicePackScan(core: Pick<Core, "adapter">, audio: Pick<Audi
     devVoicePacksRoot,
     fs: voicePackFs,
     service,
+    bundledVoices,
     push: {
       raceEngineerVoices: pushRaceEngineerVoicesIfChanged,
       driverNames: pushDriverNamesIfChanged,

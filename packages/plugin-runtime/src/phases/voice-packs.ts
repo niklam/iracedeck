@@ -12,12 +12,6 @@
  * 4. `buildVoicePackLaunch` — the launch step `startServices` starts.
  * 5. `buildVoicePackWindowCommands` — the settings window's voice-pack commands.
  */
-// The bundled slice, not the authored manifest: this describes only what THIS
-// plugin ships. `manifest.json` names every authored voice and is for tests,
-// generators, and the harness (#1034 stage 3).
-import audioAssetsManifest from "@iracedeck/audio-assets/manifest.bundled.json" with { type: "json" };
-import { scanRaceEngineerVoices } from "@iracedeck/audio-scenarios";
-
 import type { Audio, Core, VoicePacks } from "../types.js";
 import { buildVoicePackInstaller } from "./voice-packs/installer.js";
 import { buildVoicePackLaunch } from "./voice-packs/launch.js";
@@ -36,9 +30,7 @@ export function initVoicePacks(core: Core, audio: Audio): VoicePacks {
 
   const bundled = seedableBundledPacks({
     entries: COMPILED_IN_VOICE_PACK_ENTRIES,
-    // The voices the plugin itself bundles — fixed for the process, since they
-    // come from the compiled-in manifest. Read by the seed and nothing else.
-    bundledVoices: scanRaceEngineerVoices(audioAssetsManifest),
+    bundledVoices: scan.bundledVoices,
     audioDir: audio.rootDir,
     logger: scan.logger,
   });

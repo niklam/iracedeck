@@ -37,7 +37,8 @@ import type { Core } from "../../types.js";
 export type OpenSettingsWindow = (options?: SettingsWindowOpenOptions) => Promise<unknown>;
 
 export interface StartupNoticesDeps {
-  readonly core: Core;
+  /** The changelog check reads the connected deck type and opens its URL through the adapter. */
+  readonly core: Pick<Core, "host" | "adapter">;
   /** The `VersionCheck` logger both checks write to. */
   readonly logger: ILogger;
 }
