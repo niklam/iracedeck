@@ -146,7 +146,7 @@ export function startReplayRecorder(
     lastTickInReplay: false,
   };
 
-  controller.subscribe(REPLAY_RECORDER_SUBSCRIPTION_ID, (telemetry, isConnected) => {
+  const callback = (telemetry: TelemetryData | null, isConnected: boolean): void => {
     if (!isConnected) {
       // A fresh record and a fresh identity baseline, so a reconnect seeds
       // cleanly. `lastTickInReplay` is NOT reset, as the translator does not
@@ -162,7 +162,19 @@ export function startReplayRecorder(
     if (!telemetry) return;
 
     handleTick(self, bus, controller, logger, telemetry);
-  });
+  };
+
+  // The controller stores the callback, then delivers the current tick to it
+  // at once. If that first tick throws, no handle is ever returned, so nothing
+  // could unsubscribe the callback left registered: take it back out before
+  // the throw goes on.
+  try {
+    controller.subscribe(REPLAY_RECORDER_SUBSCRIPTION_ID, callback);
+  } catch (error) {
+    controller.unsubscribe(REPLAY_RECORDER_SUBSCRIPTION_ID);
+
+    throw error;
+  }
 
   let stopped = false;
 

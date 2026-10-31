@@ -168,6 +168,21 @@ describe("startReplayRecorder", () => {
       fake.deliver(tick(0));
       expect(take()).toEqual([]);
     });
+
+    it("takes its callback back out when the subscribe-time tick throws, so none is left that nothing can stop", () => {
+      const failing = createController();
+      failing.controller.subscribe.mockImplementationOnce((_id: string, cb: TelemetryCallback) => {
+        cb(tick(0), true);
+      });
+      onLaps.current = () => {
+        throw new Error("bad session info");
+      };
+
+      expect(() => startReplayRecorder(bus, failing.controller as unknown as ReplayRecorderController, logger)).toThrow(
+        "bad session info",
+      );
+      expect(failing.controller.unsubscribe).toHaveBeenCalledWith(REPLAY_RECORDER_SUBSCRIPTION_ID);
+    });
   });
 
   describe("an ordinary tick", () => {
