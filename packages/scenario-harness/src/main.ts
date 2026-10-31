@@ -230,9 +230,7 @@ async function main(): Promise<void> {
     }
   };
   applyAudioSettings(adapter.readSettings());
-  const unsubscribeSettings = onGlobalSettingsChange((settings) =>
-    applyAudioSettings(settings as Record<string, unknown>),
-  );
+  const unsubscribeSettings = onGlobalSettingsChange(applyAudioSettings);
 
   // ── Mock controller starts ticking ───────────────────────────────────────
   controller.start();

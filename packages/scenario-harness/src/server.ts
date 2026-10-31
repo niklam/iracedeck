@@ -230,7 +230,7 @@ export async function createServer(ctx: HarnessContext): Promise<FastifyInstance
   app.get("/api/state", () => {
     return {
       controller: ctx.controller.getState(),
-      settings: getGlobalSettings() as Record<string, unknown>,
+      settings: getGlobalSettings(),
       audio: {
         devices: ctx.audio.getAudioDevices(),
         busVolumes: audioBusVolumeMap(ctx.audio),
@@ -366,7 +366,7 @@ export async function createServer(ctx: HarnessContext): Promise<FastifyInstance
     // straight into the mock adapter would never reach the running scenarios.
     updateGlobalSettings(body.patch as Record<string, unknown>);
 
-    return getGlobalSettings() as Record<string, unknown>;
+    return getGlobalSettings();
   });
 
   app.post("/api/audio/device", async (req, reply) => {
