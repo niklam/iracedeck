@@ -56,8 +56,15 @@ describe("createInitialReplayRecorderState", () => {
     expect(a.replayLapsLastCompleted).not.toBe(b.replayLapsLastCompleted);
   });
 
-  it("is the initial value the translator's state carries for the same members", () => {
-    expect(createInitialState()).toMatchObject(createInitialReplayRecorderState());
+  // The recorders' state is the replay recorder's alone (issue #1468): a member
+  // left in `TranslatorState` too would be reset by the translator's wipes and
+  // read by nobody, or read by a diff that should not see it.
+  it("shares no member with the translator's state", () => {
+    const recorderKeys = Object.keys(createInitialReplayRecorderState());
+    const translatorKeys = new Set(Object.keys(createInitialState()));
+
+    expect(recorderKeys).toHaveLength(19);
+    expect(recorderKeys.filter((key) => translatorKeys.has(key))).toEqual([]);
   });
 });
 

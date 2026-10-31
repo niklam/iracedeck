@@ -30,7 +30,22 @@
  * trip to live (a blip tick neither seeds nor records), and it is true
  * throughout a saved replay (`SimMode === "replay"`), whatever the flag reads.
  *
- * **The reset points** — the translator's, reproduced exactly:
+ * **Its own reads, a moment after the translator's.** The recorder reads
+ * `getReplayState()` and `getSessionInfo()` itself, in its own callback, which
+ * the controller calls right after the translator's on the same tick
+ * (`initializeSimEventsIracing` subscribes the translator first, and the
+ * controller notifies in subscription order). The session info is the same
+ * object both read. The replay state is debounced on wall time, so on the one
+ * tick where the exit grace runs out between the two reads, the translator can
+ * still read "in a replay" while the recorder reads "live", or the other way
+ * round across a step; each stays consistent with its own edges, since each
+ * keeps its own "last tick in a replay" flag, and the next tick agrees again.
+ * The controller does not isolate its subscribers, so a tick on which the
+ * translator throws never reaches the recorder.
+ *
+ * **The reset points**, each the one the recorders had inside the translator
+ * before #1468 (`replay-recorder.equivalence.test.ts` pins the stream they
+ * produce):
  *
  * - **Start** — {@link createInitialReplayRecorderState}.
  * - **Disconnect** — everything, the session record too, and the session
@@ -40,11 +55,17 @@
  *   garage resets again on the first live tick.
  * - **A session change** (`session-identity.ts`: a new `(SubSessionID,
  *   SessionNum)` outside a saved replay, #1509) — the baselines, BEFORE the
- *   recorders run on that tick; the session record is kept, since a session
- *   change is exactly when its next pair arrives and the pairs already
- *   published must stay published.
+ *   recorders run on that tick, so the new session's first tick seeds rather
+ *   than compares against the old one's; the session record is kept, since a
+ *   session change is exactly when its next pair arrives and the pairs already
+ *   published must stay published. Its run is keyed by the pair, so the old
+ *   one cannot agree with the new session's first reading. The rule is the
+ *   translator's own (`session.changed`), read from a baseline of the
+ *   recorder's, so the two change on the same ticks.
  * - **Entering a replay view** — the baselines, AFTER the recorders ran on
- *   that tick.
+ *   that tick. A previous tick's readings say nothing about the tick after a
+ *   replay, and an edge read across the two — a crossing, a green, an
+ *   incident — would put a frame in the file for a moment nobody watched.
  * - **Leaving a replay view** — the baselines, AFTER the recorders ran on the
  *   first live tick, so that tick's seed is thrown away and the next tick
  *   seeds again: whatever changed between the first and the second live tick
@@ -83,17 +104,30 @@ export type ReplayRecorderController = Pick<
   "subscribe" | "unsubscribe" | "getSessionInfo" | "getReplayState"
 >;
 
+/** Everything the recorder carries from one tick to the next. */
+export type ReplayRecorderSnapshot = {
+  readonly state: ReplayRecorderState;
+  readonly sessionIdentity: SessionIdentityBaseline;
+  /** The debounced replay state on the previous tick: the replay view's edges are read against it. */
+  readonly lastTickInReplay: boolean;
+};
+
 /** A running recorder. */
 export type ReplayRecorder = {
+  /**
+   * What the recorder carries right now, for the diagnostics snapshot
+   * (`readSimState()`'s raw half). Live objects, not copies: the next tick
+   * replaces or mutates them. Cannot throw.
+   */
+  read(): ReplayRecorderSnapshot;
   /** Unsubscribes from the controller; the recorder sees no tick after it. Idempotent. */
   stop(): void;
 };
 
-/** Everything the recorder carries from one tick to the next. */
+/** {@link ReplayRecorderSnapshot}, writable: what the subscriber's callback steps. */
 type RecorderInstance = {
   state: ReplayRecorderState;
   sessionIdentity: SessionIdentityBaseline;
-  /** The debounced replay state on the previous tick: the replay view's edges are read against it. */
   lastTickInReplay: boolean;
 };
 
@@ -117,10 +151,10 @@ export function startReplayRecorder(
   controller.subscribe(REPLAY_RECORDER_SUBSCRIPTION_ID, (telemetry, isConnected) => {
     if (!isConnected) {
       // A fresh record and a fresh identity baseline, so a reconnect seeds
-      // cleanly. `lastTickInReplay` is NOT reset: the translator never reset
-      // its own here, and the equivalence golden pins the result (tape "B: a
-      // reconnect after a disconnect in the garage" — the first live tick after
-      // such a reconnect is a replay exit, and resets again).
+      // cleanly. `lastTickInReplay` is NOT reset, as the translator does not
+      // reset its own here, and the equivalence golden pins the result (tape
+      // "B: a reconnect after a disconnect in the garage" — the first live
+      // tick after such a reconnect is a replay exit, and resets again).
       self.state = createInitialReplayRecorderState();
       self.sessionIdentity = createSessionIdentityBaseline();
 
@@ -135,6 +169,11 @@ export function startReplayRecorder(
   let stopped = false;
 
   return {
+    read: (): ReplayRecorderSnapshot => ({
+      state: self.state,
+      sessionIdentity: self.sessionIdentity,
+      lastTickInReplay: self.lastTickInReplay,
+    }),
     stop(): void {
       if (stopped) return;
 
@@ -201,7 +240,8 @@ function handleTick(
   // The replay view's edges, AFTER the recorders. The entry reset changes
   // nothing today — the in-car gate has just unseeded the lap, green and
   // incident baselines on this replay tick, and the session record is kept —
-  // but it is where the translator reset, so it stays.
+  // but it is where the recorders were reset inside the translator, so it
+  // stays.
   if (inReplay && !self.lastTickInReplay) {
     self.state = resetReplayRecorderBaselines(self.state);
     self.lastTickInReplay = true;
@@ -211,7 +251,7 @@ function handleTick(
   }
 }
 
-/** Publish one recorder event in the translator's live envelope. */
+/** Publish one recorder event in the translator's live envelope. The recorder's only publish site. */
 function publish(bus: IEventBus, pending: PendingEvent, telemetry: TelemetryData): void {
   const envelope = {
     event: pending.event,

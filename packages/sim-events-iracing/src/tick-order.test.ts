@@ -1,15 +1,18 @@
 /**
- * `TICK_ORDER` is the code (issue #1499).
+ * `TICK_ORDER`, `REPLAY_RECORDER_ORDER` and `CONTROLLER_TICK_ORDER` are the
+ * code (issues #1499, #1468).
  *
- * The table is only worth what it agrees with, so these tests prove it from
- * the running translator rather than from its source: every diff module is
- * mocked with its real implementation wrapped in a spy, and the bus is a
- * recorder, so one log holds the diff calls and the publishes of a tick in
- * the order they happened. A "probe" mode then makes each spied stage emit
- * one marked event through the emitter it was handed, which shows whether
- * that stage publishes directly or through the end-of-tick flush, and where.
- * The publish sites in `translator.ts` itself are driven with real ticks. The
- * only source scan is the completeness check on those sites' literals.
+ * The tables are only worth what they agree with, so these tests prove them
+ * from the running subscribers rather than from their source: every diff
+ * module is mocked with its real implementation wrapped in a spy, the bus is a
+ * recorder, and the fake controller marks where each subscriber's turn begins,
+ * so one log holds a controller tick's diff calls, its publishes and its
+ * subscriber boundaries in the order they happened. A "probe" mode then makes
+ * each spied stage emit one marked event through the emitter it was handed,
+ * which shows whether that stage publishes directly or through the end-of-tick
+ * flush, and where. The publish sites in `translator.ts` itself are driven
+ * with real ticks. The only source scans are the completeness checks on the
+ * publish sites of `translator.ts` and `replay-recorder.ts`.
  */
 import type { IEventBus, SimEventName } from "@iracedeck/event-bus";
 import {
@@ -27,10 +30,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LIMITER_EVENTS } from "./diff/limiter.js";
 import type { EmitFn } from "./diff/types.js";
-import { findEndsOnOrderViolations, TICK_ORDER, type TickStage } from "./tick-order.js";
+import { REPLAY_RECORDER_SUBSCRIPTION_ID } from "./replay-recorder.js";
+import {
+  CONTROLLER_TICK_ORDER,
+  findEndsOnOrderViolations,
+  REPLAY_RECORDER_ORDER,
+  TICK_ORDER,
+  type TickStage,
+} from "./tick-order.js";
 import { _resetSimEventsIracing, initializeSimEventsIracing } from "./translator.js";
 
-type LogEntry = { kind: "call"; stage: string } | { kind: "publish"; event: string; probeOf?: string };
+type LogEntry =
+  | { kind: "call"; stage: string }
+  | { kind: "publish"; event: string; probeOf?: string }
+  | { kind: "subscriber"; id: string };
 
 // Vite's `import.meta.glob`, typed for the one form the completeness test
 // uses, as `app-constants`' admission test does: this package's tests carry
@@ -43,7 +56,11 @@ declare global {
 
 const harness = vi.hoisted(() => {
   const PROBE_KEY = "__tickOrderProbe";
-  const log: Array<{ kind: "call"; stage: string } | { kind: "publish"; event: string; probeOf?: string }> = [];
+  const log: Array<
+    | { kind: "call"; stage: string }
+    | { kind: "publish"; event: string; probeOf?: string }
+    | { kind: "subscriber"; id: string }
+  > = [];
   // `events` maps a stage to the event its probe emits; filled from TICK_ORDER
   // once the imports have run.
   const probe = { active: false, events: new Map<string, string>() };
@@ -91,8 +108,9 @@ const harness = vi.hoisted(() => {
 });
 
 // One mock per diff module that publishes, its real code wrapped. The number
-// is the emitter's argument index in the translator's call; a wrong one throws
-// in probe mode rather than passing. A module missing here leaves its stage
+// is the emitter's argument index in its subscriber's call (the translator's,
+// or the replay recorder's for the four `diffReplay*`); a wrong one throws in
+// probe mode rather than passing. A module missing here leaves its stage
 // unrecorded, which the order test reports by name.
 vi.mock("./diff/start-lights.js", async (io) => harness.spy(await io(), { diffStartCountdown: 3, diffStartLights: 3 }));
 vi.mock("./diff/replay-laps.js", async (io) => harness.spy(await io(), { diffReplayLaps: 4 }));
@@ -148,9 +166,9 @@ function callOrderMismatch(recordedCalls: readonly string[], order: readonly Tic
   const at = actual.findIndex((c, i) => c !== expected[i]);
 
   return [
-    `recorded diff calls differ from TICK_ORDER`,
+    `recorded diff calls differ from the table`,
     missing.length > 0 ? `never recorded (no vi.mock spy, or no longer called): ${missing.join(", ")}` : "",
-    at >= 0 ? `first difference at position ${at}: recorded ${actual[at]}, TICK_ORDER has ${expected[at]}` : "",
+    at >= 0 ? `first difference at position ${at}: recorded ${actual[at]}, the table has ${expected[at]}` : "",
     `recorded: ${actual.join(" → ")}`,
     `expected: ${expected.join(" → ")}`,
   ]
@@ -251,6 +269,28 @@ function classifyPublishSites(source: string): {
 }
 
 /**
+ * The publish sites in `replay-recorder.ts`, by what REPLAY_RECORDER_ORDER
+ * needs to know of them: its `publish(bus, …)` calls (the one `emit`
+ * forwarder every recorder is handed), its `bus.publish` calls (of which
+ * `publish()` itself is the one), the `emit` arguments it hands out, and how
+ * often each named stage is called. Anything else that publishes — a literal
+ * event, a second forwarder, a helper handed `emit` — shows as a surplus.
+ */
+function classifyRecorderPublishSites(
+  source: string,
+  stages: readonly string[],
+): { publishCalls: number; busPublishes: number; emitArgs: number; stageCalls: Record<string, number> } {
+  return {
+    publishCalls: [...source.matchAll(/\bpublish\(\s*bus\s*,/g)].length,
+    busPublishes: [...source.matchAll(/\bbus\.publish\(/g)].length,
+    emitArgs: [...source.matchAll(/\bemit\s*[,)]/g)].length,
+    stageCalls: Object.fromEntries(
+      stages.map((stage) => [stage, [...source.matchAll(new RegExp(`\\b${stage}\\(`, "g"))].length]),
+    ),
+  };
+}
+
+/**
  * Check one tick's log against `order`: diff calls advance through the table
  * in order; a publish made during the tick must belong to a `direct` stage at
  * or after the last call; once the flush begins (the first publish no direct
@@ -273,6 +313,11 @@ function checkTickLog(
   const where = (): string => (cursor < 0 ? "the start of the tick" : `\`${order[cursor]!.stage}\``);
 
   for (const entry of log) {
+    if (entry.kind === "subscriber") {
+      problems.push(`subscriber \`${entry.id}\`'s turn began inside one subscriber's log`);
+      continue;
+    }
+
     if (entry.kind === "call") {
       if (flushing) {
         problems.push(`\`${entry.stage}\` was called after the pending flush began`);
@@ -282,7 +327,7 @@ function checkTickLog(
       const i = order.findIndex((s, k) => k > cursor && s.stage === entry.stage);
 
       if (i < 0) {
-        problems.push(`\`${entry.stage}\` was called after ${where()}, but TICK_ORDER lists it before that`);
+        problems.push(`\`${entry.stage}\` was called after ${where()}, but the table lists it before that`);
         continue;
       }
 
@@ -308,7 +353,7 @@ function checkTickLog(
     const j = order.findIndex((s, k) => k >= flushCursor && s.via === "pending" && called.has(k) && belongs(s));
 
     if (j < 0) {
-      problems.push(`${label} was published after ${where()}, where TICK_ORDER has no stage that publishes it`);
+      problems.push(`${label} was published after ${where()}, where the table has no stage that publishes it`);
       continue;
     }
 
@@ -320,25 +365,90 @@ function checkTickLog(
   return { problems, matched };
 }
 
-// --- The translator under test ------------------------------------------
+/** Each subscriber `initializeSimEventsIracing` subscribes, in its order, with the table of its turn. */
+const SUBSCRIBERS: ReadonlyArray<{ id: string; order: readonly TickStage[] }> = [
+  { id: "__sim-events-iracing__", order: TICK_ORDER },
+  { id: REPLAY_RECORDER_SUBSCRIPTION_ID, order: REPLAY_RECORDER_ORDER },
+];
+
+/** One controller tick's log, cut at the subscriber marks: each turn's id and its entries. */
+function subscriberTurns(log: readonly LogEntry[]): {
+  before: LogEntry[];
+  turns: Array<{ id: string; log: LogEntry[] }>;
+} {
+  const before: LogEntry[] = [];
+  const turns: Array<{ id: string; log: LogEntry[] }> = [];
+
+  for (const entry of log) {
+    if (entry.kind === "subscriber") turns.push({ id: entry.id, log: [] });
+    else (turns.at(-1)?.log ?? before).push(entry);
+  }
+
+  return { before, turns };
+}
+
+/**
+ * Check one controller tick's log: the subscribers took their turns in
+ * {@link SUBSCRIBERS}' order, nothing happened outside a turn, and each turn
+ * is a run of its own table ({@link checkTickLog}). Together that is a run of
+ * CONTROLLER_TICK_ORDER, the two tables end to end.
+ */
+function checkControllerTickLog(
+  log: readonly LogEntry[],
+  subscribers: ReadonlyArray<{ id: string; order: readonly TickStage[] }> = SUBSCRIBERS,
+): { problems: string[]; matched: Array<{ event: string; stage: string }> } {
+  const { before, turns } = subscriberTurns(log);
+  const problems: string[] = [];
+  const matched: Array<{ event: string; stage: string }> = [];
+  const ids = turns.map((t) => t.id);
+  const expectedIds = subscribers.map((s) => s.id);
+
+  if (before.length > 0) problems.push(`${before.length} entries before any subscriber's turn`);
+
+  if (ids.join(" → ") !== expectedIds.join(" → ")) {
+    problems.push(`subscribers took their turns as ${ids.join(" → ")}, expected ${expectedIds.join(" → ")}`);
+  }
+
+  for (const turn of turns) {
+    const order = subscribers.find((s) => s.id === turn.id)?.order;
+
+    if (order === undefined) {
+      problems.push(`subscriber \`${turn.id}\` has no table`);
+      continue;
+    }
+
+    const result = checkTickLog(turn.log, order);
+    problems.push(...result.problems.map((p) => `${turn.id}: ${p}`));
+    matched.push(...result.matched);
+  }
+
+  return { problems, matched };
+}
+
+// --- The subscribers under test -----------------------------------------
 
 type Controller = SDKController & {
   tick: (telemetry: TelemetryData | null, isConnected?: boolean) => void;
   setSessionInfo: (info: Record<string, unknown> | null) => void;
 };
 
-/** The `translator.test.ts` controller, trimmed: the SDK's own replay tracker, stepped before each tick. */
+/**
+ * The `translator.test.ts` controller, trimmed: the SDK's own replay tracker,
+ * stepped before each tick, and each subscriber's turn marked in the log.
+ */
 function createController(): Controller {
-  let callback: TelemetryCallback | null = null;
+  // Several subscribers, notified in subscription order as `SDKController`
+  // does: the translator, then the replay recorder it starts (#1468).
+  const subscribers = new Map<string, TelemetryCallback>();
   let sessionInfo: Record<string, unknown> | null = null;
   const replayState = new ReplayStateTracker();
   const controller = {
-    subscribe: (_id: string, cb: TelemetryCallback) => {
-      callback = cb;
+    subscribe: (id: string, cb: TelemetryCallback) => {
+      subscribers.set(id, cb);
       cb(null, false);
     },
-    unsubscribe: () => {
-      callback = null;
+    unsubscribe: (id: string) => {
+      subscribers.delete(id);
     },
     getSessionInfo: () => sessionInfo,
     getReplayState: (nowMs: number = Date.now()) => replayState.read(nowMs),
@@ -349,7 +459,10 @@ function createController(): Controller {
     if (telemetry) replayState.step(telemetry, sessionInfo, Date.now());
     else replayState.reset();
 
-    callback?.(telemetry, isConnected);
+    for (const [id, cb] of [...subscribers]) {
+      harness.log.push({ kind: "subscriber", id });
+      cb(telemetry, isConnected);
+    }
   };
   controller.setSessionInfo = (info) => {
     sessionInfo = info;
@@ -407,7 +520,7 @@ describe("TICK_ORDER", () => {
   beforeEach(() => {
     harness.log.length = 0;
     harness.probe.active = false;
-    harness.probe.events = new Map(TICK_ORDER.filter(isModuleStage).map((s) => [s.stage, s.events[0]!]));
+    harness.probe.events = new Map(CONTROLLER_TICK_ORDER.filter(isModuleStage).map((s) => [s.stage, s.events[0]!]));
     controller = createController();
     initializeSimEventsIracing(createRecordingBus(), controller, silentLogger);
   });
@@ -417,22 +530,53 @@ describe("TICK_ORDER", () => {
   });
 
   describe("is the code", () => {
-    it("calls every module stage of a live tick in TICK_ORDER's order, and each stage publishes where its `via` says", () => {
+    it("calls every module stage of a live tick in CONTROLLER_TICK_ORDER's order, and each stage publishes where its `via` says", () => {
       controller.tick(telemetry());
       harness.probe.active = true;
       const log = tickLog(controller, telemetry());
 
-      expect(callOrderMismatch(callsOf(log), TICK_ORDER)).toBeNull();
-      expect(checkTickLog(log, TICK_ORDER).problems).toEqual([]);
+      expect(callOrderMismatch(callsOf(log), CONTROLLER_TICK_ORDER)).toBeNull();
+      expect(checkControllerTickLog(log).problems).toEqual([]);
 
       // Every module stage's probe reached the bus exactly once: none was
       // swallowed, so none of the checks above passed for want of input.
       const probed = log.flatMap((e) => (e.kind === "publish" && e.probeOf !== undefined ? [e.probeOf] : []));
       expect([...probed].sort()).toEqual(
-        TICK_ORDER.filter(isModuleStage)
+        CONTROLLER_TICK_ORDER.filter(isModuleStage)
           .map((s) => s.stage)
           .sort(),
       );
+    });
+
+    // The replay recorder's turn on its own (#1468): its four stages in its
+    // table's order, each probe published before the next stage is called —
+    // directly, as `via: "direct"` says — and every publish inside its turn.
+    it("runs the replay recorder's stages in REPLAY_RECORDER_ORDER, after the translator's, each publishing directly", () => {
+      controller.tick(telemetry());
+      harness.probe.active = true;
+      const { turns } = subscriberTurns(tickLog(controller, telemetry()));
+      const recorder = turns.find((t) => t.id === REPLAY_RECORDER_SUBSCRIPTION_ID);
+
+      expect(turns.map((t) => t.id)).toEqual(["__sim-events-iracing__", REPLAY_RECORDER_SUBSCRIPTION_ID]);
+      expect(recorder).toBeDefined();
+      expect(callsOf(recorder!.log)).toEqual(REPLAY_RECORDER_ORDER.map((s) => s.stage));
+      expect(checkTickLog(recorder!.log, REPLAY_RECORDER_ORDER).problems).toEqual([]);
+      // Each call is followed at once by its own probe: nothing is held back.
+      expect(recorder!.log.map((e) => (e.kind === "call" ? e.stage : e.kind === "publish" ? e.probeOf : e.id))).toEqual(
+        REPLAY_RECORDER_ORDER.flatMap((s) => [s.stage, s.stage]),
+      );
+      // And the translator's turn calls none of them.
+      expect(callsOf(turns[0]!.log).filter((c) => REPLAY_RECORDER_ORDER.some((s) => s.stage === c))).toEqual([]);
+    });
+
+    it("subscribes the translator before the replay recorder, so the bus sees the translator's tick first", () => {
+      _resetSimEventsIracing();
+      const subscribe = vi.spyOn(controller, "subscribe");
+
+      initializeSimEventsIracing(createRecordingBus(), controller, silentLogger);
+
+      expect(subscribe.mock.calls.map(([id]) => id)).toEqual(SUBSCRIBERS.map((s) => s.id));
+      expect(CONTROLLER_TICK_ORDER).toEqual([...TICK_ORDER, ...REPLAY_RECORDER_ORDER]);
     });
 
     // The translator's own publish sites (`source: "translator.ts"`) are not
@@ -441,7 +585,7 @@ describe("TICK_ORDER", () => {
     it("publishes from each of the translator's own sites where TICK_ORDER puts it", () => {
       const matched = new Set<string>();
       const run = (t: TelemetryData): void => {
-        const { problems, matched: m } = checkTickLog(tickLog(controller, t), TICK_ORDER);
+        const { problems, matched: m } = checkControllerTickLog(tickLog(controller, t));
         expect(problems).toEqual([]);
 
         for (const { stage } of m) matched.add(stage);
@@ -451,7 +595,7 @@ describe("TICK_ORDER", () => {
       // published ahead of every pre-guard diff.
       controller.setSessionInfo({ SessionInfo: { Sessions: [{ SessionType: "Practice" }, { SessionType: "Race" }] } });
       run(telemetry({ SessionState: SessionState.Racing, IsOnTrack: false }));
-      // On track: driver.firstOnTrack, after the replay recorders and before the live diffs.
+      // On track: driver.firstOnTrack, after the countdown and before the live diffs.
       run(telemetry({ SessionState: SessionState.Racing }));
       // Radar active, then a session change: the teardown, then session.changed.
       run(telemetry({ SessionState: SessionState.Racing, CarLeftRight: CarLeftRight.CarLeft }));
@@ -480,7 +624,7 @@ describe("TICK_ORDER", () => {
   });
 
   describe("is complete", () => {
-    it("lists every `_EVENTS` declaration of every diff module, as the stage of that module", async () => {
+    it("lists every `_EVENTS` declaration of every diff module once, in either table, as the stage of that module", async () => {
       const dir = new URL("./diff/", import.meta.url);
       const files = readdirSync(dir).filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"));
       // An explicit glob over the folder rather than a variable `import()`: vite's
@@ -502,7 +646,7 @@ describe("TICK_ORDER", () => {
           if (!name.endsWith("_EVENTS") || !Array.isArray(value)) continue;
 
           declarations++;
-          const stage = TICK_ORDER.find((s) => s.events === value);
+          const stage = CONTROLLER_TICK_ORDER.find((s) => s.events === value);
 
           if (stage?.source !== `diff/${file}`) unlisted.push(`${file}: ${name}`);
           else expect(typeof mod[stage.stage]).toBe("function");
@@ -514,7 +658,10 @@ describe("TICK_ORDER", () => {
       expect(unlisted).toEqual([]);
       // And the other way: each module stage's events are its module's own list.
       // Counted as distinct lists, since a diff called twice has two rows.
-      expect(declarations).toBe(new Set(TICK_ORDER.filter(isModuleStage).map((s) => s.events)).size);
+      expect(declarations).toBe(new Set(CONTROLLER_TICK_ORDER.filter(isModuleStage).map((s) => s.events)).size);
+      // No list is in both tables: a module is one subscriber's, never both.
+      const recorderLists = new Set(REPLAY_RECORDER_ORDER.map((s) => s.events));
+      expect(TICK_ORDER.filter((s) => recorderLists.has(s.events)).map((s) => s.stage)).toEqual([]);
     });
 
     // The two checks above see a module only through its `_EVENTS` export, so
@@ -553,12 +700,12 @@ describe("TICK_ORDER", () => {
         for (const name of exportedEmitters(source)) {
           found++;
 
-          if (!TICK_ORDER.some((s) => s.stage === name && s.source === `diff/${file}`))
+          if (!CONTROLLER_TICK_ORDER.some((s) => s.stage === name && s.source === `diff/${file}`))
             unlisted.push(`${file}: ${name}`);
         }
       }
 
-      expect(found).toBe(new Set(TICK_ORDER.filter(isModuleStage).map((s) => s.stage)).size);
+      expect(found).toBe(new Set(CONTROLLER_TICK_ORDER.filter(isModuleStage).map((s) => s.stage)).size);
       expect(unlisted).toEqual([]);
     });
 
@@ -586,6 +733,22 @@ describe("TICK_ORDER", () => {
       expect(sites.forwards).toBe(TICK_ORDER.filter((s) => isModuleStage(s) && s.via === "direct").length);
       expect(sites.flushes).toBe(1);
       expect(sites.busPublishes).toBe(1);
+    });
+
+    // The recorder's side of the same proof (#1468): every publish it makes
+    // goes through the one `emit` forwarder, and that forwarder reaches only
+    // the stages REPLAY_RECORDER_ORDER names, each called once.
+    it("accounts for every publish call in replay-recorder.ts", () => {
+      const source = readFileSync(new URL("./replay-recorder.ts", import.meta.url), "utf-8");
+      const stages = REPLAY_RECORDER_ORDER.map((s) => s.stage);
+      const sites = classifyRecorderPublishSites(source, stages);
+
+      expect(stages.length).toBeGreaterThan(0);
+      expect(sites.busPublishes).toBe(1);
+      expect(sites.publishCalls).toBe(1);
+      expect(sites.emitArgs).toBe(REPLAY_RECORDER_ORDER.length);
+      expect(sites.stageCalls).toEqual(Object.fromEntries(stages.map((s) => [s, 1])));
+      expect(REPLAY_RECORDER_ORDER.every((s) => s.via === "direct" && isModuleStage(s))).toBe(true);
     });
   });
 
@@ -656,8 +819,11 @@ describe("TICK_ORDER", () => {
     it("the log check reports a call out of order, a pending stage publishing directly, and a direct one flushed", () => {
       controller.tick(telemetry());
       harness.probe.active = true;
-      const log = tickLog(controller, telemetry());
+      const { turns } = subscriberTurns(tickLog(controller, telemetry()));
+      const log = turns[0]!.log;
+      const recorderLog = turns[1]!.log;
       expect(checkTickLog(log, TICK_ORDER).problems).toEqual([]);
+      expect(checkTickLog(recorderLog, REPLAY_RECORDER_ORDER).problems).toEqual([]);
 
       // Two calls swapped.
       const iLimiter = log.findIndex((e) => e.kind === "call" && e.stage === "diffLimiter");
@@ -673,23 +839,90 @@ describe("TICK_ORDER", () => {
       early.splice(iLimiter + 1, 0, limiterProbe!);
       expect(checkTickLog(early, TICK_ORDER).problems.join("\n")).toContain("called after the pending flush began");
 
-      // diffReplayLaps' probe moved into the flush, as a pending stage would.
-      const replayAt = log.findIndex((e) => e.kind === "publish" && e.probeOf === "diffReplayLaps");
+      // diffStartCountdown's probe moved into the flush, as a pending stage would.
+      const countdownAt = log.findIndex((e) => e.kind === "publish" && e.probeOf === "diffStartCountdown");
       const late = [...log];
-      const [replayProbe] = late.splice(replayAt, 1);
-      late.push(replayProbe!);
-      expect(checkTickLog(late, TICK_ORDER).problems.join("\n")).toContain("probe of `diffReplayLaps`");
+      const [countdownProbe] = late.splice(countdownAt, 1);
+      late.push(countdownProbe!);
+      expect(checkTickLog(late, TICK_ORDER).problems.join("\n")).toContain("probe of `diffStartCountdown`");
 
-      // A direct translator publish (the replay-entry teardown) placed before the recorders in a table.
+      // diffReplayLaps' probe held back to the end of the recorder's turn, as a
+      // recorder that queued its publishes would.
+      const replayAt = recorderLog.findIndex((e) => e.kind === "publish" && e.probeOf === "diffReplayLaps");
+      const held = [...recorderLog];
+      const [replayProbe] = held.splice(replayAt, 1);
+      held.push(replayProbe!);
+      expect(checkTickLog(held, REPLAY_RECORDER_ORDER).problems.join("\n")).toContain("probe of `diffReplayLaps`");
+
+      // A direct translator publish (the replay-entry teardown) placed before the countdown in a table.
       const misplaced = [...TICK_ORDER];
       const t = misplaced.findIndex((s) => s.stage === "publishActiveStateTeardown (replay entry)");
       const [teardown] = misplaced.splice(t, 1);
       misplaced.splice(3, 0, teardown!);
       controller.tick(telemetry({ CarLeftRight: CarLeftRight.CarLeft }));
       harness.probe.active = false;
-      const replayEntry = tickLog(controller, telemetry({ CarLeftRight: CarLeftRight.CarLeft, IsReplayPlaying: true }));
+      const replayEntry = subscriberTurns(
+        tickLog(controller, telemetry({ CarLeftRight: CarLeftRight.CarLeft, IsReplayPlaying: true })),
+      ).turns[0]!.log;
       expect(checkTickLog(replayEntry, TICK_ORDER).problems).toEqual([]);
       expect(checkTickLog(replayEntry, misplaced).problems.join("\n")).toContain("`radar.changed` was published after");
+    });
+
+    it("the controller-tick check reports subscribers out of order, an entry outside a turn, and a turn with no table", () => {
+      controller.tick(telemetry());
+      harness.probe.active = true;
+      const log = tickLog(controller, telemetry());
+      expect(checkControllerTickLog(log).problems).toEqual([]);
+
+      // The recorder's turn first, as a recorder subscribed before the translator would take it.
+      const { turns } = subscriberTurns(log);
+      const swapped = [turns[1]!, turns[0]!].flatMap((t): LogEntry[] => [{ kind: "subscriber", id: t.id }, ...t.log]);
+      expect(checkControllerTickLog(swapped).problems.join("\n")).toContain(
+        `subscribers took their turns as ${REPLAY_RECORDER_SUBSCRIPTION_ID} → __sim-events-iracing__`,
+      );
+
+      // A publish before any turn began.
+      expect(checkControllerTickLog([{ kind: "publish", event: "replay.incident" }, ...log]).problems).toContain(
+        "1 entries before any subscriber's turn",
+      );
+
+      // A recorder stage in the translator's turn: its table has no such stage.
+      const recorderCall = turns[1]!.log.find((e) => e.kind === "call")!;
+      expect(checkTickLog([recorderCall, ...turns[0]!.log], TICK_ORDER).problems.join("\n")).toContain(
+        "`diffReplayLaps` was called",
+      );
+
+      // A third subscriber, which no table covers.
+      expect(checkControllerTickLog([...log, { kind: "subscriber", id: "__other__" }]).problems).toContain(
+        "subscriber `__other__` has no table",
+      );
+
+      // A subscriber mark inside one turn's log.
+      expect(checkTickLog([{ kind: "subscriber", id: "x" }], TICK_ORDER).problems.join("\n")).toContain(
+        "turn began inside",
+      );
+    });
+
+    it("the recorder publish-site scan reports a publish the table cannot place", () => {
+      const stages = ["diffA", "diffB"];
+      const placed =
+        "const emit = (p: PendingEvent): void => publish(bus, p, t);\n" +
+        "diffA(s, t, emit);\n" +
+        "diffB(s, t, i, emit, logger);\n" +
+        "function publish(bus: IEventBus, p: PendingEvent): void {\n  bus.publish(envelope);\n}\n";
+
+      expect(classifyRecorderPublishSites(placed, stages)).toEqual({
+        publishCalls: 1,
+        busPublishes: 1,
+        emitArgs: 2,
+        stageCalls: { diffA: 1, diffB: 1 },
+      });
+      expect(classifyRecorderPublishSites(`${placed}bus.publish(extra);\n`, stages).busPublishes).toBe(2);
+      expect(
+        classifyRecorderPublishSites(`${placed}publish(bus, { event: "replay.x" }, t);\n`, stages).publishCalls,
+      ).toBe(2);
+      expect(classifyRecorderPublishSites(`${placed}helper(t, emit);\n`, stages).emitArgs).toBe(3);
+      expect(classifyRecorderPublishSites(`${placed}diffA(s, t, emit);\n`, stages).stageCalls.diffA).toBe(2);
     });
 
     describe("findEndsOnOrderViolations", () => {
@@ -769,8 +1002,23 @@ describe("TICK_ORDER", () => {
 
   // The contract the table was built for (#1407): `pit-crew.limiter-dropped`
   // speaks on `limiter.dropped` and ends on `pitLane.exited`. `race-engineer-wiring`
-  // applies the same check to every `endsOn` contract.
+  // applies the same check, over CONTROLLER_TICK_ORDER, to every `endsOn` contract.
   it("never publishes limiter.dropped after pitLane.exited on one tick (pit-crew.limiter-dropped, #1407)", () => {
-    expect(findEndsOnOrderViolations(TICK_ORDER, "limiter.dropped", "pitLane.exited")).toEqual([]);
+    expect(findEndsOnOrderViolations(CONTROLLER_TICK_ORDER, "limiter.dropped", "pitLane.exited")).toEqual([]);
+  });
+
+  // A later subscriber is as much "after" as a later diff (#1468): the
+  // combined table reports a trigger the recorder publishes after an end the
+  // translator does, which neither table alone would.
+  it("reports a trigger in the recorder's turn after an end in the translator's", () => {
+    expect(findEndsOnOrderViolations(TICK_ORDER, "replay.incident", "pitLane.exited")[0]?.kind).toBe("never-published");
+    expect(findEndsOnOrderViolations(CONTROLLER_TICK_ORDER, "replay.incident", "pitLane.exited")).toEqual([
+      expect.objectContaining({
+        kind: "trigger-after-end",
+        triggerStage: "diffReplayIncidents",
+        endStage: "diffPitLane",
+      }),
+    ]);
+    expect(findEndsOnOrderViolations(CONTROLLER_TICK_ORDER, "pitLane.exited", "replay.incident")).toEqual([]);
   });
 });
