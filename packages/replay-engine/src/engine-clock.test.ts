@@ -122,6 +122,20 @@ describe("engine clock (#1467)", () => {
       expect(outcome).toEqual({ kind: "done", value: 1 });
     });
 
+    it("gives up at once on a NaN bound, as the loops it replaced did", async () => {
+      const check = vi.fn((): undefined => undefined);
+
+      expect(await pollUntil(check, { intervalMs: 50, timeoutMs: Number.NaN })).toEqual({ kind: "timed-out" });
+      expect(check).toHaveBeenCalledTimes(1);
+      expect(await pollUntil(check, { intervalMs: 50, timeoutMs: 100, maxWaitMs: Number.NaN })).toEqual({
+        kind: "timed-out",
+      });
+      expect(await pollUntil(check, { intervalMs: 50, timeoutMs: Number.NaN, sleepFirst: true })).toEqual({
+        kind: "timed-out",
+      });
+      expect(check).toHaveBeenCalledTimes(2);
+    });
+
     it("gives up after an async check that ran past the deadline, without sleeping again", async () => {
       const check = vi.fn(async () => {
         await sleep(150);

@@ -86,7 +86,8 @@ export async function pollUntil<T>(
 
     checking = true;
 
-    if (now() >= Math.min(deadline, latest)) return { kind: "timed-out" };
+    // Written as "not before the deadline" so that a NaN bound gives up at once, as the loops it replaced did.
+    if (!(now() < Math.min(deadline, latest))) return { kind: "timed-out" };
 
     await sleep(options.intervalMs);
   }
