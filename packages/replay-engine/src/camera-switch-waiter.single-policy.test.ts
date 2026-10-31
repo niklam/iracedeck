@@ -237,6 +237,27 @@ describe("camera switches go through the camera-switch waiter (#1502)", () => {
       ]);
     });
 
+    it("reaches the camera through a namespace import, or getCommands / getSDK called on any object", () => {
+      const imports = `import { requestCameraSwitch } from "@iracedeck/replay-engine";\nimport * as di from "@iracedeck/deck-iracing";\n`;
+      const planted =
+        `${imports}export function a(): void {\n  di.getCommands().camera.switchNum(1, 0, 0);\n}\n` +
+        `export function b(): void {\n  di.getSDK().commands.camera.switchPos(1, 0, 0);\n}\n` +
+        `export function c(): void {\n  const { camera } = di.getCommands();\n  camera.cycleCar(3, 1);\n}\n` +
+        `export function d(): void {\n  void requestCameraSwitch(() => di.getCommands().camera.switchNum(2, 0, 0), ${OPTS});\n}\n` +
+        `export function e(host: { getCommands(): any }): void {\n  host.getCommands().camera.focusOnLeader(0, 0);\n}\n`;
+      const sends = scanPlanted({ "ns.ts": planted });
+
+      expect(sends.filter((send) => !send.inWaiter).map((send) => `${send.line} ${send.detail}`)).toEqual([
+        "4 switchNum",
+        "7 switchPos",
+        "11 cycleCar",
+        "17 focusOnLeader",
+      ]);
+      expect(sends.filter((send) => send.inWaiter).map((send) => `${send.line} ${send.detail}`)).toEqual([
+        "14 switchNum",
+      ]);
+    });
+
     it("follows a switch into a named method and a wrapper, and reports it once a caller outside the waiter appears", () => {
       const action = (extra: string): string =>
         `${WAITER_IMPORT}export class Action {\n` +

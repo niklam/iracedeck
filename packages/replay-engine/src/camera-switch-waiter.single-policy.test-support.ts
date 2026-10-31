@@ -10,7 +10,10 @@
  * - a method call on the camera command surface — `getCommands().camera`,
  *   `getSDK().commands.camera`, a `const` bound to either or to
  *   `getCommands()`, or `camera` destructured out of them — other than the
- *   state methods the caller names (flags on the camera, not a switch);
+ *   state methods the caller names (flags on the camera, not a switch). The
+ *   root call is `getCommands()` / `getSDK()` with no arguments, called bare
+ *   under whatever name it is imported by, or as a member of anything: a
+ *   namespace import (`di.getCommands()`) or any other object;
  * - a tap or hold of one of iRacing's camera key bindings (`tapBinding`,
  *   `holdBinding` or whatever names the caller passes), whose key is one of
  *   the camera binding names the caller passes, a `const` or a function's
@@ -52,8 +55,11 @@
  *
  * **What it cannot see**, by design: a key that flows through an anonymous
  * callback's parameter or an object's property, and a camera surface reached
- * by anything but `getCommands()` or `getSDK()`. Every other blind spot errs
- * towards reporting a send, so the test goes red rather than green.
+ * by anything but a call named `getCommands` or `getSDK` (bare, or as a
+ * member as above) — a function value of either held under another name
+ * (`const get = di.getCommands; get()`), or a computed member name. Every
+ * other blind spot errs towards reporting a send, so the test goes red rather
+ * than green.
  */
 import ts from "typescript";
 
@@ -687,16 +693,37 @@ export function scanCameraSends(sources: ReadonlyMap<string, string>, options: C
   };
 
   // --- Pass 4: the camera command surface.
+  /**
+   * The name a root call (`getCommands()`, `getSDK()`) is made by: a bare
+   * callee by the name it is imported under (from any module, or the binding's
+   * own name), or the member called on anything — a namespace import
+   * (`di.getCommands()`) or any other object. The bare form takes the name
+   * from wherever it comes, so the member form does too: a root that turns
+   * out to be something else can only report a send, never hide one.
+   */
+  const rootCallName = (call: ts.CallExpression): string | undefined => {
+    const callee = unwrap(call.expression);
+
+    if (ts.isIdentifier(callee)) return calleeName(call);
+
+    if (ts.isPropertyAccessExpression(callee)) return callee.name.text;
+
+    if (ts.isElementAccessExpression(callee) && ts.isStringLiteralLike(callee.argumentExpression)) {
+      return callee.argumentExpression.text;
+    }
+
+    return undefined;
+  };
   const levelSymbols = new Map<ts.Symbol, Level>();
   const levelOf = (expression: ts.Expression): Level | undefined => {
     const value = unwrap(expression);
 
     if (ts.isCallExpression(value) && value.arguments.length === 0) {
-      const name = calleeName(value);
+      const name = rootCallName(value);
 
-      if (ts.isIdentifier(unwrap(value.expression)) && name === "getCommands") return "commands";
+      if (name === "getCommands") return "commands";
 
-      if (ts.isIdentifier(unwrap(value.expression)) && name === "getSDK") return "sdk";
+      if (name === "getSDK") return "sdk";
 
       return undefined;
     }
