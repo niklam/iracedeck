@@ -225,8 +225,8 @@ export type SpeakGate = {
  * stage can publish both, since the table cannot see inside a stage: prove the
  * order in that module's own tests, then add an exemption for the pair to
  * the wiring test, citing that test (it has no exemption list until one is
- * needed). And it fails when no stage publishes either event, which
- * is a misspelt or dropped name. The check is conservative: it judges the
+ * needed). And it fails when either event has no stage that publishes it,
+ * which is a misspelt or dropped name. The check is conservative: it judges the
  * order the code allows, not whether the sim can produce both on one tick.
  *
  * Code-owned like `speakGate`: what makes a line stop being true is pacing,
