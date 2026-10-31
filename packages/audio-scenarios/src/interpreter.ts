@@ -123,10 +123,12 @@ import {
   type WaitingFire,
 } from "./engine-types.js";
 // Manifest types + helpers live in `./manifest.js` to break a circular
-// import with `./validation.js`, which also needs `referenceVoice`.
-import { type AudioAssetsManifest, referenceVoice } from "./manifest.js";
+// import with `./validation.js`; the pool store and validation both read
+// `referenceVoice` from it, and this file only the manifest type.
+import type { AudioAssetsManifest } from "./manifest.js";
 import { OnceWarnings } from "./once-warnings.js";
 import { PendingQueue, type QueuedFire, type QueueDrop } from "./pending-queue.js";
+import { type PickSession, PoolStore } from "./pool-store.js";
 import {
   type CompileDeps,
   type CompiledFrame,
@@ -134,9 +136,11 @@ import {
   compileVoiceScript,
 } from "./script-compiler.js";
 import { isStatePartError, readStatePart, type StatePartError } from "./state-part.js";
+import { Vocabulary } from "./vocabulary.js";
 
 // Re-export so existing consumers of `interpreter.js` keep their import paths.
 export { type AudioAssetsManifest, manifestVoices } from "./manifest.js";
+export { poolMemberPattern } from "./pool-store.js";
 
 /**
  * The user's two frame switches (issue #1064), read live at every frame
@@ -467,34 +471,9 @@ export interface IScenarioEngine {
   describeState(): ScenarioEngineState;
 }
 
-/**
- * A pool is either an explicit clip list (`static`) or derived from the
- * manifest per voice at fire time (`manifest`, issue #664). Both share the
- * no-immediate-repeat `lastIndex`; manifest pools also track the voice the
- * index belongs to, since variant counts differ across voices. `lastIndex`
- * is the last take the driver HEARD: a pick made during expansion is
- * recorded on the expansion (`ExpansionPicks`) and written here only once
- * `prepareOps` accepts the fire (issue #1138) — a fire the gate refuses, or
- * that aborts after the pick, commits nothing.
- */
-type PoolState =
-  | { kind: "static"; clips: string[]; lastIndex: number }
-  | {
-      kind: "manifest";
-      group: string;
-      base: string;
-      byVoice: Map<string, string[]>;
-      lastIndex: number;
-      lastVoice: string | null;
-    };
-
-/** Picks made during one expansion, keyed by the pool they were drawn from — see `PoolState.lastIndex`. */
-type ExpansionPicks = Map<PoolState, number>;
-
 class ScenarioEngine implements IScenarioEngine {
   private readonly eventBus: IEventBus;
   private readonly audio: IAudioService;
-  private manifest: AudioAssetsManifest;
   private readonly logger: ILogger;
   /**
    * Resolves the active Race Engineer voice key (e.g. `"luca"`) at clip-
@@ -511,24 +490,11 @@ class ScenarioEngine implements IScenarioEngine {
 
   /** The registered contracts; the facade runs the registration sequence over it (`registerEntry`). */
   private readonly registry: ContractRegistry;
-  private readonly pools = new Map<string, PoolState>();
-  private readonly vars = new Map<string, VocabularyResolver<string | null>>();
-  /** Parallel to `vars`: the description each var was registered with (`""` when none). */
-  private readonly varDescriptions = new Map<string, string>();
-  private readonly conds = new Map<string, { predicate: VocabularyResolver<boolean>; description: string }>();
-  private readonly cases = new Map<
-    string,
-    { resolve: VocabularyResolver<string | null>; keys: Readonly<Record<string, string>>; description: string }
-  >();
+  /** The manifest, the pools and the pickers (`PoolStore`); its script-pool source is the compiled map below. */
+  private readonly poolStore: PoolStore;
+  /** The var, condition and case registries (`Vocabulary`). */
+  private readonly vocab: Vocabulary;
   private readonly busState = new Map<AudioBus, BusState>();
-  /** Set view of `manifest.clips` for O(1) availability checks at expansion time. */
-  private clipSet: Set<string>;
-  /**
-   * `(group, base)` source of every manifest-backed pool, so a manifest reload
-   * can re-derive them without the catalog having to re-register anything
-   * (issue #1034).
-   */
-  private readonly manifestPoolSources = new Map<string, { group: string; base: string }>();
 
   /** Voice id → parsed script, as last handed in by `setScripts` (issue #1064). */
   private scripts: ReadonlyMap<string, CalloutScript> = new Map();
@@ -559,19 +525,6 @@ class ScenarioEngine implements IScenarioEngine {
    */
   private sessionGeneration = 0;
   /**
-   * Per-voice state of the pools a script defines — the no-repeat tracker
-   * and the manifest-derived members — keyed `(voice, pool name)`. Built
-   * lazily on first pick; cleared by `setManifest` and by every compile.
-   */
-  private readonly scriptPoolState = new Map<string, Map<string, PoolState>>();
-  /**
-   * The pool picks of the expansion in progress, keyed by pool (issue #1138):
-   * consulted FIRST by `pickFromPool`, so two picks from one pool inside one
-   * body still avoid each other, and committed into the pools' `lastIndex`
-   * only when `prepareOps` accepts the fire. `null` outside an expansion.
-   */
-  private expansionPicks: ExpansionPicks | null = null;
-  /**
    * The once-per warn sets (`OnceWarnings`): five keyspaces, every one cleared
    * by `setScripts`, so a rescan that hands the engine a still-broken pack
    * says so again.
@@ -597,12 +550,16 @@ class ScenarioEngine implements IScenarioEngine {
   ) {
     this.eventBus = eventBus;
     this.audio = audio;
-    this.manifest = manifest;
     this.logger = logger;
     this.getActiveVoice = getActiveVoice;
     this.getFrameOptions = getFrameOptions;
     this.registry = new ContractRegistry(logger);
-    this.clipSet = new Set(manifest.clips);
+    // The store reads the active voice's script pools live, on every pick,
+    // off whatever the last compile produced.
+    this.poolStore = new PoolStore(manifest, logger, getActiveVoice, (voice, name) =>
+      this.compiled.get(voice)?.pools.get(name),
+    );
+    this.vocab = new Vocabulary(logger, this.warnings);
     // Subscribed here, before any contract can register, so that on a
     // `session.changed` it runs FIRST (the bus dispatches in subscription
     // order) — the session-start and race-start lines that fire on that
@@ -641,22 +598,6 @@ class ScenarioEngine implements IScenarioEngine {
     }
 
     for (const state of this.busState.values()) this.clearPendingHold(state);
-  }
-
-  /**
-   * Substitute `{voice}` in a path with the active voice. No-op when the
-   * path has no placeholder. Returns the path unchanged when the placeholder
-   * is present but no voice is selected — the resulting malformed path
-   * (e.g. `voice//pit-actions/fuel-on.mp3`) will fail to play and surface
-   * loudly via the audio engine, which is the right behaviour: a templated
-   * scenario without a voice means the user hasn't picked one yet.
-   */
-  private substituteVoice(path: string): string {
-    if (!path.includes("{voice}")) return path;
-
-    const voice = this.getActiveVoice() ?? "";
-
-    return path.replace(/\{voice\}/g, voice);
   }
 
   /**
@@ -716,9 +657,9 @@ class ScenarioEngine implements IScenarioEngine {
     this.registry.warnQueueBehindCycle(entry);
 
     const { errors, warnings } = this.registry.validate(entry, {
-      pools: this.pools,
-      vars: this.vars,
-      manifest: this.manifest,
+      pools: this.poolStore.pools,
+      vars: this.vocab.vars,
+      manifest: this.poolStore.currentManifest(),
     });
 
     if (warnings.length > 0) {
@@ -740,148 +681,37 @@ class ScenarioEngine implements IScenarioEngine {
   }
 
   definePool(name: string, clips: string[]): void {
-    if (this.pools.has(name)) {
-      this.logger.warn(`Pool "${name}" redefined`);
-    }
-
-    // A `{voice}`-templated clip is checked against the REFERENCE voice only
-    // (issue #664): per-voice clip sets may legitimately diverge, so a gap in
-    // another voice is not an error. A miss for the reference voice is a
-    // probable typo and warns without rejecting the pool. Non-templated
-    // clips must exist verbatim.
-    const reference = referenceVoice(this.manifest);
-    const missing: string[] = [];
-    const suspect: string[] = [];
-
-    for (const clip of clips) {
-      if (clip.includes("{voice}")) {
-        if (reference !== null) {
-          const resolved = clip.replace(/\{voice\}/g, reference);
-
-          if (!this.manifest.clips.includes(resolved)) suspect.push(resolved);
-        }
-      } else if (!this.manifest.clips.includes(clip)) {
-        missing.push(clip);
-      }
-    }
-
-    if (missing.length > 0) {
-      this.logger.error(`Pool "${name}" rejected; unknown clips:\n  - ${missing.join("\n  - ")}`);
-
-      return;
-    }
-
-    if (suspect.length > 0) {
-      this.logger.warn(
-        `Pool "${name}": no clip for reference voice "${reference}" (possible typo):\n  - ${suspect.join("\n  - ")}`,
-      );
-    }
-
-    this.pools.set(name, { kind: "static", clips: [...clips], lastIndex: -1 });
-    this.markScriptsDirty();
+    // Dirty only for a pool the store accepted: a rejected list changes
+    // nothing a script compiles against.
+    if (this.poolStore.definePool(name, clips)) this.markScriptsDirty();
   }
 
   definePoolFromManifest(name: string, group: string, base: string): void {
-    if (this.pools.has(name)) {
-      this.logger.warn(`Pool "${name}" redefined`);
-    }
-
-    this.manifestPoolSources.set(name, { group, base });
-
-    const pool = this.buildManifestPool(group, base);
-
-    // Typo guard: only the reference voice is checked — other voices may
-    // legitimately omit the callout. Warn, never reject: a pool that is
-    // empty for the active voice just skips at fire time.
-    const reference = referenceVoice(this.manifest);
-
-    if (reference !== null && !pool.byVoice.has(reference)) {
-      this.logger.warn(
-        `Pool "${name}": no "${group}/${base}" clips for reference voice "${reference}" (possible typo)`,
-      );
-    }
-
-    this.pools.set(name, pool);
+    this.poolStore.definePoolFromManifest(name, group, base);
     this.markScriptsDirty();
   }
 
   setManifest(manifest: AudioAssetsManifest): void {
-    this.manifest = manifest;
-    this.clipSet = new Set(manifest.clips);
-    // Every pool's membership is re-derived below, so a stashed resume was
+    this.poolStore.setManifest(manifest);
+    // Every pool's membership was re-derived, so a stashed resume was
     // expanded against clip lists that no longer exist (issue #1136).
     this.generation++;
-
-    // Script-defined pools are derived per voice from the manifest too (issue
-    // #1064); drop every cached member list so the next pick rebuilds it.
-    this.scriptPoolState.clear();
-
-    // Re-derive every manifest-backed pool from its recorded `(group, base)`.
-    // Members are per-voice, so a pack arriving or leaving changes what a pool
-    // holds for the voices it touches and nothing else.
-    for (const [name, source] of this.manifestPoolSources) {
-      this.pools.set(name, this.buildManifestPool(source.group, source.base));
-    }
-
-    // Dynamic `pool:<group>/<base>` refs (issue #836) are built lazily on first
-    // use and cached under the ref string. Drop them so they rebuild against the
-    // new manifest instead of serving a stale member list.
-    for (const key of [...this.pools.keys()]) {
-      if (key.startsWith("pool:")) this.pools.delete(key);
-    }
-
-    // Static pools keep their clips (they were registered explicitly, not
-    // derived), but every pool's no-repeat tracker is reset: variant counts
-    // differ per voice, so a retained index can point past the end of the new
-    // member list — the same reason an active-voice change resets them.
-    for (const pool of this.pools.values()) pool.lastIndex = -1;
 
     this.logger.info("Audio manifest reloaded");
     this.logger.debug(`Clips: ${manifest.clips.length}`);
   }
 
   currentManifest(): AudioAssetsManifest {
-    return this.manifest;
-  }
-
-  /**
-   * Scan the manifest for a pool's members: every
-   * `voice/<voice>/<group>/<base>-NN.mp3` variant PLUS the bare
-   * `voice/<voice>/<group>/<base>.mp3` (issue #836 — a bare value clip is a
-   * size-1 pool, so numbers/names/temps need no rename migration).
-   */
-  private buildManifestPool(group: string, base: string): Extract<PoolState, { kind: "manifest" }> {
-    const pattern = poolMemberPattern(group, base);
-    const byVoice = new Map<string, string[]>();
-
-    for (const clip of this.manifest.clips) {
-      const match = pattern.exec(clip);
-
-      if (!match) continue;
-
-      let members = byVoice.get(match[1]);
-
-      if (!members) {
-        members = [];
-        byVoice.set(match[1], members);
-      }
-
-      members.push(clip);
-    }
-
-    for (const members of byVoice.values()) members.sort();
-
-    return { kind: "manifest", group, base, byVoice, lastIndex: -1, lastVoice: null };
+    return this.poolStore.currentManifest();
   }
 
   defineVar(name: string, resolver: VocabularyResolver<string | null>, description = ""): void {
-    this.vars.set(name, resolver);
-    this.varDescriptions.set(name, description);
+    this.vocab.defineVar(name, resolver, description);
     this.markScriptsDirty();
   }
 
   defineCond(name: string, predicate: VocabularyResolver<boolean>, description: string): void {
-    this.conds.set(name, { predicate, description });
+    this.vocab.defineCond(name, predicate, description);
     this.markScriptsDirty();
   }
 
@@ -891,19 +721,12 @@ class ScenarioEngine implements IScenarioEngine {
     keys: Readonly<Record<string, string>>,
     description: string,
   ): void {
-    this.cases.set(name, { resolve: resolver, keys: { ...keys }, description });
+    this.vocab.defineCase(name, resolver, keys, description);
     this.markScriptsDirty();
   }
 
   vocabulary(): VocabularyReport {
-    const byName = <T extends { name: string }>(items: T[]): T[] =>
-      items.sort((a, b) => codePointOrder(a.name, b.name));
-
-    return {
-      vars: byName([...this.vars.keys()].map((name) => ({ name, description: this.varDescriptions.get(name) ?? "" }))),
-      conds: byName([...this.conds].map(([name, { description }]) => ({ name, description }))),
-      cases: byName([...this.cases].map(([name, { description, keys }]) => ({ name, description, keys: { ...keys } }))),
-    };
+    return this.vocab.vocabulary();
   }
 
   contracts(): readonly ContractReport[] {
@@ -1003,19 +826,20 @@ class ScenarioEngine implements IScenarioEngine {
 
     const conds = new Map<string, VocabularyResolver<boolean>>();
 
-    for (const [name, { predicate }] of this.conds) conds.set(name, predicate);
+    for (const [name, { predicate }] of this.vocab.conds) conds.set(name, predicate);
 
     const cases = new Map<string, { resolve: VocabularyResolver<string | null>; keys: ReadonlySet<string> }>();
 
-    for (const [name, { resolve, keys }] of this.cases) cases.set(name, { resolve, keys: new Set(Object.keys(keys)) });
+    for (const [name, { resolve, keys }] of this.vocab.cases) {
+      cases.set(name, { resolve, keys: new Set(Object.keys(keys)) });
+    }
 
     return {
       contracts,
-      vars: new Set(this.vars.keys()),
+      vars: new Set(this.vocab.vars.keys()),
       conds,
       cases,
-      // Registered names only: the `pool:` keys are cached dynamic refs, not pools a script may name.
-      legacyPools: new Set([...this.pools.keys()].filter((name) => !name.startsWith("pool:"))),
+      legacyPools: this.poolStore.registeredPoolNames(),
     };
   }
 
@@ -1028,7 +852,7 @@ class ScenarioEngine implements IScenarioEngine {
    */
   private compileScripts(): void {
     this.scriptsDirty = false;
-    this.scriptPoolState.clear();
+    this.poolStore.clearScriptPools();
 
     const deps = this.compileDeps();
     const compiled = new Map<string, CompiledVoiceScript>();
@@ -1167,11 +991,10 @@ class ScenarioEngine implements IScenarioEngine {
     }
 
     let frame: ExpandedFrame | null;
-    const picks: ExpansionPicks = new Map();
-    this.expansionPicks = picks;
+    const session = this.poolStore.openSession();
 
     try {
-      frame = this.expandFrame(frameName, voice, script, FRAME_PREVIEW_ID, fireContext(null), null);
+      frame = this.expandFrame(frameName, voice, script, FRAME_PREVIEW_ID, fireContext(null), null, session);
     } catch (err) {
       if (err instanceof ExpansionAbort) {
         this.logger.debug(`Frame preview "${frameName}" skipped — ${err.reason}`);
@@ -1182,13 +1005,11 @@ class ScenarioEngine implements IScenarioEngine {
       }
 
       return "no-frame";
-    } finally {
-      this.expansionPicks = null;
     }
 
     if (frame === null) return "no-frame";
 
-    for (const [pool, idx] of picks) pool.lastIndex = idx;
+    session.commit();
 
     if (frame.open.length === 0 && frame.close.length === 0) {
       // Both switches off: nothing to audition, and no reason to hold the
@@ -1926,12 +1747,11 @@ class ScenarioEngine implements IScenarioEngine {
     }
 
     let prepared: PreparedFire;
-    // The pool picks this expansion makes are recorded here and committed
-    // into the pools only once the fire is accepted (issue #1138): a fire
-    // that aborts, expands empty or is refused by the gate consumed no take,
-    // so the next fire still avoids the take the driver last heard.
-    const picks: ExpansionPicks = new Map();
-    this.expansionPicks = picks;
+    // The pool picks this expansion makes are recorded on the session and
+    // committed into the pools only once the fire is accepted (issue #1138):
+    // a fire that aborts, expands empty or is refused by the gate consumed no
+    // take, so the next fire still avoids the take the driver last heard.
+    const session = this.poolStore.openSession();
 
     try {
       // The cut tail is expanded only for a contract an event can end (issue
@@ -1948,9 +1768,17 @@ class ScenarioEngine implements IScenarioEngine {
             entry.raw.id,
             ctx,
             entry.raw.endsOn !== undefined ? entry.raw.channel : null,
+            session,
           )
         : null;
-      const bodyOps = this.expandSequence(body, entry.raw.base, entry.raw.channel, ctx, new Set([entry.raw.id]));
+      const bodyOps = this.expandSequence(
+        body,
+        entry.raw.base,
+        entry.raw.channel,
+        ctx,
+        new Set([entry.raw.id]),
+        session,
+      );
       prepared = applyFrame(bodyOps, frame);
     } catch (err) {
       if (err instanceof ExpansionAbort) {
@@ -1964,8 +1792,6 @@ class ScenarioEngine implements IScenarioEngine {
       );
 
       return null;
-    } finally {
-      this.expansionPicks = null;
     }
 
     if (prepared.ops.length === 0) {
@@ -1989,7 +1815,7 @@ class ScenarioEngine implements IScenarioEngine {
     }
 
     // Accepted: the takes this fire drew are now the ones the driver hears.
-    for (const [pool, idx] of picks) pool.lastIndex = idx;
+    session.commit();
 
     return prepared;
   }
@@ -2056,6 +1882,7 @@ class ScenarioEngine implements IScenarioEngine {
     ownerId: string,
     ctx: ScenarioContext,
     cutChannel: AudioChannel | null,
+    session: PickSession,
   ): ExpandedFrame | null {
     if (frameName === NO_FRAME) return null;
 
@@ -2084,7 +1911,14 @@ class ScenarioEngine implements IScenarioEngine {
 
     const options = this.frameOptions();
     const side = (steps: ResolvedStep[], tag: FrameSide): ExecOp[] =>
-      this.expandSequence(filterFrameSteps(steps, options), undefined, AudioChannel.SFX, ctx, new Set([ownerId]))
+      this.expandSequence(
+        filterFrameSteps(steps, options),
+        undefined,
+        AudioChannel.SFX,
+        ctx,
+        new Set([ownerId]),
+        session,
+      )
         // A second pass on the ops, for the one step whose ops cannot be
         // predicted from its kind: an include, whose fragment is only known
         // once expanded. Every other step was filtered before it expanded.
@@ -2124,6 +1958,7 @@ class ScenarioEngine implements IScenarioEngine {
         cutChannel,
         ctx,
         new Set([ownerId]),
+        session,
       )
         .filter((op) => {
           if (op.kind === "ambient") return options.ambience;
@@ -2132,7 +1967,10 @@ class ScenarioEngine implements IScenarioEngine {
         })
         .map((op) => ({ ...op, frame: "cut" as const }));
 
-    return { ...halves, cut: this.expandCutTail(frame, frameName, voice, cutSide, (steps) => side(steps, "cut")) };
+    return {
+      ...halves,
+      cut: this.expandCutTail(frame, frameName, voice, cutSide, (steps) => side(steps, "cut"), session),
+    };
   }
 
   /**
@@ -2155,21 +1993,17 @@ class ScenarioEngine implements IScenarioEngine {
     voice: string,
     cutSide: (steps: ResolvedStep[]) => ExecOp[],
     closeSide: (steps: ResolvedStep[]) => ExecOp[],
+    session: PickSession,
   ): ExecOp[] {
     const attempt = (expand: (steps: ResolvedStep[]) => ExecOp[], steps: ResolvedStep[]): ExecOp[] | ExpansionAbort => {
-      const picks = this.expansionPicks;
-      const before = picks === null ? null : new Map(picks);
+      const before = session.snapshot();
 
       try {
         return expand(steps);
       } catch (err) {
         if (!(err instanceof ExpansionAbort)) throw err;
 
-        if (picks !== null && before !== null) {
-          picks.clear();
-
-          for (const [pool, idx] of before) picks.set(pool, idx);
-        }
+        session.restore(before);
 
         return err;
       }
@@ -2232,7 +2066,7 @@ class ScenarioEngine implements IScenarioEngine {
         // `ops` is everything still to be heard — the re-key included — so
         // the pools it does NOT draw are the ones whose fresh commit is
         // about to be sliced away unheard (issue #1136).
-        this.restoreHeadPoolIndices(resume.ops.slice(0, resume.index), ops);
+        this.poolStore.restoreHeadPoolIndices(resume.ops.slice(0, resume.index), ops);
         sourceStart = resume.index;
         prerollCount = preroll.length;
       } else {
@@ -2299,7 +2133,7 @@ class ScenarioEngine implements IScenarioEngine {
       return delivered.filter((op) => op.frame === "open");
     }
 
-    const openTick = this.manifest.ticks.open;
+    const openTick = this.poolStore.currentManifest().ticks.open;
     const frameWasOpened = delivered.some((op) => op.kind === "play" && op.path === openTick);
     const first = expanded[resumeIndex];
     const resumesWithTick = first.kind === "play" && first.path === openTick;
@@ -2337,58 +2171,6 @@ class ScenarioEngine implements IScenarioEngine {
     return null;
   }
 
-  /**
-   * Put back the no-repeat tracker of every pool drawn ONLY in the part of
-   * the body the driver already heard (issue #1136).
-   *
-   * `prepareOps` commits the fresh expansion's picks before `executeFire`
-   * decides to resume, and the resume then slices the head off — so a head
-   * slot's pool is left recording a take that will never be played, while
-   * `PoolState.lastIndex` is documented as the last take the driver HEARD.
-   * The next fire's no-repeat guard would then steer away from that unheard
-   * take and could serve the very one the driver did hear. So each such pool
-   * is set back to the take the STASHED head played, which is what was heard.
-   * A pool that `remaining` still draws keeps its fresh commit: that take is
-   * the one that will have been heard last. Newly reachable, because before
-   * #1136 a multi-take body never resumed at all.
-   *
-   * A pool or a path it cannot account for is skipped in silence — there is
-   * nothing to restore and nothing to report. The clips are compared through
-   * `substituteVoice` so a `{voice}`-templated static pool is matched by the
-   * path the op actually carries.
-   */
-  private restoreHeadPoolIndices(head: readonly ExecOp[], remaining: readonly ExecOp[]): void {
-    const stillToBeHeard = new Set<string>();
-
-    for (const op of remaining) {
-      if (op.kind === "play" && op.pool !== undefined) stillToBeHeard.add(op.pool);
-    }
-
-    const voice = this.getActiveVoice();
-
-    for (const op of head) {
-      if (op.kind !== "play" || op.pool === undefined || stillToBeHeard.has(op.pool)) continue;
-
-      const pool = this.scriptPool(op.pool) ?? this.pools.get(op.pool);
-
-      if (!pool) continue;
-
-      let clips: string[];
-
-      if (pool.kind === "manifest") {
-        if (voice === null) continue;
-
-        clips = pool.byVoice.get(voice) ?? [];
-      } else {
-        clips = pool.clips;
-      }
-
-      const index = clips.findIndex((clip) => this.substituteVoice(clip) === op.path);
-
-      if (index >= 0) pool.lastIndex = index;
-    }
-  }
-
   /** Advance to the next op in the given bus's active fire. */
   private stepNext(state: BusState): void {
     const fire = state.activeFire;
@@ -2420,7 +2202,8 @@ class ScenarioEngine implements IScenarioEngine {
       }
 
       if (op.kind === "ambient") {
-        if (op.action === "start") this.audio.playOnChannel(AudioChannel.Ambient, this.manifest.ambientLoop, true);
+        if (op.action === "start")
+          this.audio.playOnChannel(AudioChannel.Ambient, this.poolStore.currentManifest().ambientLoop, true);
         else if (op.action === "stop") this.audio.stopChannel(AudioChannel.Ambient);
         else if (op.action === "seek") this.audio.seekChannelRandom(AudioChannel.Ambient);
 
@@ -2642,20 +2425,21 @@ class ScenarioEngine implements IScenarioEngine {
     defaultChannel: AudioChannel,
     ctx: ScenarioContext,
     visitedIncludes: Set<string>,
+    session: PickSession,
   ): ExecOp[] {
     const out: ExecOp[] = [];
 
     for (const step of steps) {
       switch (step.kind) {
         case "clip": {
-          const path = this.substituteVoice(applyBase(base, step.path));
+          const path = this.poolStore.substituteVoice(applyBase(base, step.path));
           this.assertClipAvailable(path, `clip "${step.path}"`);
           this.pushClip(out, path, defaultChannel);
           break;
         }
 
         case "var": {
-          const resolver = this.vars.get(step.name);
+          const resolver = this.vocab.vars.get(step.name);
           const value = resolver ? resolver(ctx) : null;
           ctx.vars[step.name] = value;
 
@@ -2665,7 +2449,7 @@ class ScenarioEngine implements IScenarioEngine {
           // issue #836) instead of a clip path — value-indexed clips (numbers,
           // names, temps) are pools too, usually of size 1.
           if (value.startsWith("pool:")) {
-            const pick = this.pickFromPoolRef(value);
+            const pick = this.poolStore.pickFromPoolRef(value, session);
 
             if (!pick) {
               throw new ExpansionAbort(`var {{${step.name}}} → "${value}" is empty for the active voice`);
@@ -2676,7 +2460,7 @@ class ScenarioEngine implements IScenarioEngine {
             break;
           }
 
-          const path = this.substituteVoice(value);
+          const path = this.poolStore.substituteVoice(value);
           this.assertClipAvailable(path, `var {{${step.name}}}`);
           this.pushClip(out, path, defaultChannel);
 
@@ -2689,11 +2473,13 @@ class ScenarioEngine implements IScenarioEngine {
           // resolver returns. Registered names never carry a slash.
           const slashed = step.name.includes("/");
           const key = slashed ? `pool:${step.name}` : step.name;
-          const pick = slashed ? this.pickFromPoolRef(key, step.noRepeat) : this.pickFromPool(step.name, step.noRepeat);
+          const pick = slashed
+            ? this.poolStore.pickFromPoolRef(key, session, step.noRepeat)
+            : this.poolStore.pickFromPool(step.name, session, step.noRepeat);
 
           if (!pick) throw new ExpansionAbort(`pool "${step.name}" resolved to nothing for the active voice`);
 
-          const path = this.substituteVoice(pick);
+          const path = this.poolStore.substituteVoice(pick);
           this.assertClipAvailable(path, `pool "${step.name}"`);
           this.pushClip(out, path, defaultChannel, key);
 
@@ -2701,11 +2487,11 @@ class ScenarioEngine implements IScenarioEngine {
         }
 
         case "connector": {
-          const pick = this.pickFromPool(CONNECTOR_POOL, true);
+          const pick = this.poolStore.pickFromPool(CONNECTOR_POOL, session, true);
 
           if (!pick) throw new ExpansionAbort(`connector pool resolved to nothing`);
 
-          const path = this.substituteVoice(pick);
+          const path = this.poolStore.substituteVoice(pick);
           this.assertClipAvailable(path, `connector`);
           this.pushClip(out, path, defaultChannel, CONNECTOR_POOL);
 
@@ -2733,6 +2519,7 @@ class ScenarioEngine implements IScenarioEngine {
             defaultChannel,
             ctx,
             new Set([...visitedIncludes, step.id]),
+            session,
           );
           out.push(...nested);
           break;
@@ -2748,7 +2535,7 @@ class ScenarioEngine implements IScenarioEngine {
           }
 
           const branch = predicateResult ? step.then : (step.else ?? []);
-          out.push(...this.expandSequence(branch, base, defaultChannel, ctx, visitedIncludes));
+          out.push(...this.expandSequence(branch, base, defaultChannel, ctx, visitedIncludes, session));
           break;
         }
 
@@ -2758,7 +2545,16 @@ class ScenarioEngine implements IScenarioEngine {
           // nothing — the completeness of the mapping is the pack's business.
           // A key the resolver never DECLARED is a code bug: warned once, then
           // treated as unmapped.
-          out.push(...this.expandSequence(this.pickCaseBranch(step, ctx), base, defaultChannel, ctx, visitedIncludes));
+          out.push(
+            ...this.expandSequence(
+              this.vocab.pickCaseBranch(step, ctx),
+              base,
+              defaultChannel,
+              ctx,
+              visitedIncludes,
+              session,
+            ),
+          );
           break;
         }
 
@@ -2769,7 +2565,7 @@ class ScenarioEngine implements IScenarioEngine {
           // builds its own op list, so a mid-group abort discards the
           // group's partial ops cleanly.
           try {
-            out.push(...this.expandSequence(step.steps, base, defaultChannel, ctx, visitedIncludes));
+            out.push(...this.expandSequence(step.steps, base, defaultChannel, ctx, visitedIncludes, session));
           } catch (err) {
             if (!(err instanceof ExpansionAbort)) throw err;
 
@@ -2798,7 +2594,7 @@ class ScenarioEngine implements IScenarioEngine {
    * half-sentence. `{ optional: [...] }` groups catch the abort locally.
    */
   private assertClipAvailable(path: string, what: string): void {
-    if (this.clipSet.has(path)) return;
+    if (this.poolStore.hasClip(path)) return;
 
     throw new ExpansionAbort(`${what} → "${path}" is not in the manifest for the active voice`);
   }
@@ -2815,168 +2611,11 @@ class ScenarioEngine implements IScenarioEngine {
   }
 
   private channelForPath(path: string, defaultChannel: AudioChannel): AudioChannel {
-    if (path === this.manifest.ticks.open || path === this.manifest.ticks.close) return AudioChannel.SFX;
+    const { ticks } = this.poolStore.currentManifest();
+
+    if (path === ticks.open || path === ticks.close) return AudioChannel.SFX;
 
     return defaultChannel;
-  }
-
-  /**
-   * Resolve a dynamic pool reference returned by a var resolver (issue #836):
-   * `pool:<group>/<base>`. The pool is derived from the manifest on first use
-   * and cached in the pools map under the full ref string (registered pool
-   * names never carry the `pool:` prefix, so the namespaces can't collide) —
-   * giving value pools the same no-repeat guard and voice-change reset as
-   * registered pools. No reference-voice typo guard: values legitimately
-   * differ per voice.
-   *
-   * `noRepeat` defaults on, which is what a var resolver gets; a slashed
-   * pool step passes its own, so `{ "pool": "flags/green", "noRepeat":
-   * false }` means what it says in either spelling of a pool name.
-   */
-  private pickFromPoolRef(ref: string, noRepeat = true): string | null {
-    if (!this.pools.has(ref)) {
-      const spec = ref.slice("pool:".length);
-      const slash = spec.indexOf("/");
-
-      if (slash <= 0 || slash === spec.length - 1) {
-        this.logger.error(`pickFromPoolRef: malformed pool reference "${ref}" — expected pool:<group>/<base>`);
-
-        return null;
-      }
-
-      this.pools.set(ref, this.buildManifestPool(spec.slice(0, slash), spec.slice(slash + 1)));
-    }
-
-    return this.pickFromPool(ref, noRepeat);
-  }
-
-  private pickCaseBranch(step: Extract<ResolvedStep, { kind: "case" }>, ctx: ScenarioContext): ResolvedStep[] {
-    const declared = this.cases.get(step.name);
-
-    if (!declared) {
-      // The compiler refuses a script naming an unregistered case, so this is
-      // reachable only if the case was registered and later replaced.
-      this.logger.error(`case "${step.name}" is not registered — taking the default branch`);
-
-      return step.fallback;
-    }
-
-    let key: string | null = null;
-
-    try {
-      key = declared.resolve(ctx);
-    } catch (err) {
-      this.logger.error(`case "${step.name}" resolver threw: ${err instanceof Error ? err.message : String(err)}`);
-    }
-
-    if (key === null) return step.fallback;
-
-    if (!Object.hasOwn(declared.keys, key)) {
-      const warnKey = `${step.name}|${key}`;
-
-      if (this.warnings.once("caseKeys", warnKey)) {
-        this.logger.warn(`case "${step.name}" resolved to undeclared key "${key}" — taking the default branch`);
-      }
-
-      return step.fallback;
-    }
-
-    return step.of.get(key) ?? step.fallback;
-  }
-
-  /**
-   * A pool the active voice's script defines shadows a code-registered pool
-   * of the same name, for that voice only (issue #1064): its state lives in
-   * the per-voice cache, built from the manifest on first pick.
-   */
-  private scriptPool(name: string): PoolState | null {
-    const voice = this.getActiveVoice();
-
-    if (voice === null) return null;
-
-    const source = this.compiled.get(voice)?.pools.get(name);
-
-    if (!source) return null;
-
-    let perVoice = this.scriptPoolState.get(voice);
-
-    if (!perVoice) {
-      perVoice = new Map();
-      this.scriptPoolState.set(voice, perVoice);
-    }
-
-    let pool = perVoice.get(name);
-
-    if (!pool) {
-      pool = this.buildManifestPool(source.group, source.base);
-      perVoice.set(name, pool);
-    }
-
-    return pool;
-  }
-
-  private pickFromPool(name: string, noRepeat: boolean): string | null {
-    const pool = this.scriptPool(name) ?? this.pools.get(name);
-
-    if (!pool) {
-      // Surfaces a class of bug that's otherwise silent: a scenario references
-      // a pool that was never registered (or was removed without updating the
-      // scenario). `defineScenario` validation catches this for scenarios
-      // defined ahead of fire time, but not for pools that vanish later or
-      // for `connector` step types whose pool is implicit.
-      this.logger.error(`pickFromPool: unknown pool "${name}" — step skipped, clip will not play`);
-
-      return null;
-    }
-
-    let clips: string[];
-
-    if (pool.kind === "manifest") {
-      const voice = this.getActiveVoice();
-
-      if (!voice) {
-        this.logger.debug(`pickFromPool: pool "${name}" skipped — no active voice selected`);
-
-        return null;
-      }
-
-      // Variant counts differ across voices, so a stale lastIndex from
-      // another voice would skew the no-repeat guard — reset it on voice
-      // change (issue #664).
-      if (voice !== pool.lastVoice) {
-        pool.lastVoice = voice;
-        pool.lastIndex = -1;
-      }
-
-      clips = pool.byVoice.get(voice) ?? [];
-    } else {
-      clips = pool.clips;
-    }
-
-    if (clips.length === 0) {
-      // Not an error: a voice may legitimately omit a callout (issue #664) —
-      // the step skips silently.
-      this.logger.debug(`pickFromPool: pool "${name}" is empty for the active voice — step skipped`);
-
-      return null;
-    }
-
-    let idx = Math.floor(Math.random() * clips.length);
-    // A pick already made from this pool by the expansion in progress comes
-    // first, so two draws inside one body avoid each other; otherwise the
-    // last take that actually played (issue #1138).
-    const last = this.expansionPicks?.get(pool) ?? pool.lastIndex;
-
-    if (noRepeat && clips.length > 1 && idx === last) {
-      idx = (idx + 1) % clips.length;
-    }
-
-    // Recorded on the expansion and committed by `prepareOps` on acceptance;
-    // a pick outside an expansion (none today) commits directly.
-    if (this.expansionPicks !== null) this.expansionPicks.set(pool, idx);
-    else pool.lastIndex = idx;
-
-    return clips[idx];
   }
 }
 
@@ -3085,24 +2724,6 @@ function describeBus(bus: AudioBus, state: BusState | undefined): ScenarioEngine
       after: e.after,
     })),
   };
-}
-
-/** Escape a literal string for embedding in a RegExp source. */
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-/**
- * @internal Exported for testing — the pool-membership rule `buildManifestPool`
- * applies to the manifest: a clip belongs to the `(group, base)` pool of the
- * voice it names when its path is `voice/<voice>/<group>/<base>-NN.mp3` with
- * exactly two digits, or the bare `voice/<voice>/<group>/<base>.mp3` (issue
- * #836). The first capture group is the voice. The digit count is pinned on
- * purpose: the #1051 entry in the callout-examples rule records what a
- * three-digit suffix did to a whole family.
- */
-export function poolMemberPattern(group: string, base: string): RegExp {
-  return new RegExp(`^voice/([^/]+)/${escapeRegExp(group)}/${escapeRegExp(base)}(?:-\\d{2})?\\.mp3$`);
 }
 
 /**
