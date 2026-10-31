@@ -30,7 +30,7 @@ You never:
 1. `git -C <master> fetch origin`, then confirm the checkout is clean and on `master`. A dirty or diverged checkout goes to Niklas; never reset it.
 2. Read the milestone: `gh issue list --milestone "<milestone>" --state all --limit 200 --json number,title,state,labels,assignees,body`. Parse with `node`, never `jq`.
 3. Read the lanes: `gh project item-list 1 --owner niklam --limit 500 --format json`, filtered with `node` to the milestone's issues.
-4. Read the work in flight: `git worktree list`, `gh pr list --state all --search "milestone:<milestone>" --json number,headRefName,state,reviewDecision,mergedAt`, and each open issue's comments, including its latest `Manual test:` verdict (Integration build, step 5): a pass at a sha the branch still contains is not tested again.
+4. Read the work in flight: `git worktree list`, `gh pr list --state all --search "milestone:<milestone>" --json number,headRefName,state,reviewDecision,mergedAt`, and each open issue's comments, including its latest `Manual test:` verdict (Integration build, step 5): a pass at a sha the branch still contains is not tested again. A `Proposed follow-up:` comment with no later `Filed as` or `Declined` is a proposal still waiting for Niklas: queue it again.
 5. Read your sessions: load `mcp__ccd_session_mgmt__list_sessions` with ToolSearch, then call it with `{"linked": true}`. Map each session to its issue by its `ir-<n>` name.
 6. Reconcile, issue by issue:
    - live session → `SendMessage` asking for its state in the report vocabulary (below);
@@ -51,7 +51,7 @@ node -e "import('./scripts/claude-hooks/lib.mjs').then(m=>console.log(m.moveBoar
 
 `setBoardStatus` moves into `Next` only from `Backlog` or `Planned`; a card already in `In progress` or later stays where it is and is left out of the positioning. Position only the cards that are in `Next` once the moves are done, in your order: the first with `null` (top of lane), each next one after the previous `Next` card. Run the sequence once with `IRACEDECK_HOOKS_DRY_RUN=1` the first time in a session. Tell Niklas the order whenever you set or change it.
 
-Propose adding, dropping or splitting an issue to Niklas and wait. Work with no issue gets one first, and every new issue, yours or a lead's `propose-issue`, goes through the `file-issue` skill: its step 1 (search, draft) goes into your "For you" list, and its step 2 (file, board, spec) runs only once he approves.
+Propose adding, dropping or splitting an issue to Niklas and wait. Work with no issue gets one first, and every new issue, yours or a lead's `propose-issue`, goes through the `file-issue` skill: its step 1 (search, draft) goes into your "For you" list, and its step 2 (file, board, spec) runs only once he approves. A pending proposal lives in your conversation only, so also record it where a resume reads: a comment `Proposed follow-up: <title>` on the issue it came from, updated with `Filed as #<n>` or `Declined` when he answers. A proposal with no source issue is re-raised in every status report until he answers.
 
 ## Specs
 
@@ -128,8 +128,12 @@ You are the only session that asks him anything. Batch: one message carrying eve
 ...
 
 For you:
-1. #<n> <question, review page link, or test request>
+1. #<n> <question, review page link, test request, or "new issue proposal A">
+
+Proposal A: <the whole file-issue proposal: title, labels, body, matches, spec verdict>
 ```
+
+A proposal is one line in "For you" and in full below the list: Niklas approves what he has read, never a title alone.
 
 Ask him only: what the release contains, behaviour and naming a user sees, scope a spec cannot settle without him, icon designs and audio clips on their review pages, audio text before generation, the manual test, releases, a red `master`, and an open permission prompt in another session.
 

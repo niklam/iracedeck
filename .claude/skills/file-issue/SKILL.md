@@ -68,6 +68,8 @@ If the draft depends on a product decision only Niklas can make, ask that one qu
 
 Only once the proposal is approved, as approved or with his edits.
 
+**An approved duplicate:** post the drafted comment on the existing issue instead of filing (`gh issue comment <n> --body-file <file>`). It carries what is new (the detail, the use case, a source link such as the Discord thread), not a restatement. Then report its link and stop here.
+
 1. Write the body to a file in your scratchpad, then run `gh issue create --title "<title>" --label "<label>" … --body-file <file>`. Never `--body @-`, which the hook refuses.
 2. **Board:** the post-hook adds the card to Backlog and says so. If it reports a failure, add it yourself: `node -e "import('./scripts/claude-hooks/lib.mjs').then(m=>console.log(m.addToBoard('<issue url>',process.cwd())))"` from the repo root.
 3. **Links:** for each related match, run `gh issue comment <match> --body "Related: #<new>"`, and make sure the new body names the match.
