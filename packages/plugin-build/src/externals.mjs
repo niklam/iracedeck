@@ -8,7 +8,6 @@ export const BASE_EXTERNALS = Object.freeze([
   "@iracedeck/iracing-native",
   "@resvg/resvg-js",
   "yaml",
-  "keysender",
 ]);
 /** @param {string[]} [extraExternals] */
 export function pluginExternals(extraExternals = []) {
