@@ -916,7 +916,20 @@ describe("the replay recorders' event stream (issue #1468)", () => {
   });
 
   afterAll(() => {
-    if (UPDATE_GOLDEN) writeGolden(results);
+    if (!UPDATE_GOLDEN) return;
+
+    // A run that left a tape out — a `-t` filter, or a tape that threw — would
+    // replace the committed golden with a subset, so it writes nothing.
+    const ran = new Set(results.map(({ tape }) => tape.name));
+    const missing = TAPES.filter((tape) => !ran.has(tape.name)).map((tape) => tape.name);
+
+    if (missing.length > 0) {
+      throw new Error(
+        `REPLAY_GOLDEN_UPDATE: golden not written, ${missing.length} tape(s) did not run: ${missing.join(", ")}`,
+      );
+    }
+
+    writeGolden(results);
   });
 
   it("has one golden entry per tape, and no other", () => {
