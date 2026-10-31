@@ -166,7 +166,7 @@ packages/
 | `@iracedeck/pi-components`        | Shared PI web components, EJS partials, Rollup EJS plugin, and the Ulanzi + settings-window bridges |
 | `@iracedeck/plugin-build`         | Build-only: `createPluginRollupConfig`, the one Rollup config the three plugins share     |
 | `@iracedeck/plugin-runtime`       | The composition root all three plugins share: startup phases and the shared action list  |
-| `@iracedeck/race-engineer-wiring` | The Race Engineer's bus caches and every `registerPitCrew` dependency, shared with the scenario harness |
+| `@iracedeck/race-engineer-wiring` | The Race Engineer's bus caches, every `registerPitCrew` dependency, the declared `SimRuntime` they read the sim through and the translator's settings-backed options, shared with the scenario harness |
 | `@iracedeck/iracing-plugin-stream-deck`   | Elgato Stream Deck plugin — shell over `plugin-runtime`, PI templates, manifest           |
 | `@iracedeck/iracing-plugin-mirabox`       | Mirabox plugin — shell over `plugin-runtime` for Mirabox devices                          |
 | `@iracedeck/iracing-plugin-ulanzi`        | Ulanzi Deck plugin — shell over `plugin-runtime` for Ulanzi devices                        |

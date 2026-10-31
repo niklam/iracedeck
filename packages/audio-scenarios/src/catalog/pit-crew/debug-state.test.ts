@@ -59,13 +59,14 @@ vi.mock("@iracedeck/audio-service", async (importOriginal) => ({
   getAudio: () => fakeAudio,
 }));
 
-vi.mock("@iracedeck/sim-events-iracing", () => ({
+// The sim reads every registration below is handed (#1378): a race with no
+// tick yet and a damage state not known.
+const SIM_READS = {
   getSessionType: () => "Race",
   getStandingStart: () => false,
   getLatestTelemetry: () => null,
-  isDamageRepairNeeded: () => null,
-  TrackDirection: { Neutral: "neutral", Left: "left", Right: "right" },
-}));
+  getDamageRepairNeeded: () => null,
+};
 
 type TestBus = IEventBus & { publishEvent: (name: SimEventName, data?: unknown) => void };
 
@@ -226,7 +227,7 @@ describe("readRaceEngineerState", () => {
 
   it("has one key per state-holding family once the catalog is registered, and nothing JSON cannot carry", () => {
     startEngine();
-    registerPitCrew(bus);
+    registerPitCrew(bus, SIM_READS);
 
     const state = initialized(readRaceEngineerState());
 
@@ -250,7 +251,7 @@ describe("readRaceEngineerState", () => {
 
   it("stays JSON-safe with every engine mid-episode: timers read as booleans", () => {
     startEngine();
-    registerPitCrew(bus);
+    registerPitCrew(bus, SIM_READS);
     setRadarEnabled(true);
     subscribeRadarVisualState(() => {});
 
@@ -280,7 +281,7 @@ describe("readRaceEngineerState", () => {
 
   it("reports the furled marker a test seam sets", () => {
     startEngine();
-    registerPitCrew(bus);
+    registerPitCrew(bus, SIM_READS);
     _setFurledRaisedSpoken(true);
 
     expect(read(initialized(readRaceEngineerState()).families.flagAlerts).furledRaisedSpoken).toBe(true);
@@ -322,7 +323,7 @@ describe("readRaceEngineerState", () => {
   it("is a pure read: two reads agree and the engine is asked for nothing but its state", () => {
     const engine = startEngine();
 
-    registerPitCrew(bus);
+    registerPitCrew(bus, SIM_READS);
 
     const fire = vi.spyOn(engine, "fire");
     const acquire = vi.spyOn(engine, "acquireFocus");
@@ -406,7 +407,7 @@ describe("a part that cannot be read fails alone", () => {
   it("an engine that cannot describe itself leaves all twelve families intact", () => {
     const engine = startEngine();
 
-    registerPitCrew(bus);
+    registerPitCrew(bus, SIM_READS);
     _setFurledRaisedSpoken(true);
     failEngine(engine, new Error("describeState exploded"));
 
@@ -638,6 +639,8 @@ describe("the family readers", () => {
         getCautionEpisode: () => ({ id: 3, firstFollowCarIdx: followCarIdx }),
         isCautionCalloutEnabled: () => true,
         getCautionGap: () => null,
+        getSessionType: () => "Race",
+        getLatestTelemetry: () => null,
       });
 
       expect(readCautionDebugState()).toEqual({ lastNamed: null, lastCatchUp: null });
@@ -662,6 +665,8 @@ describe("the family readers", () => {
       getCautionEpisode: () => ({ id: 4, firstFollowCarIdx: 12 }),
       isCautionCalloutEnabled: () => true,
       getCautionGap: () => ({ warranted: true }),
+      getSessionType: () => "Race",
+      getLatestTelemetry: () => null,
     });
     const catchUp = contracts.find((c) => c.id === "pit-crew.caution-catch-up");
 
@@ -679,6 +684,7 @@ describe("the family readers", () => {
       const contracts = buildRollingStartContracts({
         getRollingStartFormation: () => ({ id: 5, firstFollowCarIdx: followCarIdx }),
         getPaceLineup: () => ({ followCarIdx }) as never,
+        getSessionType: () => "Race",
       });
 
       expect(readRollingStartDebugState()).toEqual({ lastNamed: null });
@@ -708,7 +714,7 @@ describe("the family readers", () => {
 
   it("the three engines: registration, the episode and the timers as booleans", () => {
     startEngine();
-    registerPitCrew(bus);
+    registerPitCrew(bus, SIM_READS);
 
     expect(readRadarDebugState().registered).toBe(true);
     expect(readSpotterDebugState().registered).toBe(true);

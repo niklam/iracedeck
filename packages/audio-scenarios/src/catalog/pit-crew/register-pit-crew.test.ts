@@ -40,7 +40,7 @@ import {
   TIRE_WEAR_CALLOUTS,
 } from "@iracedeck/callout-settings";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
-import { PitSvStatus } from "@iracedeck/iracing-sdk";
+import { PitSvStatus, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from "vitest";
 
 import type { Scenario, ScenarioContract } from "../../dsl.js";
@@ -66,6 +66,7 @@ import {
   type PitStatusCalloutId,
   type PitWindowCalloutId,
   registerPitCrew,
+  resolvePitCrewDeps,
   type RollingStartCalloutId,
   stopRaceEngineerScenarios,
   type TireWearCalloutId,
@@ -83,17 +84,8 @@ const mockSessionType = vi.fn(() => "Race");
 // default — but the two DELAYED pit-limiter scenarios re-read it at fire time
 // instead of the event envelope, so their tests drive it. Reset per test in the
 // top-level `beforeEach` (`vi.clearAllMocks()` clears calls, not implementations).
+// Both are handed to the registration as its sim reads (#1378).
 const mockLatestTelemetry = vi.fn((): unknown => null);
-
-vi.mock("@iracedeck/sim-events-iracing", () => ({
-  getSessionType: () => mockSessionType(),
-  getStandingStart: () => false,
-  getLatestTelemetry: () => mockLatestTelemetry(),
-  // The damage line's speak-time gate (issue #1288): the settled damage
-  // state, unknown here, which the gate admits.
-  isDamageRepairNeeded: () => null,
-  TrackDirection: { Neutral: "neutral", Left: "left", Right: "right" },
-}));
 
 // Race-formation + start-light scenarios gate on `isLiveOnTrack` (issue #480
 // follow-up), so published events carry in-car telemetry by default.
@@ -639,6 +631,13 @@ beforeEach(() => {
     // wording.
     getRollingStartFormation: () => ({ id: 1, firstFollowCarIdx: null }),
     getRaceEngineerMasterEnabled,
+    // The sim reads (#1378), over the stubs above: a race, a rolling grid,
+    // the live tick the delayed pit-limiter cases drive, and a damage state
+    // not known yet, which the damage line's speak-time gate admits.
+    getSessionType: () => mockSessionType(),
+    getStandingStart: () => false,
+    getLatestTelemetry: () => mockLatestTelemetry() as TelemetryData | null,
+    getDamageRepairNeeded: () => null,
   });
   // After the registration, as the plugins do (issue #1064): the engine
   // wraps every framed callout in the voice's `radio` frame at fire time.
@@ -2729,5 +2728,43 @@ describe("telemetry readout registration (issue #466)", () => {
     flush(audio);
 
     expect(voiceClipsPlayed()).toEqual([`voice/${VOICE}/telemetry-readout/no-data-01.mp3`]);
+  });
+});
+
+// One resolution against the defaults (#1378): what every family builder and
+// engine is handed, so each key's answer is decided in one place.
+describe("resolvePitCrewDeps (issue #1378)", () => {
+  it("fills every key but the logger from the defaults when nothing is passed", () => {
+    const resolved = resolvePitCrewDeps({});
+
+    expect(resolved).not.toHaveProperty("logger");
+    expect(resolved.getLatestTelemetry()).toBeNull();
+    expect(resolved.getSessionType()).toBe("");
+    expect(resolved.getStandingStart()).toBe(false);
+    expect(resolved.getDamageRepairNeeded()).toBeNull();
+    expect(resolved.getSpotterTrackDirection()).toBe("neutral");
+
+    for (const value of Object.values(resolved)) expect(typeof value).toBe("function");
+  });
+
+  it("lets a defined dep win", () => {
+    const getSessionType = (): string => "Race";
+
+    expect(resolvePitCrewDeps({ getSessionType }).getSessionType).toBe(getSessionType);
+  });
+
+  it("keeps the default for a dep passed as an explicit undefined", () => {
+    const resolved = resolvePitCrewDeps({ getSessionType: undefined, getLatestTelemetry: undefined });
+
+    expect(resolved.getSessionType()).toBe("");
+    expect(resolved.getLatestTelemetry()).toBeNull();
+  });
+
+  it("returns a fresh object each call, so one caller's deps never reach another's", () => {
+    const first = resolvePitCrewDeps({ getSessionType: () => "Race" });
+    const second = resolvePitCrewDeps({});
+
+    expect(first).not.toBe(second);
+    expect(second.getSessionType()).toBe("");
   });
 });

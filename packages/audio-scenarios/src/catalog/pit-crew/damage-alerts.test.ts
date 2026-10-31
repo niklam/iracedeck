@@ -18,7 +18,13 @@ import type { ScenarioContext } from "../../dsl.js";
 import { WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest, IScenarioEngine } from "../../interpreter.js";
 import { _resetAudioScenarios, initializeAudioScenarios, poolMemberPattern } from "../../interpreter.js";
-import { DAMAGE_CLIP_SOURCES, DAMAGE_CONTRACTS, DAMAGE_SCENARIO_IDS, damageStillNeedsRepair } from "./damage-alerts.js";
+import {
+  buildDamageContracts,
+  DAMAGE_CLIP_SOURCES,
+  DAMAGE_SCENARIO_IDS,
+  type DamageAlertsDeps,
+  damageStillNeedsRepair,
+} from "./damage-alerts.js";
 import { familyReferences } from "./family-references.test-util.js";
 import {
   _resetLastIncidentPoints,
@@ -32,12 +38,10 @@ import { QUALIFYING_INVALIDATION_SCENARIO_IDS } from "./qualifying-invalidation.
 // The speak-time gate reads the translator's SETTLED damage state (issue
 // #1288), never a raw tick — that the getter rides out a flicker is tested in
 // `sim-events-iracing`'s translator tests. `null` — not known — unless a test
-// sets it.
+// sets it. Handed to the build as the family's one sim read (#1378).
 const mockRepairNeeded = vi.fn((): boolean | null => null);
-
-vi.mock("@iracedeck/sim-events-iracing", () => ({
-  isDamageRepairNeeded: () => mockRepairNeeded(),
-}));
+const DAMAGE_DEPS: DamageAlertsDeps = { getDamageRepairNeeded: () => mockRepairNeeded() };
+const DAMAGE_CONTRACTS = buildDamageContracts(DAMAGE_DEPS);
 
 /** The settled state with a repair needed, and with the repair done. */
 const DAMAGED = true;
@@ -227,8 +231,14 @@ describe("DAMAGE_CONTRACTS structure", () => {
       expect(c.maxQueueWaitMs).toBe(30_000);
       expect(c.supersedeGroup).toBeUndefined();
       expect(c.pendingHoldMs).toBeUndefined();
-      // Re-checks the settled damage state at speak time (issue #1288).
-      expect(c.speakGate?.admit).toBe(damageStillNeedsRepair);
+      // Re-checks the settled damage state at speak time (issue #1288),
+      // through the build's own read (#1378).
+      const raised = { event: "damage.repairNeeded.raised", data: {}, telemetry: null, now: 0 } as never;
+
+      mockRepairNeeded.mockReturnValue(false);
+      expect(c.speakGate?.admit(raised)).toBe(false);
+      mockRepairNeeded.mockReturnValue(true);
+      expect(c.speakGate?.admit(raised)).toBe(true);
       expect(c.speakGate?.description).toContain("still needs a repair");
     }
   });
@@ -527,14 +537,14 @@ describe("the damage line behind a held or busy bus (issues #1211, #1288)", () =
       } as unknown as SimEventOf<SimEventName>;
 
       mockRepairNeeded.mockReturnValue(true);
-      expect(damageStillNeedsRepair(ctx(raised))).toBe(true);
+      expect(damageStillNeedsRepair(ctx(raised), DAMAGE_DEPS)).toBe(true);
 
       mockRepairNeeded.mockReturnValue(null);
-      expect(damageStillNeedsRepair(ctx(raised))).toBe(true);
+      expect(damageStillNeedsRepair(ctx(raised), DAMAGE_DEPS)).toBe(true);
 
       mockRepairNeeded.mockReturnValue(false);
-      expect(damageStillNeedsRepair(ctx(raised))).toBe(false);
-      expect(damageStillNeedsRepair(ctx(null))).toBe(true);
+      expect(damageStillNeedsRepair(ctx(raised), DAMAGE_DEPS)).toBe(false);
+      expect(damageStillNeedsRepair(ctx(null), DAMAGE_DEPS)).toBe(true);
     });
   });
 });

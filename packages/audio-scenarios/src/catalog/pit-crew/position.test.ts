@@ -49,12 +49,12 @@ import {
 import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
 
-vi.mock("@iracedeck/sim-events-iracing", () => ({
+// The sim reads the registration is handed (#1378): a race with no tick yet.
+const SIM_READS = {
   getSessionType: () => "Race",
   getStandingStart: () => false,
   getLatestTelemetry: () => null,
-  TrackDirection: { Neutral: "neutral", Left: "left", Right: "right" },
-}));
+};
 
 const mockLogger = {
   trace: vi.fn(),
@@ -757,6 +757,7 @@ describe("position-change contract — the catalog's opt-in wrapper", () => {
     audio = createFakeAudio();
     engine = initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
     registerPitCrew(bus, {
+      ...SIM_READS,
       logger: mockLogger as never,
       getLapCompletedSnapshot: () => lastSnapshot,
       isCalloutEnabled: (key) =>

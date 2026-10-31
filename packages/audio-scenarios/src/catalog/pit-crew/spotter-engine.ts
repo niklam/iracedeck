@@ -47,7 +47,7 @@
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { IEventBus, RadarState, SimEventOf } from "@iracedeck/event-bus";
 import type { ILogger } from "@iracedeck/logger";
-import { getLatestTelemetry, getSessionType, TrackDirection } from "@iracedeck/sim-events-iracing";
+import type { TelemetryData } from "@iracedeck/sim-events-iracing";
 
 import type { ScenarioContract } from "../../dsl.js";
 import { NO_FRAME, WEIGHT } from "../../dsl.js";
@@ -91,6 +91,15 @@ export const SPOTTER_CLEAR_BUFFER_METERS = 0.5;
 export const SPOTTER_CLEAR_POLL_MS = 200;
 export const SPOTTER_CLEAR_FALLBACK_MS = 1500;
 
+/**
+ * The track's rotation direction as the spotter reads it (issue #651): a
+ * left-going oval makes the left side "inside", a right-going oval reverses
+ * it, and `"neutral"` — a road course, or unknown — keeps left/right.
+ * Declared structurally (#1378), so the catalog names no translator enum for
+ * it; the wiring converts the sim's own value.
+ */
+export type SpotterTrackDirection = "neutral" | "left" | "right";
+
 /** Plugin-supplied accessors the engine consults live on every event/tick. */
 export type SpotterDeps = {
   /**
@@ -106,7 +115,7 @@ export type SpotterDeps = {
   /** Loop cadence in ms (`spotterStillThereSeconds` × 1000), read live each tick. */
   getStillThereIntervalMs: () => number;
   /** Road (left/right) vs oval (inside/outside) terminology. */
-  getTrackDirection: () => TrackDirection;
+  getTrackDirection: () => SpotterTrackDirection;
   /**
    * Distance (m) to the nearest car on track, or `null` when unavailable. Drives
    * the → clear confirmation buffer: "clear" is held until this grows by
@@ -114,6 +123,18 @@ export type SpotterDeps = {
    * (immediate clear), so tests and unwired callers keep the prior behavior.
    */
   getNearestCarGapMeters: () => number | null;
+  /**
+   * The latest telemetry tick, for the pit-road read (#1378); `null` before
+   * the first tick. Default `() => null`, the translator's own answer when it
+   * was never initialised.
+   */
+  getLatestTelemetry: () => TelemetryData | null;
+  /**
+   * The sim's session type name, for the Lone Qualify silence (#1378); `""`
+   * when unavailable. Default `() => ""`, the translator's own answer when it
+   * was never initialised.
+   */
+  getSessionType: () => string;
   logger?: ILogger;
 };
 
@@ -220,8 +241,10 @@ const DEFAULT_DEPS: SpotterDeps = {
   getCarsEnabled: () => true,
   getStillThereEnabled: () => true,
   getStillThereIntervalMs: () => SPOTTER_STILL_THERE_DEFAULT_MS,
-  getTrackDirection: () => TrackDirection.Neutral,
+  getTrackDirection: () => "neutral",
   getNearestCarGapMeters: () => null,
+  getLatestTelemetry: () => null,
+  getSessionType: () => "",
 };
 
 let deps: SpotterDeps = DEFAULT_DEPS;
@@ -250,10 +273,10 @@ function counts(s: RadarState): Counts {
 }
 
 /** Map a physical side to its spoken term given the track rotation direction. */
-function termFor(side: Side, dir: TrackDirection): SpokenTerm {
-  if (dir === TrackDirection.Left) return side === "left" ? "inside" : "outside";
+function termFor(side: Side, dir: SpotterTrackDirection): SpokenTerm {
+  if (dir === "left") return side === "left" ? "inside" : "outside";
 
-  if (dir === TrackDirection.Right) return side === "left" ? "outside" : "inside";
+  if (dir === "right") return side === "left" ? "outside" : "inside";
 
   // Neutral / unknown (road course): physical side is the spoken side.
   return side;
@@ -263,7 +286,7 @@ function termFor(side: Side, dir: TrackDirection): SpokenTerm {
  * Level clip for one side: `car-<term>` (1 car), `two-cars-<term>` (2 cars),
  * or `one-car-<term>` (de-escalation 2→1). `<term> = termFor(side, dir)`.
  */
-function levelClip(side: Side, count: number, dir: TrackDirection, oneCar = false): string {
+function levelClip(side: Side, count: number, dir: SpotterTrackDirection, oneCar = false): string {
   const term = termFor(side, dir);
 
   if (oneCar) return `${BASE}one-car-${term}.mp3`;
@@ -277,7 +300,12 @@ function levelClip(side: Side, count: number, dir: TrackDirection, oneCar = fals
  * Combined de-escalation/swap clip carrying both cues in one clip:
  * `clear-<termCleared>-{car|two-cars}-<termRemaining>`.
  */
-function combinedClip(clearedSide: Side, remainingSide: Side, remainingCount: number, dir: TrackDirection): string {
+function combinedClip(
+  clearedSide: Side,
+  remainingSide: Side,
+  remainingCount: number,
+  dir: SpotterTrackDirection,
+): string {
   const termCleared = termFor(clearedSide, dir);
   const termRemaining = termFor(remainingSide, dir);
   const word = remainingCount === 2 ? "two-cars" : "car";
@@ -362,7 +390,7 @@ function startLoop(): void {
 
 /** Live suppression: master off, both opt-ins off, on pit road, or Lone Qualify. */
 function suppressed(): boolean {
-  return !deps.getMasterEnabled() || !spotterActive() || getSessionType() === "Lone Qualify" || isOnPitRoad();
+  return !deps.getMasterEnabled() || !spotterActive() || deps.getSessionType() === "Lone Qualify" || isOnPitRoad();
 }
 
 function tick(): void {
@@ -464,7 +492,7 @@ function beginPendingClear(): void {
 
 // ─── State machine ───────────────────────────────────────────────────────────
 
-function handleTransition(oldState: RadarState, newState: RadarState, dir: TrackDirection): void {
+function handleTransition(oldState: RadarState, newState: RadarState, dir: SpotterTrackDirection): void {
   resetLoopTimer();
 
   const carsEnabled = deps.getCarsEnabled();
@@ -514,7 +542,7 @@ function handleTransition(oldState: RadarState, newState: RadarState, dir: Track
 }
 
 function isOnPitRoad(): boolean {
-  const telemetry = getLatestTelemetry() as { OnPitRoad?: boolean } | null;
+  const telemetry = deps.getLatestTelemetry();
 
   return telemetry?.OnPitRoad === true;
 }

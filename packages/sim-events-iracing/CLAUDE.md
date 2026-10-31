@@ -5,7 +5,7 @@ The iRacing translator (`initializeSimEventsIracing`, `src/translator.ts`): it d
 ## Place in the architecture
 
 - It is the bus's only source of sim events. A future sim adapter is a parallel sibling emitting the same catalog. The one exception is `telemetryReadout.requested`, which the deck layer publishes, not a translator.
-- It is not the only reader of `@iracedeck/iracing-sdk` telemetry: actions read the SDK controller directly through `deck-iracing`'s `SimIRacingAction`, and part of the `audio-scenarios` catalog reads raw telemetry through `getLatestTelemetry()`. The measured leaks are listed under the Architecture page's "Seams & where the abstraction leaks" (#1351).
+- It is not the only reader of `@iracedeck/iracing-sdk` telemetry: actions read the SDK controller directly through `deck-iracing`'s `SimIRacingAction`, and part of the `audio-scenarios` catalog reads raw telemetry — through the `getLatestTelemetry` dependency `race-engineer-wiring` fills from this package's getter by way of `SimRuntime`, never by importing it (#1378). `TelemetryData` is re-exported as a type so those consumers name the tick's shape without importing `iracing-sdk`. The measured leaks are listed under the Architecture page's "Seams & where the abstraction leaks" (#1351).
 
 ## What it owns besides the events
 

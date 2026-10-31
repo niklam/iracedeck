@@ -1,6 +1,8 @@
+import type { SpotterTrackDirection } from "@iracedeck/audio-scenarios/pit-crew";
 import { silentLogger } from "@iracedeck/logger";
 import { _resetGlobalSettings, evaluateSetupWarning, updateGlobalSettings } from "@iracedeck/settings";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { TrackDirection } from "@iracedeck/sim-events-iracing";
+import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 
 import type { RaceEngineerCaches } from "./caches.js";
 import { buildPitCrewDeps } from "./pit-crew-deps.js";
@@ -48,10 +50,10 @@ describe("buildPitCrewDeps", () => {
   });
   afterEach(() => vi.restoreAllMocks());
 
-  it("builds all 30 dependencies, so none falls back to DEFAULT_DEPS", () => {
+  it("builds all 34 dependencies, so none falls back to DEFAULT_DEPS", () => {
     const built = buildPitCrewDeps(fakeDeps(), noCaches);
 
-    expect(Object.keys(built)).toHaveLength(30);
+    expect(Object.keys(built)).toHaveLength(34);
 
     for (const [key, value] of Object.entries(built)) expect(value, key).toBeDefined();
   });
@@ -138,6 +140,55 @@ describe("buildPitCrewDeps", () => {
     expect(built.getRaceFinishedSnapshot(), "no name clips: no race-finished snapshot").toBeNull();
     voice.driverNames = ["adam"];
     expect(built.getRaceFinishedSnapshot()).toEqual({ position: 2, driverName: "adam" });
+  });
+
+  it("routes the four #1378 reads to their SimRuntime members, read live", () => {
+    const sim = fakeSim({
+      getLatestTelemetry: vi.fn(() => ({ SessionTick: 7 })),
+      getSessionType: vi.fn(() => "Lone Qualify"),
+      isStandingStart: vi.fn(() => true),
+      isDamageRepairNeeded: vi.fn(() => false),
+    });
+    const built = buildPitCrewDeps(fakeDeps({ sim }), noCaches);
+
+    expect(built.getLatestTelemetry()).toEqual({ SessionTick: 7 });
+    expect(built.getSessionType()).toBe("Lone Qualify");
+    expect(built.getStandingStart()).toBe(true);
+    expect(built.getDamageRepairNeeded()).toBe(false);
+
+    vi.mocked(sim.isDamageRepairNeeded).mockReturnValue(null);
+    expect(built.getDamageRepairNeeded(), "read on every call, not captured").toBeNull();
+  });
+
+  it("hands the catalog the no-translator values for the four reads when the sim answers them", () => {
+    const sim = fakeSim({
+      getLatestTelemetry: () => null,
+      getSessionType: () => "",
+      isStandingStart: () => false,
+      isDamageRepairNeeded: () => null,
+    });
+    const built = buildPitCrewDeps(fakeDeps({ sim }), noCaches);
+
+    expect(built.getLatestTelemetry()).toBeNull();
+    expect(built.getSessionType()).toBe("");
+    expect(built.getStandingStart()).toBe(false);
+    expect(built.getDamageRepairNeeded()).toBeNull();
+  });
+
+  it.each([
+    [TrackDirection.Neutral, "neutral"],
+    [TrackDirection.Left, "left"],
+    [TrackDirection.Right, "right"],
+  ] as const)("converts the sim's %s track direction to the catalog's %j", (direction, expected) => {
+    const built = buildPitCrewDeps(fakeDeps({ sim: fakeSim({ getTrackDirection: () => direction }) }), noCaches);
+
+    expect(built.getSpotterTrackDirection()).toBe(expected);
+  });
+
+  it("pins the translator's TrackDirection enum onto the catalog's union (type test)", () => {
+    // The enum's member values ARE the union, member for member: a value
+    // added to either side fails `pnpm typecheck` here.
+    expectTypeOf<`${TrackDirection}`>().toEqualTypeOf<SpotterTrackDirection>();
   });
 
   it("composes the overtake gate from telemetry and the last incident", () => {

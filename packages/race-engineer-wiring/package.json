@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@iracedeck/audio-scenarios": "workspace:*",
+    "@iracedeck/callout-settings": "workspace:*",
     "@iracedeck/event-bus": "workspace:*",
     "@iracedeck/logger": "workspace:*",
     "@iracedeck/settings": "workspace:*",

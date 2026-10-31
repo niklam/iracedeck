@@ -31,7 +31,8 @@
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type CalloutIdOf, NO_LIMITER_CALLOUTS } from "@iracedeck/callout-settings";
 import type { SessionStartSnapshot } from "@iracedeck/event-bus";
-import { hasPitLimiter, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { hasPitLimiter } from "@iracedeck/iracing-sdk";
+import type { TelemetryData } from "@iracedeck/sim-events-iracing";
 
 import type { ScenarioContract } from "../../dsl.js";
 import { poolRef } from "../../dsl.js";

@@ -100,6 +100,36 @@ export default [
     },
   },
   {
+    // The Race Engineer catalog reads the sim only through the deps registerPitCrew
+    // is handed (#1378): the translator's types may be named, never its getters
+    // called, and the deck and native layers not reached at all. Lint sees imports,
+    // not calls, so this is a ratchet on direct imports; a transitive read is
+    // caught by the families' required deps types instead. Tests and their utils
+    // may import what they like.
+    files: ['packages/audio-scenarios/src/**/*.ts'],
+    ignores: ['packages/audio-scenarios/src/**/*.test.ts', 'packages/audio-scenarios/src/**/*.test-util.ts'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@iracedeck/sim-events-iracing',
+              allowTypeImports: true,
+              message:
+                'The Race Engineer catalog reads the sim only through its injected deps: import the translator\'s types with `import type`, and take a read through PitCrewDeps (#1378).',
+            },
+            ...['@iracedeck/deck-iracing', '@iracedeck/iracing-native'].map((name) => ({
+              name,
+              message:
+                'The Race Engineer catalog must not reach the deck layer or the native addons: take what it needs through PitCrewDeps (#1378).',
+            })),
+          ],
+        },
+      ],
+    },
+  },
+  {
     // The replay engine is iRacing's, not the deck's (#1467): what it needs from the deck
     // layer and the settings is injected by plugin-runtime's initReplay phase.
     // scripts/replay-engine-boundary.test.mjs proves this rule fires.

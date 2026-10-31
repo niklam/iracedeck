@@ -73,18 +73,18 @@
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type CalloutIdOf, SESSION_START_CALLOUTS } from "@iracedeck/callout-settings";
 import { type SessionStartSnapshot, TrackWetness } from "@iracedeck/event-bus";
-import { type TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
+import type { TelemetryData } from "@iracedeck/sim-events-iracing";
 
 import type { ScenarioContract } from "../../dsl.js";
 import { poolRef } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 import {
+  buildStartBriefSpeakGate,
   describeMissingStartConditions,
   type SetupWarningResolver,
   START_BRIEF_SETTLE_MAX_MS,
   START_BRIEF_SETTLE_POLL_MS,
-  START_BRIEF_SPEAK_GATE,
 } from "./race-start.js";
 import {
   TEMPERATURE_UNIT_DESCRIPTION,
@@ -251,6 +251,17 @@ export function registerSessionStartVocabulary(
 }
 
 /**
+ * What {@link buildSessionStartContract} is built against (#1378): the
+ * snapshot its `where:` and `settle` read, and the latest telemetry tick,
+ * which the speak-time session check it shares with the race-start brief
+ * reads — injected rather than imported from the translator.
+ */
+export type SessionStartContractDeps = {
+  getSessionStartSnapshot: SessionStartSnapshotResolver;
+  getLatestTelemetry: () => TelemetryData | null;
+};
+
+/**
  * Build the session-start contract bound to a snapshot resolver. Stays a
  * builder because the `where:` reads the resolver (to gate firing); the
  * brief itself is the vocabulary's ({@link registerSessionStartVocabulary}).
@@ -259,7 +270,7 @@ export function registerSessionStartVocabulary(
  * to `WEIGHT.NORMAL`).
  */
 export function buildSessionStartContract(
-  getSnapshot: SessionStartSnapshotResolver,
+  { getSessionStartSnapshot: getSnapshot, getLatestTelemetry }: SessionStartContractDeps,
   logger?: ILogger,
 ): ScenarioContract {
   return {
@@ -342,7 +353,7 @@ export function buildSessionStartContract(
     // Queueable (#1284): the brief now fires anywhere from 3 to 10 s after the
     // transition, when other callouts are as likely to hold the bus, and a
     // session brief a few seconds late is still the session brief.
-    speakGate: START_BRIEF_SPEAK_GATE,
+    speakGate: buildStartBriefSpeakGate(getLatestTelemetry),
     queueable: true,
     description:
       "A practice or qualifying session begins and iRacing reports the track conditions, or ten seconds pass, in the garage or on track — but not when iRaceDeck connects while you are out lapping.",

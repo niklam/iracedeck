@@ -1,10 +1,12 @@
 import type { IEventBus } from "@iracedeck/event-bus";
+import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   _resetRadarEngine,
   getRadarVisualState,
   playRadarTest,
+  type RadarDeps,
   registerRadarEngine,
   setRadarEnabled,
   subscribeRadarVisualState,
@@ -34,7 +36,7 @@ const hoisted = vi.hoisted(() => {
       set?.delete(handler);
     };
   });
-  // Typed once so every `registerRadarEngine(hoisted.bus)` callsite
+  // Typed once so every `registerRadarEngine(hoisted.bus, radarDeps())` callsite
   // stays type-safe without a per-call `as never` escape hatch.
   const bus = { subscribe, unsubscribe: vi.fn(), publish: vi.fn() } as unknown as IEventBus;
   const publishRadar = (to: string, from = "clear"): void => {
@@ -68,10 +70,18 @@ vi.mock("@iracedeck/audio-service", () => ({
   getAudio: hoisted.getAudio,
 }));
 
-vi.mock("@iracedeck/sim-events-iracing", () => ({
-  getLatestTelemetry: hoisted.getLatestTelemetry,
-  getSessionType: hoisted.getSessionType,
-}));
+/**
+ * The engine's deps (#1378): the master on, and the two sim reads over the
+ * hoisted stubs each case switches. `overrides` replaces any of them.
+ */
+function radarDeps(overrides: Partial<RadarDeps> = {}): RadarDeps {
+  return {
+    getMasterEnabled: () => true,
+    getLatestTelemetry: () => hoisted.getLatestTelemetry() as TelemetryData | null,
+    getSessionType: () => hoisted.getSessionType(),
+    ...overrides,
+  };
+}
 
 const RADAR_CHANNEL = 3;
 
@@ -95,25 +105,72 @@ afterEach(() => {
 
 describe("registerRadarEngine", () => {
   it("subscribes to radar.changed exactly once, even if called twice", () => {
-    registerRadarEngine(hoisted.bus);
-    registerRadarEngine(hoisted.bus);
+    registerRadarEngine(hoisted.bus, radarDeps());
+    registerRadarEngine(hoisted.bus, radarDeps());
 
     expect(hoisted.subscribe).toHaveBeenCalledTimes(1);
     expect(hoisted.subscribe).toHaveBeenCalledWith("radar.changed", expect.any(Function));
   });
 
   it("throws when re-registered with a different bus instance", () => {
-    registerRadarEngine(hoisted.bus);
+    registerRadarEngine(hoisted.bus, radarDeps());
     const otherBus = { subscribe: vi.fn(), unsubscribe: vi.fn(), publish: vi.fn() } as unknown as IEventBus;
 
-    expect(() => registerRadarEngine(otherBus)).toThrow(/different event bus/);
+    expect(() => registerRadarEngine(otherBus, radarDeps())).toThrow(/different event bus/);
     expect(otherBus.subscribe).not.toHaveBeenCalled();
+  });
+
+  // The spotter engine's rule (#1378): a same-bus re-registration replaces the
+  // deps the engine reads live; a rejected one leaves them as they were.
+  it("a same-bus re-registration replaces the deps the engine reads", () => {
+    registerRadarEngine(hoisted.bus, radarDeps({ getSessionType: () => "Lone Qualify" }));
+    setRadarEnabled(true);
+    hoisted.publishRadar("left");
+
+    expect(hoisted.playOnChannel).not.toHaveBeenCalled();
+
+    registerRadarEngine(hoisted.bus, radarDeps({ getSessionType: () => "Race" }));
+    hoisted.publishRadar("left");
+
+    expect(hoisted.playOnChannel).toHaveBeenCalledWith(RADAR_CHANNEL, "sfx/radar/IRD-radar-left.mp3");
+    expect(hoisted.subscribe).toHaveBeenCalledTimes(1);
+  });
+
+  it("a rejected different-bus registration leaves the deps as they were", () => {
+    registerRadarEngine(hoisted.bus, radarDeps({ getMasterEnabled: () => true }));
+    const otherBus = { subscribe: vi.fn(), unsubscribe: vi.fn(), publish: vi.fn() } as unknown as IEventBus;
+
+    expect(() => registerRadarEngine(otherBus, radarDeps({ getMasterEnabled: () => false }))).toThrow(
+      /different event bus/,
+    );
+
+    setRadarEnabled(true);
+    hoisted.publishRadar("left");
+
+    expect(hoisted.playOnChannel).toHaveBeenCalledWith(RADAR_CHANNEL, "sfx/radar/IRD-radar-left.mp3");
+  });
+
+  it("reads the sim only through its deps: pit road comes from the injected telemetry read", () => {
+    let onPitRoad = true;
+    registerRadarEngine(
+      hoisted.bus,
+      radarDeps({ getLatestTelemetry: () => ({ OnPitRoad: onPitRoad }) as TelemetryData }),
+    );
+    setRadarEnabled(true);
+    hoisted.publishRadar("left");
+
+    expect(hoisted.playOnChannel).not.toHaveBeenCalled();
+
+    onPitRoad = false;
+    hoisted.publishRadar("left");
+
+    expect(hoisted.playOnChannel).toHaveBeenCalledTimes(1);
   });
 });
 
 describe("radar.changed → tick loop", () => {
   it("does nothing when the master gate is disabled", () => {
-    registerRadarEngine(hoisted.bus);
+    registerRadarEngine(hoisted.bus, radarDeps());
     hoisted.publishRadar("left");
 
     expect(hoisted.playOnChannel).not.toHaveBeenCalled();
@@ -121,7 +178,7 @@ describe("radar.changed → tick loop", () => {
   });
 
   it("starts ticking on the Radar channel when enabled and state goes non-clear", () => {
-    registerRadarEngine(hoisted.bus);
+    registerRadarEngine(hoisted.bus, radarDeps());
     setRadarEnabled(true);
 
     hoisted.publishRadar("left");
@@ -137,7 +194,7 @@ describe("radar.changed → tick loop", () => {
   });
 
   it("uses the 180 ms cadence for two-cars-same-side states", () => {
-    registerRadarEngine(hoisted.bus);
+    registerRadarEngine(hoisted.bus, radarDeps());
     setRadarEnabled(true);
     hoisted.publishRadar("two-left");
 
@@ -147,7 +204,7 @@ describe("radar.changed → tick loop", () => {
   });
 
   it("uses the 230 ms cadence for both-sides", () => {
-    registerRadarEngine(hoisted.bus);
+    registerRadarEngine(hoisted.bus, radarDeps());
     setRadarEnabled(true);
     hoisted.publishRadar("both");
 
@@ -157,7 +214,7 @@ describe("radar.changed → tick loop", () => {
   });
 
   it("stops the tick loop and silences the channel when state returns to clear", () => {
-    registerRadarEngine(hoisted.bus);
+    registerRadarEngine(hoisted.bus, radarDeps());
     setRadarEnabled(true);
     hoisted.publishRadar("left");
     const beforeClearCalls = hoisted.playOnChannel.mock.calls.length;
@@ -172,7 +229,7 @@ describe("radar.changed → tick loop", () => {
   });
 
   it("switches interval when state transitions between active states", () => {
-    registerRadarEngine(hoisted.bus);
+    registerRadarEngine(hoisted.bus, radarDeps());
     setRadarEnabled(true);
     hoisted.publishRadar("left");
     expect(hoisted.playOnChannel).toHaveBeenCalledTimes(1);
@@ -187,7 +244,7 @@ describe("radar.changed → tick loop", () => {
   });
 
   it("ignores repeated transitions to the same state", () => {
-    registerRadarEngine(hoisted.bus);
+    registerRadarEngine(hoisted.bus, radarDeps());
     setRadarEnabled(true);
     hoisted.publishRadar("left");
     expect(hoisted.playOnChannel).toHaveBeenCalledTimes(1);
@@ -199,7 +256,7 @@ describe("radar.changed → tick loop", () => {
 
 describe("pit-road suppression", () => {
   it("forces the visual state to clear and silences the channel while on pit road", () => {
-    registerRadarEngine(hoisted.bus);
+    registerRadarEngine(hoisted.bus, radarDeps());
     setRadarEnabled(true);
     hoisted.publishRadar("left");
     expect(getRadarVisualState()).toBe("left");
@@ -212,7 +269,7 @@ describe("pit-road suppression", () => {
   });
 
   it("is a no-op when telemetry is missing", () => {
-    registerRadarEngine(hoisted.bus);
+    registerRadarEngine(hoisted.bus, radarDeps());
     setRadarEnabled(true);
     hoisted.getLatestTelemetry.mockReturnValue(null);
 
@@ -231,7 +288,7 @@ describe("pit-road suppression", () => {
 describe("Race Engineer master gate (issue #515)", () => {
   it("does not fire ticks on radar.changed when the master gate is off", () => {
     let masterOn = false;
-    registerRadarEngine(hoisted.bus, () => masterOn);
+    registerRadarEngine(hoisted.bus, radarDeps({ getMasterEnabled: () => masterOn }));
     setRadarEnabled(true);
 
     hoisted.publishRadar("left");
@@ -241,7 +298,7 @@ describe("Race Engineer master gate (issue #515)", () => {
 
   it("fires normally when both `enabled` and the master gate are on", () => {
     let masterOn = true;
-    registerRadarEngine(hoisted.bus, () => masterOn);
+    registerRadarEngine(hoisted.bus, radarDeps({ getMasterEnabled: () => masterOn }));
     setRadarEnabled(true);
 
     hoisted.publishRadar("left");
@@ -251,7 +308,7 @@ describe("Race Engineer master gate (issue #515)", () => {
 
   it("stops scheduled ticks mid-loop when the master gate flips off", () => {
     let masterOn = true;
-    registerRadarEngine(hoisted.bus, () => masterOn);
+    registerRadarEngine(hoisted.bus, radarDeps({ getMasterEnabled: () => masterOn }));
     setRadarEnabled(true);
     hoisted.publishRadar("left");
     expect(hoisted.playOnChannel).toHaveBeenCalledTimes(1);
@@ -270,7 +327,7 @@ describe("Race Engineer master gate (issue #515)", () => {
 
   it("re-firing radar.changed while master is off still suppresses the engine", () => {
     let masterOn = false;
-    registerRadarEngine(hoisted.bus, () => masterOn);
+    registerRadarEngine(hoisted.bus, radarDeps({ getMasterEnabled: () => masterOn }));
     setRadarEnabled(true);
 
     hoisted.publishRadar("left");
@@ -282,7 +339,7 @@ describe("Race Engineer master gate (issue #515)", () => {
 
   it("flipping the master gate back on lets the next radar.changed fire ticks", () => {
     let masterOn = false;
-    registerRadarEngine(hoisted.bus, () => masterOn);
+    registerRadarEngine(hoisted.bus, radarDeps({ getMasterEnabled: () => masterOn }));
     setRadarEnabled(true);
 
     hoisted.publishRadar("left");
@@ -300,7 +357,7 @@ describe("Race Engineer master gate (issue #515)", () => {
   // would leave subscribers latched on the last non-clear state.
   it("clears latched visualState when the master gate aborts a scheduled tick", () => {
     let masterOn = true;
-    registerRadarEngine(hoisted.bus, () => masterOn);
+    registerRadarEngine(hoisted.bus, radarDeps({ getMasterEnabled: () => masterOn }));
     setRadarEnabled(true);
     hoisted.publishRadar("left");
     expect(getRadarVisualState()).toBe("left");
@@ -313,7 +370,7 @@ describe("Race Engineer master gate (issue #515)", () => {
 
   it("clears latched visualState when the master gate suppresses a radar.changed event", () => {
     let masterOn = true;
-    registerRadarEngine(hoisted.bus, () => masterOn);
+    registerRadarEngine(hoisted.bus, radarDeps({ getMasterEnabled: () => masterOn }));
     setRadarEnabled(true);
     hoisted.publishRadar("left");
     expect(getRadarVisualState()).toBe("left");
@@ -331,7 +388,7 @@ describe("Race Engineer master gate (issue #515)", () => {
 
 describe("Lone Qualify suppression", () => {
   it("ignores events during Lone Qualify", () => {
-    registerRadarEngine(hoisted.bus);
+    registerRadarEngine(hoisted.bus, radarDeps());
     setRadarEnabled(true);
     hoisted.getSessionType.mockReturnValue("Lone Qualify");
 
@@ -342,7 +399,7 @@ describe("Lone Qualify suppression", () => {
   });
 
   it("tears down an already-running loop when the session flips to Lone Qualify", () => {
-    registerRadarEngine(hoisted.bus);
+    registerRadarEngine(hoisted.bus, radarDeps());
     setRadarEnabled(true);
     hoisted.publishRadar("left");
     expect(getRadarVisualState()).toBe("left");
@@ -357,7 +414,7 @@ describe("Lone Qualify suppression", () => {
 
 describe("setRadarEnabled", () => {
   it("clears visual state, stops the channel, and notifies listeners on disable", () => {
-    registerRadarEngine(hoisted.bus);
+    registerRadarEngine(hoisted.bus, radarDeps());
     setRadarEnabled(true);
     hoisted.publishRadar("left");
     expect(getRadarVisualState()).toBe("left");
@@ -373,7 +430,7 @@ describe("setRadarEnabled", () => {
   });
 
   it("is idempotent when re-enabled — waits for next event before playing", () => {
-    registerRadarEngine(hoisted.bus);
+    registerRadarEngine(hoisted.bus, radarDeps());
     setRadarEnabled(true);
     setRadarEnabled(true);
 
@@ -386,7 +443,7 @@ describe("setRadarEnabled", () => {
 
 describe("playRadarTest", () => {
   it("plays left → right → both in order with a 250 ms gap between clips", () => {
-    registerRadarEngine(hoisted.bus);
+    registerRadarEngine(hoisted.bus, radarDeps());
     playRadarTest();
 
     expect(hoisted.playOnChannel).toHaveBeenCalledTimes(1);
@@ -416,7 +473,7 @@ describe("playRadarTest", () => {
   });
 
   it("works regardless of the master gate", () => {
-    registerRadarEngine(hoisted.bus);
+    registerRadarEngine(hoisted.bus, radarDeps());
     // enabled=false — test button still plays.
     playRadarTest();
 
@@ -424,7 +481,7 @@ describe("playRadarTest", () => {
   });
 
   it("is a no-op if called while a sequence is already in flight", () => {
-    registerRadarEngine(hoisted.bus);
+    registerRadarEngine(hoisted.bus, radarDeps());
     playRadarTest();
     expect(hoisted.playOnChannel).toHaveBeenCalledTimes(1);
 
@@ -434,7 +491,7 @@ describe("playRadarTest", () => {
   });
 
   it("clears the in-flight guard when the audio engine refuses playback", () => {
-    registerRadarEngine(hoisted.bus);
+    registerRadarEngine(hoisted.bus, radarDeps());
     hoisted.playOnChannel.mockReturnValueOnce(false);
 
     playRadarTest();
@@ -447,7 +504,7 @@ describe("playRadarTest", () => {
   });
 
   it("suspends the live tick loop while the preview is playing", () => {
-    registerRadarEngine(hoisted.bus);
+    registerRadarEngine(hoisted.bus, radarDeps());
     setRadarEnabled(true);
     hoisted.publishRadar("left");
     const liveCalls = hoisted.playOnChannel.mock.calls.length;
@@ -463,7 +520,7 @@ describe("playRadarTest", () => {
   });
 
   it("ignores live radar events mid-preview but still updates visual state", () => {
-    registerRadarEngine(hoisted.bus);
+    registerRadarEngine(hoisted.bus, radarDeps());
     setRadarEnabled(true);
     hoisted.publishRadar("left");
     const callsBeforeTest = hoisted.playOnChannel.mock.calls.length;
@@ -478,7 +535,7 @@ describe("playRadarTest", () => {
   });
 
   it("resumes the live tick loop at the current state after the preview completes", () => {
-    registerRadarEngine(hoisted.bus);
+    registerRadarEngine(hoisted.bus, radarDeps());
     setRadarEnabled(true);
     hoisted.publishRadar("left");
     playRadarTest();
@@ -496,7 +553,7 @@ describe("playRadarTest", () => {
   });
 
   it("clears the in-flight guard when the master is disabled mid-preview", () => {
-    registerRadarEngine(hoisted.bus);
+    registerRadarEngine(hoisted.bus, radarDeps());
     setRadarEnabled(true);
     playRadarTest();
     expect(hoisted.playOnChannel).toHaveBeenCalledTimes(1);
@@ -512,7 +569,7 @@ describe("playRadarTest", () => {
 
 describe("subscribeRadarVisualState", () => {
   it("notifies on transitions and stops after unsubscribe", () => {
-    registerRadarEngine(hoisted.bus);
+    registerRadarEngine(hoisted.bus, radarDeps());
     setRadarEnabled(true);
 
     const listener = vi.fn();
@@ -528,7 +585,7 @@ describe("subscribeRadarVisualState", () => {
   });
 
   it("does not fire when transitioning between identical states", () => {
-    registerRadarEngine(hoisted.bus);
+    registerRadarEngine(hoisted.bus, radarDeps());
     setRadarEnabled(true);
 
     const listener = vi.fn();

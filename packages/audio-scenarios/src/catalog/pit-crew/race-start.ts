@@ -62,8 +62,8 @@
  * race-only opener can preempt this one without affecting practice / qualifying
  * sessions still using session-start.
  *
- * `where:` is `classifySessionType(getSessionType()) === "race" &&
- * getSnapshot() !== null`, plus the issue #871 fresh-connect gate: a synthetic
+ * `where:` is `isRaceSession(getSessionType()) &&
+ * getRaceStartSnapshot() !== null`, plus the issue #871 fresh-connect gate: a synthetic
  * `session.changed { from: -1 }` (plugin connect mid-session) is rejected when
  * the race is already underway (`SessionState === Racing` or post-race) — a
  * pre-green grid restart still briefs. The first arm gates the contract open
@@ -78,11 +78,11 @@
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type CalloutIdOf, RACE_START_CALLOUTS } from "@iracedeck/callout-settings";
 import { type RaceStartSnapshot, TrackWetness } from "@iracedeck/event-bus";
-import { isPostRace, SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { isPostRace, SessionState } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
-import { getLatestTelemetry, getSessionType } from "@iracedeck/sim-events-iracing";
+import type { TelemetryData } from "@iracedeck/sim-events-iracing";
 
-import type { ScenarioContext, ScenarioContract } from "../../dsl.js";
+import type { ScenarioContext, ScenarioContract, SpeakGate } from "../../dsl.js";
 import { poolRef } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 import {
@@ -105,6 +105,19 @@ export type RaceStartSnapshotResolver = () => RaceStartSnapshot | null;
  * setup's name looks wrong for the session kind. Read live at fire time.
  */
 export type SetupWarningResolver = (kind: "qualifying" | "race") => boolean;
+
+/**
+ * What {@link buildRaceStartContract} is built against (#1378): the snapshot
+ * its `where:` and `settle` read, and the two sim reads it makes — the
+ * session type, for the race-only gate, and the latest telemetry tick, for
+ * the live half of the fresh-connect gate and the speak-time session check.
+ * Injected rather than imported from the translator.
+ */
+export type RaceStartContractDeps = {
+  getRaceStartSnapshot: RaceStartSnapshotResolver;
+  getLatestTelemetry: () => TelemetryData | null;
+  getSessionType: () => string;
+};
 
 /**
  * Delay before the where: predicate and sequence-expansion run, once
@@ -162,9 +175,12 @@ type StartConditionFields = {
  * @internal Exported for session-start and the tests
  */
 /** @internal Exported for the tests: whether the session a start brief was raised for is still the live one. */
-export function startBriefSessionStillCurrent(ctx: ScenarioContext): boolean {
+export function startBriefSessionStillCurrent(
+  ctx: ScenarioContext,
+  getLatestTelemetry: () => TelemetryData | null,
+): boolean {
   const raisedFor = (ctx.telemetry as TelemetryData | null)?.SessionNum;
-  const now = (getLatestTelemetry() as TelemetryData | null)?.SessionNum;
+  const now = getLatestTelemetry()?.SessionNum;
 
   return typeof raisedFor !== "number" || typeof now !== "number" || raisedFor === now;
 }
@@ -177,12 +193,15 @@ export function startBriefSessionStillCurrent(ctx: ScenarioContext): boolean {
  * — the tick that raised `session.changed` — with the live one, rather than
  * the payload's `to`, so a harness event published against a mock that never
  * moves its session number still plays. A pure read; missing data admits
- * (the #574 precedent). Shared so the two briefs ask the same question.
+ * (the #574 precedent). Shared so the two briefs ask the same question: each
+ * builds it over the telemetry read it was handed (#1378).
  */
-export const START_BRIEF_SPEAK_GATE: NonNullable<ScenarioContract["speakGate"]> = {
-  description: "The session the brief was raised for is still the one running, or telemetry is unavailable.",
-  admit: startBriefSessionStillCurrent,
-};
+export function buildStartBriefSpeakGate(getLatestTelemetry: () => TelemetryData | null): SpeakGate {
+  return {
+    description: "The session the brief was raised for is still the one running, or telemetry is unavailable.",
+    admit: (ctx) => startBriefSessionStillCurrent(ctx, getLatestTelemetry),
+  };
+}
 
 export function describeMissingStartConditions(snapshot: StartConditionFields | null): string | null {
   if (snapshot === null) return "telemetry or session info";
@@ -411,11 +430,15 @@ export function registerRaceStartVocabulary(
 }
 
 /**
- * Build the race-start contract bound to a snapshot resolver. Stays a builder
- * because the `where:` reads the resolver (to gate firing) and the logger;
- * the brief itself is the vocabulary's ({@link registerRaceStartVocabulary}).
+ * Build the race-start contract bound to a snapshot resolver and its sim
+ * reads (#1378). Stays a builder because the `where:` reads the resolver (to
+ * gate firing), the reads and the logger; the brief itself is the
+ * vocabulary's ({@link registerRaceStartVocabulary}).
  */
-export function buildRaceStartContract(getSnapshot: RaceStartSnapshotResolver, logger?: ILogger): ScenarioContract {
+export function buildRaceStartContract(
+  { getRaceStartSnapshot: getSnapshot, getLatestTelemetry, getSessionType }: RaceStartContractDeps,
+  logger?: ILogger,
+): ScenarioContract {
   return {
     id: "pit-crew.race-start",
     when: {
@@ -454,7 +477,7 @@ export function buildRaceStartContract(getSnapshot: RaceStartSnapshotResolver, l
         // hold the fire for up to ten seconds, and a connect during the parade
         // laps can see the green fly inside that window. So the LIVE state is
         // asked too — a brief that would land after the green is refused.
-        const live = getLatestTelemetry() as TelemetryData | null;
+        const live = getLatestTelemetry();
         const underway = (t: TelemetryData | null): boolean => t?.SessionState === SessionState.Racing || isPostRace(t);
 
         if (from === -1 && (underway(telemetry) || underway(live))) {
@@ -492,7 +515,7 @@ export function buildRaceStartContract(getSnapshot: RaceStartSnapshotResolver, l
     // Queueable (#1284): the brief now fires anywhere from 3 to 10 s after the
     // transition, when other callouts are as likely to hold the bus, and a
     // grid brief a few seconds late is still the grid brief.
-    speakGate: START_BRIEF_SPEAK_GATE,
+    speakGate: buildStartBriefSpeakGate(getLatestTelemetry),
     queueable: true,
     description:
       "A race session begins and iRacing reports the track conditions, or ten seconds pass — a restart on the pre-green grid included, but not when iRaceDeck connects to a race already under way.",

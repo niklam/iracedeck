@@ -15,6 +15,7 @@ import { AudioBus, initializeAudio } from "@iracedeck/audio-service";
 import { initializeEventBus } from "@iracedeck/event-bus";
 import type { SDKController } from "@iracedeck/iracing-sdk";
 import { createConsoleLogger, LogLevel } from "@iracedeck/logger";
+import { createIracingTranslatorOptions } from "@iracedeck/race-engineer-wiring";
 import {
   createMemorySettingsStore,
   frameOptionsFromSettings,
@@ -63,7 +64,14 @@ async function main(): Promise<void> {
   // ── Event bus + sim-events translator ────────────────────────────────────
   const eventBus = initializeEventBus(logger.createScope("EventBus"));
   const controller = new MockSDKController({ logger: logger.createScope("MockSDK") });
-  initializeSimEventsIracing(eventBus, controller as unknown as SDKController, logger.createScope("SimEventsIracing"));
+  // The same six settings-backed options the plugins hand the translator
+  // (#1378), so the harness's seeded settings apply as they do in the plugin.
+  initializeSimEventsIracing(
+    eventBus,
+    controller as unknown as SDKController,
+    logger.createScope("SimEventsIracing"),
+    createIracingTranslatorOptions(),
+  );
 
   // ── Audio engine ────────────────────────────────────────────────────────
   // Process audio-assets through the same radio-engineer ffmpeg filter

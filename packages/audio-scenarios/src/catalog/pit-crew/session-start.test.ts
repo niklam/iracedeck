@@ -16,6 +16,7 @@ import { type CalloutScript, type ScriptStep } from "@iracedeck/callout-script";
 import { SESSION_START_CALLOUTS } from "@iracedeck/callout-settings";
 import type { IEventBus, SessionStartSnapshot, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import { TrackWetness } from "@iracedeck/event-bus";
+import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AudioAssetsManifest } from "../../interpreter.js";
@@ -29,7 +30,7 @@ import { familyGate } from "./callout-gate.test-util.js";
 import { familyReferences } from "./family-references.test-util.js";
 import { registerPitCrew } from "./index.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
-import { START_BRIEF_SETTLE_MAX_MS, START_BRIEF_SETTLE_POLL_MS, START_BRIEF_SPEAK_GATE } from "./race-start.js";
+import { buildStartBriefSpeakGate, START_BRIEF_SETTLE_MAX_MS, START_BRIEF_SETTLE_POLL_MS } from "./race-start.js";
 import { _resetRadarEngine } from "./radar-engine.js";
 import {
   buildSessionStartContract,
@@ -43,10 +44,9 @@ import { temperatureClipName } from "./temperature-number.js";
 
 const mockLatestTelemetry = vi.fn<() => Record<string, unknown> | null>(() => null);
 
-vi.mock("@iracedeck/sim-events-iracing", () => ({
-  getSessionType: () => "Race",
-  getLatestTelemetry: () => mockLatestTelemetry(),
-}));
+// The sim reads (#1378): the brief's speak-time session check reads the
+// latest tick, and the full registration also sees a race session.
+const getLatestTelemetry = (): TelemetryData | null => mockLatestTelemetry() as TelemetryData | null;
 
 const mockLogger = {
   trace: vi.fn(),
@@ -353,6 +353,8 @@ beforeEach(() => {
     isCalloutEnabled: familyGate(SESSION_START_CALLOUTS, () => sessionStartEnabled),
     getSessionStartSnapshot: () => currentSnapshot,
     getSetupWarningMismatch: (kind) => setupWarningMismatch(kind),
+    getSessionType: () => "Race",
+    getLatestTelemetry,
   });
   // After the registration, as the plugins do: the brief's body is looked up
   // in the active voice's compiled script at fire time (issue #1065).
@@ -927,7 +929,7 @@ describe("settle wait for the conditions (issue #1284)", () => {
 
 describe("buildSessionStartContract (issue #1065)", () => {
   it("carries no sequence and keeps every scheduling field verbatim — the 3 s trigger delay included, queueable since #1284 — taking the engine's default frame", () => {
-    const c = buildSessionStartContract(() => null);
+    const c = buildSessionStartContract({ getSessionStartSnapshot: () => null, getLatestTelemetry });
 
     expect("sequence" in c).toBe(false);
     expect(c.id).toBe("pit-crew.session-start");
@@ -941,14 +943,19 @@ describe("buildSessionStartContract (issue #1065)", () => {
     expect(c.weight).toBeUndefined();
     expect(c.interrupt).toBeUndefined();
     expect(c.queueable).toBe(true);
-    expect(c.speakGate).toBe(START_BRIEF_SPEAK_GATE);
+    // The shared start-brief gate, over this build's telemetry read (#1378).
+    expect(c.speakGate?.description).toBe(buildStartBriefSpeakGate(() => null).description);
+    mockLatestTelemetry.mockReturnValue({ SessionNum: 3 });
+    expect(c.speakGate?.admit({ event: null, telemetry: { SessionNum: 2 }, now: 0 } as never)).toBe(false);
+    mockLatestTelemetry.mockReturnValue({ SessionNum: 2 });
+    expect(c.speakGate?.admit({ event: null, telemetry: { SessionNum: 2 }, now: 0 } as never)).toBe(true);
     expect(c.cooldown).toBeUndefined();
     expect(c.frame).toBeUndefined();
   });
 
   it("settles on the shared start-brief window, asking what of its own snapshot is still unknown (issue #1284)", () => {
     let snapshot: SessionStartSnapshot | null = snap({ wetness: null });
-    const c = buildSessionStartContract(() => snapshot);
+    const c = buildSessionStartContract({ getSessionStartSnapshot: () => snapshot, getLatestTelemetry });
 
     expect(c.settle?.maxWaitMs).toBe(START_BRIEF_SETTLE_MAX_MS);
     expect(c.settle?.pollMs).toBe(START_BRIEF_SETTLE_POLL_MS);

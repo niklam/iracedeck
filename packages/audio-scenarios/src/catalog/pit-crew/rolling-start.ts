@@ -80,7 +80,7 @@ import type { SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import type { ScenarioContract, SpeakGate } from "../../dsl.js";
 import { WEIGHT } from "../../dsl.js";
 import type { PaceLineupResolver } from "./caution.js";
-import { CAUTION_MAX_QUEUE_WAIT_MS, flagContract, liveRaceCar } from "./flag-alerts.js";
+import { CAUTION_MAX_QUEUE_WAIT_MS, createLiveRaceCar, flagContract } from "./flag-alerts.js";
 import { createNamedCarMemory, type LastNamedCar, type NamingEpisode } from "./named-car.js";
 
 /**
@@ -101,13 +101,15 @@ export type RollingStartFormationResolver = () => NamingEpisode | null;
 
 /**
  * What {@link buildRollingStartContracts} is built against: the formation,
- * for the speak-time gate and to scope the car last named; and the lineup,
+ * for the speak-time gate and to scope the car last named; the lineup,
  * read at SPEAK time by the change call's pace-row check and by the three
- * calls that record the car they name.
+ * calls that record the car they name; and the session type (#1378), for the
+ * flag family's live-race gate every contract carries.
  */
 export type RollingStartContractDeps = {
   getRollingStartFormation: RollingStartFormationResolver;
   getPaceLineup: PaceLineupResolver;
+  getSessionType: () => string;
 };
 
 /**
@@ -175,7 +177,11 @@ export function readRollingStartDebugState(): { lastNamed: LastNamedCar | null }
 export function buildRollingStartContracts({
   getRollingStartFormation,
   getPaceLineup,
+  getSessionType,
 }: RollingStartContractDeps): readonly ScenarioContract[] {
+  /** The flag family's live-race gate, over the session-type read this build was handed (#1378). */
+  const liveRaceCar = createLiveRaceCar(getSessionType);
+
   /** The formation speak gate, on all three contracts. */
   const formationRunning: SpeakGate = {
     description: "Re-checked at speak time: the rolling-start formation is still running.",
@@ -261,6 +267,7 @@ export function buildRollingStartContracts({
 export const ROLLING_START_SCENARIO_IDS: readonly string[] = buildRollingStartContracts({
   getRollingStartFormation: () => null,
   getPaceLineup: () => null,
+  getSessionType: () => "",
 }).map((c) => c.id);
 
 /**

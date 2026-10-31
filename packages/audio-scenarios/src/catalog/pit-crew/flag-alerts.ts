@@ -66,29 +66,38 @@
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventName, SimEventOf } from "@iracedeck/event-bus";
-import {
-  Flags,
-  hasFlag,
-  isLiveOnTrack,
-  isPenaltyFlagActive,
-  isPostRace,
-  isPreGreen,
-  type TelemetryData,
-} from "@iracedeck/iracing-sdk";
-import { getLatestTelemetry, getSessionType, getStandingStart } from "@iracedeck/sim-events-iracing";
+import { Flags, hasFlag, isLiveOnTrack, isPenaltyFlagActive, isPostRace, isPreGreen } from "@iracedeck/iracing-sdk";
+import type { TelemetryData } from "@iracedeck/sim-events-iracing";
 
 import type { ScenarioContract } from "../../dsl.js";
 import { WEIGHT } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 import { classifySessionType, isRaceSession, type SessionKind } from "./race-start.js";
 
-// Race-progression / formation flags (green-held, ten-to-go, five-to-go,
-// crossed) are race-only concepts. iRacing raises the grid bits
-// while forming the race grid at the END of a qualifying session, so without
-// this gate they fired at the qualifying checkered (issue #480 follow-up).
-// Live-read at fire time, mirroring the session branching the
-// green/white/checkered scripts do through `session.type`.
-const raceOnly = () => isRaceSession(getSessionType());
+/**
+ * The sim reads the flag family makes (#1378), injected rather than imported
+ * from the translator: the session type for the race-only gates and the
+ * `session.*` vocabulary, the standing-start grid for the rolling-only
+ * formation cue, and the latest telemetry tick for the furled pair's
+ * speak-time gates. {@link buildFlagAlerts} closes over one of these, so the
+ * gate a contract asks and the condition a pack may write are one definition.
+ */
+export type FlagAlertsDeps = {
+  getLatestTelemetry: () => TelemetryData | null;
+  getSessionType: () => string;
+  getStandingStart: () => boolean;
+};
+
+/**
+ * One build of the flag family (#1378): the vocabulary its scripts may name
+ * and the contracts, built over the same {@link FlagAlertsDeps}. Register the
+ * vocabulary before the contracts, as every family does, so the first
+ * `setScripts` compile sees it.
+ */
+export type FlagAlertsFamily = {
+  registerVocabulary(engine: Pick<IScenarioEngine, "defineCond" | "defineCase">): void;
+  contracts: readonly ScenarioContract[];
+};
 
 // These callouts only make sense to a driver IN the car and live, so also gate
 // on `isLiveOnTrack` — silent while out of the car at the grid / in a replay
@@ -103,19 +112,62 @@ const raceOnly = () => isRaceSession(getSessionType());
 // nothing out of the car, and must not re-fire on the grid bits iRacing
 // re-asserts after the checkered. The rolling-start formation's three calls
 // take it too (issue #1167). One definition, so the families cannot drift
-// apart on what "live in a race" means.
-export const liveRaceCar = (e: SimEventOf<SimEventName>): boolean =>
-  raceOnly() && isLiveOnTrack(e.telemetry as TelemetryData | null) && !isPostRace(e.telemetry as TelemetryData | null);
+// apart on what "live in a race" means. A factory over the session-type read
+// since #1378, so each family builds it over the read it was handed rather
+// than over the translator module.
+export type LiveRaceCarGate = (e: SimEventOf<SimEventName>) => boolean;
 
-// Rolling-only formation cue (green-held). A standing start has no pace lap, yet
-// iRacing sets the grid bits throughout the standing grid — so suppress during a
-// standing-start pre-green phase (the start-light family owns that lead-in).
-// Restarts (Racing state) and rolling starts still fire (issue #480 follow-up).
-// (The sibling "one pace lap to go" cue is gated rolling-only in its diff
-// instead — `diff/pace-laps.ts`, issue #657 — and is built by the
-// rolling-start family since #1167.)
-const rollingFormationOnly = (e: SimEventOf<SimEventName>): boolean =>
-  liveRaceCar(e) && !(getStandingStart() && isPreGreen(e.telemetry as TelemetryData | null));
+export function createLiveRaceCar(getSessionType: () => string): LiveRaceCarGate {
+  return (e) =>
+    isRaceSession(getSessionType()) &&
+    isLiveOnTrack(e.telemetry as TelemetryData | null) &&
+    !isPostRace(e.telemetry as TelemetryData | null);
+}
+
+/**
+ * Every gate and read one build of the family shares, each closed over the
+ * build's {@link FlagAlertsDeps} once — so a predicate that is both a contract's
+ * gate and a published condition (#1138) stays one definition (#1378).
+ */
+type FlagGates = {
+  raceOnly: () => boolean;
+  liveRaceCar: LiveRaceCarGate;
+  rollingFormationOnly: LiveRaceCarGate;
+  classifySession: () => SessionKind | null;
+  furledStillUp: () => boolean;
+  furledWithdrawnUnspoken: () => boolean;
+  furledStillShown: () => boolean;
+  furledWithdrawn: () => boolean;
+};
+
+function createFlagGates(deps: FlagAlertsDeps): FlagGates {
+  const liveRaceCar = createLiveRaceCar(deps.getSessionType);
+
+  return {
+    // Race-progression / formation flags (green-held, ten-to-go, five-to-go,
+    // crossed) are race-only concepts. iRacing raises the grid bits
+    // while forming the race grid at the END of a qualifying session, so without
+    // this gate they fired at the qualifying checkered (issue #480 follow-up).
+    // Live-read at fire time, mirroring the session branching the
+    // green/white/checkered scripts do through `session.type`.
+    raceOnly: () => isRaceSession(deps.getSessionType()),
+    liveRaceCar,
+    // Rolling-only formation cue (green-held). A standing start has no pace lap, yet
+    // iRacing sets the grid bits throughout the standing grid — so suppress during a
+    // standing-start pre-green phase (the start-light family owns that lead-in).
+    // Restarts (Racing state) and rolling starts still fire (issue #480 follow-up).
+    // (The sibling "one pace lap to go" cue is gated rolling-only in its diff
+    // instead — `diff/pace-laps.ts`, issue #657 — and is built by the
+    // rolling-start family since #1167.)
+    rollingFormationOnly: (e) =>
+      liveRaceCar(e) && !(deps.getStandingStart() && isPreGreen(e.telemetry as TelemetryData | null)),
+    classifySession: () => classifySession(deps),
+    furledStillUp: () => furledStillUp(deps),
+    furledWithdrawnUnspoken: () => furledWithdrawnUnspoken(deps),
+    furledStillShown: () => furledStillShown(deps),
+    furledWithdrawn: () => furledWithdrawn(deps),
+  };
+}
 
 /**
  * The penalty raises' supersede group (issue #1185): a newer penalty replaces
@@ -227,13 +279,13 @@ const WHITE: ScenarioContract = {
 // lap — exactly when this fires) must replay when the bus idles instead of
 // being silently dropped; the translator's per-episode latch means it would
 // never re-fire.
-const WHITE_LAST_LAP: ScenarioContract = {
+const whiteLastLap = (g: FlagGates): ScenarioContract => ({
   ...flagContract("white-last-lap"),
   queueable: true,
   description:
     "You cross the start/finish line with the white flag flying in a race and begin your own final lap, once per white flag; a crossing that lands while the heads-up is still playing is skipped.",
-  when: { event: "flag.white-last-lap.raised", where: () => raceOnly() },
-};
+  when: { event: "flag.white-last-lap.raised", where: () => g.raceOnly() },
+});
 
 // The leader's final lap (issue #936, stage 3 of the white family): fired by
 // the translator's lap-count detection — most valuable when we're far behind
@@ -243,13 +295,13 @@ const WHITE_LAST_LAP: ScenarioContract = {
 // #772 heads-up. Rides `calloutEnabledFlagWhite` (one subject, the #772
 // precedent); `queueable: true` for the same one-shot-latch reason as
 // WHITE_LAST_LAP.
-const WHITE_LEADER: ScenarioContract = {
+const whiteLeader = (g: FlagGates): ScenarioContract => ({
   ...flagContract("white-leader"),
   queueable: true,
   description:
     "The overall race leader starts the final lap, judged from lap counting, while you are not the leader and have no white flag of your own yet; once per race.",
-  when: { event: "flag.white-leader.raised", where: () => raceOnly() },
-};
+  when: { event: "flag.white-leader.raised", where: () => g.raceOnly() },
+});
 
 const RED: ScenarioContract = {
   ...flagContract("red"),
@@ -388,8 +440,8 @@ export function readFlagAlertsDebugState(): { furledRaisedSpoken: boolean } {
 // cleared gate treats unknown as not-re-raised (`false`). With iRacing
 // connected the translator's latest tick is always available, which is the
 // only case the gates exist for.
-function furledBitUp(fallbackWhenUnknown: boolean): boolean {
-  const telemetry = getLatestTelemetry() as TelemetryData | null;
+function furledBitUp(deps: FlagAlertsDeps, fallbackWhenUnknown: boolean): boolean {
+  const telemetry = deps.getLatestTelemetry();
 
   if (telemetry === null) return fallbackWhenUnknown;
 
@@ -408,8 +460,8 @@ function furledBitUp(fallbackWhenUnknown: boolean): boolean {
 // "escalated" can't diverge. Missing telemetry reads as not-escalated so the
 // gate never suppresses on missing data (the #574 precedent — keeps the
 // scenario harness firable without iRacing).
-function penaltyBitUp(): boolean {
-  return isPenaltyFlagActive(getLatestTelemetry() as TelemetryData | null);
+function penaltyBitUp(deps: FlagAlertsDeps): boolean {
+  return isPenaltyFlagActive(deps.getLatestTelemetry());
 }
 
 // The two published conditions (issue #1138) — the questions the gates below
@@ -419,28 +471,28 @@ function penaltyBitUp(): boolean {
 // and the consuming belong to the gate, which runs once, only for a fire
 // that goes on to play. An `if` is also expanded on the resume path (#758),
 // where a marker moved a second time would be a bug of its own.
-function furledStillUp(): boolean {
-  return furledBitUp(true);
+function furledStillUp(deps: FlagAlertsDeps): boolean {
+  return furledBitUp(deps, true);
 }
 
 // The sub-predicate the cleared pair shares: the warning is down and the
 // raise was actually told to the driver. The escalation check (#846) is kept
 // OUT of it on purpose — the gate consumes the marker on an escalation, the
 // pure read merely reports one.
-function furledClearedAfterSpoken(): boolean {
-  return !furledBitUp(false) && furledRaisedSpoken;
+function furledClearedAfterSpoken(deps: FlagAlertsDeps): boolean {
+  return !furledBitUp(deps, false) && furledRaisedSpoken;
 }
 
-function furledWithdrawnUnspoken(): boolean {
-  return furledClearedAfterSpoken() && !penaltyBitUp();
+function furledWithdrawnUnspoken(deps: FlagAlertsDeps): boolean {
+  return furledClearedAfterSpoken(deps) && !penaltyBitUp(deps);
 }
 
 // The raised line's speak-time gate (issue #1138): the pure read, and then —
 // admitting the call is what marks the raise as announced, so the side effect
 // lives in the gate on purpose. `admit` is the one place a fire may commit
 // something, because it runs only for a fire that then plays.
-function furledStillShown(): boolean {
-  if (!furledStillUp()) return false;
+function furledStillShown(deps: FlagAlertsDeps): boolean {
+  if (!furledStillUp(deps)) return false;
 
   furledRaisedSpoken = true;
 
@@ -458,12 +510,12 @@ function furledStillShown(): boolean {
 // `furledWithdrawnUnspoken()` followed by the write: that read folds the
 // escalation in, and a refusal on it must still consume. Otherwise only a
 // clear that actually plays consumes the marker.
-function furledWithdrawn(): boolean {
-  if (!furledClearedAfterSpoken()) return false;
+function furledWithdrawn(deps: FlagAlertsDeps): boolean {
+  if (!furledClearedAfterSpoken(deps)) return false;
 
   furledRaisedSpoken = false;
 
-  return !penaltyBitUp();
+  return !penaltyBitUp(deps);
 }
 
 // `queueable: true` so a furled-black-flag call deferred behind another
@@ -475,7 +527,7 @@ function furledWithdrawn(): boolean {
 // dropped instead of announcing a flag that's already gone — and admitting it
 // is what marks the raise as announced, so the cleared line below can only
 // follow a raised line the driver actually heard.
-const FURLED: ScenarioContract = {
+const furled = (g: FlagGates): ScenarioContract => ({
   ...flagContract("furled"),
   queueable: true,
   supersedeGroup: FURLED_GROUP,
@@ -495,9 +547,9 @@ const FURLED: ScenarioContract = {
   speakGate: {
     description:
       "The furled black flag is still being shown when the call comes to speak; speaking it marks the warning as announced.",
-    admit: furledStillShown,
+    admit: g.furledStillShown,
   },
-};
+});
 
 // Fires when an announced furled warning is withdrawn (issue #669) — the
 // translator gates `flag.furled.cleared` on the raised EVENT having fired, and
@@ -508,7 +560,7 @@ const FURLED: ScenarioContract = {
 // sustained state, so a fire deferred behind an equal-weight line replays when
 // the bus next idles instead of being dropped. The `speakGate` is what
 // consumes the marker.
-const FURLED_CLEARED: ScenarioContract = {
+const furledCleared = (g: FlagGates): ScenarioContract => ({
   ...flagContract("furled-cleared"),
   queueable: true,
   supersedeGroup: FURLED_GROUP,
@@ -523,9 +575,9 @@ const FURLED_CLEARED: ScenarioContract = {
   speakGate: {
     description:
       "The announced furled flag is still down when the call comes to speak, with no black flag or disqualification in its place; speaking it consumes the announcement.",
-    admit: furledWithdrawn,
+    admit: g.furledWithdrawn,
   },
-};
+});
 
 // `queueable: true` (issue #923) — the same one-shot penalty edge as BLACK /
 // DISQUALIFY above, with the same loss paths and sustained-state reasoning.
@@ -541,12 +593,12 @@ const DQ_SCORING_INVALID: ScenarioContract = {
 
 // Race-progression flags (issue #480) — crossed, green-held, ten-to-go,
 // five-to-go.
-const CROSSED: ScenarioContract = {
+const crossed = (g: FlagGates): ScenarioContract => ({
   ...flagContract("crossed"),
   description:
     "The crossed flags come out at the halfway point of a race while you are live in the car; never in practice or qualifying, and never after the checkered.",
-  when: { event: "flag.crossed.raised", where: liveRaceCar },
-};
+  when: { event: "flag.crossed.raised", where: g.liveRaceCar },
+});
 
 // "One pace lap to go" on a rolling start (issue #657) is not in this list
 // since #1167: `pit-crew.flag-one-pace-lap-to-go` keeps its id and this
@@ -554,26 +606,26 @@ const CROSSED: ScenarioContract = {
 // still running and naming the car to form up behind — so the rolling-start
 // family builds it (`buildRollingStartContracts` in `rolling-start.ts`).
 
-const GREEN_HELD: ScenarioContract = {
+const greenHeld = (g: FlagGates): ScenarioContract => ({
   ...flagContract("green-held"),
   description:
     "iRacing holds the green seconds before a rolling start or restart goes green, often while the pace car is still on track, with you live in the car; never on a standing-start grid.",
-  when: { event: "flag.green-held.raised", where: rollingFormationOnly },
-};
+  when: { event: "flag.green-held.raised", where: g.rollingFormationOnly },
+});
 
-const TEN_TO_GO: ScenarioContract = {
+const tenToGo = (g: FlagGates): ScenarioContract => ({
   ...flagContract("ten-to-go"),
   description:
     "Ten laps remain in a race and iRacing raises the ten-to-go flag while you are live in the car; never after the checkered or outside a race.",
-  when: { event: "flag.ten-to-go.raised", where: liveRaceCar },
-};
+  when: { event: "flag.ten-to-go.raised", where: g.liveRaceCar },
+});
 
-const FIVE_TO_GO: ScenarioContract = {
+const fiveToGo = (g: FlagGates): ScenarioContract => ({
   ...flagContract("five-to-go"),
   description:
     "Five laps remain in a race and iRacing raises the five-to-go flag while you are live in the car; never after the checkered or outside a race.",
-  when: { event: "flag.five-to-go.raised", where: liveRaceCar },
-};
+  when: { event: "flag.five-to-go.raised", where: g.liveRaceCar },
+});
 
 /**
  * Issue #671 — iRacing re-raises the waving bits on every zone re-approach
@@ -628,33 +680,58 @@ const CAUTION_WAVING: ScenarioContract = {
   when: { event: "flag.caution-waving.raised" },
 };
 
-export const FLAG_CONTRACTS: readonly ScenarioContract[] = [
-  YELLOW_LOCAL,
-  YELLOW_FULL,
-  YELLOW_CLEARED,
-  GREEN,
-  BLUE,
-  WHITE,
-  WHITE_LAST_LAP,
-  WHITE_LEADER,
-  RED,
-  BLACK,
-  CHECKERED,
-  DEBRIS,
-  MEATBALL,
-  DISQUALIFY,
-  FURLED,
-  FURLED_CLEARED,
-  DQ_SCORING_INVALID,
-  CROSSED,
-  GREEN_HELD,
-  TEN_TO_GO,
-  FIVE_TO_GO,
-  YELLOW_WAVING,
-  CAUTION_WAVING,
-];
+/**
+ * Build the flag family over one set of sim reads (#1378): the twenty-three
+ * contracts, in their registration order, and the vocabulary their scripts
+ * may name. Both halves close over the same gates, so the furled pair's
+ * speak-time gate and the condition a pack may write are one definition
+ * (#1138), as are the session rule the `where:` gates read and the one the
+ * `session.*` vocabulary publishes. The furled pairing marker is module
+ * state, shared by every build — the plugin builds once, in `registerPitCrew`.
+ */
+export function buildFlagAlerts(deps: FlagAlertsDeps): FlagAlertsFamily {
+  const g = createFlagGates(deps);
 
-export const FLAG_SCENARIO_IDS: readonly string[] = FLAG_CONTRACTS.map((s) => s.id);
+  return {
+    registerVocabulary: (engine) => defineFlagVocabulary(engine, g),
+    contracts: [
+      YELLOW_LOCAL,
+      YELLOW_FULL,
+      YELLOW_CLEARED,
+      GREEN,
+      BLUE,
+      WHITE,
+      whiteLastLap(g),
+      whiteLeader(g),
+      RED,
+      BLACK,
+      CHECKERED,
+      DEBRIS,
+      MEATBALL,
+      DISQUALIFY,
+      furled(g),
+      furledCleared(g),
+      DQ_SCORING_INVALID,
+      crossed(g),
+      greenHeld(g),
+      tenToGo(g),
+      fiveToGo(g),
+      YELLOW_WAVING,
+      CAUTION_WAVING,
+    ],
+  };
+}
+
+/**
+ * The family's scenario ids, in registration order. Derived from a build with
+ * no sim wired — the reads a build is given cannot change an id — so the two
+ * can never drift.
+ */
+export const FLAG_SCENARIO_IDS: readonly string[] = buildFlagAlerts({
+  getLatestTelemetry: () => null,
+  getSessionType: () => "",
+  getStandingStart: () => false,
+}).contracts.map((s) => s.id);
 
 /**
  * The clip sources the flag scripts draw from — every `pool:flags/<base>`
@@ -698,20 +775,21 @@ export const FLAG_CLIP_SOURCES: readonly { group: "flags"; base: string }[] = [
 ];
 
 // The one classifier behind the whole `session.*` vocabulary — the package's
-// shared session rule (`classifySessionType`, the same one `raceOnly` above
-// reads through `isRaceSession`), so the case var, the three conditions and
+// shared session rule (`classifySessionType`, the same one `raceOnly` in
+// `createFlagGates` reads through `isRaceSession`), so the case var, the three conditions and
 // every `where:` gate in this family agree on what a session is. Before
 // #1064 the green/white/checkered branching tested `=== "Practice"` exactly,
 // which called "Lone Practice" and "Offline Testing" a race while the gates
 // beside it did not; now that `session.type` is public vocabulary the rule
 // is the shared one. `null` — no session type known yet — is reported
 // honestly and left to the script's `default` branch.
-function classifySession(): SessionKind | null {
-  return classifySessionType(getSessionType());
+function classifySession(deps: FlagAlertsDeps): SessionKind | null {
+  return classifySessionType(deps.getSessionType());
 }
 
 /**
- * Register the vocabulary the flag family publishes (issue #1064): the
+ * Define the vocabulary the flag family publishes (issue #1064) — what a
+ * build's `registerVocabulary` does, over that build's gates (#1378): the
  * `session.type` case var the green/white/checkered scripts branch on, the
  * two furled reads, and — published generously, the spec's own smallest
  * illustration — the three `session.is*` conditions so a pack can write a
@@ -726,10 +804,10 @@ function classifySession(): SessionKind | null {
  * Purity is what makes that safe — the marking and the consuming happen in
  * the gate, once, only for a call that goes on to play.
  */
-export function registerFlagVocabulary(engine: Pick<IScenarioEngine, "defineCond" | "defineCase">): void {
+function defineFlagVocabulary(engine: Pick<IScenarioEngine, "defineCond" | "defineCase">, g: FlagGates): void {
   engine.defineCase(
     "session.type",
-    classifySession,
+    g.classifySession,
     {
       practice: "A practice session.",
       qualifying: "Any qualifying session (open or lone).",
@@ -740,28 +818,28 @@ export function registerFlagVocabulary(engine: Pick<IScenarioEngine, "defineCond
 
   engine.defineCond(
     "flag.furledStillShown",
-    furledStillUp,
+    g.furledStillUp,
     "The furled black flag is still being shown (a pure read — the engine already asks this at speak time and marks the raise as announced when the call plays).",
   );
   engine.defineCond(
     "flag.furledWithdrawn",
-    furledWithdrawnUnspoken,
+    g.furledWithdrawnUnspoken,
     "An announced furled flag has been withdrawn and nothing worse took its place (a pure read — the engine already asks this at speak time and consumes the announcement when the call plays).",
   );
 
   engine.defineCond(
     "session.isPractice",
-    () => classifySession() === "practice",
+    () => g.classifySession() === "practice",
     "The current session is a practice session.",
   );
   engine.defineCond(
     "session.isQualifying",
-    () => classifySession() === "qualifying",
+    () => g.classifySession() === "qualifying",
     "The current session is a qualifying session (open or lone).",
   );
   engine.defineCond(
     "session.isRace",
-    () => classifySession() === "race",
+    () => g.classifySession() === "race",
     "The current session is a race session (anything that is not practice or qualifying).",
   );
 }

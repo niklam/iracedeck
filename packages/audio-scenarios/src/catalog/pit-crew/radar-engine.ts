@@ -4,14 +4,15 @@
  * runtime based on proximity state — see design doc §15).
  *
  * Owns its own subscription to `radar.changed` on the event bus, reads
- * telemetry for pit-road suppression, and plays looping directional beeps
+ * telemetry for pit-road suppression (through its injected {@link RadarDeps},
+ * #1378 — never the translator module), and plays looping directional beeps
  * on `AudioChannel.Radar`. Notifies listeners on visual-state transitions
  * so the pit-crew action can re-render its key icon without holding any
  * radar state itself.
  */
 import { AudioChannel, getAudio } from "@iracedeck/audio-service";
 import type { IEventBus, SimEventOf } from "@iracedeck/event-bus";
-import { getLatestTelemetry, getSessionType } from "@iracedeck/sim-events-iracing";
+import type { TelemetryData } from "@iracedeck/sim-events-iracing";
 
 export type RadarVisualState = "clear" | "left" | "right" | "both" | "two-left" | "two-right";
 
@@ -61,15 +62,41 @@ let testSequenceInFlight = false;
 let testSequenceGeneration = 0;
 const listeners = new Set<RadarListener>();
 
-// Plugin-wide master gate (issue #515). Defense-in-depth alongside the
-// `enabled` flag set via `setRadarEnabled` — if the plugin-level
-// global-settings listener ever fails to fire (test harness, future
-// refactor, race during startup), `getMasterEnabled` is consulted live
-// on every `radar.changed` arrival AND on every scheduled tick so the
-// engine can't audibly fire when the master toggle is off. Plugins
-// compose the closure from `pitCrewRadarEnabled === true` and pass it
-// through `registerPitCrew` → `registerRadarEngine`.
-let getMasterEnabled: () => boolean = () => true;
+/** Plugin-supplied accessors the engine consults live on every event and tick (#1378). */
+export type RadarDeps = {
+  /**
+   * Plugin-wide master gate (issue #515). Defense-in-depth alongside the
+   * `enabled` flag set via `setRadarEnabled` — if the plugin-level
+   * global-settings listener ever fails to fire (test harness, future
+   * refactor, race during startup), it is consulted live on every
+   * `radar.changed` arrival AND on every scheduled tick so the engine can't
+   * audibly fire when the master toggle is off. Plugins compose the closure
+   * from `pitCrewRadarEnabled === true` and pass it through
+   * `registerPitCrew` → `registerRadarEngine`. Default `() => true`.
+   */
+  getMasterEnabled: () => boolean;
+  /**
+   * The latest telemetry tick, for the pit-road suppression; `null` before
+   * the first tick. Default `() => null`, the translator's own answer when it
+   * was never initialised.
+   */
+  getLatestTelemetry: () => TelemetryData | null;
+  /**
+   * The sim's session type name, for the Lone Qualify silence; `""` when
+   * unavailable. Default `() => ""`, the translator's own answer when it was
+   * never initialised.
+   */
+  getSessionType: () => string;
+};
+
+/** What the engine reads before (or without) a registration: the master on, no sim. */
+const DEFAULT_DEPS: RadarDeps = {
+  getMasterEnabled: () => true,
+  getLatestTelemetry: () => null,
+  getSessionType: () => "",
+};
+
+let deps: RadarDeps = DEFAULT_DEPS;
 
 function stopTickLoop(): void {
   if (tickTimer !== null) {
@@ -95,7 +122,7 @@ function startTickLoop(state: ActiveState): void {
     // indefinitely. Don't stop the channel — the in-flight clip
     // finishes naturally, matching the voice-master-gate's
     // "doesn't cut in-flight" contract.
-    if (!getMasterEnabled()) {
+    if (!deps.getMasterEnabled()) {
       setVisualState("clear");
 
       return;
@@ -121,7 +148,7 @@ function setVisualState(next: RadarVisualState): void {
 }
 
 function isOnPitRoad(): boolean {
-  const telemetry = getLatestTelemetry() as { OnPitRoad?: boolean } | null;
+  const telemetry = deps.getLatestTelemetry();
 
   return telemetry?.OnPitRoad === true;
 }
@@ -149,7 +176,7 @@ function handleRadarChanged(ev: SimEventOf<"radar.changed">): void {
   // run. Clear the latched visual state so a stale icon doesn't stay
   // "occupied" while the gate is off — see the matching note in
   // `startTickLoop.fire`.
-  if (!getMasterEnabled()) {
+  if (!deps.getMasterEnabled()) {
     setVisualState("clear");
 
     return;
@@ -159,7 +186,7 @@ function handleRadarChanged(ev: SimEventOf<"radar.changed">): void {
   // CarLeftRight value can flicker, and the callouts aren't useful. If a
   // loop was already running from a prior non-qualify state, tear it down
   // so the radar doesn't keep ticking after the session flips.
-  if (getSessionType() === "Lone Qualify") {
+  if (deps.getSessionType() === "Lone Qualify") {
     forceClear();
 
     return;
@@ -200,18 +227,13 @@ function handleRadarChanged(ev: SimEventOf<"radar.changed">): void {
  * `registerPitCrew(bus, …)` at plugin startup; takes the bus explicitly
  * so tests can pass a fake bus without going through `initializeEventBus`.
  *
- * `masterEnabledGetter` (issue #515) is the plugin-wide master gate the
- * engine consults on every `radar.changed` arrival and every scheduled
- * tick. Optional — when omitted the gate stays at `() => true` (legacy
- * behavior). Subsequent calls with a different getter overwrite the
- * previous one, which keeps the bus-instance idempotency check honest:
- * tests that re-register with the same bus can still update the gate.
+ * `nextDeps` (#1378) are the accessors the engine reads live — the master
+ * gate (issue #515) and the two sim reads. The spotter engine's rule: a
+ * same-bus re-registration replaces them, so a caller can refresh what the
+ * engine reads without a second subscription, and a rejected (different-bus)
+ * call leaves them as they were.
  */
-export function registerRadarEngine(bus: IEventBus, masterEnabledGetter?: () => boolean): void {
-  if (masterEnabledGetter) {
-    getMasterEnabled = masterEnabledGetter;
-  }
-
+export function registerRadarEngine(bus: IEventBus, nextDeps: RadarDeps): void {
   if (registeredBus !== null) {
     if (registeredBus !== bus) {
       throw new Error(
@@ -219,9 +241,14 @@ export function registerRadarEngine(bus: IEventBus, masterEnabledGetter?: () => 
       );
     }
 
+    // Same-bus re-registration just refreshes the live accessors — only mutate
+    // state after the guard so a rejected (different-bus) call leaves it intact.
+    deps = nextDeps;
+
     return;
   }
 
+  deps = nextDeps;
   registeredBus = bus;
   bus.subscribe("radar.changed", handleRadarChanged);
 }
@@ -340,7 +367,7 @@ export function _resetRadarEngine(): void {
   registeredBus = null;
   testSequenceInFlight = false;
   testSequenceGeneration = 0;
-  getMasterEnabled = () => true;
+  deps = DEFAULT_DEPS;
 }
 
 /**

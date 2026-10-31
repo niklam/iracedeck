@@ -40,7 +40,8 @@
  *
  * A waiting line can outlive what it announces, so the `speakGate` asks the
  * translator whether the car still needs a repair when the line comes to
- * speak (`isDamageRepairNeeded()`) and refuses it once the answer is no — the
+ * speak (`isDamageRepairNeeded()`, injected as the family's one sim read,
+ * `getDamageRepairNeeded`, since #1378) and refuses it once the answer is no — the
  * damage was repaired while it waited (#1288). That answer is the damage
  * diff's own debounced state, the one behind the event, never the repair
  * bits of one raw tick: the bits flicker on collision-frame rebounds and
@@ -53,34 +54,42 @@
  * (#1138's contract for an admitted fire).
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
-import { isDamageRepairNeeded } from "@iracedeck/sim-events-iracing";
 
 import type { ScenarioContext, ScenarioContract } from "../../dsl.js";
 import { INCIDENT_SCENARIO_IDS } from "./incidents.js";
 import { QUALIFYING_INVALIDATION_SCENARIO_IDS } from "./qualifying-invalidation.js";
 
 /**
+ * The family's one sim read (#1378): whether the car needs a repair, as the
+ * translator debounces it — `null` before its first damage read — injected
+ * rather than imported from the translator.
+ */
+export type DamageAlertsDeps = {
+  getDamageRepairNeeded: () => boolean | null;
+};
+
+/**
  * The damage contract's speak-time gate (issues #1211, #1288): refuses only
  * when the translator's settled damage state says the repair is done
- * (`isDamageRepairNeeded()` is `false`). Admits an imperative fire (no event)
+ * (`getDamageRepairNeeded()` is `false`). Admits an imperative fire (no event)
  * and an unknown state (`null`). Pure — it claims nothing, so a refusal
  * stamps no cooldown.
  *
  * @internal Exported for tests.
  */
-export function damageStillNeedsRepair(ctx: ScenarioContext): boolean {
+export function damageStillNeedsRepair(ctx: ScenarioContext, deps: DamageAlertsDeps): boolean {
   if (ctx.event === null) return true;
 
-  return isDamageRepairNeeded() !== false;
+  return deps.getDamageRepairNeeded() !== false;
 }
 
-const DAMAGE_REPAIR_NEEDED: ScenarioContract = {
+const damageRepairNeeded = (deps: DamageAlertsDeps): ScenarioContract => ({
   id: "pit-crew.damage-repair-needed",
   when: { event: "damage.repairNeeded.raised" },
   speakGate: {
     description:
       "The car still needs a repair when the call comes to speak — the repair indicator has not settled as cleared — or the damage state is not known yet.",
-    admit: damageStillNeedsRepair,
+    admit: (ctx) => damageStillNeedsRepair(ctx, deps),
   },
   description:
     "Your car takes damage that keeps the repair indicator lit for three seconds, and again only after a repair; the line waits for any incident being reported then and is skipped if already repaired.",
@@ -95,12 +104,17 @@ const DAMAGE_REPAIR_NEEDED: ScenarioContract = {
   maxQueueWaitMs: 30_000,
   // The incident line for the same crash plays first (see the header).
   queueBehind: [...INCIDENT_SCENARIO_IDS, ...QUALIFYING_INVALIDATION_SCENARIO_IDS],
-};
+});
 
-export const DAMAGE_CONTRACTS: readonly ScenarioContract[] = [DAMAGE_REPAIR_NEEDED];
+/** The family's contracts, built over its sim read (#1378) — the speak-time gate is the only thing that reads it. */
+export function buildDamageContracts(deps: DamageAlertsDeps): readonly ScenarioContract[] {
+  return [damageRepairNeeded(deps)];
+}
 
-/** Contract ids exported for tests so a typo here surfaces as a test failure. */
-export const DAMAGE_SCENARIO_IDS: readonly string[] = DAMAGE_CONTRACTS.map((c) => c.id);
+/** Contract ids exported for tests so a typo here surfaces as a test failure. Derived from a build with no sim wired. */
+export const DAMAGE_SCENARIO_IDS: readonly string[] = buildDamageContracts({ getDamageRepairNeeded: () => null }).map(
+  (c) => c.id,
+);
 
 /**
  * The clip sources the damage script draws from. The completeness tests read

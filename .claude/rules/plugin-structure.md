@@ -175,7 +175,7 @@ Every plugin starts through one composition root (#1349). Its `plugin.ts` is a s
 | # | Phase | Takes | Returns | Does |
 | --- | --- | --- | --- | --- |
 | 1 | `initCore` | `PluginHost` | `Core` | build-time config (`initPluginConfig`), the log level, the main-thread watchdog and resource monitor, the setup-warning check, the SDK, the event bus, and last the registration of the Telemetry Snapshot's four plugin-state sections (#1387), which is ordered against no later phase |
-| 2 | `initSim` | `Core` | `SimRuntime` | the sim translator (`initializeSimEventsIracing`), the live race order for the template context, the query-side runtime the Race Engineer reads |
+| 2 | `initSim` | `Core` | `SimRuntime` | the sim translator (`initializeSimEventsIracing`, handed `race-engineer-wiring`'s `createIracingTranslatorOptions()`, #1378), the live race order for the template context, the query-side runtime the Race Engineer reads (`createIracingSimRuntime()`) |
 | 3 | `initInput` | `Core` | `Input` | the keyboard and clipboard over `IRacingNative`, the PNG rasterizer behind `__FEATURE_PNG_RASTERIZATION__` |
 | 4 | `initAudio` | `Core` | `Audio` | the audio engine rooted at the plugin's assets, the bus-volume and Race Engineer / Radar gate syncers |
 | 5 | `initVoicePacks` | `Core`, `Audio` | `VoicePacks` | scanner, storage, catalog, installer, the launch step (constructed, not started), the run-scoped pushes, the settings window's voice-pack commands |

@@ -7,11 +7,16 @@
  * already suppresses `* → None` so the silent idle state never reaches
  * the bus.
  *
- * A ninth, {@link PIT_STATUS_NOTHING_TO_DO_CONTRACT} (issue #1180), releases
+ * A ninth, the nothing-to-do release (issue #1180), releases
  * the driver from a stop that ended with nothing done: iRacing never reports
  * Complete then, so it fires on `pitService.stopEmpty` instead. It shares the
- * family, but lives outside `PIT_STATUS_CONTRACTS` because it has no clip pool
+ * family, but lives outside the transition lines because it has no clip pool
  * of its own, and it queues behind a busy radio rather than being dropped.
+ *
+ * All of it comes from one {@link buildPitStatus} over the family's one sim
+ * read, the latest telemetry tick (#1378): the transition lines, the nags, the
+ * release and the vocabulary close over the same read, so each `still*`
+ * predicate stays one definition (#1138).
  *
  * **The in-progress hold (issue #1180).** On that empty stop the status may
  * read InProgress for a single tick, and the translator mirrors it, so the
@@ -25,7 +30,7 @@
  * (`scenarios["pit-crew.pit-status-in-progress"]`, …), where the bundled
  * script addresses each line directly as `pool:pit-status/<id>`. The only
  * vocabulary this family registers is the five `pitStatus.still*` conditions
- * ({@link registerPitStatusVocabulary}), published for packs since the nags'
+ * (the family's `registerVocabulary`), published for packs since the nags'
  * own gate moved onto the contracts (#1138); no bundled entry branches on
  * anything.
  *
@@ -70,18 +75,40 @@
  * whatever its script says. It was a `{ "if": "pitStatus.stillTooFarLeft",
  * … }` around the whole body until #1138, which held only for a pack that
  * kept the `if`; the bundled entry is the clip alone now. The condition stays
- * registered ({@link registerPitStatusVocabulary}) so a pack MAY still write
+ * registered (the family's `registerVocabulary`) so a pack MAY still write
  * that `if` — belt and braces, changing nothing here — which is why it has to
  * stay a pure read.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { SimEventOf } from "@iracedeck/event-bus";
-import { PitSvStatus, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
-import { getLatestTelemetry } from "@iracedeck/sim-events-iracing";
+import { PitSvStatus, TrkLoc } from "@iracedeck/iracing-sdk";
+import type { TelemetryData } from "@iracedeck/sim-events-iracing";
 
 import type { ScenarioContract } from "../../dsl.js";
 import { NO_FRAME } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
+
+/**
+ * The family's one sim read (#1378): the latest telemetry tick, which every
+ * speak-time gate here reads live — injected rather than imported from the
+ * translator.
+ */
+export type PitStatusDeps = {
+  getLatestTelemetry: () => TelemetryData | null;
+};
+
+/**
+ * One build of the pit-status family (#1378): the vocabulary, the transition
+ * lines (one per non-`None` status), the five repeat nags and the
+ * nothing-to-do release, every gate over the build's one read. Register the
+ * vocabulary before the contracts, as every family does.
+ */
+export type PitStatusFamily = {
+  registerVocabulary(engine: Pick<IScenarioEngine, "defineCond">): void;
+  contracts: readonly ScenarioContract[];
+  repeatContracts: readonly ScenarioContract[];
+  nothingToDoContract: ScenarioContract;
+};
 
 /**
  * Explicit integer between `WEIGHT.CHATTER` (10) and `WEIGHT.NORMAL` (50) —
@@ -215,8 +242,8 @@ function pitStatusContract(
  * A pure read, used twice — as the gate and as the registered condition a
  * pack may wrap its own body in.
  */
-function stillMisalignedAs(target: PitSvStatus): boolean {
-  const telemetry = getLatestTelemetry() as TelemetryData | null;
+function stillMisalignedAs(deps: PitStatusDeps, target: PitSvStatus): boolean {
+  const telemetry = deps.getLatestTelemetry();
 
   if (telemetry === null) return true;
 
@@ -234,8 +261,8 @@ function stillMisalignedAs(target: PitSvStatus): boolean {
  * {@link stillMisalignedAs} rule, which also keeps the scenario harness's
  * bus-event button firable.
  */
-function stillInProgress(): boolean {
-  const telemetry = getLatestTelemetry() as TelemetryData | null;
+function stillInProgress(deps: PitStatusDeps): boolean {
+  const telemetry = deps.getLatestTelemetry();
 
   if (telemetry === null) return true;
 
@@ -253,8 +280,8 @@ function stillInProgress(): boolean {
  * fires, and a car that drives off leaves the stall surface. Each missing
  * field, and missing telemetry, admits (#574).
  */
-function stillInBoxIdle(): boolean {
-  const telemetry = getLatestTelemetry() as TelemetryData | null;
+function stillInBoxIdle(deps: PitStatusDeps): boolean {
+  const telemetry = deps.getLatestTelemetry();
 
   if (telemetry === null) return true;
 
@@ -266,6 +293,7 @@ function stillInBoxIdle(): boolean {
 }
 
 function pitStatusRepeatContract(
+  deps: PitStatusDeps,
   id: string,
   target: PitSvStatus,
   description: string,
@@ -286,13 +314,14 @@ function pitStatusRepeatContract(
     },
     speakGate: {
       description: `The car is still ${still} in the pit box when the nag comes to speak, or telemetry is unavailable.`,
-      admit: () => stillMisalignedAs(target),
+      admit: () => stillMisalignedAs(deps, target),
     },
   };
 }
 
 /**
- * Register the vocabulary the pit-status family publishes (issue #1065):
+ * Define the vocabulary the pit-status family publishes (issue #1065) — what
+ * a build's `registerVocabulary` does, over that build's read (#1378):
  * one `pitStatus.still<Error>` condition per positioning error — the same
  * pure read each nag's `speakGate` asks. Five conditions rather than one
  * case, because each asks a different question ("is the car still in MY
@@ -305,17 +334,18 @@ function pitStatusRepeatContract(
  * go silent on its own terms — say, only nagging about the left/right pair.
  * Descriptions feed the generated reference (#1066).
  */
-export function registerPitStatusVocabulary(engine: Pick<IScenarioEngine, "defineCond">): void {
+function definePitStatusVocabulary(engine: Pick<IScenarioEngine, "defineCond">, deps: PitStatusDeps): void {
   for (const { target, cond, still } of POSITIONING_SUBJECTS) {
     engine.defineCond(
       cond,
-      () => stillMisalignedAs(target),
+      () => stillMisalignedAs(deps, target),
       `The car is still ${still} in the pit box according to live telemetry, or telemetry is unavailable. The engine already asks this at speak time — it is the nag's own gate — so wrapping a nag's body in it changes nothing; it is here for a pack that wants a nag silent on its own terms. Unknown telemetry counts as still wrong, never as fixed.`,
     );
   }
 }
 
-export const PIT_STATUS_CONTRACTS: readonly ScenarioContract[] = [
+/** The transition lines — one per non-`None` status the translator publishes. */
+const pitStatusContracts = (deps: PitStatusDeps): readonly ScenarioContract[] => [
   pitStatusContract(
     "in-progress",
     PitSvStatus.InProgress,
@@ -328,7 +358,7 @@ export const PIT_STATUS_CONTRACTS: readonly ScenarioContract[] = [
       speakGate: {
         description:
           "The crew is still working on the car a quarter-second after the stop began, or telemetry is unavailable.",
-        admit: stillInProgress,
+        admit: () => stillInProgress(deps),
       },
     },
   ),
@@ -351,7 +381,7 @@ export const PIT_STATUS_CONTRACTS: readonly ScenarioContract[] = [
  * straight back to it — so the translator publishes `pitService.stopEmpty`
  * instead, from the short `PitstopActive` pulse such a stop shows, and this
  * line releases the driver. Same family as the status lines, so a later
- * status still preempts it. Kept OUT of {@link PIT_STATUS_CONTRACTS}: that
+ * status still preempts it. Kept OUT of the transition lines: that
  * list derives one `pool:pit-status/<base>` per contract for
  * {@link PIT_STATUS_CLIP_SOURCES}, and this one has no pool of its own — the
  * bundled voices script it onto `pool:pit-status/complete`, and a pack may
@@ -365,7 +395,7 @@ export const PIT_STATUS_CONTRACTS: readonly ScenarioContract[] = [
  */
 export const PIT_STATUS_NOTHING_TO_DO_SCENARIO_ID = "pit-crew.pit-status-nothing-to-do";
 
-export const PIT_STATUS_NOTHING_TO_DO_CONTRACT: ScenarioContract = {
+const nothingToDoContract = (deps: PitStatusDeps): ScenarioContract => ({
   id: PIT_STATUS_NOTHING_TO_DO_SCENARIO_ID,
   description: "You stop in your pit box with no service queued, so the crew has nothing to do and you can leave.",
   channel: AudioChannel.Voice,
@@ -376,20 +406,36 @@ export const PIT_STATUS_NOTHING_TO_DO_CONTRACT: ScenarioContract = {
   queueable: true,
   speakGate: {
     description: "The car is still in its pit box with no service under way, or telemetry is unavailable.",
-    admit: stillInBoxIdle,
+    admit: () => stillInBoxIdle(deps),
   },
-};
+});
 
-/** The terse "still uncorrected" nags (issue #951) — one per positioning error. */
-export const PIT_STATUS_REPEAT_CONTRACTS: readonly ScenarioContract[] = POSITIONING_SUBJECTS.map(
-  ({ id, target, repeatDescription, still }) => pitStatusRepeatContract(id, target, repeatDescription, still),
-);
+/**
+ * Build the pit-status family over its sim read (#1378). Each `still*` read is
+ * written once and asked both as a contract's `speakGate` and, for the nags,
+ * as the condition a pack may write (#1138); both close over this build's
+ * read.
+ */
+export function buildPitStatus(deps: PitStatusDeps): PitStatusFamily {
+  return {
+    registerVocabulary: (engine) => definePitStatusVocabulary(engine, deps),
+    contracts: pitStatusContracts(deps),
+    // The terse "still uncorrected" nags (issue #951) — one per positioning error.
+    repeatContracts: POSITIONING_SUBJECTS.map(({ id, target, repeatDescription, still }) =>
+      pitStatusRepeatContract(deps, id, target, repeatDescription, still),
+    ),
+    nothingToDoContract: nothingToDoContract(deps),
+  };
+}
+
+/** A build with no sim wired, for the id and clip-source lists below — a read cannot change an id. */
+const UNWIRED = buildPitStatus({ getLatestTelemetry: () => null });
 
 /** Contract ids exported for tests so a typo here surfaces as a test failure. */
-export const PIT_STATUS_SCENARIO_IDS: readonly string[] = PIT_STATUS_CONTRACTS.map((c) => c.id);
+export const PIT_STATUS_SCENARIO_IDS: readonly string[] = UNWIRED.contracts.map((c) => c.id);
 
 /** Repeat-contract ids, same purpose as {@link PIT_STATUS_SCENARIO_IDS}. */
-export const PIT_STATUS_REPEAT_SCENARIO_IDS: readonly string[] = PIT_STATUS_REPEAT_CONTRACTS.map((c) => c.id);
+export const PIT_STATUS_REPEAT_SCENARIO_IDS: readonly string[] = UNWIRED.repeatContracts.map((c) => c.id);
 
 /**
  * The clip sources the pit-status scripts draw from — one
@@ -400,7 +446,7 @@ export const PIT_STATUS_REPEAT_SCENARIO_IDS: readonly string[] = PIT_STATUS_REPE
  * base is a rename in every pack's script and every pack's clip folder.
  */
 export const PIT_STATUS_CLIP_SOURCES: readonly { group: "pit-status"; base: string }[] = [
-  ...PIT_STATUS_CONTRACTS.map((c) => ({
+  ...UNWIRED.contracts.map((c) => ({
     group: "pit-status" as const,
     base: c.id.replace("pit-crew.pit-status-", ""),
   })),

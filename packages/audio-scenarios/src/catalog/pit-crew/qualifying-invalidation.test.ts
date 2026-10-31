@@ -48,9 +48,8 @@ import {
 import { _resetRadarEngine } from "./radar-engine.js";
 import { _resetSpotterEngine } from "./spotter-engine.js";
 
-vi.mock("@iracedeck/sim-events-iracing", () => ({
-  getSessionType: () => "Race",
-}));
+// The session the registrations see (#1378): a race.
+const SIM_READS = { getSessionType: () => "Race" };
 
 const mockLogger = {
   trace: vi.fn(),
@@ -236,6 +235,7 @@ beforeEach(() => {
   audio = createFakeAudio();
   initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
   registerPitCrew(bus, {
+    ...SIM_READS,
     logger: mockLogger as never,
     getQualifyingInvalidationSnapshot: () => lastSnapshot,
     // The incident callouts share this contract's event and its weight, and
@@ -1016,6 +1016,7 @@ describe("the incident line's yield to the lap-invalidation line (issues #1122, 
     audio = createFakeAudio();
     initializeAudioScenarios(bus, audio, YIELD_MANIFEST, mockLogger as never, () => VOICE);
     registerPitCrew(bus, {
+      ...SIM_READS,
       logger: mockLogger as never,
       getQualifyingInvalidationSnapshot: () => lastSnapshot,
       isCalloutEnabled: familyGate(QUALIFYING_INVALIDATION_CALLOUTS, () => qualifyingEnabled),

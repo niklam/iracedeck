@@ -5,6 +5,7 @@ import {
   resolveGapCooldownMs,
   resolveStillThereIntervalMs,
   SPOTTER_STILL_THERE_SECONDS_KEY,
+  type SpotterTrackDirection,
 } from "@iracedeck/audio-scenarios/pit-crew";
 import {
   evaluateSetupWarning,
@@ -12,9 +13,22 @@ import {
   isCalloutEnabled,
   resolveActiveDriverName,
 } from "@iracedeck/settings";
+import { TrackDirection } from "@iracedeck/sim-events-iracing";
 
 import type { RaceEngineerCaches } from "./caches.js";
 import type { RaceEngineerWiringDeps } from "./wire-race-engineer.js";
+
+/**
+ * The sim's track direction as the catalog's own union (#1378). The catalog
+ * declares `"neutral" | "left" | "right"` structurally and never names the
+ * translator's enum; this is the one place the two meet, exhaustive over the
+ * enum so a new member fails `pnpm typecheck` here.
+ */
+const SPOTTER_TRACK_DIRECTION: Readonly<Record<TrackDirection, SpotterTrackDirection>> = {
+  [TrackDirection.Neutral]: "neutral",
+  [TrackDirection.Left]: "left",
+  [TrackDirection.Right]: "right",
+};
 
 /**
  * Every `registerPitCrew` dependency (#1349).
@@ -134,7 +148,7 @@ export function buildPitCrewDeps(
     getLivePosition: () => sim.getLivePosition(),
     getOvertakeGate: getOvertakeGate,
     getSetupWarningMismatch: (kind) => evaluateSetupWarning(kind, getGlobalSettings(), sim.getDriverSetupName()),
-    getSpotterTrackDirection: () => sim.getTrackDirection(),
+    getSpotterTrackDirection: () => SPOTTER_TRACK_DIRECTION[sim.getTrackDirection()],
     getSpotterStillThereIntervalMs: () =>
       resolveStillThereIntervalMs((getGlobalSettings() as Record<string, unknown>)[SPOTTER_STILL_THERE_SECONDS_KEY]),
     getSpotterNearestCarGapMeters: () => sim.getNearestCarGapMeters(),
@@ -147,5 +161,14 @@ export function buildPitCrewDeps(
     getRaceEngineerMasterEnabled: () =>
       (getGlobalSettings() as Record<string, unknown>).pitCrewRaceEngineerEnabled === true,
     getRadarMasterEnabled: () => (getGlobalSettings() as Record<string, unknown>).pitCrewRadarEnabled === true,
+    // The four reads the catalog used to take from the translator module
+    // (#1378): raw telemetry, the session type name, the standing-start grid
+    // and the debounced repair need, each passed through so the catalog reads
+    // the sim only through its deps and the wiring reads it only through
+    // `SimRuntime`.
+    getLatestTelemetry: () => sim.getLatestTelemetry(),
+    getSessionType: () => sim.getSessionType(),
+    getStandingStart: () => sim.isStandingStart(),
+    getDamageRepairNeeded: () => sim.isDamageRepairNeeded(),
   };
 }

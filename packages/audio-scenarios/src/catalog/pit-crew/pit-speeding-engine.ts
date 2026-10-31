@@ -35,7 +35,7 @@
 import { AudioChannel, getAudio } from "@iracedeck/audio-service";
 import type { IEventBus } from "@iracedeck/event-bus";
 import type { ILogger } from "@iracedeck/logger";
-import { getLatestTelemetry } from "@iracedeck/sim-events-iracing";
+import type { TelemetryData } from "@iracedeck/sim-events-iracing";
 
 /**
  * The warning tone, chosen by ear from six candidates during #912's hardware
@@ -106,6 +106,12 @@ export type PitSpeedingDeps = {
   getMasterEnabled: () => boolean;
   /** `calloutEnabledPitSpeedingCue` — read live. */
   getCueEnabled: () => boolean;
+  /**
+   * The latest telemetry tick, for the pit-road and `SessionTick` reads
+   * (#1378); `null` before the first tick. Default `() => null`, the
+   * translator's own answer when it was never initialised.
+   */
+  getLatestTelemetry: () => TelemetryData | null;
   logger?: ILogger;
 };
 
@@ -114,6 +120,7 @@ type Snapshot = { OnPitRoad?: boolean; SessionTick?: number } | null;
 const DEFAULT_DEPS: PitSpeedingDeps = {
   getMasterEnabled: () => true,
   getCueEnabled: () => true,
+  getLatestTelemetry: () => null,
 };
 
 let deps: PitSpeedingDeps = DEFAULT_DEPS;
@@ -190,7 +197,7 @@ function startTickLoop(): void {
   stopTickLoop();
 
   const fire = (): void => {
-    const snapshot = getLatestTelemetry() as Snapshot;
+    const snapshot: Snapshot = deps.getLatestTelemetry();
 
     if (leftPitRoad(snapshot)) {
       deps.logger?.info("Pit-speeding cue stopped");

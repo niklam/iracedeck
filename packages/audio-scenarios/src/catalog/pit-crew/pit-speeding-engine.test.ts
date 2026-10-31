@@ -7,6 +7,7 @@
  * paths rather than assuming an `ended` will always arrive.
  */
 import type { IEventBus } from "@iracedeck/event-bus";
+import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -58,9 +59,8 @@ vi.mock("@iracedeck/audio-service", () => ({
   getAudio: hoisted.getAudio,
 }));
 
-vi.mock("@iracedeck/sim-events-iracing", () => ({
-  getLatestTelemetry: hoisted.getLatestTelemetry,
-}));
+/** The engine's one sim read (#1378), over the hoisted stub each case switches. */
+const getLatestTelemetry = (): TelemetryData | null => hoisted.getLatestTelemetry() as TelemetryData | null;
 
 const RADAR_CHANNEL = 3;
 
@@ -87,6 +87,7 @@ function register(): void {
   registerPitSpeedingEngine(hoisted.bus, {
     getMasterEnabled: () => masterEnabled,
     getCueEnabled: () => cueEnabled,
+    getLatestTelemetry,
   });
 }
 
@@ -365,13 +366,21 @@ describe("pit-speeding cue engine", () => {
       const otherBus = { subscribe: vi.fn(), unsubscribe: vi.fn(), publish: vi.fn() } as unknown as IEventBus;
 
       expect(() =>
-        registerPitSpeedingEngine(otherBus, { getMasterEnabled: () => true, getCueEnabled: () => true }),
+        registerPitSpeedingEngine(otherBus, {
+          getMasterEnabled: () => true,
+          getCueEnabled: () => true,
+          getLatestTelemetry,
+        }),
       ).toThrow(/different event bus/);
     });
 
     it("refreshes the gates when re-registered with the same bus", () => {
       register();
-      registerPitSpeedingEngine(hoisted.bus, { getMasterEnabled: () => false, getCueEnabled: () => true });
+      registerPitSpeedingEngine(hoisted.bus, {
+        getMasterEnabled: () => false,
+        getCueEnabled: () => true,
+        getLatestTelemetry,
+      });
 
       hoisted.emit("pitSpeeding.started");
 
