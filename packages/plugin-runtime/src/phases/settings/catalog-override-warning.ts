@@ -18,7 +18,7 @@ import { resolveVoicePackCatalogUrl, VOICE_PACK_CATALOG_URL } from "@iracedeck/v
  * "active" would contradict the url printed in the same sentence.
  */
 export function warnIfCatalogOverride(logger: ILogger): void {
-  const rawDevBase = (getGlobalSettings() as Record<string, unknown>)[VOICE_PACK_DEV_BASE_URL_KEY];
+  const rawDevBase = getGlobalSettings()[VOICE_PACK_DEV_BASE_URL_KEY];
 
   if (typeof rawDevBase === "string" && rawDevBase.trim() !== "") {
     const effective = resolveVoicePackCatalogUrl({ base: rawDevBase, logger });

@@ -23,8 +23,8 @@ export function initReplay(core: Core): Replay {
     now: () => Date.now(),
     logger: core.adapter.createLogger("ReplayEngine"),
     settings: {
-      replayJumpPlayback: () => (getGlobalSettings() as Record<string, unknown>).replayJumpPlayback,
-      fastestLapSearchDelayMs: () => (getGlobalSettings() as Record<string, unknown>).fastestLapSearchDelayMs,
+      replayJumpPlayback: () => getGlobalSettings().replayJumpPlayback,
+      fastestLapSearchDelayMs: () => getGlobalSettings().fastestLapSearchDelayMs,
     },
   });
 
