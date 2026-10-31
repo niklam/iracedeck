@@ -15,15 +15,19 @@
  */
 import { getCarNumberRawFromSessionInfo, type SessionInfo, type TelemetryData } from "@iracedeck/iracing-sdk";
 import {
-  claimReplayCursor,
   currentReplayCursorOwner,
-  FASTEST_LAP_WALK_OWNER,
-  isReplayJumpSequenceOpen,
   pressReplayCommand,
   type RecordStepSource,
   type ReplayJumpOutcome,
 } from "@iracedeck/replay-engine";
-import { type FakeReplay, fakeReplay, withSteppedReplayState } from "@iracedeck/replay-engine/testing";
+import {
+  claimReplayCursor,
+  type FakeReplay,
+  fakeReplay,
+  FASTEST_LAP_WALK_OWNER,
+  isReplayJumpSequenceOpen,
+  withSteppedReplayState,
+} from "@iracedeck/replay-engine/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { engineOverDeck } from "../../shared/replay-engine-deck.test-support.js";

@@ -1,4 +1,4 @@
-import type { ReplayEngineEnv } from "@iracedeck/replay-engine";
+import type { ReplayEngineEnv } from "@iracedeck/replay-engine/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { callLog, implement, resetRecorder } from "../test-support/recorder.js";

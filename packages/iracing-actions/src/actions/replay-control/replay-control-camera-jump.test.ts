@@ -14,15 +14,14 @@
  * key's park-and-drop cases behind a dial jump are `replay-control.test.ts`'s.
  */
 import { getAllCarNumbers, getCarNumberRawFromSessionInfo, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { beginReplayJump, type ReplayJumpOutcome, type ReplaySpeed, runReplayJump } from "@iracedeck/replay-engine";
 import {
-  beginReplayJump,
+  type FakeReplay,
+  fakeReplay,
   isReplayJumpSequenceOpen,
   jumpToRecordedLapStart,
-  type ReplayJumpOutcome,
-  type ReplaySpeed,
-  runReplayJump,
-} from "@iracedeck/replay-engine";
-import { type FakeReplay, fakeReplay, withSteppedReplayState } from "@iracedeck/replay-engine/testing";
+  withSteppedReplayState,
+} from "@iracedeck/replay-engine/testing";
 import { getGlobalSettings } from "@iracedeck/settings";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 

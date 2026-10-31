@@ -1,12 +1,11 @@
 import { ReplayPosMode, replaySpeedToSdk, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { currentReplayCursorOwner, getReplayGateView } from "@iracedeck/replay-engine";
 import {
   cancelReplayCursorOwner,
   claimReplayCursor,
-  currentReplayCursorOwner,
-  getReplayGateView,
   pendingReplayTarget,
-} from "@iracedeck/replay-engine";
-import { steppedReplayState } from "@iracedeck/replay-engine/testing";
+  steppedReplayState,
+} from "@iracedeck/replay-engine/testing";
 import type { ReplayMarker, ReplaySessionStore } from "@iracedeck/replay-store";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 

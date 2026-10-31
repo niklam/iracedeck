@@ -1,5 +1,6 @@
 import type { ILogger } from "@iracedeck/logger";
-import { _resetReplaySpeedState, noteTelemetrySpeed, reverseRememberedSpeed } from "@iracedeck/replay-engine";
+import { noteTelemetrySpeed, reverseRememberedSpeed } from "@iracedeck/replay-engine";
+import { _resetReplaySpeedState } from "@iracedeck/replay-engine/testing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ReplayDialModeIo, ReplaySpeed } from "./replay-control-dial-mode.js";
