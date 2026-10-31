@@ -12,7 +12,7 @@ The pipeline is still `.claude/rules/issue-workflow.md`. You own step 2 (specs) 
 
 ## What you do and never do
 
-You do: file issues, write and commit specs to `master`, order the milestone in the board's `Next` lane, start and message issue leads, batch Niklas's questions, run the integration build, keep the `master` checkout pulled and built. A build, install or merge needs no go in any tree, a linked one included (#1526).
+You do: propose issues and file the ones Niklas approves (`file-issue` skill), write and commit specs to `master`, order the milestone in the board's `Next` lane, start and message issue leads, batch Niklas's questions, run the integration build, keep the `master` checkout pulled and built. A build, install or merge needs no go in any tree, a linked one included (#1526).
 
 You never:
 
@@ -51,13 +51,13 @@ node -e "import('./scripts/claude-hooks/lib.mjs').then(m=>console.log(m.moveBoar
 
 `setBoardStatus` moves into `Next` only from `Backlog` or `Planned`; a card already in `In progress` or later stays where it is and is left out of the positioning. Position only the cards that are in `Next` once the moves are done, in your order: the first with `null` (top of lane), each next one after the previous `Next` card. Run the sequence once with `IRACEDECK_HOOKS_DRY_RUN=1` the first time in a session. Tell Niklas the order whenever you set or change it.
 
-Propose adding, dropping or splitting an issue to Niklas and wait. Work with no issue gets one filed first: `gh issue create` with `kind:` (when not user-facing) and `area:` labels, never `--milestone` or `--assignee` (`build-and-commit.md` *Issue labels*).
+Propose adding, dropping or splitting an issue to Niklas and wait. Work with no issue gets one first, and every new issue, yours or a lead's `propose-issue`, goes through the `file-issue` skill: its step 1 (search, draft) goes into your "For you" list, and its step 2 (file, board, spec) runs only once he approves.
 
 ## Specs
 
 Before an enhancement's issue lead starts, its spec must be on `origin/master` (`specs-and-plans.md` owns the format, naming and sections). Write it from the issue, then:
 
-1. Spawn the `architect` agent (`model: "opus"`) on the draft path, and fold its findings in. A seam it says is getting worse gets its thorough fix in the spec, or a new issue you order before this one.
+1. Spawn the `architect` agent (`model: "opus"`) on the draft path, and fold its findings in. A seam it says is getting worse gets its thorough fix in the spec, or a new issue, proposed to Niklas through the `file-issue` skill and, once approved, ordered before this one.
 2. If the spec settles a product question Niklas has not answered, ask him that question and nothing else; otherwise do not wait on him.
 3. Commit it alone, `docs(specs): <summary> (#<n>)`, and push `master` after checking the changed-files list is only the spec.
 4. Link it from the issue in a comment (`blob/master/…`, not a permalink), saying what it decided beyond the issue.
@@ -103,6 +103,7 @@ Hub and spoke: leads report to you and never to each other. Their end-of-turn re
 |-------|--------|
 | `started` | nothing |
 | `amend-spec` | amend the spec on `master` (Specs above), tell the lead |
+| `propose-issue` | run `file-issue` step 1 on it (search, draft) and queue the proposal for Niklas; file it with step 2 once he approves, and tell the lead the number |
 | `question` | a product decision: queue it for Niklas. A technical one (a judge's ruling against a spec or rule decision, #1528): decide it yourself, the thorough option, amending the spec if it was wrong; never send it to Niklas |
 | `audio-text` | queue the proposed lines for Niklas's go before any clip is generated |
 | `review-page` | queue the page link for Niklas's verdict |

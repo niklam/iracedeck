@@ -68,9 +68,9 @@ Use `$TMP` = the session scratchpad. Re-read the body afterwards; `gh --body` do
    | Already implemented — **fully** | the `iracedeck-actions` skill catalog and `packages/website/src/content/docs/`; every part of the request must exist, and a partial match is NOT this row (2026-09-04: a post asking for gap + iRating + safety rating was wrongly tagged Released because the gap half had shipped) | docs link + one line on where it is | `Released` | none |
    | Tracked by an issue | `gh issue list --state all --search "<title words>" --limit 20`, then read the likely matches; a request that is only partly covered goes to the New row for the remainder | issue link + **plan paragraph**; opener `Thanks — this is now tracked as` when the issue was filed from this post, `This is already tracked as` only when the issue pre-dates the post | match the issue's state (status tags below) | **adopt** the issue (above) |
    | Duplicate of an older post | `list --json` titles; read the older post if close | link to the older post, ask for the ❤️ there | none | none |
-   | New | none of the above | issue link + **plan paragraph** | `Will Add` | file issue + spec via the normal pipeline |
+   | New | none of the above | issue link + **plan paragraph** | `Will Add` | propose the issue via the `file-issue` skill; file it and its spec once Niklas approves |
 
-3. **New request:** draft the issue from `.github/ISSUE_TEMPLATE/feature_request.yml`'s sections with the source line as the last line of *Additional context*, show it, file it with `--label enhancement --label discord`, then the spec per `.claude/rules/specs-and-plans.md` (committed to `master`, link added to the issue). Only then reply and tag.
+3. **New request:** go through the `file-issue` skill. Its step 1 searches and proposes, but here the body follows `.github/ISSUE_TEMPLATE/feature_request.yml`'s sections, with the source line as the last line of *Additional context*, and the labels are `--label enhancement --label discord` plus an `area:`. File it with step 2 (board, spec committed to `master`, link on the issue) only once Niklas approves the proposal. Only then reply and tag.
 4. Reply with `reply <id> --file "$TMP/reply.md"`, then `tag <id> "<tag>"`. Both after approval, both shown as dry-runs first if the maintainer asks.
 5. Summary: handled per outcome, skipped with reasons, issues filed and adopted.
 
@@ -119,7 +119,7 @@ The forum has one tag, `Resolved`. There is no "tracked" or "in progress" tag, s
    | Already fixed in a release | the changelog (`packages/website/src/content/docs/changelog.mdx` and `changelog.d/`) and closed `bug` issues | the version that fixed it, one line on what changed | `Resolved` | none |
    | Tracked by an issue | `gh issue list --state all --label bug --search "<title words>" --limit 20`, then read the likely matches | issue link + one line on what we know | none | **adopt** the issue (above) |
    | Needs more information | no steps, no version, no log, and the cause is not clear from the thread | ask for what is missing: steps, the iRaceDeck and deck software versions, the plugin log | none | none |
-   | New | none of the above | issue link + one line on what we know | none | file a `bug` issue |
+   | New | none of the above | issue link + one line on what we know | none | propose a `bug` issue via the `file-issue` skill; file it once Niklas approves |
 
 3. **New bug:** draft the issue from `.github/ISSUE_TEMPLATE/bug_report.yml`'s sections with the source line as the last line of *Additional context*, show it, and file it with `--label bug --label discord`. A bug needs no spec unless its fix involves a genuine design choice (`.claude/rules/specs-and-plans.md`). Only then reply.
 4. Reply with `pnpm discord:bugs reply <id> --file "$TMP/reply.md"`, and `pnpm discord:bugs tag <id> Resolved` where the table says so. Both after approval.
