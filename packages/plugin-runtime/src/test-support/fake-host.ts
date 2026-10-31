@@ -14,8 +14,8 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { PluginExtension, PluginHost } from "../types.js";
-import { callLog } from "./recorder.js";
+import type { Core, PluginExtension, PluginHost } from "../types.js";
+import { callLog, stub } from "./recorder.js";
 
 const tempBinDirs: string[] = [];
 
@@ -143,4 +143,25 @@ export function createHost(
   logLocation?: LogLocation,
 ): PluginHost & { adapter: FakeAdapter } {
   return { adapter: createFakeAdapter(logLocation), binDir: createTempBinDir(), ...(extension ? { extension } : {}) };
+}
+
+/**
+ * A whole `Core` over `createHost`, for a step test whose step takes one (#1377):
+ * the bus and controller are recorder stubs, the log location a daily folder in
+ * the temp dir, and both native addons loaded. `adapter` is the same fake adapter,
+ * typed for its `scopes` and listeners.
+ */
+export function createFakeCore(extension?: PluginExtension): { core: Core; adapter: FakeAdapter } {
+  const host = createHost(extension);
+  const core: Core = {
+    host,
+    adapter: host.adapter,
+    binDir: host.binDir,
+    logLocation: { kind: "daily", dir: tmpdir() },
+    bus: stub("bus"),
+    controller: stub("controller"),
+    nativeAddons: { iracing: { kind: "native" }, audio: { kind: "native" } },
+  };
+
+  return { core, adapter: host.adapter };
 }

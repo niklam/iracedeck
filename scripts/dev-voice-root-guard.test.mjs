@@ -249,9 +249,9 @@ describe("the development voice root is build-time only (#1143, #1214)", () => {
     });
   });
 
-  describe("the voice-pack phase (#1349)", () => {
+  describe("the voice-pack phase (#1349, #1377)", () => {
     const phaseSource = readFileSync(
-      join(repoRoot, "packages", "plugin-runtime", "src", "phases", "voice-packs.ts"),
+      join(repoRoot, "packages", "plugin-runtime", "src", "phases", "voice-packs", "scan.ts"),
       "utf-8",
     );
 
@@ -260,8 +260,8 @@ describe("the development voice root is build-time only (#1143, #1214)", () => {
       // and the deck-host mirror on every push, and `voice-pack-list.ts`
       // renders `dir` on a development row and nowhere else — so an absolute
       // path on every other row is payload with no reader. Since #1349 the
-      // three plugins share this one phase; `voice-packs.test.ts` also
-      // exercises the rule.
+      // three plugins share this one phase, and since #1377 the push lives in
+      // its scan step; `voice-packs/scan.test.ts` also exercises the rule.
       expect(phaseSource).toContain('...(pack.provenance === "development" ? { dir: pack.dir } : {}),');
       expect(phaseSource, "an unconditional `dir:` would publish it on every row").not.toContain("dir: pack.dir,");
     });

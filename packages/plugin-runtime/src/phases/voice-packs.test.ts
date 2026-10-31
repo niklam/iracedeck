@@ -1,4 +1,4 @@
-import { VOICE_LABELS_KEY, VOICE_PACK_STATUS_KEY, VOICE_PACKS_KEY } from "@iracedeck/app-constants";
+import { VOICE_LABELS_KEY, VOICE_PACKS_KEY } from "@iracedeck/app-constants";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { cleanupTempBinDirs, createHost } from "../test-support/fake-host.js";
@@ -36,8 +36,8 @@ vi.mock("../actions.js", async () => (await import("../test-support/module-mocks
 type ServiceDeps = { onPacksChanged: () => void; applyManifest: (fragments: unknown) => void };
 
 /**
- * Wire a fake voice-pack service whose refresh() runs the scan callbacks, and
- * capture every global-settings write. `settings.initialised` is read live, so
+ * Wire a fake voice-pack service whose refresh() runs the scan callbacks (and
+ * logs itself as `service.refresh`), and capture every global-settings write. `settings.initialised` is read live, so
  * a test can flip it after the startup scan.
  */
 function setup(initialised: boolean) {
@@ -45,6 +45,7 @@ function setup(initialised: boolean) {
   const writes: Record<string, unknown>[] = [];
   let deps: ServiceDeps | undefined;
   const refresh = vi.fn(() => {
+    callLog.push("service.refresh");
     deps?.applyManifest([]);
     deps?.onPacksChanged();
   });
@@ -143,46 +144,43 @@ describe("initVoicePacks (#1104)", () => {
     expect(voicePacks.state.lastPublished.driverNames).toBe(JSON.stringify(["adam"]));
   });
 
-  it("publishes a pack's dir only on a development row", () => {
-    const { writes } = setup(true);
-    const packs = JSON.parse(writes.find((w) => VOICE_PACKS_KEY in w)?.[VOICE_PACKS_KEY] as string).packs as {
-      id: string;
-      dir?: string;
-    }[];
+  it("runs its steps in order: reporter, service, startup scan, storage, catalog, installer, launch", () => {
+    setup(false);
 
-    expect(packs.find((p) => p.id === "default")).toBeDefined();
-    expect(packs.find((p) => p.id === "default")).not.toHaveProperty("dir");
-    expect(packs.find((p) => p.id === "staged")?.dir).toBe("C:/dev/staged");
+    const steps =
+      /^(service\.refresh|create(VoiceScriptWarningReporter|VoicePack(Service|Storage|CatalogService|Installer|LaunchStep)))$/;
+
+    expect(callLog.filter((n) => steps.test(n))).toEqual([
+      "createVoiceScriptWarningReporter",
+      "createVoicePackService",
+      "service.refresh",
+      "createVoicePackStorage",
+      "createVoicePackCatalogService",
+      "createVoicePackInstaller",
+      "createVoicePackLaunchStep",
+    ]);
   });
 
-  it("dedupes the installer's published status", () => {
-    let publish: ((status: unknown) => void) | undefined;
-    implement("createVoicePackInstaller", (d) => {
-      publish = (d as { publishStatus: (s: unknown) => void }).publishStatus;
+  it("hands its steps' products on: the installer and launch step it built, the scan's state, pushes and banner", () => {
+    const installer = { name: "installer" };
+    const launch = { name: "launch" };
+    implement("createVoicePackInstaller", () => installer);
+    implement("createVoicePackLaunchStep", () => launch);
+    const { voicePacks, writes } = setup(true);
 
-      return {};
-    });
-    const { writes, voicePacks } = setup(true);
-    const before = writes.length;
+    expect(voicePacks.installer).toBe(installer);
+    expect(voicePacks.launch).toBe(launch);
+    expect(voicePacks.state.raceEngineerVoices).toEqual(["default::default"]);
 
-    publish?.({ default: "installed" });
-    publish?.({ default: "installed" });
-
-    expect(writes.slice(before)).toEqual([{ [VOICE_PACK_STATUS_KEY]: JSON.stringify({ default: "installed" }) }]);
-    expect(voicePacks.state.lastPublished.status).toBe(JSON.stringify({ default: "installed" }));
-  });
-
-  it("refuses to remove the managed pack from the settings window", () => {
-    implement("isManagedVoicePack", (id) => id === "default");
-    const { voicePacks } = setup(true);
+    // The pushes and the banner are the scan's: the startup scan already published, so a push is deduped.
+    const count = writes.length;
+    voicePacks.push.raceEngineerVoices();
+    voicePacks.push.driverNames();
+    voicePacks.push.packList();
+    expect(writes.length).toBe(count);
     callLog.length = 0;
-
-    voicePacks.windowCommands.removeVoicePack("default");
-    expect(callLog).not.toContain("createVoicePackInstaller().remove");
-
-    // Positive control: any other pack does reach the installer.
-    voicePacks.windowCommands.removeVoicePack("other");
-    expect(callLog).toContain("createVoicePackInstaller().remove");
+    voicePacks.reassertVoiceScriptWarning();
+    expect(callLog).toContain("createVoiceScriptWarningReporter()");
   });
 
   it("rescans and pokes the launch step on the window's Rescan, and asks the catalog on refreshCatalog", () => {

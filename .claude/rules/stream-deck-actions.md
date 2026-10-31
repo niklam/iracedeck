@@ -375,7 +375,7 @@ Global settings are plugin-level settings shared across all action instances. Us
 **IMPORTANT**: You MUST pass the platform adapter and the plugin-owned settings store to `initGlobalSettings()`:
 
 ```typescript
-// plugin-runtime: the store in initSettings (src/phases/settings.ts),
+// plugin-runtime: the store in initSettings (src/phases/settings/settings-store.ts),
 // initGlobalSettings in src/phases/start-services.ts — `adapter` is core.adapter
 import { getPluginPlatform, getPluginVersion } from "@iracedeck/deck-core";
 import {

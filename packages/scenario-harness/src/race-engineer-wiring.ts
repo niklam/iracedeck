@@ -25,7 +25,7 @@ export type HarnessVoiceState = {
 /**
  * Rescan both lists from a merged manifest (bundled plus every installed
  * pack's clips), as the plugins' `applyManifest` does in
- * `plugin-runtime/src/phases/voice-packs.ts`, with the same two scanners.
+ * `plugin-runtime/src/phases/voice-packs/scan.ts`, with the same two scanners.
  */
 export function applyMergedManifest(voices: HarnessVoiceState, merged: AudioAssetsManifest): void {
   voices.raceEngineerVoices = scanRaceEngineerVoices(merged);
