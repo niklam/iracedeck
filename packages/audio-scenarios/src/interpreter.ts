@@ -92,7 +92,7 @@
  *     (`group/base`) addresses the voice's clip groups directly.
  */
 import type { IAudioService } from "@iracedeck/audio-service";
-import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
+import { AudioBus } from "@iracedeck/audio-service";
 import type { CalloutScript } from "@iracedeck/callout-script";
 import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import type { ILogger } from "@iracedeck/logger";
@@ -109,8 +109,10 @@ import type {
 } from "./dsl.js";
 import { DEFAULT_MAX_QUEUE_WAIT_MS, DEFAULT_WEIGHT, resolveStep } from "./dsl.js";
 import {
-  type ActiveFire,
-  type BusState,
+  type ActiveFireView,
+  BusTable,
+  type BusTableView,
+  type BusView,
   codePointOrder,
   type CompiledScenario,
   type ExecOp,
@@ -127,6 +129,7 @@ import { Expansion } from "./expansion.js";
 import type { AudioAssetsManifest } from "./manifest.js";
 import { OnceWarnings } from "./once-warnings.js";
 import { PendingQueue, type QueuedFire, type QueueDrop } from "./pending-queue.js";
+import { opLabel, Playback } from "./playback.js";
 import { PoolStore } from "./pool-store.js";
 import { buildResumeState, planResume } from "./resume.js";
 import type { CompiledVoiceScript } from "./script-compiler.js";
@@ -462,7 +465,6 @@ export interface IScenarioEngine {
 
 class ScenarioEngine implements IScenarioEngine {
   private readonly eventBus: IEventBus;
-  private readonly audio: IAudioService;
   private readonly logger: ILogger;
   /**
    * Resolves the active Race Engineer voice key (e.g. `"luca"`) at clip-
@@ -483,7 +485,18 @@ class ScenarioEngine implements IScenarioEngine {
   private readonly poolStore: PoolStore;
   /** The var, condition and case registries (`Vocabulary`). */
   private readonly vocab: Vocabulary;
-  private readonly busState = new Map<AudioBus, BusState>();
+  /**
+   * The one table of per-bus state (`BusTable`), seen here through
+   * `BusTableView`: the schedule half is this class's to write, the active
+   * fire is read-only and changed only through `playback`.
+   */
+  private readonly buses: BusTableView;
+  /**
+   * The op walk over `IAudioService` (`Playback`): the bus take, the steps,
+   * the cut and the cut tail. It reports a bus take and a finish back here
+   * through its listener, synchronously.
+   */
+  private readonly playback: Playback;
 
   /** The scripts, their compiled form, the dirty flag and the expansion generation (`ScriptSet`). */
   private readonly scripts: ScriptSet;
@@ -525,7 +538,6 @@ class ScenarioEngine implements IScenarioEngine {
     getFrameOptions: () => FrameOptions = () => ({ beeps: true, ambience: true }),
   ) {
     this.eventBus = eventBus;
-    this.audio = audio;
     this.logger = logger;
     this.getActiveVoice = getActiveVoice;
     this.getFrameOptions = getFrameOptions;
@@ -547,6 +559,22 @@ class ScenarioEngine implements IScenarioEngine {
       pools: this.poolStore,
       scripts: this.scripts,
     });
+    // One table for both halves of every bus's state; playback is handed it
+    // without the schedule half, and reports back here synchronously.
+    const buses = new BusTable(
+      () => new PendingQueue<WaitingFire>((follower, leader) => this.registry.waitsBehind(follower, leader)),
+    );
+    this.buses = buses;
+    this.playback = new Playback(
+      audio,
+      logger,
+      buses,
+      {
+        busTaken: (bus) => this.clearPendingHold(this.buses.get(bus)),
+        fireFinished: (bus, id) => this.fireFinished(bus, id),
+      },
+      { pools: this.poolStore },
+    );
     // Subscribed here, before any contract can register, so that on a
     // `session.changed` it runs FIRST (the bus dispatches in subscription
     // order) — the session-start and race-start lines that fire on that
@@ -584,7 +612,7 @@ class ScenarioEngine implements IScenarioEngine {
       }
     }
 
-    for (const state of this.busState.values()) this.clearPendingHold(state);
+    for (const state of this.buses.values()) this.clearPendingHold(state);
   }
 
   // ── Definition API ──
@@ -725,11 +753,11 @@ class ScenarioEngine implements IScenarioEngine {
 
     return {
       activeVoice,
-      // The accessor itself rather than `frameOptions()`, which logs a throw.
+      // The accessor itself rather than `Expansion`'s `frameOptions()`, which logs a throw.
       frameOptions: readStatePart(() => ({ ...this.getFrameOptions() })),
       scriptsDirty: this.scripts.dirty,
-      // `busState.get`, not `getBusState`: a read creates no state.
-      buses: audioBuses().map((bus) => describeBus(bus, this.busState.get(bus))),
+      // `peek`, not `get`: a read creates no state.
+      buses: audioBuses().map((bus) => describeBus(bus, this.buses.peek(bus))),
       contracts: [...this.registry.entries.values()]
         .map((entry) => ({
           id: entry.raw.id,
@@ -784,16 +812,17 @@ class ScenarioEngine implements IScenarioEngine {
       // Cancel in-flight execution on any bus + remove its waiting entry. A
       // fire that waited behind it (issue #1108) stays, as an ordinary entry
       // (issue #1185).
-      for (const state of this.busState.values()) {
-        const wasActive = state.activeFire?.id === scenarioId;
+      for (const [bus, state] of this.buses.entries()) {
+        const wasActive = state.transport.active?.id === scenarioId;
 
-        if (wasActive) this.cancelActiveFire(state);
+        if (wasActive) this.playback.cancelActiveFire(bus);
 
-        if (state.queue.remove(scenarioId) !== null) this.logger.debug(`Scenario "${scenarioId}" dropped — disabled`);
+        if (state.schedule.queue.remove(scenarioId) !== null)
+          this.logger.debug(`Scenario "${scenarioId}" dropped — disabled`);
 
         // Disabling the in-flight scenario idled the bus — play whatever was
         // waiting behind it rather than stranding it (issue #652 review).
-        if (wasActive && state.playingId === null) this.drainPending(state);
+        if (wasActive && state.transport.active === null) this.drainPending(state);
       }
     }
   }
@@ -831,9 +860,9 @@ class ScenarioEngine implements IScenarioEngine {
       return "no-frame";
     }
 
-    const state = this.getBusState(AudioBus.Voice);
+    const state = this.buses.get(AudioBus.Voice);
 
-    if (state.playingId !== null || state.queue.size > 0 || state.focus !== null) {
+    if (state.transport.active !== null || state.schedule.queue.size > 0 || state.schedule.focus !== null) {
       this.logger.debug(`Frame preview "${frameName}" skipped — the Voice bus is in use`);
 
       return "bus-busy";
@@ -859,19 +888,15 @@ class ScenarioEngine implements IScenarioEngine {
 
     const ops: ExecOp[] = [...frame.open, { kind: "pause", ms: holdMs }, ...frame.close];
 
-    this.takeBus(state, {
+    this.playback.takeBus({
       id: FRAME_PREVIEW_ID,
       bus: AudioBus.Voice,
       // Never compared: an arriving fire treats the preview's bus as idle.
       weight: 0,
       ops,
-      index: 0,
       sourceOps: ops,
       sourceStart: 0,
       prerollCount: 0,
-      cancelled: false,
-      pauseTimer: null,
-      usedChannels: collectUsedChannels(ops),
       event: null,
       sessionGeneration: this.sessionGeneration,
       cutTail: [],
@@ -882,7 +907,7 @@ class ScenarioEngine implements IScenarioEngine {
     this.logger.info(`Playing frame preview "${frameName}" for voice "${voice}"`);
     this.logger.debug(`Ops (${ops.length}): ${ops.map(opLabel).join(" | ")}`);
 
-    this.stepNext(state);
+    this.playback.stepNext(AudioBus.Voice);
 
     return "playing";
   }
@@ -893,8 +918,8 @@ class ScenarioEngine implements IScenarioEngine {
    * that fire has expanded to something to play: one that aborts leaves
    * the preview running.
    */
-  private yieldPreview(state: BusState): void {
-    if (state.activeFire?.id === FRAME_PREVIEW_ID) this.cancelActiveFire(state);
+  private yieldPreview(bus: AudioBus, state: BusView): void {
+    if (state.transport.active?.id === FRAME_PREVIEW_ID) this.playback.cancelActiveFire(bus);
   }
 
   /**
@@ -911,32 +936,32 @@ class ScenarioEngine implements IScenarioEngine {
    * safe to call whether or not anything is playing.
    */
   stopAll(): void {
-    for (const state of this.busState.values()) {
-      this.cancelActiveFire(state);
-      state.queue.clear();
+    for (const [bus, state] of this.buses.entries()) {
+      this.playback.cancelActiveFire(bus);
+      state.schedule.queue.clear();
       this.clearPendingHold(state);
       // Release any held focus floor too, so it can't outlive the reset and
       // block every later callout on re-enable (issue #652 review).
-      state.focus = null;
+      state.schedule.focus = null;
     }
   }
 
   acquireFocus(bus: AudioBus, ownerId: string, floorWeight: number): void {
-    const state = this.getBusState(bus);
-    state.focus = { ownerId, floor: floorWeight };
+    const state = this.buses.get(bus);
+    state.schedule.focus = { ownerId, floor: floorWeight };
     this.logger.debug(`Focus acquired on bus ${bus} by "${ownerId}" (floor ${floorWeight})`);
   }
 
   releaseFocus(bus: AudioBus, ownerId: string): void {
-    const state = this.getBusState(bus);
+    const state = this.buses.get(bus);
 
-    if (state.focus?.ownerId !== ownerId) return;
+    if (state.schedule.focus?.ownerId !== ownerId) return;
 
-    state.focus = null;
+    state.schedule.focus = null;
     this.logger.debug(`Focus released on bus ${bus} by "${ownerId}"`);
 
     // A fire deferred while below the floor may now be playable.
-    if (state.playingId === null) this.drainPending(state);
+    if (state.transport.active === null) this.drainPending(state);
   }
 
   // ── Event wiring ──
@@ -1105,8 +1130,8 @@ class ScenarioEngine implements IScenarioEngine {
         note(id, "pending");
       }
 
-      for (const state of this.busState.values()) {
-        const waiting = state.queue.remove(id);
+      for (const state of this.buses.values()) {
+        const waiting = state.schedule.queue.remove(id);
 
         if (waiting === null) continue;
 
@@ -1118,18 +1143,18 @@ class ScenarioEngine implements IScenarioEngine {
     for (const entry of ending) {
       const id = entry.raw.id;
 
-      for (const state of this.busState.values()) {
-        const fire = state.activeFire;
+      for (const [bus, state] of this.buses.entries()) {
+        const fire = state.transport.active;
 
         if (fire === null || fire.id !== id || fire.ended) continue;
 
         if (lineFinished(fire)) {
           note(id, "playing → closing");
         } else if (fire.cutTail.length > 0 && wordsHeard(fire)) {
-          this.playCutTail(state, fire);
+          this.playback.playCutTail(bus);
           note(id, "playing → tail");
         } else {
-          this.cancelActiveFire(state);
+          this.playback.cancelActiveFire(bus);
           this.drainPending(state);
           note(id, "playing → silent");
         }
@@ -1139,64 +1164,6 @@ class ScenarioEngine implements IScenarioEngine {
     for (const [id, outcome] of outcomes) {
       this.logger.debug(`Scenario "${id}" ended by ${event} (${outcome.join(", ")})`);
     }
-  }
-
-  /**
-   * Cut a playing fire's body mid-clip and put its cut tail on the bus in its
-   * place (issue #1407), as a fire of its own marked `ended`: it holds the bus
-   * until the tail finishes and then drains it like any fire, a same-family
-   * or heavier `interrupt` arrival may cut it, and nothing stashes it.
-   *
-   * The old fire is marked `cancelled` BEFORE its channels stop: `stopChannel`
-   * may fire the body clip's complete callback, and that guard is what keeps
-   * `stepNext` from moving the cut fire into its next body op. It is not
-   * `cancelActiveFire`, which would release the bus and drop the `onSettled`
-   * a caller waits on; the tail inherits both instead.
-   *
-   * The radio's ambience bed is left running when the tail stops it itself —
-   * both first-party cuts are "never mind", then the bed stops with the close
-   * tick, and a frame without `cut` falls back to its `close`, which carries
-   * the same stop — so "never mind" is said over the bed rather than into
-   * silence. A tail with no ambience stop has the bed stopped at the cut, as
-   * before: nothing else would ever stop the loop.
-   */
-  private playCutTail(state: BusState, fire: ActiveFire): void {
-    fire.cancelled = true;
-
-    if (fire.pauseTimer) {
-      clearTimeout(fire.pauseTimer);
-      fire.pauseTimer = null;
-    }
-
-    const tail = fire.cutTail;
-    const tailStopsBed = tail.some((op) => op.kind === "ambient" && op.action === "stop");
-
-    for (const channel of fire.usedChannels) {
-      if (channel === AudioChannel.Ambient && tailStopsBed) continue;
-
-      this.audio.stopChannel(channel);
-    }
-
-    this.takeBus(state, {
-      id: fire.id,
-      bus: fire.bus,
-      weight: fire.weight,
-      ops: tail,
-      index: 0,
-      sourceOps: tail,
-      sourceStart: 0,
-      prerollCount: 0,
-      cancelled: false,
-      pauseTimer: null,
-      usedChannels: collectUsedChannels(tail),
-      event: fire.event,
-      sessionGeneration: fire.sessionGeneration,
-      cutTail: [],
-      ended: true,
-      onSettled: fire.onSettled,
-    });
-
-    this.stepNext(state);
   }
 
   /**
@@ -1238,7 +1205,7 @@ class ScenarioEngine implements IScenarioEngine {
     if (!resume && entry.raw.cooldown && entry.lastFireAt > 0 && now - entry.lastFireAt < entry.raw.cooldown) return;
 
     const bus = entry.raw.bus;
-    const state = this.getBusState(bus);
+    const state = this.buses.get(bus);
     const weight = entry.raw.weight ?? DEFAULT_WEIGHT;
 
     // Exclusive-focus floor (issue #652): while an owner holds the bus, a
@@ -1247,7 +1214,7 @@ class ScenarioEngine implements IScenarioEngine {
     // through and schedule normally below — so a floor set to the SAFETY band
     // admits the safety-flag callouts while holding back routine chatter.
     if (this.belowFloor(state, entry.raw.focusOwner, weight)) {
-      const reason = `below focus floor (${state.focus?.ownerId ?? ""})`;
+      const reason = `below focus floor (${state.schedule.focus?.ownerId ?? ""})`;
       this.queueOrDrop(entry, event, weight, state, reason, resume, admitted, queuedAt);
 
       return;
@@ -1256,9 +1223,11 @@ class ScenarioEngine implements IScenarioEngine {
     // A bus the frame preview holds counts as idle: the preview yields to
     // every callout (issue #1124), and is cut below once this fire has
     // expanded to something to play.
-    if (state.playingId !== null && state.playingId !== FRAME_PREVIEW_ID) {
-      const running = this.registry.get(state.playingId);
-      const runningWeight = state.activeFire?.weight ?? DEFAULT_WEIGHT;
+    const playingId = state.transport.active?.id ?? null;
+
+    if (playingId !== null && playingId !== FRAME_PREVIEW_ID) {
+      const running = this.registry.get(playingId);
+      const runningWeight = state.transport.active?.weight ?? DEFAULT_WEIGHT;
 
       // Same-family preemption: a new event in a family invalidates the
       // in-flight callout for that family (e.g. tire-set switch mid-playback).
@@ -1283,7 +1252,7 @@ class ScenarioEngine implements IScenarioEngine {
         // info about the same subject.)
         if (!sameFamily) this.stashRunningIfQueueable(state, running);
 
-        this.cancelActiveFire(state);
+        this.playback.cancelActiveFire(bus);
 
         if (!resume) entry.lastFireAt = now;
 
@@ -1314,7 +1283,7 @@ class ScenarioEngine implements IScenarioEngine {
     // A fire whose contract waits behind one of THOSE must not play past it
     // (issue #1108): it is queued behind it here exactly as it would be on a
     // busy bus, and the drain plays the two in order.
-    if (state.queue.hasLeaderFor(entry.raw.id, now)) {
+    if (state.schedule.queue.hasLeaderFor(entry.raw.id, now)) {
       const reason = "the fire it waits behind is pending";
       this.enqueue(entry.raw.id, event, weight, state, reason, resume, admitted, queuedAt);
 
@@ -1325,7 +1294,7 @@ class ScenarioEngine implements IScenarioEngine {
 
     if (expanded === null) return;
 
-    this.yieldPreview(state);
+    this.yieldPreview(bus, state);
 
     if (!resume) entry.lastFireAt = now;
 
@@ -1344,8 +1313,8 @@ class ScenarioEngine implements IScenarioEngine {
    * (`admitted`): it is the older fire, and a newer one of its group would
    * already have replaced it, or made it yield, in the queue.
    */
-  private supersedeWaitingOfGroup(state: BusState, entry: CompiledScenario): void {
-    this.logQueueDrops(state.queue.removeGroup(entry.raw.supersedeGroup ?? entry.raw.id, entry.raw.id));
+  private supersedeWaitingOfGroup(state: BusView, entry: CompiledScenario): void {
+    this.logQueueDrops(state.schedule.queue.removeGroup(entry.raw.supersedeGroup ?? entry.raw.id, entry.raw.id));
   }
 
   /**
@@ -1355,8 +1324,8 @@ class ScenarioEngine implements IScenarioEngine {
    * drain read, so the drain never takes off the queue a fire that
    * `attemptFire` would only park again.
    */
-  private belowFloor(state: BusState, focusOwner: string | undefined, weight: number): boolean {
-    const focus = state.focus;
+  private belowFloor(state: BusView, focusOwner: string | undefined, weight: number): boolean {
+    const focus = state.schedule.focus;
 
     return focus !== null && focusOwner !== focus.ownerId && weight < focus.floor;
   }
@@ -1366,7 +1335,7 @@ class ScenarioEngine implements IScenarioEngine {
     entry: CompiledScenario,
     event: SimEventOf<SimEventName> | null,
     weight: number,
-    state: BusState,
+    state: BusView,
     reason: string,
     resume?: ResumeState,
     admitted = false,
@@ -1394,7 +1363,7 @@ class ScenarioEngine implements IScenarioEngine {
     id: string,
     event: SimEventOf<SimEventName> | null,
     weight: number,
-    state: BusState,
+    state: BusView,
     reason: string,
     resume?: ResumeState,
     admitted = false,
@@ -1402,7 +1371,7 @@ class ScenarioEngine implements IScenarioEngine {
     yieldsToGroup = false,
   ): void {
     const raw = this.registry.get(id)?.raw;
-    const result = state.queue.offer(
+    const result = state.schedule.queue.offer(
       {
         id,
         weight,
@@ -1452,9 +1421,9 @@ class ScenarioEngine implements IScenarioEngine {
   private clearQueuesForSessionChange(): void {
     this.sessionGeneration++;
 
-    for (const state of this.busState.values()) {
+    for (const state of this.buses.values()) {
       this.clearPendingHold(state);
-      this.logQueueDrops(state.queue.clear());
+      this.logQueueDrops(state.schedule.queue.clear());
     }
   }
 
@@ -1478,8 +1447,8 @@ class ScenarioEngine implements IScenarioEngine {
    * `sessionGeneration`). Neither is the cut tail of an ended fire (issue
    * #1407), which is never re-queued.
    */
-  private stashRunningIfQueueable(state: BusState, running: CompiledScenario | undefined): void {
-    const active = state.activeFire;
+  private stashRunningIfQueueable(state: BusView, running: CompiledScenario | undefined): void {
+    const active = state.transport.active;
 
     if (!active || !running || running.raw.queueable !== true) return;
 
@@ -1611,19 +1580,14 @@ class ScenarioEngine implements IScenarioEngine {
     }
 
     const bus = entry.raw.bus;
-    const state = this.getBusState(bus);
-    this.takeBus(state, {
+    this.playback.takeBus({
       id: entry.raw.id,
       bus,
       weight: entry.raw.weight ?? DEFAULT_WEIGHT,
       ops,
-      index: 0,
       sourceOps: expanded,
       sourceStart,
       prerollCount,
-      cancelled: false,
-      pauseTimer: null,
-      usedChannels: collectUsedChannels(ops),
       event,
       sessionGeneration: this.sessionGeneration,
       cutTail: prepared.cutTail,
@@ -1639,92 +1603,15 @@ class ScenarioEngine implements IScenarioEngine {
 
     this.logger.debug(`Ops (${ops.length}): ${ops.map(opLabel).join(" | ")}`);
 
-    this.stepNext(state);
-  }
-
-  /** Advance to the next op in the given bus's active fire. */
-  private stepNext(state: BusState): void {
-    const fire = state.activeFire;
-
-    if (!fire || fire.cancelled) return;
-
-    if (fire.index >= fire.ops.length) {
-      this.finishFire(fire.id, fire.bus);
-
-      return;
-    }
-
-    const op = fire.ops[fire.index];
-    fire.index++;
-
-    try {
-      if (op.kind === "play") {
-        this.audio.onChannelComplete(op.channel, () => {
-          if (state.activeFire === fire && !fire.cancelled) this.stepNext(state);
-        });
-        const ok = this.audio.playOnChannel(op.channel, op.path);
-
-        if (!ok) {
-          this.logger.warn(`Failed to play ${op.path} on channel ${op.channel}; advancing`);
-          this.stepNext(state);
-        }
-
-        return;
-      }
-
-      if (op.kind === "ambient") {
-        if (op.action === "start")
-          this.audio.playOnChannel(AudioChannel.Ambient, this.poolStore.currentManifest().ambientLoop, true);
-        else if (op.action === "stop") this.audio.stopChannel(AudioChannel.Ambient);
-        else if (op.action === "seek") this.audio.seekChannelRandom(AudioChannel.Ambient);
-
-        this.stepNext(state);
-
-        return;
-      }
-
-      if (op.kind === "pause") {
-        if (op.ms <= 0) {
-          this.stepNext(state);
-
-          return;
-        }
-
-        fire.pauseTimer = setTimeout(() => {
-          fire.pauseTimer = null;
-
-          if (state.activeFire === fire && !fire.cancelled) this.stepNext(state);
-        }, op.ms);
-
-        return;
-      }
-    } catch (err) {
-      this.logger.error(`Scenario "${fire.id}" step threw: ${err instanceof Error ? err.message : String(err)}`);
-      this.stepNext(state);
-    }
+    this.playback.stepNext(bus);
   }
 
   /**
-   * Put a fire on the bus and record it as the one playing. A pending hold
-   * armed at the previous fire's finish is obsolete; it re-arms when this
-   * fire finishes. The caller starts it with `stepNext`.
+   * Playback's `fireFinished`: the fire has left the bus and its `onSettled`
+   * has run. Hold the drain for the contract's `pendingHoldMs`, else drain.
    */
-  private takeBus(state: BusState, fire: ActiveFire): void {
-    this.clearPendingHold(state);
-    state.playingId = fire.id;
-    state.activeFire = fire;
-  }
-
-  private finishFire(scenarioId: string, bus: AudioBus): void {
-    const state = this.getBusState(bus);
-
-    if (state.playingId === scenarioId) state.playingId = null;
-
-    if (state.activeFire?.id === scenarioId) {
-      const finished = state.activeFire;
-      state.activeFire = null;
-      this.settle(finished);
-    }
+  private fireFinished(bus: AudioBus, scenarioId: string): void {
+    const state = this.buses.get(bus);
 
     // A finishing fire in a train of related fires (count-in marks) holds the
     // drain of the whole queue for its declared window, so the displaced line
@@ -1732,11 +1619,11 @@ class ScenarioEngine implements IScenarioEngine {
     // #758).
     const holdMs = this.registry.get(scenarioId)?.raw.pendingHoldMs ?? 0;
 
-    if (state.queue.size > 0 && holdMs > 0) {
+    if (state.schedule.queue.size > 0 && holdMs > 0) {
       this.clearPendingHold(state);
       this.logger.debug(`Pending drain held for ${holdMs} ms after "${scenarioId}"`);
-      state.pendingHoldTimer = setTimeout(() => {
-        state.pendingHoldTimer = null;
+      state.schedule.holdTimer = setTimeout(() => {
+        state.schedule.holdTimer = null;
         this.drainPending(state);
       }, holdMs);
 
@@ -1747,11 +1634,11 @@ class ScenarioEngine implements IScenarioEngine {
   }
 
   /** Cancel an armed pending-hold timer (no-op when none is armed). */
-  private clearPendingHold(state: BusState): void {
-    if (state.pendingHoldTimer === null) return;
+  private clearPendingHold(state: BusView): void {
+    if (state.schedule.holdTimer === null) return;
 
-    clearTimeout(state.pendingHoldTimer);
-    state.pendingHoldTimer = null;
+    clearTimeout(state.schedule.holdTimer);
+    state.schedule.holdTimer = null;
   }
 
   /**
@@ -1781,11 +1668,11 @@ class ScenarioEngine implements IScenarioEngine {
    * next. A replay that is deferred again (re-offered with its original
    * `queuedAt`) stops the drain rather than taking it off the queue again.
    */
-  private drainPending(state: BusState): void {
+  private drainPending(state: BusView): void {
     this.clearPendingHold(state);
 
-    while (state.playingId === null) {
-      const { entry, drops } = state.queue.next(Date.now(), (e) => this.playableAtIdle(state, e));
+    while (state.transport.active === null) {
+      const { entry, drops } = state.schedule.queue.next(Date.now(), (e) => this.playableAtIdle(state, e));
 
       this.logQueueDrops(drops);
 
@@ -1799,7 +1686,7 @@ class ScenarioEngine implements IScenarioEngine {
       // re-deferral `attemptFire` knows today (the focus floor, a waiting
       // `queueBehind` leader), so this should not trigger; it is what keeps
       // a future disagreement between the two from looping.
-      if (state.queue.has(entry.id)) return;
+      if (state.schedule.queue.has(entry.id)) return;
     }
   }
 
@@ -1807,10 +1694,10 @@ class ScenarioEngine implements IScenarioEngine {
    * Whether `attemptFire` would let this waiting fire take an idle bus now,
    * rather than park it again: the drain's filter (see `drainPending`).
    */
-  private playableAtIdle(state: BusState, e: QueuedFire<WaitingFire>): boolean {
+  private playableAtIdle(state: BusView, e: QueuedFire<WaitingFire>): boolean {
     if (this.belowFloor(state, this.registry.get(e.id)?.raw.focusOwner, e.weight)) return false;
 
-    return !state.queue.hasLeaderFor(e.id, Date.now());
+    return !state.schedule.queue.hasLeaderFor(e.id, Date.now());
   }
 
   /** Replay one parked fire, unless its scenario has been disabled meanwhile. */
@@ -1826,67 +1713,6 @@ class ScenarioEngine implements IScenarioEngine {
     this.logger.debug(`Replaying pending scenario "${waiting.id}"`);
     this.attemptFire(entry, waiting.event, waiting.resume, waiting.admitted, waiting.queuedAt);
   }
-
-  /**
-   * Cancel the currently-executing fire on the given bus. Stops only the
-   * channels the fire actually referenced (from its expanded ops), so
-   * scenarios running on other buses aren't disturbed.
-   */
-  private cancelActiveFire(state: BusState): void {
-    const fire = state.activeFire;
-
-    if (!fire) return;
-
-    fire.cancelled = true;
-
-    if (fire.pauseTimer) {
-      clearTimeout(fire.pauseTimer);
-      fire.pauseTimer = null;
-    }
-
-    for (const channel of fire.usedChannels) this.audio.stopChannel(channel);
-
-    if (state.playingId === fire.id) state.playingId = null;
-
-    state.activeFire = null;
-    this.settle(fire);
-  }
-
-  /**
-   * Run a fire's `onSettled` once it has left the bus, finished or cut. A
-   * callback that throws is logged and swallowed: it is the caller's
-   * cleanup, and the scheduler step that ran it must still complete.
-   */
-  private settle(fire: ActiveFire): void {
-    const onSettled = fire.onSettled;
-
-    if (onSettled === undefined) return;
-
-    fire.onSettled = undefined;
-
-    try {
-      onSettled();
-    } catch (err) {
-      this.logger.error(`"${fire.id}" completion callback threw: ${err instanceof Error ? err.message : String(err)}`);
-    }
-  }
-
-  private getBusState(bus: AudioBus): BusState {
-    let state = this.busState.get(bus);
-
-    if (!state) {
-      state = {
-        playingId: null,
-        queue: new PendingQueue<WaitingFire>((follower, leader) => this.registry.waitsBehind(follower, leader)),
-        activeFire: null,
-        focus: null,
-        pendingHoldTimer: null,
-      };
-      this.busState.set(bus, state);
-    }
-
-    return state;
-  }
 }
 
 /**
@@ -1901,7 +1727,7 @@ class ScenarioEngine implements IScenarioEngine {
  * the open) is still playing. A fresh fire has `sourceOps === ops` and no
  * preroll, which makes this `index`.
  */
-function startedSourceOps(fire: ActiveFire): number {
+function startedSourceOps(fire: ActiveFireView): number {
   const played = Math.max(0, fire.index - fire.prerollCount);
 
   return fire.sourceStart > 0 ? fire.sourceStart + Math.max(1, played) : played;
@@ -1921,7 +1747,7 @@ function startedSourceOps(fire: ActiveFire): number {
  * any clip has started. No script has such a body today; one that does
  * would get the tail a beat early, which errs towards closing the radio.
  */
-function wordsHeard(fire: ActiveFire): boolean {
+function wordsHeard(fire: ActiveFireView): boolean {
   return fire.sourceOps.slice(0, startedSourceOps(fire)).some((op) => op.frame === undefined);
 }
 
@@ -1935,7 +1761,7 @@ function wordsHeard(fire: ActiveFire): boolean {
  * the source expansion like `wordsHeard`, so a fire resumed into its close
  * counts as finished during its re-key preroll.
  */
-function lineFinished(fire: ActiveFire): boolean {
+function lineFinished(fire: ActiveFireView): boolean {
   const started = startedSourceOps(fire);
 
   if (started === 0) return false;
@@ -1948,12 +1774,13 @@ function lineFinished(fire: ActiveFire): boolean {
  * a bus nothing has used yet, which reads as idle. `queue.ordered()` is the
  * queue's one pure read — `next` would expire entries and hand one out.
  */
-function describeBus(bus: AudioBus, state: BusState | undefined): ScenarioEngineState["buses"][number] {
-  const fire = state?.activeFire ?? null;
+function describeBus(bus: AudioBus, state: BusView | undefined): ScenarioEngineState["buses"][number] {
+  const fire = state?.transport.active ?? null;
 
   return {
     bus: AudioBus[bus] ?? String(bus),
-    playingId: state?.playingId ?? null,
+    // Derived, not stored: the playing id is the active fire's (issue #1514).
+    playingId: fire?.id ?? null,
     active:
       fire === null
         ? null
@@ -1964,9 +1791,9 @@ function describeBus(bus: AudioBus, state: BusState | undefined): ScenarioEngine
             opIndex: Math.max(0, fire.index - 1),
             opCount: fire.ops.length,
           },
-    focus: state?.focus ? { ownerId: state.focus.ownerId, floor: state.focus.floor } : null,
-    pendingHoldArmed: (state?.pendingHoldTimer ?? null) !== null,
-    waiting: (state?.queue.ordered() ?? []).map((e) => ({
+    focus: state?.schedule.focus ? { ownerId: state.schedule.focus.ownerId, floor: state.schedule.focus.floor } : null,
+    pendingHoldArmed: (state?.schedule.holdTimer ?? null) !== null,
+    waiting: (state?.schedule.queue.ordered() ?? []).map((e) => ({
       id: e.id,
       weight: e.weight,
       group: e.group,
@@ -1975,34 +1802,6 @@ function describeBus(bus: AudioBus, state: BusState | undefined): ScenarioEngine
       after: e.after,
     })),
   };
-}
-
-function opLabel(op: ExecOp): string {
-  const tag = op.frame === undefined ? "" : `${op.frame}:`;
-
-  // The pool a take came from is what the resume compares (issue #1136), so a
-  // debug line that shows the ops shows it beside the take it drew.
-  if (op.kind === "play") return `${tag}play[${op.channel}] ${op.path}${op.pool === undefined ? "" : ` (${op.pool})`}`;
-
-  if (op.kind === "ambient") return `${tag}ambient:${op.action}`;
-
-  return `${tag}pause:${op.ms}`;
-}
-
-/**
- * Scan the expanded op list for every `AudioChannel` the fire will touch.
- * Cancellation uses this set so we stop exactly the channels this fire can
- * play on, no more and no less.
- */
-function collectUsedChannels(ops: readonly ExecOp[]): ReadonlySet<AudioChannel> {
-  const channels = new Set<AudioChannel>();
-
-  for (const op of ops) {
-    if (op.kind === "play") channels.add(op.channel);
-    else if (op.kind === "ambient") channels.add(AudioChannel.Ambient);
-  }
-
-  return channels;
 }
 
 // ─── Singleton ───────────────────────────────────────────────────────────────

@@ -99,24 +99,104 @@ export type ResumeState = {
 /**
  * Per-bus execution state. Each audio bus can independently be playing a
  * scenario, holding deferred fires for replay on idle, and/or holding an
- * exclusive-focus floor.
+ * exclusive-focus floor. The two halves have one writer each (issue #1514):
+ * the bus's playing id is derived from the active fire, not stored.
  */
 export type BusState = {
-  playingId: string | null;
-  /** The fires waiting to play when the bus next idles (issue #1185). */
-  queue: PendingQueue<WaitingFire>;
-  activeFire: ActiveFire | null;
-  /** Exclusive-focus floor (issue #652); non-owner fires need weight at or above `floor`. */
-  focus: { ownerId: string; floor: number } | null;
-  /**
-   * Armed by `finishFire` when the finished scenario declares `pendingHoldMs`
-   * and fires are waiting: the drain runs when the timer expires instead of
-   * immediately. Cancelled when a new fire takes the bus (it re-arms at that
-   * fire's finish), by `stopAll` (issue #758) and by the session-change
-   * clear (issue #1185).
-   */
-  pendingHoldTimer: ReturnType<typeof setTimeout> | null;
+  /** Written only by playback. */
+  transport: { active: ActiveFire | null };
+  /** Written only by the scheduler. */
+  schedule: {
+    /** The fires waiting to play when the bus next idles (issue #1185). */
+    queue: PendingQueue<WaitingFire>;
+    /** Exclusive-focus floor (issue #652); non-owner fires need weight at or above `floor`. */
+    focus: { ownerId: string; floor: number } | null;
+    /**
+     * Armed at a fire's finish when the finished scenario declares
+     * `pendingHoldMs` and fires are waiting: the drain runs when the timer
+     * expires instead of immediately. Cancelled when a new fire takes the
+     * bus (it re-arms at that fire's finish), by `stopAll` (issue #758) and
+     * by the session-change clear (issue #1185).
+     */
+    holdTimer: ReturnType<typeof setTimeout> | null;
+  };
 };
+
+/** A bus as playback sees it: its transport half, and no `schedule`. */
+export type BusTransport = Pick<BusState, "transport">;
+
+/**
+ * A bus as every module but playback sees it: the transport half read-only
+ * with the active fire as an `ActiveFireView`, and the schedule half, which
+ * the scheduler owns. The active fire is changed only by calling playback.
+ */
+export type BusView = {
+  readonly transport: { readonly active: ActiveFireView | null };
+  readonly schedule: BusState["schedule"];
+};
+
+/** The bus table as playback is handed it: `get` creates a bus's state like `BusTable.get`. */
+export type TransportTable = { get(bus: AudioBus): BusTransport };
+
+/**
+ * The bus table as every module but playback is handed it — the same
+ * `BusTable`, through `BusView`. Its iteration order is the one every
+ * per-bus loop runs in (see `BusTable`).
+ */
+export type BusTableView = {
+  get(bus: AudioBus): BusView;
+  peek(bus: AudioBus): BusView | undefined;
+  values(): Iterable<BusView>;
+  entries(): Iterable<[AudioBus, BusView]>;
+};
+
+/**
+ * The one table of per-bus state (issue #1514), created lazily per bus the
+ * way `getBusState` did: `get` creates a bus's state on first use, `peek`
+ * does not (for `describeState`, a pure read). Every module that iterates
+ * buses iterates THIS table, so the order every per-bus loop runs in —
+ * `stopAll`, `setEnabled`, the session-change clear, both passes of
+ * `endFires` — is one insertion order, and never drifts between two maps:
+ * that order decides which bus's `onSettled` runs and which bus drains
+ * first. Playback is handed it as a `TransportTable`, everyone else as a
+ * `BusTableView`. The queue factory comes from the scheduler, whose queues
+ * they are (the registry's `waitsBehind`).
+ */
+export class BusTable implements TransportTable, BusTableView {
+  private readonly states = new Map<AudioBus, BusState>();
+
+  constructor(private readonly createQueue: () => PendingQueue<WaitingFire>) {}
+
+  /** The bus's state, created idle on first use. */
+  get(bus: AudioBus): BusState {
+    let state = this.states.get(bus);
+
+    if (!state) {
+      state = {
+        transport: { active: null },
+        schedule: { queue: this.createQueue(), focus: null, holdTimer: null },
+      };
+      this.states.set(bus, state);
+    }
+
+    return state;
+  }
+
+  /** The bus's state if anything has used it, else `undefined`; creates nothing. */
+  peek(bus: AudioBus): BusState | undefined {
+    return this.states.get(bus);
+  }
+
+  /** Every bus's state, in the order the buses were first used. */
+  values(): Iterable<BusState> {
+    return this.states.values();
+  }
+
+  /** Every bus and its state, in the order the buses were first used. */
+  entries(): Iterable<[AudioBus, BusState]> {
+    return this.states.entries();
+  }
+}
 
 export type ActiveFire = {
   id: string;
