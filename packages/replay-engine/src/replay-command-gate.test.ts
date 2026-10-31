@@ -15,7 +15,6 @@ import {
   settleReplayByJump,
   subscribeReplayGate,
   waitForReplaySearchLanding,
-  waitForReplaySearchLandingWithFrame,
   waitForReplaySettled,
   waitingReplaySpeed,
 } from "./replay-command-gate.js";
@@ -632,14 +631,14 @@ describe("replay command gate", () => {
       const landed = waitForReplaySearchLanding({ patienceMs: 400, hardBoundMs: 5_000 });
 
       await wait(500);
-      await expect(landed).resolves.toBe("landed");
+      expect((await landed).outcome).toBe("landed");
 
       press({ kind: "search", search: "nextSession" });
 
       const quiet = waitForReplaySearchLanding({ patienceMs: 400, hardBoundMs: 5_000 });
 
       await wait(500);
-      await expect(quiet).resolves.toBe("not-landed");
+      expect((await quiet).outcome).toBe("not-landed");
 
       _resetReplayCommandGate();
       setUp({ frame: 2_000, speed: { speed: 1, slowMotion: false } });
@@ -648,7 +647,7 @@ describe("replay command gate", () => {
       const nothing = waitForReplaySearchLanding({ patienceMs: 5_000, hardBoundMs: 10_000 });
 
       await wait(800);
-      await expect(nothing).resolves.toBe("found-nothing");
+      expect((await nothing).outcome).toBe("found-nothing");
     });
 
     it("settle by a jump: pauses a moving replay, jumps beside the reading and reports the landing", async () => {
@@ -691,9 +690,11 @@ describe("replay command gate", () => {
         press({ kind: "search", search: "nextSession" });
 
         // A paused replay that nothing moves: the search is never seen, so only the bounds end the waits.
-        const both = timed(waitForReplaySearchLanding({ patienceMs: 400, hardBoundMs: 400 }));
-        const patience = timed(waitForReplaySearchLanding({ patienceMs: 390, hardBoundMs: 5_000 }));
-        const hard = timed(waitForReplaySearchLanding({ patienceMs: 5_000, hardBoundMs: 390 }));
+        const both = timed(waitForReplaySearchLanding({ patienceMs: 400, hardBoundMs: 400 }).then((l) => l.outcome));
+        const patience = timed(
+          waitForReplaySearchLanding({ patienceMs: 390, hardBoundMs: 5_000 }).then((l) => l.outcome),
+        );
+        const hard = timed(waitForReplaySearchLanding({ patienceMs: 5_000, hardBoundMs: 390 }).then((l) => l.outcome));
 
         await wait(1_000);
 
@@ -842,7 +843,9 @@ describe("replay command gate", () => {
       press({ kind: "search", search: "nextLap" });
       await wait(500);
 
-      await expect(waitForReplaySearchLanding({ patienceMs: 400, hardBoundMs: 5_000 })).resolves.toBe("not-landed");
+      await expect(waitForReplaySearchLanding({ patienceMs: 400, hardBoundMs: 5_000 })).resolves.toMatchObject({
+        outcome: "not-landed",
+      });
     });
   });
 
@@ -1177,7 +1180,7 @@ describe("replay command gate", () => {
 
       // The search stands still for 50 ms, then lands on 8000 and plays on: the gate's reads, 20 ms apart, first
       // see it 10 ms later, still on 8000, and it has held two reads later.
-      const landing = waitForReplaySearchLandingWithFrame({ patienceMs: 400, hardBoundMs: 5_000 });
+      const landing = waitForReplaySearchLanding({ patienceMs: 400, hardBoundMs: 5_000 });
 
       await wait(500);
       await expect(landing).resolves.toEqual({ outcome: "landed", firstFrame: 8_000 });
@@ -1206,7 +1209,7 @@ describe("replay command gate", () => {
       });
       press({ kind: "search", search: "nextLap" });
 
-      const landing = waitForReplaySearchLandingWithFrame({ patienceMs: 400, hardBoundMs: 5_000 });
+      const landing = waitForReplaySearchLanding({ patienceMs: 400, hardBoundMs: 5_000 });
 
       await wait(500);
       // 80 ms after the send: 30 ms of play from 8000.
@@ -1217,7 +1220,7 @@ describe("replay command gate", () => {
       setUp({ frame: 2_000, searches: { nextLap: (f) => f + 6_000 } });
       press({ kind: "search", search: "nextLap" });
 
-      const landing = waitForReplaySearchLandingWithFrame({ patienceMs: 400, hardBoundMs: 5_000 });
+      const landing = waitForReplaySearchLanding({ patienceMs: 400, hardBoundMs: 5_000 });
 
       await wait(500);
       await expect(landing).resolves.toEqual({ outcome: "landed", firstFrame: 8_000 });
@@ -1227,7 +1230,7 @@ describe("replay command gate", () => {
       setUp({ frame: 2_000 });
       press({ kind: "search", search: "nextLap" });
 
-      const quiet = waitForReplaySearchLandingWithFrame({ patienceMs: 400, hardBoundMs: 5_000 });
+      const quiet = waitForReplaySearchLanding({ patienceMs: 400, hardBoundMs: 5_000 });
 
       await wait(500);
       await expect(quiet).resolves.toEqual({ outcome: "not-landed", firstFrame: null });
@@ -1236,7 +1239,7 @@ describe("replay command gate", () => {
       setUp(TWO_THOUSAND_PLAYING);
       press({ kind: "search", search: "nextSession" });
 
-      const nothing = waitForReplaySearchLandingWithFrame({ patienceMs: 5_000, hardBoundMs: 10_000 });
+      const nothing = waitForReplaySearchLanding({ patienceMs: 5_000, hardBoundMs: 10_000 });
 
       await wait(800);
       await expect(nothing).resolves.toEqual({ outcome: "found-nothing", firstFrame: null });
@@ -1245,7 +1248,7 @@ describe("replay command gate", () => {
     it("has no first frame with no search standing", async () => {
       setUp({ frame: 2_000 });
 
-      await expect(waitForReplaySearchLandingWithFrame({ patienceMs: 400, hardBoundMs: 5_000 })).resolves.toEqual({
+      await expect(waitForReplaySearchLanding({ patienceMs: 400, hardBoundMs: 5_000 })).resolves.toEqual({
         outcome: "not-landed",
         firstFrame: null,
       });

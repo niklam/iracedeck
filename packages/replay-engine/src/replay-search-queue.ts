@@ -54,7 +54,6 @@ import {
   sendOwnedReplayCommand,
   settleReplayByJump,
   waitForReplaySearchLanding,
-  waitForReplaySearchLandingWithFrame,
   waitForReplaySettled,
 } from "./replay-command-gate.js";
 import { engineLogger, engineReads } from "./replay-engine-env.js";
@@ -610,7 +609,7 @@ async function behindSearch(r: Run): Promise<Ending | null> {
 
   if (claim === undefined) return "cancelled";
 
-  const outcome = await waitForReplaySearchLanding({
+  const { outcome } = await waitForReplaySearchLanding({
     patienceMs: replaySearchPatienceMs(replaySearchCouldRunMs() ?? 0),
     hardBoundMs: REPLAY_JUMP_MAX_WAIT_MS,
     claim,
@@ -780,7 +779,7 @@ async function runOneSearch(r: Run, direction: 1 | -1): Promise<SearchStep> {
 
   // The gate says where the landing began (#1450): the frame the playing path jumps back to is the one the gate
   // judged the search landed on, read on its own settles. See `jumpBack` for how that compares with a poll's.
-  const { outcome, firstFrame } = await waitForReplaySearchLandingWithFrame({
+  const { outcome, firstFrame } = await waitForReplaySearchLanding({
     patienceMs: replaySearchPatienceMs(replaySearchCouldRunMs() ?? replaySearchMayRunMs(atSend, direction)),
     hardBoundMs: REPLAY_JUMP_MAX_WAIT_MS,
     claim,

@@ -122,7 +122,7 @@ export function observeIncidentSearch(
   const landing = waitForReplaySearchLanding({ patienceMs, hardBoundMs: REPLAY_JUMP_MAX_WAIT_MS });
 
   return landing
-    .then(async (outcome) => {
+    .then(async ({ outcome }) => {
       if (outcome !== "landed") {
         logger.debug(`${label} comparison: search ${outcome}; ${pressPart(press)}; nothing compared`);
 

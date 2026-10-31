@@ -40,8 +40,8 @@ vi.mock("./replay-command-gate.js", async (importOriginal) => {
     ...real,
     replayTargetFate: (id: number) =>
       gate.fate === null ? real.replayTargetFate(id) : gate.fate(id, real.replayTargetFate),
-    waitForReplaySearchLandingWithFrame: (options: Parameters<typeof real.waitForReplaySearchLandingWithFrame>[0]) =>
-      real.waitForReplaySearchLandingWithFrame(options).then((landing) => {
+    waitForReplaySearchLanding: (options: Parameters<typeof real.waitForReplaySearchLanding>[0]) =>
+      real.waitForReplaySearchLanding(options).then((landing) => {
         gate.landings.push(landing);
 
         return landing;

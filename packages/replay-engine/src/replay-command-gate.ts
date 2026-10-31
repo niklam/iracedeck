@@ -2362,21 +2362,6 @@ export async function waitForReplayJumpsToSettle(claim?: ReplayCursorClaim): Pro
 /** How a wait for a search ended. */
 export type ReplaySearchLandingOutcome = "landed" | "found-nothing" | "not-landed" | "gave-up" | "superseded";
 
-/**
- * Waits for the search the gate last sent to land: the frame moved by more
- * than playback explains, then held two reads 50 ms apart. On a paused replay
- * nothing shows a search on its way, so `patienceMs` passing ends the wait as
- * `not-landed` (an unmoved search and a lost one look the same). On a playing
- * replay the wait says more: `found-nothing` when the frame kept advancing a
- * Fastest Lap Search Delay after the send, and once the frame has stood still
- * the search is seen on its way, the patience no longer applies, and the wait
- * goes on to the landing or to `hardBoundMs` (`gave-up`). `superseded` when the
- * claim is taken or another command replaced the search.
- */
-export function waitForReplaySearchLanding(options: ReplaySearchLandingWait): Promise<ReplaySearchLandingOutcome> {
-  return waitForReplaySearchLandingWithFrame(options).then((landing) => landing.outcome);
-}
-
 /** How a wait for a search is bounded, and by whose claim. */
 export interface ReplaySearchLandingWait {
   readonly patienceMs: number;
@@ -2399,13 +2384,21 @@ export interface ReplaySearchLanding {
 }
 
 /**
- * {@link waitForReplaySearchLanding}, saying also where the landing began
- * ({@link ReplaySearchLanding.firstFrame}): the frame the paced search jumps
- * back to before a step against the direction of play (#801, #1450).
+ * Waits for the search the gate last sent to land: the frame moved by more
+ * than playback explains, then held two reads 50 ms apart. On a paused replay
+ * nothing shows a search on its way, so `patienceMs` passing ends the wait as
+ * `not-landed` (an unmoved search and a lost one look the same). On a playing
+ * replay the wait says more: `found-nothing` when the frame kept advancing a
+ * Fastest Lap Search Delay after the send, and once the frame has stood still
+ * the search is seen on its way, the patience no longer applies, and the wait
+ * goes on to the landing or to `hardBoundMs` (`gave-up`). `superseded` when the
+ * claim is taken or another command replaced the search.
+ *
+ * It says also where the landing began ({@link ReplaySearchLanding.firstFrame}):
+ * the frame the paced search jumps back to before a step against the direction
+ * of play (#801, #1450).
  */
-export async function waitForReplaySearchLandingWithFrame(
-  options: ReplaySearchLandingWait,
-): Promise<ReplaySearchLanding> {
+export async function waitForReplaySearchLanding(options: ReplaySearchLandingWait): Promise<ReplaySearchLanding> {
   const record = search;
   const startedAt = engineNow();
   const ended = (outcome: Exclude<ReplaySearchLandingOutcome, "landed">): ReplaySearchLanding => ({
