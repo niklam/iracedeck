@@ -195,6 +195,14 @@ export type ContractReport = {
    */
   endsOn: string | null;
   /**
+   * The event named by `endsOn` (issue #1407), or `null` when the contract
+   * carries none. Not published in the pack reference — a pack author reads
+   * the description — but read by the check that the translator never
+   * publishes the contract's `event` after this one within a tick (#1499,
+   * `race-engineer-wiring`'s `ends-on-order.test.ts`).
+   */
+  endsOnEvent: SimEventName | null;
+  /**
    * The contract's `base` as registered (`"voice/{voice}"`, `"pit-crew"`),
    * `null` when it has none: what a bare literal clip path in a script entry
    * is resolved against — `flags/green-01.mp3` plays from the voice's folder
@@ -1249,6 +1257,7 @@ class ScenarioEngine implements IScenarioEngine {
         interrupt: raw.interrupt ?? false,
         speakGate: raw.speakGate?.description ?? null,
         endsOn: raw.endsOn?.description ?? null,
+        endsOnEvent: raw.endsOn?.event ?? null,
         base: raw.base ?? null,
       }))
       .sort((a, b) => codePointOrder(a.id, b.id));

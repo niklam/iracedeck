@@ -31,6 +31,7 @@ function contract(overrides: Partial<ContractReport> & { id: string }): Contract
     interrupt: false,
     speakGate: null,
     endsOn: null,
+    endsOnEvent: null,
     base: null,
     ...overrides,
   };
@@ -276,6 +277,17 @@ describe("buildPackReference", () => {
       ["ends.none", null],
       ["ends.some", "You leave pit road while the warning is waiting or still being spoken."],
     ]);
+  });
+
+  it("does not publish the ending event's name, which only the translator-order check reads (issue #1499)", () => {
+    const ref = buildPackReference(
+      input({
+        contracts: [contract({ id: "ends.some", endsOn: "You leave pit road.", endsOnEvent: "pitLane.exited" })],
+        script: { ...SCRIPT, scenarios: { "ends.some": { skip: true } } },
+      }),
+    );
+
+    expect(ref.callouts[0]).not.toHaveProperty("endsOnEvent");
   });
 
   it("sorts callouts by id, vocabulary by name, groups and lines by name, and every reference list — in code-point order", () => {
