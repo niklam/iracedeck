@@ -36,11 +36,6 @@ export function isOpponentFlagCalloutEnabled(flag: OpponentPenaltyFlag): boolean
   return id === undefined || isCalloutEnabled(calloutKey(OPPONENT_FLAG_CALLOUTS, id));
 }
 
-/** The global settings as the live-read closures index them. */
-function settings(): Record<string, unknown> {
-  return getGlobalSettings() as Record<string, unknown>;
-}
-
 /**
  * Every option `initializeSimEventsIracing` takes, each a live read over the
  * global settings, sanitized so a malformed persisted value cannot poison the
@@ -53,16 +48,16 @@ export function createIracingTranslatorOptions(): Required<SimEventsIracingOptio
     // The laps-of-fuel-left margin (issue #838) — the first of these, and the
     // shape the rest follow: a live-read closure over the global settings,
     // sanitized, keeping sim-events-iracing deck-core-free.
-    getFuelLapsLeftMarginLaps: () => sanitizeFuelCalloutMarginLaps(settings().fuelCalloutMarginLaps),
+    getFuelLapsLeftMarginLaps: () => sanitizeFuelCalloutMarginLaps(getGlobalSettings().fuelCalloutMarginLaps),
     // Corner-name announcement lead (issue #888).
-    getCornerCalloutLeadSeconds: () => sanitizeCornerCalloutLeadSeconds(settings().cornerCalloutLeadSeconds),
+    getCornerCalloutLeadSeconds: () => sanitizeCornerCalloutLeadSeconds(getGlobalSettings().cornerCalloutLeadSeconds),
     // Gap alert threshold (issue #933) — read live so a PI slider change takes
     // effect on the next tick without a restart. Clamp mirrors the schema.
-    getGapAlertThresholdSeconds: () => sanitizeGapAlertThresholdSeconds(settings().gapAlertThresholdSeconds),
+    getGapAlertThresholdSeconds: () => sanitizeGapAlertThresholdSeconds(getGlobalSettings().gapAlertThresholdSeconds),
     // Consistency gate (issue #933 follow-up) — minimum gap movement in the
     // announced direction from its extreme since the side's last call. 0
     // disables.
-    getGapMinChangeSeconds: () => sanitizeGapMinChangeSeconds(settings().gapCalloutMinChangeSeconds),
+    getGapMinChangeSeconds: () => sanitizeGapMinChangeSeconds(getGlobalSettings().gapCalloutMinChangeSeconds),
     // Opponent-flag opt-ins enforced translator-side (issue #936 review) — a
     // disabled subject must never feed the burst aggregation or redirect an
     // enabled subject into a collapsed aggregate. The same live lookup the
@@ -71,6 +66,6 @@ export function createIracingTranslatorOptions(): Required<SimEventsIracingOptio
     // Opponent-flag range (issue #1274) — only a same-class car within this
     // race gap, ahead or behind, is announced. Read live per announce so a
     // settings change applies to the next one; clamp mirrors the schema.
-    getOpponentFlagRangeSeconds: () => sanitizeOpponentFlagRangeSeconds(settings().opponentFlagRangeSeconds),
+    getOpponentFlagRangeSeconds: () => sanitizeOpponentFlagRangeSeconds(getGlobalSettings().opponentFlagRangeSeconds),
   };
 }
