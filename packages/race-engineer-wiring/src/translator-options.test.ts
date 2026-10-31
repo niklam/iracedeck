@@ -50,55 +50,32 @@ const FLAG_KEYS: readonly (readonly [OpponentPenaltyFlag, CalloutSettingKey])[] 
   [OpponentPenaltyFlag.Disqualify, "calloutEnabledOpponentFlagDisqualify"],
 ];
 
-/**
- * The five numeric options: the settings key each reads, the translator's
- * sanitizer it must run that key through, and the sanitizer's default when
- * the key is missing.
- */
-const NUMERIC_OPTIONS = [
-  [
-    "getFuelLapsLeftMarginLaps",
-    "fuelCalloutMarginLaps",
-    sanitizeFuelCalloutMarginLaps,
-    FUEL_CALLOUT_DEFAULT_MARGIN_LAPS,
-  ],
-  [
-    "getCornerCalloutLeadSeconds",
-    "cornerCalloutLeadSeconds",
-    sanitizeCornerCalloutLeadSeconds,
-    CORNER_CALLOUT_DEFAULT_LEAD_SECONDS,
-  ],
-  [
-    "getGapAlertThresholdSeconds",
-    "gapAlertThresholdSeconds",
-    sanitizeGapAlertThresholdSeconds,
-    GAP_DEFAULT_ALERT_THRESHOLD_S,
-  ],
-  ["getGapMinChangeSeconds", "gapCalloutMinChangeSeconds", sanitizeGapMinChangeSeconds, GAP_DEFAULT_MIN_CHANGE_S],
-  [
-    "getOpponentFlagRangeSeconds",
-    "opponentFlagRangeSeconds",
-    sanitizeOpponentFlagRangeSeconds,
-    OPPONENT_FLAG_DEFAULT_RANGE_SECONDS,
-  ],
-] as const;
+type TranslatorOptions = ReturnType<typeof createIracingTranslatorOptions>;
 
 /**
- * Stored values a slider's setting can hold: missing, malformed, far above
- * any clamp, a fraction, and a number stored as a string. Each option must
- * answer exactly what its sanitizer answers for every one of them.
+ * The one translator option that is not a number read from a setting: the
+ * opponent-flag gate, a lookup over the callout opt-ins, tested on its own
+ * below. Every other option the translator takes is a numeric setting, and
+ * has a row in {@link NUMERIC_OPTIONS}.
  */
-const PROBES: readonly unknown[] = [undefined, "not a number", 1e9, -1, 0.75, "2"];
+const NON_NUMERIC_OPTION = "getOpponentFlagCalloutEnabled" satisfies keyof TranslatorOptions;
+
+type NumericOption = Exclude<keyof TranslatorOptions, typeof NON_NUMERIC_OPTION>;
 
 /**
- * Each numeric option's settings schema against the translator's own default
- * and clamp bounds for it (#1376). The translator keeps its constants (its
- * fallbacks are its own, and `sim-events-iracing` takes no deck-layer edge),
- * so this table is what keeps the slider the user sees and the clamp the
- * translator applies from drifting apart. A new numeric option is one row
- * here, and the coverage test below fails until it has one.
+ * One row per numeric translator option: the option, the settings key it
+ * reads, the translator's sanitizer it must run that key through, the
+ * sanitizer's default when the key is missing, and the translator's clamp
+ * bounds. The translator keeps its constants (its fallbacks are its own, and
+ * `sim-events-iracing` takes no deck-layer edge), so this table is what ties
+ * the option to its key and keeps the slider the user sees and the clamp the
+ * translator applies from drifting apart (#1376). Every test below iterates
+ * it, and the first one compares it against what
+ * `createIracingTranslatorOptions()` actually builds, so a new numeric option
+ * fails until it has a row here.
  */
-type NumericSettingBounds = {
+type NumericOptionRow = {
+  option: NumericOption;
   key: keyof GlobalSettings;
   sanitize: (value: unknown) => number;
   fallback: number;
@@ -106,8 +83,9 @@ type NumericSettingBounds = {
   max: number;
 };
 
-const NUMERIC_SETTING_BOUNDS: readonly NumericSettingBounds[] = [
+const NUMERIC_OPTIONS: readonly NumericOptionRow[] = [
   {
+    option: "getFuelLapsLeftMarginLaps",
     key: "fuelCalloutMarginLaps",
     sanitize: sanitizeFuelCalloutMarginLaps,
     fallback: FUEL_CALLOUT_DEFAULT_MARGIN_LAPS,
@@ -115,6 +93,7 @@ const NUMERIC_SETTING_BOUNDS: readonly NumericSettingBounds[] = [
     max: FUEL_CALLOUT_MARGIN_MAX_LAPS,
   },
   {
+    option: "getCornerCalloutLeadSeconds",
     key: "cornerCalloutLeadSeconds",
     sanitize: sanitizeCornerCalloutLeadSeconds,
     fallback: CORNER_CALLOUT_DEFAULT_LEAD_SECONDS,
@@ -122,6 +101,7 @@ const NUMERIC_SETTING_BOUNDS: readonly NumericSettingBounds[] = [
     max: CORNER_CALLOUT_LEAD_MAX_SECONDS,
   },
   {
+    option: "getGapAlertThresholdSeconds",
     key: "gapAlertThresholdSeconds",
     sanitize: sanitizeGapAlertThresholdSeconds,
     fallback: GAP_DEFAULT_ALERT_THRESHOLD_S,
@@ -129,6 +109,7 @@ const NUMERIC_SETTING_BOUNDS: readonly NumericSettingBounds[] = [
     max: GAP_ALERT_THRESHOLD_MAX_S,
   },
   {
+    option: "getGapMinChangeSeconds",
     key: "gapCalloutMinChangeSeconds",
     sanitize: sanitizeGapMinChangeSeconds,
     fallback: GAP_DEFAULT_MIN_CHANGE_S,
@@ -136,6 +117,7 @@ const NUMERIC_SETTING_BOUNDS: readonly NumericSettingBounds[] = [
     max: GAP_MIN_CHANGE_MAX_S,
   },
   {
+    option: "getOpponentFlagRangeSeconds",
     key: "opponentFlagRangeSeconds",
     sanitize: sanitizeOpponentFlagRangeSeconds,
     fallback: OPPONENT_FLAG_DEFAULT_RANGE_SECONDS,
@@ -143,6 +125,13 @@ const NUMERIC_SETTING_BOUNDS: readonly NumericSettingBounds[] = [
     max: OPPONENT_FLAG_RANGE_MAX_SECONDS,
   },
 ];
+
+/**
+ * Stored values a slider's setting can hold: missing, malformed, far above
+ * any clamp, a fraction, and a number stored as a string. Each option must
+ * answer exactly what its sanitizer answers for every one of them.
+ */
+const PROBES: readonly unknown[] = [undefined, "not a number", 1e9, -1, 0.75, "2"];
 
 /**
  * How far past a bound the "just outside" probes sit. Small enough that a
@@ -163,24 +152,24 @@ describe("createIracingTranslatorOptions", () => {
     vi.mocked(isCalloutEnabled).mockImplementation(() => true);
   });
 
-  it("builds every one of the translator's six options, so none runs at its default", () => {
+  it("builds the opponent-flag gate and exactly one option per numeric row, so none runs at its default", () => {
     const options = createIracingTranslatorOptions();
+    const rows = NUMERIC_OPTIONS.map(({ option }) => option);
 
-    expect(Object.keys(options).sort()).toEqual([
-      "getCornerCalloutLeadSeconds",
-      "getFuelLapsLeftMarginLaps",
-      "getGapAlertThresholdSeconds",
-      "getGapMinChangeSeconds",
-      "getOpponentFlagCalloutEnabled",
-      "getOpponentFlagRangeSeconds",
-    ]);
+    expect(new Set(rows).size, "no option has two rows").toBe(rows.length);
+    expect(new Set(NUMERIC_OPTIONS.map(({ key }) => key)).size, "no two rows read one key").toBe(rows.length);
+    expect(
+      Object.keys(options).sort(),
+      `every option createIracingTranslatorOptions() builds other than ${NON_NUMERIC_OPTION} is numeric ` +
+        `and needs a row in NUMERIC_OPTIONS: its settings key, the translator's sanitizer, default and clamp bounds`,
+    ).toEqual([NON_NUMERIC_OPTION, ...rows].sort());
 
-    for (const [key, value] of Object.entries(options)) expect(typeof value, key).toBe("function");
+    for (const [option, value] of Object.entries(options)) expect(typeof value, option).toBe("function");
   });
 
   it.each(NUMERIC_OPTIONS)(
-    "%s reads %s live and runs it through the translator's sanitizer",
-    (option, key, sanitize, fallback) => {
+    "$option reads $key live and runs it through the translator's sanitizer",
+    ({ option, key, sanitize, fallback }) => {
       const read = createIracingTranslatorOptions()[option];
 
       expect(read(), "missing: the sanitizer's default").toBe(fallback);
@@ -193,9 +182,9 @@ describe("createIracingTranslatorOptions", () => {
   );
 
   it("reads a numeric option from its own key and no other", () => {
-    for (const [option, key, sanitize, fallback] of NUMERIC_OPTIONS) {
+    for (const { option, key, sanitize, fallback } of NUMERIC_OPTIONS) {
       const read = createIracingTranslatorOptions()[option];
-      const others = Object.fromEntries(NUMERIC_OPTIONS.filter(([, k]) => k !== key).map(([, k]) => [k, 1e9]));
+      const others = Object.fromEntries(NUMERIC_OPTIONS.filter((row) => row.key !== key).map((row) => [row.key, 1e9]));
 
       stored.current = others;
       expect(read(), `${option} with every other key set and its own missing`).toBe(fallback);
@@ -205,7 +194,7 @@ describe("createIracingTranslatorOptions", () => {
   });
 
   it("hands the translator the exported opponent-flag gate itself", () => {
-    expect(createIracingTranslatorOptions().getOpponentFlagCalloutEnabled).toBe(isOpponentFlagCalloutEnabled);
+    expect(createIracingTranslatorOptions()[NON_NUMERIC_OPTION]).toBe(isOpponentFlagCalloutEnabled);
   });
 });
 
@@ -240,23 +229,12 @@ describe("isOpponentFlagCalloutEnabled", () => {
 });
 
 describe("numeric Race Engineer settings against the translator's bounds (#1376)", () => {
-  it("has a bounds row for every numeric translator option, with the same sanitizer and default", () => {
-    expect(NUMERIC_SETTING_BOUNDS.map(({ key }) => key).sort()).toEqual(NUMERIC_OPTIONS.map(([, key]) => key).sort());
-
-    for (const [option, key, sanitize, fallback] of NUMERIC_OPTIONS) {
-      const row = NUMERIC_SETTING_BOUNDS.find((bounds) => bounds.key === key);
-
-      expect(row?.sanitize, `${option}'s sanitizer`).toBe(sanitize);
-      expect(row?.fallback, `${option}'s default`).toBe(fallback);
-    }
-  });
-
-  it.each(NUMERIC_SETTING_BOUNDS)("$key defaults to the translator's default", ({ key, sanitize, fallback }) => {
+  it.each(NUMERIC_OPTIONS)("$key defaults to the translator's default", ({ key, sanitize, fallback }) => {
     expect(GlobalSettingsSchema.parse({})[key], "the schema's default").toBe(fallback);
     expect(sanitize(undefined), "the sanitizer's default").toBe(fallback);
   });
 
-  it.each(NUMERIC_SETTING_BOUNDS)(
+  it.each(NUMERIC_OPTIONS)(
     "$key accepts exactly the translator's clamp range",
     ({ key, sanitize, fallback, min, max }) => {
       // Out of range the schema's `.catch` answers the default, so a probe
