@@ -43,7 +43,7 @@
  * since each keeps its own "last tick in a replay" flag, and the next tick
  * agrees again.
  * The controller does not isolate its subscribers, so a tick on which the
- * translator throws never reaches the recorder.
+ * translator throws never reaches the recorder (#1558 tracks isolating them).
  *
  * **The reset points**, each the one the recorders had inside the translator
  * before #1468 (`replay-recorder.equivalence.test.ts` pins the stream they
