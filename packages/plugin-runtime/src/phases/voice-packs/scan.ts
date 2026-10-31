@@ -59,7 +59,7 @@ export interface VoicePackScan {
   reassertVoiceScriptWarning(): void;
 }
 
-export function buildVoicePackScan(core: Core, audio: Audio): VoicePackScan {
+export function buildVoicePackScan(core: Pick<Core, "adapter">, audio: Pick<Audio, "rootDir">): VoicePackScan {
   // The available Race Engineer voices and driver-name keys, derived from the
   // ACTIVE manifest. Installed voice packs (issue #1034) make that manifest
   // dynamic: the compiled-in one is the built-in half — sfx plus any bundled

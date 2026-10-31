@@ -21,16 +21,17 @@ import {
 } from "@iracedeck/voice-packs";
 
 import { stopRaceEngineerPlayback } from "../../actions.js";
-import type { Core } from "../../types.js";
+import type { Core, VoicePackState } from "../../types.js";
 import type { VoicePackScan } from "./scan.js";
 
 /** What the installer step reads from the scan: the root, the port, the logger, the status marker, and two service calls. */
-export type InstallerScanView = Pick<VoicePackScan, "state" | "logger" | "voicePacksRoot" | "fs"> & {
+export type InstallerScanView = Pick<VoicePackScan, "logger" | "voicePacksRoot" | "fs"> & {
+  readonly state: Pick<VoicePackState, "lastPublished">;
   readonly service: Pick<VoicePackService, "isProvidedByDevRoot" | "refresh">;
 };
 
 export function buildVoicePackInstaller(
-  core: Core,
+  core: Pick<Core, "adapter">,
   scan: InstallerScanView,
   bundled: readonly BundledVoicePack[],
 ): VoicePackInstaller {
