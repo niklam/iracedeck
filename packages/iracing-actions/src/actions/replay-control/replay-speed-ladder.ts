@@ -8,7 +8,7 @@
  * and signed: clockwise always moves toward the fastest forward stop, so from
  * −8x a clockwise detent goes to −4x. 0x is a stop like any other.
  */
-import { isSameSpeed, parseSpeedSetting } from "@iracedeck/replay-engine";
+import { isSameSpeed, parseSpeedSetting, PAUSED } from "@iracedeck/replay-engine";
 
 import type { ReplaySpeed } from "./replay-control-dial-mode.js";
 import { SPEED_STOP_TOKENS, type SpeedStops, type SpeedStopToken } from "./replay-control-dial-settings.js";
@@ -21,9 +21,6 @@ const SAME_SPEED_EPSILON = 1e-6;
 
 /** Which way a turn goes on the ladder: 1 is clockwise (toward +16x), −1 counter-clockwise. */
 export type LadderDirection = 1 | -1;
-
-/** The paused stop, in the middle of every ladder. */
-const PAUSED: ReplaySpeed = { speed: 0, slowMotion: false };
 
 /**
  * A replay speed as one signed number, so the ladder's order and "where am I"
@@ -52,6 +49,7 @@ export function buildLadder(stops: SpeedStops): ReplaySpeed[] {
   const forward = SPEED_STOP_TOKENS.filter((token) => stops[token]).map(stopFromToken);
   const reverse = forward.map((stop) => ({ speed: -stop.speed, slowMotion: stop.slowMotion })).reverse();
 
+  // The paused stop, in the middle of every ladder.
   return [...reverse, { ...PAUSED }, ...forward];
 }
 
