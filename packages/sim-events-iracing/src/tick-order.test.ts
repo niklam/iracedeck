@@ -150,6 +150,60 @@ function callOrderMismatch(recordedCalls: readonly string[], order: readonly Tic
 }
 
 /**
+ * The emitter types in one diff module's source that escape its declared
+ * list: an `EmitFn<…>` whose argument is not `(typeof <NAME>_EVENTS)[number]`
+ * for a list the same file exports, or an emitter-shaped function type over
+ * the whole `PendingEvent` union. Either lets the module emit an event no
+ * `TICK_ORDER` row names.
+ */
+function wideEmitters(source: string): string[] {
+  const declared = new Set([...source.matchAll(/export const ([A-Z][A-Z0-9_]*_EVENTS)\b/g)].map((m) => m[1]!));
+  const problems: string[] = [];
+
+  for (const m of source.matchAll(/EmitFn<([^>]*)>/g)) {
+    const list = /^\(typeof ([A-Z][A-Z0-9_]*_EVENTS)\)\[number\]$/.exec(m[1]!.trim())?.[1];
+
+    if (list === undefined || !declared.has(list)) problems.push(m[0]);
+  }
+
+  for (const m of source.matchAll(/\(\s*\w+\??\s*:\s*PendingEvent\s*\)\s*=>/g)) problems.push(m[0]);
+
+  return problems;
+}
+
+/**
+ * Every `publish(self, …)` call in `translator.ts`, by what TICK_ORDER needs
+ * to know of it: a literal event (a translator stage), a `(ev) => publish(self,
+ * ev, …)` forwarder handed to a direct diff stage, the flush of `pending`
+ * (`publish(self, p, …)`), or anything else, which the table cannot place.
+ * Also counts `bus.publish` calls, of which `publish()` itself is the one.
+ */
+function classifyPublishSites(source: string): {
+  literals: string[];
+  forwards: number;
+  flushes: number;
+  other: string[];
+  busPublishes: number;
+} {
+  const literals: string[] = [];
+  const other: string[] = [];
+  let forwards = 0;
+  let flushes = 0;
+
+  for (const m of source.matchAll(/\bpublish\(\s*self,\s*/g)) {
+    const rest = source.slice(m.index + m[0].length);
+    const literal = /^\{\s*event:\s*"([^"]+)"/.exec(rest)?.[1];
+
+    if (literal !== undefined) literals.push(literal);
+    else if (/^ev,/.test(rest) && /\(ev\)\s*=>\s*$/.test(source.slice(0, m.index))) forwards++;
+    else if (/^p,/.test(rest)) flushes++;
+    else other.push(`publish(self, ${rest.slice(0, 40).split("\n")[0]}`);
+  }
+
+  return { literals, forwards, flushes, other, busPublishes: [...source.matchAll(/\.bus\.publish\(/g)].length };
+}
+
+/**
  * Check one tick's log against `order`: diff calls advance through the table
  * in order; a publish made during the tick must belong to a `direct` stage at
  * or after the last call; once the flush begins (the first publish no direct
@@ -405,23 +459,84 @@ describe("TICK_ORDER", () => {
       expect(declarations).toBeGreaterThan(0);
       expect(unlisted).toEqual([]);
       // And the other way: each module stage's events are its module's own list.
-      expect(declarations).toBe(TICK_ORDER.filter(isModuleStage).length);
+      // Counted as distinct lists, since a diff called twice has two rows.
+      expect(declarations).toBe(new Set(TICK_ORDER.filter(isModuleStage).map((s) => s.events)).size);
     });
 
-    it("covers every event a publish site in translator.ts names", () => {
+    // The two checks above see a module only through its `_EVENTS` export, so
+    // a module whose emitter is typed over the whole union would declare
+    // nothing, need no row, and emit past the table with every test green.
+    it("types every diff module's emitter by a list that module declares", () => {
+      const files = readdirSync(new URL("./diff/", import.meta.url)).filter(
+        (f) => f.endsWith(".ts") && !f.endsWith(".test.ts") && f !== "types.ts",
+      );
+      let emitters = 0;
+      const wide: string[] = [];
+
+      for (const file of files) {
+        const source = readFileSync(new URL(`./diff/${file}`, import.meta.url), "utf-8");
+        emitters += [...source.matchAll(/EmitFn</g)].length;
+
+        for (const problem of wideEmitters(source)) wide.push(`${file}: ${problem}`);
+      }
+
+      expect(emitters).toBeGreaterThan(0);
+      expect(wide).toEqual([]);
+    });
+
+    it("accounts for every publish call in translator.ts", () => {
       const source = readFileSync(new URL("./translator.ts", import.meta.url), "utf-8");
-      const literals = [...source.matchAll(/publish\(\s*self,\s*\{\s*event:\s*"([^"]+)"/g)].map((m) => m[1]!);
+      const sites = classifyPublishSites(source);
       const direct = new Set(TICK_ORDER.filter((s) => s.source === "translator.ts").flatMap((s) => s.events));
 
-      // Five sites today: the two teardown publishes, driver.firstOnTrack and
-      // the two session.changed paths. Zero would mean the scan is broken.
-      expect(literals.length).toBeGreaterThan(0);
-      expect(literals.filter((e) => !direct.has(e as SimEventName))).toEqual([]);
-      expect([...direct].filter((e) => !literals.includes(e))).toEqual([]);
+      // Five literal sites today: the two teardown publishes, driver.firstOnTrack
+      // and the two session.changed paths. Zero would mean the scan is broken.
+      expect(sites.literals.length).toBeGreaterThan(0);
+      expect(sites.literals.filter((e) => !direct.has(e as SimEventName))).toEqual([]);
+      expect([...direct].filter((e) => !sites.literals.includes(e))).toEqual([]);
+      // Every other call is one the table already places: a forwarder handed
+      // to a direct diff stage, or the end-of-tick flush of `pending`.
+      expect(sites.other).toEqual([]);
+      expect(sites.forwards).toBe(TICK_ORDER.filter((s) => isModuleStage(s) && s.via === "direct").length);
+      expect(sites.flushes).toBe(1);
+      expect(sites.busPublishes).toBe(1);
     });
   });
 
   describe("the checks fail on bad input", () => {
+    it("the emitter-type scan reports an emitter that is not typed by the module's own list", () => {
+      const declared = "export const FOO_EVENTS = [] as const;\n";
+
+      expect(wideEmitters(`${declared}function diffFoo(emit: EmitFn<(typeof FOO_EVENTS)[number]>) {}`)).toEqual([]);
+      expect(wideEmitters(`${declared}function diffFoo(emit: EmitFn<SimEventName>) {}`)).toEqual([
+        "EmitFn<SimEventName>",
+      ]);
+      expect(wideEmitters(`function diffFoo(emit: EmitFn<(typeof BAR_EVENTS)[number]>) {}`)).toHaveLength(1);
+      expect(wideEmitters(`function diffFoo(emit: (ev: PendingEvent) => void) {}`)).toHaveLength(1);
+      // Reading the pending list is not emitting.
+      expect(wideEmitters(`function has(pending: ReadonlyArray<PendingEvent>) {}`)).toEqual([]);
+    });
+
+    it("the publish-site scan reports a call the table cannot place", () => {
+      const placed =
+        'publish(self, { event: "radar.changed", data: {} }, t, now);\n' +
+        "diffX(s, (ev) => publish(self, ev, t, now));\n" +
+        "for (const p of pending) publish(self, p, t, now);\n" +
+        "self.bus.publish(envelope);\n";
+
+      expect(classifyPublishSites(placed)).toEqual({
+        literals: ["radar.changed"],
+        forwards: 1,
+        flushes: 1,
+        other: [],
+        busPublishes: 1,
+      });
+      expect(classifyPublishSites(`${placed}publish(self, ended, t, now);\n`).other).toEqual([
+        "publish(self, ended, t, now);",
+      ]);
+      expect(classifyPublishSites(`${placed}self.bus.publish(extra);\n`).busPublishes).toBe(2);
+    });
+
     it("the call-order comparison reports a recorded order that differs from the table", () => {
       const expected = TICK_ORDER.filter(isModuleStage).map((s) => s.stage);
       const swapped = [...expected];
