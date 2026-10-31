@@ -61,6 +61,7 @@ Show the proposal in full in your final message, never between tool calls:
 
 - the title, the labels and the whole body;
 - each match with its number, title, state and class;
+- for a duplicate, the target issue and the exact comment you would post on it, since that comment is what he approves;
 - the spec verdict.
 
 If the draft depends on a product decision only Niklas can make, ask that one question with the proposal. A technical choice is yours: take the thorough option.
@@ -69,15 +70,15 @@ If the draft depends on a product decision only Niklas can make, ask that one qu
 
 Only once the proposal is approved, as approved or with his edits.
 
-**An approved duplicate:** post the drafted comment on the existing issue instead of filing (`gh issue comment <n> --body-file <file>`). It carries what is new (the detail, the use case, a source link such as the Discord thread), not a restatement. Then report its link and stop here.
+**An approved duplicate:** post the approved comment, exactly as he approved it, on the existing issue instead of filing (`gh issue comment <n> --body-file <file>`). It carries what is new (the detail, the use case, a source link such as the Discord thread), not a restatement. Then report its link and stop here.
 
 1. Write the body to a file in your scratchpad, then run `gh issue create --title "<title>" --label "<label>" … --body-file <file>`. Never `--body @-`, which the hook refuses.
 2. **Board:** the post-hook makes two moves, adding the card to the board and then setting it to `Backlog`, and reports both. Redo only the move it says failed, from the repo root: `node -e "import('./scripts/claude-hooks/lib.mjs').then(m=>console.log(m.addToBoard('<issue url>',process.cwd())))"` to add the card, then `node -e "import('./scripts/claude-hooks/lib.mjs').then(m=>console.log(m.setBoardStatus(<n>,'Backlog',process.cwd())))"` to set the lane. A card it added but left with no lane needs only the second.
-3. **Links:** for each related match, run `gh issue comment <match> --body "Related: #<new>"`, and make sure the new body names the match.
+3. **Links:** for each related match, and for the closed issue a regressed bug comes back from, run `gh issue comment <match> --body "Related: #<new>"`, and make sure the new body names the match.
 4. **Spec**, when due:
    - Write `docs/superpowers/specs/YYYY-MM-DD-issue-<n>-<topic>.md` per `specs-and-plans.md`. It needs the header block (Issue, Supersedes, Superseded by, the point-in-time note), an Out of scope section and a Testing section; the commit hook refuses a new spec without them.
    - Its content is a decided design and the alternatives it rejected. Never defer a decision to a capture that does not exist yet: decide the model and name the capture that would confirm it. A claim about the sim taken from old text is checked with Niklas first.
    - When it touches a seam (the list in the `issue-lead` skill, step 4), spawn the `architect` agent (`model: "opus"`) on the draft and fold its findings in. A seam it says gets worse gets the thorough fix in the spec, or a separate issue proposed through step 1.
-   - Commit it alone from the `master` checkout: `git commit --only -F <msgfile> -- <spec path>`, with the subject `docs(specs): <summary> (#<n>)`. Check that `git diff --stat origin/master...HEAD` lists only the spec, then `git push origin master` at once. Within the agent team only the PO does this; an issue lead sends the spec to the PO instead. A session Niklas drives directly, Discord triage included, commits it itself, but only from a clean, fast-forwarded checkout, and never leaves an unpushed commit there, since the PO's `git pull --ff-only` must keep working.
+   - Commit it alone from the `master` checkout. A new spec is untracked, which `--only` cannot commit, so stage it first: `git add <spec path> && git commit --only -F <msgfile> -- <spec path>`, with the subject `docs(specs): <summary> (#<n>)`. Check that `git diff --stat origin/master...HEAD` lists only the spec, then `git push origin master` at once. Within the agent team only the PO does this; an issue lead sends the spec to the PO instead. A session Niklas drives directly, Discord triage included, commits it itself, but only from a clean, fast-forwarded checkout, and never leaves an unpushed commit there, since the PO's `git pull --ff-only` must keep working.
    - Comment on the issue with a `blob/master/…` link and what the spec decided beyond the issue.
 5. **Report:** the issue link, the spec link if any, the board result and the links added.
