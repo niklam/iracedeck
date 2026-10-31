@@ -59,16 +59,9 @@ export {
 
   // Utility functions
   hasFlag,
-  hasAllFlags,
   hasAnyFlag,
-  getActiveFlags,
-  getActiveFlagNames,
   addFlag,
-  addFlags,
   removeFlag,
-  removeFlags,
-  toggleFlag,
-  setFlag,
 } from "./types.js";
 
 // Commands

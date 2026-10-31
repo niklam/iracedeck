@@ -35,7 +35,6 @@ const {
 }));
 
 vi.mock("../../audio/audio-volume.js", () => ({
-  stepRaceEngineerVolume: vi.fn(() => 50),
   stepRadarVolume: vi.fn(() => 50),
   stepRaceEngineerVolumeBy: mockStepRaceEngineerVolumeBy,
   stepRadarVolumeBy: mockStepRadarVolumeBy,

@@ -178,7 +178,6 @@ export const VoiceConfigSchema = z.strictObject({
 
 export type VoiceConfig = z.infer<typeof VoiceConfigSchema>;
 export type VoiceSettings = z.infer<typeof VoiceSettingsSchema>;
-export type VoiceSettingsOverride = z.infer<typeof VoiceSettingsOverrideSchema>;
 export type Entry = z.infer<typeof EntrySchema>;
 export type PronunciationDictionaryLocator = z.infer<typeof PronunciationDictionaryLocatorSchema>;
 export type ApplyTextNormalization = z.infer<typeof ApplyTextNormalizationSchema>;

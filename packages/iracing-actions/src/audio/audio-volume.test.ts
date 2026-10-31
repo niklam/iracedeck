@@ -11,7 +11,6 @@ import {
   readRadarVolume,
   setRaceEngineerTestInFlight,
   setRaceEngineerToggleInFlight,
-  stepRaceEngineerVolume,
   stepRaceEngineerVolumeBy,
   stepRadarVolume,
   stepRadarVolumeBy,
@@ -303,11 +302,11 @@ describe("audio-volume", () => {
     });
   });
 
-  describe("stepRaceEngineerVolume", () => {
+  describe("stepRaceEngineerVolumeBy, one step", () => {
     it("steps up by 5, persists, and re-applies the gate (audible when enabled)", () => {
       hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: true, raceEngineerVolume: 50, backgroundVolume: 25 });
 
-      expect(stepRaceEngineerVolume("up")).toBe(55);
+      expect(stepRaceEngineerVolumeBy(1)).toBe(55);
       expect(hoisted.updateGlobalSettings).toHaveBeenCalledWith({ raceEngineerVolume: 55 });
       expect(hoisted.setBusVolume).toHaveBeenCalledWith(0, 0.55);
     });
@@ -315,7 +314,7 @@ describe("audio-volume", () => {
     it("persists the new value but keeps Voice muted when Race Engineer is disabled", () => {
       hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: false, raceEngineerVolume: 50 });
 
-      expect(stepRaceEngineerVolume("up")).toBe(55);
+      expect(stepRaceEngineerVolumeBy(1)).toBe(55);
       expect(hoisted.updateGlobalSettings).toHaveBeenCalledWith({ raceEngineerVolume: 55 });
       expect(hoisted.setBusVolume).toHaveBeenCalledWith(0, 0);
     });
@@ -323,7 +322,7 @@ describe("audio-volume", () => {
     it("is a no-op at the upper boundary", () => {
       hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: true, raceEngineerVolume: 100 });
 
-      expect(stepRaceEngineerVolume("up")).toBe(100);
+      expect(stepRaceEngineerVolumeBy(1)).toBe(100);
       expect(hoisted.updateGlobalSettings).not.toHaveBeenCalled();
       expect(hoisted.setBusVolume).not.toHaveBeenCalled();
     });
@@ -331,7 +330,7 @@ describe("audio-volume", () => {
     it("is a no-op at the lower boundary", () => {
       hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: true, raceEngineerVolume: 0 });
 
-      expect(stepRaceEngineerVolume("down")).toBe(0);
+      expect(stepRaceEngineerVolumeBy(-1)).toBe(0);
       expect(hoisted.updateGlobalSettings).not.toHaveBeenCalled();
       expect(hoisted.setBusVolume).not.toHaveBeenCalled();
     });
@@ -378,7 +377,7 @@ describe("audio-volume", () => {
 
       stepRadarVolume("up");
       stepRadarVolumeBy(4);
-      stepRaceEngineerVolume("down");
+      stepRaceEngineerVolumeBy(-1);
       stepRaceEngineerVolumeBy(-2);
 
       expect(hoisted.playVolumeTick).not.toHaveBeenCalled();
@@ -387,7 +386,7 @@ describe("audio-volume", () => {
     it("ticks a Race Engineer step taken with the engineer off, at the stored value", () => {
       hoisted.setGlobalSettings({ pitCrewRaceEngineerEnabled: false, raceEngineerVolume: 50 });
 
-      stepRaceEngineerVolume("down");
+      stepRaceEngineerVolumeBy(-1);
 
       expect(hoisted.setBusVolume).toHaveBeenCalledWith(0, 0);
       expect(hoisted.playVolumeTick.mock.calls).toEqual([["down", 45]]);

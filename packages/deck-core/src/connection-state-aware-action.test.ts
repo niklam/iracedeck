@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { BaseAction } from "./base-action.js";
 import { ConnectionStateAwareAction } from "./connection-state-aware-action.js";
 import { createFakeSimConnection, type FakeSimConnection } from "./fake-sim-connection.js";
 import { _resetSimConnection, initializeSimConnection } from "./sim-connection.js";
@@ -169,6 +170,20 @@ describe("ConnectionStateAwareAction", () => {
 
       expect(getLogger(action).debug).toHaveBeenCalledWith("Readiness changed: null -> true");
     });
+
+    it("should follow a sequence of connection changes, skipping the unchanged ones", () => {
+      sim.fake!.state.connected = false;
+      action.callUpdateConnectionState(); // null -> false
+      action.callUpdateConnectionState(); // false -> false (no change)
+
+      sim.fake!.state.connected = true;
+      action.callUpdateConnectionState(); // false -> true
+
+      sim.fake!.state.connected = false;
+      action.callUpdateConnectionState(); // true -> false
+
+      expect(getSetActive(action).mock.calls).toEqual([[false], [true], [false]]);
+    });
   });
 
   // --- Binding-aware readiness ---
@@ -307,6 +322,38 @@ describe("ConnectionStateAwareAction", () => {
 
       sim.fake!.state.connected = false;
       expect(action.callGetConnectionStatus()).toBe(false);
+    });
+  });
+
+  describe("multiple action instances", () => {
+    it("should read the one singleton connection live, so both follow a change made after they were built", () => {
+      const action1 = new TestAction();
+      const action2 = new TestAction();
+
+      sim.fake!.state.connected = false;
+      expect([action1.callGetConnectionStatus(), action2.callGetConnectionStatus()]).toEqual([false, false]);
+
+      sim.fake!.state.connected = true;
+      expect([action1.callGetConnectionStatus(), action2.callGetConnectionStatus()]).toEqual([true, true]);
+
+      // A connection initialised after construction is the one they read.
+      _resetSimConnection();
+      const replacement = createFakeSimConnection();
+      replacement.state.connected = false;
+      initializeSimConnection(replacement.connection);
+
+      expect([action1.callGetConnectionStatus(), action2.callGetConnectionStatus()]).toEqual([false, false]);
+    });
+
+    it("should have independent active state tracking", () => {
+      const action1 = new TestAction();
+      const action2 = new TestAction();
+
+      sim.fake!.state.connected = false;
+      action1.callUpdateConnectionState();
+
+      expect(getSetActive(action1)).toHaveBeenCalledWith(false);
+      expect(getSetActive(action2)).not.toHaveBeenCalled();
     });
   });
 
@@ -478,6 +525,22 @@ describe("ConnectionStateAwareAction", () => {
       await action.onWillAppear(ev as never);
 
       expect(sim.fake!.subscribers.has("_readiness:ctx-1")).toBe(true);
+    });
+
+    it("should hand the event on to BaseAction's onWillDisappear", async () => {
+      const baseOnWillDisappear = vi.spyOn(BaseAction.prototype, "onWillDisappear");
+      const ev = {
+        action: { id: "ctx-1", setTitle: vi.fn(), setImage: vi.fn(), isKey: vi.fn().mockReturnValue(true) },
+        payload: { settings: {} },
+      };
+
+      try {
+        await action.onWillDisappear(ev as never);
+
+        expect(baseOnWillDisappear).toHaveBeenCalledWith(ev);
+      } finally {
+        baseOnWillDisappear.mockRestore();
+      }
     });
   });
 });

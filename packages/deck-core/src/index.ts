@@ -126,7 +126,6 @@ export {
   parseSvgViewBox,
   renderIconTemplate,
   resolveIconColors,
-  validateIconTemplate,
   type ColorSlots,
   type IconBorderDefaults,
   type IconTitleDefaults,
@@ -183,13 +182,7 @@ export {
 } from "./dial-gesture.js";
 
 // Keyboard types
-export {
-  KEYBOARD_KEYS,
-  type KeyboardKey,
-  type KeyboardModifier,
-  type KeyCombination,
-  type IRacingHotkeyPreset,
-} from "./keyboard-types.js";
+export { KEYBOARD_KEYS, type KeyboardKey, type KeyboardModifier, type KeyCombination } from "./keyboard-types.js";
 
 // Keyboard service singleton
 export {

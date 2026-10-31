@@ -68,11 +68,6 @@ export const RECORD_STEPS: Readonly<Record<RecordStepMode, RecordStepSpec>> = {
   "prev-session": { list: "session", direction: "previous", search: "prevSession", label: "Previous session" },
 };
 
-/** Whether `mode` steps through the record. */
-export function isRecordStepMode(mode: string): mode is RecordStepMode {
-  return mode in RECORD_STEPS;
-}
-
 /** What a record step reads besides the anchor. */
 export interface RecordStepSource {
   /** The replay store, or null when none was initialized. */

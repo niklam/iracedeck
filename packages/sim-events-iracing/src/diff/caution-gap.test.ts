@@ -8,7 +8,7 @@ import {
   type CautionGapMeasurement,
   measureCautionGap,
 } from "./caution-gap.js";
-import { type PaceLineup, resolveCarAheadInLine, resolvePaceLineup } from "./pace-lineup.js";
+import { carAheadInLine, indexPaceLines, type PaceLineup, resolvePaceLineup } from "./pace-lineup.js";
 
 /** The pace car's index in real telemetry (slot 20 in the fixtures' trimmed arrays). */
 const PACE = 64;
@@ -537,11 +537,9 @@ describe("measureCautionGap — the five Homestead snapshots (2026-09-19, 2,381.
       const gaps: number[] = [];
 
       for (let carIdx = 1; carIdx < 20; carIdx++) {
-        const ahead = resolveCarAheadInLine(
-          telemetry.CarIdxPaceLine as number[],
-          telemetry.CarIdxPaceRow as number[],
+        const ahead = carAheadInLine(
+          indexPaceLines(telemetry.CarIdxPaceLine as number[], telemetry.CarIdxPaceRow as number[], () => true),
           carIdx,
-          () => true,
         );
 
         if (ahead !== null && ahead !== PACE)
@@ -569,11 +567,9 @@ describe("measureCautionGap — the five Homestead snapshots (2026-09-19, 2,381.
       for (let carIdx = 0; carIdx < 20; carIdx++) {
         if (tick.CarIdxPaceRow[carIdx] < 0) continue;
 
-        const ahead = resolveCarAheadInLine(
-          telemetry.CarIdxPaceLine as number[],
-          telemetry.CarIdxPaceRow as number[],
+        const ahead = carAheadInLine(
+          indexPaceLines(telemetry.CarIdxPaceLine as number[], telemetry.CarIdxPaceRow as number[], () => true),
           carIdx,
-          () => true,
         );
 
         if (ahead === null || ahead === PACE)
@@ -664,11 +660,9 @@ describe("measureCautionGap — four snapshots at a second oval (2026-10-02, 1,5
       const gaps: number[] = [];
 
       for (let carIdx = 0; carIdx < 20; carIdx++) {
-        const ahead = resolveCarAheadInLine(
-          telemetry.CarIdxPaceLine as number[],
-          telemetry.CarIdxPaceRow as number[],
+        const ahead = carAheadInLine(
+          indexPaceLines(telemetry.CarIdxPaceLine as number[], telemetry.CarIdxPaceRow as number[], () => true),
           carIdx,
-          () => true,
         );
 
         if (ahead !== null && ahead !== PACE)

@@ -68,7 +68,6 @@ export const PRESS_BOXES = [
   "radio",
   "weather",
 ] as const satisfies readonly BlackBoxId[];
-export type PressBox = (typeof PRESS_BOXES)[number];
 
 /** `open-selected-box` taps the per-box binding chosen by `dial.pressBox`. */
 export const GESTURE_ACTIONS = ["open-selected-box", "none"] as const;

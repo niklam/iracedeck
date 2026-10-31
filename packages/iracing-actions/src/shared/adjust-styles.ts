@@ -170,18 +170,6 @@ export function isPillStyle(style: AdjustKeyStyle): boolean {
   return PILL_STYLES.has(style);
 }
 
-const POSITION_AWARE_STYLES: ReadonlySet<AdjustKeyStyle> = new Set([
-  "edge-chevrons",
-  "joined-pill",
-  "pill-end",
-  "big-chevron",
-]);
-
-/** Styles whose artwork depends on where the partner key sits (PI shows Position in Pair). */
-export function isPositionAwareStyle(style: AdjustKeyStyle): boolean {
-  return POSITION_AWARE_STYLES.has(style);
-}
-
 export function isPillMiddleStyle(style: AdjustKeyStyle): boolean {
   return style === "pill-middle-horizontal" || style === "pill-middle-vertical";
 }

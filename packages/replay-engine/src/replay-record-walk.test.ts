@@ -9,71 +9,83 @@ import { pendingReplayTarget } from "./replay-position-state.js";
 import {
   recordedIndexAt,
   type RecordedSpanRule,
+  type ReplayWalkDirection,
   resolveReplayWalkAnchor,
   resolveReplayWalkStart,
-  stepRecordedFrames,
   walkRecordedEntries,
   walkRecordedIndex,
 } from "./replay-record-walk.js";
 
-describe("stepRecordedFrames", () => {
+/** {@link walkRecordedEntries} over bare frames with no rule — the marker walk — reduced to where it lands. */
+function stepFrames(frames: readonly number[], anchor: number, direction: ReplayWalkDirection, steps: number) {
+  const walked = walkRecordedEntries(
+    frames.map((frame) => ({ frame })),
+    anchor,
+    direction,
+    steps,
+  );
+
+  return walked.hit ? { frame: walked.entry.frame, steps: walked.steps } : null;
+}
+
+describe("walkRecordedEntries without a rule (the marker walk)", () => {
   const list = [1_000, 2_000, 3_000, 4_000];
 
   describe("Next: the first landing more than 60 frames past the anchor", () => {
     it("skips an entry 60 frames ahead or less, and takes one 61 ahead", () => {
-      expect(stepRecordedFrames(list, 1_940, "next", 1)).toEqual({ frame: 3_000, steps: 1 });
-      expect(stepRecordedFrames(list, 1_939, "next", 1)).toEqual({ frame: 2_000, steps: 1 });
+      expect(stepFrames(list, 1_940, "next", 1)).toEqual({ frame: 3_000, steps: 1 });
+      expect(stepFrames(list, 1_939, "next", 1)).toEqual({ frame: 2_000, steps: 1 });
     });
 
     it("from on an entry goes to the one after it", () => {
-      expect(stepRecordedFrames(list, 2_000, "next", 1)).toEqual({ frame: 3_000, steps: 1 });
+      expect(stepFrames(list, 2_000, "next", 1)).toEqual({ frame: 3_000, steps: 1 });
     });
 
     it("from before the list is its first entry", () => {
-      expect(stepRecordedFrames(list, 0, "next", 1)).toEqual({ frame: 1_000, steps: 1 });
+      expect(stepFrames(list, 0, "next", 1)).toEqual({ frame: 1_000, steps: 1 });
     });
 
     it("is a miss past the last entry's window", () => {
-      expect(stepRecordedFrames(list, 3_940, "next", 1)).toBeNull();
-      expect(stepRecordedFrames(list, 9_000, "next", 1)).toBeNull();
+      expect(stepFrames(list, 3_940, "next", 1)).toBeNull();
+      expect(stepFrames(list, 9_000, "next", 1)).toBeNull();
     });
   });
 
   describe("Previous: the entry the anchor is in past 120 frames, else the one before", () => {
     it("within 120 frames of an entry goes to the one before it", () => {
-      expect(stepRecordedFrames(list, 3_000, "previous", 1)).toEqual({ frame: 2_000, steps: 1 });
-      expect(stepRecordedFrames(list, 3_120, "previous", 1)).toEqual({ frame: 2_000, steps: 1 });
+      expect(stepFrames(list, 3_000, "previous", 1)).toEqual({ frame: 2_000, steps: 1 });
+      expect(stepFrames(list, 3_120, "previous", 1)).toEqual({ frame: 2_000, steps: 1 });
     });
 
     it("more than 120 frames past an entry goes back to that entry", () => {
-      expect(stepRecordedFrames(list, 3_121, "previous", 1)).toEqual({ frame: 3_000, steps: 1 });
+      expect(stepFrames(list, 3_121, "previous", 1)).toEqual({ frame: 3_000, steps: 1 });
     });
 
     it("is a miss before the list, and on its first entry", () => {
-      expect(stepRecordedFrames(list, 999, "previous", 1)).toBeNull();
-      expect(stepRecordedFrames(list, 1_050, "previous", 1)).toBeNull();
+      expect(stepFrames(list, 999, "previous", 1)).toBeNull();
+      expect(stepFrames(list, 1_050, "previous", 1)).toBeNull();
     });
   });
 
   describe("steps", () => {
     it("moves further entries after the first step", () => {
-      expect(stepRecordedFrames(list, 1_000, "next", 2)).toEqual({ frame: 3_000, steps: 2 });
-      expect(stepRecordedFrames(list, 4_500, "previous", 3)).toEqual({ frame: 2_000, steps: 3 });
+      expect(stepFrames(list, 1_000, "next", 2)).toEqual({ frame: 3_000, steps: 2 });
+      expect(stepFrames(list, 4_500, "previous", 3)).toEqual({ frame: 2_000, steps: 3 });
     });
 
     it("stops at either end and reports the steps it took", () => {
-      expect(stepRecordedFrames(list, 1_500, "next", 10)).toEqual({ frame: 4_000, steps: 3 });
-      expect(stepRecordedFrames(list, 3_500, "previous", 10)).toEqual({ frame: 1_000, steps: 3 });
+      expect(stepFrames(list, 1_500, "next", 10)).toEqual({ frame: 4_000, steps: 3 });
+      expect(stepFrames(list, 3_500, "previous", 10)).toEqual({ frame: 1_000, steps: 3 });
     });
 
     it("zero steps is a miss", () => {
-      expect(stepRecordedFrames(list, 0, "next", 0)).toBeNull();
-      expect(stepRecordedFrames(list, 9_000, "previous", 0)).toBeNull();
+      expect(stepFrames(list, 0, "next", 0)).toBeNull();
+      expect(stepFrames(list, 9_000, "previous", 0)).toBeNull();
     });
 
     it("an empty list is a miss", () => {
-      expect(stepRecordedFrames([], 0, "next", 1)).toBeNull();
-      expect(stepRecordedFrames([], 0, "previous", 1)).toBeNull();
+      expect(stepFrames([], 0, "next", 1)).toBeNull();
+      expect(stepFrames([], 0, "previous", 1)).toBeNull();
     });
   });
 });

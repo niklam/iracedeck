@@ -20,7 +20,6 @@ export {
   MARKER_NEXT_MIN_AHEAD_FRAMES,
   MARKER_PREVIOUS_MIN_BEHIND_FRAMES,
   nextMarker,
-  normalizeMarkers,
   partitionMarkers,
   previousMarker,
   type PartitionedMarkers,

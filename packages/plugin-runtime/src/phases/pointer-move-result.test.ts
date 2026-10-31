@@ -5,8 +5,9 @@
  * rather than importing them from `@iracedeck/iracing-native`: that package
  * loads the native addon as a module side effect, which a platform-agnostic
  * package must not do. The values are still a native contract, so they have to
- * be kept in sync by hand — this test is the guard, and it lives here because
- * the plugin is a package that already depends on both.
+ * be kept in sync by hand — this test is the guard. It lives beside
+ * `register-actions.ts`, which hands `native.moveMouseToIRacingWindow()` to `initMousePointer`, because
+ * this package already depends on both and deck-core may not import the native one.
  */
 import { PointerMoveResult as CorePointerMoveResult } from "@iracedeck/deck-core";
 import { PointerMoveResult as NativePointerMoveResult } from "@iracedeck/iracing-native";

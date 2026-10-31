@@ -81,16 +81,6 @@ export function partitionMarkers(raw: unknown): PartitionedMarkers {
 }
 
 /**
- * The readable markers of a loaded `markers` section, ordered by frame, each
- * with every field it carried. Anything that is not an array reads as no
- * markers. The store uses {@link partitionMarkers} so the entries this drops
- * survive its writes.
- */
-export function normalizeMarkers(raw: unknown): ReplayMarker[] {
-  return partitionMarkers(raw).markers;
-}
-
-/**
  * Insert a marker in frame order. Returns false — and adds nothing — when an
  * existing marker is within {@link MARKER_DEDUPE_FRAMES} of it.
  */

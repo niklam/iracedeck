@@ -682,12 +682,6 @@ export const SCENARIO_ID_TO_AUTO_FUEL_ID: Readonly<Record<string, AutoFuelCallou
   "pit-crew.auto-fuel-off-no-refuel": "changed",
 };
 
-/**
- * Stable identifier for the pit-road speeding cue (issue #912). Single
- * subject — one toggle covers the whole repeating tick.
- */
-export type PitSpeedingCalloutId = CalloutIdOf<typeof PIT_SPEEDING_CALLOUTS>;
-
 // No `SCENARIO_ID_TO_PIT_SPEEDING_ID` and no `wrapCalloutScenario` loop: the
 // cue is an imperative engine playing direct, not a scenario, so there is no
 // `where:` predicate to wrap. Its opt-in is read inside the engine's tick
@@ -716,9 +710,6 @@ export const SCENARIO_ID_TO_FUEL_ID: Readonly<Record<string, FuelCalloutId>> = {
   "pit-crew.fuel-laps-left-box": "laps-left-box",
   "pit-crew.fuel-laps-left-race-covered": "race-covered",
 };
-
-/** Stable id for each spotter PI opt-in (issue #651). */
-export type SpotterCalloutId = CalloutIdOf<typeof SPOTTER_CALLOUTS>;
 
 /** Global-settings key for the user-configurable "still there" cadence (seconds, issue #651). */
 export const SPOTTER_STILL_THERE_SECONDS_KEY = "spotterStillThereSeconds";

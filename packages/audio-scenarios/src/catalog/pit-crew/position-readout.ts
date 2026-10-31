@@ -379,27 +379,6 @@ export function liveCurrentlyAnnounceable(live: LivePosition | null): boolean {
 }
 
 /**
- * Whether an overtake payload represents the player leading their **effective**
- * field — class P1 in a multi-class race, overall P1 otherwise (issue #599).
- * The overtake `isLeader` field is OVERALL-only, so a class leader running
- * mid-pack overall reads `isLeader: false`; this helper keeps the leader
- * concept aligned with the class-focused detection (#588) and readout. Shared
- * by the overtake reaction (picks the "leading our class" line) and the gained
- * position readout (suppresses the follow-up, since the leader line already
- * states the position). Lives here, the lower-level shared module, so
- * `overtake.ts` can import it without a cycle.
- */
-export function isOvertakeEffectiveLeader(data: {
-  position: number;
-  classPosition?: number;
-  isMultiClass?: boolean;
-}): boolean {
-  const effective = data.isMultiClass === true ? data.classPosition : data.position;
-
-  return effective === 1;
-}
-
-/**
  * Register the vocabulary the position-readout scripts reference (issue
  * #1065): the intro and the live-position number. Both read the live resolver
  * at expansion time; a `null` number is a defensive guard — the contract's

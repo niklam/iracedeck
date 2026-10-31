@@ -46,7 +46,7 @@
  * open in `computeFuelStats` — the gates above remove systematic error, so
  * IQR is out of scope here (issue #465).
  */
-import { Flags, isLiveOnTrack, isPreGreen, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { Flags, hasAnyFlag, isLiveOnTrack, isPreGreen, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 /** Rolling history cap (laps). Also bounds the Session Info `fuelLapWindow` setting. */
 export const FUEL_LAP_HISTORY_CAP = 20;
@@ -76,6 +76,9 @@ const WRAP_LOW = 0.2;
  * Filters float jitter; a real fill adds far more than this per tick.
  */
 const REFUEL_EPSILON_L = 0.01;
+
+/** The two caution bits, either of which marks a lap as run under caution. */
+const CAUTION_FLAGS = [Flags.Caution, Flags.CautionWaving] as const;
 
 /** Rolling fuel consumption statistics over the validated lap history. */
 export type FuelStats = {
@@ -317,9 +320,7 @@ export function diffFuelLaps(t: FuelLapTracker, telemetry: TelemetryData): void 
   const onPitRoad = telemetry.OnPitRoad === true;
   const towed = typeof telemetry.PlayerCarTowTime === "number" && telemetry.PlayerCarTowTime > 0;
   // Missing SessionFlags must not count as caution — don't punish missing data.
-  const caution =
-    typeof telemetry.SessionFlags === "number" &&
-    (telemetry.SessionFlags & (Flags.Caution | Flags.CautionWaving)) !== 0;
+  const caution = hasAnyFlag(telemetry.SessionFlags, CAUTION_FLAGS);
   const anchor = { lap, sessionTime, fuelLevel, onPitRoad, towed, caution };
 
   if (!t.initialized) {

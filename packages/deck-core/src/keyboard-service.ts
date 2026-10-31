@@ -31,14 +31,14 @@
  *
  * @example
  * // At startup (the shared bootstrap: plugin-runtime's phases/input.ts)
- * import { initializeKeyboard } from "./shared/index.js";
+ * import { initializeKeyboard } from "@iracedeck/deck-core";
  * import { IRacingNative } from "@iracedeck/iracing-native";
  *
  * const native = new IRacingNative();
  * initializeKeyboard(logger, (scanCodes) => native.sendScanKeys(scanCodes));
  *
  * // In action files
- * import { getKeyboard } from "./shared/index.js";
+ * import { getKeyboard } from "@iracedeck/deck-core";
  *
  * const keyboard = getKeyboard();
  * await keyboard.sendKeyCombination({ key: "f3", code: "F3" });

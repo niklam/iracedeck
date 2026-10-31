@@ -109,51 +109,6 @@ export function formatFuelAmount(
 }
 
 /**
- * Formats fuel amount for button display (with +/- prefix)
- * Note: This converts from internal liters to display units
- * @param liters - Fuel amount in liters (internal unit)
- * @param displayUnits - The iRacing DisplayUnits value
- * @param prefix - The prefix to add (e.g., "+" or "-")
- * @param decimals - Number of decimal places (default: 0 for whole numbers)
- * @returns Formatted string like "+5 L" or "-1 gal"
- */
-export function formatFuelAmountWithPrefix(
-  liters: number,
-  displayUnits: DisplayUnits | number | undefined,
-  prefix: string,
-  decimals: number = 0,
-): string {
-  const displayValue = fuelToDisplayUnits(liters, displayUnits);
-  const suffix = getFuelUnitSuffix(displayUnits);
-
-  return `${prefix}${displayValue.toFixed(decimals)} ${suffix}`;
-}
-
-/**
- * Formats a fuel setting value (already in display units) with the appropriate unit suffix
- * Use this for user-configured amounts that are already in the user's preferred unit
- * @param amount - Fuel amount already in display units (no conversion)
- * @param displayUnits - The iRacing DisplayUnits value
- * @param prefix - Optional prefix to add (e.g., "+" or "-")
- * @param decimals - Number of decimal places for non-integers (default: 1). Integers are shown without decimals.
- * @returns Formatted string like "+5 L" or "-1.5 gal"
- */
-export function formatFuelSettingWithUnit(
-  amount: number,
-  displayUnits: DisplayUnits | number | undefined,
-  prefix: string = "",
-  decimals: number = 1,
-): string {
-  const suffix = getFuelUnitSuffix(displayUnits);
-  // Use tolerance-based check for integers to handle floating point precision issues
-  const rounded = Math.round(amount);
-  const isEffectivelyInteger = Math.abs(amount - rounded) < 0.0001;
-  const formattedAmount = isEffectivelyInteger ? rounded.toString() : amount.toFixed(decimals);
-
-  return `${prefix}${formattedAmount} ${suffix}`;
-}
-
-/**
  * Converts a temperature from degrees Celsius (iRacing's internal unit) to
  * degrees Fahrenheit. Unrounded: callers that speak or display it round
  * for their own purpose (issue #466).
