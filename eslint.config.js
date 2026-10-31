@@ -5,8 +5,9 @@ import tsparser from '@typescript-eslint/parser';
 import prettier from 'eslint-config-prettier';
 import stylistic from '@stylistic/eslint-plugin';
 
-// The sim packages a device shell may not import (#1500); the block that uses them is below.
-const SHELL_SIM_PACKAGES = [
+// The iRacing packages a sim-neutral layer may not import: deck-core and the
+// packages split out of it (#1351, #1367) and the device shells (#1500).
+const SIM_PACKAGES = [
   '@iracedeck/deck-iracing',
   '@iracedeck/sim-events-iracing',
   '@iracedeck/iracing-sdk',
@@ -95,12 +96,7 @@ export default [
       'no-restricted-imports': [
         'error',
         {
-          paths: [
-            '@iracedeck/iracing-sdk',
-            '@iracedeck/iracing-native',
-            '@iracedeck/sim-events-iracing',
-            '@iracedeck/deck-iracing',
-          ].map((name) => ({
+          paths: SIM_PACKAGES.map((name) => ({
             name,
             message:
               'deck-core and the packages split out of it must not depend on a simulator: use the SimConnection interface or an injected delegate, and put iRacing code in @iracedeck/deck-iracing (#1351, #1367).',
@@ -179,8 +175,8 @@ export default [
       'no-restricted-imports': [
         'error',
         {
-          paths: SHELL_SIM_PACKAGES.map((name) => ({ name, message: SHELL_SIM_MESSAGE })),
-          patterns: [{ group: SHELL_SIM_PACKAGES.map((name) => `${name}/*`), message: SHELL_SIM_MESSAGE }],
+          paths: SIM_PACKAGES.map((name) => ({ name, message: SHELL_SIM_MESSAGE })),
+          patterns: [{ group: SIM_PACKAGES.map((name) => `${name}/*`), message: SHELL_SIM_MESSAGE }],
         },
       ],
     },
