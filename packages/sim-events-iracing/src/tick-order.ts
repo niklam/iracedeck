@@ -203,7 +203,7 @@ export function findEndsOnOrderViolations(
           message:
             `${pair}: \`${triggerStage}\` publishes both, and TICK_ORDER cannot see the order inside one stage, so this fails closed. ` +
             `Prove in that module's own tests that one call never emits \`${trigger}\` after \`${end}\` (drive a single call that would emit both and assert the emit order, ` +
-            `or show the two are gated apart), then exempt this pair where the check is applied, citing that test.`,
+            `or show the two are gated apart), then add an exemption for this pair to the check that applies this one (\`race-engineer-wiring\`'s \`ends-on-order.test.ts\`, which has no exemption list until one is needed), citing that test.`,
         });
       } else if (i > j) {
         violations.push({

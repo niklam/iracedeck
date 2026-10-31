@@ -223,8 +223,9 @@ export type SpeakGate = {
  * comes after one that can publish the end: move the trigger's diff call ahead
  * of the end's in `handleTick`, and in `TICK_ORDER`. It fails closed when one
  * stage can publish both, since the table cannot see inside a stage: prove the
- * order in that module's own tests and exempt the pair in the wiring test,
- * citing that test. And it fails when no stage publishes either event, which
+ * order in that module's own tests, then add an exemption for the pair to
+ * the wiring test, citing that test (it has no exemption list until one is
+ * needed). And it fails when no stage publishes either event, which
  * is a misspelt or dropped name. The check is conservative: it judges the
  * order the code allows, not whether the sim can produce both on one tick.
  *
