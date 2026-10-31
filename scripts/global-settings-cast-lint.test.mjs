@@ -1,5 +1,6 @@
 // `getGlobalSettings()` is read as its typed `GlobalSettings` (#1376): an
-// assertion on the call hides a renamed or removed key from the compiler. The
+// assertion on the call, or on the argument an `onGlobalSettingsChange`
+// listener receives, hides a renamed or removed key from the compiler. The
 // ESLint rule is the guard, and this test proves it fires, so deleting or
 // narrowing the rule goes red. The same block re-states the repo-wide
 // `useLegacySettingsBehavior` entry (#1208), since a later block's
@@ -85,6 +86,76 @@ describe("global settings cast lint (#1376)", () => {
     },
     TIMEOUT,
   );
+
+  describe("an onGlobalSettingsChange listener's argument", () => {
+    const LISTENER = "an onGlobalSettingsChange listener's argument";
+    const PRELUDE =
+      `import { onGlobalSettingsChange } from "@iracedeck/settings";\n` +
+      "declare function apply(value: unknown): void;\n" +
+      "declare const deps: { onGlobalSettingsChange: (listener: (s: unknown) => void) => () => void };\n";
+
+    const REFUSED_LISTENER = {
+      "the scenario harness's `as` on the argument (#1376)":
+        "onGlobalSettingsChange((settings) => apply(settings as Record<string, unknown>));\n",
+      "the settings-window phase's `as` inside a subscribe wrapper (#1376)":
+        "export const host = {\n" +
+        "  subscribe: (listener: (s: Record<string, unknown>) => void) =>\n" +
+        "    onGlobalSettingsChange((s) => listener(s as Record<string, unknown>)),\n" +
+        "};\n",
+      "a double `as unknown as` assertion":
+        "onGlobalSettingsChange((s) => apply(s as unknown as Record<string, unknown>));\n",
+      "an angle-bracket assertion": "onGlobalSettingsChange((s) => apply(<Record<string, unknown>>s));\n",
+      "an assertion in a function-expression listener":
+        "onGlobalSettingsChange(function (s) {\n  apply(s as Record<string, unknown>);\n});\n",
+      "an assertion in a listener handed to an injected onGlobalSettingsChange":
+        "deps.onGlobalSettingsChange((s) => apply(s as Record<string, unknown>));\n",
+    };
+
+    for (const [name, code] of Object.entries(REFUSED_LISTENER)) {
+      it(
+        `refuses ${name}`,
+        async () => {
+          const messages = await lint(PRELUDE + code, "packages/plugin-runtime/src/planted.ts");
+
+          expect(mentions(messages, LISTENER)).toHaveLength(1);
+          expect(mentions(messages, "#1376")).toHaveLength(1);
+        },
+        TIMEOUT,
+      );
+    }
+
+    it(
+      "allows the typed argument, a value read from it, a listener passed by name and a cast of an unrelated value",
+      async () => {
+        const messages = await lint(
+          PRELUDE +
+            "onGlobalSettingsChange((s) => apply(s));\n" +
+            "onGlobalSettingsChange((s) => apply(s.replayJumpPlayback as string));\n" +
+            "onGlobalSettingsChange(apply);\n" +
+            "declare const stored: unknown;\n" +
+            "export const n = stored as number;\n" +
+            "export const off = onGlobalSettingsChange(() => apply(n));\n",
+          "packages/plugin-runtime/src/planted.ts",
+        );
+
+        expect(messages).toHaveLength(0);
+      },
+      TIMEOUT,
+    );
+
+    it(
+      "allows a test file to shape its listener's argument",
+      async () => {
+        const messages = await lint(
+          PRELUDE + "onGlobalSettingsChange((s) => apply(s as Record<string, unknown>));\n",
+          "packages/plugin-runtime/src/planted.test.ts",
+        );
+
+        expect(mentions(messages, "#1376")).toHaveLength(0);
+      },
+      TIMEOUT,
+    );
+  });
 
   for (const filePath of ["packages/plugin-runtime/src/planted.ts", "packages/plugin-runtime/src/planted.test.ts"]) {
     it(

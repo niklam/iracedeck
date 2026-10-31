@@ -85,6 +85,20 @@ export default [
     // index signature already admits an undeclared key (#1376). An assertion on
     // the call hides a renamed or removed key from the compiler, so read the
     // typed value instead. Tests may shape their mocks as they like.
+    //
+    // A listener handed to `onGlobalSettingsChange` receives the same typed
+    // settings, so a cast of its argument hides a key just as surely — the
+    // shape #1376 removed from plugin-runtime's settings-window phase and the
+    // scenario harness. esquery cannot tie an assertion's operand to the
+    // listener's first parameter, so the second selector refuses an `as` or
+    // `<T>` assertion on any bare identifier inside a function passed
+    // straight to `onGlobalSettingsChange(…)` or `<deps>.onGlobalSettingsChange(…)`;
+    // a cast of a value read from the settings (`s.key as T`) passes, as it
+    // does on the call. Deliberately not covered: the settings held in a
+    // variable first (`const s = getGlobalSettings(); s as …`), because a
+    // selector sees syntax, not what a variable holds, and a listener passed
+    // by name, whose parameter is typed where it is declared.
+    // scripts/global-settings-cast-lint.test.mjs proves both selectors fire.
     files: ['packages/*/src/**/*.ts'],
     ignores: ['packages/*/src/**/*.test.ts'],
     rules: {
@@ -95,6 +109,13 @@ export default [
           selector: `${node} > CallExpression.expression[callee.name='getGlobalSettings']`,
           message:
             'Read getGlobalSettings() as its typed GlobalSettings: an assertion hides a renamed or removed key from the compiler, and an undeclared passthrough key already reads as unknown (#1376).',
+        })),
+        ...['TSAsExpression', 'TSTypeAssertion'].map((node) => ({
+          selector:
+            "CallExpression:matches([callee.name='onGlobalSettingsChange'], [callee.property.name='onGlobalSettingsChange'])" +
+            ` > :function.arguments ${node} > Identifier.expression`,
+          message:
+            "Read an onGlobalSettingsChange listener's argument as its typed GlobalSettings: an assertion on it hides a renamed or removed key from the compiler, and an undeclared passthrough key already reads as unknown (#1376).",
         })),
       ],
     },
