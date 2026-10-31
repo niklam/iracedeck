@@ -121,7 +121,7 @@ The forum has one tag, `Resolved`. There is no "tracked" or "in progress" tag, s
    | Needs more information | no steps, no version, no log, and the cause is not clear from the thread | ask for what is missing: steps, the iRaceDeck and deck software versions, the plugin log | none | none |
    | New | none of the above | issue link + one line on what we know | none | propose a `bug` issue via the `file-issue` skill; file it once Niklas approves |
 
-3. **New bug:** draft the issue from `.github/ISSUE_TEMPLATE/bug_report.yml`'s sections with the source line as the last line of *Additional context*, show it, and file it with `--label bug --label discord`. A bug needs no spec unless its fix involves a genuine design choice (`.claude/rules/specs-and-plans.md`). Only then reply.
+3. **New bug:** go through the `file-issue` skill. Its step 1 searches and proposes, but here the body follows `.github/ISSUE_TEMPLATE/bug_report.yml`'s sections, with the source line as the last line of *Additional context*, and the labels are `--label bug --label discord` plus an `area:`. File it with step 2 only once Niklas approves the proposal. A bug needs no spec unless its fix involves a genuine design choice (`.claude/rules/specs-and-plans.md`). Only then reply.
 4. Reply with `pnpm discord:bugs reply <id> --file "$TMP/reply.md"`, and `pnpm discord:bugs tag <id> Resolved` where the table says so. Both after approval.
 5. Summary: handled per outcome, skipped with reasons, issues filed and adopted.
 
