@@ -36,6 +36,7 @@ import {
   getFuelStats,
   getLiveGaps,
   getLiveRacePositions,
+  getTrackGaps,
   initializeSimEventsIracing,
   readSimState,
   type SimEventsIracingOptions,
@@ -260,6 +261,7 @@ function parts(overrides: Partial<SimStateParts> = {}): SimStateParts {
     fuel: fuelParts({ stats: { lastLap: null, avg: null, avgLapTime: null, samples: 0 } }),
     order: { positions: null, player: null, startingGrid: null, raceFinish: null },
     gaps: null,
+    trackGaps: null,
     opponentFlags: null,
     caution: { phase: "none", episode: null, lineup: null, gap: null },
     rollingStart: { formation: null },
@@ -323,6 +325,7 @@ describe("readSimState — before the translator has anything to say", () => {
       "fuel",
       "order",
       "gaps",
+      "trackGaps",
       "opponentFlags",
       "caution",
       "rollingStart",
@@ -800,6 +803,7 @@ describe("readSimState — a replay-wiped translator", () => {
     expect(live.inReplay).toBe(false);
     expect(live.gaps).not.toBeNull();
     expect(live.gaps).toEqual(getLiveGaps());
+    expect(live.trackGaps).toEqual(getTrackGaps());
     expect(live.raw.state.gapTraces.length).toBeGreaterThan(0);
     expect(live.order.player?.position).toBe(2);
     expect(live.fuel.history).toHaveLength(2);
@@ -1056,6 +1060,8 @@ describe("simStateHeadline", () => {
       ["Live position", "unknown"],
       ["Gap ahead", "none"],
       ["Gap behind", "none"],
+      ["Track gap ahead", "none"],
+      ["Track gap behind", "none"],
       ["Caution phase", "none"],
     ]);
   });
@@ -1090,6 +1096,8 @@ describe("simStateHeadline", () => {
       ["Live position", "P3 (P2 in class)"],
       ["Gap ahead", "1.2 s (car 7)"],
       ["Gap behind", "1 lap apart (car 9)"],
+      ["Track gap ahead", "none"],
+      ["Track gap behind", "none"],
       ["Caution phase", "caught"],
     ]);
   });

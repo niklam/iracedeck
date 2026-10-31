@@ -4,8 +4,8 @@
  * Take Snapshot writes what the plugin had computed at the press beside the
  * telemetry it computed it from, so a support case can tell a wrong input
  * from a wrong calculation. This module is the SHAPE of the translator's
- * section: curated keys first (`fuel`, `order`, `gaps`, `opponentFlags`,
- * `caution`, `rollingStart`, `session`), then `raw` — the whole `TranslatorState` and the
+ * section: curated keys first (`fuel`, `order`, `gaps`, `trackGaps`,
+ * `opponentFlags`, `caution`, `rollingStart`, `session`), then `raw` — the whole `TranslatorState` and the
  * instance's own flags, uncurated.
  *
  * `readSimState()` in `translator.ts` gathers the parts, because the
@@ -228,6 +228,8 @@ export type SimStateSnapshot =
       };
       order: SimOrderState;
       gaps: LiveGaps | null;
+      /** `getTrackGaps()`: the track-order gaps outside a race (issue #1515), null in a race. */
+      trackGaps: LiveGaps | null;
       opponentFlags: LiveOpponentFlags | null;
       caution: SimCautionState;
       rollingStart: SimRollingStartState;
@@ -254,6 +256,7 @@ export type SimStateParts = {
   };
   order: SimOrderState;
   gaps: LiveGaps | null;
+  trackGaps: LiveGaps | null;
   opponentFlags: LiveOpponentFlags | null;
   caution: SimCautionState;
   rollingStart: SimRollingStartState;
@@ -447,6 +450,7 @@ export function buildSimState(parts: SimStateParts): SimStateSnapshot {
     },
     order: parts.order,
     gaps: parts.gaps,
+    trackGaps: parts.trackGaps,
     opponentFlags: parts.opponentFlags,
     caution: parts.caution,
     rollingStart: parts.rollingStart,
@@ -515,6 +519,8 @@ export function simStateHeadline(state: SimStateSnapshot): Array<readonly [strin
     ],
     ["Gap ahead", formatGap(state.gaps?.ahead ?? null)],
     ["Gap behind", formatGap(state.gaps?.behind ?? null)],
+    ["Track gap ahead", formatGap(state.trackGaps?.ahead ?? null)],
+    ["Track gap behind", formatGap(state.trackGaps?.behind ?? null)],
     ["Caution phase", state.caution.phase],
   ];
 }

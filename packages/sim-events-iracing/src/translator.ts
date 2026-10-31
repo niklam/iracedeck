@@ -101,6 +101,7 @@ import { diffStartCountdown, diffStartLights } from "./diff/start-lights.js";
 import { diffTireTemps, readTireTempsLeavingCar } from "./diff/tire-temps.js";
 import { diffTireWear } from "./diff/tire-wear.js";
 import { diffToggles } from "./diff/toggles.js";
+import { diffTrackGaps } from "./diff/track-gaps.js";
 import { diffTrackWetness, resolveReportedTrackWetness } from "./diff/track-wetness.js";
 import type { PendingEvent } from "./diff/types.js";
 import { calculateCanonicalRacePositions } from "./race-order.js";
@@ -1121,6 +1122,28 @@ export function getLiveGaps(): LiveGaps | null {
   return { ahead: instance.state.gapLiveAhead, behind: instance.state.gapLiveBehind };
 }
 
+/**
+ * Live crossing-time gaps to the cars physically ahead and behind ON TRACK
+ * outside a race (issue #1515): practice, warmup, testing and open
+ * qualifying, never a lone session. This is TRACK ORDER, not a race
+ * position (`.claude/rules/race-positions.md`): any class, the pace car,
+ * spectators and cars on pit road skipped. Mutually exclusive with
+ * {@link getLiveGaps}, which answers only in a race past the green; the Race
+ * Engineer reads that one alone. `null` when unavailable (not initialized,
+ * no telemetry, another session, the player off the road) or with no other
+ * car on the road. `lapDelta` is always 0, and a side's `gapSeconds` is
+ * `null` until the trace it reads covers the lookup (cold start).
+ */
+export function getTrackGaps(): LiveGaps | null {
+  if (!instance || !instance.latestTelemetry) return null;
+
+  const { ahead, behind } = instance.state.trackGaps;
+
+  if (!ahead.live && !behind.live) return null;
+
+  return { ahead: ahead.live, behind: behind.live };
+}
+
 /** One car currently showing a penalty flag (issue #936). */
 export type LiveOpponentFlagCar = { carIdx: number; flags: OpponentPenaltyFlag[] };
 
@@ -1808,6 +1831,7 @@ export function readSimState(): SimStateSnapshot {
         raceFinish: getRaceFinishResult(telemetry?.SessionNum),
       },
       gaps: getLiveGaps(),
+      trackGaps: getTrackGaps(),
       opponentFlags: getLiveOpponentFlags(),
       caution: {
         phase: getCautionPhase(),
@@ -2945,6 +2969,11 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     // and lets the restart mark stop on the green's own tick (issue #1171).
     self.state.cautionPhase !== "none",
   );
+  // Track-order gaps outside a race (issue #1515): the cars physically ahead
+  // and behind on the road in practice, warmup, testing and open qualifying,
+  // for `getTrackGaps()`. Its gate and `diffGaps`' are disjoint, so only one
+  // of the two stores grows in a session. Publishes no event.
+  diffTrackGaps(self.state, telemetry, sessionType, sessionInfo, playerCarIdx, trackLengthMeters);
   // Pit-box count-in (issue #600). Reuses the cached `trackLengthMeters` to
   // convert the LapDistPct→box gap into meters; the box itself comes from
   // `DriverInfo.DriverPitTrkPct`. Runs after the track-length resolution above.
