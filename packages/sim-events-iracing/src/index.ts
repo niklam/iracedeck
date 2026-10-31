@@ -190,3 +190,7 @@ export {
   TrackDirection,
   TrackType,
 } from "./track-type.js";
+// The order one translator tick publishes in, and the check that an `endsOn`
+// contract's trigger is never published after its end event on the same tick
+// (issues #1407, #1499). `race-engineer-wiring` applies it to every contract.
+export { type EndsOnOrderViolation, findEndsOnOrderViolations, TICK_ORDER, type TickStage } from "./tick-order.js";
