@@ -1,4 +1,4 @@
-import { classifyDialRelease, type DialReleaseKind } from "@iracedeck/deck-core";
+import { classifyDialRelease, type DialReleaseKind, type PressShape } from "@iracedeck/deck-core";
 
 /**
  * Classifies a dial release for the host this build targets (#1013).
@@ -27,4 +27,62 @@ export function classifyDialReleaseForHost(args: {
   if (__FEATURE_DIAL_EXTENDED_GESTURES__) return classifyDialRelease(args);
 
   return args.rotatedWhilePressed ? "push-turn" : "short";
+}
+
+/**
+ * A gesture slot as a surface resolves it for one outcome: the slot's value,
+ * where `"none"` (or `null`, for a surface that resolves a slot to nothing,
+ * as Replay Control's `resolveDialGesture` does) fires nothing.
+ */
+export type ResolvedDialGesture = string | null;
+
+function gestureActs(gesture: ResolvedDialGesture): boolean {
+  return gesture !== null && gesture !== "none";
+}
+
+/**
+ * The press shape of a dial press (#269), which an action's `dialPressShape`
+ * returns through its dial surface: decided at release, the tap sound on a
+ * short release when the press gesture does something and the long sound at
+ * the threshold when the long-press gesture does. Every dial surface that
+ * classifies at release passes the gestures it would fire at its `up` and the
+ * threshold it hands {@link classifyDialReleaseForHost}.
+ *
+ * Keyed on the same flag as {@link classifyDialReleaseForHost}: where the
+ * extended gestures are compiled out (Mirabox, Ulanzi) no release is long, so
+ * `long` is false and the threshold is `Infinity`, which arms no timer — the
+ * press sounds can never call a Mirabox knob release long, whatever the timing.
+ */
+export function dialGestureShape(args: {
+  pressGesture: ResolvedDialGesture;
+  longPressGesture: ResolvedDialGesture;
+  thresholdMs: number;
+}): PressShape {
+  const short = gestureActs(args.pressGesture);
+
+  if (!__FEATURE_DIAL_EXTENDED_GESTURES__) {
+    return { kind: "release", thresholdMs: Number.POSITIVE_INFINITY, short, long: false };
+  }
+
+  return { kind: "release", thresholdMs: args.thresholdMs, short, long: gestureActs(args.longPressGesture) };
+}
+
+/**
+ * The press shape of a touch on a dial's strip (#269), which an action's
+ * `touchPressShape` returns through its dial surface. A touch arrives
+ * complete, its `hold` saying whether it was a long touch: `tap` for a tap
+ * whose gesture does something, `long` for such a long touch, `none` when the
+ * slot fires nothing — and `none` wherever the extended gestures are compiled
+ * out, since every surface's `touchTap` returns at once there.
+ */
+export function touchGestureShape(args: {
+  tapGesture: ResolvedDialGesture;
+  longTouchGesture: ResolvedDialGesture;
+  hold: boolean;
+}): PressShape {
+  if (!__FEATURE_DIAL_EXTENDED_GESTURES__) return { kind: "none" };
+
+  if (!gestureActs(args.hold ? args.longTouchGesture : args.tapGesture)) return { kind: "none" };
+
+  return args.hold ? { kind: "long" } : { kind: "tap" };
 }

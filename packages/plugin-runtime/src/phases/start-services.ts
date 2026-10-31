@@ -7,7 +7,12 @@
  * the adapter.
  */
 import { getAudio } from "@iracedeck/audio-service";
-import { getPluginVersion, initializeBindingDispatcher, initializeSimHub } from "@iracedeck/deck-core";
+import {
+  getPluginVersion,
+  getPressSoundMode,
+  initializeBindingDispatcher,
+  initializeSimHub,
+} from "@iracedeck/deck-core";
 import {
   createElevationCheckSubscriber,
   createReplaySessionSubscriber,
@@ -85,8 +90,9 @@ export function startServices(
   // Initialize app monitor for iRacing process detection
   initAppMonitor(core.adapter, core.adapter.createLogger("AppMonitor"));
 
-  // Keep the audio device open while iRacing runs and the Race Engineer or the
-  // Radar is on, instead of opening it once per burst of callouts (#1347). The
+  // Keep the audio device open while iRacing runs and the Race Engineer, the
+  // Radar or press sounds are on, instead of opening it once per burst of
+  // callouts (#1347) or late for a press's sound after an idle stop (#269). The
   // controller decides when; the audio service owns the hold itself. AFTER the
   // app monitor because it follows that monitor's started and terminated
   // edges and is seeded from its view of an iRacing that was already running,
@@ -100,6 +106,7 @@ export function startServices(
     isIRacingActive,
     isRaceEngineerEnabled,
     isRadarEnabled,
+    isPressSoundEnabled: () => getPressSoundMode() !== "none",
     onGlobalSettingsChange,
     logger: core.adapter.createLogger("AudioSessionHold"),
   });

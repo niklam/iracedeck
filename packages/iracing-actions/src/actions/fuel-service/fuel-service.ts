@@ -16,6 +16,7 @@ import {
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
   isSimHubReachable,
+  type PressShape,
   renderIconTemplate,
   resolveBorderSettings,
   resolveGraphicSettings,
@@ -589,6 +590,19 @@ export class FuelService extends SimIRacingAction<FuelServiceSettings> {
   override async onDialRotate(ev: IDeckDialRotateEvent<FuelServiceSettings>): Promise<void> {
     const settings = this.parseSettings(ev.payload.settings);
     await this.dialSurface.rotate(ev.action, settings, ev.payload.ticks, ev.payload.pressed === true);
+  }
+
+  /**
+   * The press shape of a dial press (#269), from the dial surface, which
+   * classifies the release.
+   */
+  dialPressShape(ev: IDeckDialDownEvent<FuelServiceSettings>): PressShape {
+    return this.dialSurface.pressShape(ev.action, this.parseSettings(ev.payload.settings));
+  }
+
+  /** The press shape of a touch on the strip (#269), from the dial surface. */
+  touchPressShape(ev: IDeckTouchTapEvent<FuelServiceSettings>): PressShape {
+    return this.dialSurface.touchShape(ev.action, this.parseSettings(ev.payload.settings), ev.payload.hold === true);
   }
 
   override async onDialDown(ev: IDeckDialDownEvent<FuelServiceSettings>): Promise<void> {

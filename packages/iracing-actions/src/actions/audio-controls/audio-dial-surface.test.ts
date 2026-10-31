@@ -1073,4 +1073,59 @@ describe("AudioDialSurface (through AudioControls)", () => {
       expect(ctx.setDialCanvas).not.toHaveBeenCalled();
     });
   });
+
+  describe("press shape (issue #269)", () => {
+    const shapeOf = (dial: Record<string, unknown>) => action.dialPressShape(ev(dialAction(), { dial }));
+
+    it("makes no sound for a Push to Talk press, which opens the microphone", () => {
+      expect(shapeOf({ category: "voice-chat", pressAction: "push-to-talk" })).toEqual({ kind: "none" });
+      expect(shapeOf({ category: "radar", pressAction: "push-to-talk" })).toEqual({ kind: "none" });
+    });
+
+    it.each([
+      ["voice-chat", "mute-unmute"],
+      ["race-engineer", "mute-unmute"],
+      ["radar", "mute-unmute"],
+      ["voice-chat", "mute-driver"],
+      ["spotter", "skip-call"],
+    ])("is a tap for %s %s, which fires at dialDown", (category, pressAction) => {
+      expect(shapeOf({ category, pressAction })).toEqual({ kind: "tap" });
+    });
+
+    it.each([
+      ["voice-chat", "none"],
+      ["master", "mute-unmute"],
+      ["master", "mute-driver"],
+      ["race-engineer", "skip-call"],
+    ])("makes no sound for %s %s, a press that does nothing", (category, pressAction) => {
+      expect(shapeOf({ category, pressAction })).toEqual({ kind: "none" });
+    });
+
+    it("makes no sound for a fresh dial, whose press defaults to none", () => {
+      expect(action.dialPressShape(ev(dialAction(), {}))).toEqual({ kind: "none" });
+    });
+
+    it("reads the keypad half on a key and the dial block on a dial, from the member called", () => {
+      const settings = { category: "voice-chat", action: "mute", dial: { pressAction: "push-to-talk" } };
+
+      expect(action.keyPressShape(ev(keypadAction(), settings))).toEqual({ kind: "tap" });
+      expect(action.dialPressShape(ev(dialAction(), settings))).toEqual({ kind: "none" });
+    });
+
+    it("takes the surface from the member, not the context: a dial reporting Keypad (Ulanzi) still reads the dial block", () => {
+      const settings = { category: "voice-chat", action: "mute", dial: { pressAction: "push-to-talk" } };
+
+      expect(action.dialPressShape(ev(keypadAction(), settings))).toEqual({ kind: "none" });
+      expect(action.keyPressShape(ev(dialAction(), settings))).toEqual({ kind: "tap" });
+    });
+
+    it("agrees with the press: a tap shape sends at dialDown", async () => {
+      const ctx = await appearedDial();
+      const settings = { dial: { category: "voice-chat", pressAction: "mute-unmute" } };
+
+      expect(action.dialPressShape(ev(ctx, settings))).toEqual({ kind: "tap" });
+      await action.onDialDown(ev(ctx, settings));
+      expect(mockTapBinding).toHaveBeenCalledTimes(1);
+    });
+  });
 });

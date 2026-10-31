@@ -19,8 +19,9 @@
  * ```
  *
  * Attributes:
- * - preview: "radar" | "voice" | "background" — which preview to play. Without
- *   it the button is inert.
+ * - preview: "radar" | "voice" | "background" | "press-tap" | "press-long" —
+ *   which preview to play, forwarded verbatim; `runAudioPreview` owns the
+ *   allow-list. Without it the button is inert.
  * - label: Button text (default "Test").
  */
 import { sendToPlugin } from "./sdpi-client.js";

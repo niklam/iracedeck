@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PENDING_BAR_HEIGHT } from "../../shared/dial-preview.js";
+import { actionPressShapes, describePressShapes } from "../../shared/press-shape.test-support.js";
 import {
   buildDialReadout,
   buildRefuelBandText,
@@ -1205,6 +1206,17 @@ describe("FuelService dial surface", () => {
   async function appear(ctx: ReturnType<typeof dialContext>, settings: Record<string, unknown> = {}) {
     await action.onWillAppear(basicEvent(ctx, settings) as never);
   }
+
+  describePressShapes({
+    dialContext: (id) => dialContext(id),
+    appear: (ctx, dial) => appear(ctx, dial),
+    ...actionPressShapes(() => action, toMergedSettings),
+    gesture: "toggle-fueling",
+    setThresholdMs: (ms) => {
+      mockDualPressThreshold.value = ms;
+    },
+    readsStoredSettings: true,
+  });
 
   /**
    * A short dial-button press: down then immediate up (0 elapsed → short press →

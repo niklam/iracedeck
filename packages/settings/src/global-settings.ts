@@ -33,12 +33,14 @@ import {
   DEFAULT_POINTER_ANCHOR_Y,
   DEFAULT_POINTER_OFFSET_X,
   DEFAULT_POINTER_OFFSET_Y,
+  DEFAULT_PRESS_SOUND_MODE,
   DEFAULT_REPLAY_JUMP_PLAYBACK,
   ENSURED_VOICE_PACK_ID,
   parseFocusIRacingMode,
   POINTER_ANCHORS_X,
   POINTER_ANCHORS_Y,
   POINTER_OFFSET_LIMIT,
+  PRESS_SOUND_MODES,
   REPLAY_JUMP_PLAYBACK_MODES,
 } from "@iracedeck/app-constants";
 import { qualifiedVoiceId, qualifyVoiceId, stripTakeSuffix } from "@iracedeck/callout-script";
@@ -498,6 +500,20 @@ export const GlobalSettingsSchema = z
      * - `"tap-decreases"` — tap fires Decrease, long-press fires Increase
      */
     dualPressDirections: z.enum(["tap-increases", "tap-decreases"]).default("tap-increases").catch("tap-increases"),
+    /**
+     * Which press sounds play on the deck (issue #269): `none` (the default),
+     * `taps` (a single bleep when a press acts as a tap), `long-press` (a
+     * double bleep when a hold passes the long-press threshold,
+     * `dualPressThresholdMs` above) or
+     * `both`. Read at each key or dial down by deck-core's `withPressSounds`
+     * wrapper, through `getPressSoundMode()`, and played only while the sim is
+     * connected. The key and the values live in `@iracedeck/app-constants`
+     * (`press-sound.ts`). A user choice, so never run-scoped.
+     */
+    // `.catch(DEFAULT_PRESS_SOUND_MODE)` like `changelogNotification`: a
+    // hand-edited or future value must fall back to `none` rather than abort
+    // the whole GlobalSettingsSchema.parse (#896).
+    pressSound: z.enum(PRESS_SOUND_MODES).default(DEFAULT_PRESS_SOUND_MODE).catch(DEFAULT_PRESS_SOUND_MODE),
     /**
      * Delay in milliseconds between consecutive replay lap-search broadcasts
      * the Replay Control "Jump to Fastest Lap" mode emits while walking the

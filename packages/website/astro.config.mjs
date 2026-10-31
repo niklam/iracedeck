@@ -163,6 +163,7 @@ export default defineConfig({
             { slug: "docs/features/key-bindings" },
             { slug: "docs/features/stream-deck-profiles" },
             { slug: "docs/features/dials" },
+            { slug: "docs/features/press-sounds" },
             { slug: "docs/features/race-engineer-voices" },
             { slug: "docs/features/flags-overlay" },
             { slug: "docs/features/focus-iracing-window" },

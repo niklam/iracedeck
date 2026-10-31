@@ -16,6 +16,7 @@ import {
   type IDeckTouchTapEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
+  type PressShape,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
@@ -55,7 +56,12 @@ import {
   telemetryMemoValue,
 } from "../../shared/adjust-styles.js";
 import { RepeatController } from "../../shared/repeat-controller.js";
-import { generateSetupViewSvg, getAdjustmentModeForView, isViewSetting } from "../../shared/setup-view.js";
+import {
+  generateSetupViewSvg,
+  getAdjustmentModeForView,
+  isViewSetting,
+  setupKeyPressShape,
+} from "../../shared/setup-view.js";
 import { SetupBrakesDialSurface } from "./setup-brakes-dial-surface.js";
 import {
   parseSetupBrakesSettings,
@@ -433,6 +439,28 @@ export class SetupBrakes extends SimIRacingAction<SetupBrakesSettings> {
   override async onDialRotate(ev: IDeckDialRotateEvent<SetupBrakesSettings>): Promise<void> {
     const settings = this.parseSettings(ev.payload.settings);
     await this.dialSurface.rotate(ev.action, settings, ev.payload.ticks, ev.payload.pressed === true);
+  }
+
+  /**
+   * The press shape of a key press (#269): a View key's from its dual-press
+   * state (`setupKeyPressShape`, from the settings `onKeyDown` reads), every
+   * other key a tap.
+   */
+  keyPressShape(ev: IDeckKeyDownEvent<SetupBrakesSettings>): PressShape {
+    return setupKeyPressShape(this.parseSettings(ev.payload.settings));
+  }
+
+  /**
+   * The press shape of a dial press (#269), from the dial surface, which
+   * classifies the release.
+   */
+  dialPressShape(ev: IDeckDialDownEvent<SetupBrakesSettings>): PressShape {
+    return this.dialSurface.pressShape(ev.action, this.parseSettings(ev.payload.settings));
+  }
+
+  /** The press shape of a touch on the strip (#269), from the dial surface. */
+  touchPressShape(ev: IDeckTouchTapEvent<SetupBrakesSettings>): PressShape {
+    return this.dialSurface.touchShape(ev.action, this.parseSettings(ev.payload.settings), ev.payload.hold === true);
   }
 
   override async onDialDown(ev: IDeckDialDownEvent<SetupBrakesSettings>): Promise<void> {

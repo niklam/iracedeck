@@ -17,6 +17,7 @@ import {
   type IDeckTouchTapEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
+  type PressShape,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
@@ -46,7 +47,12 @@ import {
   telemetryMemoValue,
 } from "../../shared/adjust-styles.js";
 import { RepeatController } from "../../shared/repeat-controller.js";
-import { generateSetupViewSvg, getAdjustmentModeForView, isViewSetting } from "../../shared/setup-view.js";
+import {
+  generateSetupViewSvg,
+  getAdjustmentModeForView,
+  isViewSetting,
+  setupKeyPressShape,
+} from "../../shared/setup-view.js";
 import { DialSettings, seedDialFromLegacySetting, SetupEngineDialSurface } from "./setup-engine-dial-surface.js";
 
 type SetupEngineAdjustSetting = "engine-power" | "throttle-shaping" | "boost-level" | "launch-rpm";
@@ -370,6 +376,32 @@ export class SetupEngine extends SimIRacingAction<SetupEngineSettings> {
   override async onDialRotate(ev: IDeckDialRotateEvent<SetupEngineSettings>): Promise<void> {
     const settings = this.parseSettings(ev.payload.settings);
     await this.dialSurface.rotate(ev.action, settings.dial, ev.payload.ticks, ev.payload.pressed === true);
+  }
+
+  /**
+   * The press shape of a key press (#269): a View key's from its dual-press
+   * state (`setupKeyPressShape`, from the settings `onKeyDown` reads), every
+   * other key a tap.
+   */
+  keyPressShape(ev: IDeckKeyDownEvent<SetupEngineSettings>): PressShape {
+    return setupKeyPressShape(this.parseSettings(ev.payload.settings));
+  }
+
+  /**
+   * The press shape of a dial press (#269), from the dial surface, which
+   * classifies the release.
+   */
+  dialPressShape(ev: IDeckDialDownEvent<SetupEngineSettings>): PressShape {
+    return this.dialSurface.pressShape(ev.action, this.parseSettings(ev.payload.settings).dial);
+  }
+
+  /** The press shape of a touch on the strip (#269), from the dial surface. */
+  touchPressShape(ev: IDeckTouchTapEvent<SetupEngineSettings>): PressShape {
+    return this.dialSurface.touchShape(
+      ev.action,
+      this.parseSettings(ev.payload.settings).dial,
+      ev.payload.hold === true,
+    );
   }
 
   override async onDialDown(ev: IDeckDialDownEvent<SetupEngineSettings>): Promise<void> {

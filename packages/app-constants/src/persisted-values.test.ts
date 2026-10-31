@@ -8,6 +8,7 @@ import {
   DEFAULT_POINTER_ANCHOR_Y,
   DEFAULT_POINTER_OFFSET_X,
   DEFAULT_POINTER_OFFSET_Y,
+  DEFAULT_PRESS_SOUND_MODE,
   DEFAULT_REPLAY_JUMP_PLAYBACK,
   ENSURED_VOICE_PACK_ID,
   FOCUS_IRACING_MODES,
@@ -15,6 +16,8 @@ import {
   POINTER_ANCHORS_X,
   POINTER_ANCHORS_Y,
   POINTER_OFFSET_LIMIT,
+  PRESS_SOUND_KEY,
+  PRESS_SOUND_MODES,
   PROFILE_CAPTURE_STATUS_KEY,
   REPLAY_JUMP_PLAYBACK_MODES,
   SETTINGS_WINDOW_HTML,
@@ -76,6 +79,12 @@ describe("app-constants persisted and run-scoped values (spec #1351)", () => {
   it("keeps the replay jump playback modes and their default", () => {
     expect(REPLAY_JUMP_PLAYBACK_MODES).toEqual(["remember", "play", "stopped"]);
     expect(DEFAULT_REPLAY_JUMP_PLAYBACK).toBe("remember");
+  });
+
+  it("keeps the press sound key, its modes and their default (issue #269)", () => {
+    expect(PRESS_SOUND_KEY).toBe("pressSound");
+    expect(PRESS_SOUND_MODES).toEqual(["none", "taps", "long-press", "both"]);
+    expect(DEFAULT_PRESS_SOUND_MODE).toBe("none");
   });
 
   it("keeps the Mouse to Sim anchors, defaults and offset limit", () => {

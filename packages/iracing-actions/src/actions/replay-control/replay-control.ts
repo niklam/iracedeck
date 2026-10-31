@@ -22,6 +22,7 @@ import {
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
   parseSvgViewBox,
+  type PressShape,
   renderIconTemplate,
   resolveBorderSettings,
   resolveGraphicSettings,
@@ -767,6 +768,23 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
 
   override async onKeyUp(ev: IDeckKeyUpEvent<ReplayControlSettings>): Promise<void> {
     this.repeat.onKeyUp(ev.action.id);
+  }
+
+  /**
+   * The press shape of a dial press (#269), from the dial surface, which
+   * classifies the release.
+   */
+  dialPressShape(ev: IDeckDialDownEvent<ReplayControlSettings>): PressShape {
+    return this.dialSurface.pressShape(ev.action, this.parseSettings(ev.payload.settings).dial);
+  }
+
+  /** The press shape of a touch on the strip (#269), from the dial surface. */
+  touchPressShape(ev: IDeckTouchTapEvent<ReplayControlSettings>): PressShape {
+    return this.dialSurface.touchShape(
+      ev.action,
+      this.parseSettings(ev.payload.settings).dial,
+      ev.payload.hold === true,
+    );
   }
 
   override async onDialDown(ev: IDeckDialDownEvent<ReplayControlSettings>): Promise<void> {

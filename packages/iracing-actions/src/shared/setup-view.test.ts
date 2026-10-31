@@ -11,6 +11,7 @@ import {
   generateSetupViewSvg,
   getAdjustmentModeForView,
   isViewSetting,
+  setupKeyPressShape,
   VIEW_DEFS,
   VIEW_NULL_VALUE,
   type ViewSettingId,
@@ -23,6 +24,8 @@ vi.mock("@iracedeck/deck-core", async (importOriginal) => {
     ...actual,
     getGlobalTitleSettings: () => ({}),
     getGlobalBorderSettings: () => ({}),
+    // A threshold no default produces, so the press shape is seen to carry it.
+    getDualPressThresholdMs: () => 650,
   };
 });
 
@@ -258,5 +261,29 @@ describe("spring offset views (#953)", () => {
   it("maps to the renamed adjustment modes for dual-press dispatch", () => {
     expect(getAdjustmentModeForView("view-lr-spring-offset")).toBe("lr-spring");
     expect(getAdjustmentModeForView("view-rr-spring-offset")).toBe("rr-spring");
+  });
+});
+
+describe("setupKeyPressShape (#269)", () => {
+  it("is a release at the dual-press threshold, short and long, for a View key with dual-press on", () => {
+    expect(setupKeyPressShape({ setting: "view-front-wing", dualPressEnabled: true })).toEqual({
+      kind: "release",
+      thresholdMs: 650,
+      short: true,
+      long: true,
+    });
+  });
+
+  it("is none for a View key with dual-press off, which ignores the press", () => {
+    expect(setupKeyPressShape({ setting: "view-front-wing", dualPressEnabled: false })).toEqual({ kind: "none" });
+  });
+
+  it("is a tap for every non-View mode, whatever dual-press says", () => {
+    expect(setupKeyPressShape({ setting: "front-wing", dualPressEnabled: true })).toEqual({ kind: "tap" });
+    expect(setupKeyPressShape({ setting: "front-wing", dualPressEnabled: false })).toEqual({ kind: "tap" });
+  });
+
+  it.each(Object.keys(VIEW_DEFS))("gives View %s the dual-press release shape", (id) => {
+    expect(setupKeyPressShape({ setting: id, dualPressEnabled: true }).kind).toBe("release");
   });
 });

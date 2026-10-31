@@ -13,6 +13,7 @@ import {
   type IDeckKeyUpEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
+  type PressShape,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
@@ -48,6 +49,7 @@ import { INTERNAL_AUDIO_BUSES } from "./audio-buses.js";
 import {
   AUDIO_CONTROLS_GLOBAL_KEYS,
   type AudioControlsSettings,
+  isDialPressAvailable,
   isInternalAudioCategory,
   isKeypadControlAvailable,
   parseAudioControlsSettings,
@@ -233,6 +235,32 @@ export function renderAudioControlsIcon(settings: AudioControlsSettings, binding
 }
 
 /**
+ * @internal Exported for testing
+ *
+ * The shape of an Audio Controls press, for the press sounds (#269). Push to
+ * Talk makes no sound on either surface: a bleep as the microphone opens is
+ * the sound most likely to be transmitted. Every keypad volume step makes
+ * none either, since its #1455 tick is its press sound (a repeating style's
+ * hold changes nothing to double-bleep for). A press that does nothing — a keypad
+ * pair or a dial press the action cannot fire (#1196), or a dial press of
+ * `none` — makes no sound. What is left acts once, on the down event, the dial
+ * included (it fires at `dialDown`, #1120 decision 2): a `tap`.
+ */
+export function audioControlsPressShape(settings: AudioControlsSettings, surface: "key" | "dial"): PressShape {
+  if (surface === "dial") {
+    const { dial } = settings;
+
+    return dial.pressAction === "push-to-talk" || !isDialPressAvailable(dial) ? { kind: "none" } : { kind: "tap" };
+  }
+
+  if (settings.category === "push-to-talk" || volumePair(settings) || !isKeypadControlAvailable(settings)) {
+    return { kind: "none" };
+  }
+
+  return { kind: "tap" };
+}
+
+/**
  * Audio Controls Action
  * One action, two surfaces (#782): on a keypad button it provides volume and
  * mute controls for the iRacing (voice chat, master) and iRaceDeck (Race
@@ -301,6 +329,16 @@ export class AudioControls extends ConnectionStateAwareAction<AudioControlsSetti
     this.setActiveBinding(this.resolveGlobalKey(settings.category, settings.action));
 
     await this.updateDisplay(ev, settings);
+  }
+
+  /** The press sounds' shape of a key press (#269); see {@link audioControlsPressShape}. */
+  keyPressShape(ev: IDeckKeyDownEvent<AudioControlsSettings>): PressShape {
+    return audioControlsPressShape(this.parseSettings(ev.payload.settings), "key");
+  }
+
+  /** The press sounds' shape of a dial press (#269); see {@link audioControlsPressShape}. */
+  dialPressShape(ev: IDeckDialDownEvent<AudioControlsSettings>): PressShape {
+    return audioControlsPressShape(this.parseSettings(ev.payload.settings), "dial");
   }
 
   override async onKeyDown(ev: IDeckKeyDownEvent<AudioControlsSettings>): Promise<void> {

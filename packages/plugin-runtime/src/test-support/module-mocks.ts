@@ -62,6 +62,7 @@ export const ACTION_HOOKS = [
   "isRaceEngineerEnabled",
   "isRadarEnabled",
   "migrateLfeIntensityBindingKeys",
+  "playPressSound",
   "runAudioPreview",
   "setReplayBusyIndicatorLogger",
   "startAudioSessionHold",

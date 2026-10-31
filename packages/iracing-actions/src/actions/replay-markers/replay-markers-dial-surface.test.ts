@@ -10,6 +10,7 @@ import { steppedReplayState } from "@iracedeck/replay-engine/testing";
 import type { ReplayMarker, ReplaySessionStore } from "@iracedeck/replay-store";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { describePressShapes } from "../../shared/press-shape.test-support.js";
 import { registerReplayBusySurface, type ReplayBusyLook } from "../../shared/replay-busy-indicator.js";
 import { engineOverDeck } from "../../shared/replay-engine-deck.test-support.js";
 import { buildTriggerDescription, ReplayMarkersDialSurface } from "./replay-markers-dial-surface.js";
@@ -354,6 +355,26 @@ describe("ReplayMarkersDialSurface", () => {
     resetEngine();
     vi.unstubAllGlobals();
     vi.useRealTimers();
+  });
+
+  describe("press shapes", () => {
+    let surface: ReplayMarkersDialSurface;
+
+    beforeEach(() => {
+      surface = makeSurface();
+    });
+
+    describePressShapes({
+      dialContext: (id) => dialContext(id),
+      appear: (ctx, d) => appear(surface, ctx, dial(d)),
+      dialShape: (ctx, d) => surface.pressShape(ctx as never, dial(d)),
+      touchShape: (ctx, d, hold) => surface.touchShape(ctx as never, dial(d), hold),
+      gesture: "add",
+      setThresholdMs: (ms) => {
+        mocks.thresholdMs.value = ms;
+      },
+      readsStoredSettings: false,
+    });
   });
 
   describe("rotation", () => {

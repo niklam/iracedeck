@@ -24,7 +24,7 @@ One press action is Stream Deck+ only: Audio Controls' **Push to Talk**. It hold
 
 ## How presses are classified
 
-Push, Long Press, and Push + Turn are all decided **when you release** the dial button, from how long it was held (compared against the Long-press threshold) and whether you turned the dial while holding it. Nothing fires mid-hold, so the three gestures never conflict with one another. On a Mirabox knob there is no release to wait for: every push, however long, and every tap on the screen above it runs the Push action once, the moment you press (see [Mirabox knobs](#mirabox-knobs)).
+Push, Long Press, and Push + Turn are all decided **when you release** the dial button, from how long it was held (compared against the Long-press threshold) and whether you turned the dial while holding it. Nothing fires mid-hold, so the three gestures never conflict with one another. On a Mirabox knob there is no release to wait for: every push, however long, and every tap on the screen above it runs the Push action once, the moment you press (see [Mirabox knobs](#mirabox-knobs)). With [Press Sounds](/docs/features/press-sounds/) on, a short press bleeps once as you let go and a long press bleeps twice the moment it passes the threshold, so you can hear when to release; a knob bleeps once as you push it. A gesture set to None makes no sound.
 
 ## Seeing the outcome before you let go
 

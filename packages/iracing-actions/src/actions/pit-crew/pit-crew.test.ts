@@ -1349,6 +1349,42 @@ describe("PitCrew action", () => {
       expect(hoisted.globalSettingsListeners.size).toBe(before - 1);
     });
   });
+
+  describe("press shape (issue #269)", () => {
+    it.each(["up", "down"] as const)(
+      "makes no sound for a Radar Volume %s step, whose tick is its press sound",
+      (direction) => {
+        const action = new PitCrew();
+
+        expect(action.keyPressShape(buildAppearEvent({ mode: "radar-volume", direction }) as never)).toEqual({
+          kind: "none",
+        });
+      },
+    );
+
+    it.each(["race-engineer", "radar", "corner-names"] as const)(
+      "is a tap for %s, which toggles once on key-down",
+      (mode) => {
+        const action = new PitCrew();
+
+        expect(action.keyPressShape(buildAppearEvent({ mode }) as never)).toEqual({ kind: "tap" });
+      },
+    );
+
+    it("is a tap for a key stored without a mode, which reads as race-engineer", () => {
+      expect(new PitCrew().keyPressShape(buildAppearEvent() as never)).toEqual({ kind: "tap" });
+    });
+
+    it("has no side effects: asking for the shape steps, toggles and ticks nothing", () => {
+      const action = new PitCrew();
+
+      action.keyPressShape(buildAppearEvent({ mode: "radar-volume", direction: "up" }) as never);
+      action.keyPressShape(buildAppearEvent({ mode: "radar" }) as never);
+
+      expect(hoisted.updateGlobalSettings).not.toHaveBeenCalled();
+      expect(hoisted.playOnChannelAtLevel).not.toHaveBeenCalled();
+    });
+  });
 });
 
 describe("generatePitCrewSvg", () => {

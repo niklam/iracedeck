@@ -171,6 +171,10 @@ Directional Actions (increase/decrease, cycle)
 - For +/- actions use values like `Increase`/`Decrease` or `Up`/`Down` depending on context.
 - For cycle actions use `Next`/`Previous`.
 
+### Press sounds (#269)
+
+An action never plays a press sound itself: deck-core's `withPressSounds`, which `plugin-runtime`'s `registerActions` wraps around every handler, owns both press sounds (a single bleep for a tap, a double bleep at the long-press threshold) and their timing. An action with a long press (a `DualPressTracker`, a hold control) or a dial instead declares the synchronous members for the surfaces it needs, each typed to its own event like `onKeyDown` / `onDialDown` / `onTouchTap` and returning deck-core's `PressShape` (`tap`, `hold`, `release` with `short` / `long`, `long`, `none`): `keyPressShape(ev)`, `dialPressShape(ev)`, `touchPressShape(ev)`. A missing one takes that surface's default (a tap on a key and on touch, a release on a dial that never plays the long sound), and none ever asks `isDial()`, since the wrapper already called the member of the surface the press came from. A dial action delegates its dial and touch members to its dial surface, which builds the shape with `dialGestureShape` / `touchGestureShape` from `shared/dial-release.ts`; `none` goes where a sound would mislead (Push to Talk, a volume step that plays the #1455 tick). `actions/press-shape-coverage.test.ts` fails for an action whose Elgato manifest entry declares `Encoder` and has no `dialPressShape`, or whose source constructs a `DualPressTracker` and has no `keyPressShape`.
+
 ## Property Inspector Components
 
 Shared PI components live in `packages/pi-components/src/components/` and are bundled to `pi-components.js` by `packages/pi-components/rollup.config.mjs`.

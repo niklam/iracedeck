@@ -17,6 +17,7 @@ import {
   type IDeckTouchTapEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
+  type PressShape,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
@@ -54,7 +55,12 @@ import {
   telemetryMemoValue,
 } from "../../shared/adjust-styles.js";
 import { RepeatController } from "../../shared/repeat-controller.js";
-import { generateSetupViewSvg, getAdjustmentModeForView, isViewSetting } from "../../shared/setup-view.js";
+import {
+  generateSetupViewSvg,
+  getAdjustmentModeForView,
+  isViewSetting,
+  setupKeyPressShape,
+} from "../../shared/setup-view.js";
 import { DialSettings, seedDialFromLegacySetting, SetupTractionDialSurface } from "./setup-traction-dial-surface.js";
 
 type SetupTractionAdjustSetting = "tc-toggle" | "tc-slot-1" | "tc-slot-2" | "tc-slot-3" | "tc-slot-4";
@@ -438,6 +444,32 @@ export class SetupTraction extends SimIRacingAction<SetupTractionSettings> {
   override async onDialRotate(ev: IDeckDialRotateEvent<SetupTractionSettings>): Promise<void> {
     const settings = this.parseSettings(ev.payload.settings);
     await this.dialSurface.rotate(ev.action, settings.dial, ev.payload.ticks, ev.payload.pressed === true);
+  }
+
+  /**
+   * The press shape of a key press (#269): a View key's from its dual-press
+   * state (`setupKeyPressShape`, from the settings `onKeyDown` reads), every
+   * other key a tap.
+   */
+  keyPressShape(ev: IDeckKeyDownEvent<SetupTractionSettings>): PressShape {
+    return setupKeyPressShape(this.parseSettings(ev.payload.settings));
+  }
+
+  /**
+   * The press shape of a dial press (#269), from the dial surface, which
+   * classifies the release.
+   */
+  dialPressShape(ev: IDeckDialDownEvent<SetupTractionSettings>): PressShape {
+    return this.dialSurface.pressShape(ev.action, this.parseSettings(ev.payload.settings).dial);
+  }
+
+  /** The press shape of a touch on the strip (#269), from the dial surface. */
+  touchPressShape(ev: IDeckTouchTapEvent<SetupTractionSettings>): PressShape {
+    return this.dialSurface.touchShape(
+      ev.action,
+      this.parseSettings(ev.payload.settings).dial,
+      ev.payload.hold === true,
+    );
   }
 
   override async onDialDown(ev: IDeckDialDownEvent<SetupTractionSettings>): Promise<void> {

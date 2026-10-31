@@ -7,6 +7,12 @@
  * no action context, so the sequences live here, callable from BOTH the
  * action (same trigger as before) and the window's `audioPreview` command.
  * One place owns the bus-forcing and in-flight bookkeeping.
+ *
+ * The two press sound kinds (#269) play the single and the double bleep
+ * through the press sound player directly, whatever the Press sound setting
+ * and the sim connection say, at the level a real press plays at: the Test buttons are
+ * there so the driver can hear both before choosing, which is exactly while
+ * the setting is still `none`.
  */
 import { playBackgroundTest, playRadarTest } from "@iracedeck/audio-scenarios/pit-crew";
 import { AudioBus, getAudio } from "@iracedeck/audio-service";
@@ -19,9 +25,10 @@ import {
   readRaceEngineerVolume,
   setRaceEngineerTestInFlight,
 } from "./audio-volume.js";
+import { playPressSound } from "./press-sounds.js";
 import { playRaceEngineerVoiceTest } from "./voice-test.js";
 
-export const AUDIO_PREVIEW_KINDS = ["radar", "voice", "background"] as const;
+export const AUDIO_PREVIEW_KINDS = ["radar", "voice", "background", "press-tap", "press-long"] as const;
 export type AudioPreviewKind = (typeof AUDIO_PREVIEW_KINDS)[number];
 
 /** Type guard for a page-supplied kind (the window sends it as a string). */
@@ -81,5 +88,15 @@ export function runAudioPreview(kind: AudioPreviewKind, logger: ILogger): void {
 
       break;
     }
+
+    case "press-tap":
+      logger.info("Playing press sound test: tap");
+      playPressSound("tap");
+      break;
+
+    case "press-long":
+      logger.info("Playing press sound test: long press");
+      playPressSound("long");
+      break;
   }
 }

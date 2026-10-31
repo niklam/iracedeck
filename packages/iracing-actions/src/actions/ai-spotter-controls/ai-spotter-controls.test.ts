@@ -388,4 +388,34 @@ describe("AiSpotterControls", () => {
       },
     );
   });
+
+  describe("press shape (issue #269)", () => {
+    let action: AiSpotterControls;
+
+    beforeEach(() => {
+      action = new AiSpotterControls();
+    });
+
+    const shapeOf = (settings: Record<string, unknown>) => action.keyPressShape(fakeEvent("action-1", settings) as any);
+
+    it.each(["louder", "quieter"])("makes no sound for a %s step, whose tick is its press sound", (control) => {
+      expect(shapeOf({ control, keyStyle: "legacy" })).toEqual({ kind: "none" });
+      expect(shapeOf({ control, keyStyle: "edge-chevrons" })).toEqual({ kind: "none" });
+    });
+
+    it.each(["damage-report", "weather-report", "toggle-report-laps", "announce-leader", "silence"])(
+      "is a tap for %s, which taps its binding once on key-down",
+      (control) => {
+        expect(shapeOf({ control })).toEqual({ kind: "tap" });
+      },
+    );
+
+    it("has no side effects: asking for the shape sends and ticks nothing", () => {
+      shapeOf({ control: "louder" });
+      shapeOf({ control: "damage-report" });
+
+      expect(mockTapBinding).not.toHaveBeenCalled();
+      expect(tick.playOnChannelAtLevel).not.toHaveBeenCalled();
+    });
+  });
 });

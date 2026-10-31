@@ -12,6 +12,8 @@ import {
   wipersAndVisorAppearance,
   wipersAndVisorBinding,
   type WipersAndVisorCar,
+  wipersAndVisorDown,
+  wipersAndVisorPressShape,
   wipersAndVisorRenderKey,
   wipersAndVisorRequiredBinding,
   WipersOnTapField,
@@ -140,6 +142,56 @@ describe("wipers-and-visor (#1463)", () => {
           expect(wipersAndVisorBinding(car, press, "trigger")).toBeNull();
         }
       }
+    });
+  });
+
+  describe("wipersAndVisorDown (#269)", () => {
+    it("only times a press on a wiper car", () => {
+      for (const car of [wipers, triggerOnly, toggleOnly]) {
+        expect(wipersAndVisorDown(car, "trigger")).toEqual({ kind: "classify" });
+        expect(wipersAndVisorDown(car, "toggle")).toEqual({ kind: "classify" });
+      }
+    });
+
+    it("sends the visor binding at once on a visor car, whatever the swap", () => {
+      expect(wipersAndVisorDown(visor, "trigger")).toEqual({ kind: "send", binding: VISOR });
+      expect(wipersAndVisorDown(visor, "toggle")).toEqual({ kind: "send", binding: VISOR });
+    });
+
+    it("ignores the press on an unknown car or one with neither", () => {
+      expect(wipersAndVisorDown(unknown, "trigger")).toEqual({ kind: "ignore" });
+      expect(wipersAndVisorDown(neither, "trigger")).toEqual({ kind: "ignore" });
+    });
+
+    it("sends exactly what wipersAndVisorBinding sends on key-down", () => {
+      for (const car of [visor, wipers, triggerOnly, toggleOnly, unknown, neither]) {
+        const down = wipersAndVisorDown(car, undefined);
+        const binding = wipersAndVisorBinding(car, "down", undefined);
+
+        expect(down.kind === "send" ? down.binding : null).toBe(binding);
+      }
+    });
+  });
+
+  describe("wipersAndVisorPressShape (#269)", () => {
+    it("is decided at release on a wiper car, both outcomes sounding, at the given threshold", () => {
+      for (const car of [wipers, triggerOnly, toggleOnly]) {
+        expect(wipersAndVisorPressShape(car, "trigger", 640)).toEqual({
+          kind: "release",
+          thresholdMs: 640,
+          short: true,
+          long: true,
+        });
+      }
+    });
+
+    it("is a tap on a visor car", () => {
+      expect(wipersAndVisorPressShape(visor, "toggle", 500)).toEqual({ kind: "tap" });
+    });
+
+    it("makes no sound on a car with neither, or an unknown car", () => {
+      expect(wipersAndVisorPressShape(neither, "trigger", 500)).toEqual({ kind: "none" });
+      expect(wipersAndVisorPressShape(unknown, "trigger", 500)).toEqual({ kind: "none" });
     });
   });
 

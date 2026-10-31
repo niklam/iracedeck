@@ -81,16 +81,17 @@ interface World {
   terminated: ReturnType<typeof createEvent>;
   settingsChanged: ReturnType<typeof createEvent>;
   /** What the readers answer; a test flips these and fires `settingsChanged`. */
-  state: { active: boolean; raceEngineer: boolean; radar: boolean };
+  state: { active: boolean; raceEngineer: boolean; radar: boolean; pressSound: boolean };
   isIRacingActive: ReturnType<typeof vi.fn<() => boolean>>;
   isRaceEngineerEnabled: ReturnType<typeof vi.fn<() => boolean>>;
   isRadarEnabled: ReturnType<typeof vi.fn<() => boolean>>;
+  isPressSoundEnabled: ReturnType<typeof vi.fn<() => boolean>>;
   logger: ILogger;
   deps: AudioSessionHoldDeps;
 }
 
 function createWorld(initial: Partial<World["state"]> = {}): World {
-  const state = { active: false, raceEngineer: false, radar: false, ...initial };
+  const state = { active: false, raceEngineer: false, radar: false, pressSound: false, ...initial };
   const audio = new FakeAudio();
   const started = createEvent();
   const terminated = createEvent();
@@ -98,6 +99,7 @@ function createWorld(initial: Partial<World["state"]> = {}): World {
   const isIRacingActive = vi.fn(() => state.active);
   const isRaceEngineerEnabled = vi.fn(() => state.raceEngineer);
   const isRadarEnabled = vi.fn(() => state.radar);
+  const isPressSoundEnabled = vi.fn(() => state.pressSound);
   const logger = createLogger();
 
   return {
@@ -109,6 +111,7 @@ function createWorld(initial: Partial<World["state"]> = {}): World {
     isIRacingActive,
     isRaceEngineerEnabled,
     isRadarEnabled,
+    isPressSoundEnabled,
     logger,
     deps: {
       audio,
@@ -117,6 +120,7 @@ function createWorld(initial: Partial<World["state"]> = {}): World {
       isIRacingActive,
       isRaceEngineerEnabled,
       isRadarEnabled,
+      isPressSoundEnabled,
       onGlobalSettingsChange: settingsChanged.subscribe,
       logger,
     },
@@ -143,7 +147,7 @@ describe("startAudioSessionHold (#1347)", () => {
       expect(world.audio.reasons.has("iracing-session")).toBe(true);
     });
 
-    it("takes no hold when iRacing starts with both gates off", () => {
+    it("takes no hold when iRacing starts with every gate off", () => {
       const world = createWorld();
       startAudioSessionHold(world.deps);
 
@@ -155,6 +159,7 @@ describe("startAudioSessionHold (#1347)", () => {
     it.each([
       ["the Race Engineer", { raceEngineer: true, radar: false }],
       ["the Radar", { raceEngineer: false, radar: true }],
+      ["the press sound", { raceEngineer: false, radar: false, pressSound: true }],
     ])("%s gate alone is enough", (_name, gates) => {
       const world = createWorld(gates);
       startAudioSessionHold(world.deps);
@@ -287,11 +292,48 @@ describe("startAudioSessionHold (#1347)", () => {
       startAudioSessionHold(world.deps);
 
       world.state.raceEngineer = true;
+      world.state.pressSound = true;
       world.settingsChanged.fire();
 
       expect(world.audio.calls).toEqual([]);
       expect(world.isRaceEngineerEnabled).not.toHaveBeenCalled();
       expect(world.isRadarEnabled).not.toHaveBeenCalled();
+      expect(world.isPressSoundEnabled).not.toHaveBeenCalled();
+    });
+
+    it("with both master gates off, takes the hold for press sounds while iRacing runs and releases it at none (#269)", () => {
+      const world = createWorld();
+      startAudioSessionHold(world.deps);
+      world.started.fire();
+      expect(world.audio.calls).toEqual([]);
+
+      // The Press sound setting moves off `none`.
+      world.state.pressSound = true;
+      world.settingsChanged.fire();
+      expect(world.audio.calls).toEqual([HOLD]);
+
+      // A write that leaves it on changes nothing.
+      world.settingsChanged.fire();
+      expect(world.audio.calls).toEqual([HOLD]);
+
+      // Back to `none`.
+      world.state.pressSound = false;
+      world.settingsChanged.fire();
+      expect(world.audio.calls).toEqual([HOLD, RELEASE]);
+      expect(world.audio.reasons.size).toBe(0);
+    });
+
+    it("keeps the hold while press sounds stay on and the last master gate turns off (#269)", () => {
+      const world = createWorld({ active: true, radar: true, pressSound: true });
+      startAudioSessionHold(world.deps);
+      expect(world.audio.calls).toEqual([HOLD]);
+
+      world.state.radar = false;
+      world.settingsChanged.fire();
+      expect(world.audio.calls).toEqual([HOLD]);
+
+      world.terminated.fire();
+      expect(world.audio.calls).toEqual([HOLD, RELEASE]);
     });
 
     it("takes the hold at the next start for a gate turned on while iRacing was closed", () => {

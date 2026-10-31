@@ -2,6 +2,7 @@ import {
   assembleIcon,
   CommonSettings,
   ConnectionStateAwareAction,
+  getDualPressThresholdMs,
   getGlobalBorderSettings,
   getGlobalGraphicSettings,
   getGlobalTitleSettings,
@@ -14,6 +15,7 @@ import {
   type IDeckTouchTapEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
+  type PressShape,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
@@ -296,6 +298,36 @@ export class SplitsDeltaCycle extends ConnectionStateAwareAction<SplitsDeltaCycl
   override async onDialRotate(ev: IDeckDialRotateEvent<SplitsDeltaCycleSettings>): Promise<void> {
     const settings = this.parseSettings(ev.payload.settings);
     await this.dialSurface.rotate(ev.action, settings.dial, ev.payload.ticks, ev.payload.pressed === true);
+  }
+
+  /**
+   * The press shape of a key press (#269): a `HOLD_MODES` key (Active Reset
+   * Run) presses its binding on down and releases it on up, so it is `hold` at
+   * the dual-press threshold (Car Control's rule for a finger-held control);
+   * every other key acts on key down, a tap. The dial taps Active Reset Run
+   * momentarily, so it stays a release there ({@link dialPressShape}).
+   */
+  keyPressShape(ev: IDeckKeyDownEvent<SplitsDeltaCycleSettings>): PressShape {
+    const settings = this.parseSettings(ev.payload.settings);
+
+    return HOLD_MODES.has(settings.mode) ? { kind: "hold", thresholdMs: getDualPressThresholdMs() } : { kind: "tap" };
+  }
+
+  /**
+   * The press shape of a dial press (#269), from the dial surface, which
+   * classifies the release.
+   */
+  dialPressShape(ev: IDeckDialDownEvent<SplitsDeltaCycleSettings>): PressShape {
+    return this.dialSurface.pressShape(ev.action, this.parseSettings(ev.payload.settings).dial);
+  }
+
+  /** The press shape of a touch on the strip (#269), from the dial surface. */
+  touchPressShape(ev: IDeckTouchTapEvent<SplitsDeltaCycleSettings>): PressShape {
+    return this.dialSurface.touchShape(
+      ev.action,
+      this.parseSettings(ev.payload.settings).dial,
+      ev.payload.hold === true,
+    );
   }
 
   override async onDialDown(ev: IDeckDialDownEvent<SplitsDeltaCycleSettings>): Promise<void> {

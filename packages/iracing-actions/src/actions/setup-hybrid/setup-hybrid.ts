@@ -17,6 +17,7 @@ import {
   type IDeckTouchTapEvent,
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
+  type PressShape,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
@@ -47,7 +48,12 @@ import {
   telemetryMemoValue,
 } from "../../shared/adjust-styles.js";
 import { RepeatController } from "../../shared/repeat-controller.js";
-import { generateSetupViewSvg, getAdjustmentModeForView, isViewSetting } from "../../shared/setup-view.js";
+import {
+  generateSetupViewSvg,
+  getAdjustmentModeForView,
+  isViewSetting,
+  setupKeyPressShape,
+} from "../../shared/setup-view.js";
 import { DialSettings, seedDialFromLegacySetting, SetupHybridDialSurface } from "./setup-hybrid-dial-surface.js";
 
 type SetupHybridAdjustSetting =
@@ -419,6 +425,45 @@ export class SetupHybrid extends SimIRacingAction<SetupHybridSettings> {
   override async onDialRotate(ev: IDeckDialRotateEvent<SetupHybridSettings>): Promise<void> {
     const settings = this.parseSettings(ev.payload.settings);
     await this.dialSurface.rotate(ev.action, settings.dial, ev.payload.ticks, ev.payload.pressed === true);
+  }
+
+  /**
+   * The press shape of a dial press (#269), from the dial surface, which
+   * classifies the release.
+   */
+  dialPressShape(ev: IDeckDialDownEvent<SetupHybridSettings>): PressShape {
+    return this.dialSurface.pressShape(ev.action, this.parseSettings(ev.payload.settings).dial);
+  }
+
+  /** The press shape of a touch on the strip (#269), from the dial surface. */
+  touchPressShape(ev: IDeckTouchTapEvent<SetupHybridSettings>): PressShape {
+    return this.dialSurface.touchShape(
+      ev.action,
+      this.parseSettings(ev.payload.settings).dial,
+      ev.payload.hold === true,
+    );
+  }
+
+  /**
+   * The press shape of a key press (#269), from the same branches `onKeyDown`
+   * takes: a `HOLD_CONTROLS` key (Boost, Regen) presses its binding on down
+   * and releases it on up, so it is `hold` at the dual-press threshold (Car
+   * Control's rule for a finger-held control) — or `none` when the key has no
+   * global-key mapping, since `onKeyDown` then does nothing (unreachable for
+   * Boost and Regen today, which are always mapped); a View key's comes from its
+   * dual-press state (`setupKeyPressShape`), and every other key is a tap.
+   */
+  keyPressShape(ev: IDeckKeyDownEvent<SetupHybridSettings>): PressShape {
+    const settings = this.parseSettings(ev.payload.settings);
+    const adjustSetting = settings.setting as SetupHybridAdjustSetting;
+
+    if (!isViewSetting(settings.setting) && HOLD_CONTROLS.has(adjustSetting)) {
+      return this.resolveGlobalKey(adjustSetting, "increase")
+        ? { kind: "hold", thresholdMs: getDualPressThresholdMs() }
+        : { kind: "none" };
+    }
+
+    return setupKeyPressShape(settings);
   }
 
   override async onDialDown(ev: IDeckDialDownEvent<SetupHybridSettings>): Promise<void> {

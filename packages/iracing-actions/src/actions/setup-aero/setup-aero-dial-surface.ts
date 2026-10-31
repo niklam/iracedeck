@@ -16,6 +16,7 @@ import {
   type DeckTriggerDescription,
   getDualPressThresholdMs,
   type IDeckActionContext,
+  type PressShape,
   svgToDataUri,
 } from "@iracedeck/deck-core";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
@@ -25,7 +26,7 @@ import z from "zod";
 import { dialAppearanceFields, renderDialBox, resolveDialBoxColors } from "../../shared/dial-box.js";
 import { type DialInputEvent, hasDialInputContext } from "../../shared/dial-context.js";
 import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
-import { classifyDialReleaseForHost } from "../../shared/dial-release.js";
+import { classifyDialReleaseForHost, dialGestureShape, touchGestureShape } from "../../shared/dial-release.js";
 import { formatViewValue, type ViewSettingId } from "../../shared/setup-view.js";
 
 const CHANGE_RENDER_MIN_INTERVAL_MS = 100;
@@ -209,6 +210,28 @@ export class SetupAeroDialSurface {
 
     const direction: SetupAeroDirection = ticks > 0 ? "increase" : "decrease";
     await this.dispatchRotation(ctx, direction);
+  }
+
+  /**
+   * The press shape of a dial press (#269): released, with the gestures the
+   * release fires and the threshold it classifies with, or `none` when no
+   * context would take the press. `down` and `touchTap` refresh the context from these settings, so they are the ones the release and the touch read.
+   */
+  pressShape(action: IDeckActionContext, dial: DialSettings): PressShape {
+    if (!this.contextsState.has(action.id)) return { kind: "none" };
+
+    return dialGestureShape({
+      pressGesture: dial.pressAction,
+      longPressGesture: dial.longPressAction,
+      thresholdMs: getDualPressThresholdMs(),
+    });
+  }
+
+  /** The press shape of a touch (#269): the slot `touchTap` fires for it, or `none`. */
+  touchShape(action: IDeckActionContext, dial: DialSettings, hold: boolean): PressShape {
+    if (!this.contextsState.has(action.id)) return { kind: "none" };
+
+    return touchGestureShape({ tapGesture: dial.tapAction, longTouchGesture: dial.longTouchAction, hold });
   }
 
   down(action: IDeckActionContext, dial: DialSettings): void {

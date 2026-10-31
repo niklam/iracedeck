@@ -769,4 +769,64 @@ describe("AudioControls", () => {
       expect(tick.playOnChannelAtLevel).not.toHaveBeenCalled();
     });
   });
+
+  // The dial's shapes are in audio-dial-surface.test.ts, which parses the `dial` block with real zod.
+  describe("press shape (issue #269), keypad", () => {
+    let action: AudioControls;
+
+    beforeEach(() => {
+      action = new AudioControls();
+    });
+
+    const shapeOf = (settings: Record<string, unknown>) => action.keyPressShape(fakeEvent("action-1", settings) as any);
+
+    it("makes no sound for Push to Talk, which opens the microphone", () => {
+      expect(shapeOf({ category: "push-to-talk" })).toEqual({ kind: "none" });
+    });
+
+    it.each([
+      ["voice-chat", "volume-up"],
+      ["voice-chat", "volume-down"],
+      ["master", "volume-up"],
+      ["master", "volume-down"],
+      ["race-engineer", "volume-up"],
+      ["race-engineer", "volume-down"],
+      ["radar", "volume-up"],
+      ["radar", "volume-down"],
+    ])("makes no sound for a %s %s step, whose tick is its press sound", (category, act) => {
+      expect(shapeOf({ category, action: act, keyStyle: "legacy" })).toEqual({ kind: "none" });
+      expect(shapeOf({ category, action: act, keyStyle: "edge-chevrons" })).toEqual({ kind: "none" });
+    });
+
+    it.each([
+      ["voice-chat", "mute"],
+      ["voice-chat", "mute-driver"],
+    ])("is a tap for %s %s, which acts once on key-down", (category, act) => {
+      expect(shapeOf({ category, action: act })).toEqual({ kind: "tap" });
+    });
+
+    it.each([
+      ["race-engineer", "mute"],
+      ["radar", "mute-driver"],
+      ["master", "mute"],
+      ["master", "mute-driver"],
+    ])("makes no sound for %s %s, a pair the key cannot fire (#1196)", async (category, act) => {
+      expect(shapeOf({ category, action: act })).toEqual({ kind: "none" });
+
+      // The press it describes does nothing.
+      await action.onKeyDown(fakeEvent("action-1", { category, action: act }) as any);
+      expect(mockTapBinding).not.toHaveBeenCalled();
+      expect(mockHoldBinding).not.toHaveBeenCalled();
+    });
+
+    it("has no side effects: asking for the shape sends and ticks nothing", () => {
+      shapeOf({ category: "push-to-talk" });
+      shapeOf({ category: "voice-chat", action: "volume-up" });
+      shapeOf({ category: "voice-chat", action: "mute" });
+
+      expect(mockTapBinding).not.toHaveBeenCalled();
+      expect(mockHoldBinding).not.toHaveBeenCalled();
+      expect(tick.playOnChannelAtLevel).not.toHaveBeenCalled();
+    });
+  });
 });

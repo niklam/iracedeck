@@ -63,6 +63,9 @@ export {
   type AudioSessionHoldDeps,
 } from "./audio/audio-session-hold.js";
 export { isRaceEngineerEnabled, isRadarEnabled, stopRaceEngineerPlayback } from "./audio/audio-volume.js";
+// The press sound player (#269): the `play` delegate `plugin-runtime`'s
+// registerActions hands deck-core's initPressSounds.
+export { PRESS_SOUND_CLIPS, playPressSound } from "./audio/press-sounds.js";
 export { CAR_CYCLE_BINDING_DEFAULTS } from "./shared/car-cycle-bindings.js";
 // The replay busy indicator (#1437) has no registration entry point of its
 // own, so the composition root sets its logger once, before the replay

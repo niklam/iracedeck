@@ -1,5 +1,6 @@
 import type { ReplayJumpPlayback } from "@iracedeck/app-constants";
 import { assembleIcon, busyMarkSvg, resolveIconColors, resolveTitleSettings } from "@iracedeck/deck-core";
+import type { PressShape } from "@iracedeck/deck-core";
 import {
   getAllCarNumbers,
   getCarNumberFromSessionInfo,
@@ -53,6 +54,7 @@ import {
 import { getGlobalSettings } from "@iracedeck/settings";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
+import { describePressShapeRouting } from "../../shared/press-shape.test-support.js";
 import { engineOverDeck, replayControlScopeOn } from "../../shared/replay-engine-deck.test-support.js";
 import { ReplayControlDialSettings } from "./replay-control-dial-settings.js";
 import type { ReplayControlDialHost } from "./replay-control-dial-surface.js";
@@ -176,6 +178,8 @@ const dialSurface = vi.hoisted(() => ({
   up: vi.fn(async (_actionId: string) => {}),
   touchTap: vi.fn((_action: unknown, _dial: unknown, _hold: boolean) => {}),
   onTick: vi.fn((_actionId: string, _tick: unknown) => {}),
+  pressShape: vi.fn((_action: unknown, _dial: unknown): PressShape => ({ kind: "none" })),
+  touchShape: vi.fn((_action: unknown, _dial: unknown, _hold: boolean): PressShape => ({ kind: "none" })),
 }));
 
 vi.mock("./replay-control-dial-surface.js", () => ({
@@ -188,6 +192,8 @@ vi.mock("./replay-control-dial-surface.js", () => ({
     up = dialSurface.up;
     touchTap = dialSurface.touchTap;
     onTick = dialSurface.onTick;
+    pressShape = dialSurface.pressShape;
+    touchShape = dialSurface.touchShape;
 
     constructor(host: ReplayControlDialHost) {
       dialSurface.host = host;
@@ -4239,4 +4245,8 @@ describe("ReplayControl", () => {
       });
     });
   });
+});
+
+describe("ReplayControl press shape", () => {
+  describePressShapeRouting(() => new ReplayControl(), { dial: { pressAction: "jump-to-live" } });
 });

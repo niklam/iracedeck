@@ -15,8 +15,10 @@ import {
   type ColorSlots,
   generateBorderParts,
   generateTitleText,
+  getDualPressThresholdMs,
   getGlobalBorderSettings,
   getGlobalTitleSettings,
+  type PressShape,
   renderIconTemplate,
   resolveBorderSettings,
   type ResolvedTitleSettings,
@@ -449,6 +451,24 @@ const VIEW_IDS: ReadonlySet<string> = new Set(Object.keys(VIEW_DEFS));
 /** Type guard: is `id` a known View setting? Used to gate rendering and press handlers. */
 export function isViewSetting(id: string): id is ViewSettingId {
   return VIEW_IDS.has(id);
+}
+
+/**
+ * The press shape of a setup action's key (#269), from the settings its
+ * `onKeyDown` and `onKeyUp` read. A View sub-mode with dual-press on is decided
+ * at release — a short press steps one way and a long press the other, both
+ * at `getDualPressThresholdMs()`, the threshold `DualPressTracker` resolves
+ * against. With dual-press off a View key is read-only and ignores the press,
+ * so it makes no sound. Every other mode acts on key down (`tap`); a
+ * hold-to-repeat key's steps are their own feedback, so it never plays the
+ * long sound.
+ */
+export function setupKeyPressShape(settings: { setting: string; dualPressEnabled: boolean }): PressShape {
+  if (!isViewSetting(settings.setting)) return { kind: "tap" };
+
+  if (!settings.dualPressEnabled || getAdjustmentModeForView(settings.setting) === undefined) return { kind: "none" };
+
+  return { kind: "release", thresholdMs: getDualPressThresholdMs(), short: true, long: true };
 }
 
 /**

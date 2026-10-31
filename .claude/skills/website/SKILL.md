@@ -60,6 +60,7 @@ src/content/docs/
     │   ├── key-bindings.md
     │   ├── stream-deck-profiles.md
     │   ├── dials.md
+    │   ├── press-sounds.md
     │   ├── race-engineer-voices.md
     │   ├── flags-overlay.md
     │   ├── focus-iracing-window.md

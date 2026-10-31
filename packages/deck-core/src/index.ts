@@ -21,6 +21,7 @@ export type {
   IDeckTouchTapEvent,
   IDeckWillAppearEvent,
   IDeckWillDisappearEvent,
+  PressShape,
 } from "./types.js";
 
 // Encoder touch-strip feedback types (platform-agnostic)
@@ -284,6 +285,19 @@ export {
   getDualPressThresholdMs,
   getDualPressDirections,
 } from "./dual-press.js";
+
+// Press sounds: the wrapper every registered handler goes through (issue #269)
+export {
+  _resetPressSounds,
+  DEFAULT_DIAL_PRESS_SHAPE,
+  DEFAULT_KEY_PRESS_SHAPE,
+  getPressSoundMode,
+  initPressSounds,
+  type PressSound,
+  type PressSoundPlayer,
+  type PressSoundsDeps,
+  withPressSounds,
+} from "./press-sounds.js";
 
 // Plugin config singleton
 export {

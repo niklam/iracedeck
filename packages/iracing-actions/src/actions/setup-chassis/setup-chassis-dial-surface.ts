@@ -21,6 +21,7 @@ import {
   type IDeckActionContext,
   isSimHubReachable,
   NOOP_HOLD_PREVIEW,
+  type PressShape,
   svgToDataUri,
 } from "@iracedeck/deck-core";
 import type { TelemetryData } from "@iracedeck/iracing-sdk";
@@ -33,7 +34,7 @@ import { type DialInputEvent, hasDialInputContext } from "../../shared/dial-cont
 import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
 import { persistDialPatch } from "../../shared/dial-persist.js";
 import type { DialPendingPreview } from "../../shared/dial-preview.js";
-import { classifyDialReleaseForHost } from "../../shared/dial-release.js";
+import { classifyDialReleaseForHost, dialGestureShape, touchGestureShape } from "../../shared/dial-release.js";
 import {
   formatViewValue,
   type UnitsPreference,
@@ -415,6 +416,32 @@ export class SetupChassisDialSurface {
 
     const direction: SetupChassisDirection = ticks > 0 ? "increase" : "decrease";
     await this.dispatchRotation(ctx, direction);
+  }
+
+  /**
+   * The press shape of a dial press (#269): released, with the gestures the
+   * release fires and the threshold it classifies with, or `none` when no
+   * context would take the press. Read from the context, not the event: an input event does not refresh this surface's settings, so the release and the touch read the stored ones.
+   */
+  pressShape(action: IDeckActionContext, _dial: DialSettings): PressShape {
+    const ctx = this.contextsState.get(action.id);
+
+    if (!ctx) return { kind: "none" };
+
+    return dialGestureShape({
+      pressGesture: ctx.dial.pressAction,
+      longPressGesture: ctx.dial.longPressAction,
+      thresholdMs: getDualPressThresholdMs(),
+    });
+  }
+
+  /** The press shape of a touch (#269): the slot `touchTap` fires for it, or `none`. */
+  touchShape(action: IDeckActionContext, _dial: DialSettings, hold: boolean): PressShape {
+    const ctx = this.contextsState.get(action.id);
+
+    if (!ctx) return { kind: "none" };
+
+    return touchGestureShape({ tapGesture: ctx.dial.tapAction, longTouchGesture: ctx.dial.longTouchAction, hold });
   }
 
   down(action: IDeckActionContext, dial: DialSettings): void {

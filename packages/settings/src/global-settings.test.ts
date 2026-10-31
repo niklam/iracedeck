@@ -1,6 +1,7 @@
 import {
   CHANGELOG_NOTIFICATION_POLICIES,
   PI_WARNINGS_KEY,
+  PRESS_SOUND_MODES,
   PROFILE_AUTO_SWITCH_ENABLED_KEY,
   PROFILE_FOR_SESSION_KIND_KEYS,
   PROFILE_SWITCH_SESSION_KINDS,
@@ -878,6 +879,33 @@ describe("dualPressDirections (issue #540)", () => {
   it("falls back to the default on unknown enum values instead of aborting the parse (issue #896)", () => {
     const parsed = GlobalSettingsSchema.parse({ dualPressDirections: "tap-toggles" }) as Record<string, unknown>;
     expect(parsed.dualPressDirections).toBe("tap-increases");
+  });
+});
+
+describe("pressSound (issue #269)", () => {
+  it("defaults to none when not specified", () => {
+    const parsed = GlobalSettingsSchema.parse({}) as Record<string, unknown>;
+    expect(parsed.pressSound).toBe("none");
+  });
+
+  it.each(PRESS_SOUND_MODES)("accepts %s", (mode) => {
+    const parsed = GlobalSettingsSchema.parse({ pressSound: mode }) as Record<string, unknown>;
+    expect(parsed.pressSound).toBe(mode);
+  });
+
+  it("reads an unknown or malformed value as none without dropping any other key (issue #896)", () => {
+    for (const value of ["clicks", "BOTH", "", 1, true, null, ["taps"], { mode: "taps" }]) {
+      const parsed = GlobalSettingsSchema.parse({
+        pressSound: value,
+        driverName: "nick",
+        dualPressThresholdMs: 700,
+        changelogNotification: "always",
+      }) as Record<string, unknown>;
+      expect(parsed.pressSound).toBe("none");
+      expect(parsed.driverName).toBe("nick");
+      expect(parsed.dualPressThresholdMs).toBe(700);
+      expect(parsed.changelogNotification).toBe("always");
+    }
   });
 });
 

@@ -1,0 +1,26 @@
+<%#
+  Common settings — Press Sounds (issue #269). Emits items only; settings window only.
+  The option values are PRESS_SOUND_MODES in @iracedeck/app-constants (press-sound.ts)
+  and the default is DEFAULT_PRESS_SOUND_MODE — pinned by press-sounds-partial.test.ts.
+  The Test buttons go through runAudioPreview (iracing-actions/src/audio/audio-previews.ts),
+  which owns the allow-list of preview kinds.
+%>
+<sdpi-item label="Press sound">
+  <sdpi-select setting="pressSound" default="none" global>
+    <option value="none">No sound</option>
+    <option value="taps">Taps</option>
+    <option value="long-press">Long-press</option>
+    <option value="both">Both</option>
+  </sdpi-select>
+</sdpi-item>
+<div class="ird-supporting-text">
+  A single bleep confirms a tap, and a double bleep tells you a held key or dial has
+  reached the long-press threshold set in Dual-Press. Sounds play only while iRacing
+  is connected.
+</div>
+<sdpi-item label="Preview">
+  <div style="display:flex;align-items:center;gap:8px;">
+    <ird-audio-test preview="press-tap" label="Test tap"></ird-audio-test>
+    <ird-audio-test preview="press-long" label="Test long press"></ird-audio-test>
+  </div>
+</sdpi-item>

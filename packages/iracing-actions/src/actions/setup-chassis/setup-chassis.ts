@@ -18,6 +18,7 @@ import {
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
   isSimHubReachable,
+  type PressShape,
   resolveBorderSettings,
   resolveGraphicSettings,
   resolveIconColors,
@@ -70,6 +71,7 @@ import {
   generateSetupViewSvg,
   getAdjustmentModeForView,
   isViewSetting,
+  setupKeyPressShape,
   withUnitsPreference,
 } from "../../shared/setup-view.js";
 import { DialSettings, seedDialFromLegacySetting, SetupChassisDialSurface } from "./setup-chassis-dial-surface.js";
@@ -597,6 +599,32 @@ export class SetupChassis extends SimIRacingAction<SetupChassisSettings> {
   override async onDialRotate(ev: IDeckDialRotateEvent<SetupChassisSettings>): Promise<void> {
     const settings = this.parseSettings(ev.payload.settings);
     await this.dialSurface.rotate(ev.action, settings.dial, ev.payload.ticks, ev.payload.pressed === true);
+  }
+
+  /**
+   * The press shape of a key press (#269): a View key's from its dual-press
+   * state (`setupKeyPressShape`, from the settings `onKeyDown` reads), every
+   * other key a tap.
+   */
+  keyPressShape(ev: IDeckKeyDownEvent<SetupChassisSettings>): PressShape {
+    return setupKeyPressShape(this.parseSettings(ev.payload.settings));
+  }
+
+  /**
+   * The press shape of a dial press (#269), from the dial surface, which
+   * classifies the release.
+   */
+  dialPressShape(ev: IDeckDialDownEvent<SetupChassisSettings>): PressShape {
+    return this.dialSurface.pressShape(ev.action, this.parseSettings(ev.payload.settings).dial);
+  }
+
+  /** The press shape of a touch on the strip (#269), from the dial surface. */
+  touchPressShape(ev: IDeckTouchTapEvent<SetupChassisSettings>): PressShape {
+    return this.dialSurface.touchShape(
+      ev.action,
+      this.parseSettings(ev.payload.settings).dial,
+      ev.payload.hold === true,
+    );
   }
 
   override async onDialDown(ev: IDeckDialDownEvent<SetupChassisSettings>): Promise<void> {

@@ -32,6 +32,7 @@ import type { ReplaySessionStore } from "@iracedeck/replay-store";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { labelClearsSideMarks } from "../../shared/dial-label-fit.js";
+import { describePressShapes } from "../../shared/press-shape.test-support.js";
 import { registerReplayBusySurface, type ReplayBusyLook } from "../../shared/replay-busy-indicator.js";
 import { engineOverDeck } from "../../shared/replay-engine-deck.test-support.js";
 import { carNumberMode, racePositionMode } from "./replay-control-camera-car-modes.js";
@@ -407,6 +408,35 @@ describe("ReplayControlDialSurface", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.useRealTimers();
+  });
+
+  describe("press shapes", () => {
+    let surface: ReplayControlDialSurface;
+
+    beforeEach(() => {
+      surface = makeSurface();
+    });
+
+    describePressShapes({
+      dialContext: (id) => dialContext(id),
+      appear: (ctx, d) => appear(surface, ctx, dial(d)),
+      dialShape: (ctx, d) => surface.pressShape(ctx as never, dial(d)),
+      touchShape: (ctx, d, hold) => surface.touchShape(ctx as never, dial(d), hold),
+      gesture: "jump-to-live",
+      setThresholdMs: (ms) => {
+        mocks.thresholdMs.value = ms;
+      },
+      readsStoredSettings: false,
+    });
+
+    it("resolves Mode default as the release does, to a gesture that acts", async () => {
+      const ctx = dialContext("ps-mode-default");
+      const d = dial({ mode: "track-order", pressAction: "mode-default", longPressAction: "mode-default" });
+      await appear(surface, ctx, d);
+
+      expect(surface.pressShape(ctx as never, d)).toMatchObject({ kind: "release", short: true, long: true });
+      expect(surface.touchShape(ctx as never, dial({ tapAction: "mode-default" }), false)).toEqual({ kind: "tap" });
+    });
   });
 
   describe("rotation (Speed Control)", () => {

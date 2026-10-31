@@ -16,6 +16,7 @@ import {
   type IDeckWillAppearEvent,
   type IDeckWillDisappearEvent,
   parseSvgViewBox,
+  type PressShape,
   renderIconTemplate,
   requestProfileSwitch,
   resolveBorderSettings,
@@ -955,6 +956,23 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
   override async onDialRotate(ev: IDeckDialRotateEvent<CameraControlsSettings>): Promise<void> {
     const settings = this.parseSettings(ev.payload.settings);
     this.dialSurface.rotate(ev.action, settings.dial, ev.payload.ticks, ev.payload.pressed === true);
+  }
+
+  /**
+   * The press shape of a dial press (#269), from the dial surface, which
+   * classifies the release.
+   */
+  dialPressShape(ev: IDeckDialDownEvent<CameraControlsSettings>): PressShape {
+    return this.dialSurface.pressShape(ev.action, this.parseSettings(ev.payload.settings).dial);
+  }
+
+  /** The press shape of a touch on the strip (#269), from the dial surface. */
+  touchPressShape(ev: IDeckTouchTapEvent<CameraControlsSettings>): PressShape {
+    return this.dialSurface.touchShape(
+      ev.action,
+      this.parseSettings(ev.payload.settings).dial,
+      ev.payload.hold === true,
+    );
   }
 
   override async onDialDown(ev: IDeckDialDownEvent<CameraControlsSettings>): Promise<void> {

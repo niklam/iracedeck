@@ -10,6 +10,7 @@ import {
 import { withSteppedReplayState } from "@iracedeck/replay-engine/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { describePressShapeRouting } from "../../shared/press-shape.test-support.js";
 import { engineOverDeck } from "../../shared/replay-engine-deck.test-support.js";
 import { REPLAY_EXIT_GRACE_MS } from "./replay-markers-ops.js";
 import {
@@ -2109,3 +2110,7 @@ function expectUntouched(action: ReplayMarkers): void {
   expect(mocks.setPlaySpeed).not.toHaveBeenCalled();
   expect(action["updateKeyImage"]).not.toHaveBeenCalled();
 }
+
+describe("ReplayMarkers press shape", () => {
+  describePressShapeRouting(() => makeAction().action, { dial: { pressAction: "add" } });
+});

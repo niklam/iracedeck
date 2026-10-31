@@ -155,7 +155,7 @@ flowchart TB
   classDef adp fill:#16a085,color:#fff,stroke:#0e6f5c;
 ```
 
-The render path is fully abstracted: `iracing-actions` hands a finished icon — an SVG data URI — to `deck-core`, and whichever adapter is loaded paints it on the real hardware. The icon crosses SEAM 2 unchanged, still as SVG; inside each adapter's context implementation (`setImage`, Elgato's `setFeedback`, and `setDialCanvas` for a dial's own screen), `deck-core`'s rasterizer service converts it to PNG in-plugin (`@iracedeck/rasterizer`, wrapping `@resvg/resvg-js`, via the render function the plugin injected at startup) and sends the device pixels rather than an SVG string, so every key and dial looks identical regardless of which host's own SVG engine it's running on. The command path has three mechanisms — the SDK broadcast (`getCommands()`, from `deck-iracing`, since commands are iRacing's vocabulary and not part of `deck-core`) is preferred, native keyboard injection (`getKeyboard()`) covers what the SDK can't, and chat macros cover the rest.
+The render path is fully abstracted: `iracing-actions` hands a finished icon — an SVG data URI — to `deck-core`, and whichever adapter is loaded paints it on the real hardware. The icon crosses SEAM 2 unchanged, still as SVG; inside each adapter's context implementation (`setImage`, Elgato's `setFeedback`, and `setDialCanvas` for a dial's own screen), `deck-core`'s rasterizer service converts it to PNG in-plugin (`@iracedeck/rasterizer`, wrapping `@resvg/resvg-js`, via the render function the plugin injected at startup) and sends the device pixels rather than an SVG string, so every key and dial looks identical regardless of which host's own SVG engine it's running on. The command path has three mechanisms — the SDK broadcast (`getCommands()`, from `deck-iracing`, since commands are iRacing's vocabulary and not part of `deck-core`) is preferred, native keyboard injection (`getKeyboard()`) covers what the SDK can't, and chat macros cover the rest. Every press reaches its action through one `deck-core` wrapper first (#269): `registerActions` wraps each handler in `withPressSounds`, the action only declares the shape of its press, one member per surface (`keyPressShape`, `dialPressShape`, `touchPressShape` — a tap, a hold, a press decided at release), and the wrapper decides when it plays the tap or the long-press sound, playing through a player `iracing-actions` injects, so `deck-core` stays audio-free.
 
 ### The settings path (the settings window and the Property Inspectors)
 
@@ -295,7 +295,7 @@ flowchart TB
   p6["6 · initRaceEngineer<br/>scenario engine + race-engineer-wiring"]:::audio
   p7["7 · initSettings<br/>settings store · settings window · store-ready block"]:::core
   p8["8 · initReplay<br/>replay engine · replay store"]:::core
-  p9["9 · registerActions<br/>shared list + the extension's extras"]:::core
+  p9["9 · registerActions<br/>shared list + the extension's extras<br/>each wrapped for press sounds"]:::core
   p10["10 · startServices<br/>global settings · launch step · SimHub · app monitor"]:::core
   p11(["11 · adapter.connect()<br/>IDeckPlatformAdapter — SEAM 2"]):::seam
   bus(["event-bus<br/>SEAM 1"]):::seam

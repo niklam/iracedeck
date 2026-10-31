@@ -23,6 +23,7 @@ import {
   type HoldPreview,
   type IDeckActionContext,
   NOOP_HOLD_PREVIEW,
+  type PressShape,
   resolvePairedAction,
   svgToDataUri,
 } from "@iracedeck/deck-core";
@@ -45,7 +46,7 @@ import { KNOB_BOX_HEIGHT, KNOB_BOX_WIDTH } from "../../shared/dial-knob-box.js";
 import { pushDialNameIcon } from "../../shared/dial-name-icon.js";
 import { persistDialPatch } from "../../shared/dial-persist.js";
 import { type DialPendingPreview, renderPendingBar } from "../../shared/dial-preview.js";
-import { classifyDialReleaseForHost } from "../../shared/dial-release.js";
+import { classifyDialReleaseForHost, dialGestureShape, touchGestureShape } from "../../shared/dial-release.js";
 import type { FuelPipeline } from "./fuel-pipeline.js";
 import {
   type DialGestureSlot,
@@ -1111,6 +1112,36 @@ export class FuelDialSurface {
     // can't exceed the ≤10 setFeedback/sec/dial cap — flushSend issues the
     // broadcast + feedback at the window edges, so nothing renders per-event.
     this.scheduleSend(ctx);
+  }
+
+  /**
+   * The press shape of a dial press (#269): released, with the gestures the
+   * release fires and the threshold it classifies with, or `none` when no
+   * context would take the press. Read from the context, not the event: an input event does not refresh this surface's settings, so the release and the touch read the stored ones.
+   */
+  pressShape(action: IDeckActionContext, _settings: FuelServiceSettings): PressShape {
+    const ctx = this.contextsState.get(action.id);
+
+    if (!ctx) return { kind: "none" };
+
+    return dialGestureShape({
+      pressGesture: ctx.settings.dial.pressAction,
+      longPressGesture: ctx.settings.dial.longPressAction,
+      thresholdMs: getDualPressThresholdMs(),
+    });
+  }
+
+  /** The press shape of a touch (#269): the slot `touchTap` fires for it, or `none`. */
+  touchShape(action: IDeckActionContext, _settings: FuelServiceSettings, hold: boolean): PressShape {
+    const ctx = this.contextsState.get(action.id);
+
+    if (!ctx) return { kind: "none" };
+
+    return touchGestureShape({
+      tapGesture: ctx.settings.dial.tapAction,
+      longTouchGesture: ctx.settings.dial.longTouchAction,
+      hold,
+    });
   }
 
   down(action: IDeckActionContext, settings: FuelServiceSettings): void {
