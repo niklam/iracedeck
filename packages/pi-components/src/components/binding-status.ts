@@ -29,7 +29,7 @@
  * (Node.js), where these live. When the descriptor shape changes, update BOTH
  * locations.
  */
-import { formatKeyBinding, parseKeyBinding } from "./key-binding-utils.js";
+import { canSendByScanCode, formatKeyBinding, parseKeyBinding } from "./key-binding-utils.js";
 import { fetchSimHubReachable, SIMHUB_POLL_INTERVAL_MS } from "./simhub-probe.js";
 
 type CommMethod = "api" | "keybind" | "chat";
@@ -131,13 +131,12 @@ function parseStoredBinding(
     return null;
   }
 
-  // A keyboard binding without a scan `code` is unbound at runtime since #1495
-  // (only a hand-edited or very old settings file holds one), so it reads as unset.
+  // A keyboard binding the runtime cannot send by scan code is unbound there
+  // since #1495 (only a hand-edited or very old settings file holds one), so it
+  // reads as unset.
   const kb = parseKeyBinding(value);
 
-  return kb && typeof kb.code === "string" && kb.code.length > 0
-    ? { kind: "keyboard", text: formatKeyBinding(kb) }
-    : null;
+  return kb && canSendByScanCode(kb) ? { kind: "keyboard", text: formatKeyBinding(kb) } : null;
 }
 
 let styleInjected = false;

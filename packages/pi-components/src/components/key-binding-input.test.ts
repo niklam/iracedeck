@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { formatKeyBinding, type KeyBindingValue, parseKeyBinding, parseSimpleDefault } from "./key-binding-utils.js";
+import {
+  canSendByScanCode,
+  formatKeyBinding,
+  type KeyBindingValue,
+  parseKeyBinding,
+  parseSimpleDefault,
+} from "./key-binding-utils.js";
 import { resolveEventCode } from "./key-maps.js";
 
 describe("key-binding-input", () => {
@@ -104,6 +110,34 @@ describe("key-binding-input", () => {
 
     it("should not capitalize multi-character displayKey", () => {
       expect(formatKeyBinding({ key: "enter", modifiers: [], displayKey: "Enter" })).toBe("Enter");
+    });
+  });
+
+  describe("canSendByScanCode (#1495)", () => {
+    it.each([
+      ["a code alone", { code: "F1" }],
+      ["a code with no modifiers", { code: "KeyA", modifiers: [] }],
+      ["a code with every supported modifier", { code: "F1", modifiers: ["ctrl", "shift", "alt"] }],
+      ["an extended key", { code: "ArrowUp", modifiers: ["shift"] }],
+    ])("is true for %s", (_label, binding) => {
+      expect(canSendByScanCode(binding)).toBe(true);
+    });
+
+    it.each([
+      ["no code", { modifiers: [] }],
+      ["an empty code", { code: "", modifiers: [] }],
+      ["a non-string code", { code: 5, modifiers: [] }],
+      ["a code the runtime cannot send (F13)", { code: "F13", modifiers: [] }],
+      ["a code the runtime cannot send (CapsLock)", { code: "CapsLock", modifiers: [] }],
+      ["a key name where the code belongs", { code: "f1", modifiers: [] }],
+      ["a code inherited from Object.prototype", { code: "constructor", modifiers: [] }],
+      ["a capitalised modifier", { code: "F1", modifiers: ["Ctrl"] }],
+      ["an unsupported modifier", { code: "F1", modifiers: ["meta"] }],
+      ["an unsupported modifier beside a supported one", { code: "F1", modifiers: ["shift", "meta"] }],
+      ["a non-string modifier", { code: "F1", modifiers: ["ctrl", 3] }],
+      ["modifiers that are not an array", { code: "F1", modifiers: "ctrl" }],
+    ])("is false for %s", (_label, binding) => {
+      expect(canSendByScanCode(binding)).toBe(false);
     });
   });
 

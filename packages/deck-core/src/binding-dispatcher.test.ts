@@ -739,13 +739,15 @@ describe("BindingDispatcher", () => {
     });
   });
 
-  // --- A keyboard binding without a scan code is unbound (#1495) ---
+  // --- A keyboard binding with no scan code to send is unbound (#1495) ---
   //
   // Bindings saved before scan-code input (`e1c35ef01`) hold a key name only.
   // These fixtures are exactly what a 0.9-era settings file holds, plus the
-  // hand-edited shapes that reach the same state.
+  // hand-edited shapes that reach the same state: a code the scan-code map does
+  // not hold, and a modifier other than ctrl/shift/alt. The keyboard service
+  // would send nothing for any of them.
 
-  describe("keyboard binding saved without a scan code (issue #1495)", () => {
+  describe("keyboard binding with no scan code to send (issue #1495)", () => {
     const oldFormatBindings: [string, unknown][] = [
       ["the JSON string of a pre-scan-code binding", '{"key":"f1","modifiers":[]}'],
       ["an already-parsed pre-scan-code binding", { key: "f1", modifiers: [] }],
@@ -754,6 +756,21 @@ describe("BindingDispatcher", () => {
         JSON.stringify({ type: "keyboard", key: "f1", modifiers: ["ctrl"] }),
       ],
       ["a binding with an empty code", JSON.stringify({ type: "keyboard", key: "f1", modifiers: [], code: "" })],
+      ["a code the scan-code map does not hold (F13)", JSON.stringify({ key: "f13", modifiers: [], code: "F13" })],
+      [
+        "a code the scan-code map does not hold (CapsLock)",
+        JSON.stringify({ key: "capslock", modifiers: [], code: "CapsLock" }),
+      ],
+      ["a code inherited from Object.prototype", JSON.stringify({ key: "f1", modifiers: [], code: "constructor" })],
+      [
+        "a capitalised modifier with a valid code",
+        JSON.stringify({ key: "f1", modifiers: ["Ctrl"], code: "F1" }),
+      ],
+      ["an unsupported modifier with a valid code", JSON.stringify({ key: "f1", modifiers: ["meta"], code: "F1" })],
+      [
+        "an unsupported modifier beside a supported one",
+        JSON.stringify({ key: "f1", modifiers: ["shift", "meta"], code: "F1" }),
+      ],
     ];
 
     beforeEach(() => {
@@ -788,7 +805,7 @@ describe("BindingDispatcher", () => {
         await getBindingDispatcher().tap("myKey");
 
         expect(mockLogger.warn).toHaveBeenCalledWith(
-          "Keyboard binding for myKey was saved without a scan code; re-record it",
+          "Keyboard binding for myKey has no scan code to send; re-record it",
         );
         expect(mockLogger.warn).not.toHaveBeenCalledWith("Corrupt binding value for myKey");
         expect(mockLogger.debug).toHaveBeenCalledWith(`Raw value: ${JSON.stringify(rawValue)}`);
@@ -830,6 +847,39 @@ describe("BindingDispatcher", () => {
 
         expect(mockLogger.warn).not.toHaveBeenCalled();
         expect(mockLogger.debug).not.toHaveBeenCalled();
+      });
+    });
+
+    // Positive control: a binding the scan-code map can build in full is bound,
+    // so the rows above fail for what they hold, not for being keyboard bindings.
+    describe.each([
+      ["a code with no modifiers", { key: "f1", modifiers: [], code: "F1" }],
+      ["a code with every supported modifier", { key: "f1", modifiers: ["ctrl", "shift", "alt"], code: "F1" }],
+      ["an extended key with a modifier", { key: "up", modifiers: ["shift"], code: "ArrowUp" }],
+    ])("a sendable binding: %s", (_label, binding) => {
+      beforeEach(() => {
+        mockGetGlobalSettings.mockReturnValue({
+          myKey: JSON.stringify(binding),
+          otherKey: JSON.stringify({ key: "f4", code: "F4" }),
+        });
+      });
+
+      it("is configured, keyboard-bound and ready", () => {
+        expect(getBindingDispatcher().isConfigured("myKey")).toBe(true);
+        expect(getBindingDispatcher().isKeyboardBound("myKey")).toBe(true);
+        expect(getBindingDispatcher().isReady("myKey", true)).toBe(true);
+      });
+
+      it("taps, holds and joins a sequence", async () => {
+        await expect(getBindingDispatcher().tap("myKey")).resolves.toBe(true);
+        expect(mockSendKeyCombination).toHaveBeenCalledOnce();
+
+        await getBindingDispatcher().hold("ctx-1", "myKey");
+        expect(mockPressKeyCombination).toHaveBeenCalledOnce();
+
+        await expect(getBindingDispatcher().tapSequence(["otherKey", "myKey"])).resolves.toBe(true);
+        expect(mockSendKeySequence).toHaveBeenCalledOnce();
+        expect(mockLogger.warn).not.toHaveBeenCalled();
       });
     });
   });

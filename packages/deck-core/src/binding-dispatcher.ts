@@ -29,6 +29,7 @@ import { type BindingValue, getGlobalSettings, isSimHubBinding, type KeyBindingV
 import { formatKeyBinding, parseBinding } from "./key-binding-utils.js";
 import { getKeyboard } from "./keyboard-service.js";
 import type { KeyboardKey, KeyboardModifier, KeyCombination } from "./keyboard-types.js";
+import { canSendByScanCode } from "./scan-code-map.js";
 import { getSimHub, isSimHubInitialized, isSimHubReachable } from "./simhub-service.js";
 
 /**
@@ -80,32 +81,38 @@ export interface IBindingDispatcher {
   /**
    * Whether a binding (keyboard or SimHub role) is configured at the given
    * setting key — independent of connection/reachability (issue #612). A
-   * keyboard binding saved without a scan code is not configured (#1495).
+   * keyboard binding the keyboard service cannot send by scan code is not
+   * configured (#1495).
    */
   isConfigured(settingKey: string): boolean;
 
   /**
    * Whether the binding at the given setting key is a keyboard binding — true
-   * only for a parsed keyboard binding with a scan code; false for a SimHub
-   * role, an unset or a corrupt value (#962), and a keyboard binding saved
-   * without a scan code (#1495). A keyboard binding is the only kind that can
-   * join an atomic {@link IBindingDispatcher.tapSequence}.
+   * only for a parsed keyboard binding the keyboard service can send by scan
+   * code; false for a SimHub role, an unset or a corrupt value (#962), and a
+   * keyboard binding with no scan code to send (#1495). A keyboard binding is
+   * the only kind that can join an atomic {@link IBindingDispatcher.tapSequence}.
    */
   isKeyboardBound(settingKey: string): boolean;
 }
 
 /**
- * Whether a binding is a keyboard binding saved without a scan code (#1495):
- * no `code`, or an empty one. Bindings were saved by key name only before
- * scan-code input (`e1c35ef01`), and only a settings file from then, or one
- * edited by hand, still holds one. The keyboard service sends by scan code
- * only, so such a binding is treated as unbound — the user gets the #612
- * missing-binding warning and re-records it. The schema still accepts it
- * (`code` is optional there, a published settings contract); this is where it
- * stops counting as bound. `code` is never filled in from the key name.
+ * Whether a binding is a keyboard binding the keyboard service cannot send by
+ * scan code (#1495): no `code` or an empty one, a `code` the scan-code map does
+ * not hold (`"F13"`, `"CapsLock"`, a typo), or a modifier other than `ctrl`,
+ * `shift` or `alt` (`"Ctrl"`, `"meta"`). Bindings were saved by key name only
+ * before scan-code input (`e1c35ef01`), and the recorder writes only codes and
+ * modifiers the map holds, so only a settings file from before then, or one
+ * edited by hand, holds such a binding. The keyboard service sends by scan code
+ * only and would send nothing for it, so it is treated as unbound — the user
+ * gets the #612 missing-binding warning and re-records it. The schema still
+ * accepts it (`code` is optional and `modifiers` any strings there, a published
+ * settings contract); this is where it stops counting as bound. The check is
+ * {@link canSendByScanCode}, built on the same lookups as the service's own, so
+ * the two cannot disagree. `code` is never filled in from the key name.
  */
-function lacksScanCode(binding: BindingValue): boolean {
-  return !isSimHubBinding(binding) && !binding.code;
+function cannotSendByScanCode(binding: BindingValue): boolean {
+  return !isSimHubBinding(binding) && !canSendByScanCode(binding);
 }
 
 /**
@@ -308,9 +315,10 @@ class BindingDispatcher implements IBindingDispatcher {
    * This is the source of truth for the binding-missing icon warning (#612):
    * a keybind mode warns only when NEITHER a keyboard binding nor a SimHub
    * role is set. SimHub-not-running is a separate (reachability) concern and
-   * does not count as "not configured". A keyboard binding saved without a
-   * scan code (only a settings file from before scan codes, or one edited by
-   * hand, holds one) does count, so the user is told to re-record it (#1495).
+   * does not count as "not configured". A keyboard binding the keyboard
+   * service cannot send by scan code (only a settings file from before scan
+   * codes, or one edited by hand, holds one) does count, so the user is told to
+   * re-record it (#1495).
    *
    * @param settingKey - The global settings key
    */
@@ -321,7 +329,7 @@ class BindingDispatcher implements IBindingDispatcher {
   /**
    * Whether the binding at the given setting key is a parsed keyboard binding
    * (#962). A SimHub role, an unset and a corrupt value all return false, and
-   * so does a keyboard binding saved without a scan code (#1495).
+   * so does a keyboard binding with no scan code to send (#1495).
    *
    * @param settingKey - The global settings key
    */
@@ -337,13 +345,14 @@ class BindingDispatcher implements IBindingDispatcher {
    * The usable binding at a setting key, read silently — the state queries
    * (`isReady`, `isConfigured`, `isKeyboardBound`) run on every render, so unlike
    * {@link resolveGlobalBinding} this never logs a missing, corrupt or
-   * code-less value. A keyboard binding without a scan code reads as unset.
+   * unsendable value. A keyboard binding the keyboard service cannot send by
+   * scan code reads as unset.
    */
   private peekBinding(settingKey: string): BindingValue | undefined {
     const globalSettings = getGlobalSettings() as Record<string, unknown>;
     const binding = parseBinding(globalSettings[settingKey]);
 
-    return binding && !lacksScanCode(binding) ? binding : undefined;
+    return binding && !cannotSendByScanCode(binding) ? binding : undefined;
   }
 
   /**
@@ -356,8 +365,8 @@ class BindingDispatcher implements IBindingDispatcher {
     const rawValue = globalSettings[settingKey];
     const binding = parseBinding(rawValue);
 
-    if (binding && lacksScanCode(binding)) {
-      this.logger.warn(`Keyboard binding for ${settingKey} was saved without a scan code; re-record it`);
+    if (binding && cannotSendByScanCode(binding)) {
+      this.logger.warn(`Keyboard binding for ${settingKey} has no scan code to send; re-record it`);
       this.logger.debug(`Raw value: ${JSON.stringify(rawValue)}`);
 
       return undefined;

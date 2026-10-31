@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { keyToCode } from "@iracedeck/app-constants";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import "./binding-status.js";
@@ -12,7 +13,9 @@ vi.mock("./simhub-probe.js", () => ({
   SIMHUB_POLL_INTERVAL_MS: 1_000_000,
 }));
 
-const keyboardBinding = (key: string) => JSON.stringify({ type: "keyboard", key, modifiers: ["ctrl"], code: key });
+// What the recorder saves for the key: its event code, which the runtime sends by (#1495).
+const keyboardBinding = (key: string) =>
+  JSON.stringify({ type: "keyboard", key, modifiers: ["ctrl"], code: keyToCode(key) });
 const simhubBinding = (role: string) => JSON.stringify({ type: "simhub", role });
 
 // fuel-service: api + chat + keybind in one action.
@@ -110,12 +113,31 @@ describe("ird-binding-status", () => {
     ['{"key":"f1","modifiers":[]}'],
     ['{"type":"keyboard","key":"f1","modifiers":["ctrl"]}'],
     ['{"type":"keyboard","key":"f1","modifiers":[],"code":""}'],
-  ])("reads a keyboard binding without a scan code as unset (#1495): %s", (value) => {
+    ['{"type":"keyboard","key":"f13","modifiers":[],"code":"F13"}'],
+    ['{"type":"keyboard","key":"capslock","modifiers":[],"code":"CapsLock"}'],
+    ['{"type":"keyboard","key":"f1","modifiers":[],"code":"f1"}'],
+    ['{"type":"keyboard","key":"f1","modifiers":[],"code":"constructor"}'],
+    ['{"type":"keyboard","key":"f1","modifiers":["Ctrl"],"code":"F1"}'],
+    ['{"type":"keyboard","key":"f1","modifiers":["meta"],"code":"F1"}'],
+    ['{"type":"keyboard","key":"f1","modifiers":["shift","meta"],"code":"F1"}'],
+  ])("reads a keyboard binding the runtime cannot send by scan code as unset (#1495): %s", (value) => {
     el = mount(FUEL_COMMS);
     setMode("toggle-autofuel");
     setBinding("fuelServiceToggleAutofuel", value);
     expect(text()).toContain("No binding set");
     expect(text()).not.toContain("Key binding:");
+  });
+
+  it.each([
+    ['{"type":"keyboard","key":"f1","modifiers":[],"code":"F1"}', "F1"],
+    ['{"type":"keyboard","key":"f1","modifiers":["ctrl","shift","alt"],"code":"F1"}', "Ctrl+Shift+Alt+F1"],
+    ['{"type":"keyboard","key":"up","modifiers":["shift"],"code":"ArrowUp"}', "Shift+Up"],
+  ])("shows a binding the runtime can send by scan code (#1495): %s", (value, shown) => {
+    el = mount(FUEL_COMMS);
+    setMode("toggle-autofuel");
+    setBinding("fuelServiceToggleAutofuel", value);
+    expect(text()).toContain("Key binding:");
+    expect(text()).toContain(shown);
   });
 
   it("updates the text live when the binding is changed", () => {

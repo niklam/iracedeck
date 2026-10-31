@@ -8,7 +8,9 @@
  * the matching scan-code sender was injected and the combination carries an
  * event.code the scan-code map can build; otherwise nothing is sent and the
  * call returns false (#1495). There is no string-based fallback: a binding
- * without a scan code is one the binding dispatcher already reads as unbound.
+ * this layer cannot send (no `code`, a code or a modifier the scan-code map
+ * does not hold) is one the binding dispatcher already reads as unbound, by
+ * `canSendByScanCode` over the same map.
  *
  * This is also where the iRacing window is focused before a keystroke (#977):
  * every deck-core keystroke passes this layer, so `focusIRacingBeforeInput()`
@@ -372,7 +374,9 @@ class KeyboardService implements IKeyboardService {
    * Build the scan codes of a key combination: modifiers first, then the main
    * key. Returns null, having logged why, when the combination has no
    * event.code (an empty string counts as none) or a modifier or the code has
-   * no scan code; the caller then sends nothing (#1495).
+   * no scan code; the caller then sends nothing (#1495). It refuses exactly
+   * what `canSendByScanCode` refuses — the dispatcher's unbound test, over the
+   * same two lookups — and differs only in logging the reason.
    */
   private buildScanCodes(combination: KeyCombination): number[] | null {
     if (!combination.code) {
