@@ -81,13 +81,13 @@ describe("createStoreReadyStep (#1377)", () => {
 
     expect(callLog).toEqual([
       "isSettingsStoreReady",
+      "notices.arm", // with the one-shot flag, as the shared flag was set
       "deleteGlobalSettings", // #515
       "deleteGlobalSettings", // #657
       "migrateLfeIntensityBindingKeys",
       "migrateStartupPolicies",
       "applyStartupFeatureGates",
       "audio.armFeatureGateSync",
-      "notices.arm",
       "updateGlobalSettings", // _settingsStorePath
       "settingsWindow.controller.ensureStarted",
       "getGlobalSettings", // the catalog-override warning
