@@ -110,13 +110,29 @@ describe("the replay command gate is the single sender (#1430)", () => {
   it("does not flag a send through the gate", () => {
     expect(sendsReplayOutsideGate(`pressReplayCommand({ kind: "pause" }, { by: "x" })`)).toBe(false);
     expect(sendsReplayOutsideGate("getCommands().pit.fuel(10);")).toBe(false);
-    expect(sendsReplayOutsideGate("const c = getCommands();\nc.camera.switchNum(1, 0, 0);")).toBe(false);
-    expect(sendsReplayOutsideGate("const { camera } = getCommands();\ncamera.switchNum(1, 0, 0);")).toBe(false);
+  });
+
+  it("does not flag a camera switch, which is not a replay command", () => {
+    // Whether a camera switch goes through the camera-switch waiter is
+    // `camera-switch-waiter.single-policy.test.ts`'s check (#1502), so these
+    // are written the way that test allows: inside a `requestCameraSwitch` callback.
+    expect(
+      sendsReplayOutsideGate(
+        "const c = getCommands();\nrequestCameraSwitch(() => c.camera.switchNum(1, 0, 0), options);",
+      ),
+    ).toBe(false);
+    expect(
+      sendsReplayOutsideGate(
+        "const { camera } = getCommands();\nrequestCameraSwitch(() => camera.switchNum(1, 0, 0), options);",
+      ),
+    ).toBe(false);
   });
 
   it("flags an engine module reaching the injected replay surface (positive control)", () => {
     expect(readsInjectedReplay("engineEnv().replay().pause();")).toBe(true);
     expect(readsInjectedReplay("const env = engineEnv();\nenv.replay().nextLap();")).toBe(true);
+    // The injected camera is not the replay; which engine modules may reach it
+    // is pinned by `camera-switch-waiter.single-policy.test.ts`.
     expect(readsInjectedReplay("engineEnv().camera().switchNum(1, 0, 0);")).toBe(false);
   });
 
