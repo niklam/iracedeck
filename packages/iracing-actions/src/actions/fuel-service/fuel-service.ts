@@ -387,7 +387,8 @@ export class FuelService extends SimIRacingAction<FuelServiceSettings> {
   private readonly pipeline = new FuelPipeline(this.logger);
   /**
    * The fuel step check (#1314) — one per action, shared by the keypad's Add /
-   * Reduce Fuel and the dial's Add Amount rotation, like the pipeline it sends through.
+   * Reduce Fuel and the dial's Add Amount and Target Amount sends (#1483), like
+   * the pipeline it sends through.
    */
   private readonly stepper = new FuelStepper(
     {

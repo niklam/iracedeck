@@ -57,7 +57,7 @@ import {
   resolveDisplayUnits,
   TOGGLE_AUTOFUEL_KEY,
 } from "./fuel-service-settings.js";
-import { type FuelStepper, type FuelStepResult, readPitSvFuel } from "./fuel-step.js";
+import { type FuelStepper, type FuelStepResult, readPitSvFuel, readPlayerCarPath } from "./fuel-step.js";
 
 /**
  * Push + Turn pair members — directional fuel endpoints dispatched per pressed
@@ -108,6 +108,17 @@ const CHANGE_RENDER_MIN_INTERVAL_MS = 100;
  * and fills again.
  */
 const TOGGLE_FULL_EMPTY_LTR = 0;
+
+/**
+ * The fuel step the continuous fill-to monitor assumes while the car's is
+ * unknown (#1483): a whole liter, the finest step a whole-liter request can
+ * resolve. A bank this far above the need is re-sent, so a whole-liter car
+ * re-sends exactly when the rounded-up need differs from its bank, as before.
+ */
+const UNKNOWN_FUEL_STEP_LTR = 1;
+
+/** A `PitSvFuel` difference smaller than this is float noise (as in the fuel step check). */
+const BANK_EPSILON_LTR = 0.01;
 
 const WHITE = "#ffffff";
 const GREEN = "#2ecc71";
@@ -208,14 +219,38 @@ interface FuelDialContext {
   /** Timestamp (ms) of the last change-driven feedback push (throttle gate). */
   lastChangeRenderAt: number;
   /**
-   * Whole-DISPLAY-unit add value at the last continuous fill-to re-broadcast, or
-   * null when nothing is armed. The continuous monitor gates on this so it
-   * re-broadcasts at most once per whole unit. `computeAddLtr` returns the add
+   * Whole-DISPLAY-unit key of the add at the last Target Amount send or
+   * continuous fill-to evaluation, or null when nothing is armed. The
+   * continuous monitor evaluates only when the live add's key moves off this
+   * one, so at most once per whole unit: `computeAddLtr` returns the add
    * rounded UP to a whole display unit (no fractional headroom clamp), so the
-   * whole-unit key only moves when the rounded-up need crosses a whole-unit
-   * boundary — never sub-litre spam (issue #681).
+   * key only moves when the rounded-up need crosses a whole-unit boundary —
+   * never sub-litre spam (issue #681). Whether an evaluation SENDS anything
+   * depends on what is banked (#1483, see `updateManualFromTelemetry`).
    */
   lastSentWholeAdd: number | null;
+  /**
+   * The bank (`PitSvFuel`, liters) a Target Amount step ended at when it could
+   * not reach its floor (`unmoved`), or null (#1483). Within the same key the
+   * continuous monitor does not re-send a bank still equal to this, instead of
+   * repeating a nine-send burst on every tick. Cleared when the bank moves, when
+   * the need's whole-unit key changes (so a bank stuck by a passing cause, such
+   * as commands ignored out of the car, is retried once per whole unit) and by
+   * every new Target Amount send.
+   */
+  unreachableBankLtr: number | null;
+  /** Counts Target Amount sends, so only the latest one's end sets {@link unreachableBankLtr}. */
+  fillToSends: number;
+  /**
+   * The floor (liters) the bank was last checked against: set when a Target
+   * Amount step starts and when the monitor finds the bank covering a new key,
+   * null when nothing is armed (#1483). The monitor re-sends on any tick while
+   * the live bank is short of it, but compares against this recorded value
+   * rather than the live floor, which moves every tick as fuel burns once it
+   * is capped at the space left — so a short bank is acted on at once without
+   * a send per tick of burn.
+   */
+  checkedFloorLtr: number | null;
   throttle: ThrottleState;
   /** Coalescing state for autofuel lap-margin keybind taps. */
   marginThrottle: MarginThrottleState;
@@ -480,16 +515,20 @@ export function roundToWholeDisplayLtr(liters: number, displayUnits: number): nu
  *   already spans the full tank range `[0, capacity]`).
  * - fill-to: `dialValueLtr` is the desired TOTAL after the stop (kept a
  *   whole integer display value). The add is `max(0, target − current)`, rounded
- *   UP to the next whole DISPLAY unit so the stop never finishes below the
- *   (integer) target — the round-up alone guarantees current + add ≥ target. The
- *   add is NOT clamped to the remaining tank space: it is simply the amount needed
- *   to reach the target, and may exceed the CURRENT remaining space because more
- *   fuel burns before the pit stop (iRacing only fills up to the tank capacity
- *   anyway). Because the add is recomputed against the LIVE fuel level on every
- *   telemetry tick (continuous monitoring), it stays fresh as fuel burns and needs
- *   no extra safety buffer. The unclamped add is always a clean whole display value,
- *   so the continuous re-send fires exactly once per whole unit. When the need is
- *   ≤ 0 (target at/below current) the add stays 0 so the "0 → clearFuel" path still
+ *   UP to the next whole DISPLAY unit, so a stop that takes the whole add never
+ *   finishes below the (integer) target. The round-up alone does not make the
+ *   stop TAKE that much: iRacing banks a request on the car's fuel grid, rounding
+ *   to the nearest point, and on a gallon car that point can sit below the add.
+ *   So this add is the FLOOR the Target Amount send hands the fuel step check,
+ *   which steps up until the bank covers it (#1483). The add is NOT clamped to
+ *   the remaining tank space: it is simply the amount needed to reach the target,
+ *   and may exceed the CURRENT remaining space because more fuel burns before the
+ *   pit stop (iRacing only fills up to the tank capacity anyway). Because the add
+ *   is recomputed against the LIVE fuel level on every telemetry tick (continuous
+ *   monitoring), it stays fresh as fuel burns and needs no extra safety buffer.
+ *   The unclamped add is always a clean whole display value, so the monitor's
+ *   whole-unit key moves at most once per whole unit. When the need is ≤ 0
+ *   (target at/below current) the add stays 0 so the "0 → clearFuel" path still
  *   fires (issue #681).
  */
 export function computeAddLtr(
@@ -502,7 +541,8 @@ export function computeAddLtr(
   if (dialMode === "fill-to") {
     const rawAdd = Math.max(0, dialValueLtr - currentLtr);
     // Round the ADD up to the next whole display unit so current + add is at or
-    // just above the integer target — a stop never finishes under target. The add
+    // just above the integer target; the Target Amount send makes it a floor the
+    // bank must reach (#1483), so a stop never finishes under target. The add
     // is the amount NEEDED to reach the target; it is NOT clamped to the current
     // remaining space (more fuel burns before the stop, and iRacing fills only up
     // to capacity). A need of ≤ 0 stays 0 so the "0 → clearFuel" path still fires.
@@ -988,7 +1028,10 @@ export class FuelDialSurface {
   constructor(
     private readonly host: FuelDialHost,
     private readonly pipeline: FuelPipeline,
-    /** The action's fuel step check (#1314), shared with the keypad: the Add Amount rotation sends through it. */
+    /**
+     * The action's fuel step check (#1314), shared with the keypad: Add Amount
+     * sends through its move rule, Target Amount through its floor rule (#1483).
+     */
     private readonly stepper: FuelStepper,
   ) {}
 
@@ -1020,7 +1063,18 @@ export class FuelDialSurface {
 
   async didReceiveSettings(action: IDeckActionContext, settings: FuelServiceSettings): Promise<void> {
     const ctx = this.ensureContext(action, settings);
+    const previousMode = ctx.settings.dial.mode;
     ctx.settings = settings;
+
+    // A Mode change in the Property Inspector re-seeds the dialed value for the
+    // new mode, as the switch-mode gesture does (#1483). Without it the old
+    // value carried over: an Add Amount of a few liters became a Target Amount
+    // TOTAL below the fuel in the tank, so the request cleared and every detent
+    // moved a target still under the tank level, as if the choice were ignored.
+    if (settings.dial.mode !== previousMode) {
+      this.clearModeBaselines(ctx);
+      this.seedFromTelemetry(ctx, true);
+    }
 
     // The settings may have changed the long-press gesture mid-hold, so a
     // preview computed for the old one is dropped without a revert frame of its
@@ -1030,6 +1084,22 @@ export class FuelDialSurface {
 
     await this.applyTriggerDescription(ctx);
     await this.renderFeedback(ctx);
+  }
+
+  /**
+   * Forgets what the previous mode sent, before a Mode change re-seeds the dial
+   * (#1483). Each baseline describes a request of the OLD mode: the floor and
+   * the unreachable bank of a Target Amount request, and the whole-unit key and
+   * the rotate throttle's no-op value, which Add Amount records too. Left in
+   * place, a new Target Amount need that lands on the same key would read as
+   * already evaluated, and a bank short of it would not be re-sent until the
+   * need moved a whole unit.
+   */
+  private clearModeBaselines(ctx: FuelDialContext): void {
+    ctx.checkedFloorLtr = null;
+    ctx.unreachableBankLtr = null;
+    ctx.lastSentWholeAdd = null;
+    ctx.throttle.lastSentLtr = null;
   }
 
   async rotate(
@@ -1254,6 +1324,7 @@ export class FuelDialSurface {
       // landing while the write is in flight flips back rather than repeating
       // this one (#957).
       ctx.settings = { ...ctx.settings, dial: { ...ctx.settings.dial, mode: next } };
+      this.clearModeBaselines(ctx);
       await persistDialPatch(ctx.action, rawSettings, { mode: next }, this.host.logger, "mode switch");
       this.seedFromTelemetry(ctx, true);
       await this.applyTriggerDescription(ctx);
@@ -1279,7 +1350,7 @@ export class FuelDialSurface {
           this.host.logger.debug("Toggle: cleared fueling");
         } else {
           const addLtr = this.effectiveAddLtr(ctx);
-          this.pipeline.sendFuel(addLtr);
+          this.sendPressAdd(ctx, addLtr);
           // A resolved add of 0 clears instead of arming — keep bookkeeping in sync.
           cleared = addLtr <= 0;
           armedLtr = cleared ? null : addLtr;
@@ -1314,7 +1385,7 @@ export class FuelDialSurface {
         } else {
           ctx.dialValueLtr = maxLtr;
           const addLtr = this.effectiveAddLtr(ctx);
-          this.pipeline.sendFuel(addLtr);
+          this.sendPressAdd(ctx, addLtr);
           cleared = addLtr <= 0;
           armedLtr = cleared ? null : addLtr;
           this.host.logger.debug(`Toggle full/no fuel (full): requested ${addLtr.toFixed(2)}L`);
@@ -1335,7 +1406,7 @@ export class FuelDialSurface {
 
         ctx.dialValueLtr = maxLtr;
         const addLtr = this.effectiveAddLtr(ctx);
-        this.pipeline.sendFuel(addLtr);
+        this.sendPressAdd(ctx, addLtr);
         cleared = addLtr <= 0;
         armedLtr = cleared ? null : addLtr;
         this.host.logger.debug(`Push+turn full: requested ${addLtr.toFixed(2)}L`);
@@ -1398,11 +1469,20 @@ export class FuelDialSurface {
       return;
     }
 
-    // Add Amount goes through the fuel step check (#1314): a detent smaller than
-    // the car's fuel step rounds back in iRacing, so the check steps further. A
-    // target of 0 keeps its clear (below), and Fill To is unchanged.
+    // Both modes go through the fuel step check. Add Amount by its move rule
+    // (#1314): a detent smaller than the car's fuel step rounds back in iRacing,
+    // so the check steps further. Target Amount by its floor rule (#1483): the
+    // add is the least the stop must take, and iRacing may bank the grid point
+    // below it. A target of 0 keeps its clear (below).
     if (ctx.settings.dial.mode === "add-amount" && target > 0) {
       this.sendAddAmountStep(ctx, target);
+
+      return;
+    }
+
+    if (ctx.settings.dial.mode === "fill-to" && target > 0) {
+      this.sendFillToStep(ctx, target);
+      void this.renderFeedback(ctx);
 
       return;
     }
@@ -1418,6 +1498,101 @@ export class FuelDialSurface {
     this.host.logger.info("Fuel request sent");
     this.host.logger.debug(`Sent ${target.toFixed(2)}L`);
     void this.renderFeedback(ctx);
+  }
+
+  /**
+   * Sends a press's resolved add (`doPress`): a Target Amount add through the
+   * fuel step check's floor rule (#1483), anything else — an Add Amount add, or
+   * an add of 0, which clears — straight through the pipeline, as before.
+   */
+  private sendPressAdd(ctx: FuelDialContext, addLtr: number): void {
+    if (ctx.settings.dial.mode === "fill-to" && addLtr > 0) {
+      this.sendFillToStep(ctx, addLtr);
+
+      return;
+    }
+
+    this.pipeline.sendFuel(addLtr);
+  }
+
+  /**
+   * The one Target Amount send path (#1483): hands the fuel step check a FLOOR —
+   * the stop must add at least the add — and the check steps a whole liter up
+   * while the bank is below it, so a car whose fuel step is coarser than a
+   * liter cannot round the request down to the grid point under the target.
+   * Used by a fill-to rotation (`flushSend`), the arming presses (`doPress`) and
+   * the continuous fill-to monitor.
+   *
+   * The floor is resolved when the step STARTS — the dialed target against the
+   * live fuel level at that moment — because a send arriving while another
+   * check runs waits in the stepper's queue. A floor that has dropped to zero
+   * by then (the target reached meanwhile), or a dial switched to Add Amount,
+   * sends nothing: the monitor clears at its next evaluation, since the key
+   * recorded here is no longer the live one.
+   *
+   * `addLtr` is the add at handover: the rotate throttle's no-op baseline and
+   * the monitor's whole-unit key are recorded from it at once, so a tick while
+   * the step runs or waits does not send it again.
+   *
+   * The floor is capped at the space left in the tank ({@link fillToFloorLtr})
+   * and recorded in `ctx.checkedFloorLtr` when the step starts. A step that
+   * still ends `unmoved` leaves the bank it ended at in `ctx.unreachableBankLtr`,
+   * so the monitor does not repeat the burst within the same need (see
+   * `updateManualFromTelemetry`); every new send clears it, and only the
+   * latest send's end may set it, so an older step ending late cannot.
+   *
+   * `source` says who sent: a monitor step logs its end at debug only, since
+   * the monitor re-sends as fuel burns, while a rotation or press logs the
+   * user-facing info line.
+   */
+  private sendFillToStep(ctx: FuelDialContext, addLtr: number, source: "user" | "monitor" = "user"): void {
+    ctx.throttle.lastSentLtr = addLtr;
+    ctx.lastSentWholeAdd = Math.round(fuelToDisplayUnits(addLtr, this.effectiveDisplayUnits(ctx)));
+    ctx.unreachableBankLtr = null;
+    ctx.fillToSends += 1;
+    const send = ctx.fillToSends;
+    // Debug only: the step may yet be queued and superseded without sending
+    // anything. The info line comes from the end handler, once it has sent.
+    this.host.logger.debug(`Target Amount ${addLtr.toFixed(2)}L handed to the fuel step check`);
+
+    void this.stepper.sendFuelStep(
+      () => {
+        if (ctx.settings.dial.mode !== "fill-to") return null;
+
+        const floorLtr = this.fillToFloorLtr(this.effectiveAddLtr(ctx));
+
+        if (!(floorLtr > 0)) return null;
+
+        ctx.checkedFloorLtr = floorLtr;
+
+        return { floorLtr };
+      },
+      (result) => {
+        if (result.outcome === "unmoved" && result.endLtr !== undefined && send === ctx.fillToSends) {
+          ctx.unreachableBankLtr = result.endLtr;
+        }
+
+        this.logStepEnd("Target Amount", result, source === "monitor");
+      },
+    );
+  }
+
+  /**
+   * The floor a Target Amount add is checked against (#1483): the add, capped
+   * at the SPACE left in the tank (capacity − current) when the capacity is
+   * known. The add is rounded up to a whole display unit, so it can exceed that
+   * space by up to one unit (Fill to Max at 30.4 L of a 40 L tank asks for 10,
+   * with 9.6 L of room); if the sim caps the request at the space, or at the
+   * tank, a floor above it is one no bank can reach, and the step would end
+   * `unmoved` short of a fill the stop could have made. The target is clamped
+   * to the capacity, so the raw need (target − current) never exceeds the
+   * space: the capped floor is never below what the target needs, and is
+   * reachable whichever way the sim caps.
+   */
+  private fillToFloorLtr(addLtr: number): number {
+    const maxLtr = this.effectiveMaxLtr();
+
+    return maxLtr === undefined ? addLtr : Math.min(addLtr, Math.max(0, maxLtr - this.currentLtr()));
   }
 
   /**
@@ -1480,7 +1655,7 @@ export class FuelDialSurface {
    * started), the fractional value the detents turned since are measured from.
    */
   private onAddAmountStepEnd(ctx: FuelDialContext, startLtr: number | null, result: FuelStepResult): void {
-    this.logAddAmountStepEnd(result);
+    this.logStepEnd("Add Amount", result);
 
     // Switched to Fill To while the check ran: the switch sends no pipeline
     // command, so it cancelled nothing, and its re-seed has already set the
@@ -1512,18 +1687,31 @@ export class FuelDialSurface {
     }
   }
 
-  /** Logs what an Add Amount step sent, at info only when it sent something — as the keypad does. */
-  private logAddAmountStepEnd(result: FuelStepResult): void {
+  /**
+   * Logs what a dial step (Add Amount or Target Amount) sent, at info only when
+   * it sent something — as the keypad does. A `quiet` step (one the continuous
+   * fill-to monitor started) logs that line at debug instead: the monitor
+   * re-sends as fuel burns, and before #1483 it logged only at debug.
+   */
+  private logStepEnd(label: "Add Amount" | "Target Amount", result: FuelStepResult, quiet = false): void {
     switch (result.outcome) {
       case "landed":
       case "unmoved":
-      case "unchecked":
-        this.host.logger.info("Fuel request sent");
+      case "unchecked": {
+        const floor = result.floorLtr === undefined ? "" : `, floor ${result.floorLtr.toFixed(2)}L`;
+
+        if (quiet) {
+          this.host.logger.debug("Fuel request sent (continuous fill-to)");
+        } else {
+          this.host.logger.info("Fuel request sent");
+        }
+
         this.host.logger.debug(
-          `Add Amount: pit.fuel(${result.sentLtr}) (${result.outcome}, +${result.extraLtr} L, baseline ${result.baselineLtr?.toFixed(2) ?? "unknown"}L)`,
+          `${label}: pit.fuel(${result.sentLtr}) (${result.outcome}, +${result.extraLtr} L${floor}, baseline ${result.baselineLtr?.toFixed(2) ?? "unknown"}L)`,
         );
 
         return;
+      }
 
       case "emptied":
         this.host.logger.info("Fuel request emptied");
@@ -1531,7 +1719,7 @@ export class FuelDialSurface {
         return;
 
       default:
-        this.host.logger.debug(`Add Amount step ${result.outcome}`);
+        this.host.logger.debug(`${label} step ${result.outcome}`);
     }
   }
 
@@ -1577,6 +1765,9 @@ export class FuelDialSurface {
         lastRenderSig: null,
         lastChangeRenderAt: 0,
         lastSentWholeAdd: null,
+        unreachableBankLtr: null,
+        fillToSends: 0,
+        checkedFloorLtr: null,
         throttle: { timer: null, pendingLtr: null, lastSentLtr: null },
         marginThrottle: { timer: null, pendingTicks: 0 },
         preview: null,
@@ -1794,14 +1985,43 @@ export class FuelDialSurface {
 
     // Continuous fill-to monitoring (issue #681): while fuel-fill is ON in
     // fill-to mode, recompute the add from the LIVE fuel level on every tick and
-    // re-broadcast only when the whole-DISPLAY-unit add actually changes (i.e.
-    // about once per litre/gallon burned). The round-up keeps the request always
-    // at/above target with no buffer. `computeAddLtr` returns the rounded-up need
-    // as a clean whole display value (no headroom clamp), so the whole-unit key
-    // only moves when the need crosses a whole-unit boundary — no sub-litre spam.
-    // We never re-send when fuel-fill is OFF (the user's toggle-off is respected)
-    // nor in add-amount mode (its add is fixed). The render-on-change path
-    // pushes the resulting feedback — `sendFuel` here only updates the request.
+    // evaluate it only when its whole-DISPLAY-unit key changes (i.e. about once
+    // per litre/gallon burned). `computeAddLtr` returns the rounded-up need as a
+    // clean whole display value (no headroom clamp), so the key only moves when
+    // the need crosses a whole-unit boundary — no sub-litre spam. We never
+    // re-send when fuel-fill is OFF (the user's toggle-off is respected) nor in
+    // add-amount mode (its add is fixed). The render-on-change path pushes the
+    // resulting feedback — the monitor only updates the request.
+    //
+    // An evaluation SENDS only when the live bank (`PitSvFuel`) does not cover
+    // the add (#1483), through the Target Amount send path, whose fuel step
+    // check steps up until the bank is at least the add. Covering means at or
+    // above the add, and less than one fuel step of the car above it — the
+    // smallest grid point the car can bank at or above it (a whole liter stands
+    // in while the step is unknown: see UNKNOWN_FUEL_STEP_LTR). On a gallon car
+    // the bank then moves only when the burn takes the need past it, instead
+    // of a request per liter that iRacing rounds back to the same gallon; a
+    // bank a step or more above the need (the target lowered, or a stop that
+    // left early) is lowered once per key change. A covered evaluation records
+    // the key and the floor (`checkedFloorLtr`) without sending.
+    //
+    // Between key changes a SHORT bank is acted on at once, on any tick: a live
+    // `PitSvFuel` below the recorded floor is re-sent. That catches a lowering
+    // send that showed only after its step's watch had ended (the step saw the
+    // old bank, at or above the floor, and ended; the grid point below the
+    // floor showed a moment later), and a request lowered in the sim. The
+    // too-high check stays per key change, and an unreadable bank never sends.
+    //
+    // A bank a Target Amount step could not raise (it ended `unmoved`, e.g.
+    // commands ignored while out of the car) is not re-sent within the same
+    // key, so the burst is not repeated tick after tick; a new key clears that
+    // memory, so a stuck bank is retried at most once per whole unit — the old
+    // monitor's cadence. Monitor steps log their end at debug only, as the
+    // monitor always has.
+    //
+    // A key of null (target reached) clears, as before. The monitor also holds
+    // off while a fuel step check runs: that check's own sends move `PitSvFuel`,
+    // and the key is evaluated against the bank it leaves once it ends.
     //
     // The `!lastPitWasClear` guard respects a deliberate clear during the telemetry
     // LAG window: right after a toggle-off (or an auto-clear when the add hits 0)
@@ -1828,27 +2048,110 @@ export class FuelDialSurface {
     // changes the requested amount mid-fueling and stops it short of the target
     // (and at target-reached the add-hits-0 path would clearFuel mid-stop). No
     // extra re-baseline is needed after the stop: `lastSentWholeAdd` still holds
-    // the pre-stop value, so the first post-stop tick re-sends the remaining
-    // need exactly once (or clears once the target is genuinely met).
+    // the pre-stop value, so the first post-stop tick evaluates the remaining
+    // need exactly once — lowering a bank it now overshoots by a step or more,
+    // or clearing once the target is genuinely met.
     if (
       ctx.settings.dial.mode === "fill-to" &&
       this.isFuelFillOn() &&
       !this.pipeline.lastPitWasClear &&
-      !isPitstopActive(telemetry)
+      !isPitstopActive(telemetry) &&
+      !this.stepper.busy
     ) {
       const addLtr = this.effectiveAddLtr(ctx);
       const displayUnits = this.effectiveDisplayUnits(ctx);
       const wholeKey = addLtr <= 0 ? null : Math.round(fuelToDisplayUnits(addLtr, displayUnits));
 
-      if (wholeKey !== ctx.lastSentWholeAdd) {
-        this.pipeline.sendFuel(addLtr);
-        ctx.lastSentWholeAdd = wholeKey;
-        // Keep the rotate/doPress throttle baseline in sync so its no-op
-        // suppression stays consistent with what was actually broadcast.
-        ctx.throttle.lastSentLtr = addLtr <= 0 ? null : addLtr;
-        this.host.logger.debug(`Continuous fill-to: requested ${addLtr.toFixed(2)}L`);
+      if (wholeKey === ctx.lastSentWholeAdd) {
+        if (wholeKey !== null && this.bankShortOfCheckedFloor(ctx, telemetry)) {
+          this.sendFillToStep(ctx, addLtr, "monitor");
+          this.host.logger.debug(`Continuous fill-to: the bank fell short, requested ${addLtr.toFixed(2)}L`);
+        }
+
+        return;
       }
+
+      // A new key: retry a bank a step could not raise (at most once per unit).
+      ctx.unreachableBankLtr = null;
+
+      if (wholeKey === null) {
+        // Target reached: the 0 add clears (never `pit.fuel(0)`).
+        this.pipeline.sendFuel(addLtr);
+        ctx.lastSentWholeAdd = null;
+        ctx.throttle.lastSentLtr = null;
+        ctx.checkedFloorLtr = null;
+        this.host.logger.debug("Continuous fill-to: target reached, cleared the request");
+
+        return;
+      }
+
+      if (this.bankCoversAdd(addLtr, telemetry)) {
+        // Nothing to send; record the key (and the rotate throttle's no-op
+        // baseline) so this need is not evaluated again until it moves, and the
+        // floor a short bank is measured against until then.
+        ctx.lastSentWholeAdd = wholeKey;
+        ctx.throttle.lastSentLtr = addLtr;
+        ctx.checkedFloorLtr = this.fillToFloorLtr(addLtr);
+        this.host.logger.debug(`Continuous fill-to: the bank covers ${addLtr.toFixed(2)}L, nothing sent`);
+
+        return;
+      }
+
+      this.sendFillToStep(ctx, addLtr, "monitor");
+      this.host.logger.debug(`Continuous fill-to: requested ${addLtr.toFixed(2)}L`);
     }
+  }
+
+  /**
+   * Whether the live bank (`PitSvFuel`) covers a Target Amount add (#1483): at
+   * or above its floor ({@link fillToFloorLtr}), and less than one fuel step of
+   * the car above the add — the smallest grid point the car can bank at or
+   * above it. While the car's step is unknown a whole liter
+   * ({@link UNKNOWN_FUEL_STEP_LTR}) stands in, so a whole-liter car is re-sent
+   * exactly when its bank differs from the rounded-up need, as before #1483,
+   * and a coarser car's bank a liter or more above the need is re-sent once — a
+   * send the fuel step check confirms without lowering the bank below the need,
+   * and which teaches the step when it has to step up. An unreadable bank does
+   * not cover.
+   *
+   * Evaluated only on a new key, which has already cleared the memory of a
+   * bank a step could not raise: a stuck bank is retried once per whole unit,
+   * and a capped bank a step or more above the need (a stop cut short) is
+   * lowered like any other. Within a key, the memory is honoured by
+   * {@link bankShortOfCheckedFloor}.
+   */
+  private bankCoversAdd(addLtr: number, telemetry: TelemetryData | null): boolean {
+    const bankLtr = readPitSvFuel(telemetry);
+
+    if (bankLtr === undefined || bankLtr < this.fillToFloorLtr(addLtr) - BANK_EPSILON_LTR) return false;
+
+    const carPath = readPlayerCarPath(this.host.getSessionInfo());
+    const stepLtr = (carPath === null ? undefined : this.stepper.fuelStepFor(carPath)) ?? UNKNOWN_FUEL_STEP_LTR;
+
+    return bankLtr < addLtr + stepLtr - BANK_EPSILON_LTR;
+  }
+
+  /**
+   * Whether, within the same key, the live bank has fallen short of the floor
+   * it was last checked against (`ctx.checkedFloorLtr`) — a lowering send that
+   * showed late, or a request lowered in the sim (#1483). An unreadable bank,
+   * or no recorded floor, is never short. A bank still equal to the one a
+   * Target Amount step could not raise is not short either: re-sending would
+   * repeat the step's burst on every tick. A bank that has moved off it drops
+   * that memory.
+   */
+  private bankShortOfCheckedFloor(ctx: FuelDialContext, telemetry: TelemetryData | null): boolean {
+    const bankLtr = readPitSvFuel(telemetry);
+
+    if (bankLtr === undefined || ctx.checkedFloorLtr === null) return false;
+
+    if (ctx.unreachableBankLtr !== null) {
+      if (Math.abs(bankLtr - ctx.unreachableBankLtr) <= BANK_EPSILON_LTR) return false;
+
+      ctx.unreachableBankLtr = null;
+    }
+
+    return bankLtr < ctx.checkedFloorLtr - BANK_EPSILON_LTR;
   }
 
   onTelemetry(actionId: string, telemetry: TelemetryData | null): void {

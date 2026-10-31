@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vite
 
 import { FuelPipeline } from "./fuel-pipeline.js";
 import {
+  floorFirstRequestLtr,
   FUEL_STEP_MAX_EXTRA_LTR,
   FUEL_STEP_WATCH_MS,
   type FuelStepDirection,
@@ -107,6 +108,26 @@ describe("fuel-step helpers", () => {
     } as unknown as SessionInfo;
 
     expect(readPlayerCarPath(info)).toBe(MX5);
+  });
+
+  it("floorFirstRequestLtr rounds a floor up to a whole liter while the step is unknown (#1483)", () => {
+    expect(floorFirstRequestLtr(5, undefined)).toBe(5);
+    expect(floorFirstRequestLtr(46.08, undefined)).toBe(47);
+    // Float noise does not cost a whole liter.
+    expect(floorFirstRequestLtr(5.000000001, undefined)).toBe(5);
+    // Never pit.fuel(0), which means "keep the existing amount".
+    expect(floorFirstRequestLtr(0.004, undefined)).toBe(1);
+  });
+
+  it("floorFirstRequestLtr picks the liter that banks the smallest grid point at or above the floor (#1483)", () => {
+    // 5 L on gallons: 2 gal (7.57 L) is the smallest grid point at or above it; 8 rounds to it.
+    expect(floorFirstRequestLtr(5, GALLON)).toBe(8);
+    // Exactly 2 gal (a gallon target's whole-unit add) stays 2 gal, not 3.
+    expect(floorFirstRequestLtr(2 * GALLON, GALLON)).toBe(8);
+    // One grid point: round(3.785) = 4, which banks 1 gal.
+    expect(floorFirstRequestLtr(3.5, GALLON)).toBe(4);
+    // A whole-liter car: the floor rounded up.
+    expect(floorFirstRequestLtr(46.08, 1)).toBe(47);
   });
 
   it("readPlayerCarPath is null when session info does not name the car", () => {
@@ -574,6 +595,302 @@ describe("FuelStepper", () => {
 
       await expect(result).resolves.toMatchObject({ outcome: "skipped" });
       expect(mockPitFuel).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("the floor rule (#1483)", () => {
+    /** A Target Amount send: bank at least `floorLtr`. */
+    function floor(floorLtr: number, onEnd?: (result: FuelStepResult) => void) {
+      return stepper.sendFuelStep(() => ({ floorLtr }), onEnd);
+    }
+
+    /** Every value `PitSvFuel` shows while the timers run, so a test can say what was never banked. */
+    function recordBanks(): number[] {
+      const banks: number[] = [];
+      const receive = car.receive.bind(car);
+      vi.spyOn(car, "receive").mockImplementation((liters: number) => {
+        receive(liters);
+        // The fake banks one tick later; record what it will show.
+        setTimeout(() => banks.push(car.pitSvFuel ?? Number.NaN), car.lagMs);
+      });
+
+      return banks;
+    }
+
+    /** Teaches the MX-5's gallon step: from 1 gal, floor 5 sends 5 (banks 1 gal again), then 6 (2 gal). */
+    async function learnGallonStep(): Promise<void> {
+      useCar(new FakeCar(gallonGrid, GALLON, MX5));
+      const teach = floor(5);
+      await vi.advanceTimersByTimeAsync(1_000);
+      await expect(teach).resolves.toMatchObject({ outcome: "landed", sentLtr: 6 });
+      expect(stepper.fuelStepFor(MX5)).toBeCloseTo(GALLON, 5);
+      mockPitFuel.mockClear();
+    }
+
+    it("a 5 L floor on a gallon car banks 2 gal, never stopping at 1 gal", async () => {
+      useCar(new FakeCar(gallonGrid, 0, MX5));
+      const banks = recordBanks();
+
+      // 5 banks the nearest gallon, 1 gal (3.79 L) — below the floor, so 6 goes
+      // out and banks 2 gal (7.57 L). Today's Fill To would have stopped at 1 gal.
+      const result = floor(5);
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      await expect(result).resolves.toMatchObject({ outcome: "landed", floorLtr: 5, firstLtr: 5, sentLtr: 6 });
+      expect(sent()).toEqual([5, 6]);
+      expect(car.pitSvFuel).toBeCloseTo(2 * GALLON, 5);
+      expect(car.pitSvFuel).toBeGreaterThanOrEqual(5);
+      // The 1 gal was only the probe on the way up, not where the step ended.
+      expect(banks.map((bank) => Number(bank.toFixed(2)))).toEqual([3.79, 7.57]);
+    });
+
+    it("learns the step from a one-step landing, and the next floor send lands on its first read", async () => {
+      await learnGallonStep();
+
+      // From 2 gal, a 9 L floor needs 3 gal (11.36 L): round(11.36) = 11 lands at once.
+      const next = floor(9);
+      await vi.advanceTimersByTimeAsync(TICK_MS + 4);
+
+      await expect(next).resolves.toMatchObject({ outcome: "landed", firstLtr: 11, sentLtr: 11, extraLtr: 0 });
+      expect(sent()).toEqual([11]);
+      expect(car.pitSvFuel).toBeCloseTo(3 * GALLON, 5);
+    });
+
+    it("on a whole-liter car sends the floor rounded up once and never steps", async () => {
+      useCar(new FakeCar(literGrid, 10, PORSCHE));
+
+      const result = floor(15.3);
+      await vi.advanceTimersByTimeAsync(TICK_MS + 4);
+
+      await expect(result).resolves.toMatchObject({ outcome: "landed", sentLtr: 16, extraLtr: 0, endLtr: 16 });
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(sent()).toEqual([16]);
+    });
+
+    it("learns a whole-liter car's 1 L step from a one-liter landing, never from a large first fill", async () => {
+      useCar(new FakeCar(literGrid, 0, PORSCHE));
+
+      // 0 → 46 L lands on its first send but spans 46 grid points: not the step.
+      const fill = floor(46);
+      await vi.advanceTimersByTimeAsync(100);
+      await expect(fill).resolves.toMatchObject({ outcome: "landed", endLtr: 46 });
+      expect(stepper.fuelStepFor(PORSCHE)).toBeUndefined();
+
+      // A liter of burn later the floor is 47: a 1 L move, one whole-liter step.
+      const burn = floor(47);
+      await vi.advanceTimersByTimeAsync(100);
+      await expect(burn).resolves.toMatchObject({ outcome: "landed", endLtr: 47 });
+      expect(stepper.fuelStepFor(PORSCHE)).toBe(1);
+    });
+
+    it("learns nothing from a first-send landing on a capped bank that is not a whole liter away", async () => {
+      // A whole-liter car with a 40.1 L tank: from 39 L, 41 banks the capped 40.1.
+      useCar(new FakeCar(literGrid, 39, PORSCHE));
+      car.capacityLtr = 40.1;
+
+      const capped = floor(40.1);
+      await vi.advanceTimersByTimeAsync(100);
+      await expect(capped).resolves.toMatchObject({ outcome: "landed", sentLtr: 41, endLtr: 40.1 });
+
+      // 1.1 L is the cap, not a step; learned, it would overshoot every later floor.
+      expect(stepper.fuelStepFor(PORSCHE)).toBeUndefined();
+    });
+
+    it("with the step known, a floor more than a step below the bank lands on the grid point just above it", async () => {
+      await learnGallonStep();
+      // Back up to 3 gal (11.36 L).
+      const up = floor(10);
+      await vi.advanceTimersByTimeAsync(1_000);
+      await expect(up).resolves.toMatchObject({ outcome: "landed" });
+      expect(car.pitSvFuel).toBeCloseTo(3 * GALLON, 5);
+      mockPitFuel.mockClear();
+
+      // The target lowered: a 3.5 L floor needs 1 gal. 4 goes out; PitSvFuel
+      // still reads 11.36 for a tick (at or above the floor, but the baseline),
+      // then 3.79 shows and the step ends there.
+      const down = floor(3.5);
+      await vi.advanceTimersByTimeAsync(TICK_MS + 4);
+
+      await expect(down).resolves.toMatchObject({ outcome: "landed", sentLtr: 4, extraLtr: 0 });
+      expect(sent()).toEqual([4]);
+      expect(car.pitSvFuel).toBeCloseTo(GALLON, 5);
+    });
+
+    it("ends a floor the baseline already covers only when the watch expires", async () => {
+      await learnGallonStep();
+
+      // From 2 gal (7.57 L) a 7 L floor needs 2 gal again: 8 goes out and banks
+      // what is already there. The step cannot tell "covered" from "not shown
+      // yet" until the watch ends.
+      const covered = floor(7);
+      await vi.advanceTimersByTimeAsync(FUEL_STEP_WATCH_MS - 20);
+      expect(stepper.busy).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(40);
+
+      await expect(covered).resolves.toMatchObject({ outcome: "landed", sentLtr: 8, extraLtr: 0 });
+      expect(sent()).toEqual([8]);
+      expect(car.pitSvFuel).toBeCloseTo(2 * GALLON, 5);
+    });
+
+    it("ends unmoved, logging at info, when the bank cannot reach the floor within the bound", async () => {
+      useCar(new FakeCar(gallonGrid, 3 * GALLON, MX5));
+      car.capacityLtr = 3 * GALLON;
+
+      const result = floor(14);
+      await vi.advanceTimersByTimeAsync(20 * FUEL_STEP_WATCH_MS);
+
+      await expect(result).resolves.toMatchObject({
+        outcome: "unmoved",
+        extraLtr: FUEL_STEP_MAX_EXTRA_LTR,
+        sentLtr: 22,
+      });
+      expect(sent()).toEqual([14, 15, 16, 17, 18, 19, 20, 21, 22]);
+      expect(logger.info).toHaveBeenCalledWith(expect.stringContaining("did not reach the target"));
+      expect(stepper.busy).toBe(false);
+    });
+
+    it("never reads or writes the minimum move", async () => {
+      useCar(new FakeCar(gallonGrid, GALLON, MX5));
+
+      // An escalated floor landing (5, 6) teaches no minimum move…
+      const first = floor(5);
+      await vi.advanceTimersByTimeAsync(1_000);
+      await expect(first).resolves.toMatchObject({ outcome: "landed", extraLtr: 1 });
+      expect(stepper.minimumMoveFor(MX5, "add")).toBe(0);
+      expect(stepper.minimumMoveFor(MX5, "reduce")).toBe(0);
+
+      // …a key press teaches one (from 2 gal: 9 rounds back, 10 lands on 3 gal)…
+      const key = press("add", 1);
+      await vi.advanceTimersByTimeAsync(1_000);
+      await expect(key).resolves.toMatchObject({ outcome: "landed", sentLtr: 10 });
+      const minimum = stepper.minimumMoveFor(MX5, "add");
+      expect(minimum).toBeCloseTo(10 - 2 * GALLON, 5);
+      mockPitFuel.mockClear();
+
+      // …and a floor send is not bumped by it, nor changes it: 12 L from 3 gal
+      // needs 4 gal, and goes out as round(15.14) = 15, not 15 + a bump.
+      const second = floor(12);
+      await vi.advanceTimersByTimeAsync(1_000);
+      await expect(second).resolves.toMatchObject({ outcome: "landed", sentLtr: 15, extraLtr: 0 });
+      expect(sent()).toEqual([15]);
+      expect(stepper.minimumMoveFor(MX5, "add")).toBe(minimum);
+    });
+
+    it("a key press's escalated landing teaches the step too", async () => {
+      // 12 and 13 round back to 3 gal; 14 lands one grid point up, on 4 gal.
+      const key = press("add", 1);
+      await vi.advanceTimersByTimeAsync(1_000);
+      await expect(key).resolves.toMatchObject({ outcome: "landed", sentLtr: 14 });
+
+      expect(stepper.fuelStepFor(MX5)).toBeCloseTo(GALLON, 5);
+    });
+
+    it("does not learn a step from a send that shows only after the watch expired", async () => {
+      useCar(new FakeCar(literGrid, 0, PORSCHE));
+      car.lagMs = FUEL_STEP_WATCH_MS + 50;
+
+      // 46 shows at 350 ms, after the check escalated to 47: the step ends on the
+      // late 46, which is 46 L from the baseline, not one grid point.
+      const late = floor(46);
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      await expect(late).resolves.toMatchObject({ outcome: "landed", sentLtr: 47, endLtr: 46 });
+      expect(stepper.fuelStepFor(PORSCHE)).toBeUndefined();
+    });
+
+    describe("a gallon send that shows only after its watch never teaches two gallons", () => {
+      /** From 0 L a 5 L floor sends 5, which shows `firstLagMs` later; every later send shows `laterLagMs` after it went out. */
+      async function lateFirstSend(firstLagMs: number, laterLagMs: number) {
+        useCar(new FakeCar(gallonGrid, 0, MX5));
+        car.lagMs = firstLagMs;
+        const result = floor(5);
+        car.lagMs = laterLagMs;
+        await vi.advanceTimersByTimeAsync(3_000);
+
+        return result;
+      }
+
+      it("when the late 1 gal is read before the 2 gal lands", async () => {
+        // 5 is unshown at 300 ms, so 6 goes out from a stale 0 L; 3.79 shows at
+        // 350 ms (read at 360), then 7.57 at 380. 7.57 − 0 is two gallons.
+        const result = lateFirstSend(FUEL_STEP_WATCH_MS + 50, 80);
+
+        await expect(result).resolves.toMatchObject({ outcome: "landed", sentLtr: 6 });
+        expect(car.pitSvFuel).toBeCloseTo(2 * GALLON, 5);
+        expect(stepper.fuelStepFor(MX5)).toBeUndefined();
+      });
+
+      it("when the late 1 gal and the 2 gal both show between two polls", async () => {
+        // 3.79 shows at 350 ms and 7.57 at 355: the poll at 360 sees only 7.57.
+        const result = lateFirstSend(FUEL_STEP_WATCH_MS + 50, 55);
+
+        await expect(result).resolves.toMatchObject({ outcome: "landed", sentLtr: 6 });
+        expect(car.pitSvFuel).toBeCloseTo(2 * GALLON, 5);
+        expect(stepper.fuelStepFor(MX5)).toBeUndefined();
+      });
+
+      it("when every send shows late", async () => {
+        const result = lateFirstSend(FUEL_STEP_WATCH_MS + 50, FUEL_STEP_WATCH_MS + 50);
+
+        await expect(result).resolves.toMatchObject({ outcome: "landed" });
+        const learned = stepper.fuelStepFor(MX5);
+
+        // Nothing, or the true gallon — never a multiple of it.
+        expect(learned === undefined || Math.abs(learned - GALLON) < 1e-6).toBe(true);
+      });
+    });
+
+    it("keeps the smallest step seen per car", async () => {
+      await learnGallonStep();
+      useCar(new FakeCar(literGrid, 10, PORSCHE));
+
+      const liter = floor(11);
+      await vi.advanceTimersByTimeAsync(100);
+      await expect(liter).resolves.toMatchObject({ outcome: "landed" });
+
+      expect(stepper.fuelStepFor(PORSCHE)).toBe(1);
+      expect(stepper.fuelStepFor(MX5)).toBeCloseTo(GALLON, 5);
+    });
+
+    it("learns nothing when session info does not name the car", async () => {
+      useCar(new FakeCar(gallonGrid, GALLON, MX5));
+      vi.spyOn(car, "sessionInfo").mockReturnValue(null);
+
+      const result = floor(5);
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      await expect(result).resolves.toMatchObject({ outcome: "landed", sentLtr: 6 });
+      expect(stepper.fuelStepFor(MX5)).toBeUndefined();
+    });
+
+    it("sends once without a check when PitSvFuel is unreadable", async () => {
+      useCar(new FakeCar(gallonGrid, undefined, MX5));
+
+      const result = floor(5);
+
+      await expect(result).resolves.toMatchObject({ outcome: "unchecked", floorLtr: 5, sentLtr: 5 });
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(sent()).toEqual([5]);
+    });
+
+    it("sends nothing for a floor at or below zero", async () => {
+      const result = floor(0);
+
+      await expect(result).resolves.toMatchObject({ outcome: "skipped" });
+      expect(mockPitFuel).not.toHaveBeenCalled();
+    });
+
+    it("is cancelled by another fuel command like any step", async () => {
+      useCar(new FakeCar(gallonGrid, 0, MX5));
+
+      const running = floor(5);
+      await vi.advanceTimersByTimeAsync(50);
+      pipeline.forceClearFuel();
+
+      await expect(running).resolves.toMatchObject({ outcome: "cancelled", sentLtr: 5 });
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(sent()).toEqual([5]);
     });
   });
 });

@@ -29,7 +29,7 @@ import {
 } from "./fuel-dial-surface.js";
 import { resolveDisplayUnits } from "./fuel-service-settings.js";
 import { FUEL_SERVICE_UUID, FuelService } from "./fuel-service.js";
-import type { FuelStepper } from "./fuel-step.js";
+import { FUEL_STEP_WATCH_MS, type FuelStepper } from "./fuel-step.js";
 
 const {
   mockPitClearFuel,
@@ -1835,8 +1835,9 @@ describe("FuelService dial surface", () => {
 
       const onTick = telemetryCallback();
 
-      // Prime the re-send baseline: the first tick computes add = 90 - 44.0 = 46 and
-      // broadcasts it (lastSentLtr was null after appear).
+      // Prime the re-send baseline: the first tick computes add = 90 - 44.0 = 46,
+      // which the bank (46) already covers, so it records the key without a send
+      // (#1483; lastSentWholeAdd was null after appear).
       onTick({ DisplayUnits: 1, PitSvFuel: 46, FuelLevel: 44.0, PitSvFlags: FUEL_FILL });
       mockPitFuel.mockClear();
       mockPitClearFuel.mockClear();
@@ -1932,36 +1933,29 @@ describe("FuelService dial surface", () => {
       // no ~60×/sec spam.
       const ctx = dialContext("cm-full");
       vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
-      // 90L tank, target == capacity (90). Fuel ON, current 43.92.
+      // 90L tank, target == capacity (90). Fuel ON, current 43.92. A car that
+      // banks what it is sent, so each Target Amount send's floor check (#1483)
+      // lands at once and the ticks below see the request it banked.
       mockGetSessionInfo.mockReturnValue(SESSION_90L);
-      mockGetCurrentTelemetry.mockReturnValue({
-        DisplayUnits: 1,
-        PitSvFuel: 46,
-        FuelLevel: 43.92,
-        PitSvFlags: FUEL_FILL,
-      });
+      const telemetry = bankWholeLiters({ DisplayUnits: 1, PitSvFuel: 46, FuelLevel: 43.92, PitSvFlags: FUEL_FILL });
       const settings = { stepSize: 1, unitMode: "liters", dialMode: "fill-to", pressAction: "toggle-fueling" };
       await appear(ctx, settings);
 
       const onTick = telemetryCallback();
 
       // Prime the re-send baseline: first tick at 43.92 computes the add
-      // (need = 90 − 43.92 = 46.08 → ceil 47, unclamped) and broadcasts it
-      // (lastSentWholeAdd was null after appear).
-      onTick({ DisplayUnits: 1, PitSvFuel: 46, FuelLevel: 43.92, PitSvFlags: FUEL_FILL });
+      // (need = 90 − 43.92 = 46.08 → ceil 47, unclamped); the bank (46) is short
+      // of it, so it is sent (lastSentWholeAdd was null after appear).
+      onTick(telemetry);
+      expect(mockPitFuel).toHaveBeenLastCalledWith(47);
       mockPitFuel.mockClear();
       mockPitClearFuel.mockClear();
 
       // Several ticks burning WITHIN the same whole litre (43.92 → 43.81). The
       // rounded-up need stays 47 (need 46.x → ceil 47), so NOT a single re-send.
       for (const fuel of [43.9, 43.88, 43.85, 43.81]) {
-        mockGetCurrentTelemetry.mockReturnValue({
-          DisplayUnits: 1,
-          PitSvFuel: 46,
-          FuelLevel: fuel,
-          PitSvFlags: FUEL_FILL,
-        });
-        onTick({ DisplayUnits: 1, PitSvFuel: 46, FuelLevel: fuel, PitSvFlags: FUEL_FILL });
+        telemetry.FuelLevel = fuel;
+        onTick(telemetry);
       }
 
       expect(mockPitFuel).not.toHaveBeenCalled();
@@ -1969,13 +1963,8 @@ describe("FuelService dial surface", () => {
       // Drop across the whole-litre boundary (43.81 → 42.95): the need crosses 47
       // (90 − 42.95 = 47.05 → ceil 48), so the whole-unit add moves 47 → 48 →
       // exactly ONE re-send.
-      mockGetCurrentTelemetry.mockReturnValue({
-        DisplayUnits: 1,
-        PitSvFuel: 46,
-        FuelLevel: 42.95,
-        PitSvFlags: FUEL_FILL,
-      });
-      onTick({ DisplayUnits: 1, PitSvFuel: 46, FuelLevel: 42.95, PitSvFlags: FUEL_FILL });
+      telemetry.FuelLevel = 42.95;
+      onTick(telemetry);
 
       expect(mockPitFuel).toHaveBeenCalledTimes(1);
       expect(mockPitFuel).toHaveBeenLastCalledWith(48);
@@ -2100,7 +2089,7 @@ describe("FuelService dial surface", () => {
 
       const onTick = getTelemetryCallback(action);
 
-      // Prime the continuous-monitor baseline (first tick broadcasts add 20).
+      // Prime the continuous-monitor baseline (first tick records add 20, which the bank covers).
       onTick({ DisplayUnits: 1, PitSvFuel: 20, FuelLevel: 45, PitSvFlags: FUEL_FILL });
 
       // The user presses to turn fueling OFF — this clears the request.
@@ -2130,19 +2119,22 @@ describe("FuelService dial surface", () => {
     it("resumes continuous re-sends once fueling is genuinely re-armed", async () => {
       vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
       const ctx = dialContext("toff2");
-      // Fill-to, fuel ON, current 45, requested add 20 -> seed target = 65.
+      // Fill-to, fuel ON, current 45, requested add 20 -> seed target = 65. A car
+      // that banks what it is sent, so the re-arm's floor check (#1483) lands at
+      // once and the monitor is not held behind it.
       mockGetSessionInfo.mockReturnValue(SESSION_110L);
-      mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 20, FuelLevel: 45, PitSvFlags: FUEL_FILL });
+      const telemetry = bankWholeLiters({ DisplayUnits: 1, PitSvFuel: 20, FuelLevel: 45, PitSvFlags: FUEL_FILL });
       const settings = { unitMode: "liters", stepSize: 1, dialMode: "fill-to", pressAction: "toggle-fueling" };
       await appear(ctx, settings);
 
       const onTick = getTelemetryCallback(action);
-      onTick({ DisplayUnits: 1, PitSvFuel: 20, FuelLevel: 45, PitSvFlags: FUEL_FILL }); // prime
+      onTick(telemetry); // prime
 
       // Turn fueling OFF, then let the clear land in telemetry (fuel-fill OFF).
       await pressDial(ctx, settings);
-      mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 0, FuelLevel: 45, PitSvFlags: 0 });
-      onTick({ DisplayUnits: 1, PitSvFuel: 0, FuelLevel: 45, PitSvFlags: 0 }); // clear observed (fuel OFF)
+      telemetry.PitSvFuel = 0;
+      telemetry.PitSvFlags = 0;
+      onTick(telemetry); // clear observed (fuel OFF)
       mockPitFuel.mockClear();
       mockPitClearFuel.mockClear();
 
@@ -2154,8 +2146,9 @@ describe("FuelService dial surface", () => {
       // Now the continuous monitor must work again: fuel burns past a whole-unit
       // boundary and the request is re-sent.
       mockPitFuel.mockClear();
-      mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 20, FuelLevel: 44, PitSvFlags: FUEL_FILL });
-      onTick({ DisplayUnits: 1, PitSvFuel: 20, FuelLevel: 44, PitSvFlags: FUEL_FILL }); // need 65-44=21 -> re-send
+      telemetry.PitSvFlags = FUEL_FILL;
+      telemetry.FuelLevel = 44;
+      onTick(telemetry); // need 65-44=21, bank 20 -> re-send
 
       expect(mockPitFuel).toHaveBeenCalledWith(21);
     });
@@ -2174,7 +2167,7 @@ describe("FuelService dial surface", () => {
       await appear(ctx, SETTINGS);
 
       const onTick = getTelemetryCallback(action);
-      // Prime the re-send baseline before the stop (first tick broadcasts add 46).
+      // Prime the re-send baseline before the stop (first tick records add 46, which the bank covers).
       onTick(PRE_STOP);
       mockPitFuel.mockClear();
       mockPitClearFuel.mockClear();
@@ -2225,7 +2218,8 @@ describe("FuelService dial surface", () => {
       expect(mockPitFuel).not.toHaveBeenCalled();
 
       // The driver leaves early (fueling incomplete, fuel-fill still ON): the
-      // monitor resumes and re-sends the remaining need (90 − 60 = 30) ONCE.
+      // monitor resumes and re-sends the remaining need (90 − 60 = 30) ONCE —
+      // the bank (46) is now a whole step or more above it (#1483).
       const postStop = { ...PRE_STOP, FuelLevel: 60, PitstopActive: false };
       mockGetCurrentTelemetry.mockReturnValue(postStop);
       onTick(postStop);
@@ -2836,6 +2830,49 @@ describe("FuelService dial surface", () => {
       expect(ctx.setSettings).toHaveBeenCalledWith(
         expect.objectContaining({ dial: expect.objectContaining({ mode: "add-amount" }) }),
       );
+    });
+
+    it("a Mode change from the Property Inspector re-seeds the target from the tank, as the gesture does (#1483)", async () => {
+      // 30 L in the tank and 4 L requested: the Add Amount dial holds 4 L.
+      mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 4, FuelLevel: 30, PitSvFlags: 0 });
+      const ctx = dialContext("sm-pi");
+      await appear(ctx, { dialMode: "add-amount", stepSize: 1, unitMode: "liters" });
+
+      // The PI switches the Mode to Target Amount.
+      const targetSettings = { dialMode: "fill-to", stepSize: 1, unitMode: "liters" };
+      await action.onDidReceiveSettings(basicEvent(ctx, targetSettings) as never);
+      mockPitFuel.mockClear();
+      mockPitClearFuel.mockClear();
+
+      // One detent up: the target is 30 + 4 + 1 = 35 L, so the stop must add 5 L.
+      // Without the re-seed the target would be 4 + 1 = 5 L, under the 30 L in
+      // the tank, and the request would clear instead.
+      await action.onDialRotate(rotateEvent(ctx, targetSettings, 1) as never);
+
+      expect(mockPitClearFuel).not.toHaveBeenCalled();
+      expect(mockPitFuel.mock.calls[0]?.[0]).toBe(5);
+    });
+
+    it("a settings change that keeps the Mode leaves the dialed target alone", async () => {
+      mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 4, FuelLevel: 30, PitSvFlags: 0 });
+      const ctx = dialContext("sm-pi2");
+      const settings = { dialMode: "fill-to", stepSize: 1, unitMode: "liters" };
+      await appear(ctx, settings);
+      // Dial the target up to 40 L (need 10 L).
+      await action.onDialRotate(rotateEvent(ctx, settings, 6) as never);
+      // The static mock bank never reaches the floor, so let that check run out.
+      await vi.advanceTimersByTimeAsync(4_000);
+
+      // Another field changes in the PI; the bank meanwhile reads 2 L.
+      mockGetCurrentTelemetry.mockReturnValue({ DisplayUnits: 1, PitSvFuel: 2, FuelLevel: 30, PitSvFlags: 0 });
+      const changed = { ...settings, pressAction: "toggle-fueling" };
+      await action.onDidReceiveSettings(basicEvent(ctx, changed) as never);
+      mockPitFuel.mockClear();
+
+      // One more detent: 41 L, so 11 L — not a target re-seeded from 30 + 2.
+      await action.onDialRotate(rotateEvent(ctx, changed, 1) as never);
+
+      expect(mockPitFuel.mock.calls[0]?.[0]).toBe(11);
     });
 
     it("persists by merging over the raw payload, writing no parsed defaults (#957)", async () => {
@@ -3904,17 +3941,556 @@ describe("FuelService dial surface", () => {
       expect(telemetry.PitSvFuel).toBeCloseTo(4 * GALLON, 5);
       expect(dialValue("fs12")).toBe(11);
     });
+  });
 
-    it("leaves Fill To alone: one send per rotation, no check", async () => {
-      bankWholeGallons(3);
-      const settings = { stepSize: 1, unitMode: "liters", dialMode: "fill-to" };
-      const ctx = dialContext("fs7");
+  describe("Target Amount banks at least the target, whatever the car's fuel step (#1483)", () => {
+    /** One US gallon in liters — the MX-5's fuel step. */
+    const GALLON = 3.78541;
+    /** iRacing's lag between a pit command and the telemetry reflecting it (one 60 Hz tick). */
+    const TICK_MS = 16;
+    const MX5_PATH = "mx5 mx52016";
+    const PORSCHE_PATH = "porsche992cup";
+    /** The MX-5 in session info: a named car (the fuel step is learned per car) with a 50 L tank. */
+    const SESSION_MX5 = {
+      DriverInfo: {
+        DriverCarFuelMaxLtr: 50,
+        DriverCarMaxFuelPct: 1,
+        DriverCarIdx: 4,
+        Drivers: [{ CarIdx: 4, CarPath: MX5_PATH }],
+      },
+    };
+    /** A whole-liter car in session info, 110 L tank. */
+    const SESSION_PORSCHE = {
+      DriverInfo: {
+        DriverCarFuelMaxLtr: 110,
+        DriverCarMaxFuelPct: 1,
+        DriverCarIdx: 1,
+        Drivers: [{ CarIdx: 1, CarPath: PORSCHE_PATH }],
+      },
+    };
+    const gallonGrid = (wholeLiters: number) => Math.round(wholeLiters / GALLON) * GALLON;
+    const literGrid = (wholeLiters: number) => wholeLiters;
+
+    /**
+     * A car in the sim: `pit.fuel(n)` truncates n to whole liters, banks the
+     * nearest point on the car's grid, caps it at `capLtr` (a number, or a
+     * function of the live telemetry read when the command arrives) and shows it
+     * in `PitSvFuel` `car.lagMs` later (one tick by default). While
+     * `car.ignoring` is set, commands bank nothing. Returns the live telemetry
+     * the mocked controller serves; a test burns fuel by changing its
+     * `FuelLevel` and passes it to the telemetry callback.
+     */
+    function bankOnGrid(
+      grid: (wholeLiters: number) => number,
+      base: Record<string, unknown>,
+      capLtr: number | ((telemetry: Record<string, unknown>) => number) = Number.POSITIVE_INFINITY,
+      car: { lagMs?: number; ignoring?: boolean } = {},
+    ) {
+      const telemetry: Record<string, unknown> = { DisplayUnits: 1, PitSvFlags: 0, ...base };
+      mockGetCurrentTelemetry.mockReturnValue(telemetry);
+      mockPitFuel.mockImplementation((liters: number) => {
+        const whole = Math.trunc(liters);
+
+        if (whole > 0 && !car.ignoring) {
+          const cap = typeof capLtr === "function" ? capLtr(telemetry) : capLtr;
+          const banked = Math.min(grid(whole), cap);
+          setTimeout(() => {
+            telemetry.PitSvFuel = banked;
+          }, car.lagMs ?? TICK_MS);
+        }
+
+        return true;
+      });
+
+      return telemetry;
+    }
+
+    function stepperOf(act: FuelService): FuelStepper {
+      return (act as unknown as { stepper: FuelStepper }).stepper;
+    }
+
+    const sent = () => mockPitFuel.mock.calls.map(([liters]) => liters);
+    const bank = (telemetry: Record<string, unknown>) => telemetry.PitSvFuel as number;
+
+    it("a gallon car whose need is 5 L banks 2 gal and finishes at or above the target", async () => {
+      mockGetSessionInfo.mockReturnValue(SESSION_MX5);
+      const telemetry = bankOnGrid(gallonGrid, { PitSvFuel: 0, FuelLevel: 10 });
+      const settings = { stepSize: 5, unitMode: "liters", dialMode: "fill-to" };
+      const ctx = dialContext("ft1");
+      await appear(ctx, settings);
+      const info = (action as unknown as { logger: { info: ReturnType<typeof vi.fn> } }).logger.info;
+      info.mockClear();
+
+      // Target 10 → 15: the need is 5 L. pit.fuel(5) banks the nearest gallon,
+      // 1 gal (3.79 L) — the stop would end at 13.79 L — so 6 goes out and banks 2 gal.
+      await action.onDialRotate(rotateEvent(ctx, settings, 1) as never);
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      expect(sent()).toEqual([5, 6]);
+      expect(bank(telemetry)).toBeCloseTo(2 * GALLON, 5);
+      expect((telemetry.FuelLevel as number) + bank(telemetry)).toBeGreaterThanOrEqual(15);
+      // One info line, once the step has sent.
+      expect(info.mock.calls.filter(([line]) => line === "Fuel request sent")).toHaveLength(1);
+    });
+
+    it("a whole-liter car sends the need rounded up once, with no stepping", async () => {
+      mockGetSessionInfo.mockReturnValue(SESSION_PORSCHE);
+      const telemetry = bankOnGrid(literGrid, { PitSvFuel: 0, FuelLevel: 44.3 });
+      const settings = { stepSize: 20.7, unitMode: "liters", dialMode: "fill-to" };
+      const ctx = dialContext("ft2");
       await appear(ctx, settings);
 
+      // Seed 44 → 64.7 → snaps to 65: need 20.7 → 21.
       await action.onDialRotate(rotateEvent(ctx, settings, 1) as never);
       await vi.advanceTimersByTimeAsync(3_000);
 
-      expect(mockPitFuel).toHaveBeenCalledOnce();
+      expect(sent()).toEqual([21]);
+      expect(bank(telemetry)).toBe(21);
+    });
+
+    it("an arming press on a gallon car banks at least the need too", async () => {
+      mockGetSessionInfo.mockReturnValue(SESSION_MX5);
+      const telemetry = bankOnGrid(gallonGrid, { PitSvFuel: 0, FuelLevel: 45 });
+      const settings = { pressAction: "fill-to-max", dialMode: "fill-to" };
+      const ctx = dialContext("ft3");
+      await appear(ctx, settings);
+
+      // Toggle Full: target the 50 L tank, a 5 L need → 5 banks 1 gal, 6 banks 2.
+      await pressDial(ctx, settings);
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      expect(sent()).toEqual([5, 6]);
+      expect(bank(telemetry)).toBeCloseTo(2 * GALLON, 5);
+    });
+
+    it("rotating one detent at a time on a gallon car moves the bank only when the target crosses a gallon", async () => {
+      mockGetSessionInfo.mockReturnValue(SESSION_MX5);
+      const telemetry = bankOnGrid(gallonGrid, { PitSvFuel: 0, FuelLevel: 0 });
+      const settings = { stepSize: 1, unitMode: "liters", dialMode: "fill-to" };
+      const ctx = dialContext("ft4");
+      await appear(ctx, settings);
+      const banks: number[] = [];
+
+      for (let target = 1; target <= 9; target++) {
+        await action.onDialRotate(rotateEvent(ctx, settings, 1) as never);
+        await vi.advanceTimersByTimeAsync(1_000);
+        banks.push(Number(bank(telemetry).toFixed(2)));
+        // Never a stop that finishes under the target.
+        expect(bank(telemetry)).toBeGreaterThanOrEqual(target);
+      }
+
+      // The first detent teaches the gallon (1 banks 0 gal, 2 banks 1 gal); after
+      // that the bank changes only at 4 L and 8 L, where the target passes a gallon.
+      expect(banks).toEqual([3.79, 3.79, 3.79, 7.57, 7.57, 7.57, 7.57, 11.36, 11.36]);
+      expect(stepperOf(action).fuelStepFor(MX5_PATH)).toBeCloseTo(GALLON, 5);
+    });
+
+    describe("the continuous monitor on a gallon car", () => {
+      /**
+       * Target 35 L with 30 L in the tank and fueling on: the 5 L need banks
+       * 2 gal through 5 and 6, which teaches the car's gallon step.
+       */
+      async function armFiveLiterNeed(id: string) {
+        mockGetSessionInfo.mockReturnValue(SESSION_MX5);
+        vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
+        const telemetry = bankOnGrid(gallonGrid, { PitSvFuel: 0, FuelLevel: 30, PitSvFlags: FUEL_FILL });
+        const settings = { stepSize: 5, unitMode: "liters", dialMode: "fill-to" };
+        const ctx = dialContext(id);
+        await appear(ctx, settings);
+        await action.onDialRotate(rotateEvent(ctx, settings, 1) as never);
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(sent()).toEqual([5, 6]);
+        expect(stepperOf(action).fuelStepFor(MX5_PATH)).toBeCloseTo(GALLON, 5);
+        mockPitFuel.mockClear();
+
+        const onTick = getTelemetryCallback(action);
+        const tick = async (changes: Record<string, unknown>) => {
+          Object.assign(telemetry, changes);
+          onTick(telemetry);
+          await vi.advanceTimersByTimeAsync(50);
+        };
+
+        return { telemetry, tick };
+      }
+
+      it("re-sends only when the bank falls short of the need, not on every whole liter", async () => {
+        const { telemetry, tick } = await armFiveLiterNeed("ftm1");
+        const info = (action as unknown as { logger: { info: ReturnType<typeof vi.fn> } }).logger.info;
+        info.mockClear();
+
+        // Burn 30 → 26 L: the need grows 5 → 9 L, crossing four whole liters.
+        for (let fuel = 30; fuel >= 26; fuel -= 0.25) {
+          await tick({ FuelLevel: fuel });
+          // The stop always reaches the target.
+          expect(fuel + bank(telemetry)).toBeGreaterThanOrEqual(35 - 0.01);
+        }
+
+        // 2 gal covers needs of 6 and 7 L; at 8 L it falls short and one request
+        // banks 3 gal (round(11.36) = 11, at once — the step is known), which
+        // covers 9 L. Before #1483 this burn sent 6, 7, 8 and 9.
+        expect(sent()).toEqual([11]);
+        expect(bank(telemetry)).toBeCloseTo(3 * GALLON, 5);
+        // The monitor's re-send logs at debug only, as it did before #1483.
+        expect(info).not.toHaveBeenCalledWith("Fuel request sent");
+      });
+
+      it("pauses during a pit stop, then lowers a bank a whole step above the need once", async () => {
+        const { telemetry, tick } = await armFiveLiterNeed("ftm2");
+
+        // The stop pumps fuel in: the need falls with every tick, but the
+        // monitor holds fire (#831).
+        for (const fuel of [31, 32, 33]) {
+          await tick({ FuelLevel: fuel, PitstopActive: true });
+        }
+
+        expect(sent()).toEqual([]);
+        expect(mockPitClearFuel).not.toHaveBeenCalled();
+
+        // The driver leaves early at 33 L: the need is 2 L and 2 gal is a whole
+        // gallon above it, so one request (4 → 1 gal) lowers the bank.
+        await tick({ PitstopActive: false });
+
+        expect(sent()).toEqual([4]);
+        expect(bank(telemetry)).toBeCloseTo(GALLON, 5);
+        expect(33 + bank(telemetry)).toBeGreaterThanOrEqual(35);
+
+        // The same need again sends nothing more.
+        await tick({});
+        await tick({});
+        expect(sent()).toEqual([4]);
+      });
+
+      it("re-sends at once when a lowering request shows below the floor after its check ended", async () => {
+        mockGetSessionInfo.mockReturnValue(SESSION_MX5);
+        vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
+        // 2 gal banked, target seeded at 30 + 7.57 → 38 L, step unknown, in the stall.
+        const car: { lagMs?: number } = {};
+        const telemetry = bankOnGrid(
+          gallonGrid,
+          { PitSvFuel: 2 * GALLON, FuelLevel: 30, PitSvFlags: FUEL_FILL, PitstopActive: true },
+          Number.POSITIVE_INFINITY,
+          car,
+        );
+        await appear(dialContext("ftm4"), { stepSize: 1, unitMode: "liters", dialMode: "fill-to" });
+        const onTick = getTelemetryCallback(action);
+        const tick = async (changes: Record<string, unknown>) => {
+          Object.assign(telemetry, changes);
+          onTick(telemetry);
+          await vi.advanceTimersByTimeAsync(50);
+        };
+
+        await tick({ FuelLevel: 33 });
+
+        // Leaving the stall at 33 L: the need is 5 L, 7.57 is a liter or more above
+        // it, so 5 goes out — and banks 1 gal (3.79 L, below the need), but shows
+        // only after the check's watch. The check sees 7.57 (the floor covered)
+        // until then and ends.
+        car.lagMs = FUEL_STEP_WATCH_MS + 50;
+        await tick({ PitstopActive: false });
+        car.lagMs = undefined;
+
+        expect(sent()).toEqual([5]);
+
+        // Within a second the late 1 gal has shown, the monitor saw the bank short
+        // of the floor on a tick — the need's key unchanged — and re-sent: 5
+        // banks 1 gal again, 6 banks 2 gal.
+        for (let i = 0; i < 20; i++) await tick({});
+
+        expect(sent()).toEqual([5, 5, 6]);
+        expect(bank(telemetry)).toBeGreaterThanOrEqual(5);
+        expect(33 + bank(telemetry)).toBeGreaterThanOrEqual(38);
+
+        // A covered bank sends nothing, tick after tick.
+        for (let i = 0; i < 20; i++) await tick({});
+
+        expect(sent()).toEqual([5, 5, 6]);
+      });
+
+      it("before the step is known, probes a bank a liter above the need, then learns the gallon and stops", async () => {
+        mockGetSessionInfo.mockReturnValue(SESSION_MX5);
+        vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
+        // 2 gal already banked in the sim, fueling on, the car in its stall: the
+        // target seeds at 30 + 7.57 → 38 L, and nothing has taught the step.
+        const telemetry = bankOnGrid(gallonGrid, {
+          PitSvFuel: 2 * GALLON,
+          FuelLevel: 30,
+          PitSvFlags: FUEL_FILL,
+          PitstopActive: true,
+        });
+        const settings = { stepSize: 1, unitMode: "liters", dialMode: "fill-to" };
+        await appear(dialContext("ftm3"), settings);
+        const onTick = getTelemetryCallback(action);
+        const tick = async (changes: Record<string, unknown>) => {
+          Object.assign(telemetry, changes);
+          onTick(telemetry);
+          await vi.advanceTimersByTimeAsync(400);
+        };
+
+        // The stop pumps to 32.5 L; the monitor holds fire.
+        for (const fuel of [31, 32, 32.5]) {
+          await tick({ FuelLevel: fuel });
+        }
+
+        expect(sent()).toEqual([]);
+
+        // Leaving: the need is 5.5 → 6 L, and 7.57 is a liter or more above it.
+        // With no step known a liter stands in, so 6 is re-sent — it banks the
+        // same 2 gal, a probe that changes nothing.
+        await tick({ PitstopActive: false });
+        expect(sent()).toEqual([6]);
+        expect(stepperOf(action).fuelStepFor(MX5_PATH)).toBeUndefined();
+
+        // Burn 32.5 → 25 L: the need grows to 13 L. At 8 L the bank falls short:
+        // 8 and 9 round back to 2 gal, 10 lands on 3 gal and teaches the gallon.
+        // From then on the bank moves only when the need passes it (at 12 L,
+        // round(15.14) = 15 → 4 gal), not on every whole liter.
+        for (let fuel = 32.25; fuel >= 25; fuel -= 0.25) {
+          await tick({ FuelLevel: fuel });
+        }
+
+        expect(sent()).toEqual([6, 8, 9, 10, 15]);
+        expect(stepperOf(action).fuelStepFor(MX5_PATH)).toBeCloseTo(GALLON, 5);
+        expect(bank(telemetry)).toBeCloseTo(4 * GALLON, 5);
+        expect(25 + bank(telemetry)).toBeGreaterThanOrEqual(38);
+      });
+    });
+
+    it("in gallon display units the floor is whole gallons and every stop reaches the target", async () => {
+      mockGetSessionInfo.mockReturnValue(SESSION_MX5);
+      const telemetry = bankOnGrid(gallonGrid, { PitSvFuel: 0, FuelLevel: 10 });
+      const settings = { stepSize: 1, unitMode: "gallons", dialMode: "fill-to" };
+      const ctx = dialContext("ft5");
+      await appear(ctx, settings);
+      const banks: number[] = [];
+
+      // The target seeds at 10 L → 3 gal, then steps 4, 5, 6 gal. Each need is
+      // rounded up to whole gallons (2, 3, 4 gal); 8, 12 and 16 L bank them.
+      for (let targetGal = 4; targetGal <= 6; targetGal++) {
+        await action.onDialRotate(rotateEvent(ctx, settings, 1) as never);
+        await vi.advanceTimersByTimeAsync(1_000);
+        banks.push(Number((bank(telemetry) / GALLON).toFixed(3)));
+        expect(10 + bank(telemetry)).toBeGreaterThanOrEqual(targetGal * GALLON);
+      }
+
+      expect(sent()).toEqual([8, 12, 16]);
+      expect(banks).toEqual([2, 3, 4]);
+    });
+
+    describe("a floor the car cannot reach", () => {
+      it("is capped at the space left, so Fill to Max on a near-empty tank lands on one send", async () => {
+        // A whole-liter car with a 40.1 L tank that banks no more than the tank.
+        mockGetSessionInfo.mockReturnValue({
+          DriverInfo: {
+            DriverCarFuelMaxLtr: 40.1,
+            DriverCarMaxFuelPct: 1,
+            DriverCarIdx: 1,
+            Drivers: [{ CarIdx: 1, CarPath: PORSCHE_PATH }],
+          },
+        });
+        const telemetry = bankOnGrid(literGrid, { PitSvFuel: 0, FuelLevel: 0.05 }, 40.1);
+        const settings = { pressAction: "fill-to-max", dialMode: "fill-to" };
+        const ctx = dialContext("fu1");
+        await appear(ctx, settings);
+
+        // The add is ceil(40.1 − 0.05) = 41, more than the tank holds; the floor is
+        // the 40.05 L of space left, which 41 banks (capped at 40.1) at once.
+        await pressDial(ctx, settings);
+        await vi.advanceTimersByTimeAsync(3_000);
+
+        expect(sent()).toEqual([41]);
+        expect(bank(telemetry)).toBe(40.1);
+      });
+
+      it("retries a bank it cannot raise once per whole unit of need, never tick after tick", async () => {
+        mockGetSessionInfo.mockReturnValue(SESSION_PORSCHE);
+        vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
+        // A car whose bank the sim holds at 20 L, whatever is asked.
+        const telemetry = bankOnGrid(literGrid, { PitSvFuel: 20, FuelLevel: 50, PitSvFlags: FUEL_FILL }, 20);
+        const settings = { stepSize: 10, unitMode: "liters", dialMode: "fill-to" };
+        const ctx = dialContext("fu2");
+        await appear(ctx, settings);
+
+        // Target 70 → 80: a 30 L floor the bank can never reach. One checked burst.
+        await action.onDialRotate(rotateEvent(ctx, settings, 1) as never);
+        await vi.advanceTimersByTimeAsync(4_000);
+
+        expect(sent()).toEqual([30, 31, 32, 33, 34, 35, 36, 37, 38]);
+        mockPitFuel.mockClear();
+        const onTick = getTelemetryCallback(action);
+        const tick = async (fuel: number) => {
+          telemetry.FuelLevel = fuel;
+          onTick(telemetry);
+          await vi.advanceTimersByTimeAsync(400);
+        };
+
+        // The same need, tick after tick: the bank is short, but it is the one
+        // the burst could not raise, so nothing is sent.
+        for (let i = 0; i < 5; i++) await tick(50);
+
+        expect(sent()).toEqual([]);
+
+        // The need crosses a whole liter (31 L): one retry.
+        await tick(49.5);
+        await vi.advanceTimersByTimeAsync(4_000);
+
+        expect(sent()).toEqual([31, 32, 33, 34, 35, 36, 37, 38, 39]);
+        mockPitFuel.mockClear();
+
+        // Then nothing again within that liter.
+        for (const fuel of [49.4, 49.2, 49]) await tick(fuel);
+
+        expect(sent()).toEqual([]);
+
+        // A rotation is a new request: it sends at once (target 90, need 41).
+        await action.onDialRotate(rotateEvent(ctx, settings, 1) as never);
+        await vi.advanceTimersByTimeAsync(100);
+
+        expect(sent()[0]).toBe(41);
+      });
+
+      it("retries a bank stuck while commands were ignored at the next key change, and it lands", async () => {
+        mockGetSessionInfo.mockReturnValue(SESSION_PORSCHE);
+        vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
+        // Out of the car, say: every command is ignored for now.
+        const car = { ignoring: true };
+        const telemetry = bankOnGrid(
+          literGrid,
+          { PitSvFuel: 0, FuelLevel: 50, PitSvFlags: FUEL_FILL },
+          Number.POSITIVE_INFINITY,
+          car,
+        );
+        const settings = { stepSize: 10, unitMode: "liters", dialMode: "fill-to" };
+        const ctx = dialContext("fu4");
+        await appear(ctx, settings);
+
+        // Target 50 → 60: a 10 L need, but nothing banks. The burst ends unmoved.
+        await action.onDialRotate(rotateEvent(ctx, settings, 1) as never);
+        await vi.advanceTimersByTimeAsync(4_000);
+        expect(sent()).toHaveLength(9);
+        expect(bank(telemetry)).toBe(0);
+        mockPitFuel.mockClear();
+
+        // Commands work again. Within the same need the stuck bank is still left
+        // alone (no burst per tick)…
+        car.ignoring = false;
+        const onTick = getTelemetryCallback(action);
+
+        for (let i = 0; i < 3; i++) {
+          onTick(telemetry);
+          await vi.advanceTimersByTimeAsync(400);
+        }
+
+        expect(sent()).toEqual([]);
+
+        // …and the next whole liter of need retries it: 11 lands.
+        telemetry.FuelLevel = 49.5;
+        onTick(telemetry);
+        await vi.advanceTimersByTimeAsync(400);
+
+        expect(sent()).toEqual([11]);
+        expect(bank(telemetry)).toBe(11);
+      });
+
+      it("caps the floor at the space left when the sim caps the request there, so no step ends unmoved", async () => {
+        // A whole-liter car with a 40 L tank, whose request the sim caps at the
+        // space left in the tank when the command arrives.
+        mockGetSessionInfo.mockReturnValue({
+          DriverInfo: {
+            DriverCarFuelMaxLtr: 40,
+            DriverCarMaxFuelPct: 1,
+            DriverCarIdx: 1,
+            Drivers: [{ CarIdx: 1, CarPath: PORSCHE_PATH }],
+          },
+        });
+        vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
+        const telemetry = bankOnGrid(
+          literGrid,
+          { PitSvFuel: 0, FuelLevel: 30.4, PitSvFlags: FUEL_FILL },
+          (live) => 40 - (live.FuelLevel as number),
+        );
+        const settings = { pressAction: "fill-to-max", dialMode: "fill-to", unitMode: "liters", stepSize: 1 };
+        const ctx = dialContext("fu5");
+        await appear(ctx, settings);
+        const info = (action as unknown as { logger: { info: ReturnType<typeof vi.fn> } }).logger.info;
+
+        // Fill to Max after a burn: the add is ceil(9.6) = 10 with 9.6 L of room.
+        // The floor is the 9.6 L of room, which 10 banks (capped) on its first send.
+        await pressDial(ctx, settings);
+        await vi.advanceTimersByTimeAsync(1_000);
+
+        expect(sent()).toEqual([10]);
+        expect(bank(telemetry)).toBeCloseTo(9.6, 5);
+        expect(info).not.toHaveBeenCalledWith(expect.stringContaining("did not reach"));
+
+        const onTick = getTelemetryCallback(action);
+        const tick = async (fuel: number) => {
+          telemetry.FuelLevel = fuel;
+          onTick(telemetry);
+          await vi.advanceTimersByTimeAsync(400);
+        };
+
+        // Burning within the same need sends nothing, though the room grows.
+        for (const fuel of [30.35, 30.3, 30.2]) await tick(fuel);
+
+        expect(sent()).toEqual([10]);
+
+        // The need crosses a whole liter (10.1 → 11): the room is now 10.1 L, and
+        // one send banks it.
+        await tick(29.9);
+
+        expect(sent()).toEqual([10, 11]);
+        expect(bank(telemetry)).toBeCloseTo(10.1, 5);
+        expect(info).not.toHaveBeenCalledWith(expect.stringContaining("did not reach"));
+      });
+
+      it("still lowers the capped bank once the need falls a step below it", async () => {
+        mockGetSessionInfo.mockReturnValue(SESSION_PORSCHE);
+        vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", true);
+        const telemetry = bankOnGrid(literGrid, { PitSvFuel: 20, FuelLevel: 50, PitSvFlags: FUEL_FILL }, 20);
+        const settings = { stepSize: 10, unitMode: "liters", dialMode: "fill-to" };
+        const ctx = dialContext("fu3");
+        await appear(ctx, settings);
+
+        // Target 80: a 30 L floor the 20 L cap can never reach.
+        await action.onDialRotate(rotateEvent(ctx, settings, 1) as never);
+        await vi.advanceTimersByTimeAsync(4_000);
+        mockPitFuel.mockClear();
+
+        // A stop cut short leaves 75 L in the tank: the need is 5 L, and the
+        // capped 20 L bank is now far above it, so the monitor lowers it.
+        telemetry.FuelLevel = 75;
+        getTelemetryCallback(action)(telemetry);
+        await vi.advanceTimersByTimeAsync(400);
+
+        expect(sent()).toEqual([5]);
+        expect(bank(telemetry)).toBe(5);
+      });
+    });
+
+    it("a Mode switch from Add Amount re-checks a bank short of the new need, even on the same whole-unit key", async () => {
+      // 30 L in the tank, fueling on, a gallon car with nothing requested yet.
+      const telemetry = bankOnGrid(gallonGrid, { PitSvFuel: 0, FuelLevel: 30, PitSvFlags: FUEL_FILL });
+      const addSettings = { dialMode: "add-amount", stepSize: 8, unitMode: "liters" };
+      const ctx = dialContext("ms1");
+      await appear(ctx, addSettings);
+
+      // Add Amount 8 L banks 2 gal (7.57 L) and records the whole-unit key 8.
+      await action.onDialRotate(rotateEvent(ctx, addSettings, 1) as never);
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      expect(bank(telemetry)).toBeCloseTo(2 * GALLON, 2);
+
+      // The PI switches to Target Amount: the target re-seeds to round(30 + 7.57)
+      // = 38 L, so the need is 8 L — the same key 8 — and the 7.57 L bank is short.
+      const targetSettings = { ...addSettings, dialMode: "fill-to" };
+      await action.onDidReceiveSettings(basicEvent(ctx, targetSettings) as never);
+      mockPitFuel.mockClear();
+
+      getTelemetryCallback(action)(telemetry);
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      expect(sent()[0]).toBe(8);
+      expect(bank(telemetry)).toBeGreaterThanOrEqual(8);
     });
   });
 });
