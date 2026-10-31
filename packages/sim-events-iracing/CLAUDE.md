@@ -25,6 +25,15 @@ Pre-guard recorder diffs, which share one eligibility module (`diff/replay-recor
 
 The session starts are also recorded out of the car at the live edge of a live session, through the gate module's second resolver.
 
+## The tick order (#1499)
+
+`TICK_ORDER` (`src/tick-order.ts`) lists every stage of one `handleTick` that can publish, in the order its publishes reach the bus: the direct publishes first (the session-change sites, the pre-guard recorder diffs, the replay-entry teardown), then the `pending` batch the live diffs fill, flushed in call order. `findEndsOnOrderViolations` reads it to prove an `endsOn` contract's trigger is never published after its end on one tick (#1407); `race-engineer-wiring`'s `ends-on-order.test.ts` applies it to every registered contract. `tick-order.test.ts` proves the table is the code by spying on the real diff calls and publishes. Keeping it true:
+
+- **A diff module that emits declares what.** It exports `<NAME>_EVENTS` (`as const satisfies readonly SimEventName[]`) and types its emitter `EmitFn<(typeof <NAME>_EVENTS)[number]>`. `EmitFn` has no default, so an emit the list does not name is a compile error; a module with two emitting functions declares one list each (`START_COUNTDOWN_EVENTS`, `START_LIGHTS_EVENTS`).
+- **A new emitting diff, or one that starts emitting,** gets its `TICK_ORDER` row at its call position in `handleTick` (`via: "pending"` for a live diff, `"direct"` for a pre-guard one), whose `events` is the module's list itself rather than a copy, and a `vi.mock` spy line in `tick-order.test.ts` naming the index of its emitter argument. The completeness test fails on a declared list with no row, and the call-order test on a stage it never recorded. A diff that publishes nothing gets no row.
+- **Reordering any diff call in `handleTick`** means moving its row too; the call-order test fails until it does. If an `endsOn` pair then fails in the wiring test, the reorder broke that contract: put the trigger's stage back ahead of its end's.
+- **A new publish site in `translator.ts` itself** gets a `source: "translator.ts"` row and a real tick that publishes from it in the translator-sites test; the completeness test fails on an event those sites name that no such row lists.
+
 ## Rules
 
 - A new bus event needs an entry in the scenario harness's `src/event-names.ts`, and a new callout a shortcut button there (`packages/scenario-harness/CLAUDE.md`).
