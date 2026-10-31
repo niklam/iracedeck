@@ -22,6 +22,7 @@ export {
   getLiveCarPosition,
   getLiveGapBetween,
   getLiveGaps,
+  getTrackGaps,
   getLiveOpponentFlags,
   getLivePosition,
   getLiveRacePositions,

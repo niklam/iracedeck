@@ -15,6 +15,7 @@ import {
   getLiveRacePositions,
   getRaceFinishResult,
   getStartingGridPosition,
+  getTrackGaps,
   type LiveGaps,
   resolveLeaderLapTimeS,
 } from "@iracedeck/sim-events-iracing";
@@ -33,6 +34,7 @@ import {
   generateTrackWetnessGraphic,
   generateWindGraphic,
   iratingValueColor,
+  resolveDisplayGaps,
   resolveSessionLimitDisplay,
   resolveWindDisplay,
   SessionInfo,
@@ -77,6 +79,7 @@ vi.mock("@iracedeck/sim-events-iracing", () => ({
   getLiveRacePositions: vi.fn(() => null),
   getRaceFinishResult: vi.fn((): { position: number; classPosition: number } | null => null),
   getStartingGridPosition: vi.fn(() => null),
+  getTrackGaps: vi.fn(() => null),
   resolveLeaderLapTimeS: vi.fn(() => null),
 }));
 
@@ -2404,6 +2407,114 @@ describe("gaps mode (issue #933)", () => {
       // Both rows favorable (ahead closing / behind opening) render green.
       expect(decoded).toContain("#2ecc71");
       expect(decoded).not.toContain("#e74c3c");
+    });
+  });
+
+  describe("gap source (issue #1515)", () => {
+    beforeEach(() => {
+      // clearAllMocks() keeps implementations, so both sources are reset to
+      // "no answer" explicitly rather than inherited from an earlier test.
+      vi.mocked(getLiveGaps).mockReturnValue(null);
+      vi.mocked(getTrackGaps).mockReturnValue(null);
+    });
+
+    describe("resolveDisplayGaps", () => {
+      it("prefers the race gaps when they answer", () => {
+        const race = gaps({ gapSeconds: 1.1 }, { gapSeconds: 2.2 });
+
+        vi.mocked(getLiveGaps).mockReturnValue(race);
+        vi.mocked(getTrackGaps).mockReturnValue(gaps({ gapSeconds: 9.9 }, { gapSeconds: 8.8 }));
+
+        expect(resolveDisplayGaps()).toBe(race);
+      });
+
+      it("falls back to the track-order gaps when the race gaps are null", () => {
+        const track = gaps({ gapSeconds: 3.3 }, { gapSeconds: 4.4 });
+
+        vi.mocked(getTrackGaps).mockReturnValue(track);
+
+        expect(resolveDisplayGaps()).toBe(track);
+      });
+
+      it("returns null when neither source answers", () => {
+        expect(resolveDisplayGaps()).toBeNull();
+      });
+    });
+
+    describe("live display from the track-order gaps", () => {
+      let action: SessionInfo;
+
+      beforeEach(() => {
+        action = new SessionInfo();
+        action["sdkController"].getCurrentTelemetry = vi.fn().mockReturnValue(null);
+        action["sdkController"].getSessionInfo = vi.fn().mockReturnValue(null);
+      });
+
+      function lastRender(): string {
+        const calls = (action["updateKeyImage"] as ReturnType<typeof vi.fn>).mock.calls;
+
+        expect(calls.length).toBeGreaterThan(0);
+
+        return decodeURIComponent(calls[calls.length - 1][1] as string);
+      }
+
+      async function tick(): Promise<void> {
+        const subscribeCall = (action["sdkController"].subscribe as ReturnType<typeof vi.fn>).mock.calls[0];
+
+        await subscribeCall[1]({ SessionNum: 0 });
+      }
+
+      it("draws the track gaps and re-renders when they change, with the race gaps null", async () => {
+        await action.onWillAppear(fakeEvent("track-gap-action", { mode: "gaps" }) as never);
+
+        vi.mocked(getTrackGaps).mockReturnValue(
+          gaps({ gapSeconds: 0.7, trend: "closing" }, { gapSeconds: 5.6, trend: "closing" }),
+        );
+        await tick();
+
+        const first = lastRender();
+
+        expect(first).toContain(">0.7</text>");
+        expect(first).toContain(">5.6</text>");
+        // Ahead closing is favourable (green), behind closing is not (red).
+        expect(first).toContain("#2ecc71");
+        expect(first).toContain("#e74c3c");
+
+        const rendersBefore = (action["updateKeyImage"] as ReturnType<typeof vi.fn>).mock.calls.length;
+
+        // The same reading again: the state key is unchanged, so no re-render.
+        await tick();
+        expect((action["updateKeyImage"] as ReturnType<typeof vi.fn>).mock.calls.length).toBe(rendersBefore);
+
+        // A changed track gap busts the state key and the drawing shows it.
+        vi.mocked(getTrackGaps).mockReturnValue(
+          gaps({ gapSeconds: 0.4, trend: "closing" }, { gapSeconds: 6.1, trend: "opening" }),
+        );
+        await tick();
+
+        expect((action["updateKeyImage"] as ReturnType<typeof vi.fn>).mock.calls.length).toBe(rendersBefore + 1);
+
+        const second = lastRender();
+
+        expect(second).toContain(">0.4</text>");
+        expect(second).toContain(">6.1</text>");
+        expect(second).not.toContain(">0.7</text>");
+      });
+
+      it("draws the race gaps, not the track gaps, when both answer", async () => {
+        await action.onWillAppear(fakeEvent("race-gap-action", { mode: "gaps" }) as never);
+
+        vi.mocked(getLiveGaps).mockReturnValue(gaps({ gapSeconds: 1.5 }, { gapSeconds: 2.5 }));
+        vi.mocked(getTrackGaps).mockReturnValue(gaps({ gapSeconds: 7.5 }, { gapSeconds: 8.5 }));
+        await tick();
+
+        const decoded = lastRender();
+
+        expect(decoded).toContain(">1.5</text>");
+        expect(decoded).toContain(">2.5</text>");
+        expect(decoded).not.toContain(">7.5</text>");
+        expect(decoded).not.toContain(">8.5</text>");
+      });
     });
   });
 });

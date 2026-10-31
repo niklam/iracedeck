@@ -128,11 +128,89 @@ export type GapNeighborState = {
   carIdx: number;
   /** Crossing-time gap in seconds; null while the traces can't cover the lookup. */
   gapSeconds: number | null;
-  /** Whole laps the pair is apart (0 = same racing lap). */
+  /** Whole laps the pair is apart (0 = same racing lap); always 0 for track-order gaps (issue #1515). */
   lapDelta: number;
   /** Continuous display trend ("closing" | "opening" | "steady"), null without data. */
   trend: GapTrendDirection | null;
 };
+
+/**
+ * One side's display-trend chain (issue #933 follow-up), DISPLAY ONLY: the
+ * gap sampled every `GAP_CHECKPOINT_STEP` of the player's progress,
+ * adjacent-sample deltas folded into an EMA of the gap rate in
+ * seconds-per-lap. Maintained by `updateTrendChain` / `classifyTrendChain`
+ * in `diff/gaps.ts`, shared by the race gaps and the track-order gaps (issue
+ * #1515) so the key colour means the same rate in every session. The race
+ * keeps its chain in flat `gapLastCheckpoint*` / `gapRateEma*` /
+ * `gapRateSamples*` fields and adapts them per side; the track-order gaps
+ * store the object itself.
+ */
+export type TrendChain = {
+  /** The last checkpoint folded (`progress` on the caller's scale). */
+  lastCheckpoint: { progress: number; gapSeconds: number } | null;
+  /** Smoothed gap rate (s/lap; negative = closing). Null until seeded. */
+  ema: number | null;
+  /** Consecutive rate samples in the current chain. */
+  samples: number;
+};
+
+/** One side of the track-order gaps (issue #1515): the car physically there, its trend, and its live snapshot. */
+export type TrackGapSideState = {
+  /** The car physically ahead / behind on track this tick; −1 = none. */
+  carIdx: number;
+  /** The side's display-trend chain, reset when `carIdx` changes. */
+  trend: TrendChain;
+  /** The live snapshot `getTrackGaps()` reads; null = no such car, or no track gaps this tick. */
+  live: GapNeighborState | null;
+};
+
+/**
+ * The track-order gaps outside a race (issue #1515, `diff/track-gaps.ts`):
+ * the gaps to the cars physically ahead and behind on the road in practice,
+ * warmup, testing and open qualifying. A store of its own, never shared with
+ * the race's `gapTraces`: the two diffs' session gates are disjoint, so only
+ * one of them ever grows in a session.
+ *
+ * Traces are keyed on a per-car odometer — the lap distance driven since the
+ * car was last seen arriving on the road, folded across the start/finish
+ * line — not on `CarIdxLapCompleted`, so a car's lap count (including the
+ * `-1` before its first crossing) never matters. A car's odometer, its last
+ * distance and its trace are cleared on any tick it is on pit road, and once
+ * an absence from the world outlasts a short grace (a one-tick blink keeps
+ * them), so no sample bridges a pit visit or a real absence.
+ */
+export type TrackGapsState = {
+  /** Per-car odometer (laps), sparse-indexed by carIdx; undefined = not on the road last tick. */
+  odometers: (number | undefined)[];
+  /** Per-car `CarIdxLapDistPct` the odometer last advanced from. */
+  lastDistPct: (number | undefined)[];
+  /** Per-car progress→`SessionTime` traces keyed on the odometer, pruned to `GAP_TRACE_SPAN_LAPS`. */
+  traces: (ProgressTrace | undefined)[];
+  /**
+   * Per-car `SessionTime` at which a remembered car went out of the world
+   * (`NotInWorld` or an invalid lap distance); undefined while it is on the
+   * road. Within `TRACK_GAP_ABSENCE_GRACE_S` the car keeps its odometer and
+   * trace, so a one-tick blink costs nothing; past it the car is forgotten.
+   */
+  absentSince: (number | undefined)[];
+  /** The player's odometer at the last display-trend checkpoint; null = none since the last break. */
+  lastCheckpoint: number | null;
+  ahead: TrackGapSideState;
+  behind: TrackGapSideState;
+};
+
+/** An empty track-order gap store (issue #1515). */
+export function createTrackGapsState(): TrackGapsState {
+  return {
+    odometers: [],
+    lastDistPct: [],
+    traces: [],
+    absentSince: [],
+    lastCheckpoint: null,
+    ahead: { carIdx: -1, trend: { lastCheckpoint: null, ema: null, samples: 0 }, live: null },
+    behind: { carIdx: -1, trend: { lastCheckpoint: null, ema: null, samples: 0 }, live: null },
+  };
+}
 
 export type MaterialSample = {
   t: number; // timestamp (ms since epoch)
@@ -1230,6 +1308,10 @@ export type TranslatorState = {
   gapThresholdArmedAhead: boolean;
   gapThresholdArmedBehind: boolean;
 
+  // ── Track-order gaps outside a race (issue #1515) ──────────────────────
+  /** See {@link TrackGapsState}. Wiped with the rest of the state on a replay glance. */
+  trackGaps: TrackGapsState;
+
   // ── Self-managed running order (issue #603) ─────────────────────────────
   /**
    * Per-car last-known good score (`CarIdxLapCompleted + CarIdxLapDistPct`) from
@@ -1937,6 +2019,8 @@ export function createInitialState(): TranslatorState {
     gapStableTicksBehind: 0,
     gapThresholdArmedAhead: false,
     gapThresholdArmedBehind: false,
+
+    trackGaps: createTrackGapsState(),
 
     positionLastKnownScores: [],
     positionFrozen: new Set(),

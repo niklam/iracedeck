@@ -33,13 +33,14 @@ import {
   type GapTrendDirection,
   isPreGreen,
   lapDeltaBetween,
+  type ProgressTrace,
   recentProgressRate,
   resolveClassNeighbors,
   type TelemetryData,
   TrkLoc,
 } from "@iracedeck/iracing-sdk";
 
-import type { GapNeighborState, TranslatorState } from "../state.js";
+import type { GapNeighborState, TranslatorState, TrendChain } from "../state.js";
 import { coerceSettingNumber } from "./setting-number.js";
 import type { EmitFn } from "./types.js";
 
@@ -184,21 +185,15 @@ export type PairGapReading = { gapSeconds: number | null; etaReading: boolean };
  * the opponent-flag range (issue #1274) say the same thing about the same two
  * cars.
  *
- * Normally the crossing time (issue #933): how long ago the leader crossed
- * the chaser's current progress, read from the leader's trace. When the
- * leader is dramatically slower than the chaser AND crawling in absolute
- * terms (stopped, wrecked, limping — the ETA regime, issues #933 and #1285),
- * the crossing time overstates the distance and stops tracking it (both
- * `now` and the lookup advance at the chaser's pace), so the reading becomes
- * the chaser's ETA over the separation at its current pace, which counts
- * down as it closes. The crawl bar keeps a leader braking into a hairpin out
- * of it — there the crossing time is right and the ETA would underestimate
- * it by seconds. No usable track length, no regime.
+ * The race form of {@link readGapAt}: progress is total progress
+ * (`CarIdxLapCompleted + CarIdxLapDistPct`), one scale for every car, so the
+ * leader's trace is read at the chaser's progress and the separation is the
+ * progress difference. See {@link readGapAt} for the crossing time and the
+ * ETA regime.
  *
  * Pure: reads the traces, never mutates them. `gapSeconds` is `null` when
  * the leader's trace does not cover the chaser's progress and the regime
- * does not engage. Progress is total progress (`CarIdxLapCompleted +
- * CarIdxLapDistPct`).
+ * does not engage.
  */
 export function readPairGap(
   traces: TranslatorState["gapTraces"],
@@ -209,14 +204,79 @@ export function readPairGap(
   sessionTime: number,
   trackLengthMeters: number | null,
 ): PairGapReading {
-  const leaderTrace = traces[leaderIdx];
-  const crossed = leaderTrace ? crossingTimeAt(leaderTrace, chaserProgress) : null;
+  return readGapAt({
+    leaderTrace: traces[leaderIdx],
+    leaderProgress,
+    chaserTrace: traces[chaserIdx],
+    chaserProgress,
+    lookupProgress: chaserProgress,
+    separationLaps: leaderProgress - chaserProgress,
+    sessionTime,
+    trackLengthMeters,
+  });
+}
+
+/** What {@link readGapAt} reads: the pair's traces, where each car is on its own trace, and where to look. */
+export type GapReadingInput = {
+  /** The leading car's progress→time trace (undefined = none recorded). */
+  leaderTrace: ProgressTrace | undefined;
+  /** The leading car's progress now, on its own trace's scale (for its recent rate). */
+  leaderProgress: number;
+  /** The chasing car's progress→time trace (undefined = none recorded). */
+  chaserTrace: ProgressTrace | undefined;
+  /** The chasing car's progress now, on its own trace's scale (for its recent rate). */
+  chaserProgress: number;
+  /** The point on the LEADER's trace where the chaser stands now. */
+  lookupProgress: number;
+  /** How far ahead of the chaser the leader is, in laps (a negative separation reads as 0). */
+  separationLaps: number;
+  sessionTime: number;
+  trackLengthMeters: number | null;
+};
+
+/**
+ * The gap from a chasing car to the car it is chasing, with the caller saying
+ * where the chaser stands on the leader's trace and how far apart the two are
+ * — the one regime rule shared by the race gaps ({@link readPairGap}, where
+ * every car's progress is on one lap-count scale) and the track-order gaps
+ * outside a race (issue #1515, where each car's trace is keyed on its own
+ * odometer, so the caller translates the lookup point onto the leader's
+ * scale).
+ *
+ * Normally the crossing time (issue #933): how long ago the leader crossed
+ * the lookup point, read from the leader's trace. When the leader is
+ * dramatically slower than the chaser AND crawling in absolute terms
+ * (stopped, wrecked, limping — the ETA regime, issues #933 and #1285), the
+ * crossing time overstates the distance and stops tracking it (both `now`
+ * and the lookup advance at the chaser's pace), so the reading becomes the
+ * chaser's ETA over the separation at its current pace, which counts down as
+ * it closes. The crawl bar keeps a leader braking into a hairpin out of it —
+ * there the crossing time is right and the ETA would underestimate it by
+ * seconds. No usable track length, no regime. Each car's rate is read from
+ * its own trace at its own progress.
+ *
+ * Pure: reads the traces, never mutates them. `gapSeconds` is `null` when
+ * the leader's trace does not cover the lookup point and the regime does not
+ * engage.
+ */
+export function readGapAt(input: GapReadingInput): PairGapReading {
+  const {
+    leaderTrace,
+    leaderProgress,
+    chaserTrace,
+    chaserProgress,
+    lookupProgress,
+    separationLaps,
+    sessionTime,
+    trackLengthMeters,
+  } = input;
+  const crossed = leaderTrace ? crossingTimeAt(leaderTrace, lookupProgress) : null;
   const crossingGap = crossed !== null ? Math.max(0, sessionTime - crossed) : null;
   const trackLength =
     typeof trackLengthMeters === "number" && Number.isFinite(trackLengthMeters) && trackLengthMeters > 0
       ? trackLengthMeters
       : null;
-  const chaserRate = recentProgressRate(traces[chaserIdx], chaserProgress, sessionTime, GAP_RATE_WINDOW_S);
+  const chaserRate = recentProgressRate(chaserTrace, chaserProgress, sessionTime, GAP_RATE_WINDOW_S);
   const leaderRate = recentProgressRate(leaderTrace, leaderProgress, sessionTime, GAP_RATE_WINDOW_S);
 
   if (
@@ -227,7 +287,7 @@ export function readPairGap(
     trackLength !== null &&
     leaderRate * trackLength < GAP_ETA_LEADER_CRAWL_MPS
   ) {
-    return { gapSeconds: Math.max(0, leaderProgress - chaserProgress) / chaserRate, etaReading: true };
+    return { gapSeconds: Math.max(0, separationLaps) / chaserRate, etaReading: true };
   }
 
   return { gapSeconds: crossingGap, etaReading: false };
@@ -245,6 +305,69 @@ const GAP_TREND_MIN_SAMPLES = 5;
 const GAP_TREND_MAX_STEP_LAPS = 0.1;
 /** Single rate samples (display or lap-over-lap) beyond this (s/lap) are glitches — skipped. */
 const GAP_TREND_MAX_RATE_S_PER_LAP = 20;
+
+/** An empty display-trend chain (the shape lives with the state, `TrendChain` in `state.ts`). */
+export function createTrendChain(): TrendChain {
+  return { lastCheckpoint: null, ema: null, samples: 0 };
+}
+
+/** Clear a display-trend chain in place. */
+export function resetTrendChain(chain: TrendChain): void {
+  chain.lastCheckpoint = null;
+  chain.ema = null;
+  chain.samples = 0;
+}
+
+/**
+ * Fold one checkpoint into a display-trend chain (s/lap EMA). A step that
+ * goes backwards (tow, teleport) or is wider than
+ * {@link GAP_TREND_MAX_STEP_LAPS} restarts the chain anchored on this
+ * checkpoint; a single absurd rate is skipped as a glitch.
+ */
+export function updateTrendChain(chain: TrendChain, progress: number, gapSeconds: number): void {
+  const last = chain.lastCheckpoint;
+  const checkpoint = { progress, gapSeconds };
+
+  chain.lastCheckpoint = checkpoint;
+
+  if (!last) return;
+
+  const step = progress - last.progress;
+
+  if (step <= 0 || step > GAP_TREND_MAX_STEP_LAPS) {
+    // Went backwards (tow/teleport) or a wide sampling break — restart the
+    // chain anchored on this checkpoint.
+    resetTrendChain(chain);
+    chain.lastCheckpoint = checkpoint;
+
+    return;
+  }
+
+  const ratePerLap = (gapSeconds - last.gapSeconds) / step;
+
+  // A single absurd sample is a data glitch (e.g. a trace discontinuity
+  // after a blink) — skip it rather than poisoning the average.
+  if (!Number.isFinite(ratePerLap) || Math.abs(ratePerLap) > GAP_TREND_MAX_RATE_S_PER_LAP) return;
+
+  chain.ema = chain.ema === null ? ratePerLap : chain.ema + GAP_TREND_EMA_ALPHA * (ratePerLap - chain.ema);
+  chain.samples++;
+}
+
+/** The display trend a chain reads, or null until it holds {@link GAP_TREND_MIN_SAMPLES}. */
+export function classifyTrendChain(chain: TrendChain): GapTrendDirection | null {
+  return classifyTrendRate(chain.ema, chain.samples);
+}
+
+/**
+ * The display trend of a smoothed rate and its sample count — the field-level
+ * form of {@link classifyTrendChain}, which the race calls on its flat state
+ * fields without building a chain object every tick.
+ */
+export function classifyTrendRate(ema: number | null, samples: number): GapTrendDirection | null {
+  if (ema === null || samples < GAP_TREND_MIN_SAMPLES) return null;
+
+  return classifyGapTrend(ema, GAP_DISPLAY_TREND_DEADBAND_S);
+}
 
 type Side = "ahead" | "behind";
 
@@ -627,12 +750,10 @@ function computeSide(
       if (lapHistoryOpen) updateLapRate(state, side, playerProgress, gapSeconds);
     }
 
-    const ema = side === "ahead" ? state.gapRateEmaAhead : state.gapRateEmaBehind;
-    const samples = side === "ahead" ? state.gapRateSamplesAhead : state.gapRateSamplesBehind;
-
-    if (ema !== null && samples >= GAP_TREND_MIN_SAMPLES) {
-      trend = classifyGapTrend(ema, GAP_DISPLAY_TREND_DEADBAND_S);
-    }
+    trend =
+      side === "ahead"
+        ? classifyTrendRate(state.gapRateEmaAhead, state.gapRateSamplesAhead)
+        : classifyTrendRate(state.gapRateEmaBehind, state.gapRateSamplesBehind);
   } else if (checkpointDue) {
     // A due checkpoint the side can't sample breaks the rate chain — a pit
     // visit or data gap must not leak a stale rate into the next stint —
@@ -646,55 +767,44 @@ function computeSide(
 
 /** Fold one checkpoint into a side's smoothed gap rate (s/lap EMA). */
 function updateTrendRate(state: TranslatorState, side: Side, progress: number, gapSeconds: number): void {
-  const last = side === "ahead" ? state.gapLastCheckpointAhead : state.gapLastCheckpointBehind;
-  const checkpoint = { progress, gapSeconds };
+  const chain = raceTrendChain(state, side);
 
-  if (side === "ahead") state.gapLastCheckpointAhead = checkpoint;
-  else state.gapLastCheckpointBehind = checkpoint;
-
-  if (!last) return;
-
-  const step = progress - last.progress;
-
-  if (step <= 0 || step > GAP_TREND_MAX_STEP_LAPS) {
-    // Went backwards (tow/teleport) or a wide sampling break — restart the
-    // chain anchored on this checkpoint.
-    resetTrendRate(state, side);
-
-    if (side === "ahead") state.gapLastCheckpointAhead = checkpoint;
-    else state.gapLastCheckpointBehind = checkpoint;
-
-    return;
-  }
-
-  const ratePerLap = (gapSeconds - last.gapSeconds) / step;
-
-  // A single absurd sample is a data glitch (e.g. a trace discontinuity
-  // after a blink) — skip it rather than poisoning the average.
-  if (!Number.isFinite(ratePerLap) || Math.abs(ratePerLap) > GAP_TREND_MAX_RATE_S_PER_LAP) return;
-
-  const ema = side === "ahead" ? state.gapRateEmaAhead : state.gapRateEmaBehind;
-  const next = ema === null ? ratePerLap : ema + GAP_TREND_EMA_ALPHA * (ratePerLap - ema);
-
-  if (side === "ahead") {
-    state.gapRateEmaAhead = next;
-    state.gapRateSamplesAhead++;
-  } else {
-    state.gapRateEmaBehind = next;
-    state.gapRateSamplesBehind++;
-  }
+  updateTrendChain(chain, progress, gapSeconds);
+  storeRaceTrendChain(state, side, chain);
 }
 
 /** Clear one side's display-trend rate chain. */
 function resetTrendRate(state: TranslatorState, side: Side): void {
+  storeRaceTrendChain(state, side, createTrendChain());
+}
+
+/** A side's race display-trend chain, read out of its flat `TranslatorState` fields. */
+function raceTrendChain(state: TranslatorState, side: Side): TrendChain {
   if (side === "ahead") {
-    state.gapLastCheckpointAhead = null;
-    state.gapRateEmaAhead = null;
-    state.gapRateSamplesAhead = 0;
+    return {
+      lastCheckpoint: state.gapLastCheckpointAhead,
+      ema: state.gapRateEmaAhead,
+      samples: state.gapRateSamplesAhead,
+    };
+  }
+
+  return {
+    lastCheckpoint: state.gapLastCheckpointBehind,
+    ema: state.gapRateEmaBehind,
+    samples: state.gapRateSamplesBehind,
+  };
+}
+
+/** Write a side's race display-trend chain back into its flat `TranslatorState` fields. */
+function storeRaceTrendChain(state: TranslatorState, side: Side, chain: TrendChain): void {
+  if (side === "ahead") {
+    state.gapLastCheckpointAhead = chain.lastCheckpoint;
+    state.gapRateEmaAhead = chain.ema;
+    state.gapRateSamplesAhead = chain.samples;
   } else {
-    state.gapLastCheckpointBehind = null;
-    state.gapRateEmaBehind = null;
-    state.gapRateSamplesBehind = 0;
+    state.gapLastCheckpointBehind = chain.lastCheckpoint;
+    state.gapRateEmaBehind = chain.ema;
+    state.gapRateSamplesBehind = chain.samples;
   }
 }
 

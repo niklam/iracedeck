@@ -57,6 +57,7 @@ import {
   getLiveRacePositions,
   getRaceFinishResult,
   getStartingGridPosition,
+  getTrackGaps,
   type LiveGaps,
   resolveLeaderLapTimeS,
 } from "@iracedeck/sim-events-iracing";
@@ -279,8 +280,22 @@ const GAP_PLACEHOLDER = "–";
 /**
  * @internal Exported for testing
  *
+ * The gaps the Gaps key shows (issue #1515): the class-standings gaps in a
+ * race past the green, otherwise the track-order gaps of practice, warmup,
+ * testing and open qualifying. The two getters are never non-null together,
+ * so the order only matters as a statement of intent. The state key and the
+ * render pass both read through this one function, so the cache key and the
+ * drawn rows can never come from different sources.
+ */
+export function resolveDisplayGaps(): LiveGaps | null {
+  return getLiveGaps() ?? getTrackGaps();
+}
+
+/**
+ * @internal Exported for testing
+ *
  * Formats one gap row's value: `–` for a missing neighbor or a gap the
- * traces can't cover yet (cold start / outside races), `NL` when the
+ * traces can't cover yet (cold start / a session without gaps), `NL` when the
  * neighbor is N full laps away, one decimal below 100 s, whole seconds
  * above.
  */
@@ -1042,10 +1057,11 @@ export class SessionInfo extends SimIRacingAction<SessionInfoSettings> {
 
     // Gaps mode (issue #933): the graphic carries the whole display; this
     // string only busts the state-key cache on a visible change (value or
-    // trend per row). getLiveGaps() is null outside race sessions / before
-    // green, so both rows fall back to the placeholder everywhere else.
+    // trend per row). resolveDisplayGaps() gives the race gaps past the green
+    // and the track-order gaps in practice, warmup, testing and qualifying
+    // (#1515); anywhere else it is null and both rows read the placeholder.
     if (settings.mode === "gaps") {
-      const gaps = getLiveGaps();
+      const gaps = resolveDisplayGaps();
       const ahead = settings.gapShowAhead
         ? `${formatGapValue(gaps?.ahead ?? null)}:${gaps?.ahead?.trend ?? "-"}`
         : "off";
@@ -1513,7 +1529,7 @@ export class SessionInfo extends SimIRacingAction<SessionInfoSettings> {
     return {
       trackWetness: telemetry?.TrackWetness as TrackWetness | undefined,
       valueColor: settings.mode === "irating" ? iratingValueColor(value) : undefined,
-      gaps: settings.mode === "gaps" ? getLiveGaps() : undefined,
+      gaps: settings.mode === "gaps" ? resolveDisplayGaps() : undefined,
       wind,
       sessionLimit,
       tireTemps,

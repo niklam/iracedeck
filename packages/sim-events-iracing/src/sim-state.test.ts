@@ -36,6 +36,7 @@ import {
   getFuelStats,
   getLiveGaps,
   getLiveRacePositions,
+  getTrackGaps,
   initializeSimEventsIracing,
   readSimState,
   type SimEventsIracingOptions,
@@ -260,6 +261,7 @@ function parts(overrides: Partial<SimStateParts> = {}): SimStateParts {
     fuel: fuelParts({ stats: { lastLap: null, avg: null, avgLapTime: null, samples: 0 } }),
     order: { positions: null, player: null, startingGrid: null, raceFinish: null },
     gaps: null,
+    trackGaps: null,
     opponentFlags: null,
     caution: { phase: "none", episode: null, lineup: null, gap: null },
     rollingStart: { formation: null },
@@ -323,6 +325,7 @@ describe("readSimState — before the translator has anything to say", () => {
       "fuel",
       "order",
       "gaps",
+      "trackGaps",
       "opponentFlags",
       "caution",
       "rollingStart",
@@ -800,6 +803,7 @@ describe("readSimState — a replay-wiped translator", () => {
     expect(live.inReplay).toBe(false);
     expect(live.gaps).not.toBeNull();
     expect(live.gaps).toEqual(getLiveGaps());
+    expect(live.trackGaps).toEqual(getTrackGaps());
     expect(live.raw.state.gapTraces.length).toBeGreaterThan(0);
     expect(live.order.player?.position).toBe(2);
     expect(live.fuel.history).toHaveLength(2);
@@ -1113,6 +1117,24 @@ describe("simStateHeadline", () => {
     expect(rows.get("Live position")).toBe("P1");
     expect(rows.get("Gap ahead")).toBe("none");
     expect(rows.get("Gap behind")).toBe("no reading (car 4)");
+  });
+
+  it("shows the track-order gaps in the same rows outside a race, and says so", () => {
+    const rows = new Map(
+      simStateHeadline(
+        buildSimState(
+          parts({
+            trackGaps: {
+              ahead: { carIdx: 3, gapSeconds: 2.04, lapDelta: 0, trend: "steady" },
+              behind: null,
+            },
+          }),
+        ),
+      ),
+    );
+
+    expect(rows.get("Gap ahead")).toBe("2.0 s (car 3) (track order)");
+    expect(rows.get("Gap behind")).toBe("none (track order)");
   });
 
   it("opens with a replay row while a replay is on screen, and has none otherwise", () => {

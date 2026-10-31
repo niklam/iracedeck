@@ -1,6 +1,6 @@
 ---
 title: Session Info
-description: Display live session information — incidents, time, laps, position, estimated iRating gain/loss, gaps to the cars ahead/behind, fuel, laps to empty, flags, track wetness, wind, track and air temperature, and the tire temperatures from your last pit stop — and have the Race Engineer read a value out when you press the key.
+description: Display live session information — incidents, time, laps, position, estimated iRating gain/loss, gaps to the cars ahead/behind (your class rivals in a race, the nearest cars on track in practice and qualifying), fuel, laps to empty, flags, track wetness, wind, track and air temperature, and the tire temperatures from your last pit stop — and have the Race Engineer read a value out when you press the key.
 sidebar:
   badge:
     text: "14 modes"
@@ -135,13 +135,19 @@ Whether pressing the key has the Race Engineer read the value out. Defaults to *
 
 ### Gaps
 
-Show the live time gap to the car one position ahead and one position behind you in your **class** standings — the cars you're actually racing for position (e.g. P6 and P8 when you're P7). The gap is measured as a true crossing-time difference: how long after the other car you reach the same point on track, accurate to about a tenth of a second. Each row is color coded by **trend**, from a smoothed live rate of the gap over roughly the last eighth of a lap: green when the gap is moving your way (the car ahead coming closer, the car behind dropping back), red when it's moving against you, and the normal text color while it's steady (within about 0.15 s per lap). The color goes live within a couple of corners of a change and re-establishes just as quickly after an overtake or a pit stop swaps who you're racing.
+Show the live time gap to the car ahead of you and the car behind you. Which two cars those are follows the session: in a race, your rivals in the class standings; in practice, warmup, testing and open qualifying, the cars nearest to you on track.
 
-When one car of a pair is stopped or crawling (under about 30 km/h) — you've spun, or the car ahead has wrecked, not merely braking for a slow corner — the gap switches to a live estimate of how long the chasing car needs to cover the distance at its current pace, so a stopped driver sees the pursuit counting down instead of a frozen number, and a wreck ahead counts down as you approach it.
+**In a race** the rows show the car one position ahead and one position behind you in your **class** standings — the cars you're actually racing for position (e.g. P6 and P8 when you're P7). When the neighbor is a full lap or more away the row shows a lap count (e.g. `1L`) instead of a time. Before the green flag, and in the first seconds after the green (while the measurement warms up), the rows show `–`. If you lead your class or run last in it, the empty side shows `–` too.
 
-An upward triangle marks the gap ahead and a downward triangle the gap behind. When the neighbor is a full lap or more away the row shows a lap count (e.g. `1L`) instead of a time. Race sessions only — in practice and qualifying, before the green flag, and in the first seconds after the green (while the measurement warms up) the rows show `–`. If you lead your class or run last in it, the empty side shows `–` too.
+**In practice, warmup, testing and open qualifying** the rows show the nearest car ahead of you and the nearest car behind you on the road, whatever its class or standings position — the traffic you're about to catch, or that's about to catch you, such as a faster-class car closing on your flying lap. The pace car and cars in the pits are skipped; a car that has gone off the track still counts, since it's traffic you need to know about. A row shows `–` until there's enough data to measure its gap, which takes about as long as the gap itself (a 3-second gap appears after about 3 seconds). With only one other car out, it's both the car ahead and the car behind, so both rows show it; with none, both rows show `–`. Both rows also show `–` while you're in the pits or the garage, and right after you leave the pits the gap behind stays `–` until that car has passed the pit exit. In Lone Qualify and Lone Practice the rows always show `–`: the other cars there are on their own runs, not on the road with you.
 
-The same measurement drives the Race Engineer's [gap callouts](/docs/actions/audio-voice/pit-crew/#gap-callouts-car-ahead--car-behind).
+In every session the gap is measured as a true crossing-time difference: how long after the other car you reach the same point on track, accurate to about a tenth of a second. Each row is color coded by **trend**, from a smoothed live rate of the gap over roughly the last eighth of a lap: green when the gap is moving your way, meaning you're faster than that car (the car ahead coming closer, the car behind dropping back), red when it's moving against you, and the normal text color while it's steady (within about 0.15 s per lap). The color goes live within a couple of corners of a change and re-establishes just as quickly when a different car takes over a row — after an overtake or a pit stop in a race, or when traffic moves around you in practice.
+
+When one car of a pair is stopped or crawling (under about 30 km/h) — you've spun, or the car ahead has wrecked or is coasting back to the pits, not merely braking for a slow corner — the gap switches to a live estimate of how long the chasing car needs to cover the distance at its current pace, so a stopped driver sees the pursuit counting down instead of a frozen number, and a slow car ahead counts down as you approach it.
+
+An upward triangle marks the gap ahead and a downward triangle the gap behind.
+
+The same measurement drives the Race Engineer's [gap callouts](/docs/actions/audio-voice/pit-crew/#gap-callouts-car-ahead--car-behind), which speak in races only.
 
 #### Details
 
@@ -153,8 +159,8 @@ The same measurement drives the Race Engineer's [gap callouts](/docs/actions/aud
 
 Which rows the key shows. Both default to **On**; with a single row enabled the value renders larger.
 
-- **Gap ahead** — the car one class position up the standings
-- **Gap behind** — the car one class position down the standings
+- **Gap ahead** — in a race, the car one class position up the standings; in practice, warmup, testing and open qualifying, the nearest car ahead on track
+- **Gap behind** — in a race, the car one class position down the standings; in practice, warmup, testing and open qualifying, the nearest car behind on track
 
 #### Setting: Font Size
 
