@@ -97,7 +97,10 @@ export default [
     // does on the call. Deliberately not covered: the settings held in a
     // variable first (`const s = getGlobalSettings(); s as …`), because a
     // selector sees syntax, not what a variable holds, and a listener passed
-    // by name, whose parameter is typed where it is declared.
+    // by name, whose parameter is typed where it is declared. Nor is widening
+    // the compiler accepts without a cast (a `Record<string, unknown>`
+    // parameter or annotation), so this is a guard on the common shape, not a
+    // complete one.
     // scripts/global-settings-cast-lint.test.mjs proves both selectors fire.
     files: ['packages/*/src/**/*.ts'],
     ignores: ['packages/*/src/**/*.test.ts'],
