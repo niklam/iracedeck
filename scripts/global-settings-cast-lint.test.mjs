@@ -88,7 +88,7 @@ describe("global settings cast lint (#1376)", () => {
   );
 
   describe("an onGlobalSettingsChange listener's argument", () => {
-    const LISTENER = "an onGlobalSettingsChange listener's argument";
+    const LISTENER = "inside an onGlobalSettingsChange listener";
     const PRELUDE =
       `import { onGlobalSettingsChange } from "@iracedeck/settings";\n` +
       "declare function apply(value: unknown): void;\n" +
@@ -109,6 +109,10 @@ describe("global settings cast lint (#1376)", () => {
         "onGlobalSettingsChange(function (s) {\n  apply(s as Record<string, unknown>);\n});\n",
       "an assertion in a listener handed to an injected onGlobalSettingsChange":
         "deps.onGlobalSettingsChange((s) => apply(s as Record<string, unknown>));\n",
+      // The selector cannot tell the argument from another identifier, so this
+      // over-reach is part of the rule, pinned so the message stays true for it.
+      "an assertion on an unrelated identifier inside the listener":
+        "declare const cached: unknown;\nonGlobalSettingsChange(() => apply(cached as Record<string, unknown>));\n",
     };
 
     for (const [name, code] of Object.entries(REFUSED_LISTENER)) {
