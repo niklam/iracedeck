@@ -406,6 +406,32 @@ describe("replay-jump-playback (#1276)", () => {
         expect(outcome).toMatchObject({ kind: "stopped", reason: "seek-timeout" });
         jump.end();
       });
+
+      // Pinned to the poll, as it was when the wait had a loop of its own (it polls through `pollUntil` since #1502).
+      it("gives up on the poll that reaches the timeout, counted from the seek", async () => {
+        const sim = fakeSim(PAUSED);
+        const jump = beginReplayJump("next", sim.readTelemetry());
+
+        sim.ignore.setPlayPosition = true;
+
+        const start = Date.now();
+        let endedAt: number | null = null;
+
+        // A paused replay sends no pause first, so the seek goes out at the call.
+        void runReplayJump(jump, {
+          frame: 64_401,
+          readTelemetry: sim.readTelemetry,
+          timeoutMs: 1_000,
+          pollMs: 20,
+        }).then(() => (endedAt = Date.now()));
+
+        await vi.advanceTimersByTimeAsync(999);
+        expect(endedAt).toBeNull();
+
+        await vi.advanceTimersByTimeAsync(1);
+        expect(endedAt).toBe(start + 1_000);
+        jump.end();
+      });
     });
 
     it("does not seek when the replay never reads paused", async () => {

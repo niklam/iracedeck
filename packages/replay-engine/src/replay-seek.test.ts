@@ -317,4 +317,77 @@ describe("replay-seek", () => {
       expect(readTelemetry).not.toHaveBeenCalled();
     });
   });
+
+  // The schedule the wait kept when it polled in its own loop, pinned to the read: it polls through `pollUntil`
+  // since #1502, and the cases above allow a poll either way.
+  describe("the poll's schedule (#1502)", () => {
+    const notThere = (s: ReplaySeekSample | null): s is ReplaySeekSample => isLandedOn(s, 5_000, false);
+
+    function timed(promise: Promise<unknown>): { endedAt: number | null } {
+      const state = { endedAt: null as number | null };
+
+      void promise.then(() => (state.endedAt = Date.now()));
+
+      return state;
+    }
+
+    it("sleeps before its first read and gives up on the read that reaches the timeout", async () => {
+      const claim = claimReplayCursor("test jump");
+      const readTelemetry = vi.fn((): ReplaySeekSample => ({ ReplayFrameNum: 0, IsReplayPlaying: true }));
+      const start = Date.now();
+      const wait = timed(waitForReplay({ claim, readTelemetry, timeoutMs: 100, pollMs: 20 }, notThere));
+
+      expect(readTelemetry).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(99);
+      expect(wait.endedAt).toBeNull();
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(wait.endedAt).toBe(start + 100);
+      // One read after each of the five sleeps.
+      expect(readTelemetry).toHaveBeenCalledTimes(5);
+    });
+
+    it("a read that shows the seek restarts the timeout from that read", async () => {
+      const claim = claimReplayCursor("test jump");
+      let reads = 0;
+      const readTelemetry = vi.fn((): ReplaySeekSample => {
+        reads++;
+
+        // The reads at 20 and 40 ms show the seek; the timeout then runs from 40.
+        return { ReplayFrameNum: 0, IsReplayPlaying: reads > 2 };
+      });
+      const start = Date.now();
+      const wait = timed(
+        waitForReplay({ claim, readTelemetry, timeoutMs: 100, pollMs: 20, seeking: isSeeking }, notThere),
+      );
+
+      await vi.advanceTimersByTimeAsync(139);
+      expect(wait.endedAt).toBeNull();
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(wait.endedAt).toBe(start + 140);
+      expect(readTelemetry).toHaveBeenCalledTimes(7);
+    });
+
+    it("maxWaitMs ends it on the first read past the cap", async () => {
+      const claim = claimReplayCursor("test jump");
+      const readTelemetry = vi.fn((): ReplaySeekSample => ({ ReplayFrameNum: 0, IsReplayPlaying: false }));
+      const start = Date.now();
+      const wait = timed(
+        waitForReplay(
+          { claim, readTelemetry, timeoutMs: 100, pollMs: 20, seeking: isSeeking, maxWaitMs: 130 },
+          notThere,
+        ),
+      );
+
+      // The read at 120 is short of the cap; the one at 140 is past it.
+      await vi.advanceTimersByTimeAsync(139);
+      expect(wait.endedAt).toBeNull();
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(wait.endedAt).toBe(start + 140);
+      expect(readTelemetry).toHaveBeenCalledTimes(7);
+    });
+  });
 });
