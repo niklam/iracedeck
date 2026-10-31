@@ -32,6 +32,15 @@ import { _resetSimEventsIracing, initializeSimEventsIracing } from "./translator
 
 type LogEntry = { kind: "call"; stage: string } | { kind: "publish"; event: string; probeOf?: string };
 
+// Vite's `import.meta.glob`, typed for the one form the completeness test
+// uses, as `app-constants`' admission test does: this package's tests carry
+// no Vite client typings.
+declare global {
+  interface ImportMeta {
+    glob(pattern: string): Record<string, () => Promise<unknown>>;
+  }
+}
+
 const harness = vi.hoisted(() => {
   const PROBE_KEY = "__tickOrderProbe";
   const log: Array<{ kind: "call"; stage: string } | { kind: "publish"; event: string; probeOf?: string }> = [];
@@ -474,13 +483,20 @@ describe("TICK_ORDER", () => {
     it("lists every `_EVENTS` declaration of every diff module, as the stage of that module", async () => {
       const dir = new URL("./diff/", import.meta.url);
       const files = readdirSync(dir).filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"));
+      // An explicit glob over the folder rather than a variable `import()`: vite's
+      // rewrite of the latter did not resolve a module added after the test was
+      // written (`track-gaps.ts`, #1515). The glob resolves to the same modules,
+      // mocks included, and the folder listing above still decides which run.
+      const loaders = import.meta.glob("./diff/*.ts");
       let declarations = 0;
       const unlisted: string[] = [];
 
       for (const file of files) {
-        // The `.ts` path, because vite turns this import into a glob over the
-        // folder's real files. It resolves to the same module, mocks included.
-        const mod = (await import(`./diff/${file.slice(0, -".ts".length)}.ts`)) as Record<string, unknown>;
+        const load = loaders[`./diff/${file}`];
+
+        if (load === undefined) throw new Error(`tick-order: no glob entry for diff/${file}`);
+
+        const mod = (await load()) as Record<string, unknown>;
 
         for (const [name, value] of Object.entries(mod)) {
           if (!name.endsWith("_EVENTS") || !Array.isArray(value)) continue;
