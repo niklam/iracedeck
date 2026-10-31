@@ -332,6 +332,45 @@ export type SimEventsIracingOptions = {
 let instance: TranslatorInstance | null = null;
 
 /**
+ * What runs after the translator on every controller callback (#1500). Module
+ * level, so a listener registered before {@link initializeSimEventsIracing}
+ * is kept; {@link _resetSimEventsIracing} clears it.
+ */
+const tickListeners = new Set<() => void>();
+
+/**
+ * Registers `listener` to run at the end of the translator's own controller
+ * callback (#1500), on every one: a connected tick, a connected callback
+ * without telemetry, and a disconnect. It runs after the translator has
+ * handled that callback, so a read inside it — {@link getSessionType},
+ * {@link getSessionKind}, {@link getLatestTelemetry} — sees this tick's state.
+ * That ordering is the contract; a second `sdkController` subscriber would
+ * only have had the subscription order. It also runs when the translator
+ * throws on the callback, before the throw goes on to the controller. A
+ * listener that throws is logged and skipped: the next listener and the
+ * translator's next tick still run. Returns the unsubscribe.
+ */
+export function onTranslatorTick(listener: () => void): () => void {
+  tickListeners.add(listener);
+
+  return () => {
+    tickListeners.delete(listener);
+  };
+}
+
+/** Run every {@link onTranslatorTick} listener, each isolated from the others. */
+function notifyTickListeners(logger: ILogger): void {
+  for (const listener of tickListeners) {
+    try {
+      listener();
+    } catch (error) {
+      logger.error("Translator tick listener failed");
+      logger.debug(`Listener error: ${String(error)}`);
+    }
+  }
+}
+
+/**
  * Initialize the iRacing translator singleton. Subscribes to sdkController
  * and starts publishing events to the shared event bus. Throws on double
  * initialization — call once per plugin process.
@@ -379,16 +418,23 @@ export function initializeSimEventsIracing(
   instance = self;
 
   sdkController.subscribe(SUBSCRIPTION_ID, (telemetry, isConnected) => {
-    if (!isConnected) {
-      handleDisconnect(self);
+    try {
+      if (!isConnected) {
+        handleDisconnect(self);
 
-      return;
+        return;
+      }
+
+      if (!telemetry) return;
+
+      self.latestTelemetry = telemetry;
+      handleTick(self, telemetry);
+    } finally {
+      // After the translator, on every path out of this callback (#1500). The
+      // controller does not isolate its subscribers, so a throw above still
+      // skips the subscribers after this one; these listeners still see it.
+      notifyTickListeners(self.logger);
     }
-
-    if (!telemetry) return;
-
-    self.latestTelemetry = telemetry;
-    handleTick(self, telemetry);
   });
 
   // The replay recorders (issue #1468), their own subscriber. Subscribed AFTER
@@ -1869,7 +1915,7 @@ export function readSimState(): SimStateSnapshot {
 }
 
 /**
- * Reset the translator singleton.
+ * Reset the translator singleton and drop every {@link onTranslatorTick} listener.
  * @internal Exported for test isolation only.
  */
 export function _resetSimEventsIracing(): void {
@@ -1888,6 +1934,7 @@ export function _resetSimEventsIracing(): void {
   }
 
   instance = null;
+  tickListeners.clear();
 }
 
 // ── Internals ──────────────────────────────────────────────────────────────

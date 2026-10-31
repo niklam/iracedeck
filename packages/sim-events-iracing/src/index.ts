@@ -50,6 +50,7 @@ export {
   isRollingStartFormation,
   isSimEventsIracingInitialized,
   isUnderFullCourseCaution,
+  onTranslatorTick,
   readSimState,
   resolveLeaderLapTimeS,
   type CautionGap,
