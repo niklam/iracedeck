@@ -57,7 +57,7 @@
  */
 import { replaySpeedFromTelemetry, type TelemetryData } from "@iracedeck/iracing-sdk";
 
-import { now, sleep } from "./engine-clock.js";
+import { now, pollUntil } from "./engine-clock.js";
 import {
   claimReplayCursorForJump,
   closeReplayJump,
@@ -429,33 +429,37 @@ async function runSequence(jump: ReplayJump, options: ReplayJumpOptions): Promis
   // The landing is the gate's read-back of the target. The wait goes on for as
   // long as iRacing shows the seek, and gives up one timeout after it no
   // longer does without the frame having read back.
-  const startedAt = now();
-  const latest = startedAt + REPLAY_JUMP_MAX_WAIT_MS;
-  let deadline = startedAt + timeoutMs;
   let last: TelemetryData | null = null;
-  let landing: TelemetryData | null = null;
 
-  while (landing === null) {
-    if (now() >= Math.min(deadline, latest)) {
-      return { kind: "stopped", reason: "seek-timeout", telemetry: last };
-    }
+  const waited = await pollUntil(
+    (poll): { readonly landing: TelemetryData } | { readonly ended: ReplayJumpOutcome } | undefined => {
+      if (claim.cancelledBy !== null) return { ended: { kind: "cancelled", by: claim.cancelledBy } };
 
-    await sleep(pollMs);
+      last = readTelemetry();
 
-    if (claim.cancelledBy !== null) return { kind: "cancelled", by: claim.cancelledBy };
+      const state = replayJumpLanding(gate, last);
 
-    last = readTelemetry();
+      if (state.status === "read-back") {
+        const landing = state.landing ?? last;
 
-    const state = replayJumpLanding(gate, last);
+        // Read back, but no sample to land on: the wait goes on.
+        return landing === null ? undefined : { landing };
+      }
 
-    if (state.status === "read-back") {
-      landing = state.landing ?? last;
-    } else if (state.status !== "pending") {
-      return { kind: "stopped", reason: "seek-timeout", telemetry: last };
-    } else if (isSeeking(last)) {
-      deadline = now() + timeoutMs;
-    }
-  }
+      if (state.status !== "pending") return { ended: { kind: "stopped", reason: "seek-timeout", telemetry: last } };
+
+      if (isSeeking(last)) poll.extend();
+
+      return undefined;
+    },
+    { intervalMs: pollMs, timeoutMs, maxWaitMs: REPLAY_JUMP_MAX_WAIT_MS, sleepFirst: true },
+  );
+
+  if (waited.kind === "timed-out") return { kind: "stopped", reason: "seek-timeout", telemetry: last };
+
+  if ("ended" in waited.value) return waited.value.ended;
+
+  const { landing } = waited.value;
 
   if (afterLanding !== undefined && !afterLanding(landing)) {
     return { kind: "stopped", reason: "after-landing-failed", telemetry: landing };
