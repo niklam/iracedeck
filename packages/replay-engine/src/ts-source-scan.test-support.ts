@@ -1,13 +1,15 @@
 /**
  * The TypeScript-compiler plumbing the engine's scan tests share (#1502): the
- * camera-switch scanner (`camera-switch-waiter.single-policy.test-support.ts`)
- * and the reset-coverage scanner (`replay-engine-reset.coverage.test-support.ts`).
- * It reads the production sources of a directory, builds an in-memory program
- * over them (binder only: no lib, no module resolution), and holds the small
- * node helpers both scanners use. What a scanner looks for stays in the scanner.
+ * camera-switch scanner (`camera-switch-waiter.single-policy.test-support.ts`),
+ * the reset-coverage scanner (`replay-engine-reset.coverage.test-support.ts`)
+ * and the barrel's signature-type guard (`index.test.ts`). It reads the
+ * production sources of a directory, builds an in-memory program over them
+ * (no lib; module resolution only when asked for), builds the package's real
+ * program from its `tsconfig.json`, and holds the small node helpers the
+ * scanners use. What a scanner looks for stays in the scanner.
  */
 import { readdirSync, readFileSync } from "node:fs";
-import { join, relative, sep } from "node:path";
+import { dirname, join, relative, sep } from "node:path";
 import ts from "typescript";
 
 /**
@@ -42,22 +44,37 @@ export function readProductionSources(dir: string, recursive: boolean): Map<stri
   return sources;
 }
 
+/** How `createVirtualProgram` links its files. */
+export interface VirtualProgramOptions {
+  /**
+   * Resolve the files' relative imports among themselves (bundler resolution,
+   * so `./x.js` finds `x.ts`), letting the checker follow a re-export to its
+   * declaration. Off by default: the binder then sees each file alone.
+   */
+  readonly resolveImports?: boolean;
+}
+
 /**
  * A program over `sources` (name → text) placed under `virtualRoot`, so a
- * file is `virtualRoot + name`. No lib and no resolution: the binder and
- * checker see only these files, and a scan never depends on the machine.
+ * file is `virtualRoot + name`. No lib, and no resolution unless
+ * `resolveImports`: the binder and checker see only these files, and a scan
+ * never depends on the machine.
  */
-export function createVirtualProgram(sources: ReadonlyMap<string, string>, virtualRoot: string): ts.Program {
+export function createVirtualProgram(
+  sources: ReadonlyMap<string, string>,
+  virtualRoot: string,
+  { resolveImports = false }: VirtualProgramOptions = {},
+): ts.Program {
   const byPath = new Map<string, string>();
 
   for (const [name, text] of sources) byPath.set(virtualRoot + name, text);
 
   const options: ts.CompilerOptions = {
     noLib: true,
-    noResolve: true,
     types: [],
     target: ts.ScriptTarget.ESNext,
     module: ts.ModuleKind.ESNext,
+    ...(resolveImports ? { moduleResolution: ts.ModuleResolutionKind.Bundler } : { noResolve: true }),
   };
   const host: ts.CompilerHost = {
     getSourceFile: (fileName, languageVersion) => {
@@ -76,6 +93,33 @@ export function createVirtualProgram(sources: ReadonlyMap<string, string>, virtu
   };
 
   return ts.createProgram([...byPath.keys()], options, host);
+}
+
+/**
+ * The program the package's own `tsconfig.json` describes, so lib, module
+ * resolution and every other option match `tsc` in the build, over the files
+ * of that config's `include` that `isRoot` keeps (all of them by default);
+ * what those import is pulled in as the build would. Throws on a config error.
+ */
+export function createTsconfigProgram(
+  tsconfigPath: string,
+  isRoot: (fileName: string) => boolean = () => true,
+): ts.Program {
+  const read = ts.readConfigFile(tsconfigPath, (path) => ts.sys.readFile(path));
+
+  if (read.error !== undefined) throw new Error(ts.flattenDiagnosticMessageText(read.error.messageText, "\n"));
+
+  const parsed = ts.parseJsonConfigFileContent(read.config, ts.sys, dirname(tsconfigPath), undefined, tsconfigPath);
+
+  if (parsed.errors.length > 0) {
+    throw new Error(parsed.errors.map((error) => ts.flattenDiagnosticMessageText(error.messageText, "\n")).join("\n"));
+  }
+
+  return ts.createProgram({
+    rootNames: parsed.fileNames.filter(isRoot),
+    options: { ...parsed.options, noEmit: true },
+    projectReferences: parsed.projectReferences,
+  });
 }
 
 /** Whether `node` only wraps an expression: parentheses, `as`, `satisfies`, a type assertion or `!`. */

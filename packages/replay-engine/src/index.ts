@@ -11,11 +11,11 @@
  */
 export { configureReplayEngine } from "./replay-engine-configure.js";
 export type { ReplayEngineController, ReplayEngineEnv } from "./replay-engine-env.js";
-export { currentReplayCursorOwner } from "./replay-cursor.js";
+export { currentReplayCursorOwner, type ReplayCursorClaim } from "./replay-cursor.js";
 export { planFrameMove, type FrameMove } from "./replay-frame-move.js";
 export { isSameSpeed, PAUSED, type ReplaySpeed } from "./replay-jump-speed.js";
 export { REPLAY_TARGET_GIVE_UP_MS, type ReplayPosition } from "./replay-position-state.js";
-export { isSeeking } from "./replay-seek.js";
+export { isSeeking, type ReplaySeekSample } from "./replay-seek.js";
 export { REPLAY_JUMP_MAX_WAIT_MS } from "./replay-timing.js";
 export {
   DIAL_SPEED_HOLD_MS,
@@ -27,20 +27,22 @@ export {
 } from "./replay-speed-state.js";
 export { shownReplaySpeed } from "./replay-speed-view.js";
 export { isRaceStartUnavailable, lastListedSessionNum } from "./green-flag-target.js";
-export { requestCameraSwitch } from "./camera-switch-waiter.js";
+export { type CameraSwitchOptions, requestCameraSwitch } from "./camera-switch-waiter.js";
 export { runJumpToFrame } from "./lap-press.js";
 export { LAP_START_APPROACH_FRAMES } from "./lap-walk.js";
-export { pressJumpToFastestLap, readSubSessionId } from "./fastest-lap-press.js";
+export { type LapPressResult, pressJumpToFastestLap, readSubSessionId } from "./fastest-lap-press.js";
 export { canJumpToRaceStart, pressJumpToRaceStart } from "./race-start-press.js";
 export { formatLapOfLaps, sessionLapCount } from "./replay-lap-count.js";
 export { formatPlayCaption, formatSpeedDisplay, parseSpeedSetting } from "./replay-speed-format.js";
 export {
   getReplayGateRecord,
+  type ReplayGateRecord,
   getReplayGateView,
   type ReplayGateView,
   isReplayMoveUnderWay,
   pressReplayCommand,
   readReplayPosition,
+  type ReplayPressOptions,
   type ReplayGateCommand,
   type ReplayGateEndReason,
   type ReplayGateFactEnd,
@@ -50,17 +52,35 @@ export {
   subscribeReplayGate,
   waitForReplaySettled,
 } from "./replay-command-gate.js";
-export { beginReplayJump, describeReplayJump, type ReplayJumpOutcome, runReplayJump } from "./replay-jump-playback.js";
+export {
+  beginReplayJump,
+  describeReplayJump,
+  type ReplayJump,
+  type ReplayJumpBeginOptions,
+  type ReplayJumpOptions,
+  type ReplayJumpOutcome,
+  type ReplayJumpReport,
+  runReplayJump,
+} from "./replay-jump-playback.js";
 export {
   isReplaySearchRunning,
   onReplaySearchChange,
   pendingReplaySearch,
   queueReplaySearch,
+  type ReplaySearchPending,
   type ReplaySearchTarget,
+  type ReplaySearchTurn,
 } from "./replay-search-queue.js";
-export { observeIncidentSearch } from "./replay-incident-observer.js";
+export {
+  type IncidentObserverHost,
+  type IncidentSearchPress,
+  observeIncidentSearch,
+} from "./replay-incident-observer.js";
 export {
   recordedIndexAt,
+  type RecordedEntry,
+  type RecordedSpanRule,
+  type RecordedWalkResult,
   type ReplayWalkDirection,
   resolveReplayWalkAnchor,
   resolveReplayWalkStart,
