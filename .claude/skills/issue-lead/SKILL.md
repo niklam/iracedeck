@@ -17,7 +17,7 @@ Never: restart or relink a deck host; run `pnpm build:with-restart`, `restart:*`
 
 ## Reporting to the PO
 
-End every turn that changes your issue's state with a report whose first line is `#<n> <state>: <one line>`. It reaches the PO as a note. States: `started`, `amend-spec` (the change and why), `question` (one decision, the options and your recommendation), `audio-text`, `review-page`, `waiting-prompt`, `ready-to-test`, `pr-open`, `merged`, `red-run`, `done`, `blocked`.
+End every turn that changes your issue's state with a report whose first line is `#<n> <state>: <one line>`. It reaches the PO as a note. States: `started`, `amend-spec` (the change and why), `question` (one decision, the options and your recommendation), `propose-issue` (a follow-up or separate piece of work you found, with a draft title and why; never file it yourself, `file-issue` skill), `audio-text`, `review-page`, `waiting-prompt`, `ready-to-test`, `pr-open`, `merged`, `red-run`, `done`, `blocked`.
 
 Before running a command a hook will ask on (`hooks.md` lists the asks), send `#<n> waiting-prompt: <the command>` to the PO with `SendMessage` (`to` = the PO address in your brief), then run the command in the same turn, so the prompt is open while the PO tells Niklas. Never end the turn to report it: the command would not have run, and nothing would resume it. Messages from the PO arrive by `SendMessage`; act on them.
 

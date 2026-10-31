@@ -29,7 +29,7 @@ The list is a judgement, not a path filter: a comment edit under `scripts/` does
 4. Verify every finding against the code yourself. A finding is a candidate, exactly as with `/code-review`.
 5. Dispose of each:
    - **reachable now, and it holds** — fix it on the branch before manual testing;
-   - **narrow, and it holds** — fix it on the branch when the fix is small and inside the change's scope; otherwise file an issue, or decline it with the reason;
+   - **narrow, and it holds** — fix it on the branch when the fix is small and inside the change's scope; otherwise propose an issue (`file-issue` skill; it is filed once Niklas approves), or decline it with the reason;
    - **does not hold** — if the reviewer will raise the same class again, add a non-finding line to `learnings.md`.
 
    Whoever wrote the code does not decline its findings alone: every "decline", "does not hold" and "file an issue" (a held finding left unfixed on the branch) first goes to a fresh judge, as `code-review.md` says (the brief is in the `issue-lead` skill, step 7), and an overruled one is fixed, unless the ruling contradicts a decision a spec or rule file records, which goes to the PO (or, outside the agent team, is settled by the thorough option) with both. Add a `learnings.md` non-finding only for one the judge upheld.
