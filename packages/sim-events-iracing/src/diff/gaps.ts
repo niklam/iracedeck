@@ -40,7 +40,7 @@ import {
   TrkLoc,
 } from "@iracedeck/iracing-sdk";
 
-import type { GapNeighborState, TranslatorState } from "../state.js";
+import type { GapNeighborState, TranslatorState, TrendChain } from "../state.js";
 import { coerceSettingNumber } from "./setting-number.js";
 import type { EmitFn } from "./types.js";
 
@@ -306,26 +306,7 @@ const GAP_TREND_MAX_STEP_LAPS = 0.1;
 /** Single rate samples (display or lap-over-lap) beyond this (s/lap) are glitches — skipped. */
 const GAP_TREND_MAX_RATE_S_PER_LAP = 20;
 
-/**
- * One side's display-trend chain (issue #933 follow-up), DISPLAY ONLY: the
- * gap sampled every {@link GAP_CHECKPOINT_STEP} of the player's progress,
- * adjacent-sample deltas folded into an EMA of the gap rate in
- * seconds-per-lap, classified once {@link GAP_TREND_MIN_SAMPLES} have been
- * folded. Shared by the race gaps and the track-order gaps (issue #1515), so
- * the key colour means the same rate in every session. The race keeps its
- * chain in flat `TranslatorState` fields and adapts them per side; the
- * track-order gaps store the object itself.
- */
-export type TrendChain = {
-  /** The last checkpoint folded (`progress` on the caller's scale). */
-  lastCheckpoint: { progress: number; gapSeconds: number } | null;
-  /** Smoothed gap rate (s/lap; negative = closing). Null until seeded. */
-  ema: number | null;
-  /** Consecutive rate samples in the current chain. */
-  samples: number;
-};
-
-/** An empty display-trend chain. */
+/** An empty display-trend chain (the shape lives with the state, `TrendChain` in `state.ts`). */
 export function createTrendChain(): TrendChain {
   return { lastCheckpoint: null, ema: null, samples: 0 };
 }
