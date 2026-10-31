@@ -29,7 +29,7 @@
  *     (#1066), and `contracts()` reports every registered contract beside it —
  *     effective frame and weight, the trigger event, and the contract's
  *     `description` of when it fires. Registering anything after `setScripts`
- *     marks the compiled map dirty and the next `prepareOps` recompiles
+ *     marks the compiled map dirty and the next expansion recompiles
  *     before use.
  *   - Frames: a body that expanded to at least one clip is wrapped in the
  *     frame its script entry (else its contract, else `DEFAULT_FRAME`) names,

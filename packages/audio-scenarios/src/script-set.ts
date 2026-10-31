@@ -42,8 +42,8 @@ export class ScriptSet {
   private compiledScripts: ReadonlyMap<string, CompiledVoiceScript> = new Map();
   /**
    * Set by every registration that feeds the compile (contracts, vars,
-   * conditions, cases, pools); the next `prepareOps` recompiles before it
-   * looks anything up.
+   * conditions, cases, pools); the next expansion recompiles first
+   * (`ensureCompiled`), before it looks anything up.
    */
   private scriptsDirty = false;
   /**
@@ -81,7 +81,7 @@ export class ScriptSet {
   }
 
   /**
-   * A registration that feeds the compile: the next `prepareOps` recompiles,
+   * A registration that feeds the compile: the next expansion recompiles,
    * and every stashed resume is invalidated (issue #1136 — see `generation`).
    * The two go together, so they are set together rather than at six call
    * sites that must each remember the second half.

@@ -179,7 +179,7 @@ export type BusTransportTableView = {
  * way `getBusState` did: `get` creates a bus's state on first use, `peek`
  * does not (for `describeState`, a pure read). Every module that iterates
  * buses iterates THIS table, so the order every per-bus loop runs in —
- * `stopAll`, `setEnabled`, the session-change clear, both passes of
+ * `stopAll`, a disable's `cancelDisabled`, the session-change clear, both passes of
  * `endFires` — is one insertion order, and never drifts between two maps:
  * that order decides which bus's `onSettled` runs and which bus drains
  * first. Playback is handed it as a `TransportTable`, everyone else as a
@@ -340,8 +340,10 @@ export type ExecOp =
 export type ExpandedFrame = { open: ExecOp[]; close: ExecOp[]; cut: ExecOp[] };
 
 /**
- * What `prepareOps` hands a fire to play: its ops, and the cut tail an end
- * plays once words have been heard (issue #1407, see `ActiveFire.cutTail`).
+ * What `Expansion.prepare` builds for a fire to play — its ops, and the cut
+ * tail an end plays once words have been heard (issue #1407, see
+ * `ActiveFire.cutTail`) — and the scheduler's `prepareOps` hands on once the
+ * speak-time gate admits it.
  */
 export type PreparedFire = { ops: ExecOp[]; cutTail: ExecOp[] };
 
@@ -349,8 +351,8 @@ export type PreparedFire = { ops: ExecOp[]; cutTail: ExecOp[] };
  * Internal control-flow signal (issue #835): a REQUIRED clip-producing step
  * resolved to nothing during expansion — missing clip for the active voice,
  * null var, or empty pool. Thrown by `expandSequence`, caught locally by
- * `{ optional: [...] }` groups, and otherwise surfaced to `prepareOps`, which
- * skips the whole callout so a fragment is never spoken. The abort is decided
+ * `{ optional: [...] }` groups, and otherwise caught by `Expansion.prepare`,
+ * which skips the whole callout so a fragment is never spoken. The abort is decided
  * BEFORE any bus cancellation (see `attemptFire`), so an aborting fire can
  * never silence an in-flight one.
  */
