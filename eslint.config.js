@@ -5,6 +5,16 @@ import tsparser from '@typescript-eslint/parser';
 import prettier from 'eslint-config-prettier';
 import stylistic from '@stylistic/eslint-plugin';
 
+// The sim packages a device shell may not import (#1500); the block that uses them is below.
+const SHELL_SIM_PACKAGES = [
+  '@iracedeck/deck-iracing',
+  '@iracedeck/sim-events-iracing',
+  '@iracedeck/iracing-sdk',
+  '@iracedeck/iracing-native',
+];
+const SHELL_SIM_MESSAGE =
+  'A plugin shell must not depend on a simulator: read the sim through PluginExtensionContext.sim, which plugin-runtime hands PluginExtension.start (#1500).';
+
 export default [
   eslint.configs.recommended,
   {
@@ -152,6 +162,25 @@ export default [
                 'The replay engine must not depend on the deck layer, the settings or its own consumers: take it through configureReplayEngine (#1467).',
             },
           ],
+        },
+      ],
+    },
+  },
+  {
+    // A device shell names its host and calls startPlugin; it reaches no sim
+    // package (#1500). What a host extension reads of the sim arrives in its
+    // start context, PluginExtensionContext.sim, which plugin-runtime's initSim
+    // builds. Type-only imports and tests included: neither needs one. The
+    // subpath pattern closes a deep import, which iracing-sdk and iracing-native
+    // allow because they declare no `exports`.
+    // scripts/plugin-shell-sim-boundary.test.mjs proves this rule fires.
+    files: ['packages/iracing-plugin-*/src/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: SHELL_SIM_PACKAGES.map((name) => ({ name, message: SHELL_SIM_MESSAGE })),
+          patterns: [{ group: SHELL_SIM_PACKAGES.map((name) => `${name}/*`), message: SHELL_SIM_MESSAGE }],
         },
       ],
     },
