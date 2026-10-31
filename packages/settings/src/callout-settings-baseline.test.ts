@@ -29,8 +29,8 @@ import { GlobalSettingsSchema } from "./global-settings.js";
  * reused: a callout that comes back takes a new key and a new row. A rename
  * is both at once — the old key's row retired, the new key's row appended.
  *
- * Adding a callout: append one row at the end of
- * `__fixtures__/callout-settings-baseline.json`, keyed by the new
+ * Adding a callout: raise `RECORD_ROWS` below by one, and append one row at
+ * the end of `__fixtures__/callout-settings-baseline.json`, keyed by the new
  * `calloutEnabled*` key, in the shape of the rows above it —
  * `owner` is `<family id>/<callout id>` from the registry entry, `default` is
  * `true` unless the entry declares `default: false`, and the coercion columns
@@ -69,8 +69,14 @@ interface BaselineRow {
 /** The columns every row carries; `retiredBy` is the one optional column beside them. */
 const COLUMNS: readonly string[] = ["owner", "default", "true", '"true"', "false", '"false"', '"x"', "numberRejected"];
 
-/** The record held this many rows before it became append-only (#1376); it never shrinks below it. */
-const PRE_REGISTRY_ROWS = 100;
+/**
+ * How many rows the record holds, live and retired: 100 captured before #1350
+ * and three appended by #1376. Raised by one with every appended row, and never
+ * lowered. The checks below see only keys still in the registry or rows still
+ * in the file, so a key dropped together with its row would pass them all; the
+ * pinned count is what refuses that.
+ */
+const RECORD_ROWS = 103;
 
 const BASELINE_FILE = "packages/settings/src/__fixtures__/callout-settings-baseline.json";
 
@@ -92,8 +98,12 @@ const parseKey = (key: string, value: unknown): unknown =>
   (GlobalSettingsSchema.parse({ [key]: value }) as Record<string, unknown>)[key];
 
 describe("callout settings baseline (#1350, #1376)", () => {
-  it(`never shrinks below the ${PRE_REGISTRY_ROWS} keys captured before the registry`, () => {
-    expect(Object.keys(baseline).length).toBeGreaterThanOrEqual(PRE_REGISTRY_ROWS);
+  it(`holds exactly ${RECORD_ROWS} rows, so no row was deleted`, () => {
+    expect(
+      Object.keys(baseline).length,
+      `${BASELINE_FILE} must hold exactly RECORD_ROWS rows. A row is never deleted, even when its key is retired ` +
+        `(mark it "retiredBy" instead); a newly appended row raises RECORD_ROWS by one in the same change.`,
+    ).toBe(RECORD_ROWS);
   });
 
   it.each(Object.keys(baseline))("%s has exactly the record's columns", (key) => {
@@ -120,7 +130,8 @@ describe("callout settings baseline (#1350, #1376)", () => {
         `A new callout key appends one row at the end of that file, by hand, in the shape of the rows above it: ` +
         `"owner": "<family id>/<callout id>", "default": true unless the entry declares default: false, ` +
         `and the coercion columns every key shares (true/"true" -> true, false/"false"/"x" -> false, numberRejected: true). ` +
-        `Never regenerate or edit the existing rows — see the header of callout-settings-baseline.test.ts.`,
+        `Raise RECORD_ROWS in callout-settings-baseline.test.ts by one in the same change, and never regenerate ` +
+        `or edit the existing rows — see that file's header.`,
     ).toBe(true);
     expect(
       isRetired(key),
