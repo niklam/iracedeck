@@ -159,6 +159,21 @@ export type BusTableView = {
   entries(): Iterable<[AudioBus, BusView]>;
 };
 
+/** A bus as the line ends see it: the transport half read-only, and no `schedule` at all. */
+export type BusTransportView = Pick<BusView, "transport">;
+
+/**
+ * The bus table as the line ends are handed it (issue #1407): the same
+ * `BusTable`, iterated in its order, through `BusTransportView`. The line
+ * ends change a queue only through the scheduler, a timer only through the
+ * triggers and the playing fire only through playback, so the table shows
+ * them no schedule half and creates nothing.
+ */
+export type BusTransportTableView = {
+  values(): Iterable<BusTransportView>;
+  entries(): Iterable<[AudioBus, BusTransportView]>;
+};
+
 /**
  * The one table of per-bus state (issue #1514), created lazily per bus the
  * way `getBusState` did: `get` creates a bus's state on first use, `peek`
@@ -171,7 +186,7 @@ export type BusTableView = {
  * `BusTableView`. The queue factory comes from the scheduler, whose queues
  * they are (the registry's `waitsBehind`).
  */
-export class BusTable implements TransportTable, BusTableView {
+export class BusTable implements TransportTable, BusTableView, BusTransportTableView {
   private readonly states = new Map<AudioBus, BusState>();
 
   constructor(private readonly createQueue: () => PendingQueue<WaitingFire>) {}

@@ -49,23 +49,16 @@
 import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus } from "@iracedeck/audio-service";
 import type { CalloutScript } from "@iracedeck/callout-script";
-import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
+import type { IEventBus, SimEventName } from "@iracedeck/event-bus";
 import type { ILogger } from "@iracedeck/logger";
 import { silentLogger } from "@iracedeck/logger";
 
 import { ContractRegistry } from "./contract-registry.js";
-import type { ResolvedStep, Scenario, ScenarioContext, ScenarioContract, VocabularyResolver } from "./dsl.js";
+import type { ResolvedStep, Scenario, ScenarioContract, VocabularyResolver } from "./dsl.js";
 import { resolveStep } from "./dsl.js";
-import {
-  type ActiveFireView,
-  BusTable,
-  type BusTableView,
-  type BusView,
-  codePointOrder,
-  fireContext,
-  type WaitingFire,
-} from "./engine-types.js";
+import { BusTable, type BusTableView, type BusView, codePointOrder, type WaitingFire } from "./engine-types.js";
 import { Expansion } from "./expansion.js";
+import { LineEnds } from "./line-ends.js";
 // Manifest types + helpers live in `./manifest.js` to break a circular
 // import with `./validation.js`; the pool store and validation both read
 // `referenceVoice` from it, and this file only the manifest type.
@@ -78,6 +71,7 @@ import { Scheduler } from "./scheduler.js";
 import type { CompiledVoiceScript } from "./script-compiler.js";
 import { ScriptSet } from "./script-set.js";
 import { isStatePartError, readStatePart, type StatePartError } from "./state-part.js";
+import { Triggers } from "./triggers.js";
 import { Vocabulary } from "./vocabulary.js";
 
 // Re-export so existing consumers of `interpreter.js` keep their import paths.
@@ -406,8 +400,17 @@ export interface IScenarioEngine {
   describeState(): ScenarioEngineState;
 }
 
+/**
+ * The engine's facade (issue #1514): it builds the modules in its
+ * constructor and turns each `IScenarioEngine` method into a short, ordered
+ * sequence of module calls — the registration sequence, `defineVar` then
+ * mark dirty, `setScripts`' reset then compile, `dispose`'s order. It holds
+ * no state of its own beyond the module instances, the one bus table, its
+ * three injected read-only dependencies and the session-change unsubscribe;
+ * `interpreter-facade.test.ts` fails on the first field added here instead
+ * of in the module that owns its concern.
+ */
 class ScenarioEngine implements IScenarioEngine {
-  private readonly eventBus: IEventBus;
   private readonly logger: ILogger;
   /**
    * Resolves the active Race Engineer voice key (e.g. `"luca"`) at clip-
@@ -457,6 +460,18 @@ class ScenarioEngine implements IScenarioEngine {
    */
   private readonly scheduler: Scheduler;
   /**
+   * The contract triggers (`Triggers`): each `when` as a bus subscription,
+   * the `where`, `triggerDelay` and `settle` decisions, and every
+   * contract's `unsubscribe` and `pendingTriggerTimer`.
+   */
+  private readonly triggers: Triggers;
+  /**
+   * The line ends (`LineEnds`): one subscription per `endsOn` event, and
+   * `endFires` reaching the timers, the queues and the playing fire through
+   * the triggers, the scheduler and playback.
+   */
+  private readonly lineEnds: LineEnds;
+  /**
    * The once-per warn sets (`OnceWarnings`): five keyspaces, every one cleared
    * by `setScripts`, so a rescan that hands the engine a still-broken pack
    * says so again.
@@ -464,13 +479,6 @@ class ScenarioEngine implements IScenarioEngine {
   private readonly warnings = new OnceWarnings();
   /** Unsubscribes the session-change clear; called by `dispose`. */
   private readonly unsubscribeSessionChanged: () => void;
-  /**
-   * One bus subscription per distinct `endsOn` event (issue #1407), made when
-   * the first contract naming that event registers and kept for the engine's
-   * life: `endFires` reads the registered contracts at each arrival, so a
-   * redefinition needs no new subscription. Unsubscribed by `dispose`.
-   */
-  private readonly endSubscriptions = new Map<SimEventName, () => void>();
 
   constructor(
     eventBus: IEventBus,
@@ -480,7 +488,6 @@ class ScenarioEngine implements IScenarioEngine {
     getActiveVoice: () => string | null = () => null,
     getFrameOptions: () => FrameOptions = () => ({ beeps: true, ambience: true }),
   ) {
-    this.eventBus = eventBus;
     this.logger = logger;
     this.getActiveVoice = getActiveVoice;
     this.getFrameOptions = getFrameOptions;
@@ -534,9 +541,18 @@ class ScenarioEngine implements IScenarioEngine {
     // A redefined contract unsubscribes and subscribes again, behind this.
     // The plugin's engine lives as long as the plugin; `dispose` is for a
     // reset (`_resetAudioScenarios`) that builds another on the same bus.
-    this.unsubscribeSessionChanged = this.eventBus.subscribe("session.changed", () =>
+    // The two modules that subscribe are built after it, and subscribe only
+    // at a registration.
+    this.unsubscribeSessionChanged = eventBus.subscribe("session.changed", () =>
       this.scheduler.clearQueuesForSessionChange(),
     );
+    this.triggers = new Triggers(eventBus, logger, { contracts: this.registry, scheduler: this.scheduler });
+    this.lineEnds = new LineEnds(eventBus, logger, buses, {
+      contracts: this.registry,
+      scheduler: this.scheduler,
+      triggers: this.triggers,
+      playback: this.playback,
+    });
   }
 
   /**
@@ -549,21 +565,8 @@ class ScenarioEngine implements IScenarioEngine {
    */
   dispose(): void {
     this.unsubscribeSessionChanged();
-
-    for (const unsubscribe of this.endSubscriptions.values()) unsubscribe();
-
-    this.endSubscriptions.clear();
-
-    for (const entry of this.registry.entries.values()) {
-      entry.unsubscribe?.();
-      entry.unsubscribe = null;
-
-      if (entry.pendingTriggerTimer !== null) {
-        clearTimeout(entry.pendingTriggerTimer);
-        entry.pendingTriggerTimer = null;
-      }
-    }
-
+    this.lineEnds.dispose();
+    this.triggers.detachAll();
     this.scheduler.clearHolds();
   }
 
@@ -599,12 +602,8 @@ class ScenarioEngine implements IScenarioEngine {
 
     if (existing) {
       this.logger.warn(`Scenario "${s.id}" redefined; replacing previous definition`);
-      existing.unsubscribe?.();
-
-      if (existing.pendingTriggerTimer !== null) {
-        clearTimeout(existing.pendingTriggerTimer);
-        existing.pendingTriggerTimer = null;
-      }
+      this.triggers.detach(existing);
+      this.triggers.cancelPending(existing);
     }
 
     const entry = this.registry.store(s, resolvedSequence);
@@ -629,11 +628,8 @@ class ScenarioEngine implements IScenarioEngine {
       return;
     }
 
-    if (s.when) {
-      entry.unsubscribe = this.subscribeToEvent(s.id, s.when.event, s.when.where);
-    }
-
-    if (s.endsOn) this.subscribeToEnd(s.endsOn.event);
+    this.triggers.attach(entry);
+    this.lineEnds.watch(entry);
   }
 
   definePool(name: string, clips: string[]): void {
@@ -756,10 +752,7 @@ class ScenarioEngine implements IScenarioEngine {
       // (The timer callback guards on `enabled`, but only at expiry — a
       // disable→enable round-trip within the delay window would otherwise let
       // the original event through.)
-      if (entry.pendingTriggerTimer !== null) {
-        clearTimeout(entry.pendingTriggerTimer);
-        entry.pendingTriggerTimer = null;
-      }
+      this.triggers.cancelPending(entry);
 
       // Cancel in-flight execution on any bus + remove its waiting entry.
       this.scheduler.cancelDisabled(scenarioId);
@@ -793,281 +786,6 @@ class ScenarioEngine implements IScenarioEngine {
   releaseFocus(bus: AudioBus, ownerId: string): void {
     this.scheduler.releaseFocus(bus, ownerId);
   }
-
-  // ── Event wiring ──
-
-  private subscribeToEvent(
-    id: string,
-    eventName: SimEventName,
-    where: ((e: SimEventOf<SimEventName>) => boolean) | undefined,
-  ): () => void {
-    const handler = (ev: SimEventOf<SimEventName>) => {
-      const entry = this.registry.get(id);
-
-      if (!entry || !entry.enabled) return;
-
-      const triggerDelay = entry.raw.triggerDelay ?? 0;
-      const settle = entry.raw.settle;
-
-      if (triggerDelay <= 0 && !settle) {
-        // Immediate path — where: runs synchronously, attemptFire runs
-        // synchronously. Var resolvers will read current state at this
-        // moment.
-        if (where) {
-          try {
-            if (!where(ev)) return;
-          } catch (err) {
-            this.logger.error(`Scenario "${id}" where() threw: ${err instanceof Error ? err.message : String(err)}`);
-
-            return;
-          }
-        }
-
-        this.scheduler.attemptFire(entry, ev);
-
-        return;
-      }
-
-      // Deferred path — wait `triggerDelay` ms before evaluating where: and
-      // attempting fire. By the time the timer fires, both the predicate and
-      // any var resolvers will read telemetry that has had time to settle
-      // (critical for `session.changed` → race-start, where iRacing's
-      // TrackWetness can read Unknown at the transition tick).
-      //
-      // A contract with `settle` (issue #1284) takes this path even with no
-      // `triggerDelay`, and after the delay keeps asking `pending` until it
-      // reports ready or the wait reaches `maxWaitMs` from the event's
-      // arrival. Every hop reuses `pendingTriggerTimer`, so what cancels a
-      // deferred fire — a newer event, a disable, a redefinition — cancels a
-      // settle in progress too.
-      //
-      // Cancel any pending timer for this scenario so the most recent event
-      // wins. Two rapid SessionNum advances would otherwise queue two fires.
-      if (entry.pendingTriggerTimer !== null) {
-        clearTimeout(entry.pendingTriggerTimer);
-      }
-
-      const arrivedAt = Date.now();
-      let asks = 0;
-
-      const onTimer = (): void => {
-        entry.pendingTriggerTimer = null;
-
-        // Re-check entry state — scenario may have been redefined or
-        // disabled during the wait.
-        const current = this.registry.get(id);
-
-        if (!current || !current.enabled || current !== entry) return;
-
-        if (settle) {
-          const missing = this.settlePending(id, settle.pending, ev);
-          const waited = Date.now() - arrivedAt;
-
-          asks++;
-
-          if (missing !== null) {
-            const remaining = settle.maxWaitMs - waited;
-
-            if (remaining > 0) {
-              entry.pendingTriggerTimer = setTimeout(onTimer, Math.min(settle.pollMs, remaining));
-
-              return;
-            }
-
-            this.logger.info(`Scenario "${id}" proceeding without ${missing} after ${waited} ms`);
-          } else if (asks > 1) {
-            this.logger.debug(`Scenario "${id}" settled after ${waited} ms`);
-          }
-        }
-
-        if (where) {
-          try {
-            if (!where(ev)) return;
-          } catch (err) {
-            this.logger.error(
-              `Scenario "${id}" where() threw (deferred): ${err instanceof Error ? err.message : String(err)}`,
-            );
-
-            return;
-          }
-        }
-
-        this.scheduler.attemptFire(current, ev);
-      };
-
-      entry.pendingTriggerTimer = setTimeout(onTimer, Math.max(triggerDelay, 0));
-    };
-
-    return this.eventBus.subscribe(eventName, handler);
-  }
-
-  /**
-   * Subscribe `endFires` to an `endsOn` event (issue #1407), once per distinct
-   * event however many contracts name it. A contract is never ended by its
-   * own trigger (validation refuses it), but the end can still race ANOTHER
-   * contract that the same event triggers, because the bus dispatches in
-   * subscription order: one triggered immediately (no `triggerDelay` /
-   * `settle`), not `queueable`, on the same bus as a line this end stops
-   * silently, plays only if `endFires` ran first — otherwise it meets the
-   * busy bus and is dropped. That order is registration order, and not
-   * stable: a redefined contract subscribes again at the end, while this
-   * subscription keeps its place. Nothing hits it today — `pitLane.exited`
-   * triggers only `limiter-on-track`, whose `triggerDelay` makes it a timer
-   * that runs after every handler — but a new contract of that shape must
-   * not rely on the order.
-   */
-  private subscribeToEnd(event: SimEventName): void {
-    if (this.endSubscriptions.has(event)) return;
-
-    this.endSubscriptions.set(
-      event,
-      this.eventBus.subscribe(event, () => this.endFires(event)),
-    );
-  }
-
-  /**
-   * End every fire of every contract whose `endsOn` names `event` (issue
-   * #1407), wherever it is: a pending `triggerDelay` / `settle` timer is
-   * cleared, a waiting fire (an interrupt's stash included) is removed and
-   * logged as dropped with the reason `ended`, and the playing fire either
-   * plays its cut tail (`playCutTail`) — once words have been heard and the
-   * tail is not empty — or is stopped silently and the bus drained, as a
-   * disable does. A fire whose line has been heard in full (`lineFinished`:
-   * no body clip left from the op in flight on — it is in its close ops, or
-   * in a trailing pause after its last clip) is left to finish, so the
-   * driver never hears "never mind" after a complete line. A fire that is
-   * already a cut tail (`ended`) is left alone too, so a second end — a tow
-   * or a reset can publish the exit twice — is a no-op. One debug line per
-   * contract that had anything to end.
-   *
-   * Two passes: every timer and waiting fire goes first, so a silent stop's
-   * drain can never start a fire of another contract this same event is
-   * about to end.
-   */
-  private endFires(event: SimEventName): void {
-    const ending = [...this.registry.entries.values()].filter((entry) => entry.raw.endsOn?.event === event);
-    const outcomes = new Map<string, string[]>();
-    const note = (id: string, outcome: string): void => {
-      outcomes.set(id, [...(outcomes.get(id) ?? []), outcome]);
-    };
-
-    for (const entry of ending) {
-      const id = entry.raw.id;
-
-      if (entry.pendingTriggerTimer !== null) {
-        clearTimeout(entry.pendingTriggerTimer);
-        entry.pendingTriggerTimer = null;
-        note(id, "pending");
-      }
-
-      for (const [bus] of this.buses.entries()) {
-        if (!this.scheduler.dropWaiting(bus, id, { kind: "ended" })) continue;
-
-        note(id, "waiting");
-      }
-    }
-
-    for (const entry of ending) {
-      const id = entry.raw.id;
-
-      for (const [bus, state] of this.buses.entries()) {
-        const fire = state.transport.active;
-
-        if (fire === null || fire.id !== id || fire.ended) continue;
-
-        if (lineFinished(fire)) {
-          note(id, "playing → closing");
-        } else if (fire.cutTail.length > 0 && wordsHeard(fire)) {
-          this.playback.playCutTail(bus);
-          note(id, "playing → tail");
-        } else {
-          this.playback.cancelActiveFire(bus);
-          this.scheduler.drain(bus);
-          note(id, "playing → silent");
-        }
-      }
-    }
-
-    for (const [id, outcome] of outcomes) {
-      this.logger.debug(`Scenario "${id}" ended by ${event} (${outcome.join(", ")})`);
-    }
-  }
-
-  /**
-   * One ask of a contract's `settle.pending` (issue #1284), with the context
-   * a vocabulary resolver would get for the same event. A throwing check is
-   * logged at error and read as ready, so a bug in it cannot silence the
-   * callout — the fire goes on to `where:` as if nothing were missing.
-   */
-  private settlePending(
-    id: string,
-    pending: (ctx: ScenarioContext) => string | null,
-    event: SimEventOf<SimEventName>,
-  ): string | null {
-    try {
-      return pending(fireContext(event));
-    } catch (err) {
-      this.logger.error(
-        `Scenario "${id}" settle.pending() threw; proceeding as ready: ${err instanceof Error ? err.message : String(err)}`,
-      );
-
-      return null;
-    }
-  }
-}
-
-/**
- * How many ops of a playing fire's FULL expansion (`sourceOps`) the driver has
- * started to hear (issue #1407) — the op in flight included, since `index`
- * points one past it. Judged against the source expansion rather than `ops`
- * so that a resumed fire is read by where its line actually is, not by its
- * re-key preroll: the ops before `sourceStart` were heard before the
- * interrupt, and the op at `sourceStart` was in flight when the interrupt cut
- * it, so a resumed fire has started at least `sourceStart + 1` source ops
- * even while its preroll (the first `prerollCount` ops of `ops`, a replay of
- * the open) is still playing. A fresh fire has `sourceOps === ops` and no
- * preroll, which makes this `index`.
- */
-function startedSourceOps(fire: ActiveFireView): number {
-  const played = Math.max(0, fire.index - fire.prerollCount);
-
-  return fire.sourceStart > 0 ? fire.sourceStart + Math.max(1, played) : played;
-}
-
-/**
- * Whether the driver has heard words of a playing fire (issue #1407), which
- * decides whether an end plays the cut tail or stops it silently: an op with
- * no frame tag — a body op — is among the source ops started
- * (`startedSourceOps`), so a body clip that has just started counts (words
- * started are words heard). A resumed fire is read by its source position:
- * one cut mid-body has been heard even while its re-key preroll plays, and
- * one cut inside a two-beep open has not, so it stops silently.
- *
- * Any untagged op counts, not only a clip: a body that began with a `pause`
- * or an `ambient` step would count as heard once that op is consumed, before
- * any clip has started. No script has such a body today; one that does
- * would get the tail a beat early, which errs towards closing the radio.
- */
-function wordsHeard(fire: ActiveFireView): boolean {
-  return fire.sourceOps.slice(0, startedSourceOps(fire)).some((op) => op.frame === undefined);
-}
-
-/**
- * Whether a playing fire's line has been heard in full (issue #1407): it has
- * started, and no body clip (an untagged `play`) remains from the op in
- * flight on — it is in its close ops, or in a trailing pause or ambience op
- * after its last clip. An end then leaves it to finish rather than say
- * "never mind" after a complete line. While the last body clip is itself in
- * flight the line is still being spoken, so it does not count. Read against
- * the source expansion like `wordsHeard`, so a fire resumed into its close
- * counts as finished during its re-key preroll.
- */
-function lineFinished(fire: ActiveFireView): boolean {
-  const started = startedSourceOps(fire);
-
-  if (started === 0) return false;
-
-  return !fire.sourceOps.slice(started - 1).some((op) => op.kind === "play" && op.frame === undefined);
 }
 
 /**
