@@ -572,12 +572,14 @@ describe("Keyboard Service", () => {
       ["has no event.code", { key: "l", modifiers: ["ctrl", "alt"] }],
       ["has an empty event.code", { key: "l", code: "", modifiers: ["ctrl", "alt"] }],
       ["has an unmapped event.code", { key: "l", code: "UnknownCode", modifiers: ["ctrl", "alt"] }],
+      ["has an unknown modifier", { key: "l", code: "KeyL", modifiers: ["ctrl", "alt", "meta"] }],
     ] as const)("sends nothing, and no Alt+F24, for a Ctrl+Alt chord that %s", async (_label, chord) => {
       const mockScanSender = vi.fn();
       const mockPresser = vi.fn();
       const mockReleaser = vi.fn();
       const keyboard = initializeKeyboard(undefined, mockScanSender, mockPresser, mockReleaser);
-      const combination: KeyCombination = { ...chord, modifiers: [...chord.modifiers] };
+      // "meta" is outside KeyboardModifier: only a hand-edited settings file holds one.
+      const combination = { ...chord, modifiers: [...chord.modifiers] } as KeyCombination;
 
       expect(await keyboard.sendKeyCombination(combination)).toBe(false);
       expect(await keyboard.pressKeyCombination(combination)).toBe(false);
