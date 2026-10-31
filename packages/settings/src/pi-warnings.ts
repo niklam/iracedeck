@@ -71,7 +71,7 @@ export function parseStoredWarnings(stored: unknown): PiWarning[] {
 }
 
 function readWarnings(): PiWarning[] {
-  return parseStoredWarnings((getGlobalSettings() as Record<string, unknown>)[PI_WARNINGS_KEY]);
+  return parseStoredWarnings(getGlobalSettings()[PI_WARNINGS_KEY]);
 }
 
 /**

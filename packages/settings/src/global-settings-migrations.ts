@@ -95,7 +95,7 @@ import {
  */
 export function migrateGlobalSettingsKeys(renames: Record<string, string>, logger?: ILogger): () => void {
   return runOnceSettingsStoreReady(() => {
-    const settings = getGlobalSettings() as unknown as Record<string, unknown>;
+    const settings = getGlobalSettings();
     const writes: Record<string, unknown> = {};
     const deletes: string[] = [];
     const migrated: string[] = [];
@@ -212,7 +212,7 @@ export function seedBindingDefaultsIfAbsent(defaults: Readonly<Record<string, st
       return;
     }
 
-    const settings = getGlobalSettings() as unknown as Record<string, unknown>;
+    const settings = getGlobalSettings();
     const writes: Record<string, string> = {};
 
     for (const [key, text] of Object.entries(defaults)) {
@@ -238,7 +238,7 @@ export function seedBindingDefaultsIfAbsent(defaults: Readonly<Record<string, st
     // `updateGlobalSettings` reports nothing: a write whose parse fails is
     // dropped with its own error line, and salvage can drop single keys. Read
     // back what landed rather than claiming the seed.
-    const stored = getGlobalSettings() as unknown as Record<string, unknown>;
+    const stored = getGlobalSettings();
     const landed = keys.filter((key) => stored[key] === writes[key]);
     const rejected = keys.filter((key) => stored[key] !== writes[key]);
 
