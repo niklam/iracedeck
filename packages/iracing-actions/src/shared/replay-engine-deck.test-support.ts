@@ -12,13 +12,8 @@
  */
 import { getCommands, getController } from "@iracedeck/deck-iracing";
 import type { ILogger } from "@iracedeck/logger";
-import {
-  _configureReplayEngine,
-  type ReplayEngineController,
-  type ReplayEngineEnv,
-  type ReplayEngineTestOverrides,
-  resetEngine,
-} from "@iracedeck/replay-engine/testing";
+import type { ReplayEngineController, ReplayEngineEnv } from "@iracedeck/replay-engine";
+import { _configureReplayEngine, type ReplayEngineTestOverrides, resetEngine } from "@iracedeck/replay-engine/testing";
 
 /**
  * An engine logger whose `ReplayControl` scope is `logger` itself (#1467):
