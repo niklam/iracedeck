@@ -70,7 +70,7 @@ If the draft depends on a product decision only Niklas can make, ask that one qu
 
 Only once the proposal is approved, as approved or with his edits.
 
-**An approved duplicate:** post the approved comment, exactly as he approved it, on the existing issue instead of filing (`gh issue comment <n> --body-file <file>`). It carries what is new (the detail, the use case, a source link such as the Discord thread), not a restatement. Then report its link and stop here.
+**An approved duplicate:** post the approved comment, exactly as he approved it, on the existing issue instead of filing (`gh issue comment <n> --body-file <file>`). It carries what is new (the detail, the use case, a source link such as the Discord thread), not a restatement. Then report its link and skip the filing steps below. The PO still posts its outcome comment (`Proposal "<title>": Commented on #<n>`) on the proposal's source issue, as its skill says, so the proposal is not re-queued.
 
 1. Write the body to a file in your scratchpad, then run `gh issue create --title "<title>" --label "<label>" … --body-file <file>`. Never `--body @-`, which the hook refuses.
 2. **Board:** the post-hook makes two moves, adding the card to the board and then setting it to `Backlog`, and reports both. Redo only the move it says failed, from the repo root: `node -e "import('./scripts/claude-hooks/lib.mjs').then(m=>console.log(m.addToBoard('<issue url>',process.cwd())))"` to add the card, then `node -e "import('./scripts/claude-hooks/lib.mjs').then(m=>console.log(m.setBoardStatus(<n>,'Backlog',process.cwd())))"` to set the lane. A card it added but left with no lane needs only the second.
