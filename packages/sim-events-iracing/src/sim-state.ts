@@ -493,6 +493,11 @@ export function simStateHeadline(state: SimStateSnapshot): Array<readonly [strin
   const { stats, lapsLeft } = state.fuel;
   const { player } = state.order;
   const announced = lapsLeft.announced.lastAnnouncedCount;
+  // One pair of rows for whichever gaps answer: the race's, or outside a
+  // race the track-order ones (issue #1515), which say so. The two never
+  // answer together.
+  const gaps = state.gaps ?? state.trackGaps;
+  const gapSuffix = state.gaps === null && state.trackGaps !== null ? " (track order)" : "";
   const replayRow: Array<readonly [string, string]> = state.inReplay
     ? [["Replay", "A replay was on screen when this snapshot was taken. The figures below are not the live race."]]
     : [];
@@ -517,10 +522,8 @@ export function simStateHeadline(state: SimStateSnapshot): Array<readonly [strin
           ? `P${player.position} (P${player.classPosition} in class)`
           : `P${player.position}`,
     ],
-    ["Gap ahead", formatGap(state.gaps?.ahead ?? null)],
-    ["Gap behind", formatGap(state.gaps?.behind ?? null)],
-    ["Track gap ahead", formatGap(state.trackGaps?.ahead ?? null)],
-    ["Track gap behind", formatGap(state.trackGaps?.behind ?? null)],
+    ["Gap ahead", `${formatGap(gaps?.ahead ?? null)}${gapSuffix}`],
+    ["Gap behind", `${formatGap(gaps?.behind ?? null)}${gapSuffix}`],
     ["Caution phase", state.caution.phase],
   ];
 }

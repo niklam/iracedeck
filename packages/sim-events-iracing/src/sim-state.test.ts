@@ -1060,8 +1060,6 @@ describe("simStateHeadline", () => {
       ["Live position", "unknown"],
       ["Gap ahead", "none"],
       ["Gap behind", "none"],
-      ["Track gap ahead", "none"],
-      ["Track gap behind", "none"],
       ["Caution phase", "none"],
     ]);
   });
@@ -1096,8 +1094,6 @@ describe("simStateHeadline", () => {
       ["Live position", "P3 (P2 in class)"],
       ["Gap ahead", "1.2 s (car 7)"],
       ["Gap behind", "1 lap apart (car 9)"],
-      ["Track gap ahead", "none"],
-      ["Track gap behind", "none"],
       ["Caution phase", "caught"],
     ]);
   });
@@ -1121,6 +1117,24 @@ describe("simStateHeadline", () => {
     expect(rows.get("Live position")).toBe("P1");
     expect(rows.get("Gap ahead")).toBe("none");
     expect(rows.get("Gap behind")).toBe("no reading (car 4)");
+  });
+
+  it("shows the track-order gaps in the same rows outside a race, and says so", () => {
+    const rows = new Map(
+      simStateHeadline(
+        buildSimState(
+          parts({
+            trackGaps: {
+              ahead: { carIdx: 3, gapSeconds: 2.04, lapDelta: 0, trend: "steady" },
+              behind: null,
+            },
+          }),
+        ),
+      ),
+    );
+
+    expect(rows.get("Gap ahead")).toBe("2.0 s (car 3) (track order)");
+    expect(rows.get("Gap behind")).toBe("none (track order)");
   });
 
   it("opens with a replay row while a replay is on screen, and has none otherwise", () => {

@@ -175,8 +175,9 @@ export type TrackGapSideState = {
  * car was last seen arriving on the road, folded across the start/finish
  * line — not on `CarIdxLapCompleted`, so a car's lap count (including the
  * `-1` before its first crossing) never matters. A car's odometer, its last
- * distance and its trace are all cleared on any tick it is not in the world
- * or is on pit road, so no sample bridges an absence.
+ * distance and its trace are cleared on any tick it is on pit road, and once
+ * an absence from the world outlasts a short grace (a one-tick blink keeps
+ * them), so no sample bridges a pit visit or a real absence.
  */
 export type TrackGapsState = {
   /** Per-car odometer (laps), sparse-indexed by carIdx; undefined = not on the road last tick. */
@@ -185,6 +186,13 @@ export type TrackGapsState = {
   lastDistPct: (number | undefined)[];
   /** Per-car progress→`SessionTime` traces keyed on the odometer, pruned to `GAP_TRACE_SPAN_LAPS`. */
   traces: (ProgressTrace | undefined)[];
+  /**
+   * Per-car `SessionTime` at which a remembered car went out of the world
+   * (`NotInWorld` or an invalid lap distance); undefined while it is on the
+   * road. Within `TRACK_GAP_ABSENCE_GRACE_S` the car keeps its odometer and
+   * trace, so a one-tick blink costs nothing; past it the car is forgotten.
+   */
+  absentSince: (number | undefined)[];
   /** The player's odometer at the last display-trend checkpoint; null = none since the last break. */
   lastCheckpoint: number | null;
   ahead: TrackGapSideState;
@@ -197,6 +205,7 @@ export function createTrackGapsState(): TrackGapsState {
     odometers: [],
     lastDistPct: [],
     traces: [],
+    absentSince: [],
     lastCheckpoint: null,
     ahead: { carIdx: -1, trend: { lastCheckpoint: null, ema: null, samples: 0 }, live: null },
     behind: { carIdx: -1, trend: { lastCheckpoint: null, ema: null, samples: 0 }, live: null },

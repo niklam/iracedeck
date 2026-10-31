@@ -2952,12 +2952,15 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     self.state.leaderWhitePostExpiryCrossed,
   );
 
+  // Resolved once for both gap diffs below.
+  const paceCarIdx = resolvePaceCarIdx(sessionInfo);
+
   diffGaps(
     self.state,
     telemetry,
     isRaceSession,
     playerCarIdx,
-    resolvePaceCarIdx(sessionInfo),
+    paceCarIdx,
     canonicalPositions,
     self.getGapAlertThresholdSeconds,
     emit,
@@ -2973,7 +2976,7 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // and behind on the road in practice, warmup, testing and open qualifying,
   // for `getTrackGaps()`. Its gate and `diffGaps`' are disjoint, so only one
   // of the two stores grows in a session. Publishes no event.
-  diffTrackGaps(self.state, telemetry, sessionType, sessionInfo, playerCarIdx, trackLengthMeters);
+  diffTrackGaps(self.state, telemetry, sessionType, sessionInfo, playerCarIdx, paceCarIdx, trackLengthMeters);
   // Pit-box count-in (issue #600). Reuses the cached `trackLengthMeters` to
   // convert the LapDistPct→box gap into meters; the box itself comes from
   // `DriverInfo.DriverPitTrkPct`. Runs after the track-length resolution above.

@@ -36,7 +36,6 @@ import {
   type TranslatorState,
 } from "../state.js";
 import { classifyTrendChain, GAP_CHECKPOINT_STEP, readGapAt, resetTrendChain, updateTrendChain } from "./gaps.js";
-import { resolvePaceCarIdx } from "./pace-laps.js";
 
 /**
  * A per-tick change in `CarIdxLapDistPct` of more than half a lap in either
@@ -44,6 +43,21 @@ import { resolvePaceCarIdx } from "./pace-laps.js";
  * folded by a whole lap — the accrual shape of `pace-laps.ts`.
  */
 const TRACK_GAP_LINE_WRAP_THRESHOLD = 0.5;
+
+/**
+ * How long (seconds of `SessionTime`) a car may read `NotInWorld` or an
+ * invalid lap distance before it is forgotten. A live car blinks out of the
+ * world for a tick now and then (the #885 despawn reading, the blinks
+ * `race-finish.ts` debounces); wiping its trace on the blink would read `–`
+ * for about the gap's length and restart its trend. Within the grace the car
+ * records nothing but keeps its odometer and trace, and its odometer
+ * continues from its last distance when it returns; a longer absence (a tow,
+ * a disconnect) clears it. Pit road, the pace car and spectators get no
+ * grace: they are not traffic, whatever the next tick says.
+ *
+ * @internal Exported for testing.
+ */
+export const TRACK_GAP_ABSENCE_GRACE_S = 0.5;
 
 /**
  * Whether a session gets track-order gaps (issue #1515, spec Decision 1):
@@ -73,18 +87,49 @@ function isValidDist(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0;
 }
 
+/** No session info, no spectators. */
+const NO_SPECTATORS: ReadonlySet<number> = new Set();
+
+/**
+ * Spectator sets by session-info object. The controller hands out one parsed
+ * object until the YAML changes, so the set is built once per update rather
+ * than every tick; a WeakMap lets a replaced object go.
+ */
+const spectatorsBySessionInfo = new WeakMap<object, ReadonlySet<number>>();
+
 /** Car indices `DriverInfo.Drivers` marks as spectators (`IsSpectator === 1`). */
-function resolveSpectatorIdxs(sessionInfo: Record<string, unknown> | null): Set<number> {
+function resolveSpectatorIdxs(sessionInfo: Record<string, unknown> | null): ReadonlySet<number> {
+  if (!sessionInfo) return NO_SPECTATORS;
+
+  const cached = spectatorsBySessionInfo.get(sessionInfo);
+
+  if (cached) return cached;
+
   const spectators = new Set<number>();
-  const drivers = (sessionInfo?.DriverInfo as Record<string, unknown> | undefined)?.Drivers;
+  const drivers = (sessionInfo.DriverInfo as Record<string, unknown> | undefined)?.Drivers;
 
-  if (!Array.isArray(drivers)) return spectators;
-
-  for (const driver of drivers as Array<Record<string, unknown> | null>) {
-    if (driver?.IsSpectator === 1 && typeof driver.CarIdx === "number") spectators.add(driver.CarIdx);
+  if (Array.isArray(drivers)) {
+    for (const driver of drivers as Array<Record<string, unknown> | null>) {
+      if (driver?.IsSpectator === 1 && typeof driver.CarIdx === "number") spectators.add(driver.CarIdx);
+    }
   }
 
+  spectatorsBySessionInfo.set(sessionInfo, spectators);
+
   return spectators;
+}
+
+/** Forget a car: its odometer, last distance, trace and absence clock. */
+function forgetCar(store: TrackGapsState, idx: number): void {
+  store.odometers[idx] = undefined;
+  store.lastDistPct[idx] = undefined;
+  store.traces[idx] = undefined;
+  store.absentSince[idx] = undefined;
+}
+
+/** Whether a car is out of the world but inside its {@link TRACK_GAP_ABSENCE_GRACE_S}, still remembered. */
+function inAbsenceGrace(store: TrackGapsState, idx: number): boolean {
+  return store.absentSince[idx] !== undefined && store.odometers[idx] !== undefined;
 }
 
 /**
@@ -98,6 +143,8 @@ export function diffTrackGaps(
   sessionType: string,
   sessionInfo: Record<string, unknown> | null,
   playerCarIdx: number,
+  /** The pace car (`resolvePaceCarIdx`, resolved once per tick in `handleTick` for both gap diffs). */
+  paceCarIdx: number | null,
   trackLengthMeters: number | null,
 ): void {
   if (!isTrackGapSession(sessionType)) {
@@ -123,23 +170,19 @@ export function diffTrackGaps(
 
   const surface = telemetry.CarIdxTrackSurface as number[] | undefined;
   const surfaces = Array.isArray(surface) ? surface : null;
-  const paceCarIdx = resolvePaceCarIdx(sessionInfo);
   const spectators = resolveSpectatorIdxs(sessionInfo);
   const playerSurface = surfaces
     ? surfaces[playerCarIdx]
     : typeof telemetry.PlayerTrackSurface === "number"
       ? telemetry.PlayerTrackSurface
       : undefined;
+  const playerInRange = playerCarIdx >= 0 && playerCarIdx < pct.length;
   // The player must be on the road (spec Decision 2): in the world, off pit
   // road and in the car. In the pit lane a "car behind" read from the
   // player's pit-lane passage would be badly wrong; in the garage there is
-  // no road position at all.
-  const playerOnRoad =
-    playerCarIdx >= 0 &&
-    playerCarIdx < pct.length &&
-    telemetry.IsOnTrack !== false &&
-    playerSurface !== TrkLoc.NotInWorld &&
-    !isPitSurface(playerSurface);
+  // no road position at all. Out of the car or on pit road clears at once;
+  // out of the world is first given the absence grace, as any car is.
+  const playerCleared = !playerInRange || telemetry.IsOnTrack === false || isPitSurface(playerSurface);
 
   // 1) Advance every car's odometer and trace. Walk the array to its end —
   // a field can exceed 64 cars — and drop anything past it.
@@ -149,25 +192,32 @@ export function diffTrackGaps(
 
   for (let i = 0; i < carCount; i++) {
     const dist = pct[i];
-    const carSurface = surfaces?.[i];
-    const onRoad =
-      isValidDist(dist) &&
-      carSurface !== TrkLoc.NotInWorld &&
-      !isPitSurface(carSurface) &&
-      i !== paceCarIdx &&
-      !spectators.has(i) &&
-      (i !== playerCarIdx || playerOnRoad);
+    const carSurface = i === playerCarIdx ? playerSurface : surfaces?.[i];
 
-    if (!onRoad) {
-      // Not on the road this tick: record nothing, and forget the car, so no
-      // sample ever bridges an absence or a pit-lane passage — which the
-      // trace's own step guard would not catch for a car that re-enters at
-      // a plausible distance.
-      store.odometers[i] = undefined;
-      store.lastDistPct[i] = undefined;
-      store.traces[i] = undefined;
+    if (isPitSurface(carSurface) || i === paceCarIdx || spectators.has(i) || (i === playerCarIdx && playerCleared)) {
+      // Not traffic this tick: record nothing and forget the car at once, so
+      // no sample ever bridges a pit-lane passage — which the trace's own
+      // step guard would not catch for a car that rejoins at a plausible
+      // distance.
+      forgetCar(store, i);
       continue;
     }
+
+    if (!isValidDist(dist) || carSurface === TrkLoc.NotInWorld) {
+      // Out of the world: record nothing. A blink keeps the car through the
+      // grace; an absence that outlasts it (a tow, a disconnect) forgets it.
+      if (store.odometers[i] === undefined) {
+        store.absentSince[i] = undefined;
+      } else if (store.absentSince[i] === undefined) {
+        store.absentSince[i] = sessionTime;
+      } else if (sessionTime - store.absentSince[i]! > TRACK_GAP_ABSENCE_GRACE_S) {
+        forgetCar(store, i);
+      }
+
+      continue;
+    }
+
+    store.absentSince[i] = undefined;
 
     const last = store.lastDistPct[i];
     let odometer = store.odometers[i];
@@ -177,6 +227,8 @@ export function diffTrackGaps(
       // difference on one car's own scale.
       odometer = dist;
     } else {
+      // From the last distance seen — the previous tick, or the last one
+      // before a blink inside the grace.
       let delta = dist - last;
 
       if (delta <= -TRACK_GAP_LINE_WRAP_THRESHOLD) delta += 1;
@@ -198,7 +250,11 @@ export function diffTrackGaps(
     appendProgressSample(trace, odometer, sessionTime);
   }
 
-  const playerOdometer = playerOnRoad ? store.odometers[playerCarIdx] : undefined;
+  // A player blinking out of the world inside the grace: hold both rows as
+  // they stand — the snapshots, the neighbours and the chains — for the tick.
+  if (!playerCleared && inAbsenceGrace(store, playerCarIdx)) return;
+
+  const playerOdometer = playerCleared ? undefined : store.odometers[playerCarIdx];
 
   if (playerOdometer === undefined) {
     // No road position: no track gaps at all, and the trend chains restart
@@ -212,14 +268,24 @@ export function diffTrackGaps(
   }
 
   // 2) The cars physically ahead and behind — the pace car, spectators and
-  // anything on pit road skipped; an OffTrack car is still traffic.
+  // anything on pit road skipped; an OffTrack car is still traffic. A side
+  // whose neighbour is blinking inside the grace keeps it (the primitive
+  // cannot return a car that is out of the world) and is held for the tick.
   const skipIdx = (idx: number): boolean => idx === paceCarIdx || spectators.has(idx) || isPitSurface(surfaces?.[idx]);
-  const aheadIdx = findNearestCarOnTrack(telemetry, playerCarIdx, "ahead", { skipIdx }) ?? -1;
-  const behindIdx = findNearestCarOnTrack(telemetry, playerCarIdx, "behind", { skipIdx }) ?? -1;
+  const holdAhead = store.ahead.carIdx >= 0 && inAbsenceGrace(store, store.ahead.carIdx);
+  const holdBehind = store.behind.carIdx >= 0 && inAbsenceGrace(store, store.behind.carIdx);
 
-  if (aheadIdx !== store.ahead.carIdx) resetSide(store.ahead, aheadIdx);
+  if (!holdAhead) {
+    const aheadIdx = findNearestCarOnTrack(telemetry, playerCarIdx, "ahead", { skipIdx }) ?? -1;
 
-  if (behindIdx !== store.behind.carIdx) resetSide(store.behind, behindIdx);
+    if (aheadIdx !== store.ahead.carIdx) resetSide(store.ahead, aheadIdx);
+  }
+
+  if (!holdBehind) {
+    const behindIdx = findNearestCarOnTrack(telemetry, playerCarIdx, "behind", { skipIdx }) ?? -1;
+
+    if (behindIdx !== store.behind.carIdx) resetSide(store.behind, behindIdx);
+  }
 
   // 3) The display-trend checkpoint, on the player's odometer. A backwards
   // jump (reversing over a stretch) restarts both chains, as the race does.
@@ -232,8 +298,9 @@ export function diffTrackGaps(
   const checkpointDue = store.lastCheckpoint === null || playerOdometer - store.lastCheckpoint >= GAP_CHECKPOINT_STEP;
   const ctx: SideContext = { store, pct, playerCarIdx, playerOdometer, sessionTime, trackLengthMeters, checkpointDue };
 
-  store.ahead.live = computeSide(ctx, "ahead");
-  store.behind.live = computeSide(ctx, "behind");
+  if (!holdAhead) store.ahead.live = computeSide(ctx, "ahead");
+
+  if (!holdBehind) store.behind.live = computeSide(ctx, "behind");
 
   if (checkpointDue) store.lastCheckpoint = playerOdometer;
 }
@@ -338,6 +405,8 @@ function truncate(store: TrackGapsState, carCount: number): void {
   if (store.lastDistPct.length > carCount) store.lastDistPct.length = carCount;
 
   if (store.traces.length > carCount) store.traces.length = carCount;
+
+  if (store.absentSince.length > carCount) store.absentSince.length = carCount;
 }
 
 /** Whether the store holds nothing a fresh one would not. */
@@ -345,6 +414,7 @@ function isEmpty(store: TrackGapsState): boolean {
   return (
     store.traces.length === 0 &&
     store.odometers.length === 0 &&
+    store.absentSince.length === 0 &&
     store.ahead.carIdx < 0 &&
     store.behind.carIdx < 0 &&
     store.ahead.live === null &&

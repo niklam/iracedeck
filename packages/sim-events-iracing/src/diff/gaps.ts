@@ -355,9 +355,18 @@ export function updateTrendChain(chain: TrendChain, progress: number, gapSeconds
 
 /** The display trend a chain reads, or null until it holds {@link GAP_TREND_MIN_SAMPLES}. */
 export function classifyTrendChain(chain: TrendChain): GapTrendDirection | null {
-  if (chain.ema === null || chain.samples < GAP_TREND_MIN_SAMPLES) return null;
+  return classifyTrendRate(chain.ema, chain.samples);
+}
 
-  return classifyGapTrend(chain.ema, GAP_DISPLAY_TREND_DEADBAND_S);
+/**
+ * The display trend of a smoothed rate and its sample count — the field-level
+ * form of {@link classifyTrendChain}, which the race calls on its flat state
+ * fields without building a chain object every tick.
+ */
+export function classifyTrendRate(ema: number | null, samples: number): GapTrendDirection | null {
+  if (ema === null || samples < GAP_TREND_MIN_SAMPLES) return null;
+
+  return classifyGapTrend(ema, GAP_DISPLAY_TREND_DEADBAND_S);
 }
 
 type Side = "ahead" | "behind";
@@ -741,7 +750,10 @@ function computeSide(
       if (lapHistoryOpen) updateLapRate(state, side, playerProgress, gapSeconds);
     }
 
-    trend = classifyTrendChain(raceTrendChain(state, side));
+    trend =
+      side === "ahead"
+        ? classifyTrendRate(state.gapRateEmaAhead, state.gapRateSamplesAhead)
+        : classifyTrendRate(state.gapRateEmaBehind, state.gapRateSamplesBehind);
   } else if (checkpointDue) {
     // A due checkpoint the side can't sample breaks the rate chain — a pit
     // visit or data gap must not leak a stale rate into the next stint —
