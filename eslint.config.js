@@ -16,6 +16,14 @@ const SIM_PACKAGES = [
 const SHELL_SIM_MESSAGE =
   'A plugin shell must not depend on a simulator: read the sim through PluginExtensionContext.sim, which plugin-runtime hands PluginExtension.start (#1500).';
 
+// Repo-wide (#1208); spread into every block that sets no-restricted-syntax, since a
+// later block's options replace an earlier one's rather than merging with them.
+const NO_LEGACY_SETTINGS_BEHAVIOR = {
+  selector: "MemberExpression[property.name='useLegacySettingsBehavior']",
+  message:
+    'Leave the Elgato SDK on its default settings behaviour: the adapter answers getGlobalSettings() from the promise, and the legacy flag would deliver the reply twice (#1208).',
+};
+
 export default [
   eslint.configs.recommended,
   {
@@ -69,13 +77,25 @@ export default [
     // handing `@iracedeck/settings`' one-time host migration the answer twice.
     files: ['**/*.ts'],
     rules: {
+      'no-restricted-syntax': ['error', NO_LEGACY_SETTINGS_BEHAVIOR],
+    },
+  },
+  {
+    // `getGlobalSettings()` returns the typed `GlobalSettings`, whose passthrough
+    // index signature already admits an undeclared key (#1376). An assertion on
+    // the call hides a renamed or removed key from the compiler, so read the
+    // typed value instead. Tests may shape their mocks as they like.
+    files: ['packages/*/src/**/*.ts'],
+    ignores: ['packages/*/src/**/*.test.ts'],
+    rules: {
       'no-restricted-syntax': [
         'error',
-        {
-          selector: "MemberExpression[property.name='useLegacySettingsBehavior']",
+        NO_LEGACY_SETTINGS_BEHAVIOR,
+        ...['TSAsExpression', 'TSTypeAssertion'].map((node) => ({
+          selector: `${node} > CallExpression.expression[callee.name='getGlobalSettings']`,
           message:
-            'Leave the Elgato SDK on its default settings behaviour: the adapter answers getGlobalSettings() from the promise, and the legacy flag would deliver the reply twice (#1208).',
-        },
+            'Read getGlobalSettings() as its typed GlobalSettings: an assertion hides a renamed or removed key from the compiler, and an undeclared passthrough key already reads as unknown (#1376).',
+        })),
       ],
     },
   },
