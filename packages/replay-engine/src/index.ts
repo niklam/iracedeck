@@ -3,13 +3,14 @@
  * by plugin-runtime's `initReplay` phase.
  *
  * The production surface (#1502): only what a production source outside the
- * engine imports. The test hooks (`_reset*`, `_configure*`) and the names only
+ * engine imports, and the types those functions take or return. The test hooks (`_reset*`, `_configure*`) and the names only
  * tests reach are on `@iracedeck/replay-engine/testing`; the env itself
  * (`engineEnv`, `engineReads`, `engineLogger`, `setReplayEngineEnv`) is on
  * neither, so only the engine's own modules can reach the injected replay
  * surface. `index.test.ts` keeps the hooks off this barrel.
  */
 export { configureReplayEngine } from "./replay-engine-configure.js";
+export type { ReplayEngineController, ReplayEngineEnv } from "./replay-engine-env.js";
 export { currentReplayCursorOwner } from "./replay-cursor.js";
 export { planFrameMove, type FrameMove } from "./replay-frame-move.js";
 export { isSameSpeed, PAUSED, type ReplaySpeed } from "./replay-jump-speed.js";
@@ -36,6 +37,7 @@ export { formatPlayCaption, formatSpeedDisplay, parseSpeedSetting } from "./repl
 export {
   getReplayGateRecord,
   getReplayGateView,
+  type ReplayGateView,
   isReplayMoveUnderWay,
   pressReplayCommand,
   readReplayPosition,

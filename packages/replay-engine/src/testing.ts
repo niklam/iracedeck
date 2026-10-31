@@ -6,7 +6,7 @@
  * (#1502): the main barrel carries what production imports and no more, so a
  * `_reset*` / `_configure*` hook is never callable from production code.
  */
-export { _configureReplayEngine, type ReplayEngineController, type ReplayEngineEnv } from "./replay-engine-env.js";
+export { _configureReplayEngine } from "./replay-engine-env.js";
 export {
   _resetReplayCursor,
   cancelReplayCursorOwner,
@@ -20,7 +20,7 @@ export { cancelLapWalks, FASTEST_LAP_WALK_OWNER, RACE_START_WALK_OWNER } from ".
 export { _activeLapPress } from "./lap-press.js";
 export { _getFastestLapSessionCache } from "./lap-walk.js";
 export { jumpToRecordedLapStart } from "./fastest-lap-press.js";
-export { isReplayJumpSequenceOpen, type ReplayGateView } from "./replay-command-gate.js";
+export { isReplayJumpSequenceOpen } from "./replay-command-gate.js";
 export {
   type CursorTestEvent,
   cursorTestEvent,
