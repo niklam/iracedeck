@@ -129,12 +129,8 @@ import type { AudioAssetsManifest } from "./manifest.js";
 import { OnceWarnings } from "./once-warnings.js";
 import { PendingQueue, type QueuedFire, type QueueDrop } from "./pending-queue.js";
 import { type PickSession, PoolStore } from "./pool-store.js";
-import {
-  type CompileDeps,
-  type CompiledFrame,
-  type CompiledVoiceScript,
-  compileVoiceScript,
-} from "./script-compiler.js";
+import type { CompiledFrame, CompiledVoiceScript } from "./script-compiler.js";
+import { ScriptSet } from "./script-set.js";
 import { isStatePartError, readStatePart, type StatePartError } from "./state-part.js";
 import { Vocabulary } from "./vocabulary.js";
 
@@ -490,33 +486,14 @@ class ScenarioEngine implements IScenarioEngine {
 
   /** The registered contracts; the facade runs the registration sequence over it (`registerEntry`). */
   private readonly registry: ContractRegistry;
-  /** The manifest, the pools and the pickers (`PoolStore`); its script-pool source is the compiled map below. */
+  /** The manifest, the pools and the pickers (`PoolStore`); its script-pool source is the script set. */
   private readonly poolStore: PoolStore;
   /** The var, condition and case registries (`Vocabulary`). */
   private readonly vocab: Vocabulary;
   private readonly busState = new Map<AudioBus, BusState>();
 
-  /** Voice id → parsed script, as last handed in by `setScripts` (issue #1064). */
-  private scripts: ReadonlyMap<string, CalloutScript> = new Map();
-  /** Voice id → the script compiled against the registries as they stood at the last compile. */
-  private compiled: ReadonlyMap<string, CompiledVoiceScript> = new Map();
-  /**
-   * Set by every registration that feeds the compile (contracts, vars,
-   * conditions, cases, pools); the next `prepareOps` recompiles before it
-   * looks anything up.
-   */
-  private scriptsDirty = false;
-  /**
-   * Bumped whenever anything an expansion is a function of changes — the
-   * manifest, the scripts, or any registration that feeds the compile. A
-   * stashed resume records the generation it was expanded under, and a
-   * resume across a bump replays whole (issue #1136): the ops it would
-   * continue into are compared by POOL now, and a pool key is stable across
-   * a redefinition that changed what the pool holds, so the comparison alone
-   * can no longer see that kind of change. Before #1136 a path mismatch
-   * happened to force the same coherent full replay.
-   */
-  private generation = 0;
+  /** The scripts, their compiled form, the dirty flag and the expansion generation (`ScriptSet`). */
+  private readonly scripts: ScriptSet;
   /**
    * Bumped by every `session.changed` (issue #1185). The queue clear on that
    * event cannot reach a line still playing from the session that ended, so
@@ -557,9 +534,14 @@ class ScenarioEngine implements IScenarioEngine {
     // The store reads the active voice's script pools live, on every pick,
     // off whatever the last compile produced.
     this.poolStore = new PoolStore(manifest, logger, getActiveVoice, (voice, name) =>
-      this.compiled.get(voice)?.pools.get(name),
+      this.scripts.compiled(voice)?.pools.get(name),
     );
     this.vocab = new Vocabulary(logger, this.warnings);
+    this.scripts = new ScriptSet(logger, this.warnings, getActiveVoice, {
+      contracts: this.registry,
+      vocabulary: this.vocab,
+      pools: this.poolStore,
+    });
     // Subscribed here, before any contract can register, so that on a
     // `session.changed` it runs FIRST (the bus dispatches in subscription
     // order) — the session-start and race-start lines that fire on that
@@ -598,17 +580,6 @@ class ScenarioEngine implements IScenarioEngine {
     }
 
     for (const state of this.busState.values()) this.clearPendingHold(state);
-  }
-
-  /**
-   * A registration that feeds the compile: the next `prepareOps` recompiles,
-   * and every stashed resume is invalidated (issue #1136 — see `generation`).
-   * The two go together, so they are set together rather than at six call
-   * sites that must each remember the second half.
-   */
-  private markScriptsDirty(): void {
-    this.scriptsDirty = true;
-    this.generation++;
   }
 
   // ── Definition API ──
@@ -652,7 +623,7 @@ class ScenarioEngine implements IScenarioEngine {
     }
 
     const entry = this.registry.store(s, resolvedSequence);
-    this.markScriptsDirty();
+    this.scripts.markDirty();
     this.registry.warnCrossBusQueueBehind(entry);
     this.registry.warnQueueBehindCycle(entry);
 
@@ -683,19 +654,19 @@ class ScenarioEngine implements IScenarioEngine {
   definePool(name: string, clips: string[]): void {
     // Dirty only for a pool the store accepted: a rejected list changes
     // nothing a script compiles against.
-    if (this.poolStore.definePool(name, clips)) this.markScriptsDirty();
+    if (this.poolStore.definePool(name, clips)) this.scripts.markDirty();
   }
 
   definePoolFromManifest(name: string, group: string, base: string): void {
     this.poolStore.definePoolFromManifest(name, group, base);
-    this.markScriptsDirty();
+    this.scripts.markDirty();
   }
 
   setManifest(manifest: AudioAssetsManifest): void {
     this.poolStore.setManifest(manifest);
     // Every pool's membership was re-derived, so a stashed resume was
     // expanded against clip lists that no longer exist (issue #1136).
-    this.generation++;
+    this.scripts.invalidate();
 
     this.logger.info("Audio manifest reloaded");
     this.logger.debug(`Clips: ${manifest.clips.length}`);
@@ -707,12 +678,12 @@ class ScenarioEngine implements IScenarioEngine {
 
   defineVar(name: string, resolver: VocabularyResolver<string | null>, description = ""): void {
     this.vocab.defineVar(name, resolver, description);
-    this.markScriptsDirty();
+    this.scripts.markDirty();
   }
 
   defineCond(name: string, predicate: VocabularyResolver<boolean>, description: string): void {
     this.vocab.defineCond(name, predicate, description);
-    this.markScriptsDirty();
+    this.scripts.markDirty();
   }
 
   defineCase(
@@ -722,7 +693,7 @@ class ScenarioEngine implements IScenarioEngine {
     description: string,
   ): void {
     this.vocab.defineCase(name, resolver, keys, description);
-    this.markScriptsDirty();
+    this.scripts.markDirty();
   }
 
   vocabulary(): VocabularyReport {
@@ -745,13 +716,13 @@ class ScenarioEngine implements IScenarioEngine {
     // The compiled map as it stands, NOT `isScripted`: that recompiles a
     // dirty script set, which logs and clears the script pools' no-repeat
     // state. `scriptsDirty` says when the answer is the last compile's.
-    const scripted = voiceUnread || activeVoice === null ? undefined : this.compiled.get(activeVoice)?.scenarios;
+    const scripted = voiceUnread || activeVoice === null ? undefined : this.scripts.compiled(activeVoice)?.scenarios;
 
     return {
       activeVoice,
       // The accessor itself rather than `frameOptions()`, which logs a throw.
       frameOptions: readStatePart(() => ({ ...this.getFrameOptions() })),
-      scriptsDirty: this.scriptsDirty,
+      scriptsDirty: this.scripts.dirty,
       // `busState.get`, not `getBusState`: a read creates no state.
       buses: audioBuses().map((bus) => describeBus(bus, this.busState.get(bus))),
       contracts: [...this.registry.entries.values()]
@@ -767,144 +738,17 @@ class ScenarioEngine implements IScenarioEngine {
   }
 
   compileScript(script: CalloutScript): CompiledVoiceScript {
-    return compileVoiceScript(script, this.compileDeps());
+    return this.scripts.compileScript(script);
   }
 
   isScripted(scenarioId: string): boolean {
-    this.ensureCompiled();
-
-    const voice = this.getActiveVoice();
-
-    return voice !== null && (this.compiled.get(voice)?.scenarios.has(scenarioId) ?? false);
+    return this.scripts.isScripted(scenarioId);
   }
 
   setScripts(scripts: ReadonlyMap<string, CalloutScript>): void {
-    this.scripts = new Map(scripts);
-    // A new script map redefines bodies, frames and what a pool name holds;
-    // a resume stashed under the old one replays whole (issue #1136).
-    this.generation++;
     this.warnings.reset();
-    this.compileScripts();
+    this.scripts.setScripts(scripts);
     this.logger.info("Voice scripts loaded");
-  }
-
-  /**
-   * Recompile when a registration landed after the last compile. Called at
-   * the top of `prepareOps`, so a contract defined after `setScripts` (or a
-   * script loaded before the catalog registered) is compiled before its
-   * first fire ever looks it up.
-   */
-  private ensureCompiled(): void {
-    if (!this.scriptsDirty) return;
-
-    if (this.scripts.size === 0) {
-      this.scriptsDirty = false;
-
-      return;
-    }
-
-    this.compileScripts();
-    this.logger.debug("Voice scripts recompiled");
-  }
-
-  /**
-   * What the compiler needs, read off the registries as they stand now — the
-   * ONE place the engine's state is turned into `CompileDeps`, so the eager
-   * per-voice compile and the linter's `compileScript` cannot diverge on
-   * which ids are contracts (a legacy scenario is not: its body is welded on)
-   * or which pool names are code-registered.
-   */
-  private compileDeps(): CompileDeps {
-    const contracts = new Map<string, { frame: string; base?: string }>();
-
-    // The base travels with the frame because it is the base the body will be
-    // expanded under, and the compiler qualifies a literal voice path only
-    // where none will be put in front of it (#1144).
-    for (const [id, entry] of this.registry.entries) {
-      if (entry.resolvedSequence === null) contracts.set(id, { frame: entry.frame, base: entry.raw.base });
-    }
-
-    const conds = new Map<string, VocabularyResolver<boolean>>();
-
-    for (const [name, { predicate }] of this.vocab.conds) conds.set(name, predicate);
-
-    const cases = new Map<string, { resolve: VocabularyResolver<string | null>; keys: ReadonlySet<string> }>();
-
-    for (const [name, { resolve, keys }] of this.vocab.cases) {
-      cases.set(name, { resolve, keys: new Set(Object.keys(keys)) });
-    }
-
-    return {
-      contracts,
-      vars: new Set(this.vocab.vars.keys()),
-      conds,
-      cases,
-      legacyPools: this.poolStore.registeredPoolNames(),
-    };
-  }
-
-  /**
-   * Compile every voice's script against the registries as they stand now.
-   * Per voice: one debug line with the scripted count, the deliberate skips
-   * at debug, and ONE warn per (voice, scenario) for a skip the pack did not
-   * mean — deduped across recompiles, so a dirty recompile only reports what
-   * changed. The compiler never throws; neither does this.
-   */
-  private compileScripts(): void {
-    this.scriptsDirty = false;
-    this.poolStore.clearScriptPools();
-
-    const deps = this.compileDeps();
-    const compiled = new Map<string, CompiledVoiceScript>();
-
-    for (const [voice, script] of this.scripts) {
-      // The voice id goes in so a composite voice's literal voice paths are
-      // qualified with its pack (#1144) — the one way this compile differs
-      // from `compileScript`'s, and never in a diagnostic.
-      const result = compileVoiceScript(script, deps, voice);
-      compiled.set(voice, result);
-
-      this.logger.debug(`Voice "${voice}": ${result.scenarios.size} of ${deps.contracts.size} callouts scripted`);
-
-      const deliberate = result.skipped.filter((skip) => skip.deliberate).map((skip) => skip.id);
-
-      if (deliberate.length > 0) this.logger.debug(`Voice "${voice}": not scripted — ${deliberate.join(", ")}`);
-
-      for (const skip of result.skipped) {
-        if (skip.deliberate) continue;
-
-        const key = `${voice}|${skip.id}|${skip.reason}`;
-
-        if (!this.warnings.once("skips", key)) continue;
-
-        this.logger.warn(`Voice "${voice}": scenario "${skip.id}" skipped — ${skip.reason}`);
-      }
-
-      for (const [name, reason] of result.fragmentProblems) {
-        const key = `${voice}|${name}|${reason}`;
-
-        if (!this.warnings.once("fragments", key)) continue;
-
-        this.logger.warn(`Voice "${voice}": fragment "${name}" — ${reason}`);
-      }
-
-      // A cut tail that did not compile leaves its frame whole (issue #1407):
-      // the voice still speaks every callout, and an ended line closes the
-      // radio with the close. Warned once per (voice, frame) under the key
-      // the runtime tail warn uses (`expandCutTail`), so the two never both
-      // speak for one frame.
-      for (const [name, reason] of result.failedCuts) {
-        const key = `${voice}|${name}|cut`;
-
-        if (!this.warnings.once("frameAborts", key)) continue;
-
-        this.logger.warn(
-          `Voice "${voice}" frame "${name}" cut tail cannot play — ${reason}; an ended line closes the radio instead`,
-        );
-      }
-    }
-
-    this.compiled = compiled;
   }
 
   setEnabled(scenarioId: string, enabled: boolean): void {
@@ -971,10 +815,10 @@ class ScenarioEngine implements IScenarioEngine {
    * once the arriving fire has expanded to something to play.
    */
   playFramePreview(frameName: string, holdMs: number, onComplete?: () => void): FramePreviewResult {
-    this.ensureCompiled();
+    this.scripts.ensureCompiled();
 
     const voice = this.getActiveVoice();
-    const script = voice === null ? undefined : this.compiled.get(voice);
+    const script = voice === null ? undefined : this.scripts.compiled(voice);
 
     if (voice === null || script === undefined || !script.frames.has(frameName)) {
       this.logger.debug(`Frame preview "${frameName}" unavailable for voice "${voice ?? "(none)"}"`);
@@ -1656,7 +1500,9 @@ class ScenarioEngine implements IScenarioEngine {
     }
 
     const resume =
-      running.raw.resumable === true ? buildResumeState(active, this.getActiveVoice(), this.generation) : undefined;
+      running.raw.resumable === true
+        ? buildResumeState(active, this.getActiveVoice(), this.scripts.generation)
+        : undefined;
     this.enqueue(active.id, active.event, active.weight, state, "stashed (preempted)", resume, true, undefined, true);
   }
 
@@ -1721,12 +1567,12 @@ class ScenarioEngine implements IScenarioEngine {
     event: SimEventOf<SimEventName> | null,
     admitted = false,
   ): PreparedFire | null {
-    this.ensureCompiled();
+    this.scripts.ensureCompiled();
 
     const ctx = fireContext(event);
 
     const voice = this.getActiveVoice();
-    const script = voice === null ? undefined : this.compiled.get(voice);
+    const script = voice === null ? undefined : this.scripts.compiled(voice);
     let body: ResolvedStep[];
     let frameName: string;
 
@@ -2164,7 +2010,7 @@ class ScenarioEngine implements IScenarioEngine {
   private resumeBlocker(resume: ResumeState, expanded: readonly ExecOp[]): string | null {
     if (resume.voice !== this.getActiveVoice()) return "voice changed while stashed";
 
-    if (resume.generation !== this.generation) return "scripts changed while stashed";
+    if (resume.generation !== this.scripts.generation) return "scripts changed while stashed";
 
     if (!opsEqual(expanded, resume.ops)) return "the expansion changed while stashed";
 
