@@ -20,8 +20,6 @@
  *   exact version the workspace declares (checked here independently of the
  *   helper's own lookup), and the two native workspace packages keep their
  *   `file:` links;
- * - `keysender` — declared for Dependabot's sake by a package that never
- *   imports it statically — is optional, and pnpm is never told to compile it;
  * - the helper's walk covers the whole workspace, and turbo hashes what it reads;
  * - the `bin/` install runs through `install-runtime-deps.mjs`, so npm never sees
  *   the `npm_config_*` keys it does not define and warns about them (#1205).
@@ -117,23 +115,6 @@ describe("plugins ship the workspace's runtime dependency versions (#1177)", () 
     expect(DECLARING_SECTIONS).toEqual(["dependencies", "optionalDependencies", "devDependencies"]);
   });
 
-  describe("keysender", () => {
-    it("is declared in the workspace, and only ever under optionalDependencies", () => {
-      // Its install script is `node-gyp rebuild` and it is Windows-only, so any
-      // other section would make a workspace install depend on compiling it.
-      const declarations = DECLARED.get("keysender") ?? [];
-      expect(declarations.length, "keysender needs a declaration Dependabot can see").toBeGreaterThan(0);
-      for (const { file, section } of declarations) {
-        expect(section, `${file} declares keysender outside optionalDependencies`).toBe("optionalDependencies");
-      }
-    });
-
-    it("is never built by pnpm (a workspace install must not compile it — it failed Linux CI before)", () => {
-      // `true` compiles it; left out, pnpm fails every install on the undeclared build script.
-      expect(workspaceConfig.allowBuilds?.keysender).toBe(false);
-    });
-  });
-
   describe("the shared factory (@iracedeck/plugin-build)", () => {
     it("emits bin/package.json through the shared helper", () => {
       expect(FACTORY_SOURCE).toContain(
@@ -210,10 +191,9 @@ describe("plugins ship the workspace's runtime dependency versions (#1177)", () 
       }
     });
 
-    it("installs keysender as optional, so a machine that cannot compile it still gets a working bin", () => {
-      expect(externals).toContain("keysender");
+    it("installs nothing optional (no external needs a compiler the user may lack)", () => {
       const pkgJson = runtimePackageJson({ root: repoRoot, binDir, external: externals });
-      expect(pkgJson.optionalDependencies).toEqual({ keysender: DECLARED.get("keysender")[0].version });
+      expect(pkgJson).not.toHaveProperty("optionalDependencies");
     });
 
     it("installs bin/ through the shared script, which turbo hashes", () => {

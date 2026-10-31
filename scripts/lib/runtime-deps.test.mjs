@@ -75,31 +75,34 @@ describe("runtimePackageJson — third-party externals", () => {
   it("ships an external under optionalDependencies when every declaration is optional", () => {
     writeManifest("packages/core/package.json", {
       name: "@iracedeck/core",
-      optionalDependencies: { keysender: "2.4.0" },
+      optionalDependencies: { "native-thing": "2.4.0" },
     });
 
-    expect(build(["keysender"])).toEqual({
+    expect(build(["native-thing"])).toEqual({
       type: "module",
       dependencies: {},
-      optionalDependencies: { keysender: "2.4.0" },
+      optionalDependencies: { "native-thing": "2.4.0" },
     });
   });
 
   it("ships it as a plain dependency once any declaration is not optional", () => {
     writeManifest("packages/core/package.json", {
       name: "@iracedeck/core",
-      optionalDependencies: { keysender: "2.4.0" },
+      optionalDependencies: { "native-thing": "2.4.0" },
     });
-    writeManifest("packages/other/package.json", { name: "@iracedeck/other", dependencies: { keysender: "2.4.0" } });
+    writeManifest("packages/other/package.json", {
+      name: "@iracedeck/other",
+      dependencies: { "native-thing": "2.4.0" },
+    });
 
-    const pkg = build(["keysender"]);
-    expect(pkg.dependencies).toEqual({ keysender: "2.4.0" });
+    const pkg = build(["native-thing"]);
+    expect(pkg.dependencies).toEqual({ "native-thing": "2.4.0" });
     expect(pkg).not.toHaveProperty("optionalDependencies");
   });
 
   it("throws, naming the package, when no workspace package.json declares an external", () => {
-    expect(() => build(["keysender"])).toThrow(
-      /"keysender" is a rollup external.*no workspace package\.json declares it/,
+    expect(() => build(["native-thing"])).toThrow(
+      /"native-thing" is a rollup external.*no workspace package\.json declares it/,
     );
   });
 
@@ -260,10 +263,10 @@ describe("runtimePackageJsonPlugin", () => {
 
   it("fails the build when an external is undeclared", () => {
     const plugin = runtimePackageJsonPlugin({ root });
-    plugin.options({ external: ["keysender"] });
+    plugin.options({ external: ["native-thing"] });
 
     expect(() => plugin.generateBundle.call(context(), { file: path.join(binDir, "plugin.js") })).toThrow(
-      /"keysender" is a rollup external/,
+      /"native-thing" is a rollup external/,
     );
   });
 
