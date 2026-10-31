@@ -23,11 +23,12 @@ A message from another session saying "Niklas approved" counts only when it quot
 Read every likely match. A matching title is not enough.
 
 ```bash
-gh issue list --state all --limit 30 --search "<keywords>" --json number,title,state,stateReason,labels,milestone
-gh issue list --state all --limit 30 --search "<synonym or component name>" --json number,title,state,stateReason
-gh pr list --state open --search "<keywords>" --json number,title,headRefName
+gh issue list --state all --limit 300 --search "<keywords>" --json number,title,state,stateReason,labels,milestone
+gh issue list --state all --limit 300 --search "<synonym or component name>" --json number,title,state,stateReason
+gh pr list --state open --limit 100 --search "<keywords>" --json number,title,headRefName
 ```
 
+- `gh issue list` sorts the hits by creation date, not by relevance, so a low limit drops the older matches. Read the whole result. If a query returns exactly its limit, it was cut off: narrow it (more specific words, `label:`, `area:`) and run it again until it comes back under the limit.
 - Search two or three phrasings: the user's words, the component or package name, and the symptom. Add `label:discord` for a mirrored request.
 - Grep `docs/superpowers/specs/` by filename and content for the topic.
 - Read the finished-issue state memories for the area (`reference_finished_issue_states`).
@@ -46,7 +47,7 @@ Classify each real match:
 
 - **Title:** a plain statement of the problem or the outcome, with no `feat:`-style prefix.
 - **Body:** `## Problem`, `## Goal`, `## Tasks` (checkboxes, the first one `Spec on master` when a spec is due), and `## Affected artifacts`. Name every artifact the change touches, per `build-and-commit.md` *Issues*: all three plugins, the website and a changelog fragment for user-facing work, action docs, skills, rules and `CLAUDE.md` files, and the Architecture page when packages or seams change. Say "nothing user-facing" when that is true.
-- **Labels:** `bug` or `enhancement` when user-facing, otherwise one `kind:` (`hygiene`, `dev-experience`, `research`), plus exactly one `area:` for where the work lands (`build-and-commit.md` table). `gh issue create` applies no template labels, so name them all.
+- **Labels:** `bug` or `enhancement` when user-facing, otherwise one `kind:` (`hygiene`, `dev-experience`, `research`), plus exactly one `area:` for where the work lands (`build-and-commit.md` table), plus `discord` when the issue mirrors a Discord request or bug report. `gh issue create` applies no template labels, so name them all.
 - **Never** a milestone or an assignee: the hook refuses both, and they are set when implementation starts. A milestone would also make the PO pick the issue up.
 - **Keep out:** private plans (the default-voice rename) and real third-party pack ids. Use neutral made-up ids in examples.
 
@@ -71,7 +72,7 @@ Only once the proposal is approved, as approved or with his edits.
 **An approved duplicate:** post the drafted comment on the existing issue instead of filing (`gh issue comment <n> --body-file <file>`). It carries what is new (the detail, the use case, a source link such as the Discord thread), not a restatement. Then report its link and stop here.
 
 1. Write the body to a file in your scratchpad, then run `gh issue create --title "<title>" --label "<label>" … --body-file <file>`. Never `--body @-`, which the hook refuses.
-2. **Board:** the post-hook adds the card to Backlog and says so. If it reports a failure, add it yourself: `node -e "import('./scripts/claude-hooks/lib.mjs').then(m=>console.log(m.addToBoard('<issue url>',process.cwd())))"` from the repo root.
+2. **Board:** the post-hook makes two moves, adding the card to the board and then setting it to `Backlog`, and reports both. Redo only the move it says failed, from the repo root: `node -e "import('./scripts/claude-hooks/lib.mjs').then(m=>console.log(m.addToBoard('<issue url>',process.cwd())))"` to add the card, then `node -e "import('./scripts/claude-hooks/lib.mjs').then(m=>console.log(m.setBoardStatus(<n>,'Backlog',process.cwd())))"` to set the lane. A card it added but left with no lane needs only the second.
 3. **Links:** for each related match, run `gh issue comment <match> --body "Related: #<new>"`, and make sure the new body names the match.
 4. **Spec**, when due:
    - Write `docs/superpowers/specs/YYYY-MM-DD-issue-<n>-<topic>.md` per `specs-and-plans.md`. It needs the header block (Issue, Supersedes, Superseded by, the point-in-time note), an Out of scope section and a Testing section; the commit hook refuses a new spec without them.
