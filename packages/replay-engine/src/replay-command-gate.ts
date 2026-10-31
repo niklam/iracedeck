@@ -62,7 +62,7 @@
  *
  * In memory only, and one gate for the whole plugin: iRacing has one replay.
  */
-import { ReplayPosMode, replaySpeedFromTelemetry, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { ReplayPosMode, type TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 
 import { now as engineNow, sleep } from "./engine-clock.js";
@@ -89,6 +89,7 @@ import {
   resolveReplayPosition,
   settleReplayTarget,
 } from "./replay-position-state.js";
+import { followsPlayback, readReplay, type ReplayReading } from "./replay-reading.js";
 import { isPaused, isSeeking, replaySeekWaitMs } from "./replay-seek.js";
 import { noteReplaySpeedSent } from "./replay-speed-state.js";
 import {
@@ -188,8 +189,8 @@ function log(): ILogger {
 /** How many reads a search behind a jump waits for, the read-back included: the read-back form of the 100 ms that worked every time. */
 const SEARCH_BEHIND_JUMP_READS = 3;
 
-/** Frames per millisecond at 1x. */
-const FRAMES_PER_MS = 60 / 1000;
+// What a tick says about the replay (`readReplay`) and how far playback carries a frame (`followsPlayback`) are
+// `replay-reading.ts`'s, shared with the paced search (#1450).
 
 /** How long a gate-sent speed stands in for a reading that does not show it yet (ms), for "is the replay moving". */
 const SPEED_SENT_HOLD_MS = 200;
@@ -197,48 +198,6 @@ const SPEED_SENT_HOLD_MS = 200;
 interface Sample {
   readonly frame: number;
   readonly at: number;
-}
-
-/** A reading that is the replay's: in a replay, with a frame. */
-interface ReplayReading {
-  readonly frame: number;
-  /** Frames left to the end of the tape, as `ReplayFrameNumEnd` reads in a replay; undefined when it does not say. */
-  readonly left: number | undefined;
-  /** Playback in frames per millisecond, signed; 0 paused. */
-  readonly rate: number;
-  readonly speed: ReplaySpeed | null;
-}
-
-function readReplay(telemetry: TelemetryData | null): ReplayReading | null {
-  if (telemetry === null || telemetry.IsReplayPlaying !== true) return null;
-
-  const frame = telemetry.ReplayFrameNum;
-
-  if (typeof frame !== "number" || !Number.isFinite(frame)) return null;
-
-  const left = telemetry.ReplayFrameNumEnd;
-  const speed = replaySpeedFromTelemetry(telemetry);
-
-  return {
-    frame,
-    left: typeof left === "number" && Number.isFinite(left) && left >= 0 ? left : undefined,
-    rate: rateOf(speed),
-    speed,
-  };
-}
-
-/** Playback in frames per millisecond for a speed: in slow motion the speed is the divisor. */
-function rateOf(speed: ReplaySpeed | null): number {
-  if (speed === null || speed.speed === 0) return 0;
-
-  const factor = speed.slowMotion ? Math.sign(speed.speed) / Math.abs(speed.speed) : speed.speed;
-
-  return factor * FRAMES_PER_MS;
-}
-
-/** How far a reading may sit from where playback puts it and still be playback (frames). */
-function playbackTolerance(rate: number, elapsedMs: number): number {
-  return 3 + Math.abs(rate) * 20 + 0.25 * Math.abs(rate * elapsedMs);
 }
 
 // ---------------------------------------------------------------------------
@@ -268,6 +227,12 @@ interface SearchRecord {
   last: Sample | null;
   still: Sample | null;
   moved: Sample | null;
+  /**
+   * The first reading of the landing it was judged on, once it has landed: the
+   * `moved` sample of the leap that then held (on a paused replay, the first
+   * reading of the frame it came to rest on). Null until it lands.
+   */
+  landedFrom: Sample | null;
 }
 
 /** A takeover's jump: judged as moved and then held, not by an exact read-back. */
@@ -346,8 +311,23 @@ interface HeldJump {
 /** How a replay jump's target ended. */
 export type JumpLandingStatus = "pending" | "read-back" | "gave-up" | "replaced" | "cleared";
 
-/** What became of each target the slot or a jump may wait on. */
-type TargetFate =
+/**
+ * What became of a target the gate recorded, by its id: what the slot and a
+ * replay jump wait on, and what the paced search reads behind a jump
+ * ({@link replayTargetFate}).
+ *
+ * - `read-back`: it landed. Its frame read back conclusively, or, for a
+ *   takeover's jump or the settle jump of {@link settleReplayByJump}, the frame
+ *   moved and then held (`held`), even a few frames off. `telemetry` is the
+ *   reading that ended it.
+ * - `gave-up`: its own wait passed without a read-back.
+ * - `nothing-moved`: a takeover's or a settle jump's wait passed with nothing moving.
+ * - `cleared`: it ended without landing: its seek never went out or was
+ *   refused, or the sim disconnected.
+ * - `replaced`: a newer position jump replaced it; `by` is the id of the
+ *   target that did, null for a go to start or end.
+ */
+export type ReplayTargetFate =
   | { readonly kind: "read-back"; readonly telemetry: TelemetryData; readonly held: boolean }
   | { readonly kind: "gave-up" | "cleared" | "nothing-moved" }
   | { readonly kind: "replaced"; readonly by: number | null };
@@ -358,12 +338,12 @@ let slot: Slot | null = null;
 let held: HeldJump | null = null;
 let owed: HeldJump | null = null;
 const jumpsByTarget = new Map<number, HeldJump>();
-const fates = new Map<number, TargetFate>();
+const fates = new Map<number, ReplayTargetFate>();
 
 /** How many target fates are kept: the slot and a jump wait on one or two at a time. */
 const MAX_FATES = 64;
 
-function setFate(id: number, fate: TargetFate): void {
+function setFate(id: number, fate: ReplayTargetFate): void {
   fates.delete(id);
   fates.set(id, fate);
 
@@ -757,6 +737,7 @@ function recordSearch(
     last: reading === null ? null : { frame: reading.frame, at: now },
     still: reading === null ? null : { frame: reading.frame, at: now },
     moved: null,
+    landedFrom: null,
   };
 }
 
@@ -803,13 +784,13 @@ function recordTarget(
 }
 
 /** Clears the pending target as `fate`, ending its fact. */
-function clearTarget(fate: TargetFate["kind"], reason: ReplayGateEndReason): void {
+function clearTarget(fate: ReplayTargetFate["kind"], reason: ReplayGateEndReason): void {
   const target = pendingReplayTarget();
 
   if (target === null) return;
 
   clearReplayTarget();
-  setFate(target.id, fate === "replaced" ? { kind: "replaced", by: null } : ({ kind: fate } as TargetFate));
+  setFate(target.id, fate === "replaced" ? { kind: "replaced", by: null } : ({ kind: fate } as ReplayTargetFate));
   noteEnd(target.origin, "underWay", reason);
 
   const jump = jumpsByTarget.get(target.id);
@@ -1151,13 +1132,9 @@ function judgeSearch(record: SearchRecord, reading: ReplayReading, now: number):
   }
 
   const elapsed = now - last.at;
-  const expected = last.frame + rate * elapsed;
-  const tolerance = playbackTolerance(rate, elapsed);
 
   if (record.moved !== null) {
-    const fromMoved = record.moved.frame + rate * (now - record.moved.at);
-
-    if (Math.abs(frame - fromMoved) <= playbackTolerance(rate, now - record.moved.at)) {
+    if (followsPlayback(record.moved.frame, rate, now - record.moved.at, frame)) {
       if (now - record.moved.at >= HOLD_GAP_MS) landSearch(record);
 
       return;
@@ -1166,7 +1143,7 @@ function judgeSearch(record: SearchRecord, reading: ReplayReading, now: number):
     record.moved = null;
   }
 
-  if (frame !== last.frame && Math.abs(frame - expected) > tolerance) {
+  if (frame !== last.frame && !followsPlayback(last.frame, rate, elapsed, frame)) {
     // A leap away from where playback puts it: the landing, once the next read agrees.
     record.moved = { frame, at: now };
     record.still = { frame, at: now };
@@ -1196,6 +1173,7 @@ function judgeSearch(record: SearchRecord, reading: ReplayReading, now: number):
 
 function landSearch(record: SearchRecord): void {
   record.landed = true;
+  record.landedFrom = record.moved;
 
   if (record.onItsWay) noteEnd(record.origin, "underWay", "landed");
 
@@ -1509,9 +1487,7 @@ function afterJumpLanded(
 
     const elapsed = now - lastHold.at;
 
-    if (
-      Math.abs(reading.frame - (lastHold.frame + reading.rate * elapsed)) > playbackTolerance(reading.rate, elapsed)
-    ) {
+    if (!followsPlayback(lastHold.frame, reading.rate, elapsed, reading.frame)) {
       current.holds = [{ frame: reading.frame, at: now }];
 
       return;
@@ -2397,19 +2373,51 @@ export type ReplaySearchLandingOutcome = "landed" | "found-nothing" | "not-lande
  * goes on to the landing or to `hardBoundMs` (`gave-up`). `superseded` when the
  * claim is taken or another command replaced the search.
  */
-export async function waitForReplaySearchLanding(options: {
+export function waitForReplaySearchLanding(options: ReplaySearchLandingWait): Promise<ReplaySearchLandingOutcome> {
+  return waitForReplaySearchLandingWithFrame(options).then((landing) => landing.outcome);
+}
+
+/** How a wait for a search is bounded, and by whose claim. */
+export interface ReplaySearchLandingWait {
   readonly patienceMs: number;
   readonly hardBoundMs: number;
   readonly claim?: ReplayCursorClaim;
-}): Promise<ReplaySearchLandingOutcome> {
+}
+
+/** How a wait for a search ended, and where its landing began. */
+export interface ReplaySearchLanding {
+  readonly outcome: ReplaySearchLandingOutcome;
+  /**
+   * For `landed`: the first frame of the landing, as the gate judged it — the
+   * first reading of the leap away from where playback put the frame (on a
+   * paused replay, away from the frame it was sent on) that then held, read
+   * at whichever of the gate's settles came first after the leap. A leap that
+   * did not hold is not it: a later one that held is. Null for any other
+   * outcome.
+   */
+  readonly firstFrame: number | null;
+}
+
+/**
+ * {@link waitForReplaySearchLanding}, saying also where the landing began
+ * ({@link ReplaySearchLanding.firstFrame}): the frame the paced search jumps
+ * back to before a step against the direction of play (#801, #1450).
+ */
+export async function waitForReplaySearchLandingWithFrame(
+  options: ReplaySearchLandingWait,
+): Promise<ReplaySearchLanding> {
   const record = search;
   const startedAt = engineNow();
+  const ended = (outcome: Exclude<ReplaySearchLandingOutcome, "landed">): ReplaySearchLanding => ({
+    outcome,
+    firstFrame: null,
+  });
 
   // A record that has landed already is an earlier search's: the caller's own did not record.
-  if (record === null || record.landed) return "not-landed";
+  if (record === null || record.landed) return ended("not-landed");
 
   for (;;) {
-    if (options.claim !== undefined && options.claim.cancelledBy !== null) return "superseded";
+    if (options.claim !== undefined && options.claim.cancelledBy !== null) return ended("superseded");
 
     const now = engineNow();
     const telemetry = engineReads().readTelemetry();
@@ -2420,15 +2428,15 @@ export async function waitForReplaySearchLanding(options: {
     });
     arm();
 
-    if (record.landed) return "landed";
+    if (record.landed) return { outcome: "landed", firstFrame: record.landedFrom?.frame ?? null };
 
-    if (search !== record) return "superseded";
+    if (search !== record) return ended("superseded");
 
-    if (record.playing && !record.seen && !record.onItsWay) return "found-nothing";
+    if (record.playing && !record.seen && !record.onItsWay) return ended("found-nothing");
 
-    if (!record.seen && now - startedAt >= options.patienceMs) return "not-landed";
+    if (!record.seen && now - startedAt >= options.patienceMs) return ended("not-landed");
 
-    if (now - startedAt >= options.hardBoundMs) return "gave-up";
+    if (now - startedAt >= options.hardBoundMs) return ended("gave-up");
 
     await sleep(REPLAY_JUMP_POLL_MS);
   }
@@ -2439,6 +2447,18 @@ export function replaySearchCouldRunMs(): number | null {
   if (search === null || search.landed) return null;
 
   return Math.max(0, search.sentAt + search.couldRunMs - engineNow());
+}
+
+/**
+ * How the target with `id` ended (#1450): read back, given up, replaced and by
+ * which target, cleared, or nothing moved. Null while it still stands, for an
+ * id the gate never recorded, and once {@link MAX_FATES} newer targets have
+ * ended since (it then counts as not known to have landed). Read-only: what
+ * the gate itself acts on, so a caller judging a jump of the gate's reads the
+ * gate's verdict rather than inferring it from the time the target left.
+ */
+export function replayTargetFate(id: number): ReplayTargetFate | null {
+  return fates.get(id) ?? null;
 }
 
 /** How a settle by a jump ended. */
