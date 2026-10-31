@@ -27,15 +27,30 @@
  * scanner follows every call of a top-level function by name, in its own
  * module or through a relative import (re-exports followed), as far as the
  * calls go. A stateful binding is reset when any function reached that way
- * reassigns it or mutates it as above (`x = null`, `x.clear()`). So a module's
- * `_reset*` counts only if the root calls it, directly or through any number of
- * hops the scanner can see.
+ * makes a **clearing write** to it, in its own body:
+ * - a write of the binding itself: `x = null`, `x = new Map()`, `x = []`, and
+ *   the other assignment forms (`waitGeneration++` is how the camera-switch
+ *   waiter moves its generation on);
+ * - `x.clear()` on the binding itself;
+ * - `x.length = 0` on the binding itself.
+ *
+ * Those are the shapes the engine's `_reset*` functions use (2026-10-31: the
+ * first two; the third empties an array in place). Any other write reached —
+ * `x.push(…)`, `x.set(…)`, `x.field = …`, `x.a.clear()`, `x.splice(…)` — changes
+ * what the binding holds without emptying it and is not a reset, though it
+ * still makes a `const` state. A function's own body is the body of the
+ * `function` or the arrow, without the closures it defines: a write or a call
+ * inside a callback it hands on (`setTimeout(() => { x = null; })`) or a
+ * function it only stores does not run when it does. So a module's `_reset*`
+ * counts only if the root calls it, directly or through any number of hops
+ * the scanner can see.
  *
  * **What it cannot see**, by design: a write through an alias (`const a = x;
  * a.clear()`), through a value a function returns, or through a method of an
- * object (`claim.cancel()`); a call through a callback or a function value
- * rather than by name. Each errs towards reporting a binding as not reset, so
- * the test goes red rather than green; the answer is to reset it by name.
+ * object (`claim.cancel()`); a call through a callback, a function value or an
+ * immediately invoked closure rather than by name. Each errs towards
+ * reporting a binding as not reset, so the test goes red rather than green;
+ * the answer is to reset it by name.
  */
 import ts from "typescript";
 
@@ -66,9 +81,9 @@ export interface ResetScan {
   readonly modules: readonly string[];
   /** Every stateful binding, in module and line order. */
   readonly stateful: readonly StateBinding[];
-  /** The stateful bindings a function reachable from the root writes. */
+  /** The stateful bindings a function reachable from the root clears (reassigns, `clear()`s or empties). */
   readonly reset: readonly StateBinding[];
-  /** The stateful bindings nothing reachable from the root writes. */
+  /** The stateful bindings nothing reachable from the root clears. */
   readonly unreset: readonly StateBinding[];
   /** Every function the root reaches, as `<module>:<name>`. */
   readonly reached: readonly string[];
@@ -338,8 +353,12 @@ function collectModule(name: string, file: ts.SourceFile, checker: ts.TypeChecke
   return module;
 }
 
-/** How a reference to a binding uses it: reassigns it, mutates what it holds, or neither. */
-function accessOf(reference: ts.Expression): "reassign" | "mutate" | null {
+/**
+ * How a reference to a binding uses it: reassigns it, clears what it holds
+ * (`x.clear()`, `x.length = 0`), mutates what it holds some other way, or
+ * neither. A reassignment or a clear is a reset; any of the three writes it.
+ */
+function accessOf(reference: ts.Expression): "reassign" | "clear" | "mutate" | null {
   const parent = reference.parent;
 
   if (ts.isBinaryExpression(parent) && parent.left === reference && isAssignment(parent.operatorToken.kind)) {
@@ -356,14 +375,28 @@ function accessOf(reference: ts.Expression): "reassign" | "mutate" | null {
 
   // `x.a.b`, `x[k]`, `x!.a`: climb to the outermost access rooted at the reference.
   let top: ts.Expression = reference;
+  const accesses: (ts.PropertyAccessExpression | ts.ElementAccessExpression)[] = [];
 
   for (;;) {
     const up: ts.Node = top.parent;
 
-    if ((ts.isPropertyAccessExpression(up) || ts.isElementAccessExpression(up)) && up.expression === top) top = up;
-    else if ((ts.isNonNullExpression(up) || ts.isParenthesizedExpression(up)) && up.expression === top) top = up;
+    if ((ts.isPropertyAccessExpression(up) || ts.isElementAccessExpression(up)) && up.expression === top) {
+      top = up;
+      accesses.push(up);
+    } else if ((ts.isNonNullExpression(up) || ts.isParenthesizedExpression(up)) && up.expression === top) top = up;
     else break;
   }
+
+  // The member of the binding itself (`x.clear`, `x!.length`), when the access goes one level deep.
+  const only = accesses.length === 1 ? accesses[0] : undefined;
+  const member =
+    only === undefined
+      ? undefined
+      : ts.isPropertyAccessExpression(only)
+        ? only.name.text
+        : ts.isStringLiteralLike(only.argumentExpression)
+          ? only.argumentExpression.text
+          : undefined;
 
   const above = top.parent;
 
@@ -380,13 +413,25 @@ function accessOf(reference: ts.Expression): "reassign" | "mutate" | null {
 
   if (top === reference) return null;
 
-  if (ts.isBinaryExpression(above) && above.left === top && isAssignment(above.operatorToken.kind)) return "mutate";
+  if (ts.isBinaryExpression(above) && above.left === top && isAssignment(above.operatorToken.kind)) {
+    // `x.length = 0` empties an array; any other property write changes one part of what it holds.
+    const empties =
+      member === "length" &&
+      above.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      ts.isNumericLiteral(unwrap(above.right)) &&
+      Number((unwrap(above.right) as ts.NumericLiteral).text) === 0;
+
+    return empties ? "clear" : "mutate";
+  }
 
   if (isIncrement(above, top) || (ts.isDeleteExpression(above) && above.expression === top)) return "mutate";
 
   if (inDestructuringTarget(top)) return "mutate";
 
-  // `x.clear()`, `x.a.push(…)`: a mutating method called on what the reference holds.
+  // `x.clear()` empties the container; `x.add(…)`, `x.a.clear()` change it without emptying it.
+  if (ts.isCallExpression(above) && above.expression === top && member === "clear") return "clear";
+
+  // `x.push(…)`, `x.a.clear()`: a mutating method called on what the reference holds.
   if (ts.isCallExpression(above) && above.expression === top) {
     const method = ts.isPropertyAccessExpression(top)
       ? top.name.text
@@ -521,6 +566,19 @@ export function scanResetCoverage(sources: ReadonlyMap<string, string>, root: Re
     ts.forEachChild(node, (child) => visit(child, each));
   };
 
+  /** Like {@link visit}, but not into a function `root` only defines: an arrow, a function expression, a method. */
+  const visitOwn = (root: ts.Node, each: (identifier: ts.Identifier) => void): void => {
+    const walk = (node: ts.Node): void => {
+      if (node !== root && ts.isFunctionLike(node)) return;
+
+      if (ts.isIdentifier(node)) each(node);
+
+      ts.forEachChild(node, walk);
+    };
+
+    walk(root);
+  };
+
   // Every write of a binding anywhere: what turns a const into state.
   const mutated = new Set<ts.Symbol>();
 
@@ -541,9 +599,10 @@ export function scanResetCoverage(sources: ReadonlyMap<string, string>, root: Re
     throw new Error(`reset scan: the root ${root.module}:${root.fn} was not found`);
   }
 
-  // Every function the root reaches by name, and every binding one of them writes.
+  // Every function the root reaches by name, and every binding one of them clears. Only the
+  // reached function's own body runs: a closure it defines but does not call is not walked.
   const reached = new Map<ts.Symbol, string>();
-  const written = new Set<ts.Symbol>();
+  const cleared = new Set<ts.Symbol>();
   const queue: Target[] = [rootTarget];
 
   while (queue.length > 0) {
@@ -553,7 +612,7 @@ export function scanResetCoverage(sources: ReadonlyMap<string, string>, root: Re
 
     reached.set(fn.symbol, `${fn.module.name}:${fn.symbol.name}`);
 
-    visit(fn.module.functions.get(fn.symbol) as ts.Node, (identifier) => {
+    visitOwn(fn.module.functions.get(fn.symbol) as ts.Node, (identifier) => {
       const resolved = resolveReference(fn.module, identifier);
 
       if (resolved === undefined) return;
@@ -564,8 +623,10 @@ export function scanResetCoverage(sources: ReadonlyMap<string, string>, root: Re
         const call = reference.parent;
 
         if (ts.isCallExpression(call) && call.expression === reference) queue.push(target);
-      } else if (accessOf(reference) !== null) {
-        written.add(target.symbol);
+      } else {
+        const access = accessOf(reference);
+
+        if (access === "reassign" || access === "clear") cleared.add(target.symbol);
       }
     });
   }
@@ -590,7 +651,7 @@ export function scanResetCoverage(sources: ReadonlyMap<string, string>, root: Re
 
     for (const { symbol, binding } of found) {
       stateful.push(binding);
-      (written.has(symbol) ? reset : unreset).push(binding);
+      (cleared.has(symbol) ? reset : unreset).push(binding);
     }
   }
 

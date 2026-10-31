@@ -12,7 +12,7 @@ import {
  * `_resetReplayEngine` is a hand-kept list (#1467), and a module that keeps
  * state and is left off it carries that state from one test into the next.
  * This scans every production source of the engine for module-level state and
- * fails on any binding a call of `_resetReplayEngine` cannot reach and write
+ * fails on any binding a call of `_resetReplayEngine` cannot reach and clear
  * (#1502). What counts as state and what counts as a reset is in the scanner's
  * header, `replay-engine-reset.coverage.test-support.ts`.
  */
@@ -53,7 +53,7 @@ describe("_resetReplayEngine covers every stateful module (#1502)", () => {
     expect(scan.reached).toContain("replay-cursor.ts:_resetReplayCursor");
   });
 
-  it("finds the cursor's claim as state that the reset writes", () => {
+  it("finds the cursor's claim as state that the reset clears", () => {
     const current = scan.stateful.find((binding) => bindingKey(binding) === "replay-cursor.ts:current");
 
     expect(current).toMatchObject({ kind: "let" });
@@ -129,6 +129,83 @@ describe("the reset-coverage scanner (positive controls)", () => {
 
     expect(scan.unreset).toEqual([]);
     expect(scan.reset.map(bindingKey).sort()).toEqual(["a.ts:a", "b.ts:seen", "deep.ts:deep"]);
+  });
+
+  it("counts only a clearing write as a reset: reassignment, clear() or length = 0", () => {
+    const sources = planted(
+      `import { _resetCleared } from "./cleared.js";\nexport function _resetReplayEngine(): void { _resetCleared(); }`,
+      {
+        "cleared.ts": [
+          "let current: string | null = null;",
+          "let generation = 0;",
+          "const seen = new Set<number>();",
+          "const list: number[] = [];",
+          "export function note(n: number): void { current = 'x'; generation += 1; seen.add(n); list.push(n); }",
+          "export function _resetCleared(): void { current = null; generation++; seen!.clear(); list.length = 0; }",
+        ].join("\n"),
+      },
+    );
+    const scan = scanResetCoverage(sources, ROOT);
+
+    expect(scan.unreset).toEqual([]);
+    expect(scan.reset.map(bindingKey)).toEqual([
+      "cleared.ts:current",
+      "cleared.ts:generation",
+      "cleared.ts:seen",
+      "cleared.ts:list",
+    ]);
+  });
+
+  it("does not count a reached write that adds, sets, assigns a property or clears a part", () => {
+    const sources = planted(
+      `import { _resetWrites } from "./writes.js";\nexport function _resetReplayEngine(): void { _resetWrites(); }`,
+      {
+        "writes.ts": [
+          "const list: number[] = [];",
+          "const cache = new Map<string, number>();",
+          "const state = { count: 0 };",
+          "const holder = { items: new Set<number>() };",
+          "let queue: number[] = [];",
+          "export function note(n: number): void { list.push(n); cache.set('k', n); state.count++; holder.items.add(n); queue.push(n); }",
+          "export function _resetWrites(): void { list.push(0); cache.set('k', 0); state.count = 0; holder.items.clear(); queue.splice(0, 1); }",
+        ].join("\n"),
+      },
+    );
+    const scan = scanResetCoverage(sources, ROOT);
+
+    expect(scan.reset).toEqual([]);
+    expect(scan.unreset.map(bindingKey)).toEqual([
+      "writes.ts:list",
+      "writes.ts:cache",
+      "writes.ts:state",
+      "writes.ts:holder",
+      "writes.ts:queue",
+    ]);
+  });
+
+  it("does not count a write or a call inside a closure the reached function only defines", () => {
+    const sources = planted(
+      `import { _resetLater } from "./later.js";\nexport function _resetReplayEngine(): void { _resetLater(); }`,
+      {
+        "later.ts": [
+          "let pending: string | null = null;",
+          "let other: string | null = null;",
+          "const seen = new Set<number>();",
+          "export function hold(v: string): void { pending = v; other = v; seen.add(1); }",
+          "function clearOther(): void { other = null; }",
+          "export function _resetLater(): void {",
+          "  setTimeout(() => { pending = null; }, 0);",
+          "  const later = (): void => clearOther();",
+          "  void later;",
+          "  void { wipe() { seen.clear(); } };",
+          "}",
+        ].join("\n"),
+      },
+    );
+    const scan = scanResetCoverage(sources, ROOT);
+
+    expect(scan.unreset.map(bindingKey)).toEqual(["later.ts:pending", "later.ts:other", "later.ts:seen"]);
+    expect(scan.reached).not.toContain("later.ts:clearOther");
   });
 
   it("does not take a nested binding of the same name for the module's", () => {
