@@ -1,9 +1,7 @@
-import { tmpdir } from "node:os";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { cleanupTempBinDirs, createHost } from "../../test-support/fake-host.js";
+import { cleanupTempBinDirs, createFakeCore } from "../../test-support/fake-host.js";
 import { callLog, implement, resetRecorder, stub } from "../../test-support/recorder.js";
-import type { Core } from "../../types.js";
 import { initSettingsWindow } from "./settings-window.js";
 
 vi.mock("@iracedeck/deck-core", async (io) => (await import("../../test-support/module-mocks.js")).recordedModule(io));
@@ -24,21 +22,6 @@ vi.mock("@iracedeck/audio-native", async (io) =>
   (await import("../../test-support/module-mocks.js")).recordedModule(io),
 );
 vi.mock("../../actions.js", async () => (await import("../../test-support/module-mocks.js")).actionsMock());
-
-function fakeCore() {
-  const host = createHost();
-  const core: Core = {
-    host,
-    adapter: host.adapter,
-    binDir: host.binDir,
-    logLocation: { kind: "daily", dir: tmpdir() },
-    bus: stub("bus"),
-    controller: stub("controller"),
-    nativeAddons: { iracing: { kind: "native" }, audio: { kind: "native" } },
-  };
-
-  return { core, adapter: host.adapter };
-}
 
 /** A store whose path counts its reads, to tell an eager read from a deferred one. */
 function countingStore(path: string): { readonly path: string; reads: number } {
@@ -75,7 +58,7 @@ describe("initSettingsWindow (#1377)", () => {
   afterAll(() => cleanupTempBinDirs());
 
   it("builds the publisher, capture, update check, handler and controller in today's order and scopes", () => {
-    const { core, adapter } = fakeCore();
+    const { core, adapter } = createFakeCore();
 
     initSettingsWindow({ core, store: { path: "C:/settings.json" }, voicePacks: stub("voicePacks") });
 
@@ -91,7 +74,7 @@ describe("initSettingsWindow (#1377)", () => {
   });
 
   it("reads the store path at construction, for the command handler, and again for each warning", () => {
-    const { core } = fakeCore();
+    const { core } = createFakeCore();
     const store = countingStore("C:/settings.json");
 
     initSettingsWindow({ core, store, voicePacks: stub("voicePacks") });
@@ -103,7 +86,7 @@ describe("initSettingsWindow (#1377)", () => {
   });
 
   it("publishes the channel of a server that starts later, through the publisher", () => {
-    const { core } = fakeCore();
+    const { core } = createFakeCore();
     const published: unknown[] = [];
     implement("createSettingsChannelPublisher().publish", (channel) => published.push(channel));
 
@@ -118,7 +101,7 @@ describe("initSettingsWindow (#1377)", () => {
   });
 
   it("asks the catalog before opening the window (#1100), passing the options through", () => {
-    const { core } = fakeCore();
+    const { core } = createFakeCore();
     const options: unknown[] = [];
     implement("controller.open", (o) => options.push(o));
     const step = initSettingsWindow({ core, store: { path: "C:/settings.json" }, voicePacks: stub("voicePacks") });

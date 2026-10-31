@@ -1,9 +1,7 @@
-import { tmpdir } from "node:os";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { cleanupTempBinDirs, createHost } from "../../test-support/fake-host.js";
-import { callLog, implement, resetRecorder, stub } from "../../test-support/recorder.js";
-import type { Core } from "../../types.js";
+import { cleanupTempBinDirs, createFakeCore } from "../../test-support/fake-host.js";
+import { callLog, implement, resetRecorder } from "../../test-support/recorder.js";
 import { initSettingsStore } from "./settings-store.js";
 
 vi.mock("@iracedeck/deck-core", async (io) => (await import("../../test-support/module-mocks.js")).recordedModule(io));
@@ -14,21 +12,6 @@ vi.mock("@iracedeck/iracing-native", async (io) =>
 vi.mock("@iracedeck/audio-native", async (io) =>
   (await import("../../test-support/module-mocks.js")).recordedModule(io),
 );
-
-function fakeCore() {
-  const host = createHost();
-  const core: Core = {
-    host,
-    adapter: host.adapter,
-    binDir: host.binDir,
-    logLocation: { kind: "daily", dir: tmpdir() },
-    bus: stub("bus"),
-    controller: stub("controller"),
-    nativeAddons: { iracing: { kind: "native" }, audio: { kind: "native" } },
-  };
-
-  return { core, adapter: host.adapter };
-}
 
 describe("initSettingsStore (#1377)", () => {
   let exitListenersBefore: Set<unknown>;
@@ -55,7 +38,7 @@ describe("initSettingsStore (#1377)", () => {
 
       return store;
     });
-    const { core, adapter } = fakeCore();
+    const { core, adapter } = createFakeCore();
 
     expect(initSettingsStore(core)).toBe(store);
     expect(deps).toHaveLength(1);
@@ -74,7 +57,7 @@ describe("initSettingsStore (#1377)", () => {
     });
 
     try {
-      initSettingsStore(fakeCore().core);
+      initSettingsStore(createFakeCore().core);
     } finally {
       on.mockRestore();
     }
@@ -83,7 +66,7 @@ describe("initSettingsStore (#1377)", () => {
   });
 
   it("flushes the store synchronously when the process exits", () => {
-    initSettingsStore(fakeCore().core);
+    initSettingsStore(createFakeCore().core);
     const added = process.listeners("exit").filter((l) => !exitListenersBefore.has(l));
     callLog.length = 0;
 
