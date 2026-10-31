@@ -9,6 +9,7 @@ import type { ReplayState, TelemetryCallback, TelemetryData } from "@iracedeck/i
 import { type ILogger, silentLogger } from "@iracedeck/logger";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { REPLAY_LAPS_EVENTS } from "./diff/replay-laps.js";
 import type { EmitFn } from "./diff/types.js";
 import type { ReplayRecorderState } from "./replay-recorder-state.js";
 import { createInitialReplayRecorderState } from "./replay-recorder-state.js";
@@ -19,20 +20,23 @@ import {
   startReplayRecorder,
 } from "./replay-recorder.js";
 
+/** The lap recorder's emitter, typed by its own list as `diffReplayLaps` takes it (#1499). */
+type LapsEmit = EmitFn<(typeof REPLAY_LAPS_EVENTS)[number]>;
+
 type Step = { name: "laps" | "greens" | "sessions" | "incidents" | "reset"; state: ReplayRecorderState };
 
 const { calls, recorderArgs, onLaps } = vi.hoisted(() => ({
   calls: [] as Step[],
   recorderArgs: [] as Array<{ name: string; args: unknown[] }>,
   /** What the mocked lap recorder does with its state and emit, beyond logging the call. */
-  onLaps: { current: null as ((state: ReplayRecorderState, emit: EmitFn) => void) | null },
+  onLaps: { current: null as ((state: ReplayRecorderState, emit: LapsEmit) => void) | null },
 }));
 
 vi.mock("./diff/replay-laps.js", () => ({
   diffReplayLaps: vi.fn((state: ReplayRecorderState, ...args: unknown[]) => {
     calls.push({ name: "laps", state });
     recorderArgs.push({ name: "laps", args });
-    onLaps.current?.(state, args[3] as EmitFn);
+    onLaps.current?.(state, args[3] as LapsEmit);
   }),
 }));
 vi.mock("./diff/replay-greens.js", () => ({
