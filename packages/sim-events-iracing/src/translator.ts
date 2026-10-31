@@ -364,16 +364,26 @@ export function onTranslatorTick(listener: () => void): () => void {
   };
 }
 
-/** Run every {@link onTranslatorTick} listener, each isolated from the others. */
+/**
+ * Run every {@link onTranslatorTick} listener, each isolated from the others.
+ * Over a snapshot, so a listener registered during the pass (or one that
+ * unsubscribes and registers again) is first called on the next update, never
+ * twice on this one; one unsubscribed during the pass is not called.
+ */
 function notifyTickListeners(logger: ILogger): void {
-  for (const listener of tickListeners) {
+  for (const listener of [...tickListeners]) {
+    if (!tickListeners.has(listener)) continue;
+
     try {
       listener();
       failingTickListeners.delete(listener);
     } catch (error) {
       if (failingTickListeners.has(listener)) continue;
 
-      failingTickListeners.add(listener);
+      // One that unsubscribed before throwing is logged but not remembered as
+      // failing, so a later registration of it logs its own first throw.
+      if (tickListeners.has(listener)) failingTickListeners.add(listener);
+
       logger.error("Translator tick listener failed");
       logger.debug(`Listener error: ${String(error)}`);
     }

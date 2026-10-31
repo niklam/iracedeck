@@ -229,6 +229,62 @@ describe("onTranslatorTick (#1500)", () => {
     expect(failures()).toBe(2);
   });
 
+  it("calls a listener registered during a pass from the next update on, and one re-registered during a pass once", () => {
+    const controller = createMockController();
+    initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+    const late = vi.fn();
+    const calls: string[] = [];
+    let unsubscribeSelf = (): void => undefined;
+    const restarting = (): void => {
+      calls.push("restarting");
+      unsubscribeSelf();
+      unsubscribeSelf = onTranslatorTick(restarting);
+    };
+    unsubscribeSelf = onTranslatorTick(restarting);
+    const unsubscribeAdder = onTranslatorTick(() => {
+      onTranslatorTick(late);
+      unsubscribeAdder();
+    });
+
+    controller.__tick(telemetry({ SessionNum: 2 }));
+
+    expect(late).not.toHaveBeenCalled();
+    expect(calls).toEqual(["restarting"]);
+
+    controller.__tick(telemetry({ SessionNum: 2 }));
+
+    expect(late).toHaveBeenCalledOnce();
+    expect(calls).toEqual(["restarting", "restarting"]);
+  });
+
+  it("logs the first throw of a listener registered again after it unsubscribed and threw", () => {
+    const logger = createMockLogger();
+    const controller = createMockController();
+    initializeSimEventsIracing(getEventBus(), controller, logger);
+    let unsubscribe = (): void => undefined;
+    let quit = true;
+    // Unsubscribes before throwing on its first registration only, so its
+    // second registration's throw is not cleared by an unsubscribe of its own.
+    const quitting = (): void => {
+      if (quit) unsubscribe();
+
+      throw new Error("listener broke");
+    };
+    const failures = (): number =>
+      vi.mocked(logger.error).mock.calls.filter(([message]) => message === "Translator tick listener failed").length;
+    unsubscribe = onTranslatorTick(quitting);
+
+    controller.__tick(telemetry({ SessionNum: 2 }));
+
+    expect(failures()).toBe(1);
+
+    quit = false;
+    unsubscribe = onTranslatorTick(quitting);
+    controller.__tick(telemetry({ SessionNum: 2 }));
+
+    expect(failures()).toBe(2);
+  });
+
   it("still calls the listeners when the translator throws on the tick, and lets the throw reach the controller", () => {
     const controller = createMockController();
     initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
