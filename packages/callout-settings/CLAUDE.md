@@ -15,7 +15,7 @@ The Race Engineer callout opt-in registry (#1350). It is the only place a `callo
 
 `default` is optional and can only be `false`: absent means on. New Race Engineer functionality ships on, so an off default is a visible, deliberate exception rather than a value every entry repeats. Today six entries carry it, the fuel countdown counts 10, 9, 8, 7, 6 and 4. `calloutDefault(key)` turns it into the schema default.
 
-A `key` is a persisted settings key and a published contract: never rename or drop one without a migration, and never change a default casually. `@iracedeck/settings`' append-only baseline (`src/__fixtures__/callout-settings-baseline.json`, #1376) fails on either.
+A `key` is a persisted settings key and a published contract: never rename or drop one without a migration, and never change a default casually. `@iracedeck/settings`' append-only baseline (`src/__fixtures__/callout-settings-baseline.json`, #1376) fails on either. A key retired on purpose keeps its baseline row, marked `"retiredBy": "#<issue>"` by the change that adds its migration, and is never reused.
 
 ## Families versus PI groups
 

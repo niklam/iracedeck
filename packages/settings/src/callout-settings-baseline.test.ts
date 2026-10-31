@@ -12,12 +12,22 @@ import { GlobalSettingsSchema } from "./global-settings.js";
  * what holds them to it now that their declaration lives in
  * `@iracedeck/callout-settings` (#1350).
  *
- * Rows are appended when a key is added, and never edited, removed or
- * regenerated. Dropping, renaming or re-defaulting a stored key fails here,
- * which is the moment a migration (or a deliberate, reviewed default change)
- * is owed — never the moment to rewrite the row. Every registry key must have
- * a row and every row's key must still be in the registry, so a key added
+ * Rows are appended when a key is added, and never removed or regenerated.
+ * Dropping, renaming or re-defaulting a stored key fails here, which is the
+ * moment a migration (or a deliberate, reviewed default change) is owed —
+ * never the moment to rewrite the row. Every registry key must have a live
+ * row and every live row's key must still be in the registry, so a key added
  * without a row fails as surely as a key removed under one (#1376).
+ *
+ * Retiring a key on purpose keeps its row too. The change that takes the key
+ * out of the registry adds the settings migration
+ * (`global-settings-migrations.ts`) for the value users stored under it, and
+ * marks the row `"retiredBy": "#<issue>"` — the one field a written row ever
+ * gains. A retired row's key must then be gone from the registry and from the
+ * schema's defaults; its other columns stay as the record of what the key
+ * was, and are no longer checked against the schema. A retired key is never
+ * reused: a callout that comes back takes a new key and a new row. A rename
+ * is both at once — the old key's row retired, the new key's row appended.
  *
  * Adding a callout: append one row at the end of
  * `__fixtures__/callout-settings-baseline.json`, keyed by the new
@@ -52,7 +62,12 @@ interface BaselineRow {
   readonly '"false"': boolean;
   readonly '"x"': boolean;
   readonly numberRejected: boolean;
+  /** The issue whose settings migration retired the key, as `#<n>`; absent while the key is live. */
+  readonly retiredBy?: string;
 }
+
+/** The columns every row carries; `retiredBy` is the one optional column beside them. */
+const COLUMNS: readonly string[] = ["owner", "default", "true", '"true"', "false", '"false"', '"x"', "numberRejected"];
 
 /** The record held this many rows before it became append-only (#1376); it never shrinks below it. */
 const PRE_REGISTRY_ROWS = 100;
@@ -62,6 +77,14 @@ const BASELINE_FILE = "packages/settings/src/__fixtures__/callout-settings-basel
 const baseline = JSON.parse(
   readFileSync(path.join(import.meta.dirname, "__fixtures__", "callout-settings-baseline.json"), "utf8"),
 ) as Record<string, BaselineRow>;
+
+const isRetired = (key: string): boolean => Object.hasOwn(baseline[key], "retiredBy");
+
+/** Rows whose key is still stored and read: every check of the schema and the registry applies to these. */
+const liveKeys = Object.keys(baseline).filter((key) => !isRetired(key));
+
+/** Rows a settings migration retired: their key must be gone, and nothing else of them is checked. */
+const retiredKeys = Object.keys(baseline).filter(isRetired);
 
 const registryKeys: readonly string[] = CALLOUT_SETTING_KEYS;
 
@@ -73,7 +96,24 @@ describe("callout settings baseline (#1350, #1376)", () => {
     expect(Object.keys(baseline).length).toBeGreaterThanOrEqual(PRE_REGISTRY_ROWS);
   });
 
-  it.each(registryKeys)("%s has a row in the record", (key) => {
+  it.each(Object.keys(baseline))("%s has exactly the record's columns", (key) => {
+    const row = baseline[key];
+
+    expect(
+      Object.keys(row)
+        .filter((column) => column !== "retiredBy")
+        .sort(),
+      `${key}'s row in ${BASELINE_FILE} carries exactly the record's columns, plus "retiredBy" once retired`,
+    ).toEqual([...COLUMNS].sort());
+
+    if (isRetired(key)) {
+      expect(row.retiredBy, `${key}'s "retiredBy" names the issue whose migration retired it, as "#<n>"`).toMatch(
+        /^#[1-9]\d*$/,
+      );
+    }
+  });
+
+  it.each(registryKeys)("%s has a live row in the record", (key) => {
     expect(
       Object.hasOwn(baseline, key),
       `${key} is in the callout registry but has no row in ${BASELINE_FILE}. ` +
@@ -82,18 +122,25 @@ describe("callout settings baseline (#1350, #1376)", () => {
         `and the coercion columns every key shares (true/"true" -> true, false/"false"/"x" -> false, numberRejected: true). ` +
         `Never regenerate or edit the existing rows — see the header of callout-settings-baseline.test.ts.`,
     ).toBe(true);
+    expect(
+      isRetired(key),
+      `${key} is in the callout registry, but its row in ${BASELINE_FILE} is marked "retiredBy": "${baseline[key].retiredBy}". ` +
+        `A retired key is never reused, since what users stored under it was migrated: ` +
+        `give the callout a new key and append a row for that one.`,
+    ).toBe(false);
   });
 
-  it.each(Object.keys(baseline))("%s is still in the registry", (key) => {
+  it.each(liveKeys)("%s is still in the registry", (key) => {
     expect(
       registryKeys.includes(key),
-      `${key} has a row in ${BASELINE_FILE} but is no longer in the callout registry. ` +
-        `A stored key is a published contract: dropping or renaming it needs a settings migration, ` +
-        `and its row stays in the record.`,
+      `${key} has a live row in ${BASELINE_FILE} but is no longer in the callout registry. ` +
+        `A stored key is a published contract: retiring or renaming it needs a settings migration ` +
+        `(global-settings-migrations.ts) for the value users stored under it, and then its row is marked ` +
+        `"retiredBy": "#<issue>" — never deleted or rewritten. See the header of callout-settings-baseline.test.ts.`,
     ).toBe(true);
   });
 
-  it.each(Object.keys(baseline))("%s keeps its default and coercion", (key) => {
+  it.each(liveKeys)("%s keeps its default and coercion", (key) => {
     const row = baseline[key];
     expect((GlobalSettingsSchema.parse({}) as Record<string, unknown>)[key]).toBe(row.default);
     expect(parseKey(key, true)).toBe(row.true);
@@ -104,11 +151,30 @@ describe("callout settings baseline (#1350, #1376)", () => {
     expect(!GlobalSettingsSchema.safeParse({ [key]: 1 }).success).toBe(row.numberRejected);
   });
 
-  it.each(Object.keys(baseline))("%s still silences the callout it always did", (key) => {
+  it.each(liveKeys)("%s still silences the callout it always did", (key) => {
     const [familyId, calloutId] = baseline[key].owner.split("/");
     const family = CALLOUT_FAMILIES.find((f) => f.id === familyId);
 
     expect(family, `no registry family "${familyId}"`).toBeDefined();
     expect(family && calloutIdForKey(family, key)).toBe(calloutId);
+  });
+
+  // One test over every retired row rather than one per row, so the rule is
+  // in the run while no key has been retired yet.
+  it("every retired key is gone from the registry and from the schema's defaults", () => {
+    const defaults = GlobalSettingsSchema.parse({});
+
+    for (const key of retiredKeys) {
+      const { retiredBy } = baseline[key];
+
+      expect(
+        registryKeys.includes(key),
+        `${key} is marked "retiredBy": "${retiredBy}" in ${BASELINE_FILE} but is still in the callout registry`,
+      ).toBe(false);
+      expect(
+        Object.hasOwn(defaults, key),
+        `${key} is marked "retiredBy": "${retiredBy}" in ${BASELINE_FILE} but GlobalSettingsSchema still defaults it`,
+      ).toBe(false);
+    }
   });
 });
