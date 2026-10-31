@@ -239,6 +239,13 @@ export class ExpansionAbort {
   constructor(readonly reason: string) {}
 }
 
+/**
+ * The bus id the frame preview plays under (issue #1124). Not a scenario:
+ * no contract is registered with it, so every lookup by it misses — no
+ * cooldown, no pending hold, nothing to stash when it is cut.
+ */
+export const FRAME_PREVIEW_ID = "(frame preview)";
+
 /** The context a fire's resolvers, predicates and gates read (`ScenarioContext`); `vars` fill in during expansion. */
 export function fireContext(event: SimEventOf<SimEventName> | null): ScenarioContext {
   return {
