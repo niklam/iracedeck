@@ -338,6 +338,9 @@ let instance: TranslatorInstance | null = null;
  */
 const tickListeners = new Set<() => void>();
 
+/** The listeners whose last call threw, so a listener failing every tick logs once, not at the tick rate. */
+const failingTickListeners = new Set<() => void>();
+
 /**
  * Registers `listener` to run at the end of the translator's own controller
  * callback (#1500), on every one: a connected tick, a connected callback
@@ -347,14 +350,17 @@ const tickListeners = new Set<() => void>();
  * That ordering is the contract; a second `sdkController` subscriber would
  * only have had the subscription order. It also runs when the translator
  * throws on the callback, before the throw goes on to the controller. A
- * listener that throws is logged and skipped: the next listener and the
- * translator's next tick still run. Returns the unsubscribe.
+ * listener that throws is skipped: the next listener and the translator's
+ * next tick still run. It is logged on the first throw of a run of failing
+ * calls, and again only after a call of it has succeeded. Returns the
+ * unsubscribe.
  */
 export function onTranslatorTick(listener: () => void): () => void {
   tickListeners.add(listener);
 
   return () => {
     tickListeners.delete(listener);
+    failingTickListeners.delete(listener);
   };
 }
 
@@ -363,7 +369,11 @@ function notifyTickListeners(logger: ILogger): void {
   for (const listener of tickListeners) {
     try {
       listener();
+      failingTickListeners.delete(listener);
     } catch (error) {
+      if (failingTickListeners.has(listener)) continue;
+
+      failingTickListeners.add(listener);
       logger.error("Translator tick listener failed");
       logger.debug(`Listener error: ${String(error)}`);
     }
@@ -1935,6 +1945,7 @@ export function _resetSimEventsIracing(): void {
 
   instance = null;
   tickListeners.clear();
+  failingTickListeners.clear();
 }
 
 // ── Internals ──────────────────────────────────────────────────────────────

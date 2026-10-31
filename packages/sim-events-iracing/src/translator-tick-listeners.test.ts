@@ -206,6 +206,29 @@ describe("onTranslatorTick (#1500)", () => {
     expect(logger.debug).toHaveBeenCalledWith("Listener error: Error: listener broke");
   });
 
+  it("logs a listener that keeps throwing once per run of failures, not at every tick", () => {
+    const logger = createMockLogger();
+    const controller = createMockController();
+    initializeSimEventsIracing(getEventBus(), controller, logger);
+    let broken = true;
+    onTranslatorTick(() => {
+      if (broken) throw new Error("listener broke");
+    });
+    const failures = (): number =>
+      vi.mocked(logger.error).mock.calls.filter(([message]) => message === "Translator tick listener failed").length;
+
+    for (let i = 0; i < 3; i += 1) controller.__tick(telemetry({ SessionNum: 2 }));
+
+    expect(failures()).toBe(1);
+
+    broken = false;
+    controller.__tick(telemetry({ SessionNum: 2 }));
+    broken = true;
+    controller.__tick(telemetry({ SessionNum: 2 }));
+
+    expect(failures()).toBe(2);
+  });
+
   it("still calls the listeners when the translator throws on the tick, and lets the throw reach the controller", () => {
     const controller = createMockController();
     initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
