@@ -147,7 +147,7 @@ function readReading(telemetry: TelemetryData | null, at: number): Reading | nul
 
   if (reading === null) return null;
 
-  const speed = reading.speed === null || reading.speed.speed === 0 ? PAUSED : reading.speed;
+  const speed = reading.speed === null || reading.speed.speed === 0 ? { ...PAUSED } : reading.speed;
 
   return { frame: reading.frame, speed, rate: reading.rate, at };
 }
