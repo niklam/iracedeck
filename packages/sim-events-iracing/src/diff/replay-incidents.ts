@@ -39,8 +39,9 @@
  *   recorder unseeded; the first eligible tick after it re-seeds both sources
  *   without emitting, so a count that rose while the driver was in the garage
  *   or the replay view is not stamped with the frame he came back on. That is
- *   why the diff runs BEFORE the translator's replay guard, and why its state
- *   is in `wipeStateForReplay`'s wiped set.
+ *   why the diff runs in the replay recorder (`replay-recorder.ts`), a
+ *   subscriber with no replay guard, and why its baselines are reset at both
+ *   edges of a replay view.
  * - **Session change** (`SessionNum` or `SessionUniqueID` moves) re-seeds.
  * - **The payload is the tick's own**: `frame` is the gate's frame, recorded
  *   raw (#1162: no lag correction; the later consumer subtracts its lead-in),
@@ -159,11 +160,11 @@ function readPlayerCount(telemetry: TelemetryData): number | null {
   return count >= 0 ? count : null;
 }
 
-/** The events {@link diffReplayIncidents} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`. */
+/** The events {@link diffReplayIncidents} emits (issue #1499): its emitter's type, and its row in `REPLAY_RECORDER_ORDER`. */
 export const REPLAY_INCIDENTS_EVENTS = ["replay.incident"] as const satisfies readonly SimEventName[];
 
 /**
- * @param inReplay - The translator's read of the controller's debounced replay state (#1324)
+ * @param inReplay - The controller's debounced replay state (#1324), as the replay recorder reads it on this tick
  */
 export function diffReplayIncidents(
   state: ReplayRecorderState,

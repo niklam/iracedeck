@@ -14,7 +14,7 @@
  * There are two classes of tick, and so two resolvers.
  *
  * **In the car** ({@link resolveReplayRecordTick}): a tick is eligible when it
- * is not in a replay — the translator's `inReplay`, the controller's debounced
+ * is not in a replay — `inReplay`, the controller's debounced
  * replay state (#1324): false only once `IsReplayPlaying` has read false for
  * the exit grace, and never in a saved replay (#604's `SimMode` — a `.rpy` has
  * nothing live in it), so a seek's blip tick is not eligible either —
@@ -42,9 +42,10 @@
  * What a recorder does with an ineligible tick is its own business, and the
  * shape is the same for each: mark itself unseeded (or break its run), so the
  * first eligible tick after it re-seeds every baseline without emitting. That
- * is also why a recorder runs BEFORE the translator's replay guard — the
- * guard's early return would hide exactly the ticks it has to notice it
- * cannot see, and the session-start recorder records from some of them.
+ * is also why the recorders run in their own subscriber
+ * (`replay-recorder.ts`), which has no replay guard — the translator's guard
+ * returns early on exactly the ticks a recorder has to notice it cannot see,
+ * and the session-start recorder records from some of them.
  *
  * A recorder that needs more of a tick than this (the lap record needs
  * `CarIdxLapCompleted`) adds its own condition on top; it never loosens this
@@ -70,8 +71,8 @@ export type ReplayRecordTick = {
 /**
  * The tick's session identity and live frame when a replay recorder may record
  * from it, `null` when it may not — the one statement of the gate in the
- * module comment. `inReplay` is the translator's read of the controller's
- * debounced replay state, taken as given.
+ * module comment. `inReplay` is the controller's debounced replay state, as
+ * the replay recorder reads it on this tick, taken as given.
  */
 export function resolveReplayRecordTick(telemetry: TelemetryData, inReplay: boolean): ReplayRecordTick | null {
   if (inReplay) return null;
@@ -140,8 +141,8 @@ export function resolveReplayLiveTick(
 
 /**
  * `WeekendInfo.SubSessionID`, or `null` when the session info, its
- * `WeekendInfo` or the id is not readable. The translator's session-identity
- * check (issue #1509) reads it this way: an offline session genuinely reads
+ * `WeekendInfo` or the id is not readable. The session-identity rule (issue
+ * #1509, `session-identity.ts`) reads it this way: an offline session genuinely reads
  * 0, so a transition tick with no session info must not read as a change to
  * offline and back.
  */

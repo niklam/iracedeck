@@ -46,8 +46,8 @@ function run(
 ): PendingEvent[] {
   const out: PendingEvent[] = [];
 
-  // `inReplay` is the translator's read of the controller's debounced replay
-  // state (#1324), which the diff takes as given; the tick's own
+  // `inReplay` is the replay recorder's read of the controller's debounced
+  // replay state (#1324), which the diff takes as given; the tick's own
   // `IsReplayPlaying` only decides which frame `resolveReplayFrame` reads.
   diffReplayLaps(
     state,

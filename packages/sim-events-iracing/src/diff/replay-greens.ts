@@ -13,8 +13,9 @@
  *   `ParadeLaps`. The state, not a flag bit: `StartGo` also rises on every
  *   caution restart, `Green` rises under a yellow-checkered finish, and a
  *   green can lead `StartGo` by a tick — the flag and start-light diffs tell
- *   those apart with the caution phase, which is post-guard state this diff
- *   cannot read. `SessionState` has one meaning here and needs none of it.
+ *   those apart with the caution phase, the translator's post-guard state,
+ *   which this diff does not read. `SessionState` has one meaning here and
+ *   needs none of it.
  *   `Invalid` is deliberately NOT a pre-green state for this edge, though
  *   `isPreGreen` counts it: an `Invalid → Racing` step is what a reconnect or
  *   a session-YAML reload mid-race looks like, and recording it would put a
@@ -27,10 +28,10 @@
  *   shared with `caution.ts`, not copied), while a caution is out. A green
  *   rising with `Caution` still set — a yellow-checkered tick — is not one.
  *   "A caution is out" is this diff's own reading, because the caution phase
- *   it would otherwise read is wiped on every replay tick: a caution bit was
- *   set on the previous eligible tick of this session, which the flags
- *   baseline already holds. Like that phase it falls the moment neither bit is
- *   set, so the restart is the green rising on the tick the bits drop, which
+ *   it would otherwise read is the translator's, wiped on every replay tick:
+ *   a caution bit was set on the previous eligible tick of this session,
+ *   which the flags baseline already holds. Like that phase it falls the
+ *   moment neither bit is set, so the restart is the green rising on the tick the bits drop, which
  *   is what both #1127 captures show (oval
  *   `0x10044600` → `0x80040004`). The unmeasured orderings — the bits dropping
  *   a tick before or after the green rises — record nothing, as they announce
@@ -53,9 +54,10 @@
  *   flip. So a driver who sat in the
  *   garage through the green (where iRacing reports `IsReplayPlaying: true`)
  *   gets no start entry and the press falls back, and a restart taken behind a
- *   replay glance is simply absent. This is why the diff runs BEFORE the
- *   translator's replay guard: the guard's early return would stop it on
- *   exactly the ticks it has to notice it cannot see.
+ *   replay glance is simply absent. This is why the diff runs in the replay
+ *   recorder (`replay-recorder.ts`), a subscriber with no replay guard: the
+ *   translator's guard returns early on exactly the ticks it has to notice it
+ *   cannot see.
  * - **Session change** (`SessionNum` or `SessionUniqueID` moves) re-seeds, so
  *   a caution of the old session is never read into the new one.
  * - **The payload is the edge tick's own**: `frame` is the gate's frame —
@@ -101,11 +103,11 @@ function hex(flags: number): string {
   return `0x${(flags >>> 0).toString(16).padStart(8, "0")}`;
 }
 
-/** The events {@link diffReplayGreens} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`. */
+/** The events {@link diffReplayGreens} emits (issue #1499): its emitter's type, and its row in `REPLAY_RECORDER_ORDER`. */
 export const REPLAY_GREENS_EVENTS = ["replay.greenFlag"] as const satisfies readonly SimEventName[];
 
 /**
- * @param inReplay - The translator's read of the controller's debounced replay state (#1324)
+ * @param inReplay - The controller's debounced replay state (#1324), as the replay recorder reads it on this tick
  * @param logger - Takes the per-edge debug line; silent when omitted
  */
 export function diffReplayGreens(

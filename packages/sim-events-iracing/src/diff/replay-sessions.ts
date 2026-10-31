@@ -33,7 +33,8 @@
  *   connection can read none, and a reading taken there would be filed under
  *   `SubSessionID` 0: the next tick, with session info, would agree with it and
  *   publish at once, before the store has opened the event's record (its
- *   subscriber runs after the translator on that tick), so the store would
+ *   subscriber runs after the translator's and the replay recorder's on that
+ *   tick), so the store would
  *   drop the event while the pair counted as published, and the session's
  *   start would never be recorded for that connection. Requiring session info
  *   on both ticks means the store has opened the record on the first of them.
@@ -48,17 +49,18 @@
  *   refused: the run is dropped, a debug line says so, and the first tick
  *   with a fresh clock starts the run that records it. Every later session
  *   of an event, a restarted offline event's included, is later on the tape.
- *   The latest start survives the wipes with the published list.
+ *   The latest start survives the resets with the published list.
  * - **A pair is published once**: `(sessionNum, sessionUniqueId)` already
  *   published for the event (`SubSessionID`) is never published again; the
  *   event is part of the key because the list outlives a session change and
  *   a later event in the same sim run can repeat the pair. A restarted offline event repeats a
  *   `sessionNum` under a new `sessionUniqueId` (maintainer, 2026-10-12), which
  *   is a new pair, published when it is seen, further along the tape.
- * - **Its state survives the translator's wipes**, unlike the other replay
- *   recorders': it records from replay ticks (out of the car at the live
- *   edge), so the wipe on entering and on leaving the replay says nothing
- *   about its readings, and a wiped published list would publish the session
+ * - **Its state survives the replay recorder's resets**, unlike the other
+ *   replay recorders' (`replay-recorder.ts`): it records from replay ticks
+ *   (out of the car at the live edge), so the reset on entering and on
+ *   leaving the replay, or at a session change, says nothing about its
+ *   readings, and a wiped published list would publish the session
  *   again on every trip between the car and the garage. Its own gate already
  *   breaks the run on every tick it may not read. Only a disconnect clears it;
  *   a reconnect into the same session publishes it once more, which the store
@@ -85,13 +87,13 @@ function pairKey(subSessionId: number, sessionNum: number, sessionUniqueId: numb
   return `${subSessionId}:${sessionNum}:${sessionUniqueId}`;
 }
 
-/** The events {@link diffReplaySessions} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`. */
+/** The events {@link diffReplaySessions} emits (issue #1499): its emitter's type, and its row in `REPLAY_RECORDER_ORDER`. */
 export const REPLAY_SESSIONS_EVENTS = ["replay.sessionStarted"] as const satisfies readonly SimEventName[];
 
 /**
  * @param sessionInfo - The controller's session info; null on a tick that has
  *   none yet, which records nothing and breaks the run
- * @param inReplay - The translator's read of the controller's debounced replay state (#1324)
+ * @param inReplay - The controller's debounced replay state (#1324), as the replay recorder reads it on this tick
  * @param replayOnlySession - The controller's sticky saved-replay answer (#604,
  *   `ReplayState.replayOnlySession`), which keeps its value through a tick whose
  *   session info reads null, where a per-tick `isReplayOnlySession` reads false

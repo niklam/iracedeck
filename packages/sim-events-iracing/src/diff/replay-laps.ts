@@ -31,7 +31,7 @@
  *   improbability `diff/laps.ts` accepts. A first crossing (−1 → 0) opens no
  *   wait: no lap was completed.
  * - **Gate: record only what is live and observable.** A tick is eligible
- *   when it is not in a replay — the translator's `inReplay`, the controller's
+ *   when it is not in a replay — `inReplay`, the controller's
  *   debounced replay state (#1324): false only once `IsReplayPlaying` has read
  *   false for the exit grace, and never in a saved replay (#604's `SimMode` —
  *   a `.rpy` has nothing live in it), so a seek's blip tick neither seeds nor
@@ -41,9 +41,10 @@
  *   without emitting, so a driver returning from the garage or the replay
  *   view to a field that crossed the line meanwhile produces no fabricated
  *   crossings — those laps are absent from the record and fall through to the
- *   walk. This is why the diff runs BEFORE the translator's replay guard: the
- *   guard's early return would stop it on exactly the ticks it has to notice
- *   it cannot see. The check itself is `resolveReplayRecordTick`
+ *   walk. This is why the diff runs in the replay recorder
+ *   (`replay-recorder.ts`), a subscriber with no replay guard: the
+ *   translator's guard returns early on exactly the ticks it has to notice it
+ *   cannot see. The check itself is `resolveReplayRecordTick`
  *   (`replay-record-gate.ts`), shared by every replay recorder so no two
  *   records can disagree about which ticks are live; this diff adds only
  *   that it needs `CarIdxLapCompleted` to be an array.
@@ -114,7 +115,7 @@ function seed(
   state.replayLapsTimeWait = [];
 }
 
-/** The events {@link diffReplayLaps} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`. */
+/** The events {@link diffReplayLaps} emits (issue #1499): its emitter's type, and its row in `REPLAY_RECORDER_ORDER`. */
 export const REPLAY_LAPS_EVENTS = ["replay.lapStarted", "replay.lapTimed"] as const satisfies readonly SimEventName[];
 
 export function diffReplayLaps(

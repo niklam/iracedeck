@@ -88,8 +88,8 @@ export type SessionIdentityReading = {
   /**
    * Whether this tick's session info is a saved replay
    * (`isReplayOnlySession`); `false` on a tick without a `SessionNum`, where
-   * the session info is not read. The translator's other pre-guard gates (the
-   * standing-start countdown) read this same answer.
+   * the session info is not read. The translator's standing-start countdown,
+   * a pre-guard gate, reads this same answer.
    */
   replayOnlySession: boolean;
   /** `WeekendInfo.SubSessionID` from {@link sessionInfo}, or `null` when not readable. */
