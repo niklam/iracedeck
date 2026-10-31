@@ -66,7 +66,9 @@ type MockController = SDKController & {
 
 /** The `translator.test.ts` controller double: `subscribe` replays the offline tick the real one sends. */
 function createMockController(): MockController {
-  let callback: TelemetryCallback | null = null;
+  // Several subscribers, notified in subscription order as `SDKController`
+  // does: the translator, then the replay recorder it starts (#1468).
+  const subscribers = new Map<string, TelemetryCallback>();
   let sessionInfo: Record<string, unknown> | null = null;
   // The debounced replay state the translator reads (#1324): the SDK's own
   // tracker, stepped on every tick before the callback and reset on a
@@ -74,12 +76,12 @@ function createMockController(): MockController {
   const replayState = new ReplayStateTracker();
 
   const controller = {
-    subscribe: (_id: string, cb: TelemetryCallback) => {
-      callback = cb;
+    subscribe: (id: string, cb: TelemetryCallback) => {
+      subscribers.set(id, cb);
       cb(null, false);
     },
-    unsubscribe: (_id: string) => {
-      callback = null;
+    unsubscribe: (id: string) => {
+      subscribers.delete(id);
     },
     getSessionInfo: () => sessionInfo,
     getReplayState: (nowMs: number = Date.now()) => replayState.read(nowMs),
@@ -93,7 +95,7 @@ function createMockController(): MockController {
       replayState.reset();
     }
 
-    callback?.(telemetry, isConnected);
+    for (const cb of [...subscribers.values()]) cb(telemetry, isConnected);
   };
   controller.__setSessionInfo = (info) => {
     sessionInfo = info;
@@ -285,6 +287,7 @@ function parts(overrides: Partial<SimStateParts> = {}): SimStateParts {
       pitSpeedLimitMps: 0,
       pitSpeedLimitKey: "",
     },
+    replayRecorder: null,
     ...overrides,
   };
 }
@@ -1154,7 +1157,7 @@ describe("simStateHeadline", () => {
       simStateHeadline({
         initialized: true,
         curatedError: "driver info is broken",
-        raw: { state: createInitialState(), instance: parts().instance, replay: null },
+        raw: { state: createInitialState(), instance: parts().instance, replay: null, replayRecorder: null },
       }),
     ).toEqual([
       ["Sim state", "figures unavailable (driver info is broken); the raw state is in the JSON file"],

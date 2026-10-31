@@ -38,7 +38,9 @@ function createMockLogger(): ILogger {
 type MockController = SDKController & { __tick: (telemetry: TelemetryData) => void };
 
 function createMockController(sessionType: string): MockController {
-  let callback: TelemetryCallback | null = null;
+  // Several subscribers, notified in subscription order as `SDKController`
+  // does: the translator, then the replay recorder it starts (#1468).
+  const subscribers = new Map<string, TelemetryCallback>();
   const sessionInfo = {
     SessionInfo: { Sessions: [{ SessionNum: 0, SessionType: sessionType }] },
     WeekendInfo: { TrackLength: "4.00 km" },
@@ -49,12 +51,12 @@ function createMockController(sessionType: string): MockController {
   const replayState = new ReplayStateTracker();
 
   const controller = {
-    subscribe: (_id: string, cb: TelemetryCallback) => {
-      callback = cb;
+    subscribe: (id: string, cb: TelemetryCallback) => {
+      subscribers.set(id, cb);
       cb(null, false);
     },
-    unsubscribe: (_id: string) => {
-      callback = null;
+    unsubscribe: (id: string) => {
+      subscribers.delete(id);
     },
     getSessionInfo: () => sessionInfo,
     getReplayState: (nowMs: number = Date.now()) => replayState.read(nowMs),
@@ -62,7 +64,8 @@ function createMockController(sessionType: string): MockController {
 
   controller.__tick = (telemetry) => {
     replayState.step(telemetry, sessionInfo, Date.now());
-    callback?.(telemetry, true);
+
+    for (const cb of [...subscribers.values()]) cb(telemetry, true);
   };
 
   return controller;

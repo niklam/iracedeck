@@ -82,46 +82,6 @@ export type RollingStartFormation = {
   firstFollowCarIdx: number | null;
 };
 
-/**
- * One car's open lap-time wait in the replay lap record (issue #1203): the
- * crossing that started `lap + 1` opened it, and it closes on the first tick
- * `CarIdxLastLapTime` moves off `baselineS` — or untimed when `ticksLeft` runs out.
- */
-export type ReplayLapTimeWait = {
-  /** The completed lap the time will belong to. */
-  lap: number;
-  /** `CarIdxLastLapTime` (seconds) the tick before the crossing; the refresh is a change from it. */
-  baselineS: number;
-  /** Ticks left before the wait closes with no time. */
-  ticksLeft: number;
-};
-
-/**
- * One other car's roster row as the replay incident record reads it (issue
- * #1426): its `CurDriverIncidentCount` (−1 when hidden or unreadable) and the
- * identity that count belongs to. `null` for an identity field the row lacks.
- */
-export type ReplayIncidentCarReading = {
-  count: number;
-  userId: number | null;
-  carNumberRaw: number | null;
-};
-
-/**
- * One reading of a session's start in the replay session record (issue
- * #1426): the frame the pair began at, by one live tick with session info. A
- * second such tick that agrees with it, for the same event and pair,
- * publishes.
- */
-export type ReplaySessionStartCandidate = {
-  /** `WeekendInfo.SubSessionID` on that tick; 0 for an offline session. */
-  subSessionId: number;
-  sessionNum: number;
-  sessionUniqueId: number;
-  /** `max(0, live frame − round(SessionTime × 60))` on that tick. */
-  start: number;
-};
-
 /** Live gap snapshot for one class-standings neighbor (issue #933). */
 export type GapNeighborState = {
   /** The neighbor's car index. */
@@ -1398,115 +1358,6 @@ export type TranslatorState = {
   /** Whether the aggregate tail already fired for the current episode. */
   opponentPitAggregateAnnounced: boolean;
 
-  // ── Replay lap record (issue #1203) ───────────────────────────────────
-  // Runs PRE-guard (`diff/replay-laps.ts`) and is deliberately NOT preserved
-  // by `wipeStateForReplay`: a replay glance makes every baseline meaningless,
-  // and the diff's own gate re-seeds on the first eligible tick anyway.
-  /**
-   * Whether the per-car baselines below hold a live tick's values. Every
-   * ineligible tick (replay on screen, replay-only session, no session, no
-   * frame) clears it, so the first eligible tick after it re-seeds silently.
-   */
-  replayLapsSeeded: boolean;
-  /** The `SessionNum` the baselines were seeded in; a change re-seeds. */
-  replayLapsSessionNum: number | null;
-  /** The `SessionUniqueID` the baselines were seeded in; a change re-seeds. */
-  replayLapsSessionUniqueId: number | null;
-  /** Previous-tick `CarIdxLapCompleted` per carIdx. */
-  replayLapsLastCompleted: number[];
-  /** Previous-tick `CarIdxLastLapTime` per carIdx (seconds), the lap-time wait's baseline. */
-  replayLapsLastLapTime: number[];
-  /**
-   * Per carIdx, the lap-time wait a crossing opened: the completed lap the
-   * time will belong to, the `CarIdxLastLapTime` it must change from, and the
-   * ticks left before the wait closes untimed. `null` while no wait is open.
-   */
-  replayLapsTimeWait: Array<ReplayLapTimeWait | null>;
-
-  // ── Replay green record (issue #1354) ─────────────────────────────────
-  // Runs PRE-guard (`diff/replay-greens.ts`) beside the lap record above and,
-  // like it, is deliberately NOT preserved by `wipeStateForReplay`: the
-  // baselines are a previous tick's readings, which a replay glance makes
-  // meaningless, and the diff's own gate re-seeds on the first eligible tick.
-  /**
-   * Whether the baselines below hold an eligible tick's values. Every
-   * ineligible tick (a replay, no session, no frame) clears it, so the first
-   * eligible tick after it re-seeds silently — even across a `Racing` flip.
-   */
-  replayGreensSeeded: boolean;
-  /** The `SessionNum` the baselines were seeded in; a change re-seeds. */
-  replayGreensSessionNum: number | null;
-  /** The `SessionUniqueID` the baselines were seeded in; a change re-seeds. */
-  replayGreensSessionUniqueId: number | null;
-  /**
-   * `SessionState` on the previous eligible tick, the race start's baseline:
-   * the start is `Racing` read after `GetInCar`, `Warmup` or `ParadeLaps`. A
-   * tick that carries no `SessionState` is held as `Invalid`, which is not a
-   * pre-green state for that edge.
-   */
-  replayGreensLastSessionState: number;
-  /**
-   * `SessionFlags` on the previous eligible tick: the baseline a `Green`
-   * rising edge is read against, and the recorder's own "a caution is out" —
-   * a caution bit (`Caution` or `CautionWaving`) set on that tick. It stands
-   * in for `cautionPhase`, which is wiped on every replay tick, and like that
-   * phase it falls the moment neither bit is set, so a restart is the green
-   * rising on the tick the caution bits drop. Re-seeded, with the rest, by the
-   * first eligible tick after an ineligible one.
-   */
-  replayGreensLastFlags: number;
-
-  // ── Replay session record (issue #1426) ───────────────────────────────
-  // Runs PRE-guard (`diff/replay-sessions.ts`) and, UNLIKE the two records
-  // above, is PRESERVED by `wipeStateForReplay` and by `resetPerSessionState`:
-  // it records from replay ticks too (out of the car at the live edge), so a
-  // replay edge says nothing about its readings, and a wiped published list
-  // would publish a session again on every trip between the car and the
-  // garage. Its own gate breaks the run on every tick it may not read. Cleared
-  // only by a disconnect.
-  /**
-   * The previous live tick's reading of a session's start, the run a second
-   * agreeing reading publishes; `null` after an ineligible tick, a published
-   * pair's tick, or a publish.
-   */
-  replaySessionsCandidate: ReplaySessionStartCandidate | null;
-  /** `"<subSessionId>:<sessionNum>:<sessionUniqueId>"` of every pair already published; never published again. */
-  replaySessionsPublished: string[];
-  /**
-   * The latest start published, per `SubSessionID`. A candidate start for a
-   * new pair that does not come after it (beyond the agreement tolerance) is
-   * a clock still reading the session before, and is refused.
-   */
-  replaySessionsLatestStart: Record<number, number>;
-
-  // ── Replay incident record (issue #1426) ──────────────────────────────
-  // Runs PRE-guard (`diff/replay-incidents.ts`) on the lap record's gate and,
-  // like the lap and green records, is deliberately NOT preserved by
-  // `wipeStateForReplay`: its baselines are a previous eligible tick's counts,
-  // which a replay view makes meaningless, and the first eligible tick back
-  // re-seeds them without emitting.
-  /**
-   * Whether the baselines below hold an eligible tick's values. Every
-   * ineligible tick clears it, so the first eligible tick after it re-seeds
-   * silently.
-   */
-  replayIncidentsSeeded: boolean;
-  /** The `SessionNum` the baselines were seeded in; a change re-seeds. */
-  replayIncidentsSessionNum: number | null;
-  /** The `SessionUniqueID` the baselines were seeded in; a change re-seeds. */
-  replayIncidentsSessionUniqueId: number | null;
-  /** `PlayerCarMyIncidentCount` on the previous eligible tick; `null` when it read none. */
-  replayIncidentsLastPlayerCount: number | null;
-  /**
-   * Each other car's roster reading per carIdx on the previous eligible tick:
-   * its `CurDriverIncidentCount` with the `UserID` and `CarNumberRaw` it
-   * belongs to. A count of −1 (the sim hiding it) is no baseline, a slot whose
-   * identity differs on the next tick is none either, and a slot the roster
-   * did not hold is absent. The array is shared with the roster memo of
-   * `diff/replay-incidents.ts` and never mutated.
-   */
-  replayIncidentsLastCarReadings: readonly ReplayIncidentCarReading[];
-
   // ── Opponent penalty flags (issue #936) ───────────────────────────────
   /** First tick seeds the per-car penalty-bit store silently. */
   opponentFlagsInitialized: boolean;
@@ -2033,29 +1884,6 @@ export function createInitialState(): TranslatorState {
     opponentPitCarCooldownUntil: [],
     opponentPitRecentEntries: [],
     opponentPitAggregateAnnounced: false,
-
-    replayLapsSeeded: false,
-    replayLapsSessionNum: null,
-    replayLapsSessionUniqueId: null,
-    replayLapsLastCompleted: [],
-    replayLapsLastLapTime: [],
-    replayLapsTimeWait: [],
-
-    replayGreensSeeded: false,
-    replayGreensSessionNum: null,
-    replayGreensSessionUniqueId: null,
-    replayGreensLastSessionState: 0,
-    replayGreensLastFlags: 0,
-
-    replaySessionsCandidate: null,
-    replaySessionsPublished: [],
-    replaySessionsLatestStart: {},
-
-    replayIncidentsSeeded: false,
-    replayIncidentsSessionNum: null,
-    replayIncidentsSessionUniqueId: null,
-    replayIncidentsLastPlayerCount: null,
-    replayIncidentsLastCarReadings: [],
 
     opponentFlagsInitialized: false,
     opponentFlagSeededAt: 0,

@@ -216,12 +216,14 @@ export type SpeakGate = {
  *
  * The order is checked, not trusted (#1499): `ends-on-order.test.ts` in
  * `@iracedeck/race-engineer-wiring` runs every registered contract with an
- * `endsOn` through `findEndsOnOrderViolations` over the iRacing translator's
- * `TICK_ORDER` (`@iracedeck/sim-events-iracing`, `src/tick-order.ts`), the
- * table of a tick's publishing stages in bus order that the translator's own
- * tests prove is the code. It fails when a stage that can publish the trigger
- * comes after one that can publish the end: move the trigger's diff call ahead
- * of the end's in `handleTick`, and in `TICK_ORDER`. It fails closed when one
+ * `endsOn` through `findEndsOnOrderViolations` over the iRacing side's
+ * `CONTROLLER_TICK_ORDER` (`@iracedeck/sim-events-iracing`,
+ * `src/tick-order.ts`), the table of one controller tick's publishing stages
+ * in bus order — the translator's `TICK_ORDER`, then the replay recorder's
+ * `REPLAY_RECORDER_ORDER` — that the package's own tests prove is the code.
+ * It fails when a stage that can publish the trigger comes after one that can
+ * publish the end: move the trigger's diff call ahead of the end's in the tick
+ * that calls them, and in its table. It fails closed when one
  * stage can publish both, since the table cannot see inside a stage: prove the
  * order in that module's own tests, then add an exemption for the pair to
  * the wiring test, citing that test (it has no exemption list until one is

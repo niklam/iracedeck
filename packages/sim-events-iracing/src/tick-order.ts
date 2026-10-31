@@ -1,17 +1,26 @@
 /**
- * The order in which one translator tick publishes its events (issue #1499).
+ * The order in which one controller tick publishes its events (issues #1499,
+ * #1468).
  *
  * #1407 gave the Race Engineer DSL `endsOn`: a contract's line is dropped once
  * its `endsOn.event` arrives. That only works if the trigger (`when.event`) is
- * never published AFTER the end event in the same `handleTick` call — published
- * after, the line plays once its condition has already stopped holding.
+ * never published AFTER the end event on the same tick — published after, the
+ * line plays once its condition has already stopped holding.
  * `pit-crew.limiter-dropped` (trigger `limiter.dropped`, end `pitLane.exited`)
  * is the first such contract, and it held only because `diffLimiter` happens
- * to be called before `diffPitLane`. This table makes that order a checked
- * fact for every `endsOn` contract: `tick-order.test.ts` proves the table is
+ * to be called before `diffPitLane`. These tables make that order a checked
+ * fact for every `endsOn` contract: `tick-order.test.ts` proves the tables are
  * the code (it spies on the real call order and the real publishes), and
- * {@link findEndsOnOrderViolations} answers, from the table alone, whether a
+ * {@link findEndsOnOrderViolations} answers, from a table alone, whether a
  * trigger can come after its end.
+ *
+ * `initializeSimEventsIracing` subscribes two subscribers to the SDK
+ * controller, which notifies them in subscription order on every tick: the
+ * translator (`handleTick`, {@link TICK_ORDER}), then the replay recorder
+ * (`replay-recorder.ts`, {@link REPLAY_RECORDER_ORDER}, #1468). Every publish
+ * of the second comes after every publish of the first, so what the bus sees
+ * on one tick is the two tables end to end: {@link CONTROLLER_TICK_ORDER},
+ * the one an `endsOn` check reads.
  *
  * What it proves: the order of STAGES. It does not prove that two events can
  * co-occur on one tick, so it is conservative — a pair the sim could never
@@ -59,6 +68,7 @@ import { TRACK_WETNESS_EVENTS } from "./diff/track-wetness.js";
  * - `stage` — the diff function's name, or a label for a publish site in
  *   `translator.ts` itself.
  * - `source` — where the stage lives: `diff/<module>.ts` or `translator.ts`.
+ *   Which subscriber calls it is the table it is in.
  * - `via` — `direct`: the stage's publishes reach the bus the moment it makes
  *   them; `pending`: they are queued and flushed at the end of the tick, in
  *   call order, after every direct publish.
@@ -76,8 +86,8 @@ export type TickStage = {
 const TEARDOWN_EVENTS = ["radar.changed", "pitSpeeding.ended"] as const satisfies readonly SimEventName[];
 
 /**
- * Every stage that can publish during one `handleTick` call, in the order its
- * publishes reach the bus. A stage that runs only on some ticks — a session
+ * Every stage that can publish during one `handleTick` call — the translator's
+ * part of a controller tick — in the order its publishes reach the bus. A stage that runs only on some ticks — a session
  * change, the entry into a replay, which returns before the live diffs — is
  * listed where it runs. A reorder of any diff call in `handleTick`, or a new
  * call that can publish, must update this table; `tick-order.test.ts` fails
@@ -96,10 +106,6 @@ export const TICK_ORDER: readonly TickStage[] = [
   },
   { stage: "session.changed (session change)", source: "translator.ts", via: "direct", events: ["session.changed"] },
   { stage: "diffStartCountdown", source: "diff/start-lights.ts", via: "direct", events: START_COUNTDOWN_EVENTS },
-  { stage: "diffReplayLaps", source: "diff/replay-laps.ts", via: "direct", events: REPLAY_LAPS_EVENTS },
-  { stage: "diffReplayGreens", source: "diff/replay-greens.ts", via: "direct", events: REPLAY_GREENS_EVENTS },
-  { stage: "diffReplaySessions", source: "diff/replay-sessions.ts", via: "direct", events: REPLAY_SESSIONS_EVENTS },
-  { stage: "diffReplayIncidents", source: "diff/replay-incidents.ts", via: "direct", events: REPLAY_INCIDENTS_EVENTS },
   { stage: "diffFirstOnTrack", source: "translator.ts", via: "direct", events: ["driver.firstOnTrack"] },
   // The replay guard's entry edge; the tick returns right after it.
   {
@@ -142,6 +148,31 @@ export const TICK_ORDER: readonly TickStage[] = [
   { stage: "diffPitSpeeding", source: "diff/pit-speeding.ts", via: "pending", events: PIT_SPEEDING_EVENTS },
   { stage: "diffTrackWetness", source: "diff/track-wetness.ts", via: "pending", events: TRACK_WETNESS_EVENTS },
 ];
+
+/**
+ * Every stage that can publish during one tick of the replay recorder
+ * (`replay-recorder.ts`, issue #1468), in the order its publishes reach the
+ * bus. The recorder has no replay guard and no pending list: each of its four
+ * recorders runs on every tick and publishes the moment it emits. A reorder
+ * of its calls, or a new call that can publish, must update this table;
+ * `tick-order.test.ts` fails until it does.
+ */
+export const REPLAY_RECORDER_ORDER: readonly TickStage[] = [
+  { stage: "diffReplayLaps", source: "diff/replay-laps.ts", via: "direct", events: REPLAY_LAPS_EVENTS },
+  { stage: "diffReplayGreens", source: "diff/replay-greens.ts", via: "direct", events: REPLAY_GREENS_EVENTS },
+  { stage: "diffReplaySessions", source: "diff/replay-sessions.ts", via: "direct", events: REPLAY_SESSIONS_EVENTS },
+  { stage: "diffReplayIncidents", source: "diff/replay-incidents.ts", via: "direct", events: REPLAY_INCIDENTS_EVENTS },
+];
+
+/**
+ * Every stage that can publish during one SDK-controller tick, in the order the
+ * bus sees its publishes: {@link TICK_ORDER}, then {@link REPLAY_RECORDER_ORDER},
+ * because `initializeSimEventsIracing` subscribes the translator first and the
+ * controller notifies in subscription order. The table an `endsOn` check reads
+ * (`race-engineer-wiring`'s `ends-on-order.test.ts`): a trigger can be
+ * published after its end by a later subscriber as surely as by a later diff.
+ */
+export const CONTROLLER_TICK_ORDER: readonly TickStage[] = [...TICK_ORDER, ...REPLAY_RECORDER_ORDER];
 
 /** One way `trigger` can be published after `end` in one tick, with a message fit for a test failure. */
 export type EndsOnOrderViolation =
@@ -187,7 +218,7 @@ export function findEndsOnOrderViolations(
       violations.push({
         kind: "never-published",
         event,
-        message: `${pair}: no stage of TICK_ORDER publishes \`${event}\` — the translator never emits it, so the pair cannot be checked (misspelt or dropped event?).`,
+        message: `${pair}: no stage of the order publishes \`${event}\` — no subscriber of the tick emits it, so the pair cannot be checked (misspelt or dropped event?).`,
       });
     }
   }
@@ -202,7 +233,7 @@ export function findEndsOnOrderViolations(
           kind: "same-stage",
           stage: triggerStage,
           message:
-            `${pair}: \`${triggerStage}\` publishes both, and TICK_ORDER cannot see the order inside one stage, so this fails closed. ` +
+            `${pair}: \`${triggerStage}\` publishes both, and the order table cannot see the order inside one stage, so this fails closed. ` +
             `Prove in that module's own tests that one call never emits \`${trigger}\` after \`${end}\` (drive a single call that would emit both and assert the emit order, ` +
             `or show the two are gated apart), then add an exemption for this pair to the check that applies this one (\`race-engineer-wiring\`'s \`ends-on-order.test.ts\`, which has no exemption list until one is needed), citing that test.`,
         });
@@ -213,7 +244,7 @@ export function findEndsOnOrderViolations(
           endStage,
           message:
             `${pair}: \`${triggerStage}\` (stage ${i}) publishes \`${trigger}\` after \`${endStage}\` (stage ${j}) publishes \`${end}\` on the same tick, ` +
-            `so the line could play after its condition ended. Move \`${triggerStage}\` ahead of \`${endStage}\` in handleTick and in TICK_ORDER.`,
+            `so the line could play after its condition ended. Move \`${triggerStage}\` ahead of \`${endStage}\` in the tick that calls them and in its table (\`tick-order.ts\`).`,
         });
       }
     }

@@ -5,8 +5,8 @@
  * telemetry it computed it from, so a support case can tell a wrong input
  * from a wrong calculation. This module is the SHAPE of the translator's
  * section: curated keys first (`fuel`, `order`, `gaps`, `trackGaps`,
- * `opponentFlags`, `caution`, `rollingStart`, `session`), then `raw` — the whole `TranslatorState` and the
- * instance's own flags, uncurated.
+ * `opponentFlags`, `caution`, `rollingStart`, `session`), then `raw` — the whole `TranslatorState`, the
+ * instance's own flags and the replay recorder's state, uncurated.
  *
  * `readSimState()` in `translator.ts` gathers the parts, because the
  * translator instance is visible only there; everything here is pure. Three
@@ -42,6 +42,7 @@ import {
 } from "./diff/fuel-laps-left.js";
 import type { FuelLap, FuelLapTracker, FuelStats } from "./diff/fuel-laps.js";
 import type { PaceLineup } from "./diff/pace-lineup.js";
+import type { ReplayRecorderSnapshot } from "./replay-recorder.js";
 import type {
   CautionEpisode,
   CautionPhase,
@@ -154,8 +155,18 @@ export type SimSessionState = {
   raceFinished: boolean;
 };
 
-/** The uncurated half: the whole `TranslatorState`, the instance's own flags and the controller's replay state. */
-export type SimRawState = { state: TranslatorState; instance: SimInstanceFlags; replay: ReplayState };
+/**
+ * The uncurated half: the whole `TranslatorState`, the instance's own flags,
+ * the controller's replay state, and the replay recorder's own state (issue
+ * #1468: the recorders' members left `TranslatorState` for it) — `null` while
+ * no recorder runs.
+ */
+export type SimRawState = {
+  state: TranslatorState;
+  instance: SimInstanceFlags;
+  replay: ReplayState;
+  replayRecorder: ReplayRecorderSnapshot | null;
+};
 
 /**
  * The translator's state for one Telemetry Snapshot (issue #1387), in one of
@@ -263,6 +274,8 @@ export type SimStateParts = {
   session: SimSessionState;
   state: TranslatorState;
   instance: SimInstanceFlags;
+  /** The replay recorder's state (`ReplayRecorder.read()`), `null` while no recorder runs. */
+  replayRecorder: ReplayRecorderSnapshot | null;
 };
 
 /**
@@ -455,7 +468,7 @@ export function buildSimState(parts: SimStateParts): SimStateSnapshot {
     caution: parts.caution,
     rollingStart: parts.rollingStart,
     session: parts.session,
-    raw: { state, instance: parts.instance, replay: parts.replay },
+    raw: { state, instance: parts.instance, replay: parts.replay, replayRecorder: parts.replayRecorder },
   };
 }
 

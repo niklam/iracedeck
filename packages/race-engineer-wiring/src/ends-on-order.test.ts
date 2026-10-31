@@ -6,19 +6,22 @@ import {
 } from "@iracedeck/audio-scenarios";
 import { _resetEventBus, initializeEventBus, type SimEventName } from "@iracedeck/event-bus";
 import { silentLogger } from "@iracedeck/logger";
-import { findEndsOnOrderViolations, TICK_ORDER, type TickStage } from "@iracedeck/sim-events-iracing";
+import { CONTROLLER_TICK_ORDER, findEndsOnOrderViolations, type TickStage } from "@iracedeck/sim-events-iracing";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { createIracingSimRuntime } from "./sim-runtime.js";
 import { wireRaceEngineer } from "./wire-race-engineer.js";
 
 // An `endsOn` contract (#1407) drops its line once the end event arrives, which
-// only works if the translator never publishes the contract's trigger AFTER its
-// end event within one tick (#1499). The translator side of that is
-// `TICK_ORDER` and `findEndsOnOrderViolations` in `@iracedeck/sim-events-iracing`,
-// proved against `handleTick` by its `tick-order.test.ts`. This is where the
-// translator meets the catalog, so the pairing is checked here: every contract
-// the production registration (`wireRaceEngineer`) makes, read back through
+// only works if the sim side never publishes the contract's trigger AFTER its
+// end event within one tick (#1499). The iRacing side of that is
+// `CONTROLLER_TICK_ORDER` and `findEndsOnOrderViolations` in
+// `@iracedeck/sim-events-iracing`: every publish of one controller tick in bus
+// order — the translator's `handleTick`, then the replay recorder that
+// `initializeSimEventsIracing` subscribes after it (#1468) — proved against the
+// code by its `tick-order.test.ts`. This is where the sim side meets the
+// catalog, so the pairing is checked here: every contract the production
+// registration (`wireRaceEngineer`) makes, read back through
 // `engine.contracts()`, never a hand-picked list.
 //
 // No exemption list: a `same-stage` violation fails closed, and its message
@@ -40,7 +43,7 @@ function endsOnOrderFailures(contracts: readonly EndsOnPair[], order: readonly T
 
     if (event === null) {
       failures.push(
-        `${id}: carries endsOn \`${endsOnEvent}\` (#1407) but no \`when.event\`, so whether the translator publishes its trigger before \`${endsOnEvent}\` cannot be checked against TICK_ORDER (#1499). Give it a \`when\`, or drop the \`endsOn\`.`,
+        `${id}: carries endsOn \`${endsOnEvent}\` (#1407) but no \`when.event\`, so whether the sim side publishes its trigger before \`${endsOnEvent}\` cannot be checked against CONTROLLER_TICK_ORDER (#1499). Give it a \`when\`, or drop the \`endsOn\`.`,
       );
       continue;
     }
@@ -49,7 +52,7 @@ function endsOnOrderFailures(contracts: readonly EndsOnPair[], order: readonly T
 
     if (violations.length > 0) {
       failures.push(
-        `${id}: endsOn (#1407) needs its trigger published before its end event within one tick, and TICK_ORDER allows otherwise (#1499):\n` +
+        `${id}: endsOn (#1407) needs its trigger published before its end event within one tick, and CONTROLLER_TICK_ORDER allows otherwise (#1499):\n` +
           violations.map((v) => `  - [${v.kind}] ${v.message}`).join("\n"),
       );
     }
@@ -67,7 +70,7 @@ const EMPTY_MANIFEST: Parameters<typeof initializeAudioScenarios>[2] = {
   ticks: { open: "", close: "" },
 };
 
-describe("endsOn trigger/end order against the translator's tick (#1407, #1499)", () => {
+describe("endsOn trigger/end order against one controller tick (#1407, #1499, #1468)", () => {
   let engine: IScenarioEngine;
   let endsOnContracts: readonly ContractReport[];
 
@@ -91,8 +94,8 @@ describe("endsOn trigger/end order against the translator's tick (#1407, #1499)"
     expect(endsOnContracts.length, "endsOn contracts registered by wireRaceEngineer").toBeGreaterThanOrEqual(1);
   });
 
-  it("never lets the translator publish a contract's trigger after its endsOn event within one tick", () => {
-    expect(endsOnOrderFailures(endsOnContracts, TICK_ORDER)).toEqual([]);
+  it("never lets one controller tick publish a contract's trigger after its endsOn event", () => {
+    expect(endsOnOrderFailures(endsOnContracts, CONTROLLER_TICK_ORDER)).toEqual([]);
   });
 });
 
@@ -104,7 +107,7 @@ describe("endsOnOrderFailures (positive controls)", () => {
           { id: "test.ok", event: "limiter.dropped", endsOnEvent: "pitLane.exited" },
           { id: "test.plain", event: "pitLane.exited", endsOnEvent: null },
         ],
-        TICK_ORDER,
+        CONTROLLER_TICK_ORDER,
       ),
     ).toEqual([]);
   });
@@ -112,7 +115,7 @@ describe("endsOnOrderFailures (positive controls)", () => {
   it("reports a reversed pair, naming the contract, both issues and the stages", () => {
     const [failure, ...rest] = endsOnOrderFailures(
       [{ id: "test.reversed", event: "pitLane.exited", endsOnEvent: "limiter.dropped" }],
-      TICK_ORDER,
+      CONTROLLER_TICK_ORDER,
     );
 
     expect(rest).toEqual([]);
@@ -127,7 +130,7 @@ describe("endsOnOrderFailures (positive controls)", () => {
   it("reports an end event no stage publishes, rather than passing vacuously", () => {
     const [failure] = endsOnOrderFailures(
       [{ id: "test.misspelt", event: "limiter.dropped", endsOnEvent: "pitLane.exitted" as SimEventName }],
-      TICK_ORDER,
+      CONTROLLER_TICK_ORDER,
     );
 
     expect(failure).toContain("test.misspelt");
@@ -151,7 +154,7 @@ describe("endsOnOrderFailures (positive controls)", () => {
   it("reports an endsOn contract with no trigger event, which cannot be checked", () => {
     const failures = endsOnOrderFailures(
       [{ id: "test.fire-only", event: null, endsOnEvent: "pitLane.exited" }],
-      TICK_ORDER,
+      CONTROLLER_TICK_ORDER,
     );
 
     expect(failures).toHaveLength(1);

@@ -2,7 +2,7 @@ import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { type ILogger, silentLogger } from "@iracedeck/logger";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createInitialState, type TranslatorState } from "../state.js";
+import { createInitialReplayRecorderState, type ReplayRecorderState } from "../replay-recorder-state.js";
 import { diffReplaySessions, SESSION_START_AGREEMENT_FRAMES } from "./replay-sessions.js";
 import type { PendingEvent } from "./types.js";
 
@@ -63,7 +63,7 @@ function at(where: Where, o: TickOverrides = {}): TelemetryData {
 }
 
 function run(
-  state: TranslatorState,
+  state: ReplayRecorderState,
   telemetry: TelemetryData,
   opts: {
     inReplay?: boolean;
@@ -101,10 +101,10 @@ function twoTicks(where: Where, o: TickOverrides & { frame: number; time: number
 }
 
 describe("diffReplaySessions", () => {
-  let state: TranslatorState;
+  let state: ReplayRecorderState;
 
   beforeEach(() => {
-    state = createInitialState();
+    state = createInitialReplayRecorderState();
   });
 
   function feed(ticks: TelemetryData[], opts?: Parameters<typeof run>[2]): PendingEvent[] {
@@ -148,7 +148,7 @@ describe("diffReplaySessions", () => {
     expect(SESSION_START_AGREEMENT_FRAMES).toBe(2);
     expect(feed([inCar({ frame: 36_000, time: 0 }), inCar({ frame: 36_002, time: 0 })])).toEqual([started(36_002)]);
 
-    state = createInitialState();
+    state = createInitialReplayRecorderState();
     expect(feed([inCar({ frame: 36_000, time: 0 }), inCar({ frame: 36_003, time: 0 })])).toEqual([]);
   });
 

@@ -10,7 +10,7 @@ import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { createInitialState } from "../../state.js";
+import { createInitialReplayRecorderState } from "../../replay-recorder-state.js";
 import { LIVE_EDGE_MAX_FRAMES, resolveReplayLiveTick } from "../replay-record-gate.js";
 import { diffReplaySessions } from "../replay-sessions.js";
 import type { PendingEvent } from "../types.js";
@@ -95,7 +95,7 @@ describe("replay-live-edge-20260929 fixture", () => {
   });
 
   it("records the session's start from the live edge, the frame the scrubbed-back snapshot's sum also gives", () => {
-    const state = createInitialState();
+    const state = createInitialReplayRecorderState();
     const out: PendingEvent[] = [];
     // The tick after the snapshot: playback at 1x moves the cursor one frame
     // and the clock one frame's time, and the cursor stays at the edge.
