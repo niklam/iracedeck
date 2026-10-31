@@ -98,6 +98,7 @@ import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import type { ILogger } from "@iracedeck/logger";
 import { silentLogger } from "@iracedeck/logger";
 
+import { ContractRegistry } from "./contract-registry.js";
 import type {
   ResolvedStep,
   Scenario,
@@ -106,7 +107,7 @@ import type {
   SpeakGate,
   VocabularyResolver,
 } from "./dsl.js";
-import { applyBase, DEFAULT_FRAME, DEFAULT_MAX_QUEUE_WAIT_MS, DEFAULT_WEIGHT, NO_FRAME, resolveStep } from "./dsl.js";
+import { applyBase, DEFAULT_MAX_QUEUE_WAIT_MS, DEFAULT_WEIGHT, NO_FRAME, resolveStep } from "./dsl.js";
 import {
   type ActiveFire,
   type BusState,
@@ -133,7 +134,6 @@ import {
   compileVoiceScript,
 } from "./script-compiler.js";
 import { isStatePartError, readStatePart, type StatePartError } from "./state-part.js";
-import { validateScenario } from "./validation.js";
 
 // Re-export so existing consumers of `interpreter.js` keep their import paths.
 export { type AudioAssetsManifest, manifestVoices } from "./manifest.js";
@@ -509,7 +509,8 @@ class ScenarioEngine implements IScenarioEngine {
    */
   private readonly getFrameOptions: () => FrameOptions;
 
-  private readonly scenarios = new Map<string, CompiledScenario>();
+  /** The registered contracts; the facade runs the registration sequence over it (`registerEntry`). */
+  private readonly registry: ContractRegistry;
   private readonly pools = new Map<string, PoolState>();
   private readonly vars = new Map<string, VocabularyResolver<string | null>>();
   /** Parallel to `vars`: the description each var was registered with (`""` when none). */
@@ -600,6 +601,7 @@ class ScenarioEngine implements IScenarioEngine {
     this.logger = logger;
     this.getActiveVoice = getActiveVoice;
     this.getFrameOptions = getFrameOptions;
+    this.registry = new ContractRegistry(logger);
     this.clipSet = new Set(manifest.clips);
     // Subscribed here, before any contract can register, so that on a
     // `session.changed` it runs FIRST (the bus dispatches in subscription
@@ -628,7 +630,7 @@ class ScenarioEngine implements IScenarioEngine {
 
     this.endSubscriptions.clear();
 
-    for (const entry of this.scenarios.values()) {
+    for (const entry of this.registry.entries.values()) {
       entry.unsubscribe?.();
       entry.unsubscribe = null;
 
@@ -696,7 +698,7 @@ class ScenarioEngine implements IScenarioEngine {
    * compiled scripts dirty.
    */
   private registerEntry(s: ScenarioContract, resolvedSequence: ResolvedStep[] | null): void {
-    const existing = this.scenarios.get(s.id);
+    const existing = this.registry.get(s.id);
 
     if (existing) {
       this.logger.warn(`Scenario "${s.id}" redefined; replacing previous definition`);
@@ -708,29 +710,16 @@ class ScenarioEngine implements IScenarioEngine {
       }
     }
 
-    const entry: CompiledScenario = {
-      raw: s,
-      resolvedSequence,
-      frame: s.frame ?? DEFAULT_FRAME,
-      enabled: true,
-      unsubscribe: null,
-      lastFireAt: 0,
-      pendingTriggerTimer: null,
-    };
-
-    this.scenarios.set(s.id, entry);
+    const entry = this.registry.store(s, resolvedSequence);
     this.markScriptsDirty();
-    this.warnCrossBusQueueBehind(entry);
-    this.warnQueueBehindCycle(entry);
+    this.registry.warnCrossBusQueueBehind(entry);
+    this.registry.warnQueueBehindCycle(entry);
 
-    const { errors, warnings } = validateScenario(
-      s,
-      resolvedSequence,
-      this.scenarios,
-      this.pools,
-      this.vars,
-      this.manifest,
-    );
+    const { errors, warnings } = this.registry.validate(entry, {
+      pools: this.pools,
+      vars: this.vars,
+      manifest: this.manifest,
+    });
 
     if (warnings.length > 0) {
       this.logger.warn(`Scenario "${s.id}" has validation warnings:\n  - ${warnings.join("\n  - ")}`);
@@ -748,84 +737,6 @@ class ScenarioEngine implements IScenarioEngine {
     }
 
     if (s.endsOn) this.subscribeToEnd(s.endsOn.event);
-  }
-
-  /**
-   * A `queueBehind` relation is per bus — the queue it concerns is the
-   * bus's — so an id on another bus can never match, and nothing would
-   * ever say so (issue #1108). Warned once, at whichever registration makes
-   * the mismatch visible: this contract naming an already-registered id on
-   * another bus, or an already-registered contract naming this one. Never
-   * an error: the relation is inert, the contracts themselves are fine.
-   */
-  private warnCrossBusQueueBehind(entry: CompiledScenario): void {
-    const s = entry.raw;
-
-    for (const id of s.queueBehind ?? []) {
-      const named = this.scenarios.get(id);
-
-      if (named !== undefined && named !== entry && named.raw.bus !== s.bus) {
-        this.logger.warn(
-          `Scenario "${s.id}" queueBehind names "${id}" on bus ${named.raw.bus}, not its own bus ${s.bus} — the relation never matches`,
-        );
-      }
-    }
-
-    for (const other of this.scenarios.values()) {
-      if (other === entry || other.raw.bus === s.bus || !other.raw.queueBehind?.includes(s.id)) continue;
-
-      this.logger.warn(
-        `Scenario "${other.raw.id}" queueBehind names "${s.id}" on bus ${s.bus}, not its own bus ${other.raw.bus} — the relation never matches`,
-      );
-    }
-  }
-
-  /**
-   * Two contracts that each wait behind the other would both sit in the
-   * queue, each held by the other, until they expire (issue #1185): the
-   * queue never links them into a loop, but the drain serves neither while
-   * the other waits. Warned once, at the registration that closes the
-   * cycle: the walk follows `queueBehind` from this contract through the
-   * registered contracts on its own bus (a cross-bus relation never
-   * matches) and warns when it comes back here. Never an error: each
-   * relation is valid on its own.
-   */
-  private warnQueueBehindCycle(entry: CompiledScenario): void {
-    const s = entry.raw;
-    const seen = new Set<string>();
-    const walk = (id: string, path: readonly string[]): readonly string[] | null => {
-      if (id === s.id) return path;
-
-      if (seen.has(id)) return null;
-
-      seen.add(id);
-      const named = this.scenarios.get(id);
-
-      if (named === undefined || named.raw.bus !== s.bus) return null;
-
-      for (const next of named.raw.queueBehind ?? []) {
-        const found = walk(next, [...path, next]);
-
-        if (found !== null) return found;
-      }
-
-      return null;
-    };
-
-    for (const id of s.queueBehind ?? []) {
-      // Naming itself is validation's error, not a cycle.
-      if (id === s.id) continue;
-
-      const cycle = walk(id, [s.id, id]);
-
-      if (cycle !== null) {
-        this.logger.warn(
-          `Scenario "${s.id}" queueBehind forms a cycle (${cycle.map((c) => `"${c}"`).join(" → ")}) — those fires wait for each other until they expire`,
-        );
-
-        return;
-      }
-    }
   }
 
   definePool(name: string, clips: string[]): void {
@@ -996,27 +907,7 @@ class ScenarioEngine implements IScenarioEngine {
   }
 
   contracts(): readonly ContractReport[] {
-    // Read off the same map the scheduler fires from, defaults filled in the
-    // way `attemptFire` fills them, so the report can never disagree with the
-    // engine about a contract's frame or weight. A disabled entry (a
-    // validation error, or `setEnabled(false)`) is still a registered
-    // contract and is listed: enablement is runtime state, not catalog shape.
-    return [...this.scenarios.values()]
-      .map(({ raw, frame }) => ({
-        id: raw.id,
-        event: raw.when?.event ?? null,
-        description: raw.description ?? "",
-        frame,
-        family: raw.family ?? null,
-        weight: raw.weight ?? DEFAULT_WEIGHT,
-        queueable: raw.queueable ?? false,
-        interrupt: raw.interrupt ?? false,
-        speakGate: raw.speakGate?.description ?? null,
-        endsOn: raw.endsOn?.description ?? null,
-        endsOnEvent: raw.endsOn?.event ?? null,
-        base: raw.base ?? null,
-      }))
-      .sort((a, b) => codePointOrder(a.id, b.id));
+    return this.registry.contracts();
   }
 
   describeState(): ScenarioEngineState {
@@ -1040,7 +931,7 @@ class ScenarioEngine implements IScenarioEngine {
       scriptsDirty: this.scriptsDirty,
       // `busState.get`, not `getBusState`: a read creates no state.
       buses: audioBuses().map((bus) => describeBus(bus, this.busState.get(bus))),
-      contracts: [...this.scenarios.values()]
+      contracts: [...this.registry.entries.values()]
         .map((entry) => ({
           id: entry.raw.id,
           enabled: entry.enabled,
@@ -1106,7 +997,7 @@ class ScenarioEngine implements IScenarioEngine {
     // The base travels with the frame because it is the base the body will be
     // expanded under, and the compiler qualifies a literal voice path only
     // where none will be put in front of it (#1144).
-    for (const [id, entry] of this.scenarios) {
+    for (const [id, entry] of this.registry.entries) {
       if (entry.resolvedSequence === null) contracts.set(id, { frame: entry.frame, base: entry.raw.base });
     }
 
@@ -1193,7 +1084,7 @@ class ScenarioEngine implements IScenarioEngine {
   }
 
   setEnabled(scenarioId: string, enabled: boolean): void {
-    const entry = this.scenarios.get(scenarioId);
+    const entry = this.registry.get(scenarioId);
 
     if (!entry) {
       this.logger.warn(`setEnabled: scenario "${scenarioId}" not found`);
@@ -1235,7 +1126,7 @@ class ScenarioEngine implements IScenarioEngine {
   }
 
   fire(scenarioId: string): void {
-    const entry = this.scenarios.get(scenarioId);
+    const entry = this.registry.get(scenarioId);
 
     if (!entry) {
       this.logger.warn(`fire: scenario "${scenarioId}" not found`);
@@ -1397,7 +1288,7 @@ class ScenarioEngine implements IScenarioEngine {
     where: ((e: SimEventOf<SimEventName>) => boolean) | undefined,
   ): () => void {
     const handler = (ev: SimEventOf<SimEventName>) => {
-      const entry = this.scenarios.get(id);
+      const entry = this.registry.get(id);
 
       if (!entry || !entry.enabled) return;
 
@@ -1450,7 +1341,7 @@ class ScenarioEngine implements IScenarioEngine {
 
         // Re-check entry state — scenario may have been redefined or
         // disabled during the wait.
-        const current = this.scenarios.get(id);
+        const current = this.registry.get(id);
 
         if (!current || !current.enabled || current !== entry) return;
 
@@ -1540,7 +1431,7 @@ class ScenarioEngine implements IScenarioEngine {
    * about to end.
    */
   private endFires(event: SimEventName): void {
-    const ending = [...this.scenarios.values()].filter((entry) => entry.raw.endsOn?.event === event);
+    const ending = [...this.registry.entries.values()].filter((entry) => entry.raw.endsOn?.event === event);
     const outcomes = new Map<string, string[]>();
     const note = (id: string, outcome: string): void => {
       outcomes.set(id, [...(outcomes.get(id) ?? []), outcome]);
@@ -1707,7 +1598,7 @@ class ScenarioEngine implements IScenarioEngine {
     // every callout (issue #1124), and is cut below once this fire has
     // expanded to something to play.
     if (state.playingId !== null && state.playingId !== FRAME_PREVIEW_ID) {
-      const running = this.scenarios.get(state.playingId);
+      const running = this.registry.get(state.playingId);
       const runningWeight = state.activeFire?.weight ?? DEFAULT_WEIGHT;
 
       // Same-family preemption: a new event in a family invalidates the
@@ -1851,7 +1742,7 @@ class ScenarioEngine implements IScenarioEngine {
     queuedAt: number = Date.now(),
     yieldsToGroup = false,
   ): void {
-    const raw = this.scenarios.get(id)?.raw;
+    const raw = this.registry.get(id)?.raw;
     const result = state.queue.offer(
       {
         id,
@@ -1906,11 +1797,6 @@ class ScenarioEngine implements IScenarioEngine {
       this.clearPendingHold(state);
       this.logQueueDrops(state.queue.clear());
     }
-  }
-
-  /** Whether the contract `followerId` declares that it waits behind `leaderId` (issue #1108). */
-  private waitsBehind(followerId: string, leaderId: string): boolean {
-    return this.scenarios.get(followerId)?.raw.queueBehind?.includes(leaderId) ?? false;
   }
 
   /**
@@ -2590,7 +2476,7 @@ class ScenarioEngine implements IScenarioEngine {
     // drain of the whole queue for its declared window, so the displaced line
     // doesn't stutter back into the gaps between the train's members (issue
     // #758).
-    const holdMs = this.scenarios.get(scenarioId)?.raw.pendingHoldMs ?? 0;
+    const holdMs = this.registry.get(scenarioId)?.raw.pendingHoldMs ?? 0;
 
     if (state.queue.size > 0 && holdMs > 0) {
       this.clearPendingHold(state);
@@ -2668,14 +2554,14 @@ class ScenarioEngine implements IScenarioEngine {
    * rather than park it again: the drain's filter (see `drainPending`).
    */
   private playableAtIdle(state: BusState, e: QueuedFire<WaitingFire>): boolean {
-    if (this.belowFloor(state, this.scenarios.get(e.id)?.raw.focusOwner, e.weight)) return false;
+    if (this.belowFloor(state, this.registry.get(e.id)?.raw.focusOwner, e.weight)) return false;
 
     return !state.queue.hasLeaderFor(e.id, Date.now());
   }
 
   /** Replay one parked fire, unless its scenario has been disabled meanwhile. */
   private replayWaiting(waiting: WaitingFire): void {
-    const entry = this.scenarios.get(waiting.id);
+    const entry = this.registry.get(waiting.id);
 
     if (!entry?.enabled) {
       this.logger.debug(`Scenario "${waiting.id}" dropped — disabled`);
@@ -2737,7 +2623,7 @@ class ScenarioEngine implements IScenarioEngine {
     if (!state) {
       state = {
         playingId: null,
-        queue: new PendingQueue<WaitingFire>((follower, leader) => this.waitsBehind(follower, leader)),
+        queue: new PendingQueue<WaitingFire>((follower, leader) => this.registry.waitsBehind(follower, leader)),
         activeFire: null,
         focus: null,
         pendingHoldTimer: null,
@@ -2831,7 +2717,7 @@ class ScenarioEngine implements IScenarioEngine {
             throw new Error(`include cycle: ${Array.from(visitedIncludes).join(" → ")} → ${step.id}`);
           }
 
-          const target = this.scenarios.get(step.id);
+          const target = this.registry.get(step.id);
 
           if (!target) throw new Error(`include target not found: ${step.id}`);
 

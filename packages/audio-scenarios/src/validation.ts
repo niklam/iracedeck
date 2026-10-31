@@ -30,7 +30,7 @@ export function validateScenario(
   s: ScenarioContract,
   resolved: ResolvedStep[] | null,
   scenarios: Map<string, CompiledEntry>,
-  pools: Map<string, unknown>,
+  pools: ReadonlyMap<string, unknown>,
   vars: ReadonlyMap<string, VocabularyResolver<string | null>>,
   manifest: AudioAssetsManifest,
 ): ScenarioValidationResult {
