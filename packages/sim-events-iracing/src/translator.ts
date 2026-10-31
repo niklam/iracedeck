@@ -2661,9 +2661,10 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // ovals fire on pit-road drive-in; everything else on approach-zone entry).
   const trackType = resolveTrackType(sessionInfo);
 
-  // Diff modules — `diffLimiter` reads `state.lastInPitStall` to detect the
-  // just-left-stall transition, so it must run BEFORE `diffPitLane` writes
-  // the new stall flag. All other modules are independent.
+  // Diff modules. Their emits are flushed in call order at the end of the
+  // tick, so a reorder of any diff call here (or above the guard) must update
+  // `TICK_ORDER` (`tick-order.ts`, issue #1499); `tick-order.test.ts` fails
+  // until it does. The orders that matter are explained at each call.
   diffLifecycle(self.state, telemetry, emit);
   // Checkered deferral (issue #771): the leader guard on the winner grace
   // consumes the canonical live order (`.claude/rules/race-positions.md`),
@@ -2721,6 +2722,15 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     now,
     emit,
   );
+  // `diffLimiter` runs BEFORE `diffPitLane` for two reasons. It reads
+  // `state.lastInPitStall` to detect the just-left-stall transition, which
+  // `diffPitLane` then overwrites with this tick's flag. And
+  // `pit-crew.limiter-dropped` ends on `pitLane.exited` (`endsOn`, #1407), so
+  // `limiter.dropped` must never be published after `pitLane.exited` on one
+  // tick — checked against `TICK_ORDER` (#1499). The limiter's `OnPitRoad`
+  // gate already keeps the two off the same tick (it emits nothing once the
+  // car is off pit road, the tick `pitLane.exited` fires on), so the order is
+  // the second guard.
   diffLimiter(self.state, telemetry, pitSpeedLimitMps, now, emit);
   diffPitLane(self.state, telemetry, trackType, now, emit);
   // Start-light gantry edges (issue #480). Sits beside diffFlags (after the
