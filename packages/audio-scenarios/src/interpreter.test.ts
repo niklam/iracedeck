@@ -2362,6 +2362,29 @@ describe("resume from interruption (issue #758)", () => {
         'Scenario "test.line" replays whole — scripts changed while stashed',
       );
     });
+
+    it("replays the whole body when a registration validation refused landed while stashed (#1514)", () => {
+      // Scripts are marked dirty before validation runs, so even a refused
+      // registration moves the generation.
+      defineScriptedLine(ALL_POOL_BODY);
+
+      cutOnTheSlot();
+      engine.defineContract({
+        id: "test.refused",
+        channel: AudioChannel.Voice,
+        bus: AudioBus.Voice,
+        pendingHoldMs: -1,
+      });
+      flushVoiceAndSfx(audio);
+
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        expect.stringContaining('Scenario "test.refused" has validation errors and is disabled'),
+      );
+      expect(mockLogger.info).not.toHaveBeenCalledWith('Resuming scenario "test.line"');
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'Scenario "test.line" replays whole — scripts changed while stashed',
+      );
+    });
   });
 });
 
@@ -6675,5 +6698,189 @@ describe("pack-owned scripts (issue #1064)", () => {
       engine.fire("test.green");
       expect(voicePaths()).toEqual(["voice/default/flags/green-01.mp3"]);
     });
+
+    it("asks for the frame before the bus: no frame on a busy bus is no-frame (#1514)", () => {
+      engine.defineContract(contract({ frame: NO_FRAME }));
+      useFrame(PACK_FRAME, { "test.green": { sequence: ["pool:flag-green"] } });
+      engine.fire("test.green");
+
+      expect(engine.playFramePreview("terse", HOLD_MS)).toBe("no-frame");
+    });
+
+    it("asks for the bus before it expands: a frame that would abort on a busy bus is bus-busy (#1514)", () => {
+      engine.defineContract(contract({ frame: NO_FRAME }));
+      useFrame({ open: ["sfx/missing-beep.mp3"], close: [] }, { "test.green": { sequence: ["pool:flag-green"] } });
+      engine.fire("test.green");
+
+      expect(engine.playFramePreview(DEFAULT_FRAME, HOLD_MS)).toBe("bus-busy");
+    });
+
+    it("a finishing preview leaves the bus, then completes, then drains what waited (#1514)", () => {
+      engine.defineContract(contract({ frame: NO_FRAME, queueable: true }));
+      useFrame(PACK_FRAME, { "test.green": { sequence: ["pool:flag-green"] } });
+      let atComplete: { heard: string[]; active: unknown } | null = null;
+      engine.playFramePreview(DEFAULT_FRAME, HOLD_MS, () => {
+        atComplete = {
+          heard: voicePaths(),
+          active: engine.describeState().buses.find((b) => b.bus === "Voice")?.active,
+        };
+      });
+
+      // A line below a floor taken mid-preview waits; the floor's release
+      // cannot drain it while the preview holds the bus.
+      engine.acquireFocus(AudioBus.Voice, "spotter", WEIGHT.SAFETY);
+      engine.fire("test.green");
+      engine.releaseFocus(AudioBus.Voice, "spotter");
+      expect(voicePaths()).toEqual([]);
+
+      finishPreview();
+
+      expect(atComplete).toEqual({ heard: [], active: null });
+      expect(voicePaths()).toEqual(["voice/default/flags/green-01.mp3"]);
+    });
+  });
+});
+
+// ─── Registration order (issue #1514) ───────────────────────────────────────
+//
+// `registerEntry` keeps its order statement for statement while the engine is
+// split into modules: the replacement warning, the old subscription and timer
+// detached, the entry stored, scripts marked dirty, the two `queueBehind`
+// warnings, validation, the trigger subscription, then the `endsOn` one.
+
+describe("registration order (issue #1514)", () => {
+  const ENDS_ON = { event: "pitLane.exited", description: "The car leaves pit road." } as const;
+
+  function legacy(overrides: Partial<Scenario> = {}): Scenario {
+    return {
+      id: "order.a",
+      channel: AudioChannel.Voice,
+      bus: AudioBus.Voice,
+      sequence: ["pit-crew/greeting/a.mp3"],
+      ...overrides,
+    };
+  }
+
+  it("a redefinition detaches the old trigger subscription: one event, one fire", () => {
+    engine.defineScenario(legacy({ when: { event: "flag.green.raised" }, queueable: true }));
+    engine.defineScenario(legacy({ when: { event: "flag.green.raised" }, queueable: true }));
+
+    bus.publishEvent("flag.green.raised");
+    flushVoiceAndSfx(audio);
+
+    expect(audio._played.map((p) => p.path)).toEqual(["pit-crew/greeting/a.mp3"]);
+  });
+
+  it("a redefinition clears the old trigger timer", () => {
+    vi.useFakeTimers();
+
+    try {
+      engine.defineScenario(legacy({ when: { event: "flag.green.raised" }, triggerDelay: 500 }));
+      bus.publishEvent("flag.green.raised");
+      expect(vi.getTimerCount()).toBe(1);
+
+      engine.defineScenario(legacy({ when: { event: "flag.green.raised" }, triggerDelay: 500 }));
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("logs the replacement, then the queueBehind warnings, then validation", () => {
+    engine.defineScenario(legacy({ id: "order.b", channel: AudioChannel.Radar, bus: AudioBus.Alerts }));
+    const invalid = legacy({ queueable: true, queueBehind: ["order.b"], pendingHoldMs: -1 });
+    engine.defineScenario(invalid);
+    vi.clearAllMocks();
+
+    engine.defineScenario(invalid);
+
+    const callOrder = (mock: Mock, match: string): number => {
+      const index = mock.mock.calls.findIndex(([line]) => String(line).includes(match));
+      expect(index, match).toBeGreaterThanOrEqual(0);
+
+      return mock.mock.invocationCallOrder[index];
+    };
+    const replaced = callOrder(mockLogger.warn, 'Scenario "order.a" redefined; replacing previous definition');
+    const crossBus = callOrder(mockLogger.warn, 'Scenario "order.a" queueBehind names "order.b" on bus');
+    const disabled = callOrder(mockLogger.error, 'Scenario "order.a" has validation errors and is disabled');
+
+    expect(replaced).toBeLessThan(crossBus);
+    expect(crossBus).toBeLessThan(disabled);
+  });
+
+  it("subscribes nothing for a registration validation refuses", () => {
+    const subscribe = vi.spyOn(bus, "subscribe");
+
+    engine.defineScenario(legacy({ when: { event: "flag.green.raised" }, endsOn: ENDS_ON, pendingHoldMs: -1 }));
+
+    expect(mockLogger.error).toHaveBeenCalledWith(expect.stringContaining("has validation errors and is disabled"));
+    expect(subscribe).not.toHaveBeenCalled();
+  });
+
+  it("subscribes the trigger, then the end", () => {
+    const subscribe = vi.spyOn(bus, "subscribe");
+
+    engine.defineScenario(legacy({ when: { event: "flag.green.raised" }, endsOn: ENDS_ON }));
+
+    expect(subscribe.mock.calls.map(([name]) => name)).toEqual(["flag.green.raised", "pitLane.exited"]);
+  });
+
+  it("a redefinition subscribes its trigger again and keeps the end subscription in its place", () => {
+    engine.defineScenario(legacy({ when: { event: "flag.green.raised" }, endsOn: ENDS_ON }));
+    const subscribe = vi.spyOn(bus, "subscribe");
+
+    engine.defineScenario(legacy({ when: { event: "flag.green.raised" }, endsOn: ENDS_ON }));
+
+    expect(subscribe.mock.calls.map(([name]) => name)).toEqual(["flag.green.raised"]);
+  });
+});
+
+// ─── Playback order (issue #1514) ───────────────────────────────────────────
+
+describe("playback order (issue #1514)", () => {
+  const A = "pit-crew/greeting/a.mp3";
+  const B = "pit-crew/greeting/b.mp3";
+
+  beforeEach(() => {
+    engine.defineScenario({ id: "order.line", channel: AudioChannel.Voice, bus: AudioBus.Voice, sequence: [A, B] });
+  });
+
+  function paths(): string[] {
+    return audio._played.map((p) => p.path);
+  }
+
+  it("logs Playing before the first step runs", () => {
+    vi.mocked(audio.playOnChannel).mockReturnValueOnce(false);
+
+    engine.fire("order.line");
+
+    const playing = mockLogger.info.mock.calls.findIndex(([line]) => line === 'Playing scenario "order.line"');
+    const failed = mockLogger.warn.mock.calls.findIndex(([line]) => String(line).startsWith(`Failed to play ${A}`));
+    expect(playing).toBeGreaterThanOrEqual(0);
+    expect(failed).toBeGreaterThanOrEqual(0);
+    expect(mockLogger.info.mock.invocationCallOrder[playing]).toBeLessThan(
+      mockLogger.warn.mock.invocationCallOrder[failed],
+    );
+  });
+
+  it("a clip that fails to play advances to the next op synchronously", () => {
+    vi.mocked(audio.playOnChannel).mockReturnValueOnce(false);
+
+    engine.fire("order.line");
+
+    expect(paths()).toEqual([B]);
+  });
+
+  it("registers a clip's completion before playing it, so a completion inside the play still advances", () => {
+    vi.mocked(audio.playOnChannel).mockImplementationOnce((channel: AudioChannel, path: string) => {
+      audio._played.push({ channel, path, loop: false });
+      audio._triggerChannelEnd(channel);
+
+      return true;
+    });
+
+    engine.fire("order.line");
+
+    expect(paths()).toEqual([A, B]);
   });
 });
