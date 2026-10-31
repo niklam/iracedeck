@@ -778,7 +778,7 @@ export function getEnabledGroupNames(raw: string | Record<string, unknown> | und
   if (fromAction !== undefined) return fromAction;
 
   // Fall back to legacy global setting (migration path for existing users)
-  const globalSettings = getGlobalSettings() as Record<string, unknown>;
+  const globalSettings = getGlobalSettings();
   const globalRaw = globalSettings[CAMERA_GROUPS_SETTING_KEY] as string | Record<string, unknown> | undefined;
   const fromGlobal = parseGroupSubset(globalRaw);
 

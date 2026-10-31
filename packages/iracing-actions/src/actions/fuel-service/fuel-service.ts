@@ -692,10 +692,9 @@ export class FuelService extends SimIRacingAction<FuelServiceSettings> {
     // transient, so every keypad decision reads the running step's decision.
     if (this.runningKeypadPreserve !== null) return this.runningKeypadPreserve;
 
-    const globalSettings = getGlobalSettings() as Record<string, unknown>;
-    const raw = globalSettings.enableFuelingOnChange;
-    // sdpi-checkbox stores "false" as a string — treat both boolean false and string "false" as disabled
-    const enableFuelingOnChange = raw !== false && raw !== "false";
+    // sdpi-checkbox stores "false" as a string; the schema coerces it, so the
+    // parsed value is a boolean (#1376). Only an explicit false disables.
+    const enableFuelingOnChange = getGlobalSettings().enableFuelingOnChange !== false;
 
     if (enableFuelingOnChange) return false;
 

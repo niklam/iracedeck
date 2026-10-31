@@ -45,7 +45,7 @@ export function isToggleAckEnabled(): boolean {
  * the dependent path rather than throw.
  */
 export function readJsonStringArray(key: string): string[] {
-  const raw = (getGlobalSettings() as Record<string, unknown>)[key];
+  const raw = getGlobalSettings()[key];
 
   if (typeof raw !== "string" || raw.length === 0) return [];
 

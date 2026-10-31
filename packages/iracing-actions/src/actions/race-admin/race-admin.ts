@@ -801,7 +801,7 @@ export class RaceAdmin extends SimIRacingAction<RaceAdminSettings> {
    * (session changed — CarIdx assignments are session-scoped).
    */
   private resolveSelectedCarNumber(): string | null {
-    const settings = getGlobalSettings() as Record<string, unknown>;
+    const settings = getGlobalSettings();
     const raw = settings[SELECTED_CAR_KEY] ?? settings[LEGACY_SELECTED_CAR_KEY];
 
     return resolveSelectedCar(raw, (carIdx) =>

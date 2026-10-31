@@ -281,6 +281,16 @@ vi.mock("@iracedeck/settings", () => ({
 type MockFn = ReturnType<typeof vi.fn>;
 
 /**
+ * The global settings as the real schema parses `raw` — the shape the live
+ * cache holds, so a PI-stored string reaches the action already coerced.
+ */
+async function parsedGlobalSettings(raw: Record<string, unknown>) {
+  const { GlobalSettingsSchema } = await vi.importActual<typeof import("@iracedeck/settings")>("@iracedeck/settings");
+
+  return GlobalSettingsSchema.parse(raw);
+}
+
+/**
  * Typed access to the mocked base-class internals. These members are protected
  * on the real ConnectionStateAwareAction type (which applies at compile time
  * even though vi.mock replaces the runtime), so tests reach them via this cast.
@@ -624,7 +634,7 @@ describe("FuelService", () => {
     });
 
     it("should handle string 'false' from sdpi-checkbox (PI stores booleans as strings)", async () => {
-      mockGetGlobalSettings.mockReturnValue({ enableFuelingOnChange: "false" });
+      mockGetGlobalSettings.mockReturnValue(await parsedGlobalSettings({ enableFuelingOnChange: "false" }));
 
       await action.onKeyDown(fakeEvent("action-1", { mode: "add-fuel", amount: 5, unit: "l" }) as any);
 
@@ -633,7 +643,7 @@ describe("FuelService", () => {
     });
 
     it("should handle string 'true' from sdpi-checkbox as enabled", async () => {
-      mockGetGlobalSettings.mockReturnValue({ enableFuelingOnChange: "true" });
+      mockGetGlobalSettings.mockReturnValue(await parsedGlobalSettings({ enableFuelingOnChange: "true" }));
 
       await action.onKeyDown(fakeEvent("action-1", { mode: "add-fuel", amount: 5, unit: "l" }) as any);
 

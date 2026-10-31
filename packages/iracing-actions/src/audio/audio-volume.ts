@@ -72,12 +72,12 @@ export function setRaceEngineerToggleInFlight(value: boolean): void {
  * enables the feature. Key renamed from `raceEngineerEnabled` for issue #515.
  */
 export function isRaceEngineerEnabled(): boolean {
-  return (getGlobalSettings() as Record<string, unknown>).pitCrewRaceEngineerEnabled === true;
+  return getGlobalSettings().pitCrewRaceEngineerEnabled === true;
 }
 
 /** Whether the directional Radar ticks are enabled. Renamed from `radarEnabled` (issue #515). */
 export function isRadarEnabled(): boolean {
-  return (getGlobalSettings() as Record<string, unknown>).pitCrewRadarEnabled === true;
+  return getGlobalSettings().pitCrewRadarEnabled === true;
 }
 
 /**
