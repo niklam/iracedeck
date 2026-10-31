@@ -30,16 +30,18 @@
  * trip to live (a blip tick neither seeds nor records), and it is true
  * throughout a saved replay (`SimMode === "replay"`), whatever the flag reads.
  *
- * **Its own reads, a moment after the translator's.** The recorder reads
- * `getReplayState()` and `getSessionInfo()` itself, in its own callback, which
- * the controller calls right after the translator's on the same tick
- * (`initializeSimEventsIracing` subscribes the translator first, and the
- * controller notifies in subscription order). The session info is the same
- * object both read. The replay state is debounced on wall time, so on the one
- * tick where the exit grace runs out between the two reads, the translator can
- * still read "in a replay" while the recorder reads "live", or the other way
- * round across a step; each stays consistent with its own edges, since each
- * keeps its own "last tick in a replay" flag, and the next tick agrees again.
+ * **Its own reads, after the translator's.** The recorder reads
+ * `getReplayState()` and `getSessionInfo()` itself, once each per tick, in its
+ * own callback, which the controller calls once the translator's whole tick
+ * has run (`initializeSimEventsIracing` subscribes the translator first, and
+ * the controller notifies in subscription order). The replay state is
+ * debounced on wall time and only the exit grace expires between reads, so on
+ * the one tick where it runs out during the translator's tick, the translator
+ * reads "in a replay" while the recorder reads "live": the recorder's exit
+ * comes one tick earlier, as it would have under one read had the grace run
+ * out a moment before the tick. Each stays consistent with its own edges,
+ * since each keeps its own "last tick in a replay" flag, and the next tick
+ * agrees again.
  * The controller does not isolate its subscribers, so a tick on which the
  * translator throws never reaches the recorder.
  *
@@ -125,11 +127,7 @@ export type ReplayRecorder = {
 };
 
 /** {@link ReplayRecorderSnapshot}, writable: what the subscriber's callback steps. */
-type RecorderInstance = {
-  state: ReplayRecorderState;
-  sessionIdentity: SessionIdentityBaseline;
-  lastTickInReplay: boolean;
-};
+type RecorderInstance = { -readonly [K in keyof ReplayRecorderSnapshot]: ReplayRecorderSnapshot[K] };
 
 /**
  * Subscribe the replay recorder to `controller` and publish its `replay.*`
@@ -193,13 +191,14 @@ function handleTick(
   const replayState = controller.getReplayState();
   const inReplay = replayState.inReplay;
   const emit = (pending: PendingEvent): void => publish(bus, pending, telemetry);
-  const readSessionInfo = (): Record<string, unknown> | null =>
-    controller.getSessionInfo() as Record<string, unknown> | null;
+  // One read for the whole tick, so the identity reading and the four
+  // recorders see the same session info.
+  const sessionInfo = controller.getSessionInfo() as Record<string, unknown> | null;
 
   // A session change resets the baselines BEFORE the recorders read this
   // tick, so the new session's first tick seeds rather than compares against
   // the old one's.
-  const identity = readSessionIdentity(self.sessionIdentity, telemetry, readSessionInfo);
+  const identity = readSessionIdentity(self.sessionIdentity, telemetry, () => sessionInfo);
 
   if (identity.change) {
     self.state = resetReplayRecorderBaselines(self.state);
@@ -210,7 +209,7 @@ function handleTick(
   // The replay lap record (issue #1203). Its gate marks the recorder unseeded
   // on every replay / no-session tick and re-seeds silently on the first
   // eligible tick after.
-  diffReplayLaps(self.state, telemetry, readSessionInfo(), inReplay, emit);
+  diffReplayLaps(self.state, telemetry, sessionInfo, inReplay, emit);
 
   // The replay green record (issue #1354), the lap record's sibling on the
   // same gate (`resolveReplayRecordTick`): it has to SEE a replay / no-session
@@ -219,7 +218,7 @@ function handleTick(
   // restart, gets no entry rather than one stamped with the frame he came
   // back on. It judges "a race session" itself, with the strict reading
   // (`resolveSessionType(…) === "Race"`, so a warmup session is not one).
-  diffReplayGreens(self.state, telemetry, readSessionInfo(), inReplay, emit, logger);
+  diffReplayGreens(self.state, telemetry, sessionInfo, inReplay, emit, logger);
 
   // The replay session record (issue #1426), on the second class of tick the
   // gate knows (`resolveReplayLiveTick`): in the car, or out of it at the live
@@ -229,13 +228,13 @@ function handleTick(
   // session info is null, while the controller keeps its answer through such
   // a tick, and at the end of a saved replay's tape the out-of-car gate would
   // otherwise take the tick as the live edge of a live session.
-  diffReplaySessions(self.state, telemetry, readSessionInfo(), inReplay, replayState.replayOnlySession, emit, logger);
+  diffReplaySessions(self.state, telemetry, sessionInfo, inReplay, replayState.replayOnlySession, emit, logger);
 
   // The replay incident record (issue #1426), on the lap and green records'
   // in-car gate: an ineligible tick must unseed it, so a count that rose
   // behind the replay view is not stamped with the frame the driver came back
   // on.
-  diffReplayIncidents(self.state, telemetry, readSessionInfo(), inReplay, emit);
+  diffReplayIncidents(self.state, telemetry, sessionInfo, inReplay, emit);
 
   // The replay view's edges, AFTER the recorders. The entry reset changes
   // nothing today — the in-car gate has just unseeded the lap, green and
