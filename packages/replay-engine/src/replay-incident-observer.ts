@@ -131,6 +131,8 @@ export function observeIncidentSearch(
 
       const first = host.readTelemetry();
 
+      // One gap between two reads, not a poll: the landing wait above was the poll (the gate's, through
+      // `pollUntil`), and this takes the later of two samples whatever it reads, so there is no condition to wait on.
       await sleep(STABILIZATION_POLL_INTERVAL_MS);
 
       const later = host.readTelemetry() ?? first;
