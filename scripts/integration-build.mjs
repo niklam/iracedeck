@@ -63,15 +63,14 @@
  *    With `--restart` (#1520's sequence), the hosts whose plugin link points
  *    into the tree — and only those this script has a stop and start command
  *    for — are stopped before the install and started after the build, so they
- *    come up on the new build. Stream Deck through the root
- *    `stop:stream-deck` and `start:stream-deck` scripts (starting the app
- *    loads the new plugin, so no `restart:stream-deck` follows), Mirabox and
- *    Ulanzi through `scripts/host-app.mjs`. A host that cannot be stopped
- *    stops the run before the install, and the hosts already stopped are
- *    started again on the untouched plugin. `pnpm build:with-restart` is
- *    deliberately not used: it restarts Stream Deck alone, wherever its link
- *    points, around a `turbo run build` with no install, where this script
- *    restarts exactly the hosts linked to its tree around both.
+ *    come up on the new build. All three go through `scripts/host-app.mjs`
+ *    (starting the app loads the new plugin, so no `restart:stream-deck`
+ *    follows). A host that cannot be stopped stops the run before the
+ *    install, and the hosts already stopped are started again on the
+ *    untouched plugin. `pnpm build:with-restart` is deliberately not used:
+ *    it restarts Stream Deck alone, wherever its link points, around a
+ *    `turbo run build` with no install, where this script restarts exactly
+ *    the hosts linked to its tree around both.
  *    Any host whose stop or start failed is named for the maintainer to
  *    restart himself, and so is a linked host with no scripted stop
  *    (`needsRestart`), which `--restart` leaves running. When the install or
@@ -118,38 +117,33 @@ export const EXIT_USAGE = 2;
 export class IntegrationRefusal extends Error {}
 
 /** Deck hosts stopped and started with `scripts/host-app.mjs`, by the label `linkTargets` reports. */
-const HOST_APP_IDS = { Mirabox: "mirabox", Ulanzi: "ulanzi" };
-const STREAM_DECK = "Stream Deck";
+const HOST_APP_IDS = { "Stream Deck": "stream-deck", Mirabox: "mirabox", Ulanzi: "ulanzi" };
 
 /** Whether this script stops and starts `host` around a build. */
-const isControlledHost = (host) => host === STREAM_DECK || Object.hasOwn(HOST_APP_IDS, host);
+const isControlledHost = (host) => Object.hasOwn(HOST_APP_IDS, host);
 
 /** The refusal shared by the CLI and `buildIntegration`: `--restart` needs a build to restart onto. */
 const RESTART_WITHOUT_BUILD =
   "--restart cannot be combined with --no-build: there is no new build for the hosts to load, and a bare host restart is the maintainer's to make.";
 
 /**
- * The command that stops or starts `host`, as `[cmd, args]`: Stream Deck
- * through the root `stop:stream-deck` / `start:stream-deck` scripts (a
- * `taskkill` and a `start /B` of StreamDeck.exe), the others through
- * `scripts/host-app.mjs`.
+ * The command that stops or starts `host`, as `[cmd, args]`: `scripts/host-app.mjs`
+ * for every host, which prints its own result and exits non-zero on a failure.
  */
 function hostCommand(action, host) {
-  return host === STREAM_DECK
-    ? ["pnpm", [`${action}:stream-deck`]]
-    : ["node", ["scripts/host-app.mjs", action, HOST_APP_IDS[host]]];
+  return ["node", ["scripts/host-app.mjs", action, HOST_APP_IDS[host]]];
 }
 
 /**
- * Stops or starts `host` in `tree`, output streamed. Starting Stream Deck gets
- * no pipes instead: `start /B` hands them to StreamDeck.exe, which outlives the
- * command (`host-app.mjs` detaches its app with no output of its own).
+ * Stops or starts `host` in `tree`, output streamed. A start leaves no pipe
+ * open behind it: `host-app.mjs` launches the app detached with no stdio of
+ * its own (`launchApp` in `lib/host-control.mjs`), so the command ends when
+ * the launch does, not when the app exits.
  */
 function controlHost(action, host, exec, tree) {
   const [cmd, args] = hostCommand(action, host);
-  const noOutput = action === "start" && host === STREAM_DECK;
 
-  return exec(cmd, args, noOutput ? { cwd: tree, noOutput } : { cwd: tree, stream: true });
+  return exec(cmd, args, { cwd: tree, stream: true });
 }
 
 /**
@@ -223,27 +217,10 @@ export function tsDiagnostics(text) {
  * Windows (`pnpm`) and goes through the shell as one quoted command line
  * (`lib/spawn-shim.mjs`). With `stream`, output is echoed as it arrives and
  * captured as well, so a long build is watchable and still scanned afterwards.
- * With `noOutput`, the command gets no pipes at all and nothing is captured:
- * for one that leaves a process running behind it (`start:stream-deck` leaves
- * StreamDeck.exe), which would inherit a pipe and hold it open, so a run that
- * reads to the end of the output would wait for as long as the app runs.
  */
-export function defaultExec(cmd, args, { cwd, stream = false, noOutput = false } = {}) {
+export function defaultExec(cmd, args, { cwd, stream = false } = {}) {
   const direct = cmd === "git" || cmd === "node";
   const env = { ...process.env, GIT_TERMINAL_PROMPT: "0" };
-
-  if (noOutput) {
-    // No windowsHide: the app it starts should open as it would from a shortcut.
-    const options = { cwd, env, stdio: "ignore" };
-    const res = direct ? spawnSync(cmd, args, options) : spawnSyncShim(cmd, args, options);
-
-    return Promise.resolve({
-      ok: res.status === 0 && !res.error,
-      code: res.status,
-      out: "",
-      err: res.error ? String(res.error.message) : "",
-    });
-  }
 
   if (!stream) {
     const options = { cwd, env, encoding: "utf8", windowsHide: true, maxBuffer: 64 * 1024 * 1024 };

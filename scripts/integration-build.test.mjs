@@ -12,6 +12,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -670,10 +671,10 @@ describe("buildIntegration — the build", { timeout: GIT_TIMEOUT_MS }, () => {
 
     expect(result.build).toMatchObject({ ok: true, needsRestart: [], restartYourself: [], stoppedHosts: [] });
     expect(calls.filter(({ cmd }) => cmd !== "git").map(({ cmd, args }) => [cmd, ...args].join(" "))).toEqual([
-      "pnpm stop:stream-deck",
+      "node scripts/host-app.mjs stop stream-deck",
       "pnpm install",
       "pnpm build",
-      "pnpm start:stream-deck",
+      "node scripts/host-app.mjs start stream-deck",
     ]);
   });
 
@@ -724,7 +725,7 @@ describe("runBuild", () => {
 
   function fakeExec(answers = {}) {
     return async (cmd, args, options) => {
-      calls.push({ cmd, args, cwd: options?.cwd, stream: options?.stream ?? false, noOutput: options?.noOutput });
+      calls.push({ cmd, args, cwd: options?.cwd, stream: options?.stream ?? false });
 
       return answers[[cmd, ...args].join(" ")] ?? ok();
     };
@@ -870,7 +871,7 @@ describe("runBuild", () => {
     it("never reaches a host command even when every host command would fail", async () => {
       // The positive control for hostCommands(): under --restart these answers fail the run.
       const answers = {
-        "pnpm stop:stream-deck": failed(),
+        "node scripts/host-app.mjs stop stream-deck": failed(),
         "node scripts/host-app.mjs stop mirabox": failed(),
       };
 
@@ -914,13 +915,19 @@ describe("runBuild", () => {
         restartYourself: [],
         stoppedHosts: [],
       });
-      expect(commandLines()).toEqual(["pnpm stop:stream-deck", "pnpm install", "pnpm build", "pnpm start:stream-deck"]);
-      // The app it starts outlives the command, so it must not be handed the pipes a capture would wait on.
-      expect(calls.find(({ args }) => args[0] === "start:stream-deck").noOutput).toBe(true);
+      expect(commandLines()).toEqual([
+        "node scripts/host-app.mjs stop stream-deck",
+        "pnpm install",
+        "pnpm build",
+        "node scripts/host-app.mjs start stream-deck",
+      ]);
+      // Its start prints its own result like the other hosts', so it is streamed like theirs; the app it
+      // launches is detached with no stdio, so the stream ends with the command (`defaultExec` below).
+      expect(calls.filter(({ args }) => args[0] === "scripts/host-app.mjs").every(({ stream }) => stream)).toBe(true);
     });
 
     it("does not build when Stream Deck cannot be stopped, and starts the hosts it did stop", async () => {
-      const exec = fakeExec({ "pnpm stop:stream-deck": failed() });
+      const exec = fakeExec({ "node scripts/host-app.mjs stop stream-deck": failed() });
 
       const result = await runBuild({
         tree: TREE,
@@ -936,7 +943,7 @@ describe("runBuild", () => {
       expect(result.stoppedHosts).toEqual([]);
       expect(commandLines()).toEqual([
         "node scripts/host-app.mjs stop mirabox",
-        "pnpm stop:stream-deck",
+        "node scripts/host-app.mjs stop stream-deck",
         "node scripts/host-app.mjs start mirabox",
       ]);
     });
@@ -998,7 +1005,7 @@ describe("runBuild", () => {
       ]);
       expect(result.stoppedHosts).toEqual(["Stream Deck", "Mirabox"]);
       expect(commandLines()).toEqual([
-        "pnpm stop:stream-deck",
+        "node scripts/host-app.mjs stop stream-deck",
         "node scripts/host-app.mjs stop mirabox",
         "pnpm install",
         "pnpm build",
@@ -1021,7 +1028,7 @@ describe("runBuild", () => {
       expect(result.stoppedHosts).toEqual(["Stream Deck", "Mirabox", "Ulanzi"]);
       expect(result.restartYourself).toEqual([]);
       expect(commandLines()).toEqual([
-        "pnpm stop:stream-deck",
+        "node scripts/host-app.mjs stop stream-deck",
         "node scripts/host-app.mjs stop mirabox",
         "node scripts/host-app.mjs stop ulanzi",
         "pnpm install",
@@ -1083,7 +1090,7 @@ describe("runBuild", () => {
 
     it("names every host whose restart failed for Niklas to restart himself", async () => {
       const exec = fakeExec({
-        "pnpm start:stream-deck": failed(),
+        "node scripts/host-app.mjs start stream-deck": failed(),
         "node scripts/host-app.mjs start mirabox": failed(),
       });
 
@@ -1121,7 +1128,12 @@ describe("runBuild", () => {
         restartYourself: [],
         stoppedHosts: [],
       });
-      expect(commandLines()).toEqual(["pnpm stop:stream-deck", "pnpm install", "pnpm build", "pnpm start:stream-deck"]);
+      expect(commandLines()).toEqual([
+        "node scripts/host-app.mjs stop stream-deck",
+        "pnpm install",
+        "pnpm build",
+        "node scripts/host-app.mjs start stream-deck",
+      ]);
       expect(commandLines().join("\n")).not.toContain("undefined");
       expect(output(log)).toMatch(
         /Stopping Stream Deck around the build \(--restart\)\. This script has no stop command for Acme Deck/,
@@ -1155,29 +1167,41 @@ describe("runBuild", () => {
   });
 });
 
-describe("defaultExec — noOutput", { timeout: GIT_TIMEOUT_MS }, () => {
-  // A command that leaves a process running behind it, holding the output it inherited, as
-  // `start:stream-deck` leaves StreamDeck.exe. Detached, so it outlives its parent on Windows too.
+describe("defaultExec — a host start that leaves its app running", { timeout: GIT_TIMEOUT_MS }, () => {
+  // `host-app.mjs start` leaves the app running behind it. The streamed run that starts it reads
+  // the command's output to the end, so the app must not hold that output open: `launchApp` gives
+  // it no stdio. Both run `launchApp` itself on a node that lingers: the first with its spawn
+  // options untouched, the control with only `stdio` swapped for the output it inherits.
   const LINGER_MS = 4000;
-  const leavesAProcess = [
+  const HOST_CONTROL = pathToFileURL(join(import.meta.dirname, "lib", "host-control.mjs")).href;
+  const lingering = `["-e", "setTimeout(() => {}, ${LINGER_MS})"]`;
+  const startsAnApp = (stdio) => [
+    "--input-type=module",
     "-e",
-    `require("node:child_process").spawn(process.execPath, ["-e", "setTimeout(() => {}, ${LINGER_MS})"], { stdio: "inherit", detached: true }).unref()`,
+    [
+      `import { spawn } from "node:child_process";`,
+      `const { launchApp } = await import(${JSON.stringify(HOST_CONTROL)});`,
+      // launchApp spawns the app with no arguments; this keeps its options and only adds the linger.
+      `const linger = (app, _args, options) => spawn(app, ${lingering}, { ...options${stdio ? `, stdio: "${stdio}"` : ""} });`,
+      `process.exitCode = await launchApp(process.execPath, { spawn: linger, log: console });`,
+    ].join("\n"),
   ];
 
-  it("returns once the command exits, without waiting on a process it left running", async () => {
+  it("returns once host-app's start exits, without waiting on the app it launched", async () => {
     const started = Date.now();
 
-    const result = await defaultExec("node", leavesAProcess, { noOutput: true });
+    const result = await defaultExec("node", startsAnApp(), { stream: true });
 
-    expect(result).toMatchObject({ ok: true, code: 0, out: "" });
+    expect(result).toMatchObject({ ok: true, code: 0 });
+    expect(result.out).toContain("Started node");
     expect(Date.now() - started).toBeLessThan(LINGER_MS - 1000);
   });
 
-  it("is what the wait is about: a capturing run waits for the leftover process to close its output", async () => {
-    // The positive control for the test above.
+  it("is what the wait is about: an app handed the command's output keeps a streamed run waiting", async () => {
+    // The positive control for the test above: the same launch with the output inherited.
     const started = Date.now();
 
-    await defaultExec("node", leavesAProcess, { stream: true });
+    await defaultExec("node", startsAnApp("inherit"), { stream: true });
 
     expect(Date.now() - started).toBeGreaterThanOrEqual(LINGER_MS - 1000);
   });
@@ -1232,7 +1256,9 @@ describe("parseCliArgs", () => {
 
 describe("restartCommands", () => {
   it("names each host's stop and start commands, in that order", () => {
-    expect(restartCommands("Stream Deck")).toBe("pnpm stop:stream-deck then pnpm start:stream-deck");
+    expect(restartCommands("Stream Deck")).toBe(
+      "node scripts/host-app.mjs stop stream-deck then node scripts/host-app.mjs start stream-deck",
+    );
     expect(restartCommands("Mirabox")).toBe(
       "node scripts/host-app.mjs stop mirabox then node scripts/host-app.mjs start mirabox",
     );
@@ -1340,7 +1366,7 @@ describe("main", { timeout: GIT_TIMEOUT_MS }, () => {
     expect(hostCommands()).toEqual([]);
     expect(output(log)).toMatch(/Built\./);
     expect(output(log)).toContain(
-      `Stream Deck links to ${tree}: restart it to load this build. That is Niklas's go; once he gives it, run pnpm stop:stream-deck then pnpm start:stream-deck in ${tree}, or this script again with --restart.`,
+      `Stream Deck links to ${tree}: restart it to load this build. That is Niklas's go; once he gives it, run node scripts/host-app.mjs stop stream-deck then node scripts/host-app.mjs start stream-deck in ${tree}, or this script again with --restart.`,
     );
     expect(output(log)).toContain(`Mirabox links to ${tree}: restart it to load this build.`);
     expect(output(log)).not.toMatch(/is stopped/);
@@ -1425,7 +1451,9 @@ describe("main", { timeout: GIT_TIMEOUT_MS }, () => {
       `Acme Deck links to ${tree}: restart it yourself to load this build (this script has no command for it); that is Niklas's go.`,
     );
     expect(output(log)).toContain(`Stream Deck links to ${tree}: restart it to load this build.`);
-    expect(output(log)).toContain("run pnpm stop:stream-deck then pnpm start:stream-deck");
+    expect(output(log)).toContain(
+      "run node scripts/host-app.mjs stop stream-deck then node scripts/host-app.mjs start stream-deck",
+    );
     expect(output(log)).not.toMatch(/undefined/);
   });
 
@@ -1504,9 +1532,9 @@ describe("main", { timeout: GIT_TIMEOUT_MS }, () => {
     expect(output(log)).toMatch(/Mirabox is stopped because the build failed, and needs starting once it is fixed/);
     expect(output(log)).toContain("node scripts/host-app.mjs start mirabox");
     expect(output(log)).toMatch(/Stream Deck is stopped because the build failed, and needs starting once it is fixed/);
-    expect(output(log)).toContain("pnpm start:stream-deck");
+    expect(output(log)).toContain("node scripts/host-app.mjs start stream-deck");
     expect(output(log)).not.toMatch(/previous build/);
-    expect(commandLines()).toContain("pnpm stop:stream-deck");
+    expect(commandLines()).toContain("node scripts/host-app.mjs stop stream-deck");
     expect(commandLines().filter((line) => /\bstart\b|restart/.test(line))).toEqual([]);
   });
 

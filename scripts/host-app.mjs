@@ -4,10 +4,15 @@
  *
  *   node scripts/host-app.mjs start ulanzi
  *   node scripts/host-app.mjs stop mirabox
+ *   node scripts/host-app.mjs stop stream-deck
  *
- * Backs `pnpm start:ulanzi` / `stop:ulanzi` / `start:mirabox` / `stop:mirabox`.
- * The executable is env-configurable (`ULANZI_APP_PATH`, `MIRABOX_APP_PATH`,
- * settable in a gitignored `.env.local`) with a `%ProgramFiles(x86)%` default,
+ * Backs `pnpm start:ulanzi` / `stop:ulanzi` / `start:mirabox` / `stop:mirabox`,
+ * and since #1557 `pnpm start:stream-deck` / `stop:stream-deck`, which
+ * `lib/stream-deck-app.mjs` handles: Stream Deck is no `deck-hosts.mjs`
+ * descriptor, it installs to one `%ProgramFiles%` path, and its stop waits for
+ * the process to be gone. The Mirabox and Ulanzi executables are
+ * env-configurable (`ULANZI_APP_PATH`, `MIRABOX_APP_PATH`, settable in a
+ * gitignored `.env.local`) with a `%ProgramFiles(x86)%` default,
  * because two Mirabox-compatible hosts are commonly installed side by side
  * (StreamDock and VSD Craft) and a hardcoded path would be wrong for one of them.
  *
@@ -20,15 +25,17 @@
  * aside and rebuilt.)
  *
  * This file is argument handling only; the decisions live in
- * `lib/host-control.mjs`, where they can be tested.
+ * `lib/host-control.mjs` and `lib/stream-deck-app.mjs`, where they can be tested.
  */
 import { spawn, spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { findHost, hostNames, resolveAppPathSource } from "./lib/deck-hosts.mjs";
 import { loadEnvLocal } from "./lib/env-local.mjs";
 import { startHost, stopHost } from "./lib/host-control.mjs";
+import { startStreamDeck, stopStreamDeck, STREAM_DECK_HOST_ID } from "./lib/stream-deck-app.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const [, , action, hostId] = process.argv;
@@ -41,14 +48,22 @@ process.exitCode = await main();
 async function main() {
   if (action !== "start" && action !== "stop") {
     console.error(`Error: expected "start" or "stop", got ${JSON.stringify(action ?? "")}.`);
-    console.error("Usage: node scripts/host-app.mjs <start|stop> <ulanzi|mirabox>");
+    console.error(`Usage: node scripts/host-app.mjs <start|stop> <${STREAM_DECK_HOST_ID}|ulanzi|mirabox>`);
 
     return 1;
   }
 
+  if (hostId === STREAM_DECK_HOST_ID) {
+    return action === "stop"
+      ? await stopStreamDeck({ spawnSync })
+      : await startStreamDeck({ spawn, spawnSync, exists: existsSync });
+  }
+
   const host = findHost(hostId);
   if (!host) {
-    console.error(`Error: unknown host ${JSON.stringify(hostId ?? "")}. Expected one of: ${hostNames()}`);
+    console.error(
+      `Error: unknown host ${JSON.stringify(hostId ?? "")}. Expected one of: ${STREAM_DECK_HOST_ID}, ${hostNames()}`,
+    );
 
     return 1;
   }

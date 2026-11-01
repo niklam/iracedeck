@@ -2,9 +2,10 @@
  * Descriptors for the deck host applications a dev build can be linked into,
  * plus the pure resolvers that turn an environment into concrete paths (#1040).
  *
- * Elgato is deliberately absent: its linking goes through the `streamdeck` CLI
- * and its start/stop scripts hardcode the single install path — see the
- * `*:stream-deck` entries in the root `package.json`.
+ * Elgato is deliberately absent: its linking goes through the `streamdeck` CLI,
+ * and its start/stop (`host-app.mjs ... stream-deck`, #1557) live in
+ * `stream-deck-app.mjs` over `build-restart.mjs`'s `STREAM_DECK`, which has one
+ * `%ProgramFiles%` install path and no env override.
  *
  * Every path here is derived from environment variables rather than written out
  * literally, so the defaults follow a non-standard Windows install. The defaults
