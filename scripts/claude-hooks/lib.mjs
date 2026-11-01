@@ -554,10 +554,12 @@ function boardProjectId(cwd) {
 }
 
 /**
- * The board item for an issue of {@link HOME_REPO}: `{ itemId, status }`, or
- * `undefined` when the issue is not on the board. The number is always read
- * as a home-repository issue, so a caller holding another repository's number
- * must not pass it (#1527).
+ * The board item for an issue of {@link HOME_REPO}: `{ itemId, status }`,
+ * `undefined` when the issue is not on the board, or `null` when gh could not
+ * answer (a failed call, unparsable output), so a caller can tell "not on the
+ * board" from "could not look" (#1574). The number is always read as a
+ * home-repository issue, so a caller holding another repository's number must
+ * not pass it (#1527).
  */
 export function boardItemForIssue(issueNumber, cwd) {
   const [owner, name] = HOME_REPO.split("/");
@@ -568,7 +570,8 @@ export function boardItemForIssue(issueNumber, cwd) {
     name +
     '"){issue(number:$n){projectItems(first:10){nodes{id project{number} fieldValueByName(name:"Status"){... on ProjectV2ItemFieldSingleSelectValue{name}}}}}}}';
   const data = ghJson(["api", "graphql", "-f", `query=${query}`, "-F", `n=${issueNumber}`], cwd);
-  const node = data?.data?.repository?.issue?.projectItems?.nodes?.find((n) => n.project?.number === BOARD.number);
+  if (!data?.data?.repository) return null;
+  const node = data.data.repository.issue?.projectItems?.nodes?.find((n) => n.project?.number === BOARD.number);
   if (!node) return undefined;
   return { itemId: node.id, status: node.fieldValueByName?.name ?? "(none)" };
 }
@@ -616,12 +619,14 @@ const FROZEN_LANES = ["Testing", "Done", "Dropped"];
 export function moveBoardItemAfter(issueNumber, afterIssueNumber, cwd) {
   if (afterIssueNumber === issueNumber) return `board: cannot place #${issueNumber} after itself`;
   const item = boardItemForIssue(issueNumber, cwd);
+  if (item === null) return unreadCard(issueNumber);
   if (!item) return `board: #${issueNumber} is not on the Roadmap board`;
   if (FROZEN_LANES.includes(item.status))
     return `board: #${issueNumber} is in ${item.status}; its position is not moved (${FROZEN_LANES.join("/")} are history)`;
   let after;
   if (afterIssueNumber != null) {
     after = boardItemForIssue(afterIssueNumber, cwd);
+    if (after === null) return unreadCard(afterIssueNumber);
     if (!after) return `board: #${afterIssueNumber} is not on the Roadmap board`;
     if (after.status !== item.status)
       return `board: #${afterIssueNumber} is in ${after.status}, not ${item.status}; place #${issueNumber} after a card in its own lane`;
@@ -641,6 +646,10 @@ export function moveBoardItemAfter(issueNumber, afterIssueNumber, cwd) {
     : `board: moving #${issueNumber} ${where} failed (gh or GitHub refused the mutation)`;
 }
 
+/** The line for a {@link boardItemForIssue} lookup gh could not answer. */
+const unreadCard = (issueNumber) =>
+  `board: could not read #${issueNumber}'s card (gh failed — missing \`project\` token scope? \`gh auth refresh -s project,read:project\`)`;
+
 /** Set `IRACEDECK_HOOKS_DRY_RUN=1` to have every board mutation report instead of run (tests, pipe-checks). */
 export const dryRun = () => !!process.env.IRACEDECK_HOOKS_DRY_RUN;
 
@@ -653,6 +662,7 @@ export function setBoardStatus(issueNumber, lane, cwd) {
   if (!allowedFrom)
     return `board: "${lane}" is not a lane the hooks move cards into (${Object.keys(BOARD_MOVES).join(", ")})`;
   const item = boardItemForIssue(issueNumber, cwd);
+  if (item === null) return unreadCard(issueNumber);
   if (!item) return `board: #${issueNumber} is not on the Roadmap board`;
   if (item.status === lane) return `board: #${issueNumber} already in ${lane}`;
   if (!allowedFrom.includes(item.status))

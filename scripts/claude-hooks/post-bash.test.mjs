@@ -639,6 +639,16 @@ describe("post-bash.mjs moves a milestoned issue to Planned (#1574)", { timeout:
     expect(graphqlFor(calls)).toEqual(["n=5"]);
   });
 
+  it("gives the hand move when gh cannot read the board, not 'not on the board'", () => {
+    // No "api graphql" reply: the fake gh fails the card lookup.
+    const { note } = fireWithGh("gh issue edit 5 --milestone 3.8.0", viewed(5, home(5)));
+    expect(note).toMatch(/^\[hook\] board: could not read #5's card \(gh failed/);
+    expect(note).toMatch(
+      /move #5 to Planned by hand once gh can reach the board: node -e .*setBoardStatus\(5,'Planned'/,
+    );
+    expect(note).not.toMatch(/not on the Roadmap board/);
+  });
+
   it("moves a card with no lane too, and reads every spelling of the milestone, in both shells", () => {
     const replies = { ...viewed(5, home(5)), "api graphql": boardItem(null) };
     for (const [command, tool] of [

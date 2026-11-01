@@ -468,6 +468,7 @@ describe("the board's Next lane and positions", () => {
     18: null, // on the board with no Status set
   };
   const json = (o) => ({ status: 0, stdout: JSON.stringify(o), stderr: "" });
+  const UNREADABLE = 19; // its card lookup fails in gh
   const calls = () => vi.mocked(spawnSync).mock.calls.map(([, args]) => args);
   const mutations = () => calls().filter((a) => a.some((x) => /mutation|item-edit/.test(x)));
   let mutationOk;
@@ -483,6 +484,7 @@ describe("the board's Next lane and positions", () => {
             ? json({ data: { updateProjectV2ItemPosition: { clientMutationId: null } } })
             : { status: 1, stdout: "", stderr: "HTTP 403" };
         const n = Number(args.find((a) => a.startsWith("n="))?.slice(2));
+        if (n === UNREADABLE) return { status: 1, stdout: "", stderr: "HTTP 502" };
         if (!(n in lanes)) return json({ data: { repository: { issue: { projectItems: { nodes: [] } } } } });
         const node = { id: `PVTI_${n}`, project: { number: 1 }, fieldValueByName: lanes[n] && { name: lanes[n] } };
         return json({ data: { repository: { issue: { projectItems: { nodes: [node] } } } } });
@@ -523,6 +525,17 @@ describe("the board's Next lane and positions", () => {
     for (const n of [11, 13, 14, 15, 17])
       expect(setBoardStatus(n, "Planned", root)).toMatch(/not moving it to Planned \(only from \(none\)\/Backlog\)/);
     expect(setBoardStatus(16, "Planned", root)).toBe("board: #16 already in Planned");
+    expect(mutations()).toEqual([]);
+  });
+
+  // #1574 (CodeRabbit): a lookup gh could not answer is not "not on the board".
+  it("tells a board gh could not read from a card that is not on it", () => {
+    vi.stubEnv("IRACEDECK_HOOKS_DRY_RUN", "1");
+    const unread = /^board: could not read #19's card \(gh failed/;
+    expect(setBoardStatus(UNREADABLE, "Planned", root)).toMatch(unread);
+    expect(moveBoardItemAfter(UNREADABLE, null, root)).toMatch(unread);
+    expect(moveBoardItemAfter(12, UNREADABLE, root)).toMatch(unread);
+    expect(setBoardStatus(99, "Planned", root)).toBe("board: #99 is not on the Roadmap board");
     expect(mutations()).toEqual([]);
   });
 

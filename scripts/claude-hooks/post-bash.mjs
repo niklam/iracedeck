@@ -62,6 +62,8 @@ const GH_PR_MERGE = /\bgh\s+pr\s+merge\b/;
 const GH_ISSUE_CREATE = /\bgh\s+issue\s+create\b/;
 /** A `setBoardStatus` line that read the card's lane, whatever it then did — every other line may be the deadline's doing. */
 const BOARD_ANSWERED = / moved | would move | already in |; not moving /;
+/** A `setBoardStatus` line for a board gh could not read or write — distinct from a card that is not on it. */
+const BOARD_FAILED = /^board: (?:could not read|moving #\d+ .* failed)/;
 
 // One deadline for every git and gh call this hook makes, well inside its 90 s
 // timeout (#1574): a killed hook loses every note, moves included, while a
@@ -354,8 +356,11 @@ function afterMilestone(edit, envRepo, cwd) {
     else if (issue.state !== "OPEN") out.push(`gh issue edit: #${n} is ${issue.state}; its card stays where it is.`);
     else {
       const line = setBoardStatus(n, "Planned", cwd);
-      // A move that failed because the time ran out reads as "not on the board": name it for a hand move instead.
+      // A move that failed because the time ran out is named with the others the deadline cut short.
       if (hookDeadlineSpent() && !BOARD_ANSWERED.test(line)) late.push(`#${n}`);
+      // A board gh could not read or write is no answer about the card: say how to move it by hand.
+      else if (BOARD_FAILED.test(line))
+        out.push(`${line}; move #${n} to Planned by hand once gh can reach the board: ${plannedByHand(n)}`);
       else out.push(`${line} (milestone ${issue.milestone.title}).`);
     }
   }
