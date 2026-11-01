@@ -19,9 +19,9 @@ Why build it when the sim now does the rejoin half: Race Engineer users who run 
 One engine, two triggers, two opt-ins:
 
 - **Rejoin.** While stopped or crawling on track, the engineer says one of: _"Nothing behind you for the next twenty seconds"_, _"Car approaching in about fifteen seconds, get moving"_, _"Car approaching, three seconds, hold"_, and after a hold, _"Clear, go."_
-- **Pit exit.** From the pit box to the exit: _"Car on track at the exit, four seconds, hold at the line"_ or _"Pit exit clear"_.
+- **Pit exit.** From the pit box to the exit: _"Watch out for traffic at pit exit"_ or _"Pit exit seems to be clear"_ (Terse: _"Pit exit clear"_).
 
-Two user-set windows shared by both. Default on, under the Race Engineer master.
+Two user-set rejoin windows, and a user-set pit-exit window either side of the player's arrival. Default on, under the Race Engineer master.
 
 ## Decisions
 
@@ -49,15 +49,23 @@ The maintainer's addition: when nobody is coming, **say so**. A driver who has j
 
 While stopped the engine re-evaluates about once a second and speaks again on a **verdict change** or when the nearest gap has moved by a few seconds — never on every tick, which at three lines a second would be noise. After a hold, once the car has passed and nothing else is inside the hold window, it says _"Clear, go."_
 
-### 4. Two windows, user-set, shared
+### 4. The windows, user-set
 
-`trafficNoticeSeconds` (default 20) and `trafficHoldSeconds` (default 6), plain numbers in the settings window's Race Engineer card, `.catch` on both. Shared by both triggers because they mean the same thing at both — how far away a car has to be before you would rather wait. Fixed constants were the cheaper option and were set aside by the maintainer: track length and car speed change what "close" means, and a driver knows their own margin.
+`trafficNoticeSeconds` (default 20) and `trafficHoldSeconds` (default 6), plain numbers in the settings window's Race Engineer card, `.catch` on both. Shared by both triggers for the moment the engineer first speaks (the notice window), and by rejoin for its verdicts. Fixed constants were the cheaper option and were set aside by the maintainer: track length and car speed change what "close" means, and a driver knows their own margin.
+
+Pit exit judges traffic with a window of its own, `trafficPitExitBeforeSeconds` (default 2) and `trafficPitExitAfterSeconds` (default 4), the same kind of field (amended 2026-11-01, decision 5).
 
 ### 5. Pit exit runs against the learned landmarks
 
-From `pitStall.departed`, the player's ETA to the merge is the distance to `pitRoadEnd` at the pit speed limit (`resolvePitSpeedLimit`) plus the reference time from `pitRoadEnd` to `blendEnd` (the `estTime` difference between the two landmarks — an approximation for an accelerating car, and good enough for a window measured in seconds). The verdict is **traffic** when a car's arrival at the blend lands within the hold window after the player's own arrival; otherwise clear.
+From `pitStall.departed`, the player's ETA to the merge is the distance to `pitRoadEnd` at the pit speed limit (`resolvePitSpeedLimit`) plus the reference time from `pitRoadEnd` to `blendEnd` (the `estTime` difference between the two landmarks — an approximation for an accelerating car, and good enough for a window measured in seconds). The verdict is **traffic** when a car's arrival at the blend lands from `trafficPitExitBeforeSeconds` before the player's own arrival to `trafficPitExitAfterSeconds` after it; otherwise clear.
+
+The window is lopsided (amended 2026-11-01; the original counted only cars inside the hold window after the player). After: the car is at full speed while the player is still accelerating, so it closes about a second on them, and the ETA above runs early because the reference time from `pitRoadEnd` to `blendEnd` is at racing speed — a car predicted two seconds behind may be alongside. Before: a car that gets there first is ahead, and only one practically alongside matters. A symmetric ±3 s was the starting point and spent too much on the before side. The defaults are confirmed on a pit-exit capture with a car passing at the blend: its predicted arrival against its actual crossing, and the player's predicted ETA against their actual one.
 
 It is spoken once when the ETA drops under the notice window — early enough to act, late enough that the traffic picture is settled — and again only if the verdict flips before the line. No published landmark for the track means no pit-exit callout at all (logged at debug), per #1112's no-guess rule.
+
+The lines carry no number, unlike rejoin's: at the pit exit the window is the information, and the player cannot hold a line the way a stopped car can. Traffic: _"Watch out for traffic at pit exit."_ Clear: _"Pit exit seems to be clear"_ in Default, _"Pit exit clear"_ in Terse — "seems" because the verdict is a prediction. "Clear" over "open": it is the spotter's word for nothing there, and "open" is not standard racing radio.
+
+Cross-class arrivals are not yet sound (the #1199 finding on the issue): `CarIdxEstTime` is per class, and the 4–5 s class offset measured at Monza is wider than this whole window, so the class-consistent measurement must be settled before implementation.
 
 ### 6. Weight and family
 
@@ -65,11 +73,11 @@ Hold and pit-exit traffic fire at `WEIGHT.SAFETY` with `interrupt: true`: a car 
 
 ### 7. Settings
 
-`calloutEnabledTrafficRejoin`, `calloutEnabledTrafficPitExit`, both default on, plus the two window fields. No incident precondition to configure, no per-trigger windows.
+`calloutEnabledTrafficRejoin`, `calloutEnabledTrafficPitExit`, both default on, plus the four window fields of decision 4. No incident precondition to configure.
 
 ### 8. Events
 
-`traffic.rejoin { verdict: "clear" | "notice" | "hold" | "go", seconds?: number }` and `traffic.pitExit { verdict: "clear" | "traffic", seconds?: number }`, with harness entries. The harness needs a multi-car telemetry preset for both, since the existing shortcuts drive single events, not a field.
+`traffic.rejoin { verdict: "clear" | "notice" | "hold" | "go", seconds?: number }` and `traffic.pitExit { verdict: "clear" | "traffic", seconds?: number }`, with harness entries. The pit-exit lines speak no number; `seconds` (the nearest car's arrival relative to the player's, negative before) stays on the event for logs and the harness. The harness needs a multi-car telemetry preset for both, since the existing shortcuts drive single events, not a field.
 
 ## Alternatives rejected
 
@@ -88,4 +96,4 @@ Hold and pit-exit traffic fire at `WEIGHT.SAFETY` with `interrupt: true`: a car 
 
 ## Verification
 
-Arrival-primitive tests: wrap-around, cars ahead, in pits, not in world. Detector tests for the entry gates and the verdict table. Harness: a stopped player with cars at 25 s, 12 s and 4 s, watching the verdicts change as they pass; a pit exit with the landmarks seeded. Manual: a deliberate spin in practice on a busy server, and a pit stop with traffic.
+Arrival-primitive tests: wrap-around, cars ahead, in pits, not in world. Detector tests for the entry gates and the verdict table. Harness: a stopped player with cars at 25 s, 12 s and 4 s, watching the verdicts change as they pass; a pit exit with the landmarks seeded and cars at 3 s before, 1 s before, 3 s after and 5 s after the player's arrival (traffic, traffic, traffic, clear at the defaults). Manual: a deliberate spin in practice on a busy server, and a pit stop with traffic.
