@@ -345,7 +345,7 @@ Besides the final lap of a race and a caution, the best-lap callout is also sile
 
 ### Every lap
 
-Any lap you complete that neither the best-lap nor the fastest-lap call speaks for, in practice, qualifying and races, is read out the way a timing screen shows it, to the thousandth — *"Last lap was one forty-five point two three seven."* The engineer varies the opening (*"That one was …"*, *"You did a …"*), a lap under a minute starts with the seconds — *"Last lap was fifty-eight point oh four one."* — and trailing zeros are left off, so 1:23.450 is *"one twenty-three point four five"*.
+Any lap you complete that neither the best-lap nor the fastest-lap call speaks for, in practice, qualifying and races, is read out the way a timing screen shows it, to the thousandth — *"Last lap was. One forty-five point two three seven."* The engineer varies the opening (*"That one was …"*, *"You did a …"*), a lap under a minute starts with the seconds — *"Last lap was. Fifty-eight point oh four one."* — and trailing zeros are left off, so 1:23.450 is *"one twenty-three point four five"*.
 
 It stays quiet on laps that don't say anything about your pace: an out-lap (a lap you start on pit road), an in-lap (a lap on which you drive into the pits), and, like the best-lap call, the lap that ends a caution. A lap iRacing doesn't count, such as a track-limits cut, is still read out — you hear the time you drove.
 
