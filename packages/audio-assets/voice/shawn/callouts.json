@@ -1946,7 +1946,7 @@
       ]
     },
     "pit-crew.fastest-lap-race": {
-      "comment": "The race's fastest lap is set — says who set it (you, the leader, the car ahead or behind, or another car by number and position), then the lap time to the tenth, then the gap when there is one.",
+      "comment": "The race's fastest lap is set — says who set it (you, the leader, the car ahead or behind, or another car by number and position), then the lap time to the tenth as the minute and seconds clock followed by the tenth, then the gap when there is one.",
       "test": "Harness → Fastest Lap → Yours (Taken from you, Leader, Car ahead, Car behind, Other car for the other lines; Yours in the grace plays the best-lap line). In-sim: an offline AI race; set the fastest lap of the race from lap 3 on, or let an AI car beat it.",
       "sequence": [
         {
@@ -1974,13 +1974,7 @@
             ]
           }
         },
-        {
-          "if": "fastestLap.hasMinuteComponent",
-          "then": [
-            "{{fastestLap.minute}}"
-          ]
-        },
-        "{{fastestLap.second}}",
+        "{{fastestLap.clock}}",
         "{{fastestLap.decimal}}",
         {
           "optional": [
@@ -1992,19 +1986,12 @@
       ]
     },
     "pit-crew.lap-time-last": {
-      "comment": "Every lap that is not a new best: a short intro, then the lap time read out as minute, seconds, and the thousandths as a pair (one twenty three point four five seven).",
+      "comment": "Every lap that is not a new best: a short intro, then the lap time read as whole phrases, the minute and seconds as one clip and the thousandths as another (one twenty three, point four five six).",
       "test": "Harness → Lap Time → Every lap 1:45.237 (Every lap under a minute 58.041; Out lap — silent). In-sim: any session; complete a lap that is not a new best.",
       "sequence": [
         "{{lapTime.lastIntro}}",
-        {
-          "if": "lapTime.compactHasMinute",
-          "then": [
-            "{{lapTime.compactMinute}}"
-          ]
-        },
-        "{{lapTime.compactSecond}}",
-        "{{lapTime.compactPoint}}",
-        "{{lapTime.compactPair}}"
+        "{{lapTime.clock}}",
+        "{{lapTime.thousandths}}"
       ]
     }
   },
