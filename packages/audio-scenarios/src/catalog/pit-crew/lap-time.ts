@@ -18,15 +18,14 @@
  * race and under a caution exactly as the best lap is; an invalid lap is
  * still spoken. Its `speakGate` drops a lap time that waited out a busy line
  * once the player has completed another lap (`lapStillCurrent`). The readout
- * is the compact form to the thousandth (`lap-time-readout.ts`), each clip
- * that leads into another cut per onset class of the word after it; the
- * bundled script's shape:
- *   {{lapTime.lastIntro}}      "Last lap was" (plus alternates), by the class
- *                              of the time's first word
- *   {{lapTime.compactMinute}}  CONDITIONAL on `lapTime.compactHasMinute`
- *   {{lapTime.compactSecond}}
- *   {{lapTime.compactPoint}}   "point two", by the class of the pair
- *   {{lapTime.compactPair}}    "thirty seven" — ends the line
+ * is the compact form to the thousandth (`lap-time-readout.ts`), read as
+ * whole phrases (revision 5 of the clip contract); the bundled script's
+ * shape:
+ *   {{lapTime.lastIntro}}    "Last lap was" (plus alternates), by the onset
+ *                            class of the time's first word
+ *   {{lapTime.clock}}        "one forty five" (lap-time-clock), or under a
+ *                            minute "fifty eight" (lap-time-second)
+ *   {{lapTime.thousandths}}  "point two three seven" — ends the line
  *
  * **The best lap (`pit-crew.lap-time-best`, #555).** Fires on `lap.completed` when the driver sets a new session best (`isBest`)
  * or completes their first valid lap of the session (`isFirstValid`). The
@@ -84,12 +83,10 @@ import type { IScenarioEngine } from "../../interpreter.js";
 import type { UnderCautionResolver } from "./caution.js";
 import { type LapOwnerResolver, lapStillCurrent, playerLapOwner } from "./lap-announcement.js";
 import {
+  compactClockRef,
   compactHasMinute,
   compactLeadClass,
-  compactMinuteRef,
-  compactPairRef,
-  compactPointRef,
-  compactSecondRef,
+  compactThousandthsRef,
   fullDecimalRef,
   fullHasMinute,
   fullMinuteRef,
@@ -207,43 +204,23 @@ export function registerLapTimeVocabulary(
   );
 
   engine.defineVar(
-    "lapTime.compactMinute",
+    "lapTime.clock",
     (ctx) => {
       const lap = lapOf(ctx);
 
-      return lap ? compactMinuteRef(lap.lapTime, "thousandths") : null;
+      return lap ? compactClockRef(lap.lapTime, "thousandths") : null;
     },
-    "The minute of the lap time read the way a timing screen does, to the thousandth, from the lap-time-compact-minute clip group: base <m>-<c>, c the onset class of the seconds word that follows (lap-time-compact-minute/1-f for 1:45.237, 1-oh for 1:05.237, 1-t for 1:23.400). Nothing under a minute; a minute the voice has no clip for aborts the readout.",
+    'The minutes and seconds of the lap time read the way a timing screen does, rounded to the thousandth, as one clip: from a minute up a phrase from the lap-time-clock clip group, base <m>m<ss> ("one forty five", lap-time-clock/1m45 for 1:45.237; "two oh five", lap-time-clock/2m05 for 2:05.007); under a minute the seconds word from the lap-time-second clip group (lap-time-second/58 for 58.041). A minute the voice has no clip for, 11 and up, aborts the readout.',
   );
 
   engine.defineVar(
-    "lapTime.compactSecond",
+    "lapTime.thousandths",
     (ctx) => {
       const lap = lapOf(ctx);
 
-      return lap ? compactSecondRef(lap.lapTime, "thousandths") : null;
+      return lap ? compactThousandthsRef(lap.lapTime) : null;
     },
-    'The seconds of the lap time in the compact form, to the thousandth: after a minute, 0 to 9 from the lap-time-compact-second clip group (00 to 09, "oh five") and 10 to 59 from the lap-time-second clip group; under a minute, lap-time-second (0 to 59) throughout.',
-  );
-
-  engine.defineVar(
-    "lapTime.compactPoint",
-    (ctx) => {
-      const lap = lapOf(ctx);
-
-      return lap ? compactPointRef(lap.lapTime) : null;
-    },
-    'The first digit after the point, spoken with the point ("point two"), from the lap-time-compact-point clip group: base <d>-<c>, c the onset class of the pair that follows (lap-time-compact-point/2-th for 1:45.237, 0-oh for .007, 0-n for .019).',
-  );
-
-  engine.defineVar(
-    "lapTime.compactPair",
-    (ctx) => {
-      const lap = lapOf(ctx);
-
-      return lap ? compactPairRef(lap.lapTime) : null;
-    },
-    'The last two digits of the thousandths, which end the readout, from the lap-time-compact-pair clip group: 00 to 99 ("oh seven", "thirty seven"; lap-time-compact-pair/37 for 1:45.237).',
+    'The fraction of the lap time to the thousandth, spoken with the point ("point two three seven"), which ends the readout, from the lap-time-thousandths clip group: base <ddd>, the rounded value as three digits (lap-time-thousandths/237 for 1:45.237, 450 for 1:23.450, 007 for 2:05.007).',
   );
 
   engine.defineCond(
@@ -253,7 +230,7 @@ export function registerLapTimeVocabulary(
 
       return lap !== null && compactHasMinute(lap.lapTime, "thousandths");
     },
-    "The lap, rounded to the thousandth, is a minute or longer, so the compact readout speaks lapTime.compactMinute before the seconds.",
+    "The lap, rounded to the thousandth, is a minute or longer, so lapTime.clock reads a minutes-and-seconds phrase rather than a seconds word.",
   );
 
   engine.defineCond(
@@ -446,8 +423,8 @@ export const LAP_TIME_SCENARIO_IDS: readonly string[] = ["pit-crew.lap-time-best
  * The `(group, base)` sources the bundled scripts address directly: none.
  * Every clip of both readouts is a var's — the every-lap intro too, since it
  * is chosen by the onset class of the time it leads into (#1163). The
- * `lapTime.*` vars draw from `lap-time-last`, the four `lap-time-*` groups
- * and the five `lap-time-compact-*` groups by value, and their descriptions
- * name the groups.
+ * `lapTime.*` vars draw from `lap-time-last`, the four `lap-time-*` groups of
+ * #555, `lap-time-clock` and `lap-time-thousandths` by value, and their
+ * descriptions name the groups.
  */
 export const LAP_TIME_CLIP_SOURCES: readonly { group: string; base: string }[] = [];

@@ -21,6 +21,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest } from "../../interpreter.js";
 import { _resetAudioScenarios, getScenarioEngine, initializeAudioScenarios } from "../../interpreter.js";
+import { descriptionNamesGroup } from "../../reference/pack-reference.js";
 import { familyGate } from "./callout-gate.test-util.js";
 import { familyReferences } from "./family-references.test-util.js";
 import { registerPitCrew } from "./index.js";
@@ -148,16 +149,11 @@ const INTRO_NAMES = ["best-lap-yet", "first-good-lap"];
 const MINUTE_NAMES = Array.from({ length: 10 }, (_, i) => String(i + 1));
 const SECOND_NAMES = Array.from({ length: 60 }, (_, i) => String(i));
 const DECIMAL_NAMES = Array.from({ length: 10 }, (_, i) => String(i));
-const DIGITS = Array.from({ length: 10 }, (_, i) => String(i));
-/** The onset classes a clip leading into a seconds word or a pair is cut for (#1163). */
-const NEXT_CLASSES = ["oh", "t", "e", "th", "f", "s", "ei", "n"];
 /** The onset classes the every-lap intro is cut for: the time's first word. */
 const LEAD_CLASSES = ["w", "t", "th", "f", "s", "ei", "n", "e", "z"];
-/** The compact minute takes, 1–10 only: an eleventh minute has no clip and aborts. */
-const COMPACT_MINUTE_NAMES = MINUTE_NAMES.flatMap((m) => NEXT_CLASSES.map((c) => `${m}-${c}`));
-const OH_SECOND_NAMES = DIGITS.map((d) => `0${d}`);
-const POINT_NAMES = DIGITS.flatMap((d) => NEXT_CLASSES.map((c) => `${d}-${c}`));
-const PAIR_NAMES = Array.from({ length: 100 }, (_, i) => String(i).padStart(2, "0"));
+/** The clock phrases, 1m00 to 10m59 only: an eleventh minute has no clip and aborts. */
+const CLOCK_NAMES = MINUTE_NAMES.flatMap((m) => SECOND_NAMES.map((ss) => `${m}m${ss.padStart(2, "0")}`));
+const THOUSANDTHS_NAMES = Array.from({ length: 1000 }, (_, i) => String(i).padStart(3, "0"));
 
 const manifest: AudioAssetsManifest = {
   clips: [
@@ -173,10 +169,8 @@ const manifest: AudioAssetsManifest = {
     `voice/${VOICE}/lap-time-minute/12.mp3`,
     // The every-lap readout's clips (#1163).
     ...LEAD_CLASSES.map((c) => `voice/${VOICE}/lap-time-last/intro-${c}-01.mp3`),
-    ...COMPACT_MINUTE_NAMES.map((n) => `voice/${VOICE}/lap-time-compact-minute/${n}.mp3`),
-    ...OH_SECOND_NAMES.map((n) => `voice/${VOICE}/lap-time-compact-second/${n}.mp3`),
-    ...POINT_NAMES.map((n) => `voice/${VOICE}/lap-time-compact-point/${n}.mp3`),
-    ...PAIR_NAMES.map((n) => `voice/${VOICE}/lap-time-compact-pair/${n}.mp3`),
+    ...CLOCK_NAMES.map((n) => `voice/${VOICE}/lap-time-clock/${n}.mp3`),
+    ...THOUSANDTHS_NAMES.map((n) => `voice/${VOICE}/lap-time-thousandths/${n}.mp3`),
   ],
   ambientLoop: "sfx/IRD-ambient-pit.mp3",
   ticks: { open: "sfx/IRD-tick-open.mp3", close: "sfx/IRD-tick-close.mp3" },
@@ -189,20 +183,13 @@ const MANIFEST = manifestJson as AudioAssetsManifest;
 const SCRIPT = defaultScript as CalloutScript;
 
 /**
- * The every-lap entry in the shape `lap-time.ts`'s header states (#1163):
- * the intro, the minute behind its condition, the seconds, the point with
- * its digit and the pair.
+ * The every-lap entry in the shape `lap-time.ts`'s header states (#1163,
+ * revision 5 of the clip contract): the intro, the clock and the thousandths.
  */
 const LAST_ENTRY = {
   comment: "Every lap, to the thousandth.",
   test: "Harness → Scenario Shortcuts → Lap Time → Every lap.",
-  sequence: [
-    "{{lapTime.lastIntro}}",
-    { if: "lapTime.compactHasMinute", then: ["{{lapTime.compactMinute}}"] },
-    "{{lapTime.compactSecond}}",
-    "{{lapTime.compactPoint}}",
-    "{{lapTime.compactPair}}",
-  ],
+  sequence: ["{{lapTime.lastIntro}}", "{{lapTime.clock}}", "{{lapTime.thousandths}}"],
 };
 
 /**
@@ -518,15 +505,13 @@ describe("registerLapTimeVocabulary (issue #1065)", () => {
     const ours = (name: string) => name.startsWith("lapTime.");
 
     expect(vars.filter((v) => ours(v.name)).map((v) => v.name)).toEqual([
-      "lapTime.compactMinute",
-      "lapTime.compactPair",
-      "lapTime.compactPoint",
-      "lapTime.compactSecond",
+      "lapTime.clock",
       "lapTime.decimal",
       "lapTime.intro",
       "lapTime.lastIntro",
       "lapTime.minute",
       "lapTime.second",
+      "lapTime.thousandths",
     ]);
     expect(conds.filter((c) => ours(c.name)).map((c) => c.name)).toEqual([
       "lapTime.compactHasMinute",
@@ -537,6 +522,25 @@ describe("registerLapTimeVocabulary (issue #1065)", () => {
     for (const entry of [...vars, ...conds].filter((e) => ours(e.name))) {
       expect(entry.description.length, entry.name).toBeGreaterThan(0);
     }
+  });
+
+  it("names in each every-lap var's description the clip groups it draws from, which the coverage tooling attributes clips by", () => {
+    const { vars } = getScenarioEngine().vocabulary();
+    const description = (name: string) => vars.find((v) => v.name === name)?.description ?? "";
+    const groups: Readonly<Record<string, readonly string[]>> = {
+      "lapTime.lastIntro": ["lap-time-last"],
+      "lapTime.clock": ["lap-time-clock", "lap-time-second"],
+      "lapTime.thousandths": ["lap-time-thousandths"],
+    };
+
+    for (const [name, named] of Object.entries(groups)) {
+      for (const group of named) {
+        expect(descriptionNamesGroup(description(name), group), `${name} names ${group}`).toBe(true);
+      }
+    }
+
+    // The positive control: a group the var does not draw from is not named.
+    expect(descriptionNamesGroup(description("lapTime.thousandths"), "lap-time-clock")).toBe(false);
   });
 
   it("lapTime.hasMinuteComponent is true from one minute up and false below it, or with no lap yet", () => {
@@ -635,90 +639,71 @@ describe("the every-lap callout (issue #1163)", () => {
     );
     const start = clips.findIndex((c) => c.startsWith("lap-time-last/"));
 
-    return start === -1 ? [] : clips.slice(start).filter((c) => /^lap-time-(last|second|compact-[a-z]+)\//.test(c));
+    return start === -1 ? [] : clips.slice(start).filter((c) => /^lap-time-(last|second|clock|thousandths)\//.test(c));
   }
 
   /** A lap that is not a personal best, so the best-lap call does not own it. */
   const plain = (overrides: Partial<LapCompletedSnapshot> = {}): LapCompletedSnapshot =>
     snap({ isBest: false, isFirstValid: false, ...overrides });
 
-  it("reads 1:45.2374 as the intro, the minute take, forty five, point two and thirty seven — 237, not 238", () => {
+  it("reads 1:23.456 as the intro, the clock phrase 1m23 and the thousandths 456", () => {
+    fire(plain({ lapTime: 83.456 }));
+
+    expect(lastLine()).toEqual(["lap-time-last/intro-w", "lap-time-clock/1m23", "lap-time-thousandths/456"]);
+  });
+
+  it("reads 1:23.450 with the base 450 — only the clip's text drops the zero", () => {
+    fire(plain({ lapTime: 83.45 }));
+
+    expect(lastLine()).toEqual(["lap-time-last/intro-w", "lap-time-clock/1m23", "lap-time-thousandths/450"]);
+  });
+
+  it("rounds once at the thousandth: 1:45.2374 is 237 and 1:45.2376 is 238", () => {
     fire(plain({ lapTime: 105.2374 }));
+    expect(lastLine()).toEqual(["lap-time-last/intro-w", "lap-time-clock/1m45", "lap-time-thousandths/237"]);
 
-    expect(lastLine()).toEqual([
-      "lap-time-last/intro-w",
-      "lap-time-compact-minute/1-f",
-      "lap-time-second/45",
-      "lap-time-compact-point/2-th",
-      "lap-time-compact-pair/37",
-    ]);
+    audio._played.length = 0;
+    fire(plain({ lap: 6, lapTime: 105.2376 }));
+    expect(lastLine().at(-1)).toBe("lap-time-thousandths/238");
   });
 
-  it("rounds 1:45.2376 up to 238", () => {
-    fire(plain({ lapTime: 105.2376 }));
+  it("reads 2:05.007 as 2m05 and 007, leading in with the t take", () => {
+    fire(plain({ lapTime: 125.007 }));
 
-    expect(lastLine().at(-1)).toBe("lap-time-compact-pair/38");
+    expect(lastLine()).toEqual(["lap-time-last/intro-t", "lap-time-clock/2m05", "lap-time-thousandths/007"]);
   });
 
-  it("reads a sub-minute lap with no minute (58.041)", () => {
+  it("reads 10:00.000 as 10m00 and 000", () => {
+    fire(plain({ lapTime: 600.0 }));
+
+    expect(lastLine()).toEqual(["lap-time-last/intro-t", "lap-time-clock/10m00", "lap-time-thousandths/000"]);
+  });
+
+  it("reads a sub-minute lap from lap-time-second with no clock phrase (58.041), leading in with the f take", () => {
     fire(plain({ lapTime: 58.041 }));
 
-    expect(lastLine()).toEqual([
-      "lap-time-last/intro-f",
-      "lap-time-second/58",
-      "lap-time-compact-point/0-f",
-      "lap-time-compact-pair/41",
-    ]);
+    expect(lastLine()).toEqual(["lap-time-last/intro-f", "lap-time-second/58", "lap-time-thousandths/041"]);
   });
 
-  it("reads a lap under ten seconds plainly (7.250 → seven, not oh seven)", () => {
-    fire(plain({ lapTime: 7.25 }));
+  it("reads 59.9996 as the minute it rounds into: 1m00 and 000, leading in with the w take", () => {
+    fire(plain({ lapTime: 59.9996 }));
 
-    expect(lastLine()).toEqual([
-      "lap-time-last/intro-s",
-      "lap-time-second/7",
-      "lap-time-compact-point/2-f",
-      "lap-time-compact-pair/50",
-    ]);
+    expect(lastLine()).toEqual(["lap-time-last/intro-w", "lap-time-clock/1m00", "lap-time-thousandths/000"]);
   });
 
-  it("reads 0–9 seconds after a minute as oh N (1:05.102 → 1-oh, 05), and the point before a pair under ten by oh's class", () => {
-    fire(plain({ lapTime: 65.102 }));
-
-    expect(lastLine()).toEqual([
-      "lap-time-last/intro-w",
-      "lap-time-compact-minute/1-oh",
-      "lap-time-compact-second/05",
-      "lap-time-compact-point/1-oh",
-      "lap-time-compact-pair/02",
-    ]);
-  });
-
-  it("reads 00 seconds after a minute (2:00.456 → 2-oh, 00)", () => {
-    fire(plain({ lapTime: 120.456 }));
-
-    expect(lastLine().slice(0, 3)).toEqual([
-      "lap-time-last/intro-t",
-      "lap-time-compact-minute/2-oh",
-      "lap-time-compact-second/00",
-    ]);
-  });
-
-  it("aborts 10:59.9995, which rounds into an eleventh minute no clip covers — 10:59.9994 still speaks", () => {
-    fire(plain({ lapTime: 659.9995 }));
+  it("aborts 10:59.9996, which rounds into an eleventh minute no clip covers — 10:59.9994 still speaks", () => {
+    fire(plain({ lapTime: 659.9996 }));
     expect(voicePaths()).toEqual([]);
 
     fire(plain({ lap: 6, lapTime: 659.9994 }));
-    expect(lastLine().slice(0, 3)).toEqual([
-      "lap-time-last/intro-t",
-      "lap-time-compact-minute/10-f",
-      "lap-time-second/59",
-    ]);
+    expect(lastLine()).toEqual(["lap-time-last/intro-t", "lap-time-clock/10m59", "lap-time-thousandths/999"]);
   });
 
   it("opens with the intro take for the class of the time's first word", () => {
     const cases: ReadonlyArray<[number, string]> = [
       [83.4, "w"],
+      [125.0, "t"],
+      [58.0, "f"],
       [245.0, "f"],
       [120.0, "t"],
       [15.2, "f"],

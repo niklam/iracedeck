@@ -2,19 +2,17 @@
  * The shared lap-time readout (issues #555, #1163, #1571): the full form
  * #555 speaks to the tenth, and the compact form #1163 speaks to the
  * thousandth and #1571 to the tenth — each rounded once at its precision,
- * each clip that leads into another chosen by the onset class of the word
- * after it.
+ * read as whole phrases (the clock, then the fraction), the line before it
+ * chosen by the onset class of the time's first word.
  */
 import { describe, expect, it } from "vitest";
 
 import {
+  compactClockRef,
   compactHasMinute,
   compactLeadClass,
-  compactMinuteRef,
-  compactPairRef,
-  compactPointRef,
-  compactSecondRef,
-  compactTenthRef,
+  compactTenthsRef,
+  compactThousandthsRef,
   fullDecimalRef,
   fullHasMinute,
   fullMinuteRef,
@@ -22,7 +20,6 @@ import {
   type NumberWord,
   onsetClass,
   type OnsetClass,
-  pairFirstWord,
   plainFirstWord,
   splitCompactLapTime,
   splitLapTime,
@@ -52,7 +49,6 @@ describe("the full form (#555)", () => {
 describe("the onset classes (#1163)", () => {
   /** The contract's table, word for word: a clip leading into a word is cut once per class. */
   const TABLE: Readonly<Record<OnsetClass, readonly NumberWord[]>> = {
-    oh: ["oh"],
     w: ["one"],
     t: ["two", "ten", "twelve", "twenty"],
     th: ["three", "thirteen", "thirty"],
@@ -70,21 +66,20 @@ describe("the onset classes (#1163)", () => {
     }
   });
 
-  it("covers exactly the words a compact time speaks first: oh, 0–9, the teens and the tens", () => {
+  it("covers exactly the words a compact time speaks first: 0–9, the teens and the tens", () => {
     const tabled = Object.values(TABLE).flat().sort();
-    const spoken = new Set<NumberWord>(["oh"]);
+    const spoken = new Set<NumberWord>();
 
     for (let n = 0; n < 100; n++) spoken.add(plainFirstWord(n) as NumberWord);
 
     expect(tabled).toEqual([...spoken].sort());
-    expect(tabled).toHaveLength(29);
+    expect(tabled).toHaveLength(28);
   });
 
   it("tells apart words that only look alike (the positive control): two is t, three is th, eleven is e", () => {
     expect(onsetClass("two")).not.toBe(onsetClass("three"));
     expect(onsetClass("ten")).not.toBe(onsetClass("eleven"));
     expect(onsetClass("eight")).not.toBe(onsetClass("eleven"));
-    expect(onsetClass("oh")).not.toBe(onsetClass("zero"));
   });
 });
 
@@ -105,16 +100,8 @@ describe("the first spoken word", () => {
     ]);
   });
 
-  it("reads a pair with oh below ten, and as plainly from ten up", () => {
-    expect([0, 5, 9].map(pairFirstWord)).toEqual(["oh", "oh", "oh"]);
-    expect([10, 19, 23, 99].map(pairFirstWord)).toEqual(["ten", "nineteen", "twenty", "ninety"]);
-  });
-
   it("has no word outside 0–99 or for a fraction", () => {
-    for (const n of [-1, 100, 1.5, NaN]) {
-      expect(plainFirstWord(n), String(n)).toBeNull();
-      expect(pairFirstWord(n), String(n)).toBeNull();
-    }
+    for (const n of [-1, 100, 1.5, NaN]) expect(plainFirstWord(n), String(n)).toBeNull();
   });
 });
 
@@ -140,108 +127,95 @@ describe("splitCompactLapTime", () => {
     for (const t of [0, -5, NaN, Infinity]) {
       expect(splitCompactLapTime(t, "thousandths"), String(t)).toBeNull();
       expect(compactLeadClass(t, "tenths"), String(t)).toBeNull();
-      expect(compactMinuteRef(t, "tenths"), String(t)).toBeNull();
-      expect(compactSecondRef(t, "tenths"), String(t)).toBeNull();
-      expect(compactTenthRef(t), String(t)).toBeNull();
-      expect(compactPointRef(t), String(t)).toBeNull();
-      expect(compactPairRef(t), String(t)).toBeNull();
+      expect(compactClockRef(t, "tenths"), String(t)).toBeNull();
+      expect(compactClockRef(t, "thousandths"), String(t)).toBeNull();
+      expect(compactTenthsRef(t, false), String(t)).toBeNull();
+      expect(compactTenthsRef(t, true), String(t)).toBeNull();
+      expect(compactThousandthsRef(t), String(t)).toBeNull();
     }
   });
 });
 
-describe("the compact form: minute and seconds", () => {
-  it("reads 1:05.4 as minute 1-oh and the seconds oh five from lap-time-compact-second", () => {
-    expect(compactMinuteRef(65.4, "tenths")).toBe("pool:lap-time-compact-minute/1-oh");
-    expect(compactSecondRef(65.4, "tenths")).toBe("pool:lap-time-compact-second/05");
+describe("the compact clock", () => {
+  it("reads 1:23.456 as the phrase 1m23 (the positive control on the group)", () => {
+    expect(compactClockRef(83.456, "thousandths")).toBe("pool:lap-time-clock/1m23");
+    expect(compactClockRef(83.4, "tenths")).toBe("pool:lap-time-clock/1m23");
   });
 
-  it("reads 1:23.4 as minute 1-t and the seconds twenty three from lap-time-second (the positive control)", () => {
-    expect(compactMinuteRef(83.4, "tenths")).toBe("pool:lap-time-compact-minute/1-t");
-    expect(compactSecondRef(83.4, "tenths")).toBe("pool:lap-time-second/23");
-    expect(compactTenthRef(83.4)).toBe("pool:lap-time-compact-tenth/4");
+  it("pads the seconds to two digits: 2:05.007 is 2m05, 10:00.000 is 10m00", () => {
+    expect(compactClockRef(125.007, "thousandths")).toBe("pool:lap-time-clock/2m05");
+    expect(compactClockRef(600.0, "thousandths")).toBe("pool:lap-time-clock/10m00");
+    // The positive control on the padding: ten seconds and up are as they are.
+    expect(compactClockRef(130.0, "thousandths")).toBe("pool:lap-time-clock/2m10");
   });
 
-  it("takes the minute by the class of the seconds word: 1:11 e, 1:13 th, 1:16 s, 1:18 ei, 1:19 n", () => {
-    expect([71.0, 73.0, 76.0, 78.0, 79.0].map((t) => compactMinuteRef(t, "tenths"))).toEqual([
-      "pool:lap-time-compact-minute/1-e",
-      "pool:lap-time-compact-minute/1-th",
-      "pool:lap-time-compact-minute/1-s",
-      "pool:lap-time-compact-minute/1-ei",
-      "pool:lap-time-compact-minute/1-n",
-    ]);
+  it("reads a lap under a minute from #555's lap-time-second: 58.041 is fifty eight, 7.25 seven", () => {
+    expect(compactHasMinute(58.041, "thousandths")).toBe(false);
+    expect(compactClockRef(58.041, "thousandths")).toBe("pool:lap-time-second/58");
+    expect(compactClockRef(7.25, "tenths")).toBe("pool:lap-time-second/7");
+    // The positive control: the same seconds after a minute are a clock phrase.
+    expect(compactClockRef(67.25, "tenths")).toBe("pool:lap-time-clock/1m07");
   });
 
-  it("reads 00 seconds after a minute as oh oh (2:00.4 → 2-oh, compact-second/00)", () => {
-    expect(compactMinuteRef(120.4, "tenths")).toBe("pool:lap-time-compact-minute/2-oh");
-    expect(compactSecondRef(120.4, "tenths")).toBe("pool:lap-time-compact-second/00");
-  });
-
-  it("reads a lap under a minute plainly from lap-time-second: 7.25 is seven, not oh seven", () => {
-    expect(compactHasMinute(7.25, "tenths")).toBe(false);
-    expect(compactMinuteRef(7.25, "tenths")).toBeNull();
-    expect(compactSecondRef(7.25, "tenths")).toBe("pool:lap-time-second/7");
-    // The positive control: the same seconds after a minute are "oh seven".
-    expect(compactSecondRef(67.25, "tenths")).toBe("pool:lap-time-compact-second/07");
-  });
-
-  it("picks 1-oh and 00 for 59.96 at the tenth, the minute the rounding made", () => {
-    expect(compactHasMinute(59.96, "tenths")).toBe(true);
-    expect(compactMinuteRef(59.96, "tenths")).toBe("pool:lap-time-compact-minute/1-oh");
-    expect(compactSecondRef(59.96, "tenths")).toBe("pool:lap-time-compact-second/00");
-    expect(compactTenthRef(59.96)).toBe("pool:lap-time-compact-tenth/0");
-  });
-
-  it("decides the minute at its own precision: 59.9994 has none to the thousandth but one to the tenth", () => {
+  it("reads the minute the rounding made: 59.9996 to the thousandth and 59.96 to the tenth are 1m00", () => {
+    expect(compactHasMinute(59.9996, "thousandths")).toBe(true);
+    expect(compactClockRef(59.9996, "thousandths")).toBe("pool:lap-time-clock/1m00");
+    expect(compactClockRef(59.96, "tenths")).toBe("pool:lap-time-clock/1m00");
+    // The positive control: 59.9994 stays under a minute to the thousandth.
     expect(compactHasMinute(59.9994, "thousandths")).toBe(false);
-    expect(compactSecondRef(59.9994, "thousandths")).toBe("pool:lap-time-second/59");
-    expect(compactHasMinute(59.9994, "tenths")).toBe(true);
+    expect(compactClockRef(59.9994, "thousandths")).toBe("pool:lap-time-second/59");
   });
 
-  it("names the eleventh minute as it is, so a voice with clips to ten aborts it (10:59.9995)", () => {
-    expect(compactMinuteRef(659.9995, "thousandths")).toBe("pool:lap-time-compact-minute/11-oh");
-    expect(compactMinuteRef(659.9994, "thousandths")).toBe("pool:lap-time-compact-minute/10-f");
+  it("names the eleventh minute as it is, so a voice with clips to 10m59 aborts it (10:59.9996)", () => {
+    expect(compactClockRef(659.9996, "thousandths")).toBe("pool:lap-time-clock/11m00");
+    expect(compactClockRef(659.9994, "thousandths")).toBe("pool:lap-time-clock/10m59");
   });
 });
 
-describe("the compact form: the thousandths", () => {
-  it("reads 1:45.237 as 1-f, forty five, point two by thirty's class, thirty seven", () => {
-    expect(compactMinuteRef(105.237, "thousandths")).toBe("pool:lap-time-compact-minute/1-f");
-    expect(compactSecondRef(105.237, "thousandths")).toBe("pool:lap-time-second/45");
-    expect(compactPointRef(105.237)).toBe("pool:lap-time-compact-point/2-th");
-    expect(compactPairRef(105.237)).toBe("pool:lap-time-compact-pair/37");
+describe("the compact fraction to the thousandth", () => {
+  it("reads 1:23.456 as 456", () => {
+    expect(compactThousandthsRef(83.456)).toBe("pool:lap-time-thousandths/456");
   });
 
-  it("rounds once to the thousandth: 1:45.2374 is pair 37 and 1:45.2376 pair 38", () => {
-    expect(compactPointRef(105.2374)).toBe("pool:lap-time-compact-point/2-th");
-    expect(compactPairRef(105.2374)).toBe("pool:lap-time-compact-pair/37");
-    expect(compactPairRef(105.2376)).toBe("pool:lap-time-compact-pair/38");
+  it("keeps a trailing zero in the base: 1:23.450 is 450, not 45", () => {
+    expect(compactThousandthsRef(83.45)).toBe("pool:lap-time-thousandths/450");
+    // The positive control: a non-zero last digit is read as it is.
+    expect(compactThousandthsRef(83.451)).toBe("pool:lap-time-thousandths/451");
   });
 
-  it("reads .007 as point oh by oh's class and the pair oh seven", () => {
-    expect(compactPointRef(83.007)).toBe("pool:lap-time-compact-point/0-oh");
-    expect(compactPairRef(83.007)).toBe("pool:lap-time-compact-pair/07");
+  it("keeps leading zeros: 2:05.007 is 007, 58.041 is 041", () => {
+    expect(compactThousandthsRef(125.007)).toBe("pool:lap-time-thousandths/007");
+    expect(compactThousandthsRef(58.041)).toBe("pool:lap-time-thousandths/041");
   });
 
-  it("reads .019 as point oh by nineteen's class and the pair nineteen", () => {
-    expect(compactPointRef(83.019)).toBe("pool:lap-time-compact-point/0-n");
-    expect(compactPairRef(83.019)).toBe("pool:lap-time-compact-pair/19");
+  it("reads a whole number of seconds as 000: 10:00.000, and 59.9996 rounded into 1:00.000", () => {
+    expect(compactThousandthsRef(600.0)).toBe("pool:lap-time-thousandths/000");
+    expect(compactThousandthsRef(59.9996)).toBe("pool:lap-time-thousandths/000");
   });
 
-  it("reads .210 as point two by ten's class and the pair ten", () => {
-    expect(compactPointRef(83.21)).toBe("pool:lap-time-compact-point/2-t");
-    expect(compactPairRef(83.21)).toBe("pool:lap-time-compact-pair/10");
+  it("rounds once at the thousandth: 1:45.2374 is 237 and 1:45.2376 is 238", () => {
+    expect(compactThousandthsRef(105.2374)).toBe("pool:lap-time-thousandths/237");
+    expect(compactThousandthsRef(105.2376)).toBe("pool:lap-time-thousandths/238");
+  });
+});
+
+describe("the compact fraction to the tenth", () => {
+  it("reads 1:23.44 as the clock 1m23 and point four, the take that ends the line", () => {
+    expect(compactClockRef(83.44, "tenths")).toBe("pool:lap-time-clock/1m23");
+    expect(compactTenthsRef(83.44, false)).toBe("pool:lap-time-tenths/4");
   });
 
-  it("reads 58.041 with no minute: fifty eight, point oh by forty's class, forty one", () => {
-    expect(compactMinuteRef(58.041, "thousandths")).toBeNull();
-    expect(compactSecondRef(58.041, "thousandths")).toBe("pool:lap-time-second/58");
-    expect(compactPointRef(58.041)).toBe("pool:lap-time-compact-point/0-f");
-    expect(compactPairRef(58.041)).toBe("pool:lap-time-compact-pair/41");
+  it("takes <d>-gap when the gap clause follows, and only then", () => {
+    expect(compactTenthsRef(83.44, true)).toBe("pool:lap-time-tenths/4-gap");
+    expect(compactTenthsRef(83.44, false)).toBe("pool:lap-time-tenths/4");
   });
 
-  it("reads .000 as point oh by oh's class and oh oh", () => {
-    expect(compactPointRef(659.9995)).toBe("pool:lap-time-compact-point/0-oh");
-    expect(compactPairRef(659.9995)).toBe("pool:lap-time-compact-pair/00");
+  it("carries 59.96 into 1m00 and point oh", () => {
+    expect(compactClockRef(59.96, "tenths")).toBe("pool:lap-time-clock/1m00");
+    expect(compactTenthsRef(59.96, false)).toBe("pool:lap-time-tenths/0");
+    // The positive control: 59.94 stays fifty nine point nine.
+    expect(compactClockRef(59.94, "tenths")).toBe("pool:lap-time-second/59");
+    expect(compactTenthsRef(59.94, false)).toBe("pool:lap-time-tenths/9");
   });
 });
 

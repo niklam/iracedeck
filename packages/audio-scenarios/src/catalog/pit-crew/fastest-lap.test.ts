@@ -19,6 +19,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WEIGHT } from "../../dsl.js";
 import type { AudioAssetsManifest } from "../../interpreter.js";
 import { _resetAudioScenarios, getScenarioEngine, initializeAudioScenarios } from "../../interpreter.js";
+import { descriptionNamesGroup } from "../../reference/pack-reference.js";
 import {
   buildFastestLap,
   FASTEST_LAP_CLIP_SOURCES,
@@ -27,6 +28,7 @@ import {
   FASTEST_LAP_SCENARIO_IDS,
   type FastestLapData,
   type FastestLapHolder,
+  type FastestLapTimedHolder,
   relationPositions,
   resolveFastestLapHolder,
   SCENARIO_ID_TO_FASTEST_LAP_ID,
@@ -41,8 +43,6 @@ import { _resetSpotterEngine } from "./spotter-engine.js";
 
 const VOICE = "default";
 
-/** The onset classes a minute take is cut for: the seconds word that follows it (#1163). */
-const NEXT_CLASSES = ["oh", "t", "e", "th", "f", "s", "ei", "n"];
 /** The onset classes each line is cut for: the time's first word. */
 const LEAD_CLASSES = ["w", "t", "th", "f", "s", "ei", "n", "e", "z"];
 
@@ -128,7 +128,12 @@ function createFakeAudio(): FakeAudio {
   } as unknown as FakeAudio;
 }
 
-/** The default voice's entry, in the spec's shape (decision 4), each line a var by the time's onset class (#1163). */
+/**
+ * The default voice's entry, in the shape of revision 5 of the clip contract:
+ * each line that leads into the time a var by the time's onset class (#1163),
+ * `taken-from-you` one take ending in a pause, then the clock and the tenths
+ * as whole phrases.
+ */
 const DEFAULT_ENTRY: CalloutScriptEntry = {
   comment: "A new fastest lap of the race in our class.",
   test: "Harness → Fastest Lap → Yours.",
@@ -137,7 +142,7 @@ const DEFAULT_ENTRY: CalloutScriptEntry = {
       case: "fastestLap.holder",
       of: {
         yours: ["{{fastestLap.yoursLine}}"],
-        "taken-from-you": ["{{fastestLap.carNumber}}", "{{fastestLap.takenFromYouLine}}"],
+        "taken-from-you": ["{{fastestLap.carNumber}}", "pool:fastest-lap/taken-from-you", "pause:150"],
         leader: ["{{fastestLap.leaderLine}}"],
         ahead: ["{{fastestLap.aheadLine}}"],
         behind: ["{{fastestLap.behindLine}}"],
@@ -149,8 +154,7 @@ const DEFAULT_ENTRY: CalloutScriptEntry = {
         ],
       },
     },
-    { if: "fastestLap.hasMinuteComponent", then: ["{{fastestLap.minute}}"] },
-    "{{fastestLap.second}}",
+    "{{fastestLap.clock}}",
     "{{fastestLap.decimal}}",
     { optional: ["{{fastestLap.gapIntro}}", "{{fastestLap.gapSecond}}", "{{fastestLap.gapDecimal}}"] },
   ],
@@ -172,8 +176,7 @@ const SHORT_CALLS_ENTRY: CalloutScriptEntry = {
         other: ["pool:fastest-lap/for", "{{fastestLap.carNumber}}"],
       },
     },
-    { if: "fastestLap.hasMinuteComponent", then: ["{{fastestLap.minute}}"] },
-    "{{fastestLap.second}}",
+    "{{fastestLap.clock}}",
     "{{fastestLap.decimal}}",
     { optional: ["{{fastestLap.gapIntro}}", "{{fastestLap.gapSecond}}", "{{fastestLap.gapDecimal}}"] },
   ],
@@ -201,16 +204,17 @@ const manifest: AudioAssetsManifest = {
       LEAD_CLASSES.map((c) => `voice/${VOICE}/fastest-lap/${line}-${c}-01.mp3`),
     ),
     `voice/${VOICE}/fastest-lap/in-01.mp3`,
+    `voice/${VOICE}/fastest-lap/taken-from-you-01.mp3`,
     ...["5", "7", "42"].map((n) => `voice/${VOICE}/car-number/${n}.mp3`),
     ...["1", "2", "3", "4", "6", "8"].map((n) => `voice/${VOICE}/position-number/${n}.mp3`),
-    // The compact form to the tenth: every minute take, oh N after a minute,
-    // #555's plain seconds (the gap clause's too) and the tenths.
+    // The compact form to the tenth: every clock phrase 1m00–10m59, #555's
+    // plain seconds (the gap clause's too), and the tenths in both takes.
     ...Array.from({ length: 10 }, (_, m) => m + 1).flatMap((m) =>
-      NEXT_CLASSES.map((c) => `voice/${VOICE}/lap-time-compact-minute/${m}-${c}.mp3`),
+      Array.from({ length: 60 }, (_, ss) => `voice/${VOICE}/lap-time-clock/${m}m${String(ss).padStart(2, "0")}.mp3`),
     ),
-    ...Array.from({ length: 10 }, (_, d) => `voice/${VOICE}/lap-time-compact-second/0${d}.mp3`),
     ...Array.from({ length: 60 }, (_, s) => `voice/${VOICE}/lap-time-second/${s}.mp3`),
-    ...Array.from({ length: 10 }, (_, d) => `voice/${VOICE}/lap-time-compact-tenth/${d}.mp3`),
+    ...Array.from({ length: 10 }, (_, d) => `voice/${VOICE}/lap-time-tenths/${d}.mp3`),
+    ...Array.from({ length: 10 }, (_, d) => `voice/${VOICE}/lap-time-tenths/${d}-gap.mp3`),
     // The gap clause.
     `voice/${VOICE}/gap/readout-intro-01.mp3`,
     `voice/${VOICE}/lap-time-decimal/2.mp3`,
@@ -315,7 +319,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-const TIME = ["lap-time-compact-minute/1-t", "lap-time-second/23", "lap-time-compact-tenth/4"];
+const TIME = ["lap-time-clock/1m23", "lap-time-tenths/4"];
 
 describe("the holder case, from payloads built for each key (live reads unknown)", () => {
   it("yours: the player set it", () => {
@@ -324,10 +328,10 @@ describe("the holder case, from payloads built for each key (live reads unknown)
     expect(line()).toEqual(["fastest-lap/yours-w", ...TIME]);
   });
 
-  it("taken-from-you: another car beat the player's record, named by its number", () => {
+  it("taken-from-you: another car beat the player's record, named by its number, in the one take", () => {
     fire(record({ previous: { carIdx: 0, lapTime: 83.9, isPlayer: true } }));
 
-    expect(line()).toEqual(["car-number/5", "fastest-lap/taken-from-you-w", ...TIME]);
+    expect(line()).toEqual(["car-number/5", "fastest-lap/taken-from-you", ...TIME]);
   });
 
   it("leader: the car leads", () => {
@@ -363,7 +367,7 @@ describe("the holder case, from payloads built for each key (live reads unknown)
   it("speaks a sub-minute record without a minute (58.1)", () => {
     fire(record({ position: 1, lapTime: 58.1 }));
 
-    expect(line()).toEqual(["fastest-lap/leader-f", "lap-time-second/58", "lap-time-compact-tenth/1"]);
+    expect(line()).toEqual(["fastest-lap/leader-f", "lap-time-second/58", "lap-time-tenths/1"]);
   });
 });
 
@@ -381,6 +385,8 @@ describe("the line before the time (#1163)", () => {
   /** The class each time opens with: the minute word from a minute up, the plain seconds word below it. */
   const TIMES: ReadonlyArray<[number, string]> = [
     [83.4, "w"],
+    [125.0, "t"],
+    [58.0, "f"],
     [245.0, "f"],
     [120.0, "t"],
     [15.2, "f"],
@@ -392,7 +398,7 @@ describe("the line before the time (#1163)", () => {
   it("takes each line's take by the onset class of the time's first word, for every key", () => {
     let checked = 0;
 
-    for (const holder of Object.keys(FASTEST_LAP_LINE_VARS) as FastestLapHolder[]) {
+    for (const holder of Object.keys(FASTEST_LAP_LINE_VARS) as FastestLapTimedHolder[]) {
       for (const [lapTime, cls] of TIMES) {
         audio.played.length = 0;
         fire(record({ ...FOR[holder], lapTime }));
@@ -407,32 +413,57 @@ describe("the line before the time (#1163)", () => {
       }
     }
 
-    expect(checked).toBe(42);
+    expect(checked).toBe(45);
   });
 
-  it("reads 4:05.0 and 2:00.0 with the minute take for oh and the seconds as oh N", () => {
+  it("speaks taken-from-you in its one take whatever the time opens with — the line ends in a pause", () => {
+    for (const [lapTime] of TIMES) {
+      audio.played.length = 0;
+      fire(record({ ...FOR["taken-from-you"], lapTime }));
+
+      expect(
+        line().filter((c) => c.startsWith("fastest-lap/")),
+        String(lapTime),
+      ).toEqual(["fastest-lap/taken-from-you"]);
+    }
+  });
+
+  it("reads 4:05.0 and 2:00.0 as the clock phrases 4m05 and 2m00", () => {
     fire(record({ position: 1, lapTime: 245.0 }));
-    expect(line()).toEqual([
-      "fastest-lap/leader-f",
-      "lap-time-compact-minute/4-oh",
-      "lap-time-compact-second/05",
-      "lap-time-compact-tenth/0",
-    ]);
+    expect(line()).toEqual(["fastest-lap/leader-f", "lap-time-clock/4m05", "lap-time-tenths/0"]);
 
     audio.played.length = 0;
     fire(record({ position: 1, lapTime: 120.0 }));
-    expect(line()).toEqual([
-      "fastest-lap/leader-t",
-      "lap-time-compact-minute/2-oh",
-      "lap-time-compact-second/00",
-      "lap-time-compact-tenth/0",
-    ]);
+    expect(line()).toEqual(["fastest-lap/leader-t", "lap-time-clock/2m00", "lap-time-tenths/0"]);
+  });
+
+  it("reads 1:23.44 as 1m23 and point four", () => {
+    fire(record({ position: 1, lapTime: 83.44 }));
+
+    expect(line()).toEqual(["fastest-lap/leader-w", "lap-time-clock/1m23", "lap-time-tenths/4"]);
+  });
+
+  it("reads 59.96 as the minute it rounds into: 1m00 and point oh, with the w take — 59.94 stays fifty nine", () => {
+    fire(record({ position: 1, lapTime: 59.96 }));
+    expect(line()).toEqual(["fastest-lap/leader-w", "lap-time-clock/1m00", "lap-time-tenths/0"]);
+
+    audio.played.length = 0;
+    fire(record({ position: 1, lapTime: 59.94 }));
+    expect(line()).toEqual(["fastest-lap/leader-f", "lap-time-second/59", "lap-time-tenths/9"]);
+  });
+
+  it("aborts 10:59.96, which rounds into an eleventh minute no clip covers — 10:59.94 still speaks", () => {
+    fire(record({ position: 1, lapTime: 659.96 }));
+    expect(line()).toEqual([]);
+
+    fire(record({ position: 1, lapTime: 659.94 }));
+    expect(line()).toEqual(["fastest-lap/leader-t", "lap-time-clock/10m59", "lap-time-tenths/9"]);
   });
 
   it("reads a record under a second as zero point N, leading in with the z take", () => {
     fire(record({ position: 1, lapTime: 0.9 }));
 
-    expect(line()).toEqual(["fastest-lap/leader-z", "lap-time-second/0", "lap-time-compact-tenth/9"]);
+    expect(line()).toEqual(["fastest-lap/leader-z", "lap-time-second/0", "lap-time-tenths/9"]);
   });
 });
 
@@ -446,7 +477,7 @@ describe("the precedence of the keys", () => {
   it("a record the leader takes from the player is taken-from-you", () => {
     fire(record({ position: 1, playerPosition: 2, previous: { carIdx: 0, lapTime: 83.9, isPlayer: true } }));
 
-    expect(line().slice(0, 2)).toEqual(["car-number/5", "fastest-lap/taken-from-you-w"]);
+    expect(line().slice(0, 2)).toEqual(["car-number/5", "fastest-lap/taken-from-you"]);
   });
 
   it("the car ahead that leads is the leader", () => {
@@ -518,36 +549,104 @@ describe("the gap clause", () => {
   const gaps = (side: "ahead" | "behind", carIdx: number, gapSeconds: number | null, lapDelta = 0): LiveGaps =>
     ({ ahead: null, behind: null, [side]: { carIdx, gapSeconds, lapDelta } }) as unknown as LiveGaps;
   const GAP = ["gap/readout-intro", "lap-time-second/1", "lap-time-decimal/2"];
+  /** The time when the gap clause follows it: the tenths in the take that leads into "Gap is". */
+  const TIME_INTO_GAP = ["lap-time-clock/1m23", "lap-time-tenths/4-gap"];
 
-  it("plays for ahead when the live neighbour ahead is the fire's car on the same lap under a minute", () => {
+  it("plays for ahead when the live neighbour ahead is the fire's car on the same lap under a minute, the tenths in the -gap take", () => {
     liveGaps = gaps("ahead", 3, 1.2);
     fire(record({ position: 3, playerPosition: 4 }));
 
-    expect(line()).toEqual(["fastest-lap/ahead-w", ...TIME, ...GAP]);
+    expect(line()).toEqual(["fastest-lap/ahead-w", ...TIME_INTO_GAP, ...GAP]);
   });
 
-  it("plays for behind on the behind side", () => {
+  it("plays for behind on the behind side, the tenths in the -gap take", () => {
     liveGaps = gaps("behind", 3, 1.2);
     fire(record({ position: 5, playerPosition: 4 }));
 
-    expect(line()).toEqual(["fastest-lap/behind-w", ...TIME, ...GAP]);
+    expect(line()).toEqual(["fastest-lap/behind-w", ...TIME_INTO_GAP, ...GAP]);
   });
 
-  it("is left out, the line still playing, when the neighbour is another car, a lap away or a minute or more away", () => {
-    for (const g of [gaps("ahead", 9, 1.2), gaps("ahead", 3, 1.2, 1), gaps("ahead", 3, 61), gaps("behind", 3, 1.2)]) {
+  it("is left out, the line ending on the plain tenths take, when the neighbour is another car, a lap away, a minute or more away or on the other side", () => {
+    const cases: ReadonlyArray<[string, LiveGaps]> = [
+      ["wrong car", gaps("ahead", 9, 1.2)],
+      ["a lap away", gaps("ahead", 3, 1.2, 1)],
+      ["over a minute", gaps("ahead", 3, 61)],
+      ["other side", gaps("behind", 3, 1.2)],
+    ];
+
+    for (const [label, g] of cases) {
       audio.played.length = 0;
       liveGaps = g;
       fire(record({ position: 3, playerPosition: 4 }));
 
-      expect(line()).toEqual(["fastest-lap/ahead-w", ...TIME]);
+      expect(line(), label).toEqual(["fastest-lap/ahead-w", ...TIME]);
     }
   });
 
-  it("never plays for the other keys, even with a matching gap on a side", () => {
+  it("is left out for behind too when the neighbour behind is another car or a lap away", () => {
+    for (const g of [gaps("behind", 9, 1.2), gaps("behind", 3, 1.2, -1)]) {
+      audio.played.length = 0;
+      liveGaps = g;
+      fire(record({ position: 5, playerPosition: 4 }));
+
+      expect(line()).toEqual(["fastest-lap/behind-w", ...TIME]);
+    }
+  });
+
+  it("is left out, the plain tenths take, with no live gaps at all", () => {
+    liveGaps = null;
+    fire(record({ position: 3, playerPosition: 4 }));
+
+    expect(line()).toEqual(["fastest-lap/ahead-w", ...TIME]);
+  });
+
+  it("never plays for the other keys, even with a matching gap on a side — and the tenths stay the plain take", () => {
     liveGaps = gaps("ahead", 3, 1.2);
     fire(record({ position: 1, playerPosition: 2 }));
 
     expect(line()).toEqual(["fastest-lap/leader-w", ...TIME]);
+  });
+
+  it("takes the -gap tenths exactly when the gap clause resolves, over every gap shape and holder", () => {
+    const shapes: ReadonlyArray<LiveGaps | null> = [
+      null,
+      gaps("ahead", 3, 1.2),
+      gaps("behind", 3, 1.2),
+      gaps("ahead", 9, 1.2),
+      gaps("ahead", 3, 1.2, 1),
+      gaps("ahead", 3, 61),
+      gaps("behind", 3, 61),
+    ];
+    const holders: ReadonlyArray<Partial<FastestLapData>> = [
+      { position: 3, playerPosition: 4 },
+      { position: 5, playerPosition: 4 },
+      { position: 1, playerPosition: 2 },
+      { position: 6, playerPosition: 4 },
+      { isPlayer: true, carIdx: 0, position: 4, playerPosition: 4 },
+    ];
+    let withGap = 0;
+    let withoutGap = 0;
+
+    for (const g of shapes) {
+      for (const h of holders) {
+        audio.played.length = 0;
+        liveGaps = g;
+        fire(record(h));
+
+        const label = JSON.stringify({ g, h });
+        const clauseSpoke = line().includes("gap/readout-intro");
+        const tenths = line().filter((c) => c.startsWith("lap-time-tenths/"));
+
+        expect(tenths, label).toEqual([clauseSpoke ? "lap-time-tenths/4-gap" : "lap-time-tenths/4"]);
+
+        if (clauseSpoke) withGap++;
+        else withoutGap++;
+      }
+    }
+
+    // Both outcomes were reached (the positive control on the sweep).
+    expect(withGap).toBe(2);
+    expect(withoutGap).toBe(33);
   });
 
   it("speakableGap is the gap family's rule: the named car, same lap, under a minute", () => {
@@ -683,8 +782,8 @@ describe("waiting for the radio", () => {
     flush();
 
     expect(line()).toContain("car-number/7");
-    expect(line()).toContain("lap-time-second/22");
-    expect(line()).not.toContain("lap-time-second/23");
+    expect(line()).toContain("lap-time-clock/1m22");
+    expect(line()).not.toContain("lap-time-clock/1m23");
   });
 });
 
@@ -747,34 +846,42 @@ describe("the vocabulary", () => {
       "fastestLap.aheadLine",
       "fastestLap.behindLine",
       "fastestLap.carNumber",
+      "fastestLap.clock",
       "fastestLap.decimal",
       "fastestLap.gapDecimal",
       "fastestLap.gapIntro",
       "fastestLap.gapSecond",
       "fastestLap.leaderLine",
-      "fastestLap.minute",
       "fastestLap.otherLine",
       "fastestLap.position",
       "fastestLap.previousCarNumber",
-      "fastestLap.second",
-      "fastestLap.takenFromYouLine",
       "fastestLap.yoursLine",
     ]);
     expect(Object.values(FASTEST_LAP_LINE_VARS)).toEqual([
       "fastestLap.yoursLine",
-      "fastestLap.takenFromYouLine",
       "fastestLap.leaderLine",
       "fastestLap.aheadLine",
       "fastestLap.behindLine",
       "fastestLap.otherLine",
     ]);
-    expect(Object.keys(FASTEST_LAP_LINE_VARS)).toEqual(Object.keys(FASTEST_LAP_HOLDER_KEYS));
+    expect(Object.keys(FASTEST_LAP_LINE_VARS)).toEqual(
+      Object.keys(FASTEST_LAP_HOLDER_KEYS).filter((k) => k !== "taken-from-you"),
+    );
 
     for (const name of Object.values(FASTEST_LAP_LINE_VARS)) {
       expect(vars.find((v) => v.name === name)?.description, name).toContain("fastest-lap clip group");
     }
 
-    expect(conds.filter((c) => ours(c.name)).map((c) => c.name)).toEqual(["fastestLap.hasMinuteComponent"]);
+    // Each time var names the groups it draws from, which the coverage tooling attributes clips by.
+    const description = (name: string) => vars.find((v) => v.name === name)?.description ?? "";
+
+    expect(descriptionNamesGroup(description("fastestLap.clock"), "lap-time-clock")).toBe(true);
+    expect(descriptionNamesGroup(description("fastestLap.clock"), "lap-time-second")).toBe(true);
+    expect(descriptionNamesGroup(description("fastestLap.decimal"), "lap-time-tenths")).toBe(true);
+    // The positive control: a group a var does not draw from is not named.
+    expect(descriptionNamesGroup(description("fastestLap.decimal"), "lap-time-clock")).toBe(false);
+
+    expect(conds.filter((c) => ours(c.name)).map((c) => c.name)).toEqual([]);
 
     const holder = cases.find((c) => c.name === "fastestLap.holder");
 
@@ -804,5 +911,11 @@ describe("the vocabulary", () => {
     const addressed = [...new Set([...refs(DEFAULT_ENTRY), ...refs(SHORT_CALLS_ENTRY)])].sort();
 
     expect(FASTEST_LAP_CLIP_SOURCES.map(({ group, base }) => `${group}/${base}`).sort()).toEqual(addressed);
+    expect(addressed).toEqual([
+      "fastest-lap/for",
+      "fastest-lap/in",
+      "fastest-lap/lost-to",
+      "fastest-lap/taken-from-you",
+    ]);
   });
 });

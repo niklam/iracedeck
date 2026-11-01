@@ -115,39 +115,31 @@ const FALLBACK_ENTRIES: Record<string, CalloutScriptEntry> = {
         case: "fastestLap.holder",
         of: { yours: ["{{fastestLap.yoursLine}}"], default: ["{{fastestLap.otherLine}}"] },
       },
-      { if: "fastestLap.hasMinuteComponent", then: ["{{fastestLap.minute}}"] },
-      "{{fastestLap.second}}",
+      "{{fastestLap.clock}}",
       "{{fastestLap.decimal}}",
     ],
   },
   "pit-crew.lap-time-last": {
     comment: "Every lap.",
     test: "Harness → Lap Time → Every lap.",
-    sequence: [
-      "{{lapTime.lastIntro}}",
-      { if: "lapTime.compactHasMinute", then: ["{{lapTime.compactMinute}}"] },
-      "{{lapTime.compactSecond}}",
-      "{{lapTime.compactPoint}}",
-      "{{lapTime.compactPair}}",
-    ],
+    sequence: ["{{lapTime.lastIntro}}", "{{lapTime.clock}}", "{{lapTime.thousandths}}"],
   },
 };
 
 /**
  * The clips the 1:23.4 lap needs in both readouts, per voice, beside the
  * bundled manifest: each line and the intro in the take for "one" (`w`), the
- * minute before "twenty" (`t`), the tenth, and to the thousandth point four
- * before "oh oh" and the pair 00 (#555's `lap-time-second/23` ships already).
+ * clock phrase 1m23, the tenths in both takes, and the thousandths 400.
  */
 function extraClips(voice: string): string[] {
   return [
     "fastest-lap/yours-w-01",
     "fastest-lap/other-w-01",
     "lap-time-last/intro-w-01",
-    "lap-time-compact-minute/1-t",
-    "lap-time-compact-tenth/4",
-    "lap-time-compact-point/4-oh",
-    "lap-time-compact-pair/00",
+    "lap-time-clock/1m23",
+    "lap-time-tenths/4",
+    "lap-time-tenths/4-gap",
+    "lap-time-thousandths/400",
   ].map((c) => `voice/${voice}/${c}.mp3`);
 }
 
