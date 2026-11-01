@@ -808,9 +808,9 @@ export function parseIssueEdit({ raw, flat, trusted }) {
   for (let k = at + 1; at >= 0 && k < tokens.length; k++) {
     const t = tokens[k];
     if (t.word.startsWith("#")) break;
-    if (/^\d*[<>]/.test(t.shape)) {
-      // A redirection; a bare operator takes the next word as its target.
-      if (/^\d*(?:[<>]{1,3}-?|[<>]&)$/.test(t.shape)) k++;
+    // A redirection, bash's `&>` and PowerShell's `*>` included; a bare operator takes the next word as its target.
+    if (/^(?:\d*|[&*])[<>]/.test(t.shape)) {
+      if (/^(?:\d*|[&*])(?:[<>]{1,3}-?|[<>]&)$/.test(t.shape)) k++;
       continue;
     }
     if (!options || !t.shape.startsWith("-")) {
@@ -844,19 +844,62 @@ export function parseIssueEdit({ raw, flat, trusted }) {
 export const GH_ISSUE_EDIT = /\bgh\s+issue\s+edit\b/;
 
 /**
+ * Where the command whose arguments start at `from` in `text` (the
+ * trusted-masked command) ends: at a newline, `;`, `|` or a lone `&` (not a
+ * redirect's, as in `2>&1` or `&>`), or at the `)` or backtick that closes the
+ * substitution or subshell it runs in (`inTick`: it runs inside a backtick
+ * one) — each outside the substitutions its own arguments open, so a `$( … )`
+ * or backtick argument, a heredoc inside one included, is part of the command
+ * rather than its end. Inert text is masked, so a paren in a quote counts nowhere.
+ */
+function commandEnd(text, from, inTick) {
+  let depth = 0;
+  for (let i = from; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === "(") depth++;
+    else if (ch === ")") {
+      if (depth === 0) return i;
+      depth--;
+    } else if (depth > 0) continue;
+    else if (ch === "\x60") {
+      const close = inTick ? -1 : text.indexOf("\x60", i + 1);
+      if (close < 0) return i;
+      i = close;
+    } else if (/[\n;|]/.test(ch) || (ch === "&" && !/[<>]/.test(text[i - 1] ?? "") && text[i + 1] !== ">")) return i;
+  }
+  return text.length;
+}
+
+/** A milestone flag anywhere in a word list's raw text — not `--remove-milestone` — for an edit the hook cannot read whole. */
+const MILESTONE_FLAG = /(?:^|[\s"'(=])(?:--milestone\b|-m)/;
+
+/**
  * Every `gh issue edit` outside inert text, in chain order ({@link chainCommands}),
  * parsed ({@link parseIssueEdit}), each with `base` (the directory it ran in)
  * and `start` (where it begins in `command`, so the caller can read the
- * `GH_REPO` that reaches it). A substitution that cut its arguments short
- * leaves words the hook did not read, so the edit is then not `readable`.
+ * `GH_REPO` that reaches it).
+ *
+ * The edit runs to its own end ({@link commandEnd}), and that text is lexed on
+ * its own (#1574 second read): a substitution among its arguments
+ * (`--body "$(cat <<'EOF' … EOF)"`, `$(gh issue list …)`) is then one word, so
+ * the flags after it are still read, and an edit inside one
+ * (`out=$(gh issue edit 5 -m x)`), which the whole command's flat text blanks,
+ * is at the top level of its own. Where the mask is not trusted the raw words
+ * are read, as everywhere else. `namesMilestone` says whether a milestone flag
+ * appears anywhere in the edit's raw text, for one the hook could not read
+ * whole: the caller then says to move its cards by hand rather than nothing.
  */
 export function* issueEdits(command, cwd, shell = BASH) {
-  const { flat, trusted } = view(command);
-  for (const { base, head, args, at, cut } of chainCommands(command, cwd, GH_ISSUE_EDIT, shell)) {
+  const { text, trusted } = view(command);
+  for (const { base, head, at } of chainCommands(command, cwd, GH_ISSUE_EDIT, shell)) {
     const start = at - head.length;
-    const end = at + args.length;
-    const edit = parseIssueEdit({ raw: command.slice(start, end), flat: flat.slice(start, end), trusted });
-    yield { ...edit, readable: edit.readable && cut !== "(" && cut !== "\x60", base, start };
+    // Live backticks ahead of it: an odd count means it runs inside a backtick substitution.
+    const inTick = (text.slice(0, start).match(/\x60/g)?.length ?? 0) % 2 === 1;
+    const raw = command.slice(start, commandEnd(text, at, inTick));
+    const own = maskInert(raw);
+    const lexed = trusted && own.sure;
+    const edit = parseIssueEdit({ raw, flat: lexed ? own.flat : raw, trusted: lexed });
+    yield { ...edit, namesMilestone: MILESTONE_FLAG.test(raw), base, start };
   }
 }
 
@@ -991,6 +1034,19 @@ function traceSummary(summary, anchor, replay) {
     ok: false,
     reason: `its recent review of ${summary.reviewed.slice(0, 9)} starts at ${summary.from.slice(0, 9)}${back}, which the gate cannot trace back to the reviewed ${anchor.slice(0, 9) || "(no commit)"}: it is not that commit, no earlier version of the comment reviewed up to it, and it is not a clean rebase of it`,
   };
+}
+
+/**
+ * Whether a `gh api` call's own arguments write to a Projects v2 item over
+ * REST (#1574): a path with `projectsV2/…/items`, and a method that is not
+ * GET — an explicit `-X` / `--method`, or else a field or `--input`, with
+ * which gh sends a POST. A read of the same path is no write.
+ */
+function restItemWrite(args) {
+  if (!/projectsV2\/\S*items\b/i.test(args)) return false;
+  const method = /(?:^|\s)(?:-X\s*|--method(?:=|\s+))["']?([A-Za-z]+)/.exec(args);
+  if (method) return method[1].toUpperCase() !== "GET";
+  return /(?:^|\s)(?:-[fF]|--(?:raw-)?field\b|--input\b)/.test(args);
 }
 
 export const rules = [
@@ -1297,20 +1353,23 @@ export const rules = [
   {
     // #1574: the rules said a raw lane edit is refused, and nothing refused it.
     // The helpers spawn gh themselves, never through the Bash tool, so this
-    // reaches only a command the model writes. At command position: a grep or
-    // a commit message that names one is no edit, and a `gh api graphql` counts
-    // when its own arguments carry the mutation, whatever quotes hold them.
+    // reaches only a command the model writes. A `gh project item-edit` counts
+    // at command position, so a grep or a commit message that names one is no
+    // edit. A GraphQL mutation counts wherever the command carries its name
+    // once a `gh api` runs at command position anywhere in it (second read):
+    // the query can reach gh through a `$( … )`, a variable, a here-string or
+    // `--input -`, none of which are the api call's own arguments. A REST write
+    // to a Projects v2 item (`…/projectsV2/…/items…` with a method other than
+    // GET, or with fields, which make gh POST) counts by its own arguments.
     name: "board lanes and positions move only through the helpers",
     test: (c, ctx) => {
-      const edit = has(c, cmd(/gh\s+project\s+item-edit\b/));
-      const mutation = () =>
-        [...chainCommands(c, ctx.cwd, cmd(/gh\s+api\s+graphql\b/), ctx.shell)].some(({ args }) =>
-          /\b(?:updateProjectV2Item(?:FieldValue|Position)|clearProjectV2ItemFieldValue)\b/.test(args),
-        );
-      return (
-        (edit || mutation()) &&
-        "A card's lane or position moves only through the helpers in scripts/claude-hooks/lib.mjs, which refuse a backwards move and never touch a Done card: from the repo root, `node -e \"import('./scripts/claude-hooks/lib.mjs').then(m=>console.log(m.setBoardStatus(<n>,'<lane>',process.cwd())))\"`, or `m.moveBoardItemAfter(<n>,<after or null>,process.cwd())` for its place in the lane."
-      );
+      const deny =
+        "A card's lane or position moves only through the helpers in scripts/claude-hooks/lib.mjs, which never touch a Done card and refuse a backwards move — that one is Niklas's, in the board UI: from the repo root, `node -e \"import('./scripts/claude-hooks/lib.mjs').then(m=>console.log(m.setBoardStatus(<n>,'<lane>',process.cwd())))\"`, or `m.moveBoardItemAfter(<n>,<after or null>,process.cwd())` for its place in the lane.";
+      if (has(c, cmd(/gh\s+project\s+item-edit\b/))) return deny;
+      const apis = [...chainCommands(c, ctx.cwd, cmd(/gh\s+api\b/), ctx.shell)];
+      if (!apis.length) return null;
+      if (/\b(?:updateProjectV2Item(?:FieldValue|Position)|clearProjectV2ItemFieldValue)\b/.test(c)) return deny;
+      return apis.some(({ args }) => restItemWrite(args)) ? deny : null;
     },
   },
   {

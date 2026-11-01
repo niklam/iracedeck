@@ -2737,10 +2737,32 @@ describe("gh issue and the board", () => {
       `gh api graphql -f query='mutation{${FIELD_VALUE}(input:{}){clientMutationId}}'`,
       `gh api graphql -f query="mutation { ${POSITION}(input: {}) { clientMutationId } }"`,
       `gh api graphql -F n=1 -f query='mutation($p:ID!){${POSITION}(input:{projectId:$p}){clientMutationId}}'`,
+      // Second read: a query that is not the api call's own argument text.
+      `gh api graphql -f query="$(cat <<'EOF'\nmutation { ${FIELD_VALUE}(input: {}) { clientMutationId } }\nEOF\n)"`,
+      `Q='mutation{${POSITION}(input:{}){clientMutationId}}' && gh api graphql -f query="$Q"`,
+      `gh api graphql --input - <<'EOF'\n{"query":"mutation{${CLEAR}(input:{}){clientMutationId}}"}\nEOF`,
+      `gh api -X POST graphql -f query='mutation{${FIELD_VALUE}(input:{}){clientMutationId}}'`,
+      // A REST write to a Projects v2 item.
+      "gh api -X PATCH /orgs/o/projectsV2/1/items/5 -f status=x",
+      "gh api --method=DELETE users/niklam/projectsV2/1/items/5",
+      "gh api users/niklam/projectsV2/1/items -f id=I",
+      "gh api --method 'patch' orgs/o/projectsV2/1/items/5",
     ];
     it.each(shapes)("denies %s, as a Bash and as a PowerShell command", (c) => {
       expect(deny(c)).toMatch(/setBoardStatus/);
       expect(deny(c, ctx({ shell: POWERSHELL }))).toMatch(/moveBoardItemAfter/);
+    });
+    it("denies a PowerShell here-string query", () =>
+      expect(
+        deny(
+          `$q = @'\nmutation { ${POSITION}(input: {}) { clientMutationId } }\n'@; gh api graphql -f query=$q`,
+          ctx({ shell: POWERSHELL }),
+        ),
+      ).toMatch(/Niklas's, in the board UI/));
+    it("passes a REST read of a Projects v2 item", () => {
+      passes("gh api users/niklam/projectsV2/1/items");
+      passes("gh api -X GET users/niklam/projectsV2/1/items -f per_page=50");
+      passes("gh api --method GET orgs/o/projectsV2/1/items/5");
     });
     it("passes the helpers, a read and a mention", () => {
       for (const c of [
@@ -2754,6 +2776,9 @@ describe("gh issue and the board", () => {
         `grep -rn ${POSITION} scripts`,
         `rg "gh api graphql.*${FIELD_VALUE}" scripts`,
         "gh api graphql -f query='query{viewer{login}}'",
+        // A name in a mention, with no gh api at command position.
+        `git commit -m "deny ${POSITION} through gh api graphql"`,
+        `echo '${CLEAR}' && gh issue list`,
       ])
         passes(c);
       passes("Write-Output 'gh project item-edit --id I'", ctx({ shell: POWERSHELL }));
@@ -2830,6 +2855,40 @@ describe("issueEdits", () => {
     expect(one("sudo gh issue edit 5 # --milestone x")).toMatchObject({ issues: ["5"], milestone: undefined });
     expect(one("gh issue edit 5 && echo --milestone x").milestone).toBeUndefined();
     expect(one("gh issue edit 5 -m x | cat 6")).toMatchObject({ issues: ["5"], readable: true });
+    expect(one("(gh issue edit 5 -m x) && echo 6")).toMatchObject({ issues: ["5"], readable: true });
+  });
+
+  // Second read: a substitution among the arguments, an edit inside one, a redirect.
+  it("reads past a substitution argument, inside one, and around a redirection", () => {
+    for (const c of [
+      `gh issue edit 5 --body "$(cat <<'EOF'\nline -m 9\nEOF\n)" --milestone 3.8.0`,
+      `gh issue edit 5 --milestone 3.8.0 --body "$(cat b.md)"`,
+      "out=$(gh issue edit 5 -m 3.8.0)",
+      "x=`gh issue edit 5 -m 3.8.0`",
+      "gh issue edit 5 -m 3.8.0 &>/dev/null",
+      "gh issue edit 5 -m 3.8.0 &> log",
+      "gh issue edit 5 -m 3.8.0 2>&1 >/dev/null",
+    ])
+      expect(one(c), c).toMatchObject({ issues: ["5"], milestone: "3.8.0", readable: true });
+    // A backtick substitution among the arguments is one the hook did not read.
+    expect(one("gh issue edit 5 `cat n` -m 3.8.0")).toMatchObject({
+      issues: ["5"],
+      milestone: "3.8.0",
+      readable: false,
+    });
+    expect(one("gh issue edit 5 -m '3.8.0' *>$null", POWERSHELL)).toMatchObject({ issues: ["5"], readable: true });
+  });
+
+  it("says whether an edit it cannot read whole names a milestone flag", () => {
+    expect(one("gh issue edit $N $(echo --milestone x)")).toMatchObject({ readable: false, namesMilestone: true });
+    expect(one("gh issue edit $N -m x")).toMatchObject({ readable: false, namesMilestone: true });
+    expect(one("gh issue edit $N --remove-milestone").namesMilestone).toBe(false);
+    expect(one("gh issue edit $N --add-label x && git commit -m y").namesMilestone).toBe(false);
+    // xargs feeds a shell: the raw words are read, and no issue is among them.
+    expect(one("printf '%s\\n' 5 | xargs gh issue edit --milestone 3.8.0")).toMatchObject({
+      issues: [],
+      milestone: "3.8.0",
+    });
   });
 
   it("finds each edit of a chain, with the directory it ran in and where it starts", () => {

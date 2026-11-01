@@ -517,8 +517,24 @@ export function workspacePackages(root) {
 // ---------------------------------------------------------------------------
 // Roadmap board (GitHub Projects v2)
 
-/** The board's node id plus its Status field and option ids, read fresh — never hardcoded (the ids regenerate if the option list is ever rewritten). */
+/** {@link boardStatusField}'s answers by `cwd`, while a hook has turned the memo on; `undefined` while it is off. */
+let statusFieldMemo;
+
+/**
+ * Turns on (or off) remembering {@link boardStatusField}'s answer for the rest
+ * of this process (#1574): a hook that moves many cards in one run — a
+ * `gh issue edit` naming fifteen issues — otherwise reads the project and its
+ * field list again for every card, two gh calls each, against a 90 s timeout.
+ * A hook process lives for one tool call, so the ids cannot go stale inside
+ * it. Off by default, so every other caller still reads them fresh.
+ */
+export function memoizeBoardStatusField(on = true) {
+  statusFieldMemo = on ? new Map() : undefined;
+}
+
+/** The board's node id plus its Status field and option ids, read fresh — never hardcoded (the ids regenerate if the option list is ever rewritten). Only a successful read is remembered ({@link memoizeBoardStatusField}). */
 export function boardStatusField(cwd) {
+  if (statusFieldMemo?.has(cwd)) return statusFieldMemo.get(cwd);
   const projectId = boardProjectId(cwd);
   const fields = ghJson(
     ["project", "field-list", String(BOARD.number), "--owner", BOARD.owner, "--format", "json"],
@@ -527,7 +543,9 @@ export function boardStatusField(cwd) {
   const status = fields?.fields?.find((f) => f.name === BOARD.statusField);
   if (!projectId || !status?.id) return undefined;
   const options = Object.fromEntries((status.options ?? []).map((o) => [o.name, o.id]));
-  return { projectId, fieldId: status.id, options };
+  const field = { projectId, fieldId: status.id, options };
+  statusFieldMemo?.set(cwd, field);
+  return field;
 }
 
 /** The board's node id, or `undefined` when gh cannot read it. */

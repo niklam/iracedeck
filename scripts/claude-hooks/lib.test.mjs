@@ -12,6 +12,7 @@ import {
   ghGraphql,
   graphqlArgs,
   MAX_CONFLICTED_LINE_CHECKS,
+  memoizeBoardStatusField,
   moveBoardItemAfter,
   prComments,
   readIndexFile,
@@ -550,6 +551,38 @@ describe("the board's Next lane and positions", () => {
     expect(setBoardStatus(10, "Planned", root)).toBe("board: #10 moved Backlog → Planned");
     const edit = calls().find((a) => a[0] === "project" && a[1] === "item-edit");
     expect(edit).toEqual(expect.arrayContaining(["--id", "PVTI_10", "--single-select-option-id", "opt_Planned"]));
+  });
+
+  // #1574 second read: a hook moving fifteen cards read the project and its
+  // field list fifteen times; the post-hook turns the memo on for its one run.
+  it("reads the Status field once per process while the memo is on, and fresh otherwise", () => {
+    vi.stubEnv("IRACEDECK_HOOKS_DRY_RUN", "");
+    const fake = vi.mocked(spawnSync).getMockImplementation();
+    let fieldListOk = true;
+    vi.mocked(spawnSync).mockImplementation((cmd, args) => {
+      if (args[0] === "project" && args[1] === "field-list") {
+        if (!fieldListOk) return { status: 1, stdout: "", stderr: "HTTP 502" };
+        const options = ["Backlog", "Planned", "Next"].map((name) => ({ id: `opt_${name}`, name }));
+        return json({ fields: [{ id: "PVTSSF_status", name: "Status", options }] });
+      }
+      if (args[0] === "project" && args[1] === "item-edit") return json({});
+      return fake(cmd, args);
+    });
+    const fieldReads = () => calls().filter((a) => a[0] === "project" && /^(view|field-list)$/.test(a[1])).length;
+    try {
+      memoizeBoardStatusField();
+      // A failed read is not remembered: the next move reads again.
+      fieldListOk = false;
+      expect(setBoardStatus(10, "Planned", root)).toMatch(/could not read the Status field/);
+      fieldListOk = true;
+      for (const n of [10, 18]) expect(setBoardStatus(n, "Planned", root)).toMatch(/moved .* → Planned/);
+      expect(fieldReads()).toBe(4);
+      memoizeBoardStatusField(false);
+      expect(setBoardStatus(10, "Planned", root)).toMatch(/moved/);
+      expect(fieldReads()).toBe(6);
+    } finally {
+      memoizeBoardStatusField(false);
+    }
   });
 
   describe("moveBoardItemAfter, under dry run", () => {

@@ -13,7 +13,17 @@
  */
 import { existsSync } from "node:fs";
 
-import { addToBoard, ghJson, git, postContext, readInput, setBoardStatus } from "./lib.mjs";
+import {
+  addToBoard,
+  ghJson,
+  git,
+  hookDeadlineSpent,
+  memoizeBoardStatusField,
+  postContext,
+  readInput,
+  setBoardStatus,
+  setHookDeadline,
+} from "./lib.mjs";
 import {
   BASH,
   chainCommands,
@@ -38,6 +48,7 @@ import {
   issueCreateRepos,
   issueNumberOfUrl,
   mergeRepo,
+  milestoneRemovedLine,
   missingWorkflows,
   pickCreated,
   repoOfUrl,
@@ -49,7 +60,16 @@ import {
 // chain, those after the merge included.
 const GH_PR_MERGE = /\bgh\s+pr\s+merge\b/;
 const GH_ISSUE_CREATE = /\bgh\s+issue\s+create\b/;
+/** A `setBoardStatus` line that read the card's lane, whatever it then did — every other line may be the deadline's doing. */
+const BOARD_ANSWERED = / moved | would move | already in |; not moving /;
 
+// One deadline for every git and gh call this hook makes, well inside its 90 s
+// timeout (#1574): a killed hook loses every note, moves included, while a
+// call past the deadline fails at once and its card is named for a hand move.
+// The budget is overridable for the test that proves it, as dry run is.
+setHookDeadline(Date.now() + (Number(process.env.IRACEDECK_POST_BASH_BUDGET_MS) || 70_000));
+// One hook run moves cards one tool call's worth apart: read the board's ids once.
+memoizeBoardStatusField();
 const input = await readInput();
 const raw = input.tool_input?.command;
 if (typeof raw === "string") {
@@ -92,11 +112,14 @@ if (typeof raw === "string") {
     }
     // Ahead of the worktree step, so a chain that does both ends in In progress
     // whichever order it ran them in: Planned is a lane In progress may follow.
-    for (const edit of issueEdits(command, cwd, shell))
-      if (setsMilestone(edit))
-        notes.push(
-          ...afterMilestone(edit, assignedGhRepo(command.slice(0, edit.start), text.slice(0, edit.start)), cwd),
-        );
+    for (const edit of issueEdits(command, cwd, shell)) {
+      const envRepo = assignedGhRepo(command.slice(0, edit.start), text.slice(0, edit.start));
+      if (setsMilestone(edit)) notes.push(...afterMilestone(edit, envRepo, cwd));
+      else if (edit.removesMilestone) {
+        const line = milestoneRemovedLine(edit, envRepo);
+        if (line) notes.push(line);
+      }
+    }
     const target = worktreeAddTarget(command);
     if (target) notes.push(...afterWorktreeAdd(command, target, cwd, shell));
   } catch (e) {
@@ -274,18 +297,30 @@ function plannedByHand(n) {
  * {@link HOME_REPO}, open and milestoned moves. A card already in Planned or
  * past it stays, as `setBoardStatus` says. Another repository's issue is
  * named once as left alone, with no gh call when the edit's own arguments
- * already say where it is (#1527). An edit with an issue argument the hook
- * cannot read still moves the ones it can, and names the rest for a hand move.
+ * already say where it is (#1527). An edit with an argument the hook cannot
+ * read still moves the issues it can, and says to move any other by hand; one
+ * whose issues it cannot read at all (`xargs gh issue edit …`) says so too.
+ *
+ * Each issue costs several gh calls, so a long edit can reach the hook's
+ * deadline (`setHookDeadline`, set above), past which `run` spawns nothing:
+ * every issue whose read-back or move failed because the time ran out is named
+ * for a hand move rather than reported as unreadable or off the board.
  */
 function afterMilestone(edit, envRepo, cwd) {
+  const targets = editTargets(edit, envRepo);
+  if (!targets.length)
+    return [
+      `gh issue edit set a milestone, but the hook could not read which issues it edited; move each open iRaceDeck one to Planned by hand: ${plannedByHand("<n>")}`,
+    ];
   const out = edit.readable
     ? []
     : [
-        `gh issue edit set a milestone, but the hook could not read every issue it edited; move each other open iRaceDeck one to Planned by hand: ${plannedByHand("<n>")}`,
+        `gh issue edit set a milestone, but the hook could not read all of the edit's arguments; if it named other open iRaceDeck issues, move each to Planned by hand: ${plannedByHand("<n>")}`,
       ];
   const foreign = [];
+  const late = [];
   const dir = existsSync(edit.base) ? edit.base : cwd;
-  for (const { ref, repo } of editTargets(edit, envRepo)) {
+  for (const { ref, repo } of targets) {
     const name = repoOfUrl(ref) ? ref : `#${ref}`;
     if (repo === null) {
       out.push(
@@ -303,6 +338,10 @@ function afterMilestone(edit, envRepo, cwd) {
       repo && !repoOfUrl(ref) ? { env: { GH_REPO: repo } } : undefined,
     );
     const n = issueNumberOfUrl(issue?.url);
+    if (!issue && hookDeadlineSpent()) {
+      late.push(name);
+      continue;
+    }
     if (!issue || n === undefined) {
       out.push(
         `gh issue edit: could not read ${name} back; if it is an open iRaceDeck issue that now has a milestone, move its card to Planned by hand: ${plannedByHand(repoOfUrl(ref) ? "<n>" : ref)}`,
@@ -313,10 +352,19 @@ function afterMilestone(edit, envRepo, cwd) {
     if (!isHomeRepo(repoOfUrl(issue.url))) foreign.push(issue.url);
     else if (!issue.milestone?.title) out.push(`gh issue edit: #${n} has no milestone after the edit; no card moved.`);
     else if (issue.state !== "OPEN") out.push(`gh issue edit: #${n} is ${issue.state}; its card stays where it is.`);
-    else out.push(`${setBoardStatus(n, "Planned", cwd)} (milestone ${issue.milestone.title}).`);
+    else {
+      const line = setBoardStatus(n, "Planned", cwd);
+      // A move that failed because the time ran out reads as "not on the board": name it for a hand move instead.
+      if (hookDeadlineSpent() && !BOARD_ANSWERED.test(line)) late.push(`#${n}`);
+      else out.push(`${line} (milestone ${issue.milestone.title}).`);
+    }
   }
   if (foreign.length)
     out.push(`gh issue edit milestoned ${foreign.join(", ")}, not in ${HOME_REPO}: the Roadmap board is left alone.`);
+  if (late.length)
+    out.push(
+      `gh issue edit: the hook ran out of time before it could move ${late.join(", ")}; move each that is an open iRaceDeck issue with a milestone to Planned by hand: ${plannedByHand("<n>")}`,
+    );
   return out;
 }
 

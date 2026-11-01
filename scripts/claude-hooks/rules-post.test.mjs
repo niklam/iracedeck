@@ -1,10 +1,18 @@
 import { describe, expect, it } from "vitest";
 
-import { editTargets, issueNumberOfUrl, setsMilestone } from "./rules-post.mjs";
+import { editTargets, issueNumberOfUrl, milestoneRemovedLine, setsMilestone } from "./rules-post.mjs";
 
 // #1574: the milestone trigger's pure half. The rest of rules-post.mjs is
 // covered in rules-tools.test.mjs, where it was first tested.
-const edit = (fields) => ({ issues: [], milestone: undefined, removesMilestone: false, repo: undefined, ...fields });
+const edit = (fields) => ({
+  issues: [],
+  milestone: undefined,
+  removesMilestone: false,
+  repo: undefined,
+  readable: true,
+  namesMilestone: false,
+  ...fields,
+});
 
 describe("setsMilestone", () => {
   it("is true for a milestone value, readable or not", () => {
@@ -18,6 +26,45 @@ describe("setsMilestone", () => {
     expect(setsMilestone(edit({ milestone: "" }))).toBe(false);
     expect(setsMilestone(edit({ removesMilestone: true }))).toBe(false);
     expect(setsMilestone(edit({ milestone: "3.8.0", removesMilestone: true }))).toBe(false);
+  });
+
+  // Second read: a milestone flag the parse could not reach still counts.
+  it("is true for an edit it could not read whole whose text names a milestone flag", () => {
+    expect(setsMilestone(edit({ readable: false, namesMilestone: true }))).toBe(true);
+    expect(setsMilestone(edit({ readable: false, namesMilestone: false }))).toBe(false);
+    expect(setsMilestone(edit({ readable: true, namesMilestone: true }))).toBe(false);
+    expect(setsMilestone(edit({ readable: false, namesMilestone: true, removesMilestone: true }))).toBe(false);
+    expect(setsMilestone(edit({ readable: false, namesMilestone: true, milestone: "" }))).toBe(false);
+  });
+});
+
+describe("milestoneRemovedLine", () => {
+  const tail =
+    ": a card stays in its lane when its milestone goes, and moving it back to Backlog is Niklas's, in the board UI.";
+  const removed = (fields) => edit({ removesMilestone: true, ...fields });
+  const foreignUrl = "https://github.com/other/repo/issues/6";
+
+  it("names the issues that may be iRaceDeck's", () => {
+    expect(milestoneRemovedLine(removed({ issues: ["5", foreignUrl] }))).toBe(
+      `gh issue edit removed the milestone of #5${tail}`,
+    );
+    expect(milestoneRemovedLine(removed({ issues: ["5"], repo: null }))).toBe(
+      `gh issue edit removed the milestone of #5${tail}`,
+    );
+  });
+
+  it("speaks of the issues it edited when it could not read them", () => {
+    for (const fields of [{ readable: false }, {}, { issues: [foreignUrl], readable: false }])
+      expect(milestoneRemovedLine(removed(fields)), JSON.stringify(fields)).toBe(
+        `gh issue edit removed the milestone of the issues it edited${tail}`,
+      );
+  });
+
+  it("says nothing when every issue is another repository's", () => {
+    expect(milestoneRemovedLine(removed({ issues: ["5"], repo: "other/repo" }))).toBeUndefined();
+    expect(milestoneRemovedLine(removed({ issues: ["5"] }), "other/repo")).toBeUndefined();
+    expect(milestoneRemovedLine(removed({ issues: [foreignUrl] }))).toBeUndefined();
+    expect(milestoneRemovedLine(removed({ issues: ["5"], readable: false, repo: "other/repo" }))).toBeUndefined();
   });
 });
 

@@ -276,12 +276,40 @@ export function issueCreateRepos(command, masked = command) {
 }
 
 /**
- * Whether a parsed `gh issue edit` (`parseIssueEdit`) sets a milestone (#1574):
+ * Whether a parsed `gh issue edit` (`issueEdits`) may set a milestone (#1574):
  * a `--milestone` whose value is not empty — or is not readable, which the
- * read-back then settles — and no `--remove-milestone`. Removing one never
- * moves a card back.
+ * read-back then settles — and no `--remove-milestone`. An edit the hook could
+ * not read whole counts when a milestone flag appears anywhere in its text
+ * (`namesMilestone`), so its caller says to move the cards by hand rather than
+ * nothing. Removing one never moves a card back.
  */
-export const setsMilestone = (edit) => !edit.removesMilestone && edit.milestone !== undefined && edit.milestone !== "";
+export function setsMilestone(edit) {
+  if (edit.removesMilestone) return false;
+  if (edit.milestone !== undefined) return edit.milestone !== "";
+  return !edit.readable && !!edit.namesMilestone;
+}
+
+/**
+ * The line for a `gh issue edit --remove-milestone` (#1574): a card stays in
+ * its lane when its milestone goes, and moving it back is Niklas's, since the
+ * helpers refuse a backwards move and a raw lane edit is denied. Named are the
+ * issues that may be iRaceDeck's ({@link editTargets}), with nothing read
+ * back; `undefined` when every issue is known to be another repository's —
+ * the ones the hook could not read too, when the edit's own `--repo` or
+ * `GH_REPO` names another repository.
+ */
+export function milestoneRemovedLine(edit, envRepo) {
+  const targets = editTargets(edit, envRepo);
+  const maybeHome = targets.filter(({ repo }) => repo == null || isHomeRepo(repo));
+  const named = edit.repo !== undefined ? edit.repo : envRepo;
+  const elsewhere = named != null && !isHomeRepo(normalizeRepo(named));
+  const unread = !edit.readable || !targets.length;
+  if (!maybeHome.length && (!unread || elsewhere)) return undefined;
+  const which = maybeHome.length
+    ? maybeHome.map(({ ref }) => (repoOfUrl(ref) ? ref : `#${ref}`)).join(", ")
+    : "the issues it edited";
+  return `gh issue edit removed the milestone of ${which}: a card stays in its lane when its milestone goes, and moving it back to Backlog is Niklas's, in the board UI.`;
+}
 
 /**
  * The issues a `gh issue edit` names, each `{ ref, repo }` with the repository
