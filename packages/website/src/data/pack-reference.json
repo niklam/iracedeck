@@ -51676,6 +51676,16 @@
           "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
         },
         {
+          "base": "bill",
+          "texts": [
+            "Bill"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [],
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+        },
+        {
           "base": "bird",
           "texts": [
             "Bird"
@@ -51719,6 +51729,16 @@
           "base": "brandon",
           "texts": [
             "Brandon"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [],
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+        },
+        {
+          "base": "brant",
+          "texts": [
+            "Brant"
           ],
           "takes": 1,
           "usedBy": [],
@@ -51856,6 +51876,16 @@
           "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
         },
         {
+          "base": "dev",
+          "texts": [
+            "Dev"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [],
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+        },
+        {
           "base": "dominic",
           "texts": [
             "Dominic"
@@ -51869,6 +51899,16 @@
           "base": "dominik",
           "texts": [
             "Dominik"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [],
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+        },
+        {
+          "base": "drew",
+          "texts": [
+            "Drew"
           ],
           "takes": 1,
           "usedBy": [],
@@ -51939,6 +51979,16 @@
           "base": "fredrich",
           "texts": [
             "Fredrich"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [],
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+        },
+        {
+          "base": "geoff",
+          "texts": [
+            "Jeff"
           ],
           "takes": 1,
           "usedBy": [],
@@ -52069,6 +52119,16 @@
           "base": "jasper",
           "texts": [
             "Jasper"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [],
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+        },
+        {
+          "base": "jeff",
+          "texts": [
+            "Jeff"
           ],
           "takes": 1,
           "usedBy": [],
@@ -52419,6 +52479,16 @@
           "base": "oivindl",
           "texts": [
             "Öivin"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [],
+          "playedBy": "Played by the plugin itself, outside the script: the driver's name, one clip per name, spoken before the radio check and before the Test button's greeting. The names a pack ships are the names its users can be called by; the group is optional."
+        },
+        {
+          "base": "olle",
+          "texts": [
+            "Olle"
           ],
           "takes": 1,
           "usedBy": [],
@@ -62190,6 +62260,18 @@
           "playedBy": null
         },
         {
+          "base": "bill",
+          "texts": [
+            "Come on, Bill."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "overtake.lost.comeOn"
+          ],
+          "playedBy": null
+        },
+        {
           "base": "bird",
           "texts": [
             "Come on, Bird."
@@ -62241,6 +62323,18 @@
           "base": "brandon",
           "texts": [
             "Come on, Brandon."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "overtake.lost.comeOn"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "brant",
+          "texts": [
+            "Come on, Brant."
           ],
           "takes": 1,
           "usedBy": [],
@@ -62406,6 +62500,18 @@
           "playedBy": null
         },
         {
+          "base": "dev",
+          "texts": [
+            "Come on, Dev."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "overtake.lost.comeOn"
+          ],
+          "playedBy": null
+        },
+        {
           "base": "dominic",
           "texts": [
             "Come on, Dominic."
@@ -62421,6 +62527,18 @@
           "base": "dominik",
           "texts": [
             "Come on, Dominik."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "overtake.lost.comeOn"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "drew",
+          "texts": [
+            "Come on, Drew."
           ],
           "takes": 1,
           "usedBy": [],
@@ -62505,6 +62623,18 @@
           "base": "fredrich",
           "texts": [
             "Come on, Fredrich."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "overtake.lost.comeOn"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "geoff",
+          "texts": [
+            "Come on, Jeff."
           ],
           "takes": 1,
           "usedBy": [],
@@ -62661,6 +62791,18 @@
           "base": "jasper",
           "texts": [
             "Come on, Jasper."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "overtake.lost.comeOn"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "jeff",
+          "texts": [
+            "Come on, Jeff."
           ],
           "takes": 1,
           "usedBy": [],
@@ -63081,6 +63223,18 @@
           "base": "oivindl",
           "texts": [
             "Come on, Öivin."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "overtake.lost.comeOn"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "olle",
+          "texts": [
+            "Come on, Olle."
           ],
           "takes": 1,
           "usedBy": [],
@@ -63669,6 +63823,18 @@
           "playedBy": null
         },
         {
+          "base": "bill",
+          "texts": [
+            "Bill,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceEnd.greeting"
+          ],
+          "playedBy": null
+        },
+        {
           "base": "bird",
           "texts": [
             "Bird,"
@@ -63720,6 +63886,18 @@
           "base": "brandon",
           "texts": [
             "Brandon,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceEnd.greeting"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "brant",
+          "texts": [
+            "Brant,"
           ],
           "takes": 1,
           "usedBy": [],
@@ -63885,6 +64063,18 @@
           "playedBy": null
         },
         {
+          "base": "dev",
+          "texts": [
+            "Dev,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceEnd.greeting"
+          ],
+          "playedBy": null
+        },
+        {
           "base": "dominic",
           "texts": [
             "Dominic,"
@@ -63900,6 +64090,18 @@
           "base": "dominik",
           "texts": [
             "Dominik,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceEnd.greeting"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "drew",
+          "texts": [
+            "Drew,"
           ],
           "takes": 1,
           "usedBy": [],
@@ -63984,6 +64186,18 @@
           "base": "fredrich",
           "texts": [
             "Fredrich,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceEnd.greeting"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "geoff",
+          "texts": [
+            "Jeff,"
           ],
           "takes": 1,
           "usedBy": [],
@@ -64140,6 +64354,18 @@
           "base": "jasper",
           "texts": [
             "Jasper,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceEnd.greeting"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "jeff",
+          "texts": [
+            "Jeff,"
           ],
           "takes": 1,
           "usedBy": [],
@@ -64560,6 +64786,18 @@
           "base": "oivindl",
           "texts": [
             "Öivin,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceEnd.greeting"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "olle",
+          "texts": [
+            "Olle,"
           ],
           "takes": 1,
           "usedBy": [],
@@ -65011,6 +65249,18 @@
           "playedBy": null
         },
         {
+          "base": "bill",
+          "texts": [
+            "Time to race, Bill."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.greeting"
+          ],
+          "playedBy": null
+        },
+        {
           "base": "bird",
           "texts": [
             "Time to race, Bird."
@@ -65062,6 +65312,18 @@
           "base": "brandon",
           "texts": [
             "Time to race, Brandon."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.greeting"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "brant",
+          "texts": [
+            "Time to race, Brant."
           ],
           "takes": 1,
           "usedBy": [],
@@ -65227,6 +65489,18 @@
           "playedBy": null
         },
         {
+          "base": "dev",
+          "texts": [
+            "Time to race, Dev."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.greeting"
+          ],
+          "playedBy": null
+        },
+        {
           "base": "dominic",
           "texts": [
             "Time to race, Dominic."
@@ -65242,6 +65516,18 @@
           "base": "dominik",
           "texts": [
             "Time to race, Dominik."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.greeting"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "drew",
+          "texts": [
+            "Time to race, Drew."
           ],
           "takes": 1,
           "usedBy": [],
@@ -65326,6 +65612,18 @@
           "base": "fredrich",
           "texts": [
             "Time to race, Fredrich."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.greeting"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "geoff",
+          "texts": [
+            "Time to race, Jeff."
           ],
           "takes": 1,
           "usedBy": [],
@@ -65482,6 +65780,18 @@
           "base": "jasper",
           "texts": [
             "Time to race, Jasper."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.greeting"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "jeff",
+          "texts": [
+            "Time to race, Jeff."
           ],
           "takes": 1,
           "usedBy": [],
@@ -65902,6 +66212,18 @@
           "base": "oivindl",
           "texts": [
             "Time to race, Öivin."
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "raceStart.greeting"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "olle",
+          "texts": [
+            "Time to race, Olle."
           ],
           "takes": 1,
           "usedBy": [],
@@ -67038,6 +67360,18 @@
           "playedBy": null
         },
         {
+          "base": "bill",
+          "texts": [
+            "Ok, Bill,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "sessionStart.greeting"
+          ],
+          "playedBy": null
+        },
+        {
           "base": "bird",
           "texts": [
             "Ok, Bird,"
@@ -67089,6 +67423,18 @@
           "base": "brandon",
           "texts": [
             "Ok, Brandon,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "sessionStart.greeting"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "brant",
+          "texts": [
+            "Ok, Brant,"
           ],
           "takes": 1,
           "usedBy": [],
@@ -67254,6 +67600,18 @@
           "playedBy": null
         },
         {
+          "base": "dev",
+          "texts": [
+            "Ok, Dev,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "sessionStart.greeting"
+          ],
+          "playedBy": null
+        },
+        {
           "base": "dominic",
           "texts": [
             "Ok, Dominic,"
@@ -67269,6 +67627,18 @@
           "base": "dominik",
           "texts": [
             "Ok, Dominik,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "sessionStart.greeting"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "drew",
+          "texts": [
+            "Ok, Drew,"
           ],
           "takes": 1,
           "usedBy": [],
@@ -67353,6 +67723,18 @@
           "base": "fredrich",
           "texts": [
             "Ok, Fredrich,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "sessionStart.greeting"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "geoff",
+          "texts": [
+            "Ok, Jeff,"
           ],
           "takes": 1,
           "usedBy": [],
@@ -67509,6 +67891,18 @@
           "base": "jasper",
           "texts": [
             "Ok, Jasper,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "sessionStart.greeting"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "jeff",
+          "texts": [
+            "Ok, Jeff,"
           ],
           "takes": 1,
           "usedBy": [],
@@ -67929,6 +68323,18 @@
           "base": "oivindl",
           "texts": [
             "Ok, Öivin,"
+          ],
+          "takes": 1,
+          "usedBy": [],
+          "viaVar": [
+            "sessionStart.greeting"
+          ],
+          "playedBy": null
+        },
+        {
+          "base": "olle",
+          "texts": [
+            "Ok, Olle,"
           ],
           "takes": 1,
           "usedBy": [],
