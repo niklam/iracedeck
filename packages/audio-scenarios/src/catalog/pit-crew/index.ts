@@ -794,7 +794,9 @@ export type PitCrewDeps = {
   // at S/F crossing. Default `() => null` makes the var resolvers return
   // null — a safe stub for tests that don't supply a resolver. Reused by the
   // position-change callout (issue #566) — both scenarios subscribe to the
-  // same `lap.completed` event and share the snapshot cache.
+  // same `lap.completed` event and share the snapshot cache — and read by
+  // the every-lap (issue #1163) and fastest-lap (issue #1571) speak gates,
+  // which drop a line held past the player's next completed lap.
   getLapCompletedSnapshot?: LapCompletedSnapshotResolver;
   // Snapshot resolver for the qualifying lap-invalidation callout (issue
   // #567). Plugins wire this to a closure that builds the snapshot from the
@@ -905,7 +907,10 @@ export type PitCrewDeps = {
   // the event was classified in (the payload's `isMultiClass`). The var reads
   // the expanding fire's own event, so a later flag event can never repoint
   // a deferred line. Default `() => null` falls back to the emit-time
-  // payload position — a safe stub for tests and the harness.
+  // payload position — a safe stub for tests and the harness. The fastest
+  // lap of the race (issue #1571) reads the record holder's live position
+  // through the same resolver: it is the one per-car live read the catalog
+  // takes, whatever family asks.
   getOpponentFlagLivePosition?: OpponentFlagLivePositionResolver;
   // Caution lineup resolver (issue #1127). Plugins wire `getPaceLineup()`
   // from `@iracedeck/sim-events-iracing`. Read at SPEAK time inside every
