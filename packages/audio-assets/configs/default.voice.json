@@ -1521,6 +1521,10 @@
         "text": "Anthony"
       },
       {
+        "name": "bill",
+        "text": "Bill"
+      },
+      {
         "name": "bird",
         "text": "Bird"
       },
@@ -1539,6 +1543,10 @@
       {
         "name": "brandon",
         "text": "Brandon"
+      },
+      {
+        "name": "brant",
+        "text": "Brant"
       },
       {
         "name": "brenton",
@@ -1593,12 +1601,20 @@
         "text": "Dean"
       },
       {
+        "name": "dev",
+        "text": "Dev"
+      },
+      {
         "name": "dominic",
         "text": "Dominic"
       },
       {
         "name": "dominik",
         "text": "Dominik"
+      },
+      {
+        "name": "drew",
+        "text": "Drew"
       },
       {
         "name": "driver",
@@ -1627,6 +1643,10 @@
       {
         "name": "fredrich",
         "text": "Fredrich"
+      },
+      {
+        "name": "geoff",
+        "text": "Jeff"
       },
       {
         "name": "glen",
@@ -1679,6 +1699,10 @@
       {
         "name": "jasper",
         "text": "Jasper"
+      },
+      {
+        "name": "jeff",
+        "text": "Jeff"
       },
       {
         "name": "jimmy",
@@ -1819,6 +1843,10 @@
       {
         "name": "oivindl",
         "text": "Öivin"
+      },
+      {
+        "name": "olle",
+        "text": "Olle"
       },
       {
         "name": "pablo",
@@ -2098,6 +2126,10 @@
         "text": "Ok, Anthony,"
       },
       {
+        "name": "bill",
+        "text": "Ok, Bill,"
+      },
+      {
         "name": "bird",
         "text": "Ok, Bird,"
       },
@@ -2116,6 +2148,10 @@
       {
         "name": "brandon",
         "text": "Ok, Brandon,"
+      },
+      {
+        "name": "brant",
+        "text": "Ok, Brant,"
       },
       {
         "name": "brenton",
@@ -2170,12 +2206,20 @@
         "text": "Ok, Dean,"
       },
       {
+        "name": "dev",
+        "text": "Ok, Dev,"
+      },
+      {
         "name": "dominic",
         "text": "Ok, Dominic,"
       },
       {
         "name": "dominik",
         "text": "Ok, Dominik,"
+      },
+      {
+        "name": "drew",
+        "text": "Ok, Drew,"
       },
       {
         "name": "driver",
@@ -2204,6 +2248,10 @@
       {
         "name": "fredrich",
         "text": "Ok, Fredrich,"
+      },
+      {
+        "name": "geoff",
+        "text": "Ok, Jeff,"
       },
       {
         "name": "glen",
@@ -2256,6 +2304,10 @@
       {
         "name": "jasper",
         "text": "Ok, Jasper,"
+      },
+      {
+        "name": "jeff",
+        "text": "Ok, Jeff,"
       },
       {
         "name": "jimmy",
@@ -2396,6 +2448,10 @@
       {
         "name": "oivindl",
         "text": "Ok, Öivin,"
+      },
+      {
+        "name": "olle",
+        "text": "Ok, Olle,"
       },
       {
         "name": "pablo",
@@ -6088,6 +6144,10 @@
         "text": "Anthony,"
       },
       {
+        "name": "bill",
+        "text": "Bill,"
+      },
+      {
         "name": "bird",
         "text": "Bird,"
       },
@@ -6106,6 +6166,10 @@
       {
         "name": "brandon",
         "text": "Brandon,"
+      },
+      {
+        "name": "brant",
+        "text": "Brant,"
       },
       {
         "name": "brenton",
@@ -6160,12 +6224,20 @@
         "text": "Dean,"
       },
       {
+        "name": "dev",
+        "text": "Dev,"
+      },
+      {
         "name": "dominic",
         "text": "Dominic,"
       },
       {
         "name": "dominik",
         "text": "Dominik,"
+      },
+      {
+        "name": "drew",
+        "text": "Drew,"
       },
       {
         "name": "driver",
@@ -6194,6 +6266,10 @@
       {
         "name": "fredrich",
         "text": "Fredrich,"
+      },
+      {
+        "name": "geoff",
+        "text": "Jeff,"
       },
       {
         "name": "glen",
@@ -6246,6 +6322,10 @@
       {
         "name": "jasper",
         "text": "Jasper,"
+      },
+      {
+        "name": "jeff",
+        "text": "Jeff,"
       },
       {
         "name": "jimmy",
@@ -6386,6 +6466,10 @@
       {
         "name": "oivindl",
         "text": "Öivin,"
+      },
+      {
+        "name": "olle",
+        "text": "Olle,"
       },
       {
         "name": "pablo",
@@ -6575,6 +6659,10 @@
         "text": "Time to race, Anthony."
       },
       {
+        "name": "bill",
+        "text": "Time to race, Bill."
+      },
+      {
         "name": "bird",
         "text": "Time to race, Bird."
       },
@@ -6593,6 +6681,10 @@
       {
         "name": "brandon",
         "text": "Time to race, Brandon."
+      },
+      {
+        "name": "brant",
+        "text": "Time to race, Brant."
       },
       {
         "name": "brenton",
@@ -6647,12 +6739,20 @@
         "text": "Time to race, Dean."
       },
       {
+        "name": "dev",
+        "text": "Time to race, Dev."
+      },
+      {
         "name": "dominic",
         "text": "Time to race, Dominic."
       },
       {
         "name": "dominik",
         "text": "Time to race, Dominik."
+      },
+      {
+        "name": "drew",
+        "text": "Time to race, Drew."
       },
       {
         "name": "driver",
@@ -6681,6 +6781,10 @@
       {
         "name": "fredrich",
         "text": "Time to race, Fredrich."
+      },
+      {
+        "name": "geoff",
+        "text": "Time to race, Jeff."
       },
       {
         "name": "glen",
@@ -6733,6 +6837,10 @@
       {
         "name": "jasper",
         "text": "Time to race, Jasper."
+      },
+      {
+        "name": "jeff",
+        "text": "Time to race, Jeff."
       },
       {
         "name": "jimmy",
@@ -6875,6 +6983,10 @@
         "text": "Time to race, Öivin."
       },
       {
+        "name": "olle",
+        "text": "Time to race, Olle."
+      },
+      {
         "name": "pablo",
         "text": "Time to race, Pablo."
       },
@@ -7013,6 +7125,10 @@
         "text": "Come on, Anthony."
       },
       {
+        "name": "bill",
+        "text": "Come on, Bill."
+      },
+      {
         "name": "bird",
         "text": "Come on, Bird."
       },
@@ -7031,6 +7147,10 @@
       {
         "name": "brandon",
         "text": "Come on, Brandon."
+      },
+      {
+        "name": "brant",
+        "text": "Come on, Brant."
       },
       {
         "name": "brenton",
@@ -7085,12 +7205,20 @@
         "text": "Come on, Dean."
       },
       {
+        "name": "dev",
+        "text": "Come on, Dev."
+      },
+      {
         "name": "dominic",
         "text": "Come on, Dominic."
       },
       {
         "name": "dominik",
         "text": "Come on, Dominik."
+      },
+      {
+        "name": "drew",
+        "text": "Come on, Drew."
       },
       {
         "name": "driver",
@@ -7119,6 +7247,10 @@
       {
         "name": "fredrich",
         "text": "Come on, Fredrich."
+      },
+      {
+        "name": "geoff",
+        "text": "Come on, Jeff."
       },
       {
         "name": "glen",
@@ -7171,6 +7303,10 @@
       {
         "name": "jasper",
         "text": "Come on, Jasper."
+      },
+      {
+        "name": "jeff",
+        "text": "Come on, Jeff."
       },
       {
         "name": "jimmy",
@@ -7311,6 +7447,10 @@
       {
         "name": "oivindl",
         "text": "Come on, Öivin."
+      },
+      {
+        "name": "olle",
+        "text": "Come on, Olle."
       },
       {
         "name": "pablo",
