@@ -276,6 +276,61 @@ export function issueCreateRepos(command, masked = command) {
 }
 
 /**
+ * Whether a parsed `gh issue edit` (`issueEdits`) may set a milestone (#1574):
+ * a `--milestone` whose value is not empty — or is not readable, which the
+ * read-back then settles — and no `--remove-milestone`. An edit the hook could
+ * not read whole counts when a milestone flag appears anywhere in its text
+ * (`namesMilestone`), so its caller says to move the cards by hand rather than
+ * nothing. Removing one never moves a card back.
+ */
+export function setsMilestone(edit) {
+  if (edit.removesMilestone) return false;
+  if (edit.milestone !== undefined) return edit.milestone !== "";
+  return !edit.readable && !!edit.namesMilestone;
+}
+
+/**
+ * The line for a `gh issue edit --remove-milestone` (#1574): a card stays in
+ * its lane when its milestone goes, and moving it back is Niklas's, since the
+ * helpers refuse a backwards move and a raw lane edit is denied. Named are the
+ * issues that may be iRaceDeck's ({@link editTargets}), with nothing read
+ * back; `undefined` when every issue is known to be another repository's —
+ * the ones the hook could not read too, when the edit's own `--repo` or
+ * `GH_REPO` names another repository.
+ */
+export function milestoneRemovedLine(edit, envRepo) {
+  const targets = editTargets(edit, envRepo);
+  const maybeHome = targets.filter(({ repo }) => repo == null || isHomeRepo(repo));
+  const named = edit.repo !== undefined ? edit.repo : envRepo;
+  const elsewhere = named != null && !isHomeRepo(normalizeRepo(named));
+  const unread = !edit.readable || !targets.length;
+  if (!maybeHome.length && (!unread || elsewhere)) return undefined;
+  const which = maybeHome.length
+    ? maybeHome.map(({ ref }) => (repoOfUrl(ref) ? ref : `#${ref}`)).join(", ")
+    : "the issues it edited";
+  return `gh issue edit removed the milestone of ${which}: a card stays in its lane when its milestone goes, and moving it back to Backlog is Niklas's, in the board UI.`;
+}
+
+/**
+ * The issues a `gh issue edit` names, each `{ ref, repo }` with the repository
+ * gh resolves it in: an issue URL's own, else the edit's `--repo` / `-R`, else
+ * a `GH_REPO` that reaches it (`envRepo`, {@link assignedGhRepo}), normalised
+ * ({@link normalizeRepo}). `repo` is `null` when one is named but not readable,
+ * `undefined` when none is and gh uses the checkout's own.
+ */
+export function editTargets(edit, envRepo) {
+  const named = edit.repo !== undefined ? edit.repo : envRepo;
+  const repo = named == null ? named : normalizeRepo(named);
+  return edit.issues.map((ref) => ({ ref, repo: repoOfUrl(ref) ?? repo }));
+}
+
+/** The number of a github.com issue URL, or `undefined`. */
+export function issueNumberOfUrl(url) {
+  const m = /^https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/issues\/(\d+)/i.exec(String(url ?? ""));
+  return m ? Number(m[1]) : undefined;
+}
+
+/**
  * The cards a merged PR moves: its closing issues in {@link HOME_REPO}, or
  * when it has none the `(#n)` its title ends with (the PR title rule).
  * `foreign` names the closing issues elsewhere (`Fixes other/repo#5`), whose

@@ -517,8 +517,24 @@ export function workspacePackages(root) {
 // ---------------------------------------------------------------------------
 // Roadmap board (GitHub Projects v2)
 
-/** The board's node id plus its Status field and option ids, read fresh — never hardcoded (the ids regenerate if the option list is ever rewritten). */
+/** {@link boardStatusField}'s answers by `cwd`, while a hook has turned the memo on; `undefined` while it is off. */
+let statusFieldMemo;
+
+/**
+ * Turns on (or off) remembering {@link boardStatusField}'s answer for the rest
+ * of this process (#1574): a hook that moves many cards in one run — a
+ * `gh issue edit` naming fifteen issues — otherwise reads the project and its
+ * field list again for every card, two gh calls each, against a 90 s timeout.
+ * A hook process lives for one tool call, so the ids cannot go stale inside
+ * it. Off by default, so every other caller still reads them fresh.
+ */
+export function memoizeBoardStatusField(on = true) {
+  statusFieldMemo = on ? new Map() : undefined;
+}
+
+/** The board's node id plus its Status field and option ids, read fresh — never hardcoded (the ids regenerate if the option list is ever rewritten). Only a successful read is remembered ({@link memoizeBoardStatusField}). */
 export function boardStatusField(cwd) {
+  if (statusFieldMemo?.has(cwd)) return statusFieldMemo.get(cwd);
   const projectId = boardProjectId(cwd);
   const fields = ghJson(
     ["project", "field-list", String(BOARD.number), "--owner", BOARD.owner, "--format", "json"],
@@ -527,7 +543,9 @@ export function boardStatusField(cwd) {
   const status = fields?.fields?.find((f) => f.name === BOARD.statusField);
   if (!projectId || !status?.id) return undefined;
   const options = Object.fromEntries((status.options ?? []).map((o) => [o.name, o.id]));
-  return { projectId, fieldId: status.id, options };
+  const field = { projectId, fieldId: status.id, options };
+  statusFieldMemo?.set(cwd, field);
+  return field;
 }
 
 /** The board's node id, or `undefined` when gh cannot read it. */
@@ -536,10 +554,12 @@ function boardProjectId(cwd) {
 }
 
 /**
- * The board item for an issue of {@link HOME_REPO}: `{ itemId, status }`, or
- * `undefined` when the issue is not on the board. The number is always read
- * as a home-repository issue, so a caller holding another repository's number
- * must not pass it (#1527).
+ * The board item for an issue of {@link HOME_REPO}: `{ itemId, status }`,
+ * `undefined` when the issue is not on the board, or `null` when gh could not
+ * answer (a failed call, unparsable output), so a caller can tell "not on the
+ * board" from "could not look" (#1574). The number is always read as a
+ * home-repository issue, so a caller holding another repository's number must
+ * not pass it (#1527).
  */
 export function boardItemForIssue(issueNumber, cwd) {
   const [owner, name] = HOME_REPO.split("/");
@@ -550,25 +570,35 @@ export function boardItemForIssue(issueNumber, cwd) {
     name +
     '"){issue(number:$n){projectItems(first:10){nodes{id project{number} fieldValueByName(name:"Status"){... on ProjectV2ItemFieldSingleSelectValue{name}}}}}}}';
   const data = ghJson(["api", "graphql", "-f", `query=${query}`, "-F", `n=${issueNumber}`], cwd);
-  const node = data?.data?.repository?.issue?.projectItems?.nodes?.find((n) => n.project?.number === BOARD.number);
+  if (!data?.data?.repository) return null;
+  const node = data.data.repository.issue?.projectItems?.nodes?.find((n) => n.project?.number === BOARD.number);
   if (!node) return undefined;
   return { itemId: node.id, status: node.fieldValueByName?.name ?? "(none)" };
 }
 
 /**
  * Lanes a card may be moved FROM for each automated move — never backwards (a
- * Done card stays Done). `Next` is the PO's (#1520): it orders the milestone
+ * Done card stays Done). `Planned` is what a release contains, and deciding
+ * that stays Niklas's (#1574): a card enters it when its issue gets a
+ * milestone (the post-bash hook) or on his word in the conversation, and only
+ * from Backlog or no lane, never back from `Next` or work that has started.
+ * `Next` is the PO's (#1520): it orders the milestone
  * Niklas planned, so a card enters from Backlog or Planned, never back from
  * work that has started. `Dropped` is for an issue closed as not planned or a
  * duplicate, which whoever closes it moves by hand (`build-and-commit.md`): from
  * any lane before Testing, since a merged or shipped card is never dropped.
+ * `Done` is the release step's (`build-and-commit.md`, *Releasing*): a card
+ * of the released milestone moves from Testing only, since a raw lane edit is
+ * refused (#1574).
  */
 export const BOARD_MOVES = {
   Backlog: ["(none)"],
+  Planned: ["(none)", "Backlog"],
   Next: ["(none)", "Backlog", "Planned"],
   "In progress": ["(none)", "Backlog", "Planned", "Next"],
   Testing: ["(none)", "Backlog", "Planned", "Next", "In progress"],
   Dropped: ["(none)", "Backlog", "Planned", "Next", "In progress"],
+  Done: ["Testing"],
 };
 
 /** Lanes whose cards are history — merged, shipped or closed — so their order is never moved. */
@@ -589,12 +619,14 @@ const FROZEN_LANES = ["Testing", "Done", "Dropped"];
 export function moveBoardItemAfter(issueNumber, afterIssueNumber, cwd) {
   if (afterIssueNumber === issueNumber) return `board: cannot place #${issueNumber} after itself`;
   const item = boardItemForIssue(issueNumber, cwd);
+  if (item === null) return unreadCard(issueNumber);
   if (!item) return `board: #${issueNumber} is not on the Roadmap board`;
   if (FROZEN_LANES.includes(item.status))
     return `board: #${issueNumber} is in ${item.status}; its position is not moved (${FROZEN_LANES.join("/")} are history)`;
   let after;
   if (afterIssueNumber != null) {
     after = boardItemForIssue(afterIssueNumber, cwd);
+    if (after === null) return unreadCard(afterIssueNumber);
     if (!after) return `board: #${afterIssueNumber} is not on the Roadmap board`;
     if (after.status !== item.status)
       return `board: #${afterIssueNumber} is in ${after.status}, not ${item.status}; place #${issueNumber} after a card in its own lane`;
@@ -614,6 +646,10 @@ export function moveBoardItemAfter(issueNumber, afterIssueNumber, cwd) {
     : `board: moving #${issueNumber} ${where} failed (gh or GitHub refused the mutation)`;
 }
 
+/** The line for a {@link boardItemForIssue} lookup gh could not answer. */
+const unreadCard = (issueNumber) =>
+  `board: could not read #${issueNumber}'s card (gh failed — missing \`project\` token scope? \`gh auth refresh -s project,read:project\`)`;
+
 /** Set `IRACEDECK_HOOKS_DRY_RUN=1` to have every board mutation report instead of run (tests, pipe-checks). */
 export const dryRun = () => !!process.env.IRACEDECK_HOOKS_DRY_RUN;
 
@@ -626,6 +662,7 @@ export function setBoardStatus(issueNumber, lane, cwd) {
   if (!allowedFrom)
     return `board: "${lane}" is not a lane the hooks move cards into (${Object.keys(BOARD_MOVES).join(", ")})`;
   const item = boardItemForIssue(issueNumber, cwd);
+  if (item === null) return unreadCard(issueNumber);
   if (!item) return `board: #${issueNumber} is not on the Roadmap board`;
   if (item.status === lane) return `board: #${issueNumber} already in ${lane}`;
   if (!allowedFrom.includes(item.status))

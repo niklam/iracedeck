@@ -666,6 +666,34 @@ export function firstMerge(command) {
 const mergeMentions = (command) => (command.match(/\bgh\s+pr\s+merge\b/g) ?? []).length;
 
 /**
+ * The words of one command segment, `{ word, shape }` each: with a trusted mask
+ * the `flat` text's words, each with its raw text, so a quoted value is one word
+ * however many separators or flags it carries; without one the raw segment split
+ * by {@link words}, every word its own shape. Shared by {@link parseMerge} and
+ * {@link parseIssueEdit}.
+ */
+function segmentTokens({ raw, flat, trusted }) {
+  return trusted
+    ? [...flat.matchAll(/\S+/g)].map((m) => ({ word: raw.slice(m.index, m.index + m[0].length), shape: m[0] }))
+    : words(raw).map((w) => ({ word: w, shape: w }));
+}
+
+/** Whether a {@link segmentTokens} word is a plain literal: its raw text is its flat shape. */
+const literal = (t) => t !== undefined && t.word === t.shape;
+
+/**
+ * A word's value when the hook can know it: a plain literal, or one in quotes
+ * that expand nothing; `null` for anything else, a missing word included. The
+ * mask leaves a bare `$REPO` as it is, so a `$` is refused here.
+ */
+function plainValue(t) {
+  if (t === undefined || /[$`]/.test(t.word)) return null;
+  if (literal(t)) return t.word;
+  const quoted = /^'([^']*)'$/.exec(t.word) ?? /^"([^"$`\\]*)"$/.exec(t.word);
+  return quoted ? quoted[1] : null;
+}
+
+/**
  * One `gh pr merge` segment's own arguments: the PR ref, the boolean flags and
  * the `--match-head-commit` value (the last one, as gh's flag parser takes
  * it), and whether they were `readable`. Read from the segment's words, so a
@@ -686,18 +714,7 @@ const mergeMentions = (command) => (command.match(/\bgh\s+pr\s+merge\b/g) ?? [])
  * the flag is there but its value is not readable, `undefined` without it.
  */
 export function parseMerge({ raw, flat, trusted }) {
-  const tokens = trusted
-    ? [...flat.matchAll(/\S+/g)].map((m) => ({ word: raw.slice(m.index, m.index + m[0].length), shape: m[0] }))
-    : words(raw).map((w) => ({ word: w, shape: w }));
-  const literal = (t) => t !== undefined && t.word === t.shape;
-  // A plain word, or one in quotes that expand nothing; `null` for anything
-  // else. The mask leaves a bare `$REPO` as it is, so a `$` is refused here.
-  const repoValue = (t) => {
-    if (t === undefined || /[$`]/.test(t.word)) return null;
-    if (literal(t)) return t.word;
-    const quoted = /^'([^']*)'$/.exec(t.word) ?? /^"([^"$`\\]*)"$/.exec(t.word);
-    return quoted ? quoted[1] : null;
-  };
+  const tokens = segmentTokens({ raw, flat, trusted });
   const at = tokens.findIndex((t, k) => t.shape === "merge" && tokens[k - 1]?.shape === "pr");
   const flags = new Set();
   let ref;
@@ -723,7 +740,7 @@ export function parseMerge({ raw, flat, trusted }) {
     }
     if (/^-R[^=]/.test(t.shape)) {
       // gh's short flag with its value attached: `-Rowner/repo`.
-      repo = repoValue({ word: t.word.slice(2), shape: t.shape.slice(2) });
+      repo = plainValue({ word: t.word.slice(2), shape: t.shape.slice(2) });
       continue;
     }
     const eq = t.shape.indexOf("=");
@@ -732,10 +749,158 @@ export function parseMerge({ raw, flat, trusted }) {
     else {
       const value = eq > 0 ? { word: t.word.slice(eq + 1), shape: t.shape.slice(eq + 1) } : tokens[++k];
       if (name === "--match-head-commit") pin = literal(value) ? value.word : undefined;
-      else if (name === "--repo" || name === "-R") repo = repoValue(value);
+      else if (name === "--repo" || name === "-R") repo = plainValue(value);
     }
   }
   return { ref, flags, pin, repo, readable };
+}
+
+/** `gh issue edit` flags that take a value, so a value is never read as an issue or a flag. */
+const ISSUE_EDIT_VALUE_FLAGS = new Set([
+  "--add-assignee",
+  "--remove-assignee",
+  "--add-label",
+  "--remove-label",
+  "--add-project",
+  "--remove-project",
+  "--body",
+  "-b",
+  "--body-file",
+  "-F",
+  "--milestone",
+  "-m",
+  "--title",
+  "-t",
+  "--repo",
+  "-R",
+]);
+
+/** An issue argument as gh takes one, `5`, `#5` or an issue URL: the number as a string, or the URL; else `null`. */
+function issueArg(value) {
+  if (value == null) return null;
+  const n = /^#?([1-9]\d*)$/.exec(value);
+  if (n) return n[1];
+  const url = /^(https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/issues\/[1-9]\d*)\/?$/i.exec(value);
+  return url ? url[1] : null;
+}
+
+/**
+ * One `gh issue edit` segment's own arguments (#1574), read as
+ * {@link parseMerge} reads a merge's: `issues` (each a number as a string or
+ * an issue URL, in order — gh takes several), `milestone` (the last
+ * `--milestone` / `-m` value: `undefined` without one, `null` when it is not
+ * readable, `""` when empty), `removesMilestone`, and `repo` (the last
+ * `--repo` / `-R`, as in {@link parseMerge}). `readable` is false when an
+ * issue argument is not a plain number or issue URL — a `$N`, a substitution
+ * — so the caller can say it could not tell which issues the edit touched.
+ * A word after `--` is an issue whatever it looks like; one starting with an
+ * unquoted `#` opens a comment, as in bash and PowerShell.
+ */
+export function parseIssueEdit({ raw, flat, trusted }) {
+  const tokens = segmentTokens({ raw, flat, trusted });
+  const at = tokens.findIndex((t, k) => t.shape === "edit" && tokens[k - 1]?.shape === "issue");
+  const issues = [];
+  let milestone;
+  let removesMilestone = false;
+  let repo;
+  let readable = at >= 0;
+  let options = true;
+  for (let k = at + 1; at >= 0 && k < tokens.length; k++) {
+    const t = tokens[k];
+    if (t.word.startsWith("#")) break;
+    // A redirection, bash's `&>` and PowerShell's `*>` included; a bare operator takes the next word as its target.
+    if (/^(?:\d*|[&*])[<>]/.test(t.shape)) {
+      if (/^(?:\d*|[&*])(?:[<>]{1,3}-?|[<>]&)$/.test(t.shape)) k++;
+      continue;
+    }
+    if (!options || !t.shape.startsWith("-")) {
+      const issue = issueArg(plainValue(t));
+      if (issue) issues.push(issue);
+      else readable = false;
+      continue;
+    }
+    if (t.shape === "--") {
+      options = false;
+      continue;
+    }
+    if (t.shape === "--remove-milestone") {
+      removesMilestone = true;
+      continue;
+    }
+    // A short flag with its value attached: `-m3.8.0`, `-m=3.8.0`, `-Rowner/repo`.
+    const short = /^-([mR])=?(?=.)/.exec(t.shape);
+    const eq = t.shape.indexOf("=");
+    const name = short ? `-${short[1]}` : eq > 0 ? t.shape.slice(0, eq) : t.shape;
+    if (!ISSUE_EDIT_VALUE_FLAGS.has(name)) continue;
+    const cut = short ? short[0].length : eq + 1;
+    const value = short || eq > 0 ? { word: t.word.slice(cut), shape: t.shape.slice(cut) } : tokens[++k];
+    if (name === "--milestone" || name === "-m") milestone = plainValue(value);
+    else if (name === "--repo" || name === "-R") repo = plainValue(value);
+  }
+  return { issues, milestone, removesMilestone, repo, readable };
+}
+
+/** Where a `gh issue edit` is, anywhere in the trusted-masked text: the post-hook's trigger, unanchored as its others are. */
+export const GH_ISSUE_EDIT = /\bgh\s+issue\s+edit\b/;
+
+/**
+ * Where the command whose arguments start at `from` in `text` (the
+ * trusted-masked command) ends: at a newline, `;`, `|` or a lone `&` (not a
+ * redirect's, as in `2>&1` or `&>`), or at the `)` or backtick that closes the
+ * substitution or subshell it runs in (`inTick`: it runs inside a backtick
+ * one) — each outside the substitutions its own arguments open, so a `$( … )`
+ * or backtick argument, a heredoc inside one included, is part of the command
+ * rather than its end. Inert text is masked, so a paren in a quote counts nowhere.
+ */
+function commandEnd(text, from, inTick) {
+  let depth = 0;
+  for (let i = from; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === "(") depth++;
+    else if (ch === ")") {
+      if (depth === 0) return i;
+      depth--;
+    } else if (depth > 0) continue;
+    else if (ch === "\x60") {
+      const close = inTick ? -1 : text.indexOf("\x60", i + 1);
+      if (close < 0) return i;
+      i = close;
+    } else if (/[\n;|]/.test(ch) || (ch === "&" && !/[<>]/.test(text[i - 1] ?? "") && text[i + 1] !== ">")) return i;
+  }
+  return text.length;
+}
+
+/** A milestone flag anywhere in a word list's raw text — not `--remove-milestone` — for an edit the hook cannot read whole. */
+const MILESTONE_FLAG = /(?:^|[\s"'(=])(?:--milestone\b|-m)/;
+
+/**
+ * Every `gh issue edit` outside inert text, in chain order ({@link chainCommands}),
+ * parsed ({@link parseIssueEdit}), each with `base` (the directory it ran in)
+ * and `start` (where it begins in `command`, so the caller can read the
+ * `GH_REPO` that reaches it).
+ *
+ * The edit runs to its own end ({@link commandEnd}), and that text is lexed on
+ * its own (#1574 second read): a substitution among its arguments
+ * (`--body "$(cat <<'EOF' … EOF)"`, `$(gh issue list …)`) is then one word, so
+ * the flags after it are still read, and an edit inside one
+ * (`out=$(gh issue edit 5 -m x)`), which the whole command's flat text blanks,
+ * is at the top level of its own. Where the mask is not trusted the raw words
+ * are read, as everywhere else. `namesMilestone` says whether a milestone flag
+ * appears anywhere in the edit's raw text, for one the hook could not read
+ * whole: the caller then says to move its cards by hand rather than nothing.
+ */
+export function* issueEdits(command, cwd, shell = BASH) {
+  const { text, trusted } = view(command);
+  for (const { base, head, at } of chainCommands(command, cwd, GH_ISSUE_EDIT, shell)) {
+    const start = at - head.length;
+    // Live backticks ahead of it: an odd count means it runs inside a backtick substitution.
+    const inTick = (text.slice(0, start).match(/\x60/g)?.length ?? 0) % 2 === 1;
+    const raw = command.slice(start, commandEnd(text, at, inTick));
+    const own = maskInert(raw);
+    const lexed = trusted && own.sure;
+    const edit = parseIssueEdit({ raw, flat: lexed ? own.flat : raw, trusted: lexed });
+    yield { ...edit, namesMilestone: MILESTONE_FLAG.test(raw), base, start };
+  }
 }
 
 const names = (paths, mark = () => "") =>
@@ -869,6 +1034,19 @@ function traceSummary(summary, anchor, replay) {
     ok: false,
     reason: `its recent review of ${summary.reviewed.slice(0, 9)} starts at ${summary.from.slice(0, 9)}${back}, which the gate cannot trace back to the reviewed ${anchor.slice(0, 9) || "(no commit)"}: it is not that commit, no earlier version of the comment reviewed up to it, and it is not a clean rebase of it`,
   };
+}
+
+/**
+ * Whether a `gh api` call's own arguments write to a Projects v2 item over
+ * REST (#1574): a path with `projectsV2/…/items`, and a method that is not
+ * GET — an explicit `-X` / `--method`, or else a field or `--input`, with
+ * which gh sends a POST. A read of the same path is no write.
+ */
+function restItemWrite(args) {
+  if (!/projectsV2\/\S*items\b/i.test(args)) return false;
+  const method = /(?:^|\s)(?:-X\s*|--method(?:=|\s+))["']?([A-Za-z]+)/.exec(args);
+  if (method) return method[1].toUpperCase() !== "GET";
+  return /(?:^|\s)(?:-[fF]|--(?:raw-)?field\b|--input\b)/.test(args);
 }
 
 export const rules = [
@@ -1171,6 +1349,28 @@ export const rules = [
     test: (c) =>
       has(c, /updateProjectV2Field/) &&
       "`updateProjectV2Field` replaces the option list and regenerates its ids, which clears every card's lane. Add a lane in the UI instead.",
+  },
+  {
+    // #1574: the rules said a raw lane edit is refused, and nothing refused it.
+    // The helpers spawn gh themselves, never through the Bash tool, so this
+    // reaches only a command the model writes. A `gh project item-edit` counts
+    // at command position, so a grep or a commit message that names one is no
+    // edit. A GraphQL mutation counts wherever the command carries its name
+    // once a `gh api` runs at command position anywhere in it (second read):
+    // the query can reach gh through a `$( … )`, a variable, a here-string or
+    // `--input -`, none of which are the api call's own arguments. A REST write
+    // to a Projects v2 item (`…/projectsV2/…/items…` with a method other than
+    // GET, or with fields, which make gh POST) counts by its own arguments.
+    name: "board lanes and positions move only through the helpers",
+    test: (c, ctx) => {
+      const deny =
+        "A card's lane or position moves only through the helpers in scripts/claude-hooks/lib.mjs, which never touch a Done card and refuse a backwards move — that one is Niklas's, in the board UI: from the repo root, `node -e \"import('./scripts/claude-hooks/lib.mjs').then(m=>console.log(m.setBoardStatus(<n>,'<lane>',process.cwd())))\"`, or `m.moveBoardItemAfter(<n>,<after or null>,process.cwd())` for its place in the lane.";
+      if (has(c, cmd(/gh\s+project\s+item-edit\b/))) return deny;
+      const apis = [...chainCommands(c, ctx.cwd, cmd(/gh\s+api\b/), ctx.shell)];
+      if (!apis.length) return null;
+      if (/\b(?:updateProjectV2Item(?:FieldValue|Position)|clearProjectV2ItemFieldValue)\b/.test(c)) return deny;
+      return apis.some(({ args }) => restItemWrite(args)) ? deny : null;
+    },
   },
   {
     name: "pnpm build --force does nothing",

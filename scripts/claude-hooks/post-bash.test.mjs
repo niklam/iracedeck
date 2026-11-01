@@ -29,7 +29,9 @@ const SCRATCH = mkdtempSync(path.join(os.tmpdir(), "post-bash-tree-"));
 // the name `gh`, which `NODE_OPTIONS` hands a script that answers from
 // FAKE_GH_REPLIES (keyed by the first two arguments, a missing key fails; a
 // reply of `{ byDir: { <dir name>: reply } }` answers by the directory gh runs
-// in) and logs every call to FAKE_GH_LOG — offline, on every platform. The
+// in; a key of the first three arguments, `issue view 5`, answers before the
+// two-argument one; FAKE_GH_DELAYS holds a wait in ms by the same three-argument
+// key) and logs every call to FAKE_GH_LOG — offline, on every platform. The
 // script does nothing in a process not named gh, the hook's own included.
 const FAKE_GH = mkdtempSync(path.join(os.tmpdir(), "post-bash-fake-gh-"));
 const FAKE_GH_SCRIPT = path.join(FAKE_GH, "fake-gh.cjs");
@@ -40,7 +42,11 @@ const path = require("node:path");
 if (path.basename(process.execPath).replace(/\\.exe$/i, "") === "gh") {
   const args = [path.basename(process.argv[1]), ...process.argv.slice(2)];
   fs.appendFileSync(process.env.FAKE_GH_LOG, JSON.stringify({ args, cwd: process.cwd(), GH_REPO: process.env.GH_REPO }) + "\\n");
-  let reply = JSON.parse(process.env.FAKE_GH_REPLIES)[args.slice(0, 2).join(" ")];
+  const delay = JSON.parse(process.env.FAKE_GH_DELAYS || "{}")[args.slice(0, 3).join(" ")];
+  if (delay) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delay);
+  const replies = JSON.parse(process.env.FAKE_GH_REPLIES);
+  let reply = replies[args.slice(0, 3).join(" ")];
+  if (reply === undefined) reply = replies[args.slice(0, 2).join(" ")];
   if (reply && reply.byDir) reply = reply.byDir[path.basename(process.cwd())];
   if (reply === undefined) {
     fs.writeSync(2, "fake gh: no reply for " + args.join(" "));
@@ -607,5 +613,270 @@ describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", () => {
       expect(foreign.note).toMatch(/the Roadmap board is left alone/);
       expect(foreign.calls).toEqual([]);
     });
+  });
+});
+
+// #1574: an open iRaceDeck issue with a milestone belongs in Planned, so the
+// edit that gives it one moves its card there. Every case reads the issue back
+// through the fake gh, and the board runs dry.
+describe("post-bash.mjs moves a milestoned issue to Planned (#1574)", { timeout: 30_000 }, () => {
+  const home = (n) => `https://github.com/niklam/iracedeck/issues/${n}`;
+  /** The fake gh's read-back of `ref`: the issue at `url`, its milestone (or none) and its state. */
+  const viewed = (ref, url, milestone = "3.8.0", state = "OPEN") => ({
+    [`issue view ${ref}`]: { url, milestone: milestone ? { number: 1, title: milestone } : null, state },
+  });
+  const graphqlFor = (calls) => calls.filter((c) => c.args[0] === "api").map((c) => c.args.find((a) => /^n=/.test(a)));
+  const planned = (n, from = "Backlog") =>
+    `[hook] board (dry run): would move #${n} ${from} → Planned (milestone 3.8.0).`;
+
+  it("moves a home issue from Backlog to Planned — the positive control", () => {
+    const { note, calls } = fireWithGh("gh issue edit 5 --milestone 3.8.0", {
+      ...viewed(5, home(5)),
+      "api graphql": boardItem("Backlog"),
+    });
+    expect(note).toBe(planned(5));
+    expect(calls[0].args).toEqual(["issue", "view", "5", "--json", "url,milestone,state"]);
+    expect(graphqlFor(calls)).toEqual(["n=5"]);
+  });
+
+  it("gives the hand move when gh cannot read the board, not 'not on the board'", () => {
+    // No "api graphql" reply: the fake gh fails the card lookup.
+    const { note } = fireWithGh("gh issue edit 5 --milestone 3.8.0", viewed(5, home(5)));
+    expect(note).toMatch(/^\[hook\] board: could not read #5's card \(gh failed/);
+    expect(note).toMatch(
+      /move #5 to Planned by hand once gh can reach the board: node -e .*setBoardStatus\(5,'Planned'/,
+    );
+    expect(note).not.toMatch(/not on the Roadmap board/);
+  });
+
+  it("moves a card with no lane too, and reads every spelling of the milestone, in both shells", () => {
+    const replies = { ...viewed(5, home(5)), "api graphql": boardItem(null) };
+    for (const [command, tool] of [
+      ["gh issue edit 5 -m 3.8.0", "Bash"],
+      ["gh issue edit 5 --milestone=3.8.0", "Bash"],
+      ["gh issue edit 5 -m3.8.0", "Bash"],
+      [`gh issue edit "#5" --milestone "3.8.0" 2>&1`, "Bash"],
+      ["timeout 60 gh issue edit 5 --milestone 3.8.0", "Bash"],
+      ["gh issue edit 5 --milestone '3.8.0'", "PowerShell"],
+      ["gh issue edit 5 `\n  --milestone '3.8.0'", "PowerShell"],
+    ])
+      expect(fireWithGh(command, replies, { tool }).note, command).toBe(planned(5, "(none)"));
+  });
+
+  it("moves every issue one edit names", () => {
+    const { note, calls } = fireWithGh(`gh issue edit 5 6 ${home(7)} --milestone 3.8.0`, {
+      ...viewed(5, home(5)),
+      ...viewed(6, home(6)),
+      ...viewed(home(7), home(7)),
+      "api graphql": boardItem("Backlog"),
+    });
+    expect(note).toBe([planned(5), planned(6), planned(7)].join("\n"));
+    expect(graphqlFor(calls)).toEqual(["n=5", "n=6", "n=7"]);
+  });
+
+  it("moves no card back from a later lane", () => {
+    for (const lane of ["Next", "In progress", "Testing"]) {
+      const { note } = fireWithGh("gh issue edit 5 --milestone 3.8.0", {
+        ...viewed(5, home(5)),
+        "api graphql": boardItem(lane),
+      });
+      expect(note, lane).toBe(
+        `[hook] board: #5 is in ${lane}; not moving it to Planned (only from (none)/Backlog) (milestone 3.8.0).`,
+      );
+    }
+    const { note } = fireWithGh("gh issue edit 5 --milestone 3.8.0", {
+      ...viewed(5, home(5)),
+      "api graphql": boardItem("Planned"),
+    });
+    expect(note).toBe("[hook] board: #5 already in Planned (milestone 3.8.0).");
+  });
+
+  // Second read: with the helpers refusing a backwards move and a raw lane edit
+  // denied, the card of a descoped issue can only go back by Niklas's hand.
+  it("says a removal moves no card back, and whose move that is, asking gh nothing", () => {
+    const back =
+      "a card stays in its lane when its milestone goes, and moving it back to Backlog is Niklas's, in the board UI.";
+    for (const [command, which] of [
+      ["gh issue edit 5 --remove-milestone", "#5"],
+      [`gh issue edit 5 ${home(6)} --remove-milestone 2>/dev/null`, `#5, ${home(6)}`],
+      ["gh issue edit 5 -R niklam/iracedeck --remove-milestone", "#5"],
+      ["gh issue edit $N --remove-milestone", "the issues it edited"],
+      ["printf '%s\\n' 5 | xargs gh issue edit --remove-milestone", "the issues it edited"],
+    ]) {
+      const { note, calls } = fireWithGh(command, { ...viewed(5, home(5)), "api graphql": boardItem("Planned") });
+      expect(note, command).toBe(`[hook] gh issue edit removed the milestone of ${which}: ${back}`);
+      expect(calls, command).toEqual([]);
+    }
+    // Every issue another repository's, an unread one included: nothing to say.
+    for (const command of [
+      "gh issue edit 5 -R lint-staged/lint-staged --remove-milestone",
+      `gh issue edit 5 $N -R lint-staged/lint-staged --remove-milestone`,
+      "GH_REPO=lint-staged/lint-staged gh issue edit $N --remove-milestone",
+    ])
+      expect(fireWithGh(command, {}).note, command).toBeNull();
+  });
+
+  it("does nothing for an empty milestone or an edit without one", () => {
+    for (const command of [
+      `gh issue edit 5 --milestone ""`,
+      "gh issue edit 5 --milestone=''",
+      "gh issue edit 5 -m ''",
+      "gh issue edit 5 --add-label bug",
+    ]) {
+      const { note, calls } = fireWithGh(command, { ...viewed(5, home(5)), "api graphql": boardItem("Backlog") });
+      expect(note, command).toBeNull();
+      expect(calls, command).toEqual([]);
+    }
+  });
+
+  it("moves nothing when the edit did not give the issue a milestone, or the issue is closed", () => {
+    const failed = fireWithGh("gh issue edit 5 --milestone 3.8.O", {
+      ...viewed(5, home(5), null),
+      "api graphql": boardItem("Backlog"),
+    });
+    expect(failed.note).toBe("[hook] gh issue edit: #5 has no milestone after the edit; no card moved.");
+    expect(graphqlFor(failed.calls)).toEqual([]);
+    const closed = fireWithGh("gh issue edit 5 --milestone 3.8.0", {
+      ...viewed(5, home(5), "3.8.0", "CLOSED"),
+      "api graphql": boardItem("Backlog"),
+    });
+    expect(closed.note).toBe("[hook] gh issue edit: #5 is CLOSED; its card stays where it is.");
+    expect(graphqlFor(closed.calls)).toEqual([]);
+  });
+
+  it("leaves another repository's issue alone, asking gh nothing when the edit names it", () => {
+    for (const command of [
+      "gh issue edit 5 -R lint-staged/lint-staged --milestone 3.8.0",
+      "gh issue edit 5 --repo=git@github.com:lint-staged/lint-staged.git --milestone 3.8.0",
+      "GH_REPO=lint-staged/lint-staged gh issue edit 5 --milestone 3.8.0",
+      "export GH_REPO=lint-staged/lint-staged && gh issue edit 5 --milestone 3.8.0",
+    ]) {
+      const { note, calls } = fireWithGh(command, { ...viewed(5, home(5)), "api graphql": boardItem("Backlog") });
+      expect(note, command).toBe(
+        "[hook] gh issue edit milestoned lint-staged/lint-staged#5, not in niklam/iracedeck: the Roadmap board is left alone.",
+      );
+      expect(calls, command).toEqual([]);
+    }
+    const url = "https://github.com/lint-staged/lint-staged/issues/5";
+    const byUrl = fireWithGh(`gh issue edit ${url} 6 --milestone 3.8.0`, {
+      ...viewed(6, home(6)),
+      "api graphql": boardItem("Backlog"),
+    });
+    expect(byUrl.note).toBe(
+      `${planned(6)}\n[hook] gh issue edit milestoned ${url}, not in niklam/iracedeck: the Roadmap board is left alone.`,
+    );
+    // No flag named it: gh resolved the checkout's repository, and the read-back says which.
+    const byCheckout = fireWithGh("gh issue edit 5 --milestone 3.8.0", {
+      ...viewed(5, url),
+      "api graphql": boardItem("Backlog"),
+    });
+    expect(byCheckout.note).toBe(
+      `[hook] gh issue edit milestoned ${url}, not in niklam/iracedeck: the Roadmap board is left alone.`,
+    );
+    expect(graphqlFor(byCheckout.calls)).toEqual([]);
+  });
+
+  it("reads the issue back from the repository and in the directory the edit used", () => {
+    const elsewhere = path.join(SCRATCH, "edit-cwd");
+    mkdirSync(elsewhere, { recursive: true });
+    const replies = { ...viewed(5, home(5)), "api graphql": boardItem("Backlog") };
+    const named = fireWithGh("gh issue edit 5 -R NIKLAM/IRACEDECK --milestone 3.8.0", replies);
+    expect(named.note).toBe(planned(5));
+    expect(named.calls[0].GH_REPO).toBe("NIKLAM/IRACEDECK");
+    const moved = fireWithGh(`cd ${elsewhere.replaceAll("\\", "/")} && gh issue edit 5 --milestone 3.8.0`, replies);
+    expect(path.resolve(moved.calls[0].cwd).toLowerCase()).toBe(path.resolve(elsewhere).toLowerCase());
+    expect(moved.calls[0].GH_REPO).toBeUndefined();
+    // An assignment after the edit is not the edit's.
+    const after = fireWithGh("gh issue edit 5 --milestone 3.8.0 && GH_REPO=other/repo gh issue list", replies);
+    expect(after.note).toBe(planned(5));
+  });
+
+  it("says how to move the card by hand when it cannot tell", () => {
+    const unread = fireWithGh("gh issue edit 5 --milestone 3.8.0", { "api graphql": boardItem("Backlog") });
+    expect(unread.note).toMatch(
+      /^\[hook\] gh issue edit: could not read #5 back; .* by hand: node -e .*setBoardStatus\(5,'Planned'/,
+    );
+    for (const command of ["gh issue edit $N --milestone 3.8.0", `gh issue edit 5 -R "$R" --milestone 3.8.0`]) {
+      const { note, calls } = fireWithGh(command, { ...viewed(5, home(5)), "api graphql": boardItem("Backlog") });
+      expect(note, command).toMatch(/by hand: node -e "import\('\.\/scripts\/claude-hooks\/lib\.mjs'\)/);
+      expect(calls, command).toEqual([]);
+    }
+    // The issues it can read still move.
+    const mixed = fireWithGh("gh issue edit 5 $N --milestone 3.8.0", {
+      ...viewed(5, home(5)),
+      "api graphql": boardItem("Backlog"),
+    });
+    expect(mixed.note).toMatch(
+      /could not read all of the edit's arguments; if it named other open iRaceDeck issues, move each to Planned by hand: node -e/,
+    );
+    expect(mixed.note).toContain(planned(5).replace(/^\[hook\] /, ""));
+  });
+
+  // Second read: each of these moved nothing and said nothing.
+  it("is never silent about an edit it cannot read whole", () => {
+    const replies = { ...viewed(5, home(5)), "api graphql": boardItem("Backlog") };
+    const unreadIssues = /could not read which issues it edited; move each open iRaceDeck one to Planned by hand/;
+    const unreadOther = /could not read all of the edit's arguments; if it named other open iRaceDeck issues/;
+    for (const [command, expected] of [
+      // A substitution ahead of the milestone flag: the flag is still read.
+      [`gh issue edit 5 --body "$(cat <<'EOF'\nline one\nEOF\n)" --milestone 3.8.0`, planned(5)],
+      // An edit inside a substitution, whose words the whole command's flat text blanks.
+      ["out=$(gh issue edit 5 -m 3.8.0)", planned(5)],
+      // A redirection is no issue argument.
+      ["gh issue edit 5 -m 3.8.0 &>/dev/null", planned(5)],
+      [`gh issue edit 5 --milestone 3.8.0 --body "$(cat b.md)"`, planned(5)],
+    ]) {
+      const { note } = fireWithGh(command, replies);
+      expect(note, command).toBe(expected);
+    }
+    expect(fireWithGh("gh issue edit 5 -m '3.8.0' *>$null", replies, { tool: "PowerShell" }).note).toBe(planned(5));
+    for (const command of [
+      "gh issue edit $(gh issue list -q .number) --milestone 3.8.0",
+      // xargs feeds a shell, so the raw words are read: no issue among them.
+      "printf '%s\\n' 5 6 | xargs gh issue edit --milestone 3.8.0",
+      // The milestone flag itself inside a substitution.
+      "gh issue edit $N $(echo --milestone 3.8.0)",
+    ]) {
+      const { note, calls } = fireWithGh(command, replies);
+      expect(note, command).toMatch(unreadIssues);
+      expect(calls, command).toEqual([]);
+    }
+    const partly = fireWithGh("gh issue edit 5 $(echo 6) --milestone 3.8.0", replies);
+    expect(partly.note).toMatch(unreadOther);
+    expect(partly.note).toContain(planned(5).replace(/^\[hook\] /, ""));
+  });
+
+  // Second read: fifteen issues at ~5 gh calls each could outlast the 90 s
+  // hook timeout, which loses every note. Run with a 6 s budget and one read-back that hangs.
+  it("names the issues it had no time for instead of being killed", { timeout: 60_000 }, () => {
+    const log = fireWithGh(
+      "gh issue edit 5 6 7 --milestone 3.8.0",
+      { ...viewed(5, home(5)), ...viewed(6, home(6)), ...viewed(7, home(7)), "api graphql": boardItem("Backlog") },
+      { env: { IRACEDECK_POST_BASH_BUDGET_MS: "6000", FAKE_GH_DELAYS: JSON.stringify({ "issue view 6": 30_000 }) } },
+    );
+    expect(log.note).toBe(
+      `${planned(5)}\n[hook] gh issue edit: the hook ran out of time before it could move #6, #7; move each that is an open iRaceDeck issue with a milestone to Planned by hand: node -e "import('./scripts/claude-hooks/lib.mjs').then(m=>console.log(m.setBoardStatus(<n>,'Planned',process.cwd())))"`,
+    );
+    // #7 was never asked for: the deadline had passed.
+    expect(log.calls.map((c) => c.args.slice(0, 3).join(" "))).not.toContain("issue view 7");
+  });
+
+  it("stays silent on a mention", () => {
+    for (const [command, tool] of [
+      [`grep -rn "gh issue edit 5 --milestone 3.8.0" scripts`, "Bash"],
+      [`echo 'gh issue edit 5 -m 3.8.0'`, "Bash"],
+      [`git commit -m "gh issue edit 5 --milestone 3.8.0"`, "Bash"],
+      [`git commit -q -F - <<'EOF'\nsubject\n\ngh issue edit 5 --milestone 3.8.0\nEOF`, "Bash"],
+      ["# gh issue edit 5 --milestone 3.8.0", "Bash"],
+      ["Write-Output 'gh issue edit 5 --milestone 3.8.0'", "PowerShell"],
+    ]) {
+      const { note, calls } = fireWithGh(
+        command,
+        { ...viewed(5, home(5)), "api graphql": boardItem("Backlog") },
+        { tool },
+      );
+      expect(note, command).toBeNull();
+      expect(calls, command).toEqual([]);
+    }
   });
 });

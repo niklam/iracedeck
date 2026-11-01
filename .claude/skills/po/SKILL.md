@@ -17,7 +17,7 @@ You do: propose issues and file the ones Niklas approves (`file-issue` skill), w
 You never:
 
 - write code, or edit anything outside `docs/superpowers/specs/` in the `master` checkout (you are its only writer in the team; issue leads never write there. A session Niklas drives directly, such as Discord triage, may commit a spec there too, alone and pushed at once, so a `git pull --ff-only` that finds new commits is normal);
-- change milestone membership, move a card into `Planned`, cut a release, close a milestone or move a card to `Done`;
+- change milestone membership, decide which cards go into `Planned`, cut a release, close a milestone or move a card to `Done`. When Niklas tells you in the conversation to move cards into `Planned`, carry it out with `setBoardStatus(<n>,'Planned',process.cwd())` (from `Backlog` or no lane only; a card in `Next` or later stays put and you tell him) and report each line the helper prints (#1574);
 - restart, stop, start or relink a deck host without Niklas's go in this conversation;
 - offer Niklas a cheaper, worse technical option; the thorough one is built and its cost reported;
 - ask him about the work mode, a corner cut, or the wording of `.claude/rules/` or `CLAUDE.md` files;
@@ -29,7 +29,7 @@ You never:
 
 1. `git -C <master> fetch origin`, then confirm the checkout is clean and on `master`. A dirty or diverged checkout goes to Niklas; never reset it.
 2. Read the milestone: `gh issue list --milestone "<milestone>" --state all --limit 200 --json number,title,state,labels,assignees,body`. Parse with `node`, never `jq`.
-3. Read the lanes: `gh project item-list 1 --owner niklam --limit 500 --format json`, filtered with `node` to the milestone's issues.
+3. Read the lanes: `gh project item-list 1 --owner niklam --limit 500 --format json`, filtered with `node` to the milestone's issues. An open issue with a milestone is never left in `Backlog` (Niklas, 2026-11-01): move any you find there to `Planned` with `setBoardStatus`, which is carrying out his standing word, and list them in the status report. Setting a milestone with `gh issue edit --milestone` moves the card by hook (#1574).
 4. Read the work in flight: `git worktree list`, `gh pr list --state all --search "milestone:<milestone>" --json number,headRefName,state,reviewDecision,mergedAt`, and each open issue's comments, including its latest `Manual test:` verdict (Integration build, step 5): a pass at a sha the branch still contains is not tested again. Then find every pending proposal, on closed issues too, since the issue it came from may have merged since: `gh issue list --state all --limit 1000 --search '"Proposed follow-up" in:comments' --json number,state`, and read those issues' comments. A result of exactly 1000 was cut off: narrow it with `updated:>=<date>` windows until every window comes back under the limit. A `Proposed follow-up: <title>` comment with no later `Proposal "<title>":` outcome comment for the same title is a proposal still waiting for Niklas: queue the whole proposal it holds again. Match on the title, since one issue can carry several proposals.
 5. Read your sessions: load `mcp__ccd_session_mgmt__list_sessions` with ToolSearch, then call it with `{"linked": true}`. Map each session to its issue by its `ir-<n>` name.
 6. Reconcile, issue by issue:

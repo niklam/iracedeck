@@ -32,7 +32,7 @@ Filing an issue does not assign it or milestone it. Both are signals that work i
 
 Filing early and often is the point: an issue is a place to put a decision so it stops living in a conversation. Milestoning it at that moment makes a promise about a release nobody has planned yet, and assigning it makes a promise about who is doing it. A backlog of unassigned, unmilestoned issues is the correct shape for work that is understood but not scheduled.
 
-The hooks pin both ends of that: `gh issue create` is refused when it carries `--milestone` or `--assignee`, and `git worktree add ../ir-<n>` moves the card to `In progress` — which is the moment to set them.
+The hooks pin both ends of that: `gh issue create` is refused when it carries `--milestone` or `--assignee`, and `git worktree add ../ir-<n>` moves the card to `In progress` — which is the moment to set them. Niklas may milestone an issue earlier, when he plans a release; setting a milestone moves a `Backlog` card to `Planned` (#1574).
 
 Labels are different — the issue templates apply `bug` / `enhancement` automatically, and those stay. Do not add `type:` labels to issues; those are for PRs, where they drive release notes.
 

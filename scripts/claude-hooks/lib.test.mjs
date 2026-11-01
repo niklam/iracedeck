@@ -12,6 +12,7 @@ import {
   ghGraphql,
   graphqlArgs,
   MAX_CONFLICTED_LINE_CHECKS,
+  memoizeBoardStatusField,
   moveBoardItemAfter,
   prComments,
   readIndexFile,
@@ -464,7 +465,10 @@ describe("the board's Next lane and positions", () => {
     15: "In progress",
     16: "Planned",
     17: "Dropped",
+    18: null, // on the board with no Status set
   };
+  const json = (o) => ({ status: 0, stdout: JSON.stringify(o), stderr: "" });
+  const UNREADABLE = 19; // its card lookup fails in gh
   const calls = () => vi.mocked(spawnSync).mock.calls.map(([, args]) => args);
   const mutations = () => calls().filter((a) => a.some((x) => /mutation|item-edit/.test(x)));
   let mutationOk;
@@ -473,7 +477,6 @@ describe("the board's Next lane and positions", () => {
     vi.mocked(spawnSync)
       .mockClear()
       .mockImplementation((cmd, args) => {
-        const json = (o) => ({ status: 0, stdout: JSON.stringify(o), stderr: "" });
         if (args[0] === "project" && args[1] === "view") return json({ id: "PVT_board" });
         const q = args.find((a) => a.startsWith("query=")) ?? "";
         if (/updateProjectV2ItemPosition/.test(q))
@@ -481,8 +484,9 @@ describe("the board's Next lane and positions", () => {
             ? json({ data: { updateProjectV2ItemPosition: { clientMutationId: null } } })
             : { status: 1, stdout: "", stderr: "HTTP 403" };
         const n = Number(args.find((a) => a.startsWith("n="))?.slice(2));
+        if (n === UNREADABLE) return { status: 1, stdout: "", stderr: "HTTP 502" };
         if (!(n in lanes)) return json({ data: { repository: { issue: { projectItems: { nodes: [] } } } } });
-        const node = { id: `PVTI_${n}`, project: { number: 1 }, fieldValueByName: { name: lanes[n] } };
+        const node = { id: `PVTI_${n}`, project: { number: 1 }, fieldValueByName: lanes[n] && { name: lanes[n] } };
         return json({ data: { repository: { issue: { projectItems: { nodes: [node] } } } } });
       });
   });
@@ -509,6 +513,89 @@ describe("the board's Next lane and positions", () => {
     expect(setBoardStatus(16, "Next", root)).toMatch(/would move #16 Planned → Next/);
     for (const n of [13, 14, 15]) expect(setBoardStatus(n, "Next", root)).toMatch(/not moving it to Next/);
     expect(mutations()).toEqual([]);
+  });
+
+  // #1574: Niklas decides what is Planned and an agent carries it out, never
+  // pulling a card back into Planned from Next or later.
+  it("lets a card into Planned from Backlog or no lane only, never back from Next or later", () => {
+    expect(BOARD_MOVES.Planned).toEqual(["(none)", "Backlog"]);
+    vi.stubEnv("IRACEDECK_HOOKS_DRY_RUN", "1");
+    expect(setBoardStatus(10, "Planned", root)).toBe("board (dry run): would move #10 Backlog → Planned");
+    expect(setBoardStatus(18, "Planned", root)).toBe("board (dry run): would move #18 (none) → Planned");
+    for (const n of [11, 13, 14, 15, 17])
+      expect(setBoardStatus(n, "Planned", root)).toMatch(/not moving it to Planned \(only from \(none\)\/Backlog\)/);
+    expect(setBoardStatus(16, "Planned", root)).toBe("board: #16 already in Planned");
+    expect(mutations()).toEqual([]);
+  });
+
+  // #1574 (CodeRabbit): a lookup gh could not answer is not "not on the board".
+  it("tells a board gh could not read from a card that is not on it", () => {
+    vi.stubEnv("IRACEDECK_HOOKS_DRY_RUN", "1");
+    const unread = /^board: could not read #19's card \(gh failed/;
+    expect(setBoardStatus(UNREADABLE, "Planned", root)).toMatch(unread);
+    expect(moveBoardItemAfter(UNREADABLE, null, root)).toMatch(unread);
+    expect(moveBoardItemAfter(12, UNREADABLE, root)).toMatch(unread);
+    expect(setBoardStatus(99, "Planned", root)).toBe("board: #99 is not on the Roadmap board");
+    expect(mutations()).toEqual([]);
+  });
+
+  // #1574: with a raw lane edit refused, the release step's move needs the helper.
+  it("lets a card into Done from Testing only", () => {
+    expect(BOARD_MOVES.Done).toEqual(["Testing"]);
+    vi.stubEnv("IRACEDECK_HOOKS_DRY_RUN", "1");
+    expect(setBoardStatus(13, "Done", root)).toBe("board (dry run): would move #13 Testing → Done");
+    for (const n of [10, 11, 15, 16, 17, 18])
+      expect(setBoardStatus(n, "Done", root)).toMatch(/not moving it to Done \(only from Testing\)/);
+    expect(setBoardStatus(14, "Done", root)).toBe("board: #14 already in Done");
+    expect(mutations()).toEqual([]);
+  });
+
+  it("moves a Backlog card into Planned through the Planned option, outside dry run", () => {
+    vi.stubEnv("IRACEDECK_HOOKS_DRY_RUN", "");
+    const fake = vi.mocked(spawnSync).getMockImplementation();
+    vi.mocked(spawnSync).mockImplementation((cmd, args) => {
+      if (args[0] === "project" && args[1] === "field-list") {
+        const options = ["Backlog", "Planned", "Next"].map((name) => ({ id: `opt_${name}`, name }));
+        return json({ fields: [{ id: "PVTSSF_status", name: "Status", options }] });
+      }
+      if (args[0] === "project" && args[1] === "item-edit") return json({});
+      return fake(cmd, args);
+    });
+    expect(setBoardStatus(10, "Planned", root)).toBe("board: #10 moved Backlog → Planned");
+    const edit = calls().find((a) => a[0] === "project" && a[1] === "item-edit");
+    expect(edit).toEqual(expect.arrayContaining(["--id", "PVTI_10", "--single-select-option-id", "opt_Planned"]));
+  });
+
+  // #1574 second read: a hook moving fifteen cards read the project and its
+  // field list fifteen times; the post-hook turns the memo on for its one run.
+  it("reads the Status field once per process while the memo is on, and fresh otherwise", () => {
+    vi.stubEnv("IRACEDECK_HOOKS_DRY_RUN", "");
+    const fake = vi.mocked(spawnSync).getMockImplementation();
+    let fieldListOk = true;
+    vi.mocked(spawnSync).mockImplementation((cmd, args) => {
+      if (args[0] === "project" && args[1] === "field-list") {
+        if (!fieldListOk) return { status: 1, stdout: "", stderr: "HTTP 502" };
+        const options = ["Backlog", "Planned", "Next"].map((name) => ({ id: `opt_${name}`, name }));
+        return json({ fields: [{ id: "PVTSSF_status", name: "Status", options }] });
+      }
+      if (args[0] === "project" && args[1] === "item-edit") return json({});
+      return fake(cmd, args);
+    });
+    const fieldReads = () => calls().filter((a) => a[0] === "project" && /^(view|field-list)$/.test(a[1])).length;
+    try {
+      memoizeBoardStatusField();
+      // A failed read is not remembered: the next move reads again.
+      fieldListOk = false;
+      expect(setBoardStatus(10, "Planned", root)).toMatch(/could not read the Status field/);
+      fieldListOk = true;
+      for (const n of [10, 18]) expect(setBoardStatus(n, "Planned", root)).toMatch(/moved .* → Planned/);
+      expect(fieldReads()).toBe(4);
+      memoizeBoardStatusField(false);
+      expect(setBoardStatus(10, "Planned", root)).toMatch(/moved/);
+      expect(fieldReads()).toBe(6);
+    } finally {
+      memoizeBoardStatusField(false);
+    }
   });
 
   describe("moveBoardItemAfter, under dry run", () => {
