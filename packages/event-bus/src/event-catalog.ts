@@ -1010,6 +1010,71 @@ export type SimEventMap = {
        * issue #1171).
        */
       wasCaution?: boolean;
+      /**
+       * In the player's class, this lap set a new fastest lap of the race
+       * (issue #1571). Race sessions only; only ever present as `true`.
+       *
+       * Pairing rule, kept by every translator: a `lap.completed` carrying this
+       * field is paired with exactly one `fastestLap.set` with `isPlayer: true`
+       * and the same `lap`, and no `fastestLap.set` with `isPlayer: true` is
+       * published without it. The order of the two on the bus is not guaranteed.
+       */
+      isClassFastestLapOfRace?: true;
+      /**
+       * The lap started on pit road (issue #1163): the car was on pit road at
+       * the start/finish crossing that opened it, the lap out of the pits.
+       * Only ever present as `true`, like `wasCaution`. The every-lap call is
+       * silent on a lap carrying it: an out lap does not describe pace. One
+       * definition with the fuel tracker's out lap (`diff/pit-lap.ts` in the
+       * iRacing translator).
+       */
+      isOutLap?: true;
+      /**
+       * The lap ended on pit road (issue #1163): the car entered pit road
+       * during the lap after having been off it, the lap into the pits. Only
+       * ever present as `true`, like `wasCaution`. The every-lap call is
+       * silent on a lap carrying it: an in lap does not describe pace. One
+       * definition with the fuel tracker's in lap (`diff/pit-lap.ts` in the
+       * iRacing translator).
+       */
+      isInLap?: true;
+    }
+  >;
+  /**
+   * A new fastest lap of the race in the player's class (issue #1571): a car,
+   * the player's included, completed a lap faster than any lap run in that
+   * class so far in this race. Race sessions only, never pre-green, never in a
+   * replay. Emitted for every new record, the first laps of the race included:
+   * which records are worth saying is the audio layer's decision. A
+   * single-class race is one class. `position` and `playerPosition` are the
+   * effective positions (class positions in a multi-class race) at emit time;
+   * consumers prefer a live speak-time read and use these as the fallback, in
+   * the projection `isMultiClass` records. `playerLapsCompleted` is how many
+   * laps the player had completed when the record fell.
+   *
+   * Pairing rule, kept by every translator: every `lap.completed` carrying
+   * `isClassFastestLapOfRace` is paired with exactly one `fastestLap.set` with
+   * `isPlayer: true` and the same `lap`, and no `fastestLap.set` with
+   * `isPlayer: true` is published without that `lap.completed`. The order of
+   * the two on the bus is not guaranteed.
+   */
+  "fastestLap.set": SimEvent<
+    "fastestLap.set",
+    {
+      carIdx: number;
+      isPlayer: boolean;
+      /** The car's completed-lap count after the lap that set the record. */
+      lap: number;
+      /** Seconds. */
+      lapTime: number;
+      /** The record this one beat; absent for the first timed lap of the class. */
+      previous?: { carIdx: number; lapTime: number; isPlayer: boolean; carNumber?: string };
+      /** The car's number as the session info spells it; absent when it has no row. */
+      carNumber?: string;
+      position?: number;
+      playerPosition?: number;
+      playerLapsCompleted: number;
+      isMultiClass?: boolean;
     }
   >;
   /**

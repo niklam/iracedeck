@@ -342,6 +342,23 @@ export const EVENT_TEMPLATES = [
     },
   },
   {
+    name: "fastestLap.set",
+    description:
+      "A new fastest lap of the race in our class (issue #1571) — the car ahead (P4 to our P5) beat the player's record; isPlayer: true for our own lap",
+    data: {
+      carIdx: 7,
+      isPlayer: false,
+      lap: 5,
+      lapTime: 83.412,
+      previous: { carIdx: 0, lapTime: 83.9, isPlayer: true, carNumber: "1" },
+      carNumber: "42",
+      position: 4,
+      playerPosition: 5,
+      playerLapsCompleted: 5,
+      isMultiClass: false,
+    },
+  },
+  {
     name: "position.changed",
     description:
       "Effective position changed at a lap boundary (issue #569) — plumbing for future per-change race callouts",
