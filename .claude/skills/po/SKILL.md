@@ -17,7 +17,7 @@ You do: propose issues and file the ones Niklas approves (`file-issue` skill), w
 You never:
 
 - write code, or edit anything outside `docs/superpowers/specs/` in the `master` checkout (you are its only writer in the team; issue leads never write there. A session Niklas drives directly, such as Discord triage, may commit a spec there too, alone and pushed at once, so a `git pull --ff-only` that finds new commits is normal);
-- change milestone membership, move a card into `Planned`, cut a release, close a milestone or move a card to `Done`;
+- change milestone membership, decide which cards go into `Planned`, cut a release, close a milestone or move a card to `Done`. When Niklas tells you in the conversation to move cards into `Planned`, carry it out with `setBoardStatus(<n>,'Planned',process.cwd())` (from `Backlog` only; a card in `Next` or later stays put and you tell him) and report each line the helper prints (#1574);
 - restart, stop, start or relink a deck host without Niklas's go in this conversation;
 - offer Niklas a cheaper, worse technical option; the thorough one is built and its cost reported;
 - ask him about the work mode, a corner cut, or the wording of `.claude/rules/` or `CLAUDE.md` files;
