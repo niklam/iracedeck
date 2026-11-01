@@ -525,6 +525,17 @@ describe("the board's Next lane and positions", () => {
     expect(mutations()).toEqual([]);
   });
 
+  // #1574: with a raw lane edit refused, the release step's move needs the helper.
+  it("lets a card into Done from Testing only", () => {
+    expect(BOARD_MOVES.Done).toEqual(["Testing"]);
+    vi.stubEnv("IRACEDECK_HOOKS_DRY_RUN", "1");
+    expect(setBoardStatus(13, "Done", root)).toBe("board (dry run): would move #13 Testing → Done");
+    for (const n of [10, 11, 15, 16, 17, 18])
+      expect(setBoardStatus(n, "Done", root)).toMatch(/not moving it to Done \(only from Testing\)/);
+    expect(setBoardStatus(14, "Done", root)).toBe("board: #14 already in Done");
+    expect(mutations()).toEqual([]);
+  });
+
   it("moves a Backlog card into Planned through the Planned option, outside dry run", () => {
     vi.stubEnv("IRACEDECK_HOOKS_DRY_RUN", "");
     const fake = vi.mocked(spawnSync).getMockImplementation();

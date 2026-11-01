@@ -1309,7 +1309,7 @@ export const rules = [
         );
       return (
         (edit || mutation()) &&
-        "A card's lane or position moves only through the helpers in scripts/claude-hooks/lib.mjs, which refuse a backwards move and never touch a Testing or Done card: from the repo root, `node -e \"import('./scripts/claude-hooks/lib.mjs').then(m=>console.log(m.setBoardStatus(<n>,'<lane>',process.cwd())))\"`, or `m.moveBoardItemAfter(<n>,<after or null>,process.cwd())` for its place in the lane."
+        "A card's lane or position moves only through the helpers in scripts/claude-hooks/lib.mjs, which refuse a backwards move and never touch a Done card: from the repo root, `node -e \"import('./scripts/claude-hooks/lib.mjs').then(m=>console.log(m.setBoardStatus(<n>,'<lane>',process.cwd())))\"`, or `m.moveBoardItemAfter(<n>,<after or null>,process.cwd())` for its place in the lane."
       );
     },
   },

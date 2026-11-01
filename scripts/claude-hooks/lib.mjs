@@ -566,6 +566,9 @@ export function boardItemForIssue(issueNumber, cwd) {
  * work that has started. `Dropped` is for an issue closed as not planned or a
  * duplicate, which whoever closes it moves by hand (`build-and-commit.md`): from
  * any lane before Testing, since a merged or shipped card is never dropped.
+ * `Done` is the release step's (`build-and-commit.md`, *Releasing*): a card
+ * of the released milestone moves from Testing only, since a raw lane edit is
+ * refused (#1574).
  */
 export const BOARD_MOVES = {
   Backlog: ["(none)"],
@@ -574,6 +577,7 @@ export const BOARD_MOVES = {
   "In progress": ["(none)", "Backlog", "Planned", "Next"],
   Testing: ["(none)", "Backlog", "Planned", "Next", "In progress"],
   Dropped: ["(none)", "Backlog", "Planned", "Next", "In progress"],
+  Done: ["Testing"],
 };
 
 /** Lanes whose cards are history — merged, shipped or closed — so their order is never moved. */
