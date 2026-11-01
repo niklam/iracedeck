@@ -24,8 +24,9 @@
  *         tenth one `lap-time-tenths/<d>` ("point four"), or its `<d>-gap`
  *         take when the fastest-lap gap clause follows it.
  *     The line that leads into the whole time — the every-lap intro, the
- *     fastest-lap lines — is cut once per **onset class** of the time's first
- *     word, its first sound (Niklas's rule, #1163): {@link compactLeadClass}.
+ *     fastest-lap lines — ends its own sentence (revision 6, Niklas: the
+ *     period "makes it end cleanly and sharp"), so it is one take whatever the
+ *     time opens with, and nothing here picks it.
  *
  * Neither form has a hardcoded range beyond what its precision implies: a
  * value with no clip for the active voice aborts the readout at expansion
@@ -127,108 +128,11 @@ export function splitCompactLapTime(lapTime: number, precision: CompactPrecision
   return { minutes: Math.floor(totalSeconds / 60), seconds: totalSeconds % 60, digits };
 }
 
-const ONES = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"] as const;
-const TEENS = [
-  "ten",
-  "eleven",
-  "twelve",
-  "thirteen",
-  "fourteen",
-  "fifteen",
-  "sixteen",
-  "seventeen",
-  "eighteen",
-  "nineteen",
-] as const;
-const TENS = ["twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"] as const;
-
-/**
- * A word a compact lap time can open with: the plain words zero to nine, the
- * teens, and the tens words twenty to ninety.
- */
-export type NumberWord = (typeof ONES)[number] | (typeof TEENS)[number] | (typeof TENS)[number];
-
-/**
- * The onset class of a word: its first sound, which is what a clip leading
- * into it has to be cut for (#1163). Words that start alike share a take —
- * "two", "ten", "twelve" and "twenty" all begin with a t.
- */
-export type OnsetClass = "w" | "t" | "th" | "f" | "s" | "ei" | "n" | "e" | "z";
-
-/** Every word's class, the table of Niklas's onset rule; a `Record` so no word can be left out. */
-const ONSET_CLASS: Readonly<Record<NumberWord, OnsetClass>> = {
-  zero: "z",
-  one: "w",
-  two: "t",
-  ten: "t",
-  twelve: "t",
-  twenty: "t",
-  three: "th",
-  thirteen: "th",
-  thirty: "th",
-  four: "f",
-  five: "f",
-  fourteen: "f",
-  fifteen: "f",
-  forty: "f",
-  fifty: "f",
-  six: "s",
-  seven: "s",
-  sixteen: "s",
-  seventeen: "s",
-  sixty: "s",
-  seventy: "s",
-  eight: "ei",
-  eighteen: "ei",
-  eighty: "ei",
-  nine: "n",
-  nineteen: "n",
-  ninety: "n",
-  eleven: "e",
-};
-
-/** The onset class of a word ({@link OnsetClass}). */
-export function onsetClass(word: NumberWord): OnsetClass {
-  return ONSET_CLASS[word];
-}
-
-/**
- * The first word of a whole number 0–99 read plainly: "zero" … "nine", each
- * teen word, the tens word from twenty up ("forty" for 45). How a minute is
- * read, and the seconds of a lap under a minute. `null` for anything else.
- */
-export function plainFirstWord(n: number): NumberWord | null {
-  if (!Number.isInteger(n) || n < 0 || n > 99) return null;
-
-  if (n < 10) return ONES[n];
-
-  if (n < 20) return TEENS[n - 10];
-
-  return TENS[Math.floor(n / 10) - 2];
-}
-
 /** Whether the compact form speaks a minute: the lap, rounded at `precision`, is a minute or longer. */
 export function compactHasMinute(lapTime: number, precision: CompactPrecision): boolean {
   const split = splitCompactLapTime(lapTime, precision);
 
   return split !== null && split.minutes >= 1;
-}
-
-/**
- * The onset class of the first word the compact readout speaks at
- * `precision` — the minute word ("one" for 1:23.4 → `w`), or under a minute
- * the seconds read plainly ("fifteen" for 15.2 → `f`, "zero" for 0.9 →
- * `z`). The line that leads into the time picks its take by it. `null` with
- * nothing to read, or a minute past 99 that has no word.
- */
-export function compactLeadClass(lapTime: number, precision: CompactPrecision): OnsetClass | null {
-  const split = splitCompactLapTime(lapTime, precision);
-
-  if (split === null) return null;
-
-  const word = plainFirstWord(split.minutes >= 1 ? split.minutes : split.seconds);
-
-  return word === null ? null : onsetClass(word);
 }
 
 /**

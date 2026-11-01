@@ -19,10 +19,10 @@
  * still spoken. Its `speakGate` drops a lap time that waited out a busy line
  * once the player has completed another lap (`lapStillCurrent`). The readout
  * is the compact form to the thousandth (`lap-time-readout.ts`), read as
- * whole phrases (revision 5 of the clip contract); the bundled script's
- * shape:
- *   {{lapTime.lastIntro}}    "Last lap was" (plus alternates), by the onset
- *                            class of the time's first word
+ * whole phrases (revision 5 of the clip contract) after an intro that ends
+ * its own sentence (revision 6); the bundled script's shape:
+ *   pool:lap-time-last/intro "Last lap was." (plus alternates), one take
+ *                            whatever the time opens with
  *   {{lapTime.clock}}        "one forty five" (lap-time-clock), or under a
  *                            minute "fifty eight" (lap-time-second)
  *   {{lapTime.thousandths}}  "point two three seven" — ends the line
@@ -85,7 +85,6 @@ import { type LapOwnerResolver, lapStillCurrent, playerLapOwner } from "./lap-an
 import {
   compactClockRef,
   compactHasMinute,
-  compactLeadClass,
   compactThousandthsRef,
   fullDecimalRef,
   fullHasMinute,
@@ -104,9 +103,6 @@ export type LapCompletedSnapshotResolver = () => LapCompletedSnapshot | null;
 export type LapCompletedSnapshot = SimEventOf<"lap.completed">["data"];
 
 const LAP_TIME_GROUP_INTRO = "lap-time-intro";
-
-/** The every-lap call's intro group (#1163): "Last lap was", plus alternates, one set per onset class (`intro-<c>`). */
-const LAP_TIME_LAST_GROUP = "lap-time-last";
 
 /** Whether the lap has a non-zero minute component (≥1 minute), in #555's full form. */
 function hasMinuteComponent(snapshot: LapCompletedSnapshot | null): boolean {
@@ -184,24 +180,15 @@ export function registerLapTimeVocabulary(
     "The lap is a minute or longer, so the minute word is spoken before the seconds. A pack may drop the minute with optional for a terse register; the assumed minute only holds where it is 1.",
   );
 
-  // The every-lap call's vocabulary (#1163): its intro and the compact
-  // readout to the thousandth. Each reads the fire's own `lap.completed`
-  // payload, falling back to the snapshot for a fire with no lap event.
+  // The every-lap call's vocabulary (#1163): the compact readout to the
+  // thousandth. Its intro is no var — it ends its own sentence, so the script
+  // addresses it as pool:lap-time-last/intro. Each reads the fire's own
+  // `lap.completed` payload, falling back to the snapshot for a fire with no
+  // lap event.
   const lapOf = (ctx: ScenarioContext): LapCompletedSnapshot | null =>
     ctx.event?.event === "lap.completed"
       ? ((ctx.data as LapCompletedSnapshot | null | undefined) ?? null)
       : getSnapshot();
-
-  engine.defineVar(
-    "lapTime.lastIntro",
-    (ctx) => {
-      const lap = lapOf(ctx);
-      const lead = lap ? compactLeadClass(lap.lapTime, "thousandths") : null;
-
-      return lead === null ? null : poolRef(LAP_TIME_LAST_GROUP, `intro-${lead}`);
-    },
-    'The opening of the every-lap readout ("Last lap was"), from the lap-time-last clip group: lap-time-last/intro-<c>, c the onset class of the first word of the time to the thousandth (intro-w for 1:45.237, intro-f for 58.041, intro-z for 0.9). Nothing for a fire with no lap behind it.',
-  );
 
   engine.defineVar(
     "lapTime.clock",
@@ -420,11 +407,13 @@ export const SCENARIO_ID_TO_LAP_TIME_ID: Record<string, LapTimeCalloutId> = {
 export const LAP_TIME_SCENARIO_IDS: readonly string[] = ["pit-crew.lap-time-best", "pit-crew.lap-time-last"];
 
 /**
- * The `(group, base)` sources the bundled scripts address directly: none.
- * Every clip of both readouts is a var's — the every-lap intro too, since it
- * is chosen by the onset class of the time it leads into (#1163). The
- * `lapTime.*` vars draw from `lap-time-last`, the four `lap-time-*` groups of
- * #555, `lap-time-clock` and `lap-time-thousandths` by value, and their
- * descriptions name the groups.
+ * The `(group, base)` sources the bundled scripts address directly: the
+ * every-lap intro, `lap-time-last/intro` (#1163). It ends its own sentence
+ * ("Last lap was."), so one take leads into any time (revision 6 of the clip
+ * contract). Every other clip of both readouts is a var's: the `lapTime.*`
+ * vars draw from the four `lap-time-*` groups of #555, `lap-time-clock` and
+ * `lap-time-thousandths` by value, and their descriptions name the groups.
  */
-export const LAP_TIME_CLIP_SOURCES: readonly { group: string; base: string }[] = [];
+export const LAP_TIME_CLIP_SOURCES: readonly { group: string; base: string }[] = [
+  { group: "lap-time-last", base: "intro" },
+];

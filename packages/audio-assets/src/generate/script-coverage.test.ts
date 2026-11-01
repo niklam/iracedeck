@@ -74,10 +74,6 @@ const SCRIPTED_GROUPS_FLOOR = 20;
  * a resolver that went away, and the allowlist test below says so.
  */
 const VAR_DRIVEN_BASES: readonly { pattern: RegExp; resolver: string }[] = [
-  {
-    pattern: /^fastest-lap\/(yours|taken-from-you|leader|ahead|behind|other)-(w|t|th|f|s|ei|n|e|z)$/,
-    resolver: "fastestLap.yoursLine, takenFromYouLine, leaderLine, aheadLine, behindLine, otherLine",
-  },
   { pattern: /^incidents\/points-\d+$/, resolver: "incident.points" },
   { pattern: /^pit-limiter\/unit-(kmh|mph)$/, resolver: "pitSpeed.limitUnit" },
   { pattern: /^session-start\/session-(practice|qualifying|race)$/, resolver: "sessionStart.sessionLine" },

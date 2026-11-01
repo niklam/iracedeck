@@ -21,19 +21,18 @@
  * through the gap family's own speakable-gap rule. The tenths take is the
  * `-gap` one exactly when that clause will speak ({@link fireGap}, the one
  * check the gap vars resolve on), so the time runs into "Gap is" or ends the
- * line. A line that leads into the time is cut once per onset class of the
- * time's first word (#1163), so each such line is a var,
- * `fastestLap.<line>Line`, resolving `fastest-lap/<line>-<c>`. The pieces
- * whose take does not depend on the time are addressed as pools: `in` and
- * `taken-from-you` (which ends in a pause) in the default voice, `for` and
- * `lost-to` in Short Calls. The default voice's shape (revision 5 of the
- * clip contract):
+ * line. Every line that leads into the time ends its own sentence (revision 6
+ * of the clip contract, Niklas: the period "makes it end cleanly and sharp"),
+ * so each is one take whatever the time opens with, and the script addresses
+ * every piece of the line as a pool: `fastest-lap/<holder>` per case, `in`
+ * and `taken-from-you` (which ends in a pause) in the default voice, `for`
+ * and `lost-to` in Short Calls. The default voice's shape:
  *
  *   { case: fastestLap.holder, of: {
- *       yours: [{{fastestLap.yoursLine}}],
+ *       yours: [pool:fastest-lap/yours],
  *       taken-from-you: [{{fastestLap.carNumber}}, pool:fastest-lap/taken-from-you, pause:150],
  *       …,
- *       other: [{{fastestLap.carNumber}}, pool:fastest-lap/in, {{fastestLap.position}}, {{fastestLap.otherLine}}] } }
+ *       other: [{{fastestLap.carNumber}}, pool:fastest-lap/in, {{fastestLap.position}}, pool:fastest-lap/other] } }
  *   {{fastestLap.clock}}
  *   {{fastestLap.decimal}}
  *   { optional: [{{fastestLap.gapIntro}}, {{fastestLap.gapSecond}}, {{fastestLap.gapDecimal}}] }
@@ -73,7 +72,7 @@ import type { IScenarioEngine } from "../../interpreter.js";
 import type { UnderCautionResolver } from "./caution.js";
 import { type LiveGapsResolver, speakableGap, type SpeakableGap } from "./gaps.js";
 import { fastestLapAnnounceable, lapStillCurrent } from "./lap-announcement.js";
-import { compactClockRef, compactLeadClass, compactTenthsRef } from "./lap-time-readout.js";
+import { compactClockRef, compactTenthsRef } from "./lap-time-readout.js";
 import type { LapCompletedSnapshotResolver } from "./lap-time.js";
 import type { LivePositionResolver } from "./position-readout.js";
 
@@ -116,25 +115,6 @@ export const FASTEST_LAP_HOLDER_KEYS: Readonly<Record<FastestLapHolder, string>>
   ahead: "The car one position ahead of the driver in the class set it.",
   behind: "The car one position behind the driver in the class set it.",
   other: "Any other car set it.",
-};
-
-/**
- * The holders whose line leads straight into the time, so its take depends on
- * the time's first word. `taken-from-you` is not one: its line ends in a
- * pause, one take, addressed as `pool:fastest-lap/taken-from-you`.
- */
-export type FastestLapTimedHolder = Exclude<FastestLapHolder, "taken-from-you">;
-
-/**
- * The var that speaks each such holder's line, the line chosen by the case and
- * its take by the time that follows: `fastest-lap/<holder>-<c>`.
- */
-export const FASTEST_LAP_LINE_VARS: Readonly<Record<FastestLapTimedHolder, string>> = {
-  yours: "fastestLap.yoursLine",
-  leader: "fastestLap.leaderLine",
-  ahead: "fastestLap.aheadLine",
-  behind: "fastestLap.behindLine",
-  other: "fastestLap.otherLine",
 };
 
 const FASTEST_LAP_GROUP = "fastest-lap";
@@ -282,19 +262,6 @@ export function buildFastestLap(deps: FastestLapDeps): {
 
     const lapTimeOf = (ctx: ScenarioContext): number | null => fastestLapDataOf(ctx)?.lapTime ?? null;
 
-    for (const [holder, name] of Object.entries(FASTEST_LAP_LINE_VARS) as [FastestLapTimedHolder, string][]) {
-      engine.defineVar(
-        name,
-        (ctx) => {
-          const t = lapTimeOf(ctx);
-          const lead = t === null ? null : compactLeadClass(t, "tenths");
-
-          return lead === null ? null : poolRef(FASTEST_LAP_GROUP, `${holder}-${lead}`);
-        },
-        `For the ${holder} case: ${FASTEST_LAP_HOLDER_KEYS[holder]} The line that leads into the time, from the fastest-lap clip group: fastest-lap/${holder}-<c>, c the onset class of the first word of the time to the tenth (${holder}-w for 1:23.4, ${holder}-t for 2:00.0, ${holder}-f for 58.1).`,
-      );
-    }
-
     engine.defineVar(
       "fastestLap.clock",
       (ctx) => {
@@ -400,18 +367,23 @@ export const SCENARIO_ID_TO_FASTEST_LAP_ID: Record<(typeof FASTEST_LAP_SCENARIO_
 
 /**
  * The `fastest-lap` group bases the first-party scripts address directly, for
- * both voices (decision 6, revision 5 of the clip contract): the pieces whose
- * take does not depend on the time — the default voice's `in` (between the
- * car number and the position) and `taken-from-you` (one take, ending in a
- * pause), and the Short Calls voice's `for` and `lost-to`, which lead into
- * the car number. The lines that lead into the time are the
- * `fastestLap.<line>Line` vars' (`fastest-lap/<line>-<c>`), and the time, the
- * car number, the position and the gap clause are vars' too, drawing from
- * their own groups.
+ * both voices (decision 6, revision 6 of the clip contract): every piece of
+ * the line. The default voice's `in` (between the car number and the
+ * position) and `taken-from-you` (one take, ending in a pause), the Short
+ * Calls voice's `for` and `lost-to`, which lead into the car number, and the
+ * holder lines `yours`, `leader`, `ahead`, `behind` and `other` (`other` the
+ * default voice's only), each one take that ends its sentence before the
+ * time. The time, the car number, the position and the gap clause are vars',
+ * drawing from their own groups.
  */
 export const FASTEST_LAP_CLIP_SOURCES: readonly { group: "fastest-lap"; base: string }[] = [
   { group: FASTEST_LAP_GROUP, base: "in" },
   { group: FASTEST_LAP_GROUP, base: "taken-from-you" },
   { group: FASTEST_LAP_GROUP, base: "for" },
   { group: FASTEST_LAP_GROUP, base: "lost-to" },
+  { group: FASTEST_LAP_GROUP, base: "yours" },
+  { group: FASTEST_LAP_GROUP, base: "leader" },
+  { group: FASTEST_LAP_GROUP, base: "ahead" },
+  { group: FASTEST_LAP_GROUP, base: "behind" },
+  { group: FASTEST_LAP_GROUP, base: "other" },
 ];

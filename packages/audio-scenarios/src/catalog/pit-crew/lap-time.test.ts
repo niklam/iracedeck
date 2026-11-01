@@ -149,8 +149,6 @@ const INTRO_NAMES = ["best-lap-yet", "first-good-lap"];
 const MINUTE_NAMES = Array.from({ length: 10 }, (_, i) => String(i + 1));
 const SECOND_NAMES = Array.from({ length: 60 }, (_, i) => String(i));
 const DECIMAL_NAMES = Array.from({ length: 10 }, (_, i) => String(i));
-/** The onset classes the every-lap intro is cut for: the time's first word. */
-const LEAD_CLASSES = ["w", "t", "th", "f", "s", "ei", "n", "e", "z"];
 /** The clock phrases, 1m00 to 10m59 only: an eleventh minute has no clip and aborts. */
 const CLOCK_NAMES = MINUTE_NAMES.flatMap((m) => SECOND_NAMES.map((ss) => `${m}m${ss.padStart(2, "0")}`));
 const THOUSANDTHS_NAMES = Array.from({ length: 1000 }, (_, i) => String(i).padStart(3, "0"));
@@ -168,7 +166,7 @@ const manifest: AudioAssetsManifest = {
     // clips that exist, not a code constant (issue #836).
     `voice/${VOICE}/lap-time-minute/12.mp3`,
     // The every-lap readout's clips (#1163).
-    ...LEAD_CLASSES.map((c) => `voice/${VOICE}/lap-time-last/intro-${c}-01.mp3`),
+    `voice/${VOICE}/lap-time-last/intro-01.mp3`,
     ...CLOCK_NAMES.map((n) => `voice/${VOICE}/lap-time-clock/${n}.mp3`),
     ...THOUSANDTHS_NAMES.map((n) => `voice/${VOICE}/lap-time-thousandths/${n}.mp3`),
   ],
@@ -184,12 +182,13 @@ const SCRIPT = defaultScript as CalloutScript;
 
 /**
  * The every-lap entry in the shape `lap-time.ts`'s header states (#1163,
- * revision 5 of the clip contract): the intro, the clock and the thousandths.
+ * revision 6 of the clip contract): the intro, one take that ends its
+ * sentence, addressed as a pool, then the clock and the thousandths.
  */
 const LAST_ENTRY = {
   comment: "Every lap, to the thousandth.",
   test: "Harness → Scenario Shortcuts → Lap Time → Every lap.",
-  sequence: ["{{lapTime.lastIntro}}", "{{lapTime.clock}}", "{{lapTime.thousandths}}"],
+  sequence: ["pool:lap-time-last/intro", "{{lapTime.clock}}", "{{lapTime.thousandths}}"],
 };
 
 /**
@@ -508,7 +507,6 @@ describe("registerLapTimeVocabulary (issue #1065)", () => {
       "lapTime.clock",
       "lapTime.decimal",
       "lapTime.intro",
-      "lapTime.lastIntro",
       "lapTime.minute",
       "lapTime.second",
       "lapTime.thousandths",
@@ -528,7 +526,6 @@ describe("registerLapTimeVocabulary (issue #1065)", () => {
     const { vars } = getScenarioEngine().vocabulary();
     const description = (name: string) => vars.find((v) => v.name === name)?.description ?? "";
     const groups: Readonly<Record<string, readonly string[]>> = {
-      "lapTime.lastIntro": ["lap-time-last"],
       "lapTime.clock": ["lap-time-clock", "lap-time-second"],
       "lapTime.thousandths": ["lap-time-thousandths"],
     };
@@ -601,10 +598,10 @@ describe("the bundled script's lap-time entry (issue #1065)", () => {
     for (const c of refs.conds) expect(vocabulary.conds.map((x) => x.name)).toContain(c);
   });
 
-  it("publishes no direct clip source — every clip of both readouts, the every-lap intro included, is a var's — and the bundled voice ships the four groups the best lap's vars draw from", () => {
-    expect(LAP_TIME_CLIP_SOURCES).toEqual([]);
+  it("publishes as its one direct clip source the every-lap intro, the only pool either entry addresses — and the bundled voice ships the four groups the best lap's vars draw from", () => {
+    expect(LAP_TIME_CLIP_SOURCES).toEqual([{ group: "lap-time-last", base: "intro" }]);
     expect(familyReferences({ ...LAP_TIME_SCRIPT, scenarios: { "pit-crew.lap-time-last": LAST_ENTRY } }).pools).toEqual(
-      [],
+      LAP_TIME_CLIP_SOURCES.map(({ group, base }) => `${group}/${base}`),
     );
 
     for (const group of ["lap-time-intro", "lap-time-minute", "lap-time-second", "lap-time-decimal"]) {
@@ -635,7 +632,7 @@ describe("the every-lap callout (issue #1163)", () => {
       p
         .split(`voice/${VOICE}/`)[1]
         .replace(/\.mp3$/, "")
-        .replace(/^(lap-time-last\/intro-[a-z]+)-\d\d$/, "$1"),
+        .replace(/^(lap-time-last\/intro)-\d\d$/, "$1"),
     );
     const start = clips.findIndex((c) => c.startsWith("lap-time-last/"));
 
@@ -649,46 +646,46 @@ describe("the every-lap callout (issue #1163)", () => {
   it("reads 1:23.456 as the intro, the clock phrase 1m23 and the thousandths 456", () => {
     fire(plain({ lapTime: 83.456 }));
 
-    expect(lastLine()).toEqual(["lap-time-last/intro-w", "lap-time-clock/1m23", "lap-time-thousandths/456"]);
+    expect(lastLine()).toEqual(["lap-time-last/intro", "lap-time-clock/1m23", "lap-time-thousandths/456"]);
   });
 
   it("reads 1:23.450 with the base 450 — only the clip's text drops the zero", () => {
     fire(plain({ lapTime: 83.45 }));
 
-    expect(lastLine()).toEqual(["lap-time-last/intro-w", "lap-time-clock/1m23", "lap-time-thousandths/450"]);
+    expect(lastLine()).toEqual(["lap-time-last/intro", "lap-time-clock/1m23", "lap-time-thousandths/450"]);
   });
 
   it("rounds once at the thousandth: 1:45.2374 is 237 and 1:45.2376 is 238", () => {
     fire(plain({ lapTime: 105.2374 }));
-    expect(lastLine()).toEqual(["lap-time-last/intro-w", "lap-time-clock/1m45", "lap-time-thousandths/237"]);
+    expect(lastLine()).toEqual(["lap-time-last/intro", "lap-time-clock/1m45", "lap-time-thousandths/237"]);
 
     audio._played.length = 0;
     fire(plain({ lap: 6, lapTime: 105.2376 }));
     expect(lastLine().at(-1)).toBe("lap-time-thousandths/238");
   });
 
-  it("reads 2:05.007 as 2m05 and 007, leading in with the t take", () => {
+  it("reads 2:05.007 as 2m05 and 007", () => {
     fire(plain({ lapTime: 125.007 }));
 
-    expect(lastLine()).toEqual(["lap-time-last/intro-t", "lap-time-clock/2m05", "lap-time-thousandths/007"]);
+    expect(lastLine()).toEqual(["lap-time-last/intro", "lap-time-clock/2m05", "lap-time-thousandths/007"]);
   });
 
   it("reads 10:00.000 as 10m00 and 000", () => {
     fire(plain({ lapTime: 600.0 }));
 
-    expect(lastLine()).toEqual(["lap-time-last/intro-t", "lap-time-clock/10m00", "lap-time-thousandths/000"]);
+    expect(lastLine()).toEqual(["lap-time-last/intro", "lap-time-clock/10m00", "lap-time-thousandths/000"]);
   });
 
-  it("reads a sub-minute lap from lap-time-second with no clock phrase (58.041), leading in with the f take", () => {
+  it("reads a sub-minute lap from lap-time-second with no clock phrase (58.041)", () => {
     fire(plain({ lapTime: 58.041 }));
 
-    expect(lastLine()).toEqual(["lap-time-last/intro-f", "lap-time-second/58", "lap-time-thousandths/041"]);
+    expect(lastLine()).toEqual(["lap-time-last/intro", "lap-time-second/58", "lap-time-thousandths/041"]);
   });
 
-  it("reads 59.9996 as the minute it rounds into: 1m00 and 000, leading in with the w take", () => {
+  it("reads 59.9996 as the minute it rounds into: 1m00 and 000", () => {
     fire(plain({ lapTime: 59.9996 }));
 
-    expect(lastLine()).toEqual(["lap-time-last/intro-w", "lap-time-clock/1m00", "lap-time-thousandths/000"]);
+    expect(lastLine()).toEqual(["lap-time-last/intro", "lap-time-clock/1m00", "lap-time-thousandths/000"]);
   });
 
   it("aborts 10:59.9996, which rounds into an eleventh minute no clip covers — 10:59.9994 still speaks", () => {
@@ -696,28 +693,23 @@ describe("the every-lap callout (issue #1163)", () => {
     expect(voicePaths()).toEqual([]);
 
     fire(plain({ lap: 6, lapTime: 659.9994 }));
-    expect(lastLine()).toEqual(["lap-time-last/intro-t", "lap-time-clock/10m59", "lap-time-thousandths/999"]);
+    expect(lastLine()).toEqual(["lap-time-last/intro", "lap-time-clock/10m59", "lap-time-thousandths/999"]);
   });
 
-  it("opens with the intro take for the class of the time's first word", () => {
-    const cases: ReadonlyArray<[number, string]> = [
-      [83.4, "w"],
-      [125.0, "t"],
-      [58.0, "f"],
-      [245.0, "f"],
-      [120.0, "t"],
-      [15.2, "f"],
-      [0.9, "z"],
-      [5.0, "f"],
-      [9.9, "n"],
-      [11.3, "e"],
-    ];
+  it("opens with the one intro whatever the time opens with — the intro ends its sentence", () => {
+    const times = [83.4, 125.0, 58.0, 245.0, 15.2, 0.9, 5.0, 9.9, 11.3];
 
-    cases.forEach(([lapTime, cls], i) => {
+    times.forEach((lapTime, i) => {
       audio._played.length = 0;
       fire(plain({ lap: 10 + i, lapTime }));
 
-      expect(lastLine()[0], String(lapTime)).toBe(`lap-time-last/intro-${cls}`);
+      // The intro plays once and the clock follows it (the positive control:
+      // the line spoke at all), whatever the time's first word.
+      expect(
+        lastLine().filter((c) => c.startsWith("lap-time-last/")),
+        String(lapTime),
+      ).toEqual(["lap-time-last/intro"]);
+      expect(lastLine()[1], String(lapTime)).toMatch(/^lap-time-(clock|second)\//);
     });
   });
 
@@ -729,7 +721,7 @@ describe("the every-lap callout (issue #1163)", () => {
     audio._played.length = 0;
     lapTimeEnabled = false;
     fire(snap({ lap: 6, lapTime: 63.4 }));
-    expect(lastLine()[0]).toBe("lap-time-last/intro-w");
+    expect(lastLine()[0]).toBe("lap-time-last/intro");
     expect(hasClip("/lap-time-intro/best-lap-yet.mp3")).toBe(false);
   });
 
@@ -739,7 +731,7 @@ describe("the every-lap callout (issue #1163)", () => {
     expect(voicePaths()).toEqual([]);
 
     fire(plain({ lap: 7, lapTime: 95.1 }));
-    expect(lastLine()[0]).toBe("lap-time-last/intro-w");
+    expect(lastLine()[0]).toBe("lap-time-last/intro");
   });
 
   it("is silent on the final lap of a race, under a caution and on the lap that ends one", () => {
@@ -756,11 +748,11 @@ describe("the every-lap callout (issue #1163)", () => {
 
   it("speaks in practice and qualifying, and an invalid lap too", () => {
     fire(plain({ lapTime: 95.1, sessionType: "practice" }));
-    expect(lastLine()[0]).toBe("lap-time-last/intro-w");
+    expect(lastLine()[0]).toBe("lap-time-last/intro");
 
     audio._played.length = 0;
     fire(plain({ lap: 6, lapTime: 95.1, sessionType: "qualifying", lapIsValid: false }));
-    expect(lastLine()[0]).toBe("lap-time-last/intro-w");
+    expect(lastLine()[0]).toBe("lap-time-last/intro");
   });
 
   it("is silent with its own opt-in off", () => {
@@ -792,7 +784,7 @@ describe("the every-lap callout (issue #1163)", () => {
     flush(audio);
 
     expect(hasClip("/lap-time-intro/best-lap-yet.mp3")).toBe(true);
-    expect(lastLine()[0]).toBe("lap-time-last/intro-w");
+    expect(lastLine()[0]).toBe("lap-time-last/intro");
   });
 });
 

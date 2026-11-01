@@ -113,7 +113,7 @@ const FALLBACK_ENTRIES: Record<string, CalloutScriptEntry> = {
     sequence: [
       {
         case: "fastestLap.holder",
-        of: { yours: ["{{fastestLap.yoursLine}}"], default: ["{{fastestLap.otherLine}}"] },
+        of: { yours: ["pool:fastest-lap/yours"], default: ["pool:fastest-lap/other"] },
       },
       "{{fastestLap.clock}}",
       "{{fastestLap.decimal}}",
@@ -122,20 +122,21 @@ const FALLBACK_ENTRIES: Record<string, CalloutScriptEntry> = {
   "pit-crew.lap-time-last": {
     comment: "Every lap.",
     test: "Harness → Lap Time → Every lap.",
-    sequence: ["{{lapTime.lastIntro}}", "{{lapTime.clock}}", "{{lapTime.thousandths}}"],
+    sequence: ["pool:lap-time-last/intro", "{{lapTime.clock}}", "{{lapTime.thousandths}}"],
   },
 };
 
 /**
  * The clips the 1:23.4 lap needs in both readouts, per voice, beside the
- * bundled manifest: each line and the intro in the take for "one" (`w`), the
- * clock phrase 1m23, the tenths in both takes, and the thousandths 400.
+ * bundled manifest: each line and the intro (one take each, ending its
+ * sentence), the clock phrase 1m23, the tenths in both takes, and the
+ * thousandths 400.
  */
 function extraClips(voice: string): string[] {
   return [
-    "fastest-lap/yours-w-01",
-    "fastest-lap/other-w-01",
-    "lap-time-last/intro-w-01",
+    "fastest-lap/yours-01",
+    "fastest-lap/other-01",
+    "lap-time-last/intro-01",
     "lap-time-clock/1m23",
     "lap-time-tenths/4",
     "lap-time-tenths/4-gap",
