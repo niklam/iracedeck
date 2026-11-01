@@ -13,5 +13,12 @@ export const LAP_TIME_CALLOUTS = defineCalloutFamily({
      * mapping in this family.
      */
     "best-lap": { key: "calloutEnabledLapTimeBestLap", label: "New best lap" },
+    /**
+     * Opt-in for the every-lap callout (issue #1163): the engineer reads out
+     * every completed lap in the compact timing-screen form, to the
+     * thousandth, unless a higher lap-time call (the fastest lap of the race,
+     * the best lap) owns that lap. Ships on.
+     */
+    "every-lap": { key: "calloutEnabledLapTimeEveryLap", label: "Every lap" },
   },
 });

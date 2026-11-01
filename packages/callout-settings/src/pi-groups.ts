@@ -4,6 +4,7 @@ import { CAUTION_CALLOUTS } from "./families/caution.js";
 import { CORNER_NAME_CALLOUTS } from "./families/corner-name.js";
 import { CORNER_NAMES_TOGGLE_CALLOUTS } from "./families/corner-names-toggle.js";
 import { DAMAGE_CALLOUTS } from "./families/damage.js";
+import { FASTEST_LAP_CALLOUTS } from "./families/fastest-lap.js";
 import { FLAG_CALLOUTS } from "./families/flag.js";
 import { FUEL_CALLOUTS } from "./families/fuel.js";
 import { GAP_CALLOUTS } from "./families/gaps.js";
@@ -65,7 +66,7 @@ export const CALLOUT_PI_GROUPS = [
   { id: "session-start", title: "Session Start", families: [SESSION_START_CALLOUTS] },
   { id: "race-engineer-toggle", title: "Race Engineer Toggle", families: [RACE_ENGINEER_TOGGLE_CALLOUTS] },
   { id: "telemetry-connect", title: "Telemetry Connect", families: [TELEMETRY_CONNECT_CALLOUTS] },
-  { id: "lap-time", title: "Lap Time", families: [LAP_TIME_CALLOUTS] },
+  { id: "lap-time", title: "Lap Time", families: [LAP_TIME_CALLOUTS, FASTEST_LAP_CALLOUTS] },
   { id: "position", title: "Position", families: [POSITION_CALLOUTS] },
   { id: "qualifying", title: "Qualifying", families: [QUALIFYING_INVALIDATION_CALLOUTS] },
   { id: "race", title: "Race", families: [RACE_START_CALLOUTS, RACE_STATUS_CALLOUTS, RACE_END_CALLOUTS] },
