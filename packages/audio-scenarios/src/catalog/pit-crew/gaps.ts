@@ -184,11 +184,15 @@ function gapFireOf(ctx: ScenarioContext): GapFire | null {
   return null;
 }
 
+/** A gap the readout can speak: whole seconds (0–59) and tenths (0–9). */
+export type SpeakableGap = { seconds: number; tenths: number };
+
 /**
- * Split a speakable gap into whole seconds + tenths, or `null` when the live
- * gap for the fire's side is unavailable, negative, or ≥ 60 s (the reused
- * lap-time-second clips cover 0–59). All three readout vars resolve through
- * this one check so the clause always speaks whole or not at all.
+ * The speakable-gap rule, one pure function for every family that reads a
+ * live gap aloud (the gap family, and the fastest-lap call's gap clause,
+ * #1571): the live gap on `side` split into whole seconds + tenths, or
+ * `null` when it is unavailable, negative, or ≥ 60 s (the reused
+ * lap-time-second clips cover 0–59), or a lap or more away.
  *
  * The live neighbor's `carIdx` must still match the announced one: a queued
  * fire can drain after the player has passed (or been passed by) the car the
@@ -196,26 +200,31 @@ function gapFireOf(ctx: ScenarioContext): GapFire | null {
  * a different car than the line names. A mismatch drops the readout clause
  * and leaves the line itself intact.
  */
-function resolveSpeakableGap(
-  ctx: ScenarioContext,
-  getLiveGaps: LiveGapsResolver,
-): { seconds: number; tenths: number } | null {
-  const fire = gapFireOf(ctx);
+export function speakableGap(live: LiveGaps | null, side: GapSide, carIdx: number): SpeakableGap | null {
+  const neighbor = side === "ahead" ? live?.ahead : live?.behind;
 
-  if (!fire) return null;
+  if (!neighbor || neighbor.carIdx !== carIdx) return null;
 
-  const live = getLiveGaps();
-  const side = fire.side === "ahead" ? live?.ahead : live?.behind;
+  if (neighbor.gapSeconds === null || neighbor.lapDelta !== 0) return null;
 
-  if (!side || side.carIdx !== fire.carIdx) return null;
-
-  if (side.gapSeconds === null || side.lapDelta !== 0) return null;
-
-  const totalTenths = Math.round(side.gapSeconds * 10);
+  const totalTenths = Math.round(neighbor.gapSeconds * 10);
 
   if (totalTenths < 0 || totalTenths >= 600) return null;
 
   return { seconds: Math.floor(totalTenths / 10), tenths: totalTenths % 10 };
+}
+
+/**
+ * The fire's speakable gap through {@link speakableGap}, or `null` for a fire
+ * with no gap event behind it. All three readout vars resolve through this
+ * one check so the clause always speaks whole or not at all.
+ */
+function resolveSpeakableGap(ctx: ScenarioContext, getLiveGaps: LiveGapsResolver): SpeakableGap | null {
+  const fire = gapFireOf(ctx);
+
+  if (!fire) return null;
+
+  return speakableGap(getLiveGaps(), fire.side, fire.carIdx);
 }
 
 /**

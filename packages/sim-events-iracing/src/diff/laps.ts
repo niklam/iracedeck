@@ -54,6 +54,13 @@
  *     or non-finite. A `0` is kept.
  *   - `sessionType`: resolved by the orchestrator (translator.ts) since it
  *     reads session info; the diff just consumes the classified value.
+ *   - `isOutLap` / `isInLap` (#1163): the pit laps, latched per lap on the
+ *     counter by the rule `pit-lap.ts` shares with the fuel tracker, and
+ *     taken on the tick the counter moves so the emission's wait cannot
+ *     leak the next lap's pit entry into them.
+ *   - `isClassFastestLapOfRace` (#1571): answered by the judge the
+ *     orchestrator hands in ({@link FastestLapJudge}), once per emitted lap;
+ *     this module never reads the record.
  */
 import type { SimEventName } from "@iracedeck/event-bus";
 import {
@@ -65,7 +72,18 @@ import {
 } from "@iracedeck/iracing-sdk";
 
 import type { TranslatorState } from "../state.js";
+import { closePitLap, observePitLap, openPitLap } from "./pit-lap.js";
 import type { EmitFn } from "./types.js";
+
+/**
+ * Whether the lap `lap.completed` is about to report set a new fastest lap
+ * of the race in the player's class (issue #1571). The translator builds it
+ * per tick over `diff/fastest-lap.ts` and hands it to {@link diffLaps}, which
+ * calls it once per emitted lap and sets `isClassFastestLapOfRace: true`
+ * exactly when it answers `true`. This module never imports the fastest-lap
+ * module and never touches the record: the judge is the whole seam.
+ */
+export type FastestLapJudge = (lap: number, lapTime: number, lapIsValid: boolean | undefined) => boolean;
 
 /**
  * Result of `classifySessionType` mapped onto the subset of values the
@@ -143,6 +161,7 @@ export function diffLaps(
   playerResults: PlayerResultsForLap | null,
   now: number,
   emit: EmitFn<(typeof LAPS_EVENTS)[number]>,
+  judgeFastestLap: FastestLapJudge,
 ): void {
   const lapCompleted = typeof telemetry.LapCompleted === "number" ? telemetry.LapCompleted : -1;
   const lapLastLapTime = typeof telemetry.LapLastLapTime === "number" ? telemetry.LapLastLapTime : 0;
@@ -179,9 +198,10 @@ export function diffLaps(
     state.lapCrossLap = null;
     state.lapCrossUnderCheckered = false;
     state.lapPrevCheckered = false;
-    state.lapCautionLatchLap = null;
+    state.lapLatchLap = null;
     state.lapCautionSeen = false;
     state.lapCompletedWasCaution = false;
+    state.lapCompletedPit = { isOutLap: false, isInLap: false };
   }
 
   state.lastLapSessionNum = sessionNum;
@@ -197,10 +217,24 @@ export function diffLaps(
   // progress does not stop while this diff waits for standings to sync.
   if (state.cautionPhase !== "none") state.lapCautionSeen = true;
 
-  if (lapCompleted !== state.lapCautionLatchLap) {
-    state.lapCompletedWasCaution = state.lapCautionLatchLap !== null && state.lapCautionSeen;
+  // Per-lap pit latch (issue #1163), the same shape on the same counter: the
+  // shared rule of `pit-lap.ts`, observed on every tick BEFORE the counter is
+  // compared so the crossing tick's own `OnPitRoad` still counts toward the
+  // lap it completes (a crossing on pit road ends an in lap), and opened for
+  // the lap now in progress with that same reading (it opens an out lap). The
+  // first tick opens rather than observes: nothing is known of the lap a
+  // connect lands in before this reading.
+  const onPitRoad = telemetry.OnPitRoad === true;
+
+  if (state.lapLatchLap !== null) observePitLap(state.lapPitLatch, onPitRoad);
+
+  if (lapCompleted !== state.lapLatchLap) {
+    const opened = state.lapLatchLap !== null;
+    state.lapCompletedWasCaution = opened && state.lapCautionSeen;
+    state.lapCompletedPit = opened ? closePitLap(state.lapPitLatch) : { isOutLap: false, isInLap: false };
     state.lapCautionSeen = false;
-    state.lapCautionLatchLap = lapCompleted;
+    openPitLap(state.lapPitLatch, onPitRoad);
+    state.lapLatchLap = lapCompleted;
   }
 
   // Crossing record (issue #1278): was the checkered already flying when the
@@ -342,6 +376,9 @@ export function diffLaps(
     lapsSincePositionChange?: number;
     lapIsValid?: boolean;
     wasCaution?: boolean;
+    isClassFastestLapOfRace?: true;
+    isOutLap?: true;
+    isInLap?: true;
   } = {
     lap: lapCompleted,
     lapTime: lapLastLapTime,
@@ -482,6 +519,21 @@ export function diffLaps(
   // Omitted rather than `false`, like every other optional flag here, so an
   // older consumer reading the payload sees exactly what it always did.
   if (state.lapCompletedWasCaution) data.wasCaution = true;
+
+  // The pit laps (issue #1163): the facts latched for this lap on the tick the
+  // counter moved, by the rule the fuel tracker shares. Omitted rather than
+  // `false`, like the flags above.
+  if (state.lapCompletedPit.isOutLap) data.isOutLap = true;
+
+  if (state.lapCompletedPit.isInLap) data.isInLap = true;
+
+  // The fastest lap of the race (issue #1571): judged on this payload's own
+  // lap, time and validity, through the judge the translator built over the
+  // record this module never reads. Called exactly once per emitted lap —
+  // the judge leaves a claim the translator publishes as `fastestLap.set`
+  // later this tick, and the pairing rule on the catalog holds only while
+  // this field and that claim are one decision.
+  if (judgeFastestLap(lapCompleted, lapLastLapTime, lapIsValid)) data.isClassFastestLapOfRace = true;
 
   // Race-end detection (issue #569). Once per race session: fires on the
   // `lap.completed` of the lap the player finished — the crossing they made

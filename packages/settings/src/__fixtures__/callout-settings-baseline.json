@@ -1028,5 +1028,25 @@
     "\"false\"": false,
     "\"x\"": false,
     "numberRejected": true
+  },
+  "calloutEnabledLapTimeEveryLap": {
+    "owner": "lap-time/every-lap",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledFastestLap": {
+    "owner": "fastest-lap/fastest-lap",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
   }
 }

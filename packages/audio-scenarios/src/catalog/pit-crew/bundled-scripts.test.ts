@@ -115,7 +115,8 @@ function skippedIds(script: CalloutScript): string[] {
  * How many contracts the catalog registers: 24 flags (#1064) plus the 125
  * callouts migrated in #1065, the nine caution contracts of #1127 and the
  * tire-wear report of #1108 made 159, and the callouts added since brought it
- * to 168 (measured by #1376). Raise the literal to the new count in the same
+ * to 168 (measured by #1376), and the every-lap call (#1163) and the fastest lap
+ * of the race (#1571) to 170. Raise the literal to the new count in the same
  * change that adds a contract — it is only the vacuity floor for the
  * enumeration, so one left behind lets that many contracts drop out unseen;
  * the completeness checks below are what actually guard the catalog.
@@ -126,7 +127,7 @@ function skippedIds(script: CalloutScript): string[] {
  * dropped from the registration and from every script together — which an
  * up-to-date floor catches as well.
  */
-const CATALOG_FLOOR = 168;
+const CATALOG_FLOOR = 170;
 
 /**
  * How many distinct clip sources each voice's script addresses — `pool:<group>/<base>`

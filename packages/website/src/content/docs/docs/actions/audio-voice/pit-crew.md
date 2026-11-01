@@ -200,7 +200,7 @@ Who you line up behind, and which lane, come from iRacing's own caution order �
 ### What changes while a caution is out
 
 - **"Yellow cleared." no longer plays after a full-course caution.** That line exists for a local yellow, which ends with no flag shown at all and so is the only way you learn the sector is clear. A caution ends with the restart instead, which is now called in its own right — so the all-clear no longer lands a few seconds into the green. A yellow that stayed local still gets it, including one raised moments after a restart.
-- **Your best-lap and position-change callouts stay quiet.** A pace lap is not a lap time, and the running order freezing while the official positions catch up to it is not a position lost — both used to be announced as though they were. That covers the lap that ends the caution too, which you complete a few seconds after the green. The position call on the last caution lap gives you your race position instead, once the order has settled.
+- **Your lap-time and position-change callouts stay quiet.** A pace lap is not a lap time, and the running order freezing while the official positions catch up to it is not a position lost — both used to be announced as though they were. That covers the lap that ends the caution too, which you complete a few seconds after the green. The position call on the last caution lap gives you your race position instead, once the order has settled.
 - **The gap callouts and the every-3-laps race status stay quiet.** Behind the pace car a gap opens and closes for reasons that have nothing to do with pace, and the order is frozen, so neither *"We're gaining on the car ahead."* nor your position every third lap would be news. The race status also skips the lap that ends the caution, which you complete a few seconds after the green, and the first lap after the restart is treated like the opening lap of the race — see [Gap callouts](#gap-callouts-car-ahead--car-behind). A local yellow quiets neither, and Session Info's [Gaps display](/docs/actions/display-session/session-info/#gaps) keeps showing the live gaps throughout.
 - **Pit open and pit closed calls are untouched.** Every change is still announced: whether the pits are open is exactly what you need to know under a caution.
 - **The start lights' *"Go, go, go!"* no longer speaks at a restart.** The restart has its own call now, and its own switch.
@@ -321,13 +321,51 @@ This is a **heuristic on the setup name only** — it never reads the setup's ac
 
 Toggle the whole feature from **Race Engineer Callouts → Setup Warning**. It fires once at session entry (a mid-session setup reload doesn't re-trigger it), and practice sessions never warn.
 
-## Lap Time (Best Lap)
+## Lap Time
 
-A couple of seconds after you cross the start/finish line, the Race Engineer announces your lap time if you just set a new personal best — *"That was your best lap yet. One minute, twenty-three point four seconds."* The first valid lap of a session uses a different intro since there's no prior best to beat — *"That lap was one minute, twenty-three point four seconds."*
+A couple of seconds after you cross the start/finish line, the Race Engineer can tell you the time of the lap you just completed. Three callouts do that, each with its own switch under **Race Engineer Callouts → Lap Time**, and on any one lap you hear **at most one** of them, in this order:
 
-Sub-1-minute laps skip the minute clip — *"That was your best lap yet. Thirty-four point eight seconds."* The lap time is announced to one decimal place (rounded to the nearest tenth). Lap times of 11 minutes or longer stay silent — the engineer never speaks a partial readout, and the minute-clip range stops at 10 for now. The minute coverage will expand in follow-up releases.
+1. **Fastest lap of the race** — your lap is the fastest anyone in your class has run in this race.
+2. **New best lap** — your lap is your best of the session so far.
+3. **Every lap** — any other lap.
 
-On the final lap of a race the best-lap callout is suppressed — the race-end result takes the floor instead. It is also silent while a [full-course caution](#full-course-caution) is out, and for the lap that ends one, which you complete a few seconds after the green: a lap behind the pace car is timed like any other, so without that it could be announced as your best yet at forty-odd seconds.
+The first one that applies speaks for the lap and the others stay quiet. When that callout is switched off, or the voice you've chosen has no line for it, the lap goes to the next one down: with **Fastest lap of the race** off, a fastest lap of the race is still read out as your best lap, and with only **Every lap** on you hear every lap, your best ones included.
+
+None of them speaks on the final lap of a race, where the race-end result takes the floor, or while a [full-course caution](#full-course-caution) is out. Lap times of 11 minutes or longer stay silent too — the engineer never speaks a partial readout.
+
+**Default (Short callouts)** makes all three calls in fewer words — *"Last lap. One forty-five point two three seven."*, *"Fastest lap for you. One twenty-three point four."*, *"Fastest lap for car five. One twenty-three point four."*
+
+### Best lap
+
+The engineer announces your lap time when you just set a new personal best — *"That was your best lap yet. One minute, twenty-three point four seconds."* The first valid lap of a session uses a different intro since there's no prior best to beat — *"That lap was one minute, twenty-three point four seconds."*
+
+Sub-1-minute laps skip the minute clip — *"That was your best lap yet. Thirty-four point eight seconds."* The lap time is announced to one decimal place (rounded to the nearest tenth). The minute-clip range stops at 10 for now; the minute coverage will expand in follow-up releases.
+
+Besides the final lap of a race and a caution, the best-lap callout is also silent for the lap that ends a caution, which you complete a few seconds after the green: a lap behind the pace car is timed like any other, so without that it could be announced as your best yet at forty-odd seconds.
+
+### Every lap
+
+Any lap you complete that neither the best-lap nor the fastest-lap call speaks for, in practice, qualifying and races, is read out the way a timing screen shows it, to the thousandth — *"Last lap was. One forty-five point two three seven."* The engineer varies the opening (*"That one was …"*, *"You did a …"*), a lap under a minute starts with the seconds — *"Last lap was. Fifty-eight point oh four one."* — and trailing zeros are left off, so 1:23.450 is *"one twenty-three point four five"*.
+
+It stays quiet on laps that don't say anything about your pace: an out-lap (a lap you start on pit road), an in-lap (a lap on which you drive into the pits), and, like the best-lap call, the lap that ends a caution. A lap iRacing doesn't count, such as a track-limits cut, is still read out — you hear the time you drove.
+
+This is the least urgent line on the radio, so fuel, flag and position calls go first. If the lap time has to wait so long that you've completed another lap in the meantime, it's dropped rather than read out a lap late.
+
+### Fastest lap of the race
+
+In races, the engineer tells you whenever a car in your class sets a new fastest lap of the race — yours or anyone else's. The line says whose it is, then the time to the tenth, the way a timing screen shows it:
+
+- **Yours** — *"That's the fastest lap of the race. One twenty-three point four."* On that lap this replaces the best-lap call.
+- **Taken from you** — when another car beats the fastest lap you held, whoever it is: *"Car five just took the fastest lap from you. One twenty-three point four."*
+- **The leader** — *"The leader just set the fastest lap of the race. One twenty-three point four."*
+- **The car in front of you, or behind you** — *"The car in front of you just set the fastest lap. One twenty-three point four. Gap is one point two seconds."* (or *"The car behind you …"*). The gap is added when that car is still your neighbour, on the same lap as you, and the gap is under a minute.
+- **Any other car**, by number and position — *"Car five in pee six just set the fastest lap of the race. One twenty-three point four."*
+
+"In front of you" and "behind you" mean your neighbours in the class standings, as in the [gap callouts](#gap-callouts-car-ahead--car-behind), not the car nearest to you on track, and the positions are read at the moment the line is spoken. In a multi-class race everything here is about your class: another class's laps never count, and "the leader" is your class leader. A lap iRacing doesn't count can't set the record.
+
+The first laps of a race are noisy — one car after another lowers the record — so a fastest lap set on a car's own first or second lap is never announced. It still counts, so the first call you hear is for a lap that beat everything run so far. If you set it yourself on your first or second lap, you hear the best-lap call instead.
+
+The call stays quiet in practice and qualifying, under a full-course caution, and once you've taken the checkered flag. If the radio is busy it waits its turn: a newer fastest lap replaces one still waiting, and a call still waiting when you complete your next lap is dropped.
 
 ## Qualifying Lap Invalidation
 
@@ -629,9 +667,11 @@ Under **Telemetry Connect**, one callout is toggleable, enabled by default:
 
 - **Confirm Race Engineer on telemetry connect** — the *"<name>, radio check. Standing by."* line the engineer plays the first time iRacing telemetry starts flowing in a session. Also fires on a real reconnect (iRacing close + relaunch, transient SDK drop) but not on every telemetry tick. Gated on Race Engineer being enabled as well — if the master gate is off, no radio check fires regardless of this opt-in.
 
-Under **Lap Time**, one callout is toggleable, enabled by default:
+Under **Lap Time**, three callouts are toggleable, all enabled by default (see [Lap Time](#lap-time) above for the full behavior, and for which one speaks when more than one applies):
 
-- **New best lap** — the post-S/F announcement of your lap time when you set a new personal best (or complete the first valid lap of the session). Disabling this silences only the best-lap callout; future lap-related callouts will be independently toggleable.
+- **New best lap** (`calloutEnabledLapTimeBestLap`) — the post-S/F announcement of your lap time when you set a new personal best (or complete the first valid lap of the session). With it off, that lap goes to **Every lap** when that is on.
+- **Every lap** (`calloutEnabledLapTimeEveryLap`) — every completed lap no other lap-time call speaks for, in any session, read to the thousandth; out-laps and in-laps stay silent.
+- **Fastest lap of the race** (`calloutEnabledFastestLap`) — races only: a new fastest lap of the race in your class, whoever set it, from each car's third lap on. With it off, a fastest lap of the race you set yourself is read out by **New best lap** instead.
 
 Under **Position**, one callout is toggleable, enabled by default:
 

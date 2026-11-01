@@ -2341,6 +2341,63 @@ const CAUTION_CATCH_UP_SHORTCUT: TelemetrySequenceShortcut = {
   ],
 };
 
+/** The lap time every Fastest Lap shortcut sets: 1:23.4. */
+const FASTEST_LAP_TIME = 83.4;
+
+/**
+ * The player's completed-lap count on a remote car's record. The fastest-lap
+ * speak gate drops a call once a `lap.completed` past this count has fired,
+ * and the harness's other lap buttons publish laps up to 6, so a remote
+ * record carries a count no harness lap reaches: pressed after any of them,
+ * it still plays. The player's own records carry their own lap instead.
+ */
+const HARNESS_PLAYER_LAPS_COMPLETED = 99;
+
+/**
+ * One Fastest Lap shortcut (issue #1571): a `fastestLap.set` in a race, the
+ * positions in the payload selecting the holder key through the speak-time
+ * fallback (the harness has no live read to override them).
+ */
+function fastestLapShortcut(
+  id: string,
+  label: string,
+  description: string,
+  data: Record<string, unknown>,
+  precedingEvents?: readonly PublishedEvent[],
+): ScenarioShortcut {
+  return {
+    id: `fastest-lap-${id}`,
+    category: "Fastest Lap",
+    label,
+    description,
+    event: "fastestLap.set",
+    data: {
+      lapTime: FASTEST_LAP_TIME,
+      playerLapsCompleted: HARNESS_PLAYER_LAPS_COMPLETED,
+      isMultiClass: false,
+      ...data,
+    },
+    ...(precedingEvents ? { precedingEvents } : {}),
+  };
+}
+
+/** The `lap.completed` the translator pairs with the player's own fastest lap of the race. */
+function playerFastestLapCompleted(lap: number): PublishedEvent {
+  return {
+    event: "lap.completed",
+    data: {
+      lap,
+      lapTime: FASTEST_LAP_TIME,
+      isBest: true,
+      isFirstValid: false,
+      bestLapTime: FASTEST_LAP_TIME,
+      previousBestLapTime: 85.0,
+      sessionType: "race",
+      isClassFastestLapOfRace: true,
+    },
+  };
+}
+
 export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
   // ── Pit Service ──
   {
@@ -3398,6 +3455,118 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
       sessionType: "race",
     },
   },
+
+  {
+    id: "lap-every",
+    category: "Lap Time",
+    label: "Every lap 1:45.237",
+    description:
+      'A plain non-best practice lap — the every-lap call reads the time to the thousandth ("One forty five point two three seven") when its opt-in is on.',
+    event: "lap.completed",
+    data: {
+      lap: 6,
+      lapTime: 105.237,
+      isBest: false,
+      isFirstValid: false,
+      bestLapTime: 98.5,
+      sessionType: "practice",
+    },
+  },
+  {
+    id: "lap-every-sub-minute",
+    category: "Lap Time",
+    label: "Every lap under a minute 58.041",
+    description: "A non-best practice lap under a minute — the every-lap call reads it without a minute part.",
+    event: "lap.completed",
+    data: {
+      lap: 6,
+      lapTime: 58.041,
+      isBest: false,
+      isFirstValid: false,
+      bestLapTime: 98.5,
+      sessionType: "practice",
+    },
+  },
+  {
+    id: "lap-out-lap-silent",
+    category: "Lap Time",
+    label: "Out lap — silent",
+    description: "An out lap (isOutLap) — the every-lap call stays SILENT; silence is the pass.",
+    event: "lap.completed",
+    data: {
+      lap: 6,
+      lapTime: 112.6,
+      isBest: false,
+      isFirstValid: false,
+      bestLapTime: 98.5,
+      sessionType: "practice",
+      isOutLap: true,
+    },
+  },
+
+  // ── Fastest Lap ──
+  // `fastestLap.set` in a race (issue #1571): one button per `fastestLap.holder` key.
+  // The positions in the payload select the key (no live read in the harness).
+  fastestLapShortcut(
+    "yours",
+    "Yours",
+    'The player sets the fastest lap of the race on lap 5, with its paired lap.completed (best lap AND fastest lap of the race) — only "That\'s the fastest lap of the race" plays, no best-lap line.',
+    {
+      carIdx: 0,
+      isPlayer: true,
+      lap: 5,
+      previous: { carIdx: 7, lapTime: 85.0, isPlayer: false, carNumber: "7" },
+      position: 4,
+      playerPosition: 4,
+      playerLapsCompleted: 5,
+    },
+    [playerFastestLapCompleted(5)],
+  ),
+  fastestLapShortcut(
+    "taken",
+    "Taken from you",
+    "Car 5 beats the player's own record — the engineer says it took the fastest lap from you.",
+    {
+      carIdx: 5,
+      isPlayer: false,
+      lap: 5,
+      carNumber: "5",
+      previous: { carIdx: 0, lapTime: 84.9, isPlayer: true },
+      position: 6,
+      playerPosition: 4,
+    },
+  ),
+  fastestLapShortcut(
+    "leader",
+    "Leader",
+    "The race leader (P1, car 5) sets it while the player runs P4 — the leader line.",
+    { carIdx: 5, isPlayer: false, lap: 5, carNumber: "5", position: 1, playerPosition: 4 },
+  ),
+  fastestLapShortcut(
+    "ahead",
+    "Car ahead",
+    "The car in front (P3, car 5) sets it while the player runs P4 — the car-ahead line, with a gap clause when the gap is speakable.",
+    { carIdx: 5, isPlayer: false, lap: 5, carNumber: "5", position: 3, playerPosition: 4 },
+  ),
+  fastestLapShortcut(
+    "behind",
+    "Car behind",
+    "The car behind (P5, car 5) sets it while the player runs P4 — the car-behind line, with a gap clause when the gap is speakable.",
+    { carIdx: 5, isPlayer: false, lap: 5, carNumber: "5", position: 5, playerPosition: 4 },
+  ),
+  fastestLapShortcut(
+    "other",
+    "Other car",
+    "Car 5 in P6 sets it while the player runs P2 — named by car number and position.",
+    { carIdx: 5, isPlayer: false, lap: 5, carNumber: "5", position: 6, playerPosition: 2 },
+  ),
+  fastestLapShortcut(
+    "grace",
+    "Yours in the grace",
+    'The player sets it on lap 2, inside the grace — the fastest-lap line stays silent and the paired lap.completed hands the lap to the best-lap call: "That was your best lap yet." The positive control for Yours.',
+    { carIdx: 0, isPlayer: true, lap: 2, position: 4, playerPosition: 4, playerLapsCompleted: 2 },
+    [playerFastestLapCompleted(2)],
+  ),
 
   // ── Position ──
   // `lap.completed` transitions where the position changed (issue #566).

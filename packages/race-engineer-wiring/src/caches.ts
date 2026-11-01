@@ -43,6 +43,16 @@ export function subscribeRaceEngineerCaches(bus: IEventBus, logger: ILogger): Ra
     );
     lapCompletedLogger.debug(`payload: ${JSON.stringify(ev.data)}`);
   });
+  // A new session starts with no lap completed (issue #1571, decision 9): the
+  // fastest-lap and every-lap speak gates drop a fire once a `lap.completed`
+  // newer than the fire's lap has arrived, and the previous session's last
+  // lap (lap 20, say) left here would drop every call of the new race until
+  // the player had passed that count. Subscribed here, with the cache, so it
+  // is clear before any contract that fires on `session.changed` runs — the
+  // engine's own subscriptions come later, at registration.
+  bus.subscribe("session.changed", () => {
+    lastLapCompleted = null;
+  });
 
   // Cache the most recent `cornerName.approaching` payload so the corner-name
   // scenario's clip resolver reads it at fire time (issue #888) — the lap-time

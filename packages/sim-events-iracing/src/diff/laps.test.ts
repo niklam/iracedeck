@@ -16,11 +16,37 @@
  *   - session reset (LapCompleted decreases) does not synthesize an event
  */
 import { Flags, IRSDK_UNLIMITED_LAPS, IRSDK_UNLIMITED_TIME, type TelemetryData } from "@iracedeck/iracing-sdk";
-import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { describe, expect, it, vi } from "vitest";
 
 import { createInitialState } from "../state.js";
-import { diffLaps, LAP_RESULTS_SYNC_MAX_WAIT_MS, type LapSessionType, type PlayerResultsForLap } from "./laps.js";
+import {
+  type FastestLapJudge,
+  LAP_RESULTS_SYNC_MAX_WAIT_MS,
+  type LapSessionType,
+  type PlayerResultsForLap,
+  diffLaps as runDiffLaps,
+} from "./laps.js";
 import type { PendingEvent } from "./types.js";
+
+/** The judge every test runs with unless it hands its own: no lap is ever the fastest of the race (#1571). */
+const NEVER_A_RECORD: FastestLapJudge = () => false;
+
+type DiffLapsArgs = Parameters<typeof runDiffLaps>;
+
+/** `diffLaps` with the fastest-lap judge defaulted, so the tests that predate it read as they did. */
+function diffLaps(
+  state: DiffLapsArgs[0],
+  telemetry: DiffLapsArgs[1],
+  sessionType: DiffLapsArgs[2],
+  isMultiClass: DiffLapsArgs[3],
+  playerResults: DiffLapsArgs[4],
+  now: DiffLapsArgs[5],
+  emit: DiffLapsArgs[6],
+  judge: FastestLapJudge = NEVER_A_RECORD,
+): void {
+  runDiffLaps(state, telemetry, sessionType, isMultiClass, playerResults, now, emit, judge);
+}
 
 function tick(overrides: Partial<TelemetryData> = {}): TelemetryData {
   return {
@@ -1599,5 +1625,235 @@ describe("diffLaps — lap validity (issue #572)", () => {
     const laps = lapEvents(events);
     expect(laps).toHaveLength(1);
     expect(laps[0].data.lapIsValid).toBe(false);
+  });
+});
+
+describe("the fastest-lap judge seam (issue #1571)", () => {
+  it("calls the judge once per emitted lap with (lap, lapTime, lapIsValid) and sets the field exactly when it answers true", () => {
+    const state = createInitialState();
+    const calls: Array<[number, number, boolean | undefined]> = [];
+    let answer = false;
+    const judge: FastestLapJudge = (lap, lapTime, lapIsValid) => {
+      calls.push([lap, lapTime, lapIsValid]);
+
+      return answer;
+    };
+
+    // The seed tick never asks.
+    const { events, emit } = collect();
+    diffLaps(state, tick(), "race", null, synced(), NOW, emit, judge);
+    expect(calls).toEqual([]);
+
+    // A lap the judge refuses: asked once, no field.
+    diffLaps(
+      state,
+      tick({ LapCompleted: 1, LapLastLapTime: 90, LapDeltaToBestLap_OK: false }),
+      "race",
+      null,
+      synced(),
+      NOW,
+      emit,
+      judge,
+    );
+    expect(calls).toEqual([[1, 90, false]]);
+    expect(lapEvents(events)).toHaveLength(1);
+    expect(lapEvents(events)[0]!.data.isClassFastestLapOfRace).toBeUndefined();
+
+    // A lap the judge accepts: asked once, the field is `true` (the positive control).
+    answer = true;
+    diffLaps(state, tick({ LapCompleted: 2, LapLastLapTime: 89 }), "race", null, synced(), NOW, emit, judge);
+    expect(calls).toEqual([
+      [1, 90, false],
+      [2, 89, undefined],
+    ]);
+    expect(lapEvents(events)).toHaveLength(2);
+    expect(lapEvents(events)[1]!.data.isClassFastestLapOfRace).toBe(true);
+  });
+
+  it("does not ask the judge on a tick that waits for the standings or for the lap time", () => {
+    const state = createInitialState();
+    const judge = vi.fn<FastestLapJudge>(() => true);
+    const { events, emit } = collect();
+    diffLaps(state, tick(), "race", null, synced(), NOW, emit, judge);
+
+    // The counter moved but the time has not refreshed yet.
+    diffLaps(state, tick({ LapCompleted: 1, LapLastLapTime: 0 }), "race", null, synced(), NOW, emit, judge);
+    // The time refreshed but the standings have not caught up.
+    const stale: PlayerResultsForLap = { lapsComplete: 0, position: 3, classPosition: 2 };
+    diffLaps(state, tick({ LapCompleted: 1, LapLastLapTime: 90 }), "race", null, stale, NOW, emit, judge);
+    expect(judge).not.toHaveBeenCalled();
+    expect(lapEvents(events)).toHaveLength(0);
+
+    // The standings land: one emit, one call.
+    diffLaps(state, tick({ LapCompleted: 1, LapLastLapTime: 90 }), "race", null, synced(), NOW + 10, emit, judge);
+    expect(judge).toHaveBeenCalledTimes(1);
+    expect(lapEvents(events)).toHaveLength(1);
+    expect(lapEvents(events)[0]!.data.isClassFastestLapOfRace).toBe(true);
+  });
+
+  it("laps.ts imports nothing from fastest-lap.ts: the judge is the whole seam", () => {
+    const source = readFileSync(new URL("./laps.ts", import.meta.url), "utf8");
+    const specifiers = [...source.matchAll(/from\s+"([^"]+)"/g)].map((m) => m[1]!);
+
+    // The matcher sees this module's imports (so an empty match could not pass vacuously).
+    expect(specifiers).toContain("./pit-lap.js");
+    expect(specifiers).toContain("../state.js");
+    expect(specifiers.filter((s) => s.includes("fastest-lap"))).toEqual([]);
+  });
+});
+
+describe("lap.completed pit laps (issue #1163)", () => {
+  /** Drive one tick; `onPitRoad` is the player's `OnPitRoad`. */
+  function drive(
+    state: ReturnType<typeof createInitialState>,
+    emit: (e: PendingEvent) => void,
+    lapCompleted: number,
+    lapLastLapTime: number,
+    onPitRoad: boolean,
+    playerResults: PlayerResultsForLap = synced(),
+    now: number = NOW,
+  ): void {
+    diffLaps(
+      state,
+      tick({ LapCompleted: lapCompleted, LapLastLapTime: lapLastLapTime, OnPitRoad: onPitRoad }),
+      "race",
+      null,
+      playerResults,
+      now,
+      emit,
+    );
+  }
+
+  it("a lap run wholly off pit road carries neither field", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    drive(state, emit, 0, 0, false);
+    drive(state, emit, 1, 95, false);
+
+    const laps = lapEvents(events);
+    expect(laps).toHaveLength(1);
+    expect(laps[0]!.data.isOutLap).toBeUndefined();
+    expect(laps[0]!.data.isInLap).toBeUndefined();
+  });
+
+  it("a lap that enters pit road is an in lap; the crossing made on pit road ends it and opens an out lap", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    drive(state, emit, 0, 0, false);
+    drive(state, emit, 1, 95, false);
+    // Lap 2 in progress: the car dives into the pits.
+    drive(state, emit, 1, 95, true);
+    // The crossing on pit road closes lap 2 and opens lap 3 on pit road.
+    drive(state, emit, 2, 130, true);
+    // Lap 3: the car drives out and completes it.
+    drive(state, emit, 2, 130, false);
+    drive(state, emit, 3, 96, false);
+
+    const laps = lapEvents(events).map((e) => e.data);
+    expect(laps).toHaveLength(3);
+    expect(laps[1]).toMatchObject({ lap: 2, isInLap: true });
+    expect(laps[1]!.isOutLap).toBeUndefined();
+    expect(laps[2]).toMatchObject({ lap: 3, isOutLap: true });
+    expect(laps[2]!.isInLap).toBeUndefined();
+  });
+
+  it("a lap that enters pit road, drives out and completes off it is still an in lap", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    drive(state, emit, 0, 0, false);
+    drive(state, emit, 1, 95, false);
+    drive(state, emit, 1, 95, true);
+    drive(state, emit, 1, 95, false);
+    drive(state, emit, 2, 130, false);
+
+    const laps = lapEvents(events).map((e) => e.data);
+    expect(laps[1]).toMatchObject({ lap: 2, isInLap: true });
+    expect(laps[1]!.isOutLap).toBeUndefined();
+  });
+
+  it("a pit entry between the crossing and the lap-time refresh belongs to the next lap, not the one reported", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    drive(state, emit, 0, 0, false);
+    drive(state, emit, 1, 95, false);
+    // The counter moves to 2 while the time is still lap 1's.
+    drive(state, emit, 2, 95, false);
+    // Pit entry on the next tick, still before the refresh.
+    drive(state, emit, 2, 95, true);
+    // The refresh lands: lap 2 is reported, and was run wholly off pit road.
+    drive(state, emit, 2, 96, true);
+    // Lap 3 is the in lap.
+    drive(state, emit, 3, 130, true);
+
+    const laps = lapEvents(events).map((e) => e.data);
+    expect(laps).toHaveLength(3);
+    expect(laps[1]).toMatchObject({ lap: 2, lapTime: 96 });
+    expect(laps[1]!.isInLap).toBeUndefined();
+    expect(laps[1]!.isOutLap).toBeUndefined();
+    expect(laps[2]).toMatchObject({ lap: 3, isInLap: true });
+  });
+
+  it("a pit entry during the standings wait belongs to the next lap too", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    drive(state, emit, 0, 0, false);
+    drive(state, emit, 1, 95, false);
+    const stale: PlayerResultsForLap = { lapsComplete: 1, position: 3, classPosition: 2 };
+    // Lap 2's time refreshed, standings behind: the emit waits.
+    drive(state, emit, 2, 96, false, stale, NOW);
+    drive(state, emit, 2, 96, true, stale, NOW + 100);
+    // The standings catch up with the car on pit road.
+    drive(state, emit, 2, 96, true, synced(), NOW + 200);
+
+    const laps = lapEvents(events).map((e) => e.data);
+    expect(laps).toHaveLength(2);
+    expect(laps[1]).toMatchObject({ lap: 2 });
+    expect(laps[1]!.isInLap).toBeUndefined();
+
+    drive(state, emit, 3, 130, true);
+    expect(lapEvents(events)[2]!.data).toMatchObject({ lap: 3, isInLap: true });
+  });
+
+  it("a connect in the pit stall opens the first lap as an out lap", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    drive(state, emit, 0, 0, true);
+    drive(state, emit, 0, 0, false);
+    drive(state, emit, 1, 95, false);
+
+    const laps = lapEvents(events).map((e) => e.data);
+    expect(laps[0]).toMatchObject({ lap: 1, isOutLap: true });
+    expect(laps[0]!.isInLap).toBeUndefined();
+  });
+
+  it("a session change drops the latch of the old session's lap", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    // Every tick carries its session, so the reset branch (a SessionNum that
+    // differs from the last one seen) is what runs, not a counter that moves.
+    const step = (session: number, completed: number, last: number, onPitRoad: boolean): void =>
+      diffLaps(
+        state,
+        tick({ SessionNum: session, LapCompleted: completed, LapLastLapTime: last, OnPitRoad: onPitRoad }),
+        "race",
+        null,
+        synced(),
+        NOW,
+        emit,
+      );
+    step(0, 0, 0, false);
+    step(0, 1, 95, false);
+    // Lap 2 in progress enters the pits...
+    step(0, 1, 95, true);
+    // ...then the session changes with the counter unchanged, the car off pit
+    // road on the first tick.
+    step(1, 1, 0, false);
+    step(1, 2, 97, false);
+
+    const laps = lapEvents(events).map((e) => e.data);
+    expect(laps).toHaveLength(2);
+    expect(laps[1]).toMatchObject({ lap: 2, lapTime: 97 });
+    expect(laps[1]!.isInLap).toBeUndefined();
+    expect(laps[1]!.isOutLap).toBeUndefined();
   });
 });

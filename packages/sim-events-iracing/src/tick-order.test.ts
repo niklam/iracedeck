@@ -133,6 +133,7 @@ vi.mock("./diff/incidents.js", async (io) => harness.spy(await io(), { diffIncid
 vi.mock("./diff/damage.js", async (io) => harness.spy(await io(), { diffDamage: 3 }));
 vi.mock("./diff/caution.js", async (io) => harness.spy(await io(), { diffCaution: 4 }));
 vi.mock("./diff/opponent-pit.js", async (io) => harness.spy(await io(), { diffOpponentPit: 10 }));
+vi.mock("./diff/fastest-lap.js", async (io) => harness.spy(await io(), { diffFastestLap: 8 }));
 vi.mock("./diff/opponent-flags.js", async (io) => harness.spy(await io(), { diffOpponentFlags: 12 }));
 vi.mock("./diff/leader-white.js", async (io) => harness.spy(await io(), { diffLeaderWhite: 7 }));
 vi.mock("./diff/overtakes.js", async (io) => harness.spy(await io(), { diffOvertakes: 7 }));

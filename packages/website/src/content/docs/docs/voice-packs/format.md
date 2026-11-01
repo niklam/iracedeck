@@ -194,6 +194,6 @@ A script that passes the schema is compiled against the callouts, variables, con
 - A frame that fails to compile fails every entry that uses it, each with the frame's reason.
 - A fragment that reaches itself through any chain of includes is refused with the chain named: `fragment cycle: a → b → a`. A fragment nothing includes is still compiled on its own, so a mistake inside it is reported by name rather than waiting for the first include.
 - Expansion is budgeted: an entry or frame whose included fragments unfold to more than 2,000 steps is refused with `fragment expansion exceeds 2000 steps`. The largest body in the reference voice's script is about thirty.
-- With debug logging on, the log also carries one line per voice — `Voice "my-pack::my-voice": 3 of 149 callouts scripted` — and the list of ids that are not.
+- With debug logging on, the log also carries one line per voice — `Voice "my-pack::my-voice": 3 of 170 callouts scripted` — and the list of ids that are not.
 
 At fire time, a required step that resolves to nothing — a variable with no value for this moment, a pool the voice has no takes of, a clip that is not in the pack — aborts the whole callout rather than playing half a sentence, and says so at debug level: `Scenario "pit-crew.lap-time-best" skipped — var {{lapTime.minute}} resolved to nothing`. A step inside `optional` is the one exception: the optional group is dropped and the rest of the callout plays. A body that produces no clip at all gets no frame.

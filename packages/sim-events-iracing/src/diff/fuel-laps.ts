@@ -48,6 +48,8 @@
  */
 import { Flags, hasAnyFlag, isLiveOnTrack, isPreGreen, type TelemetryData } from "@iracedeck/iracing-sdk";
 
+import { closePitLap, createPitLapLatch, observePitLap, openPitLap, type PitLapLatch } from "./pit-lap.js";
+
 /** Rolling history cap (laps). Also bounds the Session Info `fuelLapWindow` setting. */
 export const FUEL_LAP_HISTORY_CAP = 20;
 
@@ -110,9 +112,9 @@ export type FuelLap = {
   lapTime: number;
   /** True when the lap is usable for consumption statistics — see `diffFuelLaps`. */
   isValidForCalc: boolean;
-  /** Lap started on pit road. */
+  /** Lap started on pit road (the shared rule in `pit-lap.ts`, issue #1163). */
   isOutLap: boolean;
-  /** Car entered pit road during the lap (after having been off it). */
+  /** Car entered pit road during the lap, after having been off it (the shared rule in `pit-lap.ts`). */
   isInLap: boolean;
   /** Car was towed at some point during the lap (`PlayerCarTowTime > 0`). */
   wasTowed: boolean;
@@ -137,7 +139,7 @@ export type FuelLap = {
  * ticks) and session changes keep the stats visible for fuel planning. Fully
  * reset only by `handleDisconnect`.
  */
-export type FuelLapTracker = {
+export type FuelLapTracker = PitLapLatch & {
   /** Whether the tracker has seeded its baselines on the first valid tick. */
   initialized: boolean;
   /** Rolling buffer of completed lap records, capped at `FUEL_LAP_HISTORY_CAP`. */
@@ -154,12 +156,9 @@ export type FuelLapTracker = {
   lastFuelLevel: number;
   /** Previous-tick `LapDistPct`, for wrap (high→low) detection. */
   lastDistPct: number;
-  /** Current segment started on pit road. */
-  isOutLap: boolean;
-  /** Car has been off pit road at some point during the current segment. */
-  leftPitRoad: boolean;
-  /** Car entered pit road during the current segment (after having left it). */
-  enteredPits: boolean;
+  // The current segment's pit-road latch (`isOutLap` / `leftPitRoad` /
+  // `enteredPits`) is the shared `PitLapLatch` (`pit-lap.ts`, issue #1163),
+  // opened at every segment anchor and advanced every tick.
   /** Car was towed during the current segment. */
   wasTowed: boolean;
   /** A full-course caution was up at some point during the current segment. */
@@ -213,9 +212,7 @@ export function createFuelLapTracker(): FuelLapTracker {
     accumulatedRefuel: 0,
     lastFuelLevel: 0,
     lastDistPct: 0,
-    isOutLap: false,
-    leftPitRoad: true,
-    enteredPits: false,
+    ...createPitLapLatch(),
     wasTowed: false,
     wasCaution: false,
     pendingWrapAt: null,
@@ -241,9 +238,7 @@ function resetSegment(t: FuelLapTracker, anchor: SegmentAnchor): void {
   t.lapStartTime = anchor.sessionTime;
   t.lapStartFuel = anchor.fuelLevel;
   t.accumulatedRefuel = 0;
-  t.isOutLap = anchor.onPitRoad;
-  t.leftPitRoad = !anchor.onPitRoad;
-  t.enteredPits = false;
+  openPitLap(t, anchor.onPitRoad);
   t.wasTowed = anchor.towed;
   t.wasCaution = anchor.caution;
   t.pendingWrapAt = null;
@@ -263,6 +258,7 @@ function finalizeCrossing(t: FuelLapTracker, anchor: Omit<SegmentAnchor, "partia
 
   if (!t.partial && counterDelta === 1 && lapTime >= FUEL_LAP_MIN_LAP_TIME_S) {
     const fuelUsed = t.lapStartFuel + t.accumulatedRefuel - anchor.fuelLevel;
+    const pit = closePitLap(t);
     // The `lapTime ≥ floor` term of the issue-#465 validity spec is enforced
     // by the recording guard above — every record in the history already
     // satisfies it, so only the remaining gates appear here.
@@ -270,9 +266,8 @@ function finalizeCrossing(t: FuelLapTracker, anchor: Omit<SegmentAnchor, "partia
       lapNumber: t.lapStartLap,
       fuelUsed,
       lapTime,
-      isValidForCalc: fuelUsed > 0 && !t.isOutLap && !t.enteredPits && !t.wasTowed && !t.wasCaution,
-      isOutLap: t.isOutLap,
-      isInLap: t.enteredPits,
+      isValidForCalc: fuelUsed > 0 && !pit.isOutLap && !pit.isInLap && !t.wasTowed && !t.wasCaution,
+      ...pit,
       wasTowed: t.wasTowed,
       wasCaution: t.wasCaution,
     };
@@ -387,11 +382,7 @@ export function diffFuelLaps(t: FuelLapTracker, telemetry: TelemetryData): void 
 
   // Latch the per-lap validity flags before any crossing is finalized so the
   // crossing tick's own state still counts toward the completed lap.
-  if (onPitRoad) {
-    if (t.leftPitRoad) t.enteredPits = true;
-  } else {
-    t.leftPitRoad = true;
-  }
+  observePitLap(t, onPitRoad);
 
   if (towed) t.wasTowed = true;
 

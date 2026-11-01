@@ -34,6 +34,7 @@ describe("wireRaceEngineer", () => {
     expect(register).toBeGreaterThan(0);
     expect(order.slice(0, register)).toEqual([
       "subscribe:lap.completed",
+      "subscribe:session.changed",
       "subscribe:cornerName.approaching",
       "subscribe:race.finished",
       "subscribe:overtake.completed",

@@ -1944,6 +1944,56 @@
       "sequence": [
         "{{spotterClip}}"
       ]
+    },
+    "pit-crew.fastest-lap-race": {
+      "comment": "The race's fastest lap is set — says who set it (you, the leader, the car ahead or behind, or another car by number and position) in one sentence-final clip, then the lap time to the tenth as the minute and seconds clock followed by the tenth, then, after a short pause, the gap when there is one (the tenth ends its own sentence).",
+      "test": "Harness → Fastest Lap → Yours (Taken from you, Leader, Car ahead, Car behind, Other car for the other lines; Yours in the grace plays the best-lap line). In-sim: an offline AI race; set the fastest lap of the race from lap 3 on, or let an AI car beat it.",
+      "sequence": [
+        {
+          "case": "fastestLap.holder",
+          "of": {
+            "yours": [
+              "pool:fastest-lap/yours"
+            ],
+            "taken-from-you": [
+              "pool:fastest-lap/lost-to",
+              "{{fastestLap.carNumber}}"
+            ],
+            "leader": [
+              "pool:fastest-lap/leader"
+            ],
+            "ahead": [
+              "pool:fastest-lap/ahead"
+            ],
+            "behind": [
+              "pool:fastest-lap/behind"
+            ],
+            "other": [
+              "pool:fastest-lap/for",
+              "{{fastestLap.carNumber}}"
+            ]
+          }
+        },
+        "{{fastestLap.clock}}",
+        "{{fastestLap.decimal}}",
+        {
+          "optional": [
+            "pause:150",
+            "{{fastestLap.gapIntro}}",
+            "{{fastestLap.gapSecond}}",
+            "{{fastestLap.gapDecimal}}"
+          ]
+        }
+      ]
+    },
+    "pit-crew.lap-time-last": {
+      "comment": "Every lap that is not a new best: a short sentence-final intro, then the lap time read as whole phrases, the minute and seconds as one clip and the thousandths as another (one twenty three, point four five six).",
+      "test": "Harness → Lap Time → Every lap 1:45.237 (Every lap under a minute 58.041; Out lap — silent). In-sim: any session; complete a lap that is not a new best.",
+      "sequence": [
+        "pool:lap-time-last/intro",
+        "{{lapTime.clock}}",
+        "{{lapTime.thousandths}}"
+      ]
     }
   },
   "frames": {

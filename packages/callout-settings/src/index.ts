@@ -7,6 +7,7 @@ export { CAUTION_CALLOUTS } from "./families/caution.js";
 export { CORNER_NAMES_TOGGLE_CALLOUTS } from "./families/corner-names-toggle.js";
 export { CORNER_NAME_CALLOUTS } from "./families/corner-name.js";
 export { DAMAGE_CALLOUTS } from "./families/damage.js";
+export { FASTEST_LAP_CALLOUTS } from "./families/fastest-lap.js";
 export { FLAG_CALLOUTS } from "./families/flag.js";
 export { FUEL_CALLOUTS } from "./families/fuel.js";
 export { GAP_CALLOUTS } from "./families/gaps.js";

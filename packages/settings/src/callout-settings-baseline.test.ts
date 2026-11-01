@@ -86,8 +86,8 @@ const COLUMNS: readonly string[] = ["owner", "default", "true", '"true"', "false
  * alone, and its test then prints the new pin to write in the same change;
  * nothing else ever moves it.
  */
-const RECORD_ROWS = 103;
-const RECORD_SHA256 = "6207426a1bb39c1d4f11942f029480d9ebedfe14a7fa7e26e04f56586963244e";
+const RECORD_ROWS = 105;
+const RECORD_SHA256 = "e6efa1f3f796a1e9966f0b0773ba32068854c30e80b34e2297ebdfcb153e3ec4";
 
 /**
  * The columns a written row never changes, so the pin covers them: the default

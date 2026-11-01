@@ -5,6 +5,7 @@ import {
   CALLOUT_FAMILIES,
   CALLOUT_PI_GROUPS,
   CALLOUT_SETTING_KEYS,
+  calloutDefault,
   type CalloutFamily,
   type CalloutIdOf,
   calloutKey,
@@ -80,5 +81,23 @@ describe("callout settings registry", () => {
       keyOf(FLAG_CALLOUTS, "nope");
 
     expect(misspelt).toBeTypeOf("function");
+  });
+});
+
+describe("Lap Time group (#1163, #1571)", () => {
+  it("renders New best lap, Every lap, Fastest lap of the race, in that order", () => {
+    const group = CALLOUT_PI_GROUPS.find((g) => g.id === "lap-time");
+    const rows = group?.families.flatMap((f: CalloutFamily) => Object.values(f.callouts));
+
+    expect(rows?.map((e) => [e.key, e.label])).toEqual([
+      ["calloutEnabledLapTimeBestLap", "New best lap"],
+      ["calloutEnabledLapTimeEveryLap", "Every lap"],
+      ["calloutEnabledFastestLap", "Fastest lap of the race"],
+    ]);
+  });
+
+  it("ships both new opt-ins on", () => {
+    expect(calloutDefault("calloutEnabledLapTimeEveryLap")).toBe(true);
+    expect(calloutDefault("calloutEnabledFastestLap")).toBe(true);
   });
 });

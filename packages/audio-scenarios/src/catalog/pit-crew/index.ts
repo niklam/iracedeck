@@ -88,6 +88,7 @@ import {
   CAUTION_CALLOUTS,
   CORNER_NAME_CALLOUTS,
   DAMAGE_CALLOUTS,
+  FASTEST_LAP_CALLOUTS,
   FLAG_CALLOUTS,
   FUEL_CALLOUTS,
   GAP_CALLOUTS,
@@ -140,6 +141,7 @@ import {
   SCENARIO_ID_TO_CORNER_NAME_ID,
 } from "./corner-name.js";
 import { buildDamageContracts } from "./damage-alerts.js";
+import { buildFastestLap, SCENARIO_ID_TO_FASTEST_LAP_ID } from "./fastest-lap.js";
 import { buildFlagAlerts } from "./flag-alerts.js";
 import { FUEL_LAPS_LEFT_CONTRACTS } from "./fuel-laps-left.js";
 import {
@@ -151,8 +153,10 @@ import {
   SCENARIO_ID_TO_GAP_ID,
 } from "./gaps.js";
 import { INCIDENT_CONTRACTS, registerIncidentVocabulary } from "./incidents.js";
+import { type LapOwnerResolver, playerLapOwner } from "./lap-announcement.js";
 import {
   buildLapTimeContract,
+  buildLapTimeLastContract,
   type LapCompletedSnapshotResolver,
   registerLapTimeVocabulary,
   SCENARIO_ID_TO_LAP_TIME_ID,
@@ -339,14 +343,32 @@ export {
   registerOpponentPitVocabulary,
 } from "./opponent-pit.js";
 export {
+  buildFastestLap,
+  FASTEST_LAP_CLIP_SOURCES,
+  FASTEST_LAP_HOLDER_KEYS,
+  FASTEST_LAP_SCENARIO_IDS,
+  type FastestLapCalloutId,
+  type FastestLapHolder,
+} from "./fastest-lap.js";
+export {
+  FASTEST_LAP_GRACE_LAPS,
+  fastestLapAnnounceable,
+  lapStillCurrent,
+  type LapOwnerResolver,
+  type PlayerLapOwner,
+  playerLapOwner,
+} from "./lap-announcement.js";
+export {
   buildLapTimeContract,
+  buildLapTimeLastContract,
+  LAP_TIME_CLIP_SOURCES,
   LAP_TIME_SCENARIO_IDS,
   type LapCompletedSnapshot,
   type LapCompletedSnapshotResolver,
   type LapTimeCalloutId,
   registerLapTimeVocabulary,
-  splitLapTime,
 } from "./lap-time.js";
+export { splitLapTime } from "./lap-time-readout.js";
 export {
   buildPositionContract,
   POSITION_CLIP_SOURCES,
@@ -772,7 +794,9 @@ export type PitCrewDeps = {
   // at S/F crossing. Default `() => null` makes the var resolvers return
   // null — a safe stub for tests that don't supply a resolver. Reused by the
   // position-change callout (issue #566) — both scenarios subscribe to the
-  // same `lap.completed` event and share the snapshot cache.
+  // same `lap.completed` event and share the snapshot cache — and read by
+  // the every-lap (issue #1163) and fastest-lap (issue #1571) speak gates,
+  // which drop a line held past the player's next completed lap.
   getLapCompletedSnapshot?: LapCompletedSnapshotResolver;
   // Snapshot resolver for the qualifying lap-invalidation callout (issue
   // #567). Plugins wire this to a closure that builds the snapshot from the
@@ -883,7 +907,10 @@ export type PitCrewDeps = {
   // the event was classified in (the payload's `isMultiClass`). The var reads
   // the expanding fire's own event, so a later flag event can never repoint
   // a deferred line. Default `() => null` falls back to the emit-time
-  // payload position — a safe stub for tests and the harness.
+  // payload position — a safe stub for tests and the harness. The fastest
+  // lap of the race (issue #1571) reads the record holder's live position
+  // through the same resolver: it is the one per-car live read the catalog
+  // takes, whatever family asks.
   getOpponentFlagLivePosition?: OpponentFlagLivePositionResolver;
   // Caution lineup resolver (issue #1127). Plugins wire `getPaceLineup()`
   // from `@iracedeck/sim-events-iracing`. Read at SPEAK time inside every
@@ -1097,6 +1124,7 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   const getIncidentCalloutEnabled = enabledIn(INCIDENT_CALLOUTS);
   const getSessionStartCalloutEnabled = enabledIn(SESSION_START_CALLOUTS);
   const getLapTimeCalloutEnabled = enabledIn(LAP_TIME_CALLOUTS);
+  const getFastestLapCalloutEnabled = enabledIn(FASTEST_LAP_CALLOUTS);
   const getPositionCalloutEnabled = enabledIn(POSITION_CALLOUTS);
   const getQualifyingInvalidationCalloutEnabled = enabledIn(QUALIFYING_INVALIDATION_CALLOUTS);
   const getRaceStatusCalloutEnabled = enabledIn(RACE_STATUS_CALLOUTS);
@@ -1150,6 +1178,19 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   });
 
   const engine = getScenarioEngine();
+
+  // The lap-time precedence (#1163, #1571): which of the fastest-lap, best-lap
+  // and every-lap callouts speaks for a lap the player completes. Each tier
+  // counts as on only while its opt-in is on AND the active voice scripts its
+  // contract, so a pack that leaves a line out hands the lap to the next
+  // instead of leaving it unsaid. Read live at each `lap.completed`, from the
+  // same gates and the engine's compiled scripts; it adds no `PitCrewDeps` key.
+  const getLapOwner: LapOwnerResolver = (lap) =>
+    playerLapOwner(lap, {
+      fastestLap: getFastestLapCalloutEnabled("fastest-lap") && engine.isScripted("pit-crew.fastest-lap-race"),
+      bestLap: getLapTimeCalloutEnabled("best-lap") && engine.isScripted("pit-crew.lap-time-best"),
+      everyLap: getLapTimeCalloutEnabled("every-lap") && engine.isScripted("pit-crew.lap-time-last"),
+    });
 
   // The flag family, built once over its sim reads (#1378): the vocabulary and
   // the contracts share one set of gates, so the furled speak-time gates and
@@ -1653,27 +1694,59 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
     ),
   );
 
-  // Lap-time best-lap contract (issue #555; scripted since #1065). The
-  // readout's four components and the minute gate are the `lapTime.*`
-  // vocabulary, reading the snapshot at expansion time; the contract keeps
-  // only the race-finished gate and the full-course-caution gate its
-  // `where:` reads.
+  // Lap-time contracts: the best lap (issue #555; scripted since #1065) and
+  // every lap (issue #1163). The readouts' components are the `lapTime.*`
+  // vocabulary, reading the lap at expansion time; the contracts keep the
+  // race-finished gate (race-end takes the floor on the final lap, #569), the
+  // full-course-caution gate (a pace lap is not a lap time, #1127) and the
+  // precedence above.
   registerLapTimeVocabulary(engine, d.getLapCompletedSnapshot);
-  engine.defineContract(
-    wrapWithMaster(
-      wrapCalloutScenario(
-        // Pass the race-finished resolver so the best-lap callout is
-        // suppressed on the final lap of a race (issue #569) — race-end
-        // takes the floor — and the caution resolver so a pace lap under a
-        // full-course caution never registers as a best lap (issue #1127).
-        buildLapTimeContract(d.getRaceFinishedFired, d.getUnderFullCourseCaution),
-        SCENARIO_ID_TO_LAP_TIME_ID,
-        getLapTimeCalloutEnabled,
-        "lap-time callout",
-        logger,
+
+  for (const c of [
+    buildLapTimeContract(d.getRaceFinishedFired, d.getUnderFullCourseCaution, getLapOwner),
+    buildLapTimeLastContract({
+      getRaceFinishedFired: d.getRaceFinishedFired,
+      getUnderFullCourseCaution: d.getUnderFullCourseCaution,
+      getLapOwner,
+      getLapCompletedSnapshot: d.getLapCompletedSnapshot,
+    }),
+  ]) {
+    engine.defineContract(
+      wrapWithMaster(
+        wrapCalloutScenario(c, SCENARIO_ID_TO_LAP_TIME_ID, getLapTimeCalloutEnabled, "lap-time callout", logger),
       ),
-    ),
-  );
+    );
+  }
+
+  // The fastest lap of the race (issue #1571): the `fastestLap.*` vocabulary
+  // and its one contract, built over one set of reads. The record holder's
+  // live position is the per-car read the opponent-flag family already takes
+  // (`getLiveCarPosition` in the payload's projection, behind
+  // `getOpponentFlagLivePosition`), so the family adds no `PitCrewDeps` key.
+  const fastestLap = buildFastestLap({
+    getRaceFinishedFired: d.getRaceFinishedFired,
+    getUnderFullCourseCaution: d.getUnderFullCourseCaution,
+    getLapCompletedSnapshot: d.getLapCompletedSnapshot,
+    getCarLivePosition: d.getOpponentFlagLivePosition,
+    getLivePosition: d.getLivePosition,
+    getLiveGaps: d.getLiveGaps,
+  });
+
+  fastestLap.registerVocabulary(engine);
+
+  for (const c of fastestLap.contracts) {
+    engine.defineContract(
+      wrapWithMaster(
+        wrapCalloutScenario(
+          c,
+          SCENARIO_ID_TO_FASTEST_LAP_ID,
+          getFastestLapCalloutEnabled,
+          "fastest-lap callout",
+          logger,
+        ),
+      ),
+    );
+  }
 
   // Corner-name callout (issue #888; scripted since #1065). The vocabulary
   // (the `cornerName.clip` var) registers before the contract, same as
