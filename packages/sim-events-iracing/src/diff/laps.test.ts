@@ -1829,33 +1829,30 @@ describe("lap.completed pit laps (issue #1163)", () => {
   it("a session change drops the latch of the old session's lap", () => {
     const state = createInitialState();
     const { events, emit } = collect();
-    drive(state, emit, 0, 0, false);
-    drive(state, emit, 1, 95, false);
+    // Every tick carries its session, so the reset branch (a SessionNum that
+    // differs from the last one seen) is what runs, not a counter that moves.
+    const step = (session: number, completed: number, last: number, onPitRoad: boolean): void =>
+      diffLaps(
+        state,
+        tick({ SessionNum: session, LapCompleted: completed, LapLastLapTime: last, OnPitRoad: onPitRoad }),
+        "race",
+        null,
+        synced(),
+        NOW,
+        emit,
+      );
+    step(0, 0, 0, false);
+    step(0, 1, 95, false);
     // Lap 2 in progress enters the pits...
-    drive(state, emit, 1, 95, true);
-    // ...then the session changes, the car off pit road on the first tick.
-    diffLaps(
-      state,
-      tick({ SessionNum: 1, LapCompleted: 0, LapLastLapTime: 0, OnPitRoad: false }),
-      "race",
-      null,
-      synced(),
-      NOW,
-      emit,
-    );
-    diffLaps(
-      state,
-      tick({ SessionNum: 1, LapCompleted: 1, LapLastLapTime: 97, OnPitRoad: false }),
-      "race",
-      null,
-      synced(),
-      NOW,
-      emit,
-    );
+    step(0, 1, 95, true);
+    // ...then the session changes with the counter unchanged, the car off pit
+    // road on the first tick.
+    step(1, 1, 0, false);
+    step(1, 2, 97, false);
 
     const laps = lapEvents(events).map((e) => e.data);
     expect(laps).toHaveLength(2);
-    expect(laps[1]).toMatchObject({ lap: 1, lapTime: 97 });
+    expect(laps[1]).toMatchObject({ lap: 2, lapTime: 97 });
     expect(laps[1]!.isInLap).toBeUndefined();
     expect(laps[1]!.isOutLap).toBeUndefined();
   });
