@@ -77,8 +77,6 @@ Planning against the deck hosts: check each in the rule it names rather than rec
 
 Start one when a slot is free and the next issue in order has its spec (or is exempt), **every issue it depends on has merged** (its lead branches from `origin/master`, which must already hold them), and no running lead's issue touches the same files or the same package unless you know their files are disjoint. If the next issue fails either check, take the first later one that passes, or wait. A slot is held from start until the lead reports `ready-to-test`; testing, review and merge hold none.
 
-The test queue caps it too (Niklas, 2026-10-30): start a lead only while fewer than 8 started issues have no `Manual test: passed` verdict, counting every lead in implementation since each will add one, and every issue at `ready-to-test`, failed or `blocked`. A dev-tooling issue (Integration build, step 6) leaves the count when its agent-run pass is recorded, with no wait for Niklas, unless it also has a part he must test.
-
 Load `mcp__ccd_session__start_session` with ToolSearch (`select:mcp__ccd_session__start_session`), then:
 
 ```json
@@ -148,7 +146,7 @@ When the message needs him and this turn was woken by a session's note rather th
 3. On a conflict it aborts and names the branch and what it met. Rebuild without that branch if Niklas wants the rest tested now, and send the conflicting leads the files: the later one rebases once the earlier merges, or they split the change through you. Never resolve it in the integration tree.
 4. Put each issue's script from its lead on the test sheet (below) as its card, in test order, and send Niklas the sheet's card numbers for this build rather than the steps again.
 5. Relay each verdict to its lead with the sha it passed at, and record it as a comment on the issue, `Manual test: passed at <full sha>` or `Manual test: failed at <full sha>: <what failed>`, so a resume knows what was tested. A failed issue is fixed in its own worktree and joins the next build; issues that passed are not retested unless the fix touched what they changed.
-6. A dev-tooling issue (`issue-workflow.md` step 8) joins no build: its lead's `qa` agent ran the script. When its `ready-to-test` carries the per-step evidence, check every step is PASS at the reported sha (a FAIL or BLOCKED step goes back to the lead), record `Manual test: passed at <full sha> (agent-run)` on the issue, tell the lead to open the PR, and tell Niklas in one line. An issue that also changes something he sees or hears joins a build for that part and stays in the test queue: record its agent-run pass, but send the lead to the PR only once he has passed the rest.
+6. A dev-tooling issue (`issue-workflow.md` step 8) joins no build: its lead's `qa` agent ran the script. When its `ready-to-test` carries the per-step evidence, check every step is PASS at the reported sha (a FAIL or BLOCKED step goes back to the lead), record `Manual test: passed at <full sha> (agent-run)` on the issue, tell the lead to open the PR, and tell Niklas in one line. An issue that also changes something he sees or hears joins a build for that part and keeps its card on the test sheet: record its agent-run pass, but send the lead to the PR only once he has passed the rest.
 
 ## The test sheet
 
