@@ -32,7 +32,7 @@ import { GlobalSettingsSchema } from "./global-settings.js";
  *
  * Adding a callout: append one row at the end of
  * `__fixtures__/callout-settings-baseline.json`, then write the new pin
- * (`RECORD_ROWS`, `RECORD_KEYS_SHA256` below) that the failing test prints. The row is keyed by the new
+ * (`RECORD_ROWS`, `RECORD_SHA256` below) that the failing test prints. The row is keyed by the new
  * `calloutEnabled*` key, in the shape of the rows above it —
  * `owner` is `<family id>/<callout id>` from the registry entry, `default` is
  * `true` unless the entry declares `default: false`, and the coercion columns
@@ -76,16 +76,25 @@ const COLUMNS: readonly string[] = ["owner", "default", "true", '"true"', "false
 /**
  * The pin: how many rows the record held when it was last pinned, live and
  * retired (100 captured before #1350, three appended by #1376), and the
- * SHA-256 of those rows' keys in file order, joined by newlines. The checks
- * further down see only keys still in the registry or rows still in the file,
- * so a key dropped together with its row would pass them all — and so would one
- * row swapped for another, since the count stays the same. The pinned prefix is
- * what refuses both: the first `RECORD_ROWS` keys must still be exactly the
- * pinned ones, in order. An append leaves that prefix alone, and its test then
- * prints the new pin to write in the same change; nothing else ever moves it.
+ * SHA-256 of those rows in file order — each row's key and its
+ * {@link PINNED_COLUMNS}. The checks further down compare the record with
+ * today's registry and schema, so a key dropped together with its row would
+ * pass them all, and so would one row swapped for another (the count stays the
+ * same) or a default changed in the registry and its row together (no
+ * migration seen). The pinned prefix refuses all three: the first
+ * `RECORD_ROWS` rows must still hash to the pin. An append leaves that prefix
+ * alone, and its test then prints the new pin to write in the same change;
+ * nothing else ever moves it.
  */
 const RECORD_ROWS = 103;
-const RECORD_KEYS_SHA256 = "f15b5fa650565eeb45e4098c2d5a8c44e89057aaeee11450a0679f7bc5c7da6f";
+const RECORD_SHA256 = "6207426a1bb39c1d4f11942f029480d9ebedfe14a7fa7e26e04f56586963244e";
+
+/**
+ * The columns a written row never changes, so the pin covers them: the default
+ * and every coercion result. `owner` moves when an entry changes family and
+ * `retiredBy` is added on retirement, so neither is pinned.
+ */
+const PINNED_COLUMNS = COLUMNS.filter((column) => column !== "owner");
 
 const BASELINE_FILE = "packages/settings/src/__fixtures__/callout-settings-baseline.json";
 
@@ -106,29 +115,39 @@ const registryKeys: readonly string[] = CALLOUT_SETTING_KEYS;
 const parseKey = (key: string, value: unknown): unknown =>
   (GlobalSettingsSchema.parse({ [key]: value }) as Record<string, unknown>)[key];
 
-/** The SHA-256 of `keys` joined by newlines, the form `RECORD_KEYS_SHA256` pins. */
-const keysDigest = (keys: readonly string[]): string => createHash("sha256").update(keys.join("\n")).digest("hex");
+/** The SHA-256 `RECORD_SHA256` pins: one line per row, its key then its pinned columns as JSON. */
+const recordDigest = (keys: readonly string[]): string =>
+  createHash("sha256")
+    .update(
+      keys
+        .map((key) =>
+          [key, ...PINNED_COLUMNS.map((c) => JSON.stringify(baseline[key][c as keyof BaselineRow]))].join(" "),
+        )
+        .join("\n"),
+    )
+    .digest("hex");
 
 const recordKeys = Object.keys(baseline);
 
-/** Whether the record still opens with exactly the pinned keys, in order. */
+/** Whether the record still opens with exactly the pinned rows, in order. */
 const pinnedPrefixIntact =
-  recordKeys.length >= RECORD_ROWS && keysDigest(recordKeys.slice(0, RECORD_ROWS)) === RECORD_KEYS_SHA256;
+  recordKeys.length >= RECORD_ROWS && recordDigest(recordKeys.slice(0, RECORD_ROWS)) === RECORD_SHA256;
 
 describe("callout settings baseline (#1350, #1376)", () => {
   it(`still opens with the ${RECORD_ROWS} pinned rows, in order`, () => {
     expect(
       pinnedPrefixIntact,
-      `one of the first ${RECORD_ROWS} rows of ${BASELINE_FILE} was deleted, replaced, renamed or reordered. ` +
-        `A row is never removed, even when its key is retired (mark it "retiredBy" instead), and a new key is ` +
-        `appended at the end. The pin in callout-settings-baseline.test.ts moves only for an append.`,
+      `one of the first ${RECORD_ROWS} rows of ${BASELINE_FILE} was deleted, replaced, renamed, reordered, or had ` +
+        `its default or a coercion column changed. A row is never removed, even when its key is retired (mark it ` +
+        `"retiredBy" instead), a stored key's default changes only with a settings migration and a new key, and a ` +
+        `new key is appended at the end. The pin in callout-settings-baseline.test.ts moves only for an append.`,
     ).toBe(true);
   });
 
   it("pins every row in the record", () => {
     // The new pin is printed only over an intact prefix, so a swapped row cannot be pinned by copying it.
     const repin = pinnedPrefixIntact
-      ? `In the same change, set RECORD_ROWS to ${recordKeys.length} and RECORD_KEYS_SHA256 to "${keysDigest(recordKeys)}".`
+      ? `In the same change, set RECORD_ROWS to ${recordKeys.length} and RECORD_SHA256 to "${recordDigest(recordKeys)}".`
       : "Restore the pinned rows first (see the failure above).";
 
     expect(
