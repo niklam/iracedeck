@@ -160,7 +160,7 @@ Niklas tests in batches, often hours after a lead reports, so everything waiting
 - **Coming to this sheet.** One line per issue still in implementation or being fixed after a failed test, with no steps yet.
 - **Passed.** A passed issue leaves the cards for the Passed line at the foot: the issue and its short sha, with a note where it matters (agent-run, text approved, a follow-up filed as #<n>). A dev-tooling issue's agent-run pass goes only there; its part that he sees or hears, if any, gets a card.
 
-Republish on every `ready-to-test`, head change, integration-build change, verdict and merge, so the page never shows a sha or a build he is not testing. In your "For you" list, a test request names the card numbers and links the sheet instead of repeating the steps.
+Republish on every `ready-to-test`, head change, integration-build change, verdict and merge, so the page never shows a sha or a build he is not testing. A card's *Head* is always the sha its build merged: a lead's new head after that build moves the card to the next build, under its new sha, rather than changing the sha on a card he is testing now. In your "For you" list, a test request names the card numbers and links the sheet instead of repeating the steps.
 
 Nothing on the sheet is authoritative: it is a view for Niklas, not the state you keep. The verdict is recorded on the issue (Integration build, step 5), and a resume reads the issues and the leads, then rebuilds the sheet from them.
 
