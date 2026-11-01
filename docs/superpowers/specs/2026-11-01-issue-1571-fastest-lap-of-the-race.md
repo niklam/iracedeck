@@ -170,13 +170,13 @@ The grace is one exported predicate in `lap-announcement.ts`, `fastestLapAnnounc
 
 Each car's own count rather than the leader's, because the noise the grace exists to stop is the field's opening laps lowering the record one car after another. Counted on the leader, the moment the leader starts lap 3 every car still finishing its own lap 2 behind could lower the record once more, and each would be a call. Counted per car, those laps are inside every car's own grace. A car's count can never exceed the leader's, so this grace is at least as long as the leader's for every car and only longer for cars behind. It applies to the player too: on the player's lap 1 or 2, a fastest lap is spoken by #555 as a best lap (decision 7).
 
-### 6. The time readout reuses #555's four pools exactly
+### 6. The time readout is #1163's compact form, to the tenth
 
-The readout is #555's: `splitLapTime` (`lap-time.ts:78`) rounds once to the tenth, the minute from `lap-time-minute` ("one minute", omitted under a minute, behind `fastestLap.hasMinuteComponent`), the seconds from `lap-time-second`, and the tenth from `lap-time-decimal` ("point four seconds.", which ends the sentence). A lap of eleven minutes or more has no minute clip and aborts, the ceiling #555 has. No number clip is new.
+Decided by Niklas on 2026-11-01 ("Let's do compact clips"): the fastest-lap call reads the time the way a timing screen does, "one twenty-three point four", not #555's "one minute, twenty-three, point four seconds". It rounds once to the tenth, the precision a broadcaster gives a fastest lap. A lap of eleven minutes or more has no minute clip and aborts, the ceiling #555 has.
 
-The split and the four pool references move out of `lap-time.ts` into a shared `catalog/pit-crew/lap-time-readout.ts`, which the `lapTime.*` vars (over the `lap.completed` snapshot) and the `fastestLap.*` vars (over the fire's payload) both call, so the two can never round the same lap differently. #1163's compact thousandths form is a second form in the same module (the #1163 spec, amended).
+The clips are the compact set #1163 adds (the #1163 spec, "The readout", which defines the groups and how each is conditioned). This call uses the minute, the seconds and the phrase-final `point N` tail; #1163 also uses the thousandths tail. Both calls ship in one change, so the set is generated once.
 
-What this means for the wording, stated so it is not a surprise at approval: with these clips the readout is spoken "one minute, twenty-three, point four seconds", not the issue's "one twenty-three point four". The intro lines below are drafted to sit in front of the clips that exist.
+The split and the pool references live in a shared `catalog/pit-crew/lap-time-readout.ts`, which the `lapTime.*` vars (over the `lap.completed` snapshot) and the `fastestLap.*` vars (over the fire's payload) both call, so no two calls round the same lap differently. #555's best-lap call keeps its own full sentence ("one minute, twenty-three, point four seconds"), now also through that module.
 
 New clips, one group `fastest-lap` in each first-party voice. **The wording is a draft and needs Niklas's approval before any clip is generated** (`issue-workflow.md`, step 4). No line carries a hyphen, dash, ellipsis, colon or semicolon (#1518).
 
@@ -184,26 +184,26 @@ Default voice:
 
 | Clip | Text | Spoken with the time, for a 1:23.4 lap |
 | --- | --- | --- |
-| `fastest-lap/yours-01` | That's the fastest lap of the race. | That's the fastest lap of the race. One minute, twenty-three, point four seconds. |
-| `fastest-lap/taken-from-you-01` | just took the fastest lap from you. | Car five just took the fastest lap from you. One minute, twenty-three, point four seconds. |
-| `fastest-lap/leader-01` | The leader just set the fastest lap of the race with a | The leader just set the fastest lap of the race with a one minute, twenty-three, point four seconds. |
-| `fastest-lap/ahead-01` | The car in front of you just set the fastest lap with a | The car in front of you just set the fastest lap with a one minute, twenty-three, point four seconds. Gap is one, point two seconds. |
-| `fastest-lap/behind-01` | The car behind you just set the fastest lap with a | The car behind you just set the fastest lap with a one minute, twenty-three, point four seconds. Gap is one, point two seconds. |
+| `fastest-lap/yours-01` | That's the fastest lap of the race. | That's the fastest lap of the race. One twenty-three point four. |
+| `fastest-lap/taken-from-you-01` | just took the fastest lap from you. | Car five just took the fastest lap from you. One twenty-three point four. |
+| `fastest-lap/leader-01` | The leader just set the fastest lap of the race with a | The leader just set the fastest lap of the race with a one twenty-three point four. |
+| `fastest-lap/ahead-01` | The car in front of you just set the fastest lap with a | The car in front of you just set the fastest lap with a one twenty-three point four. Gap is one, point two seconds. |
+| `fastest-lap/behind-01` | The car behind you just set the fastest lap with a | The car behind you just set the fastest lap with a one twenty-three point four. Gap is one, point two seconds. |
 | `fastest-lap/in-01` | in | Car five in |
-| `fastest-lap/other-01` | just set the fastest lap of the race with a | Car five in pee six. Just set the fastest lap of the race with a one minute, twenty-three, point four seconds. |
+| `fastest-lap/other-01` | just set the fastest lap of the race with a | Car five in pee six. Just set the fastest lap of the race with a one twenty-three point four. |
 
 Short Calls voice (the Terse pack):
 
 | Clip | Text | Spoken with the time |
 | --- | --- | --- |
-| `fastest-lap/yours-01` | Fastest lap, yours. | Fastest lap, yours. One minute, twenty-three, point four seconds. |
-| `fastest-lap/leader-01` | Fastest lap for the leader. | Fastest lap for the leader. One minute, twenty-three, point four seconds. |
-| `fastest-lap/ahead-01` | Fastest lap for the car ahead. | Fastest lap for the car ahead. One minute, twenty-three, point four seconds. Gap is one, point two seconds. |
-| `fastest-lap/behind-01` | Fastest lap for the car behind. | Fastest lap for the car behind. One minute, twenty-three, point four seconds. Gap is one, point two seconds. |
-| `fastest-lap/for-01` | Fastest lap for | Fastest lap for car five. One minute, twenty-three, point four seconds. |
-| `fastest-lap/lost-to-01` | Fastest lap lost to | Fastest lap lost to car five. One minute, twenty-three, point four seconds. |
+| `fastest-lap/yours-01` | Fastest lap, yours. | Fastest lap, yours. One twenty-three point four. |
+| `fastest-lap/leader-01` | Fastest lap for the leader. | Fastest lap for the leader. One twenty-three point four. |
+| `fastest-lap/ahead-01` | Fastest lap for the car ahead. | Fastest lap for the car ahead. One twenty-three point four. Gap is one, point two seconds. |
+| `fastest-lap/behind-01` | Fastest lap for the car behind. | Fastest lap for the car behind. One twenty-three point four. Gap is one, point two seconds. |
+| `fastest-lap/for-01` | Fastest lap for | Fastest lap for car five. One twenty-three point four. |
+| `fastest-lap/lost-to-01` | Fastest lap lost to | Fastest lap lost to car five. One twenty-three point four. |
 
-The Short Calls script maps `other` to `["pool:fastest-lap/for", "{{fastestLap.carNumber}}"]` and `taken-from-you` to `["pool:fastest-lap/lost-to", "{{fastestLap.carNumber}}"]`. Both voices' car numbers come from their own `car-number` group and the default voice's position from `position-number` ("pee six.", the clip `opponent-pit/is-pitting` already follows, so the splice after it has a precedent). Each intro that leads into the minute carries `next_request_ids` on `lap-time-minute/1`, and each tail after a car number `previous_request_ids` on `car-number/42`, as the opponent-flag tails do.
+The Short Calls script maps `other` to `["pool:fastest-lap/for", "{{fastestLap.carNumber}}"]` and `taken-from-you` to `["pool:fastest-lap/lost-to", "{{fastestLap.carNumber}}"]`. Both voices' car numbers come from their own `car-number` group and the default voice's position from `position-number` ("pee six.", the clip `opponent-pit/is-pitting` already follows, so the splice after it has a precedent). Each intro that leads into the time is generated with a `next_text` of a sample time ("one twenty-three point four"), so it ends on a rising, continuing note rather than a sentence-final fall; each tail after a car number keeps `previous_request_ids` on `car-number/42`, as the opponent-flag tails do. The gap clause keeps the gap readout's own clips.
 
 ### 7. Exactly one of the three lap-time callouts speaks for the player's lap
 
@@ -281,7 +281,7 @@ No `default`, so it ships on: new Race Engineer functionality defaults on. It is
 - A personal-best call for other drivers (the issue's Goal excludes it).
 - The delta to the record ("two tenths off the fastest lap"), and announcing the record holder on demand from a key.
 - Team racing: the record is the car's, whoever drove the lap.
-- A compact readout ("one twenty-three point four") for this callout; it reuses #555's clips by decision, and changing that is a separate change to the shared readout.
+- Changing #555's best-lap readout to the compact form; it keeps its full sentence.
 - The website's Race Engineer page and the changelog fragment are part of the issue, not of this design.
 
 ## Testing
