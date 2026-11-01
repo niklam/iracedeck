@@ -204,10 +204,11 @@ describe("startStreamDeck", () => {
     expect(output(log)).not.toContain("Started");
   });
 
-  it("does not start a Stream Deck that is already running, and says it holds its old plugins", async () => {
+  // A start's job is Stream Deck on the current plugin: `integration-build --restart` reads 0 as that.
+  it("exits 1 for a Stream Deck that is already running, and says it holds its old plugins", async () => {
     const { pending, calls, log } = start({ lists: [RUNNING] });
 
-    expect(await pending).toBe(0);
+    expect(await pending).toBe(1);
     expect(calls).toEqual(["powershell.exe"]);
     expect(output(log)).toContain("already running (pid 4242)");
     expect(output(log)).toContain("pnpm stop:stream-deck");

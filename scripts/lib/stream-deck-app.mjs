@@ -88,11 +88,15 @@ export async function stopStreamDeck({ spawnSync, platform = process.platform, s
  *
  * A running Stream Deck is not started again: it is the one instance there can
  * be, and saying "Started" would claim a fresh load of the plugin that never
- * happened. When whether it runs cannot be told, it is started anyway — a
- * launch over a running instance only brings that one forward.
+ * happened. That is a failure, not a success, because a start's job is a
+ * Stream Deck on the current plugin: `integration-build.mjs --restart` reads
+ * exit 0 as "came up on the new build", so one started by hand between its
+ * stop and its start would otherwise pass unreported. When whether it runs
+ * cannot be told, it is started anyway — a launch over a running instance
+ * only brings that one forward.
  *
- * @returns {Promise<number>} 0 when Stream Deck was started or already runs,
- *   1 when its executable is missing or could not be started.
+ * @returns {Promise<number>} 0 when Stream Deck was started, 1 when it was
+ *   already running, or its executable is missing or could not be started.
  */
 export async function startStreamDeck({
   spawn,
@@ -124,10 +128,12 @@ export async function startStreamDeck({
   const found = findRunning(image, { spawnSync });
 
   if (found.state === "running") {
-    log.log(`${label} is already running (pid ${pids(found.processes)}) — not started again.`);
-    log.log(`  It loaded its plugins when it started: stop it first (\`pnpm stop:stream-deck\`) to load a new build.`);
+    log.error(`Error: ${label} is already running (pid ${pids(found.processes)}), so it was not started again.`);
+    log.error(
+      `  It loaded its plugins when it started: stop it first (\`pnpm stop:stream-deck\`) to load a new build.`,
+    );
 
-    return 0;
+    return 1;
   }
 
   if (found.state === "unknown") {
