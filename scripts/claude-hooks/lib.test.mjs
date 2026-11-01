@@ -464,7 +464,9 @@ describe("the board's Next lane and positions", () => {
     15: "In progress",
     16: "Planned",
     17: "Dropped",
+    18: null, // on the board with no Status set
   };
+  const json = (o) => ({ status: 0, stdout: JSON.stringify(o), stderr: "" });
   const calls = () => vi.mocked(spawnSync).mock.calls.map(([, args]) => args);
   const mutations = () => calls().filter((a) => a.some((x) => /mutation|item-edit/.test(x)));
   let mutationOk;
@@ -473,7 +475,6 @@ describe("the board's Next lane and positions", () => {
     vi.mocked(spawnSync)
       .mockClear()
       .mockImplementation((cmd, args) => {
-        const json = (o) => ({ status: 0, stdout: JSON.stringify(o), stderr: "" });
         if (args[0] === "project" && args[1] === "view") return json({ id: "PVT_board" });
         const q = args.find((a) => a.startsWith("query=")) ?? "";
         if (/updateProjectV2ItemPosition/.test(q))
@@ -482,7 +483,7 @@ describe("the board's Next lane and positions", () => {
             : { status: 1, stdout: "", stderr: "HTTP 403" };
         const n = Number(args.find((a) => a.startsWith("n="))?.slice(2));
         if (!(n in lanes)) return json({ data: { repository: { issue: { projectItems: { nodes: [] } } } } });
-        const node = { id: `PVTI_${n}`, project: { number: 1 }, fieldValueByName: { name: lanes[n] } };
+        const node = { id: `PVTI_${n}`, project: { number: 1 }, fieldValueByName: lanes[n] && { name: lanes[n] } };
         return json({ data: { repository: { issue: { projectItems: { nodes: [node] } } } } });
       });
   });
@@ -513,10 +514,11 @@ describe("the board's Next lane and positions", () => {
 
   // #1574: Niklas decides what is Planned and an agent carries it out, never
   // pulling a card back into Planned from Next or later.
-  it("lets a card into Planned from Backlog only, never back from Next or later", () => {
+  it("lets a card into Planned from Backlog or no lane only, never back from Next or later", () => {
     expect(BOARD_MOVES.Planned).toEqual(["(none)", "Backlog"]);
     vi.stubEnv("IRACEDECK_HOOKS_DRY_RUN", "1");
     expect(setBoardStatus(10, "Planned", root)).toBe("board (dry run): would move #10 Backlog → Planned");
+    expect(setBoardStatus(18, "Planned", root)).toBe("board (dry run): would move #18 (none) → Planned");
     for (const n of [11, 13, 14, 15, 17])
       expect(setBoardStatus(n, "Planned", root)).toMatch(/not moving it to Planned \(only from \(none\)\/Backlog\)/);
     expect(setBoardStatus(16, "Planned", root)).toBe("board: #16 already in Planned");
@@ -524,9 +526,9 @@ describe("the board's Next lane and positions", () => {
   });
 
   it("moves a Backlog card into Planned through the Planned option, outside dry run", () => {
+    vi.stubEnv("IRACEDECK_HOOKS_DRY_RUN", "");
     const fake = vi.mocked(spawnSync).getMockImplementation();
     vi.mocked(spawnSync).mockImplementation((cmd, args) => {
-      const json = (o) => ({ status: 0, stdout: JSON.stringify(o), stderr: "" });
       if (args[0] === "project" && args[1] === "field-list") {
         const options = ["Backlog", "Planned", "Next"].map((name) => ({ id: `opt_${name}`, name }));
         return json({ fields: [{ id: "PVTSSF_status", name: "Status", options }] });

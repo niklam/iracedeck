@@ -559,7 +559,7 @@ export function boardItemForIssue(issueNumber, cwd) {
  * Lanes a card may be moved FROM for each automated move — never backwards (a
  * Done card stays Done). `Planned` is what a release contains, and deciding
  * that stays Niklas's: an agent moves a card there only on his word in the
- * conversation (#1574), and only from Backlog, never back from `Next` or work
+ * conversation (#1574), and only from Backlog or no lane, never back from `Next` or work
  * that has started. `Next` is the PO's (#1520): it orders the milestone
  * Niklas planned, so a card enters from Backlog or Planned, never back from
  * work that has started. `Dropped` is for an issue closed as not planned or a
