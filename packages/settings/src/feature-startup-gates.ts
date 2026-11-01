@@ -37,7 +37,7 @@ function readPolicy(settings: Record<string, unknown>, key: string): FeatureStar
  * pure no-op and cannot churn the settings store on every start.
  */
 export function applyStartupFeatureGates(logger?: ILogger): void {
-  const settings = getGlobalSettings() as unknown as Record<string, unknown>;
+  const settings = getGlobalSettings();
   const writes: Record<string, unknown> = {};
 
   for (const gate of FEATURE_STARTUP_GATES) {
@@ -78,7 +78,7 @@ export function applyStartupFeatureGates(logger?: ILogger): void {
  * defaulted one and `deleteGlobalSettings` could not remove it.
  */
 export function migrateStartupPolicies(logger?: ILogger): void {
-  const settings = getGlobalSettings() as unknown as Record<string, unknown>;
+  const settings = getGlobalSettings();
   const writes: Record<string, unknown> = {};
   const deletes: string[] = [];
 

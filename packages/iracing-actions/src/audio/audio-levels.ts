@@ -24,7 +24,7 @@ export const VOLUME_MAX = 100;
  * volume rather than silently; rounds and clamps to the valid range.
  */
 function readVolume(key: string): number {
-  const raw = (getGlobalSettings() as Record<string, unknown>)[key];
+  const raw = getGlobalSettings()[key];
   const n = typeof raw === "number" ? raw : typeof raw === "string" ? Number(raw) : VOLUME_MAX;
 
   if (!Number.isFinite(n)) return VOLUME_MAX;

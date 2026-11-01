@@ -1,4 +1,5 @@
 import type { PiWarning } from "@iracedeck/app-constants";
+import { GlobalSettingsSchema } from "@iracedeck/settings";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { callLog, implement, resetRecorder, stub } from "../../test-support/recorder.js";
@@ -37,7 +38,7 @@ describe("the settings phase's listeners (#1377)", () => {
     it("runs today's sequence on every arrival", () => {
       const listener = listen();
 
-      listener({});
+      listener(GlobalSettingsSchema.parse({}));
 
       expect(callLog).toEqual([
         "audioDevices.seedOnFirstArrival",
@@ -60,8 +61,8 @@ describe("the settings phase's listeners (#1377)", () => {
       implement("audioDevices.applySaved", (value) => saved.push(value));
       const listener = listen();
 
-      listener({ audioOutputDevice: "0a0b" });
-      listener({});
+      listener(GlobalSettingsSchema.parse({ audioOutputDevice: "0a0b" }));
+      listener(GlobalSettingsSchema.parse({}));
 
       expect(banners).toEqual([
         ["native-addon-iracing", "error", "iracing"],
@@ -73,7 +74,7 @@ describe("the settings phase's listeners (#1377)", () => {
     });
 
     it("sets no banner when every addon loaded", () => {
-      listen([])({});
+      listen([])(GlobalSettingsSchema.parse({}));
 
       expect(callLog).not.toContain("setWarning");
       // Positive control: the tail still ran.

@@ -79,7 +79,7 @@ export function migrateLfeIntensityModes(raw: unknown): {
  * one-shot block (the same spot as the #515/#657 key cleanups).
  */
 export function migrateLfeIntensityBindingKeys(): void {
-  const settings = getGlobalSettings() as Record<string, unknown>;
+  const settings = getGlobalSettings();
   const carryOver: Record<string, unknown> = {};
   const retiredPresent: string[] = [];
 

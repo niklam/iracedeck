@@ -427,8 +427,8 @@ For cases where the binding dispatcher is not suitable:
 import { parseBinding } from "@iracedeck/deck-core";
 import { getGlobalSettings, isSimHubBinding } from "@iracedeck/settings";
 
-const globalSettings = getGlobalSettings() as Record<string, unknown>;
-const binding = parseBinding(globalSettings["blackBoxLapTiming"]);
+// Typed read: an undeclared key reads as unknown, and lint refuses a cast on the call (#1376)
+const binding = parseBinding(getGlobalSettings().blackBoxLapTiming);
 // binding is KeyBindingValue | SimHubBindingValue | undefined
 ```
 

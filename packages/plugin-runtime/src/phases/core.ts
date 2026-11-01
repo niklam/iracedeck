@@ -94,7 +94,7 @@ export function initCore(host: PluginHost): Core {
   // patterns default → valid → no banner); the host echo re-fires the listener
   // with persisted values once global settings load.
   const applySetupWarningValidation = (): void => {
-    validateSetupWarningPatterns(getGlobalSettings() as Record<string, unknown>);
+    validateSetupWarningPatterns(getGlobalSettings());
   };
   onGlobalSettingsChange(applySetupWarningValidation);
   applySetupWarningValidation();

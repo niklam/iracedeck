@@ -998,5 +998,35 @@
     "\"false\"": false,
     "\"x\"": false,
     "numberRejected": true
+  },
+  "calloutEnabledRollingStartLineupChanged": {
+    "owner": "rolling-start/lineup-changed",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledCautionCatchUp": {
+    "owner": "caution/catch-up",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
+  },
+  "calloutEnabledCautionCatchUpReminder": {
+    "owner": "caution/catch-up-reminder",
+    "default": true,
+    "true": true,
+    "\"true\"": true,
+    "false": false,
+    "\"false\"": false,
+    "\"x\"": false,
+    "numberRejected": true
   }
 }

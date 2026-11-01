@@ -81,7 +81,7 @@ export function buildVoicePackInstaller(
     // value is validated where it is used, never in the schema — a malformed one
     // must cost this feature alone rather than stalling the whole settings parse.
     getDevBaseUrl: () => {
-      const raw = (getGlobalSettings() as Record<string, unknown>)[VOICE_PACK_DEV_BASE_URL_KEY];
+      const raw = getGlobalSettings()[VOICE_PACK_DEV_BASE_URL_KEY];
 
       return typeof raw === "string" ? raw : undefined;
     },

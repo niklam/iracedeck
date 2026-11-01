@@ -82,7 +82,6 @@ export function createStartupNotices({ core, logger }: StartupNoticesDeps): Star
     if (!open) return;
 
     const settings = getGlobalSettings();
-    const s = settings as Record<string, unknown>;
 
     // Reads the last-seen version from the passthrough `_lastSeenVersion` key
     // and persists the running version. No-op for pre-release builds and
@@ -103,9 +102,9 @@ export function createStartupNotices({ core, logger }: StartupNoticesDeps): Star
     if (
       await runFirstRunCheck({
         currentVersion: getPluginVersion(),
-        firstRunVersion: s[FIRST_RUN_VERSION_KEY],
-        lastSeenVersion: s._lastSeenVersion,
-        migrationPending: s[MIGRATION_PENDING_KEY],
+        firstRunVersion: settings[FIRST_RUN_VERSION_KEY],
+        lastSeenVersion: settings._lastSeenVersion,
+        migrationPending: settings[MIGRATION_PENDING_KEY],
         isSimRunning: isIRacingActive,
         persist: (partial) => updateGlobalSettings(partial),
         openGettingStarted: () => open({ pane: GETTING_STARTED_PANE }),
@@ -117,9 +116,9 @@ export function createStartupNotices({ core, logger }: StartupNoticesDeps): Star
 
     await runVersionCheck({
       currentVersion: getPluginVersion(),
-      lastSeenVersion: typeof s._lastSeenVersion === "string" ? s._lastSeenVersion : undefined,
+      lastSeenVersion: typeof settings._lastSeenVersion === "string" ? settings._lastSeenVersion : undefined,
       policy: settings.changelogNotification,
-      lastOpenedAt: typeof s._lastChangelogOpenedAt === "number" ? s._lastChangelogOpenedAt : undefined,
+      lastOpenedAt: typeof settings._lastChangelogOpenedAt === "number" ? settings._lastChangelogOpenedAt : undefined,
       ecosystem: getPluginPlatform(),
       deviceType: core.host.extension?.getConnectedDeviceType(),
       isSimRunning: isIRacingActive,
@@ -144,7 +143,7 @@ export function createStartupNotices({ core, logger }: StartupNoticesDeps): Star
     // build) every later sim exit would otherwise re-run a dead check and log
     // "Version up to date" for the whole process lifetime.
     onSimExited() {
-      const s = getGlobalSettings() as Record<string, unknown>;
+      const s = getGlobalSettings();
       const lastSeen = typeof s._lastSeenVersion === "string" ? s._lastSeenVersion : undefined;
 
       // Also re-run while the Getting Started page is still unresolved (#1061):

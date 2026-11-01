@@ -5,7 +5,7 @@
  * every producer owes again within a run.
  */
 import type { PiWarning } from "@iracedeck/app-constants";
-import { migrateRaceEngineerVoiceId, setWarning } from "@iracedeck/settings";
+import { type GlobalSettings, migrateRaceEngineerVoiceId, setWarning } from "@iracedeck/settings";
 
 import type { VoicePacks } from "../../types.js";
 import type { AudioDeviceSync } from "./audio-devices.js";
@@ -32,10 +32,8 @@ export function createSettingsListener({
   storeReady,
   voicePacks,
   nativeAddonWarnings,
-}: SettingsListenerDeps): (settings: unknown) => void {
+}: SettingsListenerDeps): (settings: GlobalSettings) => void {
   return (settings) => {
-    const s = settings as Record<string, unknown>;
-
     audioDevices.seedOnFirstArrival();
     storeReady.runIfReady();
 
@@ -52,7 +50,7 @@ export function createSettingsListener({
     // native or mock load raises nothing and clears nothing.
     for (const warning of nativeAddonWarnings) setWarning(warning.id, warning.level, warning.message);
 
-    audioDevices.applySaved(s.audioOutputDevice);
+    audioDevices.applySaved(settings.audioOutputDevice);
   };
 }
 

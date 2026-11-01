@@ -97,7 +97,7 @@ export { BUSY_MARK_FRAMES, BUSY_NOT_DONE_COLOR, busyMarkSvg, type BusyMark } fro
  * Keys are flat with a `title` prefix (e.g., `titleFontSize`, `titleBold`).
  */
 export function getGlobalTitleSettings(): GlobalTitleSettings {
-  const settings = getGlobalSettings() as Record<string, unknown>;
+  const settings = getGlobalSettings();
   const result: GlobalTitleSettings = {};
 
   const bool = (key: string): boolean | undefined => {
@@ -186,7 +186,7 @@ export function getGlobalTitleSettings(): GlobalTitleSettings {
  * Keys are flat with a `border` prefix (e.g., `borderEnabled`, `borderWidth`).
  */
 export function getGlobalBorderSettings(): GlobalBorderSettings {
-  const settings = getGlobalSettings() as Record<string, unknown>;
+  const settings = getGlobalSettings();
   const result: GlobalBorderSettings = {};
 
   const bool = (key: string): boolean | undefined => {
@@ -266,7 +266,7 @@ export function getGlobalBorderSettings(): GlobalBorderSettings {
  * Key: `graphicScale` (flat, no prefix).
  */
 export function getGlobalGraphicSettings(): GlobalGraphicSettings {
-  const settings = getGlobalSettings() as Record<string, unknown>;
+  const settings = getGlobalSettings();
   const result: GlobalGraphicSettings = {};
 
   const val = settings["graphicScale"];

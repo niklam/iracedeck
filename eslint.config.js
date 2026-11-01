@@ -16,6 +16,14 @@ const SIM_PACKAGES = [
 const SHELL_SIM_MESSAGE =
   'A plugin shell must not depend on a simulator: read the sim through PluginExtensionContext.sim, which plugin-runtime hands PluginExtension.start (#1500).';
 
+// Repo-wide (#1208); spread into every block that sets no-restricted-syntax, since a
+// later block's options replace an earlier one's rather than merging with them.
+const NO_LEGACY_SETTINGS_BEHAVIOR = {
+  selector: "MemberExpression[property.name='useLegacySettingsBehavior']",
+  message:
+    'Leave the Elgato SDK on its default settings behaviour: the adapter answers getGlobalSettings() from the promise, and the legacy flag would deliver the reply twice (#1208).',
+};
+
 export default [
   eslint.configs.recommended,
   {
@@ -69,13 +77,52 @@ export default [
     // handing `@iracedeck/settings`' one-time host migration the answer twice.
     files: ['**/*.ts'],
     rules: {
+      'no-restricted-syntax': ['error', NO_LEGACY_SETTINGS_BEHAVIOR],
+    },
+  },
+  {
+    // `getGlobalSettings()` returns the typed `GlobalSettings`, whose passthrough
+    // index signature already admits an undeclared key (#1376). An assertion on
+    // the call hides a renamed or removed key from the compiler, so read the
+    // typed value instead. Tests may shape their mocks as they like.
+    //
+    // A listener handed to `onGlobalSettingsChange` receives the same typed
+    // settings, so a cast of its argument hides a key just as surely — the
+    // shape #1376 removed from plugin-runtime's settings-window phase and the
+    // scenario harness. esquery cannot tie an assertion's operand to the
+    // listener's first parameter, so the second selector refuses an `as` or
+    // `<T>` assertion on any bare identifier inside a function that takes a
+    // parameter and is passed straight to `onGlobalSettingsChange(…)` or
+    // `<deps>.onGlobalSettingsChange(…)` (a listener with none has no argument to cast);
+    // a cast of a value read from the settings (`s.key as T`) passes, as it
+    // does on the call. The reach is wider than the argument: a cast of any
+    // other identifier inside such a listener is refused too, and is written
+    // outside the listener instead. Deliberately not covered: the settings held in a
+    // variable first (`const s = getGlobalSettings(); s as …`), because a
+    // selector sees syntax, not what a variable holds, and a listener passed
+    // by name, whose parameter is typed where it is declared. Nor is widening
+    // the compiler accepts without a cast (a `Record<string, unknown>`
+    // parameter or annotation), so this is a guard on the common shape, not a
+    // complete one.
+    // scripts/global-settings-cast-lint.test.mjs proves both selectors fire.
+    files: ['packages/*/src/**/*.ts'],
+    ignores: ['packages/*/src/**/*.test.ts'],
+    rules: {
       'no-restricted-syntax': [
         'error',
-        {
-          selector: "MemberExpression[property.name='useLegacySettingsBehavior']",
+        NO_LEGACY_SETTINGS_BEHAVIOR,
+        ...['TSAsExpression', 'TSTypeAssertion'].map((node) => ({
+          selector: `${node} > CallExpression.expression[callee.name='getGlobalSettings']`,
           message:
-            'Leave the Elgato SDK on its default settings behaviour: the adapter answers getGlobalSettings() from the promise, and the legacy flag would deliver the reply twice (#1208).',
-        },
+            'Read getGlobalSettings() as its typed GlobalSettings: an assertion hides a renamed or removed key from the compiler, and an undeclared passthrough key already reads as unknown (#1376).',
+        })),
+        ...['TSAsExpression', 'TSTypeAssertion'].map((node) => ({
+          selector:
+            "CallExpression:matches([callee.name='onGlobalSettingsChange'], [callee.property.name='onGlobalSettingsChange'])" +
+            ` > :function[params.length>0].arguments ${node} > Identifier.expression`,
+          message:
+            "No assertion on a bare identifier inside an onGlobalSettingsChange listener: read the listener's argument as its typed GlobalSettings (a cast hides a renamed or removed key from the compiler, and an undeclared passthrough key already reads as unknown), and cast any other value outside the listener (#1376).",
+        })),
       ],
     },
   },

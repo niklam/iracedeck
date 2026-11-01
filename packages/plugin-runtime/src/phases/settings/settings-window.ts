@@ -95,20 +95,20 @@ export function initSettingsWindow({ core, store, voicePacks }: SettingsWindowDe
     assetsDir: join(core.binDir, "..", "ui"),
     pageFile: SETTINGS_WINDOW_HTML,
     settingsHost: {
-      read: () => getGlobalSettings() as Record<string, unknown>,
+      read: () => getGlobalSettings(),
       write: (partial) => updateGlobalSettings(partial),
-      subscribe: (listener) => onGlobalSettingsChange((s) => listener(s as Record<string, unknown>)),
+      // Wrapped so each subscription is its own entry in the listener set.
+      subscribe: (listener) => onGlobalSettingsChange((s) => listener(s)),
     },
     findBrowser: findChromiumBrowserOnThisMachine,
     spawnApp: spawnAppWindow,
     openUrl: (url) => core.adapter.openUrl(url),
     // Reopen where the user left it (the page reports bounds on resize).
-    getWindowBounds: () =>
-      parseSettingsWindowBounds((getGlobalSettings() as Record<string, unknown>)[SETTINGS_WINDOW_BOUNDS_KEY]),
+    getWindowBounds: () => parseSettingsWindowBounds(getGlobalSettings()[SETTINGS_WINDOW_BOUNDS_KEY]),
     onSendToPlugin: createSettingsWindowCommandHandler({
       writeSettings: (partial) => updateGlobalSettings(partial),
       // The Getting Started focus opt-in refuses to escalate a mode already on (#977).
-      readSettings: () => getGlobalSettings() as Record<string, unknown>,
+      readSettings: () => getGlobalSettings(),
       // The window's Race Engineer Test buttons — same runner as the Pit Crew action.
       previewAudio: (kind) => {
         if (isAudioPreviewKind(kind)) runAudioPreview(kind, core.adapter.createLogger("AudioPreview"));

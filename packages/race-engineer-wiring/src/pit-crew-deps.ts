@@ -150,17 +150,15 @@ export function buildPitCrewDeps(
     getSetupWarningMismatch: (kind) => evaluateSetupWarning(kind, getGlobalSettings(), sim.getDriverSetupName()),
     getSpotterTrackDirection: () => SPOTTER_TRACK_DIRECTION[sim.getTrackDirection()],
     getSpotterStillThereIntervalMs: () =>
-      resolveStillThereIntervalMs((getGlobalSettings() as Record<string, unknown>)[SPOTTER_STILL_THERE_SECONDS_KEY]),
+      resolveStillThereIntervalMs(getGlobalSettings()[SPOTTER_STILL_THERE_SECONDS_KEY]),
     getSpotterNearestCarGapMeters: () => sim.getNearestCarGapMeters(),
     getCornerNameSnapshot: () => caches.cornerName(),
     getOpponentPitLivePosition: resolvePendingCarLivePosition,
-    getGapCooldownMs: () =>
-      resolveGapCooldownMs((getGlobalSettings() as Record<string, unknown>).gapCalloutCooldownSeconds),
+    getGapCooldownMs: () => resolveGapCooldownMs(getGlobalSettings().gapCalloutCooldownSeconds),
     getLiveGaps: () => sim.getLiveGaps(),
     getOpponentFlagLivePosition: resolvePendingCarLivePosition,
-    getRaceEngineerMasterEnabled: () =>
-      (getGlobalSettings() as Record<string, unknown>).pitCrewRaceEngineerEnabled === true,
-    getRadarMasterEnabled: () => (getGlobalSettings() as Record<string, unknown>).pitCrewRadarEnabled === true,
+    getRaceEngineerMasterEnabled: () => getGlobalSettings().pitCrewRaceEngineerEnabled === true,
+    getRadarMasterEnabled: () => getGlobalSettings().pitCrewRadarEnabled === true,
     // The four reads the catalog used to take from the translator module
     // (#1378): raw telemetry, the session type name, the standing-start grid
     // and the debounced repair need, each passed through so the catalog reads

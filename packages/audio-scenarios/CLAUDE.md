@@ -268,8 +268,8 @@ that voice, the whole catalog registers against the real manifest with no
 warning and no error (the family tests use hand-built manifests, which is how
 a family once shipped mute — the #1051 lesson), and `setScripts` compiles
 with nothing skipped and nothing warned. Since #1065 it holds the WHOLE
-catalog: its vacuity floor is `CATALOG_FLOOR` contracts (149 when the catalog
-closed — bump it when a callout is added) and exactly zero legacy scenarios,
+catalog: its vacuity floor is `CATALOG_FLOOR` contracts (168 since #1376 — raise
+it to the new count in the same change that adds a contract) and exactly zero legacy scenarios,
 read off the `defineScenario` spy rather than the enumeration — which lists a
 legacy scenario beside the contracts — so a family re-added in the legacy
 shape cannot slip past the script checks by speaking from code. Its companion

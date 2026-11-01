@@ -63,6 +63,8 @@ export {
   type SimEventsIracingOptions,
 } from "./translator.js";
 export {
+  GAP_ALERT_THRESHOLD_MAX_S,
+  GAP_ALERT_THRESHOLD_MIN_S,
   GAP_BREAKAWAY_MAX_GAP_S,
   GAP_BREAKAWAY_MIN_RATE_S_PER_LAP,
   GAP_CHECKPOINT_STEP,
@@ -73,6 +75,8 @@ export {
   sanitizeGapMinChangeSeconds,
   GAP_DEFAULT_MIN_CHANGE_S,
   GAP_DISPLAY_TREND_DEADBAND_S,
+  GAP_MIN_CHANGE_MAX_S,
+  GAP_MIN_CHANGE_MIN_S,
   GAP_THRESHOLD_HYSTERESIS_S,
 } from "./diff/gaps.js";
 export {

@@ -40,7 +40,7 @@ export function buildVoicePackLaunch(scan: LaunchScanView, installer: VoicePackI
     // never install or update it over that root's own copy (#1143).
     isProvidedByDevRoot: (id) => service.isProvidedByDevRoot(id),
     ...(devVoicePacksRoot === undefined ? {} : { devRoot: devVoicePacksRoot }),
-    isRaceEngineerEnabled: () => (getGlobalSettings() as Record<string, unknown>).pitCrewRaceEngineerEnabled === true,
+    isRaceEngineerEnabled: () => getGlobalSettings().pitCrewRaceEngineerEnabled === true,
     // The step watches the Race Engineer gate itself and re-runs the ensure on
     // the false→true edge — the moment a missing or stale voice starts to matter.
     onSettingsChange: onGlobalSettingsChange,
