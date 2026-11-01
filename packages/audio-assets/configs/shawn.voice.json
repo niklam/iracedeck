@@ -24744,7 +24744,7 @@
     "lap-time-thousandths": [
       {
         "name": "000",
-        "text": "point oh",
+        "text": "point zero",
         "previous_request_ids": [
           "lap-time-second/23"
         ]
@@ -31746,79 +31746,89 @@
     "lap-time-tenths": [
       {
         "name": "0",
-        "text": "point oh.",
+        "text": "point zero.",
         "previous_request_ids": [
           "lap-time-second/23"
-        ]
+        ],
+        "seed": 4
       },
       {
         "name": "1",
         "text": "point one.",
         "previous_request_ids": [
           "lap-time-second/23"
-        ]
+        ],
+        "seed": 4
       },
       {
         "name": "2",
         "text": "point two.",
         "previous_request_ids": [
           "lap-time-second/23"
-        ]
+        ],
+        "seed": 4
       },
       {
         "name": "3",
         "text": "point three.",
         "previous_request_ids": [
           "lap-time-second/23"
-        ]
+        ],
+        "seed": 4
       },
       {
         "name": "4",
         "text": "point four.",
         "previous_request_ids": [
           "lap-time-second/23"
-        ]
+        ],
+        "seed": 4
       },
       {
         "name": "5",
         "text": "point five.",
         "previous_request_ids": [
           "lap-time-second/23"
-        ]
+        ],
+        "seed": 4
       },
       {
         "name": "6",
         "text": "point six.",
         "previous_request_ids": [
           "lap-time-second/23"
-        ]
+        ],
+        "seed": 4
       },
       {
         "name": "7",
         "text": "point seven.",
         "previous_request_ids": [
           "lap-time-second/23"
-        ]
+        ],
+        "seed": 6
       },
       {
         "name": "8",
         "text": "point eight.",
         "previous_request_ids": [
           "lap-time-second/23"
-        ]
+        ],
+        "seed": 4
       },
       {
         "name": "9",
         "text": "point nine.",
         "previous_request_ids": [
           "lap-time-second/23"
-        ]
+        ],
+        "seed": 5
       }
     ],
     "fastest-lap": [
       {
         "name": "yours",
-        "text": "Fastest lap, yours.",
+        "text": "Fastest lap for you.",
         "previous_request_ids": [
           "lap-time-intro/best-lap-yet"
         ]
