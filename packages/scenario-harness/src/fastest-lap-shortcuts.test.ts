@@ -88,6 +88,22 @@ describe("Fastest Lap shortcuts", () => {
     expect(owner("Yours")).toBe("fastest-lap");
     expect(owner("Yours in the grace")).toBe("best-lap");
   });
+
+  it("keeps every opponent button playable after any harness lap: its lap count is past every lap.completed the harness publishes", () => {
+    // The fastest-lap speak gate drops a call once a lap.completed past its
+    // `playerLapsCompleted` has fired (`lapStillCurrent`), so a button pressed
+    // after a lap button with a higher lap would play nothing.
+    const publishedLaps = SCENARIO_SHORTCUTS.flatMap((s) => [s as unknown as Published, ...preceding(s)])
+      .filter((p) => p.event === "lap.completed")
+      .map((p) => p.data.lap as number);
+    const highestLap = Math.max(...publishedLaps);
+
+    expect(highestLap).toBeGreaterThanOrEqual(6);
+
+    for (const label of ["Taken from you", "Leader", "Car ahead", "Car behind", "Other car"]) {
+      expect(data(fastest(label)).playerLapsCompleted, label).toBeGreaterThanOrEqual(highestLap);
+    }
+  });
 });
 
 describe("Every lap shortcuts", () => {

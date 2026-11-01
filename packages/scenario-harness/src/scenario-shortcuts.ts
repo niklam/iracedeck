@@ -2345,6 +2345,15 @@ const CAUTION_CATCH_UP_SHORTCUT: TelemetrySequenceShortcut = {
 const FASTEST_LAP_TIME = 83.4;
 
 /**
+ * The player's completed-lap count on a remote car's record. The fastest-lap
+ * speak gate drops a call once a `lap.completed` past this count has fired,
+ * and the harness's other lap buttons publish laps up to 6, so a remote
+ * record carries a count no harness lap reaches: pressed after any of them,
+ * it still plays. The player's own records carry their own lap instead.
+ */
+const HARNESS_PLAYER_LAPS_COMPLETED = 99;
+
+/**
  * One Fastest Lap shortcut (issue #1571): a `fastestLap.set` in a race, the
  * positions in the payload selecting the holder key through the speak-time
  * fallback (the harness has no live read to override them).
@@ -2362,7 +2371,12 @@ function fastestLapShortcut(
     label,
     description,
     event: "fastestLap.set",
-    data: { lapTime: FASTEST_LAP_TIME, playerLapsCompleted: 5, isMultiClass: false, ...data },
+    data: {
+      lapTime: FASTEST_LAP_TIME,
+      playerLapsCompleted: HARNESS_PLAYER_LAPS_COMPLETED,
+      isMultiClass: false,
+      ...data,
+    },
     ...(precedingEvents ? { precedingEvents } : {}),
   };
 }
@@ -3447,7 +3461,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     category: "Lap Time",
     label: "Every lap 1:45.237",
     description:
-      'A plain non-best practice lap — the every-lap call reads the time ("One forty-five point two") when its opt-in is on.',
+      'A plain non-best practice lap — the every-lap call reads the time to the thousandth ("One forty five point two three seven") when its opt-in is on.',
     event: "lap.completed",
     data: {
       lap: 6,
