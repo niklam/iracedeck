@@ -19938,6 +19938,1590 @@
           "numbers-fuel/2"
         ]
       }
+    ],
+    "lap-time-compact-minute": [
+      {
+        "name": "1-oh",
+        "text": "one",
+        "next_text": "oh five point four"
+      },
+      {
+        "name": "1-t",
+        "text": "one",
+        "next_text": "twenty three point four"
+      },
+      {
+        "name": "1-e",
+        "text": "one",
+        "next_text": "eleven point four"
+      },
+      {
+        "name": "1-th",
+        "text": "one",
+        "next_text": "thirty three point four"
+      },
+      {
+        "name": "1-f",
+        "text": "one",
+        "next_text": "forty three point four"
+      },
+      {
+        "name": "1-s",
+        "text": "one",
+        "next_text": "sixteen point four"
+      },
+      {
+        "name": "1-ei",
+        "text": "one",
+        "next_text": "eighteen point four"
+      },
+      {
+        "name": "1-n",
+        "text": "one",
+        "next_text": "nineteen point four"
+      },
+      {
+        "name": "2-oh",
+        "text": "two",
+        "next_text": "oh five point four"
+      },
+      {
+        "name": "2-t",
+        "text": "two",
+        "next_text": "twenty three point four"
+      },
+      {
+        "name": "2-e",
+        "text": "two",
+        "next_text": "eleven point four"
+      },
+      {
+        "name": "2-th",
+        "text": "two",
+        "next_text": "thirty three point four"
+      },
+      {
+        "name": "2-f",
+        "text": "two",
+        "next_text": "forty three point four"
+      },
+      {
+        "name": "2-s",
+        "text": "two",
+        "next_text": "sixteen point four"
+      },
+      {
+        "name": "2-ei",
+        "text": "two",
+        "next_text": "eighteen point four"
+      },
+      {
+        "name": "2-n",
+        "text": "two",
+        "next_text": "nineteen point four"
+      },
+      {
+        "name": "3-oh",
+        "text": "three",
+        "next_text": "oh five point four"
+      },
+      {
+        "name": "3-t",
+        "text": "three",
+        "next_text": "twenty three point four"
+      },
+      {
+        "name": "3-e",
+        "text": "three",
+        "next_text": "eleven point four"
+      },
+      {
+        "name": "3-th",
+        "text": "three",
+        "next_text": "thirty three point four"
+      },
+      {
+        "name": "3-f",
+        "text": "three",
+        "next_text": "forty three point four"
+      },
+      {
+        "name": "3-s",
+        "text": "three",
+        "next_text": "sixteen point four"
+      },
+      {
+        "name": "3-ei",
+        "text": "three",
+        "next_text": "eighteen point four"
+      },
+      {
+        "name": "3-n",
+        "text": "three",
+        "next_text": "nineteen point four"
+      },
+      {
+        "name": "4-oh",
+        "text": "four",
+        "next_text": "oh five point four"
+      },
+      {
+        "name": "4-t",
+        "text": "four",
+        "next_text": "twenty three point four"
+      },
+      {
+        "name": "4-e",
+        "text": "four",
+        "next_text": "eleven point four"
+      },
+      {
+        "name": "4-th",
+        "text": "four",
+        "next_text": "thirty three point four"
+      },
+      {
+        "name": "4-f",
+        "text": "four",
+        "next_text": "forty three point four"
+      },
+      {
+        "name": "4-s",
+        "text": "four",
+        "next_text": "sixteen point four"
+      },
+      {
+        "name": "4-ei",
+        "text": "four",
+        "next_text": "eighteen point four"
+      },
+      {
+        "name": "4-n",
+        "text": "four",
+        "next_text": "nineteen point four"
+      },
+      {
+        "name": "5-oh",
+        "text": "five",
+        "next_text": "oh five point four"
+      },
+      {
+        "name": "5-t",
+        "text": "five",
+        "next_text": "twenty three point four"
+      },
+      {
+        "name": "5-e",
+        "text": "five",
+        "next_text": "eleven point four"
+      },
+      {
+        "name": "5-th",
+        "text": "five",
+        "next_text": "thirty three point four"
+      },
+      {
+        "name": "5-f",
+        "text": "five",
+        "next_text": "forty three point four"
+      },
+      {
+        "name": "5-s",
+        "text": "five",
+        "next_text": "sixteen point four"
+      },
+      {
+        "name": "5-ei",
+        "text": "five",
+        "next_text": "eighteen point four"
+      },
+      {
+        "name": "5-n",
+        "text": "five",
+        "next_text": "nineteen point four"
+      },
+      {
+        "name": "6-oh",
+        "text": "six",
+        "next_text": "oh five point four"
+      },
+      {
+        "name": "6-t",
+        "text": "six",
+        "next_text": "twenty three point four"
+      },
+      {
+        "name": "6-e",
+        "text": "six",
+        "next_text": "eleven point four"
+      },
+      {
+        "name": "6-th",
+        "text": "six",
+        "next_text": "thirty three point four"
+      },
+      {
+        "name": "6-f",
+        "text": "six",
+        "next_text": "forty three point four"
+      },
+      {
+        "name": "6-s",
+        "text": "six",
+        "next_text": "sixteen point four"
+      },
+      {
+        "name": "6-ei",
+        "text": "six",
+        "next_text": "eighteen point four"
+      },
+      {
+        "name": "6-n",
+        "text": "six",
+        "next_text": "nineteen point four"
+      },
+      {
+        "name": "7-oh",
+        "text": "seven",
+        "next_text": "oh five point four"
+      },
+      {
+        "name": "7-t",
+        "text": "seven",
+        "next_text": "twenty three point four"
+      },
+      {
+        "name": "7-e",
+        "text": "seven",
+        "next_text": "eleven point four"
+      },
+      {
+        "name": "7-th",
+        "text": "seven",
+        "next_text": "thirty three point four"
+      },
+      {
+        "name": "7-f",
+        "text": "seven",
+        "next_text": "forty three point four"
+      },
+      {
+        "name": "7-s",
+        "text": "seven",
+        "next_text": "sixteen point four"
+      },
+      {
+        "name": "7-ei",
+        "text": "seven",
+        "next_text": "eighteen point four"
+      },
+      {
+        "name": "7-n",
+        "text": "seven",
+        "next_text": "nineteen point four"
+      },
+      {
+        "name": "8-oh",
+        "text": "eight",
+        "next_text": "oh five point four"
+      },
+      {
+        "name": "8-t",
+        "text": "eight",
+        "next_text": "twenty three point four"
+      },
+      {
+        "name": "8-e",
+        "text": "eight",
+        "next_text": "eleven point four"
+      },
+      {
+        "name": "8-th",
+        "text": "eight",
+        "next_text": "thirty three point four"
+      },
+      {
+        "name": "8-f",
+        "text": "eight",
+        "next_text": "forty three point four"
+      },
+      {
+        "name": "8-s",
+        "text": "eight",
+        "next_text": "sixteen point four"
+      },
+      {
+        "name": "8-ei",
+        "text": "eight",
+        "next_text": "eighteen point four"
+      },
+      {
+        "name": "8-n",
+        "text": "eight",
+        "next_text": "nineteen point four"
+      },
+      {
+        "name": "9-oh",
+        "text": "nine",
+        "next_text": "oh five point four"
+      },
+      {
+        "name": "9-t",
+        "text": "nine",
+        "next_text": "twenty three point four"
+      },
+      {
+        "name": "9-e",
+        "text": "nine",
+        "next_text": "eleven point four"
+      },
+      {
+        "name": "9-th",
+        "text": "nine",
+        "next_text": "thirty three point four"
+      },
+      {
+        "name": "9-f",
+        "text": "nine",
+        "next_text": "forty three point four"
+      },
+      {
+        "name": "9-s",
+        "text": "nine",
+        "next_text": "sixteen point four"
+      },
+      {
+        "name": "9-ei",
+        "text": "nine",
+        "next_text": "eighteen point four"
+      },
+      {
+        "name": "9-n",
+        "text": "nine",
+        "next_text": "nineteen point four"
+      },
+      {
+        "name": "10-oh",
+        "text": "ten",
+        "next_text": "oh five point four"
+      },
+      {
+        "name": "10-t",
+        "text": "ten",
+        "next_text": "twenty three point four"
+      },
+      {
+        "name": "10-e",
+        "text": "ten",
+        "next_text": "eleven point four"
+      },
+      {
+        "name": "10-th",
+        "text": "ten",
+        "next_text": "thirty three point four"
+      },
+      {
+        "name": "10-f",
+        "text": "ten",
+        "next_text": "forty three point four"
+      },
+      {
+        "name": "10-s",
+        "text": "ten",
+        "next_text": "sixteen point four"
+      },
+      {
+        "name": "10-ei",
+        "text": "ten",
+        "next_text": "eighteen point four"
+      },
+      {
+        "name": "10-n",
+        "text": "ten",
+        "next_text": "nineteen point four"
+      }
+    ],
+    "lap-time-compact-second": [
+      {
+        "name": "00",
+        "text": "oh oh",
+        "next_text": "point four"
+      },
+      {
+        "name": "01",
+        "text": "oh one",
+        "next_text": "point four"
+      },
+      {
+        "name": "02",
+        "text": "oh two",
+        "next_text": "point four"
+      },
+      {
+        "name": "03",
+        "text": "oh three",
+        "next_text": "point four"
+      },
+      {
+        "name": "04",
+        "text": "oh four",
+        "next_text": "point four"
+      },
+      {
+        "name": "05",
+        "text": "oh five",
+        "next_text": "point four"
+      },
+      {
+        "name": "06",
+        "text": "oh six",
+        "next_text": "point four"
+      },
+      {
+        "name": "07",
+        "text": "oh seven",
+        "next_text": "point four"
+      },
+      {
+        "name": "08",
+        "text": "oh eight",
+        "next_text": "point four"
+      },
+      {
+        "name": "09",
+        "text": "oh nine",
+        "next_text": "point four"
+      }
+    ],
+    "lap-time-compact-tenth": [
+      {
+        "name": "0",
+        "text": "point oh"
+      },
+      {
+        "name": "1",
+        "text": "point one"
+      },
+      {
+        "name": "2",
+        "text": "point two"
+      },
+      {
+        "name": "3",
+        "text": "point three"
+      },
+      {
+        "name": "4",
+        "text": "point four"
+      },
+      {
+        "name": "5",
+        "text": "point five"
+      },
+      {
+        "name": "6",
+        "text": "point six"
+      },
+      {
+        "name": "7",
+        "text": "point seven"
+      },
+      {
+        "name": "8",
+        "text": "point eight"
+      },
+      {
+        "name": "9",
+        "text": "point nine"
+      }
+    ],
+    "lap-time-compact-point": [
+      {
+        "name": "0-oh",
+        "text": "point oh",
+        "next_text": "oh seven"
+      },
+      {
+        "name": "0-t",
+        "text": "point oh",
+        "next_text": "twenty three"
+      },
+      {
+        "name": "0-e",
+        "text": "point oh",
+        "next_text": "eleven"
+      },
+      {
+        "name": "0-th",
+        "text": "point oh",
+        "next_text": "thirty three"
+      },
+      {
+        "name": "0-f",
+        "text": "point oh",
+        "next_text": "forty three"
+      },
+      {
+        "name": "0-s",
+        "text": "point oh",
+        "next_text": "sixty seven"
+      },
+      {
+        "name": "0-ei",
+        "text": "point oh",
+        "next_text": "eighty one"
+      },
+      {
+        "name": "0-n",
+        "text": "point oh",
+        "next_text": "ninety nine"
+      },
+      {
+        "name": "1-oh",
+        "text": "point one",
+        "next_text": "oh seven"
+      },
+      {
+        "name": "1-t",
+        "text": "point one",
+        "next_text": "twenty three"
+      },
+      {
+        "name": "1-e",
+        "text": "point one",
+        "next_text": "eleven"
+      },
+      {
+        "name": "1-th",
+        "text": "point one",
+        "next_text": "thirty three"
+      },
+      {
+        "name": "1-f",
+        "text": "point one",
+        "next_text": "forty three"
+      },
+      {
+        "name": "1-s",
+        "text": "point one",
+        "next_text": "sixty seven"
+      },
+      {
+        "name": "1-ei",
+        "text": "point one",
+        "next_text": "eighty one"
+      },
+      {
+        "name": "1-n",
+        "text": "point one",
+        "next_text": "ninety nine"
+      },
+      {
+        "name": "2-oh",
+        "text": "point two",
+        "next_text": "oh seven"
+      },
+      {
+        "name": "2-t",
+        "text": "point two",
+        "next_text": "twenty three"
+      },
+      {
+        "name": "2-e",
+        "text": "point two",
+        "next_text": "eleven"
+      },
+      {
+        "name": "2-th",
+        "text": "point two",
+        "next_text": "thirty three"
+      },
+      {
+        "name": "2-f",
+        "text": "point two",
+        "next_text": "forty three"
+      },
+      {
+        "name": "2-s",
+        "text": "point two",
+        "next_text": "sixty seven"
+      },
+      {
+        "name": "2-ei",
+        "text": "point two",
+        "next_text": "eighty one"
+      },
+      {
+        "name": "2-n",
+        "text": "point two",
+        "next_text": "ninety nine"
+      },
+      {
+        "name": "3-oh",
+        "text": "point three",
+        "next_text": "oh seven"
+      },
+      {
+        "name": "3-t",
+        "text": "point three",
+        "next_text": "twenty three"
+      },
+      {
+        "name": "3-e",
+        "text": "point three",
+        "next_text": "eleven"
+      },
+      {
+        "name": "3-th",
+        "text": "point three",
+        "next_text": "thirty three"
+      },
+      {
+        "name": "3-f",
+        "text": "point three",
+        "next_text": "forty three"
+      },
+      {
+        "name": "3-s",
+        "text": "point three",
+        "next_text": "sixty seven"
+      },
+      {
+        "name": "3-ei",
+        "text": "point three",
+        "next_text": "eighty one"
+      },
+      {
+        "name": "3-n",
+        "text": "point three",
+        "next_text": "ninety nine"
+      },
+      {
+        "name": "4-oh",
+        "text": "point four",
+        "next_text": "oh seven"
+      },
+      {
+        "name": "4-t",
+        "text": "point four",
+        "next_text": "twenty three"
+      },
+      {
+        "name": "4-e",
+        "text": "point four",
+        "next_text": "eleven"
+      },
+      {
+        "name": "4-th",
+        "text": "point four",
+        "next_text": "thirty three"
+      },
+      {
+        "name": "4-f",
+        "text": "point four",
+        "next_text": "forty three"
+      },
+      {
+        "name": "4-s",
+        "text": "point four",
+        "next_text": "sixty seven"
+      },
+      {
+        "name": "4-ei",
+        "text": "point four",
+        "next_text": "eighty one"
+      },
+      {
+        "name": "4-n",
+        "text": "point four",
+        "next_text": "ninety nine"
+      },
+      {
+        "name": "5-oh",
+        "text": "point five",
+        "next_text": "oh seven"
+      },
+      {
+        "name": "5-t",
+        "text": "point five",
+        "next_text": "twenty three"
+      },
+      {
+        "name": "5-e",
+        "text": "point five",
+        "next_text": "eleven"
+      },
+      {
+        "name": "5-th",
+        "text": "point five",
+        "next_text": "thirty three"
+      },
+      {
+        "name": "5-f",
+        "text": "point five",
+        "next_text": "forty three"
+      },
+      {
+        "name": "5-s",
+        "text": "point five",
+        "next_text": "sixty seven"
+      },
+      {
+        "name": "5-ei",
+        "text": "point five",
+        "next_text": "eighty one"
+      },
+      {
+        "name": "5-n",
+        "text": "point five",
+        "next_text": "ninety nine"
+      },
+      {
+        "name": "6-oh",
+        "text": "point six",
+        "next_text": "oh seven"
+      },
+      {
+        "name": "6-t",
+        "text": "point six",
+        "next_text": "twenty three"
+      },
+      {
+        "name": "6-e",
+        "text": "point six",
+        "next_text": "eleven"
+      },
+      {
+        "name": "6-th",
+        "text": "point six",
+        "next_text": "thirty three"
+      },
+      {
+        "name": "6-f",
+        "text": "point six",
+        "next_text": "forty three"
+      },
+      {
+        "name": "6-s",
+        "text": "point six",
+        "next_text": "sixty seven"
+      },
+      {
+        "name": "6-ei",
+        "text": "point six",
+        "next_text": "eighty one"
+      },
+      {
+        "name": "6-n",
+        "text": "point six",
+        "next_text": "ninety nine"
+      },
+      {
+        "name": "7-oh",
+        "text": "point seven",
+        "next_text": "oh seven"
+      },
+      {
+        "name": "7-t",
+        "text": "point seven",
+        "next_text": "twenty three"
+      },
+      {
+        "name": "7-e",
+        "text": "point seven",
+        "next_text": "eleven"
+      },
+      {
+        "name": "7-th",
+        "text": "point seven",
+        "next_text": "thirty three"
+      },
+      {
+        "name": "7-f",
+        "text": "point seven",
+        "next_text": "forty three"
+      },
+      {
+        "name": "7-s",
+        "text": "point seven",
+        "next_text": "sixty seven"
+      },
+      {
+        "name": "7-ei",
+        "text": "point seven",
+        "next_text": "eighty one"
+      },
+      {
+        "name": "7-n",
+        "text": "point seven",
+        "next_text": "ninety nine"
+      },
+      {
+        "name": "8-oh",
+        "text": "point eight",
+        "next_text": "oh seven"
+      },
+      {
+        "name": "8-t",
+        "text": "point eight",
+        "next_text": "twenty three"
+      },
+      {
+        "name": "8-e",
+        "text": "point eight",
+        "next_text": "eleven"
+      },
+      {
+        "name": "8-th",
+        "text": "point eight",
+        "next_text": "thirty three"
+      },
+      {
+        "name": "8-f",
+        "text": "point eight",
+        "next_text": "forty three"
+      },
+      {
+        "name": "8-s",
+        "text": "point eight",
+        "next_text": "sixty seven"
+      },
+      {
+        "name": "8-ei",
+        "text": "point eight",
+        "next_text": "eighty one"
+      },
+      {
+        "name": "8-n",
+        "text": "point eight",
+        "next_text": "ninety nine"
+      },
+      {
+        "name": "9-oh",
+        "text": "point nine",
+        "next_text": "oh seven"
+      },
+      {
+        "name": "9-t",
+        "text": "point nine",
+        "next_text": "twenty three"
+      },
+      {
+        "name": "9-e",
+        "text": "point nine",
+        "next_text": "eleven"
+      },
+      {
+        "name": "9-th",
+        "text": "point nine",
+        "next_text": "thirty three"
+      },
+      {
+        "name": "9-f",
+        "text": "point nine",
+        "next_text": "forty three"
+      },
+      {
+        "name": "9-s",
+        "text": "point nine",
+        "next_text": "sixty seven"
+      },
+      {
+        "name": "9-ei",
+        "text": "point nine",
+        "next_text": "eighty one"
+      },
+      {
+        "name": "9-n",
+        "text": "point nine",
+        "next_text": "ninety nine"
+      }
+    ],
+    "lap-time-compact-pair": [
+      {
+        "name": "00",
+        "text": "oh zero"
+      },
+      {
+        "name": "01",
+        "text": "oh one"
+      },
+      {
+        "name": "02",
+        "text": "oh two"
+      },
+      {
+        "name": "03",
+        "text": "oh three"
+      },
+      {
+        "name": "04",
+        "text": "oh four"
+      },
+      {
+        "name": "05",
+        "text": "oh five"
+      },
+      {
+        "name": "06",
+        "text": "oh six"
+      },
+      {
+        "name": "07",
+        "text": "oh seven"
+      },
+      {
+        "name": "08",
+        "text": "oh eight"
+      },
+      {
+        "name": "09",
+        "text": "oh nine"
+      },
+      {
+        "name": "10",
+        "text": "ten"
+      },
+      {
+        "name": "11",
+        "text": "eleven"
+      },
+      {
+        "name": "12",
+        "text": "twelve"
+      },
+      {
+        "name": "13",
+        "text": "thirteen"
+      },
+      {
+        "name": "14",
+        "text": "fourteen"
+      },
+      {
+        "name": "15",
+        "text": "fifteen"
+      },
+      {
+        "name": "16",
+        "text": "sixteen"
+      },
+      {
+        "name": "17",
+        "text": "seventeen"
+      },
+      {
+        "name": "18",
+        "text": "eighteen"
+      },
+      {
+        "name": "19",
+        "text": "nineteen"
+      },
+      {
+        "name": "20",
+        "text": "twenty"
+      },
+      {
+        "name": "21",
+        "text": "twenty one"
+      },
+      {
+        "name": "22",
+        "text": "twenty two"
+      },
+      {
+        "name": "23",
+        "text": "twenty three"
+      },
+      {
+        "name": "24",
+        "text": "twenty four"
+      },
+      {
+        "name": "25",
+        "text": "twenty five"
+      },
+      {
+        "name": "26",
+        "text": "twenty six"
+      },
+      {
+        "name": "27",
+        "text": "twenty seven"
+      },
+      {
+        "name": "28",
+        "text": "twenty eight"
+      },
+      {
+        "name": "29",
+        "text": "twenty nine"
+      },
+      {
+        "name": "30",
+        "text": "thirty"
+      },
+      {
+        "name": "31",
+        "text": "thirty one"
+      },
+      {
+        "name": "32",
+        "text": "thirty two"
+      },
+      {
+        "name": "33",
+        "text": "thirty three"
+      },
+      {
+        "name": "34",
+        "text": "thirty four"
+      },
+      {
+        "name": "35",
+        "text": "thirty five"
+      },
+      {
+        "name": "36",
+        "text": "thirty six"
+      },
+      {
+        "name": "37",
+        "text": "thirty seven"
+      },
+      {
+        "name": "38",
+        "text": "thirty eight"
+      },
+      {
+        "name": "39",
+        "text": "thirty nine"
+      },
+      {
+        "name": "40",
+        "text": "forty"
+      },
+      {
+        "name": "41",
+        "text": "forty one"
+      },
+      {
+        "name": "42",
+        "text": "forty two"
+      },
+      {
+        "name": "43",
+        "text": "forty three"
+      },
+      {
+        "name": "44",
+        "text": "forty four"
+      },
+      {
+        "name": "45",
+        "text": "forty five"
+      },
+      {
+        "name": "46",
+        "text": "forty six"
+      },
+      {
+        "name": "47",
+        "text": "forty seven"
+      },
+      {
+        "name": "48",
+        "text": "forty eight"
+      },
+      {
+        "name": "49",
+        "text": "forty nine"
+      },
+      {
+        "name": "50",
+        "text": "fifty"
+      },
+      {
+        "name": "51",
+        "text": "fifty one"
+      },
+      {
+        "name": "52",
+        "text": "fifty two"
+      },
+      {
+        "name": "53",
+        "text": "fifty three"
+      },
+      {
+        "name": "54",
+        "text": "fifty four"
+      },
+      {
+        "name": "55",
+        "text": "fifty five"
+      },
+      {
+        "name": "56",
+        "text": "fifty six"
+      },
+      {
+        "name": "57",
+        "text": "fifty seven"
+      },
+      {
+        "name": "58",
+        "text": "fifty eight"
+      },
+      {
+        "name": "59",
+        "text": "fifty nine"
+      },
+      {
+        "name": "60",
+        "text": "sixty"
+      },
+      {
+        "name": "61",
+        "text": "sixty one"
+      },
+      {
+        "name": "62",
+        "text": "sixty two"
+      },
+      {
+        "name": "63",
+        "text": "sixty three"
+      },
+      {
+        "name": "64",
+        "text": "sixty four"
+      },
+      {
+        "name": "65",
+        "text": "sixty five"
+      },
+      {
+        "name": "66",
+        "text": "sixty six"
+      },
+      {
+        "name": "67",
+        "text": "sixty seven"
+      },
+      {
+        "name": "68",
+        "text": "sixty eight"
+      },
+      {
+        "name": "69",
+        "text": "sixty nine"
+      },
+      {
+        "name": "70",
+        "text": "seventy"
+      },
+      {
+        "name": "71",
+        "text": "seventy one"
+      },
+      {
+        "name": "72",
+        "text": "seventy two"
+      },
+      {
+        "name": "73",
+        "text": "seventy three"
+      },
+      {
+        "name": "74",
+        "text": "seventy four"
+      },
+      {
+        "name": "75",
+        "text": "seventy five"
+      },
+      {
+        "name": "76",
+        "text": "seventy six"
+      },
+      {
+        "name": "77",
+        "text": "seventy seven"
+      },
+      {
+        "name": "78",
+        "text": "seventy eight"
+      },
+      {
+        "name": "79",
+        "text": "seventy nine"
+      },
+      {
+        "name": "80",
+        "text": "eighty"
+      },
+      {
+        "name": "81",
+        "text": "eighty one"
+      },
+      {
+        "name": "82",
+        "text": "eighty two"
+      },
+      {
+        "name": "83",
+        "text": "eighty three"
+      },
+      {
+        "name": "84",
+        "text": "eighty four"
+      },
+      {
+        "name": "85",
+        "text": "eighty five"
+      },
+      {
+        "name": "86",
+        "text": "eighty six"
+      },
+      {
+        "name": "87",
+        "text": "eighty seven"
+      },
+      {
+        "name": "88",
+        "text": "eighty eight"
+      },
+      {
+        "name": "89",
+        "text": "eighty nine"
+      },
+      {
+        "name": "90",
+        "text": "ninety"
+      },
+      {
+        "name": "91",
+        "text": "ninety one"
+      },
+      {
+        "name": "92",
+        "text": "ninety two"
+      },
+      {
+        "name": "93",
+        "text": "ninety three"
+      },
+      {
+        "name": "94",
+        "text": "ninety four"
+      },
+      {
+        "name": "95",
+        "text": "ninety five"
+      },
+      {
+        "name": "96",
+        "text": "ninety six"
+      },
+      {
+        "name": "97",
+        "text": "ninety seven"
+      },
+      {
+        "name": "98",
+        "text": "ninety eight"
+      },
+      {
+        "name": "99",
+        "text": "ninety nine"
+      }
+    ],
+    "fastest-lap": [
+      {
+        "name": "yours-w",
+        "text": "Fastest lap, yours",
+        "next_text": "one twenty three point four"
+      },
+      {
+        "name": "yours-t",
+        "text": "Fastest lap, yours",
+        "next_text": "two oh five point four"
+      },
+      {
+        "name": "yours-th",
+        "text": "Fastest lap, yours",
+        "next_text": "three oh five point four"
+      },
+      {
+        "name": "yours-f",
+        "text": "Fastest lap, yours",
+        "next_text": "four oh five point four"
+      },
+      {
+        "name": "yours-s",
+        "text": "Fastest lap, yours",
+        "next_text": "six oh five point four"
+      },
+      {
+        "name": "yours-ei",
+        "text": "Fastest lap, yours",
+        "next_text": "eight oh five point four"
+      },
+      {
+        "name": "yours-n",
+        "text": "Fastest lap, yours",
+        "next_text": "nine oh five point four"
+      },
+      {
+        "name": "yours-e",
+        "text": "Fastest lap, yours",
+        "next_text": "eleven point four"
+      },
+      {
+        "name": "yours-z",
+        "text": "Fastest lap, yours",
+        "next_text": "zero point four"
+      },
+      {
+        "name": "leader-w",
+        "text": "Fastest lap for the leader",
+        "next_text": "one twenty three point four"
+      },
+      {
+        "name": "leader-t",
+        "text": "Fastest lap for the leader",
+        "next_text": "two oh five point four"
+      },
+      {
+        "name": "leader-th",
+        "text": "Fastest lap for the leader",
+        "next_text": "three oh five point four"
+      },
+      {
+        "name": "leader-f",
+        "text": "Fastest lap for the leader",
+        "next_text": "four oh five point four"
+      },
+      {
+        "name": "leader-s",
+        "text": "Fastest lap for the leader",
+        "next_text": "six oh five point four"
+      },
+      {
+        "name": "leader-ei",
+        "text": "Fastest lap for the leader",
+        "next_text": "eight oh five point four"
+      },
+      {
+        "name": "leader-n",
+        "text": "Fastest lap for the leader",
+        "next_text": "nine oh five point four"
+      },
+      {
+        "name": "leader-e",
+        "text": "Fastest lap for the leader",
+        "next_text": "eleven point four"
+      },
+      {
+        "name": "leader-z",
+        "text": "Fastest lap for the leader",
+        "next_text": "zero point four"
+      },
+      {
+        "name": "ahead-w",
+        "text": "Fastest lap for the car ahead",
+        "next_text": "one twenty three point four"
+      },
+      {
+        "name": "ahead-t",
+        "text": "Fastest lap for the car ahead",
+        "next_text": "two oh five point four"
+      },
+      {
+        "name": "ahead-th",
+        "text": "Fastest lap for the car ahead",
+        "next_text": "three oh five point four"
+      },
+      {
+        "name": "ahead-f",
+        "text": "Fastest lap for the car ahead",
+        "next_text": "four oh five point four"
+      },
+      {
+        "name": "ahead-s",
+        "text": "Fastest lap for the car ahead",
+        "next_text": "six oh five point four"
+      },
+      {
+        "name": "ahead-ei",
+        "text": "Fastest lap for the car ahead",
+        "next_text": "eight oh five point four"
+      },
+      {
+        "name": "ahead-n",
+        "text": "Fastest lap for the car ahead",
+        "next_text": "nine oh five point four"
+      },
+      {
+        "name": "ahead-e",
+        "text": "Fastest lap for the car ahead",
+        "next_text": "eleven point four"
+      },
+      {
+        "name": "ahead-z",
+        "text": "Fastest lap for the car ahead",
+        "next_text": "zero point four"
+      },
+      {
+        "name": "behind-w",
+        "text": "Fastest lap for the car behind",
+        "next_text": "one twenty three point four"
+      },
+      {
+        "name": "behind-t",
+        "text": "Fastest lap for the car behind",
+        "next_text": "two oh five point four"
+      },
+      {
+        "name": "behind-th",
+        "text": "Fastest lap for the car behind",
+        "next_text": "three oh five point four"
+      },
+      {
+        "name": "behind-f",
+        "text": "Fastest lap for the car behind",
+        "next_text": "four oh five point four"
+      },
+      {
+        "name": "behind-s",
+        "text": "Fastest lap for the car behind",
+        "next_text": "six oh five point four"
+      },
+      {
+        "name": "behind-ei",
+        "text": "Fastest lap for the car behind",
+        "next_text": "eight oh five point four"
+      },
+      {
+        "name": "behind-n",
+        "text": "Fastest lap for the car behind",
+        "next_text": "nine oh five point four"
+      },
+      {
+        "name": "behind-e",
+        "text": "Fastest lap for the car behind",
+        "next_text": "eleven point four"
+      },
+      {
+        "name": "behind-z",
+        "text": "Fastest lap for the car behind",
+        "next_text": "zero point four"
+      },
+      {
+        "name": "for",
+        "text": "Fastest lap for",
+        "next_text": "car"
+      },
+      {
+        "name": "lost-to",
+        "text": "Fastest lap lost to",
+        "next_text": "car"
+      }
+    ],
+    "lap-time-last": [
+      {
+        "name": "intro-w-01",
+        "text": "Last lap",
+        "next_text": "one twenty three point four"
+      },
+      {
+        "name": "intro-t-01",
+        "text": "Last lap",
+        "next_text": "two oh five point four"
+      },
+      {
+        "name": "intro-th-01",
+        "text": "Last lap",
+        "next_text": "three oh five point four"
+      },
+      {
+        "name": "intro-f-01",
+        "text": "Last lap",
+        "next_text": "four oh five point four"
+      },
+      {
+        "name": "intro-s-01",
+        "text": "Last lap",
+        "next_text": "six oh five point four"
+      },
+      {
+        "name": "intro-ei-01",
+        "text": "Last lap",
+        "next_text": "eight oh five point four"
+      },
+      {
+        "name": "intro-n-01",
+        "text": "Last lap",
+        "next_text": "nine oh five point four"
+      },
+      {
+        "name": "intro-e-01",
+        "text": "Last lap",
+        "next_text": "eleven point four"
+      },
+      {
+        "name": "intro-z-01",
+        "text": "Last lap",
+        "next_text": "zero point four"
+      },
+      {
+        "name": "intro-w-02",
+        "text": "Lap time",
+        "next_text": "one twenty three point four"
+      },
+      {
+        "name": "intro-t-02",
+        "text": "Lap time",
+        "next_text": "two oh five point four"
+      },
+      {
+        "name": "intro-th-02",
+        "text": "Lap time",
+        "next_text": "three oh five point four"
+      },
+      {
+        "name": "intro-f-02",
+        "text": "Lap time",
+        "next_text": "four oh five point four"
+      },
+      {
+        "name": "intro-s-02",
+        "text": "Lap time",
+        "next_text": "six oh five point four"
+      },
+      {
+        "name": "intro-ei-02",
+        "text": "Lap time",
+        "next_text": "eight oh five point four"
+      },
+      {
+        "name": "intro-n-02",
+        "text": "Lap time",
+        "next_text": "nine oh five point four"
+      },
+      {
+        "name": "intro-e-02",
+        "text": "Lap time",
+        "next_text": "eleven point four"
+      },
+      {
+        "name": "intro-z-02",
+        "text": "Lap time",
+        "next_text": "zero point four"
+      }
     ]
   },
   "scenarios": {
@@ -21323,6 +22907,68 @@
       "comment": "The spotter's informational lines — \"Clear\" once the car alongside has genuinely separated, and the still-there reminder (\"Still there\", \"Hold your line\") on its cadence while a car stays alongside. The same engine-picked spotterClip step as the call, at a lower weight so a reminder can never chop a critical line. No radio frame.",
       "test": "Harness → Radar → Clear (after Left or Right); the still-there reminder repeats on its own while a side stays occupied. In-sim: hold a car alongside for a few seconds, then let it go.",
       "sequence": ["{{spotterClip}}"]
+    },
+    "pit-crew.fastest-lap-race": {
+      "comment": "The race's fastest lap is set — says who set it (you, the leader, the car ahead or behind, or another car by number and position), then the lap time to the tenth, then the gap when there is one.",
+      "test": "Harness → Fastest Lap → Yours (Taken from you, Leader, Car ahead, Car behind, Other car for the other lines; Yours in the grace plays the best-lap line). In-sim: an offline AI race; set the fastest lap of the race from lap 3 on, or let an AI car beat it.",
+      "sequence": [
+        {
+          "case": "fastestLap.holder",
+          "of": {
+            "yours": [
+              "{{fastestLap.yoursLine}}"
+            ],
+            "taken-from-you": [
+              "pool:fastest-lap/lost-to",
+              "{{fastestLap.carNumber}}"
+            ],
+            "leader": [
+              "{{fastestLap.leaderLine}}"
+            ],
+            "ahead": [
+              "{{fastestLap.aheadLine}}"
+            ],
+            "behind": [
+              "{{fastestLap.behindLine}}"
+            ],
+            "other": [
+              "pool:fastest-lap/for",
+              "{{fastestLap.carNumber}}"
+            ]
+          }
+        },
+        {
+          "if": "fastestLap.hasMinuteComponent",
+          "then": [
+            "{{fastestLap.minute}}"
+          ]
+        },
+        "{{fastestLap.second}}",
+        "{{fastestLap.decimal}}",
+        {
+          "optional": [
+            "{{fastestLap.gapIntro}}",
+            "{{fastestLap.gapSecond}}",
+            "{{fastestLap.gapDecimal}}"
+          ]
+        }
+      ]
+    },
+    "pit-crew.lap-time-last": {
+      "comment": "Every lap that is not a new best: a short intro, then the lap time read out as minute, seconds, and the thousandths as a pair (one twenty three point four five seven).",
+      "test": "Harness → Lap Time → Every lap 1:45.237 (Every lap under a minute 58.041; Out lap — silent). In-sim: any session; complete a lap that is not a new best.",
+      "sequence": [
+        "{{lapTime.lastIntro}}",
+        {
+          "if": "lapTime.compactHasMinute",
+          "then": [
+            "{{lapTime.compactMinute}}"
+          ]
+        },
+        "{{lapTime.compactSecond}}",
+        "{{lapTime.compactPoint}}",
+        "{{lapTime.compactPair}}"
+      ]
     }
   },
   "frames": {
