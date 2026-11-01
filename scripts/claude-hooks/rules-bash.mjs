@@ -1304,8 +1304,8 @@ export const rules = [
     test: (c, ctx) => {
       const edit = has(c, cmd(/gh\s+project\s+item-edit\b/));
       const mutation = () =>
-        [...chainCommands(c, ctx.cwd, cmd(/gh\s+api\s+graphql\b/))].some(({ args }) =>
-          /\bupdateProjectV2Item(?:FieldValue|Position)\b/.test(args),
+        [...chainCommands(c, ctx.cwd, cmd(/gh\s+api\s+graphql\b/), ctx.shell)].some(({ args }) =>
+          /\b(?:updateProjectV2Item(?:FieldValue|Position)|clearProjectV2ItemFieldValue)\b/.test(args),
         );
       return (
         (edit || mutation()) &&

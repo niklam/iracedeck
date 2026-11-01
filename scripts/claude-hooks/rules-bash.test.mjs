@@ -2728,7 +2728,9 @@ describe("gh issue and the board", () => {
   describe("a raw lane or position edit", () => {
     const FIELD_VALUE = "updateProjectV2" + "ItemFieldValue";
     const POSITION = "updateProjectV2" + "ItemPosition";
+    const CLEAR = "clearProjectV2" + "ItemFieldValue";
     const shapes = [
+      `gh api graphql -f query='mutation{${CLEAR}(input:{}){clientMutationId}}'`,
       "gh project item-edit --project-id P --id I --field-id F --single-select-option-id O",
       "cd ../ir-5 && gh project item-edit --id I --field-id F --single-select-option-id O",
       "timeout 30 gh project item-edit --id I",

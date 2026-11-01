@@ -764,6 +764,13 @@ describe("post-bash.mjs moves a milestoned issue to Planned (#1574)", { timeout:
       expect(note, command).toMatch(/by hand: node -e "import\('\.\/scripts\/claude-hooks\/lib\.mjs'\)/);
       expect(calls, command).toEqual([]);
     }
+    // The issues it can read still move.
+    const mixed = fireWithGh("gh issue edit 5 $N --milestone 3.8.0", {
+      ...viewed(5, home(5)),
+      "api graphql": boardItem("Backlog"),
+    });
+    expect(mixed.note).toMatch(/could not read every issue it edited; .* by hand: node -e/);
+    expect(mixed.note).toContain(planned(5).replace(/^\[hook\] /, ""));
   });
 
   it("stays silent on a mention", () => {

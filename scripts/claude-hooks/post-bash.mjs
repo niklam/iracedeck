@@ -274,14 +274,15 @@ function plannedByHand(n) {
  * {@link HOME_REPO}, open and milestoned moves. A card already in Planned or
  * past it stays, as `setBoardStatus` says. Another repository's issue is
  * named once as left alone, with no gh call when the edit's own arguments
- * already say where it is (#1527).
+ * already say where it is (#1527). An edit with an issue argument the hook
+ * cannot read still moves the ones it can, and names the rest for a hand move.
  */
 function afterMilestone(edit, envRepo, cwd) {
-  if (!edit.readable)
-    return [
-      `gh issue edit set a milestone, but the hook could not read which issues it edited; move each open iRaceDeck one to Planned by hand: ${plannedByHand("<n>")}`,
-    ];
-  const out = [];
+  const out = edit.readable
+    ? []
+    : [
+        `gh issue edit set a milestone, but the hook could not read every issue it edited; move each other open iRaceDeck one to Planned by hand: ${plannedByHand("<n>")}`,
+      ];
   const foreign = [];
   const dir = existsSync(edit.base) ? edit.base : cwd;
   for (const { ref, repo } of editTargets(edit, envRepo)) {
