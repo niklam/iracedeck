@@ -511,6 +511,34 @@ describe("the board's Next lane and positions", () => {
     expect(mutations()).toEqual([]);
   });
 
+  // #1574: Niklas decides what is Planned and an agent carries it out, never
+  // pulling a card back into Planned from Next or later.
+  it("lets a card into Planned from Backlog only, never back from Next or later", () => {
+    expect(BOARD_MOVES.Planned).toEqual(["(none)", "Backlog"]);
+    vi.stubEnv("IRACEDECK_HOOKS_DRY_RUN", "1");
+    expect(setBoardStatus(10, "Planned", root)).toBe("board (dry run): would move #10 Backlog → Planned");
+    for (const n of [11, 13, 14, 15, 17])
+      expect(setBoardStatus(n, "Planned", root)).toMatch(/not moving it to Planned \(only from \(none\)\/Backlog\)/);
+    expect(setBoardStatus(16, "Planned", root)).toBe("board: #16 already in Planned");
+    expect(mutations()).toEqual([]);
+  });
+
+  it("moves a Backlog card into Planned through the Planned option, outside dry run", () => {
+    const fake = vi.mocked(spawnSync).getMockImplementation();
+    vi.mocked(spawnSync).mockImplementation((cmd, args) => {
+      const json = (o) => ({ status: 0, stdout: JSON.stringify(o), stderr: "" });
+      if (args[0] === "project" && args[1] === "field-list") {
+        const options = ["Backlog", "Planned", "Next"].map((name) => ({ id: `opt_${name}`, name }));
+        return json({ fields: [{ id: "PVTSSF_status", name: "Status", options }] });
+      }
+      if (args[0] === "project" && args[1] === "item-edit") return json({});
+      return fake(cmd, args);
+    });
+    expect(setBoardStatus(10, "Planned", root)).toBe("board: #10 moved Backlog → Planned");
+    const edit = calls().find((a) => a[0] === "project" && a[1] === "item-edit");
+    expect(edit).toEqual(expect.arrayContaining(["--id", "PVTI_10", "--single-select-option-id", "opt_Planned"]));
+  });
+
   describe("moveBoardItemAfter, under dry run", () => {
     beforeEach(() => vi.stubEnv("IRACEDECK_HOOKS_DRY_RUN", "1"));
     it("puts a card at the top of its lane for a null after", () =>

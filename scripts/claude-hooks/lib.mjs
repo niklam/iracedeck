@@ -557,7 +557,10 @@ export function boardItemForIssue(issueNumber, cwd) {
 
 /**
  * Lanes a card may be moved FROM for each automated move — never backwards (a
- * Done card stays Done). `Next` is the PO's (#1520): it orders the milestone
+ * Done card stays Done). `Planned` is what a release contains, and deciding
+ * that stays Niklas's: an agent moves a card there only on his word in the
+ * conversation (#1574), and only from Backlog, never back from `Next` or work
+ * that has started. `Next` is the PO's (#1520): it orders the milestone
  * Niklas planned, so a card enters from Backlog or Planned, never back from
  * work that has started. `Dropped` is for an issue closed as not planned or a
  * duplicate, which whoever closes it moves by hand (`build-and-commit.md`): from
@@ -565,6 +568,7 @@ export function boardItemForIssue(issueNumber, cwd) {
  */
 export const BOARD_MOVES = {
   Backlog: ["(none)"],
+  Planned: ["(none)", "Backlog"],
   Next: ["(none)", "Backlog", "Planned"],
   "In progress": ["(none)", "Backlog", "Planned", "Next"],
   Testing: ["(none)", "Backlog", "Planned", "Next", "In progress"],
