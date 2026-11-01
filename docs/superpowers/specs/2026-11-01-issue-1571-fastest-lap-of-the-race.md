@@ -174,7 +174,7 @@ Each car's own count rather than the leader's, because the noise the grace exist
 
 Decided by Niklas on 2026-11-01 ("Let's do compact clips"): the fastest-lap call reads the time the way a timing screen does, "one twenty-three point four", not #555's "one minute, twenty-three, point four seconds". It rounds once to the tenth, the precision a broadcaster gives a fastest lap. A lap of eleven minutes or more has no minute clip and aborts, the ceiling #555 has.
 
-The clips are the compact set #1163 adds (the #1163 spec, "The readout", which defines the groups and how each is conditioned). This call uses the minute, the seconds and the phrase-final `point N` tail; #1163 also uses the thousandths tail. Both calls ship in one change, so the set is generated once.
+The clips are the compact set #1163 adds (the #1163 spec, "The readout", which defines the groups and how each is conditioned). This call speaks the clock phrase (or, under a minute, the seconds) and the tenths tail; #1163 uses the thousandths instead. Both calls ship in one change, so the set is generated once.
 
 The split and the pool references live in a shared `catalog/pit-crew/lap-time-readout.ts`, which the `lapTime.*` vars (over the `lap.completed` snapshot) and the `fastestLap.*` vars (over the fire's payload) both call, so no two calls round the same lap differently. #555's best-lap call keeps its own full sentence ("one minute, twenty-three, point four seconds"), now also through that module.
 

@@ -8,7 +8,7 @@
 
 ## The decision
 
-A second Lap Time callout, `pit-crew.lap-time-last`, announces every completed lap as a timing screen shows it: *"Last lap was one forty-five point two thirty-seven."*
+A second Lap Time callout, `pit-crew.lap-time-last`, announces every completed lap as a timing screen shows it: *"Last lap was one forty five point two three seven."*
 
 - **Trigger.** `lap.completed`, the same event and the same `LapLastLapTime` refresh the best-lap callout uses, in practice, qualifying and race.
 - **One lap, one lap time.** On a lap the player completes, at most one of three callouts speaks, in this order: the fastest lap of the race (#1571, when the lap carries `isClassFastestLapOfRace`, `fastestLapAnnounceable` passes its two-lap grace and `calloutEnabledFastestLap`, and the active voice scripts `pit-crew.fastest-lap-race`), the best lap (#555, `isBest || isFirstValid` while `calloutEnabledLapTimeBestLap` is on and the voice scripts `pit-crew.lap-time-best`), then this one (while `calloutEnabledLapTimeEveryLap` is on and the voice scripts `pit-crew.lap-time-last`). Each line says more than the one after it, so it wins; with a switch off or a line the active voice does not script, its lap falls to the next, so a pack that scripts this callout but not the best-lap one still hears every lap. The rule is one pure function, `playerLapOwner`, in `catalog/pit-crew/lap-announcement.ts`, fed by one owner resolver built inside `registerPitCrew` (no new `PitCrewDeps` key), which all three contracts' `where:` call on the `lap.completed` payload, so the decision never depends on which line reaches the bus first. The owner can still end up saying nothing (a speak gate, a waiting fire superseded or timed out, the final lap of a race); the #1571 spec's decision 7 states it in full.
@@ -18,36 +18,30 @@ A second Lap Time callout, `pit-crew.lap-time-last`, announces every completed l
 
 ## The readout
 
-`LapLastLapTime` rounded to the millisecond, then split into minutes, seconds and thousandths:
+`LapLastLapTime` rounded to the millisecond, then spoken in three clips: the intro, the clock phrase, and the thousandths.
 
 | Part | Spoken as | Example |
 | --- | --- | --- |
 | Intro | *"Last lap was"* (plus alternates written with the voice) | |
-| Minutes | a bare number, 1–10; omitted under one minute | *"one"* |
-| Seconds | a pair, 00–59: *"oh five"* for 1–9 and *"oh oh"* for 0 after a minute, plain under one minute | *"forty-five"* |
-| Decimal | *"point"* | |
-| Thousandths | a digit, then the last two as a pair, the way car numbers are read | *"two thirty-seven"* |
+| Clock phrase | minutes and seconds as one clip, 1:00 to 10:59: *"oh"* for seconds 0–9 | *"one forty five"*, *"one oh five"* |
+| Under a minute | the seconds alone, #555's `lap-time-second` | *"fifty eight"* |
+| Thousandths | *"point"* and the three digits, one by one, as one clip | *"point two three seven"* |
 
-A sub-minute lap: *"Last lap was fifty-eight point oh four one."* Laps of 11 minutes or longer stay silent, the same ceiling the best-lap callout has.
+A sub-minute lap: *"Last lap was fifty eight point oh four one."* Laps of 11 minutes or longer stay silent, the same ceiling the best-lap callout has.
 
-This needs a vocabulary that exposes the parts, and pools in the default voice's config for the intro, the minutes, the second pairs, *"point"* and the digits.
+**The readout code is shared.** The split and the pool references live in one module, `catalog/pit-crew/lap-time-readout.ts`, which holds two forms: #555's full sentence over the four existing `lap-time-*` pools (*"one minute, twenty-three, point four seconds."*), which the best-lap call keeps, and the compact form over the clips below, which this callout speaks to the thousandth and #1571's fastest-lap call to the tenth (Niklas, 2026-11-01). Each form rounds once at its own precision, and both share the eleven-minute ceiling. One module, so a change to how a lap time is split reaches every callout that reads one.
 
-**The readout code is shared.** The split and the pool references live in one module, `catalog/pit-crew/lap-time-readout.ts`, which holds two forms: #555's full sentence over the four existing `lap-time-*` pools (*"one minute, twenty-three, point four seconds."*), which the best-lap call keeps, and the compact form over the new clips below, which this callout speaks to the thousandth and #1571's fastest-lap call to the tenth (Niklas, 2026-11-01). Each form rounds once at its own precision, and both share the eleven-minute ceiling. One module, so a change to how a lap time is split reaches every callout that reads one.
+**The clips (decided by Niklas on 2026-11-01, after hearing the first set).** The first compact set (bare minute words cut per onset sound, a seconds pair, "point N" and a 00–99 pair, with no predecessor conditioning) sounded joined rather than spoken: "The combinations don't sound too good, and the thousands sound unnatural." So each part of the time is now one phrase, and the rule for every clip is his: "Each clip must have a previous_request_id set, and things that have something following, must have the next_text set." No text carries a period, which ElevenLabs reads as a pause after it, and every entry omits `seed` or sets it to 1; Niklas changes a seed himself when a clip sounds wrong.
 
-**What is fixed: the number clips in this readout carry almost no padding.** The thousandths must run at the pace of a person reading a timing screen (*"two thirty-seven"*), not as separate words. Removing the padding is a property of the clip groups in the generation and trim pipeline, not a per-file hand edit, so a regenerated clip comes out tight too, and nothing between steps may put the gap back.
+| Group | Clips | `previous_request_ids` | `next_text` |
+| --- | --- | --- | --- |
+| Clock phrase | 1:00 to 10:59, minutes and seconds as one phrase ("one twenty three", "one oh five"), 600 clips | a fixed every-lap intro | "point" |
+| Under a minute | #555's `lap-time-second`, 0–59, reused as it is | already set | already " point." |
+| Thousandths | "point" and three digits, 000–999 ("point four five six", "point oh oh seven"), ending the line, 1000 clips | a fixed clock phrase | none: it ends the line |
+| Tenths tail | "point" and one digit, 0–9, ending the line ("point four") — the form #1571 speaks, 10 clips | a fixed clock phrase | none |
+| Intros | each intro once per onset sound of the time after it (#1571's and this callout's), regenerated | a fixed preceding line | a sample time with that onset |
 
-**The clips are a new compact set, each generated with the `next_text` of what follows it** (Niklas, 2026-11-01: smooth joins matter more than the number of clips). `next_text` decides how a clip ends, so it is what multiplies the takes: wherever the word that follows varies, the clip is cut once per distinct first word of it, and where it is constant ("point" after the seconds) once. No entry carries `previous_text` or `previous_request_ids`: a fixed preceding text conditions the clip on one value's ending ("twenty three" before every tail) and is wrong for all the others. No text carries a period, which ElevenLabs reads as a pause after it, and every entry omits `seed` or sets it to 1; Niklas changes a seed himself when a clip sounds wrong. The existing padded number clips stay as they are for the calls that use them. Every join in the readout is a clip boundary, and a clip generated with the right `next_text` ends on the right note for the word that follows it rather than on a sentence-final fall. So each group below is cut once per distinct continuation, and the readout picks the take that matches the value after it. The generator already supports `next_text` per entry (`audio-assets/src/generate/config.ts`).
-
-| Group | Clips | `next_text` |
-| --- | --- | --- |
-| Minute | Each minute 1–10, once per first word of the seconds that follow: "oh" (00–09), each of "ten" to "nineteen", "twenty", "thirty", "forty", "fifty" — 15 takes a minute, 150 clips | that first word with a sample pair and tail, e.g. "twenty three point four" |
-| Seconds after a minute | The pairs 00–59 ("oh oh", "oh five", "twenty three"), 60 clips | always "point" with a digit, e.g. "point four" |
-| Seconds under a minute | 0–9 spoken plain ("five"); 10–59 reuse the pairs above, which are the same words — 10 clips | as above |
-| Tenths tail | "point" with one digit, 0–9, as one clip ending the line ("point four"), 10 clips — the tenths form #1571 speaks | none: it ends the line |
-| Thousandths, first digit | "point" with the tenths digit, 0–9, cut once per first word of the pair after it: "oh" (00–09), "ten" to "nineteen", "twenty" to "ninety" — 19 takes a digit, 190 clips | that first word with a sample pair |
-| Thousandths, last two digits | Read as a pair, the way car numbers are ("point five sixty seven"): 00–99 ("oh oh", "oh seven", "sixty seven"), ending the line, 100 clips — the `car-number` clips where they are the same words and end the same way | none: it ends the line |
-
-The thousandths are read as a digit and a pair (Niklas, 2026-11-01), so no clip is cut against a fixed next digit. The intros are a join too: what follows them is the minute, or under a minute the seconds' first word, so whether each intro is cut per following word is offered to Niklas with the clip text. The Short Calls voice speaks the same numbers in the same voice, so its clips are copies of Default's and cost no generation (the `race-engineer-callouts.md` step 3 rule for verbatim entries). "Point" and its digit are always one clip, so no join ever sits between them.
+About 1600 new number clips in the default voice, roughly 7 MB more in the packed voice. The Short Calls voice speaks the same numbers in the same voice, so its number clips are copies of Default's and cost no generation (the `race-engineer-callouts.md` step 3 rule for verbatim entries); only its intros are generated. **The set is trialled first:** a subset in the default voice only (a few clock phrases, thousandths, tenths and intros) goes on the review page beside the first set, and the full set is generated only once Niklas passes it.
 
 A voice pack that does not script this callout simply never speaks it.
 
