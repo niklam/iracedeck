@@ -77,7 +77,7 @@ Planning against the deck hosts: check each in the rule it names rather than rec
 
 Start one when a slot is free and the next issue in order has its spec (or is exempt), **every issue it depends on has merged** (its lead branches from `origin/master`, which must already hold them), and no running lead's issue touches the same files or the same package unless you know their files are disjoint. If the next issue fails either check, take the first later one that passes, or wait. A slot is held from start until the lead reports `ready-to-test`; testing, review and merge hold none.
 
-So a lead waiting for Niklas's test frees its slot, and only judgement keeps untested branches from piling up and drifting from `master`. There is no fixed limit (he removed one on 2026-11-01, #1569): when the test sheet grows longer than he is getting through, ask him before starting more.
+Nothing else limits how many issues wait for Niklas's test: a lead at `ready-to-test` frees its slot, so only judgement keeps untested branches from piling up and drifting from `master`. There is no fixed limit (he removed one on 2026-11-01, #1569): when the test sheet holds more cards than he is getting through, ask him before starting more.
 
 Load `mcp__ccd_session__start_session` with ToolSearch (`select:mcp__ccd_session__start_session`), then:
 
@@ -135,7 +135,7 @@ Proposal A: <the whole file-issue proposal: title, labels, body, matches, spec v
 
 A proposal is one line in "For you" and in full below the list: Niklas approves what he has read, never a title alone.
 
-Ask him only: what the release contains, behaviour and naming a user sees, scope a spec cannot settle without him, icon designs and audio clips on their review pages, audio text before generation, the manual test, releases, a red `master`, and an open permission prompt in another session.
+Ask him only: what the release contains, behaviour and naming a user sees, scope a spec cannot settle without him, icon designs and audio clips on their review pages, audio text before generation, the manual test and whether to start more while the test sheet is long, releases, a red `master`, and an open permission prompt in another session.
 
 When the message needs him and this turn was woken by a session's note rather than by him, also send one `PushNotification` with the first line of the "For you" list, so he sees it while away.
 
