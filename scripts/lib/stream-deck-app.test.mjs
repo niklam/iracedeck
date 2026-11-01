@@ -162,8 +162,18 @@ describe("startStreamDeck", () => {
 
     expect(await pending).toBe(0);
     expect(calls).toEqual(["powershell.exe", `start ${APP}`]);
-    expect(spawn.mock.calls[0][2]).toMatchObject({ cwd: "C:\\Program Files\\Elgato\\StreamDeck", detached: true });
+    expect(spawn.mock.calls[0][2]).toMatchObject({ cwd: "C:\\Program Files\\Elgato\\StreamDeck" });
     expect(output(log)).toContain("Started StreamDeck.exe.");
+  });
+
+  // The old `start /B` kept the launching shell attached, so the command never
+  // returned and Stream Deck lived only as long as that shell.
+  it("detaches Stream Deck with no pipes, so the command returns and the app outlives it", async () => {
+    const { pending, spawn } = start();
+
+    expect(await pending).toBe(0);
+    expect(spawn.mock.calls[0][2]).toMatchObject({ detached: true, stdio: "ignore" });
+    expect(spawn.mock.results[0].value.unref).toHaveBeenCalledTimes(1);
   });
 
   it("exits 1 and names the path when Stream Deck is not installed there", async () => {
