@@ -33,6 +33,7 @@ import type { SimEventName } from "@iracedeck/event-bus";
 import { CAUTION_EVENTS } from "./diff/caution.js";
 import { CORNER_NAME_EVENTS } from "./diff/corner-name.js";
 import { DAMAGE_EVENTS } from "./diff/damage.js";
+import { FASTEST_LAP_EVENTS } from "./diff/fastest-lap.js";
 import { FLAGS_EVENTS } from "./diff/flags.js";
 import { FUEL_LAPS_LEFT_EVENTS } from "./diff/fuel-laps-left.js";
 import { GAPS_EVENTS } from "./diff/gaps.js";
@@ -132,6 +133,7 @@ export const TICK_ORDER: readonly TickStage[] = [
   { stage: "diffDamage", source: "diff/damage.ts", via: "pending", events: DAMAGE_EVENTS },
   { stage: "diffCaution", source: "diff/caution.ts", via: "pending", events: CAUTION_EVENTS },
   { stage: "diffOpponentPit", source: "diff/opponent-pit.ts", via: "pending", events: OPPONENT_PIT_EVENTS },
+  { stage: "diffFastestLap", source: "diff/fastest-lap.ts", via: "pending", events: FASTEST_LAP_EVENTS },
   { stage: "diffOpponentFlags", source: "diff/opponent-flags.ts", via: "pending", events: OPPONENT_FLAGS_EVENTS },
   { stage: "diffLeaderWhite", source: "diff/leader-white.ts", via: "pending", events: LEADER_WHITE_EVENTS },
   { stage: "diffOvertakes", source: "diff/overtakes.ts", via: "pending", events: OVERTAKES_EVENTS },

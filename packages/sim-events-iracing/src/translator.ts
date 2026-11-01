@@ -54,6 +54,7 @@ import { type CautionGapMeasurement, measureCautionGap } from "./diff/caution-ga
 import { CATCH_UP_CLEAR_MULTIPLE, type CatchUpBlock, diffCaution, resolveCatchUpBlocks } from "./diff/caution.js";
 import { CORNER_CALLOUT_DEFAULT_LEAD_SECONDS, diffCornerName } from "./diff/corner-name.js";
 import { diffDamage } from "./diff/damage.js";
+import { createFastestLapJudge, diffFastestLap } from "./diff/fastest-lap.js";
 import { diffFlags } from "./diff/flags.js";
 import {
   diffFuelLapsLeft,
@@ -2191,10 +2192,26 @@ function wipeStateForReplay(self: TranslatorInstance): void {
     // lap that ends a caution completes seconds after the green, and a glance
     // at the replay in that window must not turn it back into a clean lap —
     // the whole point of the latch is that lap. The lap diff re-seeds its
-    // counters on the way back and picks the latch up where it was.
-    lapCautionLatchLap: self.state.lapCautionLatchLap,
+    // counters on the way back and picks the latch up where it was. The pit
+    // latch (issue #1163) rides on the same counter for the same reason: a
+    // driver who pits, visits the garage (replay-mode ticks) and drives out
+    // completes the lap that went into the pits on the way out, and its
+    // `lap.completed` must still say so.
+    lapLatchLap: self.state.lapLatchLap,
     lapCautionSeen: self.state.lapCautionSeen,
     lapCompletedWasCaution: self.state.lapCompletedWasCaution,
+    lapPitLatch: self.state.lapPitLatch,
+    lapCompletedPit: self.state.lapCompletedPit,
+    // The fastest lap of the race (issue #1571): the record and its first-seed
+    // mark survive the glance; the per-car baselines (`fastestLapBaselines` /
+    // `fastestLapBaselinesSeeded`) deliberately re-seed, silently, on the
+    // first live tick back. Re-deriving the record from the sim would lose a
+    // holder that left the world meanwhile — its value then reads `-1` — and
+    // the re-seeded, slower record would let a later lap that never beat the
+    // real one be announced as the fastest of the race. The claim
+    // (`fastestLapClaim`) never outlives a tick, so there is none to keep.
+    fastestLapRecord: self.state.fastestLapRecord,
+    fastestLapRaceSeeded: self.state.fastestLapRaceSeeded,
     // The gap diff's restart mark (issue #1171) is the one piece of gap state
     // kept: it is a point in the live race's distance, one lap past where the
     // player was when the caution ended, and the lap up to it is kept out of
@@ -2673,6 +2690,15 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // stays out of session-info parsing; null means "unavailable, can't read
   // standings" and the diff will defer the emit (with a timeout) until the
   // standings catch up.
+  //
+  // The fastest-lap judge (issue #1571): whether the lap this diff is about
+  // to report is a new fastest lap of the race in the player's class, decided
+  // on that payload's own lap, time and validity against the record
+  // `diff/fastest-lap.ts` keeps. Built here, closed over this tick's state,
+  // session and telemetry, so `laps.ts` reaches the record only through
+  // `(lap, lapTime, lapIsValid) => boolean` and never imports that module. A
+  // lap it passes leaves a claim `diffFastestLap` publishes further down this
+  // tick, after `lap.completed` in the same flush.
   const playerResults = resolvePlayerResultsSnapshot(sessionInfo, playerCarIdx, telemetry.SessionNum ?? 0);
   diffLaps(
     self.state,
@@ -2682,6 +2708,7 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     playerResults,
     now,
     emit,
+    createFastestLapJudge(self.state, telemetry, sessionInfo, playerCarIdx, isRaceSession),
   );
   // `diffLimiter` runs BEFORE `diffPitLane` for two reasons. It reads
   // `state.lastInPitStall` to detect the just-left-stall transition, which
@@ -2851,6 +2878,28 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     resolveIsMultiClass(sessionInfo) === true,
     canonicalPositions,
     now,
+    emit,
+  );
+
+  // The fastest lap of the race (issue #1571) — the class record over every
+  // remote car's `CarIdxBestLapTime`, and the publish of the player's own
+  // claim the judge above left in `diffLaps`. Beside the opponent diffs
+  // because it consumes the same canonical order for the payload's positions,
+  // and after `diffLaps` so the player's `fastestLap.set` flushes after its
+  // `lap.completed` on the same tick. Race-only and pre-green gating is diff-side,
+  // the `diffOpponentPit` shape; it takes no post-race gate on purpose, since
+  // the field's last laps after the checkered still count for the record and
+  // the audio layer stands down after the player's own finish. Session info
+  // names the car (`carNumber`), as for the opponent flags.
+  diffFastestLap(
+    self.state,
+    telemetry,
+    sessionInfo,
+    playerCarIdx,
+    resolvePaceCarIdx(sessionInfo),
+    isRaceSession,
+    resolveIsMultiClass(sessionInfo),
+    canonicalPositions,
     emit,
   );
 

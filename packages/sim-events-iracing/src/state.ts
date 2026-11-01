@@ -17,12 +17,40 @@ import {
 import { type GapTrendDirection, type ProgressTrace, TrkLoc } from "@iracedeck/iracing-sdk";
 import type { CornerMarker } from "@iracedeck/track-data";
 
+import { createPitLapLatch, type PitLapFacts, type PitLapLatch } from "./diff/pit-lap.js";
+
 /**
  * How far the current full-course caution has got (issue #1127): thrown and
  * waving, static with the field caught behind the pace car, or running its last
  * lap. `"none"` when no full-course caution is out.
  */
 export type CautionPhase = "none" | "waving" | "caught" | "one-to-go";
+
+/**
+ * The fastest lap of the race in the player's class and who holds it (issue
+ * #1571): the time, the holder's carIdx, whether the holder is the player,
+ * and the holder's car number as the session info spelt it when the record
+ * fell (`null` when it had no row), kept so a later record can name the
+ * beaten holder without a session-info read at that moment.
+ */
+export type FastestLapRecord = {
+  lapTime: number;
+  carIdx: number;
+  isPlayer: boolean;
+  carNumber: string | null;
+};
+
+/**
+ * The player's new record, as the judge `diffLaps` calls leaves it for
+ * `diffFastestLap` to publish later in the same tick (issue #1571): the lap
+ * `lap.completed` reports, the record it set, and the record it beat. Whole,
+ * so the publish reads nothing that a later stage of the tick could change.
+ */
+export type FastestLapClaim = {
+  lap: number;
+  record: FastestLapRecord;
+  previous: FastestLapRecord | null;
+};
 
 /**
  * One tire's carcass temperatures across the tread (issue #254), in °C and
@@ -1335,6 +1363,45 @@ export type TranslatorState = {
    */
   positionJustReleased: Set<number>;
 
+  // ── Fastest lap of the race (issue #1571) ─────────────────────────────
+  /**
+   * The race's class record: the fastest lap run in the player's class so
+   * far in this race, and who holds it. `null` until the first eligible lap.
+   * Written by `diff/fastest-lap.ts` alone — the scan over the remote cars'
+   * `CarIdxBestLapTime`, and the player's judge `diffLaps` is handed. Survives
+   * a replay glance (`wipeStateForReplay` preserves it): re-deriving it from
+   * the sim would lose a holder that left the world meanwhile, whose value
+   * then reads `-1`. Reset per session and at a disconnect.
+   */
+  fastestLapRecord: FastestLapRecord | null;
+  /**
+   * Whether this race's record has had its first seed — the one seed that
+   * reads the player's own `CarIdxBestLapTime` too. Rides with the record
+   * across a replay glance, so the re-seed on the way back reads only the
+   * remote cars: the player's laps reach the record through `lap.completed`'s
+   * judge alone after the first seed.
+   */
+  fastestLapRaceSeeded: boolean;
+  /**
+   * Per-car baseline of `CarIdxBestLapTime`, indexed by carIdx; `0` for a car
+   * never seen with a positive value. Every positive value a tick carries
+   * goes in, eligible or not, so a lap seen while the car's count was still
+   * 0 (a rolling start's parade lap, should the sim carry it into lap 1) is
+   * never read as new once the car becomes eligible. Wiped by the replay
+   * glance and re-seeded silently on the first live tick back.
+   */
+  fastestLapBaselines: number[];
+  /** Whether the baselines above have been seeded since the last wipe. */
+  fastestLapBaselinesSeeded: boolean;
+  /**
+   * The player's claim for THIS tick: left by the judge `diffLaps` calls when
+   * the player's `lap.completed` set a new record, and published or cleared
+   * by `diffFastestLap` later in the same tick, before any gate of its own.
+   * Never survives a tick, so a claim can never be published for a lap it no
+   * longer belongs to.
+   */
+  fastestLapClaim: FastestLapClaim | null;
+
   // ── Opponent pit entries (issue #622) ─────────────────────────────────
   /** First eligible tick seeds the per-car surface baseline silently. */
   opponentPitInitialized: boolean;
@@ -1555,12 +1622,33 @@ export type TranslatorState = {
    */
   lastEmittedLapTime: number;
   /**
-   * The `LapCompleted` value the caution latch below is accumulating for —
-   * the lap IN PROGRESS (issue #1127, second review R16). When the counter
-   * moves, the accumulated latch becomes {@link lapCompletedWasCaution} and a
-   * fresh one starts. `null` until the first tick.
+   * The `LapCompleted` value the two per-lap latches below are accumulating
+   * for — the lap IN PROGRESS (issue #1127, second review R16; issue #1163).
+   * When the counter moves, the accumulated caution latch becomes
+   * {@link lapCompletedWasCaution}, the pit latch becomes
+   * {@link lapCompletedPit}, and fresh ones start. `null` until the first
+   * tick.
    */
-  lapCautionLatchLap: number | null;
+  lapLatchLap: number | null;
+  /**
+   * The pit-road latch of the lap in progress (issue #1163): opened with the
+   * player's `OnPitRoad` on the tick the counter moved and advanced on every
+   * tick since, by the rule `diff/pit-lap.ts` shares with the fuel tracker.
+   * Kept here rather than read off that tracker because the tracker segments
+   * laps its own way (a tow, a garage visit or a reset re-anchors a partial
+   * segment it then discards, and the lap out of the garage is exactly such
+   * a segment), while every lap the counter completes is one `lap.completed`
+   * reports.
+   */
+  lapPitLatch: PitLapLatch;
+  /**
+   * The pit-road facts of the lap the counter last moved past — what
+   * `lap.completed` publishes as `isOutLap` / `isInLap` (issue #1163). Taken
+   * on the tick the counter moves, so a pit entry between that tick and the
+   * emission, which can trail it by the standings wait, belongs to the lap
+   * now in progress rather than the one reported.
+   */
+  lapCompletedPit: PitLapFacts;
   /**
    * Whether a full-course caution — the translator's own phase, never the raw
    * bits — has been out on ANY tick of the lap in progress. The same idea
@@ -1879,6 +1967,12 @@ export function createInitialState(): TranslatorState {
     positionPrevScore: [],
     positionJustReleased: new Set(),
 
+    fastestLapRecord: null,
+    fastestLapRaceSeeded: false,
+    fastestLapBaselines: [],
+    fastestLapBaselinesSeeded: false,
+    fastestLapClaim: null,
+
     opponentPitInitialized: false,
     opponentPitLastSurface: [],
     opponentPitCarCooldownUntil: [],
@@ -1918,7 +2012,9 @@ export function createInitialState(): TranslatorState {
 
     lapCompletedInitialized: false,
     lastLapCompletedCounter: -1,
-    lapCautionLatchLap: null,
+    lapLatchLap: null,
+    lapPitLatch: createPitLapLatch(),
+    lapCompletedPit: { isOutLap: false, isInLap: false },
     lapCautionSeen: false,
     lapCompletedWasCaution: false,
     lastLapBestLapTime: 0,

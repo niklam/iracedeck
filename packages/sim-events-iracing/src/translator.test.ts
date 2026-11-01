@@ -7513,4 +7513,244 @@ describe("sim-events-iracing translator", () => {
       expect(getCautionGap()).toBeNull();
     });
   });
+
+  describe("fastest lap of the race (issue #1571)", () => {
+    /**
+     * Four cars: the player (0), two rivals (1, 2) and the pace car (3);
+     * standings always synced. The session list is indexed by `SessionNum`,
+     * so session `n` needs `n + 1` entries, every one a race.
+     */
+    function raceInfo(sessionNum = 0): Record<string, unknown> {
+      return {
+        SessionInfo: {
+          Sessions: Array.from({ length: sessionNum + 1 }, (_, n) => ({
+            SessionNum: n,
+            SessionType: "Race",
+            ResultsPositions: [{ CarIdx: 0, Position: 2, ClassPosition: 1, LapsComplete: 999 }],
+          })),
+        },
+        DriverInfo: {
+          DriverCarIdx: 0,
+          Drivers: [
+            { CarIdx: 0, CarNumber: "1", CarClassID: 0, CarIsPaceCar: 0, IsSpectator: 0 },
+            { CarIdx: 1, CarNumber: "07", CarClassID: 0, CarIsPaceCar: 0, IsSpectator: 0 },
+            { CarIdx: 2, CarNumber: "22", CarClassID: 0, CarIsPaceCar: 0, IsSpectator: 0 },
+            { CarIdx: 3, CarNumber: "0", CarClassID: -1, CarIsPaceCar: 1, IsSpectator: 0 },
+          ],
+        },
+      };
+    }
+
+    type Lap = { completed: number; last: number; valid?: boolean };
+
+    /**
+     * One green-race tick: the remote cars' bests, the player's lap counter
+     * and last time. The rivals run a lap ahead of the player (so they are
+     * eligible from the seed on, and rank P1 and P2 to the player's P3); the
+     * pace car is out of the world.
+     */
+    function raceTick(best: number[], player: Lap, extra: Partial<TelemetryData> = {}): TelemetryData {
+      return telemetry({
+        SessionState: SessionState.Racing,
+        SessionTime: 100,
+        CarIdxClass: [0, 0, 0, -1],
+        CarIdxLapCompleted: [player.completed, player.completed + 1, player.completed + 1, -1],
+        CarIdxLapDistPct: [0.5, 0.6, 0.4, -1],
+        CarIdxTrackSurface: [TrkLoc.OnTrack, TrkLoc.OnTrack, TrkLoc.OnTrack, TrkLoc.NotInWorld],
+        CarIdxBestLapTime: best,
+        LapCompleted: player.completed,
+        LapLastLapTime: player.last,
+        LapBestLapTime: player.last,
+        ...(player.valid === undefined ? {} : { LapDeltaToBestLap_OK: player.valid }),
+        ...extra,
+      });
+    }
+
+    type Seen = { event: "lap.completed" | "fastestLap.set"; data: Record<string, unknown> };
+
+    /** Subscribe to both events in one log, in bus order. */
+    function watch(): Seen[] {
+      const seen: Seen[] = [];
+      const bus = getEventBus();
+      bus.subscribe("lap.completed", (ev) => seen.push({ event: "lap.completed", data: ev.data }));
+      bus.subscribe("fastestLap.set", (ev) => seen.push({ event: "fastestLap.set", data: ev.data }));
+
+      return seen;
+    }
+
+    function start(info: Record<string, unknown> = raceInfo()): MockController {
+      const controller = createMockController();
+      controller.__setSessionInfo(info);
+      initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+
+      return controller;
+    }
+
+    it("the player's faster lap carries the field, and its fastestLap.set follows the lap.completed on the same tick", () => {
+      const seen = watch();
+      const controller = start();
+
+      // Seed: car 1 holds a 90.0, car 2 a 91.0; the player has no time yet.
+      controller.__tick(raceTick([-1, 90, 91, -1], { completed: 0, last: 0 }));
+      expect(seen).toEqual([]);
+
+      controller.__tick(raceTick([-1, 90, 91, -1], { completed: 1, last: 89.5, valid: true }));
+
+      expect(seen.map((s) => s.event)).toEqual(["lap.completed", "fastestLap.set"]);
+      expect(seen[0]!.data).toMatchObject({ lap: 1, lapTime: 89.5, isClassFastestLapOfRace: true });
+      expect(seen[1]!.data).toEqual({
+        carIdx: 0,
+        isPlayer: true,
+        lap: 1,
+        lapTime: 89.5,
+        previous: { carIdx: 1, lapTime: 90, isPlayer: false, carNumber: "07" },
+        carNumber: "1",
+        position: 3,
+        playerPosition: 3,
+        playerLapsCompleted: 1,
+        isMultiClass: false,
+      });
+    });
+
+    it("an invalid lap, a slower lap and a later refresh of the player's own best leave the field absent and emit nothing", () => {
+      const seen = watch();
+      const controller = start();
+      controller.__tick(raceTick([-1, 90, 91, -1], { completed: 0, last: 0 }));
+
+      // Faster but invalid.
+      controller.__tick(raceTick([-1, 90, 91, -1], { completed: 1, last: 85, valid: false }));
+      // Slower.
+      controller.__tick(raceTick([-1, 90, 91, -1], { completed: 2, last: 90.5, valid: true }));
+      // The sim's own best for the player refreshes (to the invalid lap, even).
+      controller.__tick(raceTick([85, 90, 91, -1], { completed: 2, last: 90.5, valid: true }));
+
+      expect(seen.map((s) => s.event)).toEqual(["lap.completed", "lap.completed"]);
+
+      for (const s of seen) expect(s.data.isClassFastestLapOfRace).toBeUndefined();
+    });
+
+    it("a practice session emits no fastestLap.set and no field for the same laps", () => {
+      const seen = watch();
+      const info = raceInfo();
+      (info.SessionInfo as { Sessions: Array<{ SessionType: string }> }).Sessions[0]!.SessionType = "Practice";
+      const controller = start(info);
+
+      controller.__tick(raceTick([-1, 90, 91, -1], { completed: 0, last: 0 }));
+      controller.__tick(raceTick([-1, 90, 91, -1], { completed: 1, last: 89.5, valid: true }));
+      controller.__tick(raceTick([-1, 90, 85, -1], { completed: 1, last: 89.5, valid: true }));
+
+      expect(seen.map((s) => s.event)).toEqual(["lap.completed"]);
+      expect(seen[0]!.data.isClassFastestLapOfRace).toBeUndefined();
+    });
+
+    it("keeps the pairing rule both ways over interleaved player and remote records", () => {
+      const seen = watch();
+      const controller = start();
+      controller.__tick(raceTick([-1, 90, 91, -1], { completed: 0, last: 0 }));
+      // The player: 89.5 (record), car 2: 89 (record), the player: 88 (record),
+      // the player: 89 (not), car 1: 87 (record), the player: 86 (record).
+      controller.__tick(raceTick([-1, 90, 91, -1], { completed: 1, last: 89.5, valid: true }));
+      controller.__tick(raceTick([-1, 90, 89, -1], { completed: 1, last: 89.5, valid: true }));
+      controller.__tick(raceTick([-1, 90, 89, -1], { completed: 2, last: 88, valid: true }));
+      controller.__tick(raceTick([-1, 90, 89, -1], { completed: 3, last: 89, valid: true }));
+      controller.__tick(raceTick([-1, 87, 89, -1], { completed: 3, last: 89, valid: true }));
+      controller.__tick(raceTick([-1, 87, 89, -1], { completed: 4, last: 86, valid: true }));
+
+      const flagged = seen.filter((s) => s.event === "lap.completed" && s.data.isClassFastestLapOfRace === true);
+      const playerRecords = seen.filter((s) => s.event === "fastestLap.set" && s.data.isPlayer === true);
+      const remoteRecords = seen.filter((s) => s.event === "fastestLap.set" && s.data.isPlayer === false);
+
+      expect(flagged.map((s) => s.data.lap)).toEqual([1, 2, 4]);
+      expect(playerRecords.map((s) => s.data.lap)).toEqual([1, 2, 4]);
+      expect(
+        remoteRecords.map((s) => [s.data.carIdx, s.data.lapTime, (s.data.previous as { isPlayer: boolean }).isPlayer]),
+      ).toEqual([
+        [2, 89, true],
+        [1, 87, true],
+      ]);
+
+      // Every flagged lap has exactly one player record with its lap, and the reverse.
+      for (const lap of flagged.map((s) => s.data.lap)) {
+        expect(playerRecords.filter((s) => s.data.lap === lap)).toHaveLength(1);
+      }
+
+      for (const lap of playerRecords.map((s) => s.data.lap)) {
+        expect(flagged.filter((s) => s.data.lap === lap)).toHaveLength(1);
+      }
+    });
+
+    it("a session change resets the record: the new session seeds afresh and its first best is a record with no previous", () => {
+      const seen = watch();
+      const controller = start();
+      controller.__tick(raceTick([-1, 90, 91, -1], { completed: 0, last: 0 }));
+      expect(seen).toEqual([]);
+
+      // The positive control: in the same session a 95 is no record.
+      controller.__tick(raceTick([-1, 90, 95, -1], { completed: 0, last: 0 }));
+      expect(seen).toEqual([]);
+
+      controller.__setSessionInfo(raceInfo(1));
+      controller.__tick(raceTick([-1, -1, -1, -1], { completed: 0, last: 0 }, { SessionNum: 1 }));
+      controller.__tick(raceTick([-1, -1, 95, -1], { completed: 0, last: 0 }, { SessionNum: 1 }));
+
+      const records = seen.filter((s) => s.event === "fastestLap.set");
+      expect(records).toHaveLength(1);
+      expect(records[0]!.data).toMatchObject({ carIdx: 2, lapTime: 95 });
+      expect(records[0]!.data.previous).toBeUndefined();
+    });
+
+    describe("across a replay glance", () => {
+      function glance(controller: MockController, during: TelemetryData): void {
+        controller.__tick({ ...during, IsReplayPlaying: true } as TelemetryData);
+        controller.__tick({ ...during, IsReplayPlaying: true } as TelemetryData);
+        elapseReplayGrace();
+      }
+
+      it("emits nothing for the glance, keeps the record, and absorbs a remote car that beat it meanwhile as the silent holder", () => {
+        const seen = watch();
+        const controller = start();
+        controller.__tick(raceTick([-1, 90, 91, -1], { completed: 1, last: 92, valid: true }));
+        expect(seen.filter((s) => s.event === "fastestLap.set")).toEqual([]);
+
+        // During the glance car 2 runs an 89.
+        glance(controller, raceTick([-1, 90, 89, -1], { completed: 1, last: 92, valid: true }));
+        // Back live: the re-seed tick, then a scan tick.
+        controller.__tick(raceTick([-1, 90, 89, -1], { completed: 1, last: 92, valid: true }));
+        controller.__tick(raceTick([-1, 90, 89, -1], { completed: 1, last: 92, valid: true }));
+        expect(seen.filter((s) => s.event === "fastestLap.set")).toEqual([]);
+
+        // Car 1 beating 90 but not 89 is no record: the holder is now car 2.
+        controller.__tick(raceTick([-1, 89.5, 89, -1], { completed: 1, last: 92, valid: true }));
+        expect(seen.filter((s) => s.event === "fastestLap.set")).toEqual([]);
+
+        // The positive control.
+        controller.__tick(raceTick([-1, 88, 89, -1], { completed: 2, last: 92, valid: true }));
+        const records = seen.filter((s) => s.event === "fastestLap.set");
+        expect(records).toHaveLength(1);
+        expect(records[0]!.data).toMatchObject({ carIdx: 1, lapTime: 88, previous: { carIdx: 2, lapTime: 89 } });
+      });
+
+      it("a holder that left the world during the glance keeps the record, so only a lap faster than it is announced", () => {
+        const seen = watch();
+        const controller = start();
+        controller.__tick(raceTick([-1, 90, 91, -1], { completed: 1, last: 92, valid: true }));
+
+        glance(controller, raceTick([-1, -1, 91, -1], { completed: 1, last: 92, valid: true }));
+        controller.__tick(raceTick([-1, -1, 91, -1], { completed: 1, last: 92, valid: true }));
+
+        // Faster than every remaining car, slower than the departed holder.
+        controller.__tick(raceTick([-1, -1, 90.5, -1], { completed: 1, last: 92, valid: true }));
+        expect(seen.filter((s) => s.event === "fastestLap.set")).toEqual([]);
+
+        controller.__tick(raceTick([-1, -1, 89.9, -1], { completed: 2, last: 92, valid: true }));
+        const records = seen.filter((s) => s.event === "fastestLap.set");
+        expect(records).toHaveLength(1);
+        expect(records[0]!.data).toMatchObject({
+          carIdx: 2,
+          lapTime: 89.9,
+          previous: { carIdx: 1, lapTime: 90, carNumber: "07" },
+        });
+      });
+    });
+  });
 });
