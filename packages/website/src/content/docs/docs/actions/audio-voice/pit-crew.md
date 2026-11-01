@@ -345,7 +345,7 @@ Besides the final lap of a race and a caution, the best-lap callout is also sile
 
 ### Every lap
 
-Every other lap you complete, in practice, qualifying and races, is read out the way a timing screen shows it, to the thousandth — *"Last lap was one forty-five point two thirty-seven."* The engineer varies the opening (*"That one was …"*, *"You did a …"*), and a lap under a minute starts with the seconds — *"Last lap was fifty-eight point oh forty-one."*
+Any lap you complete that neither the best-lap nor the fastest-lap call speaks for, in practice, qualifying and races, is read out the way a timing screen shows it, to the thousandth — *"Last lap was one forty-five point two thirty-seven."* The engineer varies the opening (*"That one was …"*, *"You did a …"*), and a lap under a minute starts with the seconds — *"Last lap was fifty-eight point oh forty-one."*
 
 It stays quiet on laps that don't say anything about your pace: an out-lap (a lap you start on pit road), an in-lap (a lap on which you drive into the pits), and, like the best-lap call, the lap that ends a caution. A lap iRacing doesn't count, such as a track-limits cut, is still read out — you hear the time you drove.
 
@@ -670,7 +670,7 @@ Under **Telemetry Connect**, one callout is toggleable, enabled by default:
 Under **Lap Time**, three callouts are toggleable, all enabled by default (see [Lap Time](#lap-time) above for the full behavior, and for which one speaks when more than one applies):
 
 - **New best lap** (`calloutEnabledLapTimeBestLap`) — the post-S/F announcement of your lap time when you set a new personal best (or complete the first valid lap of the session). With it off, that lap goes to **Every lap** when that is on.
-- **Every lap** (`calloutEnabledLapTimeEveryLap`) — every other completed lap, in any session, read to the thousandth; out-laps and in-laps stay silent.
+- **Every lap** (`calloutEnabledLapTimeEveryLap`) — every completed lap no other lap-time call speaks for, in any session, read to the thousandth; out-laps and in-laps stay silent.
 - **Fastest lap of the race** (`calloutEnabledFastestLap`) — races only: a new fastest lap of the race in your class, whoever set it, from each car's third lap on. With it off, a fastest lap of the race you set yourself is read out by **New best lap** instead.
 
 Under **Position**, one callout is toggleable, enabled by default:
