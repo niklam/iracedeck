@@ -111,7 +111,10 @@ const FALLBACK_ENTRIES: Record<string, CalloutScriptEntry> = {
     comment: "Fastest lap.",
     test: "Harness → Fastest Lap → Yours.",
     sequence: [
-      { case: "fastestLap.holder", of: { yours: ["pool:fastest-lap/yours"], default: ["pool:fastest-lap/other"] } },
+      {
+        case: "fastestLap.holder",
+        of: { yours: ["{{fastestLap.yoursLine}}"], default: ["{{fastestLap.otherLine}}"] },
+      },
       { if: "fastestLap.hasMinuteComponent", then: ["{{fastestLap.minute}}"] },
       "{{fastestLap.second}}",
       "{{fastestLap.decimal}}",
@@ -121,28 +124,30 @@ const FALLBACK_ENTRIES: Record<string, CalloutScriptEntry> = {
     comment: "Every lap.",
     test: "Harness → Lap Time → Every lap.",
     sequence: [
-      "pool:lap-time-last/intro",
+      "{{lapTime.lastIntro}}",
       { if: "lapTime.compactHasMinute", then: ["{{lapTime.compactMinute}}"] },
       "{{lapTime.compactSecond}}",
-      "{{lapTime.compactThousandthFirst}}",
-      "{{lapTime.compactThousandthMiddle}}",
-      "{{lapTime.compactThousandthLast}}",
+      "{{lapTime.compactPoint}}",
+      "{{lapTime.compactPair}}",
     ],
   },
 };
 
-/** The clips the 1:23.4 lap needs in both readouts, per voice, beside the bundled manifest. */
+/**
+ * The clips the 1:23.4 lap needs in both readouts, per voice, beside the
+ * bundled manifest: each line and the intro in the take for "one" (`w`), the
+ * minute before "twenty" (`t`), the tenth, and to the thousandth point four
+ * before "oh oh" and the pair 00 (#555's `lap-time-second/23` ships already).
+ */
 function extraClips(voice: string): string[] {
   return [
-    "fastest-lap/yours-01",
-    "fastest-lap/other-01",
-    "lap-time-last/intro-01",
-    "lap-time-compact-minute/1-twenty",
-    "lap-time-compact-second/23",
+    "fastest-lap/yours-w-01",
+    "fastest-lap/other-w-01",
+    "lap-time-last/intro-w-01",
+    "lap-time-compact-minute/1-t",
     "lap-time-compact-tenth/4",
-    "lap-time-compact-thousandth-first/4",
-    "lap-time-compact-thousandth-middle/0",
-    "lap-time-compact-thousandth-last/0",
+    "lap-time-compact-point/4-oh",
+    "lap-time-compact-pair/00",
   ].map((c) => `voice/${voice}/${c}.mp3`);
 }
 

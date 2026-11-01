@@ -12,15 +12,22 @@
  *     that carries the word "minute", a second clip with a trailing comma, and
  *     a "point N seconds." tail.
  *   - **Compact** (#1163's every-lap call to the thousandth, #1571's
- *     fastest-lap call to the tenth): "one twenty-three point four", the way a
- *     timing screen reads, over the `lap-time-compact-*` groups. Each join is
- *     a clip boundary, and each clip is cut once per distinct continuation:
- *     the minute take is chosen by the first word of the seconds that follow
- *     it (`<m>-oh`, `<m>-ten` … `<m>-nineteen`, `<m>-twenty` … `<m>-fifty`),
- *     the seconds after a minute are a pair `00`–`59` ("oh five"), under a
- *     minute they are plain (`second-plain/0`–`9`) or the same pairs from 10
- *     up, and the tail is either one phrase-final "point N." (tenths) or three
- *     digits (`thousandth-first`, `-middle`, `-last`).
+ *     fastest-lap call to the tenth): "one twenty three point four", the way a
+ *     timing screen reads, over the `lap-time-compact-*` groups and #555's
+ *     `lap-time-second`. Each join is a clip boundary, and a clip that leads
+ *     into another is cut once per **onset class** of the word that follows
+ *     it — its first sound (Niklas's rule, #1163): {@link onsetClass}. So the
+ *     minute take is `<m>-<class of the seconds word>` ("one" before "twenty
+ *     three" is `1-t`, before "oh five" `1-oh`); the seconds after a minute
+ *     are `lap-time-compact-second/00`–`09` ("oh five") below ten and
+ *     `lap-time-second/10`–`59` from ten up, and under a minute
+ *     `lap-time-second/0`–`59` throughout; the tail is either one "point N"
+ *     (tenths, `lap-time-compact-tenth`) or, to the thousandth, "point N" by
+ *     the class of the pair that follows (`lap-time-compact-point/<d>-<c>`)
+ *     and the pair itself (`lap-time-compact-pair/00`–`99`, "oh seven",
+ *     "thirty seven"). The line that leads into the whole time — the
+ *     every-lap intro, the fastest-lap lines — takes the class of the time's
+ *     first word ({@link compactLeadClass}).
  *
  * Neither form has a hardcoded range beyond what its precision implies: a
  * value with no clip for the active voice aborts the readout at expansion
@@ -38,15 +45,18 @@ export const LAP_TIME_FULL_GROUPS = {
   decimal: "lap-time-decimal",
 } as const;
 
-/** The compact-form groups (#1163, #1571). */
+/**
+ * The compact-form groups (#1163, #1571). `plainSecond` is #555's own
+ * `lap-time-second`, reused unchanged: the plain words 0–59 serve every
+ * seconds value except 0–9 after a minute, which is read "oh N".
+ */
 export const LAP_TIME_COMPACT_GROUPS = {
   minute: "lap-time-compact-minute",
-  second: "lap-time-compact-second",
-  secondPlain: "lap-time-compact-second-plain",
+  ohSecond: "lap-time-compact-second",
+  plainSecond: LAP_TIME_FULL_GROUPS.second,
   tenth: "lap-time-compact-tenth",
-  thousandthFirst: "lap-time-compact-thousandth-first",
-  thousandthMiddle: "lap-time-compact-thousandth-middle",
-  thousandthLast: "lap-time-compact-thousandth-last",
+  point: "lap-time-compact-point",
+  pair: "lap-time-compact-pair",
 } as const;
 
 /**
@@ -122,6 +132,7 @@ export function splitCompactLapTime(lapTime: number, precision: CompactPrecision
   return { minutes: Math.floor(totalSeconds / 60), seconds: totalSeconds % 60, digits };
 }
 
+const ONES = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"] as const;
 const TEENS = [
   "ten",
   "eleven",
@@ -134,21 +145,90 @@ const TEENS = [
   "eighteen",
   "nineteen",
 ] as const;
-const TENS = ["twenty", "thirty", "forty", "fifty"] as const;
+const TENS = ["twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"] as const;
 
 /**
- * The first word of a seconds pair (0–59) as the compact form speaks it after
- * a minute: `oh` for 00–09 ("oh five", "oh oh"), each teen word for 10–19, and
- * the tens word from 20 up. It names the minute take that leads into it.
- *
- * @internal Exported for testing.
+ * A word a compact lap time can open a clip with: "oh" (the "oh" of "oh
+ * five" after a minute or a point), the plain words zero to nine, the teens,
+ * and the tens words twenty to ninety.
  */
-export function compactSecondsFirstWord(seconds: number): string {
-  if (seconds < 10) return "oh";
+export type NumberWord = "oh" | (typeof ONES)[number] | (typeof TEENS)[number] | (typeof TENS)[number];
 
-  if (seconds < 20) return TEENS[seconds - 10];
+/**
+ * The onset class of a word: its first sound, which is what a clip leading
+ * into it has to be cut for (#1163). Words that start alike share a take —
+ * "two", "ten", "twelve" and "twenty" all begin with a t.
+ */
+export type OnsetClass = "oh" | "w" | "t" | "th" | "f" | "s" | "ei" | "n" | "e" | "z";
 
-  return TENS[Math.floor(seconds / 10) - 2];
+/** Every word's class, the table of Niklas's onset rule; a `Record` so no word can be left out. */
+const ONSET_CLASS: Readonly<Record<NumberWord, OnsetClass>> = {
+  oh: "oh",
+  zero: "z",
+  one: "w",
+  two: "t",
+  ten: "t",
+  twelve: "t",
+  twenty: "t",
+  three: "th",
+  thirteen: "th",
+  thirty: "th",
+  four: "f",
+  five: "f",
+  fourteen: "f",
+  fifteen: "f",
+  forty: "f",
+  fifty: "f",
+  six: "s",
+  seven: "s",
+  sixteen: "s",
+  seventeen: "s",
+  sixty: "s",
+  seventy: "s",
+  eight: "ei",
+  eighteen: "ei",
+  eighty: "ei",
+  nine: "n",
+  nineteen: "n",
+  ninety: "n",
+  eleven: "e",
+};
+
+/** The onset class of a word ({@link OnsetClass}). */
+export function onsetClass(word: NumberWord): OnsetClass {
+  return ONSET_CLASS[word];
+}
+
+/**
+ * The first word of a whole number 0–99 read plainly: "zero" … "nine", each
+ * teen word, the tens word from twenty up ("forty" for 45). How a minute is
+ * read, and the seconds of a lap under a minute. `null` for anything else.
+ */
+export function plainFirstWord(n: number): NumberWord | null {
+  if (!Number.isInteger(n) || n < 0 || n > 99) return null;
+
+  if (n < 10) return ONES[n];
+
+  if (n < 20) return TEENS[n - 10];
+
+  return TENS[Math.floor(n / 10) - 2];
+}
+
+/**
+ * The first word of a whole number 0–99 read as a pair, the way a timing
+ * screen reads the seconds after a minute and the two digits after the
+ * point: "oh" for 0–9 ("oh five", "oh oh"), otherwise as
+ * {@link plainFirstWord}. `null` outside 0–99.
+ */
+export function pairFirstWord(n: number): NumberWord | null {
+  if (!Number.isInteger(n) || n < 0 || n > 99) return null;
+
+  return n < 10 ? "oh" : plainFirstWord(n);
+}
+
+/** The onset class of `word`, or `null` with no word. */
+function classOf(word: NumberWord | null): OnsetClass | null {
+  return word === null ? null : onsetClass(word);
 }
 
 /** Whether the compact form speaks a minute: the lap, rounded at `precision`, is a minute or longer. */
@@ -159,57 +239,94 @@ export function compactHasMinute(lapTime: number, precision: CompactPrecision): 
 }
 
 /**
+ * The onset class of the first word the compact readout speaks at
+ * `precision` — the minute word ("one" for 1:23.4 → `w`), or under a minute
+ * the seconds read plainly ("fifteen" for 15.2 → `f`, "zero" for 0.9 →
+ * `z`). The line that leads into the time picks its take by it. `null` with
+ * nothing to read, or a minute past 99 that has no word.
+ */
+export function compactLeadClass(lapTime: number, precision: CompactPrecision): OnsetClass | null {
+  const split = splitCompactLapTime(lapTime, precision);
+
+  if (split === null) return null;
+
+  return classOf(plainFirstWord(split.minutes >= 1 ? split.minutes : split.seconds));
+}
+
+/**
  * The compact minute as a `lap-time-compact-minute` pool reference, the take
- * chosen by the seconds that follow it (`1-twenty` for 1:23.4, `1-oh` for
- * 1:05.0 and 1:00.0); `null` under a minute. A minute the voice has no clip
- * for — 11 and up — aborts the readout.
+ * chosen by the class of the seconds word that follows it (`1-t` for 1:23.4,
+ * `1-oh` for 1:05.4 and 1:00.0, `1-f` for 1:45.237); `null` under a minute.
+ * A minute the voice has no clip for — 11 and up — aborts the readout.
  */
 export function compactMinuteRef(lapTime: number, precision: CompactPrecision): string | null {
   const split = splitCompactLapTime(lapTime, precision);
 
   if (split === null || split.minutes < 1) return null;
 
-  return poolRef(LAP_TIME_COMPACT_GROUPS.minute, `${split.minutes}-${compactSecondsFirstWord(split.seconds)}`);
+  const next = classOf(pairFirstWord(split.seconds));
+
+  return next === null ? null : poolRef(LAP_TIME_COMPACT_GROUPS.minute, `${split.minutes}-${next}`);
 }
 
 /**
- * The compact seconds: after a minute, the pair from `lap-time-compact-second`
- * (`00`–`59`, "oh five"); under a minute, `lap-time-compact-second-plain`
- * (`0`–`9`, "five") below ten and the same pairs (`10`–`59`) from ten up.
+ * The compact seconds: after a minute, 0–9 as "oh N" from
+ * `lap-time-compact-second` (`00`–`09`) and 10–59 from `lap-time-second`;
+ * under a minute, `lap-time-second` (`0`–`59`, "seven", "fifty eight")
+ * throughout.
  */
 export function compactSecondRef(lapTime: number, precision: CompactPrecision): string | null {
   const split = splitCompactLapTime(lapTime, precision);
 
   if (split === null) return null;
 
-  if (split.minutes >= 1) return poolRef(LAP_TIME_COMPACT_GROUPS.second, String(split.seconds).padStart(2, "0"));
+  if (split.minutes >= 1 && split.seconds < 10) {
+    return poolRef(LAP_TIME_COMPACT_GROUPS.ohSecond, String(split.seconds).padStart(2, "0"));
+  }
 
-  if (split.seconds < 10) return poolRef(LAP_TIME_COMPACT_GROUPS.secondPlain, String(split.seconds));
-
-  return poolRef(LAP_TIME_COMPACT_GROUPS.second, String(split.seconds));
+  return poolRef(LAP_TIME_COMPACT_GROUPS.plainSecond, String(split.seconds));
 }
 
-/** The compact tenths tail as a `lap-time-compact-tenth` pool reference: "point N.", phrase-final. */
+/** The compact tenths tail as a `lap-time-compact-tenth` pool reference: "point N", which ends the time. */
 export function compactTenthRef(lapTime: number): string | null {
   const split = splitCompactLapTime(lapTime, "tenths");
 
   return split === null ? null : poolRef(LAP_TIME_COMPACT_GROUPS.tenth, String(split.digits[0]));
 }
 
-/** Which of the three thousandths clips: "point" with the first digit, the middle digit, the phrase-final last. */
-export type ThousandthPart = "first" | "middle" | "last";
-
-const THOUSANDTH_GROUP: Record<ThousandthPart, string> = {
-  first: LAP_TIME_COMPACT_GROUPS.thousandthFirst,
-  middle: LAP_TIME_COMPACT_GROUPS.thousandthMiddle,
-  last: LAP_TIME_COMPACT_GROUPS.thousandthLast,
-};
-
-const THOUSANDTH_INDEX: Record<ThousandthPart, number> = { first: 0, middle: 1, last: 2 };
-
-/** One digit of the compact thousandths tail as a pool reference into its group. */
-export function compactThousandthRef(lapTime: number, part: ThousandthPart): string | null {
+/** The thousandths of a lap as the point's digit and the pair after it (1:45.237 → 2 and 37); `null` with nothing to read. */
+function thousandthsTail(lapTime: number): { digit: number; pair: number } | null {
   const split = splitCompactLapTime(lapTime, "thousandths");
 
-  return split === null ? null : poolRef(THOUSANDTH_GROUP[part], String(split.digits[THOUSANDTH_INDEX[part]]));
+  if (split === null) return null;
+
+  const [digit, tens, ones] = split.digits;
+
+  return { digit, pair: tens * 10 + ones };
+}
+
+/**
+ * The first digit after the point, to the thousandth, as a
+ * `lap-time-compact-point` pool reference: "point N" in the take for the
+ * class of the pair that follows (`2-th` for 1:45.237, `0-oh` for .007,
+ * `0-n` for .019).
+ */
+export function compactPointRef(lapTime: number): string | null {
+  const tail = thousandthsTail(lapTime);
+
+  if (tail === null) return null;
+
+  const next = classOf(pairFirstWord(tail.pair));
+
+  return next === null ? null : poolRef(LAP_TIME_COMPACT_GROUPS.point, `${tail.digit}-${next}`);
+}
+
+/**
+ * The last two digits, to the thousandth, as a `lap-time-compact-pair` pool
+ * reference `00`–`99` ("oh seven", "thirty seven"), which ends the time.
+ */
+export function compactPairRef(lapTime: number): string | null {
+  const tail = thousandthsTail(lapTime);
+
+  return tail === null ? null : poolRef(LAP_TIME_COMPACT_GROUPS.pair, String(tail.pair).padStart(2, "0"));
 }
