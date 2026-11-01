@@ -2890,7 +2890,9 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
   // the `diffOpponentPit` shape; it takes no post-race gate on purpose, since
   // the field's last laps after the checkered still count for the record and
   // the audio layer stands down after the player's own finish. Session info
-  // names the car (`carNumber`), as for the opponent flags.
+  // names the car (`carNumber`), as for the opponent flags. The scan holds
+  // while the player's own crossing awaits `diffLaps`' emit (read off
+  // `lastLapCompletedCounter`), on the tick's `now`, bounded.
   diffFastestLap(
     self.state,
     telemetry,
@@ -2901,6 +2903,7 @@ function handleTick(self: TranslatorInstance, telemetry: TelemetryData): void {
     resolveIsMultiClass(sessionInfo),
     canonicalPositions,
     emit,
+    now,
   );
 
   // Opponent penalty flags (issues #936, #1274) — advances the per-car flag

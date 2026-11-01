@@ -29,6 +29,24 @@
  *   later tick. When `CarIdxBestLapTime[player]` later refreshes to the same
  *   value nothing happens: the player is not scanned.
  *
+ * **The scan holds while the player's lap awaits its judgement.** The two
+ * ways in run on different clocks: the scan reads every tick, while the
+ * judge runs only when `diffLaps` emits, which trails the crossing by the
+ * `LapLastLapTime` refresh and then by up to `LAP_RESULTS_SYNC_MAX_WAIT_MS`
+ * for the standings. Unheld, a rival crossing inside that window with a lap
+ * slower than the player's but faster than the record would be announced as
+ * taking the record — "from you", when the record was the player's — and the
+ * player's faster lap would then take it back at the emit. So from the tick
+ * the player's `LapCompleted` runs ahead of the count `diffLaps` last emitted
+ * for ({@link playerLapAwaitsJudgement}), the scan neither advances a
+ * baseline nor emits: a remote best that moved meanwhile is seen as new on
+ * the first tick after the judge, against the record as the judge left it.
+ * The hold is bounded by {@link FASTEST_LAP_HOLD_MAX_MS} from that tick, a
+ * little past the longest `diffLaps` can wait, so a crossing that never emits
+ * (a time that never refreshes, a lap whose count the judge refuses) cannot
+ * freeze the scan. A lap-0 crossing never holds: the judge refuses it
+ * whatever its time, so there is nothing to wait for.
+ *
  * **One eligibility predicate** ({@link isEligibleRecordLap}) decides which
  * laps can enter the record, for the scan and for the player alike: a race
  * session, past the green, a completed-lap count of at least 1, and a
@@ -63,11 +81,30 @@ import {
 } from "@iracedeck/iracing-sdk";
 
 import type { FastestLapRecord, TranslatorState } from "../state.js";
-import type { FastestLapJudge } from "./laps.js";
+import { type FastestLapJudge, LAP_RESULTS_SYNC_MAX_WAIT_MS } from "./laps.js";
 import type { EmitFn } from "./types.js";
 
 /** The events {@link diffFastestLap} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`. */
 export const FASTEST_LAP_EVENTS = ["fastestLap.set"] as const satisfies readonly SimEventName[];
+
+/**
+ * How long (ms) after the player's crossing `LapLastLapTime` is allowed to
+ * refresh before the hold stops waiting for it. `diffLaps` puts no bound on
+ * that wait (it waits for the field to change, however long), so the hold
+ * needs one of its own: 2 s, the budget `diff/replay-laps.ts` gives the same
+ * refresh for a remote car (`REPLAY_LAP_TIME_WAIT_TICKS`, 120 ticks at 60 Hz)
+ * against a refresh measured at a tick or two.
+ */
+export const LAP_TIME_REFRESH_ALLOWANCE_MS = 2000;
+
+/**
+ * The longest the remote scan holds for the player's lap (issue #1571): the
+ * refresh allowance plus the standings wait `diffLaps` then runs, which is
+ * the longest a `lap.completed` can trail the crossing by. 5 s today. A
+ * crossing still unjudged after this never emits — a lap-0 crossing, a lap
+ * whose time never refreshes — and the scan resumes.
+ */
+export const FASTEST_LAP_HOLD_MAX_MS = LAP_TIME_REFRESH_ALLOWANCE_MS + LAP_RESULTS_SYNC_MAX_WAIT_MS;
 
 /**
  * Whether a lap can enter the record (issue #1571, decision 1): a race
@@ -176,12 +213,50 @@ function positiveOrNull(value: number | undefined): number | null {
 }
 
 /**
+ * Whether the remote scan holds this tick because the player has crossed
+ * the line and that lap has not been judged yet (issue #1571). "Crossed but
+ * not judged" is read off what is honestly there: `diffLaps` is initialised
+ * (it runs before this diff on every tick, so an uninitialised lap diff means
+ * no crossing it will ever emit for) and the player's `LapCompleted` is at
+ * least 1 and ahead of `lastLapCompletedCounter`, the count `diffLaps` last
+ * emitted for — read-only here, written only in `laps.ts`. The crossing's
+ * time is this diff's own, taken on the first tick the count ran ahead and
+ * kept in `fastestLapHold`; a new count starts a new hold, and the hold
+ * clears the tick the counts agree again. Past {@link FASTEST_LAP_HOLD_MAX_MS}
+ * the scan resumes with the hold still recorded, so the same unjudged
+ * crossing cannot hold again.
+ */
+export function playerLapAwaitsJudgement(state: TranslatorState, telemetry: TelemetryData, now: number): boolean {
+  const laps = telemetry.LapCompleted;
+  const pending =
+    state.lapCompletedInitialized &&
+    typeof laps === "number" &&
+    Number.isFinite(laps) &&
+    laps >= 1 &&
+    laps > state.lastLapCompletedCounter;
+
+  if (!pending) {
+    state.fastestLapHold = null;
+
+    return false;
+  }
+
+  if (state.fastestLapHold === null || state.fastestLapHold.lap !== laps) {
+    state.fastestLapHold = { lap: laps, since: now };
+  }
+
+  return now - state.fastestLapHold.since < FASTEST_LAP_HOLD_MAX_MS;
+}
+
+/**
  * Per-tick record maintenance and `fastestLap.set` emission (issue #1571).
  *
  * Order inside the tick: the player's claim first, whatever the gates say,
- * then the race and pre-green gates, then the seed or the scan. Baselines
- * are per car and advance element-wise; the scan reads only the player's
- * class, skipping the player (judged on `lap.completed`) and the pace car.
+ * then the race and pre-green gates, then the seed, then the hold for the
+ * player's unjudged lap, then the scan. Baselines are per car and advance
+ * element-wise; the scan reads only the player's class, skipping the player
+ * (judged on `lap.completed`) and the pace car. `now` is the tick's clock,
+ * the same value `diffLaps` is handed, and only the hold reads it.
  */
 export function diffFastestLap(
   state: TranslatorState,
@@ -193,6 +268,7 @@ export function diffFastestLap(
   isMultiClass: boolean | null,
   positions: number[],
   emit: EmitFn<(typeof FASTEST_LAP_EVENTS)[number]>,
+  now: number,
 ): void {
   const carClasses = telemetry.CarIdxClass;
   const projection = isMultiClass === true;
@@ -260,6 +336,13 @@ export function diffFastestLap(
 
     return;
   }
+
+  // The hold: the player has crossed and `diffLaps` has not emitted that lap
+  // yet, so the judge has not seen it. Nothing moves — no baseline, no event
+  // — and a remote best that changes meanwhile is read on the first tick
+  // after the judge, against the record as the judge leaves it. Bounded, so
+  // a crossing that never emits cannot freeze the scan.
+  if (playerLapAwaitsJudgement(state, telemetry, now)) return;
 
   // The scan: one candidate per tick, the fastest of the cars whose value
   // moved below the record. Every positive value advances its baseline,

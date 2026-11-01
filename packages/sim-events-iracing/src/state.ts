@@ -1401,6 +1401,18 @@ export type TranslatorState = {
    * longer belongs to.
    */
   fastestLapClaim: FastestLapClaim | null;
+  /**
+   * The hold on the remote scan while the player's just-completed lap awaits
+   * its judgement: the player's `LapCompleted` the hold is for, and when (ms,
+   * the tick's `now`) `diff/fastest-lap.ts` first saw that count ahead of the
+   * one `diffLaps` last emitted for. `null` while no crossing is pending.
+   * The scan holds until the lap is judged or `FASTEST_LAP_HOLD_MAX_MS` has
+   * passed since, so a remote best that moves inside `lap.completed`'s wait is
+   * compared against the record as the judge leaves it, never before. Wiped
+   * by the replay glance: `diffLaps` re-seeds on the way back, so a crossing
+   * pending at the flip is never emitted and there is nothing to wait for.
+   */
+  fastestLapHold: { lap: number; since: number } | null;
 
   // ── Opponent pit entries (issue #622) ─────────────────────────────────
   /** First eligible tick seeds the per-car surface baseline silently. */
@@ -1972,6 +1984,7 @@ export function createInitialState(): TranslatorState {
     fastestLapBaselines: [],
     fastestLapBaselinesSeeded: false,
     fastestLapClaim: null,
+    fastestLapHold: null,
 
     opponentPitInitialized: false,
     opponentPitLastSurface: [],
