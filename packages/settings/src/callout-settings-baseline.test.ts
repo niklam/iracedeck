@@ -24,7 +24,7 @@ import { GlobalSettingsSchema } from "./global-settings.js";
  * out of the registry adds the settings migration
  * (`global-settings-migrations.ts`) for the value users stored under it, and
  * marks the row `"retiredBy": "#<issue>"` — the one field a written row ever
- * gains. A retired row's key must then be gone from the registry and from the
+ * gains — and appends the key to `RETIRED_KEYS` below. A retired row's key must then be gone from the registry and from the
  * schema's defaults; its other columns stay as the record of what the key
  * was, and are no longer checked against the schema. A retired key is never
  * reused: a callout that comes back takes a new key and a new row. A rename
@@ -109,6 +109,15 @@ const liveKeys = Object.keys(baseline).filter((key) => !isRetired(key));
 
 /** Rows a settings migration retired: their key must be gone, and nothing else of them is checked. */
 const retiredKeys = Object.keys(baseline).filter(isRetired);
+
+/**
+ * Every key ever retired, append-only and kept apart from the rows' markers,
+ * since the pin leaves `retiredBy` out (it is added on retirement). Without it,
+ * dropping a row's marker and re-adding the key to the registry would make a
+ * retired key live again. Retiring a key appends it here as well as marking
+ * its row; an entry is never removed, because a retired key is never reused.
+ */
+const RETIRED_KEYS: readonly string[] = [];
 
 const registryKeys: readonly string[] = CALLOUT_SETTING_KEYS;
 
@@ -237,5 +246,13 @@ describe("callout settings baseline (#1350, #1376)", () => {
         `${key} is marked "retiredBy": "${retiredBy}" in ${BASELINE_FILE} but GlobalSettingsSchema still defaults it`,
       ).toBe(false);
     }
+  });
+
+  it("marks exactly the keys RETIRED_KEYS lists as retired", () => {
+    expect(
+      [...retiredKeys].sort(),
+      `the rows marked "retiredBy" in ${BASELINE_FILE} and RETIRED_KEYS in callout-settings-baseline.test.ts ` +
+        `must name the same keys: retiring a key marks its row and appends it to RETIRED_KEYS, and neither is ever undone.`,
+    ).toEqual([...RETIRED_KEYS].sort());
   });
 });
