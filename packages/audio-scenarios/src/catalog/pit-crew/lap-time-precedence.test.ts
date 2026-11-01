@@ -129,8 +129,7 @@ const FALLBACK_ENTRIES: Record<string, CalloutScriptEntry> = {
 /**
  * The clips the 1:23.4 lap needs in both readouts, per voice, beside the
  * bundled manifest: each line and the intro (one take each, ending its
- * sentence), the clock phrase 1m23, the tenths in both takes, and the
- * thousandths 400.
+ * sentence), the clock phrase 1m23, the tenths 4 and the thousandths 400.
  */
 function extraClips(voice: string): string[] {
   return [
@@ -139,7 +138,6 @@ function extraClips(voice: string): string[] {
     "lap-time-last/intro-01",
     "lap-time-clock/1m23",
     "lap-time-tenths/4",
-    "lap-time-tenths/4-gap",
     "lap-time-thousandths/400",
   ].map((c) => `voice/${voice}/${c}.mp3`);
 }

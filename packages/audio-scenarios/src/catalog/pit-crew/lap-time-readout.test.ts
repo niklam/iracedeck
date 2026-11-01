@@ -64,8 +64,7 @@ describe("splitCompactLapTime", () => {
       expect(splitCompactLapTime(t, "thousandths"), String(t)).toBeNull();
       expect(compactClockRef(t, "tenths"), String(t)).toBeNull();
       expect(compactClockRef(t, "thousandths"), String(t)).toBeNull();
-      expect(compactTenthsRef(t, false), String(t)).toBeNull();
-      expect(compactTenthsRef(t, true), String(t)).toBeNull();
+      expect(compactTenthsRef(t), String(t)).toBeNull();
       expect(compactThousandthsRef(t), String(t)).toBeNull();
     }
   });
@@ -140,19 +139,14 @@ describe("the compact fraction to the thousandth", () => {
 describe("the compact fraction to the tenth", () => {
   it("reads 1:23.44 as the clock 1m23 and point four, the take that ends the line", () => {
     expect(compactClockRef(83.44, "tenths")).toBe("pool:lap-time-clock/1m23");
-    expect(compactTenthsRef(83.44, false)).toBe("pool:lap-time-tenths/4");
-  });
-
-  it("takes <d>-gap when the gap clause follows, and only then", () => {
-    expect(compactTenthsRef(83.44, true)).toBe("pool:lap-time-tenths/4-gap");
-    expect(compactTenthsRef(83.44, false)).toBe("pool:lap-time-tenths/4");
+    expect(compactTenthsRef(83.44)).toBe("pool:lap-time-tenths/4");
   });
 
   it("carries 59.96 into 1m00 and point oh", () => {
     expect(compactClockRef(59.96, "tenths")).toBe("pool:lap-time-clock/1m00");
-    expect(compactTenthsRef(59.96, false)).toBe("pool:lap-time-tenths/0");
+    expect(compactTenthsRef(59.96)).toBe("pool:lap-time-tenths/0");
     // The positive control: 59.94 stays fifty nine point nine.
     expect(compactClockRef(59.94, "tenths")).toBe("pool:lap-time-second/59");
-    expect(compactTenthsRef(59.94, false)).toBe("pool:lap-time-tenths/9");
+    expect(compactTenthsRef(59.94)).toBe("pool:lap-time-tenths/9");
   });
 });

@@ -154,7 +154,7 @@ const DEFAULT_ENTRY: CalloutScriptEntry = {
     },
     "{{fastestLap.clock}}",
     "{{fastestLap.decimal}}",
-    { optional: ["{{fastestLap.gapIntro}}", "{{fastestLap.gapSecond}}", "{{fastestLap.gapDecimal}}"] },
+    { optional: ["pause:150", "{{fastestLap.gapIntro}}", "{{fastestLap.gapSecond}}", "{{fastestLap.gapDecimal}}"] },
   ],
 };
 
@@ -176,7 +176,7 @@ const SHORT_CALLS_ENTRY: CalloutScriptEntry = {
     },
     "{{fastestLap.clock}}",
     "{{fastestLap.decimal}}",
-    { optional: ["{{fastestLap.gapIntro}}", "{{fastestLap.gapSecond}}", "{{fastestLap.gapDecimal}}"] },
+    { optional: ["pause:150", "{{fastestLap.gapIntro}}", "{{fastestLap.gapSecond}}", "{{fastestLap.gapDecimal}}"] },
   ],
 };
 
@@ -204,13 +204,12 @@ const manifest: AudioAssetsManifest = {
     ...["5", "7", "42"].map((n) => `voice/${VOICE}/car-number/${n}.mp3`),
     ...["1", "2", "3", "4", "6", "8"].map((n) => `voice/${VOICE}/position-number/${n}.mp3`),
     // The compact form to the tenth: every clock phrase 1m00–10m59, #555's
-    // plain seconds (the gap clause's too), and the tenths in both takes.
+    // plain seconds (the gap clause's too), and the tenths, one take each.
     ...Array.from({ length: 10 }, (_, m) => m + 1).flatMap((m) =>
       Array.from({ length: 60 }, (_, ss) => `voice/${VOICE}/lap-time-clock/${m}m${String(ss).padStart(2, "0")}.mp3`),
     ),
     ...Array.from({ length: 60 }, (_, s) => `voice/${VOICE}/lap-time-second/${s}.mp3`),
     ...Array.from({ length: 10 }, (_, d) => `voice/${VOICE}/lap-time-tenths/${d}.mp3`),
-    ...Array.from({ length: 10 }, (_, d) => `voice/${VOICE}/lap-time-tenths/${d}-gap.mp3`),
     // The gap clause.
     `voice/${VOICE}/gap/readout-intro-01.mp3`,
     `voice/${VOICE}/lap-time-decimal/2.mp3`,
@@ -531,24 +530,54 @@ describe("the gap clause", () => {
   const gaps = (side: "ahead" | "behind", carIdx: number, gapSeconds: number | null, lapDelta = 0): LiveGaps =>
     ({ ahead: null, behind: null, [side]: { carIdx, gapSeconds, lapDelta } }) as unknown as LiveGaps;
   const GAP = ["gap/readout-intro", "lap-time-second/1", "lap-time-decimal/2"];
-  /** The time when the gap clause follows it: the tenths in the take that leads into "Gap is". */
-  const TIME_INTO_GAP = ["lap-time-clock/1m23", "lap-time-tenths/4-gap"];
-
-  it("plays for ahead when the live neighbour ahead is the fire's car on the same lap under a minute, the tenths in the -gap take", () => {
+  it("plays for ahead when the live neighbour ahead is the fire's car on the same lap under a minute, the time still ending on the plain tenths", () => {
     liveGaps = gaps("ahead", 3, 1.2);
     fire(record({ position: 3, playerPosition: 4 }));
 
-    expect(line()).toEqual(["fastest-lap/ahead", ...TIME_INTO_GAP, ...GAP]);
+    expect(line()).toEqual(["fastest-lap/ahead", ...TIME, ...GAP]);
   });
 
-  it("plays for behind on the behind side, the tenths in the -gap take", () => {
+  it("plays for behind on the behind side", () => {
     liveGaps = gaps("behind", 3, 1.2);
     fire(record({ position: 5, playerPosition: 4 }));
 
-    expect(line()).toEqual(["fastest-lap/behind", ...TIME_INTO_GAP, ...GAP]);
+    expect(line()).toEqual(["fastest-lap/behind", ...TIME, ...GAP]);
   });
 
-  it("is left out, the line ending on the plain tenths take, when the neighbour is another car, a lap away, a minute or more away or on the other side", () => {
+  /** Publish the record and play its line up to the end of the tenths, ending each clip as it starts, with no time passing. */
+  function playThroughTheTenths(data: FastestLapData): void {
+    bus.publishEvent("fastestLap.set", data);
+
+    for (let i = 0; i < 20 && !line().includes("lap-time-tenths/4"); i++) {
+      vi.advanceTimersByTime(0);
+      audio.end(AudioChannel.SFX);
+      audio.end(AudioChannel.Voice);
+    }
+
+    expect(line().at(-1)).toBe("lap-time-tenths/4");
+    audio.end(AudioChannel.Voice);
+  }
+
+  it('does not join the tenths to "Gap is": the clause opens after a 150 ms pause', () => {
+    liveGaps = gaps("ahead", 3, 1.2);
+    playThroughTheTenths(record({ position: 3, playerPosition: 4 }));
+
+    vi.advanceTimersByTime(149);
+    expect(line()).not.toContain("gap/readout-intro");
+
+    vi.advanceTimersByTime(1);
+    expect(line().at(-1)).toBe("gap/readout-intro");
+  });
+
+  it("drops the pause with the clause: with no gap to read, the line closes as the tenths end", () => {
+    liveGaps = null;
+    playThroughTheTenths(record({ position: 3, playerPosition: 4 }));
+
+    // The close tick follows at once, with no pause held for a clause that is not there.
+    expect(audio.played.at(-1)).toEqual({ channel: AudioChannel.SFX, path: "sfx/IRD-tick-close.mp3" });
+  });
+
+  it("is left out when the neighbour is another car, a lap away, a minute or more away or on the other side", () => {
     const cases: ReadonlyArray<[string, LiveGaps]> = [
       ["wrong car", gaps("ahead", 9, 1.2)],
       ["a lap away", gaps("ahead", 3, 1.2, 1)],
@@ -575,60 +604,18 @@ describe("the gap clause", () => {
     }
   });
 
-  it("is left out, the plain tenths take, with no live gaps at all", () => {
+  it("is left out with no live gaps at all", () => {
     liveGaps = null;
     fire(record({ position: 3, playerPosition: 4 }));
 
     expect(line()).toEqual(["fastest-lap/ahead", ...TIME]);
   });
 
-  it("never plays for the other keys, even with a matching gap on a side — and the tenths stay the plain take", () => {
+  it("never plays for the other keys, even with a matching gap on a side", () => {
     liveGaps = gaps("ahead", 3, 1.2);
     fire(record({ position: 1, playerPosition: 2 }));
 
     expect(line()).toEqual(["fastest-lap/leader", ...TIME]);
-  });
-
-  it("takes the -gap tenths exactly when the gap clause resolves, over every gap shape and holder", () => {
-    const shapes: ReadonlyArray<LiveGaps | null> = [
-      null,
-      gaps("ahead", 3, 1.2),
-      gaps("behind", 3, 1.2),
-      gaps("ahead", 9, 1.2),
-      gaps("ahead", 3, 1.2, 1),
-      gaps("ahead", 3, 61),
-      gaps("behind", 3, 61),
-    ];
-    const holders: ReadonlyArray<Partial<FastestLapData>> = [
-      { position: 3, playerPosition: 4 },
-      { position: 5, playerPosition: 4 },
-      { position: 1, playerPosition: 2 },
-      { position: 6, playerPosition: 4 },
-      { isPlayer: true, carIdx: 0, position: 4, playerPosition: 4 },
-    ];
-    let withGap = 0;
-    let withoutGap = 0;
-
-    for (const g of shapes) {
-      for (const h of holders) {
-        audio.played.length = 0;
-        liveGaps = g;
-        fire(record(h));
-
-        const label = JSON.stringify({ g, h });
-        const clauseSpoke = line().includes("gap/readout-intro");
-        const tenths = line().filter((c) => c.startsWith("lap-time-tenths/"));
-
-        expect(tenths, label).toEqual([clauseSpoke ? "lap-time-tenths/4-gap" : "lap-time-tenths/4"]);
-
-        if (clauseSpoke) withGap++;
-        else withoutGap++;
-      }
-    }
-
-    // Both outcomes were reached (the positive control on the sweep).
-    expect(withGap).toBe(2);
-    expect(withoutGap).toBe(33);
   });
 
   it("speakableGap is the gap family's rule: the named car, same lap, under a minute", () => {

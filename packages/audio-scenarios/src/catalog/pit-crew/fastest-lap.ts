@@ -18,10 +18,10 @@
  * followed by the time in the compact form to the tenth ("one twenty three
  * point four", `lap-time-readout.ts`) as two whole phrases, the clock and the
  * tenths, and, for `ahead` and `behind` only, an optional gap clause read
- * through the gap family's own speakable-gap rule. The tenths take is the
- * `-gap` one exactly when that clause will speak ({@link fireGap}, the one
- * check the gap vars resolve on), so the time runs into "Gap is" or ends the
- * line. Every line that leads into the time ends its own sentence (revision 6
+ * through the gap family's own speakable-gap rule ({@link fireGap}, the one
+ * check the three gap vars resolve on). The tenths end their sentence either
+ * way ("point four."), and the clause opens with a pause: a break before
+ * "Gap is" is natural (Niklas), so the two are never joined. Every line that leads into the time ends its own sentence (revision 6
  * of the clip contract, Niklas: the period "makes it end cleanly and sharp"),
  * so each is one take whatever the time opens with, and the script addresses
  * every piece of the line as a pool: `fastest-lap/<holder>` per case, `in`
@@ -35,7 +35,7 @@
  *       other: [{{fastestLap.carNumber}}, pool:fastest-lap/in, {{fastestLap.position}}, pool:fastest-lap/other] } }
  *   {{fastestLap.clock}}
  *   {{fastestLap.decimal}}
- *   { optional: [{{fastestLap.gapIntro}}, {{fastestLap.gapSecond}}, {{fastestLap.gapDecimal}}] }
+ *   { optional: [pause:150, {{fastestLap.gapIntro}}, {{fastestLap.gapSecond}}, {{fastestLap.gapDecimal}}] }
  *
  * Positions are read LIVE when the line speaks, through the canonical order
  * (`race-positions.md`) in the payload's projection (class positions in a
@@ -190,8 +190,7 @@ export function resolveFastestLapHolder(
  * on that side when its car is this fire's car, on the same lap, under a
  * minute — the gap family's own rule ({@link speakableGap}). All three gap
  * vars resolve through this one check, so the clause is spoken whole or not
- * at all, and `fastestLap.decimal` asks it too, so the tenths take that leads
- * into "Gap is" plays exactly when the clause does.
+ * at all.
  */
 function fireGap(ctx: ScenarioContext, deps: FastestLapDeps): SpeakableGap | null {
   const data = fastestLapDataOf(ctx);
@@ -277,9 +276,9 @@ export function buildFastestLap(deps: FastestLapDeps): {
       (ctx) => {
         const t = lapTimeOf(ctx);
 
-        return t === null ? null : compactTenthsRef(t, fireGap(ctx, deps) !== null);
+        return t === null ? null : compactTenthsRef(t);
       },
-      'The tenths of the fastest lap ("point four"), from the lap-time-tenths clip group: lap-time-tenths/<d> when it ends the line, and the take lap-time-tenths/<d>-gap, which leads into "Gap is", exactly when the gap clause speaks, decided on the same test as fastestLap.gapIntro.',
+      'The tenths of the fastest lap ("point four."), from the lap-time-tenths clip group: lap-time-tenths/<d>, one take that ends its sentence, whether the line ends there or the gap clause follows after a pause.',
     );
 
     engine.defineVar(

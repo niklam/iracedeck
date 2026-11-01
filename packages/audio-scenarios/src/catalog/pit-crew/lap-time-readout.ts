@@ -21,8 +21,10 @@
  *         #555's `lap-time-second/<s>` word ("fifty eight");
  *       - the **fraction**: to the thousandth one
  *         `lap-time-thousandths/<ddd>` phrase ("point four five six"), to the
- *         tenth one `lap-time-tenths/<d>` ("point four"), or its `<d>-gap`
- *         take when the fastest-lap gap clause follows it.
+ *         tenth one `lap-time-tenths/<d>` ("point four."), which ends its
+ *         sentence even when the fastest-lap gap clause follows it: a break
+ *         before "Gap is" is natural (Niklas, revision 6), so the script
+ *         pauses there rather than joining the two.
  *     The line that leads into the whole time — the every-lap intro, the
  *     fastest-lap lines — ends its own sentence (revision 6, Niklas: the
  *     period "makes it end cleanly and sharp"), so it is one take whatever the
@@ -165,17 +167,14 @@ export function compactThousandthsRef(lapTime: number): string | null {
 }
 
 /**
- * The fraction to the tenth as a `lap-time-tenths` pool reference: "point
- * N", the take `<d>` when it ends the line and `<d>-gap` when a gap clause
- * follows it (its `next_text` is "Gap is"). `beforeGap` is the caller's
- * answer to whether that clause will speak.
+ * The fraction to the tenth as a `lap-time-tenths` pool reference, `<d>`:
+ * "point N.", one take that ends its sentence whatever follows it — the end
+ * of the line or, after a pause, the fastest-lap gap clause.
  */
-export function compactTenthsRef(lapTime: number, beforeGap: boolean): string | null {
+export function compactTenthsRef(lapTime: number): string | null {
   const split = splitCompactLapTime(lapTime, "tenths");
 
   if (split === null) return null;
 
-  const digit = String(split.digits[0]);
-
-  return poolRef(LAP_TIME_COMPACT_GROUPS.tenths, beforeGap ? `${digit}-gap` : digit);
+  return poolRef(LAP_TIME_COMPACT_GROUPS.tenths, String(split.digits[0]));
 }
