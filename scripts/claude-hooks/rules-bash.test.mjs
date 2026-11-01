@@ -2723,6 +2723,40 @@ describe("gh issue and the board", () => {
   });
   it("denies rewriting the Status options", () =>
     deny("gh api graphql -f query='mutation{updateProjectV2Field(...)}'"));
+
+  // #1574: the rules said a raw lane edit is refused, and no hook refused it.
+  describe("a raw lane or position edit", () => {
+    const FIELD_VALUE = "updateProjectV2" + "ItemFieldValue";
+    const POSITION = "updateProjectV2" + "ItemPosition";
+    const shapes = [
+      "gh project item-edit --project-id P --id I --field-id F --single-select-option-id O",
+      "cd ../ir-5 && gh project item-edit --id I --field-id F --single-select-option-id O",
+      "timeout 30 gh project item-edit --id I",
+      `gh api graphql -f query='mutation{${FIELD_VALUE}(input:{}){clientMutationId}}'`,
+      `gh api graphql -f query="mutation { ${POSITION}(input: {}) { clientMutationId } }"`,
+      `gh api graphql -F n=1 -f query='mutation($p:ID!){${POSITION}(input:{projectId:$p}){clientMutationId}}'`,
+    ];
+    it.each(shapes)("denies %s, as a Bash and as a PowerShell command", (c) => {
+      expect(deny(c)).toMatch(/setBoardStatus/);
+      expect(deny(c, ctx({ shell: POWERSHELL }))).toMatch(/moveBoardItemAfter/);
+    });
+    it("passes the helpers, a read and a mention", () => {
+      for (const c of [
+        `node -e "import('./scripts/claude-hooks/lib.mjs').then(m=>console.log(m.setBoardStatus(1,'Planned',process.cwd())))"`,
+        `node -e "import('./scripts/claude-hooks/lib.mjs').then(m=>console.log(m.moveBoardItemAfter(1,null,process.cwd())))"`,
+        "gh project item-list 1 --owner niklam --format json",
+        "gh project field-list 1 --owner niklam --format json",
+        `grep -rn "gh project item-edit" .claude`,
+        `echo 'gh project item-edit --id I'`,
+        `git commit -m "refuse gh project item-edit outside the helpers"`,
+        `grep -rn ${POSITION} scripts`,
+        `rg "gh api graphql.*${FIELD_VALUE}" scripts`,
+        "gh api graphql -f query='query{viewer{login}}'",
+      ])
+        passes(c);
+      passes("Write-Output 'gh project item-edit --id I'", ctx({ shell: POWERSHELL }));
+    });
+  });
 });
 
 // #1574: the post-hook's milestone trigger reads each edit's own arguments.

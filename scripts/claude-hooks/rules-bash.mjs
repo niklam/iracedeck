@@ -1295,6 +1295,25 @@ export const rules = [
       "`updateProjectV2Field` replaces the option list and regenerates its ids, which clears every card's lane. Add a lane in the UI instead.",
   },
   {
+    // #1574: the rules said a raw lane edit is refused, and nothing refused it.
+    // The helpers spawn gh themselves, never through the Bash tool, so this
+    // reaches only a command the model writes. At command position: a grep or
+    // a commit message that names one is no edit, and a `gh api graphql` counts
+    // when its own arguments carry the mutation, whatever quotes hold them.
+    name: "board lanes and positions move only through the helpers",
+    test: (c, ctx) => {
+      const edit = has(c, cmd(/gh\s+project\s+item-edit\b/));
+      const mutation = () =>
+        [...chainCommands(c, ctx.cwd, cmd(/gh\s+api\s+graphql\b/))].some(({ args }) =>
+          /\bupdateProjectV2Item(?:FieldValue|Position)\b/.test(args),
+        );
+      return (
+        (edit || mutation()) &&
+        "A card's lane or position moves only through the helpers in scripts/claude-hooks/lib.mjs, which refuse a backwards move and never touch a Testing or Done card: from the repo root, `node -e \"import('./scripts/claude-hooks/lib.mjs').then(m=>console.log(m.setBoardStatus(<n>,'<lane>',process.cwd())))\"`, or `m.moveBoardItemAfter(<n>,<after or null>,process.cwd())` for its place in the lane."
+      );
+    },
+  },
+  {
     name: "pnpm build --force does nothing",
     test: (c) =>
       has(c, cmd(/pnpm\s+(run\s+)?build\s+--force\b/)) &&
