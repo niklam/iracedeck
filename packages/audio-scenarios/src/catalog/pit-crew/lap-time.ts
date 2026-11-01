@@ -42,7 +42,8 @@
  * race-finished gate its `where:` reads.
  *
  * Clip scope derives from the manifest (issues #835/#836): each component
- * resolver returns a pool reference, and a lap time whose minute component has
+ * resolver returns a pool reference — split and resolved through the shared
+ * `lap-time-readout.ts` (#1163, #1571), whose full form this is — and a lap time whose minute component has
  * no clip for the active voice aborts the whole readout at expansion — never
  * partial readouts, no hardcoded bounds.
  */
@@ -54,6 +55,7 @@ import type { ScenarioContract } from "../../dsl.js";
 import { poolRef } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 import type { UnderCautionResolver } from "./caution.js";
+import { fullDecimalRef, fullHasMinute, fullMinuteRef, fullSecondRef } from "./lap-time-readout.js";
 
 /**
  * Resolver for the most recent `lap.completed` payload. Returns `null` when no
@@ -66,34 +68,12 @@ export type LapCompletedSnapshotResolver = () => LapCompletedSnapshot | null;
 export type LapCompletedSnapshot = SimEventOf<"lap.completed">["data"];
 
 const LAP_TIME_GROUP_INTRO = "lap-time-intro";
-const LAP_TIME_GROUP_MINUTE = "lap-time-minute";
-const LAP_TIME_GROUP_SECOND = "lap-time-second";
-const LAP_TIME_GROUP_DECIMAL = "lap-time-decimal";
 
-/**
- * Split a lap time (seconds) into minute / whole-second / decimal-tenth, with
- * a single round-to-nearest-tenth at the input boundary so 34.85 → 34.9 and
- * the three components stay internally consistent.
- */
-export function splitLapTime(lapTime: number): { minutes: number; seconds: number; tenths: number } {
-  if (!Number.isFinite(lapTime) || lapTime < 0) {
-    return { minutes: 0, seconds: 0, tenths: 0 };
-  }
-
-  const totalTenths = Math.round(lapTime * 10);
-  const totalSeconds = Math.floor(totalTenths / 10);
-  const tenths = totalTenths % 10;
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-
-  return { minutes, seconds, tenths };
-}
-
-/** Whether the lap has a non-zero minute component (≥1 minute). */
+/** Whether the lap has a non-zero minute component (≥1 minute), in #555's full form. */
 function hasMinuteComponent(snapshot: LapCompletedSnapshot | null): boolean {
   if (!snapshot) return false;
 
-  return splitLapTime(snapshot.lapTime).minutes >= 1;
+  return fullHasMinute(snapshot.lapTime);
 }
 
 /**
@@ -130,11 +110,7 @@ export function registerLapTimeVocabulary(
 
       if (!s) return null;
 
-      const { minutes } = splitLapTime(s.lapTime);
-
-      if (minutes < 1) return null;
-
-      return poolRef(LAP_TIME_GROUP_MINUTE, String(minutes));
+      return fullMinuteRef(s.lapTime);
     },
     "The whole-minute part of the lap time, as one clip per minute value; nothing for a lap under a minute. Draws from the lap-time-minute clip group — a minute the voice has no clip for aborts the readout.",
   );
@@ -146,9 +122,7 @@ export function registerLapTimeVocabulary(
 
       if (!s) return null;
 
-      const { seconds } = splitLapTime(s.lapTime);
-
-      return poolRef(LAP_TIME_GROUP_SECOND, String(seconds));
+      return fullSecondRef(s.lapTime);
     },
     "The whole-second part of the lap time (0 to 59), one clip per value with a trailing comma. Draws from the lap-time-second clip group.",
   );
@@ -160,9 +134,7 @@ export function registerLapTimeVocabulary(
 
       if (!s) return null;
 
-      const { tenths } = splitLapTime(s.lapTime);
-
-      return poolRef(LAP_TIME_GROUP_DECIMAL, String(tenths));
+      return fullDecimalRef(s.lapTime);
     },
     'The tenths of a second (0 to 9), spoken as "point N seconds" — the clip that ends the readout. Draws from the lap-time-decimal clip group.',
   );

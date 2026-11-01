@@ -345,8 +345,8 @@ export {
   type LapCompletedSnapshotResolver,
   type LapTimeCalloutId,
   registerLapTimeVocabulary,
-  splitLapTime,
 } from "./lap-time.js";
+export { splitLapTime } from "./lap-time-readout.js";
 export {
   buildPositionContract,
   POSITION_CLIP_SOURCES,

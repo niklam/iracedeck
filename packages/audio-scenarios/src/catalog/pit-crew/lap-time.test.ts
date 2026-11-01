@@ -21,12 +21,12 @@ import { _resetAudioScenarios, getScenarioEngine, initializeAudioScenarios } fro
 import { familyGate } from "./callout-gate.test-util.js";
 import { familyReferences } from "./family-references.test-util.js";
 import { registerPitCrew } from "./index.js";
+import { splitLapTime } from "./lap-time-readout.js";
 import {
   buildLapTimeContract,
   LAP_TIME_CLIP_SOURCES,
   LAP_TIME_SCENARIO_IDS,
   type LapCompletedSnapshot,
-  splitLapTime,
 } from "./lap-time.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { _resetRadarEngine } from "./radar-engine.js";
