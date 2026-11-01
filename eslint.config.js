@@ -5,6 +5,17 @@ import tsparser from '@typescript-eslint/parser';
 import prettier from 'eslint-config-prettier';
 import stylistic from '@stylistic/eslint-plugin';
 
+// The iRacing packages a sim-neutral layer may not import: deck-core and the
+// packages split out of it (#1351, #1367) and the device shells (#1500).
+const SIM_PACKAGES = [
+  '@iracedeck/deck-iracing',
+  '@iracedeck/sim-events-iracing',
+  '@iracedeck/iracing-sdk',
+  '@iracedeck/iracing-native',
+];
+const SHELL_SIM_MESSAGE =
+  'A plugin shell must not depend on a simulator: read the sim through PluginExtensionContext.sim, which plugin-runtime hands PluginExtension.start (#1500).';
+
 export default [
   eslint.configs.recommended,
   {
@@ -85,12 +96,7 @@ export default [
       'no-restricted-imports': [
         'error',
         {
-          paths: [
-            '@iracedeck/iracing-sdk',
-            '@iracedeck/iracing-native',
-            '@iracedeck/sim-events-iracing',
-            '@iracedeck/deck-iracing',
-          ].map((name) => ({
+          paths: SIM_PACKAGES.map((name) => ({
             name,
             message:
               'deck-core and the packages split out of it must not depend on a simulator: use the SimConnection interface or an injected delegate, and put iRacing code in @iracedeck/deck-iracing (#1351, #1367).',
@@ -152,6 +158,25 @@ export default [
                 'The replay engine must not depend on the deck layer, the settings or its own consumers: take it through configureReplayEngine (#1467).',
             },
           ],
+        },
+      ],
+    },
+  },
+  {
+    // A device shell names its host and calls startPlugin; it reaches no sim
+    // package (#1500). What a host extension reads of the sim arrives in its
+    // start context, PluginExtensionContext.sim, which plugin-runtime's initSim
+    // builds. Type-only imports and tests included: neither needs one. The
+    // subpath pattern closes a deep import, which iracing-sdk and iracing-native
+    // allow because they declare no `exports`.
+    // scripts/plugin-shell-sim-boundary.test.mjs proves this rule fires.
+    files: ['packages/iracing-plugin-*/src/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: SIM_PACKAGES.map((name) => ({ name, message: SHELL_SIM_MESSAGE })),
+          patterns: [{ group: SIM_PACKAGES.map((name) => `${name}/*`), message: SHELL_SIM_MESSAGE }],
         },
       ],
     },

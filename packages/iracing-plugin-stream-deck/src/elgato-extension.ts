@@ -11,16 +11,11 @@
 import type StreamDeck from "@elgato/streamdeck";
 import type { ElgatoPlatformAdapter } from "@iracedeck/deck-adapter-elgato";
 import { getCurrentProfile, getFeatureFlag, initProfileSwitcher, requestProfileSwitch } from "@iracedeck/deck-core";
-import { getController, onIRacingTerminated } from "@iracedeck/deck-iracing";
 import { availableProfilesForDevice } from "@iracedeck/iracing-actions";
 import { type PluginExtension, STREAM_DECK_ACTIONS } from "@iracedeck/plugin-runtime";
 import { getGlobalSettings, updateGlobalSettings } from "@iracedeck/settings";
-import { getSessionKind, getSessionType } from "@iracedeck/sim-events-iracing";
 
 import { createSessionProfileReactor } from "./session-profile-reactor.js";
-
-/** The SDK controller subscription id of the session-kind profile reactor (#1111). */
-export const SESSION_PROFILE_SUBSCRIPTION_ID = "session-profile-reactor";
 
 export function createElgatoExtension(sd: typeof StreamDeck, adapter: ElgatoPlatformAdapter): PluginExtension {
   // Publish the connected decks for the settings window's profile device picker,
@@ -45,7 +40,7 @@ export function createElgatoExtension(sd: typeof StreamDeck, adapter: ElgatoPlat
     // Unlike a PI, the window has no implicit device: it names one. Same
     // dispatch as the PI's accordion buttons (suffix per #753, history per #762).
     switchProfile: (deviceId, profile, page) => adapter.switchToBundledProfile(deviceId, profile, page),
-    start: () => {
+    start: ({ sim }) => {
       // Wire profile switching (Elgato-only) for the Switch Profile action and the
       // "Stream Deck Profiles" settings buttons (#736)
       initProfileSwitcher(
@@ -56,10 +51,13 @@ export function createElgatoExtension(sd: typeof StreamDeck, adapter: ElgatoPlat
       sd.devices.onDeviceDidDisconnect(() => refreshDevices());
 
       // Switch the decks to the profile mapped to the session's kind (#1111).
-      // By now initCore has built the SDK controller and initSim the translator
-      // that subscribed to it first, so each tick reads the kind the translator
-      // has just updated; the global settings were initialised just before this
-      // phase started the extension, and are read live at every tick. The switch
+      // The sim arrives through the context (#1500), so this shell imports no
+      // sim package. `sim.onTick` calls back after the sim has handled each
+      // update — that is its contract, not the order of controller subscribers
+      // — so each tick reads the kind just updated; the global settings were
+      // initialised before this phase started the extension, and are read live
+      // at every tick. The members are wrapped, not passed bare, so a `HostSim`
+      // written with methods keeps its `this`. The switch
       // goes through `requestProfileSwitch` with the manifest name the reactor
       // resolved against profiles.json, so it lands on the per-device history
       // the Switch Profile action's Back to previous walks (#762). Gated the way
@@ -67,16 +65,10 @@ export function createElgatoExtension(sd: typeof StreamDeck, adapter: ElgatoPlat
       // is never shown for a switch that cannot run.
       if (getFeatureFlag("profiles") !== false) {
         createSessionProfileReactor({
-          getSessionKind,
-          getRawSessionType: getSessionType,
-          subscribeTicks: (onTick) => {
-            const controller = getController();
-
-            controller.subscribe(SESSION_PROFILE_SUBSCRIPTION_ID, () => onTick());
-
-            return () => controller.unsubscribe(SESSION_PROFILE_SUBSCRIPTION_ID);
-          },
-          onSimTerminated: onIRacingTerminated,
+          getSessionKind: () => sim.getSessionKind(),
+          getRawSessionType: () => sim.getRawSessionType(),
+          subscribeTicks: (onTick) => sim.onTick(onTick),
+          onSimTerminated: (listener) => sim.onSimTerminated(listener),
           getSettings: getGlobalSettings,
           listDecks: () => [...sd.devices].filter((d) => d.isConnected).map((d) => ({ id: d.id, type: d.type })),
           availableProfiles: availableProfilesForDevice,

@@ -4,6 +4,11 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vites
 import { startPlugin } from "./start-plugin.js";
 import { cleanupTempBinDirs, createFakeExtension, createHost } from "./test-support/fake-host.js";
 import { callLog, describeFirstDifference, implement, resetRecorder } from "./test-support/recorder.js";
+import type { PluginExtensionContext, Sim } from "./types.js";
+
+// Every `Sim` the real sim phase built, so a test can follow its two halves
+// to the phases they are handed to (#1500).
+const { builtSims } = vi.hoisted(() => ({ builtSims: [] as Sim[] }));
 
 vi.mock("@iracedeck/deck-core", async (io) => (await import("./test-support/module-mocks.js")).recordedModule(io));
 vi.mock("@iracedeck/diagnostics", async (io) => (await import("./test-support/module-mocks.js")).recordedModule(io));
@@ -31,6 +36,19 @@ vi.mock("@iracedeck/race-engineer-wiring", async () =>
   (await import("./test-support/module-mocks.js")).raceEngineerWiringMock(),
 );
 vi.mock("./actions.js", async () => (await import("./test-support/module-mocks.js")).actionsMock());
+vi.mock("./phases/sim.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./phases/sim.js")>();
+
+  return {
+    ...actual,
+    initSim: (...args: Parameters<typeof actual.initSim>): Sim => {
+      const sim = actual.initSim(...args);
+      builtSims.push(sim);
+
+      return sim;
+    },
+  };
+});
 
 /**
  * The startup order of the pre-#1349 plugin.ts (origin/master 063a80e86), one
@@ -186,6 +204,7 @@ function observed(): string[] {
 describe("startPlugin (#1349)", () => {
   beforeEach(() => {
     resetRecorder();
+    builtSims.length = 0;
     // The default settings branch, set explicitly: an unimplemented stub is truthy (see recorder.ts).
     implement("getGlobalSettings", () => ({}));
     vi.stubGlobal("__FEATURE_PNG_RASTERIZATION__", true);
@@ -436,6 +455,27 @@ describe("startPlugin (#1349)", () => {
     expect(refresh).toBeGreaterThanOrEqual(0);
     expect(catalog).toBeGreaterThanOrEqual(0);
     expect(refresh).toBeLessThan(catalog);
+  });
+
+  it("hands the extension the host's sim and the Race Engineer the runtime, both from the one Sim the sim phase built (#1500)", () => {
+    const contexts: PluginExtensionContext[] = [];
+    const host = createHost({
+      ...createFakeExtension(["sd.switch-profile"]),
+      start: (context) => {
+        callLog.push("extension.start");
+        contexts.push(context);
+      },
+    });
+    const wiredSims: unknown[] = [];
+    implement("wireRaceEngineer", (_bus, deps) => wiredSims.push((deps as { sim: unknown }).sim));
+
+    startPlugin(host);
+
+    expect(builtSims).toHaveLength(1);
+    expect(contexts).toHaveLength(1);
+    expect(contexts[0].sim).toBe(builtSims[0].host);
+    expect(wiredSims).toHaveLength(1);
+    expect(wiredSims[0]).toBe(builtSims[0].runtime);
   });
 
   it("connects last", () => {

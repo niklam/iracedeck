@@ -4,7 +4,7 @@
  * dependency between phases is one of these parameters, so a phase cannot run
  * before what it needs exists. Phases import from here, never from `index.ts`.
  */
-import type { LogLocation } from "@iracedeck/app-constants";
+import type { LogLocation, ProfileSwitchSessionKind } from "@iracedeck/app-constants";
 import type { AudioAssetsManifest } from "@iracedeck/audio-scenarios";
 import type { CalloutScript } from "@iracedeck/callout-script";
 import type { IDeckActionHandler, IDeckPlatformAdapter } from "@iracedeck/deck-core";
@@ -12,6 +12,7 @@ import type { getController } from "@iracedeck/deck-iracing";
 import type { IEventBus } from "@iracedeck/event-bus";
 import type { IRacingNative } from "@iracedeck/iracing-native";
 import type { ILogger } from "@iracedeck/logger";
+import type { SimRuntime } from "@iracedeck/race-engineer-wiring";
 import type { ReplaySessionStore } from "@iracedeck/replay-store";
 import type { SettingsStore } from "@iracedeck/settings";
 import type {
@@ -31,6 +32,35 @@ export interface ActionRegistration {
 }
 
 /**
+ * What a host extension reads of the running sim (#1500), so a plugin shell
+ * imports no sim package. Built by `initSim` over the sim's translator; the
+ * Race Engineer reads the sim through `SimRuntime` instead, and nothing a deck
+ * host needs is added there (#1378).
+ */
+export interface HostSim {
+  /** The current session's kind (#1111), or null when there is no session or its type is not one the sim's classifier knows. */
+  getSessionKind(): ProfileSwitchSessionKind | null;
+  /** The sim's raw session type (`"Lone Qualify"`), for diagnostics only; `""` before the translator has a tick. */
+  getRawSessionType(): string;
+  /**
+   * Call `listener` on each sim update and once when the sim disconnects,
+   * AFTER the sim's own handling of it — even when that handling threw — so
+   * `getSessionKind()` inside reads this update's state. Never called on
+   * registration: the first call is the next update. The order is the sim's
+   * contract, not the order of controller subscribers. Returns the
+   * unsubscribe.
+   */
+  onTick(listener: () => void): () => void;
+  /** Call `listener` each time the sim exits. Returns the unsubscribe. */
+  onSimTerminated(listener: () => void): () => void;
+}
+
+/** What `startServices` hands `PluginExtension.start` (#1500). */
+export interface PluginExtensionContext {
+  readonly sim: HostSim;
+}
+
+/**
  * What only some hosts have (#1349) — today only Stream Deck: profiles (#736),
  * the deck-device list, the connected device type. The bootstrap tests for its
  * presence, never for a host name. Constructing one must have no side effects;
@@ -43,8 +73,12 @@ export interface PluginExtension {
   getConnectedDeviceType(): number | undefined;
   /** The settings window's profile buttons (#992): switch `deviceId` to a bundled profile by display name. */
   switchProfile(deviceId: string, profile: string, page?: number): void;
-  /** Register the profile switcher and the device connect/disconnect listeners. Called once, by `startServices`. */
-  start(): void;
+  /**
+   * Register the profile switcher, the device connect/disconnect listeners and
+   * the automatic profile switch, which reads the sim through `context.sim`
+   * (#1500). Called once, by `startServices`.
+   */
+  start(context: PluginExtensionContext): void;
   /** Re-publish the deck-device list (deduped); called before the settings window opens. */
   refreshDevices(): void;
 }
@@ -67,6 +101,15 @@ export interface Core {
   readonly controller: ReturnType<typeof getController>;
   /** How each native addon loaded (#1373), read once at startup; fixed for the run. */
   readonly nativeAddons: NativeAddonStatuses;
+}
+
+/**
+ * Phase 2's handoff (#1378, #1500): the running sim, read through two
+ * interfaces — the Race Engineer's `runtime` and the host extension's `host`.
+ */
+export interface Sim {
+  readonly runtime: SimRuntime;
+  readonly host: HostSim;
 }
 
 /** Phase 3's handoff: the native input layer, used again by window focus (phase 9) and the elevation check (phase 10). */

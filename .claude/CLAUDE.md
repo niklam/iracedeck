@@ -48,7 +48,7 @@ Deck layer
 - `@iracedeck/plugin-runtime` — the composition root: `startPlugin(host)`'s startup phases and the shared action list (`src/actions.ts`). Has its own `CLAUDE.md`.
 - `@iracedeck/plugin-build` — `createPluginRollupConfig`, the Rollup config the three plugins share. Has its own `CLAUDE.md`.
 - `@iracedeck/pi-components` — the Property Inspector framework: `ird-*` components, EJS partials, the Rollup plugins, the bridges. See `pi-templates.md` and `settings-window.md`.
-- `@iracedeck/iracing-plugin-stream-deck`, `-mirabox`, `-ulanzi` — the three plugin shells that call `startPlugin`. Each has its own `CLAUDE.md`; the Stream Deck one has the add-an-action walkthrough.
+- `@iracedeck/iracing-plugin-stream-deck`, `-mirabox`, `-ulanzi` — the three plugin shells that call `startPlugin`; they import no sim package (a lint rule refuses one). Each has its own `CLAUDE.md`; the Stream Deck one has the add-an-action walkthrough.
 
 Website
 
