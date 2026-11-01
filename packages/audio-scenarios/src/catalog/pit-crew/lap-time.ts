@@ -12,7 +12,7 @@
  * payload, never by which line reaches the bus first.
  *
  * **Every lap (`pit-crew.lap-time-last`, #1163).** "Last lap was one
- * forty five point two thirty seven" — in practice, qualifying and race, at
+ * forty five point two three seven" — in practice, qualifying and race, at
  * `WEIGHT.CHATTER`, queueable, in its own family. It is silent on an out lap
  * or an in lap (a lap that does not describe pace), on the final lap of a
  * race and under a caution exactly as the best lap is; an invalid lap is

@@ -529,6 +529,14 @@ describe("positions: live wins, the payload's pair is the fallback", () => {
     expect(line()).toContain("position-number/8");
   });
 
+  it("speaks the payload position when the line was chosen from the payload (no live player read)", () => {
+    liveCar.set(3, { position: 3, classPosition: 3 });
+    livePlayer = null;
+    fire(record({ position: 6, playerPosition: 2 }));
+
+    expect(line().slice(0, 4)).toEqual(["car-number/5", "fastest-lap/in", "position-number/6", "fastest-lap/other-w"]);
+  });
+
   it("relationPositions pairs both live reads, or both payload values", () => {
     const data = record({ position: 6, playerPosition: 4 });
 

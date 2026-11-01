@@ -156,15 +156,6 @@ function speakablePosition(n: number | null | undefined): number | null {
   return typeof n === "number" && Number.isInteger(n) && n > 0 ? n : null;
 }
 
-/** The record holder's position: live in the payload's projection, else the payload's. */
-function carPosition(data: FastestLapData, getCarLivePosition: FastestLapCarPositionResolver): number | null {
-  const live = speakablePosition(
-    getCarLivePosition({ carIdx: data.carIdx, position: data.position ?? 0, isMultiClass: data.isMultiClass === true }),
-  );
-
-  return live ?? speakablePosition(data.position);
-}
-
 /**
  * The holder's and the player's positions for the relation: both live, in
  * the payload's projection, when both live reads answer; otherwise both from
@@ -280,7 +271,9 @@ export function buildFastestLap(deps: FastestLapDeps): {
 
         if (data === null) return null;
 
-        const n = carPosition(data, deps.getCarLivePosition);
+        // The same pairing the holder case judges by, so the position spoken
+        // and the line it is spoken in come from one moment.
+        const n = relationPositions(data, deps).car;
 
         return n === null ? null : poolRef(POSITION_NUMBER_GROUP, String(n));
       },
