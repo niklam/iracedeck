@@ -20,3 +20,4 @@ Read at the start of every run on a live branch; a blind run that tests the brie
 - A new Race Engineer callout defaulting to on: that is the maintainer's standing decision (#534).
 - A finding that assumes pnpm runs a `pre<script>` / `post<script>` by itself when turbo runs a task: it does not here; each plugin's `postbuild` runs once, because its `build` calls it explicitly (#1491's build log).
 - A finding that assumes `SessionTime` follows the replay cursor out of the car: it stays live while an in-session replay is scrubbed back, and `ReplaySessionTime` is the one that follows the cursor (measured on ten snapshots, #1426's spec).
+- A finding that a queued Race Engineer fire expands against state a `session.changed` reset: the engine clears every bus's queue on `session.changed` before that event's own contracts run and never re-stashes a cut fire across it, and a playing fire has already expanded (#1571).
