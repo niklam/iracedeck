@@ -134,7 +134,7 @@ The vocabulary, every name read off the fire's payload or live state at speak ti
 - `fastestLap.position` — `pool:position-number/<n>`, live then payload, as `opponentFlag.position` resolves.
 - `fastestLap.clock` — the minutes and seconds as one clip at the tenth, `lap-time-clock/<m>m<ss>`, or `lap-time-second/<s>` under a minute (decision 6).
 - `fastestLap.decimal` — the tenths tail `lap-time-tenths/<d>`, or its `<d>-gap` take exactly when the gap clause speaks, decided by the same check as the gap vars so the two cannot disagree.
-- `fastestLap.yoursLine`, `fastestLap.leaderLine`, `fastestLap.aheadLine`, `fastestLap.behindLine`, `fastestLap.otherLine` — each holder's line in the take cut for the onset sound of the time after it (the #1163 spec, "The readout"). The taken-from-you line is one take followed by a pause, so the script names its pool directly.
+- The holder lines end their sentence (Niklas, 2026-11-01: a line ending with a period and no `next_text` "ends cleanly and sharp"), so each is one take and the script names its pool directly; the time follows as a sentence of its own.
 - `fastestLap.gapIntro`, `fastestLap.gapSecond`, `fastestLap.gapDecimal` — the gap readout for `ahead` and `behind` only: `getLiveGaps()`'s side for the holder's key, resolved only when that side's car is this fire's car, on the same lap, under a minute; the three resolve on one check so the clause is spoken whole or not at all. This is the rule `resolveSpeakableGap` already applies (`catalog/pit-crew/gaps.ts:199-224`), extracted into one pure function both families call rather than copied, and it draws from the same groups the gap readout does (`gap/readout-intro`, `lap-time-second`, `lap-time-decimal`, `gaps.ts:248-279`).
 
 The default script's shape:
@@ -145,12 +145,12 @@ The default script's shape:
   "test": "Harness → Fastest Lap → Yours (Taken from you, Leader, Car ahead, Car behind, Other car for the other lines). In-sim: an offline AI race; set the fastest lap of the race from lap 3 on, or let an AI car beat it.",
   "sequence": [
     { "case": "fastestLap.holder", "of": {
-      "yours": ["{{fastestLap.yoursLine}}"],
+      "yours": ["pool:fastest-lap/yours"],
       "taken-from-you": ["{{fastestLap.carNumber}}", "pool:fastest-lap/taken-from-you", "pause:150"],
-      "leader": ["{{fastestLap.leaderLine}}"],
-      "ahead": ["{{fastestLap.aheadLine}}"],
-      "behind": ["{{fastestLap.behindLine}}"],
-      "other": ["{{fastestLap.carNumber}}", "pool:fastest-lap/in", "{{fastestLap.position}}", "{{fastestLap.otherLine}}"]
+      "leader": ["pool:fastest-lap/leader"],
+      "ahead": ["pool:fastest-lap/ahead"],
+      "behind": ["pool:fastest-lap/behind"],
+      "other": ["{{fastestLap.carNumber}}", "pool:fastest-lap/in", "{{fastestLap.position}}", "pool:fastest-lap/other"]
     } },
     "{{fastestLap.clock}}",
     "{{fastestLap.decimal}}",
