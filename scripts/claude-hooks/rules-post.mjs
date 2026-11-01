@@ -276,6 +276,33 @@ export function issueCreateRepos(command, masked = command) {
 }
 
 /**
+ * Whether a parsed `gh issue edit` (`parseIssueEdit`) sets a milestone (#1574):
+ * a `--milestone` whose value is not empty — or is not readable, which the
+ * read-back then settles — and no `--remove-milestone`. Removing one never
+ * moves a card back.
+ */
+export const setsMilestone = (edit) => !edit.removesMilestone && edit.milestone !== undefined && edit.milestone !== "";
+
+/**
+ * The issues a `gh issue edit` names, each `{ ref, repo }` with the repository
+ * gh resolves it in: an issue URL's own, else the edit's `--repo` / `-R`, else
+ * a `GH_REPO` that reaches it (`envRepo`, {@link assignedGhRepo}), normalised
+ * ({@link normalizeRepo}). `repo` is `null` when one is named but not readable,
+ * `undefined` when none is and gh uses the checkout's own.
+ */
+export function editTargets(edit, envRepo) {
+  const named = edit.repo !== undefined ? edit.repo : envRepo;
+  const repo = named == null ? named : normalizeRepo(named);
+  return edit.issues.map((ref) => ({ ref, repo: repoOfUrl(ref) ?? repo }));
+}
+
+/** The number of a github.com issue URL, or `undefined`. */
+export function issueNumberOfUrl(url) {
+  const m = /^https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/issues\/(\d+)/i.exec(String(url ?? ""));
+  return m ? Number(m[1]) : undefined;
+}
+
+/**
  * The cards a merged PR moves: its closing issues in {@link HOME_REPO}, or
  * when it has none the `(#n)` its title ends with (the PR title rule).
  * `foreign` names the closing issues elsewhere (`Fixes other/repo#5`), whose

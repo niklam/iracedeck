@@ -12,6 +12,7 @@ import {
   GIT_COMMIT,
   GIT_WORKTREE_REMOVE,
   gitCwd,
+  issueEdits,
   issueFromWorktreePath,
   maskInert,
   matchAt,
@@ -2722,6 +2723,101 @@ describe("gh issue and the board", () => {
   });
   it("denies rewriting the Status options", () =>
     deny("gh api graphql -f query='mutation{updateProjectV2Field(...)}'"));
+});
+
+// #1574: the post-hook's milestone trigger reads each edit's own arguments.
+describe("issueEdits", () => {
+  const edits = (c, shell) => [...issueEdits(shell === POWERSHELL ? powershellAsBash(c) : c, MASTER, shell)];
+  const one = (c, shell) => {
+    const found = edits(c, shell);
+    expect(found, c).toHaveLength(1);
+    return found[0];
+  };
+
+  it("reads the issues and the milestone in every spelling", () => {
+    for (const c of [
+      "gh issue edit 5 --milestone 3.8.0",
+      "gh issue edit 5 -m 3.8.0",
+      "gh issue edit 5 --milestone=3.8.0",
+      "gh issue edit 5 -m3.8.0",
+      "gh issue edit --milestone 3.8.0 5",
+      `gh issue edit 5 --milestone "3.8.0"`,
+      "gh issue edit 5 --milestone '3.8.0'",
+      "gh issue edit '#5' --milestone 3.8.0",
+      "gh issue edit 5 --title 'a --milestone b' --milestone 3.8.0 2>&1",
+      "gh issue edit 5 --milestone 2.0 --milestone 3.8.0",
+    ])
+      expect(one(c), c).toMatchObject({ issues: ["5"], milestone: "3.8.0", removesMilestone: false, readable: true });
+  });
+
+  it("reads several issues, numbers and URLs", () => {
+    const url = "https://github.com/niklam/iracedeck/issues/7";
+    expect(one(`gh issue edit 5 ${url}/ 6 --milestone 3.8.0`)).toMatchObject({
+      issues: ["5", url, "6"],
+      readable: true,
+    });
+  });
+
+  it("reads an empty or unreadable value, a removal, and an edit with no milestone", () => {
+    expect(one(`gh issue edit 5 --milestone ""`).milestone).toBe("");
+    expect(one(`gh issue edit 5 --milestone=''`).milestone).toBe("");
+    expect(one(`gh issue edit 5 --milestone "$M"`).milestone).toBeNull();
+    expect(one("gh issue edit 5 --milestone")).toMatchObject({ milestone: null, issues: ["5"] });
+    expect(one("gh issue edit 5 --remove-milestone")).toMatchObject({ milestone: undefined, removesMilestone: true });
+    expect(one("gh issue edit 5 --add-label bug").milestone).toBeUndefined();
+    // A value flag's value is never an issue.
+    expect(one("gh issue edit 5 --add-label 6 --body 7 -t 8 -m 3.8.0").issues).toEqual(["5"]);
+  });
+
+  it("reads the edit's own --repo", () => {
+    expect(one("gh issue edit 5 -R other/repo -m x").repo).toBe("other/repo");
+    expect(one("gh issue edit 5 -Rother/repo -m x").repo).toBe("other/repo");
+    expect(one("gh issue edit 5 --repo=other/repo -m x").repo).toBe("other/repo");
+    expect(one(`gh issue edit 5 --repo "$R" -m x`).repo).toBeNull();
+    expect(one("gh issue edit 5 -m x").repo).toBeUndefined();
+  });
+
+  it("is not readable when an issue argument is not a plain number or issue URL", () => {
+    for (const c of [
+      "gh issue edit $N --milestone x",
+      `gh issue edit "$N" --milestone x`,
+      "gh issue edit $(gh issue list -q .x) --milestone x",
+      "gh issue edit 5 foo --milestone x",
+      "gh issue edit https://github.com/niklam/iracedeck/pull/5 --milestone x",
+    ])
+      expect(one(c).readable, c).toBe(false);
+  });
+
+  it("stops at a comment and at the end of its command", () => {
+    expect(one("gh issue edit 5 # --milestone x").milestone).toBeUndefined();
+    // `sudo` feeds a shell, so the mask is not trusted and the raw words are read.
+    expect(one("sudo gh issue edit 5 # --milestone x")).toMatchObject({ issues: ["5"], milestone: undefined });
+    expect(one("gh issue edit 5 && echo --milestone x").milestone).toBeUndefined();
+    expect(one("gh issue edit 5 -m x | cat 6")).toMatchObject({ issues: ["5"], readable: true });
+  });
+
+  it("finds each edit of a chain, with the directory it ran in and where it starts", () => {
+    const c = "gh issue edit 5 -m a && cd ../ir-9 && GH_REPO=o/r gh issue edit 6 -m b";
+    const [first, second] = edits(c);
+    expect(first).toMatchObject({ issues: ["5"], base: MASTER, start: 0 });
+    expect(second).toMatchObject({ issues: ["6"], base: tree("ir-9"), start: c.indexOf("gh issue edit 6") });
+  });
+
+  it("finds an edit behind a wrapper, and in PowerShell", () => {
+    expect(one("timeout 60 gh issue edit 5 -m x").issues).toEqual(["5"]);
+    expect(one("gh issue edit 5 --milestone '3.8.0'", POWERSHELL)).toMatchObject({ issues: ["5"], milestone: "3.8.0" });
+  });
+
+  it("finds nothing in a mention", () => {
+    for (const c of [
+      `grep -rn "gh issue edit 5 --milestone x" .`,
+      `echo 'gh issue edit 5 -m x'`,
+      `git commit -m "gh issue edit 5 --milestone 3.8.0"`,
+      "# gh issue edit 5 -m x",
+      `git commit -q -F - <<'EOF'\nsubject\n\ngh issue edit 5 --milestone x\nEOF`,
+    ])
+      expect(edits(c), c).toEqual([]);
+  });
 });
 
 describe("command-shape traps", () => {

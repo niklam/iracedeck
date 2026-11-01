@@ -666,6 +666,34 @@ export function firstMerge(command) {
 const mergeMentions = (command) => (command.match(/\bgh\s+pr\s+merge\b/g) ?? []).length;
 
 /**
+ * The words of one command segment, `{ word, shape }` each: with a trusted mask
+ * the `flat` text's words, each with its raw text, so a quoted value is one word
+ * however many separators or flags it carries; without one the raw segment split
+ * by {@link words}, every word its own shape. Shared by {@link parseMerge} and
+ * {@link parseIssueEdit}.
+ */
+function segmentTokens({ raw, flat, trusted }) {
+  return trusted
+    ? [...flat.matchAll(/\S+/g)].map((m) => ({ word: raw.slice(m.index, m.index + m[0].length), shape: m[0] }))
+    : words(raw).map((w) => ({ word: w, shape: w }));
+}
+
+/** Whether a {@link segmentTokens} word is a plain literal: its raw text is its flat shape. */
+const literal = (t) => t !== undefined && t.word === t.shape;
+
+/**
+ * A word's value when the hook can know it: a plain literal, or one in quotes
+ * that expand nothing; `null` for anything else, a missing word included. The
+ * mask leaves a bare `$REPO` as it is, so a `$` is refused here.
+ */
+function plainValue(t) {
+  if (t === undefined || /[$`]/.test(t.word)) return null;
+  if (literal(t)) return t.word;
+  const quoted = /^'([^']*)'$/.exec(t.word) ?? /^"([^"$`\\]*)"$/.exec(t.word);
+  return quoted ? quoted[1] : null;
+}
+
+/**
  * One `gh pr merge` segment's own arguments: the PR ref, the boolean flags and
  * the `--match-head-commit` value (the last one, as gh's flag parser takes
  * it), and whether they were `readable`. Read from the segment's words, so a
@@ -686,18 +714,7 @@ const mergeMentions = (command) => (command.match(/\bgh\s+pr\s+merge\b/g) ?? [])
  * the flag is there but its value is not readable, `undefined` without it.
  */
 export function parseMerge({ raw, flat, trusted }) {
-  const tokens = trusted
-    ? [...flat.matchAll(/\S+/g)].map((m) => ({ word: raw.slice(m.index, m.index + m[0].length), shape: m[0] }))
-    : words(raw).map((w) => ({ word: w, shape: w }));
-  const literal = (t) => t !== undefined && t.word === t.shape;
-  // A plain word, or one in quotes that expand nothing; `null` for anything
-  // else. The mask leaves a bare `$REPO` as it is, so a `$` is refused here.
-  const repoValue = (t) => {
-    if (t === undefined || /[$`]/.test(t.word)) return null;
-    if (literal(t)) return t.word;
-    const quoted = /^'([^']*)'$/.exec(t.word) ?? /^"([^"$`\\]*)"$/.exec(t.word);
-    return quoted ? quoted[1] : null;
-  };
+  const tokens = segmentTokens({ raw, flat, trusted });
   const at = tokens.findIndex((t, k) => t.shape === "merge" && tokens[k - 1]?.shape === "pr");
   const flags = new Set();
   let ref;
@@ -723,7 +740,7 @@ export function parseMerge({ raw, flat, trusted }) {
     }
     if (/^-R[^=]/.test(t.shape)) {
       // gh's short flag with its value attached: `-Rowner/repo`.
-      repo = repoValue({ word: t.word.slice(2), shape: t.shape.slice(2) });
+      repo = plainValue({ word: t.word.slice(2), shape: t.shape.slice(2) });
       continue;
     }
     const eq = t.shape.indexOf("=");
@@ -732,10 +749,115 @@ export function parseMerge({ raw, flat, trusted }) {
     else {
       const value = eq > 0 ? { word: t.word.slice(eq + 1), shape: t.shape.slice(eq + 1) } : tokens[++k];
       if (name === "--match-head-commit") pin = literal(value) ? value.word : undefined;
-      else if (name === "--repo" || name === "-R") repo = repoValue(value);
+      else if (name === "--repo" || name === "-R") repo = plainValue(value);
     }
   }
   return { ref, flags, pin, repo, readable };
+}
+
+/** `gh issue edit` flags that take a value, so a value is never read as an issue or a flag. */
+const ISSUE_EDIT_VALUE_FLAGS = new Set([
+  "--add-assignee",
+  "--remove-assignee",
+  "--add-label",
+  "--remove-label",
+  "--add-project",
+  "--remove-project",
+  "--body",
+  "-b",
+  "--body-file",
+  "-F",
+  "--milestone",
+  "-m",
+  "--title",
+  "-t",
+  "--repo",
+  "-R",
+]);
+
+/** An issue argument as gh takes one, `5`, `#5` or an issue URL: the number as a string, or the URL; else `null`. */
+function issueArg(value) {
+  if (value == null) return null;
+  const n = /^#?([1-9]\d*)$/.exec(value);
+  if (n) return n[1];
+  const url = /^(https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/issues\/[1-9]\d*)\/?$/i.exec(value);
+  return url ? url[1] : null;
+}
+
+/**
+ * One `gh issue edit` segment's own arguments (#1574), read as
+ * {@link parseMerge} reads a merge's: `issues` (each a number as a string or
+ * an issue URL, in order — gh takes several), `milestone` (the last
+ * `--milestone` / `-m` value: `undefined` without one, `null` when it is not
+ * readable, `""` when empty), `removesMilestone`, and `repo` (the last
+ * `--repo` / `-R`, as in {@link parseMerge}). `readable` is false when an
+ * issue argument is not a plain number or issue URL — a `$N`, a substitution
+ * — so the caller can say it could not tell which issues the edit touched.
+ * A word after `--` is an issue whatever it looks like; one starting with an
+ * unquoted `#` opens a comment, as in bash and PowerShell.
+ */
+export function parseIssueEdit({ raw, flat, trusted }) {
+  const tokens = segmentTokens({ raw, flat, trusted });
+  const at = tokens.findIndex((t, k) => t.shape === "edit" && tokens[k - 1]?.shape === "issue");
+  const issues = [];
+  let milestone;
+  let removesMilestone = false;
+  let repo;
+  let readable = at >= 0;
+  let options = true;
+  for (let k = at + 1; at >= 0 && k < tokens.length; k++) {
+    const t = tokens[k];
+    if (t.word.startsWith("#")) break;
+    if (/^\d*[<>]/.test(t.shape)) {
+      // A redirection; a bare operator takes the next word as its target.
+      if (/^\d*(?:[<>]{1,3}-?|[<>]&)$/.test(t.shape)) k++;
+      continue;
+    }
+    if (!options || !t.shape.startsWith("-")) {
+      const issue = issueArg(plainValue(t));
+      if (issue) issues.push(issue);
+      else readable = false;
+      continue;
+    }
+    if (t.shape === "--") {
+      options = false;
+      continue;
+    }
+    if (t.shape === "--remove-milestone") {
+      removesMilestone = true;
+      continue;
+    }
+    // A short flag with its value attached: `-m3.8.0`, `-m=3.8.0`, `-Rowner/repo`.
+    const short = /^-([mR])=?(?=.)/.exec(t.shape);
+    const eq = t.shape.indexOf("=");
+    const name = short ? `-${short[1]}` : eq > 0 ? t.shape.slice(0, eq) : t.shape;
+    if (!ISSUE_EDIT_VALUE_FLAGS.has(name)) continue;
+    const cut = short ? short[0].length : eq + 1;
+    const value = short || eq > 0 ? { word: t.word.slice(cut), shape: t.shape.slice(cut) } : tokens[++k];
+    if (name === "--milestone" || name === "-m") milestone = plainValue(value);
+    else if (name === "--repo" || name === "-R") repo = plainValue(value);
+  }
+  return { issues, milestone, removesMilestone, repo, readable };
+}
+
+/** Where a `gh issue edit` is, anywhere in the trusted-masked text: the post-hook's trigger, unanchored as its others are. */
+export const GH_ISSUE_EDIT = /\bgh\s+issue\s+edit\b/;
+
+/**
+ * Every `gh issue edit` outside inert text, in chain order ({@link chainCommands}),
+ * parsed ({@link parseIssueEdit}), each with `base` (the directory it ran in)
+ * and `start` (where it begins in `command`, so the caller can read the
+ * `GH_REPO` that reaches it). A substitution that cut its arguments short
+ * leaves words the hook did not read, so the edit is then not `readable`.
+ */
+export function* issueEdits(command, cwd, shell = BASH) {
+  const { flat, trusted } = view(command);
+  for (const { base, head, args, at, cut } of chainCommands(command, cwd, GH_ISSUE_EDIT, shell)) {
+    const start = at - head.length;
+    const end = at + args.length;
+    const edit = parseIssueEdit({ raw: command.slice(start, end), flat: flat.slice(start, end), trusted });
+    yield { ...edit, readable: edit.readable && cut !== "(" && cut !== "\x60", base, start };
+  }
 }
 
 const names = (paths, mark = () => "") =>
