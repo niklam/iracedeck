@@ -77,6 +77,8 @@ Planning against the deck hosts: check each in the rule it names rather than rec
 
 Start one when a slot is free and the next issue in order has its spec (or is exempt), **every issue it depends on has merged** (its lead branches from `origin/master`, which must already hold them), and no running lead's issue touches the same files or the same package unless you know their files are disjoint. If the next issue fails either check, take the first later one that passes, or wait. A slot is held from start until the lead reports `ready-to-test`; testing, review and merge hold none.
 
+So a lead waiting for Niklas's test frees its slot, and only judgement keeps untested branches from piling up and drifting from `master`. There is no fixed limit (he removed one on 2026-11-01, #1569): when the test sheet grows longer than he is getting through, ask him before starting more.
+
 Load `mcp__ccd_session__start_session` with ToolSearch (`select:mcp__ccd_session__start_session`), then:
 
 ```json
