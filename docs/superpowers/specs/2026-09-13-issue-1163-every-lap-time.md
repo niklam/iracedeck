@@ -4,14 +4,16 @@
 >
 > Point-in-time design record. The code and `.claude/rules/` are the truth; this is not documentation.
 
+**Delivered together with #1571** (the fastest lap of the race, `2026-11-01-issue-1571-fastest-lap-of-the-race.md`), in one worktree and one PR (Niklas, 2026-11-01): both read out lap times, and the precedence and drop rules below are shared with it, so neither ships without the other.
+
 ## The decision
 
 A second Lap Time callout, `pit-crew.lap-time-last`, announces every completed lap as a timing screen shows it: *"Last lap was one forty-five point two three seven."*
 
 - **Trigger.** `lap.completed`, the same event and the same `LapLastLapTime` refresh the best-lap callout uses, in practice, qualifying and race.
-- **One lap, one lap time.** It stays silent on a lap the best-lap callout will speak for (`isBest || isFirstValid` while `calloutEnabledLapTimeBestLap` is on). The best-lap line says more than this one, so it wins. With that switch off, a best lap is just a lap and this callout reads it.
+- **One lap, one lap time.** On a lap the player completes, at most one of three callouts speaks, in this order: the fastest lap of the race (#1571, when the lap carries `isClassFastestLapOfRace`, `fastestLapAnnounceable` passes its two-lap grace and `calloutEnabledFastestLap`, and the active voice scripts `pit-crew.fastest-lap-race`), the best lap (#555, `isBest || isFirstValid` while `calloutEnabledLapTimeBestLap` is on and the voice scripts `pit-crew.lap-time-best`), then this one (while `calloutEnabledLapTimeEveryLap` is on and the voice scripts `pit-crew.lap-time-last`). Each line says more than the one after it, so it wins; with a switch off or a line the active voice does not script, its lap falls to the next, so a pack that scripts this callout but not the best-lap one still hears every lap. The rule is one pure function, `playerLapOwner`, in `catalog/pit-crew/lap-announcement.ts`, fed by one owner resolver built inside `registerPitCrew` (no new `PitCrewDeps` key), which all three contracts' `where:` call on the `lap.completed` payload, so the decision never depends on which line reaches the bus first. The owner can still end up saying nothing (a speak gate, a waiting fire superseded or timed out, the final lap of a race); the #1571 spec's decision 7 states it in full.
 - **Laps that do not describe pace are silent.** A lap that started from pit exit or ended on pit road, and the final lap of a race, where the race-end result has the floor (the same rule the best-lap callout follows). An invalid lap (`lapIsValid` false) is still spoken: the driver asked for the time, and "that lap didn't count" is already the qualifying position callout's job.
-- **Scheduling.** `WEIGHT.CHATTER`, `queueable`, its own family. Every other callout at the line (fuel, flags, position, race status) outweighs it or queues beside it. A `speakGate` admits the line only while no newer `lap.completed` has fired, so a queued lap time that waited out a busy line is dropped rather than read a lap late. That is the cooldown-free re-check #1138 introduced `speakGate` for.
+- **Scheduling.** `WEIGHT.CHATTER`, `queueable`, its own family. Every other callout at the line (fuel, flags, position, race status) outweighs it or queues beside it. A `speakGate` admits the line only while no newer `lap.completed` has fired, so a queued lap time that waited out a busy line is dropped rather than read a lap late. That is the cooldown-free re-check #1138 introduced `speakGate` for. The comparison is `lapStillCurrent(lap, latest)` in `lap-announcement.ts`, the same function the #1571 gate calls, so the two callouts share one definition of "the next lap".
 - **Switch.** `calloutEnabledLapTimeEveryLap`, labelled "Every lap", second row under Lap Time; default `true`, the convention for new Race Engineer callouts, read live per event.
 
 ## The readout
@@ -29,6 +31,8 @@ A second Lap Time callout, `pit-crew.lap-time-last`, announces every completed l
 A sub-minute lap: *"Last lap was fifty-eight point oh four one."* Laps of 11 minutes or longer stay silent, the same ceiling the best-lap callout has.
 
 This needs a vocabulary that exposes the parts, and pools in the default voice's config for the intro, the minutes, the second pairs, *"point"* and the digits.
+
+**The readout code is shared.** The split and the pool references live in one module, `catalog/pit-crew/lap-time-readout.ts`, which holds two forms: #555's tenths form over the four existing `lap-time-*` pools (*"one minute, twenty-three, point four seconds."*), which the best-lap call and #1571's fastest-lap call both speak, and this callout's compact thousandths form. Each form rounds once at its own precision, and both share the eleven-minute ceiling. One module, so a change to how a lap time is split reaches every callout that reads one.
 
 **What is fixed: the number clips in this readout carry almost no padding.** Three digits back to back must run at the pace of a person reading a timing screen (*"two three seven"*), not as three separate words. Removing the padding is a property of the clip groups in the generation and trim pipeline, not a per-file hand edit, so a regenerated clip comes out tight too, and nothing between steps may put the gap back.
 
