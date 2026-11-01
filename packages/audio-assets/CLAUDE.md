@@ -134,10 +134,23 @@ The most common case — a new callout in an existing family (e.g. another flag)
 ## Adding a new group
 
 1. Add the new top-level key under `groups` in `configs/default.voice.json` (the canonical voice) and in every other first-party voice, as in step 1 above (#999); a third-party voice may adopt the group later — parity is not required of it, issue #664.
-2. Author the entries (text, no `seed` — or `"seed": 1` — by default, optional `previous_request_ids`).
+2. Author the entries (text, no `seed` — or `"seed": 1`; conditioning fields per **Clips that join other clips** below).
 3. Generate (scoped by `--group`), after a dry-run preview.
 4. Rebuild the runtime manifest.
 5. Point the callout at its clips: for a scripted family the `sequence` step in the voice's `configs/<voice-id>.voice.json` addresses them as `pool:<group>/<base>` (the post-edit hook re-extracts the script in a Claude session; `pnpm generate:callout-scripts` by hand otherwise) — a `pools` entry only where a name carries a decision, an alias or a separate no-repeat tracker, with the reason in its `comment`. Every family is scripted since #1065, so there is no code-side pool to declare; the family's TypeScript file lists the `(group, base)` in its literal `<FAMILY>_CLIP_SOURCES`, and the coverage check above fails on a clip the script never references.
+
+## Clips that join other clips — how ElevenLabs reads the conditioning fields (#1163, #1571)
+
+A callout is clips played back to back, so every join is a seam the listener hears. ElevenLabs shapes a clip from the text around it, and these rules are what Niklas settled on 2026-11-01 while the compact lap-time readout was drafted:
+
+- **`next_text` decides how a clip ends.** The model shapes the last word to run into whatever `next_text` says. So cut a clip once for each distinct FIRST word that can follow it, and pick the take by that word at speak time: the compact minute is cut 15 times, once per first word of the seconds ("oh", "ten" … "nineteen", "twenty" … "fifty"), and "point N" before the thousandths pair once per first word of the pair. Where the follower is constant ("point" after the seconds, "car" before a car number, "pee" before a position), one take with that word as `next_text` is enough. A clip that ends the line gets no `next_text`.
+- **No `previous_text` or `previous_request_ids` on a clip whose predecessor varies.** Conditioning on one sample predecessor makes the clip open as if it followed that word: a tail conditioned on "twenty three" starts as if after an "ee", which is wrong after "six". Use them only where the clip always follows the same thing.
+- **No periods in a clip's text.** A period reads as a pause, and the clip then ends on one. The same goes for hyphens, dashes, ellipses, colons and semicolons, which the generator refuses (#1518).
+- **Read multi-digit figures as pairs**, the way car numbers are read ("point five sixty seven"), not as a chain of single digits: each digit-to-digit seam is a join, and a pair is one clip.
+- **Seeds stay omitted or `1`.** Niklas changes a seed himself, after hearing a clip on the review page, when a take sounds wrong.
+- **Reuse a group whose `next_text` already matches** before cutting a new one: the compact readout's seconds are #555's `lap-time-second`, whose words were already cut to run into "point". A group whose clips carry a fixed lead word (every `car-number` clip says "car") cannot stand in for the bare figure.
+
+Measured on the clips (ffmpeg `silencedetect`, -40 dB): a clip cut with `next_text` starts with no measurable lead and ends within about 40 ms of its last sound, so a join needs no trim. A sentence-final clip trails about 0.2 s, which is right at a sentence end.
 
 ## Adding a new voice
 
