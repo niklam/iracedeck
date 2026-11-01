@@ -333,7 +333,7 @@ The first one that applies speaks for the lap and the others stay quiet. When th
 
 None of them speaks on the final lap of a race, where the race-end result takes the floor, or while a [full-course caution](#full-course-caution) is out. Lap times of 11 minutes or longer stay silent too — the engineer never speaks a partial readout.
 
-**Default (Short callouts)** makes all three calls in fewer words — *"Last lap. One forty-five point two three seven."*, *"Fastest lap, yours. One twenty-three point four."*, *"Fastest lap for car five. One twenty-three point four."*
+**Default (Short callouts)** makes all three calls in fewer words — *"Last lap. One forty-five point two three seven."*, *"Fastest lap for you. One twenty-three point four."*, *"Fastest lap for car five. One twenty-three point four."*
 
 ### Best lap
 
@@ -357,9 +357,9 @@ In races, the engineer tells you whenever a car in your class sets a new fastest
 
 - **Yours** — *"That's the fastest lap of the race. One twenty-three point four."* On that lap this replaces the best-lap call.
 - **Taken from you** — when another car beats the fastest lap you held, whoever it is: *"Car five just took the fastest lap from you. One twenty-three point four."*
-- **The leader** — *"The leader just set the fastest lap of the race with a one twenty-three point four."*
-- **The car in front of you, or behind you** — *"The car in front of you just set the fastest lap with a one twenty-three point four. Gap is one point two seconds."* (or *"The car behind you …"*). The gap is added when that car is still your neighbour, on the same lap as you, and the gap is under a minute.
-- **Any other car**, by number and position — *"Car five in pee six just set the fastest lap of the race with a one twenty-three point four."*
+- **The leader** — *"The leader just set the fastest lap of the race. One twenty-three point four."*
+- **The car in front of you, or behind you** — *"The car in front of you just set the fastest lap. One twenty-three point four. Gap is one point two seconds."* (or *"The car behind you …"*). The gap is added when that car is still your neighbour, on the same lap as you, and the gap is under a minute.
+- **Any other car**, by number and position — *"Car five in pee six just set the fastest lap of the race. One twenty-three point four."*
 
 "In front of you" and "behind you" mean your neighbours in the class standings, as in the [gap callouts](#gap-callouts-car-ahead--car-behind), not the car nearest to you on track, and the positions are read at the moment the line is spoken. In a multi-class race everything here is about your class: another class's laps never count, and "the leader" is your class leader. A lap iRacing doesn't count can't set the record.
 
