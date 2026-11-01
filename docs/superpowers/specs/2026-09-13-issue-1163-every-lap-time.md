@@ -37,11 +37,11 @@ A sub-minute lap: *"Last lap was fifty eight point oh four one."* Laps of 11 min
 | --- | --- | --- | --- |
 | Clock phrase | 1:00 to 10:59, minutes and seconds as one phrase ("one twenty three", "one oh five"), 600 clips | the first intro, `lap-time-last/intro-01` | "point" |
 | Under a minute | #555's `lap-time-second`, 0–59, reused as it is | already set | already " point." |
-| Thousandths | "point" and the digits of 000–999 with trailing zeros dropped ("point four five six", "point oh oh seven", "point one"), ending the line, 1000 clips | a fixed clock phrase | none: it ends the line |
-| Tenths tail | "point" and one digit, 0–9 ("point four") — the form #1571 speaks, twice: 10 ending the line, and 10 with `next_text` "Gap is", chosen exactly when the gap clause speaks; 20 clips | a fixed clock phrase | none, or "Gap is" |
+| Thousandths | "point" and the digits of 000–999 with trailing zeros dropped ("point four five six", "point oh oh seven", "point one"), ending the line, 1000 clips | #555's committed `lap-time-second/23`, so a re-cut intro or clock phrase never cascades into them | none: it ends the line |
+| Tenths tail | "point" and one digit, 0–9, ending its sentence ("point four.") — the form #1571 speaks, 10 clips; before the gap clause a 150 ms pause follows instead of a join (Niklas: "It's natural to have a break there") | `lap-time-second/23` | none: it ends its sentence |
 | Intros | one take each, ending its sentence with a period ("Last lap was."), #1571's holder lines likewise | a fixed preceding line | none: a line that ends its sentence takes none |
 
-Per voice: 600 clock phrases, 1000 thousandths, 20 tenths tails, and one take of each intro. **Each voice generates its own set**, conditioned on its own intros: a referenced clip's content feeds the generation hash, so Default's numbers copied under Short Calls' different intros would read as out of date for good, and an unscoped generate run would quietly re-cut them all. The set was trialled first on a subset in the default voice, and Niklas passed it on 2026-11-01.
+Per voice: 600 clock phrases, 1000 thousandths, 10 tenths tails, and one take of each intro. **Each voice generates its own set**, conditioned on its own intros: a referenced clip's content feeds the generation hash, so Default's numbers copied under Short Calls' different intros would read as out of date for good, and an unscoped generate run would quietly re-cut them all. The set was trialled first on a subset in the default voice, and Niklas passed it on 2026-11-01.
 
 A voice pack that does not script this callout simply never speaks it.
 

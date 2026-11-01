@@ -133,7 +133,7 @@ The vocabulary, every name read off the fire's payload or live state at speak ti
 - `fastestLap.previousCarNumber` — the same for the beaten holder, published for packs; the bundled scripts do not use it.
 - `fastestLap.position` — `pool:position-number/<n>`, live then payload, as `opponentFlag.position` resolves.
 - `fastestLap.clock` — the minutes and seconds as one clip at the tenth, `lap-time-clock/<m>m<ss>`, or `lap-time-second/<s>` under a minute (decision 6).
-- `fastestLap.decimal` — the tenths tail `lap-time-tenths/<d>`, or its `<d>-gap` take exactly when the gap clause speaks, decided by the same check as the gap vars so the two cannot disagree.
+- `fastestLap.decimal` — the tenths tail `lap-time-tenths/<d>`, which ends its sentence; when the gap clause speaks, a 150 ms pause opens it (Niklas, 2026-11-01: "It's natural to have a break there").
 - The holder lines end their sentence (Niklas, 2026-11-01: a line ending with a period and no `next_text` "ends cleanly and sharp"), so each is one take and the script names its pool directly; the time follows as a sentence of its own.
 - `fastestLap.gapIntro`, `fastestLap.gapSecond`, `fastestLap.gapDecimal` — the gap readout for `ahead` and `behind` only: `getLiveGaps()`'s side for the holder's key, resolved only when that side's car is this fire's car, on the same lap, under a minute; the three resolve on one check so the clause is spoken whole or not at all. This is the rule `resolveSpeakableGap` already applies (`catalog/pit-crew/gaps.ts:199-224`), extracted into one pure function both families call rather than copied, and it draws from the same groups the gap readout does (`gap/readout-intro`, `lap-time-second`, `lap-time-decimal`, `gaps.ts:248-279`).
 
@@ -154,7 +154,7 @@ The default script's shape:
     } },
     "{{fastestLap.clock}}",
     "{{fastestLap.decimal}}",
-    { "optional": ["{{fastestLap.gapIntro}}", "{{fastestLap.gapSecond}}", "{{fastestLap.gapDecimal}}"] }
+    { "optional": ["pause:150", "{{fastestLap.gapIntro}}", "{{fastestLap.gapSecond}}", "{{fastestLap.gapDecimal}}"] }
   ]
 }
 ```
@@ -187,11 +187,11 @@ Default voice:
 | --- | --- | --- |
 | `fastest-lap/yours-01` | That's the fastest lap of the race. | That's the fastest lap of the race. One twenty-three point four. |
 | `fastest-lap/taken-from-you-01` | just took the fastest lap from you. | Car five just took the fastest lap from you. One twenty-three point four. |
-| `fastest-lap/leader-01` | The leader just set the fastest lap of the race with a | The leader just set the fastest lap of the race with a one twenty-three point four. |
-| `fastest-lap/ahead-01` | The car in front of you just set the fastest lap with a | The car in front of you just set the fastest lap with a one twenty-three point four. Gap is one, point two seconds. |
-| `fastest-lap/behind-01` | The car behind you just set the fastest lap with a | The car behind you just set the fastest lap with a one twenty-three point four. Gap is one, point two seconds. |
+| `fastest-lap/leader-01` | The leader just set the fastest lap of the race. | The leader just set the fastest lap of the race. One twenty-three point four. |
+| `fastest-lap/ahead-01` | The car in front of you just set the fastest lap. | The car in front of you just set the fastest lap. One twenty-three point four. Gap is one, point two seconds. |
+| `fastest-lap/behind-01` | The car behind you just set the fastest lap. | The car behind you just set the fastest lap. One twenty-three point four. Gap is one, point two seconds. |
 | `fastest-lap/in-01` | in | Car five in |
-| `fastest-lap/other-01` | just set the fastest lap of the race with a | Car five in pee six. Just set the fastest lap of the race with a one twenty-three point four. |
+| `fastest-lap/other-01` | just set the fastest lap of the race. | Car five in pee six. Just set the fastest lap of the race. One twenty-three point four. |
 
 Short Calls voice (the Terse pack):
 
@@ -204,7 +204,7 @@ Short Calls voice (the Terse pack):
 | `fastest-lap/for-01` | Fastest lap for | Fastest lap for car five. One twenty-three point four. |
 | `fastest-lap/lost-to-01` | Fastest lap lost to | Fastest lap lost to car five. One twenty-three point four. |
 
-The Short Calls script maps `other` to `["pool:fastest-lap/for", "{{fastestLap.carNumber}}"]` and `taken-from-you` to `["pool:fastest-lap/lost-to", "{{fastestLap.carNumber}}"]`. Both voices' car numbers come from their own `car-number` group and the default voice's position from `position-number` ("pee six.", the clip `opponent-pit/is-pitting` already follows, so the splice after it has a precedent). Each intro that leads into the time is generated with a `next_text` of a sample time ("one twenty-three point four"), so it ends on a rising, continuing note rather than a sentence-final fall; each tail after a car number keeps `previous_request_ids` on `car-number/42`, as the opponent-flag tails do. The gap clause keeps the gap readout's own clips.
+The Short Calls script maps `other` to `["pool:fastest-lap/for", "{{fastestLap.carNumber}}"]` and `taken-from-you` to `["pool:fastest-lap/lost-to", "{{fastestLap.carNumber}}"]`. Both voices' car numbers come from their own `car-number` group and the default voice's position from `position-number` ("pee six.", the clip `opponent-pit/is-pitting` already follows, so the splice after it has a precedent). Each line before the time ends its sentence, with a period and no `next_text` (Niklas, 2026-11-01, dropping "with a": "Yes to both"); each tail after a car number keeps `previous_request_ids` on `car-number/42`, as the opponent-flag tails do. The gap clause keeps the gap readout's own clips.
 
 ### 7. Exactly one of the three lap-time callouts speaks for the player's lap
 
