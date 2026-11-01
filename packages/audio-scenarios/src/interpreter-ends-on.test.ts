@@ -804,6 +804,103 @@ describe("endsOn (issue #1407)", () => {
     expect(played()).toEqual([TICK_OPEN, BODY_A, BODY_B, TICK_CLOSE]);
   });
 
+  it("two contracts ended by one event, one playing and one waiting behind it: the waiting one never starts (#1514)", () => {
+    // The case `endFires`' two passes exist for. The playing contract is
+    // registered FIRST, so a single pass in table order would stop it
+    // silently and drain the bus — starting the waiting contract — before
+    // it ever reached that contract's waiting fire.
+    engine.defineContract(endsContract({ weight: WEIGHT.NORMAL }));
+    engine.defineContract(
+      contract("test.light", { endsOn: ENDS_ON, weight: WEIGHT.CHATTER, queueable: true, frame: NO_FRAME }),
+    );
+    engine.setScripts(new Map([["default", script()]]));
+
+    bus.publishEvent("flag.green.raised"); // the open tick in flight: no word heard, so the end stops it silently
+    engine.fire("test.light"); // waits behind the playing line
+    expect(played()).toEqual([TICK_OPEN]);
+    expect(voiceBus().waiting.map((w) => w.id)).toEqual(["test.light"]);
+
+    bus.publishEvent("pitLane.exited");
+
+    expect(played()).toEqual([TICK_OPEN]);
+    expect(voiceBus().playingId).toBeNull();
+    expect(voiceBus().waiting).toEqual([]);
+    expect(endedLines()).toEqual([
+      'Scenario "test.light" ended by pitLane.exited (waiting)',
+      'Scenario "test.ends" ended by pitLane.exited (playing → silent)',
+    ]);
+
+    flush();
+    expect(played()).toEqual([TICK_OPEN]);
+  });
+
+  it("playing fires on two buses are ended in contract table order, not bus order (#1514)", () => {
+    // The radar contract is registered first, but the Voice bus is used
+    // first: a pass that walked buses outside and contracts inside would end
+    // the Voice line first, and the debug lines would swap.
+    engine.defineContract(
+      contract("test.radar", { endsOn: ENDS_ON, channel: AudioChannel.Radar, bus: AudioBus.Alerts, frame: NO_FRAME }),
+    );
+    engine.defineContract(endsContract());
+    engine.setScripts(new Map([["default", script()]]));
+
+    startEndsMidBody();
+    engine.fire("test.radar");
+    expect(played()).toEqual([TICK_OPEN, BODY_A, RADAR]);
+
+    bus.publishEvent("pitLane.exited");
+
+    expect(endedLines()).toEqual([
+      'Scenario "test.radar" ended by pitLane.exited (playing → silent)',
+      'Scenario "test.ends" ended by pitLane.exited (playing → tail)',
+    ]);
+  });
+
+  it("waiting fires on two buses are removed in contract table order, not bus order (#1514)", () => {
+    engine.defineContract(
+      contract("test.radar", {
+        endsOn: ENDS_ON,
+        channel: AudioChannel.Radar,
+        bus: AudioBus.Alerts,
+        queueable: true,
+        frame: NO_FRAME,
+      }),
+    );
+    engine.defineContract(
+      contract("test.heavy", { channel: AudioChannel.Radar, bus: AudioBus.Alerts, frame: NO_FRAME }),
+    );
+    engine.defineContract(endsContract({ weight: WEIGHT.NORMAL }));
+    engine.defineContract(contract("test.light", { weight: WEIGHT.CHATTER, frame: NO_FRAME }));
+    engine.setScripts(new Map([["default", script()]]));
+
+    // The Voice bus first: the light line plays and the ended contract waits behind it.
+    engine.fire("test.light");
+    bus.publishEvent("flag.green.raised");
+    // Then the Alerts bus: the heavy line plays and the radar contract waits behind it.
+    engine.fire("test.heavy");
+    engine.fire("test.radar");
+    expect(voiceBus().waiting.map((w) => w.id)).toEqual(["test.ends"]);
+    expect(
+      engine
+        .describeState()
+        .buses.find((b) => b.bus === "Alerts")
+        ?.waiting.map((w) => w.id),
+    ).toEqual([
+      "test.radar",
+    ]);
+
+    bus.publishEvent("pitLane.exited");
+
+    const dropped = mockLogger.debug.mock.calls
+      .map(([line]) => String(line))
+      .filter((line) => line.endsWith("dropped — ended"));
+    expect(dropped).toEqual(['Scenario "test.radar" dropped — ended', 'Scenario "test.ends" dropped — ended']);
+    expect(endedLines()).toEqual([
+      'Scenario "test.radar" ended by pitLane.exited (waiting)',
+      'Scenario "test.ends" ended by pitLane.exited (waiting)',
+    ]);
+  });
+
   it("contracts() reports endsOn description, null when absent", () => {
     engine.defineContract(endsContract());
     engine.defineContract(contract("test.light"));
