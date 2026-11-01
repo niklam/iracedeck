@@ -10,7 +10,9 @@ import { describe, expect, it } from "vitest";
 
 import { CAUTION_SCENARIO_IDS } from "./caution.js";
 import { DAMAGE_SCENARIO_IDS } from "./damage-alerts.js";
+import { buildFastestLap, FASTEST_LAP_SCENARIO_IDS } from "./fastest-lap.js";
 import { FLAG_SCENARIO_IDS } from "./flag-alerts.js";
+import { LAP_TIME_SCENARIO_IDS } from "./lap-time.js";
 import { PIT_LIMITER_SCENARIO_IDS } from "./pit-limiter.js";
 import {
   PIT_STATUS_NOTHING_TO_DO_SCENARIO_ID,
@@ -146,5 +148,25 @@ describe("scenario ids are unchanged by the injected sim reads (issue #1378)", (
       "pit-crew.spotter-call",
       "pit-crew.spotter-info",
     ]);
+  });
+});
+
+describe("the lap-time scenario ids (issues #1163, #1571)", () => {
+  it("LAP_TIME_SCENARIO_IDS", () => {
+    expect(LAP_TIME_SCENARIO_IDS).toEqual(["pit-crew.lap-time-best", "pit-crew.lap-time-last"]);
+  });
+
+  it("FASTEST_LAP_SCENARIO_IDS, which a build with no sim wired registers", () => {
+    const built = buildFastestLap({
+      getRaceFinishedFired: () => false,
+      getUnderFullCourseCaution: () => false,
+      getLapCompletedSnapshot: () => null,
+      getCarLivePosition: () => null,
+      getLivePosition: () => null,
+      getLiveGaps: () => null,
+    });
+
+    expect(FASTEST_LAP_SCENARIO_IDS).toEqual(["pit-crew.fastest-lap-race"]);
+    expect(built.contracts.map((c) => c.id)).toEqual([...FASTEST_LAP_SCENARIO_IDS]);
   });
 });

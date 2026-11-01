@@ -5,6 +5,7 @@ import {
   CAUTION_CALLOUTS,
   CORNER_NAME_CALLOUTS,
   DAMAGE_CALLOUTS,
+  FASTEST_LAP_CALLOUTS,
   FLAG_CALLOUTS,
   FUEL_CALLOUTS,
   GAP_CALLOUTS,
@@ -33,6 +34,7 @@ import {
 import { describe, expect, it } from "vitest";
 
 import { SCENARIO_ID_TO_CORNER_NAME_ID } from "./corner-name.js";
+import { SCENARIO_ID_TO_FASTEST_LAP_ID } from "./fastest-lap.js";
 import { SCENARIO_ID_TO_GAP_ID } from "./gaps.js";
 import {
   SCENARIO_ID_TO_AUTO_FUEL_ID,
@@ -94,6 +96,7 @@ const GATED: readonly GatedFamily[] = [
   { name: "caution", scenarios: SCENARIO_ID_TO_CAUTION_ID, family: CAUTION_CALLOUTS },
   { name: "corner-name", scenarios: SCENARIO_ID_TO_CORNER_NAME_ID, family: CORNER_NAME_CALLOUTS },
   { name: "damage", scenarios: SCENARIO_ID_TO_DAMAGE_ID, family: DAMAGE_CALLOUTS },
+  { name: "fastest-lap", scenarios: SCENARIO_ID_TO_FASTEST_LAP_ID, family: FASTEST_LAP_CALLOUTS },
   { name: "flag", scenarios: SCENARIO_ID_TO_FLAG_ID, family: FLAG_CALLOUTS },
   { name: "fuel", scenarios: SCENARIO_ID_TO_FUEL_ID, family: FUEL_CALLOUTS },
   { name: "gap", scenarios: SCENARIO_ID_TO_GAP_ID, family: GAP_CALLOUTS },

@@ -1,7 +1,33 @@
 /**
- * Lap-time best-lap contract + vocabulary — issue #555; scripted since #1065.
+ * Lap-time contracts + vocabulary — the best lap (issue #555; scripted since
+ * #1065) and every lap (issue #1163).
  *
- * Fires on `lap.completed` when the driver sets a new session best (`isBest`)
+ * **Which of them speaks.** On a lap the player completes, at most one of the
+ * three lap-time callouts speaks: the fastest lap of the race
+ * (`fastest-lap.ts`, #1571), the best lap, then every lap, in that order of
+ * precedence. Each contract here adds `owner(lap) === <own>` to its
+ * `where:`, where `owner` is the {@link LapOwnerResolver} `registerPitCrew`
+ * builds from the three opt-ins and the active voice's script, over
+ * `playerLapOwner` in `lap-announcement.ts` — one rule, decided on the
+ * payload, never by which line reaches the bus first.
+ *
+ * **Every lap (`pit-crew.lap-time-last`, #1163).** "Last lap was one
+ * forty-five point two three seven." — in practice, qualifying and race, at
+ * `WEIGHT.CHATTER`, queueable, in its own family. It is silent on an out lap
+ * or an in lap (a lap that does not describe pace), on the final lap of a
+ * race and under a caution exactly as the best lap is; an invalid lap is
+ * still spoken. Its `speakGate` drops a lap time that waited out a busy line
+ * once the player has completed another lap (`lapStillCurrent`). The readout
+ * is the compact form to the thousandth (`lap-time-readout.ts`); the bundled
+ * script's shape:
+ *   pool:lap-time-last/intro           "Last lap was" (plus alternates)
+ *   {{lapTime.compactMinute}}          CONDITIONAL on `lapTime.compactHasMinute`
+ *   {{lapTime.compactSecond}}
+ *   {{lapTime.compactThousandthFirst}} "point two"
+ *   {{lapTime.compactThousandthMiddle}}
+ *   {{lapTime.compactThousandthLast}}  phrase-final — ends the line
+ *
+ * **The best lap (`pit-crew.lap-time-best`, #555).** Fires on `lap.completed` when the driver sets a new session best (`isBest`)
  * or completes their first valid lap of the session (`isFirstValid`). The
  * intro selector picks `"first-good-lap"` for the first-valid case and
  * `"best-lap-yet"` for every subsequent improvement, driven straight off the
@@ -51,11 +77,21 @@ import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type CalloutIdOf, LAP_TIME_CALLOUTS } from "@iracedeck/callout-settings";
 import type { SimEventOf } from "@iracedeck/event-bus";
 
-import type { ScenarioContract } from "../../dsl.js";
-import { poolRef } from "../../dsl.js";
+import type { ScenarioContext, ScenarioContract } from "../../dsl.js";
+import { poolRef, WEIGHT } from "../../dsl.js";
 import type { IScenarioEngine } from "../../interpreter.js";
 import type { UnderCautionResolver } from "./caution.js";
-import { fullDecimalRef, fullHasMinute, fullMinuteRef, fullSecondRef } from "./lap-time-readout.js";
+import { type LapOwnerResolver, lapStillCurrent, playerLapOwner } from "./lap-announcement.js";
+import {
+  compactHasMinute,
+  compactMinuteRef,
+  compactSecondRef,
+  compactThousandthRef,
+  fullDecimalRef,
+  fullHasMinute,
+  fullMinuteRef,
+  fullSecondRef,
+} from "./lap-time-readout.js";
 
 /**
  * Resolver for the most recent `lap.completed` payload. Returns `null` when no
@@ -68,6 +104,9 @@ export type LapCompletedSnapshotResolver = () => LapCompletedSnapshot | null;
 export type LapCompletedSnapshot = SimEventOf<"lap.completed">["data"];
 
 const LAP_TIME_GROUP_INTRO = "lap-time-intro";
+
+/** The every-lap call's intro group (#1163): "Last lap was", plus alternates. */
+const LAP_TIME_LAST_GROUP = "lap-time-last";
 
 /** Whether the lap has a non-zero minute component (≥1 minute), in #555's full form. */
 function hasMinuteComponent(snapshot: LapCompletedSnapshot | null): boolean {
@@ -144,7 +183,113 @@ export function registerLapTimeVocabulary(
     () => hasMinuteComponent(getSnapshot()),
     "The lap is a minute or longer, so the minute word is spoken before the seconds. A pack may drop the minute with optional for a terse register; the assumed minute only holds where it is 1.",
   );
+
+  // The every-lap call's vocabulary (#1163): its intro and the compact
+  // readout to the thousandth. Each reads the fire's own `lap.completed`
+  // payload, falling back to the snapshot for a fire with no lap event.
+  const lapOf = (ctx: ScenarioContext): LapCompletedSnapshot | null =>
+    ctx.event?.event === "lap.completed"
+      ? ((ctx.data as LapCompletedSnapshot | null | undefined) ?? null)
+      : getSnapshot();
+
+  engine.defineVar(
+    "lapTime.lastIntro",
+    (ctx) => (lapOf(ctx) ? poolRef(LAP_TIME_LAST_GROUP, "intro") : null),
+    'The opening of the every-lap readout ("Last lap was"), from lap-time-last/intro; nothing for a fire with no lap behind it.',
+  );
+
+  engine.defineVar(
+    "lapTime.compactMinute",
+    (ctx) => {
+      const lap = lapOf(ctx);
+
+      return lap ? compactMinuteRef(lap.lapTime, "thousandths") : null;
+    },
+    "The minute of the lap time read the way a timing screen does, to the thousandth, from the lap-time-compact-minute clip group: one take per minute and first word of the seconds that follow (lap-time-compact-minute/1-forty for 1:45.237, 1-oh for 1:05.237). Nothing under a minute; a minute the voice has no clip for aborts the readout.",
+  );
+
+  engine.defineVar(
+    "lapTime.compactSecond",
+    (ctx) => {
+      const lap = lapOf(ctx);
+
+      return lap ? compactSecondRef(lap.lapTime, "thousandths") : null;
+    },
+    'The seconds of the lap time in the compact form, to the thousandth: after a minute the pair from the lap-time-compact-second clip group (00 to 59, "oh five"); under a minute the plain number from lap-time-compact-second-plain below ten and the same pairs from ten up.',
+  );
+
+  engine.defineVar(
+    "lapTime.compactThousandthFirst",
+    (ctx) => {
+      const lap = lapOf(ctx);
+
+      return lap ? compactThousandthRef(lap.lapTime, "first") : null;
+    },
+    'The first digit after the point, spoken with the point ("point two"), from the lap-time-compact-thousandth-first clip group.',
+  );
+
+  engine.defineVar(
+    "lapTime.compactThousandthMiddle",
+    (ctx) => {
+      const lap = lapOf(ctx);
+
+      return lap ? compactThousandthRef(lap.lapTime, "middle") : null;
+    },
+    "The second digit after the point, from the lap-time-compact-thousandth-middle clip group.",
+  );
+
+  engine.defineVar(
+    "lapTime.compactThousandthLast",
+    (ctx) => {
+      const lap = lapOf(ctx);
+
+      return lap ? compactThousandthRef(lap.lapTime, "last") : null;
+    },
+    "The third digit after the point as a phrase-final take that ends the readout, from the lap-time-compact-thousandth-last clip group.",
+  );
+
+  engine.defineCond(
+    "lapTime.compactHasMinute",
+    (ctx) => {
+      const lap = lapOf(ctx);
+
+      return lap !== null && compactHasMinute(lap.lapTime, "thousandths");
+    },
+    "The lap, rounded to the thousandth, is a minute or longer, so the compact readout speaks lapTime.compactMinute before the seconds.",
+  );
+
+  engine.defineCond(
+    "lapTime.wasInvalid",
+    (ctx) => lapOf(ctx)?.lapIsValid === false,
+    "The sim flagged the lap invalid (a track-limits cut, say). The every-lap call still reads it; a pack may add a word for it.",
+  );
 }
+
+/**
+ * The gates that silence a lap whole, shared by both contracts here and
+ * applied to each alike, so a lap one of them owns is never handed to the
+ * other by a gate: a full-course caution (#1127), the lap that ends one (R16),
+ * and the final lap of a race, where race-end has the floor (#569).
+ */
+function lapSilencedWhole(
+  data: LapCompletedSnapshot,
+  getRaceFinishedFired: () => boolean,
+  getUnderFullCourseCaution: UnderCautionResolver,
+): boolean {
+  if (getUnderFullCourseCaution()) return true;
+
+  if (data.wasCaution === true) return true;
+
+  return data.sessionType === "race" && getRaceFinishedFired();
+}
+
+/**
+ * The owner #555 reads when no resolver is wired (tests that build the
+ * contract alone): the best lap on, the other two off — the precedence as it
+ * was before #1163 and #1571.
+ */
+const BEST_LAP_ONLY_OWNER: LapOwnerResolver = (lap) =>
+  playerLapOwner(lap, { fastestLap: false, bestLap: true, everyLap: false });
 
 /**
  * Build the lap-time contract. The contract's `where:` reads the event
@@ -171,6 +316,11 @@ export function registerLapTimeVocabulary(
  * has no gate. Default `() => false` preserves legacy behavior for tests and
  * the harness that don't supply a closure.
  *
+ * `getLapOwner` is the precedence (#1163, #1571): the best lap speaks only on
+ * a lap it owns, so a lap that set the fastest lap of the race past its grace
+ * is the fastest-lap call's, and with the best-lap call off or unscripted a
+ * best lap falls to the every-lap call. Default: the best lap alone.
+ *
  * Holds the fixed `id`, the full `when` block, and the channel/bus/base/family
  * defaults (weight is left at the default `WEIGHT.NORMAL`); the readout's
  * components are the vocabulary's ({@link registerLapTimeVocabulary}).
@@ -178,6 +328,7 @@ export function registerLapTimeVocabulary(
 export function buildLapTimeContract(
   getRaceFinishedFired: () => boolean = () => false,
   getUnderFullCourseCaution: UnderCautionResolver = () => false,
+  getLapOwner: LapOwnerResolver = BEST_LAP_ONLY_OWNER,
 ): ScenarioContract {
   return {
     id: "pit-crew.lap-time-best",
@@ -205,7 +356,11 @@ export function buildLapTimeContract(
         // setting `isBest` still surfaces the announcement. Whether the
         // components are speakable derives from the clips that exist — a
         // missing component clip aborts at expansion (issues #835/#836).
-        return (data.isBest || data.isFirstValid) && Number.isFinite(data.lapTime) && data.lapTime > 0;
+        if (!((data.isBest || data.isFirstValid) && Number.isFinite(data.lapTime) && data.lapTime > 0)) return false;
+
+        // The precedence (#1163, #1571): a lap the fastest-lap call owns is
+        // not read out twice.
+        return getLapOwner(data) === "best-lap";
       },
     },
     channel: AudioChannel.Voice,
@@ -217,25 +372,85 @@ export function buildLapTimeContract(
   };
 }
 
+/** What the every-lap contract reads besides its event (#1163). */
+export type LapTimeLastContractDeps = {
+  getRaceFinishedFired: () => boolean;
+  getUnderFullCourseCaution: UnderCautionResolver;
+  getLapOwner: LapOwnerResolver;
+  getLapCompletedSnapshot: LapCompletedSnapshotResolver;
+};
+
 /**
- * Stable identifier for the lap-time callout (issue #555). Single subject —
- * "best lap" covers both the new-PB case and the first-valid-lap case (the
- * intro selector handles the distinction internally).
+ * Build the every-lap contract (#1163): "Last lap was one forty-five point
+ * two three seven." on every lap the player completes that no higher
+ * lap-time call owns, except an out or in lap, the final lap of a race and a
+ * lap under or ending a caution. Its `speakGate` admits the line only while
+ * no newer `lap.completed` has fired, read from the plugin's snapshot, so a
+ * lap time that waited out a busy line is dropped rather than read a lap
+ * late (#1138's cooldown-free re-check). A fire with no lap event behind it
+ * (an imperative one) is admitted.
+ */
+export function buildLapTimeLastContract(deps: LapTimeLastContractDeps): ScenarioContract {
+  return {
+    id: "pit-crew.lap-time-last",
+    when: {
+      event: "lap.completed",
+      where: (ev) => {
+        if (ev.event !== "lap.completed") return false;
+
+        const data = ev.data as LapCompletedSnapshot;
+
+        if (lapSilencedWhole(data, deps.getRaceFinishedFired, deps.getUnderFullCourseCaution)) return false;
+
+        // A lap out of the pits or into them does not describe pace.
+        if (data.isOutLap === true || data.isInLap === true) return false;
+
+        if (!(Number.isFinite(data.lapTime) && data.lapTime > 0)) return false;
+
+        return deps.getLapOwner(data) === "every-lap";
+      },
+    },
+    speakGate: {
+      description:
+        "The driver has not completed another lap since this one, so a lap time that waited out a busy radio is dropped rather than read a lap late.",
+      admit: (ctx) => {
+        if (ctx.event?.event !== "lap.completed") return true;
+
+        return lapStillCurrent((ctx.data as LapCompletedSnapshot).lap, deps.getLapCompletedSnapshot());
+      },
+    },
+    channel: AudioChannel.Voice,
+    bus: AudioBus.Voice,
+    base: "voice/{voice}",
+    weight: WEIGHT.CHATTER,
+    queueable: true,
+    family: "lap-time-last",
+    description:
+      "You complete a lap that no other lap-time callout speaks for, except an out or in lap, the final lap of a race (race-end speaks) or a lap under a caution.",
+  };
+}
+
+/**
+ * Stable identifier for each lap-time callout: `best-lap` (issue #555, the
+ * new-PB and first-valid-lap cases alike — the intro selector handles the
+ * distinction) and `every-lap` (issue #1163).
  */
 export type LapTimeCalloutId = CalloutIdOf<typeof LAP_TIME_CALLOUTS>;
 
 export const SCENARIO_ID_TO_LAP_TIME_ID: Record<string, LapTimeCalloutId> = {
   "pit-crew.lap-time-best": "best-lap",
+  "pit-crew.lap-time-last": "every-lap",
 };
 
-export const LAP_TIME_SCENARIO_IDS: readonly string[] = ["pit-crew.lap-time-best"];
+export const LAP_TIME_SCENARIO_IDS: readonly string[] = ["pit-crew.lap-time-best", "pit-crew.lap-time-last"];
 
 /**
- * The readout is composed entirely from the `lapTime.*` vars, which draw
- * from the four `lap-time-*` clip groups by value — so there is no fixed
- * `(group, base)` list to publish: the bundled script addresses no pool
- * directly. Exported empty for parity with the family-completeness checks
- * the other pit-crew catalog files feed; the var descriptions name the
- * groups.
+ * The `(group, base)` sources the bundled scripts address directly: the
+ * every-lap intro, `pool:lap-time-last/intro` (#1163). Everything else in
+ * both readouts is a var's — the `lapTime.*` vars draw from the four
+ * `lap-time-*` groups and the seven `lap-time-compact-*` groups by value,
+ * and their descriptions name the groups.
  */
-export const LAP_TIME_CLIP_SOURCES: readonly { group: string; base: string }[] = [];
+export const LAP_TIME_CLIP_SOURCES: readonly { group: string; base: string }[] = [
+  { group: LAP_TIME_LAST_GROUP, base: "intro" },
+];
