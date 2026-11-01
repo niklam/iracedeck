@@ -162,7 +162,7 @@ Niklas tests in batches, often hours after a lead reports, so everything waiting
 
 Republish on every `ready-to-test`, head change, integration-build change, verdict and merge, so the page never shows a sha or a build he is not testing. A card's *Head* is always the sha its build merged: a lead's new head after that build moves the card to the next build, under its new sha, rather than changing the sha on a card he is testing now. In your "For you" list, a test request names the card numbers and links the sheet instead of repeating the steps.
 
-Nothing on the sheet is authoritative: it is a view for Niklas, not the state you keep. The verdict is recorded on the issue (Integration build, step 5), and a resume reads the issues and the leads, then rebuilds the sheet from them.
+Nothing on the sheet is authoritative: it is a view for Niklas, not the state you keep. The verdict is recorded on the issue (Integration build, step 5), and a resume reads the issues and the leads, then rebuilds the sheet from them. What the current build holds is in the `integration` branch itself: each branch was merged `--no-ff`, so `git -C ../ir-integration log --merges --format="%H %P %s" origin/master..integration` names every branch and, as each merge's second parent, the head sha it merged.
 
 ## Keeping `master` pulled and built
 
