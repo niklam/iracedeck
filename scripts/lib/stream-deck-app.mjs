@@ -67,8 +67,11 @@ export async function stopStreamDeck({ spawnSync, platform = process.platform, s
     }
 
     if (attempt === EXIT_WAIT_ATTEMPTS) {
-      const seconds = (EXIT_WAIT_ATTEMPTS * EXIT_WAIT_INTERVAL_MS) / 1000;
-      log.error(`Error: ${image} is still running ${seconds} s after the kill (pid ${pids(found.processes)}).`);
+      // "At least": each attempt's process listing takes time on top of the sleeps.
+      const seconds = ((EXIT_WAIT_ATTEMPTS - 1) * EXIT_WAIT_INTERVAL_MS) / 1000;
+      log.error(
+        `Error: ${image} is still running at least ${seconds} s after the kill (pid ${pids(found.processes)}).`,
+      );
       log.error(
         `  ${label} will not load a new build until it restarts, and a relink can fail on files it holds open.`,
       );
@@ -127,7 +130,10 @@ export async function startStreamDeck({
     return 0;
   }
 
-  if (found.state === "unknown") log.log(`Could not tell whether ${label} is running (${found.reason}); starting it.`);
+  if (found.state === "unknown") {
+    log.log(`Could not tell whether ${label} is running (${found.reason}); starting it.`);
+    log.log(`  If it was running, this only brings it forward: it loads no new plugins until it is stopped.`);
+  }
 
   return launchApp(appPath, { spawn, log });
 }

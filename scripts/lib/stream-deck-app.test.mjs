@@ -134,7 +134,9 @@ describe("stopStreamDeck", () => {
     expect(await pending).toBe(1);
     expect(calls.filter((cmd) => cmd === "powershell.exe")).toHaveLength(EXIT_WAIT_ATTEMPTS);
     expect(sleep).toHaveBeenCalledTimes(EXIT_WAIT_ATTEMPTS - 1);
-    expect(log.error.mock.calls.join("\n")).toContain("StreamDeck.exe is still running");
+    // The sleeps between the listings, as a floor: the listings themselves take time too.
+    const slept = ((EXIT_WAIT_ATTEMPTS - 1) * EXIT_WAIT_INTERVAL_MS) / 1000;
+    expect(log.error.mock.calls.join("\n")).toContain(`StreamDeck.exe is still running at least ${slept} s`);
     expect(log.error.mock.calls.join("\n")).toContain("pid 4242");
   });
 
@@ -218,6 +220,8 @@ describe("startStreamDeck", () => {
     expect(await pending).toBe(0);
     expect(calls).toEqual(["powershell.exe", `start ${APP}`]);
     expect(output(log)).toContain("Could not tell whether Stream Deck is running");
+    // "Started" alone would claim a fresh plugin load that a launch over a running instance never makes.
+    expect(output(log)).toContain("If it was running, this only brings it forward");
   });
 
   it("starts nothing off Windows", async () => {
