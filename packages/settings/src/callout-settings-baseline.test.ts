@@ -1,4 +1,5 @@
 import { CALLOUT_FAMILIES, CALLOUT_SETTING_KEYS, calloutIdForKey } from "@iracedeck/callout-settings";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -29,8 +30,9 @@ import { GlobalSettingsSchema } from "./global-settings.js";
  * reused: a callout that comes back takes a new key and a new row. A rename
  * is both at once — the old key's row retired, the new key's row appended.
  *
- * Adding a callout: raise `RECORD_ROWS` below by one, and append one row at
- * the end of `__fixtures__/callout-settings-baseline.json`, keyed by the new
+ * Adding a callout: append one row at the end of
+ * `__fixtures__/callout-settings-baseline.json`, then write the new pin
+ * (`RECORD_ROWS`, `RECORD_KEYS_SHA256` below) that the failing test prints. The row is keyed by the new
  * `calloutEnabled*` key, in the shape of the rows above it —
  * `owner` is `<family id>/<callout id>` from the registry entry, `default` is
  * `true` unless the entry declares `default: false`, and the coercion columns
@@ -47,11 +49,13 @@ import { GlobalSettingsSchema } from "./global-settings.js";
  * keys added in between (`calloutEnabledRollingStartLineupChanged`,
  * `calloutEnabledCautionCatchUp`, `calloutEnabledCautionCatchUpReminder`).
  *
- * One row's owner has moved since, deliberately: #1167 took
- * `calloutEnabledFlagOnePaceLapToGo` from `flag/one-pace-lap-to-go` to
- * `rolling-start/one-pace-lap-to-go` when the call became a formation call
- * and its checkbox moved under Rolling Start, with the key and its default
- * untouched, so no stored value moved and no migration was owed.
+ * `owner` is the one column a live row may change: when an entry moves to
+ * another family, its key, default and coercion stay as they were, no stored
+ * value moves and no migration is owed, so the owner is updated to the new
+ * `<family id>/<callout id>` and nothing else in the row is touched. #1167 did
+ * this once, taking `calloutEnabledFlagOnePaceLapToGo` from
+ * `flag/one-pace-lap-to-go` to `rolling-start/one-pace-lap-to-go` when the
+ * call became a formation call and its checkbox moved under Rolling Start.
  */
 interface BaselineRow {
   readonly owner: string;
@@ -70,13 +74,18 @@ interface BaselineRow {
 const COLUMNS: readonly string[] = ["owner", "default", "true", '"true"', "false", '"false"', '"x"', "numberRejected"];
 
 /**
- * How many rows the record holds, live and retired: 100 captured before #1350
- * and three appended by #1376. Raised by one with every appended row, and never
- * lowered. The checks below see only keys still in the registry or rows still
- * in the file, so a key dropped together with its row would pass them all; the
- * pinned count is what refuses that.
+ * The pin: how many rows the record held when it was last pinned, live and
+ * retired (100 captured before #1350, three appended by #1376), and the
+ * SHA-256 of those rows' keys in file order, joined by newlines. The checks
+ * further down see only keys still in the registry or rows still in the file,
+ * so a key dropped together with its row would pass them all — and so would one
+ * row swapped for another, since the count stays the same. The pinned prefix is
+ * what refuses both: the first `RECORD_ROWS` keys must still be exactly the
+ * pinned ones, in order. An append leaves that prefix alone, and its test then
+ * prints the new pin to write in the same change; nothing else ever moves it.
  */
 const RECORD_ROWS = 103;
+const RECORD_KEYS_SHA256 = "f15b5fa650565eeb45e4098c2d5a8c44e89057aaeee11450a0679f7bc5c7da6f";
 
 const BASELINE_FILE = "packages/settings/src/__fixtures__/callout-settings-baseline.json";
 
@@ -97,12 +106,34 @@ const registryKeys: readonly string[] = CALLOUT_SETTING_KEYS;
 const parseKey = (key: string, value: unknown): unknown =>
   (GlobalSettingsSchema.parse({ [key]: value }) as Record<string, unknown>)[key];
 
+/** The SHA-256 of `keys` joined by newlines, the form `RECORD_KEYS_SHA256` pins. */
+const keysDigest = (keys: readonly string[]): string => createHash("sha256").update(keys.join("\n")).digest("hex");
+
+const recordKeys = Object.keys(baseline);
+
+/** Whether the record still opens with exactly the pinned keys, in order. */
+const pinnedPrefixIntact =
+  recordKeys.length >= RECORD_ROWS && keysDigest(recordKeys.slice(0, RECORD_ROWS)) === RECORD_KEYS_SHA256;
+
 describe("callout settings baseline (#1350, #1376)", () => {
-  it(`holds exactly ${RECORD_ROWS} rows, so no row was deleted`, () => {
+  it(`still opens with the ${RECORD_ROWS} pinned rows, in order`, () => {
     expect(
-      Object.keys(baseline).length,
-      `${BASELINE_FILE} must hold exactly RECORD_ROWS rows. A row is never deleted, even when its key is retired ` +
-        `(mark it "retiredBy" instead); a newly appended row raises RECORD_ROWS by one in the same change.`,
+      pinnedPrefixIntact,
+      `one of the first ${RECORD_ROWS} rows of ${BASELINE_FILE} was deleted, replaced, renamed or reordered. ` +
+        `A row is never removed, even when its key is retired (mark it "retiredBy" instead), and a new key is ` +
+        `appended at the end. The pin in callout-settings-baseline.test.ts moves only for an append.`,
+    ).toBe(true);
+  });
+
+  it("pins every row in the record", () => {
+    // The new pin is printed only over an intact prefix, so a swapped row cannot be pinned by copying it.
+    const repin = pinnedPrefixIntact
+      ? `In the same change, set RECORD_ROWS to ${recordKeys.length} and RECORD_KEYS_SHA256 to "${keysDigest(recordKeys)}".`
+      : "Restore the pinned rows first (see the failure above).";
+
+    expect(
+      recordKeys.length,
+      `${BASELINE_FILE} has ${recordKeys.length - RECORD_ROWS} row(s) appended after the pin. ${repin}`,
     ).toBe(RECORD_ROWS);
   });
 
@@ -130,8 +161,8 @@ describe("callout settings baseline (#1350, #1376)", () => {
         `A new callout key appends one row at the end of that file, by hand, in the shape of the rows above it: ` +
         `"owner": "<family id>/<callout id>", "default": true unless the entry declares default: false, ` +
         `and the coercion columns every key shares (true/"true" -> true, false/"false"/"x" -> false, numberRejected: true). ` +
-        `Raise RECORD_ROWS in callout-settings-baseline.test.ts by one in the same change, and never regenerate ` +
-        `or edit the existing rows — see that file's header.`,
+        `Then write the new pin the "pins every row" test prints, and never regenerate ` +
+        `or edit the existing rows — see the header of callout-settings-baseline.test.ts.`,
     ).toBe(true);
     expect(
       isRetired(key),
