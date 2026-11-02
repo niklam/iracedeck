@@ -34,7 +34,7 @@ import {
 } from "@iracedeck/iracing-sdk";
 import { describe, expect, it, vi } from "vitest";
 
-import { type LeaderFinish, predictLeaderChequeredS } from "../leader-finish.js";
+import { type LeaderClockExpiry, type LeaderFinish, predictLeaderChequeredS } from "../leader-finish.js";
 import { createInitialState, type TranslatorState } from "../state.js";
 import {
   diffFuelLapsLeft,
@@ -297,31 +297,42 @@ describe("diffFuelLapsLeft — gates", () => {
   });
 });
 
-describe("diffFuelLapsLeft — race-coverage suppression (issue #866)", () => {
-  it("suppresses the box call on the last lap of a lap-limited race the tank finishes — with NO reassurance for a clamped count", () => {
+describe("diffFuelLapsLeft — the expired-clock count (issue #1405)", () => {
+  it("counts consecutive expired clock readings on every tick it sees, before any early return", () => {
     const events: PendingEvent[] = [];
-    const { run } = makeRunner(events);
+    const runner = makeRunner(events);
 
-    // SessionLapsRemainEx 1 → 0 full laps needed after the current one. Raw
-    // 0.5 laps of fuel covers the 0.45 lap left with 5 % to spare (0.4725),
-    // so the box call is noise. The count-0 clamp hides that the post-margin
-    // estimate does not finish this lap (effective 0.2 < 0.45), so the
-    // enough-fuel reassurance must NOT fire.
-    lapSample(run, 5, 1.0, {}, { SessionLapsRemainEx: 1 });
+    // Outside a race, on invalid input and on the seed tick alike.
+    runner.run(tick({ SessionTimeRemain: -1 }), { race: false });
+    expect(runner.state.fuelCalloutClockExpiredTicks).toBe(1);
 
+    runner.run(tick({ SessionTimeRemain: -2, FuelLevel: Number.NaN }));
+    expect(runner.state.fuelCalloutClockExpiredTicks).toBe(2);
+
+    runner.run(tick({ SessionTimeRemain: 0 }));
+    expect(runner.state.fuelCalloutClockExpiredTicks).toBe(3);
+
+    runner.run(tick({ SessionTimeRemain: 12 }));
+    expect(runner.state.fuelCalloutClockExpiredTicks).toBe(0);
+
+    runner.run(tick({ SessionTimeRemain: undefined }));
+    expect(runner.state.fuelCalloutClockExpiredTicks).toBe(0);
     expect(events).toEqual([]);
   });
+});
 
-  it("warns when the tank will not finish the last lap of a lap-limited race (issue #1405)", () => {
+describe("diffFuelLapsLeft — race-coverage suppression (issue #866)", () => {
+  it("suppresses the box call on the final lap of a lap-limited race — with NO reassurance for a clamped count", () => {
     const events: PendingEvent[] = [];
     const { run } = makeRunner(events);
 
-    // Raw 0.3 laps of fuel against the 0.45 lap left: the verdict is on the
-    // tank, so the count-0 box call speaks. Before #1405 the clamped count 0
-    // "covered" the 0 laps needed after this one and the call was dropped.
+    // SessionLapsRemainEx 1 → 0 full laps needed after the current one; even
+    // the count-0 box call is noise when the race ends with this lap. The
+    // clamp hides that the tank may not even finish THIS lap (effective 0 <
+    // the 0.45 lap remaining), so the enough-fuel reassurance must NOT fire.
     lapSample(run, 5, 0.6, {}, { SessionLapsRemainEx: 1 });
 
-    expect(counts(events)).toEqual([0]);
+    expect(events).toEqual([]);
   });
 
   it("suppresses silently at exact coverage — the reassurance needs a lap in hand", () => {
@@ -521,15 +532,16 @@ describe("diffFuelLapsLeft — timed-race coverage (issue #880, #1405)", () => {
     const events: PendingEvent[] = [];
     const { run } = makeRunner(events);
 
-    // White up with the clock at 0 and no prediction: the bound 0 + 2 × 100 s
-    // gives ceil(2 + 0.55 + 0.03) − 1 = 2 laps, which 2.05 does not cover.
-    // Before #1405 the White bit cut the bound to one leader lap → silent.
+    // White up with 10 s on the clock and no prediction: the bound
+    // 10 + 2 × 100 s gives ceil(2.1 + 0.55 + 0.031) − 1 = 2 laps, which 2.05
+    // does not cover. Before #1405 the White bit cut the bound to one leader
+    // lap → silent.
     lapSample(
       run,
       5,
       4.1,
       { avgLapTime: 100, leaderLap: 100 },
-      { SessionTimeRemain: 0, SessionFlags: Flags.White, ...TIMED },
+      { SessionTimeRemain: 10, SessionFlags: Flags.White, ...TIMED },
     );
 
     expect(counts(events)).toEqual([1]);
@@ -934,7 +946,7 @@ describe("resolveFuelRaceCoverage (issue #1387)", () => {
     expect(resolveFuelRaceCoverage(expired, TIMED_STATS, 0.45, leader(100)).timedLapsAfterCurrent).toBeNull();
   });
 
-  it("bounds a clock at exactly zero by two leader laps when there is no prediction", () => {
+  it("leaves a clock at exactly zero unknown without a prediction, the White bit notwithstanding", () => {
     const coverage = resolveFuelRaceCoverage(
       tick({ SessionLapsRemainEx: IRSDK_UNLIMITED_LAPS, SessionTimeRemain: 0, SessionFlags: Flags.White }),
       TIMED_STATS,
@@ -942,8 +954,9 @@ describe("resolveFuelRaceCoverage (issue #1387)", () => {
       leader(100),
     );
 
-    // ceil(200 / 100 + 0.55 + 0.03) − 1 = 2, the White bit notwithstanding.
-    expect(coverage.timedLapsAfterCurrent).toBe(2);
+    // An expired reading is no duration to bound: it may be an expiry the
+    // prediction has not confirmed yet, or a one-tick blip mid-race.
+    expect(coverage.timedLapsAfterCurrent).toBeNull();
   });
 
   it("ignores a prediction that is not a duration", () => {
@@ -987,9 +1000,13 @@ describe("isFuelRaceCovered (issue #1405)", () => {
     expect(isFuelRaceCovered(halfLapLeft(11.03), 10)).toBe(true);
   });
 
-  it("covers only the rest of the current lap when nothing is left after it", () => {
-    expect(isFuelRaceCovered(halfLapLeft(0.5), 0)).toBe(false);
-    expect(isFuelRaceCovered(halfLapLeft(0.53), 0)).toBe(true);
+  it("calls the last lap covered whatever the tank holds — the #866 trade-off", () => {
+    // Nothing after the current lap: half a lap to run on 0.1 laps of fuel
+    // (or none) is not worth a shortage call at the estimator's precision.
+    expect(isFuelRaceCovered(halfLapLeft(0.1), 0)).toBe(true);
+    expect(isFuelRaceCovered(halfLapLeft(0), 0)).toBe(true);
+    // One lap after it is judged on the tank again.
+    expect(isFuelRaceCovered(halfLapLeft(0.1), 1)).toBe(false);
   });
 
   it("never covers an unknown distance", () => {
@@ -1001,6 +1018,8 @@ describe("diffFuelLapsLeft — the race-end reports (issue #1405)", () => {
   // Player car 0 runs second to the leader, car 1, at a 100 s average and
   // 2 L a lap; the mid-lap sample lands at LapDistPct 0.55.
   const ORDER = [2, 1];
+  const HELD: LeaderClockExpiry = { confirmed: true, leaderCrossed: false };
+  const HELD_CROSSED: LeaderClockExpiry = { confirmed: true, leaderCrossed: true };
   const field = (leaderPct: number): Partial<TelemetryData> => ({
     SessionLapsRemainEx: IRSDK_UNLIMITED_LAPS,
     CarIdxLapDistPct: [0.55, leaderPct],
@@ -1011,12 +1030,17 @@ describe("diffFuelLapsLeft — the race-end reports (issue #1405)", () => {
   // 85 s leader 35 % round, so they take the white at their first crossing
   // (55 s from now, after expiry) and the chequered one lap later.
   const clockRunning = { ...field(0.35), SessionTimeRemain: 40 };
-  const chequeredRunning = predictLeaderChequeredS(tick({ LapDistPct: 0.55, ...clockRunning }), ORDER, 85, false);
+  const chequeredRunning = predictLeaderChequeredS(tick({ LapDistPct: 0.55, ...clockRunning }), ORDER, 85, HELD);
 
   // Driver A, the leader already on the white lap: the clock ran out a lap
   // ago, and the 90 s leader is 40 % round their last lap.
   const clockExpired = { ...field(0.4), SessionTimeRemain: -45 };
-  const chequeredExpired = predictLeaderChequeredS(tick({ LapDistPct: 0.55, ...clockExpired }), ORDER, 90, true);
+  const chequeredExpired = predictLeaderChequeredS(
+    tick({ LapDistPct: 0.55, ...clockExpired }),
+    ORDER,
+    90,
+    HELD_CROSSED,
+  );
 
   it("predicts the chequered flag the reports rest on", () => {
     // (2 − 0.35) × 85 and (1 − 0.4) × 90: in both, the player crosses the

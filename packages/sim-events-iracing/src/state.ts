@@ -1630,6 +1630,19 @@ export type TranslatorState = {
    * can't repeat the reassurance; a genuine session change clears it.
    */
   fuelCalloutRaceCoveredAnnounced: boolean;
+  /**
+   * Consecutive ticks, up to and including the latest one the fuel diff saw,
+   * on which the raw `SessionTimeRemain` read finite and ≤ 0 (issue #1405);
+   * `0` on any other reading. The leader's chequered prediction treats the
+   * clock as expired only once this reaches 2 — the two-tick confirmation
+   * `leader-white.ts` uses against the one-tick mid-race blip (#666). A count
+   * rather than a previous-tick boolean, so the Telemetry Snapshot, read after
+   * the tick, sees the same confirmation the diff acted on. Updated on every
+   * tick the diff sees, race or not. Not preserved by `wipeStateForReplay`
+   * and cleared by a session change: a stale count must not confirm an
+   * expiry across either.
+   */
+  fuelCalloutClockExpiredTicks: number;
 
   // ── Lifecycle ───────────────────────────────────────────────────────────
   // `driver.firstOnTrack` is tracked on the translator instance, not here —
@@ -2078,6 +2091,7 @@ export function createInitialState(): TranslatorState {
     fuelCalloutLastFuelLevel: null,
     fuelCalloutLastAnnouncedCount: null,
     fuelCalloutRaceCoveredAnnounced: false,
+    fuelCalloutClockExpiredTicks: 0,
 
     lifecycleInitialized: false,
     lastSessionNum: null,
