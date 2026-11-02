@@ -23,6 +23,7 @@ import {
 import type { ILogger } from "@iracedeck/logger";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { LeaderFinish } from "./leader-finish.js";
 import { CONTROLLER_TICK_ORDER, REPLAY_RECORDER_ORDER, type TickStage } from "./tick-order.js";
 import type { UnitRunner } from "./tick-steps.js";
 import {
@@ -653,7 +654,7 @@ describe("decision 3: a value that throws takes its last value this session", ()
   });
 
   it.each(["updatePositionTracking", "calculateCanonicalRacePositions"])(
-    "a failed order (%s) skips its six consumers, runs diffFuelLapsLeft with a leader-lap closure answering null, and calls all of them next tick",
+    "a failed order (%s) skips its six consumers, runs diffFuelLapsLeft with a leader closure that knows nothing, and calls all of them next tick",
     (throwing) => {
       start();
       runTick();
@@ -662,8 +663,9 @@ describe("decision 3: a value that throws takes its last value this session", ()
       const { called } = runTick();
 
       expect(called.filter((s) => ORDER_CONSUMERS.includes(s))).toEqual([]);
-      const leaderLap = argsOf("diffFuelLapsLeft")?.[5] as () => number | null;
-      expect(leaderLap()).toBeNull();
+      // The leader closure (#1405): no lap time and no chequered prediction.
+      const leaderFinish = argsOf("diffFuelLapsLeft")?.[5] as () => LeaderFinish;
+      expect(leaderFinish()).toEqual({ lapTimeS: null, chequeredInS: null });
 
       harness.control.throwing.clear();
       expect(runTick().called.filter((s) => ORDER_CONSUMERS.includes(s))).toEqual(ORDER_CONSUMERS);
