@@ -17,7 +17,7 @@ import {
   sanitizeGapAlertThresholdSeconds,
   sanitizeGapMinChangeSeconds,
   sanitizeOpponentFlagRangeSeconds,
-  type SimEventsIracingOptions,
+  type SimEventsIracingSettingsOptions,
 } from "@iracedeck/sim-events-iracing";
 
 /**
@@ -37,13 +37,13 @@ export function isOpponentFlagCalloutEnabled(flag: OpponentPenaltyFlag): boolean
 }
 
 /**
- * Every option `initializeSimEventsIracing` takes, each a live read over the
+ * Every settings-backed option `initializeSimEventsIracing` takes, each a live read over the
  * global settings, sanitized so a malformed persisted value cannot poison the
  * diff that reads it. `Required`, so a new translator option fails
  * `pnpm typecheck` here until this builds it — the `buildPitCrewDeps` rule
  * from the other side of the seam.
  */
-export function createIracingTranslatorOptions(): Required<SimEventsIracingOptions> {
+export function createIracingTranslatorOptions(): Required<SimEventsIracingSettingsOptions> {
   return {
     // The laps-of-fuel-left margin (issue #838) — the first of these, and the
     // shape the rest follow: a live-read closure over the global settings,
