@@ -148,15 +148,19 @@ export type TelemetryPatch = {
  */
 type BitsPatchFor<V> = V extends number ? BitsPatch : never;
 
+/** A plain object: not null and not an array (the `CarIdx*` fields are arrays, patched whole). */
+function isPlainObject(value: unknown): value is object {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 /**
- * Whether a patch value is a {@link BitsPatch}: a plain object (never an
- * array — the `CarIdx*` fields are patched whole) whose keys are `setBits`
- * and/or `clearBits`, at least one, each a non-negative integer. Anything else
- * is a value to assign, so a malformed one is written as it stands rather
- * than half-applied.
+ * Whether a patch value is a {@link BitsPatch}: a plain object whose keys are
+ * `setBits` and/or `clearBits`, at least one, each a non-negative integer.
+ * `mutateTelemetry` refuses any other plain object, since no telemetry field
+ * holds one.
  */
 export function isBitsPatch(value: unknown): value is BitsPatch {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  if (!isPlainObject(value)) return false;
 
   const entries = Object.entries(value);
 
@@ -275,9 +279,22 @@ export class MockSDKController {
    *
    * A {@link BitsPatch} value sets and clears bits of the field's current
    * value rather than replacing it (issue #1548). No `TelemetryData` field
-   * holds a plain object, so that shape is unambiguous too.
+   * holds a plain object, so that shape is unambiguous too — and any other
+   * plain object is a malformed bits patch, refused with an error naming its
+   * key before anything is written, rather than stored where a number
+   * belongs.
+   *
+   * @throws Error when a value is a plain object that is not a valid {@link BitsPatch}
    */
   mutateTelemetry(patch: TelemetryPatch): void {
+    for (const [key, value] of Object.entries(patch)) {
+      if (isPlainObject(value) && !isBitsPatch(value)) {
+        throw new Error(
+          `telemetry patch key "${key}": an object value must be a bits patch — { setBits?, clearBits? }, at least one, each a non-negative integer — got ${JSON.stringify(value)}`,
+        );
+      }
+    }
+
     const current = this.telemetry as unknown as Record<string, unknown>;
     const next = { ...current, ...patch } as Record<string, unknown>;
 

@@ -169,6 +169,35 @@ describe("MockSDKController", () => {
       });
     });
 
+    // A plain object that is not a bits patch would otherwise be stored where
+    // a number belongs; it is refused, naming the key, before anything is written.
+    it.each([
+      { name: "an unknown key", value: { mask: 16 } },
+      { name: "an empty object", value: {} },
+      { name: "a negative mask", value: { setBits: -1 } },
+      { name: "a string mask", value: { clearBits: "16" } },
+    ])("refuses a malformed bits patch with $name, writing nothing", ({ value }) => {
+      const controller = new MockSDKController();
+
+      controller.mutateTelemetry({ EngineWarnings: EngineWarnings.WaterTempWarning });
+
+      expect(() =>
+        controller.mutateTelemetry({ Speed: 40, EngineWarnings: value } as unknown as TelemetryPatch),
+      ).toThrow(/"EngineWarnings"/);
+      expect(controller.getState().telemetry).toMatchObject({
+        Speed: 0,
+        EngineWarnings: EngineWarnings.WaterTempWarning,
+      });
+    });
+
+    it("still assigns arrays whole", () => {
+      const controller = new MockSDKController();
+
+      controller.mutateTelemetry({ CarIdxLapDistPct: [0.1, 0.2] });
+
+      expect(controller.getState().telemetry).toMatchObject({ CarIdxLapDistPct: [0.1, 0.2] });
+    });
+
     describe("isBitsPatch", () => {
       it.each([
         { value: { setBits: 16 } },

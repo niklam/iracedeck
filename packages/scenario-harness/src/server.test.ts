@@ -139,6 +139,31 @@ describe("POST /api/telemetry", () => {
     expect(controller.getState().telemetry).toMatchObject({ Speed: 40 });
   });
 
+  // Issue #1548: a plain object is a bits patch or nothing.
+  it("rejects a malformed bits patch with a 400 naming the key, writing nothing", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/telemetry",
+      payload: { patch: { Speed: 40, EngineWarnings: { mask: 16 } }, tick: true },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { error: string }).error).toContain('"EngineWarnings"');
+    expect(ticks).toEqual([]);
+    expect(controller.getState().telemetry).toMatchObject({ Speed: 0, EngineWarnings: 0 });
+  });
+
+  it("applies a valid bits patch", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/telemetry",
+      payload: { patch: { EngineWarnings: { setBits: 16 } } },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(controller.getState().telemetry).toMatchObject({ EngineWarnings: 16 });
+  });
+
   it("rejects a tick that is not a boolean, writing nothing", async () => {
     const res = await app.inject({
       method: "POST",
