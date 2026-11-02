@@ -72,7 +72,7 @@ Findings are candidates: verify each against the code, apply the ones that hold,
 
 Some diffs then get the second read, on the code with those findings applied. `@.claude/rules/code-review.md` says which, and why it is not a second full review. Every branch then gets the CodeRabbit CLI round, which that rule also covers; it may overlap the manual test, but the head the PR opens at must be one it reviewed.
 
-Review before **manual testing**, not after, because a finding can change what there is to test.
+Run the code review and the second read before **manual testing**, not after, because a finding can change what there is to test.
 
 ### Manual testing gates the PR (8)
 
