@@ -3,6 +3,7 @@ paths:
   - "scripts/claude-hooks/lib.mjs"
   - "scripts/claude-hooks/lib.test.mjs"
   - "scripts/claude-hooks/post-bash*"
+  - "scripts/claude-hooks/rules-bash*"
   - ".claude/skills/po/**"
   - ".claude/skills/issue-lead/**"
   - ".claude/skills/file-issue/**"

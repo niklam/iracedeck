@@ -1,6 +1,9 @@
 ---
 paths:
   - "turbo.json"
+  - "package.json"
+  - "scripts/generate-changelog-data.mjs"
+  - "scripts/install-runtime-deps.mjs"
   - "tsconfig*.json"
   - "packages/*/tsconfig*.json"
   - "scripts/lib/**"
