@@ -556,10 +556,17 @@ describe("UlanziPlatformAdapter", () => {
         onDialDown: vi.fn(record("onDialDown")),
         onDialUp: vi.fn(record("onDialUp")),
         onKeyDown: vi.fn(record("onKeyDown")),
+        onKeyUp: vi.fn(record("onKeyUp")),
+        onDidReceiveSettings: vi.fn(record("onDidReceiveSettings")),
       };
 
       return { handler, calls, hooks: () => calls.map((c) => c.hook) };
     };
+
+    type NonDialEventName = "didReceiveSettings" | "keyDown" | "keyUp";
+
+    const nonDial = (event: NonDialEventName, settings: Record<string, unknown> = {}) =>
+      actionEventHandler(event)({ event, action: UUID, context: CTX, payload: { settings } });
 
     const appear = (payload: Record<string, unknown> = { settings: {} }) =>
       actionEventHandler("willAppear")({ event: "willAppear", action: UUID, context: CTX, payload });
@@ -743,6 +750,51 @@ describe("UlanziPlatformAdapter", () => {
       await input;
 
       expect(hooks()).toEqual(["onWillAppear", "onWillDisappear", "teardown-tail", "onWillAppear", "onDialRotate"]);
+    });
+
+    // A settings or key event landing mid-promotion, delivered as a Keypad after
+    // the synthetic teardown, would rebuild key state (activeContexts, binding,
+    // display) that the real disappear, tearing down as Encoder, never removes.
+    it.each<[NonDialEventName, string]>([
+      ["didReceiveSettings", "onDidReceiveSettings"],
+      ["keyDown", "onKeyDown"],
+      ["keyUp", "onKeyUp"],
+    ])("holds a %s that lands mid-promotion until the Encoder re-appear", async (event, hook) => {
+      const { handler, calls, hooks } = recordingHandler();
+      adapter.registerAction(UUID, handler);
+      await appear();
+
+      const teardownGate = deferred();
+      handler.onWillDisappear.mockImplementationOnce(async (ev) => {
+        calls.push({ hook: "onWillDisappear", isDial: ev.action.isDial(), isKey: ev.action.isKey(), settings: {} });
+        await teardownGate.promise;
+      });
+
+      const input = rotate(1);
+      await flush();
+      const midway = nonDial(event, { mode: "edited-in-pi" });
+      await flush();
+
+      expect(hooks()).toEqual(["onWillAppear", "onWillDisappear"]);
+
+      teardownGate.resolve();
+      await Promise.all([input, midway]);
+
+      expect(hooks()).toEqual(["onWillAppear", "onWillDisappear", "onWillAppear", "onDialRotate", hook]);
+      expect(calls[4]).toMatchObject({ isDial: true, isKey: false, settings: { mode: "edited-in-pi" } });
+    });
+
+    it("never starts a promotion from a settings or key event", async () => {
+      const { handler, calls, hooks } = recordingHandler();
+      adapter.registerAction(UUID, handler);
+      await appear();
+
+      await nonDial("didReceiveSettings");
+      await nonDial("keyDown");
+      await nonDial("keyUp");
+
+      expect(hooks()).toEqual(["onWillAppear", "onDidReceiveSettings", "onKeyDown", "onKeyUp"]);
+      expect(calls.every((c) => c.isKey)).toBe(true);
     });
 
     it("makes a willDisappear that lands mid-promotion wait, then tear the context down as an Encoder", async () => {

@@ -199,7 +199,9 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
    * Contexts that have delivered dial input this process. Unlike
    * {@link contextControllers} this survives willDisappear, so a dial that
    * re-appears (a page switch is `clear` then `add`) is an Encoder from its
-   * willAppear rather than from its next dial event (#1530).
+   * willAppear rather than from its next dial event (#1530). Never pruned, on
+   * purpose: its growth is bounded by the dials placed in one plugin process,
+   * a context string each.
    */
   private readonly knownEncoderContexts = new Set<string>();
 
@@ -588,18 +590,33 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
       await handler.onWillDisappear?.(wrapDisappearEvent<T>(data as UlanziEvent & { context: string }, controller));
     });
 
+    // Settings and key events never start a promotion (only dial input does),
+    // but one landing mid-promotion waits for it: delivered as a Keypad after
+    // the synthetic teardown, it would rebuild key state that the real
+    // disappear, tearing down as Encoder, never removes (#1530). The promise
+    // is read synchronously and awaited in the handler itself, so these
+    // resume in arrival order with the dial events (see pendingPromotion).
+
     // didReceiveSettings
     this.client.onActionEvent(uuid, "didReceiveSettings", async (data) => {
       if (!data.context) return;
+
+      const promotion = this.encoderPromotions.get(data.context);
+
+      if (promotion) await promotion;
 
       await handler.onDidReceiveSettings?.(
         wrapEvent<T>(this.client, data as UlanziEvent & { context: string }, getControllerType(data.context)),
       );
     });
 
-    // keyDown — fire broadcast callbacks first (for window focus), then handler
+    // keyDown — settle the controller, fire broadcast callbacks (for window focus), then handler
     this.client.onActionEvent(uuid, "keyDown", async (data) => {
       if (!data.context) return;
+
+      const promotion = this.encoderPromotions.get(data.context);
+
+      if (promotion) await promotion;
 
       for (const cb of this.keyDownCallbacks) cb();
 
@@ -608,9 +625,13 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
       );
     });
 
-    // keyUp
+    // keyUp — settle the controller, then handler
     this.client.onActionEvent(uuid, "keyUp", async (data) => {
       if (!data.context) return;
+
+      const promotion = this.encoderPromotions.get(data.context);
+
+      if (promotion) await promotion;
 
       await handler.onKeyUp?.(
         wrapEvent<T>(this.client, data as UlanziEvent & { context: string }, getControllerType(data.context)),
