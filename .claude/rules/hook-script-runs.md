@@ -1,6 +1,7 @@
 ---
 paths:
   - "scripts/claude-hooks/script-runs*.mjs"
+  - "scripts/claude-hooks/rules-bash.test.mjs"
 ---
 
 # Claude Code hooks — the package-script interpreter
