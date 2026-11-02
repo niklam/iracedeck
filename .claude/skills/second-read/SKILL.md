@@ -126,7 +126,8 @@ A run that teaches nothing adds nothing. Keep it short enough to read in a minut
 After ten runs on real branches, add up `H` from the PR bodies' tally lines. If it is zero, the step is removed, in every place that names it:
 
 - this directory;
-- `.claude/rules/code-review.md` — the section *The second read* and the last sentence of rule 4 in *How reviews are staged inside an issue*;
-- `.claude/rules/issue-workflow.md` — the end of the step 7 row and the second-read paragraph under *(7)*;
+- `.claude/rules/code-review.md` — the section *The second read* and its clause in the last sentence of rule 4 in *How reviews are staged inside an issue*;
+- `.claude/rules/issue-workflow.md` — the second-read clause in the step 7 row and the second-read sentences under *(7)*;
+- `.claude/skills/issue-lead/SKILL.md` — item 2 of step 7 and the `second read` source in its judged-declines line;
 - `.claude/rules/build-and-commit.md` — the second-read clause in the code-review ask;
-- `.claude/CLAUDE.md` — the end of the *Stage reviews by the seams* line.
+- `.claude/CLAUDE.md` — the second-read clause at the end of the *Stage reviews by the seams* line.
