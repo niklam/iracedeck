@@ -15,7 +15,7 @@
  * during service) and while the car is creeping (<5 m/s, into/out of box).
  */
 import type { SimEventName } from "@iracedeck/event-bus";
-import { EngineWarnings, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { isPitLimiterEngaged, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 import type { TranslatorState } from "../state.js";
 import type { EmitFn } from "./types.js";
@@ -41,7 +41,7 @@ export function diffLimiter(
   const onPitRoad = telemetry.OnPitRoad ?? false;
   const inPitStall = telemetry.PlayerCarInPitStall ?? false;
   const isOnTrack = telemetry.IsOnTrack ?? false;
-  const limiter = ((telemetry.EngineWarnings ?? 0) & EngineWarnings.PitSpeedLimiter) !== 0;
+  const limiter = isPitLimiterEngaged(telemetry);
   const speed = telemetry.Speed ?? 0;
 
   if (!isOnTrack) {

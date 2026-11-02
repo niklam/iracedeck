@@ -31,7 +31,7 @@
  * transitions on connect / garage returns.
  */
 import type { PitServiceKind, SimEventName } from "@iracedeck/event-bus";
-import { EngineWarnings, PitSvFlags, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { isPitLimiterEngaged, PitSvFlags, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 import type { ServiceDebounceState, TranslatorState } from "../state.js";
 import type { EmitFn, PendingEvent } from "./types.js";
@@ -228,7 +228,7 @@ export function diffToggles(
   emit: EmitFn<(typeof TOGGLES_EVENTS)[number]>,
 ): void {
   const pitSvFlags = telemetry.PitSvFlags ?? 0;
-  const limiter = ((telemetry.EngineWarnings ?? 0) & EngineWarnings.PitSpeedLimiter) !== 0;
+  const limiter = isPitLimiterEngaged(telemetry);
   const p2p = telemetry.P2P_Status === true;
   const drs = (telemetry.DRS_Status ?? 0) > 0;
   const isOnTrack = telemetry.IsOnTrack ?? false;
