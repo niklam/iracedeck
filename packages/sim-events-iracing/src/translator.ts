@@ -103,6 +103,7 @@ import { diffToggles } from "./diff/toggles.js";
 import { diffTrackGaps } from "./diff/track-gaps.js";
 import { diffTrackWetness, resolveReportedTrackWetness } from "./diff/track-wetness.js";
 import type { EmitFn, PendingEvent } from "./diff/types.js";
+import { leaderWhiteCrossingIndex } from "./leader-finish.js";
 import { calculateCanonicalRacePositions } from "./race-order.js";
 import { type ReplayRecorder, startReplayRecorder } from "./replay-recorder.js";
 import {
@@ -1810,7 +1811,10 @@ export function resolveGapLapsRemaining(
  * - **Clock running** (`t` seconds, leader lap `L`, leader lap fraction `f`):
  *   the leader's k-th crossing from now is at `(k − f) · L`, the white is the
  *   first at or after expiry, `k = ceil(t / L + f)`, and the chequered is the
- *   one after it. An unknown fraction counts as `0`, the smaller result.
+ *   one after it. The crossing model is `leader-finish.ts`' (#1405), which the
+ *   fuel estimate shares; here it runs with no tolerance. An unknown fraction
+ *   counts as `0`, the smaller result — the gap horizon's own safe direction,
+ *   where the fuel estimate answers unknown instead.
  */
 function timeSideCrossings(
   telemetry: TelemetryData,
@@ -1832,7 +1836,7 @@ function timeSideCrossings(
   const leaderPct = telemetry.CarIdxLapDistPct?.[positions.findIndex((position) => position === 1)];
   const fraction = typeof leaderPct === "number" && leaderPct >= 0 && leaderPct < 1 ? leaderPct : 0;
 
-  return Math.ceil(timeRemainS / leaderLapTimeS + fraction) + 1;
+  return leaderWhiteCrossingIndex(timeRemainS, leaderLapTimeS, fraction, 0) + 1;
 }
 
 /**
