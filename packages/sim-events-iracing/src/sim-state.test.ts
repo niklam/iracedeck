@@ -26,7 +26,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { FUEL_LAPS_LEFT_WINDOW_LAPS, isFuelRaceCovered } from "./diff/fuel-laps-left.js";
 import { createFuelLapTracker, type FuelLap } from "./diff/fuel-laps.js";
-import { type LeaderClockExpiry, type LeaderFinish, predictLeaderChequeredS } from "./leader-finish.js";
+import {
+  CLOCK_EXPIRY_CONFIRM_TICKS,
+  type LeaderClockExpiry,
+  type LeaderFinish,
+  predictLeaderChequeredS,
+} from "./leader-finish.js";
 import { buildSimState, simStateHeadline, type SimStateParts, type SimStateSnapshot } from "./sim-state.js";
 import { createInitialState } from "./state.js";
 import { TrackDirection } from "./track-type.js";
@@ -511,24 +516,38 @@ describe("readSimState — the laps-of-fuel-left figure", () => {
     });
 
     driveTwoValidLaps(controller, field(5, 0.5, 400));
-    // The clock runs out with the leader near the line, held for two ticks so
-    // `diffLeaderWhite` confirms it, then the leader crosses: the white.
-    controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.3, SessionTime: 190, FuelLevel: 20, ...field(5, 0.95, -1) }));
-    controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.32, SessionTime: 191, FuelLevel: 20, ...field(5, 0.97, -2) }));
-    controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.7, SessionTime: 192, FuelLevel: 20, ...field(6, 0.02, -3) }));
+    // The clock runs out with the leader near the line, half a second a tick
+    // so the fuel diff confirms the expiry (60 ticks) and `diffLeaderWhite`
+    // its own, then the leader crosses 30 s after expiry: the white. The last
+    // tick is 35 s after expiry, the leader 0.075 × 60 = 4.5 s into the lap.
+    const tickAt = (i: number) => {
+      const crossed = i >= 60;
+      const leaderPct = crossed ? (i - 59) * 0.0075 : 0.8 + i * 0.003;
+
+      return telemetry({
+        Lap: 4,
+        LapDistPct: i === 69 ? 0.7 : 0.3,
+        SessionTime: 190 + i * 0.5,
+        FuelLevel: 20,
+        ...field(crossed ? 6 : 5, leaderPct, -(i + 1) * 0.5),
+      });
+    };
+
+    for (let i = 0; i < 70; i++) controller.__tick(tickAt(i));
 
     const state = read();
-    const latest = telemetry({ Lap: 4, LapDistPct: 0.7, ...field(6, 0.02, -3) });
-    // Chequered (1 − 0.02) × 60 = 58.8 s → ceil(58.8 / 87.5 + 0.7 + 0.03) − 1
-    // = 1. Read without the marker, (2 − 0.02) × 60 = 118.8 s would give 2.
+    const latest = tickAt(69);
+    // Chequered (1 − 0.075) × 60 = 55.5 s → ceil(55.5 / 87.5 + 0.7 + 0.03) − 1
+    // = 1. Read without the marker, (2 − 0.075) × 60 = 115.5 s would give 2.
     const HELD: LeaderClockExpiry = { confirmed: true, leaderCrossed: false };
     const HELD_CROSSED: LeaderClockExpiry = { confirmed: true, leaderCrossed: true };
     const onWhiteLap = predictLeaderChequeredS(latest, [2, 1], 60, HELD_CROSSED);
     const beforeWhite = predictLeaderChequeredS(latest, [2, 1], 60, HELD);
 
     expect(state.raw.state.leaderWhitePostExpiryCrossed).toBe(true);
-    expect(onWhiteLap).toBeCloseTo(58.8, 9);
-    expect(beforeWhite).toBeCloseTo(118.8, 9);
+    expect(state.raw.state.fuelCalloutClockExpiredTicks).toBe(70);
+    expect(onWhiteLap).toBeCloseTo(55.5, 9);
+    expect(beforeWhite).toBeCloseTo(115.5, 9);
     expect(state.fuel.lapsLeft.now!.timedLapsAfterCurrent).toBe(1);
   });
 
@@ -627,8 +646,11 @@ describe("readSimState — the expired-clock confirmation (issue #1405)", () => 
     CarIdxBestLapTime: [87, 60],
   });
 
-  /** Two valid laps 20 minutes from the flag, then the mid-lap sample with `before` and `atSample` on the clock. */
-  function sample(before: number, atSample: number): { spoken: string[]; counts: number[] } {
+  /**
+   * Two valid laps 20 minutes from the flag, then a tick at 45 % of the lap
+   * for each of `clocks` but the last, and the mid-lap sample with the last.
+   */
+  function sample(...clocks: number[]): { spoken: string[]; counts: number[] } {
     const { controller } = start();
     const spoken: string[] = [];
     const counts: number[] = [];
@@ -640,11 +662,15 @@ describe("readSimState — the expired-clock confirmation (issue #1405)", () => 
     getEventBus().subscribe("fuel.lapsLeft.raceCovered", (ev) => spoken.push(ev.event));
     driveTwoValidLaps(controller, field(0.3, 1200));
     // 8 L is 4.1 laps of fuel: 3 full laps after this one at the 0.3 margin.
+    clocks
+      .slice(0, -1)
+      .forEach((clock, i) =>
+        controller.__tick(
+          telemetry({ Lap: 4, LapDistPct: 0.45, SessionTime: 200 + i / 60, FuelLevel: 8.1, ...field(0.45, clock) }),
+        ),
+      );
     controller.__tick(
-      telemetry({ Lap: 4, LapDistPct: 0.45, SessionTime: 200, FuelLevel: 8.1, ...field(0.45, before) }),
-    );
-    controller.__tick(
-      telemetry({ Lap: 4, LapDistPct: 0.55, SessionTime: 210, FuelLevel: 8, ...field(0.55, atSample) }),
+      telemetry({ Lap: 4, LapDistPct: 0.55, SessionTime: 210, FuelLevel: 8, ...field(0.55, clocks.at(-1)!) }),
     );
 
     return { spoken, counts };
@@ -682,14 +708,24 @@ describe("readSimState — the expired-clock confirmation (issue #1405)", () => 
     expect(read().fuel.lapsLeft.now).toMatchObject({ timedLapsAfterCurrent: null, covered: false });
   });
 
-  it("predicts from an expiry held for two ticks", () => {
-    // The clock really ran out: below zero on the tick before the sample too.
-    const { counts, spoken } = sample(-0.5, -10);
+  it("does not let a two-tick blip whose second tick is the sample end the race", () => {
+    const { counts, spoken } = sample(1200, -0.5, -0.6);
+
+    expect(counts).toEqual([3]);
+    expect(spoken).toEqual(["fuel.lapsLeft.crossed"]);
+    expect(read().raw.state.fuelCalloutClockExpiredTicks).toBe(2);
+    expect(read().fuel.lapsLeft.now).toMatchObject({ timedLapsAfterCurrent: null, covered: false });
+  });
+
+  it("predicts from an expiry held for a second", () => {
+    // The clock really ran out: below zero for the 60 ticks before the sample too.
+    const held = Array.from({ length: CLOCK_EXPIRY_CONFIRM_TICKS }, (_, i) => -(i + 1) / 60);
+    const { counts, spoken } = sample(1200, ...held, -1.1);
     const { now } = read().fuel.lapsLeft;
 
     expect(counts).toEqual([]);
     expect(spoken).toEqual(["fuel.lapsLeft.raceCovered"]);
-    expect(read().raw.state.fuelCalloutClockExpiredTicks).toBe(2);
+    expect(read().raw.state.fuelCalloutClockExpiredTicks).toBe(CLOCK_EXPIRY_CONFIRM_TICKS + 1);
     // (2 − 0.55) × 60 = 87 s → ceil(87 / 87.5 + 0.55 + 0.03) − 1 = 1.
     expect(now).toMatchObject({ timedLapsAfterCurrent: 1, remainingLaps: 1, covered: true });
   });

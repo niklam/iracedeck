@@ -42,7 +42,8 @@
  *     own crossing, when the player still runs their own full white lap)
  *     and the timed estimate (the player's crossings up to their first at
  *     or after the leader's PREDICTED chequered flag, `leader-finish.ts`,
- *     which reads an expired clock only once it has held for two ticks;
+ *     which reads an expired clock only once it has held for about a
+ *     second (`CLOCK_EXPIRY_CONFIRM_TICKS`);
  *     when that cannot be predicted, a running clock's bound
  *     `SessionTimeRemain + 2 × leaderLap`, and unknown for an expired one). The verdict is on the TANK, not the post-margin
  *     count ({@link isFuelRaceCovered}, #1405): the raw laps of fuel must
@@ -290,9 +291,9 @@ export function resolveFuelRaceCoverage(
   // own validated average standing in for an unknown leader lap. A clock
   // reading at or below zero with no prediction leaves the side unknown:
   // whether it is a real expiry the prediction has not confirmed yet or a
-  // one-tick blip mid-race (the #666 transient), it is no duration to bound
-  // by, and bounding a blip by two leader laps would end the race there.
-  // Ignorance keeps the cautious answer: counting too few laps would
+  // blip of a tick or two mid-race (the #666 transient), it is no duration
+  // to bound by, and bounding a blip by two leader laps would end the race
+  // there. Ignorance keeps the cautious answer: counting too few laps would
   // silence a warning.
   //
   // The player takes the chequered at their first crossing at or after the

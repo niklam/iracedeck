@@ -98,12 +98,34 @@ describe("predictLeaderChequeredS — clock expired", () => {
   });
 
   it("allows one leader lap less the fraction once the leader is on the white lap", () => {
+    // 60 s since expiry, the leader 40 s into the lap: they crossed after it.
     expect(predictLeaderChequeredS(race(-60, 0.4), ORDER, 100, HELD_CROSSED)).toBeCloseTo(60, 9);
   });
 
-  it("treats a clock at exactly zero as expired", () => {
+  it("treats a clock at exactly zero as expired, where nobody can have crossed since", () => {
     expect(predictLeaderChequeredS(race(0, 0.4), ORDER, 100, HELD)).toBeCloseTo(160, 9);
-    expect(predictLeaderChequeredS(race(0, 0.4), ORDER, 100, HELD_CROSSED)).toBeCloseTo(60, 9);
+    expect(predictLeaderChequeredS(race(0, 0.4), ORDER, 100, HELD_CROSSED)).toBeCloseTo(160, 9);
+  });
+});
+
+describe("predictLeaderChequeredS — a marker the clock does not bear out", () => {
+  it("does not trust a marker a lead change set before anyone's white (the second-read scenario)", () => {
+    // B passed A after expiry: `leader-white.ts` absorbs the change and sets
+    // the marker, but B is half a lap round only 30 s after expiry — they
+    // crossed the line before it. Trusting the marker would read (1 − 0.5) ×
+    // 100 = 50 s, a lap short.
+    expect(predictLeaderChequeredS(race(-30, 0.5), ORDER, 100, HELD_CROSSED)).toBeCloseTo(150, 9);
+  });
+
+  it("reads a crossing near the expiry as not crossed, the cautious lap more", () => {
+    // 30 s since expiry; the allowance is 0.03 × 100 = 3 s.
+    expect(predictLeaderChequeredS(race(-30, 0.3), ORDER, 100, HELD_CROSSED)).toBeCloseTo(170, 9); // f·L = 30
+    expect(predictLeaderChequeredS(race(-30, 0.28), ORDER, 100, HELD_CROSSED)).toBeCloseTo(172, 9); // within 3 s
+    expect(predictLeaderChequeredS(race(-30, 0.26), ORDER, 100, HELD_CROSSED)).toBeCloseTo(74, 9); // 4 s clear
+  });
+
+  it("never reads a crossing without the marker, however far round the clock allows", () => {
+    expect(predictLeaderChequeredS(race(-90, 0.1), ORDER, 100, HELD)).toBeCloseTo(190, 9);
   });
 });
 
@@ -117,6 +139,13 @@ describe("the expired-clock confirmation", () => {
     expect(isClockExpiredReading(race(0, 0.5, { SessionTimeRemain: undefined }))).toBe(false);
   });
 
+  it("confirms about a second of ticks at iRacing's 60 Hz, not the tick or two of a blip", () => {
+    expect(CLOCK_EXPIRY_CONFIRM_TICKS).toBe(60);
+    expect(isClockExpiryConfirmed(2)).toBe(false);
+    expect(isClockExpiryConfirmed(59)).toBe(false);
+    expect(isClockExpiryConfirmed(60)).toBe(true);
+  });
+
   it("counts consecutive expired readings and starts again on any other", () => {
     let ticks = 0;
 
@@ -125,6 +154,11 @@ describe("the expired-clock confirmation", () => {
     expect(isClockExpiryConfirmed(ticks)).toBe(false);
 
     ticks = countClockExpiredTicks(race(-2, 0.5), ticks);
+    expect(ticks).toBe(2);
+    expect(isClockExpiryConfirmed(ticks)).toBe(false);
+
+    for (let i = 3; i <= CLOCK_EXPIRY_CONFIRM_TICKS; i++) ticks = countClockExpiredTicks(race(-i, 0.5), ticks);
+
     expect(ticks).toBe(CLOCK_EXPIRY_CONFIRM_TICKS);
     expect(isClockExpiryConfirmed(ticks)).toBe(true);
 
@@ -137,7 +171,7 @@ describe("the expired-clock confirmation", () => {
 describe("predictLeaderChequeredS — an expired reading not yet confirmed", () => {
   const BLIP: LeaderClockExpiry = { confirmed: false, leaderCrossed: false };
 
-  it("answers null for a reading at or below zero that has not held for two ticks", () => {
+  it("answers null for a reading at or below zero that has not held long enough", () => {
     expect(predictLeaderChequeredS(race(-0.1, 0.4), ORDER, 100, BLIP)).toBeNull();
     expect(predictLeaderChequeredS(race(0, 0.4), ORDER, 100, BLIP)).toBeNull();
     // A marker without a confirmed expiry changes nothing.

@@ -1587,8 +1587,9 @@ export type TranslatorState = {
    * Consecutive ticks, up to and including the latest one the fuel diff saw,
    * on which the raw `SessionTimeRemain` read finite and ≤ 0 (issue #1405);
    * `0` on any other reading. The leader's chequered prediction treats the
-   * clock as expired only once this reaches 2 — the two-tick confirmation
-   * `leader-white.ts` uses against the one-tick mid-race blip (#666). A count
+   * clock as expired only once this reaches `CLOCK_EXPIRY_CONFIRM_TICKS`
+   * (`leader-finish.ts`, about one second), against the mid-race blip of a
+   * tick or two (#666). A count
    * rather than a previous-tick boolean, so the Telemetry Snapshot, read after
    * the tick, sees the same confirmation the diff acted on. Updated on every
    * tick the diff sees, race or not. Not preserved by `wipeStateForReplay`
