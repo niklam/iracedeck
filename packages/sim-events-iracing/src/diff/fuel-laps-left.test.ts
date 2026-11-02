@@ -1110,4 +1110,24 @@ describe("diffFuelLapsLeft — the race-end reports (issue #1405)", () => {
 
     expect(counts(events)).toEqual([0]);
   });
+
+  it("a lead change after expiry does not cut the race by a lap (second read)", () => {
+    // B passed A 30 s after the clock ran out, before anyone's white. The
+    // post-expiry marker is set — `leader-white.ts` absorbs a lead change —
+    // but B is half a lap round on a 100 s lap, so they crossed the line
+    // before the expiry: the chequered is (2 − 0.5) × 100 = 150 s away. The
+    // player, 55 % round at the same pace, crosses at 45 s and 145 s, both
+    // before it: two laps after this one, which 2.2 laps of fuel do not cover
+    // (2.45 × 1.05). Trusting the marker read 50 s and one lap — covered and
+    // silent, and the next sample is the player's own final lap, silenced.
+    const leadChange = { ...field(0.5), SessionTimeRemain: -30 };
+    const chequered = predictLeaderChequeredS(tick({ LapDistPct: 0.55, ...leadChange }), ORDER, 100, HELD_CROSSED);
+    const events: PendingEvent[] = [];
+    const { run } = makeRunner(events);
+
+    lapSample(run, 34, 4.4, { avgLapTime: 100, leaderLap: 100, chequeredInS: chequered }, leadChange);
+
+    expect(counts(events)).toEqual([1]);
+    expect(chequered).toBeCloseTo(150, 9);
+  });
 });

@@ -57,10 +57,17 @@ export type LeaderFinish = {
 
 /**
  * Consecutive ticks of an expired clock reading that confirm a real expiry:
- * the two-tick confirmation `leader-white.ts` uses, since iRacing can blip
- * `SessionTimeRemain ≤ 0` for a single tick mid-race (the #666 transient).
+ * about one second at iRacing's ~60 Hz (the SDK controller dedupes ticks by
+ * `SessionTick`). iRacing can blip `SessionTimeRemain ≤ 0` for a tick or two
+ * mid-race (the #666 transient), so the two-tick rule `leader-white.ts` keeps
+ * for its own edge is too short here: a two-tick blip whose second tick lands
+ * on the mid-lap sample would end the race at the blip and could speak a
+ * false mid-race "enough fuel to finish", which latches and clears the
+ * warning floor. A real expiry holds for minutes; during its first second the
+ * fuel estimate's timed side is unknown, which keeps announcing — the
+ * cautious direction.
  */
-export const CLOCK_EXPIRY_CONFIRM_TICKS = 2;
+export const CLOCK_EXPIRY_CONFIRM_TICKS = 60;
 
 /**
  * Whether `telemetry`'s raw `SessionTimeRemain` reads an expired clock:
@@ -100,7 +107,11 @@ export function isClockExpiryConfirmed(expiredTicks: number): boolean {
 export type LeaderClockExpiry = {
   /** {@link isClockExpiryConfirmed} over `state.fuelCalloutClockExpiredTicks`, this tick included. */
   confirmed: boolean;
-  /** `state.leaderWhitePostExpiryCrossed` after this tick's `diffLeaderWhite`. */
+  /**
+   * `state.leaderWhitePostExpiryCrossed` after this tick's `diffLeaderWhite`;
+   * trusted only when the leader's lap position agrees with the clock (see
+   * {@link predictLeaderChequeredS}).
+   */
   leaderCrossed: boolean;
 };
 
@@ -145,32 +156,44 @@ export function fuelFinishToleranceLaps(timeRemainS: number, lapTimeS: number): 
  *   `k = ceil(t / L + f + ε)` ({@link leaderWhiteCrossingIndex}, with `ε` from
  *   {@link fuelFinishToleranceLaps}) and the chequered the one after it, at
  *   `(k + 1 − f) · L`.
- * - **Clock expired** (`SessionTimeRemain ≤ 0` on this tick and the one
- *   before, `expiry.confirmed`): `(1 − f) · L` once the leader has crossed
- *   since expiry — they are on the white lap — otherwise `(2 − f) · L`. The
- *   marker is `state.leaderWhitePostExpiryCrossed`, which `diffLeaderWhite`
- *   has updated earlier in the same tick.
+ * - **Clock expired** (`SessionTimeRemain ≤ 0` for
+ *   {@link CLOCK_EXPIRY_CONFIRM_TICKS} ticks in a row, `expiry.confirmed`):
+ *   `(1 − f) · L` once the leader has crossed since expiry — they are on the
+ *   white lap — otherwise `(2 − f) · L`. See below for when a crossing is
+ *   trusted.
  * - **`null`** for an expired reading that is not confirmed yet: it may be
- *   the one-tick blip iRacing can produce mid-race (the #666 transient),
- *   which read as an expiry would end the race within two leader laps and
- *   could suppress a warning or speak the enough-fuel confirmation on the
- *   sample it lands on. A real expiry is confirmed one tick later, which
- *   costs nothing: it holds for thousands of ticks before the leader's
- *   crossing. The fuel estimate leaves its timed side unknown meanwhile.
+ *   the blip of a tick or two iRacing can produce mid-race (the #666
+ *   transient), which read as an expiry would end the race within two leader
+ *   laps and could suppress a warning or speak the enough-fuel confirmation
+ *   on the sample it lands on. A real expiry is confirmed about a second
+ *   later and holds for minutes; the fuel estimate leaves its timed side
+ *   unknown meanwhile.
+ *
+ * **When the leader has crossed since expiry.** The marker
+ * (`state.leaderWhitePostExpiryCrossed`, which `diffLeaderWhite` has updated
+ * earlier in the same tick) is set by an observed crossing, but ALSO by a
+ * lead change while expired: `leader-white.ts` absorbs one, since it cannot
+ * see a crossing across the flip. Trusting it then reads the race one leader
+ * lap short, and in the endgame that loses a warning for good — the player's
+ * next sample falls on their own final lap, which the diff silences. So the
+ * crossing is trusted only when it is also plausible from the clock: once
+ * expired, the raw `SessionTimeRemain` reads minus the seconds since expiry,
+ * and a leader at lap fraction `f` crossed the line about `f · L` seconds
+ * ago, so the crossing counts only when `f · L` is less than the seconds
+ * since expiry by more than `FUEL_FINISH_TOLERANCE_LAPS · L` — the same
+ * allowance for pace drift the near-tie tolerance makes, since `f · L`
+ * assumes the leader's recent lap time held on this lap. In every other case
+ * the answer is `(2 − f) · L`, the over-count, which is the cautious
+ * direction for fuel. What remains: a leader who really did cross since
+ * expiry, but whose `f · L` sits within that allowance of the expiry, reads
+ * one lap long until they are further round — cautious, and over within a
+ * few seconds.
  * - **`null`** when the clock is unknown or unlimited, the leader is
  *   unresolved, has no lap time, has no usable lap fraction (missing, `-1`
  *   off-world, or not below 1 — never taken as `0`), or is in the pits by
  *   `CarIdxTrackSurface` (`InPitStall` or `AproachingPits`; never
  *   `CarIdxOnPitRoad`, which `race-finish.ts` documents as unreliable). A
  *   leader in the pits is about to lose time the lap time does not know of.
- *
- * Accepted residual of the expired branch, an under-count that the fuel diff
- * absorbs because a suppression never advances its dedup floor — the next
- * lap's sample judges again: the marker is also set by a lead change while
- * expired (`leader-white.ts` absorbs it, since it cannot see a crossing
- * across the flip), so a genuine mid-lap change of leader before the white
- * reads one leader lap short until the new leader takes the white — at most
- * one leader lap, so at most the one sample that lands inside it.
  *
  * @param telemetry - the tick's telemetry
  * @param positions - the tick's canonical live order (1-based rank by car index)
@@ -205,7 +228,11 @@ export function predictLeaderChequeredS(
 
   if (surface === TrkLoc.InPitStall || surface === TrkLoc.AproachingPits) return null;
 
-  if (expired) return ((expiry.leaderCrossed ? 1 : 2) - leaderPct) * leaderLapTimeS;
+  if (expired) {
+    const crossed = expiry.leaderCrossed && leaderCrossedSinceExpiry(telemetry, leaderPct, leaderLapTimeS);
+
+    return ((crossed ? 1 : 2) - leaderPct) * leaderLapTimeS;
+  }
 
   const white = leaderWhiteCrossingIndex(
     timeRemainS,
@@ -215,4 +242,16 @@ export function predictLeaderChequeredS(
   );
 
   return (white + 1 - leaderPct) * leaderLapTimeS;
+}
+
+/**
+ * Whether the leader's position on the lap is consistent with a crossing
+ * since the clock expired: `f · L` seconds into their lap, clearly fewer than
+ * the seconds since expiry (the raw `SessionTimeRemain`, negated) — by more
+ * than `FUEL_FINISH_TOLERANCE_LAPS · L`. See {@link predictLeaderChequeredS}.
+ */
+function leaderCrossedSinceExpiry(telemetry: TelemetryData, leaderPct: number, leaderLapTimeS: number): boolean {
+  const sinceExpiryS = -(telemetry.SessionTimeRemain ?? 0);
+
+  return leaderPct * leaderLapTimeS < sinceExpiryS - FUEL_FINISH_TOLERANCE_LAPS * leaderLapTimeS;
 }
