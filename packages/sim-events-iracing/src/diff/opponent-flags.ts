@@ -569,7 +569,9 @@ export const OPPONENT_FLAGS_EVENTS = ["opponentFlag.flagged"] as const satisfies
  * writes its car's latches and cooldowns last and hands its lines and
  * announces back to the step, which plays them in order through the burst
  * aggregation, field-wide state that stays in the step. So a throw drops that
- * car's announce for the tick and it is qualified again on the next one.
+ * car's announce for the tick and it is qualified again on the next one, with
+ * its effective mask put back to the previous tick's, so the retry keeps the
+ * trigger the dropped announce had.
  *
  * @param runUnit - The translator's step runner, so one car's throw costs that car only. Defaults to {@link runUnitsDirectly}, which catches nothing
  */
@@ -851,8 +853,15 @@ export function diffOpponentFlags(
   for (i = 0; i < raw.length; i++) {
     if (storeFailed !== null && storeFailed.includes(i)) continue;
 
-    // A unit that threw drops what it decided: nothing below plays it.
-    if (!runUnit(emit, qualify)) continue;
+    // A unit that threw drops what it decided: nothing below plays it. The
+    // car is qualified again on the next tick, so it gets back the effective
+    // mask the previous tick left: a flag that became effectively active on
+    // this tick is then still read as activated, and announced as `raised`
+    // rather than `entered-range`. Nothing reads the mask between ticks.
+    if (!runUnit(emit, qualify)) {
+      effectiveMask[i] = prevEffective[i] ?? 0;
+      continue;
+    }
 
     for (const action of actions) {
       if (action.kind === "log") {

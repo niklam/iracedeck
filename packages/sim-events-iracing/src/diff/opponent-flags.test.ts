@@ -1328,11 +1328,46 @@ describe("diffOpponentFlags", () => {
 
       fault.on = false;
 
-      // A tick late, so the flag was already up: `entered-range` rather than `raised`.
-      expect(runGuarded(t, 2100, { gap })).toEqual([
+      // A tick late, and still `raised`: the flag became effective on the tick
+      // whose announce was dropped, and the retry keeps that trigger.
+      expect(runGuarded(t, 2100, { gap })).toEqual([flagged(3, OpponentPenaltyFlag.Repair, "ahead", 3)]);
+      expect(runGuarded(t, 2200, { gap })).toEqual([]);
+    });
+
+    it("puts back the previous tick's effective mask for a car whose qualification threw", () => {
+      const fault = { on: true };
+      const { runGuarded } = guarded();
+      const t = makeField();
+
+      runGuarded(t, 1000, { gap: faultyGap(3, fault) });
+      t.CarIdxSessionFlags[3] = Flags.Repair;
+      runGuarded(t, 2000, { gap: faultyGap(3, fault) });
+
+      expect(state.opponentFlagBits[3]).toBe(Flags.Repair);
+      expect(state.opponentFlagEffectiveMask[3]).toBe(0);
+    });
+
+    it("retries a flag that was already effective before the throw as entered-range, never as a phantom raised", () => {
+      const fault = { on: false };
+      const gap = faultyGap(3, fault);
+      const { runGuarded } = guarded();
+      const t = makeField();
+
+      runGuarded(t, 1000, { gap });
+      // Raised while the car is out of the world: held back, nothing announced.
+      t.CarIdxSessionFlags[3] = Flags.Repair;
+      t.CarIdxLapCompleted[3] = -1;
+      expect(runGuarded(t, 2000, { gap })).toEqual([]);
+
+      // Back in the world, and its qualification throws.
+      t.CarIdxLapCompleted[3] = 10;
+      fault.on = true;
+      expect(runGuarded(t, 2100, { gap })).toEqual([]);
+
+      fault.on = false;
+      expect(runGuarded(t, 2200, { gap })).toEqual([
         flagged(3, OpponentPenaltyFlag.Repair, "ahead", 3, { trigger: "entered-range" }),
       ]);
-      expect(runGuarded(t, 2200, { gap })).toEqual([]);
     });
 
     it("writes no line for the failing car and keeps the other cars' lines in order", () => {
