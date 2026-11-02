@@ -27,7 +27,7 @@ import { beginReplayJump, runReplayJump } from "./replay-jump-playback.js";
 import { onReplayLeft } from "./replay-left.js";
 import { watchReplayLeft } from "./replay-left.test-support.js";
 import { _resetReplayPositionState, pendingReplayTarget, replayTargetGiveUpMs } from "./replay-position-state.js";
-import { onReplaySpeedChanged, rememberedSpeed, resolveLiveSpeed } from "./replay-speed-state.js";
+import { onReplaySpeedChanged, rememberedSpeed, REPLAY_SPEED_HOLD_MS, resolveLiveSpeed } from "./replay-speed-state.js";
 
 /** The replay settings the cases set, read by the engine through its env (#1467). */
 const mockSettings = vi.fn((): Record<string, unknown> => ({}));
@@ -807,6 +807,25 @@ describe("replay command gate", () => {
       press({ kind: "step", direction: 1 });
 
       expect(pendingReplayTarget()).toBeNull();
+    });
+
+    it("a Play the reading never shows keeps the replay starting to move until the one hold has run (#1427)", async () => {
+      // iRacing ignores the Play: telemetry reads paused throughout.
+      setUp({ frame: 5_000, speedLagMs: 60_000 });
+      press(PLAY);
+
+      await wait(REPLAY_SPEED_HOLD_MS - 1);
+      press({ kind: "step", direction: 1 });
+
+      // Inside the hold the step goes into a replay the gate takes to be starting to play: no target.
+      expect(pendingReplayTarget()).toBeNull();
+      expect(sim.frame()).toBe(5_001);
+
+      await wait(1);
+      press({ kind: "step", direction: 1 });
+
+      // The hold has run: the replay reads paused, and the step records its one-frame target.
+      expect(pendingReplayTarget()).toMatchObject({ frame: 5_002 });
     });
 
     it("a token's new jump in the change that read back its last one starts a new run", () => {

@@ -44,7 +44,8 @@ import {
 import { _configureReplayEngine } from "./replay-engine-env.js";
 import { resetEngine } from "./replay-engine-reset.test-support.js";
 import { watchReplayLeft } from "./replay-left.test-support.js";
-import { noteReplaySpeedSent, resolveLiveSpeed } from "./replay-speed-state.js";
+import { resolveLiveSpeed } from "./replay-speed-state.js";
+import { noteReplaySpeedSent } from "./replay-speed-state.test-support.js";
 import { REPLAY_JUMP_MAX_WAIT_MS } from "./replay-timing.js";
 
 let debug: Mock<(message: string) => void>;

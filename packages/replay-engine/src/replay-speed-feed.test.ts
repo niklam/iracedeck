@@ -8,7 +8,8 @@ import { _resetReplayEngine } from "./replay-engine-reset.js";
 import type { ReplaySpeed } from "./replay-jump-speed.js";
 import { replayLeftController, type WatchedReplayController } from "./replay-left.test-support.js";
 import { REPLAY_SPEED_FEED_SUBSCRIBER_ID, startReplaySpeedFeed, stopReplaySpeedFeed } from "./replay-speed-feed.js";
-import { noteReplaySpeedSent, rememberedSpeed, resolveLiveSpeed } from "./replay-speed-state.js";
+import { rememberedSpeed, resolveLiveSpeed } from "./replay-speed-state.js";
+import { noteReplaySpeedSent } from "./replay-speed-state.test-support.js";
 
 function speed(value: number, slowMotion = false): ReplaySpeed {
   return { speed: value, slowMotion };

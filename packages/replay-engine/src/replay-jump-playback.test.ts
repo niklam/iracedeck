@@ -22,11 +22,11 @@ import {
 import { replayLeftController } from "./replay-left.test-support.js";
 import {
   keepDialPendingSpeed,
-  noteReplaySpeedSent,
   onReplaySpeedChanged,
   rememberedSpeed,
   REPLAY_SPEED_HOLD_MS,
 } from "./replay-speed-state.js";
+import { noteReplaySpeedSent } from "./replay-speed-state.test-support.js";
 
 /** The replay settings the cases set, read by the engine through its env (#1467). */
 const mockSettings = vi.fn((): Record<string, unknown> => ({}));

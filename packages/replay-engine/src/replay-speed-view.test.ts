@@ -5,7 +5,8 @@ import { getReplayGateRecord, pressReplayCommand } from "./replay-command-gate.j
 import { fakeReplay, type FakeReplay } from "./replay-command-gate.test-support.js";
 import { resetEngine } from "./replay-engine-reset.test-support.js";
 import { type ReplaySpeed } from "./replay-jump-speed.js";
-import { keepDialPendingSpeed, noteReplaySpeedSent } from "./replay-speed-state.js";
+import { keepDialPendingSpeed } from "./replay-speed-state.js";
+import { noteReplaySpeedSent } from "./replay-speed-state.test-support.js";
 import { shownReplaySpeed } from "./replay-speed-view.js";
 
 function speed(value: number, slowMotion = false): ReplaySpeed {

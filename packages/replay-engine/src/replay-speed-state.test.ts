@@ -5,7 +5,6 @@ import type { ReplaySpeed } from "./replay-jump-speed.js";
 import {
   _resetReplaySpeedState,
   keepDialPendingSpeed,
-  noteReplaySpeedSent,
   noteTelemetrySpeed,
   onReplaySpeedChanged,
   pendingReplaySpeed,
@@ -15,6 +14,7 @@ import {
   reverseRememberedSpeed,
   supersedePendingSpeed,
 } from "./replay-speed-state.js";
+import { noteReplaySpeedSent } from "./replay-speed-state.test-support.js";
 
 function speed(value: number, slowMotion = false): ReplaySpeed {
   return { speed: value, slowMotion };

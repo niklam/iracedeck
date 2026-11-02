@@ -5,7 +5,7 @@
  *
  * iRacing has one replay speed, so everything here is ONE module-wide value,
  * never per dial or per key. The replay command gate records every speed it
- * actually sends ({@link noteReplaySpeedSent}), whichever surface asked, and
+ * actually sends ({@link recordReplaySpeedSent}), whichever surface asked, and
  * the engine's own tick feed (`replay-speed-feed.ts`) hands it every telemetry
  * tick that is in a replay ({@link noteTelemetrySpeed}). Two things are kept,
  * and they are separate concerns:
@@ -285,16 +285,6 @@ export function announceReplaySpeedSent(target: ReplaySpeed): void {
       engineLogger("ReplaySpeed").debug(`Replay speed listener failed: ${String(err)}`);
     }
   }
-}
-
-/**
- * Records a speed sent and tells the listeners at once: {@link
- * recordReplaySpeedSent} then {@link announceReplaySpeedSent}, for a send
- * made outside a change of the gate's.
- */
-export function noteReplaySpeedSent(target: ReplaySpeed, nowMs: number, options: ReplaySpeedSendOptions): void {
-  recordReplaySpeedSent(target, nowMs, options);
-  announceReplaySpeedSent(target);
 }
 
 /**
