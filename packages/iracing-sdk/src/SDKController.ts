@@ -45,9 +45,10 @@ export const TELEMETRY_INTERVAL_MS = 10;
  * The reporter ids of the controller's own work (#1558). The `controller:`
  * prefix keeps them apart from every subscriber id. Every connect attempt
  * (the first one in `start()`, the reconnect poll, re-enabling) runs as
- * `controller:reconnect`, the poll and `subscribe`'s immediate telemetry read
- * as `controller:update`, and the native disconnect when iRacing terminates as
- * `controller:disconnect`.
+ * `controller:reconnect`, the poll (its native disconnect on a dropped
+ * connection included) and `subscribe`'s immediate telemetry read as
+ * `controller:update`, and the native disconnect when iRacing terminates or
+ * the last subscriber leaves as `controller:disconnect`.
  */
 const UPDATE_ID = "controller:update";
 const RECONNECT_ID = "controller:reconnect";
@@ -177,7 +178,9 @@ export class SDKController {
   /**
    * Unsubscribe from telemetry updates. Flushes the id's unreported error
    * counts as one `warn` line and drops them, since ids (action contexts)
-   * come and go.
+   * come and go. When the last subscriber leaves, the loops stop and the SDK
+   * disconnects; a throw from that disconnect is reported as
+   * `controller:disconnect` (thrown after the reset under `"rethrow"`).
    */
   unsubscribe(id: string): void {
     this.subscribers.delete(id);
@@ -185,7 +188,7 @@ export class SDKController {
 
     // Stop updates if no more subscribers
     if (this.subscribers.size === 0) {
-      this.stop();
+      throwHeld(this.stop());
     }
   }
 
@@ -233,9 +236,12 @@ export class SDKController {
   }
 
   /**
-   * Stop the update and reconnect loops
+   * Stop the update and reconnect loops, disconnect and reset the connection
+   * state. The native disconnect runs inside the boundary as
+   * `controller:disconnect`, so a throw from it never skips the reset; under
+   * `"rethrow"` it is returned held, to be thrown once the reset is done.
    */
-  private stop(): void {
+  private stop(): HeldError {
     if (this.reconnectInterval) {
       clearInterval(this.reconnectInterval);
       this.reconnectInterval = null;
@@ -246,12 +252,19 @@ export class SDKController {
       this.updateInterval = null;
     }
 
-    this.sdk.disconnect();
+    const disconnectHeld = this.boundary.run(DISCONNECT_ID, () => {
+      this.sdk.disconnect();
+
+      return undefined;
+    });
+
     this.isConnected = false;
     this.lastTemplateContext = null;
     this.templateContextDirty = true;
     this.lastSessionTick = -1;
     this.replayState.reset();
+
+    return disconnectHeld;
   }
 
   /**
@@ -308,7 +321,14 @@ export class SDKController {
       // SDK not connected, but we might have thought we were
       if (this.isConnected) {
         this.logger.info("[SDKController] Disconnected from iRacing");
-        this.sdk.disconnect();
+        // The native call runs in its own boundary step, so a throw from it
+        // never skips the reset or the fan-out below.
+        const disconnectHeld = this.boundary.run(UPDATE_ID, () => {
+          this.sdk.disconnect();
+
+          return undefined;
+        });
+
         this.isConnected = false;
         this.lastValidTelemetry = null;
         this.lastTemplateContext = null;
@@ -316,7 +336,11 @@ export class SDKController {
         this.lastSessionTick = -1;
         this.replayState.reset();
 
-        return this.notifySubscribers(null);
+        // Fan out before combining, so under "rethrow" a held disconnect error
+        // never stops the subscribers from hearing of the disconnect.
+        const notified = this.notifySubscribers(null);
+
+        return disconnectHeld ?? notified;
       }
 
       return undefined;

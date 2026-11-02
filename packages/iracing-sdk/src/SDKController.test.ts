@@ -1003,6 +1003,49 @@ describe("SDKController subscriber isolation (#1558)", () => {
       expect(controllerLines).toHaveLength(1);
       expect(controllerLines[0].message).toMatch(/^controller:disconnect threw: Error: disconnect failed\n/);
     });
+
+    it("still resets the connection and tells every subscriber when update()'s disconnect throws", () => {
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue({ SessionTick: 1 } as TelemetryData);
+      const { a, c } = subscribeThree();
+      vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS);
+      calls.length = 0;
+      // The loop's guard reads connected once more; update()'s own check then reads the drop.
+      vi.mocked(mockSdk.isConnected).mockReturnValueOnce(true).mockReturnValue(false);
+      vi.mocked(mockSdk.disconnect).mockImplementationOnce(() => {
+        throw new Error("disconnect failed");
+      });
+
+      expect(() => vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS)).not.toThrow();
+
+      expect(controller.getConnectionStatus()).toBe(false);
+      expect(calls).toEqual(["a", "b", "c"]);
+      expect(a).toHaveBeenLastCalledWith(null, false);
+      expect(c).toHaveBeenLastCalledWith(null, false);
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(null);
+      expect(controller.getCurrentTelemetry()).toBeNull();
+
+      const controllerLines = reporterLines(lines).filter((line) => line.message.startsWith("controller:"));
+      expect(controllerLines).toHaveLength(1);
+      expect(controllerLines[0].message).toMatch(/^controller:update threw: Error: disconnect failed\n/);
+    });
+
+    it("reports a throwing disconnect when the last subscriber leaves as controller:disconnect, and still resets", () => {
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue({ SessionTick: 1 } as TelemetryData);
+      controller.subscribe("only", vi.fn());
+      vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS);
+      expect(controller.getConnectionStatus()).toBe(true);
+      vi.mocked(mockSdk.disconnect).mockImplementationOnce(() => {
+        throw new Error("disconnect failed");
+      });
+
+      expect(() => controller.unsubscribe("only")).not.toThrow();
+
+      expect(vi.getTimerCount()).toBe(0);
+      expect(controller.getConnectionStatus()).toBe(false);
+      const controllerLines = reporterLines(lines).filter((line) => line.message.startsWith("controller:"));
+      expect(controllerLines).toHaveLength(1);
+      expect(controllerLines[0].message).toMatch(/^controller:disconnect threw: Error: disconnect failed\n/);
+    });
   });
 
   describe("unsubscribe", () => {
@@ -1139,6 +1182,42 @@ describe("SDKController subscriber isolation (#1558)", () => {
       // A clean read: the subscriber's own error.
       expect(() => rethrowing.subscribe("third", failing)).toThrow("failing failed");
       expect(failing).toHaveBeenCalledTimes(3);
+    });
+
+    it('under "rethrow", a throwing disconnect in update() is thrown only after every subscriber heard of it', () => {
+      const rethrowing = new SDKController(mockSdk, createRecordingLogger().logger, { onSubscriberError: "rethrow" });
+      let failing = false;
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue({ SessionTick: 1 } as TelemetryData);
+      rethrowing.subscribe("a", subscriber("a"));
+      rethrowing.subscribe(
+        "b",
+        subscriber("b", () => failing),
+      );
+      rethrowing.subscribe("c", subscriber("c"));
+      vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS);
+      calls.length = 0;
+      failing = true;
+      vi.mocked(mockSdk.isConnected).mockReturnValueOnce(true).mockReturnValue(false);
+      vi.mocked(mockSdk.disconnect).mockImplementationOnce(() => {
+        throw new Error("disconnect failed");
+      });
+
+      // The disconnect's error first, though b threw too.
+      expect(() => vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS)).toThrow("disconnect failed");
+      expect(calls).toEqual(["a", "b", "c"]);
+      expect(rethrowing.getConnectionStatus()).toBe(false);
+    });
+
+    it('under "rethrow", unsubscribe throws a failing disconnect only after the loops stopped and the state reset', () => {
+      const rethrowing = new SDKController(mockSdk, createRecordingLogger().logger, { onSubscriberError: "rethrow" });
+      rethrowing.subscribe("only", vi.fn());
+      vi.mocked(mockSdk.disconnect).mockImplementationOnce(() => {
+        throw new Error("disconnect failed");
+      });
+
+      expect(() => rethrowing.unsubscribe("only")).toThrow("disconnect failed");
+      expect(vi.getTimerCount()).toBe(0);
+      expect(rethrowing.getConnectionStatus()).toBe(false);
     });
 
     it("by default, throws nothing from any entry point", () => {
