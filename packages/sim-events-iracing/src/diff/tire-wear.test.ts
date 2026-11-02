@@ -459,7 +459,7 @@ function runChain(ticks: ReadonlyArray<readonly [number, TelemetryData]>): Emitt
     };
 
     diffPitLane(state, tick, TrackType.RoadCourse, now, emit);
-    diffPitReadback(state, tick, now, emit, pending);
+    diffPitReadback(state, tick, now, emit, pending, false);
     diffTireWear(state, tick, emit, pending, updateStallVisit(state, tick, pending));
 
     for (const event of pending) out.push({ t, event });
@@ -587,7 +587,7 @@ function replayCapture(): Emitted[] {
     const telemetryTick = tick as unknown as TelemetryData;
 
     diffPitLane(state, telemetryTick, TrackType.RoadCourse, now, emit);
-    diffPitReadback(state, telemetryTick, now, emit, pending);
+    diffPitReadback(state, telemetryTick, now, emit, pending, false);
     diffTireWear(state, telemetryTick, emit, pending, updateStallVisit(state, telemetryTick, pending));
 
     for (const event of pending) out.push({ t, event });
