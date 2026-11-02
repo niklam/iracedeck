@@ -14,6 +14,13 @@ export {
   DEFAULT_MAX_ERROR_KEYS_PER_ID,
   type ErrorPolicy,
 } from "./bounded-error-reporter.js";
+export {
+  createErrorBoundary,
+  type ErrorBoundary,
+  type ErrorBoundaryOptions,
+  type HeldError,
+  throwHeld,
+} from "./error-boundary.js";
 
 /**
  * Log levels in order of verbosity (most verbose first)

@@ -4,8 +4,8 @@
  * A dispatcher that calls many callbacks many times a second (the SDK controller
  * delivers about 60 ticks a second to every subscriber) must not let one callback's
  * throw stop the others, and must not let a callback that throws on every tick flood
- * the log. This reporter is the logging half of that boundary: the dispatcher catches,
- * hands the throw here, and carries on.
+ * the log. This reporter is the logging half of that boundary: the error boundary
+ * (`error-boundary.ts`) catches, hands the throw here, and the dispatch carries on.
  *
  * The rules, from `docs/superpowers/specs/2026-10-31-issue-1558-sdk-subscriber-isolation.md`:
  *
@@ -29,10 +29,8 @@
 import type { ILogger } from "./index.js";
 
 /**
- * What a dispatcher does with a callback's throw. `"report"` hands it to the reporter
- * and carries on; `"rethrow"` still delivers to every callback, then throws the first
- * error after the loop. Production code runs `"report"`; a test that wants loudness
- * chooses `"rethrow"`. The policy is injected, never read from the environment.
+ * What a dispatcher does with a callback's throw. The error boundary applies it, and
+ * its options document it: see `ErrorBoundaryOptions.policy` in `error-boundary.ts`.
  */
 export type ErrorPolicy = "report" | "rethrow";
 
