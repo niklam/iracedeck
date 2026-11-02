@@ -34,10 +34,12 @@
  *   5. the text of that clock: `H:MM:SS` from an hour up, `M:SS` below (#1292).
  *
  * It deliberately does NOT own a consumer's precision adjustments — the fuel
- * estimate's white-flag clamp, its lap-fraction subtraction, its
- * `+2 × leaderLap` checkered bound. Those describe how well that one estimate
- * knows its own side and stay with it; what is shared is the policy of
- * comparing the two sides once each is expressed in laps.
+ * estimate's white-flag clamp, its lap-fraction subtraction, its prediction
+ * of the leader's chequered flag (`leader-finish.ts` in `sim-events-iracing`,
+ * #1405) and the `+2 × leaderLap` bound it falls back to when the leader's
+ * finish cannot be predicted. Those describe how well that one estimate knows
+ * its own side and stay with it; what is shared is the policy of comparing the
+ * two sides once each is expressed in laps.
  */
 import { IRSDK_UNLIMITED_LAPS, IRSDK_UNLIMITED_TIME, type TelemetryData } from "./types.js";
 
@@ -81,10 +83,12 @@ export function resolveLapsRemaining(t: TelemetryData | null | undefined): numbe
  * (NaN, infinite, negative).
  *
  * The clock reaching zero does NOT end a timed race — the leader takes the
- * white at their first crossing after expiry and the checkered a lap later —
- * so `0` is a real reading and is returned as-is; how many laps that still
- * implies is each consumer's own estimate (the fuel callouts bound it by the
- * leader's lap time).
+ * white at their first crossing at or after expiry and the checkered a lap
+ * later — so `0` is a real reading and is returned as-is; how many laps that
+ * still implies is each consumer's own estimate (the fuel callouts predict
+ * the leader's chequered flag from their lap fraction and pace, in
+ * `sim-events-iracing`'s `leader-finish.ts`, and fall back to a bound of
+ * `+2 × leaderLap` when the leader cannot be read).
  *
  * @param t - The latest telemetry snapshot, or null/undefined when unavailable
  * @returns the seconds remaining (≥ 0), or null when the time side is unknown or unlimited
@@ -103,9 +107,11 @@ export function resolveTimeRemainingS(t: TelemetryData | null | undefined): numb
  * `SessionTimeRemain` sits below zero while the leader runs to the flag after
  * a timed race's clock expires, and iRacing can also blip it negative for a
  * tick or two mid-race (the transient `leader-white.ts` guards with a
- * two-tick confirmation). For the fuel estimate a negative duration is
- * nonsense and is better skipped, which is why {@link resolveTimeRemainingS}
- * calls it unknown. Shown to the driver, unknown renders as `UNLIM` or a
+ * two-tick confirmation). As a duration a negative reading is nonsense, which
+ * is why {@link resolveTimeRemainingS} calls it unknown; a consumer that
+ * models the run to the flag, as the fuel estimate's leader prediction does
+ * (#1405), reads the raw field itself to tell an expired clock apart. Shown
+ * to the driver, unknown renders as `UNLIM` or a
  * blank — the opposite of an expired clock — so everything that shows the
  * time side reads it through here: a key face, and a template, whose text
  * may also go out in a chat macro. A mid-race blip therefore reads `0` for
