@@ -1377,21 +1377,24 @@ export type SimEventMap = {
    * `count === 0` means "box this lap for fuel". Each count fires once per
    * stint; a refuel re-arms every count. `lapsLeft` carries the
    * margin-adjusted (fractional) estimate at sample time for logging.
-   * Race-coverage suppression (issue #866): no emission at all — including
-   * the count-0 box call — when the count covers the remaining laps of a
-   * lap-limited race, on the player's own final lap (both race formats), or
-   * post-race (checkered / cool-down); an unknown race length keeps
-   * emitting. Replaces the never-consumed `fuel.lapsRemaining.crossed`
-   * event.
+   * Race-coverage suppression (issues #866, #880, #1405): no emission at
+   * all — including the count-0 box call — when the TANK covers what is left
+   * of the race (judged without the margin, with a small allowance for
+   * estimate error; the distance by the lap counter or, in a timed race, up
+   * to the player's first crossing after the leader's predicted chequered
+   * flag), on the player's own final lap (both race formats), or post-race
+   * (checkered / cool-down); an unknown race length keeps emitting. Replaces
+   * the never-consumed `fuel.lapsRemaining.crossed` event.
    */
   "fuel.lapsLeft.crossed": SimEvent<"fuel.lapsLeft.crossed", { count: number; lapsLeft: number }>;
   /**
    * The tank covers what's left of the race (issue #880). Emitted at most
    * once per stint, in the race ENDGAME — 10 or fewer laps to go by the
-   * binding limit — when the race-coverage determination is positive WITH A
-   * FULL LAP IN HAND: the lap-counter comparison (issue #866) or the
-   * timed-race remaining-laps estimate (`SessionTimeRemain` over a
-   * leader-aware lap-time average). Fires even when the tank holds far more
+   * binding limit — when the tank covers the race (the `fuel.lapsLeft.crossed`
+   * suppression) and the margin-adjusted count still covers it WITH A FULL
+   * LAP IN HAND, against the lap counter (issue #866) or the timed-race
+   * estimate (the player's laps up to the leader's predicted chequered flag,
+   * issue #1405). Fires even when the tank holds far more
    * than the spoken warning band, so a surplus race still gets its
    * confirmation at 10-to-go; exact coverage stays silent (hysteresis).
    * Re-armed by a refuel and by any later real warning, so a burn-rate
