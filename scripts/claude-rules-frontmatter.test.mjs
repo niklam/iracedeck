@@ -12,6 +12,11 @@ const rulesDir = join(repoRoot, ".claude", "rules");
 // and memory, so the repo keeps a margin below it.
 const ALWAYS_LOADED_LIMIT = 150_000;
 const REPO_BUDGET = 130_000;
+// The test fails once headroom under the budget drops below this, not at the edge
+// (#1501): the set grew about 1k a day, and a failure at the edge left no room to
+// cut calmly. When it fails, move a topic section into a path-scoped rule the way
+// #1465 and #1501 did; never raise the floor or the budget to make it pass.
+const HEADROOM_FLOOR = 10_000;
 
 const rules = readdirSync(rulesDir)
   .filter((name) => name.endsWith(".md"))
@@ -39,7 +44,7 @@ describe(".claude/rules frontmatter", () => {
     expect(fm.body).not.toMatch(/^#/m);
   });
 
-  it(`keeps the always-loaded instructions under ${REPO_BUDGET} chars (Claude Code warns at ${ALWAYS_LOADED_LIMIT})`, () => {
+  it(`keeps at least ${HEADROOM_FLOOR} chars of headroom under the ${REPO_BUDGET}-char budget for always-loaded instructions (Claude Code warns at ${ALWAYS_LOADED_LIMIT})`, () => {
     const always = rules.filter((r) => !frontmatterOf(r.text)?.body.includes("paths:"));
     const claudeMd = readFileSync(join(repoRoot, ".claude", "CLAUDE.md"), "utf-8");
     const total = always.reduce((sum, r) => sum + r.text.length, claudeMd.length);
@@ -49,7 +54,7 @@ describe(".claude/rules frontmatter", () => {
     console.info(`always-loaded instructions: ${total} of ${REPO_BUDGET} chars, ${REPO_BUDGET - total} headroom`);
     expect(
       total,
-      `always loaded: ${total - REPO_BUDGET} chars over; CLAUDE.md (${claudeMd.length}), ${listing}`,
-    ).toBeLessThanOrEqual(REPO_BUDGET);
+      `always loaded: ${REPO_BUDGET - total} chars of headroom, under the ${HEADROOM_FLOOR} floor; path-scope a topic section (#1501). CLAUDE.md (${claudeMd.length}), ${listing}`,
+    ).toBeLessThanOrEqual(REPO_BUDGET - HEADROOM_FLOOR);
   });
 });
