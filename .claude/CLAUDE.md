@@ -93,11 +93,12 @@ You can import or reference specific rule files from other markdown using `@.cla
 - `issue-workflow.md` — the order an issue is worked in and which steps are gates. **Read this first when picking up an issue.**
 - `specs-and-plans.md` — every feature/enhancement gets a spec committed to `master`; plans are never committed. Naming, header, required sections, freeze-after-ship.
 - `terminology-and-refs.md` — project terminology (including the "Mode" label rule) and external references.
-- `testing.md` — Vitest conventions, `pnpm typecheck`, native mocks in tests, the native config loader, action-test patterns; a pointer for the 3221226505 worker crash.
+- `testing.md` — Vitest conventions, `pnpm typecheck`, native mocks in tests, the native config loader, typing test doubles; pointers to the action-test patterns and the 3221226505 worker crash.
 
 **Path-scoped** (loaded when matching files are touched):
 
 - `action-documentation.md` — action doc format: settings, keyboard and icon-state tables, communication method.
+- `action-tests.md` — mocking `deck-core`, `settings` and `deck-iracing` in a test, the canonical action-test structure, settings literals and protected members.
 - `black-box-icons.md` — black box key icon design.
 - `changelog-internals.md` — how fragments are composed, the fold into `changelog.mdx` at a stable release, the gitignored `changelog.json` and the machine-read format of the dated sections.
 - `encoders-and-touchscreen.md` — dials and the touch strip: platform facts, release-time press classification, the hold preview, dial-action rules.

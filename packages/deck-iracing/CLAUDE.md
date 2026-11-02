@@ -24,7 +24,7 @@ It has the same shape `@iracedeck/sim-events-iracing` has on the bus side: a sec
 
 ## Testing
 
-The tests here moved with their modules (`app-monitor`, `sdk-singleton` and `unit-conversion` came from `iracing-plugin-stream-deck/src/shared/`). The root `vitest.config.ts` aliases `@iracedeck/deck-iracing` to this package's source. In an action test, mock this package with `importOriginal` and override only the names the test drives (`getCommands`, the fuel and unit helpers), keeping the `deck-core` `ConnectionStateAwareAction` mock whose `sdkController` field shadows `SimIRacingAction`'s getter — see "Action Test Structure" in `.claude/rules/testing.md`.
+The tests here moved with their modules (`app-monitor`, `sdk-singleton` and `unit-conversion` came from `iracing-plugin-stream-deck/src/shared/`). The root `vitest.config.ts` aliases `@iracedeck/deck-iracing` to this package's source. In an action test, mock this package with `importOriginal` and override only the names the test drives (`getCommands`, the fuel and unit helpers), keeping the `deck-core` `ConnectionStateAwareAction` mock whose `sdkController` field shadows `SimIRacingAction`'s getter — see "Action Test Structure" in `.claude/rules/action-tests.md`.
 
 ## Build
 
