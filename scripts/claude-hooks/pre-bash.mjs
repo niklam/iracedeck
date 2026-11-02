@@ -27,7 +27,8 @@ import {
   toplevel,
   workspacePackages,
 } from "./lib.mjs";
-import { BASH, checkBash, POWERSHELL } from "./rules-bash.mjs";
+import { checkBash } from "./rules-bash.mjs";
+import { BASH, POWERSHELL } from "./shell-lexer.mjs";
 
 const memo = (fn) => {
   const cache = new Map();
