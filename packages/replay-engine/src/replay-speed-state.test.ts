@@ -521,6 +521,98 @@ describe("replay-speed-state", () => {
 
       expect(resolveLiveSpeed(speed(8), T0 + 40)).toEqual(speed(8));
     });
+
+    it("a chain back to an earlier speed settles only on its last send: 1x, then 2x, 1x, 2x inside the lag", () => {
+      sentOver(speed(2), speed(1), T0, false);
+      sentOver(speed(1), speed(1), T0 + 5, false);
+      sentOver(speed(2), speed(1), T0 + 10, false);
+
+      // The first 2x lands: the 1x and the last 2x are still to come, and the gate still reads 2x.
+      noteTelemetrySpeed(speed(2), T0 + 16);
+      expect(pendingReplaySpeed(speed(2), T0 + 16)).toEqual(speed(2));
+
+      // The 1x lands: a detent must not walk from it, and a step must not go into a replay it believes at 1x.
+      noteTelemetrySpeed(speed(1), T0 + 33);
+      expect(resolveLiveSpeed(speed(1), T0 + 33)).toEqual(speed(2));
+      expect(pendingReplaySpeed(speed(1), T0 + 33)).toEqual(speed(2));
+
+      // The last 2x lands: settled, so iRacing's own bar reads at once.
+      noteTelemetrySpeed(speed(2), T0 + 50);
+      expect(resolveLiveSpeed(speed(8), T0 + 60)).toEqual(speed(8));
+    });
+
+    it("skips a send iRacing coalesced: 1x, then 2x, 4x, 1x, 2x, with the 4x never shown", () => {
+      sentOver(speed(2), speed(1), T0, false);
+      sentOver(speed(4), speed(1), T0 + 5, false);
+      sentOver(speed(1), speed(1), T0 + 10, false);
+      sentOver(speed(2), speed(1), T0 + 15, false);
+
+      noteTelemetrySpeed(speed(2), T0 + 16);
+      expect(pendingReplaySpeed(speed(2), T0 + 16)).toEqual(speed(2));
+
+      // The 4x was overtaken before iRacing showed it: telemetry goes straight on to the 1x.
+      noteTelemetrySpeed(speed(1), T0 + 33);
+      expect(resolveLiveSpeed(speed(1), T0 + 33)).toEqual(speed(2));
+
+      noteTelemetrySpeed(speed(2), T0 + 50);
+      expect(resolveLiveSpeed(speed(8), T0 + 60)).toEqual(speed(8));
+    });
+
+    it("counts a tick read twice once: the engine's feed, then a surface, on the same 2x", () => {
+      sentOver(speed(2), speed(1), T0, false);
+      sentOver(speed(1), speed(1), T0 + 5, false);
+      sentOver(speed(2), speed(1), T0 + 10, false);
+
+      noteTelemetrySpeed(speed(2), T0 + 16);
+      expect(resolveLiveSpeed(speed(2), T0 + 16)).toEqual(speed(2));
+      expect(pendingReplaySpeed(speed(2), T0 + 17)).toEqual(speed(2));
+    });
+
+    it("settles a chain telemetry jumps straight to the end of, on that sample", () => {
+      sentOver(speed(2), speed(1), T0, false);
+      sentOver(speed(4), speed(1), T0 + 5, false);
+      sentOver(speed(8), speed(1), T0 + 10, false);
+
+      noteTelemetrySpeed(speed(8), T0 + 16);
+      expect(resolveLiveSpeed(speed(2), T0 + 20)).toEqual(speed(2));
+    });
+
+    it("a sample equal to none of the sends still to come moves nothing", () => {
+      sentOver(speed(2), speed(1), T0, false);
+      sentOver(speed(4), speed(1), T0 + 5, false);
+
+      noteTelemetrySpeed(speed(16), T0 + 16);
+      noteTelemetrySpeed(speed(2), T0 + 33);
+
+      expect(resolveLiveSpeed(speed(2), T0 + 33)).toEqual(speed(4));
+    });
+
+    it("confirms the remembered speed only at the chain's last send: 1x, then 2x, 1x, 2x from the dial", () => {
+      noteTelemetrySpeed(speed(1), T0 - 50);
+      sentOver(speed(2), speed(1), T0);
+      sentOver(speed(1), speed(1), T0 + 5);
+      sentOver(speed(2), speed(1), T0 + 10);
+
+      noteTelemetrySpeed(speed(2), T0 + 16);
+      // The 1x lands while the last 2x is still to come: Play must still resume 2x.
+      noteTelemetrySpeed(speed(1), T0 + 33);
+      expect(rememberedSpeed()).toEqual(speed(2));
+
+      noteTelemetrySpeed(speed(2), T0 + 50);
+      // Confirmed: the remembered speed follows telemetry again.
+      noteTelemetrySpeed(speed(4), T0 + 66);
+      expect(rememberedSpeed()).toEqual(speed(4));
+    });
+
+    it("keeps at most the last sixteen sends of a chain a dial keeps alive, and still settles on the last", () => {
+      // A dial spun without a pause: 1x and 2x alternating, every send inside the hold of the one before.
+      for (let i = 0; i < 40; i++) sentOver(speed(i % 2 === 0 ? 2 : 1), speed(1), T0 + i * 10, false);
+
+      // The last send is 1x: telemetry passing through the last sixteen ends it.
+      for (let i = 0; i < 16; i++) noteTelemetrySpeed(speed(i % 2 === 0 ? 2 : 1), T0 + 400 + i);
+
+      expect(resolveLiveSpeed(speed(8), T0 + 420)).toEqual(speed(8));
+    });
   });
 
   describe("the gate's read of the pending speed", () => {

@@ -151,6 +151,28 @@ describe("shownReplaySpeed over the gate's sends (#1427)", () => {
     expect(shown()).toEqual(speed(0));
   });
 
+  it("Play / Pause three times on a paused replay: the first Play landing does not settle the chain", async () => {
+    shows = speed(0);
+    dial({ kind: "speed", speed: 1, slowMotion: false });
+    await vi.advanceTimersByTimeAsync(10);
+    dial({ kind: "pause" });
+    await vi.advanceTimersByTimeAsync(10);
+    dial({ kind: "speed", speed: 1, slowMotion: false });
+
+    // The first Play lands, then the pause: the last Play is still to come.
+    shows = speed(1);
+    await vi.advanceTimersByTimeAsync(10);
+    expect(shown()).toEqual(speed(1));
+
+    shows = speed(0);
+    await vi.advanceTimersByTimeAsync(17);
+    expect(shown()).toEqual(speed(1));
+
+    // The gate too: a Frame Forward now goes into a replay that is about to play, and records no target.
+    pressReplayCommand({ kind: "step", direction: 1 }, { by: "next-frame" });
+    expect(getReplayGateRecord().target).toBeNull();
+  });
+
   it("a key's command right after a Play: the surfaces follow telemetry, the gate still sees the replay starting to move", () => {
     shows = speed(0);
     dial({ kind: "speed", speed: 1, slowMotion: false });

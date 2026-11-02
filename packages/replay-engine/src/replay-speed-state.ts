@@ -22,12 +22,19 @@
  *   or when {@link REPLAY_SPEED_HOLD_MS} passes without one. A pause is a sent
  *   speed too (0x).
  *
- *   **Stale-equal.** A sample shows the pending speed only once telemetry has
- *   moved off what it read when the chain of unsettled sends began, or when
- *   the target differs from that. Playing at 1x, a 2x and then a 1x sent
- *   before telemetry shows the 2x leave a 1x pending that the old 1x ticks
- *   must not settle: the 2x is still to land. The same holds for a Play /
- *   Pause double press inside the lag.
+ *   **The chain.** Sends made while one is still pending form a chain, and
+ *   the pending speed is shown only once telemetry has passed through the
+ *   chain's sends in order up to the last one. Only a change in what
+ *   telemetry reads counts — the same tick is read more than once (the
+ *   engine's feed, then a surface or the gate), and the ticks still carrying
+ *   the speed from before the chain must not count: playing at 1x, a 2x and
+ *   then a 1x sent before telemetry shows the 2x leave a 1x pending that the
+ *   old 1x ticks must not settle. Each change steps past the first send still
+ *   ahead that it equals, so a send iRacing coalesced into a later one is
+ *   skipped, and one that equals none of them moves nothing. So a chain that comes back to an
+ *   earlier speed — the dial right, left, right inside the lag, or Play /
+ *   Pause pressed twice or three times — is not settled by the first send
+ *   landing.
  *
  *   **A cursor take supersedes it for the surfaces.** Whatever takes the
  *   replay cursor next (`replay-cursor.ts`: any replay command of any action
@@ -50,8 +57,9 @@
  *   `rememberSpeed` — the dial's own, and every speed the gate's slot sends
  *   later — writes it at once, but only **provisionally**, because a broadcast
  *   reports no status: a send iRacing ignores (a speed sent while paused at
- *   the end of a saved recording) looks exactly like one it took. A sample
- *   showing the sent speed, by the same stale-equal rule, confirms it.
+ *   the end of a saved recording) looks exactly like one it took. Telemetry
+ *   passing through the chain of such sends to the last, by the same rule,
+ *   confirms it.
  *   {@link REPLAY_SPEED_HOLD_MS} passing without one is the only sign the send
  *   was ignored, and the remembered speed then goes back to what it was before
  *   the first unconfirmed send. A send without `rememberSpeed` (a key's or a
@@ -87,14 +95,47 @@ import { isSameSpeed, NORMAL_SPEED, type ReplaySpeed } from "./replay-jump-speed
 export const REPLAY_SPEED_HOLD_MS = 500;
 
 /**
- * What telemetry has shown since a chain of unsettled sends began: the
- * stale-equal guard of a pending or provisional speed.
+ * The most sends a chain keeps (#1427). A chain lives only while each send
+ * comes within {@link REPLAY_SPEED_HOLD_MS} of the one before, which is a
+ * handful of sends; this bounds one that a dial spun without a pause keeps
+ * alive. The oldest sends go first, with the cursor moved back by as many, so
+ * the last send — the one a chain is shown by — is always kept; a sample of a
+ * dropped send then counts for nothing, or for a later send of the same speed.
+ */
+const MAX_CHAIN_SENDS = 16;
+
+/**
+ * What telemetry has shown of a chain of unsettled sends: the guard of a
+ * pending or provisional speed against ticks from before it (#1427).
  */
 interface ChainWatch {
-  /** What telemetry showed when the first send of the chain went out; null when that was not known. */
-  readonly before: ReplaySpeed | null;
-  /** Whether telemetry has shown a speed other than {@link ChainWatch.before} since. */
-  moved: boolean;
+  /**
+   * The last speed telemetry was seen to read: at first what it read when the
+   * chain's first send went out, null when that was not known. A sample equal
+   * to it is no change, and counts for nothing.
+   */
+  last: ReplaySpeed | null;
+  /** The chain's sends in order, the last being the speed it stands for; at most {@link MAX_CHAIN_SENDS}. */
+  readonly targets: readonly ReplaySpeed[];
+  /** How many of {@link ChainWatch.targets} telemetry has passed through. */
+  cursor: number;
+}
+
+/** A new chain of one send, `target`, begun while telemetry read `shown`. */
+function startChain(target: ReplaySpeed, shown: ReplaySpeed | null): ChainWatch {
+  return { last: shown === null ? null : { ...shown }, targets: [{ ...target }], cursor: 0 };
+}
+
+/** `chain` carried on by one more send, `target`, keeping at most {@link MAX_CHAIN_SENDS}. */
+function continueChain(chain: ChainWatch, target: ReplaySpeed): ChainWatch {
+  const targets = [...chain.targets, { ...target }];
+  const dropped = Math.max(0, targets.length - MAX_CHAIN_SENDS);
+
+  return {
+    last: chain.last,
+    targets: targets.slice(dropped),
+    cursor: Math.max(0, chain.cursor - dropped),
+  };
 }
 
 /** The speed just sent that telemetry does not show yet, and when it went out. */
@@ -132,17 +173,28 @@ let sendCount = 0;
 const changeListeners = new Set<(speed: ReplaySpeed) => void>();
 
 /**
- * Whether `sample` shows `target` for the chain `watch` keeps: the same speed,
- * once telemetry has moved off what it read when the chain began. A sample is
- * noted on the chain first, so a sample equal to a target that differs from
- * that speed shows it at once.
+ * Notes `sample` on the chain `watch` keeps and says whether telemetry has
+ * now shown the whole chain. A sample equal to the last one seen is no
+ * change and counts for nothing: the same tick read again, or a tick still
+ * carrying the speed from before the chain (with that not known, the first
+ * sample is a change). A change steps the cursor past the first send at or
+ * after it that it equals — so a send iRacing coalesced into a later one is
+ * skipped — and one equal to none of them moves nothing. The chain is shown
+ * once the cursor has passed its last send.
  */
-function shows(watch: ChainWatch, target: ReplaySpeed, sample: ReplaySpeed | null): boolean {
-  if (sample === null) return false;
+function shows(watch: ChainWatch, sample: ReplaySpeed | null): boolean {
+  if (sample === null || (watch.last !== null && isSameSpeed(sample, watch.last))) return false;
 
-  if (watch.before === null || !isSameSpeed(sample, watch.before)) watch.moved = true;
+  watch.last = { ...sample };
 
-  return watch.moved && isSameSpeed(sample, target);
+  for (let i = watch.cursor; i < watch.targets.length; i++) {
+    if (isSameSpeed(sample, watch.targets[i])) {
+      watch.cursor = i + 1;
+      break;
+    }
+  }
+
+  return watch.cursor >= watch.targets.length;
 }
 
 /**
@@ -153,7 +205,7 @@ function shows(watch: ChainWatch, target: ReplaySpeed, sample: ReplaySpeed | nul
 function settlePending(sample: ReplaySpeed | null, nowMs: number): PendingSpeed | null {
   if (pending === null) return null;
 
-  if (shows(pending, pending.speed, sample) || nowMs - pending.sentAt >= REPLAY_SPEED_HOLD_MS) {
+  if (shows(pending, sample) || nowMs - pending.sentAt >= REPLAY_SPEED_HOLD_MS) {
     pending = null;
     superseded = false;
   }
@@ -173,7 +225,7 @@ function settlePending(sample: ReplaySpeed | null, nowMs: number): PendingSpeed 
 function settleProvisional(sample: ReplaySpeed | null, nowMs: number): ProvisionalSpeed | null {
   if (provisional === null) return null;
 
-  if (shows(provisional, provisional.speed, sample)) {
+  if (shows(provisional, sample)) {
     provisional = null;
   } else if (nowMs - provisional.sentAt >= REPLAY_SPEED_HOLD_MS) {
     if (isSameSpeed(remembered, provisional.speed)) remembered = { ...provisional.replaced };
@@ -222,9 +274,9 @@ export interface ReplaySpeedSendOptions {
   readonly rememberSpeed: boolean;
   /**
    * The speed telemetry read when the send went out, null when it carried
-   * none: what a chain of sends starting here measures "telemetry has moved"
-   * against (the stale-equal guard). Left out, it is not known, and any
-   * sample of the target shows it.
+   * none: the first "last seen" of a chain of sends starting here, so the
+   * ticks still carrying it are no change. Left out, it is not known, and the
+   * first sample counts as a change.
    */
   readonly telemetrySpeed?: ReplaySpeed | null;
 }
@@ -235,7 +287,8 @@ export interface ReplaySpeedSendOptions {
  * out, so its next decision reads it, and tells the listeners once its change
  * is complete ({@link announceReplaySpeedSent}). The target becomes the
  * pending speed. A send while an earlier one is still pending continues its
- * chain, keeping what telemetry read when the chain began. With
+ * chain: it keeps what telemetry read when the chain began and the sends
+ * telemetry has still to pass through, and adds this one. With
  * `rememberSpeed` a non-zero one is also written to the remembered speed at
  * once, provisionally: the dial's next Play/Pause resumes it even before
  * telemetry has shown it, and it stays only if telemetry does. A 0x send, or
@@ -250,8 +303,7 @@ export function recordReplaySpeedSent(target: ReplaySpeed, nowMs: number, option
   pending = {
     speed: { ...target },
     sentAt: nowMs,
-    before: chain !== null ? chain.before : shown === null ? null : { ...shown },
-    moved: chain?.moved ?? false,
+    ...(chain !== null ? continueChain(chain, target) : startChain(target, shown)),
   };
   superseded = false;
   sendCount++;
@@ -265,8 +317,7 @@ export function recordReplaySpeedSent(target: ReplaySpeed, nowMs: number, option
       speed: { ...target },
       replaced: standing?.replaced ?? { ...remembered },
       sentAt: nowMs,
-      before: standing !== null ? standing.before : shown === null ? null : { ...shown },
-      moved: standing?.moved ?? false,
+      ...(standing !== null ? continueChain(standing, target) : startChain(target, shown)),
     };
     remembered = { ...target };
   }
