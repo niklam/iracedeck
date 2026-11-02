@@ -2,17 +2,25 @@
  * Reference adapters for the ordering contract suite's own test (#1597,
  * decision 6): the lasting positive controls. Each dispatches host events to
  * the registered handler the way a real adapter does, over a fake action
- * context, and differs only in what it orders:
+ * context, and differs only in what it orders and when it decides:
  *
  * - {@link UnorderedReferenceAdapter} calls the handler at arrival and fires
  *   every broadcast, as every adapter did before #1597. Each ordering and
  *   liveness scenario must fail on it.
  * - {@link SerialReferenceAdapter} runs every event of a context one after
- *   another, and tracks liveness at arrival. The concurrency scenario must fail
- *   on it.
+ *   another, with liveness and broadcasts decided at arrival. The concurrency
+ *   scenario must fail on it.
+ * - {@link InTaskBroadcastReferenceAdapter} is the serial one with its
+ *   broadcasts fired when the task runs instead of at arrival. The
+ *   broadcast-at-arrival scenario must fail on it.
+ * - {@link InTaskLivenessReferenceAdapter} is the serial one with liveness
+ *   ended by the disappear task — set at the appear's arrival but cleared
+ *   only after the disappear handler has run, the shape the adapters had —
+ *   and read at arrival. The disappear-arrival scenario must fail on it.
  * - {@link OrderedReferenceAdapter} routes every event through
- *   `ContextEventOrder`, as the real adapters do: the pattern an adapter's
- *   `registerAction` follows, and the proof that every scenario is passable.
+ *   `ContextEventOrder`, as the real adapters do, under either never-appeared
+ *   policy: the pattern an adapter's `registerAction` follows, and the proof
+ *   that every scenario is passable.
  *
  * They implement {@link ContextEventOrderAdapter}, the slice of the platform
  * adapter the suite drives, not `IDeckPlatformAdapter` itself: declaring that
@@ -22,11 +30,14 @@
  */
 import type { ILogger } from "@iracedeck/logger";
 
-import type {
-  ContextEventOrderAdapter,
-  ContextEventOrderHarness,
-  ContextEventOrderHostEvent,
-  ContextEventOrderPayload,
+import {
+  CONTEXT_EVENT_ORDER_HOST_EVENTS,
+  CONTEXT_EVENT_ORDER_INPUT_EVENTS,
+  type ContextEventOrderAdapter,
+  type ContextEventOrderHarness,
+  type ContextEventOrderHostEvent,
+  type ContextEventOrderNeverAppearedPolicy,
+  type ContextEventOrderPayload,
 } from "./context-event-order-scenarios.js";
 import { ContextEventOrder } from "./context-event-order.js";
 import type { IDeckActionContext, IDeckActionHandler, IDeckDialRotateEvent, IDeckEvent } from "./types.js";
@@ -41,15 +52,17 @@ const silentLogger: ILogger = {
   createScope: () => silentLogger,
 };
 
-/** A fake action context: an id, and every method a no-op. */
-function fakeContext(id: string): IDeckActionContext {
+type Controller = "Keypad" | "Encoder";
+
+/** A fake action context: an id, the controller it appeared as, and every method a no-op. */
+function fakeContext(id: string, controller: Controller): IDeckActionContext {
   return {
     id,
     setImage: async () => undefined,
     setTitle: async () => undefined,
     setSettings: async () => undefined,
-    isKey: () => true,
-    isDial: () => false,
+    isKey: () => controller === "Keypad",
+    isDial: () => controller === "Encoder",
     setFeedback: async () => undefined,
     setFeedbackLayout: async () => undefined,
     setTriggerDescription: async () => undefined,
@@ -63,9 +76,13 @@ function dispatch(
   handler: IDeckActionHandler,
   event: ContextEventOrderHostEvent,
   context: string,
+  controller: Controller,
   payload: ContextEventOrderPayload,
 ): Promise<void> | void {
-  const base: IDeckEvent<unknown> = { action: fakeContext(context), payload: { settings: payload.settings ?? {} } };
+  const base: IDeckEvent<unknown> = {
+    action: fakeContext(context, controller),
+    payload: { settings: payload.settings ?? {} },
+  };
 
   switch (event) {
     case "willAppear":
@@ -95,9 +112,12 @@ function dispatch(
   }
 }
 
-/** The registration and broadcast bookkeeping the three references share. */
+const INPUTS: ReadonlySet<ContextEventOrderHostEvent> = new Set(CONTEXT_EVENT_ORDER_INPUT_EVENTS);
+
+/** The registration, controller and broadcast bookkeeping the references share. */
 abstract class ReferenceAdapter implements ContextEventOrderAdapter {
   protected readonly handlers = new Map<string, IDeckActionHandler>();
+  protected readonly controllers = new Map<string, Controller>();
   protected readonly keyDownCallbacks: Array<() => void> = [];
   protected readonly dialDownCallbacks: Array<() => void> = [];
   protected readonly dialRotateCallbacks: Array<() => void> = [];
@@ -118,11 +138,17 @@ abstract class ReferenceAdapter implements ContextEventOrderAdapter {
     this.dialRotateCallbacks.push(callback);
   }
 
-  /** The harness the suite runs over this adapter. Events go to every registered handler, as a host routes by UUID. */
-  harness(): ContextEventOrderHarness {
+  /** The harness the suite runs over this adapter: every host event, the policy, events to every registered handler. */
+  harness(neverAppeared: ContextEventOrderNeverAppearedPolicy = "drop"): ContextEventOrderHarness {
     return {
       adapter: this,
+      hostEvents: CONTEXT_EVENT_ORDER_HOST_EVENTS,
+      neverAppeared,
       emit: (event, context, payload = {}) => {
+        if (event === "willAppear" && payload.controller !== undefined) {
+          this.controllers.set(context, payload.controller);
+        }
+
         for (const handler of this.handlers.values()) this.emit(handler, event, context, payload);
       },
     };
@@ -139,6 +165,16 @@ abstract class ReferenceAdapter implements ContextEventOrderAdapter {
             : [];
 
     for (const callback of callbacks) callback();
+  }
+
+  /** The handler call for one host event, built when called, as a task does. */
+  protected call(
+    handler: IDeckActionHandler,
+    event: ContextEventOrderHostEvent,
+    context: string,
+    payload: ContextEventOrderPayload,
+  ): Promise<void> | void {
+    return dispatch(handler, event, context, this.controllers.get(context) ?? "Keypad", payload);
   }
 
   /** One host event at arrival, synchronous: what each reference does with it is the difference between them. */
@@ -159,11 +195,11 @@ export class UnorderedReferenceAdapter extends ReferenceAdapter {
     payload: ContextEventOrderPayload,
   ): void {
     this.broadcast(event);
-    void dispatch(handler, event, context, payload);
+    void this.call(handler, event, context, payload);
   }
 }
 
-/** Strict FIFO per context, liveness at arrival: everything in order, input included. */
+/** Strict FIFO per context; liveness, drops and broadcasts at arrival. */
 export class SerialReferenceAdapter extends ReferenceAdapter {
   private readonly live = new Set<string>();
   private readonly tails = new Map<string, Promise<void>>();
@@ -183,11 +219,72 @@ export class SerialReferenceAdapter extends ReferenceAdapter {
     }
 
     this.broadcast(event);
+    this.chain(context, () => this.call(handler, event, context, payload));
+  }
 
+  protected chain(context: string, task: () => Promise<void> | void): void {
     const tail = this.tails.get(context) ?? Promise.resolve();
-    const next = tail.then(() => dispatch(handler, event, context, payload)).catch(() => undefined);
 
-    this.tails.set(context, next);
+    this.tails.set(
+      context,
+      tail.then(task).catch(() => undefined),
+    );
+  }
+}
+
+/** The serial reference, with its broadcasts fired when the task runs rather than at arrival. */
+export class InTaskBroadcastReferenceAdapter extends SerialReferenceAdapter {
+  private readonly liveAtArrival = new Set<string>();
+
+  protected override emit(
+    handler: IDeckActionHandler,
+    event: ContextEventOrderHostEvent,
+    context: string,
+    payload: ContextEventOrderPayload,
+  ): void {
+    if (event === "willAppear") {
+      this.liveAtArrival.add(context);
+    } else if (!this.liveAtArrival.has(context)) {
+      return;
+    } else if (event === "willDisappear") {
+      this.liveAtArrival.delete(context);
+    }
+
+    this.chain(context, () => {
+      this.broadcast(event);
+
+      return this.call(handler, event, context, payload);
+    });
+  }
+}
+
+/**
+ * The serial reference, with liveness ended by the disappear task — set at the
+ * appear's arrival, as the adapters set their controller entry, but cleared
+ * only once the disappear handler has run, as they deleted it — and read at
+ * arrival for the drop decision and the broadcast.
+ */
+export class InTaskLivenessReferenceAdapter extends SerialReferenceAdapter {
+  private readonly liveUntilTeardown = new Set<string>();
+
+  protected override emit(
+    handler: IDeckActionHandler,
+    event: ContextEventOrderHostEvent,
+    context: string,
+    payload: ContextEventOrderPayload,
+  ): void {
+    if (event === "willAppear") {
+      this.liveUntilTeardown.add(context);
+    } else if (!this.liveUntilTeardown.has(context)) {
+      return;
+    }
+
+    this.broadcast(event);
+    this.chain(context, async () => {
+      await this.call(handler, event, context, payload);
+
+      if (event === "willDisappear") this.liveUntilTeardown.delete(context);
+    });
   }
 }
 
@@ -195,14 +292,35 @@ export class SerialReferenceAdapter extends ReferenceAdapter {
 export class OrderedReferenceAdapter extends ReferenceAdapter {
   private readonly order = new ContextEventOrder(silentLogger);
 
+  constructor(private readonly neverAppeared: ContextEventOrderNeverAppearedPolicy = "drop") {
+    super();
+  }
+
+  override harness(): ContextEventOrderHarness {
+    return super.harness(this.neverAppeared);
+  }
+
   protected emit(
     handler: IDeckActionHandler,
     event: ContextEventOrderHostEvent,
     context: string,
     payload: ContextEventOrderPayload,
   ): void {
+    // Input for a context the host never appeared: appear it first (Ulanzi).
+    // A context that has disappeared is not revived.
+    if (
+      this.neverAppeared === "appear-first" &&
+      INPUTS.has(event) &&
+      !this.order.isLive(context) &&
+      !this.order.hasAppeared(context)
+    ) {
+      void this.order.enqueue(context, "willAppear", () => this.call(handler, "willAppear", context, {}));
+    }
+
     if (this.order.isLive(context)) this.broadcast(event);
 
-    void this.order.enqueue(context, event, () => dispatch(handler, event, context, payload));
+    // Discarded on purpose: the harness's `emit` returns nothing, and a
+    // discarded result is safe (never an unhandled rejection) but silent.
+    void this.order.enqueue(context, event, () => this.call(handler, event, context, payload));
   }
 }

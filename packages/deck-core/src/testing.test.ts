@@ -63,13 +63,24 @@ function testingImportersOf(files: string[]): string[] {
 
 describe("deck-core's testing entry (#1597)", () => {
   it("carries the suite and its harness types, and the barrel carries none of them", () => {
-    expect(Object.keys(testing).sort()).toEqual(["CONTEXT_EVENT_ORDER_ACTION_UUID", "CONTEXT_EVENT_ORDER_SCENARIOS"]);
-    expect(testing.CONTEXT_EVENT_ORDER_SCENARIOS.length).toBeGreaterThanOrEqual(6);
+    expect(Object.keys(testing).sort()).toEqual([
+      "CONTEXT_EVENT_ORDER_ACTION_UUID",
+      "CONTEXT_EVENT_ORDER_HOST_EVENTS",
+      "CONTEXT_EVENT_ORDER_INPUT_EVENTS",
+      "CONTEXT_EVENT_ORDER_SCENARIOS",
+    ]);
+    expect(testing.CONTEXT_EVENT_ORDER_SCENARIOS.length).toBeGreaterThanOrEqual(11);
 
     for (const name of Object.keys(testing)) expect(barrel, name).not.toHaveProperty(name);
 
     // The references beside the suite are test support, reachable from neither entry.
-    for (const name of ["UnorderedReferenceAdapter", "SerialReferenceAdapter", "OrderedReferenceAdapter"]) {
+    for (const name of [
+      "UnorderedReferenceAdapter",
+      "SerialReferenceAdapter",
+      "InTaskBroadcastReferenceAdapter",
+      "InTaskLivenessReferenceAdapter",
+      "OrderedReferenceAdapter",
+    ]) {
       expect(barrel).not.toHaveProperty(name);
       expect(testing).not.toHaveProperty(name);
     }

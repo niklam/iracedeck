@@ -12,10 +12,16 @@
  * one fresh harness per scenario, and `scripts/deck-adapter-order-contract.test.mjs`
  * fails an adapter package whose tests do not.
  *
+ * Every drop check is preceded by a delivery check on the same harness, so a
+ * harness whose `emit` reaches nothing fails rather than passing vacuously.
+ *
  * deck-core's own test runs the list against reference adapters kept beside
- * it (`context-event-order-reference-adapters.test-support.ts`): one that calls
- * handlers at arrival and one that serialises everything, asserting scenario by
- * scenario which reference each fails on, so no scenario can pass vacuously.
+ * it (`context-event-order-reference-adapters.test-support.ts`) — one that
+ * calls handlers at arrival, one that serialises everything, one that fires
+ * broadcasts inside the task and one that decides liveness there — asserting
+ * scenario by scenario which reference each fails on, so no scenario can pass
+ * vacuously, and against two built on `ContextEventOrder` (one per
+ * never-appeared policy) on which every scenario passes.
  */
 import type { ContextHandlerEventKind } from "./context-event-order.js";
 import type {
@@ -32,6 +38,24 @@ export const CONTEXT_EVENT_ORDER_ACTION_UUID = "com.iracedeck.testing.context-ev
 /** A host event the harness delivers, named as the handler events are. */
 export type ContextEventOrderHostEvent = ContextHandlerEventKind;
 
+/** The input host events, in the order the suite drives them. */
+export const CONTEXT_EVENT_ORDER_INPUT_EVENTS: readonly ContextEventOrderHostEvent[] = [
+  "keyDown",
+  "keyUp",
+  "dialDown",
+  "dialUp",
+  "dialRotate",
+  "touchTap",
+];
+
+/** Every host event, for a harness whose host sends them all (Elgato). */
+export const CONTEXT_EVENT_ORDER_HOST_EVENTS: readonly ContextEventOrderHostEvent[] = [
+  "willAppear",
+  "willDisappear",
+  "didReceiveSettings",
+  ...CONTEXT_EVENT_ORDER_INPUT_EVENTS,
+];
+
 /**
  * What a scenario may ask the host event to carry. Every field is optional and
  * the harness fills its host's defaults for the rest; a scenario that passes
@@ -39,11 +63,35 @@ export type ContextEventOrderHostEvent = ContextHandlerEventKind;
  */
 export interface ContextEventOrderPayload {
   readonly settings?: Record<string, unknown>;
+  /**
+   * `willAppear` only: the controller the context appears as. The suite drives
+   * the dial input kinds on a context appeared as `Encoder`, so a host that
+   * promotes a Keypad context on dial input (Ulanzi) sees no promotion in the
+   * ordering scenarios. The harness reports it the way its host would — the
+   * frame's `controller` on Mirabox and Ulanzi, a dial-shaped fake action on
+   * Elgato.
+   */
+  readonly controller?: "Keypad" | "Encoder";
   /** `dialRotate` only. */
   readonly ticks?: number;
   /** `dialRotate` only. */
   readonly pressed?: boolean;
 }
+
+/**
+ * What an adapter does with input for a context the host never sent a
+ * `willAppear` for (decision 3):
+ *
+ * - `"drop"` — it never reaches the handler and fires no broadcast. Elgato's
+ *   SDK already does this, and so does the primitive by default.
+ * - `"appear-first"` — the adapter enqueues a `willAppear` for the context
+ *   ahead of the input (`!order.isLive(c) && !order.hasAppeared(c)`), so the
+ *   input runs after that appear and its broadcast fires, the context being
+ *   live by the time the input arrives. Ulanzi, whose host sends input with no
+ *   prior `add`. Only a context that NEVER appeared gets this; one that has
+ *   disappeared is dropped under both policies, or the #1329 leak returns.
+ */
+export type ContextEventOrderNeverAppearedPolicy = "drop" | "appear-first";
 
 /**
  * The part of `IDeckPlatformAdapter` the suite drives: the registration it
@@ -64,11 +112,22 @@ export interface ContextEventOrderHarness {
   /** The adapter under test, constructed over a fake host. */
   readonly adapter: ContextEventOrderAdapter;
   /**
+   * The host events this host sends, so the suite drives each input kind the
+   * adapter dispatches and no other. Elgato sends them all
+   * ({@link CONTEXT_EVENT_ORDER_HOST_EVENTS}); Mirabox has no `dialUp` or
+   * `touchTap` host event, since its `dialDown` runs the handler's down and
+   * up. Must include the three lifecycle events and `keyDown`.
+   */
+  readonly hostEvents: readonly ContextEventOrderHostEvent[];
+  /** What the adapter does with input for a context that never appeared. */
+  readonly neverAppeared: ContextEventOrderNeverAppearedPolicy;
+  /**
    * Deliver one host event for `context` **synchronously**, through the
    * adapter's real dispatch — a fake SDK emitting to the registered
    * `BridgeAction` on Elgato, the client's routed action event on Mirabox and
    * Ulanzi — exactly as the host would, and return without awaiting what the
    * dispatch started. The event is for {@link CONTEXT_EVENT_ORDER_ACTION_UUID}.
+   * Only called with an event in `hostEvents`.
    */
   emit(event: ContextEventOrderHostEvent, context: string, payload?: ContextEventOrderPayload): void;
 }
@@ -169,6 +228,41 @@ function expectCount(rule: string, what: string, actual: number, expected: numbe
   throw new Error(`${rule}: expected ${what} to have fired ${expected} time(s) but it fired ${actual}`);
 }
 
+/** The input kinds this harness's host sends. */
+function supportedInputs(harness: ContextEventOrderHarness): readonly ContextEventOrderHostEvent[] {
+  return CONTEXT_EVENT_ORDER_INPUT_EVENTS.filter((event) => harness.hostEvents.includes(event));
+}
+
+/** `emit` with the payload an input kind needs. */
+function emitInput(harness: ContextEventOrderHarness, event: ContextEventOrderHostEvent, context: string): void {
+  harness.emit(event, context, event === "dialRotate" ? { ticks: 1, pressed: false } : undefined);
+}
+
+const DIAL_INPUTS: ReadonlySet<ContextEventOrderHostEvent> = new Set(["dialDown", "dialUp", "dialRotate", "touchTap"]);
+
+/** The controller a context is appeared as before `event` is driven on it. */
+function controllerFor(event: ContextEventOrderHostEvent): "Keypad" | "Encoder" {
+  return DIAL_INPUTS.has(event) ? "Encoder" : "Keypad";
+}
+
+/**
+ * Appear `context` and deliver a `keyDown` to it, settled, so the harness is
+ * shown to reach the handler before a drop check on the same harness.
+ */
+async function proveDelivery(harness: ContextEventOrderHarness, calls: string[], context: string): Promise<void> {
+  harness.emit("willAppear", context);
+  await settle();
+  harness.emit("keyDown", context);
+  await settle();
+
+  expectCalls("the harness delivers events to the handler (delivery check before a drop check)", calls.slice(-4), [
+    "willAppear",
+    "willAppear:done",
+    "keyDown",
+    "keyDown:done",
+  ]);
+}
+
 const slowAppearThenEarlyDisappear: ContextEventOrderScenario = {
   name: "a slow appear, then an early disappear: the disappear starts only after the appear settles",
   async run({ adapter, emit }) {
@@ -231,47 +325,194 @@ const noOvertaking: ContextEventOrderScenario = {
   },
 };
 
-const inputAfterDisappearIsDropped: ContextEventOrderScenario = {
-  name: "input after a disappear is dropped",
+const everyInputKindWaitsForLifecycle: ContextEventOrderScenario = {
+  name: "every supported input kind waits for an earlier lifecycle event and holds a later one",
+  async run(harness) {
+    const inputs = supportedInputs(harness);
+
+    if (inputs.length === 0) throw new Error("the harness declares no input host event; it must at least send keyDown");
+
+    for (const kind of inputs) {
+      const appear = gate();
+      const input = gate();
+      const { calls, handler } = record({ willAppear: appear, [kind]: input });
+      const rule = `${kind} waits for an earlier willAppear and holds a later willDisappear`;
+      const context = `ctx-${kind}`;
+      // A host event may be several handler calls (Mirabox's dialDown runs
+      // dialUp too): only the lifecycle calls and the kind under test are compared.
+      const relevant = (): string[] =>
+        calls.filter((call) => /^will(Appear|Disappear)/.test(call) || call.startsWith(kind));
+
+      harness.adapter.registerAction(CONTEXT_EVENT_ORDER_ACTION_UUID, handler);
+
+      harness.emit("willAppear", context, { controller: controllerFor(kind) });
+      emitInput(harness, kind, context);
+      harness.emit("willDisappear", context);
+      await settle();
+
+      expectCalls(rule, relevant(), ["willAppear"]);
+
+      appear.open();
+      await settle();
+
+      expectCalls(rule, relevant(), ["willAppear", "willAppear:done", kind]);
+
+      input.open();
+      await settle();
+
+      expectCalls(rule, relevant(), [
+        "willAppear",
+        "willAppear:done",
+        kind,
+        `${kind}:done`,
+        "willDisappear",
+        "willDisappear:done",
+      ]);
+    }
+  },
+};
+
+const settingsChangeIsExclusive: ContextEventOrderScenario = {
+  name: "a settings change is exclusive: input waits for it, and it waits for input in flight",
   async run({ adapter, emit }) {
-    const { calls, handler } = record();
-    const rule = "input for a context whose willDisappear has arrived never reaches the handler";
+    const settings = gate();
+    const press = gate();
+    const { calls, handler } = record({ didReceiveSettings: settings, keyDown: press });
+    const rule = "didReceiveSettings waits for every earlier event of its context and holds every later one";
+    const upToPress = ["willAppear", "willAppear:done", "didReceiveSettings", "didReceiveSettings:done", "keyDown"];
+
+    adapter.registerAction(CONTEXT_EVENT_ORDER_ACTION_UUID, handler);
+
+    emit("willAppear", "ctx-1");
+    await settle();
+    emit("didReceiveSettings", "ctx-1");
+    emit("keyDown", "ctx-1");
+    await settle();
+
+    expectCalls(rule, calls, ["willAppear", "willAppear:done", "didReceiveSettings"]);
+
+    settings.open();
+    await settle();
+
+    expectCalls(rule, calls, upToPress);
+
+    // The press is now in flight on its gate; a second settings change waits for it.
+    emit("didReceiveSettings", "ctx-1");
+    await settle();
+
+    expectCalls(rule, calls, upToPress);
+
+    press.open();
+    await settle();
+
+    expectCalls(rule, calls, [...upToPress, "keyDown:done", "didReceiveSettings", "didReceiveSettings:done"]);
+  },
+};
+
+const reappearWaitsForTeardown: ContextEventOrderScenario = {
+  name: "a re-appear after a disappear runs only after the teardown settles",
+  async run({ adapter, emit }) {
+    const teardown = gate();
+    const { calls, handler } = record({ willDisappear: teardown });
+    const rule = "a willAppear after a willDisappear of the same context waits for that teardown";
 
     adapter.registerAction(CONTEXT_EVENT_ORDER_ACTION_UUID, handler);
 
     emit("willAppear", "ctx-1");
     await settle();
     emit("willDisappear", "ctx-1");
-    await settle();
-
-    expectCalls(rule, calls, ["willAppear", "willAppear:done", "willDisappear", "willDisappear:done"]);
-
+    emit("willAppear", "ctx-1");
     emit("keyDown", "ctx-1");
-    emit("keyUp", "ctx-1");
-    emit("dialRotate", "ctx-1", { ticks: 1, pressed: false });
-    emit("didReceiveSettings", "ctx-1");
     await settle();
 
-    expectCalls(rule, calls, ["willAppear", "willAppear:done", "willDisappear", "willDisappear:done"]);
+    expectCalls(rule, calls, ["willAppear", "willAppear:done", "willDisappear"]);
+
+    teardown.open();
+    await settle();
+
+    expectCalls(rule, calls, [
+      "willAppear",
+      "willAppear:done",
+      "willDisappear",
+      "willDisappear:done",
+      "willAppear",
+      "willAppear:done",
+      "keyDown",
+      "keyDown:done",
+    ]);
   },
 };
 
-const inputBeforeAppearIsDropped: ContextEventOrderScenario = {
-  name: "input before any appear is dropped",
-  async run({ adapter, emit }) {
+const inputAfterDisappearIsDropped: ContextEventOrderScenario = {
+  name: "input after a disappear is dropped",
+  async run(harness) {
     const { calls, handler } = record();
-    const rule = "input for a context the host never sent a willAppear for never reaches the handler";
+    const rule = "an event for a context whose willDisappear has arrived never reaches the handler";
 
-    adapter.registerAction(CONTEXT_EVENT_ORDER_ACTION_UUID, handler);
+    harness.adapter.registerAction(CONTEXT_EVENT_ORDER_ACTION_UUID, handler);
 
-    emit("keyDown", "ctx-1");
-    emit("keyUp", "ctx-1");
-    emit("dialRotate", "ctx-1", { ticks: 1, pressed: false });
-    emit("didReceiveSettings", "ctx-1");
-    emit("willDisappear", "ctx-1");
+    await proveDelivery(harness, calls, "ctx-1");
+    harness.emit("willDisappear", "ctx-1");
     await settle();
 
-    expectCalls(rule, calls, []);
+    const delivered = [
+      "willAppear",
+      "willAppear:done",
+      "keyDown",
+      "keyDown:done",
+      "willDisappear",
+      "willDisappear:done",
+    ];
+
+    expectCalls(rule, calls, delivered);
+
+    for (const kind of supportedInputs(harness)) emitInput(harness, kind, "ctx-1");
+
+    harness.emit("didReceiveSettings", "ctx-1");
+    harness.emit("willDisappear", "ctx-1");
+    await settle();
+
+    expectCalls(rule, calls, delivered);
+  },
+};
+
+const inputBeforeAppearFollowsPolicy: ContextEventOrderScenario = {
+  name: "input before any appear is dropped, or appears the context first under the appear-first policy",
+  async run(harness) {
+    const { calls, handler } = record();
+
+    harness.adapter.registerAction(CONTEXT_EVENT_ORDER_ACTION_UUID, handler);
+
+    // Another context first, so the drop below is a drop and not a harness that reaches nothing.
+    await proveDelivery(harness, calls, "ctx-2");
+    calls.length = 0;
+
+    if (harness.neverAppeared === "drop") {
+      const rule = "an event for a context the host never sent a willAppear for never reaches the handler";
+
+      for (const kind of supportedInputs(harness)) emitInput(harness, kind, "ctx-1");
+
+      harness.emit("didReceiveSettings", "ctx-1");
+      harness.emit("willDisappear", "ctx-1");
+      await settle();
+
+      expectCalls(rule, calls, []);
+
+      return;
+    }
+
+    const rule = "input for a context the host never sent a willAppear for runs after an appear for it (appear-first)";
+
+    harness.emit("keyDown", "ctx-1");
+    await settle();
+
+    expectCalls(rule, calls, ["willAppear", "willAppear:done", "keyDown", "keyDown:done"]);
+
+    // Now live: more input runs on it with no second appear.
+    harness.emit("keyUp", "ctx-1");
+    await settle();
+
+    expectCalls(rule, calls, ["willAppear", "willAppear:done", "keyDown", "keyDown:done", "keyUp", "keyUp:done"]);
   },
 };
 
@@ -299,70 +540,164 @@ const twoInputsRunConcurrently: ContextEventOrderScenario = {
   },
 };
 
+/** The three broadcast counters the suite subscribes. */
+interface Fired {
+  keyDown: number;
+  dialDown: number;
+  dialRotate: number;
+}
+
+function subscribeBroadcasts(adapter: ContextEventOrderAdapter): Fired {
+  const fired: Fired = { keyDown: 0, dialDown: 0, dialRotate: 0 };
+
+  adapter.onKeyDown(() => {
+    fired.keyDown += 1;
+  });
+  adapter.onDialDown(() => {
+    fired.dialDown += 1;
+  });
+  adapter.onDialRotate(() => {
+    fired.dialRotate += 1;
+  });
+
+  return fired;
+}
+
+function expectFired(rule: string, when: string, fired: Fired, expected: Fired): void {
+  expectCount(rule, `the key-down broadcast ${when}`, fired.keyDown, expected.keyDown);
+  expectCount(rule, `the dial-down broadcast ${when}`, fired.dialDown, expected.dialDown);
+  expectCount(rule, `the dial-rotate broadcast ${when}`, fired.dialRotate, expected.dialRotate);
+}
+
 const broadcastsFireForLiveContextsOnly: ContextEventOrderScenario = {
   name: "broadcasts fire only for a live context",
-  async run({ adapter, emit }) {
+  async run(harness) {
     const { handler } = record();
-    const rule = "onKeyDown / onDialDown / onDialRotate fire at arrival, for a live context only";
-    const fired = { keyDown: 0, dialDown: 0, dialRotate: 0 };
+    const rule = "onKeyDown / onDialDown / onDialRotate fire for a live context only";
+    const fired = subscribeBroadcasts(harness.adapter);
+    const dials = harness.hostEvents.includes("dialDown") && harness.hostEvents.includes("dialRotate");
 
-    adapter.registerAction(CONTEXT_EVENT_ORDER_ACTION_UUID, handler);
-    adapter.onKeyDown(() => {
-      fired.keyDown += 1;
-    });
-    adapter.onDialDown(() => {
-      fired.dialDown += 1;
-    });
-    adapter.onDialRotate(() => {
-      fired.dialRotate += 1;
-    });
+    harness.adapter.registerAction(CONTEXT_EVENT_ORDER_ACTION_UUID, handler);
 
     const each = (): void => {
-      emit("keyDown", "ctx-1");
-      emit("dialDown", "ctx-1");
-      emit("dialRotate", "ctx-1", { ticks: 1, pressed: false });
-    };
+      harness.emit("keyDown", "ctx-1");
 
-    // Never appeared: nothing fires.
+      if (dials) {
+        harness.emit("dialDown", "ctx-1");
+        harness.emit("dialRotate", "ctx-1", { ticks: 1, pressed: false });
+      }
+    };
+    const counts = (n: number): Fired => ({ keyDown: n, dialDown: dials ? n : 0, dialRotate: dials ? n : 0 });
+
+    // Never appeared: nothing fires under "drop"; under "appear-first" the
+    // context is live by the time the input arrives, so each fires once.
     each();
     await settle();
 
-    expectCount(rule, "the key-down broadcast for a context that never appeared", fired.keyDown, 0);
-    expectCount(rule, "the dial-down broadcast for a context that never appeared", fired.dialDown, 0);
-    expectCount(rule, "the dial-rotate broadcast for a context that never appeared", fired.dialRotate, 0);
+    const beforeAppear = harness.neverAppeared === "drop" ? 0 : 1;
+
+    expectFired(rule, `for a context that never appeared (${harness.neverAppeared})`, fired, counts(beforeAppear));
 
     // Live: each fires once per event.
-    emit("willAppear", "ctx-1");
+    harness.emit("willAppear", "ctx-1");
     await settle();
     each();
     await settle();
 
-    expectCount(rule, "the key-down broadcast for a live context", fired.keyDown, 1);
-    expectCount(rule, "the dial-down broadcast for a live context", fired.dialDown, 1);
-    expectCount(rule, "the dial-rotate broadcast for a live context", fired.dialRotate, 1);
+    expectFired(rule, "for a live context", fired, counts(beforeAppear + 1));
 
     // Disappeared: nothing more fires.
-    emit("willDisappear", "ctx-1");
+    harness.emit("willDisappear", "ctx-1");
     await settle();
     each();
     await settle();
 
-    expectCount(rule, "the key-down broadcast for a context that disappeared", fired.keyDown, 1);
-    expectCount(rule, "the dial-down broadcast for a context that disappeared", fired.dialDown, 1);
-    expectCount(rule, "the dial-rotate broadcast for a context that disappeared", fired.dialRotate, 1);
+    expectFired(rule, "for a context that disappeared", fired, counts(beforeAppear + 1));
+  },
+};
+
+const broadcastFiresAtArrival: ContextEventOrderScenario = {
+  name: "a broadcast fires at the input's arrival, while the appear the input waits for is still running",
+  async run({ adapter, emit }) {
+    const appear = gate();
+    const { calls, handler } = record({ willAppear: appear });
+    const rule = "a broadcast fires at arrival, not when the handler runs";
+    const fired = subscribeBroadcasts(adapter);
+
+    adapter.registerAction(CONTEXT_EVENT_ORDER_ACTION_UUID, handler);
+
+    emit("willAppear", "ctx-1");
+    emit("keyDown", "ctx-1");
+    await settle();
+
+    expectCalls(rule, calls, ["willAppear"]);
+    expectCount(rule, "the key-down broadcast while its input waits for the appear", fired.keyDown, 1);
+
+    appear.open();
+    await settle();
+
+    expectCalls(rule, calls, ["willAppear", "willAppear:done", "keyDown", "keyDown:done"]);
+    expectCount(rule, "the key-down broadcast after the input ran", fired.keyDown, 1);
+  },
+};
+
+const disappearArrivalStopsBroadcasts: ContextEventOrderScenario = {
+  name: "a disappear's arrival stops the broadcasts and the input, while its teardown is still waiting",
+  async run({ adapter, emit }) {
+    const press = gate();
+    const { calls, handler } = record({ keyDown: press });
+    const rule = "liveness ends at the willDisappear's arrival, not when its teardown runs";
+    const fired = subscribeBroadcasts(adapter);
+
+    adapter.registerAction(CONTEXT_EVENT_ORDER_ACTION_UUID, handler);
+
+    emit("willAppear", "ctx-1");
+    await settle();
+    emit("keyDown", "ctx-1");
+    await settle();
+
+    expectCalls(rule, calls, ["willAppear", "willAppear:done", "keyDown"]);
+    expectCount(rule, "the key-down broadcast for the press in flight", fired.keyDown, 1);
+
+    // The teardown now waits behind the press in flight; input arriving meanwhile is for a context that is gone.
+    emit("willDisappear", "ctx-1");
+    emit("keyDown", "ctx-1");
+    emit("keyDown", "ctx-1");
+    await settle();
+
+    expectCalls(rule, calls, ["willAppear", "willAppear:done", "keyDown"]);
+    expectCount(rule, "the key-down broadcast after the disappear arrived", fired.keyDown, 1);
+
+    press.open();
+    await settle();
+
+    expectCalls(rule, calls, [
+      "willAppear",
+      "willAppear:done",
+      "keyDown",
+      "keyDown:done",
+      "willDisappear",
+      "willDisappear:done",
+    ]);
+    expectCount(rule, "the key-down broadcast after the teardown ran", fired.keyDown, 1);
   },
 };
 
 /**
- * The contract suite, in the order the spec lists its rules. Run each against a
- * fresh harness; every scenario throws on the rule it checks and resolves
- * otherwise.
+ * The contract suite, in the order the spec lists its rules, then the checks
+ * the review added. Run each against a fresh harness; every scenario throws on
+ * the rule it checks and resolves otherwise.
  */
 export const CONTEXT_EVENT_ORDER_SCENARIOS: readonly ContextEventOrderScenario[] = [
   slowAppearThenEarlyDisappear,
   noOvertaking,
   inputAfterDisappearIsDropped,
-  inputBeforeAppearIsDropped,
+  inputBeforeAppearFollowsPolicy,
   twoInputsRunConcurrently,
   broadcastsFireForLiveContextsOnly,
+  broadcastFiresAtArrival,
+  disappearArrivalStopsBroadcasts,
+  everyInputKindWaitsForLifecycle,
+  settingsChangeIsExclusive,
+  reappearWaitsForTeardown,
 ];

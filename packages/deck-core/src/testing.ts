@@ -10,10 +10,13 @@
  */
 export {
   CONTEXT_EVENT_ORDER_ACTION_UUID,
+  CONTEXT_EVENT_ORDER_HOST_EVENTS,
+  CONTEXT_EVENT_ORDER_INPUT_EVENTS,
   CONTEXT_EVENT_ORDER_SCENARIOS,
   type ContextEventOrderAdapter,
   type ContextEventOrderHarness,
   type ContextEventOrderHostEvent,
+  type ContextEventOrderNeverAppearedPolicy,
   type ContextEventOrderPayload,
   type ContextEventOrderScenario,
 } from "./context-event-order-scenarios.js";
