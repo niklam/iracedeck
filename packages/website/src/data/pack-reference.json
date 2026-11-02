@@ -3363,7 +3363,7 @@
       "id": "pit-crew.position-change",
       "family": "position",
       "event": "lap.completed",
-      "description": "You finish a qualifying or race lap in a new position, a held place on a non-best qualifying lap, or your first timed lap — not under a caution, and at most once per twenty seconds in a race.",
+      "description": "You finish a qualifying or race lap in a new position, a non-best qualifying lap, your first timed lap or a qualifying lap that didn't count — not under a caution, and once per 20 s in a race.",
       "frame": "radio",
       "weight": 10,
       "weightBand": "CHATTER",
@@ -3372,7 +3372,7 @@
       "speakGate": "In a race, no full-course caution is out and no other position readout has spoken in the last twenty seconds when this one comes to speak; speaking it starts that window.",
       "endsOn": null,
       "base": "voice/{voice}",
-      "comment": "The driver's position after a completed lap, in one of three shapes: an invalidated qualifying lap says \"That lap didn't count\", then \"We're currently\" and the position; a lap that put the driver on pole says the pole line alone; every other lap says the intro (\"That puts us to\" for a gain in qualifying, \"We're currently\" otherwise, and always in a race) and the position, read live in a race. Practice stays silent, and a race hold is left to the race-status update.",
+      "comment": "The driver's position after a completed lap, in one of three shapes: a qualifying lap the sim did not count says \"That lap didn't count\", then \"We're currently\" and the position when there is one (on a first lap there is none, and the first sentence plays alone); a lap that put the driver on pole says the pole line alone; every other lap says the intro (\"That puts us to\" for a gain in qualifying, \"We're currently\" otherwise, and always in a race) and the position, read live in a race. Practice stays silent, and a race hold is left to the race-status update.",
       "test": "Harness → Position → Improved 5 → 3, Worsened 3 → 5, First Valid Lap P1, Qualifying P1 (pole), Holding P1 (qualifying, slow lap), Unchanged P5 (non-PB lap) or the Invalid lap, … buttons (all qualifying). The race branch is mute in the harness (no live position) — In-sim: complete a race lap having gained or lost a place.",
       "skip": false,
       "references": {
@@ -5705,7 +5705,7 @@
       },
       {
         "name": "lapTime.wasInvalid",
-        "description": "The sim flagged the lap invalid (a track-limits cut, say). The every-lap call still reads it; a pack may add a word for it.",
+        "description": "The sim did not count the lap (a track-limits cut, say). Such a lap has no counted time to read, so the every-lap call never speaks it, and this is never true where that call reads it.",
         "usedBy": []
       },
       {
@@ -5941,7 +5941,7 @@
         "name": "position.readoutShape",
         "description": "Which shape the position readout takes for the lap just completed: an invalidated qualifying lap, a lap that put the driver on pole, or the standard intro and number. Exactly one applies per lap; the invalid-lap shape takes precedence.",
         "keys": {
-          "invalid-lap": "A qualifying lap iRacing did not count (track limits, a pit-lane violation) — the didn't-count line, then the current position with the plain intro; never the pole line or the better framing.",
+          "invalid-lap": "A qualifying lap iRacing did not count (track limits, a pit-lane violation) — the didn't-count line, then the current position with the plain intro when the lap left one (a refused first lap has none); never the pole line or the better framing.",
           "pole": "An improvement to first place in qualifying — the lap put the driver on pole, said as one self-contained line with no number.",
           "standard": "Any other readout — the intro (that-puts-us-to for a gain in qualifying, we're-currently otherwise) and the position number."
         },

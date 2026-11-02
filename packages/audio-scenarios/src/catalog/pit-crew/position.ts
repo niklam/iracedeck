@@ -45,9 +45,14 @@
  *     `where:` short-circuits, contract silent (lap-time-best already
  *     narrates the lap). Improvement to effective P1 in qualifying →
  *     "That puts us on pole." (one clip, no number — the pole shape).
- *     Invalidated qualifying lap (`lapIsValid === false`, issue #572) →
+ *     A qualifying lap the sim did not count (`lapIsValid === false`, issue
+ *     #572; since #1582 that is the sim's own verdict — for iRacing a lap it
+ *     wrote no time for — carried as the refused `lap.completed`) →
  *     "That lap didn't count. We're currently <break /> pee N." — the
- *     invalid-lap shape beats the pole / "better" shapes unconditionally.
+ *     invalid-lap shape beats the pole / "better" shapes unconditionally,
+ *     and fires on every such lap, a held place included. With no position
+ *     to read (a refused first lap) the first sentence plays alone. Nothing
+ *     here reads the lap time.
  *   - **Race** (issue #569): every direction uses the "currently" intro —
  *     race standings don't follow from lap times, so "That puts us to P3"
  *     reads wrong; "We're currently P3" works whether you gained or lost
@@ -86,7 +91,12 @@
  *
  * Sentinel: when neither overall nor class position is populated (e.g.
  * `PlayerCarPosition === 0` on a session reset), the contract does NOT
- * fire; the var resolver returning `null` is a defense-in-depth guard.
+ * fire — with one exception: a qualifying lap the sim did not count fires
+ * without a position (issue #1582, a refused first lap has none), so the
+ * driver still hears "That lap didn't count." The bundled script wraps
+ * that shape's intro and number in an `optional` group, and
+ * `position.number` resolving to `null` drops the group rather than the
+ * line, so the first sentence plays alone.
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type CalloutIdOf, POSITION_CALLOUTS } from "@iracedeck/callout-settings";
@@ -238,6 +248,15 @@ function isAnnounceableSessionType(snapshot: SimEventOf<"lap.completed">["data"]
 }
 
 /**
+ * A qualifying lap the sim did not count (issue #572; since #1582 the sim's
+ * own verdict, for iRacing a lap it wrote no time for): the invalid-lap
+ * shape, said whether or not the lap left a position to read.
+ */
+function isRefusedQualifyingLap(snapshot: SimEventOf<"lap.completed">["data"]): boolean {
+  return snapshot.sessionType === "qualifying" && snapshot.lapIsValid === false;
+}
+
+/**
  * The keys of the `position.readoutShape` case — the closed set of shapes a
  * position readout takes. Published with the case, so the type is the
  * declared key set and nothing else.
@@ -253,7 +272,7 @@ export type PositionReadoutShape = "invalid-lap" | "pole" | "standard";
  */
 export const POSITION_READOUT_SHAPE_KEYS: Readonly<Record<PositionReadoutShape, string>> = {
   "invalid-lap":
-    "A qualifying lap iRacing did not count (track limits, a pit-lane violation) — the didn't-count line, then the current position with the plain intro; never the pole line or the better framing.",
+    "A qualifying lap iRacing did not count (track limits, a pit-lane violation) — the didn't-count line, then the current position with the plain intro when the lap left one (a refused first lap has none); never the pole line or the better framing.",
   pole: "An improvement to first place in qualifying — the lap put the driver on pole, said as one self-contained line with no number.",
   standard:
     "Any other readout — the intro (that-puts-us-to for a gain in qualifying, we're-currently otherwise) and the position number.",
@@ -275,7 +294,7 @@ export function resolvePositionReadoutShape(
 ): PositionReadoutShape | null {
   if (!snapshot) return null;
 
-  if (snapshot.sessionType === "qualifying" && snapshot.lapIsValid === false) return "invalid-lap";
+  if (isRefusedQualifyingLap(snapshot)) return "invalid-lap";
 
   if (isPoleAchievement(snapshot)) return "pole";
 
@@ -426,7 +445,7 @@ export function buildPositionContract(
   return {
     id: "pit-crew.position-change",
     description:
-      "You finish a qualifying or race lap in a new position, a held place on a non-best qualifying lap, or your first timed lap — not under a caution, and at most once per twenty seconds in a race.",
+      "You finish a qualifying or race lap in a new position, a non-best qualifying lap, your first timed lap or a qualifying lap that didn't count — not under a caution, and once per 20 s in a race.",
     when: {
       event: "lap.completed",
       where: (ev) => {
@@ -447,6 +466,10 @@ export function buildPositionContract(
         if (data.wasCaution === true) return false;
 
         if (!isAnnounceableSessionType(data)) return false;
+
+        // A qualifying lap the sim did not count is always said (issue #572),
+        // with no position too (issue #1582): "That lap didn't count." alone.
+        if (isRefusedQualifyingLap(data)) return true;
 
         // Change-detection (improved / worsened / first-fix / qualifying hold)
         // is decided from the frozen lap snapshot.
