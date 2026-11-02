@@ -106,7 +106,7 @@ type Rig = { controller: MockSDKController; trace: StepTrace[]; events: string[]
  * driver in the car emits.
  */
 function startRig(sessionPreset: string | null = "race-oval", telemetryPreset: string | null = "hot-lap"): Rig {
-  const controller = new MockSDKController();
+  const controller = new MockSDKController({ onSubscriberError: "rethrow" });
 
   if (sessionPreset !== null) controller.setSessionInfo(readPreset("session", sessionPreset) as SessionInfo);
 

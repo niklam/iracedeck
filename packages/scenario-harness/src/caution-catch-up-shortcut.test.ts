@@ -98,7 +98,7 @@ type Rig = { controller: MockSDKController; trace: StepTrace[]; events: { event:
  * callout consumes.
  */
 function startRig(sessionPreset = "race", telemetryPreset: string | null = "hot-lap"): Rig {
-  const controller = new MockSDKController();
+  const controller = new MockSDKController({ onSubscriberError: "rethrow" });
 
   controller.setSessionInfo(readPreset("session", sessionPreset) as SessionInfo);
 
@@ -240,7 +240,7 @@ describe('the "Caution → catch-up" shortcut (issue #1168)', () => {
     // three older caution buttons are in the same position and say so in
     // their descriptions; this one is refused, since nothing it auditions can
     // happen at all (`shortcut-preconditions.test.ts` pins the refusal).
-    const controller = new MockSDKController();
+    const controller = new MockSDKController({ onSubscriberError: "rethrow" });
 
     controller.setSessionInfo(readPreset("session", "race") as SessionInfo);
     initializeSimEventsIracing(getEventBus(), controller as unknown as SDKController, silentLogger);
@@ -434,7 +434,7 @@ describe('the "Caution → catch-up" shortcut (issue #1168)', () => {
   it("control: on a session with no track length the same run reports no gap at all", () => {
     // The dependency the test above names, shown: strip the one field and the
     // catch-up half of the run is gone, with the caution itself untouched.
-    const controller = new MockSDKController();
+    const controller = new MockSDKController({ onSubscriberError: "rethrow" });
     const session = readPreset("session", "race") as { WeekendInfo: Record<string, unknown> };
     const { TrackLength: _dropped, ...weekendWithoutLength } = session.WeekendInfo;
 

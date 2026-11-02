@@ -166,7 +166,7 @@ describe("the racing-speed step, run the way the UI runs it", () => {
     // Connected and seeded at the boot telemetry, and never started: the
     // harness with its tick loop paused, where a hold lets no tick through at
     // all. Only the step's own `tick` can put the patch in front of a publish.
-    const controller = new MockSDKController();
+    const controller = new MockSDKController({ onSubscriberError: "rethrow" });
     controller.setConnected(true);
     initializeSimEventsIracing(bus, controller as unknown as SDKController, silentLogger);
     controller.tickOnce();
@@ -292,7 +292,7 @@ describe("the car an overtake or gap shortcut leaves on track changes no other s
     shortcut: ScenarioShortcut,
   ): string[] {
     const bus = initializeEventBus(silentLogger);
-    const controller = new MockSDKController();
+    const controller = new MockSDKController({ onSubscriberError: "rethrow" });
 
     if (sessionPreset !== null) {
       const path = join(PACKAGE_ROOT, "presets", "session", `${sessionPreset}.json`);

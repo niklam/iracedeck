@@ -93,7 +93,7 @@ function runSequence(controller: MockSDKController, steps: readonly TelemetrySte
  * `race-oval` describe block below.
  */
 function startTranslator(sessionPreset = "race"): { controller: MockSDKController; events: Published[] } {
-  const controller = new MockSDKController();
+  const controller = new MockSDKController({ onSubscriberError: "rethrow" });
   controller.setSessionInfo(readPreset("session", sessionPreset) as SessionInfo);
   controller.mutateTelemetry(readPreset("telemetry", "hot-lap") as Partial<TelemetryData>);
   controller.setConnected(true);
@@ -819,7 +819,7 @@ describe("the two Tire Wear shortcuts (issue #1108)", () => {
    * is shown to set up everything the report needs itself.
    */
   function startAtBoot(): { controller: MockSDKController; events: Published[] } {
-    const controller = new MockSDKController();
+    const controller = new MockSDKController({ onSubscriberError: "rethrow" });
     controller.setConnected(true);
     initializeSimEventsIracing(getEventBus(), controller as unknown as SDKController, silentLogger);
     controller.tickOnce();
@@ -1000,7 +1000,7 @@ describe('the "Nothing To Do (empty stop)" shortcut (issue #1180)', () => {
     let controller: MockSDKController;
 
     if (from === "boot") {
-      controller = new MockSDKController();
+      controller = new MockSDKController({ onSubscriberError: "rethrow" });
       controller.setConnected(true);
       initializeSimEventsIracing(getEventBus(), controller as unknown as SDKController, silentLogger);
       controller.tickOnce();
@@ -1156,7 +1156,7 @@ describe("the two limiter-cut shortcuts (issue #1407)", () => {
     let controller: MockSDKController;
 
     if (from === "boot") {
-      controller = new MockSDKController();
+      controller = new MockSDKController({ onSubscriberError: "rethrow" });
       controller.setConnected(true);
       initializeSimEventsIracing(getEventBus(), controller as unknown as SDKController, silentLogger);
       controller.tickOnce();
@@ -1375,7 +1375,7 @@ describe("the incident-and-damage sequences behind a held Voice bus (issue #1211
    * bracket let slip shows up, and so two emits can be pinned to one tick.
    */
   function startAtBoot(): { controller: MockSDKController; events: Stamped[] } {
-    const controller = new MockSDKController();
+    const controller = new MockSDKController({ onSubscriberError: "rethrow" });
     controller.setConnected(true);
     initializeSimEventsIracing(getEventBus(), controller as unknown as SDKController, silentLogger);
     controller.tickOnce();
@@ -1548,7 +1548,7 @@ describe('the "Crash into a full-course caution" shortcut (issue #1185)', () => 
    * events with their envelope timestamps.
    */
   function startRecording(): { controller: MockSDKController; events: (Published & { timestamp: number })[] } {
-    const controller = new MockSDKController();
+    const controller = new MockSDKController({ onSubscriberError: "rethrow" });
     controller.setSessionInfo(readPreset("session", "race") as SessionInfo);
     controller.mutateTelemetry(readPreset("telemetry", "hot-lap") as Partial<TelemetryData>);
     controller.setConnected(true);

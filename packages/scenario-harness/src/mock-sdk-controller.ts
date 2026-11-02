@@ -66,8 +66,12 @@ export type MockSDKControllerOptions = {
    * What a subscriber's throw does, as on the real `SDKController` (#1558).
    * Under `"report"`, the default, it goes to the bounded reporter under the
    * subscriber's id and delivery carries on, so nothing escapes `tickOnce`,
-   * `subscribe` or `setConnected`. Under `"rethrow"`, every subscriber is
-   * still called, then the first error is thrown.
+   * `subscribe` or `setConnected`. That is what the harness itself runs
+   * (`main.ts`). Under `"rethrow"`, every subscriber is still called, then the
+   * first error is thrown. A test that drives a real subscriber through the
+   * mock (the translator, the Race Engineer) passes `"rethrow"`: under
+   * `"report"` and the default `silentLogger`, a subscriber that threw on
+   * every tick would leave a test asserting that nothing happened green.
    */
   onSubscriberError?: ErrorPolicy;
   /** The reporter's clock, in milliseconds. Defaults to `Date.now()`. */

@@ -430,7 +430,7 @@ describe("POST /api/shortcut/start", () => {
 
   beforeEach(async () => {
     initializeEventBus(silentLogger);
-    controller = new MockSDKController();
+    controller = new MockSDKController({ onSubscriberError: "rethrow" });
     app = await createServer({
       controller,
       adapter: {} as unknown as MockPlatformAdapter,
