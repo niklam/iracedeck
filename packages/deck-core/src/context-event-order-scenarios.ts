@@ -332,18 +332,28 @@ const everyInputKindWaitsForLifecycle: ContextEventOrderScenario = {
 
     if (inputs.length === 0) throw new Error("the harness declares no input host event; it must at least send keyDown");
 
+    // One registration for every kind, as production registers each UUID once:
+    // the gates are swapped per kind, and `record` reads them when a call starts.
+    const gates: Partial<Record<ContextHandlerEventKind, Gate>> = {};
+    const { calls, handler } = record(gates);
+
+    harness.adapter.registerAction(CONTEXT_EVENT_ORDER_ACTION_UUID, handler);
+
     for (const kind of inputs) {
       const appear = gate();
       const input = gate();
-      const { calls, handler } = record({ willAppear: appear, [kind]: input });
       const rule = `${kind} waits for an earlier willAppear and holds a later willDisappear`;
       const context = `ctx-${kind}`;
+      const from = calls.length;
       // A host event may be several handler calls (Mirabox's dialDown runs
       // dialUp too): only the lifecycle calls and the kind under test are compared.
       const relevant = (): string[] =>
-        calls.filter((call) => /^will(Appear|Disappear)/.test(call) || call.startsWith(kind));
+        calls.slice(from).filter((call) => /^will(Appear|Disappear)/.test(call) || call.startsWith(kind));
 
-      harness.adapter.registerAction(CONTEXT_EVENT_ORDER_ACTION_UUID, handler);
+      for (const key of Object.keys(gates) as ContextHandlerEventKind[]) delete gates[key];
+
+      gates.willAppear = appear;
+      gates[kind] = input;
 
       harness.emit("willAppear", context, { controller: controllerFor(kind) });
       emitInput(harness, kind, context);
