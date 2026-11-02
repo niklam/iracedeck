@@ -875,6 +875,62 @@ describe("SDKController subscriber isolation (#1558)", () => {
     });
   });
 
+  describe("subscribing an id that is already subscribed", () => {
+    it("does not start a second pair of intervals when the id is the sole subscriber", () => {
+      controller.subscribe("only", vi.fn());
+      controller.subscribe("only", vi.fn());
+
+      expect(vi.getTimerCount()).toBe(2);
+      expect(mockSdk.connect).toHaveBeenCalledOnce();
+
+      controller.unsubscribe("only");
+
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("forgets the replaced callback's error keys, so the new callback's first throw is logged in full", () => {
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue({ Speed: 100 } as TelemetryData);
+      controller.subscribe("keep", vi.fn());
+      // Both callbacks come from the same helper, so they throw from one site.
+      controller.subscribe(
+        "bad",
+        subscriber("bad", () => true),
+      );
+      controller.subscribe(
+        "bad",
+        subscriber("bad", () => true),
+      );
+
+      expect(reporterLines(lines)).toEqual([
+        { level: "error", message: expect.stringMatching(/^bad threw: Error: bad failed\n/) },
+        { level: "error", message: expect.stringMatching(/^bad threw: Error: bad failed\n/) },
+      ]);
+    });
+  });
+
+  describe("subscribe's immediate telemetry read", () => {
+    it("reports a throwing read as controller:update, still notifies the subscriber, and returns normally", () => {
+      controller.subscribe("a", vi.fn());
+      vi.mocked(mockSdk.getTelemetry).mockImplementationOnce(() => {
+        throw new Error("read failed");
+      });
+      const b = vi.fn<TelemetryCallback>();
+
+      expect(() => controller.subscribe("b", b)).not.toThrow();
+
+      expect(b).toHaveBeenCalledExactlyOnceWith(null, true);
+      const reported = reporterLines(lines);
+      expect(reported).toHaveLength(1);
+      expect(reported[0].message).toMatch(/^controller:update threw: Error: read failed\n\s+at /);
+
+      // Subscribed: the next tick reaches it.
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue({ SessionTick: 7 } as TelemetryData);
+      vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS);
+
+      expect(b).toHaveBeenLastCalledWith({ SessionTick: 7 }, true);
+    });
+  });
+
   describe("the controller's own failures", () => {
     it("reports a throw from update() as controller:update, and the next interval still runs", () => {
       const callback = vi.fn<TelemetryCallback>();
@@ -922,6 +978,30 @@ describe("SDKController subscriber isolation (#1558)", () => {
 
       expect(() => controller.setReconnectEnabled(false)).not.toThrow();
       expect(reporterLines(lines)[0].message).toMatch(/^controller:disconnect threw: Error: disconnect failed\n/);
+    });
+
+    it("still resets the connection and tells every subscriber when the disconnect on setReconnectEnabled(false) throws", () => {
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue({ SessionTick: 1 } as TelemetryData);
+      const { a, c } = subscribeThree();
+      vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS);
+      calls.length = 0;
+      vi.mocked(mockSdk.disconnect).mockImplementationOnce(() => {
+        throw new Error("disconnect failed");
+      });
+
+      expect(() => controller.setReconnectEnabled(false)).not.toThrow();
+
+      expect(controller.getConnectionStatus()).toBe(false);
+      expect(calls).toEqual(["a", "b", "c"]);
+      expect(a).toHaveBeenLastCalledWith(null, false);
+      expect(c).toHaveBeenLastCalledWith(null, false);
+      // lastValidTelemetry was dropped: a null read finds nothing cached.
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(null);
+      expect(controller.getCurrentTelemetry()).toBeNull();
+
+      const controllerLines = reporterLines(lines).filter((line) => line.message.startsWith("controller:"));
+      expect(controllerLines).toHaveLength(1);
+      expect(controllerLines[0].message).toMatch(/^controller:disconnect threw: Error: disconnect failed\n/);
     });
   });
 
@@ -1011,6 +1091,53 @@ describe("SDKController subscriber isolation (#1558)", () => {
       expect(vi.getTimerCount()).toBe(2);
 
       expect(() => vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS)).toThrow("failing failed");
+      expect(failing).toHaveBeenCalledTimes(3);
+    });
+
+    it('under "rethrow", a throwing disconnect on setReconnectEnabled(false) is thrown only after every subscriber heard of it', () => {
+      const rethrowing = new SDKController(mockSdk, createRecordingLogger().logger, { onSubscriberError: "rethrow" });
+      let failing = false;
+      rethrowing.subscribe("a", subscriber("a"));
+      rethrowing.subscribe(
+        "b",
+        subscriber("b", () => failing),
+      );
+      rethrowing.subscribe("c", subscriber("c"));
+      calls.length = 0;
+      failing = true;
+      vi.mocked(mockSdk.disconnect).mockImplementationOnce(() => {
+        throw new Error("disconnect failed");
+      });
+
+      // The disconnect's error first, though b threw too.
+      expect(() => rethrowing.setReconnectEnabled(false)).toThrow("disconnect failed");
+      expect(calls).toEqual(["a", "b", "c"]);
+      expect(rethrowing.getConnectionStatus()).toBe(false);
+    });
+
+    it("under \"rethrow\", subscribe throws start's error first, then the read's, then the subscriber's, and always notifies", () => {
+      const rethrowing = new SDKController(mockSdk, createRecordingLogger().logger, { onSubscriberError: "rethrow" });
+      const failing = subscriber("failing", () => true);
+      const readFails = () =>
+        vi.mocked(mockSdk.getTelemetry).mockImplementationOnce(() => {
+          throw new Error("read failed");
+        });
+
+      // start()'s connect throws before its own read, so the next read is subscribe's.
+      vi.mocked(mockSdk.connect).mockImplementationOnce(() => {
+        throw new Error("connect failed");
+      });
+      readFails();
+      expect(() => rethrowing.subscribe("failing", failing)).toThrow("connect failed");
+      expect(failing).toHaveBeenLastCalledWith(null, false);
+
+      // Not the first subscriber: no start, so the read's error leads.
+      readFails();
+      expect(() => rethrowing.subscribe("second", failing)).toThrow("read failed");
+      expect(failing).toHaveBeenCalledTimes(2);
+
+      // A clean read: the subscriber's own error.
+      expect(() => rethrowing.subscribe("third", failing)).toThrow("failing failed");
       expect(failing).toHaveBeenCalledTimes(3);
     });
 

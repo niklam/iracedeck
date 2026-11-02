@@ -45,8 +45,9 @@ export const TELEMETRY_INTERVAL_MS = 10;
  * The reporter ids of the controller's own work (#1558). The `controller:`
  * prefix keeps them apart from every subscriber id. Every connect attempt
  * (the first one in `start()`, the reconnect poll, re-enabling) runs as
- * `controller:reconnect`, the poll as `controller:update`, and the disconnect
- * when iRacing terminates as `controller:disconnect`.
+ * `controller:reconnect`, the poll and `subscribe`'s immediate telemetry read
+ * as `controller:update`, and the native disconnect when iRacing terminates as
+ * `controller:disconnect`.
  */
 const UPDATE_ID = "controller:update";
 const RECONNECT_ID = "controller:reconnect";
@@ -138,20 +139,39 @@ export class SDKController {
   /**
    * Subscribe to telemetry updates. A callback that throws stays subscribed
    * and is called on the next delivery like any other (#1558).
+   *
+   * Subscribing an id that is already subscribed replaces its callback, and
+   * forgets the old callback's error counts: the new one's first throw is a
+   * first occurrence, logged in full. Nothing a subscriber or the immediate
+   * read throws leaves `subscribe` under `"report"`, so the callback is never
+   * registered without the caller getting control back.
    */
   subscribe(id: string, callback: TelemetryCallback): void {
+    const wasEmpty = this.subscribers.size === 0;
+
+    if (this.subscribers.has(id)) this.boundary.forget(id);
+
     this.subscribers.set(id, callback);
 
-    // Start updates if this is the first subscriber
-    const startHeld = this.subscribers.size === 1 ? this.start() : undefined;
+    // Start updates if this is the first subscriber. Checked before the `set`:
+    // re-subscribing the sole subscriber leaves the size at 1, and starting
+    // again would leak the running pair of intervals.
+    const startHeld = wasEmpty ? this.start() : undefined;
 
-    // Immediately notify the new subscriber of current state. The replay
-    // state needs no step here: the connect-time delivery or the last poll
-    // has stepped it with a read as fresh as this one.
-    const telemetry = this.sdk.getTelemetry();
+    // Immediately notify the new subscriber of current state. The read is the
+    // controller's own work, so a throw from it is reported as the poll's
+    // would be, and the subscriber is still notified, with no telemetry. The
+    // replay state needs no step here: the connect-time delivery or the last
+    // poll has stepped it with a read as fresh as this one.
+    let telemetry = null as TelemetryData | null;
+    const readHeld = this.boundary.run(UPDATE_ID, () => {
+      telemetry = this.sdk.getTelemetry();
+
+      return undefined;
+    });
     const held = this.boundary.call(id, () => callback(telemetry, this.isConnected));
 
-    throwHeld(startHeld ?? held);
+    throwHeld(startHeld ?? readHeld ?? held);
   }
 
   /**
@@ -378,21 +398,29 @@ export class SDKController {
     if (!enabled && this.isConnected) {
       // iRacing terminated - disconnect immediately and notify subscribers
       this.logger.info("[SDKController] Disconnecting (app terminated)");
-      throwHeld(
-        this.boundary.run(DISCONNECT_ID, () => {
-          this.sdk.disconnect();
-          this.isConnected = false;
-          this.lastValidTelemetry = null;
-          this.lastTemplateContext = null;
-          this.templateContextDirty = true;
-          // Reset dedupe state so the first frame of the next iRacing session
-          // is never suppressed by a stale tick value (issue #493 follow-up).
-          this.lastSessionTick = -1;
-          this.replayState.reset();
+      // Only the native call runs inside the boundary: a throw from it must
+      // not skip the reset or the fan-out, since with reconnecting disabled
+      // no poll would ever correct a controller left reading connected.
+      const disconnectHeld = this.boundary.run(DISCONNECT_ID, () => {
+        this.sdk.disconnect();
 
-          return this.notifySubscribers(null);
-        }),
-      );
+        return undefined;
+      });
+
+      this.isConnected = false;
+      this.lastValidTelemetry = null;
+      this.lastTemplateContext = null;
+      this.templateContextDirty = true;
+      // Reset dedupe state so the first frame of the next iRacing session
+      // is never suppressed by a stale tick value (issue #493 follow-up).
+      this.lastSessionTick = -1;
+      this.replayState.reset();
+
+      // Fan out before combining, so under "rethrow" a held disconnect error
+      // never stops the subscribers from hearing of the disconnect.
+      const notified = this.notifySubscribers(null);
+
+      throwHeld(disconnectHeld ?? notified);
     } else if (enabled && this.subscribers.size > 0 && !this.isConnected) {
       // Re-enabling and we have subscribers - try to connect immediately.
       // `sdk.connect()` can throw, so the attempt runs inside the same
