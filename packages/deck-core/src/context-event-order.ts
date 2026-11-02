@@ -394,11 +394,11 @@ export class ContextEventOrder {
 
         const pending = ahead.filter((other) => !other.settled && !other.abandoned);
 
-        if (pending.length === 0) {
-          finish();
-
-          return;
-        }
+        // Nothing left to time: an abandoned task's `done` is released, so the
+        // `Promise.all` below finishes this wait. Never finish here directly:
+        // every waiter behind the same task must resume through that same chain,
+        // in arrival order, whichever waiter's timer happened to fire first.
+        if (pending.length === 0) return;
 
         const deadline = Math.min(...pending.map((other) => (other.startedAt ?? now) + CONTEXT_EVENT_WAIT_LIMIT_MS));
 
