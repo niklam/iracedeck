@@ -391,23 +391,6 @@ describe("App Monitor", () => {
 
       expect(listener).not.toHaveBeenCalled();
     });
-
-    it("should still notify when setReconnectEnabled throws (a throwing telemetry subscriber)", () => {
-      initAppMonitor(mockAdapter, createMockLogger());
-      mockAdapter._simulateLaunch("iRacingSim64DX11.exe");
-      const listener = vi.fn();
-      onIRacingTerminated(listener);
-
-      mockSetReconnectEnabled.mockImplementation((enabled: boolean) => {
-        if (!enabled) {
-          throw new Error("subscriber boom in disconnect fan-out");
-        }
-      });
-
-      expect(() => mockAdapter._simulateTerminate("iRacingSim64DX11.exe")).not.toThrow();
-      expect(listener).toHaveBeenCalledTimes(1);
-      mockSetReconnectEnabled.mockReset();
-    });
   });
 
   describe("SDK-disconnect exit fallback (issue #870)", () => {

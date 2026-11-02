@@ -70,8 +70,9 @@ export function replaySessionHeaderFromSessionInfo(sessionInfo: SessionInfo | nu
  * Create the `sdkController.subscribe` callback. Opens the store's record when
  * a `SubSessionID` appears or changes and closes it on disconnect; a session
  * info without one yet (the first ticks of a connection) leaves the store as
- * it is. Throws from the store are caught: the controller iterates its
- * subscribers unguarded, and a file problem must not starve the rest.
+ * it is. Throws from the store are caught and logged here, in the store's own
+ * terms; the controller would isolate them too (#1558), but only under the
+ * subscriber's id.
  */
 export function createReplaySessionSubscriber(options: ReplaySessionSubscriberOptions): TelemetryCallback {
   const { store, getSessionInfo, logger } = options;

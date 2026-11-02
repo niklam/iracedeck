@@ -226,14 +226,10 @@ export function initAppMonitor(adapter: IDeckPlatformAdapter, log: ILogger): voi
       // the controller's connection status already read false — a listener
       // consulting isIRacingActive() (the #870 version-check re-run) sees the
       // sim as gone without any settle delay. Its synchronous null-telemetry
-      // fan-out runs every SDK subscriber, so a throwing subscriber must not
-      // abort this handler before the exit notification below.
-      try {
-        getController().setReconnectEnabled(false);
-      } catch (error) {
-        logger?.error("Disabling reconnect on iRacing exit failed");
-        logger?.debug(`setReconnectEnabled error: ${String(error)}`);
-      }
+      // fan-out runs every SDK subscriber; the controller isolates and reports
+      // a subscriber's throw there (#1558), so nothing escapes it to stop the
+      // exit notification below.
+      getController().setReconnectEnabled(false);
 
       notifyIRacingExit();
     }
