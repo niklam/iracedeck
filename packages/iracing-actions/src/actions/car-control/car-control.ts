@@ -49,6 +49,7 @@ import {
   hasFlag,
   hasPitLimiter,
   isLiveOnTrack,
+  isPitLimiterEngaged,
   SessionState,
   type TelemetryData,
 } from "@iracedeck/iracing-sdk";
@@ -433,9 +434,7 @@ const SESSION_CONTEXT_BACKGROUNDS: Record<SessionContext, string | undefined> = 
  * Check if pit speed limiter is active from telemetry.
  */
 export function isPitLimiterActive(telemetry: TelemetryData | null): boolean {
-  if (!telemetry || telemetry.EngineWarnings === undefined) return false;
-
-  return hasFlag(telemetry.EngineWarnings, EngineWarnings.PitSpeedLimiter);
+  return isPitLimiterEngaged(telemetry);
 }
 
 /**

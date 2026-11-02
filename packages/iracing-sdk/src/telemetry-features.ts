@@ -32,10 +32,11 @@ export function hasPitLimiter(t: TelemetryData | null): boolean {
 /**
  * Check whether the pit speed limiter is engaged — actually limiting the car.
  *
- * Reads the `EngineWarnings.PitSpeedLimiter` bit, the engaged state every limiter
- * reader uses: the translator's limiter diff (`limiter.missing` / `limiter.dropped`),
- * its toggle (the limiter-on beep), pit-speeding and pit-readback diffs, and the Car
- * Control key.
+ * Reads the `EngineWarnings.PitSpeedLimiter` bit. It is the one read of the engaged
+ * state, and every limiter reader calls it rather than testing the bit inline: the
+ * translator's limiter diff (`limiter.missing` / `limiter.dropped`), its toggle diff
+ * (the limiter-on beep), its pit-speeding and pit-readback diffs, the Car Control
+ * key, and the Race Engineer's two delayed limiter re-checks.
  * `dcPitSpeedLimiterToggle`'s VALUE is not that state — it is the driver control, which
  * can disagree with the bit (iRacing's pit-limiter helper may engage the limiter on
  * its own), and a reader of it fires on a state the others never saw (issue #1548).
