@@ -110,9 +110,11 @@ function limiterStillMissingOnPitRoad(deps: PitLimiterDeps): boolean {
   if (!hasPitLimiter(telemetry)) return false;
 
   // Never in the pit stall (issue #1548): the translator's limiter diff says
-  // nothing there and emits `limiter.missing` again on leaving it, but a line
-  // queued before the car stopped could drain while it sits in its box, where
-  // the bit is no reason to tell a stationary car to engage the limiter.
+  // nothing there, and a line queued before the car stopped could drain while
+  // it sits in its box, where the bit is no reason to tell a stationary car to
+  // engage the limiter. The translator emits `limiter.missing` again on the
+  // tick the car leaves the stall, but only when that tick is above its 5 m/s
+  // crawl threshold; a refused fire is not re-raised otherwise.
   return !isPitLimiterEngaged(telemetry) && telemetry?.OnPitRoad === true && telemetry?.PlayerCarInPitStall !== true;
 }
 
