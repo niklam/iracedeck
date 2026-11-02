@@ -112,8 +112,8 @@ export function resolveTimeRemainingS(t: TelemetryData | null | undefined): numb
  * is why {@link resolveTimeRemainingS} calls it unknown; a consumer that
  * models the run to the flag, as the fuel estimate's leader prediction does
  * (#1405), reads the raw field itself to tell an expired clock apart, and
- * trusts an expired reading only once it has held for two ticks. Shown to
- * the driver, unknown renders as `UNLIM` or a
+ * trusts an expired reading only once it has held for about a second. Shown
+ * to the driver, unknown renders as `UNLIM` or a
  * blank — the opposite of an expired clock — so everything that shows the
  * time side reads it through here: a key face, and a template, whose text
  * may also go out in a chat macro. A mid-race blip therefore reads `0` for
