@@ -1,4 +1,5 @@
 import { REPLAY_EXIT_GRACE_MS, type TelemetryCallback, type TelemetryData } from "@iracedeck/iracing-sdk";
+import type { ILogger } from "@iracedeck/logger";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { MockSDKController } from "./mock-sdk-controller.js";
@@ -324,6 +325,92 @@ describe("MockSDKController", () => {
       controller.setConnected(false);
 
       expect(controller.getReplayState()).toMatchObject({ inReplay: false, replayOnlySession: false });
+    });
+  });
+
+  // The mock delivers through the same boundary as the real SDKController, so a
+  // harness session sees what the plugin does when a subscriber has a bug.
+  describe("subscriber errors (issue #1558)", () => {
+    function recordingLogger(): ILogger & { lines: { level: string; message: string }[] } {
+      const lines: { level: string; message: string }[] = [];
+      const at = (level: string) => (message: string) => {
+        lines.push({ level, message });
+      };
+      const logger = {
+        lines,
+        trace: at("trace"),
+        debug: at("debug"),
+        info: at("info"),
+        warn: at("warn"),
+        error: at("error"),
+        withLevel: () => logger,
+        createScope: () => logger,
+      };
+
+      return logger;
+    }
+
+    it("isolates a throwing subscriber: later subscribers still get the tick, the error is logged, nothing escapes", () => {
+      const logger = recordingLogger();
+      const controller = new MockSDKController({ logger });
+      const order: string[] = [];
+      const boom = new Error("subscriber boom");
+
+      controller.subscribe("first", () => order.push("first"));
+      expect(() =>
+        controller.subscribe("throws", () => {
+          order.push("throws");
+          throw boom;
+        }),
+      ).not.toThrow();
+      controller.subscribe("last", () => order.push("last"));
+      order.length = 0;
+
+      expect(() => controller.tickOnce()).not.toThrow();
+      expect(() => controller.setConnected(true)).not.toThrow();
+
+      expect(order).toEqual(["first", "throws", "last", "first", "throws", "last"]);
+
+      // The subscribe-time throw is the first occurrence: one error line with the
+      // stack. The two repeats inside the window are counted, not logged.
+      const errors = logger.lines.filter((line) => line.level === "error");
+
+      expect(errors).toHaveLength(1);
+      expect(errors[0]!.message).toContain("throws threw: Error: subscriber boom");
+      expect(logger.lines.filter((line) => line.level === "warn")).toEqual([]);
+
+      // Unsubscribing flushes the unreported count, as the real controller does.
+      controller.unsubscribe("throws");
+
+      expect(logger.lines.at(-1)).toEqual({
+        level: "warn",
+        message: "throws forgotten with 2 times not yet reported (3 times in all)",
+      });
+    });
+
+    it("under the rethrow policy calls every subscriber, then throws the first error", () => {
+      const controller = new MockSDKController({ onSubscriberError: "rethrow" });
+      const order: string[] = [];
+      const first = new Error("first boom");
+      let armed = false;
+
+      controller.subscribe("a", () => order.push("a"));
+      controller.subscribe("b", () => {
+        order.push("b");
+
+        if (armed) throw first;
+      });
+      controller.subscribe("c", () => order.push("c"));
+      controller.subscribe("d", () => {
+        order.push("d");
+
+        if (armed) throw new Error("second boom");
+      });
+      order.length = 0;
+      armed = true;
+
+      expect(() => controller.tickOnce()).toThrow(first);
+      expect(order).toEqual(["a", "b", "c", "d"]);
     });
   });
 });
