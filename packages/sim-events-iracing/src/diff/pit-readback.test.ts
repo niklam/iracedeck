@@ -8,7 +8,7 @@
  *   - on-pit-road + user toggle in the same tick emits "entry-refire"
  *   - so do an auto-fuel switch and a silenced fuel change, on pit road only
  *     (issue #474 — that fuel change publishes no event at all, and arrives
- *     through `state.fuelPlanChangedThisTick`)
+ *     as the `fuelPlanChanged` argument, `diffToggles`' return value)
  *   - on→off schedules an exit fire that emits after the delay elapses
  *   - re-approach during the delay window cancels the scheduled exit
  *   - issue #481: event payload carries only `reason` (the
@@ -143,7 +143,7 @@ describe("diffPitReadback — seeding", () => {
     state.lastOnPitRoad = false;
 
     const { events, emit } = collect();
-    diffPitReadback(state, tick(), 0, emit, []);
+    diffPitReadback(state, tick(), 0, emit, [], false);
 
     expect(readbackEvents(events)).toHaveLength(0);
     expect(state.pitReadbackInitialized).toBe(true);
@@ -154,7 +154,7 @@ describe("diffPitReadback — seeding", () => {
     state.lastOnPitRoad = true;
 
     const { events, emit } = collect();
-    diffPitReadback(state, tick({ PitSvFlags: PitSvFlags.FuelFill }), 0, emit, []);
+    diffPitReadback(state, tick({ PitSvFlags: PitSvFlags.FuelFill }), 0, emit, [], false);
 
     expect(readbackEvents(events)).toHaveLength(0);
   });
@@ -179,6 +179,7 @@ describe("diffPitReadback — entry", () => {
       0,
       emit,
       [{ event: "pitLane.approaching", data: {} }],
+      false,
     );
 
     const readbacks = readbackEvents(events);
@@ -201,9 +202,16 @@ describe("diffPitReadback — entry", () => {
     state.lastOnPitRoad = true;
 
     const { events, emit } = collect();
-    diffPitReadback(state, tick({ PitSvFlags: PitSvFlags.FuelFill }), 0, emit, [
-      { event: "pitLane.entered", data: {} },
-    ]);
+    diffPitReadback(
+      state,
+      tick({ PitSvFlags: PitSvFlags.FuelFill }),
+      0,
+      emit,
+      [
+        { event: "pitLane.entered", data: {} },
+      ],
+      false,
+    );
 
     expect(readbackEvents(events)).toHaveLength(0);
   });
@@ -217,9 +225,16 @@ describe("diffPitReadback — refire", () => {
     state.lastOnPitRoad = true;
 
     const { events, emit } = collect();
-    diffPitReadback(state, tick({ PitSvFlags: PitSvFlags.FuelFill }), 100, emit, [
-      { event: "pitService.toggled", data: { service: "fuel", on: true } },
-    ]);
+    diffPitReadback(
+      state,
+      tick({ PitSvFlags: PitSvFlags.FuelFill }),
+      100,
+      emit,
+      [
+        { event: "pitService.toggled", data: { service: "fuel", on: true } },
+      ],
+      false,
+    );
 
     const readbacks = readbackEvents(events);
     expect(readbacks).toHaveLength(1);
@@ -235,9 +250,16 @@ describe("diffPitReadback — refire", () => {
     state.lastOnPitRoad = true;
 
     const { events, emit } = collect();
-    diffPitReadback(state, tick({ PitSvFlags: 0 }), 100, emit, [
-      { event: "pitService.autoFuelSwitched", data: { on: true, refuel: false } },
-    ]);
+    diffPitReadback(
+      state,
+      tick({ PitSvFlags: 0 }),
+      100,
+      emit,
+      [
+        { event: "pitService.autoFuelSwitched", data: { on: true, refuel: false } },
+      ],
+      false,
+    );
 
     expect(readbackEvents(events)).toEqual([
       { event: "pitService.readbackRequested", data: { reason: "entry-refire" } },
@@ -247,15 +269,14 @@ describe("diffPitReadback — refire", () => {
   it("emits 'entry-refire' for a fuel change that published nothing (issue #474)", () => {
     // The driver cancels fuel on pit road while auto-fuel is armed: the
     // callout is silent by design, but the recap must stop saying "we're
-    // taking fuel". `diffToggles` hands that over on the state.
+    // taking fuel". `diffToggles` hands that over as its return value.
     const state = createInitialState();
     state.pitReadbackInitialized = true;
     state.pitReadbackPrevOnPitRoad = true;
     state.lastOnPitRoad = true;
-    state.fuelPlanChangedThisTick = true;
 
     const { events, emit } = collect();
-    diffPitReadback(state, tick({ PitSvFlags: 0 }), 100, emit, []);
+    diffPitReadback(state, tick({ PitSvFlags: 0 }), 100, emit, [], true);
 
     expect(readbackEvents(events)).toEqual([
       { event: "pitService.readbackRequested", data: { reason: "entry-refire" } },
@@ -267,10 +288,9 @@ describe("diffPitReadback — refire", () => {
     state.pitReadbackInitialized = true;
     state.pitReadbackPrevOnPitRoad = false;
     state.lastOnPitRoad = false;
-    state.fuelPlanChangedThisTick = true;
 
     const { events, emit } = collect();
-    diffPitReadback(state, tick({ PitSvFlags: 0 }), 100, emit, []);
+    diffPitReadback(state, tick({ PitSvFlags: 0 }), 100, emit, [], true);
 
     expect(readbackEvents(events)).toHaveLength(0);
   });
@@ -282,7 +302,7 @@ describe("diffPitReadback — refire", () => {
     state.lastOnPitRoad = true;
 
     const { events, emit } = collect();
-    diffPitReadback(state, tick({ PitSvFlags: PitSvFlags.FuelFill }), 100, emit, []);
+    diffPitReadback(state, tick({ PitSvFlags: PitSvFlags.FuelFill }), 100, emit, [], false);
 
     expect(readbackEvents(events)).toHaveLength(0);
   });
@@ -294,9 +314,16 @@ describe("diffPitReadback — refire", () => {
     state.lastOnPitRoad = true;
 
     const { events, emit } = collect();
-    diffPitReadback(state, tick({ PitSvFlags: PitSvFlags.FuelFill }), 100, emit, [
-      { event: "carControl.drsToggled", data: { on: true } },
-    ]);
+    diffPitReadback(
+      state,
+      tick({ PitSvFlags: PitSvFlags.FuelFill }),
+      100,
+      emit,
+      [
+        { event: "carControl.drsToggled", data: { on: true } },
+      ],
+      false,
+    );
 
     expect(readbackEvents(events)).toHaveLength(0);
   });
@@ -310,7 +337,7 @@ describe("diffPitReadback — exit", () => {
     state.lastOnPitRoad = false;
 
     const { events, emit } = collect();
-    diffPitReadback(state, tick({ PitSvFlags: 0 }), 1000, emit, []);
+    diffPitReadback(state, tick({ PitSvFlags: 0 }), 1000, emit, [], false);
 
     expect(readbackEvents(events)).toHaveLength(0);
     expect(state.pitReadbackExitFireAt).toBe(1000 + PIT_READBACK_EXIT_DELAY_MS);
@@ -325,7 +352,7 @@ describe("diffPitReadback — exit", () => {
     state.lastOnPitRoad = false;
 
     const { events, emit } = collect();
-    diffPitReadback(state, tick({ PitSvFlags: PitSvFlags.FuelFill }), fireDeadline, emit, []);
+    diffPitReadback(state, tick({ PitSvFlags: PitSvFlags.FuelFill }), fireDeadline, emit, [], false);
 
     const readbacks = readbackEvents(events);
     expect(readbacks).toHaveLength(1);
@@ -347,7 +374,7 @@ describe("diffPitReadback — exit", () => {
     state.lastOnPitRoad = false;
 
     const { events, emit } = collect();
-    diffPitReadback(state, tick({ PitSvFlags: 0 }), fireDeadline - 1, emit, []);
+    diffPitReadback(state, tick({ PitSvFlags: 0 }), fireDeadline - 1, emit, [], false);
 
     expect(readbackEvents(events)).toHaveLength(0);
     expect(state.pitReadbackExitFireAt).toBe(fireDeadline);
@@ -371,6 +398,7 @@ describe("diffPitReadback — exit", () => {
       1000 + PIT_READBACK_EXIT_DELAY_MS,
       emit,
       [{ event: "pitLane.approaching", data: {} }],
+      false,
     );
 
     const readbacks = readbackEvents(events);
@@ -394,9 +422,16 @@ describe("diffPitReadback — exit", () => {
     state.lastOnPitRoad = false;
 
     const { events, emit } = collect();
-    diffPitReadback(state, tick({ PitSvFlags: PitSvFlags.FuelFill }), 0, emit, [
-      { event: "pitLane.approaching", data: {} },
-    ]);
+    diffPitReadback(
+      state,
+      tick({ PitSvFlags: PitSvFlags.FuelFill }),
+      0,
+      emit,
+      [
+        { event: "pitLane.approaching", data: {} },
+      ],
+      false,
+    );
 
     const readbacks = readbackEvents(events);
     expect(readbacks).toHaveLength(1);
