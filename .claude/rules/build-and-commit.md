@@ -50,7 +50,7 @@ Two more pnpm 11 defaults change what an everyday command does, and are left at 
 
 ### Turbo task inputs and the CI cache
 
-A file a build reads but `turbo.json` does not declare is a stale cache hit with nothing red, locally and, since CI reuses the cache on PRs, in a green PR check. What must be declared, what `scripts/turbo-inputs.test.mjs` checks and how CI keeps the cache are in `turbo-cache.md` (#1491, #1492, #1501).
+A file a build reads outside its task's hashed inputs — by default the git-tracked files of its own package, plus whatever `turbo.json` declares — is a stale cache hit with nothing red, locally and, since CI reuses the cache on PRs, in a green PR check. What must be declared, what `scripts/turbo-inputs.test.mjs` checks and how CI keeps the cache are in `turbo-cache.md` (#1491, #1492, #1501).
 
 Branching & Worktrees
 

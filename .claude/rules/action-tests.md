@@ -52,6 +52,7 @@ vi.mock("@iracedeck/deck-core", () => ({
     logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
     sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn() };
     updateConnectionState = vi.fn();
+    isBindingMissing = vi.fn(() => false);
     setActiveBinding = vi.fn();
     tapBinding = vi.fn().mockResolvedValue(true);
     holdBinding = vi.fn().mockResolvedValue(undefined);
@@ -67,6 +68,8 @@ vi.mock("@iracedeck/deck-core", () => ({
   LogLevel: { Info: 2 },
   parseKeyBinding: vi.fn(),
   resolveIconColors: vi.fn((_svg: string, _global: unknown, _overrides: unknown) => ({})),
+  assembleIcon: vi.fn(({ graphicSvg, title }: { graphicSvg: string; title?: { titleText: string } }) =>
+    `data:image/svg+xml,${encodeURIComponent(`<svg>${graphicSvg}${title?.titleText ?? ""}</svg>`)}`),
   renderIconTemplate: vi.fn((_t: string, data: Record<string, string>) =>
     `<svg>${data.mainLabel || ""}${data.subLabel || ""}</svg>`),
   svgToDataUri: vi.fn((svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`),
