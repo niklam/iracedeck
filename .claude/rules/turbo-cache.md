@@ -11,6 +11,7 @@ paths:
   - "scripts/prune-turbo-cache*"
   - "packages/*/package.json"
   - "packages/plugin-build/src/**"
+  - "packages/audio-assets/src/build/**"
   - ".github/workflows/**"
 ---
 

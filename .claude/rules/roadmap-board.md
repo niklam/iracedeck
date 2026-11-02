@@ -4,6 +4,8 @@ paths:
   - "scripts/claude-hooks/lib.test.mjs"
   - "scripts/claude-hooks/post-bash*"
   - "scripts/claude-hooks/rules-bash*"
+  - "scripts/claude-hooks/rules-post*"
+  - "scripts/claude-hooks/rules-tools.test.mjs"
   - ".claude/skills/po/**"
   - ".claude/skills/issue-lead/**"
   - ".claude/skills/file-issue/**"
