@@ -13,6 +13,7 @@ import {
   TICK_STEP_KEYS_PER_ID,
   TickSteps,
   type UnitRunner,
+  VALUE_UNAVAILABLE,
 } from "./tick-steps.js";
 
 type Line = { level: string; message: string };
@@ -491,6 +492,14 @@ describe("TickSteps.requiredValue", () => {
     const order = [3, 1, 2];
 
     expect(steps.requiredValue("resolveCanonicalOrder", () => order)).toEqual({ ok: true, value: order });
+  });
+
+  it("answers a failure with the one frozen VALUE_UNAVAILABLE", () => {
+    const { steps } = setup();
+
+    expect(steps.requiredValue("resolveCanonicalOrder", (): number[] => boom())).toBe(VALUE_UNAVAILABLE);
+    expect(Object.isFrozen(VALUE_UNAVAILABLE)).toBe(true);
+    expect(VALUE_UNAVAILABLE).toEqual({ ok: false });
   });
 
   it("reports a value with no fallback as failed when the resolver throws", () => {

@@ -72,7 +72,13 @@ export type ValueStore = Pick<Map<string, unknown>, "get" | "has" | "set">;
 /** A value with no fallback: its answer, or `ok: false` when its resolver threw. */
 export type RequiredValue<T> = { readonly ok: true; readonly value: T } | { readonly ok: false };
 
-const UNAVAILABLE: RequiredValue<never> = Object.freeze({ ok: false });
+/**
+ * The answer of a {@link RequiredValue} that could not be resolved: frozen, and
+ * one object for every caller, so the failure allocates nothing. A caller that
+ * skips a resolution altogether (the canonical order, when the tracking it reads
+ * from threw) hands its consumers this one too.
+ */
+export const VALUE_UNAVAILABLE: RequiredValue<never> = Object.freeze({ ok: false });
 
 export interface TickStepsOptions {
   /** The #1558 boundary every guarded call goes through; its policy is the runner's. */
@@ -262,7 +268,7 @@ export class TickSteps {
    * tick. Never throws.
    */
   requiredValue<T>(name: string, resolve: () => T): RequiredValue<T> {
-    return this.tryResolve(name, resolve) ? { ok: true, value: this.take() as T } : UNAVAILABLE;
+    return this.tryResolve(name, resolve) ? { ok: true, value: this.take() as T } : VALUE_UNAVAILABLE;
   }
 
   /**

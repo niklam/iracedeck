@@ -123,7 +123,7 @@ import {
   type RollingStartFormation,
   type TranslatorState,
 } from "./state.js";
-import { type RequiredValue, TICK_STEP_KEYS_PER_ID, TickSteps } from "./tick-steps.js";
+import { TICK_STEP_KEYS_PER_ID, TickSteps, VALUE_UNAVAILABLE } from "./tick-steps.js";
 import {
   isOvalTrack,
   parseTrackLengthMeters,
@@ -149,9 +149,6 @@ export const TRANSLATOR_REPORTER_MAX_KEYS = 55 * TICK_STEP_KEYS_PER_ID;
 
 /** The step name every {@link onTranslatorTick} listener is called under: one id, `translator:onTranslatorTick`. */
 const TICK_LISTENER_STEP = "onTranslatorTick";
-
-/** A tick's canonical order when it could not be resolved: its consumers are skipped (#1559, decision 3). */
-const ORDER_UNAVAILABLE: RequiredValue<number[]> = { ok: false };
 
 type TranslatorInstance = {
   bus: IEventBus;
@@ -3003,7 +3000,7 @@ function handleLiveSteps(
     ? steps.requiredValue("resolveCanonicalOrder", () =>
         resolveCanonicalOrder(self.state, telemetry, sessionInfo, isRaceSession),
       )
-    : ORDER_UNAVAILABLE;
+    : VALUE_UNAVAILABLE;
 
   if (order.ok) {
     handleOrderSteps(self, telemetry, sessionInfo, now, pending, emit, {
