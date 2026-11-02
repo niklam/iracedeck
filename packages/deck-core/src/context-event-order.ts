@@ -103,7 +103,7 @@ interface Entry {
   /** Resolves when the task settles (either way) or is abandoned; never rejects. */
   readonly done: Promise<void>;
   readonly release: () => void;
-  /** `Date.now()` when the task started running; `undefined` while it waits. */
+  /** `performance.now()` when the task started running; `undefined` while it waits. */
   startedAt: number | undefined;
   settled: boolean;
   abandoned: boolean;
@@ -118,6 +118,16 @@ interface ContextRecord {
 const noop = (): void => undefined;
 
 /**
+ * `promise`, with a no-op rejection handler attached so discarding it is never
+ * an unhandled rejection; an awaiter still sees the rejection.
+ */
+function handled<T>(promise: Promise<T>): Promise<T> {
+  promise.catch(noop);
+
+  return promise;
+}
+
+/**
  * The per-context event order one adapter instance owns. Context ids are unique
  * per host and a context belongs to one action UUID, so one instance per
  * adapter orders every action's contexts.
@@ -129,7 +139,8 @@ const noop = (): void => undefined;
  * // A plain handler event. The task builds the event when it runs.
  * await this.order.enqueue(context, "keyDown", () => handler.onKeyDown?.(wrapEvent(data)));
  *
- * // A broadcast fires at arrival, for a live context only (decision 3).
+ * // A broadcast fires at arrival, for a live context only (decision 3) — gated
+ * // on this order's liveness, never on the host's own store.
  * if (this.order.isLive(context)) for (const cb of this.keyDownCallbacks) cb();
  *
  * // One host event, two handler calls: one task keeps them atomic.
@@ -138,14 +149,37 @@ const noop = (): void => undefined;
  *   await handler.onDialUp?.(wrapEvent(data));
  * });
  *
- * // An exclusive step enqueued ahead of the event that needs it.
+ * // An exclusive step enqueued ahead of the event that needs it. Its result is
+ * // discarded on purpose: safe (never an unhandled rejection), but silent.
  * void this.order.enqueue(context, "step:promoteToEncoder", () => promote(context));
  * await this.order.enqueue(context, "dialRotate", () => handler.onDialRotate?.(wrapRotate(data)));
+ *
+ * // A host that sends input for a context it never appeared (Ulanzi): appear
+ * // it first, so the input runs after the appear on a live context.
+ * if (!this.order.isLive(context) && !this.order.hasAppeared(context)) {
+ *   void this.order.enqueue(context, "willAppear", () => handler.onWillAppear?.(wrapEvent(data)));
+ * }
  * ```
  *
  * `enqueue` returns the task's own promise, so a host's dispatch logging sees
  * the handler's error as before; it returns `undefined` when the event was
- * dropped at arrival.
+ * dropped at arrival. **Await or catch the result; a discarded one is safe but
+ * silent**: the promise already carries a no-op rejection handler, so dropping
+ * it can never become an unhandled rejection, which would kill the plugin
+ * process — the error then goes nowhere, which is why the handler events
+ * themselves are awaited by the host dispatch that logs them.
+ *
+ * The synchronous fast path — a task with nothing ahead runs inside the
+ * `enqueue` call — holds for the task lambda itself: `() => handler.onX?.(…)`
+ * calls the handler synchronously, while an `async () => …` lambda is itself
+ * a promise and starts the handler at once but settles no earlier than the
+ * handler's promise.
+ *
+ * Memory: a record lives while its context is live or a task of it is pending,
+ * and is pruned when neither holds. A record whose last task hangs is pruned
+ * only when that task settles, abandoned or not, since the task is what is
+ * pending. `everAppeared` grows with distinct context ids, which a host reuses
+ * across page switches.
  */
 export class ContextEventOrder {
   private readonly records = new Map<string, ContextRecord>();
@@ -172,12 +206,25 @@ export class ContextEventOrder {
   }
 
   /**
+   * Whether a `willAppear` for `context` has ever arrived, live or not. With
+   * {@link isLive} it tells the two not-live states apart: a context that has
+   * disappeared (`hasAppeared` true) keeps dropping its late events — reviving
+   * it would bring back the #1329 leak — while a host that sends input for a
+   * context it never appeared (`hasAppeared` false; UlanziStudio does) lets
+   * the adapter enqueue an appear for it ahead of the input instead.
+   */
+  hasAppeared(context: string): boolean {
+    return this.everAppeared.has(context);
+  }
+
+  /**
    * Take one event of `context` at its arrival. Decides liveness and dropping
    * now; runs `task` synchronously when nothing it must wait for is pending,
    * otherwise once those tasks have settled (or {@link CONTEXT_EVENT_WAIT_LIMIT_MS}
    * has passed). Returns the task's promise — it rejects with whatever the
-   * handler threw — or `undefined` when the event was dropped. Call it inside
-   * the host callback before any await, so arrival order is the order here.
+   * handler threw, and is safe to discard (see the class doc) — or `undefined`
+   * when the event was dropped. Call it inside the host callback before any
+   * await, so arrival order is the order here.
    */
   enqueue(context: string, kind: ContextEventKind, task: ContextEventTask): Promise<void> | undefined {
     const record = this.arrive(context, kind);
@@ -202,18 +249,18 @@ export class ContextEventOrder {
     };
 
     const run = (): Promise<void> => {
-      entry.startedAt = Date.now();
+      entry.startedAt = performance.now();
 
       let value: Promise<void> | void;
 
       try {
         value = task();
       } catch (error) {
-        const result = Promise.reject<void>(error);
+        // A synchronous throw is settled now, like a void return: nothing
+        // waits behind it for a microtask.
+        settle();
 
-        result.then(settle, settle);
-
-        return result;
+        return handled(Promise.reject<void>(error));
       }
 
       // A handler the action does not implement returns nothing: settled now,
@@ -233,7 +280,9 @@ export class ContextEventOrder {
 
     if (ahead.length === 0) return run();
 
-    return this.waitBehind(context, entry, ahead).then(run);
+    // The chained promise is a new one: it adopts the task's rejection, and a
+    // caller that discards it must not make that an unhandled rejection.
+    return handled(this.waitBehind(context, entry, ahead).then(run));
   }
 
   /**
@@ -293,7 +342,10 @@ export class ContextEventOrder {
 
     const line = `Dropped ${kind} for ${context}: it never appeared (the host sent no willAppear for it)`;
 
-    if (this.warnedNeverAppeared.has(context)) {
+    // The once-per-context warn is for input, a settings change or a step: the
+    // visible failure of the appear-before-input assumption. A stray disappear
+    // for a context never seen is not that, and must not spend the warn.
+    if (kind === "willDisappear" || this.warnedNeverAppeared.has(context)) {
       this.logger.debug(line);
 
       return;
@@ -311,7 +363,7 @@ export class ContextEventOrder {
    * existing only for the wait and cleared when it ends.
    */
   private waitBehind(context: string, entry: Entry, ahead: readonly Entry[]): Promise<void> {
-    const arrivedAt = Date.now();
+    const arrivedAt = performance.now();
     const behind = ahead.map((other) => other.kind).join(", ");
 
     return new Promise<void>((resolve) => {
@@ -323,14 +375,16 @@ export class ContextEventOrder {
 
         finished = true;
         clearTimeout(timer);
-        this.logger.debug(`${entry.kind} for ${context} waited ${Date.now() - arrivedAt} ms behind ${behind}`);
+        this.logger.debug(
+          `${entry.kind} for ${context} waited ${Math.round(performance.now() - arrivedAt)} ms behind ${behind}`,
+        );
         resolve();
       };
 
       const arm = (): void => {
         if (finished) return;
 
-        const now = Date.now();
+        const now = performance.now();
 
         for (const other of ahead) {
           if (other.startedAt !== undefined && now - other.startedAt >= CONTEXT_EVENT_WAIT_LIMIT_MS) {

@@ -30,6 +30,14 @@ function gate(): { promise: Promise<void>; open: () => void } {
   return { promise, open };
 }
 
+/**
+ * Fake timers that also fake `performance`, which the primitive measures the
+ * limit with and which vitest leaves real by default.
+ */
+function useFakeClock(): void {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setImmediate", "clearImmediate", "Date", "performance"] });
+}
+
 /** Let every settled promise's continuation run (real timers). */
 const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -366,6 +374,45 @@ describe("ContextEventOrder", () => {
       ]);
     });
 
+    it("a dropped willDisappear for a never-appeared context logs at debug and does not spend the warn", () => {
+      const { logger, enqueue } = createRecorder();
+
+      expect(enqueue("ctx", "willDisappear")).toBeUndefined();
+
+      expect(logger.warn).not.toHaveBeenCalled();
+      expect(logger.debug.mock.calls).toEqual([
+        ["Dropped willDisappear for ctx: it never appeared (the host sent no willAppear for it)"],
+      ]);
+
+      // The warn is still available for the input that follows.
+      enqueue("ctx", "didReceiveSettings");
+
+      expect(logger.warn.mock.calls).toEqual([
+        ["Dropped didReceiveSettings for ctx: it never appeared (the host sent no willAppear for it)"],
+      ]);
+    });
+
+    it("hasAppeared tells a disappeared context from one that never appeared", async () => {
+      const { order, enqueue } = createRecorder();
+
+      expect(order.hasAppeared("ctx")).toBe(false);
+      expect(order.isLive("ctx")).toBe(false);
+
+      enqueue("ctx", "willAppear");
+
+      expect(order.hasAppeared("ctx")).toBe(true);
+      expect(order.isLive("ctx")).toBe(true);
+
+      enqueue("ctx", "willDisappear");
+      await flush();
+
+      // Pruned, yet still known to have appeared: its late events keep being dropped.
+      expect(order.size).toBe(0);
+      expect(order.hasAppeared("ctx")).toBe(true);
+      expect(order.isLive("ctx")).toBe(false);
+      expect(order.hasAppeared("other")).toBe(false);
+    });
+
     it("drops a willAppear for a context that is already live, at debug, keeping it live", async () => {
       const { order, logger, calls, enqueue } = createRecorder();
       const appear = gate();
@@ -444,23 +491,94 @@ describe("ContextEventOrder", () => {
       expect(calls).toEqual(["willAppear", "keyDown", "keyDown:done"]);
     });
 
-    it("a task that throws synchronously is a rejection too", async () => {
-      const { order } = createRecorder();
+    it("a task that throws synchronously is a rejection, settled synchronously so the next event runs at once", async () => {
+      const { order, logger } = createRecorder();
       const error = new Error("sync");
 
       const result = order.enqueue("ctx", "willAppear", () => {
         throw error;
       });
 
-      await expect(result).rejects.toBe(error);
-
       let ran = false;
 
+      // Before any microtask: the throw settled the task inside the enqueue call.
       order.enqueue("ctx", "keyDown", () => {
         ran = true;
       });
 
       expect(ran).toBe(true);
+      expect(logger.debug).not.toHaveBeenCalled();
+      await expect(result).rejects.toBe(error);
+    });
+
+    describe("a discarded result is never an unhandled rejection", () => {
+      /**
+       * Node reports an unhandled rejection after the microtask queue drains;
+       * vitest's own listener would fail the run on one, so the suite's
+       * listeners are set aside for the test and restored after it, and the
+       * positive control is a real discarded rejection seen by the stand-in.
+       */
+      async function unhandledRejectionsDuring(act: () => void): Promise<unknown[]> {
+        const suiteListeners = process.listeners("unhandledRejection");
+        const seen: unknown[] = [];
+        const listener = (reason: unknown): void => {
+          seen.push(reason);
+        };
+
+        process.removeAllListeners("unhandledRejection");
+        process.on("unhandledRejection", listener);
+
+        try {
+          act();
+          await new Promise<void>((resolve) => setImmediate(resolve));
+          await new Promise<void>((resolve) => setImmediate(resolve));
+        } finally {
+          process.removeListener("unhandledRejection", listener);
+
+          for (const restored of suiteListeners) process.on("unhandledRejection", restored);
+        }
+
+        return seen;
+      }
+
+      it("sees a plain discarded rejection (positive control)", async () => {
+        const error = new Error("control");
+
+        await expect(
+          unhandledRejectionsDuring(() => {
+            void Promise.reject(error);
+          }),
+        ).resolves.toEqual([error]);
+      });
+
+      it("a waiting task that throws, with its result discarded", async () => {
+        const { enqueue } = createRecorder();
+        const appear = gate();
+
+        enqueue("ctx", "willAppear", { gate: appear.promise });
+
+        await expect(
+          unhandledRejectionsDuring(() => {
+            void enqueue("ctx", "keyDown", { throws: new Error("press failed") });
+            appear.open();
+          }),
+        ).resolves.toEqual([]);
+      });
+
+      it("a task with nothing ahead that throws, with its result discarded", async () => {
+        const { order } = createRecorder();
+
+        await expect(
+          unhandledRejectionsDuring(() => {
+            void order.enqueue("ctx", "willAppear", async () => {
+              throw new Error("appear failed");
+            });
+            void order.enqueue("ctx", "didReceiveSettings", () => {
+              throw new Error("settings failed");
+            });
+          }),
+        ).resolves.toEqual([]);
+      });
     });
 
     it("a waiting task's promise rejects with its own handler's error", async () => {
@@ -479,7 +597,7 @@ describe("ContextEventOrder", () => {
 
   describe("a handler that never settles", () => {
     it("the next event runs at the limit, with one warning for what it stopped waiting for", async () => {
-      vi.useFakeTimers();
+      useFakeClock();
       const { calls, logger, enqueue } = createRecorder();
       const never = gate();
 
@@ -501,7 +619,7 @@ describe("ContextEventOrder", () => {
     });
 
     it("a later lifecycle event does not wait for the abandoned task again", async () => {
-      vi.useFakeTimers();
+      useFakeClock();
       const { calls, logger, enqueue } = createRecorder();
       const never = gate();
 
@@ -518,7 +636,7 @@ describe("ContextEventOrder", () => {
     });
 
     it("a task already waiting on the abandoned one is released with it, in order", async () => {
-      vi.useFakeTimers();
+      useFakeClock();
       const { calls, logger, enqueue } = createRecorder();
       const never = gate();
       const press = gate();
@@ -541,7 +659,7 @@ describe("ContextEventOrder", () => {
     });
 
     it("measures the limit from the hung task's start, not from the waiter's arrival", async () => {
-      vi.useFakeTimers();
+      useFakeClock();
       const { calls, logger, enqueue } = createRecorder();
       const never = gate();
 
@@ -559,7 +677,7 @@ describe("ContextEventOrder", () => {
     });
 
     it("two hung handlers in a row cost one limit each, never overtaking a task that only just started", async () => {
-      vi.useFakeTimers();
+      useFakeClock();
       const { calls, logger, enqueue } = createRecorder();
       const never = gate();
 
@@ -587,8 +705,41 @@ describe("ContextEventOrder", () => {
       expect(vi.getTimerCount()).toBe(0);
     });
 
+    it("waiters behind the same hung task are released in arrival order, their deadlines being equal", async () => {
+      useFakeClock();
+      const { calls, logger, enqueue } = createRecorder();
+      const never = gate();
+
+      enqueue("ctx", "willAppear", { gate: never.promise });
+      await vi.advanceTimersByTimeAsync(1_000);
+      enqueue("ctx", "keyDown");
+      await vi.advanceTimersByTimeAsync(1_000);
+      enqueue("ctx", "keyUp");
+      await vi.advanceTimersByTimeAsync(1_000);
+      enqueue("ctx", "willDisappear");
+
+      // Every deadline is the appear's start plus the limit, whenever the waiter arrived.
+      await vi.advanceTimersByTimeAsync(CONTEXT_EVENT_WAIT_LIMIT_MS - 3_000 - 1);
+
+      expect(calls).toEqual(["willAppear"]);
+
+      await vi.advanceTimersByTimeAsync(1);
+
+      expect(calls).toEqual([
+        "willAppear",
+        "keyDown",
+        "keyDown:done",
+        "keyUp",
+        "keyUp:done",
+        "willDisappear",
+        "willDisappear:done",
+      ]);
+      expect(logger.warn).toHaveBeenCalledTimes(1);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
     it("an abandoned task that settles late is not warned again and leaves nothing behind", async () => {
-      vi.useFakeTimers();
+      useFakeClock();
       const { order, logger, enqueue } = createRecorder();
       const late = gate();
 
@@ -605,7 +756,7 @@ describe("ContextEventOrder", () => {
     });
 
     it("leaves no timer pending after an ordinary overlap", async () => {
-      vi.useFakeTimers();
+      useFakeClock();
       const { enqueue } = createRecorder();
       const appear = gate();
 
@@ -621,7 +772,7 @@ describe("ContextEventOrder", () => {
     });
 
     it("needs no timer while nothing waits", () => {
-      vi.useFakeTimers();
+      useFakeClock();
       const { enqueue } = createRecorder();
 
       enqueue("ctx", "willAppear");
