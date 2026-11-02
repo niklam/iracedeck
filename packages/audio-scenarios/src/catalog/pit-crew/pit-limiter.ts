@@ -30,7 +30,7 @@
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type CalloutIdOf, PIT_LIMITER_CALLOUTS } from "@iracedeck/callout-settings";
-import { hasPitLimiter } from "@iracedeck/iracing-sdk";
+import { hasPitLimiter, isPitLimiterEngaged } from "@iracedeck/iracing-sdk";
 import type { TelemetryData } from "@iracedeck/sim-events-iracing";
 
 import type { ScenarioContract } from "../../dsl.js";
@@ -84,6 +84,15 @@ export type PitLimiterFamily = {
  * "is this still true" can drift apart, and here a drift would mean
  * announcing a limiter state the driver already fixed. Both are pure reads,
  * which is what lets the same function be a published condition.
+ *
+ * "Engaged" is the `EngineWarnings.PitSpeedLimiter` bit ({@link isPitLimiterEngaged}),
+ * the signal the translator reads when it emits `limiter.missing`, never the
+ * `dcPitSpeedLimiterToggle` value (issue #1548). A gate must read what its
+ * trigger's emitter reads, or the two disagree: reading the toggle, a car whose
+ * control said on while the limiter was not limiting heard "turn it off" after a
+ * pit exit it took with the limiter never engaged, and the `limiter.missing` the
+ * translator had just emitted was gated out. The toggle's PRESENCE is still the
+ * capability check ({@link hasPitLimiter}).
  */
 function limiterStillEngagedOffPitRoad(deps: PitLimiterDeps): boolean {
   const telemetry = deps.getLatestTelemetry();
@@ -91,7 +100,7 @@ function limiterStillEngagedOffPitRoad(deps: PitLimiterDeps): boolean {
   // Suppress on cars without a pit limiter (issue #639).
   if (!hasPitLimiter(telemetry)) return false;
 
-  return telemetry?.dcPitSpeedLimiterToggle === true && telemetry?.OnPitRoad !== true;
+  return isPitLimiterEngaged(telemetry) && telemetry?.OnPitRoad !== true;
 }
 
 function limiterStillMissingOnPitRoad(deps: PitLimiterDeps): boolean {
@@ -100,7 +109,7 @@ function limiterStillMissingOnPitRoad(deps: PitLimiterDeps): boolean {
   // Cars without a pit limiter can't be "missing" one (issue #639).
   if (!hasPitLimiter(telemetry)) return false;
 
-  return telemetry?.dcPitSpeedLimiterToggle !== true && telemetry?.OnPitRoad === true;
+  return !isPitLimiterEngaged(telemetry) && telemetry?.OnPitRoad === true;
 }
 
 /**

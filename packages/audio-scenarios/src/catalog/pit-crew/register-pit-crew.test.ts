@@ -40,7 +40,7 @@ import {
   TIRE_WEAR_CALLOUTS,
 } from "@iracedeck/callout-settings";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
-import { PitSvStatus, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { EngineWarnings, PitSvStatus, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from "vitest";
 
 import type { Scenario, ScenarioContract } from "../../dsl.js";
@@ -1997,17 +1997,39 @@ describe("pit-limiter / no-limiter family registration (issue #1051)", () => {
   const HAS_LIMITER = { ...IN_CAR, dcPitSpeedLimiterToggle: false, OnPitRoad: false };
   const LACKS_LIMITER = { ...IN_CAR, OnPitRoad: false };
 
+  // Engaged is the `EngineWarnings.PitSpeedLimiter` bit, the signal the
+  // translator emits `limiter.missing` from — never the toggle's value (issue
+  // #1548). These set the toggle in agreement, as a car normally reports both;
+  // the #1548 cases below pull the two apart.
+  const ENGAGED = { EngineWarnings: EngineWarnings.PitSpeedLimiter, dcPitSpeedLimiterToggle: true };
+  const DISENGAGED = { EngineWarnings: 0, dcPitSpeedLimiterToggle: false };
+
   // The live snapshots the two DELAYED scenarios re-read when their window
   // closes: each one is the state that scenario has something to say about.
-  const STILL_ENGAGED_ON_TRACK = { ...IN_CAR, dcPitSpeedLimiterToggle: true, OnPitRoad: false };
-  const STILL_MISSING_ON_PIT_ROAD = { ...IN_CAR, dcPitSpeedLimiterToggle: false, OnPitRoad: true };
+  const STILL_ENGAGED_ON_TRACK = { ...IN_CAR, ...ENGAGED, OnPitRoad: false };
+  const STILL_MISSING_ON_PIT_ROAD = { ...IN_CAR, ...DISENGAGED, OnPitRoad: true };
 
   // ...and the two states a driver can reach by fixing the problem. The first is
   // one snapshot with two stories: for the on-track window it is the driver
   // reaching the button, for the missing window it is the car reaching the end
   // of pit road. Both are "equipped, limiter off, not on pit road".
-  const LIMITER_OFF_ON_TRACK = { ...IN_CAR, dcPitSpeedLimiterToggle: false, OnPitRoad: false };
-  const LIMITER_ENGAGED_ON_PIT_ROAD = { ...IN_CAR, dcPitSpeedLimiterToggle: true, OnPitRoad: true };
+  const LIMITER_OFF_ON_TRACK = { ...IN_CAR, ...DISENGAGED, OnPitRoad: false };
+  const LIMITER_ENGAGED_ON_PIT_ROAD = { ...IN_CAR, ...ENGAGED, OnPitRoad: true };
+
+  // The two signals pulled apart (issue #1548). TOGGLE_ONLY: the driver control
+  // reads on while the limiter is not limiting — the state that fired "turn it
+  // off" after a pit exit with the limiter never engaged. BIT_ONLY: limiting
+  // with the control reading off, as when iRacing's pit-limiter helper engages
+  // it on its own.
+  const TOGGLE_ONLY_ON_TRACK = { ...IN_CAR, EngineWarnings: 0, dcPitSpeedLimiterToggle: true, OnPitRoad: false };
+  const BIT_ONLY_ON_TRACK = {
+    ...IN_CAR,
+    EngineWarnings: EngineWarnings.PitSpeedLimiter,
+    dcPitSpeedLimiterToggle: false,
+    OnPitRoad: false,
+  };
+  const TOGGLE_ONLY_ON_PIT_ROAD = { ...TOGGLE_ONLY_ON_TRACK, OnPitRoad: true };
+  const BIT_ONLY_ON_PIT_ROAD = { ...BIT_ONLY_ON_TRACK, OnPitRoad: true };
 
   type Fire = {
     id: string;
@@ -2337,6 +2359,41 @@ describe("pit-limiter / no-limiter family registration (issue #1051)", () => {
 
       expect(played("pit-limiter/missing")).toBe(false);
     });
+
+    // Issue #1548: the re-check reads the `EngineWarnings` bit, the signal the
+    // translator emits `limiter.missing` from, not the toggle's value. Each
+    // case holds the same snapshot through the window, so only the signal the
+    // predicate reads decides it.
+    describe("reads the engaged bit, not the toggle value (issue #1548)", () => {
+      it("limiter-on-track stays silent after the exit when only the toggle reads on", () => {
+        publishThenSettle("pitLane.exited", TOGGLE_ONLY_ON_TRACK, TOGGLE_ONLY_ON_TRACK, LIMITER_ON_TRACK_DELAY_MS);
+
+        expect(voiceClipsPlayed()).toEqual([]);
+      });
+
+      it("limiter-on-track speaks after the exit when the limiter is engaged with the toggle off", () => {
+        publishThenSettle("pitLane.exited", BIT_ONLY_ON_TRACK, BIT_ONLY_ON_TRACK, LIMITER_ON_TRACK_DELAY_MS);
+
+        expect(played("pit-limiter/on-track")).toBe(true);
+      });
+
+      it("limiter-missing speaks on pit road when only the toggle reads on", () => {
+        publishThenSettle(
+          "limiter.missing",
+          TOGGLE_ONLY_ON_PIT_ROAD,
+          TOGGLE_ONLY_ON_PIT_ROAD,
+          LIMITER_MISSING_DELAY_MS,
+        );
+
+        expect(played("pit-limiter/missing")).toBe(true);
+      });
+
+      it("limiter-missing stays silent on pit road when the limiter is engaged with the toggle off", () => {
+        publishThenSettle("limiter.missing", BIT_ONLY_ON_PIT_ROAD, BIT_ONLY_ON_PIT_ROAD, LIMITER_MISSING_DELAY_MS);
+
+        expect(played("pit-limiter/missing")).toBe(false);
+      });
+    });
   });
 
   // The speak-time gate — the third distinct silence case in this feature and
@@ -2457,6 +2514,25 @@ describe("pit-limiter / no-limiter family registration (issue #1051)", () => {
         LIMITER_ENGAGED_ON_PIT_ROAD,
         LIMITER_MISSING_DELAY_MS,
       );
+
+      expectQueuedThenDrained("pit-crew.limiter-missing");
+      expect(voiceClipsPlayed()).toContain(OCCUPIER_CLIP);
+      expect(played("pit-limiter/missing")).toBe(false);
+    });
+
+    // Issue #1548: the gate reads the bit too. The limiter is released while the
+    // line waits, but the toggle still reads on — the gate must refuse.
+    it("limiter-on-track's gate refuses at the drain when only the toggle still reads on (issue #1548)", () => {
+      queueThenDrain("pitLane.exited", STILL_ENGAGED_ON_TRACK, TOGGLE_ONLY_ON_TRACK, LIMITER_ON_TRACK_DELAY_MS);
+
+      expectQueuedThenDrained("pit-crew.limiter-on-track");
+      expect(voiceClipsPlayed()).toContain(OCCUPIER_CLIP);
+      expect(played("pit-limiter/on-track")).toBe(false);
+    });
+
+    // ...and the limiter engages while the line waits, with the toggle still off.
+    it("limiter-missing's gate refuses at the drain when the limiter engages with the toggle off (issue #1548)", () => {
+      queueThenDrain("limiter.missing", STILL_MISSING_ON_PIT_ROAD, BIT_ONLY_ON_PIT_ROAD, LIMITER_MISSING_DELAY_MS);
 
       expectQueuedThenDrained("pit-crew.limiter-missing");
       expect(voiceClipsPlayed()).toContain(OCCUPIER_CLIP);
