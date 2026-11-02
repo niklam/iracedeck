@@ -56,6 +56,7 @@ Requirements
 - Action settings should use Zod schemas when the action has settings.
 - Actions must not implement their own global offline handling; offline behavior is handled centrally.
 - Actions should implement `onDidReceiveSettings()` to handle settings updates from the Property Inspector.
+- A lifecycle handler (`onWillAppear`, `onWillDisappear`, `onDidReceiveSettings`) never awaits another event of its own context — a settings echo, an input: the adapter queues that event behind the handler, so the await stalls the context until the 10 s limit (#1597; the contract is under *Per-context event order* in `packages/deck-core/CLAUDE.md`).
 
 ### CommonSettings
 
