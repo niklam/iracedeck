@@ -243,9 +243,14 @@ export interface IDeckPlatformAdapter extends SettingsHost {
    * input, so two presses still run concurrently. A context is live from the
    * arrival of its `willAppear` to the arrival of its `willDisappear`; input,
    * a settings change or a second disappear for a context that is not live
-   * never reaches the handler, and a re-appear runs after the teardown it
-   * follows. An event that overlaps nothing reaches the handler synchronously
-   * at arrival. A wait is bounded by `CONTEXT_EVENT_WAIT_LIMIT_MS`.
+   * never reaches the handler, nor does a `willAppear` for a context that is
+   * already live, and a re-appear after a disappear runs after the teardown
+   * it follows. Input for a context the host never appeared is dropped, or —
+   * on a host that sends input with no prior appear (Ulanzi) — runs after an
+   * appear the adapter enqueues for it; a context that has disappeared is
+   * never revived. An event that overlaps nothing reaches the handler
+   * synchronously at arrival. A wait is bounded by `CONTEXT_EVENT_WAIT_LIMIT_MS`
+   * per task ahead.
    *
    * The guarantee is part of implementing this interface, and it is checked:
    * every adapter's tests run `CONTEXT_EVENT_ORDER_SCENARIOS` from
@@ -257,9 +262,10 @@ export interface IDeckPlatformAdapter extends SettingsHost {
   registerAction(uuid: string, handler: IDeckActionHandler): void;
   /**
    * Subscribe to key-down events across all actions. Fires at the event's
-   * arrival, before the handler's `onKeyDown` is enqueued, and only for a live
-   * context (one whose `willAppear` has arrived and whose `willDisappear` has
-   * not) — see {@link registerAction}.
+   * arrival — not when the handler's `onKeyDown` runs, which may be later —
+   * and only for a live context as the adapter's `ContextEventOrder` sees it
+   * (its `willAppear` has arrived and its `willDisappear` has not); never
+   * gated on the host's own store. See {@link registerAction}.
    */
   onKeyDown(callback: () => void): void;
   /**
