@@ -497,27 +497,25 @@ export function initializeSimEventsIracing(
   instance = self;
 
   sdkController.subscribe(SUBSCRIPTION_ID, (telemetry, isConnected) => {
+    let completed = false;
+
     try {
-      if (!isConnected) {
-        handleDisconnect(self);
-
-        return;
-      }
-
-      if (!telemetry) return;
-
-      self.latestTelemetry = telemetry;
-      handleTick(self, telemetry);
+      handleCallback(self, telemetry, isConnected);
+      completed = true;
     } finally {
       // After the translator, on every path out of this callback (#1500), a
       // throw from the tick's frame included (#1559, decision 1). Since #1558
       // the controller isolates each subscriber, so such a throw costs this
       // callback only: the replay recorder after it still runs. The listeners
-      // still see it, and then, under the `"rethrow"` policy, the first error a
-      // step or a listener held is thrown, after the whole tick has run
-      // (decision 8). Under `"report"` `finish` never throws.
+      // still see it. Then, under the `"rethrow"` policy, the first error a step
+      // or a listener held is thrown, after the whole tick has run (decision 8),
+      // unless the frame threw: that throw is already on its way out and must
+      // not be replaced, so the held error is dropped. Under `"report"` nothing
+      // is held.
       notifyTickListeners(self.steps);
-      self.steps.finish();
+
+      if (completed) self.steps.finish();
+      else self.steps.discard();
     }
   });
 
@@ -532,6 +530,20 @@ export function initializeSimEventsIracing(
   self.replayRecorder = startReplayRecorder(eventBus, sdkController, logger, boundary);
 
   logger.info("sim-events-iracing translator initialized");
+}
+
+/** One controller callback of the translator: a disconnect, a connected callback without telemetry, or a tick. */
+function handleCallback(self: TranslatorInstance, telemetry: TelemetryData | null, isConnected: boolean): void {
+  if (!isConnected) {
+    handleDisconnect(self);
+
+    return;
+  }
+
+  if (!telemetry) return;
+
+  self.latestTelemetry = telemetry;
+  handleTick(self, telemetry);
 }
 
 /** Returns the latest telemetry snapshot, or null if never received / disconnected. */

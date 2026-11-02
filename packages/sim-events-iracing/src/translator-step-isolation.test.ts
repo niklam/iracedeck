@@ -25,7 +25,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CONTROLLER_TICK_ORDER, REPLAY_RECORDER_ORDER, type TickStage } from "./tick-order.js";
 import type { UnitRunner } from "./tick-steps.js";
-import { _resetSimEventsIracing, initializeSimEventsIracing, type SimEventsIracingOptions } from "./translator.js";
+import {
+  _resetSimEventsIracing,
+  initializeSimEventsIracing,
+  onTranslatorTick,
+  type SimEventsIracingOptions,
+} from "./translator.js";
 
 const TRANSLATOR_ID = "__sim-events-iracing__";
 const RECORDER_ID = "__sim-events-iracing-replay-recorder__";
@@ -195,10 +200,16 @@ function createController(): Controller {
 
 type Published = { event: string; data: unknown; probeOf?: string };
 
+/** The probe whose publish the bus refuses, so the flush (part of the frame) throws. */
+const busFault: { probeOf: string | null } = { probeOf: null };
+
 function createRecordingBus(into: Published[]): IEventBus {
   return {
     publish: (ev: { event: string; data?: unknown }) => {
       const probeOf = (ev.data as Record<string, unknown> | undefined)?.[harness.PROBE_KEY];
+
+      if (probeOf !== undefined && probeOf === busFault.probeOf) throw new Error("bus broke");
+
       into.push({ event: ev.event, data: ev.data, ...(typeof probeOf === "string" ? { probeOf } : {}) });
     },
     subscribe: () => () => undefined,
@@ -325,6 +336,7 @@ beforeEach(() => {
   );
   harness.control.throwing.clear();
   harness.control.overrides.clear();
+  busFault.probeOf = null;
 });
 
 afterEach(() => {
@@ -706,6 +718,27 @@ describe('decision 5 and 8: under "rethrow"', () => {
       translatorStages.filter((s) => s !== "diffLaps" && s !== "diffRadar"),
     );
     expect(lines.filter((l) => l.level === "error")).toEqual([]);
+  });
+
+  it("lets a frame throw after a step's throw surface itself, runs the listeners, and carries the step's error into no later tick", () => {
+    start({ onStepError: "rethrow" });
+    runTick();
+    let listened = 0;
+    onTranslatorTick(() => {
+      listened++;
+    });
+    harness.control.probe = true;
+    // A step throws (held), then the flush, which is the frame, throws on a later step's event.
+    harness.control.throwing.set("diffLaps", TRANSLATOR_ID);
+    busFault.probeOf = "diffRadar";
+
+    expect(() => controller.tick(telemetry())).toThrow("bus broke");
+    expect(listened).toBe(1);
+
+    harness.control.throwing.clear();
+    busFault.probeOf = null;
+    expect(() => controller.tick(telemetry())).not.toThrow();
+    expect(listened).toBe(2);
   });
 });
 

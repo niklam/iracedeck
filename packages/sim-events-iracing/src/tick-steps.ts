@@ -273,15 +273,25 @@ export class TickSteps {
 
   /**
    * End the tick: under `"rethrow"`, throw the first error held since the last
-   * `finish`, and clear it. Call it once per tick after the flush, in the same
-   * `finally`, so a held error is never carried into the next tick. Under `"report"`
-   * nothing is ever held and this does nothing.
+   * `finish`, and clear it. Call it once per tick, after the flush, when the
+   * tick's own work completed; a tick that is leaving by a throw of its own
+   * calls {@link discard} instead, so that throw is not replaced. Under
+   * `"report"` nothing is ever held and this does nothing.
    */
   finish(): void {
     const held = this.held;
 
     this.held = undefined;
     throwHeld(held);
+  }
+
+  /**
+   * End a tick that is leaving by a throw of its own (a throw in its frame):
+   * drop the error held since the last {@link finish}, so the frame's throw is
+   * the one that surfaces and nothing is carried into the next tick. Never throws.
+   */
+  discard(): void {
+    this.held = undefined;
   }
 
   /** Run `work` through the boundary under `id`, keep its held error if it is the first. */

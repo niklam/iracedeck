@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { REPLAY_LAPS_EVENTS } from "./diff/replay-laps.js";
 import type { EmitFn } from "./diff/types.js";
 import type { ReplayRecorderState } from "./replay-recorder-state.js";
-import { createInitialReplayRecorderState } from "./replay-recorder-state.js";
+import { createInitialReplayRecorderState, resetReplayRecorderBaselines } from "./replay-recorder-state.js";
 import {
   REPLAY_RECORDER_SUBSCRIPTION_ID,
   type ReplayRecorder,
@@ -408,6 +408,36 @@ describe("startReplayRecorder", () => {
       fake.deliver(tick(0));
 
       expect(take()).toEqual([...RECORDERS, "reset"]);
+    });
+  });
+
+  // The recorder's tests run its steps under "rethrow" (#1559): a step's throw
+  // is held until the four have run, and a throw in the frame is not replaced.
+  describe('under the "rethrow" step policy', () => {
+    it("throws a recorder's held error once all four have run", () => {
+      onLaps.current = () => {
+        throw new Error("lap record broke");
+      };
+
+      expect(() => fake.deliver(tick(0))).toThrow("lap record broke");
+      expect(take()).toEqual(RECORDERS);
+    });
+
+    it("lets a frame throw after a step's surface itself, and carries the step's error into no later tick", () => {
+      fake.deliver(tick(0));
+      onLaps.current = () => {
+        throw new Error("lap record broke");
+      };
+      // Into a replay: the entry reset after the four recorders is the frame.
+      fake.setReplay({ inReplay: true });
+      vi.mocked(resetReplayRecorderBaselines).mockImplementationOnce(() => {
+        throw new Error("frame broke");
+      });
+
+      expect(() => fake.deliver(tick(0))).toThrow("frame broke");
+
+      onLaps.current = null;
+      expect(() => fake.deliver(tick(0))).not.toThrow();
     });
   });
 });

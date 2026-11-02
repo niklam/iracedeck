@@ -176,12 +176,18 @@ export function startReplayRecorder(
 
     if (!telemetry) return;
 
+    // Under the `"rethrow"` policy, the first error a step held is thrown once
+    // all four have run (#1559). A throw in the frame surfaces as it is: the
+    // held error is dropped rather than thrown over it. Under `"report"`
+    // nothing is held.
+    let completed = false;
+
     try {
       handleTick(self, bus, controller, logger, steps, telemetry);
+      completed = true;
     } finally {
-      // Under the `"rethrow"` policy, the first error a step held, once all
-      // four have run (#1559); under `"report"` this never throws.
-      steps.finish();
+      if (completed) steps.finish();
+      else steps.discard();
     }
   };
 
