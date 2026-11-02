@@ -1,4 +1,4 @@
-import { Flags, SessionState, type TelemetryData } from "@iracedeck/iracing-native";
+import { EngineWarnings, Flags, SessionState, type TelemetryData } from "@iracedeck/iracing-native";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -8,6 +8,7 @@ import {
   hasWipers,
   initialReplayState,
   isPenaltyFlagActive,
+  isPitLimiterEngaged,
   isPostRace,
   isPreGreen,
   nextReplayState,
@@ -52,6 +53,40 @@ describe("telemetry-features", () => {
 
     it("returns false for null telemetry", () => {
       expect(hasPitLimiter(null)).toBe(false);
+    });
+  });
+
+  describe("isPitLimiterEngaged", () => {
+    it("returns true when the EngineWarnings PitSpeedLimiter bit is set", () => {
+      expect(isPitLimiterEngaged(telemetry({ EngineWarnings: EngineWarnings.PitSpeedLimiter }))).toBe(true);
+    });
+
+    it("reads only the limiter bit when other warnings are set beside it", () => {
+      const others = EngineWarnings.WaterTempWarning | EngineWarnings.RevLimiterActive;
+      expect(isPitLimiterEngaged(telemetry({ EngineWarnings: others | EngineWarnings.PitSpeedLimiter }))).toBe(true);
+      expect(isPitLimiterEngaged(telemetry({ EngineWarnings: others }))).toBe(false);
+    });
+
+    it("returns false when the bit is clear", () => {
+      expect(isPitLimiterEngaged(telemetry({ EngineWarnings: 0 }))).toBe(false);
+    });
+
+    // #1548: the driver control's VALUE is not the engaged state, in either direction.
+    it("ignores the dcPitSpeedLimiterToggle value", () => {
+      expect(isPitLimiterEngaged(telemetry({ dcPitSpeedLimiterToggle: true, EngineWarnings: 0 }))).toBe(false);
+      expect(
+        isPitLimiterEngaged(
+          telemetry({ dcPitSpeedLimiterToggle: false, EngineWarnings: EngineWarnings.PitSpeedLimiter }),
+        ),
+      ).toBe(true);
+    });
+
+    it("returns false when EngineWarnings is absent", () => {
+      expect(isPitLimiterEngaged(telemetry({ dcPitSpeedLimiterToggle: true }))).toBe(false);
+    });
+
+    it("returns false for null telemetry", () => {
+      expect(isPitLimiterEngaged(null)).toBe(false);
     });
   });
 

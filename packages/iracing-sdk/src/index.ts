@@ -192,6 +192,7 @@ export {
   initialReplayState,
   isLiveOnTrack,
   isPenaltyFlagActive,
+  isPitLimiterEngaged,
   isPostRace,
   isPreGreen,
   nextReplayState,
