@@ -61,7 +61,8 @@ describe("sim-connection singleton", () => {
   });
 
   it("replays every queued subscription when one throws as it registers, then rethrows", () => {
-    // A connection that notifies a subscriber as it registers it, as iRacing's SDKController does.
+    // A connection that notifies a subscriber as it registers it, as iRacing's does, but lets the
+    // subscriber's throw out of subscribe: one that breaks the SimConnection.subscribe contract (#1558).
     const registered: string[] = [];
     const notifying: SimConnection = {
       ...createFakeSimConnection().connection,

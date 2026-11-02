@@ -169,18 +169,24 @@ describe("startReplayRecorder", () => {
       expect(take()).toEqual([]);
     });
 
-    it("takes its callback back out when the subscribe-time tick throws, so none is left that nothing can stop", () => {
+    it("returns a handle that can stop it when the subscribe-time tick throws inside the controller (#1558)", () => {
       const failing = createController();
+      // The real controller's boundary: the first tick throws, the throw is reported, subscribe returns.
       failing.controller.subscribe.mockImplementationOnce((_id: string, cb: TelemetryCallback) => {
-        cb(tick(0), true);
+        try {
+          cb(tick(0), true);
+        } catch {
+          // Reported by the controller.
+        }
       });
       onLaps.current = () => {
         throw new Error("bad session info");
       };
 
-      expect(() => startReplayRecorder(bus, failing.controller as unknown as ReplayRecorderController, logger)).toThrow(
-        "bad session info",
-      );
+      const started = startReplayRecorder(bus, failing.controller as unknown as ReplayRecorderController, logger);
+
+      expect(failing.controller.unsubscribe).not.toHaveBeenCalled();
+      started.stop();
       expect(failing.controller.unsubscribe).toHaveBeenCalledWith(REPLAY_RECORDER_SUBSCRIPTION_ID);
     });
   });

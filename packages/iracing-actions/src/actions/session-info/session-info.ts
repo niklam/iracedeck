@@ -876,8 +876,9 @@ export class SessionInfo extends SimIRacingAction<SessionInfoSettings> {
       try {
         this.detectTelemetryEdges(contextId, telemetry, storedSettings);
       } catch (err) {
-        // A throw here would escape into the SDK's subscriber loop and cost
-        // every key after this one its tick.
+        // The controller's boundary would catch a throw here (#1558), but it
+        // would skip the throttled refresh below; report it in the key's own
+        // terms and carry on.
         this.reportTelemetryError(contextId, "flash", err);
       }
 

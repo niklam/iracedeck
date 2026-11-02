@@ -93,7 +93,7 @@ describe("POST /api/telemetry", () => {
     initializeEventBus(silentLogger);
     // Connected and never started: no tick reaches a subscriber unless the
     // route makes one.
-    controller = new MockSDKController();
+    controller = new MockSDKController({ onSubscriberError: "rethrow" });
     controller.setConnected(true);
     ticks = [];
     controller.subscribe("probe", (telemetry) => ticks.push(telemetry));

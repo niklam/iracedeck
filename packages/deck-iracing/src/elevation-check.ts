@@ -53,59 +53,84 @@ export interface ElevationCheckOptions {
  * Create the `sdkController.subscribe` callback. The probe runs once per
  * connection and re-arms on disconnect, so a reconnect (e.g. after an iRacing
  * restart at a different elevation) is probed again.
+ *
+ * The probe and the banner are latched separately (#1558). The probe and its
+ * log lines run once per connection. The PI warning is posted or cleared on
+ * that tick and, if `setWarning` / `clearWarning` throws, again on each later
+ * tick of the connection until one call succeeds, rather than staying wrong
+ * for the rest of the connection. That throw is left to propagate: the SDK
+ * controller isolates and reports a subscriber's throw, so it neither starves
+ * the other subscribers nor floods the log. A retry never re-runs the probe; it
+ * costs a read of the cached `_warnings` setting, plus a write only while the
+ * record is still missing (both calls skip an unchanged one), so it is cheap at
+ * telemetry rate and stops as soon as the store holds the banner.
  */
 export function createElevationCheckSubscriber(
   options: ElevationCheckOptions,
 ): (telemetry: unknown, isConnected: boolean) => void {
   const { getStatus, logger } = options;
-  let checked = false;
+  /** Whether the probe has run on this connection, whether it answered or threw. */
+  let probed = false;
+  /** This connection's probe answer; null until it answers, and after it threw. */
+  let status: { mismatch: boolean } | null = null;
+  /** Whether the PI warning has been brought in line with `status` on this connection. */
+  let published = false;
 
   return (_telemetry, isConnected) => {
     if (!isConnected) {
-      checked = false;
+      probed = false;
+      status = null;
+      published = false;
       lastMismatch = null;
 
       return;
     }
 
-    if (checked) return;
+    if (!probed) {
+      probed = true;
 
-    checked = true;
+      // A failing probe stays latched until the next connection rather than
+      // being left to the controller's boundary: retrying every tick would
+      // hammer a persistently failing native probe at telemetry rate. The
+      // failure is logged at warn so the skipped check still shows up in
+      // support logs. The PI warning is left as-is — an unknown status
+      // shouldn't clear a banner that may still be accurate.
+      try {
+        status = getStatus();
+      } catch (error) {
+        logger.warn("Elevation check failed; skipping until the next connection");
+        logger.debug(`Elevation check error: ${error instanceof Error ? error.message : String(error)}`);
+        lastMismatch = null;
 
-    // A throwing probe must not escape into the SDK controller's dispatch loop
-    // (it iterates subscribers unguarded — a throw would starve the rest). The
-    // check stays latched until the next connection: retrying every tick would
-    // hammer a persistently failing probe at telemetry rate, and the failure is
-    // logged at warn so the skipped check still shows up in support logs. The
-    // PI warning is left as-is — an unknown status shouldn't clear a banner
-    // that may still be accurate.
-    let status: { mismatch: boolean };
+        return;
+      }
 
-    try {
-      status = getStatus();
-    } catch (error) {
-      logger.warn("Elevation check failed; skipping until the next connection");
-      logger.debug(`Elevation check error: ${error instanceof Error ? error.message : String(error)}`);
-      lastMismatch = null;
+      lastMismatch = status.mismatch;
 
-      return;
+      if (evaluateElevationWarning(status)) {
+        logger.warn(
+          "iRacing appears to run at a higher integrity level than the plugin; outbound commands will be silently dropped",
+        );
+      } else {
+        logger.info("Elevation check passed; no integrity mismatch detected");
+      }
+
+      logger.debug(`Elevation status: ${JSON.stringify(status)}`);
     }
 
-    lastMismatch = status.mismatch;
+    if (published || status === null) return;
 
     const warning = evaluateElevationWarning(status);
 
     if (warning) {
-      logger.warn(
-        "iRacing appears to run at a higher integrity level than the plugin; outbound commands will be silently dropped",
-      );
       setWarning(warning.id, warning.level, warning.message);
     } else {
-      logger.info("Elevation check passed; no integrity mismatch detected");
       clearWarning(ELEVATION_WARNING_ID);
     }
 
-    logger.debug(`Elevation status: ${JSON.stringify(status)}`);
+    // Set only once the store has taken it, so a throw above leaves the banner
+    // to be posted again on the next tick.
+    published = true;
   };
 }
 

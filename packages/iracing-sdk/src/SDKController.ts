@@ -2,7 +2,15 @@
  * SDK Controller - Manages the iRacing SDK connection
  * and notifies subscribers of telemetry updates
  */
-import { ILogger, silentLogger } from "@iracedeck/logger";
+import {
+  createErrorBoundary,
+  type ErrorBoundary,
+  type ErrorPolicy,
+  type HeldError,
+  ILogger,
+  silentLogger,
+  throwHeld,
+} from "@iracedeck/logger";
 
 import { IRacingSDK } from "./IRacingSDK.js";
 import { ReplayStateTracker } from "./replay-state-tracker.js";
@@ -32,6 +40,38 @@ export type TelemetryCallback = (telemetry: TelemetryData | null, isConnected: b
  * issue #493.
  */
 export const TELEMETRY_INTERVAL_MS = 10;
+
+/**
+ * The reporter ids of the controller's own work (#1558). The `controller:`
+ * prefix keeps them apart from every subscriber id. Every connect attempt
+ * (the first one in `start()`, the reconnect poll, re-enabling) runs as
+ * `controller:reconnect`, the poll (its native disconnect on a dropped
+ * connection included) and `subscribe`'s immediate telemetry read as
+ * `controller:update`, and the native disconnect when iRacing terminates or
+ * the last subscriber leaves as `controller:disconnect`.
+ */
+const UPDATE_ID = "controller:update";
+const RECONNECT_ID = "controller:reconnect";
+const DISCONNECT_ID = "controller:disconnect";
+
+export interface SDKControllerOptions {
+  /**
+   * What a subscriber's throw does (#1558). Under `"report"`, the default and
+   * what every plugin build runs, the throw goes to a bounded error reporter
+   * under the subscriber's id and delivery carries on: nothing a subscriber
+   * throws leaves the controller, and no subscriber's throw stops another.
+   * The controller's own failures in its poll, its connect attempts and its
+   * disconnect are reported the same way, under `controller:` ids. Under
+   * `"rethrow"`, delivery still reaches every subscriber, and the first error
+   * is then thrown out of the entry point that delivered (a timer callback,
+   * `subscribe`, `setReconnectEnabled`), as is any error of the controller's
+   * own; nothing is reported. A test that wants loudness chooses it. Never
+   * read from the environment.
+   */
+  onSubscriberError?: ErrorPolicy;
+  /** The reporter's clock, in milliseconds. Defaults to `Date.now()`, read on every call. */
+  now?: () => number;
+}
 
 export class SDKController {
   private readonly sdk: IRacingSDK;
@@ -84,78 +124,131 @@ export class SDKController {
    * starts live with nothing sighted.
    */
   private readonly replayState = new ReplayStateTracker();
+  /**
+   * The error boundary around every subscriber call and every piece of the
+   * controller's own work (#1558), under the policy of
+   * {@link SDKControllerOptions.onSubscriberError}.
+   */
+  private readonly boundary: ErrorBoundary;
 
-  constructor(sdk: IRacingSDK, logger: ILogger = silentLogger) {
+  constructor(sdk: IRacingSDK, logger: ILogger = silentLogger, options: SDKControllerOptions = {}) {
     this.sdk = sdk;
     this.logger = logger;
+    // A subscriber that unsubscribes itself and then throws leaves no error
+    // keys behind: its `unsubscribe` ran before the throw was reported.
+    this.boundary = createErrorBoundary({
+      logger,
+      now: options.now,
+      policy: options.onSubscriberError,
+      isRegistered: (id) => this.subscribers.has(id),
+    });
   }
 
   /**
-   * Subscribe to telemetry updates
+   * Subscribe to telemetry updates. A callback that throws stays subscribed
+   * and is called on the next delivery like any other (#1558).
+   *
+   * Subscribing an id that is already subscribed replaces its callback, and
+   * forgets the old callback's error counts: the new one's first throw is a
+   * first occurrence, logged in full. Nothing a subscriber or the immediate
+   * read throws leaves `subscribe` under `"report"`, so the callback is never
+   * registered without the caller getting control back.
    */
   subscribe(id: string, callback: TelemetryCallback): void {
+    const wasEmpty = this.subscribers.size === 0;
+
+    if (this.subscribers.has(id)) this.boundary.forget(id);
+
     this.subscribers.set(id, callback);
 
-    // Start updates if this is the first subscriber
-    if (this.subscribers.size === 1) {
-      this.start();
-    }
+    // Start updates if this is the first subscriber. Checked before the `set`:
+    // re-subscribing the sole subscriber leaves the size at 1, and starting
+    // again would leak the running pair of intervals.
+    const startHeld = wasEmpty ? this.start() : undefined;
 
-    // Immediately notify the new subscriber of current state. The replay
-    // state needs no step here: the connect-time delivery or the last poll
-    // has stepped it with a read as fresh as this one.
-    const telemetry = this.sdk.getTelemetry();
-    callback(telemetry, this.isConnected);
+    // Immediately notify the new subscriber of current state. The read is the
+    // controller's own work, so a throw from it is reported as the poll's
+    // would be, and the subscriber is still notified, with no telemetry. The
+    // replay state needs no step here: the connect-time delivery or the last
+    // poll has stepped it with a read as fresh as this one.
+    let telemetry = null as TelemetryData | null;
+    const readHeld = this.boundary.run(UPDATE_ID, () => {
+      telemetry = this.sdk.getTelemetry();
+
+      return undefined;
+    });
+    const held = this.boundary.call(id, () => callback(telemetry, this.isConnected));
+
+    throwHeld(startHeld ?? readHeld ?? held);
   }
 
   /**
-   * Unsubscribe from telemetry updates
+   * Unsubscribe from telemetry updates. Flushes the id's unreported error
+   * counts as one `warn` line and drops them, since ids (action contexts)
+   * come and go. When the last subscriber leaves, the loops stop and the SDK
+   * disconnects; a throw from that disconnect is reported as
+   * `controller:disconnect` (thrown after the reset under `"rethrow"`).
    */
   unsubscribe(id: string): void {
     this.subscribers.delete(id);
+    this.boundary.forget(id);
 
     // Stop updates if no more subscribers
     if (this.subscribers.size === 0) {
-      this.stop();
+      throwHeld(this.stop());
     }
   }
 
   /**
-   * Start the update and reconnect loops
+   * Start the update and reconnect loops, then make the first connect attempt.
+   *
+   * Both intervals exist before the first `tryConnect()` (#1558): that attempt
+   * delivers to subscribers, and whatever it throws must not leave the
+   * controller without its loops. `start()` runs only for the first
+   * subscriber, so a half-done start would never be retried.
    */
-  private start(): void {
-    // Try initial connection
-    this.tryConnect();
-
+  private start(): HeldError {
     // Start reconnect polling (every 2 seconds when offline)
     this.reconnectInterval = setInterval(() => {
-      // Skip reconnection attempts if disabled (iRacing not running)
-      if (!this.reconnectEnabled) {
-        return;
-      }
+      throwHeld(
+        this.boundary.run(RECONNECT_ID, () => {
+          // Skip reconnection attempts if disabled (iRacing not running)
+          if (!this.reconnectEnabled) {
+            return undefined;
+          }
 
-      const sdkConnected = this.sdk.isConnected();
+          const sdkConnected = this.sdk.isConnected();
 
-      // Reconnect if SDK disconnected, or if SDK reconnected but we haven't updated our state
-      if (!sdkConnected || (sdkConnected && !this.isConnected)) {
-        this.logger.info("[SDKController] Attempting reconnect...");
-        this.tryConnect();
-      }
+          // Reconnect if SDK disconnected, or if SDK reconnected but we haven't updated our state
+          if (!sdkConnected || (sdkConnected && !this.isConnected)) {
+            this.logger.info("[SDKController] Attempting reconnect...");
+
+            return this.tryConnect();
+          }
+
+          return undefined;
+        }),
+      );
     }, 2000);
 
-    // Start telemetry update loop. 60 Hz matches iRacing's shared-memory
-    // write rate so consumers see every fresh value (issue #493).
+    // Start the telemetry poll. It runs every TELEMETRY_INTERVAL_MS (10 ms);
+    // the SessionTick dedupe in update() then delivers at iRacing's ~60 Hz
+    // write rate, one delivery per real frame (issue #493).
     this.updateInterval = setInterval(() => {
-      if (this.sdk.isConnected()) {
-        this.update();
-      }
+      throwHeld(this.boundary.run(UPDATE_ID, () => (this.sdk.isConnected() ? this.update() : undefined)));
     }, TELEMETRY_INTERVAL_MS);
+
+    // Try initial connection
+    return this.boundary.run(RECONNECT_ID, () => this.tryConnect());
   }
 
   /**
-   * Stop the update and reconnect loops
+   * Stop the update and reconnect loops, disconnect and reset the connection
+   * state. The native disconnect runs inside the boundary as
+   * `controller:disconnect`, so a throw from it never skips the reset; under
+   * `"rethrow"` it is returned held, to be thrown once the reset is done.
    */
-  private stop(): void {
+  private stop(): HeldError {
     if (this.reconnectInterval) {
       clearInterval(this.reconnectInterval);
       this.reconnectInterval = null;
@@ -166,18 +259,26 @@ export class SDKController {
       this.updateInterval = null;
     }
 
-    this.sdk.disconnect();
+    const disconnectHeld = this.boundary.run(DISCONNECT_ID, () => {
+      this.sdk.disconnect();
+
+      return undefined;
+    });
+
     this.isConnected = false;
     this.lastTemplateContext = null;
     this.templateContextDirty = true;
     this.lastSessionTick = -1;
     this.replayState.reset();
+
+    return disconnectHeld;
   }
 
   /**
-   * Try to connect to iRacing
+   * Try to connect to iRacing. Runs only inside the error boundary, as
+   * `controller:reconnect`, since `sdk.connect()` can throw.
    */
-  private tryConnect(): void {
+  private tryConnect(): HeldError {
     const wasConnected = this.isConnected;
     const connected = this.sdk.connect();
 
@@ -202,8 +303,10 @@ export class SDKController {
 
       if (connected && telemetry) this.stepReplayState(telemetry);
 
-      this.notifySubscribers(telemetry);
+      return this.notifySubscribers(telemetry);
     }
+
+    return undefined;
   }
 
   /**
@@ -216,25 +319,38 @@ export class SDKController {
   }
 
   /**
-   * Update telemetry and notify subscribers
+   * Update telemetry and notify subscribers. Runs only inside the error
+   * boundary, as `controller:update`.
    */
-  private update(): void {
+  private update(): HeldError {
     // Only update if SDK thinks it's connected
     if (!this.sdk.isConnected()) {
       // SDK not connected, but we might have thought we were
       if (this.isConnected) {
         this.logger.info("[SDKController] Disconnected from iRacing");
-        this.sdk.disconnect();
+        // The native call runs in its own boundary step, so a throw from it
+        // never skips the reset or the fan-out below.
+        const disconnectHeld = this.boundary.run(UPDATE_ID, () => {
+          this.sdk.disconnect();
+
+          return undefined;
+        });
+
         this.isConnected = false;
         this.lastValidTelemetry = null;
         this.lastTemplateContext = null;
         this.templateContextDirty = true;
         this.lastSessionTick = -1;
         this.replayState.reset();
-        this.notifySubscribers(null);
+
+        // Fan out before combining, so under "rethrow" a held disconnect error
+        // never stops the subscribers from hearing of the disconnect.
+        const notified = this.notifySubscribers(null);
+
+        return disconnectHeld ?? notified;
       }
 
-      return;
+      return undefined;
     }
 
     // SDK is connected, get telemetry
@@ -245,10 +361,10 @@ export class SDKController {
       // Use last valid telemetry if available to avoid blinking. The replay
       // state is NOT stepped with it: that read was stepped when it was fresh.
       if (this.lastValidTelemetry) {
-        this.notifySubscribers(this.lastValidTelemetry);
+        return this.notifySubscribers(this.lastValidTelemetry);
       }
 
-      return;
+      return undefined;
     }
 
     // Every fresh read steps the replay state, before the dedupe below: a
@@ -266,7 +382,7 @@ export class SDKController {
     const tick = telemetry.SessionTick;
 
     if (tick !== undefined && tick === this.lastSessionTick) {
-      return;
+      return undefined;
     }
 
     this.lastSessionTick = tick ?? -1;
@@ -274,18 +390,22 @@ export class SDKController {
     // Cache the valid telemetry
     this.lastValidTelemetry = telemetry;
     this.templateContextDirty = true;
-    this.notifySubscribers(telemetry);
+
+    return this.notifySubscribers(telemetry);
   }
 
   /**
-   * Notify all subscribers of telemetry update
+   * Notify every subscriber, in subscription order, each inside the error
+   * boundary (#1558). This is the only place the subscriber map is iterated,
+   * and the order is load-bearing: the Elgato extension relies on the
+   * translator subscribing first. A throwing subscriber does not stop the ones
+   * after it, and is reported under its own id, so the controller work this
+   * runs inside never reports it again under a `controller:` id; under
+   * `"rethrow"` the first error is returned, to be thrown once the entry
+   * point's work is done.
    */
-  private notifySubscribers(telemetry?: TelemetryData | null): void {
-    const data = telemetry !== undefined ? telemetry : this.sdk.getTelemetry();
-
-    for (const callback of this.subscribers.values()) {
-      callback(data, this.isConnected);
-    }
+  private notifySubscribers(data: TelemetryData | null): HeldError {
+    return this.boundary.callEach(this.subscribers, (callback) => callback(data, this.isConnected));
   }
 
   /**
@@ -309,7 +429,15 @@ export class SDKController {
     if (!enabled && this.isConnected) {
       // iRacing terminated - disconnect immediately and notify subscribers
       this.logger.info("[SDKController] Disconnecting (app terminated)");
-      this.sdk.disconnect();
+      // Only the native call runs inside the boundary: a throw from it must
+      // not skip the reset or the fan-out, since with reconnecting disabled
+      // no poll would ever correct a controller left reading connected.
+      const disconnectHeld = this.boundary.run(DISCONNECT_ID, () => {
+        this.sdk.disconnect();
+
+        return undefined;
+      });
+
       this.isConnected = false;
       this.lastValidTelemetry = null;
       this.lastTemplateContext = null;
@@ -318,14 +446,17 @@ export class SDKController {
       // is never suppressed by a stale tick value (issue #493 follow-up).
       this.lastSessionTick = -1;
       this.replayState.reset();
-      this.notifySubscribers(null);
+
+      // Fan out before combining, so under "rethrow" a held disconnect error
+      // never stops the subscribers from hearing of the disconnect.
+      const notified = this.notifySubscribers(null);
+
+      throwHeld(disconnectHeld ?? notified);
     } else if (enabled && this.subscribers.size > 0 && !this.isConnected) {
-      // Re-enabling and we have subscribers - try to connect immediately
-      try {
-        this.tryConnect();
-      } catch (error) {
-        this.logger.error(`[SDKController] Failed to connect on re-enable: ${error}`);
-      }
+      // Re-enabling and we have subscribers - try to connect immediately.
+      // `sdk.connect()` can throw, so the attempt runs inside the same
+      // boundary as the reconnect poll's.
+      throwHeld(this.boundary.run(RECONNECT_ID, () => this.tryConnect()));
     }
   }
 

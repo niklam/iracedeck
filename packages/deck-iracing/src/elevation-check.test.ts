@@ -145,6 +145,65 @@ describe("createElevationCheckSubscriber", () => {
     expect(getStatus).toHaveBeenCalledTimes(1);
   });
 
+  it("posts the PI warning again on the next tick after setWarning throws, without re-probing (#1558)", () => {
+    const logger = createMockLogger();
+    const getStatus = vi.fn(() => ({ mismatch: true }));
+    vi.mocked(setWarning).mockImplementationOnce(() => {
+      throw new Error("store unavailable");
+    });
+    const subscriber = createElevationCheckSubscriber({ getStatus, logger });
+
+    // The throw propagates: the SDK controller is the boundary that isolates it.
+    expect(() => subscriber(undefined, true)).toThrow("store unavailable");
+    expect(hasElevationMismatch()).toBe(true);
+
+    subscriber(undefined, true);
+
+    expect(setWarning).toHaveBeenCalledTimes(2);
+    expect(setWarning).toHaveBeenLastCalledWith(ELEVATION_WARNING_ID, "warning", ELEVATION_WARNING_MESSAGE);
+    expect(getStatus).toHaveBeenCalledTimes(1);
+    // The verdict is logged once per connection, not once per attempt.
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+
+    // Once the store took it, later ticks leave it alone.
+    subscriber(undefined, true);
+    expect(setWarning).toHaveBeenCalledTimes(2);
+  });
+
+  it("clears the PI warning again on the next tick after clearWarning throws (#1558)", () => {
+    const logger = createMockLogger();
+    const getStatus = vi.fn(() => ({ mismatch: false }));
+    vi.mocked(clearWarning).mockImplementationOnce(() => {
+      throw new Error("store unavailable");
+    });
+    const subscriber = createElevationCheckSubscriber({ getStatus, logger });
+
+    expect(() => subscriber(undefined, true)).toThrow("store unavailable");
+    subscriber(undefined, true);
+    subscriber(undefined, true);
+
+    expect(clearWarning).toHaveBeenCalledTimes(2);
+    expect(getStatus).toHaveBeenCalledTimes(1);
+    expect(logger.info).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-runs the whole check on the next connection after setWarning kept throwing (#1558)", () => {
+    const getStatus = vi.fn(() => ({ mismatch: true }));
+    vi.mocked(setWarning).mockImplementation(() => {
+      throw new Error("store unavailable");
+    });
+    const subscriber = createElevationCheckSubscriber({ getStatus, logger: createMockLogger() });
+
+    expect(() => subscriber(undefined, true)).toThrow("store unavailable");
+    subscriber(undefined, false);
+    vi.mocked(setWarning).mockReset();
+    subscriber(undefined, true);
+
+    expect(getStatus).toHaveBeenCalledTimes(2);
+    expect(setWarning).toHaveBeenCalledTimes(1);
+    expect(hasElevationMismatch()).toBe(true);
+  });
+
   it("re-probes on reconnect after a failed probe", () => {
     const getStatus = vi
       .fn<() => { mismatch: boolean }>()

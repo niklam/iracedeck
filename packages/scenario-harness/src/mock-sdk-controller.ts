@@ -18,6 +18,14 @@
  * translator for `REPLAY_EXIT_GRACE_MS`, as it is in the sim, and a shortcut
  * holds that long before the step it expects live behaviour from.
  *
+ * Delivery goes through the same error boundary as the real controller's
+ * (#1558), `createErrorBoundary` from `@iracedeck/logger`: every subscriber
+ * call, the subscribe-time one included, runs inside it, a throw goes to its
+ * bounded reporter under the subscriber's id, and the next subscriber is
+ * still called. `onSubscriberError` takes the same policy, `"report"` by
+ * default. So a harness session behaves as the plugin does when a subscriber
+ * has a bug: the throw is logged once, and the other subscribers carry on.
+ *
  * The `private` fields on the real `SDKController` make TypeScript's
  * structural compatibility check fail, so callers cast through `unknown`
  * to `SDKController` when handing the mock to the translator — the same
@@ -30,8 +38,8 @@ import {
   type TelemetryCallback,
   type TelemetryData,
 } from "@iracedeck/iracing-sdk";
-import type { ILogger } from "@iracedeck/logger";
-import { silentLogger } from "@iracedeck/logger";
+import type { ErrorBoundary, ErrorPolicy, ILogger } from "@iracedeck/logger";
+import { createErrorBoundary, silentLogger, throwHeld } from "@iracedeck/logger";
 
 export type MockState = {
   telemetry: TelemetryData;
@@ -54,6 +62,20 @@ export type MockSDKControllerOptions = {
    * 60 Hz write rate).
    */
   tickIntervalMs?: number;
+  /**
+   * What a subscriber's throw does, as on the real `SDKController` (#1558).
+   * Under `"report"`, the default, it goes to the bounded reporter under the
+   * subscriber's id and delivery carries on, so nothing escapes `tickOnce`,
+   * `subscribe` or `setConnected`. That is what the harness itself runs
+   * (`main.ts`). Under `"rethrow"`, every subscriber is still called, then the
+   * first error is thrown. A test that drives a real subscriber through the
+   * mock (the translator, the Race Engineer) passes `"rethrow"`: under
+   * `"report"` and the default `silentLogger`, a subscriber that threw on
+   * every tick would leave a test asserting that nothing happened green.
+   */
+  onSubscriberError?: ErrorPolicy;
+  /** The reporter's clock, in milliseconds. Defaults to `Date.now()`. */
+  now?: () => number;
 };
 
 const DEFAULT_TICK_INTERVAL_MS = 14;
@@ -114,24 +136,42 @@ export class MockSDKController {
   private readonly logger: ILogger;
   private stateListeners = new Set<(state: MockState) => void>();
   private readonly replayState = new ReplayStateTracker();
+  private readonly boundary: ErrorBoundary;
 
   constructor(options: MockSDKControllerOptions = {}) {
     this.telemetry = options.initialTelemetry ?? defaultTelemetry();
     this.tickIntervalMs = options.tickIntervalMs ?? DEFAULT_TICK_INTERVAL_MS;
     this.logger = options.logger ?? silentLogger;
+    // As on the real controller: a subscriber that unsubscribes itself and
+    // then throws leaves no error keys behind.
+    this.boundary = createErrorBoundary({
+      logger: this.logger,
+      now: options.now,
+      policy: options.onSubscriberError,
+      isRegistered: (id) => this.subscribers.has(id),
+    });
   }
 
   // ── SDKController surface (structural — translator only uses these) ────────
 
+  /**
+   * As on the real controller, subscribing an id that is already subscribed
+   * replaces its callback and forgets the old callback's error counts.
+   */
   subscribe(id: string, callback: TelemetryCallback): void {
+    if (this.subscribers.has(id)) this.boundary.forget(id);
+
     this.subscribers.set(id, callback);
     // Mirror the real controller: deliver current state immediately so the
     // translator's diff state seeds correctly.
-    this.deliver(callback);
+    this.stepReplayState();
+    throwHeld(this.boundary.call(id, () => this.deliver(callback)));
   }
 
+  /** As on the real controller, flushes the id's unreported error counts and drops them. */
   unsubscribe(id: string): void {
     this.subscribers.delete(id);
+    this.boundary.forget(id);
   }
 
   getSessionInfo(): SessionInfo | null {
@@ -209,19 +249,15 @@ export class MockSDKController {
    * One tick to every subscriber: the replay state steps first, as the real
    * controller steps it on the poll before any callback runs, and a
    * disconnected tick resets it, as the real controller resets it wherever
-   * the connection drops.
+   * the connection drops. Each call runs inside the error boundary.
    */
   private deliverToAll(): void {
     this.stepReplayState();
-
-    for (const cb of this.subscribers.values()) {
-      cb(this.isConnected ? this.telemetry : null, this.isConnected);
-    }
+    throwHeld(this.boundary.callEach(this.subscribers, (callback) => this.deliver(callback)));
   }
 
-  /** One tick to a single subscriber (the subscribe-time delivery), stepped the same way. */
+  /** One subscriber's view of the current state. Callers run it inside the error boundary. */
   private deliver(callback: TelemetryCallback): void {
-    this.stepReplayState();
     callback(this.isConnected ? this.telemetry : null, this.isConnected);
   }
 

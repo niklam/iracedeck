@@ -42,8 +42,8 @@
  * out a moment before the tick. Each stays consistent with its own edges,
  * since each keeps its own "last tick in a replay" flag, and the next tick
  * agrees again.
- * The controller does not isolate its subscribers, so a tick on which the
- * translator throws never reaches the recorder (#1558 tracks isolating them).
+ * The controller isolates its subscribers (#1558), so a tick on which the
+ * translator throws still reaches the recorder.
  *
  * **The reset points**, each the one the recorders had inside the translator
  * before #1468 (`replay-recorder.equivalence.test.ts` pins the stream they
@@ -165,16 +165,12 @@ export function startReplayRecorder(
   };
 
   // The controller stores the callback, then delivers the current tick to it
-  // at once. If that first tick throws, no handle is ever returned, so nothing
-  // could unsubscribe the callback left registered: take it back out before
-  // the throw goes on.
-  try {
-    controller.subscribe(REPLAY_RECORDER_SUBSCRIPTION_ID, callback);
-  } catch (error) {
-    controller.unsubscribe(REPLAY_RECORDER_SUBSCRIPTION_ID);
-
-    throw error;
-  }
+  // at once. Under the `"report"` subscriber-error policy every plugin build
+  // runs, a throw on that first tick stays inside the controller's error
+  // boundary (#1558), so `subscribe` returns and the handle below can stop the
+  // subscription. Under `"rethrow"`, which only a test opts into, `subscribe`
+  // throws after registering the callback and no handle is returned.
+  controller.subscribe(REPLAY_RECORDER_SUBSCRIPTION_ID, callback);
 
   let stopped = false;
 

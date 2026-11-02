@@ -5,6 +5,23 @@
  * Allows consumers to inject their own logging implementation.
  */
 
+export {
+  type BoundedErrorReporter,
+  type BoundedErrorReporterOptions,
+  createBoundedErrorReporter,
+  DEFAULT_ERROR_REPORT_WINDOW_MS,
+  DEFAULT_MAX_ERROR_KEYS,
+  DEFAULT_MAX_ERROR_KEYS_PER_ID,
+  type ErrorPolicy,
+} from "./bounded-error-reporter.js";
+export {
+  createErrorBoundary,
+  type ErrorBoundary,
+  type ErrorBoundaryOptions,
+  type HeldError,
+  throwHeld,
+} from "./error-boundary.js";
+
 /**
  * Log levels in order of verbosity (most verbose first)
  */

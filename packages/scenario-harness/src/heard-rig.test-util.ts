@@ -258,7 +258,7 @@ export function useHeardRig(clipMs: ClipDurations): HeardRig {
 
   return {
     boot: (sessionPreset, { ticking = true } = {}) => {
-      controller = new MockSDKController();
+      controller = new MockSDKController({ onSubscriberError: "rethrow" });
       controller.setSessionInfo(
         JSON.parse(readFileSync(join(PRESETS_DIR, "session", `${sessionPreset}.json`), "utf8")) as SessionInfo,
       );

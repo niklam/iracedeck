@@ -1,6 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createCommands } from "./factory.js";
+import { createCommands, createSDK } from "./factory.js";
 import type { INativeSDK } from "./interfaces.js";
 
 function createMockNative(): INativeSDK {
@@ -43,5 +43,39 @@ describe("createCommands (issue #977)", () => {
       "texture",
       "videoCapture",
     ]);
+  });
+});
+
+describe("createSDK (issue #1558)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const throwing = (): void => {
+    throw new Error("subscriber failed");
+  };
+
+  it("passes onSubscriberError to the controller", () => {
+    const { controller } = createSDK(undefined, { onSubscriberError: "rethrow" });
+
+    try {
+      expect(() => controller.subscribe("throwing", throwing)).toThrow("subscriber failed");
+    } finally {
+      controller.unsubscribe("throwing");
+    }
+  });
+
+  it('defaults the controller to "report"', () => {
+    const { controller } = createSDK();
+
+    try {
+      expect(() => controller.subscribe("throwing", throwing)).not.toThrow();
+    } finally {
+      controller.unsubscribe("throwing");
+    }
   });
 });
