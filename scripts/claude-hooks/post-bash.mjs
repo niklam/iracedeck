@@ -24,20 +24,7 @@ import {
   setBoardStatus,
   setHookDeadline,
 } from "./lib.mjs";
-import {
-  BASH,
-  chainCommands,
-  firstMerge,
-  GIT_WORKTREE_ADD,
-  gitCwd,
-  issueEdits,
-  issueFromWorktreePath,
-  POWERSHELL,
-  powershellAsBash,
-  resolveDir,
-  trustedMask,
-  worktreeAddTarget,
-} from "./rules-bash.mjs";
+import { firstMerge, GIT_WORKTREE_ADD, issueEdits, issueFromWorktreePath, worktreeAddTarget } from "./rules-bash.mjs";
 import {
   assignedGhRepo,
   boardIssues,
@@ -54,6 +41,7 @@ import {
   repoOfUrl,
   setsMilestone,
 } from "./rules-post.mjs";
+import { BASH, chainCommands, gitCwd, POWERSHELL, powershellAsBash, resolveDir, trustedMask } from "./shell-lexer.mjs";
 
 // Unanchored, as `firstMerge` is: anchored, a merge behind a wrapper the anchor
 // does not know matched no segment, and `gitCwd` then walked every `cd` in the
