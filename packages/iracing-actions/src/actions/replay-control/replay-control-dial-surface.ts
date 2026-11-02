@@ -43,7 +43,6 @@ import {
   beginReplayJump,
   currentReplayCursorOwner,
   describeReplayJump,
-  DIAL_SPEED_HOLD_MS,
   findRecordStep,
   formatPlayCaption,
   formatSpeedDisplay,
@@ -63,6 +62,7 @@ import {
   type RecordStepSpec,
   rememberedSpeed,
   REPLAY_JUMP_MAX_WAIT_MS,
+  REPLAY_SPEED_HOLD_MS,
   REPLAY_TARGET_GIVE_UP_MS,
   type ReplayGateCommand,
   type ReplayPressResult,
@@ -624,9 +624,10 @@ export class ReplayControlDialSurface {
 
   constructor(private readonly host: ReplayControlDialHost) {
     // Every command is pressed through the gate, which takes the replay cursor
-    // from an in-flight replay jump (#1203) as every command did. A cursor take
-    // drops the dial's pending speed, since another action's command
-    // supersedes it; the dial's own take keeps it.
+    // from an in-flight replay jump (#1203) as every command did. Another
+    // action's cursor take supersedes the pending speed the dial sent, for
+    // what the surfaces show (`replay-speed-state.ts`); the dial's own take
+    // keeps it.
     const press = (owner: string, command: ReplayGateCommand): ReplayPressResult => {
       // A gesture that draws working registered so before it ran; one that
       // does not takes the working look off here, as its press goes to the
@@ -1276,7 +1277,7 @@ export class ReplayControlDialSurface {
     this.holdLapseTimer = setTimeout(() => {
       this.holdLapseTimer = null;
       this.withReading(() => this.settleLapsedHold());
-    }, DIAL_SPEED_HOLD_MS + HOLD_LAPSE_MARGIN_MS);
+    }, REPLAY_SPEED_HOLD_MS + HOLD_LAPSE_MARGIN_MS);
   }
 
   /**

@@ -33,7 +33,7 @@ export function cancelLapWalks(by: string): string | null {
  * Interrupts a lap walk that holds the replay cursor, and no other owner,
  * naming `by` (#1428 / #1435): a camera switch. The walk keeps its claim,
  * stops its search at its next await and puts the replay back. Nothing is
- * taken: the pending jump speed, the dial's pending speed and
+ * taken: the captured jump speed, the pending speed and
  * `onReplayCursorTaken` are left alone. Returns the interrupted walk's owner
  * name, or null when none stood or it was already interrupted.
  */

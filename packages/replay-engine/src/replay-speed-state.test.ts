@@ -4,15 +4,16 @@ import { _resetReplayCursor, cancelReplayCursorOwner, claimReplayCursor } from "
 import type { ReplaySpeed } from "./replay-jump-speed.js";
 import {
   _resetReplaySpeedState,
-  clearDialPendingSpeed,
-  DIAL_SPEED_HOLD_MS,
   keepDialPendingSpeed,
   noteReplaySpeedSent,
   noteTelemetrySpeed,
   onReplaySpeedChanged,
+  pendingReplaySpeed,
   rememberedSpeed,
+  REPLAY_SPEED_HOLD_MS,
   resolveLiveSpeed,
   reverseRememberedSpeed,
+  supersedePendingSpeed,
 } from "./replay-speed-state.js";
 
 function speed(value: number, slowMotion = false): ReplaySpeed {
@@ -48,7 +49,7 @@ describe("replay-speed-state", () => {
       dialSent(speed(2), T0);
 
       expect(resolveLiveSpeed(speed(1), T0 + 20)).toEqual(speed(2));
-      expect(resolveLiveSpeed(speed(1), T0 + DIAL_SPEED_HOLD_MS - 1)).toEqual(speed(2));
+      expect(resolveLiveSpeed(speed(1), T0 + REPLAY_SPEED_HOLD_MS - 1)).toEqual(speed(2));
     });
 
     it("should let two sends inside one telemetry frame build on each other", () => {
@@ -64,7 +65,7 @@ describe("replay-speed-state", () => {
     it("should return to telemetry once the hold has run out", () => {
       dialSent(speed(2), T0);
 
-      expect(resolveLiveSpeed(speed(1), T0 + DIAL_SPEED_HOLD_MS)).toEqual(speed(1));
+      expect(resolveLiveSpeed(speed(1), T0 + REPLAY_SPEED_HOLD_MS)).toEqual(speed(1));
     });
 
     it("should drop the pending speed for good once telemetry has reported it", () => {
@@ -80,7 +81,7 @@ describe("replay-speed-state", () => {
 
       expect(resolveLiveSpeed(speed(4), T0 + 16)).toEqual(PAUSED);
       expect(resolveLiveSpeed(null, T0 + 16)).toEqual(PAUSED);
-      expect(resolveLiveSpeed(speed(4), T0 + DIAL_SPEED_HOLD_MS)).toEqual(speed(4));
+      expect(resolveLiveSpeed(speed(4), T0 + REPLAY_SPEED_HOLD_MS)).toEqual(speed(4));
     });
 
     it("should hand out a copy, never the stored speed", () => {
@@ -110,7 +111,7 @@ describe("replay-speed-state", () => {
       expect(rememberedSpeed()).toEqual(speed(8));
 
       // No telemetry sample confirms it within the hold: it goes back.
-      expect(resolveLiveSpeed(speed(2), T0 + 10 + DIAL_SPEED_HOLD_MS)).toEqual(speed(2));
+      expect(resolveLiveSpeed(speed(2), T0 + 10 + REPLAY_SPEED_HOLD_MS)).toEqual(speed(2));
       expect(rememberedSpeed()).toEqual(speed(2));
     });
 
@@ -194,7 +195,7 @@ describe("replay-speed-state", () => {
 
     it("should follow telemetry again once the hold has run out", () => {
       dialSent(speed(4), T0);
-      noteTelemetrySpeed(speed(1), T0 + DIAL_SPEED_HOLD_MS);
+      noteTelemetrySpeed(speed(1), T0 + REPLAY_SPEED_HOLD_MS);
 
       expect(rememberedSpeed()).toEqual(speed(1));
     });
@@ -233,7 +234,7 @@ describe("replay-speed-state", () => {
       noteTelemetrySpeed(PAUSED, T0 + 16);
       reverseRememberedSpeed();
       noteTelemetrySpeed(PAUSED, T0 + 32);
-      resolveLiveSpeed(PAUSED, T0 + 10 + DIAL_SPEED_HOLD_MS);
+      resolveLiveSpeed(PAUSED, T0 + 10 + REPLAY_SPEED_HOLD_MS);
 
       expect(rememberedSpeed()).toEqual(speed(-2));
     });
@@ -241,7 +242,7 @@ describe("replay-speed-state", () => {
 
   describe("a send iRacing did not act on", () => {
     /** Past the hold of a send made at `sentAt`. */
-    const lapsedAfter = (sentAt: number) => sentAt + DIAL_SPEED_HOLD_MS;
+    const lapsedAfter = (sentAt: number) => sentAt + REPLAY_SPEED_HOLD_MS;
 
     beforeEach(() => {
       // The replay really played at 2x.
@@ -455,12 +456,103 @@ describe("replay-speed-state", () => {
     });
   });
 
-  describe("clearDialPendingSpeed", () => {
+  describe("a send back to the speed telemetry has not moved off (#1427)", () => {
+    /** A send as the gate makes it: with the speed its reading showed. */
+    function sentOver(target: ReplaySpeed, shown: ReplaySpeed, nowMs: number, rememberSpeed = true): void {
+      noteReplaySpeedSent(target, nowMs, { rememberSpeed, telemetrySpeed: shown });
+    }
+
+    it("is not settled by the ticks from before the chain: playing 1x, 2x and then 1x inside the lag", () => {
+      noteTelemetrySpeed(speed(1), T0 - 50);
+      sentOver(speed(2), speed(1), T0);
+      sentOver(speed(1), speed(1), T0 + 5);
+
+      // The old 1x ticks: the 2x is still to land.
+      noteTelemetrySpeed(speed(1), T0 + 16);
+      expect(resolveLiveSpeed(speed(1), T0 + 16)).toEqual(speed(1));
+
+      // It lands: a third input must not walk from 2x, and Play must not resume it.
+      noteTelemetrySpeed(speed(2), T0 + 33);
+      expect(resolveLiveSpeed(speed(2), T0 + 33)).toEqual(speed(1));
+      expect(rememberedSpeed()).toEqual(speed(1));
+
+      // The 1x shows: settled, so a change made after it reads at once.
+      noteTelemetrySpeed(speed(1), T0 + 50);
+      expect(resolveLiveSpeed(speed(8), T0 + 60)).toEqual(speed(8));
+    });
+
+    it("is not settled by the ticks from before the chain: a Play / Pause double press inside the lag", () => {
+      sentOver(PAUSED, speed(1), T0, false);
+      sentOver(speed(1), speed(1), T0 + 5, false);
+
+      noteTelemetrySpeed(speed(1), T0 + 16);
+      // The pause lands first: the Play is still to come.
+      noteTelemetrySpeed(PAUSED, T0 + 33);
+      expect(resolveLiveSpeed(PAUSED, T0 + 33)).toEqual(speed(1));
+
+      noteTelemetrySpeed(speed(1), T0 + 50);
+      expect(resolveLiveSpeed(PAUSED, T0 + 60)).toEqual(PAUSED);
+    });
+
+    it("settles on the first sample when the target differs from what the chain started on", () => {
+      sentOver(speed(2), speed(1), T0);
+
+      noteTelemetrySpeed(speed(2), T0 + 16);
+
+      // iRacing's own replay bar, right after: read at once.
+      expect(resolveLiveSpeed(speed(4), T0 + 20)).toEqual(speed(4));
+    });
+
+    it("still gives up a send telemetry never moved for, at the hold", () => {
+      sentOver(speed(2), speed(1), T0);
+      sentOver(speed(1), speed(1), T0 + 5);
+
+      expect(resolveLiveSpeed(speed(4), T0 + 5 + REPLAY_SPEED_HOLD_MS - 1)).toEqual(speed(1));
+      expect(resolveLiveSpeed(speed(4), T0 + 5 + REPLAY_SPEED_HOLD_MS)).toEqual(speed(4));
+    });
+
+    it("starts a new chain once the last one has settled", () => {
+      sentOver(speed(2), speed(1), T0);
+      noteTelemetrySpeed(speed(2), T0 + 16);
+
+      // Back to 1x: telemetry reads 2x now, so a 1x tick is the send's.
+      sentOver(speed(1), speed(2), T0 + 20);
+      noteTelemetrySpeed(speed(1), T0 + 36);
+
+      expect(resolveLiveSpeed(speed(8), T0 + 40)).toEqual(speed(8));
+    });
+  });
+
+  describe("the gate's read of the pending speed", () => {
+    beforeEach(() => {
+      _resetReplayCursor();
+    });
+
+    it("is the speed just sent, until a sample shows it", () => {
+      noteReplaySpeedSent(speed(1), T0, { rememberSpeed: false, telemetrySpeed: PAUSED });
+
+      expect(pendingReplaySpeed(PAUSED, T0 + 10)).toEqual(speed(1));
+      expect(pendingReplaySpeed(null, T0 + 10)).toEqual(speed(1));
+      expect(pendingReplaySpeed(speed(1), T0 + 20)).toBeNull();
+    });
+
+    it("keeps a send a cursor take superseded for the surfaces: the press that took it is decided over it", () => {
+      noteReplaySpeedSent(speed(1), T0, { rememberSpeed: false, telemetrySpeed: PAUSED });
+
+      cancelReplayCursorOwner("replay-control-next-frame");
+
+      expect(resolveLiveSpeed(PAUSED, T0 + 10)).toEqual(PAUSED);
+      expect(pendingReplaySpeed(PAUSED, T0 + 10)).toEqual(speed(1));
+      expect(pendingReplaySpeed(PAUSED, T0 + REPLAY_SPEED_HOLD_MS)).toBeNull();
+    });
+  });
+
+  describe("supersedePendingSpeed", () => {
     it("should let the live speed follow telemetry at once", () => {
       dialSent(PAUSED, T0);
       expect(resolveLiveSpeed(speed(4), T0 + 10)).toEqual(PAUSED);
 
-      clearDialPendingSpeed();
+      supersedePendingSpeed();
 
       // A key's Play landed: the tick's speed is the live one, inside what was the hold.
       expect(resolveLiveSpeed(speed(1), T0 + 20)).toEqual(speed(1));
@@ -470,7 +562,7 @@ describe("replay-speed-state", () => {
     it("should read as paused with no telemetry speed once the pending one is gone", () => {
       dialSent(speed(4), T0);
 
-      clearDialPendingSpeed();
+      supersedePendingSpeed();
 
       expect(resolveLiveSpeed(null, T0 + 10)).toEqual(PAUSED);
     });
@@ -479,7 +571,7 @@ describe("replay-speed-state", () => {
       noteTelemetrySpeed(speed(2), T0 - 100);
       dialSent(speed(4), T0);
 
-      clearDialPendingSpeed();
+      supersedePendingSpeed();
       noteTelemetrySpeed(speed(2), T0 + 20);
 
       expect(rememberedSpeed()).toEqual(speed(4));
@@ -488,7 +580,7 @@ describe("replay-speed-state", () => {
     it("should leave the remembered speed alone", () => {
       dialSent(speed(4), T0);
 
-      clearDialPendingSpeed();
+      supersedePendingSpeed();
 
       expect(rememberedSpeed()).toEqual(speed(4));
     });
@@ -496,7 +588,7 @@ describe("replay-speed-state", () => {
     it("should do nothing when no speed is pending", () => {
       noteTelemetrySpeed(speed(2), T0);
 
-      clearDialPendingSpeed();
+      supersedePendingSpeed();
 
       expect(resolveLiveSpeed(speed(2), T0 + 10)).toEqual(speed(2));
       expect(rememberedSpeed()).toEqual(speed(2));
@@ -504,7 +596,7 @@ describe("replay-speed-state", () => {
 
     it("should not stop a later dial send from holding again", () => {
       dialSent(speed(2), T0);
-      clearDialPendingSpeed();
+      supersedePendingSpeed();
       dialSent(speed(4), T0 + 10);
 
       expect(resolveLiveSpeed(speed(1), T0 + 20)).toEqual(speed(4));

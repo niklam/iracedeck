@@ -1,43 +1,65 @@
 /**
- * The one record of the replay speed (#1316, #1467). Designs:
+ * The one record of the replay speed (#1316, #1467, #1427). Designs:
  * `docs/superpowers/specs/2026-10-04-issue-1316-replay-control-dial.md`, and
  * Decision 4 of `docs/superpowers/specs/2026-10-20-issue-1467-replay-engine-package.md`.
  *
  * iRacing has one replay speed, so everything here is ONE module-wide value,
- * never per dial or per key. The replay command gate feeds it every speed it
+ * never per dial or per key. The replay command gate records every speed it
  * actually sends ({@link noteReplaySpeedSent}), whichever surface asked, and
- * telemetry feeds it through {@link noteTelemetrySpeed}. Two things are kept,
+ * the engine's own tick feed (`replay-speed-feed.ts`) hands it every telemetry
+ * tick that is in a replay ({@link noteTelemetrySpeed}). Two things are kept,
  * and they are separate concerns:
  *
- * - The **pending speed**, an overlay on the live speed: what was just sent.
- *   `ReplayPlaySpeed` reports a new speed only on a later tick, so a second
- *   detent or key press arriving first would walk from the old speed and send
- *   the same stop again. After a send the live speed therefore reads as the
- *   sent target until telemetry reports it or {@link DIAL_SPEED_HOLD_MS}
- *   passes — the Replay Markers landing hold (#1230), applied to speed. A
- *   pause is a sent speed too (0x). Whatever takes the replay cursor next
- *   supersedes it at once — any replay command of any action, since each takes
- *   the cursor before it sends (`replay-cursor.ts`) — until the gate records
- *   that command's own send. A change made from iRacing's own replay bar
- *   inside the hold cannot be told from a stale tick, so it is masked until
- *   the hold runs out, which is when the hold heals itself.
+ * - The **pending speed** (#1427: the one there is): a speed just sent that
+ *   telemetry does not show yet. `ReplayPlaySpeed` reports a new speed only on
+ *   a later tick, so a second detent or key press arriving first would walk
+ *   from the old speed and send the same stop again, a jump pressed right
+ *   after a speed key would remember the old speed, and the gate would take a
+ *   replay that is starting to play for a paused one. Everything reads it: the
+ *   gate's dispatch decisions ({@link pendingReplaySpeed}), a jump's capture of
+ *   the speed before its press and every surface ({@link resolveLiveSpeed}). It
+ *   ends on the first sample that shows it — a tick, or any read handed in —
+ *   or when {@link REPLAY_SPEED_HOLD_MS} passes without one. A pause is a sent
+ *   speed too (0x).
+ *
+ *   **Stale-equal.** A sample shows the pending speed only once telemetry has
+ *   moved off what it read when the chain of unsettled sends began, or when
+ *   the target differs from that. Playing at 1x, a 2x and then a 1x sent
+ *   before telemetry shows the 2x leave a 1x pending that the old 1x ticks
+ *   must not settle: the 2x is still to land. The same holds for a Play /
+ *   Pause double press inside the lag.
+ *
+ *   **A cursor take supersedes it for the surfaces.** Whatever takes the
+ *   replay cursor next (`replay-cursor.ts`: any replay command of any action
+ *   takes it before it sends) may change the speed without sending one — a
+ *   frame step pauses, a search clears slow motion — so from that take until
+ *   the next send {@link resolveLiveSpeed} follows telemetry again; the dial's
+ *   own take keeps it ({@link keepDialPendingSpeed}). The gate's own reads do
+ *   not drop it: a press takes the cursor before the gate decides, and the
+ *   decision must still see a speed sent the moment before (a frame step right
+ *   after a Play goes into a replay that is starting to move). A change made
+ *   from iRacing's own replay bar inside the lag, before telemetry has shown
+ *   the send, cannot be told from a stale tick, so it is masked until the hold
+ *   runs out; one made after telemetry has shown it is not, since the pending
+ *   speed ended on that tick.
  * - The **remembered speed**: the last non-zero speed the replay played at,
  *   which the dial's Play/Pause resumes. It follows telemetry, so it is right
- *   whoever set the speed — a dial, a key or iRacing's own replay bar. A 0
- *   never overwrites it, and it is 1x before any sample. A non-zero send made
- *   with `rememberSpeed` — the dial's own, and every speed the gate's slot
- *   sends later — writes it at once, but only **provisionally**, because a
- *   broadcast reports no status: a send iRacing ignores (a speed sent while
- *   paused at the end of a saved recording) looks exactly like one it took. A
- *   telemetry sample carrying the sent speed confirms it.
- *   {@link DIAL_SPEED_HOLD_MS} passing without one is the only sign the send
+ *   whoever set the speed — a dial, a key or iRacing's own replay bar — and
+ *   whether or not a Replay Control context is on screen. A 0 never
+ *   overwrites it, and it is 1x before any sample. A non-zero send made with
+ *   `rememberSpeed` — the dial's own, and every speed the gate's slot sends
+ *   later — writes it at once, but only **provisionally**, because a broadcast
+ *   reports no status: a send iRacing ignores (a speed sent while paused at
+ *   the end of a saved recording) looks exactly like one it took. A sample
+ *   showing the sent speed, by the same stale-equal rule, confirms it.
+ *   {@link REPLAY_SPEED_HOLD_MS} passing without one is the only sign the send
  *   was ignored, and the remembered speed then goes back to what it was before
  *   the first unconfirmed send. A send without `rememberSpeed` (a key's or a
  *   legacy action's, sent at once) moves only the pending speed.
  *
- * The provisional record outlives the overlay on purpose. A pause sent after
- * an ignored speed, or another action taking the cursor, ends the overlay but
- * says nothing about whether that speed ever played.
+ * The provisional record outlives the pending speed on purpose. A pause sent
+ * after an ignored speed, or another action taking the cursor, ends the
+ * overlay but says nothing about whether that speed ever played.
  *
  * Every recorded send is told to the {@link onReplaySpeedChanged} listeners,
  * so a surface redraws even when a paused replay delivers no tick.
@@ -50,27 +72,40 @@ import { engineLogger } from "./replay-engine-env.js";
 import { isSameSpeed, NORMAL_SPEED, type ReplaySpeed } from "./replay-jump-speed.js";
 
 /**
- * @internal Exported for testing
- *
- * How long (ms) a send is given to show up in telemetry: long enough for the
- * sim to answer a broadcast. For that long the sent speed stands in for the
- * live one, and a non-zero one sent with `rememberSpeed` is the remembered
- * speed provisionally. When it runs out unreported the send is taken as one
- * iRacing did not act on: the live speed is telemetry's again and the
- * remembered speed goes back to what it was. So it is also how long a speed
- * iRacing ignored stays on a dial; the surface redraws when it lapses.
+ * How long (ms) a send is given to show up in telemetry: the one hold of the
+ * pending speed (#1427), for the gate, the jumps and the surfaces alike.
+ * Telemetry showing the send ends it on that sample, so the hold only bounds
+ * what telemetry never shows: a send iRacing ignored, a speed it changed
+ * without being sent one, a send a later one overtook. It is the longer of
+ * the two the engine had (the gate's and the jumps' 200 ms, the dial's
+ * 500 ms) because a send the sim is slow to show must still count as sent:
+ * the gate would otherwise record a frame step's target on a replay that is
+ * starting to play, and the remembered speed would give back a speed that
+ * took. For that long a speed iRacing ignored stays on a dial, and the
+ * surface redraws when it lapses.
  */
-export const DIAL_SPEED_HOLD_MS = 500;
+export const REPLAY_SPEED_HOLD_MS = 500;
 
-/** The live-speed overlay: a speed the gate sent, and when. */
-interface PendingSpeed {
+/**
+ * What telemetry has shown since a chain of unsettled sends began: the
+ * stale-equal guard of a pending or provisional speed.
+ */
+interface ChainWatch {
+  /** What telemetry showed when the first send of the chain went out; null when that was not known. */
+  readonly before: ReplaySpeed | null;
+  /** Whether telemetry has shown a speed other than {@link ChainWatch.before} since. */
+  moved: boolean;
+}
+
+/** The speed just sent that telemetry does not show yet, and when it went out. */
+interface PendingSpeed extends ChainWatch {
   readonly speed: ReplaySpeed;
   /** The send's timestamp (ms). */
   readonly sentAt: number;
 }
 
 /** A remembered speed a send wrote that telemetry has not confirmed yet. */
-interface ProvisionalSpeed {
+interface ProvisionalSpeed extends ChainWatch {
   /** The non-zero speed the latest unconfirmed send wrote into the remembered speed. */
   readonly speed: ReplaySpeed;
   /**
@@ -84,6 +119,8 @@ interface ProvisionalSpeed {
 }
 
 let pending: PendingSpeed | null = null;
+/** Whether a cursor take since the last send has superseded the pending speed for the surfaces. */
+let superseded = false;
 let provisional: ProvisionalSpeed | null = null;
 /** What the replay resumes at before it has been seen playing: 1x. */
 let remembered: ReplaySpeed = { ...NORMAL_SPEED };
@@ -95,16 +132,31 @@ let sendCount = 0;
 const changeListeners = new Set<(speed: ReplaySpeed) => void>();
 
 /**
- * The pending speed that still stands for the live one, or null. Telemetry
- * reporting it, or the hold running out, drops it here for good, so a replay
- * that later passes through the same speed does not revive it.
+ * Whether `sample` shows `target` for the chain `watch` keeps: the same speed,
+ * once telemetry has moved off what it read when the chain began. A sample is
+ * noted on the chain first, so a sample equal to a target that differs from
+ * that speed shows it at once.
  */
-function settlePending(telemetrySpeed: ReplaySpeed | null, nowMs: number): PendingSpeed | null {
+function shows(watch: ChainWatch, target: ReplaySpeed, sample: ReplaySpeed | null): boolean {
+  if (sample === null) return false;
+
+  if (watch.before === null || !isSameSpeed(sample, watch.before)) watch.moved = true;
+
+  return watch.moved && isSameSpeed(sample, target);
+}
+
+/**
+ * The pending speed that still stands, or null. A sample showing it, or the
+ * hold running out, drops it here for good, so a replay that later passes
+ * through the same speed does not revive it.
+ */
+function settlePending(sample: ReplaySpeed | null, nowMs: number): PendingSpeed | null {
   if (pending === null) return null;
 
-  const reported = telemetrySpeed !== null && isSameSpeed(telemetrySpeed, pending.speed);
-
-  if (reported || nowMs - pending.sentAt >= DIAL_SPEED_HOLD_MS) pending = null;
+  if (shows(pending, pending.speed, sample) || nowMs - pending.sentAt >= REPLAY_SPEED_HOLD_MS) {
+    pending = null;
+    superseded = false;
+  }
 
   return pending;
 }
@@ -112,7 +164,7 @@ function settlePending(telemetrySpeed: ReplaySpeed | null, nowMs: number): Pendi
 /**
  * Resolves the provisional remembered speed against one telemetry sample (or
  * none) and the clock, and returns the record if it still stands. A sample
- * carrying its speed confirms it: the send took and the remembered speed
+ * showing its speed confirms it: the send took and the remembered speed
  * stays. The hold passing without one means iRacing did not act on the send,
  * and the remembered speed goes back to what the chain replaced — but only
  * while it is still the speed that send wrote: a Reverse made while paused
@@ -121,9 +173,9 @@ function settlePending(telemetrySpeed: ReplaySpeed | null, nowMs: number): Pendi
 function settleProvisional(sample: ReplaySpeed | null, nowMs: number): ProvisionalSpeed | null {
   if (provisional === null) return null;
 
-  if (sample !== null && isSameSpeed(sample, provisional.speed)) {
+  if (shows(provisional, provisional.speed, sample)) {
     provisional = null;
-  } else if (nowMs - provisional.sentAt >= DIAL_SPEED_HOLD_MS) {
+  } else if (nowMs - provisional.sentAt >= REPLAY_SPEED_HOLD_MS) {
     if (isSameSpeed(remembered, provisional.speed)) remembered = { ...provisional.replaced };
 
     provisional = null;
@@ -133,49 +185,99 @@ function settleProvisional(sample: ReplaySpeed | null, nowMs: number): Provision
 }
 
 /**
- * The replay speed now: `telemetrySpeed` (the latest reading's, null when it
- * carries none), overlaid by a speed the gate sent that telemetry has not
- * caught up with. No telemetry speed and nothing pending reads as paused. The
- * reading also resolves a provisional remembered speed, so a caller that needs
- * both the live and the remembered speed reads this one first.
+ * The replay speed now, as every surface shows it and a jump captures it:
+ * `telemetrySpeed` (the latest reading's, null when it carries none),
+ * overlaid by a speed the gate sent that telemetry does not show yet, unless
+ * a cursor take has superseded it since. No telemetry speed and nothing
+ * pending reads as paused. The reading also resolves a provisional remembered
+ * speed, so a caller that needs both the live and the remembered speed reads
+ * this one first.
  */
 export function resolveLiveSpeed(telemetrySpeed: ReplaySpeed | null, nowMs: number): ReplaySpeed {
   settleProvisional(telemetrySpeed, nowMs);
 
   const held = settlePending(telemetrySpeed, nowMs);
 
-  if (held !== null) return { ...held.speed };
+  if (held !== null && !superseded) return { ...held.speed };
 
   return telemetrySpeed === null ? { speed: 0, slowMotion: false } : { ...telemetrySpeed };
 }
 
 /**
- * Records a speed the replay command gate just sent, a pause (0x) included;
- * the gate calls it only when the command actually went out. The target
- * becomes the live speed for the hold. With `rememberSpeed` a non-zero one is
- * also written to the remembered speed at once, provisionally: the dial's next
- * Play/Pause resumes it even before telemetry has reported it, and it stays
- * only if telemetry does. A 0x send, or one without `rememberSpeed`, leaves
- * the remembered speed, and any provisional record, alone. Then every
- * {@link onReplaySpeedChanged} listener is told.
+ * The pending speed as the replay command gate reads it for its dispatch
+ * decisions: a speed just sent that `telemetrySpeed` does not show yet, or
+ * null. A cursor take since the send does not drop it here: the press that
+ * took the cursor is the one being decided, and it goes into a replay that
+ * was just sent that speed.
  */
-export function noteReplaySpeedSent(
-  target: ReplaySpeed,
-  nowMs: number,
-  options: { readonly rememberSpeed: boolean },
-): void {
-  pending = { speed: { ...target }, sentAt: nowMs };
+export function pendingReplaySpeed(telemetrySpeed: ReplaySpeed | null, nowMs: number): ReplaySpeed | null {
+  const held = settlePending(telemetrySpeed, nowMs);
+
+  return held === null ? null : { ...held.speed };
+}
+
+/** How a send is recorded. */
+export interface ReplaySpeedSendOptions {
+  /** Whether a non-zero send is also the speed the dial's Play/Pause resumes. */
+  readonly rememberSpeed: boolean;
+  /**
+   * The speed telemetry read when the send went out, null when it carried
+   * none: what a chain of sends starting here measures "telemetry has moved"
+   * against (the stale-equal guard). Left out, it is not known, and any
+   * sample of the target shows it.
+   */
+  readonly telemetrySpeed?: ReplaySpeed | null;
+}
+
+/**
+ * Records a speed the replay command gate just sent, a pause (0x) included,
+ * without telling the listeners: the gate records a send the moment it goes
+ * out, so its next decision reads it, and tells the listeners once its change
+ * is complete ({@link announceReplaySpeedSent}). The target becomes the
+ * pending speed. A send while an earlier one is still pending continues its
+ * chain, keeping what telemetry read when the chain began. With
+ * `rememberSpeed` a non-zero one is also written to the remembered speed at
+ * once, provisionally: the dial's next Play/Pause resumes it even before
+ * telemetry has shown it, and it stays only if telemetry does. A 0x send, or
+ * one without `rememberSpeed`, leaves the remembered speed, and any
+ * provisional record, alone.
+ */
+export function recordReplaySpeedSent(target: ReplaySpeed, nowMs: number, options: ReplaySpeedSendOptions): void {
+  const shown = options.telemetrySpeed ?? null;
+  // The reading of the send's own moment settles what it shows, and lapses what has run out, before a chain goes on.
+  const chain = settlePending(shown, nowMs);
+
+  pending = {
+    speed: { ...target },
+    sentAt: nowMs,
+    before: chain !== null ? chain.before : shown === null ? null : { ...shown },
+    moved: chain?.moved ?? false,
+  };
+  superseded = false;
   sendCount++;
 
   if (options.rememberSpeed && target.speed !== 0) {
     // A record whose hold ran out with nothing reading it since lapses first, so
     // a new chain starts from the remembered speed that lapse restores.
-    const standing = settleProvisional(null, nowMs);
+    const standing = settleProvisional(shown, nowMs);
 
-    provisional = { speed: { ...target }, replaced: standing?.replaced ?? { ...remembered }, sentAt: nowMs };
+    provisional = {
+      speed: { ...target },
+      replaced: standing?.replaced ?? { ...remembered },
+      sentAt: nowMs,
+      before: standing !== null ? standing.before : shown === null ? null : { ...shown },
+      moved: standing?.moved ?? false,
+    };
     remembered = { ...target };
   }
+}
 
+/**
+ * Tells every {@link onReplaySpeedChanged} listener of a send already
+ * recorded with {@link recordReplaySpeedSent}: the gate's, once its change
+ * is complete, so a listener that reads the gate reads it whole.
+ */
+export function announceReplaySpeedSent(target: ReplaySpeed): void {
   for (const listener of [...changeListeners]) {
     try {
       listener({ ...target });
@@ -186,11 +288,21 @@ export function noteReplaySpeedSent(
 }
 
 /**
- * Runs `listener` on every send {@link noteReplaySpeedSent} records, with the
- * speed sent: a key's or a dial's press, a speed the gate's slot sends later,
- * a search's pause and closing speed, a jump's or a walk's pause. A paused
- * replay may deliver no tick, so this is what redraws the surfaces; a redraw
- * that changes nothing is theirs to skip. Returns the unsubscribe.
+ * Records a speed sent and tells the listeners at once: {@link
+ * recordReplaySpeedSent} then {@link announceReplaySpeedSent}, for a send
+ * made outside a change of the gate's.
+ */
+export function noteReplaySpeedSent(target: ReplaySpeed, nowMs: number, options: ReplaySpeedSendOptions): void {
+  recordReplaySpeedSent(target, nowMs, options);
+  announceReplaySpeedSent(target);
+}
+
+/**
+ * Runs `listener` on every send recorded, with the speed sent: a key's or a
+ * dial's press, a speed the gate's slot sends later, a search's pause and
+ * closing speed, a jump's or a walk's pause. A paused replay may deliver no
+ * tick, so this is what redraws the surfaces; a redraw that changes nothing is
+ * theirs to skip. Returns the unsubscribe.
  */
 export function onReplaySpeedChanged(listener: (speed: ReplaySpeed) => void): () => void {
   changeListeners.add(listener);
@@ -201,50 +313,54 @@ export function onReplaySpeedChanged(listener: (speed: ReplaySpeed) => void): ()
 }
 
 /**
- * Drops the pending speed: something else just took the replay cursor to send
- * a command of its own, so the last send no longer says what the replay is
- * doing and the live speed follows telemetry again at once, until the gate
- * records that command's own send. Without it a key's Play inside the hold
- * would be masked: the box would still read the dial's speed, and Frame Jog
- * would step a replay it believes paused. The remembered speed and its
- * provisional record are left alone: whether the sent speed ever played is
- * still telemetry's to say. Runs on every cursor take (registered below); a
- * dial's own take goes through {@link keepDialPendingSpeed}.
+ * Supersedes the pending speed for the surfaces: something just took the
+ * replay cursor to send a command of its own, which may change the speed
+ * without sending one (a frame step pauses, a search clears slow motion), so
+ * {@link resolveLiveSpeed} follows telemetry again at once, until the gate
+ * records that command's own send. Without it a key's command inside the
+ * hold would be masked: the box would still read the dial's last speed, and
+ * Frame Jog would step a replay it believes paused. The gate's reads
+ * ({@link pendingReplaySpeed}) still see the speed, as does nothing else: the
+ * hold, the chain and the remembered speed with its provisional record are
+ * left alone. Runs on every cursor take (registered below); a dial's own take
+ * goes through {@link keepDialPendingSpeed}.
  */
-export function clearDialPendingSpeed(): void {
-  pending = null;
+export function supersedePendingSpeed(): void {
+  if (pending !== null) superseded = true;
 }
 
 /**
  * Runs `take` — a dial taking the replay cursor for its own command — and
- * puts back the pending speed that stood before it, unless a send was
- * recorded inside `take`. A dial's command does not supersede the dial's last
- * send the way another action's does: Frame Jog pauses and then steps, and
- * the step must still read the replay as paused. A speed the dial sends
- * replaces it: the gate records that send inside `take`, and it stands.
+ * keeps the pending speed standing for the surfaces as it was before, unless
+ * a send was recorded inside `take`. A dial's command does not supersede the
+ * dial's last send the way another action's does: Frame Jog pauses and then
+ * steps, and the step must still read the replay as paused. A speed the dial
+ * sends replaces it: the gate records that send inside `take`, and it stands.
  */
 export function keepDialPendingSpeed<T>(take: () => T): T {
-  const held = pending;
+  const wasSuperseded = superseded;
   const sendsBefore = sendCount;
 
   try {
     return take();
   } finally {
-    if (sendCount === sendsBefore) pending = held;
+    if (sendCount === sendsBefore && pending !== null) superseded = wasSuperseded;
   }
 }
 
 // Every replay command of every action takes the cursor before it sends.
-onReplayCursorTaken(clearDialPendingSpeed);
+onReplayCursorTaken(supersedePendingSpeed);
 
 /**
- * Feeds one telemetry sample to the remembered speed. Call it on every tick
- * that is in a replay, and on no other: out of a replay `ReplayPlaySpeed` says
- * nothing about what a replay last played at. A 0 changes nothing. Neither
- * does a sample taken while a sent speed is still provisional: until telemetry
- * reports that send, a tick carries the speed from before it, which would
- * overwrite the newer one the send wrote. A pending pause holds nothing back:
- * a non-zero sample arriving behind it is a speed that did play.
+ * Feeds one telemetry sample to the pending and the remembered speed. Called
+ * by the engine's tick feed (`replay-speed-feed.ts`) on every tick that is in
+ * a replay, and on no other: out of a replay `ReplayPlaySpeed` says nothing
+ * about what a replay last played at. A sample showing the pending speed ends
+ * it. For the remembered speed a 0 changes nothing. Neither does a sample
+ * taken while a sent speed is still provisional: until telemetry shows that
+ * send, a tick carries the speed from before it, which would overwrite the
+ * newer one the send wrote. A pending pause holds nothing back: a non-zero
+ * sample arriving behind it is a speed that did play.
  */
 export function noteTelemetrySpeed(sample: ReplaySpeed, nowMs: number): void {
   settlePending(sample, nowMs);
@@ -278,6 +394,7 @@ export function reverseRememberedSpeed(): ReplaySpeed {
 /** @internal Reset for tests: the speeds, and the change listeners. */
 export function _resetReplaySpeedState(): void {
   pending = null;
+  superseded = false;
   provisional = null;
   remembered = { ...NORMAL_SPEED };
   sendCount = 0;

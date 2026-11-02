@@ -41,17 +41,19 @@
  * stopped whatever the setting says — playing from a spot the driver did not
  * ask for is worse than stopping there.
  *
- * **What "the speed before the press" is when jumps overlap.** A jump pauses
- * the replay, so a second jump pressed before the first has finished — a fast
- * turn of the Replay Markers dial, a marker key during a fastest-lap walk —
- * would read "paused" and remember that. So the speed is one value the jumps
- * share (the cursor module's pending jump speed): a jump that takes the cursor
- * from another jump inherits the speed that one captured, and a jump pressed
- * just after another applied its speed reads that speed until telemetry shows
- * it. A speed waiting in the gate's slot is the newest word and is captured
- * instead, and a search on its way is taken at the speed the replay had when
- * it went out: a search clears slow motion, so a reading taken meanwhile says
- * full speed. Any other replay command clears the value.
+ * **What "the speed before the press" is** (#1276, #1427), in order: a speed
+ * waiting in the gate's slot, the driver's newest word; the speed a jump still
+ * under way captured, since that jump has paused the replay and a second jump
+ * pressed before it finished — a fast turn of the Replay Markers dial, a
+ * marker key during a fastest-lap walk — would read "paused" and remember
+ * that (the cursor module's captured jump speed, cleared by any other replay
+ * command); the speed the replay had when a search still on its way went out,
+ * since a search clears slow motion and a reading taken meanwhile says full
+ * speed; and else the speed state's live read, the one pending speed over
+ * telemetry (`replay-speed-state.ts`). So a speed a key or the dial sent the
+ * moment before, or the speed the last jump applied, is captured although
+ * telemetry does not show it yet, and a speed changed outside the plugin once
+ * telemetry has shown the send is read from telemetry.
  *
  * No logger here: the outcome says what happened, and the caller logs it.
  */
@@ -73,11 +75,10 @@ import {
   takeWaitingReplaySpeed,
 } from "./replay-command-gate.js";
 import {
-  clearReplayJumpSpeed,
-  pendingReplayJumpSpeed,
-  recordReplayJumpSpeed,
+  capturedJumpSpeed,
+  clearCapturedJumpSpeed,
+  recordCapturedJumpSpeed,
   type ReplayCursorClaim,
-  type ReplayJumpSpeed,
 } from "./replay-cursor.js";
 import {
   isSameSpeed,
@@ -87,21 +88,11 @@ import {
   resolveReplayJumpSpeed,
 } from "./replay-jump-speed.js";
 import { isPaused, isSeeking, waitForReplay } from "./replay-seek.js";
+import { resolveLiveSpeed } from "./replay-speed-state.js";
 import { readReplayJumpTimeoutMs, REPLAY_JUMP_MAX_WAIT_MS, REPLAY_JUMP_POLL_MS } from "./replay-timing.js";
 
 export { readReplayJumpPlayback, type ReplaySpeed, resolveReplayJumpSpeed } from "./replay-jump-speed.js";
 export type { ReplayJumpResult } from "./replay-command-gate.js";
-
-/**
- * @internal Exported for testing
- *
- * How long (ms) the speed a jump applied stands in for telemetry that does not
- * show it yet. The sim reports a new speed within a few ticks; the hold only
- * has to outlast that, and is kept this short because for its length a speed
- * changed outside the plugin (iRacing's own replay bar) reads as "not shown
- * yet" too.
- */
-export const JUMP_SPEED_HOLD_MS = 200;
 
 /** One jump under way: the cursor claim it holds and the speed it will restore under `remember`. */
 export interface ReplayJump {
@@ -209,31 +200,23 @@ function readSpeed(telemetry: TelemetryData | null): ReplaySpeed | null {
   return current.speed === 0 ? PAUSED : current;
 }
 
+/** A speed as a jump keeps it: a paused replay has no slow-motion flag to remember. */
+function asJumpSpeed(speed: ReplaySpeed): ReplaySpeed {
+  return speed.speed === 0 ? PAUSED : { speed: speed.speed, slowMotion: speed.slowMotion };
+}
+
 /**
  * @internal Exported for testing
  *
- * The speed the replay had before a press at `nowMs`: the pending jump speed
- * while it stands — a jump still under way, or one that applied its speed less
- * than {@link JUMP_SPEED_HOLD_MS} ago and telemetry does not show it yet —
- * else what telemetry reads. An unreadable speed is taken as paused: restoring
+ * The speed the replay has at a press at `nowMs` when nothing a jump keeps
+ * says otherwise: the speed state's live read (`replay-speed-state.ts`) — a
+ * speed just sent that telemetry does not show yet, whoever sent it (a key,
+ * the dial, the playback step of the jump before), else what telemetry reads.
+ * An unreadable speed with nothing pending is taken as paused: restoring
  * nothing is the safe side of a guess.
  */
-export function captureReplaySpeed(
-  pending: ReplayJumpSpeed | null,
-  telemetry: TelemetryData | null,
-  nowMs: number,
-): ReplaySpeed {
-  const live = readSpeed(telemetry);
-
-  if (pending !== null) {
-    const stands =
-      pending.appliedAt === null ||
-      (nowMs - pending.appliedAt < JUMP_SPEED_HOLD_MS && (live === null || !isSameSpeed(live, pending)));
-
-    if (stands) return pending.speed === 0 ? PAUSED : { speed: pending.speed, slowMotion: pending.slowMotion };
-  }
-
-  return live ?? PAUSED;
+export function captureReplaySpeed(telemetry: TelemetryData | null, nowMs: number): ReplaySpeed {
+  return asJumpSpeed(resolveLiveSpeed(readSpeed(telemetry), nowMs));
 }
 
 /**
@@ -244,13 +227,14 @@ export function captureReplaySpeed(
  *
  * The speed captured is, in order: a speed waiting in the gate's slot (the
  * driver's newest word, which the jump takes instead of sending it), the
- * pending speed of a jump still under way (one nobody has applied yet: that
- * jump paused the replay, so a search it sent went out paused — #801's dial
- * search runner, the fastest-lap walk), the speed the replay had when a
- * search still on its way went out, and else {@link captureReplaySpeed}. A
- * key's search takes the cursor, which clears the pending jump speed, so a
+ * speed a jump still under way captured (that jump paused the replay, so a
+ * search it sent went out paused — #801's dial search runner, the fastest-lap
+ * walk), the speed the replay had when a search still on its way went out,
+ * and else {@link captureReplaySpeed}, the one pending speed over telemetry.
+ * A key's search takes the cursor, which clears the captured jump speed, so a
  * jump behind one reads the search's speed. Each is read before the claim:
- * claiming clears the pending jump speed with the cursor.
+ * claiming clears the captured jump speed with the cursor, and supersedes the
+ * pending speed for the live read.
  */
 export function beginReplayJump(
   owner: string,
@@ -259,19 +243,17 @@ export function beginReplayJump(
   nowMs: number = now(),
   options: ReplayJumpBeginOptions = {},
 ): ReplayJump {
-  const standing = pendingReplayJumpSpeed();
-  const captured =
-    takeWaitingReplaySpeed() ??
-    (standing !== null && standing.appliedAt === null ? captureReplaySpeed(standing, telemetry, nowMs) : null) ??
-    replaySearchSpeedAtSend() ??
-    captureReplaySpeed(standing, telemetry, nowMs);
-  // A pending speed nobody has applied yet belongs to a jump still under way.
-  const tookOver = standing !== null && standing.appliedAt === null;
+  const standing = capturedJumpSpeed();
+  const captured = asJumpSpeed(
+    takeWaitingReplaySpeed() ?? standing ?? replaySearchSpeedAtSend() ?? captureReplaySpeed(telemetry, nowMs),
+  );
+  // A captured speed stands only for a jump still under way.
+  const tookOver = standing !== null;
   const claim = claimReplayCursorForJump(owner, onCancelled, options.origin);
-  const pending: ReplayJumpSpeed = { ...captured, appliedAt: null };
   const afterLanding = options.afterLanding;
 
-  recordReplayJumpSpeed(pending);
+  // The jump's own record: what a jump that takes over from this one inherits.
+  recordCapturedJumpSpeed(captured);
 
   const gate = openReplayJump(claim, {
     frame: options.frame,
@@ -297,9 +279,8 @@ export function beginReplayJump(
       claim.release();
 
       // A jump that ended without applying a speed restores nothing, so what
-      // it captured must not outlive it. Only its own record: a later jump's,
-      // or the speed this one applied, stands.
-      if (pendingReplayJumpSpeed() === pending) clearReplayJumpSpeed();
+      // it captured must not outlive it. Only its own record: a later jump's stands.
+      if (capturedJumpSpeed() === captured) clearCapturedJumpSpeed();
     },
   };
 
@@ -333,11 +314,7 @@ function setSeen(jump: ReplayJump, seen: ReplayJumpResult): void {
  * cancelled. `landed` is the sample the cursor landed on; the walk passes its
  * last one.
  */
-export function applyReplayJumpPlayback(
-  jump: ReplayJump,
-  landed: TelemetryData | null,
-  nowMs: number = now(),
-): ReplayJumpApplied | null {
+export function applyReplayJumpPlayback(jump: ReplayJump, landed: TelemetryData | null): ReplayJumpApplied | null {
   if (jump.claim.cancelledBy !== null) return null;
 
   const wanted = resolveReplayJumpSpeed(readReplayJumpPlayback(), jump.captured);
@@ -358,8 +335,12 @@ export function applyReplayJumpPlayback(
     applied = sent === "sent" ? { speed: wanted, command: "sent" } : { speed: current ?? PAUSED, command: "failed" };
   }
 
-  // The next jump reads this until telemetry catches up with it.
-  recordReplayJumpSpeed({ ...applied.speed, appliedAt: nowMs });
+  // Applied: the jump is no longer one a jump pressed now takes over from. Its
+  // claim still stands, so no jump has claimed since and a captured speed
+  // standing is its own (the paced search applies with a copy of the jump that
+  // carries an inherited speed). The speed it sent is the pending speed, which
+  // the next jump reads until telemetry shows it (`replay-speed-state.ts`).
+  clearCapturedJumpSpeed();
 
   return applied;
 }

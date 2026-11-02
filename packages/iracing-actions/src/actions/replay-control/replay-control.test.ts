@@ -35,6 +35,7 @@ import {
   FASTEST_LAP_WALK_OWNER,
   jumpToRecordedLapStart,
   noteReplaySpeedSent,
+  noteTelemetrySpeed,
   singleSessionBuffer as oneSessionLapBuffer,
   pendingReplayTarget,
   replayTargetGiveUpMs,
@@ -1857,35 +1858,17 @@ describe("ReplayControl", () => {
         expect(dialSurface.onTick.mock.calls[0][1]).toHaveProperty("telemetry", quarterReverse);
       });
 
-      it("feeds the remembered speed while a replay is on screen", async () => {
+      it("leaves the remembered speed to the engine, which feeds itself every tick in a replay (#1427)", async () => {
         await action.onWillAppear(dialEvent() as never);
         nowReading(REPLAY_4X);
 
         tickOf("dial-1")(REPLAY_4X);
 
-        expect(rememberedSpeed()).toEqual({ speed: 4, slowMotion: false });
-      });
-
-      it("feeds it in the units the user sees: a slow-motion divisor, decoded (#1202)", async () => {
-        const quarterReverse = { ...REPLAY_4X, ReplayPlaySpeed: -3, ReplayPlaySlowMotion: true } as TelemetryData;
-        await action.onWillAppear(dialEvent() as never);
-        nowReading(quarterReverse);
-
-        tickOf("dial-1")(quarterReverse);
-
-        expect(rememberedSpeed()).toEqual({ speed: -4, slowMotion: true });
-      });
-
-      it("never feeds it from the car, where ReplayPlaySpeed says nothing about a replay", async () => {
-        await action.onWillAppear(dialEvent() as never);
-        nowReading(NOT_PLAYING);
-
-        tickOf("dial-1")(NOT_PLAYING);
-
+        // The engine's own feed (`replay-speed-feed.ts`) is not wired here; the action's tick feeds nothing.
         expect(rememberedSpeed()).toEqual({ speed: 1, slowMotion: false });
       });
 
-      it("keeps the remembered speed through a paused replay", async () => {
+      it("shows a paused replay as paused", async () => {
         const paused = { ...REPLAY_4X, ReplayPlaySpeed: 0 } as TelemetryData;
         await action.onWillAppear(dialEvent() as never);
         nowReading(REPLAY_4X);
@@ -1894,7 +1877,6 @@ describe("ReplayControl", () => {
         nowReading(paused);
         tickOf("dial-1")(paused);
 
-        expect(rememberedSpeed()).toEqual({ speed: 4, slowMotion: false });
         expect(shownSpeed(action).speed).toBe(0);
       });
 
@@ -1909,57 +1891,18 @@ describe("ReplayControl", () => {
 
         expect(shownSpeed(action).speed).toBe(0);
         expect(dialSurface.onTick).toHaveBeenCalledWith("dial-1", { telemetry: null, speed: null });
-        expect(rememberedSpeed()).toEqual({ speed: 4, slowMotion: false });
       });
     });
 
-    describe("a key's telemetry tick feeds the remembered speed too", () => {
-      const paused = { ...REPLAY_4X, ReplayPlaySpeed: 0 } as TelemetryData;
-
-      it("remembers the speed a replay plays at while only keys are on the page", async () => {
+    describe("a key's telemetry tick", () => {
+      it("feeds the remembered speed nothing either: the engine's own feed does, keys or none (#1427)", async () => {
         await action.onWillAppear(keyEvent("key-1", { mode: "next-lap" }) as never);
         nowReading(REPLAY_4X);
 
         tickOf("key-1")(REPLAY_4X);
 
-        expect(rememberedSpeed()).toEqual({ speed: 4, slowMotion: false });
-        expect(dialSurface.onTick).not.toHaveBeenCalled();
-      });
-
-      it("a speed set and paused with no dial on the page is there when the dial's page comes back", async () => {
-        const eighthReverse = { ...REPLAY_4X, ReplayPlaySpeed: -7, ReplayPlaySlowMotion: true } as TelemetryData;
-        await action.onWillAppear(keyEvent("key-1", { mode: "play-pause" }) as never);
-        nowReading(eighthReverse);
-        tickOf("key-1")(eighthReverse);
-        nowReading(paused);
-        tickOf("key-1")(paused);
-
-        // The page changes: the key goes, the dial appears on a paused replay.
-        await action.onWillDisappear(keyEvent("key-1", { mode: "play-pause" }) as never);
-        await action.onWillAppear(dialEvent() as never);
-        tickOf("dial-1")(paused);
-
-        expect(rememberedSpeed()).toEqual({ speed: -8, slowMotion: true });
-      });
-
-      it("never feeds it from the car", async () => {
-        await action.onWillAppear(keyEvent("key-1", { mode: "play-pause" }) as never);
-        nowReading(NOT_PLAYING);
-
-        tickOf("key-1")(NOT_PLAYING);
-
         expect(rememberedSpeed()).toEqual({ speed: 1, slowMotion: false });
-      });
-
-      it("leaves it alone on a disconnect", async () => {
-        await action.onWillAppear(keyEvent("key-1", { mode: "play-pause" }) as never);
-        nowReading(REPLAY_4X);
-        tickOf("key-1")(REPLAY_4X);
-
-        nowReading(null);
-        tickOf("key-1")(null);
-
-        expect(rememberedSpeed()).toEqual({ speed: 4, slowMotion: false });
+        expect(dialSurface.onTick).not.toHaveBeenCalled();
       });
     });
 
@@ -2049,7 +1992,8 @@ describe("ReplayControl", () => {
 
     describe("a command a key sends supersedes the dial's pending speed", () => {
       // Every keypad mode takes the replay cursor before it sends (the replay
-      // command gate's press, #1430), and a cursor take drops the pending speed.
+      // command gate's press, #1430), and a cursor take supersedes the pending
+      // speed for what the surfaces show (#1427: the gate's own reads keep it).
       const keyReplay = {
         play: vi.fn(() => true),
         pause: vi.fn(() => true),
@@ -2107,7 +2051,8 @@ describe("ReplayControl", () => {
         await action.onKeyDown(keyEvent("key-1", { mode: "set-speed", speed: "8" }) as never);
         const eightTimes = { ...REPLAY_4X, ReplayPlaySpeed: 8 } as TelemetryData;
         nowReading(eightTimes);
-        tickOf("key-1")(eightTimes);
+        // The tick, as the engine's own feed hands it to the speed state (#1427).
+        noteTelemetrySpeed({ speed: 8, slowMotion: false }, Date.now());
 
         expect(rememberedSpeed()).toEqual({ speed: 8, slowMotion: false });
       });

@@ -1,7 +1,7 @@
 /**
- * Test support (#1467): the engine's watch for leaving the replay over a
- * stand-in controller, which a test ticks itself as `SDKController`'s poll
- * would. Never imported by production code.
+ * Test support (#1467): the engine's watch for leaving the replay, and its
+ * speed feed (#1427), over a stand-in controller, which a test ticks itself
+ * as `SDKController`'s poll would. Never imported by production code.
  */
 import type { ReplayState, TelemetryData } from "@iracedeck/iracing-sdk";
 import { type Mock, vi } from "vitest";
@@ -26,20 +26,24 @@ export interface WatchedReplayController {
     (id: string, callback: (telemetry: TelemetryData | null, connected: boolean) => void) => void
   >;
   readonly unsubscribe: Mock<(id: string) => void>;
-  /** One tick of the controller's poll: `telemetry` and `connected` default to the reads'. */
+  /** One tick of the controller's poll, to every subscriber: `telemetry` and `connected` default to the reads'. */
   tick(telemetry?: TelemetryData | null, connected?: boolean): void;
 }
 
-/** A stand-in controller over `reads`, with nothing started. Its `subscribe` delivers at once, as the real one does. */
+/**
+ * A stand-in controller over `reads`, with nothing started. Its `subscribe`
+ * delivers at once and keeps one callback per id, as the real one does, so
+ * the leave watch and the speed feed (#1427) can both stand over it.
+ */
 export function replayLeftController(reads: ReplayLeftControllerReads): WatchedReplayController {
-  let callback: ((telemetry: TelemetryData | null, connected: boolean) => void) | null = null;
+  const callbacks = new Map<string, (telemetry: TelemetryData | null, connected: boolean) => void>();
   const connected = (): boolean => reads.connected?.() ?? true;
-  const subscribe = vi.fn((_id: string, cb: (telemetry: TelemetryData | null, connected: boolean) => void) => {
-    callback = cb;
+  const subscribe = vi.fn((id: string, cb: (telemetry: TelemetryData | null, connected: boolean) => void) => {
+    callbacks.set(id, cb);
     cb(reads.telemetry(), connected());
   });
-  const unsubscribe = vi.fn((_id: string) => {
-    callback = null;
+  const unsubscribe = vi.fn((id: string) => {
+    callbacks.delete(id);
   });
   const controller = {
     getCurrentTelemetry: () => reads.telemetry(),
@@ -55,7 +59,9 @@ export function replayLeftController(reads: ReplayLeftControllerReads): WatchedR
     controller,
     subscribe,
     unsubscribe,
-    tick: (telemetry = reads.telemetry(), isConnected = connected()) => callback?.(telemetry, isConnected),
+    tick: (telemetry = reads.telemetry(), isConnected = connected()) => {
+      for (const callback of [...callbacks.values()]) callback(telemetry, isConnected);
+    },
   };
 }
 

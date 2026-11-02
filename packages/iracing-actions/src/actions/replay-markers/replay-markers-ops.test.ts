@@ -1,6 +1,7 @@
 import { getCommands } from "@iracedeck/deck-iracing";
 import { ReplayPosMode, replaySpeedToSdk, type TelemetryData } from "@iracedeck/iracing-sdk";
 import {
+  beginReplayJump,
   currentReplayCursorOwner,
   describeReplayJump,
   pressReplayCommand,
@@ -9,8 +10,8 @@ import {
 import {
   _resetReplayCursor,
   cancelReplayCursorOwner,
+  capturedJumpSpeed,
   claimReplayCursor,
-  pendingReplayJumpSpeed,
   pendingReplayTarget,
   steppedReplayState,
   type SteppedReplayState,
@@ -574,6 +575,22 @@ describe("jumpToMarkerFrame runs the shared jump sequence (#1276)", () => {
     expect(sim.calls).toEqual(["seek 4000", "speed 1"]);
   });
 
+  it("a key's Play just before the press is the speed it remembers: paused, Play, Next Marker (#1427)", async () => {
+    const sim = fakeSim(PAUSED, { lagMs: 40 });
+
+    // A Multi Action: Play, then Next Marker a few milliseconds later, inside telemetry's lag.
+    expect(
+      pressReplayCommand({ kind: "speed", speed: 1, slowMotion: false }, { by: "play-pause", origin: "key" }),
+    ).toEqual({ kind: "sent", ok: true });
+
+    const jump = jumpToMarkerFrame("next", 4_000, sim.read);
+
+    // The replay is starting to play: paused before the seek.
+    expect(sim.calls).toEqual(["speed 1", "speed 0"]);
+    await expect(settled(jump)).resolves.toMatchObject({ kind: "landed", speed: { speed: 1, slowMotion: false } });
+    expect(sim.calls).toEqual(["speed 1", "speed 0", "seek 4000", "speed 1"]);
+  });
+
   describe("hands the cursor back, and drops the speed it captured, however it ended", () => {
     it("landed: the speed it applied stands for the next jump", async () => {
       const sim = fakeSim(AT_1X);
@@ -581,7 +598,14 @@ describe("jumpToMarkerFrame runs the shared jump sequence (#1276)", () => {
       await expect(settled(jumpToMarkerFrame("next", 4_000, sim.read), 150)).resolves.toMatchObject({ kind: "landed" });
 
       expect(currentReplayCursorOwner()).toBeNull();
-      expect(pendingReplayJumpSpeed()).toMatchObject({ speed: 1, slowMotion: false, appliedAt: expect.any(Number) });
+      // Applied, it is no jump to take over from: the speed it sent is the engine's pending speed (#1427).
+      expect(capturedJumpSpeed()).toBeNull();
+
+      const next = beginReplayJump("replay-markers-next", sim.read());
+
+      expect(next.tookOver).toBe(false);
+      expect(next.captured).toEqual({ speed: 1, slowMotion: false });
+      next.end();
     });
 
     it("stopped short: the speed it captured does not outlive it", async () => {
@@ -592,7 +616,7 @@ describe("jumpToMarkerFrame runs the shared jump sequence (#1276)", () => {
       await expect(settled(jumpToMarkerFrame("next", 4_000, sim.read))).resolves.toMatchObject({ kind: "stopped" });
 
       expect(currentReplayCursorOwner()).toBeNull();
-      expect(pendingReplayJumpSpeed()).toBeNull();
+      expect(capturedJumpSpeed()).toBeNull();
     });
 
     it("a command that throws is a command refused: the jump stops, and its target goes", async () => {
@@ -607,7 +631,7 @@ describe("jumpToMarkerFrame runs the shared jump sequence (#1276)", () => {
         reason: "seek-failed",
       });
       expect(currentReplayCursorOwner()).toBeNull();
-      expect(pendingReplayJumpSpeed()).toBeNull();
+      expect(capturedJumpSpeed()).toBeNull();
       expect(pendingReplayTarget()).toBeNull();
     });
   });

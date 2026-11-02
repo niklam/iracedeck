@@ -4,14 +4,14 @@ import {
   _resetReplayCursor,
   cancelReplayCursorOwner,
   cancelReplayCursorOwnerIf,
+  capturedJumpSpeed,
   claimReplayCursor,
-  clearReplayJumpSpeed,
+  clearCapturedJumpSpeed,
   currentReplayCursorOwner,
   endReplayCursorInterrupts,
   interruptReplayCursorOwnerIf,
   onReplayCursorTaken,
-  pendingReplayJumpSpeed,
-  recordReplayJumpSpeed,
+  recordCapturedJumpSpeed,
 } from "./replay-cursor.js";
 
 describe("replay-cursor", () => {
@@ -108,13 +108,13 @@ describe("replay-cursor", () => {
       const listener = vi.fn();
       const claim = claimReplayCursor("dial-lap");
 
-      recordReplayJumpSpeed({ speed: 2, slowMotion: false, appliedAt: null });
+      recordCapturedJumpSpeed({ speed: 2, slowMotion: false });
       const unsubscribe = onReplayCursorTaken(listener);
 
       expect(cancelReplayCursorOwnerIf(WALKS, "dial-track-order")).toBeNull();
       expect(claim.cancelledBy).toBeNull();
       expect(currentReplayCursorOwner()).toBe("dial-lap");
-      expect(pendingReplayJumpSpeed()).not.toBeNull();
+      expect(capturedJumpSpeed()).not.toBeNull();
       expect(listener).not.toHaveBeenCalled();
       unsubscribe();
     });
@@ -145,16 +145,16 @@ describe("replay-cursor", () => {
       expect(onCancelled).not.toHaveBeenCalled();
     });
 
-    it("leaves the pending jump speed and the cursor-taken listeners alone", () => {
+    it("leaves the captured jump speed and the cursor-taken listeners alone", () => {
       const listener = vi.fn();
 
       claimReplayCursor("fastest-lap walk");
-      recordReplayJumpSpeed({ speed: 4, slowMotion: true, appliedAt: null });
+      recordCapturedJumpSpeed({ speed: 4, slowMotion: true });
       const unsubscribe = onReplayCursorTaken(listener);
 
       interruptReplayCursorOwnerIf(WALKS, "next-car");
 
-      expect(pendingReplayJumpSpeed()).toEqual({ speed: 4, slowMotion: true, appliedAt: null });
+      expect(capturedJumpSpeed()).toEqual({ speed: 4, slowMotion: true });
       expect(listener).not.toHaveBeenCalled();
       unsubscribe();
     });
@@ -276,43 +276,43 @@ describe("replay-cursor", () => {
     });
   });
 
-  describe("the pending jump speed (#1276)", () => {
-    const rewinding = { speed: -8, slowMotion: false, appliedAt: null };
+  describe("the captured jump speed (#1276, #1427)", () => {
+    const rewinding = { speed: -8, slowMotion: false };
 
     it("is null until a jump records one, and one value process-wide", () => {
-      expect(pendingReplayJumpSpeed()).toBeNull();
+      expect(capturedJumpSpeed()).toBeNull();
 
-      recordReplayJumpSpeed(rewinding);
-      expect(pendingReplayJumpSpeed()).toBe(rewinding);
+      recordCapturedJumpSpeed(rewinding);
+      expect(capturedJumpSpeed()).toBe(rewinding);
 
-      const applied = { speed: 1, slowMotion: false, appliedAt: 10_000 };
+      const next = { speed: 1, slowMotion: false };
 
-      recordReplayJumpSpeed(applied);
-      expect(pendingReplayJumpSpeed()).toBe(applied);
+      recordCapturedJumpSpeed(next);
+      expect(capturedJumpSpeed()).toBe(next);
     });
 
     it("anything else taking the cursor clears it — a one-shot command or a new claim", () => {
-      recordReplayJumpSpeed(rewinding);
+      recordCapturedJumpSpeed(rewinding);
       cancelReplayCursorOwner("play-pause");
-      expect(pendingReplayJumpSpeed()).toBeNull();
+      expect(capturedJumpSpeed()).toBeNull();
 
-      recordReplayJumpSpeed(rewinding);
+      recordCapturedJumpSpeed(rewinding);
       claimReplayCursor("jump-to-fastest-lap");
-      expect(pendingReplayJumpSpeed()).toBeNull();
+      expect(capturedJumpSpeed()).toBeNull();
     });
 
     it("clears even with no claim in flight, and on an explicit clear and a reset", () => {
-      recordReplayJumpSpeed(rewinding);
+      recordCapturedJumpSpeed(rewinding);
       expect(cancelReplayCursorOwner("slow-motion")).toBeNull();
-      expect(pendingReplayJumpSpeed()).toBeNull();
+      expect(capturedJumpSpeed()).toBeNull();
 
-      recordReplayJumpSpeed(rewinding);
-      clearReplayJumpSpeed();
-      expect(pendingReplayJumpSpeed()).toBeNull();
+      recordCapturedJumpSpeed(rewinding);
+      clearCapturedJumpSpeed();
+      expect(capturedJumpSpeed()).toBeNull();
 
-      recordReplayJumpSpeed(rewinding);
+      recordCapturedJumpSpeed(rewinding);
       _resetReplayCursor();
-      expect(pendingReplayJumpSpeed()).toBeNull();
+      expect(capturedJumpSpeed()).toBeNull();
     });
   });
 });

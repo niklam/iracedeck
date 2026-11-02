@@ -14,14 +14,16 @@ import { _resetReplayEngineEnv } from "./replay-engine-env.js";
 import { _resetReplayLeft } from "./replay-left.js";
 import { _resetReplayPositionState } from "./replay-position-state.js";
 import { _resetReplaySearchQueue } from "./replay-search-queue.js";
+import { _resetReplaySpeedFeed } from "./replay-speed-feed.js";
 import { _resetReplaySpeedState } from "./replay-speed-state.js";
 
 /** @internal For tests: back to an unconfigured engine with nothing under way. */
 export function _resetReplayEngine(): void {
   // The queue first: ending its run ends the run's jump through the gate.
   _resetReplaySearchQueue();
-  // The watch next: nothing emits into the modules while they are reset.
+  // The watch and the speed feed next: nothing emits into the modules while they are reset.
   _resetReplayLeft();
+  _resetReplaySpeedFeed();
   _resetCameraSwitchWaiter();
   _resetLapPress();
   _resetFastestLapSessionCache();
