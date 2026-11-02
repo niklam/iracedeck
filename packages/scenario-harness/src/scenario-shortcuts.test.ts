@@ -1212,8 +1212,8 @@ describe("the two limiter-cut shortcuts (issue #1407)", () => {
         IsOnTrack: true,
         OnPitRoad: true,
         PlayerCarInPitStall: false,
-        // The bit the translator's limiter diff reads, and the field the
-        // contracts' gates read: the two are different signals.
+        // The bit the translator's limiter diff and the contracts' gates both
+        // read as engaged (issue #1548), with the driver control agreeing.
         EngineWarnings: EngineWarnings.PitSpeedLimiter,
         dcPitSpeedLimiterToggle: true,
       });
@@ -1242,7 +1242,7 @@ describe("the two limiter-cut shortcuts (issue #1407)", () => {
     // Both steps tick themselves and the first holds nothing, so the UI makes
     // the exit the translator's next tick — inside the 0.29 s open click.
     const steps = stepsOf(EARLY);
-    const drop = steps.findIndex((s) => s.patch.dcPitSpeedLimiterToggle === false);
+    const drop = steps.findIndex((s) => s.patch.EngineWarnings === 0);
 
     expect(steps[drop]).toMatchObject({ holdMs: 0, tick: true });
     expect(steps[drop + 1]).toMatchObject({ patch: { OnPitRoad: false }, tick: true });
@@ -1281,6 +1281,43 @@ describe("the two limiter-cut shortcuts (issue #1407)", () => {
     runSequence(controller, [...steps.slice(0, exit + 1), { patch: {}, holdMs: PIT_READBACK_EXIT_DELAY_MS }]);
 
     expect(names(events)).toEqual([...PRESS, "pitService.readbackRequested"]);
+  });
+});
+
+// Issue #1548: the two delayed limiter warnings' gates read the
+// `EngineWarnings.PitSpeedLimiter` bit, so the buttons that audition them set
+// or clear that bit — alone, over whatever else the warnings hold — and keep
+// the `dcPitSpeedLimiterToggle` present as the capability.
+describe("the limiter-on-track and limiter-missing shortcuts set the engaged bit (issue #1548)", () => {
+  const OTHERS = EngineWarnings.WaterTempWarning | EngineWarnings.MandRepNeeded;
+
+  function pressPatch(id: string, warnings: number): Record<string, unknown> {
+    const shortcut = SCENARIO_SHORTCUTS.find((s) => s.id === id);
+
+    expect(shortcut?.telemetryPatch, id).toBeDefined();
+
+    const controller = new MockSDKController();
+
+    controller.mutateTelemetry({ EngineWarnings: warnings });
+    controller.mutateTelemetry(shortcut?.telemetryPatch as TelemetryPatch);
+
+    return controller.getState().telemetry as Record<string, unknown>;
+  }
+
+  it("limiter-on-track engages the limiter off pit road and leaves the other warning bits lit", () => {
+    expect(pressPatch("limiter-on-track", OTHERS)).toMatchObject({
+      EngineWarnings: OTHERS | EngineWarnings.PitSpeedLimiter,
+      dcPitSpeedLimiterToggle: true,
+      OnPitRoad: false,
+    });
+  });
+
+  it("limiter-missing releases the limiter on pit road and leaves the other warning bits lit", () => {
+    expect(pressPatch("limiter-missing", OTHERS | EngineWarnings.PitSpeedLimiter)).toMatchObject({
+      EngineWarnings: OTHERS,
+      dcPitSpeedLimiterToggle: false,
+      OnPitRoad: true,
+    });
   });
 });
 
