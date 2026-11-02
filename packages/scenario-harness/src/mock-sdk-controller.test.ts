@@ -388,6 +388,21 @@ describe("MockSDKController", () => {
       });
     });
 
+    it("forgets a replaced callback's error keys, so the new callback's first throw is logged in full", () => {
+      const logger = recordingLogger();
+      const controller = new MockSDKController({ logger });
+      // One error object, so both callbacks throw from the same site.
+      const boom = new Error("subscriber boom");
+      const throwing = () => {
+        throw boom;
+      };
+
+      controller.subscribe("same", throwing);
+      controller.subscribe("same", throwing);
+
+      expect(logger.lines.filter((line) => line.level === "error")).toHaveLength(2);
+    });
+
     it("under the rethrow policy calls every subscriber, then throws the first error", () => {
       const controller = new MockSDKController({ onSubscriberError: "rethrow" });
       const order: string[] = [];

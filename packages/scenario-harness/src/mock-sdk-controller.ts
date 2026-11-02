@@ -143,7 +143,13 @@ export class MockSDKController {
 
   // ── SDKController surface (structural — translator only uses these) ────────
 
+  /**
+   * As on the real controller, subscribing an id that is already subscribed
+   * replaces its callback and forgets the old callback's error counts.
+   */
   subscribe(id: string, callback: TelemetryCallback): void {
+    if (this.subscribers.has(id)) this.boundary.forget(id);
+
     this.subscribers.set(id, callback);
     // Mirror the real controller: deliver current state immediately so the
     // translator's diff state seeds correctly.
