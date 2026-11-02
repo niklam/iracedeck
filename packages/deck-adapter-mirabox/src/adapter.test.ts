@@ -123,14 +123,20 @@ describe("VSDPlatformAdapter", () => {
         hostEvents: MIRABOX_HOST_EVENTS,
         neverAppeared: "drop",
         emit(event, context, payload = {}) {
-          // `registerAction` registers one handler per uuid and event; a
-          // scenario that registers a fresh recording handler replaces the
-          // last one, as the suite's references do, so the latest wins.
-          const registration = (orderedClient.onActionEvent.mock.calls as ActionEventCall[]).findLast(
+          // The real client's `routeEvent` awaits every registration matching a
+          // frame in turn, so only the first is reached synchronously. Each
+          // scenario registers once, as production does, so there must be
+          // exactly one: anything else is a dispatch this harness would not
+          // reproduce.
+          const matching = (orderedClient.onActionEvent.mock.calls as ActionEventCall[]).filter(
             ([uuid, name]) => uuid === CONTEXT_EVENT_ORDER_ACTION_UUID && name === event,
           );
 
-          if (!registration) throw new Error(`no "${event}" handler is registered for the suite's action`);
+          if (matching.length !== 1) {
+            throw new Error(`expected one "${event}" handler for the suite's action, found ${matching.length}`);
+          }
+
+          const registration = matching[0];
 
           const frame: VSDEvent = {
             event,

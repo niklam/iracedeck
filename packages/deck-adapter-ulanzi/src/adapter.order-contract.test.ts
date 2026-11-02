@@ -68,14 +68,21 @@ function createHarness(): ContextEventOrderHarness {
     hostEvents: ULANZI_HOST_EVENTS,
     neverAppeared: "appear-first",
     emit(event, context, payload = {}) {
-      // The client calls the one registration matching the frame; a scenario
-      // that registers its handler more than once (one per input kind) means
-      // the latest registration, which is the one whose recording it reads.
-      const registration = registrations
-        .filter(([uuid, registered]) => uuid === CONTEXT_EVENT_ORDER_ACTION_UUID && registered === event)
-        .at(-1);
+      // The real client's `routeEvent` awaits every registration matching a
+      // frame in turn, so only the first is reached synchronously. Each
+      // scenario registers once, as production does, so there must be exactly
+      // one: anything else is a dispatch this harness would not reproduce.
+      const matching = registrations.filter(
+        ([uuid, registered]) => uuid === CONTEXT_EVENT_ORDER_ACTION_UUID && registered === event,
+      );
 
-      if (!registration) throw new Error(`the adapter registered no "${event}" handler on the client`);
+      if (matching.length !== 1) {
+        throw new Error(
+          `expected one "${event}" handler on the client for the suite's action, found ${matching.length}`,
+        );
+      }
+
+      const registration = matching[0];
 
       const frame: UlanziEvent = {
         event,
