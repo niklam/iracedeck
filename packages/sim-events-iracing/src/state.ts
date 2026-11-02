@@ -1720,10 +1720,10 @@ export type TranslatorState = {
   raceFinish: { sessionNum: number | null; lap: number } | null;
   /**
    * The lap diff's own record of the player's S/F crossings (issues #1278,
-   * #1582), one slice ({@link LapCrossing}); reset with the rest of the lap
+   * #1582), one slice ({@link LapCrossingState}); reset with the rest of the lap
    * state on a session change.
    */
-  lapCrossing: LapCrossing;
+  lapCrossing: LapCrossingState;
   /**
    * The `LapCompleted` value at which the flag diff resolved the race
    * checkered for the player at a crossing (issue #1278) — the deferred
@@ -1741,7 +1741,7 @@ export type TranslatorState = {
  * seed included, because the `lap.completed` that reads it can trail the
  * crossing by seconds.
  */
-export type LapCrossing = {
+export type LapCrossingState = {
   /** The `LapCompleted` value last seen; `null` before the first tick. */
   lap: number | null;
   /**
@@ -1768,8 +1768,8 @@ export type LapCrossing = {
   lapTimeAtCrossing: number;
 };
 
-/** A {@link LapCrossing} with no crossing seen: the initial state, and the session-change reset. */
-export function createLapCrossing(): LapCrossing {
+/** A {@link LapCrossingState} with no crossing seen: the initial state, and the session-change reset. */
+export function createLapCrossingState(): LapCrossingState {
   return { lap: null, underCheckered: false, prevCheckered: false, since: 0, lapTimeAtCrossing: 0 };
 }
 
@@ -2058,7 +2058,7 @@ export function createInitialState(): TranslatorState {
     lastPositionChangeLap: -1,
     raceFinishedFired: false,
     raceFinish: null,
-    lapCrossing: createLapCrossing(),
+    lapCrossing: createLapCrossingState(),
     flagCheckeredTakenLap: null,
   };
 }

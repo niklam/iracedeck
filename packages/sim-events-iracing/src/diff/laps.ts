@@ -94,7 +94,7 @@ import {
 } from "@iracedeck/iracing-sdk";
 import { type ILogger, silentLogger } from "@iracedeck/logger";
 
-import { createLapCrossing, type TranslatorState } from "../state.js";
+import { createLapCrossingState, type TranslatorState } from "../state.js";
 import { closePitLap, observePitLap, openPitLap } from "./pit-lap.js";
 import type { EmitFn } from "./types.js";
 
@@ -217,7 +217,7 @@ export function diffLaps(
     state.lastPositionChangeLap = -1;
     state.raceFinishedFired = false;
     state.raceFinish = null;
-    state.lapCrossing = createLapCrossing();
+    state.lapCrossing = createLapCrossingState();
     state.lapLatchLap = null;
     state.lapCautionSeen = false;
     state.lapCompletedWasCaution = false;
