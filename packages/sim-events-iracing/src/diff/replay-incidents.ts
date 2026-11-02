@@ -52,11 +52,18 @@
  *   `SessionInfoUpdate`, so the reading is memoised on that object's identity
  *   (the pattern of `iracing-sdk`'s `template-context.ts`), and an in-car tick
  *   at 60 Hz with unchanged session info walks nothing.
+ * - **Each car is a unit** (#1559): the driver's own rise and every other
+ *   car's run through the `runUnit` the replay recorder hands in, and the
+ *   baselines are written after them. A car whose unit throws keeps its
+ *   previous baseline (a copy of the roster reading with that slot held back,
+ *   since the memoised array is shared), so its rise is read again, and
+ *   published, on the next tick; the other cars' rises are published as usual.
  */
 import type { SimEventName } from "@iracedeck/event-bus";
 import { getCarNumberRawFromSessionInfo, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 import type { ReplayIncidentCarReading, ReplayRecorderState } from "../replay-recorder-state.js";
+import { runUnitsDirectly, type UnitRunner } from "../tick-steps.js";
 import { resolveReplayRecordTick, resolveSubSessionId } from "./replay-record-gate.js";
 import type { EmitFn } from "./types.js";
 
@@ -163,15 +170,19 @@ function readPlayerCount(telemetry: TelemetryData): number | null {
 /** The events {@link diffReplayIncidents} emits (issue #1499): its emitter's type, and its row in `REPLAY_RECORDER_ORDER`. */
 export const REPLAY_INCIDENTS_EVENTS = ["replay.incident"] as const satisfies readonly SimEventName[];
 
+type ReplayIncidentsEmit = EmitFn<(typeof REPLAY_INCIDENTS_EVENTS)[number]>;
+
 /**
  * @param inReplay - The controller's debounced replay state (#1324), as the replay recorder reads it on this tick
+ * @param runUnit - Runs the driver's own rise and each other car as a unit (#1559): the replay recorder's step runner, so one car's throw costs that car only. Defaults to {@link runUnitsDirectly}, which catches nothing
  */
 export function diffReplayIncidents(
   state: ReplayRecorderState,
   telemetry: TelemetryData,
   sessionInfo: Record<string, unknown> | null,
   inReplay: boolean,
-  emit: EmitFn<(typeof REPLAY_INCIDENTS_EVENTS)[number]>,
+  emit: ReplayIncidentsEmit,
+  runUnit: UnitRunner = runUnitsDirectly,
 ): void {
   const live = resolveReplayRecordTick(telemetry, inReplay);
 
@@ -193,18 +204,22 @@ export function diffReplayIncidents(
   const prevPlayerCount = state.replayIncidentsLastPlayerCount;
   const prevCarReadings = state.replayIncidentsLastCarReadings;
 
-  // The baselines advance on every eligible tick, the seed included.
-  state.replayIncidentsSeeded = true;
-  state.replayIncidentsSessionNum = sessionNum;
-  state.replayIncidentsSessionUniqueId = sessionUniqueId;
-  state.replayIncidentsLastPlayerCount = playerCount;
-  state.replayIncidentsLastCarReadings = carReadings;
+  // The baselines advance on every eligible tick, the seed included: at once
+  // when seeding, after the units otherwise.
+  if (seeding) {
+    advanceBaselines(state, sessionNum, sessionUniqueId, playerCount, carReadings);
 
-  if (seeding) return;
+    return;
+  }
 
   // Resolved on the first rise of the tick, not per tick.
   let identity: { subSessionId: number; sessionTimeMs: number } | null = null;
-  const publish = (carIdx: number, delta: number, source: "telemetry" | "sessionInfo"): void => {
+  const publish = (
+    unitEmit: ReplayIncidentsEmit,
+    carIdx: number,
+    delta: number,
+    source: "telemetry" | "sessionInfo",
+  ): void => {
     const carNumberRaw = getCarNumberRawFromSessionInfo(sessionInfo, carIdx);
 
     if (carNumberRaw === null) return;
@@ -215,7 +230,7 @@ export function diffReplayIncidents(
       sessionTimeMs:
         typeof sessionTimeS === "number" && Number.isFinite(sessionTimeS) ? Math.round(sessionTimeS * 1000) : 0,
     };
-    emit({
+    unitEmit({
       event: "replay.incident",
       data: {
         subSessionId: identity.subSessionId,
@@ -231,20 +246,61 @@ export function diffReplayIncidents(
     });
   };
 
+  // A unit that throws keeps its car's previous baseline, so the rise is read again next tick.
+  let nextPlayerCount = playerCount;
+
   if (playerCarIdx !== null && playerCount !== null && prevPlayerCount !== null && playerCount > prevPlayerCount) {
-    publish(playerCarIdx, playerCount - prevPlayerCount, "telemetry");
+    const delta = playerCount - prevPlayerCount;
+
+    if (!runUnit(emit, (unitEmit: ReplayIncidentsEmit) => publish(unitEmit, playerCarIdx, delta, "telemetry"))) {
+      nextPlayerCount = prevPlayerCount;
+    }
   }
 
-  for (let carIdx = 0; carIdx < carReadings.length; carIdx++) {
+  // The car the unit below reads, set by the loop: one closure per tick rather
+  // than one per car.
+  let carIdx = 0;
+  const car = (unitEmit: ReplayIncidentsEmit): void => {
     const cur: ReplayIncidentCarReading | undefined = carReadings[carIdx];
     // A slot the previous tick's roster did not hold has no baseline, and
     // nor does one another driver or another car held.
     const prev: ReplayIncidentCarReading | undefined = prevCarReadings[carIdx];
 
-    if (cur === undefined || prev === undefined || !sameIdentity(cur, prev)) continue;
+    if (cur === undefined || prev === undefined || !sameIdentity(cur, prev)) return;
 
-    if (prev.count < 0 || cur.count <= prev.count) continue;
+    if (prev.count < 0 || cur.count <= prev.count) return;
 
-    publish(carIdx, cur.count - prev.count, "sessionInfo");
+    publish(unitEmit, carIdx, cur.count - prev.count, "sessionInfo");
+  };
+  // The readings to keep: the roster's own array, or a copy of it once a car
+  // has to keep its previous reading (the memoised array is never mutated).
+  let nextCarReadings: ReplayIncidentCarReading[] | null = null;
+
+  for (carIdx = 0; carIdx < carReadings.length; carIdx++) {
+    if (runUnit(emit, car)) continue;
+
+    // A unit only throws past a rise, which needs a previous reading.
+    const held = prevCarReadings[carIdx];
+
+    if (held === undefined) continue;
+
+    nextCarReadings ??= carReadings.slice();
+    nextCarReadings[carIdx] = held;
   }
+
+  advanceBaselines(state, sessionNum, sessionUniqueId, nextPlayerCount, nextCarReadings ?? carReadings);
+}
+
+function advanceBaselines(
+  state: ReplayRecorderState,
+  sessionNum: number,
+  sessionUniqueId: number,
+  playerCount: number | null,
+  carReadings: readonly ReplayIncidentCarReading[],
+): void {
+  state.replayIncidentsSeeded = true;
+  state.replayIncidentsSessionNum = sessionNum;
+  state.replayIncidentsSessionUniqueId = sessionUniqueId;
+  state.replayIncidentsLastPlayerCount = playerCount;
+  state.replayIncidentsLastCarReadings = carReadings;
 }
