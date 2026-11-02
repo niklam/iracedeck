@@ -92,9 +92,11 @@ function defaultTelemetry(): TelemetryData {
     OnPitRoad: false,
     PlayerCarInPitStall: false,
     // Capability field: iRacing only exposes it on cars that HAVE a limiter,
-    // so its PRESENCE is what `hasPitLimiter` reads, not its value. Present
-    // by default because most of the roster has one; delete it (send null,
-    // see `mutateTelemetry`) to audition the no-limiter callouts.
+    // so its PRESENCE is what `hasPitLimiter` reads, not its value — whether
+    // the limiter is engaged is the `EngineWarnings.PitSpeedLimiter` bit
+    // (issue #1548). Present by default because most of the roster has one;
+    // delete it (send null, see `mutateTelemetry`) to audition the no-limiter
+    // callouts.
     dcPitSpeedLimiterToggle: false,
     IsOnTrack: false,
     PlayerTrackSurface: 0,
@@ -118,13 +120,60 @@ function defaultTelemetry(): TelemetryData {
 }
 
 /**
+ * A patch value that sets and clears bits of a bitfield rather than replacing
+ * it (issue #1548): `setBits` are turned on and `clearBits` off, and every
+ * other bit keeps the value the snapshot had (a field that was absent counts
+ * as 0). It is how a shortcut patches one bit of `EngineWarnings` — the pit
+ * limiter's — over whatever the panel's warning checkboxes or an earlier
+ * button left there, which a whole-number patch would wipe.
+ */
+export type BitsPatch = { setBits?: number; clearBits?: number };
+
+/**
  * A telemetry patch, where `null` DELETES the key rather than setting it
  * (issue #1051). `Partial<TelemetryData>` cannot express that — its values are
  * `T | undefined` — so the sentinel could not be written without a cast, and
  * every call site already casts, which is exactly what hid the mismatch: the
- * type disagreed with the method body and nothing failed to compile.
+ * type disagreed with the method body and nothing failed to compile. A numeric
+ * field also takes a {@link BitsPatch} (issue #1548).
  */
-export type TelemetryPatch = { [K in keyof TelemetryData]?: TelemetryData[K] | null };
+export type TelemetryPatch = {
+  [K in keyof TelemetryData]?: TelemetryData[K] | null | BitsPatchFor<TelemetryData[K]>;
+};
+
+/**
+ * {@link BitsPatch} where a field's value can be a number, never otherwise.
+ * Distributive, so the `TelemetryData` index signature — whose value is a
+ * union that includes `number` — takes one too, and a boolean field does not.
+ */
+type BitsPatchFor<V> = V extends number ? BitsPatch : never;
+
+/**
+ * Whether a patch value is a {@link BitsPatch}: a plain object (never an
+ * array — the `CarIdx*` fields are patched whole) whose keys are `setBits`
+ * and/or `clearBits`, at least one, each a non-negative integer. Anything else
+ * is a value to assign, so a malformed one is written as it stands rather
+ * than half-applied.
+ */
+export function isBitsPatch(value: unknown): value is BitsPatch {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+
+  const entries = Object.entries(value);
+
+  return (
+    entries.length > 0 &&
+    entries.every(
+      ([key, bits]) => (key === "setBits" || key === "clearBits") && Number.isInteger(bits) && (bits as number) >= 0,
+    )
+  );
+}
+
+/** `current` with `patch`'s bits cleared and set; a non-number `current` counts as 0. */
+function applyBits(current: unknown, patch: BitsPatch): number {
+  const base = typeof current === "number" ? current : 0;
+
+  return (base & ~(patch.clearBits ?? 0)) | (patch.setBits ?? 0);
+}
 
 export class MockSDKController {
   private telemetry: TelemetryData;
@@ -223,12 +272,18 @@ export class MockSDKController {
    * `hasVisor` and `hasWipers` all read whether a `dc*` field EXISTS, not what
    * it holds. No `TelemetryData` field takes null as a legitimate value, so the
    * sentinel is unambiguous.
+   *
+   * A {@link BitsPatch} value sets and clears bits of the field's current
+   * value rather than replacing it (issue #1548). No `TelemetryData` field
+   * holds a plain object, so that shape is unambiguous too.
    */
   mutateTelemetry(patch: TelemetryPatch): void {
-    const next = { ...this.telemetry, ...patch } as Record<string, unknown>;
+    const current = this.telemetry as unknown as Record<string, unknown>;
+    const next = { ...current, ...patch } as Record<string, unknown>;
 
     for (const [key, value] of Object.entries(patch)) {
       if (value === null) delete next[key];
+      else if (isBitsPatch(value)) next[key] = applyBits(current[key], value);
     }
 
     this.telemetry = next as TelemetryData;

@@ -1,8 +1,13 @@
-import { REPLAY_EXIT_GRACE_MS, type TelemetryCallback, type TelemetryData } from "@iracedeck/iracing-sdk";
+import {
+  EngineWarnings,
+  REPLAY_EXIT_GRACE_MS,
+  type TelemetryCallback,
+  type TelemetryData,
+} from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { MockSDKController } from "./mock-sdk-controller.js";
+import { isBitsPatch, MockSDKController, type TelemetryPatch } from "./mock-sdk-controller.js";
 
 describe("MockSDKController", () => {
   afterEach(() => {
@@ -115,6 +120,76 @@ describe("MockSDKController", () => {
       expect(tick.OnPitRoad).toBe(true);
       // Untouched defaults remain.
       expect(tick.IsOnTrack).toBe(false);
+    });
+
+    // Issue #1548: a shortcut flips the pit limiter's bit and nothing else.
+    describe("a bits patch", () => {
+      const OTHERS = EngineWarnings.WaterTempWarning | EngineWarnings.MandRepNeeded;
+
+      function warningsAfter(start: Record<string, unknown>, patch: TelemetryPatch): unknown {
+        const controller = new MockSDKController();
+
+        controller.mutateTelemetry(start as TelemetryPatch);
+        controller.mutateTelemetry(patch);
+
+        return (controller.getState().telemetry as Record<string, unknown>).EngineWarnings;
+      }
+
+      it("sets its bits and keeps every other bit", () => {
+        expect(
+          warningsAfter({ EngineWarnings: OTHERS }, { EngineWarnings: { setBits: EngineWarnings.PitSpeedLimiter } }),
+        ).toBe(OTHERS | EngineWarnings.PitSpeedLimiter);
+      });
+
+      it("clears its bits and keeps every other bit", () => {
+        expect(
+          warningsAfter(
+            { EngineWarnings: OTHERS | EngineWarnings.PitSpeedLimiter },
+            { EngineWarnings: { clearBits: EngineWarnings.PitSpeedLimiter } },
+          ),
+        ).toBe(OTHERS);
+      });
+
+      it("treats an absent field as 0", () => {
+        expect(
+          warningsAfter({ EngineWarnings: null }, { EngineWarnings: { setBits: EngineWarnings.PitSpeedLimiter } }),
+        ).toBe(EngineWarnings.PitSpeedLimiter);
+      });
+
+      it("clears before it sets, so a bit named in both ends up set", () => {
+        const bit = EngineWarnings.PitSpeedLimiter;
+
+        expect(warningsAfter({ EngineWarnings: 0 }, { EngineWarnings: { setBits: bit, clearBits: bit } })).toBe(bit);
+      });
+
+      it("a whole number still replaces the field", () => {
+        expect(warningsAfter({ EngineWarnings: OTHERS }, { EngineWarnings: EngineWarnings.PitSpeedLimiter })).toBe(
+          EngineWarnings.PitSpeedLimiter,
+        );
+      });
+    });
+
+    describe("isBitsPatch", () => {
+      it.each([
+        { value: { setBits: 16 } },
+        { value: { clearBits: 16 } },
+        { value: { setBits: 1, clearBits: 16 } },
+      ])("accepts $value", ({ value }) => {
+        expect(isBitsPatch(value)).toBe(true);
+      });
+
+      it.each([
+        { name: "a number", value: 16 },
+        { name: "null", value: null },
+        { name: "an array", value: [16] },
+        { name: "an empty object", value: {} },
+        { name: "another key", value: { setBits: 16, mask: 1 } },
+        { name: "a negative mask", value: { setBits: -1 } },
+        { name: "a fractional mask", value: { clearBits: 1.5 } },
+        { name: "a string mask", value: { setBits: "16" } },
+      ])("refuses $name", ({ value }) => {
+        expect(isBitsPatch(value)).toBe(false);
+      });
     });
   });
 
