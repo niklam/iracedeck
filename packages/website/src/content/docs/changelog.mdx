@@ -9,6 +9,28 @@ import ChangelogLeadIn from "../../components/ChangelogLeadIn.astro";
 
 Release notes for each version of iRaceDeck. The newest release is listed first. For installation help, see the [installation guide](/docs/getting-started/installation/); to grab the latest build, head to the [downloads page](/downloads/).
 
+## 3.8.0
+
+_2026-11-02_
+
+**Features**
+
+- **Press Sounds**: iRaceDeck can now play a single bleep when a key or dial press acts and a double bleep when a held key or dial reaches the long-press threshold, so you can hear a press land without looking at the deck. Choose **Taps**, **Long-press** or **Both** under **Press Sounds** on the Settings window's **General** tab, with **Test tap** and **Test long press** buttons to hear each first; it is off by default, plays only while iRacing is connected, and follows your Radar volume. Push to Talk and volume steps stay quiet. See [Press Sounds](/docs/features/press-sounds/).
+- The Race Engineer now announces a new fastest lap of the race in your class, whoever sets it: yours, one that *"just took the fastest lap from you"*, the leader's, the car in front of or behind you with the gap, or any other car by number and position, then the time the way a timing screen reads it, *"one twenty-three point four"*. It speaks in races only, from each car's third lap on, and on your own record lap it takes the place of the best-lap call; switch it off under **Race Engineer Callouts → Lap Time → Fastest lap of the race**. See [Lap Time](/docs/actions/audio-voice/pit-crew/#fastest-lap-of-the-race).
+- The Race Engineer can now read out every lap you complete, in any session, to the thousandth: *"Last lap was. One forty-five point two three seven."* It stays quiet on out-laps, in-laps, the final lap of a race and under a full-course caution, gives way to fuel, flag and position calls, and skips a lap time rather than read it a lap late; a new best lap or a fastest lap of the race still gets its own call instead. Switch it off under **Race Engineer Callouts → Lap Time → Every lap**. See [Lap Time](/docs/actions/audio-voice/pit-crew/#every-lap).
+- New Race Engineer driver names: Dev, Geoff, Jeff, Drew, Olle, Brant, and Bill.
+
+**Improvements**
+
+- **Session Info** Gaps keys now work outside a race: in practice, warmup, testing and open qualifying they show the time gap to the nearest car ahead of you and behind you on track, whatever its class, skipping the pace car and cars in the pits, where before they only showed `–`. In a race they still show your rivals in the class standings. See [Session Info](/docs/actions/display-session/session-info/#gaps).
+
+**Bug Fixes**
+
+- The Race Engineer now gives the session brief when an official race moves you from the registration practice into the race event's own practice session, and starts that session with a clean slate instead of carrying over laps, positions and fuel figures from the registration practice.
+- A **Fuel Service** dial in **Target Amount** mode no longer finishes a stop under the target in cars that fuel in whole gallons, such as the Global MX-5 Cup. iRacing rounded the request to the nearest gallon, which could leave you up to half a gallon short; now the request follows the car's fuel step and is stepped up until it covers the target. See [Fuel Service](/docs/actions/pit-service/fuel-service/).
+- Switching a **Fuel Service** dial's **Mode** to **Target Amount** in its settings now starts the target at the fuel you would have after the stop, so the dial responds from the first turn; before, the target kept the old add amount and sat below the fuel in the tank, as if the switch had been ignored. See [Fuel Service](/docs/actions/pit-service/fuel-service/).
+- **Car Control** Starter keys now blink right after you press them, so the crank shows even when the engine catches quickly. See [Car Control](/docs/actions/driving/car-control/#starter).
+
 ## 3.7.0
 
 _2026-10-28_
