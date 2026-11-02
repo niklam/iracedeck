@@ -155,9 +155,10 @@ function isPlainObject(value: unknown): value is object {
 
 /**
  * Whether a patch value is a {@link BitsPatch}: a plain object whose keys are
- * `setBits` and/or `clearBits`, at least one, each a non-negative integer.
- * `mutateTelemetry` refuses any other plain object, since no telemetry field
- * holds one.
+ * `setBits` and/or `clearBits`, at least one, each an integer from 0 to
+ * 0xFFFFFFFF (telemetry bitfields are 32 bits, and JS bitwise operators would
+ * silently truncate a wider value). `mutateTelemetry` refuses any other plain
+ * object, since no telemetry field holds one.
  */
 export function isBitsPatch(value: unknown): value is BitsPatch {
   if (!isPlainObject(value)) return false;
@@ -167,16 +168,22 @@ export function isBitsPatch(value: unknown): value is BitsPatch {
   return (
     entries.length > 0 &&
     entries.every(
-      ([key, bits]) => (key === "setBits" || key === "clearBits") && Number.isInteger(bits) && (bits as number) >= 0,
+      ([key, bits]) =>
+        (key === "setBits" || key === "clearBits") &&
+        Number.isInteger(bits) &&
+        (bits as number) >= 0 &&
+        (bits as number) <= 0xffffffff,
     )
   );
 }
 
-/** `current` with `patch`'s bits cleared and set; a non-number `current` counts as 0. */
-function applyBits(current: unknown, patch: BitsPatch): number {
-  const base = typeof current === "number" ? current : 0;
-
-  return (base & ~(patch.clearBits ?? 0)) | (patch.setBits ?? 0);
+/**
+ * `current` with `patch`'s bits cleared and set; an absent `current` counts as
+ * 0. The result is unsigned (`>>> 0`), so touching a field whose bit 31 is set
+ * (`SessionFlags`' `StartGo`) does not turn it negative.
+ */
+function applyBits(current: number | undefined, patch: BitsPatch): number {
+  return (((current ?? 0) & ~(patch.clearBits ?? 0)) | (patch.setBits ?? 0)) >>> 0;
 }
 
 export class MockSDKController {
@@ -284,23 +291,33 @@ export class MockSDKController {
    * key before anything is written, rather than stored where a number
    * belongs.
    *
-   * @throws Error when a value is a plain object that is not a valid {@link BitsPatch}
+   * @throws Error when a value is a plain object that is not a valid {@link BitsPatch},
+   *   or a bits patch aimed at a field that holds something other than a number
    */
   mutateTelemetry(patch: TelemetryPatch): void {
+    const current = this.telemetry as unknown as Record<string, unknown>;
+
     for (const [key, value] of Object.entries(patch)) {
       if (isPlainObject(value) && !isBitsPatch(value)) {
         throw new Error(
-          `telemetry patch key "${key}": an object value must be a bits patch — { setBits?, clearBits? }, at least one, each a non-negative integer — got ${JSON.stringify(value)}`,
+          `telemetry patch key "${key}": an object value must be a bits patch — { setBits?, clearBits? }, at least one, each an integer from 0 to 0xFFFFFFFF — got ${JSON.stringify(value)}`,
+        );
+      }
+
+      // A bits patch belongs on a numeric field: on a boolean or an array it
+      // would store a number where the readers expect something else.
+      if (isBitsPatch(value) && current[key] !== undefined && typeof current[key] !== "number") {
+        throw new Error(
+          `telemetry patch key "${key}": a bits patch needs a numeric field, but it holds ${JSON.stringify(current[key])}`,
         );
       }
     }
 
-    const current = this.telemetry as unknown as Record<string, unknown>;
     const next = { ...current, ...patch } as Record<string, unknown>;
 
     for (const [key, value] of Object.entries(patch)) {
       if (value === null) delete next[key];
-      else if (isBitsPatch(value)) next[key] = applyBits(current[key], value);
+      else if (isBitsPatch(value)) next[key] = applyBits(current[key] as number | undefined, value);
     }
 
     this.telemetry = next as TelemetryData;

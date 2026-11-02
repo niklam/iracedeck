@@ -167,6 +167,28 @@ describe("MockSDKController", () => {
           EngineWarnings.PitSpeedLimiter,
         );
       });
+
+      // Bit 31 (`SessionFlags`' StartGo) must not turn the stored value negative.
+      it("keeps the result unsigned when bit 31 is set", () => {
+        expect(warningsAfter({ EngineWarnings: 0x80000000 }, { EngineWarnings: { setBits: 1 } })).toBe(0x80000001);
+        expect(warningsAfter({ EngineWarnings: 0 }, { EngineWarnings: { setBits: 0x80000000 } })).toBe(0x80000000);
+      });
+    });
+
+    // On a boolean or an array the patch would store a number where readers
+    // expect something else; refused, naming the key, before anything is written.
+    it.each([
+      { key: "OnPitRoad", start: true },
+      { key: "CarIdxLapDistPct", start: [0.1] },
+    ])("refuses a bits patch on the non-numeric $key, writing nothing", ({ key, start }) => {
+      const controller = new MockSDKController();
+
+      controller.mutateTelemetry({ [key]: start } as TelemetryPatch);
+
+      expect(() =>
+        controller.mutateTelemetry({ Speed: 40, [key]: { setBits: 1 } } as unknown as TelemetryPatch),
+      ).toThrow(new RegExp(`"${key}"`));
+      expect(controller.getState().telemetry).toMatchObject({ Speed: 0, [key]: start });
     });
 
     // A plain object that is not a bits patch would otherwise be stored where
@@ -216,6 +238,7 @@ describe("MockSDKController", () => {
         { name: "a negative mask", value: { setBits: -1 } },
         { name: "a fractional mask", value: { clearBits: 1.5 } },
         { name: "a string mask", value: { setBits: "16" } },
+        { name: "a mask wider than 32 bits", value: { setBits: 2 ** 32 } },
       ])("refuses $name", ({ value }) => {
         expect(isBitsPatch(value)).toBe(false);
       });

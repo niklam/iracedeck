@@ -159,4 +159,15 @@ describe("what a pit pass is heard to say about the limiter (issue #1548)", () =
 
     expect(heard()).toEqual([line]);
   });
+
+  // The missing re-check refuses in the pit stall, so the button pins the car
+  // out of it: pressed after the "in-pit-stall" preset it must still speak.
+  it("the limiter-missing button speaks after the car was left in its pit stall", () => {
+    boot("race");
+    apply([{ patch: { PlayerCarInPitStall: true, OnPitRoad: true } }]);
+    apply([{ patch: shortcutOf("limiter-missing").telemetryPatch ?? {} }]);
+    press("limiter-missing");
+
+    expect(heard()).toEqual([MISSING]);
+  });
 });

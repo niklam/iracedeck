@@ -2580,10 +2580,13 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     // car on track at 144 km/h, where this patch's pit-road entry would make the
     // translator announce its own `limiter.missing` and a speeding episode on
     // top of the line this button auditions.
+    // Out of the stall too, since the delayed re-check refuses there (#1548):
+    // the "in-pit-stall" preset would otherwise leave this button silent.
     telemetryPatch: {
       EngineWarnings: LIMITER_BIT_OFF,
       dcPitSpeedLimiterToggle: false,
       OnPitRoad: true,
+      PlayerCarInPitStall: false,
       IsOnTrack: false,
       PlayerTrackSurface: TrkLoc.OffTrack,
       Speed: 0,
