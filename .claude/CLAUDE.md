@@ -32,7 +32,7 @@ Icons and rendering
 
 Deck layer
 
-- `@iracedeck/logger` — the logger.
+- `@iracedeck/logger` — the logger, plus `createErrorBoundary`: the one per-call try/catch every dispatcher puts around its subscribers, over the bounded error reporter (#1558; `SDKController` is the first).
 - `@iracedeck/app-constants` — the zero-import constants every layer and the PI bundle share; each name is imported from here only (deck-core re-exports none). Has its own `CLAUDE.md`.
 - `@iracedeck/fetch-utils` — request helpers (`abortAfter`, `readCappedJson`) that Node and the PI bundle share. Has its own `CLAUDE.md`.
 - `@iracedeck/settings` — global settings, store, migrations, warnings, first run; import and mock its names here, never via deck-core. Rules in `global-settings.md`. Has its own `CLAUDE.md`.
