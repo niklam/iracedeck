@@ -3536,6 +3536,23 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
       isOutLap: true,
     },
   },
+  {
+    id: "lap-refused-silent",
+    category: "Lap Time",
+    label: "Refused lap — silent",
+    description:
+      "A race lap the sim did not count (issue #1582: iRacing wrote no time, so the payload has none) — neither the best-lap nor the every-lap call speaks; silence is the pass.",
+    event: "lap.completed",
+    data: {
+      lap: 7,
+      isBest: false,
+      isFirstValid: false,
+      lapIsValid: false,
+      bestLapTime: 98.5,
+      previousBestLapTime: 98.5,
+      sessionType: "race",
+    },
+  },
 
   // ── Fastest Lap ──
   // `fastestLap.set` in a race (issue #1571): one button per `fastestLap.holder` key.
@@ -3849,11 +3866,28 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
       isMultiClass: false,
     },
   },
-  // Invalid-lap prefix (issue #572). When the just-completed lap is flagged
-  // invalid by iRacing, the position scenario prepends "That lap didn't count."
-  // and forces the worse-framing intro — no pole, no "better" branch. Each
-  // shortcut sets `lapIsValid: false` so the invalid branch fires regardless
-  // of position delta.
+  // Invalid-lap prefix (issue #572). When iRacing did not count the lap just
+  // completed, the position scenario prepends "That lap didn't count." and
+  // forces the worse-framing intro — no pole, no "better" branch. Each
+  // shortcut is the refused `lap.completed` iRacing's translator emits
+  // (issue #1582): `lapIsValid: false` and no lap time, so the invalid branch
+  // fires regardless of position delta.
+  {
+    id: "position-invalid-first-lap",
+    category: "Position",
+    label: "Invalid first lap, no position",
+    description:
+      'A refused first qualifying lap, which leaves no position — engineer says "That lap didn\'t count." alone (issue #1582).',
+    event: "lap.completed",
+    data: {
+      lap: 1,
+      isBest: false,
+      isFirstValid: false,
+      sessionType: "qualifying",
+      isMultiClass: false,
+      lapIsValid: false,
+    },
+  },
   {
     id: "position-invalid-unchanged",
     category: "Position",
@@ -3863,7 +3897,6 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     event: "lap.completed",
     data: {
       lap: 5,
-      lapTime: 84.2,
       isBest: false,
       isFirstValid: false,
       sessionType: "qualifying",
@@ -3884,7 +3917,6 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     event: "lap.completed",
     data: {
       lap: 5,
-      lapTime: 84.2,
       isBest: false,
       isFirstValid: false,
       sessionType: "qualifying",
@@ -3905,7 +3937,6 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     event: "lap.completed",
     data: {
       lap: 5,
-      lapTime: 84.2,
       isBest: false,
       isFirstValid: false,
       sessionType: "qualifying",
