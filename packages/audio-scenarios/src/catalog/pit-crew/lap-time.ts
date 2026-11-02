@@ -15,8 +15,9 @@
  * forty five point two three seven" — in practice, qualifying and race, at
  * `WEIGHT.CHATTER`, queueable, in its own family. It is silent on an out lap
  * or an in lap (a lap that does not describe pace), on the final lap of a
- * race and under a caution exactly as the best lap is; an invalid lap is
- * still spoken. Its `speakGate` drops a lap time that waited out a busy line
+ * race and under a caution exactly as the best lap is. A lap the sim did not
+ * count has no time to read (issue #1582), so neither call speaks for it. Its
+ * `speakGate` drops a lap time that waited out a busy line
  * once the player has completed another lap (`lapStillCurrent`). The readout
  * is the compact form to the thousandth (`lap-time-readout.ts`), read as
  * whole phrases (revision 5 of the clip contract) after an intro that ends
@@ -75,7 +76,7 @@
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type CalloutIdOf, LAP_TIME_CALLOUTS } from "@iracedeck/callout-settings";
-import type { SimEventOf } from "@iracedeck/event-bus";
+import type { CountedLapCompleted, SimEventOf } from "@iracedeck/event-bus";
 
 import type { ScenarioContext, ScenarioContract } from "../../dsl.js";
 import { poolRef, WEIGHT } from "../../dsl.js";
@@ -104,11 +105,20 @@ export type LapCompletedSnapshot = SimEventOf<"lap.completed">["data"];
 
 const LAP_TIME_GROUP_INTRO = "lap-time-intro";
 
+/**
+ * The lap when the sim counted it, the only kind with a time to read; `null`
+ * for no lap or a refused one (issue #1582), so a readout of it has nothing to
+ * say.
+ */
+function countedLap(snapshot: LapCompletedSnapshot | null): CountedLapCompleted | null {
+  return snapshot !== null && snapshot.lapIsValid !== false ? snapshot : null;
+}
+
 /** Whether the lap has a non-zero minute component (≥1 minute), in #555's full form. */
 function hasMinuteComponent(snapshot: LapCompletedSnapshot | null): boolean {
-  if (!snapshot) return false;
+  const lap = countedLap(snapshot);
 
-  return fullHasMinute(snapshot.lapTime);
+  return lap !== null && fullHasMinute(lap.lapTime);
 }
 
 /**
@@ -125,7 +135,7 @@ export function registerLapTimeVocabulary(
   engine.defineVar(
     "lapTime.intro",
     () => {
-      const s = getSnapshot();
+      const s = countedLap(getSnapshot());
 
       if (!s) return null;
 
@@ -141,7 +151,7 @@ export function registerLapTimeVocabulary(
   engine.defineVar(
     "lapTime.minute",
     () => {
-      const s = getSnapshot();
+      const s = countedLap(getSnapshot());
 
       if (!s) return null;
 
@@ -153,7 +163,7 @@ export function registerLapTimeVocabulary(
   engine.defineVar(
     "lapTime.second",
     () => {
-      const s = getSnapshot();
+      const s = countedLap(getSnapshot());
 
       if (!s) return null;
 
@@ -165,7 +175,7 @@ export function registerLapTimeVocabulary(
   engine.defineVar(
     "lapTime.decimal",
     () => {
-      const s = getSnapshot();
+      const s = countedLap(getSnapshot());
 
       if (!s) return null;
 
@@ -184,16 +194,17 @@ export function registerLapTimeVocabulary(
   // thousandth. Its intro is no var — it ends its own sentence, so the script
   // addresses it as pool:lap-time-last/intro. Each reads the fire's own
   // `lap.completed` payload, falling back to the snapshot for a fire with no
-  // lap event.
+  // lap event, and reads nothing from a lap the sim did not count (#1582).
   const lapOf = (ctx: ScenarioContext): LapCompletedSnapshot | null =>
     ctx.event?.event === "lap.completed"
       ? ((ctx.data as LapCompletedSnapshot | null | undefined) ?? null)
       : getSnapshot();
+  const countedLapOf = (ctx: ScenarioContext): CountedLapCompleted | null => countedLap(lapOf(ctx));
 
   engine.defineVar(
     "lapTime.clock",
     (ctx) => {
-      const lap = lapOf(ctx);
+      const lap = countedLapOf(ctx);
 
       return lap ? compactClockRef(lap.lapTime, "thousandths") : null;
     },
@@ -203,7 +214,7 @@ export function registerLapTimeVocabulary(
   engine.defineVar(
     "lapTime.thousandths",
     (ctx) => {
-      const lap = lapOf(ctx);
+      const lap = countedLapOf(ctx);
 
       return lap ? compactThousandthsRef(lap.lapTime) : null;
     },
@@ -213,17 +224,19 @@ export function registerLapTimeVocabulary(
   engine.defineCond(
     "lapTime.compactHasMinute",
     (ctx) => {
-      const lap = lapOf(ctx);
+      const lap = countedLapOf(ctx);
 
       return lap !== null && compactHasMinute(lap.lapTime, "thousandths");
     },
     "The lap, rounded to the thousandth, is a minute or longer, so lapTime.clock reads a minutes-and-seconds phrase rather than a seconds word.",
   );
 
+  // Kept under its name because pack scripts may reference it (#1582): the
+  // every-lap call never fires on a refused lap, so it is never true there.
   engine.defineCond(
     "lapTime.wasInvalid",
     (ctx) => lapOf(ctx)?.lapIsValid === false,
-    "The sim flagged the lap invalid (a track-limits cut, say). The every-lap call still reads it; a pack may add a word for it.",
+    "The sim did not count the lap (a track-limits cut, say). Such a lap has no counted time to read, so the every-lap call never speaks it, and this is never true where that call reads it.",
   );
 }
 
@@ -313,6 +326,9 @@ export function buildLapTimeContract(
         // time this where: runs the latch reads true on the final lap.
         if (data.sessionType === "race" && getRaceFinishedFired()) return false;
 
+        // A lap the sim did not count has no time to read (issue #1582).
+        if (data.lapIsValid === false) return false;
+
         // Fire on the new-PB case (`isBest`) AND the first-valid-lap case
         // (`isFirstValid`) so an emitter that only marks the latter without
         // setting `isBest` still surfaces the announcement. Whether the
@@ -366,6 +382,9 @@ export function buildLapTimeLastContract(deps: LapTimeLastContractDeps): Scenari
 
         // A lap out of the pits or into them does not describe pace.
         if (data.isOutLap === true || data.isInLap === true) return false;
+
+        // A lap the sim did not count has no time to read (issue #1582).
+        if (data.lapIsValid === false) return false;
 
         if (!(Number.isFinite(data.lapTime) && data.lapTime > 0)) return false;
 

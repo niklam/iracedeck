@@ -12,7 +12,7 @@ import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { createFakeAudio, type FakeAudio } from "@iracedeck/audio-service/testing";
 import { type CalloutScript, type CalloutScriptEntry, collectScriptReferences } from "@iracedeck/callout-script";
 import { FASTEST_LAP_CALLOUTS, LAP_TIME_CALLOUTS } from "@iracedeck/callout-settings";
-import type { IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
+import type { CountedLapCompleted, IEventBus, SimEventName, SimEventOf } from "@iracedeck/event-bus";
 import type { LiveGaps } from "@iracedeck/sim-events-iracing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -207,7 +207,7 @@ function record(overrides: Partial<FastestLapData> = {}): FastestLapData {
   };
 }
 
-function bestLap(overrides: Partial<LapCompletedSnapshot> = {}): LapCompletedSnapshot {
+function bestLap(overrides: Partial<CountedLapCompleted> = {}): LapCompletedSnapshot {
   return { lap: 5, lapTime: 83.4, isBest: true, isFirstValid: false, sessionType: "race", ...overrides };
 }
 
