@@ -29,6 +29,8 @@ vi.mock("./ulanzi-client.js", () => ({
     openUrl = vi.fn();
     setImage = vi.fn();
     setSettings = vi.fn();
+    // No cache by default: the adapter then falls back to the event's settings.
+    cachedSettings = vi.fn();
 
     constructor() {
       mockInstances.push(this as unknown as Record<string, ReturnType<typeof vi.fn>>);
@@ -750,6 +752,80 @@ describe("UlanziPlatformAdapter", () => {
       await input;
 
       expect(hooks()).toEqual(["onWillAppear", "onWillDisappear", "teardown-tail", "onWillAppear", "onDialRotate"]);
+    });
+
+    it("re-appears with the settings an in-flight Keypad appear wrote, not the dial frame's", async () => {
+      // A stand-in for the client's write-through cache (#1236).
+      const store = new Map<string, Record<string, unknown>>();
+      client.setSettings.mockImplementation((context: string, settings: Record<string, unknown>) => {
+        store.set(context, structuredClone(settings));
+      });
+      client.cachedSettings.mockImplementation((context: string) => {
+        const cached = store.get(context);
+
+        return cached ? structuredClone(cached) : undefined;
+      });
+      const { handler } = recordingHandler();
+      adapter.registerAction(UUID, handler);
+
+      // The Keypad appear stamps its settings after an await; the dial frame
+      // was backfilled before that write, so it carries the old view.
+      const appearGate = deferred();
+      handler.onWillAppear.mockImplementationOnce(async (ev) => {
+        await appearGate.promise;
+        await ev.action.setSettings({ ...(ev.payload.settings as Record<string, unknown>), addedWithVersion: "3.8.0" });
+      });
+      store.set(CTX, { mode: "a" });
+
+      const appeared = appear({ settings: { mode: "a" } });
+      const input = rotate(1, { mode: "a" });
+      appearGate.resolve();
+      await Promise.all([appeared, input]);
+
+      const written = { mode: "a", addedWithVersion: "3.8.0" };
+      expect(handler.onWillDisappear.mock.calls[0][0].payload.settings).toEqual(written);
+      expect(handler.onWillAppear.mock.calls[1][0].payload.settings).toEqual(written);
+      expect(handler.onWillAppear.mock.calls[1][0].action.isDial()).toBe(true);
+    });
+
+    it("orders a re-add that lands mid-promotion behind the teardown that arrived first", async () => {
+      const { handler, calls, hooks } = recordingHandler();
+      adapter.registerAction(UUID, handler);
+      await appear();
+
+      const teardownGate = deferred();
+      handler.onWillDisappear.mockImplementationOnce(async (ev) => {
+        calls.push({ hook: "onWillDisappear", isDial: ev.action.isDial(), isKey: ev.action.isKey(), settings: {} });
+        await teardownGate.promise;
+      });
+
+      // A page switch away (clear) and back (add) while the promotion runs.
+      const input = rotate(1);
+      await flush();
+      const gone = disappear();
+      const back = appear();
+      await flush();
+
+      expect(hooks()).toEqual(["onWillAppear", "onWillDisappear"]);
+
+      teardownGate.resolve();
+      await Promise.all([input, gone, back]);
+
+      expect(hooks()).toEqual([
+        "onWillAppear",
+        "onWillDisappear",
+        "onWillAppear",
+        "onDialRotate",
+        "onWillDisappear",
+        "onWillAppear",
+      ]);
+      expect(calls[calls.length - 1]).toMatchObject({ hook: "onWillAppear", isDial: true, isKey: false });
+
+      // Live as an Encoder: the next input goes straight through, no promotion.
+      await rotate(2);
+      expect(calls[calls.length - 1]).toMatchObject({ hook: "onDialRotate", isDial: true, ticks: 2 });
+      expect(handler.onWillAppear).toHaveBeenCalledTimes(3);
+      expect(handler.onWillDisappear).toHaveBeenCalledTimes(2);
     });
 
     // A settings or key event landing mid-promotion, delivered as a Keypad after

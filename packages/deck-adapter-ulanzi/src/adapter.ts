@@ -445,8 +445,11 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
      * what its willAppear built as a Keypad, then appear it again as a dial,
      * so the action routes it to its dial surface (which drops input for a
      * context its willAppear never created — encoders-and-touchscreen.md rule
-     * 11). The re-appear carries a copy of the dial event's settings, which the
-     * client has already backfilled from its per-context cache.
+     * 11). The teardown and the re-appear each carry a copy of the context's
+     * settings as the client caches them once any running Keypad appear has
+     * finished, so a write that appear made (an `addedWithVersion` stamp,
+     * seeded defaults) is not lost and then overwritten from a stale view. The
+     * dial event's own settings are the fallback when the cache has no entry.
      *
      * A handler that throws here is logged and the promotion carries on: the
      * context still ends up an Encoder with the in-flight entry cleared, and
@@ -457,12 +460,7 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
     const promoteToEncoder = async (data: UlanziEvent & { context: string }): Promise<void> => {
       const { context } = data;
       const previous = getControllerType(context);
-      const settings = data.payload?.settings ?? {};
-      const withSettingsCopy = (event: string): UlanziEvent & { context: string } => ({
-        ...data,
-        event,
-        payload: { settings: structuredClone(settings) },
-      });
+      const frameSettings = data.payload?.settings ?? {};
 
       this.knownEncoderContexts.add(context);
       this.controllerLog.info(
@@ -478,6 +476,15 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
         const appearing = this.appearsInFlight.get(context);
 
         if (appearing) await appearing.catch(() => undefined);
+
+        // Read only now: the appear just awaited may have rewritten them, and
+        // the client's cache is write-through (#1236).
+        const settings = this.client.cachedSettings(context) ?? frameSettings;
+        const withSettingsCopy = (event: string): UlanziEvent & { context: string } => ({
+          ...data,
+          event,
+          payload: { settings: structuredClone(settings) },
+        });
 
         // Each step is awaited to completion before the next starts: actions
         // keep cleaning up (unsubscribe by id) after their base disappear, and
@@ -532,6 +539,15 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
     this.client.onActionEvent(uuid, "willAppear", async (data) => {
       if (!data.context) return;
 
+      // A re-add landing mid-promotion (a page switch away and back) waits for
+      // it, read synchronously like the other handlers: a willDisappear that
+      // arrived first and waits on the same promotion then resumes first and
+      // drops its entry, and this appear sets the fresh one after it, rather
+      // than that teardown deleting the dial this appear built (#1530).
+      const promotion = this.encoderPromotions.get(data.context);
+
+      if (promotion) await promotion;
+
       // An explicit controller wins (forward compatibility); otherwise a
       // context that has delivered dial input before is an Encoder, and any
       // other is a Keypad until it does (#1530).
@@ -584,7 +600,9 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
       // Drop controller tracking before the handler runs, so it is dropped even
       // if the handler throws, dial input arriving during the teardown is not
       // promoted (that would resurrect the context), and a quick re-add's fresh
-      // entry is not deleted by this teardown finishing after it.
+      // entry is not deleted by this teardown: a re-add arriving while the
+      // handler runs sets its entry after this delete, and one arriving while
+      // this waits on a promotion waits on it too and resumes after this one.
       this.contextControllers.delete(data.context);
 
       await handler.onWillDisappear?.(wrapDisappearEvent<T>(data as UlanziEvent & { context: string }, controller));

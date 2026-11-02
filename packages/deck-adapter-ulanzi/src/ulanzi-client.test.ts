@@ -623,6 +623,54 @@ describe("UlanziClient routing + settings cache", () => {
 
     expect(debug).toHaveBeenCalledWith(expect.stringContaining("didReceiveGlobalSettings"));
   });
+
+  describe("cachedSettings (#1530)", () => {
+    const CTX = "com.x.action___5___a";
+    const add = (param: Record<string, unknown>): void =>
+      lastSocket.emit("message", JSON.stringify({ cmd: "add", uuid: "com.x.action", key: "5", actionid: "a", param }));
+
+    it("returns undefined for a context that was never added", async () => {
+      const client = await connected();
+
+      expect(client.cachedSettings(CTX)).toBeUndefined();
+    });
+
+    it("returns undefined once the context is cleared", async () => {
+      const client = await connected();
+      add({ mode: "a" });
+      lastSocket.emit(
+        "message",
+        JSON.stringify({ cmd: "clear", param: [{ uuid: "com.x.action", key: "5", actionid: "a" }] }),
+      );
+
+      expect(client.cachedSettings(CTX)).toBeUndefined();
+    });
+
+    it("returns what the plugin last wrote, through the write-through cache", async () => {
+      const client = await connected();
+      add({ mode: "a" });
+      client.setSettings(CTX, { mode: "b", addedWithVersion: "3.8.0" });
+
+      expect(client.cachedSettings(CTX)).toEqual({ mode: "b", addedWithVersion: "3.8.0" });
+    });
+
+    it("returns a copy: mutating it never reaches the cache or later backfills", async () => {
+      const client = await connected();
+      const keyDown = vi.fn();
+      client.onActionEvent("com.x.action", "keyDown", keyDown);
+      add({ mode: "a", nested: { step: 1 } });
+
+      const first = client.cachedSettings(CTX) as { mode: string; nested: { step: number } };
+      first.mode = "mutated";
+      first.nested.step = 99;
+
+      expect(client.cachedSettings(CTX)).toEqual({ mode: "a", nested: { step: 1 } });
+      expect(client.cachedSettings(CTX)).not.toBe(client.cachedSettings(CTX));
+
+      lastSocket.emit("message", JSON.stringify({ cmd: "keydown", uuid: "com.x.action", key: "5", actionid: "a" }));
+      expect((keyDown.mock.calls[0][0] as UlanziEvent).payload?.settings).toEqual({ mode: "a", nested: { step: 1 } });
+    });
+  });
 });
 
 describe("UlanziClient outbound commands", () => {
