@@ -50,7 +50,7 @@ vi.mock("@iracedeck/deck-core", () => ({
   },
   ConnectionStateAwareAction: class MockConnectionStateAwareAction {
     logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
-    sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn() };
+    sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn(), getCurrentTelemetry: vi.fn() };
     updateConnectionState = vi.fn();
     isBindingMissing = vi.fn(() => false);
     setActiveBinding = vi.fn();
