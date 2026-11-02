@@ -954,6 +954,11 @@ describe("SDKController subscriber isolation (#1558)", () => {
     });
   });
 
+  // The policy's own semantics (every callback reached, then the first error;
+  // a held error passing through the controller's work unreported; the
+  // controller's own throw held rather than reported) are tested once, on the
+  // boundary, in @iracedeck/logger's error-boundary.test.ts. These pin the
+  // controller's wiring of it to its entry points.
   describe("the error policy", () => {
     it('under "rethrow", calls every subscriber on a tick and then throws the first error', () => {
       const rethrowing = new SDKController(mockSdk, createRecordingLogger().logger, { onSubscriberError: "rethrow" });
@@ -1007,18 +1012,6 @@ describe("SDKController subscriber isolation (#1558)", () => {
 
       expect(() => vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS)).toThrow("failing failed");
       expect(failing).toHaveBeenCalledTimes(3);
-    });
-
-    it('under "rethrow", throws the controller\'s own error out of the poll rather than reporting it', () => {
-      const recording = createRecordingLogger();
-      const rethrowing = new SDKController(mockSdk, recording.logger, { onSubscriberError: "rethrow" });
-      rethrowing.subscribe("test", vi.fn());
-      vi.mocked(mockSdk.getTelemetry).mockImplementationOnce(() => {
-        throw new Error("read failed");
-      });
-
-      expect(() => vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS)).toThrow("read failed");
-      expect(reporterLines(recording.lines)).toEqual([]);
     });
 
     it("by default, throws nothing from any entry point", () => {

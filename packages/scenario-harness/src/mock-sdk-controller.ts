@@ -19,9 +19,9 @@
  * holds that long before the step it expects live behaviour from.
  *
  * Delivery goes through the same error boundary as the real controller's
- * (#1558): every subscriber call, the subscribe-time one included, runs inside
- * one guarded `deliver`, a throw goes to the same bounded reporter from
- * `@iracedeck/logger` under the subscriber's id, and the next subscriber is
+ * (#1558), `createErrorBoundary` from `@iracedeck/logger`: every subscriber
+ * call, the subscribe-time one included, runs inside it, a throw goes to its
+ * bounded reporter under the subscriber's id, and the next subscriber is
  * still called. `onSubscriberError` takes the same policy, `"report"` by
  * default. So a harness session behaves as the plugin does when a subscriber
  * has a bug: the throw is logged once, and the other subscribers carry on.
@@ -38,8 +38,8 @@ import {
   type TelemetryCallback,
   type TelemetryData,
 } from "@iracedeck/iracing-sdk";
-import type { BoundedErrorReporter, ErrorPolicy, ILogger } from "@iracedeck/logger";
-import { createBoundedErrorReporter, silentLogger } from "@iracedeck/logger";
+import type { ErrorBoundary, ErrorPolicy, ILogger } from "@iracedeck/logger";
+import { createErrorBoundary, silentLogger, throwHeld } from "@iracedeck/logger";
 
 export type MockState = {
   telemetry: TelemetryData;
@@ -75,13 +75,6 @@ export type MockSDKControllerOptions = {
 };
 
 const DEFAULT_TICK_INTERVAL_MS = 14;
-
-/** A throw held under `"rethrow"` until every subscriber has been called; `undefined` otherwise. */
-type HeldError = { readonly error: unknown } | undefined;
-
-function throwHeld(held: HeldError): void {
-  if (held !== undefined) throw held.error;
-}
 
 /**
  * Minimum-viable telemetry snapshot. Field set covers everything the
@@ -139,15 +132,13 @@ export class MockSDKController {
   private readonly logger: ILogger;
   private stateListeners = new Set<(state: MockState) => void>();
   private readonly replayState = new ReplayStateTracker();
-  private readonly errorPolicy: ErrorPolicy;
-  private readonly reporter: BoundedErrorReporter;
+  private readonly boundary: ErrorBoundary;
 
   constructor(options: MockSDKControllerOptions = {}) {
     this.telemetry = options.initialTelemetry ?? defaultTelemetry();
     this.tickIntervalMs = options.tickIntervalMs ?? DEFAULT_TICK_INTERVAL_MS;
     this.logger = options.logger ?? silentLogger;
-    this.errorPolicy = options.onSubscriberError === "rethrow" ? "rethrow" : "report";
-    this.reporter = createBoundedErrorReporter({ logger: this.logger, now: options.now ?? (() => Date.now()) });
+    this.boundary = createErrorBoundary({ logger: this.logger, now: options.now, policy: options.onSubscriberError });
   }
 
   // ── SDKController surface (structural — translator only uses these) ────────
@@ -157,13 +148,13 @@ export class MockSDKController {
     // Mirror the real controller: deliver current state immediately so the
     // translator's diff state seeds correctly.
     this.stepReplayState();
-    throwHeld(this.deliver(id, callback));
+    throwHeld(this.boundary.call(id, () => this.deliver(callback)));
   }
 
   /** As on the real controller, flushes the id's unreported error counts and drops them. */
   unsubscribe(id: string): void {
     this.subscribers.delete(id);
-    this.reporter.forget(id);
+    this.boundary.forget(id);
   }
 
   getSessionInfo(): SessionInfo | null {
@@ -241,43 +232,16 @@ export class MockSDKController {
    * One tick to every subscriber: the replay state steps first, as the real
    * controller steps it on the poll before any callback runs, and a
    * disconnected tick resets it, as the real controller resets it wherever
-   * the connection drops.
+   * the connection drops. Each call runs inside the error boundary.
    */
   private deliverToAll(): void {
     this.stepReplayState();
-
-    let first: HeldError;
-
-    for (const [id, callback] of this.subscribers) {
-      // Deliver first, then keep the earliest held error: `first ??= this.deliver(…)`
-      // would stop calling subscribers once one had thrown.
-      const held = this.deliver(id, callback);
-
-      first ??= held;
-    }
-
-    throwHeld(first);
+    throwHeld(this.boundary.callEach(this.subscribers, (callback) => this.deliver(callback)));
   }
 
-  /**
-   * Call one subscriber inside the error boundary, as the real controller's
-   * `deliver` does (#1558): a clean call tells the reporter, a throw is
-   * reported under the subscriber's id, or held under `"rethrow"`.
-   */
-  private deliver(id: string, callback: TelemetryCallback): HeldError {
-    try {
-      callback(this.isConnected ? this.telemetry : null, this.isConnected);
-    } catch (error) {
-      if (this.errorPolicy === "rethrow") return { error };
-
-      this.reporter.report(id, error);
-
-      return undefined;
-    }
-
-    this.reporter.succeeded(id);
-
-    return undefined;
+  /** One subscriber's view of the current state. Callers run it inside the error boundary. */
+  private deliver(callback: TelemetryCallback): void {
+    callback(this.isConnected ? this.telemetry : null, this.isConnected);
   }
 
   private stepReplayState(): void {

@@ -3,11 +3,13 @@
  * and notifies subscribers of telemetry updates
  */
 import {
-  type BoundedErrorReporter,
-  createBoundedErrorReporter,
+  createErrorBoundary,
+  type ErrorBoundary,
   type ErrorPolicy,
+  type HeldError,
   ILogger,
   silentLogger,
+  throwHeld,
 } from "@iracedeck/logger";
 
 import { IRacingSDK } from "./IRacingSDK.js";
@@ -49,20 +51,6 @@ export const TELEMETRY_INTERVAL_MS = 10;
 const UPDATE_ID = "controller:update";
 const RECONNECT_ID = "controller:reconnect";
 const DISCONNECT_ID = "controller:disconnect";
-
-type ControllerWorkId = typeof UPDATE_ID | typeof RECONNECT_ID | typeof DISCONNECT_ID;
-
-/**
- * A throw caught under the `"rethrow"` policy and held until every remaining
- * subscriber has been called; `undefined` when nothing threw, or when the
- * throw went to the reporter.
- */
-type HeldError = { readonly error: unknown } | undefined;
-
-/** Throws a held error, so an entry point surfaces it once its work is done. */
-function throwHeld(held: HeldError): void {
-  if (held !== undefined) throw held.error;
-}
 
 export interface SDKControllerOptions {
   /**
@@ -134,16 +122,17 @@ export class SDKController {
    * starts live with nothing sighted.
    */
   private readonly replayState = new ReplayStateTracker();
-  /** See {@link SDKControllerOptions.onSubscriberError}. */
-  private readonly errorPolicy: ErrorPolicy;
-  /** Where every caught throw goes under the `"report"` policy (#1558). */
-  private readonly reporter: BoundedErrorReporter;
+  /**
+   * The error boundary around every subscriber call and every piece of the
+   * controller's own work (#1558), under the policy of
+   * {@link SDKControllerOptions.onSubscriberError}.
+   */
+  private readonly boundary: ErrorBoundary;
 
   constructor(sdk: IRacingSDK, logger: ILogger = silentLogger, options: SDKControllerOptions = {}) {
     this.sdk = sdk;
     this.logger = logger;
-    this.errorPolicy = options.onSubscriberError === "rethrow" ? "rethrow" : "report";
-    this.reporter = createBoundedErrorReporter({ logger, now: options.now ?? (() => Date.now()) });
+    this.boundary = createErrorBoundary({ logger, now: options.now, policy: options.onSubscriberError });
   }
 
   /**
@@ -160,7 +149,7 @@ export class SDKController {
     // state needs no step here: the connect-time delivery or the last poll
     // has stepped it with a read as fresh as this one.
     const telemetry = this.sdk.getTelemetry();
-    const held = this.deliver(id, callback, telemetry, this.isConnected);
+    const held = this.boundary.call(id, () => callback(telemetry, this.isConnected));
 
     throwHeld(startHeld ?? held);
   }
@@ -172,7 +161,7 @@ export class SDKController {
    */
   unsubscribe(id: string): void {
     this.subscribers.delete(id);
-    this.reporter.forget(id);
+    this.boundary.forget(id);
 
     // Stop updates if no more subscribers
     if (this.subscribers.size === 0) {
@@ -192,7 +181,7 @@ export class SDKController {
     // Start reconnect polling (every 2 seconds when offline)
     this.reconnectInterval = setInterval(() => {
       throwHeld(
-        this.runGuarded(RECONNECT_ID, () => {
+        this.boundary.run(RECONNECT_ID, () => {
           // Skip reconnection attempts if disabled (iRacing not running)
           if (!this.reconnectEnabled) {
             return undefined;
@@ -216,11 +205,11 @@ export class SDKController {
     // the SessionTick dedupe in update() then delivers at iRacing's ~60 Hz
     // write rate, one delivery per real frame (issue #493).
     this.updateInterval = setInterval(() => {
-      throwHeld(this.runGuarded(UPDATE_ID, () => (this.sdk.isConnected() ? this.update() : undefined)));
+      throwHeld(this.boundary.run(UPDATE_ID, () => (this.sdk.isConnected() ? this.update() : undefined)));
     }, TELEMETRY_INTERVAL_MS);
 
     // Try initial connection
-    return this.runGuarded(RECONNECT_ID, () => this.tryConnect());
+    return this.boundary.run(RECONNECT_ID, () => this.tryConnect());
   }
 
   /**
@@ -246,7 +235,7 @@ export class SDKController {
   }
 
   /**
-   * Try to connect to iRacing. Runs only inside {@link runGuarded}, as
+   * Try to connect to iRacing. Runs only inside the error boundary, as
    * `controller:reconnect`, since `sdk.connect()` can throw.
    */
   private tryConnect(): HeldError {
@@ -290,8 +279,8 @@ export class SDKController {
   }
 
   /**
-   * Update telemetry and notify subscribers. Runs only inside
-   * {@link runGuarded}, as `controller:update`.
+   * Update telemetry and notify subscribers. Runs only inside the error
+   * boundary, as `controller:update`.
    */
   private update(): HeldError {
     // Only update if SDK thinks it's connected
@@ -355,70 +344,17 @@ export class SDKController {
   }
 
   /**
-   * Notify every subscriber, in subscription order, through {@link deliver}
-   * (#1558). This is the only place the subscriber map is iterated, and the
-   * order is load-bearing: the Elgato extension relies on the translator
-   * subscribing first. A throwing subscriber does not stop the ones after it;
-   * under `"rethrow"` the first error is returned, to be thrown once the
-   * entry point's work is done.
+   * Notify every subscriber, in subscription order, each inside the error
+   * boundary (#1558). This is the only place the subscriber map is iterated,
+   * and the order is load-bearing: the Elgato extension relies on the
+   * translator subscribing first. A throwing subscriber does not stop the ones
+   * after it, and is reported under its own id, so the controller work this
+   * runs inside never reports it again under a `controller:` id; under
+   * `"rethrow"` the first error is returned, to be thrown once the entry
+   * point's work is done.
    */
   private notifySubscribers(data: TelemetryData | null): HeldError {
-    let first: HeldError;
-
-    for (const [id, callback] of this.subscribers) {
-      const held = this.deliver(id, callback, data, this.isConnected);
-
-      first ??= held;
-    }
-
-    return first;
-  }
-
-  /**
-   * Call one subscriber inside the error boundary (#1558). A clean call tells
-   * the reporter, which declares recovery after a quiet window; a throw is
-   * reported under the subscriber's own id, or held under `"rethrow"`.
-   */
-  private deliver(id: string, callback: TelemetryCallback, data: TelemetryData | null, connected: boolean): HeldError {
-    try {
-      callback(data, connected);
-    } catch (error) {
-      return this.caught(id, error);
-    }
-
-    this.reporter.succeeded(id);
-
-    return undefined;
-  }
-
-  /**
-   * Run a piece of the controller's own work inside the error boundary
-   * (#1558). A subscriber's throw never arrives here as a throw: {@link deliver}
-   * has already reported it, or returns it held under `"rethrow"`, and a held
-   * error passes through untouched. So under `"report"` a subscriber's error is
-   * reported once, under its own id, never again under a `controller:` id.
-   */
-  private runGuarded(id: ControllerWorkId, work: () => HeldError): HeldError {
-    let held: HeldError;
-
-    try {
-      held = work();
-    } catch (error) {
-      return this.caught(id, error);
-    }
-
-    if (held === undefined) this.reporter.succeeded(id);
-
-    return held;
-  }
-
-  /** Apply the policy to a caught throw: hold it under `"rethrow"`, report it otherwise. */
-  private caught(id: string, error: unknown): HeldError {
-    if (this.errorPolicy === "rethrow") return { error };
-
-    this.reporter.report(id, error);
-
-    return undefined;
+    return this.boundary.callEach(this.subscribers, (callback) => callback(data, this.isConnected));
   }
 
   /**
@@ -443,7 +379,7 @@ export class SDKController {
       // iRacing terminated - disconnect immediately and notify subscribers
       this.logger.info("[SDKController] Disconnecting (app terminated)");
       throwHeld(
-        this.runGuarded(DISCONNECT_ID, () => {
+        this.boundary.run(DISCONNECT_ID, () => {
           this.sdk.disconnect();
           this.isConnected = false;
           this.lastValidTelemetry = null;
@@ -461,7 +397,7 @@ export class SDKController {
       // Re-enabling and we have subscribers - try to connect immediately.
       // `sdk.connect()` can throw, so the attempt runs inside the same
       // boundary as the reconnect poll's.
-      throwHeld(this.runGuarded(RECONNECT_ID, () => this.tryConnect()));
+      throwHeld(this.boundary.run(RECONNECT_ID, () => this.tryConnect()));
     }
   }
 
