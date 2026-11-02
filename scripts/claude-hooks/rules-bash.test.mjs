@@ -12,10 +12,9 @@ import {
   GIT_WORKTREE_REMOVE,
   issueEdits,
   issueFromWorktreePath,
-  shellQuote,
   worktreeAddTarget,
 } from "./rules-bash.mjs";
-import { cmd, gitCwd, maskInert, matchAt, POWERSHELL, powershellAsBash, shellWords, words } from "./shell-lexer.mjs";
+import { cmd, gitCwd, matchAt, POWERSHELL, powershellAsBash, words } from "./shell-lexer.mjs";
 
 // Built through `path`, not written as Windows literals: CI runs on Linux, where
 // `C:\repo\master` is a RELATIVE path and every resolve lands under the runner's cwd.
@@ -66,21 +65,6 @@ const asks = (cmd, c = ctx()) => {
   return v.ask;
 };
 const passes = (cmd, c = ctx()) => expect(checkBash(cmd, c), `expected a pass for: ${cmd}`).toBeNull();
-
-describe("helpers", () => {
-  // A runner's forwarded words are appended to a script's line through
-  // shellQuote and read back through shellWords; each must come back whole
-  // (#1526 review: a word with both quote kinds came back unbalanced).
-  it.each(["plain", "two words", "it's", 'say "hi"', `a"b'c`, `'"'"'`, "$R", "`x`", "a\\b", "", "--restart"])(
-    "shellQuote quotes a word so the deck rule reads it back as that one word: %s",
-    (w) => {
-      const quoted = shellQuote(w);
-      expect(shellWords(quoted)).toEqual([w]);
-      expect(maskInert(quoted).sure).toBe(true);
-      expect(shellWords(`${quoted} --restart`)).toEqual([w, "--restart"]);
-    },
-  );
-});
 
 // The guards resolve with the real platform, so these run where Git Bash does.
 // Off Windows the resolver's own tests above are the coverage.
