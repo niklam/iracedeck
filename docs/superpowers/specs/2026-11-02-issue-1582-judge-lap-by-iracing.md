@@ -76,7 +76,8 @@ The rules:
 
 ### 4. The consumers
 
-- **#572** (`position.ts`, the `invalid-lap` shape) now fires on the laps iRacing refused in qualifying, and no longer on counted laps the flags misread. It is a shipped callout that never fired as designed, and it adds no line.
+- **#572** (`position.ts`, the `invalid-lap` shape) now fires on the laps iRacing refused in qualifying, and no longer on counted laps the flags misread. It is a shipped callout that never fired as designed.
+  - **A refused lap with no position.** A refused first qualifying lap has no position yet: the standings carry no row for a driver with no counted lap. Before this change the `where:` refused any lap with no position, and the line's `{{position.number}}` is required, so nothing would have played. Niklas (2026-11-02) chose to say the first sentence alone: on a refused qualifying lap the `where:` passes with or without a position, and both voices' scripts wrap the "We're currently" + `{{position.number}}` tail in an `optional` group. With a position the full line plays as before. With none, "That lap didn't count." plays alone. It is the existing `position-invalid-lap/that-lap-didnt-count` clip, so there is no new clip and no generation. A counted lap with no position still does not fire.
 - **#555 and #1163** (`lap-time.ts`): a refused lap has no time, so neither speaks for it. `playerLapOwner` returns `null` for it.
   - The `lapTime.wasInvalid` condition keeps its name, since pack scripts reference it, and its description now says a refused lap carries no time, so the every-lap call never speaks one. It can no longer be true where that call reads it, and no shipped pack uses it to speak.
 - **Race status and position change** count a refused lap like any other. Today a refused lap is missing from the cadence and from the position diff.
@@ -128,11 +129,11 @@ The rules:
   - a new iRacing best below the record claims it;
   - the #1571 pairing tests run unchanged.
 - **The consumers, audio-scenarios:**
-  - `position.ts` gives the `invalid-lap` shape on a refused qualifying lap and not on a counted lap with false flags;
+  - `position.ts` gives the `invalid-lap` shape on a refused qualifying lap and not on a counted lap with false flags. A refused qualifying lap with no position fires and expands to the that-lap-didnt-count clip alone; with a position it expands to the full line; a counted qualifying lap with no position does not fire (the positive control);
   - neither lap-time contract speaks on a refused lap;
   - `playerLapOwner` returns `null` for it;
   - race status counts it.
 - **Manual (Niklas):** an offline qualifying session with a cut lap first. Expected:
-  - the engineer says "That lap didn't count" with the position;
+  - the engineer says "That lap didn't count." alone (a first lap has no position yet), and on a later refused lap the same sentence followed by the position;
   - on the next clean lap, the best-lap call;
   - in a race, no best-lap call on lap 1, the best-lap call on lap 2, and no lap-time call on a cut lap.
