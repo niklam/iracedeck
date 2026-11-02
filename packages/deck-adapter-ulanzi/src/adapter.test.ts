@@ -786,6 +786,43 @@ describe("UlanziPlatformAdapter", () => {
       expect(handler.onWillDisappear.mock.calls[0][0].payload.settings).toEqual(written);
       expect(handler.onWillAppear.mock.calls[1][0].payload.settings).toEqual(written);
       expect(handler.onWillAppear.mock.calls[1][0].action.isDial()).toBe(true);
+      // The dial event that waited on the promotion carries them too.
+      expect(handler.onDialRotate.mock.calls[0][0].payload.settings).toEqual(written);
+    });
+
+    it("hands events held behind a promotion the settings the Encoder re-appear wrote", async () => {
+      const store = new Map<string, Record<string, unknown>>();
+      client.setSettings.mockImplementation((context: string, settings: Record<string, unknown>) => {
+        store.set(context, structuredClone(settings));
+      });
+      client.cachedSettings.mockImplementation((context: string) => {
+        const cached = store.get(context);
+
+        return cached ? structuredClone(cached) : undefined;
+      });
+      const { handler } = recordingHandler();
+      adapter.registerAction(UUID, handler);
+      store.set(CTX, { mode: "a" });
+      await appear({ settings: { mode: "a" } });
+
+      // The dial appear writes its own seed (as Fuel and Tire Service write
+      // `{...raw, …}`) while a second rotate and a keyUp wait behind it.
+      const reappearGate = deferred();
+      handler.onWillAppear.mockImplementationOnce(async (ev) => {
+        await reappearGate.promise;
+        await ev.action.setSettings({ ...(ev.payload.settings as Record<string, unknown>), dial: { seeded: true } });
+      });
+
+      const first = rotate(1, { mode: "a" });
+      const second = rotate(2, { mode: "a" });
+      const keyUp = nonDial("keyUp", { mode: "a" });
+      await flush();
+      reappearGate.resolve();
+      await Promise.all([first, second, keyUp]);
+
+      const written = { mode: "a", dial: { seeded: true } };
+      expect(handler.onDialRotate.mock.calls.map((c) => c[0].payload.settings)).toEqual([written, written]);
+      expect(handler.onKeyUp.mock.calls[0][0].payload.settings).toEqual(written);
     });
 
     it("orders a re-add that lands mid-promotion behind the teardown that arrived first", async () => {

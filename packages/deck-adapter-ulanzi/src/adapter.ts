@@ -608,12 +608,29 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
       await handler.onWillDisappear?.(wrapDisappearEvent<T>(data as UlanziEvent & { context: string }, controller));
     });
 
+    /**
+     * Re-read the settings of an input event that waited on a promotion. The
+     * client backfilled the event from its cache when the frame arrived, and
+     * the appears that ran during the wait (the Keypad one finishing, the
+     * Encoder re-appear) may have written since — the cache is write-through
+     * (#1236) — so delivering the frame's snapshot would hand the action
+     * settings it has already replaced. The frame's own settings stay when the
+     * cache has no entry. Synchronous, so it adds no hop after the await.
+     */
+    const refreshHeldSettings = (event: UlanziEvent & { context: string }): void => {
+      const fresh = this.client.cachedSettings(event.context);
+
+      if (fresh && event.payload) event.payload.settings = fresh;
+    };
+
     // Settings and key events never start a promotion (only dial input does),
     // but one landing mid-promotion waits for it: delivered as a Keypad after
     // the synthetic teardown, it would rebuild key state that the real
     // disappear, tearing down as Encoder, never removes (#1530). The promise
     // is read synchronously and awaited in the handler itself, so these
     // resume in arrival order with the dial events (see pendingPromotion).
+    // didReceiveSettings carries the host's settings rather than a backfill,
+    // so only the key and dial events re-read them after the wait.
 
     // didReceiveSettings
     this.client.onActionEvent(uuid, "didReceiveSettings", async (data) => {
@@ -634,7 +651,10 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
 
       const promotion = this.encoderPromotions.get(data.context);
 
-      if (promotion) await promotion;
+      if (promotion) {
+        await promotion;
+        refreshHeldSettings(data as UlanziEvent & { context: string });
+      }
 
       for (const cb of this.keyDownCallbacks) cb();
 
@@ -649,7 +669,10 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
 
       const promotion = this.encoderPromotions.get(data.context);
 
-      if (promotion) await promotion;
+      if (promotion) {
+        await promotion;
+        refreshHeldSettings(data as UlanziEvent & { context: string });
+      }
 
       await handler.onKeyUp?.(
         wrapEvent<T>(this.client, data as UlanziEvent & { context: string }, getControllerType(data.context)),
@@ -663,7 +686,10 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
       const event = data as UlanziEvent & { context: string };
       const promotion = pendingPromotion(event);
 
-      if (promotion) await promotion;
+      if (promotion) {
+        await promotion;
+        refreshHeldSettings(event);
+      }
 
       const controller = getControllerType(event.context);
 
@@ -679,7 +705,10 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
       const event = data as UlanziEvent & { context: string };
       const promotion = pendingPromotion(event);
 
-      if (promotion) await promotion;
+      if (promotion) {
+        await promotion;
+        refreshHeldSettings(event);
+      }
 
       const controller = getControllerType(event.context);
 
@@ -695,7 +724,10 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
       const event = data as UlanziEvent & { context: string };
       const promotion = pendingPromotion(event);
 
-      if (promotion) await promotion;
+      if (promotion) {
+        await promotion;
+        refreshHeldSettings(event);
+      }
 
       const controller = getControllerType(event.context);
 
