@@ -217,7 +217,7 @@ export function diffLaps(
     state.lastPositionChangeLap = -1;
     state.raceFinishedFired = false;
     state.raceFinish = null;
-    state.lapCrossing = createLapCrossingState();
+    Object.assign(state.lapCrossing, createLapCrossingState());
     state.lapLatchLap = null;
     state.lapCautionSeen = false;
     state.lapCompletedWasCaution = false;
