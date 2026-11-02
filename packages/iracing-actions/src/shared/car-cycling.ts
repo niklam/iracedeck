@@ -31,8 +31,8 @@ export type CarCycleDirection = "next" | "previous";
  * at the ends). When the focused car is not in the list (e.g. the pace car,
  * or iRacing's no-car index 255), rotation starts from the first (next) or last
  * (previous) car, and so it does when the focused car is unknown (`undefined`).
- * Callers pass `CamCarIdx` as read, never coerced to a car index: index 0 is a
- * listed competitor in a session with no pace car (#1072).
+ * Callers never coerce an unknown `CamCarIdx` to a real car index such as 0,
+ * which is a listed competitor in a session with no pace car (#1072).
  *
  * Every listed car is a valid target, whether or not it is in the sim world
  * right now (#1281). The focused car itself is never re-targeted, so `null` is
