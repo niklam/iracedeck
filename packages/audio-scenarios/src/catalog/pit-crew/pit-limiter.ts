@@ -30,7 +30,7 @@
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type CalloutIdOf, PIT_LIMITER_CALLOUTS } from "@iracedeck/callout-settings";
-import { hasPitLimiter } from "@iracedeck/iracing-sdk";
+import { hasPitLimiter, isPitLimiterEngaged } from "@iracedeck/iracing-sdk";
 import type { TelemetryData } from "@iracedeck/sim-events-iracing";
 
 import type { ScenarioContract } from "../../dsl.js";
@@ -84,6 +84,15 @@ export type PitLimiterFamily = {
  * "is this still true" can drift apart, and here a drift would mean
  * announcing a limiter state the driver already fixed. Both are pure reads,
  * which is what lets the same function be a published condition.
+ *
+ * "Engaged" is the `EngineWarnings.PitSpeedLimiter` bit ({@link isPitLimiterEngaged}),
+ * the signal the translator reads when it emits `limiter.missing`, never the
+ * `dcPitSpeedLimiterToggle` value (issue #1548). A gate must read what its
+ * trigger's emitter reads, or the two disagree: reading the toggle, a car whose
+ * control said on while the limiter was not limiting heard "turn it off" after a
+ * pit exit it took with the limiter never engaged, and the `limiter.missing` the
+ * translator had just emitted was gated out. The toggle's PRESENCE is still the
+ * capability check ({@link hasPitLimiter}).
  */
 function limiterStillEngagedOffPitRoad(deps: PitLimiterDeps): boolean {
   const telemetry = deps.getLatestTelemetry();
@@ -91,7 +100,7 @@ function limiterStillEngagedOffPitRoad(deps: PitLimiterDeps): boolean {
   // Suppress on cars without a pit limiter (issue #639).
   if (!hasPitLimiter(telemetry)) return false;
 
-  return telemetry?.dcPitSpeedLimiterToggle === true && telemetry?.OnPitRoad !== true;
+  return isPitLimiterEngaged(telemetry) && telemetry?.OnPitRoad !== true;
 }
 
 function limiterStillMissingOnPitRoad(deps: PitLimiterDeps): boolean {
@@ -100,7 +109,13 @@ function limiterStillMissingOnPitRoad(deps: PitLimiterDeps): boolean {
   // Cars without a pit limiter can't be "missing" one (issue #639).
   if (!hasPitLimiter(telemetry)) return false;
 
-  return telemetry?.dcPitSpeedLimiterToggle !== true && telemetry?.OnPitRoad === true;
+  // Never in the pit stall (issue #1548): the translator's limiter diff says
+  // nothing there, and a line queued before the car stopped could drain while
+  // it sits in its box, where the bit is no reason to tell a stationary car to
+  // engage the limiter. The translator emits `limiter.missing` again on the
+  // tick the car leaves the stall, but only when that tick is above its 5 m/s
+  // crawl threshold; a refused fire is not re-raised otherwise.
+  return !isPitLimiterEngaged(telemetry) && telemetry?.OnPitRoad === true && telemetry?.PlayerCarInPitStall !== true;
 }
 
 /**
@@ -128,7 +143,7 @@ function definePitLimiterVocabulary(
   engine.defineCond(
     "limiter.stillMissingOnPitRoad",
     stillMissingOnPitRoad,
-    "The car has a pit limiter and it is still NOT engaged on pit road, according to live telemetry when the line comes to speak — a couple of seconds after the pit-entry reminder. The engine already asks this at speak time (it is the warning's own gate), so wrapping the body in it changes nothing; it is here for a pack that wants the warning silent on its own terms. False on a car without a limiter or when telemetry is unavailable.",
+    "The car has a pit limiter and it is still NOT engaged on pit road outside the pit stall, according to live telemetry when the line comes to speak — a couple of seconds after the pit-entry reminder. The engine already asks this at speak time (it is the warning's own gate), so wrapping the body in it changes nothing; it is here for a pack that wants the warning silent on its own terms. False on a car without a limiter or when telemetry is unavailable.",
   );
 }
 
@@ -191,7 +206,8 @@ const limiterMissing = (stillMissingOnPitRoad: () => boolean): ScenarioContract 
   // (issue #1138 — the gate is the contract's, so it holds for every voice).
   queueable: true,
   speakGate: {
-    description: "The pit limiter is still off on pit road when the warning comes to speak, in a car that has one.",
+    description:
+      "The pit limiter is still off on pit road outside the pit stall when the warning comes to speak, in a car that has one.",
     admit: stillMissingOnPitRoad,
   },
 });

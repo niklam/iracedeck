@@ -105,6 +105,7 @@ vi.mock("@iracedeck/iracing-sdk", () => ({
     t?.dcToggleWindshieldWipers !== undefined || t?.dcTriggerWindshieldWipers !== undefined,
   isLiveOnTrack: (t: { IsOnTrack?: unknown; IsReplayPlaying?: unknown } | null | undefined) =>
     t?.IsOnTrack === true && t?.IsReplayPlaying !== true,
+  isPitLimiterEngaged: (t: { EngineWarnings?: number } | null) => ((t?.EngineWarnings ?? 0) & 0x0010) !== 0,
   EngineWarnings: { PitSpeedLimiter: 0x0010, EngineStalled: 0x0008 },
   SessionState: { Invalid: 0, GetInCar: 1, Warmup: 2, ParadeLaps: 3, Racing: 4, Checkered: 5, CoolDown: 6 },
 }));

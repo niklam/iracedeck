@@ -23,6 +23,12 @@
  * fire-through cases prove the gate holds at speak time too. The end-to-end
  * half with the real registration (opt-ins, the family split) lives in
  * `register-pit-crew.test.ts`.
+ *
+ * The engaged SIGNAL (issue #1548): "engaged" is the
+ * `EngineWarnings.PitSpeedLimiter` bit the translator emits `limiter.missing`
+ * from, never the `dcPitSpeedLimiterToggle` value. The fixtures below set both
+ * in agreement, as a car normally reports them; the #1548 cases pull them
+ * apart, so a gate that reads the toggle again fails them.
  */
 import manifestJson from "@iracedeck/audio-assets/manifest.json" with { type: "json" };
 import defaultScript from "@iracedeck/audio-assets/voice/default/callouts.json" with { type: "json" };
@@ -30,7 +36,7 @@ import type { IAudioService } from "@iracedeck/audio-service";
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import { type CalloutScript } from "@iracedeck/callout-script";
 import type { IEventBus, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
-import type { TelemetryData } from "@iracedeck/iracing-sdk";
+import { EngineWarnings, type TelemetryData } from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ScenarioContract } from "../../dsl.js";
@@ -175,12 +181,27 @@ const WITH_LIMITER: Partial<TelemetryData> = { dcPitSpeedLimiterToggle: false };
 const NO_LIMITER: Partial<TelemetryData> = {};
 
 // Live snapshots for the two delayed contracts. `hasPitLimiter` tests for the
-// PRESENCE of `dcPitSpeedLimiterToggle`, never its value, so all four of these
-// are equipped cars.
-const ENGAGED_OFF_PIT_ROAD: Partial<TelemetryData> = { dcPitSpeedLimiterToggle: true, OnPitRoad: false };
-const DISENGAGED_OFF_PIT_ROAD: Partial<TelemetryData> = { dcPitSpeedLimiterToggle: false, OnPitRoad: false };
-const ENGAGED_ON_PIT_ROAD: Partial<TelemetryData> = { dcPitSpeedLimiterToggle: true, OnPitRoad: true };
-const DISENGAGED_ON_PIT_ROAD: Partial<TelemetryData> = { dcPitSpeedLimiterToggle: false, OnPitRoad: true };
+// PRESENCE of `dcPitSpeedLimiterToggle`, never its value, so all of these are
+// equipped cars. Engaged is the `EngineWarnings` bit (issue #1548); the toggle
+// agrees with it here, as it does when a car reports both.
+const ENGAGED = { EngineWarnings: EngineWarnings.PitSpeedLimiter, dcPitSpeedLimiterToggle: true } as const;
+const DISENGAGED = { EngineWarnings: 0, dcPitSpeedLimiterToggle: false } as const;
+const ENGAGED_OFF_PIT_ROAD: Partial<TelemetryData> = { ...ENGAGED, OnPitRoad: false };
+const DISENGAGED_OFF_PIT_ROAD: Partial<TelemetryData> = { ...DISENGAGED, OnPitRoad: false };
+const ENGAGED_ON_PIT_ROAD: Partial<TelemetryData> = { ...ENGAGED, OnPitRoad: true };
+const DISENGAGED_ON_PIT_ROAD: Partial<TelemetryData> = { ...DISENGAGED, OnPitRoad: true };
+
+// The two signals pulled apart (issue #1548). TOGGLE_ONLY: the driver control
+// reads on while the limiter is not limiting — the state that fired "turn it
+// off" after a pit exit with the limiter never engaged. BIT_ONLY: the limiter
+// is limiting while the control reads off, as when iRacing's pit-limiter
+// helper engages it on its own.
+const TOGGLE_ONLY = { EngineWarnings: 0, dcPitSpeedLimiterToggle: true } as const;
+const BIT_ONLY = { EngineWarnings: EngineWarnings.PitSpeedLimiter, dcPitSpeedLimiterToggle: false } as const;
+const TOGGLE_ONLY_OFF_PIT_ROAD: Partial<TelemetryData> = { ...TOGGLE_ONLY, OnPitRoad: false };
+const BIT_ONLY_OFF_PIT_ROAD: Partial<TelemetryData> = { ...BIT_ONLY, OnPitRoad: false };
+const TOGGLE_ONLY_ON_PIT_ROAD: Partial<TelemetryData> = { ...TOGGLE_ONLY, OnPitRoad: true };
+const BIT_ONLY_ON_PIT_ROAD: Partial<TelemetryData> = { ...BIT_ONLY, OnPitRoad: true };
 
 function envelope(event: string, data: unknown, telemetry: Partial<TelemetryData> | null): SimEventOf<SimEventName> {
   return { event, timestamp: 0, telemetry, data } as unknown as SimEventOf<SimEventName>;
@@ -334,6 +355,86 @@ describe("pit-limiter where: predicates — no-limiter suppression (issue #639)"
   });
 });
 
+// Issue #1548: the two delayed re-checks read the `EngineWarnings` bit — the
+// signal the translator reads when it emits `limiter.missing` — not the
+// `dcPitSpeedLimiterToggle` value. Each re-check is the `where:`, the
+// contract's `speakGate` and a published condition, so all three are asserted.
+describe("pit-limiter delayed re-checks read the engaged bit, not the toggle value (issue #1548)", () => {
+  function admits(contract: ScenarioContract, live: Partial<TelemetryData>): boolean {
+    const gate = contract.speakGate;
+
+    if (!gate) throw new Error(`${contract.id} is expected to have a speakGate`);
+
+    mockLatestTelemetry.mockReturnValue(live);
+
+    return gate.admit({} as never);
+  }
+
+  it("limiter-on-track: bit clear, toggle on, off pit road — does NOT fire and its gate refuses", () => {
+    expect(firesLive(LIMITER_ON_TRACK, "pitLane.exited", TOGGLE_ONLY_OFF_PIT_ROAD)).toBe(false);
+    expect(admits(LIMITER_ON_TRACK, TOGGLE_ONLY_OFF_PIT_ROAD)).toBe(false);
+  });
+
+  it("limiter-on-track: bit set, toggle off, off pit road — fires and its gate admits", () => {
+    expect(firesLive(LIMITER_ON_TRACK, "pitLane.exited", BIT_ONLY_OFF_PIT_ROAD)).toBe(true);
+    expect(admits(LIMITER_ON_TRACK, BIT_ONLY_OFF_PIT_ROAD)).toBe(true);
+  });
+
+  it("limiter-missing: bit clear, toggle on, on pit road — fires and its gate admits", () => {
+    expect(firesLive(LIMITER_MISSING, "limiter.missing", TOGGLE_ONLY_ON_PIT_ROAD)).toBe(true);
+    expect(admits(LIMITER_MISSING, TOGGLE_ONLY_ON_PIT_ROAD)).toBe(true);
+  });
+
+  it("limiter-missing: bit set, toggle off, on pit road — silent", () => {
+    expect(firesLive(LIMITER_MISSING, "limiter.missing", BIT_ONLY_ON_PIT_ROAD)).toBe(false);
+    expect(admits(LIMITER_MISSING, BIT_ONLY_ON_PIT_ROAD)).toBe(false);
+  });
+
+  // The translator's limiter diff says nothing in the pit stall; the gate
+  // does not either, so a missing warning queued before the car stopped
+  // cannot drain at a car sitting in its box.
+  it("limiter-missing: bit clear in the pit stall — does NOT fire and its gate refuses", () => {
+    const inStall = { ...DISENGAGED_ON_PIT_ROAD, PlayerCarInPitStall: true };
+
+    expect(firesLive(LIMITER_MISSING, "limiter.missing", inStall)).toBe(false);
+    expect(admits(LIMITER_MISSING, inStall)).toBe(false);
+  });
+
+  it("limiter-missing: bit clear on pit road outside the pit stall — fires and its gate admits", () => {
+    const outsideStall = { ...DISENGAGED_ON_PIT_ROAD, PlayerCarInPitStall: false };
+
+    expect(firesLive(LIMITER_MISSING, "limiter.missing", outsideStall)).toBe(true);
+    expect(admits(LIMITER_MISSING, outsideStall)).toBe(true);
+  });
+
+  it("the published conditions read the bit too", () => {
+    const conds = new Map<string, () => boolean>();
+    const defineCond = (name: string, fn: () => boolean): void => {
+      conds.set(name, fn);
+    };
+
+    PIT_LIMITER.registerVocabulary({ defineCond } as never);
+
+    mockLatestTelemetry.mockReturnValue(TOGGLE_ONLY_OFF_PIT_ROAD);
+    expect(conds.get("limiter.stillEngagedOffPitRoad")?.()).toBe(false);
+    mockLatestTelemetry.mockReturnValue(BIT_ONLY_OFF_PIT_ROAD);
+    expect(conds.get("limiter.stillEngagedOffPitRoad")?.()).toBe(true);
+
+    mockLatestTelemetry.mockReturnValue(TOGGLE_ONLY_ON_PIT_ROAD);
+    expect(conds.get("limiter.stillMissingOnPitRoad")?.()).toBe(true);
+    mockLatestTelemetry.mockReturnValue(BIT_ONLY_ON_PIT_ROAD);
+    expect(conds.get("limiter.stillMissingOnPitRoad")?.()).toBe(false);
+  });
+
+  it("a car without a limiter stays silent whatever the bit says (issue #639)", () => {
+    const engagedWithoutLimiter = { EngineWarnings: EngineWarnings.PitSpeedLimiter, OnPitRoad: false };
+    const clearWithoutLimiter = { EngineWarnings: 0, OnPitRoad: true };
+
+    expect(firesLive(LIMITER_ON_TRACK, "pitLane.exited", engagedWithoutLimiter)).toBe(false);
+    expect(firesLive(LIMITER_MISSING, "limiter.missing", clearWithoutLimiter)).toBe(false);
+  });
+});
+
 describe("PIT_LIMITER_CONTRACTS structure (issue #1065)", () => {
   it("defines the four contracts, in the published order", () => {
     expect(PIT_LIMITER_SCENARIO_IDS).toEqual([
@@ -444,6 +545,45 @@ describe("pit-limiter through the engine and the bundled script (issue #1065)", 
       flush(audio);
 
       expect(voiceClipsPlayed()).toEqual([`voice/${VOICE}/pit-limiter/missing-01.mp3`]);
+    });
+
+    // Issue #1548, through the engine: the gates read the bit, so the
+    // toggle-only state is silent off pit road, and on pit road the missing
+    // warning the translator emitted for it is heard.
+    it("the on-track warning is silent when only the toggle reads on (issue #1548)", () => {
+      mockLatestTelemetry.mockReturnValue(TOGGLE_ONLY_OFF_PIT_ROAD);
+      bus.publishEvent("pitLane.exited", {} as never);
+      vi.advanceTimersByTime(LIMITER_ON_TRACK_DELAY_MS);
+      flush(audio);
+
+      expect(audio._played).toEqual([]);
+    });
+
+    it("the on-track warning plays when the limiter is engaged with the toggle off (issue #1548)", () => {
+      mockLatestTelemetry.mockReturnValue(BIT_ONLY_OFF_PIT_ROAD);
+      bus.publishEvent("pitLane.exited", {} as never);
+      vi.advanceTimersByTime(LIMITER_ON_TRACK_DELAY_MS);
+      flush(audio);
+
+      expect(voiceClipsPlayed()).toEqual([`voice/${VOICE}/pit-limiter/on-track-01.mp3`]);
+    });
+
+    it("the missing warning plays when only the toggle reads on, on pit road (issue #1548)", () => {
+      mockLatestTelemetry.mockReturnValue(TOGGLE_ONLY_ON_PIT_ROAD);
+      bus.publishEvent("limiter.missing", {} as never);
+      vi.advanceTimersByTime(LIMITER_MISSING_DELAY_MS);
+      flush(audio);
+
+      expect(voiceClipsPlayed()).toEqual([`voice/${VOICE}/pit-limiter/missing-01.mp3`]);
+    });
+
+    it("the missing warning is silent when the limiter is engaged with the toggle off (issue #1548)", () => {
+      mockLatestTelemetry.mockReturnValue(BIT_ONLY_ON_PIT_ROAD);
+      bus.publishEvent("limiter.missing", {} as never);
+      vi.advanceTimersByTime(LIMITER_MISSING_DELAY_MS);
+      flush(audio);
+
+      expect(audio._played).toEqual([]);
     });
 
     it.each([

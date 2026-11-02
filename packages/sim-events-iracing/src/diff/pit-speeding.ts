@@ -39,7 +39,7 @@
  * teardowns cover the exits that stop ticks reaching us at all.
  */
 import type { SimEventName } from "@iracedeck/event-bus";
-import { EngineWarnings, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { isPitLimiterEngaged, type TelemetryData } from "@iracedeck/iracing-sdk";
 
 import type { TranslatorState } from "../state.js";
 import type { EmitFn } from "./types.js";
@@ -197,7 +197,7 @@ export function diffPitSpeeding(
   // Read live rather than latched: if the limiter disengages mid-episode the
   // threshold drops to the bare limit on the next tick, which is right — the
   // driver has a remedy again, so exactness applies again.
-  const limiterActive = ((telemetry.EngineWarnings ?? 0) & EngineWarnings.PitSpeedLimiter) !== 0;
+  const limiterActive = isPitLimiterEngaged(telemetry);
   const threshold = limiterActive ? pitSpeedLimitMps + PIT_SPEEDING_LIMITER_BUFFER_MPS : pitSpeedLimitMps;
 
   if (state.pitSpeedingActive) {

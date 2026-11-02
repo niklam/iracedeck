@@ -37,8 +37,8 @@
  */
 import type { PitReadbackSnapshot, SimEventName } from "@iracedeck/event-bus";
 import {
-  EngineWarnings,
   hasPitLimiter,
+  isPitLimiterEngaged,
   PaceMode,
   PitSvFlags,
   SessionState,
@@ -106,7 +106,7 @@ export function buildSnapshot(telemetry: TelemetryData): PitReadbackSnapshot {
   const compound = telemetry.PitSvTireCompound ?? 0;
   const playerCompound = telemetry.PlayerTireCompound ?? 0;
   const engineWarnings = telemetry.EngineWarnings ?? 0;
-  const limiter = (engineWarnings & EngineWarnings.PitSpeedLimiter) !== 0;
+  const limiter = isPitLimiterEngaged(telemetry);
   // The live damage callout's definition of "damaged" (issue #489), shared so
   // the readback's fast-repair gate can never read a different set of bits.
   const hasDamage = (engineWarnings & DAMAGE_REPAIR_MASK) !== 0;

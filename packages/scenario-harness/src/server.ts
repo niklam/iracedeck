@@ -20,7 +20,7 @@ import { join } from "node:path";
 
 import { ALL_EVENT_NAMES, EVENT_TEMPLATES } from "./event-names.js";
 import type { MockPlatformAdapter } from "./mock-platform-adapter.js";
-import type { MockSDKController } from "./mock-sdk-controller.js";
+import type { MockSDKController, TelemetryPatch } from "./mock-sdk-controller.js";
 import { snapshotToTelemetryPatch } from "./pit-readback-telemetry.js";
 import {
   setHarnessQualifyingInvalidationSnapshot,
@@ -304,7 +304,13 @@ export async function createServer(ctx: HarnessContext): Promise<FastifyInstance
         return reply.code(400).send({ error: "patch must be an object" });
       }
 
-      ctx.controller.mutateTelemetry(body.patch as Partial<TelemetryData>);
+      // A malformed bits patch (issue #1548) throws before anything is
+      // written: the caller's mistake, so a 400 naming the key.
+      try {
+        ctx.controller.mutateTelemetry(body.patch as TelemetryPatch);
+      } catch (err) {
+        return reply.code(400).send({ error: err instanceof Error ? err.message : String(err) });
+      }
     } else {
       return reply.code(400).send({ error: "expected `patch` or `snapshot`" });
     }

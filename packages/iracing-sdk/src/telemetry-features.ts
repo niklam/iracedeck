@@ -6,7 +6,7 @@
  * car has the feature. These pure helpers wrap that field-presence check so consumers
  * (actions, audio-scenarios, tests) can ask "does this car have X?" consistently.
  */
-import { Flags, SessionState, type TelemetryData } from "@iracedeck/iracing-native";
+import { EngineWarnings, Flags, SessionState, type TelemetryData } from "@iracedeck/iracing-native";
 
 import { isReplayOnlySession } from "./session-utils.js";
 import { hasAnyFlag } from "./utils.js";
@@ -27,6 +27,32 @@ import { hasAnyFlag } from "./utils.js";
  */
 export function hasPitLimiter(t: TelemetryData | null): boolean {
   return t?.dcPitSpeedLimiterToggle !== undefined;
+}
+
+/**
+ * Check whether the pit speed limiter is engaged — actually limiting the car.
+ *
+ * Reads the `EngineWarnings.PitSpeedLimiter` bit. It is the one read of the engaged
+ * state, and every limiter reader calls it rather than testing the bit inline: the
+ * translator's limiter diff (`limiter.missing` / `limiter.dropped`), its toggle diff
+ * (the limiter-on beep), its pit-speeding and pit-readback diffs, the Car Control
+ * key, and the Race Engineer's two delayed limiter re-checks.
+ * `dcPitSpeedLimiterToggle`'s VALUE is not that state — it is the driver control, which
+ * can disagree with the bit (iRacing's pit-limiter helper may engage the limiter on
+ * its own), and a reader of it fires on a state the others never saw (issue #1548).
+ * The toggle's PRESENCE stays the capability signal: see {@link hasPitLimiter}.
+ *
+ * @param t - The latest telemetry snapshot, or null when no telemetry is available
+ * @returns true if the limiter bit is set, false otherwise (including for null
+ *   telemetry or a snapshot without `EngineWarnings`)
+ *
+ * @example
+ * if (hasPitLimiter(t) && isPitLimiterEngaged(t) && t?.OnPitRoad !== true) {
+ *     // the limiter is still on out on the track
+ * }
+ */
+export function isPitLimiterEngaged(t: TelemetryData | null): boolean {
+  return ((t?.EngineWarnings ?? 0) & EngineWarnings.PitSpeedLimiter) !== 0;
 }
 
 /**

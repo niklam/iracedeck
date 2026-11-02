@@ -48,6 +48,7 @@ import {
 } from "@iracedeck/sim-events-iracing";
 
 import { TIRE_WEAR_REPORT_EXAMPLE } from "./event-names.js";
+import type { BitsPatch } from "./mock-sdk-controller.js";
 import {
   FORMATION_FOLLOW_CAR_IDX,
   FORMATION_GRID_PATCH,
@@ -81,6 +82,16 @@ type ScenarioShortcutBase = {
    */
   requires?: readonly ShortcutPrecondition[];
 };
+
+/**
+ * The pit limiter's engaged bit, set or cleared over whatever else
+ * `EngineWarnings` holds (issue #1548) — the panel's warning checkboxes, or the
+ * repair bits a damage button left lit. Engaged is this bit to every limiter
+ * reader, the two delayed limiter warnings' gates included; the
+ * `dcPitSpeedLimiterToggle` a patch carries beside it is the capability.
+ */
+const LIMITER_BIT_ON: BitsPatch = { setBits: EngineWarnings.PitSpeedLimiter };
+const LIMITER_BIT_OFF: BitsPatch = { clearBits: EngineWarnings.PitSpeedLimiter };
 
 /**
  * One step of a `telemetrySequence` (issue #1127): a telemetry patch, then a
@@ -178,7 +189,8 @@ export type BusEventShortcut = ScenarioShortcutBase & {
    *
    * Values are wire-level, not `TelemetryData`: `null` DELETES a key (the
    * sentinel `mutateTelemetry` reads), which is the only way to make a field
-   * absent over JSON.
+   * absent over JSON, and a `{ setBits, clearBits }` object patches bits of a
+   * bitfield rather than replacing it (`BitsPatch`, issue #1548).
    */
   telemetryPatch?: Record<string, unknown>;
   /**
@@ -1123,9 +1135,9 @@ const TIRE_WEAR_LISTEN_MS = TIRE_WEAR_EXIT_SETTLE_MS - TIRE_WEAR_EXIT_LANE_MS + 
  *
  * Beyond what the capture recorded, it also drives what a clean stop looks
  * like to the rest of the translator — the speed, and the pit limiter on
- * between the cones (`EngineWarnings.PitSpeedLimiter` and the
- * `dcPitSpeedLimiterToggle` the limiter family reads) — so the limiter
- * warnings stay out of it; and it skips the capture's `TooFarBack` status on
+ * between the cones (the `EngineWarnings.PitSpeedLimiter` bit every limiter
+ * reader takes as engaged, issue #1548, with the `dcPitSpeedLimiterToggle`
+ * control agreeing) — so the limiter warnings stay out of it; and it skips the capture's `TooFarBack` status on
  * the roll into the box, which would add a positioning nag the stop is not
  * about.
  *
@@ -1320,9 +1332,9 @@ const LIMITER_CUT_LISTEN_MS = 3000;
  *
  * The setup is done inside a replay-mode bracket (the
  * {@link PIT_STATUS_EMPTY_STOP_SHORTCUT} idiom): on pit road, moving, with the
- * limiter on — both the `EngineWarnings` bit the translator's limiter diff
- * reads and the `dcPitSpeedLimiterToggle` the contracts' gates read — seeded
- * rather than announced, so no pit-entry readback or `limiter.missing` holds
+ * limiter on — the `EngineWarnings` bit the translator's limiter diff and the
+ * contracts' gates both read (issue #1548), with the `dcPitSpeedLimiterToggle`
+ * control agreeing — seeded rather than announced, so no pit-entry readback or `limiter.missing` holds
  * the Voice bus when the warning fires. Live, the limiter comes off (so
  * `limiter.dropped`) and the car crosses the exit line with it OFF (so
  * `pitLane.exited`, and `limiter-on-track`, which that same event triggers,
@@ -2557,7 +2569,10 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     event: "limiter.missing",
     data: {},
     // Must satisfy the DELAYED re-check (#1051): still unengaged and still on
-    // pit road at fire time, 2.5s after this event.
+    // pit road at fire time, 2.5s after this event. Unengaged is the
+    // `EngineWarnings` bit clear (issue #1548), cleared alone so any other
+    // warning bit stays as it was; the toggle stays present, as the
+    // capability, and agrees.
     //
     // The car's on-track state is pinned too (#1349), at the garage values the
     // harness boots with, because the translator's own limiter and pit-speeding
@@ -2565,9 +2580,13 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     // car on track at 144 km/h, where this patch's pit-road entry would make the
     // translator announce its own `limiter.missing` and a speeding episode on
     // top of the line this button auditions.
+    // Out of the stall too, since the delayed re-check refuses there (#1548):
+    // the "in-pit-stall" preset would otherwise leave this button silent.
     telemetryPatch: {
+      EngineWarnings: LIMITER_BIT_OFF,
       dcPitSpeedLimiterToggle: false,
       OnPitRoad: true,
+      PlayerCarInPitStall: false,
       IsOnTrack: false,
       PlayerTrackSurface: TrkLoc.OffTrack,
       Speed: 0,
@@ -2604,8 +2623,22 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     event: "pitLane.exited",
     data: {},
     // Must satisfy the DELAYED re-check, not just the trigger (#1051): engaged
-    // and off pit road at fire time, 1.5s after this event.
-    telemetryPatch: { dcPitSpeedLimiterToggle: true, OnPitRoad: false },
+    // and off pit road at fire time, 1.5s after this event. Engaged is the
+    // `EngineWarnings` bit (issue #1548), set alone so any other warning bit
+    // stays as it was; the toggle stays present, as the capability, and agrees.
+    //
+    // The car is pinned in the garage, as `limiter-missing` pins it (#1349):
+    // the bit coming on for a car left on track by an overtake or gap button
+    // would make the translator announce `carControl.limiterToggled` — the
+    // limiter-on beep — on top of the line this button auditions.
+    telemetryPatch: {
+      EngineWarnings: LIMITER_BIT_ON,
+      dcPitSpeedLimiterToggle: true,
+      OnPitRoad: false,
+      IsOnTrack: false,
+      PlayerTrackSurface: TrkLoc.OffTrack,
+      Speed: 0,
+    },
   },
 
   // ── No Pit Limiter (issue #1051) — cars with NO limiter ──

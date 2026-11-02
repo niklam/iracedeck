@@ -54,7 +54,7 @@ describe("what the two limiter-cut buttons are heard to do (issue #1407)", () =>
     // So the never-mind above is the end's doing, placed by the button's hold,
     // and not something the frame plays anyway.
     const steps = shortcutOf(MID_LINE).telemetrySequence ?? [];
-    const drop = steps.findIndex((s) => s.patch.dcPitSpeedLimiterToggle === false);
+    const drop = steps.findIndex((s) => s.patch.EngineWarnings === 0);
 
     expect(drop).toBeGreaterThan(0);
 

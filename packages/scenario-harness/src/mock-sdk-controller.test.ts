@@ -1,8 +1,13 @@
-import { REPLAY_EXIT_GRACE_MS, type TelemetryCallback, type TelemetryData } from "@iracedeck/iracing-sdk";
+import {
+  EngineWarnings,
+  REPLAY_EXIT_GRACE_MS,
+  type TelemetryCallback,
+  type TelemetryData,
+} from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { MockSDKController } from "./mock-sdk-controller.js";
+import { isBitsPatch, MockSDKController, type TelemetryPatch } from "./mock-sdk-controller.js";
 
 describe("MockSDKController", () => {
   afterEach(() => {
@@ -115,6 +120,128 @@ describe("MockSDKController", () => {
       expect(tick.OnPitRoad).toBe(true);
       // Untouched defaults remain.
       expect(tick.IsOnTrack).toBe(false);
+    });
+
+    // Issue #1548: a shortcut flips the pit limiter's bit and nothing else.
+    describe("a bits patch", () => {
+      const OTHERS = EngineWarnings.WaterTempWarning | EngineWarnings.MandRepNeeded;
+
+      function warningsAfter(start: Record<string, unknown>, patch: TelemetryPatch): unknown {
+        const controller = new MockSDKController();
+
+        controller.mutateTelemetry(start as TelemetryPatch);
+        controller.mutateTelemetry(patch);
+
+        return (controller.getState().telemetry as Record<string, unknown>).EngineWarnings;
+      }
+
+      it("sets its bits and keeps every other bit", () => {
+        expect(
+          warningsAfter({ EngineWarnings: OTHERS }, { EngineWarnings: { setBits: EngineWarnings.PitSpeedLimiter } }),
+        ).toBe(OTHERS | EngineWarnings.PitSpeedLimiter);
+      });
+
+      it("clears its bits and keeps every other bit", () => {
+        expect(
+          warningsAfter(
+            { EngineWarnings: OTHERS | EngineWarnings.PitSpeedLimiter },
+            { EngineWarnings: { clearBits: EngineWarnings.PitSpeedLimiter } },
+          ),
+        ).toBe(OTHERS);
+      });
+
+      it("treats an absent field as 0", () => {
+        expect(
+          warningsAfter({ EngineWarnings: null }, { EngineWarnings: { setBits: EngineWarnings.PitSpeedLimiter } }),
+        ).toBe(EngineWarnings.PitSpeedLimiter);
+      });
+
+      it("clears before it sets, so a bit named in both ends up set", () => {
+        const bit = EngineWarnings.PitSpeedLimiter;
+
+        expect(warningsAfter({ EngineWarnings: 0 }, { EngineWarnings: { setBits: bit, clearBits: bit } })).toBe(bit);
+      });
+
+      it("a whole number still replaces the field", () => {
+        expect(warningsAfter({ EngineWarnings: OTHERS }, { EngineWarnings: EngineWarnings.PitSpeedLimiter })).toBe(
+          EngineWarnings.PitSpeedLimiter,
+        );
+      });
+
+      // Bit 31 (`SessionFlags`' StartGo) must not turn the stored value negative.
+      it("keeps the result unsigned when bit 31 is set", () => {
+        expect(warningsAfter({ EngineWarnings: 0x80000000 }, { EngineWarnings: { setBits: 1 } })).toBe(0x80000001);
+        expect(warningsAfter({ EngineWarnings: 0 }, { EngineWarnings: { setBits: 0x80000000 } })).toBe(0x80000000);
+      });
+    });
+
+    // On a boolean or an array the patch would store a number where readers
+    // expect something else; refused, naming the key, before anything is written.
+    it.each([
+      { key: "OnPitRoad", start: true },
+      { key: "CarIdxLapDistPct", start: [0.1] },
+    ])("refuses a bits patch on the non-numeric $key, writing nothing", ({ key, start }) => {
+      const controller = new MockSDKController();
+
+      controller.mutateTelemetry({ [key]: start } as TelemetryPatch);
+
+      expect(() =>
+        controller.mutateTelemetry({ Speed: 40, [key]: { setBits: 1 } } as unknown as TelemetryPatch),
+      ).toThrow(new RegExp(`"${key}"`));
+      expect(controller.getState().telemetry).toMatchObject({ Speed: 0, [key]: start });
+    });
+
+    // A plain object that is not a bits patch would otherwise be stored where
+    // a number belongs; it is refused, naming the key, before anything is written.
+    it.each([
+      { name: "an unknown key", value: { mask: 16 } },
+      { name: "an empty object", value: {} },
+      { name: "a negative mask", value: { setBits: -1 } },
+      { name: "a string mask", value: { clearBits: "16" } },
+    ])("refuses a malformed bits patch with $name, writing nothing", ({ value }) => {
+      const controller = new MockSDKController();
+
+      controller.mutateTelemetry({ EngineWarnings: EngineWarnings.WaterTempWarning });
+
+      expect(() =>
+        controller.mutateTelemetry({ Speed: 40, EngineWarnings: value } as unknown as TelemetryPatch),
+      ).toThrow(/"EngineWarnings"/);
+      expect(controller.getState().telemetry).toMatchObject({
+        Speed: 0,
+        EngineWarnings: EngineWarnings.WaterTempWarning,
+      });
+    });
+
+    it("still assigns arrays whole", () => {
+      const controller = new MockSDKController();
+
+      controller.mutateTelemetry({ CarIdxLapDistPct: [0.1, 0.2] });
+
+      expect(controller.getState().telemetry).toMatchObject({ CarIdxLapDistPct: [0.1, 0.2] });
+    });
+
+    describe("isBitsPatch", () => {
+      it.each([
+        { value: { setBits: 16 } },
+        { value: { clearBits: 16 } },
+        { value: { setBits: 1, clearBits: 16 } },
+      ])("accepts $value", ({ value }) => {
+        expect(isBitsPatch(value)).toBe(true);
+      });
+
+      it.each([
+        { name: "a number", value: 16 },
+        { name: "null", value: null },
+        { name: "an array", value: [16] },
+        { name: "an empty object", value: {} },
+        { name: "another key", value: { setBits: 16, mask: 1 } },
+        { name: "a negative mask", value: { setBits: -1 } },
+        { name: "a fractional mask", value: { clearBits: 1.5 } },
+        { name: "a string mask", value: { setBits: "16" } },
+        { name: "a mask wider than 32 bits", value: { setBits: 2 ** 32 } },
+      ])("refuses $name", ({ value }) => {
+        expect(isBitsPatch(value)).toBe(false);
+      });
     });
   });
 
