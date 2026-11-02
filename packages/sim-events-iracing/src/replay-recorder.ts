@@ -165,9 +165,11 @@ export function startReplayRecorder(
   };
 
   // The controller stores the callback, then delivers the current tick to it
-  // at once. A throw on that first tick stays inside the controller's error
-  // boundary (#1558), so `subscribe` returns and the handle below can always
-  // stop the subscription.
+  // at once. Under the `"report"` subscriber-error policy every plugin build
+  // runs, a throw on that first tick stays inside the controller's error
+  // boundary (#1558), so `subscribe` returns and the handle below can stop the
+  // subscription. Under `"rethrow"`, which only a test opts into, `subscribe`
+  // throws after registering the callback and no handle is returned.
   controller.subscribe(REPLAY_RECORDER_SUBSCRIPTION_ID, callback);
 
   let stopped = false;
