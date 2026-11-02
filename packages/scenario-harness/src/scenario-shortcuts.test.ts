@@ -97,7 +97,9 @@ function startTranslator(sessionPreset = "race"): { controller: MockSDKControlle
   controller.setSessionInfo(readPreset("session", sessionPreset) as SessionInfo);
   controller.mutateTelemetry(readPreset("telemetry", "hot-lap") as Partial<TelemetryData>);
   controller.setConnected(true);
-  initializeSimEventsIracing(getEventBus(), controller as unknown as SDKController, silentLogger);
+  initializeSimEventsIracing(getEventBus(), controller as unknown as SDKController, silentLogger, {
+    onStepError: "rethrow",
+  });
 
   // Seed the translator's diff state at the presets, with no flag shown.
   controller.tickOnce();
@@ -821,7 +823,9 @@ describe("the two Tire Wear shortcuts (issue #1108)", () => {
   function startAtBoot(): { controller: MockSDKController; events: Published[] } {
     const controller = new MockSDKController({ onSubscriberError: "rethrow" });
     controller.setConnected(true);
-    initializeSimEventsIracing(getEventBus(), controller as unknown as SDKController, silentLogger);
+    initializeSimEventsIracing(getEventBus(), controller as unknown as SDKController, silentLogger, {
+      onStepError: "rethrow",
+    });
     controller.tickOnce();
 
     const events: Published[] = [];
@@ -1002,7 +1006,9 @@ describe('the "Nothing To Do (empty stop)" shortcut (issue #1180)', () => {
     if (from === "boot") {
       controller = new MockSDKController({ onSubscriberError: "rethrow" });
       controller.setConnected(true);
-      initializeSimEventsIracing(getEventBus(), controller as unknown as SDKController, silentLogger);
+      initializeSimEventsIracing(getEventBus(), controller as unknown as SDKController, silentLogger, {
+        onStepError: "rethrow",
+      });
       controller.tickOnce();
     } else {
       controller = startTranslator().controller;
@@ -1158,7 +1164,9 @@ describe("the two limiter-cut shortcuts (issue #1407)", () => {
     if (from === "boot") {
       controller = new MockSDKController({ onSubscriberError: "rethrow" });
       controller.setConnected(true);
-      initializeSimEventsIracing(getEventBus(), controller as unknown as SDKController, silentLogger);
+      initializeSimEventsIracing(getEventBus(), controller as unknown as SDKController, silentLogger, {
+        onStepError: "rethrow",
+      });
       controller.tickOnce();
     } else {
       controller = startTranslator().controller;
@@ -1414,7 +1422,9 @@ describe("the incident-and-damage sequences behind a held Voice bus (issue #1211
   function startAtBoot(): { controller: MockSDKController; events: Stamped[] } {
     const controller = new MockSDKController({ onSubscriberError: "rethrow" });
     controller.setConnected(true);
-    initializeSimEventsIracing(getEventBus(), controller as unknown as SDKController, silentLogger);
+    initializeSimEventsIracing(getEventBus(), controller as unknown as SDKController, silentLogger, {
+      onStepError: "rethrow",
+    });
     controller.tickOnce();
 
     const events: Stamped[] = [];
@@ -1589,7 +1599,9 @@ describe('the "Crash into a full-course caution" shortcut (issue #1185)', () => 
     controller.setSessionInfo(readPreset("session", "race") as SessionInfo);
     controller.mutateTelemetry(readPreset("telemetry", "hot-lap") as Partial<TelemetryData>);
     controller.setConnected(true);
-    initializeSimEventsIracing(getEventBus(), controller as unknown as SDKController, silentLogger);
+    initializeSimEventsIracing(getEventBus(), controller as unknown as SDKController, silentLogger, {
+      onStepError: "rethrow",
+    });
     controller.tickOnce();
 
     const events: (Published & { timestamp: number })[] = [];

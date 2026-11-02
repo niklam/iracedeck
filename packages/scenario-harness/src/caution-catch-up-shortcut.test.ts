@@ -107,7 +107,9 @@ function startRig(sessionPreset = "race", telemetryPreset: string | null = "hot-
   }
 
   controller.setConnected(true);
-  initializeSimEventsIracing(getEventBus(), controller as unknown as SDKController, silentLogger);
+  initializeSimEventsIracing(getEventBus(), controller as unknown as SDKController, silentLogger, {
+    onStepError: "rethrow",
+  });
   controller.tickOnce();
 
   const rig: Rig = { controller, trace: [], events: [] };
@@ -243,7 +245,9 @@ describe('the "Caution → catch-up" shortcut (issue #1168)', () => {
     const controller = new MockSDKController({ onSubscriberError: "rethrow" });
 
     controller.setSessionInfo(readPreset("session", "race") as SessionInfo);
-    initializeSimEventsIracing(getEventBus(), controller as unknown as SDKController, silentLogger);
+    initializeSimEventsIracing(getEventBus(), controller as unknown as SDKController, silentLogger, {
+      onStepError: "rethrow",
+    });
     controller.tickOnce();
 
     const rig: Rig = { controller, trace: [], events: [] };
@@ -443,7 +447,9 @@ describe('the "Caution → catch-up" shortcut (issue #1168)', () => {
     controller.setSessionInfo({ ...session, WeekendInfo: weekendWithoutLength } as unknown as SessionInfo);
     controller.mutateTelemetry(readPreset("telemetry", "hot-lap") as Partial<TelemetryData>);
     controller.setConnected(true);
-    initializeSimEventsIracing(getEventBus(), controller as unknown as SDKController, silentLogger);
+    initializeSimEventsIracing(getEventBus(), controller as unknown as SDKController, silentLogger, {
+      onStepError: "rethrow",
+    });
     controller.tickOnce();
 
     const rig: Rig = { controller, trace: [], events: [] };
