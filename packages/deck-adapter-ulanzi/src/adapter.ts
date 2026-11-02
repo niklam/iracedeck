@@ -12,6 +12,7 @@
  */
 import { type LogLocation } from "@iracedeck/app-constants";
 import {
+  ContextEventOrder,
   type DeckFeedbackPayload,
   type DeckTriggerDescription,
   DEFAULT_KEY_IMAGE_SIZE,
@@ -188,15 +189,20 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
   private readonly dialRotateCallbacks: (() => void)[] = [];
 
   /**
-   * Controller type per LIVE context: set at willAppear, deleted at
-   * willDisappear. Ulanzi's `add` frame carries no controller hint, so a
-   * context is a Keypad here until it delivers dial input and is promoted to
-   * an Encoder (#1530).
+   * Controller type per LIVE context, kept by the ordered tasks: the appear
+   * task sets it before it calls the handler, the disappear task reads and
+   * deletes it before it calls the handler (#1597). Ulanzi's `add` frame
+   * carries no controller hint, so a context is a Keypad here until it
+   * delivers dial input and is promoted to an Encoder (#1530).
    */
   private readonly contextControllers = new Map<string, ControllerType>();
 
   /**
-   * Contexts that have delivered dial input this process. Unlike
+   * Contexts known to be Encoders this process, set at arrival: a context that
+   * delivered dial input (its promotion step is enqueued at that moment, so a
+   * burst queues behind one step instead of starting another), one appeared
+   * with an explicit `payload.controller` of `Encoder`, or one the adapter
+   * appeared itself as an Encoder on dial input with no prior `add`. Unlike
    * {@link contextControllers} this survives willDisappear, so a dial that
    * re-appears (a page switch is `clear` then `add`) is an Encoder from its
    * willAppear rather than from its next dial event (#1530). Never pruned, on
@@ -206,23 +212,17 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
   private readonly knownEncoderContexts = new Set<string>();
 
   /**
-   * In-flight Keypad → Encoder promotions per context. The client dispatches
-   * events without awaiting them, so a rotate burst or a willDisappear can
-   * arrive mid-promotion; each waits on the entry so the action sees the
-   * re-appear before any dial input, and a real disappear tears down the dial
-   * surface the promotion created. A context belongs to one action UUID, so
-   * keying by context alone is enough. The promises never reject.
+   * The per-context order of every handler event (#1597). The client
+   * dispatches without awaiting, so a disappear, a settings change or input
+   * can arrive while an appear is still running; every per-context event of
+   * {@link registerAction} is enqueued here inside the client callback, before
+   * any await, and the primitive runs the tasks in the order the spec's
+   * decisions 2–4 give. This replaced #1530's own ordering (promotion promises
+   * awaited at the top of every handler).
    */
-  private readonly encoderPromotions = new Map<string, Promise<void>>();
+  private readonly order: ContextEventOrder;
 
-  /**
-   * The action's onWillAppear per context while it runs. A promotion waits
-   * for it before its synthetic teardown, so dial input that lands mid-appear
-   * cannot interleave the two (#1530). May reject; awaiters catch.
-   */
-  private readonly appearsInFlight = new Map<string, Promise<unknown>>();
-
-  /** Logger for controller detection (the #1530 promotion line). */
+  /** Logger for controller detection (the #1530 promotion line, the #1597 synthetic appear). */
   private readonly controllerLog: ILogger;
 
   /** Callbacks registered via {@link onDidReceiveGlobalSettings} (fan-out list). */
@@ -274,6 +274,7 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
     const log = logger ?? this.buildLogger("Ulanzi");
     this.client = new UlanziClient(parseConnectionParams(), log.createScope("WebSocket"));
     this.controllerLog = log.createScope("Controllers");
+    this.order = new ContextEventOrder(log.createScope("EventOrder"));
 
     // The Ulanzi PI bridge relays external-link clicks as a `sendToPlugin`
     // openUrl marker — UlanziStudio ignores `openurl` sent on the PI socket but
@@ -435,9 +436,71 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
     return this.buildLogger(scope);
   }
 
+  /**
+   * Route every per-context event of `uuid` through {@link order} (#1597).
+   * Each client callback enqueues its task before any await of its own, so
+   * arrival order is the order the handler sees; the task builds the deck-core
+   * event when it runs, so the controller and the settings it reads are those
+   * after the events ahead of it. The result of each enqueue is returned to the
+   * client, whose dispatch logs a handler's error as before; an event dropped
+   * at arrival (a context that is not live) returns nothing.
+   *
+   * What only Ulanzi adds to the shared order:
+   *
+   * - **Input with no prior `add` appears the context first** (decision 3's
+   *   fallback). UlanziStudio sends input for a context a plugin process never
+   *   got an `add` for — the process started with keys already on the deck
+   *   (measured on the SDK simulator for #1597). Such a context is appeared
+   *   synthetically ahead of the input, as an Encoder when the first input is a
+   *   dial event (it goes into {@link knownEncoderContexts}, so no promotion
+   *   follows) and a Keypad otherwise. A context that has appeared and then
+   *   disappeared is not revived: the primitive drops its input, or the #1329
+   *   leak returns.
+   * - **An `add` for a live context is a settings change.** The host's own
+   *   `add` arriving after a synthetic appear is not a second appear; it is
+   *   enqueued as `didReceiveSettings` with the frame's settings.
+   * - **The Keypad → Encoder promotion is one exclusive step**, enqueued at a
+   *   dial event's arrival ahead of that event (#1530, decision 5).
+   * - **Every input task reads its settings when it runs**: the client's
+   *   write-through cache (#1236), falling back to the frame's. An appear and a
+   *   settings change keep the frame's own settings.
+   * - **Broadcasts fire at arrival, for a live context only**, like Elgato's
+   *   SDK-wide listeners. The synthetic appear is enqueued before that check,
+   *   so a never-appeared input's broadcast fires.
+   */
   registerAction<T>(uuid: string, handler: IDeckActionHandler<T>): void {
+    type Frame = UlanziEvent & { context: string };
+
     const getControllerType = (context: string): ControllerType => {
       return this.contextControllers.get(context) ?? (this.knownEncoderContexts.has(context) ? "Encoder" : "Keypad");
+    };
+
+    /**
+     * The settings an input task delivers, read when it runs: what the host
+     * last sent or the plugin last wrote (the cache is write-through, #1236),
+     * so a write an appear made while the input waited is not undone by the
+     * frame's older snapshot. The frame's own settings when the cache has no
+     * entry (a context after its `clear`).
+     */
+    const settingsNow = (data: Frame): Record<string, unknown> =>
+      this.client.cachedSettings(data.context) ?? data.payload?.settings ?? {};
+
+    /** `data` with `settings` in place of its own, and `event` renamed when given. */
+    const withSettings = (data: Frame, settings: Record<string, unknown>, event = data.event): Frame => ({
+      ...data,
+      event,
+      payload: { ...data.payload, settings },
+    });
+
+    /**
+     * The appear task: record the controller, then call the handler. Inside the
+     * task, so a disappear queued behind it never deletes an entry this has
+     * not set yet.
+     */
+    const appear = (data: Frame, controller: ControllerType): Promise<void> | void => {
+      this.contextControllers.set(data.context, controller);
+
+      return handler.onWillAppear?.(wrapEvent<T>(this.client, data, controller));
     };
 
     /**
@@ -445,115 +508,104 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
      * what its willAppear built as a Keypad, then appear it again as a dial,
      * so the action routes it to its dial surface (which drops input for a
      * context its willAppear never created — encoders-and-touchscreen.md rule
-     * 11). The teardown and the re-appear each carry a copy of the context's
-     * settings as the client caches them once any running Keypad appear has
-     * finished, so a write that appear made (an `addedWithVersion` stamp,
-     * seeded defaults) is not lost and then overwritten from a stale view. The
-     * dial event's own settings are the fallback when the cache has no entry.
+     * 11). An exclusive step of the order, so when it runs every earlier event
+     * of the context — the Keypad appear included — has settled, and the dial
+     * event that started it waits behind it. The teardown and the re-appear
+     * each carry a copy of the context's settings as the client caches them
+     * now, so a write that appear made (an `addedWithVersion` stamp, seeded
+     * defaults) is not lost and then overwritten from a stale view; the dial
+     * event's own settings are the fallback when the cache has no entry.
      *
      * A handler that throws here is logged and the promotion carries on: the
-     * context still ends up an Encoder with the in-flight entry cleared, and
-     * the dial event that started it is still delivered. Failing the
-     * promotion instead would leave the context a Keypad that re-promotes on
-     * every dial event, re-running the teardown each time.
+     * context still ends up an Encoder and the dial event behind the step is
+     * still delivered. Failing the step instead would leave the context a
+     * Keypad whose every dial event re-runs the teardown.
      */
-    const promoteToEncoder = async (data: UlanziEvent & { context: string }): Promise<void> => {
+    const promoteToEncoder = async (data: Frame): Promise<void> => {
       const { context } = data;
       const previous = getControllerType(context);
-      const frameSettings = data.payload?.settings ?? {};
+      const settings = settingsNow(data);
+      const withSettingsCopy = (event: string): Frame => withSettings(data, structuredClone(settings), event);
 
-      this.knownEncoderContexts.add(context);
       this.controllerLog.info(
         `Context ${context} delivered dial input: re-appearing it as a dial (Ulanzi add frames carry no controller, #1530)`,
       );
 
+      // Each step is awaited to completion before the next starts: actions
+      // keep cleaning up (unsubscribe by id) after their base disappear, and
+      // that must not land after the dial appear has subscribed.
       try {
-        // A Keypad willAppear still running (many await a settings write or a
-        // render before they subscribe and draw) finishes before the teardown,
-        // so its trailing steps cannot land after the synthetic disappear or
-        // overwrite the dial's subscription under the same id. Its failure is
-        // reported by its own dispatch, so it is not logged again here.
-        const appearing = this.appearsInFlight.get(context);
+        await handler.onWillDisappear?.(wrapDisappearEvent<T>(withSettingsCopy("willDisappear"), previous));
+      } catch (error) {
+        this.controllerLog.error(`Context ${context}: willDisappear as ${previous} failed while promoting: ${error}`);
+      }
 
-        if (appearing) await appearing.catch(() => undefined);
-
-        // Read only now: the appear just awaited may have rewritten them, and
-        // the client's cache is write-through (#1236).
-        const settings = this.client.cachedSettings(context) ?? frameSettings;
-        const withSettingsCopy = (event: string): UlanziEvent & { context: string } => ({
-          ...data,
-          event,
-          payload: { settings: structuredClone(settings) },
-        });
-
-        // Each step is awaited to completion before the next starts: actions
-        // keep cleaning up (unsubscribe by id) after their base disappear, and
-        // that must not land after the dial appear has subscribed.
-        try {
-          await handler.onWillDisappear?.(wrapDisappearEvent<T>(withSettingsCopy("willDisappear"), previous));
-        } catch (error) {
-          this.controllerLog.error(`Context ${context}: willDisappear as ${previous} failed while promoting: ${error}`);
-        }
-
-        this.contextControllers.set(context, "Encoder");
-
-        try {
-          await handler.onWillAppear?.(wrapEvent<T>(this.client, withSettingsCopy("willAppear"), "Encoder"));
-        } catch (error) {
-          this.controllerLog.error(`Context ${context}: willAppear as Encoder failed while promoting: ${error}`);
-        }
-      } finally {
-        this.encoderPromotions.delete(context);
+      try {
+        await appear(withSettingsCopy("willAppear"), "Encoder");
+      } catch (error) {
+        this.controllerLog.error(`Context ${context}: willAppear as Encoder failed while promoting: ${error}`);
       }
     };
 
     /**
-     * The promotion a dial event must wait for: the context's in-flight one,
-     * or a new one when a live context that is not yet an Encoder delivers
-     * dial input. A context that is not live (gone after willDisappear, or
-     * never appeared) is never promoted — that would resurrect it (the #1329
-     * leak) — so its event goes out as before and the dial surface drops it.
-     *
-     * Synchronous on purpose: each dial handler awaits the returned promise
-     * itself, so the dial events and a willDisappear waiting on the same
-     * promotion resume in the order they arrived. An async wrapper would add a
-     * hop and let the disappear overtake the input queued before it.
+     * Input for a context the host never sent an `add` for: appear it first,
+     * ahead of the input (decision 3's Ulanzi fallback). Only a context that
+     * NEVER appeared; one that has disappeared is dropped by the order itself.
+     * Logged at info once per context: this is the visible trace of the
+     * appear-before-input assumption failing on this host, and a support log
+     * at the default level must show it.
      */
-    const pendingPromotion = (data: UlanziEvent & { context: string }): Promise<void> | undefined => {
+    const appearIfNeverAdded = (data: Frame, controller: "Keypad" | "Encoder"): void => {
       const { context } = data;
-      const inFlight = this.encoderPromotions.get(context);
 
-      if (inFlight) return inFlight;
+      if (this.order.isLive(context) || this.order.hasAppeared(context)) return;
 
-      const live = this.contextControllers.get(context);
+      this.controllerLog.info(`Synthesised willAppear for ${context}: input arrived before any add`);
 
-      if (live === undefined || live === "Encoder") return undefined;
+      if (controller === "Encoder") this.knownEncoderContexts.add(context);
 
-      const promotion = promoteToEncoder(data);
-      this.encoderPromotions.set(context, promotion);
-
-      return promotion;
+      // Discarded on purpose: a discarded enqueue result is safe (never an
+      // unhandled rejection) but silent, and a synthetic appear's failure is
+      // this adapter's to log, as the promotion's is.
+      void this.order
+        .enqueue(context, "willAppear", () => appear(withSettings(data, settingsNow(data), "willAppear"), controller))
+        ?.catch((error: unknown) => {
+          this.controllerLog.error(`Context ${context}: synthetic willAppear as ${controller} failed: ${error}`);
+        });
     };
 
-    // willAppear — track controller type and delegate
-    this.client.onActionEvent(uuid, "willAppear", async (data) => {
+    /**
+     * A dial event's arrival: appear a never-added context as an Encoder, fire
+     * the broadcast for a live context, enqueue the promotion step for a live
+     * context not yet known as an Encoder, then the event itself. The step is
+     * discarded on purpose — it logs its own failures and never rejects.
+     */
+    const dialArrived = (data: Frame, broadcasts: readonly (() => void)[]): void => {
+      const { context } = data;
+
+      appearIfNeverAdded(data, "Encoder");
+
+      if (this.order.isLive(context)) {
+        for (const cb of broadcasts) cb();
+
+        if (!this.knownEncoderContexts.has(context)) {
+          this.knownEncoderContexts.add(context);
+          void this.order.enqueue(context, "step:promoteToEncoder", () => promoteToEncoder(data));
+        }
+      }
+    };
+
+    // willAppear — the host's `add`. Its controller is decided at arrival: an
+    // explicit one wins (forward compatibility); otherwise a context known as an
+    // Encoder is one, and any other is a Keypad until it delivers dial input
+    // (#1530). For a context that is already live — the host replaying its
+    // `add` after the adapter appeared the context on input — this is a
+    // settings change, not a second appear.
+    this.client.onActionEvent(uuid, "willAppear", (data) => {
       if (!data.context) return;
 
-      // A re-add landing mid-promotion (a page switch away and back) waits for
-      // it, read synchronously like the other handlers: a willDisappear that
-      // arrived first and waits on the same promotion then resumes first and
-      // drops its entry, and this appear sets the fresh one after it, rather
-      // than that teardown deleting the dial this appear built (#1530).
-      const promotion = this.encoderPromotions.get(data.context);
-
-      if (promotion) await promotion;
-
-      // An explicit controller wins (forward compatibility); otherwise a
-      // context that has delivered dial input before is an Encoder, and any
-      // other is a Keypad until it does (#1530).
-      const controller = ((data.payload?.controller as string | undefined) ??
-        (this.knownEncoderContexts.has(data.context) ? "Encoder" : "Keypad")) as ControllerType;
-      this.contextControllers.set(data.context, controller);
+      const frame = data as Frame;
+      const { context } = frame;
 
       // Global-settings re-drive (#868), now a FALLBACK rather than the
       // mechanism (#1041): the connect-time read carries an address of its own
@@ -565,173 +617,133 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
       // ever stopped echoing, this is the only route left to a reply.
       if (!this.globalSettingsReplyReceived && !this.globalSettingsBootstrapSent) {
         this.globalSettingsBootstrapSent = true;
-        this.client.requestGlobalSettings(data.context);
+        this.client.requestGlobalSettings(context);
       }
 
-      // Tracked while it runs, so a promotion started by dial input that lands
-      // mid-appear waits for it (#1530).
-      const context = data.context;
-      const appearing = Promise.resolve(
-        handler.onWillAppear?.(
-          wrapEvent<T>(this.client, data as UlanziEvent & { context: string }, getControllerType(context)),
+      if (this.order.isLive(context)) {
+        this.controllerLog.debug(`Context ${context}: add arrived while live, delivered as a settings change`);
+
+        return this.order.enqueue(context, "didReceiveSettings", () =>
+          handler.onDidReceiveSettings?.(wrapEvent<T>(this.client, frame, getControllerType(context))),
+        );
+      }
+
+      const explicit = frame.payload?.controller as ControllerType | undefined;
+
+      if (explicit === "Encoder") this.knownEncoderContexts.add(context);
+
+      const controller = explicit ?? (this.knownEncoderContexts.has(context) ? "Encoder" : "Keypad");
+
+      return this.order.enqueue(context, "willAppear", () => appear(frame, controller));
+    });
+
+    // willDisappear — the controller entry is read and dropped inside the task,
+    // before the handler runs, so it is dropped even if the handler throws and
+    // a re-add queued behind this teardown sets its fresh entry after the delete.
+    this.client.onActionEvent(uuid, "willDisappear", (data) => {
+      if (!data.context) return;
+
+      const frame = data as Frame;
+
+      return this.order.enqueue(frame.context, "willDisappear", () => {
+        const controller = getControllerType(frame.context);
+
+        this.contextControllers.delete(frame.context);
+
+        return handler.onWillDisappear?.(wrapDisappearEvent<T>(frame, controller));
+      });
+    });
+
+    // didReceiveSettings — the host's settings, not a backfill, so the frame's own.
+    this.client.onActionEvent(uuid, "didReceiveSettings", (data) => {
+      if (!data.context) return;
+
+      const frame = data as Frame;
+
+      return this.order.enqueue(frame.context, "didReceiveSettings", () =>
+        handler.onDidReceiveSettings?.(wrapEvent<T>(this.client, frame, getControllerType(frame.context))),
+      );
+    });
+
+    // keyDown — appear a never-added context, broadcast (for window focus), then the handler.
+    this.client.onActionEvent(uuid, "keyDown", (data) => {
+      if (!data.context) return;
+
+      const frame = data as Frame;
+
+      appearIfNeverAdded(frame, "Keypad");
+
+      if (this.order.isLive(frame.context)) for (const cb of this.keyDownCallbacks) cb();
+
+      return this.order.enqueue(frame.context, "keyDown", () =>
+        handler.onKeyDown?.(
+          wrapEvent<T>(this.client, withSettings(frame, settingsNow(frame)), getControllerType(frame.context)),
         ),
       );
-      this.appearsInFlight.set(context, appearing);
-
-      try {
-        await appearing;
-      } finally {
-        if (this.appearsInFlight.get(context) === appearing) this.appearsInFlight.delete(context);
-      }
     });
 
-    // willDisappear — clean up controller tracking
-    this.client.onActionEvent(uuid, "willDisappear", async (data) => {
+    // keyUp
+    this.client.onActionEvent(uuid, "keyUp", (data) => {
       if (!data.context) return;
 
-      // Let an in-flight promotion finish first, so the disappear tears down
-      // the dial surface it created rather than the Keypad it replaced (#1530).
-      const pending = this.encoderPromotions.get(data.context);
+      const frame = data as Frame;
 
-      if (pending) await pending;
+      appearIfNeverAdded(frame, "Keypad");
 
-      const controller = getControllerType(data.context);
-
-      // Drop controller tracking before the handler runs, so it is dropped even
-      // if the handler throws, dial input arriving during the teardown is not
-      // promoted (that would resurrect the context), and a quick re-add's fresh
-      // entry is not deleted by this teardown: a re-add arriving while the
-      // handler runs sets its entry after this delete, and one arriving while
-      // this waits on a promotion waits on it too and resumes after this one.
-      this.contextControllers.delete(data.context);
-
-      await handler.onWillDisappear?.(wrapDisappearEvent<T>(data as UlanziEvent & { context: string }, controller));
-    });
-
-    /**
-     * Re-read the settings of an input event that waited on a promotion. The
-     * client backfilled the event from its cache when the frame arrived, and
-     * the appears that ran during the wait (the Keypad one finishing, the
-     * Encoder re-appear) may have written since — the cache is write-through
-     * (#1236) — so delivering the frame's snapshot would hand the action
-     * settings it has already replaced. The frame's own settings stay when the
-     * cache has no entry. Synchronous, so it adds no hop after the await.
-     */
-    const refreshHeldSettings = (event: UlanziEvent & { context: string }): void => {
-      const fresh = this.client.cachedSettings(event.context);
-
-      if (fresh && event.payload) event.payload.settings = fresh;
-    };
-
-    // Settings and key events never start a promotion (only dial input does),
-    // but one landing mid-promotion waits for it: delivered as a Keypad after
-    // the synthetic teardown, it would rebuild key state that the real
-    // disappear, tearing down as Encoder, never removes (#1530). The promise
-    // is read synchronously and awaited in the handler itself, so these
-    // resume in arrival order with the dial events (see pendingPromotion).
-    // didReceiveSettings carries the host's settings rather than a backfill,
-    // so only the key and dial events re-read them after the wait.
-
-    // didReceiveSettings
-    this.client.onActionEvent(uuid, "didReceiveSettings", async (data) => {
-      if (!data.context) return;
-
-      const promotion = this.encoderPromotions.get(data.context);
-
-      if (promotion) await promotion;
-
-      await handler.onDidReceiveSettings?.(
-        wrapEvent<T>(this.client, data as UlanziEvent & { context: string }, getControllerType(data.context)),
+      return this.order.enqueue(frame.context, "keyUp", () =>
+        handler.onKeyUp?.(
+          wrapEvent<T>(this.client, withSettings(frame, settingsNow(frame)), getControllerType(frame.context)),
+        ),
       );
     });
 
-    // keyDown — settle the controller, fire broadcast callbacks (for window focus), then handler
-    this.client.onActionEvent(uuid, "keyDown", async (data) => {
+    // dialRotate
+    this.client.onActionEvent(uuid, "dialRotate", (data) => {
       if (!data.context) return;
 
-      const promotion = this.encoderPromotions.get(data.context);
+      const frame = data as Frame;
 
-      if (promotion) {
-        await promotion;
-        refreshHeldSettings(data as UlanziEvent & { context: string });
-      }
+      dialArrived(frame, this.dialRotateCallbacks);
 
-      for (const cb of this.keyDownCallbacks) cb();
-
-      await handler.onKeyDown?.(
-        wrapEvent<T>(this.client, data as UlanziEvent & { context: string }, getControllerType(data.context)),
+      return this.order.enqueue(frame.context, "dialRotate", () =>
+        handler.onDialRotate?.(
+          wrapDialRotateEvent<T>(
+            this.client,
+            withSettings(frame, settingsNow(frame)),
+            getControllerType(frame.context),
+          ),
+        ),
       );
     });
 
-    // keyUp — settle the controller, then handler
-    this.client.onActionEvent(uuid, "keyUp", async (data) => {
+    // dialDown
+    this.client.onActionEvent(uuid, "dialDown", (data) => {
       if (!data.context) return;
 
-      const promotion = this.encoderPromotions.get(data.context);
+      const frame = data as Frame;
 
-      if (promotion) {
-        await promotion;
-        refreshHeldSettings(data as UlanziEvent & { context: string });
-      }
+      dialArrived(frame, this.dialDownCallbacks);
 
-      await handler.onKeyUp?.(
-        wrapEvent<T>(this.client, data as UlanziEvent & { context: string }, getControllerType(data.context)),
+      return this.order.enqueue(frame.context, "dialDown", () =>
+        handler.onDialDown?.(
+          wrapEvent<T>(this.client, withSettings(frame, settingsNow(frame)), getControllerType(frame.context)),
+        ),
       );
     });
 
-    // dialRotate — settle the controller, fire broadcast callbacks, then handler
-    this.client.onActionEvent(uuid, "dialRotate", async (data) => {
+    // dialUp
+    this.client.onActionEvent(uuid, "dialUp", (data) => {
       if (!data.context) return;
 
-      const event = data as UlanziEvent & { context: string };
-      const promotion = pendingPromotion(event);
+      const frame = data as Frame;
 
-      if (promotion) {
-        await promotion;
-        refreshHeldSettings(event);
-      }
+      dialArrived(frame, []);
 
-      const controller = getControllerType(event.context);
-
-      for (const cb of this.dialRotateCallbacks) cb();
-
-      await handler.onDialRotate?.(wrapDialRotateEvent<T>(this.client, event, controller));
-    });
-
-    // dialDown — settle the controller, fire broadcast callbacks, then handler
-    this.client.onActionEvent(uuid, "dialDown", async (data) => {
-      if (!data.context) return;
-
-      const event = data as UlanziEvent & { context: string };
-      const promotion = pendingPromotion(event);
-
-      if (promotion) {
-        await promotion;
-        refreshHeldSettings(event);
-      }
-
-      const controller = getControllerType(event.context);
-
-      for (const cb of this.dialDownCallbacks) cb();
-
-      await handler.onDialDown?.(wrapEvent<T>(this.client, event, controller));
-    });
-
-    // dialUp — settle the controller, then handler
-    this.client.onActionEvent(uuid, "dialUp", async (data) => {
-      if (!data.context) return;
-
-      const event = data as UlanziEvent & { context: string };
-      const promotion = pendingPromotion(event);
-
-      if (promotion) {
-        await promotion;
-        refreshHeldSettings(event);
-      }
-
-      const controller = getControllerType(event.context);
-
-      await handler.onDialUp?.(wrapEvent<T>(this.client, event, controller));
+      return this.order.enqueue(frame.context, "dialUp", () =>
+        handler.onDialUp?.(
+          wrapEvent<T>(this.client, withSettings(frame, settingsNow(frame)), getControllerType(frame.context)),
+        ),
+      );
     });
   }
 
