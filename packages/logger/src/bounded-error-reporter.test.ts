@@ -628,6 +628,45 @@ describe("describeThrowable", () => {
     expect(describeThrowable(error).summary).toBe("Error: line one");
   });
 
+  it("keys past a built-in first frame, so two bugs failing inside the same built-in are two keys", () => {
+    const fromConfig = new SyntaxError("Unexpected token");
+    fromConfig.stack =
+      "SyntaxError: Unexpected token\n    at JSON.parse (<anonymous>)\n    at readConfig (config.ts:12:3)";
+    const fromPacket = new SyntaxError("Unexpected token");
+    fromPacket.stack =
+      "SyntaxError: Unexpected token\n    at JSON.parse (<anonymous>)\n    at onPacket (socket.ts:40:9)";
+
+    expect(describeThrowable(fromConfig).site).toBe("readConfig (config.ts:12:3)");
+    expect(describeThrowable(fromPacket).site).toBe("onPacket (socket.ts:40:9)");
+
+    const { reporter, levels } = setup();
+    reporter.report("sub", fromConfig);
+    reporter.report("sub", fromPacket);
+
+    expect(levels()).toEqual(["error", "error"]);
+  });
+
+  it("skips Node's internals and V8's native frames too", () => {
+    const error = new Error("boom");
+    error.stack = [
+      "Error: boom",
+      "    at Array.forEach (native)",
+      "    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)",
+      "    at node:internal/main/run_main_module:28:49",
+      "    at mine (m.ts:3:7)",
+    ].join("\n");
+
+    expect(describeThrowable(error).site).toBe("mine (m.ts:3:7)");
+  });
+
+  it("keys an all-built-in stack on its first frame", () => {
+    const error = new SyntaxError("Unexpected token");
+    error.stack =
+      "SyntaxError: Unexpected token\n    at JSON.parse (<anonymous>)\n    at node:internal/main/run_main_module:28:49";
+
+    expect(describeThrowable(error).site).toBe("JSON.parse (<anonymous>)");
+  });
+
   it("falls back to the name and normalised message when the stack has no frames", () => {
     const error = new TypeError("slot 5 empty");
     error.stack = "TypeError: slot 5 empty";

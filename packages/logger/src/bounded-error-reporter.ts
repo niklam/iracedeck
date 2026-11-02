@@ -9,8 +9,9 @@
  *
  * The rules, from `docs/superpowers/specs/2026-10-31-issue-1558-sdk-subscriber-isolation.md`:
  *
- * - **Key** is `(id, throw site)`. The site is the error's first stack frame; with no
- *   stack frame it is the error's name plus its message with digits normalised, so a
+ * - **Key** is `(id, throw site)`. The site is the error's first stack frame outside the
+ *   runtime's built-ins (`JSON.parse (<anonymous>)`, `node:` internals); with no stack
+ *   frame it is the error's name plus its message with digits normalised, so a
  *   message that carries data ("index 37 out of range") is one key, not one per tick.
  * - **First occurrence** of a key writes one `error` line with the stack.
  * - **Repeats** are counted. Each key writes one `warn` line per window while it keeps
@@ -165,23 +166,49 @@ function describeObject(value: object): string {
 }
 
 /**
- * The first `at …` line of a V8 stack, trimmed and without its `at ` (the log lines say
- * "at <site>" themselves), or `undefined` when there is none.
+ * Whether a frame (without its `at `) is inside the runtime rather than in code: a V8
+ * built-in such as `JSON.parse (<anonymous>)` or `Array.forEach (native)`, or Node's own
+ * `node:` internals.
+ */
+function isBuiltInFrame(frame: string): boolean {
+  return (
+    frame.endsWith("(<anonymous>)") ||
+    frame.endsWith("(native)") ||
+    frame === "native" ||
+    frame.includes("(node:") ||
+    frame.startsWith("node:")
+  );
+}
+
+/**
+ * The throw site of a V8 stack: its first `at …` line that is not a built-in (see
+ * {@link isBuiltInFrame}), trimmed and without its `at ` (the log lines say "at <site>"
+ * themselves). Skipping built-ins keeps two unrelated bugs that both fail inside, say,
+ * `JSON.parse` on two keys. When every frame is a built-in, the first one; `undefined`
+ * when there are no frames.
  */
 function firstFrame(stack: string): string | undefined {
+  let first: string | undefined;
+
   for (const line of stack.split("\n")) {
     const trimmed = line.trim();
 
-    if (trimmed.startsWith("at ")) return trimmed.slice(3);
+    if (!trimmed.startsWith("at ")) continue;
+
+    const frame = trimmed.slice(3);
+
+    if (!isBuiltInFrame(frame)) return frame;
+
+    first ??= frame;
   }
 
-  return undefined;
+  return first;
 }
 
 /**
  * The key and the text for a throwable of any shape. An `Error` (or anything with a
- * string `stack`) is keyed on its first frame; anything else on its name and message
- * with the digits normalised.
+ * string `stack`) is keyed on its first frame that is not a built-in; anything else on
+ * its name and message with the digits normalised.
  *
  * @internal Exported for testing
  */
