@@ -247,8 +247,10 @@ export interface IDeckPlatformAdapter extends SettingsHost {
    * already live, and a re-appear after a disappear runs after the teardown
    * it follows. Input for a context the host never appeared is dropped, or —
    * on a host that sends input with no prior appear (Ulanzi) — runs after an
-   * appear the adapter enqueues for it; a context that has disappeared is
-   * never revived. An event that overlaps nothing reaches the handler
+   * appear the adapter enqueues for it, and the host's own late `willAppear`
+   * for that context is then delivered as `onDidReceiveSettings` carrying the
+   * frame's settings, ordered as an exclusive event; a context that has
+   * disappeared is never revived. An event that overlaps nothing reaches the handler
    * synchronously at arrival. A wait is bounded by `CONTEXT_EVENT_WAIT_LIMIT_MS`
    * per task ahead.
    *

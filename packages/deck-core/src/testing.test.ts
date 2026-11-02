@@ -79,6 +79,7 @@ describe("deck-core's testing entry (#1597)", () => {
       "SerialReferenceAdapter",
       "InTaskBroadcastReferenceAdapter",
       "InTaskLivenessReferenceAdapter",
+      "LateAppearDropReferenceAdapter",
       "OrderedReferenceAdapter",
     ]) {
       expect(barrel).not.toHaveProperty(name);

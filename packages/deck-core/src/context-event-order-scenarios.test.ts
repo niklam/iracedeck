@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   InTaskBroadcastReferenceAdapter,
   InTaskLivenessReferenceAdapter,
+  LateAppearDropReferenceAdapter,
   OrderedReferenceAdapter,
   SerialReferenceAdapter,
   UnorderedReferenceAdapter,
@@ -29,6 +30,7 @@ const FAILING_REFERENCES = {
   serial: () => new SerialReferenceAdapter(),
   inTaskBroadcast: () => new InTaskBroadcastReferenceAdapter(),
   inTaskLiveness: () => new InTaskLivenessReferenceAdapter(),
+  lateAppearDrop: () => new LateAppearDropReferenceAdapter(),
 } as const;
 
 type FailingReference = keyof typeof FAILING_REFERENCES;
@@ -45,16 +47,36 @@ const EXPECTED: Record<string, ExpectedOutcomes> = {
     serial: pass,
     inTaskBroadcast: pass,
     inTaskLiveness: pass,
+    lateAppearDrop: pass,
   },
-  "no overtaking": { unordered: fail, serial: pass, inTaskBroadcast: pass, inTaskLiveness: pass },
-  "input after a disappear is dropped": { unordered: fail, serial: pass, inTaskBroadcast: pass, inTaskLiveness: pass },
-  "input before any appear is dropped": { unordered: fail, serial: pass, inTaskBroadcast: pass, inTaskLiveness: pass },
-  "two inputs run concurrently": { unordered: pass, serial: fail, inTaskBroadcast: fail, inTaskLiveness: fail },
+  "no overtaking": { unordered: fail, serial: pass, inTaskBroadcast: pass, inTaskLiveness: pass, lateAppearDrop: pass },
+  "input after a disappear is dropped": {
+    unordered: fail,
+    serial: pass,
+    inTaskBroadcast: pass,
+    inTaskLiveness: pass,
+    lateAppearDrop: pass,
+  },
+  "input before any appear is dropped": {
+    unordered: fail,
+    serial: pass,
+    inTaskBroadcast: pass,
+    inTaskLiveness: pass,
+    lateAppearDrop: pass,
+  },
+  "two inputs run concurrently": {
+    unordered: pass,
+    serial: fail,
+    inTaskBroadcast: fail,
+    inTaskLiveness: fail,
+    lateAppearDrop: pass,
+  },
   "broadcasts fire only for a live context": {
     unordered: fail,
     serial: pass,
     inTaskBroadcast: pass,
     inTaskLiveness: pass,
+    lateAppearDrop: pass,
   },
   // The unordered reference fires at arrival but also runs the input ahead of the appear, which the scenario sees.
   "a broadcast fires at the input's arrival": {
@@ -62,16 +84,44 @@ const EXPECTED: Record<string, ExpectedOutcomes> = {
     serial: pass,
     inTaskBroadcast: fail,
     inTaskLiveness: pass,
+    lateAppearDrop: pass,
   },
   "a disappear's arrival stops the broadcasts": {
     unordered: fail,
     serial: pass,
     inTaskBroadcast: pass,
     inTaskLiveness: fail,
+    lateAppearDrop: pass,
   },
-  "every supported input kind waits": { unordered: fail, serial: pass, inTaskBroadcast: pass, inTaskLiveness: pass },
-  "a settings change is exclusive": { unordered: fail, serial: pass, inTaskBroadcast: pass, inTaskLiveness: pass },
-  "a re-appear after a disappear": { unordered: fail, serial: pass, inTaskBroadcast: pass, inTaskLiveness: pass },
+  "every supported input kind waits": {
+    unordered: fail,
+    serial: pass,
+    inTaskBroadcast: pass,
+    inTaskLiveness: pass,
+    lateAppearDrop: pass,
+  },
+  "a settings change is exclusive": {
+    unordered: fail,
+    serial: pass,
+    inTaskBroadcast: pass,
+    inTaskLiveness: pass,
+    lateAppearDrop: pass,
+  },
+  "a re-appear after a disappear": {
+    unordered: fail,
+    serial: pass,
+    inTaskBroadcast: pass,
+    inTaskLiveness: pass,
+    lateAppearDrop: pass,
+  },
+  // Every drop-policy reference delivers the second appear; the appear-first one without the rule drops the settings.
+  "a willAppear for a context that is already live": {
+    unordered: fail,
+    serial: fail,
+    inTaskBroadcast: fail,
+    inTaskLiveness: fail,
+    lateAppearDrop: fail,
+  },
 };
 
 function expectedFor(scenario: ContextEventOrderScenario): ExpectedOutcomes {
@@ -98,7 +148,7 @@ describe("the ordering contract suite against the reference adapters", () => {
       Object.keys(EXPECTED).length,
     );
     expect(new Set(CONTEXT_EVENT_ORDER_SCENARIOS.map((s) => s.name)).size).toBe(CONTEXT_EVENT_ORDER_SCENARIOS.length);
-    expect(CONTEXT_EVENT_ORDER_SCENARIOS).toHaveLength(11);
+    expect(CONTEXT_EVENT_ORDER_SCENARIOS).toHaveLength(12);
   });
 
   it("every scenario fails on at least one reference, so none can pass vacuously", () => {

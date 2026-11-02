@@ -19,8 +19,12 @@
  *   and read at arrival. The disappear-arrival scenario must fail on it.
  * - {@link OrderedReferenceAdapter} routes every event through
  *   `ContextEventOrder`, as the real adapters do, under either never-appeared
- *   policy: the pattern an adapter's `registerAction` follows, and the proof
- *   that every scenario is passable.
+ *   policy — under appear-first the host's late appear for a live context is a
+ *   settings change: the pattern an adapter's `registerAction` follows, and
+ *   the proof that every scenario is passable.
+ * - {@link LateAppearDropReferenceAdapter} is the appear-first one without
+ *   that rule, dropping the host's late appear. The late-appear scenario must
+ *   fail on it.
  *
  * They implement {@link ContextEventOrderAdapter}, the slice of the platform
  * adapter the suite drives, not `IDeckPlatformAdapter` itself: declaring that
@@ -319,8 +323,47 @@ export class OrderedReferenceAdapter extends ReferenceAdapter {
 
     if (this.order.isLive(context)) this.broadcast(event);
 
+    // On an appear-first host the host's own appear arrives after the adapter
+    // appeared the context on input: a settings change, not a second appear
+    // (the order would drop it, frame settings included).
+    if (this.neverAppeared === "appear-first" && event === "willAppear" && this.order.isLive(context)) {
+      void this.order.enqueue(context, "didReceiveSettings", () =>
+        this.call(handler, "didReceiveSettings", context, payload),
+      );
+
+      return;
+    }
+
     // Discarded on purpose: the harness's `emit` returns nothing, and a
     // discarded result is safe (never an unhandled rejection) but silent.
+    void this.order.enqueue(context, event, () => this.call(handler, event, context, payload));
+  }
+}
+
+/**
+ * The ordered appear-first reference without the late-appear rule: the host's
+ * own `willAppear` for a context appeared on input is dropped (the order's
+ * default), frame settings included. The late-appear scenario must fail on it.
+ */
+export class LateAppearDropReferenceAdapter extends ReferenceAdapter {
+  private readonly order = new ContextEventOrder(silentLogger);
+
+  override harness(): ContextEventOrderHarness {
+    return super.harness("appear-first");
+  }
+
+  protected emit(
+    handler: IDeckActionHandler,
+    event: ContextEventOrderHostEvent,
+    context: string,
+    payload: ContextEventOrderPayload,
+  ): void {
+    if (INPUTS.has(event) && !this.order.isLive(context) && !this.order.hasAppeared(context)) {
+      void this.order.enqueue(context, "willAppear", () => this.call(handler, "willAppear", context, {}));
+    }
+
+    if (this.order.isLive(context)) this.broadcast(event);
+
     void this.order.enqueue(context, event, () => this.call(handler, event, context, payload));
   }
 }

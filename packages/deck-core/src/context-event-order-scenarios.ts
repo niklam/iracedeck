@@ -90,6 +90,14 @@ export interface ContextEventOrderPayload {
  *   live by the time the input arrives. Ulanzi, whose host sends input with no
  *   prior `add`. Only a context that NEVER appeared gets this; one that has
  *   disappeared is dropped under both policies, or the #1329 leak returns.
+ *   The host's own `willAppear`, arriving later for the context the adapter
+ *   appeared on input, is live-context appear: it is delivered as a
+ *   `didReceiveSettings` carrying that frame's settings, ordered as an
+ *   exclusive event, so the handler sees the settings the host meant without
+ *   a second `onWillAppear`.
+ *
+ * Under both policies a `willAppear` for a context that is already live never
+ * calls `onWillAppear` (the primitive drops it at arrival).
  */
 export type ContextEventOrderNeverAppearedPolicy = "drop" | "appear-first";
 
@@ -168,6 +176,8 @@ async function settle(): Promise<void> {
 interface Recording {
   readonly calls: string[];
   readonly subscriptions: Set<string>;
+  /** The settings each `onDidReceiveSettings` call carried, in call order. */
+  readonly settingsReceived: unknown[];
   readonly handler: IDeckActionHandler;
 }
 
@@ -181,9 +191,12 @@ interface Recording {
 function record(gates: Partial<Record<ContextHandlerEventKind, Gate>> = {}): Recording {
   const calls: string[] = [];
   const subscriptions = new Set<string>();
+  const settingsReceived: unknown[] = [];
 
   const step = async (event: ContextHandlerEventKind, ev: IDeckEvent<unknown>): Promise<void> => {
     calls.push(event);
+
+    if (event === "didReceiveSettings") settingsReceived.push(ev.payload.settings);
 
     const open = gates[event];
 
@@ -208,7 +221,7 @@ function record(gates: Partial<Record<ContextHandlerEventKind, Gate>> = {}): Rec
     onTouchTap: (ev: IDeckTouchTapEvent<unknown>) => step("touchTap", ev),
   };
 
-  return { calls, subscriptions, handler };
+  return { calls, subscriptions, settingsReceived, handler };
 }
 
 function same(actual: readonly string[], expected: readonly string[]): boolean {
@@ -450,6 +463,71 @@ const reappearWaitsForTeardown: ContextEventOrderScenario = {
       "keyDown",
       "keyDown:done",
     ]);
+  },
+};
+
+const lateAppearForLiveContext: ContextEventOrderScenario = {
+  name: "a willAppear for a context that is already live never calls onWillAppear",
+  async run(harness) {
+    const press = gate();
+    const { calls, settingsReceived, handler } = record({ keyDown: press });
+
+    harness.adapter.registerAction(CONTEXT_EVENT_ORDER_ACTION_UUID, handler);
+
+    if (harness.neverAppeared === "drop") {
+      const rule = "a second willAppear for a live context is dropped at arrival";
+
+      harness.emit("willAppear", "ctx-1", { settings: { marker: 1 } });
+      await settle();
+      harness.emit("willAppear", "ctx-1", { settings: { marker: 2 } });
+      await settle();
+
+      expectCalls(rule, calls, ["willAppear", "willAppear:done"]);
+
+      // Still live: input runs, and the keyDown gate is not in this branch's way once opened.
+      press.open();
+      harness.emit("keyDown", "ctx-1");
+      await settle();
+
+      expectCalls(rule, calls, ["willAppear", "willAppear:done", "keyDown", "keyDown:done"]);
+
+      return;
+    }
+
+    const rule =
+      "the host's late willAppear for a context appeared on input is one didReceiveSettings with the frame's settings, ordered as exclusive";
+
+    // Input appears the context; the host's own add follows while the input is still in flight.
+    harness.emit("keyDown", "ctx-1");
+    await settle();
+
+    expectCalls(rule, calls, ["willAppear", "willAppear:done", "keyDown"]);
+
+    harness.emit("willAppear", "ctx-1", { settings: { marker: "from-the-host" } });
+    await settle();
+
+    // Exclusive: it waits for the press in flight, and never runs as an appear.
+    expectCalls(rule, calls, ["willAppear", "willAppear:done", "keyDown"]);
+
+    press.open();
+    await settle();
+
+    expectCalls(rule, calls, [
+      "willAppear",
+      "willAppear:done",
+      "keyDown",
+      "keyDown:done",
+      "didReceiveSettings",
+      "didReceiveSettings:done",
+    ]);
+
+    const [received] = settingsReceived;
+
+    if (settingsReceived.length !== 1 || (received as { marker?: unknown } | undefined)?.marker !== "from-the-host") {
+      throw new Error(
+        `${rule}: expected one settings call carrying the frame's settings but saw ${JSON.stringify(settingsReceived)}`,
+      );
+    }
   },
 };
 
@@ -710,4 +788,5 @@ export const CONTEXT_EVENT_ORDER_SCENARIOS: readonly ContextEventOrderScenario[]
   everyInputKindWaitsForLifecycle,
   settingsChangeIsExclusive,
   reappearWaitsForTeardown,
+  lateAppearForLiveContext,
 ];
