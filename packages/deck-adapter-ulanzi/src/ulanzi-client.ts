@@ -586,6 +586,21 @@ export class UlanziClient {
   }
 
   /**
+   * A copy of a context's cached settings, or `undefined` when the context has
+   * no entry (never added, or cleared). The cache is write-through (#1236), so
+   * this is what the host last sent or the plugin last wrote — the adapter
+   * reads it to re-appear a context as a dial with the settings its Keypad
+   * appear may have just rewritten (#1530). A copy, like the cache's other
+   * outputs, so the caller can never rewrite what later events are backfilled
+   * with.
+   */
+  cachedSettings(context: string): Record<string, unknown> | undefined {
+    const cached = this.contextSettings.get(context);
+
+    return cached ? structuredClone(cached) : undefined;
+  }
+
+  /**
    * Request global settings. Plugin scope by default; an action context may be
    * passed for the adapter's `willAppear` re-drive (#868).
    *

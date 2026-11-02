@@ -2,9 +2,11 @@ import {
   _resetRasterizer,
   DEFAULT_KEY_IMAGE_SIZE,
   type IDeckActionHandler,
+  type IDeckEvent,
   initializeRasterizer,
   svgToDataUri,
 } from "@iracedeck/deck-core";
+import type { ILogger } from "@iracedeck/logger";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { UlanziPlatformAdapter } from "./adapter.js";
@@ -27,6 +29,8 @@ vi.mock("./ulanzi-client.js", () => ({
     openUrl = vi.fn();
     setImage = vi.fn();
     setSettings = vi.fn();
+    // No cache by default: the adapter then falls back to the event's settings.
+    cachedSettings = vi.fn();
 
     constructor() {
       mockInstances.push(this as unknown as Record<string, ReturnType<typeof vi.fn>>);
@@ -498,6 +502,593 @@ describe("UlanziPlatformAdapter", () => {
       });
       const keyEv = (handler.onKeyDown as ReturnType<typeof vi.fn>).mock.calls[0][0];
       expect(keyEv.action.isKey()).toBe(true);
+    });
+  });
+
+  // UlanziStudio's `add` frame carries no controller, so a context is a Keypad
+  // until it delivers dial input; the adapter then re-appears it as an Encoder
+  // so the action builds its dial surface before the input reaches it (#1530).
+  describe("controller from dial input (#1530)", () => {
+    const UUID = "com.test.action";
+    const CTX = "com.test.action___3___abc";
+
+    type DialEventName = "dialRotate" | "dialDown" | "dialUp";
+
+    interface Recorded {
+      hook: string;
+      isDial: boolean;
+      isKey: boolean;
+      settings: unknown;
+      ticks?: number;
+    }
+
+    /** Let every queued microtask and the dispatch chains behind them run. */
+    const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    const deferred = () => {
+      let resolve!: () => void;
+      const promise = new Promise<void>((r) => {
+        resolve = r;
+      });
+
+      return { promise, resolve };
+    };
+
+    /**
+     * A handler that records each hook it receives, in order, with the
+     * controller the context reported at that moment.
+     */
+    const recordingHandler = () => {
+      const calls: Recorded[] = [];
+      const record =
+        (hook: keyof IDeckActionHandler) =>
+        async (ev: IDeckEvent<unknown> & { payload: { ticks?: number } }): Promise<void> => {
+          calls.push({
+            hook,
+            isDial: ev.action.isDial(),
+            isKey: ev.action.isKey(),
+            settings: ev.payload.settings,
+            ticks: ev.payload.ticks,
+          });
+        };
+      const handler = {
+        onWillAppear: vi.fn(record("onWillAppear")),
+        onWillDisappear: vi.fn(record("onWillDisappear")),
+        onDialRotate: vi.fn(record("onDialRotate")),
+        onDialDown: vi.fn(record("onDialDown")),
+        onDialUp: vi.fn(record("onDialUp")),
+        onKeyDown: vi.fn(record("onKeyDown")),
+        onKeyUp: vi.fn(record("onKeyUp")),
+        onDidReceiveSettings: vi.fn(record("onDidReceiveSettings")),
+      };
+
+      return { handler, calls, hooks: () => calls.map((c) => c.hook) };
+    };
+
+    type NonDialEventName = "didReceiveSettings" | "keyDown" | "keyUp";
+
+    const nonDial = (event: NonDialEventName, settings: Record<string, unknown> = {}) =>
+      actionEventHandler(event)({ event, action: UUID, context: CTX, payload: { settings } });
+
+    const appear = (payload: Record<string, unknown> = { settings: {} }) =>
+      actionEventHandler("willAppear")({ event: "willAppear", action: UUID, context: CTX, payload });
+
+    const disappear = () =>
+      actionEventHandler("willDisappear")({
+        event: "willDisappear",
+        action: UUID,
+        context: CTX,
+        payload: { settings: {} },
+      });
+
+    const dial = (event: DialEventName, payload: Record<string, unknown> = { settings: {} }, context = CTX) =>
+      actionEventHandler(event)({ event, action: UUID, context, payload });
+
+    const rotate = (ticks: number, settings: Record<string, unknown> = {}) => dial("dialRotate", { settings, ticks });
+
+    it("appears as a Keypad, then re-appears as an Encoder before the first dial input is delivered", async () => {
+      const { handler, calls, hooks } = recordingHandler();
+      adapter.registerAction(UUID, handler);
+
+      await appear();
+      await rotate(1, { mode: "brake-bias" });
+
+      expect(hooks()).toEqual(["onWillAppear", "onWillDisappear", "onWillAppear", "onDialRotate"]);
+      expect(calls[0]).toMatchObject({ isDial: false, isKey: true });
+      expect(calls[1]).toMatchObject({ isDial: false, isKey: true });
+      expect(calls[2]).toMatchObject({ isDial: true, isKey: false, settings: { mode: "brake-bias" } });
+      expect(calls[3]).toMatchObject({ isDial: true, isKey: false, ticks: 1 });
+    });
+
+    it.each<DialEventName>(["dialRotate", "dialDown", "dialUp"])("promotes on a first %s too", async (event) => {
+      const { handler, hooks, calls } = recordingHandler();
+      adapter.registerAction(UUID, handler);
+
+      await appear();
+      await dial(event);
+
+      const hook = `on${event[0].toUpperCase()}${event.slice(1)}`;
+      expect(hooks()).toEqual(["onWillAppear", "onWillDisappear", "onWillAppear", hook]);
+      expect(calls[3].isDial).toBe(true);
+    });
+
+    it("hands the re-appear and the teardown their own copies of the dial event's settings", async () => {
+      const { handler } = recordingHandler();
+      adapter.registerAction(UUID, handler);
+      const settings = { mode: "brake-bias", nested: { step: 2 } };
+
+      await appear();
+      await rotate(1, settings);
+
+      const reappear = handler.onWillAppear.mock.calls[1][0];
+      const teardown = handler.onWillDisappear.mock.calls[0][0];
+      const delivered = handler.onDialRotate.mock.calls[0][0];
+
+      expect(reappear.payload.settings).toEqual(settings);
+      expect(reappear.payload.settings).not.toBe(delivered.payload.settings);
+      expect((reappear.payload.settings as typeof settings).nested).not.toBe(settings.nested);
+      expect(teardown.payload.settings).toEqual(settings);
+      expect(teardown.payload.settings).not.toBe(delivered.payload.settings);
+      expect(delivered.payload.settings).toBe(settings);
+    });
+
+    it("promotes only once: later dial input goes straight to the dial surface", async () => {
+      const { handler, hooks } = recordingHandler();
+      adapter.registerAction(UUID, handler);
+
+      await appear();
+      await rotate(1);
+      await rotate(-1);
+      await dial("dialDown");
+
+      expect(hooks()).toEqual([
+        "onWillAppear",
+        "onWillDisappear",
+        "onWillAppear",
+        "onDialRotate",
+        "onDialRotate",
+        "onDialDown",
+      ]);
+    });
+
+    it("serializes a burst behind one promotion: both events arrive after the re-appear, in order", async () => {
+      const { handler, calls, hooks } = recordingHandler();
+      adapter.registerAction(UUID, handler);
+      await appear();
+
+      // The re-appear is slow, so the second event lands mid-promotion.
+      const burstGate = deferred();
+      handler.onWillAppear.mockImplementation(async (ev) => {
+        calls.push({ hook: "onWillAppear", isDial: ev.action.isDial(), isKey: ev.action.isKey(), settings: {} });
+        await burstGate.promise;
+      });
+
+      // The client dispatches without awaiting, so these overlap.
+      const first = rotate(1);
+      const second = rotate(2);
+      await flush();
+
+      expect(hooks()).toEqual(["onWillAppear", "onWillDisappear", "onWillAppear"]);
+      expect(handler.onDialRotate).not.toHaveBeenCalled();
+
+      burstGate.resolve();
+      await Promise.all([first, second]);
+
+      expect(hooks()).toEqual(["onWillAppear", "onWillDisappear", "onWillAppear", "onDialRotate", "onDialRotate"]);
+      expect(calls.slice(3).map((c) => [c.ticks, c.isDial])).toEqual([
+        [1, true],
+        [2, true],
+      ]);
+      expect(handler.onWillAppear).toHaveBeenCalledTimes(2);
+    });
+
+    it("lets a Keypad willAppear still running finish before the promotion tears it down", async () => {
+      const { handler, calls, hooks } = recordingHandler();
+      adapter.registerAction(UUID, handler);
+
+      // The original appear awaits (a settings write, a render) before its
+      // trailing subscribe; dial input lands in that window.
+      const appearGate = deferred();
+      handler.onWillAppear.mockImplementationOnce(async (ev) => {
+        calls.push({ hook: "onWillAppear", isDial: ev.action.isDial(), isKey: ev.action.isKey(), settings: {} });
+        await appearGate.promise;
+        calls.push({ hook: "appear-tail", isDial: ev.action.isDial(), isKey: ev.action.isKey(), settings: {} });
+      });
+
+      const appeared = appear();
+      const input = rotate(1);
+      await flush();
+
+      expect(hooks()).toEqual(["onWillAppear"]);
+      expect(handler.onWillDisappear).not.toHaveBeenCalled();
+
+      appearGate.resolve();
+      await Promise.all([appeared, input]);
+
+      expect(hooks()).toEqual(["onWillAppear", "appear-tail", "onWillDisappear", "onWillAppear", "onDialRotate"]);
+      expect(calls[3].isDial).toBe(true);
+    });
+
+    it("still promotes after a Keypad willAppear that was running rejects", async () => {
+      const { handler, hooks } = recordingHandler();
+      adapter.registerAction(UUID, handler);
+      const appearGate = deferred();
+      handler.onWillAppear.mockImplementationOnce(async () => {
+        await appearGate.promise;
+        throw new Error("appear boom");
+      });
+
+      const appeared = appear();
+      const input = rotate(1);
+      appearGate.resolve();
+
+      await expect(appeared).rejects.toThrow("appear boom");
+      await expect(input).resolves.toBeUndefined();
+      expect(hooks()).toEqual(["onWillDisappear", "onWillAppear", "onDialRotate"]);
+    });
+
+    it("awaits the synthetic teardown all the way through before the dial appear starts", async () => {
+      const { handler, calls, hooks } = recordingHandler();
+      adapter.registerAction(UUID, handler);
+      await appear();
+
+      // Actions keep cleaning up (unsubscribe by id) after their base
+      // disappear; that tail must not land after the dial appear subscribes.
+      const teardownGate = deferred();
+      handler.onWillDisappear.mockImplementationOnce(async (ev) => {
+        calls.push({ hook: "onWillDisappear", isDial: ev.action.isDial(), isKey: ev.action.isKey(), settings: {} });
+        await teardownGate.promise;
+        calls.push({ hook: "teardown-tail", isDial: ev.action.isDial(), isKey: ev.action.isKey(), settings: {} });
+      });
+
+      const input = rotate(1);
+      await flush();
+
+      expect(hooks()).toEqual(["onWillAppear", "onWillDisappear"]);
+      expect(handler.onWillAppear).toHaveBeenCalledOnce();
+      expect(handler.onDialRotate).not.toHaveBeenCalled();
+
+      teardownGate.resolve();
+      await input;
+
+      expect(hooks()).toEqual(["onWillAppear", "onWillDisappear", "teardown-tail", "onWillAppear", "onDialRotate"]);
+    });
+
+    it("re-appears with the settings an in-flight Keypad appear wrote, not the dial frame's", async () => {
+      // A stand-in for the client's write-through cache (#1236).
+      const store = new Map<string, Record<string, unknown>>();
+      client.setSettings.mockImplementation((context: string, settings: Record<string, unknown>) => {
+        store.set(context, structuredClone(settings));
+      });
+      client.cachedSettings.mockImplementation((context: string) => {
+        const cached = store.get(context);
+
+        return cached ? structuredClone(cached) : undefined;
+      });
+      const { handler } = recordingHandler();
+      adapter.registerAction(UUID, handler);
+
+      // The Keypad appear stamps its settings after an await; the dial frame
+      // was backfilled before that write, so it carries the old view.
+      const appearGate = deferred();
+      handler.onWillAppear.mockImplementationOnce(async (ev) => {
+        await appearGate.promise;
+        await ev.action.setSettings({ ...(ev.payload.settings as Record<string, unknown>), addedWithVersion: "3.8.0" });
+      });
+      store.set(CTX, { mode: "a" });
+
+      const appeared = appear({ settings: { mode: "a" } });
+      const input = rotate(1, { mode: "a" });
+      appearGate.resolve();
+      await Promise.all([appeared, input]);
+
+      const written = { mode: "a", addedWithVersion: "3.8.0" };
+      expect(handler.onWillDisappear.mock.calls[0][0].payload.settings).toEqual(written);
+      expect(handler.onWillAppear.mock.calls[1][0].payload.settings).toEqual(written);
+      expect(handler.onWillAppear.mock.calls[1][0].action.isDial()).toBe(true);
+      // The dial event that waited on the promotion carries them too.
+      expect(handler.onDialRotate.mock.calls[0][0].payload.settings).toEqual(written);
+    });
+
+    it("hands events held behind a promotion the settings the Encoder re-appear wrote", async () => {
+      const store = new Map<string, Record<string, unknown>>();
+      client.setSettings.mockImplementation((context: string, settings: Record<string, unknown>) => {
+        store.set(context, structuredClone(settings));
+      });
+      client.cachedSettings.mockImplementation((context: string) => {
+        const cached = store.get(context);
+
+        return cached ? structuredClone(cached) : undefined;
+      });
+      const { handler } = recordingHandler();
+      adapter.registerAction(UUID, handler);
+      store.set(CTX, { mode: "a" });
+      await appear({ settings: { mode: "a" } });
+
+      // The dial appear writes its own seed (as Fuel and Tire Service write
+      // `{...raw, …}`) while a second rotate and a keyUp wait behind it.
+      const reappearGate = deferred();
+      handler.onWillAppear.mockImplementationOnce(async (ev) => {
+        await reappearGate.promise;
+        await ev.action.setSettings({ ...(ev.payload.settings as Record<string, unknown>), dial: { seeded: true } });
+      });
+
+      const first = rotate(1, { mode: "a" });
+      const second = rotate(2, { mode: "a" });
+      const keyUp = nonDial("keyUp", { mode: "a" });
+      await flush();
+      reappearGate.resolve();
+      await Promise.all([first, second, keyUp]);
+
+      const written = { mode: "a", dial: { seeded: true } };
+      expect(handler.onDialRotate.mock.calls.map((c) => c[0].payload.settings)).toEqual([written, written]);
+      expect(handler.onKeyUp.mock.calls[0][0].payload.settings).toEqual(written);
+    });
+
+    it("orders a re-add that lands mid-promotion behind the teardown that arrived first", async () => {
+      const { handler, calls, hooks } = recordingHandler();
+      adapter.registerAction(UUID, handler);
+      await appear();
+
+      const teardownGate = deferred();
+      handler.onWillDisappear.mockImplementationOnce(async (ev) => {
+        calls.push({ hook: "onWillDisappear", isDial: ev.action.isDial(), isKey: ev.action.isKey(), settings: {} });
+        await teardownGate.promise;
+      });
+
+      // A page switch away (clear) and back (add) while the promotion runs.
+      const input = rotate(1);
+      await flush();
+      const gone = disappear();
+      const back = appear();
+      await flush();
+
+      expect(hooks()).toEqual(["onWillAppear", "onWillDisappear"]);
+
+      teardownGate.resolve();
+      await Promise.all([input, gone, back]);
+
+      expect(hooks()).toEqual([
+        "onWillAppear",
+        "onWillDisappear",
+        "onWillAppear",
+        "onDialRotate",
+        "onWillDisappear",
+        "onWillAppear",
+      ]);
+      expect(calls[calls.length - 1]).toMatchObject({ hook: "onWillAppear", isDial: true, isKey: false });
+
+      // Live as an Encoder: the next input goes straight through, no promotion.
+      await rotate(2);
+      expect(calls[calls.length - 1]).toMatchObject({ hook: "onDialRotate", isDial: true, ticks: 2 });
+      expect(handler.onWillAppear).toHaveBeenCalledTimes(3);
+      expect(handler.onWillDisappear).toHaveBeenCalledTimes(2);
+    });
+
+    // A settings or key event landing mid-promotion, delivered as a Keypad after
+    // the synthetic teardown, would rebuild key state (activeContexts, binding,
+    // display) that the real disappear, tearing down as Encoder, never removes.
+    it.each<[NonDialEventName, string]>([
+      ["didReceiveSettings", "onDidReceiveSettings"],
+      ["keyDown", "onKeyDown"],
+      ["keyUp", "onKeyUp"],
+    ])("holds a %s that lands mid-promotion until the Encoder re-appear", async (event, hook) => {
+      const { handler, calls, hooks } = recordingHandler();
+      adapter.registerAction(UUID, handler);
+      await appear();
+
+      const teardownGate = deferred();
+      handler.onWillDisappear.mockImplementationOnce(async (ev) => {
+        calls.push({ hook: "onWillDisappear", isDial: ev.action.isDial(), isKey: ev.action.isKey(), settings: {} });
+        await teardownGate.promise;
+      });
+
+      const input = rotate(1);
+      await flush();
+      const midway = nonDial(event, { mode: "edited-in-pi" });
+      await flush();
+
+      expect(hooks()).toEqual(["onWillAppear", "onWillDisappear"]);
+
+      teardownGate.resolve();
+      await Promise.all([input, midway]);
+
+      expect(hooks()).toEqual(["onWillAppear", "onWillDisappear", "onWillAppear", "onDialRotate", hook]);
+      expect(calls[4]).toMatchObject({ isDial: true, isKey: false, settings: { mode: "edited-in-pi" } });
+    });
+
+    it("never starts a promotion from a settings or key event", async () => {
+      const { handler, calls, hooks } = recordingHandler();
+      adapter.registerAction(UUID, handler);
+      await appear();
+
+      await nonDial("didReceiveSettings");
+      await nonDial("keyDown");
+      await nonDial("keyUp");
+
+      expect(hooks()).toEqual(["onWillAppear", "onDidReceiveSettings", "onKeyDown", "onKeyUp"]);
+      expect(calls.every((c) => c.isKey)).toBe(true);
+    });
+
+    it("makes a willDisappear that lands mid-promotion wait, then tear the context down as an Encoder", async () => {
+      const { handler, calls, hooks } = recordingHandler();
+      adapter.registerAction(UUID, handler);
+      await appear();
+
+      const gate = deferred();
+      handler.onWillAppear.mockImplementation(async (ev) => {
+        calls.push({ hook: "onWillAppear", isDial: ev.action.isDial(), isKey: ev.action.isKey(), settings: {} });
+        await gate.promise;
+      });
+
+      const input = rotate(1);
+      await flush();
+      const gone = disappear();
+      await flush();
+
+      // Only the promotion's own teardown so far: the real one is waiting.
+      expect(handler.onWillDisappear).toHaveBeenCalledOnce();
+
+      gate.resolve();
+      await Promise.all([input, gone]);
+
+      expect(hooks()).toEqual(["onWillAppear", "onWillDisappear", "onWillAppear", "onDialRotate", "onWillDisappear"]);
+      expect(calls[4]).toMatchObject({ isDial: true, isKey: false });
+
+      // No longer live: further dial input is not promoted (no resurrection).
+      await rotate(1);
+      expect(handler.onWillAppear).toHaveBeenCalledTimes(2);
+      expect(handler.onWillDisappear).toHaveBeenCalledTimes(2);
+    });
+
+    it("never promotes dial input for a context that has disappeared, but still delivers it", async () => {
+      const { handler, calls, hooks } = recordingHandler();
+      adapter.registerAction(UUID, handler);
+
+      await appear();
+      await disappear();
+      await rotate(1);
+
+      expect(hooks()).toEqual(["onWillAppear", "onWillDisappear", "onDialRotate"]);
+      expect(calls[2].isDial).toBe(false);
+    });
+
+    it("never promotes, nor remembers as a dial, a context that never appeared", async () => {
+      const { handler, calls, hooks } = recordingHandler();
+      adapter.registerAction(UUID, handler);
+
+      await rotate(1);
+      await appear();
+
+      expect(hooks()).toEqual(["onDialRotate", "onWillAppear"]);
+      expect(calls[0].isDial).toBe(false);
+      expect(calls[1].isDial).toBe(false);
+    });
+
+    it("re-appears a known dial as an Encoder from its willAppear after a clear", async () => {
+      const { handler, calls, hooks } = recordingHandler();
+      adapter.registerAction(UUID, handler);
+
+      await appear();
+      await rotate(1);
+      await disappear();
+      await appear();
+      await rotate(1);
+
+      expect(hooks()).toEqual([
+        "onWillAppear",
+        "onWillDisappear",
+        "onWillAppear",
+        "onDialRotate",
+        "onWillDisappear",
+        "onWillAppear",
+        "onDialRotate",
+      ]);
+      expect(calls[4].isDial).toBe(true);
+      expect(calls[5].isDial).toBe(true);
+      expect(calls[6].isDial).toBe(true);
+    });
+
+    it("lets an explicit payload.controller win, so an Encoder from the frame is never promoted", async () => {
+      const { handler, calls, hooks } = recordingHandler();
+      adapter.registerAction(UUID, handler);
+
+      await appear({ settings: {}, controller: "Encoder" });
+      await rotate(1);
+
+      expect(hooks()).toEqual(["onWillAppear", "onDialRotate"]);
+      expect(calls[0].isDial).toBe(true);
+    });
+
+    it("finishes the promotion and delivers the input when the teardown throws", async () => {
+      const { handler, calls, hooks } = recordingHandler();
+      adapter.registerAction(UUID, handler);
+      await appear();
+      handler.onWillDisappear.mockRejectedValueOnce(new Error("teardown boom"));
+
+      await expect(rotate(1)).resolves.toBeUndefined();
+
+      expect(hooks()).toEqual(["onWillAppear", "onWillAppear", "onDialRotate"]);
+      expect(calls[1].isDial).toBe(true);
+      expect(calls[2].isDial).toBe(true);
+    });
+
+    it("leaves the context an Encoder, not stuck mid-promotion, when the re-appear throws", async () => {
+      const { handler, calls, hooks } = recordingHandler();
+      adapter.registerAction(UUID, handler);
+      await appear();
+      handler.onWillAppear.mockRejectedValueOnce(new Error("appear boom"));
+
+      await expect(rotate(1)).resolves.toBeUndefined();
+      await rotate(2);
+      await disappear();
+
+      // The failed re-appear recorded nothing; the input still arrived as a
+      // dial, the next one did not re-promote, and the teardown ran as Encoder.
+      expect(hooks()).toEqual(["onWillAppear", "onWillDisappear", "onDialRotate", "onDialRotate", "onWillDisappear"]);
+      expect(calls.slice(2).every((c) => c.isDial)).toBe(true);
+      expect(handler.onWillAppear).toHaveBeenCalledTimes(2);
+    });
+
+    it("logs each failed promotion step and the promotion itself once per context", async () => {
+      const logger: ILogger = {
+        trace: vi.fn(),
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        withLevel: () => logger,
+        createScope: () => logger,
+      };
+      adapter = new UlanziPlatformAdapter(logger);
+      client = mockInstances[mockInstances.length - 1];
+      const { handler } = recordingHandler();
+      adapter.registerAction(UUID, handler);
+      handler.onWillAppear.mockImplementation(async () => {});
+      handler.onWillDisappear.mockRejectedValueOnce(new Error("teardown boom"));
+
+      await appear();
+      await rotate(1);
+      await rotate(1);
+
+      const promotionLines = vi.mocked(logger.info).mock.calls.filter(([line]) => line.includes("#1530"));
+      expect(promotionLines).toEqual([
+        [
+          `Context ${CTX} delivered dial input: re-appearing it as a dial (Ulanzi add frames carry no controller, #1530)`,
+        ],
+      ]);
+      expect(logger.error).toHaveBeenCalledOnce();
+      expect(vi.mocked(logger.error).mock.calls[0][0]).toContain("teardown boom");
+    });
+
+    it("fires the dial broadcast callbacks once for the promoted event, after the re-appear", async () => {
+      const order: string[] = [];
+      const { handler } = recordingHandler();
+      adapter.onDialRotate(() => order.push("rotate-broadcast"));
+      adapter.onDialDown(() => order.push("down-broadcast"));
+      adapter.registerAction(UUID, handler);
+      handler.onWillAppear.mockImplementation(async () => {
+        order.push("willAppear");
+      });
+      handler.onDialRotate.mockImplementation(async () => {
+        order.push("rotate-handler");
+      });
+      handler.onDialDown.mockImplementation(async () => {
+        order.push("down-handler");
+      });
+
+      await appear();
+      await rotate(1);
+      await dial("dialDown");
+
+      expect(order).toEqual([
+        "willAppear",
+        "willAppear",
+        "rotate-broadcast",
+        "rotate-handler",
+        "down-broadcast",
+        "down-handler",
+      ]);
     });
   });
 
