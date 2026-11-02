@@ -45,6 +45,17 @@
  * The controller isolates its subscribers (#1558), so a tick on which the
  * translator throws still reaches the recorder.
  *
+ * **Its steps (#1559).** Each of the four recorders is a step, run through the
+ * step boundary the translator shares with it (`tick-steps.ts`) and reported as
+ * `replay-recorder:<function>`: one that throws publishes nothing that tick,
+ * and the three others still record. Each publishes directly, when its step
+ * returns; the lap and incident records run each car as a unit of its own, so
+ * one car's throw costs that car's crossing or count only, and its baseline,
+ * written last inside the unit, retries it on the next tick. The frame — the
+ * two reads, the session identity's read, reset and advance, and the replay
+ * view's edges after the four — is not split, and a throw there reaches the
+ * controller's subscriber boundary.
+ *
  * **The reset points**, each the one the recorders had inside the translator
  * before #1468 (`replay-recorder.equivalence.test.ts` pins the stream they
  * produce):
@@ -78,7 +89,7 @@
  */
 import type { IEventBus, SimEventMap, SimEventName } from "@iracedeck/event-bus";
 import type { SDKController, TelemetryData } from "@iracedeck/iracing-sdk";
-import { type ILogger, silentLogger } from "@iracedeck/logger";
+import type { ErrorBoundary, ILogger } from "@iracedeck/logger";
 
 import { diffReplayGreens } from "./diff/replay-greens.js";
 import { diffReplayIncidents } from "./diff/replay-incidents.js";
@@ -96,6 +107,7 @@ import {
   readSessionIdentity,
   type SessionIdentityBaseline,
 } from "./session-identity.js";
+import { TickSteps } from "./tick-steps.js";
 
 /** The id the recorder subscribes to the controller under, beside the translator's `"__sim-events-iracing__"`. */
 export const REPLAY_RECORDER_SUBSCRIPTION_ID = "__sim-events-iracing-replay-recorder__";
@@ -133,18 +145,21 @@ type RecorderInstance = { -readonly [K in keyof ReplayRecorderSnapshot]: ReplayR
  * Subscribe the replay recorder to `controller` and publish its `replay.*`
  * events to `bus`. Subscribed after the translator, it sees each tick after
  * the translator has. `logger` takes the green and session records' debug
- * lines.
+ * lines. `boundary` is the error boundary its steps run through, the
+ * translator's own (#1559): one reporter table, and one policy, for both.
  */
 export function startReplayRecorder(
   bus: IEventBus,
   controller: ReplayRecorderController,
-  logger: ILogger = silentLogger,
+  logger: ILogger,
+  boundary: ErrorBoundary,
 ): ReplayRecorder {
   const self: RecorderInstance = {
     state: createInitialReplayRecorderState(),
     sessionIdentity: createSessionIdentityBaseline(),
     lastTickInReplay: false,
   };
+  const steps = new TickSteps({ boundary, prefix: "replay-recorder:" });
 
   const callback = (telemetry: TelemetryData | null, isConnected: boolean): void => {
     if (!isConnected) {
@@ -161,7 +176,13 @@ export function startReplayRecorder(
 
     if (!telemetry) return;
 
-    handleTick(self, bus, controller, logger, telemetry);
+    try {
+      handleTick(self, bus, controller, logger, steps, telemetry);
+    } finally {
+      // Under the `"rethrow"` policy, the first error a step held, once all
+      // four have run (#1559); under `"report"` this never throws.
+      steps.finish();
+    }
   };
 
   // The controller stores the callback, then delivers the current tick to it
@@ -194,11 +215,13 @@ function handleTick(
   bus: IEventBus,
   controller: ReplayRecorderController,
   logger: ILogger,
+  steps: TickSteps,
   telemetry: TelemetryData,
 ): void {
   const replayState = controller.getReplayState();
   const inReplay = replayState.inReplay;
-  const emit = (pending: PendingEvent): void => publish(bus, pending, telemetry);
+  // Where each step's events go when it returns.
+  const publishNow = (pending: PendingEvent): void => publish(bus, pending, telemetry);
   // One read for the whole tick, so the identity reading and the four
   // recorders see the same session info.
   const sessionInfo = controller.getSessionInfo() as Record<string, unknown> | null;
@@ -217,7 +240,9 @@ function handleTick(
   // The replay lap record (issue #1203). Its gate marks the recorder unseeded
   // on every replay / no-session tick and re-seeds silently on the first
   // eligible tick after.
-  diffReplayLaps(self.state, telemetry, sessionInfo, inReplay, emit);
+  steps.direct("diffReplayLaps", publishNow, (emit) =>
+    diffReplayLaps(self.state, telemetry, sessionInfo, inReplay, emit, steps.runUnit),
+  );
 
   // The replay green record (issue #1354), the lap record's sibling on the
   // same gate (`resolveReplayRecordTick`): it has to SEE a replay / no-session
@@ -226,7 +251,9 @@ function handleTick(
   // restart, gets no entry rather than one stamped with the frame he came
   // back on. It judges "a race session" itself, with the strict reading
   // (`resolveSessionType(…) === "Race"`, so a warmup session is not one).
-  diffReplayGreens(self.state, telemetry, sessionInfo, inReplay, emit, logger);
+  steps.direct("diffReplayGreens", publishNow, (emit) =>
+    diffReplayGreens(self.state, telemetry, sessionInfo, inReplay, emit, logger),
+  );
 
   // The replay session record (issue #1426), on the second class of tick the
   // gate knows (`resolveReplayLiveTick`): in the car, or out of it at the live
@@ -236,13 +263,17 @@ function handleTick(
   // session info is null, while the controller keeps its answer through such
   // a tick, and at the end of a saved replay's tape the out-of-car gate would
   // otherwise take the tick as the live edge of a live session.
-  diffReplaySessions(self.state, telemetry, sessionInfo, inReplay, replayState.replayOnlySession, emit, logger);
+  steps.direct("diffReplaySessions", publishNow, (emit) =>
+    diffReplaySessions(self.state, telemetry, sessionInfo, inReplay, replayState.replayOnlySession, emit, logger),
+  );
 
   // The replay incident record (issue #1426), on the lap and green records'
   // in-car gate: an ineligible tick must unseed it, so a count that rose
   // behind the replay view is not stamped with the frame the driver came back
   // on.
-  diffReplayIncidents(self.state, telemetry, sessionInfo, inReplay, emit);
+  steps.direct("diffReplayIncidents", publishNow, (emit) =>
+    diffReplayIncidents(self.state, telemetry, sessionInfo, inReplay, emit, steps.runUnit),
+  );
 
   // The replay view's edges, AFTER the recorders. The entry reset changes
   // nothing today — the in-car gate has just unseeded the lap, green and

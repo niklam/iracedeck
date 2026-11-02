@@ -133,7 +133,7 @@ describe("gap closing-announcement horizon at the call site (issue #1311)", () =
 
   it("follows the clock through the white and chequered laps of a timed race with a larger lap cap", () => {
     const controller = createMockController();
-    initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+    initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
     // 20 minutes left, leader a quarter of the way round: white at the
     // leader's 14th crossing (ceil(1200 / 90 + 0.25)), chequered at the 15th.

@@ -116,7 +116,7 @@ function tick(t: number): TelemetryData {
 function drive(sessionType: string, untilS: number): void {
   const controller = createMockController(sessionType);
 
-  initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+  initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
   for (let t = 0; t <= untilS; t += 0.25) controller.__tick(tick(t));
 }

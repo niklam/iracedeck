@@ -6,7 +6,7 @@
  */
 import type { IEventBus } from "@iracedeck/event-bus";
 import type { ReplayState, TelemetryCallback, TelemetryData } from "@iracedeck/iracing-sdk";
-import { type ILogger, silentLogger } from "@iracedeck/logger";
+import { createErrorBoundary, type ILogger, silentLogger } from "@iracedeck/logger";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { REPLAY_LAPS_EVENTS } from "./diff/replay-laps.js";
@@ -140,7 +140,12 @@ describe("startReplayRecorder", () => {
     bus = { publish } as unknown as IEventBus;
     logger = { ...silentLogger };
     fake = createController();
-    recorder = startReplayRecorder(bus, fake.controller as unknown as ReplayRecorderController, logger);
+    recorder = startReplayRecorder(
+      bus,
+      fake.controller as unknown as ReplayRecorderController,
+      logger,
+      createErrorBoundary({ logger, policy: "rethrow" }),
+    );
   });
 
   afterEach(() => {
@@ -183,7 +188,12 @@ describe("startReplayRecorder", () => {
         throw new Error("bad session info");
       };
 
-      const started = startReplayRecorder(bus, failing.controller as unknown as ReplayRecorderController, logger);
+      const started = startReplayRecorder(
+        bus,
+        failing.controller as unknown as ReplayRecorderController,
+        logger,
+        createErrorBoundary({ logger, policy: "rethrow" }),
+      );
 
       expect(failing.controller.unsubscribe).not.toHaveBeenCalled();
       started.stop();
@@ -211,11 +221,12 @@ describe("startReplayRecorder", () => {
 
       expect(fake.controller.getReplayState).toHaveBeenCalledTimes(1);
       const args = Object.fromEntries(recorderArgs.map((r) => [r.name, r.args]));
-      expect(args.laps).toEqual([telemetry, info, true, expect.any(Function)]);
+      // The lap and incident records also get the step boundary's unit runner (#1559).
+      expect(args.laps).toEqual([telemetry, info, true, expect.any(Function), expect.any(Function)]);
       expect(args.greens).toEqual([telemetry, info, true, expect.any(Function), logger]);
       // The session record reads the controller's sticky saved-replay answer.
       expect(args.sessions).toEqual([telemetry, info, true, true, expect.any(Function), logger]);
-      expect(args.incidents).toEqual([telemetry, info, true, expect.any(Function)]);
+      expect(args.incidents).toEqual([telemetry, info, true, expect.any(Function), expect.any(Function)]);
     });
 
     it("runs nothing on a connected tick without telemetry", () => {

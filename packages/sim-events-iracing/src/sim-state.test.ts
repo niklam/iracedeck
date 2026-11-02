@@ -143,7 +143,7 @@ function start(
   const logger = createMockLogger();
 
   controller.__setSessionInfo(sessionInfo);
-  initializeSimEventsIracing(getEventBus(), controller, logger, options);
+  initializeSimEventsIracing(getEventBus(), controller, logger, { onStepError: "rethrow", ...options });
 
   return { controller, logger };
 }

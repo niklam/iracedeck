@@ -70,9 +70,10 @@ import { TRACK_WETNESS_EVENTS } from "./diff/track-wetness.js";
  *   `translator.ts` itself.
  * - `source` — where the stage lives: `diff/<module>.ts` or `translator.ts`.
  *   Which subscriber calls it is the table it is in.
- * - `via` — `direct`: the stage's publishes reach the bus the moment it makes
- *   them; `pending`: they are queued and flushed at the end of the tick, in
- *   call order, after every direct publish.
+ * - `via` — `direct`: the stage's publishes reach the bus when the stage
+ *   returns, before the next stage runs (the step boundary buffers them, and
+ *   drops them when the stage throws, #1559); `pending`: they are queued and
+ *   flushed at the end of the tick, in call order, after every direct publish.
  * - `events` — every event the stage can publish. For a diff module this is
  *   the module's own `<NAME>_EVENTS` list, which its emitter's type enforces.
  */
@@ -155,7 +156,7 @@ export const TICK_ORDER: readonly TickStage[] = [
  * Every stage that can publish during one tick of the replay recorder
  * (`replay-recorder.ts`, issue #1468), in the order its publishes reach the
  * bus. The recorder has no replay guard and no pending list: each of its four
- * recorders runs on every tick and publishes the moment it emits. A reorder
+ * recorders runs on every tick and publishes when it returns. A reorder
  * of its calls, or a new call that can publish, must update this table;
  * `tick-order.test.ts` fails until it does.
  */

@@ -61,6 +61,7 @@ export {
   type LiveOpponentFlags,
   type OvertakeTelemetryGate,
   type SimEventsIracingOptions,
+  type SimEventsIracingSettingsOptions,
 } from "./translator.js";
 export {
   GAP_ALERT_THRESHOLD_MAX_S,

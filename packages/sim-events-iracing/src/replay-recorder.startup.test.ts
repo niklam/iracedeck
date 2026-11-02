@@ -142,7 +142,7 @@ describe("the replay recorder's startup tick, on the real SDKController (issue #
       published.push(ev);
     });
 
-    initializeSimEventsIracing(getEventBus(), controller, createMockLogger());
+    initializeSimEventsIracing(getEventBus(), controller, createMockLogger(), { onStepError: "rethrow" });
 
     // The premise, on the real controller: the translator subscribes first and
     // gets the first tick twice (the connect-time notification, then
