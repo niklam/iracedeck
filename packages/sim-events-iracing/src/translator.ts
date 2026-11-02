@@ -3051,8 +3051,9 @@ function handleLiveSteps(
   // order computed from half-written anchors is not the canonical one, and a
   // stale one would present the field as it was while the traces move on. A
   // skipped step advances no baseline, so it sees the change on the next tick
-  // it runs. `diffFuelLapsLeft` still runs, its leader-lap closure answering
-  // `null` (no leader known, the player's own average is its fallback).
+  // it runs. `diffFuelLapsLeft` still runs, its leader closure answering no
+  // lap time and no chequered prediction (no leader known: a running clock
+  // falls back to the bound on the player's own average, #1405).
   const order = tracked
     ? steps.requiredValue("resolveCanonicalOrder", () =>
         resolveCanonicalOrder(self.state, telemetry, sessionInfo, isRaceSession),
