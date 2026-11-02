@@ -5,9 +5,11 @@
  *   - first-tick seeding (no fire on connect mid-session)
  *   - regular non-best lap completion fires with isBest=false
  *   - new personal best with a prior best fires with isBest=true,
- *     previousBestLapTime set
+ *     previousBestLapTime set — iRacing's best (`LapBestLap` naming the lap,
+ *     issue #1582), set on the same tick as `LapLastLapTime` as it is there
  *   - first valid lap (no prior best) fires with isFirstValid=true and
  *     isBest=true
+ *   - a refused lap (`LapLastLapTime` -1) fires in the refused shape (#1582)
  *   - pace laps (LapCompleted=-1) are suppressed
  *   - LapLastLapTime=0 at increment defers emission to the next tick
  *   - sessionType / lapsRemaining / timeRemaining pass through; the
@@ -16,6 +18,7 @@
  *   - session reset (LapCompleted decreases) does not synthesize an event
  */
 import { Flags, IRSDK_UNLIMITED_LAPS, IRSDK_UNLIMITED_TIME, type TelemetryData } from "@iracedeck/iracing-sdk";
+import type { ILogger } from "@iracedeck/logger";
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 
@@ -23,6 +26,7 @@ import { createInitialState } from "../state.js";
 import {
   type FastestLapJudge,
   LAP_RESULTS_SYNC_MAX_WAIT_MS,
+  LAP_TIME_REFRESH_ALLOWANCE_MS,
   type LapSessionType,
   type PlayerResultsForLap,
   diffLaps as runDiffLaps,
@@ -128,7 +132,7 @@ describe("diffLaps — regular lap (not best)", () => {
     // Seed: lap 1 with PB=63.8.
     diffLaps(
       state,
-      tick({ LapCompleted: 1, LapLastLapTime: 63.8, LapBestLapTime: 63.8 }),
+      tick({ LapCompleted: 1, LapLastLapTime: 63.8, LapBestLap: 1, LapBestLapTime: 63.8 }),
       "race",
       null,
       synced(),
@@ -166,7 +170,7 @@ describe("diffLaps — new personal best", () => {
     const { events, emit } = collect();
     diffLaps(
       state,
-      tick({ LapCompleted: 1, LapLastLapTime: 64.2, LapBestLapTime: 64.2 }),
+      tick({ LapCompleted: 1, LapLastLapTime: 64.2, LapBestLap: 1, LapBestLapTime: 64.2 }),
       "race",
       null,
       synced(),
@@ -175,7 +179,7 @@ describe("diffLaps — new personal best", () => {
     );
     diffLaps(
       state,
-      tick({ LapCompleted: 2, LapLastLapTime: 63.4, LapBestLapTime: 63.4 }),
+      tick({ LapCompleted: 2, LapLastLapTime: 63.4, LapBestLap: 2, LapBestLapTime: 63.4 }),
       "race",
       null,
       synced(),
@@ -196,17 +200,16 @@ describe("diffLaps — new personal best", () => {
   });
 
   it("preserves the prior-best baseline across intermediate ticks even when LapBestLapTime updates mid-lap", () => {
-    // Regression: iRacing sometimes commits the new `LapBestLapTime` a tick or
-    // two BEFORE `LapCompleted` increments. If the no-transition branch
-    // tracked the live telemetry value, `previousBest` at completion would
-    // already equal the new best and `isBest` would resolve to false — the
-    // scenario's `where:` would then suppress the callout. This pins the
-    // frozen-baseline behavior that prevents the race.
+    // The baseline is iRacing's best as the emit before left it (issue
+    // #1582), never a live reading: should the best ever move a tick or two
+    // BEFORE `LapCompleted` increments (the 2026-11-02 captures never show
+    // it), `previousBestLapTime` at the completion must still be the best
+    // before this lap. This pins the frozen baseline.
     const state = createInitialState();
     const { events, emit } = collect();
     diffLaps(
       state,
-      tick({ LapCompleted: 1, LapLastLapTime: 64.2, LapBestLapTime: 64.2 }),
+      tick({ LapCompleted: 1, LapLastLapTime: 64.2, LapBestLap: 1, LapBestLapTime: 64.2 }),
       "race",
       null,
       synced(),
@@ -219,7 +222,7 @@ describe("diffLaps — new personal best", () => {
     // bump. The baseline MUST NOT move on these ticks.
     diffLaps(
       state,
-      tick({ LapCompleted: 1, LapLastLapTime: 64.2, LapBestLapTime: 63.4 }),
+      tick({ LapCompleted: 1, LapLastLapTime: 64.2, LapBestLap: 2, LapBestLapTime: 63.4 }),
       "race",
       null,
       synced(),
@@ -229,7 +232,7 @@ describe("diffLaps — new personal best", () => {
     expect(state.lastLapBestLapTime).toBe(64.2);
     diffLaps(
       state,
-      tick({ LapCompleted: 1, LapLastLapTime: 64.2, LapBestLapTime: 63.4 }),
+      tick({ LapCompleted: 1, LapLastLapTime: 64.2, LapBestLap: 2, LapBestLapTime: 63.4 }),
       "race",
       null,
       synced(),
@@ -242,7 +245,7 @@ describe("diffLaps — new personal best", () => {
     // committed best.
     diffLaps(
       state,
-      tick({ LapCompleted: 2, LapLastLapTime: 63.4, LapBestLapTime: 63.4 }),
+      tick({ LapCompleted: 2, LapLastLapTime: 63.4, LapBestLap: 2, LapBestLapTime: 63.4 }),
       "race",
       null,
       synced(),
@@ -270,7 +273,7 @@ describe("diffLaps — first valid lap", () => {
     // Lap 1 — first timed lap of the session.
     diffLaps(
       state,
-      tick({ LapCompleted: 1, LapLastLapTime: 63.4, LapBestLapTime: 63.4 }),
+      tick({ LapCompleted: 1, LapLastLapTime: 63.4, LapBestLap: 1, LapBestLapTime: 63.4 }),
       "race",
       null,
       synced(),
@@ -298,7 +301,7 @@ describe("diffLaps — session-change reset", () => {
     // Practice (SessionNum=0): set a fast PB.
     diffLaps(
       state,
-      tick({ SessionNum: 0, LapCompleted: 1, LapLastLapTime: 60.2, LapBestLapTime: 60.2 }),
+      tick({ SessionNum: 0, LapCompleted: 1, LapLastLapTime: 60.2, LapBestLap: 1, LapBestLapTime: 60.2 }),
       "practice",
       null,
       synced(),
@@ -307,7 +310,7 @@ describe("diffLaps — session-change reset", () => {
     );
     diffLaps(
       state,
-      tick({ SessionNum: 0, LapCompleted: 2, LapLastLapTime: 58.9, LapBestLapTime: 58.9 }),
+      tick({ SessionNum: 0, LapCompleted: 2, LapLastLapTime: 58.9, LapBestLap: 2, LapBestLapTime: 58.9 }),
       "practice",
       null,
       synced(),
@@ -328,7 +331,7 @@ describe("diffLaps — session-change reset", () => {
     // IS the first valid lap of qualifying.
     diffLaps(
       state,
-      tick({ SessionNum: 1, LapCompleted: 1, LapLastLapTime: 64.5, LapBestLapTime: 64.5 }),
+      tick({ SessionNum: 1, LapCompleted: 1, LapLastLapTime: 64.5, LapBestLap: 1, LapBestLapTime: 64.5 }),
       "qualifying",
       null,
       synced(),
@@ -355,7 +358,7 @@ describe("diffLaps — session-change reset", () => {
     // Practice: ran 12 laps.
     diffLaps(
       state,
-      tick({ SessionNum: 0, LapCompleted: 12, LapLastLapTime: 60.0, LapBestLapTime: 60.0 }),
+      tick({ SessionNum: 0, LapCompleted: 12, LapLastLapTime: 60.0, LapBestLap: 12, LapBestLapTime: 60.0 }),
       "practice",
       null,
       synced(),
@@ -376,7 +379,7 @@ describe("diffLaps — session-change reset", () => {
     );
     diffLaps(
       state,
-      tick({ SessionNum: 1, LapCompleted: 1, LapLastLapTime: 65.0, LapBestLapTime: 65.0 }),
+      tick({ SessionNum: 1, LapCompleted: 1, LapLastLapTime: 65.0, LapBestLap: 1, LapBestLapTime: 65.0 }),
       "qualifying",
       null,
       synced(),
@@ -395,7 +398,7 @@ describe("diffLaps — session-change reset", () => {
     const { events, emit } = collect();
     diffLaps(
       state,
-      tick({ SessionNum: 1, LapCompleted: 1, LapLastLapTime: 64.0, LapBestLapTime: 64.0 }),
+      tick({ SessionNum: 1, LapCompleted: 1, LapLastLapTime: 64.0, LapBestLap: 1, LapBestLapTime: 64.0 }),
       "race",
       null,
       synced(),
@@ -404,7 +407,7 @@ describe("diffLaps — session-change reset", () => {
     );
     diffLaps(
       state,
-      tick({ SessionNum: 1, LapCompleted: 2, LapLastLapTime: 63.0, LapBestLapTime: 63.0 }),
+      tick({ SessionNum: 1, LapCompleted: 2, LapLastLapTime: 63.0, LapBestLap: 2, LapBestLapTime: 63.0 }),
       "race",
       null,
       synced(),
@@ -469,7 +472,7 @@ describe("diffLaps — sentinel suppression", () => {
     );
     diffLaps(
       state,
-      tick({ LapCompleted: 1, LapLastLapTime: 37.1, LapBestLapTime: 37.1 }),
+      tick({ LapCompleted: 1, LapLastLapTime: 37.1, LapBestLap: 1, LapBestLapTime: 37.1 }),
       "practice",
       null,
       synced(),
@@ -483,7 +486,7 @@ describe("diffLaps — sentinel suppression", () => {
     // refreshed `LapLastLapTime` — still shows 37.1. The diff must wait.
     diffLaps(
       state,
-      tick({ LapCompleted: 2, LapLastLapTime: 37.1, LapBestLapTime: 37.1 }),
+      tick({ LapCompleted: 2, LapLastLapTime: 37.1, LapBestLap: 2, LapBestLapTime: 37.1 }),
       "practice",
       null,
       synced(),
@@ -495,7 +498,7 @@ describe("diffLaps — sentinel suppression", () => {
     // A tick later iRacing refreshes the field to lap 2's actual time.
     diffLaps(
       state,
-      tick({ LapCompleted: 2, LapLastLapTime: 36.4, LapBestLapTime: 36.4 }),
+      tick({ LapCompleted: 2, LapLastLapTime: 36.4, LapBestLap: 2, LapBestLapTime: 36.4 }),
       "practice",
       null,
       synced(),
@@ -526,7 +529,7 @@ describe("diffLaps — sentinel suppression", () => {
     // The next tick settles the lap time and the event fires.
     diffLaps(
       state,
-      tick({ LapCompleted: 1, LapLastLapTime: 63.4, LapBestLapTime: 63.4 }),
+      tick({ LapCompleted: 1, LapLastLapTime: 63.4, LapBestLap: 1, LapBestLapTime: 63.4 }),
       "race",
       null,
       synced(),
@@ -545,7 +548,7 @@ describe("diffLaps — sentinel suppression", () => {
     const { events, emit } = collect();
     diffLaps(
       state,
-      tick({ LapCompleted: 12, LapLastLapTime: 63.4, LapBestLapTime: 63.4 }),
+      tick({ LapCompleted: 12, LapLastLapTime: 63.4, LapBestLap: 12, LapBestLapTime: 63.4 }),
       "race",
       null,
       synced(),
@@ -566,7 +569,7 @@ describe("diffLaps — payload pass-through", () => {
     diffLaps(state, tick({ LapCompleted: 0, SessionLapsRemainEx: 10 }), "race", null, synced(), NOW, emit);
     diffLaps(
       state,
-      tick({ LapCompleted: 1, LapLastLapTime: 63.4, LapBestLapTime: 63.4, SessionLapsRemainEx: 9 }),
+      tick({ LapCompleted: 1, LapLastLapTime: 63.4, LapBestLap: 1, LapBestLapTime: 63.4, SessionLapsRemainEx: 9 }),
       "race",
       null,
       synced(),
@@ -583,7 +586,7 @@ describe("diffLaps — payload pass-through", () => {
     diffLaps(state, tick({ LapCompleted: 0 }), "race", null, synced(), NOW, emit);
     diffLaps(
       state,
-      tick({ LapCompleted: 1, LapLastLapTime: 63.4, LapBestLapTime: 63.4, SessionTimeRemain: 1234.5 }),
+      tick({ LapCompleted: 1, LapLastLapTime: 63.4, LapBestLap: 1, LapBestLapTime: 63.4, SessionTimeRemain: 1234.5 }),
       "race",
       null,
       synced(),
@@ -602,7 +605,7 @@ describe("diffLaps — payload pass-through", () => {
     diffLaps(state, tick({ LapCompleted: 0, ...limits }), "race", null, synced(), NOW, emit);
     diffLaps(
       state,
-      tick({ LapCompleted: 1, LapLastLapTime: 63.4, LapBestLapTime: 63.4, ...limits }),
+      tick({ LapCompleted: 1, LapLastLapTime: 63.4, LapBestLap: 1, LapBestLapTime: 63.4, ...limits }),
       "race",
       null,
       synced(),
@@ -656,7 +659,7 @@ describe("diffLaps — payload pass-through", () => {
     diffLaps(state, tick({ LapCompleted: 0 }), undefined, null, synced(), NOW, emit);
     diffLaps(
       state,
-      tick({ LapCompleted: 1, LapLastLapTime: 63.4, LapBestLapTime: 63.4 }),
+      tick({ LapCompleted: 1, LapLastLapTime: 63.4, LapBestLap: 1, LapBestLapTime: 63.4 }),
       undefined as LapSessionType | undefined,
       null,
       synced(),
@@ -688,7 +691,7 @@ describe("diffLaps — position fields from ResultsPositions (issue #566)", () =
     diffLaps(state, tick(), "race", false, synced(), NOW, emit);
     diffLaps(
       state,
-      tick({ LapCompleted: 1, LapLastLapTime: 63.4, LapBestLapTime: 63.4 }),
+      tick({ LapCompleted: 1, LapLastLapTime: 63.4, LapBestLap: 1, LapBestLapTime: 63.4 }),
       "race",
       false,
       // Standings: player at P3, class P3 (raw ClassPosition = 2 → emitted as 3).
@@ -714,7 +717,7 @@ describe("diffLaps — position fields from ResultsPositions (issue #566)", () =
     diffLaps(state, tick(), "race", false, synced(), NOW, emit);
     diffLaps(
       state,
-      tick({ LapCompleted: 1, LapLastLapTime: 63.4, LapBestLapTime: 63.4 }),
+      tick({ LapCompleted: 1, LapLastLapTime: 63.4, LapBestLap: 1, LapBestLapTime: 63.4 }),
       "race",
       false,
       synced(5, 5),
@@ -745,7 +748,7 @@ describe("diffLaps — position fields from ResultsPositions (issue #566)", () =
     diffLaps(state, tick(), "race", true, synced(), NOW, emit);
     diffLaps(
       state,
-      tick({ LapCompleted: 1, LapLastLapTime: 63.4, LapBestLapTime: 63.4 }),
+      tick({ LapCompleted: 1, LapLastLapTime: 63.4, LapBestLap: 1, LapBestLapTime: 63.4 }),
       "race",
       true,
       synced(8, 2),
@@ -766,7 +769,7 @@ describe("diffLaps — position fields from ResultsPositions (issue #566)", () =
     diffLaps(state, tick(), "race", null, synced(), NOW, emit);
     diffLaps(
       state,
-      tick({ LapCompleted: 1, LapLastLapTime: 63.4, LapBestLapTime: 63.4 }),
+      tick({ LapCompleted: 1, LapLastLapTime: 63.4, LapBestLap: 1, LapBestLapTime: 63.4 }),
       "race",
       null,
       synced(3),
@@ -786,7 +789,7 @@ describe("diffLaps — position fields from ResultsPositions (issue #566)", () =
     diffLaps(
       state,
       // Both sources empty — pre-grid state, no standings computed.
-      tick({ LapCompleted: 1, LapLastLapTime: 63.4, LapBestLapTime: 63.4, PlayerCarPosition: 0 }),
+      tick({ LapCompleted: 1, LapLastLapTime: 63.4, LapBestLap: 1, LapBestLapTime: 63.4, PlayerCarPosition: 0 }),
       "race",
       false,
       { lapsComplete: 9999, position: 0, classPosition: -1 },
@@ -808,7 +811,7 @@ describe("diffLaps — position fields from ResultsPositions (issue #566)", () =
     diffLaps(state, tick({ SessionNum: 0 }), "practice", false, synced(), NOW, emit);
     diffLaps(
       state,
-      tick({ SessionNum: 0, LapCompleted: 1, LapLastLapTime: 60.0, LapBestLapTime: 60.0 }),
+      tick({ SessionNum: 0, LapCompleted: 1, LapLastLapTime: 60.0, LapBestLap: 1, LapBestLapTime: 60.0 }),
       "practice",
       false,
       synced(4),
@@ -830,7 +833,7 @@ describe("diffLaps — position fields from ResultsPositions (issue #566)", () =
     // First qualifying lap completes — should have no previousPosition.
     diffLaps(
       state,
-      tick({ SessionNum: 1, LapCompleted: 1, LapLastLapTime: 64.0, LapBestLapTime: 64.0 }),
+      tick({ SessionNum: 1, LapCompleted: 1, LapLastLapTime: 64.0, LapBestLap: 1, LapBestLapTime: 64.0 }),
       "qualifying",
       false,
       synced(1),
@@ -857,7 +860,7 @@ describe("diffLaps — ResultsPositions sync gate (issue #566)", () => {
     const stale: PlayerResultsForLap = { lapsComplete: 0, position: 4, classPosition: 3 };
     diffLaps(
       state,
-      tick({ LapCompleted: 1, LapLastLapTime: 63.4, LapBestLapTime: 63.4 }),
+      tick({ LapCompleted: 1, LapLastLapTime: 63.4, LapBestLap: 1, LapBestLapTime: 63.4 }),
       "race",
       false,
       stale,
@@ -870,7 +873,7 @@ describe("diffLaps — ResultsPositions sync gate (issue #566)", () => {
     // Tick later (within the timeout window) — standings still stale.
     diffLaps(
       state,
-      tick({ LapCompleted: 1, LapLastLapTime: 63.4, LapBestLapTime: 63.4 }),
+      tick({ LapCompleted: 1, LapLastLapTime: 63.4, LapBestLap: 1, LapBestLapTime: 63.4 }),
       "race",
       false,
       stale,
@@ -887,7 +890,7 @@ describe("diffLaps — ResultsPositions sync gate (issue #566)", () => {
 
     diffLaps(
       state,
-      tick({ LapCompleted: 1, LapLastLapTime: 63.4, LapBestLapTime: 63.4 }),
+      tick({ LapCompleted: 1, LapLastLapTime: 63.4, LapBestLap: 1, LapBestLapTime: 63.4 }),
       "race",
       false,
       { lapsComplete: 0, position: 4, classPosition: 3 },
@@ -899,7 +902,7 @@ describe("diffLaps — ResultsPositions sync gate (issue #566)", () => {
     // Standings catch up — now the diff emits with the synced position.
     diffLaps(
       state,
-      tick({ LapCompleted: 1, LapLastLapTime: 63.4, LapBestLapTime: 63.4 }),
+      tick({ LapCompleted: 1, LapLastLapTime: 63.4, LapBestLap: 1, LapBestLapTime: 63.4 }),
       "race",
       false,
       { lapsComplete: 1, position: 4, classPosition: 3 },
@@ -1019,7 +1022,7 @@ describe("diffLaps — ResultsPositions sync gate (issue #566)", () => {
 
     diffLaps(
       state,
-      tick({ LapCompleted: 1, LapLastLapTime: 63.4, LapBestLapTime: 63.4, PlayerCarPosition: 7 }),
+      tick({ LapCompleted: 1, LapLastLapTime: 63.4, LapBestLap: 1, LapBestLapTime: 63.4, PlayerCarPosition: 7 }),
       "race",
       false,
       null,
@@ -1030,7 +1033,7 @@ describe("diffLaps — ResultsPositions sync gate (issue #566)", () => {
 
     diffLaps(
       state,
-      tick({ LapCompleted: 1, LapLastLapTime: 63.4, LapBestLapTime: 63.4, PlayerCarPosition: 7 }),
+      tick({ LapCompleted: 1, LapLastLapTime: 63.4, LapBestLap: 1, LapBestLapTime: 63.4, PlayerCarPosition: 7 }),
       "race",
       false,
       null,
@@ -1062,7 +1065,7 @@ describe("diffLaps — position-change + race-status cadence (issue #569)", () =
     // gate doesn't swallow the emission.
     diffLaps(
       state,
-      tick({ LapCompleted: 1, LapLastLapTime: 63.0, LapBestLapTime: 63.0 }),
+      tick({ LapCompleted: 1, LapLastLapTime: 63.0, LapBestLap: 1, LapBestLapTime: 63.0 }),
       "race",
       false,
       synced(5, 5),
@@ -1113,7 +1116,7 @@ describe("diffLaps — position-change + race-status cadence (issue #569)", () =
     diffLaps(state, tick(), "race", false, synced(), NOW, emit);
     diffLaps(
       state,
-      tick({ LapCompleted: 1, LapLastLapTime: 63.0, LapBestLapTime: 63.0 }),
+      tick({ LapCompleted: 1, LapLastLapTime: 63.0, LapBestLap: 1, LapBestLapTime: 63.0 }),
       "race",
       false,
       synced(5, 5),
@@ -1196,7 +1199,7 @@ describe("diffLaps — position-change + race-status cadence (issue #569)", () =
     diffLaps(state, tick(), "race", false, synced(), NOW, emit);
     diffLaps(
       state,
-      tick({ LapCompleted: 1, LapLastLapTime: 63.0, LapBestLapTime: 63.0 }),
+      tick({ LapCompleted: 1, LapLastLapTime: 63.0, LapBestLap: 1, LapBestLapTime: 63.0 }),
       "race",
       false,
       synced(5, 5),
@@ -1213,7 +1216,7 @@ describe("diffLaps — position-change + race-status cadence (issue #569)", () =
     diffLaps(state, tick({ SessionNum: 0 }), "practice", false, synced(), NOW, emit);
     diffLaps(
       state,
-      tick({ SessionNum: 0, LapCompleted: 1, LapLastLapTime: 60.0, LapBestLapTime: 60.0 }),
+      tick({ SessionNum: 0, LapCompleted: 1, LapLastLapTime: 60.0, LapBestLap: 1, LapBestLapTime: 60.0 }),
       "practice",
       false,
       synced(3, 3),
@@ -1244,7 +1247,7 @@ describe("diffLaps — position-change + race-status cadence (issue #569)", () =
     // Lap 1 — establish baseline: overall P12, class P3.
     diffLaps(
       state,
-      tick({ LapCompleted: 1, LapLastLapTime: 63.0, LapBestLapTime: 63.0 }),
+      tick({ LapCompleted: 1, LapLastLapTime: 63.0, LapBestLap: 1, LapBestLapTime: 63.0 }),
       "race",
       true,
       synced(12, 3),
@@ -1281,7 +1284,7 @@ describe("diffLaps — position-change + race-status cadence (issue #569)", () =
     // Lap 1 — establish baseline: overall P12, class P3.
     diffLaps(
       state,
-      tick({ LapCompleted: 1, LapLastLapTime: 63.0, LapBestLapTime: 63.0 }),
+      tick({ LapCompleted: 1, LapLastLapTime: 63.0, LapBestLap: 1, LapBestLapTime: 63.0 }),
       "race",
       true,
       synced(12, 3),
@@ -1499,22 +1502,25 @@ describe("diffLaps — race.finished (issue #569)", () => {
   });
 });
 
-describe("diffLaps — lap validity (issue #572)", () => {
-  it("sets lapIsValid=true when all four _OK flags are true", () => {
+describe("diffLaps — the LapDeltaTo*_OK flags are not read (issue #1582)", () => {
+  // The flags say whether a delta reference exists and the car is on track,
+  // not whether iRacing counted the lap: all four read false on pit road and
+  // on an out lap, and all four read true on the race's cut lap in the
+  // 2026-11-02 captures. The verdict is iRacing's `LapLastLapTime`.
+  const allFlags = (value: boolean): Partial<TelemetryData> => ({
+    LapDeltaToBestLap_OK: value,
+    LapDeltaToSessionBestLap_OK: value,
+    LapDeltaToSessionOptimalLap_OK: value,
+    LapDeltaToSessionLastlLap_OK: value,
+  });
+
+  it("emits a timed lap as counted with every flag false, carrying no lapIsValid", () => {
     const state = createInitialState();
     const { events, emit } = collect();
     diffLaps(state, tick(), "qualifying", false, synced(), NOW, emit);
     diffLaps(
       state,
-      tick({
-        LapCompleted: 1,
-        LapLastLapTime: 84.2,
-        LapBestLapTime: 84.2,
-        LapDeltaToBestLap_OK: true,
-        LapDeltaToSessionBestLap_OK: true,
-        LapDeltaToSessionOptimalLap_OK: true,
-        LapDeltaToSessionLastlLap_OK: true,
-      }),
+      tick({ LapCompleted: 1, LapLastLapTime: 84.2, LapBestLap: 1, LapBestLapTime: 84.2, ...allFlags(false) }),
       "qualifying",
       false,
       synced(3, 3),
@@ -1524,117 +1530,341 @@ describe("diffLaps — lap validity (issue #572)", () => {
 
     const laps = lapEvents(events);
     expect(laps).toHaveLength(1);
-    expect(laps[0].data.lapIsValid).toBe(true);
+    expect(laps[0].data).toMatchObject({ lap: 1, lapTime: 84.2, isBest: true });
+    expect("lapIsValid" in laps[0].data).toBe(false);
   });
 
-  it("sets lapIsValid=false when any _OK flag is false (single false among trues)", () => {
+  it("emits a lap iRacing refused as refused with every flag true", () => {
     const state = createInitialState();
     const { events, emit } = collect();
-    diffLaps(state, tick(), "qualifying", false, synced(), NOW, emit);
     diffLaps(
       state,
-      tick({
-        LapCompleted: 1,
-        LapLastLapTime: 84.2,
-        LapBestLapTime: 84.2,
-        LapDeltaToBestLap_OK: false,
-        LapDeltaToSessionBestLap_OK: true,
-        LapDeltaToSessionOptimalLap_OK: true,
-        LapDeltaToSessionLastlLap_OK: true,
-      }),
-      "qualifying",
+      tick({ LapCompleted: 3, LapLastLapTime: 75.1, LapBestLap: 3, LapBestLapTime: 75.1 }),
+      "race",
       false,
-      synced(5, 5),
+      synced(),
       NOW,
+      emit,
+    );
+    diffLaps(
+      state,
+      tick({ LapCompleted: 4, LapLastLapTime: 75.1, LapBestLap: 3, LapBestLapTime: 75.1, ...allFlags(true) }),
+      "race",
+      false,
+      synced(),
+      NOW,
+      emit,
+    );
+    diffLaps(
+      state,
+      tick({ LapCompleted: 4, LapLastLapTime: -1, LapBestLap: 3, LapBestLapTime: 75.1, ...allFlags(true) }),
+      "race",
+      false,
+      synced(),
+      NOW + 900,
       emit,
     );
 
     const laps = lapEvents(events);
     expect(laps).toHaveLength(1);
-    expect(laps[0].data.lapIsValid).toBe(false);
-  });
-
-  it("omits lapIsValid when no _OK flag is present in telemetry", () => {
-    const state = createInitialState();
-    const { events, emit } = collect();
-    diffLaps(state, tick(), "qualifying", false, synced(), NOW, emit);
-    diffLaps(
-      state,
-      tick({
-        LapCompleted: 1,
-        LapLastLapTime: 84.2,
-        LapBestLapTime: 84.2,
-      }),
-      "qualifying",
-      false,
-      synced(5, 5),
-      NOW,
-      emit,
-    );
-
-    const laps = lapEvents(events);
-    expect(laps).toHaveLength(1);
-    expect(laps[0].data.lapIsValid).toBeUndefined();
-  });
-
-  it("uses single-flag fallback: lapIsValid=true when the only present _OK flag is true", () => {
-    const state = createInitialState();
-    const { events, emit } = collect();
-    diffLaps(state, tick(), "qualifying", false, synced(), NOW, emit);
-    diffLaps(
-      state,
-      tick({
-        LapCompleted: 1,
-        LapLastLapTime: 84.2,
-        LapBestLapTime: 84.2,
-        // Only one of the four _OK flags is populated — exercises the
-        // single-element `flags` path in resolveLapIsValid.
-        LapDeltaToBestLap_OK: true,
-      }),
-      "qualifying",
-      false,
-      synced(3, 3),
-      NOW,
-      emit,
-    );
-
-    const laps = lapEvents(events);
-    expect(laps).toHaveLength(1);
-    expect(laps[0].data.lapIsValid).toBe(true);
-  });
-
-  it("uses single-flag fallback: lapIsValid=false when the only present _OK flag is false", () => {
-    const state = createInitialState();
-    const { events, emit } = collect();
-    diffLaps(state, tick(), "qualifying", false, synced(), NOW, emit);
-    diffLaps(
-      state,
-      tick({
-        LapCompleted: 1,
-        LapLastLapTime: 84.2,
-        LapBestLapTime: 84.2,
-        LapDeltaToBestLap_OK: false,
-      }),
-      "qualifying",
-      false,
-      synced(5, 5),
-      NOW,
-      emit,
-    );
-
-    const laps = lapEvents(events);
-    expect(laps).toHaveLength(1);
-    expect(laps[0].data.lapIsValid).toBe(false);
+    expect(laps[0].data).toMatchObject({ lap: 4, lapIsValid: false, isBest: false });
   });
 });
 
-describe("the fastest-lap judge seam (issue #1571)", () => {
-  it("calls the judge once per emitted lap with (lap, lapTime, lapIsValid) and sets the field exactly when it answers true", () => {
+describe("diffLaps — refused laps (issue #1582)", () => {
+  const BEST = 80;
+
+  type Ctx = { state: ReturnType<typeof createInitialState>; events: PendingEvent[]; emit: (e: PendingEvent) => void };
+
+  /** A tick of the player's lap fields; the best stands at {@link BEST}, set on lap 1, unless overridden. */
+  function lapTick(lap: number, lapTime: number, overrides: Partial<TelemetryData> = {}): TelemetryData {
+    return tick({ LapCompleted: lap, LapLastLapTime: lapTime, LapBestLap: 1, LapBestLapTime: BEST, ...overrides });
+  }
+
+  /** Seeded on lap 1, its counted 80 s the standing best. */
+  function seeded(): Ctx {
     const state = createInitialState();
-    const calls: Array<[number, number, boolean | undefined]> = [];
+    const { events, emit } = collect();
+    diffLaps(state, lapTick(1, BEST), "qualifying", false, synced(), NOW, emit);
+
+    return { state, events, emit };
+  }
+
+  /** Feed one qualifying tick `ms` past {@link NOW}. */
+  function at(
+    ctx: Ctx,
+    ms: number,
+    telemetry: TelemetryData,
+    playerResults: PlayerResultsForLap | null = synced(),
+  ): void {
+    diffLaps(ctx.state, telemetry, "qualifying", false, playerResults, NOW + ms, ctx.emit);
+  }
+
+  /** Lap 2 refused: crossed at 1000 ms reading lap 1's time, `-1` at 1500 ms. */
+  function refuseLap2(ctx: Ctx): void {
+    at(ctx, 1000, lapTick(2, BEST));
+    at(ctx, 1500, lapTick(2, -1));
+  }
+
+  it("emits a refused lap.completed once the time changes to -1 after the crossing, with no lapTime", () => {
+    const ctx = seeded();
+    at(ctx, 1000, lapTick(2, BEST));
+    expect(lapEvents(ctx.events)).toHaveLength(0);
+    at(ctx, 1500, lapTick(2, -1));
+
+    const laps = lapEvents(ctx.events);
+    expect(laps).toHaveLength(1);
+    expect(laps[0].data).toEqual({
+      lap: 2,
+      isBest: false,
+      isFirstValid: false,
+      lapIsValid: false,
+      bestLapTime: BEST,
+      previousBestLapTime: BEST,
+      sessionType: "qualifying",
+      isMultiClass: false,
+    });
+    expect("lapTime" in laps[0].data).toBe(false);
+    expect(ctx.state.lastEmittedLapTime).toBe(-1);
+    expect(ctx.state.lastLapCompletedCounter).toBe(2);
+
+    // Nothing more for the same count, however long the field reads -1.
+    at(ctx, 6000, lapTick(2, -1));
+    expect(lapEvents(ctx.events)).toHaveLength(1);
+  });
+
+  it("positive control: the same ticks with a time emit counted", () => {
+    const ctx = seeded();
+    at(ctx, 1000, lapTick(2, BEST));
+    at(ctx, 1500, lapTick(2, 81));
+
+    const laps = lapEvents(ctx.events);
+    expect(laps).toHaveLength(1);
+    expect(laps[0].data).toMatchObject({ lap: 2, lapTime: 81, isBest: false, isFirstValid: false });
+    expect("lapIsValid" in laps[0].data).toBe(false);
+  });
+
+  it("refuses a lap whose time changes to -1 on the crossing tick itself once the allowance has run", () => {
+    const ctx = seeded();
+    at(ctx, 1000, lapTick(2, -1));
+    at(ctx, 1000 + LAP_TIME_REFRESH_ALLOWANCE_MS - 1, lapTick(2, -1));
+    expect(lapEvents(ctx.events)).toHaveLength(0);
+    at(ctx, 1000 + LAP_TIME_REFRESH_ALLOWANCE_MS, lapTick(2, -1));
+    expect(lapEvents(ctx.events).map((e) => e.data)).toMatchObject([{ lap: 2, lapIsValid: false }]);
+  });
+
+  it("emits two refused events for two refused laps in a row", () => {
+    const ctx = seeded();
+    refuseLap2(ctx);
+    // Lap 3 crosses while the field still reads lap 2's -1: refused only
+    // once it still reads -1 the allowance after the crossing.
+    at(ctx, 80_000, lapTick(3, -1));
+    at(ctx, 80_000 + LAP_TIME_REFRESH_ALLOWANCE_MS - 1, lapTick(3, -1));
+    expect(lapEvents(ctx.events)).toHaveLength(1);
+    at(ctx, 80_000 + LAP_TIME_REFRESH_ALLOWANCE_MS, lapTick(3, -1));
+
+    expect(lapEvents(ctx.events).map((e) => [e.data.lap, e.data.lapIsValid])).toEqual([
+      [2, false],
+      [3, false],
+    ]);
+  });
+
+  it("emits a counted lap after a refused one, its time landing 0.9 s after the crossing, as counted and not refused", () => {
+    const ctx = seeded();
+    refuseLap2(ctx);
+    at(ctx, 80_000, lapTick(3, -1));
+    at(ctx, 80_500, lapTick(3, -1));
+    at(ctx, 80_900, lapTick(3, 79, { LapBestLap: 3, LapBestLapTime: 79 }));
+    at(ctx, 85_000, lapTick(3, 79, { LapBestLap: 3, LapBestLapTime: 79 }));
+
+    const laps = lapEvents(ctx.events);
+    expect(laps).toHaveLength(2);
+    expect(laps[1].data).toMatchObject({
+      lap: 3,
+      lapTime: 79,
+      isBest: true,
+      isFirstValid: false,
+      bestLapTime: 79,
+      previousBestLapTime: BEST,
+    });
+    expect(laps[1].data.lapIsValid).toBeUndefined();
+  });
+
+  it("emits refused when the time still reads -1 2 s after the crossing, and counted when it lands at 1.9 s", () => {
+    const late = seeded();
+    refuseLap2(late);
+    at(late, 80_000, lapTick(3, -1));
+    at(late, 82_000, lapTick(3, -1));
+    expect(lapEvents(late.events).map((e) => e.data.lapIsValid)).toEqual([false, false]);
+
+    const inTime = seeded();
+    refuseLap2(inTime);
+    at(inTime, 80_000, lapTick(3, -1));
+    at(inTime, 81_900, lapTick(3, 81));
+    at(inTime, 82_000, lapTick(3, 81));
+    const laps = lapEvents(inTime.events);
+    expect(laps).toHaveLength(2);
+    expect(laps[1].data).toMatchObject({ lap: 3, lapTime: 81 });
+  });
+
+  it("drops a time landing at 2.1 s after the refused emit at 2 s: one lap.completed per counter value", () => {
+    const ctx = seeded();
+    refuseLap2(ctx);
+    at(ctx, 80_000, lapTick(3, -1));
+    at(ctx, 82_000, lapTick(3, -1));
+    const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const late = (ms: number): void =>
+      runDiffLaps(
+        ctx.state,
+        lapTick(3, 81),
+        "qualifying",
+        false,
+        synced(),
+        NOW + ms,
+        ctx.emit,
+        NEVER_A_RECORD,
+        logger as unknown as ILogger,
+      );
+    late(82_100);
+    late(82_200);
+
+    expect(lapEvents(ctx.events).map((e) => [e.data.lap, e.data.lapIsValid])).toEqual([
+      [2, false],
+      [3, false],
+    ]);
+    // Logged once: the late time is taken as the stale value.
+    expect(logger.debug).toHaveBeenCalledTimes(1);
+    expect(String(logger.debug.mock.calls[0]![0])).toContain("lap=3");
+    expect(ctx.state.lastEmittedLapTime).toBe(81);
+
+    // The next lap still counts, from the late time it starts on.
+    at(ctx, 155_000, lapTick(4, 81));
+    expect(lapEvents(ctx.events)).toHaveLength(2);
+    at(ctx, 155_300, lapTick(4, 78, { LapBestLap: 4, LapBestLapTime: 78 }));
+    expect(lapEvents(ctx.events)[2]!.data).toMatchObject({ lap: 4, lapTime: 78, isBest: true });
+  });
+
+  it("emits nothing for a 0 after a lap-0 crossing, nor for a -1 there", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    diffLaps(state, tick({ LapCompleted: -1, LapLastLapTime: 0 }), "race", false, synced(), NOW, emit);
+    diffLaps(state, tick({ LapCompleted: 0, LapLastLapTime: 0 }), "race", false, synced(), NOW + 1000, emit);
+    diffLaps(state, tick({ LapCompleted: 0, LapLastLapTime: 0 }), "race", false, synced(), NOW + 10_000, emit);
+    diffLaps(state, tick({ LapCompleted: 0, LapLastLapTime: -1 }), "race", false, synced(), NOW + 10_500, emit);
+    diffLaps(state, tick({ LapCompleted: 0, LapLastLapTime: -1 }), "race", false, synced(), NOW + 20_000, emit);
+
+    expect(lapEvents(events)).toHaveLength(0);
+  });
+
+  it("emits nothing for a reset to the pits: the counter dropping to 0 for one tick, then back", () => {
+    const ctx = seeded();
+    refuseLap2(ctx);
+    at(ctx, 5000, lapTick(0, -1));
+    at(ctx, 5016, lapTick(2, -1));
+    at(ctx, 12_000, lapTick(2, -1));
+    expect(lapEvents(ctx.events)).toHaveLength(1);
+
+    // And after a counted lap, its time back on the same count.
+    const counted = seeded();
+    at(counted, 1000, lapTick(2, BEST));
+    at(counted, 1300, lapTick(2, 82));
+    at(counted, 5000, lapTick(0, 82));
+    at(counted, 5016, lapTick(2, 82));
+    at(counted, 12_000, lapTick(2, 82));
+    expect(lapEvents(counted.events)).toHaveLength(1);
+  });
+
+  it("emits nothing for a seed on -1", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    diffLaps(state, lapTick(4, -1), "race", false, synced(), NOW, emit);
+    diffLaps(state, lapTick(4, -1), "race", false, synced(), NOW + 5000, emit);
+    diffLaps(state, lapTick(4, -1), "race", false, synced(), NOW + 60_000, emit);
+
+    expect(lapEvents(events)).toHaveLength(0);
+  });
+
+  it("after a seed on -1, emits a counted lap whose time lands 0.9 s after its crossing as counted", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    const best = { LapBestLap: 5, LapBestLapTime: 78.5 };
+    diffLaps(state, lapTick(4, -1), "race", false, synced(), NOW, emit);
+    diffLaps(state, lapTick(5, -1), "race", false, synced(), NOW + 10_000, emit);
+    diffLaps(state, lapTick(5, -1), "race", false, synced(), NOW + 10_500, emit);
+    diffLaps(state, lapTick(5, 78.5, best), "race", false, synced(), NOW + 10_900, emit);
+
+    const laps = lapEvents(events);
+    expect(laps).toHaveLength(1);
+    expect(laps[0].data).toMatchObject({ lap: 5, lapTime: 78.5, isBest: true, previousBestLapTime: BEST });
+  });
+
+  it("clears the pending crossing on a session change inside the 2 s window", () => {
+    const ctx = seeded();
+    refuseLap2(ctx);
+    at(ctx, 80_000, lapTick(3, -1));
+    // The next session starts 1 s into the window.
+    at(ctx, 81_000, tick({ SessionNum: 1, LapCompleted: 0, LapLastLapTime: 0 }));
+    expect(ctx.state.lapCrossing).toMatchObject({ lap: 0, since: NOW + 81_000, lapTimeAtCrossing: 0 });
+    at(ctx, 82_000, tick({ SessionNum: 1, LapCompleted: 0, LapLastLapTime: 0 }));
+    at(ctx, 90_000, tick({ SessionNum: 1, LapCompleted: 0, LapLastLapTime: 0 }));
+
+    expect(lapEvents(ctx.events)).toHaveLength(1);
+  });
+
+  it("goes through the standings wait like a counted lap", () => {
+    const ctx = seeded();
+    const stale: PlayerResultsForLap = { lapsComplete: 1, position: 4, classPosition: 3 };
+    at(ctx, 1000, lapTick(2, BEST), stale);
+    at(ctx, 1500, lapTick(2, -1), stale);
+    at(ctx, 1600, lapTick(2, -1), stale);
+    expect(lapEvents(ctx.events)).toHaveLength(0);
+    at(ctx, 1700, lapTick(2, -1), { lapsComplete: 2, position: 4, classPosition: 3 });
+
+    const laps = lapEvents(ctx.events);
+    expect(laps).toHaveLength(1);
+    expect(laps[0].data).toMatchObject({ lap: 2, lapIsValid: false, position: 4, classPosition: 4 });
+  });
+
+  it("carries positions and the cadence, emits position.changed, and ends the race", () => {
+    const state = createInitialState();
+    const { events, emit } = collect();
+    const race = (telemetry: TelemetryData, results: PlayerResultsForLap, ms: number): void =>
+      diffLaps(state, telemetry, "race", false, results, NOW + ms, emit);
+    const flying = { SessionNum: 0, SessionFlags: Flags.Checkered };
+
+    race(lapTick(1, BEST, { SessionNum: 0 }), synced(), 0);
+    // Lap 2 counted at P5: anchors the cadence.
+    race(lapTick(2, BEST, { SessionNum: 0 }), synced(5), 1000);
+    race(lapTick(2, 82, { SessionNum: 0 }), synced(5), 1300);
+    // Lap 3 refused at P4, crossed with the checkered already flying.
+    race(lapTick(2, 82, flying), synced(5), 80_000);
+    race(lapTick(3, 82, flying), synced(4), 81_000);
+    race(lapTick(3, -1, flying), synced(4), 81_500);
+
+    const laps = lapEvents(events);
+    expect(laps).toHaveLength(2);
+    expect(laps[1].data).toMatchObject({
+      lap: 3,
+      lapIsValid: false,
+      position: 4,
+      previousPosition: 5,
+      lapsSincePositionChange: 0,
+    });
+    expect(events.filter((e) => e.event === "position.changed").map((e) => e.data)).toMatchObject([
+      { lap: 3, position: 4, previousPosition: 5 },
+    ]);
+    expect(events.filter((e) => e.event === "race.finished").map((e) => e.data)).toMatchObject([{ position: 4 }]);
+    expect(state.raceFinish).toEqual({ sessionNum: 0, lap: 3 });
+  });
+});
+
+describe("the fastest-lap judge seam (issue #1571, as #1582 amends it)", () => {
+  it("calls the judge once for each emitted lap that is a new best, with (lap, lapTime), and sets the field exactly when it answers true", () => {
+    const state = createInitialState();
+    const calls: Array<[number, number]> = [];
     let answer = false;
-    const judge: FastestLapJudge = (lap, lapTime, lapIsValid) => {
-      calls.push([lap, lapTime, lapIsValid]);
+    const judge: FastestLapJudge = (lap, lapTime) => {
+      calls.push([lap, lapTime]);
 
       return answer;
     };
@@ -1644,10 +1874,10 @@ describe("the fastest-lap judge seam (issue #1571)", () => {
     diffLaps(state, tick(), "race", null, synced(), NOW, emit, judge);
     expect(calls).toEqual([]);
 
-    // A lap the judge refuses: asked once, no field.
+    // A best the judge refuses: asked once, no field.
     diffLaps(
       state,
-      tick({ LapCompleted: 1, LapLastLapTime: 90, LapDeltaToBestLap_OK: false }),
+      tick({ LapCompleted: 1, LapLastLapTime: 90, LapBestLap: 1, LapBestLapTime: 90 }),
       "race",
       null,
       synced(),
@@ -1655,19 +1885,54 @@ describe("the fastest-lap judge seam (issue #1571)", () => {
       emit,
       judge,
     );
-    expect(calls).toEqual([[1, 90, false]]);
+    expect(calls).toEqual([[1, 90]]);
     expect(lapEvents(events)).toHaveLength(1);
     expect(lapEvents(events)[0]!.data.isClassFastestLapOfRace).toBeUndefined();
 
-    // A lap the judge accepts: asked once, the field is `true` (the positive control).
+    // A best the judge accepts: asked once, the field is `true` (the positive control).
     answer = true;
-    diffLaps(state, tick({ LapCompleted: 2, LapLastLapTime: 89 }), "race", null, synced(), NOW, emit, judge);
+    diffLaps(
+      state,
+      tick({ LapCompleted: 2, LapLastLapTime: 89, LapBestLap: 2, LapBestLapTime: 89 }),
+      "race",
+      null,
+      synced(),
+      NOW,
+      emit,
+      judge,
+    );
     expect(calls).toEqual([
-      [1, 90, false],
-      [2, 89, undefined],
+      [1, 90],
+      [2, 89],
     ]);
     expect(lapEvents(events)).toHaveLength(2);
     expect(lapEvents(events)[1]!.data.isClassFastestLapOfRace).toBe(true);
+  });
+
+  it("never asks the judge of a lap that is not a new best: the race start lap, a slower lap, a refused lap", () => {
+    const state = createInitialState();
+    const judge = vi.fn<FastestLapJudge>(() => true);
+    const { events, emit } = collect();
+    const race = (telemetry: Partial<TelemetryData>, ms: number = 0): void =>
+      diffLaps(state, tick(telemetry), "race", null, synced(), NOW + ms, emit, judge);
+
+    race({});
+    // The race start lap: iRacing times it but takes no best (`LapBestLapTime` -1).
+    race({ LapCompleted: 1, LapLastLapTime: 82.2, LapBestLap: -1, LapBestLapTime: -1 });
+    // Lap 2 sets the best the judge is asked about; lap 3 is slower.
+    race({ LapCompleted: 2, LapLastLapTime: 76.2, LapBestLap: 2, LapBestLapTime: 76.2 });
+    race({ LapCompleted: 3, LapLastLapTime: 77.0, LapBestLap: 2, LapBestLapTime: 76.2 });
+    // Lap 4 refused.
+    race({ LapCompleted: 4, LapLastLapTime: 77.0, LapBestLap: 2, LapBestLapTime: 76.2 }, 1000);
+    race({ LapCompleted: 4, LapLastLapTime: -1, LapBestLap: 2, LapBestLapTime: 76.2 }, 1500);
+
+    expect(lapEvents(events).map((e) => [e.data.lap, e.data.isBest, e.data.isClassFastestLapOfRace])).toEqual([
+      [1, false, undefined],
+      [2, true, true],
+      [3, false, undefined],
+      [4, false, undefined],
+    ]);
+    expect(judge.mock.calls).toEqual([[2, 76.2]]);
   });
 
   it("does not ask the judge on a tick that waits for the standings or for the lap time", () => {
@@ -1680,12 +1945,13 @@ describe("the fastest-lap judge seam (issue #1571)", () => {
     diffLaps(state, tick({ LapCompleted: 1, LapLastLapTime: 0 }), "race", null, synced(), NOW, emit, judge);
     // The time refreshed but the standings have not caught up.
     const stale: PlayerResultsForLap = { lapsComplete: 0, position: 3, classPosition: 2 };
-    diffLaps(state, tick({ LapCompleted: 1, LapLastLapTime: 90 }), "race", null, stale, NOW, emit, judge);
+    const best = { LapCompleted: 1, LapLastLapTime: 90, LapBestLap: 1, LapBestLapTime: 90 };
+    diffLaps(state, tick(best), "race", null, stale, NOW, emit, judge);
     expect(judge).not.toHaveBeenCalled();
     expect(lapEvents(events)).toHaveLength(0);
 
     // The standings land: one emit, one call.
-    diffLaps(state, tick({ LapCompleted: 1, LapLastLapTime: 90 }), "race", null, synced(), NOW + 10, emit, judge);
+    diffLaps(state, tick(best), "race", null, synced(), NOW + 10, emit, judge);
     expect(judge).toHaveBeenCalledTimes(1);
     expect(lapEvents(events)).toHaveLength(1);
     expect(lapEvents(events)[0]!.data.isClassFastestLapOfRace).toBe(true);

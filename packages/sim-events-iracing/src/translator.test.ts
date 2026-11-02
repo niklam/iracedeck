@@ -7547,11 +7547,17 @@ describe("sim-events-iracing translator", () => {
       };
     }
 
-    type Lap = { completed: number; last: number; valid?: boolean };
+    /**
+     * The player's lap fields: the counter, the last time, and iRacing's own
+     * best as `[lap, time]` (`LapBestLap` / `LapBestLapTime`, issue #1582) —
+     * none (`-1`) when omitted, as before a first best and after the race
+     * start lap.
+     */
+    type Lap = { completed: number; last: number; best?: readonly [number, number] };
 
     /**
-     * One green-race tick: the remote cars' bests, the player's lap counter
-     * and last time. The rivals run a lap ahead of the player (so they are
+     * One green-race tick: the remote cars' bests, the player's lap counter,
+     * last time and best. The rivals run a lap ahead of the player (so they are
      * eligible from the seed on, and rank P1 and P2 to the player's P3); the
      * pace car is out of the world.
      */
@@ -7566,8 +7572,8 @@ describe("sim-events-iracing translator", () => {
         CarIdxBestLapTime: best,
         LapCompleted: player.completed,
         LapLastLapTime: player.last,
-        LapBestLapTime: player.last,
-        ...(player.valid === undefined ? {} : { LapDeltaToBestLap_OK: player.valid }),
+        LapBestLap: player.best?.[0] ?? -1,
+        LapBestLapTime: player.best?.[1] ?? -1,
         ...extra,
       });
     }
@@ -7600,7 +7606,8 @@ describe("sim-events-iracing translator", () => {
       controller.__tick(raceTick([-1, 90, 91, -1], { completed: 0, last: 0 }));
       expect(seen).toEqual([]);
 
-      controller.__tick(raceTick([-1, 90, 91, -1], { completed: 1, last: 89.5, valid: true }));
+      // A new iRacing best below the record.
+      controller.__tick(raceTick([-1, 90, 91, -1], { completed: 1, last: 89.5, best: [1, 89.5] }));
 
       expect(seen.map((s) => s.event)).toEqual(["lap.completed", "fastestLap.set"]);
       expect(seen[0]!.data).toMatchObject({ lap: 1, lapTime: 89.5, isClassFastestLapOfRace: true });
@@ -7618,21 +7625,55 @@ describe("sim-events-iracing translator", () => {
       });
     });
 
-    it("an invalid lap, a slower lap and a later refresh of the player's own best leave the field absent and emit nothing", () => {
+    it("the race start lap, a refused lap, a slower best and a later refresh of the player's own best leave the field absent and emit nothing", () => {
       const seen = watch();
       const controller = start();
       controller.__tick(raceTick([-1, 90, 91, -1], { completed: 0, last: 0 }));
 
-      // Faster but invalid.
-      controller.__tick(raceTick([-1, 90, 91, -1], { completed: 1, last: 85, valid: false }));
-      // Slower.
-      controller.__tick(raceTick([-1, 90, 91, -1], { completed: 2, last: 90.5, valid: true }));
-      // The sim's own best for the player refreshes (to the invalid lap, even).
-      controller.__tick(raceTick([85, 90, 91, -1], { completed: 2, last: 90.5, valid: true }));
+      // The race start lap, faster than the record: iRacing times it but takes no best (issue #1582).
+      controller.__tick(raceTick([-1, 90, 91, -1], { completed: 1, last: 85 }));
+      // Refused: the counter moves, then iRacing writes -1 for the lap.
+      controller.__tick(raceTick([-1, 90, 91, -1], { completed: 2, last: 85 }));
+      controller.__tick(raceTick([-1, 90, 91, -1], { completed: 2, last: -1 }));
+      // The first best, slower than the record.
+      controller.__tick(raceTick([-1, 90, 91, -1], { completed: 3, last: 90.5, best: [3, 90.5] }));
+      // The sim's own best for the player refreshes (below the record, even).
+      controller.__tick(raceTick([85, 90, 91, -1], { completed: 3, last: 90.5, best: [3, 90.5] }));
 
-      expect(seen.map((s) => s.event)).toEqual(["lap.completed", "lap.completed"]);
+      expect(seen.map((s) => s.event)).toEqual(["lap.completed", "lap.completed", "lap.completed"]);
+      expect(seen.map((s) => [s.data.lap, s.data.isBest, s.data.lapIsValid])).toEqual([
+        [1, false, undefined],
+        [2, false, false],
+        [3, true, undefined],
+      ]);
 
       for (const s of seen) expect(s.data.isClassFastestLapOfRace).toBeUndefined();
+    });
+
+    it("a refused lap claims nothing, and its emit ends the hold: a rival's lap inside the wait is announced on that tick", () => {
+      const seen = watch();
+      const controller = start();
+      controller.__tick(raceTick([-1, 90, 91, -1], { completed: 0, last: 0 }));
+      controller.__tick(raceTick([-1, 90, 91, -1], { completed: 1, last: 89.9, best: [1, 89.9] }));
+      expect(seen.map((s) => s.event)).toEqual(["lap.completed", "fastestLap.set"]);
+
+      // The player crosses; inside the wait car 2 crosses with an 89.7, held.
+      controller.__tick(raceTick([-1, 90, 91, -1], { completed: 2, last: 89.9, best: [1, 89.9] }));
+      controller.__tick(raceTick([-1, 90, 89.7, -1], { completed: 2, last: 89.9, best: [1, 89.9] }));
+      expect(seen).toHaveLength(2);
+
+      // iRacing refuses the player's lap: the refused lap.completed, then car 2's record on the same tick,
+      // long before the hold's cap.
+      controller.__tick(raceTick([-1, 90, 89.7, -1], { completed: 2, last: -1, best: [1, 89.9] }));
+      expect(seen.slice(2).map((s) => s.event)).toEqual(["lap.completed", "fastestLap.set"]);
+      expect(seen[2]!.data).toMatchObject({ lap: 2, lapIsValid: false, isBest: false });
+      expect(seen[2]!.data.isClassFastestLapOfRace).toBeUndefined();
+      expect(seen[3]!.data).toMatchObject({
+        carIdx: 2,
+        isPlayer: false,
+        lapTime: 89.7,
+        previous: { carIdx: 0, isPlayer: true, lapTime: 89.9 },
+      });
     });
 
     it("a practice session emits no fastestLap.set and no field for the same laps", () => {
@@ -7642,8 +7683,8 @@ describe("sim-events-iracing translator", () => {
       const controller = start(info);
 
       controller.__tick(raceTick([-1, 90, 91, -1], { completed: 0, last: 0 }));
-      controller.__tick(raceTick([-1, 90, 91, -1], { completed: 1, last: 89.5, valid: true }));
-      controller.__tick(raceTick([-1, 90, 85, -1], { completed: 1, last: 89.5, valid: true }));
+      controller.__tick(raceTick([-1, 90, 91, -1], { completed: 1, last: 89.5, best: [1, 89.5] }));
+      controller.__tick(raceTick([-1, 90, 85, -1], { completed: 1, last: 89.5, best: [1, 89.5] }));
 
       expect(seen.map((s) => s.event)).toEqual(["lap.completed"]);
       expect(seen[0]!.data.isClassFastestLapOfRace).toBeUndefined();
@@ -7654,27 +7695,27 @@ describe("sim-events-iracing translator", () => {
       const controller = start();
       controller.__tick(raceTick([-1, 90, 91, -1], { completed: 0, last: 0 }));
       // The player's 89.9 is the record.
-      controller.__tick(raceTick([-1, 90, 91, -1], { completed: 1, last: 89.9, valid: true }));
+      controller.__tick(raceTick([-1, 90, 91, -1], { completed: 1, last: 89.9, best: [1, 89.9] }));
       expect(seen.map((s) => s.event)).toEqual(["lap.completed", "fastestLap.set"]);
 
       // The player crosses again: the counter moves while `LapLastLapTime` has not refreshed.
-      controller.__tick(raceTick([-1, 90, 91, -1], { completed: 2, last: 89.9, valid: true }));
+      controller.__tick(raceTick([-1, 90, 91, -1], { completed: 2, last: 89.9, best: [1, 89.9] }));
       // Inside that wait car 2 crosses with an 89.7: below the record, above the player's unjudged lap.
-      controller.__tick(raceTick([-1, 90, 89.7, -1], { completed: 2, last: 89.9, valid: true }));
+      controller.__tick(raceTick([-1, 90, 89.7, -1], { completed: 2, last: 89.9, best: [1, 89.9] }));
       expect(seen).toHaveLength(2);
 
-      // The time refreshes: the player's 89.6 is judged first, and car 2's 89.7 is read against it.
-      controller.__tick(raceTick([-1, 90, 89.7, -1], { completed: 2, last: 89.6, valid: true }));
+      // The time refreshes with iRacing's best: the player's 89.6 is judged first, and car 2's 89.7 is read against it.
+      controller.__tick(raceTick([-1, 90, 89.7, -1], { completed: 2, last: 89.6, best: [2, 89.6] }));
       expect(seen.slice(2).map((s) => s.event)).toEqual(["lap.completed", "fastestLap.set"]);
       expect(seen[2]!.data).toMatchObject({ lap: 2, lapTime: 89.6, isClassFastestLapOfRace: true });
       expect(seen[3]!.data).toMatchObject({ carIdx: 0, isPlayer: true, lapTime: 89.6 });
 
       // Nothing for car 2 on the next tick either.
-      controller.__tick(raceTick([-1, 90, 89.7, -1], { completed: 2, last: 89.6, valid: true }));
+      controller.__tick(raceTick([-1, 90, 89.7, -1], { completed: 2, last: 89.6, best: [2, 89.6] }));
       expect(seen).toHaveLength(4);
 
       // The positive control: with no crossing pending, a rival below the 89.6 is announced on its own tick.
-      controller.__tick(raceTick([-1, 89.5, 89.7, -1], { completed: 2, last: 89.6, valid: true }));
+      controller.__tick(raceTick([-1, 89.5, 89.7, -1], { completed: 2, last: 89.6, best: [2, 89.6] }));
       expect(seen).toHaveLength(5);
       expect(seen[4]!.data).toMatchObject({
         carIdx: 1,
@@ -7689,12 +7730,12 @@ describe("sim-events-iracing translator", () => {
       controller.__tick(raceTick([-1, 90, 91, -1], { completed: 0, last: 0 }));
       // The player: 89.5 (record), car 2: 89 (record), the player: 88 (record),
       // the player: 89 (not), car 1: 87 (record), the player: 86 (record).
-      controller.__tick(raceTick([-1, 90, 91, -1], { completed: 1, last: 89.5, valid: true }));
-      controller.__tick(raceTick([-1, 90, 89, -1], { completed: 1, last: 89.5, valid: true }));
-      controller.__tick(raceTick([-1, 90, 89, -1], { completed: 2, last: 88, valid: true }));
-      controller.__tick(raceTick([-1, 90, 89, -1], { completed: 3, last: 89, valid: true }));
-      controller.__tick(raceTick([-1, 87, 89, -1], { completed: 3, last: 89, valid: true }));
-      controller.__tick(raceTick([-1, 87, 89, -1], { completed: 4, last: 86, valid: true }));
+      controller.__tick(raceTick([-1, 90, 91, -1], { completed: 1, last: 89.5, best: [1, 89.5] }));
+      controller.__tick(raceTick([-1, 90, 89, -1], { completed: 1, last: 89.5, best: [1, 89.5] }));
+      controller.__tick(raceTick([-1, 90, 89, -1], { completed: 2, last: 88, best: [2, 88] }));
+      controller.__tick(raceTick([-1, 90, 89, -1], { completed: 3, last: 89, best: [2, 88] }));
+      controller.__tick(raceTick([-1, 87, 89, -1], { completed: 3, last: 89, best: [2, 88] }));
+      controller.__tick(raceTick([-1, 87, 89, -1], { completed: 4, last: 86, best: [4, 86] }));
 
       const flagged = seen.filter((s) => s.event === "lap.completed" && s.data.isClassFastestLapOfRace === true);
       const playerRecords = seen.filter((s) => s.event === "fastestLap.set" && s.data.isPlayer === true);
@@ -7749,24 +7790,24 @@ describe("sim-events-iracing translator", () => {
       it("emits nothing for the glance, keeps the record, and absorbs a remote car that beat it meanwhile as the silent holder", () => {
         const seen = watch();
         const controller = start();
-        controller.__tick(raceTick([-1, 90, 91, -1], { completed: 1, last: 92, valid: true }));
+        controller.__tick(raceTick([-1, 90, 91, -1], { completed: 1, last: 92 }));
         expect(seen.filter((s) => s.event === "fastestLap.set")).toEqual([]);
 
         // During the glance car 2 runs an 89.
-        glance(controller, raceTick([-1, 90, 89, -1], { completed: 1, last: 92, valid: true }));
+        glance(controller, raceTick([-1, 90, 89, -1], { completed: 1, last: 92 }));
         // Back live: the re-seed tick, then a scan tick.
-        controller.__tick(raceTick([-1, 90, 89, -1], { completed: 1, last: 92, valid: true }));
-        controller.__tick(raceTick([-1, 90, 89, -1], { completed: 1, last: 92, valid: true }));
+        controller.__tick(raceTick([-1, 90, 89, -1], { completed: 1, last: 92 }));
+        controller.__tick(raceTick([-1, 90, 89, -1], { completed: 1, last: 92 }));
         expect(seen.filter((s) => s.event === "fastestLap.set")).toEqual([]);
 
         // Car 1 beating 90 but not 89 is no record: the holder is now car 2.
-        controller.__tick(raceTick([-1, 89.5, 89, -1], { completed: 1, last: 92, valid: true }));
+        controller.__tick(raceTick([-1, 89.5, 89, -1], { completed: 1, last: 92 }));
         expect(seen.filter((s) => s.event === "fastestLap.set")).toEqual([]);
 
         // The positive control. The player stays on lap 1: a counter that moved
         // with no time refresh would be a crossing awaiting its judgement, which
         // holds the scan.
-        controller.__tick(raceTick([-1, 88, 89, -1], { completed: 1, last: 92, valid: true }));
+        controller.__tick(raceTick([-1, 88, 89, -1], { completed: 1, last: 92 }));
         const records = seen.filter((s) => s.event === "fastestLap.set");
         expect(records).toHaveLength(1);
         expect(records[0]!.data).toMatchObject({ carIdx: 1, lapTime: 88, previous: { carIdx: 2, lapTime: 89 } });
@@ -7775,17 +7816,17 @@ describe("sim-events-iracing translator", () => {
       it("a holder that left the world during the glance keeps the record, so only a lap faster than it is announced", () => {
         const seen = watch();
         const controller = start();
-        controller.__tick(raceTick([-1, 90, 91, -1], { completed: 1, last: 92, valid: true }));
+        controller.__tick(raceTick([-1, 90, 91, -1], { completed: 1, last: 92 }));
 
-        glance(controller, raceTick([-1, -1, 91, -1], { completed: 1, last: 92, valid: true }));
-        controller.__tick(raceTick([-1, -1, 91, -1], { completed: 1, last: 92, valid: true }));
+        glance(controller, raceTick([-1, -1, 91, -1], { completed: 1, last: 92 }));
+        controller.__tick(raceTick([-1, -1, 91, -1], { completed: 1, last: 92 }));
 
         // Faster than every remaining car, slower than the departed holder.
-        controller.__tick(raceTick([-1, -1, 90.5, -1], { completed: 1, last: 92, valid: true }));
+        controller.__tick(raceTick([-1, -1, 90.5, -1], { completed: 1, last: 92 }));
         expect(seen.filter((s) => s.event === "fastestLap.set")).toEqual([]);
 
         // The player stays on lap 1 (see the test above).
-        controller.__tick(raceTick([-1, -1, 89.9, -1], { completed: 1, last: 92, valid: true }));
+        controller.__tick(raceTick([-1, -1, 89.9, -1], { completed: 1, last: 92 }));
         const records = seen.filter((s) => s.event === "fastestLap.set");
         expect(records).toHaveLength(1);
         expect(records[0]!.data).toMatchObject({

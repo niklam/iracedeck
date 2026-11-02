@@ -2849,10 +2849,11 @@ function handleLiveSteps(
   //
   // The fastest-lap judge (issue #1571): whether the lap this diff is about
   // to report is a new fastest lap of the race in the player's class, decided
-  // on that payload's own lap, time and validity against the record
-  // `diff/fastest-lap.ts` keeps. Built here, closed over this tick's state,
+  // on that payload's own lap and time against the record
+  // `diff/fastest-lap.ts` keeps, and asked only of a lap iRacing took as a
+  // new best (issue #1582). Built here, closed over this tick's state,
   // session and telemetry, so `laps.ts` reaches the record only through
-  // `(lap, lapTime, lapIsValid) => boolean` and never imports that module. A
+  // `(lap, lapTime) => boolean` and never imports that module. A
   // lap it passes leaves a claim `diffFastestLap` publishes further down this
   // tick, after `lap.completed` in the same flush.
   //
@@ -2872,6 +2873,7 @@ function handleLiveSteps(
       now,
       emit,
       createFastestLapJudge(self.state, telemetry, sessionInfo, playerCarIdx, isRaceSession),
+      self.logger,
     ),
   );
   // `diffLimiter` runs BEFORE `diffPitLane` for two reasons. It reads

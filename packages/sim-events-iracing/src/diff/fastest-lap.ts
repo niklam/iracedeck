@@ -20,9 +20,12 @@
  *   are skipped.
  * - **The player: the judge.** Never taken from the scan. `diffLaps` calls
  *   the judge {@link createFastestLapJudge} builds, on the tick it emits
- *   `lap.completed`, with that payload's own lap, time and validity, so
- *   whether the player's lap is the fastest of the race is known on that
- *   payload and the time spoken is the time the lap-time calls speak. A lap
+ *   `lap.completed`, with that payload's own lap and time, and only for a
+ *   lap iRacing took as a new best (`isBest`, issue #1582) — every fastest
+ *   lap of the race is one, so that is where whether the lap counted is
+ *   decided. So whether the player's lap is the fastest of the race is known
+ *   on that payload and the time spoken is the time the lap-time calls
+ *   speak. A lap
  *   that passes sets the record to the player and leaves a claim
  *   (`fastestLapClaim`) that {@link diffFastestLap} publishes later in the
  *   same tick, before any gate of its own, so a claim never survives into a
@@ -43,9 +46,10 @@
  * the first tick after the judge, against the record as the judge left it.
  * The hold is bounded by {@link FASTEST_LAP_HOLD_MAX_MS} from that tick, a
  * little past the longest `diffLaps` can wait, so a crossing that never emits
- * (a time that never refreshes, a lap whose count the judge refuses) cannot
- * freeze the scan. A lap-0 crossing never holds: the judge refuses it
- * whatever its time, so there is nothing to wait for.
+ * (a time that never refreshes) cannot freeze the scan. A lap iRacing
+ * refused emits too (issue #1582), so its emit ends the hold like any other.
+ * A lap-0 crossing never holds: the judge refuses it whatever its time, so
+ * there is nothing to wait for.
  *
  * **One eligibility predicate** ({@link isEligibleRecordLap}) decides which
  * laps can enter the record, for the scan and for the player alike: a race
@@ -81,28 +85,20 @@ import {
 } from "@iracedeck/iracing-sdk";
 
 import type { FastestLapRecord, TranslatorState } from "../state.js";
-import { type FastestLapJudge, LAP_RESULTS_SYNC_MAX_WAIT_MS } from "./laps.js";
+import { type FastestLapJudge, LAP_RESULTS_SYNC_MAX_WAIT_MS, LAP_TIME_REFRESH_ALLOWANCE_MS } from "./laps.js";
 import type { EmitFn } from "./types.js";
 
 /** The events {@link diffFastestLap} emits (issue #1499): its emitter's type, and its row in `TICK_ORDER`. */
 export const FASTEST_LAP_EVENTS = ["fastestLap.set"] as const satisfies readonly SimEventName[];
 
 /**
- * How long (ms) after the player's crossing `LapLastLapTime` is allowed to
- * refresh before the hold stops waiting for it. `diffLaps` puts no bound on
- * that wait (it waits for the field to change, however long), so the hold
- * needs one of its own: 2 s, the budget `diff/replay-laps.ts` gives the same
- * refresh for a remote car (`REPLAY_LAP_TIME_WAIT_TICKS`, 120 ticks at 60 Hz)
- * against a refresh measured at a tick or two.
- */
-export const LAP_TIME_REFRESH_ALLOWANCE_MS = 2000;
-
-/**
  * The longest the remote scan holds for the player's lap (issue #1571): the
  * refresh allowance plus the standings wait `diffLaps` then runs, which is
- * the longest a `lap.completed` can trail the crossing by. 5 s today. A
- * crossing still unjudged after this never emits — a lap-0 crossing, a lap
- * whose time never refreshes — and the scan resumes.
+ * the longest a `lap.completed` can trail the crossing by — a refused lap's
+ * included, whose wait for a time `diffLaps` bounds by the same allowance
+ * (issue #1582). 5 s today. A crossing still unjudged after this never emits
+ * — a lap-0 crossing, a lap whose time never refreshes — and the scan
+ * resumes.
  */
 export const FASTEST_LAP_HOLD_MAX_MS = LAP_TIME_REFRESH_ALLOWANCE_MS + LAP_RESULTS_SYNC_MAX_WAIT_MS;
 
@@ -123,8 +119,10 @@ export function isEligibleRecordLap(
 
 /**
  * Judge the player's just-completed lap against the record (issue #1571,
- * decision 2): a new record when the lap passes {@link isEligibleRecordLap},
- * `lapIsValid` is not `false`, and the time is below the record. A lap that
+ * decision 2, as #1582 amends it): a new record when the lap passes
+ * {@link isEligibleRecordLap} and the time is below the record. Validity is
+ * not read here: `diffLaps` asks only of a lap iRacing took as a new best,
+ * which a lap it refused never is, nor the race start lap. A lap that
  * passes updates the record to the player and leaves the claim for
  * {@link diffFastestLap} to publish later in the same tick. Returns whether
  * it passed, which is exactly `lap.completed.isClassFastestLapOfRace`.
@@ -137,13 +135,10 @@ export function resolvePlayerFastestLap(
   isRaceSession: boolean,
   lap: number,
   lapTime: number,
-  lapIsValid: boolean | undefined,
 ): boolean {
   if (playerCarIdx < 0) return false;
 
   if (!isEligibleRecordLap(isRaceSession, telemetry, lap, lapTime)) return false;
-
-  if (lapIsValid === false) return false;
 
   const previous = state.fastestLapRecord;
 
@@ -164,7 +159,7 @@ export function resolvePlayerFastestLap(
 /**
  * The narrow judge `diffLaps` is handed (issue #1571, decision 2): closed
  * over the tick's state, session and telemetry, so `laps.ts` reaches the
- * record only through `(lap, lapTime, lapIsValid) => boolean` and never
+ * record only through `(lap, lapTime) => boolean` and never
  * imports this module.
  */
 export function createFastestLapJudge(
@@ -174,8 +169,8 @@ export function createFastestLapJudge(
   playerCarIdx: number,
   isRaceSession: boolean,
 ): FastestLapJudge {
-  return (lap, lapTime, lapIsValid) =>
-    resolvePlayerFastestLap(state, telemetry, sessionInfo, playerCarIdx, isRaceSession, lap, lapTime, lapIsValid);
+  return (lap, lapTime) =>
+    resolvePlayerFastestLap(state, telemetry, sessionInfo, playerCarIdx, isRaceSession, lap, lapTime);
 }
 
 type FastestLapPayload = {
