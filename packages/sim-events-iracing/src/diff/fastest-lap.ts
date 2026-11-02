@@ -44,10 +44,14 @@
  * for ({@link playerLapAwaitsJudgement}), the scan neither advances a
  * baseline nor emits: a remote best that moved meanwhile is seen as new on
  * the first tick after the judge, against the record as the judge left it.
- * The hold is bounded by {@link FASTEST_LAP_HOLD_MAX_MS} from that tick, a
- * little past the longest `diffLaps` can wait, so a crossing that never emits
- * (a time that never refreshes) cannot freeze the scan. A lap iRacing
- * refused emits too (issue #1582), so its emit ends the hold like any other.
+ * The hold is bounded by {@link FASTEST_LAP_HOLD_MAX_MS} from that tick, so
+ * a crossing that never emits (a time that never refreshes) cannot freeze
+ * the scan. A lap iRacing refused emits too (issue #1582), so its emit ends
+ * the hold like any other. The cap is a little past the longest a counted
+ * lap can trail its crossing, and equal to the longest a refused lap after a
+ * refused lap can (its 2 s wait, then the standings wait): the hold may then
+ * release a tick before that emit, which changes nothing, because a refused
+ * lap never moves the record.
  * A lap-0 crossing never holds: the judge refuses it whatever its time, so
  * there is nothing to wait for.
  *

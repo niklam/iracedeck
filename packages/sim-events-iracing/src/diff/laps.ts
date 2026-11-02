@@ -354,7 +354,7 @@ export function diffLaps(
     // A time for the count already emitted — a late time after a refused
     // emit: dropped, and taken as the stale value the next crossing reads.
     if (hasNewTime) {
-      logger.debug(`Lap time dropped: lap=${lapCompleted} already emitted, time=${lapLastLapTime}`);
+      logger.debug(`Lap time dropped: lap=${lapCompleted} already emitted or seeded, time=${lapLastLapTime}`);
       state.lastEmittedLapTime = lapLastLapTime;
     }
 
